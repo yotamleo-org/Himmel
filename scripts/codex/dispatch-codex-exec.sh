@@ -406,6 +406,7 @@ if (missing.length) {
 ' "$hooks_json" "$cfg" "$wt" "$wt_native" "$primary"
 }
 if [ -n "${CODEX_HOOK_TRUST_CHECK:-}" ]; then
+    echo "dispatch-codex-exec.sh: NOTE hook-trust check overridden by CODEX_HOOK_TRUST_CHECK=$CODEX_HOOK_TRUST_CHECK (test-only)" >&2
     bash "$CODEX_HOOK_TRUST_CHECK" "$WORKTREE"
     TRUST_RC=$?
     TRUST_MISSING=""
