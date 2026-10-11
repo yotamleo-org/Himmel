@@ -1804,6 +1804,8 @@ fi
 assert "payload cwd / : du -sh never ALLOW"    PASS  "$(decide "$(j_bash_cwd / "du -sh")")"
 assert "payload cwd / : grep -r x . never ALLOW" PASS "$(decide "$(j_bash_cwd / "grep -r x .")")"
 assert "ctl: payload cwd repo : du -sh ALLOW"  ALLOW "$(decide "$(j_bash_cwd /home/u/repo "du -sh")")"
+assert "cd src CR && grep -r never ALLOW"          PASS  "$(decide "$(j_bash "cd src${CR} && grep -r x .")")"
+assert "cd src CR && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd src${CR} && du -sh")")"
 assert "xxd in CR-u never ALLOW"               PASS  "$(decide "$(j_bash "xxd in ${CR}-u")")"
 assert "xxd in CR-out never ALLOW"             PASS  "$(decide "$(j_bash "xxd in ${CR}out")")"
 assert "uniq a CR-f never ALLOW"               PASS  "$(decide "$(j_bash "uniq a ${CR}-f")")"

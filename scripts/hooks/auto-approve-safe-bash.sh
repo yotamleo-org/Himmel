@@ -1167,7 +1167,11 @@ segment_is_safe() {
     done
 
     case "$bin" in
-        cd) sw_note_cd "${a[@]:$((i + 1))}" ;;
+        cd)
+            # CR is a word byte to bash but whitespace to this tokenizer, so a
+            # `cd` operand holding one names a different directory than the one
+            # resolved here: the cwd is unknown (HIMMEL-5187).
+            case "$1" in *$'\r'*) SW_CD_UNPROVEN=1 ;; *) sw_note_cd "${a[@]:$((i + 1))}" ;; esac ;;
         pushd|popd) SW_CD_UNPROVEN=1 ;;
         xxd|uniq)
             # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
