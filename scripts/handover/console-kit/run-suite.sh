@@ -15,7 +15,8 @@
 # the top level, which no directory root covers). Each root runs through
 # scripts/ci/run-shell-tests.sh (its own lock, SKIP_LIST and budget apply) under
 # scripts/quiet-run.sh; --runner PATH swaps the scan runner (tests). `top` runs
-# only the scripts/test-*.sh files the runner's `--list scripts` plan marks [RUN ].
+# the runner over scripts with every nested suite --skip-extra'd, so only the
+# scripts/test-*.sh files run, under the runner's lock, SKIP_LIST and budget.
 #
 # Output: the quiet-run OK/ERR line, then one line
 #   CHECKPOINT <i>/<n> <root> rc=<rc> next=<root|none>
@@ -78,18 +79,17 @@ NEXT="$(printf '%s\n' "$PLAN_LIST" | sed -n "$((IDX + 1))p")"
 
 RC=0
 if [ "$ROOT" = top ]; then
-    # Take the runner's own plan so its SKIP_LIST (VM and network suites) is
-    # honoured; an unreadable plan is refused, never run unfiltered.
-    PLAN_OUT="$(bash "$RUNNER" --list scripts 2>/dev/null)" || {
-        echo "run-suite: cannot read the runner plan for top; refusing to run it unfiltered" >&2
-        exit 2
-    }
-    TOP_FILES="$(printf '%s\n' "$PLAN_OUT" | sed -n 's|^\[RUN \] \(scripts/test-[^/]*\.sh\)$|\1|p')"
-    # shellcheck disable=SC2086  # the file list is word-split on purpose
-    bash "$QUIET_RUN" suite-root -- bash -c '
-        rc=0
-        for f in "$@"; do bash "$f" || rc=1; done
-        exit $rc' _ $TOP_FILES || RC=$?
+    # Through the runner, so its machine lock, SKIP_LIST (VM and network suites)
+    # and per-suite budget all apply: scan root scripts with every nested suite
+    # skipped (--skip-extra is scan-root-relative), leaving the top-level files.
+    NESTED="$(git ls-files -co --exclude-standard -- 'scripts/*test-*.sh')"
+    SKIPS=()
+    while IFS= read -r f; do
+        case "$f" in scripts/*/*) SKIPS+=(--skip-extra "${f#scripts/}") ;; esac
+    done <<EOF
+$NESTED
+EOF
+    bash "$QUIET_RUN" suite-root -- bash "$RUNNER" scripts ${SKIPS[@]+"${SKIPS[@]}"} || RC=$?
 else
     bash "$QUIET_RUN" suite-root -- bash "$RUNNER" "$ROOT" || RC=$?
 fi

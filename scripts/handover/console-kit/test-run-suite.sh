@@ -27,21 +27,12 @@ for f in scripts/alpha/test-a.sh scripts/beta/deep/test-b.sh scripts/gamma/test-
 done
 CALLS="$WORK/calls.log"
 printf '#!/usr/bin/env bash\necho scripts/test-top.sh >> "%s"\n' "$CALLS" > "$REPO/scripts/test-top.sh"
-printf '#!/usr/bin/env bash\necho scripts/test-vm.sh >> "%s"\n' "$CALLS" > "$REPO/scripts/test-vm.sh"
 printf 'x\n' > "$REPO/scripts/alpha/helper.sh"
 git -C "$REPO" init -q
 git -C "$REPO" add -A
 
-# The runner's own plan: test-top is planned, test-vm sits in its SKIP_LIST.
 cat > "$WORK/runner.sh" <<EOF
 #!/usr/bin/env bash
-if [ "\$1" = "--list" ]; then
-    [ -z "\${FAKE_LIST_RC:-}" ] || exit "\$FAKE_LIST_RC"
-    echo "[RUN ] scripts/test-top.sh"
-    echo "[SKIP] scripts/test-vm.sh — drives a real VM"
-    echo "[RUN ] scripts/alpha/test-a.sh"
-    exit 0
-fi
 echo "\$*" >> "$CALLS"
 [ -n "\${FAKE_RC:-}" ] && exit "\$FAKE_RC"
 exit 0
@@ -67,13 +58,11 @@ check "no argument runs the FIRST root only" "scripts/alpha" "$(cat "$CALLS")"
 : > "$CALLS"
 out="$(run top)"
 check "top: CHECKPOINT closes the plan" "1" "$(printf '%s\n' "$out" | grep -c '^CHECKPOINT 4/4 top rc=0 next=none$')"
-check "top: the top-level suite ran" "1" "$(grep -c 'scripts/test-top.sh' "$CALLS")"
-check "top: a SKIP_LIST suite did not run" "0" "$(grep -c 'scripts/test-vm.sh' "$CALLS")"
-
-: > "$CALLS"
-out="$(FAKE_LIST_RC=1 run top)"; rc=$?
-check "top: an unreadable runner plan is refused rc 2" "2" "$rc"
-check "top: an unreadable runner plan runs nothing" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
+check "top: the runner is called exactly once" "1" "$(wc -l < "$CALLS" | tr -d ' ')"
+check "top: the runner scans scripts" "scripts" "$(head -1 "$CALLS" | cut -d' ' -f1)"
+check "top: every nested suite is skipped" "--skip-extra alpha/test-a.sh --skip-extra beta/deep/test-b.sh --skip-extra gamma/test-c.sh" "$(head -1 "$CALLS" | cut -d' ' -f2-)"
+check "top: the top-level suite is not skipped" "0" "$(grep -c 'test-top.sh' "$CALLS")"
+check "top: no suite is run outside the runner" "0" "$(grep -c '^scripts/test-top.sh$' "$CALLS")"
 
 : > "$CALLS"
 out="$(cd "$REPO/scripts/alpha" && bash "$(realpath --relative-to="$REPO/scripts/alpha" "$RS")" --runner "$WORK/runner.sh" scripts/alpha 2>&1)"; rc=$?
