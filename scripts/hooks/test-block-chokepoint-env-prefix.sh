@@ -2241,7 +2241,8 @@ done
 # cannot show it; pobf_xopt is exercised directly (extracted, globbing ON) with
 # a file named -O planted in cwd: `-?` globs to it. rc 1 = no void (the literal
 # word was screened); rc 0 would mean the glob was expanded first.
-XOPT_SRC=$(mktemp) || exit 1; GLOBDIR=$(mktemp -d) || exit 1
+XOPT_SRC=$(mktemp "${TMPDIR:-/tmp}/xopt-src.XXXXXX") || exit 1
+GLOBDIR=$(mktemp -d "${TMPDIR:-/tmp}/xopt-glob.XXXXXX") || exit 1
 awk '/^POBF_GIT_SAFE=/{p=1} p{print} /^pobf_xopt_scan\(\)/{q=1} q&&/^}/{exit}' "$HOOK" > "$XOPT_SRC"
 : > "$GLOBDIR/-O"
 xopt_probe() {  # xopt_probe <mode: on|off> <command> <stage text> -> "<rc> <f-flag-after>"
