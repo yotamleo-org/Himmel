@@ -926,7 +926,7 @@ assert_rc "5292 ctl { echo hi; }"               0 "$(run_case "$(j_bash '{ echo 
 assert_rc "5292 ctl for f; do echo \$f; done"   0 "$(run_case "$(j_bash 'for f in a b; do echo $f; done')")"
 assert_rc "5292 ctl { env FOO=1 ls; }"          0 "$(run_case "$(j_bash '{ env FOO=1 ls; }')")"
 # Glob sources: the upload / archive verbs expand an unquoted glob against cwd.
-G52DIR=$(mktemp -d) || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
+G52DIR=$(mktemp -d "${TMPDIR:-/tmp}/g52.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 : >"$G52DIR/.env"
 run_in_g52() { (cd "$G52DIR" && printf '%s' "$(j_bash "$1")" | bash "$HOOK" >/dev/null 2>&1; echo "$?"); }
 assert_rc "5292 tar czf o.tgz .en*"             2 "$(run_in_g52 'tar czf o.tgz .en*')"
