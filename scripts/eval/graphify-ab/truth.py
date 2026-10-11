@@ -87,11 +87,11 @@ RULES = {
 
 def parse_answer(text):
     """Items of the LAST `ANSWER: [...]` line, or None when absent/malformed."""
-    hits = re.findall(r"^\s*ANSWER:\s*(\[.*\])\s*$", text, re.M)
-    if not hits:
+    lines = re.findall(r"^\s*ANSWER:\s*(.*?)\s*$", text, re.M)
+    if not lines:
         return None
     try:
-        arr = json.loads(hits[-1])
+        arr = json.loads(lines[-1])
     except ValueError:
         return None
     if not isinstance(arr, list) or not all(isinstance(x, str) for x in arr):

@@ -89,5 +89,18 @@ eq "verdict: graph unused in most A runs is NEUTRAL, not DROP" "True" "$(pyt "$V
 eq "verdict: unverified runs are INCONCLUSIVE" "True" "$(pyt "$V; print(S.verdict(v,0,10,2).startswith('VERDICT: INCONCLUSIVE'))")"
 eq "verdict: graph used and no benefit stays DROP" "True" "$(pyt "$V; print(S.verdict(v,0,10).startswith('VERDICT: DROP'))")"
 
+# 7. empty matrix, malformed last ANSWER line, graph use counted only for Bash commands.
+bash "$HERE/run.sh" plan --tasks no-such-task > /dev/null 2>&1
+eq "unknown --tasks id is refused (exit 2)" "2" "$?"
+bash "$HERE/run.sh" plan --reps 0 > /dev/null 2>&1
+eq "--reps 0 is refused (exit 2)" "2" "$?"
+printf 'ANSWER: ["console-judge", "leg-impl", "telegram"]\nANSWER: not-json\n' > "$W/late-bad.txt"
+eq "malformed final ANSWER line is unparsed, not the earlier answer" "False False 0.0" "$(c "$W/late-bad.txt")"
+T="$W/projects/-tmp-x"; mkdir -p "$T"
+printf '%s\n%s\n' \
+  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"scripts/graphify/leg-graph.sh"}}]}}' \
+  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query x"}}]}}' > "$T/sid.jsonl"
+eq "graph use counts Bash commands only, not a Read of leg-graph.sh" "2 1" "$(pyt "print(*S.transcript_calls('$W/projects', '/tmp/x', 'sid'))")"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

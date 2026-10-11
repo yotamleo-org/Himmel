@@ -64,6 +64,9 @@ print(t["prompt"] + "\n\n" + d["answer_format"])
 ' "$TASKS_JSON" "$1"
 }
 
+case "$REPS" in ''|*[!0-9]*|0) echo "run.sh: --reps must be a positive integer" >&2; exit 2 ;; esac
+[ -n "$(task_ids)" ] || { echo "run.sh: --tasks matches no task id" >&2; exit 2; }
+
 case "$sub" in
   plan)
     for rep in $(seq 1 "$REPS"); do
@@ -80,6 +83,7 @@ case "$sub" in
   *) echo "usage: run.sh run|plan [--reps N] [--out DIR] [--max-usd USD] [--tasks a,b] [--model M]" >&2; exit 2 ;;
 esac
 
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout)" || { echo "run.sh: needs timeout (coreutils; gtimeout on macOS)" >&2; exit 2; }
 BASE="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["base_sha"])' "$TASKS_JSON")"
 [ -n "$OUT" ] || OUT="${HOME}/.himmel/eval/graphify-ab/$(date +%Y%m%dT%H%M%S)"
 mkdir -p "$OUT/raw" || exit 1
@@ -129,7 +133,7 @@ for rep in $(seq 1 "$REPS"); do
       start="$(date +%s)"
       # headless-claude-ok: HIMMEL-5317 graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
       # launch-profile-ok: eval arm pins its own --tools/--allowedTools and --strict-mcp-config; a leg profile would change the measured condition
-      ( cd "$CHECKOUT" && timeout "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
+      ( cd "$CHECKOUT" && "$TIMEOUT_BIN" "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
           --permission-mode dontAsk --output-format json --max-budget-usd "$run_cap" \
           --tools Bash,Read --allowedTools Bash,Read ${deny:+--disallowedTools "$deny"} \
           --strict-mcp-config --append-system-prompt "$sys_text" ) > "$OUT/raw/$tag.json" 2> "$OUT/raw/$tag.err"

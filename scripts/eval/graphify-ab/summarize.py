@@ -59,7 +59,9 @@ def transcript_calls(root, cwd, sid):
             for b in content:
                 if isinstance(b, dict) and b.get("type") == "tool_use":
                     calls += 1
-                    if GRAPH_USE.search(json.dumps(b.get("input", {}))):
+                    inp = b.get("input")
+                    cmd = inp.get("command") if isinstance(inp, dict) else None
+                    if b.get("name") == "Bash" and isinstance(cmd, str) and GRAPH_USE.search(cmd):
                         graphify += 1
     return calls, graphify
 
