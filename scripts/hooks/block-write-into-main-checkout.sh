@@ -163,6 +163,13 @@
 #     verb arms read the command word. HIMMEL-4213: so are a leading `{`,
 #     `!`, reserved word, `time` and wrapper command (`nice -n 5 touch`,
 #     `sudo -u u touch`; `_bwimc_strip_prefix`).
+#     HIMMEL-5098: `eval` / `source` / `.` / `bash -c` whose argument is (or
+#     holds) a substitution that READS repository or file data (`git log`,
+#     `cat`, `$(<f)`, `<(…)`, or a variable filled from one in the same
+#     command) is denied (`data-exec`, `_bwimc_body_reads_data`), in any cwd:
+#     the command it runs is not in the text. Residuals: a reader outside the
+#     word list (curl, gh), a variable set by an earlier call, and
+#     `git log | sh` (a pipe INTO a shell) are not seen.
 #   - `-T`/`--no-target-directory` IS modelled now (RETASK correction,
 #     HIMMEL-2592 round 6 codex-2 — this bullet used to say the opposite):
 #     for `mv` it forces the destination to plain ENTRY resolution instead
@@ -1853,6 +1860,7 @@ _bwimc_deny() {
         unresolved-chroot) why="it runs behind a chroot (chroot DIR, sudo -R/--chroot) whose new root could not be resolved, so its targets cannot be classified (failing closed, HIMMEL-4329)" ;;
         chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed, HIMMEL-4329)" ;;
         unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed, HIMMEL-3648)" ;;
+        data-exec) why="an eval/source/./bash -c/sh -c argument is (or is built from) a command substitution that reads repository or file data (git, cat, head, tail, \$(<file)…), so the command it runs is never in this text and its target cannot be classified (failing closed, HIMMEL-5098)" ;;
     esac
     {
         echo "⛔ block-write-into-main-checkout: refusing a write-shaped command — $why."
@@ -1882,6 +1890,9 @@ _bwimc_deny() {
                 # A shape refusal (HIMMEL-4815): the target was unreadable, not proven primary.
                 echo "    Retry (shape, not destination): one write per Bash call, an absolute"
                 echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file." ;;
+            data-exec)
+                echo "    Retry: read the data in one call, check it, then run the command it names"
+                echo "    as a literal in the next call — never eval/source data you have not read." ;;
         esac
     } >&2
     exit 2
@@ -3261,6 +3272,79 @@ _bwimc_is_shc_cflag() {
     return 1
 }
 
+# _bwimc_body_reads_data BODY — HIMMEL-5098. 0 when BODY, the text of ONE
+# command substitution, reads repository or file data: a git command, a
+# text reader (cat head tail sed awk grep jq …), a `<file` read, or a command
+# word that is not literal (`$x`, `$(…)`, an ANSI-C escape) and so cannot be
+# classified. Quotes, backslashes and `$'…'` are dropped first, so `g\it`,
+# `c''at` and `$'log'` read as the word they spell. Coarse and fail-closed: a
+# reader word anywhere in BODY counts, even as an argument.
+# ponytail: a reader outside this list (curl, gh, a script that cats a file) is
+# not recognised, HIMMEL-5098; widen the list when one is seen.
+_bwimc_body_reads_data() {
+    local t="$1"
+    case "$t" in
+        *\$\'*\\*) return 0 ;;
+    esac
+    t="${t//\$\'/}"; t="${t//\$\"/}"
+    t="${t//[\'\"\\]/}"
+    _tolower_ascii "$t"; t="$_TOLOWER_OUT"
+    [[ "$t" =~ (^|[[:space:];\&\|\(])\<[[:space:]]*[^[:space:]\<\(\&] ]] && return 0
+    [[ "$t" =~ (^|[\;\&\|\(\`])[[:space:]]*\$ ]] && return 0
+    [[ "$t" =~ (^|[^[:alnum:]_.-])(git|cat|tac|head|tail|more|less|nl|od|xxd|hexdump|strings|sed|awk|gawk|mawk|grep|egrep|fgrep|rg|cut|sort|uniq|tr|rev|paste|jq|yq|base64)(\.exe)?([^[:alnum:]_.-]|$) ]] && return 0
+    return 1
+}
+
+# _bwimc_text_reads_data TEXT — HIMMEL-5098. 0 when a command or process
+# substitution anywhere in TEXT (nested ones too) reads data per
+# _bwimc_body_reads_data. `<(…)` is read as `$(…)`. A deeper nest than the
+# queue holds fails closed.
+_bwimc_text_reads_data() {
+    local text="$1" q=() qi=0 b n
+    # shellcheck disable=SC2016  # literal `$(` is the replacement text
+    text="${text//'<('/'$('}"
+    q=("$text")
+    while [ "$qi" -lt "${#q[@]}" ] && [ "$qi" -lt 64 ]; do
+        # shellcheck disable=SC2016  # literal `$(` is the glob pattern
+        case "${q[$qi]}" in
+            *'$('*|*'`'*)
+                _bwimc_subst_split "${q[$qi]}"
+                for n in ${_BWIMC_BODIES[@]+"${!_BWIMC_BODIES[@]}"}; do
+                    b="${_BWIMC_BODIES[$n]}"
+                    _bwimc_body_reads_data "$b" && return 0
+                    q+=("$b")
+                done ;;
+        esac
+        qi=$((qi+1))
+    done
+    [ "$qi" -ge "${#q[@]}" ] || return 0
+    return 1
+}
+
+# _bwimc_body_var_from_data BODY FULL — HIMMEL-5098. 0 when BODY expands a
+# variable that FULL (the whole command) assigns from a data-reading
+# substitution (`m=$(git log -1); eval "$m"`) or fills with `read` /
+# `mapfile` / `readarray` (`read -r m < <(…)`).
+# ponytail: only an assignment in the same command is seen; a variable set in
+# an earlier call is not, same residual as every dynamic token, HIMMEL-5098.
+_bwimc_body_var_from_data() {
+    local rest="$1" full="$2" name seg line nl=$'\n'
+    while [[ "$rest" =~ \$\{?([A-Za-z_][A-Za-z0-9_]*) ]]; do
+        name="${BASH_REMATCH[1]}"
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        seg="$full"
+        while [[ "$seg" == *"$name="* ]]; do
+            seg="${seg#*"$name="}"
+            line="${seg%%[;"$nl"]*}"
+            _bwimc_text_reads_data "$line" && return 0
+        done
+        if [[ "$full" =~ (^|[[:space:];\&\|\(])(read|mapfile|readarray)[[:space:]]([^;\&\|]*[[:space:]])?"$name"([[:space:];\&\|\)]|$) ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # _bwimc_check_interp_body CLAUSE_SP KIND — HIMMEL-3648. `eval "BODY"` /
 # `bash -c "BODY"` / `sh -c "BODY"` / `zsh -c "BODY"` hide a write-shaped
 # command inside a STRING argument the arms above never look at. Per the
@@ -3279,7 +3363,7 @@ _bwimc_is_shc_cflag() {
 # is not further modelled — same residual _bwimc_check_target already
 # accepts for every other arm (HIMMEL-3648).
 _bwimc_check_interp_body() {
-    local kind="$2" toks=() t t2 n i j0 cidx body="" _bwimc_ibody_clause="" _bwimc_ib_text="" _bwimc_ib_texts=() \
+    local kind="$2" srci=-1 toks=() t t2 n i j0 cidx body="" _bwimc_ibody_clause="" _bwimc_ib_text="" _bwimc_ib_texts=() \
         _bwimc_ibody_clause_sp="" _bwimc_ibc_toks=() _bwimc_ibc_n=0 _bwimc_m="" _bwimc_ib_cw=0 _bwimc_ib_ro=0 \
         _bwimc_ibody_saved_ecwd="" _bwimc_ibody_saved_unres=""
     toks=()
@@ -3323,20 +3407,23 @@ _bwimc_check_interp_body() {
                     esac ;;
             esac
         fi
-        kind=""; i=0
+        kind=""; i=0; srci=-1
         while [ "$i" -lt "$n" ]; do
             t=$(_bwimc_unq "${toks[$i]}"); t="${t##*/}"
             _tolower_ascii "$t"; t="${_TOLOWER_OUT%.exe}"
             case "$t" in
                 eval) kind="eval"; break ;;
                 bash|sh|zsh|dash|ksh|su|runuser|flock) kind=shc; break ;;
+                source|.) [ "$srci" -ge 0 ] || srci=$i ;;
             esac
             i=$((i+1))
         done
+        # HIMMEL-5098: `source`/`.` only when no eval or shell follows it.
+        if [ -z "$kind" ] && [ "$srci" -ge 0 ]; then kind=src; i=$srci; fi
         [ -n "$kind" ] || return 0
         j0=$((i+1))
     fi
-    if [ "$kind" = eval ]; then
+    if [ "$kind" = eval ] || [ "$kind" = src ]; then
         i=$j0
         while [ "$i" -lt "$n" ]; do
             [ -n "$body" ] && body="$body "
@@ -3352,7 +3439,33 @@ _bwimc_check_interp_body() {
         done
         [ "$cidx" -ge 0 ] && [ "$cidx" -lt "$n" ] && body=$(_bwimc_unq "${toks[$cidx]}")
     fi
+    # HIMMEL-5098: `source <(…)` / `bash <(…)`. The clause splitter cuts the
+    # clause at `(`, so it arrives here as `source <` and the process
+    # substitution's own text is a separate clause. Read each `<(` of the whole
+    # command instead; coarse, a later `$(…)` in the same command counts too.
+    if [ "$n" -gt 0 ] && [ "${toks[$((n-1))]}" = "<" ] \
+        && { [ "$kind" = src ] || { [ "$kind" = shc ] && [ "$((n-1))" -eq "$j0" ]; }; }; then
+        local _bwimc_ps="$cmd"
+        while [[ "$_bwimc_ps" == *'<('* ]]; do
+            _bwimc_ps="${_bwimc_ps#*'<('}"
+            # shellcheck disable=SC2016  # literal `$(` re-opens the substitution
+            if _bwimc_text_reads_data '$('"$_bwimc_ps"; then
+                _bwimc_deny "data-exec" "<(${_bwimc_ps}" "" ""
+            fi
+        done
+    fi
     [ -n "$body" ] || return 0
+    # HIMMEL-5098: a body that is (or holds) a substitution reading repository
+    # or file data runs a command that is not in this text, so nothing below
+    # can classify it. A stub byte in the body means a substitution of THIS
+    # clause, whose own body the verb walk already tested (_bwimc_clause_rd);
+    # a `<(…)`, or a variable the command fills from data, is read from text.
+    if { [ "${_bwimc_clause_rd:-0}" = 1 ] && [[ "$body" == *$'\001'* ]]; } \
+        || _bwimc_text_reads_data "$body" || _bwimc_body_var_from_data "$body" "$cmd"; then
+        _bwimc_deny "data-exec" "$body" "" ""
+    fi
+    # `source FILE` / `. FILE` write nothing themselves: no destination scan.
+    [ "$kind" != src ] || return 0
     _bwimc_ambig_check "$body"
     case "$body" in
         *'>'*) : ;;
@@ -3839,7 +3952,7 @@ for _bwimc_afi in "${!_bwimc_readings[@]}"; do
     [ "$_BWIMC_AF" = "${_bwimc_readings[$_bwimc_afi]}" ] \
         || { _bwimc_readings+=("$_BWIMC_AF"); _bwimc_rmodes+=("${_bwimc_rmodes[$_bwimc_afi]}"); }
 done
-_BWIMC_WRAP_RE='(^|[[:space:]/])(bash|sh|zsh|dash|ksh|su|runuser|flock|eval)(\.exe)?([[:space:]]|$)'
+_BWIMC_WRAP_RE='(^|[[:space:]/])(bash|sh|zsh|dash|ksh|su|runuser|flock|eval|source|\.)(\.exe)?([[:space:]]|$)'
 for _bwimc_ri in "${!_bwimc_readings[@]}"; do
 _bwimc_hb="${_bwimc_readings[$_bwimc_ri]}"
 _BWIMC_NLENC="${_bwimc_rmodes[$_bwimc_ri]}"
@@ -5604,6 +5717,10 @@ _bwimc_ecwd_pushn=0
 _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
+# HIMMEL-5098: _bwimc_sub_rd[d] = the body open at depth d read repository or
+# file data; _bwimc_rd_pend carries a closed such body to the clause holding
+# its stub (_bwimc_clause_rd), which _bwimc_check_interp_body consults.
+_bwimc_sub_rd=(); _bwimc_rd_pend=0; _bwimc_clause_rd=0
 while IFS= read -r _bwimc_clause; do
     # HIMMEL-4329: a chroot root holds for its own clause only
     _bwimc_chroot=""
@@ -5617,11 +5734,16 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_sub_ecwd[_bwimc_sub_d]="$_bwimc_ecwd"
             _bwimc_sub_unres[_bwimc_sub_d]="$_bwimc_ecwd_unres"
             _bwimc_sub_pushn[_bwimc_sub_d]="$_bwimc_ecwd_pushn"
+            _bwimc_sub_rd[_bwimc_sub_d]=0
             _bwimc_sub_d=$((_bwimc_sub_d+1))
             continue ;;
         "$_BWIMC_SUBCLOSE")
             if [ "$_bwimc_sub_d" -gt 0 ]; then
                 _bwimc_sub_d=$((_bwimc_sub_d-1))
+                if [ "${_bwimc_sub_rd[_bwimc_sub_d]:-0}" = 1 ]; then
+                    _bwimc_rd_pend=1
+                    [ "$_bwimc_sub_d" -eq 0 ] || _bwimc_sub_rd[_bwimc_sub_d-1]=1
+                fi
                 _bwimc_ecwd="${_bwimc_sub_ecwd[_bwimc_sub_d]}"
                 _bwimc_ecwd_unres="${_bwimc_sub_unres[_bwimc_sub_d]}"
                 _bwimc_ecwd_pushn="${_bwimc_sub_pushn[_bwimc_sub_d]}"
@@ -5634,6 +5756,12 @@ while IFS= read -r _bwimc_clause; do
     _tolower_ascii "$_bwimc_clause"
     _bwimc_clause_lc="$_TOLOWER_OUT"
     _bwimc_interp_seen=0
+    # HIMMEL-5098: a clause inside a substitution body that reads data flags
+    # its level; a clause after a closed such body carries _bwimc_clause_rd.
+    if [ "$_bwimc_sub_d" -gt 0 ] && _bwimc_body_reads_data "$_bwimc_clause"; then
+        _bwimc_sub_rd[_bwimc_sub_d-1]=1
+    fi
+    _bwimc_clause_rd="$_bwimc_rd_pend"; _bwimc_rd_pend=0
     # HIMMEL-2592: the verb arms tokenize the SAME pre-spaced text arm (a)
     # does, so all arms share ONE tokenization and a redirect operator is a
     # token of its own everywhere. Recorded consequence: `cp src >/primary/f`
@@ -5881,6 +6009,11 @@ while IFS= read -r _bwimc_clause; do
     elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*eval([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
         _bwimc_interp_seen=1
         _bwimc_check_interp_body "$_bwimc_clause_sp" eval
+
+    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*(source|\.)([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+        # HIMMEL-5098: `source <(git log)` runs repository data like eval does.
+        _bwimc_interp_seen=1
+        _bwimc_check_interp_body "$_bwimc_clause_sp" src
 
     elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*([^[:space:]]*/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+-[a-z]*c[a-z]*([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
         # HIMMEL-3648 (CR #1307): allow an optional path prefix (`/bin/sh`,
