@@ -111,5 +111,19 @@ if [ "$rc" -eq 2 ]; then ok "T13 comma-only --lanes exits 2"; else bad "T13 rc=$
 out="$(CANARY_POLL_SEC=0 CANARY_ROOT="$T/root" timeout 10 bash "$RUNNER" --lanes native 2>&1)"; rc=$?
 if [ "$rc" -eq 2 ]; then ok "T14 CANARY_POLL_SEC=0 exits 2"; else bad "T14 rc=$rc out=$out"; fi
 
+# T15: a zero spelled 00 is still zero.
+out="$(CANARY_POLL_SEC=00 CANARY_ROOT="$T/root" timeout 10 bash "$RUNNER" --lanes native 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "T15 CANARY_POLL_SEC=00 exits 2"; else bad "T15 rc=$rc out=$out"; fi
+
+# T16: a repo path with sed metacharacters renders verbatim into the brief.
+mkdir -p "$T/a&b|c"
+rm -f "$T/root/"*
+FAKE_MODE=liveonly LC_T="$T" CANARY_LAUNCHER="$T/launcher.sh" CANARY_CLOSER="$T/closer.sh" \
+    CANARY_LOCK="$T/lock.sh" CANARY_APPEND="$T/append.sh" CANARY_ROOT="$T/root" \
+    CANARY_REPO="$T/a&b|c" CANARY_DOTENV="$T/dotenv" CANARY_POLL_SEC=1 CANARY_LOCK_WAIT=2 \
+    bash "$RUNNER" --timeout 2 --out "$T/report.json" --lanes native >/dev/null 2>&1
+doc="$(ls "$T/root"/lane-canary-native-*.md 2>/dev/null | head -1)"
+if [ -n "$doc" ] && grep -qF "resume_cwd: $T/a&b|c" "$doc"; then ok "T16 sed metacharacters in the repo path are escaped"; else bad "T16 doc=$doc"; fi
+
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

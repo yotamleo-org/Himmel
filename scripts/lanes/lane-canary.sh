@@ -55,7 +55,9 @@ while [ "$#" -gt 0 ]; do
 done
 case "$TIMEOUT" in ''|*[!0-9]*) echo "lane-canary: --timeout must be whole seconds" >&2; exit 2 ;; esac
 case "$LANES" in ''|,*|*,|*,,*|*[!a-z,]*) echo "lane-canary: --lanes must be a comma list of lane names" >&2; exit 2 ;; esac
-case "$POLL" in ''|0|*[!0-9]*) echo "lane-canary: CANARY_POLL_SEC must be a positive whole number" >&2; exit 2 ;; esac
+case "$POLL" in ''|*[!0-9]*) echo "lane-canary: CANARY_POLL_SEC must be a positive whole number" >&2; exit 2 ;; esac
+POLL=$((10#$POLL))
+[ "$POLL" -gt 0 ] || { echo "lane-canary: CANARY_POLL_SEC must be a positive whole number" >&2; exit 2; }
 
 LAUNCHER="${CANARY_LAUNCHER:-$KIT/headed-arm-leg.sh}"
 CLOSER="${CANARY_CLOSER:-$KIT/close-wrapped-leg.sh}"
@@ -125,7 +127,9 @@ run_lane() {
 
     name="lane-canary-$lane-$STAMP"
     doc="$ROOT/$name.md"
-    sed -e "s|@REPO@|$REPO|g" -e "s|@LANE@|$lane|g" -e "s|@STAMP@|$STAMP|g" -e "s|@DOC@|$doc|g" \
+    repo_e="$(printf '%s' "$REPO" | sed -e 's/[\\&|]/\\&/g')"
+    doc_e="$(printf '%s' "$doc" | sed -e 's/[\\&|]/\\&/g')"
+    sed -e "s|@REPO@|$repo_e|g" -e "s|@LANE@|$lane|g" -e "s|@STAMP@|$STAMP|g" -e "s|@DOC@|$doc_e|g" \
         "$TEMPLATE" > "$doc" || { echo "FAIL|||cannot render brief"; return; }
 
     model="$(lane_model "$lane")"
@@ -163,7 +167,10 @@ run_lane() {
         else detail="first bullet but no WRAPPED within ${TIMEOUT}s"; fi
         # nothing may outlive the run: stop a launcher still starting (it would
         # open its window after the closer ran), write the wrap, drop the lock.
-        kill "$lpid" 2>/dev/null
+        if kill -0 "$lpid" 2>/dev/null; then
+            kill "$lpid" 2>/dev/null; sleep 1
+            kill -KILL "$lpid" 2>/dev/null
+        fi
         wait "$lpid" 2>/dev/null
         bash "$APPEND" "$doc" "WRAPPED — canary runner closed a leg that did not wrap ($detail)" >/dev/null 2>&1
         QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
