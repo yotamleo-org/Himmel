@@ -16,6 +16,8 @@ bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
 T="$(mktemp -d "${TMPDIR:-/tmp}/lane-canary.XXXXXX")" || exit 1; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/root"
 : > "$T/dotenv"
+# an operator's real keys must not turn the unconfigured-lane case into a launch
+unset OPENROUTER_API_KEY DEEPSEEK_API_KEY
 
 # Fake launcher: the doc is the 6th argv (--profile P --lane L <name> <doc> ...).
 # The two bullets are the exact lines the real native canary leg wrote (live
@@ -27,6 +29,7 @@ echo "$*" >> "$LC_T/launched.log"
 pwd >> "$LC_T/cwd.log"
 case "$FAKE_MODE" in
     ok)     printf -- '- 16:51 LIVE — canary native first bullet\n- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;
+    wrapnolive) printf -- '- 16:51 WRAPPED — canary native done\n' >> "$doc" ;;
     liveonly) printf -- '- 16:51 LIVE — canary native first bullet\n' >> "$doc" ;;
     crash)  exit 3 ;;
     silent) sleep 30 ;;
@@ -87,6 +90,18 @@ if [ -s "$T/cwd.log" ] && [ "$(sort -u "$T/cwd.log")" = "$(cd "$T" && pwd -P)" ]
 # T9: a PASS prunes its generated files; a FAIL keeps its doc for diagnosis.
 run ok 10 --lanes native >/dev/null
 [ -z "$(find "$T/root" -name 'lane-canary-native-*' | head -1)" ] && ok "T9 PASS prunes its files" || bad "T9 left: $(ls "$T/root")"
+
+# T10: a WRAPPED bullet with no LIVE first bullet is FAIL, not PASS.
+out="$(run wrapnolive 10 --lanes native)"; rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "native *FAIL.*no LIVE"; then ok "T10 WRAPPED without LIVE is FAIL"; else bad "T10 rc=$rc out=$out"; fi
+
+# T11: a flag missing its value exits 2 instead of looping.
+out="$(timeout 10 bash "$RUNNER" --lanes 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "T11 trailing --lanes exits 2"; else bad "T11 rc=$rc out=$out"; fi
+
+# T12: an unwritable report path makes the run FAIL.
+out="$(run ok 10 --lanes native --out "$T/no-such-dir/report.json" 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ]; then ok "T12 unwritable report is exit 1"; else bad "T12 rc=$rc out=$out"; fi
 
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

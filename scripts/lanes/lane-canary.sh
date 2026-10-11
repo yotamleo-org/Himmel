@@ -43,6 +43,9 @@ DRY=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --lanes|--timeout|--out) [ "$#" -ge 2 ] || { echo "lane-canary: $1 needs a value" >&2; exit 2; } ;;
+    esac
+    case "$1" in
         --lanes) LANES="${2:-}"; shift 2 ;;
         --timeout) TIMEOUT="${2:-}"; shift 2 ;;
         --out) OUT="${2:-}"; shift 2 ;;
@@ -137,7 +140,12 @@ run_lane() {
     while :; do
         t=$(( $(now) - start ))
         [ -z "$first" ] && doc_has "$doc" LIVE && first="$t"
-        if doc_has "$doc" WRAPPED; then wrapped="$t"; break; fi
+        if doc_has "$doc" WRAPPED; then
+            wrapped="$t"
+            # LIVE may have landed between the two reads above
+            [ -z "$first" ] && doc_has "$doc" LIVE && first="$t"
+            break
+        fi
         if [ -z "$lrc" ] && ! kill -0 "$lpid" 2>/dev/null; then
             wait "$lpid"; lrc=$?
             if [ "$lrc" -ne 0 ] && [ -z "$first" ]; then break; fi
@@ -156,14 +164,19 @@ run_lane() {
         bash "$APPEND" "$doc" "WRAPPED — canary runner closed a leg that did not wrap ($detail)" >/dev/null 2>&1
         QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
     else
+        if [ -z "$first" ]; then
+            result=FAIL; detail="WRAPPED bullet but no LIVE first bullet"
+        fi
         waited=0
         while ! lock_free "$doc" && [ "$waited" -lt "$LOCK_WAIT" ]; do sleep "$POLL"; waited=$((waited + 10#$POLL)); done
         if ! lock_free "$doc"; then
-            detail="wrapped but queue lock still held after ${LOCK_WAIT}s"
+            result=FAIL
+            detail="${detail:+$detail; }wrapped but queue lock still held after ${LOCK_WAIT}s"
             QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
         fi
     fi
     if ! bash "$CLOSER" "$doc" >/dev/null 2>&1; then
+        result=FAIL
         detail="${detail:+$detail; }window not closed (close-wrapped-leg refused)"
     fi
     # a PASS leaves nothing to diagnose; a FAIL keeps its doc and launch log.
@@ -192,7 +205,11 @@ IFS="$OLDIFS"
 
 if [ "$DRY" -eq 0 ]; then
     tmp="$OUT.tmp.$$"
-    printf '{"ts":"%s","host":"%s","lanes":{%s}}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(json_str "$(hostname)")" "$rows" > "$tmp" \
-        && mv "$tmp" "$OUT" && echo "lane-canary: report $OUT"
+    if printf '{"ts":"%s","host":"%s","lanes":{%s}}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(json_str "$(hostname)")" "$rows" > "$tmp" \
+        && mv "$tmp" "$OUT"; then
+        echo "lane-canary: report $OUT"
+    else
+        echo "lane-canary: cannot write report $OUT" >&2; any_fail=1
+    fi
 fi
 exit "$any_fail"
