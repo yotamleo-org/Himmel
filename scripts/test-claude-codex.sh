@@ -89,17 +89,57 @@ assert.ok(!Object.keys(j.env).some((k) => k.toUpperCase() === 'CLAUDE_CODE_AUTO_
 assert.equal(j.env.KEEP, 'yes');
 NODE
 
-# HIMMEL-2959: sanitize_settings must preserve operator-owned allow rules.
+# HIMMEL-2959: sanitize_settings must preserve operator-owned allow rules and operator deny entries.
 setup
-printf '%s\n' '{"model":"discard-me","permissions":{"allow":["Bash(bash scripts/check-ci.sh:*)"],"deny":["Bash(git push --force:*)"]}}' > "$FAKEHOME/.claude/settings.json"
-run_launcher "sanitize_settings preserves permissions.allow unchanged"
+printf '%s\n' '{"model":"discard-me","permissions":{"allow":["Bash(bash scripts/check-ci.sh:*)"],"deny":["Bash(operator-own-deny *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "sanitize_settings preserves permissions.allow and operator deny entries"
 node - "$FAKEHOME/.claude/settings.json" "$FAKEHOME/.claude-codex/settings.json" <<'NODE' || FAILS=$((FAILS + 1))
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const source = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const seeded = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
-assert.deepStrictEqual(seeded.permissions, source.permissions);
+assert.deepStrictEqual(seeded.permissions.allow, source.permissions.allow);
+assert.ok(seeded.permissions.deny.includes('Bash(operator-own-deny *)'));
 assert.ok(!Object.hasOwn(seeded, 'model'));
+NODE
+
+# HIMMEL-5270: the seeded lane settings carry explicit deny rules for the categories the weak
+# classifier misses. The force-push rows are read from this repo's own .claude/settings.json
+# (real syntax), so the lane cannot drift from the harness's deny vocabulary.
+setup
+printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "seed injects the destructive-category deny rules"
+node - "$FAKEHOME/.claude-codex/settings.json" "$HERE/../.claude/settings.json" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const seeded = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const repo = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const deny = seeded.permissions.deny;
+const forcePush = repo.permissions.deny.filter((r) => /git push (--force|-f|--mirror|--delete)/.test(r));
+assert.ok(forcePush.length >= 4, 'repo settings fixture lost its force-push rows');
+for (const r of forcePush) assert.ok(deny.includes(r), 'missing repo force-push rule ' + r);
+for (const r of [
+  'Bash(git push * main)', 'Bash(git push * master)', 'Bash(git push * *:main)',
+  'Bash(rm -rf /)', 'Bash(rm -rf ~/*)', 'Bash(rm -rf ../*)',
+  'Bash(* ~/.ssh*)', 'Read(~/.ssh/**)', 'Read(**/.env)',
+  'Bash(curl * | sh*)', 'Bash(wget * | bash*)',
+  'Bash(terraform destroy*)', 'Bash(kubectl delete *)',
+]) assert.ok(deny.includes(r), 'missing deny rule ' + r);
+// over-read guard (HIMMEL-5077): no blanket rule that would deny benign python or a plain branch push; allow untouched
+assert.ok(!deny.some((r) => r === 'Bash(python3 *)' || r === 'Bash(git push *)' || r === 'Bash(git push)'));
+assert.deepStrictEqual(seeded.permissions.allow, ['Bash(python3 *)']);
+assert.equal(new Set(deny).size, deny.length);
+NODE
+
+# HIMMEL-5270: a settings.json with no permissions block still gets the deny rules.
+setup
+printf '%s\n' '{"env":{"KEEP":"yes"}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "seed adds permissions.deny when the source has no permissions"
+node - "$FAKEHOME/.claude-codex/settings.json" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const j = JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8'));
+assert.ok(j.permissions.deny.includes('Bash(git push --force *)'));
+assert.equal(j.env.KEEP, 'yes');
 NODE
 
 # HIMMEL-2962: profile flags already pass through the screen. Pin their

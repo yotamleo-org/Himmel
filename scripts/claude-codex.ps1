@@ -73,7 +73,8 @@ $ConfigDir = Join-Path $HomeDir '.claude-codex'
 # already-seeded machine would silently keep the old seeded content forever. A
 # mismatch forces exactly one re-seed.
 # v1 = initial version (HIMMEL-1927: the claudex model-identity stanza).
-$SeedVersion = '1'
+# v3 = SanitizerJs also injects the destructive-category permissions.deny rules (HIMMEL-5270; v2 was bash-only, HIMMEL-4098).
+$SeedVersion = '3'
 
 # --- key resolution: process env first, else the launcher-repo .env ----------
 # CLAUDE_CODEX_DOTENV_ROOT (test hook) pins the .env root; production falls back to
@@ -404,6 +405,21 @@ const fs=require("fs");
 const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
 delete j.model;
 if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
+const A=[],B=(r)=>A.push("Bash("+r+")");
+for (const r of ["git push --force","git push --force *","git push --force*","git push -f*","git push --mirror*","git push --delete*","git push origin --delete*","git push * --force*","git push * -f*","git push * +*","git push * main","git push * master","git push * *:main","git push * *:master","git push * *refs/heads/main","git push * *refs/heads/master"]) { B(r); B("rtk "+r); }
+for (const f of ["-rf","-fr","-r","--recursive"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
+for (const p of ["~/.ssh","~/.aws","~/.gnupg","~/.config/gh","~/.netrc","~/.codex/auth.json","~/.claude/.credentials.json","~/.cli-proxy-api"]) { B("* "+p+"*"); B("* \u0024HOME"+p.slice(1)+"*"); A.push("Read("+p+")","Read("+p+"/**)"); }
+A.push("Read(**/.env)","Read(**/.env.local)","Read(**/.env.*.local)");
+for (const n of ["curl","wget"]) {
+  for (const s of ["sh","bash","zsh","sudo","python","python3"]) B(n+" * | "+s+"*");
+  for (const s of ["sh -c *\u0024("+n+"*","bash -c *\u0024("+n+"*","eval *\u0024("+n+"*","bash <("+n+"*","sh <("+n+"*","source <("+n+"*"]) B(s);
+}
+for (const r of ["curl * -d @*","curl * --data* @*","curl * -F *","curl * --form *","curl * -T *","curl * --upload-file *","wget * --post-file*","wget * --post-data*","nc *","ncat *","socat *"]) B(r);
+for (const r of ["terraform destroy*","terraform apply -destroy*","terraform apply * -destroy*","tofu destroy*","tofu apply -destroy*","pulumi destroy*","cdk destroy*","kubectl delete *","helm uninstall *","aws s3 rb *","aws s3 rm * --recursive*","aws * terminate-*","aws * delete-*","gcloud * delete *","az * delete *","docker system prune*"]) B(r);
+j.permissions=j.permissions||{};
+const dn=Array.isArray(j.permissions.deny)?j.permissions.deny:[];
+for (const r of A) if (!dn.includes(r)) dn.push(r);
+j.permissions.deny=dn;
 fs.writeFileSync(process.argv[2], JSON.stringify(j,null,2));
 '@
 
