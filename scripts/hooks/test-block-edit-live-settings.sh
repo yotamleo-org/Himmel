@@ -3012,6 +3012,28 @@ env --split-string='sh\_-c\_"echo x > ~/.claude/s*.json"'
 env -iS 'bash\t-c\t"echo x > ~/.claude/sett*s.json"'
 env -S 'bash -c ${X}'
 ROWS
+# 9500-9505 (HIMMEL-4521): env -S text with an escape or a plain ${NAME} is
+# decoded the way GNU env decodes it and the decoded words are judged, so a
+# harmless one allows; 9510-9519 are the controls that stay denied (the
+# decoded form writes a live settings path, an escape or expansion the
+# decoder does not model, an unterminated quote, a nested env).
+n=9500
+for c in "env -S 'printf a\\tb'" "env -S 'echo \${HOME}'" "env -S 'echo a\\_b'" \
+    "env -S 'echo \"a\\_b\" \\\\ \\\$'" "env -S 'printf \"%s\\n\" x\\ty'" "env -iS 'echo \${HOME}\\tx'"; do
+    assert_rc "$n/wt env -S decoded harmless allows: $c" 0 \
+        "$(bash_rc_of "$NESTED_WT" "$c" HOME="$FAKEHOME")"
+    n=$((n + 1))
+done
+n=9510
+for c in "env -S 'tee ~/.claude/sett\\x69ngs.json'" "env -S 'sh\\_-c\\_\"echo x > ~/.claude/settings.json\"'" \
+    "env -S 'bash -c \"echo x > ~/.cl\\\"\\\"aude/settings.json\"'" "env -S 'tee \${HOME}/.claude/settings.json'" \
+    "env -S 'tee \${H}OME/.claude/settings.json'" "env -S 'echo \"a\\tb'" "env -S 'echo a\\'" \
+    "env -S 'echo \${1X}'" "env -S 'echo \${X'" "env -S 'echo a\\cb'" \
+    "env -S 'env -S \"echo a\\tb\"'" "env -S 'bash -c \${X}'" "env -S '#x\\ty'"; do
+    assert_rc "$n/wt env -S decoded control denies: $c" 2 \
+        "$(bash_rc_of "$NESTED_WT" "$c" HOME="$FAKEHOME")"
+    n=$((n + 1))
+done
 # 9440-9448 (HIMMEL-4394, J1909 B1): an extglob leaf with two or more groups
 # (`@(settings).js@(on)`, `@(settings)@(.json)`) under a live .claude denies.
 rows_both 9440 2 "an extglob leaf with 2+ groups under a live .claude denies" <<'ROWS'

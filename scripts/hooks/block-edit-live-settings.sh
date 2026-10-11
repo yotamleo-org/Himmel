@@ -3377,6 +3377,73 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                     exit 2
                 fi
             }
+            # _envs_decode TEXT — decode GNU `env -S` TEXT (escapes \c \f \n
+            # \r \t \v \# \$ \_ \\ \' \" and ${NAME}) into shell text that
+            # reads back as the same argv: each literal run single-quoted,
+            # each ${NAME} left as a "${NAME}" expansion for the judge, an
+            # unquoted `\_` a word break. Returns 1 (ENVS_BODY unset) for
+            # anything it does not fully model — an unknown escape, `\c`, a
+            # `$` that is not `${NAME}`, a word-leading `#`, an unterminated
+            # quote — so the caller stays fail-closed (HIMMEL-4521).
+            # shellcheck disable=SC1003,SC2016 # literal \ $ and ' bytes
+            _envs_decode() {
+                local LC_ALL=C t=$1 n k=0 c e st=u lit='' out='' w='' inw=0 name rest q="'"
+                n=${#t}
+                ENVS_BODY='' ENVS_FIRST='' ENVS_ENV=0 ENVS_EXP=0
+                _envs_flush() {
+                    [ -z "$lit" ] || { w="$w'${lit//$q/$q\\$q$q}'"; lit=''; }
+                }
+                _envs_endword() {
+                    _envs_flush
+                    if [ "$inw" = 1 ]; then
+                        [ -n "$out" ] || ENVS_FIRST=${w//\'/}
+                        case "$w" in "'env'" | *"/env'") ENVS_ENV=1 ;; esac
+                        out="${out:+$out }${w:-''}"
+                    fi
+                    w='' inw=0
+                }
+                while [ "$k" -lt "$n" ]; do
+                    c=${t:k:1}
+                    k=$((k + 1))
+                    case "$st:$c" in
+                        u:' ' | u:$'\t' | u:$'\n' | u:$'\v' | u:$'\f' | u:$'\r') _envs_endword ;;
+                        u:"'") st=s inw=1 ;;
+                        u:'"') st=d inw=1 ;;
+                        u:'#') [ "$inw" = 1 ] || return 1; lit=$lit$c ;;
+                        s:"'" | d:'"') st=u ;;
+                        u:'$' | d:'$')
+                            [ "${t:k:1}" = '{' ] || return 1
+                            rest=${t:k+1}
+                            name=${rest%%\}*}
+                            [ "$name" != "$rest" ] || return 1
+                            case "$name" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
+                            k=$((k + ${#name} + 2))
+                            _envs_flush
+                            w="$w\"\${$name}\"" inw=1 ENVS_EXP=1
+                            ;;
+                        u:'\' | s:'\' | d:'\')
+                            e=${t:k:1}
+                            [ -n "$e" ] || return 1
+                            k=$((k + 1))
+                            case "$st:$e" in
+                                [uds]:'\' | [us]:"'" | d:"'" | u:'"' | d:'"' | u:'#' | d:'#' | u:'$' | d:'$') lit=$lit$e inw=1 ;;
+                                u:n | d:n) lit=$lit$'\n' inw=1 ;;
+                                u:t | d:t) lit=$lit$'\t' inw=1 ;;
+                                u:r | d:r) lit=$lit$'\r' inw=1 ;;
+                                u:f | d:f) lit=$lit$'\f' inw=1 ;;
+                                u:v | d:v) lit=$lit$'\v' inw=1 ;;
+                                u:_) _envs_endword ;;
+                                d:_) lit="$lit " inw=1 ;;
+                                *) return 1 ;;
+                            esac
+                            ;;
+                        *) lit=$lit$c inw=1 ;;
+                    esac
+                done
+                [ "$st" = u ] || return 1
+                _envs_endword
+                ENVS_BODY=$out
+            }
             ii=0 iseg=-1 icmd=0 iwr=0 iwn='' ioa=0 ishell=0
             while [ "$ii" -lt "$ST_N" ]; do
                 ij=$((ii + 1)) ibw='' icw=0
@@ -3417,11 +3484,21 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                             # env decodes its own escapes (`\_` is a space)
                             # and `${VAR}` in TEXT before it splits, which a
                             # shell read of TEXT does not, so such TEXT is
-                            # refused fail-closed rather than decoded here
+                            # decoded and the decoded words are the body;
+                            # what the decoder does not fully model (or a
+                            # nested env) is refused fail-closed (HIMMEL-4521)
                             case "$ibw" in
                                 *\\* | *\$\{*)
-                                    if [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ]; then
-                                        deny_message "a $tool_name command" "$cmd" "env -S text carrying a backslash escape or \${VAR} is not judged, so it is refused fail-closed; run the command directly"
+                                    # a ${NAME} value is whatever env's own
+                                    # environment holds, which this scan does
+                                    # not know, so it is let through only
+                                    # after a command that cannot run it
+                                    if _envs_decode "$ibw" && [ "$ENVS_ENV" = 0 ] \
+                                        && { [ "$ENVS_EXP" = 0 ] \
+                                            || case "$ENVS_FIRST" in echo | printf | true | false | pwd | test | cat | ls) true ;; *) false ;; esac; }; then
+                                        ibw=$ENVS_BODY
+                                    elif [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ]; then
+                                        deny_message "a $tool_name command" "$cmd" "env -S text carrying a backslash escape or \${VAR} that is not fully understood (unknown escape, unterminated quote, \${...} beyond a plain name, nested env) is not judged, so it is refused fail-closed; run the command directly"
                                         exit 2
                                     fi
                                     ;;
