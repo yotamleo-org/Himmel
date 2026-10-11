@@ -75,7 +75,7 @@ esac
 
 ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 VERB_RE='(^|[^A-Za-z0-9_-])bus[[:space:]]+(register|bind|rebind)($|[^A-Za-z0-9_-])'
-ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*='
+ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
 
 deny() {
     local msg reason

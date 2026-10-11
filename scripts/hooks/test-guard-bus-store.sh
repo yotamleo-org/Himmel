@@ -60,6 +60,7 @@ deny "path-qualified bin/bus register" "$(bash_json 'node marketplace/plugins/hi
 deny "register after a benign command" "$(bash_json 'echo hi; bus register x --role leg')"
 deny "HIMMEL_BUS_NAME=x claude" "$(bash_json 'HIMMEL_BUS_NAME=x claude')"
 deny "export HIMMEL_BUS_NAME=x" "$(bash_json 'export HIMMEL_BUS_NAME=x; claude')"
+deny "HIMMEL_BUS_NAME+=x claude (append assignment)" "$(bash_json 'HIMMEL_BUS_NAME+=x claude')"
 deny "env HIMMEL_BUS_NAME=x claude" "$(bash_json 'env HIMMEL_BUS_NAME=x claude')"
 
 echo "== T3/T6: writes under the bus root =="
