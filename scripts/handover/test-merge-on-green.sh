@@ -4137,6 +4137,11 @@ MOG_BUMP_MOVED=1 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
 # 5188-f — a PR that touches no plugin file never reaches git (unchanged).
 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 0 "5188-f: no plugin file in the PR → merged, gate skipped"
+# 5188-g — the files endpoint stops at 3000 entries, so a list that long may
+# have dropped the plugin paths: the recheck runs anyway and refuses.
+BP_BIG=$(jq -nc '[range(3000) | {filename: ("docs/f\(.).md")}]')
+STUB_PR_FILES_JSON="$BP_BIG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5188-g: a possibly truncated 3000-file list still runs the recheck → exit 23"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
