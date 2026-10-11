@@ -108,6 +108,21 @@
       ]
     },
     {
+      "name": "i-have-adhd",
+      "source": "./plugins/i-have-adhd",
+      "description": "[himmel vendor, no carried delta] ayghri/i-have-adhd's Claude Code plugin, copied verbatim at commit 723af7d9: one disable-model-invocation skill (/i-have-adhd) that shapes output for an ADHD reader, plus a SessionStart hook that injects it only when ~/.claude/.i-have-adhd-always exists. No per-prompt hook, no network, no writes. See marketplace/plugins/i-have-adhd/README.md.",
+      "author": {
+        "name": "Ayoub G. (upstream) / yotamleo (vendor)"
+      },
+      "license": "MIT",
+      "keywords": [
+        "himmel",
+        "vendored",
+        "output-style",
+        "adhd"
+      ]
+    },
+    {
       "name": "claude-obsidian",
       "source": {
         "source": "url",

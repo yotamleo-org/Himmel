@@ -745,6 +745,12 @@ case "${HIMMEL_RECONCILE_PLUGINS:-}" in
     echo "  (install is additive-only; set HIMMEL_RECONCILE_PLUGINS=1 to also disable drifted plugins down to the lean floor)" ;;
 esac
 
+# ── i-have-adhd always-on flag (HIMMEL-5239) ─────────────────────────────────
+# Idempotent; HIMMEL_NO_ADHD_ALWAYS=1 opts out. Best-effort, never fails install.
+if [[ $DRY_RUN -eq 0 && -f "$SCRIPT_DIR/enable-i-have-adhd-always.sh" ]]; then
+  bash "$SCRIPT_DIR/enable-i-have-adhd-always.sh" || true
+fi
+
 # HIMMEL-3541: the enabledPlugins container the CLI created in this scope's
 # settings file, so uninstall can drop it once its plugins are gone.
 [[ $DRY_RUN -eq 0 && "$EP_CONTAINER_ABSENT" == true ]] && prov_settings_created /enabledPlugins .enabledPlugins
