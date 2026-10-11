@@ -1294,8 +1294,9 @@ mf_run() {  # mf_run <branch> [pre-merge-step] -> merges main --no-commit, runs 
       bump) printf 'branch edit\n' > marketplace/plugins/p/g &&
             printf '{"name":"p","version":"1.0.1"}\n' > marketplace/plugins/p/.claude-plugin/plugin.json &&
             git add -A && git commit -q -m 'branch plugin edit + bump' ;;
-    esac &&
-    git merge -q --no-commit --no-ff main >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1
+    esac || exit 99
+    if ! git merge -q --no-commit --no-ff main >/dev/null 2>&1; then echo "merge failed"; exit 99; fi
+    bash "$SCRIPT" --bump-required 2>&1
   )
 }
 out16="$(mf_run feat-clean)"; rc16=$?
@@ -1306,6 +1307,11 @@ if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge-forward 
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 out16="$(mf_run feat-bump bump)"; rc16=$?
 if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin bumped'; then ok "merge-forward accepts a bumped branch plugin edit (GH #2205)"; else bad "merge-forward rejected a bumped edit (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+# Merging an unbumped feature branch INTO main must still see its plugin edits.
+out16="$( cd "$W16" && git checkout -q main && git merge -q --no-commit --no-ff feat-edit >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge of an unbumped feature branch into main is still rejected (GH #2205)"; else bad "merge into main let an unbumped edit through (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 rm -rf "$W16"
 
 echo ""

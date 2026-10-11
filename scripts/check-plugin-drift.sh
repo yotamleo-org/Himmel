@@ -206,8 +206,13 @@ check_bump_required() {
     # Mid-merge (GH #2205): the staged diff against HEAD carries everything the
     # merged-in parent brought, so count only what the merge result adds over
     # MERGE_HEAD (the branch's own work) and compare versions against it too.
+    # Not on main/master: there MERGE_HEAD is the incoming feature branch, and
+    # diffing against it would hide that branch's own plugin edits.
     if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
-      old_ref="MERGE_HEAD"
+      case "$(git symbolic-ref -q --short HEAD 2>/dev/null)" in
+        main|master) ;;
+        *) old_ref="MERGE_HEAD" ;;
+      esac
     fi
     changed="$(git diff --cached --name-only --diff-filter=ACMRD "$old_ref" -- "$rel")"; diff_rc=$?
   fi
