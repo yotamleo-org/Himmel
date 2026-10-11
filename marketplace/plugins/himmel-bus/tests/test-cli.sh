@@ -193,6 +193,8 @@ out=$("$BUS" wait --timeout 1 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'identity unbound' <<< "$out"; then pass "wait from an unbound process is refused, not a timeout"; else fail "unbound wait (rc=$rc): $out"; fi
 out=$(as waiter wait --timeout abc 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'positive number of seconds' <<< "$out"; then pass "wait refuses a non-numeric --timeout"; else fail "bad timeout (rc=$rc): $out"; fi
+out=$(as waiter wait --timeout 99999999999999999999999999 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'at most 86400 seconds' <<< "$out"; then pass "wait refuses a --timeout beyond the cap"; else fail "huge timeout (rc=$rc): $out"; fi
 
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
