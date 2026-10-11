@@ -10,12 +10,10 @@
 # denial. There is deliberately NO env bypass - a bypass an agent can request is
 # the thing this hook exists to remove.
 #
-# WIRING: NOT YET WIRED (the auto-mode classifier denied the worktree settings
-# edit as Self-Modification). Until the follow-up adds this script to
-# EXPECTED_SCRIPT_ORDER in wire-hook-bash.mjs (Bash chain and Edit|Write chain,
-# right after block-bank-lift-writes.sh), .claude/settings.json and
-# .codex/hooks.json (HIMMEL-5290) are all applied it is inert; the fence's
-# symlink refusal is the only live layer.
+# WIRING (HIMMEL-5290): listed in EXPECTED_SCRIPT_ORDER in wire-hook-bash.mjs
+# (Bash chain and Edit|Write chain, right after block-bank-lift-writes.sh) and
+# wired in .claude/settings.json and .codex/hooks.json. `node
+# scripts/hooks/wire-hook-bash.mjs --check` proves the three agree.
 #
 # DENIES
 #   Bash - the command text names the config file (`.himmel` and `config.json`
