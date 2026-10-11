@@ -356,20 +356,35 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 # variable the environment does not carry are left to the existing rules.
 # shellcheck disable=SC2016  # literal ${ } spellings are matched as text
 _env_lift() {
-    local rest="$1" n v m exp=
+    local rest="$1" n v m exp='' tail
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     case "$rest" in *'${!'*) return 0 ;; esac
     while [[ "$rest" =~ $re ]]; do
         m="${BASH_REMATCH[0]}"; n="${BASH_REMATCH[1]}"
         v=$(printenv -- "$n" 2>/dev/null) || v=
         if [ -n "$v" ] && is_lift "$v"; then return 0; fi
-        exp="$exp${rest%%"$m"*}$v"
+        exp="$exp${rest%%"$m"*}"
         rest="${rest#*"$m"}"
-        case "$m" in '${'*) rest="${rest#\}}" ;; esac
+        case "$m" in
+            '${'*)
+                # Consume the whole flat braced reference: `:-d}` / `%x}` ...
+                # An unset or empty variable reads as its operand text. A
+                # nested `$` in the operand is left for the next iteration.
+                tail="${rest%%\}*}"
+                case "$tail" in
+                    *'$'*) rest="${rest#:}"; rest="${rest#[-=+?]}" ;;
+                    *)
+                        rest="${rest#"$tail"}"; rest="${rest#\}}"
+                        tail="${tail#:}"; tail="${tail#[-=+?]}"
+                        [ -n "$v" ] || v="$tail" ;;
+                esac ;;
+        esac
+        exp="$exp$v"
     done
     # The word with every reference replaced by its value: a lift path split
     # across variables ($D/$F, D=<state dir>, F=bank-lift.json) names it too.
-    exp="$exp$rest"
+    # Braces left by a nested operand's closing `}` are dropped.
+    exp="$exp$rest"; exp="${exp//\}}"
     [ "$exp" != "$1" ] && is_lift "$exp"
 }
 
