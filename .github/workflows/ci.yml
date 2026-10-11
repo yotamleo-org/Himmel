@@ -311,7 +311,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 86s; floor 10
     env:
-      CLAUDE_CLI_VERSION: '2.1.289'
+      CLAUDE_CLI_VERSION: '2.1.296'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
