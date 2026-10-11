@@ -71,8 +71,21 @@ require("fs").writeFileSync(fx,JSON.stringify({turns:[
 
 DENY_TEXT='block-git-stash: git stash MUTATION refused'
 
+# inject_markers <clone> — add PostToolUse:Bash, SessionStart and Stop stanzas that touch a marker file in the
+# clone, beside the shipped hooks. The marker can only come from the event firing in the real turn.
+inject_markers() {
+  # shellcheck disable=SC2016  # the JS body is deliberately single-quoted, no shell expansion wanted
+  node -e '
+const fs=require("fs");const p=process.argv[1];
+const s=JSON.parse(fs.readFileSync(p,"utf8"));
+s.hooks=s.hooks||{};
+const add=(ev,m,f)=>{const e={hooks:[{type:"command",command:"touch \"$CLAUDE_PROJECT_DIR/"+f+"\"",timeout:10}]};if(m)e.matcher=m;s.hooks[ev]=(s.hooks[ev]||[]).concat([e])};
+add("PostToolUse","Bash","post-sentinel");add("SessionStart","","ss-sentinel");add("Stop","","stop-sentinel");
+fs.writeFileSync(p,JSON.stringify(s,null,2))' "$1/.claude/settings.json"
+}
+
 echo "== D deny: a registered PreToolUse hook refuses the Bash call; the tool never runs =="
-D="$WORK/deny"; make_clone "$D"
+D="$WORK/deny"; make_clone "$D"; inject_markers "$D"
 SENT_DENY="$D/sentinel-deny"; SENT_OK="$WORK/ctl/sentinel-ok"
 run_bash_turn "$D" "touch $SENT_DENY; git stash drop"
 if [ ! -e "$SENT_DENY" ]; then pass "D1 the denied command's sentinel is absent"; else fail "D1 the denied command RAN (sentinel exists)"; fi
@@ -83,24 +96,26 @@ else fail "D3 no deny text in the request log ($RL)"; fi
 if [ "$(jsq "$D/out.json" 'String(d.result).includes("LIVE-HOOK-DONE")')" = true ]; then pass "D4 the turn ended with the scripted final text"; else fail "D4 result: $(head -c 300 "$D/out.json" 2>/dev/null)"; fi
 
 echo "== C control: the same turn shape with an allowed command DOES execute =="
-C="$WORK/ctl"; make_clone "$C"
+C="$WORK/ctl"; make_clone "$C"; inject_markers "$C"
 run_bash_turn "$C" "touch $SENT_OK"
 if [ -e "$SENT_OK" ]; then pass "D2 the allowed command's sentinel is present (the absence in D1 is the hook, not the harness)"; else fail "D2 the allowed command did not run: the harness cannot execute tools, D1 is vacuous"; fi
 
 echo "== E per-class: each hook class the project registers fired in the real turn =="
-# hook_ran <clone> <event-pattern> <script> [status] — the debug log has a `Hooks: <event> [<cmd>] finished
-# with status <n>` line whose command names <script>. A chain is one line naming every member.
+# hook_ran <clone> <event-pattern> <script> <status> — the debug log has the PreToolUse deny line naming <script>:
+# `Hooks: <event> [<cmd>] finished with status <n>` (newer CLI) or `Hook <event> (<Class>) error: status code <n>`
+# followed by the hook's stderr (CLI 2.1.289, the CI pin). A chain is one line naming every member.
 hook_ran() {
   local f; f=$(fakekey_debuglog "$1") || return 1
-  grep -qE "Hooks: $2 \[.*$3.*\] finished with status ${4:-0}( |$)" "$f"
+  grep -qE "Hooks: $2 \[.*$3.*\] finished with status ${4:-0}( |$)|Hook $2 \([A-Za-z]+\) error: status code ${4:-0}.*$3" "$f"
 }
-if hook_ran "$D" 'PreToolUse:Bash' 'block-git-stash\.sh' 2; then pass "E1 PreToolUse: the Bash chain naming block-git-stash.sh finished with the deny status"; else fail "E1 no PreToolUse:Bash chain line with status 2 in the deny run's debug log"; fi
-if hook_ran "$C" 'PostToolUse:Bash' 'detect-dirty-primary\.sh'; then pass "E2 PostToolUse: the Bash post hooks ran after the allowed command"; else fail "E2 no PostToolUse:Bash hook line in the control run's debug log"; fi
-# Negative: require a readable, non-empty log (an absent log is not evidence) and match ANY exit status.
-dlog=$(fakekey_debuglog "$D") || dlog=""
-if [ -n "$dlog" ] && [ -s "$dlog" ] && ! grep -qE 'Hooks: PostToolUse:Bash \[.*detect-dirty-primary\.sh.*\] finished with status [0-9]+' "$dlog"; then pass "E2b PostToolUse did NOT run for the denied call (the deny stopped the tool)"; else fail "E2b a PostToolUse hook ran for a denied call"; fi
-if hook_ran "$C" 'SessionStart:startup' 'check-update-available\.sh'; then pass "E3 SessionStart: the startup chain ran"; else fail "E3 no SessionStart:startup chain line"; fi
-if hook_ran "$C" 'Stop' 'stop-console-idle-guard\.sh'; then pass "E4 Stop: the stop hook ran at the end of the turn"; else fail "E4 no Stop hook line"; fi
+if hook_ran "$D" 'PreToolUse:Bash' 'block-git-stash' 2; then pass "E1 PreToolUse: the Bash chain naming block-git-stash finished with the deny status"; else fail "E1 no PreToolUse:Bash chain line with status 2 in the deny run's debug log"; fi
+# PostToolUse, SessionStart and Stop log no completion line the pinned CLI (2.1.289) reliably prints, so each class
+# is proven by a marker stanza injected into the clone (inject_markers): a file only the event firing can create.
+if [ -e "$C/post-sentinel" ]; then pass "E2 PostToolUse: the hook ran after the allowed Bash call"; else fail "E2 no PostToolUse marker in the control clone"; fi
+# Negative: the deny run loaded the same stanzas (its SessionStart marker exists) and the tool never ran, so no PostToolUse.
+if [ -e "$D/ss-sentinel" ] && [ ! -e "$D/post-sentinel" ]; then pass "E2b PostToolUse did NOT run for the denied call (the deny stopped the tool)"; else fail "E2b post marker present for a denied call, or the deny clone never loaded the stanzas"; fi
+if [ -e "$C/ss-sentinel" ]; then pass "E3 SessionStart: the startup hook ran"; else fail "E3 no SessionStart marker in the control clone"; fi
+if [ -e "$C/stop-sentinel" ]; then pass "E4 Stop: the stop hook ran at the end of the turn"; else fail "E4 no Stop marker in the control clone"; fi
 
 echo "== U UserPromptSubmit: no project hook is registered for it, so the class is proven with an injected stanza =="
 # The shipped config has no UserPromptSubmit hook (that is a fact, asserted below, not a gap to paper over:
@@ -136,10 +151,9 @@ run_bash_turn "$R" "touch $SENT_RED; git stash drop"
 if [ -e "$SENT_RED" ] && [ -s "$R/mock.log" ] && [ "$(jsonl_q "$R/mock.log" 'rows.some(r=>JSON.stringify(r.body).includes("'"$DENY_TEXT"'"))')" = false ]; then
   pass "R1 with no hook stanza the command ran and no deny text appeared: D1/D3 can fail"
 else fail "R1 the stanza-less clone still looked denied (D1/D3 are vacuous)"; fi
-if ! hook_ran "$R" 'PreToolUse:Bash' 'block-git-stash\.sh' 2 && ! hook_ran "$R" 'PostToolUse:Bash' 'detect-dirty-primary\.sh' \
-  && ! hook_ran "$R" 'SessionStart:startup' 'check-update-available\.sh' && ! hook_ran "$R" 'Stop' 'stop-console-idle-guard\.sh'; then
-  pass "R1b with no hook stanza no class's hook line appears: E1-E4 can fail"
-else fail "R1b a hook line appeared with the stanza removed (E1-E4 are vacuous)"; fi
+if ! hook_ran "$R" 'PreToolUse:Bash' 'block-git-stash' 2 && [ ! -e "$R/post-sentinel" ] && [ ! -e "$R/ss-sentinel" ] && [ ! -e "$R/stop-sentinel" ]; then
+  pass "R1b with no hook stanza no hook line or marker appears: E1 can fail (E2-E4 markers come only from the injected stanzas)"
+else fail "R1b a hook line or marker appeared with the stanza removed (E1-E4 are vacuous)"; fi
 
 echo
 echo "NOTE: mock-backed result - proves registered hooks fire and a deny is honoured in a real turn, not real-model behaviour."
