@@ -1225,7 +1225,7 @@ pobf_xopt_scan() {
             # readings do not model (`--pr\e` is `--pre` to bash): void, fail-closed.
             -*\\*|-*\'*|-*\"*) return 0 ;;
             --) ;;  # not a stop: `-e --` makes it an option ARGUMENT, options still follow
-            --open-files-in-pager*|--pager*|--paginate*|--exec*|--ext-diff*|--textconv*|--output*|--upload-pack*|--receive-pack*|--pre|--pre=*|--compress*|--editor*|--config-env*) return 0 ;;
+            --open-files-in-pager*|--pager*|--paginate*|--exec*|--ext-diff*|--textconv*|--output*|--upload-pack*|--receive-pack*|--pre|--pre=*|--hostname-bin|--hostname-bin=*|--compress*|--editor*|--config-env*) return 0 ;;
             --*) [ "$1" = git ] || continue
                  case "$POBF_GIT_SAFE" in *" ${w%%=*} "*) ;; *) return 0 ;; esac ;;
             -*) pobf_xshort "$1" "$w" && return 0 ;;
@@ -1555,7 +1555,10 @@ pobf_relief() {
             [[ $w =~ ^[A-Za-z_][A-Za-z0-9_]*\+?= ]] && { ap=1; continue; }
             c=$w
         done
-        case "$c" in /bin/*|/usr/bin/*) c=${c##*/} ;; esac
+        # HIMMEL-5210: strip only a name directly under /bin or /usr/bin; a
+        # further / (`/usr/bin/../../tmp/x/grep`) is another path, so it keeps
+        # its full word and no reader relief.
+        case "$c" in /bin/*/*|/usr/bin/*/*) ;; /bin/*|/usr/bin/*) c=${c##*/} ;; esac
         pobf_exp "${ST[j]}" p; x=$PX; XP[j]=$x
         # HIMMEL-4402: mode p pads each quoted token with blanks, so a
         # quote-split option (-"O", --"open-files-in-pager"=) reads as
@@ -1586,9 +1589,11 @@ pobf_relief() {
             gh) [[ $x =~ extension|ext[[:space:]]|codespace|ssh|browse|alias|config ]] || cls=1 ;;
             printf) case "$x" in *-v*) ;; *) cls=2 ;; esac ;;
             sort) case "$x" in *--compress*) ;; *) cls=2 ;; esac ;;
-            # rg: only the exact --pre / --pre=CMD runs a program (--pretty and
-            # --pre-glob do not); pobf_xopt below also voids on a word spelled so.
-            rg) [[ $x =~ (^|[[:space:]])--pre([[:space:]=]|$) ]] || cls=2 ;;
+            # rg: only the exact --pre / --hostname-bin (=CMD or a separate
+            # value) run a program (--pretty and --pre-glob do not; rg 15.2.0
+            # has no other COMMAND option and does not abbreviate); pobf_xopt
+            # below also voids on a word spelled so.
+            rg) [[ $x =~ (^|[[:space:]])--(pre|hostname-bin)([[:space:]=]|$) ]] || cls=2 ;;
             python|python3|node) [[ $x =~ $re_ix ]] || cls=1 ;;
             # perl's and ruby's open run a command when the name starts/ends with |.
             perl|ruby) [[ $x =~ $re_ix || $x =~ open ]] || cls=1 ;;

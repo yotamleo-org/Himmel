@@ -2267,6 +2267,34 @@ if [ "$R" = "1 off" ]; then echo "PASS 5197 pobf_xopt leaves a caller's set -f i
 else echo "FAIL 5197 pobf_xopt caller set -f: got '$R', want '1 off'"; FAILED=$((FAILED + 1)); fi
 rm -rf "$GLOBDIR" "$XOPT_SRC"
 
+# --- HIMMEL-5210 (follow-ups of 5197, judge j2363a): (1) ripgrep 15.2.0 has two
+# options whose value is a COMMAND, --pre and --hostname-bin (`rg --help`;
+# ripgrep does not abbreviate long options), so both void relief in every
+# spelling. (2) a command word under /bin or /usr/bin is stripped to its base
+# name only when no further / follows, so /usr/bin/../../tmp/x/grep is not grep.
+# (3) a find -ok continuation inherits its stage's void.
+for F in "rg --hostname-bin='$OBF' --hyperlink-format=default x ." \
+         "rg --hostname-bin '$OBF' --hyperlink-format=default x ." \
+         "rg --hostname-bin=\"$OBF\" x ." \
+         "printf needle | rg --hostname-bin='$OBF' x ." \
+         "rg --host\"name\"-bin='$OBF' x ." \
+         "rg --pre '$OBF' x ." \
+         "rg --pre='$OBF' --pre-glob '*.gz' x ." \
+         "/usr/bin/../../tmp/x/grep needle -- '$OBF'" \
+         "/bin/../tmp/x/cat -- '$OBF'" \
+         "/usr/bin/sub/grep needle -- '$OBF'" \
+         "find . -name x \"\$(printf y)\" -ok '$OBF' {} ;"; do
+    assert_deny "5210 program-running option or path still voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+for F in "rg -x needle -- '$OBF'" \
+         "rg --glob '*.sh' needle -- '$OBF'" \
+         "rg --hyperlink-format=default needle -- '$OBF'" \
+         "rg --pre-glob '*.gz' needle -- '$OBF'" \
+         "/usr/bin/grep needle -- '$OBF'" \
+         "/bin/cat -- '$OBF'"; do
+    assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"
