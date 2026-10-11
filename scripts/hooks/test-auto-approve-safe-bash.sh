@@ -1801,8 +1801,9 @@ if [ "$sw_in_root_rc" != 0 ]; then
     echo "FAIL no payload cwd, hook run from / : the hook invocation failed (rc=$sw_in_root_rc)"; FAILED=$((FAILED + 1))
 elif ! grepq "$sw_in_root_ctl" '"permissionDecision":"allow"'; then
     echo "FAIL no payload cwd, hook run from / : the probe control (ls README.md) did not ALLOW, so the probe is vacuous"; FAILED=$((FAILED + 1))
-elif grepq "$sw_in_root" '"permissionDecision":"allow"'; then
-    echo "FAIL no payload cwd, hook run from / : du -sh must not ALLOW"; FAILED=$((FAILED + 1))
+elif [ -n "$sw_in_root" ]; then
+    # a PASS is NO decision at all: an allow or a deny both fail here
+    echo "FAIL no payload cwd, hook run from / : du -sh must PASS (no decision), got: $sw_in_root"; FAILED=$((FAILED + 1))
 else
     echo "PASS no payload cwd, hook run from / : du -sh never ALLOW (PASS)"
 fi
