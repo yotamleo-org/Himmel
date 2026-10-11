@@ -63,6 +63,14 @@ d=$(mk gone); echo 'ghost.sh|never existed' > "$d/scripts/testing/unwired-hooks-
 out=$(run "$d"); rc=$?
 [ "$rc" -eq 1 ] && ok "U8 an allowlist entry naming no script fails" || no "U8 ghost entry passed: $out"
 
+d=$(mk substr); : > "$d/scripts/hooks/orphan-hook.sh"; : > "$d/scripts/hooks/not-orphan-hook.sh"
+echo '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash scripts/hooks/wired-hook.sh"},{"command":"bash scripts/hooks/not-orphan-hook.sh"}]}]}}' > "$d/.claude/settings.json"
+out=$(run "$d"); rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED orphan-hook.sh' <<<"$out"; } && ok "U9 a longer basename does not register a shorter one" || no "U9 substring counted as wired (rc=$rc): $out"
+
+out=$(run "$T/no-such-root"); rc=$?
+[ "$rc" -eq 2 ] && ok "U10 a root with no scripts/hooks is an error, not OK" || no "U10 bad root passed (rc=$rc): $out"
+
 echo "== A the real repo =="
 out=$(bash "$LINT" "$REPO" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "A1 every hook-named script in this checkout is wired or allowlisted" || no "A1 real repo: $out"

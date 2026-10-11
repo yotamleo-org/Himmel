@@ -30,12 +30,15 @@ WIRING=(
   docs/setup/settings-template.json
 )
 
+[ -d "$REPO/scripts/hooks" ] || { echo "no scripts/hooks under $REPO" >&2; exit 2; }
+
 wiring_text=""
 for w in "${WIRING[@]}"; do
   [ -f "$REPO/$w" ] && wiring_text+="$(cat "$REPO/$w")"$'\n'
 done
 
-is_wired() { grep -qF -- "$1" <<<"$wiring_text"; }
+# Whole-basename match: not-orphan-hook.sh must not register orphan-hook.sh.
+is_wired() { grep -qE -- "(^|[^A-Za-z0-9._-])${1//./\\.}([^A-Za-z0-9_-]|\$)" <<<"$wiring_text"; }
 allow_reason() { awk -F'|' -v b="$1" '$1==b {print $2; exit}' "$ALLOW" 2>/dev/null; }
 
 fail=0
