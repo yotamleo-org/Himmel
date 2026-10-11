@@ -99,6 +99,7 @@ esac
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || cmd=""
 [ -n "$cmd" ] || exit 0
+cmd=${cmd//$'\r'/}
 
 lc=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
 case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
