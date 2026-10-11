@@ -28,7 +28,21 @@ Status: **FAIL (blocked at step 1)**, re-run pending.
   fail-open and only writes `WARN bus register failed ... launching unbound` to
   the launch log, so nothing surfaced it.
 - Ticket: HIMMEL-5221 (fix scope includes making the launcher failure visible).
-- Unblock used for the re-run: operator `chmod 700 ~/.local/state/himmel`.
+- Unblock used for the re-run: operator `chmod 700 ~/.local/state/himmel`
+  (done 2026-10-11; `stat` shows `700 overlord`).
+
+### FAIL 2: the leg was never registered (2026-10-11, after the chmod)
+
+- Step: `bus peers` and `bus status <own name>` as the leg, state dir now 0700.
+- Error (exit 1): `bus: identity unbound`; `bus: unknown session: <own name>`.
+- Evidence: `HIMMEL_BUS_NAME` is not in the leg environment; the launch log has
+  no `bus register` line at all, not even the fail-open WARN; the leg's
+  generated settings contain no `himmel-bus`.
+- Cause: the launcher only registers when the leg profile lists `himmel-bus` in
+  mcpServers (the `MCP_NAMES_JSON` case in headed-arm-leg.sh); the `leg-impl`
+  profile does not, so the register block is skipped without a log line. The
+  bus is opted in on no profile today (HIMMEL-4830 owns the catalog entry).
+- Not done on purpose: registering by hand.
 
 ## Phase B: native leg <-> claudex (codex) leg
 
