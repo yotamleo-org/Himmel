@@ -435,8 +435,27 @@ def clip(s, n):
     return s if len(s) <= n else s[:n - 1] + '…'
 
 
+_PLAIN_HEAD = re.compile(r'^\s{0,3}(?:#{1,6}\s*)?(impact|what|why|agent detail)\s*:?\s*$', re.I)
+
+
+def plain_impact(body):
+    """HIMMEL-5226: the ticket's plain `Impact` section (up to the next What/Why/Agent detail heading), or ''.
+    The mirror renders ADF headings as bare lines, a markdown body keeps its `##`; both are matched."""
+    desc = body.split('\n## Comments', 1)[0]
+    out, on = [], False
+    for line in desc.splitlines():
+        m = _PLAIN_HEAD.match(line)
+        if m:
+            if on:
+                break
+            on = m.group(1).lower() == 'impact'
+        elif on:
+            out.append(line)
+    return ' '.join(' '.join(out).split())
+
+
 def read_mirror():
-    """{key: dict(st, sn, cat, fv, upd, title, type)} from the mirror frontmatter; sn is the Jira status name, cat its category."""
+    """{key: dict(st, sn, cat, fv, upd, title, type, impact)} from the mirror frontmatter; sn is the Jira status name, cat its category."""
     out = {}
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         txt = open(p, encoding='utf-8', errors='replace').read()
@@ -463,7 +482,7 @@ def read_mirror():
             sn = ''
         out[key] = dict(st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
-                        type=fm.get('type', '').strip('"'))
+                        type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]))
     return out
 
 
@@ -631,7 +650,9 @@ def main():
         # P[14] issue_plain; P[15] the ticket's load in bank: effort_mid x per, or only its slice when planning comes first.
         # Under an effort model the placer's effort_mid already is the slice's mean (overrun included), so it is used as is.
         ld = None if rules['per'] is None else round((seqm.get(sl, 0) if sl and not rules['model'] else mid) * rules['per'], 4)
-        return [uimp.get(k, ''), erange.get(k, ''), ready.get(k), impact.get(k), sl, plain.get(k, ''), ld]
+        # HIMMEL-5226: the ticket's own plain Impact block wins; the stage1 explain sidecar is the fallback.
+        pi = clip((mir.get(k) or {}).get('impact', ''), 400)
+        return [pi or uimp.get(k, ''), erange.get(k, ''), ready.get(k), impact.get(k), sl, plain.get(k, ''), ld]
     themes = sorted(set(theme.values()) | {'(no theme)'})
     tidx = {t: i for i, t in enumerate(themes)}
 

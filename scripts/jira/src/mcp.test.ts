@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
+import { markdownToAdf } from './adf.js';
+import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 
 // Unit coverage for the MCP surface (HIMMEL-159). We mock the underlying
 // client (`request` / `uploadAttachment`) and assert that every one of the
@@ -147,7 +149,7 @@ describe('MCP tool happy-path routing', () => {
   it('create → POST /issue with project/summary/issuetype + markdown desc', async () => {
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'New', desc: 'Hello', project: 'ABC' },
+      { type: 'Task', title: 'New', desc: PLAIN_BLOCK_TEMPLATE, project: 'ABC' },
       deps,
     );
     expect(request).toHaveBeenCalledWith('POST', '/issue', {
@@ -155,16 +157,24 @@ describe('MCP tool happy-path routing', () => {
         project: { key: 'ABC' },
         summary: 'New',
         issuetype: { name: 'Task' },
-        description: {
-          type: 'doc',
-          version: 1,
-          content: [
-            { type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] },
-          ],
-        },
+        description: markdownToAdf(PLAIN_BLOCK_TEMPLATE),
       },
     });
     expect(out).toBe('Created HIMMEL-9');
+  });
+
+  it('create refuses a body without the plain Impact/What/Why block (HIMMEL-5226)', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await expect(
+      tool('create').handler({ type: 'Task', title: 'New', desc: 'agent notes', project: 'ABC' }, deps),
+    ).rejects.toThrow(/missing "## Impact"/);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('create only warns-exempts an Epic with no body (HIMMEL-5226)', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await tool('create').handler({ type: 'Epic', title: 'E', project: 'ABC' }, deps);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it('create with attach uploads each file via the injected uploadAttachment', async () => {
@@ -174,7 +184,7 @@ describe('MCP tool happy-path routing', () => {
     vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     const { deps, uploadAttachment } = mockDeps({ key: 'HIMMEL-10', id: '2' });
     const out = await tool('create').handler(
-      { type: 'Task', title: 'T', attach: ['a.png', 'b.png'] },
+      { type: 'Task', title: 'T', desc: PLAIN_BLOCK_TEMPLATE, attach: ['a.png', 'b.png'] },
       deps,
     );
     expect(uploadAttachment).toHaveBeenCalledTimes(2);

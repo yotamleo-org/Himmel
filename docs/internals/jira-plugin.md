@@ -101,6 +101,42 @@ re-`get` and check the underscores explicitly — this is an artifact check,
 not a formatting preference. `edit --desc-file` repairs a corrupted body in
 place.
 
+**Ticket shape: a plain block, then Agent detail (HIMMEL-5226).** Every ticket
+body opens with three short sections anyone can read without knowing the code,
+then one section for the agent doing the work:
+
+```markdown
+## Impact
+<who notices, and what they see today — plain words, no file paths>
+
+## What
+<what we change, in one or two sentences>
+
+## Why
+<why it is worth doing now>
+
+## Agent detail
+<files, contract, done-when, suites>
+```
+
+`create` enforces it in code (CLI and the MCP `create` tool share
+`scripts/jira/src/plain-block.ts`): a body missing any of the four headings, or
+with one empty, is refused with the missing names and this template. Headings
+match by their words (`## Impact`, or an ADF heading node for `--adf-file`),
+and a heading inside a code fence does not count. Explicit exemptions: an
+`Epic` and a `Subtask` only **warn** on stderr and are filed anyway; a
+body-less create of any other type is refused like a body without the block.
+`edit` is not gated, so an old ticket can be amended later.
+
+Writing rules, adopted from the roadmap pipeline's plain-language ruling
+(HIMMEL-3882 frame §18, luna vault): write for someone who has never read the
+code; prefer "the merge check can pass even when a test never ran" over a
+script-and-exit-code phrasing; no rubric terms or internal jargon without a
+gloss; say plainly when a ticket is internal-only ("Internal: ..."); keep the
+ticket's own facts and invent no impact. The roadmap tracker reads the
+`Impact` section as a card's impact line (`tracker.py`), falling back to the
+older stage-1 explain sidecar when a ticket has none.
+
 **`create` has no `--priority`; `edit` does.** `create --help` does not list
 a priority flag — file the ticket, then `node <repo-root>/scripts/jira/dist/index.js
 edit <key> --priority High` to set the real field. A priority stated only in

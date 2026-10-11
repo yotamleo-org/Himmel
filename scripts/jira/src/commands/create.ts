@@ -7,6 +7,7 @@ import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
+import { lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict } from '../plain-block.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -73,6 +74,7 @@ export function registerCreate(program: Command): void {
           summary: resolveTitle(options),
           issuetype: { name: options.type },
         };
+        let found: string[];
         if (options.adfFile) {
           let adfBody: unknown;
           try {
@@ -82,11 +84,24 @@ export function registerCreate(program: Command): void {
             process.exit(1);
           }
           fields['description'] = adfBody;
+          found = lintPlainBlockAdf(adfBody);
         } else if (options.descFile) {
-          fields['description'] = markdownToAdf(readBodyFile(options.descFile, '--desc-file'));
+          const md = readBodyFile(options.descFile, '--desc-file');
+          fields['description'] = markdownToAdf(md);
+          found = lintPlainBlock(md);
         } else if (options.desc) {
           fields['description'] = markdownToAdf(options.desc);
+          found = lintPlainBlock(options.desc);
+        } else {
+          found = lintPlainBlock('');
         }
+        // HIMMEL-5226: the plain Impact/What/Why block is required; Epic and Subtask only warn.
+        const verdict = plainBlockVerdict(options.type, found);
+        if (verdict.action === 'refuse') {
+          console.error(verdict.message);
+          process.exit(1);
+        }
+        if (verdict.action === 'warn') console.error(verdict.message);
         if (options.parent) fields['parent'] = { key: options.parent };
         const labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
         if (labels) fields['labels'] = labels;
