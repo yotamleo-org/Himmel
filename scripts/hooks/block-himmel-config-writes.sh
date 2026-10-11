@@ -114,7 +114,7 @@ case "$cmd" in
 esac
 # Quote-aware split (HIMMEL-5290): ; | & and newline separate clauses only
 # outside quotes, and an unquoted > is a redirect (deny) unless it is an fd
-# redirect to exactly /dev/null. A backslash escapes the next char outside single
+# redirect to exactly /dev/null (>, >> or quoted). A backslash escapes the next char outside single
 # quotes. An unterminated quote cannot be classified, so it denies.
 clauses=""
 cur=""
@@ -146,10 +146,14 @@ while [ "$i" -lt "$n" ]; do
         ';' | '|' | '&' | $'\n') clauses="$clauses$cur"$'\n'; cur="" ;;
         '>')
             rest=${cmd:i}
+            rest=${rest#>}
             rest=${rest#"${rest%%[![:space:]]*}"}
             case "$rest" in
                 /dev/null | /dev/null[[:space:]\;\|\&]*)
                     i=$((n - ${#rest} + 9))
+                    ;;
+                '"/dev/null"' | '"/dev/null"'[[:space:]\;\|\&]* | "'/dev/null'" | "'/dev/null'"[[:space:]\;\|\&]*)
+                    i=$((n - ${#rest} + 11))
                     ;;
                 *) deny "the command names ~/.himmel/config.json with a redirect to something other than /dev/null" ;;
             esac
