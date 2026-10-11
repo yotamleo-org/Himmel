@@ -53,3 +53,17 @@ expansion-indirect-empty|||${!R} with R=Q and Q unset is empty (an unset R is a 
 expansion-adjacent-empty|||$V${Z} of two unset names is empty|||$V${Z}@@P@@
 expansion-empty-word|||an unset $V as its own word vanishes|||$V @@P@@
 expansion-empty-arg|||${V:-} between words is an empty argument|||@@P1@@ ${V:-} @@PR@@
+# zsh class (HIMMEL-5327 retask): the station shell, and Claude Code's Bash
+# tool, is zsh. These cut a value WITHOUT braces or with zsh-only flags; a
+# guard that models bash reads them as literal text. Rows named zsh-* are
+# self-checked under `zsh -f` (SKIP when zsh is absent); the guards under test
+# are bash scripts either way, which is the point: they must still deny.
+zsh-modifier-tail-braceless|||zsh: $V:t of V=/ is empty (bash: literal text)|||V=/; $V:t@@P@@
+zsh-modifier-tail-braced|||zsh: ${V:t} of V=/ is empty|||V=/; ${V:t}@@P@@
+zsh-modifier-root-braceless|||zsh: $V:r of V=.x is empty|||V=.x; $V:r@@P@@
+zsh-modifier-root-braced|||zsh: ${V:r} of V=.x is empty|||V=.x; ${V:r}@@P@@
+zsh-subscript-braceless|||zsh: $V[1,-3] of a 2-char V is empty|||V=ab; $V[1,-3]@@P@@
+zsh-subscript-braced|||zsh: ${V[1,-3]} of a 2-char V is empty|||V=ab; ${V[1,-3]}@@P@@
+zsh-paramflag-indirect-empty|||zsh: ${(P)V} with V=Q and Q unset is empty|||V=Q; ${(P)V}@@P@@
+zsh-modifier-empty-word|||zsh: $V:t as its own word vanishes|||V=/; $V:t @@P@@
+zsh-modifier-empty-arg|||zsh: ${V:t} between words is an empty argument|||V=/; @@P1@@ ${V:t} @@PR@@

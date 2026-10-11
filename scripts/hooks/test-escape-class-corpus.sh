@@ -117,6 +117,55 @@ block-tail-pipe-on-gates.sh expansion-adjacent-empty HIMMEL-5334
 block-tail-pipe-on-gates.sh expansion-empty-word HIMMEL-5334
 block-tail-pipe-on-gates.sh expansion-empty-arg HIMMEL-5334
 guard-pr-check-literal.sh ansi-c-command-word HIMMEL-5335
+block-bare-qmd-query.sh zsh-modifier-tail-braceless HIMMEL-5328
+block-bare-qmd-query.sh zsh-modifier-tail-braced HIMMEL-5328
+block-bare-qmd-query.sh zsh-modifier-root-braceless HIMMEL-5328
+block-bare-qmd-query.sh zsh-modifier-root-braced HIMMEL-5328
+block-bare-qmd-query.sh zsh-subscript-braceless HIMMEL-5328
+block-bare-qmd-query.sh zsh-subscript-braced HIMMEL-5328
+block-bare-qmd-query.sh zsh-paramflag-indirect-empty HIMMEL-5328
+block-bare-qmd-query.sh zsh-modifier-empty-word HIMMEL-5328
+block-bare-qmd-query.sh zsh-modifier-empty-arg HIMMEL-5328
+block-chokepoint-env-prefix.sh zsh-modifier-tail-braceless HIMMEL-5336
+block-chokepoint-env-prefix.sh zsh-modifier-root-braceless HIMMEL-5336
+block-destructive-commands.sh zsh-modifier-tail-braceless HIMMEL-5329
+block-destructive-commands.sh zsh-modifier-tail-braced HIMMEL-5329
+block-destructive-commands.sh zsh-modifier-root-braceless HIMMEL-5329
+block-destructive-commands.sh zsh-modifier-root-braced HIMMEL-5329
+block-destructive-commands.sh zsh-subscript-braceless HIMMEL-5329
+block-destructive-commands.sh zsh-subscript-braced HIMMEL-5329
+block-destructive-commands.sh zsh-paramflag-indirect-empty HIMMEL-5329
+block-destructive-commands.sh zsh-modifier-empty-word HIMMEL-5329
+block-git-stash.sh zsh-modifier-tail-braceless HIMMEL-5330
+block-git-stash.sh zsh-modifier-tail-braced HIMMEL-5330
+block-git-stash.sh zsh-modifier-root-braceless HIMMEL-5330
+block-git-stash.sh zsh-modifier-root-braced HIMMEL-5330
+block-git-stash.sh zsh-subscript-braceless HIMMEL-5330
+block-git-stash.sh zsh-subscript-braced HIMMEL-5330
+block-git-stash.sh zsh-paramflag-indirect-empty HIMMEL-5330
+block-git-stash.sh zsh-modifier-empty-word HIMMEL-5330
+block-git-stash.sh zsh-modifier-empty-arg HIMMEL-5330
+block-jira-compound-write.sh zsh-modifier-tail-braceless HIMMEL-5332
+block-jira-compound-write.sh zsh-modifier-root-braceless HIMMEL-5332
+block-jira-compound-write.sh zsh-subscript-braceless HIMMEL-5332
+block-jira-compound-write.sh zsh-modifier-empty-word HIMMEL-5332
+block-read-secrets.sh zsh-modifier-tail-braceless HIMMEL-5331
+block-read-secrets.sh zsh-modifier-tail-braced HIMMEL-5331
+block-read-secrets.sh zsh-modifier-root-braceless HIMMEL-5331
+block-read-secrets.sh zsh-modifier-root-braced HIMMEL-5331
+block-read-secrets.sh zsh-subscript-braceless HIMMEL-5331
+block-read-secrets.sh zsh-subscript-braced HIMMEL-5331
+block-read-secrets.sh zsh-paramflag-indirect-empty HIMMEL-5331
+block-read-secrets.sh zsh-modifier-empty-word HIMMEL-5331
+block-tail-pipe-on-gates.sh zsh-modifier-tail-braceless HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-modifier-tail-braced HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-modifier-root-braceless HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-modifier-root-braced HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-subscript-braceless HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-subscript-braced HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-paramflag-indirect-empty HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-modifier-empty-word HIMMEL-5334
+block-tail-pipe-on-gates.sh zsh-modifier-empty-arg HIMMEL-5334
 '
 
 # block-write-into-main-checkout.sh exempts any path with a tmp/ or temp/
@@ -234,7 +283,11 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
   while IFS= read -r line; do
     id="${line%%|||*}"
     build "$line" "printf PAYLOAD_RAN" || continue
-    got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c "$BUILT" 2>/dev/null </dev/null)
+    case "$id" in
+      zsh-*) command -v zsh >/dev/null 2>&1 || { echo "SKIP shape $id: zsh is not installed"; continue; }
+             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
+      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c "$BUILT" 2>/dev/null </dev/null) ;;
+    esac
     case "$got" in
       *PAYLOAD_RAN*) pass=$((pass+1)) ;;
       *) fail=$((fail+1)); echo "FAIL shape $id: bash did not run the payload (got: $got)" ;;
