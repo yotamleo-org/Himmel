@@ -96,7 +96,9 @@ hook_ran() {
 }
 if hook_ran "$D" 'PreToolUse:Bash' 'block-git-stash\.sh' 2; then pass "E1 PreToolUse: the Bash chain naming block-git-stash.sh finished with the deny status"; else fail "E1 no PreToolUse:Bash chain line with status 2 in the deny run's debug log"; fi
 if hook_ran "$C" 'PostToolUse:Bash' 'detect-dirty-primary\.sh'; then pass "E2 PostToolUse: the Bash post hooks ran after the allowed command"; else fail "E2 no PostToolUse:Bash hook line in the control run's debug log"; fi
-if ! hook_ran "$D" 'PostToolUse:Bash' 'detect-dirty-primary\.sh'; then pass "E2b PostToolUse did NOT run for the denied call (the deny stopped the tool)"; else fail "E2b a PostToolUse hook ran for a denied call"; fi
+# Negative: require a readable, non-empty log (an absent log is not evidence) and match ANY exit status.
+dlog=$(fakekey_debuglog "$D") || dlog=""
+if [ -n "$dlog" ] && [ -s "$dlog" ] && ! grep -qE 'Hooks: PostToolUse:Bash \[.*detect-dirty-primary\.sh.*\] finished with status [0-9]+' "$dlog"; then pass "E2b PostToolUse did NOT run for the denied call (the deny stopped the tool)"; else fail "E2b a PostToolUse hook ran for a denied call"; fi
 if hook_ran "$C" 'SessionStart:startup' 'check-update-available\.sh'; then pass "E3 SessionStart: the startup chain ran"; else fail "E3 no SessionStart:startup chain line"; fi
 if hook_ran "$C" 'Stop' 'stop-console-idle-guard\.sh'; then pass "E4 Stop: the stop hook ran at the end of the turn"; else fail "E4 no Stop hook line"; fi
 
