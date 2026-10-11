@@ -907,21 +907,24 @@ SW_REC=0 SW_UNK=0
 # ALLOWs. Segments are vetted in order in one shell, so a `cd` segment updates
 # it for the next. One-way: a `cd` can FAIL (`cd / ; cd nope ; du -sh` stays at
 # `/`), so no later `cd` ever clears it.
-SW_CD_UNPROVEN=0 SW_PHYS='' SW_CHAIN_PLAIN=1
+SW_CD_UNPROVEN=0 SW_PHYS='' SW_CHAIN_PLAIN=1 SW_SEEN_NONCD=0
 
 # `cd` / `pushd` / `popd` operands -> set SW_CD_UNPROVEN when the target is, or
 # may be, root. Judged lexically (as is_root_anchor), then once physically so a
 # symlink to `/` does not slip through.
 sw_note_cd() {
     local t="" tok n=0 phys et=0
-    # a cd after `||`, in a pipeline, backgrounded or under a compound may not
-    # run, so the directory it would reach is unknown
-    [ "$SW_CHAIN_PLAIN" = 1 ] || { SW_CD_UNPROVEN=1; return 0; }
+    # The remembered directory is trusted ONLY for a leading run of
+    # `cd <literal> && cd <literal> && ... && <reader>`: the whole command a
+    # plain `&&` chain (no `;`, `||`, `|`, `&`, grouping) and no other command
+    # before the cd. Then a failing cd skips the reader, so the model cannot
+    # diverge from what bash does. Anything else leaves the cwd unknown.
+    [ "$SW_CHAIN_PLAIN" = 1 ] && [ "$SW_SEEN_NONCD" = 0 ] || { SW_CD_UNPROVEN=1; return 0; }
     for tok in "$@"; do
         shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
-        case "$SW_VALUE" in
-            --|-L|-P|-e|-@) continue ;;
-        esac
+        # a tilde word with any quote or backslash is a literal name, never HOME
+        case "$tok" in '~'*[\'\"\\]*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "$SW_VALUE" in -*) SW_CD_UNPROVEN=1; return 0 ;; esac   # `cd -`, `cd -P x`: unknown
         t="$SW_VALUE"; n=$((n + 1)); et="$SW_EXPANDS_TILDE"
     done
     [ "$n" -eq 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # `cd`, `popd`, `cd a b`: unknown
@@ -972,8 +975,7 @@ sw_find_walks_unproven_cwd() {
         shell_word_value "${a[$j]}" || return 0
         case "$SW_VALUE" in -*|'('|'!') break ;; esac
         n=$((n + 1))
-        # absolute starting points keep the textual-root rules (`find /tmp/..` stays as it was)
-        case "$SW_VALUE" in /*) ;; *..*) return 0 ;; esac
+        case "/$SW_VALUE/" in */../*) return 0 ;; esac    # a `..` component, absolute or not
         [ "$SW_CD_UNPROVEN" = 1 ] || continue
         # shellcheck disable=SC2088 # literal `~`, never expanded here
         case "$SW_VALUE" in /*|'~'|'~/'*) ;; *) return 0 ;; esac
@@ -1127,6 +1129,7 @@ segment_walks_root() {
 
 segment_is_safe() {
     resolve_seg_binary "$1"
+    case "$RB_STATUS:$RB_BIN" in bin:cd) ;; *) SW_SEEN_NONCD=1 ;; esac   # HIMMEL-5187: leading-cd rule
     # HIMMEL-4780: the JIRA_PROJECT_KEY= prefix is approvable on node only.
     if [ "$RB_JIRA_KEY" = 1 ] && { [ "$RB_STATUS" != bin ] || [ "$RB_BIN" != node ]; }; then
         return 1
@@ -1160,7 +1163,8 @@ segment_is_safe() {
     done
 
     case "$bin" in
-        cd|pushd|popd) sw_note_cd "${a[@]:$((i + 1))}" ;;
+        cd) sw_note_cd "${a[@]:$((i + 1))}" ;;
+        pushd|popd) SW_CD_UNPROVEN=1 ;;
         xxd|uniq)
             # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
             # `uniq a <CR>-f` name an OUTPUT file `<CR>-u`, not a flag. Re-read
@@ -2208,7 +2212,7 @@ esac
 # skip or relocate a cd, so cd state is then unknown (PASS). fd dups are plain.
 sw_chain=$(printf '%s' "$SCAN_MASK" | sed -E -e 's@&&@@g' -e 's@[0-9]*>&[0-9-]?@@g' -e 's@&>>?@@g' -e 's@[0-9]*[<>]+@@g')
 case "$sw_chain" in
-    *'|'*|*'&'*|*'('*|*')'*|*'{'*|*'}'*|*'`'*|*'$'*) SW_CHAIN_PLAIN=0 ;;
+    *'|'*|*'&'*|*';'*|*$'\n'*|*'('*|*')'*|*'{'*|*'}'*|*'`'*|*'$'*) SW_CHAIN_PLAIN=0 ;;
 esac
 if printf '%s' "$SCAN_MASK" | grep -qE '(^|[;&|[:space:](])(if|then|elif|else|while|until|do|case|select|for)([[:space:]]|$)'; then
     SW_CHAIN_PLAIN=0
