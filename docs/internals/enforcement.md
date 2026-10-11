@@ -201,7 +201,9 @@ Stages currently wired:
   template-version / template-version-push (`check-template-version.sh`,
   `--pre-push` for the push-time twin) — template content change requires a
   `metadata.version` bump; HIMMEL-524.
-- **Pre-push:** no-push-to-main, npm-audit (high+), npm-licenses (allowlist),
+- **Pre-push:** no-push-to-main (also refuses a NEW branch outside
+  `type/slug` | `handover/<TICKET>-<slug>` | `claude/*`, HIMMEL-5308;
+  bypass `BRANCH_NAME_OK=1`), npm-audit (high+), npm-licenses (allowlist),
   npm-audit-signatures (needs npm >= 11 — older npm bundles a registry
   public key that expired 2025-01-29 and fails every package with
   EEXPIREDSIGNATUREKEY; the gate checks the version first and names

@@ -112,6 +112,67 @@ echo "TEST: PRE_COMMIT=1 with no PRE_COMMIT_REMOTE_BRANCH -> fail CLOSED"
 expect_blocked "PRE_COMMIT=1, PRE_COMMIT_REMOTE_BRANCH unset" \
     env PRE_COMMIT=1 bash "$HOOK" </dev/null
 
+# Test 9-: HIMMEL-5308 branch-name rule for NEW branches ------------------
+# A new branch must be type/slug, handover/<TICKET>-<slug> or claude/*. An
+# existing remote branch (non-zero remote sha) is never judged retroactively,
+# and a delete push is never judged.
+ZERO=0000000000000000000000000000000000000000
+SHA=1111111111111111111111111111111111111111
+
+expect_blocked_name() {
+    local label="$1" out rc
+    shift
+    out=$("$@" 2>&1) && rc=0 || rc=$?
+    case "$out" in
+        *"branch name"*)
+            if [ "$rc" -ne 0 ]; then pass "$label"; else fail "$label: exit 0" "output: $out"; fi ;;
+        *) fail "$label: not blocked on branch name" "rc=$rc output: $out" ;;
+    esac
+}
+
+echo "TEST: new branches with a valid name -> PASS"
+for b in feat/x fix/himmel-5308-foo chore/a.b_c docs/y refactor/z test/t handover/HIMMEL-12-wrap claude/himmel-1-abc123; do
+    expect_pass "new branch $b" \
+        run_raw "refs/heads/$b $SHA refs/heads/$b $ZERO
+"
+done
+
+echo "TEST: new branch with an invalid name -> BLOCKED"
+for b in wip-stuff bugfix/x feature/x fix/ fix/a/b handover/foo Fix/x; do
+    expect_blocked_name "new branch $b" \
+        run_raw "refs/heads/$b $SHA refs/heads/$b $ZERO
+"
+done
+
+echo "TEST: existing branch with a legacy name -> PASS (never retroactive)"
+expect_pass "existing legacy branch" \
+    run_raw "refs/heads/wip-stuff $SHA refs/heads/wip-stuff $SHA
+"
+
+echo "TEST: delete push of a legacy name -> PASS"
+expect_pass "delete legacy branch" \
+    run_raw "(delete) $ZERO refs/heads/wip-stuff $SHA
+"
+
+echo "TEST: tag push -> PASS"
+expect_pass "new tag" \
+    run_raw "refs/tags/v1.2 $SHA refs/tags/v1.2 $ZERO
+"
+
+echo "TEST: BRANCH_NAME_OK=1 single-run bypass -> PASS"
+expect_pass "bypass" \
+    env BRANCH_NAME_OK=1 bash "$HOOK" <<REFS
+refs/heads/wip-stuff $SHA refs/heads/wip-stuff $ZERO
+REFS
+
+echo "TEST: pre-commit shape, new invalid branch (no remote-tracking ref) -> BLOCKED"
+expect_blocked_name "configured shape, new invalid branch" \
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=nosuchremote PRE_COMMIT_REMOTE_BRANCH=refs/heads/wip-stuff bash "$HOOK" </dev/null
+
+echo "TEST: pre-commit shape, new valid branch -> PASS"
+expect_pass "configured shape, new valid branch" \
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=nosuchremote PRE_COMMIT_REMOTE_BRANCH=refs/heads/fix/x bash "$HOOK" </dev/null
+
 # Summary ------------------------------------------------------------
 
 echo
