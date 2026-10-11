@@ -1030,11 +1030,21 @@ git_push_has_plus_refspec() {
     return 1
 }
 
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push([^[:alnum:]_.-]|$)'; then
+# HIMMEL-5274 (G1): git's global options sit between `git` and the subcommand
+# (`git -C x push --force`, `git -c a=b reset --hard`, `git --no-pager clean
+# -fdx`) and hid it from the four rules below. GIT_GOPTS is a run of option
+# tokens: -c/-C and the long options that take a SEPARATE value consume it
+# (cmd_lc is lowercased, so -C reads as -c), any other dash token stands alone
+# (`--no-pager`, `--git-dir=x`, `-p`). Every token is a whitespace-free run, so
+# the match stays linear (HIMMEL-5154). Over-deny only: an unknown value-taking
+# flag leaves its value as the "subcommand" and the rule just does not fire.
+GIT_GOPTS='(([[:space:]]+(-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)[[:space:]]+[^[:space:];&|]+)|([[:space:]]+-[^[:space:];&|]*))*'
+GIT_HEAD='(^|[^[:alnum:]_.-])git(\.exe)?'"${GIT_GOPTS}"
+if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then
     # HIMMEL-2054: walk each ;/|/&-delimited segment independently (cmd_lc
     # already folds newlines/CRs to ';', see line 48) so a force push chained
     # after a benign one can't hide behind the first "git push" match.
-    push_line_re='(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push(.*)$'
+    push_line_re="${GIT_HEAD}"'[[:space:]]+push(.*)$'
     # HIMMEL-2054 CR (panel, codex-3, pre-existing on main): a standalone
     # `-f` matched, but a clustered short-flag bundle like `-vf`/`-fv` did
     # not -- the space+dash+letters+f+letters form below catches `-f`
@@ -1072,7 +1082,11 @@ if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push([^[:alnum:]_.-]|$)';
     _c_seps_to_nl "$cmd_lc_join"; _push_lines_b=$REPLY
     while IFS= read -r seg; do
         [[ $seg =~ $push_line_re ]] || continue
-        push_seg="${BASH_REMATCH[3]}"
+        push_seg="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
+        # HIMMEL-5274: -C/--git-dir/--work-tree retarget the repo like a `cd`,
+        # so git_default_branch() (this cwd) is the wrong repo: no carve-out.
+        seg_cd=$cd_chained
+        [[ $seg =~ (^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push ]] || seg_cd=1
         # HIMMEL-2054 CR round 7: a `+`-prefixed refspec is checked ALONGSIDE
         # bare_force_re, not only inside the lease_re branch below -- a
         # scoped lease (`--force-with-lease=main`) still matches lease_re
@@ -1086,19 +1100,19 @@ if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push([^[:alnum:]_.-]|$)';
             # non-default branch is safe (git refuses if the remote tip
             # moved) -- refuse only main/master/default-branch, an
             # ambiguous (no explicit branch) target, or a chained `cd`.
-            if [ "$cd_chained" -eq 1 ] || git_push_lease_targets_protected "$push_seg"; then
+            if [ "$seg_cd" -eq 1 ] || git_push_lease_targets_protected "$push_seg"; then
                 deny "force push"
             fi
         fi
     done <<< "$_push_lines_a"$'\n'"$_push_lines_b"
 fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+reset[[:space:]]+--hard([^[:alnum:]_-]|$)'; then
+if contains "${GIT_HEAD}"'[[:space:]]+reset[[:space:]]+--hard([^[:alnum:]_-]|$)'; then
     deny "git reset --hard"
 fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+clean[[:space:]]+-[[:alnum:]_]*f'; then
+if contains "${GIT_HEAD}"'[[:space:]]+clean[[:space:]]+-[[:alnum:]_]*f'; then
     deny "git clean -f"
 fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+filter-branch([^[:alnum:]_-]|$)'; then
+if contains "${GIT_HEAD}"'[[:space:]]+filter-branch([^[:alnum:]_-]|$)'; then
     deny "git filter-branch"
 fi
 if contains '(^|[^[:alnum:]_.-])curl(\.exe)?[^|;&]*\|[[:space:]]*(ba)?sh(\.exe)?([^[:alnum:]_.-]|$)'; then

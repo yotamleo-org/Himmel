@@ -1226,6 +1226,45 @@ else
     echo "SKIP 4626 bash4.3 cases (no binary at $BASH43)"
 fi
 
+# HIMMEL-5274 (G1): git global options between `git` and the subcommand must not
+# hide push --force, reset --hard, clean -f or filter-branch.
+for c in \
+    'git -C x push --force' \
+    'git -C x push -f origin main' \
+    'git -C x push origin +main' \
+    'git -c a=b reset --hard' \
+    'git -c a=b -C x reset --hard HEAD~1' \
+    'git --no-pager clean -fdx' \
+    'git --git-dir=.git --work-tree=. reset --hard' \
+    'git --git-dir .git --work-tree . reset --hard' \
+    'git --namespace n filter-branch --tree-filter true' \
+    'git.exe -C x push --force' \
+    'git --no-pager -C x push --force-with-lease origin main' \
+    'git -C other push --force-with-lease origin feat/x' \
+    'ls; git -C x push --force' \
+    'git -C x status && git -C y reset --hard'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+for c in \
+    'git -C x status' \
+    'git -c a=b log --oneline' \
+    'git --no-pager diff' \
+    'git -C x push origin feat/x' \
+    'git -C x reset --soft HEAD~1' \
+    'git -C x commit -m "reset --hard"' \
+    'git --no-pager log --grep "clean -f"'; do
+    assert_rc "5274 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+# HIMMEL-5154 linear time: a long run of global options must stay fast.
+long=$(printf ' -c a=b%.0s' $(seq 1 4000))
+start=$SECONDS
+rc=$(run_case "$(j_bash "git${long} status")")
+assert_rc "5274 long global-option run allowed" 0 "$rc"
+if [ $((SECONDS - start)) -gt 20 ]; then
+    echo "FAIL 5274 long global-option run too slow ($((SECONDS - start))s)"
+    FAILED=$((FAILED + 1))
+fi
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
