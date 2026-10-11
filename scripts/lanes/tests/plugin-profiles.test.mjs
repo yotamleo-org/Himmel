@@ -1581,6 +1581,14 @@ test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the pl
   assert.deepEqual(validateRegistry(REG), []);
 });
 
+// HIMMEL-5241: console.sh registers a console only when `plugin-profiles.mjs console --mcp-servers`
+// lists himmel-bus; the console profile had no mcpServers, so no console was ever on the bus and a
+// leg's send was refused with "no edge". Reads the real registry, the same one console.sh resolves.
+test('console profile opts in to himmel-bus so console.sh registers the console on launch (HIMMEL-5241)', () => {
+  assert.ok(mcpServersForProfile(REG, 'console')?.includes('himmel-bus'), 'console must list himmel-bus');
+  assert.deepEqual(validateRegistry(REG), []);
+});
+
 test('collectMcpServerDefs: the mcpCatalog tier loses to home/repo/manifest and still refuses an unknown name (HIMMEL-4400)', () => {
   const dir = makeTmpDir('pp-cat-');
   const home = join(dir, 'home.json');
