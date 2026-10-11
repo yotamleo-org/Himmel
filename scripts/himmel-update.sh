@@ -2062,6 +2062,64 @@ sync_marketplaces() {
     return 0
 }
 
+# ─── enabled-but-not-installed @himmel plugin install (HIMMEL-5294) ──────────
+# `marketplace update` only re-syncs plugins that are ALREADY installed, and
+# update_installed_plugins skips enabled-but-not-installed specs (HIMMEL-4380),
+# so a plugin the checkout newly vendors and the settings enable (PR 2382:
+# i-have-adhd) was never installed — himmelctl status read the plugin set as
+# degraded. Install exactly the specs that are (a) declared by this checkout's
+# marketplace manifest, (b) `true` in the user enabledPlugins, and (c) absent
+# from installed_plugins.json. Never touches a disabled or non-@himmel spec.
+# Advisory + failure-isolated; an unreadable installed file installs nothing.
+install_missing_himmel_plugins() {
+    local mode="${1:-apply}"   # check | apply
+    local claude_bin="${HIMMEL_UPDATE_CLAUDE_BIN:-claude}"
+    local settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
+    local manifest="${HIMMEL_MARKETPLACE_JSON:-$ROOT/marketplace/.claude-plugin/marketplace.json}"
+    local installed="${HIMMEL_INSTALLED_PLUGINS_JSON:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json}"
+    echo "==> enabled @himmel plugins not yet installed (HIMMEL-5294)"
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "    skip: jq not on PATH."
+        return 0
+    fi
+    if [ ! -f "$manifest" ] || [ ! -f "$settings" ] || [ ! -f "$installed" ]; then
+        echo "    skip: marketplace manifest, settings or installed-plugins state not found."
+        return 0
+    fi
+    local mp_name specs
+    mp_name=$(jq -r '.name // "himmel"' "$manifest" 2>/dev/null | tr -d '\r' || true)
+    [ -n "$mp_name" ] || mp_name="himmel"
+    specs=$(jq -r --arg mp "$mp_name" --slurpfile s "$settings" --slurpfile i "$installed" '
+        ($i[0].plugins // {}) as $have
+        | ($s[0].enabledPlugins // {}) as $on
+        | .plugins[]?.name | (. + "@" + $mp) as $spec
+        | select($on[$spec] == true and ($have | has($spec) | not))
+        | $spec' "$manifest" 2>/dev/null | tr -d '\r' || true)
+    if [ -z "$specs" ]; then
+        echo "    none."
+        return 0
+    fi
+    if [ "$mode" = "check" ]; then
+        echo "    would install:"
+        printf '%s\n' "$specs" | while IFS= read -r spec; do
+            [ -n "$spec" ] && echo "      $spec"
+        done
+        return 0
+    fi
+    local failed=""
+    while IFS= read -r spec; do
+        [ -n "$spec" ] || continue
+        echo "    ==> claude plugin install $spec"
+        "$claude_bin" plugin install "$spec" </dev/null || failed="$failed $spec"
+    done <<EOF
+$specs
+EOF
+    if [ -n "$failed" ]; then
+        echo "    warn: failed to install:$failed — run \`claude plugin install <spec>\` yourself." >&2
+    fi
+    return 0
+}
+
 # ─── installed plugin version catch-up (HIMMEL-3551) ─────────────────────────
 # sync_marketplaces above only re-syncs a MARKETPLACE REGISTRY (`claude plugin
 # marketplace update <name>`) — it never touches an individual plugin's
@@ -2911,6 +2969,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     # claude CLI, so --check stays the zero-mutation dry-run it promises to be.
     sync_cli_proxy check || true
     sync_marketplaces check || true
+    install_missing_himmel_plugins check || true
     update_installed_plugins check || true
     report_cadence_stale
     report_qmd_bun_missing
@@ -3088,6 +3147,7 @@ sync_graphify
 # here the advisory contract still applies.
 sync_cli_proxy || true
 sync_marketplaces
+install_missing_himmel_plugins apply
 update_installed_plugins apply
 report_plugin_gap
 reconcile_plugins apply
