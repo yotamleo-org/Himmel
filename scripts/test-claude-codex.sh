@@ -124,6 +124,8 @@ for (const r of [
   'Bash(* ~/.ssh*)', 'Read(~/.ssh/**)', 'Read(**/.env)',
   'Bash(curl * | sh*)', 'Bash(wget * | bash*)',
   'Bash(terraform destroy*)', 'Bash(kubectl delete *)',
+  'Bash(curl -d @*)', 'Bash(curl -T *)', 'Bash(curl --upload-file *)', 'Bash(wget --post-file*)',
+  'Bash(* .env)', 'Bash(* */.env)',
 ]) assert.ok(deny.includes(r), 'missing deny rule ' + r);
 // over-read guard (HIMMEL-5077): no blanket rule that would deny benign python or a plain branch push; allow untouched
 assert.ok(!deny.some((r) => r === 'Bash(python3 *)' || r === 'Bash(git push *)' || r === 'Bash(git push)'));

@@ -363,11 +363,12 @@ for (const r of ["git push --force","git push --force *","git push --force*","gi
 for (const f of ["-rf","-fr","-r","--recursive"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
 for (const p of ["~/.ssh","~/.aws","~/.gnupg","~/.config/gh","~/.netrc","~/.codex/auth.json","~/.claude/.credentials.json","~/.cli-proxy-api"]) { B("* "+p+"*"); B("* \u0024HOME"+p.slice(1)+"*"); A.push("Read("+p+")","Read("+p+"/**)"); }
 A.push("Read(**/.env)","Read(**/.env.local)","Read(**/.env.*.local)");
+for (const e of [".env",".env.local"]) { B("* "+e); B("* */"+e); }
 for (const n of ["curl","wget"]) {
   for (const s of ["sh","bash","zsh","sudo","python","python3"]) B(n+" * | "+s+"*");
   for (const s of ["sh -c *\u0024("+n+"*","bash -c *\u0024("+n+"*","eval *\u0024("+n+"*","bash <("+n+"*","sh <("+n+"*","source <("+n+"*"]) B(s);
 }
-for (const r of ["curl * -d @*","curl * --data* @*","curl * -F *","curl * --form *","curl * -T *","curl * --upload-file *","wget * --post-file*","wget * --post-data*","nc *","ncat *","socat *"]) B(r);
+for (const r of ["curl -d @*","curl --data* @*","curl -F *","curl --form *","curl -T *","curl --upload-file *","curl * -d @*","curl * --data* @*","curl * -F *","curl * --form *","curl * -T *","curl * --upload-file *","wget --post-file*","wget --post-data*","wget * --post-file*","wget * --post-data*","nc *","ncat *","socat *"]) B(r);
 for (const r of ["terraform destroy*","terraform apply -destroy*","terraform apply * -destroy*","tofu destroy*","tofu apply -destroy*","pulumi destroy*","cdk destroy*","kubectl delete *","helm uninstall *","aws s3 rb *","aws s3 rm * --recursive*","aws * terminate-*","aws * delete-*","gcloud * delete *","az * delete *","docker system prune*"]) B(r);
 j.permissions=j.permissions||{};
 const dn=Array.isArray(j.permissions.deny)?j.permissions.deny:[];
