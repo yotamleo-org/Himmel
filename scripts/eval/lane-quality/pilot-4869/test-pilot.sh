@@ -326,6 +326,20 @@ rm -f "$wt/scripts/lib/link.sh"
 mv "$wt/scripts/hooks" "$wt/scripts/hooks.hold"
 check 'a hook command naming a tree that is absent from the worktree is refused (fail closed)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 mv "$wt/scripts/hooks.hold" "$wt/scripts/hooks"
+# fail closed on an underivable set: settings that do not parse, jq that does not run, hook commands
+# that name no CLAUDE_PROJECT_DIR path
+cp -p "$wt/.claude/settings.json" "$TMP/p5200h.settings"
+echo '{not json' >"$wt/.claude/settings.json"
+out5200="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
+check 'settings.json that does not parse is refused, never launched with no hook-tree binds' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot parse"'
+cp -p "$TMP/p5200h.settings" "$wt/.claude/settings.json"
+mkdir -p "$TMP/nojq"; printf '#!/bin/sh\nexit 127\n' >"$TMP/nojq/jq"; chmod +x "$TMP/nojq/jq"
+out5200="$(PATH="$TMP/nojq:$PATH" HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
+check 'a jq that cannot run is refused, never launched with no hook-tree binds' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot parse"'
+echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"bash scripts/hooks/x.sh"}]}]}}' >"$wt/.claude/settings.json"
+out5200="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
+check 'hook commands naming no CLAUDE_PROJECT_DIR path are refused (the trees cannot be derived)' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot be derived"'
+cp -p "$TMP/p5200h.settings" "$wt/.claude/settings.json"
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw "echo 'exit 0' >\"$wt/scripts/lib/run-node.sh\""; h1=$?
   jw "echo 'exit 0' >\"$JW5200/scripts/lib/run-node.sh\""; h2=$?

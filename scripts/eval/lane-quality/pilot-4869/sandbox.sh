@@ -137,10 +137,15 @@ if [ "$mode" != check ]; then
   # it and leave a clean final-state diff. So every tree the settings' hook commands reference
   # comes back read-only too (derived from the settings, not hard-coded). Anything those scripts
   # source from a tree the settings never name stays writable.
-  # ponytail: one level of reference, no transitive closure; upgrade path HIMMEL-5200 follow-up
+  # ponytail: one level of reference, no transitive closure, and a hook command that names a
+  # script without CLAUDE_PROJECT_DIR (a bare relative path) is not seen; upgrade path HIMMEL-5200 follow-up
   hk=""
-  refs="$(jq -r '[.. | .command? // empty | strings] | .[]' "$ps_src" 2>/dev/null \
-    | grep -oE 'CLAUDE_PROJECT_DIR\}?/[A-Za-z0-9_./-]+' | sed -E 's#^CLAUDE_PROJECT_DIR\}?/##' | sort -u)" || refs=""
+  cmds=""   # argv mode never writes the {} placeholder: nothing to parse there
+  if [ -f "$ps_src" ]; then
+    cmds="$(jq -r '[.. | .command? // empty | strings] | .[]' "$ps_src")" || die "cannot parse $ps_src (jq missing or invalid JSON): the hook-executed trees cannot be derived"
+  fi
+  refs="$(printf '%s\n' "$cmds" | grep -oE 'CLAUDE_PROJECT_DIR\}?/[A-Za-z0-9_./-]+' | sed -E 's#^CLAUDE_PROJECT_DIR\}?/##' | sort -u)" || refs=""
+  [ -z "$cmds" ] || [ -n "$refs" ] || die "$ps_src declares hook commands but none names a CLAUDE_PROJECT_DIR path: the hook-executed trees cannot be derived"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     case "$f" in /*|..|../*|*/..|*/../*) die "settings.json hook command names $f outside the worktree" ;; esac
