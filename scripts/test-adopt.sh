@@ -2166,7 +2166,7 @@ grepq "$poutG1" "Direct push to 'main' is not allowed" \
   || fail "HIMMEL-2814 gap1 shared-payload push: remote has refs/heads/main even though the push was refused"
 
 set +e
-poutG1b=$(HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:refs/heads/cr2814g1-ok 2>&1); prcG1b=$?
+poutG1b=$(HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:refs/heads/fix/cr2814g1-ok 2>&1); prcG1b=$?
 set -e
 [ "$prcG1b" -eq 0 ] \
   || fail "HIMMEL-2814 gap1 shared-payload push: a push to a non-main ref from the SIBLING worktree was refused: $poutG1b"
