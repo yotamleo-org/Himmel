@@ -23,11 +23,13 @@
 //            (JSON-RPC account/rateLimits/read), captured by the BOUNDED
 //            probe scripts/lanes/codex-bank-probe.ts into
 //            ${CODEX_BANK_CACHE:-~/.himmel/cache/codex-bank.json}. bank-status
-//            NEVER spawns the probe: a preflight that spawns `codex
-//            app-server` per call leaks a process whenever its kill fails.
-//            Missing/stale/unusable cache => unmeasurable naming the remedy
-//            (run the probe) — never a fabricated number, never a silent
-//            fail-open. resetsAt arrives per limit and stays per limit in
+//            runs the probe at most once per stale/missing read, locked,
+//            time-boxed and backed off (HIMMEL-5220, refreshCodexCache): the
+//            probe reaps its own app-server tree, so the bounded run does not
+//            leak a process the way an unbounded spawn per call would.
+//            Missing/stale/unusable cache after that => unmeasurable naming
+//            the remedy (run the probe) — never a fabricated number, never a
+//            silent fail-open. resetsAt arrives per limit and stays per limit in
 //            both the cache and the detail line (HIMMEL-1725).
 //
 // The deleted sqlite scan, kept as history so nobody resurrects it: every
@@ -49,7 +51,8 @@
 // the codex funded threshold and spawn-claudex's refuse point are now ONE
 // value (funded-max-pct.mjs, default 90), so no 90-98% disagreement band
 // remains for codex; other banks keep their 99 default.
-import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -130,7 +133,76 @@ type DisplayResult =
   | { kind: "unmeasurable"; reason: string }
   | { kind: "flat-rate" };
 
+// HIMMEL-5220: a stale or missing codex cache is refreshed by ONE bounded probe
+// run, so the console's bank line stops reading codex=? for days. Guards:
+//   - one refresher at a time (mkdir lock beside the cache); a concurrent
+//     caller waits inside the same box, then re-reads the cache;
+//   - the whole attempt is time-boxed (CODEX_BANK_REFRESH_BOX_MS, default 30s);
+//     the probe gets SIGTERM, whose handler reaps the codex app-server tree;
+//   - a failed or hung attempt is not retried for CODEX_BANK_REFRESH_BACKOFF_MS
+//     (attempt stamp), so a broken codex costs one box, not one box per call;
+//   - an overridden CODEX_BANK_CACHE without CODEX_BANK_PROBE_CMD is a test/ops
+//     seam and never spawns the real codex.
+// ponytail: refresh is triggered by the bank-status read (no daemon, no LLM
+// cadence), so a station nobody reads stays stale until the next read; add an
+// LLM-free cron only if HIMMEL-5220's doctor WARN keeps firing.
+const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BOX_MS) ?? 30_000;
+const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BACKOFF_MS) ?? 300_000;
+const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;
+
+function sleepMs(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function refreshCodexCache(cachePath: string): void {
+  if (env.CODEX_BANK_CACHE && !env.CODEX_BANK_PROBE_CMD) return;
+  const lock = `${cachePath}.refresh.lock`;
+  const stamp = `${cachePath}.refresh.attempt`;
+  const deadline = Date.now() + REFRESH_BOX_MS;
+  try {
+    mkdirSync(dirname(cachePath), { recursive: true });
+    if (existsSync(stamp) && Date.now() - statSync(stamp).mtimeMs < REFRESH_BACKOFF_MS) return;
+    for (;;) {
+      try {
+        mkdirSync(lock);
+        break;
+      } catch {
+        try {
+          if (Date.now() - statSync(lock).mtimeMs > REFRESH_LOCK_STALE_MS) { rmSync(lock, { recursive: true, force: true }); continue; }
+        } catch { continue; } // lock vanished between the two calls: retry the mkdir
+        if (Date.now() >= deadline) return;
+        sleepMs(200);
+        // the holder may have finished: the cache is re-read by the caller either way
+        if (!existsSync(lock)) return;
+      }
+    }
+  } catch {
+    return;
+  }
+  try {
+    writeFileSync(stamp, `${new Date().toISOString()}\n`);
+    const remaining = Math.max(1000, deadline - Date.now());
+    spawnSync("bun", [join(SCRIPT_DIR, "codex-bank-probe.ts")], {
+      env,
+      stdio: "ignore",
+      timeout: remaining,
+      killSignal: "SIGTERM",
+    });
+  } catch {
+    /* a failed refresh leaves the cache as it was: the caller reports unmeasurable */
+  } finally {
+    try { rmSync(lock, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function readCodexDisplay(cachePath: string): DisplayResult {
+  const first = readCodexCacheFile(cachePath);
+  if (first.kind !== "unmeasurable" || !/cache (missing|stale)/.test(first.reason)) return first;
+  refreshCodexCache(cachePath);
+  return readCodexCacheFile(cachePath);
+}
+
+function readCodexCacheFile(cachePath: string): DisplayResult {
   if (!existsSync(cachePath)) {
     return { kind: "unmeasurable", reason: `codex bank cache missing — ${CODEX_BANK_PROBE_REMEDY}` };
   }

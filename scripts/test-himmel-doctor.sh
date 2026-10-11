@@ -196,6 +196,9 @@ export HIMMEL_DOCTOR_GRAPHIFY_VENV="$FAKEROOT/no-such-graphify-venv"
 # Same for C53-vm-mode (HIMMEL-4583): never probe the operator's real VM; an
 # absent probe seam makes C53 report the mode only, dedicated cases stub it.
 export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
+# Same for C59-codex-bank-cache (HIMMEL-5220): never read the operator's real
+# codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
+export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 
 # Keep unrelated cases from probing the operator's real qmd 'skills'
 # collection for C44 (HIMMEL-2222): most invocations below never override
@@ -6314,5 +6317,30 @@ rm -f "$c58_t/repo/scripts/lint/check-mcp-sdk-v1.sh"
 out="$(c58_run)"
 if ! grepq "$out" -F 'C58-mcp-sdk-v1'; then pass "C58 no gate -> silent"; else fail "C58 no gate -> $(printf '%s' "$out" | grep -A1 C57)"; fi
 rm -rf "$c58_t"
+
+# --- C59-codex-bank-cache (HIMMEL-5220): a codex cache older than its TTL ---
+c59_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c59.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c59_t/home"
+c59_write() { # <age seconds>
+    local at; at="$(date -u -d "@$(( $(date +%s) - $1 ))" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$(( $(date +%s) - $1 ))" +%Y-%m-%dT%H:%M:%S.000Z)"
+    printf '{"limits":[],"planType":"prolite","capturedAt":"%s"}\n' "$at" > "$c59_t/codex-bank.json"
+}
+c59_run() { CODEX_BANK_CACHE="$c59_t/codex-bank.json" CLAUDE_DIR="$c59_t/home/claude" HOME="$c59_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C59-codex-bank-cache: cache older than the TTL -> WARN naming the refresh command (RED) =="
+c59_write 172800
+out="$(c59_run)"
+if grepq "$out" -F 'WARN C59-codex-bank-cache' && grepq "$out" -F 'codex-bank-probe.ts'; then pass "C59 stale -> WARN"; else fail "C59 stale -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+
+echo "== C59-codex-bank-cache: fresh cache -> OK =="
+c59_write 60
+out="$(c59_run)"
+if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 fresh -> OK"; else fail "C59 fresh -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+
+echo "== C59-codex-bank-cache: no cache file -> INFO, not a WARN =="
+rm -f "$c59_t/codex-bank.json"
+out="$(c59_run)"
+if grepq "$out" -F 'INFO C59-codex-bank-cache' && ! grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 missing -> INFO"; else fail "C59 missing -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+rm -rf "$c59_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

@@ -3941,6 +3941,40 @@ check_c57_dotenv_allowlists() {
     done <<< "$rows"
 }
 
+# --- C59-codex-bank-cache: a codex bank cache older than its TTL (HIMMEL-5220) ---
+# bank-status reads this cache and reports codex=? once it is older than
+# CODEX_BANK_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
+# WARN here means the refresh did not run or failed (codex missing, logged out,
+# probe timing out). Read-only: it never runs the probe.
+check_c59_codex_bank_cache() {
+    local cache="${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
+    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
+    local at captured now age
+    case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; esac
+    if [ ! -f "$cache" ]; then
+        emit INFO C59-codex-bank-cache "no codex bank cache at $cache — the codex lane reads unmeasurable until the probe has run once" "run: $cmd"
+        return
+    fi
+    at="$(jq -r '.capturedAt // empty' "$cache" 2>/dev/null)" || at=""
+    captured=""
+    if [ -n "$at" ]; then
+        # the probe writes fractional seconds; both date flavours want them off
+        at="${at%%.*}"; at="${at%Z}"
+        captured="$(date -u -d "${at}Z" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%S' "$at" +%s 2>/dev/null)" || captured=""
+    fi
+    if [ -z "$captured" ]; then
+        emit WARN C59-codex-bank-cache "codex bank cache at $cache has no usable capturedAt — bank-status reads codex as unmeasurable" "run: $cmd"
+        return
+    fi
+    now="$(date +%s)"
+    age=$((now - captured))
+    if [ "$age" -gt "$ttl" ]; then
+        emit WARN C59-codex-bank-cache "codex bank cache is $((age / 3600))h old (TTL $((ttl / 3600))h) — bank-status reports codex=? (unmeasurable)" "run: $cmd"
+    else
+        emit OK C59-codex-bank-cache "codex bank cache is $((age / 60))min old (TTL $((ttl / 3600))h)"
+    fi
+}
+
 # --- run ------------------------------------------------------------------------
 echo "himmel-doctor — $(uname -s 2>/dev/null || echo ?) — checkout: $REPO_ROOT"
 echo
@@ -4001,6 +4035,7 @@ check_c54_hook_copy_reaper
 check_c55_project_mode
 check_c57_dotenv_allowlists
 check_c58_mcp_sdk_v1
+check_c59_codex_bank_cache
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 

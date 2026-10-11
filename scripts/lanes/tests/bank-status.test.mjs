@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -535,4 +535,73 @@ test('bank-status CLI: a claude cache stamped by a DIFFERENT account surfaces MI
     env: { ...process.env, LANES_REGISTRY: registry, CLAUDE_USAGE_CACHE: cache, CLAUDE_ACCOUNT_CONFIG: acctConfig },
   });
   assert.match(out, /^sonnet funded measured 5h used=12% free=88% provenance=account=MISMATCH age=\d+s producer=9999$/m);
+});
+
+// HIMMEL-5220: a stale or missing codex cache triggers ONE bounded probe
+// refresh instead of reporting codex=? for days. The probe is always the stub
+// (CODEX_BANK_PROBE_CMD) — a test never spawns the real codex.
+const APPSERVER_STUB = join(TEST_DIR, 'fixtures', 'codex-appserver-stub.mjs');
+function staleCodexCache(dir) {
+  const path = join(dir, 'codex-bank.json');
+  writeFileSync(path, JSON.stringify({
+    limits: [{ limitId: 'primary', usedPercent: 99, windowDurationMins: 10080, resetsAt: CODEX_RESETS_AT_SEC }],
+    planType: 'prolite',
+    capturedAt: new Date(Date.now() - 4 * 86400_000).toISOString(),
+  }));
+  return path;
+}
+function runBankStatus(dir, extraEnv) {
+  const started = Date.now();
+  const out = execFileSync('bun', [BANK_STATUS], {
+    encoding: 'utf8',
+    env: { ...process.env, LANES_REGISTRY: fixtureRegistry(dir), HIMMEL_QUOTA_GAUGE_LEDGER: join(dir, 'none.jsonl'), ...extraEnv },
+  });
+  return { out, ms: Date.now() - started };
+}
+
+test('bank-status refreshes a STALE codex cache through the probe, once, and reports the fresh number', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-stale-');
+  const cache = staleCodexCache(dir);
+  const { out } = runBankStatus(dir, { CODEX_BANK_CACHE: cache, CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}` });
+  assert.match(out, /^claudex funded measured weekly used=20% free=80% resets=/m);
+  assert.ok(Date.parse(JSON.parse(readFileSync(cache, 'utf8')).capturedAt) > Date.now() - 60_000, 'cache was rewritten fresh');
+});
+
+test('bank-status refreshes a MISSING codex cache through the probe', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-missing-');
+  const { out } = runBankStatus(dir, { CODEX_BANK_CACHE: join(dir, 'codex-bank.json'), CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}` });
+  assert.match(out, /^claudex funded measured weekly used=20% free=80%/m);
+});
+
+test('bank-status stays unmeasurable within the time box when the probe HANGS', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-hang-');
+  const cache = staleCodexCache(dir);
+  const { out, ms } = runBankStatus(dir, {
+    CODEX_BANK_CACHE: cache,
+    CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}`,
+    STUB_SILENT: '1',
+    CODEX_BANK_REFRESH_BOX_MS: '1500',
+  });
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache stale/m);
+  assert.ok(ms < 10_000, `bank-status took ${ms}ms with a 1500ms box`);
+});
+
+test('bank-status stays unmeasurable when the probe FAILS, and does not re-probe inside the backoff', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-fail-');
+  const cache = staleCodexCache(dir);
+  const pidFile = join(dir, 'stub.pid');
+  const env = { CODEX_BANK_CACHE: cache, CODEX_BANK_PROBE_CMD: join(dir, 'no-such-codex'), STUB_PID_FILE: pidFile };
+  const first = runBankStatus(dir, env).out;
+  assert.match(first, /^claudex unknown unmeasurable reason="codex bank cache stale/m);
+  // A working stub now exists, but the failed attempt is inside the backoff:
+  // the second call must not run it (its pid file stays absent).
+  const second = runBankStatus(dir, { ...env, CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}` }).out;
+  assert.match(second, /^claudex unknown unmeasurable reason="codex bank cache stale/m);
+  assert.equal(existsSync(pidFile), false, 'probe was not re-run inside the backoff');
+});
+
+test('bank-status does not refresh when CODEX_BANK_CACHE is overridden without a probe command', { skip: BUN_SKIP }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-seam-');
+  const { out } = runBankStatus(dir, { CODEX_BANK_CACHE: join(dir, 'missing.json') });
+  assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-bank-probe\.ts"$/m);
 });
