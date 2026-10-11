@@ -1197,6 +1197,35 @@ omitted-key and unknown-key red paths).
 
 ---
 
+## claude-deepseek (`scripts/claude-deepseek`)
+
+**What:** launcher that runs Claude Code against DeepSeek's
+Anthropic-compatible endpoint. Needs `DEEPSEEK_API_KEY` and the station opt-in
+`HIMMEL_DEEPSEEK_INFERENCE_OK=1` in the process environment; checks the egress
+matrix (exit 3 on refusal) and refuses below `DEEPSEEK_MIN_BALANCE_USD`
+(exit 5). Available, not health-checked. Flags, exit codes and the other
+launchers: [launchers.md](launchers.md).
+
+---
+
+## session-analyzer (`scripts/insights/session-analyzer.sh`)
+
+**What:** local, read-only report over your Claude session transcripts
+(non-subagent only): tool and hook friction ranked as raw mentions and as
+genuine blocks. No network calls.
+`bash scripts/insights/session-analyzer.sh [--projects-dir <dir>] [--out <path>] [--since <YYYY-MM-DD>]`;
+default projects root `~/.claude/projects`.
+
+---
+
+## himmel-bus (`marketplace/plugins/himmel-bus/`)
+
+**What:** private chained local message store for session-to-session messages
+(CLI verbs, `send`/`read` MCP tools, `leg-bus` plugin profile). Early status;
+not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
+
+---
+
 ## spawn-glm (`scripts/telegram/spawn-glm.ts`, HIMMEL-654)
 
 **What:** Poller-free CLI that spawns an unattended GLM-lane Claude worker for
