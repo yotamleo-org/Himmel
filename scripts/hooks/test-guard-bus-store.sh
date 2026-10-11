@@ -111,6 +111,26 @@ deny "cwd is the himmel state dir + bounded bus/ token" "$(cwd_json 'cat bus/log
 allow "cwd is the himmel state dir, no bus token" "$(cwd_json 'ls' "$STATE_DIR")"
 allow "bus/ token under an ordinary cwd" "$(cwd_json 'cat bus/readme.txt' '/tmp')"
 
+echo "== trust-judge j2355b: continuations, bare bus token, in-command cd, XDG =="
+deny "backslash-newline continuation splits bus from the verb" \
+    "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role console \\\nregister legX')"
+deny "cwd state dir + grep -rh . bus" "$(cwd_json 'grep -rh . bus' "$STATE_DIR")"
+deny "cwd state dir + cp -r bus" "$(cwd_json 'cp -r bus /tmp/b' "$STATE_DIR")"
+deny "cwd state dir + find bus" "$(cwd_json 'find bus -type f' "$STATE_DIR")"
+deny "cwd state dir + tar cf - bus" "$(cwd_json 'tar cf - bus' "$STATE_DIR")"
+deny "in-command cd ~/.local/state/himmel then bus/" "$(bash_json 'cd ~/.local/state/himmel && cat bus/log/x.jsonl')"
+deny "in-command cd \$XDG_STATE_HOME/himmel then bus" "$(bash_json 'cd $XDG_STATE_HOME/himmel && tar cf - bus')"
+deny "in-command cd \${XDG_STATE_HOME}/himmel then bus" "$(bash_json 'cd ${XDG_STATE_HOME}/himmel && ls bus')"
+deny "XDG_STATE_HOME with a trailing slash, cwd is its himmel dir" \
+    "$(cwd_json 'ls bus' '/srv/xdg/himmel')" XDG_STATE_HOME=/srv/xdg/
+deny "XDG_STATE_HOME literal in the command, then bus" \
+    "$(bash_json 'cd /srv/xdg/himmel && cat bus/log/x.jsonl')" XDG_STATE_HOME=/srv/xdg/
+allow "in-command cd into the state dir with no bus token" "$(bash_json 'cd ~/.local/state/himmel && ls')"
+allow "bus send from an ordinary cwd" "$(cwd_json 'bus send console /tmp/b.txt --re 4' '/tmp')"
+allow "bus status from an ordinary cwd" "$(cwd_json 'bus status' '/tmp')"
+allow "residual: separator inside a quoted option value is not parsed" \
+    "$(bash_json 'bus --note "a;b" register legX')"
+
 echo "== allowed bus verbs =="
 allow "bus status" "$(bash_json 'bus status')"
 allow "bus status <name>" "$(bash_json 'bus status x')"

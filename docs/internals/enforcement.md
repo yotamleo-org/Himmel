@@ -5605,7 +5605,9 @@ tool-driven routes to forged or leaked bus state cost a denial; direct writes ar
 | Denied | Matched as |
 |---|---|
 | any Bash command that names the bus root (read or write) | `himmel/bus` followed by `/`, end of word or any char outside `[A-Za-z0-9_.-]` (so `himmel/bus.json` is not the root), and not preceded by `[A-Za-z0-9_-]`, in any spelling of the state home |
-| any Bash command whose `.cwd` is under the bus root, or is the himmel state dir while the command has a bounded `bus/` token | the payload `cwd` (text and `readlink -m`), so `cd`-free relative reads are caught |
+| any Bash command whose `.cwd` is under the bus root, or is the himmel state dir (`$XDG_STATE_HOME/himmel` normalised after appending `/himmel`) while the command has a bounded `bus` token with or without a slash (`grep -r . bus`, `tar cf - bus`) | the payload `cwd` (text and `readlink -m`); `bus status` run from the state dir is over-denied on purpose |
+| a command that names the state dir (`state/himmel`, `$XDG_STATE_HOME/himmel`, `${XDG_STATE_HOME}/himmel`) and a bounded `bus` token anywhere | closes the in-command `cd ~/.local/state/himmel && cat bus/log/x` form |
+| a `bus` call split over lines with backslash-newline | continuations are joined before the segment split |
 | a path spelled with `//` or `/./` (`himmel//bus`, `himmel/./bus`) | repeated slashes and `/./` are collapsed before matching |
 | `bus register`, `bus bind`, `bus rebind` | a bounded `bus` word, then a bounded verb later in the same segment (split on `;` `&` `|` newline), so `bin/bus register`, `bus --role leg register x`, `bus 'register' x` and `"bus" register x` count; `bus send c /tmp/register.txt` does not |
 | assigning `HIMMEL_BUS_*` (`X=1 cmd`, `export`, `env`) | `HIMMEL_BUS_<name>=`; reading one is not an assignment |
@@ -5622,10 +5624,15 @@ and never appears in a tool call. Suite: `scripts/hooks/test-guard-bus-store.sh`
 **Residual (text matching, not a shell parser):** an interpreter that assembles
 the path, a renamed copy of the CLI, `eval`, a script file that does the write, a
 `$(...)`-built path, a Bash command that goes through a symlink alias (only
-file-tool paths are resolved), a `cd` inside the same command followed by a
-relative path, a payload with no `jq` where only the raw root text is scanned,
-and the Read/Grep tools (not wired to this hook) all get past it. Conversely, a
-command that merely quotes the root (a `git grep`, a PR body) is denied. A same-uid process that re-chains the log is undetected until phase 2.
+file-tool paths are resolved; a symlinked payload `cwd` is HIMMEL-5206), a
+payload with no `jq` where only the raw root text is scanned, deliberate
+evasion of the split (a separator inside a quoted option value, the verb fed on
+stdin to `xargs`, the verb or path in a shell variable, `reg''ister`,
+`himmel/"bus"/`, `$S/bus`), and the Read/Grep tools (not wired to this hook) all
+get past it. Conversely the guard over-denies, in the safe direction: a command
+that merely quotes the root (a `git grep`, a PR body), a verb word after `bus`
+in the same segment (`bus send ... --summary "rebind done"`), and any `bus`
+token once the cwd or command names the state dir. A same-uid process that re-chains the log is undetected until phase 2.
 
 ### Hook-integrity pin: monotonic re-pin + anchor-tamper fence (HIMMEL-2528)
 

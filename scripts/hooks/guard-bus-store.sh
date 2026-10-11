@@ -46,6 +46,16 @@
 # (only file-tool paths are resolved), or the Read tool pointed at a log are not
 # caught. The Read and Grep tools are not wired to this hook. Same-uid tampering that re-chains is
 # undetected (phase 2's dedicated uid closes it).
+# Also not caught: deliberate evasion of the segment split or the bounded words
+# (a separator inside a quoted option value, the verb fed on stdin to xargs, the
+# verb or the store path held in a shell variable, a split word such as
+# reg''ister, `himmel/"bus"/`, `$S/bus`); a symlinked payload cwd (HIMMEL-5206).
+# Deliberately over-denied (the safe direction): a verb word anywhere after `bus`
+# in one segment (`bus send ... --summary "rebind done"`, `git commit -m "fix(bus):
+# register retry"`), and any `bus` token once the cwd or the command names the
+# himmel state dir (`bus status` run from it). Bypass flag below covers both.
+# Closed on purpose: backslash-newline continuations are joined before the split,
+# and an in-command `cd` into the state dir plus a bare `bus` token is denied.
 #
 # Bypass: BUS_STORE_GUARD_OK=1 in the LAUNCHING shell (session-sticky; a per-call
 # prefix does not reach this hook process). Needed to register or bind by hand
@@ -80,8 +90,13 @@ ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 # /tmp/register.txt is not a verb (a `/` or `.` before it is not a boundary).
 VERB_RE='(^|[^A-Za-z0-9_-])bus($|[^A-Za-z0-9_-])(.*[^A-Za-z0-9_./-])?(register|bind|rebind)($|[^A-Za-z0-9_.-])'
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
-BUSTOK_RE='(^|[^A-Za-z0-9_-])bus/'
+# A bounded bus token with or without a slash (`bus/log`, `grep -r . bus`,
+# `tar cf - bus`): only consulted once the cwd or the command names the state dir.
+BUSTOK_RE='(^|[^A-Za-z0-9_-])bus($|[^A-Za-z0-9_-])'
 STATE_RE='(^|/)state/himmel/?$'
+# The state dir named inside the command: ~/.local/state/himmel, $XDG_STATE_HOME/himmel
+# or ${XDG_STATE_HOME}/himmel (the literal XDG value is matched separately).
+STATECMD_RE='(state|XDG_STATE_HOME\}?)/himmel($|[^A-Za-z0-9_-])'
 
 # norm <string>: collapse repeated slashes and /./ so himmel//bus and himmel/./bus
 # match like himmel/bus. Pure bash, 3.2-safe.
@@ -114,8 +129,19 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name | strings' 2>/dev/null) || raw_s
 case "$tool" in
     Bash)
         cmd=$(printf '%s' "$input" | jq -er '.tool_input.command | strings' 2>/dev/null) || raw_scan
+        # Join backslash-newline continuations first: `bus \<nl> --role x \<nl>
+        # register y` is one command to the shell and must be one segment here.
+        bsnl=$'\\\n'
+        cmd=${cmd//"$bsnl"/ }
         cmd_n=$(norm "$cmd")
+        xdg_state=""
+        [ -n "${XDG_STATE_HOME:-}" ] && xdg_state=$(norm "${XDG_STATE_HOME}/himmel") && xdg_state=${xdg_state%/}
         [[ "$cmd" =~ $ROOT_RE || "$cmd_n" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
+        # In-command cd: the command names the state dir and a bounded bus token.
+        if [[ "$cmd_n" =~ $BUSTOK_RE ]]; then
+            [[ "$cmd_n" =~ $STATECMD_RE ]] && deny "the command names the himmel state dir and a bus token (relative store path)"
+            [ -n "$xdg_state" ] && [[ "$cmd_n" == *"$xdg_state"* ]] && deny "the command names the himmel state dir and a bus token (relative store path)"
+        fi
         # cwd indirection: a relative path is read against the payload cwd.
         cwd=$(printf '%s' "$input" | jq -er '.cwd | strings' 2>/dev/null) || cwd=""
         if [ -n "$cwd" ]; then
@@ -124,8 +150,8 @@ case "$tool" in
                 [ -n "$c" ] || continue
                 c_n=$(norm "$c")
                 [[ "$c_n/" =~ $ROOT_RE ]] && deny "the working directory is under the himmel-bus store"
-                if [[ "$c_n" =~ $STATE_RE ]] || { [ -n "${XDG_STATE_HOME:-}" ] && [ "$c_n" = "$(norm "$XDG_STATE_HOME")/himmel" ]; }; then
-                    [[ "$cmd_n" =~ $BUSTOK_RE ]] && deny "the working directory is the himmel state dir and the command names bus/ (relative store path)"
+                if [[ "$c_n" =~ $STATE_RE ]] || { [ -n "$xdg_state" ] && [ "${c_n%/}" = "$xdg_state" ]; }; then
+                    [[ "$cmd_n" =~ $BUSTOK_RE ]] && deny "the working directory is the himmel state dir and the command names a bus token (relative store path)"
                 fi
             done
         fi
