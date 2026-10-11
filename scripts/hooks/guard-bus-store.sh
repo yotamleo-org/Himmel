@@ -48,13 +48,18 @@
 # undetected (phase 2's dedicated uid closes it).
 # Also not caught: a separator inside a quoted option value, the verb fed on
 # stdin to xargs, the verb or the store path held in a shell variable
-# (`v=register; bus $v x`, `$S/bus`), and a symlinked payload cwd or a relative
-# file path against it (HIMMEL-5206).
+# (`v=register; bus $v x`, `$S/bus`: a bare expansion carries no literal
+# character to match), and a symlinked payload cwd or a relative file path
+# against it (all tracked under HIMMEL-5206).
 # Deliberately over-denied (the safe direction): a verb word anywhere after a
 # bus-able word in one segment (`bus send ... --summary "rebind done"`, `git
 # commit -m "fix(bus): register retry"`), a glob or expansion under `himmel/`
 # (`himmel/*`), and any word that can expand to `bus` (`*`, `b?s`, `$x`) once
 # the cwd or the command names the himmel state dir. The bypass flag covers all.
+# The verb side uses the same normaliser as the `bus` side: a word is verbish
+# when, with ANSI-C escapes and expansions turned into `*`, it glob-matches
+# register|bind|rebind and keeps at least one literal character
+# (`$'reg\x69ster'`, `reg$x`, `r?gister`, `re${x}ister`).
 # Closed by shape, not by spelling: backslash-newline continuations are joined
 # (the pair removed) before the split; quotes, backslashes and parens are
 # stripped per word; a word is bus-able when a path component glob-matches `bus`
@@ -104,7 +109,6 @@ ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
 # A component right under himmel/ that carries a glob or expansion character
 # (`himmel/b?s`, `himmel/b[u]s`, `himmel/$x`) may spell the bus root.
 GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
-VERBWORD_RE='(^|[^A-Za-z0-9_./-])(register|bind|rebind)($|[^A-Za-z0-9_.-])'
 
 # state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
 # so they must not count as a word that could expand to `bus`.
@@ -131,35 +135,85 @@ norm() {
     printf '%s' "$s"
 }
 
-# busish <word>: could this shell word be, or contain a path component that is,
-# the string `bus` once the shell has expanded it? Parens, quotes and
-# backslashes are dropped; an expansion (`${x}`, `$x`, `$'..'`, `{a,b}`) is
-# replaced by `*`; each path component is then matched as a glob against `bus`
-# (`b?s`, `b[u]s`, `b*s`, `bus`, `$x`). A word whose component is `bus.json` or
-# `himmel-bus` is not. Pure bash, 3.2-safe.
+# normword <word>: one normaliser for both sides (the `bus` word and the verb).
+# Sets NW to the word as a glob pattern and NW_UNK=1 when its value cannot be
+# known (a substitution the whitespace split cut open: `b$(printf u)s` arrives
+# as `b$(printf` and `u)s`; an unclosed `${`). Inside an ANSI-C span `$'..'`
+# the literal characters are kept and each backslash escape becomes `*`
+# (`$'reg\x69ster'` -> `reg*ster`); every other expansion (`${x}`, `$x`,
+# `$(..)`, backticks, `{a,b}`) becomes `*`; parens, quotes and backslashes are
+# then dropped. Pure bash, 3.2-safe.
 # shellcheck disable=SC2016  # regex text; nothing is meant to expand
-EXP_RE='(\$'"'"'[^'"'"']*'"'"'|\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
-busish() {
-    local w="$1" m p parts
+ANSIC_RE='\$'"'"'([^'"'"']*)'"'"
+ESC_RE='\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|.)'
+# shellcheck disable=SC2016  # regex text; nothing is meant to expand
+EXP_RE='(\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
+normword() {
+    local w="$1" m inner span
+    NW_UNK=0
+    while [[ "$w" =~ $ANSIC_RE ]]; do
+        span="${BASH_REMATCH[0]}"
+        inner="${BASH_REMATCH[1]}"
+        while [[ "$inner" =~ $ESC_RE ]]; do
+            m="${BASH_REMATCH[0]}"
+            inner=${inner/"$m"/"*"}
+        done
+        w=${w/"$span"/"$inner"}
+    done
     while [[ "$w" =~ $EXP_RE ]]; do
         m="${BASH_REMATCH[0]}"
         w=${w/"$m"/"*"}
     done
-    # A substitution the whitespace split cut open (`b$(printf u)s` arrives as
-    # `b$(printf` and `u)s`) or an unclosed `${`: its value is unknown, so the
-    # word may be anything, bus included. Fail closed instead of stripping it.
     # shellcheck disable=SC2016  # literal text patterns, nothing expands
     case "$w" in
-        *'$('*|*'`'*|*'<('*|*'>('*|*'${'*) return 0 ;;
+        *'$('*|*'`'*|*'<('*|*'>('*|*'${'*) NW_UNK=1 ;;
     esac
     w=${w//\(/}; w=${w//\)/}
-    w=${w//[\'\"\\]/}
-    IFS=/ read -ra parts <<< "$w"
+    NW=${w//[\'\"\\]/}
+}
+
+# A word with none of these characters has nothing to expand: it is busish iff
+# a path component is exactly `bus`, verbish iff it is exactly a verb.
+PLAIN_RE='[^[:alnum:]_./:=,@%+-]'
+
+# busish <word>: could this shell word be, or contain a path component that is,
+# the string `bus` once the shell has expanded it (`b?s`, `b[u]s`, `b*s`, `bus`,
+# `$x`)? A component such as `bus.json` or `himmel-bus` is not.
+busish() {
+    local p parts
+    if [[ ! "$1" =~ $PLAIN_RE ]]; then
+        case "$1" in bus|bus/*|*/bus|*/bus/*) return 0 ;; esac
+        return 1
+    fi
+    normword "$1"
+    [ "$NW_UNK" = 1 ] && return 0
+    IFS=/ read -ra parts <<< "$NW"
     [ "${#parts[@]}" -gt 0 ] || return 1
     for p in "${parts[@]}"; do
         [ -n "$p" ] || continue
         # shellcheck disable=SC2053  # the glob match is the point
         [[ bus == $p ]] && return 0
+    done
+    return 1
+}
+
+# verbish <word>: could this word be register|bind|rebind once expanded? The
+# whole word is glob-matched, and at least one literal character has to
+# survive, so a bare `$x` or `*` is not a verb (a verb held in a variable is the
+# documented residual, HIMMEL-5206). A leftover substitution opener is verbish.
+verbish() {
+    local lit v
+    if [[ ! "$1" =~ $PLAIN_RE ]]; then
+        case "$1" in register|bind|rebind) return 0 ;; esac
+        return 1
+    fi
+    normword "$1"
+    [ "$NW_UNK" = 1 ] && return 0
+    lit=${NW//[\*\?\[\]]/}
+    [ -n "$lit" ] || return 1
+    for v in register bind rebind; do
+        # shellcheck disable=SC2053  # the glob match is the point
+        [[ $v == $NW ]] && return 0
     done
     return 1
 }
@@ -178,18 +232,16 @@ cmd_busish() {
 }
 
 # verb_after_bus <text>: a segment with a busish word and, later in the same
-# segment, a word that is exactly register|bind|rebind (quotes and backslashes
-# dropped, so `reg''ister` counts). Options may sit between them.
+# segment, a verbish word. Options may sit between them.
 verb_after_bus() {
-    local seg word words v seen
+    local seg word words seen
     while IFS= read -r seg; do
         read -ra words <<< "$seg"
         [ "${#words[@]}" -gt 0 ] || continue
         seen=0
         for word in "${words[@]}"; do
-            v=${word//[\'\"\\\(\)\`]/}
             if [ "$seen" = 1 ]; then
-                case "$v" in register|bind|rebind) return 0 ;; esac
+                verbish "$word" && return 0
             fi
             busish "$word" && seen=1
         done
@@ -257,10 +309,7 @@ case "$tool" in
             done
         fi
         # Identity verbs, per segment (; & | newline).
-        # Cheap gate first: the word walk only runs when a verb word is present at all.
-        if [[ "$cmd_q" =~ $VERBWORD_RE ]]; then
-            verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
-        fi
+        verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
         [[ "$cmd" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
         ;;
     Edit|Write|MultiEdit|NotebookEdit)
