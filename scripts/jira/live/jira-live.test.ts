@@ -56,7 +56,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
 
   afterAll(() => {
     const failures = teardown.run();
-    if (failures.length) console.warn(`live teardown left behind:\n  ${failures.join('\n  ')}`);
+    if (failures.length) throw new Error(`live teardown left behind:\n  ${failures.join('\n  ')}`);
   });
 
   it('create: the issue exists and reads back its title', () => {
