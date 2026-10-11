@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # Suite for scripts/docs/check-llms-links.sh (HIMMEL-2832).
 #
 # Every case builds a throwaway git repo and points the script at it through
