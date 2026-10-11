@@ -1068,11 +1068,14 @@ bp_rc=0
 bp_files=$("$GH" api "repos/$nwo/pulls/$pr_num/files" --paginate \
     --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) || bp_rc=$?
 [ "$bp_rc" -eq 0 ] || bump_refuse "cannot list PR #$pr_num's files (gh api exit $bp_rc), so it is unknown whether it changes a plugin" "phase=files rc=$bp_rc"
-# Capture the first hit, never `| grep -q` under pipefail: an early exit
-# SIGPIPEs the producer and a large list would read as "no plugin file".
+# Match in-shell, never `| grep -q` / `| grep -m1` under pipefail: an early
+# exit SIGPIPEs the producer and a large list would read as "no plugin file".
 # The files endpoint stops at 3000 entries even paginated, so a list that
 # long may be truncated: run the check (it diffs the real range itself).
-bp_hit=$(printf '%s\n' "$bp_files" | grep -m1 '^marketplace/plugins/') || bp_hit=""
+bp_hit=""
+case $'\n'"$bp_files" in
+    *$'\n'marketplace/plugins/*) bp_hit=1 ;;
+esac
 bp_nlines=$(printf '%s\n' "$bp_files" | wc -l | tr -d ' ')
 if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     bp_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-bump.XXXXXX" 2>/dev/null) || bp_tmp=""

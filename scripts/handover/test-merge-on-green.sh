@@ -4142,6 +4142,11 @@ STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_P
 BP_BIG=$(jq -nc '[range(3000) | {filename: ("docs/f\(.).md")}]')
 STUB_PR_FILES_JSON="$BP_BIG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 23 "5188-g: a possibly truncated 3000-file list still runs the recheck → exit 23"
+# 5188-h — a plugin file FIRST in a long list must still be seen (an early-exit
+# grep under pipefail would SIGPIPE the producer and read as "no plugin file").
+BP_LONG=$(jq -nc '[{filename: "marketplace/plugins/himmel-ops/a.txt"}] + [range(2500) | {filename: ("docs/f\(.).md")}]')
+STUB_PR_FILES_JSON="$BP_LONG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5188-h: plugin file first in a 2501-file list is still found → exit 23"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
