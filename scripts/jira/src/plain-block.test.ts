@@ -36,6 +36,11 @@ describe('lintPlainBlock (HIMMEL-5226)', () => {
     expect(lintPlainBlock('```\n```not-a-close\n' + OK + '\n```')).toHaveLength(4);
   });
 
+  it('a hash run with no space is text, not a heading (HIMMEL-5226)', () => {
+    const noSpace = OK.replace(/^## /gm, '##');
+    expect(lintPlainBlock(noSpace)).toHaveLength(4);
+  });
+
   it('the template itself passes', () => {
     expect(lintPlainBlock(PLAIN_BLOCK_TEMPLATE)).toEqual([]);
   });

@@ -27,7 +27,7 @@ export type PlainVerdict = { action: 'ok' | 'warn' | 'refuse'; message: string }
 
 type Part = { heading: string; body: string };
 
-const HEADING = /^\s{0,3}#{1,6}\s*(.*?)\s*#*\s*$/;
+const HEADING = /^\s{0,3}#{1,6}(?:\s+(.*?))?\s*#*\s*$/;
 
 function canonical(h: string): string | undefined {
   const w = h.replace(/[:*_`]/g, '').trim().toLowerCase();
