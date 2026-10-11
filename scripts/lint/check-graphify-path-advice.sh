@@ -18,10 +18,23 @@
 # from the flagged line; in AGENTS.md regenerate with
 # `node scripts/agents-md/generate.mjs --write` rather than hand-editing.
 #
+# --strip <file> prints <file> with that clause removed. It is the ONE definition
+# of the carve-out: scripts/ci/test-check-claude-md-budget.sh Case H applies it
+# to the real installer's output before comparing, so the committed section is
+# "upstream-verbatim except the banned graphify path clause".
+#
 # Usage: check-graphify-path-advice.sh [repo-root]   (default: this checkout)
+#        check-graphify-path-advice.sh --strip <file>
 # Exit: 0 clean · 1 findings (path:line:match) · 2 cannot evaluate
 
+# shellcheck disable=SC2016  # literal backticks are the matched text
 set -uo pipefail
+
+if [ "${1:-}" = "--strip" ]; then
+    [ -f "${2:-}" ] || { echo "check-graphify-path-advice: --strip needs a file" >&2; exit 2; }
+    sed -E 's/ Use `graphify path[^`]*` for relationships and (`graphify explain)/ Use \1/' "$2"
+    exit $?
+fi
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${1:-$(cd "$SELF_DIR/../.." && pwd)}"

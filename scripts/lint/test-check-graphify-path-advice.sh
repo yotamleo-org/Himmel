@@ -60,6 +60,14 @@ r="$(mkrepo empty)"; put "$r" README.md "x"
 run "$r"
 if [ "$RC" -eq 0 ]; then pass "no instruction files -> exit 0"; else fail "no files -> rc=$RC: $OUT"; fi
 
+echo "== 6b. --strip removes only the banned clause =="
+printf '%s\n' "$ADV" > "$T/adv.md"; printf '%s\n' "$OK" > "$T/ok.md"
+if [ "$(bash "$LINT" --strip "$T/adv.md")" = "$OK" ] && [ "$(bash "$LINT" --strip "$T/ok.md")" = "$OK" ]; then
+    pass "--strip turns advice into the explain-only text and leaves clean text alone"
+else
+    fail "--strip output wrong: $(bash "$LINT" --strip "$T/adv.md")"
+fi
+
 echo "== 7. real tree =="
 run "$REPO_ROOT"
 if [ "$RC" -eq 0 ]; then pass "real tree clean"; else fail "real tree -> rc=$RC: $OUT"; fi
