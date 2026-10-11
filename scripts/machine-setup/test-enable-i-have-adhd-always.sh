@@ -2,6 +2,7 @@
 # test-enable-i-have-adhd-always.sh — HIMMEL-5239. Hermetic: every path is under
 # a mktemp dir passed as CLAUDE_CONFIG_DIR/HOME; the real HOME is never touched.
 # shellcheck disable=SC2015  # `A && ok || bad`: ok/bad never fail, so C cannot run after A is true
+# shellcheck disable=SC2016  # the wiring greps match literal `$script` / `$SCRIPT_DIR` text on purpose
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -64,8 +65,13 @@ out="$(run "$cfg" bash "$SCRIPT" --check)"
 [ ! -e "$TMP/decoy-home" ] && ok "HOME was never written" || bad "HOME decoy was written"
 
 # 8. wiring: both entry points call the helper
-grep -q 'enable-i-have-adhd-always.sh' "$ROOT/scripts/himmel-update.sh" && ok "himmel-update.sh calls the helper" || bad "himmel-update.sh not wired"
-grep -q 'enable-i-have-adhd-always.sh' "$ROOT/scripts/machine-setup/install-plugins.sh" && ok "install-plugins.sh calls the helper" || bad "install-plugins.sh not wired"
+fn="$(grep -A10 '^enable_adhd_always()' "$ROOT/scripts/himmel-update.sh")"
+grep -Eq 'script="\$ROOT/scripts/machine-setup/enable-i-have-adhd-always\.sh"' <<< "$fn" \
+    && grep -Eq '^[[:space:]]*bash "\$script" \|\| true' <<< "$fn" \
+    && grep -Eq '^[[:space:]]*bash "\$script" --check \|\| true' <<< "$fn" \
+    && ok "himmel-update.sh invokes the helper (apply and check)" || bad "himmel-update.sh not wired"
+grep -Eq '^[[:space:]]*bash "\$SCRIPT_DIR/enable-i-have-adhd-always\.sh"' "$ROOT/scripts/machine-setup/install-plugins.sh" \
+    && ok "install-plugins.sh invokes the helper" || bad "install-plugins.sh not wired"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
