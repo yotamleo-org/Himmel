@@ -1467,7 +1467,8 @@ echo "== HIMMEL-5159: redirect / tee to an inherited env value naming the lift =
 # The variable is set in the HOOK's environment only, as a leg launcher would.
 env_row() {  # label expect VAR=value command
     local rc got
-    printf '%s' "$(bash_json "$4")" | env "$3" bash "$HOOK" >/dev/null 2>&1
+    # shellcheck disable=SC2086  # $3 is one or more space-free VAR=value words
+    printf '%s' "$(bash_json "$4")" | env $3 bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected $2 got $got"; fi
@@ -1492,6 +1493,10 @@ env_row "5159 redirect 2> \$VAR (env=lift)"         deny  "LIFT_DEST=$LIFT" 'ech
 env_row "5159 tee \${VAR:-} (env=lift)"             deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "${LIFT_DEST:-}"'
 env_row "5159 tee \$VAR\$Z, Z unset (env=lift)"     deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "$LIFT_DEST$Z"'
 env_row "5159 tee indirect \${!R} (env=lift)"       deny  "LIFT_DEST=$LIFT" 'R=LIFT_DEST; echo "{}" | tee "${!R}"'
+env_row "5159 redirect > \$D/\$F split across vars"  deny  "D=$ST F=bank-lift.json" 'echo "{}" > "$D/$F"'
+env_row "5159 redirect > \${D}/\${F} split across vars" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${D}/${F}"'
+env_row "5159 tee \$D/\$F split across vars"         deny  "D=$ST F=bank-lift.json" 'echo "{}" | tee "$D/$F"'
+env_row "5159 redirect \$D/\$F (env=benign, ctrl)"   allow "D=/tmp F=out.txt" 'echo hi > "$D/$F"'
 env_row "5159 redirect \${OUT:-} (env=benign, ctrl)" allow "OUT=/tmp/out.txt" 'echo hi > "${OUT:-}"'
 env_row "5159 redirect \$TMPDIR/f (env=benign, ctrl)" allow "TMPDIR=/tmp" 'echo hi > "$TMPDIR/f"'
 env_row "5159 tee \${LOG}\${Z} (env=benign, ctrl)"  allow "LOG=/tmp/run.log" 'echo hi | tee "${LOG}${Z}"'

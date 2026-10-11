@@ -356,16 +356,21 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 # variable the environment does not carry are left to the existing rules.
 # shellcheck disable=SC2016  # literal ${ } spellings are matched as text
 _env_lift() {
-    local rest="$1" n v
+    local rest="$1" n v m exp=
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     case "$rest" in *'${!'*) return 0 ;; esac
     while [[ "$rest" =~ $re ]]; do
-        n="${BASH_REMATCH[1]}"
+        m="${BASH_REMATCH[0]}"; n="${BASH_REMATCH[1]}"
         v=$(printenv -- "$n" 2>/dev/null) || v=
         if [ -n "$v" ] && is_lift "$v"; then return 0; fi
-        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        exp="$exp${rest%%"$m"*}$v"
+        rest="${rest#*"$m"}"
+        case "$m" in '${'*) rest="${rest#\}}" ;; esac
     done
-    return 1
+    # The word with every reference replaced by its value: a lift path split
+    # across variables ($D/$F, D=<state dir>, F=bank-lift.json) names it too.
+    exp="$exp$rest"
+    [ "$exp" != "$1" ] && is_lift "$exp"
 }
 
 # ------------------------------------------------------------ file tools ---
