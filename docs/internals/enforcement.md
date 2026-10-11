@@ -1737,9 +1737,10 @@ leg's worktree for every hook-wiring change.
 words. Anything it does not fully model stays denied: an unknown escape, `\c`,
 an unterminated quote, a `${...}` beyond a plain name, a nested `env`. Because
 env splices the decoded words back into its own argv and getopt re-parses
-them, a decoded first word that is an env option (`-S`, `-C`, `-i`, `-u`,
-`--split-string`) or a `NAME=VALUE` assignment is also denied by shape, with no
-attempt to model env's options inside `-S` text. This over-denies the
+them, a first word (decoded or plain) that is an env option (`-S`, `-C`, `-i`,
+`-u`, `--split-string`) or a `NAME=VALUE` assignment is also denied by shape,
+with no attempt to model env's options inside `-S` text. The `-S` text is
+reached after env's own `-a`/`--argv0` argument as well. This over-denies the
 `PYTHONPATH=...` example in GNU's manual on purpose.
 
 **The Bash/PowerShell arm is textual and blunt (HIMMEL-1525, HIMMEL-3468,

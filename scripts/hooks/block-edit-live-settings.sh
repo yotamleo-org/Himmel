@@ -1310,7 +1310,7 @@ _wrapper_opt_arg() {
         |sudo:--chdir|sudo:--role|sudo:--type|sudo:--other-user \
         |sudo:--command-timeout|sudo:--chroot|sudo:--auth-type|sudo:--login-class \
         |doas:-u|doas:-c \
-        |env:-u|env:-c|env:-s|env:--unset|env:--chdir|env:--split-string \
+        |env:-u|env:-c|env:-s|env:-a|env:--unset|env:--chdir|env:--split-string|env:--argv0 \
         |timeout:-s|timeout:-k|timeout:--signal|timeout:--kill-after \
         |nice:-n|nice:--adjustment \
         |ionice:-c|ionice:-n|ionice:-p|ionice:-u|ionice:--class|ionice:--classdata \
@@ -3493,6 +3493,21 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                             # decoded and the decoded words are the body;
                             # what the decoder does not fully model (or a
                             # nested env) is refused fail-closed (HIMMEL-4521)
+                            # env re-parses the split words as its own argv, so
+                            # a first word that is an option or NAME=VALUE is
+                            # env's, not the command, whether or not the text
+                            # needed decoding (the decoder re-checks it)
+                            ifw=${ibw#"${ibw%%[![:space:]]*}"}
+                            ifw=${ifw%%[[:space:]]*}
+                            ifw=${ifw//[\'\"]/}
+                            case "$ifw" in
+                                -* | *=*)
+                                    if [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ]; then
+                                        deny_message "a $tool_name command" "$cmd" "env -S text whose first word is an env option or NAME=VALUE is re-parsed by env itself and is not judged, so it is refused fail-closed; run the command directly"
+                                        exit 2
+                                    fi
+                                    ;;
+                            esac
                             case "$ibw" in
                                 *\\* | *\$\{*)
                                     # a ${NAME} value is whatever env's own

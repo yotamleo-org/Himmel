@@ -3034,7 +3034,7 @@ for c in "env -S 'tee ~/.claude/sett\\x69ngs.json'" "env -S 'sh\\_-c\\_\"echo x 
         "$(bash_rc_of "$NESTED_WT" "$c" HOME="$FAKEHOME")"
     n=$((n + 1))
 done
-# 9530-9539 (HIMMEL-4521, J2374 #1): env splices the decoded words back into
+# 9530-9547 (HIMMEL-4521, J2374 #1 + ruling c/b): env splices the decoded words back into
 # its own argv and getopt re-parses them, so a decoded first word that is an
 # env option (-S, -C, -i, -u, --split-string) or a NAME=VALUE assignment is
 # refused by shape; env's options are not modelled inside -S text.
@@ -3049,11 +3049,23 @@ env -S '\-C\_~/.claude\_tee\_settings.json'
 env -S '\${HOME}=x\_echo\_a'
 env -S '-S\_"echo\_\${HOME}"'
 env -S '-C\_/tmp\_echo\_a\_b'
+env -S '-i echo a'
+env -S 'A=B echo a'
+env -S '-C /tmp echo a'
+env -S "'-i' echo a"
+env -a X -S '-i\_echo\_a\_b'
+env --argv0 X -S 'A=B\_echo\_a'
+env --argv0=X -S '-i\_echo\_a'
+env -a X -S '-i echo a'
 ROWS
-# 9540-9553 (HIMMEL-4521, J2374 #2): decoder coverage — the escapes v f #,
+# env -a / --argv0 take an argument, so the -S text after them is reached;
+# a harmless one after them still allows
+assert_rc "9591/wt env -a X -S decoded harmless allows" 0 \
+    "$(bash_rc_of "$NESTED_WT" "env -a X -S 'echo a\\_b'" HOME="$FAKEHOME")"
+# 9570-9577 (HIMMEL-4521, J2374 #2): decoder coverage — the escapes v f #,
 # a literal quote, a second allowlisted first word, the --split-string= and
 # -vS spellings, /usr/bin/env and `command env` on the decoded path.
-rows_both 9540 0 "env -S decoded harmless text (escapes, spellings, wrappers) allows" <<'ROWS'
+rows_both 9570 0 "env -S decoded harmless text (escapes, spellings, wrappers) allows" <<'ROWS'
 env -S 'echo a\vb\fc\#d'
 env -S "echo a\\'b"
 env -S 'printf ${HOME}'
@@ -3063,7 +3075,7 @@ env -vS 'echo a\_b'
 /usr/bin/env -S 'echo a\_b'
 command env -S 'echo a\_b'
 ROWS
-rows_both 9550 2 "env -S decoded tricky text (c in dquote, escape in squote, wrappers) denies" <<'ROWS'
+rows_both 9580 2 "env -S decoded tricky text (c in dquote, escape in squote, wrappers) denies" <<'ROWS'
 env -S 'echo "a\cb"'
 env -S "echo 'a\_b'"
 env --split-string='sh\_-c\_"echo x > ~/.claude/settings.json"'
@@ -3071,7 +3083,7 @@ env --split-string='sh\_-c\_"echo x > ~/.claude/settings.json"'
 command env -vS 'sh\_-c\_"echo x > ~/.claude/settings.json"'
 ROWS
 # the escape r in text, written as a CR byte by rows_both's own unescaping
-assert_rc "9560/wt env -S \\r escape allows" 0 \
+assert_rc "9590/wt env -S \\r escape allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "env -S 'echo a\\rb'" HOME="$FAKEHOME")"
 # 9440-9448 (HIMMEL-4394, J1909 B1): an extglob leaf with two or more groups
 # (`@(settings).js@(on)`, `@(settings)@(.json)`) under a live .claude denies.
