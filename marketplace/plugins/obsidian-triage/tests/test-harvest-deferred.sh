@@ -99,8 +99,10 @@ check("dry-run does not bump", "harvest_defer_count" not in p.read_text())
 # The count accumulates across runs and the 5th defer moves the clip to
 # needs-attention; the body is never touched.
 p = clip("five.md", "https://example.com/five", body="short.\n")
-for _ in range(5):
+for day in range(1, 6):  # HIMMEL-4680: one bump per calendar day, so five nights
+    mod.TODAY = f"2026-10-{day:02d}"
     g, msg, _ = mod.process_clip(p, dry_run=False)
+mod.TODAY = "2026-10-06"
 f = fm(p)
 check("5th defer -> needs-attention", f.get("harvest_defer_count") == "5"
       and f.get("harvest_needs_attention") == "true" and "needs-attention" in msg, msg + "\n" + p.read_text())
@@ -109,6 +111,28 @@ before = p.read_text()
 g, msg, _ = mod.process_clip(p, dry_run=False)
 check("needs-attention clip is skipped, not retried", g == "o" and "needs-attention" in msg
       and p.read_text() == before, msg)
+
+# HIMMEL-4680: re-runs on the same day bump the counter at most once.
+p = clip("sameday.md", "https://example.com/sameday")
+mod.TODAY = "2026-10-06"
+for _ in range(5):
+    g, msg, _ = mod.process_clip(p, dry_run=False)
+f = fm(p)
+check("five same-day runs bump once", f.get("harvest_defer_count") == "1"
+      and f.get("harvest_defer_last") == "2026-10-06"
+      and "harvest_needs_attention" not in f, p.read_text())
+check("same-day re-run still reports a deferred partial", g == "~" and "deferred 1/5" in msg, msg)
+mod.TODAY = "2026-10-07"
+mod.process_clip(p, dry_run=False)
+check("next day bumps again", fm(p).get("harvest_defer_count") == "2"
+      and fm(p).get("harvest_defer_last") == "2026-10-07", p.read_text())
+p = clip("nodate.md", "https://example.com/nodate",
+         extra="harvest_status: partial\nharvest_defer_count: 3\n")
+mod.TODAY = "2026-10-06"
+mod.process_clip(p, dry_run=False)
+mod.process_clip(p, dry_run=False)
+check("counter without a date bumps once and sets it", fm(p).get("harvest_defer_count") == "4"
+      and fm(p).get("harvest_defer_last") == "2026-10-06", p.read_text())
 
 # Batch level: deferred-only run exits 0, prints the deferred count and writes
 # the pending report; a needs-attention clip is listed, never dropped.

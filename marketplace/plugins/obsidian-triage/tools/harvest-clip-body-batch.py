@@ -1527,11 +1527,18 @@ def bump_defer(path: Path) -> int | None:
     if not ok:
         return None
     try:
-        n = int(fm.get("harvest_defer_count") or 0) + 1
+        prev = int(fm.get("harvest_defer_count") or 0)
     except ValueError:
-        n = 1
+        prev = 0
+    # HIMMEL-4680: one bump per calendar day, so manual same-day re-runs do not
+    # burn the five-night budget. A counter with no date bumps once and sets it.
+    day = TODAY or datetime.date.today().isoformat()
+    if prev and fm.get("harvest_defer_last") == day:
+        return prev
+    n = prev + 1
     pairs = [("harvest_status", "harvest_status: partial"),
-             ("harvest_defer_count", f"harvest_defer_count: {n}")]
+             ("harvest_defer_count", f"harvest_defer_count: {n}"),
+             ("harvest_defer_last", f"harvest_defer_last: {day}")]
     if n >= DEFER_ATTENTION_AFTER:
         pairs.append(("harvest_needs_attention", "harvest_needs_attention: true"))
     new_fm = insert_frontmatter_pairs(fm_raw, pairs)
