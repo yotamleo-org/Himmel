@@ -10,7 +10,7 @@ FAILS=0
 pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
-T="$(mktemp -d)" || exit 1
+T="$(mktemp -d "${TMPDIR:-/tmp}/leg-graph-test.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 P="$T/primary"
