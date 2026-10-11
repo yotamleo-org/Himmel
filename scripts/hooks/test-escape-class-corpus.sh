@@ -202,7 +202,7 @@ verdict() {
   json=$(jq -cn --arg c "$cmd" --arg d "$T/repo" \
     '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')
   # shellcheck disable=SC2086  # $envs is a deliberate blank-separated word list
-  out=$(printf '%s' "$json" | env -i HOME="$T/home" PATH="$PATH" TMPDIR="$T/tmp" \
+  out=$(cd "$T/repo" && printf '%s' "$json" | env -i HOME="$T/home" PATH="$PATH" TMPDIR="$T/tmp" \
     $envs bash "$HERE/$hook" 2>/dev/null)
   rc=$?
   case "$rc" in
@@ -249,7 +249,9 @@ $declared
 $h
 "*) ;; *) missing="$missing $h" ;; esac
 done
-if [ -n "$missing" ]; then
+if [ -z "$wired" ]; then
+  fail=$((fail+1)); echo "FAIL completeness: no Bash-matched hook read from $SETTINGS (missing, unparseable or empty)"
+elif [ -n "$missing" ]; then
   fail=$((fail+1)); echo "FAIL completeness: wired for Bash but absent from GUARDS:$missing"
 else
   pass=$((pass+1)); echo "PASS completeness: every Bash-matched guard is in GUARDS"
@@ -293,8 +295,8 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
     build "$line" "printf PAYLOAD_RAN" || continue
     case "$id" in
       zsh-*) command -v zsh >/dev/null 2>&1 || { echo "SKIP shape $id: zsh is not installed"; continue; }
-             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
-      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c "$BUILT" 2>/dev/null </dev/null) ;;
+             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
+      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R bash -c "$BUILT" 2>/dev/null </dev/null) ;;
     esac
     case "$got" in
       *PAYLOAD_RAN*) pass=$((pass+1)) ;;
@@ -304,8 +306,8 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
     build "$line" "ZZ_ASSIGN=1 printf PAYLOAD_RAN" || continue
     case "$id" in
       zsh-*) command -v zsh >/dev/null 2>&1 || continue
-             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
-      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c "$BUILT" 2>/dev/null </dev/null) ;;
+             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
+      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R bash -c "$BUILT" 2>/dev/null </dev/null) ;;
     esac
     case "$got" in *PAYLOAD_RAN*) ;; *) ASSIGN_SKIP="$ASSIGN_SKIP $id" ;; esac
   done <<EOF
