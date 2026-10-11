@@ -3327,6 +3327,10 @@ _bwimc_text_reads_data() {
 # `mapfile` / `readarray` (`read -r m < <(…)`).
 # ponytail: only an assignment in the same command is seen; a variable set in
 # an earlier call is not, same residual as every dynamic token, HIMMEL-5098.
+# ponytail: any `read`/`mapfile`/`readarray` that fills the variable counts,
+# whatever its source (a file, a pipe, a plain terminal read): the source is
+# not traced, so this fails closed wider than "filled from a data-reading
+# substitution". Narrowing it needs a source parse, HIMMEL-5098.
 _bwimc_body_var_from_data() {
     local rest="$1" full="$2" name seg line nl=$'\n'
     while [[ "$rest" =~ \$\{?([A-Za-z_][A-Za-z0-9_]*) ]]; do
