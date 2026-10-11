@@ -55,7 +55,7 @@ No bridge or transport wiring is installed by this package.
 `(name, pid, start time)`, written by the launcher under `peers/<name>.json`;
 `lib/identity.mjs` stamps a caller by its **nearest** claude ancestor whose bound
 `{pid, start}` matches (comm `claude`, `/proc` root injectable). A nested or
-pid-reused claude is `identity unbound`. Names are single-use; `bind` is once;
+pid-reused claude is `identity unbound`. Names are single-use once bound (re-registering a never-bound name with the same role, console, pair and predecessor is adopted, so a re-armed launch is not burned); `bind` is once;
 `rebind` only when the bound pid is gone; `adopt <new console>` (run as the leg)
 only when the old console is `gone` or its own record names the new one;
 `status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.

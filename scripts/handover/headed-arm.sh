@@ -563,7 +563,13 @@ unset HEADED_ARM_HEADLESS HEADED_ARM_LAUNCH_RECORD
 # and cleared, so the flag can never ride into the launched session's env.
 BUS_BIND="${HEADED_ARM_BUS:-0}"
 BUS_CLI="${HEADED_ARM_BUS_CLI:-$(dirname "$0")/../../marketplace/plugins/himmel-bus/bin/bus}"
-unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
+# HIMMEL-5207: the registry lock is `flock -x` with no -w, so a stuck holder
+# would hang this detached process. The bind gets this many seconds, then dies.
+BUS_BIND_SECS="${HEADED_ARM_BUS_BIND_SECS:-15}"
+case "$BUS_BIND_SECS" in
+    ''|*[!0-9]*) BUS_BIND_SECS=15 ;;
+esac
+unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HEADED_ARM_BUS_BIND_SECS
 SESSION_PID=""
 # HIMMEL-2975 (renamed HIMMEL-3133): a console session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
@@ -1653,8 +1659,30 @@ if [ "$sv_seen" -eq 1 ]; then
     # registered. Best-effort: a failed bind leaves the session unbound (bus
     # send refused, tick shows bus=unbound) and never changes the launch result.
     if [ "$BUS_BIND" = "1" ] && [ -n "$SESSION_PID" ]; then
-        bus_out="$("$BUS_CLI" bind "$NAME" "$SESSION_PID" 2>&1)" \
-            || echo "$(date +%F_%T) WARN: bus bind of $NAME to pid $SESSION_PID failed - session stays unbound: $bus_out" >> "$LOG"
+        # Background + poll, not `timeout`: portable to bash 3.2 / macOS, and
+        # the output goes to a file so no pipe is held open by a stuck child.
+        bus_tmp="$(mktemp 2>/dev/null)" || bus_tmp=/dev/null
+        "$BUS_CLI" bind "$NAME" "$SESSION_PID" >"$bus_tmp" 2>&1 &
+        bus_pid=$!
+        bus_n=0
+        bus_timed_out=0
+        while kill -0 "$bus_pid" 2>/dev/null; do
+            if [ "$bus_n" -ge "$BUS_BIND_SECS" ]; then
+                kill "$bus_pid" 2>/dev/null
+                bus_timed_out=1
+                break
+            fi
+            sleep 1
+            bus_n=$((bus_n + 1))
+        done
+        bus_rc=0
+        wait "$bus_pid" 2>/dev/null || bus_rc=$?
+        if [ "$bus_timed_out" -eq 1 ] || [ "$bus_rc" -ne 0 ]; then
+            bus_out="$(cat "$bus_tmp" 2>/dev/null)"
+            [ "$bus_timed_out" -eq 1 ] && bus_out="timed out after ${BUS_BIND_SECS}s: $bus_out"
+            echo "$(date +%F_%T) WARN: bus bind of $NAME to pid $SESSION_PID failed - session stays unbound: $bus_out" >> "$LOG"
+        fi
+        [ "$bus_tmp" = /dev/null ] || rm -f "$bus_tmp"
     fi
     exit 0
 fi

@@ -2222,4 +2222,29 @@ wait_record "$dbbc" || true
 check "bbe failed bind: launch still exits 0" "$rcbbc" "0"
 contains "bbf failed bind: warned into the arm log" "$(cat "$dbbc/log" 2>/dev/null)" "bus bind of HIMMEL-busbbc to pid 9001 failed"
 
+# --- bg (HIMMEL-5207): a bind that hangs (a stuck registry lock: flock -x with no
+# -w) is bounded by HEADED_ARM_BUS_BIND_SECS; the launch result is unchanged and
+# the timeout is warned into the arm log. The stub stands in for the stuck lock.
+dbg="$tmp/cbg"; mk_stub "$dbg" 1 alive "HIMMEL-busbg"
+cat > "$dbg/bus" <<'BUS_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/bus-calls"
+exec sleep 60
+BUS_EOF
+chmod 755 "$dbg/bus"
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbg/bus" HEADED_ARM_BUS_BIND_SECS=2 \
+  run_headed_arm "$dbg" "$REPO" "HIMMEL-busbg" "docbg.md" "$dbg/signal-never" "$PAST" >/dev/null 2>&1 &
+pidbg=$!
+nbg=0
+while kill -0 "$pidbg" 2>/dev/null && [ "$nbg" -lt 150 ]; do sleep 0.1; nbg=$((nbg+1)); done
+if kill -0 "$pidbg" 2>/dev/null; then
+  hungbg=yes; kill "$pidbg" 2>/dev/null; pkill -f "$dbg/bus" 2>/dev/null || true
+else
+  hungbg=no
+fi
+rcbg=0; wait "$pidbg" 2>/dev/null || rcbg=$?
+check "bgg hung bind: headed-arm.sh returns within 15s" "$hungbg" "no"
+check "bgh hung bind: launch exit 0 (fail-open)" "$rcbg" "0"
+contains "bgi hung bind: timeout warned into the arm log" "$(cat "$dbg/log" 2>/dev/null)" "bus bind of HIMMEL-busbg to pid 9001 failed"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

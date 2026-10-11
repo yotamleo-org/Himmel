@@ -66,6 +66,19 @@ test('T1.3 second bind and re-register are refused', async t => {
   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'leg' });
 });
 
+test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bound one is refused (HIMMEL-5207)', async t => {
+  const { root } = await fixture(t);
+  const proc = await fakeProc(t, chain);
+  await identity.register(root, 'con', { role: 'console' });
+  const first = await identity.register(root, 'leg', { role: 'leg', console: 'con' });
+  const again = await identity.register(root, 'leg', { role: 'leg', console: 'con' });
+  assert.deepEqual(again, first);
+  await assert.rejects(identity.register(root, 'leg', { role: 'leg', console: 'other' }), /already registered/);
+  await assert.rejects(identity.register(root, 'leg', { role: 'judge', console: 'con' }), /already registered/);
+  await identity.bind(root, 'leg', 200, { proc });
+  await assert.rejects(identity.register(root, 'leg', { role: 'leg', console: 'con' }), /already registered/);
+});
+
 test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
   const { root } = await fixture(t);
   const proc = await fakeProc(t, chain);
@@ -239,11 +252,13 @@ test('CLI: register, bind, status, peers, rebind against real processes', async 
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { env, encoding: 'utf8' });
   assert.equal(run('register', 'con', '--role', 'console').status, 0);
   assert.equal(run('register', 'leg', '--role', 'leg', '--console', 'con').status, 0);
-  assert.notEqual(run('register', 'leg', '--role', 'leg', '--console', 'con').status, 0);
+  assert.equal(run('register', 'leg', '--role', 'leg', '--console', 'con').status, 0);
+  assert.notEqual(run('register', 'leg', '--role', 'leg', '--console', 'other').status, 0);
   assert.notEqual(run('register', 'bad', '--role', 'wizard').status, 0);
   const child = spawn('sleep', ['30']);
   t.after(() => child.kill());
   assert.equal(run('bind', 'leg', String(child.pid)).status, 0);
+  assert.notEqual(run('register', 'leg', '--role', 'leg', '--console', 'con').status, 0);
   assert.notEqual(run('bind', 'leg', String(child.pid)).status, 0);
   assert.equal(run('status', 'leg').stdout.trim(), 'live');
   assert.notEqual(run('rebind', 'leg', String(process.pid)).status, 0);

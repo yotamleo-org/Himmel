@@ -83,7 +83,11 @@ export async function loadPeers(root) {
   return peers;
 }
 
-// Names are single-use: the exclusive link() fails if the name ever existed.
+// Names are single-use once bound: the exclusive link() fails if the name ever
+// existed. The one idempotent case is a re-arm after a refused launch
+// (HIMMEL-5207): an entry that was registered but never bound, with the same
+// role, console, pair and predecessor, is adopted instead of refused - it has
+// no pid, so nothing can resolve to it and re-registering grants nothing new.
 export async function register(root, name, { role, console: owner, pair, predecessor } = {}) {
   checkName(name);
   if (!ROLES.includes(role)) throw new Error(`invalid role: ${role} (one of ${ROLES.join('|')})`);
@@ -95,7 +99,13 @@ export async function register(root, name, { role, console: owner, pair, predece
   if (predecessor) peer.predecessor = predecessor;
   const path = await temp(root, name, peer);
   try { await link(path, peerFile(root, name)); }
-  catch (error) { throw error.code === 'EEXIST' ? new Error(`name already registered: ${name}`) : error; }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const held = await readPeer(root, name);
+    const same = ['role', 'console', 'pair', 'predecessor'].every(key => held?.[key] === peer[key]);
+    if (held && held.pid === undefined && same) return held;
+    throw new Error(`name already registered: ${name}`);
+  }
   finally { await unlink(path).catch(() => {}); }
   return peer;
 }
