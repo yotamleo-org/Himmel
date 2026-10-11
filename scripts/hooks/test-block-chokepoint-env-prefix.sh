@@ -2208,6 +2208,64 @@ assert_allow "4402 control: sort --check keeps relief" "$(j "unset HIMMEL_CONSOL
 assert_allow "4402 control: git grep with listed options keeps relief" "$(j "unset HIMMEL_CONSOLE_LEG; git grep -n --count needle -- '$OBF'")"
 assert_allow "4402 control: continuation with no option keeps relief"  "$(j "unset HIMMEL_CONSOLE_LEG; git grep \"\$(printf needle)\" -- '$OBF'")"
 
+# --- HIMMEL-5197 (follow-ups of 2346): (1) -x/-X/-O void relief only where the
+# short option runs a program (git -O, find -exec/-ok/-fprint/-fls), not for
+# readers where -x/-X are line-regexp / exclude-from; an unlisted command still
+# fails closed. (2) the option screen splits with globbing off, so a file in the
+# hook cwd cannot rewrite a glob-looking option word before it is read.
+for F in "grep -x needle -- '$OBF'" \
+         "grep -xn needle -- '$OBF'" \
+         "rg -x needle -- '$OBF'" \
+         "printf needle | rg -x x -- '$OBF'" \
+         "ls -x -- '$OBF'" \
+         "ls -X -- '$OBF'" \
+         "diff -x '*.o' a -- '$OBF'" \
+         "du -x -- '$OBF'" \
+         "grep -x \"\$(printf needle)\" -- '$OBF'" \
+         "git ls-files -x '*.o' -- '$OBF'"; do
+    assert_allow "5197 reader short option keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+for F in "git grep -O'$OBF' needle" \
+         "git grep -nO '$OBF' needle" \
+         "find . -exec '$OBF' {} +" \
+         "find . -execdir '$OBF' {} +" \
+         "find . -ok '$OBF' {} ;" \
+         "find . -fprint '$OBF'" \
+         "find . -name x \"\$(printf y)\" -exec '$OBF' {} +" \
+         "xargs -x '$OBF'" \
+         "perl -x '$OBF'" \
+         "unknowncmd -x '$OBF'"; do
+    assert_deny "5197 executing short option still voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+# Item 2: every caller already holds set -f around pobf_relief, so the hook
+# cannot show it; pobf_xopt is exercised directly (extracted, globbing ON) with
+# a file named -O planted in cwd: `-?` globs to it. rc 1 = no void (the literal
+# word was screened); rc 0 would mean the glob was expanded first.
+XOPT_SRC=$(mktemp) || exit 1; GLOBDIR=$(mktemp -d) || exit 1
+awk '/^POBF_GIT_SAFE=/{p=1} p{print} /^pobf_xopt_scan\(\)/{q=1} q&&/^}/{exit}' "$HOOK" > "$XOPT_SRC"
+: > "$GLOBDIR/-O"
+xopt_probe() {  # xopt_probe <mode: on|off> <command> <stage text> -> "<rc> <f-flag-after>"
+    bash -c '
+        . "$1"; cd "$2" || exit 9
+        [ "$3" = off ] && set -f || set +f
+        pobf_xopt "$4" "$5"; rc=$?
+        case $- in *f*) f=off ;; *) f=on ;; esac
+        echo "$rc $f"' _ "$XOPT_SRC" "$GLOBDIR" "$1" "$2" "$3"
+}
+CASES=$((CASES + 1))
+R=$(xopt_probe on git "git grep -n needle -?")
+if [ "$R" = "1 on" ]; then echo "PASS 5197 pobf_xopt reads the literal -? with a -O file planted (globbing restored on)"
+else echo "FAIL 5197 pobf_xopt glob screen: got '$R', want '1 on'"; FAILED=$((FAILED + 1)); fi
+CASES=$((CASES + 1))
+R=$(xopt_probe on git "git grep -O needle")
+if [ "$R" = "0 on" ]; then echo "PASS 5197 pobf_xopt void return restores globbing"
+else echo "FAIL 5197 pobf_xopt void return: got '$R', want '0 on'"; FAILED=$((FAILED + 1)); fi
+CASES=$((CASES + 1))
+R=$(xopt_probe off git "git grep -n needle -?")
+if [ "$R" = "1 off" ]; then echo "PASS 5197 pobf_xopt leaves a caller's set -f in place"
+else echo "FAIL 5197 pobf_xopt caller set -f: got '$R', want '1 off'"; FAILED=$((FAILED + 1)); fi
+rm -rf "$GLOBDIR" "$XOPT_SRC"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"

@@ -1181,7 +1181,35 @@ POBF_GIT_SAFE=' --oneline --stat --name-only --name-status --no-color --color --
 # is a usage error, so failing closed on every prefix is safe). ripgrep does not
 # abbreviate; its exact --pre match stays in the stage classifier.
 POBF_XOPT_LONG='open-files-in-pager pager paginate exec ext-diff textconv output upload-pack receive-pack pre compress editor config-env'
+# pobf_xshort <command> <word> -- HIMMEL-5197: rc 0 when a short-option word
+# runs a program for that command. -O/-x/-X run one only for git grep -O
+# (--open-files-in-pager) and the find -exec family; for a reader they are
+# line-regexp / exclude-from / sort-by-extension, so relief stands. Man pages:
+# grep egrep fgrep (-x -X), rg (-x), ls (-x -X), diff (-x -X), du (-x -X), file
+# (-X), test and [ (-x -O are tests), rm (-x); the other listed readers have no
+# -O/-x/-X that runs anything. An unlisted command keeps the old screen.
+# ponytail: the reader list is a closed allowlist; a reader missing from it
+# keeps the old -O/-x/-X void (over-deny, never under-deny), HIMMEL-5197.
+pobf_xshort() {
+    case "$1" in
+        git) [[ $2 =~ ^-[^-]*O ]] ;;
+        find) case "$2" in -exec*|-ok*|-fprint*|-fls*) return 0 ;; *) return 1 ;; esac ;;
+        ls|cat|grep|egrep|fgrep|head|tail|wc|echo|diff|uniq|cut|stat|file|du|jq|basename|dirname|realpath|readlink|tr|column|nl|tac|rev|fold|fmt|paste|rm|test|'['|printf|sort|rg) return 1 ;;
+        *) [[ $2 =~ ^-[^-]*[OxX] ]] ;;
+    esac
+}
+# The option screen splits stage text with pathname expansion off, so it reads
+# literal tokens, never cwd files; the caller's setting is restored on every
+# return path (the scan has several).
 pobf_xopt() {
+    local rc fl=1
+    case $- in *f*) fl=0 ;; esac
+    set -f
+    pobf_xopt_scan "$@" && rc=0 || rc=$?
+    [ "$fl" = 1 ] && set +f
+    return "$rc"
+}
+pobf_xopt_scan() {
     local w n p
     for w in $2; do
         if [[ $w == --* ]]; then
@@ -1200,7 +1228,7 @@ pobf_xopt() {
             --open-files-in-pager*|--pager*|--paginate*|--exec*|--ext-diff*|--textconv*|--output*|--upload-pack*|--receive-pack*|--pre|--pre=*|--compress*|--editor*|--config-env*) return 0 ;;
             --*) [ "$1" = git ] || continue
                  case "$POBF_GIT_SAFE" in *" ${w%%=*} "*) ;; *) return 0 ;; esac ;;
-            -*) [[ $w =~ ^-[^-]*[OxX] ]] && return 0 ;;
+            -*) pobf_xshort "$1" "$w" && return 0 ;;
         esac
     done
     return 1
