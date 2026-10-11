@@ -25,4 +25,6 @@ himmel-run jira \
   -- node $CLAUDE_PROJECT_DIR/scripts/jira/dist/index.js create --type "$1" --title "$2" "${@:3}"
 ```
 
+The description must open with the plain `## Impact` / `## What` / `## Why` block followed by `## Agent detail` (HIMMEL-5226). `create` refuses a body without it, except `Epic` and `Subtask`, which only warn; pass it with `--desc` or `--desc-file`.
+
 Pass `--attach <path>` (repeatable) through after `$2`. The CLI uploads each file after issue creation and prints `Created KEY (attachments: N)`.

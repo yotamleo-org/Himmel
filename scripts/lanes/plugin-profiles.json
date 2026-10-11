@@ -58,7 +58,12 @@
     "lean-skills@himmel",
     "i-have-adhd@himmel"
   ],
+  "_comment_himmel_bus": "HIMMEL-5223 / HIMMEL-5222: himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. The path is relative to the leg's cwd, a himmel worktree (ponytail: a leg started outside a himmel checkout cannot start it, upgrade path HIMMEL-4830 packaging). `npm --prefix` runs the plugin's own `start` script, which installs the locked deps once and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
   "mcpCatalog": {
+    "himmel-bus": {
+      "command": "npm",
+      "args": ["--prefix", "marketplace/plugins/himmel-bus", "run", "--silent", "start"]
+    },
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@0.0.83"]
@@ -287,6 +292,17 @@
       "contextMode": "standard",
       "autocompact": 200000,
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged legs in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
+    },
+    "leg-bus": {
+      "gateAllow": true,
+      "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. Everything else is leg-impl's: same plugins, same gateAllow, same budget.",
+      "enable": [
+        "pr-review-toolkit-himmel@himmel"
+      ],
+      "mcpServers": ["qmd", "himmel-bus"],
+      "contextBudget": 35000,
+      "contextMode": "standard",
+      "autocompact": 200000
     },
     "leg-e2e": {
       "gateAllow": true,

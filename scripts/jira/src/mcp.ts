@@ -12,6 +12,7 @@ import { formatTransitions } from './commands/transitions.js';
 import { buildEditFields } from './commands/edit.js';
 import { parseLabels } from './commands/labels.js';
 import { uploadAll } from './commands/attach-helper.js';
+import { lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict } from './plain-block.js';
 import type {
   JiraIssue,
   JiraSearchResult,
@@ -129,17 +130,24 @@ export function createTools(): JiraTool[] {
           summary: args.title,
           issuetype: { name: args.type },
         };
+        let found: string[];
         if (args.adfFile) {
-          fields['description'] = JSON.parse(
-            readFileSync(args.adfFile as string, 'utf8'),
-          );
+          const adf = JSON.parse(readFileSync(args.adfFile as string, 'utf8'));
+          fields['description'] = adf;
+          found = lintPlainBlockAdf(adf);
         } else if (args.descFile) {
-          fields['description'] = markdownToAdf(
-            readFileSync(args.descFile as string, 'utf8'),
-          );
+          const md = readFileSync(args.descFile as string, 'utf8');
+          fields['description'] = markdownToAdf(md);
+          found = lintPlainBlock(md);
         } else if (args.desc) {
           fields['description'] = markdownToAdf(args.desc as string);
+          found = lintPlainBlock(args.desc as string);
+        } else {
+          found = lintPlainBlock('');
         }
+        // HIMMEL-5226: same plain Impact/What/Why rule as the CLI create.
+        const verdict = plainBlockVerdict(args.type as string, found);
+        if (verdict.action === 'refuse') throw new Error(verdict.message);
         if (args.parent) fields['parent'] = { key: args.parent };
         if (args.labels !== undefined) {
           fields['labels'] = parseLabels(args.labels as string);

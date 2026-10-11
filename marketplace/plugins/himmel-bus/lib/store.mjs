@@ -13,24 +13,31 @@ async function info(path) {
   try { return await lstat(path); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
-async function directory(path, privateMode = true) {
+// kind 'private': himmel/bus and below, own uid and exactly 0700. kind
+// 'shared': the XDG state home and himmel/, which other tools use too; owned by
+// this uid or root and not group- or other-writable (HIMMEL-5221).
+async function directory(path, kind = 'private') {
   const stat = await info(path);
   if (!stat?.isDirectory() || stat.isSymbolicLink()) throw new Error(`symlink or non-directory: ${path}`);
-  if (privateMode && (stat.uid !== process.getuid() || (stat.mode & 0o777) !== 0o700)) throw new Error(`unsafe directory permissions: ${path}`);
+  if (kind === 'private' && (stat.uid !== process.getuid() || (stat.mode & 0o777) !== 0o700)) throw new Error(`unsafe directory permissions: ${path}`);
+  if (kind === 'shared' && ((stat.uid !== process.getuid() && stat.uid !== 0) || (stat.mode & 0o022) !== 0)) throw new Error(`unsafe directory permissions: ${path}`);
 }
 
 export async function busRoot({ stateHome = process.env.XDG_STATE_HOME || join(homedir(), '.local/state') } = {}) {
   if (!stateHome.startsWith('/')) throw new Error('state home must be absolute');
   const root = join(resolve(stateHome), 'himmel/bus');
+  const home = resolve(stateHome);
   let path = parse(root).root;
   for (const part of root.slice(path.length).split('/')) {
     path = join(path, part);
     const stat = await info(path);
     if (stat?.isSymbolicLink()) throw new Error(`symlink: ${path}`);
     if (!stat) await mkdir(path, { mode: 0o700 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
-    // Shared ancestors (e.g. /tmp, /home) need not be private. The XDG
-    // state directory and bus-owned directories must be private and owned.
-    await directory(path, path === resolve(stateHome) || path.startsWith(resolve(stateHome) + '/'));
+    // Ancestors above the XDG state home (e.g. /tmp, /home) are not checked.
+    // The state home and himmel/ are shared with other tools: owned and not
+    // group/other-writable. Only himmel/bus and below must be private.
+    const inside = path === home || path.startsWith(home + '/');
+    await directory(path, path === root ? 'private' : inside ? 'shared' : 'none');
     if (await info(join(path, '.git'))) throw new Error(`bus root inside a git work tree: ${path}`);
   }
   for (const name of ['peers', 'log', 'cur', 'ack', 'lock']) {
@@ -51,8 +58,8 @@ async function paths(root, name) {
     if (dirname(path) === path) break;
     path = dirname(path);
   }
-  await directory(dirname(dirname(root)));
-  await directory(dirname(root));
+  await directory(dirname(dirname(root)), 'shared');
+  await directory(dirname(root), 'shared');
   await directory(root);
   for (const dir of ['log', 'cur', 'lock']) await directory(join(root, dir));
   return { file: join(root, 'log', name + '.jsonl'), cursor: join(root, 'cur', name), lock: join(root, 'lock', name) };

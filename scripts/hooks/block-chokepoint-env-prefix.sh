@@ -1103,8 +1103,42 @@ pobf_word() {
 
 # pobf_tok -- pobf_relief's helper: close the quoted body into a token.
 pobf_tok() {
-    if [ -n "$body" ]; then TOK[n]=$body; F="$F$T1$n$T1"; n=$((n + 1)); fi
+    if [ -n "$body" ]; then TOK[n]=$body; TK[n]=$q; F="$F$T1$n$T1"; n=$((n + 1)); fi
     body=''
+}
+
+# pobf_rgshape <raw stage> -- HIMMEL-5210: rc 0 when an rg argv word is not
+# plain literal text. Words wholly inside single quotes stay literal; any other
+# word with a backslash, a dollar sign (variable, ANSI-C quote), a backtick, a
+# leading tilde, a glob or brace char, or a double-quoted body with an
+# expansion can BUILD --pre / --hostname-bin at run time, so relief is void.
+# A command substitution or backtick body is split into its own stage, so this
+# screen never sees it: the caller voids relief for a stage that continues an
+# interrupted one. TOK and TK hold the quote tokens of the line being scanned
+# (pobf_relief's locals, read by dynamic scope).
+pobf_rgshape() {
+    local r=$1 o='' pre k w rc=1 fl=1 T1=$'\001'
+    while :; do
+        case "$r" in *"$T1"*"$T1"*) ;; *) break ;; esac
+        pre=${r%%"$T1"*}; r=${r#*"$T1"}; k=${r%%"$T1"*}; r=${r#*"$T1"}
+        o="$o$pre"
+        case "${TK[k]-}" in
+            S) o="${o}x" ;;
+            D) case "${TOK[k]}" in *[\\\$\`]*) return 0 ;; esac; o="${o}x" ;;
+            A) return 0 ;;
+            *) o="$o " ;;
+        esac
+    done
+    o="$o$r"
+    case $- in *f*) fl=0 ;; esac
+    set -f
+    for w in ${o//[<>]/ }; do
+        case "$w" in
+            *\\*|*\$*|*\`*|'~'*|*[\*\?\[\{\}]*) rc=0; break ;;
+        esac
+    done
+    [ "$fl" = 1 ] && set +f
+    return "$rc"
 }
 
 # pobf_exp <text> <mode> -- pobf_relief's helper: put the token bodies back
@@ -1225,13 +1259,43 @@ pobf_xopt_scan() {
             # readings do not model (`--pr\e` is `--pre` to bash): void, fail-closed.
             -*\\*|-*\'*|-*\"*) return 0 ;;
             --) ;;  # not a stop: `-e --` makes it an option ARGUMENT, options still follow
-            --open-files-in-pager*|--pager*|--paginate*|--exec*|--ext-diff*|--textconv*|--output*|--upload-pack*|--receive-pack*|--pre|--pre=*|--compress*|--editor*|--config-env*) return 0 ;;
+            --open-files-in-pager*|--pager*|--paginate*|--exec*|--ext-diff*|--textconv*|--output*|--upload-pack*|--receive-pack*|--pre|--pre=*|--hostname-bin|--hostname-bin=*|--compress*|--editor*|--config-env*) return 0 ;;
             --*) [ "$1" = git ] || continue
                  case "$POBF_GIT_SAFE" in *" ${w%%=*} "*) ;; *) return 0 ;; esac ;;
             -*) pobf_xshort "$1" "$w" && return 0 ;;
         esac
     done
     return 1
+}
+# pobf_xglob <raw stage text> -- HIMMEL-5210: rc 0 (void relief) when an
+# UNQUOTED word can expand into an option word the screen above never saw:
+# brace expansion (`{--hostname-bin,CMD}`) or a glob matching a file named like
+# the option (`--hostname-bi[n]`). Judged on the raw stage text, where a quoted
+# body is already an opaque token, so `--glob '*.md'` and `--glob=*.md` stay
+# relieved. Fail-closed on a word that starts with { [ ? * , starts with - and
+# carries one before its first =, or holds a { followed by - (or by - after a
+# comma). The bare shell words [ ] { } [[ ]] are not words that expand.
+# ponytail: any stage with relief and such a word is over-denied (it only
+# matters when the command already names an obfuscated path), HIMMEL-5210:
+# a non-rg reader whose word STARTS with a glob (ls *.md) is denied too, while
+# a mid-word glob (grep -r x src/*) keeps relief; the ceiling is one quoted
+# glob, the upgrade path a screen that resolves the glob against the cwd. rg
+# stages additionally get pobf_rgshape.
+pobf_xglob() {
+    local w n rc=1 fl=1
+    case $- in *f*) fl=0 ;; esac
+    set -f
+    for w in ${1//[<>]/ }; do
+        case "$w" in '['|']'|'{'|'}'|'[['|']]') continue ;; esac
+        n=${w%%=*}
+        case "$w" in
+            '{'*|'['*|'?'*|'*'*) rc=0; break ;;
+        esac
+        if [[ $n =~ ^-.*[\{\[?*] ]]; then rc=0; break; fi
+        if [[ $w =~ \{(-|[^}]*,-) ]]; then rc=0; break; fi
+    done
+    [ "$fl" = 1 ] && set +f
+    return "$rc"
 }
 
 # Every command name pobf_relief gives relief to (plus sed/awk, which lost
@@ -1287,7 +1351,7 @@ POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du
 pobf_relief() {
     local t="$1" F='' L rest q md=U body='' n=0 hn=0 hi=0 hb='' cmp i j k c c2 w s x cls nf ostk bqi sub=0 bq=0 stack='' ap wr=0
     local PX p tl rd=0 ea sa eo=${2-} z xr cx
-    local -a TOK HD HDASH HQ HIX ST SP SS CL CW C2 FL CO XP ED
+    local -a TOK TK HD HDASH HQ HIX ST SP SS CL CW C2 FL CO XP ED
     local SQ="'" DQ='"' BQ='`' T1=$'\001' T2=$'\002' T3=$'\003' T5=$'\005' TAB=$'\t'
     # Each scan cuts at the first special char with a glob (the prefix up to
     # the first char of the set), not a ^(..)(.*)$ regex, and reads a long
@@ -1543,6 +1607,10 @@ pobf_relief() {
         i=$((i + 1))
     done
     # Class per stage: 2 = skip words and tokens, 1 = skip tokens, 0 = scan.
+    local rgcfg=0
+    # ponytail: a RIPGREP_CONFIG_PATH name built from pieces is not matched
+    # here, upgrade path HIMMEL-3930, then HIMMEL-5233.
+    case "$t$F" in *RIPGREP_CONFIG_PATH*) rgcfg=1 ;; esac
     j=0
     while [ "$j" -lt "$i" ]; do
         s=${ST[j]//[<>]/ }
@@ -1555,7 +1623,10 @@ pobf_relief() {
             [[ $w =~ ^[A-Za-z_][A-Za-z0-9_]*\+?= ]] && { ap=1; continue; }
             c=$w
         done
-        case "$c" in /bin/*|/usr/bin/*) c=${c##*/} ;; esac
+        # HIMMEL-5210: strip only a name directly under /bin or /usr/bin; a
+        # further / (`/usr/bin/../../tmp/x/grep`) is another path, so it keeps
+        # its full word and no reader relief.
+        case "$c" in /bin/*/*|/usr/bin/*/*) ;; /bin/*|/usr/bin/*) c=${c##*/} ;; esac
         pobf_exp "${ST[j]}" p; x=$PX; XP[j]=$x
         # HIMMEL-4402: mode p pads each quoted token with blanks, so a
         # quote-split option (-"O", --"open-files-in-pager"=) reads as
@@ -1586,9 +1657,12 @@ pobf_relief() {
             gh) [[ $x =~ extension|ext[[:space:]]|codespace|ssh|browse|alias|config ]] || cls=1 ;;
             printf) case "$x" in *-v*) ;; *) cls=2 ;; esac ;;
             sort) case "$x" in *--compress*) ;; *) cls=2 ;; esac ;;
-            # rg: only the exact --pre / --pre=CMD runs a program (--pretty and
-            # --pre-glob do not); pobf_xopt below also voids on a word spelled so.
-            rg) [[ $x =~ (^|[[:space:]])--pre([[:space:]=]|$) ]] || cls=2 ;;
+            # rg: only the exact --pre / --hostname-bin (=CMD or a separate
+            # value) run a program (--pretty and --pre-glob do not; rg 15.2.0
+            # has no other COMMAND option and does not abbreviate); pobf_xopt
+            # below also voids on a word spelled so. Unanchored: a brace
+            # (`{--pre,CMD}`) or a backslash (`\--pre`) builds the word.
+            rg) [[ $x =~ --(pre|hostname-bin)([^[:alnum:]-]|$) ]] || cls=2 ;;
             python|python3|node) [[ $x =~ $re_ix ]] || cls=1 ;;
             # perl's and ruby's open run a command when the name starts/ends with |.
             perl|ruby) [[ $x =~ $re_ix || $x =~ open ]] || cls=1 ;;
@@ -1607,7 +1681,13 @@ pobf_relief() {
         fi
         # HIMMEL-4402: any relieved stage, and a continuation (which inherits
         # its parent's class), voids on an option that takes an executable.
-        [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr"; } && cls=0
+        [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr" || pobf_xglob "${ST[j]}"; } && cls=0
+        # HIMMEL-5210: rg keeps relief only on plain literal words, and never
+        # when RIPGREP_CONFIG_PATH is named anywhere (a config file injects
+        # options; its contents are not modelled), nor when the stage continues
+        # an interrupted one: a command substitution or backtick body is split
+        # into its own stage, so the rg words that follow it read as plain.
+        [ "$c" = rg ] && [ "$cls" != 0 ] && { [ "$rgcfg" = 1 ] || pobf_rgshape "${ST[j]}" || { [ "${CO[j]-}" -ge 0 ] 2>/dev/null && [ "${CO[j]}" -lt "$j" ]; }; } && cls=0
         CL[j]=$cls; CW[j]=$c; C2[j]=$c2
         [ "$cls" = 2 ] && FL[j]=1
         j=$((j + 1))

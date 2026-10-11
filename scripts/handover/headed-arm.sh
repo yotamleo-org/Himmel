@@ -1648,7 +1648,7 @@ fi
 if [ "$sv_seen" -eq 1 ]; then
     # HIMMEL-4832: bind the confirmed claude pid to the name the launcher
     # registered. Best-effort: a failed bind leaves the session unbound (bus
-    # send refused, tick shows bus=unbound) and never changes the launch result.
+    # send refused) and never changes the launch result.
     if [ "$BUS_BIND" = "1" ] && [ -n "$SESSION_PID" ]; then
         # Background + poll, not `timeout`: portable to bash 3.2 / macOS, and
         # the output goes to a file so no pipe is held open by a stuck child.

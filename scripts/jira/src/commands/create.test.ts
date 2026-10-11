@@ -12,6 +12,10 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { resolveTitle, registerCreate } from './create.js';
 import { request } from '../client.js';
+import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+
+// A body that satisfies the HIMMEL-5226 plain-block rule.
+const PLAIN = PLAIN_BLOCK_TEMPLATE;
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 
@@ -55,6 +59,8 @@ describe('create — command wiring (--summary → POST /issue payload)', () => 
       'node',
       'jira',
       'create',
+      '--desc',
+      PLAIN,
       '--type',
       'Task',
       '--summary',
@@ -80,6 +86,8 @@ describe('create — command wiring (--summary → POST /issue payload)', () => 
       'node',
       'jira',
       'create',
+      '--desc',
+      PLAIN,
       '--type',
       'Task',
       '--summary',
@@ -110,7 +118,7 @@ describe('create — Bug default fixVersion wiring', () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--title', 't', ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 't', '--desc', PLAIN, ...args]);
     const [, , body] = mockRequest.mock.calls.find((c) => c[0] === 'POST') as [
       string,
       string,
@@ -193,6 +201,8 @@ describe('create --fix-version (HIMMEL-3713)', () => {
       'node',
       'jira',
       'create',
+      '--desc',
+      PLAIN,
       '--type',
       'Task',
       '--title',
@@ -220,6 +230,8 @@ describe('create --fix-version (HIMMEL-3713)', () => {
         'node',
         'jira',
         'create',
+        '--desc',
+        PLAIN,
         '--type',
         'Task',
         '--title',
@@ -229,5 +241,69 @@ describe('create --fix-version (HIMMEL-3713)', () => {
       ]),
     ).rejects.toThrow(/no version named "v9\.9\.9" in project HIMMEL/);
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+});
+
+// HIMMEL-5226: a body without the plain Impact/What/Why block is refused.
+describe('create — plain block rule (HIMMEL-5226)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => {
+      throw new Error(`exit ${c}`);
+    }) as never);
+    mockRequest.mockResolvedValue({ key: 'HIMMEL-1' });
+  });
+
+  async function run(args: string[]) {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 't', ...args]);
+  }
+  const posted = () => mockRequest.mock.calls.some((c) => c[0] === 'POST');
+
+  it('refuses a Task whose body has no plain block, names what is missing and prints the template', async () => {
+    await expect(run(['--type', 'Task', '--desc', 'just agent notes'])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
+    const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
+    expect(msg).toMatch(/missing "## Impact"/);
+    expect(msg).toContain('## Agent detail');
+  });
+
+  it('refuses a body-less Task', async () => {
+    await expect(run(['--type', 'Task'])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses a block with an empty Impact section', async () => {
+    const empty = PLAIN.replace(/## Impact\n[^\n]*\n/, '## Impact\n');
+    await expect(run(['--type', 'Story', '--desc', empty])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
+  });
+
+  it('accepts a body that carries the full block', async () => {
+    await run(['--type', 'Task', '--desc', PLAIN]);
+    expect(posted()).toBe(true);
+  });
+
+  it('only warns for an Epic with no body, and still files it', async () => {
+    await run(['--type', 'Epic']);
+    expect(posted()).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning.*Impact.*Epic is exempt/s));
+  });
+
+  it('refuses a pre-built --adf-file with no plain block', async () => {
+    const { writeFileSync, mkdtempSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const f = join(mkdtempSync(join(tmpdir(), 'adf-')), 'b.json');
+    writeFileSync(
+      f,
+      JSON.stringify({ type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] }),
+    );
+    await expect(run(['--type', 'Task', '--adf-file', f])).rejects.toThrow(/exit 1/);
+    expect(posted()).toBe(false);
   });
 });
