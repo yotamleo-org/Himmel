@@ -583,7 +583,7 @@ EOF
     for a in "$exe" "$a0" "$a1"; do
       [ -n "$a" ] || continue
       case "${a##*[/\\]}" in graphify-mcp|graphify-mcp.*) hit=1 ;; esac
-      printf '%s\n' "$a" | grep -qE -- "$re_dir" && hit=1
+      grep -qE -- "$re_dir" <<<"$a" && hit=1
     done
     [ "$hit" -eq 1 ] && printf '%s\n' "$pid"
   done
