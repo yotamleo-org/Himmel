@@ -115,6 +115,24 @@ A+=(--bind "$WT" "$WT" --bind "$GITDIR" "$GITDIR")
 JWT="$REPO/.claude/worktrees/${WT##*/}"
 mnt "$JWT" dir
 A+=(--bind "$WT" "$JWT")
+# HIMMEL-5200: the worktree is writable, so its project policy would be too: a
+# project-level disableAllHooks (or a rewritten guard) would void every hook the
+# row runs under. The three files come back read-only on top of BOTH rw binds
+# (after them: a later bind wins). An absent settings.json gets a read-only
+# placeholder so the row cannot create one; a symlink is refused, like ROWCONF's.
+if [ "$mode" != check ]; then
+  { [ ! -L "$WT/.claude" ] && [ -d "$WT/.claude" ]; } || die "$WT/.claude is missing or a symlink"
+  for p in settings.json settings.local.json hooks; do [ ! -L "$WT/.claude/$p" ] || die "$WT/.claude/$p is a symlink"; done
+  [ -f "$WT/.claude/settings.local.json" ] || die "$WT/.claude/settings.local.json is missing (pilot.sh prepare writes the jail guard there)"
+  if [ -f "$WT/.claude/settings.json" ]; then ps_src="$WT/.claude/settings.json"; else ps_src="$RUN/empty-project-settings.json"; fi
+  if [ "$mode" != argv ] && [ ! -f "$WT/.claude/settings.json" ]; then
+    printf '{}\n' >"$ps_src" || die "cannot write $ps_src"
+  fi
+  for base in "$WT" "$JWT"; do
+    A+=(--ro-bind "$ps_src" "$base/.claude/settings.json" --ro-bind "$WT/.claude/settings.local.json" "$base/.claude/settings.local.json")
+    [ ! -d "$WT/.claude/hooks" ] || A+=(--ro-bind "$WT/.claude/hooks" "$base/.claude/hooks")
+  done
+fi
 
 if [ "$mode" = check ]; then
   # The acceptor jail: the kit it runs, read-only, and nothing of the lane.
