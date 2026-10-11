@@ -527,6 +527,69 @@ _graphify_mcp_holder_pats() {
   printf 'graphify-mcp\n%s\n' "${pat_root}|uv[/\\\\]tools[/\\\\]${tool_name}"
 }
 
+# _graphify_mcp_real_holders (HIMMEL-5295) -- filter the pids `pgrep -f` matched
+# (one per line on stdin) down to the ones that really ARE a graphify-mcp
+# server. `pgrep -f` matches the whole command line, so a process whose argv
+# merely MENTIONS the needle (the shell running this very update) was counted
+# as a holder and skipped a safe upgrade.
+#
+# A holder is a pid whose executable, argv[0] or first non-option argument
+# (argv[1], the script an interpreter runs) is the graphify-mcp entry point, or
+# lives under the tool dir. The tool-dir test is anchored to the start of the
+# word, so a `bash -c "... uv/tools/graphifyy ..."` string never matches. The
+# update's own ancestor chain is never a holder.
+#
+# Fails CLOSED: with no /proc (macOS, Windows) or an unreadable command line the
+# pid is still counted, as before. Only a pid that vanished since pgrep ran
+# (its entry gone while /proc itself is mounted) is dropped.
+# ponytail: hosts without /proc (and the ps fallback) keep the argv-mention
+# overcount, upgrade when a no-/proc host reports a false holder.
+# Test seam: GRAPHIFY_PROC_ROOT (default /proc).
+_graphify_mcp_real_holders() {
+  local root="${GRAPHIFY_PROC_ROOT:-/proc}" pat_entry pat_dir re_dir
+  local anc=" $$ ${PPID:-} " p pp pid exe a0 a1 a n hit
+  { read -r pat_entry; read -r pat_dir; } <<EOF
+$(_graphify_mcp_holder_pats)
+EOF
+  re_dir="^(${pat_dir%|*}|[^ ]*${pat_dir##*|})"
+  p="${PPID:-}"; n=0
+  while [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null && [ "$n" -lt 64 ]; do
+    pp="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
+    [ -n "$pp" ] || break
+    anc="$anc$pp "; p="$pp"; n=$((n + 1))
+  done
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    case "$anc" in *" $pid "*) continue ;; esac
+    if [ ! -r "$root/$pid/cmdline" ]; then
+      # gone since pgrep ran -> not a holder; no /proc at all -> cannot tell, keep
+      [ -d "$root/self" ] || printf '%s\n' "$pid"
+      continue
+    fi
+    a0=""; a1=""; n=0
+    while IFS= read -r a || [ -n "$a" ]; do
+      if [ "$n" -eq 0 ]; then
+        a0="$a"; n=1
+      else
+        case "$a" in -*) continue ;; esac
+        a1="$a"; break
+      fi
+    done <<EOF
+$(tr '\0' '\n' < "$root/$pid/cmdline" 2>/dev/null)
+EOF
+    exe="$(readlink "$root/$pid/exe" 2>/dev/null || true)"
+    if [ -z "$a0$a1$exe" ]; then printf '%s\n' "$pid"; continue; fi   # unreadable: fail closed
+    hit=0
+    for a in "$exe" "$a0" "$a1"; do
+      [ -n "$a" ] || continue
+      case "${a##*[/\\]}" in graphify-mcp|graphify-mcp.*) hit=1 ;; esac
+      printf '%s\n' "$a" | grep -qE -- "$re_dir" && hit=1
+    done
+    [ "$hit" -eq 1 ] && printf '%s\n' "$pid"
+  done
+  return 0
+}
+
 _graphify_mcp_holders() {
   local pat_entry pat_dir c ps_bin="" _out=""
   if [ -n "${GRAPHIFY_MCP_HOLDERS:-}" ]; then
@@ -597,7 +660,7 @@ EOF
         # Windows counted it. `pgrep -f` takes an ERE, so alternation is free.
         _out="$(pgrep -f "$pat_entry|$pat_dir" 2>/dev/null)"
         case "$?" in
-          0) _out="$(printf '%s\n' "$_out" | grep -c . || true)" ;;
+          0) _out="$(printf '%s\n' "$_out" | _graphify_mcp_real_holders | grep -c . || true)" ;;
           1) _out=0 ;;
           *) return 1 ;;
         esac
@@ -670,6 +733,7 @@ _graphify_mcp_holder_details() {
 $(_graphify_mcp_holder_pats)
 EOF
   pids="$(pgrep -f "$pat_entry|$pat_dir" 2>/dev/null)" || return 1
+  pids="$(printf '%s\n' "$pids" | _graphify_mcp_real_holders)"
   [ -n "$pids" ] || return 1
   for p in $pids; do
     line="pid $p"
