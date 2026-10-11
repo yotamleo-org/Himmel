@@ -108,7 +108,7 @@ case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; e
 # redirect, and every clause's command word a plain reader.
 # shellcheck disable=SC2016 # literal $( and backtick are the patterns
 case "$cmd" in
-    *'$('*|*'`'*|*'>'*) deny "the command names ~/.himmel/config.json with a redirect or command substitution" ;;
+    *'$('*|*'`'*|*'>'*|*'<('*) deny "the command names ~/.himmel/config.json with a redirect, command or process substitution" ;;
 esac
 clauses=${cmd//;/$'\n'}
 clauses=${clauses//|/$'\n'}

@@ -59,6 +59,7 @@ bash_case "cp onto the config -> block" block "cp $T/x $CFG"
 bash_case "ln -s onto the config -> block" block "ln -s $T/x $CFG"
 bash_case "tee into the config -> block" block "echo x | tee $CFG"
 bash_case "command substitution -> block" block "cat \$(echo $CFG)"
+bash_case "process substitution -> block" block "cat <(cp $T/x $CFG)"
 bash_case "rg --pre program -> block" block "rg --pre 'cp $T/x $CFG' salus $CFG"
 bash_case "rg --pre= program -> block" block "rg --pre=/bin/true salus $CFG"
 

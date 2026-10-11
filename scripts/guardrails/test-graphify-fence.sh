@@ -2836,12 +2836,14 @@ echo "== HIMMEL-4696 opt-in symlink refusal, loopback pin, cloud-name normalisat
 OPTIN_REAL="$WS/optin-real.json"
 printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_REAL"
 rm -f "$OPTIN_CFG"; ln -s "$OPTIN_REAL" "$OPTIN_CFG"
-o_eval "S1 salus x ollama-cloud, opt-in config is a symlink to true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
+[ -L "$OPTIN_CFG" ] && [ -f "$OPTIN_REAL" ] || { echo "FAIL: S1 setup did not create the symlinked config"; failures=$((failures + 1)); }
+o_eval "S1salus x ollama-cloud, opt-in config is a symlink to true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
 rm -f "$OPTIN_CFG"
 OPTIN_REALDIR="$WS/optin-realdir"; mkdir -p "$OPTIN_REALDIR"
 printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_REALDIR/config.json"
 rmdir "$HOME/.himmel"; ln -s "$OPTIN_REALDIR" "$HOME/.himmel"
-o_eval "S2 salus x ollama-cloud, ~/.himmel is a symlink holding true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
+[ -L "$HOME/.himmel" ] && [ -f "$HOME/.himmel/config.json" ] || { echo "FAIL: S2 setup did not create the symlinked ~/.himmel"; failures=$((failures + 1)); }
+o_eval "S2salus x ollama-cloud, ~/.himmel is a symlink holding true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
 rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_CFG"
 o_eval "S3 control: a regular file holding true is still an opt-in" 0 ollama-cloud salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
