@@ -58,8 +58,11 @@ late() { # late <pid> <comm> <argv...>: the child appears 1s AFTER the helper st
 }
 run_helper() { # run_helper <name> <wait> <secs>
     : > "$TMP/bus-calls"; : > "$TMP/log"
+    local hrc
     ARM_RESUME_PROC="$PROCD" bash "$HELPER" "$1" "$TMP/bus" "$TMP/log" "$2" "$3"
+    hrc=$?
     wait
+    return "$hrc"
 }
 
 mkdir -p "$PROCD"
