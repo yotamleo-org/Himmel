@@ -1955,7 +1955,10 @@ for v in \
     'git config pager.log scripts/cr/write-verdicts.sh' \
     'git config core.fsmonitor scripts/cr/write-verdicts.sh' \
     'git config core.sshCommand scripts/cr/write-verdicts.sh' \
-    'git config diff.external scripts/cr/write-verdicts.sh'; do
+    'git config diff.external scripts/cr/write-verdicts.sh' \
+    "git config core.pager 'scripts/c\\r/write-verdicts.sh'" \
+    "git config alias.x '!scripts/c\"\"r/write-verdicts.sh'" \
+    "GIT_EDITOR='scripts/c\\r/write-verdicts.sh' git commit"; do
     run "HIMMEL-5170 editor/alias hook [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # Already denied on base (HIMMEL-5102 one-call -c exec keys): controls, not RED.

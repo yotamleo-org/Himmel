@@ -1164,8 +1164,14 @@ fi
 # (GIT_EDITOR=vim git commit, git config user.name x) is not caught here.
 # Over-matching only denies more (the safe direction).
 edword_names() { # edword_names <word> - a guarded script spelled as a path
-    case "$1" in
-        *.sh* | *scripts/* | *cr/* | *handover/*) names_target "$1" ;;
+    # Same normalisation as mentions (flat is _c_unquote'd): a word that keeps
+    # quotes or backslashes from inside single quotes (scripts/c\r/x.sh) must
+    # match the way git will spell it, never the raw tokenized text.
+    local uw
+    _c_unquote "$1"
+    uw=$REPLY
+    case "$uw" in
+        *.sh* | *scripts/* | *cr/* | *handover/*) names_target "$uw" ;;
         *) return 1 ;;
     esac
 }
