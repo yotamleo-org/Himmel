@@ -3078,11 +3078,17 @@ env -S 'sh -c' 'echo x > ~/.claude/settings.json'
 env -S 'sh -c' 'echo a'
 env --split-string='echo' a b
 env -S 'echo a' b
+env -S'echo a' b
+env --split-string 'echo' a
+env --i -S 'echo a' b
 ROWS
-# plain env -S 'cmd' with nothing after it, and an ambiguous prefix, allow
-rows_both 9620 0 "plain env -S text without operands, and a non-taking prefix, allows" <<'ROWS'
+# plain env -S 'cmd' with nothing after it allows; --arg is a unique prefix
+# of --argv0 (it takes X), and --i is ambiguous (--ignore-environment vs
+# --ignore-signal) so it takes no argument and X is the command word
+rows_both 9620 0 "plain env -S text without operands, an argv0 prefix, and an ambiguous prefix, allow" <<'ROWS'
 env -S 'echo a'
 env --arg X echo a
+env --i X echo a
 ROWS
 # env -a / --argv0 take an argument, so the -S text after them is reached;
 # a harmless one after them still allows
