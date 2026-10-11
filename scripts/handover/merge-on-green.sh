@@ -1129,7 +1129,7 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     bp_pfx="check-plugin-drift --bump-required: "
     case $'\n'"$bp_out"$'\n' in
         *$'\n'"${bp_pfx}every changed plugin bumped its version"$'\n'* | *$'\n'"${bp_pfx}no plugin files changed"$'\n'*) ;;
-        *) bump_refuse "the base-tip checker exited 0 without its success line, so it gave no verdict on PR #$pr_num" "phase=checker-blob blob=scripts/check-plugin-drift.sh no-success-line=1 base=$bp_base" ;;
+        *) bump_refuse "the base-tip checker exited 0 without its success line, so it gave no verdict on PR #$pr_num" "phase=checker-blob no-success-line=1 base=$bp_base" ;;
     esac
     bp_cleanup
     audit "PLUGIN-BUMP ok repo=$nwo pr=#$pr_num sha=$sha base=$bp_base"
