@@ -2050,6 +2050,28 @@ for v in \
     'git config core.editor vim'; do
     run "HIMMEL-5170 j2353e control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
+# Judge j2353h: short options after a non-reader subcommand are value checks
+# (clone -u runs its value through sh -c), a git-<sub> binary by path is git,
+# and a shell-built command word with another metacharacter word is denied.
+for v in \
+    "git clone -u 'scripts/c?/write-verdicts.sh' src dst" \
+    "git clone -uscripts/c?/write-verdicts.sh src dst" \
+    "git clone -c credential.helper='scripts/c?/write-verdicts.sh' src dst" \
+    "git clone -c 'scripts/c?/write-verdicts.sh' src dst" \
+    "/usr/lib/git-core/git-config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "git-config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "G=gi; \${G}t config core.pager 'scripts/c?/write-verdicts.sh'"; do
+    run "HIMMEL-5170 j2353h [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    'gh pr view 2353' \
+    'git diff' \
+    "git log --format='%H %s'" \
+    'git clone -q src dst' \
+    'git commit -am "fix: x"' \
+    'git push -u origin HEAD'; do
+    run "HIMMEL-5170 j2353h control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
 
 echo
 if [ "$FAILED" -eq 0 ]; then

@@ -1102,11 +1102,15 @@ readers_only() { # true when every command the command line runs is a reader
 # shell git spawns, will EXECUTE is denied when it carries an sh expansion
 # metacharacter, whether or not a guarded script is named - a second shell can
 # build the writer path ('scripts/c?/x', 'scripts/c[r]/x', 'scripts/c${X}r/x').
-# The text is normalised like flat (continuations joined) but NOT unquoted: a
-# backslash is itself a metacharacter. Values checked: a GIT_*/EDITOR/VISUAL/
-# PAGER assignment, a `git -c k=v` value, a `git config` value of a key outside
-# a small data set, and a git --opt value / -O value unless the option is a
-# known data option. Ordinary values (less -R, code --wait, vim) carry none.
+# The words are the tokenizer's ST_W (quotes and escapes already removed): a
+# quoted glob keeps its * ? [ { and a $ stays, but a backslash escape or an
+# ANSI-C $'..' body is decoded before this check sees it. Values checked: a
+# GIT_*/EDITOR/VISUAL/PAGER assignment, a `git -c k=v` value, a `git config`
+# value of a key outside a small data set, and any option value after the
+# subcommand unless the option is a known data option. Ordinary values (less
+# -R, code --wait, vim) carry none.
+# ponytail: a decoded $'\x72' body is not re-read, ceiling HIMMEL-5205; upgrade
+# path: have the tokenizer flag a $'..' word and deny it as a value slot.
 meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
     _c_join_continuations "$1"
     case "$REPLY" in
@@ -1115,7 +1119,7 @@ meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
     return 1
 }
 seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
-    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0 rd=0 endsub=0
+    local i=$1 e=$2 w v opt c=-1 g=-1 gx='' sub='' key='' nv=0 exempt=0 rd=0 endsub=0
     local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
     # HIMMEL-5170 (j2353e): a $(, backtick, <( or >( ends the segment and what
     # it opens is a segment of its own, so a value slot that is this segment's
@@ -1133,26 +1137,49 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             if [ "$c" -lt 0 ]; then
                 case "$w" in *=*) ;; *) c=$i ;; esac
             fi
-            [ "$g" -lt 0 ] && [ "$c" -ge 0 ] && [ "${w##*/}" = git ] && g=$i
+            if [ "$g" -lt 0 ] && [ "$c" -ge 0 ]; then
+                # HIMMEL-5170 (j2353h F3): git, or a git-<sub> binary by path.
+                case "${w##*/}" in
+                    git) g=$i ;;
+                    git-?*) g=$i; gx=${w##*/}; gx=${gx#git-} ;;
+                esac
+            fi
         fi
         i=$((i + 1))
     done
+    # A command word built by the shell ($VAR, ${G}t, a glob) is a name nobody
+    # read: with any other metacharacter-bearing word it is denied (F3).
+    if [ "$c" -ge 0 ] && { [ "${ST_X[c]:-}" = 1 ] || [ "${ST_G[c]:-}" = 1 ]; } &&
+        [ "${ST_W[c]}" != '{' ] && [ "${ST_W[c]}" != '[' ] && [ "${ST_W[c]}" != '[[' ]; then
+        i=$1
+        while [ "$i" -lt "$e" ]; do
+            if [ "$i" -ne "$c" ] && [ -z "${ST_RO[i]}" ]; then
+                meta_value "${ST_W[i]}" && return 0
+            fi
+            i=$((i + 1))
+        done
+    fi
     [ "$g" -ge 0 ] || return 1
-    i=$((g + 1))
-    while [ "$i" -lt "$e" ]; do
-        w=${ST_W[i]}
-        case "$w" in
-            -c)
-                v=${ST_W[i + 1]:-}
-                case "$v" in *=*) meta_value "${v#*=}" && return 0 ;; esac
-                [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
-                i=$((i + 2)) ;;
-            --config-env | --config-env=*) return 0 ;;
-            -C | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
-            -*) i=$((i + 1)) ;;
-            *) sub=$w; break ;;
-        esac
-    done
+    if [ -n "$gx" ]; then
+        sub=$gx
+        i=$g
+    else
+        i=$((g + 1))
+        while [ "$i" -lt "$e" ]; do
+            w=${ST_W[i]}
+            case "$w" in
+                -c)
+                    v=${ST_W[i + 1]:-}
+                    case "$v" in *=*) meta_value "${v#*=}" && return 0 ;; esac
+                    [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
+                    i=$((i + 2)) ;;
+                --config-env | --config-env=*) return 0 ;;
+                -C | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
+                -*) i=$((i + 1)) ;;
+                *) sub=$w; break ;;
+            esac
+        done
+    fi
     [ -n "$sub" ] || return 1
     i=$((i + 1))
     if [ "$sub" = config ]; then
@@ -1198,6 +1225,14 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             -O) opt=-O; v=${ST_W[i + 1]:-} ;;
             -O?*) opt=-O; v=${w#-O} ;;
             --?*) [ "$rd" = 1 ] || { opt=$w; v=${ST_W[i + 1]:-}; } ;;
+            # HIMMEL-5170 (j2353h F2): short options after a non-reader
+            # subcommand are value checks too (git clone -u <cmd>, -c k=v).
+            # Whether -X takes a value is not knowable per subcommand, so
+            # fail closed: attached text and the next word both count. A
+            # commit/tag/notes message bundle (-m, -am, -F) is data.
+            -*[mF]) [ "$rd" = 1 ] || [ "$exempt" = 1 ] || { opt=-short; v=${ST_W[i + 1]:-}; } ;;
+            -[!O-]?*) [ "$rd" = 1 ] || { opt=-short; v=${w#-?}; } ;;
+            -[!O-]) [ "$rd" = 1 ] || { opt=-short; v=${ST_W[i + 1]:-}; } ;;
         esac
         # A following option word is another option, not this one's value.
         case "$w" in --?*=* | -O?*) ;; *) case "$v" in -*) v='' ;; esac ;; esac
