@@ -3412,6 +3412,7 @@ _bwimc_check_interp_body() {
                     esac ;;
             esac
         fi
+        local _bwimc_first=$i
         kind=""; i=0; srci=-1
         while [ "$i" -lt "$n" ]; do
             t=$(_bwimc_unq "${toks[$i]}"); t="${t##*/}"
@@ -3424,7 +3425,11 @@ _bwimc_check_interp_body() {
             i=$((i+1))
         done
         # HIMMEL-5098: `source`/`.` only when no eval or shell follows it.
-        if [ -z "$kind" ] && [ "$srci" -ge 0 ]; then kind=src; i=$srci; fi
+        # A `source`/`.` that IS the clause verb keeps it: a later `bash` word
+        # is an argument of the sourced file (`source "$(cat f)" bash`).
+        if [ "$srci" -ge 0 ] && { [ -z "$kind" ] || [ "$srci" -eq "$_bwimc_first" ]; }; then
+            kind=src; i=$srci
+        fi
         [ -n "$kind" ] || return 0
         j0=$((i+1))
     fi
@@ -3448,8 +3453,23 @@ _bwimc_check_interp_body() {
     # clause at `(`, so it arrives here as `source <` and the process
     # substitution's own text is a separate clause. Read each `<(` of the whole
     # command instead; coarse, a later `$(…)` in the same command counts too.
-    if [ "$n" -gt 0 ] && [ "${toks[$((n-1))]}" = "<" ] \
-        && { [ "$kind" = src ] || { [ "$kind" = shc ] && [ "$((n-1))" -eq "$j0" ]; }; }; then
+    local _bwimc_psok=0
+    if [ "$n" -gt 0 ] && [ "${toks[$((n-1))]}" = "<" ]; then
+        if [ "$kind" = src ]; then
+            _bwimc_psok=1
+        elif [ "$kind" = shc ]; then
+            # Only option words may sit between the shell and `<(`.
+            _bwimc_psok=1; i=$j0
+            while [ "$i" -lt "$((n-1))" ]; do
+                case "$(_bwimc_unq "${toks[$i]}")" in
+                    -*) ;;
+                    *) _bwimc_psok=0; break ;;
+                esac
+                i=$((i+1))
+            done
+        fi
+    fi
+    if [ "$_bwimc_psok" = 1 ]; then
         local _bwimc_ps="$cmd"
         while [[ "$_bwimc_ps" == *'<('* ]]; do
             _bwimc_ps="${_bwimc_ps#*'<('}"

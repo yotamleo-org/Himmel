@@ -149,6 +149,12 @@ _r5098 "205e var then bash -c"                       block 'm=$(cat @W@/msg); ba
 _r5098 "205f reader after a semicolon in the substitution" block "m=\$(printf ''; cat @W@/msg); eval \"\$m\""
 _r5098 "205g reader after a semicolon, backticks"    block "m=\`printf ''; cat @W@/msg\`; eval \"\$m\""
 _r5098 "205h reader after a semicolon, bash -c"      block "m=\$(echo x; git log -1 --format=%B); bash -c \"\$m\""
+_r5098 "206a source of data, shell word as argument" block "source \"\$(cat @W@/msg)\" bash"
+_r5098 "206b dot of data, shell word as argument"    block ". \"\$(git log -1 --format=%B)\" sh"
+_r5098 "206c bash option then <(cat file)"           block 'bash --noprofile <(cat @W@/msg)'
+_r5098 "206d bash options then <(git log)"           block 'bash --norc --noprofile <(git log -1 --format=%B)'
+_r5098 "206e source of literal, shell word argument" allow 'source ./env.sh bash'
+_r5098 "206f bash option then <(echo literal)"       allow 'bash --noprofile <(echo ls)'
 # escape-hiding class (backslash, $'..', a # comment opening a fake quote)
 _r5098 "206a backslash inside the verb"              block 'eval "$(g\it log -1 --format=%B)"'
 _r5098 "206b quotes inside the verb"                 block "eval \"\$(git 'lo'g -1 --format=%B)\""
