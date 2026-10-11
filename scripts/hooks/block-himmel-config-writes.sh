@@ -20,7 +20,7 @@
 # DENIES
 #   Bash - the command text names the config file (`.himmel` and `config.json`
 #     both present, in any quoting/spelling that keeps the two literals) unless
-#     EVERY clause is a plain reader (cat head tail less more wc stat ls file jq
+#     EVERY clause is a plain reader, a bare name (cat head tail wc stat ls file jq
 #     grep rg diff test [) with no redirect, no rg `--pre`/`--pre-glob`/
 #     `--hostname-bin` (they run a program), and no command substitution. A
 #     `ln -s ... config.json`, `cp`, `mv`, `sed -i`, `jq ... >` or `echo >
@@ -119,9 +119,12 @@ while IFS= read -r clause || [ -n "$clause" ]; do
     set -- $clause
     set +f
     [ "$#" -gt 0 ] || continue
-    w="${1##*/}"
+    # The command word must be a bare reader name: a path (./cat, /tmp/jq) is an
+    # arbitrary program wearing a reader's basename. less/more are not readers
+    # here: `less -o/-O <file>` writes a log file.
+    w="$1"
     case "$w" in
-        cat|head|tail|less|more|wc|stat|ls|file|jq|grep|rg|diff|test|'[') ;;
+        cat|head|tail|wc|stat|ls|file|jq|grep|rg|diff|test|'[') ;;
         *) deny "the command names ~/.himmel/config.json under '$w', not a plain reader" ;;
     esac
     for a in "$@"; do
