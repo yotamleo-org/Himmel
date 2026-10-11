@@ -51,6 +51,13 @@ mkrepo_committed() {  # mkrepo_committed <dir> <branch>
 # $FIX/primary — main; $FIX/wt — linked worktree off it, feat/x.
 mkrepo_committed "$FIX/primary" main
 git -C "$FIX/primary" worktree add -q -b feat/x "$FIX/wt" >/dev/null 2>&1
+# a failed fixture setup would leave every row testing nonexistent checkouts
+for _d in "$FIX/primary" "$FIX/wt"; do
+    if [ "$(git -C "$_d" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
+        echo "fixture setup failed: $_d is not a work tree" >&2
+        exit 1
+    fi
+done
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
@@ -139,6 +146,9 @@ _r5098 "205b var from cat && eval"                   block 'm=$(cat @W@/msg) && 
 _r5098 "205c read from process substitution"         block 'read -r m < <(git log -1 --format=%B); eval "$m"'
 _r5098 "205d var from backticks then eval"           block 'm=`git log -1 --format=%B`; eval $m'
 _r5098 "205e var then bash -c"                       block 'm=$(cat @W@/msg); bash -c "$m"'
+_r5098 "205f reader after a semicolon in the substitution" block "m=\$(printf ''; cat @W@/msg); eval \"\$m\""
+_r5098 "205g reader after a semicolon, backticks"    block "m=\`printf ''; cat @W@/msg\`; eval \"\$m\""
+_r5098 "205h reader after a semicolon, bash -c"      block "m=\$(echo x; git log -1 --format=%B); bash -c \"\$m\""
 # escape-hiding class (backslash, $'..', a # comment opening a fake quote)
 _r5098 "206a backslash inside the verb"              block 'eval "$(g\it log -1 --format=%B)"'
 _r5098 "206b quotes inside the verb"                 block "eval \"\$(git 'lo'g -1 --format=%B)\""

@@ -3336,6 +3336,11 @@ _bwimc_body_var_from_data() {
         while [[ "$seg" == *"$name="* ]]; do
             seg="${seg#*"$name="}"
             line="${seg%%[;"$nl"]*}"
+            # a substitution may hold `;` itself (`m=$(printf ''; cat f)`), so
+            # one that opens the value is scanned to the end of the command
+            # (coarse, fail closed).
+            # shellcheck disable=SC2016  # literal `$(` is the glob pattern
+            case "$seg" in '$('*|'`'*) line="$seg" ;; esac
             _bwimc_text_reads_data "$line" && return 0
         done
         if [[ "$full" =~ (^|[[:space:];\&\|\(])(read|mapfile|readarray)[[:space:]]([^;\&\|]*[[:space:]])?"$name"([[:space:];\&\|\)]|$) ]]; then
