@@ -157,7 +157,7 @@ run_lane() {
         QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
     else
         waited=0
-        while ! lock_free "$doc" && [ "$waited" -lt "$LOCK_WAIT" ]; do sleep "$POLL"; waited=$((waited + POLL)); done
+        while ! lock_free "$doc" && [ "$waited" -lt "$LOCK_WAIT" ]; do sleep "$POLL"; waited=$((waited + 10#$POLL)); done
         if ! lock_free "$doc"; then
             detail="wrapped but queue lock still held after ${LOCK_WAIT}s"
             QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
