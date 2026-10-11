@@ -139,7 +139,7 @@ if [ "$mode" != check ]; then
   # source from a tree the settings never name stays writable.
   # ponytail: one level of reference, no transitive closure, and a hook command that names a
   # script without CLAUDE_PROJECT_DIR (a bare relative path) is not seen; upgrade path HIMMEL-5200 follow-up
-  hk=""
+  hk=""; pk=""
   cmds=""   # argv mode never writes the {} placeholder: nothing to parse there
   if [ -f "$ps_src" ]; then
     cmds="$(jq -r '[.. | .command? // empty | strings] | .[]' "$ps_src")" || die "cannot parse $ps_src (jq missing or invalid JSON): the hook-executed trees cannot be derived"
@@ -156,6 +156,15 @@ if [ "$mode" != check ]; then
       die "$WT/$t holds a symlink (its target would stay writable)"
     fi
     case " $hk " in *" $t "*) ;; *) hk="$hk $t" ;; esac
+    # every ancestor below the worktree root: not a symlink (the tree would stay writable through
+    # its target), and pinned as a mount point below, so it cannot be renamed away and replaced
+    comp=""
+    for part in $(dirname "$t" | tr '/' ' '); do
+      [ "$part" != . ] || break
+      comp="${comp:+$comp/}$part"
+      [ ! -L "$WT/$comp" ] || die "$WT/$comp (an ancestor of the hook-executed $t) is a symlink"
+      case " $pk " in *" $comp "*) ;; *) pk="$pk $comp" ;; esac
+    done
   done <<EOF
 $refs
 EOF
@@ -165,6 +174,7 @@ EOF
     A+=(--bind "$WT/.claude" "$base/.claude")
     A+=(--ro-bind "$ps_src" "$base/.claude/settings.json" --ro-bind "$WT/.claude/settings.local.json" "$base/.claude/settings.local.json")
     [ ! -d "$WT/.claude/hooks" ] || A+=(--ro-bind "$WT/.claude/hooks" "$base/.claude/hooks")
+    for t in $pk; do A+=(--bind "$WT/$t" "$base/$t"); done
     for t in $hk; do A+=(--ro-bind "$WT/$t" "$base/$t"); done
   done
 fi

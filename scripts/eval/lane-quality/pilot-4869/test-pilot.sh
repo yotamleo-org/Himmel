@@ -320,6 +320,17 @@ for tt in scripts/hooks scripts/lib; do
   check "the jail binds the hook-executed $tt read-only after the rw bind, at its jail path" 'ro_tree "$wt/$tt" "$JW5200/$tt" "$JW5200"'
 done
 check 'a tree no hook command names stays writable (not bound read-only)' '! printf "%s\n" "$a5200h" | grep -qxF "$wt/scripts/other"'
+pin_par() { printf '%s\n' "$a5200h" | awk -v d="$1" -v j="$2" -v w="$wt" '
+  { l[NR] = $0 }
+  END { for (i = 1; i <= NR; i++) {
+          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
+          if (l[i] == "--bind" && l[i+1] == w "/scripts" && l[i+2] == d) pin = i }
+        exit !(rw && pin && pin > rw) }'; }
+check 'the jail pins the hook trees parent dir (bind onto itself) after the rw bind, at its host path' 'pin_par "$wt/scripts" "$wt"'
+check 'the jail pins the hook trees parent dir (bind onto itself) after the rw bind, at its jail path' 'pin_par "$JW5200/scripts" "$JW5200"'
+mv "$wt/scripts" "$wt/scripts.real"; ln -s "$wt/scripts.real" "$wt/scripts"
+check 'a hook-executed tree reached through a symlinked ancestor is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -f "$wt/scripts"; mv "$wt/scripts.real" "$wt/scripts"
 ln -s "$TMP/secret" "$wt/scripts/lib/link.sh"
 check 'a symlink inside a hook-executed tree is refused (its target would stay writable)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 rm -f "$wt/scripts/lib/link.sh"
@@ -346,6 +357,9 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   jw "echo x >\"$JW5200/scripts/hooks/g.sh\""; h3=$?
   jw "mv \"$wt/scripts/lib\" \"$wt/scripts/lib-away\""; h4=$?
   check 'live: a hook-executed script cannot be overwritten, edited or its tree renamed from the jail' '[ "$h1" != 0 ] && [ "$h2" != 0 ] && [ "$h3" != 0 ] && [ "$h4" != 0 ] && [ "$(cat "$wt/scripts/lib/run-node.sh")" = ": r" ] && [ "$(cat "$wt/scripts/hooks/g.sh")" = ": g" ]'
+  jw "mv \"$wt/scripts\" \"$wt/scripts-away\""; h6=$?
+  jw "mv \"$JW5200/scripts\" \"$JW5200/scripts-away\""; h7=$?
+  check 'live: the hook trees parent dir cannot be renamed away and replaced from the jail, at either path' '[ "$h6" != 0 ] && [ "$h7" != 0 ] && [ -f "$wt/scripts/lib/run-node.sh" ] && [ ! -e "$wt/scripts-away" ]'
   jw "echo x >\"$wt/scripts/other/o2.sh\""; h5=$?
   check 'live: control, a write to a tree no hook names still succeeds' '[ "$h5" = 0 ] && [ -f "$wt/scripts/other/o2.sh" ]'
 fi
