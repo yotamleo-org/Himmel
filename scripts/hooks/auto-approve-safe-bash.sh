@@ -942,7 +942,8 @@ sw_note_cd() {
     # a symlink may lead to `/`: resolve it for real, from the directory the
     # previous cd reached. A target that does not exist cannot be root and a
     # failed cd stays put, so it leaves the state as it was.
-    phys=$(cd -P -- "${SW_PHYS:-${sw_cwd:-.}}" 2>/dev/null && cd -P -- "$t" 2>/dev/null && pwd -P) || return 0
+    # (cd output is discarded: a CDPATH hit makes cd print its destination)
+    phys=$(cd -P -- "${SW_PHYS:-${sw_cwd:-.}}" >/dev/null 2>&1 && cd -P -- "$t" >/dev/null 2>&1 && pwd -P) || return 0
     [ -n "$phys" ] || return 0
     SW_PHYS="$phys"
     [ "$phys" = / ] && SW_CD_UNPROVEN=1
@@ -2180,7 +2181,13 @@ fi
 # HIMMEL-5187: a payload cwd of `/` makes every relative walk a root walk.
 sw_cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || sw_cwd=""
 case "$sw_cwd" in
-    /*) if path_textually_resolves_to_root "$sw_cwd"; then SW_CD_UNPROVEN=1; fi ;;
+    /*)
+        if path_textually_resolves_to_root "$sw_cwd"; then
+            SW_CD_UNPROVEN=1
+        else    # a payload cwd that is itself a symlink to `/`
+            sw_phys=$(cd -P -- "$sw_cwd" >/dev/null 2>&1 && pwd -P) || sw_phys=""
+            [ "$sw_phys" = / ] && SW_CD_UNPROVEN=1
+        fi ;;
 esac
 
 all_safe=1
