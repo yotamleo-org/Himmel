@@ -64,6 +64,7 @@ first_semver() { printf '%s\n' "$1" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -
 # Prints one line per violation; returns 1 if there is any:
 #   NEW-FAIL <id>   a check is FAIL after and was not FAIL before (never allowlisted)
 #   WORSE <id> <a> <b>   a check moved to a worse severity and its name is not allowlisted
+#   MISSING <id>    a check printed before no longer prints at all
 doctor_regressions() {
   local before="$1" after="$2"; shift 2
   local allow=" $* " bad=0 id sev bsev rb ra
@@ -83,6 +84,13 @@ doctor_regressions() {
     fi
   done <<EOF
 $(doctor_worst "$after")
+EOF
+  local amap; amap="$(doctor_worst "$after")"
+  while read -r id sev; do
+    [ -n "$id" ] || continue
+    printf '%s\n' "$amap" | awk -v k="$id" '$1 == k { f = 1 } END { exit !f }' || { echo "MISSING $id"; bad=1; }
+  done <<EOF
+$bmap
 EOF
   [ "$bad" -eq 0 ]
 }
@@ -107,11 +115,11 @@ for v in UPGRADE_AST_GREP_VERSION UPGRADE_GRAPHIFY_VERSION UPGRADE_CLIPROXY_VERS
   if [ -z "${!v:-}" ]; then echo "upgrade-path-guest: $v is required (a station target is an input)" >&2; exit 2; fi
 done
 for v in UPGRADE_AST_GREP_VERSION UPGRADE_GRAPHIFY_VERSION UPGRADE_CLIPROXY_VERSION; do
-  if ! printf '%s' "${!v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  if ! [[ "${!v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "upgrade-path-guest: $v '${!v}' is not a plain x.y.z version" >&2; exit 2
   fi
 done
-if ! printf '%s' "$UPGRADE_CLIPROXY_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+if ! [[ "$UPGRADE_CLIPROXY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   echo "upgrade-path-guest: UPGRADE_CLIPROXY_SHA256 is not a lowercase 64-char hex sha256" >&2; exit 2
 fi
 
@@ -147,18 +155,21 @@ command -v uv >/dev/null 2>&1; verdict $? "uv present ($(uv --version 2>&1 | hea
 
 # --- 1. baseline: the tree's own pins ---------------------------------------
 note "baseline: ast-grep (tree pin)"
-bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/ast-grep-base.log" 2>&1
+bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/ast-grep-base.log" 2>&1; irc=$?
+if [ "$irc" -eq 0 ]; then pass "baseline ast-grep installer rc=0"; else fail "baseline ast-grep installer rc=$irc (see $WORK/ast-grep-base.log)"; fi
 BASE_AST=""; command -v ast-grep >/dev/null 2>&1 && BASE_AST="$(ast-grep --version 2>&1 | head -1)"
 if [ -n "$BASE_AST" ]; then pass "baseline ast-grep: $BASE_AST"; else fail "baseline ast-grep not installed (see $WORK/ast-grep-base.log)"; fi
 
 note "baseline: graphify (tree pin)"
-( . scripts/lib/graphify-bin.sh && graphify_install ) >"$WORK/graphify-base.log" 2>&1
+( . scripts/lib/graphify-bin.sh && graphify_install ) >"$WORK/graphify-base.log" 2>&1; irc=$?
+if [ "$irc" -eq 0 ]; then pass "baseline graphify installer rc=0"; else fail "baseline graphify installer rc=$irc (see $WORK/graphify-base.log)"; fi
 BASE_GRAPHIFY="$(graphify --version 2>&1)"; grc=$?
 BASE_GRAPHIFY="$(first_semver "$BASE_GRAPHIFY")"
 if [ "$grc" -eq 0 ] && [ -n "$BASE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY"; else fail "baseline graphify not installed (see $WORK/graphify-base.log)"; fi
 
 note "baseline: cli-proxy-api (tree pin)"
-bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/proxy-base.log" 2>&1
+bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/proxy-base.log" 2>&1; irc=$?
+if [ "$irc" -eq 0 ]; then pass "baseline cli-proxy-api installer rc=0"; else fail "baseline cli-proxy-api installer rc=$irc (see $WORK/proxy-base.log)"; fi
 BASE_PROXY="$(cat "$HOME/.cli-proxy-api/cli-proxy-api.version" 2>/dev/null)"
 if [ -n "$BASE_PROXY" ]; then pass "baseline cli-proxy-api: v$BASE_PROXY"; else fail "baseline cli-proxy-api not installed (see $WORK/proxy-base.log)"; fi
 
@@ -244,10 +255,15 @@ printf '# Alpha\nthe upgrade path smoke note about pinned versions\n' > "$WORK/q
 (
   export XDG_CONFIG_HOME="$WORK/qcfg" XDG_CACHE_HOME="$WORK/qcache"
   . scripts/lib/qmd-bin.sh
-  qmd_cmd collection add "$WORK/qsmoke" --name smoke >"$WORK/qmd-add.log" 2>&1
-  qmd_cmd search "pinned versions" -c smoke 2>&1
-) >"$WORK/qmd-search.log" 2>&1
-grep -q -i 'alpha\|a\.md\|pinned' "$WORK/qmd-search.log"; verdict $? "qmd add + search found the note" "qmd search found nothing (see $WORK/qmd-search.log)"
+  qmd_cmd collection add "$WORK/qsmoke" --name smoke >"$WORK/qmd-add.log" 2>&1 || exit 41
+  qmd_cmd search "pinned versions" -c smoke >"$WORK/qmd-search.log" 2>&1 || exit 42
+)
+qrc=$?
+if [ "$qrc" -eq 0 ] && grep -q 'a\.md\|Alpha' "$WORK/qmd-search.log"; then
+  pass "qmd add + search found the note"
+else
+  fail "qmd add + search rc=$qrc or the note was not found (see $WORK/qmd-add.log, $WORK/qmd-search.log)"
+fi
 
 note "assert: lane-canary.sh --dry-run"
 LC="$(timeout 60 bash scripts/lanes/lane-canary.sh --lanes native,openrouter --dry-run 2>&1)"; lcrc=$?

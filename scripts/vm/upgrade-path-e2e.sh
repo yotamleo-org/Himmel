@@ -44,11 +44,11 @@ for v in UPGRADE_AST_GREP_VERSION UPGRADE_GRAPHIFY_VERSION UPGRADE_CLIPROXY_VERS
   if [ -z "${!v:-}" ]; then echo "upgrade-path-e2e: $v is required (station targets are stage inputs)" >&2; exit 2; fi
 done
 for v in UPGRADE_AST_GREP_VERSION UPGRADE_GRAPHIFY_VERSION UPGRADE_CLIPROXY_VERSION; do
-  if ! printf '%s' "${!v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  if ! [[ "${!v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "upgrade-path-e2e: $v '${!v}' is not a plain x.y.z version" >&2; exit 2
   fi
 done
-if ! printf '%s' "$UPGRADE_CLIPROXY_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+if ! [[ "$UPGRADE_CLIPROXY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   echo "upgrade-path-e2e: UPGRADE_CLIPROXY_SHA256 is not a lowercase 64-char hex sha256" >&2; exit 2
 fi
 SHA="$UPGRADE_CLIPROXY_SHA256"

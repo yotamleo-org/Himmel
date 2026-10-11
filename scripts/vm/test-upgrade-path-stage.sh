@@ -76,6 +76,13 @@ doctor_regressions "$WORK/after-fail.txt" "$WORK/after-fail.txt" $ALLOW >/dev/nu
 printf 'OK   C7-shipped: a\nWARN C7-shipped: b\nINFO C7-shipped: c\n' > "$WORK/dup.txt"
 expect_has "worst severity wins across a check's rows" "C7-shipped WARN" "$(doctor_worst "$WORK/dup.txt")"
 
+# A check that printed before and vanishes after is a regression, not a pass.
+sed '/^OK   C20-node/d' "$REAL" > "$WORK/after-missing.txt"
+# shellcheck disable=SC2086
+OUT="$(doctor_regressions "$REAL" "$WORK/after-missing.txt" $ALLOW)"; rc=$?
+expect_rc "a check that disappears fails" 1 "$rc"
+expect_has "...as MISSING" "MISSING C20-node" "$OUT"
+
 # A capture that is empty or truncated must not read as "no regression".
 doctor_valid "$REAL"; expect_rc "real doctor capture is valid" 0 $?
 : > "$WORK/empty.txt"
@@ -104,6 +111,9 @@ run_guest UPGRADE_AST_GREP_VERSION=0.50.0 UPGRADE_GRAPHIFY_VERSION=latest UPGRAD
 expect_rc "non-x.y.z graphify target refuses" 2 $?
 run_guest UPGRADE_AST_GREP_VERSION=0.50.0 UPGRADE_GRAPHIFY_VERSION=0.9.85 UPGRADE_CLIPROXY_VERSION=8.0.23 UPGRADE_CLIPROXY_SHA256=abc
 expect_rc "malformed cli-proxy sha refuses" 2 $?
+# A valid first line must not carry a second one: the value reaches a remote shell.
+run_guest UPGRADE_AST_GREP_VERSION=0.50.0 UPGRADE_GRAPHIFY_VERSION=$'0.9.85\n;touch /tmp/x' UPGRADE_CLIPROXY_VERSION=8.0.23 UPGRADE_CLIPROXY_SHA256="$GOOD_SHA"
+expect_rc "multiline graphify target refuses" 2 $?
 
 # --- host driver ---------------------------------------------------------------
 BIN="$WORK/bin"; mkdir -p "$BIN" "$WORK/hhome"
