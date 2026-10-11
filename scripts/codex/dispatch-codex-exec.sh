@@ -77,9 +77,12 @@
 #   9. Hook-trust preflight (HIMMEL-5291): codex keys hook trust to the
 #      absolute .codex/hooks.json path, so a fresh worktree runs with none of
 #      himmel's hooks (HIMMEL-5288 gap 1). The dispatch refuses (exit 2, before
-#      the lock/ledger/registry) unless every PreToolUse hook of the worktree's
-#      hooks.json has a trusted entry in $CODEX_HOME/config.toml. There is no
-#      bypass: --dangerously-bypass-hook-trust stays refused by the filter.
+#      the lock/ledger/registry) unless every hook of every event of the
+#      worktree's hooks.json has a trusted entry in $CODEX_HOME/config.toml
+#      whose hash equals the one codex recomputes (HIMMEL-5293), under a
+#      primary checkout that resolves. There is no bypass:
+#      --dangerously-bypass-hook-trust stays refused by the filter, and a
+#      CODEX_BIN script naming it is refused too (HIMMEL-5297).
 #
 # Usage:
 #   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
@@ -106,6 +109,19 @@
 #
 # Bash 3.2 safe (macOS / Git Bash on Windows).
 set -uo pipefail
+
+# HIMMEL-5297: CODEX_BIN and CODEX_HOOK_TRUST_CHECK are registered seams
+# (scripts/chokepoints.json): refuse one that differs from the session's launch
+# env. Sourced by BASH_SOURCE, never PATH's dirname, before any seam is read.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "dispatch-codex-exec.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/codex/dispatch-codex-exec.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NORMALIZE="${CODEX_ACL_NORMALIZE:-$SCRIPT_DIR/normalize-worktree-acl.sh}"
@@ -346,18 +362,28 @@ fi
 # the lock, the ledger start row and the job registry, so a refusal leaves
 # nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
 # CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
-# ponytail: presence of a trusted_hash, not its validity - codex recomputes the
-# hash from the hook definition, so an edited hooks.json under an already
-# trusted path still passes here and codex itself then drops that hook; upgrade
-# path is porting codex's hash once its algorithm is documented.
+# HIMMEL-5293: every hook of EVERY event is checked, and each trusted_hash must
+# equal the hash codex recomputes from the hook definition (openai/codex
+# rust-v0.161.0: hooks/src/engine/discovery.rs hook_hash() +
+# config/src/fingerprint.rs version_for_toml(); see the port in the node program
+# below), because an edited hooks.json under an already trusted path keeps a
+# stale hash that codex silently drops. A primary checkout that cannot be
+# resolved refuses instead of trusting the worktree's own path.
+# ponytail: the port tracks codex-cli 0.161.0's identity shape (command hooks
+# only; any other hook type refuses as unverifiable); a codex release that
+# changes the identity refuses every dispatch until this is re-ported, which is
+# the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
 _hook_trust_check() {
     local wt="$1" hooks_json="$1/.codex/hooks.json"
-    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="$1" common
+    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
+    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
     # codex resolves a git worktree to its PRIMARY checkout and keys trust to
     # that checkout's .codex/hooks.json (observed codex-cli 0.161.0, Linux).
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    case "$common" in */.git) primary="${common%/.git}" ;; esac
-    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
+    case "$common" in
+        */.git) primary="${common%/.git}" ;;
+        *) echo "cannot resolve the primary checkout of $wt (git-common-dir='${common:-unresolved}'): codex keys trust to that path, so the trust state cannot be verified" >&2; return 1 ;;
+    esac
     # Git Bash: codex on Windows keys trust to the native path spelling.
     primary_native="$primary"
     if command -v cygpath >/dev/null 2>&1; then
@@ -374,35 +400,77 @@ try {
     console.error("cannot read " + hooksFile + ": " + error.message);
     process.exit(2);
 }
-const groups = (hooks.hooks || hooks).PreToolUse || [];
-let hookCount = 0;
+const crypto = require("crypto");
+const events = hooks.hooks || hooks;
 let cfg = "";
 try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = nothing trusted */ }
 // [hooks.state.<key>] tables: a literal (single-quoted) or basic ("...") key.
-const trusted = new Set();
-let key = null, hash = false, off = false;
-const flush = () => { if (key !== null && hash && !off) trusted.add(key); };
+// trusted: key -> the trusted_hash string (enabled = false entries drop out).
+const trusted = new Map();
+let key = null, hash = null, off = false;
+const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key, hash); };
 for (const line of cfg.split(/\r?\n/)) {
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
         key = m ? (m[1] !== undefined ? m[1] : m[2].replace(/\\(.)/g, "$1")) : null;
-        hash = false; off = false;
+        hash = null; off = false;
     } else if (key !== null) {
-        if (/^\s*trusted_hash\s*=\s*"[^"]+"/.test(line)) hash = true;
+        const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
+        if (h) hash = h[1];
         if (/^\s*enabled\s*=\s*false\b/.test(line)) off = true;
     }
 }
 flush();
+// Port of codex hook_hash(): sha256 of the compact JSON, object keys sorted, of
+// { event_name, matcher?, hooks: [normalized handler] }.
+const labels = { PreToolUse: "pre_tool_use", PermissionRequest: "permission_request", PostToolUse: "post_tool_use", PreCompact: "pre_compact", PostCompact: "post_compact", SessionStart: "session_start", SessionEnd: "session_end", UserPromptSubmit: "user_prompt_submit", SubagentStart: "subagent_start", SubagentStop: "subagent_stop", Stop: "stop", Interrupt: "interrupt" };
+const ctxEvents = new Set(["PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "SubagentStart"]);
+const sorted = (v) => Array.isArray(v) ? v.map(sorted)
+    : (v && typeof v === "object") ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {})
+    : v;
+const expectedHash = (event, group, hook) => {
+    const shortEvent = event === "SessionEnd" || event === "Interrupt";
+    const t = Number.isInteger(hook.timeout) ? hook.timeout : undefined;
+    const handler = {
+        type: "command",
+        command: (process.platform === "win32" && typeof hook.commandWindows === "string") ? hook.commandWindows : hook.command,
+        async: hook.async === true,
+        timeout: shortEvent ? Math.min(Math.max(t === undefined ? 1 : t, 1), 3) : Math.max(t === undefined ? 600 : t, 1),
+    };
+    if (typeof hook.statusMessage === "string") handler.statusMessage = hook.statusMessage;
+    if (ctxEvents.has(event) && Number.isInteger(hook.additionalContextLimit) && hook.additionalContextLimit !== 2500) {
+        handler.additionalContextLimit = hook.additionalContextLimit;
+    }
+    const identity = { event_name: labels[event], hooks: [handler] };
+    if (typeof group.matcher === "string") identity.matcher = group.matcher;
+    return "sha256:" + crypto.createHash("sha256").update(JSON.stringify(sorted(identity))).digest("hex");
+};
 const missing = [];
-groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
-    hookCount++;
-    const suffix = "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi;
-    const winSuffix = "\\.codex\\hooks.json:pre_tool_use:" + gi + ":" + hi;
-    const ok = prefixes.some(p => trusted.has(p + suffix) || trusted.has(p + winSuffix));
-    if (!ok) missing.push("pre_tool_use:" + gi + ":" + hi);
-}));
-if (hookCount === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
+let preCount = 0;
+for (const event of Object.keys(events)) {
+    const groups = events[event] || [];
+    if (!labels[event]) {
+        if (groups.some(g => (g.hooks || []).length)) missing.push(event + " (unknown hook event, cannot verify)");
+        continue;
+    }
+    groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
+        if (event === "PreToolUse") preCount++;
+        const id = labels[event] + ":" + gi + ":" + hi;
+        const suffix = "/.codex/hooks.json:" + id;
+        const winSuffix = "\\.codex\\hooks.json:" + id;
+        let found, hit = false;
+        for (const p of prefixes) {
+            for (const k of [p + suffix, p + winSuffix]) {
+                if (trusted.has(k)) { hit = true; found = trusted.get(k); }
+            }
+        }
+        if (!hit) { missing.push(id); return; }
+        if (hook.type !== "command" || typeof hook.command !== "string") { missing.push(id + " (non-command hook, cannot verify its hash)"); return; }
+        if (found !== expectedHash(event, group, hook)) missing.push(id + " (stale trusted_hash: hooks.json changed since it was trusted)");
+    }));
+}
+if (preCount === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
 if (missing.length) {
     console.error(missing.join(", "));
     process.exit(1);
@@ -458,6 +526,23 @@ fi
 if ! command -v "$CODEX" >/dev/null 2>&1; then
     echo "dispatch-codex-exec.sh: codex CLI not found: $CODEX (install it or set CODEX_BIN)" >&2
     exit 127
+fi
+
+# HIMMEL-5297: the argv filter bounds the CALLER's flags, but CODEX_BIN can name
+# a wrapper that adds --dangerously-bypass-hook-trust (or the sandbox/rules
+# bypasses) itself. CODEX_BIN is a registered chokepoint seam (scripts/
+# chokepoints.json), and here a resolved script (shebang) naming a refused flag
+# is refused before launch, as is any such flag in the argv finally passed.
+# ponytail: a static text scan of a script wrapper - a compiled wrapper or a
+# flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
+# resolved codex install (basename + realpath allowlist) once a second lane
+# needs the override for real.
+CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"
+if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODEX_RESOLVED" 2>/dev/null)" = "#!" ]; then
+    if grep -qE -e '--dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules' "$CODEX_RESOLVED" 2>/dev/null; then
+        echo "dispatch-codex-exec.sh: refusing CODEX_BIN '$CODEX': the script names a refused trust/sandbox bypass flag (the lane's argv filter cannot see a wrapper's own flags)" >&2
+        exit 2
+    fi
 fi
 
 # The worktree can vanish between the -d check and here (the preflight takes
@@ -531,6 +616,18 @@ if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
 fi
+# HIMMEL-5297: the argv codex is finally launched with never carries a refused
+# trust/sandbox bypass flag, whatever built it (the caller args were already
+# filtered; this covers the pin args and any later change to either).
+# shellcheck disable=SC2086 # pin_args is a fixed, space-safe flag list
+for _final_arg in $pin_args "$@"; do
+    case "$_final_arg" in
+        --dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules)
+            echo "dispatch-codex-exec.sh: refusing final argv carrying '$_final_arg'" >&2
+            exit 2 ;;
+    esac
+done
+
 # Invariants 5+6 (HIMMEL-800/840): NEVER exec codex in either path - exec
 # replaces this process image, which would drop the composed EXIT trap above
 # (losing both the shared-branch lock release and the fleet reap). Run codex

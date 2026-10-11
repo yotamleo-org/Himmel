@@ -976,26 +976,69 @@ REAL_HOOKS="$SCRIPT_DIR/../../.codex/hooks.json"
 TRUST_WT="$TMP/.claude/worktrees/trust-wt"
 mkdir -p "$TRUST_WT/.codex"
 cp "$REAL_HOOKS" "$TRUST_WT/.codex/hooks.json"
+# HIMMEL-5293: the primary checkout must RESOLVE; a fixture that is its own git
+# repo is its own primary (git-common-dir = <it>/.git).
+git -C "$TRUST_WT" init -q -b main
 TRUST_HOME="$TMP/codex-home"
 mkdir -p "$TRUST_HOME"
 
-# trust_config <worktree> [skip-index|-] [enabled=false-index|-]: write a
-# config.toml trusting every PreToolUse hook of <worktree>.
+# HIMMEL-5293: codex trusts a hook only when trusted_hash equals the hash it
+# recomputes from the hook definition. The helper below is a second, independent
+# port of that computation, written from openai/codex rust-v0.161.0:
+# hooks/src/engine/discovery.rs hook_hash() (a NormalizedHookIdentity of
+# event_name + the matcher group holding the one normalized handler, as a TOML
+# value) and config/src/fingerprint.rs version_for_toml() (sha256 of the compact
+# JSON with every object key sorted). It prints one `<key>\t<hash>` row per hook
+# of a hooks.json, <key> = <event>:<group>:<hook> in codex's snake_case labels.
+HOOK_HASH_JS="$TMP/hook-hash.js"
+cat > "$HOOK_HASH_JS" <<'EOF'
+const fs = require("fs");
+const crypto = require("crypto");
+const label = { PreToolUse: "pre_tool_use", PostToolUse: "post_tool_use", SessionStart: "session_start", SessionEnd: "session_end", UserPromptSubmit: "user_prompt_submit", Stop: "stop" };
+const sorted = (v) => Array.isArray(v) ? v.map(sorted)
+  : (v && typeof v === "object") ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {})
+  : v;
+const version = (v) => "sha256:" + crypto.createHash("sha256").update(JSON.stringify(sorted(v))).digest("hex");
+if (process.argv[2] === "--vector") {
+  // upstream codex-rs/config/src/fingerprint_tests.rs, the config as TOML parsed to a value
+  console.log(version({ rows: [{ z: 2, a: 1 }, { z: 4, a: 3 }], nested: { z: "text", a: true } }));
+  process.exit(0);
+}
+const doc = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).hooks;
+for (const [event, groups] of Object.entries(doc)) {
+  groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
+    const sessionEnd = event === "SessionEnd";
+    const handler = { type: "command", command: h.command, async: h.async === true,
+      timeout: sessionEnd ? Math.min(Math.max(h.timeout === undefined ? 1 : h.timeout, 1), 3) : Math.max(h.timeout === undefined ? 600 : h.timeout, 1) };
+    if (typeof h.statusMessage === "string") handler.statusMessage = h.statusMessage;
+    const identity = { event_name: label[event], hooks: [handler] };
+    if (typeof g.matcher === "string") identity.matcher = g.matcher;
+    console.log(label[event] + ":" + gi + ":" + hi + "\t" + version(identity));
+  }));
+}
+EOF
+
+# trust_config <worktree> [skip-PreToolUse-ordinal|-] [enabled=false-ordinal|-]
+# [skip-key|-] [stale-key|-]: write a config.toml trusting every hook (all
+# events) of the real hooks.json under <worktree>, each with the hash codex
+# computes. skip-key drops that <event>:<group>:<hook>; stale-key keeps its
+# entry but with a wrong (well-formed) hash, the shape of an edited hooks.json.
 trust_config() {
   node -e '
 const fs = require("fs");
-const [hooks, wt, skip, off, out] = process.argv.slice(1);
-const groups = JSON.parse(fs.readFileSync(hooks, "utf8")).hooks.PreToolUse;
+const { execFileSync } = require("child_process");
+const [helper, hooks, wt, skip, off, skipKey, staleKey, out] = process.argv.slice(1);
 let text = "[hooks.state]\n\n", n = 0;
-groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
-  const idx = n++;
-  if (String(idx) === skip) return;
-  text += "[hooks.state.\x27" + wt + "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi + "\x27]\n";
+for (const row of execFileSync("node", [helper, hooks], { encoding: "utf8" }).trim().split("\n")) {
+  const [key, hash] = row.split("\t");
+  const idx = key.startsWith("pre_tool_use:") ? n++ : -1;
+  if (String(idx) === skip || key === skipKey) continue;
+  text += "[hooks.state.\x27" + wt + "/.codex/hooks.json:" + key + "\x27]\n";
   if (String(idx) === off) text += "enabled = false\n";
-  text += "trusted_hash = \"sha256:" + "ab".repeat(32) + "\"\n\n";
-}));
+  text += "trusted_hash = \"" + (key === staleKey ? "sha256:" + "ab".repeat(32) : hash) + "\"\n\n";
+}
 fs.writeFileSync(out, text);
-' "$TRUST_WT/.codex/hooks.json" "$1" "${2:--}" "${3:--}" "$TRUST_HOME/config.toml"
+' "$HOOK_HASH_JS" "$TRUST_WT/.codex/hooks.json" "$1" "${2:--}" "${3:--}" "${4:--}" "${5:--}" "$TRUST_HOME/config.toml"
 }
 
 run_trust() {  # run_trust <worktree> ; REAL trust check, own CODEX_HOME
@@ -1064,15 +1107,16 @@ mkdir -p "$PRIM_WT/.codex"
 cp "$REAL_HOOKS" "$PRIM_WT/.codex/hooks.json"
 node -e '
 const fs = require("fs");
-const [hooks, root, out] = process.argv.slice(1);
-const groups = JSON.parse(fs.readFileSync(hooks, "utf8")).hooks.PreToolUse;
+const { execFileSync } = require("child_process");
+const [helper, hooks, root, out] = process.argv.slice(1);
 let text = "[hooks.state]\n\n";
-groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
-  text += "[hooks.state.\"" + root + "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi + "\"]\n";
-  text += "trusted_hash = \"sha256:" + "cd".repeat(32) + "\"\n\n";
-}));
+for (const row of execFileSync("node", [helper, hooks], { encoding: "utf8" }).trim().split("\n")) {
+  const [key, hash] = row.split("\t");
+  text += "[hooks.state.\"" + root + "/.codex/hooks.json:" + key + "\"]\n";
+  text += "trusted_hash = \"" + hash + "\"\n\n";
+}
 fs.writeFileSync(out, text);
-' "$PRIM_WT/.codex/hooks.json" "$PRIM" "$TRUST_HOME/config.toml"
+' "$HOOK_HASH_JS" "$PRIM_WT/.codex/hooks.json" "$PRIM" "$TRUST_HOME/config.toml"
 : > "$LOG"
 run_trust "$PRIM_WT"
 assert_rc 0 "trust keyed to the primary checkout counts for its worktree" "16g rc=$RC out=$OUT"
@@ -1087,11 +1131,98 @@ assert_rc 2 "worktree-path trust does not count when codex keys to the primary" 
 # 16i: a PreToolUse array holding only empty groups declares no hook -> refused.
 EMPTY_WT="$TMP/empty-wt"
 mkdir -p "$EMPTY_WT/.codex"
+git -C "$EMPTY_WT" init -q -b main
 printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$EMPTY_WT/.codex/hooks.json"
 : > "$TRUST_HOME/config.toml"
 : > "$LOG"
 run_trust "$EMPTY_WT"
 assert_rc 2 "PreToolUse with only empty groups refused" "16i rc=$RC out=$OUT"
+
+# --- 17: trust-hash validity, primary resolution, CODEX_BIN (HIMMEL-5293/5297) --
+# 17a: the hash helper reproduces codex's own published fingerprint vector
+# (upstream codex-rs/config/src/fingerprint_tests.rs) - the one fixture here
+# copied from the real upstream, so the helper's serialization is not my guess.
+VEC="$(node "$HOOK_HASH_JS" --vector)"
+if [ "$VEC" = "sha256:a5e4c8fbdbc75d185b0f2b5291bfb2de10e8c523d6c89248876fd78a97c83176" ]; then pass "17a hash helper reproduces codex's upstream fingerprint vector"; else fail "17a vector: $VEC"; fi
+
+# 17b: a hash codex would NOT accept (stale: hooks.json edited since trust) on a
+# PreToolUse hook is refused though a trusted_hash is present.
+: > "$LOG"
+trust_config "$TRUST_WT" - - - "pre_tool_use:3:0"
+run_trust "$TRUST_WT"
+assert_rc 2 "a stale trusted_hash refuses" "17b rc=$RC out=$OUT"
+case "$OUT" in *"pre_tool_use:3:0"*) pass "17b refusal names the stale hook";; *) fail "17b out: $OUT";; esac
+if grep -q '^codex$' "$LOG" 2>/dev/null; then fail "17b codex invoked on a stale hash"; else pass "17b codex not invoked on a stale hash"; fi
+
+# 17c: hooks.json edited AFTER trust (the real defect path) -> refused.
+: > "$LOG"
+trust_config "$TRUST_WT"
+cp "$TRUST_WT/.codex/hooks.json" "$TMP/hooks.json.good"
+sed 's/auto-approve-safe-bash.sh/auto-approve-safe-bash-v2.sh/' "$TMP/hooks.json.good" > "$TRUST_WT/.codex/hooks.json"
+run_trust "$TRUST_WT"
+assert_rc 2 "hooks.json edited after trust refuses" "17c rc=$RC out=$OUT"
+cp "$TMP/hooks.json.good" "$TRUST_WT/.codex/hooks.json"
+
+# 17d: every PreToolUse hook trusted, one POST-tool hook not -> refused.
+: > "$LOG"
+trust_config "$TRUST_WT" - - "post_tool_use:0:0"
+run_trust "$TRUST_WT"
+assert_rc 2 "an untrusted non-PreToolUse hook refuses" "17d rc=$RC out=$OUT"
+case "$OUT" in *"post_tool_use:0:0"*) pass "17d refusal names the post_tool_use hook";; *) fail "17d out: $OUT";; esac
+
+# 17e: a worktree whose primary checkout cannot be resolved (not a git repo)
+# must refuse, not fall back to trusting the worktree's own path.
+NOGIT_WT="$TMP/.claude/worktrees/nogit-wt"
+mkdir -p "$NOGIT_WT/.codex"
+cp "$REAL_HOOKS" "$NOGIT_WT/.codex/hooks.json"
+node -e '
+const fs = require("fs");
+const { execFileSync } = require("child_process");
+const [helper, hooks, root, out] = process.argv.slice(1);
+let text = "[hooks.state]\n\n";
+for (const row of execFileSync("node", [helper, hooks], { encoding: "utf8" }).trim().split("\n")) {
+  const [key, hash] = row.split("\t");
+  text += "[hooks.state.\x27" + root + "/.codex/hooks.json:" + key + "\x27]\ntrusted_hash = \"" + hash + "\"\n\n";
+}
+fs.writeFileSync(out, text);
+' "$HOOK_HASH_JS" "$NOGIT_WT/.codex/hooks.json" "$NOGIT_WT" "$TRUST_HOME/config.toml"
+: > "$LOG"
+run_trust "$NOGIT_WT"
+assert_rc 2 "an unresolvable primary checkout refuses (no fallback to the worktree path)" "17e rc=$RC out=$OUT"
+case "$OUT" in *"primary"*) pass "17e refusal names the primary checkout";; *) fail "17e out: $OUT";; esac
+
+# 17f: the fully-trusted, correctly-hashed real hooks.json still launches.
+: > "$LOG"
+trust_config "$TRUST_WT"
+run_trust "$TRUST_WT"
+assert_rc 0 "correct hashes on every event dispatch" "17f rc=$RC out=$OUT"
+
+# 17g: CODEX_BIN naming a wrapper that adds the trust bypass is refused before
+# any launch (the wrapper sits OUTSIDE the argv filter).
+BYPASS_BIN="$TMP/codex-bypass-wrapper"
+cat > "$BYPASS_BIN" <<EOF
+#!/usr/bin/env bash
+echo "codex" >> "$LOG"
+exec "$CODEX_STUB" --dangerously-bypass-hook-trust "\$@"
+EOF
+chmod +x "$BYPASS_BIN"
+: > "$LOG"
+set +e
+OUT="$(CODEX_BIN="$BYPASS_BIN" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+    CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
+    bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
+RC=$?
+set -e
+assert_rc 2 "a CODEX_BIN wrapper carrying the hook-trust bypass is refused" "17g rc=$RC out=$OUT"
+if grep -q '^codex$' "$LOG" 2>/dev/null; then fail "17g wrapper was launched"; else pass "17g wrapper not launched"; fi
+
+# 17h: CODEX_BIN and the trust-check override are registered chokepoint seams,
+# so an env-prefixed call of the dispatch is denied by block-chokepoint-env-prefix.
+if node -e '
+const r = require(process.argv[1])["scripts/codex/dispatch-codex-exec.sh"];
+const v = (r && r.seam_env_vars) || [];
+process.exit(v.includes("CODEX_BIN") && v.includes("CODEX_HOOK_TRUST_CHECK") ? 0 : 1);
+' "$SCRIPT_DIR/../chokepoints.json"; then pass "17h CODEX_BIN + CODEX_HOOK_TRUST_CHECK registered as chokepoint seams"; else fail "17h chokepoints.json lacks the codex dispatch seams"; fi
 
 echo
 if [ "$fails" -ne 0 ]; then
