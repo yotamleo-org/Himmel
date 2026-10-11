@@ -1341,7 +1341,7 @@ shape_case() {
 const fs = require("fs");
 const text = fs.readFileSync(process.argv[1], "utf8");
 const r = new Function("d", "text", process.argv[2])(JSON.parse(text), text);
-fs.writeFileSync(process.argv[3], typeof r === "string" ? r : JSON.stringify(r, null, 2));
+fs.writeFileSync(process.argv[3], (typeof r === "string" || Buffer.isBuffer(r)) ? r : JSON.stringify(r, null, 2));
 ' "$REAL_HOOKS" "$4" "$SHAPE_WT/.codex/hooks.json"
   : > "$LOG"
   run_trust "$SHAPE_WT"
@@ -1359,6 +1359,9 @@ shape_case "18p matcher with lookahead (JS-only regex syntax)" 2 "regular expres
 shape_case "18q matcher with backreference (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(a)\\1"; return d;'
 shape_case "18r float-syntax timeout (60.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": 60.0");'
 shape_case "18t JSON booleans stay booleans (async true parses, only the hash is stale)" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].async = true; return d;'
+shape_case "18u -0 timeout (serde reads F64 -0.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": -0");'
+shape_case "18v lone surrogate escape in description" 2 "lone surrogate" 'd.description = "PLACE"; return JSON.stringify(d).replace("PLACE", "\\ud800");'
+shape_case "18w invalid UTF-8 byte in description" 2 "not valid" 'd.description = "aPLACEb"; const [a, b] = JSON.stringify(d).split("PLACE"); return Buffer.concat([Buffer.from(a), Buffer.from([0xff]), Buffer.from(b)]);'
 shape_case "18s matcher with unknown letter escape" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\qb"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.

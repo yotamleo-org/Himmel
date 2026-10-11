@@ -420,7 +420,11 @@ const parseStrict = (text) => {
         while (i < text.length && text[i] !== "\"") { if (text[i] === "\\") i++; i++; }
         if (i >= text.length) fail("unterminated string");
         i++;
-        return JSON.parse(text.slice(start, i));
+        const s = JSON.parse(text.slice(start, i));
+        // serde_json rejects a lone surrogate escape that JSON.parse accepts, and
+        // codex then loads no hook at all.
+        if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s)) fail("lone surrogate escape in a string");
+        return s;
     };
     const val = () => {
         ws();
@@ -464,7 +468,8 @@ const parseStrict = (text) => {
         i += m[0].length;
         // serde reads 15.0 / 15e0 as a float and rejects it for a u64 field, while
         // JSON.parse yields the integer 15: keep float syntax non-integer (NaN).
-        if (/^-?\d+(?:[.eE])/.test(m[0])) return NaN;
+        // A leading minus is refused too: -0 is F64(-0.0) to serde_json.
+        if (/^(?:-|\d+[.eE])/.test(m[0])) return NaN;
         return JSON.parse(m[0]);
     };
     const v = val();
@@ -474,7 +479,9 @@ const parseStrict = (text) => {
 };
 let hooks;
 try {
-    hooks = parseStrict(fs.readFileSync(hooksFile, "utf8"));
+    // fatal decoder: an invalid UTF-8 byte is a read error for codex (no hooks
+    // load), while a lenient decode would turn it into U+FFFD and pass.
+    hooks = parseStrict(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(fs.readFileSync(hooksFile)));
 } catch (error) {
     console.error("codex would load no hooks from " + hooksFile + ": " + error.message);
     process.exit(2);
