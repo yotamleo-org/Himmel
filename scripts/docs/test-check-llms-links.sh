@@ -393,6 +393,7 @@ for needle in 'himmelctl ui' 'docs/ui.md' 'board.mjs' 'tracker.py'; do
 done
 if [ -f "$REAL_ROOT/docs/ui.md" ]; then
   page_ids=$(grep '^  { id:' "$REAL_ROOT/scripts/config-ui/public/nav.js" | grep -o 'id: "[a-z]*"' | sed 's/id: "\(.*\)"/\1/')
+  if [ -n "$page_ids" ]; then ok; else bad "no page ids read from config-ui nav.js (extraction drifted)"; fi
   for page in $page_ids; do
     if grep -Fq -- "#/$page" "$REAL_ROOT/docs/ui.md" ||
        { [ "$page" = fleet ] && grep -Fq -- '/agui/' "$REAL_ROOT/docs/ui.md"; }; then ok; else bad "docs/ui.md does not describe page: $page"; fi
