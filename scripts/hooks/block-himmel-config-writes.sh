@@ -35,7 +35,11 @@
 # (failing closed on every unparseable call would lock a session out of every
 # tool for a hook bug; scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
 #
-# ponytail: text matching, not a shell parser or a sandbox. An interpreter that
+# ponytail: the clause splitter is PARTIAL (quotes, # comments, null-sink
+# redirects only), not a shell parser; a command naming the config that carries
+# a backslash or << denies outright (HIMMEL-5290 j2409b), upgrade path a real
+# tokenizer shared with the other guards, filed if a benign read is blocked.
+# Text matching, not a sandbox. An interpreter that
 # assembles the path from pieces, a script FILE that writes the config without
 # being handed its name, `eval`, a variable holding the path, and a Bash command
 # reaching it through a symlink alias (only file-tool paths are resolved) are
@@ -112,10 +116,18 @@ case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; e
 case "$cmd" in
     *'$('*|*'`'*|*'<('*|*"\$'"*) deny "the command names ~/.himmel/config.json with a command or process substitution, or an ANSI-C quote" ;;
 esac
+# The splitter below is PARTIAL (HIMMEL-5290, judge j2409b): it does not model
+# backslash escapes or heredoc bodies, and every patch to it opened the next
+# escape. So these shapes fail CLOSED when the command names the config: any
+# backslash, and any << (heredoc, <<-, <<< here-string).
+case "$cmd" in
+    *\\*) deny "the command names ~/.himmel/config.json and contains a backslash (the clause splitter does not model escapes)" ;;
+    *'<<'*) deny "the command names ~/.himmel/config.json and contains a heredoc or here-string (the clause splitter does not model them)" ;;
+esac
 # Quote-aware split (HIMMEL-5290): ; | & and newline separate clauses only
 # outside quotes, and an unquoted > is a redirect (deny) unless it is an fd
-# redirect to exactly /dev/null (>, >> or quoted). A backslash escapes the next char outside single
-# quotes. An unterminated quote cannot be classified, so it denies.
+# redirect to exactly /dev/null (>, >> or quoted). An unterminated quote
+# cannot be classified, so it denies.
 clauses=""
 cur=""
 q=""
@@ -128,17 +140,6 @@ while [ "$i" -lt "$n" ]; do
         [ "$c" = "'" ] && q=""
         [ "$c" = $'\n' ] && c=" "
         cur="$cur$c"
-        continue
-    fi
-    if [ "$c" = $'\\' ]; then
-        # backslash-newline is a line continuation: the shell drops both with no
-        # whitespace left behind (c\<nl>p runs cp), so append nothing.
-        if [ "${cmd:i:1}" = $'\n' ]; then
-            :
-        else
-            cur="$cur$c${cmd:i:1}"
-        fi
-        i=$((i + 1))
         continue
     fi
     if [ "$q" = '"' ]; then
