@@ -133,8 +133,8 @@ try {
  j.projects=j.projects||{};
  const project=j.projects[root]||{};
  if(!object(project))throw Error("invalid project object");
- if(j.hasCompletedOnboarding===true&&project.hasTrustDialogAccepted===true)process.exit(0);
- j.hasCompletedOnboarding=true;project.hasTrustDialogAccepted=true;j.projects[root]=project;
+ if(j.hasCompletedOnboarding===true&&project.hasTrustDialogAccepted===true&&project.hasClaudeMdExternalIncludesApproved===true&&project.hasClaudeMdExternalIncludesWarningShown===true)process.exit(0);
+ j.hasCompletedOnboarding=true;project.hasTrustDialogAccepted=true;project.hasClaudeMdExternalIncludesApproved=true;project.hasClaudeMdExternalIncludesWarningShown=true;j.projects[root]=project;
  const temp=p+".tmp."+process.pid;
  fs.writeFileSync(temp,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.renameSync(temp,p);
 }catch(e){console.error("claude-deepseek: onboarding seed failed: "+e.message);process.exit(4);}

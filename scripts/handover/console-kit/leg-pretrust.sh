@@ -146,7 +146,7 @@ rm -f "$owner" 2>/dev/null
 # Release only a lock we still own: a reclaimed-then-retaken lock is the successor's.
 trap '[ "$(cat "$owner" 2>/dev/null)" = "$$" ] && { rm -f "$owner"; rmdir "$lock" 2>/dev/null; }; true' EXIT
 
-WT_KEY="$abs" WT_CONFIG="$cfg" WT_SEAM="${LEG_PRETRUST_CONFIG:+1}" node -e '
+WT_KEY="$abs" WT_CONFIG="$cfg" WT_SEAM="${LEG_PRETRUST_CONFIG:+1}" WT_IMPORTS="$([ "$lane" = deepseek ] && echo 1)" node -e '
 const fs = require("fs");
 const key = process.env.WT_KEY;
 // A symlinked config is written THROUGH (the link stays); the rename targets the real file.
@@ -187,8 +187,13 @@ for (let attempt = 0; attempt < 5; attempt++) {
     if (j.projects === undefined) j.projects = {};
     if (j.projects[key] !== undefined && !obj(j.projects[key])) { console.error("leg-pretrust: " + p + " has a non-object projects[" + key + "] - refusing to overwrite"); process.exit(4); }
     if (j.projects[key] === undefined) j.projects[key] = {};
-    if (j.projects[key].hasTrustDialogAccepted === true) process.exit(0);
-    j.projects[key].hasTrustDialogAccepted = true;
+    // HIMMEL-5249: the deepseek lane (its own config dir, never approved) also stops at the
+    // "Allow external CLAUDE.md imports?" prompt, so its project key gets those two flags too.
+    const imports = process.env.WT_IMPORTS === "1";
+    const pk = j.projects[key];
+    if (pk.hasTrustDialogAccepted === true && (!imports || (pk.hasClaudeMdExternalIncludesApproved === true && pk.hasClaudeMdExternalIncludesWarningShown === true))) process.exit(0);
+    pk.hasTrustDialogAccepted = true;
+    if (imports) { pk.hasClaudeMdExternalIncludesApproved = true; pk.hasClaudeMdExternalIncludesWarningShown = true; }
     const tmp = p + ".tmp-pretrust-" + process.pid;
     // Keep the mode as found (claude does the same); a new file gets the 0600 default claude uses.
     let mode = 0o600;

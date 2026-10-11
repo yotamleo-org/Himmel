@@ -85,6 +85,12 @@ for pair in "claudex:.claude-codex" "openrouter:.claude-openrouter" "deepseek:.c
 done
 rc=0; bash "$SCRIPT" glm "$primary/.claude/worktrees/wt1" >/dev/null 2>&1 || rc=$?
 check "4 unknown lane: exit 2" "$rc" "2"
+# HIMMEL-5249: the deepseek lane's legs also park at "Allow external CLAUDE.md imports?",
+# so its worktree key gets both approval flags; no other lane's config is touched.
+imports() { jq -r --arg k "$2" '.projects[$k] | "\(.hasClaudeMdExternalIncludesApproved // "absent")/\(.hasClaudeMdExternalIncludesWarningShown // "absent")"' "$1"; }
+check "4b deepseek: external-imports flags set" "$(imports "$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json" "$primary/.claude/worktrees/wt1")" "true/true"
+check "4b claudex: external-imports flags untouched" "$(imports "$LEG_PRETRUST_HOME/.claude-codex/.claude.json" "$primary/.claude/worktrees/wt1")" "absent/absent"
+check "4b openrouter: external-imports flags untouched" "$(imports "$LEG_PRETRUST_HOME/.claude-openrouter/.claude.json" "$primary/.claude/worktrees/wt1")" "absent/absent"
 
 # 5. concurrent writers lose nothing.
 rm -f "$cfg"
