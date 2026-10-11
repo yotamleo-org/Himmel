@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # Suite for scripts/docs/check-llms-links.sh (HIMMEL-2832).
 #
 # Every case builds a throwaway git repo and points the script at it through
@@ -382,6 +383,35 @@ run_check llms.txt
 expect 1 "reporting: multiple violations in one file"
 expect_says "forbidden (handover state path)" "reporting: first violation printed"
 expect_says "is not tracked at HEAD" "reporting: second violation printed too"
+
+# ------------------------------------------------- real tree: UI surfaces
+# HIMMEL-5251: llms.txt is what an adopter's agent reads, so every user-facing UI
+# surface is named there and described in docs/ui.md. Grep-level on purpose: a
+# page id in config-ui's nav.js with no docs/ui.md mention is the drift.
+REAL_ROOT=$(cd "$HERE/../.." && pwd)
+for needle in 'himmelctl ui' 'docs/ui.md' 'board.mjs' 'tracker.py'; do
+  if grep -Fq -- "$needle" "$REAL_ROOT/llms.txt"; then ok; else bad "real llms.txt does not name: $needle"; fi
+done
+if [ -f "$REAL_ROOT/docs/ui.md" ]; then
+  page_ids=$(grep '^  { id:' "$REAL_ROOT/scripts/config-ui/public/nav.js" | grep -o 'id: "[^"]*"' | sed 's/id: "\(.*\)"/\1/')
+  if [ -n "$page_ids" ]; then ok; else bad "no page ids read from config-ui nav.js (extraction drifted)"; fi
+  for page in $page_ids; do
+    if grep -Fq -- "#/$page" "$REAL_ROOT/docs/ui.md" ||
+       { [ "$page" = fleet ] && grep -Fq -- '/agui/' "$REAL_ROOT/docs/ui.md"; }; then ok; else bad "docs/ui.md does not describe page: $page"; fi
+  done
+else
+  bad "docs/ui.md is missing"
+fi
+
+# Every top-level docs page is reachable from the docs map that llms.txt links
+# (docs/README.md), so a page added without a router entry fails here.
+if grep -Fq -- '(docs/README.md)' "$REAL_ROOT/llms.txt"; then ok; else bad "real llms.txt does not link docs/README.md"; fi
+if docs_pages=$(git -C "$REAL_ROOT" ls-files ':(glob)docs/*.md') && [ -n "$docs_pages" ]; then ok; else bad "no top-level docs pages enumerated (git ls-files failed or empty)"; fi
+for page in $docs_pages; do
+  base=${page#docs/}
+  [ "$base" = README.md ] && continue
+  if grep -Fq -- "($base)" "$REAL_ROOT/docs/README.md" || grep -Fq -- "(./$base)" "$REAL_ROOT/docs/README.md"; then ok; else bad "docs/README.md does not link top-level page: $base"; fi
+done
 
 echo "test-check-llms-links: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
