@@ -194,17 +194,17 @@ note "upgrade: jira cli rebuild (himmel-update --only jira_cli)"
 bash scripts/himmel-update.sh --only jira_cli >"$WORK/up-jira.log" 2>&1; verdict $? "himmel-update --only jira_cli" "himmel-update --only jira_cli (see $WORK/up-jira.log)"
 
 note "upgrade: graphify -> $UPGRADE_GRAPHIFY_VERSION (himmel-update --only graphify)"
-GRAPHIFY_VERSION="$UPGRADE_GRAPHIFY_VERSION" bash scripts/himmel-update.sh --only graphify >"$WORK/up-graphify.log" 2>&1
+GRAPHIFY_VERSION="$UPGRADE_GRAPHIFY_VERSION" bash scripts/himmel-update.sh --only graphify >"$WORK/up-graphify.log" 2>&1; irc=$?
 GOT="$(first_semver "$(graphify --version 2>&1)")"
-if [ "$GOT" = "$UPGRADE_GRAPHIFY_VERSION" ]; then pass "graphify now: $GOT"; else fail "graphify is '$GOT', wanted $UPGRADE_GRAPHIFY_VERSION (see $WORK/up-graphify.log)"; fi
+if [ "$irc" -eq 0 ] && [ "$GOT" = "$UPGRADE_GRAPHIFY_VERSION" ]; then pass "graphify now: $GOT"; else fail "graphify install rc=$irc, version '$GOT', wanted $UPGRADE_GRAPHIFY_VERSION (see $WORK/up-graphify.log)"; fi
 
 note "upgrade: qmd fork (himmel-update --only qmd_fork)"
 bash scripts/himmel-update.sh --only qmd_fork >"$WORK/up-qmd.log" 2>&1; verdict $? "himmel-update --only qmd_fork" "himmel-update --only qmd_fork (see $WORK/up-qmd.log)"
 
 note "upgrade: ast-grep -> $UPGRADE_AST_GREP_VERSION (install-code-kit-clis, AST_GREP_VERSION)"
-AST_GREP_VERSION="$UPGRADE_AST_GREP_VERSION" bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/up-ast-grep.log" 2>&1
+AST_GREP_VERSION="$UPGRADE_AST_GREP_VERSION" bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/up-ast-grep.log" 2>&1; irc=$?
 GOT=""; command -v ast-grep >/dev/null 2>&1 && GOT="$(first_semver "$(ast-grep --version 2>&1)")"
-if [ "$GOT" = "$UPGRADE_AST_GREP_VERSION" ]; then pass "ast-grep now: $GOT"; else fail "ast-grep is '$GOT', wanted $UPGRADE_AST_GREP_VERSION (see $WORK/up-ast-grep.log)"; fi
+if [ "$irc" -eq 0 ] && [ "$GOT" = "$UPGRADE_AST_GREP_VERSION" ]; then pass "ast-grep now: $GOT"; else fail "ast-grep install rc=$irc, version '$GOT', wanted $UPGRADE_AST_GREP_VERSION (see $WORK/up-ast-grep.log)"; fi
 
 note "upgrade: cli-proxy-api -> v$UPGRADE_CLIPROXY_VERSION (CLIPROXY_API_VERSION + CLIPROXY_API_SHA256)"
 CLIPROXY_API_VERSION="$UPGRADE_CLIPROXY_VERSION" CLIPROXY_API_SHA256="$UPGRADE_CLIPROXY_SHA256" \
