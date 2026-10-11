@@ -126,8 +126,6 @@ block-bare-qmd-query.sh zsh-subscript-braced HIMMEL-5328
 block-bare-qmd-query.sh zsh-paramflag-indirect-empty HIMMEL-5328
 block-bare-qmd-query.sh zsh-modifier-empty-word HIMMEL-5328
 block-bare-qmd-query.sh zsh-modifier-empty-arg HIMMEL-5328
-block-chokepoint-env-prefix.sh zsh-modifier-tail-braceless HIMMEL-5336
-block-chokepoint-env-prefix.sh zsh-modifier-root-braceless HIMMEL-5336
 block-destructive-commands.sh zsh-modifier-tail-braceless HIMMEL-5329
 block-destructive-commands.sh zsh-modifier-tail-braced HIMMEL-5329
 block-destructive-commands.sh zsh-modifier-root-braceless HIMMEL-5329
@@ -263,7 +261,15 @@ build() {
   local tmpl="${1#*|||}" payload="$2" p1 pr ps c
   tmpl="${tmpl#*|||}"
   p1="${payload%% *}"; pr="${payload#* }"
-  case "$p1" in *=*) case "$tmpl" in *@@P1@@*|*@@PS@@*) return 1 ;; esac ;; esac
+  case "$p1" in *=*)
+    case "$tmpl" in *@@P1@@*|*@@PS@@*) return 1 ;; esac
+    # an assignment only stays an assignment at command-word position: a row
+    # whose probe showed bash running `ZZ=1 printf` as a command name (an
+    # expansion before it) never executes the protected action, so "allow" is
+    # right for it. When the probe could not run, only the plain control is safe.
+    case " $ASSIGN_SKIP " in *" ${1%%|||*} "*) return 1 ;; esac
+    [ -z "$ASSIGN_UNKNOWN" ] || [ "${1%%|||*}" = plain-prefix-control ] || return 1 ;;
+  esac
   ps="$(printf '%s' "$p1" | cut -c1)\\${NL}$(printf '%s' "$p1" | cut -c2-) $pr"
   subst "$tmpl" '<NL>' "$NL"; c="$SUBST"
   subst "$c" '@@PS@@' "$ps"; c="$SUBST"
@@ -273,6 +279,8 @@ build() {
 }
 
 shape_lines=$(grep -v '^#' "$SHAPES" | grep -v '^[[:space:]]*$')
+ASSIGN_SKIP=""      # shape ids whose template breaks a leading VAR=value payload
+ASSIGN_UNKNOWN=""   # set when the probe could not run (no sandbox)
 
 # ---- shape self-check: bash itself must run the payload in every shape -------
 # A row that does not execute its payload makes "allow" the right answer and
@@ -292,12 +300,22 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
       *PAYLOAD_RAN*) pass=$((pass+1)) ;;
       *) fail=$((fail+1)); echo "FAIL shape $id: bash did not run the payload (got: $got)" ;;
     esac
+    # second probe: a payload that LEADS with VAR=value (an env prefix)
+    build "$line" "ZZ_ASSIGN=1 printf PAYLOAD_RAN" || continue
+    case "$id" in
+      zsh-*) command -v zsh >/dev/null 2>&1 || continue
+             got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
+      *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c "$BUILT" 2>/dev/null </dev/null) ;;
+    esac
+    case "$got" in *PAYLOAD_RAN*) ;; *) ASSIGN_SKIP="$ASSIGN_SKIP $id" ;; esac
   done <<EOF
 $shape_lines
 EOF
 else
   echo "SKIP shape self-check: sandbox-run.sh has no confinement here (bwrap/prlimit/sandbox-exec)"
+  ASSIGN_UNKNOWN=1
 fi
+[ -z "$ASSIGN_SKIP" ] || echo "NOTE rows not applied to a leading VAR=value payload (bash runs it as a command name):$ASSIGN_SKIP"
 
 # ---- the differential ---------------------------------------------------------
 nshapes=0
@@ -334,6 +352,9 @@ while IFS= read -r g; do
       else
         pass=$((pass+1))
       fi
+    elif [ "$V" != allow ]; then
+      # a crash or odd exit status is not "the guard allowed it": never a known-fail
+      fail=$((fail+1)); echo "FAIL $hook $id unexpected verdict ($V)"
     else
       if [ -n "$tk" ]; then
         kfail=$((kfail+1)); echo "KNOWN-FAIL $hook $id ($V) -> $tk"
