@@ -907,7 +907,7 @@ SW_REC=0 SW_UNK=0
 # ALLOWs. Segments are vetted in order in one shell, so a `cd` segment updates
 # it for the next. One-way: a `cd` can FAIL (`cd / ; cd nope ; du -sh` stays at
 # `/`), so no later `cd` ever clears it.
-SW_CD_UNPROVEN=0
+SW_CD_UNPROVEN=0 SW_PHYS=
 
 # `cd` / `pushd` / `popd` operands -> set SW_CD_UNPROVEN when the target is, or
 # may be, root. Judged lexically (as is_root_anchor), then once physically so a
@@ -923,21 +923,28 @@ sw_note_cd() {
     done
     [ "$n" -eq 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # `cd`, `popd`, `cd a b`: unknown
     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && { SW_CD_UNPROVEN=1; return 0; }
-    # shellcheck disable=SC2088 # literal `~`, never expanded here
-    case "$t" in
-        '~'|'~/'*) return 0 ;;                            # home: not root (a `..` is caught below)
-    esac
     case "$t" in
         '') return 0 ;;                                   # `cd ''` stays put
-        *..*|-*|'~'*|*'$'*|'%'*) SW_CD_UNPROVEN=1; return 0 ;;   # `cd -`, `~user`, unexpanded: unknown
+        *..*|-*|*'$'*|'%'*) SW_CD_UNPROVEN=1; return 0 ;; # `cd -`, a `..`, unexpanded: unknown
+    esac
+    # shellcheck disable=SC2088 # literal `~`, expanded here by hand
+    case "$t" in
+        '~'|'~/'*) t="${HOME:-/nonexistent}${t#\~}" ;;
+        '~'*) SW_CD_UNPROVEN=1; return 0 ;;               # `~user`
+    esac
+    case "$t" in
         *[!./]*) ;;                                       # has a real component
         *) case "$t" in /*) ;; *) return 0 ;; esac ;;     # `.` `./` `././`: no move
     esac
     case "$t" in
         /*) if path_textually_resolves_to_root "$t" || is_root_anchor "$t"; then SW_CD_UNPROVEN=1; return 0; fi ;;
     esac
-    # a symlink may lead to `/`: resolve it for real, from the payload cwd
-    phys=$(cd -P -- "${sw_cwd:-.}" 2>/dev/null && cd -P -- "$t" 2>/dev/null && pwd -P) || phys=""
+    # a symlink may lead to `/`: resolve it for real, from the directory the
+    # previous cd reached. A target that does not exist cannot be root and a
+    # failed cd stays put, so it leaves the state as it was.
+    phys=$(cd -P -- "${SW_PHYS:-${sw_cwd:-.}}" 2>/dev/null && cd -P -- "$t" 2>/dev/null && pwd -P) || return 0
+    [ -n "$phys" ] || return 0
+    SW_PHYS="$phys"
     [ "$phys" = / ] && SW_CD_UNPROVEN=1
     return 0
 }
@@ -1143,14 +1150,11 @@ segment_is_safe() {
         xxd|uniq)
             # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
             # `uniq a <CR>-f` name an OUTPUT file `<CR>-u`, not a flag. Re-read
-            # the segment with CR as a word byte: any word holding a CR (bar a
-            # lone trailing line-ending CR) falls through to the prompt.
+            # the segment with CR as a word byte: any word holding a CR, a
+            # trailing one included (bash makes `xxd in <CR>` write a file
+            # named CR), falls through to the prompt.
             TOK_CR_WORD=1; resolve_seg_binary "$1"; TOK_CR_WORD=0
             a=("${RB_TOKENS[@]}"); n=${#a[@]}; i="$RB_IDX"
-            if [ "$n" -gt $((i + 1)) ]; then
-                a[n - 1]="${a[$((n - 1))]%$'\r'}"
-                [ -n "${a[$((n - 1))]}" ] || { unset "a[$((n - 1))]"; n=$((n - 1)); }
-            fi
             for fk in "${a[@]:$((i + 1))}"; do
                 case "$fk" in *$'\r'*) return 1 ;; esac
             done ;;
