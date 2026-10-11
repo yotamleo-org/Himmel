@@ -6337,6 +6337,11 @@ c59_write 60
 out="$(c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 fresh -> OK"; else fail "C59 fresh -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
+echo "== C59-codex-bank-cache: a leading-zero TTL is read as decimal, not octal =="
+c59_write 60
+out="$(CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
+if grepq "$out" -F 'OK   C59-codex-bank-cache' && ! grepq "$out" -F 'value too great'; then pass "C59 TTL 0099999 -> decimal"; else fail "C59 TTL 0099999 -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+
 echo "== C59-codex-bank-cache: no cache file -> INFO, not a WARN =="
 rm -f "$c59_t/codex-bank.json"
 out="$(c59_run)"

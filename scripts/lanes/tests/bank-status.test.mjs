@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -550,10 +550,11 @@ function staleCodexCache(dir) {
   }));
   return path;
 }
-function runBankStatus(dir, extraEnv) {
+function runBankStatus(dir, extraEnv, timeout) {
   const started = Date.now();
   const out = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
+    timeout,
     env: { ...process.env, LANES_REGISTRY: fixtureRegistry(dir), HIMMEL_QUOTA_GAUGE_LEDGER: join(dir, 'none.jsonl'), ...extraEnv },
   });
   return { out, ms: Date.now() - started };
@@ -598,6 +599,24 @@ test('bank-status stays unmeasurable when the probe FAILS, and does not re-probe
   const second = runBankStatus(dir, { ...env, CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}` }).out;
   assert.match(second, /^claudex unknown unmeasurable reason="codex bank cache stale/m);
   assert.equal(existsSync(pidFile), false, 'probe was not re-run inside the backoff');
+});
+
+test('bank-status stays unmeasurable, without spinning, when the cache directory is unwritable', { skip: BUN_SKIP || process.getuid?.() === 0 }, () => {
+  const dir = makeTmpDir('lane-bank-refresh-ro-');
+  const roDir = join(dir, 'ro');
+  mkdirSync(roDir);
+  chmodSync(roDir, 0o555);
+  try {
+    const { out, ms } = runBankStatus(dir, {
+      CODEX_BANK_CACHE: join(roDir, 'codex-bank.json'),
+      CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}`,
+      CODEX_BANK_REFRESH_BOX_MS: '20000',
+    }, 15_000);
+    assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing/m);
+    assert.ok(ms < 10_000, `bank-status took ${ms}ms against an unwritable cache dir`);
+  } finally {
+    chmodSync(roDir, 0o755);
+  }
 });
 
 test('bank-status does not refresh when CODEX_BANK_CACHE is overridden without a probe command', { skip: BUN_SKIP }, () => {

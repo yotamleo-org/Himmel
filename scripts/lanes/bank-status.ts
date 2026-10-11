@@ -166,11 +166,13 @@ function refreshCodexCache(cachePath: string): void {
       try {
         mkdirSync(lock);
         break;
-      } catch {
+      } catch (error) {
+        // anything but "someone holds the lock" (unwritable dir, ...) cannot be waited out
+        if (!(typeof error === "object" && error && "code" in error && error.code === "EEXIST")) return;
+        if (Date.now() >= deadline) return;
         try {
           if (Date.now() - statSync(lock).mtimeMs > REFRESH_LOCK_STALE_MS) { rmSync(lock, { recursive: true, force: true }); continue; }
         } catch { continue; } // lock vanished between the two calls: retry the mkdir
-        if (Date.now() >= deadline) return;
         sleepMs(200);
         // the holder may have finished: the cache is re-read by the caller either way
         if (!existsSync(lock)) return;

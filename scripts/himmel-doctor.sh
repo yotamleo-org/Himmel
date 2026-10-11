@@ -3950,7 +3950,7 @@ check_c59_codex_bank_cache() {
     local cache="${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
     local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-bank-probe.ts"
     local at captured now age
-    case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; esac
+    case "$ttl" in '' | *[!0-9]*) ttl=21600 ;; *) ttl=$((10#$ttl)) ;; esac
     if [ ! -f "$cache" ]; then
         emit INFO C59-codex-bank-cache "no codex bank cache at $cache — the codex lane reads unmeasurable until the probe has run once" "run: $cmd"
         return
