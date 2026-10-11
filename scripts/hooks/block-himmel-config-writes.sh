@@ -18,13 +18,16 @@
 # DENIES
 #   Bash - the command text names the config file (`.himmel` and `config.json`
 #     both present, in any quoting/spelling that keeps the two literals) unless
-#     EVERY clause is a plain reader, a bare name (cat head tail wc stat ls file jq
-#     grep diff test [) with no redirect and no command substitution. rg is NOT a
-#     reader: its --pre/--hostname-bin run a program and shell expansion (ANSI-C
-#     quoting, ${x:-..}, braces) can spell them past any text match; grep covers
-#     reads. A
-#     `ln -s ... config.json`, `cp`, `mv`, `sed -i`, `jq ... >` or `echo >
-#     ...config.json` all name it and so deny (none is a plain reader).
+#     it passes a STRUCTURAL ALLOW-LIST (HIMMEL-5290, judge j2409c): every
+#     character in [A-Za-z0-9 _./~:=,@+-], first word one of cat jq grep head
+#     tail less wc stat ls diff sha256sum, and no option in an output position
+#     (-o/-O, --output*, less long options, jq --arg*/--rawfile/--slurpfile).
+#     So `cat cfg`, `jq .graphify cfg`, `grep -i x cfg`, `wc -c cfg` allow;
+#     anything with a quote, redirect, pipe, ;, &, $, backtick, brace, paren,
+#     glob or backslash denies. That OVER-DENIES on purpose: `jq '.a | keys'
+#     cfg` (quotes), `cat cfg 2>/dev/null` (redirect), `grep x cfg | head`,
+#     a CRLF-terminated read and a trailing `# comment` are all denied; the
+#     deny message points at the quote-free reads and the Read tool.
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
@@ -35,17 +38,18 @@
 # (failing closed on every unparseable call would lock a session out of every
 # tool for a hook bug; scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
 #
-# ponytail: the clause splitter is PARTIAL (quotes, # comments, null-sink
-# redirects only), not a shell parser; a command naming the config that carries
-# a backslash or << denies outright (HIMMEL-5290 j2409b), upgrade path a real
-# tokenizer shared with the other guards, filed if a benign read is blocked.
-# Text matching, not a sandbox. An interpreter that
-# assembles the path from pieces, a script FILE that writes the config without
-# being handed its name, `eval`, a variable holding the path, and a Bash command
-# reaching it through a symlink alias (only file-tool paths are resolved) are
-# not caught. The graphify fence is the second layer: it refuses a symlinked
-# config or ~/.himmel itself. Upgrade path: an operator-owned (root-owned or
-# separate-uid) store the fence verifies, filed when a forged opt-in is seen.
+# ponytail: the allow-list over-denies on purpose (a splitter was patched three
+# times and each patch opened the next escape: j2409a/b/c), upgrade path a real
+# shared tokenizer, filed if a benign read is blocked often. The TRIGGER's
+# spelling ceiling stays filed: it needs the literals `.himmel` and `config.j*`
+# (or `config.*`/`conf*`) in the text, so an interpreter that assembles the
+# path from pieces, `conf?g`, `[c]onfig`, split quotes, a script FILE that
+# writes the config without being handed its name, `eval`, a variable holding
+# the path, and a Bash command reaching it through a symlink alias (only
+# file-tool paths are resolved) are not caught. Text matching, not a sandbox.
+# The graphify fence is the second layer: it refuses a symlinked config or
+# ~/.himmel itself. Upgrade path: an operator-owned (root-owned or separate-uid)
+# store the fence verifies, filed when a forged opt-in is seen.
 #
 # Hook I/O: JSON on stdin; exit 0 = allow, exit 2 = block (stderr shown).
 # Platform guard: bash 3.2-safe (no mapfile, no associative arrays).
@@ -110,93 +114,41 @@ lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
 case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; esac
 
-# The command names the file. Allow only a pure read: no substitution, no
-# redirect, and every clause's command word a plain reader.
-# shellcheck disable=SC2016 # literal $( and backtick are the patterns
+# The command names the file. Structural allow-list (HIMMEL-5290, judge
+# j2409c: the third shell-parsing NO-GO, so no splitter): ALLOW only when
+#   1. every character is in [A-Za-z0-9 _./~:=,@+-] - no quote, $, backtick,
+#      brace, paren, ; & | < > * ? [ ] # ! backslash, tab, CR or newline, so
+#      there is nothing to parse: no chaining, redirect, substitution, glob;
+#   2. the first word is a bare reader name (a path or VAR= prefix is not);
+#   3. no option can put a file in an output position (-o/-O in any short
+#      cluster, --output*, less --long options, jq --arg*/--rawfile/--slurpfile).
+# LC_ALL=C keeps the character ranges byte-exact under a UTF-8 locale.
+LC_ALL=C
+export LC_ALL
 case "$cmd" in
-    *'$('*|*'`'*|*'<('*|*"\$'"*) deny "the command names ~/.himmel/config.json with a command or process substitution, or an ANSI-C quote" ;;
+    *[!a-zA-Z0-9\ _./~:=,@+-]*)
+        deny "the command names ~/.himmel/config.json and uses a character outside [A-Za-z0-9 _./~:=,@+-] (quotes, redirects, chaining, substitution, globs and braces are all refused). Quote-free reads stay allowed: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
 esac
-# The splitter below is PARTIAL (HIMMEL-5290, judge j2409b): it does not model
-# backslash escapes or heredoc bodies, and every patch to it opened the next
-# escape. So these shapes fail CLOSED when the command names the config: any
-# backslash, and any << (heredoc, <<-, <<< here-string).
-case "$cmd" in
-    *\\*) deny "the command names ~/.himmel/config.json and contains a backslash (the clause splitter does not model escapes)" ;;
-    *'<<'*) deny "the command names ~/.himmel/config.json and contains a heredoc or here-string (the clause splitter does not model them)" ;;
+set -f
+# shellcheck disable=SC2086 # intentional word split, globbing off via set -f
+set -- $cmd
+set +f
+[ "$#" -gt 0 ] || exit 0
+w="$1"
+case "$w" in
+    cat|jq|grep|head|tail|less|wc|stat|ls|diff|sha256sum) ;;
+    *) deny "the command names ~/.himmel/config.json under '$w', not a listed plain reader (cat jq grep head tail less wc stat ls diff sha256sum). Reads: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
 esac
-# Quote-aware split (HIMMEL-5290): ; | & and newline separate clauses only
-# outside quotes, and an unquoted > is a redirect (deny) unless it is an fd
-# redirect to exactly /dev/null (>, >> or quoted). An unterminated quote
-# cannot be classified, so it denies.
-clauses=""
-cur=""
-q=""
-n=${#cmd}
-i=0
-while [ "$i" -lt "$n" ]; do
-    c=${cmd:i:1}
-    i=$((i + 1))
-    if [ "$q" = "'" ]; then
-        [ "$c" = "'" ] && q=""
-        [ "$c" = $'\n' ] && c=" "
-        cur="$cur$c"
-        continue
-    fi
-    if [ "$q" = '"' ]; then
-        [ "$c" = '"' ] && q=""
-        [ "$c" = $'\n' ] && c=" "
-        cur="$cur$c"
-        continue
-    fi
-    if [ "$c" = '#' ]; then
-        # An unquoted # at word start opens a comment that runs to the newline;
-        # a quote inside it must not open a fake quoted run that swallows the
-        # lines after it. Mid-word # is literal, as in the shell.
-        case "${cur: -1}" in
-            "" | " " | $'\t' | ';' | '|' | '&' | '<' | '(' | ')')
-                while [ "$i" -lt "$n" ] && [ "${cmd:i:1}" != $'\n' ]; do
-                    i=$((i + 1))
-                done
-                continue
-                ;;
+shift
+for a in "$@"; do
+    case "$a" in
+        -[oO]*|-[!-]*[oO]*|--output*|--arg*|--rawfile|--slurpfile)
+            deny "the option '$a' can put a file in an output position" ;;
+    esac
+    if [ "$w" = less ]; then
+        case "$a" in
+            --*) deny "less long option '$a' (--log-file writes a file)" ;;
         esac
     fi
-    case "$c" in
-        "'" | '"') q="$c"; cur="$cur$c" ;;
-        ';' | '|' | '&' | $'\n') clauses="$clauses$cur"$'\n'; cur="" ;;
-        '>')
-            rest=${cmd:i}
-            rest=${rest#>}
-            rest=${rest#"${rest%%[![:space:]]*}"}
-            case "$rest" in
-                /dev/null | /dev/null[[:space:]\;\|\&]*)
-                    i=$((n - ${#rest} + 9))
-                    ;;
-                '"/dev/null"' | '"/dev/null"'[[:space:]\;\|\&]* | "'/dev/null'" | "'/dev/null'"[[:space:]\;\|\&]*)
-                    i=$((n - ${#rest} + 11))
-                    ;;
-                *) deny "the command names ~/.himmel/config.json with a redirect to something other than /dev/null" ;;
-            esac
-            ;;
-        *) cur="$cur$c" ;;
-    esac
 done
-[ -z "$q" ] || deny "the command names ~/.himmel/config.json inside an unterminated quote"
-clauses="$clauses$cur"
-while IFS= read -r clause || [ -n "$clause" ]; do
-    clause=${clause%$'\r'} # a CRLF line terminator only; a CR inside a word stays and denies
-    set -f
-    # shellcheck disable=SC2086 # intentional word split, globbing off via set -f
-    set -- $clause
-    set +f
-    [ "$#" -gt 0 ] || continue
-    # The command word must be a bare reader name: a path (./cat, /tmp/jq) is an
-    # arbitrary program wearing a reader's basename. less/more are not readers
-    # here: `less -o/-O <file>` writes a log file.
-    w="$1"
-    case "$w" in
-        cat|head|tail|wc|stat|ls|file|jq|grep|diff|test|'[') ;;
-        *) deny "the command names ~/.himmel/config.json under '$w', not a plain reader" ;;
-    esac
-done <<< "$clauses"
 exit 0
