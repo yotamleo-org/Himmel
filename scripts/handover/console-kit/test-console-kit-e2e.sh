@@ -107,17 +107,17 @@ gone() {
 alive() { [ -d "/proc/$1" ] && [ "$(sed -n 's/^State:[[:space:]]*\(.\).*/\1/p' "/proc/$1/status" 2>/dev/null)" != Z ]; }
 
 C="$B/HIMMEL-nextleg-2026-10-11DC-e2e-console.md"
-L1="$B/HIMMEL-9001-N1-alpha-2026-10-11.md"
-L2="$B/HIMMEL-9002-N2-beta-2026-10-11.md"
-L3="$B/HIMMEL-9003-N3-gamma-2026-10-11.md"
-L4="$B/HIMMEL-9004-N4-delta-2026-10-11.md"
-L5="$B/HIMMEL-9005-N5-eps-2026-10-11.md"
+L1="$B/HIMMEL-9001-N1-alpha$$-2026-10-11.md"
+L2="$B/HIMMEL-9002-N2-beta$$-2026-10-11.md"
+L3="$B/HIMMEL-9003-N3-gamma$$-2026-10-11.md"
+L4="$B/HIMMEL-9004-N4-delta$$-2026-10-11.md"
+L5="$B/HIMMEL-9005-N5-eps$$-2026-10-11.md"
 for d in "$L1" "$L2" "$L3" "$L4" "$L5"; do printf '# leg\n\n## Results\n\n' > "$d"; done
 for d in "$L1" "$L2" "$L3" "$C"; do bash "$QL" acquire "$d" >/dev/null 2>&1 || fail "queue-lock acquire $d"; done
 
-spawn_leg HIMMEL-9001-N1-alpha-2026-10-11; P1="$SPAWNED"
-spawn_leg HIMMEL-9002-N2-beta-2026-10-11; P2="$SPAWNED"
-spawn_leg HIMMEL-9003-N3-gamma-2026-10-11; P3="$SPAWNED"
+spawn_leg HIMMEL-9001-N1-alpha$$-2026-10-11; P1="$SPAWNED"
+spawn_leg HIMMEL-9002-N2-beta$$-2026-10-11; P2="$SPAWNED"
+spawn_leg HIMMEL-9003-N3-gamma$$-2026-10-11; P3="$SPAWNED"
 # close-wrapped-leg.sh reads the matched pid's session record, then its transcript
 SID=11111111-2222-3333-4444-555555555555
 printf '%s\n' '{"type":"user","timestamp":"2026-10-11T10:00:00Z"}' > "$W/projects/proj/$SID.jsonl"
@@ -140,7 +140,10 @@ LEGS="$L1 $L2 $L3"
 # tick_field <field>: that field's value from one real tick run
 tick_field() {
     local out
-    out="$(bash "$CK/tick.sh" --doc "$C" --token tok --legs "$LEGS" --repo "$REPO" 2>"$W/tick.err")" || true
+    local rc
+    out="$(bash "$CK/tick.sh" --doc "$C" --token tok --legs "$LEGS" --repo "$REPO" 2>"$W/tick.err")"; rc=$?
+    # a failed tick must not satisfy an assertion on whatever it printed first
+    if [ "$rc" -ne 0 ]; then printf 'tick-exit-%s\n' "$rc"; return 0; fi
     printf '%s\n' "$out" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 render_board() {
@@ -186,7 +189,7 @@ if gone "$P1"; then pass "close: the wrapped leg's session is gone"; else fail "
 if alive "$P2" && alive "$P3"; then pass "close: other legs' sessions untouched"; else fail "close: a sibling session died"; fi
 
 # ---- 4. a live non-harness child withholds the close ------------------------
-spawn_leg HIMMEL-9005-N5-eps-2026-10-11 with-child; P5="$SPAWNED"
+spawn_leg HIMMEL-9005-N5-eps$$-2026-10-11 with-child; P5="$SPAWNED"
 printf '{"sessionId":"%s"}\n' "$SID" > "$W/sessions/$P5.json"
 sleep 0.5
 K5="$(pgrep -P "$P5" -x sleep | head -n 1)"
@@ -198,7 +201,7 @@ if alive "$P5"; then pass "close: the session with a live child was not killed";
 if [ -n "$K5" ] && alive "$K5"; then pass "close: the live child was not killed either"; else fail "close: child [$K5] of pid $P5 is gone"; fi
 
 # ---- 5. a misordered WRAPPED is refused -------------------------------------
-spawn_leg HIMMEL-9004-N4-delta-2026-10-11; P4="$SPAWNED"
+spawn_leg HIMMEL-9004-N4-delta$$-2026-10-11; P4="$SPAWNED"
 printf '{"sessionId":"%s"}\n' "$SID" > "$W/sessions/$P4.json"
 printf '%s\n' "- 10:00 WRAPPED — done" "- 10:05 LIVE — CHECKPOINT abc pushed" >> "$L4"
 out="$(bash "$CK/close-wrapped-leg.sh" "$L4" 2>&1)"; rc=$?
