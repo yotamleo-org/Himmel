@@ -348,6 +348,10 @@ PROMOTE_LOCK_HELD=1
 # its own, which would then misread as this script's reserved benign
 # lock-skip. Remap any non-zero graphify exit to the fixed sentinel 5 (see
 # header); the real code is logged, never reused as our own exit status.
+# GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514): an unattended graphify run otherwise
+# rewrites the user's ~/.claude / ~/.codex / ~/.hermes skill dirs on a version
+# mismatch; skill refresh stays an explicit himmel-update step.
+export GRAPHIFY_NO_AUTO_REFRESH=1
 set +e
 graphify update "$CORPUS_ROOT" --force
 _graphify_rc=$?

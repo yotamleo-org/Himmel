@@ -24,6 +24,7 @@ make_stub() {
   cat > "$dir/graphify" <<STUB
 #!/usr/bin/env bash
 echo "\$\$ \$*" >> "$WS/call.log"
+echo "NO_AUTO_REFRESH=\${GRAPHIFY_NO_AUTO_REFRESH-unset}" >> "$WS/env.log"
 sleep $sleep_s
 exit 0
 STUB
@@ -429,6 +430,18 @@ out14=$( PATH="$BIN14:$PATH" GRAPHIFY_OUT="graphify-out-feature" bash "$SCRIPT" 
 [ "$rc14" -eq 0 ] && [ -d "$CORPUS14OK/graphify-out-feature" ] \
   && pass "T14 a single-name relative override still works" \
   || fail "T14 the single-name form must still be accepted (rc=$rc14): $out14"
+
+# --- T15: graphify runs with GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514) -------
+# An unattended hourly graphify run otherwise auto-refreshes the user's
+# ~/.claude / ~/.codex / ~/.hermes skill dirs on a version mismatch.
+echo "T15: graphify is invoked with GRAPHIFY_NO_AUTO_REFRESH=1"
+CORPUS15="$WS/c15"; mkdir -p "$CORPUS15"
+BIN15="$WS/bin15"; make_stub "$BIN15"
+: > "$WS/env.log"
+out15=$( unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$BIN15:$PATH" bash "$SCRIPT" "$CORPUS15" 2>&1 ); rc15=$?
+[ "$rc15" -eq 0 ] && grep -qx 'NO_AUTO_REFRESH=1' "$WS/env.log" \
+  && pass "T15 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
+  || fail "T15 graphify did not see GRAPHIFY_NO_AUTO_REFRESH=1 (rc=$rc15): $(cat "$WS/env.log") $out15"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

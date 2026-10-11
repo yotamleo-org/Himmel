@@ -214,6 +214,8 @@ PY
   EXTRA=()
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
+  # GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514): no skill-dir rewrite from a cadence run.
+  export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e
   graphify extract "$SCRATCH" --backend "$BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1
   rc=$?

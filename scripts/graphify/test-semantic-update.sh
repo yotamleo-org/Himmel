@@ -43,6 +43,7 @@ cat > "$WS/bin/graphify" <<EOF
 echo "graphify \$*" >> "$WS/calls.log"
 echo "OLLAMA_MODEL=\${OLLAMA_MODEL:-}" >> "$WS/env.log"
 echo "OLLAMA_API_KEY=\${OLLAMA_API_KEY-unset}" >> "$WS/env.log"
+echo "NO_AUTO_REFRESH=\${GRAPHIFY_NO_AUTO_REFRESH-unset}" >> "$WS/env.log"
 [ "\$1" = extract ] || exit 0
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 python3 - "\$2" <<'PY'
@@ -335,6 +336,12 @@ echo "T30: loopback OLLAMA_BASE_URL is accepted"
 C30="$WS/c30"; new_corpus "$C30"
 out=$(OLLAMA_BASE_URL=http://127.0.0.1:11434/v1 run --name t30 --corpus-root "$C30" --corpus-class himmel-code --backend ollama); rc=$?
 [ "$rc" -eq 0 ] && pass "T30 loopback accepted" || fail "T30 (rc=$rc): $out"
+
+echo "T31: graphify extract runs with GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514)"
+C31="$WS/c31"; new_corpus "$C31"; : > "$WS/env.log"
+out=$(unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t31 --corpus-root "$C31" --corpus-class himmel-code --backend ollama 2>&1); rc=$?
+[ "$rc" -eq 0 ] && grep -qx 'NO_AUTO_REFRESH=1' "$WS/env.log" && pass "T31 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
+  || fail "T31 (rc=$rc): $(cat "$WS/env.log") $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
