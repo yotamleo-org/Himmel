@@ -735,9 +735,10 @@ EOF
 # Fails (rc 1) when it cannot be measured.
 ci_red_delta_lines() {
     if [ -z "$base_sha" ]; then
-        git diff --numstat --no-renames "$1" "$2" 2>/dev/null | awk '
+        _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
+        printf '%s\n' "$_cl_num" | awk '
             $1 == "-" || $2 == "-" { bad = 1 }
-            { n += $1 + $2 }
+            NF { n += $1 + $2 }
             END { if (bad) n = 999999; print n + 0 }'
         return 0
     fi
@@ -802,14 +803,16 @@ EOF
     return 0
 }
 
-# HIMMEL-5257: record the unlock: .cired (the once-per-PR marker) and one
-# ledger row naming the failing checks. Readers key on kind, so the row is
-# ignored by every gate and scorecard reader.
+# HIMMEL-5257: record the unlock: one ledger row naming the failing checks, then
+# the once-per-PR marker staged as $cired_tmp. The caller moves it into place
+# only after the .delta round is recorded, so a failed state write never
+# consumes the unlock. Readers key on kind, so the row is ignored by every
+# gate and scorecard reader.
 ci_red_record() {
-    printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_state" || return 1
     CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$SCRIPT_DIR/ledger-append.sh" ci-red-unlock \
         --branch "$branch" --head "$delta_from" --reason "$ci_red_names" \
         --detail "round runs on $delta_to" || return 1
+    printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_tmp" || return 1
 }
 
 # HIMMEL-4600: decide whether the round after the third may run, as the one
@@ -1054,6 +1057,7 @@ if [ "$verb" = "start" ]; then
             # Once both land, a failed counter write below is the HIMMEL-4616
             # pending pair, which restarts without the record.
             tmp_delta="$delta_state.tmp.$$"
+            cired_tmp="$cired_state.tmp.$$"
             bak_delta="$delta_state.bak.$$"
             had_delta=0
             if [ -n "$delta_verdict" ] && [ -f "$delta_state" ]; then
@@ -1066,8 +1070,9 @@ if [ "$verb" = "start" ]; then
             fi
             if [ "$delta_rc" -ne 0 ] \
                 || ! printf '%s %s %s\n' "$delta_from" "$delta_to" "$delta_trigger" > "$tmp_delta" \
-                || ! mv "$tmp_delta" "$delta_state"; then
-                rm -f "$tmp_delta" "$bak_delta"
+                || ! mv "$tmp_delta" "$delta_state" \
+                || ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
+                rm -f "$tmp_delta" "$bak_delta" "$cired_tmp"
                 echo "review-round: cannot record the delta round for $branch" >&2
                 delta_rc=5
             elif [ -n "$delta_verdict" ]; then
