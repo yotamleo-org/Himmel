@@ -392,7 +392,7 @@
       "_comment": "HIMMEL-4013: a console session (console.sh new/next arm, and a resume of a console doc). Floor (handover, himmel-ops, qmd) plus base's lean-skills; drops pr-review-toolkit-himmel, which a console never runs (it dispatches legs, it does not review its own diff). gateAllow stays false: the leg-shaped gateAllow rules are for legs, and a console runs under the operator's own permission config. Not a leg profile, so it is not in plugin-profiles.mjs LEG_PROFILES.",
       "enable": [],
       "drop": ["pr-review-toolkit-himmel@himmel"],
-      "_comment_mcpServers": "HIMMEL-5241: himmel-bus here is what makes console.sh register the console on the bus (role console) and headed-arm.sh bind its claude pid; without it the edge table (leg to console) has no console end and every leg send fails with 'no edge'. A console launches through headed-arm.sh, not leg-claude-launcher, so no --strict-mcp-config narrows its user MCP servers; this list only drives registration.",
+      "_comment_mcpServers": "HIMMEL-5241: himmel-bus here is what makes console.sh register the console on the bus (role console) and headed-arm.sh bind its claude pid; without it the edge table (leg to console) has no console end and every leg send fails with 'no edge'. A console launches through headed-arm.sh (and console.sh's printed line), which passes --mcp-config built from this list plus --strict-mcp-config (HIMMEL-5310), so only these servers load; an unresolvable entry refuses the launch.",
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 50000,
       "contextMode": "standard",

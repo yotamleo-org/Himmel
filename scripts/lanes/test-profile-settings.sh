@@ -58,5 +58,19 @@ N=$(bash "$PS" user --mcp-config); rc=$?
 bash "$PS" no-such-profile --mcp-config >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "T8 unknown profile --mcp-config fails closed (rc=2)" || bad "T8 rc=$rc"
 
+# T9: the settings resolve but the allowlist names an undefined server, so only
+# the --mcp-config step fails: the fail-closed branch itself (a `|| true` on it
+# must turn this red, which T8's earlier unknown-profile refusal cannot).
+python3 - "$HERE/plugin-profiles.json" "$TMP/registry-c.json" <<'E'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+json.dump(d, open(sys.argv[2], "w"))
+E
+PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" console >/dev/null 2>&1; rc=$?
+[ "$rc" = 0 ] && ok "T9 undefined mcp server: settings still resolve (rc=0)" || bad "T9 settings rc=$rc"
+O=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" console --mcp-config 2>/dev/null); rc=$?
+[ "$rc" = 2 ] && [ -z "$O" ] && ok "T9 undefined mcp server: --mcp-config fails closed (rc=2, no path)" || bad "T9 mcp rc=$rc out=[$O]"
+
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"

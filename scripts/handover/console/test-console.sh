@@ -204,6 +204,19 @@ check "5b launch line carries --settings <console profile>" \
 # HIMMEL-5310: the console loads only its profile's MCP servers (no graphify).
 check "5b launch line carries --mcp-config <console.mcp.json> --strict-mcp-config" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--mcp-config [^ ]*/console.mcp.json --strict-mcp-config ')" "1"
+# HIMMEL-5310: an allowlist that does not resolve (the settings still do) refuses
+# the printed launch line: rc 2 and no launch line at all.
+python3 - "$REPO_REAL/scripts/lanes/plugin-profiles.json" "$tmp/registry-5310.json" <<'PYE'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+json.dump(d, open(sys.argv[2], "w"))
+PYE
+rc5d=0
+out5d="$(PLUGIN_PROFILES_REGISTRY="$tmp/registry-5310.json" console new --bucket dryrepo5d --dry-run 2>&1)" || rc5d=$?
+check "5d unresolvable MCP allowlist: console new --dry-run exits 2" "$rc5d" "2"
+check "5d unresolvable MCP allowlist: no launch line printed" \
+    "$(printf '%s\n' "$out5d" | grep -c -- 'launch:')" "0"
 out5c="$(CONSOLE_CONTEXT=1m console new --bucket dryrepo5c --dry-run)"
 check "5c CONSOLE_CONTEXT=1m launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact auto')" "1"
