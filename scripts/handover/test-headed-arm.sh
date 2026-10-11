@@ -1600,6 +1600,8 @@ mutant36="$mutant36dir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016 # single-quoted sed script; $RECORDER must stay literal
 sed 's/if \[ "\$RECORDER" = "1" \]; then/if true; then/' "$SCRIPT" > "$mutant36"
 cp "$HERE/../lib/console-context.sh" "$mutant36dir/scripts/lib/console-context.sh"
+# HIMMEL-5201: headed-arm.sh sources its argv check from its own directory.
+cp "$HERE/argv-has-n-name.sh" "$mutant36dir/scripts/handover/argv-has-n-name.sh"
 fixture_profiles "$mutant36dir/scripts"
 chmod 755 "$mutant36"
 d37="$tmp/c37"; mk_stub "$d37" 1 alive "HIMMEL-red36"
