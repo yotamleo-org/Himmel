@@ -3087,7 +3087,7 @@ check_c40_qmd_vec() {
             # HIMMEL-5227: status's detail already names the listener and the one
             # fix; a token problem is not cured by restarting the server.
             case "$qd_detail" in
-            *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the daemon's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
+            *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
             esac
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
             return
@@ -3124,8 +3124,8 @@ check_c40_qmd_vec() {
     401|403)
         local tok_state="none is readable"
         [ -n "$qd_tok" ] && tok_state="rejected the one read from the token file"
-        emit WARN C40-qmd-vec "the daemon on $url answered HTTP $init_code: it requires a bearer token (HIMMEL-5002) and $tok_state -- vec search is not being served" \
-            "set QMD_HTTP_AUTH_FILE to the daemon's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
+        emit WARN C40-qmd-vec "the qmd server on $url answered HTTP $init_code: it requires a bearer token (HIMMEL-5002) and $tok_state -- vec search is not being served" \
+            "set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
         return
         ;;
     esac
