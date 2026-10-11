@@ -149,6 +149,7 @@ for (const c of [
   'rm -rf /', 'rm -rf -- /', 'rm -fr -- /', 'rm -r -f /', 'rm -f -r /', 'rm -R -f /', 'rm -f -R /',
   'rm -Rf /', 'rm -fR /', 'rm -R /', 'rm --recursive --force /', 'rm --force --recursive /',
   'rm -r -- /', 'rm -r -f -- /',
+  'rm -r --force /etc', 'rm --recursive -f /etc', 'rm -R --force ~', 'rm --force -R $HOME', 'rm -f --recursive /',
   'rm -rf -- /etc', 'rm -r -f /usr/lib', 'rm -rf -- ~', 'rm -r -f ~/work', 'rm -rf -- $HOME', 'rm -r -f $HOME/x',
   'rm -rf -- ..', 'rm -r -f ../x',
 ]) assert.ok(denied(c), 'not denied: ' + c);

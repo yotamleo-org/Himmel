@@ -423,7 +423,7 @@ delete j.model;
 if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
 const A=[],B=(r)=>A.push("Bash("+r+")");
 for (const r of ["git push --force","git push --force *","git push --force*","git push -f*","git push --mirror*","git push --delete*","git push origin --delete*","git push * --force*","git push * -f*","git push * +*","git push * main","git push * master","git push * *:main","git push * *:master","git push * *refs/heads/main","git push * *refs/heads/master"]) { B(r); B("rtk "+r); }
-for (const f0 of ["-rf","-fr","-Rf","-fR","-r","-R","--recursive","-r -f","-f -r","-R -f","-f -R","--recursive --force","--force --recursive"]) for (const f of [f0,f0+" --"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
+for (const f0 of ["-rf","-fr","-Rf","-fR","-r","-R","--recursive","-r -f","-f -r","-R -f","-f -R","--recursive --force","--force --recursive","-r --force","--force -r","-R --force","--force -R","--recursive -f","-f --recursive"]) for (const f of [f0,f0+" --"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
 for (const p of ["~/.ssh","~/.aws","~/.gnupg","~/.config/gh","~/.netrc","~/.codex/auth.json","~/.claude/.credentials.json","~/.cli-proxy-api"]) { B("* "+p+"*"); B("* \u0024HOME"+p.slice(1)+"*"); A.push("Read("+p+")","Read("+p+"/**)"); }
 A.push("Read(**/.env)","Read(**/.env.local)","Read(**/.env.*.local)");
 for (const e of [".env",".env.local"]) { B("* "+e); B("* */"+e); }
