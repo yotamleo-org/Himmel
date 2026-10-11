@@ -20,6 +20,10 @@
 # PR/branch, and any NO-GO for the new head blocks the scope round. The key is
 # readable by the same uid, so the ceiling is a same-uid forger (HIMMEL-3578);
 # a lint-only record still rests on the judge's word.
+# HIMMEL-5185: once the delta round ran, one more delta round, from the head it
+# reviewed, is admitted without a judge record when that head raised critic
+# findings and every one is recorded fixed there. Consumed once: the .delta pair
+# carries trigger postcap-fixed and a post-cap round never chains into another.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -186,6 +190,11 @@ const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch { process.exit(0); }
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
+// ponytail: "critic" is any model name outside that list, and critic finding rows
+// and their fixed amends are session-writable through ledger-append.sh, so a leg
+// can buy the HIMMEL-5185 post-cap round with a row under a non-excluded model
+// name (it buys a review round, never a merge); tie critic rows to a source the
+// leg cannot write, HIMMEL-3557.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false;
 const verdicts = new Map(), settled = new Set();
@@ -207,6 +216,7 @@ for (const line of lines) {
 }
 if (e.MODE === "avail") { if (reviewed) process.stdout.write("ok"); }
 else if (e.MODE === "row") { if (rowed) process.stdout.write("row"); }
+else if (e.MODE === "allfixed") { if (rowed && [...verdicts.values()].every((v) => v === "fixed")) process.stdout.write("allfixed"); }
 else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === "agreed" || v === "fixed"))) process.stdout.write("finding");
 '
 }
@@ -851,6 +861,25 @@ EOF
         grep -q "^$delta_from " "$verdict_state" 2>/dev/null || head_scan=$?
         if [ "$head_scan" -gt 1 ]; then
             echo "review-round: cannot read $verdict_state (grep rc $head_scan) - no judge NO-GO is honoured for $delta_from" >&2
+        fi
+    fi
+    # HIMMEL-5185: the delta round ran on <delta_from>, critic findings were
+    # raised there and every one is recorded fixed at that head: one more delta
+    # round, from it, with no judge record. Consumed once: the .delta pair then
+    # carries the trigger, so a post-cap round never chains into another, and a
+    # head a judge record already bought a round from is not eligible. Any
+    # finding not fixed (deferred, disproved, agreed, open), no critic finding,
+    # or a fixed verdict recorded against another head refuses (ledger_query
+    # reads only critic rows and amends at <delta_from>).
+    if [ -n "$delta_used" ] && [ "$delta_used" != "unreadable" ] && [ "$head_scan" -eq 1 ]; then
+        read -r used_from used_to used_trigger <<EOF
+$delta_used
+EOF
+        if [ -n "$used_from" ] && [ "$used_to" = "$delta_from" ] && [ "${used_trigger:-}" != "postcap-fixed" ] \
+            && [ "$(ledger_query allfixed "$delta_from")" = "allfixed" ]; then
+            delta_trigger="postcap-fixed"
+            delta_verdict=""
+            return 0
         fi
     fi
     if [ "$head_scan" -eq 1 ] && [ "$judge_rc" -eq 0 ] && [ -n "$delta_verdict" ]; then

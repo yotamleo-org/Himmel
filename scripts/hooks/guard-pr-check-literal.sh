@@ -612,7 +612,9 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 #     bytes the checks below verify.
 # Anything else keeps the old text, so every command that was not one
 # simple command still is not, and a redirect is re-emitted with its target.
-if st_tokenize "$cmd" && [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ]; then
+PR_TOKENIZED=0
+st_tokenize "$cmd" && PR_TOKENIZED=1
+if [ "$PR_TOKENIZED" = 1 ] && [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ]; then
     tk_cmd=-1 tk_path=-1 tk_pre=0 tk_msg=0 tk_dropped=0 tk_flat='' ST_SED_SCRIPTS=''
     k=0
     while [ "$k" -lt "$ST_N" ]; do
@@ -1096,6 +1098,209 @@ readers_only() { # true when every command the command line runs is a reader
     done
     return 0
 }
+# HIMMEL-5170 (judge j2353d, 4th shell-parsing NO-GO): a value git, or the
+# shell git spawns, will EXECUTE is denied when it carries an sh expansion
+# metacharacter, whether or not a guarded script is named - a second shell can
+# build the writer path ('scripts/c?/x', 'scripts/c[r]/x', 'scripts/c${X}r/x').
+# The words are the tokenizer's ST_W (quotes and escapes already removed): a
+# quoted glob keeps its * ? [ { and a $ stays, but a backslash escape or an
+# ANSI-C $'..' body is decoded before this check sees it. Values checked: a
+# GIT_*/EDITOR/VISUAL/PAGER assignment, a `git -c k=v` value, a `git config`
+# value of a key outside a small data set, and any option value after the
+# subcommand unless the option is a known data option. Ordinary values (less
+# -R, code --wait, vim) carry none.
+# ponytail: a decoded $'\x72' body is not re-read, ceiling HIMMEL-5205; upgrade
+# path: have the tokenizer flag a $'..' word and deny it as a value slot.
+meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
+    _c_join_continuations "$1"
+    case "$REPLY" in
+        *'$'* | *'`'* | *'*'* | *'?'* | *'['* | *'{'* | *\\*) return 0 ;;
+    esac
+    return 1
+}
+seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
+    local i=$1 e=$2 w v opt c=-1 g=-1 gx='' sub='' key='' nv=0 exempt=0 rd=0 endsub=0
+    local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
+    # HIMMEL-5170 (j2353e): a $(, backtick, <( or >( ends the segment and what
+    # it opens is a segment of its own, so a value slot that is this segment's
+    # last word has a shell-built value nobody read: it counts as a metachar.
+    # shellcheck disable=SC2016 # literal $( and backtick are matched, never expanded
+    case "${ST_SEP[ST_S[i]]:-}" in '$(' | '`' | '<(' | '>(') endsub=1 ;; esac
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        if [ -z "${ST_RO[i]}" ]; then
+            if [[ $w =~ $asg ]]; then
+                v=${BASH_REMATCH[2]}
+                meta_value "$v" && return 0
+                [ "$endsub" = 1 ] && [ "$i" -eq "$((e - 1))" ] && return 0
+            fi
+            if [ "$c" -lt 0 ]; then
+                case "$w" in *=*) ;; *) c=$i ;; esac
+            fi
+            if [ "$g" -lt 0 ] && [ "$c" -ge 0 ]; then
+                # HIMMEL-5170 (j2353h F3): git, or a git-<sub> binary by path.
+                case "${w##*/}" in
+                    git) g=$i ;;
+                    git-?*) g=$i; gx=${w##*/}; gx=${gx#git-} ;;
+                esac
+            fi
+        fi
+        i=$((i + 1))
+    done
+    # A command word built by the shell ($VAR, ${G}t, a glob) is a name nobody
+    # read: with any other metacharacter-bearing word it is denied (F3).
+    if [ "$c" -ge 0 ] && { [ "${ST_X[c]:-}" = 1 ] || [ "${ST_G[c]:-}" = 1 ]; } &&
+        [ "${ST_W[c]}" != '{' ] && [ "${ST_W[c]}" != '[' ] && [ "${ST_W[c]}" != '[[' ]; then
+        i=$1
+        while [ "$i" -lt "$e" ]; do
+            if [ "$i" -ne "$c" ] && [ -z "${ST_RO[i]}" ]; then
+                meta_value "${ST_W[i]}" && return 0
+            fi
+            i=$((i + 1))
+        done
+    fi
+    [ "$g" -ge 0 ] || return 1
+    if [ -n "$gx" ]; then
+        sub=$gx
+        i=$g
+    else
+        i=$((g + 1))
+        while [ "$i" -lt "$e" ]; do
+            w=${ST_W[i]}
+            case "$w" in
+                -c)
+                    v=${ST_W[i + 1]:-}
+                    case "$v" in *=*) meta_value "${v#*=}" && return 0 ;; esac
+                    [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
+                    i=$((i + 2)) ;;
+                --config-env | --config-env=*) return 0 ;;
+                -C | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
+                -*) i=$((i + 1)) ;;
+                *) sub=$w; break ;;
+            esac
+        done
+    fi
+    [ -n "$sub" ] || return 1
+    i=$((i + 1))
+    if [ "$sub" = config ]; then
+        while [ "$i" -lt "$e" ]; do
+            w=${ST_W[i]}
+            case "$w" in
+                -*) ;;
+                *)
+                    nv=$((nv + 1))
+                    if [ "$nv" = 1 ]; then
+                        _c_unquote "$w"
+                        key=$REPLY
+                    else
+                        case "$key" in
+                            user.name | user.email | user.signingkey | init.defaultBranch) ;;
+                            *) meta_value "$w" && return 0 ;;
+                        esac
+                    fi ;;
+            esac
+            i=$((i + 1))
+        done
+        if [ "$endsub" = 1 ]; then
+            case "$key" in
+                user.name | user.email | user.signingkey | init.defaultBranch) ;;
+                *) return 0 ;;
+            esac
+        fi
+        return 1
+    fi
+    case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    # ponytail: the positional words of an alias or an unknown subcommand, and of
+    # `submodule foreach`, are not run through meta_value, so text parsing cannot
+    # close this class; upgrade path HIMMEL-4852 (structural fix).
+    # A read-only subcommand: only --opt=value and -O are values; a word after a
+    # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
+    case "$sub" in
+        log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
+    esac
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        [ "$w" = -- ] && break
+        opt='' v=''
+        case "$w" in
+            --config-env | --config-env=*) return 0 ;;
+            --?*=*) opt=${w%%=*}; v=${w#*=} ;;
+            -O) opt=-O; v=${ST_W[i + 1]:-} ;;
+            -O?*) opt=-O; v=${w#-O} ;;
+            --?*) [ "$rd" = 1 ] || { opt=$w; v=${ST_W[i + 1]:-}; } ;;
+            # HIMMEL-5170 (j2353h F2): short options after a non-reader
+            # subcommand are value checks too (git clone -u <cmd>, -c k=v).
+            # Whether -X takes a value is not knowable per subcommand, so
+            # fail closed: attached text and the next word both count. A
+            # commit/tag/notes message bundle (-m, -am, -F) is data.
+            -*[mF]) [ "$rd" = 1 ] || [ "$exempt" = 1 ] || { meta_value "${w#-?}" && return 0; opt=-short; v=${ST_W[i + 1]:-}; } ;;
+            -[!O-]?*) [ "$rd" = 1 ] || { opt=-short; v=${w#-?}; } ;;
+            -[!O-]) [ "$rd" = 1 ] || { opt=-short; v=${ST_W[i + 1]:-}; } ;;
+        esac
+        # A following option word is another option, not this one's value.
+        case "$w" in --?*=* | -O?*) ;; *) case "$v" in -*) v='' ;; esac ;; esac
+        if [ -n "$opt" ] && [ "$i" -lt "$e" ]; then
+            case "$opt" in
+                --message | --grep | --grep-reflog | --author | --committer | --since | --until | --after | --before | \
+                    --format | --pretty | --date | --sort | --glob | --exclude | --branches | --tags | --remotes) ;;
+                --file) [ "$exempt" = 1 ] || { meta_value "$v" && return 0; } ;;
+                *)
+                    meta_value "$v" && return 0
+                    [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
+                    ;;
+            esac
+        fi
+        i=$((i + 1))
+    done
+    return 1
+}
+# HIMMEL-5170 (judge j2353e, 3rd shell-parsing NO-GO): line-level rules that
+# need no guarded name and no token. They fire on any line that has a git word
+# or an assignment to GIT_*/EDITOR/VISUAL/PAGER; flat is already unquoted and
+# continuation-joined, so `g\it` and `GIT_""EDITOR` read as plain text here.
+PR_LINE_GIT=0 PR_LINE_NAME='(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)'
+[[ $flat =~ (^|[^[:alnum:]_])git([^[:alnum:]_]|$) ]] && PR_LINE_GIT=1
+[[ $flat =~ (^|[^[:alnum:]_])${PR_LINE_NAME}\+?= ]] && PR_LINE_GIT=1
+if [ "$PR_LINE_GIT" = 1 ]; then
+    pr_line_deny=''
+    # (1) the tokenizer failed (the line-615 result, not PR_TOKFAIL, which is
+    # set later): no word is known, so any metacharacter fails closed.
+    if [ "$PR_TOKENIZED" = 0 ]; then
+        case "$cmd$flat" in
+            *'$'* | *'`'* | *'*'* | *'?'* | *'['* | *'{'* | *\\*) pr_line_deny="the line could not be tokenized and carries a shell expansion character" ;;
+        esac
+    fi
+    # (3) --config-env hands any env name to git as a config value.
+    case "$flat" in *--config-env*) pr_line_deny="--config-env names an environment variable git executes as config" ;; esac
+    # (3) a builtin that sets GIT_*/EDITOR/VISUAL/PAGER beside a git word.
+    if [ -z "$pr_line_deny" ]; then
+        pr_n=$PR_LINE_NAME
+        pr_sp='[[:space:]]'
+        if [[ $flat =~ (^|[^[:alnum:]_])printf${pr_sp}+([^\;\&\|]*${pr_sp})?-v${pr_sp}*${pr_n}([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])(read|mapfile|readarray|declare|typeset|local)${pr_sp}+([^\;\&\|]*${pr_sp})?${pr_n}([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])for${pr_sp}+${pr_n}${pr_sp}+in([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])export${pr_sp}+([^\;\&\|]*${pr_sp})?${pr_n}= ||
+            ($flat == *'<<<'* && $flat =~ (^|[^[:alnum:]_])${pr_n}([^[:alnum:]_]|$)) ]]; then
+            pr_line_deny="a builtin sets GIT_*/EDITOR/VISUAL/PAGER on a line that runs git"
+        fi
+    fi
+    if [ -n "$pr_line_deny" ]; then
+        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path (HIMMEL-5170). Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
+    fi
+fi
+if [ "$PR_TOKENIZED" = 1 ]; then
+    mk=0
+    while [ "$mk" -lt "$ST_N" ]; do
+        mek=$mk
+        while [ "$mek" -lt "$ST_N" ] && [ "${ST_S[mek]}" = "${ST_S[mk]}" ]; do mek=$((mek + 1)); done
+        if seg_meta "$mk" "$mek"; then
+            shown=${cmd//$'\n'/ }
+            shown=${shown:0:200}
+            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command (HIMMEL-5170)."
+        fi
+        mk=$mek
+    done
+fi
 readers_only && exit 0
 # HIMMEL-4953: readers_only returns at the first non-reader, comment, $'…'
 # word, substitution or unknown git global option, before it reaches a later
@@ -1148,6 +1353,128 @@ if [ "$envs_deferred" = 0 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ]
     shown=${shown:0:200}
     deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
 fi
+
+# HIMMEL-5170 (j2328a follow-up): git runs an editor or an alias program this
+# hook never reads - an env prefix (GIT_SEQUENCE_EDITOR=, GIT_EDITOR=, EDITOR=,
+# VISUAL=; the VAR= prefix only sets `wrapped` below) or a config write
+# (`git config sequence.editor|core.editor|alias.<x> <value>`, a later call).
+# NAME-INDEPENDENT (judge j2353b, three NO-GOs on a key-name list): git has too
+# many program-running keys to enumerate, so the check is on WHERE the writer's
+# text sits, per command segment. A segment whose words name a guarded script
+# is denied when the text is (a) an assignment value (VAR=, VAR+=, export,
+# declare, typeset, printf -v, read, env VAR=), (b) a git config value or a
+# GIT_CONFIG_* env, (c) the value of a git --opt=/--opt (or -O<x>), except the
+# -m/--message/-F/--file of commit, tag and notes, or (d) any argument of a git
+# subcommand outside a small SAFE set. A segment that names no guarded script
+# (GIT_EDITOR=vim git commit, git config user.name x) is not caught here.
+# Over-matching only denies more (the safe direction).
+edword_names() { # edword_names <word> - a guarded script spelled as a path
+    # EXACTLY flat's normalisation (judge j2353d): _c_join_continuations, then
+    # _c_unquote. A word that keeps quotes, backslashes or a backslash-newline
+    # from inside single quotes (scripts/c\<nl>r/x.sh) must match the way the
+    # shell git spawns will spell it, never the raw tokenized text.
+    local uw
+    _c_join_continuations "$1"
+    _c_unquote "$REPLY"
+    uw=$REPLY
+    case "$uw" in
+        *.sh* | *scripts/* | *cr/* | *handover/*) names_target "$uw" ;;
+        *) return 1 ;;
+    esac
+}
+seg_edhook() { # seg_edhook <first> <end> - 0 when segment words [first,end) run the writer
+    local i=$1 e=$2 m=0 c=-1 g=-1 w b sub='' exempt=0 prev='' dd=0 asg='^[A-Za-z_][A-Za-z0-9_]*\+?='
+    while [ "$i" -lt "$e" ]; do
+        edword_names "${ST_W[i]}" && m=1
+        i=$((i + 1))
+    done
+    [ "$m" = 1 ] || return 1
+    i=$1
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        # (a) an assignment value that names the writer, wherever the word sits.
+        if [ -z "${ST_RO[i]}" ] && [[ $w =~ $asg ]] && edword_names "$w"; then return 0; fi
+        if [ -z "${ST_RO[i]}" ] && [ "$c" -lt 0 ]; then
+            case "$w" in *=*) ;; *) c=$i ;; esac
+        fi
+        [ "$g" -lt 0 ] && [ "$c" -ge 0 ] && [ -z "${ST_RO[i]}" ] && [ "${w##*/}" = git ] && g=$i
+        i=$((i + 1))
+    done
+    if [ "$c" -ge 0 ]; then
+        b=${ST_W[c]##*/}
+        case "$b" in export | declare | typeset | local | readonly | read | alias) return 0 ;; esac
+        if [ "$b" = printf ]; then
+            i=$c
+            while [ "$i" -lt "$e" ]; do
+                case "${ST_W[i]}" in -v*) return 0 ;; esac
+                i=$((i + 1))
+            done
+        fi
+    fi
+    [ "$g" -ge 0 ] || return 1
+    # The git subcommand: the first word that is no global option; -C and -c
+    # take a value word.
+    i=$((g + 1))
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        case "$w" in
+            -C | -c | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
+            -*) i=$((i + 1)) ;;
+            *) sub=$w; break ;;
+        esac
+    done
+    [ -n "$sub" ] || return 1
+    case "$sub" in
+        commit | add | status | diff | log | show | grep | fetch | push | pull | switch | checkout | branch | rev-parse | merge-base) ;;
+        worktree) [ "${ST_W[i + 1]}" = list ] || return 0 ;;
+        *) return 0 ;;
+    esac
+    case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    i=$((i + 1))
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        if [ "$dd" = 0 ]; then
+            if [ "$w" = -- ]; then dd=1
+            elif edword_names "$w"; then
+                case "$w" in
+                    --message=* | --file=*) [ "$exempt" = 1 ] || return 0 ;;
+                    -m* | -F*) [ "$exempt" = 1 ] || return 0 ;;
+                    -*) return 0 ;;
+                esac
+                case "$prev" in
+                    --message | --file | -m | -F) [ "$exempt" = 1 ] || return 0 ;;
+                    --* | -O) return 0 ;;
+                esac
+            fi
+        fi
+        prev=$w
+        i=$((i + 1))
+    done
+    return 1
+}
+if [ "$mentions" = 1 ]; then
+    edhook=0
+    case "$flat" in *GIT_CONFIG_*) edhook=1 ;; esac
+    if [ "$PR_TOKFAIL" != 0 ]; then
+        # No token walk to place the text: any assignment or git word denies.
+        case "$flat" in *=* | *git*) edhook=1 ;; esac
+    else
+        k=0
+        while [ "$edhook" = 0 ] && [ "$k" -lt "$ST_N" ]; do
+            ek=$k
+            while [ "$ek" -lt "$ST_N" ] && [ "${ST_S[ek]}" = "${ST_S[k]}" ]; do ek=$((ek + 1)); done
+            if seg_edhook "$k" "$ek"; then edhook=1; fi
+            k=$ek
+        done
+    fi
+    # Denied after the earlier, more specific denies (env -S, VAR= prefix) so their reasons win.
+    edhook_pending=$edhook
+fi
+edhook_deny() {
+    local shown=${cmd//$'\n'/ }
+    shown=${shown:0:200}
+    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
+}
 
 # norm <path> - drop empty and . segments. A .. is kept, so the path no longer
 # reads as scripts/cr/<script> and denies: the kernel resolves .. after
@@ -1313,7 +1640,7 @@ while IFS= read -r line; do
 done <<<"$simple"
 # find runs the found file itself when {} is the -exec command word.
 [[ "$flat" =~ -(exec|execdir|ok|okdir)[[:space:]]+[^[:space:]]*\{\} ]] && bare_runs=1
-[ "$runs" -eq 1 ] || exit 0
+[ "$runs" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 
 # HIMMEL-3437 console NO-GO rounds 2-3: a "$HIMMEL_REPO/..." word is the
 # anchor spelling ONLY when the whole command is genuinely one simple
@@ -1708,7 +2035,7 @@ if [ "$envs_deferred" = 1 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ]
     shown=${shown:0:200}
     deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
 fi
-[ "$hit" -eq 1 ] || exit 0
+[ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 # ponytail: a glob through a directory symlink the text does not spell as
 # scripts/cr (`bash scripts/lnk/*`, lnk -> cr) is not a candidate - the same
 # class as `bash scripts/lnk/x.sh`, which this hook never saw either, and no
@@ -1774,6 +2101,7 @@ case "$flat" in
 esac
 [ "$wrapped" -eq 0 ] \
     || deny "the command runs the script through a wrapper or a VAR= prefix (BASH_ENV, PATH, ...), which can run other code or change what runs before the checked bytes do."
+[ "${edhook_pending:-0}" = 1 ] && edhook_deny
 
 for t in git awk sort find paste wc tr comm grep; do
     command -v "$t" >/dev/null 2>&1 \

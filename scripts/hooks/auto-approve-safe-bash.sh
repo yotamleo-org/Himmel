@@ -900,6 +900,97 @@ is_redirect_word() {
 # root-walk checks read CR as a word byte, upgrade: make CR a word byte in
 # every ALLOW-gating reader once test-crlf-boundary.sh tolerates it (HIMMEL-3886).
 SW_REC=0 SW_UNK=0
+# HIMMEL-5187: 1 when the working directory is root or cannot be proven
+# non-root (payload cwd is `/`, or an earlier `cd` in this command went to a
+# root / `..` / unresolvable / symlinked-to-root target). A recursing reader
+# with no operand, or a relative one, then walks that directory, so it never
+# ALLOWs. Segments are vetted in order in one shell, so a `cd` segment updates
+# it for the next. One-way: a `cd` can FAIL (`cd / ; cd nope ; du -sh` stays at
+# `/`), so no later `cd` ever clears it.
+SW_CD_UNPROVEN=0 SW_PHYS='' SW_CHAIN_PLAIN=1 SW_SEEN_NONCD=0
+
+# `cd` / `pushd` / `popd` operands -> set SW_CD_UNPROVEN when the target is, or
+# may be, root. Judged lexically (as is_root_anchor), then once physically so a
+# symlink to `/` does not slip through.
+sw_note_cd() {
+    local t="" tok n=0 phys et=0
+    # The remembered directory is trusted ONLY for a leading run of
+    # `cd <literal> && cd <literal> && ... && <reader>`: the whole command a
+    # plain `&&` chain (no `;`, `||`, `|`, `&`, grouping) and no other command
+    # before the cd. Then a failing cd skips the reader, so the model cannot
+    # diverge from what bash does. Anything else leaves the cwd unknown.
+    [ "$SW_CHAIN_PLAIN" = 1 ] && [ "$SW_SEEN_NONCD" = 0 ] || { SW_CD_UNPROVEN=1; return 0; }
+    for tok in "$@"; do
+        # allowlist on the RAW word: only [A-Za-z0-9._/~+-], an unquoted `~`
+        # first. A CR, tab, control or non-ASCII byte, quote, backslash, `$`,
+        # glob character or an empty operand leaves the cwd unproven.
+        case "$tok" in ''|*[!A-Za-z0-9._/~+-]*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "${tok#\~}" in *'~'*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "/$tok/" in */../*) SW_CD_UNPROVEN=1; return 0 ;; esac   # a textual `..` is wrong through a symlink
+        shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
+        # a tilde word with any quote or backslash is a literal name, never HOME
+        case "$tok" in '~'*[\'\"\\]*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "$SW_VALUE" in -*) SW_CD_UNPROVEN=1; return 0 ;; esac   # `cd -`, `cd -P x`: unknown
+        t="$SW_VALUE"; n=$((n + 1)); et="$SW_EXPANDS_TILDE"
+    done
+    [ "$n" -eq 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # `cd`, `popd`, `cd a b`: unknown
+    [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && { SW_CD_UNPROVEN=1; return 0; }
+    case "$t" in
+        '') return 0 ;;                                   # `cd ''` stays put
+        *..*|-*|*'$'*|'%'*) SW_CD_UNPROVEN=1; return 0 ;; # `cd -`, a `..`, unexpanded: unknown
+    esac
+    # shellcheck disable=SC2088 # literal `~`, expanded here by hand
+    case "$t" in
+        '~'|'~/'*) [ "$et" = 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # quoted: a dir named `~`
+                   t="${HOME:-/nonexistent}${t#\~}" ;;
+        '~'*) SW_CD_UNPROVEN=1; return 0 ;;               # `~user`
+    esac
+    case "$t" in
+        *[!./]*) ;;                                       # has a real component
+        *) case "$t" in /*) ;; *) return 0 ;; esac ;;     # `.` `./` `././`: no move
+    esac
+    case "$t" in
+        /*) if path_textually_resolves_to_root "$t" || is_root_anchor "$t"; then SW_CD_UNPROVEN=1; return 0; fi ;;
+    esac
+    # a symlink may lead to `/`: resolve it for real, from the directory the
+    # previous cd reached. A target that does not exist cannot be root and a
+    # failed cd stays put, so it leaves the state as it was.
+    # (cd output is discarded: a CDPATH hit makes cd print its destination)
+    phys=$(cd -P -- "${SW_PHYS:-${sw_cwd:-.}}" >/dev/null 2>&1 && cd -P -- "$t" >/dev/null 2>&1 && pwd -P) || return 0
+    [ -n "$phys" ] || return 0
+    SW_PHYS="$phys"
+    [ "$phys" = / ] && SW_CD_UNPROVEN=1
+    return 0
+}
+
+# `find` walks when a starting point holds a `..` (the same rule du / ls -R /
+# grep -r get), and, under an unproven cwd, unless every path operand is an
+# absolute non-root literal or `~`. Expression grammar as segment_is_rootwalk_find.
+sw_find_walks_unproven_cwd() {
+    local -a a=("${RB_TOKENS[@]}")
+    local total=${#a[@]} j=$((RB_IDX + 1)) n=0 fraw
+    while [ "$j" -lt "$total" ]; do
+        shell_word_value "${a[$j]}" || return 0
+        case "$SW_VALUE" in
+            -H|-L|-P|--|-O*) j=$((j + 1)) ;;
+            -D)              j=$((j + 2)) ;;
+            *)               break ;;
+        esac
+    done
+    for ((; j < total; j++)); do
+        shell_word_value "${a[$j]}" || return 0
+        fraw="${a[$j]}"
+        case "$SW_VALUE" in -*|'('|'!') break ;; esac
+        n=$((n + 1))
+        case "/$SW_VALUE/" in */../*) return 0 ;; esac    # a `..` component, absolute or not
+        [ "$SW_CD_UNPROVEN" = 1 ] || continue
+        # shellcheck disable=SC2088 # literal `~`, never expanded here
+        # (the RAW word: a quoted or escaped `~` is a directory name, not HOME)
+        case "$SW_VALUE" in /*) ;; *) case "$fraw" in '~'|'~/'*) ;; *) return 0 ;; esac ;; esac
+    done
+    [ "$SW_CD_UNPROVEN" = 1 ] && [ "$n" -eq 0 ]
+}
+
 sw_apply_val() {  # $1 value kind (d|D|n|x), $2 the option's value
     case "$1" in
         d) case "$2" in recurse) SW_REC=1 ;; read|skip) ;; *) SW_UNK=1 ;; esac ;;
@@ -922,6 +1013,7 @@ segment_walks_root() {
         tree)             SW_REC=1; nov='adlfiqNQpugshDFvrtcnCxA'; val='LIPoHT'; rl='' ;;
         ls)               nov='aAcCdFfgGhHiklLmnoprsStuUvxX1'; val=''; rl='R' ;;
         grep|egrep|fgrep) nov='iInvwxcLlqsHhoaEFGPzZbTUV0123456789'; val='efmABCdD'; rl='rR' ;;
+        find|find.exe)    sw_find_walks_unproven_cwd; return ;;
         *) return 1 ;;
     esac
     a=("${RB_TOKENS[@]}"); total=${#a[@]}; ops=(); opr=()
@@ -1025,15 +1117,20 @@ segment_walks_root() {
     esac
     [ "$SW_UNK" -eq 1 ] && return 0
     [ "$SW_REC" -eq 1 ] || return 1
+    # no operand = the implicit `.`, which is the unproven cwd
+    [ "$SW_CD_UNPROVEN" = 1 ] && [ "${#ops[@]}" -eq 0 ] && return 0
     for ((j = 0; j < ${#ops[@]}; j++)); do
         tok="${ops[$j]}"; raw="${opr[$j]}"
         case "$raw" in *'*'*|*'?'*|*'['*|*'{'*) return 0 ;; esac
         case "$tok" in *..*) return 0 ;; esac
         # shellcheck disable=SC2088 # a literal ~, never expanded
-        case "$tok" in
-            '~'|'~/'*) continue ;;
-            '~'*|'$'*|'%'*) return 0 ;;
+        case "$raw" in
+            '~'|'~/'*) continue ;;                 # unquoted: HOME
         esac
+        case "$tok" in
+            '~'*|'$'*|'%'*) return 0 ;;            # `~user`, or a quoted `~` (a directory name)
+        esac
+        if [ "$SW_CD_UNPROVEN" = 1 ]; then case "$tok" in /*) ;; *) return 0 ;; esac; fi
         path_textually_resolves_to_root "$tok" && return 0
         is_root_anchor "$tok" && return 0
     done
@@ -1042,6 +1139,7 @@ segment_walks_root() {
 
 segment_is_safe() {
     resolve_seg_binary "$1"
+    case "$RB_STATUS:$RB_BIN" in bin:cd) ;; *) SW_SEEN_NONCD=1 ;; esac   # HIMMEL-5187: leading-cd rule
     # HIMMEL-4780: the JIRA_PROJECT_KEY= prefix is approvable on node only.
     if [ "$RB_JIRA_KEY" = 1 ] && { [ "$RB_STATUS" != bin ] || [ "$RB_BIN" != node ]; }; then
         return 1
@@ -1055,6 +1153,44 @@ segment_is_safe() {
 
     # HIMMEL-5088: a whole-filesystem walker never ALLOWs (it falls to a prompt).
     if segment_walks_root "$1"; then return 1; fi
+
+    # HIMMEL-5187: `-files0-from` / `--files0-from` read the operand list from a
+    # file or stdin, so what is walked or read cannot be seen here: never ALLOW.
+    # Every word is cooked first (`-files0'-from'` and `-files0\-from` are the
+    # same option), for every binary; a word the cooker cannot decode that still
+    # shows the name raw is refused too.
+    local fk
+    for fk in "${a[@]:$((i + 1))}"; do
+        if shell_word_value "$fk"; then
+            case "$SW_VALUE" in *files0-from*|*files-from*) return 1 ;; esac
+            # an abbreviation (`--files0`, `--fi`) only where the tool has the option
+            case "$bin:$SW_VALUE" in
+                du:--?*|wc:--?*|sort:--?*) guard_is_long_abbrev "files0-from" "$SW_VALUE" && return 1 ;;
+            esac
+        else
+            case "$fk" in *files0*|*files-from*) return 1 ;; esac
+        fi
+    done
+
+    case "$bin" in
+        cd)
+            # CR is a word byte to bash but whitespace to this tokenizer, so a
+            # `cd` operand holding one names a different directory than the one
+            # resolved here: the cwd is unknown (HIMMEL-5187).
+            case "$1" in *[[:cntrl:]]*) SW_CD_UNPROVEN=1 ;; *) sw_note_cd "${a[@]:$((i + 1))}" ;; esac ;;
+        pushd|popd) SW_CD_UNPROVEN=1 ;;
+        xxd|uniq)
+            # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
+            # `uniq a <CR>-f` name an OUTPUT file `<CR>-u`, not a flag. Re-read
+            # the segment with CR as a word byte: any word holding a CR, a
+            # trailing one included (bash makes `xxd in <CR>` write a file
+            # named CR), falls through to the prompt.
+            TOK_CR_WORD=1; resolve_seg_binary "$1"; TOK_CR_WORD=0
+            a=("${RB_TOKENS[@]}"); n=${#a[@]}; i="$RB_IDX"
+            for fk in "${a[@]:$((i + 1))}"; do
+                case "$fk" in *$'\r'*) return 1 ;; esac
+            done ;;
+    esac
 
     if is_safe_bin "$bin"; then
         local k
@@ -2071,6 +2207,32 @@ $SCAN_SEGS
 EOF
 if [ "$ql_unquoted_sep" -eq 0 ] && [ "$ql_segs" -eq 1 ] && segment_is_queue_lock "$ql_only"; then
     emit_allow "queue-lock.sh lock verb (HIMMEL-3131): $cmd"
+fi
+
+# HIMMEL-5187: a payload cwd of `/` makes every relative walk a root walk.
+sw_cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || sw_cwd=""
+# no usable payload cwd: the directory the hook itself runs in is the best
+# evidence of where the command executes
+case "$sw_cwd" in /*) ;; *) sw_cwd=$(pwd -P 2>/dev/null) || sw_cwd="" ;; esac
+case "$sw_cwd" in
+    /*)
+        if path_textually_resolves_to_root "$sw_cwd"; then
+            SW_CD_UNPROVEN=1
+        else    # a payload cwd that is itself a symlink to `/`
+            sw_phys=$(cd -P -- "$sw_cwd" >/dev/null 2>&1 && pwd -P) || sw_phys=""
+            [ "$sw_phys" = / ] && SW_CD_UNPROVEN=1
+        fi ;;
+esac
+
+# Only `&&`, `;` and newline chain cds in order. Anything else unquoted (`|`,
+# `||`, a bare `&`, grouping, a command substitution, a compound keyword) may
+# skip or relocate a cd, so cd state is then unknown (PASS). fd dups are plain.
+sw_chain=$(printf '%s' "$SCAN_MASK" | sed -E -e 's@&&@@g' -e 's@[0-9]*>&[0-9-]?@@g' -e 's@&>>?@@g' -e 's@[0-9]*[<>]+@@g')
+case "$sw_chain" in
+    *'|'*|*'&'*|*';'*|*$'\n'*|*'('*|*')'*|*'{'*|*'}'*|*'`'*|*'$'*) SW_CHAIN_PLAIN=0 ;;
+esac
+if printf '%s' "$SCAN_MASK" | grep -qE '(^|[;&|[:space:](])(if|then|elif|else|while|until|do|case|select|for)([[:space:]]|$)'; then
+    SW_CHAIN_PLAIN=0
 fi
 
 all_safe=1

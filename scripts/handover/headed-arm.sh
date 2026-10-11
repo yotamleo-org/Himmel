@@ -857,19 +857,10 @@ NAME_ERE="$(ere_escape "$NAME")"
 # pre-filter is made PERMISSIVE rather than precise: `(space or
 # end-of-line)` after the name, via the ERE alternation `( |$)` every call
 # site below uses.
-_argv_has_n_name() { # _argv_has_n_name <pid> - true iff /proc/<pid>/cmdline
-                      # has an element exactly "-n" immediately followed by
-                      # an element exactly equal to $NAME (positional and
-                      # exact, from the real NUL-separated argv - never a
-                      # substring or regex match against flattened text)
-    local pid="$1" prev="" cur
-    [ -r "$PROC/$pid/cmdline" ] || return 1
-    while IFS= read -r -d '' cur; do
-        [ "$prev" = "-n" ] && [ "$cur" = "$NAME" ] && return 0
-        prev="$cur"
-    done < "$PROC/$pid/cmdline"
-    return 1
-}
+# HIMMEL-5201: factored out so arm-resume's bus rebind helper shares it. It
+# reads the PROC and NAME globals set above, exactly as it did inline here.
+# shellcheck source=argv-has-n-name.sh
+. "$(cd "$(dirname "$0")" && pwd)/argv-has-n-name.sh"
 # HIMMEL-3484: the no-/proc equivalent of _argv_has_n_name. `ps -o args=`
 # is the only argv source a stock Mac offers from the shell, and it joins the
 # elements with spaces, so this walks whitespace TOKENS and lets only the

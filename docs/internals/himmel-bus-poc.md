@@ -1,0 +1,115 @@
+# himmel-bus live POC (HIMMEL-4838)
+
+Result log for the first live run of himmel-bus between two real sessions.
+Until this passes, the bus is unit-tested only (store, identity, MCP send/read,
+delivery hook, send CLI, launcher register/bind).
+
+Surfaces under test: `marketplace/plugins/himmel-bus/bin/bus` (`send`, `peers`,
+`status`) and the bus MCP server (`send`, `read`). Store files are never read or
+written directly, and a session never registers or binds itself: that is the
+launcher's job (headed-arm-leg.sh, PR 2360).
+
+## Phase A: native leg <-> console
+
+Status: **FAIL (five failures; the exchange never started)**.
+
+**Verdict:** send works via CLI once registered; NO working receive path on main
+(no wait verb, delivery hooks not installed, MCP server deps absent);
+registration is opt-in by profile and no profile opts in.
+
+| # | Failing step | Ticket |
+|---|---|---|
+| 1 | `bus peers` refuses a 755 shared state dir | HIMMEL-5221 |
+| 2 | leg never registered (profile not opted in; skipped without a log line) | HIMMEL-5223 (+ comment on HIMMEL-5221) |
+| 3 | no `bus wait` verb | HIMMEL-4831 (T8) |
+| 4 | delivery hooks never installed | HIMMEL-5030 |
+| 5 | MCP server deps absent | HIMMEL-5222 |
+
+### FAIL 1: bus CLI refuses the shared state directory (2026-10-11, base 07f052394)
+
+- Step: `node marketplace/plugins/himmel-bus/bin/bus peers`, as the leg, before any send.
+- Error (exit 1), same for `bus status <own name>`:
+  `bus: unsafe directory permissions: <HOME>/.local/state/himmel`
+- Evidence: `stat -c '%a %U' ~/.local/state/himmel` is `755 overlord`; the
+  directory holds only `fleet-recover/`; no `~/.local/state/himmel/bus` exists;
+  `XDG_STATE_HOME` is unset.
+- Cause: `busRoot()` in `lib/store.mjs` requires 0700 and own uid on every
+  directory at or under the state home, including shared parents another tool
+  created with a normal umask.
+- Consequence: launcher `bus register` has never succeeded on this station. It is
+  fail-open and only writes `WARN bus register failed ... launching unbound` to
+  the launch log, so nothing surfaced it.
+- Ticket: HIMMEL-5221 (fix scope includes making the launcher failure visible).
+- Unblock used for the re-run: operator `chmod 700 ~/.local/state/himmel`
+  (done 2026-10-11; `stat` shows `700 overlord`).
+
+### FAIL 2: the leg was never registered (2026-10-11, after the chmod)
+
+- Step: `bus peers` and `bus status <own name>` as the leg, state dir now 0700.
+- Error (exit 1): `bus: identity unbound`; `bus: unknown session: <own name>`.
+- Evidence: `HIMMEL_BUS_NAME` is not in the leg environment; the launch log has
+  no `bus register` line at all, not even the fail-open WARN; the leg's
+  generated settings contain no `himmel-bus`.
+- Cause: the launcher only registers when the leg profile lists `himmel-bus` in
+  mcpServers (the `MCP_NAMES_JSON` case in headed-arm-leg.sh); the `leg-impl`
+  profile does not, so the register block is skipped without a log line. The
+  bus is opted in on no profile today (HIMMEL-4830 owns the catalog entry).
+- Not done on purpose: registering by hand.
+- Ticket: HIMMEL-5223 (bus-enabled profile + catalog entry; builds on HIMMEL-4830),
+  with the silent skip noted on HIMMEL-5221.
+- Re-run: launch a leg with a profile that lists `himmel-bus`; `echo
+  $HIMMEL_BUS_NAME` is its own name and `bus status <name>` prints `live`.
+
+### FAIL 3: no `bus wait` verb
+
+- Step: look for a CLI verb that blocks until mail arrives.
+- Evidence: `bin/bus` accepts register|bind|rebind|adopt|status|peers|send|gc;
+  `store.pending` is commented "Shared predicate for the wait CLI" but no CLI verb calls it.
+- Ticket: HIMMEL-4831 (T8 ask 2).
+- Re-run: `bus wait --for <name>` exits within 2 s of an append (today: usage, exit 64).
+
+### FAIL 4: delivery hooks not installed
+
+- Step: check that a bound session would be shown mail.
+- Evidence: `grep -c bus-deliver ~/.claude/settings.json` prints 0; no entry in
+  the repo `.claude/settings.json`; the hooks exist only in the
+  `wire-hook-bash.mjs` inventory.
+- Ticket: HIMMEL-5030.
+- Re-run: `grep -c bus-deliver` on the leg's effective settings prints 2, and a
+  message sent to a bound leg shows as `bus #n from <name>:` in its context.
+
+### FAIL 5: MCP server cannot start
+
+- Step: check the `read <n>` receive path (bus MCP server).
+- Evidence: `marketplace/plugins/himmel-bus/node_modules` did not exist in the
+  primary checkout or in the POC worktree; the server imports
+  `@modelcontextprotocol/server`. Update 13:45 CEST: a `node_modules` (gitignored)
+  appeared in the POC worktree at 13:44, installed by nothing this leg ran, and
+  the server then started and exited cleanly on stdin EOF. The primary checkout
+  still has none, so a fresh clone still hits the failure; nothing in the repo
+  installs the deps, and who or what installed them here is unidentified.
+- Ticket: HIMMEL-5222.
+- Re-run: `node marketplace/plugins/himmel-bus/server/index.mjs` stays up on
+  stdio (today: ERR_MODULE_NOT_FOUND).
+
+### Caveat on the verdict's "send works"
+
+That clause rests on code reading and the unit tests, not on a live run: no
+session was registered, so the CLI sender path (identity stamp, edge check,
+store append) was never exercised live. The first live `sent #n` is still owed.
+
+## Phase B: native leg <-> claudex (codex) leg
+
+Status: not started (waits on Phase A).
+
+## Re-run recipe
+
+1. Launch the leg with `headed-arm-leg.sh` under a profile that lists
+   `himmel-bus` (the launcher registers and binds it). Do not register by hand.
+2. From the leg: `bus peers` should list the console edge; `bus status <own name>`
+   should print `live`.
+3. Leg: write a body file, `bus send <console> <body-file>`; note `sent #n`.
+4. Console side: receive via the delivery hook or the bus MCP `read` tool for `#n`;
+   reply with `bus send <leg> <body-file> --re <n>`.
+5. Leg confirms the reply arrives (hook output `bus #m from <console>`), then
+   record PASS/FAIL per step here with the exact error text.

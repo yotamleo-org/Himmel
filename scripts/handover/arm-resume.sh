@@ -295,6 +295,28 @@ _arm_profile_settings_flag() {
     }
     printf -- '--settings %s ' "$(printf '%q' "$settings")"
 }
+# HIMMEL-5201: the line that backgrounds arm-resume-bus-rebind.sh next to a
+# resumed launch, so the new claude pid is rebound to its name on the
+# himmel-bus. Opt-in: prints NOTHING (the emitted command stays byte-identical)
+# unless the session name already has a bus peer file. Linux at/crontab only;
+# the schtasks and --wsl-distro bodies are deliberately untouched (Windows
+# development is parked, HIMMEL-4102). Output goes to /dev/null: the helper
+# writes its own WARNs to the arm log it is handed.
+_bus_rebind_line() { # _bus_rebind_line <arm-log-file>
+    local name="$SESSION_NAME" secs="${ARM_RESUME_BUS_REBIND_SECS:-15}" bus
+    # the helper reads /proc: macOS stays byte-identical (seam for tests)
+    [ "${ARM_RESUME_UNAME:-$(uname -s)}" = Linux ] || return 0
+    case "$name" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) return 0 ;;
+    esac
+    [ "${#name}" -le 64 ] || return 0
+    [ -f "${XDG_STATE_HOME:-$HOME/.local/state}/himmel/bus/peers/$name.json" ] || return 0
+    case "$secs" in ''|*[!0-9]*) secs=15 ;; esac
+    bus="${ARM_RESUME_BUS_CLI:-$SCRIPT_DIR/../../marketplace/plugins/himmel-bus/bin/bus}"
+    printf 'bash %s %s %s %s 60 %s < /dev/null > /dev/null 2>&1 &' \
+        "$(printf '%q' "$SCRIPT_DIR/arm-resume-bus-rebind.sh")" "$(printf '%q' "$name")" \
+        "$(printf '%q' "$bus")" "$(printf '%q' "$1")" "$secs"
+}
 # HIMMEL-2658: --context resolution (arming-time 1m/standard choice, never
 # inherited from the operator's user-level model setting). Left empty means
 # "use the console/non-console default" -- resolved right after the MODEL_REASON
@@ -4930,6 +4952,16 @@ fi"
     # .command file (macOS headed launch) instead -- see the function header.
     local launch_body="cd $q_cwd && ${q_safety_child}$headless_tail"
     local headed_launch_body="cd $q_cwd && ${q_safety_child}$tail"
+    # HIMMEL-5201: own line ahead of the launch, so an unregistered name
+    # leaves both bodies byte-identical.
+    local bus_rebind_line
+    bus_rebind_line=$(_bus_rebind_line "$log_file")
+    if [ -n "$bus_rebind_line" ]; then
+        launch_body="$bus_rebind_line
+$launch_body"
+        headed_launch_body="$bus_rebind_line
+$headed_launch_body"
+    fi
 
     # Runner dir (fold of Goomal's fix/arm-resume-macos-cron): ARM_RUNNER_DIR
     # is the test seam; default is a real per-operator dir under $HOME,
@@ -6137,7 +6169,12 @@ else
     echo \"WARN arm-resume: $q_pty_lib missing -- claude launches WITHOUT a pty (HIMMEL-2534)\" >&2
 fi
 "
-                launch_lines="${at_pty_prelude}${at_safety_child}_flow_run_id=\$($q_flow_lib --append-start armed-resume \"\" \"\" claude \"\" $q_task \"\" \"\$\$\" 2>/dev/null) || _flow_run_id=
+                # HIMMEL-5201: bus rebind of the resumed pid (opt-in, own line).
+                local at_bus_line
+                at_bus_line=$(_bus_rebind_line "${ARM_RESUME_LOG_DIR:-$HOME/.himmel/arm-resume}/$TASK_NAME.log")
+                [ -n "$at_bus_line" ] && at_bus_line="$at_bus_line
+"
+                launch_lines="${at_pty_prelude}${at_safety_child}${at_bus_line}_flow_run_id=\$($q_flow_lib --append-start armed-resume \"\" \"\" claude \"\" $q_task \"\" \"\$\$\" 2>/dev/null) || _flow_run_id=
 _flow_rc=0
 $launch_lines || _flow_rc=\$?
 _flow_outcome=\$($q_flow_lib --classify \"\$_flow_rc\" \"\" 2>/dev/null) || _flow_outcome=complete

@@ -295,7 +295,9 @@ assert "cd && jira transition"    ALLOW "$(decide "$(j_bash 'cd /c/repo && node 
 assert "cd && jira (piped, 2 ops)" ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition LUNA-65 Done 2>&1 | tail -3 && node scripts/jira/dist/index.js transition LUNA-66 Done 2>&1 | tail -3')")"
 assert "cd && cat"                ALLOW "$(decide "$(j_bash 'cd src && cat README.md')")"
 assert "cd alone"                 ALLOW "$(decide "$(j_bash 'cd /some/dir')")"
-assert "pushd && grep"            ALLOW "$(decide "$(j_bash 'pushd src && grep -rn TODO .')")"
+# HIMMEL-5187 (ruling j2362b): pushd/popd leave the cwd unknown, so a recursive reader after one prompts
+assert "pushd && grep -r"         PASS  "$(decide "$(j_bash 'pushd src && grep -rn TODO .')")"
+assert "pushd && grep (no walk)"  ALLOW "$(decide "$(j_bash 'pushd src && grep -n TODO README.md')")"
 assert "popd alone"              ALLOW "$(decide "$(j_bash 'popd')")"
 # cd does NOT launder an unsafe later segment, nor a substituted target.
 assert "cd && rm still PASS"       PASS  "$(decide "$(j_bash 'cd /tmp && rm -rf foo')")"
@@ -513,8 +515,9 @@ assert "escaped-space binary stays PASS" PASS "$(decide "$(j_bash 'git\ status')
 # real find-level -maxdepth bounds it. Expression arguments remain non-paths.
 assert "find /tmp/.. canonicalizes" DENY  "$(decide "$(j_bash 'find /tmp/.. -name x')")"
 assert "find nested /.. to root"    DENY  "$(decide "$(j_bash 'find /tmp/foo/../.. -name x')")"
-assert "find /tmp/.. with maxdepth" ALLOW "$(decide "$(j_bash 'find /tmp/.. -maxdepth 1 -name x')")"
-assert "find /tmp/../var scoped"    ALLOW "$(decide "$(j_bash 'find /tmp/../var -name x')")"
+# HIMMEL-5187: a `..` component in ANY find start point is a walk -> a prompt
+assert "find /tmp/.. with maxdepth" PASS  "$(decide "$(j_bash 'find /tmp/.. -maxdepth 1 -name x')")"
+assert "find /tmp/../var scoped"    PASS  "$(decide "$(j_bash 'find /tmp/../var -name x')")"
 assert "find /tmp/..hidden scoped"  ALLOW "$(decide "$(j_bash 'find /tmp/..hidden -name x')")"
 assert "find /.. expression arg"    ALLOW "$(decide "$(j_bash 'find . -path /tmp/..')")"
 # Tilde expansion occurs only when the leading tilde is unquoted/unescaped;
@@ -1713,6 +1716,118 @@ assert "grep -r 'CR' / never ALLOW"             PASS  "$(decide "$(j_bash "grep 
 assert 'rg "CR" / never ALLOW'                  PASS  "$(decide "$(j_bash 'rg "'$'\r''" /')")"
 assert "grep -r CR / (unquoted lone CR) never ALLOW" PASS "$(decide "$(j_bash "grep -r "$'\r'" /")")"
 assert "ctl: grep -r 'CR' src stays ALLOW"     ALLOW "$(decide "$(j_bash "grep -r '"$'\r'"' src")")"
+
+# --- HIMMEL-5187: (1) -files0-from takes its paths from a file/stdin, so the
+# operand list is unknowable -> PASS. (2) a relative walk after a cd to a root
+# or unproven directory walks that directory -> PASS; a relative `..` chain is
+# resolved against the payload cwd. (3) xxd/uniq output operand glued to a CR.
+assert "find -files0-from never ALLOW"         PASS  "$(decide "$(j_bash "find -files0-from list")")"
+assert "find . -files0-from never ALLOW"       PASS  "$(decide "$(j_bash "find . -files0-from list")")"
+assert "du --files0-from=f never ALLOW"        PASS  "$(decide "$(j_bash "du -sh --files0-from=list")")"
+assert "du --files0-from f never ALLOW"        PASS  "$(decide "$(j_bash "du -sh --files0-from list")")"
+assert "du --files0-from=- never ALLOW"        PASS  "$(decide "$(j_bash "du --files0-from=-")")"
+assert "cd / && du -sh never ALLOW"            PASS  "$(decide "$(j_bash "cd / && du -sh")")"
+assert "cd / && du -sh . never ALLOW"          PASS  "$(decide "$(j_bash "cd / && du -sh .")")"
+assert "cd / && grep -r x never ALLOW"         PASS  "$(decide "$(j_bash "cd / && grep -r x")")"
+assert "cd / && grep -r x . never ALLOW"       PASS  "$(decide "$(j_bash "cd / && grep -r x .")")"
+assert "cd / && find . never ALLOW"            PASS  "$(decide "$(j_bash "cd / && find .")")"
+assert "cd / && ls -R never ALLOW"             PASS  "$(decide "$(j_bash "cd / && ls -R")")"
+assert "cd // ; du -sh never ALLOW"            PASS  "$(decide "$(j_bash "cd // ; du -sh")")"
+assert 'cd $X && du -sh never ALLOW'           PASS  "$(decide "$(j_bash 'cd $X && du -sh')")"
+assert "cd .. && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd .. && du -sh")")"
+assert "cd /home && cd .. && du never ALLOW"   PASS  "$(decide "$(j_bash "cd /home && cd .. && du -sh")")"
+assert "du 3-up chain from repo never ALLOW"   PASS  "$(decide "$(j_bash_cwd /home/u/repo "du -sh ../../..")")"
+assert "du 5-up chain from repo never ALLOW"   PASS  "$(decide "$(j_bash_cwd /a/b/c/d "du -sh ../../../../..")")"
+assert "ctl: cd src && du -sh stays ALLOW"     ALLOW "$(decide "$(j_bash "cd src && du -sh")")"
+assert "ctl: cd /home/u/repo && grep -r ALLOW" ALLOW "$(decide "$(j_bash "cd /home/u/repo && grep -r x .")")"
+assert "ctl: cd ~ && du -sh stays ALLOW"       ALLOW "$(decide "$(j_bash "cd ~ && du -sh")")"
+assert "ctl: cd / && ls stays ALLOW"           ALLOW "$(decide "$(j_bash "cd / && ls")")"
+assert "ctl: cd / && cat f stays ALLOW"        ALLOW "$(decide "$(j_bash "cd / && cat f")")"
+assert "cd / && cd src && du -sh never ALLOW"  PASS  "$(decide "$(j_bash "cd / && cd src && du -sh")")"
+assert "cd / ; cd nope ; du -sh never ALLOW"   PASS  "$(decide "$(j_bash "cd / ; cd nonexistent ; du -sh")")"
+assert "cd / && cd ././ && du -sh never ALLOW" PASS  "$(decide "$(j_bash "cd / && cd ././ && du -sh")")"
+assert "cd / && cd /home && du -sh never ALLOW" PASS "$(decide "$(j_bash "cd / && cd /home && du -sh")")"
+SW_LINK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sw-rootlink.XXXXXX")" || exit 1
+ln -s / "$SW_LINK_DIR/rootlink"
+assert "cd symlink-to-root && du -sh never ALLOW" PASS "$(decide "$(j_bash "cd $SW_LINK_DIR/rootlink && du -sh")")"
+assert "cd symlink-to-root && find . never ALLOW" PASS "$(decide "$(j_bash "cd $SW_LINK_DIR/rootlink && find .")")"
+mkdir "$SW_LINK_DIR/sub" && ln -s / "$SW_LINK_DIR/sub/rootlink"
+assert "payload cwd symlink-to-root : du -sh never ALLOW" PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR/sub/rootlink" "du -sh")")"
+assert "CDPATH hit on / : cd rootlink && du -sh never ALLOW" PASS "$(CDPATH="$SW_LINK_DIR/sub" decide "$(j_bash "cd rootlink && du -sh")")"
+assert "cd sub && cd rootlink && du -sh never ALLOW" PASS "$(decide "$(j_bash "cd $SW_LINK_DIR/sub && cd rootlink && du -sh")")"
+mkdir "$SW_LINK_DIR/sub2"
+assert "true || cd sub2; cd rootlink; du never ALLOW" PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "true || cd sub2; cd rootlink; du -sh")")"
+assert "cd sub2 | cat; cd rootlink; du never ALLOW"  PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd sub2 | cat; cd rootlink; du -sh")")"
+assert "cd sub2 & cd rootlink; du never ALLOW"       PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd sub2 & cd rootlink; du -sh")")"
+assert "quoted ~ is a dir name: cd '~' && du never ALLOW" PASS "$(decide "$(j_bash "cd '~' && du -sh")")"
+assert "ctl: cd src && cd lib && du -sh stays ALLOW" ALLOW "$(decide "$(j_bash "cd src && cd lib && du -sh")")"
+assert "true && cd src ; du -sh never ALLOW (cd not leading)" PASS "$(decide "$(j_bash "true && cd src ; du -sh")")"
+ln -s / "$SW_LINK_DIR/~"
+assert "false && cd sub2 ; cd rootlink ; du never ALLOW"   PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "false && cd sub2 ; cd rootlink ; du -sh")")"
+assert "cd nope && cd sub2 ; cd rootlink ; du never ALLOW" PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd nope && cd sub2 ; cd rootlink ; du -sh")")"
+assert "pushd sub2 ; pushd +1 ; cd rootlink ; du never ALLOW" PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "pushd sub2 ; pushd +1 ; cd rootlink ; du -sh")")"
+assert "pushd sub2 && cd rootlink && du never ALLOW"       PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "pushd sub2 && cd rootlink && du -sh")")"
+assert 'cd ~"" (a dir named ~ -> /) && du never ALLOW'     PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" 'cd ~"" && du -sh')")"
+assert 'cd ~"/x" && du never ALLOW'                        PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" 'cd ~"/x" && du -sh')")"
+assert "cd -P rootlink && du never ALLOW"                  PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd -P rootlink && du -sh")")"
+assert "cd rootlink && du never ALLOW (leading chain)"     PASS "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd rootlink && du -sh")")"
+assert "ctl: cd sub2 && du -sh (real dir) stays ALLOW"     ALLOW "$(decide "$(j_bash_cwd "$SW_LINK_DIR" "cd sub2 && du -sh")")"
+rm -rf "$SW_LINK_DIR"
+assert "cd / && find -L '~' never ALLOW (quoted ~ is a name)" PASS "$(decide "$(j_bash "cd / && find -L '~' -name x")")"
+assert "cd / && find -L \"~\" never ALLOW"     PASS  "$(decide "$(j_bash 'cd / && find -L "~" -name x')")"
+assert "cd / && du -sh '~' never ALLOW"        PASS  "$(decide "$(j_bash "cd / && du -sh '~'")")"
+assert "du -sh '~/x' never ALLOW"              PASS  "$(decide "$(j_bash "du -sh '~/x'")")"
+assert "ctl: cd /home/u && find src -name x ALLOW" ALLOW "$(decide "$(j_bash 'cd /home/u && find src -name x')")"
+assert "ctl: du -sh ~/src stays ALLOW (unquoted)" ALLOW "$(decide "$(j_bash 'du -sh ~/src')")"
+assert "find /var/run/.. never ALLOW"          PASS  "$(decide "$(j_bash "find /var/run/.. -name x")")"
+assert "ctl: find /tmp/..hidden stays ALLOW"   ALLOW "$(decide "$(j_bash "find /tmp/..hidden -name x")")"
+assert "find -files0'-from' never ALLOW"       PASS  "$(decide "$(j_bash "find -files0'-from' list -name x")")"
+assert "find -files0\\-from via printf never ALLOW" PASS "$(decide "$(j_bash "printf '/\\0' | find -files0\\-from - -name x")")"
+assert "find -files0-fr'om' never ALLOW"       PASS  "$(decide "$(j_bash "find -files0-fr'om' list -name x")")"
+assert "du --files0-fr'om'=l never ALLOW"      PASS  "$(decide "$(j_bash "du -sh --files0-fr'om'=l")")"
+assert "wc --files0-from=- never ALLOW"        PASS  "$(decide "$(j_bash "wc --files0-from=-")")"
+assert "find ../../../../.. never ALLOW"       PASS  "$(decide "$(j_bash "find ../../../../.. -name x")")"
+assert "find .. from /home never ALLOW"        PASS  "$(decide "$(j_bash_cwd /home "find .. -name x")")"
+assert 'find ~/../.. never ALLOW'              PASS  "$(decide "$(j_bash 'find ~/../.. -name x')")"
+assert "ctl: find . -name x stays ALLOW"       ALLOW "$(decide "$(j_bash "find . -name x")")"
+assert "ctl: find src -name x stays ALLOW"     ALLOW "$(decide "$(j_bash "find src -name x")")"
+assert "cd ~/../.. && du -sh never ALLOW"      PASS  "$(decide "$(j_bash 'cd ~/../.. && du -sh')")"
+assert "xxd in trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "xxd in ${CR}")")"
+assert "uniq a trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "uniq a ${CR}")")"
+# no payload cwd: the hook's own directory stands in (a hook started in / walks /)
+sw_in_root=$(cd / && printf '%s' "$(j_bash "du -sh")" | bash "$HOOK" 2>/dev/null); sw_in_root_rc=$?
+sw_in_root_ctl=$(cd / && printf '%s' "$(j_bash "ls README.md")" | bash "$HOOK" 2>/dev/null)
+if [ "$sw_in_root_rc" != 0 ]; then
+    echo "FAIL no payload cwd, hook run from / : the hook invocation failed (rc=$sw_in_root_rc)"; FAILED=$((FAILED + 1))
+elif ! grepq "$sw_in_root_ctl" '"permissionDecision":"allow"'; then
+    echo "FAIL no payload cwd, hook run from / : the probe control (ls README.md) did not ALLOW, so the probe is vacuous"; FAILED=$((FAILED + 1))
+elif [ -n "$sw_in_root" ]; then
+    # a PASS is NO decision at all: an allow or a deny both fail here
+    echo "FAIL no payload cwd, hook run from / : du -sh must PASS (no decision), got: $sw_in_root"; FAILED=$((FAILED + 1))
+else
+    echo "PASS no payload cwd, hook run from / : du -sh never ALLOW (PASS)"
+fi
+assert "payload cwd / : du -sh never ALLOW"    PASS  "$(decide "$(j_bash_cwd / "du -sh")")"
+assert "payload cwd / : grep -r x . never ALLOW" PASS "$(decide "$(j_bash_cwd / "grep -r x .")")"
+assert "ctl: payload cwd repo : du -sh ALLOW"  ALLOW "$(decide "$(j_bash_cwd /home/u/repo "du -sh")")"
+assert "cd src CR && grep -r never ALLOW"          PASS  "$(decide "$(j_bash "cd src${CR} && grep -r x .")")"
+assert "cd src CR && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd src${CR} && du -sh")")"
+assert "cd src TAB && grep -r never ALLOW"         PASS  "$(decide "$(j_bash "cd src$(printf '\t') && grep -r x .")")"
+assert "cd non-ASCII && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd sr$(printf '\303\251') && grep -r x .")")"
+assert "cd 'src' quoted && grep -r never ALLOW"    PASS  "$(decide "$(j_bash "cd 'src' && grep -r x .")")"
+assert "cd src && grep -r x . ALLOW"               ALLOW "$(decide "$(j_bash "cd src && grep -r x .")")"
+assert "cd /home/u/repo && du -sh ALLOW"           ALLOW "$(decide "$(j_bash "cd /home/u/repo && du -sh")")"
+assert "cd .. && du -sh never ALLOW"               PASS  "$(decide "$(j_bash "cd .. && du -sh")")"
+assert "cd src/../.. && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd src/../.. && grep -r x .")")"
+assert "cd ~nobody && du -sh never ALLOW"          PASS  "$(decide "$(j_bash "cd ~nobody && du -sh")")"
+assert "cd ~- && du -sh never ALLOW"               PASS  "$(decide "$(j_bash "cd ~- && du -sh")")"
+assert "cd ~+ && du -sh never ALLOW"               PASS  "$(decide "$(j_bash "cd ~+ && du -sh")")"
+assert "xxd in CR-u never ALLOW"               PASS  "$(decide "$(j_bash "xxd in ${CR}-u")")"
+assert "xxd in CR-out never ALLOW"             PASS  "$(decide "$(j_bash "xxd in ${CR}out")")"
+assert "uniq a CR-f never ALLOW"               PASS  "$(decide "$(j_bash "uniq a ${CR}-f")")"
+assert "uniq a CR-out never ALLOW"             PASS  "$(decide "$(j_bash "uniq a ${CR}out")")"
+assert "ctl: xxd in stays ALLOW"               ALLOW "$(decide "$(j_bash "xxd in")")"
+assert "ctl: uniq -c a stays ALLOW"            ALLOW "$(decide "$(j_bash "uniq -c a")")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
