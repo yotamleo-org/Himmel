@@ -212,6 +212,13 @@ deny  "bus rebind inside a quoted command substitution" "$(bash_json 'echo "$(bu
 deny  "bus bind inside a process substitution" "$(bash_json 'cat <(bus bind y)')"
 deny  "bus register inside backticks" "$(bash_json 'echo `bus register x`')"
 deny  "bus register behind an assignment substitution" "$(bash_json 'X=$(bus register y) true')"
+deny  "a closed substitution between bus and the verb" "$(bash_json 'bus $(true) register legX')"
+deny  "a quoted substitution between bus and the verb" "$(bash_json 'bus "$(:)" bind x')"
+deny  "a process substitution between bus and the verb" "$(bash_json 'bus <(:) rebind x')"
+deny  "an open substitution with a body between bus and the verb" "$(bash_json 'bus $(echo a b) register x')"
+deny  "a quoted open substitution with a body between bus and the verb" "$(bash_json 'bus "$(cat f)" register x')"
+allow "a bus word inside a closed body does not pair with a verb after it" "$(bash_json 'echo $(bus status) register')"
+deny  "a nested substitution between bus and the verb" "$(bash_json 'bus $(echo $(date) x) register y')"
 
 echo "== no jq: the raw root text is still scanned =="
 NOJQ="$(mktemp -d)" || exit 1

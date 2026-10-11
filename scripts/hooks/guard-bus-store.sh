@@ -183,10 +183,18 @@ normword() {
                 NW_HAS=1 ;;
         esac
     done
+    # NW_OPEN / NW_CLOSE: parens still open or unmatched in the head (a closed
+    # `$(..)` is already `*`); the walker nests and un-nests bodies with them.
+    NW_OPENER="$ho"
     if [ "$NW_HAS" = 1 ]; then
         NW_REST=${w#"$hd$ho"}
         hc=${hd//[\'\"\\()]/}
+        m=${hd//[^(]/}; NW_OPEN=${#m}
+        m=${hd//[^)]/}; NW_CLOSE=${#m}
         if [ -n "$hc" ]; then w="$hd*"; else w=""; fi
+    else
+        m=${w//[^(]/}; NW_OPEN=${#m}
+        m=${w//[^)]/}; NW_CLOSE=${#m}
     fi
     w=${w//\(/}; w=${w//\)/}
     NW=${w//[\'\"\\]/}
@@ -237,22 +245,26 @@ verbish() {
 }
 
 # walk_words <mode> <text>: per command segment (; & | newline), per word.
-# A substitution opener left open by the word split (`$(`, `<(`, backtick, `${`)
-# ends its word and the text after it starts a segment of its own, so
-# `$(bus register x)` is judged as `bus register x` and `$(git log) $(cat f)` is
-# two bodies, not two bus-able words in one segment. mode `bus`: any busish
-# word; mode `verb`: a busish word and, later in the same segment, a verbish one.
+# A substitution opener left open by the word split (`$(`, `<(`, `>(`, backtick,
+# `(`) ends its word and the text after it is a body nested in the segment: the
+# outer `seen` is saved when the body opens and restored when it closes, so
+# `$(bus register x)` is judged as `bus register x`, `diff <(sort a) <(sort b)`
+# is two bodies, not two bus-able words, and `bus $(true) register x` still has
+# its bus word when the verb comes back in the outer segment. The body inherits
+# the outer `seen` (a close that is never found keeps the rest of the segment
+# outer, fail closed). mode `bus`: any busish word; mode `verb`: a busish word
+# and, later in the same segment, a verbish one.
 walk_words() {
-    local mode="$1" seg word words seen rest has
+    local mode="$1" seg word words seen rest has stk n
     while IFS= read -r seg; do
         read -ra words <<< "$seg"
         [ "${#words[@]}" -gt 0 ] || continue
-        seen=0
+        seen=0; stk=""
         for word in "${words[@]}"; do
             rest="$word"
             while [ -n "$rest" ]; do
                 if [[ ! "$rest" =~ $PLAIN_RE ]]; then
-                    has=0; word="$rest"; rest=""
+                    has=0; word="$rest"; rest=""; NW_OPEN=0; NW_CLOSE=0; NW_OPENER=""
                 else
                     normword "$rest"
                     has=$NW_HAS; rest="$NW_REST"; word="$NW"
@@ -265,9 +277,27 @@ walk_words() {
                         busish "$word" && seen=1
                     fi
                 fi
-                # An opener at the start of a word starts a new segment; one glued
-                # to a word (`b$(printf u)s`) keeps the segment, the word goes on.
-                [ "$has" = 1 ] && [ -z "$word" ] && seen=0
+                # Closers in this piece end bodies; open parens and the opener
+                # itself start one. A backtick closes a backtick body.
+                n=$NW_CLOSE
+                while [ "$n" -gt 0 ]; do
+                    if [ -n "$stk" ]; then seen=${stk: -2:1}; stk=${stk%??}; fi
+                    n=$((n - 1))
+                done
+                n=$NW_OPEN
+                while [ "$n" -gt 0 ]; do
+                    stk="$stk${seen}p"; n=$((n - 1))
+                done
+                if [ "$has" = 1 ]; then
+                    # shellcheck disable=SC2016  # literal opener text
+                    case "$NW_OPENER" in
+                        '`')
+                            if [ "${stk: -1}" = b ]; then seen=${stk: -2:1}; stk=${stk%??}
+                            else stk="$stk${seen}b"; fi ;;
+                        '${') ;;
+                        *) stk="$stk${seen}p" ;;
+                    esac
+                fi
             done
         done
     done <<< "$(printf '%s' "$2" | tr ';&|' '\n')"
