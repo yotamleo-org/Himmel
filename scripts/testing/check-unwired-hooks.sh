@@ -68,7 +68,7 @@ if [ -f "$ALLOW" ]; then
       echo "NOREASON $name has no reason on the allowlist"
       fail=1
     fi
-    printf '%s' "$seen" | grep -qxF -- "$name" || { echo "STALE   allowlist names $name, which is not a hook-named script"; fail=1; }
+    grep -qxF -- "$name" <<<"$seen" || { echo "STALE   allowlist names $name, which is not a hook-named script"; fail=1; }
   done < "$ALLOW"
 fi
 

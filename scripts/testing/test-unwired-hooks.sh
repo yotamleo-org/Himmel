@@ -10,7 +10,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 LINT="$HERE/check-unwired-hooks.sh"
-T="$(mktemp -d)" || exit 1
+T="$(mktemp -d "${TMPDIR:-/tmp}/unwired-hooks.XXXXXX")" || exit 1
 [ -d "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
