@@ -1981,6 +1981,39 @@ for v in \
     'git diff -- scripts/cr/write-verdicts.sh'; do
     run "HIMMEL-5170 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
+# Judge j2353d: the word match uses flat's normalisation (continuations joined,
+# then unquoted), and an executed value carrying an sh expansion character is
+# denied whether or not a guarded script is named (a second shell builds the path).
+for v in \
+    $'git config core.pager \'scripts/c\\\nr/write-verdicts.sh\'' \
+    $'git config alias.x \'!scripts/c\\\nr/write-verdicts.sh\'' \
+    $'GIT_EDITOR=\'scripts/c\\\nr/write-verdicts.sh\' git commit' \
+    $'git config core.pager "scripts/c\\\nr/write-verdicts.sh"' \
+    "git config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "git config core.pager 'scripts/c[r]/write-verdicts.sh'" \
+    "git config core.pager 'scripts/c\${X}r/write-verdicts.sh'" \
+    "git config core.pager '\$(printf %s scripts/cr/write-verdicts.sh)'" \
+    "GIT_PAGER='scripts/c?/write-verdicts.sh' git log" \
+    "GIT_EDITOR='scripts/c{r,}/write-verdicts.sh' git commit" \
+    "git -c core.pager='scripts/c*/write-verdicts.sh' log" \
+    "git fetch --upload-pack='scripts/c?/write-verdicts.sh' origin" \
+    "git grep -O'scripts/c?/write-verdicts.sh' x" \
+    "GIT_EDITOR='\$X' git commit" \
+    "git config alias.x '!\$(echo y)'"; do
+    run "HIMMEL-5170 j2353d [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    "GIT_PAGER='less -R' git log" \
+    "GIT_EDITOR='code --wait' git commit" \
+    "git config core.pager 'less -FRX'" \
+    'git config core.editor vim' \
+    'git log --graph --oneline' \
+    "git log --grep='a.*b' --format='%h %s'" \
+    "git commit -m 'what? \$x *'" \
+    'git -c user.name=x commit -m y' \
+    "git config user.name 'a?b'"; do
+    run "HIMMEL-5170 j2353d control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
 
 echo
 if [ "$FAILED" -eq 0 ]; then

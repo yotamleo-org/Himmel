@@ -1096,6 +1096,114 @@ readers_only() { # true when every command the command line runs is a reader
     done
     return 0
 }
+# HIMMEL-5170 (judge j2353d, 4th shell-parsing NO-GO): a value git, or the
+# shell git spawns, will EXECUTE is denied when it carries an sh expansion
+# metacharacter, whether or not a guarded script is named - a second shell can
+# build the writer path ('scripts/c?/x', 'scripts/c[r]/x', 'scripts/c${X}r/x').
+# The text is normalised like flat (continuations joined) but NOT unquoted: a
+# backslash is itself a metacharacter. Values checked: a GIT_*/EDITOR/VISUAL/
+# PAGER assignment, a `git -c k=v` value, a `git config` value of a key outside
+# a small data set, and a git --opt value / -O value unless the option is a
+# known data option. Ordinary values (less -R, code --wait, vim) carry none.
+meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
+    _c_join_continuations "$1"
+    case "$REPLY" in
+        *'$'* | *'`'* | *'*'* | *'?'* | *'['* | *'{'* | *\\*) return 0 ;;
+    esac
+    return 1
+}
+seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
+    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0
+    local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        if [ -z "${ST_RO[i]}" ]; then
+            if [[ $w =~ $asg ]]; then
+                v=${BASH_REMATCH[2]}
+                meta_value "$v" && return 0
+            fi
+            if [ "$c" -lt 0 ]; then
+                case "$w" in *=*) ;; *) c=$i ;; esac
+            fi
+            [ "$g" -lt 0 ] && [ "$c" -ge 0 ] && [ "${w##*/}" = git ] && g=$i
+        fi
+        i=$((i + 1))
+    done
+    [ "$g" -ge 0 ] || return 1
+    i=$((g + 1))
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        case "$w" in
+            -c)
+                v=${ST_W[i + 1]:-}
+                case "$v" in *=*) meta_value "${v#*=}" && return 0 ;; esac
+                i=$((i + 2)) ;;
+            -C | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
+            -*) i=$((i + 1)) ;;
+            *) sub=$w; break ;;
+        esac
+    done
+    [ -n "$sub" ] || return 1
+    i=$((i + 1))
+    if [ "$sub" = config ]; then
+        while [ "$i" -lt "$e" ]; do
+            w=${ST_W[i]}
+            case "$w" in
+                -*) ;;
+                *)
+                    nv=$((nv + 1))
+                    if [ "$nv" = 1 ]; then
+                        _c_unquote "$w"
+                        key=$REPLY
+                    else
+                        case "$key" in
+                            user.name | user.email | user.signingkey | init.defaultBranch) ;;
+                            *) meta_value "$w" && return 0 ;;
+                        esac
+                    fi ;;
+            esac
+            i=$((i + 1))
+        done
+        return 1
+    fi
+    case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        [ "$w" = -- ] && break
+        opt='' v=''
+        case "$w" in
+            --?*=*) opt=${w%%=*}; v=${w#*=} ;;
+            -O) opt=-O; v=${ST_W[i + 1]:-} ;;
+            -O?*) opt=-O; v=${w#-O} ;;
+            --?*) opt=$w; v=${ST_W[i + 1]:-} ;;
+        esac
+        # A following option word is another option, not this one's value.
+        case "$w" in --?*=* | -O?*) ;; *) case "$v" in -*) v='' ;; esac ;; esac
+        if [ -n "$opt" ] && [ "$i" -lt "$e" ]; then
+            case "$opt" in
+                --message | --grep | --grep-reflog | --author | --committer | --since | --until | --after | --before | \
+                    --format | --pretty | --date | --sort | --glob | --exclude | --branches | --tags | --remotes) ;;
+                --file) [ "$exempt" = 1 ] || { meta_value "$v" && return 0; } ;;
+                *) meta_value "$v" && return 0 ;;
+            esac
+        fi
+        i=$((i + 1))
+    done
+    return 1
+}
+if [ "$PR_TOKFAIL" = 0 ]; then
+    mk=0
+    while [ "$mk" -lt "$ST_N" ]; do
+        mek=$mk
+        while [ "$mek" -lt "$ST_N" ] && [ "${ST_S[mek]}" = "${ST_S[mk]}" ]; do mek=$((mek + 1)); done
+        if seg_meta "$mk" "$mek"; then
+            shown=${cmd//$'\n'/ }
+            shown=${shown:0:200}
+            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command (HIMMEL-5170)."
+        fi
+        mk=$mek
+    done
+fi
 readers_only && exit 0
 # HIMMEL-4953: readers_only returns at the first non-reader, comment, $'…'
 # word, substitution or unknown git global option, before it reaches a later
@@ -1164,11 +1272,13 @@ fi
 # (GIT_EDITOR=vim git commit, git config user.name x) is not caught here.
 # Over-matching only denies more (the safe direction).
 edword_names() { # edword_names <word> - a guarded script spelled as a path
-    # Same normalisation as mentions (flat is _c_unquote'd): a word that keeps
-    # quotes or backslashes from inside single quotes (scripts/c\r/x.sh) must
-    # match the way git will spell it, never the raw tokenized text.
+    # EXACTLY flat's normalisation (judge j2353d): _c_join_continuations, then
+    # _c_unquote. A word that keeps quotes, backslashes or a backslash-newline
+    # from inside single quotes (scripts/c\<nl>r/x.sh) must match the way the
+    # shell git spawns will spell it, never the raw tokenized text.
     local uw
-    _c_unquote "$1"
+    _c_join_continuations "$1"
+    _c_unquote "$REPLY"
     uw=$REPLY
     case "$uw" in
         *.sh* | *scripts/* | *cr/* | *handover/*) names_target "$uw" ;;
