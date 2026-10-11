@@ -189,11 +189,13 @@ if alive "$P2" && alive "$P3"; then pass "close: other legs' sessions untouched"
 spawn_leg HIMMEL-9005-N5-eps-2026-10-11 with-child; P5="$SPAWNED"
 printf '{"sessionId":"%s"}\n' "$SID" > "$W/sessions/$P5.json"
 sleep 0.5
+K5="$(pgrep -P "$P5" -x sleep | head -n 1)"
 bash "$AR" "$L5" "WRAPPED — done" >/dev/null
 out="$(bash "$CK/close-wrapped-leg.sh" "$L5" 2>&1)"; rc=$?
 check "close: a live leg-spawned child refuses the close (rc 6)" "$rc" 6
 contains "close: the subtree check says WITHHELD" "$out" "WITHHELD"
 if alive "$P5"; then pass "close: the session with a live child was not killed"; else fail "close: pid $P5 was killed"; fi
+if [ -n "$K5" ] && alive "$K5"; then pass "close: the live child was not killed either"; else fail "close: child [$K5] of pid $P5 is gone"; fi
 
 # ---- 5. a misordered WRAPPED is refused -------------------------------------
 spawn_leg HIMMEL-9004-N4-delta-2026-10-11; P4="$SPAWNED"
