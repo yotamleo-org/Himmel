@@ -1461,7 +1461,14 @@ if [ "$lf_posix" -eq 1 ]; then
     "$late_count" "$late_count" > "$late_bin/pgrep"
   chmod +x "$late_bin/pgrep"
   lf_extra_path="$late_bin"
-  out=$(lf_run env -u GRAPHIFY_MCP_HOLDERS -u GRAPHIFY_MCP_HOLDER_DETAILS)
+  # The fake pids must look live to the real-holder filter (HIMMEL-5295): a pid
+  # absent from /proc is dropped as vanished, and 101-103 need not exist here.
+  late_proc="$tmpdir/lf-held-late-proc"; mkdir -p "$late_proc/self"
+  for late_pid in 101 102 103; do
+    mkdir -p "$late_proc/$late_pid"
+    printf 'graphify-mcp\0' > "$late_proc/$late_pid/cmdline"
+  done
+  out=$(GRAPHIFY_PROC_ROOT="$late_proc" lf_run env -u GRAPHIFY_MCP_HOLDERS -u GRAPHIFY_MCP_HOLDER_DETAILS)
   assert "late holder: rc 0" grep -q '^RC=0$' <<<"$out"
   assert "late holder: the stage DID run (first probe was clear)" grep -q 'scoped=1' "$lf_log"
   # shellcheck disable=SC2016
