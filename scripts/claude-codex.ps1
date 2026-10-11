@@ -74,7 +74,8 @@ $ConfigDir = Join-Path $HomeDir '.claude-codex'
 # mismatch forces exactly one re-seed.
 # v1 = initial version (HIMMEL-1927: the claudex model-identity stanza).
 # v3 = SanitizerJs also injects the destructive-category permissions.deny rules (HIMMEL-5270; v2 was bash-only, HIMMEL-4098).
-$SeedVersion = '3'
+# v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings (HIMMEL-5289).
+$SeedVersion = '4'
 
 # --- key resolution: process env first, else the launcher-repo .env ----------
 # CLAUDE_CODEX_DOTENV_ROOT (test hook) pins the .env root; production falls back to
@@ -422,7 +423,7 @@ delete j.model;
 if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
 const A=[],B=(r)=>A.push("Bash("+r+")");
 for (const r of ["git push --force","git push --force *","git push --force*","git push -f*","git push --mirror*","git push --delete*","git push origin --delete*","git push * --force*","git push * -f*","git push * +*","git push * main","git push * master","git push * *:main","git push * *:master","git push * *refs/heads/main","git push * *refs/heads/master"]) { B(r); B("rtk "+r); }
-for (const f of ["-rf","-fr","-r","--recursive"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
+for (const f0 of ["-rf","-fr","-Rf","-fR","-r","-R","--recursive","-r -f","-f -r","-R -f","-f -R","--recursive --force","--force --recursive"]) for (const f of [f0,f0+" --"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
 for (const p of ["~/.ssh","~/.aws","~/.gnupg","~/.config/gh","~/.netrc","~/.codex/auth.json","~/.claude/.credentials.json","~/.cli-proxy-api"]) { B("* "+p+"*"); B("* \u0024HOME"+p.slice(1)+"*"); A.push("Read("+p+")","Read("+p+"/**)"); }
 A.push("Read(**/.env)","Read(**/.env.local)","Read(**/.env.*.local)");
 for (const e of [".env",".env.local"]) { B("* "+e); B("* */"+e); }

@@ -133,6 +133,31 @@ assert.deepStrictEqual(seeded.permissions.allow, ['Bash(python3 *)']);
 assert.equal(new Set(deny).size, deny.length);
 NODE
 
+# HIMMEL-5289: behavioral matching — run the seeded Bash(...) deny globs against real command
+# strings (whole-command glob, * = any run), so a spelling the rules miss fails here, not in prod.
+setup
+printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "seed deny rules match option-separator and split-flag rm spellings"
+node - "$FAKEHOME/.claude-codex/settings.json" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const deny = JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8')).permissions.deny;
+const globs = deny.filter((r) => /^Bash\(.*\)$/.test(r)).map((r) => r.slice(5, -1));
+const esc = (s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+const res = globs.map((g) => new RegExp('^' + g.split('*').map(esc).join('.*') + '$'));
+const denied = (c) => res.some((re) => re.test(c));
+for (const c of [
+  'rm -rf /', 'rm -rf -- /', 'rm -fr -- /', 'rm -r -f /', 'rm -f -r /', 'rm -R -f /', 'rm -f -R /',
+  'rm -Rf /', 'rm -fR /', 'rm -R /', 'rm --recursive --force /', 'rm --force --recursive /',
+  'rm -r -- /', 'rm -r -f -- /',
+  'rm -rf -- /etc', 'rm -r -f /usr/lib', 'rm -rf -- ~', 'rm -r -f ~/work', 'rm -rf -- $HOME', 'rm -r -f $HOME/x',
+  'rm -rf -- ..', 'rm -r -f ../x',
+]) assert.ok(denied(c), 'not denied: ' + c);
+for (const c of [
+  "python3 -c 'print(1)'", 'git push origin feat', 'rm -rf ./build', 'rm -rf -- ./build', 'rm -r -f build',
+  'rm file.txt',
+]) assert.ok(!denied(c), 'wrongly denied: ' + c);
+NODE
+
 # HIMMEL-5270: a settings.json with no permissions block still gets the deny rules.
 setup
 printf '%s\n' '{"env":{"KEEP":"yes"}}' > "$FAKEHOME/.claude/settings.json"
