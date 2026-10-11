@@ -64,7 +64,7 @@ registration is opt-in by profile and no profile opts in.
 
 - Step: look for a CLI verb that blocks until mail arrives.
 - Evidence: `bin/bus` accepts register|bind|rebind|adopt|status|peers|send|gc;
-  `store.pending` is commented "for the wait CLI" but nothing calls it.
+  `store.pending` is commented "Shared predicate for the wait CLI" but no CLI verb calls it.
 - Ticket: HIMMEL-4831 (T8 ask 2).
 - Re-run: `bus wait --for <name>` exits within 2 s of an append (today: usage, exit 64).
 
@@ -81,8 +81,13 @@ registration is opt-in by profile and no profile opts in.
 ### FAIL 5: MCP server cannot start
 
 - Step: check the `read <n>` receive path (bus MCP server).
-- Evidence: `marketplace/plugins/himmel-bus/node_modules` does not exist; the
-  server imports `@modelcontextprotocol/server`.
+- Evidence: `marketplace/plugins/himmel-bus/node_modules` did not exist in the
+  primary checkout or in the POC worktree; the server imports
+  `@modelcontextprotocol/server`. Update 13:45 CEST: a `node_modules` (gitignored)
+  appeared in the POC worktree at 13:44, installed by nothing this leg ran, and
+  the server then started and exited cleanly on stdin EOF. The primary checkout
+  still has none, so a fresh clone still hits the failure; nothing in the repo
+  installs the deps, and who or what installed them here is unidentified.
 - Ticket: HIMMEL-5222.
 - Re-run: `node marketplace/plugins/himmel-bus/server/index.mjs` stays up on
   stdio (today: ERR_MODULE_NOT_FOUND).
