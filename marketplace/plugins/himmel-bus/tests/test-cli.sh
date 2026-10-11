@@ -180,7 +180,7 @@ if [ "$rc" -eq 3 ] && [ $((t1 - t0)) -le 5 ]; then pass "wait on an empty inbox 
 printf 'wake up rule\n' > "$tmp/wbody"
 as con send waiter "$tmp/wbody" >/dev/null 2>&1
 out=$(as waiter wait --timeout 5 2>&1); rc=$?
-if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q 'from con' && printf '%s' "$out" | grep -q 'wake up rule'; then pass "wait prints a pending message and exits 0"; else fail "wait receive (rc=$rc): $out"; fi
+if [ "$rc" -eq 0 ] && grep -q 'from con' <<< "$out" && grep -q 'wake up rule' <<< "$out"; then pass "wait prints a pending message and exits 0"; else fail "wait receive (rc=$rc): $out"; fi
 out=$(as waiter wait --timeout 1 2>&1); rc=$?
 if [ "$rc" -eq 3 ]; then pass "a printed message is consumed: the next wait times out"; else fail "wait re-delivered (rc=$rc): $out"; fi
 ( sleep 1; as con send waiter "$tmp/wbody" >/dev/null 2>&1 ) &
@@ -188,11 +188,11 @@ t0=$(date +%s)
 out=$(as waiter wait --timeout 20 2>&1); rc=$?
 t1=$(date +%s)
 wait
-if [ "$rc" -eq 0 ] && [ $((t1 - t0)) -le 10 ] && printf '%s' "$out" | grep -q 'wake up rule'; then pass "wait blocks, then wakes on a later send"; else fail "wait wake (rc=$rc, $((t1 - t0))s): $out"; fi
+if [ "$rc" -eq 0 ] && [ $((t1 - t0)) -le 10 ] && grep -q 'wake up rule' <<< "$out"; then pass "wait blocks, then wakes on a later send"; else fail "wait wake (rc=$rc, $((t1 - t0))s): $out"; fi
 out=$("$BUS" wait --timeout 1 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && printf '%s' "$out" | grep -q 'identity unbound'; then pass "wait from an unbound process is refused, not a timeout"; else fail "unbound wait (rc=$rc): $out"; fi
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'identity unbound' <<< "$out"; then pass "wait from an unbound process is refused, not a timeout"; else fail "unbound wait (rc=$rc): $out"; fi
 out=$(as waiter wait --timeout abc 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && printf '%s' "$out" | grep -q 'positive number of seconds'; then pass "wait refuses a non-numeric --timeout"; else fail "bad timeout (rc=$rc): $out"; fi
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'positive number of seconds' <<< "$out"; then pass "wait refuses a non-numeric --timeout"; else fail "bad timeout (rc=$rc): $out"; fi
 
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
