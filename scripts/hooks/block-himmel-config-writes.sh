@@ -21,9 +21,10 @@
 #   Bash - the command text names the config file (`.himmel` and `config.json`
 #     both present, in any quoting/spelling that keeps the two literals) unless
 #     EVERY clause is a plain reader (cat head tail less more wc stat ls file jq
-#     grep rg diff test [) with no redirect, no `tee`/`-i`/`--in-place`, and no
-#     command substitution. A `ln -s ... config.json`, `cp`, `mv`, `sed -i`, `jq
-#     ... >` or `echo > ...config.json` all name it and so deny.
+#     grep rg diff test [) with no redirect, no rg `--pre`/`--pre-glob`/
+#     `--hostname-bin` (they run a program), and no command substitution. A
+#     `ln -s ... config.json`, `cp`, `mv`, `sed -i`, `jq ... >` or `echo >
+#     ...config.json` all name it and so deny (none is a plain reader).
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
@@ -125,7 +126,7 @@ while IFS= read -r clause || [ -n "$clause" ]; do
     esac
     for a in "$@"; do
         case "$a" in
-            -i|--in-place|-i?*|--in-place=*) deny "the command names ~/.himmel/config.json with an in-place option ($a)" ;;
+            --pre|--pre=*|--pre-glob|--pre-glob=*|--hostname-bin|--hostname-bin=*) deny "the command names ~/.himmel/config.json with an option that runs a program ($a)" ;;
         esac
     done
 done <<< "$clauses"
