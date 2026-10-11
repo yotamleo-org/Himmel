@@ -49,6 +49,17 @@ doctor_worst() {
     }' "$1" | sort
 }
 
+# doctor_valid <doctor-output> -- 0 only when the capture holds at least one check row
+# AND the Summary line; an empty or truncated capture must not read as "no regression".
+doctor_valid() {
+  [ -s "$1" ] || return 1
+  grep -Eq '^(OK|INFO|WARN|FAIL) +[A-Za-z0-9]' "$1" || return 1
+  grep -q '^Summary:' "$1"
+}
+
+# first_semver <text> -- the first x.y.z token, so "0.9.8" never matches "0.9.85".
+first_semver() { printf '%s\n' "$1" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
+
 # doctor_regressions <before-file> <after-file> [allow-id ...]
 # Prints one line per violation; returns 1 if there is any:
 #   NEW-FAIL <id>   a check is FAIL after and was not FAIL before (never allowlisted)
@@ -142,8 +153,9 @@ if [ -n "$BASE_AST" ]; then pass "baseline ast-grep: $BASE_AST"; else fail "base
 
 note "baseline: graphify (tree pin)"
 ( . scripts/lib/graphify-bin.sh && graphify_install ) >"$WORK/graphify-base.log" 2>&1
-BASE_GRAPHIFY="$(graphify --version 2>&1 | head -1)"
-if [ -n "$BASE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY"; else fail "baseline graphify not installed (see $WORK/graphify-base.log)"; fi
+BASE_GRAPHIFY="$(graphify --version 2>&1)"; grc=$?
+BASE_GRAPHIFY="$(first_semver "$BASE_GRAPHIFY")"
+if [ "$grc" -eq 0 ] && [ -n "$BASE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY"; else fail "baseline graphify not installed (see $WORK/graphify-base.log)"; fi
 
 note "baseline: cli-proxy-api (tree pin)"
 bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/proxy-base.log" 2>&1
@@ -159,6 +171,7 @@ bash scripts/himmel-update.sh --only qmd_fork >"$WORK/qmd-base.log" 2>&1
 note "baseline: himmel-update.sh --versions (read-only table)"
 bash scripts/himmel-update.sh --versions >"$WORK/versions-before.txt" 2>&1
 bash scripts/himmel-doctor.sh --no-color >"$WORK/doctor-before.txt" 2>&1
+doctor_valid "$WORK/doctor-before.txt"; verdict $? "doctor-before capture holds check rows + Summary" "doctor-before capture is empty or malformed (see $WORK/doctor-before.txt)"
 note "doctor before: $(tail -1 "$WORK/doctor-before.txt")"
 
 # --- 2. upgrade to the stage inputs -----------------------------------------
@@ -167,16 +180,16 @@ bash scripts/himmel-update.sh --only jira_cli >"$WORK/up-jira.log" 2>&1; verdict
 
 note "upgrade: graphify -> $UPGRADE_GRAPHIFY_VERSION (himmel-update --only graphify)"
 GRAPHIFY_VERSION="$UPGRADE_GRAPHIFY_VERSION" bash scripts/himmel-update.sh --only graphify >"$WORK/up-graphify.log" 2>&1
-GOT="$(graphify --version 2>&1 | head -1)"
-case "$GOT" in *"$UPGRADE_GRAPHIFY_VERSION"*) pass "graphify now: $GOT" ;; *) fail "graphify is '$GOT', wanted $UPGRADE_GRAPHIFY_VERSION (see $WORK/up-graphify.log)" ;; esac
+GOT="$(first_semver "$(graphify --version 2>&1)")"
+if [ "$GOT" = "$UPGRADE_GRAPHIFY_VERSION" ]; then pass "graphify now: $GOT"; else fail "graphify is '$GOT', wanted $UPGRADE_GRAPHIFY_VERSION (see $WORK/up-graphify.log)"; fi
 
 note "upgrade: qmd fork (himmel-update --only qmd_fork)"
 bash scripts/himmel-update.sh --only qmd_fork >"$WORK/up-qmd.log" 2>&1; verdict $? "himmel-update --only qmd_fork" "himmel-update --only qmd_fork (see $WORK/up-qmd.log)"
 
 note "upgrade: ast-grep -> $UPGRADE_AST_GREP_VERSION (install-code-kit-clis, AST_GREP_VERSION)"
 AST_GREP_VERSION="$UPGRADE_AST_GREP_VERSION" bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/up-ast-grep.log" 2>&1
-GOT=""; command -v ast-grep >/dev/null 2>&1 && GOT="$(ast-grep --version 2>&1 | head -1)"
-case "$GOT" in *"$UPGRADE_AST_GREP_VERSION"*) pass "ast-grep now: $GOT" ;; *) fail "ast-grep is '$GOT', wanted $UPGRADE_AST_GREP_VERSION (see $WORK/up-ast-grep.log)" ;; esac
+GOT=""; command -v ast-grep >/dev/null 2>&1 && GOT="$(first_semver "$(ast-grep --version 2>&1)")"
+if [ "$GOT" = "$UPGRADE_AST_GREP_VERSION" ]; then pass "ast-grep now: $GOT"; else fail "ast-grep is '$GOT', wanted $UPGRADE_AST_GREP_VERSION (see $WORK/up-ast-grep.log)"; fi
 
 note "upgrade: cli-proxy-api -> v$UPGRADE_CLIPROXY_VERSION (CLIPROXY_API_VERSION + CLIPROXY_API_SHA256)"
 CLIPROXY_API_VERSION="$UPGRADE_CLIPROXY_VERSION" CLIPROXY_API_SHA256="$UPGRADE_CLIPROXY_SHA256" \
@@ -189,6 +202,7 @@ fi
 # --- 3. assertions ------------------------------------------------------------
 note "assert: himmel-doctor (no new FAIL; harness-artefact WARNs allowlisted by name)"
 bash scripts/himmel-doctor.sh --no-color >"$WORK/doctor-after.txt" 2>&1
+doctor_valid "$WORK/doctor-after.txt"; verdict $? "doctor-after capture holds check rows + Summary" "doctor-after capture is empty or malformed (see $WORK/doctor-after.txt)"
 note "doctor after: $(tail -1 "$WORK/doctor-after.txt")"
 # shellcheck disable=SC2086  # the allowlist is a space-separated name list
 REG="$(doctor_regressions "$WORK/doctor-before.txt" "$WORK/doctor-after.txt" $DOCTOR_ARTEFACT_ALLOW)"
@@ -196,24 +210,30 @@ verdict $? "himmel-doctor: no new FAIL, no un-allowlisted regression" "himmel-do
 [ -z "$REG" ] || printf '%s\n' "$REG" | sed 's/^/        /'
 
 note "assert: cli-proxy-api serves GET /v1/models with the existing config"
-"$HOME/.cli-proxy-api/cli-proxy-api" -config "$HOME/.cli-proxy-api/config.yaml" >"$WORK/proxy.log" 2>&1 &
-PPID_PROXY=$!
-code="000"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  sleep 1
-  code="$(curl -s -m 5 -o "$WORK/models.json" -w '%{http_code}' -H "Authorization: Bearer $KEY" http://127.0.0.1:8317/v1/models)"
-  [ "$code" = "200" ] && break
-done
-kill "$PPID_PROXY" 2>/dev/null; wait "$PPID_PROXY" 2>/dev/null
-if [ "$code" = "200" ]; then pass "GET /v1/models -> 200"; else fail "GET /v1/models -> $code (see $WORK/proxy.log)"; fi
+PRE="$(curl -s -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8317/ 2>/dev/null)"
+if [ "$PRE" != "000" ]; then
+  fail "port 8317 already has a listener (HTTP $PRE): cannot prove the upgraded proxy answers"
+else
+  "$HOME/.cli-proxy-api/cli-proxy-api" -config "$HOME/.cli-proxy-api/config.yaml" >"$WORK/proxy.log" 2>&1 &
+  PPID_PROXY=$!
+  code="000"; alive=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 1
+    code="$(curl -s -m 5 -o "$WORK/models.json" -w '%{http_code}' -H "Authorization: Bearer $KEY" http://127.0.0.1:8317/v1/models)"
+    [ "$code" = "200" ] && break
+  done
+  kill -0 "$PPID_PROXY" 2>/dev/null && alive=1
+  kill "$PPID_PROXY" 2>/dev/null; wait "$PPID_PROXY" 2>/dev/null
+  if [ "$code" = "200" ] && [ "$alive" -eq 1 ]; then pass "GET /v1/models -> 200 from the launched proxy"; else fail "GET /v1/models -> $code, launched proxy alive=$alive (see $WORK/proxy.log)"; fi
+fi
 
 note "assert: graphify update + query"
 mkdir -p "$WORK/gsmoke"
 printf 'def a():\n    return b()\n\ndef b():\n    return 1\n' > "$WORK/gsmoke/m.py"
 graphify update "$WORK/gsmoke" >"$WORK/graphify-update.log" 2>&1
 if [ -f "$WORK/gsmoke/graphify-out/graph.json" ]; then
-  Q="$(graphify query "what does a call" --graph "$WORK/gsmoke/graphify-out/graph.json" 2>&1 | head -20)"
-  if [ -n "$Q" ]; then pass "graphify update built a graph and query answered"; else fail "graphify query returned nothing"; fi
+  Q="$(graphify query "what does a call" --graph "$WORK/gsmoke/graphify-out/graph.json" 2>"$WORK/graphify-query.err")"; qrc=$?
+  if [ "$qrc" -eq 0 ] && [ -n "$Q" ]; then pass "graphify update built a graph and query answered"; else fail "graphify query rc=$qrc or empty (see $WORK/graphify-query.err)"; fi
 else
   fail "graphify update built no graph.json (see $WORK/graphify-update.log)"
 fi

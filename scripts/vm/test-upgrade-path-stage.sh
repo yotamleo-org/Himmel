@@ -76,6 +76,22 @@ doctor_regressions "$WORK/after-fail.txt" "$WORK/after-fail.txt" $ALLOW >/dev/nu
 printf 'OK   C7-shipped: a\nWARN C7-shipped: b\nINFO C7-shipped: c\n' > "$WORK/dup.txt"
 expect_has "worst severity wins across a check's rows" "C7-shipped WARN" "$(doctor_worst "$WORK/dup.txt")"
 
+# A capture that is empty or truncated must not read as "no regression".
+doctor_valid "$REAL"; expect_rc "real doctor capture is valid" 0 $?
+: > "$WORK/empty.txt"
+doctor_valid "$WORK/empty.txt"; expect_rc "empty doctor capture is invalid" 1 $?
+printf 'bash: scripts/himmel-doctor.sh: No such file or directory\n' > "$WORK/junk.txt"
+doctor_valid "$WORK/junk.txt"; expect_rc "non-doctor output is invalid" 1 $?
+grep -v '^Summary:' "$REAL" > "$WORK/nosummary.txt"
+doctor_valid "$WORK/nosummary.txt"; expect_rc "capture without a Summary line is invalid" 1 $?
+
+# Exact version compare: 0.9.8 is not 0.9.85, and "command not found" is no version.
+SV="$(first_semver "graphify 0.9.85")"
+if [ "$SV" = "0.9.85" ]; then rc=0; else rc=1; fi; expect_rc "first_semver reads x.y.z" 0 "$rc"
+if [ "$SV" = "0.9.8" ]; then rc=0; else rc=1; fi; expect_rc "0.9.85 does not equal 0.9.8" 1 "$rc"
+SV="$(first_semver "graphify: command not found")"
+if [ -z "$SV" ]; then rc=0; else rc=1; fi; expect_rc "no version in an error line" 0 "$rc"
+
 # --- guest input refusal (exit 2 before anything is installed) -----------------
 GOOD_SHA="744000a1a4f9ce19f5964774f853d029797b87ef53796d054389258c66cb1224"
 run_guest() { # env assignments as args
