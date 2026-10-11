@@ -52,7 +52,9 @@ ANCHOR="${HIMMEL_REPO:-}"
 [ -n "$ANCHOR" ] && [ -f "$ANCHOR/scripts/cr/ledger-append.sh" ] || {
     echo "live-gate-e2e: HIMMEL_REPO must name the primary himmel checkout" >&2; exit 2; }
 anchor_nwo=$(git -C "$ANCHOR" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|p' | sed 's|\.git$||')
-[ -z "$anchor_nwo" ] || [ "$anchor_nwo" != "$REPO" ] || {
+repo_lc=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')
+anchor_lc=$(printf '%s' "$anchor_nwo" | tr '[:upper:]' '[:lower:]')
+[ -z "$anchor_lc" ] || [ "$anchor_lc" != "$repo_lc" ] || {
     echo "live-gate-e2e: refusing to target the anchor's own origin ($REPO)" >&2; exit 2; }
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -85,9 +87,11 @@ priv=$(gh repo view "$REPO" --json isPrivate --jq .isPrivate)
 step "clone + close leftovers"
 if [ -d "$WORK/.git" ]; then
     work_nwo=$(git -C "$WORK" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|p' | sed 's|\.git$||')
-    [ "$work_nwo" = "$REPO" ] || { echo "live-gate-e2e: $WORK is not a clone of $REPO (origin=${work_nwo:-none}) — refusing to reset it" >&2; exit 2; }
+    [ "$(printf '%s' "$work_nwo" | tr '[:upper:]' '[:lower:]')" = "$repo_lc" ] || { echo "live-gate-e2e: $WORK is not a clone of $REPO (origin=${work_nwo:-none}) — refusing to reset it" >&2; exit 2; }
     [ -z "$(git -C "$WORK" status --porcelain 2>/dev/null)" ] || { echo "live-gate-e2e: $WORK has uncommitted changes — refusing to reset it" >&2; exit 2; }
-    git -C "$WORK" fetch -q origin && git -C "$WORK" checkout -q main && git -C "$WORK" reset -q --hard origin/main || exit 1
+    git -C "$WORK" fetch -q origin || exit 1
+    [ -z "$(git -C "$WORK" rev-list origin/main..main 2>/dev/null)" ] || { echo "live-gate-e2e: $WORK has local-only commits on main — refusing to reset it" >&2; exit 2; }
+    git -C "$WORK" checkout -q main && git -C "$WORK" reset -q --hard origin/main || exit 1
 else
     mkdir -p "$(dirname "$WORK")" && git clone -q "https://github.com/$REPO.git" "$WORK" || exit 1
 fi
