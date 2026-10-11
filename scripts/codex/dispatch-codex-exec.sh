@@ -74,6 +74,12 @@
 #      explicit --stdin-brief passes the caller's stdin through (HIMMEL-2786).
 #      Timeout evidence includes a reason, distinguishing an empty stdout
 #      event log at kill time from a run that emitted output.
+#   9. Hook-trust preflight (HIMMEL-5291): codex keys hook trust to the
+#      absolute .codex/hooks.json path, so a fresh worktree runs with none of
+#      himmel's hooks (HIMMEL-5288 gap 1). The dispatch refuses (exit 2, before
+#      the lock/ledger/registry) unless every PreToolUse hook of the worktree's
+#      hooks.json has a trusted entry in $CODEX_HOME/config.toml. There is no
+#      bypass: --dangerously-bypass-hook-trust stays refused by the filter.
 #
 # Usage:
 #   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
@@ -86,6 +92,9 @@
 #   CODEX_CRITICS_FILE   Override the model registry path (tests). Default-model
 #                        resolution requires node; explicit overrides do not.
 #   CODEX_ACL_NORMALIZE  Override the preflight script path (tests).
+#   CODEX_HOOK_TRUST_CHECK  Override the hook-trust check (tests): a script
+#                        taking <worktree>, rc 0 = trusted. Default: the
+#                        built-in check against $CODEX_HOME/config.toml.
 #   SBL_HELPER           Override the shared-branch-lock.sh path (tests).
 #   CODEX_JOBS_DIR        Override the job registry dir (tests; default
 #                         $HOME/.himmel/state/codex-exec-jobs).
@@ -323,6 +332,91 @@ fi
 if ! bash "$NORMALIZE" "$WORKTREE"; then
     echo "dispatch-codex-exec.sh: ACL preflight failed for $WORKTREE - dispatch aborted (manual recovery: bash scripts/codex/normalize-worktree-acl.sh <worktree>)" >&2
     exit 1
+fi
+
+# Invariant 9 (HIMMEL-5291): hook-trust preflight, fail-closed. codex keys hook
+# trust to the ABSOLUTE .codex/hooks.json path (of the worktree, or of the
+# primary checkout a worktree resolves to), so an untrusted tree would run the
+# lane with no himmel hooks at all (HIMMEL-5288 gap 1: an in-workspace force
+# push succeeded). The filter refuses --dangerously-bypass-hook-trust, so the
+# only honest options are to refuse or to run guarded: refuse unless every
+# PreToolUse hook of THIS worktree's hooks.json has a trusted state entry
+# (under the worktree path or its primary checkout) in $CODEX_HOME/config.toml. Runs before
+# the lock, the ledger start row and the job registry, so a refusal leaves
+# nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
+# CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
+# ponytail: presence of a trusted_hash, not its validity - codex recomputes the
+# hash from the hook definition, so an edited hooks.json under an already
+# trusted path still passes here and codex itself then drops that hook; upgrade
+# path is porting codex's hash once its algorithm is documented.
+_hook_trust_check() {
+    local wt="$1" hooks_json="$1/.codex/hooks.json"
+    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" wt_native="$1" primary="$1" common
+    # codex resolves a git worktree to its PRIMARY checkout and keys trust to
+    # that checkout's .codex/hooks.json (observed codex-cli 0.161.0, Linux).
+    common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    case "$common" in */.git) primary="${common%/.git}" ;; esac
+    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
+    # Git Bash: codex on Windows keys trust to the native path spelling.
+    if command -v cygpath >/dev/null 2>&1; then
+        wt_native="$(cygpath -w "$wt" 2>/dev/null || echo "$wt")"
+    fi
+    # shellcheck disable=SC2016 # JS source, no shell expansion intended
+    node -e '
+const fs = require("fs");
+const [hooksFile, cfgFile, ...prefixes] = process.argv.slice(1);
+let hooks;
+try {
+    hooks = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+} catch (error) {
+    console.error("cannot read " + hooksFile + ": " + error.message);
+    process.exit(2);
+}
+const groups = (hooks.hooks || hooks).PreToolUse || [];
+let cfg = "";
+try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = nothing trusted */ }
+// [hooks.state.<key>] tables: a literal (single-quoted) or basic ("...") key.
+const trusted = new Set();
+let key = null, hash = false, off = false;
+const flush = () => { if (key !== null && hash && !off) trusted.add(key); };
+for (const line of cfg.split(/\r?\n/)) {
+    if (/^\s*\[/.test(line)) {
+        flush();
+        const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
+        key = m ? (m[1] !== undefined ? m[1] : m[2].replace(/\\(.)/g, "$1")) : null;
+        hash = false; off = false;
+    } else if (key !== null) {
+        if (/^\s*trusted_hash\s*=\s*"[^"]+"/.test(line)) hash = true;
+        if (/^\s*enabled\s*=\s*false\b/.test(line)) off = true;
+    }
+}
+flush();
+const missing = [];
+groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
+    const suffix = "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi;
+    const winSuffix = "\\.codex\\hooks.json:pre_tool_use:" + gi + ":" + hi;
+    const ok = prefixes.some(p => trusted.has(p + suffix) || trusted.has(p + winSuffix));
+    if (!ok) missing.push("pre_tool_use:" + gi + ":" + hi);
+}));
+if (groups.length === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
+if (missing.length) {
+    console.error(missing.join(", "));
+    process.exit(1);
+}
+' "$hooks_json" "$cfg" "$wt" "$wt_native" "$primary"
+}
+if [ -n "${CODEX_HOOK_TRUST_CHECK:-}" ]; then
+    bash "$CODEX_HOOK_TRUST_CHECK" "$WORKTREE"
+    TRUST_RC=$?
+    TRUST_MISSING=""
+else
+    TRUST_MISSING="$(_hook_trust_check "$WORKTREE" 2>&1)"
+    TRUST_RC=$?
+fi
+if [ "$TRUST_RC" -ne 0 ]; then
+    echo "dispatch-codex-exec.sh: hooks for $WORKTREE are not trusted - refusing to launch a lane with no himmel guard chain (untrusted: ${TRUST_MISSING:-see above}; trust state: ${CODEX_HOME:-$HOME/.codex}/config.toml)." >&2
+    echo "dispatch-codex-exec.sh: remedy: open an interactive codex session in that worktree, review and trust its project hooks at the trust prompt, then re-dispatch. The lane offers no trust bypass." >&2
+    exit 2
 fi
 
 # Invariant 5 (HIMMEL-800): acquire the single-writer lock now that the gate

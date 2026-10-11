@@ -90,6 +90,14 @@ run_dispatch() {  # run_dispatch <args...> ; sets $RC and $OUT
   set -e
 }
 
+# HIMMEL-5291: the hook-trust preflight reads $CODEX_HOME/config.toml, which no
+# hermetic row below fixtures. Default every dispatch to a pass stub (the
+# CODEX_ACL_NORMALIZE idiom); section 16 unsets it to run the REAL check.
+TRUST_PASS_STUB="$TMP/trust-pass.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TRUST_PASS_STUB"
+chmod +x "$TRUST_PASS_STUB"
+export CODEX_HOOK_TRUST_CHECK="$TRUST_PASS_STUB"
+
 # --- 1: missing --worktree -> usage (exit 2) ---------------------------------
 run_dispatch
 assert_rc 2 "missing --worktree exits 2" "no-worktree rc=$RC out=$OUT"
@@ -955,6 +963,119 @@ rm -rf "$JOBS_DIR"; mkdir -p "$JOBS_DIR"
 run_stdin_dispatch /dev/null
 assert_rc 124 "timeout wins over late child rc=7" "late child rc=$RC out=$OUT"
 assert_timeout_reason 'timeout after 2s'
+
+# --- 16: hook-trust preflight (HIMMEL-5291) ----------------------------------
+# codex keys hook trust to the absolute hooks.json path, so a fresh worktree
+# runs with NO himmel hooks (HIMMEL-5288 gap 1: an in-workspace force push
+# succeeded). The lane must refuse to launch unless every PreToolUse hook of
+# the worktree's .codex/hooks.json is trusted in $CODEX_HOME/config.toml.
+# Fixtures: hooks.json is the REAL repo file; the config table shape
+# ([hooks.state.'<abs hooks.json>:<event>:<group>:<hook>'] + trusted_hash) is
+# copied from a real ~/.codex/config.toml.
+REAL_HOOKS="$SCRIPT_DIR/../../.codex/hooks.json"
+TRUST_WT="$TMP/.claude/worktrees/trust-wt"
+mkdir -p "$TRUST_WT/.codex"
+cp "$REAL_HOOKS" "$TRUST_WT/.codex/hooks.json"
+TRUST_HOME="$TMP/codex-home"
+mkdir -p "$TRUST_HOME"
+
+# trust_config <worktree> [skip-index|-] [enabled=false-index|-]: write a
+# config.toml trusting every PreToolUse hook of <worktree>.
+trust_config() {
+  node -e '
+const fs = require("fs");
+const [hooks, wt, skip, off, out] = process.argv.slice(1);
+const groups = JSON.parse(fs.readFileSync(hooks, "utf8")).hooks.PreToolUse;
+let text = "[hooks.state]\n\n", n = 0;
+groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
+  const idx = n++;
+  if (String(idx) === skip) return;
+  text += "[hooks.state.\x27" + wt + "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi + "\x27]\n";
+  if (String(idx) === off) text += "enabled = false\n";
+  text += "trusted_hash = \"sha256:" + "ab".repeat(32) + "\"\n\n";
+}));
+fs.writeFileSync(out, text);
+' "$TRUST_WT/.codex/hooks.json" "$1" "${2:--}" "${3:--}" "$TRUST_HOME/config.toml"
+}
+
+run_trust() {  # run_trust <worktree> ; REAL trust check, own CODEX_HOME
+  set +e
+  OUT="$(env -u CODEX_HOOK_TRUST_CHECK CODEX_HOME="$TRUST_HOME" \
+      CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+      CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
+      HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
+      bash "$DISPATCH" --worktree "$1" do-it 2>&1)"
+  RC=$?
+  set -e
+}
+
+# 16a: the defect - fresh worktree, no trust state at all -> refused.
+: > "$LOG"; echo 0 > "$TMP/norm.rc"; : > "$TRUST_HOME/config.toml"
+rm -rf "$JOBS_DIR"; mkdir -p "$JOBS_DIR"
+run_trust "$TRUST_WT"
+assert_rc 2 "untrusted worktree hooks refused" "16a rc=$RC out=$OUT"
+case "$OUT" in *"$TRUST_WT"*"not trusted"*) pass "refusal names the worktree and the trust state";; *) fail "16a out: $OUT";; esac
+case "$OUT" in *"trust"*"interactive"*|*"interactive"*"trust"*) pass "refusal names a remedy";; *) fail "16a remedy missing: $OUT";; esac
+case "$OUT" in *--dangerously-bypass-hook-trust*) fail "refusal suggests the bypass flag";; *) pass "refusal never suggests the bypass flag";; esac
+if grep -q '^codex$' "$LOG" 2>/dev/null; then fail "codex invoked with untrusted hooks"; else pass "codex not invoked with untrusted hooks"; fi
+if [ -z "$(ls "$JOBS_DIR" 2>/dev/null)" ]; then pass "refusal leaves no job registry entry"; else fail "16a left registry: $(ls "$JOBS_DIR")"; fi
+
+# 16b: every PreToolUse hook trusted for THIS worktree path -> runs.
+: > "$LOG"
+trust_config "$TRUST_WT"
+run_trust "$TRUST_WT"
+assert_rc 0 "fully trusted worktree dispatches" "16b rc=$RC out=$OUT"
+if grep -q '^codex$' "$LOG" 2>/dev/null; then pass "codex invoked when hooks are trusted"; else fail "16b codex not invoked"; fi
+
+# 16c: one PreToolUse hook (index 3) missing from the trust state -> refused.
+: > "$LOG"
+trust_config "$TRUST_WT" 3
+run_trust "$TRUST_WT"
+assert_rc 2 "a single untrusted PreToolUse hook refuses" "16c rc=$RC out=$OUT"
+case "$OUT" in *"pre_tool_use:3:0"*) pass "refusal names the missing hook key";; *) fail "16c out: $OUT";; esac
+
+# 16d: trusted_hash present but enabled = false -> refused.
+: > "$LOG"
+trust_config "$TRUST_WT" - 2
+run_trust "$TRUST_WT"
+assert_rc 2 "a disabled hook refuses" "16d rc=$RC out=$OUT"
+
+# 16e: trust recorded for ANOTHER worktree path only (the per-path keying) -> refused.
+: > "$LOG"
+trust_config "$TMP/.claude/worktrees/some-other-wt"
+run_trust "$TRUST_WT"
+assert_rc 2 "trust for another worktree path does not count" "16e rc=$RC out=$OUT"
+
+# 16f: worktree without .codex/hooks.json has no guard chain -> refused.
+: > "$LOG"
+run_trust "$WT"
+assert_rc 2 "worktree with no .codex/hooks.json refused" "16f rc=$RC out=$OUT"
+
+# 16g: codex resolves a git worktree to its PRIMARY checkout and keys trust to
+# that checkout's hooks.json, in the basic-quoted ("...") key shape observed in
+# a real ~/.codex/config.toml (codex-cli 0.161.0, Linux) -> accepted.
+PRIM="$TMP/primary"
+mkdir -p "$PRIM"
+git -C "$PRIM" init -q -b main
+git -C "$PRIM" -c user.name=t -c user.email=t@t.invalid commit -q --allow-empty -m init
+PRIM_WT="$PRIM/.claude/worktrees/prim-wt"
+git -C "$PRIM" worktree add -q -b prim-wt "$PRIM_WT"
+mkdir -p "$PRIM_WT/.codex"
+cp "$REAL_HOOKS" "$PRIM_WT/.codex/hooks.json"
+node -e '
+const fs = require("fs");
+const [hooks, root, out] = process.argv.slice(1);
+const groups = JSON.parse(fs.readFileSync(hooks, "utf8")).hooks.PreToolUse;
+let text = "[hooks.state]\n\n";
+groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
+  text += "[hooks.state.\"" + root + "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi + "\"]\n";
+  text += "trusted_hash = \"sha256:" + "cd".repeat(32) + "\"\n\n";
+}));
+fs.writeFileSync(out, text);
+' "$PRIM_WT/.codex/hooks.json" "$PRIM" "$TRUST_HOME/config.toml"
+: > "$LOG"
+run_trust "$PRIM_WT"
+assert_rc 0 "trust keyed to the primary checkout counts for its worktree" "16g rc=$RC out=$OUT"
 
 echo
 if [ "$fails" -ne 0 ]; then

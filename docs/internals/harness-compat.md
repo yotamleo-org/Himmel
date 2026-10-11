@@ -312,6 +312,21 @@ now passed.
   `codex exec` needs `--dangerously-bypass-hook-trust` to run not-yet-trusted
   hooks (interactive Codex prompts to trust them once).
 
+**A fresh worktree's hooks are untrusted, so the exec lane refuses to start
+(HIMMEL-5291).** Codex keys hook trust to the absolute `.codex/hooks.json` path
+(`[hooks.state."<abs path>:pre_tool_use:<group>:<hook>"]` + `trusted_hash` in
+`$CODEX_HOME/config.toml`; for a git worktree codex resolves to the primary
+checkout's path), so an untrusted tree runs `codex exec` with no himmel hooks: the HIMMEL-5288 VM audit saw an
+in-workspace force push to a bare repo succeed under `workspace-write` /
+`approval: never`, and the hook block it once trusted. `dispatch-codex-exec.sh`
+(invariant 9) now refuses with exit 2, before the lock, ledger row and job
+registry, unless every PreToolUse hook of the dispatched worktree has an enabled
+trusted entry (under its own path or its primary checkout's). Remedy: open an interactive `codex` in that worktree and trust its
+project hooks at the prompt, then re-dispatch. There is no bypass —
+`--dangerously-bypass-hook-trust` stays refused by the arg filter. The check
+tests presence of a `trusted_hash`, not its validity (Codex recomputes it and
+drops a hook whose definition changed).
+
 **Headless `codex exec` must fail LOUD (HIMMEL-2023 / HIMMEL-1788 instance 5).**
 Without the headed TUI nobody sees a wedge, so four holes were closed at once.
 (1) **Watchdog.** `scripts/codex/dispatch-codex-exec.sh` ended in an unbounded
