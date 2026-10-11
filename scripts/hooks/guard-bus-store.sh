@@ -34,7 +34,7 @@
 #   process ancestry, so no role check is needed here) and everything else —
 #   silently, with no output.
 #
-# FAIL MODE: a security-shaped fence for its one subject. A payload it cannot
+# FAIL MODE: an advisory speed bump, fail-closed only for its one subject. A payload it cannot
 # parse (missing jq, bad JSON, a non-string command) is scanned as raw text and
 # DENIED when it names the bus root; with no mention of the root it is allowed.
 # Failing closed on every unparseable call would lock the session out of every
@@ -62,6 +62,10 @@
 # when, with ANSI-C escapes and expansions turned into `*`, it glob-matches
 # register|bind|rebind and keeps at least one literal character
 # (`$'reg\x69ster'`, `reg$x`, `r?gister`, `re${x}ister`).
+# A substitution opener (`$(`, `<(`, backtick) ends its word and its body is
+# judged as a segment of its own: `$(bus register x)` denies, while `diff <(sort a)
+# <(sort b)` and `gh pr create --title "$(git log) ..." --body "$(cat f)"` do not
+# read as two bus-able words in one segment.
 # Closed by shape, not by spelling: backslash-newline continuations are joined
 # (the pair removed) before the split; quotes, backslashes and parens are
 # stripped per word; a word is bus-able when a path component glob-matches `bus`
@@ -115,7 +119,7 @@ GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
 # state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
 # so they must not count as a word that could expand to `bus`.
 state_view() {
-    local s="$1"
+    local LC_ALL=C s="$1"
     s=${s//\$\{XDG_STATE_HOME\}/XDGSTATE}
     s=${s//\$XDG_STATE_HOME/XDGSTATE}
     s=${s//\$\{HOME\}/HOMEDIR}
@@ -130,7 +134,7 @@ STATECMD_RE='(state|XDG_STATE_HOME\}?)/himmel($|[^A-Za-z0-9_-])'
 # norm <string>: collapse repeated slashes and /./ so himmel//bus and himmel/./bus
 # match like himmel/bus. Pure bash, 3.2-safe.
 norm() {
-    local s="$1"
+    local LC_ALL=C s="$1"
     while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
     while [[ "$s" == *"/./"* ]]; do s=${s//\/.\//\/}; done
     while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
@@ -151,8 +155,8 @@ ESC_RE='\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|.)'
 # shellcheck disable=SC2016  # regex text; nothing is meant to expand
 EXP_RE='(\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
 normword() {
-    local w="$1" m inner span
-    NW_UNK=0
+    local w="$1" m inner span o t hd="" ho="" hc
+    NW_HAS=0; NW_REST=""
     while [[ "$w" =~ $ANSIC_RE ]]; do
         span="${BASH_REMATCH[0]}"
         inner="${BASH_REMATCH[1]}"
@@ -166,10 +170,24 @@ normword() {
         m="${BASH_REMATCH[0]}"
         w=${w/"$m"/"*"}
     done
-    # shellcheck disable=SC2016  # literal text patterns, nothing expands
-    case "$w" in
-        *'$('*|*'`'*|*'<('*|*'>('*|*'${'*) NW_UNK=1 ;;
-    esac
+    # A substitution opener the whitespace split left open ends this word; the
+    # text after it is the first word of a segment of its own (NW_REST). The
+    # head stays a candidate only when it holds a literal character
+    # (`b$(printf` -> `b*`), so a bare `$(git` or `<(sort` is no word at all.
+    # shellcheck disable=SC2016  # literal opener text, nothing expands
+    for o in '$(' '`' '<(' '>(' '${'; do
+        case "$w" in
+            *"$o"*)
+                t=${w%%"$o"*}
+                if [ "$NW_HAS" = 0 ] || [ "${#t}" -lt "${#hd}" ]; then hd="$t"; ho="$o"; fi
+                NW_HAS=1 ;;
+        esac
+    done
+    if [ "$NW_HAS" = 1 ]; then
+        NW_REST=${w#"$hd$ho"}
+        hc=${hd//[\'\"\\()]/}
+        if [ -n "$hc" ]; then w="$hd*"; else w=""; fi
+    fi
     w=${w//\(/}; w=${w//\)/}
     NW=${w//[\'\"\\]/}
 }
@@ -188,7 +206,6 @@ busish() {
         return 1
     fi
     normword "$1"
-    [ "$NW_UNK" = 1 ] && return 0
     IFS=/ read -ra parts <<< "$NW"
     [ "${#parts[@]}" -gt 0 ] || return 1
     for p in "${parts[@]}"; do
@@ -210,7 +227,6 @@ verbish() {
         return 1
     fi
     normword "$1"
-    [ "$NW_UNK" = 1 ] && return 0
     lit=${NW//[\*\?\[\]]/}
     [ -n "$lit" ] || return 1
     for v in register bind rebind; do
@@ -220,36 +236,50 @@ verbish() {
     return 1
 }
 
-# cmd_busish <text>: does any word of any command segment look like `bus`?
-cmd_busish() {
-    local seg word words
-    while IFS= read -r seg; do
-        read -ra words <<< "$seg"
-        [ "${#words[@]}" -gt 0 ] || continue
-        for word in "${words[@]}"; do
-            busish "$word" && return 0
-        done
-    done <<< "$(printf '%s' "$1" | tr ';&|' '\n')"
-    return 1
-}
-
-# verb_after_bus <text>: a segment with a busish word and, later in the same
-# segment, a verbish word. Options may sit between them.
-verb_after_bus() {
-    local seg word words seen
+# walk_words <mode> <text>: per command segment (; & | newline), per word.
+# A substitution opener left open by the word split (`$(`, `<(`, backtick, `${`)
+# ends its word and the text after it starts a segment of its own, so
+# `$(bus register x)` is judged as `bus register x` and `$(git log) $(cat f)` is
+# two bodies, not two bus-able words in one segment. mode `bus`: any busish
+# word; mode `verb`: a busish word and, later in the same segment, a verbish one.
+walk_words() {
+    local mode="$1" seg word words seen rest has
     while IFS= read -r seg; do
         read -ra words <<< "$seg"
         [ "${#words[@]}" -gt 0 ] || continue
         seen=0
         for word in "${words[@]}"; do
-            if [ "$seen" = 1 ]; then
-                verbish "$word" && return 0
-            fi
-            busish "$word" && seen=1
+            rest="$word"
+            while [ -n "$rest" ]; do
+                if [[ ! "$rest" =~ $PLAIN_RE ]]; then
+                    has=0; word="$rest"; rest=""
+                else
+                    normword "$rest"
+                    has=$NW_HAS; rest="$NW_REST"; word="$NW"
+                fi
+                if [ -n "$word" ]; then
+                    if [ "$mode" = bus ]; then
+                        busish "$word" && return 0
+                    else
+                        if [ "$seen" = 1 ]; then verbish "$word" && return 0; fi
+                        busish "$word" && seen=1
+                    fi
+                fi
+                # An opener at the start of a word starts a new segment; one glued
+                # to a word (`b$(printf u)s`) keeps the segment, the word goes on.
+                [ "$has" = 1 ] && [ -z "$word" ] && seen=0
+            done
         done
-    done <<< "$(printf '%s' "$1" | tr ';&|' '\n')"
+    done <<< "$(printf '%s' "$2" | tr ';&|' '\n')"
     return 1
 }
+
+# cmd_busish <text>: does any word of any command segment look like `bus`?
+cmd_busish() { walk_words bus "$1"; }
+
+# verb_after_bus <text>: a segment with a busish word and, later in the same
+# segment, a verbish word. Options may sit between them.
+verb_after_bus() { walk_words verb "$1"; }
 
 # Every HIMMEL_BUS_* variable the repo uses. Source:
 #   git grep -ho 'HIMMEL_BUS_[A-Z_]*' -- scripts marketplace/plugins/himmel-bus

@@ -128,7 +128,7 @@ deny "backtick substitution b\`true\`us register" "$(bash_json 'b`true`us regist
 deny "substitution with a space b\$(printf u)s register" "$(bash_json 'b$(printf u)s register x')"
 deny "backtick substitution with a space b\`printf u\`s register" "$(bash_json 'b`printf u`s register x')"
 deny "quoted substitution with a space b\"\$(printf u)\"s register" "$(bash_json 'b"$(printf u)"s register x')"
-deny "process substitution word <(..) then verb" "$(bash_json 'cat <(printf bu) register')"
+allow "a process substitution alone is no bus word (its body is its own segment)" "$(bash_json 'cat <(printf bu) register')"
 deny "verb as ANSI-C hex escape" "$(bash_json "bus \$'reg\\x69ster' x")"
 deny "verb as ANSI-C octal escape" "$(bash_json "bus \$'\\162egister' x")"
 deny "verb with an expansion inside (reg\$x)" "$(bash_json 'bus reg$x x')"
@@ -199,6 +199,30 @@ deny  "the bus root as a trailing directory still denies" "$(bash_json 'ls /tmp/
 allow "Write to an ordinary file" "$(file_json Write '/tmp/x.txt')"
 allow "Edit in the himmel-bus plugin" "$(file_json Edit 'marketplace/plugins/himmel-bus/lib/store.mjs')"
 allow "non-Bash non-file tool" "$(jq -nc '{tool_name:"Agent",tool_input:{prompt:"cat himmel/bus/log/a"}}')"
+
+echo "== substitution openers: a body is its own segment, an opener alone is no candidate =="
+allow "two process substitutions" "$(bash_json 'diff <(sort a.txt) <(sort b.txt)')"
+allow "gh pr create with two command substitutions" "$(bash_json 'gh pr create --title "$(git log -1 --format=%s)" --body "$(cat /tmp/body.md)"')"
+allow "git commit with two command-substitution messages" "$(bash_json 'git commit -m "$(cat a.txt)" -m "$(cat b.txt)"')"
+allow "two arithmetic expansions" "$(bash_json 'echo $((a + b)) $((c + d))')"
+allow "two assignments from substitutions" "$(bash_json 'A=$(git rev-parse HEAD) B=$(cat x.txt) make')"
+allow "bus send with a substitution body" "$(bash_json 'bus send c "$(cat /tmp/m.txt)" --summary "$(date)"')"
+deny  "bus register inside a command substitution" "$(bash_json '$(bus register x)')"
+deny  "bus rebind inside a quoted command substitution" "$(bash_json 'echo "$(bus rebind z)"')"
+deny  "bus bind inside a process substitution" "$(bash_json 'cat <(bus bind y)')"
+deny  "bus register inside backticks" "$(bash_json 'echo `bus register x`')"
+deny  "bus register behind an assignment substitution" "$(bash_json 'X=$(bus register y) true')"
+
+echo "== no jq: the raw root text is still scanned =="
+NOJQ="$(mktemp -d)" || exit 1
+for t in cat tr readlink; do ln -s "$(command -v "$t")" "$NOJQ/$t"; done
+OUT="$(printf '%s' "$(bash_json "cat $ROOT/log/a")" | env -i PATH="$NOJQ" "$BASH" "$HOOK" 2>/dev/null)"
+RC=$?
+if [ "$RC" = 2 ]; then ok "no jq, payload naming the root -> deny"; else bad "no jq, root named: rc=$RC"; fi
+OUT="$(printf '%s' "$(bash_json 'ls /tmp')" | env -i PATH="$NOJQ" "$BASH" "$HOOK" 2>/dev/null)"
+RC=$?
+if [ "$RC" = 0 ] && [ -z "$OUT" ]; then ok "no jq, ordinary payload -> allow, silent"; else bad "no jq, ordinary: rc=$RC out=$OUT"; fi
+rm -rf "$NOJQ"
 
 echo "== fail closed on an unparseable payload that names the root =="
 run "not json at all: cat $ROOT/log/a.jsonl"
