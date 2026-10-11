@@ -131,7 +131,13 @@ while [ "$i" -lt "$n" ]; do
         continue
     fi
     if [ "$c" = $'\\' ]; then
-        cur="$cur$c${cmd:i:1}"
+        # backslash-newline is a line continuation: the shell drops both, so it
+        # must not become a clause boundary below.
+        if [ "${cmd:i:1}" = $'\n' ]; then
+            cur="$cur "
+        else
+            cur="$cur$c${cmd:i:1}"
+        fi
         i=$((i + 1))
         continue
     fi
