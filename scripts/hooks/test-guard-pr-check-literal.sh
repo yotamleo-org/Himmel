@@ -2018,6 +2018,38 @@ for v in \
     "git log --oneline 'scripts/*.sh'"; do
     run "HIMMEL-5170 j2353d control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
+# Judge j2353e: line-level fail-closed rules on a line with a git word or a
+# GIT_*/EDITOR/VISUAL/PAGER assignment: a tokenizer failure plus any
+# metacharacter, a value slot that ends in a substitution, --config-env, and a
+# builtin that sets one of those names.
+# shellcheck disable=SC2016 # the rows carry a literal backtick and $f
+for v in \
+    ": \${HOME%/}; git config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "GIT_EDITOR=\"\$(printf scripts/c%s/write-verdicts.sh r)\" git commit" \
+    "git config core.pager \"\$(printf scripts/c%s/write-verdicts.sh r)\"" \
+    'GIT_EDITOR=`printf scripts/c%s/write-verdicts.sh r` git commit' \
+    "git -c core.editor=\"\$(printf scripts/c%s/write-verdicts.sh r)\" commit" \
+    "git fetch --upload-pack=\"\$(printf scripts/c%s/write-verdicts.sh r)\" origin" \
+    "X='scripts/c?/write-verdicts.sh' git --config-env=core.editor=X commit" \
+    "X=vim git --config-env core.editor=X commit" \
+    "printf -v GIT_EDITOR %s 'scripts/c?/write-verdicts.sh'; export GIT_EDITOR; git commit" \
+    "read GIT_EDITOR <<< 'scripts/c?/write-verdicts.sh'; git commit" \
+    "for GIT_EDITOR in 'scripts/c?/write-verdicts.sh'; do git commit; done" \
+    "mapfile -t GIT_EDITOR <<< x; git commit" \
+    "declare GIT_EDITOR=x; git commit" \
+    "export GIT_SEQUENCE_EDITOR=x; git rebase -i HEAD~2"; do
+    run "HIMMEL-5170 j2353e [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+for v in \
+    'GIT_EDITOR=vim git commit' \
+    "git commit -m \"\$(date)\"" \
+    "git config user.name \"\$(whoami)\"" \
+    "git log --grep=\"\$(echo x)\"" \
+    'read x; git log --oneline' \
+    "for f in a b; do git add \"\$f\"; done" \
+    'git config core.editor vim'; do
+    run "HIMMEL-5170 j2353e control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
 
 echo
 if [ "$FAILED" -eq 0 ]; then

@@ -612,7 +612,9 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 #     bytes the checks below verify.
 # Anything else keeps the old text, so every command that was not one
 # simple command still is not, and a redirect is re-emitted with its target.
-if st_tokenize "$cmd" && [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ]; then
+PR_TOKENIZED=0
+st_tokenize "$cmd" && PR_TOKENIZED=1
+if [ "$PR_TOKENIZED" = 1 ] && [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ]; then
     tk_cmd=-1 tk_path=-1 tk_pre=0 tk_msg=0 tk_dropped=0 tk_flat='' ST_SED_SCRIPTS=''
     k=0
     while [ "$k" -lt "$ST_N" ]; do
@@ -1113,14 +1115,20 @@ meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
     return 1
 }
 seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
-    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0 rd=0
+    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0 rd=0 endsub=0
     local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
+    # HIMMEL-5170 (j2353e): a $(, backtick, <( or >( ends the segment and what
+    # it opens is a segment of its own, so a value slot that is this segment's
+    # last word has a shell-built value nobody read: it counts as a metachar.
+    # shellcheck disable=SC2016 # literal $( and backtick are matched, never expanded
+    case "${ST_SEP[ST_S[i]]:-}" in '$(' | '`' | '<(' | '>(') endsub=1 ;; esac
     while [ "$i" -lt "$e" ]; do
         w=${ST_W[i]}
         if [ -z "${ST_RO[i]}" ]; then
             if [[ $w =~ $asg ]]; then
                 v=${BASH_REMATCH[2]}
                 meta_value "$v" && return 0
+                [ "$endsub" = 1 ] && [ "$i" -eq "$((e - 1))" ] && return 0
             fi
             if [ "$c" -lt 0 ]; then
                 case "$w" in *=*) ;; *) c=$i ;; esac
@@ -1137,7 +1145,9 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             -c)
                 v=${ST_W[i + 1]:-}
                 case "$v" in *=*) meta_value "${v#*=}" && return 0 ;; esac
+                [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
                 i=$((i + 2)) ;;
+            --config-env | --config-env=*) return 0 ;;
             -C | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
             -*) i=$((i + 1)) ;;
             *) sub=$w; break ;;
@@ -1164,6 +1174,12 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             esac
             i=$((i + 1))
         done
+        if [ "$endsub" = 1 ]; then
+            case "$key" in
+                user.name | user.email | user.signingkey | init.defaultBranch) ;;
+                *) return 0 ;;
+            esac
+        fi
         return 1
     fi
     case "$sub" in commit | tag | notes) exempt=1 ;; esac
@@ -1177,6 +1193,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
         [ "$w" = -- ] && break
         opt='' v=''
         case "$w" in
+            --config-env | --config-env=*) return 0 ;;
             --?*=*) opt=${w%%=*}; v=${w#*=} ;;
             -O) opt=-O; v=${ST_W[i + 1]:-} ;;
             -O?*) opt=-O; v=${w#-O} ;;
@@ -1189,14 +1206,51 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
                 --message | --grep | --grep-reflog | --author | --committer | --since | --until | --after | --before | \
                     --format | --pretty | --date | --sort | --glob | --exclude | --branches | --tags | --remotes) ;;
                 --file) [ "$exempt" = 1 ] || { meta_value "$v" && return 0; } ;;
-                *) meta_value "$v" && return 0 ;;
+                *)
+                    meta_value "$v" && return 0
+                    [ "$endsub" = 1 ] && [ "$((i + 1))" -ge "$((e - 1))" ] && return 0
+                    ;;
             esac
         fi
         i=$((i + 1))
     done
     return 1
 }
-if [ "$PR_TOKFAIL" = 0 ]; then
+# HIMMEL-5170 (judge j2353e, 3rd shell-parsing NO-GO): line-level rules that
+# need no guarded name and no token. They fire on any line that has a git word
+# or an assignment to GIT_*/EDITOR/VISUAL/PAGER; flat is already unquoted and
+# continuation-joined, so `g\it` and `GIT_""EDITOR` read as plain text here.
+PR_LINE_GIT=0 PR_LINE_NAME='(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)'
+[[ $flat =~ (^|[^[:alnum:]_])git([^[:alnum:]_]|$) ]] && PR_LINE_GIT=1
+[[ $flat =~ (^|[^[:alnum:]_])${PR_LINE_NAME}\+?= ]] && PR_LINE_GIT=1
+if [ "$PR_LINE_GIT" = 1 ]; then
+    pr_line_deny=''
+    # (1) the tokenizer failed (the line-615 result, not PR_TOKFAIL, which is
+    # set later): no word is known, so any metacharacter fails closed.
+    if [ "$PR_TOKENIZED" = 0 ]; then
+        case "$cmd$flat" in
+            *'$'* | *'`'* | *'*'* | *'?'* | *'['* | *'{'* | *\\*) pr_line_deny="the line could not be tokenized and carries a shell expansion character" ;;
+        esac
+    fi
+    # (3) --config-env hands any env name to git as a config value.
+    case "$flat" in *--config-env*) pr_line_deny="--config-env names an environment variable git executes as config" ;; esac
+    # (3) a builtin that sets GIT_*/EDITOR/VISUAL/PAGER beside a git word.
+    if [ -z "$pr_line_deny" ]; then
+        pr_n=$PR_LINE_NAME
+        pr_sp='[[:space:]]'
+        if [[ $flat =~ (^|[^[:alnum:]_])printf${pr_sp}+([^\;\&\|]*${pr_sp})?-v${pr_sp}*${pr_n}([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])(read|mapfile|readarray|declare|typeset|local)${pr_sp}+([^\;\&\|]*${pr_sp})?${pr_n}([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])for${pr_sp}+${pr_n}${pr_sp}+in([^[:alnum:]_]|$) ||
+            $flat =~ (^|[^[:alnum:]_])export${pr_sp}+([^\;\&\|]*${pr_sp})?${pr_n}= ||
+            ($flat == *'<<<'* && $flat =~ (^|[^[:alnum:]_])${pr_n}([^[:alnum:]_]|$)) ]]; then
+            pr_line_deny="a builtin sets GIT_*/EDITOR/VISUAL/PAGER on a line that runs git"
+        fi
+    fi
+    if [ -n "$pr_line_deny" ]; then
+        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path (HIMMEL-5170). Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
+    fi
+fi
+if [ "$PR_TOKENIZED" = 1 ]; then
     mk=0
     while [ "$mk" -lt "$ST_N" ]; do
         mek=$mk
