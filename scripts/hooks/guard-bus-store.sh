@@ -75,11 +75,12 @@ set -uo pipefail
 input=$(cat)
 
 # Fast path, no fork: every Bash rule below needs one of these literals. A JSON
-# \u escape could spell them past a raw scan, so it falls through too. A
+# \u escape could spell them past a raw scan, so it falls through too, and so
+# does a literal backslash (a continuation can split a word: `b\<nl>us`). A
 # file-tool path may reach the store through a symlink alias that carries no
 # literal at all, so any payload with a file_path/notebook_path is resolved.
 case "$input" in
-    *bus*|*BUS*|*'\u'*|*file_path*|*notebook_path*) ;;
+    *bus*|*BUS*|*'\u'*|*\\\\*|*file_path*|*notebook_path*) ;;
     *) exit 0 ;;
 esac
 
