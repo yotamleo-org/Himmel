@@ -102,8 +102,9 @@ not a formatting preference. `edit --desc-file` repairs a corrupted body in
 place.
 
 **Ticket shape: a plain block, then Agent detail (HIMMEL-5226).** Every ticket
-body opens with three short sections anyone can read without knowing the code,
-then one section for the agent doing the work:
+body carries three short sections anyone can read without knowing the code,
+then one section for the agent doing the work (the lint checks that all four
+are present and non-empty, not their order):
 
 ```markdown
 ## Impact
@@ -124,7 +125,8 @@ then one section for the agent doing the work:
 with one empty, is refused with the missing names and this template. Headings
 match by their words (`## Impact`, or an ADF heading node for `--adf-file`),
 and a heading inside a code fence does not count. Explicit exemptions: an
-`Epic` and a `Subtask` only **warn** on stderr and are filed anyway; a
+`Epic` and a `Subtask` only **warn** (the CLI on stderr; the MCP tool files
+them without a message) and are filed anyway; a
 body-less create of any other type is refused like a body without the block.
 `edit` is not gated, so an old ticket can be amended later.
 

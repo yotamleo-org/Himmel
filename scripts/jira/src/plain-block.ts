@@ -37,11 +37,15 @@ function canonical(h: string): string | undefined {
 /** Split markdown into heading/body parts, ignoring fenced code. */
 function parts(md: string): Part[] {
   const out: Part[] = [];
-  let fence = false;
+  let fence = '';
   let cur: Part | undefined;
   for (const line of md.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fence = !fence;
+    const fm = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (fm) {
+      // A fence closes only on the same character, at least as long as the opener.
+      const f = fm[1]!;
+      if (!fence) fence = f;
+      else if (f[0] === fence[0] && f.length >= fence.length) fence = '';
     } else if (!fence) {
       const m = HEADING.exec(line);
       if (m && /^\s{0,3}#/.test(line)) {

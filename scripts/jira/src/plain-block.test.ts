@@ -29,6 +29,12 @@ describe('lintPlainBlock (HIMMEL-5226)', () => {
     expect(lintPlainBlock('```\n' + OK + '\n```')).toHaveLength(4);
   });
 
+  it('a shorter or different closing marker does not end a fence (HIMMEL-5226)', () => {
+    expect(lintPlainBlock('````\n```\n' + OK + '\n```')).toHaveLength(4);
+    expect(lintPlainBlock('~~~\n```\n' + OK + '\n```')).toHaveLength(4);
+    expect(lintPlainBlock('```\ncode\n```\n' + OK)).toEqual([]);
+  });
+
   it('the template itself passes', () => {
     expect(lintPlainBlock(PLAIN_BLOCK_TEMPLATE)).toEqual([]);
   });
