@@ -932,6 +932,12 @@ if [ -d /proc/self ]; then
   assert "argv[0] under the uv tool dir -> 1"              test "$(h5_count "$h5_venv")" = "1"
   assert "mention + real + venv -> 2, mention dropped"     test "$(h5_count "$h5_mention $h5_real $h5_venv")" = "2"
   assert "a pid gone since pgrep ran -> not a holder (0)"  test "$(h5_count "$h5_gone")" = "0"
+  # a pid whose /proc entry EXISTS but whose cmdline cannot be read is not
+  # "gone": it is kept (fail closed), only an absent entry is dropped
+  h5_fp="$tmpdir/h5/fakeproc"; mkdir -p "$h5_fp/self" "$h5_fp/4242"
+  # shellcheck disable=SC2016
+  assert "present pid dir, unreadable cmdline -> counted (1)" \
+    test "$(HOLDER_PIDS=4242 GRAPHIFY_PROC_ROOT="$h5_fp" "$(command -v bash)" -c 'PATH="$1:/usr/bin:/bin"; export PATH; . "$2/graphify-bin.sh"; _graphify_mcp_holders' _ "$probe_dir" "$SCRIPT_DIR" 2>/dev/null)" = "1"
   # the update's OWN chain is never a holder even if its argv is the entry point
   h5_self="$h5_stub/graphify-mcp-self"
   printf '#!/bin/bash\nHOLDER_PIDS=$$ PATH="%s:/usr/bin:/bin"; export HOLDER_PIDS PATH\n. "%s/graphify-bin.sh"; _graphify_mcp_holders\n' "$probe_dir" "$SCRIPT_DIR" > "$h5_self"

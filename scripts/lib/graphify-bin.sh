@@ -562,8 +562,10 @@ EOF
     [ -n "$pid" ] || continue
     case "$anc" in *" $pid "*) continue ;; esac
     if [ ! -r "$root/$pid/cmdline" ]; then
-      # gone since pgrep ran -> not a holder; no /proc at all -> cannot tell, keep
-      [ -d "$root/self" ] || printf '%s\n' "$pid"
+      # gone since pgrep ran (entry absent while /proc is mounted) -> not a
+      # holder; an entry that exists but cannot be read, or no /proc at all,
+      # cannot be told apart from a live holder -> keep (fail closed)
+      if [ -d "$root/$pid" ] || [ ! -d "$root/self" ]; then printf '%s\n' "$pid"; fi
       continue
     fi
     a0=""; a1=""; n=0
