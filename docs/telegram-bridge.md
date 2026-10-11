@@ -51,6 +51,14 @@ DM the bot once it's running:
 - `status` / `sessions` / `stop <TICKET-KEY>` — control commands.
 - Anything else — ordinary chat with the current session.
 
+The bot also answers three Telegram slash commands, **in a DM only** (it stays
+silent in groups so pairing codes never leak to other members):
+
+- `/start` — pairing instructions.
+- `/help` — what the bot does and the two commands below.
+- `/status` — your pairing state: paired (and as whom), a pending code to
+  approve with `/telegram:access pair <code>` in Claude Code, or not paired.
+
 Privileged actions (arming a resume, restarting the bridge, and other
 operator-only ops) are gated behind an explicit auto-command syntax and an
 allowlisted-operator check — see the auto-action docs in
