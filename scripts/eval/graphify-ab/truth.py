@@ -19,10 +19,11 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TASKS = os.path.join(HERE, "tasks.json")
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 
 
 def git(*args, cwd=None):
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    r = subprocess.run(["git", *args], cwd=cwd or REPO, capture_output=True, text=True)
     if r.returncode not in (0, 1):  # grep exits 1 on no match
         raise SystemExit("git %s failed: %s" % (" ".join(args), r.stderr.strip()))
     return r.stdout

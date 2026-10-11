@@ -70,7 +70,7 @@ case "$sub" in
     for rep in $(seq 1 "$REPS"); do
       for t in $(task_ids); do
         n=$((n + 1))
-        if [ $(((rep + n) % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+        if [ $((n % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
         printf 'rep=%s task=%s order=%s\n' "$rep" "$t" "$order"
       done
     done
@@ -83,6 +83,7 @@ esac
 BASE="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["base_sha"])' "$TASKS_JSON")"
 [ -n "$OUT" ] || OUT="${HOME}/.himmel/eval/graphify-ab/$(date +%Y%m%dT%H%M%S)"
 mkdir -p "$OUT/raw" || exit 1
+OUT="$(cd "$OUT" && pwd)" || exit 1
 CHECKOUT="$OUT/checkout"
 git -C "$REPO" worktree add --detach "$CHECKOUT" "$BASE" >/dev/null || { echo "run.sh: cannot create checkout at $BASE" >&2; exit 1; }
 # shellcheck disable=SC2317,SC2329  # invoked by the EXIT trap
@@ -107,13 +108,15 @@ n=0
 for rep in $(seq 1 "$REPS"); do
   for t in $(task_ids); do
     n=$((n + 1))
-    if [ $(((rep + n) % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+    if [ $((n % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
     for arm in $order; do
       if ! pf="$(bash "$BANK_PREFLIGHT" 2>&1)" || ! printf '%s\n' "$pf" | grep -qx 'PROCEED'; then
         stopped="bank-preflight refused before $t/$arm/rep$rep"
         break 3
       fi
-      if python3 -I -c 'import sys; sys.exit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)' "$(spent)" "$MAX_USD"; then :; else
+      # per-run cap = min(PER_RUN_USD, what is left of MAX_USD): the sweep can never overshoot
+      run_cap="$(python3 -I -c 'import sys; print("%.4f" % min(float(sys.argv[3]), float(sys.argv[2]) - float(sys.argv[1])))' "$(spent)" "$MAX_USD" "$PER_RUN_USD")"
+      if python3 -I -c 'import sys; sys.exit(0 if float(sys.argv[1]) > 0 else 1)' "$run_cap"; then :; else
         stopped="max-usd $MAX_USD reached before $t/$arm/rep$rep"
         break 3
       fi
@@ -124,7 +127,7 @@ for rep in $(seq 1 "$REPS"); do
       start="$(date +%s)"
       # headless-claude-ok: HIMMEL-5317 graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
       ( cd "$CHECKOUT" && timeout "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
-          --permission-mode dontAsk --output-format json --max-budget-usd "$PER_RUN_USD" \
+          --permission-mode dontAsk --output-format json --max-budget-usd "$run_cap" \
           --tools Bash,Read --allowedTools Bash,Read ${deny:+--disallowedTools "$deny"} \
           --strict-mcp-config --append-system-prompt "$sys_text" ) > "$OUT/raw/$tag.json" 2> "$OUT/raw/$tag.err"
       rc=$?
@@ -136,5 +139,6 @@ done
 
 [ -n "$stopped" ] && { printf 'STOPPED: %s\n' "$stopped" | tee "$OUT/STOPPED"; }
 printf 'out=%s spent_usd=%s\n' "$OUT" "$(spent)"
-python3 -I "$HERE/summarize.py" ingest "$OUT" >/dev/null && printf 'runs=%s/runs.jsonl\n' "$OUT"
-[ -z "$stopped" ]
+ingest_rc=0
+python3 -I "$HERE/summarize.py" ingest "$OUT" >/dev/null && printf 'runs=%s/runs.jsonl\n' "$OUT" || ingest_rc=1
+[ "$ingest_rc" -eq 0 ] && [ -z "$stopped" ]

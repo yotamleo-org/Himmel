@@ -139,7 +139,8 @@ def report(out, seed):
     lines = ["# graphify A/B report", "",
              "runs ingested: %d, usable (ok, arm B uncontaminated): %d" % (len(rows), len(usable)),
              "contaminated B runs: %d; A runs that never called graphify: %d"
-             % (sum(1 for r in rows if r.get("contaminated")), sum(1 for r in rows if r.get("unused_graph"))), ""]
+             % (sum(1 for r in rows if r.get("contaminated")), sum(1 for r in rows if r.get("unused_graph"))),
+             "runs with no transcript (graph use unverified): %d" % sum(1 for r in usable if r.get("graphify_calls") is None), ""]
     metrics = [("weighted_tokens", "weighted tokens"), ("tool_calls", "tool calls"),
                ("wall_s", "wall s"), ("cost_usd", "cost USD"), ("correct", "correct")]
     lines += ["## Per task (mean [min..max] over reps)", "",
@@ -175,11 +176,12 @@ def report(out, seed):
         lines.append("| %s | %s | %s | %s | [%s, %s] | %+.0f%% |" % (label, fmt(am), fmt(bm), fmt(pt), fmt(lo), fmt(hi), rel * 100))
     a_runs = [r for r in usable if r["arm"] == "A"]
     unused = sum(1 for r in a_runs if r.get("unused_graph"))
-    lines += ["", "## Verdict", "", verdict(verdict_inputs, unused, len(a_runs))]
+    unverified = sum(1 for r in usable if r.get("graphify_calls") is None)
+    lines += ["", "## Verdict", "", verdict(verdict_inputs, unused, len(a_runs), unverified)]
     return "\n".join(lines)
 
 
-def verdict(v, unused=0, a_runs=0):
+def verdict(v, unused=0, a_runs=0, unverified=0):
     """KEEP-AND-PUSH: A's cost CI is wholly below 0 or its correctness CI wholly
     above 0, and neither gets worse. DROP: A is worse-or-equal on both with CIs
     that do not favour it. Otherwise NEUTRAL. When the model ignored the graph in
@@ -187,6 +189,9 @@ def verdict(v, unused=0, a_runs=0):
     result is NEUTRAL with that stated, never KEEP or DROP."""
     if "weighted_tokens" not in v or "correct" not in v:
         return "VERDICT: INCONCLUSIVE (missing metrics)"
+    if unverified:
+        return ("VERDICT: INCONCLUSIVE (%d usable runs have no transcript, so graph use is unverified "
+                "and arm contamination cannot be ruled out)" % unverified)
     if a_runs and unused * 2 >= a_runs:
         return ("VERDICT: NEUTRAL (arm A never exercised the treatment: graph unused in %d/%d runs, "
                 "so this sweep cannot show a benefit or a cost of graphify)" % (unused, a_runs))

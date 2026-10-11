@@ -57,7 +57,12 @@ eq "weighted tokens = 10 + 1.25*100 + 0.1*1000 + 5*20" "335.0" "$(py -c '
 import json,sys
 print(json.loads(open(sys.argv[1]).readline())["weighted_tokens"])' "$OUT/runs.jsonl")"
 py "$HERE/summarize.py" report "$OUT" > "$W/report.md"
-eq "report: B more correct and A not cheaper -> DROP" "1" "$(grep -c '^VERDICT: DROP' "$W/report.md")"
+eq "report: runs without transcripts are INCONCLUSIVE, never DROP" "1" "$(grep -c '^VERDICT: INCONCLUSIVE' "$W/report.md")"
+
+# 4b. order alternates even with one task; a relative --out is made absolute.
+eq "plan alternates arm order with one task" "B A,A B,B A" "$(bash "$HERE/run.sh" plan --reps 3 --tasks t5-qmd-only-profiles | sed 's/.*order=//' | paste -sd, -)"
+(cd "$W" && CLAUDE_BIN="$W/claude" BANK_PREFLIGHT="$W/pf-ok" bash "$HERE/run.sh" run --reps 1 --tasks t5-qmd-only-profiles --out rel-out > "$W/run3.log" 2>&1)
+eq "relative --out: raw runs land under it" "2" "$(find "$W/rel-out/raw" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
 # 5. preflight refusal stops the sweep before any run and says so.
 OUT2="$W/out2"
@@ -73,6 +78,7 @@ eq "detector: leg-graph.sh query is graph use" "True" "$(pyt 'print(bool(S.GRAPH
 eq "detector: graphify explain is graph use" "True" "$(pyt 'print(bool(S.GRAPH_USE.search("graphify explain foo")))')"
 V='v={"weighted_tokens":(0,-1,1,0),"correct":(0,0,0,0)}'
 eq "verdict: graph unused in most A runs is NEUTRAL, not DROP" "True" "$(pyt "$V; print(S.verdict(v,8,10).startswith('VERDICT: NEUTRAL (arm A never'))")"
+eq "verdict: unverified runs are INCONCLUSIVE" "True" "$(pyt "$V; print(S.verdict(v,0,10,2).startswith('VERDICT: INCONCLUSIVE'))")"
 eq "verdict: graph used and no benefit stays DROP" "True" "$(pyt "$V; print(S.verdict(v,0,10).startswith('VERDICT: DROP'))")"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
