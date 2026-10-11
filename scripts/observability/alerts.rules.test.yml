@@ -829,17 +829,18 @@ tests:
 
   # HIMMEL-4661 HimmelEvalAbsent: a scheduled eval (qmd-quality) with no age
   # series at all (never ran, or its ledger is gone) while the exporter is up
-  # fires after the 1h window plus the 1h `for`; the HimmelEvalStale test above
-  # cannot see this, there is no series to compare.
+  # fires once the 1h `for` has elapsed (absent_over_time is true from the
+  # first evaluation when the series never existed); the HimmelEvalStale test
+  # above cannot see this, there is no series to compare.
   - interval: 1m
     input_series:
       - series: 'up{job="flow-exporter"}'
         values: '1x200'
     alert_rule_test:
-      - eval_time: 30m
+      - eval_time: 59m
         alertname: HimmelEvalAbsent
         exp_alerts: []
-      - eval_time: 150m
+      - eval_time: 61m
         alertname: HimmelEvalAbsent
         exp_alerts:
           - exp_labels:
