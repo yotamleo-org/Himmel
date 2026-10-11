@@ -462,6 +462,9 @@ const parseStrict = (text) => {
         const m = /^(-?\d+(\.\d+)?([eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
         if (!m) fail("unexpected token");
         i += m[0].length;
+        // serde reads 15.0 / 15e0 as a float and rejects it for a u64 field, while
+        // JSON.parse yields the integer 15: keep float syntax non-integer (NaN).
+        if (/[.eE]/.test(m[0])) return NaN;
         return JSON.parse(m[0]);
     };
     const v = val();
@@ -555,6 +558,8 @@ const matcherOk = (m) => {
     // JS accepts them, so refuse the syntax codex would reject (fail-safe: an
     // escaped backslash before a digit is refused too).
     if (/\(\?(?:=|!|<=|<!|>)|\\[1-9]|\\k</.test(m)) return false;
+    // JS accepts an unknown letter escape such as \q without the u flag; Rust does not.
+    if (/\\(?![dDsSwWbBAznrtfvaxuUpP])[A-Za-z]/.test(m)) return false;
     try { new RegExp(m); return true; } catch (error) { return false; }
 };
 for (const event of Object.keys(events)) {

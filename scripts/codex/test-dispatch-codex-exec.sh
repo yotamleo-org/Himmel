@@ -1008,7 +1008,8 @@ const doc = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).hooks;
 for (const [event, groups] of Object.entries(doc)) {
   groups.forEach((g, gi) => g.hooks.forEach((h, hi) => {
     const sessionEnd = event === "SessionEnd";
-    const handler = { type: "command", command: h.command, async: h.async === true,
+    const cmd = process.platform === "win32" && typeof h.commandWindows === "string" ? h.commandWindows : h.command;
+    const handler = { type: "command", command: cmd, async: h.async === true,
       timeout: sessionEnd ? Math.min(Math.max(h.timeout === undefined ? 1 : h.timeout, 1), 3) : Math.max(h.timeout === undefined ? 600 : h.timeout, 1) };
     if (typeof h.statusMessage === "string") handler.statusMessage = h.statusMessage;
     const identity = { event_name: label[event], hooks: [handler] };
@@ -1356,6 +1357,8 @@ shape_case "18m invalid matcher regex" 2 "regular expression" 'd.hooks.PreToolUs
 shape_case "18o u64 overflow (additionalContextLimit 1e20)" 2 "non-negative integer" 'd.hooks.Stop[0].hooks[0].additionalContextLimit = 1e20; return d;'
 shape_case "18p matcher with lookahead (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "Bash(?=x)"; return d;'
 shape_case "18q matcher with backreference (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(a)\\1"; return d;'
+shape_case "18r float-syntax timeout (60.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": 60.0");'
+shape_case "18s matcher with unknown letter escape" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\qb"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
