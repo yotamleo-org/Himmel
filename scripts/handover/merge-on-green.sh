@@ -1050,6 +1050,14 @@ fi
 # read all refuse. Fetch targets are private refs under refs/himmel-mog-bump/
 # in the anchor, deleted again. Placed after the main-red gate and before the
 # marker clear / DRY_RUN, so a refusal mutates nothing and a dry run reports it.
+# The base-tip checker is what this gate executes, so scripts/check-plugin-drift.sh
+# is in ci-trust-paths.txt (scripts/lib/vm-mode.sh is covered by ^scripts/lib/)
+# and an empty or missing checker blob refuses (HIMMEL-5203).
+# ponytail: the base tip is read once here, so a sibling PR that merges between
+# this recheck and `gh pr merge` is not seen (the base re-verification below
+# re-reads the base branch name, not its tip); upgrade path is a server-side
+# merge queue or required up-to-date branch, as for the HIMMEL-1105 window
+# (HIMMEL-5203; not narrowed, no cheap client-side seam exists).
 bp_ns="refs/himmel-mog-bump/$pr_num"
 bp_tmp=""
 bp_cleanup() {
@@ -1092,6 +1100,10 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     for bp_blob in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
         git -C "$himmel_repo" show "$bp_base:$bp_blob" > "$bp_tmp/checker/$bp_blob" 2>/dev/null \
             || bump_refuse "cannot read $bp_blob at the base tip ${bp_base:0:12}" "phase=checker-blob blob=$bp_blob"
+        # HIMMEL-5203: an empty blob reads fine and an empty checker exits 0,
+        # which would pass the gate; an empty file is no checker at all.
+        [ -s "$bp_tmp/checker/$bp_blob" ] \
+            || bump_refuse "$bp_blob is empty at the base tip ${bp_base:0:12}, so the recheck has no checker to run" "phase=checker-blob blob=$bp_blob empty=1"
     done
     bp_gc=$(git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || bp_gc=""
     bp_ok=0

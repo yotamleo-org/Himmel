@@ -4094,12 +4094,22 @@ bp_setup() {
     cp "$BP_REAL_ROOT/scripts/lib/vm-mode.sh" "$a/scripts/lib/vm-mode.sh" || return 1
     cp "$BP_REAL_ROOT/$BP_MAN" "$a/$BP_MAN" || return 1
     printf 'base\n' > "$a/marketplace/plugins/himmel-ops/a.txt"
-    $g -C "$a" add scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh marketplace && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
+    # HIMMEL-5203: MOG_BUMP_EMPTY=<blob> commits that checker blob EMPTY at the
+    # base tip; MOG_BUMP_MISSING=<blob> leaves it out of the base tip entirely.
+    local bp_b; local -a bp_add=()
+    for bp_b in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
+        [ "${MOG_BUMP_EMPTY:-}" != "$bp_b" ] || : > "$a/$bp_b"
+        if [ "${MOG_BUMP_MISSING:-}" = "$bp_b" ]; then rm -f "$a/$bp_b"; else bp_add+=("$bp_b"); fi
+    done
+    $g -C "$a" add "${bp_add[@]}" marketplace && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
     b0="$($g -C "$a" rev-parse HEAD)"
     printf 'pr\n' > "$a/marketplace/plugins/himmel-ops/a.txt"
     jq --arg v "${MOG_BUMP_PR:-$BP_V1}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
     if [ "${MOG_BUMP_EVIL:-0}" = 1 ]; then printf '#!/usr/bin/env bash\nexit 0\n' > "$a/scripts/check-plugin-drift.sh"; fi
-    $g -C "$a" add scripts/check-plugin-drift.sh marketplace && $g -C "$a" commit -qm pr || return 1
+    # (the PR commit stages only the paths it changed; a blob left out of the
+    # base tip stays out because the PR never re-adds it)
+    $g -C "$a" add marketplace && { [ ! -f "$a/scripts/check-plugin-drift.sh" ] || $g -C "$a" add scripts/check-plugin-drift.sh; } \
+        && $g -C "$a" commit -qm pr || return 1
     MOG_SETUP_SHA="$($g -C "$a" rev-parse HEAD)"
     if [ "${MOG_BUMP_NOPULL:-0}" != 1 ]; then $g -C "$a" push -q origin HEAD:refs/pull/77/head || return 1; fi
     if [ "${MOG_BUMP_MOVED:-0}" = 1 ]; then
@@ -4147,6 +4157,21 @@ STUB_PR_FILES_JSON="$BP_BIG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
 BP_LONG=$(jq -nc '[{filename: "marketplace/plugins/himmel-ops/a.txt"}] + [range(2500) | {filename: ("docs/f\(.).md")}]')
 STUB_PR_FILES_JSON="$BP_LONG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 23 "5188-h: plugin file first in a 2501-file list is still found → exit 23"
+# 5203-a (RED) — an EMPTY checker blob at the base tip runs as `exit 0`: the
+# gate must refuse it, not read the empty script's success as a bump.
+MOG_BUMP_EMPTY=scripts/check-plugin-drift.sh MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5203-a: empty check-plugin-drift.sh at the base tip → exit 23"
+assert_audit_has "5203-a: audited as a checker-blob refusal" "phase=checker-blob"
+assert_err_has "5203-a: stderr says the blob is empty" "empty"
+no_merge_call "5203-a: no merge call"
+# 5203-b — the sourced helper empty at the base tip is refused the same way.
+MOG_BUMP_EMPTY=scripts/lib/vm-mode.sh MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
+    bp_run 23 "5203-b: empty vm-mode.sh at the base tip → exit 23"
+assert_audit_has "5203-b: audited as a checker-blob refusal" "phase=checker-blob"
+# 5203-c — a checker blob absent at the base tip is refused (already fail-closed).
+MOG_BUMP_MISSING=scripts/check-plugin-drift.sh MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
+    bp_run 23 "5203-c: check-plugin-drift.sh missing at the base tip → exit 23"
+assert_audit_has "5203-c: audited as a checker-blob refusal" "phase=checker-blob"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"

@@ -24,6 +24,7 @@
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/console-kit/go\.sh$
 ^scripts/check-ci\.sh$
+^scripts/check-plugin-drift\.sh$
 ^scripts/cr/anchor-handoff\.sh$
 ^scripts/cr/clear-cr-marker\.sh$
 ^scripts/hooks/check-commit-msg\.sh$
