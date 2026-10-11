@@ -54,15 +54,18 @@
 # HIMMEL-4545 also closed a glob source into a computed destination
 # (d=<state>; cp dir/* "$d", --parents too). Still open, verified at base and
 # head: a redirect or tee to an inherited env value (`> "$X"`, X set outside
-# the command) was allowed. HIMMEL-5159 closed the bare $VAR / ${VAR} shape:
-# the hook resolves it against its own inherited environment and denies when
-# the value names the lift; `> "$OUT"` with a benign value stays allowed.
+# the command) was allowed. HIMMEL-5159 closed it: the hook resolves every
+# $NAME / ${NAME...} reference in the target word against its own inherited
+# environment and denies when any value names the lift (${!R} denies
+# outright); `> "$OUT"` with a benign value stays allowed.
 # ponytail: the lookup answers the INHERITED value, so a variable the command
 # assigns first (`X=/tmp/o; echo > "$X"`) is still read from the environment
-# (denies only when the inherited X names the lift, fail closed), and a
-# computed target ($X/f, ${X:-d}, $(...)) or a variable the hook's environment
-# does not carry is not resolved here; upgrade path is the operator-owned lift
-# above.
+# (denies only when the inherited X names the lift, fail closed); a reference
+# to a variable the hook's environment does not carry, and a value built from
+# $(...) or from a command-assigned variable that differs from the inherited
+# one, are not resolved here; upgrade path is the operator-owned lift above.
+# The cp / dd of= / sort -o / install destination paths use is_lift only and
+# do not resolve env values (filed separately, out of HIMMEL-5159 scope).
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
 # 211,645 rows (0.40 %): ~725 relative or computed copy destinations and
 # sources under an unproven cwd, 110 computed extraction destinations
@@ -341,24 +344,28 @@ _lift_ref1() {
 
 is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 
-# HIMMEL-5159: a redirect or tee target that is a bare $VAR / ${VAR} the hook
-# inherited (the hook is a process in the command's environment) denies when
-# its value names the lift. Looked up with printenv so the hook's own shell
-# variables never answer. A variable the command assigns first is resolved
-# against the INHERITED value too (fail closed): the text layer cannot order
-# the assignment against the use. Any other computed shape ($X/f, ${X:-d},
-# $(...)) is left to the existing rules.
+# HIMMEL-5159: a redirect or tee target word that references an environment
+# variable the hook inherited (the hook is a process in the command's
+# environment) denies when ANY referenced variable's value names the lift.
+# Every $NAME / ${NAME...} reference in the word is looked up with printenv, so
+# the hook's own shell variables never answer and an operator (:-, -, %, #) or
+# a second $Z cannot hide the name. A variable the command assigns first is
+# resolved against the INHERITED value too (fail closed): the text layer
+# cannot order the assignment against the use. ${!R} (indirect) denies
+# outright: its target is the value of another variable. $(...) and a
+# variable the environment does not carry are left to the existing rules.
 # shellcheck disable=SC2016  # literal ${ } spellings are matched as text
 _env_lift() {
-    local w="$1" n v
-    case "$w" in
-        '${'*'}') n="${w#\$\{}"; n="${n%\}}" ;;
-        '$'*) n="${w#\$}" ;;
-        *) return 1 ;;
-    esac
-    case "$n" in ''|[0-9]*|*[!A-Za-z0-9_]*) return 1 ;; esac
-    v=$(printenv -- "$n" 2>/dev/null) || return 1
-    [ -n "$v" ] && is_lift "$v"
+    local rest="$1" n v
+    local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
+    case "$rest" in *'${!'*) return 0 ;; esac
+    while [[ "$rest" =~ $re ]]; do
+        n="${BASH_REMATCH[1]}"
+        v=$(printenv -- "$n" 2>/dev/null) || v=
+        if [ -n "$v" ] && is_lift "$v"; then return 0; fi
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
+    return 1
 }
 
 # ------------------------------------------------------------ file tools ---
