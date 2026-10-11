@@ -46,16 +46,21 @@
 # (only file-tool paths are resolved), or the Read tool pointed at a log are not
 # caught. The Read and Grep tools are not wired to this hook. Same-uid tampering that re-chains is
 # undetected (phase 2's dedicated uid closes it).
-# Also not caught: deliberate evasion of the segment split or the bounded words
-# (a separator inside a quoted option value, the verb fed on stdin to xargs, the
-# verb or the store path held in a shell variable, a split word such as
-# reg''ister, `himmel/"bus"/`, `$S/bus`); a symlinked payload cwd (HIMMEL-5206).
-# Deliberately over-denied (the safe direction): a verb word anywhere after `bus`
-# in one segment (`bus send ... --summary "rebind done"`, `git commit -m "fix(bus):
-# register retry"`), and any `bus` token once the cwd or the command names the
-# himmel state dir (`bus status` run from it). Bypass flag below covers both.
-# Closed on purpose: backslash-newline continuations are joined before the split,
-# and an in-command `cd` into the state dir plus a bare `bus` token is denied.
+# Also not caught: a separator inside a quoted option value, the verb fed on
+# stdin to xargs, the verb or the store path held in a shell variable
+# (`v=register; bus $v x`, `$S/bus`), and a symlinked payload cwd or a relative
+# file path against it (HIMMEL-5206).
+# Deliberately over-denied (the safe direction): a verb word anywhere after a
+# bus-able word in one segment (`bus send ... --summary "rebind done"`, `git
+# commit -m "fix(bus): register retry"`), a glob or expansion under `himmel/`
+# (`himmel/*`), and any word that can expand to `bus` (`*`, `b?s`, `$x`) once
+# the cwd or the command names the himmel state dir. The bypass flag covers all.
+# Closed by shape, not by spelling: backslash-newline continuations are joined
+# (the pair removed) before the split; quotes, backslashes and parens are
+# stripped per word; a word is bus-able when a path component glob-matches `bus`
+# after `${x}`, `$x`, `$'..'` and `{a,b}` become `*`; and the early exit lets any
+# payload with a quote, `$`, glob character, backslash or brace expansion through
+# to these rules.
 #
 # Bypass: BUS_STORE_GUARD_OK=1 in the LAUNCHING shell (session-sticky; a per-call
 # prefix does not reach this hook process). Needed to register or bind by hand
@@ -76,24 +81,39 @@ input=$(cat)
 
 # Fast path, no fork: every Bash rule below needs one of these literals. A JSON
 # \u escape could spell them past a raw scan, so it falls through too, and so
-# does a literal backslash (a continuation can split a word: `b\<nl>us`). A
+# does anything that can build the word `bus` in the shell without writing it:
+# a backslash (`b\<nl>us`), a quote (`b''us`), `$` (`b${x}us`), a glob
+# character (`b?s`, `b[u]s`, `b*s`) or a brace expansion (`{` not followed by
+# the JSON envelope's `"`). A
 # file-tool path may reach the store through a symlink alias that carries no
 # literal at all, so any payload with a file_path/notebook_path is resolved.
 case "$input" in
-    *bus*|*BUS*|*'\u'*|*\\\\*|*file_path*|*notebook_path*) ;;
+    *bus*|*BUS*|*'\u'*|*\\\\*|*\'*|*\$*|*\**|*\?*|*\[*|*\{[!\"]*|*file_path*|*notebook_path*) ;;
     *) exit 0 ;;
 esac
 
 ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
-# A bounded `bus` word, then anywhere later in the SAME command segment a bounded
-# verb: options before the verb (`bus --role leg register x`) and quoted words
-# (`bus 'register' x`, `"bus" register x`) match. A path component such as
-# /tmp/register.txt is not a verb (a `/` or `.` before it is not a boundary).
-VERB_RE='(^|[^A-Za-z0-9_-])bus($|[^A-Za-z0-9_-])(.*[^A-Za-z0-9_./-])?(register|bind|rebind)($|[^A-Za-z0-9_.-])'
+# The identity verbs are matched word by word (verb_after_bus below), not by a
+# regex: a `bus` word, then later in the SAME segment a word that is exactly
+# register|bind|rebind. Options may sit between (`bus --role leg register x`),
+# quotes are dropped (`bus 'register' x`, `b''us register x`), and a path such as
+# /tmp/register.txt is not a verb.
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
-# A bounded bus token with or without a slash (`bus/log`, `grep -r . bus`,
-# `tar cf - bus`): only consulted once the cwd or the command names the state dir.
-BUSTOK_RE='(^|[^A-Za-z0-9_-])bus($|[^A-Za-z0-9_-])'
+# A component right under himmel/ that carries a glob or expansion character
+# (`himmel/b?s`, `himmel/b[u]s`, `himmel/$x`) may spell the bus root.
+GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
+VERBWORD_RE='(^|[^A-Za-z0-9_./-])(register|bind|rebind)($|[^A-Za-z0-9_.-])'
+
+# state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
+# so they must not count as a word that could expand to `bus`.
+state_view() {
+    local s="$1"
+    s=${s//\$\{XDG_STATE_HOME\}/XDGSTATE}
+    s=${s//\$XDG_STATE_HOME/XDGSTATE}
+    s=${s//\$\{HOME\}/HOMEDIR}
+    s=${s//\$HOME/HOMEDIR}
+    printf '%s' "$s"
+}
 STATE_RE='(^|/)state/himmel/?$'
 # The state dir named inside the command: ~/.local/state/himmel, $XDG_STATE_HOME/himmel
 # or ${XDG_STATE_HOME}/himmel (the literal XDG value is matched separately).
@@ -107,6 +127,64 @@ norm() {
     while [[ "$s" == *"/./"* ]]; do s=${s//\/.\//\/}; done
     while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
     printf '%s' "$s"
+}
+
+# busish <word>: could this shell word be, or contain a path component that is,
+# the string `bus` once the shell has expanded it? Parens, quotes and
+# backslashes are dropped; an expansion (`${x}`, `$x`, `$'..'`, `{a,b}`) is
+# replaced by `*`; each path component is then matched as a glob against `bus`
+# (`b?s`, `b[u]s`, `b*s`, `bus`, `$x`). A word whose component is `bus.json` or
+# `himmel-bus` is not. Pure bash, 3.2-safe.
+EXP_RE='(\$'"'"'[^'"'"']*'"'"'|\$\{[^}]*\}|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
+busish() {
+    local w="$1" m p parts
+    w=${w//\$\(/}; w=${w//\`/}; w=${w//\(/}; w=${w//\)/}
+    while [[ "$w" =~ $EXP_RE ]]; do
+        m="${BASH_REMATCH[0]}"
+        w=${w/"$m"/"*"}
+    done
+    w=${w//[\'\"\\]/}
+    IFS=/ read -ra parts <<< "$w"
+    [ "${#parts[@]}" -gt 0 ] || return 1
+    for p in "${parts[@]}"; do
+        [ -n "$p" ] || continue
+        # shellcheck disable=SC2053  # the glob match is the point
+        [[ bus == $p ]] && return 0
+    done
+    return 1
+}
+
+# cmd_busish <text>: does any word of any command segment look like `bus`?
+cmd_busish() {
+    local seg word words
+    while IFS= read -r seg; do
+        read -ra words <<< "$seg"
+        [ "${#words[@]}" -gt 0 ] || continue
+        for word in "${words[@]}"; do
+            busish "$word" && return 0
+        done
+    done <<< "$(printf '%s' "$1" | tr ';&|' '\n')"
+    return 1
+}
+
+# verb_after_bus <text>: a segment with a busish word and, later in the same
+# segment, a word that is exactly register|bind|rebind (quotes and backslashes
+# dropped, so `reg''ister` counts). Options may sit between them.
+verb_after_bus() {
+    local seg word words v seen
+    while IFS= read -r seg; do
+        read -ra words <<< "$seg"
+        [ "${#words[@]}" -gt 0 ] || continue
+        seen=0
+        for word in "${words[@]}"; do
+            v=${word//[\'\"\\\(\)\`]/}
+            if [ "$seen" = 1 ]; then
+                case "$v" in register|bind|rebind) return 0 ;; esac
+            fi
+            busish "$word" && seen=1
+        done
+    done <<< "$(printf '%s' "$1" | tr ';&|' '\n')"
+    return 1
 }
 
 deny() {
@@ -134,15 +212,26 @@ case "$tool" in
         # register y` is one command to the shell and must be one segment here.
         # The pair is removed, not replaced: bash joins `reg\<nl>ister` into one word.
         bsnl=$'\\\n'
-        cmd=${cmd//"$bsnl"/}
+        # Guarded: a pattern substitution on a large multibyte string is
+        # superlinear (HIMMEL-4729), so it only runs when there is a pair.
+        if [[ "$cmd" == *"$bsnl"* ]]; then cmd=${cmd//"$bsnl"/}; fi
         cmd_n=$(norm "$cmd")
         xdg_state=""
         [ -n "${XDG_STATE_HOME:-}" ] && xdg_state=$(norm "${XDG_STATE_HOME}/himmel") && xdg_state=${xdg_state%/}
         [[ "$cmd" =~ $ROOT_RE || "$cmd_n" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
-        # In-command cd: the command names the state dir and a bounded bus token.
-        if [[ "$cmd_n" =~ $BUSTOK_RE ]]; then
-            [[ "$cmd_n" =~ $STATECMD_RE ]] && deny "the command names the himmel state dir and a bus token (relative store path)"
-            [ -n "$xdg_state" ] && [[ "$cmd_n" == *"$xdg_state"* ]] && deny "the command names the himmel state dir and a bus token (relative store path)"
+        # Quotes dropped: b''us, himmel/"bus" and the like name the same path.
+        # (`tr`, not a substitution: linear on a large payload.)
+        cmd_q=$(printf '%s' "$cmd" | tr -d "\"'\\\\")
+        cmd_qn=$(norm "$cmd_q")
+        [[ "$cmd_qn" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
+        # A glob or expansion in the component right under himmel/ can spell bus.
+        [[ "$cmd_qn" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
+        # In-command cd: the command names the state dir and a word that can be bus.
+        state_named=0
+        [[ "$cmd_n" =~ $STATECMD_RE ]] && state_named=1
+        [ -n "$xdg_state" ] && [[ "$cmd_n" == *"$xdg_state"* ]] && state_named=1
+        if [ "$state_named" = 1 ]; then
+            cmd_busish "$(state_view "$cmd_n")" && deny "the command names the himmel state dir and a word that can be bus (relative store path)"
         fi
         # cwd indirection: a relative path is read against the payload cwd.
         cwd=$(printf '%s' "$input" | jq -er '.cwd | strings' 2>/dev/null) || cwd=""
@@ -153,14 +242,15 @@ case "$tool" in
                 c_n=$(norm "$c")
                 [[ "$c_n/" =~ $ROOT_RE ]] && deny "the working directory is under the himmel-bus store"
                 if [[ "$c_n" =~ $STATE_RE ]] || { [ -n "$xdg_state" ] && [ "${c_n%/}" = "$xdg_state" ]; }; then
-                    [[ "$cmd_n" =~ $BUSTOK_RE ]] && deny "the working directory is the himmel state dir and the command names a bus token (relative store path)"
+                    cmd_busish "$(state_view "$cmd_n")" && deny "the working directory is the himmel state dir and the command names a word that can be bus (relative store path)"
                 fi
             done
         fi
         # Identity verbs, per segment (; & | newline).
-        while IFS= read -r seg; do
-            [[ "$seg" =~ $VERB_RE ]] && deny "bus register|bind|rebind is the launcher's, not a session's"
-        done <<< "$(printf '%s' "$cmd" | tr ';&|' '\n')"
+        # Cheap gate first: the word walk only runs when a verb word is present at all.
+        if [[ "$cmd_q" =~ $VERBWORD_RE ]]; then
+            verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
+        fi
         [[ "$cmd" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
         ;;
     Edit|Write|MultiEdit|NotebookEdit)
