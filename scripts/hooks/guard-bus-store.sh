@@ -247,15 +247,20 @@ verbish() {
 # walk_words <mode> <text>: per command segment (; & | newline), per word.
 # A substitution opener left open by the word split (`$(`, `<(`, `>(`, backtick,
 # `(`) ends its word and the text after it is a body nested in the segment: the
-# outer `seen` is saved when the body opens and restored when it closes, so
-# `$(bus register x)` is judged as `bus register x`, `diff <(sort a) <(sort b)`
-# is two bodies, not two bus-able words, and `bus $(true) register x` still has
-# its bus word when the verb comes back in the outer segment. The body inherits
-# the outer `seen` (a close that is never found keeps the rest of the segment
-# outer, fail closed). mode `bus`: any busish word; mode `verb`: a busish word
-# and, later in the same segment, a verbish one.
+# outer `seen` is saved when the body opens and OR-ed back when it closes (a
+# close never lowers it), so `$(bus register x)` is judged as `bus register x`,
+# `diff <(sort a) <(sort b)` is two bodies, not two bus-able words (a bare opener
+# is no candidate), and `bus $(true) register x` still has its bus word when the
+# verb comes back in the outer segment. The body inherits the outer `seen` (a
+# close that is never found keeps the rest of the segment outer, fail closed).
+# mode `bus`: any busish word; mode `verb`: a busish word and, later in the same
+# segment, a verbish one.
+# ponytail: a text walker cannot close the shell-parsing class (parens are
+# counted without modelling quotes; each round finds another spelling), so the
+# hook stays advisory; upgrade path is HIMMEL-5238 (store reachable only through
+# the bus CLI by permission or ownership) and HIMMEL-5233.
 walk_words() {
-    local mode="$1" seg word words seen rest has stk n
+    local mode="$1" seg word words seen rest has stk n nopen nclose opener
     while IFS= read -r seg; do
         read -ra words <<< "$seg"
         [ "${#words[@]}" -gt 0 ] || continue
@@ -264,10 +269,12 @@ walk_words() {
             rest="$word"
             while [ -n "$rest" ]; do
                 if [[ ! "$rest" =~ $PLAIN_RE ]]; then
-                    has=0; word="$rest"; rest=""; NW_OPEN=0; NW_CLOSE=0; NW_OPENER=""
+                    has=0; word="$rest"; rest=""; nopen=0; nclose=0; opener=""
                 else
                     normword "$rest"
+                    # Snapshot: busish/verbish below run normword again.
                     has=$NW_HAS; rest="$NW_REST"; word="$NW"
+                    nopen=$NW_OPEN; nclose=$NW_CLOSE; opener="$NW_OPENER"
                 fi
                 if [ -n "$word" ]; then
                     if [ "$mode" = bus ]; then
@@ -278,21 +285,24 @@ walk_words() {
                     fi
                 fi
                 # Closers in this piece end bodies; open parens and the opener
-                # itself start one. A backtick closes a backtick body.
-                n=$NW_CLOSE
+                # itself start one. A backtick closes a backtick body. A pop never
+                # lowers seen (outer OR inner): parens are counted without
+                # modelling quotes, so a quoted `')'` may close a body early and
+                # must not hide the verb.
+                n=$nclose
                 while [ "$n" -gt 0 ]; do
-                    if [ -n "$stk" ]; then seen=${stk: -2:1}; stk=${stk%??}; fi
+                    if [ -n "$stk" ]; then seen=$(( ${stk: -2:1} | seen )); stk=${stk%??}; fi
                     n=$((n - 1))
                 done
-                n=$NW_OPEN
+                n=$nopen
                 while [ "$n" -gt 0 ]; do
                     stk="$stk${seen}p"; n=$((n - 1))
                 done
                 if [ "$has" = 1 ]; then
                     # shellcheck disable=SC2016  # literal opener text
-                    case "$NW_OPENER" in
+                    case "$opener" in
                         '`')
-                            if [ "${stk: -1}" = b ]; then seen=${stk: -2:1}; stk=${stk%??}
+                            if [ "${stk: -1}" = b ]; then seen=$(( ${stk: -2:1} | seen )); stk=${stk%??}
                             else stk="$stk${seen}b"; fi ;;
                         '${') ;;
                         *) stk="$stk${seen}p" ;;
