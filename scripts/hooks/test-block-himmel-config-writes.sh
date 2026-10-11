@@ -68,6 +68,9 @@ bash_case "python write -> block" block "python3 -c \"open('$CFG','w').write('{}
 bash_case "node write -> block" block "node -e \"require('fs').writeFileSync('$CFG','{}')\""
 bash_case "process substitution -> block" block "cat <(cp $T/x $CFG)"
 bash_case "rg --pre program -> block" block "rg --pre 'cp $T/x $CFG' salus $CFG"
+bash_case "rg single-quoted --pre= -> block" block "rg '--pre=/tmp/writer' salus $CFG"
+bash_case "rg double-quoted --pre -> block" block "rg \"--pre\" /tmp/writer salus $CFG"
+bash_case "rg backslash-split --pre= -> block" block "rg --p\\re=/tmp/writer salus $CFG"
 bash_case "rg --pre= program -> block" block "rg --pre=/bin/true salus $CFG"
 
 echo "== benign reads and unrelated calls =="

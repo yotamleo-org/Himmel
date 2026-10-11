@@ -131,6 +131,9 @@ while IFS= read -r clause || [ -n "$clause" ]; do
         *) deny "the command names ~/.himmel/config.json under '$w', not a plain reader" ;;
     esac
     for a in "$@"; do
+        # Quotes and backslashes are shell syntax the word split keeps: drop
+        # them so '--pre=x' and --p\re=x are matched as the shell will run them.
+        a=${a//\'/}; a=${a//\"/}; a=${a//\\/}
         case "$a" in
             --pre|--pre=*|--pre-glob|--pre-glob=*|--hostname-bin|--hostname-bin=*) deny "the command names ~/.himmel/config.json with an option that runs a program ($a)" ;;
         esac
