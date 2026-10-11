@@ -79,8 +79,8 @@
 #     case variants and `<<< "$TOKEN"`; it also made `rsync -f '- .env'` (an
 #     exclude filter) a false positive and stopped denying `declare -fx`.
 #     ponytail: `bash <<'EOF'` with an env body is not read (needs the
-#     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path a
-#     follow-up ticket against scripts/hooks/lib.
+#     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path
+#     HIMMEL-5300.
 #   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
 #   * Inline interpreter bodies (`node -e`, `python -c`): command-position
 #     fixes the COMMON false positive (coincidental `obj.key` property access
