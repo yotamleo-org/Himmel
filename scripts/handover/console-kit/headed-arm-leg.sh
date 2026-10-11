@@ -2258,9 +2258,9 @@ fi
 # HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude
 # pid it resolves. No secret exists: identity is (name, pid, start time).
 # Fail-open on purpose: no profile requires the bus in phase 1, and an
-# unregistered leg is merely unbound (bus send refused, tick shows
-# bus=unbound) and keeps today's channels, so a register failure warns into
-# the launch log and never blocks a launch of the live fleet. A headless leg
+# unregistered leg is merely unbound (bus send refused) and keeps today's
+# channels, so a register failure warns (launch log, launcher stdout, a
+# bus=FAIL: leg-doc bullet) and never blocks a launch of the live fleet. A headless leg
 # never binds (spec 8.5), so it is not registered either.
 # ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
 case "${MCP_NAMES_JSON:-}" in
@@ -2279,11 +2279,20 @@ case "${MCP_NAMES_JSON:-}" in
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
             else
                 echo "$(date +%F_%T) headed-arm-leg: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
+                # HIMMEL-5221: a failed register was only ever in the log, so the
+                # bus sat dead unseen. Say it on stdout and leave a bus=FAIL:
+                # bullet in the leg doc (a lowercase lead is a non-status
+                # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
+                # WRAPPED is stripped: leg_tail_status reads a final unmarked
+                # bullet containing it as a wrap.
+                BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
+                echo "headed-arm-leg: WARN bus register failed for $NAME - launching unbound (bus=FAIL:$BUS_REASON)"
+                bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:$BUS_REASON" >/dev/null 2>&1 || true
             fi
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_CONSOLE LEG_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CONSOLE LEG_BUS_PAIR
 
 # Paired with this exec's PID: headed-arm.sh ignores stale ambient values.
 export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_LEG_PROFILES="$PROFILES_MJS"
