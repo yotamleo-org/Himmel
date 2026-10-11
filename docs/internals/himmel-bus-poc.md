@@ -11,7 +11,19 @@ launcher's job (headed-arm-leg.sh, PR 2360).
 
 ## Phase A: native leg <-> console
 
-Status: **FAIL (blocked at step 1)**, re-run pending.
+Status: **FAIL (five failures; the exchange never started)**.
+
+**Verdict:** send works via CLI once registered; NO working receive path on main
+(no wait verb, delivery hooks not installed, MCP server deps absent);
+registration is opt-in by profile and no profile opts in.
+
+| # | Failing step | Ticket |
+|---|---|---|
+| 1 | `bus peers` refuses a 755 shared state dir | HIMMEL-5221 |
+| 2 | leg never registered (profile not opted in; skipped without a log line) | HIMMEL-5223 (+ comment on HIMMEL-5221) |
+| 3 | no `bus wait` verb | HIMMEL-4831 (T8) |
+| 4 | delivery hooks never installed | HIMMEL-5030 |
+| 5 | MCP server deps absent | HIMMEL-5222 |
 
 ### FAIL 1: bus CLI refuses the shared state directory (2026-10-11, base 07f052394)
 
@@ -43,6 +55,43 @@ Status: **FAIL (blocked at step 1)**, re-run pending.
   profile does not, so the register block is skipped without a log line. The
   bus is opted in on no profile today (HIMMEL-4830 owns the catalog entry).
 - Not done on purpose: registering by hand.
+- Ticket: HIMMEL-5223 (bus-enabled profile + catalog entry; builds on HIMMEL-4830),
+  with the silent skip noted on HIMMEL-5221.
+- Re-run: launch a leg with a profile that lists `himmel-bus`; `echo
+  $HIMMEL_BUS_NAME` is its own name and `bus status <name>` prints `live`.
+
+### FAIL 3: no `bus wait` verb
+
+- Step: look for a CLI verb that blocks until mail arrives.
+- Evidence: `bin/bus` accepts register|bind|rebind|adopt|status|peers|send|gc;
+  `store.pending` is commented "for the wait CLI" but nothing calls it.
+- Ticket: HIMMEL-4831 (T8 ask 2).
+- Re-run: `bus wait --for <name>` exits within 2 s of an append (today: usage, exit 64).
+
+### FAIL 4: delivery hooks not installed
+
+- Step: check that a bound session would be shown mail.
+- Evidence: `grep -c bus-deliver ~/.claude/settings.json` prints 0; no entry in
+  the repo `.claude/settings.json`; the hooks exist only in the
+  `wire-hook-bash.mjs` inventory.
+- Ticket: HIMMEL-5030.
+- Re-run: `grep -c bus-deliver` on the leg's effective settings prints 2, and a
+  message sent to a bound leg shows as `bus #n from <name>:` in its context.
+
+### FAIL 5: MCP server cannot start
+
+- Step: check the `read <n>` receive path (bus MCP server).
+- Evidence: `marketplace/plugins/himmel-bus/node_modules` does not exist; the
+  server imports `@modelcontextprotocol/server`.
+- Ticket: HIMMEL-5222.
+- Re-run: `node marketplace/plugins/himmel-bus/server/index.mjs` stays up on
+  stdio (today: ERR_MODULE_NOT_FOUND).
+
+### Caveat on the verdict's "send works"
+
+That clause rests on code reading and the unit tests, not on a live run: no
+session was registered, so the CLI sender path (identity stamp, edge check,
+store append) was never exercised live. The first live `sent #n` is still owed.
 
 ## Phase B: native leg <-> claudex (codex) leg
 
