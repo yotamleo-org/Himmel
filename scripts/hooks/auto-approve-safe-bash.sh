@@ -921,6 +921,11 @@ sw_note_cd() {
     # diverge from what bash does. Anything else leaves the cwd unknown.
     [ "$SW_CHAIN_PLAIN" = 1 ] && [ "$SW_SEEN_NONCD" = 0 ] || { SW_CD_UNPROVEN=1; return 0; }
     for tok in "$@"; do
+        # allowlist on the RAW word: only [A-Za-z0-9._/~+-], an unquoted `~`
+        # first. A CR, tab, control or non-ASCII byte, quote, backslash, `$`,
+        # glob character or an empty operand leaves the cwd unproven.
+        case "$tok" in ''|*[!A-Za-z0-9._/~+-]*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "${tok#\~}" in *'~'*) SW_CD_UNPROVEN=1; return 0 ;; esac
         shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
         # a tilde word with any quote or backslash is a literal name, never HOME
         case "$tok" in '~'*[\'\"\\]*) SW_CD_UNPROVEN=1; return 0 ;; esac
@@ -1171,7 +1176,7 @@ segment_is_safe() {
             # CR is a word byte to bash but whitespace to this tokenizer, so a
             # `cd` operand holding one names a different directory than the one
             # resolved here: the cwd is unknown (HIMMEL-5187).
-            case "$1" in *$'\r'*) SW_CD_UNPROVEN=1 ;; *) sw_note_cd "${a[@]:$((i + 1))}" ;; esac ;;
+            case "$1" in *[[:cntrl:]]*) SW_CD_UNPROVEN=1 ;; *) sw_note_cd "${a[@]:$((i + 1))}" ;; esac ;;
         pushd|popd) SW_CD_UNPROVEN=1 ;;
         xxd|uniq)
             # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
