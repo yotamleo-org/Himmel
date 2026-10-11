@@ -3014,7 +3014,7 @@ env -S 'bash -c ${X}'
 ROWS
 # 9500-9505 (HIMMEL-4521): env -S text with an escape or a plain ${NAME} is
 # decoded the way GNU env decodes it and the decoded words are judged, so a
-# harmless one allows; 9510-9519 are the controls that stay denied (the
+# harmless one allows; 9510-9522 are the controls that stay denied (the
 # decoded form writes a live settings path, an escape or expansion the
 # decoder does not model, an unterminated quote, a nested env).
 n=9500
@@ -3034,6 +3034,45 @@ for c in "env -S 'tee ~/.claude/sett\\x69ngs.json'" "env -S 'sh\\_-c\\_\"echo x 
         "$(bash_rc_of "$NESTED_WT" "$c" HOME="$FAKEHOME")"
     n=$((n + 1))
 done
+# 9530-9539 (HIMMEL-4521, J2374 #1): env splices the decoded words back into
+# its own argv and getopt re-parses them, so a decoded first word that is an
+# env option (-S, -C, -i, -u, --split-string) or a NAME=VALUE assignment is
+# refused by shape; env's options are not modelled inside -S text.
+rows_both 9530 2 "env -S text whose decoded first word is an env option or an assignment denies" <<'ROWS'
+env -S '-S "tee \${HOME}/.claude/settings.json"'
+env -S '-C\_~/.claude\_tee\_settings.json'
+env -S '-i\_echo\_a\_b'
+env -S '--split-string=echo\_a\_b'
+env -S '-u\_X\_echo\_a\_b'
+env -S 'A=B\_echo\_a\_b'
+env -S '\-C\_~/.claude\_tee\_settings.json'
+env -S '\${HOME}=x\_echo\_a'
+env -S '-S\_"echo\_\${HOME}"'
+env -S '-C\_/tmp\_echo\_a\_b'
+ROWS
+# 9540-9553 (HIMMEL-4521, J2374 #2): decoder coverage — the escapes v f #,
+# a literal quote, a second allowlisted first word, the --split-string= and
+# -vS spellings, /usr/bin/env and `command env` on the decoded path.
+rows_both 9540 0 "env -S decoded harmless text (escapes, spellings, wrappers) allows" <<'ROWS'
+env -S 'echo a\vb\fc\#d'
+env -S "echo a\\'b"
+env -S 'printf ${HOME}'
+env -S 'test -n ${HOME}'
+env --split-string='echo a\_b'
+env -vS 'echo a\_b'
+/usr/bin/env -S 'echo a\_b'
+command env -S 'echo a\_b'
+ROWS
+rows_both 9550 2 "env -S decoded tricky text (c in dquote, escape in squote, wrappers) denies" <<'ROWS'
+env -S 'echo "a\cb"'
+env -S "echo 'a\_b'"
+env --split-string='sh\_-c\_"echo x > ~/.claude/settings.json"'
+/usr/bin/env -S 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+command env -vS 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+ROWS
+# the escape r in text, written as a CR byte by rows_both's own unescaping
+assert_rc "9560/wt env -S \\r escape allows" 0 \
+    "$(bash_rc_of "$NESTED_WT" "env -S 'echo a\\rb'" HOME="$FAKEHOME")"
 # 9440-9448 (HIMMEL-4394, J1909 B1): an extglob leaf with two or more groups
 # (`@(settings).js@(on)`, `@(settings)@(.json)`) under a live .claude denies.
 rows_both 9440 2 "an extglob leaf with 2+ groups under a live .claude denies" <<'ROWS'

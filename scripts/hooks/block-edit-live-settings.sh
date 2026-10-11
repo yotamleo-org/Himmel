@@ -3442,6 +3442,12 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 done
                 [ "$st" = u ] || return 1
                 _envs_endword
+                # env splices the decoded words back into its own argv and
+                # getopt re-parses them, so a first word that is an env option
+                # (-S, -C, -i, -u, --split-string...) or a NAME=VALUE
+                # assignment is env's own, not the command: refused by shape
+                # (J2374; env's options are not modelled inside -S text)
+                case "$ENVS_FIRST" in -* | *=*) return 1 ;; esac
                 ENVS_BODY=$out
             }
             ii=0 iseg=-1 icmd=0 iwr=0 iwn='' ioa=0 ishell=0
@@ -3498,7 +3504,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                                             || case "$ENVS_FIRST" in echo | printf | true | false | pwd | test | cat | ls) true ;; *) false ;; esac; }; then
                                         ibw=$ENVS_BODY
                                     elif [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ]; then
-                                        deny_message "a $tool_name command" "$cmd" "env -S text carrying a backslash escape or \${VAR} that is not fully understood (unknown escape, unterminated quote, \${...} beyond a plain name, nested env) is not judged, so it is refused fail-closed; run the command directly"
+                                        deny_message "a $tool_name command" "$cmd" "env -S text carrying a backslash escape or \${VAR} that is not fully understood (unknown escape, unterminated quote, \${...} beyond a plain name, nested env, a first word that is an env option or NAME=VALUE) is not judged, so it is refused fail-closed; run the command directly"
                                         exit 2
                                     fi
                                     ;;
