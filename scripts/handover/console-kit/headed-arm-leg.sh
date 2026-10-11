@@ -2278,7 +2278,8 @@ case "${MCP_NAMES_JSON:-}" in
             [ "$BUS_ROLE" != leg ] && [ -n "${LEG_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$LEG_BUS_PAIR")
             if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
                 leg_propagate_env HIMMEL_BUS_NAME "$NAME"
-                export HEADED_ARM_BUS=1
+                # The CLI that registered is the CLI that binds.
+                export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
             else
                 echo "$(date +%F_%T) headed-arm-leg: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
             fi

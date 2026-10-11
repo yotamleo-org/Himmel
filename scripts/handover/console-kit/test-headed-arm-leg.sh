@@ -4077,6 +4077,7 @@ cat > "$bus45/headed" <<'HEADED_EOF'
 {
   printf 'LAUNCHER_ENV=%s\n' "${HEADED_ARM_LAUNCHER_ENV:-}"
   printf 'BUS_FLAG=%s\n' "${HEADED_ARM_BUS:-<unset>}"
+  printf 'BUS_CLI=%s\n' "${HEADED_ARM_BUS_CLI:-<unset>}"
   printf 'AMBIENT=%s\n' "${HIMMEL_BUS_NAME:-<unset>}"
 } > "$(dirname "$0")/seen"
 HEADED_EOF
@@ -4113,6 +4114,7 @@ check "45c opted-in: peer is a leg of the console, no secret field" \
 check "45d opted-in: the only HIMMEL_BUS_* the launched env carries is HIMMEL_BUS_NAME=<name>" \
   "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-in"
 check "45e opted-in: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
+check "45e2 opted-in: the CLI that registered is handed to headed-arm.sh to bind" "$(sed -n 's/^BUS_CLI=//p' "$bus45/seen")" "$HERE/../../../marketplace/plugins/himmel-bus/bin/bus"
 check "45f opted-in: the launched process env carries the registered name, not the ambient one" "$(sed -n 's/^AMBIENT=//p' "$bus45/seen")" "HIMMEL-45-in"
 rc=0; run45 out HIMMEL-45-out || rc=$?
 check "45g opted-out launch: exit 0" "$rc" "0"
