@@ -1928,6 +1928,10 @@ for v in \
     'GIT_PAGER=scripts/cr/write-verdicts.sh git log' \
     'PAGER=scripts/cr/write-verdicts.sh git log' \
     'GIT_SSH_COMMAND=scripts/cr/write-verdicts.sh git fetch' \
+    'GIT_SSH=scripts/cr/write-verdicts.sh git fetch' \
+    'GIT_ASKPASS=scripts/cr/write-verdicts.sh git fetch' \
+    'GIT_PROXY_COMMAND=scripts/cr/write-verdicts.sh git fetch' \
+    'git config core.gitProxy scripts/cr/write-verdicts.sh' \
     'GIT_EXTERNAL_DIFF=scripts/cr/write-verdicts.sh git diff' \
     'git config core.pager scripts/cr/write-verdicts.sh' \
     'git config pager.log scripts/cr/write-verdicts.sh' \

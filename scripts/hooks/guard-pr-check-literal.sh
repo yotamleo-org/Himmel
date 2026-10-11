@@ -1168,7 +1168,7 @@ if [ "$mentions" = 1 ]; then
     # A bare skill name (a --grep pattern) is no executable: the writer must
     # be spelled as a script path or a .sh file for git to run it.
     case "$edflat" in *.sh* | *scripts/* | *cr/* | *handover/*) ;; *) edflat= ;; esac
-    for edn in editor visual pager fsmonitor sshcommand ssh_command textconv external filter; do
+    for edn in editor visual pager fsmonitor ssh askpass proxy gitproxy textconv external filter; do
         case "$edflat" in *[\ \"\'_.]"$edn"*) edhook=1; break ;; esac
     done
     case "$edflat" in *alias.* | *.command*) edhook=1 ;; esac
