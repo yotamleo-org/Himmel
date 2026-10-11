@@ -83,6 +83,8 @@ printf '%s\n' '' '## Description' '' 'Impact' 'Operators see a blank page after 
 # A markdown body with decorated headings (`## **Impact**`) is read too: the create lint accepts them.
 printf '%s\n' '' '## Description' '' '## **Impact**' 'Decorated heading impact line.' '## Background' 'Background text must not leak.' \
     '## **What**' 'x' '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-7.md"
+# `##Impact` (no space) is ordinary text in Markdown, not a heading.
+printf '%s\n' '' '## Description' '' '##Impact' 'Nospace impact must not show.' '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-4.md"
 # A `## Impact` inside a code fence is not a heading: HIMMEL-1 keeps its explain-sidecar impact line.
 printf '%s\n' '' '## Description' '' '```' '## Impact' 'Fenced fake impact.' '```' \
     '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-1.md"
@@ -132,6 +134,7 @@ contains 'a decorated Impact heading is read as the impact line (HIMMEL-5226)' "
 not_contains 'the impact line stops at the next heading (HIMMEL-5226)' "$html" 'We reload the page data on start.'
 not_contains 'the impact line stops at any other heading (HIMMEL-5226)' "$html" 'Background text must not leak.'
 not_contains 'a fenced Impact heading is not read (HIMMEL-5226)' "$html" 'Fenced fake impact.'
+not_contains 'a hash run with no space is not an Impact heading (HIMMEL-5226)' "$html" 'Nospace impact must not show.'
 contains 'the row leads with the user impact (HIMMEL-3990)' "$html" 'add(tx,impactText(p,el("span","ui")),sub)'
 contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet checked"'
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'

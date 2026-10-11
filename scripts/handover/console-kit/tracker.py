@@ -435,7 +435,7 @@ def clip(s, n):
     return s if len(s) <= n else s[:n - 1] + '…'
 
 
-_PLAIN_HEAD = re.compile(r'^\s{0,3}(?:#{1,6}\s*)?[*_`]*(impact|what|why|agent detail)[*_`]*\s*:?\s*$', re.I)
+_PLAIN_HEAD = re.compile(r'^\s{0,3}(?:#{1,6}\s+)?[*_`]*(impact|what|why|agent detail)[*_`]*\s*:?\s*$', re.I)
 
 
 def plain_impact(body):
