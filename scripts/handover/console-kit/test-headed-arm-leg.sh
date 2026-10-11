@@ -4151,6 +4151,18 @@ bus45_out="$(XDG_STATE_HOME="$bus45/state" \
 check "45w failed register: bus=FAIL: on the launcher stdout" "$(printf '%s\n' "$bus45_out" | grep -c 'bus=FAIL:')" "1"
 check "45x failed register: bus=FAIL: bullet in the leg doc" "$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc")" "1"
 check "45y failed register: the doc's tail status (leg_tail_status) is still LIVE" "$(. "$HERE/../../lib/leg-tail-status.sh"; leg_tail_status "$bus45_doc")" "LIVE"
+# A register error that contains WRAPPED must not turn the unmarked bus=FAIL:
+# bullet into a wrap: the word is stripped before the bullet is written.
+bus45_stub="$bus45/bus-wrapped-stub"
+printf '#!/usr/bin/env bash\necho "register failed: WRAPPED state"\nexit 1\n' > "$bus45_stub"; chmod +x "$bus45_stub"
+bus45_doc2="$bus45/leg-doc2.md"; fx_brief '# fixture doc' > "$bus45_doc2"
+printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$bus45_doc2"
+HEADED_ARM_BUS_CLI="$bus45_stub" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45-other3 HIMMEL-45-in3 "$bus45_doc2" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || true
+check "45z failed register naming WRAPPED: bullet written, word stripped" "$(grep -c '^- [0-9:]* bus=FAIL:.*WRAPPED' "$bus45_doc2"):$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc2")" "0:1"
+check "45z2 failed register naming WRAPPED: tail status stays LIVE" "$(. "$HERE/../../lib/leg-tail-status.sh"; leg_tail_status "$bus45_doc2")" "LIVE"
 # HIMMEL-5207: an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

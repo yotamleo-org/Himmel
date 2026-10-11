@@ -159,11 +159,32 @@ test('HIMMEL-5221 a 0755 state home and himmel parent are accepted, and himmel/b
 });
 
 test('HIMMEL-5221 a group/other-writable parent and a 0755 himmel/bus are still refused', async t => {
-  for (const [rel, mode] of [['.', 0o777], ['himmel', 0o775], ['himmel/bus', 0o755]]) {
+  for (const [rel, mode] of [['.', 0o777], ['himmel', 0o775], ['himmel/bus', 0o755], ['.', 0o757], ['himmel', 0o757]]) {
     const { store, state } = await fixture(t);
     await chmod(join(state, rel), mode);
-    await assert.rejects(store.busRoot({ stateHome: state }), /permission/, rel);
+    await assert.rejects(store.busRoot({ stateHome: state }), /permission/, `${rel} ${mode.toString(8)}`);
   }
+});
+
+// The shared-parent owner rule: own uid or root, nothing else. lstat is mocked
+// for the state home only (a test cannot chown); every other path is real.
+async function busRootWithStateHomeUid(t, uid) {
+  const { store, state } = await fixture(t);
+  const original = fs.lstat;
+  const mocked = t.mock.method(fs, 'lstat', async (path, ...args) => {
+    const stat = await original(path, ...args);
+    return path === state ? Object.create(stat, { uid: { value: uid } }) : stat;
+  });
+  syncBuiltinESMExports();
+  try { return await store.busRoot({ stateHome: state }); } finally { mocked.mock.restore(); syncBuiltinESMExports(); }
+}
+
+test('HIMMEL-5221 a shared parent owned by another uid is refused', async t => {
+  await assert.rejects(busRootWithStateHomeUid(t, process.getuid() + 1), /permission/);
+});
+
+test('HIMMEL-5221 a shared parent owned by root is accepted', async t => {
+  assert.match(await busRootWithStateHomeUid(t, 0), /himmel\/bus$/);
 });
 
 test('cursor commit refuses a symlink and preserves its target', async t => {
