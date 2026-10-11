@@ -722,6 +722,29 @@ for f in scripts/hooks/some-guard.sh scripts/lib/some-lib.sh scripts/guardrails/
   if grepq "$out" '^scripts/hooks/test-wired-hooks-integrity-resolution\.sh$'; then pass "$f -> test-wired-hooks-integrity-resolution.sh (scan root)"; else fail "wired-hook sweep not selected for $f: $out"; fi
 done
 
+# --- 31c. HIMMEL-5314: check-unwired-hooks walks scripts/hooks/ and reads the
+# wiring files without naming any hook, so a hook file ADDED (or renamed) there,
+# or a wiring file edited, lists test-unwired-hooks.sh (PR 2401 merged an unwired
+# hook green; main went red on A1). RED on main: no row, suite never listed. ---
+mkf scripts/testing/test-unwired-hooks.sh 'echo unwired'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: unwired-hooks fixture"
+mkdir -p "$FX/scripts/hooks" "$FX/marketplace/plugins/p/hooks" "$FX/docs/setup"
+UWH='^scripts/testing/test-unwired-hooks\.sh$'
+for f in scripts/hooks/brand-new-guard.sh scripts/hooks/new-guard.mjs .claude/settings.json .codex/hooks.json marketplace/plugins/p/hooks/hooks.json .pre-commit-config.yaml .pre-commit-hooks.yaml docs/setup/settings-template.json; do
+  change "$f"
+  out="$(run_is "$range")"
+  if grepq "$out" "$UWH"; then pass "$f -> test-unwired-hooks.sh (scan root)"; else fail "unwired-hooks suite not selected for $f: $out"; fi
+done
+git -C "$FX" mv scripts/hooks/brand-new-guard.sh scripts/hooks/renamed-guard.sh
+git -C "$FX" commit -q -m "chore: rename hook"
+range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
+out="$(run_is "$range")"
+if grepq "$out" "$UWH"; then pass "a renamed hook file -> test-unwired-hooks.sh"; else fail "rename of a hook not selected: $out"; fi
+change docs/setup/unrelated.md
+out="$(run_is "$range")"
+if ! grepq "$out" "$UWH"; then pass "a file outside hooks and wiring does not list test-unwired-hooks.sh"; else fail "unwired-hooks over-selected: $out"; fi
+
 # --- 32. HIMMEL-4323: npm-licenses row (RED control) and the veto rows. -----
 NPM=scripts/hooks/test-check-npm-licenses\\.sh
 PCR=scripts/cr/test-pr-check-run\\.sh

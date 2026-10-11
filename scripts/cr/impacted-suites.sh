@@ -816,6 +816,13 @@ scripts/guardrails/* scripts/lib/test-override-env.sh
 scripts/lib/* scripts/lib/test-override-env.sh
 marketplace/plugins/himmel-ops/hooks/* scripts/lib/test-override-env.sh
 scripts/*test-*.sh scripts/lib/test-red-control-extraction-lint.sh
+scripts/hooks/* scripts/testing/test-unwired-hooks.sh
+.claude/settings.json scripts/testing/test-unwired-hooks.sh
+.codex/hooks.json scripts/testing/test-unwired-hooks.sh
+.pre-commit-config.yaml scripts/testing/test-unwired-hooks.sh
+.pre-commit-hooks.yaml scripts/testing/test-unwired-hooks.sh
+docs/setup/settings-template.json scripts/testing/test-unwired-hooks.sh
+marketplace/plugins/*/hooks/hooks.json scripts/testing/test-unwired-hooks.sh
 scripts/*.sh scripts/cr/test-pr-check-run.sh
 scripts/*.mjs scripts/cr/test-pr-check-run.sh
 scripts/*.js scripts/cr/test-pr-check-run.sh
