@@ -1714,6 +1714,43 @@ assert 'rg "CR" / never ALLOW'                  PASS  "$(decide "$(j_bash 'rg "'
 assert "grep -r CR / (unquoted lone CR) never ALLOW" PASS "$(decide "$(j_bash "grep -r "$'\r'" /")")"
 assert "ctl: grep -r 'CR' src stays ALLOW"     ALLOW "$(decide "$(j_bash "grep -r '"$'\r'"' src")")"
 
+# --- HIMMEL-5187: (1) -files0-from takes its paths from a file/stdin, so the
+# operand list is unknowable -> PASS. (2) a relative walk after a cd to a root
+# or unproven directory walks that directory -> PASS; a relative `..` chain is
+# resolved against the payload cwd. (3) xxd/uniq output operand glued to a CR.
+assert "find -files0-from never ALLOW"         PASS  "$(decide "$(j_bash "find -files0-from list")")"
+assert "find . -files0-from never ALLOW"       PASS  "$(decide "$(j_bash "find . -files0-from list")")"
+assert "du --files0-from=f never ALLOW"        PASS  "$(decide "$(j_bash "du -sh --files0-from=list")")"
+assert "du --files0-from f never ALLOW"        PASS  "$(decide "$(j_bash "du -sh --files0-from list")")"
+assert "du --files0-from=- never ALLOW"        PASS  "$(decide "$(j_bash "du --files0-from=-")")"
+assert "cd / && du -sh never ALLOW"            PASS  "$(decide "$(j_bash "cd / && du -sh")")"
+assert "cd / && du -sh . never ALLOW"          PASS  "$(decide "$(j_bash "cd / && du -sh .")")"
+assert "cd / && grep -r x never ALLOW"         PASS  "$(decide "$(j_bash "cd / && grep -r x")")"
+assert "cd / && grep -r x . never ALLOW"       PASS  "$(decide "$(j_bash "cd / && grep -r x .")")"
+assert "cd / && find . never ALLOW"            PASS  "$(decide "$(j_bash "cd / && find .")")"
+assert "cd / && ls -R never ALLOW"             PASS  "$(decide "$(j_bash "cd / && ls -R")")"
+assert "cd // ; du -sh never ALLOW"            PASS  "$(decide "$(j_bash "cd // ; du -sh")")"
+assert 'cd $X && du -sh never ALLOW'           PASS  "$(decide "$(j_bash 'cd $X && du -sh')")"
+assert "cd .. && du -sh never ALLOW"           PASS  "$(decide "$(j_bash "cd .. && du -sh")")"
+assert "cd /home && cd .. && du never ALLOW"   PASS  "$(decide "$(j_bash "cd /home && cd .. && du -sh")")"
+assert "du 3-up chain from repo never ALLOW"   PASS  "$(decide "$(j_bash_cwd /home/u/repo "du -sh ../../..")")"
+assert "du 5-up chain from repo never ALLOW"   PASS  "$(decide "$(j_bash_cwd /a/b/c/d "du -sh ../../../../..")")"
+assert "ctl: cd src && du -sh stays ALLOW"     ALLOW "$(decide "$(j_bash "cd src && du -sh")")"
+assert "ctl: cd /home/u/repo && grep -r ALLOW" ALLOW "$(decide "$(j_bash "cd /home/u/repo && grep -r x .")")"
+assert "ctl: cd ~ && du -sh stays ALLOW"       ALLOW "$(decide "$(j_bash "cd ~ && du -sh")")"
+assert "ctl: cd / && ls stays ALLOW"           ALLOW "$(decide "$(j_bash "cd / && ls")")"
+assert "ctl: cd / && cat f stays ALLOW"        ALLOW "$(decide "$(j_bash "cd / && cat f")")"
+assert "ctl: cd / && cd src && du -sh ALLOW"   ALLOW "$(decide "$(j_bash "cd / && cd src && du -sh")")"
+assert "payload cwd / : du -sh never ALLOW"    PASS  "$(decide "$(j_bash_cwd / "du -sh")")"
+assert "payload cwd / : grep -r x . never ALLOW" PASS "$(decide "$(j_bash_cwd / "grep -r x .")")"
+assert "ctl: payload cwd repo : du -sh ALLOW"  ALLOW "$(decide "$(j_bash_cwd /home/u/repo "du -sh")")"
+assert "xxd in CR-u never ALLOW"               PASS  "$(decide "$(j_bash "xxd in ${CR}-u")")"
+assert "xxd in CR-out never ALLOW"             PASS  "$(decide "$(j_bash "xxd in ${CR}out")")"
+assert "uniq a CR-f never ALLOW"               PASS  "$(decide "$(j_bash "uniq a ${CR}-f")")"
+assert "uniq a CR-out never ALLOW"             PASS  "$(decide "$(j_bash "uniq a ${CR}out")")"
+assert "ctl: xxd in stays ALLOW"               ALLOW "$(decide "$(j_bash "xxd in")")"
+assert "ctl: uniq -c a stays ALLOW"            ALLOW "$(decide "$(j_bash "uniq -c a")")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
