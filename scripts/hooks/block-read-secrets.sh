@@ -70,8 +70,13 @@
 #     and the second command targets a non-secret path. (`cp .env /tmp/x`
 #     itself is denied since HIMMEL-5277.)
 #   * HIMMEL-5277 accepted false positives: `env | grep PATH` (a bare `env`
-#     is a dump), `echo '$MY_TOKEN'` (quotes are not parsed) and any heredoc
-#     body line that is just `env`/`set`. READ_SECRETS_OK=1 is the bypass.
+#     is a dump) and `echo '$MY_TOKEN'` (a quoted `$VAR` is still named).
+#     The verbs run on quote-aware segments, so a quoted `env` in a commit
+#     message or `--body` is NOT a dump; a command the tokenizer will not read
+#     falls back to the raw clause split, where it is. READ_SECRETS_OK=1 is the
+#     bypass. ponytail: `{ env; }`, for-loop `env`, glob sources under `set -f`,
+#     gzip/xz -c, gh gist create, aws s3 cp and case-variant `.AWS` paths are
+#     not modelled, upgrade path HIMMEL-5292.
 #   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
 #   * Inline interpreter bodies (`node -e`, `python -c`): command-position
 #     fixes the COMMON false positive (coincidental `obj.key` property access
@@ -715,23 +720,54 @@ g4_secret_tok() {
 #     `cp .env.example .env` stays green
 #   * bare env / printenv / set / declare -p / export -p, a credential-named
 #     printenv or `declare -p` operand, `echo $X_TOKEN`, `gh auth token`
+#
+# The clause comes from guard_unwrap's quote-aware segments (g4_segments) when
+# the command tokenized, so a quoted `env` in a commit message is one word of an
+# argument, not a clause. g4_clause (the raw whitespace split) is only the
+# fallback for a command the tokenizer would not read.
 g4_clause() {
+    local -a g4w
+    set -f
+    # shellcheck disable=SC2206 # intentional word split
+    g4w=($1)
+    set +f
+    g4_scan
+}
+
+g4_segments() {
+    local s=0 k n
+    local -a idx g4w
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        if [ "${GU_LOOKUP[s]:-0}" = 0 ]; then
+            read -r -a idx <<<"${GU_SW[s]:-}"
+            g4w=()
+            k=0; n=${#idx[@]}
+            while [ "$k" -lt "$n" ]; do
+                g4w[${#g4w[@]}]="${ST_W[idx[k]]}"
+                k=$((k + 1))
+            done
+            g4_scan
+        fi
+        s=$((s + 1))
+    done
+}
+
+# g4_scan: scan the words in g4w (set by the caller) for ONE clause.
+g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
-    local last_secret=0 tdir=0 skip_out=0 a1="" a2="" showtok=0 rest name
+    local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
-    local words nw i nx
-    # shellcheck disable=SC2206 # intentional word split
-    words=($1)
-    nw=${#words[@]}
+    local nw i nx
+    nw=${#g4w[@]}
     for ((i = 0; i < nw; i++)); do
-        w="${words[i]}"
+        w="${g4w[i]}"
         d="${w//[\'\"\\]/}"
         case "$d" in '<'|'>') redir=1; continue ;; esac
         if [ "$redir" = 1 ]; then redir=0; continue; fi
         if [ -n "$d" ] && [ -z "${d//[0-9]/}" ]; then   # an fd number only when a redirect follows (`2>/dev/null`)
-            nx="${words[i+1]:-}"; nx="${nx//[\'\"\\]/}"
+            nx="${g4w[i+1]:-}"; nx="${nx//[\'\"\\]/}"
             case "$nx" in '<'|'>') continue ;; esac
         fi
         if [ -z "$cmd" ]; then
@@ -754,6 +790,16 @@ g4_clause() {
             esac
             continue
         fi
+        # An option's VALUE is never a source or an upload: `scp -i KEY`,
+        # `rsync -e 'ssh -i KEY'`, `tar --exclude=.env`, `zip -x .env`.
+        if [ "$skipv" = 1 ]; then skipv=0; continue; fi
+        case "$cmd:$d" in
+            scp:-[iFoPclSJ]|rsync:-[ef]|rsync:--rsh|rsync:--exclude|rsync:--include|rsync:--filter|rsync:--exclude-from|rsync:--include-from|rsync:--files-from| \
+            tar:--exclude|tar:--include|tar:--exclude-from|tar:-X|zip:-[xi]|7z:-[xi]|7za:-[xi])
+                nflags=$((nflags + 1)); skipv=1; continue ;;
+            rsync:--rsh=*|rsync:--exclude=*|rsync:--include=*|rsync:--filter=*|tar:--exclude=*|tar:--include=*|tar:--exclude-from=*|7z:-[xi]*|7za:-[xi]*)
+                nflags=$((nflags + 1)); continue ;;
+        esac
         case "$d" in
             -*) nflags=$((nflags + 1)) ;;
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
@@ -763,7 +809,7 @@ g4_clause() {
                 case "$d" in -*) ;; *) if g4_envish_name "$d"; then hit=1; note="printenv of a credential variable"; fi ;; esac ;;
             declare|typeset|export|readonly)
                 case "$d" in
-                    -*p*) pflag=1 ;;
+                    -*[px]*) pflag=1 ;;
                     -*)   ;;
                     *)    nnames=$((nnames + 1))
                           if [ "$pflag" = 1 ] && g4_envish_name "${d%%=*}"; then hit=1; note="$cmd -p of a credential variable"; fi ;;
@@ -847,7 +893,7 @@ scan_clause() {
     local tok dtok this_at_pos0 t
     local -a toks
     if [ "$depth" -gt "$SCAN_MAX_DEPTH" ]; then block=1; return 0; fi
-    g4_clause "$clause"
+    if [ "${GU_TOKENIZED:-0}" != 1 ]; then g4_clause "$clause"; fi
     rs_tokens "$clause"
     [ "${#RS_TOKS[@]}" -gt 0 ] || return 0
     toks=("${RS_TOKS[@]}")  # copy: a recursive call reassigns RS_TOKS
@@ -1200,6 +1246,11 @@ case "$tool" in
         # assignment persists.
         glued_tok=""
         g4_note=""
+        # HIMMEL-5277: the exfil / env-dump verbs run on guard_unwrap's
+        # quote-aware segments, so a quoted `env` in a commit message is not a
+        # clause. A command the tokenizer would not read falls back to the raw
+        # clause split (scan_clause calls g4_clause when GU_TOKENIZED != 1).
+        if [ "${GU_TOKENIZED:-0}" = 1 ]; then g4_segments; fi
         # Iterate clause-by-clause. bash 3.2-safe: a while-read heredoc, NOT
         # mapfile (bash 4) and NOT a for-loop over unquoted $normalized (which
         # would re-split on spaces and destroy clause boundaries).
