@@ -167,9 +167,12 @@ if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
     if cmp -s "$REPO_ROOT/CLAUDE.md" "$tmp/drifted.md"; then
         fail "H2 fixture did not mutate the section (marker text moved?)"
     else
-        install_strip "$tmp/drifted.md" "$tmp/proj2"
-        # cmp: 0 equal, 1 differ, 2 trouble — only 1 proves the drift was seen.
-        cmp -s "$tmp/drifted.md" "$tmp/proj2/stripped.md"; cmp_rc=$?
+        # cmp: 0 equal, 1 differ, 2 trouble — only 1 proves the drift was seen,
+        # and only when the installer + strip themselves succeeded.
+        cmp_rc=2
+        if install_strip "$tmp/drifted.md" "$tmp/proj2"; then
+            cmp -s "$tmp/drifted.md" "$tmp/proj2/stripped.md"; cmp_rc=$?
+        fi
         if [ "$cmp_rc" -eq 0 ]; then
             fail "H2: drifted section compared equal — the carve-out hides real drift"
         elif [ "$cmp_rc" -eq 1 ]; then
