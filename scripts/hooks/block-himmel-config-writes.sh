@@ -20,8 +20,9 @@
 #     both present, in any quoting/spelling that keeps the two literals) unless
 #     it passes a STRUCTURAL ALLOW-LIST (HIMMEL-5290, judge j2409c): every
 #     character in [A-Za-z0-9 _./~:=,@+-], first word one of cat jq grep head
-#     tail less wc stat ls diff sha256sum, and no option in an output position
-#     (-o/-O, --output*, less long options, jq --arg*/--rawfile/--slurpfile).
+#     tail wc stat ls diff sha256sum (not less: +v opens an editor), and no
+#     option in an output position (-o/-O, --output*, +command arguments,
+#     jq --arg*/--rawfile/--slurpfile).
 #     So `cat cfg`, `jq .graphify cfg`, `grep -i x cfg`, `wc -c cfg` allow;
 #     anything with a quote, redirect, pipe, ;, &, $, backtick, brace, paren,
 #     glob or backslash denies. That OVER-DENIES on purpose: `jq '.a | keys'
@@ -121,7 +122,9 @@ case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; e
 #      there is nothing to parse: no chaining, redirect, substitution, glob;
 #   2. the first word is a bare reader name (a path or VAR= prefix is not);
 #   3. no option can put a file in an output position (-o/-O in any short
-#      cluster, --output*, less --long options, jq --arg*/--rawfile/--slurpfile).
+#      cluster, --output*, jq --arg*/--rawfile/--slurpfile) and no +command
+#      argument. less is NOT a listed reader: +v launches an editor, -O logs
+#      to a file, and interactive less has shell escapes (codex-1, round 3).
 # LC_ALL=C keeps the character ranges byte-exact under a UTF-8 locale.
 LC_ALL=C
 export LC_ALL
@@ -136,19 +139,15 @@ set +f
 [ "$#" -gt 0 ] || exit 0
 w="$1"
 case "$w" in
-    cat|jq|grep|head|tail|less|wc|stat|ls|diff|sha256sum) ;;
-    *) deny "the command names ~/.himmel/config.json under '$w', not a listed plain reader (cat jq grep head tail less wc stat ls diff sha256sum). Reads: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
+    cat|jq|grep|head|tail|wc|stat|ls|diff|sha256sum) ;;
+    *) deny "the command names ~/.himmel/config.json under '$w', not a listed plain reader (cat jq grep head tail wc stat ls diff sha256sum; less is out: +v opens an editor, -O logs to a file). Reads: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
 esac
 shift
 for a in "$@"; do
     case "$a" in
         -[oO]*|-[!-]*[oO]*|--output*|--arg*|--rawfile|--slurpfile)
             deny "the option '$a' can put a file in an output position" ;;
+        +*) deny "the option '$a' is a +command argument" ;;
     esac
-    if [ "$w" = less ]; then
-        case "$a" in
-            --*) deny "less long option '$a' (--log-file writes a file)" ;;
-        esac
-    fi
 done
 exit 0
