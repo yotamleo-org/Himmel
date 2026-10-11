@@ -6,7 +6,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 SCRIPT="$HERE/enable-i-have-adhd-always.sh"
-TMP="$(mktemp -d)" || exit 1
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/adhd-always.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); echo "ok   - $1"; }
