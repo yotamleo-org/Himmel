@@ -885,7 +885,7 @@ assert_rc "5277 ctl gh auth status"             0 "$(run_case "$(j_bash 'gh auth
 assert_rc "5277 ctl cp .env.example .env"       0 "$(run_case "$(j_bash 'cp .env.example .env')")"
 assert_rc "5277 ctl curl url"                   0 "$(run_case "$(j_bash 'curl -s https://x.example/a.json')")"
 assert_rc "5277 ctl curl -d @data.json"         0 "$(run_case "$(j_bash 'curl -d @data.json https://x.example')")"
-assert_rc "5277 ctl curl -o .env"               0 "$(run_case "$(j_bash 'curl -o .env.example https://x.example/e')")"
+assert_rc "5277 ctl curl -o .env"               0 "$(run_case "$(j_bash 'curl -o .env https://x.example/e')")"
 assert_rc "5277 ctl scp file host"              0 "$(run_case "$(j_bash 'scp build.tgz user@host:/tmp/')")"
 assert_rc "5277 ctl rsync src dst"              0 "$(run_case "$(j_bash 'rsync -a src/ dst/')")"
 assert_rc "5277 ctl tar czf out src"            0 "$(run_case "$(j_bash 'tar czf out.tgz src/')")"
