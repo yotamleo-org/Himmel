@@ -477,6 +477,15 @@ assert_contains "installs the enabled @himmel plugin that is not installed" "plu
 assert_not_contains "never installs a plugin the user left disabled" "plugin install off-by-choice@himmel" "$log_inst_content"
 assert_not_contains "never installs a non-@himmel plugin" "plugin install ghost@nowhere" "$log_inst_content"
 
+echo "Test: an empty installed_plugins.json is unreadable state, not 'nothing installed' (HIMMEL-5294)"
+: > "$fake_home_inst/.claude/plugins/installed_plugins.json"
+: > "$log_inst"
+out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_inst" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_inst/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+log_inst_content="$(cat "$log_inst")"
+assert_not_contains "empty installed state installs nothing" "plugin install i-have-adhd@himmel" "$log_inst_content"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 [ "$fail" -eq 0 ]

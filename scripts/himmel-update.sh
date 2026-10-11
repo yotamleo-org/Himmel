@@ -2090,7 +2090,7 @@ install_missing_himmel_plugins() {
     mp_name=$(jq -r '.name // "himmel"' "$manifest" 2>/dev/null | tr -d '\r' || true)
     [ -n "$mp_name" ] || mp_name="himmel"
     specs=$(jq -r --arg mp "$mp_name" --slurpfile s "$settings" --slurpfile i "$installed" '
-        ($i[0].plugins // {}) as $have
+        ($i[0].plugins | if type == "object" then . else empty end) as $have
         | ($s[0].enabledPlugins // {}) as $on
         | .plugins[]?.name | (. + "@" + $mp) as $spec
         | select($on[$spec] == true and ($have | has($spec) | not))
