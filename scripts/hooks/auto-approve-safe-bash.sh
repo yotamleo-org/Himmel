@@ -907,19 +907,22 @@ SW_REC=0 SW_UNK=0
 # ALLOWs. Segments are vetted in order in one shell, so a `cd` segment updates
 # it for the next. One-way: a `cd` can FAIL (`cd / ; cd nope ; du -sh` stays at
 # `/`), so no later `cd` ever clears it.
-SW_CD_UNPROVEN=0 SW_PHYS=
+SW_CD_UNPROVEN=0 SW_PHYS='' SW_CHAIN_PLAIN=1
 
 # `cd` / `pushd` / `popd` operands -> set SW_CD_UNPROVEN when the target is, or
 # may be, root. Judged lexically (as is_root_anchor), then once physically so a
 # symlink to `/` does not slip through.
 sw_note_cd() {
-    local t="" tok n=0 phys
+    local t="" tok n=0 phys et=0
+    # a cd after `||`, in a pipeline, backgrounded or under a compound may not
+    # run, so the directory it would reach is unknown
+    [ "$SW_CHAIN_PLAIN" = 1 ] || { SW_CD_UNPROVEN=1; return 0; }
     for tok in "$@"; do
         shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
         case "$SW_VALUE" in
             --|-L|-P|-e|-@) continue ;;
         esac
-        t="$SW_VALUE"; n=$((n + 1))
+        t="$SW_VALUE"; n=$((n + 1)); et="$SW_EXPANDS_TILDE"
     done
     [ "$n" -eq 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # `cd`, `popd`, `cd a b`: unknown
     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && { SW_CD_UNPROVEN=1; return 0; }
@@ -929,7 +932,8 @@ sw_note_cd() {
     esac
     # shellcheck disable=SC2088 # literal `~`, expanded here by hand
     case "$t" in
-        '~'|'~/'*) t="${HOME:-/nonexistent}${t#\~}" ;;
+        '~'|'~/'*) [ "$et" = 1 ] || { SW_CD_UNPROVEN=1; return 0; }   # quoted: a dir named `~`
+                   t="${HOME:-/nonexistent}${t#\~}" ;;
         '~'*) SW_CD_UNPROVEN=1; return 0 ;;               # `~user`
     esac
     case "$t" in
@@ -950,10 +954,10 @@ sw_note_cd() {
     return 0
 }
 
-# `find` under an unproven cwd walks it unless every path operand is an
+# `find` walks when a starting point holds a `..` (the same rule du / ls -R /
+# grep -r get), and, under an unproven cwd, unless every path operand is an
 # absolute non-root literal or `~`. Expression grammar as segment_is_rootwalk_find.
 sw_find_walks_unproven_cwd() {
-    [ "$SW_CD_UNPROVEN" = 1 ] || return 1
     local -a a=("${RB_TOKENS[@]}")
     local total=${#a[@]} j=$((RB_IDX + 1)) n=0
     while [ "$j" -lt "$total" ]; do
@@ -968,10 +972,13 @@ sw_find_walks_unproven_cwd() {
         shell_word_value "${a[$j]}" || return 0
         case "$SW_VALUE" in -*|'('|'!') break ;; esac
         n=$((n + 1))
+        # absolute starting points keep the textual-root rules (`find /tmp/..` stays as it was)
+        case "$SW_VALUE" in /*) ;; *..*) return 0 ;; esac
+        [ "$SW_CD_UNPROVEN" = 1 ] || continue
         # shellcheck disable=SC2088 # literal `~`, never expanded here
         case "$SW_VALUE" in /*|'~'|'~/'*) ;; *) return 0 ;; esac
     done
-    [ "$n" -eq 0 ]
+    [ "$SW_CD_UNPROVEN" = 1 ] && [ "$n" -eq 0 ]
 }
 
 sw_apply_val() {  # $1 value kind (d|D|n|x), $2 the option's value
@@ -1136,14 +1143,20 @@ segment_is_safe() {
 
     # HIMMEL-5187: `-files0-from` / `--files0-from` read the operand list from a
     # file or stdin, so what is walked or read cannot be seen here: never ALLOW.
+    # Every word is cooked first (`-files0'-from'` and `-files0\-from` are the
+    # same option), for every binary; a word the cooker cannot decode that still
+    # shows the name raw is refused too.
     local fk
     for fk in "${a[@]:$((i + 1))}"; do
-        case "$fk" in *files0-from*) return 1 ;; esac
-        shell_word_value "$fk" || continue
-        # an abbreviation (`--files0`, `--fi`) only where the tool has the option
-        case "$bin:$SW_VALUE" in
-            du:--?*|wc:--?*|sort:--?*) guard_is_long_abbrev "files0-from" "$SW_VALUE" && return 1 ;;
-        esac
+        if shell_word_value "$fk"; then
+            case "$SW_VALUE" in *files0-from*|*files-from*) return 1 ;; esac
+            # an abbreviation (`--files0`, `--fi`) only where the tool has the option
+            case "$bin:$SW_VALUE" in
+                du:--?*|wc:--?*|sort:--?*) guard_is_long_abbrev "files0-from" "$SW_VALUE" && return 1 ;;
+            esac
+        else
+            case "$fk" in *files0*|*files-from*) return 1 ;; esac
+        fi
     done
 
     case "$bin" in
@@ -2189,6 +2202,17 @@ case "$sw_cwd" in
             [ "$sw_phys" = / ] && SW_CD_UNPROVEN=1
         fi ;;
 esac
+
+# Only `&&`, `;` and newline chain cds in order. Anything else unquoted (`|`,
+# `||`, a bare `&`, grouping, a command substitution, a compound keyword) may
+# skip or relocate a cd, so cd state is then unknown (PASS). fd dups are plain.
+sw_chain=$(printf '%s' "$SCAN_MASK" | sed -E -e 's@&&@@g' -e 's@[0-9]*>&[0-9-]?@@g' -e 's@&>>?@@g' -e 's@[0-9]*[<>]+@@g')
+case "$sw_chain" in
+    *'|'*|*'&'*|*'('*|*')'*|*'{'*|*'}'*|*'`'*|*'$'*) SW_CHAIN_PLAIN=0 ;;
+esac
+if printf '%s' "$SCAN_MASK" | grep -qE '(^|[;&|[:space:](])(if|then|elif|else|while|until|do|case|select|for)([[:space:]]|$)'; then
+    SW_CHAIN_PLAIN=0
+fi
 
 all_safe=1
 while IFS= read -r seg; do
