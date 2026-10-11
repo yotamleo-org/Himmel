@@ -39,8 +39,8 @@ branch_name_ok() {
     case "$1" in
         claude/?*) return 0 ;;
     esac
-    printf '%s\n' "$1" | grep -Eq \
-        '^((feat|fix|chore|docs|refactor|test)/[A-Za-z0-9][A-Za-z0-9._-]*|handover/[A-Z][A-Z0-9]*-[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*)$'
+    grep -Eq \
+        '^((feat|fix|chore|docs|refactor|test)/[A-Za-z0-9][A-Za-z0-9._-]*|handover/[A-Z][A-Z0-9]*-[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*)$' <<<"$1"
 }
 
 check_new_branch_name() {
@@ -99,12 +99,20 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
     # below is defense-in-depth for a clone that has not (yet) run it.
     if [ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" ]; then
         is_main_ref "$PRE_COMMIT_REMOTE_BRANCH" && block_main
-        # pre-commit hides the remote sha: a branch with no remote-tracking
-        # ref locally is treated as new (HIMMEL-5308).
-        _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
-        if ! git rev-parse --verify -q "refs/remotes/${PRE_COMMIT_REMOTE_NAME:-origin}/$_short" >/dev/null 2>&1; then
-            check_new_branch_name "$PRE_COMMIT_REMOTE_BRANCH"
-        fi
+        # pre-commit hides the remote sha and a local remote-tracking ref can
+        # be missing or stale, so an invalid name is confirmed against the
+        # remote itself: only "no such ref" (ls-remote rc 2) counts as new; an
+        # unreachable remote fails open (HIMMEL-5308).
+        case "$PRE_COMMIT_REMOTE_BRANCH" in
+            refs/heads/*)
+                _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
+                if [ "${BRANCH_NAME_OK:-}" != "1" ] && ! branch_name_ok "$_short"; then
+                    _lsrc=0
+                    git ls-remote --exit-code --heads "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    [ "$_lsrc" -eq 2 ] && check_new_branch_name "$PRE_COMMIT_REMOTE_BRANCH"
+                fi
+                ;;
+        esac
         exit 0
     fi
     # PRE_COMMIT=1 but no PRE_COMMIT_REMOTE_BRANCH: pre-commit's documented

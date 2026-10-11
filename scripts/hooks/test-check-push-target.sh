@@ -165,13 +165,30 @@ expect_pass "bypass" \
 refs/heads/wip-stuff $SHA refs/heads/wip-stuff $ZERO
 REFS
 
-echo "TEST: pre-commit shape, new invalid branch (no remote-tracking ref) -> BLOCKED"
+# pre-commit hides the remote sha, so an invalid name is confirmed against the
+# remote itself (a local remote-tracking ref can be missing or stale).
+RT=$(mktemp -d) || exit 1
+trap 'rm -rf "$RT"' EXIT
+git init -q --bare "$RT/remote.git"
+git init -q "$RT/work"
+git -C "$RT/work" -c user.name=t -c user.email=t@t.invalid commit -q --allow-empty -m seed
+git -C "$RT/work" push -q "$RT/remote.git" HEAD:refs/heads/legacy-stuff
+
+echo "TEST: pre-commit shape, invalid name absent on the remote -> BLOCKED"
 expect_blocked_name "configured shape, new invalid branch" \
-    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=nosuchremote PRE_COMMIT_REMOTE_BRANCH=refs/heads/wip-stuff bash "$HOOK" </dev/null
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/remote.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/wip-stuff bash "$HOOK" </dev/null
+
+echo "TEST: pre-commit shape, invalid name already on the remote -> PASS (never retroactive)"
+expect_pass "configured shape, existing legacy branch" \
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/remote.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/legacy-stuff bash "$HOOK" </dev/null
+
+echo "TEST: pre-commit shape, remote unreachable -> PASS (fail open)"
+expect_pass "configured shape, unreachable remote" \
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/nosuch.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/wip-stuff bash "$HOOK" </dev/null
 
 echo "TEST: pre-commit shape, new valid branch -> PASS"
 expect_pass "configured shape, new valid branch" \
-    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=nosuchremote PRE_COMMIT_REMOTE_BRANCH=refs/heads/fix/x bash "$HOOK" </dev/null
+    env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/remote.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/fix/x bash "$HOOK" </dev/null
 
 # Summary ------------------------------------------------------------
 
