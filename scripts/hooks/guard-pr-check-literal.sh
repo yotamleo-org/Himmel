@@ -1153,33 +1153,115 @@ fi
 # hook never reads - an env prefix (GIT_SEQUENCE_EDITOR=, GIT_EDITOR=, EDITOR=,
 # VISUAL=; the VAR= prefix only sets `wrapped` below) or a config write
 # (`git config sequence.editor|core.editor|alias.<x> <value>`, a later call).
-# Fail closed on the hook KEY, not on each spelling: a command that names a
-# guarded script AND carries an editor or alias key is denied. A command that
-# names no guarded script (GIT_EDITOR=vim git commit, git config user.name x)
-# is not caught here. Over-matching only denies more (the safe direction).
-if [ "$mentions" = 1 ]; then
-    # nocasematch: builtins only, so a missing tool cannot empty it into a no-op.
-    shopt -s nocasematch
-    edhook=0
-    # The NAME, whatever follows it (=, +=, printf -v, export, read): the same
-    # exec-key names as the -c list above. A name must start a word or follow
-    # _ . or a quote, so a path like .../git-editor/scripts is no key.
-    edflat=" $flat"
-    # A bare skill name (a --grep pattern) is no executable: the writer must
-    # be spelled as a script path or a .sh file for git to run it.
-    case "$edflat" in *.sh* | *scripts/* | *cr/* | *handover/*) ;; *) edflat= ;; esac
-    for edn in editor visual pager fsmonitor ssh askpass proxy gitproxy textconv external filter \
-        credential driver cmd gpg uploadpack receivepack mergetool difftool browser packobjectshook; do
-        case "$edflat" in *[\ \"\'_.]"$edn"*) edhook=1; break ;; esac
+# NAME-INDEPENDENT (judge j2353b, three NO-GOs on a key-name list): git has too
+# many program-running keys to enumerate, so the check is on WHERE the writer's
+# text sits, per command segment. A segment whose words name a guarded script
+# is denied when the text is (a) an assignment value (VAR=, VAR+=, export,
+# declare, typeset, printf -v, read, env VAR=), (b) a git config value or a
+# GIT_CONFIG_* env, (c) the value of a git --opt=/--opt (or -O<x>), except the
+# -m/--message/-F/--file of commit, tag and notes, or (d) any argument of a git
+# subcommand outside a small SAFE set. A segment that names no guarded script
+# (GIT_EDITOR=vim git commit, git config user.name x) is not caught here.
+# Over-matching only denies more (the safe direction).
+edword_names() { # edword_names <word> - a guarded script spelled as a path
+    case "$1" in
+        *.sh* | *scripts/* | *cr/* | *handover/*) names_target "$1" ;;
+        *) return 1 ;;
+    esac
+}
+seg_edhook() { # seg_edhook <first> <end> - 0 when segment words [first,end) run the writer
+    local i=$1 e=$2 m=0 c=-1 g=-1 w b sub='' exempt=0 prev='' dd=0 asg='^[A-Za-z_][A-Za-z0-9_]*\+?='
+    while [ "$i" -lt "$e" ]; do
+        edword_names "${ST_W[i]}" && m=1
+        i=$((i + 1))
     done
-    case "$edflat" in *alias.* | *.command*) edhook=1 ;; esac
-    shopt -u nocasematch
-    if [ "$edhook" = 1 ]; then
-        shown=${cmd//$'\n'/ }
-        shown=${shown:0:200}
-        deny "the command names a guarded script and names a git editor, pager, ssh, external-diff or alias hook (GIT_SEQUENCE_EDITOR, GIT_EDITOR, EDITOR, VISUAL, GIT_PAGER, core.pager, core.fsmonitor, alias.*, ...): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
+    [ "$m" = 1 ] || return 1
+    i=$1
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        # (a) an assignment value that names the writer, wherever the word sits.
+        if [ -z "${ST_RO[i]}" ] && [[ $w =~ $asg ]] && edword_names "$w"; then return 0; fi
+        if [ -z "${ST_RO[i]}" ] && [ "$c" -lt 0 ]; then
+            case "$w" in *=*) ;; *) c=$i ;; esac
+        fi
+        [ "$g" -lt 0 ] && [ "$c" -ge 0 ] && [ -z "${ST_RO[i]}" ] && [ "${w##*/}" = git ] && g=$i
+        i=$((i + 1))
+    done
+    if [ "$c" -ge 0 ]; then
+        b=${ST_W[c]##*/}
+        case "$b" in export | declare | typeset | local | readonly | read | alias) return 0 ;; esac
+        if [ "$b" = printf ]; then
+            i=$c
+            while [ "$i" -lt "$e" ]; do
+                case "${ST_W[i]}" in -v*) return 0 ;; esac
+                i=$((i + 1))
+            done
+        fi
     fi
+    [ "$g" -ge 0 ] || return 1
+    # The git subcommand: the first word that is no global option; -C and -c
+    # take a value word.
+    i=$((g + 1))
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        case "$w" in
+            -C | -c | --git-dir | --work-tree | --namespace | --exec-path | --super-prefix) i=$((i + 2)) ;;
+            -*) i=$((i + 1)) ;;
+            *) sub=$w; break ;;
+        esac
+    done
+    [ -n "$sub" ] || return 1
+    case "$sub" in
+        commit | add | status | diff | log | show | grep | fetch | push | pull | switch | checkout | branch | rev-parse | merge-base) ;;
+        worktree) [ "${ST_W[i + 1]}" = list ] || return 0 ;;
+        *) return 0 ;;
+    esac
+    case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    i=$((i + 1))
+    while [ "$i" -lt "$e" ]; do
+        w=${ST_W[i]}
+        if [ "$dd" = 0 ]; then
+            if [ "$w" = -- ]; then dd=1
+            elif edword_names "$w"; then
+                case "$w" in
+                    --message=* | --file=*) [ "$exempt" = 1 ] || return 0 ;;
+                    -m* | -F*) [ "$exempt" = 1 ] || return 0 ;;
+                    -*) return 0 ;;
+                esac
+                case "$prev" in
+                    --message | --file | -m | -F) [ "$exempt" = 1 ] || return 0 ;;
+                    --* | -O) return 0 ;;
+                esac
+            fi
+        fi
+        prev=$w
+        i=$((i + 1))
+    done
+    return 1
+}
+if [ "$mentions" = 1 ]; then
+    edhook=0
+    case "$flat" in *GIT_CONFIG_*) edhook=1 ;; esac
+    if [ "$PR_TOKFAIL" != 0 ]; then
+        # No token walk to place the text: any assignment or git word denies.
+        case "$flat" in *=* | *git*) edhook=1 ;; esac
+    else
+        k=0
+        while [ "$edhook" = 0 ] && [ "$k" -lt "$ST_N" ]; do
+            ek=$k
+            while [ "$ek" -lt "$ST_N" ] && [ "${ST_S[ek]}" = "${ST_S[k]}" ]; do ek=$((ek + 1)); done
+            if seg_edhook "$k" "$ek"; then edhook=1; fi
+            k=$ek
+        done
+    fi
+    # Denied after the earlier, more specific denies (env -S, VAR= prefix) so their reasons win.
+    edhook_pending=$edhook
 fi
+edhook_deny() {
+    local shown=${cmd//$'\n'/ }
+    shown=${shown:0:200}
+    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
+}
 
 # norm <path> - drop empty and . segments. A .. is kept, so the path no longer
 # reads as scripts/cr/<script> and denies: the kernel resolves .. after
@@ -1345,7 +1427,7 @@ while IFS= read -r line; do
 done <<<"$simple"
 # find runs the found file itself when {} is the -exec command word.
 [[ "$flat" =~ -(exec|execdir|ok|okdir)[[:space:]]+[^[:space:]]*\{\} ]] && bare_runs=1
-[ "$runs" -eq 1 ] || exit 0
+[ "$runs" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 
 # HIMMEL-3437 console NO-GO rounds 2-3: a "$HIMMEL_REPO/..." word is the
 # anchor spelling ONLY when the whole command is genuinely one simple
@@ -1740,7 +1822,7 @@ if [ "$envs_deferred" = 1 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ]
     shown=${shown:0:200}
     deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
 fi
-[ "$hit" -eq 1 ] || exit 0
+[ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 # ponytail: a glob through a directory symlink the text does not spell as
 # scripts/cr (`bash scripts/lnk/*`, lnk -> cr) is not a candidate - the same
 # class as `bash scripts/lnk/x.sh`, which this hook never saw either, and no
@@ -1806,6 +1888,7 @@ case "$flat" in
 esac
 [ "$wrapped" -eq 0 ] \
     || deny "the command runs the script through a wrapper or a VAR= prefix (BASH_ENV, PATH, ...), which can run other code or change what runs before the checked bytes do."
+[ "${edhook_pending:-0}" = 1 ] && edhook_deny
 
 for t in git awk sort find paste wc tr comm grep; do
     command -v "$t" >/dev/null 2>&1 \

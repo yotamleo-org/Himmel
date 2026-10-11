@@ -1938,7 +1938,18 @@ for v in \
     'git config gpg.program scripts/cr/write-verdicts.sh' \
     'git config uploadpack.packObjectsHook scripts/cr/write-verdicts.sh' \
     'git config web.browser scripts/cr/write-verdicts.sh' \
-    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.editor GIT_CONFIG_VALUE_0=scripts/cr/write-verdicts.sh git commit' \
+    'git send-email --to-cmd=scripts/cr/write-verdicts.sh x.patch' \
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=interactive.diffFilter GIT_CONFIG_VALUE_0=scripts/cr/write-verdicts.sh git add -p' \
+    'git config sendemail.sendmailCmd scripts/cr/write-verdicts.sh' \
+    "git config submodule.x.update '!scripts/cr/write-verdicts.sh'" \
+    'git config core.alternateRefsCommand scripts/cr/write-verdicts.sh' \
+    'git log --output=scripts/cr/write-verdicts.sh' \
+    'git fetch --upload-pack scripts/cr/write-verdicts.sh origin' \
+    'git grep -O scripts/cr/write-verdicts.sh x' \
+    'git difftool --extcmd=scripts/cr/write-verdicts.sh' \
+    'git commit --template=scripts/cr/write-verdicts.sh' \
+    'git instaweb --httpd=scripts/cr/write-verdicts.sh' \
+    'git GIT_EXTERNAL_DIFF=scripts/cr/write-verdicts.sh diff' \
     'GIT_EXTERNAL_DIFF=scripts/cr/write-verdicts.sh git diff' \
     'git config core.pager scripts/cr/write-verdicts.sh' \
     'git config pager.log scripts/cr/write-verdicts.sh' \
@@ -1950,7 +1961,8 @@ done
 # Already denied on base (HIMMEL-5102 one-call -c exec keys): controls, not RED.
 for v in \
     'git -c sequence.editor=scripts/cr/write-verdicts.sh rebase -i main' \
-    'git -c core.editor=scripts/cr/write-verdicts.sh commit'; do
+    'git -c core.editor=scripts/cr/write-verdicts.sh commit' \
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.editor GIT_CONFIG_VALUE_0=scripts/cr/write-verdicts.sh git commit'; do
     run "HIMMEL-5170 already-denied control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 # Controls: an ordinary config write and an editor that names no guarded writer.
@@ -1959,7 +1971,11 @@ for v in \
     'git config sequence.editor vim' \
     'GIT_EDITOR=vim git commit' \
     'GIT_SEQUENCE_EDITOR=true git rebase -i main' \
-    'git log --oneline -3 -- scripts/cr/write-verdicts.sh'; do
+    'git log --oneline -3 -- scripts/cr/write-verdicts.sh' \
+    'git commit -m "fix scripts/cr/write-verdicts.sh"' \
+    'git commit --message="fix scripts/cr/write-verdicts.sh"' \
+    'git add scripts/cr/write-verdicts.sh' \
+    'git diff -- scripts/cr/write-verdicts.sh'; do
     run "HIMMEL-5170 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 
