@@ -383,6 +383,70 @@ setup
 MODEL="gpt-5.6-sol"
 run_launcher_expect "guard-check: a nonexistent path fails closed" 3 "" --guard-check "$WORK/does-not-exist"
 
+# HIMMEL-5273: opt-in classifier routing. --classifier-model <alias> (or env
+# CLAUDEX_CLASSIFIER_MODEL) maps ONLY ANTHROPIC_DEFAULT_SONNET_MODEL to a
+# gateway alias; default off. The fixture is the real /v1/models id set that
+# cli-proxy-api 7.3.15 served in the himmel-ar-1 VM sweep (2026-10-11), with the
+# codex login and the claude OAuth login both present.
+MODELS_FIXTURE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-test.models.XXXXXX")" || exit 1
+SANDBOXES+=("$MODELS_FIXTURE_DIR")
+printf '%s' '{"object":"list","data":[{"id":"claude-opus-5-5"},{"id":"claude-fable-5-1"},{"id":"claude-sonnet-5-5"},{"id":"claude-haiku-5-5"},{"id":"claude-sonnet-4-6"},{"id":"gpt-6-sol"},{"id":"gpt-6.1-sol"},{"id":"codex-auto-review"},{"id":"gpt-image-2"}]}' > "$MODELS_FIXTURE_DIR/models.json"
+export MODELS_JSON="$MODELS_FIXTURE_DIR/models.json"
+write_child_mocks() {
+  cat > "$BIN/claude" <<'MOCK'
+#!/usr/bin/env bash
+env > "$HOME/child-env.txt"
+touch "$HOME/child-ran"
+MOCK
+  cat > "$BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in *v1/models*) cat "$MODELS_JSON" ;; esac
+exit 0
+MOCK
+  chmod +x "$BIN/claude" "$BIN/curl"
+}
+
+# default (flag off): the Sonnet alias stays on the codex model.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "classifier flag off: launch succeeds"
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: default launch must map the Sonnet alias to the codex model"; FAILS=$((FAILS + 1)); }
+cp "$FAKEHOME/.claude-codex/settings.json" "$MODELS_FIXTURE_DIR/settings-default.json"
+
+# flag on: only the Sonnet alias moves; main, haiku, opus, subagent and the
+# auto-mode switch are unchanged, and the seeded deny rules (HIMMEL-5270) are
+# identical to the default launch's.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "classifier flag on: launch succeeds" --classifier-model claude-sonnet-5-5
+for want in 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5' 'ANTHROPIC_MODEL=gpt-6.1-sol' 'ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6.1-sol' 'ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6.1-sol' 'CLAUDE_CODE_SUBAGENT_MODEL=gpt-6.1-sol' 'CLAUDE_CODE_AUTO_MODE_SERVER=0'; do
+  grep -qxF "$want" "$FAKEHOME/child-env.txt" || { echo "FAIL: classifier flag on: child env missing $want"; FAILS=$((FAILS + 1)); }
+done
+node - "$FAKEHOME/.claude-codex/settings.json" "$MODELS_FIXTURE_DIR/settings-default.json" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('assert');
+const fs = require('fs');
+const on = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const off = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+assert.ok(off.permissions.deny.length > 0, 'default seed has no deny rules');
+assert.deepStrictEqual(on.permissions.deny, off.permissions.deny);
+NODE
+
+# the env route is the same switch.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+CLAUDEX_CLASSIFIER_MODEL=claude-sonnet-5-5 run_launcher "classifier env on: launch succeeds"
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5' "$FAKEHOME/child-env.txt" || { echo "FAIL: CLAUDEX_CLASSIFIER_MODEL must map the Sonnet alias"; FAILS=$((FAILS + 1)); }
+
+# an alias the proxy does not serve refuses to start, and the child never runs.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+run_launcher_expect "classifier flag: alias missing from /v1/models refuses" 2 "not served by the proxy" --classifier-model claude-sonnet-or
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a missing classifier alias"; FAILS=$((FAILS + 1)); }
+
+# a malformed alias or a missing value is a usage refusal.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+run_launcher_expect "classifier flag: malformed alias refuses" 2 "invalid classifier model" --classifier-model 'bad alias;x'
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+run_launcher_expect "classifier flag: missing value refuses" 2 "needs a model alias" --classifier-model
+
 if [ "$FAILS" -ne 0 ]; then
   echo "$FAILS test(s) failed"
   exit 1

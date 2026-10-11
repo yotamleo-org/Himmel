@@ -160,15 +160,30 @@ $PreflightOnly = $false
 # pre-check — see the Invoke-GuardWorkspace call site below for what this does
 # and why it exists.
 $GuardCheck = $false
+# HIMMEL-5273: opt-in, default off — route ONLY the Sonnet alias (the auto-mode
+# classifier's default) to a gateway alias the proxy serves. Twin of the bash flag.
+$ClassifierModel = if ($env:CLAUDEX_CLASSIFIER_MODEL) { $env:CLAUDEX_CLASSIFIER_MODEL } else { '' }
 $ClaudeArgs = [System.Collections.Generic.List[string]]::new()
 $leading = $true
-foreach ($a in $args) {
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $a = $args[$i]
+  if ($leading -and ($a -ieq '-ClassifierModel' -or $a -ieq '--classifier-model')) {
+    if ($i + 1 -ge $args.Count -or -not $args[$i + 1]) {
+      [Console]::Error.WriteLine("claude-codex: --classifier-model needs a model alias.")
+      exit 2
+    }
+    $ClassifierModel = [string]$args[$i + 1]; $i++; continue
+  }
   if ($leading -and ($a -ieq '-Reseed' -or $a -ieq '--reseed')) { $Reseed = $true; continue }
   if ($leading -and ($a -ieq '-Force'  -or $a -ieq '--force'))  { $Force  = $true; continue }
   if ($leading -and ($a -ieq '-PreflightOnly' -or $a -ieq '--preflight-only')) { $PreflightOnly = $true; continue }
   if ($leading -and ($a -ieq '-GuardCheck' -or $a -ieq '--guard-check')) { $GuardCheck = $true; continue }
   $leading = $false
   $ClaudeArgs.Add($a)
+}
+if ($ClassifierModel -notmatch '^[A-Za-z0-9._-]*$') {
+  [Console]::Error.WriteLine("claude-codex: invalid classifier model alias '$ClassifierModel' (letters, digits, . _ - only).")
+  exit 2
 }
 
 # --- tiered egress guard -----------------------------------------------------
@@ -546,6 +561,20 @@ try {
 # Probe healthy — the dispatcher may now spin the worker (this run does not).
 if ($PreflightOnly) { exit 0 }
 
+# HIMMEL-5273: an alias the proxy does not serve would silently fall back to the
+# codex model (the classifier then judges on the model this flag exists to
+# replace), so refuse instead. Twin of the bash /v1/models check.
+if ($ClassifierModel) {
+  $modelsBody = ''
+  try {
+    $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
+  } catch { $modelsBody = '' }
+  if ($modelsBody -notmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"')) {
+    [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
+    exit 2
+  }
+}
+
 # --- launch: env contract mirrors the bash `exec env … claude "$@"` -----------
 # The CLAUDE_CODE_*/ENABLE_TOOL_SEARCH values follow the field-tested claudex
 # recipe: subagents stay on the codex lane, effort controls stay on, and
@@ -577,7 +606,7 @@ $env:ANTHROPIC_BASE_URL             = $CodexProxyBaseUrl
 $env:ANTHROPIC_AUTH_TOKEN           = $key
 $env:ANTHROPIC_MODEL                = $CodexModel
 $env:ANTHROPIC_DEFAULT_HAIKU_MODEL  = $CodexHaiku
-$env:ANTHROPIC_DEFAULT_SONNET_MODEL = $CodexModel
+$env:ANTHROPIC_DEFAULT_SONNET_MODEL = if ($ClassifierModel) { $ClassifierModel } else { $CodexModel }
 $env:ANTHROPIC_DEFAULT_OPUS_MODEL   = $CodexModel
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.

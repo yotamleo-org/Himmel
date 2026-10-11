@@ -93,6 +93,7 @@ FORCE=0
 PREFLIGHT_ONLY=0
 GUARD_CHECK=0
 SEED_ONLY=0
+CLASSIFIER_MODEL="${CLAUDEX_CLASSIFIER_MODEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --reseed) RESEED=1; shift ;;
@@ -111,9 +112,23 @@ while [ $# -gt 0 ]; do
     # pre-check — see the guard_workspace call site below for what this does
     # and why it exists.
     --guard-check) GUARD_CHECK=1; shift ;;
+    # HIMMEL-5273: opt-in, default off. Route ONLY the Sonnet alias (the auto-mode
+    # classifier's default) to a gateway alias the operator's proxy serves, e.g.
+    # claude-sonnet-5-5 through cli-proxy-api's claude OAuth provider.
+    --classifier-model)
+      if [ $# -lt 2 ] || [ -z "$2" ]; then
+        echo "claude-codex: --classifier-model needs a model alias." >&2
+        exit 2
+      fi
+      CLASSIFIER_MODEL="$2"; shift 2 ;;
     *) break ;;
   esac
 done
+case "$CLASSIFIER_MODEL" in
+  *[!A-Za-z0-9._-]*)
+    echo "claude-codex: invalid classifier model alias '$CLASSIFIER_MODEL' (letters, digits, . _ - only)." >&2
+    exit 2 ;;
+esac
 if [ "$SEED_ONLY" -eq 1 ] && [ "$PREFLIGHT_ONLY" -eq 1 ]; then
   echo "claude-codex: --seed-only and --preflight-only are mutually exclusive (the probe skips the seed)." >&2
   exit 2
@@ -558,6 +573,22 @@ else
   echo "claude-codex: WARNING - curl not found; skipping proxy reachability preflight." >&2
 fi
 
+# HIMMEL-5273: a classifier alias the proxy does not serve would silently fall back
+# to the codex model (the classifier then judges on the model this flag exists to
+# replace), so refuse instead. Without curl the alias cannot be verified: refuse.
+if [ -n "$CLASSIFIER_MODEL" ]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "claude-codex: --classifier-model needs curl to verify the alias is served by the proxy." >&2
+    exit 2
+  fi
+  _models="$(printf 'header "Authorization: Bearer %s"\n' "$CLIPROXY_API_KEY" \
+    | curl -sf -m 3 --noproxy '*' -K - "$CODEX_PROXY_BASE_URL/v1/models" 2>/dev/null)"
+  if ! printf '%s' "$_models" | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\""; then
+    echo "claude-codex: classifier model '$CLASSIFIER_MODEL' is not served by the proxy at $CODEX_PROXY_BASE_URL (/v1/models); add its provider to cli-proxy-api and log in first." >&2
+    exit 2
+  fi
+fi
+
 command -v claude >/dev/null 2>&1 || { echo "claude-codex: 'claude' not found on PATH" >&2; exit 5; }
 
 # The last four CLAUDE_CODE_*/ENABLE_TOOL_SEARCH values follow the field-tested
@@ -596,7 +627,7 @@ export ANTHROPIC_BASE_URL="$CODEX_PROXY_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$CLIPROXY_API_KEY"
 export ANTHROPIC_MODEL="$CODEX_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$CODEX_HAIKU"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="$CODEX_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${CLASSIFIER_MODEL:-$CODEX_MODEL}"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$CODEX_MODEL"
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.
@@ -605,7 +636,8 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL="$CODEX_MODEL"
 # is not served by this codex-only proxy, so it falls back to $CODEX_MODEL, which over-reads
 # the user deny rules (HIMMEL-5077); the eval jail (scripts/eval/lane-quality/pilot-4869/
 # sandbox.sh) compensates with narrow allow rules until this switch goes
-# (pinning the classifier model: HIMMEL-5164).
+# (pinning the classifier model: HIMMEL-5164). Opt-in alternative: --classifier-model
+# <alias> (HIMMEL-5273) routes the Sonnet alias to a Claude model the proxy serves.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WINDOW"
 # HIMMEL-1887: AUTO_COMPACT_WINDOW sets the compaction THRESHOLD; it does not
