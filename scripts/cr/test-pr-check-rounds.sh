@@ -468,7 +468,10 @@ postcap_fix postcapzero
 postcap_out="$(postcap_start postcapzero)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap round"
 
-# A finding row the leg wrote (model claude) with a fixed verdict is no critic row.
+# The documented ceiling (ponytail at ledger_query, HIMMEL-3557): critic rows are
+# session-writable, so a leg-written finding row under a model name outside the
+# excluded three IS a critic row and buys the round. A buy costs one review
+# round, never a merge. This row pins that behaviour so a tightening shows up.
 three_rounds postcapforge suggestion
 postcap_amend postcapforge "$cap_r3_head" stub-1 fixed
 fix_commit postcapforge
@@ -476,11 +479,24 @@ fix_commit postcapforge
     || fail "postcapforge delta round setup exited non-zero"
 assert_eq "$(cat "$git_dir/cr-review-rounds/postcapforge.round")" "4" "postcapforge fixture: the delta round ran as round 4"
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
-    --branch postcapforge --head "$cap_fix_head" --model claude --id forged-9 --severity sug --file f.txt --line 1 \
+    --branch postcapforge --head "$cap_fix_head" --model gemini --id forged-9 --severity sug --file f.txt --line 1 \
     --verdict fixed >/dev/null 2>"$tmp/postcapforge-finding.err" || fail "postcapforge forged finding setup"
 postcap_fix postcapforge
 postcap_out="$(postcap_start postcapforge)"; postcap_rc=$?
-assert_eq "$postcap_rc" "8" "a leg-written fixed finding buys no post-cap round"
+assert_eq "$postcap_rc" "0" "documented ceiling: a leg-written fixed finding under a non-excluded model buys the post-cap round"
+
+# The excluded names stay excluded: the same row under model claude buys nothing.
+three_rounds postcapclaude suggestion
+postcap_amend postcapclaude "$cap_r3_head" stub-1 fixed
+fix_commit postcapclaude
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch postcapclaude >/dev/null 2>&1) \
+    || fail "postcapclaude delta round setup exited non-zero"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch postcapclaude --head "$cap_fix_head" --model claude --id forged-9 --severity sug --file f.txt --line 1 \
+    --verdict fixed >/dev/null 2>"$tmp/postcapclaude-finding.err" || fail "postcapclaude forged finding setup"
+postcap_fix postcapclaude
+postcap_out="$(postcap_start postcapclaude)"; postcap_rc=$?
+assert_eq "$postcap_rc" "8" "a claude-model fixed finding buys no post-cap round"
 
 # A fixed amend recorded against another head does not count for the reviewed one.
 postcap_setup postcaphead suggestion
@@ -1211,6 +1227,48 @@ judge jn-2 NO-GO "$jn_fix"
 jn3_out="$(start_round "$jn_fix2" clean judgenogo)"; jn3_rc=$?
 assert_eq "$jn3_rc" "0" "a fresh judge NO-GO on the reviewed delta head buys one more delta round"
 assert_has "$jn3_out" "pr-check: delta round 5 on judgenogo (from $jn_fix)" "the next judge round is scoped from the delta head"
+
+# HIMMEL-5185 guards of the post-cap round, each shown RED by deleting it.
+# (a) A head a judge record already bought a round from is not eligible: the
+# .verdicts history carries a record keyed on the reviewed head.
+postcap_setup pcjudged suggestion
+postcap_amend pcjudged "$postcap_d_head" stub-1 fixed
+postcap_amend pcjudged "$postcap_d_head" stub-2 fixed
+printf '%s %s %s\n' "$postcap_d_head" "$postcap_d_head" "pcj-0/judge-test" >> "$git_dir/cr-review-rounds/pcjudged.verdicts"
+postcap_fix pcjudged
+postcap_out="$(postcap_start pcjudged)"; postcap_rc=$?
+assert_eq "$postcap_rc" "8" "a head a judge record already bought a round from gets no post-cap round"
+
+# (b) The post-cap round never consumes a judge record: with a NO-GO on the
+# reviewed head AND every finding fixed, the round runs and the record stays.
+postcap_setup pcjkeep suggestion
+postcap_amend pcjkeep "$postcap_d_head" stub-1 fixed
+postcap_amend pcjkeep "$postcap_d_head" stub-2 fixed
+printf 'class: shell-parsing\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
+judge pcjkeep-1 NO-GO "$postcap_d_head"
+postcap_fix pcjkeep
+postcap_out="$(postcap_start pcjkeep)"; postcap_rc=$?
+assert_eq "$postcap_rc" "0" "a judge record beside all-fixed findings still runs the post-cap round"
+assert_has "$(cat "$git_dir/cr-review-rounds/pcjkeep.delta" 2>/dev/null)" "$postcap_d_head $postcap_f_head postcap-fixed" "the round is the post-cap one, not the judge's"
+if grep -q "^$postcap_d_head " "$git_dir/cr-review-rounds/pcjkeep.verdicts" 2>/dev/null; then
+    fail "the post-cap round never consumes the judge record"
+else
+    pass "the post-cap round never consumes the judge record"
+fi
+
+# (c) The post-cap round needs the used delta pair to END on the reviewed head.
+# A delta round whose panel left no critic rows leaves the pair ending on an
+# unreviewed head; the scope falls back to the round-3 head, whose findings are
+# all fixed, yet no round ran there: nothing.
+three_rounds pcunrev suggestion
+postcap_amend pcunrev "$cap_r3_head" stub-1 fixed
+fix_commit pcunrev
+(cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$cap_fix_head" --branch pcunrev >/dev/null 2>&1) \
+    || fail "pcunrev panel-less delta round setup exited non-zero"
+assert_has "$(cat "$git_dir/cr-review-rounds/pcunrev.delta" 2>/dev/null)" "$cap_r3_head $cap_fix_head fix" "pcunrev fixture: the pair ends on the unreviewed fix head"
+postcap_fix pcunrev
+postcap_out="$(postcap_start pcunrev)"; postcap_rc=$?
+assert_eq "$postcap_rc" "8" "a used pair ending on another head buys no post-cap round"
 
 # HIMMEL-4632: the record binds to this branch's PR (its pr: line, and its
 # branch: line when present); a GO, another head, another PR, a record with no

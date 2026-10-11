@@ -190,6 +190,11 @@ const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch { process.exit(0); }
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
+// ponytail: "critic" is any model name outside that list, and critic finding rows
+// and their fixed amends are session-writable through ledger-append.sh, so a leg
+// can buy the HIMMEL-5185 post-cap round with a row under a non-excluded model
+// name (it buys a review round, never a merge); tie critic rows to a source the
+// leg cannot write, HIMMEL-3557.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false;
 const verdicts = new Map(), settled = new Set();
