@@ -442,6 +442,9 @@ HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION="8.0.23/../x" CL
 assert_rc "malformed-version exit code" 1 "$RC"
 HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION="8.0.23" CLIPROXY_API_SHA256="not-a-sha" STUB_SHA256="$V8_SHA" run --install
 assert_rc "malformed-sha exit code" 1 "$RC"
+# grep is line-wise: a valid first line must not carry a second one into the URL.
+HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION=$'8.0.23\nevil' CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
+assert_rc "multiline-version exit code" 1 "$RC"
 
 echo
 echo "===================================="

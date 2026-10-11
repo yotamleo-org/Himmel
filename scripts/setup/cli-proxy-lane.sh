@@ -55,11 +55,11 @@ if [ -n "${CLIPROXY_API_VERSION-}" ] || [ -n "${CLIPROXY_API_SHA256-}" ]; then
     echo "cli-proxy-lane: CLIPROXY_API_VERSION and CLIPROXY_API_SHA256 must be set together (the sha256 of that release's linux_amd64 asset)" >&2
     exit 1
   fi
-  if ! printf '%s' "$CLIPROXY_API_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  if ! [[ "$CLIPROXY_API_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "cli-proxy-lane: CLIPROXY_API_VERSION '$CLIPROXY_API_VERSION' is not a plain x.y.z version" >&2
     exit 1
   fi
-  if ! printf '%s' "$CLIPROXY_API_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+  if ! [[ "$CLIPROXY_API_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
     echo "cli-proxy-lane: CLIPROXY_API_SHA256 is not a lowercase 64-char hex sha256" >&2
     exit 1
   fi

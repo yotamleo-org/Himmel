@@ -127,7 +127,7 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 # The golden image's npm prefix is /usr (root-owned): keep global installs in the HOME.
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"; mkdir -p "$NPM_CONFIG_PREFIX"
 cd "$ROOT" || { echo "upgrade-path-guest: cannot cd to $ROOT" >&2; exit 2; }
-WORK="${UPGRADE_WORK_DIR:-$HOME/.himmel-upgrade-stage}"
+WORK="$HOME/.himmel-upgrade-stage"   # fixed: the stage rm -rf's it, so no caller-chosen path
 rm -rf "$WORK"; mkdir -p "$WORK"
 KEY="upgrade-stage-throwaway-key"
 export CLIPROXY_API_KEY="$KEY"
@@ -158,20 +158,24 @@ note "baseline: ast-grep (tree pin)"
 bash scripts/machine-setup/install-code-kit-clis.sh >"$WORK/ast-grep-base.log" 2>&1; irc=$?
 if [ "$irc" -eq 0 ]; then pass "baseline ast-grep installer rc=0"; else fail "baseline ast-grep installer rc=$irc (see $WORK/ast-grep-base.log)"; fi
 BASE_AST=""; command -v ast-grep >/dev/null 2>&1 && BASE_AST="$(ast-grep --version 2>&1 | head -1)"
-if [ -n "$BASE_AST" ]; then pass "baseline ast-grep: $BASE_AST"; else fail "baseline ast-grep not installed (see $WORK/ast-grep-base.log)"; fi
+# shellcheck disable=SC2016  # the sed pattern matches the literal ${AST_GREP_VERSION:-x} text
+TREE_AST="$(sed -n 's/^AST_GREP_VERSION="${AST_GREP_VERSION:-\(.*\)}"$/\1/p' scripts/machine-setup/install-code-kit-clis.sh | head -1)"
+if [ -n "$TREE_AST" ] && [ "$(first_semver "$BASE_AST")" = "$TREE_AST" ]; then pass "baseline ast-grep: $BASE_AST (tree pin $TREE_AST)"; else fail "baseline ast-grep '${BASE_AST:-none}' is not the tree pin '${TREE_AST:-?}' (see $WORK/ast-grep-base.log)"; fi
 
 note "baseline: graphify (tree pin)"
 ( . scripts/lib/graphify-bin.sh && graphify_install ) >"$WORK/graphify-base.log" 2>&1; irc=$?
 if [ "$irc" -eq 0 ]; then pass "baseline graphify installer rc=0"; else fail "baseline graphify installer rc=$irc (see $WORK/graphify-base.log)"; fi
 BASE_GRAPHIFY="$(graphify --version 2>&1)"; grc=$?
 BASE_GRAPHIFY="$(first_semver "$BASE_GRAPHIFY")"
-if [ "$grc" -eq 0 ] && [ -n "$BASE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY"; else fail "baseline graphify not installed (see $WORK/graphify-base.log)"; fi
+TREE_GRAPHIFY="$( . scripts/lib/graphify-bin.sh && _graphify_version )"
+if [ "$grc" -eq 0 ] && [ -n "$TREE_GRAPHIFY" ] && [ "$BASE_GRAPHIFY" = "$TREE_GRAPHIFY" ]; then pass "baseline graphify: $BASE_GRAPHIFY (tree pin $TREE_GRAPHIFY)"; else fail "baseline graphify '${BASE_GRAPHIFY:-none}' is not the tree pin '${TREE_GRAPHIFY:-?}' (see $WORK/graphify-base.log)"; fi
 
 note "baseline: cli-proxy-api (tree pin)"
 bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/proxy-base.log" 2>&1; irc=$?
 if [ "$irc" -eq 0 ]; then pass "baseline cli-proxy-api installer rc=0"; else fail "baseline cli-proxy-api installer rc=$irc (see $WORK/proxy-base.log)"; fi
 BASE_PROXY="$(cat "$HOME/.cli-proxy-api/cli-proxy-api.version" 2>/dev/null)"
-if [ -n "$BASE_PROXY" ]; then pass "baseline cli-proxy-api: v$BASE_PROXY"; else fail "baseline cli-proxy-api not installed (see $WORK/proxy-base.log)"; fi
+TREE_PROXY="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' scripts/setup/cli-proxy-lane.sh | head -1)"
+if [ -n "$TREE_PROXY" ] && [ "$BASE_PROXY" = "$TREE_PROXY" ]; then pass "baseline cli-proxy-api: v$BASE_PROXY (tree pin $TREE_PROXY)"; else fail "baseline cli-proxy-api '${BASE_PROXY:-none}' is not the tree pin '${TREE_PROXY:-?}' (see $WORK/proxy-base.log)"; fi
 
 # qmd is part of the baseline so doctor-before sees the same qmd-dependent checks
 # (C44/C49) as doctor-after; without it they flip INFO -> FAIL merely because qmd appeared.
@@ -204,10 +208,10 @@ if [ "$GOT" = "$UPGRADE_AST_GREP_VERSION" ]; then pass "ast-grep now: $GOT"; els
 
 note "upgrade: cli-proxy-api -> v$UPGRADE_CLIPROXY_VERSION (CLIPROXY_API_VERSION + CLIPROXY_API_SHA256)"
 CLIPROXY_API_VERSION="$UPGRADE_CLIPROXY_VERSION" CLIPROXY_API_SHA256="$UPGRADE_CLIPROXY_SHA256" \
-  bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/up-proxy.log" 2>&1
+  bash scripts/setup/cli-proxy-lane.sh --install >"$WORK/up-proxy.log" 2>&1; irc=$?
 GOT="$(cat "$HOME/.cli-proxy-api/cli-proxy-api.version" 2>/dev/null)"
-if [ "$GOT" = "$UPGRADE_CLIPROXY_VERSION" ]; then pass "cli-proxy-api now: v$GOT"; else
-  fail "cli-proxy-api is '${GOT:-none}', wanted $UPGRADE_CLIPROXY_VERSION: $(grep -E 'checksum mismatch|failed' "$WORK/up-proxy.log" | head -1 | cut -c1-200)"
+if [ "$irc" -eq 0 ] && [ "$GOT" = "$UPGRADE_CLIPROXY_VERSION" ]; then pass "cli-proxy-api now: v$GOT"; else
+  fail "cli-proxy-api install rc=$irc, version '${GOT:-none}', wanted $UPGRADE_CLIPROXY_VERSION: $(grep -E 'checksum mismatch|failed' "$WORK/up-proxy.log" | head -1 | cut -c1-200)"
 fi
 
 # --- 3. assertions ------------------------------------------------------------
