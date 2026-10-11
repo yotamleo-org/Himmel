@@ -261,6 +261,18 @@ never update the manifest. An update failure returns nonzero and reports that
 the launch/close already happened; it does not undo it. Nonces remain console-only
 inputs to `live-state.sh --nonce`, never sourced from the manifest.
 
+**Lane canary** (HIMMEL-5230): `scripts/lanes/lane-canary.sh [--lanes a,b]
+[--timeout <sec>] [--out <report.json>] [--dry-run]` launches one no-op leg per
+lane through the real launcher and reports PASS, FAIL or SKIP with the time to
+the first Results bullet. Run it after a station update or a lane change; the
+unit suites check the generated command, this checks that a leg on the lane
+actually starts, registers, receives its brief and writes a bullet. Lanes run
+one at a time, and a lane whose backend is not configured is SKIP. The report
+lands at `<handover root>/.canary/latest.json`, the file the board reads. A lane
+whose launcher refuses on its bank (exit 11, for example OpenRouter credit under
+`OPENROUTER_MIN_CREDIT_USD`) reports FAIL, not SKIP: read the detail column
+before treating it as a lane defect.
+
 ## Claudex legs: the inbox is the only channel
 
 A `--lane claudex` leg (`headed-arm-leg.sh`, HIMMEL-2782) runs under
@@ -315,6 +327,18 @@ head yourself and then tell it to continue.
 launched with (see its launch log). That name may lack the doc's date suffix.
 A ruling sent to the wrong name is never delivered and raises no error, so run
 `inbox-send.sh --pending` after sending.
+
+**A PR parked at the round-3 review cap gets one more round from the console,
+never from the leg** (HIMMEL-5058). Run
+`scripts/handover/console-kit/grant-round.sh <pr> <new-head> <qid>`. It grants
+only on a signed judge record for that exact head, a PR that has reached the
+cap, a head that is still the PR's live head, and a qid no earlier grant
+consumed; one record buys one round. A leg or a relay is refused (exit 3). A
+judge's NO-GO on a head that follows the reviewed one by a test-only or
+comment-only commit is written with
+`write-verdict.sh ... --bind-reviewed <reviewed-sha>` (HIMMEL-5109): the verdict
+keeps naming the judged head and carries a signed `reviewed-head:` line, and any
+other delta is refused with nothing written.
 
 ## Merges
 

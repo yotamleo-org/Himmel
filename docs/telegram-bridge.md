@@ -75,6 +75,11 @@ the bridge lists them and asks you to choose `/console <session-name> <text>`.
 The first word names a console only when that inbox already exists; otherwise
 it is part of the bare text. `/consoles` lists live names, heartbeat timestamps,
 and bucket/project (older consoles without launch metadata show `unknown`).
+The first word also selects a console by a unique fragment of its name, and a
+message to an armed console that is busy is queued rather than dropped
+(HIMMEL-5125). `/console`, the fleet verbs and `/lockdown` accept any letter
+case and the `/verb@botname` form (HIMMEL-5148, HIMMEL-5150); the auto ops stay
+strict.
 
 Each console's first waiter arm queues a DM: “Console <name> is live — just
 send /console <text>”. A successor announces its new identity on its first arm;
