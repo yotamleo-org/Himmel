@@ -2,7 +2,7 @@
 
 > A harness that runs Claude Code as a managed, PR-gated, overnight-capable agent: hooks, git gates and guardrails enforce the workflow at the tool-call layer instead of asking the model to remember prose. Memory is durable, hand-editable markdown — handover files plus an optional companion vault — not a vector DB.
 
-Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first — it is the authoritative rule set and loads into every session. Just **pointed at** this repo to set it up? Start at Install. Everything below is a router: open the linked file rather than re-deriving from code.
+Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first — it is the authoritative rule set. Just **pointed at** this repo to set it up? Start at Install. Everything below is a router: open the linked file.
 
 ## Install
 
@@ -21,7 +21,7 @@ Four independent axes, each named exactly once here:
 - **Saved install-profile file** — a `*.install-profile.json` preset of every wizard answer, including the release channel. `--scope` loads a shipped adopter one; `--from-profile <file>` loads your own. Detail: [docs/setup/profiles/README.md](docs/setup/profiles/README.md).
 - **Release channel** — `stable` (highest `vX.Y.Z` tag) or `pre` (prereleases too), read from `HIMMEL_UPDATE_CHANNEL` or the saved install-profile file's `channel`; neither set means a plain `git pull`. Detail: [docs/setup/updating.md](docs/setup/updating.md).
 
-A fifth, unrelated axis: the **plugin profile** — `lean` vs `full` marketplace plugin sets, toggled with `/profile`, registry at `scripts/lanes/plugin-profiles.json`. The registry's always-on `base` carries `lean-skills@himmel` (HIMMEL-3064: a vendored subset of upstream workflow skills, replacing two fat always-on upstream plugins) and `i-have-adhd@himmel` (HIMMEL-5239: a pinned vendored output-shaping skill; its always-on flag file is created by the installer and updater unless `HIMMEL_NO_ADHD_ALWAYS=1`); the separate `design` plugin profile opts in the HTML/UI design kit per-dispatch instead.
+A fifth, unrelated axis: the **plugin profile** — `lean` vs `full` marketplace plugin sets, toggled with `/profile`, registry at `scripts/lanes/plugin-profiles.json`. The registry's always-on `base` carries `lean-skills@himmel` (vendored workflow skills) and `i-have-adhd@himmel` (a vendored output-shaping skill; the installer and updater create its always-on flag file unless `HIMMEL_NO_ADHD_ALWAYS=1`); the separate `design` plugin profile opts in the HTML/UI design kit per-dispatch instead.
 
 Full walkthrough plus the adaptation checklist for a non-himmel repo: [docs/setup/install.md](docs/setup/install.md). Coming from an older himmel install: [docs/setup/migrating.md](docs/setup/migrating.md).
 
@@ -33,7 +33,7 @@ Full walkthrough plus the adaptation checklist for a non-himmel repo: [docs/setu
 - `node scripts/himmelctl/bin.js uninstall` — symmetric offboarding, both scopes.
 - `/luna-upgrade` — upgrade a companion vault to the current template.
 
-All four lifecycle paths: [docs/setup/updating.md](docs/setup/updating.md).
+All five paths: [docs/setup/updating.md](docs/setup/updating.md).
 
 ## Enforcement
 
@@ -54,7 +54,7 @@ Data egress from graph extraction is fenced by one policy file, `scripts/guardra
 - [docs/setup/new-machine.md](docs/setup/new-machine.md) — fresh-machine setup and the contributor path.
 - [.env.example](.env.example) — every operator flag, grouped by how it reaches code.
 - [marketplace/plugins/handover/README.md](marketplace/plugins/handover/README.md) — cross-session handover state.
-- [himmel-bus](marketplace/plugins/himmel-bus/) — local message storage for himmel sessions.
+- [docs/himmelctl.md](docs/himmelctl.md) · [docs/cadences.md](docs/cadences.md) · [docs/himmel-bus.md](docs/himmel-bus.md) — `himmelctl` verbs, recurring jobs, the local session bus.
 - [marketplace/plugins/shadcn-mcp/README.md](marketplace/plugins/shadcn-mcp/README.md) — shadcn/ui registry MCP wrapper for the design plugin profile.
-- [docs/telegram-bridge.md](docs/telegram-bridge.md) · [docs/hermes-runbook.md](docs/hermes-runbook.md) · [docs/glm-offload.md](docs/glm-offload.md) — optional remote-control and alternate-model lanes.
+- [docs/telegram-bridge.md](docs/telegram-bridge.md) · [docs/hermes-runbook.md](docs/hermes-runbook.md) · [docs/launchers.md](docs/launchers.md) — optional remote control and alternate-model launchers.
 - [docs/README.md](docs/README.md) — the full docs map. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — license attribution.
