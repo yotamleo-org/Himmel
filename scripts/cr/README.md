@@ -9,7 +9,7 @@ REAL throwaway private repo, because the shell suites only ever see a stubbed
 `gh`. It runs on demand and refuses under `CI` / `GITHUB_ACTIONS`; it is not in
 any workflow.
 
-```
+```bash
 HIMMEL_REPO=<primary checkout> bash scripts/cr/live-gate-e2e.sh [--repo owner/name]
 ```
 
