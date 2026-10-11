@@ -2340,10 +2340,12 @@ mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
     HOOK="$MUT5210/hooks/mut.sh"
     run "$(j "unset HIMMEL_CONSOLE_LEG; $cmd")"
     HOOK="$saved"
-    if [ "$RC" != "2" ]; then
-        echo "PASS $label (row no longer denied without that layer)"
+    local dec
+    dec=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)
+    if [ "$RC" = "0" ] && [ "$dec" != "deny" ]; then
+        echo "PASS $label (row allowed without that layer)"
     else
-        echo "FAIL $label -- row still denied with the layer removed: $cmd"
+        echo "FAIL $label -- expected rc=0 and no deny without the layer, got rc=$RC decision='$dec': $cmd"
         FAILED=$((FAILED + 1))
     fi
 }
