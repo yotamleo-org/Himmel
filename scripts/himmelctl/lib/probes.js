@@ -1154,7 +1154,12 @@ function qmdBearerToken(env, ctx) {
 // ss (Windows), a foreign user's pid, or no match all read as "".
 function describeQmdListener(url, env) {
   let port;
-  try { const u = new URL(url); port = u.port || (u.protocol === 'https:' ? '443' : '80'); } catch (e) { return ''; }
+  try {
+    const u = new URL(url);
+    // a remote URL's port says nothing about local processes: never name one
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)) return '';
+    port = u.port || (u.protocol === 'https:' ? '443' : '80');
+  } catch (e) { return ''; }
   const r = spawnProbeSync(env.HIMMEL_DOCTOR_QMD_SS || 'ss', ['-ltnpH'], { env, encoding: 'utf8' });
   if (r.error || r.status !== 0) return '';
   for (const line of String(r.stdout || '').split(/\r?\n/)) {
