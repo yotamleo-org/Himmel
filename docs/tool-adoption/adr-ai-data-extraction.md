@@ -35,11 +35,11 @@ counts.
 - Control: a plain Python `socket.connect` under
   `strace -f -e trace=network` logged 2 network syscalls (socket, connect), so
   a zero result is not vacuous.
-- `extract_codex.py` over the copied Codex sample under the same strace: rc 0,
-  **0** network syscalls.
-- **Not verified:** `extract_claude_code.py` was not executed on the VM (the
-  Claude samples were not copied). Its no-network claim rests on the source
-  read only.
+- Both extractors over the 4 copied sessions (2 Claude Code, 2 Codex) under
+  the same strace: rc 0, **0** network syscalls each.
+- Run quirk: `extract_claude_code.py` finds `~/.claude` only when `~/.config`
+  or `~/.local/share` exists (the home-dir check sits inside that loop). On a
+  home without them it prints "No Claude Code installations found" and exits 0.
 
 ### 2. The Codex parser is stale against current Codex rollouts
 
@@ -63,6 +63,13 @@ messages as `response_item/message` and tool calls as `function_call` and
 `custom_tool_call`. A session with no recognized message returns nothing:
 **1 of 163 rollouts yields a conversation**, and that one has no tool
 records. Denials, turn counts and token usage are all dropped.
+
+VM run, 2 Codex sessions: 2 files found, 1 conversation (2 messages, 0 tool
+records). The second session (16 records: 6 `response_item/message`,
+1 `custom_tool_call`, 1 `token_usage_record`) produced nothing.
+VM run, 2 Claude Code sessions: 2 conversations, 7 messages from 10 `user` /
+`assistant` records (records with no text and no tool_use are not emitted);
+tool use was captured for 1 conversation.
 
 ### 3. Field comparison with leg-digest
 
