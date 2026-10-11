@@ -42,5 +42,18 @@ cmp -s "$A1" "$B"; cmp_rc=$?
 bash "$PS" no-such-profile >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "T5 unknown profile fails closed (rc=2)" || bad "T5 rc=$rc"
 
+# HIMMEL-5310: --mcp-config resolves the profile's mcpServers allowlist to a
+# content-addressed --mcp-config file; a profile with no allowlist prints nothing.
+M=$(bash "$PS" console --mcp-config); rc=$?
+[ "$rc" = 0 ] && ok "T6 console --mcp-config rc=0" || bad "T6 rc=$rc"
+case "$M" in */console.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
+if [ -f "$M" ] && grep -q '"qmd"' "$M" && grep -q '"himmel-bus"' "$M" && ! grep -q '"graphify"' "$M"; then
+    ok "T6 file holds exactly the profile's servers (qmd, himmel-bus; no graphify)"
+else bad "T6 file content wrong: $M"; fi
+N=$(bash "$PS" user --mcp-config); rc=$?
+[ "$rc" = 0 ] && [ -z "$N" ] && ok "T7 profile without mcpServers: empty output, rc=0" || bad "T7 rc=$rc out=[$N]"
+bash "$PS" no-such-profile --mcp-config >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "T8 unknown profile --mcp-config fails closed (rc=2)" || bad "T8 rc=$rc"
+
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"
