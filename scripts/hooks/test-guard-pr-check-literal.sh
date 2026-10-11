@@ -2011,7 +2011,11 @@ for v in \
     "git log --grep='a.*b' --format='%h %s'" \
     "git commit -m 'what? \$x *'" \
     'git -c user.name=x commit -m y' \
-    "git config user.name 'a?b'"; do
+    "git config user.name 'a?b'" \
+    "git log --oneline -- 'scripts/*.sh'" \
+    "git diff --stat '*.md'" \
+    "git diff --stat 'docs/[a-c]*.md'" \
+    "git log --oneline 'scripts/*.sh'"; do
     run "HIMMEL-5170 j2353d control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 

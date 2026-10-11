@@ -1113,7 +1113,7 @@ meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
     return 1
 }
 seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
-    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0
+    local i=$1 e=$2 w v opt c=-1 g=-1 sub='' key='' nv=0 exempt=0 rd=0
     local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
     while [ "$i" -lt "$e" ]; do
         w=${ST_W[i]}
@@ -1167,6 +1167,11 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
         return 1
     fi
     case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    # A read-only subcommand: only --opt=value and -O are values; a word after a
+    # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
+    case "$sub" in
+        log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
+    esac
     while [ "$i" -lt "$e" ]; do
         w=${ST_W[i]}
         [ "$w" = -- ] && break
@@ -1175,7 +1180,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             --?*=*) opt=${w%%=*}; v=${w#*=} ;;
             -O) opt=-O; v=${ST_W[i + 1]:-} ;;
             -O?*) opt=-O; v=${w#-O} ;;
-            --?*) opt=$w; v=${ST_W[i + 1]:-} ;;
+            --?*) [ "$rd" = 1 ] || { opt=$w; v=${ST_W[i + 1]:-}; } ;;
         esac
         # A following option word is another option, not this one's value.
         case "$w" in --?*=* | -O?*) ;; *) case "$v" in -*) v='' ;; esac ;; esac
