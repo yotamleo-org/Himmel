@@ -137,13 +137,52 @@ done
 cfg '{"vm":{"mode":"remote","remote":{"ssh":"ops@h","identity":null}}}'
 check "identity null -> the default" "$(printf 'ops@h\t22\t%s' "$T/home/.ssh/id_ed25519")" 0 target
 
-echo "== J1947b shapes: a float port is an error; a trailing x1c is stripped (both sides agree)"
+echo "== HIMMEL-4636: one vm.remote character rule, no trimming (the JS validator uses the same class)"
+bs=$'\\'
+tilde='~'
+jcfg_ssh() { cfg "$(printf '{"vm":{"mode":"remote","remote":{"ssh":"%s"}}}' "$1")"; }
+jcfg_ident() { cfg "$(printf '{"vm":{"mode":"remote","remote":{"ssh":"ops@h","identity":"%s"}}}' "$1")"; }
 cfg '{"vm":{"mode":"remote","remote":{"ssh":"ops@h","port":22.0}}}'
 check "float port 22.0 -> fix-config" "$bad_route" 2 route
-cfg '{"vm":{"mode":"remote","remote":{"ssh":"ops@h\u001c"}}}'
-check "trailing \\x1c ssh -> stripped" "remote-vm ops@h:22" 0 route
-cfg '{"vm":{"mode":"remote","remote":{"ssh":"ops@h\u0085"}}}'
-check "trailing \\x85 ssh -> stripped" "remote-vm ops@h:22" 0 route
+for ch in 001c 001d 001e 001f 0085 feff 00a0 2028 2029 007f 0000 0009 000a 3000 200b; do
+    jcfg_ssh "ops@h${bs}u$ch"
+    check "ssh with trailing U+$ch -> fix-config, not stripped" "$bad_route" 2 route
+    jcfg_ssh "ops@${bs}u${ch}h"
+    check "ssh with inner U+$ch -> fix-config" "$bad_route" 2 route
+    jcfg_ident "/k${bs}u${ch}x"
+    check "identity with U+$ch -> fix-config" "$bad_route" 2 route
+done
+jcfg_ssh " ops@h"
+check "leading space ssh -> fix-config, not stripped" "$bad_route" 2 route
+
+echo "== HIMMEL-4636: a quote in an identity is one error for ssh and rsync -e"
+for ident in "${bs}\"/keys/k${bs}\"" "'/keys/k'" "/keys/k'" "$tilde/${bs}\".ssh${bs}\"/k"; do
+    jcfg_ident "$ident"
+    check "quoted identity $ident -> fix-config" "$bad_route" 2 route
+done
+
+echo "== HIMMEL-4636: HOME is validated before the default identity or ~ expands from it"
+printf '{"vm":{"mode":"local"}}\n' > "$T/none.json"
+home_route() { # <name> <HOME value>: a bad HOME is a resolver error (rc 2) whatever the config says
+    local name="$1" out rc
+    out="$(env HOME="$2" HIMMEL_VM_MODE_CONFIG="$T/none.json" bash "$LIB" route 2>&1)"; rc=$?
+    case "$out" in "fix-config: HOME is not an absolute, existing directory"*) ok=1 ;; *) ok=0 ;; esac
+    if [ "$rc" = 2 ] && [ "$ok" = 1 ]; then pass "$name"; else fail "$name: rc=$rc '$out'"; fi
+}
+home_route "HOME relative" "relative/home"
+home_route "HOME empty" ""
+home_route "HOME missing dir" "$T/no-such-home"
+mkdir -p "$T/home$(printf '\037')x" "$T/home$(printf '\302\205')x"
+home_route "HOME control byte (US)" "$T/home$(printf '\037')x"
+home_route "HOME C1 control (NEL)" "$T/home$(printf '\302\205')x"
+: > "$T/a-file"
+home_route "HOME is a file" "$T/a-file"
+out="$(env -u HOME HIMMEL_VM_MODE_CONFIG="$T/none.json" bash "$LIB" route 2>&1)"; rc=$?
+case "$out" in "fix-config: HOME is not an absolute, existing directory"*) ok=1 ;; *) ok=0 ;; esac
+if [ "$rc" = 2 ] && [ "$ok" = 1 ]; then pass "HOME unset"; else fail "HOME unset: rc=$rc '$out'"; fi
+out="$(env HOME="$T/home" HIMMEL_VM_MODE_CONFIG="$T/none.json" bash "$LIB" target 2>&1)"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "$(printf 'localhost\t2222\t%s' "$T/home/.ssh/id_ed25519")" ]; then pass "valid HOME keeps the local default identity"
+else fail "valid HOME default identity: rc=$rc '$out'"; fi
 
 rm -f "$T/home/.himmel/config.json"; mkdir "$T/home/.himmel/config.json"
 check_mode_err "config path is a directory -> none"

@@ -76,8 +76,26 @@ remote-ident-null|{"mode":"remote","remote":{"ssh":"u@h","identity":null}}
 remote-ident-star|{"mode":"remote","remote":{"ssh":"u@h","identity":"~/.ssh/k*"}}
 remote-ident-qmark|{"mode":"remote","remote":{"ssh":"u@h","identity":"/k?"}}
 remote-ident-bracket|{"mode":"remote","remote":{"ssh":"u@h","identity":"/keys/[ab]"}}
+remote-ssh-mid-fs|{"mode":"remote","remote":{"ssh":"u@\u001ch"}}
+remote-ssh-mid-gs|{"mode":"remote","remote":{"ssh":"u@\u001dh"}}
+remote-ssh-mid-rs|{"mode":"remote","remote":{"ssh":"u@\u001eh"}}
+remote-ssh-mid-us|{"mode":"remote","remote":{"ssh":"u@\u001fh"}}
+remote-ssh-mid-nel|{"mode":"remote","remote":{"ssh":"u@\u0085h"}}
+remote-ssh-mid-bom|{"mode":"remote","remote":{"ssh":"u@﻿h"}}
+remote-ssh-mid-nbsp|{"mode":"remote","remote":{"ssh":"u@ h"}}
+remote-ssh-mid-ls|{"mode":"remote","remote":{"ssh":"u@ h"}}
+remote-ssh-mid-del|{"mode":"remote","remote":{"ssh":"u@\u007fh"}}
+remote-ssh-mid-nul|{"mode":"remote","remote":{"ssh":"u@\u0000h"}}
 remote-ssh-trailing-fs|{"mode":"remote","remote":{"ssh":"u@h\u001c"}}
 remote-ssh-trailing-nel|{"mode":"remote","remote":{"ssh":"u@h\u0085"}}
+remote-ssh-trailing-bom|{"mode":"remote","remote":{"ssh":"u@h﻿"}}
+remote-ssh-leading-space|{"mode":"remote","remote":{"ssh":" u@h"}}
+remote-ident-mid-fs|{"mode":"remote","remote":{"ssh":"u@h","identity":"/k\u001cx"}}
+remote-ident-mid-nel|{"mode":"remote","remote":{"ssh":"u@h","identity":"/k\u0085x"}}
+remote-ident-mid-bom|{"mode":"remote","remote":{"ssh":"u@h","identity":"/k﻿x"}}
+remote-ident-dquote|{"mode":"remote","remote":{"ssh":"u@h","identity":"\"/keys/k\""}}
+remote-ident-squote|{"mode":"remote","remote":{"ssh":"u@h","identity":"'/keys/k'"}}
+remote-ident-tilde-dquote|{"mode":"remote","remote":{"ssh":"u@h","identity":"~/\".ssh\"/k"}}
 local-ignores-bad-remote|{"mode":"local","remote":{"ssh":"-x"}}'
 n=0
 while IFS='|' read -r name vmjson; do
@@ -285,11 +303,9 @@ ok "d — a remote answer that omits port/identity drops the previous target's"
 
 # ── e. the resolver decides, on the config as written (J1947 B1) ─────────────
 # A config the JS validator accepts but the resolver rejects (rc 2): a JSON
-# float port, and an ssh target with an interior \x1c (Python isspace, JS \s
-# not). A vm answer equal to it leaves the file as it is, so vault-stall must
-# be refused as a config error — interactively and via --from-profile.
+# float port. A vm answer equal to it leaves the file as it is, so vault-stall
+# must be refused as a config error — interactively and via --from-profile.
 float_cfg='{"vm":{"mode":"remote","remote":{"ssh":"u@h","port":22.0}}}'
-fs_cfg='{"vm":{"mode":"remote","remote":{"ssh":"u\u001c@h"}}}'
 askcad_doc() { # <answer-json> -> {n, vs}; doc = the wizard's own read of its config
   node -e '
     const w = require(process.argv[1]);
@@ -303,9 +319,8 @@ printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 printf '%s\n' "$float_cfg" > "$HIMMEL_LUNA_CONFIG_PATH"
 got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~/.ssh/id_ed25519"}}')
 [ "$got" = '{"n":2,"vs":"off"}' ] || fail "e: interactive float port — vault-stall must be refused as a config error: $got"
-printf '%s\n' "$fs_cfg" > "$HIMMEL_LUNA_CONFIG_PATH"
-got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u\u001c@h","port":22,"identity":"~/.ssh/id_ed25519"}}')
-[ "$got" = '{"n":2,"vs":"off"}' ] || fail "e: interactive \\x1c ssh — vault-stall must be refused as a config error: $got"
+# (the interior-\x1c ssh row left this section in HIMMEL-4636: the JS validator
+# now rejects it too, so the wizard cannot read such a config at all — table a)
 # control: the same answer over an integer port arms
 printf '{"vm":{"mode":"remote","remote":{"ssh":"u@h","port":22}}}\n' > "$HIMMEL_LUNA_CONFIG_PATH"
 got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~/.ssh/id_ed25519"}}')
@@ -314,11 +329,7 @@ got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~
 SEED="$float_seed"; mkprofile '{"mode":"remote","remote":{"ssh":"u@h","port":22}}'; runprofile; SEED=
 [ ! -f "$work/marker" ] || fail "e: --from-profile float port — vault-stall must NOT be armed: $out"
 printf '%s' "$out" | grep -qF 'vm.mode config error' || fail "e: --from-profile float port — no config-error refusal: $out"
-# --from-profile: a profile answer the resolver rejects once written
-mkprofile '{"mode":"remote","remote":{"ssh":"u\u001c@h"}}'; runprofile
-[ ! -f "$work/marker" ] || fail "e: --from-profile \\x1c ssh — vault-stall must NOT be armed: $out"
-printf '%s' "$out" | grep -qF 'vm.mode config error' || fail "e: --from-profile \\x1c ssh — no config-error refusal: $out"
-ok "e — vault-stall is refused when the resolver rejects the config as written (float port, \\x1c ssh)"
+ok "e — vault-stall is refused when the resolver rejects the config as written (float port)"
 
 [ "$fails" -eq 0 ] || { echo "$fails check(s) FAILED" >&2; exit 1; }
 echo "PASS"

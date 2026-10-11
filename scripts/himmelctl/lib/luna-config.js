@@ -105,11 +105,29 @@ function scheduleFieldSpec() {
 // a wizard answer that fails it is never written.
 const VM_MODES = ['local', 'remote', 'none'];
 
+// HIMMEL-4636: the ONE character rule for vm.remote.ssh / vm.remote.identity,
+// the same literal class as scripts/lib/vm-mode.sh (neither language's
+// whitespace notion: \s and str.isspace() disagree on \x1c-\x1f, \x85, U+FEFF).
+// Forbidden: C0 controls + space, DEL, C1 controls, NBSP, U+1680, U+2000-200F,
+// U+2028-202F, U+205F-2064, U+3000, U+FEFF. Keep the two classes byte-identical.
+const VM_FORBIDDEN_RE = /[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff]/;
+// an identity also rejects glob metacharacters and either quote (one rule for
+// the direct ssh argv and the rsync -e string)
+const VM_IDENT_FORBIDDEN_RE = /[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff*?\[\x22\x27]/;
+
+// HOME as vm-mode.sh validates it: absolute, no control byte, an existing dir.
+function homeOk(h) {
+  if (typeof h !== 'string' || !path.isAbsolute(h) || /[\x00-\x1f\x7f-\x9f]/.test(h)) return false;
+  try { return fs.statSync(h).isDirectory(); } catch (_) { return false; }
+}
+
 // Python's os.path.expanduser for the two forms the resolver sees: `~` and
-// `~/...` (a `~user` form is left as written).
+// `~/...` (a `~user` form is left as written). Returns null when it needs
+// HOME and HOME is not valid.
 function expandTilde(s) {
   if (s !== '~' && !s.startsWith('~/')) return s;
-  return (process.env.HOME || os.homedir()) + s.slice(1);
+  const home = process.env.HOME;
+  return homeOk(home) ? home + s.slice(1) : null;
 }
 
 function validateVm(vm) {
@@ -120,9 +138,9 @@ function validateVm(vm) {
   const errors = [];
   if (mode !== 'remote') return errors;
   const r = isPlainObject(vm.remote) ? vm.remote : {};
-  const ssh = typeof r.ssh === 'string' ? r.ssh.trim() : '';
+  const ssh = typeof r.ssh === 'string' ? r.ssh : '';
   if (ssh === '') errors.push('vm.remote.ssh: must be a non-empty string when vm.mode=remote');
-  else if (/\s/.test(ssh) || ssh.startsWith('-')) errors.push(`vm.remote.ssh: must not contain whitespace or start with "-" (got ${JSON.stringify(ssh)})`);
+  else if (VM_FORBIDDEN_RE.test(ssh) || ssh.startsWith('-')) errors.push(`vm.remote.ssh: must not contain whitespace, a control character or start with "-" (got ${JSON.stringify(ssh)})`);
   const port = Object.prototype.hasOwnProperty.call(r, 'port') ? r.port : 22;
   const portOk = typeof port === 'number' ? Number.isInteger(port) : (typeof port === 'string' && /^[0-9]+$/.test(port));
   if (!portOk || Number(port) < 1 || Number(port) > 65535) errors.push(`vm.remote.port: must be an integer 1..65535 (got ${JSON.stringify(port)})`);
@@ -132,7 +150,8 @@ function validateVm(vm) {
     errors.push(`vm.remote.identity: must be a non-empty string (got ${JSON.stringify(ident)})`);
   } else {
     const x = expandTilde(ident);
-    if (/[\s*?[]/.test(x) || x.startsWith('-')) errors.push(`vm.remote.identity: must not contain whitespace or a glob character (* ? [) or start with "-" after ~ expansion (got ${JSON.stringify(ident)})`);
+    if (x === null) errors.push('vm.remote.identity: ~ needs HOME to be an absolute, existing directory without control characters');
+    else if (VM_IDENT_FORBIDDEN_RE.test(x) || x.startsWith('-')) errors.push(`vm.remote.identity: must not contain whitespace, a control character, a glob character (* ? [) or a quote, or start with "-" after ~ expansion (got ${JSON.stringify(ident)})`);
   }
   return errors;
 }

@@ -22,13 +22,19 @@
 # Fail closed: a config path that exists but is not a readable file (a
 # directory, a dangling symlink, malformed JSON, no python3, a non-object
 # config or vm), an unknown vm.mode value, remote without vm.remote.ssh, or an
-# ssh/identity carrying whitespace or a leading dash, checked after ~ expands
-# (the VM drivers word-split them into ssh's argv), resolves
+# ssh/identity carrying whitespace, a control character or a leading dash,
+# checked after ~ expands (the VM drivers word-split them into ssh's argv), or
+# a HOME that is not an absolute existing directory free of control bytes,
+# resolves
 # to `none` with a note saying why — a hold is never released on a guess.
 # vm.remote.identity takes its default only when the key is absent or null;
 # any other non-string or empty value is an error, and so is a glob
 # metacharacter (* ? [) in it, which the drivers' unquoted SSH_OPTS (also
-# handed on as an rsync -e string) would expand (HIMMEL-4601).
+# handed on as an rsync -e string) would expand (HIMMEL-4601), and so is a
+# quote (' or ") in it: one rule for the direct ssh argv and rsync -e
+# (HIMMEL-4636). The ssh/identity character class is one explicit list, the
+# same one scripts/himmelctl/lib/luna-config.js validateVm() uses; neither
+# value is trimmed, a leading or trailing space is an error.
 #
 # A resolver error is NOT a configured none (HIMMEL-4597, judge J1932 T1). Both
 # keep every VM-proof hold HELD, but only a configured `none` may offer the
@@ -55,10 +61,23 @@
 # Seam: HIMMEL_VM_MODE_CONFIG overrides the config path (tests use a temp HOME
 # or this; nothing here ever writes the config). Bash 3.2-safe.
 
+# HOME as the default identity and ~ expansion consume it: absolute, an existing
+# directory, no control byte (C0, DEL, or C1 as UTF-8 C2 80..9F) (HIMMEL-4636).
+vm_mode_home_ok() {
+    case "${HOME:-}" in /*) ;; *) return 1 ;; esac
+    [ -d "$HOME" ] || return 1
+    ( LC_ALL=C; case "$HOME" in *[[:cntrl:]]*|*$'\xc2'[$'\x80'-$'\x9f']*) exit 1 ;; esac ) || return 1
+}
+
 vm_mode_load() {
     local cfg="${HIMMEL_VM_MODE_CONFIG:-${HOME:-}/.himmel/config.json}" line
     VM_MODE=local VM_MODE_HOST=localhost VM_MODE_PORT=2222
     VM_MODE_IDENT="${HOME:-}/.ssh/id_ed25519" VM_MODE_NOTE="" VM_MODE_ERROR=""
+    if ! vm_mode_home_ok; then
+        VM_MODE=none VM_MODE_IDENT="" VM_MODE_ERROR=1
+        VM_MODE_NOTE="HOME is not an absolute, existing directory free of control characters"
+        return 0
+    fi
     [ -e "$cfg" ] || [ -L "$cfg" ] || return 0
     if [ ! -f "$cfg" ]; then
         VM_MODE=none VM_MODE_NOTE="$cfg exists but is not a readable file" VM_MODE_ERROR=1
@@ -70,7 +89,11 @@ vm_mode_load() {
     fi
     local out
     out="$(python3 -c '
-import json, os, sys
+import json, os, re, sys
+# HIMMEL-4636: one explicit character class, byte-identical to luna-config.js
+# (neither isspace() nor JS \s: they disagree on \x1c-\x1f, \x85, U+FEFF).
+FORBID = re.compile(r"[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff]")
+FORBID_IDENT = re.compile(r"[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff*?\[\x22\x27]")
 try:
     j = json.load(open(sys.argv[1]))
 except Exception as e:
@@ -85,19 +108,18 @@ print("mode=" + m)
 if m == "remote":
     r = v.get("remote") if isinstance(v.get("remote"), dict) else {}
     ssh = r.get("ssh")
-    if not isinstance(ssh, str) or not ssh.strip():
+    if not isinstance(ssh, str) or not ssh:
         print("mode=none"); print("note=vm.mode=remote but vm.remote.ssh is not set"); sys.exit(0)
-    ssh = ssh.strip()
     port = r.get("port", 22)
     ident = r.get("identity")
     if ident is None:
         ident = "~/.ssh/id_ed25519"
     if isinstance(ident, str):
         ident = os.path.expanduser(ident)
-    bad = (ssh.startswith("-") or any(c.isspace() for c in ssh)
+    bad = (ssh.startswith("-") or FORBID.search(ssh)
            or isinstance(port, bool) or not str(port).isdigit() or not 0 < int(port) < 65536
            or not isinstance(ident, str) or not ident or ident.startswith("-")
-           or any(c.isspace() or c in "*?[" for c in ident))
+           or FORBID_IDENT.search(ident))
     if bad:
         print("mode=none"); print("note=vm.remote has an invalid ssh, port or identity"); sys.exit(0)
     print("host=" + ssh)
