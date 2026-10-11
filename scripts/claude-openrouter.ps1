@@ -474,6 +474,13 @@ $env:ANTHROPIC_DEFAULT_OPUS_MODEL_NAME   = if ($OpenRouterOpus -ceq $OpenRouterM
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.
 $env:CLAUDE_CODE_AUTO_MODE_SERVER = '0'
+# The client classifier's side query carries no reasoning, and the gateway 400s
+# ("Reasoning is mandatory") on mandatory-reasoning slugs (HIMMEL-5248). EXTRA_BODY
+# merges this into every request; the `thinking` shape works, `reasoning.effort` does not.
+# ponytail: the budget also applies to the main loop, so every turn pays up to
+# 2048 thinking tokens, revisit when the classifier side query can carry its own
+# reasoning setting (HIMMEL-5248 upstream issue).
+if (-not $env:CLAUDE_CODE_EXTRA_BODY) { $env:CLAUDE_CODE_EXTRA_BODY = '{"thinking":{"type":"enabled","budget_tokens":2048}}' }
 if ($env:LEG_LANE -eq 'openrouter') {
   [Console]::Error.WriteLine("claude-openrouter: lane=openrouter slug=$OpenRouterModel alias=$($env:ANTHROPIC_MODEL) labels=$orLabel")
 }
