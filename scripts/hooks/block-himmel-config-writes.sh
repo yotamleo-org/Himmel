@@ -99,9 +99,10 @@ esac
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || cmd=""
 [ -n "$cmd" ] || exit 0
-cmd=${cmd//$'\r'/}
 
-lc=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
+# CR is stripped ONLY for the substring detection below. The command-word
+# allowlist sees the raw text, so a program named `cat<CR>` is not `cat`.
+lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
 case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; esac
 
@@ -115,6 +116,7 @@ clauses=${cmd//;/$'\n'}
 clauses=${clauses//|/$'\n'}
 clauses=${clauses//&/$'\n'}
 while IFS= read -r clause || [ -n "$clause" ]; do
+    clause=${clause%$'\r'} # a CRLF line terminator only; a CR inside a word stays and denies
     set -f
     # shellcheck disable=SC2086 # intentional word split, globbing off via set -f
     set -- $clause
