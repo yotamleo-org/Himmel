@@ -2295,6 +2295,71 @@ for F in "rg -x needle -- '$OBF'" \
     assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 
+# 5210 round 2 (judge j2366a): an option word BUILT by brace or glob expansion
+# is invisible to the word screen, so a relieved stage carrying an unquoted
+# word that can expand into one voids relief. The glob rows run in a temp cwd
+# holding a file named --hostname-bin, the setup that makes them real.
+G5210=$(mktemp -d) || exit 1
+: > "$G5210/--hostname-bin"
+pushd "$G5210" >/dev/null || exit 1
+for F in "rg {--hostname-bin,$OBF} --color=always --hyperlink-format=default x ." \
+         "rg {--pre,$OBF} x README.md" \
+         "rg --hostname-bi[n]=$OBF --hyperlink-format=default x ." \
+         "rg --pr[e] $OBF x ." \
+         "rg [-]-pre $OBF x ." \
+         "rg --hostname-bi?=$OBF x ." \
+         "rg -{-pre,x} $OBF x ." \
+         "rg needle \"\$(printf y)\" --hostname-bin='$OBF' x ." \
+         "rg \\--hostname-bin='$OBF' x ."; do
+    assert_deny "5210 brace/glob-built option word voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+for F in "rg --glob '*.md' needle -- '$OBF'" \
+         "rg --glob=*.md needle -- '$OBF'" \
+         "rg -n needle -- '$OBF'" \
+         "rg --hyperlink-format default needle -- '$OBF'"; do
+    assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+popd >/dev/null || exit 1
+rm -rf "$G5210"
+
+# Mutation rows: the hostname-bin fix sits in three layers (the rg classifier,
+# the xopt case list, the brace/glob screen). Each mutant drops ONE layer; its
+# own row must stop being denied, so no layer is dead weight a row never reads.
+MUT5210=$(mktemp -d) || exit 1
+mkdir -p "$MUT5210/hooks"
+cp "$REGISTRY" "$MUT5210/chokepoints.json"
+mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
+    local label="$1" expr="$2" cmd="$3" saved="$HOOK"
+    sed "$expr" "$HOOK" > "$MUT5210/hooks/mut.sh"
+    CASES=$((CASES + 1))
+    if cmp -s "$HOOK" "$MUT5210/hooks/mut.sh"; then
+        echo "FAIL $label -- mutation did not change the hook (vacuous)"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+    HOOK="$MUT5210/hooks/mut.sh"
+    run "$(j "unset HIMMEL_CONSOLE_LEG; $cmd")"
+    HOOK="$saved"
+    if [ "$RC" != "2" ]; then
+        echo "PASS $label (row no longer denied without that layer)"
+    else
+        echo "FAIL $label -- row still denied with the layer removed: $cmd"
+        FAILED=$((FAILED + 1))
+    fi
+}
+# shellcheck disable=SC2016 # the sed expressions are literal; $x and ${ST[j]} are hook text
+mut_row "5210 mutant: rg classifier regex dropped" \
+    's/^\( *\)rg) \[\[ \$x =~ .*$/\1rg) cls=2 ;;/' \
+    "rg \\--hostname-bin='$OBF' x ."
+mut_row "5210 mutant: xopt --hostname-bin case dropped" \
+    's/|--hostname-bin|--hostname-bin=\*//' \
+    "rg needle \"\$(printf y)\" --hostname-bin='$OBF' x ."
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: brace/glob screen dropped" \
+    's/|| pobf_xglob "\${ST\[j\]}"//' \
+    "rg --hostname-bi[n]=$OBF x ."
+rm -rf "$MUT5210"
+
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     echo "PASS settings.json wiring present"

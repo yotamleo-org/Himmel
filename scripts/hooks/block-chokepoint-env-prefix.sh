@@ -1233,6 +1233,32 @@ pobf_xopt_scan() {
     done
     return 1
 }
+# pobf_xglob <raw stage text> -- HIMMEL-5210: rc 0 (void relief) when an
+# UNQUOTED word can expand into an option word the screen above never saw:
+# brace expansion (`{--hostname-bin,CMD}`) or a glob matching a file named like
+# the option (`--hostname-bi[n]`). Judged on the raw stage text, where a quoted
+# body is already an opaque token, so `--glob '*.md'` and `--glob=*.md` stay
+# relieved. Fail-closed on a word that starts with { [ ? * , starts with - and
+# carries one before its first =, or holds a { followed by - (or by - after a
+# comma). The bare shell words [ ] { } [[ ]] are not words that expand.
+# ponytail: any stage with relief and such a word is over-denied (it only
+# matters when the command already names an obfuscated path), HIMMEL-5210.
+pobf_xglob() {
+    local w n rc=1 fl=1
+    case $- in *f*) fl=0 ;; esac
+    set -f
+    for w in ${1//[<>]/ }; do
+        case "$w" in '['|']'|'{'|'}'|'[['|']]') continue ;; esac
+        n=${w%%=*}
+        case "$w" in
+            '{'*|'['*|'?'*|'*'*) rc=0; break ;;
+        esac
+        if [[ $n =~ ^-.*[\{\[?*] ]]; then rc=0; break; fi
+        if [[ $w =~ \{(-|[^}]*,-) ]]; then rc=0; break; fi
+    done
+    [ "$fl" = 1 ] && set +f
+    return "$rc"
+}
 
 # Every command name pobf_relief gives relief to (plus sed/awk, which lost
 # theirs); a function may not shadow one.
@@ -1592,8 +1618,9 @@ pobf_relief() {
             # rg: only the exact --pre / --hostname-bin (=CMD or a separate
             # value) run a program (--pretty and --pre-glob do not; rg 15.2.0
             # has no other COMMAND option and does not abbreviate); pobf_xopt
-            # below also voids on a word spelled so.
-            rg) [[ $x =~ (^|[[:space:]])--(pre|hostname-bin)([[:space:]=]|$) ]] || cls=2 ;;
+            # below also voids on a word spelled so. Unanchored: a brace
+            # (`{--pre,CMD}`) or a backslash (`\--pre`) builds the word.
+            rg) [[ $x =~ --(pre|hostname-bin)([^[:alnum:]-]|$) ]] || cls=2 ;;
             python|python3|node) [[ $x =~ $re_ix ]] || cls=1 ;;
             # perl's and ruby's open run a command when the name starts/ends with |.
             perl|ruby) [[ $x =~ $re_ix || $x =~ open ]] || cls=1 ;;
@@ -1612,7 +1639,7 @@ pobf_relief() {
         fi
         # HIMMEL-4402: any relieved stage, and a continuation (which inherits
         # its parent's class), voids on an option that takes an executable.
-        [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr"; } && cls=0
+        [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr" || pobf_xglob "${ST[j]}"; } && cls=0
         CL[j]=$cls; CW[j]=$c; C2[j]=$c2
         [ "$cls" = 2 ] && FL[j]=1
         j=$((j + 1))
