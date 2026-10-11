@@ -2164,7 +2164,7 @@ assert_eq "$cired_rc" "0" "a failed check-run at the reviewed head buys one post
 assert_has "$cired_out" "pr-check: delta round 5 on cired (from $postcap_d_head)" "the CI-red round names its scope"
 assert_has "$(cat "$git_dir/cr-review-rounds/cired.delta" 2>/dev/null)" "$postcap_d_head $postcap_f_head postcap-ci-red" "the CI-red round is recorded in .delta"
 assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" '"kind":"ci-red-unlock","ts"' "the unlock is a ledger row"
-assert_has "$(grep '"ci-red-unlock"' "$git_dir/cr-critic-scores.jsonl")" '"checks":["shell-unit (2)"]' "the ledger row names the failing check"
+assert_has "$(grep '"ci-red-unlock"' "$git_dir/cr-critic-scores.jsonl")" '"reason":"shell-unit (2)"' "the ledger row names the failing check"
 # At most one per PR: a further commit on a still-red head gets nothing.
 cired_rows "$RED"
 printf 'again\n' >> "$repo/cired.txt"

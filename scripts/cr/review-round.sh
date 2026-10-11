@@ -807,11 +807,9 @@ EOF
 # ignored by every gate and scorecard reader.
 ci_red_record() {
     printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_state" || return 1
-    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" FROM="$delta_from" TO="$delta_to" NAMES="$ci_red_names" node -e '
-const fs = require("fs"), e = process.env;
-fs.appendFileSync(e.LEDGER, JSON.stringify({ kind: "ci-red-unlock", ts: new Date().toISOString(), branch: e.BRANCH,
-  head: e.FROM, to_head: e.TO, checks: e.NAMES.split(",") }) + "\n");
-' || return 1
+    CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$SCRIPT_DIR/ledger-append.sh" ci-red-unlock \
+        --branch "$branch" --head "$delta_from" --reason "$ci_red_names" \
+        --detail "round runs on $delta_to" || return 1
 }
 
 # HIMMEL-4600: decide whether the round after the third may run, as the one
