@@ -297,7 +297,7 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
     id="${line%%|||*}"
     build "$line" "printf PAYLOAD_RAN" || continue
     case "$id" in
-      zsh-*) command -v zsh >/dev/null 2>&1 || { echo "SKIP shape $id: zsh is not installed"; continue; }
+      zsh-*) command -v zsh >/dev/null 2>&1 || { echo "SKIP shape $id: zsh is not installed"; ASSIGN_SKIP="$ASSIGN_SKIP $id"; continue; }
              got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
       *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R bash -c "$BUILT" 2>/dev/null </dev/null) ;;
     esac
@@ -308,7 +308,7 @@ if bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- bash -c 'exit 0' >/dev/null 2
     # second probe: a payload that LEADS with VAR=value (an env prefix)
     build "$line" "ZZ_ASSIGN=1 printf PAYLOAD_RAN" || continue
     case "$id" in
-      zsh-*) command -v zsh >/dev/null 2>&1 || continue
+      zsh-*) command -v zsh >/dev/null 2>&1 || { ASSIGN_SKIP="$ASSIGN_SKIP $id"; continue; }
              got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R zsh -fc "$BUILT" 2>/dev/null </dev/null) ;;
       *) got=$(bash "$REPO_ROOT/scripts/lib/sandbox-run.sh" -- env -u V -u Z -u Q -u R bash -c "$BUILT" 2>/dev/null </dev/null) ;;
     esac
