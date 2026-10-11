@@ -149,6 +149,8 @@ _r5098 "205e var then bash -c"                       block 'm=$(cat @W@/msg); ba
 _r5098 "205f reader after a semicolon in the substitution" block "m=\$(printf ''; cat @W@/msg); eval \"\$m\""
 _r5098 "205g reader after a semicolon, backticks"    block "m=\`printf ''; cat @W@/msg\`; eval \"\$m\""
 _r5098 "205h reader after a semicolon, bash -c"      block "m=\$(echo x; git log -1 --format=%B); bash -c \"\$m\""
+_r5098 "205i quoted substitution, reader after a semicolon"  block "m=\"\$(printf ''; cat @W@/msg)\"; eval \"\$m\""
+_r5098 "205j quoted backticks, reader after a semicolon"  block 'm="`printf x; cat @W@/msg`"; eval "$m"'
 _r5098 "206a source of data, shell word as argument" block "source \"\$(cat @W@/msg)\" bash"
 _r5098 "206b dot of data, shell word as argument"    block ". \"\$(git log -1 --format=%B)\" sh"
 _r5098 "206c bash option then <(cat file)"           block 'bash --noprofile <(cat @W@/msg)'

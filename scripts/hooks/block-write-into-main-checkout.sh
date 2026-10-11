@@ -3340,7 +3340,10 @@ _bwimc_body_var_from_data() {
             # one that opens the value is scanned to the end of the command
             # (coarse, fail closed).
             # shellcheck disable=SC2016  # literal `$(` is the glob pattern
-            case "$seg" in '$('*|'`'*) line="$seg" ;; esac
+            # A quote before it (`m="$(…)"`) does not hide it.
+            case "$seg" in
+                '$('*|'`'*|'"$('*|'"`'*|"'"'$('*|"'"'`'*) line="$seg" ;;
+            esac
             _bwimc_text_reads_data "$line" && return 0
         done
         if [[ "$full" =~ (^|[[:space:];\&\|\(])(read|mapfile|readarray)[[:space:]]([^;\&\|]*[[:space:]])?"$name"([[:space:];\&\|\)]|$) ]]; then
