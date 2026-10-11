@@ -1149,7 +1149,7 @@ function qmdBearerToken(env, ctx) {
   return r.error || r.status !== 0 ? '' : String(r.stdout || '').trim();
 }
 
-// describeQmdListener(url, env) -> ", listener: pid N (cmdline)" or "" — names
+// describeQmdListener(url, env) -> ", listener: pid N (executable)" or "" — names
 // the process on the URL's port from `ss` + /proc, READ ONLY. Best effort: no
 // ss (Windows), a foreign user's pid, or no match all read as "".
 function describeQmdListener(url, env) {
@@ -1170,7 +1170,8 @@ function describeQmdListener(url, env) {
     const m = /pid=([0-9]+)/.exec(line);
     if (!m) return '';
     let cmd = '';
-    try { cmd = fs.readFileSync(`/proc/${m[1]}/cmdline`, 'utf8').split('\0').join(' ').trim(); } catch (e) { cmd = ''; }
+    // executable name only: argv can carry a credential and this detail reaches the status and doctor reports
+    try { cmd = path.basename(fs.readFileSync(`/proc/${m[1]}/cmdline`, 'utf8').split('\0')[0].trim()); } catch (e) { cmd = ''; }
     if (!cmd) { const n = /\(\("([^"]+)"/.exec(line); cmd = n ? n[1] : ''; }
     return `, listener: pid ${m[1]}${cmd ? ` (${cmd})` : ''}`;
   }
