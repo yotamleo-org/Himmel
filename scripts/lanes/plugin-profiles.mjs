@@ -76,7 +76,7 @@ const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-g
 // so this literal carries no ':*' tail at all.
 const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT]);
-const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-e2e', 'lane-review', 'lane-content', 'console-relay']);
+const LEG_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'lane-review', 'lane-content', 'console-relay']);
 
 function validateGateAllow(errors, rules) {
   if (rules === undefined) return; // older custom registries do not opt in

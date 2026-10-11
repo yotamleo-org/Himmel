@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// himmel-bus CLI: register | bind | rebind | adopt | status | peers | send | gc
+// himmel-bus CLI: register | bind | rebind | adopt | status | peers | send | wait | gc
 import { parseArgs } from 'node:util';
 import { constants } from 'node:fs';
 import { readFile, readdir, lstat, mkdtemp, writeFile, rm, stat } from 'node:fs/promises';
@@ -12,16 +12,19 @@ import { openChainFile, withChainLock } from '../../../../scripts/telegram/bus.t
 import * as store from '../lib/store.mjs';
 import * as identity from '../lib/identity.mjs';
 import * as edges from '../lib/edges.mjs';
+import { formatRecord } from '../lib/deliver.mjs';
 
 const USAGE = `usage: bus register <name> --role leg|console|judge|consult [--console <c>] [--pair <leg>] [--predecessor <old>]
        bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
+       bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
        bus status [--unacked] [--for <console>] | gc`;
 
 // Same limits as the MCP server's `send` (spec §4).
 const MAX_BODY = 64 * 1024, INLINE_CAP = 1500, MAX_SUMMARY = 300;
 const GC_AGE_MS = 30 * 24 * 3600e3;
 const EXPIRY_MS = 4 * 3600e3;
+const WAIT_POLL_MS = 500, WAIT_DEFAULT_S = 300, EXIT_TIMEOUT = 3;
 const INBOX_SEND = fileURLToPath(new URL('../../../../scripts/handover/console-kit/inbox-send.sh', import.meta.url));
 
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -100,6 +103,33 @@ async function send(root, to, file, { re, summary, doc }) {
   }
 }
 
+// Blocks until the caller's inbox has a pending message, prints it and consumes
+// it (commit after the print, the delivery hook's at-least-once rule). Exit 3 is
+// a timeout, distinct from every error.
+// ponytail: polls store.pending every 500 ms; an fs.watch wake is HIMMEL-4831 ask 2's upgrade path.
+async function wait(root, timeoutArg) {
+  const arg = timeoutArg ?? String(WAIT_DEFAULT_S);
+  if (!/^[1-9]\d*$/.test(arg)) throw new Error('--timeout must be a positive number of seconds');
+  const seconds = Number(arg);
+  const me = await caller(root);
+  const peers = await identity.loadPeers(root);
+  const owner = peers[me]?.role === 'console' ? undefined : peers[me]?.console;
+  const deadline = Date.now() + seconds * 1000;
+  for (;;) {
+    if (await store.pending(root, me)) {
+      const { records, next, notice } = await store.read(root, me);
+      if (notice) throw new Error(`${notice}; ${me} is halted`);
+      if (records.length) {
+        console.log(records.map(rec => formatRecord(rec, { console: owner })).join('\n'));
+        await store.commit(root, me, next);
+        return;
+      }
+    }
+    if (Date.now() >= deadline) { console.error(`bus: wait timed out after ${seconds}s`); process.exit(EXIT_TIMEOUT); }
+    await new Promise(resolve => setTimeout(resolve, Math.min(WAIT_POLL_MS, Math.max(1, deadline - Date.now()))));
+  }
+}
+
 async function cursorOf(root, name) {
   try { return JSON.parse(await readFile(join(root, 'cur', name), 'utf8')); }
   catch (error) { return error.code === 'ENOENT' ? { k: 0 } : null; }
@@ -160,7 +190,7 @@ async function main() {
     options: {
       role: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
       re: { type: 'string' }, summary: { type: 'string' }, doc: { type: 'string' },
-      unacked: { type: 'boolean' }, for: { type: 'string' },
+      unacked: { type: 'boolean' }, for: { type: 'string' }, timeout: { type: 'string' },
     },
   });
   const [verb, name, extra] = positionals;
@@ -176,6 +206,7 @@ async function main() {
       await rulings(root, { unacked: values.unacked, from: values.for });
       return;
     case 'send': await send(root, name, extra, values); return;
+    case 'wait': await wait(root, values.timeout); return;
     case 'gc': await gc(root); return;
     case 'adopt': case 'peers': {
       // Both act as the calling session: a descendant of a bound claude.

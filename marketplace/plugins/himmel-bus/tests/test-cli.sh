@@ -171,5 +171,28 @@ if [ "$rc" -ne 0 ]; then pass "status --unacked from an unbound process is refus
 out=$("$BUS" status legA 2>&1)
 case "$out" in live|gone) pass "bus status <name> keeps its live/gone meaning" ;; *) fail "status name: $out" ;; esac
 
+echo "== wait (HIMMEL-4831) =="
+"$BUS" register waiter --role leg --console con >/dev/null 2>&1
+t0=$(date +%s)
+out=$(as waiter wait --timeout 1 2>&1); rc=$?
+t1=$(date +%s)
+if [ "$rc" -eq 3 ] && [ $((t1 - t0)) -le 5 ]; then pass "wait on an empty inbox times out with exit 3"; else fail "wait timeout (rc=$rc, $((t1 - t0))s): $out"; fi
+printf 'wake up rule\n' > "$tmp/wbody"
+as con send waiter "$tmp/wbody" >/dev/null 2>&1
+out=$(as waiter wait --timeout 5 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q 'from con' && printf '%s' "$out" | grep -q 'wake up rule'; then pass "wait prints a pending message and exits 0"; else fail "wait receive (rc=$rc): $out"; fi
+out=$(as waiter wait --timeout 1 2>&1); rc=$?
+if [ "$rc" -eq 3 ]; then pass "a printed message is consumed: the next wait times out"; else fail "wait re-delivered (rc=$rc): $out"; fi
+( sleep 1; as con send waiter "$tmp/wbody" >/dev/null 2>&1 ) &
+t0=$(date +%s)
+out=$(as waiter wait --timeout 20 2>&1); rc=$?
+t1=$(date +%s)
+wait
+if [ "$rc" -eq 0 ] && [ $((t1 - t0)) -le 10 ] && printf '%s' "$out" | grep -q 'wake up rule'; then pass "wait blocks, then wakes on a later send"; else fail "wait wake (rc=$rc, $((t1 - t0))s): $out"; fi
+out=$("$BUS" wait --timeout 1 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && printf '%s' "$out" | grep -q 'identity unbound'; then pass "wait from an unbound process is refused, not a timeout"; else fail "unbound wait (rc=$rc): $out"; fi
+out=$(as waiter wait --timeout abc 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && printf '%s' "$out" | grep -q 'positive number of seconds'; then pass "wait refuses a non-numeric --timeout"; else fail "bad timeout (rc=$rc): $out"; fi
+
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"
