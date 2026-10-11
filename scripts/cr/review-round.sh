@@ -746,8 +746,13 @@ ci_red_delta_lines() {
     # HIMMEL-5268: --base-sha is caller input. It must be the very commit this
     # repository resolves as the base (panel-first-pass captures it from the
     # same resolver); a head given as its own base measures a 0-line delta.
-    _cl_want="$(. "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" && . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" \
-        && git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$(default_branch .)")^{commit}")" || return 1
+    _cl_want="$(
+        # shellcheck source=/dev/null
+        . "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" || exit 1
+        # shellcheck source=/dev/null
+        . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" || exit 1
+        git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$(default_branch .)")^{commit}"
+    )" || return 1
     _cl_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || return 1
     [ -n "$_cl_want" ] && [ "$_cl_got" = "$_cl_want" ] || return 1
     _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
