@@ -30,7 +30,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 REPO="yotamleo/himmel-gate-e2e"
 while [ $# -gt 0 ]; do
     case "$1" in
-        --repo) REPO="${2:-}"; shift 2 ;;
+        --repo) [ $# -ge 2 ] || { echo "live-gate-e2e: --repo needs owner/name" >&2; exit 2; }
+            REPO="$2"; shift 2 ;;
         *) echo "usage: live-gate-e2e.sh [--repo <owner/name>]" >&2; exit 2 ;;
     esac
 done
@@ -83,6 +84,8 @@ priv=$(gh repo view "$REPO" --json isPrivate --jq .isPrivate)
 
 step "clone + close leftovers"
 if [ -d "$WORK/.git" ]; then
+    work_nwo=$(git -C "$WORK" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|;s|\.git$||p')
+    [ "$work_nwo" = "$REPO" ] || { echo "live-gate-e2e: $WORK is not a clone of $REPO (origin=${work_nwo:-none}) — refusing to reset it" >&2; exit 2; }
     git -C "$WORK" fetch -q origin && git -C "$WORK" checkout -q main && git -C "$WORK" reset -q --hard origin/main || exit 1
 else
     mkdir -p "$(dirname "$WORK")" && git clone -q "https://github.com/$REPO.git" "$WORK" || exit 1
@@ -156,7 +159,8 @@ state=$(gh pr view "$PR" --repo "$REPO" --json state --jq .state)
 if [ "$state" = "OPEN" ]; then echo "[OK]   PR #$PR still OPEN"; else echo "[FAIL] PR #$PR state=$state"; FAILS=$((FAILS + 1)); fi
 
 step "cleanup: close the canned PR"
-gh pr close "$PR" --repo "$REPO" --delete-branch >/dev/null 2>&1
+if gh pr close "$PR" --repo "$REPO" --delete-branch >/dev/null 2>&1; then echo "[OK]   canned PR #$PR closed"; else
+    echo "[FAIL] could not close PR #$PR — close it by hand: gh pr close $PR --repo $REPO"; FAILS=$((FAILS + 1)); fi
 
 if [ "$FAILS" -eq 0 ]; then echo; echo "LIVE-GATE-E2E PASS"; exit 0; fi
 echo; echo "LIVE-GATE-E2E FAIL ($FAILS)"; exit 1

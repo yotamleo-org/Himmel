@@ -16,8 +16,11 @@ trap 'rm -f "$err"' EXIT
 
 CI=true HIMMEL_REPO=/nonexistent bash "$SELF" 2>"$err"; row "refuses under CI" 2 $? "in CI" "$err"
 GITHUB_ACTIONS=true HIMMEL_REPO=/nonexistent bash "$SELF" 2>"$err"; row "refuses under GITHUB_ACTIONS" 2 $? "in CI" "$err"
-HIMMEL_REPO=/nonexistent bash "$SELF" --repo yotamleo/Himmel 2>"$err"; row "refuses to target himmel" 2 $? "himmel itself" "$err"
-HIMMEL_REPO=/nonexistent bash "$SELF" --repo not-a-repo 2>"$err"; row "refuses a malformed repo" 2 $? "owner/name" "$err"
-HIMMEL_REPO=/nonexistent bash "$SELF" --repo yotamleo/x 2>"$err"; row "refuses without an anchor" 2 $? "HIMMEL_REPO" "$err"
+# The next rows must reach their own guard, so they run with CI cleared (this
+# suite itself runs under CI=true in the shell-unit shards).
+env -u CI -u GITHUB_ACTIONS HIMMEL_REPO=/nonexistent bash "$SELF" --repo yotamleo/Himmel 2>"$err"; row "refuses to target himmel" 2 $? "himmel itself" "$err"
+env -u CI -u GITHUB_ACTIONS HIMMEL_REPO=/nonexistent bash "$SELF" --repo not-a-repo 2>"$err"; row "refuses a malformed repo" 2 $? "owner/name" "$err"
+env -u CI -u GITHUB_ACTIONS HIMMEL_REPO=/nonexistent bash "$SELF" --repo yotamleo/x 2>"$err"; row "refuses without an anchor" 2 $? "HIMMEL_REPO" "$err"
+env -u CI -u GITHUB_ACTIONS HIMMEL_REPO=/nonexistent bash "$SELF" --repo 2>"$err"; row "refuses --repo with no value" 2 $? "needs owner/name" "$err"
 
 if [ "$fail" -eq 0 ]; then echo "PASS"; else echo "FAIL"; exit 1; fi
