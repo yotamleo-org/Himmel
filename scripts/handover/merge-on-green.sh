@@ -176,8 +176,10 @@
 #       from the freshly fetched base tip's own copy against the certified PR
 #       head, says it is not a version bump over the live base (a sibling PR
 #       bumped the same plugin first). Also when the file list, the base or head
-#       fetch, the checker blobs or the scratch repo cannot be read, or the
-#       fetched head is not the certified sha. After the main-red gate, before
+#       fetch, the checker blobs or the scratch repo cannot be read, a checker
+#       blob is empty (HIMMEL-5203), the checker exits 0 without its fixed
+#       success line (empty or unrelated output, HIMMEL-5208), or the fetched
+#       head is not the certified sha. After the main-red gate, before
 #       any mutation, on --dry-run too.
 #
 # Environment:
@@ -1121,6 +1123,14 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     if [ "$bp_chk_rc" -ne 0 ]; then
         bump_refuse "PR #$pr_num is not a plugin version bump against the live $default_branch tip ${bp_base:0:12}: $bp_out" "phase=check rc=$bp_chk_rc base=$bp_base"
     fi
+    # HIMMEL-5208: exit 0 alone is no verdict (a newline-only or shebang-only
+    # blob exits 0 too). Require one of the checker's fixed success lines,
+    # whole-line, in its output; empty or unrelated output fails closed.
+    bp_pfx="check-plugin-drift --bump-required: "
+    case $'\n'"$bp_out"$'\n' in
+        *$'\n'"${bp_pfx}every changed plugin bumped its version"$'\n'* | *$'\n'"${bp_pfx}no plugin files changed"$'\n'*) ;;
+        *) bump_refuse "the base-tip checker exited 0 without its success line, so it gave no verdict on PR #$pr_num" "phase=checker-blob blob=scripts/check-plugin-drift.sh no-success-line=1 base=$bp_base" ;;
+    esac
     bp_cleanup
     audit "PLUGIN-BUMP ok repo=$nwo pr=#$pr_num sha=$sha base=$bp_base"
 fi

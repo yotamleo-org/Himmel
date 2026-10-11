@@ -4099,6 +4099,14 @@ bp_setup() {
     local bp_b; local -a bp_add=()
     for bp_b in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
         [ "${MOG_BUMP_EMPTY:-}" != "$bp_b" ] || : > "$a/$bp_b"
+        # HIMMEL-5208: MOG_BUMP_STUBCHK=silent|noise commits a non-empty base-tip
+        # checker that exits 0 with no output / with unrelated output.
+        if [ "$bp_b" = scripts/check-plugin-drift.sh ]; then
+            case "${MOG_BUMP_STUBCHK:-}" in
+                silent) printf '\n' > "$a/$bp_b" ;;
+                noise) printf '#!/usr/bin/env bash\necho "all good"\nexit 0\n' > "$a/$bp_b" ;;
+            esac
+        fi
         if [ "${MOG_BUMP_MISSING:-}" = "$bp_b" ]; then rm -f "$a/$bp_b"; else bp_add+=("$bp_b"); fi
     done
     $g -C "$a" add "${bp_add[@]}" marketplace && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
@@ -4172,6 +4180,17 @@ assert_audit_has "5203-b: audited as a checker-blob refusal" "phase=checker-blob
 MOG_BUMP_MISSING=scripts/check-plugin-drift.sh MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V2" \
     bp_run 23 "5203-c: check-plugin-drift.sh missing at the base tip → exit 23"
 assert_audit_has "5203-c: audited as a checker-blob refusal" "phase=checker-blob"
+# 5208-a (RED) — a non-empty checker that exits 0 with NO output is no verdict.
+MOG_BUMP_STUBCHK=silent MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5208-a: silent exit-0 checker at the base tip → exit 23"
+assert_audit_has "5208-a: audited as a checker-blob refusal" "phase=checker-blob"
+assert_audit_has "5208-a: audited as no success line" "no-success-line=1"
+no_merge_call "5208-a: no merge call"
+# 5208-b — a checker that exits 0 with unrelated output is refused the same way.
+MOG_BUMP_STUBCHK=noise MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5208-b: exit-0 checker with unrelated output → exit 23"
+assert_audit_has "5208-b: audited as a checker-blob refusal" "phase=checker-blob"
+no_merge_call "5208-b: no merge call"
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
