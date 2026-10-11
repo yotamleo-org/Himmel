@@ -54,8 +54,15 @@
 # HIMMEL-4545 also closed a glob source into a computed destination
 # (d=<state>; cp dir/* "$d", --parents too). Still open, verified at base and
 # head: a redirect or tee to an inherited env value (`> "$X"`, X set outside
-# the command) is allowed, since denying every `> "$VAR"` would break the
-# fleet (HIMMEL-5159); upgrade path is the operator-owned lift above.
+# the command) was allowed. HIMMEL-5159 closed the bare $VAR / ${VAR} shape:
+# the hook resolves it against its own inherited environment and denies when
+# the value names the lift; `> "$OUT"` with a benign value stays allowed.
+# ponytail: the lookup answers the INHERITED value, so a variable the command
+# assigns first (`X=/tmp/o; echo > "$X"`) is still read from the environment
+# (denies only when the inherited X names the lift, fail closed), and a
+# computed target ($X/f, ${X:-d}, $(...)) or a variable the hook's environment
+# does not carry is not resolved here; upgrade path is the operator-owned lift
+# above.
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
 # 211,645 rows (0.40 %): ~725 relative or computed copy destinations and
 # sources under an unproven cwd, 110 computed extraction destinations
@@ -333,6 +340,26 @@ _lift_ref1() {
 }
 
 is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
+
+# HIMMEL-5159: a redirect or tee target that is a bare $VAR / ${VAR} the hook
+# inherited (the hook is a process in the command's environment) denies when
+# its value names the lift. Looked up with printenv so the hook's own shell
+# variables never answer. A variable the command assigns first is resolved
+# against the INHERITED value too (fail closed): the text layer cannot order
+# the assignment against the use. Any other computed shape ($X/f, ${X:-d},
+# $(...)) is left to the existing rules.
+# shellcheck disable=SC2016  # literal ${ } spellings are matched as text
+_env_lift() {
+    local w="$1" n v
+    case "$w" in
+        '${'*'}') n="${w#\$\{}"; n="${n%\}}" ;;
+        '$'*) n="${w#\$}" ;;
+        *) return 1 ;;
+    esac
+    case "$n" in ''|[0-9]*|*[!A-Za-z0-9_]*) return 1 ;; esac
+    v=$(printenv -- "$n" 2>/dev/null) || return 1
+    [ -n "$v" ] && is_lift "$v"
+}
 
 # ------------------------------------------------------------ file tools ---
 case "$tool" in
@@ -1169,6 +1196,7 @@ EOF
                 $'\002W')
                     i=$((i+1)); t="${tk[$i]:-}"
                     if [ -n "$t" ] && is_lift "$t"; then deny "a redirect writes the bank lift ($t)"; fi
+                    if [ -n "$t" ] && _env_lift "$t"; then deny "a redirect target ($t) is an environment value that names the bank lift"; fi
                     ;;
                 $'\002R')
                     i=$((i+1)); fed=1
@@ -1967,6 +1995,7 @@ check_clause() {
             for a in "$@"; do
                 case "$a" in -*) continue ;; esac
                 is_lift "$a" && deny "$cmd writes the bank lift ($a)"
+                _env_lift "$a" && deny "$cmd target ($a) is an environment value that names the bank lift"
             done ;;
         sed|gsed)
             local inplace=0

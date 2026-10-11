@@ -1461,6 +1461,31 @@ row "5094 r6 F05 computed module quoted"        deny  "M=zipfile; python3 -m \"\
 row "5094 r6 env -C literal tar (ctrl)"         allow "env -C /tmp/w tar tf /tmp/a.tar"
 row "5094 r6 computed module, no archive (ctrl)" allow "M=json.tool; python3 -m \$M /tmp/a.json"
 
+echo "== HIMMEL-5159: redirect / tee to an inherited env value naming the lift =="
+# The hook reads its own inherited environment: a bare $VAR / ${VAR} redirect
+# or tee target that resolves to the lift denies; a benign value stays allowed.
+# The variable is set in the HOOK's environment only, as a leg launcher would.
+env_row() {  # label expect VAR=value command
+    local rc got
+    printf '%s' "$(bash_json "$4")" | env "$3" bash "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected $2 got $got"; fi
+}
+# shellcheck disable=SC2016  # the commands under test carry literal $VAR text
+rows_5159() {
+env_row "5159 redirect > quoted \$VAR (env=lift)"   deny  "LIFT_DEST=$LIFT" 'echo "{}" > "$LIFT_DEST"'
+env_row "5159 redirect >> bare \$VAR (env=lift)"    deny  "LIFT_DEST=$LIFT" 'echo "{}" >> $LIFT_DEST'
+env_row "5159 redirect > \${VAR} (env=lift)"        deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST}"'
+env_row "5159 tee quoted \$VAR (env=lift)"          deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "$LIFT_DEST"'
+env_row "5159 tee -a \${VAR} (env=lift)"            deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee -a ${LIFT_DEST}'
+env_row "5159 redirect \$OUT (env=benign, ctrl)"    allow "OUT=/tmp/out.txt" 'echo hi > "$OUT"'
+env_row "5159 tee \$LOG (env=benign, ctrl)"         allow "LOG=/tmp/run.log" 'echo hi | tee "$LOG"'
+env_row "5159 redirect \$OUT (env=state dir, ctrl)" allow "OUT=$ST" 'echo hi > "$OUT"'
+env_row "5159 redirect \$UNSET (not in env, ctrl)"  allow "OTHER=1" 'echo hi > "$UNSET_VAR"'
+}
+rows_5159
+
 echo "== generated write-verb axis (shared write-fence grammar) =="
 # The verb x spelling axis the main-checkout fence suite enumerates, rendered
 # against the lift path. Every verb must deny; rm too since round 6 (it was
