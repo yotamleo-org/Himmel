@@ -209,7 +209,7 @@ can also be passed to `--installed` for a hermetic observation.
 | `handover@himmel` | INSTALLED |
 | `himmel-ops@himmel` | INSTALLED |
 | `hookify@claude-plugins-official` | INSTALLED |
-| `i-have-adhd@himmel` | INSTALLED |
+| `i-have-adhd@himmel` | NOT INSTALLED |
 | `impeccable@himmel` | INSTALLED |
 | `lean-skills@himmel` | INSTALLED |
 | `lottie-motion-design@himmel` | INSTALLED |
