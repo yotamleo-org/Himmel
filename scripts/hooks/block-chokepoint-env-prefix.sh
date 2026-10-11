@@ -1109,11 +1109,13 @@ pobf_tok() {
 
 # pobf_rgshape <raw stage> -- HIMMEL-5210: rc 0 when an rg argv word is not
 # plain literal text. Words wholly inside single quotes stay literal; any other
-# word with a backslash, a dollar sign (variable, ANSI-C quote, command
-# substitution), a backtick, a leading tilde, a glob or brace char, or a
-# double-quoted body with an expansion can BUILD --pre / --hostname-bin at run
-# time, so relief is void. TOK and TK hold the quote tokens of the line being
-# scanned (pobf_relief's locals, read by dynamic scope).
+# word with a backslash, a dollar sign (variable, ANSI-C quote), a backtick, a
+# leading tilde, a glob or brace char, or a double-quoted body with an
+# expansion can BUILD --pre / --hostname-bin at run time, so relief is void.
+# A command substitution or backtick body is split into its own stage, so this
+# screen never sees it: the caller voids relief for a stage that continues an
+# interrupted one. TOK and TK hold the quote tokens of the line being scanned
+# (pobf_relief's locals, read by dynamic scope).
 pobf_rgshape() {
     local r=$1 o='' pre k w rc=1 fl=1 T1=$'\001'
     while :; do
@@ -1606,6 +1608,8 @@ pobf_relief() {
     done
     # Class per stage: 2 = skip words and tokens, 1 = skip tokens, 0 = scan.
     local rgcfg=0
+    # ponytail: a RIPGREP_CONFIG_PATH name built from pieces is not matched
+    # here, upgrade path HIMMEL-3930, then HIMMEL-5233.
     case "$t$F" in *RIPGREP_CONFIG_PATH*) rgcfg=1 ;; esac
     j=0
     while [ "$j" -lt "$i" ]; do
@@ -1680,8 +1684,10 @@ pobf_relief() {
         [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr" || pobf_xglob "${ST[j]}"; } && cls=0
         # HIMMEL-5210: rg keeps relief only on plain literal words, and never
         # when RIPGREP_CONFIG_PATH is named anywhere (a config file injects
-        # options; its contents are not modelled).
-        [ "$c" = rg ] && [ "$cls" != 0 ] && { [ "$rgcfg" = 1 ] || pobf_rgshape "${ST[j]}"; } && cls=0
+        # options; its contents are not modelled), nor when the stage continues
+        # an interrupted one: a command substitution or backtick body is split
+        # into its own stage, so the rg words that follow it read as plain.
+        [ "$c" = rg ] && [ "$cls" != 0 ] && { [ "$rgcfg" = 1 ] || pobf_rgshape "${ST[j]}" || { [ "${CO[j]-}" -ge 0 ] 2>/dev/null && [ "${CO[j]}" -lt "$j" ]; }; } && cls=0
         CL[j]=$cls; CW[j]=$c; C2[j]=$c2
         [ "$cls" = 2 ] && FL[j]=1
         j=$((j + 1))

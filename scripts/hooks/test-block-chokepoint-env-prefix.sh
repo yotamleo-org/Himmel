@@ -2331,12 +2331,21 @@ for F in "rg \\-\\-pre '$OBF' x ." \
          "OLDPWD=--pre; rg ~- '$OBF' x ." \
          "rg \"-\"{-pre,x} '$OBF' x ." \
          "export RIPGREP_CONFIG_PATH=/nonexistent/cfg; rg needle -- '$OBF'" \
-         "RIPGREP_CONFIG_PATH=/nonexistent/cfg true; rg needle -- '$OBF'"; do
+         "RIPGREP_CONFIG_PATH=/nonexistent/cfg true; rg needle -- '$OBF'" \
+         "o=--pre; rg \"\$o\" '$OBF' x ." \
+         "rg '-'-hostname-bi[n] '$OBF' x ."; do
     assert_deny "5210 rg shape: built or config-injected option voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 for F in "rg \"-n\" needle -- '$OBF'" \
          "rg --glob '*.md' needle -- '$OBF'"; do
     assert_allow "5210 rg shape control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+# 5210 round 5 (judge j2366c): a command substitution or backtick body is its
+# own stage, so the rg words after it must void relief as a continuation.
+for F in "rg \`printf %s --pre\` '$OBF' x ." \
+         "rg \"\$(printf %s --pre)\" '$OBF' x ." \
+         "rg \$(printf %s --pr)e '$OBF' x ."; do
+    assert_deny "5210 rg continuation of a substitution voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 # Non-rg stages reach only pobf_xglob (no shape screen): one row per clause.
 for F in "grep {r,x} needle -- '$OBF'" \
@@ -2392,10 +2401,12 @@ mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
 # The rg classifier regex has no mutant row: since the shape screen (round 3)
 # a backslash or brace spelled --hostname-bin is denied by pobf_rgshape and
 # pobf_xopt as well, so no command is owned by the classifier alone.
+# The xopt row is a non-rg reader: since round 5 every rg spelling is also
+# owned by the classifier, the shape screen or the continuation void.
 # shellcheck disable=SC2016 # the sed expressions are literal; $x and ${ST[j]} are hook text
 mut_row "5210 mutant: xopt --hostname-bin case dropped" \
     's/|--hostname-bin|--hostname-bin=\*//' \
-    "rg needle \"\$(printf y)\" --hostname-bin='$OBF' x ."
+    "grep --hostname-bin='$OBF' x ."
 # shellcheck disable=SC2016 # literal sed expressions, as above
 mut_row "5210 mutant: xglob screen dropped (non-rg brace row)" \
     's/|| pobf_xglob "\${ST\[j\]}"//' \
@@ -2420,6 +2431,18 @@ mut_row "5210 mutant: rg shape screen dropped" \
 mut_row "5210 mutant: RIPGREP_CONFIG_PATH void dropped" \
     's/\*RIPGREP_CONFIG_PATH\*) rgcfg=1/*RIPGREP_CONFIG_PATH*) rgcfg=0/' \
     "export RIPGREP_CONFIG_PATH=/nonexistent/cfg; rg needle -- '$OBF'"
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: rg continuation void dropped" \
+    's/ || { \[ "${CO\[j\]-}" -ge 0 \] 2>\/dev\/null && \[ "${CO\[j\]}" -lt "$j" \]; }//' \
+    "rg \`printf %s --pre\` '$OBF' x ."
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: rg shape double-quoted expansion clause dropped" \
+    '/^            D) case /s/return 0/:/' \
+    "o=--pre; rg \"\$o\" '$OBF' x ."
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: rg shape glob clause dropped" \
+    "/'~'/s/rc=0; break/:/" \
+    "rg '-'-hostname-bi[n] '$OBF' x ."
 rm -rf "$MUT5210"
 
 CASES=$((CASES + 1))
