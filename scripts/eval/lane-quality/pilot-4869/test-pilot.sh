@@ -269,6 +269,16 @@ rm -f "$wt/.claude/hooks/link.sh"
 mv "$wt/.claude/settings.local.json" "$wt/.claude/settings.local.json.hold"; ln -s "$TMP/secret" "$wt/.claude/settings.local.json"
 check 'a settings.local.json the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 rm -f "$wt/.claude/settings.local.json"; mv "$wt/.claude/settings.local.json.hold" "$wt/.claude/settings.local.json"
+# every later writable bind (DOC dir, TX, ROWCONF, RUN, git dirs) must stay clear of the worktree:
+# one under it would put it back writable, one containing it would hide the read-only mount
+for v in DOC TX ROWCONF; do
+  for where in "$wt/lq-work/x" "$TMP/root/wt"; do
+    case "$v" in DOC) val="$where/row.md" ;; *) val="$where" ;; esac
+    sed "s|^$v=.*|$v=$val|" "$TMP/row5183.env" >"$TMP/row5200-$v.env"
+    check "a row whose $v is $val is refused (its writable bind would undo or hide the read-only worktree)" '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5200-$v.env" >/dev/null 2>&1'
+  done
+done
+check 'control, the unmodified row env still builds its jail' 'HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw() { "${R5[@]}" sh -c "$1" 2>/dev/null; }
   sj="$(cat "$wt/.claude/settings.local.json")"

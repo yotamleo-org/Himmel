@@ -165,6 +165,16 @@ else
     A+=(--ro-bind-try "$HOME/.claude/$s" "$HOME/.claude/$s")
   done
   for d in "${EGRESS[@]}"; do A+=(--ro-bind-try "$d" "$d"); done
+  # HIMMEL-5200: every bind below comes AFTER the worktree's read-only bind, and a later bind
+  # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
+  # back writable or hide the read-only mount, so such a row is refused, never launched.
+  for rw in "$(dirname "$DOC")" "$RUN" "$ROWCONF" "$TX" "$GITDIR" "$GITOBJ"; do
+    rwp="$(realpath -m -- "$rw")" || die "cannot resolve $rw"
+    for wp in "$(realpath -m -- "$WT")" "$(realpath -m -- "$JWT")"; do
+      case "$rwp/" in "$wp"/*) die "$rw sits at or under the worktree $wp (its writable bind would undo the read-only worktree)" ;; esac
+      case "$wp/" in "$rwp"/*) die "$rw contains the worktree $wp (its bind would hide the read-only worktree)" ;; esac
+    done
+  done
   A+=(--bind "$(dirname "$DOC")" "$(dirname "$DOC")" --ro-bind "$RUN" "$RUN")
   A+=(--bind "$ROWCONF" "$CONF" --bind "$TX" "$CONF/projects")
   { printf '127.0.0.1 localhost\n::1 localhost\n'; if [ -n "$TUN_HOST" ]; then printf '127.0.0.1 %s\n' "$TUN_HOST"; fi; } >"$RUN/hosts" \
