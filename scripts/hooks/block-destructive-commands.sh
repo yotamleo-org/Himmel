@@ -172,7 +172,28 @@ contains() {
 # same string. Result in REPLY.
 _c_strip_quotes() { local LC_ALL=C; REPLY=${1//[\"\'\\]/}; }
 _c_keep_char() { local LC_ALL=C; REPLY=${1//[^$2]/}; }
-_c_seps_to_nl() { local LC_ALL=C; REPLY=${1//[;|&]/$'\n'}; }
+# Quote-aware (HIMMEL-5274): a ;|& inside a quoted run is data, not a segment
+# break, so `git -c "a.b=;" push --force` stays ONE segment. Each step eats a
+# whole non-separator chunk (plain chars or a closed quote run), so the loop runs
+# once per separator/stray quote: linear in the input. An unterminated quote is
+# a plain character.
+_c_seps_to_nl() {
+    local LC_ALL=C s=$1 out=
+    local re_chunk='^([^;|&"'"'"']|"[^"]*"|'"'"'[^'"'"']*'"'"')+'
+    while [ -n "$s" ]; do
+        if [[ $s =~ $re_chunk ]]; then
+            out+=${BASH_REMATCH[0]}
+            s=${s:${#BASH_REMATCH[0]}}
+        else
+            case ${s:0:1} in
+                ';'|'|'|'&') out+=$'\n' ;;
+                *) out+=${s:0:1} ;;
+            esac
+            s=${s:1}
+        fi
+    done
+    REPLY=$out
+}
 
 deny() {
     echo "block-destructive-commands: destructive command refused ($1)" >&2
@@ -1085,10 +1106,13 @@ if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then
     while IFS= read -r seg; do
         [[ $seg =~ $push_line_re ]] || continue
         push_seg="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
+        push_head="${BASH_REMATCH[0]%"$push_seg"}"
         # HIMMEL-5274: -C/--git-dir/--work-tree retarget the repo like a `cd`,
         # so git_default_branch() (this cwd) is the wrong repo: no carve-out.
+        # Keyed to the matched invocation's own head (git ... push), not a
+        # `git push` substring elsewhere in the segment.
         seg_cd=$cd_chained
-        [[ $seg =~ (^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push ]] || seg_cd=1
+        [[ $push_head =~ ^[^[:alnum:]_.-]?git(\.exe)?[[:space:]]+push$ ]] || seg_cd=1
         # HIMMEL-2054 CR round 7: a `+`-prefixed refspec is checked ALONGSIDE
         # bare_force_re, not only inside the lease_re branch below -- a
         # scoped lease (`--force-with-lease=main`) still matches lease_re

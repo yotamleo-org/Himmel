@@ -1248,7 +1248,11 @@ for c in \
     'git -c user.name="a b" reset --hard' \
     'git --git-dir="my dir" reset --hard' \
     "git --work-tree='my dir' push --force" \
-    'git -C x status && git -C y reset --hard'; do
+    'git -C x status && git -C y reset --hard' \
+    'git -c "a.b=;" push --force' \
+    'git -C "a&b" push origin +main' \
+    "git -c 'x.y=a|b' push -f" \
+    'git -C ../other push --force-with-lease origin trunk -o "git push"'; do
     assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
 for c in \
@@ -1259,7 +1263,8 @@ for c in \
     'git -C x push origin feat/x' \
     'git -C x reset --soft HEAD~1' \
     'git -C x commit -m "reset --hard"' \
-    'git --no-pager log --grep "clean -f"'; do
+    'git --no-pager log --grep "clean -f"' \
+    'git -c "a.b=;" status'; do
     assert_rc "5274 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
 # HIMMEL-5154 linear time: a long run of global options must stay fast.
