@@ -151,6 +151,24 @@ _r5098 "205g reader after a semicolon, backticks"    block "m=\`printf ''; cat @
 _r5098 "205h reader after a semicolon, bash -c"      block "m=\$(echo x; git log -1 --format=%B); bash -c \"\$m\""
 _r5098 "205i quoted substitution, reader after a semicolon"  block "m=\"\$(printf ''; cat @W@/msg)\"; eval \"\$m\""
 _r5098 "205j quoted backticks, reader after a semicolon"  block 'm="`printf x; cat @W@/msg`"; eval "$m"'
+_r5098 "207a input redirect glued to a word"         block 'eval "$(fold<@W@/msg)"'
+_r5098 "207b input redirect after done"              block 'eval "$(for f in a; do echo x; done<@W@/msg)"'
+_r5098 "207c input redirect after a paren"           block 'eval "$( (cat)<@W@/msg)"'
+_r5098 "208a source =(cat file)"                     block 'source =(cat @W@/msg)'
+_r5098 "208b bash option then =(cat file)"           block 'bash --noprofile =(cat @W@/msg)'
+_r5098 "208c eval of a =(…) body"                    block 'eval "$(cat =(git log -1))"'
+_r5098 "208d source =(echo literal)"                 allow 'source =(echo ls)'
+_r5098 "209a printf -v then eval of the variable"    block 'printf -v m %s "$(cat @W@/msg)"; eval "$m"'
+_r5098 "209b printf -v then eval of indirect expansion"          block 'n=m; printf -v m %s "$(cat @W@/msg)"; eval "${!n}"'
+_r5098 "209c printf -v from a literal only"          allow 'printf -v m %s ls; eval "$m"'
+_r5098 "209d data substitution beside an eval"       block 'x="$(git log -1 --format=%B)"; eval "ls $x"'
+_r5098 "211a eval of curl output"                    block 'eval "$(curl -s http://example.invalid/x)"'
+_r5098 "211b eval of gh output"                      block 'eval "$(gh api repos/x/y)"'
+_r5098 "211c eval of an unlisted program"            block 'eval "$(python3 gen.py)"'
+_r5098 "211d eval of printf -v in a body"            block 'eval "$(printf -v m x)"'
+_r5098 "211e eval of branch name"                    block 'eval "$(git rev-parse --abbrev-ref HEAD)"'
+_r5098 "211f unlisted program after a pipe"          block 'eval "$(echo x | tee f)"'
+_r5098 "212a source of toplevel plus path"           allow 'source "$(git rev-parse --show-toplevel)/scripts/lib/x.sh"'
 _r5098 "206a source of data, shell word as argument" block "source \"\$(cat @W@/msg)\" bash"
 _r5098 "206b dot of data, shell word as argument"    block ". \"\$(git log -1 --format=%B)\" sh"
 _r5098 "206c bash option then <(cat file)"           block 'bash --noprofile <(cat @W@/msg)'

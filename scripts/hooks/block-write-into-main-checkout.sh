@@ -164,12 +164,19 @@
 #     `!`, reserved word, `time` and wrapper command (`nice -n 5 touch`,
 #     `sudo -u u touch`; `_bwimc_strip_prefix`).
 #     HIMMEL-5098: `eval` / `source` / `.` / `bash -c` whose argument is (or
-#     holds) a substitution that READS repository or file data (`git log`,
-#     `cat`, `$(<f)`, `<(…)`, or a variable filled from one in the same
-#     command) is denied (`data-exec`, `_bwimc_body_reads_data`), in any cwd:
-#     the command it runs is not in the text. Residuals: a reader outside the
-#     word list (curl, gh), a variable set by an earlier call, and
-#     `git log | sh` (a pipe INTO a shell) are not seen.
+#     holds) a command substitution is denied (`data-exec`,
+#     `_bwimc_body_reads_data`), in any cwd, unless every command word of the
+#     body is on a short ALLOW-list of benign generators (echo, date,
+#     ssh-agent, pyenv, direnv, `printf` without -v, `git rev-parse
+#     --show-toplevel` and the like): the command it runs is not in the text,
+#     so anything unlisted (a reader, curl, gh, a program, a non-literal word)
+#     fails closed. `<file` redirects, `<(…)` and zsh `=(…)` inside a body
+#     are denied whatever precedes them. When the command holds such a
+#     substitution, an eval or source whose body has ANY variable expansion
+#     is denied too (`printf -v m …; eval "$m"`, `${!n}`). Residuals, filed as
+#     one ticket (label guard-safety): `bash <<< "$(cat F)"`, eval through a
+#     function or a `$x` command word, a pipe INTO a shell, `xargs sh -c`,
+#     zsh `${(e)…}`, and a variable set by an earlier call.
 #   - `-T`/`--no-target-directory` IS modelled now (RETASK correction,
 #     HIMMEL-2592 round 6 codex-2 — this bullet used to say the opposite):
 #     for `mv` it forces the destination to plain ENTRY resolution instead
@@ -3279,8 +3286,9 @@ _bwimc_is_shc_cflag() {
 # classified. Quotes, backslashes and `$'…'` are dropped first, so `g\it`,
 # `c''at` and `$'log'` read as the word they spell. Coarse and fail-closed: a
 # reader word anywhere in BODY counts, even as an argument.
-# ponytail: a reader outside this list (curl, gh, a script that cats a file) is
-# not recognised, HIMMEL-5098; widen the list when one is seen.
+# ponytail: the allow-list is short, so a benign generator outside it (a
+# version manager not named) is a false deny, HIMMEL-5098; add the word when
+# one is seen.
 _bwimc_body_reads_data() {
     local t="$1"
     case "$t" in
@@ -3288,10 +3296,44 @@ _bwimc_body_reads_data() {
     esac
     t="${t//\$\'/}"; t="${t//\$\"/}"
     t="${t//[\'\"\\]/}"
+    # a stub byte stands for a nested substitution whose own body the verb walk
+    # already tested (_bwimc_sub_rd); it is not a command word of this body
+    t="${t//$'\001'/}"
     _tolower_ascii "$t"; t="$_TOLOWER_OUT"
-    [[ "$t" =~ (^|[[:space:];\&\|\(])\<[[:space:]]*[^[:space:]\<\(\&] ]] && return 0
-    [[ "$t" =~ (^|[\;\&\|\(\`])[[:space:]]*\$ ]] && return 0
-    [[ "$t" =~ (^|[^[:alnum:]_.-])(git|cat|tac|head|tail|more|less|nl|od|xxd|hexdump|strings|sed|awk|gawk|mawk|grep|egrep|fgrep|rg|cut|sort|uniq|tr|rev|paste|jq|yq|base64)(\.exe)?([^[:alnum:]_.-]|$) ]] && return 0
+    # An input redirect (whatever precedes the `<`: `fold</x`, `done</x`), a
+    # process substitution or a zsh `=(…)` opener inside a body is data.
+    [[ "$t" =~ \<([^\(\&]|$) ]] && return 0
+    [[ "$t" =~ [\<\>]\( ]] && return 0
+    [[ "$t" =~ (^|[[:space:]\;\&\|\(])=\( ]] && return 0
+    # Allow-list: every command word of the body must be a known-benign
+    # generator; anything else (or a word that is not literal) is data.
+    t="${t//>&/}"
+    t="${t//&/$'\n'}"; t="${t//|/$'\n'}"; t="${t//;/$'\n'}"
+    local seg w words
+    while IFS= read -r seg; do
+        while [[ "$seg" == [[:space:]\(\{\!]* ]]; do seg="${seg:1}"; done
+        [ -n "$seg" ] || continue
+        # shellcheck disable=SC2206  # word split is the point
+        words=($seg)
+        for w in "${words[@]}"; do
+            case "$w" in
+                [a-z_]*=*) continue ;;
+                if|then|elif|else|fi|do|done|while|until|time|true|false|:|'!'|'{'|'}'|'('|')') continue ;;
+            esac
+            w="${w##*/}"; w="${w%.exe}"
+            case "$w" in
+                echo|date|ssh-agent|pyenv|rbenv|nodenv|direnv|pwd|basename|dirname|uname|whoami|hostname) ;;
+                printf) case " ${words[*]} " in *" -v"*) return 0 ;; esac ;;
+                git) # path-printing rev-parse options only (no data, no ref names)
+                    case " ${words[*]} " in
+                        " git rev-parse --show-toplevel"*|" git rev-parse --show-cdup"*|" git rev-parse --show-prefix"*|" git rev-parse --git-dir"*|" git rev-parse --git-common-dir"*|" git rev-parse --absolute-git-dir"*) ;;
+                        *) return 0 ;;
+                    esac ;;
+                *) return 0 ;;
+            esac
+            break
+        done
+    done <<< "$t"
     return 1
 }
 
@@ -3301,8 +3343,17 @@ _bwimc_body_reads_data() {
 # queue holds fails closed.
 _bwimc_text_reads_data() {
     local text="$1" q=() qi=0 b n
+    # stub bytes (\001 a nested body, \005 a bare `pwd`) stand for text the
+    # verb walk already tested or that writes nothing; _bwimc_subst_split would
+    # otherwise turn each into a literal word `_` the allow-list refuses
+    text="${text//$'\001'/}"; text="${text//$'\005'/}"
     # shellcheck disable=SC2016  # literal `$(` is the replacement text
     text="${text//'<('/'$('}"
+    # zsh `=(cmd)` at a word start runs cmd too (same as `<(`)
+    while [[ "$text" =~ (^|[[:space:]\;\&\|\(\"\'])=\( ]]; do
+        # shellcheck disable=SC2016  # literal `$(` is the replacement text
+        text="${text/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"'$('}"
+    done
     q=("$text")
     while [ "$qi" -lt "${#q[@]}" ] && [ "$qi" -lt 64 ]; do
         # shellcheck disable=SC2016  # literal `$(` is the glob pattern
@@ -3321,10 +3372,11 @@ _bwimc_text_reads_data() {
     return 1
 }
 
-# _bwimc_body_var_from_data BODY FULL — HIMMEL-5098. 0 when BODY expands a
-# variable that FULL (the whole command) assigns from a data-reading
-# substitution (`m=$(git log -1); eval "$m"`) or fills with `read` /
-# `mapfile` / `readarray` (`read -r m < <(…)`).
+# _bwimc_body_var_from_data BODY FULL — HIMMEL-5098. 0 when BODY holds a
+# variable expansion and FULL (the whole command) holds a data-reading
+# substitution anywhere (`m=$(git log -1); eval "$m"`, `printf -v m %s "$(cat
+# f)"; eval "${!n}"`: no per-shape special cases), or fills the variable with
+# `read` / `mapfile` / `readarray` (`read -r m < f`).
 # ponytail: only an assignment in the same command is seen; a variable set in
 # an earlier call is not, same residual as every dynamic token, HIMMEL-5098.
 # ponytail: any `read`/`mapfile`/`readarray` that fills the variable counts,
@@ -3332,24 +3384,19 @@ _bwimc_text_reads_data() {
 # not traced, so this fails closed wider than "filled from a data-reading
 # substitution". Narrowing it needs a source parse, HIMMEL-5098.
 _bwimc_body_var_from_data() {
-    local rest="$1" full="$2" name seg line nl=$'\n'
+    local rest="$1" full="$2" name
+    # ruled fail closed (HIMMEL-5098): any variable expansion in the body, and
+    # a data-reading substitution anywhere in the command, is a deny
+    [[ "$rest" =~ \$(\{|[A-Za-z_0-9@*#?!-]) ]] || return 1
+    _bwimc_text_reads_data "$full" && return 0
+    # shellcheck disable=SC2016  # literal `${!` is the glob pattern
+    if [[ "$rest" == *'${!'* ]] \
+        && [[ "$full" =~ (^|[[:space:];\&\|\(])(read|mapfile|readarray)[[:space:]] ]]; then
+        return 0
+    fi
     while [[ "$rest" =~ \$\{?([A-Za-z_][A-Za-z0-9_]*) ]]; do
         name="${BASH_REMATCH[1]}"
         rest="${rest#*"${BASH_REMATCH[0]}"}"
-        seg="$full"
-        while [[ "$seg" == *"$name="* ]]; do
-            seg="${seg#*"$name="}"
-            line="${seg%%[;"$nl"]*}"
-            # a substitution may hold `;` itself (`m=$(printf ''; cat f)`), so
-            # one that opens the value is scanned to the end of the command
-            # (coarse, fail closed).
-            # shellcheck disable=SC2016  # literal `$(` is the glob pattern
-            # A quote before it (`m="$(…)"`) does not hide it.
-            case "$seg" in
-                '$('*|'`'*|'"$('*|'"`'*|"'"'$('*|"'"'`'*) line="$seg" ;;
-            esac
-            _bwimc_text_reads_data "$line" && return 0
-        done
         if [[ "$full" =~ (^|[[:space:];\&\|\(])(read|mapfile|readarray)[[:space:]]([^;\&\|]*[[:space:]])?"$name"([[:space:];\&\|\)]|$) ]]; then
             return 0
         fi
@@ -3461,7 +3508,7 @@ _bwimc_check_interp_body() {
     # substitution's own text is a separate clause. Read each `<(` of the whole
     # command instead; coarse, a later `$(…)` in the same command counts too.
     local _bwimc_psok=0
-    if [ "$n" -gt 0 ] && [ "${toks[$((n-1))]}" = "<" ]; then
+    if [ "$n" -gt 0 ] && { [ "${toks[$((n-1))]}" = "<" ] || [ "${toks[$((n-1))]}" = "=" ]; }; then
         if [ "$kind" = src ]; then
             _bwimc_psok=1
         elif [ "$kind" = shc ]; then
@@ -3483,6 +3530,15 @@ _bwimc_check_interp_body() {
             # shellcheck disable=SC2016  # literal `$(` re-opens the substitution
             if _bwimc_text_reads_data '$('"$_bwimc_ps"; then
                 _bwimc_deny "data-exec" "<(${_bwimc_ps}" "" ""
+            fi
+        done
+        # zsh `=(cmd)` at a word start, read the same way
+        _bwimc_ps="$cmd"
+        while [[ "$_bwimc_ps" =~ (^|[[:space:]\;\&\|\(\"\'])=\( ]]; do
+            _bwimc_ps="${_bwimc_ps#*"${BASH_REMATCH[0]}"}"
+            # shellcheck disable=SC2016  # literal `$(` re-opens the substitution
+            if _bwimc_text_reads_data '$('"$_bwimc_ps"; then
+                _bwimc_deny "data-exec" "=(${_bwimc_ps}" "" ""
             fi
         done
     fi
