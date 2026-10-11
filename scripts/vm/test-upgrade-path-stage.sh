@@ -4,7 +4,7 @@
 # scripts/vm/upgrade-path-e2e.sh (host driver, --expect-red control) and the opt-in
 # hook in scripts/test-install-symmetry-vm.sh. No real VM: ssh/rsync are fakes on PATH.
 #
-# The doctor rows run over scripts/vm/fixtures/himmel-doctor-real.txt, a real
+# The doctor rows run over scripts/vm/fixtures/test-himmel-doctor-real.txt, a real
 # `himmel-doctor.sh --no-color` capture (HOME paths scrubbed, lines cut at 150 cols);
 # the "after" variants are mechanical sed transforms of that capture, not hand-written
 # output, so a change in doctor's row format breaks this suite loudly.
@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 GUEST="$REPO_ROOT/scripts/vm/upgrade-path-guest.sh"
 DRIVER="$REPO_ROOT/scripts/vm/upgrade-path-e2e.sh"
 SYMM="$REPO_ROOT/scripts/test-install-symmetry-vm.sh"
-REAL="$REPO_ROOT/scripts/vm/fixtures/himmel-doctor-real.txt"
+REAL="$REPO_ROOT/scripts/vm/fixtures/test-himmel-doctor-real.txt"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/test-upgrade-path-stage.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 
