@@ -1062,7 +1062,9 @@ git_push_has_plus_refspec() {
 # `--git-dir=x`, `-p`). Each alternative starts on a distinct character, so the
 # match stays linear (HIMMEL-5154). Over-deny only: an unknown value-taking
 # flag leaves its value as the "subcommand" and the rule just does not fire.
-GIT_GCH="(\"[^\"]*\"|'[^']*'|[^[:space:];&|\"'])"
+# A value char is a backslash escape (`my\ repo`), a $'..' run, a closed quote
+# run or a plain char; every alternative starts on a distinct character.
+GIT_GCH='(\\.|\$'"'"'([^'"'"'\\]|\\.)*'"'"'|\$|"([^"\\]|\\.)*"|'"'"'[^'"'"']*'"'"'|[^[:space:];&|"'"'"'\\$])'
 GIT_GOPTS='(([[:space:]]+(-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)[[:space:]]+'"${GIT_GCH}+"')|([[:space:]]+-'"${GIT_GCH}*"'))*'
 GIT_HEAD='(^|[^[:alnum:]_.-])git(\.exe)?'"${GIT_GOPTS}"
 if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then

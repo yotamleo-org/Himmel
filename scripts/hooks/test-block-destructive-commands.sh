@@ -1280,6 +1280,18 @@ for c in \
 done
 assert_rc "5274 allow: plain lease push to a feature branch" 0 \
     "$(run_case "$(j_bash 'git push --force-with-lease origin feat/x')")"
+# HIMMEL-5274 CR round 3 (codex-1): a backslash-escaped space/quote is part of an
+# option VALUE (`-C my\ repo`), not the end of the global-option run.
+for c in \
+    'git -C my\ repo push --force' \
+    'git -C my\ repo reset --hard' \
+    'git --git-dir=my\ dir clean -fd' \
+    'git -c a\"b=c push --force' \
+    'git -C $'"'"'my repo'"'"' push --force'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+assert_rc "5274 allow: escaped-space option value, benign subcommand" 0 \
+    "$(run_case "$(j_bash 'git -C my\ repo status')")"
 # Separator-heavy input must stay linear (judge minor item 3).
 semis=$(printf ' ; echo a%.0s' $(seq 1 2000))
 start=$SECONDS
