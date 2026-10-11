@@ -133,6 +133,9 @@ if [ "$mode" != check ]; then
     printf '{}\n' >"$ps_src" || die "cannot write $ps_src"
   fi
   for base in "$WT" "$JWT"; do
+    # .claude itself becomes a mount point (a bind onto itself): a directory that is one cannot
+    # be renamed or removed, so the row cannot swap in its own .claude around the file binds
+    A+=(--bind "$WT/.claude" "$base/.claude")
     A+=(--ro-bind "$ps_src" "$base/.claude/settings.json" --ro-bind "$WT/.claude/settings.local.json" "$base/.claude/settings.local.json")
     [ ! -d "$WT/.claude/hooks" ] || A+=(--ro-bind "$WT/.claude/hooks" "$base/.claude/hooks")
   done

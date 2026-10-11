@@ -256,6 +256,14 @@ for pp in settings.json settings.local.json hooks; do
   check "the jail binds the worktree .claude/$pp read-only after the rw bind, at its host path" 'ro_after_rw "$wt/.claude/$pp" "$wt/.claude/$pp" "$wt"'
   check "the jail binds the worktree .claude/$pp read-only after the rw bind, at its jail path" 'ro_after_rw "$wt/.claude/$pp" "$JW5200/.claude/$pp" "$JW5200"'
 done
+cd_pinned() { printf '%s\n' "$a5200" | awk -v d="$1" -v j="$2" -v w="$wt" '
+  { l[NR] = $0 }
+  END { for (i = 1; i <= NR; i++) {
+          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
+          if (l[i] == "--bind" && l[i+1] == w "/.claude" && l[i+2] == d) pin = i }
+        exit !(rw && pin && pin > rw) }'; }
+check 'the jail pins the worktree .claude dir (a bind onto itself) after the rw bind, at its host path' 'cd_pinned "$wt/.claude" "$wt"'
+check 'the jail pins the worktree .claude dir (a bind onto itself) after the rw bind, at its jail path' 'cd_pinned "$JW5200/.claude" "$JW5200"'
 mv "$wt/.claude/settings.json" "$wt/.claude/settings.json.hold"; rm -rf "$wt/.claude/hooks"
 a5200b="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
 check 'an absent project settings.json still gets a read-only bind (it cannot be created)' 'printf "%s\n" "$a5200b" | grep -A2 -x -- --ro-bind | grep -qxF "$wt/.claude/settings.json"'
@@ -287,6 +295,10 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   jw "echo x >\"$wt/.claude/other.json\" && echo y >\"$wt/lq-work-probe\""; w8=$?
   check 'live: control, a non-policy write in the worktree and in .claude still succeeds' '[ "$w8" = 0 ] && [ -f "$wt/.claude/other.json" ] && [ -f "$wt/lq-work-probe" ]'
   rm -f "$wt/.claude/other.json" "$wt/lq-work-probe"
+  jw "mv \"$wt/.claude\" \"$wt/.claude-away\""; w9=$?
+  jw "mv \"$pj\" \"$JW5200/.claude-away\""; w10=$?
+  check 'live: the .claude dir cannot be renamed away from the jail (no swapped-in settings.json), at either path' '[ "$w9" != 0 ] && [ "$w10" != 0 ] && [ -f "$wt/.claude/settings.local.json" ] && [ ! -e "$wt/.claude-away" ]'
+  rm -rf "$wt/.claude-away"
 fi
 rm -rf "$wt/.claude/hooks" "$wt/.claude/settings.json"
 [ "$had5200" = 0 ] || cp -p "$TMP/p5200.settings" "$wt/.claude/settings.json"
