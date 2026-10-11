@@ -90,7 +90,7 @@ input=$(cat)
 # file-tool path may reach the store through a symlink alias that carries no
 # literal at all, so any payload with a file_path/notebook_path is resolved.
 case "$input" in
-    *bus*|*BUS*|*'\u'*|*\\\\*|*\\\"*|*\'*|*\$*|*\`*|*\**|*\?*|*\[*|*\{[!\"]*|*file_path*|*notebook_path*) ;;
+    *bus*|*BUS*|*'\u'*|*\\\\*|*\\\"*|*\'*|*\$*|*\`*|*\<\(*|*\>\(*|*\**|*\?*|*\[*|*\{[!\"]*|*file_path*|*notebook_path*) ;;
     *) exit 0 ;;
 esac
 
@@ -145,8 +145,14 @@ busish() {
         m="${BASH_REMATCH[0]}"
         w=${w/"$m"/"*"}
     done
-    # What is left of an unclosed `$(` / backtick / paren is just a prefix.
-    w=${w//\$\(/}; w=${w//\`/}; w=${w//\(/}; w=${w//\)/}
+    # A substitution the whitespace split cut open (`b$(printf u)s` arrives as
+    # `b$(printf` and `u)s`) or an unclosed `${`: its value is unknown, so the
+    # word may be anything, bus included. Fail closed instead of stripping it.
+    # shellcheck disable=SC2016  # literal text patterns, nothing expands
+    case "$w" in
+        *'$('*|*'`'*|*'<('*|*'>('*|*'${'*) return 0 ;;
+    esac
+    w=${w//\(/}; w=${w//\)/}
     w=${w//[\'\"\\]/}
     IFS=/ read -ra parts <<< "$w"
     [ "${#parts[@]}" -gt 0 ] || return 1
