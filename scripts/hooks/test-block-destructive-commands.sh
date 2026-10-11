@@ -1245,6 +1245,9 @@ for c in \
     'git -C "my repo" reset --hard' \
     "git -C 'my repo' push --force" \
     'git -c "a=b c" clean -fd' \
+    'git -c user.name="a b" reset --hard' \
+    'git --git-dir="my dir" reset --hard' \
+    "git --work-tree='my dir' push --force" \
     'git -C x status && git -C y reset --hard'; do
     assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
