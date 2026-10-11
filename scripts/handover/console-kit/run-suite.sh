@@ -55,7 +55,8 @@ plan() {
     git ls-files -- 'scripts/*/**' \
         | grep -E '/test-[^/]*\.sh$' \
         | awk -F/ '{print $1 "/" $2}' | sort -u
-    if git ls-files -- 'scripts/test-*.sh' | grep -q .; then echo top; fi
+    top_files="$(git ls-files -- 'scripts/test-*.sh')"
+    if [ -n "$top_files" ]; then echo top; fi
 }
 PLAN_LIST="$(plan)"
 N=$(printf '%s\n' "$PLAN_LIST" | grep -c .)
