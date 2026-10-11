@@ -341,7 +341,8 @@ fi
 # push succeeded). The filter refuses --dangerously-bypass-hook-trust, so the
 # only honest options are to refuse or to run guarded: refuse unless every
 # PreToolUse hook of THIS worktree's hooks.json has a trusted state entry
-# (under the worktree path or its primary checkout) in $CODEX_HOME/config.toml. Runs before
+# (under the primary checkout the worktree resolves to; the worktree path itself
+# only when it IS the primary) in $CODEX_HOME/config.toml. Runs before
 # the lock, the ledger start row and the job registry, so a refusal leaves
 # nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
 # CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
@@ -351,15 +352,16 @@ fi
 # path is porting codex's hash once its algorithm is documented.
 _hook_trust_check() {
     local wt="$1" hooks_json="$1/.codex/hooks.json"
-    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" wt_native="$1" primary="$1" common
+    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="$1" common
     # codex resolves a git worktree to its PRIMARY checkout and keys trust to
     # that checkout's .codex/hooks.json (observed codex-cli 0.161.0, Linux).
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
     case "$common" in */.git) primary="${common%/.git}" ;; esac
     [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
     # Git Bash: codex on Windows keys trust to the native path spelling.
+    primary_native="$primary"
     if command -v cygpath >/dev/null 2>&1; then
-        wt_native="$(cygpath -w "$wt" 2>/dev/null || echo "$wt")"
+        primary_native="$(cygpath -w "$primary" 2>/dev/null || echo "$primary")"
     fi
     # shellcheck disable=SC2016 # JS source, no shell expansion intended
     node -e '
@@ -373,6 +375,7 @@ try {
     process.exit(2);
 }
 const groups = (hooks.hooks || hooks).PreToolUse || [];
+let hookCount = 0;
 let cfg = "";
 try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = nothing trusted */ }
 // [hooks.state.<key>] tables: a literal (single-quoted) or basic ("...") key.
@@ -393,17 +396,18 @@ for (const line of cfg.split(/\r?\n/)) {
 flush();
 const missing = [];
 groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
+    hookCount++;
     const suffix = "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi;
     const winSuffix = "\\.codex\\hooks.json:pre_tool_use:" + gi + ":" + hi;
     const ok = prefixes.some(p => trusted.has(p + suffix) || trusted.has(p + winSuffix));
     if (!ok) missing.push("pre_tool_use:" + gi + ":" + hi);
 }));
-if (groups.length === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
+if (hookCount === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
 if (missing.length) {
     console.error(missing.join(", "));
     process.exit(1);
 }
-' "$hooks_json" "$cfg" "$wt" "$wt_native" "$primary"
+' "$hooks_json" "$cfg" "$primary" "$primary_native"
 }
 if [ -n "${CODEX_HOOK_TRUST_CHECK:-}" ]; then
     echo "dispatch-codex-exec.sh: NOTE hook-trust check overridden by CODEX_HOOK_TRUST_CHECK=$CODEX_HOOK_TRUST_CHECK (test-only)" >&2

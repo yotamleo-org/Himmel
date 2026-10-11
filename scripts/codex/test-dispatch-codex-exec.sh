@@ -1077,6 +1077,22 @@ fs.writeFileSync(out, text);
 run_trust "$PRIM_WT"
 assert_rc 0 "trust keyed to the primary checkout counts for its worktree" "16g rc=$RC out=$OUT"
 
+# 16h: trust keyed to the linked worktree's OWN path while codex resolves to the
+# primary checkout is an entry codex never reads -> refused.
+trust_config "$PRIM_WT"
+: > "$LOG"
+run_trust "$PRIM_WT"
+assert_rc 2 "worktree-path trust does not count when codex keys to the primary" "16h rc=$RC out=$OUT"
+
+# 16i: a PreToolUse array holding only empty groups declares no hook -> refused.
+EMPTY_WT="$TMP/empty-wt"
+mkdir -p "$EMPTY_WT/.codex"
+printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$EMPTY_WT/.codex/hooks.json"
+: > "$TRUST_HOME/config.toml"
+: > "$LOG"
+run_trust "$EMPTY_WT"
+assert_rc 2 "PreToolUse with only empty groups refused" "16i rc=$RC out=$OUT"
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1
