@@ -4,13 +4,18 @@
 //
 //   npm run build && JIRA_LIVE_TEST=1 JIRA_LIVE_PROJECT=HTEST npx vitest run live/
 //
-// Safety: refuses to run unless JIRA_LIVE_PROJECT is set to a project key that
-// is not HIMMEL — live writes never touch the real backlog. Needs the creds the
+// Safety: refuses to run unless JIRA_LIVE_PROJECT is a valid project key that
+// is not HIMMEL (any case) — live writes never touch the real backlog. Every
+// issue and version the run creates is tracked and torn down in afterAll, also
+// after a failed assertion: versions are archived, issues moved to Done (the CLI
+// has no issue-delete, so they remain, closed, in the test project). Needs the creds the
 // CLI itself reads (.env at the repo root, or JIRA_* env vars) and a prior
 // `npm run build` (the suite drives dist/index.js, the shipped binary).
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { assertLiveProject } from './project-guard.js';
+import { createTeardown } from './teardown.js';
 
 const ENABLED = process.env.JIRA_LIVE_TEST === '1';
 const PROJECT = process.env.JIRA_LIVE_PROJECT ?? '';
@@ -40,15 +45,24 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   const stamp = Date.now().toString(36);
   let key = '';
 
+  const teardown = createTeardown({
+    closeIssue: (k) => void jira('transition', k, 'Done'),
+    archiveVersion: (n) => void jira('version-archive', n, '--project', PROJECT, '--force'),
+  });
+
   beforeAll(() => {
-    if (!PROJECT || PROJECT === 'HIMMEL') {
-      throw new Error('JIRA_LIVE_PROJECT must name a dedicated test project, never HIMMEL');
-    }
+    assertLiveProject(PROJECT);
+  });
+
+  afterAll(() => {
+    const failures = teardown.run();
+    if (failures.length) console.warn(`live teardown left behind:\n  ${failures.join('\n  ')}`);
   });
 
   it('create: the issue exists and reads back its title', () => {
     const out = jira('create', '--type', 'Task', '--title', `live ${stamp}`);
     key = /Created (\S+)/.exec(out)?.[1] ?? '';
+    if (key) teardown.trackIssue(key);
     expect(key).toMatch(new RegExp(`^${PROJECT}-\\d+$`));
     expect(read(key).fields.summary).toBe(`live ${stamp}`);
   });
@@ -87,6 +101,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   it('version-create + edit --fix-version: the version is set on the issue', () => {
     const v = `live-${stamp}`;
     jira('version-create', v, '--project', PROJECT);
+    teardown.trackVersion(v);
     jira('edit', key, '--fix-version', v);
     expect(read(key).fields.fixVersions?.map((x) => x.name)).toEqual([v]);
   });
@@ -121,6 +136,7 @@ describe.skipIf(!ENABLED)('jira CLI live (opt-in, JIRA_LIVE_TEST=1)', () => {
   it('link: a second issue is linked and links lists it', () => {
     const out = jira('create', '--type', 'Task', '--title', `live ${stamp} peer`);
     const peer = /Created (\S+)/.exec(out)?.[1] ?? '';
+    if (peer) teardown.trackIssue(peer);
     jira('link', key, peer);
     expect(jira('links', key)).toContain(peer);
   });

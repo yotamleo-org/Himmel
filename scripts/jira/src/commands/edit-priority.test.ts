@@ -44,6 +44,9 @@ describe('edit --priority (HIMMEL-4640)', () => {
     await freshProgram(registerEdit).parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', '--priority', 'highest']);
     const get = mockRequest.mock.calls.find((c) => c[0] === 'GET');
     expect(get?.[1]).toBe('/issue/HIMMEL-1?fields=priority');
+    const order = mockRequest.mock.calls.map((c) => c[0]);
+    expect(order.indexOf('PUT')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('PUT')).toBeLessThan(order.indexOf('GET'));
     expect(console.log).toHaveBeenCalledWith('HIMMEL-1 edited');
   });
 
