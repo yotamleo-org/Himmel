@@ -57,7 +57,9 @@
 # the command) was allowed. HIMMEL-5159 closed it: the hook resolves every
 # $NAME / ${NAME...} reference in the target word against its own inherited
 # environment and denies when any value names the lift (${!R} denies
-# outright); `> "$OUT"` with a benign value stays allowed.
+# outright); `> "$OUT"` with a benign value stays allowed. The braced operators
+# :- - := = :+ + :? ? % %% # ## are evaluated (nested references included);
+# any other (`${V/a/b}`, `${V^}`, `${V:1}`, `${#V}`) fails closed to deny.
 # ponytail: the lookup answers the INHERITED value, so a variable the command
 # assigns first (`X=/tmp/o; echo > "$X"`) is still read from the environment
 # (denies only when the inherited X names the lift, fail closed); a reference
@@ -354,38 +356,68 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 # cannot order the assignment against the use. ${!R} (indirect) denies
 # outright: its target is the value of another variable. $(...) and a
 # variable the environment does not carry are left to the existing rules.
-# shellcheck disable=SC2016  # literal ${ } spellings are matched as text
-_env_lift() {
-    local rest="$1" n v m exp='' tail
-    local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
-    case "$rest" in *'${!'*) return 0 ;; esac
-    while [[ "$rest" =~ $re ]]; do
-        m="${BASH_REMATCH[0]}"; n="${BASH_REMATCH[1]}"
-        v=$(printenv -- "$n" 2>/dev/null) || v=
-        if [ -n "$v" ] && is_lift "$v"; then return 0; fi
-        exp="$exp${rest%%"$m"*}"
-        rest="${rest#*"$m"}"
-        case "$m" in
-            '${'*)
-                # Consume the whole flat braced reference: `:-d}` / `%x}` ...
-                # An unset or empty variable reads as its operand text. A
-                # nested `$` in the operand is left for the next iteration.
-                tail="${rest%%\}*}"
-                case "$tail" in
-                    *'$'*) rest="${rest#:}"; rest="${rest#[-=+?]}" ;;
-                    *)
-                        rest="${rest#"$tail"}"; rest="${rest#\}}"
-                        tail="${tail#:}"; tail="${tail#[-=+?]}"
-                        [ -n "$v" ] || v="$tail" ;;
-                esac ;;
-        esac
-        exp="$exp$v"
+_env_hit=0 _env_out=''
+# shellcheck disable=SC2016,SC2295  # literal ${ } text; the operand IS a glob pattern
+_env_exp() {
+    local rest="$1" out='' pre br n v set body op arg argexp val i c depth
+    local re='^([^$]*)\$(\{?)([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ "$rest" == *'$'* ]]; do
+        if [[ "$rest" =~ $re ]]; then
+            pre="${BASH_REMATCH[1]}"; br="${BASH_REMATCH[2]}"; n="${BASH_REMATCH[3]}"
+            rest="${rest:${#BASH_REMATCH[0]}}"
+            out="$out$pre"
+            v=''; set=0
+            if v=$(printenv -- "$n" 2>/dev/null); then set=1; else v=''; fi
+            if [ -n "$v" ] && is_lift "$v"; then _env_hit=1; fi
+            if [ -z "$br" ]; then out="$out$v"; continue; fi
+            # Braced: find the matching `}` (nesting counted).
+            depth=1; i=0
+            while [ "$i" -lt "${#rest}" ]; do
+                c="${rest:$i:1}"
+                case "$c" in
+                    '{') depth=$((depth + 1)) ;;
+                    '}') depth=$((depth - 1)); [ "$depth" -eq 0 ] && break ;;
+                esac
+                i=$((i + 1))
+            done
+            if [ "$depth" -ne 0 ]; then _env_hit=1; _env_out="$out$rest"; return; fi
+            body="${rest:0:$i}"; rest="${rest:$((i + 1))}"
+            case "$body" in
+                '') out="$out$v"; continue ;;
+                :[-=+?]*|%%*|\#\#*) op="${body:0:2}" ;;
+                [-=+?%\#]*) op="${body:0:1}" ;;
+                *) _env_hit=1; out="$out$v"; continue ;;   # ${V/a/b} ${V^} ${V:1}
+            esac
+            arg="${body:${#op}}"
+            _env_exp "$arg"; argexp="$_env_out"
+            case "$op" in
+                :-|:=) if [ -n "$v" ]; then val="$v"; else val="$argexp"; fi ;;
+                -|=)   if [ "$set" -eq 1 ]; then val="$v"; else val="$argexp"; fi ;;
+                :+)    if [ -n "$v" ]; then val="$argexp"; else val=''; fi ;;
+                +)     if [ "$set" -eq 1 ]; then val="$argexp"; else val=''; fi ;;
+                :\?|\?) val="$v" ;;
+                %)     val="${v%$argexp}" ;;
+                %%)    val="${v%%$argexp}" ;;
+                \#)    val="${v#$argexp}" ;;
+                \#\#)  val="${v##$argexp}" ;;
+                *)     _env_hit=1; val="$v" ;;
+            esac
+            out="$out$val"
+        else
+            case "${rest#*\$}" in
+                '{'*) _env_hit=1 ;;                       # ${!R} ${#V} ${@}
+            esac
+            out="$out${rest%%\$*}\$"; rest="${rest#*\$}"
+        fi
     done
-    # The word with every reference replaced by its value: a lift path split
-    # across variables ($D/$F, D=<state dir>, F=bank-lift.json) names it too.
-    # Braces left by a nested operand's closing `}` are dropped.
-    exp="$exp$rest"; exp="${exp//\}}"
-    [ "$exp" != "$1" ] && is_lift "$exp"
+    _env_out="$out$rest"
+}
+_env_lift() {
+    _env_hit=0 _env_out=''
+    case "$1" in *'$'*) ;; *) return 1 ;; esac
+    _env_exp "$1"
+    [ "$_env_hit" -eq 1 ] && return 0
+    [ "$_env_out" != "$1" ] && is_lift "$_env_out"
 }
 
 # ------------------------------------------------------------ file tools ---
