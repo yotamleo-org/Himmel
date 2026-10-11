@@ -60,13 +60,15 @@
 # value holds the state dir or the lift name denies; plain $NAME / ${NAME}
 # references are joined with the literal text and tested; `> "$OUT"` with a
 # benign value stays allowed.
-# ponytail: the lookup answers the INHERITED value, so a variable the command
-# assigns first (`X=/tmp/o; echo > "$X"`) is read from the environment (fail
-# closed); a value built from $(...) or a command-assigned variable that
-# differs from the inherited one is not resolved; upgrade path is the
-# operator-owned lift above.
-# The cp / dd of= / sort -o / install destination paths use is_lift only and
-# do not resolve env values (filed separately, out of HIMMEL-5159 scope).
+# The zsh forms `$~D` `$=D` `$^D` `$#D` `$+D` and the `>!` `>>!` `&>!` `>&!`
+# operators are denied or tokenized as part of the redirect.
+# ponytail: these shapes fail OPEN, not closed: a variable the command assigns
+# first whose value differs from the inherited one (`X=<state>/bank-lift.json;
+# echo > "$X"`), a target built from $(...) or backticks, and `$_`; the lookup
+# answers only the INHERITED value; upgrade path is HIMMEL-5341 (apply rule (b)
+# to every $NAME in a command that writes).
+# ponytail: the cp / dd of= / sort -o / install (and mv, rsync) destination
+# paths use is_lift only and do not resolve env values; HIMMEL-5326.
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
 # 211,645 rows (0.40 %): ~725 relative or computed copy destinations and
 # sources under an unproven cwd, 110 computed extraction destinations
@@ -360,9 +362,11 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 # ponytail: accepted over-deny, any operator form in a redirect target
 # (`> "${LOG:-/tmp/l}"`) and any variable that holds the state dir; upgrade
 # path is the operator-owned lift above. A variable the command assigns first
-# is read from the INHERITED value; $(...) is left to the existing rules.
+# is read from the INHERITED value (fails OPEN when they differ, HIMMEL-5341);
+# $(...) and `$_` fail OPEN too and are left to the existing rules.
 # shellcheck disable=SC2016  # literal $ and ${ } text is matched, not expanded
 _env_lift() {
+    local LC_ALL=C
     local rest="$1" out='' n v nxt
     local re_br='^\$\{([A-Za-z_][A-Za-z0-9_]*)\}'
     local re_nm='^\$([A-Za-z_][A-Za-z0-9_]*)'
@@ -376,7 +380,7 @@ _env_lift() {
             nxt="${rest:${#BASH_REMATCH[0]}:1}"
             case "$nxt" in ':'|'[') return 0 ;; esac
         else
-            case "$rest" in '${'*) return 0 ;; esac
+            case "$rest" in '${'*|'$~'*|'$='*|'$^'*|'$#'*|'$+'*) return 0 ;; esac
             out="$out\$"; rest="${rest:1}"; continue
         fi
         rest="${rest:${#BASH_REMATCH[0]}}"
@@ -569,6 +573,7 @@ END {
         if (c == "&" && c2 == ">") {
             emit_mark(SB "W"); i++
             if (substr(s, i + 1, 1) == ">") i++
+            if (substr(s, i + 1, 1) == "!") i++
             continue
         }
         if (c == ";" || c == "&" || c == "|" || c == "(") { flush(); continue }
@@ -577,12 +582,14 @@ END {
             j = i + 1
             if (substr(s, j, 1) == ">") j++
             if (substr(s, j, 1) == "|") j++
+            if (substr(s, j, 1) == "!") j++
             if (substr(s, j, 1) == "&") {
                 j++
                 if (substr(s, j, 1) ~ /[0-9-]/) {
                     while (substr(s, j, 1) ~ /[0-9-]/) j++
                     emit_tok(); i = j - 1; continue
                 }
+                if (substr(s, j, 1) == "!") j++
             }
             emit_mark(SB "W"); i = j - 1; continue
         }
@@ -1225,7 +1232,7 @@ EOF
                 $'\002W')
                     i=$((i+1)); t="${tk[$i]:-}"
                     if [ -n "$t" ] && is_lift "$t"; then deny "a redirect writes the bank lift ($t)"; fi
-                    if [ -n "$t" ] && _env_lift "$t"; then deny "a redirect target ($t) is an environment value that names the bank lift"; fi
+                    if [ -n "$t" ] && _env_lift "$t"; then deny "a redirect target ($t) is an environment reference the fence cannot prove benign (an operator or zsh flag form is not evaluated, a plain value may name the bank lift), so this is denied"; fi
                     ;;
                 $'\002R')
                     i=$((i+1)); fed=1

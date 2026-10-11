@@ -1521,6 +1521,21 @@ env_row "5159 redirect \$OUT (env=benign, ctrl)"    allow "OUT=/tmp/out.txt" 'ec
 env_row "5159 tee \$LOG (env=benign, ctrl)"         allow "LOG=/tmp/run.log" 'echo hi | tee "$LOG"'
 env_row "5159 redirect \$OUT (env=state dir, accepted over-deny)" deny "OUT=$ST" 'echo hi > "$OUT"'
 env_row "5159 redirect \$UNSET (not in env, ctrl)"  allow "OTHER=1" 'echo hi > "$UNSET_VAR"'
+# Judge j2413c: zsh flag forms work without braces, and `>!` / `>|` are zsh's
+# clobber operators; the tokenizer used to read `!` as the target word.
+env_row "5159 redirect > \$~D, zsh GLOB_SUBST flag"  deny "D=$LIFT" 'echo hi > $~D'
+env_row "5159 redirect > \$=D, zsh word-split flag"  deny "D=$LIFT" 'echo hi > $=D'
+env_row "5159 redirect > \$^D, zsh RC_EXPAND flag"   deny "D=$LIFT" 'echo hi > $^D'
+env_row "5159 redirect > \$=~D, stacked zsh flags"   deny "D=$LIFT" 'echo hi > $=~D'
+env_row "5159 redirect > \$#D, zsh length form"      deny "D=$LIFT" 'echo hi > $#D'
+env_row "5159 redirect > \$+D, zsh set-test form"    deny "D=$LIFT" 'echo hi > $+D'
+env_row "5159 tee \$~D, zsh GLOB_SUBST flag"         deny "D=$LIFT" 'echo hi | tee $~D'
+env_row "5159 redirect >! \"\$D\", zsh clobber"      deny "D=$LIFT" 'echo hi >! "$D"'
+env_row "5159 redirect >>! \"\$D\", zsh append clobber" deny "D=$LIFT" 'echo hi >>! "$D"'
+env_row "5159 redirect &>! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi &>! "$D"'
+env_row "5159 redirect >&! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi >&! "$D"'
+env_row "5159 redirect >! literal lift path"         deny "OTHER=1" "echo hi >! $LIFT"
+env_row "5159 redirect >! \$OUT (env=benign, ctrl)"  allow "OUT=/tmp/out.txt" 'echo hi >! "$OUT"'
 }
 rows_5159
 
