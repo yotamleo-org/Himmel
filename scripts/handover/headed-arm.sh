@@ -1670,6 +1670,10 @@ if [ "$sv_seen" -eq 1 ]; then
             if [ "$bus_n" -ge "$BUS_BIND_SECS" ]; then
                 kill "$bus_pid" 2>/dev/null
                 bus_timed_out=1
+                # SIGTERM can be ignored or deferred: one second of grace,
+                # then SIGKILL, so the `wait` below can never block.
+                sleep 1
+                kill -0 "$bus_pid" 2>/dev/null && kill -9 "$bus_pid" 2>/dev/null
                 break
             fi
             sleep 1

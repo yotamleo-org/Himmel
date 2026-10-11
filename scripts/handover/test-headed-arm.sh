@@ -2247,4 +2247,29 @@ check "bgg hung bind: headed-arm.sh returns within 15s" "$hungbg" "no"
 check "bgh hung bind: launch exit 0 (fail-open)" "$rcbg" "0"
 contains "bgi hung bind: timeout warned into the arm log" "$(cat "$dbg/log" 2>/dev/null)" "bus bind of HIMMEL-busbg to pid 9001 failed"
 
+# --- bj (HIMMEL-5207, review round 1): a bind that IGNORES SIGTERM is escalated to
+# SIGKILL after a one-second grace, so the post-timeout `wait` cannot hang.
+dbj="$tmp/cbj"; mk_stub "$dbj" 1 alive "HIMMEL-busbj"
+cat > "$dbj/bus" <<'BUS_EOF'
+#!/usr/bin/env bash
+trap '' TERM
+while :; do sleep 1; done
+BUS_EOF
+chmod 755 "$dbj/bus"
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbj/bus" HEADED_ARM_BUS_BIND_SECS=2 \
+  run_headed_arm "$dbj" "$REPO" "HIMMEL-busbj" "docbj.md" "$dbj/signal-never" "$PAST" >/dev/null 2>&1 &
+pidbj=$!
+nbj=0
+while kill -0 "$pidbj" 2>/dev/null && [ "$nbj" -lt 150 ]; do sleep 0.1; nbj=$((nbj+1)); done
+if kill -0 "$pidbj" 2>/dev/null; then
+  hungbj=yes; kill -9 "$pidbj" 2>/dev/null
+else
+  hungbj=no
+fi
+pkill -9 -f "$dbj/bus" 2>/dev/null || true
+rcbj=0; wait "$pidbj" 2>/dev/null || rcbj=$?
+check "bjj SIGTERM-ignoring bind: headed-arm.sh returns within 15s" "$hungbj" "no"
+check "bjk SIGTERM-ignoring bind: launch exit 0 (fail-open)" "$rcbj" "0"
+contains "bjl SIGTERM-ignoring bind: timeout warned into the arm log" "$(cat "$dbj/log" 2>/dev/null)" "timed out after 2s"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
