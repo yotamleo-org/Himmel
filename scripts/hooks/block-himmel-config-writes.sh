@@ -131,10 +131,10 @@ while [ "$i" -lt "$n" ]; do
         continue
     fi
     if [ "$c" = $'\\' ]; then
-        # backslash-newline is a line continuation: the shell drops both, so it
-        # must not become a clause boundary below.
+        # backslash-newline is a line continuation: the shell drops both with no
+        # whitespace left behind (c\<nl>p runs cp), so append nothing.
         if [ "${cmd:i:1}" = $'\n' ]; then
-            cur="$cur "
+            :
         else
             cur="$cur$c${cmd:i:1}"
         fi

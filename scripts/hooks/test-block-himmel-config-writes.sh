@@ -108,6 +108,7 @@ bash_case "cat with a quoted \"/dev/null\" -> allow" allow "cat $CFG 2>\"/dev/nu
 bash_case "cat with a quoted '/dev/null' -> allow" allow "cat $CFG >'/dev/null'"
 bash_case "cat with a backslash-newline continuation -> allow" allow "$(printf 'cat \\\n%s' "$CFG")"
 bash_case "continuation then a real writer clause -> block" block "$(printf 'cat \\\n%s; cp x %s' "$CFG" "$CFG")"
+bash_case "reader name glued to a program by a continuation (cat\\<nl>x) -> block" block "$(printf 'cat\\\nx %s' "$CFG")"
 bash_case ">>/dev/null-prefixed name -> block" block "cat $CFG >>/dev/nullx"
 bash_case "quoted path under /dev/null -> block" block "cat $CFG >\"/dev/null/x\""
 bash_case "quoted /dev/null then a real file -> block" block "cat $CFG >\"/dev/null\">$T/x"
