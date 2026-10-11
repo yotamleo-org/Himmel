@@ -1210,6 +1210,9 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
         return 1
     fi
     case "$sub" in commit | tag | notes) exempt=1 ;; esac
+    # ponytail: the positional words of an alias or an unknown subcommand, and of
+    # `submodule foreach`, are not run through meta_value, so text parsing cannot
+    # close this class; upgrade path HIMMEL-4852 (structural fix).
     # A read-only subcommand: only --opt=value and -O are values; a word after a
     # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
     case "$sub" in
