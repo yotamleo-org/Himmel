@@ -68,6 +68,11 @@ echo '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash scripts/hooks/wired-hoo
 out=$(run "$d"); rc=$?
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED orphan-hook.sh' <<<"$out"; } && ok "U9 a longer basename does not register a shorter one" || no "U9 substring counted as wired (rc=$rc): $out"
 
+d=$(mk suffix); : > "$d/scripts/hooks/orphan-hook.sh"
+echo '{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash scripts/hooks/wired-hook.sh"},{"command":"bash scripts/hooks/orphan-hook.sh.bak"}]}]}}' > "$d/.claude/settings.json"
+out=$(run "$d"); rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED orphan-hook.sh' <<<"$out"; } && ok "U9b a suffixed reference (.bak) does not register the script" || no "U9b suffix counted as wired (rc=$rc): $out"
+
 out=$(run "$T/no-such-root"); rc=$?
 [ "$rc" -eq 2 ] && ok "U10 a root with no scripts/hooks is an error, not OK" || no "U10 bad root passed (rc=$rc): $out"
 

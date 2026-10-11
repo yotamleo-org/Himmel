@@ -14,7 +14,7 @@
 # is now wired, or names no script, is itself a failure (the list cannot rot).
 #
 # Usage: bash scripts/testing/check-unwired-hooks.sh [<repo-root>]
-# Exit: 0 clean, 1 unwired script or stale allowlist entry.
+# Exit: 0 clean, 1 unwired script or stale allowlist entry, 2 repo root has no scripts/hooks.
 set -uo pipefail
 
 REPO="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -38,7 +38,7 @@ for w in "${WIRING[@]}"; do
 done
 
 # Whole-basename match: not-orphan-hook.sh must not register orphan-hook.sh.
-is_wired() { grep -qE -- "(^|[^A-Za-z0-9._-])${1//./\\.}([^A-Za-z0-9_-]|\$)" <<<"$wiring_text"; }
+is_wired() { grep -qE -- "(^|[^A-Za-z0-9._-])${1//./\\.}([^A-Za-z0-9._-]|\$)" <<<"$wiring_text"; }
 allow_reason() { awk -F'|' -v b="$1" '$1==b {print $2; exit}' "$ALLOW" 2>/dev/null; }
 
 fail=0
