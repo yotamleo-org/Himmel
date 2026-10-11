@@ -1794,6 +1794,13 @@ assert "ctl: find src -name x stays ALLOW"     ALLOW "$(decide "$(j_bash "find s
 assert "cd ~/../.. && du -sh never ALLOW"      PASS  "$(decide "$(j_bash 'cd ~/../.. && du -sh')")"
 assert "xxd in trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "xxd in ${CR}")")"
 assert "uniq a trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "uniq a ${CR}")")"
+# no payload cwd: the hook's own directory stands in (a hook started in / walks /)
+sw_in_root=$(cd / && printf '%s' "$(j_bash "du -sh")" | bash "$HOOK" 2>/dev/null)
+if grepq "$sw_in_root" '"permissionDecision":"allow"'; then
+    echo "FAIL no payload cwd, hook run from / : du -sh must not ALLOW"; FAILED=$((FAILED + 1))
+else
+    echo "PASS no payload cwd, hook run from / : du -sh never ALLOW (PASS)"
+fi
 assert "payload cwd / : du -sh never ALLOW"    PASS  "$(decide "$(j_bash_cwd / "du -sh")")"
 assert "payload cwd / : grep -r x . never ALLOW" PASS "$(decide "$(j_bash_cwd / "grep -r x .")")"
 assert "ctl: payload cwd repo : du -sh ALLOW"  ALLOW "$(decide "$(j_bash_cwd /home/u/repo "du -sh")")"

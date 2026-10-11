@@ -2201,6 +2201,9 @@ fi
 
 # HIMMEL-5187: a payload cwd of `/` makes every relative walk a root walk.
 sw_cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || sw_cwd=""
+# no usable payload cwd: the directory the hook itself runs in is the best
+# evidence of where the command executes
+case "$sw_cwd" in /*) ;; *) sw_cwd=$(pwd -P 2>/dev/null) || sw_cwd="" ;; esac
 case "$sw_cwd" in
     /*)
         if path_textually_resolves_to_root "$sw_cwd"; then
