@@ -51,7 +51,7 @@ esac
 ANCHOR="${HIMMEL_REPO:-}"
 [ -n "$ANCHOR" ] && [ -f "$ANCHOR/scripts/cr/ledger-append.sh" ] || {
     echo "live-gate-e2e: HIMMEL_REPO must name the primary himmel checkout" >&2; exit 2; }
-anchor_nwo=$(git -C "$ANCHOR" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|;s|\.git$||p')
+anchor_nwo=$(git -C "$ANCHOR" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|p' | sed 's|\.git$||')
 [ -z "$anchor_nwo" ] || [ "$anchor_nwo" != "$REPO" ] || {
     echo "live-gate-e2e: refusing to target the anchor's own origin ($REPO)" >&2; exit 2; }
 
@@ -84,8 +84,9 @@ priv=$(gh repo view "$REPO" --json isPrivate --jq .isPrivate)
 
 step "clone + close leftovers"
 if [ -d "$WORK/.git" ]; then
-    work_nwo=$(git -C "$WORK" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|;s|\.git$||p')
+    work_nwo=$(git -C "$WORK" remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^ ]*\)$|\1|p' | sed 's|\.git$||')
     [ "$work_nwo" = "$REPO" ] || { echo "live-gate-e2e: $WORK is not a clone of $REPO (origin=${work_nwo:-none}) — refusing to reset it" >&2; exit 2; }
+    [ -z "$(git -C "$WORK" status --porcelain 2>/dev/null)" ] || { echo "live-gate-e2e: $WORK has uncommitted changes — refusing to reset it" >&2; exit 2; }
     git -C "$WORK" fetch -q origin && git -C "$WORK" checkout -q main && git -C "$WORK" reset -q --hard origin/main || exit 1
 else
     mkdir -p "$(dirname "$WORK")" && git clone -q "https://github.com/$REPO.git" "$WORK" || exit 1
@@ -107,6 +108,8 @@ printf 'Canned PR for the live review-gate e2e.\n\n## Ticket coverage\n- canned 
 pr_url=$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "test: [HIMMEL-5232] canned e2e PR" --body-file "$body")
 rm -f "$body"
 PR="${pr_url##*/}"
+# A failed run still closes its canned PR (the final close below is explicit).
+trap 'gh pr close "$PR" --repo "$REPO" --delete-branch >/dev/null 2>&1' EXIT
 HEAD_SHA=$(git rev-parse HEAD)
 echo "PR #$PR head $HEAD_SHA"
 
