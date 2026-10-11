@@ -167,6 +167,9 @@ _r5098 "211b eval of gh output"                      block 'eval "$(gh api repos
 _r5098 "211c eval of an unlisted program"            block 'eval "$(python3 gen.py)"'
 _r5098 "211d eval of printf -v in a body"            block 'eval "$(printf -v m x)"'
 _r5098 "211e eval of branch name"                    block 'eval "$(git rev-parse --abbrev-ref HEAD)"'
+_r5098 "213a path-qualified echo"                    block 'eval "$(/tmp/x/echo hi)"'
+_r5098 "213b relative path date"                     block 'eval "$(./date)"'
+_r5098 "213c rev-parse with a second option"         block 'eval "$(git rev-parse --show-toplevel --symbolic --all)"'
 _r5098 "211f unlisted program after a pipe"          block 'eval "$(echo x | tee f)"'
 _r5098 "212a source of toplevel plus path"           allow 'source "$(git rev-parse --show-toplevel)/scripts/lib/x.sh"'
 _r5098 "206a source of data, shell word as argument" block "source \"\$(cat @W@/msg)\" bash"

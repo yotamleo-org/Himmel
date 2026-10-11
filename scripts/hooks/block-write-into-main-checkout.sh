@@ -3320,13 +3320,17 @@ _bwimc_body_reads_data() {
                 [a-z_]*=*) continue ;;
                 if|then|elif|else|fi|do|done|while|until|time|true|false|:|'!'|'{'|'}'|'('|')') continue ;;
             esac
-            w="${w##*/}"; w="${w%.exe}"
+            # a path-qualified word (`/wt/echo`, `./date`) is an arbitrary
+            # program that only borrows a listed name: not a generator
+            case "$w" in */*) return 0 ;; esac
+            w="${w%.exe}"
             case "$w" in
                 echo|date|ssh-agent|pyenv|rbenv|nodenv|direnv|pwd|basename|dirname|uname|whoami|hostname) ;;
                 printf) case " ${words[*]} " in *" -v"*) return 0 ;; esac ;;
-                git) # path-printing rev-parse options only (no data, no ref names)
+                git) # ONE path-printing rev-parse option, nothing after it (a second
+                     # option such as --symbolic --all prints ref names)
                     case " ${words[*]} " in
-                        " git rev-parse --show-toplevel"*|" git rev-parse --show-cdup"*|" git rev-parse --show-prefix"*|" git rev-parse --git-dir"*|" git rev-parse --git-common-dir"*|" git rev-parse --absolute-git-dir"*) ;;
+                        " git rev-parse --show-toplevel "|" git rev-parse --show-cdup "|" git rev-parse --show-prefix "|" git rev-parse --git-dir "|" git rev-parse --git-common-dir "|" git rev-parse --absolute-git-dir ") ;;
                         *) return 0 ;;
                     esac ;;
                 *) return 0 ;;
