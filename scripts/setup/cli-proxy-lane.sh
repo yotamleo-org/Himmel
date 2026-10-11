@@ -45,6 +45,26 @@ CFG="$DIR/config.yaml"
 VER_STAMP="$DIR/cli-proxy-api.version"
 PORT=8317
 VERSION="7.3.15"
+# Station-target override (HIMMEL-5267): the VM upgrade stage rolls the proxy to a
+# target without editing this file. Default unchanged; a version never rides on the
+# pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
+# (the asset sha256 from that release's checksums.txt). Both are shape-checked
+# because VERSION lands in a URL.
+if [ -n "${CLIPROXY_API_VERSION-}" ] || [ -n "${CLIPROXY_API_SHA256-}" ]; then
+  if [ -z "${CLIPROXY_API_VERSION-}" ] || [ -z "${CLIPROXY_API_SHA256-}" ]; then
+    echo "cli-proxy-lane: CLIPROXY_API_VERSION and CLIPROXY_API_SHA256 must be set together (the sha256 of that release's linux_amd64 asset)" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$CLIPROXY_API_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "cli-proxy-lane: CLIPROXY_API_VERSION '$CLIPROXY_API_VERSION' is not a plain x.y.z version" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$CLIPROXY_API_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+    echo "cli-proxy-lane: CLIPROXY_API_SHA256 is not a lowercase 64-char hex sha256" >&2
+    exit 1
+  fi
+  VERSION="$CLIPROXY_API_VERSION"
+fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
@@ -53,6 +73,7 @@ RELEASE_URL="${RELEASE_BASE}/${ASSET}"
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
 ASSET_SHA256="801c3a23061d57a830e67fcd033fda26e96c2bfe93e1b2e34e4428ed7defc7e5"
+[ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"
 UNIT_DIR="$HOME/.config/systemd/user"

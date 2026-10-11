@@ -409,6 +409,40 @@ assert_rc "401-and-stale status exit code (not fully OK)" 1 "$RC"
 assert_contains "401-and-stale status still names the stale version" "WARNING" "$OUT"
 assert_contains "401-and-stale status still names --roll" "--roll" "$OUT"
 
+# HIMMEL-5267: the VM upgrade stage rolls the proxy to a station target without
+# editing the script. The sha is the real linux_amd64 sha256 of v8.0.23 from the
+# release's checksums.txt (copied from the environment, not hand-written).
+V8_SHA="744000a1a4f9ce19f5964774f853d029797b87ef53796d054389258c66cb1224"
+ZERO_SHA="0000000000000000000000000000000000000000000000000000000000000000"
+
+echo "TEST 24 (RED first): CLIPROXY_API_VERSION + CLIPROXY_API_SHA256 override the pin for --install (HIMMEL-5267)"
+F24="$(fixture override)"
+HOME="$F24" CLIPROXY_API_KEY="stub-key-24" CLIPROXY_API_VERSION="8.0.23" CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
+assert_rc "override install exit code" 0 "$RC"
+assert_contains "override install names the overridden version" "v8.0.23" "$OUT"
+STAMP24="$(cat "$F24/.cli-proxy-api/cli-proxy-api.version" 2>/dev/null || echo none)"
+assert_rc "override writes the overridden version stamp" "8.0.23" "$STAMP24"
+
+echo "TEST 25: a version override without a sha256 refuses (a version never rides on the old pin's checksum)"
+F25="$(fixture override-nosha)"
+HOME="$F25" CLIPROXY_API_KEY="stub-key-25" CLIPROXY_API_VERSION="8.0.23" STUB_SHA256="$V8_SHA" run --install
+assert_rc "version-without-sha exit code" 1 "$RC"
+assert_contains "refusal names the missing sha var" "CLIPROXY_API_SHA256" "$OUT"
+if [ ! -e "$F25/.cli-proxy-api/cli-proxy-api" ]; then pass "nothing installed on a refused override"; else fail "nothing installed on a refused override"; fi
+
+echo "TEST 26 (RED control): a deliberately bad pin (sha does not match the download) fails the install"
+F26="$(fixture override-badsha)"
+HOME="$F26" CLIPROXY_API_KEY="stub-key-26" CLIPROXY_API_VERSION="8.0.23" CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$ZERO_SHA" run --install
+assert_rc "bad-pin install exit code" 1 "$RC"
+assert_contains "bad pin is a checksum mismatch" "checksum mismatch" "$OUT"
+
+echo "TEST 27: a malformed override (version or sha shape) refuses before any download"
+F27="$(fixture override-malformed)"
+HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION="8.0.23/../x" CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
+assert_rc "malformed-version exit code" 1 "$RC"
+HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION="8.0.23" CLIPROXY_API_SHA256="not-a-sha" STUB_SHA256="$V8_SHA" run --install
+assert_rc "malformed-sha exit code" 1 "$RC"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
