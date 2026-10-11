@@ -55,7 +55,8 @@
     "himmel-ops@himmel",
     "qmd@himmel",
     "pr-review-toolkit-himmel@himmel",
-    "lean-skills@himmel"
+    "lean-skills@himmel",
+    "i-have-adhd@himmel"
   ],
   "_comment_himmel_bus": "HIMMEL-5223 / HIMMEL-5222: himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. The path is relative to the leg's cwd, a himmel worktree (ponytail: a leg started outside a himmel checkout cannot start it, upgrade path HIMMEL-4830 packaging). `npm --prefix` runs the plugin's own `start` script, which installs the locked deps once and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
   "mcpCatalog": {
@@ -76,6 +77,7 @@
     "mcp-server-dev@claude-plugins-official",
     "watch@claude-video",
     "lean-skills@himmel",
+    "i-have-adhd@himmel",
     "plannotator-effective-html@himmel",
     "impeccable@himmel",
     "ui-ux-pro-max@himmel",
@@ -369,7 +371,7 @@
       "gateAllow": true,
       "_comment": "HIMMEL-2975: Sonnet relay of a split console. No plugins, no MCP servers. drop removes every non-floor id registry.base now carries (pr-review-toolkit-himmel@himmel, and lean-skills@himmel as of HIMMEL-3064 -- a relay has no business brainstorming/TDD-ing, it only forwards) so this profile resolves to floor-only, same shape as bare but with gateAllow. Its write-deny hook (guard-relay-writes.sh) keys off HIMMEL_CONSOLE_RELAY, not this profile.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel", "i-have-adhd@himmel"],
       "mcpServers": [],
       "contextBudget": 35000,
       "contextMode": "standard",
@@ -379,7 +381,7 @@
     "console-judge": {
       "_comment": "HIMMEL-3133 / design §3.2: a judge session, launched via headed-arm-leg.sh --judge (\"the judge is a leg\"). drop removes the same two non-floor ids console-relay drops above (pr-review-toolkit-himmel@himmel, lean-skills@himmel) -- a judge reads and writes a verdict, it does not implement or ship. Deliberately no gateAllow, unlike console-relay: a judge's few gate-shaped calls (inbox-send.sh, queue-lock.sh, write-verdicts.sh) take the ordinary classifier path rather than being pre-approved wholesale -- its custody rule is \"transport is the disk\" (a verdict file), not a permission grant, so this name does NOT belong in plugin-profiles.mjs's LEG_PROFILES set (:29, its only reader) and that file is not touched for this profile. mcpServers names only qmd, same reasoning as leg-impl/telegram above: the one MCP tool a judge's evidence-gathering actually needs; graphify/obsidian-vault/context7 are USER-level servers a judge never touches.",
       "enable": [],
-      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel"],
+      "drop": ["pr-review-toolkit-himmel@himmel", "lean-skills@himmel", "i-have-adhd@himmel"],
       "mcpServers": ["qmd"],
       "contextBudget": 35000,
       "contextMode": "standard",

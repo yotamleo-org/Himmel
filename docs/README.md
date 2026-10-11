@@ -10,6 +10,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
 - [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / advisory, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
+- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config console, the console board, and the roadmap tracker; what each is, how to start it, where it opens.
 
 ## Setup
 
@@ -26,6 +27,10 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [glossary.md](glossary.md) — the one definition site for the handover vocabulary: console, judge, relay, leg, chain, wave, arming, manual override.
 - [commands-catalog.md](commands-catalog.md) — every project-local slash command.
 - [tooling-catalog.md](tooling-catalog.md) — every tool, script, and plugin in active use.
+- [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
+- [cadences.md](cadences.md) — every recurring job you can arm: what it does, when the wizard offers it, how to arm, status and disarm it.
+- [launchers.md](launchers.md) — the `claude-codex`, `claude-routed`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is removed.
+- [himmel-bus.md](himmel-bus.md) — **early.** The local session-to-session message bus: CLI, MCP tools, identity, delivery guarantees.
 - [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (GLM lane, quota-gauge, escalation channel, statusline, clipper pipeline).
 - [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched — not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.
 - [operator-conventions.md](operator-conventions.md) — durable operator working-habits.
@@ -77,6 +82,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tool-adoption/registry.md](tool-adoption/registry.md) — every evaluated tool, recorded.
 - [tool-adoption/telemetry.md](tool-adoption/telemetry.md) — adoption-outcome telemetry for the registry.
 - [license-audit.md](license-audit.md) · [skills-taxonomy-audit.md](skills-taxonomy-audit.md) — audits.
+- [third-party-licenses.md](third-party-licenses.md) — the third-party license audit of direct npm dependencies.
 
 ## Publishing these docs (GitHub Pages)
 

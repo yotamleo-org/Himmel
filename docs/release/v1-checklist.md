@@ -115,6 +115,26 @@ exceed GitHub's 125000-char limit and fail (HIMMEL-3920).
   `## [Unreleased]` section becomes `## [v1.0.0] - <date>` automatically
   once the tag exists, no hand-editing.
 
+## 7. Docs and `llms.txt` reflect every user-facing change (HIMMEL-5251)
+
+Before cutting, the docs (`README.md`, `docs/`, plugin READMEs) and
+[`llms.txt`](../../llms.txt) reflect every user-facing change in the release,
+checked against the release's merged PR list (`gh pr list --state merged`
+since the previous tag): each new or renamed command, verb, page, flag or
+served surface is described where an adopter looks for it.
+
+- `llms.txt` is a router: name it with a one-line purpose and a doc link rather
+  than explaining it (its budget is enforced).
+- The UI surfaces (the `himmelctl ui` config console, the console board, the
+  roadmap tracker) are [`docs/ui.md`](../ui.md); a new config-ui page gets a
+  section there.
+- `bash scripts/docs/test-check-llms-links.sh` passes. It checks the router
+  budget and links, that every top-level `docs/*.md` page is linked from
+  `docs/README.md` (which `llms.txt` links), that `llms.txt` names
+  `himmelctl ui`, `board.mjs` and `tracker.py`, and that `docs/ui.md` covers
+  every page id in `scripts/config-ui/public/nav.js`. A new `himmelctl` verb is
+  not checked mechanically: read `himmelctl --help` against the docs by hand.
+
 ## VERSION: why this PR does not bump it
 
 `scripts/himmelctl/lib/provenance.js` reads the `VERSION` file directly into

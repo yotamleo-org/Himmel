@@ -354,6 +354,7 @@ jobs:
         run: bash .github/scripts/apt-install.sh bubblewrap socat
       - run: bash scripts/testing/test-mock-consult-sandbox.sh
       - run: bash scripts/testing/test-mock-hook-smoke.sh
+      - run: bash scripts/testing/test-mock-hook-live-turn.sh
 
   lanes-and-trust-suites:
     # HIMMEL-689: scripts/lanes is a zero-dependency ESM test package — no

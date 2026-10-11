@@ -35,6 +35,13 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > can add or remove one without a catalog edit, since none of them are himmel
 > slash commands.
 
+> **Not itemized: `marketplace/plugins/i-have-adhd/skills/`** (HIMMEL-5239).
+> One vendored skill, `i-have-adhd` (`ayghri/i-have-adhd`, copied verbatim),
+> with `disable-model-invocation: true`: the operator invokes it as the skill
+> `/i-have-adhd`, it ships no `commands/` directory, and it stays on until
+> "stop adhd mode". See
+> [marketplace/plugins/i-have-adhd/README.md](../marketplace/plugins/i-have-adhd/README.md).
+
 > **Keep this current.** When a ticket adds, renames, removes, or re-describes
 > a command under `.claude/commands/`, the Description column is regenerated
 > for you — run `node scripts/lib/gen-commands-catalog.mjs write` and commit

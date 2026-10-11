@@ -1,0 +1,72 @@
+# Cadences reference
+
+A **cadence** is a recurring job himmel can arm on your machine: a crontab entry
+(Linux, macOS) or a scheduled task (Windows) that fires a runner on a schedule.
+Every cadence is **off until you arm it**: the install wizard only offers the
+ones whose precondition holds, and nothing arms itself.
+
+The wizard menu is not a hand-written list. It reads
+`scripts/himmelctl/lib/cadence-registry.json`, one row per cadence, and a
+staleness lint asserts each row's script still exists and still exposes
+`arm`, `status` and `disarm`. This page is derived from that file; when the two
+disagree, the JSON wins.
+
+## The common interface
+
+Every cadence script takes the same three verbs:
+
+```bash
+bash <script> arm [--time HH:MM] [--force] [--dry-run]
+bash <script> status
+bash <script> disarm [--dry-run]
+```
+
+- `arm` installs the schedule. It refuses to double-arm (`already armed`);
+  `--force` replaces the existing entry. `--dry-run` prints what it would register and registers nothing.
+- `status` reports whether the job is armed, its schedule and its last run.
+- `disarm` removes exactly what `arm` added.
+- Some cadences (`doctor`, the reconcile, failure-review and qmd-quality
+  scripts) also accept `run`, one pass, the verb the scheduler calls, so you
+  can test the job by hand.
+
+Per-script flags beyond that are in the table. Several cadences also register
+themselves with the observability registry so `/himmel-doctor` can warn when a
+task silently vanishes.
+
+## Registry cadences (offered by the install wizard)
+
+| Id | Script | Offered when | What it does |
+|---|---|---|---|
+| `pipeline` | `scripts/luna/pipeline-cadence.sh` | a vault exists | Daily fetch-health, harvest and synthesize, plus weekly health runs against the vault. The one wizard-recommended cadence. `arm --vault <path>` |
+| `qmd` | `scripts/luna/qmd-cadence.sh` | a vault exists | Daily qmd update, embed and completeness assert over every configured collection, so the index never goes silently stale |
+| `graphmap` | `scripts/luna/graphmap-cadence.sh` | a vault exists | Hourly free structural (AST) refresh, weekly semantic refresh of the vault and himmel graphify graphs, plus a 6-hourly refresh, publish and auto-merge PR for himmel's own graph. Arming it commits to the hourly job. `arm --vault <path>` |
+| `vault-stall` | `scripts/luna/vault-stall-cadence.sh` | a vault exists | Every 15 minutes: detect a stalled vault auto-commit, remediate only the known-benign pre-commit refusals, alert on everything else without echoing the secret. `arm --vault <path>` |
+| `codex-sweep` | `scripts/cleanup/codex-sweep-cadence.sh` | the codex lane is selected | Recurring sweep of orphaned codex broker and MCP-fleet processes. Daily, default 09:00 local |
+| `drift-fix` | `scripts/upstreams/drift-fix-cadence.sh` | always | Nightly `/drift-fix` (bump auto-bumpable pins, open an ordinary PR) and `/fork-resync` (rebase carried forks, audit only). Stops at the PR or audit; never merges. Extra flag `--resync-time` |
+| `upstream-watch` | `scripts/upstreams/upstream-watch-cadence.sh` | always | Daily scan of himmel's open upstream PRs and issues for a delta. No Claude session; Telegram-notified only when something changed |
+| `doctor` | `scripts/doctor-cadence.sh` | always | Daily `himmel-doctor` run from the primary checkout. A FAIL or a new WARN goes to Telegram and the statusline shows the counts. Report only, fixes nothing. Cron only (Linux, macOS) |
+| `repo-sync` | `scripts/sync/repo-sync-cadence.sh` | Windows only | Daily fetch and fast-forward-only pull of every git repo under `--github-root` / `--documents-root`, plus a stale scratch-worktree cleanup pass. Uses `schtasks`; there is no crontab path |
+| `pull-cadence` | `scripts/luna-vitals/connectors/pull-cadence.sh` | `GOOGLE_HEALTH_REFRESH_TOKEN` is set | Daily Google Health connector pull to a review artifact. No Claude session. Setup: [luna/google-health-connector-setup.md](luna/google-health-connector-setup.md) |
+
+## Cadences armed by hand (not in the wizard)
+
+These have no wizard row; arm them directly with the same three verbs.
+
+| Script | What it does | Notes |
+|---|---|---|
+| `scripts/handover/reconcile-cadence.sh` | Periodic seat-liveness check: runs `reconcile-workers.sh --report` and orphans only seats whose pid is confirmed dead past the grace window | `arm [--interval-min N]` (default 10; `N` must divide 60). One crontab entry tagged `HIMMEL-ReconcileCadence`; Windows twin is `reconcile-cadence.ps1` |
+| `scripts/eval/leg-digest/failure-review-cadence.sh` | Daily failure review: runs the failure router over recorded leg failures and shows what failed. No model is run | **Dry-run by default**: a scheduled run files nothing and calls no Jira. `arm --live` opts in to live routing. `arm [--vault PATH] [--live]` |
+| `scripts/eval/qmd-quality/qmd-quality-cadence.sh` | Weekly qmd retrieval-quality eval; appends metrics and alerts when MRR drops | `arm --golden <file> [--index <file>] [--day 0-6]`. The index snapshot is deleted after every run |
+
+## Choosing
+
+- Start with `doctor` and `upstream-watch`: report-only, no Claude session, no
+  writes outside the state directory.
+- Add the vault trio (`pipeline`, `qmd`, `vault-stall`) only if you run a
+  companion vault.
+- `graphmap` and `drift-fix` run Claude sessions or open PRs; read their
+  headers before arming.
+
+See also: [setup/updating.md](setup/updating.md) (what `ensure` re-arms),
+[configuration.md](configuration.md) (off-switches), and `/pipeline-cadence`
+in [commands-catalog.md](commands-catalog.md).

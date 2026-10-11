@@ -45,6 +45,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | Plugin | What it does | Tier |
 |--------|-------------|------|
 | `lean-skills` | himmel's vendored subset (HIMMEL-3064) of `superpowers` + `mattpocock-skills` workflow skills — 11 of superpowers' 14 (the reference closure of the 4 himmel invokes: brainstorming, writing-plans, systematic-debugging, verification-before-completion) plus `grilling` from mattpocock/skills. Replaces both fat upstream plugins in the base profiles; their dormant installs remain available, off by default — see `marketplace/plugins/lean-skills/README.md` | ALWAYS |
+| `i-have-adhd` | Vendored (HIMMEL-5239, `ayghri/i-have-adhd` MIT, pinned commit) output-shaping skill for an ADHD reader: action first, numbered steps, one next action. `disable-model-invocation`, so 0 listing tokens; one SessionStart hook injects it (~1.75k tokens once per session) only when `~/.claude/.i-have-adhd-always` exists, which the installer and updater create unless `HIMMEL_NO_ADHD_ALWAYS=1` — see `marketplace/plugins/i-have-adhd/README.md` | ALWAYS |
 | `context7` | Fetches current library/framework docs on demand (MCP server) | ON-DEMAND |
 | `code-review` | Code review agent with severity-tagged findings | ON-DEMAND — cached, off by default |
 | `code-simplifier` | Simplifies recently written code for clarity/maintainability | ON-DEMAND — cached, off by default |
@@ -208,6 +209,7 @@ can also be passed to `--installed` for a hermetic observation.
 | `handover@himmel` | INSTALLED |
 | `himmel-ops@himmel` | INSTALLED |
 | `hookify@claude-plugins-official` | INSTALLED |
+| `i-have-adhd@himmel` | NOT INSTALLED |
 | `impeccable@himmel` | INSTALLED |
 | `lean-skills@himmel` | INSTALLED |
 | `lottie-motion-design@himmel` | INSTALLED |
@@ -1194,6 +1196,35 @@ pending deploy).
 (mock `claude`; guard red paths incl. `.salus` refusal surviving the variant)
 and `scripts/test-omniroute-config-lint.{sh,ps1}` (fixture matrix incl. the
 omitted-key and unknown-key red paths).
+
+---
+
+## claude-deepseek (`scripts/claude-deepseek`)
+
+**What:** launcher that runs Claude Code against DeepSeek's
+Anthropic-compatible endpoint. Needs `DEEPSEEK_API_KEY` and the station opt-in
+`HIMMEL_DEEPSEEK_INFERENCE_OK=1` in the process environment; checks the egress
+matrix (exit 3 on refusal) and refuses below `DEEPSEEK_MIN_BALANCE_USD`
+(exit 5). Available, not health-checked. Flags, exit codes and the other
+launchers: [launchers.md](launchers.md).
+
+---
+
+## session-analyzer (`scripts/insights/session-analyzer.sh`)
+
+**What:** local, read-only report over your Claude session transcripts
+(non-subagent only): tool and hook friction ranked as raw mentions and as
+genuine blocks. No network calls.
+`bash scripts/insights/session-analyzer.sh [--projects-dir <dir>] [--out <path>] [--since <YYYY-MM-DD>]`;
+default projects root `~/.claude/projects`.
+
+---
+
+## himmel-bus (`marketplace/plugins/himmel-bus/`)
+
+**What:** private chained local message store for session-to-session messages
+(CLI verbs, `send`/`read` MCP tools, `leg-bus` plugin profile). Early status;
+not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 
 ---
 
