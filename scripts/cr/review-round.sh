@@ -732,7 +732,8 @@ EOF
 # own diff changed from <from> to <to>; the base side of a merge-forward is not
 # counted (own_diff compares each head with its own base point). A changed line
 # counts twice (old and new). Without a captured base every line counts.
-# Fails (rc 1) when it cannot be measured.
+# Fails (rc 1) when it cannot be measured, when the captured base is not the
+# resolved base, or when either own diff has a binary change (HIMMEL-5268).
 ci_red_delta_lines() {
     if [ -z "$base_sha" ]; then
         _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
@@ -742,10 +743,18 @@ ci_red_delta_lines() {
             END { if (bad) n = 999999; print n + 0 }'
         return 0
     fi
+    # HIMMEL-5268: --base-sha is caller input. It must be the very commit this
+    # repository resolves as the base (panel-first-pass captures it from the
+    # same resolver); a head given as its own base measures a 0-line delta.
+    _cl_want="$(. "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" && . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" \
+        && git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$(default_branch .)")^{commit}")" || return 1
+    _cl_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || return 1
+    [ -n "$_cl_want" ] && [ "$_cl_got" = "$_cl_want" ] || return 1
     _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
     _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
     _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
-    if own_diff "$_cl_ob" "$1" > "$_cl_tmp/a" && own_diff "$_cl_nb" "$2" > "$_cl_tmp/b"; then
+    if own_diff "$_cl_ob" "$1" > "$_cl_tmp/a" && own_diff "$_cl_nb" "$2" > "$_cl_tmp/b" \
+        && ! grep -qE '^(Binary files |GIT binary patch)' "$_cl_tmp/a" "$_cl_tmp/b"; then
         _cl_rc=0
         diff "$_cl_tmp/a" "$_cl_tmp/b" > "$_cl_tmp/d" 2>/dev/null || _cl_rc=$?
         if [ "$_cl_rc" -le 1 ]; then

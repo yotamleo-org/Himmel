@@ -2220,6 +2220,38 @@ cired_out="$(postcap_start ciredmf)"; cired_rc=$?
 assert_eq "$cired_rc" "0" "the base side of a merge-forward does not count against the CI-red cap ($cired_out)"
 assert_has "$(cat "$git_dir/cr-review-rounds/ciredmf.delta" 2>/dev/null)" "postcap-ci-red" "the merge-forward round is the CI-red one"
 
+# HIMMEL-5268: a binary change is one "Binary files differ" line however big it
+# is, so the captured-base measure cannot bound it and refuses.
+postcap_setup ciredbin suggestion
+cired_rows "$RED"
+head -c 4096 /dev/zero > "$repo/ciredbin.dat"
+git -C "$repo" add ciredbin.dat
+git -C "$repo" commit -q -m "ciredbin adds a binary"
+postcap_f_head="$(git -C "$repo" rev-parse ciredbin)"
+cired_out="$(postcap_start ciredbin)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a binary change refuses the CI-red round on the captured-base path ($cired_out)"
+assert_eq "$(ls "$git_dir/cr-review-rounds/ciredbin.cired" 2>/dev/null)" "" "a binary-refused unlock leaves no marker"
+
+# HIMMEL-5268: a caller-supplied --base-sha is checked against the base this
+# repository resolves; the reviewed head as its own base measures 0 lines.
+# Control first: the real base, a 5-line delta, is granted by a direct call.
+postcap_setup ciredforgeok suggestion
+cired_rows "$RED"
+postcap_fix ciredforgeok
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredforgeok --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "control: the resolved base grants the small CI-red round by a direct call ($cired_out)"
+
+postcap_setup ciredforge suggestion
+cired_rows "$RED"
+n=0
+while [ "$n" -lt 45 ]; do printf 'line %s\n' "$n" >> "$repo/ciredforge.txt"; n=$((n + 1)); done
+git -C "$repo" commit -q -am "ciredforge big"
+postcap_f_head="$(git -C "$repo" rev-parse ciredforge)"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredforge --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a --base-sha that is the reviewed head cannot shrink the delta to 0 ($cired_out)"
+assert_eq "$(ls "$git_dir/cr-review-rounds/ciredforge.cired" 2>/dev/null)" "" "a forged-base refusal leaves no marker"
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
     exit 1
