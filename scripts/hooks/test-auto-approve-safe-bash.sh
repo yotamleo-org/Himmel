@@ -1795,8 +1795,13 @@ assert "cd ~/../.. && du -sh never ALLOW"      PASS  "$(decide "$(j_bash 'cd ~/.
 assert "xxd in trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "xxd in ${CR}")")"
 assert "uniq a trailing-CR never ALLOW"        PASS  "$(decide "$(j_bash "uniq a ${CR}")")"
 # no payload cwd: the hook's own directory stands in (a hook started in / walks /)
-sw_in_root=$(cd / && printf '%s' "$(j_bash "du -sh")" | bash "$HOOK" 2>/dev/null)
-if grepq "$sw_in_root" '"permissionDecision":"allow"'; then
+sw_in_root=$(cd / && printf '%s' "$(j_bash "du -sh")" | bash "$HOOK" 2>/dev/null); sw_in_root_rc=$?
+sw_in_root_ctl=$(cd / && printf '%s' "$(j_bash "ls README.md")" | bash "$HOOK" 2>/dev/null)
+if [ "$sw_in_root_rc" != 0 ]; then
+    echo "FAIL no payload cwd, hook run from / : the hook invocation failed (rc=$sw_in_root_rc)"; FAILED=$((FAILED + 1))
+elif ! grepq "$sw_in_root_ctl" '"permissionDecision":"allow"'; then
+    echo "FAIL no payload cwd, hook run from / : the probe control (ls README.md) did not ALLOW, so the probe is vacuous"; FAILED=$((FAILED + 1))
+elif grepq "$sw_in_root" '"permissionDecision":"allow"'; then
     echo "FAIL no payload cwd, hook run from / : du -sh must not ALLOW"; FAILED=$((FAILED + 1))
 else
     echo "PASS no payload cwd, hook run from / : du -sh never ALLOW (PASS)"
