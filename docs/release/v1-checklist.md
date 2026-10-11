@@ -115,6 +115,22 @@ exceed GitHub's 125000-char limit and fail (HIMMEL-3920).
   `## [Unreleased]` section becomes `## [v1.0.0] - <date>` automatically
   once the tag exists, no hand-editing.
 
+## 7. Docs and `llms.txt` name every user-facing surface (HIMMEL-5251)
+
+Before cutting, for every page, verb or served surface this release added or
+renamed (a `himmelctl` verb, a config-ui page, the console board, the roadmap
+tracker):
+
+- [`docs/ui.md`](../ui.md) describes it: what it is, how to start it, where it
+  opens.
+- [`llms.txt`](../../llms.txt) names it with a one-line purpose and a doc link
+  (it is a router, so link rather than explain; its budget is enforced).
+- `bash scripts/docs/test-check-llms-links.sh` passes. It checks the router
+  budget and links, that `llms.txt` names `himmelctl ui`, `board.mjs` and
+  `tracker.py`, and that `docs/ui.md` covers every page id in
+  `scripts/config-ui/public/nav.js`. A new `himmelctl` verb is not checked
+  mechanically: read `himmelctl --help` against `llms.txt` by hand.
+
 ## VERSION: why this PR does not bump it
 
 `scripts/himmelctl/lib/provenance.js` reads the `VERSION` file directly into
