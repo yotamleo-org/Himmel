@@ -64,6 +64,12 @@ eq "plan alternates arm order with one task" "B A,A B,B A" "$(bash "$HERE/run.sh
 (cd "$W" && CLAUDE_BIN="$W/claude" BANK_PREFLIGHT="$W/pf-ok" bash "$HERE/run.sh" run --reps 1 --tasks t5-qmd-only-profiles --out rel-out > "$W/run3.log" 2>&1)
 eq "relative --out: raw runs land under it" "2" "$(find "$W/rel-out/raw" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
+printf '#!/usr/bin/env bash\nexit 3\n' > "$W/claude-fail"
+chmod +x "$W/claude-fail"
+CLAUDE_BIN="$W/claude-fail" BANK_PREFLIGHT="$W/pf-ok" bash "$HERE/run.sh" run --reps 1 --tasks t5-qmd-only-profiles --out "$W/out-fail" > "$W/run4.log" 2>&1
+eq "every claude call failing makes the sweep exit non-zero" "1" "$?"
+eq "unparseable billed output counts as the full per-run cap" "3.0000" "$(grep -o 'spent_usd=[0-9.]*' "$W/run4.log" | cut -d= -f2)"
+
 # 5. preflight refusal stops the sweep before any run and says so.
 OUT2="$W/out2"
 CLAUDE_BIN="$W/claude" BANK_PREFLIGHT="$W/pf-no" bash "$HERE/run.sh" run --reps 1 --tasks t5-qmd-only-profiles --out "$OUT2" > "$W/run2.log" 2>&1

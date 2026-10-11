@@ -97,13 +97,14 @@ s = 0.0
 for f in glob.glob(sys.argv[1] + "/raw/*.json"):
     try:
         s += float(json.load(open(f)).get("total_cost_usd") or 0)
-    except (ValueError, OSError):
-        pass
+    except (ValueError, OSError, AttributeError, TypeError):
+        s += float(sys.argv[2])  # unparseable output of a billed run: assume the full per-run cap
 print("%.4f" % s)
-' "$OUT"
+' "$OUT" "$PER_RUN_USD"
 }
 
 stopped=""
+failed=0
 n=0
 for rep in $(seq 1 "$REPS"); do
   for t in $(task_ids); do
@@ -131,6 +132,7 @@ for rep in $(seq 1 "$REPS"); do
           --tools Bash,Read --allowedTools Bash,Read ${deny:+--disallowedTools "$deny"} \
           --strict-mcp-config --append-system-prompt "$sys_text" ) > "$OUT/raw/$tag.json" 2> "$OUT/raw/$tag.err"
       rc=$?
+      [ "$rc" -eq 0 ] || failed=$((failed + 1))
       printf '%s %s\n' "$rc" "$(( $(date +%s) - start ))" > "$OUT/raw/$tag.meta"
       printf 'run %s rc=%s wall=%ss\n' "$tag" "$rc" "$(( $(date +%s) - start ))"
     done
@@ -141,4 +143,5 @@ done
 printf 'out=%s spent_usd=%s\n' "$OUT" "$(spent)"
 ingest_rc=0
 python3 -I "$HERE/summarize.py" ingest "$OUT" >/dev/null && printf 'runs=%s/runs.jsonl\n' "$OUT" || ingest_rc=1
-[ "$ingest_rc" -eq 0 ] && [ -z "$stopped" ]
+[ "$failed" -eq 0 ] || printf 'FAILED: %s run(s) exited non-zero\n' "$failed" >&2
+[ "$ingest_rc" -eq 0 ] && [ -z "$stopped" ] && [ "$failed" -eq 0 ]
