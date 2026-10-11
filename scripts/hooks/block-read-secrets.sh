@@ -719,13 +719,19 @@ g4_secret_tok() {
     [ -n "$v" ] && is_secret_path "$v"
 }
 
-# g4_glob_secret WORD (HIMMEL-5292): an UNQUOTED glob word that expands, against
-# cwd, to a secret file (`tar czf o.tgz .en*`, `curl -d @.en* url`). g4_scan
-# runs with globbing off, so the expansion is done here. A quoted word stays
-# literal (the shell would not expand it either).
+# g4_glob_secret WORD [GLOBFLAG] (HIMMEL-5292): a word with an UNQUOTED glob
+# char that expands, against cwd, to a secret file (`tar czf o.tgz .en*`,
+# `curl -d @.en* url`). g4_scan runs with globbing off, so the expansion is
+# done here. WORD is dequoted, so GLOBFLAG (the tokenizer's ST_G) says whether
+# the glob char was quoted; a quoted `'.en*'` stays literal. Without a flag
+# (the raw fallback split keeps its quotes) a quote char in WORD does the job.
 g4_glob_secret() {
     local v="$1" m
-    case "$v" in *[\'\"\\]*) return 1 ;; esac
+    case "${2:-}" in
+        0) return 1 ;;
+        1) ;;
+        *) case "$v" in *[\'\"\\]*) return 1 ;; esac ;;
+    esac
     case "$v" in *[*?[]*) ;; *) return 1 ;; esac
     case "$v" in *@*) v="${v#*@}" ;; esac
     case "$v" in *=*) v="${v#*=}" ;; esac
@@ -763,17 +769,28 @@ g4_herestr_cred() {
 # argument, not a clause. g4_clause (the raw whitespace split) is only the
 # fallback for a command the tokenizer would not read.
 g4_clause() {
-    local -a g4w
+    local -a g4w g4g g4hs raw
+    local rw rhs=0
     set -f
     # shellcheck disable=SC2206 # intentional word split
-    g4w=($1)
+    raw=($1)
     set +f
+    g4w=(); g4g=(); g4hs=()
+    # The raw split keeps its quotes, so only a REAL `<<<` word matches here.
+    for rw in "${raw[@]:-}"; do
+        if [ "$rhs" = 1 ]; then rhs=0; g4hs[${#g4hs[@]}]="$rw"; continue; fi
+        case "$rw" in
+            '<<<') rhs=1 ;;
+            '<<<'?*) g4hs[${#g4hs[@]}]="${rw#<<<}" ;;
+            *) g4w[${#g4w[@]}]="$rw" ;;
+        esac
+    done
     g4_scan
 }
 
 g4_segments() {
     local s=0 k n
-    local -a idx g4w hs
+    local -a idx g4w g4g g4hs hs
     hs=()
     # HIMMEL-5292: here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
@@ -785,15 +802,18 @@ g4_segments() {
     while [ "$s" -lt "$ST_NSEG" ]; do
         if [ "${GU_LOOKUP[s]:-0}" = 0 ]; then
             read -r -a idx <<<"${GU_SW[s]:-}"
-            g4w=()
+            g4w=(); g4g=(); g4hs=()
             k=0; n=${#idx[@]}
             while [ "$k" -lt "$n" ]; do
                 g4w[${#g4w[@]}]="${ST_W[idx[k]]}"
+                g4g[${#g4g[@]}]="${ST_G[idx[k]]:-0}"
                 k=$((k + 1))
             done
+            # Here-string bodies travel in their OWN array: ST_W is dequoted,
+            # so a user word `'<<<'` in the word stream could fake one.
             k=0; n=${#hs[@]}
             while [ "$k" -lt "$n" ]; do
-                if [ "${ST_S[hs[k]]}" = "$s" ]; then g4w[${#g4w[@]}]='<<<'; g4w[${#g4w[@]}]="${ST_W[hs[k]]}"; fi
+                if [ "${ST_S[hs[k]]}" = "$s" ]; then g4hs[${#g4hs[@]}]="${ST_W[hs[k]]}"; fi
                 k=$((k + 1))
             done
             g4_scan
@@ -807,7 +827,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herestr=0 herecred=0 zc=0 zsec=0
+    local herecred=0 zc=0 zsec=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -853,11 +873,6 @@ g4_scan() {
                 nflags=$((nflags + 1)); continue ;;
         esac
         # HIMMEL-5292: a here-string credential handed to an upload tool.
-        if [ "$herestr" = 1 ]; then herestr=0; if g4_herestr_cred "$d"; then herecred=1; fi; continue; fi
-        case "$d" in
-            '<<<') herestr=1; continue ;;
-            '<<<'?*) if g4_herestr_cred "${d#<<<}"; then herecred=1; fi; continue ;;
-        esac
         case "$d" in
             -*) nflags=$((nflags + 1)) ;;
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
@@ -882,12 +897,12 @@ g4_scan() {
                 done ;;
             gh)
                 case "$d" in --show-token|-t) showtok=1 ;; esac
-                if [ "$a1" = gist ] && { g4_secret_tok "$d" || g4_glob_secret "$w"; }; then hit=1; note="gh gist of a secret file"; fi ;;
+                if [ "$a1" = gist ] && { g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; }; then hit=1; note="gh gist of a secret file"; fi ;;
         esac
         case "$cls" in
             any)
                 if [ "$skip_out" = 1 ]; then skip_out=0
-                elif g4_secret_tok "$d" || g4_glob_secret "$w"; then hit=1; note="$cmd of a secret file"; fi
+                elif g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; then hit=1; note="$cmd of a secret file"; fi
                 case "$cmd:$d" in
                     curl:-o|curl:--output|wget:-O|wget:--output-document|wget:-P) skip_out=1 ;;
                 esac ;;
@@ -903,7 +918,7 @@ g4_scan() {
                     -*) ;;
                     *)  if [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
                         last_secret=0
-                        if g4_secret_tok "$d" || g4_glob_secret "$w"; then last_secret=1; fi ;;
+                        if g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; then last_secret=1; fi ;;
                 esac ;;
             zip)
                 # gzip -c / xz --stdout of a secret copies it to stdout.
@@ -912,11 +927,14 @@ g4_scan() {
                     --*) ;;
                     -*c*) zc=1 ;;
                     -*) ;;
-                    *)  if g4_secret_tok "$d" || g4_glob_secret "$w"; then zsec=1; fi ;;
+                    *)  if g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; then zsec=1; fi ;;
                 esac ;;
         esac
     done
     set +f
+    for w in "${g4hs[@]:-}"; do
+        if [ -n "$w" ] && g4_herestr_cred "$w"; then herecred=1; fi
+    done
     if [ "$tdir" = 1 ] && [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
     if [ "$cls" = zip ] && [ "$zc" = 1 ] && [ "$zsec" = 1 ]; then hit=1; note="$cmd -c of a secret file"; fi
     if [ "$cls" = any ] && [ "$herecred" = 1 ]; then hit=1; note="$cmd is fed a credential variable"; fi
