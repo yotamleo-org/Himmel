@@ -280,7 +280,10 @@ build() {
   subst "$c" '@@P@@' "$payload"; BUILT="$SUBST"
 }
 
-shape_lines=$(grep -v '^#' "$SHAPES" | grep -v '^[[:space:]]*$')
+shape_lines=$(grep -v '^#' "$SHAPES" 2>/dev/null | grep -v '^[[:space:]]*$')
+if [ -z "$shape_lines" ]; then
+  fail=$((fail+1)); echo "FAIL corpus: no shapes read from $SHAPES (missing, unreadable or empty)"
+fi
 ASSIGN_SKIP=""      # shape ids whose template breaks a leading VAR=value payload
 ASSIGN_UNKNOWN=""   # set when the probe could not run (no sandbox)
 
@@ -371,6 +374,14 @@ EOF
 done <<EOF
 $(printf '%s\n' "$GUARDS")
 EOF
+
+if [ -n "${ESCAPE_CLASS_ONLY:-}" ]; then
+  case "
+$declared
+" in *"
+$ESCAPE_CLASS_ONLY
+"*) ;; *) fail=$((fail+1)); echo "FAIL filter: ESCAPE_CLASS_ONLY=$ESCAPE_CLASS_ONLY matches no guard in GUARDS" ;; esac
+fi
 
 echo "escape-class: $pass passed, $kfail known-fail, $fail failed ($nshapes guards)"
 [ "$fail" -eq 0 ]
