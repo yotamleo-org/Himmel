@@ -3118,11 +3118,8 @@ check_c40_qmd_vec() {
         emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
         return
     fi
-    if [ -z "$init" ]; then
-        emit WARN C40-qmd-vec "a process on $url returned no usable initialize reply (curl rc=$init_rc, HTTP ${init_code:-unknown}) -- vec search is not being served" "$remedy"
-        return
-    fi
-    # HIMMEL-5227: a 401/403 is a qmd daemon that wants its token, not a foreign listener.
+    # HIMMEL-5227: a 401/403 is a qmd daemon that wants its token, not a foreign
+    # listener; checked before the empty-body fault so a body-less 401 is named too.
     case "$init_code" in
     401|403)
         local tok_state="none is readable"
@@ -3132,6 +3129,10 @@ check_c40_qmd_vec() {
         return
         ;;
     esac
+    if [ -z "$init" ]; then
+        emit WARN C40-qmd-vec "a process on $url returned no usable initialize reply (curl rc=$init_rc, HTTP ${init_code:-unknown}) -- vec search is not being served" "$remedy"
+        return
+    fi
     # Classify from the PARSED reply, never a substring of the raw body: jq
     # rejects a truncated or non-JSON body outright, and reads a pretty-printed
     # reply exactly like qmd's compact one.

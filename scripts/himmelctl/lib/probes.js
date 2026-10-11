@@ -1154,7 +1154,7 @@ function qmdBearerToken(env, ctx) {
 // ss (Windows), a foreign user's pid, or no match all read as "".
 function describeQmdListener(url, env) {
   let port;
-  try { port = new URL(url).port || '80'; } catch (e) { return ''; }
+  try { const u = new URL(url); port = u.port || (u.protocol === 'https:' ? '443' : '80'); } catch (e) { return ''; }
   const r = spawnProbeSync(env.HIMMEL_DOCTOR_QMD_SS || 'ss', ['-ltnpH'], { env, encoding: 'utf8' });
   if (r.error || r.status !== 0) return '';
   for (const line of String(r.stdout || '').split(/\r?\n/)) {
@@ -1191,12 +1191,13 @@ function probeQmdDaemon(item, ctx) {
   let code = '';
   if (/[0-9]{3}$/.test(body)) { code = body.slice(-3); body = body.slice(0, -3); }
   if (!body && r.status === 7) return { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` };
-  if (!body) return { actual: 'degraded', detail: `a process on ${url} returned no usable initialize reply (curl rc=${r.status}, HTTP ${code || 'unknown'}) — vec search is not being served` };
+  // a 401/403 is checked before the empty-body fault so a body-less rejection is named too
   if (code === '401' || code === '403') {
     return { actual: 'degraded', detail: token
       ? `the daemon on ${url} answered HTTP ${code} and rejected the bearer token read from ${tokenFile}${describeQmdListener(url, env)} — it was started with a different token; fix: set QMD_HTTP_AUTH_FILE to the file the daemon reads, or restart the daemon so it re-reads ${tokenFile}`
       : `the daemon on ${url} answered HTTP ${code}: it requires a bearer token (HIMMEL-5002) and none is readable at ${tokenFile} (mode 600 required)${describeQmdListener(url, env)} — fix: start the qmd daemon once so it creates the file, or set QMD_HTTP_AUTH_FILE to the daemon's token file` };
   }
+  if (!body) return { actual: 'degraded', detail: `a process on ${url} returned no usable initialize reply (curl rc=${r.status}, HTTP ${code || 'unknown'}) — vec search is not being served` };
   const data =body.split(/\r?\n/).filter((l) => /^data:/.test(l)).map((l) => l.replace(/^data:\s*/, ''))[0];
   let name;
   try { name = JSON.parse(data !== undefined ? data : body).result.serverInfo.name; } catch (e) { name = undefined; }
