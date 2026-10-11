@@ -721,12 +721,19 @@ g4_clause() {
     local last_secret=0 tdir=0 skip_out=0 a1="" a2="" showtok=0 rest name
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
-    # shellcheck disable=SC2086 # intentional word split
-    for w in $1; do
+    local words nw i nx
+    # shellcheck disable=SC2206 # intentional word split
+    words=($1)
+    nw=${#words[@]}
+    for ((i = 0; i < nw; i++)); do
+        w="${words[i]}"
         d="${w//[\'\"\\]/}"
         case "$d" in '<'|'>') redir=1; continue ;; esac
         if [ "$redir" = 1 ]; then redir=0; continue; fi
-        case "$d" in ''|*[!0-9]*) ;; *) continue ;; esac   # an fd number (`2>/dev/null`)
+        if [ -n "$d" ] && [ -z "${d//[0-9]/}" ]; then   # an fd number only when a redirect follows (`2>/dev/null`)
+            nx="${words[i+1]:-}"; nx="${nx//[\'\"\\]/}"
+            case "$nx" in '<'|'>') continue ;; esac
+        fi
         if [ -z "$cmd" ]; then
             if [ "$wrap_val" = 1 ]; then wrap_val=0; continue; fi
             case "$d" in
@@ -734,8 +741,8 @@ g4_clause() {
                 -*)
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
                     continue ;;
-                sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|'!')
-                    wrap="$d"; need_dur=0
+                sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|'!'|*/sudo|*/doas|*/env|*/xargs|*/nice|*/nohup|*/timeout)
+                    wrap="${d##*/}"; need_dur=0
                     if [ "$wrap" = timeout ]; then need_dur=1; fi
                     continue ;;
             esac
