@@ -100,6 +100,9 @@ load_env() { [ -r "$ROOT/pilot.env" ] || die "not initialised; run: pilot.sh ini
 
 materialize_row() { # $1 task, $2 worktree -> fixture sha
   local task="$1" wt="$2"
+  # HIMMEL-5200: the jail binds the worktree read-only and only lq-work/ writable, so the row
+  # cannot create it itself (the tasks with no fixture, like shell-red-green, start without one).
+  mkdir -p "$wt/lq-work" || die "cannot create $wt/lq-work"
   if [ "$task" = bench-t4 ]; then
     mkdir -p "$wt/lq-work"
     cp "$T4"/input/* "$wt/lq-work/" || die "cannot copy the T4 input"
@@ -346,12 +349,6 @@ cmd_finish() {
   jail=(bash "$HERE/sandbox.sh" check "$ROOT/rows/$row.env")
   timeout 120 "${jail[@]}" bash "$acc_sh" "$WT" "$FIX" >"$ROOT/private/$row.accept.log" 2>&1; acc_rc=$? # gnu-ok: the pilot is Linux-only (its rows run in a bwrap jail)
   acc="$(grep -E '^accept: [0-9]+/[0-9]+$' "$ROOT/private/$row.accept.log" | tail -1)"
-  # HIMMEL-5200: a base with no project settings.json gets a read-only placeholder bound in
-  # the jail, and bwrap leaves its empty mount point behind. The row could not have created
-  # it (the bind was there from its first instruction), so an empty one the fixture does not
-  # carry is the harness's own and is not scored.
-  # shellcheck disable=SC2016 # the single-quoted script expands inside the jail's sh, on purpose
-  "${jail[@]}" sh -c 'p=.claude/settings.json; [ -f "$p" ] && [ ! -L "$p" ] && [ ! -s "$p" ] && ! git cat-file -e "$0:$p" 2>/dev/null && rm -f -- "$p"; exit 0' "$FIX"
   "${jail[@]}" git add -A -- . ':!.claude/settings.local.json'
   # HIMMEL-5200: settings.local.json is gitignored and carries the jail guard, so it is
   # not part of the judged diff, but a row that rewrote, replaced or removed it is

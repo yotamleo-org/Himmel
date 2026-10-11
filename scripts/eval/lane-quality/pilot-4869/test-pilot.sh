@@ -139,8 +139,8 @@ after() { printf '%s\n' "$argv" | grep -A"$2" -x -- "$1"; } # $1 flag, $2 operan
 check 'sandbox drops a credential and an unlisted variable, keeps PATH and the lane key' 'after --unsetenv 1 | grep -qx LEAK_TOKEN && after --unsetenv 1 | grep -qx LEAK_PLAIN && ! after --unsetenv 1 | grep -qxE "PATH|DEEPSEEK_API_KEY"'
 check 'sandbox hides /home, /tmp, /run and /var/log' '(for d in /home /tmp /run /var/log; do after --tmpfs 1 | grep -qxF "$d" || exit 1; done)'
 check 'sandbox has its own network namespace, entered through the tunnel' 'printf "%s\n" "$argv" | grep -qx -- --net && after --unshare-all 0 | grep -q . && printf "%s\n" "$argv" | grep -qx -- --share-net && [ "$(printf "%s\n" "$argv" | grep -x -A1 tunnel | tail -1)" = 443 ]'
-check 'sandbox binds the worktree and the row doc dir read-write' 'after --bind 2 | grep -qxF "$wt" && after --bind 2 | grep -qxF "$(dirname "$doc")"'
-check 'sandbox maps the worktree under the repo, where the lane launcher accepts its corpus' 'after --bind 2 | grep -A1 -xF "$wt" | grep -qxF "$TMP/repo/.claude/worktrees/lq-pilot-p01"'
+check 'sandbox binds the worktree read-only, lq-work and the row doc dir read-write' 'after --ro-bind 2 | grep -qxF "$wt" && after --bind 2 | grep -qxF "$wt/lq-work" && after --bind 2 | grep -qxF "$(dirname "$doc")"'
+check 'sandbox maps the worktree under the repo, where the lane launcher accepts its corpus' 'after --ro-bind 2 | grep -A1 -xF "$wt" | grep -qxF "$TMP/repo/.claude/worktrees/lq-pilot-p01"'
 check 'sandbox gives the row its own lane config, never the shared one' 'after --bind 2 | grep -qxF "$TMP/root/conf/p01" && ! after --bind 1 | grep -qxF "$HOME/.claude-deepseek"'
 check 'sandbox binds no vault, PHI, memory or state path' '! { after --bind 1; after --ro-bind 1; after --ro-bind-try 1; } | grep -qE "Documents/(luna|salus)|/\.claude/projects|/\.himmel/state|$TMP/vault"'
 check 'the vault root is an empty placeholder in the jail' 'after --tmpfs 1 | grep -qxF "$TMP/vault"'
@@ -190,7 +190,7 @@ mv "$wt/lq-work" "$wt/lq-work-real"; ln -s "$wt/lq-work-real" "$wt/lq-work"
 check 'the hook gives a symlinked lq-work directory no allow' '[ -n "$H" ] && ! allows "bash $wt/lq-work/test-ok.sh"'
 rm -f "$wt/lq-work"; mv "$wt/lq-work-real" "$wt/lq-work"
 check 'the hook says nothing at all outside an allow (no deny, no ask)' '[ -n "$H" ] && [ -z "$(hook "bash $wt/lq-work/build.sh")" ] && [ -z "$(printf "not json" | bash -c "$H" 2>/dev/null)" ]'
-rm -rf "$wt/lq-work" "$wt/other"; rm -f "$TMP/outside.sh"
+rm -rf "$wt/other" "$wt/lq-work"/*; rm -f "$TMP/outside.sh"   # lq-work itself stays: the jail refuses a worktree without it
 HOME="$TMP/home5077" bash "$HERE/sandbox.sh" argv "$TMP/root/rows/p01.env" >/dev/null 2>&1
 check 'a deepseek jail gets no claudex allow rule' '[ "$(jq -c . "$CS")" = "$(jq -c . "$TMP/home5077/.claude/settings.json")" ]'
 cp "$wt/.git" "$TMP/dotgit"
@@ -235,133 +235,70 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   out5183="$(cd "$wt" && HOME="$H5183" DEEPSEEK_API_KEY=k PILOT_SANDBOX_TUNNEL_TARGET=127.0.0.1:1 timeout 30 bash "$HERE/sandbox.sh" launch "$TMP/row5183.env" 1 2>&1)" # gnu-ok: Linux-only kit
   check 'live: the launch goes through with a seeded read-only policy' 'printf "%s\n" "$out5183" | grep -qxF "cwd=$TMP/repo/.claude/worktrees/lq-pilot-p01"'
 fi
-# HIMMEL-5200: the worktree's own project policy (.claude/settings.json, settings.local.json,
-# hooks/) comes back read-only over the writable worktree bind, at both of its jail paths: a
-# project-level disableAllHooks written mid-session would void every guard the row is scored
-# against. Absent settings.json gets a read-only placeholder (the row cannot create one).
+# HIMMEL-5200: the worktree comes into the jail read-only as a whole, at both of its jail paths,
+# and only lq-work/ (where every task prompt writes) is bound writable on top. Binding the settings
+# and the hook trees one by one left the guard files the hooks source but the settings never name
+# (scripts/guardrails/lib.sh, scripts/chokepoints.json) writable: a row could neuter one, act, restore.
 JW5200="$TMP/repo/.claude/worktrees/lq-pilot-p01"
 had5200=0; [ ! -s "$wt/.claude/settings.json" ] || { cp -p "$wt/.claude/settings.json" "$TMP/p5200.settings" && had5200=1; }
-# an empty read-only one is the mount point an earlier jail run left for an absent file
 [ "$had5200" = 1 ] || rm -f "$wt/.claude/settings.json"
-mkdir -p "$wt/.claude/hooks"; echo '{"permissions":{}}' >"$wt/.claude/settings.json"; echo ': h' >"$wt/.claude/hooks/h.sh"
+mkdir -p "$wt/.claude/hooks" "$wt/lq-work" "$wt/scripts/guardrails" "$wt/scripts/other"
+echo '{"permissions":{}}' >"$wt/.claude/settings.json"; echo ': h' >"$wt/.claude/hooks/h.sh"
+echo ': lib' >"$wt/scripts/guardrails/lib.sh"; echo '{"c":1}' >"$wt/scripts/chokepoints.json"; echo ': o' >"$wt/scripts/other/o.sh"
 a5200="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
-# the ro-bind of the worktree file $1 onto $2 comes AFTER the writable bind of the worktree to $3
-ro_after_rw() { printf '%s\n' "$a5200" | awk -v p="$1" -v d="$2" -v j="$3" -v w="$wt" '
+# $1 = bind flag, $2 host src, $3 dest, $4 flag that must come EARLIER than it (or empty)
+bind_at() { printf '%s\n' "$a5200" | awk -v f="$1" -v s="$2" -v d="$3" '
   { l[NR] = $0 }
-  END { for (i = 1; i <= NR; i++) {
-          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
-          if (l[i] == "--ro-bind" && l[i+1] == p && l[i+2] == d) ro = i }
-        exit !(rw && ro && ro > rw) }'; }
-for pp in settings.json settings.local.json hooks; do
-  check "the jail binds the worktree .claude/$pp read-only after the rw bind, at its host path" 'ro_after_rw "$wt/.claude/$pp" "$wt/.claude/$pp" "$wt"'
-  check "the jail binds the worktree .claude/$pp read-only after the rw bind, at its jail path" 'ro_after_rw "$wt/.claude/$pp" "$JW5200/.claude/$pp" "$JW5200"'
+  END { for (i = 1; i <= NR; i++) if (l[i] == f && l[i+1] == s && l[i+2] == d) { print i; exit 0 } exit 1 }'; }
+for dst in "$wt" "$JW5200"; do
+  check "the jail binds the whole worktree read-only at $dst" 'bind_at --ro-bind "$wt" "$dst" >/dev/null'
+  check "the jail re-binds only lq-work writable at $dst/lq-work, after the read-only bind" 'ro="$(bind_at --ro-bind "$wt" "$dst")" && rw="$(bind_at --bind "$wt/lq-work" "$dst/lq-work")" && [ "$rw" -gt "$ro" ]'
+  check "the jail has no writable bind of the whole worktree at $dst" '! bind_at --bind "$wt" "$dst" >/dev/null'
 done
-cd_pinned() { printf '%s\n' "$a5200" | awk -v d="$1" -v j="$2" -v w="$wt" '
-  { l[NR] = $0 }
-  END { for (i = 1; i <= NR; i++) {
-          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
-          if (l[i] == "--bind" && l[i+1] == w "/.claude" && l[i+2] == d) pin = i }
-        exit !(rw && pin && pin > rw) }'; }
-check 'the jail pins the worktree .claude dir (a bind onto itself) after the rw bind, at its host path' 'cd_pinned "$wt/.claude" "$wt"'
-check 'the jail pins the worktree .claude dir (a bind onto itself) after the rw bind, at its jail path' 'cd_pinned "$JW5200/.claude" "$JW5200"'
-mv "$wt/.claude/settings.json" "$wt/.claude/settings.json.hold"; rm -rf "$wt/.claude/hooks"
-a5200b="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
-check 'an absent project settings.json still gets a read-only bind (it cannot be created)' 'printf "%s\n" "$a5200b" | grep -A2 -x -- --ro-bind | grep -qxF "$wt/.claude/settings.json"'
-: >"$wt/.claude/settings.json"
-a5200c="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
-check 'an empty leftover mount-point settings.json is bound as the placeholder, not as policy' 'printf "%s\n" "$a5200c" | grep -A1 -x -- --ro-bind | grep -q "empty-project-settings.json"'
-rm -f "$wt/.claude/settings.json"
-mv "$wt/.claude/settings.json.hold" "$wt/.claude/settings.json"
+check 'the row git dir stays a writable bind' 'bind_at --bind "$gd" "$gd" >/dev/null'
+check 'no other worktree path is bound writable' '! printf "%s\n" "$a5200" | awk -v w="$wt" -v j="$JW5200" '"'"'{ l[NR] = $0 } END { for (i = 1; i <= NR; i++) if (l[i] == "--bind" && (index(l[i+1], w) == 1 || index(l[i+2], j) == 1) && l[i+1] != w "/lq-work" && l[i+2] != j "/lq-work") exit 0; exit 1 }'"'"
+mv "$wt/lq-work" "$wt/lq-work.hold"; ln -s "$TMP/secret" "$wt/lq-work"
+check 'an lq-work the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -f "$wt/lq-work"; mv "$wt/lq-work.hold" "$wt/lq-work"
+mv "$wt/lq-work" "$wt/lq-work.hold"
+check 'a missing lq-work is refused (the only writable worktree path)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+mv "$wt/lq-work.hold" "$wt/lq-work"
 mkdir -p "$wt/.claude/hooks"; ln -s "$TMP/secret" "$wt/.claude/hooks/link.sh"
-check 'a symlink inside the project hooks dir is refused (its target would stay writable)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
-rm -rf "$wt/.claude/hooks"
+check 'a symlink inside the project hooks dir is not a way to widen the writable set (hooks dir is ro as a whole)' 'HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -f "$wt/.claude/hooks/link.sh"
 mv "$wt/.claude/settings.local.json" "$wt/.claude/settings.local.json.hold"; ln -s "$TMP/secret" "$wt/.claude/settings.local.json"
 check 'a settings.local.json the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 rm -f "$wt/.claude/settings.local.json"; mv "$wt/.claude/settings.local.json.hold" "$wt/.claude/settings.local.json"
-mkdir -p "$wt/.claude/hooks"; echo ': h' >"$wt/.claude/hooks/h.sh"
 if bwrap --ro-bind / / true 2>/dev/null; then
   jw() { "${R5[@]}" sh -c "$1" 2>/dev/null; }
-  pj="$JW5200/.claude"; sj="$(cat "$wt/.claude/settings.local.json")"
+  sj="$(cat "$wt/.claude/settings.local.json")"
+  jw "echo 'exit 0' >\"$wt/scripts/guardrails/lib.sh\""; g1=$?
+  jw "echo 'exit 0' >\"$JW5200/scripts/guardrails/lib.sh\""; g2=$?
+  check 'live: scripts/guardrails/lib.sh cannot be overwritten from the jail, at either path' '[ "$g1" != 0 ] && [ "$g2" != 0 ] && [ "$(cat "$wt/scripts/guardrails/lib.sh")" = ": lib" ]'
+  jw "echo '{}' >\"$wt/scripts/chokepoints.json\""; c1=$?
+  jw "rm -f \"$JW5200/scripts/chokepoints.json\""; c2=$?
+  check 'live: scripts/chokepoints.json can be neither rewritten nor removed from the jail' '[ "$c1" != 0 ] && [ "$c2" != 0 ] && [ "$(cat "$wt/scripts/chokepoints.json")" = "{\"c\":1}" ]'
+  jw "echo x >\"$wt/scripts/other/o2.sh\""; o1=$?
+  jw "echo y >\"$wt/new-at-root\""; o2=$?
+  check 'live: any other worktree path is read-only too (no new file anywhere outside lq-work)' '[ "$o1" != 0 ] && [ "$o2" != 0 ] && [ ! -e "$wt/scripts/other/o2.sh" ] && [ ! -e "$wt/new-at-root" ]'
   jw "echo '{\"disableAllHooks\":true}' >\"$wt/.claude/settings.json\""; w1=$?
-  jw "echo '{\"disableAllHooks\":true}' >\"$pj/settings.json\""; w2=$?
+  jw "echo '{\"disableAllHooks\":true}' >\"$JW5200/.claude/settings.json\""; w2=$?
   check 'live: the project settings.json cannot be rewritten from the jail, at either path' '[ "$w1" != 0 ] && [ "$w2" != 0 ] && [ "$(cat "$wt/.claude/settings.json")" = "{\"permissions\":{}}" ]'
-  jw "echo '{\"disableAllHooks\":true}' >\"$wt/.claude/settings.local.json\""; w3=$?
-  jw "rm -f \"$pj/settings.local.json\""; w4=$?
+  jw "echo '{}' >\"$wt/.claude/settings.local.json\""; w3=$?
+  jw "rm -f \"$JW5200/.claude/settings.local.json\""; w4=$?
   jw "echo '{}' >\"\$HOME/s\" && mv -f \"\$HOME/s\" \"$wt/.claude/settings.local.json\""; w5=$?
   check 'live: settings.local.json can be neither rewritten, removed nor replaced from the jail' '[ "$w3" != 0 ] && [ "$w4" != 0 ] && [ "$w5" != 0 ] && [ "$(cat "$wt/.claude/settings.local.json")" = "$sj" ]'
-  jw ": >\"$wt/.claude/hooks/new.sh\""; w6=$?
-  jw "echo x >>\"$pj/hooks/h.sh\""; w7=$?
-  check 'live: the project hooks dir cannot be written from the jail' '[ "$w6" != 0 ] && [ "$w7" != 0 ] && [ ! -e "$wt/.claude/hooks/new.sh" ] && [ "$(cat "$wt/.claude/hooks/h.sh")" = ": h" ]'
-  jw "echo x >\"$wt/.claude/other.json\" && echo y >\"$wt/lq-work-probe\""; w8=$?
-  check 'live: control, a non-policy write in the worktree and in .claude still succeeds' '[ "$w8" = 0 ] && [ -f "$wt/.claude/other.json" ] && [ -f "$wt/lq-work-probe" ]'
-  rm -f "$wt/.claude/other.json" "$wt/lq-work-probe"
-  jw "mv \"$wt/.claude\" \"$wt/.claude-away\""; w9=$?
-  jw "mv \"$pj\" \"$JW5200/.claude-away\""; w10=$?
-  check 'live: the .claude dir cannot be renamed away from the jail (no swapped-in settings.json), at either path' '[ "$w9" != 0 ] && [ "$w10" != 0 ] && [ -f "$wt/.claude/settings.local.json" ] && [ ! -e "$wt/.claude-away" ]'
-  rm -rf "$wt/.claude-away"
-fi
-# HIMMEL-5200 (judge j2359a): the trees the settings' hook commands execute are the same hole one
-# level down. A row that overwrites scripts/lib/run-node.sh, acts, then restores it leaves a clean
-# final-state diff, so each referenced tree is bound read-only too, at both paths, after the rw bind.
-mkdir -p "$wt/scripts/hooks" "$wt/scripts/lib" "$wt/scripts/other"
-echo ': g' >"$wt/scripts/hooks/g.sh"; echo ': r' >"$wt/scripts/lib/run-node.sh"; echo ': o' >"$wt/scripts/other/o.sh"
-cat >"$wt/.claude/settings.json" <<'EOS'
-{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"${CLAUDE_PROJECT_DIR}/scripts/hooks/g.sh\"; fi"}]}]}}
-EOS
-a5200h="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
-ro_tree() { printf '%s\n' "$a5200h" | awk -v p="$1" -v d="$2" -v j="$3" -v w="$wt" '
-  { l[NR] = $0 }
-  END { for (i = 1; i <= NR; i++) {
-          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
-          if (l[i] == "--ro-bind" && l[i+1] == p && l[i+2] == d) ro = i }
-        exit !(rw && ro && ro > rw) }'; }
-for tt in scripts/hooks scripts/lib; do
-  check "the jail binds the hook-executed $tt read-only after the rw bind, at its host path" 'ro_tree "$wt/$tt" "$wt/$tt" "$wt"'
-  check "the jail binds the hook-executed $tt read-only after the rw bind, at its jail path" 'ro_tree "$wt/$tt" "$JW5200/$tt" "$JW5200"'
-done
-check 'a tree no hook command names stays writable (not bound read-only)' '! printf "%s\n" "$a5200h" | grep -qxF "$wt/scripts/other"'
-pin_par() { printf '%s\n' "$a5200h" | awk -v d="$1" -v j="$2" -v w="$wt" '
-  { l[NR] = $0 }
-  END { for (i = 1; i <= NR; i++) {
-          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
-          if (l[i] == "--bind" && l[i+1] == w "/scripts" && l[i+2] == d) pin = i }
-        exit !(rw && pin && pin > rw) }'; }
-check 'the jail pins the hook trees parent dir (bind onto itself) after the rw bind, at its host path' 'pin_par "$wt/scripts" "$wt"'
-check 'the jail pins the hook trees parent dir (bind onto itself) after the rw bind, at its jail path' 'pin_par "$JW5200/scripts" "$JW5200"'
-mv "$wt/scripts" "$wt/scripts.real"; ln -s "$wt/scripts.real" "$wt/scripts"
-check 'a hook-executed tree reached through a symlinked ancestor is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
-rm -f "$wt/scripts"; mv "$wt/scripts.real" "$wt/scripts"
-ln -s "$TMP/secret" "$wt/scripts/lib/link.sh"
-check 'a symlink inside a hook-executed tree is refused (its target would stay writable)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
-rm -f "$wt/scripts/lib/link.sh"
-mv "$wt/scripts/hooks" "$wt/scripts/hooks.hold"
-check 'a hook command naming a tree that is absent from the worktree is refused (fail closed)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
-mv "$wt/scripts/hooks.hold" "$wt/scripts/hooks"
-# fail closed on an underivable set: settings that do not parse, jq that does not run, hook commands
-# that name no CLAUDE_PROJECT_DIR path
-cp -p "$wt/.claude/settings.json" "$TMP/p5200h.settings"
-echo '{not json' >"$wt/.claude/settings.json"
-out5200="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
-check 'settings.json that does not parse is refused, never launched with no hook-tree binds' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot parse"'
-cp -p "$TMP/p5200h.settings" "$wt/.claude/settings.json"
-mkdir -p "$TMP/nojq"; printf '#!/bin/sh\nexit 127\n' >"$TMP/nojq/jq"; chmod +x "$TMP/nojq/jq"
-out5200="$(PATH="$TMP/nojq:$PATH" HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
-check 'a jq that cannot run is refused, never launched with no hook-tree binds' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot parse"'
-echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"bash scripts/hooks/x.sh"}]}]}}' >"$wt/.claude/settings.json"
-out5200="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"; rc5200=$?
-check 'hook commands naming no CLAUDE_PROJECT_DIR path are refused (the trees cannot be derived)' '[ "$rc5200" != 0 ] && printf "%s\n" "$out5200" | grep -q "cannot be derived"'
-cp -p "$TMP/p5200h.settings" "$wt/.claude/settings.json"
-if bwrap --ro-bind / / true 2>/dev/null; then
-  jw "echo 'exit 0' >\"$wt/scripts/lib/run-node.sh\""; h1=$?
-  jw "echo 'exit 0' >\"$JW5200/scripts/lib/run-node.sh\""; h2=$?
-  jw "echo x >\"$JW5200/scripts/hooks/g.sh\""; h3=$?
-  jw "mv \"$wt/scripts/lib\" \"$wt/scripts/lib-away\""; h4=$?
-  check 'live: a hook-executed script cannot be overwritten, edited or its tree renamed from the jail' '[ "$h1" != 0 ] && [ "$h2" != 0 ] && [ "$h3" != 0 ] && [ "$h4" != 0 ] && [ "$(cat "$wt/scripts/lib/run-node.sh")" = ": r" ] && [ "$(cat "$wt/scripts/hooks/g.sh")" = ": g" ]'
-  jw "mv \"$wt/scripts\" \"$wt/scripts-away\""; h6=$?
-  jw "mv \"$JW5200/scripts\" \"$JW5200/scripts-away\""; h7=$?
-  check 'live: the hook trees parent dir cannot be renamed away and replaced from the jail, at either path' '[ "$h6" != 0 ] && [ "$h7" != 0 ] && [ -f "$wt/scripts/lib/run-node.sh" ] && [ ! -e "$wt/scripts-away" ]'
-  jw "echo x >\"$wt/scripts/other/o2.sh\""; h5=$?
-  check 'live: control, a write to a tree no hook names still succeeds' '[ "$h5" = 0 ] && [ -f "$wt/scripts/other/o2.sh" ]'
+  jw "echo x >>\"$JW5200/.claude/hooks/h.sh\""; w6=$?
+  jw "mv \"$wt/.claude\" \"$wt/.claude-away\""; w7=$?
+  jw "mv \"$wt/scripts\" \"$wt/scripts-away\""; w8=$?
+  jw "mv \"$JW5200/scripts\" \"$JW5200/scripts-away\""; w9=$?
+  check 'live: hooks cannot be edited and .claude / scripts cannot be renamed away from the jail' '[ "$w6" != 0 ] && [ "$w7" != 0 ] && [ "$w8" != 0 ] && [ "$w9" != 0 ] && [ "$(cat "$wt/.claude/hooks/h.sh")" = ": h" ] && [ ! -e "$wt/.claude-away" ] && [ ! -e "$wt/scripts-away" ]'
+  jw "echo x >\"$wt/lq-work/f.sh\" && echo y >\"$JW5200/lq-work/g.sh\" && mkdir \"$wt/lq-work/d\" && echo z >\"$wt/lq-work/d/h.sh\""; l1=$?
+  check 'live: control, writes under lq-work succeed at both paths' '[ "$l1" = 0 ] && [ -f "$wt/lq-work/f.sh" ] && [ -f "$wt/lq-work/g.sh" ] && [ -f "$wt/lq-work/d/h.sh" ]'
+  rm -rf "$wt/lq-work/f.sh" "$wt/lq-work/g.sh" "$wt/lq-work/d"
+  jw "echo x >\"$gd/probe5200\""; l2=$?
+  check 'live: control, the row git dir is still writable (git can index and commit)' '[ "$l2" = 0 ] && [ -f "$gd/probe5200" ]'
+  rm -f "$gd/probe5200"
 fi
 rm -rf "$wt/scripts" "$wt/.claude/hooks" "$wt/.claude/settings.json"
 [ "$had5200" = 0 ] || cp -p "$TMP/p5200.settings" "$wt/.claude/settings.json"
@@ -485,7 +422,7 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   check 'live: a file outside the binds is invisible in the sandbox' '! bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" cat "$TMP/secret" >/dev/null 2>&1'
   check 'live: the vault root exists but is empty in the sandbox' 'bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" test -d "$TMP/vault" && ! bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" cat "$TMP/vault/hot.md" >/dev/null 2>&1'
   check 'live: a host credential is not in the sandbox environment' '! LEAK_TOKEN=leak bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" env | grep -q LEAK_TOKEN'
-  check 'live: the worktree is writable in the sandbox' 'bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" touch "$wt/probe" && [ -e "$wt/probe" ] && rm -f "$wt/probe"'
+  check 'live: lq-work is writable in the sandbox, the rest of the worktree is not' 'bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" touch "$wt/lq-work/probe" && [ -e "$wt/lq-work/probe" ] && rm -f "$wt/lq-work/probe" && ! bash "$HERE/sandbox.sh" run "$TMP/root/rows/p01.env" touch "$wt/probe" 2>/dev/null && [ ! -e "$wt/probe" ]'
 else
   echo "  skip live sandbox checks: bwrap cannot create a namespace here"
 fi

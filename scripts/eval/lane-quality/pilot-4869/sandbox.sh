@@ -108,75 +108,29 @@ case "$GITDIR" in */..|*/../*|"$REPO"|"$REPO"/*) die "git dir $GITDIR is not the
 [ "$(cat "$WT/.git" 2>/dev/null)" = "gitdir: $GITDIR" ] || die "$WT/.git no longer points at $GITDIR"
 { [ ! -e "$GITDIR/commondir" ] && [ ! -L "$GITDIR/commondir" ]; } || die "$GITDIR has a commondir"
 mnt "$WT" dir
-A+=(--bind "$WT" "$WT" --bind "$GITDIR" "$GITDIR")
+# The row's git dir stays writable: the row's own commit/index/scoring state lives there, outside
+# the worktree. The worktree itself is read-only below, so its project policy (.claude settings,
+# hooks) and every script a hook sources are un-rewritable (HIMMEL-5200).
+A+=(--bind "$GITDIR" "$GITDIR")
 # The row lives outside the checkout (clean-garden scans .claude/worktrees),
 # but the lane launcher only serves a cwd under the checkout: the jail shows
 # the row there too, and a launch starts in it.
 JWT="$REPO/.claude/worktrees/${WT##*/}"
 mnt "$JWT" dir
-A+=(--bind "$WT" "$JWT")
-# HIMMEL-5200: the worktree is writable, so its project policy would be too: a
-# project-level disableAllHooks (or a rewritten guard) would void every hook the
-# row runs under. The three files come back read-only on top of BOTH rw binds
-# (after them: a later bind wins). An absent settings.json gets a read-only
-# placeholder so the row cannot create one; a symlink is refused, like ROWCONF's.
-if [ "$mode" != check ]; then
+if [ "$mode" = check ]; then
+  A+=(--bind "$WT" "$WT" --bind "$WT" "$JWT")
+else
+  # HIMMEL-5200: the whole worktree comes in read-only, at both paths, and only lq-work/ (where
+  # every task prompt writes) is re-bound writable on top (a later bind wins). Enumerating the
+  # policy files and hook trees was not enough: hooks source guard files settings never name
+  # (scripts/guardrails/lib.sh, scripts/chokepoints.json). lq-work must be a real directory, so a
+  # symlink cannot widen the writable set; a missing or symlinked .claude/settings is refused too.
   { [ ! -L "$WT/.claude" ] && [ -d "$WT/.claude" ]; } || die "$WT/.claude is missing or a symlink"
   for p in settings.json settings.local.json hooks; do [ ! -L "$WT/.claude/$p" ] || die "$WT/.claude/$p is a symlink"; done
   [ -f "$WT/.claude/settings.local.json" ] || die "$WT/.claude/settings.local.json is missing (pilot.sh prepare writes the jail guard there)"
-  # an empty settings.json is a placeholder's mount point left by an earlier launch: not policy
-  if [ -s "$WT/.claude/settings.json" ]; then ps_src="$WT/.claude/settings.json"; else ps_src="$RUN/empty-project-settings.json"; fi
-  if [ -d "$WT/.claude/hooks" ] && [ -n "$(find "$WT/.claude/hooks" -type l 2>/dev/null | head -1)" ]; then
-    die "$WT/.claude/hooks holds a symlink (its target would stay writable)"
-  fi
-  if [ "$mode" != argv ] && [ ! -s "$WT/.claude/settings.json" ]; then
-    printf '{}\n' >"$ps_src" || die "cannot write $ps_src"
-  fi
-  # The project hooks execute scripts under $CLAUDE_PROJECT_DIR, which in the jail is the writable
-  # worktree: a row could overwrite one with `exit 0`, act with every hook passing, then restore
-  # it and leave a clean final-state diff. So every tree the settings' hook commands reference
-  # comes back read-only too (derived from the settings, not hard-coded). Anything those scripts
-  # source from a tree the settings never name stays writable.
-  # ponytail: one level of reference, no transitive closure, and a hook command that names a
-  # script without CLAUDE_PROJECT_DIR (a bare relative path) is not seen; upgrade path HIMMEL-5200 follow-up
-  hk=""; pk=""
-  cmds=""   # argv mode never writes the {} placeholder: nothing to parse there
-  if [ -f "$ps_src" ]; then
-    cmds="$(jq -r '[.. | .command? // empty | strings] | .[]' "$ps_src")" || die "cannot parse $ps_src (jq missing or invalid JSON): the hook-executed trees cannot be derived"
-  fi
-  refs="$(printf '%s\n' "$cmds" | grep -oE 'CLAUDE_PROJECT_DIR\}?/[A-Za-z0-9_./-]+' | sed -E 's#^CLAUDE_PROJECT_DIR\}?/##' | sort -u)" || refs=""
-  [ -z "$cmds" ] || [ -n "$refs" ] || die "$ps_src declares hook commands but none names a CLAUDE_PROJECT_DIR path: the hook-executed trees cannot be derived"
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    case "$f" in /*|..|../*|*/..|*/../*) die "settings.json hook command names $f outside the worktree" ;; esac
-    t="$(dirname "$f")"; [ "$t" != . ] || t="$f"
-    case "$t" in .claude|.claude/*) continue ;; esac
-    { [ -e "$WT/$t" ] && [ ! -L "$WT/$t" ]; } || die "$WT/$t (a hook-executed path) is missing or a symlink"
-    if [ -d "$WT/$t" ] && [ -n "$(find "$WT/$t" -type l 2>/dev/null | head -1)" ]; then
-      die "$WT/$t holds a symlink (its target would stay writable)"
-    fi
-    case " $hk " in *" $t "*) ;; *) hk="$hk $t" ;; esac
-    # every ancestor below the worktree root: not a symlink (the tree would stay writable through
-    # its target), and pinned as a mount point below, so it cannot be renamed away and replaced
-    comp=""
-    for part in $(dirname "$t" | tr '/' ' '); do
-      [ "$part" != . ] || break
-      comp="${comp:+$comp/}$part"
-      [ ! -L "$WT/$comp" ] || die "$WT/$comp (an ancestor of the hook-executed $t) is a symlink"
-      case " $pk " in *" $comp "*) ;; *) pk="$pk $comp" ;; esac
-    done
-  done <<EOF
-$refs
-EOF
-  for base in "$WT" "$JWT"; do
-    # .claude itself becomes a mount point (a bind onto itself): a directory that is one cannot
-    # be renamed or removed, so the row cannot swap in its own .claude around the file binds
-    A+=(--bind "$WT/.claude" "$base/.claude")
-    A+=(--ro-bind "$ps_src" "$base/.claude/settings.json" --ro-bind "$WT/.claude/settings.local.json" "$base/.claude/settings.local.json")
-    [ ! -d "$WT/.claude/hooks" ] || A+=(--ro-bind "$WT/.claude/hooks" "$base/.claude/hooks")
-    for t in $pk; do A+=(--bind "$WT/$t" "$base/$t"); done
-    for t in $hk; do A+=(--ro-bind "$WT/$t" "$base/$t"); done
-  done
+  { [ ! -L "$WT/lq-work" ] && [ -d "$WT/lq-work" ]; } || die "$WT/lq-work is missing or a symlink (the row's only writable worktree path)"
+  A+=(--ro-bind "$WT" "$WT" --ro-bind "$WT" "$JWT")
+  A+=(--bind "$WT/lq-work" "$WT/lq-work" --bind "$WT/lq-work" "$JWT/lq-work")
 fi
 
 if [ "$mode" = check ]; then
