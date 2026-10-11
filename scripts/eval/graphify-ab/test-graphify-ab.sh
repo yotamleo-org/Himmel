@@ -61,6 +61,8 @@ eq "report: runs without transcripts are INCONCLUSIVE, never DROP" "1" "$(grep -
 
 # 4b. order alternates even with one task; a relative --out is made absolute.
 eq "plan alternates arm order with one task" "B A,A B,B A" "$(bash "$HERE/run.sh" plan --reps 3 --tasks t5-qmd-only-profiles | sed 's/.*order=//' | paste -sd, -)"
+eq "plan alternates per task with an even task count" "t1-mustrun-members:A B,t1-mustrun-members:B A,t2-graphify-bin-suites:A B,t2-graphify-bin-suites:B A" \
+  "$(bash "$HERE/run.sh" plan --reps 2 --tasks t1-mustrun-members,t2-graphify-bin-suites | sed 's/rep=[0-9]* task=\([^ ]*\) order=\(.*\)/\1:\2/' | sort | paste -sd, -)"
 (cd "$W" && CLAUDE_BIN="$W/claude" BANK_PREFLIGHT="$W/pf-ok" bash "$HERE/run.sh" run --reps 1 --tasks t5-qmd-only-profiles --out rel-out > "$W/run3.log" 2>&1)
 eq "relative --out: raw runs land under it" "2" "$(find "$W/rel-out/raw" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 

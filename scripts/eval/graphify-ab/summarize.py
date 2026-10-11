@@ -85,7 +85,7 @@ def ingest(out, root):
         sc = T.score(truths[rules[task]], d.get("result") or "")
         calls, gcalls = transcript_calls(root, os.path.join(out, "checkout"), d.get("session_id", ""))
         row.update({
-            "ok": not d.get("is_error", False), "rc": meta[0], "wall_s": float(meta[1]),
+            "ok": not d.get("is_error", False) and meta[0] == "0", "rc": meta[0], "wall_s": float(meta[1]),
             "input_tokens": u.get("input_tokens", 0), "output_tokens": u.get("output_tokens", 0),
             "cache_creation": u.get("cache_creation_input_tokens", 0),
             "cache_read": u.get("cache_read_input_tokens", 0),

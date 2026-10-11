@@ -13,7 +13,7 @@
 #
 # Billing rule: bank-preflight before EVERY run and STOP on a refusal (the partial
 # result is still ingested), --output-format json, explicit --permission-mode.
-# Orders alternate by (rep+task) parity so drift in load is not an arm effect.
+# Orders alternate by (rep + task index) parity so drift in load is not an arm effect.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -66,11 +66,11 @@ print(t["prompt"] + "\n\n" + d["answer_format"])
 
 case "$sub" in
   plan)
-    n=0
     for rep in $(seq 1 "$REPS"); do
+      i=0
       for t in $(task_ids); do
-        n=$((n + 1))
-        if [ $((n % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+        if [ $(((rep + i) % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+        i=$((i + 1))
         printf 'rep=%s task=%s order=%s\n' "$rep" "$t" "$order"
       done
     done
@@ -96,7 +96,8 @@ import glob, json, sys
 s = 0.0
 for f in glob.glob(sys.argv[1] + "/raw/*.json"):
     try:
-        s += float(json.load(open(f)).get("total_cost_usd") or 0)
+        c = json.load(open(f)).get("total_cost_usd")
+        s += float(c) if c is not None else float(sys.argv[2])  # no cost reported: assume the per-run cap
     except (ValueError, OSError, AttributeError, TypeError):
         s += float(sys.argv[2])  # unparseable output of a billed run: assume the full per-run cap
 print("%.4f" % s)
@@ -105,11 +106,11 @@ print("%.4f" % s)
 
 stopped=""
 failed=0
-n=0
 for rep in $(seq 1 "$REPS"); do
+  i=0
   for t in $(task_ids); do
-    n=$((n + 1))
-    if [ $((n % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+    if [ $(((rep + i) % 2)) -eq 0 ]; then order="A B"; else order="B A"; fi
+    i=$((i + 1))
     for arm in $order; do
       if ! pf="$(bash "$BANK_PREFLIGHT" 2>&1)" || ! printf '%s\n' "$pf" | grep -qx 'PROCEED'; then
         stopped="bank-preflight refused before $t/$arm/rep$rep"
