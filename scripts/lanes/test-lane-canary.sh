@@ -103,5 +103,13 @@ if [ "$rc" -eq 2 ]; then ok "T11 trailing --lanes exits 2"; else bad "T11 rc=$rc
 out="$(run ok 10 --lanes native --out "$T/no-such-dir/report.json" 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ]; then ok "T12 unwritable report is exit 1"; else bad "T12 rc=$rc out=$out"; fi
 
+# T13: a lane list with no lane in it (or an empty element) is a usage error.
+out="$(timeout 10 bash "$RUNNER" --lanes , 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "T13 comma-only --lanes exits 2"; else bad "T13 rc=$rc out=$out"; fi
+
+# T14: a zero or fractional poll interval is a usage error, not a stuck lock-wait.
+out="$(CANARY_POLL_SEC=0 CANARY_ROOT="$T/root" timeout 10 bash "$RUNNER" --lanes native 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "T14 CANARY_POLL_SEC=0 exits 2"; else bad "T14 rc=$rc out=$out"; fi
+
 echo "RESULT: pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -54,7 +54,8 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 case "$TIMEOUT" in ''|*[!0-9]*) echo "lane-canary: --timeout must be whole seconds" >&2; exit 2 ;; esac
-case "$LANES" in ''|*[!a-z,]*) echo "lane-canary: --lanes must be a comma list of lane names" >&2; exit 2 ;; esac
+case "$LANES" in ''|,*|*,|*,,*|*[!a-z,]*) echo "lane-canary: --lanes must be a comma list of lane names" >&2; exit 2 ;; esac
+case "$POLL" in ''|0|*[!0-9]*) echo "lane-canary: CANARY_POLL_SEC must be a positive whole number" >&2; exit 2 ;; esac
 
 LAUNCHER="${CANARY_LAUNCHER:-$KIT/headed-arm-leg.sh}"
 CLOSER="${CANARY_CLOSER:-$KIT/close-wrapped-leg.sh}"
@@ -83,7 +84,7 @@ else
 fi
 [ -n "$OUT" ] || OUT="$ROOT/latest.json"
 mkdir -p "$ROOT" || { echo "lane-canary: cannot create $ROOT" >&2; exit 2; }
-STAMP="$(date +%Y%m%d-%H%M%S)"
+STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 
 # lane_unconfigured <lane>: prints why the lane cannot run here, empty if it can.
 lane_unconfigured() {
@@ -160,7 +161,10 @@ run_lane() {
         if [ -n "$lrc" ] && [ "$lrc" -ne 0 ] && [ -z "$first" ]; then detail="launcher exit $lrc before any bullet"
         elif [ -z "$first" ]; then detail="no first bullet within ${TIMEOUT}s"
         else detail="first bullet but no WRAPPED within ${TIMEOUT}s"; fi
-        # nothing may outlive the run: write the wrap and drop the lock ourselves.
+        # nothing may outlive the run: stop a launcher still starting (it would
+        # open its window after the closer ran), write the wrap, drop the lock.
+        kill "$lpid" 2>/dev/null
+        wait "$lpid" 2>/dev/null
         bash "$APPEND" "$doc" "WRAPPED — canary runner closed a leg that did not wrap ($detail)" >/dev/null 2>&1
         QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
     else
