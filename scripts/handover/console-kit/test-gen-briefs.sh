@@ -51,6 +51,14 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
+# HIMMEL-4619: the arming gate lints every brief, so a generated brief must also
+# arm through the launcher itself (dry-run reaches the gate before it exits).
+# (a copy without resume_cwd: the worktree check is a later gate and the copy leaves D1 alone)
+printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
+mkdir -p "$WORK/arm"; grep -v '^resume_cwd:' "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
+rc=0; arm_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/arm/HIMMEL-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-leg.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-leg.sh rc=$rc: $arm_out"
+
 b1="$(cat "$D1" 2>/dev/null)"; b2="$(cat "$D2" 2>/dev/null)"
 has "the brief names the console" "$b1" "HIMMEL-nextleg-2026-10-08BZ-roadmap-console"
 has "the brief carries a nonce in the console letter's shape" "$b1" "BZ-N901-"

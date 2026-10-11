@@ -156,6 +156,9 @@ export LEG_PRETRUST_HOME="$tmp/pinned-pretrust-home"
 mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$LEG_PRETRUST_HOME"
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
+# HIMMEL-4619: the arming gate runs brief-lint on every brief, so a fixture brief carries
+# the front-matter description and a Prior art line (title/body lines are its args).
+fx_brief() { printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' '' "$@"; }
 check()        { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains()     { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 # HIMMEL-3456: only grep's rc 1 means "absent"; rc >1 is an execution error,
@@ -178,7 +181,7 @@ PAST=$(( $(date +%s) - 100 ))
 # (never opened before this ticket) must be a real, readable file wherever a
 # --profile launch actually reaches that write.
 some_doc="$tmp/some-doc.md"
-printf '%s\n' '# fixture doc' > "$some_doc"
+fx_brief '# fixture doc' > "$some_doc"
 
 # mk_launch_stubs <dir> <name> - konsole/pgrep/proc stubs, same shape
 # headed-arm.sh's own suite (test-headed-arm.sh) uses: konsole records its
@@ -274,7 +277,7 @@ chmod 755 "$SKIPPED_BANK_PREFLIGHT"
 # The target is a fixture: never launch a real leg or edit a live manifest.
 fleet_doc="$tmp/HIMMEL-3748-N7-fleet.md"
 fleet_manifest="$tmp/fleet.json"
-printf '%s\n' '# fleet fixture' > "$fleet_doc"
+fx_brief '# fleet fixture' > "$fleet_doc"
 fleet_target="$tmp/fleet-target.sh"
 cat > "$fleet_target" <<'FLEET_TARGET'
 #!/usr/bin/env bash
@@ -528,22 +531,22 @@ contains "dry-run LEG_CONTEXT=1m, Fable model: still checks autocompact, not the
 # these fixture docs cover the empty-reason and malformed-line negatives,
 # plus the one well-formed positive case.
 doc_context_none="$tmp/context-doc-none.md"
-printf '%s\n' '# fixture brief, no Context line at all' > "$doc_context_none"
+fx_brief '# fixture brief, no Context line at all' > "$doc_context_none"
 
 doc_context_empty="$tmp/context-doc-empty.md"
-printf '%s\n' '# fixture brief' '> **Context:** 1m — operator-ruling: ' > "$doc_context_empty"
+fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: ' > "$doc_context_empty"
 
 doc_context_bad_dash="$tmp/context-doc-bad-dash.md"
-printf '%s\n' '# fixture brief' '> **Context:** 1m - operator-ruling: hyphen not em dash' > "$doc_context_bad_dash"
+fx_brief '# fixture brief' '> **Context:** 1m - operator-ruling: hyphen not em dash' > "$doc_context_bad_dash"
 
 doc_context_bad_mode="$tmp/context-doc-bad-mode.md"
-printf '%s\n' '# fixture brief' '> **Context:** 1M — operator-ruling: wrong case mode' > "$doc_context_bad_mode"
+fx_brief '# fixture brief' '> **Context:** 1M — operator-ruling: wrong case mode' > "$doc_context_bad_mode"
 
 doc_context_no_marker="$tmp/context-doc-no-marker.md"
-printf '%s\n' '# fixture brief' '> **Context:** 1m — because I said so' > "$doc_context_no_marker"
+fx_brief '# fixture brief' '> **Context:** 1m — because I said so' > "$doc_context_no_marker"
 
 doc_context_ok="$tmp/context-doc-ok.md"
-printf '%s\n' '# fixture brief' '> **Context:** 1m — operator-ruling: HIMMEL-3581 sanctioned 1m leg test' > "$doc_context_ok"
+fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: HIMMEL-3581 sanctioned 1m leg test' > "$doc_context_ok"
 
 for d in "$doc_context_none" "$doc_context_empty" "$doc_context_bad_dash" "$doc_context_bad_mode" "$doc_context_no_marker"; do
     rc=0; out="$(LEG_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
@@ -561,11 +564,11 @@ contains "dry-run LEG_CONTEXT=1m, sanctioned Context line: exports CONSOLE_CONTE
 # 400000 needs the brief ruling line, standard context and a valid value; 200000
 # is the control arm; the default (unset) stays 200000 for everyone not opted in.
 doc_ab_none="$tmp/ab-doc-none.md"
-printf '%s\n' '# fixture brief, no Context line' > "$doc_ab_none"
+fx_brief '# fixture brief, no Context line' > "$doc_ab_none"
 doc_ab_empty="$tmp/ab-doc-empty.md"
-printf '%s\n' '# fixture brief' '> **Context:** ab-400k — operator-ruling: ' > "$doc_ab_empty"
+fx_brief '# fixture brief' '> **Context:** ab-400k — operator-ruling: ' > "$doc_ab_empty"
 doc_ab_ok="$tmp/ab-doc-ok.md"
-printf '%s\n' '# fixture brief' '> **Context:** ab-400k — operator-ruling: HIMMEL-5193' > "$doc_ab_ok"
+fx_brief '# fixture brief' '> **Context:** ab-400k — operator-ruling: HIMMEL-5193' > "$doc_ab_ok"
 
 for d in "$doc_ab_none" "$doc_ab_empty"; do
     rc=0; out="$(LEG_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
@@ -634,7 +637,7 @@ check "dry-run --profile leg-impl + LEG_CONTEXT=1m: still refused" "$rc" "2"
 # profile when no --profile / LEG_PROFILE is given; the flag overrides it; a
 # brief with no field still hits the unprofiled-launch refusal.
 rule_doc="$tmp/rule-brief-design.md"
-printf '%s\n' '# fixture brief' '> profile: design' > "$rule_doc"
+fx_brief '# fixture brief' '> profile: design' > "$rule_doc"
 rc=0; out="$(LEG_PROFILE='' LEG_CONTEXT='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief profile: design line selects design: exit 0" "$rc" "0"
 contains "brief profile: design line names the profile source" "$out" "context=1m (profile design contextMode 1m)"
@@ -642,7 +645,7 @@ rc=0; out="$(LEG_PROFILE='' LEG_CONTEXT='' bash "$SCRIPT" --dry-run --profile le
 check "explicit --profile overrides the brief line: exit 0" "$rc" "0"
 not_contains "explicit --profile leg-impl overrides the brief's design" "$out" "context=1m"
 rule_doc2="$tmp/rule-brief-none.md"
-printf '%s\n' '# fixture brief' 'no profile field here' > "$rule_doc2"
+fx_brief '# fixture brief' 'no profile field here' > "$rule_doc2"
 rc=0; out="$(LEG_PROFILE='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc2" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief with no profile field still refused" "$rc" "2"
 contains "brief with no profile field: refusal text" "$out" "refusing an unprofiled launch"
@@ -688,7 +691,7 @@ contains "dry-run --relay, explicit opus model: refusal is the tier gate" "$out"
 # existing tier gate, so this uses a fixture doc carrying a Tier line rather
 # than some/doc.md.
 doc_tier_judge="$tmp/tier-doc-judge.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — design: judge adjudication' > "$doc_tier_judge"
+fx_brief '# fixture brief' '> **Tier:** opus — design: judge adjudication' > "$doc_tier_judge"
 
 rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "dry-run --judge: exit 0" "$rc" "0"
@@ -1289,6 +1292,8 @@ fixture17b="$tmp/fixture-brief.md"
 cat > "$fixture17b" <<'FIXTURE_EOF'
 # HIMMEL-9999 - fixture brief
 
+> **Prior art:** none found (qmd -c jira-himmel "fixture")
+
 **Contract:**
 1. Do the thing the ticket asks for.
 
@@ -1546,7 +1551,7 @@ space_root="$tmp/pinned handover root"
 space_doc_dir="$space_root/yotamleo/himmel"
 mkdir -p "$space_doc_dir"
 space_doc="$space_doc_dir/HIMMEL-3333-space.md"
-printf '%s\n' '# fixture doc' > "$space_doc"
+fx_brief '# fixture doc' > "$space_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1575,7 +1580,7 @@ check "full launch --profile (space in handover root): .locks deny resolves with
 # the classifier for this leg's own doc writes.
 d17root="$tmp/c17root"; mk_launch_stubs "$d17root" "HIMMEL-3333-atroot"; mkdir -p "$tmp/repo17root"
 root_doc="$HANDOVER_DIR/HIMMEL-3333-atroot.md"
-printf '%s\n' '# fixture doc at the handover root' > "$root_doc"
+fx_brief '# fixture doc at the handover root' > "$root_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1593,7 +1598,7 @@ check "full launch --profile (doc directly at handover root): additionalDirector
 # root, and its .locks/, underneath it.
 d17parent="$tmp/c17parent"; mk_launch_stubs "$d17parent" "HIMMEL-3333-parent"; mkdir -p "$tmp/repo17parent"
 parent_doc="$tmp/HIMMEL-3333-parent.md"
-printf '%s\n' '# fixture doc in a directory that is an ancestor of the handover root' > "$parent_doc"
+fx_brief '# fixture doc in a directory that is an ancestor of the handover root' > "$parent_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1613,7 +1618,7 @@ d17lookalike="$tmp/c17lookalike"; mk_launch_stubs "$d17lookalike" "HIMMEL-3333-l
 lookalike_doc_dir="${HANDOVER_DIR}x"
 mkdir -p "$lookalike_doc_dir"
 lookalike_doc="$lookalike_doc_dir/HIMMEL-3333-lookalike.md"
-printf '%s\n' '# fixture doc whose directory textually prefixes the handover root name' > "$lookalike_doc"
+fx_brief '# fixture doc whose directory textually prefixes the handover root name' > "$lookalike_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1634,7 +1639,7 @@ d17symlink="$tmp/c17symlink"; mk_launch_stubs "$d17symlink" "HIMMEL-3333-symlink
 symlink_alias="$tmp/handover-root-alias"
 ln -s "$HANDOVER_DIR" "$symlink_alias"
 symlink_doc="$symlink_alias/HIMMEL-3333-symlink.md"
-printf '%s\n' '# fixture doc reached through a symlink alias of the handover root' > "$symlink_doc"
+fx_brief '# fixture doc reached through a symlink alias of the handover root' > "$symlink_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1652,7 +1657,7 @@ check "full launch --profile (doc directory is a symlink alias of the handover r
 d17slash="$tmp/c17slash"; mk_launch_stubs "$d17slash" "HIMMEL-3333-slash"; mkdir -p "$tmp/repo17slash"
 slash_root="$HANDOVER_DIR/"
 slash_doc="$slash_root/HIMMEL-3333-slash.md"
-printf '%s\n' '# fixture doc at a trailing-slash handover root' > "$slash_doc"
+fx_brief '# fixture doc at a trailing-slash handover root' > "$slash_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1669,7 +1674,7 @@ d17slash2="$tmp/c17slash2"; mk_launch_stubs "$d17slash2" "HIMMEL-3333-slash2"; m
 slash2_doc_dir="$HANDOVER_DIR/yotamleo/himmel"
 mkdir -p "$slash2_doc_dir"
 slash2_doc="$slash2_doc_dir/HIMMEL-3333-slash2.md"
-printf '%s\n' '# fixture doc under a trailing-slash handover root' > "$slash2_doc"
+fx_brief '# fixture doc under a trailing-slash handover root' > "$slash2_doc"
 rc=0
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
 HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
@@ -1688,7 +1693,7 @@ check "full launch --profile (trailing slash on HANDOVER_DIR): .locks deny norma
 # the grant must be skipped rather than falling through ungated.
 d17nohandover="$tmp/c17nohandover"; mk_launch_stubs "$d17nohandover" "HIMMEL-3333-nohandover"; mkdir -p "$tmp/repo17nohandover"
 nohandover_doc="$tmp/HIMMEL-3333-nohandover-doc.md"
-printf '%s\n' '# fixture doc launched with HANDOVER_DIR unset' > "$nohandover_doc"
+fx_brief '# fixture doc launched with HANDOVER_DIR unset' > "$nohandover_doc"
 rc=0
 # HIMMEL-4416: the wrapper now loads the .env HANDOVER_DIR, so "cannot be
 # resolved at all" needs a hermetic cwd (non-git, no inline handovers/) and an
@@ -2041,11 +2046,11 @@ contains "dry-run: no mcpServers field reports mcp=null mcp-config=<none>" "$dry
 # free text after the tag is never validated). Matched by MODEL PREFIX so a
 # [1m] suffix cannot dodge it (codex-2 pattern above).
 doc_no_tier="$tmp/tier-doc-none.md"
-printf '%s\n' '# fixture brief' '> no tier line here' > "$doc_no_tier"
+fx_brief '# fixture brief' '> no tier line here' > "$doc_no_tier"
 doc_tier_opus="$tmp/tier-doc-opus.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — design: multi-step design' > "$doc_tier_opus"
+fx_brief '# fixture brief' '> **Tier:** opus — design: multi-step design' > "$doc_tier_opus"
 doc_tier_fable="$tmp/tier-doc-fable.md"
-printf '%s\n' '# fixture brief' '> **Tier:** fable — tier-return: a Sonnet leg returned the work as above its tier' > "$doc_tier_fable"
+fx_brief '# fixture brief' '> **Tier:** fable — tier-return: a Sonnet leg returned the work as above its tier' > "$doc_tier_fable"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate: opus without a Tier line is refused with exit 2" "$rc" "2"
@@ -2085,7 +2090,7 @@ check "tier gate: --lane claudex is unaffected (dry-run exit 0)" "$rc" "0"
 # whitespace-only string as non-empty and would incorrectly let the launch
 # proceed.
 doc_tier_opus_blank="$tmp/tier-doc-opus-blank.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus —    ' > "$doc_tier_opus_blank"
+fx_brief '# fixture brief' '> **Tier:** opus —    ' > "$doc_tier_opus_blank"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_blank" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate: a whitespace-only Tier reason is refused with exit 2" "$rc" "2"
@@ -2093,31 +2098,31 @@ contains "tier gate: whitespace-only refusal names the CLAUDE.md sentence" "$out
 
 # --- HIMMEL-2997 (a)-(f): the reason must open with a closed category tag --
 doc_tier_opus_bare="$tmp/tier-doc-opus-bare.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — because I prefer it' > "$doc_tier_opus_bare"
+fx_brief '# fixture brief' '> **Tier:** opus — because I prefer it' > "$doc_tier_opus_bare"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_bare" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (a): bare free text with no category tag is refused with exit 2" "$rc" "2"
 contains "tier gate (a): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
 doc_tier_opus_finding="$tmp/tier-doc-opus-finding.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — unverified-finding: a memory leak the console could not repro at Sonnet' > "$doc_tier_opus_finding"
+fx_brief '# fixture brief' '> **Tier:** opus — unverified-finding: a memory leak the console could not repro at Sonnet' > "$doc_tier_opus_finding"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_finding" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (c): unverified-finding: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (c): dry-run report carries tier-category=unverified-finding" "$out" "tier-category=unverified-finding"
 
 doc_tier_opus_return="$tmp/tier-doc-opus-return.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — tier-return: a Sonnet leg returned the work as above its tier' > "$doc_tier_opus_return"
+fx_brief '# fixture brief' '> **Tier:** opus — tier-return: a Sonnet leg returned the work as above its tier' > "$doc_tier_opus_return"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_return" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (d): tier-return: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (d): dry-run report carries tier-category=tier-return" "$out" "tier-category=tier-return"
 
 doc_tier_opus_wrongcase="$tmp/tier-doc-opus-wrongcase.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — Design: multi-step design' > "$doc_tier_opus_wrongcase"
+fx_brief '# fixture brief' '> **Tier:** opus — Design: multi-step design' > "$doc_tier_opus_wrongcase"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_wrongcase" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (e): wrong-case category tag (Design:) is refused with exit 2" "$rc" "2"
 contains "tier gate (e): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
 doc_tier_opus_emptytext="$tmp/tier-doc-opus-emptytext.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — design:' > "$doc_tier_opus_emptytext"
+fx_brief '# fixture brief' '> **Tier:** opus — design:' > "$doc_tier_opus_emptytext"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_emptytext" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (f): a category tag with empty free text is refused with exit 2" "$rc" "2"
 contains "tier gate (f): refusal names the empty-text problem" "$out" "no free text after"
@@ -2126,7 +2131,7 @@ contains "tier gate (f): refusal names the empty-text problem" "$out" "no free t
 # through as category=<tag> reason=<tag> — the split is a no-op without a
 # literal colon present, so this must be refused explicitly.
 doc_tier_opus_notag_colon="$tmp/tier-doc-opus-notag-colon.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — design' > "$doc_tier_opus_notag_colon"
+fx_brief '# fixture brief' '> **Tier:** opus — design' > "$doc_tier_opus_notag_colon"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_notag_colon" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (g): a bare sanctioned tag with no colon is refused with exit 2" "$rc" "2"
 contains "tier gate (g): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
@@ -2135,20 +2140,20 @@ contains "tier gate (g): refusal names the three category tags" "$out" "design|u
 # for a standing operator ruling on model choice (2026-09-22: run only Opus
 # 5.5). Same shape as the other three: exact lowercase, non-blank free text.
 doc_tier_opus_ruling="$tmp/tier-doc-opus-ruling.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — operator-ruling: run only Opus 5.5 (operator 2026-09-22, console A)' > "$doc_tier_opus_ruling"
+fx_brief '# fixture brief' '> **Tier:** opus — operator-ruling: run only Opus 5.5 (operator 2026-09-22, console A)' > "$doc_tier_opus_ruling"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_ruling" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (h): operator-ruling: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (h): dry-run report carries tier-category=operator-ruling" "$out" "tier-category=operator-ruling"
 contains "tier gate (h): dry-run report carries the ruling as tier-reason=" "$out" "tier-reason=run only Opus 5.5 (operator 2026-09-22, console A)"
 
 doc_tier_opus_ruling_blank="$tmp/tier-doc-opus-ruling-blank.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — operator-ruling:   ' > "$doc_tier_opus_ruling_blank"
+fx_brief '# fixture brief' '> **Tier:** opus — operator-ruling:   ' > "$doc_tier_opus_ruling_blank"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_ruling_blank" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (i): operator-ruling: with blank free text is refused with exit 2" "$rc" "2"
 contains "tier gate (i): refusal names the empty-text problem" "$out" "no free text after"
 
 doc_tier_opus_ruling_case="$tmp/tier-doc-opus-ruling-case.md"
-printf '%s\n' '# fixture brief' '> **Tier:** opus — Operator-ruling: run only Opus 5.5' > "$doc_tier_opus_ruling_case"
+fx_brief '# fixture brief' '> **Tier:** opus — Operator-ruling: run only Opus 5.5' > "$doc_tier_opus_ruling_case"
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile leg-impl HIMMEL-9999-leg "$doc_tier_opus_ruling_case" /tmp/nosig 99999999999 /tmp/leg.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (j): wrong-case Operator-ruling: is refused with exit 2" "$rc" "2"
 contains "tier gate (j): refusal lists the four category tags" "$out" "design|unverified-finding|tier-return|operator-ruling"
@@ -2524,7 +2529,7 @@ contains "HIMMEL-4564: full --judge launch exports HIMMEL_CONSOLE_JUDGE=1 (guard
 # whose resume_cwd is ~/.cache/himmel/verdicts/<qid>/scratch yields both; a
 # plain leg gets neither; a judge doc with another resume_cwd gets the doc only.
 mkdir -p "$tmp/home4608/.cache/himmel/verdicts/Q4608/scratch"
-printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 3\n---\n' "$tmp/home4608/.cache/himmel/verdicts/Q4608/scratch" > "$tmp/c4608-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$tmp/home4608/.cache/himmel/verdicts/Q4608/scratch" > "$tmp/c4608-doc.md"
 d4608="$tmp/c4608"; mk_launch_stubs "$d4608" "HIMMEL-4608-N1-bind"; mkdir -p "$tmp/repo4608"
 rc=0
 some_doc="$tmp/c4608-doc.md" RUN_LEG_ARGS="--judge" run_leg "$d4608" "$tmp/repo4608" "HIMMEL-4608-N1-bind" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -2613,7 +2618,7 @@ check "28f --judge launch does not gain the handover-doc Edit allow (judge never
 # must NOT gain Edit on the first leg's doc (d17/HIMMEL-3333-leg's $some_doc),
 # and must gain it on its own, distinct doc file.
 d17b_doc="$tmp/sibling-doc.md"
-printf '%s\n' '# sibling fixture doc' > "$d17b_doc"
+fx_brief '# sibling fixture doc' > "$d17b_doc"
 d17b="$tmp/c17b"; mk_launch_stubs "$d17b" "HIMMEL-3334-leg"; mkdir -p "$tmp/repo17b"
 IMPL_GUARD_OK='' HIMMEL_LEAN_LEG='' \
 HEADED_ARM_LEG_TARGET="$HEADED_ARM" \
@@ -3060,7 +3065,7 @@ mkdir -p "$primary35/handovers" && git -C "$primary35" init -q
 d35="$tmp/c35"; mk_launch_stubs "$d35" "HIMMEL-3545-leg"; mkdir -p "$tmp/repo35"
 doc35_dir="$tmp/legdoc35"; mkdir -p "$doc35_dir"
 doc35="$doc35_dir/HIMMEL-3545-leg.md"
-printf '%s\n' '# fixture doc outside the self-resolved root' > "$doc35"
+fx_brief '# fixture doc outside the self-resolved root' > "$doc35"
 rc=0
 ( cd "$primary35" && \
   HANDOVER_DIR='' \
@@ -3160,7 +3165,7 @@ git -C "$repo4783" init -q
 git -C "$repo4783" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$repo4783" worktree add -q -b feat/leg-38 "$repo4783/.claude/worktrees/feat+leg-38"
 git -C "$repo4783" worktree add -q -b feat/leg-39 "$repo4783/.claude/worktrees/feat+leg-39"
-printf -- '---\nresume_cwd: %s\ntemplate_version: 3\n---\n' "$repo4783/.claude/worktrees/feat+leg-38" > "$doc38"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$repo4783/.claude/worktrees/feat+leg-38" > "$doc38"
 acks38="$HIMMEL_DENIAL_ACK_DIR"
 now38="$(date +%s)"
 page38() { # <label> <class> <ts>
@@ -3233,7 +3238,7 @@ mkdir -p "$root39/u/himmel" "${root39}-sibling" "$tmp/home39/.cache/himmel/verdi
 ln -s "$root39/u/himmel" "$tmp/home39/.cache/himmel/verdicts/q1/link"
 ln -s "$root39" "$tmp/rootlink39"
 dry39() { # <resume_cwd> [HOME override] -> sets rc39/out39
-  printf -- '---\nresume_cwd: %s\ntemplate_version: 1\n---\n' "$1" > "$tmp/c39-doc.md"
+  printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$1" > "$tmp/c39-doc.md"
   rc39=0
   out39="$(HOME="${2:-$HOME}" bash "$SCRIPT" --dry-run --no-profile HIMMEL-39-leg "$tmp/c39-doc.md" /tmp/nosig 99999999999 "$tmp/c39.log" claude-sonnet-5 2>&1)" || rc39=$?
 }
@@ -3262,11 +3267,11 @@ check "39j a quoted resume_cwd value is unquoted before the check -> exit 15" "$
 # shellcheck disable=SC2088  # deliberately unexpanded: the launcher must expand it
 dry39 '~/u/himmel/scratch' "$root39"
 check "39k a leading ~ expands against HOME (HOME=root) -> exit 15" "$rc39" "15"
-printf -- '---\ntemplate_version: 1\n---\n' > "$tmp/c39-doc.md"
+printf -- '---\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$tmp/c39-doc.md"
 rc39=0; out39="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-39-leg "$tmp/c39-doc.md" /tmp/nosig 99999999999 "$tmp/c39.log" claude-sonnet-5 2>&1)" || rc39=$?
 check "39l a doc with no resume_cwd is unaffected (rc 0)" "$rc39" "0"
 
-printf -- '---\nresume_cwd: %s\ntemplate_version: 1\n---\n' "$root39/u/himmel/scratch" > "$tmp/c39-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$root39/u/himmel/scratch" > "$tmp/c39-doc.md"
 d39="$tmp/c39"; mk_launch_stubs "$d39" "HIMMEL-39-real"; mkdir -p "$tmp/repo39"
 rc=0
 some_doc="$tmp/c39-doc.md" RUN_LEG_ARGS='--no-profile' run_leg "$d39" "$tmp/repo39" "HIMMEL-39-real" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -3285,10 +3290,10 @@ printf '%s\n' '{not json' > "$d40/bad.json"
 for variant in good missing bad none; do
   doc40="$d40/doc-$variant.md"
   case "$variant" in
-    good)    printf '%s\n' "> **Effort-record:** $good40" > "$doc40" ;;
-    missing) printf '%s\n' "> **Effort-record:** $d40/nope.json" > "$doc40" ;;
-    bad)     printf '%s\n' "> **Effort-record:** $d40/bad.json" > "$doc40" ;;
-    none)    printf '%s\n' 'no record line here' > "$doc40" ;;
+    good)    fx_brief "> **Effort-record:** $good40" > "$doc40" ;;
+    missing) fx_brief "> **Effort-record:** $d40/nope.json" > "$doc40" ;;
+    bad)     fx_brief "> **Effort-record:** $d40/bad.json" > "$doc40" ;;
+    none)    fx_brief 'no record line here' > "$doc40" ;;
   esac
   rc=0; out40="$(LEG_EFFORT=low bash "$SCRIPT" --dry-run --no-profile HIMMEL-40-leg "$doc40" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
   check "40 $variant: dry-run still exits 0" "$rc" "0"
@@ -3399,7 +3404,7 @@ check "41h a NON-consult profiled launch carries no .sandbox key" "$(jq 'has("sa
 # HIMMEL-4061 NO-GO round: additionalDirectories is a sandbox WRITE ROOT, so a consult
 # must never get its doc's directory (the shared handover bucket) granted. The doc here
 # sits in a bucket SUBDIR of the handover root (the real caller shape), not in $tmp.
-b41="$HANDOVER_DIR/u41/r41"; mkdir -p "$b41"; : >"$b41/consult41.md"; ln -sf "$b41/consult41.md" "$b41/consult41-link.md"
+b41="$HANDOVER_DIR/u41/r41"; mkdir -p "$b41"; fx_brief '# fixture' >"$b41/consult41.md"; ln -sf "$b41/consult41.md" "$b41/consult41-link.md"
 b41c="$(cd -P "$b41" && pwd -P)"
 for k41 in consult plain; do
   d41k="$tmp/c41k-$k41"; mk_launch_stubs "$d41k" "HIMMEL-4061-$k41"
@@ -3955,7 +3960,7 @@ git -C "$repo42" -c user.name=t -c user.email=t@t commit -q --allow-empty -m ini
 git -C "$repo42" worktree add -q -b feat/leg-42 "$repo42/.claude/worktrees/feat+leg-42"
 mkdir -p "$repo42/.claude/worktrees/fix+plain-dir"
 dry42() { # <resume_cwd> -> sets rc42/out42
-  printf -- '---\nresume_cwd: %s\ntemplate_version: 1\n---\n' "$1" > "$tmp/c42-doc.md"
+  printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$1" > "$tmp/c42-doc.md"
   rc42=0
   out42="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-42-leg "$tmp/c42-doc.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc42=$?
 }
@@ -3969,10 +3974,10 @@ dry42 "$repo42/.claude/worktrees/feat+leg-42"
 check "42c an existing git worktree launches (rc 0)" "$rc42" "0"
 dry42 "$tmp/home39/.cache/himmel/verdicts/q1/scratch"
 check "42d a non-worktree scratch resume_cwd is unaffected (rc 0)" "$rc42" "0"
-printf -- '---\ntemplate_version: 1\n---\n' > "$tmp/c42-doc.md"
+printf -- '---\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$tmp/c42-doc.md"
 rc42=0; out42="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-42-leg "$tmp/c42-doc.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc42=$?
 check "42e a doc with no resume_cwd is unaffected (rc 0)" "$rc42" "0"
-printf -- '---\nresume_cwd: %s\ntemplate_version: 1\n---\n' "$repo42/.claude/worktrees/feat+missing-42" > "$tmp/c42-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$repo42/.claude/worktrees/feat+missing-42" > "$tmp/c42-doc.md"
 d42="$tmp/c42"; mk_launch_stubs "$d42" "HIMMEL-42-real"
 rc=0
 some_doc="$tmp/c42-doc.md" RUN_LEG_ARGS='--no-profile' run_leg "$d42" "$repo42" "HIMMEL-42-real" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -3988,7 +3993,7 @@ fi
 # shim, which passes it to claude as --session-id.
 uuid_re='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 doc43="$tmp/HIMMEL-43-N43-sid-2026-10-07.md"
-printf -- '---\ntemplate_version: 3\n---\n\n# body\n\n## Results\n- 10:00 LIVE body line\n' > "$doc43"
+printf -- '---\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n# body\n\n## Results\n- 10:00 LIVE body line\n' > "$doc43"
 mkdir -p "$tmp/repo43"
 body43="$(sed '1,/^---$/d' "$doc43" | sed '1,/^---$/d')"
 for i in 1 2; do
@@ -4003,13 +4008,14 @@ check "43c the front matter still opens on line 1" "$(head -n 1 "$doc43")" "---"
 sid43_2="$(printf '%s' "$sids43" | grep -oE "$uuid_re" | tail -n 1)"
 contains "43d the second launch hands its own uuid to the shim" "$(cat "$tmp/c43-2/record" 2>/dev/null)" "LEG_SESSION_ID=$sid43_2"
 nodoc43="$tmp/HIMMEL-43-N44-nofm.md"
-printf '# no front matter\n' > "$nodoc43"
+printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n## Results\n- 10:00 LIVE x\n' > "$nodoc43"
+nodoc43_body="$(cat "$nodoc43")"
 d43n="$tmp/c43-n"; mk_launch_stubs "$d43n" "HIMMEL-43-nofm"
 LEG_SESSION_ID=11111111-1111-1111-1111-111111111111 some_doc="$nodoc43" run_leg "$d43n" "$tmp/repo43" "HIMMEL-43-nofm" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d43n" || true
 check "43e0 the no-front-matter launch reached the launcher" "$([ -s "$d43n/record" ] && echo yes)" "yes"
 not_contains "43e a doc without front matter gets no id, and an inherited one is scrubbed" "$(cat "$d43n/record" 2>/dev/null)" "LEG_SESSION_ID="
-check "43f a doc without front matter is left byte-identical" "$(cat "$nodoc43")" "# no front matter"
+check "43f a doc without front matter is left byte-identical" "$(cat "$nodoc43")" "$nodoc43_body"
 shim43="$tmp/shim43-claude"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@"\n' > "$shim43"; chmod 755 "$shim43"
 check "43g the shim passes LEG_SESSION_ID as --session-id" \
@@ -4020,7 +4026,7 @@ check "43h the shim adds nothing without LEG_SESSION_ID" \
 # A symlinked doc is never replaced by the temp file's mv (the link would
 # become a plain copy): no id is recorded and the link survives.
 lnk43t="$tmp/HIMMEL-43-N45-target.md"
-printf -- '---\ntemplate_version: 3\n---\n\n# body\n' > "$lnk43t"
+printf -- '---\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n# body\n\n## Results\n- 10:00 LIVE x\n' > "$lnk43t"
 lnk43="$tmp/HIMMEL-43-N45-link.md"; ln -s "$lnk43t" "$lnk43"
 d43l="$tmp/c43-l"; mk_launch_stubs "$d43l" "HIMMEL-43-link"
 some_doc="$lnk43" run_leg "$d43l" "$tmp/repo43" "HIMMEL-43-link" "claude-sonnet-5" >/dev/null 2>&1 || true
@@ -4030,7 +4036,7 @@ check "43i a symlinked doc stays a symlink" "$([ -L "$lnk43" ] && echo link)" "l
 check "43j a symlinked doc's target is left untouched" "$(grep -c '^session_ids:' "$lnk43t")" "0"
 # The rewrite keeps the doc's mode (the temp file would otherwise take the umask).
 mode43="$tmp/HIMMEL-43-N46-mode.md"
-printf -- '---\ntemplate_version: 3\n---\n\n# body\n' > "$mode43"; chmod 600 "$mode43"
+printf -- '---\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n# body\n\n## Results\n- 10:00 LIVE x\n' > "$mode43"; chmod 600 "$mode43"
 d43m="$tmp/c43-m"; mk_launch_stubs "$d43m" "HIMMEL-43-mode"
 some_doc="$mode43" run_leg "$d43m" "$tmp/repo43" "HIMMEL-43-mode" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d43m" || true

@@ -1256,7 +1256,9 @@ mk_cache
 LEG_SH="$(dirname "$CLI")/handover/console-kit/headed-arm-leg.sh"
 LLD="$TMP/launch20c"; mkdir -p "$LLD"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
-chmod +x "$LLD/target.sh" "$LLD/preflight.sh"; echo doc > "$LLD/doc.md"
+chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
+# HIMMEL-4619: the arming gate lints every brief (description + Prior art line).
+printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' > "$LLD/doc.md"
 HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_LEG_TARGET="$LLD/target.sh" HEADED_ARM_LEG_PREFLIGHT="$LLD/preflight.sh" \
     HIMMELCTL_CACHE_DIR="$CACHE" bash "$LEG_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
 if [ -f "$CACHE/launch-logs/HIMMEL-3270-u1.log" ]; then echo "PASS the launcher wrote its launch record into the himmelctl cache dir"

@@ -14,7 +14,8 @@
 #   4. headed-arm-leg.sh refuses a template-shaped brief (carries a `> **Contract:**`
 #      or `> **Completion condition:**` line) that fails the lint, naming
 #      --no-prior-art-check; the flag lets it through; a filled brief passes;
-#      a relay or consult launch and a non-template fixture are not gated.
+#      a relay or consult launch is not gated; HIMMEL-4619: a brief with neither
+#      field is gated too (4e).
 #   5. HIMMEL-4749: a fresh brief with no front-matter `description:` (or the
 #      template placeholder) FAILS, naming the field; a doc whose Results already
 #      holds a bullet (a resume) passes without one. headed-arm-leg.sh refuses a
@@ -96,6 +97,7 @@ mk tmpl_bad '# brief' '> **Why:** x' '> **Contract:** y' '## Results'
 mk tmpl_bad_judge '# brief' '> **Completion condition:** z' '## Results'
 mk tmpl_ok '# brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '> **Contract:** y' '## Results'
 mk_raw fixture_plain '# fixture brief' '## Results'
+mk_raw fixture_plain_ok '---' 'description: a plain fixture brief' '---' '# fixture brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '## Results'
 run_leg() { # doc args...
     local doc="$1"; shift
     HEADED_ARM_LEG_PREFLIGHT="$tmp/preflight.sh" LEG_REPO="$tmp" \
@@ -112,7 +114,12 @@ rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --profile leg-impl --no-prior-art-check)
 rc=0; out="$(run_leg "$tmp/tmpl_ok.md" --profile leg-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4d filled template brief passes" || bad "4d filled template brief (rc=$rc): $out"
 rc=0; out="$(run_leg "$tmp/fixture_plain.md" --profile leg-impl)" || rc=$?
-[ "$rc" -eq 0 ] && ok "4e non-template fixture is not gated" || bad "4e non-template fixture (rc=$rc): $out"
+{ [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q -- '--no-prior-art-check'; } \
+    && ok "4e a brief with no Contract/Completion field and no Prior art is refused (HIMMEL-4619)" || bad "4e field-less brief is refused (rc=$rc): $out"
+rc=0; out="$(run_leg "$tmp/fixture_plain.md" --profile leg-impl --no-prior-art-check)" || rc=$?
+[ "$rc" -eq 0 ] && ok "4e2 --no-prior-art-check lets a field-less brief through" || bad "4e2 field-less brief with the flag (rc=$rc): $out"
+rc=0; out="$(run_leg "$tmp/fixture_plain_ok.md" --profile leg-impl)" || rc=$?
+[ "$rc" -eq 0 ] && ok "4e3 a field-less brief with a Prior art line and description arms (control)" || bad "4e3 field-less brief with Prior art (rc=$rc): $out"
 rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --relay)" || rc=$?
 { [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q -- 'no-prior-art-check'; } && ok "4f relay launch is not gated" || bad "4f relay launch is not gated (rc=$rc): $out"
 

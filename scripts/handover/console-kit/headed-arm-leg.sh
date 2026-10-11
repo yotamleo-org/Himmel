@@ -693,13 +693,10 @@ fi
 
 # HIMMEL-4573: a leg or judge brief carries a filled `> **Prior art:**` line
 # (brief-lint.sh), so the console's one retrieval at dispatch reaches the leg.
-# Gated on a template-shaped brief (a `> **Contract:**` or `> **Completion
-# condition:**` line) so a bare fixture or hand-typed doc still launches;
-# ponytail: a brief that drops both fields escapes the check, HIMMEL-4573's
-# counter (console-kind qmd calls) measures real use. Relay and consult briefs
-# are not leg/judge briefs.
-if [ "$NO_PRIOR_ART_CHECK" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ] \
-    && grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$DOC"; then
+# HIMMEL-4619: gated on every brief, not only a template-shaped one (a
+# `> **Contract:**` or `> **Completion condition:**` line), so a brief that drops
+# both fields cannot escape it. Relay and consult briefs are not leg/judge briefs.
+if [ "$NO_PRIOR_ART_CHECK" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
     if ! prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" "$DOC" 2>&1)"; then
         echo "headed-arm-leg: refusing launch: $prior_art_err (fill the Prior art line, or pass --no-prior-art-check to launch without it)" >&2
         exit 2
