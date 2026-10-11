@@ -140,8 +140,30 @@ test('a later chain break never commits earlier un-emitted records', async t => 
 
 test('permissions are rechecked on the bus parent after startup', async t => {
   const { store, root, state } = await fixture(t);
-  await chmod(join(state, 'himmel'), 0o755);
+  await chmod(join(state, 'himmel'), 0o777);
   await assert.rejects(store.append(root, 'leg', message()), /permission/);
+});
+
+// HIMMEL-5221: the XDG state home and himmel/ are shared; only himmel/bus and
+// below must be private.
+test('HIMMEL-5221 a 0755 state home and himmel parent are accepted, and himmel/bus is created 0700', async t => {
+  const state = await mkdtemp(join(tmpdir(), 'bus-shared-'));
+  t.after(() => rm(state, { recursive: true, force: true }));
+  await chmod(state, 0o755);
+  await mkdir(join(state, 'himmel'), { mode: 0o755 });
+  const store = await import(storeUrl);
+  const root = await store.busRoot({ stateHome: state });
+  assert.equal((await fs.stat(root)).mode & 0o777, 0o700);
+  await store.append(root, 'leg', message());
+  assert.equal((await store.read(root, 'leg')).records.length, 1);
+});
+
+test('HIMMEL-5221 a group/other-writable parent and a 0755 himmel/bus are still refused', async t => {
+  for (const [rel, mode] of [['.', 0o777], ['himmel', 0o775], ['himmel/bus', 0o755]]) {
+    const { store, state } = await fixture(t);
+    await chmod(join(state, rel), mode);
+    await assert.rejects(store.busRoot({ stateHome: state }), /permission/, rel);
+  }
 });
 
 test('cursor commit refuses a symlink and preserves its target', async t => {

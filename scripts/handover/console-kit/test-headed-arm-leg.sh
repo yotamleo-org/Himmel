@@ -4140,6 +4140,17 @@ rc=0; run45 in HIMMEL-45-in HIMMEL-console-45-other || rc=$?
 check "45o refused register (changed console): launch still exits 0" "$rc" "0"
 check "45p refused register: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
 check "45q refused register: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
+# HIMMEL-5221: the refused register is no longer log-only: it is on the launcher's
+# stdout and a bus=FAIL: bullet sits in the leg doc, still not a status marker.
+bus45_doc="$bus45/leg-doc.md"; fx_brief '# fixture doc' > "$bus45_doc"
+printf '\n## Results\n\n- 00:00 LIVE - start\n' >> "$bus45_doc"
+bus45_out="$(XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45-other2 HIMMEL-45-in "$bus45_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>/dev/null || true)"
+check "45w failed register: bus=FAIL: on the launcher stdout" "$(printf '%s\n' "$bus45_out" | grep -c 'bus=FAIL:')" "1"
+check "45x failed register: bus=FAIL: bullet in the leg doc" "$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc")" "1"
+check "45y failed register: the doc's last status marker is still LIVE" "$(grep -c '^- [0-9:]* LIVE' "$bus45_doc")" "1"
 # HIMMEL-5207: an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

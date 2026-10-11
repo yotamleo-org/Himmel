@@ -2279,11 +2279,18 @@ case "${MCP_NAMES_JSON:-}" in
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
             else
                 echo "$(date +%F_%T) headed-arm-leg: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
+                # HIMMEL-5221: a failed register was only ever in the log, so the
+                # bus sat dead unseen. Say it on stdout and leave a bus=FAIL:
+                # bullet in the leg doc (a lowercase lead is a non-status
+                # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
+                BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | cut -c1-160)"
+                echo "headed-arm-leg: WARN bus register failed for $NAME - launching unbound (bus=FAIL:$BUS_REASON)"
+                bash "$HERE/append-results.sh" "$DOC" "bus=FAIL:$BUS_REASON" >/dev/null 2>&1 || true
             fi
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_CONSOLE LEG_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CONSOLE LEG_BUS_PAIR
 
 # Paired with this exec's PID: headed-arm.sh ignores stale ambient values.
 export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_LEG_PROFILES="$PROFILES_MJS"
