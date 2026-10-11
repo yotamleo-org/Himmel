@@ -72,13 +72,17 @@ bash_case "rg single-quoted --pre= -> block" block "rg '--pre=/tmp/writer' salus
 bash_case "rg double-quoted --pre -> block" block "rg \"--pre\" /tmp/writer salus $CFG"
 bash_case "rg backslash-split --pre= -> block" block "rg --p\\re=/tmp/writer salus $CFG"
 bash_case "rg --pre= program -> block" block "rg --pre=/bin/true salus $CFG"
+bash_case "rg plain read -> block (rg is not a reader)" block "rg -i salus $CFG"
+bash_case "rg ANSI-C quoted --pre -> block" block "rg \$'--pre=/tmp/writer' salus $CFG"
+# shellcheck disable=SC2016 # the literal ${x:-...} spelling is the point
+bash_case "rg default-value expanded --pre -> block" block "rg \${x:---pre=/tmp/writer} salus $CFG"
+bash_case "rg brace-expanded --pre -> block" block "rg --{pre,x}=/tmp/writer salus $CFG"
 
 echo "== benign reads and unrelated calls =="
 bash_case "cat the config -> allow" allow "cat $CFG"
 bash_case "jq read of the config -> allow" allow "jq .graphify $CFG"
 bash_case "grep | head of the config -> allow" allow "grep -n salus $CFG | head -5"
 bash_case "grep -i case-insensitive read -> allow" allow "grep -i salus $CFG"
-bash_case "rg -i case-insensitive read -> allow" allow "rg -i salus $CFG"
 bash_case "ls ~/.himmel -> allow" allow "ls -la $HOME/.himmel"
 bash_case "a command naming neither -> allow" allow "git status"
 bash_case "config.json outside ~/.himmel -> allow" allow "cat $T/other/config.json"

@@ -21,8 +21,10 @@
 #   Bash - the command text names the config file (`.himmel` and `config.json`
 #     both present, in any quoting/spelling that keeps the two literals) unless
 #     EVERY clause is a plain reader, a bare name (cat head tail wc stat ls file jq
-#     grep rg diff test [) with no redirect, no rg `--pre`/`--pre-glob`/
-#     `--hostname-bin` (they run a program), and no command substitution. A
+#     grep diff test [) with no redirect and no command substitution. rg is NOT a
+#     reader: its --pre/--hostname-bin run a program and shell expansion (ANSI-C
+#     quoting, ${x:-..}, braces) can spell them past any text match; grep covers
+#     reads. A
 #     `ln -s ... config.json`, `cp`, `mv`, `sed -i`, `jq ... >` or `echo >
 #     ...config.json` all name it and so deny (none is a plain reader).
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
@@ -127,16 +129,8 @@ while IFS= read -r clause || [ -n "$clause" ]; do
     # here: `less -o/-O <file>` writes a log file.
     w="$1"
     case "$w" in
-        cat|head|tail|wc|stat|ls|file|jq|grep|rg|diff|test|'[') ;;
+        cat|head|tail|wc|stat|ls|file|jq|grep|diff|test|'[') ;;
         *) deny "the command names ~/.himmel/config.json under '$w', not a plain reader" ;;
     esac
-    for a in "$@"; do
-        # Quotes and backslashes are shell syntax the word split keeps: drop
-        # them so '--pre=x' and --p\re=x are matched as the shell will run them.
-        a=${a//\'/}; a=${a//\"/}; a=${a//\\/}
-        case "$a" in
-            --pre|--pre=*|--pre-glob|--pre-glob=*|--hostname-bin|--hostname-bin=*) deny "the command names ~/.himmel/config.json with an option that runs a program ($a)" ;;
-        esac
-    done
 done <<< "$clauses"
 exit 0
