@@ -402,7 +402,8 @@ postcap_setup() {
     postcap_amend "$1" "$cap_r3_head" stub-1 fixed
     fix_commit "$1"
     git -C "$repo" push -q -u origin "$1"
-    (cd "$repo" && PANEL_MODE="$2" bash "$SCRIPT" --head "$cap_fix_head" --branch "$1" >/dev/null 2>"$tmp/$1-delta.err")
+    (cd "$repo" && PANEL_MODE="$2" bash "$SCRIPT" --head "$cap_fix_head" --branch "$1" >/dev/null 2>"$tmp/$1-delta.err") \
+        || fail "$1 delta round setup exited non-zero"
     postcap_d_head="$cap_fix_head"
     CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
         --branch "$1" --head "$postcap_d_head" --model stub --id stub-2 --severity sug --file f.txt --line 3 \
@@ -460,7 +461,9 @@ assert_eq "$postcap_rc" "8" "an unfixed delta-round finding buys no post-cap rou
 three_rounds postcapzero suggestion
 postcap_amend postcapzero "$cap_r3_head" stub-1 fixed
 fix_commit postcapzero
-(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch postcapzero >/dev/null 2>&1)
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch postcapzero >/dev/null 2>&1) \
+    || fail "postcapzero delta round setup exited non-zero"
+assert_eq "$(cat "$git_dir/cr-review-rounds/postcapzero.round")" "4" "postcapzero fixture: the delta round ran as round 4"
 postcap_fix postcapzero
 postcap_out="$(postcap_start postcapzero)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap round"
@@ -469,7 +472,9 @@ assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap rou
 three_rounds postcapforge suggestion
 postcap_amend postcapforge "$cap_r3_head" stub-1 fixed
 fix_commit postcapforge
-(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch postcapforge >/dev/null 2>&1)
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch postcapforge >/dev/null 2>&1) \
+    || fail "postcapforge delta round setup exited non-zero"
+assert_eq "$(cat "$git_dir/cr-review-rounds/postcapforge.round")" "4" "postcapforge fixture: the delta round ran as round 4"
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch postcapforge --head "$cap_fix_head" --model claude --id forged-9 --severity sug --file f.txt --line 1 \
     --verdict fixed >/dev/null 2>"$tmp/postcapforge-finding.err" || fail "postcapforge forged finding setup"
