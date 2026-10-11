@@ -49,6 +49,16 @@ this change does not claim constant-time polling or a decompression-bomb limit.
 Cursor publication is atomic for process crashes, not fsynced for power loss.
 No bridge or transport wiring is installed by this package.
 
+## Receive path: `bus wait`
+
+`bus wait [--timeout <seconds>]` (default 300) blocks until the caller's own inbox
+has a pending message, prints it in the delivery hook's format and commits the
+cursor (at-least-once, like the hook). Exit 0 = printed, **3 = timed out**, any
+other nonzero = error (unbound identity, halted log, bad `--timeout`). It polls
+`pending` every 500 ms. Legs on the `leg-bus` profile get the MCP server through
+the registry `mcpCatalog` entry; its `npm run start` installs the locked deps on
+first use (`npm ci`) and then execs `server/index.mjs`.
+
 ## Identity and registration CLI
 
 `bin/bus register|bind|rebind|adopt|status|peers` (spec §8). Identity is

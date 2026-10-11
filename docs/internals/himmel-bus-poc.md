@@ -98,6 +98,35 @@ That clause rests on code reading and the unit tests, not on a live run: no
 session was registered, so the CLI sender path (identity stamp, edge check,
 store append) was never exercised live. The first live `sent #n` is still owed.
 
+## Phase A re-run (2026-10-11, PR 2378: `bus wait`, `leg-bus` profile, server deps)
+
+Probes P1 (`bus-probe-p1-2026-10-11`) and P2 (`bus-probe-p2-2026-10-11`) were
+launched on `--profile leg-bus` from the PR's worktree launcher (dry-run showed
+`mcp ["qmd","himmel-bus"]`).
+
+### Run 1: FAIL (leg <-> leg)
+
+P1 and P2 both got `no edge ... your edges: (none)`. By design the edge table
+allows only leg <-> console and a leg <-> judge/consult pair. The console was
+not on the bus either: the console profile lacks `himmel-bus`, so `console.sh`
+never registers it. Ticket: HIMMEL-5241.
+
+### Run 2: PASS (leg <-> console)
+
+The console was registered and bound by hand (`bus register <console> --role
+console`, bind pid 1852149).
+
+- P2 `peers` listed the console.
+- P2 sent #1; the console's `bus wait` printed
+  `bus #1 data from bus-probe-p2-2026-10-11: | P2 to console ping 2026-10-11`.
+- The console replied with `send ... --re 1` and got `sent #1`.
+- P2's `wait` received `console to P2 reply 2026-10-11 re #1` verbatim.
+
+Result: register, send, `bus wait` receive, and reply `--re` all worked live
+through `bin/bus` and the `leg-bus` profile with installed server deps. Caveat:
+run 2 needed a hand-registered console (HIMMEL-5241); leg <-> leg needs a pair
+edge if wanted.
+
 ## Phase B: native leg <-> claudex (codex) leg
 
 Status: not started (waits on Phase A).

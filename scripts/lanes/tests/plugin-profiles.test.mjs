@@ -28,7 +28,7 @@ const MINI = {
 
 // HIMMEL-2959: removing an opt-in/rule loses a deterministic gate permission;
 // widening a rule must fail registry load before any settings reach a child.
-const LEG_PROFILES = ['lane-impl', 'leg-impl', 'lane-review', 'lane-content', 'console-relay'];
+const LEG_PROFILES = ['lane-impl', 'leg-impl', 'leg-bus', 'lane-review', 'lane-content', 'console-relay'];
 const GATE_RULES = [
   'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)',
   // HIMMEL-3698: step 0's own invocation of pr-check-context.sh, the
@@ -1561,6 +1561,21 @@ test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so o
   assert.notEqual(p['playwright@claude-plugins-official'], true, 'plugin ships only the MCP; enabling it risks a second server');
   assert.deepEqual(resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, p);
   assert.equal(REG.profiles['leg-e2e'].gateAllow, true);
+  assert.deepEqual(validateRegistry(REG), []);
+});
+
+// HIMMEL-5223: no profile listed himmel-bus and nothing could define it, so no leg ever registered.
+test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
+  assert.deepEqual(mcpServersForProfile(REG, 'leg-bus'), ['qmd', 'himmel-bus']);
+  assert.ok(!mcpServersForProfile(REG, 'leg-impl').includes('himmel-bus'), 'leg-impl is unchanged');
+  assert.deepEqual(resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins);
+  assert.equal(REG.profiles['leg-bus'].gateAllow, true);
+  const dir = makeTmpDir('pp-bus-');
+  const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'marketplace', 'plugins'), mcpCatalog: REG.mcpCatalog });
+  const def = cfg.mcpServers['himmel-bus'];
+  assert.equal(def.command, 'npm');
+  assert.deepEqual(def.args, ['--prefix', 'marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
+  assert.ok(!JSON.stringify(def).includes('${'), 'no placeholder left');
   assert.deepEqual(validateRegistry(REG), []);
 });
 
