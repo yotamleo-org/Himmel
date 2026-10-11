@@ -115,6 +115,7 @@ D_PRCHECK="bash scripts/cr/pr-check-cont""ext.sh"
 D_PRCHECK_ENV="bash scripts/cr/pr-check-e""nv.sh CR_CLAUDE_AGENTS"
 D_LIFT="echo x > ~/.himmel/state/ba""nk-lift.json"
 D_LIFTSET="bash scripts/lib/ba""nk-lift.sh set seven_day"
+D_BUS="bus regis""ter x --role leg"
 A_OK="git status"
 
 printf '\nSingle-line command text\n'
@@ -149,6 +150,8 @@ check guard-pr-check-literal      Bash 0 "$A_OK"     "allow git status"
 check block-bank-lift-writes      Bash 2 "$D_LIFT"   "deny a redirect onto the bank lift"
 check block-bank-lift-writes      Bash 2 "$D_LIFTSET" "deny bank-lift.sh set"
 check block-bank-lift-writes      Bash 0 "$A_OK"     "allow git status"
+check guard-bus-store             Bash 2 "$D_BUS"    "deny bus register"
+check guard-bus-store             Bash 0 "$A_OK"     "allow git status"
 
 # A multi-line command is where the class actually bites: with CRLF endings the
 # LAST character of every record is a CR, so any check anchored at end-of-record

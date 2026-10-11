@@ -13,8 +13,9 @@
 #
 # DENIES:
 #   Bash — the command text
-#     (a) names the bus root: `himmel/bus` bounded by a non-[A-Za-z0-9_-]
-#         character on both sides (any spelling of the state home — `$XDG_STATE_
+#     (a) names the bus root: `himmel/bus` not preceded by [A-Za-z0-9_-]
+#         and followed by `/`, end of word or a char outside [A-Za-z0-9_.-] (so
+#         the sibling `himmel/bus.json` is not the root) (any spelling of the state home — `$XDG_STATE_
 #         HOME/himmel/bus`, `~/.local/state/himmel/bus`, a relative
 #         `himmel/bus/log/...`; the hyphenated plugin dir `himmel-bus` is not it).
 #         Reads and writes are both denied: a log read is the T5 leak.
@@ -72,7 +73,7 @@ case "$input" in
     *) exit 0 ;;
 esac
 
-ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_-])'
+ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 VERB_RE='(^|[^A-Za-z0-9_-])bus[[:space:]]+(register|bind|rebind)($|[^A-Za-z0-9_-])'
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*='
 

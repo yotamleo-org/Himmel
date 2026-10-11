@@ -5604,7 +5604,7 @@ tool-driven routes to forged or leaked bus state cost a denial; direct writes ar
 
 | Denied | Matched as |
 |---|---|
-| any Bash command that names the bus root (read or write) | `himmel/bus` bounded by a non-`[A-Za-z0-9_-]` char on both sides, in any spelling of the state home |
+| any Bash command that names the bus root (read or write) | `himmel/bus` followed by `/`, end of word or any char outside `[A-Za-z0-9_.-]` (so `himmel/bus.json` is not the root), and not preceded by `[A-Za-z0-9_-]`, in any spelling of the state home |
 | `bus register`, `bus bind`, `bus rebind` | `bus` bounded the same way, so `bin/bus register` counts |
 | assigning `HIMMEL_BUS_*` (`X=1 cmd`, `export`, `env`) | `HIMMEL_BUS_<name>=`; reading one is not an assignment |
 | Write/Edit/MultiEdit/NotebookEdit on a path under the bus root | the path text, or its `readlink -m` resolution |
