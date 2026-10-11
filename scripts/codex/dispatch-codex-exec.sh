@@ -351,14 +351,14 @@ if ! bash "$NORMALIZE" "$WORKTREE"; then
 fi
 
 # Invariant 9 (HIMMEL-5291): hook-trust preflight, fail-closed. codex keys hook
-# trust to the ABSOLUTE .codex/hooks.json path (of the worktree, or of the
-# primary checkout a worktree resolves to), so an untrusted tree would run the
+# trust to the ABSOLUTE .codex/hooks.json path of the PRIMARY checkout (a linked
+# worktree's hook discovery resolves there), so an untrusted tree would run the
 # lane with no himmel hooks at all (HIMMEL-5288 gap 1: an in-workspace force
 # push succeeded). The filter refuses --dangerously-bypass-hook-trust, so the
 # only honest options are to refuse or to run guarded: refuse unless every
-# PreToolUse hook of THIS worktree's hooks.json has a trusted state entry
-# (under the primary checkout the worktree resolves to; the worktree path itself
-# only when it IS the primary) in $CODEX_HOME/config.toml. Runs before
+# hook of the primary checkout's hooks.json has a trusted state entry in
+# $CODEX_HOME/config.toml, and refuse a worktree whose own hooks.json differs
+# from the primary's (the hooks in effect would not be the ones it carries). Runs before
 # the lock, the ledger start row and the job registry, so a refusal leaves
 # nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
 # CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
@@ -374,16 +374,26 @@ fi
 # changes the identity refuses every dispatch until this is re-ported, which is
 # the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
 _hook_trust_check() {
-    local wt="$1" hooks_json="$1/.codex/hooks.json"
+    local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
-    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
-    # codex resolves a git worktree to its PRIMARY checkout and keys trust to
-    # that checkout's .codex/hooks.json (observed codex-cli 0.161.0, Linux).
+    # codex resolves a LINKED worktree's hook discovery to the PRIMARY checkout's
+    # .codex (rust-v0.161.0 config/src/state.rs hooks_config_folder, verified live
+    # on a linked worktree: hooks/list reports the primary's hooks.json path), so
+    # the file whose hooks run, and whose hashes codex recomputes, is the
+    # primary's - never the worktree's own copy.
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
     case "$common" in
         */.git) primary="${common%/.git}" ;;
         *) echo "cannot resolve the primary checkout of $wt (git-common-dir='${common:-unresolved}'): codex keys trust to that path, so the trust state cannot be verified" >&2; return 1 ;;
     esac
+    hooks_json="$primary/.codex/hooks.json"
+    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: the primary checkout $primary has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
+    if [ "$wt" != "$primary" ]; then
+        if [ ! -f "$wt/.codex/hooks.json" ] || ! cmp -s "$wt/.codex/hooks.json" "$hooks_json"; then
+            echo "$wt/.codex/hooks.json differs from (or is missing beside) the primary checkout's $hooks_json: codex runs the PRIMARY's hooks in a linked worktree, so the hooks in effect are not the ones this worktree carries" >&2
+            return 1
+        fi
+    fi
     # Git Bash: codex on Windows keys trust to the native path spelling.
     primary_native="$primary"
     if command -v cygpath >/dev/null 2>&1; then
@@ -393,15 +403,95 @@ _hook_trust_check() {
     node -e '
 const fs = require("fs");
 const [hooksFile, cfgFile, ...prefixes] = process.argv.slice(1);
+// codex (hooks/src config: HooksFile is deny_unknown_fields, serde rejects wrong
+// types and duplicate fields) loads ZERO hooks from a file that fails to parse,
+// so this parse is strict in the same directions: duplicate keys, unknown
+// top-level fields and wrong types refuse here instead of passing as trusted.
+const parseStrict = (text) => {
+    let i = 0;
+    const ws = () => { while (i < text.length && " \t\n\r".includes(text[i])) i++; };
+    const fail = (m) => { throw new Error(m + " at offset " + i); };
+    const str = () => {
+        const start = i;
+        i++;
+        while (i < text.length && text[i] !== "\"") { if (text[i] === "\\") i++; i++; }
+        if (i >= text.length) fail("unterminated string");
+        i++;
+        return JSON.parse(text.slice(start, i));
+    };
+    const val = () => {
+        ws();
+        const c = text[i];
+        if (c === "{") {
+            i++;
+            const o = Object.create(null);
+            ws();
+            if (text[i] === "}") { i++; return o; }
+            for (;;) {
+                ws();
+                if (text[i] !== "\"") fail("expected an object key");
+                const k = str();
+                if (Object.prototype.hasOwnProperty.call(o, k)) fail("duplicate key " + JSON.stringify(k));
+                ws();
+                if (text[i] !== ":") fail("expected a colon");
+                i++;
+                o[k] = val();
+                ws();
+                if (text[i] === ",") { i++; continue; }
+                if (text[i] === "}") { i++; return o; }
+                fail("expected a comma or a closing brace");
+            }
+        }
+        if (c === "[") {
+            i++;
+            const a = [];
+            ws();
+            if (text[i] === "]") { i++; return a; }
+            for (;;) {
+                a.push(val());
+                ws();
+                if (text[i] === ",") { i++; continue; }
+                if (text[i] === "]") { i++; return a; }
+                fail("expected a comma or a closing bracket");
+            }
+        }
+        if (c === "\"") return str();
+        const m = /^(-?\d+(\.\d+)?([eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
+        if (!m) fail("unexpected token");
+        i += m[0].length;
+        return JSON.parse(m[0]);
+    };
+    const v = val();
+    ws();
+    if (i !== text.length) fail("trailing content");
+    return v;
+};
 let hooks;
 try {
-    hooks = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+    hooks = parseStrict(fs.readFileSync(hooksFile, "utf8"));
 } catch (error) {
-    console.error("cannot read " + hooksFile + ": " + error.message);
+    console.error("codex would load no hooks from " + hooksFile + ": " + error.message);
     process.exit(2);
 }
 const crypto = require("crypto");
-const events = hooks.hooks || hooks;
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isStrOrNull = (v) => v === undefined || v === null || typeof v === "string";
+const isU64OrNull = (v) => v === undefined || v === null || (Number.isInteger(v) && v >= 0);
+const shape = [];
+if (!isObj(hooks)) {
+    shape.push("top level is not an object");
+} else {
+    for (const k of Object.keys(hooks)) {
+        if (k !== "description" && k !== "hooks") shape.push("unknown top-level field " + JSON.stringify(k));
+    }
+    if (!isStrOrNull(hooks.description)) shape.push("description is not a string");
+    if (hooks.hooks !== undefined && !isObj(hooks.hooks)) shape.push("hooks is not an object");
+}
+if (shape.length) {
+    console.error("codex would load no hooks from " + hooksFile + ": " + shape.join("; "));
+    process.exit(2);
+}
+const events = hooks.hooks || {};
 let cfg = "";
 try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = nothing trusted */ }
 // [hooks.state.<key>] tables: a literal (single-quoted) or basic ("...") key.
@@ -429,12 +519,15 @@ const ctxEvents = new Set(["PreToolUse", "PostToolUse", "SessionStart", "UserPro
 const sorted = (v) => Array.isArray(v) ? v.map(sorted)
     : (v && typeof v === "object") ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {})
     : v;
+// codex drops the matcher before hashing for these events (matcher_pattern_for_event).
+const noMatcherEvents = new Set(["UserPromptSubmit", "Stop", "Interrupt"]);
 const expectedHash = (event, group, hook) => {
     const shortEvent = event === "SessionEnd" || event === "Interrupt";
     const t = Number.isInteger(hook.timeout) ? hook.timeout : undefined;
+    const win = hook.commandWindows !== undefined ? hook.commandWindows : hook.command_windows;
     const handler = {
         type: "command",
-        command: (process.platform === "win32" && typeof hook.commandWindows === "string") ? hook.commandWindows : hook.command,
+        command: (process.platform === "win32" && typeof win === "string") ? win : hook.command,
         async: hook.async === true,
         timeout: shortEvent ? Math.min(Math.max(t === undefined ? 1 : t, 1), 3) : Math.max(t === undefined ? 600 : t, 1),
     };
@@ -443,15 +536,58 @@ const expectedHash = (event, group, hook) => {
         handler.additionalContextLimit = hook.additionalContextLimit;
     }
     const identity = { event_name: labels[event], hooks: [handler] };
-    if (typeof group.matcher === "string") identity.matcher = group.matcher;
+    if (typeof group.matcher === "string" && !noMatcherEvents.has(event)) identity.matcher = group.matcher;
     return "sha256:" + crypto.createHash("sha256").update(JSON.stringify(sorted(identity))).digest("hex");
 };
+// Strict shape of the known events (serde: wrong types, a duplicated command
+// alias, an unknown handler type or a missing required field fail the whole file
+// and codex then loads no hook at all).
+const badShape = [];
+const matcherOk = (m) => {
+    if (m === undefined || m === null || m === "" || m === "*") return true;
+    try { new RegExp(m); return true; } catch (error) { return false; }
+};
+for (const event of Object.keys(events)) {
+    if (!labels[event]) continue;
+    const groups = events[event];
+    if (!Array.isArray(groups)) { badShape.push(event + " is not an array"); continue; }
+    groups.forEach((group, gi) => {
+        const at = event + "[" + gi + "]";
+        if (!isObj(group)) { badShape.push(at + " is not an object"); return; }
+        if (!isStrOrNull(group.matcher)) badShape.push(at + ".matcher is not a string");
+        if (group.hooks !== undefined && !Array.isArray(group.hooks)) { badShape.push(at + ".hooks is not an array"); return; }
+        if (typeof group.matcher === "string" && !noMatcherEvents.has(event) && !matcherOk(group.matcher)) {
+            badShape.push(at + ".matcher is not a valid regular expression (codex skips the group)");
+        }
+        (group.hooks || []).forEach((hook, hi) => {
+            const h = at + ".hooks[" + hi + "]";
+            if (!isObj(hook)) { badShape.push(h + " is not an object"); return; }
+            if (hook.type === "command") {
+                if (typeof hook.command !== "string") badShape.push(h + ".command is not a string");
+                if (hook.commandWindows !== undefined && hook.command_windows !== undefined) badShape.push(h + " carries both commandWindows and command_windows");
+                if (!isStrOrNull(hook.commandWindows) || !isStrOrNull(hook.command_windows)) badShape.push(h + ".commandWindows is not a string");
+                if (!isU64OrNull(hook.timeout)) badShape.push(h + ".timeout is not a non-negative integer");
+                if (hook.async !== undefined && typeof hook.async !== "boolean") badShape.push(h + ".async is not a boolean");
+                if (!isStrOrNull(hook.statusMessage)) badShape.push(h + ".statusMessage is not a string");
+                if (!isU64OrNull(hook.additionalContextLimit)) badShape.push(h + ".additionalContextLimit is not a non-negative integer");
+            } else if (hook.type === "mcp_tool") {
+                if (typeof hook.server !== "string" || typeof hook.tool !== "string") badShape.push(h + " mcp_tool needs string server and tool");
+            } else if (hook.type !== "prompt" && hook.type !== "agent") {
+                badShape.push(h + ".type is not a known hook handler type");
+            }
+        });
+    });
+}
+if (badShape.length) {
+    console.error("codex would load no hooks from " + hooksFile + ": " + badShape.join("; "));
+    process.exit(2);
+}
 const missing = [];
 let preCount = 0;
 for (const event of Object.keys(events)) {
     const groups = events[event] || [];
     if (!labels[event]) {
-        if (groups.some(g => (g.hooks || []).length)) missing.push(event + " (unknown hook event, cannot verify)");
+        if (Array.isArray(groups) && groups.some(g => isObj(g) && Array.isArray(g.hooks) && g.hooks.length)) missing.push(event + " (unknown hook event, cannot verify)");
         continue;
     }
     groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
