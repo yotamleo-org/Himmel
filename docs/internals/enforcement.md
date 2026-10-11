@@ -5605,7 +5605,9 @@ tool-driven routes to forged or leaked bus state cost a denial; direct writes ar
 | Denied | Matched as |
 |---|---|
 | any Bash command that names the bus root (read or write) | `himmel/bus` followed by `/`, end of word or any char outside `[A-Za-z0-9_.-]` (so `himmel/bus.json` is not the root), and not preceded by `[A-Za-z0-9_-]`, in any spelling of the state home |
-| `bus register`, `bus bind`, `bus rebind` | `bus` bounded the same way, so `bin/bus register` counts |
+| any Bash command whose `.cwd` is under the bus root, or is the himmel state dir while the command has a bounded `bus/` token | the payload `cwd` (text and `readlink -m`), so `cd`-free relative reads are caught |
+| a path spelled with `//` or `/./` (`himmel//bus`, `himmel/./bus`) | repeated slashes and `/./` are collapsed before matching |
+| `bus register`, `bus bind`, `bus rebind` | a bounded `bus` word, then a bounded verb later in the same segment (split on `;` `&` `|` newline), so `bin/bus register`, `bus --role leg register x`, `bus 'register' x` and `"bus" register x` count; `bus send c /tmp/register.txt` does not |
 | assigning `HIMMEL_BUS_*` (`X=1 cmd`, `export`, `env`) | `HIMMEL_BUS_<name>=`; reading one is not an assignment |
 | Write/Edit/MultiEdit/NotebookEdit on a path under the bus root | the path text, or its `readlink -m` resolution |
 
@@ -5620,8 +5622,10 @@ and never appears in a tool call. Suite: `scripts/hooks/test-guard-bus-store.sh`
 **Residual (text matching, not a shell parser):** an interpreter that assembles
 the path, a renamed copy of the CLI, `eval`, a script file that does the write, a
 `$(...)`-built path, a Bash command that goes through a symlink alias (only
-file-tool paths are resolved), and the Read/Grep tools (not wired to this hook)
-all get past it. A same-uid process that re-chains the log is undetected until phase 2.
+file-tool paths are resolved), a `cd` inside the same command followed by a
+relative path, a payload with no `jq` where only the raw root text is scanned,
+and the Read/Grep tools (not wired to this hook) all get past it. Conversely, a
+command that merely quotes the root (a `git grep`, a PR body) is denied. A same-uid process that re-chains the log is undetected until phase 2.
 
 ### Hook-integrity pin: monotonic re-pin + anchor-tamper fence (HIMMEL-2528)
 

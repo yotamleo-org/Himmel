@@ -25,6 +25,7 @@ ROOT='/var/tmp/fixture-state/himmel/bus'
 
 bash_json()  { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 file_json()  { jq -nc --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{file_path:$p,content:"x"}}'; }
+cwd_json()   { jq -nc --arg c "$1" --arg d "$2" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}'; }
 
 # run <json> [ENV=val ...] -> sets RC and OUT
 run() {
@@ -87,6 +88,28 @@ deny "cat a log" "$(bash_json "cat $ROOT/log/other.jsonl")"
 deny "head a log" "$(bash_json "head -n 5 $ROOT/log/other.jsonl")"
 deny "grep the log dir" "$(bash_json "grep -r token $ROOT/log/")"
 deny "ls the bus root" "$(bash_json "ls $ROOT")"
+
+echo "== option parsing: options before the verb, split quoting =="
+deny "bus --role leg register legX" "$(bash_json 'bus --role leg register legX')"
+deny "bus --role=console register x" "$(bash_json 'bus --role=console register x')"
+deny "bin/bus --unacked bind x 123" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus --unacked bind x 123')"
+deny "bus 'register' x (quoted verb)" "$(bash_json "bus 'register' x")"
+deny "\"bus\" register x (quoted word)" "$(bash_json '"bus" register x')"
+deny "register after && in a later segment" "$(bash_json 'cd /tmp && bus --role leg rebind x 1')"
+allow "bus send naming a file called register.txt" "$(bash_json 'bus send console /tmp/register.txt')"
+allow "bus status then an unrelated bind word in a LATER segment" "$(bash_json 'bus status; echo bind later')"
+
+echo "== path spelling: repeated slashes and /./ =="
+deny "himmel//bus" "$(bash_json 'cat /var/tmp/fixture-state/himmel//bus/log/a.jsonl')"
+deny "himmel/./bus" "$(bash_json 'cat /var/tmp/fixture-state/himmel/./bus/log/a.jsonl')"
+deny "himmel/.//bus" "$(bash_json 'cat /var/tmp/fixture-state/himmel/.//bus/log/a.jsonl')"
+
+echo "== cwd indirection (payload .cwd) =="
+STATE_DIR='/var/tmp/fixture/.local/state/himmel'
+deny "cwd under the bus root" "$(cwd_json 'ls' "$STATE_DIR/bus/log")"
+deny "cwd is the himmel state dir + bounded bus/ token" "$(cwd_json 'cat bus/log/legB.0.jsonl' "$STATE_DIR")"
+allow "cwd is the himmel state dir, no bus token" "$(cwd_json 'ls' "$STATE_DIR")"
+allow "bus/ token under an ordinary cwd" "$(cwd_json 'cat bus/readme.txt' '/tmp')"
 
 echo "== allowed bus verbs =="
 allow "bus status" "$(bash_json 'bus status')"

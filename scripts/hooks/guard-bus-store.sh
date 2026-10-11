@@ -74,8 +74,24 @@ case "$input" in
 esac
 
 ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
-VERB_RE='(^|[^A-Za-z0-9_-])bus[[:space:]]+(register|bind|rebind)($|[^A-Za-z0-9_-])'
+# A bounded `bus` word, then anywhere later in the SAME command segment a bounded
+# verb: options before the verb (`bus --role leg register x`) and quoted words
+# (`bus 'register' x`, `"bus" register x`) match. A path component such as
+# /tmp/register.txt is not a verb (a `/` or `.` before it is not a boundary).
+VERB_RE='(^|[^A-Za-z0-9_-])bus($|[^A-Za-z0-9_-])(.*[^A-Za-z0-9_./-])?(register|bind|rebind)($|[^A-Za-z0-9_.-])'
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
+BUSTOK_RE='(^|[^A-Za-z0-9_-])bus/'
+STATE_RE='(^|/)state/himmel/?$'
+
+# norm <string>: collapse repeated slashes and /./ so himmel//bus and himmel/./bus
+# match like himmel/bus. Pure bash, 3.2-safe.
+norm() {
+    local s="$1"
+    while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
+    while [[ "$s" == *"/./"* ]]; do s=${s//\/.\//\/}; done
+    while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
+    printf '%s' "$s"
+}
 
 deny() {
     local msg reason
@@ -98,12 +114,30 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name | strings' 2>/dev/null) || raw_s
 case "$tool" in
     Bash)
         cmd=$(printf '%s' "$input" | jq -er '.tool_input.command | strings' 2>/dev/null) || raw_scan
-        [[ "$cmd" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
-        [[ "$cmd" =~ $VERB_RE ]] && deny "bus register|bind|rebind is the launcher's, not a session's"
+        cmd_n=$(norm "$cmd")
+        [[ "$cmd" =~ $ROOT_RE || "$cmd_n" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
+        # cwd indirection: a relative path is read against the payload cwd.
+        cwd=$(printf '%s' "$input" | jq -er '.cwd | strings' 2>/dev/null) || cwd=""
+        if [ -n "$cwd" ]; then
+            cwd_r=$(readlink -m -- "$cwd" 2>/dev/null) || cwd_r=""
+            for c in "$cwd" "$cwd_r"; do
+                [ -n "$c" ] || continue
+                c_n=$(norm "$c")
+                [[ "$c_n/" =~ $ROOT_RE ]] && deny "the working directory is under the himmel-bus store"
+                if [[ "$c_n" =~ $STATE_RE ]] || { [ -n "${XDG_STATE_HOME:-}" ] && [ "$c_n" = "$(norm "$XDG_STATE_HOME")/himmel" ]; }; then
+                    [[ "$cmd_n" =~ $BUSTOK_RE ]] && deny "the working directory is the himmel state dir and the command names bus/ (relative store path)"
+                fi
+            done
+        fi
+        # Identity verbs, per segment (; & | newline).
+        while IFS= read -r seg; do
+            [[ "$seg" =~ $VERB_RE ]] && deny "bus register|bind|rebind is the launcher's, not a session's"
+        done <<< "$(printf '%s' "$cmd" | tr ';&|' '\n')"
         [[ "$cmd" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
         ;;
     Edit|Write|MultiEdit|NotebookEdit)
         path=$(printf '%s' "$input" | jq -er '(.tool_input.file_path // .tool_input.notebook_path) | strings' 2>/dev/null) || raw_scan
+        path=$(norm "$path")
         [[ "$path" =~ $ROOT_RE ]] && deny "the target path is under the himmel-bus store"
         resolved=$(readlink -m -- "$path" 2>/dev/null) || resolved=""
         [ -n "$resolved" ] && [[ "$resolved" =~ $ROOT_RE ]] && deny "the target path resolves under the himmel-bus store"
