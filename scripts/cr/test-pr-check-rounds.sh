@@ -117,6 +117,16 @@ if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
             exit 0 ;;
     esac
 fi
+# HIMMEL-5268: review-round.sh asks the remote how --base-sha relates to the
+# default branch (`gh api repos/<o>/<r>/compare/<sha>...<branch> --jq .status`).
+if [ "${1:-}" = api ]; then
+    case "${2:-}" in
+        repos/*/compare/*)
+            [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
+            printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            exit 0 ;;
+    esac
+fi
 for arg in "$@"; do
     [ "$arg" = "--head" ] && exit 0
 done
@@ -2251,6 +2261,64 @@ postcap_f_head="$(git -C "$repo" rev-parse ciredforge)"
 cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredforge --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "a --base-sha that is the reviewed head cannot shrink the delta to 0 ($cired_out)"
 assert_eq "$(ls "$git_dir/cr-review-rounds/ciredforge.cired" 2>/dev/null)" "" "a forged-base refusal leaves no marker"
+
+# HIMMEL-5268 (judge j2415a): the base is verified once at argument intake, so
+# every consumer (merge-forward shape, clean-merge, the CI-red measure) gets a
+# verified base. A merge-forward head given as its own base is refused up front.
+postcap_setup ciredintake suggestion
+cired_rows "$RED"
+postcap_fix ciredintake
+git -C "$repo" merge -q --no-edit main
+postcap_f_head="$(git -C "$repo" rev-parse ciredintake)"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredintake --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a merge head given as its own --base-sha is refused at intake ($cired_out)"
+assert_has "$cired_out" "not the base this repository resolves" "the intake refusal names the base check"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ciredintake.round")" "4" "an intake refusal does not advance the round counter"
+
+# The expected base comes from refs/remotes/origin/*, which a leg can rewrite:
+# the remote has the last word. Rewrite origin/main to the head and the local
+# equality passes, so only the gh compare refuses it.
+postcap_setup ciredref suggestion
+cired_rows "$RED"
+postcap_fix ciredref
+real_ref="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+git -C "$repo" update-ref refs/remotes/origin/main "$postcap_f_head"
+GH_COMPARE_STATUS=diverged
+export GH_COMPARE_STATUS
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredref --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+unset GH_COMPARE_STATUS
+git -C "$repo" update-ref refs/remotes/origin/main "$real_ref"
+assert_eq "$cired_rc" "8" "a rewritten origin/main cannot vouch for a forged --base-sha ($cired_out)"
+assert_has "$cired_out" "not on the remote" "the refusal names the remote history check"
+
+postcap_setup ciredgh suggestion
+cired_rows "$RED"
+postcap_fix ciredgh
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+GH_COMPARE_RC=1
+export GH_COMPARE_RC
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredgh --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+unset GH_COMPARE_RC
+assert_eq "$cired_rc" "8" "a gh that cannot answer fails the base check closed ($cired_out)"
+
+# own_diff must not run a textconv driver: one that prints nothing would
+# otherwise measure a 45-line change as 0 lines.
+postcap_setup ciredtc suggestion
+cired_rows "$RED"
+printf '*.tc diff=fake\n' > "$repo/.gitattributes"
+git -C "$repo" add .gitattributes
+git -C "$repo" commit -q -m "ciredtc attributes"
+git -C "$repo" config diff.fake.textconv true
+n=0
+while [ "$n" -lt 45 ]; do printf 'line %s\n' "$n" >> "$repo/ciredtc.tc"; n=$((n + 1)); done
+git -C "$repo" add ciredtc.tc
+git -C "$repo" commit -q -m "ciredtc big"
+postcap_f_head="$(git -C "$repo" rev-parse ciredtc)"
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredtc --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+git -C "$repo" config --unset diff.fake.textconv
+assert_eq "$cired_rc" "8" "a textconv driver cannot hide a 45-line change from the CI-red cap ($cired_out)"
+assert_has "$cired_out" "CI-red cap" "the textconv-hidden delta is measured and refused by the cap"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

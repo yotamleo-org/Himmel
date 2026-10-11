@@ -148,6 +148,40 @@ if [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; then
     exit 2
 fi
 
+# HIMMEL-5268: --base-sha is caller input and every merge-forward and CI-red
+# measure below trusts it, so it is verified once, here, before any consumer
+# reads it. It must be (a) the commit this repository resolves as the base, and
+# (b) on the real remote default branch's history (identical or behind it), read
+# through gh so a rewritten refs/remotes/origin/* cannot vouch for it. Anything
+# else, or a gh that cannot answer, refuses (exit 8).
+if [ -n "$base_sha" ]; then
+    _vb_out="$(
+        # shellcheck source=/dev/null
+        . "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" || exit 1
+        # shellcheck source=/dev/null
+        . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" || exit 1
+        _vb_def="$(default_branch .)" || exit 1
+        printf '%s %s\n' "$_vb_def" "$(git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$_vb_def")^{commit}")"
+    )" || _vb_out=""
+    _vb_def="${_vb_out%% *}"
+    _vb_want="${_vb_out#* }"
+    _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
+    if [ -z "$_vb_def" ] || [ -z "$_vb_want" ] || [ -z "$_vb_got" ] || [ "$_vb_got" != "$_vb_want" ]; then
+        echo "review-round: --base-sha '$base_sha' is not the base this repository resolves - refused (HIMMEL-5268)" >&2
+        exit 8
+    fi
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
+    case "$_vb_status" in
+        identical|ahead) ;;
+        *)
+            echo "review-round: --base-sha $_vb_got is not on the remote $_vb_def history (gh compare says '${_vb_status:-unreadable}') - refused (HIMMEL-5268)" >&2
+            exit 8 ;;
+    esac
+fi
+
 git_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || git_dir=""
 if [ -z "$git_dir" ]; then
     echo "review-round: cannot resolve the shared git common directory" >&2
@@ -578,7 +612,7 @@ merge_forward_shape() {
 # own_diff <base> <head>: the PR's own diff as text, minus the index and
 # hunk-header lines a moved base shifts.
 own_diff() {
-    _od_raw="$(git diff --no-ext-diff --no-color --no-renames "$1" "$2" 2>/dev/null)" || return 1
+    _od_raw="$(git diff --no-ext-diff --no-textconv --no-color --no-renames "$1" "$2" 2>/dev/null)" || return 1
     printf '%s\n' "$_od_raw" | sed -e '/^index /d' -e 's/^@@ [^@]* @@.*$/@@/'
 }
 # clean_merge_forward <from> <to> succeeds only for a CLEAN merge-forward:
@@ -732,8 +766,8 @@ EOF
 # own diff changed from <from> to <to>; the base side of a merge-forward is not
 # counted (own_diff compares each head with its own base point). A changed line
 # counts twice (old and new). Without a captured base every line counts.
-# Fails (rc 1) when it cannot be measured, when the captured base is not the
-# resolved base, or when either own diff has a binary change (HIMMEL-5268).
+# Fails (rc 1) when it cannot be measured or when either own diff has a binary
+# change (HIMMEL-5268).
 ci_red_delta_lines() {
     if [ -z "$base_sha" ]; then
         _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
@@ -743,18 +777,7 @@ ci_red_delta_lines() {
             END { if (bad) n = 999999; print n + 0 }'
         return 0
     fi
-    # HIMMEL-5268: --base-sha is caller input. It must be the very commit this
-    # repository resolves as the base (panel-first-pass captures it from the
-    # same resolver); a head given as its own base measures a 0-line delta.
-    _cl_want="$(
-        # shellcheck source=/dev/null
-        . "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" || exit 1
-        # shellcheck source=/dev/null
-        . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" || exit 1
-        git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$(default_branch .)")^{commit}"
-    )" || return 1
-    _cl_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || return 1
-    [ -n "$_cl_want" ] && [ "$_cl_got" = "$_cl_want" ] || return 1
+    # HIMMEL-5268: base_sha was verified at argument intake (top of this file).
     _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
     _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
     _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
