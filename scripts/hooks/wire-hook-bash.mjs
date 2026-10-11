@@ -76,6 +76,10 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // (~/.himmel/state/bank-lift.json) and `bank-lift.sh set` — see the sibling
   // entry on the Edit|Write|MultiEdit|NotebookEdit chain below.
   'block-bank-lift-writes.sh',
+  // HIMMEL-4696 / HIMMEL-5290: speed bump over ~/.himmel/config.json, which
+  // carries the graphify salus x ollama-cloud opt-in — see the sibling entry on
+  // the Edit|Write|MultiEdit|NotebookEdit chain below.
+  'block-himmel-config-writes.sh',
   // HIMMEL-2975 Guard D: denies a console relay every write channel into
   // console state via Bash — see the sibling entry on the
   // Edit|Write|MultiEdit|NotebookEdit chain below.
@@ -115,6 +119,8 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // HIMMEL-4445: the file-tool twin — Write/Edit/MultiEdit/NotebookEdit on
   // the bank lift path (any spelling, symlinks resolved).
   'block-bank-lift-writes.sh',
+  // HIMMEL-4696 / HIMMEL-5290: the file-tool twin of the Bash entry above.
+  'block-himmel-config-writes.sh',
   // HIMMEL-2975 Guard D: denies a console relay direct writes to the inbox,
   // leg handover docs, and the console rundir (marker-gated no-op otherwise).
   'guard-relay-writes.sh',

@@ -77,6 +77,18 @@ bash_case "rg ANSI-C quoted --pre -> block" block "rg \$'--pre=/tmp/writer' salu
 # shellcheck disable=SC2016 # the literal ${x:-...} spelling is the point
 bash_case "rg default-value expanded --pre -> block" block "rg \${x:---pre=/tmp/writer} salus $CFG"
 bash_case "rg brace-expanded --pre -> block" block "rg --{pre,x}=/tmp/writer salus $CFG"
+# HIMMEL-5290: the quote-aware clause split must not open a hole.
+bash_case "read plus redirect to a real file -> block" block "cat $CFG 2>/dev/null > $T/x"
+bash_case "redirect to a path under /dev/null -> block" block "cat $CFG >/dev/null/x"
+bash_case "append redirect after /dev/null -> block" block "cat $CFG >/dev/null>$T/x"
+bash_case "append to /dev/null-prefixed name -> block" block "cat $CFG > /dev/nullx"
+bash_case "append redirect >> -> block" block "cat $CFG >> $T/x"
+bash_case "quoted pipe then a real writer clause -> block" block "jq '.a | b' $CFG; cp $T/x $CFG"
+bash_case "unquoted redirect after a quoted one -> block" block "cat '$CFG' '>' > $T/x"
+bash_case "process substitution out -> block" block "cat $CFG >(cp /dev/stdin $T/x)"
+# shellcheck disable=SC2016 # the literal $'..' spelling is the point
+bash_case "ANSI-C quote hiding a redirect -> block" block "cat \$'\\'' > $CFG"
+bash_case "unterminated quote -> block" block "cat $CFG 'x"
 
 echo "== benign reads and unrelated calls =="
 bash_case "cat the config -> allow" allow "cat $CFG"
@@ -84,6 +96,13 @@ bash_case "jq read of the config -> allow" allow "jq .graphify $CFG"
 bash_case "grep | head of the config -> allow" allow "grep -n salus $CFG | head -5"
 bash_case "grep -i case-insensitive read -> allow" allow "grep -i salus $CFG"
 bash_case "ls ~/.himmel -> allow" allow "ls -la $HOME/.himmel"
+# HIMMEL-5290: quoted | ; > are not clause separators or redirects, and an fd
+# redirect to /dev/null is not a write.
+bash_case "jq with a quoted pipe -> allow" allow "jq '.graphify | keys' $CFG"
+bash_case "cat with 2>/dev/null -> allow" allow "cat $CFG 2>/dev/null"
+bash_case "grep with a quoted semicolon -> allow" allow "grep 'a;b' $CFG"
+bash_case "jq with a quoted > -> allow" allow "jq 'select(.n > 1)' $CFG"
+bash_case "cat with >/dev/null -> allow" allow "cat $CFG >/dev/null"
 bash_case "a command naming neither -> allow" allow "git status"
 bash_case "config.json outside ~/.himmel -> allow" allow "cat $T/other/config.json"
 run "non-matcher tool (Read) -> allow" allow "$(jq -nc --arg p "$CFG" '{tool_name:"Read",tool_input:{file_path:$p}}')"

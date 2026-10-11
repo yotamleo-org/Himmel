@@ -14,8 +14,8 @@
 # edit as Self-Modification). Until the follow-up adds this script to
 # EXPECTED_SCRIPT_ORDER in wire-hook-bash.mjs (Bash chain and Edit|Write chain,
 # right after block-bank-lift-writes.sh), .claude/settings.json and
-# .codex/hooks.json (HIMMEL-5290) it is inert; the fence's symlink refusal is
-# the only live layer.
+# .codex/hooks.json (HIMMEL-5290) are all applied it is inert; the fence's
+# symlink refusal is the only live layer.
 #
 # DENIES
 #   Bash - the command text names the config file (`.himmel` and `config.json`
@@ -112,11 +112,55 @@ case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; e
 # redirect, and every clause's command word a plain reader.
 # shellcheck disable=SC2016 # literal $( and backtick are the patterns
 case "$cmd" in
-    *'$('*|*'`'*|*'>'*|*'<('*) deny "the command names ~/.himmel/config.json with a redirect, command or process substitution" ;;
+    *'$('*|*'`'*|*'<('*|*"\$'"*) deny "the command names ~/.himmel/config.json with a command or process substitution, or an ANSI-C quote" ;;
 esac
-clauses=${cmd//;/$'\n'}
-clauses=${clauses//|/$'\n'}
-clauses=${clauses//&/$'\n'}
+# Quote-aware split (HIMMEL-5290): ; | & and newline separate clauses only
+# outside quotes, and an unquoted > is a redirect (deny) unless it is an fd
+# redirect to exactly /dev/null. A backslash escapes the next char outside single
+# quotes. An unterminated quote cannot be classified, so it denies.
+clauses=""
+cur=""
+q=""
+n=${#cmd}
+i=0
+while [ "$i" -lt "$n" ]; do
+    c=${cmd:i:1}
+    i=$((i + 1))
+    if [ "$q" = "'" ]; then
+        [ "$c" = "'" ] && q=""
+        [ "$c" = $'\n' ] && c=" "
+        cur="$cur$c"
+        continue
+    fi
+    if [ "$c" = $'\\' ]; then
+        cur="$cur$c${cmd:i:1}"
+        i=$((i + 1))
+        continue
+    fi
+    if [ "$q" = '"' ]; then
+        [ "$c" = '"' ] && q=""
+        [ "$c" = $'\n' ] && c=" "
+        cur="$cur$c"
+        continue
+    fi
+    case "$c" in
+        "'" | '"') q="$c"; cur="$cur$c" ;;
+        ';' | '|' | '&' | $'\n') clauses="$clauses$cur"$'\n'; cur="" ;;
+        '>')
+            rest=${cmd:i}
+            rest=${rest#"${rest%%[![:space:]]*}"}
+            case "$rest" in
+                /dev/null | /dev/null[[:space:]\;\|\&]*)
+                    i=$((n - ${#rest} + 9))
+                    ;;
+                *) deny "the command names ~/.himmel/config.json with a redirect to something other than /dev/null" ;;
+            esac
+            ;;
+        *) cur="$cur$c" ;;
+    esac
+done
+[ -z "$q" ] || deny "the command names ~/.himmel/config.json inside an unterminated quote"
+clauses="$clauses$cur"
 while IFS= read -r clause || [ -n "$clause" ]; do
     clause=${clause%$'\r'} # a CRLF line terminator only; a CR inside a word stays and denies
     set -f
