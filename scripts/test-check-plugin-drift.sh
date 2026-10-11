@@ -314,6 +314,114 @@ noop_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; noop_rc=$?
 if [ "$noop_rc" -eq 0 ]; then ok "--bump-required (staged): no plugin changes -> pass"; else bad "--bump-required (staged): no-op case failed (rc=$noop_rc): $noop_out"; fi
 rm -rf -- "$W_BUMP"
 
+# HIMMEL-5177: replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.
+# Manifest copied from e65befe4^:marketplace/plugins/himmel-ops/.claude-plugin/plugin.json;
+# e65befe4 (#2331) changed only its version to 0.4.61, also used by #2334.
+W_CURRENT="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-current.XXXXXX")" || exit 1
+(
+  set -e
+  cd "$W_CURRENT"
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  mkdir -p marketplace/plugins/himmel-ops/.claude-plugin
+  cat > marketplace/plugins/himmel-ops/.claude-plugin/plugin.json <<'JSON'
+{
+  "name": "himmel-ops",
+  "version": "0.4.60",
+  "description": "Harness-meta operational skills for himmel. Load-on-trigger guardrail-recovery playbook (stuck-playbook) that surfaces escape-hatches when an auto-mode write is denied, a Bash command falls through to the classifier, a permission prompt hangs, or a pre-push gate fails — so operational/troubleshooting rules stay out of the always-on root CLAUDE.md (HIMMEL-211). Plus the minerva pipeline skill (/minerva): brainstorm→critic→spec→critic→plan with adversarial critic loops between stages (HIMMEL-428); and memory-compound (/memory-compound): lean-invoke compaction of the per-project auto-memory into qmd-searchable luna/himmel reference notes with a findability gate (HIMMEL-569).",
+  "author": {
+    "name": "yotamleo"
+  },
+  "keywords": [
+    "himmel",
+    "guardrails",
+    "operational",
+    "stuck",
+    "load-on-trigger",
+    "minerva",
+    "pipeline",
+    "memory-compound",
+    "auto-memory"
+  ]
+}
+JSON
+  # The job runs the checker from the base tip (HIMMEL-5195), so the base
+  # branch must carry it, as the real repo does.
+  mkdir -p scripts/lib
+  cp "$SCRIPT" scripts/check-plugin-drift.sh
+  cp "$ROOT/scripts/lib/vm-mode.sh" scripts/lib/vm-mode.sh
+  git add -A
+  git commit -q -m 'chore: seed real 0.4.60 manifest'
+  git branch stored-base
+  git checkout -q -b current-base
+  sed 's/0.4.60/0.4.61/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+  mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
+  printf '# merged sibling change\n' > marketplace/plugins/himmel-ops/sibling.md
+  mkdir -p marketplace/plugins/base-only/.claude-plugin
+  printf '{"name":"base-only","version":"1.0.0"}\n' > marketplace/plugins/base-only/.claude-plugin/plugin.json
+  git add -A
+  git commit -q -m 'fix: replay merged PR 2331 bump'
+  git checkout -q -b competing-pr stored-base
+  sed 's/0.4.60/0.4.61/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+  mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
+  printf '# competing PR change\n' > marketplace/plugins/himmel-ops/competing.md
+  git add -A
+  git commit -q -m 'fix: replay PR 2334 same bump'
+  git remote add origin "$W_CURRENT"
+)
+# Execute the real job's run body, not a parallel implementation of its policy.
+# The old inline job interpolates the stored base; the new block uses env.
+current_job="$(python3 -I - "$ROOT/.github/workflows/ci.yml" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+job = text.split('  plugin-version-bump:\n', 1)[1].split('\n  lint:', 1)[0]
+match = re.search(r'^        run: (.*)$', job, re.M)
+body = match.group(1)
+if body == '|':
+    body = '\n'.join(line[10:] for line in job[match.end():].splitlines()[1:] if line.startswith('          '))
+print(body.replace('${{ github.event.pull_request.base.sha }}', 'stored-base'))
+PY
+)"
+run_current_job() {
+  (cd "$W_CURRENT" && RUNNER_TEMP="$W_CURRENT/.runner-temp" BASE_BRANCH="${1:-current-base}" bash -e -c "$current_job")
+}
+stored_out="$(cd "$W_CURRENT" && bash "$SCRIPT" --bump-required stored-base 2>&1)"; stored_rc=$?
+if [ "$stored_rc" -eq 0 ]; then ok "current-base replay: old stored-base gate accepts duplicate bump"; else bad "stored-base control failed: $stored_out"; fi
+current_out="$(run_current_job 2>&1)"; current_rc=$?
+if [ "$current_rc" -eq 1 ] && grepq "$current_out" 'version.*still 0.4.61'; then ok "current-base job rejects the already-merged 0.4.61 bump"; else bad "current-base job accepted duplicate bump (rc=$current_rc): $current_out"; fi
+(
+  cd "$W_CURRENT" || exit 1
+  sed 's/0.4.61/0.4.62/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+  mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
+  git add marketplace
+  git commit -q -m 'fix: bump above current base'
+)
+current_out="$(run_current_job 2>&1)"; current_rc=$?
+if [ "$current_rc" -eq 0 ]; then ok "current-base job accepts a fresh bump and ignores base-only plugins"; else bad "current-base fresh bump failed (rc=$current_rc): $current_out"; fi
+current_out="$(run_current_job missing-base 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && ! grepq "$current_out" 'every changed plugin bumped'; then ok "current-base job fails closed on fetch failure, even with a cached base ref"; else bad "current-base job ignored fetch failure (rc=$current_rc): $current_out"; fi
+# HIMMEL-5195: a PR branched before #2341 carries the OLD checker (two-dot
+# diff) while the workflow comes from the merge ref and passes the live base
+# tip, so a PR that never touched the plugin read 0.4.61 -> 0.4.60 "not a
+# bump" (PR 2328 at 24e9cf97). Replay: branch off stored-base (0.4.60), change
+# only scripts/hooks, keep the pre-#2341 checker; current-base is at 0.4.61.
+# Chained with && because set -e is inert inside a `( ... ) || bad` list.
+# shellcheck disable=SC2016 # the sed pattern is the literal text ${base_ref}...HEAD
+(
+  cd "$W_CURRENT" &&
+  git checkout -q -b stale-pr stored-base &&
+  mkdir -p scripts/hooks &&
+  printf '# unrelated hook change\n' > scripts/hooks/guard-pr-check-literal.sh &&
+  sed 's/\${base_ref}\.\.\.HEAD/${base_ref}..HEAD/' "$SCRIPT" > scripts/check-plugin-drift.sh &&
+  { ! cmp -s "$SCRIPT" scripts/check-plugin-drift.sh || { echo "stale-checker derivation changed nothing" >&2; false; }; } &&
+  git add -A &&
+  git commit -q -m 'fix(hooks): replay PR 2328, stale checker, no plugin touch'
+) || bad "stale-pr fixture setup failed"
+stale_out="$(run_current_job 2>&1)"; stale_rc=$?
+if [ "$stale_rc" -eq 0 ] && grepq "$stale_out" 'no plugin files changed'; then ok "stale-base PR that never touched the plugin passes (HIMMEL-5195)"; else bad "stale-base PR false red (rc=$stale_rc): $stale_out"; fi
+rm -rf -- "$W_CURRENT"
+
 # 4. End-to-end: the script runs to completion with a sane exit code —
 #    0 (all current / fail-open), 2 (drift), or 3 (incomplete). Anything else
 #    (1, 127, crash) fails.
