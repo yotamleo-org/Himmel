@@ -74,9 +74,13 @@
 #     The verbs run on quote-aware segments, so a quoted `env` in a commit
 #     message or `--body` is NOT a dump; a command the tokenizer will not read
 #     falls back to the raw clause split, where it is. READ_SECRETS_OK=1 is the
-#     bypass. ponytail: `{ env; }`, for-loop `env`, glob sources under `set -f`,
-#     gzip/xz -c, gh gist create, aws s3 cp and case-variant `.AWS` paths are
-#     not modelled, upgrade path HIMMEL-5292.
+#     bypass. HIMMEL-5292 closed `{ env; }`, loop-body `env`, unquoted glob
+#     sources (`cat .en*`), `gzip -c`/`xz -c`, `gh gist`, `aws s3 cp`, `.AWS`
+#     case variants and `<<< "$TOKEN"`; it also made `rsync -f '- .env'` (an
+#     exclude filter) a false positive and stopped denying `declare -fx`.
+#     ponytail: `bash <<'EOF'` with an env body is not read (needs the
+#     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path a
+#     follow-up ticket against scripts/hooks/lib.
 #   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
 #   * Inline interpreter bodies (`node -e`, `python -c`): command-position
 #     fixes the COMMON false positive (coincidental `obj.key` property access
@@ -340,6 +344,7 @@ g4_secret_path() {
     done
     b="${p##*/}"; b="${b##*\\}"
     _tolower_ascii "$b"; b="$_TOLOWER_OUT"
+    _tolower_ascii "$p"; p="$_TOLOWER_OUT"   # HIMMEL-5292: `.AWS/credentials` is the same file on a case-folding volume
     case "$b" in
         .netrc|_netrc|.npmrc|.pgpass|.pypirc|.git-credentials|.credentials.json) return 0 ;;
         terraform.tfstate|terraform.tfstate.backup|.ssh|.aws|.kube|.gnupg)       return 0 ;;
@@ -709,7 +714,39 @@ g4_secret_tok() {
     case "$v" in *@*) v="${v#*@}" ;; esac
     case "$v" in *=*) v="${v#*=}" ;; esac
     v="${v##*:}"
+    v="${v##*!}"    # 7z `-i!.env`
+    v="${v##* }"    # rsync filter rule `+ .env`
     [ -n "$v" ] && is_secret_path "$v"
+}
+
+# g4_glob_secret WORD (HIMMEL-5292): an UNQUOTED glob word that expands, against
+# cwd, to a secret file (`tar czf o.tgz .en*`, `curl -d @.en* url`). g4_scan
+# runs with globbing off, so the expansion is done here. A quoted word stays
+# literal (the shell would not expand it either).
+g4_glob_secret() {
+    local v="$1" m
+    case "$v" in *[\'\"\\]*) return 1 ;; esac
+    case "$v" in *[*?[]*) ;; *) return 1 ;; esac
+    case "$v" in *@*) v="${v#*@}" ;; esac
+    case "$v" in *=*) v="${v#*=}" ;; esac
+    v="${v##*:}"
+    set +f
+    # shellcheck disable=SC2086 # the glob is the point
+    for m in $v; do
+        if is_secret_path "$m"; then set -f; return 0; fi
+    done
+    set -f
+    return 1
+}
+
+# g4_herestr_cred WORD: a here-string body that names a credential variable.
+g4_herestr_cred() {
+    local rest="${1//[\'\"\\]/}" re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ $rest =~ $re ]]; do
+        if g4_envish_name "${BASH_REMATCH[1]}"; then return 0; fi
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
+    return 1
 }
 
 # g4_clause CLAUSE (HIMMEL-5277): exfil and env-dump verbs in ONE clause. Sets
@@ -736,7 +773,15 @@ g4_clause() {
 
 g4_segments() {
     local s=0 k n
-    local -a idx g4w
+    local -a idx g4w hs
+    hs=()
+    # HIMMEL-5292: here-string targets (`<<< "$TOKEN"`) are redirect targets, so
+    # guard_unwrap's segment words leave them out; collect the live-`$` ones.
+    k=0
+    while [ "$k" -lt "${ST_N:-0}" ]; do
+        case "${ST_RO[k]:-}" in *'<<<') if [ "${ST_X[k]:-0}" = 1 ]; then hs[${#hs[@]}]=$k; fi ;; esac
+        k=$((k + 1))
+    done
     while [ "$s" -lt "$ST_NSEG" ]; do
         if [ "${GU_LOOKUP[s]:-0}" = 0 ]; then
             read -r -a idx <<<"${GU_SW[s]:-}"
@@ -744,6 +789,11 @@ g4_segments() {
             k=0; n=${#idx[@]}
             while [ "$k" -lt "$n" ]; do
                 g4w[${#g4w[@]}]="${ST_W[idx[k]]}"
+                k=$((k + 1))
+            done
+            k=0; n=${#hs[@]}
+            while [ "$k" -lt "$n" ]; do
+                if [ "${ST_S[hs[k]]}" = "$s" ]; then g4w[${#g4w[@]}]='<<<'; g4w[${#g4w[@]}]="${ST_W[hs[k]]}"; fi
                 k=$((k + 1))
             done
             g4_scan
@@ -757,6 +807,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
+    local herestr=0 herecred=0 zc=0 zsec=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -777,7 +828,7 @@ g4_scan() {
                 -*)
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
                     continue ;;
-                sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|'!'|*/sudo|*/doas|*/env|*/xargs|*/nice|*/nohup|*/timeout)
+                sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|do|'{'|'!'|*/sudo|*/doas|*/env|*/xargs|*/nice|*/nohup|*/timeout)
                     wrap="${d##*/}"; need_dur=0
                     if [ "$wrap" = timeout ]; then need_dur=1; fi
                     continue ;;
@@ -786,7 +837,8 @@ g4_scan() {
             cmd="${d##*/}"
             case "$cmd" in
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
-                cp|scp|rsync) cls=src ;;
+                cp|scp|rsync|aws) cls=src ;;
+                gzip|bzip2|xz|zstd|lz4|lzma|pigz|brotli) cls=zip ;;
             esac
             continue
         fi
@@ -794,11 +846,17 @@ g4_scan() {
         # `rsync -e 'ssh -i KEY'`, `tar --exclude=.env`, `zip -x .env`.
         if [ "$skipv" = 1 ]; then skipv=0; continue; fi
         case "$cmd:$d" in
-            scp:-[iFoPclSJ]|rsync:-[ef]|rsync:--rsh|rsync:--exclude|rsync:--include|rsync:--filter|rsync:--exclude-from|rsync:--include-from|rsync:--files-from| \
-            tar:--exclude|tar:--include|tar:--exclude-from|tar:-X|zip:-[xi]|7z:-[xi]|7za:-[xi])
+            scp:-[iFoPclSJ]|rsync:-e|rsync:--rsh|rsync:--exclude|rsync:--exclude-from|rsync:--include-from|rsync:--files-from| \
+            tar:--exclude|tar:--exclude-from|tar:-X|zip:-x|7z:-x|7za:-x)
                 nflags=$((nflags + 1)); skipv=1; continue ;;
-            rsync:--rsh=*|rsync:--exclude=*|rsync:--include=*|rsync:--filter=*|tar:--exclude=*|tar:--include=*|tar:--exclude-from=*|7z:-[xi]*|7za:-[xi]*)
+            rsync:--rsh=*|rsync:--exclude=*|tar:--exclude=*|tar:--exclude-from=*|7z:-x*|7za:-x*)
                 nflags=$((nflags + 1)); continue ;;
+        esac
+        # HIMMEL-5292: a here-string credential handed to an upload tool.
+        if [ "$herestr" = 1 ]; then herestr=0; if g4_herestr_cred "$d"; then herecred=1; fi; continue; fi
+        case "$d" in
+            '<<<') herestr=1; continue ;;
+            '<<<'?*) if g4_herestr_cred "${d#<<<}"; then herecred=1; fi; continue ;;
         esac
         case "$d" in
             -*) nflags=$((nflags + 1)) ;;
@@ -809,6 +867,7 @@ g4_scan() {
                 case "$d" in -*) ;; *) if g4_envish_name "$d"; then hit=1; note="printenv of a credential variable"; fi ;; esac ;;
             declare|typeset|export|readonly)
                 case "$d" in
+                    -*[fF]*) ;;     # HIMMEL-5292: function mode, not variables
                     -*[px]*) pflag=1 ;;
                     -*)   ;;
                     *)    nnames=$((nnames + 1))
@@ -822,12 +881,13 @@ g4_scan() {
                     rest="${rest#*"${BASH_REMATCH[0]}"}"
                 done ;;
             gh)
-                case "$d" in --show-token|-t) showtok=1 ;; esac ;;
+                case "$d" in --show-token|-t) showtok=1 ;; esac
+                if [ "$a1" = gist ] && { g4_secret_tok "$d" || g4_glob_secret "$w"; }; then hit=1; note="gh gist of a secret file"; fi ;;
         esac
         case "$cls" in
             any)
                 if [ "$skip_out" = 1 ]; then skip_out=0
-                elif g4_secret_tok "$d"; then hit=1; note="$cmd of a secret file"; fi
+                elif g4_secret_tok "$d" || g4_glob_secret "$w"; then hit=1; note="$cmd of a secret file"; fi
                 case "$cmd:$d" in
                     curl:-o|curl:--output|wget:-O|wget:--output-document|wget:-P) skip_out=1 ;;
                 esac ;;
@@ -836,17 +896,30 @@ g4_scan() {
                     # cp -t DIR / --target-directory=DIR: the destination is the
                     # option's value, so the last operand is a source too.
                     --target-directory|--target-directory=*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
+                    # HIMMEL-5292: a glued `--include=.env` selects a secret too.
+                    --*=*) if g4_secret_tok "$d"; then last_secret=1; fi ;;
                     --*) ;;
                     -*t*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
                     -*) ;;
                     *)  if [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
                         last_secret=0
-                        if g4_secret_tok "$d"; then last_secret=1; fi ;;
+                        if g4_secret_tok "$d" || g4_glob_secret "$w"; then last_secret=1; fi ;;
+                esac ;;
+            zip)
+                # gzip -c / xz --stdout of a secret copies it to stdout.
+                case "$d" in
+                    --stdout|--to-stdout) zc=1 ;;
+                    --*) ;;
+                    -*c*) zc=1 ;;
+                    -*) ;;
+                    *)  if g4_secret_tok "$d" || g4_glob_secret "$w"; then zsec=1; fi ;;
                 esac ;;
         esac
     done
     set +f
     if [ "$tdir" = 1 ] && [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
+    if [ "$cls" = zip ] && [ "$zc" = 1 ] && [ "$zsec" = 1 ]; then hit=1; note="$cmd -c of a secret file"; fi
+    if [ "$cls" = any ] && [ "$herecred" = 1 ]; then hit=1; note="$cmd is fed a credential variable"; fi
     case "$cmd" in
         '') if [ "$wrap" = env ]; then hit=1; note="bare env dumps the environment"; fi ;;
         printenv) if [ "$nargs" = 0 ]; then hit=1; note="bare printenv dumps the environment"; fi ;;
