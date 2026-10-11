@@ -18,13 +18,15 @@ const registry = () => ({
     design: { enable: [], contextBudget: 50000, contextMode: '1m', autocompact: 400000 },
   },
 });
+// HIMMEL-4619: the arming gate lints every brief (description + Prior art line).
+const BRIEF_HEAD = '---\ndescription: hermetic fixture\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n';
 function fixture(t, reg = registry()) {
   const dir = mkdtempSync(join(tmpdir(), 'profile-ceiling-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, 'config'));
   mkdirSync(join(dir, 'handovers'));
   writeFileSync(join(dir, 'registry.json'), JSON.stringify(reg));
-  writeFileSync(join(dir, 'brief.md'), '# Hermetic fixture\n');
+  writeFileSync(join(dir, 'brief.md'), BRIEF_HEAD + '# Hermetic fixture\n');
   return { dir, env: { PATH: process.env.PATH, HOME: dir, CLAUDE_CONFIG_DIR: join(dir, 'config'),
     PLUGIN_PROFILES_REGISTRY: join(dir, 'registry.json'), HANDOVER_DIR: join(dir, 'handovers'),
     LEG_REPO: dir, HEADED_ARM_REPO: dir, HIMMELCTL_CACHE_DIR: join(dir, 'cache'),
@@ -73,14 +75,14 @@ test('leg launcher reads a numeric design ceiling rather than hard-coding auto',
 });
 test('brief explanation alone does not elevate a standard profile', (t) => {
   const f = fixture(t);
-  writeFileSync(join(f.dir, 'brief.md'), '> **Context:** 1m — operator-ruling: fixture authorization\n');
+  writeFileSync(join(f.dir, 'brief.md'), BRIEF_HEAD + '> **Context:** 1m — operator-ruling: fixture authorization\n');
   const result = launch(f, 'leg-impl');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=200000/);
 });
 test('LEG_CONTEXT plus a brief explanation permits the sanctioned override', (t) => {
   const f = fixture(t);
-  writeFileSync(join(f.dir, 'brief.md'), '> **Context:** 1m — operator-ruling: fixture authorization\n');
+  writeFileSync(join(f.dir, 'brief.md'), BRIEF_HEAD + '> **Context:** 1m — operator-ruling: fixture authorization\n');
   const result = launch(f, 'leg-impl', { LEG_CONTEXT: '1m' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=auto/);
