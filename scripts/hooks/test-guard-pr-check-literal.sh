@@ -1932,6 +1932,13 @@ for v in \
     'GIT_ASKPASS=scripts/cr/write-verdicts.sh git fetch' \
     'GIT_PROXY_COMMAND=scripts/cr/write-verdicts.sh git fetch' \
     'git config core.gitProxy scripts/cr/write-verdicts.sh' \
+    "git config credential.helper '!scripts/cr/write-verdicts.sh'" \
+    'git config merge.x.driver scripts/cr/write-verdicts.sh' \
+    'git config mergetool.x.path scripts/cr/write-verdicts.sh' \
+    'git config gpg.program scripts/cr/write-verdicts.sh' \
+    'git config uploadpack.packObjectsHook scripts/cr/write-verdicts.sh' \
+    'git config web.browser scripts/cr/write-verdicts.sh' \
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.editor GIT_CONFIG_VALUE_0=scripts/cr/write-verdicts.sh git commit' \
     'GIT_EXTERNAL_DIFF=scripts/cr/write-verdicts.sh git diff' \
     'git config core.pager scripts/cr/write-verdicts.sh' \
     'git config pager.log scripts/cr/write-verdicts.sh' \
