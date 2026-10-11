@@ -485,6 +485,14 @@ if [ "$live" = 1 ]; then
   bash "$P" finish p12 >/dev/null 2>&1
   check 'a rewritten project settings.local.json is scored out of scope' 'jq -e ".scope_ok == false and (.out_of_scope | index(\".claude/settings.local.json\"))" "$TMP/root/results/p12.json" >/dev/null'
   check 'the untouched control row still scores clean' '[ "$(jq -r .scope_ok "$R")" = true ]'
+  # a guard that was changed but cannot be staged (unreadable) is named, never a clean scope
+  bash "$P" prepare p13 >/dev/null 2>&1
+  wt13="$TMP/root/wt/lq-pilot-p13"
+  echo '{"disableAllHooks":true}' >"$wt13/.claude/settings.local.json"; chmod 000 "$wt13/.claude/settings.local.json"
+  bash "$P" finish p13 >/dev/null 2>&1
+  chmod 600 "$wt13/.claude/settings.local.json"
+  check 'an unstageable project settings.local.json is scored out of scope' 'jq -e ".scope_ok == false and (.out_of_scope | index(\".claude/settings.local.json\"))" "$TMP/root/results/p13.json" >/dev/null'
+  rm -f "$TMP/root/results/p13.json"
 fi
 echo 40.00 >"$FAKE_BAL"
 check 'over-budget deepseek row is refused' 'bash "$P" prepare p06 2>&1 | grep -q BUDGET-STOP'

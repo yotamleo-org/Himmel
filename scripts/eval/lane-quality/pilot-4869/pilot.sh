@@ -363,11 +363,12 @@ cmd_finish() {
   if [ -L "$lj" ] || { [ -e "$lj" ] && [ ! -f "$lj" ]; }; then
     lj_bad=1
   elif [ "$LANE" = native ]; then
-    [ ! -e "$lj" ] || "${jail[@]}" git add -f -- .claude/settings.local.json
+    [ ! -e "$lj" ] || "${jail[@]}" git add -f -- .claude/settings.local.json || lj_bad=1
   elif [ ! -f "$lj" ]; then
     lj_bad=1
   elif ! write_jail_guard "$gd" || ! cmp -s "$gd/.claude/settings.local.json" "$lj"; then
-    "${jail[@]}" git add -f -- .claude/settings.local.json
+    # a guard that cannot be staged is named below, never read as a clean scope
+    "${jail[@]}" git add -f -- .claude/settings.local.json || lj_bad=1
   fi
   rm -rf "$gd"
   # A diff that could not run is not a clean scope.
