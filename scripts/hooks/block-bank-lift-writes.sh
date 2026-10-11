@@ -54,18 +54,17 @@
 # HIMMEL-4545 also closed a glob source into a computed destination
 # (d=<state>; cp dir/* "$d", --parents too). Still open, verified at base and
 # head: a redirect or tee to an inherited env value (`> "$X"`, X set outside
-# the command) was allowed. HIMMEL-5159 closed it: the hook resolves every
-# $NAME / ${NAME...} reference in the target word against its own inherited
-# environment and denies when any value names the lift (${!R} denies
-# outright); `> "$OUT"` with a benign value stays allowed. The braced operators
-# :- - := = :+ + :? ? % %% # ## are evaluated (nested references included);
-# any other (`${V/a/b}`, `${V^}`, `${V:1}`, `${#V}`) fails closed to deny.
+# the command) was allowed. HIMMEL-5159 closed it with a fail-closed rule, no
+# parameter-expansion evaluator (see _env_lift): a braced form other than plain
+# ${NAME}, a zsh modifier or subscript, or a referenced variable whose inherited
+# value holds the state dir or the lift name denies; plain $NAME / ${NAME}
+# references are joined with the literal text and tested; `> "$OUT"` with a
+# benign value stays allowed.
 # ponytail: the lookup answers the INHERITED value, so a variable the command
-# assigns first (`X=/tmp/o; echo > "$X"`) is still read from the environment
-# (denies only when the inherited X names the lift, fail closed); a reference
-# to a variable the hook's environment does not carry, and a value built from
-# $(...) or from a command-assigned variable that differs from the inherited
-# one, are not resolved here; upgrade path is the operator-owned lift above.
+# assigns first (`X=/tmp/o; echo > "$X"`) is read from the environment (fail
+# closed); a value built from $(...) or a command-assigned variable that
+# differs from the inherited one is not resolved; upgrade path is the
+# operator-owned lift above.
 # The cp / dd of= / sort -o / install destination paths use is_lift only and
 # do not resolve env values (filed separately, out of HIMMEL-5159 scope).
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
@@ -348,77 +347,48 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 
 # HIMMEL-5159: a redirect or tee target word that references an environment
 # variable the hook inherited (the hook is a process in the command's
-# environment) denies when ANY referenced variable's value names the lift.
-# Every $NAME / ${NAME...} reference in the word is looked up with printenv, so
-# the hook's own shell variables never answer and an operator (:-, -, %, #) or
-# a second $Z cannot hide the name. A variable the command assigns first is
-# resolved against the INHERITED value too (fail closed): the text layer
-# cannot order the assignment against the use. ${!R} (indirect) denies
-# outright: its target is the value of another variable. $(...) and a
-# variable the environment does not carry are left to the existing rules.
-_env_hit=0 _env_out=''
-# shellcheck disable=SC2016,SC2295  # literal ${ } text; the operand IS a glob pattern
-_env_exp() {
-    local rest="$1" out='' pre br n v set body op arg argexp val i c depth
-    local re='^([^$]*)\$(\{?)([A-Za-z_][A-Za-z0-9_]*)'
-    while [[ "$rest" == *'$'* ]]; do
-        if [[ "$rest" =~ $re ]]; then
-            pre="${BASH_REMATCH[1]}"; br="${BASH_REMATCH[2]}"; n="${BASH_REMATCH[3]}"
-            rest="${rest:${#BASH_REMATCH[0]}}"
-            out="$out$pre"
-            v=''; set=0
-            if v=$(printenv -- "$n" 2>/dev/null); then set=1; else v=''; fi
-            if [ -n "$v" ] && is_lift "$v"; then _env_hit=1; fi
-            if [ -z "$br" ]; then out="$out$v"; continue; fi
-            # Braced: find the matching `}` (nesting counted).
-            depth=1; i=0
-            while [ "$i" -lt "${#rest}" ]; do
-                c="${rest:$i:1}"
-                case "$c" in
-                    '{') depth=$((depth + 1)) ;;
-                    '}') depth=$((depth - 1)); [ "$depth" -eq 0 ] && break ;;
-                esac
-                i=$((i + 1))
-            done
-            if [ "$depth" -ne 0 ]; then _env_hit=1; _env_out="$out$rest"; return; fi
-            body="${rest:0:$i}"; rest="${rest:$((i + 1))}"
-            case "$body" in
-                '') out="$out$v"; continue ;;
-                :[-=+?]*|%%*|\#\#*) op="${body:0:2}" ;;
-                [-=+?%\#]*) op="${body:0:1}" ;;
-                *) _env_hit=1; out="$out$v"; continue ;;   # ${V/a/b} ${V^} ${V:1}
-            esac
-            arg="${body:${#op}}"
-            _env_exp "$arg"; argexp="$_env_out"
-            case "$op" in
-                :-|:=) if [ -n "$v" ]; then val="$v"; else val="$argexp"; fi ;;
-                -|=)   if [ "$set" -eq 1 ]; then val="$v"; else val="$argexp"; fi ;;
-                :+)    if [ -n "$v" ]; then val="$argexp"; else val=''; fi ;;
-                +)     if [ "$set" -eq 1 ]; then val="$argexp"; else val=''; fi ;;
-                :\?|\?) val="$v" ;;
-                %)     val="${v%$argexp}" ;;
-                %%)    val="${v%%$argexp}" ;;
-                \#)    val="${v#$argexp}" ;;
-                \#\#)  val="${v##$argexp}" ;;
-                *)     _env_hit=1; val="$v" ;;
-            esac
-            out="$out$val"
-        else
-            case "${rest#*\$}" in
-                '{'*) _env_hit=1 ;;                       # ${!R} ${#V} ${@}
-            esac
-            out="$out${rest%%\$*}\$"; rest="${rest#*\$}"
-        fi
-    done
-    _env_out="$out$rest"
-}
+# environment). No parameter-expansion evaluator: the tokenizer has already
+# dequoted the word and the shell that runs it may be zsh, so any operator is
+# unmodelled text. The rule is:
+#  (a) any braced form other than plain ${NAME} denies (operator, ${!R},
+#      ${#V}, subscript), without looking at a value;
+#  (b) a referenced variable whose inherited value contains the himmel state
+#      dir or the lift name denies;
+#  (c) plain $NAME / ${NAME} references are joined with the literal text and
+#      the word is tested with is_lift (a path split across variables);
+#  (d) zsh modifiers and subscripts on a bare reference ($V:h, $V[1,-3]) deny.
+# ponytail: accepted over-deny, any operator form in a redirect target
+# (`> "${LOG:-/tmp/l}"`) and any variable that holds the state dir; upgrade
+# path is the operator-owned lift above. A variable the command assigns first
+# is read from the INHERITED value; $(...) is left to the existing rules.
+# shellcheck disable=SC2016  # literal $ and ${ } text is matched, not expanded
 _env_lift() {
-    _env_hit=0 _env_out=''
-    case "$1" in *'$'*) ;; *) return 1 ;; esac
-    _env_exp "$1"
-    [ "$_env_hit" -eq 1 ] && return 0
-    [ "$_env_out" != "$1" ] && is_lift "$_env_out"
+    local rest="$1" out='' n v nxt
+    local re_br='^\$\{([A-Za-z_][A-Za-z0-9_]*)\}'
+    local re_nm='^\$([A-Za-z_][A-Za-z0-9_]*)'
+    case "$rest" in *'$'*) ;; *) return 1 ;; esac
+    while [[ "$rest" == *'$'* ]]; do
+        out="$out${rest%%\$*}"; rest="\$${rest#*\$}"
+        if [[ "$rest" =~ $re_br ]]; then
+            n="${BASH_REMATCH[1]}"
+        elif [[ "$rest" =~ $re_nm ]]; then
+            n="${BASH_REMATCH[1]}"
+            nxt="${rest:${#BASH_REMATCH[0]}:1}"
+            case "$nxt" in ':'|'[') return 0 ;; esac
+        else
+            case "$rest" in '${'*) return 0 ;; esac
+            out="$out\$"; rest="${rest:1}"; continue
+        fi
+        rest="${rest:${#BASH_REMATCH[0]}}"
+        if ! v=$(printenv -- "$n" 2>/dev/null); then v=''; fi
+        case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
+        if [ -n "$v" ] && is_lift "$v"; then return 0; fi
+        out="$out$v"
+    done
+    out="$out$rest"
+    [ "$out" != "$1" ] && is_lift "$out"
 }
+
 
 # ------------------------------------------------------------ file tools ---
 case "$tool" in
