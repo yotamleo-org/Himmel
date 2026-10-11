@@ -121,6 +121,10 @@ deny "bus split across a continuation: no literal bus in the raw JSON (verb)" \
 deny "root split across a continuation: no literal bus in the raw JSON (path)" \
     "$(bash_json $'cat /var/tmp/fixture-state/himmel/bu\\\ns/log/a.jsonl')"
 deny "quote split b''us register" "$(bash_json "b''us register x")"
+deny "double-quote split b\"\"us register (JSON-escaped quote, no literal bus)" "$(bash_json 'b""us register x')"
+deny "double-quote split under the state dir" "$(bash_json 'cat /var/tmp/fixture-state/himmel/b""us/log/a.jsonl')"
+deny "command substitution b\$(true)us register" "$(bash_json 'b$(true)us register x')"
+deny "backtick substitution b\`true\`us register" "$(bash_json 'b`true`us register x')"
 deny "glob b?s under the state dir" "$(bash_json 'cat /var/tmp/fixture-state/himmel/b?s/log/a.jsonl')"
 deny "glob b*s under the state dir" "$(bash_json 'cat /var/tmp/fixture-state/himmel/b*s/log/a.jsonl')"
 deny "glob b[u]s under the state dir" "$(bash_json 'cat /var/tmp/fixture-state/himmel/b[u]s/log/a.jsonl')"

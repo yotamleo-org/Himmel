@@ -82,13 +82,15 @@ input=$(cat)
 # Fast path, no fork: every Bash rule below needs one of these literals. A JSON
 # \u escape could spell them past a raw scan, so it falls through too, and so
 # does anything that can build the word `bus` in the shell without writing it:
-# a backslash (`b\<nl>us`), a quote (`b''us`), `$` (`b${x}us`), a glob
+# a backslash (`b\<nl>us`), a quote (`b''us`; a double quote arrives as the
+# JSON escape `\"`, so that pair is a trigger too), a backtick or `$` (`b${x}us`,
+# `b$(true)us`), a glob
 # character (`b?s`, `b[u]s`, `b*s`) or a brace expansion (`{` not followed by
 # the JSON envelope's `"`). A
 # file-tool path may reach the store through a symlink alias that carries no
 # literal at all, so any payload with a file_path/notebook_path is resolved.
 case "$input" in
-    *bus*|*BUS*|*'\u'*|*\\\\*|*\'*|*\$*|*\**|*\?*|*\[*|*\{[!\"]*|*file_path*|*notebook_path*) ;;
+    *bus*|*BUS*|*'\u'*|*\\\\*|*\\\"*|*\'*|*\$*|*\`*|*\**|*\?*|*\[*|*\{[!\"]*|*file_path*|*notebook_path*) ;;
     *) exit 0 ;;
 esac
 
@@ -135,14 +137,16 @@ norm() {
 # replaced by `*`; each path component is then matched as a glob against `bus`
 # (`b?s`, `b[u]s`, `b*s`, `bus`, `$x`). A word whose component is `bus.json` or
 # `himmel-bus` is not. Pure bash, 3.2-safe.
-EXP_RE='(\$'"'"'[^'"'"']*'"'"'|\$\{[^}]*\}|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
+# shellcheck disable=SC2016  # regex text; nothing is meant to expand
+EXP_RE='(\$'"'"'[^'"'"']*'"'"'|\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)'
 busish() {
     local w="$1" m p parts
-    w=${w//\$\(/}; w=${w//\`/}; w=${w//\(/}; w=${w//\)/}
     while [[ "$w" =~ $EXP_RE ]]; do
         m="${BASH_REMATCH[0]}"
         w=${w/"$m"/"*"}
     done
+    # What is left of an unclosed `$(` / backtick / paren is just a prefix.
+    w=${w//\$\(/}; w=${w//\`/}; w=${w//\(/}; w=${w//\)/}
     w=${w//[\'\"\\]/}
     IFS=/ read -ra parts <<< "$w"
     [ "${#parts[@]}" -gt 0 ] || return 1
