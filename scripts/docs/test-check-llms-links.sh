@@ -402,5 +402,15 @@ else
   bad "docs/ui.md is missing"
 fi
 
+# Every top-level docs page is reachable from the docs map that llms.txt links
+# (docs/README.md), so a page added without a router entry fails here.
+if grep -Fq -- '(docs/README.md)' "$REAL_ROOT/llms.txt"; then ok; else bad "real llms.txt does not link docs/README.md"; fi
+docs_pages=$(git -C "$REAL_ROOT" ls-files ':(glob)docs/*.md')
+for page in $docs_pages; do
+  base=${page#docs/}
+  [ "$base" = README.md ] && continue
+  if grep -Fq -- "($base)" "$REAL_ROOT/docs/README.md" || grep -Fq -- "(./$base)" "$REAL_ROOT/docs/README.md"; then ok; else bad "docs/README.md does not link top-level page: $base"; fi
+done
+
 echo "test-check-llms-links: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
