@@ -156,9 +156,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/emilkowalski/skills.git",
-        "sha": "e8a175de22ae1e49370fc144c1f3bb9aeedf988d"
+        "sha": "2d228630ba1446365f614a108cb8252f1feda202"
       },
-      "description": "[emilkowalski/skills, MIT, vendor + attribution only, no carried delta] Emil Kowalski's design-engineering and animation skills: all 13 upstream skills load (the web ones plus animate-expo, mobile-native, write-swift; a marketplace skills list cannot exclude any, HIMMEL-4068). Manifest-less upstream, so the entry is strict:false with no skills list. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, HIMMEL-549 / HIMMEL-2837) and pinned to a full commit sha (upstream has no release tag) per himmel supply-chain policy (HIMMEL-3069). Pilot entry of the design kit (HIMMEL-4012).",
+      "description": "[emilkowalski/skills, MIT, vendor + attribution only, no carried delta] Emil Kowalski's design-engineering and animation skills: all 15 upstream skills load (the web ones, including animation-performance, plus animate-expo, mobile-native, write-swift; a marketplace skills list cannot exclude any, HIMMEL-4068). Manifest-less upstream, so the entry is strict:false with no skills list. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, HIMMEL-549 / HIMMEL-2837) and pinned to a full commit sha (upstream has no release tag) per himmel supply-chain policy (HIMMEL-3069). Pilot entry of the design kit (HIMMEL-4012).",
       "strict": false,
       "author": {
         "name": "Emil Kowalski",
