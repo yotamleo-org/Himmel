@@ -4738,7 +4738,9 @@ c40_run() { # <mode>
         foreign) c40_status true degraded "a process answers but it is NOT qmd (initialize reply has no qmd serverInfo)" ;;
         *) c40_status true present "initialize answered in 0.3s" ;;
     esac
-    PATH="$FAKEBIN:$PATH" C40_MODE="$1" C40_PENDING="${C40_PENDING:-12}" C40_LOG="$c40_t/log" HIMMEL_DOCTOR_QMD_CURL="$c40_t/curl" DOCTOR_STATUS_JSON="$c40_t/status.json" \
+    # CI runners export XDG_CONFIG_HOME, which would point the token path past the fixture HOME.
+    env -u XDG_CONFIG_HOME -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE \
+        PATH="$FAKEBIN:$PATH" C40_MODE="$1" C40_PENDING="${C40_PENDING:-12}" C40_LOG="$c40_t/log" HIMMEL_DOCTOR_QMD_CURL="$c40_t/curl" DOCTOR_STATUS_JSON="$c40_t/status.json" \
         CLAUDE_DIR="$c40_t/claude" HOME="$c40_t/home" bash "$DOC" --no-color 2>&1
 }
 c40_precond() { # <mode> — the stub must answer the init payload the way the mode says
