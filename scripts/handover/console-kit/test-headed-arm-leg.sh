@@ -4150,7 +4150,7 @@ bus45_out="$(XDG_STATE_HOME="$bus45/state" \
     bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45-other2 HIMMEL-45-in "$bus45_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>/dev/null || true)"
 check "45w failed register: bus=FAIL: on the launcher stdout" "$(printf '%s\n' "$bus45_out" | grep -c 'bus=FAIL:')" "1"
 check "45x failed register: bus=FAIL: bullet in the leg doc" "$(grep -c '^- [0-9:]* bus=FAIL:' "$bus45_doc")" "1"
-check "45y failed register: the doc's last status marker is still LIVE" "$(grep -c '^- [0-9:]* LIVE' "$bus45_doc")" "1"
+check "45y failed register: the doc's tail status (leg_tail_status) is still LIVE" "$(. "$HERE/../../lib/leg-tail-status.sh"; leg_tail_status "$bus45_doc")" "LIVE"
 # HIMMEL-5207: an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"
