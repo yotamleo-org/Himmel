@@ -1661,7 +1661,7 @@ if [ "$sv_seen" -eq 1 ]; then
     if [ "$BUS_BIND" = "1" ] && [ -n "$SESSION_PID" ]; then
         # Background + poll, not `timeout`: portable to bash 3.2 / macOS, and
         # the output goes to a file so no pipe is held open by a stuck child.
-        bus_tmp="$(mktemp 2>/dev/null)" || bus_tmp=/dev/null
+        bus_tmp="$(mktemp "${TMPDIR:-/tmp}/headed-arm-bus.XXXXXX" 2>/dev/null)" || bus_tmp=/dev/null
         "$BUS_CLI" bind "$NAME" "$SESSION_PID" >"$bus_tmp" 2>&1 &
         bus_pid=$!
         bus_n=0
