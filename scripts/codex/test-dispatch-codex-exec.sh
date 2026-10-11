@@ -1358,6 +1358,7 @@ shape_case "18o u64 overflow (additionalContextLimit 1e20)" 2 "non-negative inte
 shape_case "18p matcher with lookahead (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "Bash(?=x)"; return d;'
 shape_case "18q matcher with backreference (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(a)\\1"; return d;'
 shape_case "18r float-syntax timeout (60.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": 60.0");'
+shape_case "18t JSON booleans stay booleans (async true parses, only the hash is stale)" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].async = true; return d;'
 shape_case "18s matcher with unknown letter escape" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\qb"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.

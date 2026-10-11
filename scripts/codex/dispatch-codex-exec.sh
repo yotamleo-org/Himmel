@@ -464,7 +464,7 @@ const parseStrict = (text) => {
         i += m[0].length;
         // serde reads 15.0 / 15e0 as a float and rejects it for a u64 field, while
         // JSON.parse yields the integer 15: keep float syntax non-integer (NaN).
-        if (/[.eE]/.test(m[0])) return NaN;
+        if (/^-?\d+(?:[.eE])/.test(m[0])) return NaN;
         return JSON.parse(m[0]);
     };
     const v = val();
