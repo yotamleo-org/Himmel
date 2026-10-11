@@ -1312,6 +1312,10 @@ if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin bumped'; then ok "m
 out16="$( cd "$W16" && git checkout -q main && git merge -q --no-commit --no-ff feat-edit >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
 if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge of an unbumped feature branch into main is still rejected (GH #2205)"; else bad "merge into main let an unbumped edit through (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+# ...and the same for a feature branch merged into another feature branch.
+out16="$( cd "$W16" && git checkout -q -B feat-x "$(git rev-list --max-parents=0 main)" && git merge -q --no-commit --no-ff feat-edit >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge of an unbumped feature branch into another feature branch is still rejected (GH #2205)"; else bad "feature-into-feature merge let an unbumped edit through (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 rm -rf "$W16"
 
 echo ""
