@@ -55,10 +55,10 @@ QUIET_RUN="$SELF/scripts/quiet-run.sh"
 [ -n "$RUNNER" ] || RUNNER="$SELF/scripts/ci/run-shell-tests.sh"
 
 plan() {
-    git ls-files -- 'scripts/*/**' \
+    git ls-files -co --exclude-standard -- 'scripts/*/**' \
         | grep -E '/test-[^/]*\.sh$' \
         | awk -F/ '{print $1 "/" $2}' | sort -u
-    top_files="$(git ls-files -- 'scripts/test-*.sh')"
+    top_files="$(git ls-files -co --exclude-standard -- 'scripts/test-*.sh')"
     if [ -n "$top_files" ]; then echo top; fi
 }
 PLAN_LIST="$(plan)"

@@ -44,6 +44,13 @@ out="$(run --plan)"; rc=$?
 check "--plan rc 0" "0" "$rc"
 check "--plan lists the roots in order" "scripts/alpha scripts/beta scripts/gamma top" "$(printf '%s\n' "$out" | tr '\n' ' ' | sed 's/ $//')"
 
+# An untracked, non-ignored suite dir is a root too (the top root already counts it).
+mkdir -p "$REPO/scripts/delta"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$REPO/scripts/delta/test-d.sh"
+out="$(run --plan)"
+check "--plan includes an untracked suite directory" "scripts/alpha scripts/beta scripts/delta scripts/gamma top" "$(printf '%s\n' "$out" | tr '\n' ' ' | sed 's/ $//')"
+rm -rf "$REPO/scripts/delta"
+
 : > "$CALLS"
 out="$(run scripts/alpha)"; rc=$?
 check "one root: rc 0" "0" "$rc"
