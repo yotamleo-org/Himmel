@@ -2829,6 +2829,40 @@ run_fence deny no "$HIMMEL" "O12 hook: per-call OLLAMA_HOST prefix denies" \
 run_fence deny no "$HIMMEL" "O12b hook: env OLLAMA_BASE_URL prefix denies" \
     "env OLLAMA_BASE_URL=http://198.51.100.5:11434/v1 graphify update $LUNA/journal-2026.md --backend ollama"
 
+echo "== HIMMEL-4696 opt-in symlink refusal, loopback pin, cloud-name normalisation =="
+# S1/S2: a symlinked config (or a symlinked ~/.himmel) holding the literal true
+# is NOT an opt-in - the agent could plant the link without ever writing the
+# operator's own file.
+OPTIN_REAL="$WS/optin-real.json"
+printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_REAL"
+rm -f "$OPTIN_CFG"; ln -s "$OPTIN_REAL" "$OPTIN_CFG"
+o_eval "S1 salus x ollama-cloud, opt-in config is a symlink to true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
+rm -f "$OPTIN_CFG"
+OPTIN_REALDIR="$WS/optin-realdir"; mkdir -p "$OPTIN_REALDIR"
+printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_REALDIR/config.json"
+rmdir "$HOME/.himmel"; ln -s "$OPTIN_REALDIR" "$HOME/.himmel"
+o_eval "S2 salus x ollama-cloud, ~/.himmel is a symlink holding true -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
+rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
+printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_CFG"
+o_eval "S3 control: a regular file holding true is still an opt-in" 0 ollama-cloud salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
+rm -f "$OPTIN_CFG"
+# L1/L2: the loopback rule stays narrow (documented decision, HIMMEL-4696 item 2).
+o_eval "L1 127.0.0.2 is not the loopback the fence trusts -> fails closed" 2 "ollama endpoint" himmel-code "$HIMMEL" OLLAMA_HOST=127.0.0.2
+o_eval "L2 0.0.0.0 is not the loopback the fence trusts -> fails closed" 2 "ollama endpoint" himmel-code "$HIMMEL" OLLAMA_HOST=0.0.0.0
+# H1/H2: HOME is the trust root in --eval mode too (documented, no passwd-home
+# pinning): the caller's HOME decides whether the opt-in file exists.
+HOME_B="$WS/home-b"; mkdir -p "$HOME_B/.himmel"
+printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$HOME_B/.himmel/config.json"
+o_eval "H1 --eval reads the caller's HOME: a HOME holding true -> allow" 0 ollama-cloud salus "$SALUS/notes" OLLAMA_MODEL=x-cloud "HOME=$HOME_B" "GRAPHIFY_LEDGER=$LEDGER"
+o_eval "H2 --eval reads the caller's HOME: a HOME with no config -> deny" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" OLLAMA_MODEL=x-cloud "HOME=$WS/home-empty"
+# C1-C4: the cloud-model name is trimmed and an optional :latest tag is ignored
+# before the -cloud/:cloud test; a miss classifies as local, so each is RED
+# before the fix.
+o_eval "C1 trailing space on a -cloud model -> ollama-cloud" 0 ollama-cloud luna-personal "$LUNA" "OLLAMA_MODEL=gpt-oss:120b-cloud "
+o_eval "C2 trailing tab/newline on a :cloud model -> ollama-cloud" 0 ollama-cloud luna-personal "$LUNA" "OLLAMA_MODEL=glm-4.6:cloud"$'\t\n'
+o_eval "C3 :latest tag after -cloud -> ollama-cloud" 0 ollama-cloud luna-personal "$LUNA" OLLAMA_MODEL=x-cloud:latest
+o_eval "C4 salus + trailing-space -cloud model is ollama-cloud, not the local opt-in" 2 graphify.salus_ollama_cloud_ok salus "$SALUS/notes" "OLLAMA_MODEL=x-cloud "
+
 if [ "$failures" -eq 0 ]; then
     echo "OK: all cases passed"
     exit 0
