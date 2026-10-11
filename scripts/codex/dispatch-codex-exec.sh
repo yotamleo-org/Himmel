@@ -373,6 +373,9 @@ fi
 # only; any other hook type refuses as unverifiable); a codex release that
 # changes the identity refuses every dispatch until this is re-ported, which is
 # the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
+# ponytail: matcher validity uses JS RegExp plus a refusal of the lookaround and
+# backreference syntax the Rust regex crate lacks; other JS-vs-Rust pattern
+# differences stay unchecked, upgrade path is a Rust-regex-compatible validator.
 _hook_trust_check() {
     local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
@@ -476,7 +479,10 @@ try {
 const crypto = require("crypto");
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isStrOrNull = (v) => v === undefined || v === null || typeof v === "string";
-const isU64OrNull = (v) => v === undefined || v === null || (Number.isInteger(v) && v >= 0);
+// isSafeInteger, not isInteger: a value past 2^53 (1e20 overflows u64 and codex
+// rejects the whole file) cannot be told apart from an in-range one after a JS
+// parse, so the check refuses the whole band (fail-safe).
+const isU64OrNull = (v) => v === undefined || v === null || (Number.isSafeInteger(v) && v >= 0);
 const shape = [];
 if (!isObj(hooks)) {
     shape.push("top level is not an object");
@@ -545,6 +551,10 @@ const expectedHash = (event, group, hook) => {
 const badShape = [];
 const matcherOk = (m) => {
     if (m === undefined || m === null || m === "" || m === "*") return true;
+    // The Rust regex crate has no lookaround, backreferences or atomic groups;
+    // JS accepts them, so refuse the syntax codex would reject (fail-safe: an
+    // escaped backslash before a digit is refused too).
+    if (/\(\?(?:=|!|<=|<!|>)|\\[1-9]|\\k</.test(m)) return false;
     try { new RegExp(m); return true; } catch (error) { return false; }
 };
 for (const event of Object.keys(events)) {

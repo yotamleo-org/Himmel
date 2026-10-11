@@ -1353,6 +1353,9 @@ shape_case "18j duplicate key" 2 "duplicate key" 'return text.replace("\"timeout
 shape_case "18k hooks.hooks fallback shape (no hooks wrapper)" 2 "codex would load no hooks" 'return d.hooks;'
 shape_case "18l group hooks not an array" 2 "is not an array" 'd.hooks.Stop[0].hooks = {}; return d;'
 shape_case "18m invalid matcher regex" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "("; return d;'
+shape_case "18o u64 overflow (additionalContextLimit 1e20)" 2 "non-negative integer" 'd.hooks.Stop[0].hooks[0].additionalContextLimit = 1e20; return d;'
+shape_case "18p matcher with lookahead (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "Bash(?=x)"; return d;'
+shape_case "18q matcher with backreference (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(a)\\1"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
