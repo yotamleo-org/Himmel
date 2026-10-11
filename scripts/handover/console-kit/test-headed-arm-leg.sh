@@ -1091,8 +1091,8 @@ not_contains "openrouter backend: invalid tier never executes Claude" "$out" 'AN
 rc=0; out="$(HOME="$or_home" PATH="$or_bin:$PATH" LEG_LANE=openrouter OPENROUTER_API_KEY=hermetic-fixture OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 CLAUDE_OPENROUTER_EGRESS_MATRIX="$tmp/or-matrix.json" bash "$HERE/../../claude-openrouter" --model sonnet 2>&1)" || rc=$?
 check "openrouter backend: launches stub" "$rc" "0"
 contains "openrouter backend: model alias Sonnet" "$out" "ANTHROPIC_MODEL=sonnet"
-contains "openrouter backend: HAIKU model independent" "$out" "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5"
-contains "openrouter backend: HAIKU label" "$out" "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME=anthropic/claude-haiku-4.5"
+contains "openrouter backend: HAIKU model independent" "$out" "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5"
+contains "openrouter backend: HAIKU label" "$out" "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME=anthropic/claude-haiku-5.5"
 contains "openrouter backend: SONNET model pinned" "$out" "ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5"
 contains "openrouter backend: SONNET label" "$out" "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME=Sonnet 5.5 (OpenRouter)"
 contains "openrouter backend: OPUS model independent" "$out" "ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5"

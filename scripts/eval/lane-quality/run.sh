@@ -154,7 +154,9 @@ metered_read() { # prints the metered lane's balance in USD, "?" if unreadable, 
 # the token mix. The per-call factor (BUDGET_FACTOR) relies on that ratio, so a
 # run that reports any other ratio, no cost or no priced tokens leaves the cost
 # unknown and stops the sweep.
-PRICES='{"anthropic/claude-haiku-4.5":[1,5,1.25,0.1]}'
+# haiku-5.5 (the launcher default since HIMMEL-5248) lists 0.1/0.5/0.125/0.01,
+# x5 above 100k prompt tokens; the row carries the high tier so --max-usd stays a cap.
+PRICES='{"anthropic/claude-haiku-4.5":[1,5,1.25,0.1],"anthropic/claude-haiku-5.5":[0.5,2.5,0.625,0.05]}'
 METERED_MARKUP=1.2
 REPORTED_RATIO=5
 

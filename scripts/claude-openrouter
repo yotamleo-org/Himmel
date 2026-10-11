@@ -44,8 +44,9 @@ OPENROUTER_ANTHROPIC_BASE_URL="${OPENROUTER_ANTHROPIC_BASE_URL:-https://openrout
 # `:batch` variants are asynchronous and unsupported by interactive tier overrides.
 OPENROUTER_MODEL="${OPENROUTER_MODEL:-anthropic/claude-opus-5.5}"
 # Independent subagent tiers (HIMMEL-4083), verified against the public catalog
-# 2026-10-02. Haiku is 200k; Sonnet and Opus are 1M. Session pin stays separate.
-OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-4.5}"
+# 2026-10-02; Haiku re-pinned to 5.5 on 2026-10-11 (HIMMEL-5248: served, 1M
+# context). Sonnet and Opus are 1M. Session pin stays separate.
+OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-5.5}"
 OPENROUTER_SONNET="${OPENROUTER_SONNET:-anthropic/claude-sonnet-5.5}"
 OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
 # ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
@@ -53,6 +54,7 @@ OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
 validate_tier() { # $1 env name, $2 slug; exact membership rejects malformed input.
   case "$2" in
     anthropic/claude-sonnet-5.5|anthropic/claude-opus-5.5|\
+    anthropic/claude-haiku-5.5|\
     anthropic/claude-fable-5.1|anthropic/claude-opus-5|\
     anthropic/claude-sonnet-5|anthropic/claude-fable-5|\
     anthropic/claude-opus-4.8|anthropic/claude-opus-4.7|\

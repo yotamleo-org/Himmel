@@ -211,7 +211,7 @@ for pair in \
   "ANTHROPIC_BASE_URL=https://openrouter.ai/api" \
   "ANTHROPIC_AUTH_TOKEN=or-test-123" \
   "ANTHROPIC_MODEL=anthropic/claude-opus-5.5" \
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5" \
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5" \
   "ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5" \
   "ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5" \
   "CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000" \
@@ -471,7 +471,7 @@ for lane in standalone openrouter; do
   LEG_LANE="$lane" OPENROUTER_MODEL=anthropic/claude-sonnet-5 t "independent tiers ($lane)" 0
   for pair in \
     'ANTHROPIC_MODEL=anthropic/claude-sonnet-5' \
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5' \
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5' \
     'ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5' \
     'ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5'; do
     grep -qxF "$pair" "$WORK/child-env.txt" || { echo "FAIL: independent tiers missing $pair"; FAILS=$((FAILS+1)); }

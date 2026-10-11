@@ -51,13 +51,14 @@ $OpenRouterAnthropicBaseUrl = if ($env:OPENROUTER_ANTHROPIC_BASE_URL) { $env:OPE
 # ':batch' variants are asynchronous and unsupported by interactive tier overrides.
 $OpenRouterModel         = if ($env:OPENROUTER_MODEL) { $env:OPENROUTER_MODEL } else { 'anthropic/claude-opus-5.5' }
 # Independent subagent tiers (HIMMEL-4083), catalog verified 2026-10-02.
-$OpenRouterHaiku         = if ($env:OPENROUTER_HAIKU) { $env:OPENROUTER_HAIKU } else { 'anthropic/claude-haiku-4.5' }
+$OpenRouterHaiku         = if ($env:OPENROUTER_HAIKU) { $env:OPENROUTER_HAIKU } else { 'anthropic/claude-haiku-5.5' }
 $OpenRouterSonnet        = if ($env:OPENROUTER_SONNET) { $env:OPENROUTER_SONNET } else { 'anthropic/claude-sonnet-5.5' }
 $OpenRouterOpus          = if ($env:OPENROUTER_OPUS) { $env:OPENROUTER_OPUS } else { 'anthropic/claude-opus-5.5' }
 # ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
 # and its bash twin when adopting a newly listed OpenRouter Claude slug.
 $KnownTierSlugs = @(
   'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
+  'anthropic/claude-haiku-5.5',
   'anthropic/claude-fable-5.1', 'anthropic/claude-opus-5',
   'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5',
   'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.7',

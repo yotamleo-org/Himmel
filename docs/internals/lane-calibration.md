@@ -40,7 +40,7 @@ its separate `or=` reading remains informational. Native and claudex bank
 paths are unchanged (HIMMEL-4081).
 
 The launcher keeps the session pin (`OPENROUTER_MODEL`) separate from subagent
-tiers: `OPENROUTER_HAIKU` defaults to `anthropic/claude-haiku-4.5` (200k context; the offline catalog has no verified Haiku 5.5 slug yet, HIMMEL-4881),
+tiers: `OPENROUTER_HAIKU` defaults to `anthropic/claude-haiku-5.5` (1M context, verified in the public catalog 2026-10-11, HIMMEL-5248),
 `OPENROUTER_SONNET` to `anthropic/claude-sonnet-5.5` (1M), and `OPENROUTER_OPUS`
 to `anthropic/claude-opus-5.5` (1M). Each independently overrides its
 `ANTHROPIC_DEFAULT_*_MODEL` export, including in managed legs. Tier overrides
@@ -248,8 +248,8 @@ prompts work unchanged). Fold into the brief when it is more than one step:
 
 **Known stale rows.** The `[1m]` suffix table below was measured on Haiku 4.5;
 Haiku 5.5 is natively 1M and takes no suffix, and its rows are unmeasured. The
-OpenRouter lane keeps `anthropic/claude-haiku-4.5` until the catalog snapshot is
-refreshed. Haiku 4.5 retirement is "not sooner than 2026-10-15" (no notice yet).
+OpenRouter lane now defaults to `anthropic/claude-haiku-5.5` (HIMMEL-5248);
+`anthropic/claude-haiku-4.5` stays selectable via `OPENROUTER_HAIKU`. Haiku 4.5 retirement is "not sooner than 2026-10-15" (no notice yet).
 
 Labels above mirror `scripts/lanes/lanes.json`, which is authoritative. When a
 tier's underlying model ships a new generation, update `lanes.json` first and
