@@ -12,7 +12,9 @@
 #                       add=2 del=2, and even pure deletions, neither of which
 #                       is the rule-block bloat this check exists to catch.)
 #   T13 no-always-on -- no new SessionStart/PreToolUse hook registration in
-#                       .claude/settings.json or any */hooks.json, and no
+#                       .claude/settings.json or any */hooks.json (except an
+#                       explicit path+event allowlist at T13(a) below,
+#                       HIMMEL-5239; VENDORED.md does NOT exempt a hook), and no
 #                       unbounded-loop / background-service / JS-timer marker
 #                       in the SHIPPED source the diff adds (test fixtures are
 #                       excluded: a harness loop is not runtime surface; a
@@ -337,14 +339,33 @@ if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
     echo "SKIP T13 no-always-on: $SNAPSHOT_REASON"
 else
     # (a) hook-registration files only: .claude/settings.json + any */hooks.json.
+    # Allowlist (HIMMEL-5239): one "path|event|reason" entry per exemption.
+    # Exact path AND exact event -- a listed path that also adds the other
+    # event, or the same event at an unlisted path, still FAILs. There is no
+    # VENDORED.md exemption here: a vendored hook must be listed to pass.
+    # Add an entry only on an operator ruling, never to quiet a red.
+    t13a_allow=(
+        "marketplace/plugins/i-have-adhd/hooks/hooks.json|SessionStart|HIMMEL-5239 operator always-on ruling 2026-10-11: flag-gated, prints SKILL.md, no network, no writes"
+    )
+    t13a_allowed() { # <path> <event>
+        local e
+        for e in "${t13a_allow[@]}"; do
+            case "$e" in "$1|$2|"*) return 0 ;; esac
+        done
+        return 1
+    }
     t13a_hit=0
     while IFS= read -r hf; do
         [ -n "$hf" ] || continue
-        if git diff "$BASE...HEAD" -- "$hf" | grep '^+' | grep -v '^+++' \
-            | grep -E '(SessionStart|PreToolUse)' >/dev/null; then
-            t13a_hit=1
-            echo "FAIL T13(a): new SessionStart/PreToolUse registration in $hf" >&2
-        fi
+        for t13a_ev in SessionStart PreToolUse; do
+            if git diff "$BASE...HEAD" -- "$hf" | grep '^+' | grep -v '^+++' \
+                | grep -E "$t13a_ev" >/dev/null; then
+                if ! t13a_allowed "$hf" "$t13a_ev"; then
+                    t13a_hit=1
+                    echo "FAIL T13(a): new SessionStart/PreToolUse registration in $hf ($t13a_ev)" >&2
+                fi
+            fi
+        done
     done < <(git diff "$BASE...HEAD" --name-only \
         | grep -E '(^|/)hooks\.json$|^\.claude/settings\.json$' || true)
 
