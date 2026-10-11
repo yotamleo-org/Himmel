@@ -920,6 +920,8 @@ if [ -d /proc/self ]; then
   bash "$h5_stub/graphify-mcp" & h5_real=$!
   # argv[0] under the tool dir (a venv python)
   ( exec -a "/home/u/.local/share/uv/tools/$h5_pypi/bin/python" sleep 60 ) & h5_venv=$!
+  # an interpreter option VALUE before the script (not the first non-dash arg)
+  bash --rcfile /dev/null "$h5_stub/graphify-mcp" & h5_optval=$!
   # a pid that has gone since pgrep ran
   true & h5_gone=$!; wait "$h5_gone" 2>/dev/null
   sleep 0.3
@@ -931,6 +933,7 @@ if [ -d /proc/self ]; then
   assert "real entry point under an interpreter -> 1"      test "$(h5_count "$h5_real")" = "1"
   assert "argv[0] under the uv tool dir -> 1"              test "$(h5_count "$h5_venv")" = "1"
   assert "mention + real + venv -> 2, mention dropped"     test "$(h5_count "$h5_mention $h5_real $h5_venv")" = "2"
+  assert "option value before the script path -> 1"        test "$(h5_count "$h5_optval")" = "1"
   assert "a pid gone since pgrep ran -> not a holder (0)"  test "$(h5_count "$h5_gone")" = "0"
   # a pid whose /proc entry EXISTS but whose cmdline cannot be read is not
   # "gone": it is kept (fail closed), only an absent entry is dropped
@@ -947,8 +950,8 @@ if [ -d /proc/self ]; then
   # shellcheck disable=SC2016
   assert "details name the real holder, not the mention" \
     "$(command -v bash)" -c 'PATH="$1:/usr/bin:/bin"; export PATH; HOLDER_PIDS="$3 $4"; export HOLDER_PIDS; . "$2/graphify-bin.sh"; out=$(_graphify_mcp_holder_details) || exit 1; case "$out" in *"pid $4"*) ;; *) exit 1;; esac; case "$out" in *"pid $3"*) exit 1;; esac' _ "$probe_dir" "$SCRIPT_DIR" "$h5_mention" "$h5_real"
-  kill "$h5_mention" "$h5_real" "$h5_venv" 2>/dev/null
-  wait "$h5_mention" "$h5_real" "$h5_venv" 2>/dev/null
+  kill "$h5_mention" "$h5_real" "$h5_venv" "$h5_optval" 2>/dev/null
+  wait "$h5_mention" "$h5_real" "$h5_venv" "$h5_optval" 2>/dev/null
 fi
 
 # Needle PARITY with the Windows branch (public-PR CR). Two needles are

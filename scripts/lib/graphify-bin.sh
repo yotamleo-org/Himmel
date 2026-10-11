@@ -568,20 +568,24 @@ EOF
       if [ -d "$root/$pid" ] || [ ! -d "$root/self" ]; then printf '%s\n' "$pid"; fi
       continue
     fi
-    a0=""; a1=""; n=0
+    a0=""; a1=""; n=0; hit=0
     while IFS= read -r a || [ -n "$a" ]; do
       if [ "$n" -eq 0 ]; then
         a0="$a"; n=1
       else
         case "$a" in -*) continue ;; esac
-        a1="$a"; break
+        [ -n "$a1" ] || a1="$a"
+        # an option value can precede the script (`python -W ignore <path>`), so
+        # a path-qualified entry point counts wherever it sits in argv
+        case "$a" in
+          */*|*\\*) case "${a##*[/\\]}" in graphify-mcp|graphify-mcp.*) hit=1 ;; esac ;;
+        esac
       fi
     done <<EOF
 $(tr '\0' '\n' < "$root/$pid/cmdline" 2>/dev/null)
 EOF
     exe="$(readlink "$root/$pid/exe" 2>/dev/null || true)"
     if [ -z "$a0$a1$exe" ]; then printf '%s\n' "$pid"; continue; fi   # unreadable: fail closed
-    hit=0
     for a in "$exe" "$a0" "$a1"; do
       [ -n "$a" ] || continue
       case "${a##*[/\\]}" in graphify-mcp|graphify-mcp.*) hit=1 ;; esac
