@@ -81,8 +81,11 @@ printf '%s\n' '' '## Description' '' 'Impact' 'Operators see a blank page after 
     'What' 'We reload the page data on start.' 'Why' 'Blank pages read as an outage.' 'Agent detail' 'files: x.py' \
     '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-6.md"
 # A markdown body with decorated headings (`## **Impact**`) is read too: the create lint accepts them.
-printf '%s\n' '' '## Description' '' '## **Impact**' 'Decorated heading impact line.' '## **What**' 'x' \
-    '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-7.md"
+printf '%s\n' '' '## Description' '' '## **Impact**' 'Decorated heading impact line.' '## Background' 'Background text must not leak.' \
+    '## **What**' 'x' '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-7.md"
+# A `## Impact` inside a code fence is not a heading: HIMMEL-1 keeps its explain-sidecar impact line.
+printf '%s\n' '' '## Description' '' '```' '## Impact' 'Fenced fake impact.' '```' \
+    '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-1.md"
 
 out="$W/out.html"
 render() {
@@ -127,6 +130,8 @@ contains 'a ticket with a plain Impact block shows it as the impact line (HIMMEL
 contains 'a decorated Impact heading is read as the impact line (HIMMEL-5226)' "$html" \
     '"Decorated heading impact line."'
 not_contains 'the impact line stops at the next heading (HIMMEL-5226)' "$html" 'We reload the page data on start.'
+not_contains 'the impact line stops at any other heading (HIMMEL-5226)' "$html" 'Background text must not leak.'
+not_contains 'a fenced Impact heading is not read (HIMMEL-5226)' "$html" 'Fenced fake impact.'
 contains 'the row leads with the user impact (HIMMEL-3990)' "$html" 'add(tx,impactText(p,el("span","ui")),sub)'
 contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet checked"'
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'

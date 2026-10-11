@@ -40,9 +40,11 @@ function parts(md: string): Part[] {
   let fence = '';
   let cur: Part | undefined;
   for (const line of md.split(/\r?\n/)) {
-    const fm = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    const fm = fence
+      ? /^\s{0,3}(`{3,}|~{3,})\s*$/.exec(line)
+      : /^\s{0,3}(`{3,}|~{3,})/.exec(line);
     if (fm) {
-      // A fence closes only on the same character, at least as long as the opener.
+      // A fence closes only on the same character, at least as long as the opener, with nothing after it.
       const f = fm[1]!;
       if (!fence) fence = f;
       else if (f[0] === fence[0] && f.length >= fence.length) fence = '';

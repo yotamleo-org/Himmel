@@ -439,16 +439,32 @@ _PLAIN_HEAD = re.compile(r'^\s{0,3}(?:#{1,6}\s*)?[*_`]*(impact|what|why|agent de
 
 
 def plain_impact(body):
-    """HIMMEL-5226: the ticket's plain `Impact` section (up to the next What/Why/Agent detail heading), or ''.
+    """HIMMEL-5226: the ticket's plain `Impact` section (up to the next heading; fenced code never starts or ends it), or ''.
     The mirror renders ADF headings as bare lines, a markdown body keeps its `##`; both are matched."""
     desc = body.split('\n## Comments', 1)[0]
-    out, on = [], False
+    out, on, fence = [], False, ''
     for line in desc.splitlines():
+        fm = re.match(r'^\s{0,3}(`{3,}|~{3,})(.*)$', line)
+        if fm:
+            f = fm.group(1)
+            if not fence:
+                fence = f
+            elif f[0] == fence[0] and len(f) >= len(fence) and not fm.group(2).strip():
+                fence = ''
+            if on:
+                out.append(line)
+            continue
+        if fence:
+            if on:
+                out.append(line)
+            continue
         m = _PLAIN_HEAD.match(line)
         if m:
             if on:
                 break
             on = m.group(1).lower() == 'impact'
+        elif on and re.match(r'^\s{0,3}#{1,6}\s', line):
+            break
         elif on:
             out.append(line)
     return ' '.join(' '.join(out).split())

@@ -33,6 +33,7 @@ describe('lintPlainBlock (HIMMEL-5226)', () => {
     expect(lintPlainBlock('````\n```\n' + OK + '\n```')).toHaveLength(4);
     expect(lintPlainBlock('~~~\n```\n' + OK + '\n```')).toHaveLength(4);
     expect(lintPlainBlock('```\ncode\n```\n' + OK)).toEqual([]);
+    expect(lintPlainBlock('```\n```not-a-close\n' + OK + '\n```')).toHaveLength(4);
   });
 
   it('the template itself passes', () => {

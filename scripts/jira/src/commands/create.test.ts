@@ -232,8 +232,6 @@ describe('create --fix-version (HIMMEL-3713)', () => {
         'create',
         '--desc',
         PLAIN,
-      '--desc',
-      PLAIN,
         '--type',
         'Task',
         '--title',
