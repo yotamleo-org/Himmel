@@ -962,7 +962,7 @@ sw_note_cd() {
 # absolute non-root literal or `~`. Expression grammar as segment_is_rootwalk_find.
 sw_find_walks_unproven_cwd() {
     local -a a=("${RB_TOKENS[@]}")
-    local total=${#a[@]} j=$((RB_IDX + 1)) n=0
+    local total=${#a[@]} j=$((RB_IDX + 1)) n=0 fraw
     while [ "$j" -lt "$total" ]; do
         shell_word_value "${a[$j]}" || return 0
         case "$SW_VALUE" in
@@ -973,12 +973,14 @@ sw_find_walks_unproven_cwd() {
     done
     for ((; j < total; j++)); do
         shell_word_value "${a[$j]}" || return 0
+        fraw="${a[$j]}"
         case "$SW_VALUE" in -*|'('|'!') break ;; esac
         n=$((n + 1))
         case "/$SW_VALUE/" in */../*) return 0 ;; esac    # a `..` component, absolute or not
         [ "$SW_CD_UNPROVEN" = 1 ] || continue
         # shellcheck disable=SC2088 # literal `~`, never expanded here
-        case "$SW_VALUE" in /*|'~'|'~/'*) ;; *) return 0 ;; esac
+        # (the RAW word: a quoted or escaped `~` is a directory name, not HOME)
+        case "$SW_VALUE" in /*) ;; *) case "$fraw" in '~'|'~/'*) ;; *) return 0 ;; esac ;; esac
     done
     [ "$SW_CD_UNPROVEN" = 1 ] && [ "$n" -eq 0 ]
 }
@@ -1116,9 +1118,11 @@ segment_walks_root() {
         case "$raw" in *'*'*|*'?'*|*'['*|*'{'*) return 0 ;; esac
         case "$tok" in *..*) return 0 ;; esac
         # shellcheck disable=SC2088 # a literal ~, never expanded
+        case "$raw" in
+            '~'|'~/'*) continue ;;                 # unquoted: HOME
+        esac
         case "$tok" in
-            '~'|'~/'*) continue ;;
-            '~'*|'$'*|'%'*) return 0 ;;
+            '~'*|'$'*|'%'*) return 0 ;;            # `~user`, or a quoted `~` (a directory name)
         esac
         if [ "$SW_CD_UNPROVEN" = 1 ]; then case "$tok" in /*) ;; *) return 0 ;; esac; fi
         path_textually_resolves_to_root "$tok" && return 0
