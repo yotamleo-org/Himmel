@@ -97,7 +97,8 @@ gone() {
     local i=0
     while [ -d "/proc/$1" ] && [ "$i" -lt 50 ]; do
         # a TERMed bash child of this shell stays a zombie until reaped
-        wait "$1" 2>/dev/null
+        # (only when it is already a zombie: `wait` on a live child would block)
+        if ! alive "$1"; then wait "$1" 2>/dev/null; fi
         [ -d "/proc/$1" ] || break
         i=$((i + 1)); sleep 0.1
     done
@@ -143,6 +144,7 @@ tick_field() {
     printf '%s\n' "$out" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 render_board() {
+    rm -f "$W/board.html"    # a failed render must not leave a prior page to read
     node "$CK/board.mjs" --doc "$C" --legs "$LEGS" --out "$W/board.html" --repo "$REPO" >/dev/null 2>&1
     cat "$W/board.html" 2>/dev/null
 }
@@ -154,7 +156,9 @@ check "legs: every held leg is FRESH" "$(tick_field legs)" "N1:FRESH,N2:FRESH,N3
 contains "board: FINDING asks for a ruling" "$(render_board)" "FINDING — needs a ruling"
 bash "$AR" "$L2" "RESOLVED — ruling received, see console message" >/dev/null
 check "tails: RESOLVED retires the FINDING" "$(tick_field tails)" "N1:LIVE,N2:RESOLVED,N3:LIVE"
-lacks "board: no ruling ask after RESOLVED" "$(render_board)" "FINDING — needs a ruling"
+board_after="$(render_board)"
+contains "board: the re-render produced a page" "$board_after" "</html>"
+lacks "board: no ruling ask after RESOLVED" "$board_after" "FINDING — needs a ruling"
 
 # ---- 2. succession: relay, token kept ---------------------------------------
 check "nonces: a previous console's letter reads UNCONFIRMED" "$(tick_field nonces)" "UNCONFIRMED:N3"
