@@ -50,6 +50,9 @@ case "$M" in */console.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) ba
 if [ -f "$M" ] && grep -q '"qmd"' "$M" && grep -q '"himmel-bus"' "$M" && ! grep -q '"graphify"' "$M"; then
     ok "T6 file holds exactly the profile's servers (qmd, himmel-bus; no graphify)"
 else bad "T6 file content wrong: $M"; fi
+if [ "$(stat -c %a "$M" 2>/dev/null || stat -f %Lp "$M")" = 600 ] && [ "$(stat -c %a "${M%/*}" 2>/dev/null || stat -f %Lp "${M%/*}")" = 700 ]; then
+    ok "T6 mcp file is 0600 in a 0700 dir (inline credentials)"
+else bad "T6 mcp file/dir permissions are not 600/700: $M"; fi
 N=$(bash "$PS" user --mcp-config); rc=$?
 [ "$rc" = 0 ] && [ -z "$N" ] && ok "T7 profile without mcpServers: empty output, rc=0" || bad "T7 rc=$rc out=[$N]"
 bash "$PS" no-such-profile --mcp-config >/dev/null 2>&1; rc=$?

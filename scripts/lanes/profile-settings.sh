@@ -75,6 +75,8 @@ if [ "$MODE" = mcp-config ]; then
     else HASH="$(printf '%s\n' "$MCP" | shasum -a 256 | cut -c1-12)"; fi
     DIR="${DIR%/*}/mcp-$HASH"
     mkdir -p "$DIR" 2>/dev/null || { echo "profile-settings: cannot create $DIR" >&2; exit 2; }
+    # The servers' env/headers come from ~/.claude.json and may carry credentials.
+    chmod 700 "$DIR" 2>/dev/null || true
     OUT="$DIR/$PROFILE.mcp.json"
     JSON="$MCP"
 fi
@@ -84,4 +86,5 @@ if ! printf '%s\n' "$JSON" > "$TMP" || ! mv -f "$TMP" "$OUT"; then
     echo "profile-settings: cannot write $OUT" >&2
     exit 2
 fi
+[ "$MODE" = mcp-config ] && { chmod 600 "$OUT" 2>/dev/null || true; }
 printf '%s\n' "$(cd "$DIR" && pwd)/${OUT##*/}"
