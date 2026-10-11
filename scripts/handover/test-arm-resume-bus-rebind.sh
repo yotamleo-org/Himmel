@@ -37,6 +37,9 @@ mkproc() { # mkproc <pid> <comm> <argv...>
     printf '%s' "$comm" > "$PROCD/$pid/comm"
     : > "$PROCD/$pid/cmdline"
     local a; for a in "$@"; do printf '%s\0' "$a" >> "$PROCD/$pid/cmdline"; done
+    # stat: "<pid> (<comm>) S" + fields 4..21 (zeros) + field 22 start time;
+    # PSTART defaults far after this helper's own start, 1 = long before it
+    printf '%s (%s) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 %s\n' "$pid" "$comm" "${PSTART:-99999999999}" > "$PROCD/$pid/stat"
 }
 mkbus() { # mkbus <mode: ok|refuse|hang>
     cat > "$TMP/bus" <<EOF
@@ -80,13 +83,14 @@ eq "A3 refused rebind: one call" "rebind HIM-1 4242" "$(cat "$TMP/bus-calls")"
 eq "A3 refused rebind: exits 0" 0 "$rc"
 has "A3 refused rebind: WARN carries the bus message" "bound pid is still live" "$(cat "$TMP/log")"
 
-# A5: a matching claude already present when the helper starts is the OLD
-# session; only the one that appears afterwards is rebound.
-rm -rf "$PROCD"; mkproc 4242 claude claude -n HIM-1 "old"
+# A5: a matching claude that started BEFORE the helper is the OLD session;
+# only the one that started after it is rebound. Both are already present when
+# the helper first scans, so the check cannot depend on scan-vs-launch order.
+rm -rf "$PROCD"; PSTART=1 mkproc 4242 claude claude -n HIM-1 "old"
+mkproc 5555 claude claude -n HIM-1 "new"
 mkbus ok
-late 5555 claude claude -n HIM-1 "new"
 run_helper HIM-1 5 5
-eq "A5 pre-existing match skipped, new child rebound" "rebind HIM-1 5555" "$(cat "$TMP/bus-calls")"
+eq "A5 older match skipped, newer child rebound" "rebind HIM-1 5555" "$(cat "$TMP/bus-calls")"
 
 rm -rf "$PROCD"; mkdir -p "$PROCD"
 late 4242 claude claude -n HIM-1 "p"

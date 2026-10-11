@@ -32,20 +32,32 @@ matches() { # matches <pid-dir>: a claude whose argv has -n <name>
     [ "$(cat "$1/comm" 2>/dev/null)" = claude ] && _argv_has_n_name "${1##*/}"
 }
 
-# Matches already present when the helper starts are the OLD session (the
-# helper is backgrounded just before the launch), never the resumed child.
-preexisting=" "
-for d in "$PROC"/[0-9]*; do
-    [ -d "$d" ] || continue
-    matches "$d" && preexisting="$preexisting${d##*/} "
-done
+start_of() { # start_of <pid-dir>: field 22 of stat (start time), empty if unreadable
+    local s f
+    s="$(cat "$1/stat" 2>/dev/null)" || return 0
+    s="${s##*) }"
+    read -ra f <<< "$s"
+    printf '%s' "${f[19]:-}"
+}
+
+# The resumed child starts AFTER this helper (it is backgrounded just before
+# the launch), so a matching claude that started before us is the OLD session.
+# No ordering race: compares kernel start times, not a snapshot. An unreadable
+# start time on either side fails open to "eligible".
+self_start="$(start_of /proc/$$)"
 
 find_child() { # prints the first NEW claude pid whose argv has -n <name>
-    local d pid
+    local d pid st
     for d in "$PROC"/[0-9]*; do
         pid="${d##*/}"
-        case "$preexisting" in *" $pid "*) continue ;; esac
-        matches "$d" && { printf '%s\n' "$pid"; return 0; }
+        matches "$d" || continue
+        st="$(start_of "$d")"
+        if [ -n "$st" ] && [ -n "$self_start" ] \
+            && [ "$st" -eq "$st" ] 2>/dev/null && [ "$self_start" -eq "$self_start" ] 2>/dev/null \
+            && [ "$st" -lt "$self_start" ]; then
+            continue
+        fi
+        printf '%s\n' "$pid"; return 0
     done
     return 1
 }
