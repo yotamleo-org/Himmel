@@ -124,8 +124,34 @@ console`, bind pid 1852149).
 
 Result: register, send, `bus wait` receive, and reply `--re` all worked live
 through `bin/bus` and the `leg-bus` profile with installed server deps. Caveat:
-run 2 needed a hand-registered console (HIMMEL-5241); leg <-> leg needs a pair
-edge if wanted.
+run 2 needed a hand-registered console (fixed by HIMMEL-5241, see run 3); leg <-> leg
+needs a pair edge if wanted.
+
+### Run 3: PASS (leg <-> console, console registered by its launcher; HIMMEL-5241, 2026-10-11)
+
+No hand registration. Under a scratch handover root (not the operator console's
+bucket), with the `console` profile now listing `himmel-bus`:
+
+1. `console.sh new --name bus5241probetwo-console --arm` (throwaway console, haiku,
+   scratch template). `bus status <console>` printed `live` with nothing run by
+   hand: `console.sh` registered it (`--role console`) and `headed-arm.sh` bound
+   the claude pid.
+2. `headed-arm-leg.sh --profile leg-bus --console <that console>` launched the probe
+   leg. `bus status <leg>` printed `live`.
+3. Leg `bus peers` listed the console. Leg `bus send <console> <body>` printed
+   `sent #1` (no `no edge` refusal; run 1's failure).
+4. Console `bus wait` printed `bus #1 data from HIMMEL-5241-N1790-bus-probe-2026-10-11:`
+   then `| probe leg to console ping HIMMEL-5241`.
+5. Console `bus send <leg> <body> --re 1` printed `sent #1`; the leg's `bus wait`
+   returned `poc console reply`.
+
+Result: a fresh console is on the bus from launch; leg -> console send, receive and
+reply all worked live. Both sessions were closed afterwards (`bus status` then
+prints `gone`).
+
+First attempt note: a console armed with `--deadline-min 40` registers at arm time
+but does not launch (and so never binds) until the deadline; killed and re-armed
+with `--deadline-min 0`. That abandoned name stays `unbound` in the registry.
 
 ## Phase B: native leg <-> claudex (codex) leg
 
