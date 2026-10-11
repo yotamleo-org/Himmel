@@ -305,6 +305,22 @@ leg_env_drop_token() {
     unset -v _leg_drop_kept _leg_drop_tok
 }
 
+# leg_env_drop_prefix PREFIX - HIMMEL-4832: leg_env_drop_token for every
+# PREFIX*=... token (the himmel-bus identity namespace, HIMMEL_BUS_*).
+leg_env_drop_prefix() {
+    _leg_drop_kept=""
+    set -f
+    for _leg_drop_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_leg_drop_tok" in
+            "$1"*=*) ;;
+            *) _leg_drop_kept="${_leg_drop_kept:+$_leg_drop_kept }$_leg_drop_tok" ;;
+        esac
+    done
+    set +f
+    [ -n "${HEADED_ARM_LAUNCHER_ENV:-}" ] && HEADED_ARM_LAUNCHER_ENV="$_leg_drop_kept"
+    unset -v _leg_drop_kept _leg_drop_tok
+}
+
 DRY_RUN=0
 RELAY=0
 JUDGE=0
@@ -1339,6 +1355,18 @@ if [ -n "$CONSOLE_NAME" ]; then
 else
     unset HIMMEL_CONSOLE_NAME
 fi
+# HIMMEL-4832: the bus registration below names this console as the leg's own.
+BUS_CONSOLE="$CONSOLE_NAME"
+# HIMMEL-4832: the bus identity is the launcher's alone. A caller-preset or
+# ambient HIMMEL_BUS_* (a console's own HIMMEL_BUS_NAME is live in its shell)
+# must never reach a leg - only the name registered below does - and neither
+# may a preset bind flag, which headed-arm.sh reads as "bind this session".
+for _leg_bus_var in $(compgen -v HIMMEL_BUS_); do
+    unset -v "$_leg_bus_var"
+done
+unset -v _leg_bus_var HEADED_ARM_BUS
+leg_env_drop_prefix HIMMEL_BUS_
+leg_env_drop_token HEADED_ARM_BUS
 unset -v CONSOLE_NAME
 unset -f _console_name_ok
 # HIMMEL-4569: guard-leg-context-handoff.sh reads both from its own process env,
@@ -2226,6 +2254,38 @@ if [ "$CONSULT" -ne 1 ] && [ -n "${HEADED_ARM_REPO:-}" ]; then
     bash "$HERE/leg-pretrust.sh" "$LANE" "$HEADED_ARM_REPO" \
         || echo "headed-arm-leg: WARN trust pre-accept not applied (see above); the leg may stop at the folder-trust prompt" >&2
 fi
+
+# HIMMEL-4832 (himmel-bus T9): a profile that lists himmel-bus in mcpServers
+# opts in. The launcher registers the session under its own name before launch
+# (the only party that knows it before the model exists), hands the leg
+# HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude
+# pid it resolves. No secret exists: identity is (name, pid, start time).
+# Fail-open on purpose: no profile requires the bus in phase 1, and an
+# unregistered leg is merely unbound (bus send refused, tick shows
+# bus=unbound) and keeps today's channels, so a register failure warns into
+# the launch log and never blocks a launch of the live fleet. A headless leg
+# never binds (spec 8.5), so it is not registered either.
+# ponytail: fail-open only until a profile can require the bus, upgrade path HIMMEL-4818 phase 2.
+case "${MCP_NAMES_JSON:-}" in
+    *'"himmel-bus"'*)
+        if [ "$HEADLESS" -ne 1 ]; then
+            BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+            BUS_ROLE=leg
+            [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
+            [ "$CONSULT" -eq 1 ] && BUS_ROLE=consult
+            BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --console "$BUS_CONSOLE")
+            # LEG_BUS_PAIR: the leg a judge or consult was launched for (spec 3c).
+            [ "$BUS_ROLE" != leg ] && [ -n "${LEG_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$LEG_BUS_PAIR")
+            if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
+                leg_propagate_env HIMMEL_BUS_NAME "$NAME"
+                export HEADED_ARM_BUS=1
+            else
+                echo "$(date +%F_%T) headed-arm-leg: WARN bus register failed for $NAME - launching unbound: $BUS_OUT" >> "$LOG"
+            fi
+        fi
+        ;;
+esac
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_CONSOLE LEG_BUS_PAIR
 
 # Paired with this exec's PID: headed-arm.sh ignores stale ambient values.
 export HEADED_ARM_CONTEXT_PID="$$" HEADED_ARM_LEG_PROFILES="$PROFILES_MJS"

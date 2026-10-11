@@ -2142,4 +2142,56 @@ rc78ok=0; out78ok="$(console new --bucket nosuffix78 --name roadmap-console 2>&1
 check "78 new --name roadmap-console is accepted" "$rc78ok" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${today}A-roadmap-console.md" "$(token_of "$out78ok")" >/dev/null 2>&1
 
+# --- 79 (HIMMEL-4832): the console profile's himmel-bus opt-in registers the
+# armed console (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
+# bind flag, and drops a predecessor's own HIMMEL_BUS_*; opted-out registers
+# and exports nothing; a failed register warns and still arms.
+bus79="$tmp/bus79"; mkdir -p "$bus79"
+cat > "$bus79/arm.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = --role ] && shift 2
+printf 'bus_name=%s extra=%s bind=%s\n' "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" "${HEADED_ARM_BUS:-<unset>}" >> "$5"
+STUB
+cat > "$bus79/bus" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -z "${BUS79_FAIL:-}" ]
+STUB
+for v79 in in out; do
+  if [ "$v79" = in ]; then n79='["qmd","himmel-bus"]'; else n79='["qmd"]'; fi
+  printf "console.log('%s');\n" "$n79" > "$bus79/profiles-$v79.mjs"
+done
+chmod +x "$bus79/arm.sh" "$bus79/bus"
+run79() { # <variant> <cmd> <bucket> [extra env...]
+  local variant="$1" cmd="$2" bucket="$3"; shift 3
+  ( cd "$fixture_repo" && env HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+      HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" \
+      CONSOLE_BUS_CLI="$bus79/bus" CONSOLE_BUS_PROFILES_MJS="$bus79/profiles-$variant.mjs" \
+      CONSOLE_HEADED_ARM="$bus79/arm.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work79" \
+      bash "$C" "$cmd" --bucket "$bucket" --name bus79-console --arm --deadline-min 0 ) 2>&1
+}
+out79a="$(run79 in new bus79in)"
+session79a="DEMO-nextleg-${today}A-bus79-console"
+check "79 opted-in new: register --role console, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
+check "79 opted-in new: armed env carries only the registered name + the bind flag" \
+    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
+rm -f "$bus79/calls"
+out79b="$(run79 in next bus79in)"
+session79b="DEMO-nextleg-${today}B-bus79-console"
+check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$(token_of "$out79b")" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
+rm -f "$bus79/calls"
+out79c="$(run79 out new bus79out)"
+session79c="DEMO-nextleg-${today}A-bus79-console"
+check "79 opted-out: bus never called" "$([ -e "$bus79/calls" ] && echo called || echo none)" "none"
+check "79 opted-out: armed env carries no HIMMEL_BUS_* and no bind flag" \
+    "$(cat "$tmp/work79"/*/launch-"$session79c".log 2>/dev/null | grep -c "^bus_name=<unset> extra=<unset> bind=<unset>\$")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79out/$session79c.md" "$(token_of "$out79c")" >/dev/null 2>&1
+rm -f "$bus79/calls"
+out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
+check "79 failed register: console still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
+check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79d")" >/dev/null 2>&1
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

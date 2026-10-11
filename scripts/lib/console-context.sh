@@ -187,6 +187,7 @@ console_context_leg_env_unset_names() {
         INLINE_IMPL_OK \
         HIMMEL_CONSOLE_LEG \
         HIMMEL_CONSOLE_NAME \
+        HIMMEL_BUS_NAME \
         HIMMEL_READ_CLAMP_LINES \
         HIMMEL_CONSOLE_RELAY \
         HIMMEL_CONSOLE_JUDGE \

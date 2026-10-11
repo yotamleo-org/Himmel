@@ -558,6 +558,13 @@ HEADLESS="${HEADED_ARM_HEADLESS:-0}"
 CLAUDE_CLI="${HEADED_ARM_CLAUDE_CLI:-claude}"
 LAUNCH_RECORD="${HEADED_ARM_LAUNCH_RECORD:-}"
 unset HEADED_ARM_HEADLESS HEADED_ARM_LAUNCH_RECORD
+# HIMMEL-4832 (himmel-bus T9): the launcher registered $NAME on the bus and sets
+# HEADED_ARM_BUS=1 to have the claude pid confirmed below bound to it. Read once
+# and cleared, so the flag can never ride into the launched session's env.
+BUS_BIND="${HEADED_ARM_BUS:-0}"
+BUS_CLI="${HEADED_ARM_BUS_CLI:-$(dirname "$0")/../../marketplace/plugins/himmel-bus/bin/bus}"
+unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
+SESSION_PID=""
 # HIMMEL-2975 (renamed HIMMEL-3133): a console session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
 # token added to BOTH konsole launch branches' env -u list below,
@@ -939,14 +946,14 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
             args="$(ps -ww -o args= -p "$pid" 2>/dev/null)" || ps_rc=$?
             [ "$ps_rc" -eq 1 ] && continue
             [ "$ps_rc" -eq 0 ] || return 2
-            _flat_argv_has_n_name "$args" && return 0
+            _flat_argv_has_n_name "$args" && { SESSION_PID="$pid"; return 0; }
         done
         return 1
     fi
     for pid in $pids; do
         comm="$(cat "$PROC/$pid/comm" 2>/dev/null)" || continue
         [ "$comm" = claude ] || continue
-        _argv_has_n_name "$pid" && return 0
+        _argv_has_n_name "$pid" && { SESSION_PID="$pid"; return 0; }
     done
     return 1
 }
@@ -1642,6 +1649,13 @@ if [ "$sv_indeterminate" -eq 1 ]; then
     exit 9
 fi
 if [ "$sv_seen" -eq 1 ]; then
+    # HIMMEL-4832: bind the confirmed claude pid to the name the launcher
+    # registered. Best-effort: a failed bind leaves the session unbound (bus
+    # send refused, tick shows bus=unbound) and never changes the launch result.
+    if [ "$BUS_BIND" = "1" ] && [ -n "$SESSION_PID" ]; then
+        bus_out="$("$BUS_CLI" bind "$NAME" "$SESSION_PID" 2>&1)" \
+            || echo "$(date +%F_%T) WARN: bus bind of $NAME to pid $SESSION_PID failed - session stays unbound: $bus_out" >> "$LOG"
+    fi
     exit 0
 fi
 # r8-codex-4: only reached once session_confirmed has ALSO never found a

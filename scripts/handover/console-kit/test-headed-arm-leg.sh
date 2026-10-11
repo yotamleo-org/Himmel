@@ -4065,6 +4065,67 @@ rm -f "$pt_home/.claude.json"
 LEG_PRETRUST_HOME="$pt_home" LEG_REPO="$pt_primary/.claude/worktrees/pt-wt" bash "$SCRIPT" --dry-run --no-profile HIMMEL-44-dry "$some_doc" "$tmp/sig44" "$PAST" "$tmp/log44" claude-sonnet-5 >/dev/null 2>&1 || true
 check "44f --dry-run writes no config" "$([ -e "$pt_home/.claude.json" ] && echo yes || echo no)" "no"
 
+# --- 45. HIMMEL-4832: himmel-bus register + env scrub --------------------------
+# An opted-in profile (mcpServers lists himmel-bus) registers the leg on the REAL
+# bus CLI before launch (peer file 0600, no secret in it) and hands the launched
+# env exactly HIMMEL_BUS_NAME, whatever HIMMEL_BUS_* the caller preset or left in
+# its ambient env. An opted-out profile registers nothing and carries no
+# HIMMEL_BUS_* either; a failed register never blocks the launch.
+bus45="$tmp/c45"; mkdir -p "$bus45"
+cat > "$bus45/headed" <<'HEADED_EOF'
+#!/usr/bin/env bash
+{
+  printf 'LAUNCHER_ENV=%s\n' "${HEADED_ARM_LAUNCHER_ENV:-}"
+  printf 'BUS_FLAG=%s\n' "${HEADED_ARM_BUS:-<unset>}"
+  printf 'AMBIENT=%s\n' "${HIMMEL_BUS_NAME:-<unset>}"
+} > "$(dirname "$0")/seen"
+HEADED_EOF
+chmod 755 "$bus45/headed"
+for bus45_variant in in out; do
+  if [ "$bus45_variant" = in ]; then bus45_names='["qmd","himmel-bus"]'; else bus45_names='["qmd"]'; fi
+  cat > "$bus45/profiles-$bus45_variant.mjs" <<PROFILE_EOF
+switch (process.argv[3]) {
+  case '--context': console.log('{"contextMode":"standard","autocompact":200000}'); break;
+  case '--mcp-servers': console.log('$bus45_names'); break;
+  case '--mcp-config': console.log('{"mcpServers":{"qmd":{"type":"http","url":"http://localhost:8181/mcp"}}}'); break;
+  default: console.log('{"enabledPlugins":{},"permissions":{"allow":[]}}');
+}
+PROFILE_EOF
+done
+# run45 <variant> <name>: launches with HIMMEL_BUS_* preset both ways.
+run45() {
+  rm -f "$bus45/seen"
+  XDG_STATE_HOME="$bus45/state" HIMMEL_BUS_NAME=ambient-name \
+  HEADED_ARM_LAUNCHER_ENV="HIMMEL_BUS_NAME=preset-name HIMMEL_BUS_EXTRA=1" \
+  HEADED_ARM_LEG_TARGET="$bus45/headed" HEADED_ARM_LEG_PROFILES="$bus45/profiles-$1.mjs" \
+  HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile leg-impl --console HIMMEL-console-45 "$2" "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1
+}
+mkdir -p "$bus45/state" && chmod 700 "$bus45/state"
+bus45_toks() { sed -n 's/^LAUNCHER_ENV=//p' "$bus45/seen" | tr ' ' '\n' | grep '^HIMMEL_BUS_' || true; }
+rc=0; run45 in HIMMEL-45-in || rc=$?
+check "45a opted-in launch: exit 0" "$rc" "0"
+peer45="$bus45/state/himmel/bus/peers/HIMMEL-45-in.json"
+check "45b opted-in: peer file written 0600" "$(stat -c %a "$peer45" 2>/dev/null || echo none)" "600"
+check "45c opted-in: peer is a leg of the console, no secret field" \
+  "$(jq -c '[.n, .role, .console, (keys | join(","))]' "$peer45" 2>/dev/null)" \
+  '["HIMMEL-45-in","leg","HIMMEL-console-45","console,launched,n,role"]'
+check "45d opted-in: the only HIMMEL_BUS_* the launched env carries is HIMMEL_BUS_NAME=<name>" \
+  "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-in"
+check "45e opted-in: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
+check "45f opted-in: the launched process env carries the registered name, not the ambient one" "$(sed -n 's/^AMBIENT=//p' "$bus45/seen")" "HIMMEL-45-in"
+rc=0; run45 out HIMMEL-45-out || rc=$?
+check "45g opted-out launch: exit 0" "$rc" "0"
+check "45h opted-out: no peer file" "$([ -e "$bus45/state/himmel/bus/peers/HIMMEL-45-out.json" ] && echo yes || echo no)" "no"
+check "45i opted-out: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
+check "45j opted-out: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
+check "45k opted-out: the ambient HIMMEL_BUS_NAME does not reach the target" "$(sed -n 's/^AMBIENT=//p' "$bus45/seen")" "<unset>"
+# a name that was ever registered: register refuses, the launch still goes, unbound
+rc=0; run45 in HIMMEL-45-in || rc=$?
+check "45l failed register: launch still exits 0" "$rc" "0"
+check "45m failed register: no HIMMEL_BUS_* in the launched env" "$(bus45_toks)" ""
+check "45n failed register: headed-arm.sh is not told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "<unset>"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-leg.sh"

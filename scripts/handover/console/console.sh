@@ -243,6 +243,10 @@ console_metadata() {
     bun "$repo/scripts/telegram/console-route.ts" register "$1" "$bucket" "${project_dir:-$repo}" >/dev/null 2>&1 || true
 }
 
+# HIMMEL-4832: set by cmd_next to the outgoing console's session name; assigned
+# here so an ambient value can never name a predecessor.
+CONSOLE_BUS_PREDECESSOR=""
+
 # do_arm <session> <doc> <fill-signal> <log> -- launch (or foreground-run,
 # under CONSOLE_ARM_FOREGROUND=1) the headed-arm target and print the armed
 # lines. deadline_epoch/model/workdir are read from the outer resolution
@@ -272,6 +276,28 @@ do_arm() {
         leg_env_names+=("$leg_env_name")
     done
     unset "${leg_env_names[@]}"
+    # HIMMEL-4832 (himmel-bus T9): the console's bus identity is registered here,
+    # by its launcher, and bound by headed-arm.sh once it confirms the claude
+    # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor console's
+    # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
+    # the console profile's opt-in decides whether anything is registered.
+    # Fail-open: a failed register warns and the console launches unbound.
+    local bus_var bus_cli bus_names bus_args
+    for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
+    unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
+    bus_cli="${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
+    bus_names="$(node "${CONSOLE_BUS_PROFILES_MJS:-$HERE/../../lanes/plugin-profiles.mjs}" console --mcp-servers 2>/dev/null)" || bus_names=""
+    case "$bus_names" in
+        *'"himmel-bus"'*)
+            bus_args=(register "$session" --role console)
+            [ -n "$CONSOLE_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CONSOLE_BUS_PREDECESSOR")
+            if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
+                export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
+            else
+                echo "console.sh: WARN bus register failed for $session - launching unbound: $bus_out" >&2
+            fi
+            ;;
+    esac
     # plugin /console from any repo (HIMMEL-3623 verdict J1268O change 2): a
     # foreign --project selects the bucket/prefix and is recorded in the
     # doc as data (see project_doc_value below) -- the console session
@@ -1531,6 +1557,7 @@ cmd_next() {
     fi
 
     if [ "$ARM" -eq 1 ]; then
+        CONSOLE_BUS_PREDECESSOR="$predecessor_stem"
         do_arm "$session" "$doc" "$fill_signal" "$log"
     fi
 }

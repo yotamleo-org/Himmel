@@ -2192,4 +2192,34 @@ check "43 headless console --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the console --settings (HIMMEL-4052)" "$out43" "--settings"
 
+# --- bb (HIMMEL-4832): HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
+# the session name via `bus bind <name> <pid>`. The bus CLI is a recording stub
+# (HEADED_ARM_BUS_CLI); the flag is consumed, never leaked into the session.
+dbb="$tmp/cbb"; mk_stub "$dbb" 1 alive "HIMMEL-busbb"
+cat > "$dbb/bus" <<'BUS_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/bus-calls"
+[ -z "${BUS_STUB_FAIL:-}" ]
+BUS_EOF
+chmod 755 "$dbb/bus"
+rcbb=0
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbb/bus" run_headed_arm "$dbb" "$REPO" "HIMMEL-busbb" "docbb.md" "$dbb/signal-never" "$PAST" >/dev/null 2>&1 || rcbb=$?
+wait_record "$dbb" || true
+check "bba bind: launch exit 0" "$rcbb" "0"
+check "bbb bind: bus bind <name> <confirmed pid> called exactly once" "$(cat "$dbb/bus-calls" 2>/dev/null)" "bind HIMMEL-busbb 9001"
+dbbb="$tmp/cbbb"; mk_stub "$dbbb" 1 alive "HIMMEL-busbbb"
+cp "$dbb/bus" "$dbbb/bus"
+rcbbb=0
+HEADED_ARM_BUS_CLI="$dbbb/bus" run_headed_arm "$dbbb" "$REPO" "HIMMEL-busbbb" "docbb.md" "$dbbb/signal-never" "$PAST" >/dev/null 2>&1 || rcbbb=$?
+wait_record "$dbbb" || true
+check "bbc no flag: launch exit 0" "$rcbbb" "0"
+check "bbd no flag: bus is never called" "$([ -e "$dbbb/bus-calls" ] && echo called || echo none)" "none"
+dbbc="$tmp/cbbc"; mk_stub "$dbbc" 1 alive "HIMMEL-busbbc"
+cp "$dbb/bus" "$dbbc/bus"
+rcbbc=0
+BUS_STUB_FAIL=1 HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbbc/bus" run_headed_arm "$dbbc" "$REPO" "HIMMEL-busbbc" "docbb.md" "$dbbc/signal-never" "$PAST" >/dev/null 2>&1 || rcbbc=$?
+wait_record "$dbbc" || true
+check "bbe failed bind: launch still exits 0" "$rcbbc" "0"
+contains "bbf failed bind: warned into the arm log" "$(cat "$dbbc/log" 2>/dev/null)" "bus bind of HIMMEL-busbbc to pid 9001 failed"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
