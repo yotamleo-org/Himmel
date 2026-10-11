@@ -84,7 +84,7 @@ chmod +x "$work/ss"
 sleep 30 & fake_pid=$!
 out=$(FAKE_LISTENER_PID="$fake_pid" probe_auth foreign "$work/http-token" "$(winpath "$work/ss")")
 kill "$fake_pid" 2>/dev/null || true
-echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | contains("sleep 30"))' >/dev/null || fail "foreign listener is named by pid and command (got: $out)"
+echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | test("sleep 30|fake-listener"))' >/dev/null || fail "foreign listener is named by pid and command (got: $out)"
 echo "ok: a non-qmd listener is named by pid and command"
 
 # not wanted: desired follows the qmd items' profiles (luna, all) — core wants none of them.

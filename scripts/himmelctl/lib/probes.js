@@ -1165,6 +1165,8 @@ function describeQmdListener(url, env) {
   for (const line of String(r.stdout || '').split(/\r?\n/)) {
     const f = line.trim().split(/\s+/);
     if (!(f[3] && f[3].endsWith(`:${port}`))) continue;
+    // loopback or wildcard only: a listener on another address is not what the URL reaches
+    if (!['127.0.0.1', '[::1]', '*', '0.0.0.0', '[::]'].includes(f[3].slice(0, f[3].lastIndexOf(':')))) continue;
     const m = /pid=([0-9]+)/.exec(line);
     if (!m) return '';
     let cmd = '';
