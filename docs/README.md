@@ -10,6 +10,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
 - [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / advisory, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
+- [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config console, the console board, and the roadmap tracker; what each is, how to start it, where it opens.
 
 ## Setup
 
@@ -81,6 +82,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tool-adoption/registry.md](tool-adoption/registry.md) — every evaluated tool, recorded.
 - [tool-adoption/telemetry.md](tool-adoption/telemetry.md) — adoption-outcome telemetry for the registry.
 - [license-audit.md](license-audit.md) · [skills-taxonomy-audit.md](skills-taxonomy-audit.md) — audits.
+- [third-party-licenses.md](third-party-licenses.md) — the third-party license audit of direct npm dependencies.
 
 ## Publishing these docs (GitHub Pages)
 

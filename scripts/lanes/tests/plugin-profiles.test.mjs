@@ -118,6 +118,8 @@ for (const name of ['operator', 'user', 'bare']) {
       // the design profile.
       'handover@himmel', 'himmel-ops@himmel', 'qmd@himmel', 'pr-review-toolkit-himmel@himmel',
       'lean-skills@himmel',
+      // HIMMEL-5239: i-have-adhd@himmel rides base beside lean-skills.
+      'i-have-adhd@himmel',
       // HIMMEL-4018: the operator's interactive profile works the vault.
       'obsidian-second-brain@himmel',
     ];

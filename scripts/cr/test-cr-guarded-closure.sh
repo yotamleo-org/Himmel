@@ -112,7 +112,8 @@ edges() {
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/bank-preflight.sh -> scripts/lanes/codex-bank-probe.ts
-scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-bank-probe.ts"
+scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-bank-probe.ts
+scripts/cr/live-gate-e2e.sh -> scripts/handover/console-kit/ready-check.sh"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY

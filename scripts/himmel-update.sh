@@ -832,6 +832,22 @@ reconcile_plugins() {
     return 0
 }
 
+# ─── i-have-adhd always-on flag (HIMMEL-5239) ────────────────────────────────
+# Delegated to scripts/machine-setup/enable-i-have-adhd-always.sh, which owns the
+# contract (idempotent; HIMMEL_NO_ADHD_ALWAYS=1 opts out and is never recreated
+# over). Best-effort: never fails an update.
+enable_adhd_always() {
+    local mode="$1"   # check | apply
+    local script="$ROOT/scripts/machine-setup/enable-i-have-adhd-always.sh"
+    [ -f "$script" ] || return 0
+    if [ "$mode" = apply ]; then
+        bash "$script" || true
+    else
+        bash "$script" --check || true
+    fi
+    return 0
+}
+
 # ─── retired-plugin removal offer (HIMMEL-2033) ─────────────────────────
 # Delegated to scripts/machine-setup/remove-retired-plugin.sh, which owns the
 # contract (silent when absent; prompt with DEFAULT=remove on a TTY; advisory
@@ -2876,6 +2892,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     esac
     report_plugin_gap
     reconcile_plugins check
+    enable_adhd_always check
     offer_retired_plugin_removal check
     # `|| true` on each: check mode is READ-ONLY reporting and must never
     # abort under set -e. STATUS_* is already set as a side effect before
@@ -3074,6 +3091,7 @@ sync_marketplaces
 update_installed_plugins apply
 report_plugin_gap
 reconcile_plugins apply
+enable_adhd_always apply
 offer_retired_plugin_removal apply
 report_cadence_stale
 report_qmd_bun_missing
