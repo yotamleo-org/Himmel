@@ -5612,7 +5612,7 @@ tool-driven routes to forged or leaked bus state cost a denial; direct writes ar
 | a word that can spell `bus` without writing it: `b''us`, `b?s`, `b[u]s`, `b*s`, `b{u,x}s`, `b${x}us`, `$'\x62'us`, `b$(true)us`, ``b`true`us``, `b""us`; a glob or expansion right under `himmel/` | per path component, quotes and parens dropped, each expansion or command substitution replaced by `*`, then glob-matched against `bus`; the early exit lets any payload with a quote (a JSON-escaped `\"` included), backtick, `$`, glob character, backslash or brace through to these rules |
 | a path spelled with `//` or `/./` (`himmel//bus`, `himmel/./bus`) | repeated slashes and `/./` are collapsed before matching |
 | `bus register`, `bus bind`, `bus rebind` | a bounded `bus` word, then a bounded verb later in the same segment (split on `;` `&` `|` newline), so `bin/bus register`, `bus --role leg register x`, `bus 'register' x` and `"bus" register x` count; `bus send c /tmp/register.txt` does not |
-| assigning `HIMMEL_BUS_*` (`X=1 cmd`, `export`, `env`) | `HIMMEL_BUS_<name>=`; reading one is not an assignment |
+| assigning `HIMMEL_BUS_*` (`X=1 cmd`, `export`, `env`) | `HIMMEL_BUS_<name>=` (`+=` too) in the raw text and in the quote- and backslash-stripped text (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_NA\ME=x`); a non-plain word holding `=` is run through the same normaliser, and its name part (before the first `=`) is denied when it glob-matches a `HIMMEL_BUS_*` variable the repo uses or the pattern `HIMMEL_BUS_*` (`HIMMEL_BUS_${x}=1`, `HIM${y}EL_BUS_NAME=x`, `$'HIMMEL_BUS_NAME=x'`); a name with no literal character (`env "$K=$V" cmd`) is a residual (HIMMEL-5206); reading one is not an assignment |
 | Write/Edit/MultiEdit/NotebookEdit on a path under the bus root | the path text, or its `readlink -m` resolution |
 
 `bus status|peers|wait|send|adopt` and everything else stay allowed, silently.
@@ -5633,7 +5633,8 @@ path held in a shell variable (`v=register; bus $v x`), and the Read/Grep tools
 (not wired to this hook) all get past it. Conversely the guard over-denies, in
 the safe direction: a command that merely quotes the root (a `git grep`, a PR
 body), a verb word after a bus-able word in the same segment (`bus send ...
---summary "rebind done"`), a glob or expansion under `himmel/`, and any word
+--summary "rebind done"`; `bus send c b*`, a glob or expansion word that could
+expand to a verb), a glob or expansion under `himmel/`, and any word
 that can expand to `bus` (`*`, `b?s`, `$x`) once the cwd or command names the
 state dir. A same-uid process that re-chains the log is undetected until phase 2.
 

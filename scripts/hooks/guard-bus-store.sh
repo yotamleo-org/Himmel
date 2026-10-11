@@ -23,7 +23,9 @@
 #         the launcher owns; `bus` bounded the same way, so `bin/bus register`
 #         counts).
 #     (c) assigns a HIMMEL_BUS_* variable (`HIMMEL_BUS_NAME=x claude`, `export
-#         ...`, `env ...`). Mentioning one (`echo $HIMMEL_BUS_NAME`,
+#         ...`, `env ...`), including a name built by quoting or expansion
+#         (`HIMMEL_BUS_"NAME"=x`, `HIMMEL_BUS_${x}=1`, `$'HIMMEL_BUS_NAME=x'`).
+#         Mentioning one (`echo $HIMMEL_BUS_NAME`,
 #         `git grep HIMMEL_BUS_NAME`) is not an assignment and stays allowed.
 #   Edit|Write|MultiEdit|NotebookEdit — file_path (notebook_path) names the bus
 #     root textually, or resolves to it (`readlink -m`: `..` segments and
@@ -249,6 +251,43 @@ verb_after_bus() {
     return 1
 }
 
+# Every HIMMEL_BUS_* variable the repo uses. Source:
+#   git grep -ho 'HIMMEL_BUS_[A-Z_]*' -- scripts marketplace/plugins/himmel-bus
+# (HIMMEL_BUS_NAME; the bare `HIMMEL_BUS_` hits are the prefix in prose). A name
+# that matches none of these still falls to the `HIMMEL_BUS_*` pattern test.
+BUS_ENV_NAMES='HIMMEL_BUS_NAME'
+
+# env_assign_word <text>: a segment word that is not plain, holds `=`, and whose
+# normalised name part (before the first `=`, trailing `+` dropped, at least one
+# literal char surviving) can be a HIMMEL_BUS_* variable: `HIMMEL_BUS_${x}=1`,
+# `HIM${y}EL_BUS_NAME=x`, `$'HIMMEL_BUS_NAME=x'`. A bare `"$k=$v"` has no
+# literal char and is the documented residual (HIMMEL-5206). Plain words are
+# the raw/quote-stripped ENV_RE's job.
+env_assign_word() {
+    local seg word words name lit v
+    while IFS= read -r seg; do
+        read -ra words <<< "$seg"
+        [ "${#words[@]}" -gt 0 ] || continue
+        for word in "${words[@]}"; do
+            [[ "$word" == *=* ]] || continue
+            [[ "$word" =~ $PLAIN_RE ]] || continue
+            normword "$word"
+            [[ "$NW" == *=* ]] || continue
+            name=${NW%%=*}
+            name=${name%+}
+            lit=${name//[\*\?\[\]]/}
+            [ -n "$lit" ] || continue
+            # shellcheck disable=SC2053  # the glob match is the point
+            [[ $name == HIMMEL_BUS_* ]] && return 0
+            for v in $BUS_ENV_NAMES HIMMEL_BUS_ HIMMEL_BUS_x; do
+                # shellcheck disable=SC2053  # the glob match is the point
+                [[ $v == $name ]] && return 0
+            done
+        done
+    done <<< "$(printf '%s' "$1" | tr ';&|' '\n')"
+    return 1
+}
+
 deny() {
     local msg reason
     msg="bus store-deny: $1. himmel-bus keeps its store off-limits to a session's own tool calls (speed bump, HIMMEL-4829). Allowed: bus status|peers|wait|send|adopt. Registration is the launcher's. Bypass: BUS_STORE_GUARD_OK=1 in the launching shell."
@@ -310,7 +349,8 @@ case "$tool" in
         fi
         # Identity verbs, per segment (; & | newline).
         verb_after_bus "$cmd" && deny "bus register|bind|rebind is the launcher's, not a session's"
-        [[ "$cmd" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
+        [[ "$cmd" =~ $ENV_RE || "$cmd_q" =~ $ENV_RE ]] && deny "a session does not set HIMMEL_BUS_* for itself or a child"
+        env_assign_word "$cmd" && deny "a session does not set HIMMEL_BUS_* for itself or a child (name built by quoting or expansion)"
         ;;
     Edit|Write|MultiEdit|NotebookEdit)
         path=$(printf '%s' "$input" | jq -er '(.tool_input.file_path // .tool_input.notebook_path) | strings' 2>/dev/null) || raw_scan
