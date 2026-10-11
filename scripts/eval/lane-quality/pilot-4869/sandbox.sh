@@ -132,12 +132,35 @@ if [ "$mode" != check ]; then
   if [ "$mode" != argv ] && [ ! -s "$WT/.claude/settings.json" ]; then
     printf '{}\n' >"$ps_src" || die "cannot write $ps_src"
   fi
+  # The project hooks execute scripts under $CLAUDE_PROJECT_DIR, which in the jail is the writable
+  # worktree: a row could overwrite one with `exit 0`, act with every hook passing, then restore
+  # it and leave a clean final-state diff. So every tree the settings' hook commands reference
+  # comes back read-only too (derived from the settings, not hard-coded). Anything those scripts
+  # source from a tree the settings never name stays writable.
+  # ponytail: one level of reference, no transitive closure; upgrade path HIMMEL-5200 follow-up
+  hk=""
+  refs="$(jq -r '[.. | .command? // empty | strings] | .[]' "$ps_src" 2>/dev/null \
+    | grep -oE 'CLAUDE_PROJECT_DIR\}?/[A-Za-z0-9_./-]+' | sed -E 's#^CLAUDE_PROJECT_DIR\}?/##' | sort -u)" || refs=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in /*|..|../*|*/..|*/../*) die "settings.json hook command names $f outside the worktree" ;; esac
+    t="$(dirname "$f")"; [ "$t" != . ] || t="$f"
+    case "$t" in .claude|.claude/*) continue ;; esac
+    { [ -e "$WT/$t" ] && [ ! -L "$WT/$t" ]; } || die "$WT/$t (a hook-executed path) is missing or a symlink"
+    if [ -d "$WT/$t" ] && [ -n "$(find "$WT/$t" -type l 2>/dev/null | head -1)" ]; then
+      die "$WT/$t holds a symlink (its target would stay writable)"
+    fi
+    case " $hk " in *" $t "*) ;; *) hk="$hk $t" ;; esac
+  done <<EOF
+$refs
+EOF
   for base in "$WT" "$JWT"; do
     # .claude itself becomes a mount point (a bind onto itself): a directory that is one cannot
     # be renamed or removed, so the row cannot swap in its own .claude around the file binds
     A+=(--bind "$WT/.claude" "$base/.claude")
     A+=(--ro-bind "$ps_src" "$base/.claude/settings.json" --ro-bind "$WT/.claude/settings.local.json" "$base/.claude/settings.local.json")
     [ ! -d "$WT/.claude/hooks" ] || A+=(--ro-bind "$WT/.claude/hooks" "$base/.claude/hooks")
+    for t in $hk; do A+=(--ro-bind "$WT/$t" "$base/$t"); done
   done
 fi
 

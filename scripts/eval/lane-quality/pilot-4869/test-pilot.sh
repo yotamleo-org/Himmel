@@ -300,7 +300,42 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   check 'live: the .claude dir cannot be renamed away from the jail (no swapped-in settings.json), at either path' '[ "$w9" != 0 ] && [ "$w10" != 0 ] && [ -f "$wt/.claude/settings.local.json" ] && [ ! -e "$wt/.claude-away" ]'
   rm -rf "$wt/.claude-away"
 fi
-rm -rf "$wt/.claude/hooks" "$wt/.claude/settings.json"
+# HIMMEL-5200 (judge j2359a): the trees the settings' hook commands execute are the same hole one
+# level down. A row that overwrites scripts/lib/run-node.sh, acts, then restores it leaves a clean
+# final-state diff, so each referenced tree is bound read-only too, at both paths, after the rw bind.
+mkdir -p "$wt/scripts/hooks" "$wt/scripts/lib" "$wt/scripts/other"
+echo ': g' >"$wt/scripts/hooks/g.sh"; echo ': r' >"$wt/scripts/lib/run-node.sh"; echo ': o' >"$wt/scripts/other/o.sh"
+cat >"$wt/.claude/settings.json" <<'EOS'
+{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"${CLAUDE_PROJECT_DIR}/scripts/hooks/g.sh\"; fi"}]}]}}
+EOS
+a5200h="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
+ro_tree() { printf '%s\n' "$a5200h" | awk -v p="$1" -v d="$2" -v j="$3" -v w="$wt" '
+  { l[NR] = $0 }
+  END { for (i = 1; i <= NR; i++) {
+          if (l[i] == "--bind" && l[i+1] == w && l[i+2] == j) rw = i
+          if (l[i] == "--ro-bind" && l[i+1] == p && l[i+2] == d) ro = i }
+        exit !(rw && ro && ro > rw) }'; }
+for tt in scripts/hooks scripts/lib; do
+  check "the jail binds the hook-executed $tt read-only after the rw bind, at its host path" 'ro_tree "$wt/$tt" "$wt/$tt" "$wt"'
+  check "the jail binds the hook-executed $tt read-only after the rw bind, at its jail path" 'ro_tree "$wt/$tt" "$JW5200/$tt" "$JW5200"'
+done
+check 'a tree no hook command names stays writable (not bound read-only)' '! printf "%s\n" "$a5200h" | grep -qxF "$wt/scripts/other"'
+ln -s "$TMP/secret" "$wt/scripts/lib/link.sh"
+check 'a symlink inside a hook-executed tree is refused (its target would stay writable)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -f "$wt/scripts/lib/link.sh"
+mv "$wt/scripts/hooks" "$wt/scripts/hooks.hold"
+check 'a hook command naming a tree that is absent from the worktree is refused (fail closed)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+mv "$wt/scripts/hooks.hold" "$wt/scripts/hooks"
+if bwrap --ro-bind / / true 2>/dev/null; then
+  jw "echo 'exit 0' >\"$wt/scripts/lib/run-node.sh\""; h1=$?
+  jw "echo 'exit 0' >\"$JW5200/scripts/lib/run-node.sh\""; h2=$?
+  jw "echo x >\"$JW5200/scripts/hooks/g.sh\""; h3=$?
+  jw "mv \"$wt/scripts/lib\" \"$wt/scripts/lib-away\""; h4=$?
+  check 'live: a hook-executed script cannot be overwritten, edited or its tree renamed from the jail' '[ "$h1" != 0 ] && [ "$h2" != 0 ] && [ "$h3" != 0 ] && [ "$h4" != 0 ] && [ "$(cat "$wt/scripts/lib/run-node.sh")" = ": r" ] && [ "$(cat "$wt/scripts/hooks/g.sh")" = ": g" ]'
+  jw "echo x >\"$wt/scripts/other/o2.sh\""; h5=$?
+  check 'live: control, a write to a tree no hook names still succeeds' '[ "$h5" = 0 ] && [ -f "$wt/scripts/other/o2.sh" ]'
+fi
+rm -rf "$wt/scripts" "$wt/.claude/hooks" "$wt/.claude/settings.json"
 [ "$had5200" = 0 ] || cp -p "$TMP/p5200.settings" "$wt/.claude/settings.json"
 # The real launchers: --seed-only seeds and never launches, a current seed is not
 # rewritten (the jail binds it read-only), and the normal path is unchanged.
