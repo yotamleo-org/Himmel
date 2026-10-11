@@ -8,7 +8,7 @@
         "scripts/hooks/check-agents-md-fresh.sh"
       ],
       "bypasses": "Skips the \"check agents md fresh\" guard (scripts/hooks/check-agents-md-fresh.sh).",
-      "remedy": "AGENTS_MD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "AGENTS_MD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "BRANCH_NAME_OK",
@@ -16,7 +16,7 @@
         "scripts/hooks/check-push-target.sh"
       ],
       "bypasses": "Lets a push create a NEW branch whose name is outside type/slug, the handover ticket form and claude/* (scripts/hooks/check-push-target.sh).",
-      "remedy": "BRANCH_NAME_OK=1 git push ...   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "BRANCH_NAME_OK=1 git push ...   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "BUS_STORE_GUARD_OK",
@@ -24,7 +24,7 @@
         "scripts/hooks/guard-bus-store.sh"
       ],
       "bypasses": "Lets a session's Bash/Write/Edit reach the himmel-bus store, call bus register|bind|rebind, or set HIMMEL_BUS_* (a speed bump, not a fence).",
-      "remedy": "BUS_STORE_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "BUS_STORE_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CADENCE_POWERSHELL_OK",
@@ -32,7 +32,7 @@
         "scripts/hooks/cadence-deny-powershell.sh"
       ],
       "bypasses": "Skips the \"cadence deny powershell\" guard (scripts/hooks/cadence-deny-powershell.sh).",
-      "remedy": "CADENCE_POWERSHELL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CADENCE_POWERSHELL_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CI_MERGE_GATE_OK",
@@ -40,7 +40,7 @@
         "scripts/hooks/block-unresolved-cr-merge.sh"
       ],
       "bypasses": "Lets a PR merge while CI is not green.",
-      "remedy": "CI_MERGE_GATE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CI_MERGE_GATE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CODEX_EXEC_RAW_OK",
@@ -48,7 +48,7 @@
         "scripts/hooks/block-rogue-codex-exec.sh"
       ],
       "bypasses": "Skips the \"block rogue codex exec\" guard (scripts/hooks/block-rogue-codex-exec.sh).",
-      "remedy": "CODEX_EXEC_RAW_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CODEX_EXEC_RAW_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CODEX_EXTERNAL_WRITES_OK",
@@ -56,7 +56,7 @@
         "scripts/hooks/block-terminal-write-fence.sh"
       ],
       "bypasses": "Skips the \"block terminal write fence\" guard (scripts/hooks/block-terminal-write-fence.sh).",
-      "remedy": "CODEX_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CODEX_EXTERNAL_WRITES_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CODEX_WSL_RAW_OK",
@@ -64,7 +64,7 @@
         "scripts/hooks/block-rogue-codex-wsl.sh"
       ],
       "bypasses": "Skips the \"block rogue codex wsl\" guard (scripts/hooks/block-rogue-codex-wsl.sh).",
-      "remedy": "CODEX_WSL_RAW_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CODEX_WSL_RAW_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CONSOLE_DISPATCH_OK",
@@ -72,7 +72,7 @@
         "scripts/hooks/guard-console-dispatch.sh"
       ],
       "bypasses": "Skips the \"guard console dispatch\" guard (scripts/hooks/guard-console-dispatch.sh).",
-      "remedy": "CONSOLE_DISPATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CONSOLE_DISPATCH_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "CR_MERGE_GATE_OK",
@@ -80,7 +80,7 @@
         "scripts/hooks/block-unresolved-cr-merge.sh"
       ],
       "bypasses": "Lets a PR merge through with unresolved CodeRabbit threads.",
-      "remedy": "CR_MERGE_GATE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "CR_MERGE_GATE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "DESTRUCTIVE_OK",
@@ -88,7 +88,7 @@
         "scripts/hooks/block-destructive-commands.sh"
       ],
       "bypasses": "Lets destructive shell commands (rm -rf and similar) through.",
-      "remedy": "DESTRUCTIVE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "DESTRUCTIVE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "DOCKER_PRIVESC_OK",
@@ -96,7 +96,7 @@
         "scripts/hooks/block-docker-privesc.sh"
       ],
       "bypasses": "Skips the \"block docker privesc\" guard (scripts/hooks/block-docker-privesc.sh).",
-      "remedy": "DOCKER_PRIVESC_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "DOCKER_PRIVESC_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "DOCTOR_CHECK_IDS_OK",
@@ -104,7 +104,7 @@
         "scripts/hooks/check-doctor-check-ids.sh"
       ],
       "bypasses": "Skips the \"check doctor check ids\" guard (scripts/hooks/check-doctor-check-ids.sh).",
-      "remedy": "DOCTOR_CHECK_IDS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "DOCTOR_CHECK_IDS_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "DOC_GUARD_OK",
@@ -113,7 +113,7 @@
         "scripts/hooks/check-doc-guard.sh"
       ],
       "bypasses": "Skips the \"check doc guard\" guard (scripts/hooks/check-doc-guard.sh).",
-      "remedy": "DOC_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "DOC_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "EDIT_LIVE_SETTINGS_OK",
@@ -121,7 +121,7 @@
         "scripts/hooks/block-edit-live-settings.sh"
       ],
       "bypasses": "Skips the \"block edit live settings\" guard (scripts/hooks/block-edit-live-settings.sh).",
-      "remedy": "EDIT_LIVE_SETTINGS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "EDIT_LIVE_SETTINGS_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "EDIT_ON_MAIN_OK",
@@ -133,7 +133,7 @@
         "scripts/hooks/inject-worktree-nudge.sh"
       ],
       "bypasses": "Lets Edit/Write and commits land on the main branch of a repo.",
-      "remedy": "EDIT_ON_MAIN_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "EDIT_ON_MAIN_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "ENV_PREFIX_GUARD_OK",
@@ -141,7 +141,7 @@
         "scripts/hooks/block-chokepoint-env-prefix.sh"
       ],
       "bypasses": "Skips the \"block chokepoint env prefix\" guard (scripts/hooks/block-chokepoint-env-prefix.sh).",
-      "remedy": "ENV_PREFIX_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "ENV_PREFIX_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "FIND_ROOTWALK_OK",
@@ -149,7 +149,7 @@
         "scripts/hooks/auto-approve-safe-bash.sh"
       ],
       "bypasses": "Skips the \"auto approve safe bash\" guard (scripts/hooks/auto-approve-safe-bash.sh).",
-      "remedy": "FIND_ROOTWALK_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "FIND_ROOTWALK_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "GIT_STASH_OK",
@@ -157,7 +157,7 @@
         "scripts/hooks/block-git-stash.sh"
       ],
       "bypasses": "Lets bare git stash through (the stash stack is shared across worktrees).",
-      "remedy": "GIT_STASH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "GIT_STASH_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "GLM_EXTERNAL_WRITES_OK",
@@ -167,7 +167,7 @@
         "scripts/hooks/wire-plugin-hook-bash.mjs"
       ],
       "bypasses": "Skips the \"block glm external writes\" guard (scripts/hooks/block-glm-external-writes.sh).",
-      "remedy": "GLM_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "GLM_EXTERNAL_WRITES_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "GRAPH_COMMIT_OK",
@@ -175,7 +175,7 @@
         "scripts/hooks/check-graph-artifact-branch.sh"
       ],
       "bypasses": "Skips the \"check graph artifact branch\" guard (scripts/hooks/check-graph-artifact-branch.sh).",
-      "remedy": "GRAPH_COMMIT_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "GRAPH_COMMIT_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HERMES_EXTERNAL_WRITES_OK",
@@ -183,7 +183,7 @@
         "scripts/hooks/block-terminal-write-fence.sh"
       ],
       "bypasses": "Skips the \"block terminal write fence\" guard (scripts/hooks/block-terminal-write-fence.sh).",
-      "remedy": "HERMES_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "HERMES_EXTERNAL_WRITES_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HIMMEL_HOOK_INTEGRITY_BYPASS_OK",
@@ -192,7 +192,7 @@
         "scripts/hooks/hook-integrity.js"
       ],
       "bypasses": "Skips the \"block glm external writes\" guard (scripts/hooks/block-glm-external-writes.sh).",
-      "remedy": "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HIMMEL_READ_CLAMP_OK",
@@ -200,7 +200,7 @@
         "scripts/hooks/read-clamp.sh"
       ],
       "bypasses": "Skips the \"read clamp\" guard (scripts/hooks/read-clamp.sh).",
-      "remedy": "HIMMEL_READ_CLAMP_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "HIMMEL_READ_CLAMP_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HIMMEL_WEBFETCH_WALLED_OK",
@@ -208,7 +208,7 @@
         "scripts/hooks/redirect-webfetch-walled-hosts.sh"
       ],
       "bypasses": "Skips the \"redirect webfetch walled hosts\" guard (scripts/hooks/redirect-webfetch-walled-hosts.sh).",
-      "remedy": "HIMMEL_WEBFETCH_WALLED_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "HIMMEL_WEBFETCH_WALLED_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HOOKSPATH_OK",
@@ -217,7 +217,7 @@
         "scripts/hooks/check-hookspath.sh"
       ],
       "bypasses": "Skips the \"check hookspath\" guard (scripts/hooks/check-hookspath.sh).",
-      "remedy": "HOOKSPATH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "HOOKSPATH_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "HOOK_OK",
@@ -233,7 +233,7 @@
         "scripts/hooks/guard-implementor-dispatch.sh"
       ],
       "bypasses": "Skips the \"guard implementor dispatch\" guard (scripts/hooks/guard-implementor-dispatch.sh).",
-      "remedy": "IMPL_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "IMPL_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "INLINE_IMPL_OK",
@@ -241,7 +241,7 @@
         "scripts/hooks/orchestrator-inline-guard.sh"
       ],
       "bypasses": "Skips the \"orchestrator inline guard\" guard (scripts/hooks/orchestrator-inline-guard.sh).",
-      "remedy": "INLINE_IMPL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "INLINE_IMPL_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "INPLACE_OK",
@@ -257,7 +257,7 @@
         "scripts/hooks/block-jira-compound-write.sh"
       ],
       "bypasses": "Skips the \"block jira compound write\" guard (scripts/hooks/block-jira-compound-write.sh).",
-      "remedy": "JIRA_COMPOUND_WRITE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "JIRA_COMPOUND_WRITE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "LANES_GUARD_OK",
@@ -265,7 +265,7 @@
         "scripts/hooks/check-lanes-inventory.sh"
       ],
       "bypasses": "Skips the \"check lanes inventory\" guard (scripts/hooks/check-lanes-inventory.sh).",
-      "remedy": "LANES_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "LANES_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "LEG_CONTEXT_HANDOFF_OK",
@@ -273,7 +273,7 @@
         "scripts/hooks/guard-leg-context-handoff.sh"
       ],
       "bypasses": "Lets a console-spawned leg launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first.",
-      "remedy": "LEG_CONTEXT_HANDOFF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "LEG_CONTEXT_HANDOFF_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MAIN_REF_TRANSACTION_OK",
@@ -281,7 +281,7 @@
         "scripts/hooks/check-main-ref-transaction.sh"
       ],
       "bypasses": "Skips the \"check main ref transaction\" guard (scripts/hooks/check-main-ref-transaction.sh).",
-      "remedy": "MAIN_REF_TRANSACTION_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MAIN_REF_TRANSACTION_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MCP_ALL_OK",
@@ -289,7 +289,7 @@
         "scripts/hooks/block-backend-tier.sh"
       ],
       "bypasses": "Lets every MCP service call through block-backend-tier (global form of the per-service MCP_<SERVICE>_OK flags).",
-      "remedy": "MCP_ALL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MCP_ALL_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MCP_BITBUCKET_OK",
@@ -297,7 +297,7 @@
         "scripts/hooks/block-backend-tier.sh"
       ],
       "bypasses": "Skips the \"block backend tier\" guard (scripts/hooks/block-backend-tier.sh).",
-      "remedy": "MCP_BITBUCKET_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MCP_BITBUCKET_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MCP_CONFLUENCE_OK",
@@ -305,7 +305,7 @@
         "scripts/hooks/block-backend-tier.sh"
       ],
       "bypasses": "Skips the \"block backend tier\" guard (scripts/hooks/block-backend-tier.sh).",
-      "remedy": "MCP_CONFLUENCE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MCP_CONFLUENCE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MCP_GITHUB_OK",
@@ -313,7 +313,7 @@
         "scripts/hooks/block-backend-tier.sh"
       ],
       "bypasses": "Skips the \"block backend tier\" guard (scripts/hooks/block-backend-tier.sh).",
-      "remedy": "MCP_GITHUB_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MCP_GITHUB_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MCP_JIRA_OK",
@@ -321,7 +321,7 @@
         "scripts/hooks/block-backend-tier.sh"
       ],
       "bypasses": "Skips the \"block backend tier\" guard (scripts/hooks/block-backend-tier.sh).",
-      "remedy": "MCP_JIRA_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MCP_JIRA_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MEMORY_CAPTURE_OK",
@@ -329,7 +329,7 @@
         "scripts/hooks/guard-memory-capture.sh"
       ],
       "bypasses": "Skips the \"guard memory capture\" guard (scripts/hooks/guard-memory-capture.sh).",
-      "remedy": "MEMORY_CAPTURE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MEMORY_CAPTURE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "MERGED_PR_COMMIT_OK",
@@ -337,7 +337,7 @@
         "scripts/hooks/block-merged-pr-commit.sh"
       ],
       "bypasses": "Skips the \"block merged pr commit\" guard (scripts/hooks/block-merged-pr-commit.sh).",
-      "remedy": "MERGED_PR_COMMIT_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "MERGED_PR_COMMIT_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "NEW_SHELL_PLATFORM_GUARD_OK",
@@ -345,7 +345,7 @@
         "scripts/hooks/check-new-shell-platform-guard.sh"
       ],
       "bypasses": "Skips the \"check new shell platform guard\" guard (scripts/hooks/check-new-shell-platform-guard.sh).",
-      "remedy": "NEW_SHELL_PLATFORM_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "NEW_SHELL_PLATFORM_GUARD_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "PLATFORMS_TESTED_OK",
@@ -354,7 +354,7 @@
         "scripts/hooks/check-platforms-tested.sh"
       ],
       "bypasses": "Skips the \"check hookspath\" guard (scripts/hooks/check-hookspath.sh).",
-      "remedy": "PLATFORMS_TESTED_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "PLATFORMS_TESTED_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "PR_CHECK_ARGS_OK",
@@ -362,7 +362,7 @@
         "scripts/hooks/block-pr-check-args.sh"
       ],
       "bypasses": "Skips the \"block pr check args\" guard (scripts/hooks/block-pr-check-args.sh).",
-      "remedy": "PR_CHECK_ARGS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "PR_CHECK_ARGS_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "PUSH_FOREIGN_REF_OK",
@@ -370,7 +370,7 @@
         "scripts/hooks/check-cr-before-push.sh"
       ],
       "bypasses": "Skips the \"check cr before push\" guard (scripts/hooks/check-cr-before-push.sh).",
-      "remedy": "PUSH_FOREIGN_REF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "PUSH_FOREIGN_REF_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "QMD_UNBOUNDED_OK",
@@ -378,7 +378,7 @@
         "scripts/hooks/block-bare-qmd-query.sh"
       ],
       "bypasses": "Skips the \"block bare qmd query\" guard (scripts/hooks/block-bare-qmd-query.sh).",
-      "remedy": "QMD_UNBOUNDED_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "QMD_UNBOUNDED_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "QUIET_RUN_BYPASS",
@@ -386,7 +386,7 @@
         "scripts/hooks/require-quiet-run.sh"
       ],
       "bypasses": "Lets a bare repo test-suite run through instead of requiring scripts/quiet-run.sh.",
-      "remedy": "QUIET_RUN_BYPASS=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "QUIET_RUN_BYPASS=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "READ_SECRETS_OK",
@@ -395,7 +395,7 @@
         "scripts/hooks/check-hookspath.sh"
       ],
       "bypasses": "Lets the agent read files the secret-read guard protects (.env and similar).",
-      "remedy": "READ_SECRETS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "READ_SECRETS_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "ROGUE_SCHEDULE_OK",
@@ -403,7 +403,7 @@
         "scripts/hooks/block-rogue-claude-schedule.sh"
       ],
       "bypasses": "Skips the \"block rogue claude schedule\" guard (scripts/hooks/block-rogue-claude-schedule.sh).",
-      "remedy": "ROGUE_SCHEDULE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "ROGUE_SCHEDULE_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "SUBAGENT_MODEL_OK",
@@ -411,7 +411,7 @@
         "scripts/hooks/guard-subagent-model.sh"
       ],
       "bypasses": "Skips the \"guard subagent model\" guard (scripts/hooks/guard-subagent-model.sh).",
-      "remedy": "SUBAGENT_MODEL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "SUBAGENT_MODEL_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "TEMPLATE_VERSION_OK",
@@ -419,7 +419,7 @@
         "scripts/hooks/check-template-version.sh"
       ],
       "bypasses": "Skips the \"check template version\" guard (scripts/hooks/check-template-version.sh).",
-      "remedy": "TEMPLATE_VERSION_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "TEMPLATE_VERSION_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "UNCHECKED_MKTEMP_OK",
@@ -427,7 +427,7 @@
         "scripts/hooks/check-unchecked-mktemp.sh"
       ],
       "bypasses": "Skips the \"check unchecked mktemp\" guard (scripts/hooks/check-unchecked-mktemp.sh).",
-      "remedy": "UNCHECKED_MKTEMP_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "UNCHECKED_MKTEMP_OK=1 claude   # a per-call prefix reaches the pre-push hook"
     }
   ]
 }

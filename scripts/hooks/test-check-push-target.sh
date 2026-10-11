@@ -144,6 +144,18 @@ for b in wip-stuff bugfix/x feature/x fix/ fix/a/b handover/foo Fix/x; do
 "
 done
 
+echo "TEST: SHA-256 repo (64-zero remote oid) new invalid branch -> BLOCKED"
+ZERO64=0000000000000000000000000000000000000000000000000000000000000000
+SHA64=1111111111111111111111111111111111111111111111111111111111111111
+expect_blocked_name "sha256 new branch wip-stuff" \
+    run_raw "refs/heads/wip-stuff $SHA64 refs/heads/wip-stuff $ZERO64
+"
+
+echo "TEST: SHA-256 repo delete push of a legacy name -> PASS"
+expect_pass "sha256 delete legacy branch" \
+    run_raw "(delete) $ZERO64 refs/heads/wip-stuff $SHA64
+"
+
 echo "TEST: existing branch with a legacy name -> PASS (never retroactive)"
 expect_pass "existing legacy branch" \
     run_raw "refs/heads/wip-stuff $SHA refs/heads/wip-stuff $SHA

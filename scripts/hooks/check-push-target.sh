@@ -34,13 +34,20 @@ block_main() {
 # HIMMEL-5308: a NEW branch must be type/slug (feat|fix|chore|docs|refactor|
 # test), handover/<TICKET>-<slug> or claude/*. Checked only when a branch is
 # being created on the remote — never retroactively, never on a delete or a
-# tag. Single-run bypass: BRANCH_NAME_OK=1 in the launching shell.
+# tag. Single-run bypass: BRANCH_NAME_OK=1 git push.
 branch_name_ok() {
     case "$1" in
         claude/?*) return 0 ;;
     esac
     grep -Eq \
         '^((feat|fix|chore|docs|refactor|test)/[A-Za-z0-9][A-Za-z0-9._-]*|handover/[A-Z][A-Z0-9]*-[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*)$' <<<"$1"
+}
+
+is_zero_oid() {
+    case "$1" in
+        ''|*[!0]*) return 1 ;;
+    esac
+    return 0
 }
 
 check_new_branch_name() {
@@ -51,7 +58,7 @@ check_new_branch_name() {
     branch_name_ok "$branch" && return 0
     echo "ERROR: check-push-target: branch name '$branch' is not allowed for a new branch." >&2
     echo "       Use type/slug (feat|fix|chore|docs|refactor|test), handover/<TICKET>-<slug> or claude/<slug>." >&2
-    echo "       Rename: git branch -m <new-name>. Single-run bypass: BRANCH_NAME_OK=1 in the launching shell." >&2
+    echo "       Rename: git branch -m <new-name>. Single-run bypass: BRANCH_NAME_OK=1 git push." >&2
     exit 1
 }
 
@@ -63,12 +70,12 @@ if [ ! -t 0 ]; then
 fi
 
 if [ -n "$push_ref_lines" ]; then
-    zero_sha=0000000000000000000000000000000000000000
     while IFS=' ' read -r _local_ref local_sha remote_ref remote_sha; do
         [ -z "$remote_ref" ] && continue
         is_main_ref "$remote_ref" && block_main
-        # New branch = remote sha all zeros; a delete push has a zero local sha.
-        if [ "$remote_sha" = "$zero_sha" ] && [ "$local_sha" != "$zero_sha" ]; then
+        # New branch = remote sha all zeros (any length: SHA-1 or SHA-256); a
+        # delete push has a zero local sha.
+        if is_zero_oid "$remote_sha" && ! is_zero_oid "$local_sha"; then
             check_new_branch_name "$remote_ref"
         fi
     done <<REF_LINES
