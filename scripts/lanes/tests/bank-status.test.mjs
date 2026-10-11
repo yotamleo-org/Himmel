@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   formatBankAnnotation,
@@ -599,6 +599,23 @@ test('bank-status stays unmeasurable when the probe FAILS, and does not re-probe
   const second = runBankStatus(dir, { ...env, CODEX_BANK_PROBE_CMD: `node ${APPSERVER_STUB}` }).out;
   assert.match(second, /^claudex unknown unmeasurable reason="codex bank cache stale/m);
   assert.equal(existsSync(pidFile), false, 'probe was not re-run inside the backoff');
+});
+
+test('bank-status: a concurrent caller waits for the active refresh instead of reading the backoff stamp', { skip: BUN_SKIP }, async () => {
+  const dir = makeTmpDir('lane-bank-refresh-concurrent-');
+  const cache = staleCodexCache(dir);
+  const slow = join(dir, 'slow-codex.sh');
+  writeFileSync(slow, `#!/bin/sh\nsleep 2\nnode ${APPSERVER_STUB}\n`);
+  chmodSync(slow, 0o755);
+  const env = {
+    ...process.env, LANES_REGISTRY: fixtureRegistry(dir), HIMMEL_QUOTA_GAUGE_LEDGER: join(dir, 'none.jsonl'),
+    CODEX_BANK_CACHE: cache, CODEX_BANK_PROBE_CMD: slow,
+  };
+  const first = new Promise((resolve) => execFile('bun', [BANK_STATUS], { encoding: 'utf8', env, timeout: 60_000 }, (_e, out) => resolve(out)));
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800); // let the first caller take the lock and stamp
+  const second = execFileSync('bun', [BANK_STATUS], { encoding: 'utf8', env, timeout: 60_000 });
+  assert.match(second, /^claudex funded measured weekly used=20% free=80%/m);
+  assert.match(await first, /^claudex funded measured weekly used=20% free=80%/m);
 });
 
 test('bank-status stays unmeasurable, without spinning, when the cache directory is unwritable', { skip: BUN_SKIP || process.getuid?.() === 0 }, () => {

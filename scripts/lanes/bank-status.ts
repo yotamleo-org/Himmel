@@ -161,10 +161,16 @@ function refreshCodexCache(cachePath: string): void {
   const deadline = Date.now() + REFRESH_BOX_MS;
   try {
     mkdirSync(dirname(cachePath), { recursive: true });
-    if (existsSync(stamp) && Date.now() - statSync(stamp).mtimeMs < REFRESH_BACKOFF_MS) return;
+    // the backoff only covers a FINISHED attempt: while a lock is held the stamp is the
+    // active refresher's, and this caller waits for it instead of reading it as a failure
+    const stampAt = (): number => { try { return statSync(stamp).mtimeMs; } catch { return 0; } };
+    const stampOnEntry = stampAt();
+    if (!existsSync(lock) && Date.now() - stampOnEntry < REFRESH_BACKOFF_MS) return;
     for (;;) {
       try {
         mkdirSync(lock);
+        // a refresher finished while this caller waited: its result is re-read, not re-probed
+        if (stampAt() !== stampOnEntry) { rmSync(lock, { recursive: true, force: true }); return; }
         break;
       } catch (error) {
         // anything but "someone holds the lock" (unwritable dir, ...) cannot be waited out
