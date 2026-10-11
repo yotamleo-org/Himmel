@@ -770,26 +770,17 @@ g4_herestr_cred() {
 # fallback for a command the tokenizer would not read.
 g4_clause() {
     local -a g4w g4g g4hs raw
-    local rw rhs=0
+    local g4raw=1
     set -f
     # shellcheck disable=SC2206 # intentional word split
     raw=($1)
     set +f
-    g4w=(); g4g=(); g4hs=()
-    # The raw split keeps its quotes, so only a REAL `<<<` word matches here.
-    for rw in "${raw[@]:-}"; do
-        if [ "$rhs" = 1 ]; then rhs=0; g4hs[${#g4hs[@]}]="$rw"; continue; fi
-        case "$rw" in
-            '<<<') rhs=1 ;;
-            '<<<'?*) g4hs[${#g4hs[@]}]="${rw#<<<}" ;;
-            *) g4w[${#g4w[@]}]="$rw" ;;
-        esac
-    done
+    g4w=("${raw[@]:-}"); g4g=(); g4hs=()
     g4_scan
 }
 
 g4_segments() {
-    local s=0 k n
+    local s=0 k n g4raw=0
     local -a idx g4w g4g g4hs hs
     hs=()
     # HIMMEL-5292: here-string targets (`<<< "$TOKEN"`) are redirect targets, so
@@ -835,11 +826,16 @@ g4_scan() {
     for ((i = 0; i < nw; i++)); do
         w="${g4w[i]}"
         d="${w//[\'\"\\]/}"
-        case "$d" in '<'|'>') redir=1; continue ;; esac
-        if [ "$redir" = 1 ]; then redir=0; continue; fi
-        if [ -n "$d" ] && [ -z "${d//[0-9]/}" ]; then   # an fd number only when a redirect follows (`2>/dev/null`)
-            nx="${g4w[i+1]:-}"; nx="${nx//[\'\"\\]/}"
-            case "$nx" in '<'|'>') continue ;; esac
+        # Redirect and fd skips run on the RAW split only. Tokenized, a real
+        # redirect is already out of the words (GU_SR), so a `>` word there is
+        # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
+        if [ "${g4raw:-0}" = 1 ]; then
+            case "$d" in '<'|'>') redir=1; continue ;; esac
+            if [ "$redir" = 1 ]; then redir=0; continue; fi
+            if [ -n "$d" ] && [ -z "${d//[0-9]/}" ]; then   # an fd number only when a redirect follows (`2>/dev/null`)
+                nx="${g4w[i+1]:-}"; nx="${nx//[\'\"\\]/}"
+                case "$nx" in '<'|'>') continue ;; esac
+            fi
         fi
         if [ -z "$cmd" ]; then
             if [ "$wrap_val" = 1 ]; then wrap_val=0; continue; fi

@@ -979,6 +979,19 @@ assert_rc "5292 tar \$'<<<' .env"               2 "$(run_case "$(j_bash 'tar czf
 assert_rc "5292 ctl echo '<<<' hello"           0 "$(run_case "$(j_bash "echo '<<<' hello")")"
 # shellcheck disable=SC2016
 assert_rc "5292 real <<< still scanned"         2 "$(run_case "$(j_bash 'tar czf o.tgz src <<< "$API_TOKEN"')")"
+# A quoted or escaped `>` / `<` is an ordinary word, not a redirect: it must not
+# hide the word after it (j2411b).
+assert_rc "5292 tar '>' .env"                   2 "$(run_case "$(j_bash "tar czf o.tgz '>' .env")")"
+assert_rc "5292 tar \\> .env"                   2 "$(run_case "$(j_bash 'tar czf o.tgz \> .env')")"
+# shellcheck disable=SC2016
+assert_rc "5292 tar \$'>' .env"                 2 "$(run_case "$(j_bash 'tar czf o.tgz $'"'"'>'"'"' .env')")"
+assert_rc "5292 tar '<' .env"                   2 "$(run_case "$(j_bash "tar czf o.tgz '<' .env")")"
+# shellcheck disable=SC2016
+assert_rc "5292 echo '>' \"\$GITHUB_TOKEN\""    2 "$(run_case "$(j_bash "echo '>' \"\$GITHUB_TOKEN\"")")"
+# shellcheck disable=SC2016
+assert_rc "5292 echo '<' \"\$GITHUB_TOKEN\""    2 "$(run_case "$(j_bash "echo '<' \"\$GITHUB_TOKEN\"")")"
+assert_rc "5292 ctl echo '>' hello"             0 "$(run_case "$(j_bash "echo '>' hello")")"
+assert_rc "5292 ctl tar src > out.log"          0 "$(run_case "$(j_bash 'tar czf o.tgz src > out.log')")"
 # Include / filter values select a secret for upload: no longer skipped.
 assert_rc "5292 zip -i .env"                    2 "$(run_case "$(j_bash 'zip -i .env o.zip src')")"
 assert_rc "5292 rsync --include .env"           2 "$(run_case "$(j_bash 'rsync --include .env src/ host:/d/')")"
