@@ -1304,13 +1304,31 @@ _wrapper_opt_arg() {
             return 1
             ;;
     esac
+    # env's getopt takes any unique prefix of a long option (`--argv`, `--un`,
+    # `--ch`, `--s`), so one prefix rule over its list stands in for a
+    # per-spelling table (J2374b); an ambiguous prefix is an env error, and
+    # `--x=VALUE` carries its own argument
+    case "$1:$2" in
+        env:--*=*) return 1 ;;
+        env:--?*)
+            local p=${2#--} L cnt=0 full=''
+            for L in ignore-environment null unset chdir split-string argv0 debug \
+                default-signal ignore-signal block-signal list-signal-handling help version; do
+                if [ "$L" = "$p" ]; then cnt=1 full=$L; break; fi
+                case "$L" in "$p"*) cnt=$((cnt + 1)) full=$L ;; esac
+            done
+            [ "$cnt" = 1 ] || return 1
+            case "$full" in unset | chdir | split-string | argv0) return 0 ;; esac
+            return 1
+            ;;
+    esac
     case "$1:$2" in
         sudo:-u|sudo:-g|sudo:-h|sudo:-p|sudo:-c|sudo:-d|sudo:-r|sudo:-t|sudo:-a \
         |sudo:--user|sudo:--group|sudo:--host|sudo:--prompt|sudo:--close-from \
         |sudo:--chdir|sudo:--role|sudo:--type|sudo:--other-user \
         |sudo:--command-timeout|sudo:--chroot|sudo:--auth-type|sudo:--login-class \
         |doas:-u|doas:-c \
-        |env:-u|env:-c|env:-s|env:-a|env:--unset|env:--chdir|env:--split-string|env:--argv0 \
+        |env:-u|env:-c|env:-s|env:-a \
         |timeout:-s|timeout:-k|timeout:--signal|timeout:--kill-after \
         |nice:-n|nice:--adjustment \
         |ionice:-c|ionice:-n|ionice:-p|ionice:-u|ionice:--class|ionice:--classdata \
@@ -3385,6 +3403,11 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # anything it does not fully model — an unknown escape, `\c`, a
             # `$` that is not `${NAME}`, a word-leading `#`, an unterminated
             # quote — so the caller stays fail-closed (HIMMEL-4521).
+            # ponytail: a text decoder cannot close the shell/option-parsing
+            # class (env option spellings, operands spliced after the text,
+            # separator-led words), each judge round finds another; upgrade
+            # path: HIMMEL-5233, then HIMMEL-5236 (deny live-settings writes
+            # by effect, path or inode, not by command text).
             # shellcheck disable=SC1003,SC2016 # literal \ $ and ' bytes
             _envs_decode() {
                 local LC_ALL=C t=$1 n k=0 c e st=u lit='' out='' w='' inw=0 name rest q="'"
@@ -3468,9 +3491,10 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                         # letter that takes an argument (-u, -C); every
                         # `--s…` is a prefix of `--split-string`.
                         if [ "$iwn" = env ]; then
+                            ibnext=-1
                             case "$il" in
-                                --s*=*) ibw=${ST_W[ii]#*=} ;;
-                                --s*) ibw=${ST_W[ii + 1]-} ;;
+                                --s*=*) ibw=${ST_W[ii]#*=} ibnext=$((ii + 1)) ;;
+                                --s*) ibw=${ST_W[ii + 1]-} ibnext=$((ii + 2)) ;;
                                 --*) ;;
                                 *)
                                     iopt=${il#-}
@@ -3479,7 +3503,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                                             [uc]*) break ;;
                                             s*)
                                                 ibw=${ST_W[ii]:$((${#il} - ${#iopt} + 1))}
-                                                [ -n "$ibw" ] || ibw=${ST_W[ii + 1]-}
+                                                ibnext=$((ii + 1))
+                                                [ -n "$ibw" ] || { ibw=${ST_W[ii + 1]-}; ibnext=$((ii + 2)); }
                                                 break
                                                 ;;
                                         esac
@@ -3487,6 +3512,21 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                                     done
                                     ;;
                             esac
+                            # env appends every operand after the -S text to
+                            # the words it split, so `env -S 'sh -c' 'BODY'`
+                            # runs BODY as the shell's script and the text
+                            # alone is not the command: refused fail-closed
+                            # (J2374b; a redirect target is not an operand)
+                            if [ "$ibnext" -ge 0 ]; then
+                                ik=$ibnext
+                                while [ "$ik" -lt "$ST_N" ] && [ "${ST_S[ik]}" = "$iseg" ]; do
+                                    if [ -z "${ST_RO[ik]}" ] && [ "${EDIT_LIVE_SETTINGS_OK:-0}" != "1" ]; then
+                                        deny_message "a $tool_name command" "$cmd" "env -S text followed by further operands is spliced with them into one command that is not judged, so it is refused fail-closed; run the command directly"
+                                        exit 2
+                                    fi
+                                    ik=$((ik + 1))
+                                done
+                            fi
                             # env decodes its own escapes (`\_` is a space)
                             # and `${VAR}` in TEXT before it splits, which a
                             # shell read of TEXT does not, so such TEXT is

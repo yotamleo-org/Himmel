@@ -3057,6 +3057,32 @@ env -a X -S '-i\_echo\_a\_b'
 env --argv0 X -S 'A=B\_echo\_a'
 env --argv0=X -S '-i\_echo\_a'
 env -a X -S '-i echo a'
+env -S '\_-C\_/x\_tee\_y'
+ROWS
+# 9600-9609 (HIMMEL-4521, J2374b): env takes any unique prefix of a long
+# option, so --argv/--a (argv0), --un (unset) and --ch (chdir) take an
+# argument like their full spelling and the -S text after them is reached
+rows_both 9600 2 "env long-option prefixes take an argument, -S text after them is judged" <<'ROWS'
+env --argv X -S 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+env --a X -S 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+env --un X -S 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+env --ch /tmp -S 'sh\_-c\_"echo x > ~/.claude/settings.json"'
+env --argv X -S '-i\_echo\_a'
+env --a X -S 'A=B\_echo\_a'
+env --un X -S '-i\_echo\_a'
+env --ch /tmp -S '-i\_echo\_a'
+ROWS
+# the -S text followed by further operands is spliced with them: refused
+rows_both 9610 2 "env -S text followed by further operands denies" <<'ROWS'
+env -S 'sh -c' 'echo x > ~/.claude/settings.json'
+env -S 'sh -c' 'echo a'
+env --split-string='echo' a b
+env -S 'echo a' b
+ROWS
+# plain env -S 'cmd' with nothing after it, and an ambiguous prefix, allow
+rows_both 9620 0 "plain env -S text without operands, and a non-taking prefix, allows" <<'ROWS'
+env -S 'echo a'
+env --arg X echo a
 ROWS
 # env -a / --argv0 take an argument, so the -S text after them is reached;
 # a harmless one after them still allows
