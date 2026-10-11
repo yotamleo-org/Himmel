@@ -131,8 +131,9 @@ case "$tool" in
         cmd=$(printf '%s' "$input" | jq -er '.tool_input.command | strings' 2>/dev/null) || raw_scan
         # Join backslash-newline continuations first: `bus \<nl> --role x \<nl>
         # register y` is one command to the shell and must be one segment here.
+        # The pair is removed, not replaced: bash joins `reg\<nl>ister` into one word.
         bsnl=$'\\\n'
-        cmd=${cmd//"$bsnl"/ }
+        cmd=${cmd//"$bsnl"/}
         cmd_n=$(norm "$cmd")
         xdg_state=""
         [ -n "${XDG_STATE_HOME:-}" ] && xdg_state=$(norm "${XDG_STATE_HOME}/himmel") && xdg_state=${xdg_state%/}

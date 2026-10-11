@@ -114,6 +114,8 @@ allow "bus/ token under an ordinary cwd" "$(cwd_json 'cat bus/readme.txt' '/tmp'
 echo "== trust-judge j2355b: continuations, bare bus token, in-command cd, XDG =="
 deny "backslash-newline continuation splits bus from the verb" \
     "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role console \\\nregister legX')"
+deny "a verb word split across a continuation (bash joins it with no space)" \
+    "$(bash_json $'bus reg\\\nister legX')"
 deny "cwd state dir + grep -rh . bus" "$(cwd_json 'grep -rh . bus' "$STATE_DIR")"
 deny "cwd state dir + cp -r bus" "$(cwd_json 'cp -r bus /tmp/b' "$STATE_DIR")"
 deny "cwd state dir + find bus" "$(cwd_json 'find bus -type f' "$STATE_DIR")"
