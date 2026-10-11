@@ -1103,8 +1103,40 @@ pobf_word() {
 
 # pobf_tok -- pobf_relief's helper: close the quoted body into a token.
 pobf_tok() {
-    if [ -n "$body" ]; then TOK[n]=$body; F="$F$T1$n$T1"; n=$((n + 1)); fi
+    if [ -n "$body" ]; then TOK[n]=$body; TK[n]=$q; F="$F$T1$n$T1"; n=$((n + 1)); fi
     body=''
+}
+
+# pobf_rgshape <raw stage> -- HIMMEL-5210: rc 0 when an rg argv word is not
+# plain literal text. Words wholly inside single quotes stay literal; any other
+# word with a backslash, a dollar sign (variable, ANSI-C quote, command
+# substitution), a backtick, a leading tilde, a glob or brace char, or a
+# double-quoted body with an expansion can BUILD --pre / --hostname-bin at run
+# time, so relief is void. TOK and TK hold the quote tokens of the line being
+# scanned (pobf_relief's locals, read by dynamic scope).
+pobf_rgshape() {
+    local r=$1 o='' pre k w rc=1 fl=1 T1=$'\001'
+    while :; do
+        case "$r" in *"$T1"*"$T1"*) ;; *) break ;; esac
+        pre=${r%%"$T1"*}; r=${r#*"$T1"}; k=${r%%"$T1"*}; r=${r#*"$T1"}
+        o="$o$pre"
+        case "${TK[k]-}" in
+            S) o="${o}x" ;;
+            D) case "${TOK[k]}" in *[\\\$\`]*) return 0 ;; esac; o="${o}x" ;;
+            A) return 0 ;;
+            *) o="$o " ;;
+        esac
+    done
+    o="$o$r"
+    case $- in *f*) fl=0 ;; esac
+    set -f
+    for w in ${o//[<>]/ }; do
+        case "$w" in
+            *\\*|*\$*|*\`*|'~'*|*[\*\?\[\{\}]*) rc=0; break ;;
+        esac
+    done
+    [ "$fl" = 1 ] && set +f
+    return "$rc"
 }
 
 # pobf_exp <text> <mode> -- pobf_relief's helper: put the token bodies back
@@ -1242,7 +1274,10 @@ pobf_xopt_scan() {
 # carries one before its first =, or holds a { followed by - (or by - after a
 # comma). The bare shell words [ ] { } [[ ]] are not words that expand.
 # ponytail: any stage with relief and such a word is over-denied (it only
-# matters when the command already names an obfuscated path), HIMMEL-5210.
+# matters when the command already names an obfuscated path), HIMMEL-5210:
+# a non-rg reader with a leading glob (ls *.md, grep -r x src/*) is denied too;
+# the ceiling is one quoted glob or no glob, the upgrade path a screen that
+# resolves the glob against the cwd. rg stages additionally get pobf_rgshape.
 pobf_xglob() {
     local w n rc=1 fl=1
     case $- in *f*) fl=0 ;; esac
@@ -1313,7 +1348,7 @@ POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du
 pobf_relief() {
     local t="$1" F='' L rest q md=U body='' n=0 hn=0 hi=0 hb='' cmp i j k c c2 w s x cls nf ostk bqi sub=0 bq=0 stack='' ap wr=0
     local PX p tl rd=0 ea sa eo=${2-} z xr cx
-    local -a TOK HD HDASH HQ HIX ST SP SS CL CW C2 FL CO XP ED
+    local -a TOK TK HD HDASH HQ HIX ST SP SS CL CW C2 FL CO XP ED
     local SQ="'" DQ='"' BQ='`' T1=$'\001' T2=$'\002' T3=$'\003' T5=$'\005' TAB=$'\t'
     # Each scan cuts at the first special char with a glob (the prefix up to
     # the first char of the set), not a ^(..)(.*)$ regex, and reads a long
@@ -1569,6 +1604,8 @@ pobf_relief() {
         i=$((i + 1))
     done
     # Class per stage: 2 = skip words and tokens, 1 = skip tokens, 0 = scan.
+    local rgcfg=0
+    case "$t$F" in *RIPGREP_CONFIG_PATH*) rgcfg=1 ;; esac
     j=0
     while [ "$j" -lt "$i" ]; do
         s=${ST[j]//[<>]/ }
@@ -1640,6 +1677,10 @@ pobf_relief() {
         # HIMMEL-4402: any relieved stage, and a continuation (which inherits
         # its parent's class), voids on an option that takes an executable.
         [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr" || pobf_xglob "${ST[j]}"; } && cls=0
+        # HIMMEL-5210: rg keeps relief only on plain literal words, and never
+        # when RIPGREP_CONFIG_PATH is named anywhere (a config file injects
+        # options; its contents are not modelled).
+        [ "$c" = rg ] && [ "$cls" != 0 ] && { [ "$rgcfg" = 1 ] || pobf_rgshape "${ST[j]}"; } && cls=0
         CL[j]=$cls; CW[j]=$c; C2[j]=$c2
         [ "$cls" = 2 ] && FL[j]=1
         j=$((j + 1))

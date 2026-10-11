@@ -2314,10 +2314,35 @@ for F in "rg {--hostname-bin,$OBF} --color=always --hyperlink-format=default x .
     assert_deny "5210 brace/glob-built option word voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 for F in "rg --glob '*.md' needle -- '$OBF'" \
-         "rg --glob=*.md needle -- '$OBF'" \
+         "rg --glob='*.md' needle -- '$OBF'" \
+         "rg \"-n\" needle -- '$OBF'" \
+         "grep -r x src/* -- '$OBF'" \
          "rg -n needle -- '$OBF'" \
          "rg --hyperlink-format default needle -- '$OBF'"; do
     assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+# 5210 round 3 (judge j2366b, class shell-parsing): an rg word BUILT without a
+# literal -- (backslash, ANSI-C, unset variable plus quote, variable word,
+# tilde) keeps no relief. Words wholly inside single quotes stay literal.
+for F in "rg \\-\\-pre '$OBF' x ." \
+         "rg \$'\\x2d'-hostname-bin='$OBF' x ." \
+         "rg --pr\$u\"e\" '$OBF' x ." \
+         "o=--pre; rg \$o '$OBF' x ." \
+         "OLDPWD=--pre; rg ~- '$OBF' x ." \
+         "rg \"-\"{-pre,x} '$OBF' x ." \
+         "export RIPGREP_CONFIG_PATH=/nonexistent/cfg; rg needle -- '$OBF'" \
+         "RIPGREP_CONFIG_PATH=/nonexistent/cfg true; rg needle -- '$OBF'"; do
+    assert_deny "5210 rg shape: built or config-injected option voids relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+for F in "rg \"-n\" needle -- '$OBF'" \
+         "rg --glob '*.md' needle -- '$OBF'"; do
+    assert_allow "5210 rg shape control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
+done
+# Non-rg stages reach only pobf_xglob (no shape screen): one row per clause.
+for F in "grep {r,x} needle -- '$OBF'" \
+         "grep --e*=x needle -- '$OBF'" \
+         "grep \"-\"{-r,x} needle -- '$OBF'"; do
+    assert_deny "5210 xglob clause row: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 popd >/dev/null || exit 1
 rm -rf "$G5210"
@@ -2330,8 +2355,12 @@ mkdir -p "$MUT5210/hooks"
 cp "$REGISTRY" "$MUT5210/chokepoints.json"
 mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
     local label="$1" expr="$2" cmd="$3" saved="$HOOK"
-    sed "$expr" "$HOOK" > "$MUT5210/hooks/mut.sh"
     CASES=$((CASES + 1))
+    if ! sed "$expr" "$HOOK" > "$MUT5210/hooks/mut.sh" || [ ! -s "$MUT5210/hooks/mut.sh" ]; then
+        echo "FAIL $label -- sed failed or produced an empty mutant"
+        FAILED=$((FAILED + 1))
+        return
+    fi
     if cmp -s "$HOOK" "$MUT5210/hooks/mut.sh"; then
         echo "FAIL $label -- mutation did not change the hook (vacuous)"
         FAILED=$((FAILED + 1))
@@ -2339,9 +2368,20 @@ mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
     fi
     HOOK="$MUT5210/hooks/mut.sh"
     run "$(j "unset HIMMEL_CONSOLE_LEG; $cmd")"
-    HOOK="$saved"
-    local dec
+    local dec rc1="$RC" dec0 rc0
     dec=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)
+    # Cross-check: a row no mutated layer owns must still be denied, so a
+    # mutant that fails open or crashes cannot pass for a row that went quiet.
+    run "$(j "unset HIMMEL_CONSOLE_LEG; /usr/bin/sub/grep needle -- '$OBF'")"
+    rc0="$RC"
+    dec0=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)
+    HOOK="$saved"
+    RC="$rc1"
+    if [ "$rc0" != "2" ] || [ "$dec0" != "deny" ]; then
+        echo "FAIL $label -- the mutant no longer denies the control row (rc=$rc0 decision='$dec0')"
+        FAILED=$((FAILED + 1))
+        return
+    fi
     if [ "$RC" = "0" ] && [ "$dec" != "deny" ]; then
         echo "PASS $label (row allowed without that layer)"
     else
@@ -2349,17 +2389,37 @@ mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
         FAILED=$((FAILED + 1))
     fi
 }
+# The rg classifier regex has no mutant row: since the shape screen (round 3)
+# a backslash or brace spelled --hostname-bin is denied by pobf_rgshape and
+# pobf_xopt as well, so no command is owned by the classifier alone.
 # shellcheck disable=SC2016 # the sed expressions are literal; $x and ${ST[j]} are hook text
-mut_row "5210 mutant: rg classifier regex dropped" \
-    's/^\( *\)rg) \[\[ \$x =~ .*$/\1rg) cls=2 ;;/' \
-    "rg \\--hostname-bin='$OBF' x ."
 mut_row "5210 mutant: xopt --hostname-bin case dropped" \
     's/|--hostname-bin|--hostname-bin=\*//' \
     "rg needle \"\$(printf y)\" --hostname-bin='$OBF' x ."
-# shellcheck disable=SC2016 # literal sed expression, as above
-mut_row "5210 mutant: brace/glob screen dropped" \
+# shellcheck disable=SC2016 # literal sed expressions, as above
+mut_row "5210 mutant: xglob screen dropped (non-rg brace row)" \
     's/|| pobf_xglob "\${ST\[j\]}"//' \
-    "rg --hostname-bi[n]=$OBF x ."
+    "grep {-r,x} needle -- '$OBF'"
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: xglob rule 1a (leading glob char) dropped" \
+    "/'{'\\*|'\\['\\*/s/rc=0; break/:/" \
+    "grep {r,x} needle -- '$OBF'"
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: xglob rule 1b (option word with glob before =) dropped" \
+    '/\$n =~ \^-/s/rc=0; break/:/' \
+    "grep --e*=x needle -- '$OBF'"
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: xglob rule 1c (brace alternative with -) dropped" \
+    '/\$w =~ \\{(-|/s/rc=0; break/:/' \
+    "grep \"-\"{-r,x} needle -- '$OBF'"
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: rg shape screen dropped" \
+    's/ || pobf_rgshape "\${ST\[j\]}"//' \
+    "rg \\-\\-pre '$OBF' x ."
+# shellcheck disable=SC2016 # literal sed expression, as above
+mut_row "5210 mutant: RIPGREP_CONFIG_PATH void dropped" \
+    's/\*RIPGREP_CONFIG_PATH\*) rgcfg=1/*RIPGREP_CONFIG_PATH*) rgcfg=0/' \
+    "export RIPGREP_CONFIG_PATH=/nonexistent/cfg; rg needle -- '$OBF'"
 rm -rf "$MUT5210"
 
 CASES=$((CASES + 1))
