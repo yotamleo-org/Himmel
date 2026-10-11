@@ -10,7 +10,7 @@ exclude: '^(\.obsidian/|optional/plugins/)'
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       # Vault content is user data, not code — pre-commit must VALIDATE it
       # (gitleaks/check-*) but never REWRITE it. So these two auto-fixers run
@@ -51,7 +51,7 @@ repos:
         exclude: '^handovers/.*/verdicts/'
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
         # Console kits under handovers/**/specs/console-kit-*/ are archived
