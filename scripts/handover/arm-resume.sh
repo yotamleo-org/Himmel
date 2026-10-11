@@ -304,6 +304,8 @@ _arm_profile_settings_flag() {
 # writes its own WARNs to the arm log it is handed.
 _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
     local name="$SESSION_NAME" secs="${ARM_RESUME_BUS_REBIND_SECS:-15}" bus
+    # the helper reads /proc: macOS stays byte-identical (seam for tests)
+    [ "${ARM_RESUME_UNAME:-$(uname -s)}" = Linux ] || return 0
     case "$name" in
         ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) return 0 ;;
     esac

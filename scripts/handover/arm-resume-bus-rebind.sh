@@ -28,12 +28,24 @@ PROC="${ARM_RESUME_PROC:-/proc}"
 
 warn() { echo "$(date +%F_%T) WARN: bus rebind of $NAME $1" >> "$LOG" 2>/dev/null; }
 
-find_child() { # prints the first claude pid whose argv has -n <name>
+matches() { # matches <pid-dir>: a claude whose argv has -n <name>
+    [ "$(cat "$1/comm" 2>/dev/null)" = claude ] && _argv_has_n_name "${1##*/}"
+}
+
+# Matches already present when the helper starts are the OLD session (the
+# helper is backgrounded just before the launch), never the resumed child.
+preexisting=" "
+for d in "$PROC"/[0-9]*; do
+    [ -d "$d" ] || continue
+    matches "$d" && preexisting="$preexisting${d##*/} "
+done
+
+find_child() { # prints the first NEW claude pid whose argv has -n <name>
     local d pid
     for d in "$PROC"/[0-9]*; do
         pid="${d##*/}"
-        [ "$(cat "$d/comm" 2>/dev/null)" = claude ] || continue
-        _argv_has_n_name "$pid" && { printf '%s\n' "$pid"; return 0; }
+        case "$preexisting" in *" $pid "*) continue ;; esac
+        matches "$d" && { printf '%s\n' "$pid"; return 0; }
     done
     return 1
 }

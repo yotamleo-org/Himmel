@@ -50,12 +50,17 @@ exit 0
 EOF
     chmod +x "$TMP/bus"
 }
+late() { # late <pid> <comm> <argv...>: the child appears 1s AFTER the helper starts
+    ( sleep 1; mkproc "$@" ) &
+}
 run_helper() { # run_helper <name> <wait> <secs>
     : > "$TMP/bus-calls"; : > "$TMP/log"
     ARM_RESUME_PROC="$PROCD" bash "$HELPER" "$1" "$TMP/bus" "$TMP/log" "$2" "$3"
+    wait
 }
 
-mkproc 4242 claude claude -n HIM-1 "load doc"
+mkdir -p "$PROCD"
+late 4242 claude claude -n HIM-1 "load doc"
 mkbus ok
 run_helper HIM-1 3 5; rc=$?
 eq "A1 helper exits 0" 0 "$rc"
@@ -67,13 +72,24 @@ eq "A2 decoy argv (prefix name, prompt text, non-claude comm) is never rebound" 
 eq "A2 no child: exits 0 (fail-open)" 0 "$rc"
 has "A2 no child: WARN in the arm log" "WARN" "$(cat "$TMP/log")"
 
-rm -rf "$PROCD"; mkproc 4242 claude claude -n HIM-1 "p"
+rm -rf "$PROCD"; mkdir -p "$PROCD"
+late 4242 claude claude -n HIM-1 "p"
 mkbus refuse
 run_helper HIM-1 3 5; rc=$?
 eq "A3 refused rebind: one call" "rebind HIM-1 4242" "$(cat "$TMP/bus-calls")"
 eq "A3 refused rebind: exits 0" 0 "$rc"
 has "A3 refused rebind: WARN carries the bus message" "bound pid is still live" "$(cat "$TMP/log")"
 
+# A5: a matching claude already present when the helper starts is the OLD
+# session; only the one that appears afterwards is rebound.
+rm -rf "$PROCD"; mkproc 4242 claude claude -n HIM-1 "old"
+mkbus ok
+late 5555 claude claude -n HIM-1 "new"
+run_helper HIM-1 5 5
+eq "A5 pre-existing match skipped, new child rebound" "rebind HIM-1 5555" "$(cat "$TMP/bus-calls")"
+
+rm -rf "$PROCD"; mkdir -p "$PROCD"
+late 4242 claude claude -n HIM-1 "p"
 mkbus hang
 t0=$(date +%s)
 run_helper HIM-1 3 2; rc=$?
@@ -90,7 +106,7 @@ printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n# T\n' "$HERE" > "$HOD/
 XDG="$TMP/xdg"; mkdir -p "$XDG/himmel/bus/peers"
 FUT=$(date -d '+10 min' +%H:%M 2>/dev/null || date -v+10M +%H:%M)
 arm() { # arm <env...> -- run a dry-run arm, stdout+stderr
-    env PATH="$BIN:$PATH" HANDOVER_DIR="$HOD" XDG_STATE_HOME="$XDG" SKILL_TELEMETRY_DISABLE=1 \
+    env ARM_RESUME_UNAME="${ARM_RESUME_UNAME:-Linux}" PATH="$BIN:$PATH" HANDOVER_DIR="$HOD" XDG_STATE_HOME="$XDG" SKILL_TELEMETRY_DISABLE=1 \
         ARM_COLLISION_CANDIDATES="" HIMMEL_HEADROOM_PROXY=0 ARM_BRIDGE_LIVE=0 \
         ARM_RESUME_LOG_DIR="$TMP/arm-logs" ARM_RUNNER_DIR="$TMP/arm-runners" "$@" \
         bash "$ARM" --time "$FUT" --handover "$HOD/bn.md" --force --dry-run 2>&1
@@ -112,6 +128,8 @@ has "B4 crontab: registered name carries the helper" "arm-resume-bus-rebind.sh" 
 hasnt "B5 crontab: unregistered name carries no helper" "arm-resume-bus-rebind" "$cron_unreg"
 eq "B6 crontab: registered output is the unregistered output plus the helper line only" \
     "$(printf '%s\n' "$cron_unreg" | filter)" "$(printf '%s\n' "$cron_reg" | filter)"
+cron_mac=$(arm OSTYPE=darwin23 ARM_TERMINAL_APP=none ARM_RESUME_UNAME=Darwin)
+hasnt "B8 crontab on macOS: registered name carries no helper (it reads /proc)" "arm-resume-bus-rebind" "$cron_mac"
 
 # WSL branch (Windows host, in-distro relaunch) is out of scope: untouched.
 WB="$TMP/winbin"; mkdir -p "$WB"
