@@ -259,7 +259,14 @@ done
 mv "$wt/.claude/settings.json" "$wt/.claude/settings.json.hold"; rm -rf "$wt/.claude/hooks"
 a5200b="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
 check 'an absent project settings.json still gets a read-only bind (it cannot be created)' 'printf "%s\n" "$a5200b" | grep -A2 -x -- --ro-bind | grep -qxF "$wt/.claude/settings.json"'
+: >"$wt/.claude/settings.json"
+a5200c="$(HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" 2>&1)"
+check 'an empty leftover mount-point settings.json is bound as the placeholder, not as policy' 'printf "%s\n" "$a5200c" | grep -A1 -x -- --ro-bind | grep -q "empty-project-settings.json"'
+rm -f "$wt/.claude/settings.json"
 mv "$wt/.claude/settings.json.hold" "$wt/.claude/settings.json"
+mkdir -p "$wt/.claude/hooks"; ln -s "$TMP/secret" "$wt/.claude/hooks/link.sh"
+check 'a symlink inside the project hooks dir is refused (its target would stay writable)' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -rf "$wt/.claude/hooks"
 mv "$wt/.claude/settings.local.json" "$wt/.claude/settings.local.json.hold"; ln -s "$TMP/secret" "$wt/.claude/settings.local.json"
 check 'a settings.local.json the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 rm -f "$wt/.claude/settings.local.json"; mv "$wt/.claude/settings.local.json.hold" "$wt/.claude/settings.local.json"

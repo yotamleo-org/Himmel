@@ -124,8 +124,12 @@ if [ "$mode" != check ]; then
   { [ ! -L "$WT/.claude" ] && [ -d "$WT/.claude" ]; } || die "$WT/.claude is missing or a symlink"
   for p in settings.json settings.local.json hooks; do [ ! -L "$WT/.claude/$p" ] || die "$WT/.claude/$p is a symlink"; done
   [ -f "$WT/.claude/settings.local.json" ] || die "$WT/.claude/settings.local.json is missing (pilot.sh prepare writes the jail guard there)"
-  if [ -f "$WT/.claude/settings.json" ]; then ps_src="$WT/.claude/settings.json"; else ps_src="$RUN/empty-project-settings.json"; fi
-  if [ "$mode" != argv ] && [ ! -f "$WT/.claude/settings.json" ]; then
+  # an empty settings.json is a placeholder's mount point left by an earlier launch: not policy
+  if [ -s "$WT/.claude/settings.json" ]; then ps_src="$WT/.claude/settings.json"; else ps_src="$RUN/empty-project-settings.json"; fi
+  if [ -d "$WT/.claude/hooks" ] && [ -n "$(find "$WT/.claude/hooks" -type l 2>/dev/null | head -1)" ]; then
+    die "$WT/.claude/hooks holds a symlink (its target would stay writable)"
+  fi
+  if [ "$mode" != argv ] && [ ! -s "$WT/.claude/settings.json" ]; then
     printf '{}\n' >"$ps_src" || die "cannot write $ps_src"
   fi
   for base in "$WT" "$JWT"; do
