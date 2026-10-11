@@ -1275,9 +1275,10 @@ pobf_xopt_scan() {
 # comma). The bare shell words [ ] { } [[ ]] are not words that expand.
 # ponytail: any stage with relief and such a word is over-denied (it only
 # matters when the command already names an obfuscated path), HIMMEL-5210:
-# a non-rg reader with a leading glob (ls *.md, grep -r x src/*) is denied too;
-# the ceiling is one quoted glob or no glob, the upgrade path a screen that
-# resolves the glob against the cwd. rg stages additionally get pobf_rgshape.
+# a non-rg reader whose word STARTS with a glob (ls *.md) is denied too, while
+# a mid-word glob (grep -r x src/*) keeps relief; the ceiling is one quoted
+# glob, the upgrade path a screen that resolves the glob against the cwd. rg
+# stages additionally get pobf_rgshape.
 pobf_xglob() {
     local w n rc=1 fl=1
     case $- in *f*) fl=0 ;; esac
