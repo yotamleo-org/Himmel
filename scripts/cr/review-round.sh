@@ -1060,7 +1060,7 @@ if [ "$verb" = "start" ]; then
             cired_tmp="$cired_state.tmp.$$"
             bak_delta="$delta_state.bak.$$"
             had_delta=0
-            if [ -n "$delta_verdict" ] && [ -f "$delta_state" ]; then
+            if { [ -n "$delta_verdict" ] || [ "$delta_trigger" = "postcap-ci-red" ]; } && [ -f "$delta_state" ]; then
                 had_delta=1
                 cp -p "$delta_state" "$bak_delta" 2>/dev/null || delta_rc=5
             fi
@@ -1072,6 +1072,11 @@ if [ "$verb" = "start" ]; then
                 || ! printf '%s %s %s\n' "$delta_from" "$delta_to" "$delta_trigger" > "$tmp_delta" \
                 || ! mv "$tmp_delta" "$delta_state" \
                 || ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
+                # HIMMEL-5257: a CI-red round that did not fully land puts the
+                # spent .delta back, so the unlock is not half-consumed.
+                if [ "$delta_trigger" = "postcap-ci-red" ] && [ -f "$bak_delta" ]; then
+                    mv -f "$bak_delta" "$delta_state" 2>/dev/null || true
+                fi
                 rm -f "$tmp_delta" "$bak_delta" "$cired_tmp"
                 echo "review-round: cannot record the delta round for $branch" >&2
                 delta_rc=5
@@ -1094,6 +1099,7 @@ if [ "$verb" = "start" ]; then
                 fi
                 rm -f "$bak_delta"
             fi
+            rm -f "$bak_delta" "$cired_tmp"
         fi
         if [ "$delta_rc" -ne 0 ]; then
             SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
