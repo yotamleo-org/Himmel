@@ -128,6 +128,7 @@ for rep in $(seq 1 "$REPS"); do
       prompt="$(task_prompt "$t")"
       start="$(date +%s)"
       # headless-claude-ok: HIMMEL-5317 graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
+      # launch-profile-ok: eval arm pins its own --tools/--allowedTools and --strict-mcp-config; a leg profile would change the measured condition
       ( cd "$CHECKOUT" && timeout "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
           --permission-mode dontAsk --output-format json --max-budget-usd "$run_cap" \
           --tools Bash,Read --allowedTools Bash,Read ${deny:+--disallowedTools "$deny"} \
