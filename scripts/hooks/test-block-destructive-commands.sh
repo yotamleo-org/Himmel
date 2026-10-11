@@ -1267,6 +1267,28 @@ for c in \
     'git -c "a.b=;" status'; do
     assert_rc "5274 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
+# HIMMEL-5274 judge j2397b: an escaped quote / $'..' must not open a fake quote
+# run that swallows real separators, and the lease carve-out is fail-closed: any
+# git invocation with a global option anywhere in the command disables it.
+q="'"
+for c in \
+    'echo git push origin \" ; git -C ../other push --force-with-lease origin trunk ; echo \"' \
+    "echo \$${q}\\${q}${q} ; git -C ../other push --force-with-lease origin trunk ; echo \$${q}\\${q}${q}" \
+    'X="git push "origin" " git -C ../other push --force-with-lease origin trunk' \
+    'git push origin feat/x ; git -c a=b push --force-with-lease origin trunk'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+assert_rc "5274 allow: plain lease push to a feature branch" 0 \
+    "$(run_case "$(j_bash 'git push --force-with-lease origin feat/x')")"
+# Separator-heavy input must stay linear (judge minor item 3).
+semis=$(printf ' ; echo a%.0s' $(seq 1 2000))
+start=$SECONDS
+rc=$(run_case "$(j_bash "git push origin feat/x${semis}")")
+assert_rc "5274 separator-heavy command allowed" 0 "$rc"
+if [ $((SECONDS - start)) -gt 20 ]; then
+    echo "FAIL 5274 separator-heavy command too slow ($((SECONDS - start))s)"
+    FAILED=$((FAILED + 1))
+fi
 # HIMMEL-5154 linear time: a long run of global options must stay fast.
 long=$(printf ' -c a=b%.0s' $(seq 1 4000))
 start=$SECONDS

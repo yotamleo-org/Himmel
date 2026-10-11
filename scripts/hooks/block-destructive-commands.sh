@@ -174,12 +174,14 @@ _c_strip_quotes() { local LC_ALL=C; REPLY=${1//[\"\'\\]/}; }
 _c_keep_char() { local LC_ALL=C; REPLY=${1//[^$2]/}; }
 # Quote-aware (HIMMEL-5274): a ;|& inside a quoted run is data, not a segment
 # break, so `git -c "a.b=;" push --force` stays ONE segment. Each step eats a
-# whole non-separator chunk (plain chars or a closed quote run), so the loop runs
-# once per separator/stray quote: linear in the input. An unterminated quote is
-# a plain character.
+# whole non-separator chunk (plain chars, a backslash escape, a closed quote run
+# or a $'..' run), so the loop runs once per separator/stray quote: linear in
+# the input. An unterminated quote is a plain character. The lease carve-out
+# does not depend on this split being exact (it is fail-closed on any git global
+# option anywhere in the command), so a shell construct missed here over-denies.
 _c_seps_to_nl() {
     local LC_ALL=C s=$1 out=
-    local re_chunk='^([^;|&"'"'"']|"[^"]*"|'"'"'[^'"'"']*'"'"')+'
+    local re_chunk='^([^;|&"'"'"'\\$]|\\.|\$'"'"'([^'"'"'\\]|\\.)*'"'"'|\$|"([^"\\]|\\.)*"|'"'"'[^'"'"']*'"'"')+'
     while [ -n "$s" ]; do
         if [[ $s =~ $re_chunk ]]; then
             out+=${BASH_REMATCH[0]}
@@ -1101,18 +1103,17 @@ if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then
     # than trying to track which directory the push actually runs in.
     cd_chained=0
     contains '(^|[^[:alnum:]_.-])cd([^[:alnum:]_.-]|$)' && cd_chained=1
+    # HIMMEL-5274: -C/-c/--git-dir/--work-tree/... retarget the repo like a
+    # `cd`, so git_default_branch() (this cwd) is the wrong repo. Fail closed on
+    # a COMMAND-WIDE scan -- any `git` followed by a dash option anywhere -- so
+    # the carve-out never depends on the segment split below being exact.
+    contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+-' && cd_chained=1
     _c_seps_to_nl "$cmd_lc"; _push_lines_a=$REPLY
     _c_seps_to_nl "$cmd_lc_join"; _push_lines_b=$REPLY
     while IFS= read -r seg; do
         [[ $seg =~ $push_line_re ]] || continue
         push_seg="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
-        push_head="${BASH_REMATCH[0]%"$push_seg"}"
-        # HIMMEL-5274: -C/--git-dir/--work-tree retarget the repo like a `cd`,
-        # so git_default_branch() (this cwd) is the wrong repo: no carve-out.
-        # Keyed to the matched invocation's own head (git ... push), not a
-        # `git push` substring elsewhere in the segment.
         seg_cd=$cd_chained
-        [[ $push_head =~ ^[^[:alnum:]_.-]?git(\.exe)?[[:space:]]+push$ ]] || seg_cd=1
         # HIMMEL-2054 CR round 7: a `+`-prefixed refspec is checked ALONGSIDE
         # bare_force_re, not only inside the lease_re branch below -- a
         # scoped lease (`--force-with-lease=main`) still matches lease_re
