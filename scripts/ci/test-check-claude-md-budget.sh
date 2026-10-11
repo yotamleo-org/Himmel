@@ -135,16 +135,21 @@ done
 install_strip() {
     mkdir -p "$2"
     cp "$1" "$2/CLAUDE.md"
-    "$py" - "$2" <<'PY' >/dev/null
+    # a crashed installer must not read as "unchanged"
+    if ! "$py" - "$2" <<'PY' >/dev/null
 import sys, pathlib
 from graphify import install
 install.claude_install(project_dir=pathlib.Path(sys.argv[1]))
 PY
+    then
+        return 1
+    fi
     bash "$STRIP" --strip "$2/CLAUDE.md" > "$2/stripped.md"
 }
 if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
-    install_strip "$REPO_ROOT/CLAUDE.md" "$tmp/proj"
-    if cmp -s "$REPO_ROOT/CLAUDE.md" "$tmp/proj/stripped.md"; then
+    if ! install_strip "$REPO_ROOT/CLAUDE.md" "$tmp/proj"; then
+        fail "Case H: the real installer (or the strip) failed — idempotence unproven"
+    elif cmp -s "$REPO_ROOT/CLAUDE.md" "$tmp/proj/stripped.md"; then
         pass "claude_install over the committed file -> byte-identical after the banned-clause strip"
     else
         fail "claude_install CHANGED the committed file ($(wc -c < "$tmp/proj/stripped.md" | tr -d ' ') B) — the section is not verbatim stock (modulo the banned clause) for this graphify version"
