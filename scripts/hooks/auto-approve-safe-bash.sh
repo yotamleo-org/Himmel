@@ -902,21 +902,22 @@ is_redirect_word() {
 SW_REC=0 SW_UNK=0
 # HIMMEL-5187: 1 when the working directory is root or cannot be proven
 # non-root (payload cwd is `/`, or an earlier `cd` in this command went to a
-# root / `..` / unresolvable target). A recursing reader with no operand, or a
-# relative one, then walks that directory, so it never ALLOWs. Segments are
-# vetted in order in one shell, so a `cd` segment updates it for the next.
+# root / `..` / unresolvable / symlinked-to-root target). A recursing reader
+# with no operand, or a relative one, then walks that directory, so it never
+# ALLOWs. Segments are vetted in order in one shell, so a `cd` segment updates
+# it for the next. One-way: a `cd` can FAIL (`cd / ; cd nope ; du -sh` stays at
+# `/`), so no later `cd` ever clears it.
 SW_CD_UNPROVEN=0
 
-# `cd` / `pushd` / `popd` operands -> update SW_CD_UNPROVEN. Only a target that
-# is provably not root clears it: an absolute non-root literal, `~`, or a
-# relative path with a real component and no `..` (cwd/x is never `/`).
+# `cd` / `pushd` / `popd` operands -> set SW_CD_UNPROVEN when the target is, or
+# may be, root. Judged lexically (as is_root_anchor), then once physically so a
+# symlink to `/` does not slip through.
 sw_note_cd() {
-    local t="" tok n=0
+    local t="" tok n=0 phys
     for tok in "$@"; do
         shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
         case "$SW_VALUE" in
-            --) continue ;;
-            -L|-P|-e|-@) continue ;;
+            --|-L|-P|-e|-@) continue ;;
         esac
         t="$SW_VALUE"; n=$((n + 1))
     done
@@ -924,16 +925,21 @@ sw_note_cd() {
     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && { SW_CD_UNPROVEN=1; return 0; }
     # shellcheck disable=SC2088 # literal `~`, never expanded here
     case "$t" in
-        '') return 0 ;;                                   # `cd ''` stays put
-        *..*) SW_CD_UNPROVEN=1; return 0 ;;
-        '~'|'~/'*) SW_CD_UNPROVEN=0; return 0 ;;
-        -*|'~'*|*'$'*|'%'*) SW_CD_UNPROVEN=1; return 0 ;; # `cd -`, `~user`, unexpanded: unknown
+        '~'|'~/'*) return 0 ;;                            # home: not root (a `..` is caught below)
     esac
     case "$t" in
-        /*) if path_textually_resolves_to_root "$t" || is_root_anchor "$t"; then SW_CD_UNPROVEN=1; else SW_CD_UNPROVEN=0; fi ;;
-        .|./|./.) ;;                                      # no component: unchanged
-        *) SW_CD_UNPROVEN=0 ;;
+        '') return 0 ;;                                   # `cd ''` stays put
+        *..*|-*|'~'*|*'$'*|'%'*) SW_CD_UNPROVEN=1; return 0 ;;   # `cd -`, `~user`, unexpanded: unknown
+        *[!./]*) ;;                                       # has a real component
+        *) case "$t" in /*) ;; *) return 0 ;; esac ;;     # `.` `./` `././`: no move
     esac
+    case "$t" in
+        /*) if path_textually_resolves_to_root "$t" || is_root_anchor "$t"; then SW_CD_UNPROVEN=1; return 0; fi ;;
+    esac
+    # a symlink may lead to `/`: resolve it for real, from the payload cwd
+    phys=$(cd -P -- "${sw_cwd:-.}" 2>/dev/null && cd -P -- "$t" 2>/dev/null && pwd -P) || phys=""
+    [ "$phys" = / ] && SW_CD_UNPROVEN=1
+    return 0
 }
 
 # `find` under an unproven cwd walks it unless every path operand is an
