@@ -1,0 +1,28 @@
+# Scripts under scripts/hooks that no wiring file registers, each with the reason
+# that is deliberate. Format: <basename>|<reason>. Read by check-unwired-hooks.sh,
+# which fails on an unlisted unwired script AND on an entry that is now wired.
+#
+# Known unwired, tracked, NOT to be wired here (HIMMEL-5030):
+bus-deliver-hook.sh|HIMMEL-5030: bus delivery hook ships unwired by design until the bus receive path lands
+bus-deliver-sessionstart.sh|HIMMEL-5030: bus delivery SessionStart hook ships unwired by design until the bus receive path lands
+bus-deliver-run.js|HIMMEL-5030: node runner for the bus-deliver hooks, never wired on its own
+#
+# Called only from another script (the audit's "called only from other scripts"):
+block-mcp-when-plugin-exists.sh|called from block-backend-tier.sh and check-mcp-plugin-refs.sh, not a registered hook itself
+memory-line-check.sh|library-style check called by guard-memory-capture.sh and memory-bash-line-check.sh
+cadence-approve-engines.sh|called by pipeline-cadence.sh and himmelctl probes; a cadence-session hook, not project-wired
+cadence-deny-background.sh|called by pipeline-cadence.sh and the cadence-approve-engines chain, not project-wired
+cadence-deny-powershell.sh|called by pipeline-cadence.sh and the cadence-approve-engines chain, not project-wired
+check-main-ref-transaction.sh|called by himmel-doctor.sh and install-main-ref-transaction.sh, a doctor probe
+install-main-ref-transaction.sh|installer invoked from setup scripts, not a hook
+install-cr-pre-push-legacy.sh|installer for the legacy CR pre-push path, invoked from setup scripts, not a hook
+hook-integrity-lock.sh|called by hook-integrity.js and record-hook-integrity.sh, not a registered hook
+capture-baseline.sh|operator-run fixture capture for end-session-wiki golden notes, not a hook
+hook-integrity.js|module required by the himmel-ops plugin hook runner and block-glm-external-writes.sh
+guardrail-skip-in-himmel.js|module required by guardrail-block.mjs, himmel-update.sh and himmelctl probes
+guardrail-block.mjs|CLI invoked by himmel-doctor.sh, himmel-update.sh and himmelctl, not a registered hook
+simulate-memory-edit.js|module required by guard-memory-capture.sh
+narrow-allow.mjs|operator-run settings narrowing chokepoint (HIMMEL-1513), invoked by hand
+#
+# Shipped unwired on purpose, activation is an operator step:
+block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
