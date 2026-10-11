@@ -9,7 +9,7 @@ disable-model-invocation: true
 > `pstack/skills/unslop/SKILL.md`, fetched 2026-09-17. License: MIT, (c) 2026
 > Lauren Tan (`pstack/LICENSE` at that commit; full text in
 > [`docs/third-party-licenses.md`](../../../docs/third-party-licenses.md#vendored-skill-unslop-mit-lauren-tan)).
-> Decision record: [`docs/tool-adoption/adr-unslop-skill.md`](../../../docs/tool-adoption/adr-unslop-skill.md).
+> Decision record: `specs/adr/adr-unslop-skill.md` in the handover state repo.
 > Registry row: [`docs/tool-adoption/registry.md`](../../../docs/tool-adoption/registry.md).
 >
 > **Deviations from upstream** (re-check each still holds before re-syncing a
