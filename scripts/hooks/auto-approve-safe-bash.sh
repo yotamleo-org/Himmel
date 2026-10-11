@@ -926,6 +926,7 @@ sw_note_cd() {
         # glob character or an empty operand leaves the cwd unproven.
         case "$tok" in ''|*[!A-Za-z0-9._/~+-]*) SW_CD_UNPROVEN=1; return 0 ;; esac
         case "${tok#\~}" in *'~'*) SW_CD_UNPROVEN=1; return 0 ;; esac
+        case "/$tok/" in */../*) SW_CD_UNPROVEN=1; return 0 ;; esac   # a textual `..` is wrong through a symlink
         shell_word_value "$tok" || { SW_CD_UNPROVEN=1; return 0; }
         # a tilde word with any quote or backslash is a literal name, never HOME
         case "$tok" in '~'*[\'\"\\]*) SW_CD_UNPROVEN=1; return 0 ;; esac

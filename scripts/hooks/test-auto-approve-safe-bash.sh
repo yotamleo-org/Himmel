@@ -1811,6 +1811,8 @@ assert "cd non-ASCII && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd
 assert "cd 'src' quoted && grep -r never ALLOW"    PASS  "$(decide "$(j_bash "cd 'src' && grep -r x .")")"
 assert "cd src && grep -r x . ALLOW"               ALLOW "$(decide "$(j_bash "cd src && grep -r x .")")"
 assert "cd /home/u/repo && du -sh ALLOW"           ALLOW "$(decide "$(j_bash "cd /home/u/repo && du -sh")")"
+assert "cd .. && du -sh never ALLOW"               PASS  "$(decide "$(j_bash "cd .. && du -sh")")"
+assert "cd src/../.. && grep -r never ALLOW"       PASS  "$(decide "$(j_bash "cd src/../.. && grep -r x .")")"
 assert "xxd in CR-u never ALLOW"               PASS  "$(decide "$(j_bash "xxd in ${CR}-u")")"
 assert "xxd in CR-out never ALLOW"             PASS  "$(decide "$(j_bash "xxd in ${CR}out")")"
 assert "uniq a CR-f never ALLOW"               PASS  "$(decide "$(j_bash "uniq a ${CR}-f")")"
