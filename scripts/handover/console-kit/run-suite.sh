@@ -14,7 +14,8 @@
 # in sorted order, then the pseudo-root `top` (the scripts/test-*.sh files at
 # the top level, which no directory root covers). Each root runs through
 # scripts/ci/run-shell-tests.sh (its own lock, SKIP_LIST and budget apply) under
-# scripts/quiet-run.sh; --runner PATH swaps the scan runner (tests).
+# scripts/quiet-run.sh; --runner PATH swaps the scan runner (tests). `top` runs
+# only the scripts/test-*.sh files the runner's `--list scripts` plan marks [RUN ].
 #
 # Output: the quiet-run OK/ERR line, then one line
 #   CHECKPOINT <i>/<n> <root> rc=<rc> next=<root|none>
@@ -44,10 +45,11 @@ while [ $# -gt 0 ]; do
 done
 
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+# The kit's own repo, not the cwd's: tools resolve beside this script. Resolved
+# BEFORE the cd below, so a relative $0 still finds the right directory.
+SELF="$(cd "$(dirname "$0")/../../.." && pwd)"
 TOP="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "run-suite: not in a git work tree" >&2; exit 2; }
 cd "$TOP" || exit 2
-# The kit's own repo, not the cwd's: tools resolve beside this script.
-SELF="$(cd "$(dirname "$0")/../../.." && pwd)"
 QUIET_RUN="$SELF/scripts/quiet-run.sh"
 [ -n "$RUNNER" ] || RUNNER="$SELF/scripts/ci/run-shell-tests.sh"
 
@@ -76,7 +78,13 @@ NEXT="$(printf '%s\n' "$PLAN_LIST" | sed -n "$((IDX + 1))p")"
 
 RC=0
 if [ "$ROOT" = top ]; then
-    TOP_FILES="$(git ls-files -- 'scripts/test-*.sh')"
+    # Take the runner's own plan so its SKIP_LIST (VM and network suites) is
+    # honoured; an unreadable plan is refused, never run unfiltered.
+    PLAN_OUT="$(bash "$RUNNER" --list scripts 2>/dev/null)" || {
+        echo "run-suite: cannot read the runner plan for top; refusing to run it unfiltered" >&2
+        exit 2
+    }
+    TOP_FILES="$(printf '%s\n' "$PLAN_OUT" | sed -n 's|^\[RUN \] \(scripts/test-[^/]*\.sh\)$|\1|p')"
     # shellcheck disable=SC2086  # the file list is word-split on purpose
     bash "$QUIET_RUN" suite-root -- bash -c '
         rc=0
