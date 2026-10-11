@@ -1230,7 +1230,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             # Whether -X takes a value is not knowable per subcommand, so
             # fail closed: attached text and the next word both count. A
             # commit/tag/notes message bundle (-m, -am, -F) is data.
-            -*[mF]) [ "$rd" = 1 ] || [ "$exempt" = 1 ] || { opt=-short; v=${ST_W[i + 1]:-}; } ;;
+            -*[mF]) [ "$rd" = 1 ] || [ "$exempt" = 1 ] || { meta_value "${w#-?}" && return 0; opt=-short; v=${ST_W[i + 1]:-}; } ;;
             -[!O-]?*) [ "$rd" = 1 ] || { opt=-short; v=${w#-?}; } ;;
             -[!O-]) [ "$rd" = 1 ] || { opt=-short; v=${ST_W[i + 1]:-}; } ;;
         esac

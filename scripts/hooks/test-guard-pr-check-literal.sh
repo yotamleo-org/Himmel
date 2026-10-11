@@ -2060,6 +2060,8 @@ for v in \
     "git clone -c 'scripts/c?/write-verdicts.sh' src dst" \
     "/usr/lib/git-core/git-config core.pager 'scripts/c?/write-verdicts.sh'" \
     "git-config core.pager 'scripts/c?/write-verdicts.sh'" \
+    "git clone \"-uscripts/c?/x --term\" url" \
+    "git clone \"-uscripts/c?/x --term\" src dst" \
     "G=gi; \${G}t config core.pager 'scripts/c?/write-verdicts.sh'"; do
     run "HIMMEL-5170 j2353h [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
@@ -2069,6 +2071,7 @@ for v in \
     "git log --format='%H %s'" \
     'git clone -q src dst' \
     'git commit -am "fix: x"' \
+    'git commit -m "fix: scripts/c?/x"' \
     'git push -u origin HEAD'; do
     run "HIMMEL-5170 j2353h control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
