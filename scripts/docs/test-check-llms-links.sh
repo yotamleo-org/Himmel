@@ -405,7 +405,7 @@ fi
 # Every top-level docs page is reachable from the docs map that llms.txt links
 # (docs/README.md), so a page added without a router entry fails here.
 if grep -Fq -- '(docs/README.md)' "$REAL_ROOT/llms.txt"; then ok; else bad "real llms.txt does not link docs/README.md"; fi
-docs_pages=$(git -C "$REAL_ROOT" ls-files ':(glob)docs/*.md')
+if docs_pages=$(git -C "$REAL_ROOT" ls-files ':(glob)docs/*.md') && [ -n "$docs_pages" ]; then ok; else bad "no top-level docs pages enumerated (git ls-files failed or empty)"; fi
 for page in $docs_pages; do
   base=${page#docs/}
   [ "$base" = README.md ] && continue
