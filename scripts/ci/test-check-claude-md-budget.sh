@@ -163,10 +163,14 @@ if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
         fail "H2 fixture did not mutate the section (marker text moved?)"
     else
         install_strip "$tmp/drifted.md" "$tmp/proj2"
-        if cmp -s "$tmp/drifted.md" "$tmp/proj2/stripped.md"; then
+        # cmp: 0 equal, 1 differ, 2 trouble — only 1 proves the drift was seen.
+        cmp -s "$tmp/drifted.md" "$tmp/proj2/stripped.md"; cmp_rc=$?
+        if [ "$cmp_rc" -eq 0 ]; then
             fail "H2: drifted section compared equal — the carve-out hides real drift"
-        else
+        elif [ "$cmp_rc" -eq 1 ]; then
             pass "H2: drifted section is detected (carve-out is only the one clause)"
+        else
+            fail "H2: cmp could not compare (rc=$cmp_rc) — drift detection unproven"
         fi
     fi
 else
