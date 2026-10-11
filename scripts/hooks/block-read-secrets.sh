@@ -718,7 +718,7 @@ g4_secret_tok() {
 g4_clause() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
-    local last_secret=0 skip_out=0 a1="" a2="" showtok=0 rest name
+    local last_secret=0 tdir=0 skip_out=0 a1="" a2="" showtok=0 rest name
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     # shellcheck disable=SC2086 # intentional word split
@@ -780,6 +780,11 @@ g4_clause() {
                 esac ;;
             src)
                 case "$d" in
+                    # cp -t DIR / --target-directory=DIR: the destination is the
+                    # option's value, so the last operand is a source too.
+                    --target-directory|--target-directory=*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
+                    --*) ;;
+                    -*t*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
                     -*) ;;
                     *)  if [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
                         last_secret=0
@@ -788,6 +793,7 @@ g4_clause() {
         esac
     done
     set +f
+    if [ "$tdir" = 1 ] && [ "$last_secret" = 1 ]; then hit=1; note="$cmd of a secret file"; fi
     case "$cmd" in
         '') if [ "$wrap" = env ]; then hit=1; note="bare env dumps the environment"; fi ;;
         printenv) if [ "$nargs" = 0 ]; then hit=1; note="bare printenv dumps the environment"; fi ;;
