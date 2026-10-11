@@ -147,6 +147,19 @@ while [ "$i" -lt "$n" ]; do
         cur="$cur$c"
         continue
     fi
+    if [ "$c" = '#' ]; then
+        # An unquoted # at word start opens a comment that runs to the newline;
+        # a quote inside it must not open a fake quoted run that swallows the
+        # lines after it. Mid-word # is literal, as in the shell.
+        case "${cur: -1}" in
+            "" | " " | $'\t' | ';' | '|' | '&' | '<' | '(' | ')')
+                while [ "$i" -lt "$n" ] && [ "${cmd:i:1}" != $'\n' ]; do
+                    i=$((i + 1))
+                done
+                continue
+                ;;
+        esac
+    fi
     case "$c" in
         "'" | '"') q="$c"; cur="$cur$c" ;;
         ';' | '|' | '&' | $'\n') clauses="$clauses$cur"$'\n'; cur="" ;;
