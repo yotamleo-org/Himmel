@@ -1242,11 +1242,15 @@ for c in \
     'git --no-pager -C x push --force-with-lease origin main' \
     'git -C other push --force-with-lease origin feat/x' \
     'ls; git -C x push --force' \
+    'git -C "my repo" reset --hard' \
+    "git -C 'my repo' push --force" \
+    'git -c "a=b c" clean -fd' \
     'git -C x status && git -C y reset --hard'; do
     assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
 for c in \
     'git -C x status' \
+    'git -C "my repo" status' \
     'git -c a=b log --oneline' \
     'git --no-pager diff' \
     'git -C x push origin feat/x' \

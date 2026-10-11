@@ -1034,11 +1034,13 @@ git_push_has_plus_refspec() {
 # (`git -C x push --force`, `git -c a=b reset --hard`, `git --no-pager clean
 # -fdx`) and hid it from the four rules below. GIT_GOPTS is a run of option
 # tokens: -c/-C and the long options that take a SEPARATE value consume it
-# (cmd_lc is lowercased, so -C reads as -c), any other dash token stands alone
-# (`--no-pager`, `--git-dir=x`, `-p`). Every token is a whitespace-free run, so
-# the match stays linear (HIMMEL-5154). Over-deny only: an unknown value-taking
+# (cmd_lc is lowercased, so -C reads as -c), a quoted value may hold spaces
+# (`-C "my repo"`), any other dash token stands alone (`--no-pager`,
+# `--git-dir=x`, `-p`). Each alternative starts on a distinct character, so the
+# match stays linear (HIMMEL-5154). Over-deny only: an unknown value-taking
 # flag leaves its value as the "subcommand" and the rule just does not fire.
-GIT_GOPTS='(([[:space:]]+(-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)[[:space:]]+[^[:space:];&|]+)|([[:space:]]+-[^[:space:];&|]*))*'
+GIT_GVAL="(\"[^\"]*\"|'[^']*'|[^[:space:];&|\"']+)"
+GIT_GOPTS='(([[:space:]]+(-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)[[:space:]]+'"${GIT_GVAL}"')|([[:space:]]+-[^[:space:];&|]*))*'
 GIT_HEAD='(^|[^[:alnum:]_.-])git(\.exe)?'"${GIT_GOPTS}"
 if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then
     # HIMMEL-2054: walk each ;/|/&-delimited segment independently (cmd_lc
