@@ -3084,6 +3084,11 @@ check_c40_qmd_vec() {
             return
             ;;
         degraded)
+            # HIMMEL-5227: status's detail already names the listener and the one
+            # fix; a token problem is not cured by restarting the server.
+            case "$qd_detail" in
+            *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the daemon's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
+            esac
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
             return
             ;;
@@ -3093,9 +3098,14 @@ check_c40_qmd_vec() {
     local init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-doctor","version":"1"}}}'
     local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"himmel doctor vector probe"}],"limit":1,"rerank":false}}}'
     local init init_rc init_code=""
+    # HIMMEL-5227: the daemon requires a bearer token (HIMMEL-5002); it goes to
+    # curl as a config on stdin (never argv), read through the plugin's helper.
+    local qd_tok qd_auth=()
+    qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" || qd_tok=""
+    [ -n "$qd_tok" ] && qd_auth=(-K -)
     # `-w '%{http_code}'` appends the status after the body ("000" when no HTTP
     # exchange happened); peel it off so an empty body can be told apart by status.
-    init="$("$curl_bin" -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
+    init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
     case "${init: -3}" in [0-9][0-9][0-9]) init_code="${init: -3}"; init="${init%???}" ;; esac
     if [ -z "$init" ] && [ "$init_rc" -eq 28 ]; then
         emit WARN C40-qmd-vec "a process on $url accepted the connection but did not answer initialize within ${init_timeout}s -- the qmd server is wedged, vec search is not being served" "$remedy"
@@ -3112,6 +3122,16 @@ check_c40_qmd_vec() {
         emit WARN C40-qmd-vec "a process on $url returned no usable initialize reply (curl rc=$init_rc, HTTP ${init_code:-unknown}) -- vec search is not being served" "$remedy"
         return
     fi
+    # HIMMEL-5227: a 401/403 is a qmd daemon that wants its token, not a foreign listener.
+    case "$init_code" in
+    401|403)
+        local tok_state="none is readable"
+        [ -n "$qd_tok" ] && tok_state="rejected the one read from the token file"
+        emit WARN C40-qmd-vec "the daemon on $url answered HTTP $init_code: it requires a bearer token (HIMMEL-5002) and $tok_state -- vec search is not being served" \
+            "set QMD_HTTP_AUTH_FILE to the daemon's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
+        return
+        ;;
+    esac
     # Classify from the PARSED reply, never a substring of the raw body: jq
     # rejects a truncated or non-JSON body outright, and reads a pretty-printed
     # reply exactly like qmd's compact one.
@@ -3146,7 +3166,7 @@ check_c40_qmd_vec() {
     fi
     local body rc start elapsed
     start=$SECONDS
-    body="$("$curl_bin" -s -m "$vec_timeout" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$vec_payload" "$url" 2>/dev/null)"; rc=$?
+    body="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$vec_timeout" -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$vec_payload" "$url" 2>/dev/null)"; rc=$?
     elapsed=$((SECONDS - start))
     if [ "$rc" -eq 28 ]; then
         emit WARN C40-qmd-vec "qmd server is up but a vector query timed out after ${vec_timeout}s -- vec search is silently down (keyword search may still work); the embedding backend is hung or cannot load its model" \

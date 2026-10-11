@@ -1133,6 +1133,43 @@ function probeQmdIndex(item, ctx) {
 const QMD_DAEMON_INIT_TIMEOUT_SECS = 10;
 const QMD_DAEMON_SLOW_SECS = 3;
 
+// HIMMEL-5227: since HIMMEL-5002 the daemon answers 401 {"error":"Unauthorized"}
+// to a request without its bearer token, which this probe used to read as "NOT
+// qmd". The token is read through qmd-auth-headers.sh (one owner of the path
+// rule) and goes to curl as a config on stdin, never argv (visible in ps).
+function qmdTokenFile(env) {
+  if (env.QMD_HTTP_AUTH_FILE) return env.QMD_HTTP_AUTH_FILE;
+  if (env.QMD_HTTP_TOKEN_FILE) return env.QMD_HTTP_TOKEN_FILE;
+  return path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), '.config'), 'qmd', 'http-token');
+}
+
+function qmdBearerToken(env, ctx) {
+  const helper = path.resolve(ctx.repoRoot, 'marketplace/plugins/qmd/scripts/qmd-auth-headers.sh');
+  const r = spawnBashProbe([helper, '--token'], { env, encoding: 'utf8' });
+  return r.error || r.status !== 0 ? '' : String(r.stdout || '').trim();
+}
+
+// describeQmdListener(url, env) -> ", listener: pid N (cmdline)" or "" — names
+// the process on the URL's port from `ss` + /proc, READ ONLY. Best effort: no
+// ss (Windows), a foreign user's pid, or no match all read as "".
+function describeQmdListener(url, env) {
+  let port;
+  try { port = new URL(url).port || '80'; } catch (e) { return ''; }
+  const r = spawnProbeSync(env.HIMMEL_DOCTOR_QMD_SS || 'ss', ['-ltnpH'], { env, encoding: 'utf8' });
+  if (r.error || r.status !== 0) return '';
+  for (const line of String(r.stdout || '').split(/\r?\n/)) {
+    const f = line.trim().split(/\s+/);
+    if (!(f[3] && f[3].endsWith(`:${port}`))) continue;
+    const m = /pid=([0-9]+)/.exec(line);
+    if (!m) return '';
+    let cmd = '';
+    try { cmd = fs.readFileSync(`/proc/${m[1]}/cmdline`, 'utf8').split('\0').join(' ').trim(); } catch (e) { cmd = ''; }
+    if (!cmd) { const n = /\(\("([^"]+)"/.exec(line); cmd = n ? n[1] : ''; }
+    return `, listener: pid ${m[1]}${cmd ? ` (${cmd})` : ''}`;
+  }
+  return '';
+}
+
 function probeQmdDaemon(item, ctx) {
   const env = ctx.env || process.env;
   const url = env.HIMMEL_DOCTOR_QMD_URL || 'http://localhost:8181/mcp';
@@ -1140,10 +1177,13 @@ function probeQmdDaemon(item, ctx) {
   const override = env.HIMMEL_DOCTOR_QMD_INIT_TIMEOUT;
   const budget = override !== undefined && /^[1-9][0-9]*$/.test(override) ? Number(override) : QMD_DAEMON_INIT_TIMEOUT_SECS;
   const payload = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmelctl-status","version":"1"}}}';
+  const token = qmdBearerToken(env, ctx);
+  const tokenFile = qmdTokenFile(env);
   const started = Date.now();
   const r = spawnProbeSync(curl, ['-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
+    ...(token ? ['-K', '-'] : []),
     '-H', 'Content-Type: application/json', '-H', 'Accept: application/json, text/event-stream', '-d', payload, url],
-  { env, encoding: 'utf8', timeout: (budget + 5) * 1000 });
+  { env, encoding: 'utf8', timeout: (budget + 5) * 1000, ...(token ? { input: `header = "Authorization: Bearer ${token}"\n` } : {}) });
   const elapsed = (Date.now() - started) / 1000;
   if (r.error && r.error.code === 'ENOENT') return { actual: 'degraded', detail: `curl not found (${curl}) — qmd daemon health could not be checked` };
   if (r.timedOut || r.status === 28) return { actual: 'degraded', detail: `a process on ${url} accepted the connection but did not answer initialize within ${budget}s — the qmd daemon is wedged, vec search is not being served` };
@@ -1152,10 +1192,15 @@ function probeQmdDaemon(item, ctx) {
   if (/[0-9]{3}$/.test(body)) { code = body.slice(-3); body = body.slice(0, -3); }
   if (!body && r.status === 7) return { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` };
   if (!body) return { actual: 'degraded', detail: `a process on ${url} returned no usable initialize reply (curl rc=${r.status}, HTTP ${code || 'unknown'}) — vec search is not being served` };
-  const data = body.split(/\r?\n/).filter((l) => /^data:/.test(l)).map((l) => l.replace(/^data:\s*/, ''))[0];
+  if (code === '401' || code === '403') {
+    return { actual: 'degraded', detail: token
+      ? `the daemon on ${url} answered HTTP ${code} and rejected the bearer token read from ${tokenFile}${describeQmdListener(url, env)} — it was started with a different token; fix: set QMD_HTTP_AUTH_FILE to the file the daemon reads, or restart the daemon so it re-reads ${tokenFile}`
+      : `the daemon on ${url} answered HTTP ${code}: it requires a bearer token (HIMMEL-5002) and none is readable at ${tokenFile} (mode 600 required)${describeQmdListener(url, env)} — fix: start the qmd daemon once so it creates the file, or set QMD_HTTP_AUTH_FILE to the daemon's token file` };
+  }
+  const data =body.split(/\r?\n/).filter((l) => /^data:/.test(l)).map((l) => l.replace(/^data:\s*/, ''))[0];
   let name;
   try { name = JSON.parse(data !== undefined ? data : body).result.serverInfo.name; } catch (e) { name = undefined; }
-  if (name !== 'qmd') return { actual: 'degraded', detail: `a process on ${url} answers but it is NOT qmd (initialize reply has no qmd serverInfo) — qmd vector search cannot work` };
+  if (name !== 'qmd') return { actual: 'degraded', detail: `a process on ${url} answers but it is NOT qmd (initialize reply has no qmd serverInfo)${describeQmdListener(url, env)} — qmd vector search cannot work; fix: stop that process (it holds the daemon port), then start a fresh session so ensure-qmd-daemon.sh starts qmd` };
   const secs = elapsed.toFixed(1);
   return elapsed > QMD_DAEMON_SLOW_SECS
     ? { actual: 'present', detail: `initialize answered in ${secs}s (slow but alive; budget ${budget}s)` }

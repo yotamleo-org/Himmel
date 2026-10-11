@@ -26,14 +26,18 @@ trap 'rm -rf "$work"' EXIT
 # Stub curl: answers by QD_MODE, mirrors the real `-w %{http_code}` framing.
 cat > "$work/curl" <<'STUB'
 #!/usr/bin/env bash
-w=""
-while [ $# -gt 0 ]; do case "$1" in -w) w="$2"; shift ;; esac; shift; done
+w=""; cfg=""
+while [ $# -gt 0 ]; do case "$1" in -w) w="$2"; shift ;; -K) cfg=$(cat) ;; esac; shift; done
 finish() { [ -n "$w" ] && printf '%s' "$1"; exit "${2:-0}"; }
 case "${QD_MODE:-ok}" in
   down) finish 000 7 ;;
   hang) finish 000 28 ;;
   foreign) printf 'event: message\ndata: %s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"other-server"}}}'; finish 200 ;;
   slow) sleep 4 ;;
+  # HIMMEL-5227: the real HIMMEL-5002 daemon (reply copied from the live :8181
+  # listener, 2026-10-11): 401 + {"error":"Unauthorized"} without the bearer
+  # token, which arrives as a curl config on stdin (-K -), never argv.
+  auth) case "$cfg" in *"Authorization: Bearer "*) ;; *) printf '{"error":"Unauthorized"}'; finish 401 ;; esac ;;
 esac
 printf 'event: message\ndata: %s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"qmd","version":"2.8.3"},"instructions":"QMD"}}'
 finish 200
@@ -57,6 +61,31 @@ out=$(probe hang);    echo "$out" | jq -e '.actual == "degraded" and (.detail | 
 out=$(probe foreign); echo "$out" | jq -e '.actual == "degraded" and (.detail | test("NOT qmd"))' >/dev/null || fail "foreign listener -> degraded (got: $out)"
 out=$(probe down);    echo "$out" | jq -e '.actual == "absent"' >/dev/null || fail "refused (rc 7) -> absent (got: $out)"
 echo "ok: qmd-daemon present / slow / wedged / foreign / not-running"
+
+# HIMMEL-5227: a daemon that requires the bearer token (HIMMEL-5002) must not
+# read as "NOT qmd". With the token file the probe authenticates (present);
+# without it the 401 is named as a missing token, not a foreign listener.
+printf 'tok-for-the-test-only\n' > "$work/http-token"; chmod 600 "$work/http-token"
+probe_auth() { # <mode> <token-file> [ss-stub] -> JSON verdict
+  QMD_HTTP_AUTH_FILE="$2" HIMMEL_DOCTOR_QMD_SS="${3:-ss-absent}" probe "$1"
+}
+out=$(probe_auth auth "$work/http-token")
+echo "$out" | jq -e '.actual == "present"' >/dev/null || fail "token file + daemon that 401s without it -> present (got: $out)"
+out=$(probe_auth auth "$work/no-such-token")
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("401")) and (.detail | test("token")) and (.detail | test("NOT qmd") | not)' >/dev/null || fail "401 with no token -> degraded, names the token, not NOT-qmd (got: $out)"
+echo "ok: qmd-daemon authenticates with the bearer token; a 401 names the token"
+
+# A non-qmd listener is named by pid and command, from ss + /proc (read only).
+cat > "$work/ss" <<'SSSTUB'
+#!/usr/bin/env bash
+printf 'LISTEN 0 512 [::1]:1 [::]:* users:(("fake-listener",pid=%s,fd=3))\n' "$FAKE_LISTENER_PID"
+SSSTUB
+chmod +x "$work/ss"
+sleep 30 & fake_pid=$!
+out=$(FAKE_LISTENER_PID="$fake_pid" probe_auth foreign "$work/http-token" "$(winpath "$work/ss")")
+kill "$fake_pid" 2>/dev/null || true
+echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | contains("sleep 30"))' >/dev/null || fail "foreign listener is named by pid and command (got: $out)"
+echo "ok: a non-qmd listener is named by pid and command"
 
 # not wanted: desired follows the qmd items' profiles (luna, all) — core wants none of them.
 want=$("$node_bin" -e "
