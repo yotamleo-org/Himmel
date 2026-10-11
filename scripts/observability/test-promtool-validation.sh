@@ -90,7 +90,8 @@ for pair in \
     "himmel_hook_chain_log_unreadable|- uid: himmel_hook_chain_log_unreadable|HimmelHookChainLogUnreadable|- alert: HimmelHookChainLogUnreadable" \
     "himmel_quiet_run_orphans|- uid: himmel_quiet_run_orphans|HimmelQuietRunOrphans|- alert: HimmelQuietRunOrphans" \
     "himmel_eval_regression|- uid: himmel_eval_regression|HimmelEvalRegression|- alert: HimmelEvalRegression" \
-    "himmel_eval_stale|- uid: himmel_eval_stale|HimmelEvalStale|- alert: HimmelEvalStale"
+    "himmel_eval_stale|- uid: himmel_eval_stale|HimmelEvalStale|- alert: HimmelEvalStale" \
+    "himmel_eval_absent|- uid: himmel_eval_absent|HimmelEvalAbsent|- alert: HimmelEvalAbsent"
 do
     IFS='|' read -r label grafana_marker _name prom_marker <<<"$pair"
     grafana_for="$(extract_for "$SCRIPT_DIR/provisioning/alerting/rules.yaml" "$grafana_marker")"
@@ -141,7 +142,8 @@ nodatastate_table() {
         "himmel_hook_chain_budget_denials|NoData" \
         "himmel_hook_chain_log_unreadable|NoData" \
         "himmel_eval_regression|OK" \
-        "himmel_eval_stale|OK"
+        "himmel_eval_stale|OK" \
+        "himmel_eval_absent|OK"
     do
         echo "$pair"
     done

@@ -297,6 +297,12 @@ on the last ok run and shows as `himmel_eval_last_run_ok 0`.
 - `HimmelEvalStale`: no run in 14 days, for the evals named in the selector's
   regex (`qmd-quality` today). Add an eval to the regex in both copies when it
   gets a timer; an eval run only by hand must stay out.
+- `HimmelEvalAbsent` (HIMMEL-4661): a scheduled eval with no
+  `himmel_eval_last_run_age_seconds` series at all for 1h (never ran, or the
+  ledger is gone), while `up{job="flow-exporter"} == 1`. One
+  `absent_over_time` per scheduled eval; the exporter does not know the
+  schedule, so the eval name is written in the rule: add it here too when an
+  eval gets a timer.
 
 **Dashboard:** the `Eval results` row in `himmel-health` (a score table with CI,
 delta and a worse-than-noise flag, plus days since each eval last ran).

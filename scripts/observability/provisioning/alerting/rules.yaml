@@ -827,3 +827,34 @@ groups:
           severity: warn
         annotations:
           summary: 'eval {{ $labels.eval }} has had no run for more than 14 days'
+
+      # HIMMEL-4661: twin of alerts.rules.yml's HimmelEvalAbsent. Here the
+      # empty result IS the finding's opposite (healthy), so noDataState: OK
+      # stays; the query itself returns a series only while the eval has none.
+      - uid: himmel_eval_absent
+        title: "Scheduled eval has no ledger series"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: absent_over_time(himmel_eval_last_run_age_seconds{eval="qmd-quality"}[1h]) and on() (up{job="flow-exporter"} == 1)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              datasource: { type: __expr__, uid: __expr__ }
+              refId: B
+        noDataState: OK
+        execErrState: Alerting
+        for: 1h
+        labels:
+          severity: warn
+        annotations:
+          summary: 'scheduled eval {{ $labels.eval }} has no ledger series: it never ran or its ledger is gone'

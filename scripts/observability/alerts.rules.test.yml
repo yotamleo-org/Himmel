@@ -826,3 +826,47 @@ tests:
               eval: qmd-quality
             exp_annotations:
               summary: 'eval qmd-quality has had no run for more than 14 days'
+
+  # HIMMEL-4661 HimmelEvalAbsent: a scheduled eval (qmd-quality) with no age
+  # series at all (never ran, or its ledger is gone) while the exporter is up
+  # fires after the 1h window plus the 1h `for`; the HimmelEvalStale test above
+  # cannot see this, there is no series to compare.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="flow-exporter"}'
+        values: '1x200'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: HimmelEvalAbsent
+        exp_alerts: []
+      - eval_time: 150m
+        alertname: HimmelEvalAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              eval: qmd-quality
+            exp_annotations:
+              summary: 'scheduled eval qmd-quality has no ledger series: it never ran or its ledger is gone'
+
+  # Control: a fresh series for the scheduled eval fires nothing; and with the
+  # exporter itself down (HimmelWatcherDown's job) the absence is not blamed
+  # on the eval.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="flow-exporter"}'
+        values: '1x200'
+      - series: 'himmel_eval_last_run_age_seconds{eval="qmd-quality"}'
+        values: '86400x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: HimmelEvalAbsent
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="flow-exporter"}'
+        values: '0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: HimmelEvalAbsent
+        exp_alerts: []
