@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.71] — 2026-10-11
+
+### Changed
+- `.pre-commit-config.yaml`: `pre-commit-hooks` v5.0.0 to v6.0.0 and
+  `shellcheck-py` v0.10.0.1 to v0.11.0.1, matching the himmel repo's own pins.
+
 ## [0.4.70] — 2026-10-07
 
 ### Added
