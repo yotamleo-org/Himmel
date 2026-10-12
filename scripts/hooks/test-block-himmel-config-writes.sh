@@ -242,6 +242,15 @@ big_patch 998 "*** Update File: alias/config.json" > "$T/palias.txt"
 big_case "symlinked-dir alias header after 998 benign ones -> block" block "$T/palias.txt"
 { printf '*** Begin Patch\n*** Add File: big.txt\n'; head -c 600000 /dev/zero | tr '\0' 'x' | sed 's/^/+/'; printf '\n*** End Patch\n'; } > "$T/pbytes.txt"
 big_case "over-size patch body (no config named) -> block" block "$T/pbytes.txt"
+# One path over the OS single-argument limit makes the batched readlink fail to
+# exec; that must DENY, not read as "nothing resolves to the config".
+{ printf '*** Begin Patch\n*** Update File: '; head -c 200000 /dev/zero | tr '\0' 'a'; printf '\n*** Update File: alias/config.json\n*** End Patch\n'; } > "$T/plong.txt"
+big_case "oversized path header + symlinked config alias -> block" block "$T/plong.txt"
+# The byte cap counts bytes, not characters: 300000 two-byte characters is 600000 bytes.
+{ printf '*** Begin Patch\n*** Add File: big.txt\n'; i=0; while [ "$i" -lt 3 ]; do head -c 100000 /dev/zero | tr '\0' 'x' | sed 's/x/é/g; s/^/+/'; printf '\n'; i=$((i + 1)); done; printf '*** End Patch\n'; } > "$T/pmb.txt"
+saved_lc="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
+big_case "multibyte body over the byte cap (locale en_US.utf8) -> block" block "$T/pmb.txt"
+LC_ALL="$saved_lc"; export LC_ALL
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"

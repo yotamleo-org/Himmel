@@ -164,8 +164,11 @@ case "$tool" in
         # header loop is fork-free (a case glob pre-filters header lines before
         # the pure-bash trim; paths are collected and resolved by ONE readlink
         # -m afterwards) and the caps bound what is left.
-        if [ "${#patch}" -gt "$MAX_PATCH_BYTES" ]; then
-            deny "apply_patch payload is ${#patch} bytes, over the $MAX_PATCH_BYTES cap (the guard cannot finish inside the hook budget; split the patch)"
+        # Byte length, not ${#patch}: under a multibyte locale that counts characters.
+        plen=$(printf '%s' "$patch" | LC_ALL=C wc -c 2>/dev/null) || plen=$((MAX_PATCH_BYTES + 1))
+        plen=$((plen + 0))
+        if [ "$plen" -gt "$MAX_PATCH_BYTES" ]; then
+            deny "apply_patch payload is $plen bytes, over the $MAX_PATCH_BYTES cap (the guard cannot finish inside the hook budget; split the patch)"
         fi
         nhdr=0
         cand=()
@@ -211,10 +214,13 @@ EOF
         if [ "${#cand[@]}" -gt 0 ]; then
             cfg_res=$(readlink -m -- "$CFG_REAL" 2>/dev/null) || cfg_res=""
             if [ -n "$cfg_res" ]; then
+                # A failed batch (e.g. one path over the OS argument limit) must
+                # DENY: an empty result would read as "nothing resolves to it".
+                resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
                 while IFS= read -r r; do
                     [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
                 done <<EOF
-$(readlink -m -- "${cand[@]}" 2>/dev/null)
+$resolved
 EOF
             fi
         fi
