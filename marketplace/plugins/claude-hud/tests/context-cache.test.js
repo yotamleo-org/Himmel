@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 const entry = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const contextFill = fileURLToPath(new URL('../../../../scripts/context-fill.sh', import.meta.url));
 const SID = 'cccccccc-1111-2222-3333-444444444444';
+// himmel spawns the resolved bash, never a bare word (run-hook-with-bash.test.mjs lint).
+const BASH_BIN = process.env.BASH_BIN || process.env.BASH || 'bash';
 
 async function session(stdinOverrides) {
   const home = await mkdtemp(path.join(tmpdir(), 'hud-ctxcache-'));
@@ -50,7 +52,7 @@ test('the HUD writes the snapshot context-fill.sh reads, and --percent returns i
     assert.equal(typeof snapshot.saved_at, 'number');
     assert.equal(snapshot.session_name, 'leg-fixture');
 
-    const fill = spawnSync('bash', [contextFill, '--percent'], { encoding: 'utf8', env });
+    const fill = spawnSync(BASH_BIN, [contextFill, '--percent'], { encoding: 'utf8', env });
     assert.equal(fill.status, 0, fill.stderr);
     assert.match(fill.stdout.trim(), /^42\b/);
   } finally {

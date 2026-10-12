@@ -1,5 +1,5 @@
 a1f67a3aed51a811de61e996e62e777164f5fd2c  .claude-plugin/marketplace.json
-bc83d7cef4175447a4570c47d928a073da04464e  .claude-plugin/plugin.json
+20b672f8ca0980883492022070e55076d4a40d43  .claude-plugin/plugin.json
 1014ba78880c899e842b397cb89a878be4671f7d  .editorconfig
 0f84e752fb58bca72b25d5a1075cf598912c5c1c  .github/CODEOWNERS
 7f05038234ebcf35b4bffcf4fb2ea9e84e442b2b  .github/ISSUE_TEMPLATE/bug_report.md
@@ -285,7 +285,7 @@ b2f49e0b37f507991290e48c883901c5fbcdc127  src/utils/truncate.ts
 9b5b3607c611773804f240f01073f2c0aae13df5  tests/claudex-lane.test.js
 9c9cb381ced6c61b593443e13aa904f5df869f24  tests/config-reader.test.js
 0c0062123dbf88a6da7558f27930294312eee6e5  tests/config.test.js
-102b1519c467c1df73bc7534041c2aedf655ac97  tests/context-cache.test.js
+b8c03a109a759e12e145b9df30b71b86b95971b9  tests/context-cache.test.js
 57e563f59d5d435d4bd00e239b45f219c054627f  tests/custom-line-cmd.test.js
 485916ab5613fbe610ad61445db80e71aae0ed9f  tests/daily-cost.test.js
 6932499eccb44d5778ca12a62809744dec6630ac  tests/effort.test.js
