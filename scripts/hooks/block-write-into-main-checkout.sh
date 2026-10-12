@@ -3467,11 +3467,14 @@ _BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
 # shellcheck disable=SC2016  # a regex, not an expansion
 _BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
 _BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
-# the same command position holding a substitution or a whole variable word:
-# its name is unknowable here (`x=eval; $x "$(cat f)"`); an assignment word
-# holding a ( or a backtick opens a substitution, never a command prefix
+# the same command position holding a word built from an expansion: its name
+# is unknowable here (`x=ev; y=al; $x$y "$(cat f)"`, `$@`, `$x/ba$y`); an
+# assignment word is not a command word, and one holding a ( or a backtick
+# opens a substitution, never a command prefix; a `{` opens a group only
+# before a blank (`${a:-$b}` is an expansion). Matched after backtick pairs
+# become $( and ), so `pwd`/x ends its word at the closing one.
 # shellcheck disable=SC2016  # a regex, not an expansion
-_BWIMC_DX_CRUDEVAR='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*([$][(]|`|[$]([A-Za-z_][A-Za-z0-9_]*|[{][^}/]*[}])([[:space:];&|)]|$))'
+_BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*[^[:space:];&|()<>=]*[$][^[:space:]]'
 # a date +FORMAT whose output is digits and punctuation only
 _BWIMC_DX_DATEFMT='^[+]([-:/._, 0-9]|%[sYmdHMSNjuwyeIklCGgVUWFTDRzn%]|%:z)*$'
 # a redirect that feeds a command's standard input from a file or descriptor
@@ -3517,14 +3520,56 @@ _bwimc_dx_unbrace() {
     done
 }
 
+# _bwimc_dx_crudecode TEXT — print TEXT without its quoted heredoc bodies (data
+# no shell reads as code; a heredoc fed to a shell is already caught by the
+# exec-word pass), located as _bwimc_dx_heredoc locates them. TEXT is printed
+# whole when a line opening heredocs cannot be tokenised. Run it in a
+# subshell: it tokenises, which resets ST_*.
+_bwimc_dx_crudecode() {
+    local t="$1" pre='' out='' line chk body n used=0 hw bs found
+    local -a ops
+    while [ -n "$t" ]; do
+        line=${t%%$'\n'*}
+        if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+        pre="$pre$line"$'\n'; out="$out$line"$'\n'
+        case "$line" in *'<<'*) ;; *) continue ;; esac
+        if ! st_tokenize "$pre" 2>/dev/null; then printf '%s' "$1"; return 0; fi
+        read -r -a ops <<< "$(_bwimc_dx_hdops)" || true
+        n=${#ops[@]}
+        [ "$n" -gt "$used" ] || continue
+        bs=${line##*[!\\]}; [ "$bs" != "$line" ] || bs=$line
+        if [ $(( ${#bs} % 2 )) = 1 ]; then printf '%s' "$1"; return 0; fi
+        while [ "$used" -lt "$n" ]; do
+            hw=${ops[$used]}
+            body=''; found=0
+            while [ -n "$t" ]; do
+                line=${t%%$'\n'*}
+                if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+                chk=$line
+                case "${ST_RO[$hw]}" in *-) while [ "${chk:0:1}" = $'\t' ]; do chk=${chk#?}; done ;; esac
+                if [ "$chk" = "${ST_W[$hw]}" ]; then found=1; break; fi
+                body="$body$line"$'\n'
+            done
+            if [ "${ST_Q[$hw]}" = 0 ]; then pre="$pre$body"; out="$out$body"; fi
+            if [ "$found" = 1 ]; then pre="$pre$line"$'\n'; out="$out$line"$'\n'; fi
+            used=$((used + 1))
+        done
+    done
+    printf '%s' "$out"
+}
+
 _bwimc_dx_crude() {
-    local LC_ALL=C t="$1" c p x
+    local LC_ALL=C t="$1" c p x v
     local -a pieces
     c=${t//\\/}; c=${c//\'/}; c=${c//\"/}
     case "$t" in
         *'$'*|*'`'*|*'<'*|*'|'*|*'=('*)
             [[ $c =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
-            [[ $c =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
+            v=$(_bwimc_dx_crudecode "$t"); v=${v//\\/}; v=${v//\'/}; v=${v//\"/}
+            # pair backticks as $( and ), so a closing one ends a word
+            # shellcheck disable=SC2016  # a literal $(, not an expansion
+            while [[ $v == *'`'*'`'* ]]; do v=${v/'`'/'$('}; v=${v/'`'/')'}; done
+            [[ $v =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
     esac
     [[ $c =~ $_BWIMC_DX_FDEF ]] && _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
     p=${c//[^A-Za-z0-9_=+.\/\[\]-]/ }

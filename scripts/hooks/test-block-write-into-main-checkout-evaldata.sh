@@ -330,6 +330,15 @@ _r5098 "228c padded backtick command word"             block ": ${_PAD}; \`echo 
 _r5098 "228d padded substitution command word"         block ": ${_PAD}; \$(echo eval) \"\$(cat @W@/msg)\""
 _r5098 "228e control: padded variable argument"        allow ": ${_PAD}; ls \"\$HOME\""
 _r5098 "228f control: padded assignment from date"     allow ": ${_PAD}; x=\$(date); echo \"\$x\""
+_r5098 "228g padded concatenated variable command word" block "x=ev; y=al; : ${_PAD}; \$x\$y \"\$(cat @W@/msg)\""
+_r5098 "228h padded positional command word"           block "set -- eval; : ${_PAD}; \$@ \"\$(cat @W@/msg)\""
+_r5098 "228i padded shell path built from variables"   block "x=/bin; y=sh; : ${_PAD}; \$x/ba\$y -c \"\$(cat @W@/msg)\""
+_r5098 "228j padded unquoted heredoc body runs a substitution" block "cat > @W@/n.md <<EOF${NL}\$(x=ev; y=al; \$x\$y \"\$(cat @W@/msg)\")${NL}${_PAD}${NL}EOF"
+_r5098 "228k padded quoted << in a string hides no body" block "echo \"<<'A'\"${NL}x=ev; y=al; \$x\$y \"\$(cat @W@/msg)\"${NL}A${NL}: ${_PAD}"
+_r5098 "228l control: padded quoted heredoc of prose"   allow "cat > @W@/n.md <<'EOF'${NL}\`foo\` is done! \`bar\` too.${NL}\$x\$y \"\$(cat f)\"${NL}${_PAD}${NL}EOF"
+_r5098 "228n control: padded closing backtick ends its word" allow ": ${_PAD}; echo \`date\`/x"
+_r5098 "228o padded command word with a mid-word backtick" block "x=al; : ${_PAD}; ev\`echo \$x\` \"\$(cat @W@/msg)\""
+_r5098 "228m control: padded <<- body with tab-led end" allow "cat > @W@/n.md <<-'EOF'${NL}\$x run${NL}${_PAD}${NL}	EOF"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
