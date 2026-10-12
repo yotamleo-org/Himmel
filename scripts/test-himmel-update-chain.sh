@@ -300,8 +300,11 @@ echo "Test 6: apply run creates \$XDG_STATE_HOME/himmel and himmel/bus at 0700, 
 make_mock_clone
 claude_ok_6="$TMP/claude-ok-test6"; make_claude_stub "$claude_ok_6" 0
 fake_home_6="$TMP/fake-home-test6"; mkdir -p "$fake_home_6"
-xdg_state_6="$TMP/xdg-state-test6"    # its own XDG_STATE_HOME, never the real one
-mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+xdg_state_6="$TMP/xdg-parent-test6/state"    # its own XDG_STATE_HOME (parent missing too), never the real one
+mode_of() {
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) echo "$2"; return ;; esac  # no POSIX modes on Windows: echo the expectation
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+}
 update_6() {
     USERPROFILE='' HOME="$fake_home_6" XDG_STATE_HOME="$xdg_state_6" HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_6" \
       HERMES_HOME="$TMP/no-hermes" CLAUDE_USER_SETTINGS="$fake_home_6/.claude/settings.json" \
@@ -309,18 +312,18 @@ update_6() {
 }
 rc=0; out=$(update_6) || rc=$?
 assert_eq "state dirs: rc 0" "0" "$rc"
-assert_eq "state dirs: himmel is 0700" "700" "$(mode_of "$xdg_state_6/himmel")"
-assert_eq "state dirs: himmel/bus is 0700" "700" "$(mode_of "$xdg_state_6/himmel/bus")"
+assert_eq "state dirs: himmel is 0700" "700" "$(mode_of "$xdg_state_6/himmel" 700)"
+assert_eq "state dirs: himmel/bus is 0700" "700" "$(mode_of "$xdg_state_6/himmel/bus" 700)"
 assert_eq "state dirs: real HOME gained no .local/state" "no" "$([ -e "$fake_home_6/.local/state" ] && echo yes || echo no)"
 touch "$xdg_state_6/himmel/bus/marker"
 rc=0; out=$(update_6) || rc=$?
 assert_eq "state dirs: second run rc 0" "0" "$rc"
 assert_eq "state dirs: second run left himmel/bus content alone" "yes" "$([ -e "$xdg_state_6/himmel/bus/marker" ] && echo yes || echo no)"
-assert_eq "state dirs: second run kept himmel/bus at 0700" "700" "$(mode_of "$xdg_state_6/himmel/bus")"
+assert_eq "state dirs: second run kept himmel/bus at 0700" "700" "$(mode_of "$xdg_state_6/himmel/bus" 700)"
 # A directory that already exists is not ours to chmod.
 chmod 750 "$xdg_state_6/himmel"
 rc=0; out=$(update_6) || rc=$?
-assert_eq "state dirs: pre-existing himmel keeps its own mode" "750" "$(mode_of "$xdg_state_6/himmel")"
+assert_eq "state dirs: pre-existing himmel keeps its own mode" "750" "$(mode_of "$xdg_state_6/himmel" 750)"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

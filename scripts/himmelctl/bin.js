@@ -5142,6 +5142,9 @@ function sameFsEntry(a, b) {
 function ensureBusStateDirs() {
   const xdg = process.env.XDG_STATE_HOME;
   const stateHome = xdg && path.isAbsolute(xdg) ? xdg : path.join(os.homedir(), '.local', 'state');
+  // Missing ancestors (a fresh HOME without ~/.local) get the default mode;
+  // only the three directories below are ours to make private.
+  try { fs.mkdirSync(path.dirname(stateHome), { recursive: true }); } catch (_e) { return; }
   for (const dir of [stateHome, path.join(stateHome, 'himmel'), path.join(stateHome, 'himmel', 'bus')]) {
     if (fs.existsSync(dir)) continue;
     try {

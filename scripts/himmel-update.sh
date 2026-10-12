@@ -3141,6 +3141,9 @@ backfill_user_claude_md() {
 ensure_bus_state_dirs() {
     local state="${XDG_STATE_HOME:-}" d
     case "$state" in /*) ;; *) state="$HOME/.local/state" ;; esac
+    # Missing ancestors (a fresh HOME without ~/.local) get the default mode;
+    # only the three directories below are ours to make private.
+    [ -e "$state" ] || mkdir -p "$(dirname "$state")" 2>/dev/null || true
     for d in "$state" "$state/himmel" "$state/himmel/bus"; do
         [ -e "$d" ] || mkdir -m 700 "$d" 2>/dev/null || true
     done
