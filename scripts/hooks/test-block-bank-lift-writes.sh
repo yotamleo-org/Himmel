@@ -1666,6 +1666,21 @@ env_row "5348 sed w \${V:-/tmp/out}, V = lift"          deny  "V=$LIFT" 'sed -n 
 env_row "5348 sed w defaults spell the lift"           deny  "OTHER=1" "sed -n \"w \${q:-$HOME/.hi}mmel/state/bank-li\${q:-f}t.json\" /tmp/x"
 env_row "5348 sed w \${!R} indirection"                 deny  "R=V V=$LIFT" 'sed -n "w ${!R}" /tmp/x'
 env_row "5348 sed w \${V:-/tmp/out}, V unset (ctrl)"    allow "OTHER=1" 'sed -n "w ${V:-/tmp/out}" /tmp/x'
+# j2479b: a long option the sed parser does not know exactly (GNU accepts
+# unambiguous abbreviations) fails closed: every operand is a destination.
+env_row "5348 sed -i --expr= script, file \$V"           deny  "V=$LIFT" "sed -i --expr='s/a/b/' \"\$V\""
+env_row "5348 sed -i --e= script, file \$V"              deny  "V=$LIFT" "sed -i --e='s/a/b/' \"\$V\""
+env_row "5348 sed -i --fi= script file, file \$V"        deny  "V=$LIFT" 'sed -i --fi=s.sed "$V"'
+env_row "5348 sed --i abbreviated in-place, file \$V"    deny  "V=$LIFT" 'sed --i "s/a/b/" "$V"'
+env_row "5348 sed -n --expr='w lift'"                   deny  "OTHER=1" "sed -n --expr='w $LIFT' /tmp/x"
+env_row "5348 sed -i --expr= script \${x:-y} (ctrl)"     allow "OTHER=1" "sed -i --expr='s/x/\${x:-y}/' /tmp/x"
+# j2479b: special parameters after a w fail closed.
+env_row "5348 sed w \${#V}"                              deny  "OTHER=1" 'sed -n "w ${#V}" /tmp/x'
+env_row "5348 sed w \${?}"                               deny  "OTHER=1" 'sed -n "w ${?}" /tmp/x'
+env_row "5348 sed w \${#}"                               deny  "OTHER=1" 'sed -n "w ${#}" /tmp/x'
+env_row "5348 sed w \${\$}"                              deny  "OTHER=1" 'sed -n "w ${$}" /tmp/x'
+env_row "5348 sed w \${-}"                               deny  "OTHER=1" 'sed -n "w ${-}" /tmp/x'
+env_row "5348 sed w \${0}"                               deny  "OTHER=1" 'sed -n "w ${0}" /tmp/x'
 # j2479a B2 (HIMMEL-5326): sort -o attached, clustered and abbreviated, and
 # cp/mv/install --t= target directory.
 env_row "5348 sort -o\"\$V\" attached"                   deny  "V=$LIFT" 'sort -o"$V" /tmp/y'

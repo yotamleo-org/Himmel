@@ -1177,19 +1177,34 @@ SED_E_RE='(^|[[:space:];{}!/0-9$])e([[:space:]]|$)'
 # --expression value, else the first operand; -f files are not read.
 check_sed_scripts() {
     local -a scripts=() ops=()
-    local a nx="" have=0 rest ch line p cand low
+    local a nx="" have=0 rest ch line p cand low nm
+    SED_FAILCLOSED=0
     for a in "$@"; do
         case "$nx" in
             e) scripts+=("$a"); nx=""; continue ;;
             skip) nx=""; continue ;;
         esac
         case "$a" in
-            --expression=*) scripts+=("${a#*=}"); have=1 ;;
-            --expression) nx=e; have=1 ;;
-            --file=*) have=1 ;;
-            --file) nx=skip; have=1 ;;
-            --line-length) nx=skip ;;
-            --*|-) ;;
+            --|-) ;;
+            --*)
+                # j2479b: GNU sed takes any unambiguous abbreviation; --e* is
+                # --expression, --fi* is --file. Any other long option not
+                # known exactly fails closed (SED_FAILCLOSED).
+                nm="${a#--}"; nm="${nm%%=*}"
+                if [ -n "$nm" ] && [[ "expression" == "$nm"* ]]; then
+                    have=1
+                    case "$a" in *=*) scripts+=("${a#*=}") ;; *) nx=e ;; esac
+                elif [ "${#nm}" -ge 2 ] && [[ "file" == "$nm"* ]]; then
+                    have=1
+                    case "$a" in *=*) ;; *) nx=skip ;; esac
+                elif [ "$nm" = line-length ]; then
+                    case "$a" in *=*) ;; *) nx=skip ;; esac
+                else
+                    case "$nm" in
+                        in-place|quiet|silent|posix|regexp-extended|separate|sandbox|unbuffered|debug|null-data|zero-terminated|follow-symlinks|binary|help|version) ;;
+                        *) SED_FAILCLOSED=1 ;;
+                    esac
+                fi ;;
             -*)
                 rest="${a#-}"
                 while [ -n "$rest" ]; do
@@ -1205,7 +1220,7 @@ check_sed_scripts() {
         esac
     done
     # SED_FILES = the file operands: every operand but the script one.
-    SED_FILES=(); SED_SCRIPT_OP=""
+    SED_FILES=(); SED_SCRIPT_OP=""; SED_OPS=(${ops[@]+"${ops[@]}"})
     if [ "$have" = 1 ]; then
         SED_FILES=(${ops[@]+"${ops[@]}"})
     elif [ "${#ops[@]}" -gt 0 ]; then
@@ -1249,8 +1264,9 @@ EOF
 # would when the name it references is unset: ${N:-w} ${N-w} ${N:=w} ${N=w}
 # give w (evaluated in turn), every other form gives nothing. 1 = a
 # referenced name is set in the inherited environment, or the form is an
-# indirection (${!R}, zsh ${(P)R}); 2 = a form that is not ${NAME...} or
-# ${<digit or special>...} (not a shell expansion, e.g. ${{ x }}).
+# indirection (${!R}, zsh ${(P)R}), a length (${#V}) or a positional or
+# special parameter (${0} ${?} ${$} ${-}); 2 = any other form that is not
+# ${NAME...} (not a shell expansion, e.g. ${{ x }}).
 # shellcheck disable=SC2016  # literal ${ text is matched, not expanded
 _unset_eval() {
     local LC_ALL=C
@@ -1267,13 +1283,17 @@ _unset_eval() {
         done
         [ "$depth" -eq 0 ] || return 2
         body="${rest:0:$((i-1))}"; rest="${rest:$i}"
-        case "$body" in '!'*|'('*) return 1 ;; esac
-        case "$body" in [#^=~+]?*) body="${body#?}" ;; esac
+        # j2479b: an indirection, a length and a special or positional
+        # parameter have no unset value to evaluate, so they fail closed.
+        case "$body" in '!'*|'('*|'#'*) return 1 ;; esac
+        case "$body" in [=~+^]?*) body="${body#?}" ;; esac
         if [[ "$body" =~ $re_nm ]]; then
             _env0_get "${BASH_REMATCH[1]}"
             [ -z "$REPLY" ] || return 1
-        elif ! [[ "$body" =~ $re_sp ]]; then
-            [ -z "$body" ] || [ "$body" = '#' ] || return 2
+        elif [[ "$body" =~ $re_sp ]]; then
+            return 1
+        else
+            [ -z "$body" ] || return 2
             continue
         fi
         op="${BASH_REMATCH[2]}"
@@ -2165,6 +2185,11 @@ check_clause() {
                 case "$a" in --in-place*) inplace=1 ;; --*) ;; -*i*) inplace=1 ;; esac
             done
             check_sed_scripts "$@"
+            if [ "$SED_FAILCLOSED" = 1 ]; then
+                for a in ${SED_OPS[@]+"${SED_OPS[@]}"}; do
+                    is_lift_dest "$a" && deny "sed with an unrecognised long option names the bank lift ($a)$DEST_WHY"
+                done
+            fi
             # j2479a B1: only the FILE operands are destinations; the script
             # operand keeps the literal check it had before the resolver.
             if [ "$inplace" = 1 ]; then
