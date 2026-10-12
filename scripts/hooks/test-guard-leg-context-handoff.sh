@@ -37,13 +37,16 @@ DIR="$T/handovers/u/himmel"
 mkdir -p "$CFG/projects/p" "$CFG/plugins/claude-hud/context-cache" "$DIR"
 DOC="$DIR/HIMMEL-9-N77-thing-2026-10-06.md"
 TR="$CFG/projects/p/sess.jsonl"
-# The guard is OFF unless the launch sets a mode (HIMMEL-4710): LEG_OFF is a
-# leg launched without --context-guard; LEG_BASE turns compact on.
-LEG_OFF="HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console CLAUDE_CONFIG_DIR=$CFG HANDOVER_DIR=$T/handovers"
-LEG_BASE="$LEG_OFF HIMMEL_LEG_CONTEXT_MODE=compact"
-# The RESUME-doc cases below run in handoff mode; compact has its own section,
-# run with LEG_BASE alone.
-LEG_ENV="$LEG_OFF HIMMEL_LEG_CONTEXT_MODE=handoff"
+# The guard is OFF unless the launch sets a mode (HIMMEL-4710): an empty
+# LEG_MODE is a leg launched without --context-guard. The RESUME-doc cases
+# below run in handoff mode; compact has its own section (LEG_MODE=compact).
+# run_leg builds the env per call, quoted, so a TMPDIR with spaces survives
+# (HIMMEL-4692); the paths are never word-split.
+LEG_MODE=handoff
+run_leg() {
+    env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console CLAUDE_CONFIG_DIR="$CFG" \
+        HANDOVER_DIR="$T/handovers" ${LEG_MODE:+"HIMMEL_LEG_CONTEXT_MODE=$LEG_MODE"} "$@"
+}
 
 sha() {
     if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | cut -d' ' -f1
@@ -52,7 +55,7 @@ sha() {
 
 # session <first-user-text> [timestamp] -- a fresh transcript whose first user turn says it
 session() {
-    jq -cn --arg t "$1" --arg ts "${2-2026-10-06T10:00:00.000Z}" \
+    jq -cn --arg t "$1" --arg ts "${2-$(date -u +%Y-%m-%dT%H:%M:%S.000Z)}" \
         '{type:"user",timestamp:$ts,message:{role:"user",content:$t}}' > "$TR"
     printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":1}}}' >> "$TR"
 }
@@ -69,8 +72,7 @@ doc() { printf -- '---\n---\n# brief\n\n## Results (newest at the bottom)\n\n%s\
 check() {
     local label="$1" expect="$2" json="$3"; shift 3
     local rc got
-    # shellcheck disable=SC2086  # LEG_ENV is a deliberate word list
-    printf '%s' "$json" | env $LEG_ENV "$@" bash "$HOOK" >/dev/null 2>&1
+    printf '%s' "$json" | run_leg "$@" bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label - expected $expect got $got"; fi
@@ -81,13 +83,13 @@ tool_call() { jq -cn --arg n "$1" --arg t "$TR" --arg w "$REPO" '{tool_name:$n,t
 write_call() { jq -cn --arg n "$1" --arg p "$2" --arg t "$TR" --arg w "$REPO" '{tool_name:$n,tool_input:{file_path:$p,content:"x"},transcript_path:$t,cwd:$w}'; }
 pc_call() { jq -cn --arg g "${1:-auto}" --arg t "$TR" --arg w "$REPO" '{hook_event_name:"PreCompact",trigger:$g,transcript_path:$t,cwd:$w,session_id:"s"}'; }
 # check_c: the same check with compact in the launch env
-check_c() { local LEG_ENV="$LEG_BASE"; check "$@"; }
+check_c() { local LEG_MODE=compact; check "$@"; }
 # deny_text <json> [ENV=val ...] -- the hook's stderr for one call, handoff env
 deny_text() {
     local json="$1"; shift
     # stderr only, stdout dropped: the order is deliberate.
-    # shellcheck disable=SC2086,SC2069
-    printf '%s' "$json" | env $LEG_ENV "$@" bash "$HOOK" 2>&1 >/dev/null
+    # shellcheck disable=SC2069
+    printf '%s' "$json" | run_leg "$@" bash "$HOOK" 2>&1 >/dev/null
 }
 
 # The leg's worktree: a repo whose branch tracks a bare upstream, so a
@@ -110,15 +112,14 @@ LS="$(bash_call 'ls')"
 
 echo "== off by default: no mode at launch, no guard (HIMMEL-4710) =="
 fill 90
-check_off() { local LEG_ENV="$LEG_OFF"; check "$@"; }
+check_off() { local LEG_MODE=''; check "$@"; }
 check_off "no mode, 90 % + ordinary Bash -> allow" allow "$LS"
 check_off "no mode, 90 % + Edit -> allow" allow "$(write_call Edit "$T/notes.md")"
 check_off "no mode, 100 % + Read -> allow" allow "$(tool_call Read)"
 check_off "no mode, PreCompact auto at 90 % -> allow" allow "$(pc_call)"
 check_off "mode none, 90 % -> allow" allow "$LS" HIMMEL_LEG_CONTEXT_MODE=none
 check_off "empty mode, 90 % -> allow" allow "$LS" HIMMEL_LEG_CONTEXT_MODE=
-# shellcheck disable=SC2086
-off_out="$(printf '%s' "$LS" | env $LEG_OFF bash "$HOOK" 2>&1)"
+off_out="$(printf '%s' "$LS" | LEG_MODE='' run_leg bash "$HOOK" 2>&1)"
 if [ -z "$off_out" ]; then ok "no mode -> no output at all"; else bad "no mode printed: $off_out"; fi
 
 echo "== the threshold =="
@@ -136,8 +137,7 @@ check "90 % + Read -> block" block "$(tool_call Read)"
 check "90 % + Write to an ordinary file -> block" block "$(write_call Write "$T/notes.md")"
 
 echo "== the deny message tells the leg exactly what to do =="
-# shellcheck disable=SC2086
-out="$(printf '%s' "$LS" | env $LEG_ENV bash "$HOOK" 2>/dev/null)"
+out="$(printf '%s' "$LS" | run_leg bash "$HOOK" 2>/dev/null)"
 reason="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
 if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = deny ]; then
     ok "structured permissionDecision is deny"
@@ -191,6 +191,28 @@ check "append-results.sh || more -> block" block \
 check "append-results.sh with \$( -> block" block \
     "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"\$(ls)\"")"
 check "echo naming append-results.sh -> block" block "$(bash_call 'echo scripts/handover/console-kit/append-results.sh')"
+# HIMMEL-4692: the allowed script is matched as a parsed word, so quoting it or
+# a checkout path with spaces still passes; nothing else widens.
+check "double-quoted append-results.sh -> allow" allow \
+    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
+check "single-quoted append-results.sh -> allow" allow \
+    "$(bash_call "bash 'scripts/handover/console-kit/append-results.sh' $DOC \"WRAPPED — done\"")"
+check "quoted absolute path with a space -> allow" allow \
+    "$(bash_call "bash \"/work/a b/himmel/scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
+check "quoted queue-lock.sh release -> allow" allow \
+    "$(bash_call "bash \"scripts/handover/queue-lock.sh\" release $DOC tok")"
+check "quoted queue-lock.sh acquire -> block" block \
+    "$(bash_call "bash \"scripts/handover/queue-lock.sh\" acquire $DOC")"
+check "quoted other script -> block" block \
+    "$(bash_call "bash \"scripts/handover/console-kit/other.sh\" $DOC")"
+check "quoted allowed path with a chained suffix word -> block" block \
+    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\"x $DOC")"
+check "quoted path with a variable -> block" block \
+    "$(bash_call "bash \"\$H/scripts/handover/console-kit/append-results.sh\" $DOC")"
+check "quoted allowed script then && more -> block" block \
+    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\" $DOC \"LIVE x\" && ls")"
+check "quoted path embedding a command -> block" block \
+    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh x;rm\" $DOC")"
 
 echo "== the exemptions: a RESUME doc exists, or the last marker is WRAPPED/BLOCKED =="
 printf 'resume\n' > "$RESUME"
@@ -201,6 +223,12 @@ check "fresh RESUME then BLOCKED, PreCompact auto -> allow" allow "$(pc_call)"
 doc "- 10:01 LIVE — working"
 touch -t 202001010000 "$RESUME"
 check "RESUME doc older than this session -> block" block "$LS"
+# HIMMEL-4692: the session start is the wall clock, so a RESUME doc written a
+# day ago (after any fixed date baked into the suite) is still older than it.
+ago=$(( $(date +%s) - 86400 ))
+stamp=$(date -d "@$ago" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$ago" +%Y%m%d%H%M.%S)
+touch -t "$stamp" "$RESUME"
+check "RESUME doc a day before this session -> block" block "$LS"
 session "load $DOC and continue" "2026-10-06T12:00:00+02:00"
 check "session start unparsable + old RESUME doc -> block" block "$LS"
 session "load $DOC and continue" ""
@@ -234,8 +262,7 @@ printf -- '# resumed\n\n## Results\n\n- 10:01 LIVE — resumed\n' > "$DOC2"
 session "load $DOC2 and continue"
 fill 90
 check "resumed leg, only its own doc -> block" block "$LS"
-# shellcheck disable=SC2086
-reason="$(printf '%s' "$LS" | env $LEG_ENV bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
+reason="$(printf '%s' "$LS" | run_leg bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
 case "$reason" in
     *"HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"*) ok "resumed leg is told to write the N77c doc" ;;
     *) bad "resumed leg suggestion wrong - got: $reason" ;;
@@ -243,14 +270,28 @@ esac
 printf 'next\n' > "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
 check "resumed leg + fresh N77c RESUME doc -> allow" allow "$LS"
 rm -f "$DOC2" "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
+# HIMMEL-4692: a leg id ending in z has no one-letter successor; the message
+# must not name the leg's own doc as the thing to write.
+DOCZ="$DIR/HIMMEL-9-N77z-thing-2026-10-06-RESUME.md"
+printf -- '# resumed\n\n## Results\n\n- 10:01 LIVE — resumed\n' > "$DOCZ"
+session "load $DOCZ and continue"
+check "z-suffix leg, only its own doc -> block" block "$LS"
+reason="$(printf '%s' "$LS" | run_leg bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
+case "$reason" in
+    *"resume brief to $DOCZ"*) bad "z-suffix leg told to write its own doc - got: $reason" ;;
+    *"ends in z"*) ok "z-suffix leg is told no successor suffix exists" ;;
+    *) bad "z-suffix leg message wrong - got: $reason" ;;
+esac
+printf 'next\n' > "$DIR/HIMMEL-9-N77-thing-2026-10-06-RESUME.md"
+check "z-suffix leg + fresh unsuffixed N77 RESUME doc -> allow" allow "$LS"
+rm -f "$DOCZ" "$DIR/HIMMEL-9-N77-thing-2026-10-06-RESUME.md"
 session "load $DOC and continue"
 
 echo "== in-process subagents (agent_id) are exempt =="
 sub_call() { printf '%s' "$1" | jq -c --arg a "$2" '. + {agent_id:$a}'; }
 check "subagent Bash at 90 % -> allow" allow "$(sub_call "$LS" a1b2c3)"
 check "subagent Read at 90 % -> allow" allow "$(sub_call "$(tool_call Read)" a1b2c3)"
-# shellcheck disable=SC2086
-sub_out="$(sub_call "$LS" a1b2c3 | env $LEG_ENV bash "$HOOK" 2>&1)"
+sub_out="$(sub_call "$LS" a1b2c3 | run_leg bash "$HOOK" 2>&1)"
 if [ -z "$sub_out" ]; then ok "subagent -> no deny text, never invited to write a RESUME"; else bad "subagent printed: $sub_out"; fi
 check "subagent RESUME write -> allow" allow "$(sub_call "$(write_call Write "$T/scratch/x-RESUME.md")" a1b2c3)"
 check "parent still blocked after the subagent's RESUME write" block "$LS"
@@ -261,7 +302,7 @@ echo "== WIP commit/push stays allowed at 90 % =="
 check "git add -> allow" allow "$(bash_call 'git add scripts/x.sh')"
 check "git commit -m -> allow" allow "$(bash_call 'git commit -m "wip: context hand-off"')"
 check "git push -> allow" allow "$(bash_call 'git push origin fix/x')"
-check "git -C <dir> commit -> allow" allow "$(bash_call "git -C $T commit -am wip")"
+check "git -C <dir> commit -> allow" allow "$(bash_call 'git -C /work/tree commit -am wip')"
 check "git commit && more -> block" block "$(bash_call 'git commit -m wip && ls')"
 # shellcheck disable=SC2016 # a literal $( is the shape under test
 check "git commit with \$( -> block" block "$(bash_call 'git commit -m "$(cat x)"')"
@@ -270,7 +311,7 @@ check "git rev-parse HEAD -> allow (the CHECKPOINT sha)" allow "$(bash_call 'git
 check "git log -> block (not a hand-off)" block "$(bash_call 'git log -1')"
 check "git commitx -> block" block "$(bash_call 'git commitx')"
 # HIMMEL-4710 item 2: a leg whose cwd drifted must be able to cd back.
-check "bare cd <dir> -> allow" allow "$(bash_call "cd $REPO")"
+check "bare cd <dir> -> allow" allow "$(bash_call 'cd /work/tree')"
 check "bare cd -> allow" allow "$(bash_call 'cd')"
 check "cd <dir>; more -> block" block "$(bash_call "cd $REPO; rm -rf x")"
 check "cd <dir> | more -> block" block "$(bash_call "cd $REPO | ls")"
@@ -325,8 +366,7 @@ check_c "compact, no CHECKPOINT -> block" block "$LS"
 printf 'resume\n' > "$RESUME"
 check_c "compact, a fresh RESUME doc is not the unlock -> block" block "$LS"
 rm -f "$RESUME"
-# shellcheck disable=SC2086
-reason="$(printf '%s' "$LS" | env $LEG_BASE bash "$HOOK" 2>&1 >/dev/null)"
+reason="$(printf '%s' "$LS" | LEG_MODE=compact run_leg bash "$HOOK" 2>&1 >/dev/null)"
 for needle in "mode compact" "git push" "CHECKPOINT <full sha of HEAD> pushed" "append-results.sh $DOC" \
     HIMMEL_LEG_CONTEXT_MODE "Do exactly this" \
     'git commit -m "<subject>" -m "<body>" --trailer' "one line" \
@@ -454,8 +494,7 @@ echo "== PreCompact: no auto-compaction past the threshold without CHECKPOINT/RE
 fill 90
 doc "- 10:01 LIVE — working"
 check_c "PreCompact auto, compact, no CHECKPOINT -> block" block "$(pc_call)"
-# shellcheck disable=SC2086
-case "$(printf '%s' "$(pc_call)" | env $LEG_BASE bash "$HOOK" 2>&1 >/dev/null)" in
+case "$(printf '%s' "$(pc_call)" | LEG_MODE=compact run_leg bash "$HOOK" 2>&1 >/dev/null)" in
     *CHECKPOINT*) ok "PreCompact refusal names the CHECKPOINT unlock" ;;
     *) bad "PreCompact refusal does not name CHECKPOINT" ;;
 esac
@@ -490,8 +529,7 @@ fi
 echo "== fail-open: fill UNKNOWN/STALE, leg doc unknown, junk input =="
 nofill
 check "no HUD snapshot (UNKNOWN) at would-be 90 % -> allow" allow "$LS"
-# shellcheck disable=SC2086
-warn="$(printf '%s' "$LS" | env $LEG_ENV bash "$HOOK" 2>&1 >/dev/null)"
+warn="$(printf '%s' "$LS" | run_leg bash "$HOOK" 2>&1 >/dev/null)"
 case "$warn" in
     *guard-leg-context-handoff*) ok "UNKNOWN fill -> one-line warning on stderr" ;;
     *) bad "UNKNOWN fill -> no warning - got: $warn" ;;
@@ -514,8 +552,8 @@ check "malformed JSON -> allow" allow '{not json'
 check "empty stdin -> allow" allow ''
 
 echo "== array-shaped first user turn =="
-jq -cn --arg t "load $DOC and continue" \
-    '{type:"user",timestamp:"2026-10-06T10:00:00.000Z",message:{role:"user",content:[{type:"text",text:$t}]}}' > "$TR"
+jq -cn --arg t "load $DOC and continue" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+    '{type:"user",timestamp:$ts,message:{role:"user",content:[{type:"text",text:$t}]}}' > "$TR"
 fill 90
 check "content as a text-block array -> leg doc found, block" block "$LS"
 
