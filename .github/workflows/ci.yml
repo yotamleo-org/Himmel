@@ -163,6 +163,19 @@ jobs:
           else
             bash scripts/ci/check-commit-range.sh
           fi
+      # HIMMEL-5423: the attestation trailers are checked only at pre-push and in
+      # ready-check, both skipped by a --no-verify commit. These re-run the SAME
+      # pre-push gates over the PR range; the wrapper builds a branch-shaped
+      # scratch clone (the hooks no-op on a detached merge ref) and keeps only
+      # the PR's FIRST commit message, the rule CLAUDE.md states. No new job:
+      # this one already has the full history and the Free-plan runner cap
+      # (HIMMEL-3815) is saturated.
+      - name: First commit carries Platforms tested on shell/script diffs
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-platforms-tested.sh
+      - name: First commit carries Security reviewed on non-docs code
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-security-reviewed.sh
       # HIMMEL-3616: the PR-title lint (the squash merge makes the title
       # main's commit subject) lives in its own workflow,
       # .github/workflows/pr-title-lint.yml — not here. commit-lint's
@@ -607,12 +620,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 38s; floor 10
     steps:
+      # fetch-depth: 0 (HIMMEL-5423): the doc-guard step below walks the PR
+      # range, which needs the merge ref's parents, not a one-commit clone.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Enable the himmel-dev gates in this checkout
         run: touch .himmel-dev
+      # HIMMEL-5423 — doc-guard (a command/skill ADDED without its catalog
+      # entry) ran only in pre-commit and pre-push, so a --no-verify commit
+      # skipped it. Runs the same `check-doc-guard.sh --pre-push` over the PR
+      # range. MUST stay ABOVE the destructive orphan checkout below: the
+      # wrapper needs the real merge ref and its history.
+      - name: doc-guard — added commands/skills update their catalog
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/check-hooks-on-pr-range.sh -- scripts/hooks/check-doc-guard.sh --pre-push
       # Guard the guard: proves the three gates below catch a stale AGENTS.md,
       # an orphaned debrand rule, and a re-introduced lane-inventory token —
       # and that they do NOT without the staging step.
