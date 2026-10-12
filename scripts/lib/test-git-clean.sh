@@ -4,15 +4,16 @@
 # repository-redirecting GIT_* variable, identically.
 #
 # The set is `git rev-parse --local-env-vars` (git's own list of the
-# repository-local variables), hardcoded here so a newer git adding one shows
-# up as a reviewed diff, not a surprise CI failure.
+# repository-local variables) minus GIT_NO_REPLACE_OBJECTS, a hardening switch
+# the helpers leave alone on purpose. Hardcoded here so a newer git adding one
+# shows up as a reviewed diff, not a surprise CI failure.
 #
 # Platform guard: POSIX bash 3.2+ (no associative arrays), needs node for the
 # .mjs twin.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-VARS="GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT"
+VARS="GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT"
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }

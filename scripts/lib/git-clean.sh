@@ -13,9 +13,12 @@
 # by `git rev-parse --local-env-vars` (git help environment): GIT_DIR,
 # GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY,
 # GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_PREFIX, GIT_IMPLICIT_WORK_TREE,
-# GIT_GRAFT_FILE, GIT_NO_REPLACE_OBJECTS, GIT_REPLACE_REF_BASE,
-# GIT_SHALLOW_FILE, GIT_CONFIG, GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT.
-# scripts/lanes/git-clean.mjs carries the identical set.
+# GIT_GRAFT_FILE, GIT_REPLACE_REF_BASE, GIT_SHALLOW_FILE, GIT_CONFIG,
+# GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT. Deliberately NOT scrubbed:
+# GIT_NO_REPLACE_OBJECTS, which is in that list but redirects nothing — it is
+# a hardening switch callers set on purpose (clear-cr-marker.sh, HIMMEL-3666),
+# and clearing it would re-enable replace refs. scripts/lanes/git-clean.mjs
+# carries the identical set.
 #
 # CAUTION — git hooks: `GIT_INDEX_FILE` is NOT always attacker-controlled
 # noise to scrub. A running git hook (e.g. `pre-commit` under `commit -a`)
@@ -45,7 +48,7 @@
 git_clean() {
     env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
         -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX \
-        -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_NO_REPLACE_OBJECTS \
+        -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE \
         -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG \
         -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git "$@"
 }
@@ -53,7 +56,7 @@ git_clean() {
 git_env_scrub() {
     unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
         GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
-        GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS \
+        GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE \
         GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG \
         GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 }
