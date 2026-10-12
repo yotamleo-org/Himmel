@@ -156,12 +156,26 @@ fi
 # measure below trusts it, so it is verified once, here, before any consumer
 # reads it. No local ref names or vouches for the base: the default branch name
 # is read from the remote (gh api repos/{owner}/{repo}) and the remote compare
-# <sha>...<default> must report identical or ahead. Offline, no gh, an unreadable
+# <sha>...<default> must report identical or ahead. The value must be a full
+# 40-hex sha and, once verified, base_sha is reassigned to the resolved commit so
+# no consumer re-resolves the caller string. Offline, no gh, an unreadable
 # answer or any other status refuses EVERY --base-sha round (exit 8, fail closed).
 if [ -n "$base_sha" ]; then
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    # Only a full sha is a stable name: a ref or short sha would be re-resolved
+    # by every consumer below, and a racing update-ref could retarget them after
+    # this check passed (j2415c).
+    case "$base_sha" in
+        *[!0-9a-f]*|'')
+            echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused (HIMMEL-5268)" >&2
+            exit 8 ;;
+    esac
+    if [ "${#base_sha}" -ne 40 ]; then
+        echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused (HIMMEL-5268)" >&2
+        exit 8
+    fi
     _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
     _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
     case "$_vb_def" in
@@ -173,7 +187,7 @@ if [ -n "$base_sha" ]; then
     fi
     _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
     case "$_vb_status" in
-        identical|ahead) ;;
+        identical|ahead) base_sha="$_vb_got" ;;
         *)
             echo "review-round: --base-sha $_vb_got is not on the remote $_vb_def history (gh compare says '${_vb_status:-unreadable}') - refused (HIMMEL-5268)" >&2
             exit 8 ;;

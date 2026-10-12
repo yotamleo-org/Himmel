@@ -2342,6 +2342,26 @@ git -C "$repo" update-ref -d refs/remotes/origin/ciredhead
 assert_eq "$cired_rc" "8" "a retargeted origin/HEAD cannot name the base ($cired_out)"
 assert_has "$cired_out" "not on the remote main history" "the remote default (main), not the local ref, is compared"
 
+# j2415c RED: --base-sha must be exactly 40 lowercase hex. A ref name or short
+# sha passes the commit check on a good commit and every later consumer would
+# re-resolve the raw string, so a racing update-ref could retarget them.
+postcap_setup ciredname suggestion
+cired_rows "$RED"
+postcap_fix ciredname
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+git -C "$repo" update-ref refs/heads/ciredbasename "$real_base"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredname --head "$postcap_f_head" --base-sha refs/heads/ciredbasename 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a ref-name --base-sha is refused even when it resolves to the real base ($cired_out)"
+assert_has "$cired_out" "40 lowercase hex" "the refusal names the 40-hex requirement"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredname --head "$postcap_f_head" --base-sha "$(printf '%s' "$real_base" | cut -c1-12)" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a short-sha --base-sha is refused ($cired_out)"
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredname --head "$postcap_f_head" --base-sha "$(printf '%s' "$real_base" | tr a-f A-F)" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "an uppercase-hex --base-sha is refused ($cired_out)"
+# control: the same base spelled as its full lowercase sha is granted, and the
+# consumers measure from that verified value (a 5-line delta, under the cap)
+cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredname --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "control: the full lowercase sha of the real base is granted ($cired_out)"
+
 # own_diff must not run a textconv driver: one that prints nothing would
 # otherwise measure a 45-line change as 0 lines.
 postcap_setup ciredtc suggestion
