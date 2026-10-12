@@ -610,7 +610,7 @@ const failuresSection = (() => {
         const toolHealth = readToolHealth(process.env, new URLSearchParams({ since: start }));
         const rates = toolHealth.class_rates || {}, counts = toolHealth.class_counts || {};
         const tr = sorted.map(([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.legs.size}</td><td>${c.events}</td><td>${typeof rates[cls] === 'number' && counts[cls] === c.events ? `${(rates[cls] * 100).toFixed(1)} %` : '—'}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`).join('\n');
-        return `<section data-failures="${sorted.length}">${title}<table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>\n${tr}\n</table>${inboxLine}</section>`;
+        return `<section class="wide" data-failures="${sorted.length}">${title}<div class="tscroll"><table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>\n${tr}\n</table></div>${inboxLine}</section>`;
     } catch { return unavailable; }
 })();
 
@@ -658,7 +658,7 @@ h1 { font-size:1.35rem; margin:0 0 2px; } h2 { font-size:.8rem; text-transform:u
 section { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px; min-width:0; }
 ul { list-style:none; margin:0; padding:0; } li { padding:6px 0; border-top:1px solid var(--line); } li:first-child { border-top:0; }
 .none { color:var(--muted); margin:0; }
-.ladder { display:flex; flex-wrap:wrap; gap:6px; } .ladder li { border:1px solid var(--line); border-radius:8px; padding:4px 10px; display:flex; gap:8px; } .ladder li[data-count="0"] { opacity:.45; }
+.ladder li { display:flex; justify-content:space-between; gap:8px; padding:3px 0; } .ladder li[data-count="0"] { opacity:.45; }
 .fleet { font-size:1.6rem; font-weight:650; } .fleet small { font-size:.85rem; color:var(--muted); font-weight:400; }
 .idle { color:var(--warn); font-weight:600; }
 .tk, .pr, .leg-last { color:var(--muted); font-size:.85rem; } .ph { color:var(--accent); font-weight:600; }
@@ -666,6 +666,9 @@ li[data-phase="BLOCKED"] .ph, li[data-phase="WRAPPED, window still open"] .ph, l
 .bar { height:6px; background:var(--line); border-radius:3px; margin-top:4px; } .bar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
 .wide { grid-column:1 / -1; }
 table { width:100%; border-collapse:collapse; font-size:.85rem; } th, td { text-align:left; padding:4px 6px; border-top:1px solid var(--line); } th { color:var(--muted); font-weight:500; }
+.tscroll { overflow-x:auto; } .tscroll table { width:max-content; min-width:100%; }
+[data-failures] td:first-child { word-break:normal; overflow-wrap:normal; }
+[data-failures] th:nth-child(n+2):nth-child(-n+5), [data-failures] td:nth-child(n+2):nth-child(-n+5) { text-align:right; white-space:nowrap; }
 </style>
 </head>
 <body>
