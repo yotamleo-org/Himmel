@@ -106,6 +106,7 @@ _r5098() { # label verdict template
 }
 printf 'touch %s/pwned\n' "$_PR" > "$FIX/msg"
 NL=$'\n'
+_PAD=$(printf '%8200s' '' | tr ' ' a)
 
 echo "== HIMMEL-5098 eval of repository / file data =="
 # shellcheck disable=SC2016  # row templates are literal shell text
@@ -322,6 +323,13 @@ _r5098 "227c continued heredoc line"                   block "bash <<'X' --rcfil
 _r5098 "227d second heredoc on the line is the shell's" block "cat <<'A' >/dev/null; bash <<'B'${NL}a${NL}A${NL}eval \"\$(cat @W@/msg)\"${NL}B"
 _r5098 "227e control: nested heredoc in a shell body"  allow "bash <<'EOF'${NL}cat > /tmp/x <<'X'${NL}hi${NL}X${NL}EOF"
 _r5098 "227f control: second heredoc, literal body"    allow "cat <<'A' >/dev/null; bash <<'B'${NL}a${NL}A${NL}ls${NL}B"
+# past 8 KiB the crude fallback cannot name a command held in a variable
+_r5098 "228a padded variable command word"             block "x=eval; : ${_PAD}; \$x \"\$(cat @W@/msg)\""
+_r5098 "228b padded braced variable command word"      block "x=eval; : ${_PAD}; \${x} \"\$(cat @W@/msg)\""
+_r5098 "228c padded backtick command word"             block ": ${_PAD}; \`echo eval\` \"\$(cat @W@/msg)\""
+_r5098 "228d padded substitution command word"         block ": ${_PAD}; \$(echo eval) \"\$(cat @W@/msg)\""
+_r5098 "228e control: padded variable argument"        allow ": ${_PAD}; ls \"\$HOME\""
+_r5098 "228f control: padded assignment from date"     allow ": ${_PAD}; x=\$(date); echo \"\$x\""
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'

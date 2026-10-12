@@ -3442,7 +3442,8 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # zsh path / LD_PRELOAD change, a function definition or a source/`.` deny an
 # allow-listed eval. Commands the tokenizer cannot model (beyond 8 KiB, a
 # `${x:-$(…)}`, `< <(…)`, `;;`) deny when an exec word stands at a command
-# position beside a `$`, a backtick, a `<` or a `|` (_bwimc_dx_crude).
+# position beside a `$`, a backtick, a `<` or a `|`, and so does a command
+# word that is itself a substitution or a variable (_bwimc_dx_crude).
 #
 # ponytail: generators outside the list (starship init, mise activate, brew
 # shellenv, `$(npm bin)/x`) are false denies, add a shape to _bwimc_dx_gen
@@ -3466,6 +3467,11 @@ _BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
 # shellcheck disable=SC2016  # a regex, not an expansion
 _BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
 _BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
+# the same command position holding a substitution or a whole variable word:
+# its name is unknowable here (`x=eval; $x "$(cat f)"`); an assignment word
+# holding a ( or a backtick opens a substitution, never a command prefix
+# shellcheck disable=SC2016  # a regex, not an expansion
+_BWIMC_DX_CRUDEVAR='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*([$][(]|`|[$]([A-Za-z_][A-Za-z0-9_]*|[{][^}/]*[}])([[:space:];&|)]|$))'
 # a date +FORMAT whose output is digits and punctuation only
 _BWIMC_DX_DATEFMT='^[+]([-:/._, 0-9]|%[sYmdHMSNjuwyeIklCGgVUWFTDRzn%]|%:z)*$'
 # a redirect that feeds a command's standard input from a file or descriptor
@@ -3517,7 +3523,8 @@ _bwimc_dx_crude() {
     c=${t//\\/}; c=${c//\'/}; c=${c//\"/}
     case "$t" in
         *'$'*|*'`'*|*'<'*|*'|'*|*'=('*)
-            [[ $c =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)" ;;
+            [[ $c =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
+            [[ $c =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
     esac
     [[ $c =~ $_BWIMC_DX_FDEF ]] && _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
     p=${c//[^A-Za-z0-9_=+.\/\[\]-]/ }
