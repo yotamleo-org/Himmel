@@ -6188,8 +6188,12 @@ printf '#!/bin/sh\nexit 0\n' > "$c52_t/ok/bin/python"
 printf '#!/bin/sh\nexit 1\n' > "$c52_t/missing/bin/python"
 chmod +x "$c52_t/ok/bin/python" "$c52_t/missing/bin/python"
 c52_run() { # <venv dir>
-    HIMMEL_DOCTOR_GRAPHIFY_VENV="$1" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c52_t/claude" HOME="$c52_t/home" bash "$DOC" --no-color 2>&1
+    GRAPH_CADENCE_SEMANTIC_BACKEND="${C52_BACKEND:-ollama}" HIMMEL_DOCTOR_GRAPHIFY_VENV="$1" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c52_t/claude" HOME="$c52_t/home" bash "$DOC" --no-color 2>&1
 }
+
+echo "== C52-graphify-ollama: default backend (claude-cli) + missing extra -> OK, never WARN (HIMMEL-5367) =="
+out="$(C52_BACKEND=claude-cli c52_run "$c52_t/missing")"
+if grepq "$out" 'OK   C52-graphify-ollama' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 claude-cli backend -> OK"; else fail "C52 claude-cli -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
 echo "== C52-graphify-ollama: no graphifyy venv -> OK (skipped) =="
 out="$(c52_run "$c52_t/absent")"

@@ -149,8 +149,9 @@
 #   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--semantic]
 #
 # --semantic (HIMMEL-4185, OFF by default): after the structural refresh, run
-# semantic-update.sh on the dedicated worktree with the LOCAL ollama backend
-# (zero egress, no bank draw). Under it the per-run `git clean` keeps
+# semantic-update.sh on the dedicated worktree with GRAPH_CADENCE_SEMANTIC_BACKEND
+# (default claude-cli: Sonnet, bank-gated; ollama is the opt-in: local, zero
+# egress, no bank draw; HIMMEL-5367). Under it the per-run `git clean` keeps
 # graphify-out/, so the semantic manifest (the change gate) persists between
 # fires. A failure alerts through scripts/luna/cadence-alert.sh (HIMMEL-4181,
 # leg graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
@@ -179,6 +180,8 @@
 #   GRAPH_CADENCE_GRAPH_PUBLISH   override the graph-publish.sh path.
 #   GRAPH_CADENCE_MERGE_ON_GREEN  override the merge-on-green.sh path.
 #   GRAPH_CADENCE_SEMANTIC_UPDATE override the semantic-update.sh path.
+#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default) or
+#                                 ollama; any other value refuses rc=1.
 #   GRAPH_CADENCE_LEDGER_ROOT     override the handover-root resolution
 #                                 entirely (bypasses handover_root_ensure AND
 #                                 the HANDOVER_DIR-unset refusal below).
@@ -252,7 +255,8 @@ Optional:
                        corpus. himmel is the only corpus wired for v1; a real
                        second corpus needs this flag made genuinely end-to-end
                        first (see docs).
-  --semantic          Also run the incremental semantic step (local ollama)
+  --semantic          Also run the incremental semantic step (backend from
+                       GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-cli)
                        after the structural refresh. OFF by default.
 EOF
 }
@@ -343,6 +347,14 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
+# HIMMEL-5367: the semantic backend is claude-cli unless opted into ollama.
+# Anything else refuses before any work (fail closed, no silent fallback).
+SEMANTIC_BACKEND="${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}"
+case "$SEMANTIC_BACKEND" in
+    claude-cli|ollama) ;;
+    *) echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='$SEMANTIC_BACKEND' is not accepted -- claude-cli or ollama only" >&2
+       exit 1 ;;
+esac
 CADENCE_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh"
 for _f in "$AST_UPDATE" "$GRAPH_PUBLISH" "$MERGE_ON_GREEN"; do
     [ -f "$_f" ] || { echo "ERR graph-cadence: required script missing: $_f" >&2; exit 2; }
@@ -925,7 +937,7 @@ ACTION="refreshed"
 if [ "$SEMANTIC" -eq 1 ]; then
     _sem_leg="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
-        --corpus-class himmel-code --backend ollama 2>&1)
+        --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
     printf '%s\n' "$_sem_out"
     case "$_sem_rc" in

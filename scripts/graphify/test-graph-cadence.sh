@@ -1254,7 +1254,8 @@ mkdir -p "$TMP_ROOT/t9-on-dedupe"; : > "$TMP_ROOT/t9-on-dedupe/graph-semantic-$S
 rc=0; out=$(run_sem on --semantic) || rc=$?
 assert_eq "semantic opt-in rc=0" "0" "$rc"
 sem_log=$(cat "$FAKE_SEM_LOG")
-assert_contains "semantic step runs with --semantic" "--backend ollama" "$sem_log"
+assert_contains "semantic step runs with --semantic" "--backend claude-cli" "$sem_log"
+assert_not_contains "semantic step defaults to claude-cli, not ollama (HIMMEL-5367)" "--backend ollama" "$sem_log"
 assert_contains "semantic step targets the dedicated worktree as himmel-code" "--corpus-root $TMP_ROOT/t9-on-home/.claude/graph-cadence/$SLUG9 --corpus-class himmel-code" "$sem_log"
 if [ -e "$TMP_ROOT/t9-on-dedupe/graph-semantic-$SLUG9.stale" ]; then
     fail "a successful semantic step clears its cadence alert"
@@ -1284,6 +1285,22 @@ for brc in 3 4; do
     assert_eq "benign semantic rc=$brc appends no alert line" "" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
     assert_contains "benign semantic rc=$brc is reported as a skip" "semantic step skipped (rc=$brc" "$out"
 done
+# (f) HIMMEL-5367: the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
+# claude-cli; ollama is the opt-in; anything else refuses before any work.
+for tag in ollama bogus; do
+    mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+    seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+done
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=ollama run_sem ollama --semantic) || rc=$?
+assert_eq "backend=ollama opt-in rc=0" "0" "$rc"
+assert_contains "backend=ollama is passed through to semantic-update" "--backend ollama" "$(cat "$FAKE_SEM_LOG")"
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=bogus run_sem bogus --semantic) || rc=$?
+assert_eq "unknown backend refuses rc=1" "1" "$rc"
+assert_contains "unknown backend names the variable and the accepted values" "GRAPH_CADENCE_SEMANTIC_BACKEND" "$out"
+assert_contains "unknown backend names the accepted values" "claude-cli or ollama" "$out"
+assert_eq "unknown backend never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
 
 # =============================================================================
 # Test 8: usage errors

@@ -195,7 +195,10 @@ run against a different value — it just isn't what the armed cadence uses.)
 ## The `--semantic` step: which exit codes alert (HIMMEL-4512)
 
 With `--semantic`, `graph-cadence.sh` runs `semantic-update.sh` on the
-dedicated worktree (local ollama) and classifies its exit code:
+dedicated worktree and classifies its exit code. The backend is
+`GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, bank-gated) or
+`ollama` (opt-in, local, needs a GPU); any other value refuses (rc 1) before
+any work (HIMMEL-5367).
 
 | rc | meaning | cadence result |
 |---|---|---|
