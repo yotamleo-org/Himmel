@@ -149,19 +149,23 @@ if grep -q 'console-route.ts reply 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.lo
 # The seam runs under the same bound as the bun send, so a sender that never
 # returns cannot hang the runner that called the alert. Needs a GNU timeout.
 if command -v timeout >/dev/null 2>&1; then
-    printf '#!/usr/bin/env bash\nsleep 30\n' > "$TMP/bin/hang-sender"
+    # shellcheck disable=SC2016  # $HANG_MARK expands in the stub, not here
+    printf '#!/usr/bin/env bash\ntouch "$HANG_MARK"\nsleep 30\n' > "$TMP/bin/hang-sender"
     chmod +x "$TMP/bin/hang-sender"
     new_case c7c
     _t0=$(date +%s)
     (
         # shellcheck disable=SC1090
         . "$LIB"
+        HANG_MARK="$CASE/hang-started" \
         MERGE_BLOCK_ALERT_CMD="$TMP/bin/hang-sender" MERGE_BLOCK_ALERT_TIMEOUT_SECS=1 \
         MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
         merge_block_alert octo/demo 42 aaaaaaaaaaaa "rule" 2>>"$CASE/err"
     )
     _el=$(( $(date +%s) - _t0 ))
-    if [ "$_el" -lt 10 ]; then pass; else fail "7c: a hung sender was not bounded (took ${_el}s)"; fi
+    if [ ! -f "$CASE/hang-started" ]; then fail "7c: the hung sender never started"
+    elif [ "$_el" -lt 10 ]; then pass
+    else fail "7c: a hung sender was not bounded (took ${_el}s)"; fi
 fi
 
 # alert_watch <case> [env...] -- <repo> <pr> <head> <rule...>; merge_watch_alert (HIMMEL-3430)

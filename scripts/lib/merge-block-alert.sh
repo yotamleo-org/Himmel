@@ -51,7 +51,7 @@ _mba_send() {
     # One 30 s bound for the seam and the bun send alike (HIMMEL-4226); no GNU
     # timeout (stock macOS) runs both unbounded.
     local tmo=""
-    command -v timeout >/dev/null 2>&1 && tmo="timeout ${MERGE_BLOCK_ALERT_TIMEOUT_SECS:-30}"
+    command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 ${MERGE_BLOCK_ALERT_TIMEOUT_SECS:-30}"
     if [ -n "${MERGE_BLOCK_ALERT_CMD:-}" ]; then
         # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
         $tmo "$MERGE_BLOCK_ALERT_CMD" "$chat" "$text"
