@@ -876,6 +876,14 @@ deny 'sudo --shell qmd "" query x'
 deny 'sudo --login qmd "" query x'
 deny 'sudo -u bob -s qmd "" query x'
 deny 'firejail qmd "" query x'
+# ssh joins its words and the remote shell re-parses them; env -S splits its
+# operand, and the words after it, through the same joined string.
+deny 'ssh host qmd "" query x'
+deny 'ssh -p 22 host qmd "" query x'
+deny "ssh host qmd '' search x"
+deny 'env -S qmd "" query x'
+deny "env -S'qmd' '' query x"
+deny 'env -i -S qmd "" query x'
 allow 'sudo qmd "" query x'
 allow 'sudo -u bob qmd "" query x'
 allow 'echo qmd query | sudo tee /dev/null'
