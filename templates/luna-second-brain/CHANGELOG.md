@@ -8,13 +8,6 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.72] — 2026-10-12
-
-### Added
-- `AGENTS.md`: a one-line pointer to `_CLAUDE.md`, so agents that read only
-  `AGENTS.md` find the one source of rules. Created when missing, never
-  overwritten (HIMMEL-5384).
-
 ## [0.4.71] — 2026-10-11
 
 ### Changed

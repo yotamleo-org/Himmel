@@ -608,7 +608,6 @@ has_local_edit() {
 classify() {
     case "$1" in
         _CLAUDE.md)                                   echo threeway ;;
-        AGENTS.md)                                    echo skipexists ;;
         _Templates/*.md)                              echo report ;;
         .obsidian/community-plugins.json)             echo jsonmerge ;;
         .obsidian/plugins/*/data.json)                echo skipexists ;;
