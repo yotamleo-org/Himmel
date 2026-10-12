@@ -20,6 +20,7 @@ import { appendAudit } from "./audit";
 import { journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { legSync, readRoadmap } from "./roadmap";
+import { readVm, writeVm } from "./vm-config";
 
 const LOOPBACK = "127.0.0.1";
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
@@ -413,7 +414,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         });
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
       }
-      if (path !== "/api/preview" && path !== "/api/run") return new Response("not found", { status: 404 });
+      // HIMMEL-4620: the vm section of the himmel config, validated and saved through luna-config.js.
+      if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -422,6 +425,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       let b: unknown;
       try { b = JSON.parse(text); } catch { return json({ error: "bad json" }, 400); }
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
+      if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });

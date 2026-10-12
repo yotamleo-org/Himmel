@@ -120,7 +120,8 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    fetch: (url: string) => url === "/api/agui/fleet" ? Promise.resolve({ status: 401, ok: false }) : new Promise((res) => {
+    // HIMMEL-4620: nor is the vm form's read (Config's onVisit): it must not take the feed's fetch slot.
+    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),

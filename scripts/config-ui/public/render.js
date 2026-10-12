@@ -168,6 +168,25 @@ export function renderNav(feed, current) {
     .map(([id, label, n, key]) => `<button data-go="${id}" aria-current="${id === current}"><span>${label} ${n}</span><kbd>${key}</kbd></button>`).join("");
 }
 
+// HIMMEL-4620: the vm.mode / vm.remote form. vm = { data: GET /api/vm, error, draft: { mode, ssh, port, identity }, msg }.
+// The server validates; this only shows its answer.
+export function renderVm(vm) {
+  const head = `<h2 id="h-vm">VM mode</h2><p class="sub">Whether VM proof runs on the local test VM, a remote one, or not at all (vm.mode in the himmel config).</p>`;
+  if (!vm || (!vm.data && !vm.error)) return `<section id="vm" aria-labelledby="h-vm">${head}<div class="empty">loading…</div></section>`;
+  if (!vm.data) return `<section id="vm" aria-labelledby="h-vm">${head}<div class="nodata">${esc(vm.error)}</div></section>`;
+  const d = vm.draft || { mode: vm.data.mode, ssh: "", port: "", identity: "" };
+  const opts = ["local", "remote", "none"].map((m) => `<option value="${m}"${d.mode === m ? " selected" : ""}>${m}</option>`).join("");
+  const remote = d.mode === "remote"
+    ? `<label>ssh target <input data-vm="ssh" value="${esc(d.ssh)}" placeholder="user@host" aria-label="ssh target"></label>
+       <label>port <input data-vm="port" value="${esc(d.port)}" placeholder="22" inputmode="numeric" aria-label="port"></label>
+       <label>identity <input data-vm="identity" value="${esc(d.identity)}" placeholder="~/.ssh/id_ed25519" aria-label="identity"></label>`
+    : "";
+  const msg = vm.msg ? `<div class="${vm.msg.ok ? "ro" : "nodata"}" role="status">${esc(vm.msg.text)}</div>` : "";
+  return `<section id="vm" aria-labelledby="h-vm">${head}<div class="card">
+    <label>mode <select data-vm="mode" aria-label="vm mode">${opts}</select></label>${remote}
+    <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
+}
+
 export function render(feed, state) {
   const { rows, triage, controls } = sets(feed);
   const filt = state.filt || {};
@@ -191,6 +210,7 @@ export function render(feed, state) {
   <p class="sub">Everything that can be switched. Every switch previews its dry-run first; nothing changes until you confirm.</p>
   ${bundled(controls, controls, "controls", state, feed, "")}
 </section>
+${renderVm(state.vm)}
 <section id="inventory" aria-labelledby="h-inv">
   <h2 id="h-inv">Inventory</h2>
   <p class="sub">Every item, check, flag and secret, grouped by feature.</p>
