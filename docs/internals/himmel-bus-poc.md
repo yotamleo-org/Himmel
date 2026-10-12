@@ -153,9 +153,95 @@ First attempt note: a console armed with `--deadline-min 40` registers at arm ti
 but does not launch (and so never binds) until the deadline; killed and re-armed
 with `--deadline-min 0`. That abandoned name stays `unbound` in the registry.
 
-## Phase B: native leg <-> claudex (codex) leg
+## Phase B: native console <-> claudex leg (HIMMEL-5320, 2026-10-12, base 65506b960)
 
-Status: not started (waits on Phase A).
+Status: **PASS for send, foreground wait and background wait; FAIL for an idle
+leg with nothing running** (the case that failed in N1864b the same day).
+
+Setup, under a scratch handover root (not the operator bucket), nothing
+registered by hand:
+
+1. `console.sh new --name bus5320poc-console --bucket buspoc5320 --model claude-sonnet-5-5 --context standard --deadline-min 0 --arm`
+   (throwaway native console). `bus status` printed `live` after 4 s.
+2. `headed-arm-leg.sh --no-prior-art-check --lane claudex --profile leg-bus --console <that console> <leg> <doc> ...`
+   (default claudex model). `bus status <leg>` printed `live` after 6 s.
+   `--no-prior-art-check` was needed only because the throwaway brief has no
+   prior-art line.
+
+Edge note: a leg <-> leg send has no edge (only leg <-> console and the
+judge/consult pair), so the native sender is a console.
+
+| # | Step | Result | Exact output |
+|---|---|---|---|
+| B1 | launcher joins the claudex leg, `peers` lists the console | PASS | `live`; console `peers` listed the leg |
+| B2 | leg `bus send <console> <body>` | PASS | `sent #1 to <console>`; console `bus wait`: `bus #1 data from <leg>:` / `claudex leg ready` |
+| B3 | console sends while the leg is blocked in a foreground `bus wait` | PASS | leg printed `bus #1 from <console>:` / `ping-1 FG` 5 s after the send |
+| B4 | console sends while the leg is idle at its prompt with a `bus wait` running in the background | PASS | console sent #2 at 20:51:09; the background task exited 0 and woke the leg at 20:51:24 (15 s), printing `bus #2 from <console>:` / `ping-2 BG` |
+| B5 | console sends while the leg is idle at its prompt with nothing running | FAIL (not woken) | console sent #3 at 20:51:52; the leg's doc stayed at 30 lines for 120 s; `bus status --unacked` still listed #1 #2 #3 |
+
+Reading of B5: the message sits in the store until something in the leg calls
+`bus wait` or reads. Nothing delivers into an idle claudex session: the delivery
+hooks are not registered in the repo settings file (HIMMEL-5030, FAIL 4 above,
+still open), and a hook only fires on the leg's own next tool call anyway. The
+bus fixes the gap only for a leg that is already holding a `bus wait`.
+
+Finding (not fixed here): B4 contradicts the leg preface rule "never end a turn
+waiting on a background job, it never wakes up". On the claudex lane with this
+launcher a background `bus wait` did wake the leg. The preface and the skill's
+"Holding" protocol (a single `bus wait` with `run_in_background`) disagree, and
+legs are not briefed to hold one.
+
+No hang: every bus CLI call ran under `timeout 30` and none tripped it. Both
+scratch sessions were killed afterwards, the scratch console's lock released,
+`bus status` prints `gone` for both names, and the `/tmp/b5320-*` body files
+were removed.
+
+## Usage, last 14 days (HIMMEL-5320, counted 2026-10-12)
+
+Source: every transcript under `~/.claude/projects`, `~/.claude-codex`,
+`~/.claude-deepseek` and `~/.claude-openrouter` (4694 files), counting executed
+`bus status|peers|send|wait|adopt` Bash invocations and `mcp__*himmel-bus*` tool
+calls (not text that merely mentions them).
+
+| Surface | Calls |
+|---|---|
+| `bus status` | 15 |
+| `bus peers` | 9 |
+| `bus send` | 7 |
+| `bus wait` | 4 |
+| other CLI verbs | 1 |
+| MCP `send` / `read` | 0 |
+
+36 CLI calls and 0 MCP calls. All 36 are POC or probe legs (HIMMEL-4838, 4831,
+5241 and this ticket) plus two console `status`/`peers` checks on 2026-10-12.
+No organic use.
+
+## Token cost
+
+| Item | Size | Approx tokens |
+|---|---|---|
+| MCP server `tools/list` (`send`, `read`: name, description, input schema) | 945 bytes model-visible (1416 raw) | ~270 |
+| Skill `bus` listing line | ~125 bytes | ~35 |
+| Skill body | 961 bytes, loaded only on use | 0 until used |
+
+About 300 tokens per session, against a first-turn floor of roughly 74k: the
+listing cost is not the reason to drop it.
+
+## Verdict: fix-adoption
+
+The transport works end to end: send, receive, reply and a foreground or
+background `wait` all passed live between a native console and a claudex leg
+(Phase A runs 2 and 3, Phase B B1 to B4) at about 300 tokens per session. It has
+had 0 organic calls in 14 days, and the one case that motivated it, an idle
+claudex leg that is not running anything, is not woken (B5). Dropping it would
+discard a working transport that costs almost nothing; keeping it as is leaves
+the motivating case unsolved. So: fix adoption, not the code. The gaps are
+rollout, not mechanism: only the `leg-bus` profile joins the bus (HIMMEL-4841),
+the delivery hooks are not registered (HIMMEL-5030), legs are not told to hold a
+background `bus wait` (and the preface says the opposite), and the console still
+reaches legs through SendMessage and the file inbox. Re-evaluate after those
+land: the bar is organic `bus send`/`bus wait` calls in a 14-day window and B5
+passing.
 
 ## Re-run recipe
 
@@ -168,3 +254,7 @@ Status: not started (waits on Phase A).
    reply with `bus send <leg> <body-file> --re <n>`.
 5. Leg confirms the reply arrives (hook output `bus #m from <console>`), then
    record PASS/FAIL per step here with the exact error text.
+6. Phase B (claudex leg): launch with `--lane claudex --profile leg-bus`, then
+   repeat 3 to 5 once per receive state, each as its own run: leg blocked in a
+   foreground `bus wait`; leg idle with a background `bus wait`; leg idle with
+   nothing running. Time-box every bus call with `timeout 30`.
