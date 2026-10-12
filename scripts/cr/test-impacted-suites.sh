@@ -1038,7 +1038,7 @@ if [ -s "$SHIM4/calls" ] && [ -z "$full_pass" ]; then pass "no full-tree git gre
 # The budget is the loaded figure x2 (HIMMEL-5363 PR body carries the numbers).
 LARGE_N=320
 for i in $(seq 1 "$LARGE_N"); do mkf "vendor/big/src/f$i.js" "// v$i"; done
-for i in $(seq 1 120); do mkf "scripts/test-bulk-$i.sh" "bash \"\$d/lib/clo-lib.sh\"; echo big-f$i.js"; done
+for i in $(seq 1 120); do mkf "scripts/test-bulk-$i.sh" "bash \"\$d/lib/clo-lib.sh\"; echo f$i.js"; done
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: bulk base"
 for i in $(seq 1 "$LARGE_N"); do printf '// changed\n' >> "$FX/vendor/big/src/f$i.js"; done
@@ -1048,7 +1048,7 @@ range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 t0=$SECONDS
 out="$(run_is "$range")"; rc=$?
 elapsed=$((SECONDS - t0))
-if [ "$rc" -eq 0 ] && [ "$elapsed" -le 60 ]; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 60s)"; else fail "large diff: rc=$rc elapsed=${elapsed}s"; fi
+if [ "$rc" -eq 0 ] && [ "$elapsed" -le 60 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 60s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
