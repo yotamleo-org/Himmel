@@ -1614,6 +1614,14 @@ env_row "5348 dd of= benign split (ctrl)"             allow "$BENIGN" 'dd if=/tm
 env_row "5348 sed -i benign split (ctrl)"             allow "$BENIGN" 'sed -i s/a/b/ "$A""$B$C"'
 env_row "5348 mv benign split (ctrl)"                 allow "$BENIGN" 'mv /tmp/y "$A""$B$C"'
 env_row "5348 cp unset var (ctrl)"                    allow "OTHER=1" 'cp /tmp/y "$UNSET_VAR"'
+# codex-1: an inherited name the hook also uses (a resolver local, a global)
+# is read at its INHERITED value, never the hook's own.
+env_row "5348 redirect to inherited \$n (resolver local)" deny "n=$LIFT" 'echo hi > "$n"'
+env_row "5348 cp to inherited \$v (resolver local)"    deny  "v=$LIFT" 'cp x "$v"'
+env_row "5348 cp to inherited \$rest (resolver local)" deny  "rest=$LIFT" 'cp x "$rest"'
+env_row "5348 cp to inherited \$CMD (hook global)"     deny  "CMD=$LIFT" 'cp x "$CMD"'
+env_row "5348 sort -o inherited \$REPLY"               deny  "REPLY=$LIFT" 'sort -o "$REPLY" y'
+env_row "5348 cp quote break via \$m \$pre"            deny  "m=$HOME/.himmel pre=/state/bank-lift.json" 'cp x "$m""$pre"'
 }
 rows_5348
 

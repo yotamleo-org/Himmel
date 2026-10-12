@@ -93,6 +93,11 @@
 # Hook I/O: JSON on stdin; exit 0 = allow, exit 2 = block (stderr shown).
 # Platform guard: bash 3.2-safe (no mapfile, no associative arrays).
 set -uo pipefail
+# HIMMEL-5348 (codex-1): the inherited environment, captured before the hook
+# assigns any variable. A hook global or a function local of the same name
+# keeps the export attribute and would shadow the inherited value for
+# printenv; _env0_get reads from this snapshot instead.
+ENV0=$(export -p)
 trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
 
 deny() {
@@ -359,6 +364,13 @@ is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 # a destination built from $(...) or backticks, and `$_`; upgrade path is an
 # assignment model under HIMMEL-5341.
 
+# _env0_get <name>: REPLY = <name>'s INHERITED value (unset = empty). The
+# snapshot's declarations are re-made in a subshell, where they shadow every
+# hook global and caller local of the same name.
+_env0_get() {
+    REPLY=$(eval "$ENV0" 2>/dev/null; printenv -- "$1" 2>/dev/null) || REPLY=''
+}
+
 # _env_expand <dequoted-word>: REPLY = the word with every $NAME / ${NAME}
 # replaced by its inherited value (unset = empty); 1 = fail closed.
 # shellcheck disable=SC2016  # literal $ and ${ } text is matched, not expanded
@@ -380,7 +392,7 @@ _env_expand() {
             out="$out\$"; rest="${rest:1}"; continue
         fi
         rest="${rest:${#BASH_REMATCH[0]}}"
-        v=$(printenv -- "$n" 2>/dev/null) || v=''
+        _env0_get "$n"; v=$REPLY
         case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 1 ;; esac
         if [ -n "$v" ] && is_lift "$v"; then return 1; fi
         out="$out$v"
@@ -2147,7 +2159,7 @@ _cmd_refs_lift() {
         rest="${rest#*"$m"}"
         # A plain ${NAME} is replaced whole: its closing brace is not text.
         case "$m" in '${'*) rest="${rest#\}}" ;; esac
-        v=$(printenv -- "$n" 2>/dev/null) || v=''
+        _env0_get "$n"; v=$REPLY
         case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
         if [ -n "$v" ] && is_lift "$v"; then return 0; fi
         exp="$exp$pre$v"
