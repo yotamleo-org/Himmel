@@ -279,7 +279,10 @@ case $cmd in
         case "$_tp_depth" in '' | *[!0-9]*) _tp_depth=$GU_MAX_DEPTH ;; esac
         _tp_prev=$cmd
         for _tp_mode in text empty; do
-            st_expand "$_tp_mode" "$cmd" || continue
+            if ! st_expand "$_tp_mode" "$cmd"; then
+                echo "block-tail-pipe-on-gates: cannot model this command's expansions (nested too deep) - failing closed" >&2
+                exit 2
+            fi
             _tp_v=$ST_EXP
             [ "$_tp_v" != "$cmd" ] && [ "$_tp_v" != "$_tp_prev" ] || continue
             _tp_prev=$_tp_v

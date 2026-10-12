@@ -425,13 +425,16 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # and every heredoc is cut from the text: operator and delimiter go, the body
 # goes through its terminator, and each `$(...)`/backtick of an UNQUOTED body
 # is lifted onto a line of its own, since the shell runs it.
+# Returns 1, ST_EXP empty, on text over 16 KB or constructs nested more than 32
+# deep (each level re-walks its text, so depth is the cost); callers fail closed.
 # bash 3.2-safe, no forks.
 # shellcheck disable=SC2034,SC2317,SC2329 # ST_EXP is read by the caller; reached only through guard-unwrap's source
 st_expand() {
-    local LC_ALL=C _SX='' _SX_DQ=0 _SX_E=0 _SX_W='' _SX_Q=0
+    local LC_ALL=C _SX='' _SX_DQ=0 _SX_E=0 _SX_W='' _SX_Q=0 _SX_D=0 _SX_OVER=0
     ST_EXP=''
     [ "${#2}" -le 16384 ] || return 1
     _stx_walk "$1" "$2" 0 0
+    [ "$_SX_OVER" = 0 ] || return 1
     ST_EXP=$_SX
 }
 
@@ -442,7 +445,8 @@ st_expand() {
 _stx_walk() {
     local m=$1 s=$2 dq=$3 wb=$4 n=${#2} i=0 j o='' c c2 b e rest sq="'"
     local -a hd_d hd_t hd_q
-    local hd_n=0
+    local hd_n=0 _SX_D=$((_SX_D + 1))
+    if [ "$_SX_D" -gt 32 ]; then _SX_OVER=1; _SX=$s; _SX_DQ=$dq; return; fi
     while [ "$i" -lt "$n" ]; do
         c=${s:i:1}
         case $c in
@@ -615,6 +619,8 @@ _stx_end() {
     local s=$1 i=$2 st=$3 n=${#1} c t rest b
     [ "$st" != C ] || [ "${4:-0}" = 0 ] || st=E
     while [ "$i" -lt "$n" ]; do
+        # the same 32-deep bound as _stx_walk: each byte re-reads the stack
+        [ "${#st}" -le 32 ] || { _SX_OVER=1; _SX_E=-1; return 1; }
         c=${s:i:1}; t=${st#"${st%?}"}
         case $t in
             B)

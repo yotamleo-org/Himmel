@@ -352,6 +352,17 @@ allow "an expansion before a non-gate command is not a gate" '${V:-}echo hi | ta
 # shellcheck disable=SC2016  # payload is literal command text
 deny "redirect target expansion does not swallow the gate word" \
      '2>$LOG bash scripts/check-ci.sh | tail'
+# HIMMEL-5362: the expansion model stops past 32 nested levels (each level
+# re-reads its text) and the guard fails closed; 10 levels are modelled.
+_nest() {
+    local k=0 o='' c=''
+    # shellcheck disable=SC2016  # payload is literal command text
+    while [ "$k" -lt "$1" ]; do o=$o'${V:-'; c=$c'}'; k=$((k + 1)); done
+    printf '%s' "echo ${o}hi$c"
+}
+deny "expansions nested 40 deep fail closed" "$(_nest 40)"
+allow "expansions nested 10 deep are modelled" "$(_nest 10)"
+
 # HIMMEL-5362: zsh l/r pad strings and j/s separators are text the expansion
 # yields, so a gate spelled there is a gate (judge j2429c).
 # shellcheck disable=SC2016  # payload is literal command text
