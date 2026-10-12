@@ -24,6 +24,7 @@ trap 'rm -rf "$STUB_DIR"' EXIT
 # A stub `git` that prints the GIT_* variables it inherited, one per line.
 cat > "$STUB_DIR/git" <<'STUB'
 #!/bin/sh
+echo STUB-RAN
 env | grep '^GIT_' | sort
 exit 0
 STUB
@@ -37,6 +38,12 @@ chmod +x "$STUB_DIR/git"
     . "$REPO_ROOT/scripts/lib/git-clean.sh"
     PATH="$STUB_DIR:$PATH" git_clean rev-parse
 ) > "$STUB_DIR/sh-clean.out" 2>&1
+sh_rc=$?
+# An absent variable only proves a scrub if the stub actually ran: a helper
+# that failed to source or exec would otherwise read as "scrubbed".
+if [ "$sh_rc" -ne 0 ] || ! grep -q '^STUB-RAN$' "$STUB_DIR/sh-clean.out"; then
+    fail "sh git_clean did not run the stub (rc=$sh_rc) — scrub rows below are void"
+fi
 for v in $VARS; do
     if grep -q "^$v=" "$STUB_DIR/sh-clean.out"; then
         fail "sh git_clean leaks $v"
@@ -52,9 +59,10 @@ for v in $VARS; do
         # shellcheck source=/dev/null
         . "$REPO_ROOT/scripts/lib/git-clean.sh"
         git_env_scrub
-        eval "printf '%s' \"\${$v+set}\""
+        eval "printf 'ran:%s' \"\${$v+set}\""
     )"
-    if [ -z "$got" ]; then
+    # `ran:` proves the subshell reached the probe; bare `ran:` = unset.
+    if [ "$got" = "ran:" ]; then
         pass "sh git_env_scrub unsets $v"
     else
         fail "sh git_env_scrub leaves $v set"
@@ -69,7 +77,11 @@ if command -v node >/dev/null 2>&1; then
 import { gitClean } from '$REPO_ROOT/scripts/lanes/git-clean.mjs';
 process.stdout.write(gitClean(['rev-parse'], { encoding: 'utf8' }));
 " 2>&1
+        echo "node-rc=$?"
     )"
+    if ! grep -q '^STUB-RAN$' <<<"$JS_OUT" || ! grep -q '^node-rc=0$' <<<"$JS_OUT"; then
+        fail "mjs gitClean did not run the stub cleanly — scrub rows below are void"
+    fi
     for v in $VARS; do
         if grep -q "^$v=" <<<"$JS_OUT"; then
             fail "mjs gitClean leaks $v"
