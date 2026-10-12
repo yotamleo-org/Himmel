@@ -332,9 +332,10 @@ test("a backwards timestamp within one transcript is emitted once, in file order
   });
   const p = journal(h, "-proj", RUN, [
     rec("one", "2026-10-06T10:00:01.000Z"),
-    rec("two", "2026-10-06T10:00:03.000Z"),
+    rec("two", "2026-10-06T10:00:04.000Z"),
     rec("three", "2026-10-06T10:00:02.000Z"), // goes backwards
-    rec("four", "2026-10-06T10:00:04.000Z"),
+    rec("four", "2026-10-06T10:00:05.000Z"),
+    rec("five", "2026-10-06T10:00:03.000Z"), // backwards again: still one warning for the file
   ].join("\n") + "\n");
   const warn = console.warn;
   const warned: string[] = [];
@@ -342,7 +343,7 @@ test("a backwards timestamp within one transcript is emitted once, in file order
   let events: Record<string, unknown>[];
   try { events = parse(await new Response(journalStream(p, { ...direct, maxMs: 800 })).text()); } finally { console.warn = warn; }
   const texts = events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => e.delta);
-  expect(texts).toEqual(["one", "two", "three", "four"]);
+  expect(texts).toEqual(["one", "two", "three", "four", "five"]);
   expect(warned.length).toBe(1);
 });
 
