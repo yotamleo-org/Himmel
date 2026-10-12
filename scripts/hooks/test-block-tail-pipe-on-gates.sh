@@ -224,6 +224,17 @@ deny "command substitution in an UNQUOTED heredoc body runs" \
      'cat <<EOF
 $(bash scripts/check-ci.sh | tail -5)
 EOF'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "quoted ) inside an unquoted heredoc substitution does not close it" \
+     'cat <<EOF
+$(printf ")"; bash scripts/check-ci.sh | tail -5)
+EOF'
+deny "terminator split by backslash-newline in an unquoted heredoc" \
+     'cat <<EOF
+body
+E\
+OF
+bash scripts/check-ci.sh | tail -5'
 allow "gate | tail inside a QUOTED heredoc body is data" \
       "cat <<'EOF'
 \$(bash scripts/check-ci.sh | tail -5)

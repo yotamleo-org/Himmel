@@ -292,8 +292,20 @@ lift_substs() {
             '$')
                 if [ "${SC[i + 1]-}" = '(' ]; then
                     j=$((i + 2)); d=1
+                    # Quote-aware: a `)` inside '...' or "..." or after a
+                    # backslash does not close the substitution.
                     while [ "$j" -lt "$n" ]; do
                         case ${SC[j]-} in
+                            \\) j=$((j + 1)) ;;
+                            "'")
+                                j=$((j + 1))
+                                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do j=$((j + 1)); done ;;
+                            '"')
+                                j=$((j + 1))
+                                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != '"' ]; do
+                                    [ "${SC[j]-}" = "\\" ] && j=$((j + 1))
+                                    j=$((j + 1))
+                                done ;;
                             '(') d=$((d + 1)) ;;
                             ')') d=$((d - 1)); [ "$d" -eq 0 ] && break ;;
                         esac
@@ -455,6 +467,23 @@ normalise() {
                                 hline+=${SC[i]-}; i=$((i + 1))
                             done
                             i=$((i + 1))   # past the newline (or EOF)
+                            # An UNQUOTED body drops backslash-newline pairs
+                            # before the terminator is matched, so `E\<NL>OF`
+                            # terminates it; join such lines first.
+                            if [ "${HD_Q[hk]}" != 1 ]; then
+                                while [ "$i" -le "$n" ]; do
+                                    hterm=$hline; d=0
+                                    while [ "${hterm: -1}" = "\\" ]; do
+                                        d=$((d + 1)); hterm=${hterm%?}
+                                    done
+                                    [ $((d % 2)) -eq 1 ] && [ "$i" -le "$n" ] || break
+                                    hline=${hline%?}
+                                    while [ "$i" -lt "$n" ] && [ "${SC[i]-}" != "$NL" ]; do
+                                        hline+=${SC[i]-}; i=$((i + 1))
+                                    done
+                                    i=$((i + 1))
+                                done
+                            fi
                             hterm=$hline
                             if [ "${HD_T[hk]}" = 1 ]; then
                                 while :; do
