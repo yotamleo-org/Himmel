@@ -313,6 +313,24 @@ deny "gate in a nested default word" 'bash ${V:-${W}/scripts/check-ci.sh} | tail
 deny "gate in the :- default word with 2>&1" 'bash ${V:-./scripts/check-ci.sh} 2>&1 | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
 allow "a harmless default word piped to tail" 'echo ${V:-hello} | tail -1'
+# A `${...}` whose body is not an allowlisted form stays verbatim, so its text
+# still reaches the gate regex (judge c2429b: replacement, subscripted default).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "replacement word names the gate" 'bash ${V/x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "global replacement word names the gate" 'bash ${V//x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "subscripted :- word names the gate" 'bash ${V[0]:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "[@] subscripted :- word names the gate" 'bash ${V[@]:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "anchored-start replacement names the gate" 'bash ${V/#x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "anchored-end replacement names the gate" 'bash ${V/%x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "subscripted - word names the gate" 'bash ${V[1]-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "indexed := word names the gate" 'bash ${arr[$i]:=./scripts/check-ci.sh} | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
 deny "zsh \$V:t modifier before the command word" \
      'V=/; $V:t bash scripts/ci/run-shell-tests.sh | tail -5'

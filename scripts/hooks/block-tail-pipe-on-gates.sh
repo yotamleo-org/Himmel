@@ -661,13 +661,14 @@ normalise() {
     printf '%s' "$out$extra"
 }
 
-# strip_param_exp <word> -- sets SE to <word> with every parameter expansion
-# removed (HIMMEL-5334): `${...}` (nesting-aware), `$NAME` plus a zsh `:x`
+# strip_param_exp <word> -- sets SE to <word> with the parameter expansions it
+# can PROVE empty-or-WORD removed (HIMMEL-5334): an allowlisted `${...}` form
+# (nesting-aware; any other `${...}` body is kept verbatim), `$NAME` plus a zsh `:x`
 # modifier or `[...]` subscript, `$1`/`$@`/`$*`, and the SUBST placeholder
 # normalise() leaves for `$(...)`. `$?`, `$$`, `$!`, `$#`, `$-` are never empty
 # and stay.
 strip_param_exp() {
-    local w=$1 i=0 n j d c nx out='' inner
+    local w=$1 i=0 n j d c nx out='' inner ok kept
     n=${#w}
     while [ "$i" -lt "$n" ]; do
         c=${w:i:1}
@@ -681,21 +682,47 @@ strip_param_exp() {
                 esac
                 j=$((j + 1))
             done
-            # `${V:-WORD}` and its `:=` `:+` `-` `=` `+` forms expand to WORD
-            # whenever the test goes that way, so WORD can name the gate
-            # (`${V:-./scripts/check-ci.sh}`): keep it, stripped recursively,
-            # rather than dropping it with the rest of the expansion.
+            # ALLOWLIST (fail closed): a `${...}` is dropped ONLY when its body
+            # is one listed form -- an optional zsh `(flags)` and `!`, a name
+            # (or positional / `@` / `*`), an optional `[subscript]`, then
+            # nothing, a `%`/`#` strip, a zsh `:x` modifier chain, or a WORD
+            # operator (`:-` `:=` `:+` `-` `=` `+`) whose WORD is KEPT,
+            # stripped recursively (`${V:-./scripts/check-ci.sh}`). Any other
+            # body (`${V/x/gate}`, `${V:?m}`, `${V:1:2}`, ...) stays verbatim,
+            # as before HIMMEL-5334, so the gate regex still sees its text.
             inner=${w:i+2:j-i-2}
+            ok=1
             case $inner in
-                [A-Za-z_]*)
-                    inner=${inner#"${inner%%[!A-Za-z0-9_]*}"} ;;
-                [0-9@*]*) inner=${inner#?} ;;
-                *) inner='' ;;
+                '('*) case $inner in *')'*) inner=${inner#*)} ;; *) ok=0 ;; esac ;;
+            esac
+            case $inner in '!'*) inner=${inner#?} ;; esac
+            case $inner in
+                [A-Za-z_]*) inner=${inner#"${inner%%[!A-Za-z0-9_]*}"} ;;
+                [0-9]*) inner=${inner#"${inner%%[!0-9]*}"} ;;
+                '@'* | '*'*) inner=${inner#?} ;;
+                *) ok=0 ;;
             esac
             case $inner in
-                ':-'* | ':='* | ':+'*) strip_param_exp "${inner#??}"; out+=$SE ;;
-                '-'* | '='* | '+'*) strip_param_exp "${inner#?}"; out+=$SE ;;
+                '['*) case $inner in *']'*) inner=${inner#*]} ;; *) ok=0 ;; esac ;;
             esac
+            kept=''
+            if [ "$ok" = 1 ]; then
+                case $inner in
+                    '' | '%'* | '#'*) ;;
+                    ':-'* | ':='* | ':+'*) strip_param_exp "${inner#??}"; kept=$SE ;;
+                    '-'* | '='* | '+'*) strip_param_exp "${inner#?}"; kept=$SE ;;
+                    ':'[A-Za-z]*)
+                        case $inner in *[!A-Za-z:]*) ok=0 ;; esac ;;
+                    *) ok=0 ;;
+                esac
+            fi
+            if [ "$ok" = 1 ]; then
+                out+=$kept
+            elif [ "$j" -lt "$n" ]; then
+                out+=${w:i:j-i+1}
+            else
+                out+=${w:i}
+            fi
             i=$((j + 1)); continue
         fi
         if [ "$c" = '$' ]; then
