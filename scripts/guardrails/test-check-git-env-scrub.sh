@@ -336,6 +336,11 @@ fi
 # (cloud-route.mjs carries one; the template fix made it visible to the scan).
 expect_green "T65 new Error('git ...') message is not a spawn"                error-message-scrubbed.mjs
 
+# T66/T67 -- round 2 (HIMMEL-5393): `-u NAME` only scrubs behind an `env`
+# wrapper; a line comment between `(` and the git argument hides nothing.
+expect_red   "T66 '-u NAME' words that are git arguments are not a scrub"      dash-u-not-env-unscrubbed.sh
+expect_red   "T67 line comment between '(' and 'git' does not hide the spawn"  comment-before-git-unscrubbed.mjs
+
 # T18 -- sanity: the real trust paths, under the real committed baseline,
 # report clean. This is the ratchet's day-one promise.
 REAL_OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --tree 2>&1)"

@@ -278,19 +278,18 @@ function invoke(no) {
   if (!scrubbed_now()) { first = no; stop = 1 }
 }
 
-function seg(s, term, no,   w, nw, i, idx, x, cw, vn, k, tgt, probe) {
+function seg(s, term, no,   w, nw, i, idx, x, cw, vn, k, tgt, probe, envseen) {
   s = trim(s)
   if (s == "") return
   nw = split(s, w, /[ \t]+/)
   if (nw == 1 && term == ")") return
   delete SEGU
-  for (i = 1; i < nw; i++) if (w[i] == "-u") SEGU[w[i + 1]] = 1
-  idx = 1; wrapped = 0
+  idx = 1; wrapped = 0; envseen = 0
   while (idx <= nw) {
     x = w[idx]
     if (x ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { idx++; continue }
-    if (x ~ /^(!|then|do|else|elif|if|while|until|time|command|exec|builtin|nohup|nice|sudo|xargs|stdbuf|timeout)$/ || is_env_word(x)) { wrapped = 1; idx++; continue }
-    if (wrapped && x ~ /^-/) { if (x == "-u" || x == "-C" || x == "-S" || x == "-n") idx += 2; else idx++; continue }
+    if (x ~ /^(!|then|do|else|elif|if|while|until|time|command|exec|builtin|nohup|nice|sudo|xargs|stdbuf|timeout)$/ || is_env_word(x)) { if (is_env_word(x)) envseen = 1; wrapped = 1; idx++; continue }
+    if (wrapped && x ~ /^-/) { if (x == "-u" && envseen && idx < nw) SEGU[w[idx + 1]] = 1; if (x == "-u" || x == "-C" || x == "-S" || x == "-n") idx += 2; else idx++; continue }
     if (wrapped && x ~ /^[0-9.]+[smhd]?$/) { idx++; continue }
     break
   }
@@ -479,11 +478,20 @@ function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv
   }
 }
 
-function detect(   k, a, cand, open, callee, m, depthp, nfound, v, ok, ln, kind, r) {
+function detect(   k, a, cand, open, callee, m, m2, depthp, nfound, v, ok, ln, kind, r) {
   for (k = 1; k + 3 <= nt; k++) {
     if (TT[k] == "I" && TV[k] ~ /^(const|let|var)$/ && TT[k + 1] == "I" && TT[k + 2] == "P" && TV[k + 2] == "=" && TT[k + 3] == "S" && TV[k + 3] ~ /^git([ \t]|$)/) GITC[TV[k + 1]] = 1
   }
   for (k = 1; k <= nt; k++) if (TT[k] == "C") COM[TL[k]] = TV[k]
+  # Drop the comment tokens so one sitting between `(` and the first
+  # argument cannot hide the call.
+  m2 = 0
+  for (k = 1; k <= nt; k++) {
+    if (TT[k] == "C") continue
+    m2++; TT[m2] = TT[k]; TV[m2] = TV[k]; TL[m2] = TL[k]; TOWN[m2] = TOWN[k]
+  }
+  for (k = m2 + 1; k <= nt; k++) { delete TT[k]; delete TV[k]; delete TL[k]; delete TOWN[k] }
+  nt = m2
   for (k = 1; k <= nt; k++) {
     if (TT[k] != "I") continue
     callee = TV[k]; cand = 0; open = 0
