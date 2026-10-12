@@ -213,7 +213,8 @@ done
     eq "local L1 walk" "|In Progress|In Review|IN CI|Done" "$out"
     echo "$PASS $FAIL" > "$T/counts.L1"
 ) 2>&1
-read -r p f < "$T/counts.L1" 2>/dev/null && { PASS=$((PASS + p)); FAIL=$((FAIL + f)); }
+read -r p f < "$T/counts.L1" 2>/dev/null || { f=1; p=0; bad "local L1 did not finish"; }
+PASS=$((PASS + p)); FAIL=$((FAIL + f))
 
 # ---- I5: concurrent mint -----------------------------------------------------
 fresh_env local
@@ -269,7 +270,7 @@ while [ "$i" -lt 10 ]; do
     ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
 done
 wait
-eq "10 concurrent links all landed" 10 "$(grep -c '^  - LOCAL-1' "$TRACKER_STORE/$id.md")"
+eq "10 concurrent links all landed" 10 "$(grep -c '^  - "LOCAL-1' "$TRACKER_STORE/$id.md")"
 eq "concurrent transition landed" "In Progress" "$(status_of "$id")"
 
 # a title with YAML-significant characters survives write and read
@@ -277,6 +278,31 @@ fresh_env local
 id=$(tracker_id_new Task 'fix: a "quoted" title # with \ slash')
 eq "title round-trips through tracker_title" 'fix: a "quoted" title # with \ slash' "$(tracker_title "$id")"
 eq "title round-trips through tracker_get" 'fix: a "quoted" title # with \ slash' "$(tracker_get "$id" | json_field title)"
+
+# an existing item is never overwritten: a lost next-id skips to a free id
+fresh_env local
+a=$(tracker_id_new Task "first")
+rm -f "$TRACKER_STORE/next-id"
+b=$(tracker_id_new Task "second")
+eq "lost next-id does not reuse an existing id" LOCAL-2 "$b"
+eq "the first item survives" first "$(tracker_title "$a")"
+
+# tabs and control characters in a title round-trip identically through both readers
+fresh_env local
+id=$(tracker_id_new Task "$(printf 'a\tb')")
+eq "tab title agrees across readers" "$(tracker_title "$id")" "$(tracker_get "$id" | json_field title)"
+
+# a link with a newline is refused; a link with YAML-significant text is stored verbatim
+fresh_env local
+id=$(tracker_id_new Task "linked")
+tracker_link "$id" "$(printf 'x\ny: z')" 2>/dev/null; eq "multiline link refused" 2 "$?"
+tracker_link "$id" 'https://e.invalid/?a: b #c'
+has "link with YAML-significant text stored quoted" '  - "https://e.invalid/?a: b #c"' "$(cat "$TRACKER_STORE/$id.md")"
+
+# an item type that is not a plain word is refused
+fresh_env local
+tracker_id_new "Task
+status: Done" "bad type" >/dev/null 2>&1; eq "multiline type refused" 2 "$?"
 
 # a failing jira list is a failed query, not an empty result (pipefail off)
 fresh_env jira

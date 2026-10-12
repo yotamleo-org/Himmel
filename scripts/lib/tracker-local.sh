@@ -136,13 +136,22 @@ _tracker_local_field() {
 _tracker_local_id_new() {
     local type="$1" title store prefix n id file
     # double-quoted scalar (YAML-valid for ": " and " #"); readers unquote it
-    title=$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    title=$(printf '%s' "$2" | tr '\n\r\t' '   ' | tr -d '\000-\010\013\014\016-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    case "$type" in
+        ''|[!A-Za-z]*|*[!A-Za-z0-9\ _-]*)
+            echo "tracker(local): invalid item type '$type'" >&2
+            return 2
+            ;;
+    esac
     store=$(_tracker_local_store) || return 2
     prefix=$(_tracker_local_prefix) || return 2
     mkdir -p "$store" || return 1
     _tracker_local_lock "$store" || return 1
     n=$(cat "$store/next-id" 2>/dev/null)
     case "$n" in ''|*[!0-9]*) n=1 ;; esac
+    # never reuse an id whose item exists (a lost or malformed next-id, or a crash
+    # between the item write and the advance)
+    while [ -e "$store/$prefix-$n.md" ]; do n=$((n + 1)); done
     id="$prefix-$n"
     file="$store/$id.md"
     {
@@ -217,12 +226,14 @@ _tracker_local_comment() {
 }
 
 _tracker_local_link() {
-    local f store rc=0
+    local f store rc=0 link
     f=$(_tracker_local_item "$1") || return $?
+    case "$2" in *$'\n'*|*$'\r'*) echo "tracker(local): a link target must be one line" >&2; return 2 ;; esac
+    link=$(printf '%s' "$2" | tr '\t' ' ' | tr -d '\000-\010\013\014\016-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
     store=$(dirname "$f")
     _tracker_local_lock "$store" || return 1
-    LINK="$2" awk '
-        /^---$/ { n++; if (n == 2) print "  - " ENVIRON["LINK"] }
+    LINK="$link" awk '
+        /^---$/ { n++; if (n == 2) print "  - \"" ENVIRON["LINK"] "\"" }
         { print }
     ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rc=1
     _tracker_local_unlock "$store"
