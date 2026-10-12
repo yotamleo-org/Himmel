@@ -25,6 +25,7 @@ let fleet = { data: null, error: null };
 // region nav and its 1/2/3 keys on that page only.
 // Health renders without a feed (D2): its bank and legs cards do not wait for the doctor report.
 let health = null; // GET /api/health, null while loading
+let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
@@ -147,12 +148,14 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // HIMMEL-4620: the vm.mode / vm.remote form. The draft is what the operator is typing; a saved or loaded answer resets it.
 const vmDraft = (d) => ({ mode: d.mode, ssh: (d.remote && d.remote.ssh) || "", port: d.remote && d.remote.port !== undefined ? String(d.remote.port) : "", identity: (d.remote && d.remote.identity) || "" });
 async function loadVm() {
+  const gen = ++vmLoadGen;
   state.vm = { data: null, error: null };
   try {
     const r = await fetch("/api/vm", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
     const j = await r.json();
+    if (gen !== vmLoadGen) return;
     state.vm = r.ok ? { data: j, error: null, draft: vmDraft(j) } : { data: null, error: j.error || `vm setting failed (${r.status})` };
-  } catch (_) { state.vm = { data: null, error: "vm setting: server unreachable" }; }
+  } catch (_) { if (gen !== vmLoadGen) return; state.vm = { data: null, error: "vm setting: server unreachable" }; }
   if (currentPage.id === "config") paint();
 }
 let vmSaving = false; // one save at a time: an older reply landing last must not overwrite a newer setting
