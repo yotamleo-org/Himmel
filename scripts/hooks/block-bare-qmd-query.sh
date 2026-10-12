@@ -67,6 +67,13 @@
 # contain one (`tmux new -s research 'qmd status'`, `ssh research qmd status`)
 # is over-denied — the safe direction; a word-bounded test is the upgrade,
 # taken when such an over-deny is reported.
+# HIMMEL-4525: where the consumer takes its program from elsewhere, the
+# sanctioned wrapper (qmd-bounded.sh) and a file search (rg, grep, egrep,
+# fgrep, not with --pre) name no verb (names_verb_nb): an interpreter with a
+# code string or script operand, xargs running a plain reader, a file a later
+# script operand reads, and a launcher's words. `qmd-bounded.sh … | sh`, a
+# written file run as a program and an interpreter reading its program from
+# stdin keep the strict test: search hits there are executed.
 # A heredoc makes qmd_words decline and the coarser fallback readings below
 # decide; the shared tokenizer (scripts/hooks/lib/shell-tokenize.sh,
 # HIMMEL-912) models heredocs and can replace qmd_words once a third inlined
@@ -581,6 +588,43 @@ names_verb() {
     s=$(printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]')
     [[ $s == *qmd* ]] && [[ $s == *query* || $s == *search* ]]
 }
+# names_verb_nb TEXT — names_verb for text whose output only ever reaches a
+# consumer as DATA (HIMMEL-4525): the sanctioned wrapper's own name is set
+# aside, and so is a simple command whose program is a file search (rg, grep,
+# egrep, fgrep) — its `qmd query` is a pattern, and with `--pre` it is not
+# (rg runs that command per file). Whatever else in TEXT names qmd and a verb
+# still counts. Used only where the consumer takes its program from elsewhere:
+# an interpreter's code string or script operand, xargs running a plain
+# program, a file a later script operand reads, a launcher's words. A shell, an
+# interpreter reading its program from stdin and a written file run as a
+# program keep names_verb: search hits there are executed, not read.
+# ponytail: an interpreter code string that execs its own stdin
+# (`python3 -c 'exec(sys.stdin.read())'`) runs the output; telling it from a
+# reader needs a parser for every language — file under HIMMEL-4178 if seen.
+# shellcheck disable=SC1003 # a literal backslash in the tr set
+names_verb_nb() {
+    local s seg w rest='' ws k
+    s=$(printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    s=${s//qmd-bounded.sh/ }
+    [[ $s == *qmd* ]] || return 1
+    s=$(printf '%s' "$s" | LC_ALL=C tr '|;&(){}`<>' '\n')
+    while IFS= read -r seg; do
+        read -r -a ws <<<"$seg" || true
+        k=0
+        while [ "$k" -lt "${#ws[@]}" ]; do
+            case "${ws[k]}" in [a-z_]*=*) k=$((k + 1)) ;; *) break ;; esac
+        done
+        w=${ws[k]:-}
+        w=${w##*/}
+        case "$w" in
+            rg|grep|egrep|fgrep)
+                case "$seg" in *--pre*) rest="$rest$seg"$'\n' ;; esac
+                ;;
+            *) rest="$rest$seg"$'\n' ;;
+        esac
+    done <<<"$s"
+    [[ $rest == *qmd* ]] && [[ $rest == *query* || $rest == *search* ]]
+}
 # The helpers below run inside qmd_nested and read its locals (w, dec, n,
 # pipe, pfrom, pp and the caches sk, se, sf, nk, nr).
 # _stage_end START — set se to the end of the simple command holding START:
@@ -622,11 +666,29 @@ _filt() {
 }
 # _prod_verb — succeed when the producer of the current pipe names a verb.
 _prod_verb() {
-    if [ "$nk" != "$pfrom,$pipe" ]; then
-        nk="$pfrom,$pipe" nr=1
-        names_verb "${dec:pfrom+1:pipe-pfrom-1}" || nr=0
+    if [ "$nk" != "$pfrom,$pipe,$1" ]; then
+        nk="$pfrom,$pipe,$1" nr=1
+        if [ "$1" = 1 ]; then
+            names_verb_nb "${dec:pfrom+1:pipe-pfrom-1}" || nr=0
+        else
+            names_verb "${dec:pfrom+1:pipe-pfrom-1}" || nr=0
+        fi
     fi
     [ "$nr" = 1 ]
+}
+# XARGSSAFE — HIMMEL-4525: an xargs stage, on the stage's own words, whose
+# program is one that only reads or prints its arguments, behind plain flag
+# and count options (no -I/-i/-J replacement string, so the program word is
+# never a token, and no -a/-d/-E/--long option). The tokens it is fed are
+# that program's arguments, not code.
+# shellcheck disable=SC2016 # literal $ and ` bytes in the regex
+XARGSSAFE='^xargs([[:space:]]+-([0rtx]+|[nlps][[:space:]]*[0-9]+))*[[:space:]]+(echo|printf|ls|basename|dirname|realpath|readlink|stat|file|du|md5sum|sha1sum|sha256sum|cat|head|tail|wc|uniq|cut|tr|column|jq|grep|egrep|fgrep)([[:space:]][^`$(){};&|<>]*)?$'
+# _xargs_safe STAGE DEC — succeed when the xargs stage reads as XARGSSAFE in
+# both its words and their decoded bytes, with no spliced, aliased or
+# redefined program (nofilt, as for pipe_filter).
+_xargs_safe() {
+    [ "$nofilt" = 0 ] || return 1
+    [[ $1 =~ $XARGSSAFE ]] && [[ $2 =~ $XARGSSAFE ]]
 }
 # _qn_runs START — HIMMEL-4337: succeed when the piped stage holding the
 # executing element at START runs its stdin: it is no plain filter, read from
@@ -634,7 +696,7 @@ _prod_verb() {
 # producer names a verb. The stage end and its filter verdict are cached per
 # stage, so a stage of many such words is scanned once.
 _qn_runs() {
-    local s=$1
+    local s=$1 nb
     if [ "$sk" != "$pipe" ] || [ "$s" -ge "$se" ]; then
         _stage_end "$s"
         sk=$pipe sf=0
@@ -642,7 +704,11 @@ _qn_runs() {
     fi
     [ "$sf" = 0 ] || return 1
     if [ "$pp" = 1 ] && _filt "${w:s:se-s}" "${dec:s:se-s}"; then return 1; fi
-    _prod_verb
+    # HIMMEL-4525: xargs running a plain program takes its producer's output
+    # as that program's arguments, so the wrapper and a file search are no verb.
+    nb=0
+    if [ "${2:-}" = x ] && _xargs_safe "${w:s:se-s}" "${dec:s:se-s}"; then nb=1; fi
+    _prod_verb "$nb"
 }
 # _wr_add WORD — record a file the command writes (`>f`, `>>f`, `tee f`).
 _wr_add() { wr="$wr ${1#./} "; }
@@ -650,7 +716,16 @@ _wr_add() { wr="$wr ${1#./} "; }
 # operand, is a file the command wrote and the command names a verb.
 _ran_written() {
     case "$wr" in
-        *" ${1#./} "*) names_verb "$w" || names_verb "$allw" ;;
+        *" ${1#./} "*)
+            # HIMMEL-4525: $2 = 1 for an interpreter operand after the one
+            # that supplied the program (an earlier operand or a code
+            # string): the file is its argument, read as data.
+            if [ "${2:-0}" = 1 ]; then
+                names_verb_nb "$w" || names_verb_nb "$allw"
+            else
+                names_verb "$w" || names_verb "$allw"
+            fi
+            ;;
         *) return 1 ;;
     esac
 }
@@ -744,7 +819,7 @@ qmd_nested() {
     # ri is set while the next word is a `<` target; sw is lb when the
     # current stage reads a written file on stdin (`< f sh`).
     local lb=-1 pipe='' pfrom=-1 fs='' fb='' fr pc=0 pp=1 ro=0 te=0 tw ws ri=0 sw='' so sr
-    local sk='' se=0 sf=0 nk='' nr=0 pk=-1 e0 nw enc fo ia ct sj tk hx hs tx sd x oa sx atw
+    local sk='' se=0 sf=0 nk='' nr=0 pk=-1 e0 nw enc fo ia ct sj tk hx hs tx sd x oa sx atw xk nbw
     while [ "$i" -lt "$n" ]; do
         c=${w:i:1}
         case "$NESTSEP" in
@@ -839,15 +914,16 @@ qmd_nested() {
         # program, in a piped stage.
         if [ -n "$pipe" ]; then
             x=0
+            xk=''
             if [ "$t" = xargs ]; then
-                x=1
+                x=1 xk=x
             elif [ "$pp" = 1 ]; then
                 case "$tw" in
                     '$'*) x=1 ;;
                     *) case "$t" in grep|egrep|fgrep|rg|sed|awk|gawk|mawk|nawk|head|tail|wc|sort|uniq|cut|tr|cat|column|jq) x=1 ;; esac ;;
                 esac
             fi
-            if [ "$x" = 1 ] && _qn_runs "$ws"; then deny=1; return 0; fi
+            if [ "$x" = 1 ] && _qn_runs "$ws" "$xk"; then deny=1; return 0; fi
         fi
         # Program position: after a keyword or a plain prefix, and kept over
         # an assignment, a redirection's fd and its target.
@@ -1048,8 +1124,9 @@ qmd_nested() {
                     # An operand naming stdin (/dev/stdin, /dev/fd/0,
                     # /proc/self/fd/0) is no program source.
                     fo=1
+                    nbw=$so
                     case "$v" in */dev/*|dev/*|*/proc/*|proc/*) ;; *) so=1 ;; esac
-                    if _ran_written "$t"; then deny=1; return 0; fi
+                    if _ran_written "$t" "$nbw"; then deny=1; return 0; fi
                 fi
             elif [ "$hasc" = 0 ]; then
                 # The string is the first word after an option cluster
@@ -1160,11 +1237,17 @@ qmd_nested() {
         # alias, with or without -c.
         # HIMMEL-4244: a stage run on by a later `|` then a newline (printed
         # `;`) reaches the next line, so it is no filter.
+        # HIMMEL-4525: an interpreter that has a program of its own (a code
+        # string or a script operand, so=1) reads the pipe as data, so the
+        # wrapper and a file search among the producer are no verb there.
         if [ -n "$piped" ] && [ "$mode" != env ] && [ "$mode" != alias ] &&
-            { [[ ${w:e} =~ $PIPENL ]] || ! pipe_filter "${w:piped+1:e-piped-1}" "${dec:piped+1:e-piped-1}"; } &&
-            names_verb "${dec:pfrom+1:piped-pfrom-1}"; then
-            deny=1
-            return 0
+            { [[ ${w:e} =~ $PIPENL ]] || ! pipe_filter "${w:piped+1:e-piped-1}" "${dec:piped+1:e-piped-1}"; }; then
+            if [ "$mode" = int ] && [ "$so" = 1 ] && [ "$sx" = 0 ]; then
+                if names_verb_nb "${dec:pfrom+1:piped-pfrom-1}"; then deny=1; return 0; fi
+            elif names_verb "${dec:pfrom+1:piped-pfrom-1}"; then
+                deny=1
+                return 0
+            fi
         fi
         if [ -n "$scr" ]; then
             # watch, parallel and env -S run their words as a program: read
@@ -1192,14 +1275,23 @@ qmd_nested() {
                 if [[ $ct == *[qQ]* ]] && names_verb "$ct"; then deny=1; return 0; fi
                 ;;
             rem)
-                if [[ $sj == *[qQ]* ]] && names_verb "$sj"; then deny=1; return 0; fi
+                # HIMMEL-4525: the wrapper or a file search among a launcher's
+                # words is no verb; its stdin (a pipe) is still checked above.
+                if [[ $sj == *[qQ]* ]] && names_verb_nb "$sj"; then deny=1; return 0; fi
                 case "$sj" in
                     *[qQ]*|*'$'*|*'`'*) qmd_check "$sj" $((depth + 1)) ;;
                 esac
                 if [ "$deny" = 1 ]; then return 0; fi
                 ;;
         esac
-        if [ "$tx" = 1 ] && names_verb "$w"; then deny=1; return 0; fi
+        if [ "$tx" = 1 ]; then
+            if [ "$mode" = rem ]; then
+                if names_verb_nb "$w"; then deny=1; return 0; fi
+            elif names_verb "$w"; then
+                deny=1
+                return 0
+            fi
+        fi
     done
     if _envfile_written "$w"; then deny=1; fi
     return 0

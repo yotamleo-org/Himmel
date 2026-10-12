@@ -993,6 +993,67 @@ deny 'sudo /tmp/a(b)/qmd query x'
 deny 'node /tmp/a(b)/qmd query x'
 allow '/tmp/a(b)/qmd status'
 
+# --- HIMMEL-4525: the sanctioned wrapper, and a file search for the words
+# `qmd query`, are no bare verb for a pipe consumer, a written-then-run file or a
+# launcher ---
+# The wrapper's own output is data to an interpreter that has a program of its
+# own (a code string, a script or module operand), to xargs running a plain
+# program, and to a file read by a later script operand.
+BQ='bash scripts/lib/qmd-bounded.sh query -c luna x'
+allow "$BQ | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "$BQ | python3 -m json.tool"
+allow "$BQ | node -e 'process.stdin.pipe(process.stdout)'"
+allow "$BQ | perl -ne 'print'"
+allow "$BQ | xargs -n1 echo"
+allow "$BQ | xargs -n1 dirname"
+allow "$BQ 2>&1 | python3 -c 'import sys'"
+allow "$BQ | head -5 | python3 -c 'import sys'"
+allow "$BQ > out.txt; python3 parse.py out.txt"
+allow "$BQ | tee out.txt | python3 parse.py out.txt"
+allow "ssh host 'bash ~/himmel/scripts/lib/qmd-bounded.sh query -c luna x'"
+allow 'ssh $host bash ~/himmel/scripts/lib/qmd-bounded.sh query -c luna x'
+allow "ssh host '$BQ' | python3 -c 'import sys'"
+# A search for the words, reading files, is no qmd program.
+allow "rg -n 'qmd query' scripts | xargs -n1 dirname"
+allow "grep -rn 'qmd query' scripts | python3 -c 'import sys'"
+allow "grep -rn 'qmd query' scripts | xargs -n1 dirname"
+allow "LC_ALL=C grep -rln 'qmd query' scripts | python3 -m json.tool"
+# What the wrapper's output or a search hit reaches as a PROGRAM stays refused.
+deny "$BQ | sh"
+deny "$BQ | bash"
+deny "$BQ | python3"
+deny "$BQ | python3 -"
+deny "$BQ | node"
+deny "$BQ | xargs -I{} {}"
+deny "$BQ | xargs sh -c 'echo'"
+deny "$BQ | awk '{system(\$0)}'"
+deny "$BQ > out.txt; sh out.txt"
+deny "$BQ > out.txt; python3 out.txt"
+deny "$BQ > out.txt; bash -c 'x' out.txt; sh out.txt"
+deny "$BQ | ssh host sh"
+deny "grep -rn 'qmd query' scripts | sh"
+deny "rg -n 'qmd query' scripts | bash"
+deny "grep -rn 'qmd query' scripts | python3"
+deny "rg --pre sh -n 'qmd query' scripts | xargs -n1 echo"
+# A bare verb in any of those positions is still refused, also beside the wrapper.
+deny "qmd query x | python3 -c 'import sys'"
+deny "qmd query x | python3 -m json.tool"
+deny "qmd query x | node -e 'process.exit(0)'"
+deny "qmd query x | perl -ne 'print'"
+deny "qmd query x | xargs -n1 echo"
+deny "qmd query x > out.txt; python3 parse.py out.txt"
+deny "ssh host 'qmd query x'"
+deny "ssh host qmd query x"
+deny "echo qmd query x | python3 -c 'import sys'"
+deny "echo qmd query x | xargs -n1 echo"
+deny "echo qmd query x > out.txt; python3 parse.py out.txt"
+deny "$BQ > out.txt; echo qmd query y; python3 parse.py out.txt"
+deny "$BQ | python3 -c 'import os; os.system(\"qmd query x\")'"
+deny "$BQ | xargs -n1 qmd query"
+deny "$BQ; qmd query y | python3 -c 'import sys'"
+deny "ssh host '$BQ; qmd query y'"
+deny "grep -rn 'x' scripts; echo qmd query y | python3 -c 'import sys'"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
