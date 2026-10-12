@@ -106,10 +106,18 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
-cmd_run() {
+cmd_run() (
     local root out keys new="" k sev
     root="$(resolve_primary)" || { echo "doctor-cadence: cannot resolve the primary checkout" >&2; return 2; }
     mkdir -p "$STATE_DIR" || return 2
+    # Hold through doctor, alerts and Jira filing: overlapping cron/manual runs
+    # skip this pass rather than reading or publishing the same baseline twice.
+    if ! mkdir "$STATE_DIR/.run-lock" 2>/dev/null; then
+        [ -d "$STATE_DIR/.run-lock" ] && return 0
+        return 2
+    fi
+    trap 'rmdir "$STATE_DIR/.run-lock"' EXIT
+    trap 'exit 1' HUP INT TERM
     out="$STATE_DIR/last-run.log"
     (cd "$root" && bash "$root/scripts/himmel-doctor.sh" --no-color </dev/null) > "$out" 2>&1
     if ! grep -q '^Summary: ' "$out"; then
@@ -144,7 +152,7 @@ cmd_run() {
     # leaves it, so one that comes back alerts again.
     mv -f "$kf" "$STATE_DIR/alerted.tsv"
     return 0
-}
+)
 
 # "no crontab for <user>" is an empty table; any other read failure is an error
 # (installing over it would drop the operator's other jobs).
@@ -205,10 +213,18 @@ cmd_arm() {
 }
 
 cmd_status() {
+    local m stamp=""
     cron_read || return 1
     if [ -n "$(cron_entry)" ]; then echo "ARMED      $TASK_NAME ($(cron_entry | awk '{print $1, $2, $3, $4, $5}'))"
     else echo "not armed  $TASK_NAME"; fi
-    [ -f "$STATE_DIR/counts" ] && echo "  last run   $(cat "$STATE_DIR/counts") ($(date -r "$STATE_DIR/counts" '+%Y-%m-%d %H:%M' 2>/dev/null))"
+    if [ -f "$STATE_DIR/counts" ]; then
+        m="$(stat -c %Y "$STATE_DIR/counts" 2>/dev/null || stat -f %m "$STATE_DIR/counts" 2>/dev/null || true)"
+        case "$m" in
+            ''|*[!0-9]*) ;;
+            *) stamp="$(date -d "@$m" '+%Y-%m-%d %H:%M' 2>/dev/null || date -r "$m" '+%Y-%m-%d %H:%M' 2>/dev/null || true)" ;;
+        esac
+        echo "  last run   $(cat "$STATE_DIR/counts") ($stamp)"
+    fi
     return 0
 }
 
