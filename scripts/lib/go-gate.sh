@@ -389,7 +389,11 @@ trust_path_check() (
             [ "$?" -eq 2 ] && refuse list "scripts/ci/ci-trust-paths.txt on $tp_branch has an invalid pattern"
             [ "$(lg_git rev-parse --verify --quiet "$tp_sha^{commit}" 2>/dev/null)" = "$tp_sha" ] \
                 || refuse files "change $tp_pr's head $tp_sha is not a commit in $lg_dir"
-            files=$(lg_git diff --no-renames --name-only "$lg_base...$tp_sha" 2>/dev/null) \
+            # -z and core.quotePath=false: git's default output quotes and
+            # escapes a non-ASCII or control-character path, which an anchored
+            # pattern would then miss.
+            files=$(lg_git -c core.quotePath=false diff --no-renames --name-only -z "$lg_base...$tp_sha" 2>/dev/null \
+                | tr '\000' '\n'; exit "${PIPESTATUS[0]}") \
                 || refuse files "cannot list change $tp_pr's changed files"
             hit=$(printf '%s\n' "$files" | grep -v '^$' | grep -E -f "$tmp" | head -n 1)
             if [ -z "$hit" ]; then

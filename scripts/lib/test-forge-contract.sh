@@ -81,7 +81,12 @@ cat >> "$BB_STUB" <<'EOF'
 case "$1 $2" in
     "repo view") cat "$FIX/repo-view.json" ;;
     "pr list")   cat "$FIX/pr-list-open.json" ;;
-    "pr get")    [ "$3" = "42" ] && cat "$FIX/pr-get.json" || { echo "bb-stub: no PR $3" >&2; exit 1; } ;;
+    "pr get")    case "$3" in
+                     42) cat "$FIX/pr-get.json" ;;
+                     43) printf 'not json\n' ;;
+                     44) printf 'null\n' ;;
+                     *) echo "bb-stub: no PR $3" >&2; exit 1 ;;
+                 esac ;;
     *) echo "bb-stub: unrecorded call: $*" >&2; exit 1 ;;
 esac
 EOF
@@ -230,6 +235,40 @@ run local-git forge_change_id feat/a-b
 expect local-git "change_id feat/a-b still resolves" 0 br-feat-a-b
 run local-git forge_change_id "feat/a+b"
 expect local-git "change_id of a branch outside the id grammar" 2 ""
+# Two opens racing past the ownership check: the second must still refuse
+# (simulated by a change_id that skips the check), never overwrite the first.
+# shellcheck disable=SC2329 # invoked indirectly by forge_change_open
+OUT=$(cd "$LG" && lg_forge_change_id() { printf 'br-feat-a-b\n'; } &&
+    FORGE=local-git forge_change_open feat-a/b "$ROOT/title" "$ROOT/body" 2>/dev/null)
+RC=$?
+expect local-git "an open that raced past the check is refused" 2 ""
+assert_eq "local-git: the raced open left br-feat-a-b with feat/a-b" "feat/a-b" \
+    "$(_lg_field "$LG_COMMON/himmel/changes/br-feat-a-b.json" branch)"
+
+# ── the base branch ──────────────────────────────────────────────────────────
+echo "TEST: local-git takes the repo's own default branch as the base"
+LGM="$ROOT/lgm"
+git init -q -b master "$LGM"
+git -C "$LGM" commit -q --allow-empty -m init
+git -C "$LGM" checkout -q -b feat/m
+git -C "$LGM" commit -q --allow-empty -m "feat m"
+field() { printf '%s' "$1" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s)[process.argv[1]])}catch{console.log("")}})' "$2"; }
+OUT=$(cd "$LGM" && FORGE=local-git forge_change_open feat/m "$ROOT/title" "$ROOT/body" 2>/dev/null); RC=$?
+expect local-git "open feat/m in a master repo" 0 br-feat-m
+OUT=$(cd "$LGM" && FORGE=local-git forge_change_view br-feat-m 2>/dev/null)
+assert_eq "local-git: base is master" "master" "$(field "$OUT" base)"
+assert_eq "local-git: unmerged feat/m is OPEN" "OPEN" "$(field "$OUT" state)"
+git -C "$LGM" checkout -q master
+git -C "$LGM" merge -q --ff-only feat/m
+OUT=$(cd "$LGM" && FORGE=local-git forge_change_view br-feat-m 2>/dev/null)
+assert_eq "local-git: feat/m merged into master is MERGED" "MERGED" "$(field "$OUT" state)"
+
+# ── bitbucket refuses a response it cannot read ──────────────────────────────
+echo "TEST: bitbucket change_view refuses malformed or empty JSON"
+run bitbucket forge_change_view 43
+expect bitbucket "change_view of a non-JSON response" 1 ""
+run bitbucket forge_change_view 44
+expect bitbucket "change_view of a null response" 1 ""
 
 # ── the adapter ledger ───────────────────────────────────────────────────────
 # Every public verb, every backend: exactly one ledger line naming that verb

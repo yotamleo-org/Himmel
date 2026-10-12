@@ -35,6 +35,23 @@ _lg_field() {
         sed -e "s/\\\\\\\\/$soh/g" -e 's/\\"/"/g' -e "s/$soh/\\\\/g"
 }
 
+# _lg_default_base — the repo's default branch: origin/HEAD's target when set,
+# else the first of main and master that exists, else main.
+_lg_default_base() {
+    local b
+    if b=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) && [ -n "$b" ]; then
+        printf '%s\n' "${b#origin/}"
+        return 0
+    fi
+    for b in main master; do
+        if git rev-parse --verify --quiet "refs/heads/$b^{commit}" >/dev/null 2>&1; then
+            printf '%s\n' "$b"
+            return 0
+        fi
+    done
+    printf 'main\n'
+}
+
 # lg_forge_change_id [branch] — print br-<branch>; the current branch when none
 # is given. rc 2 when the id is not ^br-[a-z0-9._-]+$, or when the change
 # record for that id already belongs to another branch (feat/a-b and feat-a/b
@@ -64,11 +81,14 @@ lg_forge_change_id() {
 }
 
 # lg_forge_change_open <branch> <title-file> <body-file> — write the change
-# record (atomically: a temp file renamed into place) and print the change id.
-# The title is the title file's first line; the body is copied beside the
-# record as <id>.body.md. Re-opening the same branch rewrites its record.
+# record and print the change id. The title is the title file's first line;
+# the body is copied beside the record as <id>.body.md; the base is the repo's
+# default branch. A new record is claimed with a hard link, which fails when
+# the record exists, so two colliding opens cannot both pass the ownership
+# check. Re-opening the same branch rewrites its record (a temp file renamed
+# into place); a record owned by another branch refuses with rc 2.
 lg_forge_change_open() {
-    local branch="${1:-}" title_file="${2:-}" body_file="${3:-}" id dir title tmp
+    local branch="${1:-}" title_file="${2:-}" body_file="${3:-}" id dir title tmp rec owner
     if [ -z "$branch" ] || [ ! -f "$title_file" ] || [ ! -f "$body_file" ]; then
         echo "forge(local-git): usage: change_open <branch> <title-file> <body-file>" >&2
         return 2
@@ -77,19 +97,35 @@ lg_forge_change_open() {
     dir=$(_lg_changes_dir) || { echo "forge(local-git): not inside a git repository" >&2; return 1; }
     mkdir -p "$dir" || return 1
     IFS= read -r title < "$title_file" || [ -n "$title" ] || title=""
-    cp "$body_file" "$dir/$id.body.md" || return 1
+    rec="$dir/$id.json"
     tmp="$dir/.$id.json.$$"
     {
         printf '{\n'
         printf '"id":%s,\n' "$(_lg_json_str "$id")"
         printf '"branch":%s,\n' "$(_lg_json_str "$branch")"
-        printf '"base":"main",\n'
+        printf '"base":%s,\n' "$(_lg_json_str "$(_lg_default_base)")"
         printf '"title":%s,\n' "$(_lg_json_str "$title")"
         printf '"body_path":%s,\n' "$(_lg_json_str "$dir/$id.body.md")"
         printf '"opened_at":%s\n' "$(_lg_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
         printf '}\n'
     } > "$tmp" || { rm -f "$tmp"; return 1; }
-    mv -f "$tmp" "$dir/$id.json" || { rm -f "$tmp"; return 1; }
+    if ln "$tmp" "$rec" 2>/dev/null; then
+        rm -f "$tmp"
+    else
+        if [ ! -f "$rec" ]; then
+            rm -f "$tmp"
+            echo "forge(local-git): cannot write the change record $rec" >&2
+            return 1
+        fi
+        owner=$(_lg_field "$rec" branch)
+        if [ "$owner" != "$branch" ]; then
+            rm -f "$tmp"
+            echo "forge(local-git): change id $id already belongs to branch '$owner' — '$branch' collides with it; rename one branch" >&2
+            return 2
+        fi
+        mv -f "$tmp" "$rec" || { rm -f "$tmp"; return 1; }
+    fi
+    cp "$body_file" "$dir/$id.body.md" || return 1
     printf '%s\n' "$id"
 }
 

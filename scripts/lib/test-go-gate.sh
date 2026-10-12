@@ -448,11 +448,16 @@ HIT=$(lg -C "$LR" rev-parse HEAD)
 lg -C "$LR" checkout -q -b feat/clean main
 printf 'y\n' > "$LR/README"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m clean
 CLEAN=$(lg -C "$LR" rev-parse HEAD)
+lg -C "$LR" checkout -q -b feat/uni main
+printf 'u\n' > "$LR/scripts/ci/$(printf 'caf\303\251').sh"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m uni
+UNI=$(lg -C "$LR" rev-parse HEAD)
 lg -C "$LR" checkout -q main
 got=$(tpc "$LRID" br-feat-hit "$HIT" "$LR")
 [ "$got" = "0:hit scripts/ci/ci-trust-paths.txt" ] || fail "9e: a local-git change touching a trust path (the branch's own list edit ignored) is not a hit: $got"
 got=$(tpc "$LRID" br-feat-clean "$CLEAN" "$LR")
 [ "$got" = "0:none" ] || fail "9e: a local-git change touching no trust path is not none: $got"
+got=$(tpc "$LRID" br-feat-uni "$UNI" "$LR")
+[ "$got" = "0:hit scripts/ci/$(printf 'caf\303\251').sh" ] || fail "9e: a non-ASCII trust-path file (git's quoted path) is not a hit: $got"
 got=$(tpc o/r br-feat-hit "$HIT" "$LR")
 case "$got" in "2:list "*) ;; *) fail "9e: a br id with a non-local repo id was not refused: $got" ;; esac
 got=$(tpc "$LRID" br-feat-hit "$(printf '%040d' 9)" "$LR")

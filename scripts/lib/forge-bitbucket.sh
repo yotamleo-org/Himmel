@@ -172,12 +172,13 @@ bb_forge_change_id() {
 # echo one compact JSON object {id, head, base, title, state, merged} for PR ID,
 # projected from `pr get` (the CLI's PrIngestInfo: id, title, state,
 # source_branch, destination_branch, ...). That shape carries no head commit,
-# so head is "". Capture-then-parse, as above.
+# so head is "". Capture-then-parse, as above. A response that is not a JSON
+# object carrying an id refuses with rc 1.
 bb_forge_change_view() {
     local out
     out=$(_bb pr get "$1") || return 1
     printf '%s' "$out" |
-        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j={};try{j=JSON.parse(s||"null")||{}}catch{};const st=String(j.state??"");process.stdout.write(JSON.stringify({id:String(j.id??""),head:"",base:String(j.destination_branch??""),title:String(j.title??""),state:st,merged:st==="MERGED"})+"\n")})'
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||typeof j!=="object"||Array.isArray(j)||j.id==null){process.stderr.write("forge(bitbucket): pr get returned no PR record\n");process.exit(1)};const st=String(j.state??"");process.stdout.write(JSON.stringify({id:String(j.id??""),head:"",base:String(j.destination_branch??""),title:String(j.title??""),state:st,merged:st==="MERGED"})+"\n")})'
 }
 
 # echo workspace/repo — the repo's id on this forge (= bb_forge_repo_nwo).
