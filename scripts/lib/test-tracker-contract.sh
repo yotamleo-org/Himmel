@@ -311,6 +311,13 @@ status: Done" "bad type" >/dev/null 2>&1; eq "multiline type refused" 2 "$?"
 fresh_env local
 tracker_id_new Task "no body" "$R/missing-body.md" >/dev/null 2>&1; eq "missing body file refused" 2 "$?"
 [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "item written despite a missing body file"
+mkdir -p "$TRACKER_STORE"; printf 'body\n' > "$R/unreadable.md"; chmod 000 "$R/unreadable.md"
+if [ ! -r "$R/unreadable.md" ]; then
+    # an unreadable body returns from the mint (never exits the caller) and leaves nothing behind
+    tracker_id_new Task "unreadable body" "$R/unreadable.md" >/dev/null 2>&1; rc=$?
+    eq "unreadable body file fails the mint" 1 "$rc"
+    [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && [ ! -e "$TRACKER_STORE/.lock" ] && ok || bad "item or lock left behind after an unreadable body"
+fi
 mkdir -p "$TRACKER_STORE"; printf '08\n' > "$TRACKER_STORE/next-id"
 eq "leading-zero next-id is decimal" LOCAL-8 "$(tracker_id_new Task "zero")"
 fresh_env jira

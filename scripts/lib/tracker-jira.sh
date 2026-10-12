@@ -41,11 +41,12 @@ _tracker_jira_id_new() {
 
 # _tracker_jira_get <id> — normalised JSON. rc 3 when the issue is absent, rc 1 when the CLI itself failed.
 _tracker_jira_get() {
-    local raw err="${TMPDIR:-/tmp}/tracker-jira-err.$$" msg
+    local raw err msg
+    err=$(mktemp "${TMPDIR:-/tmp}/tracker-jira-err.XXXXXX") || return 1
     if ! raw=$(_tracker_jira_run get "$1" --json 2>"$err"); then
         msg=$(cat "$err" 2>/dev/null); rm -f "$err"
         case "$msg" in
-            *[Nn]ot\ [Ff]ound*|*[Dd]oes\ [Nn]ot\ [Ee]xist*|*404*) return 3 ;;
+            *[Nn]ot\ [Ff]ound*|*[Dd]oes\ [Nn]ot\ [Ee]xist*) return 3 ;;
         esac
         printf '%s\n' "tracker(jira): get $1 failed: $msg" >&2
         return 1

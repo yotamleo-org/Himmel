@@ -158,12 +158,17 @@ _tracker_local_id_new() {
     while [ -e "$store/$prefix-$n.md" ]; do n=$((n + 1)); done
     id="$prefix-$n"
     file="$store/$id.md"
-    {
+    # steps chained with && so a failed body read returns here (never exits the caller)
+    if ! {
         printf -- '---\nid: %s\ntitle: "%s"\ntype: %s\nstatus: To Do\nfix_version:\nepic:\ncreated: %s\nlinks:\n---\n\n' \
-            "$id" "$title" "$type" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        if [ -n "${3:-}" ]; then cat "$3" || exit 1; printf '\n'; fi
-        printf '\n## Log\n'
-    } > "$file" || { rm -f "$file"; _tracker_local_unlock "$store"; return 1; }
+            "$id" "$title" "$type" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$file" &&
+            { [ -z "${3:-}" ] || { cat "$3" && printf '\n'; } >> "$file"; } &&
+            printf '\n## Log\n' >> "$file"
+    }; then
+        rm -f "$file"
+        _tracker_local_unlock "$store"
+        return 1
+    fi
     if ! { printf '%s\n' "$((n + 1))" > "$store/next-id.tmp" && mv "$store/next-id.tmp" "$store/next-id"; }; then
         # an id that was not advanced would be minted again over this item
         rm -f "$file" "$store/next-id.tmp"
