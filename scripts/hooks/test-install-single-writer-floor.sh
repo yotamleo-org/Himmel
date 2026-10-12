@@ -20,7 +20,10 @@ INSTALLER="$SCRIPT_DIR/install-single-writer-floor.sh"
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
 
 # A hook-invoking parent (pre-commit, pre-push) leaks GIT_DIR and friends.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
+# shellcheck source=../lib/git-clean.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/git-clean.sh"
+git_env_scrub
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid
 export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid

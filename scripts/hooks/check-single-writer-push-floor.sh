@@ -29,7 +29,7 @@ if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     exit 1
 fi
 
-lines=$(cat)
+lines=$(cat) || { echo "ERROR: single-writer floor could not read the push list -- REFUSING this push." >&2; exit 1; }
 refuse=0
 
 while IFS=' ' read -r _local_ref local_sha remote_ref _remote_sha; do
