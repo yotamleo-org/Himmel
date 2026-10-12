@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# render-settings.sh — HIMMEL-5287 POC. Print one-line srt settings JSON for a
+# leg. Profiles (operator rulings, HIMMEL-5286 decisions 1-2 + extensions):
+#   impl      base allow list only (github, npm, PyPI, model gateway)
+#   research  base list + a curated docs/reference list; writes still confined to the same roots
+# Writable roots are always the leg worktree, its scratchpad and the handover
+# bucket. Extra domains (a console-approved request) are appended to the list.
+#
+#   render-settings.sh <impl|research> <worktree> <scratch> <handover> [extra-domain...]
+set -eu
+
+profile="$1" worktree="$2" scratch="$3" handover="$4"
+shift 4
+
+case "$profile" in
+    impl) domains='"github.com","api.github.com","codeload.github.com","registry.npmjs.org","pypi.org","files.pythonhosted.org","api.anthropic.com"' ;;
+    # srt 0.0.79 rejects "*" and "*.com" as overly broad, so "broad web" is a
+    # curated docs/reference list that extends the base list (a measured POC finding)
+    research) domains='"github.com","api.github.com","codeload.github.com","registry.npmjs.org","pypi.org","files.pythonhosted.org","api.anthropic.com","example.com","*.wikipedia.org","docs.python.org","developer.mozilla.org","stackoverflow.com","arxiv.org","*.readthedocs.io"' ;;
+    *) echo "render-settings: unknown profile: $profile" >&2; exit 2 ;;
+esac
+for d in "$@"; do
+    domains="$domains,\"$d\""
+done
+
+home="${HOME:?}"
+printf '{"network":{"allowedDomains":[%s],"deniedDomains":[]},' "$domains"
+printf '"filesystem":{"denyRead":["%s/.ssh","%s/.config/gh","%s/.git-credentials","%s/.netrc"],' "$home" "$home" "$home" "$home"
+printf '"allowWrite":["%s","%s","%s"],"denyWrite":[]}}\n' "$worktree" "$scratch" "$handover"

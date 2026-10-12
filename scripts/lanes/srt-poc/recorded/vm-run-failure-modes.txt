@@ -1,0 +1,17 @@
+srt: 0.0.79
+mode: failure-modes  base: <guest-home>/poc-failure-modes
+F1 invalid settings (zero bytes):
+Error: <guest-home>/poc-failure-modes/zero.json is empty. Delete it, or put a config in it.
+Refusing to run with the built-in defaults, which would drop this file's rules (its denyRead, allowRead and credential entries included).
+  rc=1 (nonzero = refuses)
+F2 missing --settings file:
+Error: <guest-home>/poc-failure-modes/nope.json does not exist.
+Refusing to run with the built-in defaults, which would drop the rules --settings asked for.
+  rc=1 (nonzero = refuses)
+F3 bwrap absent from PATH:
+Error: Sandbox dependencies not available: ripgrep (rg) not found, bubblewrap (bwrap) not installed, socat not installed
+  rc=1 (nonzero + no RAN = refuses, not unsandboxed)
+F4 settings file absent, no --settings (the launcher assertion exists for this):
+RAN
+defaults-start
+  rc=0 (RAN = starts on built-in defaults)
