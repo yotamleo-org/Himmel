@@ -46,7 +46,7 @@ else
   bad "README.md must embed docs/assets/flows.svg"
 fi
 
-TMP=$(mktemp -d) || exit 1
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/readme-hygiene.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 if [ ! -f "$GEN" ]; then
   bad "generator $GEN is missing"
