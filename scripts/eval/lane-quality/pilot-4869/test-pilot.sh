@@ -325,7 +325,7 @@ lane_run() { # $1 deepseek|codex, then the launcher's arguments
   if [ "$l" = deepseek ]; then
     (cd "$REALR" && env -i PATH="$SB5183:$NB5183:/usr/bin:/bin" HOME="$TMP/lh-$l" DEEPSEEK_API_KEY=k HIMMEL_DEEPSEEK_INFERENCE_OK=1 CLAUDE_DEEPSEEK_DOTENV_ROOT="$SB5183" CLAUDE_DEEPSEEK_CWD="$REALR" bash "$REALS/claude-deepseek" "$@" 2>&1)
   else
-    (cd "$REALR" && env -i PATH="$SB5183:$NB5183:/usr/bin:/bin" HOME="$TMP/lh-$l" CLIPROXY_API_KEY=k CODEX_MODEL=gpt-5.6-sol CLAUDE_CODEX_DOTENV_ROOT="$SB5183" bash "$REALS/claude-codex" "$@" 2>&1)
+    (cd "$REALR" && env -i PATH="$SB5183:$NB5183:/usr/bin:/bin" HOME="$TMP/lh-$l" CLIPROXY_API_KEY=k CODEX_MODEL=gpt-5.6-sol CLAUDEX_CLASSIFIER_MODEL=gateway CLAUDE_CODEX_DOTENV_ROOT="$SB5183" bash "$REALS/claude-codex" "$@" 2>&1)
   fi
 }
 for l in deepseek codex; do
@@ -376,7 +376,7 @@ EOF
 )"
 check 'the deepseek launcher normal path (argv, env, banner) is unchanged by --seed-only' '[ "$got" = "$want" ]'
 lane_home codex
-got="$(lane_run codex --model sonnet hello | grep -vE '^(CLAUDE_CONFIG_DIR|CLAUDE_CODEX_)')"
+got="$(lane_run codex --model sonnet hello | grep -vE '^(CLAUDE_CONFIG_DIR|CLAUDE_CODEX_|CLAUDEX_CLASSIFIER_MODEL)')"
 want="$(cat <<'EOF'
 ANTHROPIC_AUTH_TOKEN=k
 ANTHROPIC_BASE_URL=http://127.0.0.1:8317
