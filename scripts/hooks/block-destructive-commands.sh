@@ -1269,7 +1269,9 @@ _gp_body_line() {
 # _gp_body_line. A body is data, yet a later command can run it (an alias
 # written into .git/config), so the parser's relief never reaches it.
 _gp_body() {
-    local line t d rest re='(^|[^<])<<(-?)[[:space:]]*(["'"'"']?)([a-z_][a-z0-9_]*)\3'
+    # The delimiter is any shell word (`'1'`, `\eof`, `e"o"f`) with its quotes
+    # removed; one that never matches leaves the rest of the text as body.
+    local line t d rest re='(^|[^<])<<(-?)[[:space:]]*([^[:space:]<>|&;()]+)'
     local -a pend=()
     t=${1//"$_bsnl"/}
     while IFS= read -r line || [ -n "$line" ]; do
@@ -1281,7 +1283,7 @@ _gp_body() {
         fi
         rest=$line
         while [[ $rest =~ $re ]]; do
-            d=${BASH_REMATCH[4]}
+            _c_strip_quotes "${BASH_REMATCH[3]}"; d=$REPLY
             [ -z "${BASH_REMATCH[2]}" ] || d=-$d
             pend[${#pend[@]}]=$d
             rest=${rest#*"${BASH_REMATCH[0]}"}
