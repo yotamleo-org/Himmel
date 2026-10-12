@@ -31,7 +31,7 @@ const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // HIMMEL-4943: declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null };
 const PAGES = [
-  { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm) loadVm(); } },
+  { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
@@ -160,8 +160,10 @@ async function saveVm() {
   if (!d) return;
   const body = { mode: d.mode };
   if (d.mode === "remote") body.remote = { ssh: d.ssh.trim(), port: d.port.trim(), identity: d.identity.trim() };
+  const sent = JSON.stringify(d);
   const { ok, j } = await post("/api/vm", body);
-  state.vm = ok ? { data: j, error: null, draft: vmDraft(j), msg: { ok: true, text: "saved" } } : { ...state.vm, msg: { ok: false, text: j.error || "save failed" } };
+  const edited = state.vm.draft && JSON.stringify(state.vm.draft) !== sent; // typed while the save was in flight: keep it
+  state.vm = ok ? { data: j, error: null, draft: edited ? state.vm.draft : vmDraft(j), msg: { ok: true, text: "saved" } } : { ...state.vm, msg: { ok: false, text: j.error || "save failed" } };
   paint();
 }
 
