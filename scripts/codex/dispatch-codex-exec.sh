@@ -524,7 +524,38 @@ try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = noth
 const trusted = new Map();
 let key = null, hash = null, off = false;
 const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key, hash); };
+// HIMMEL-5350: a header-looking line inside a multi-line string is string content
+// to codex, so track """ / \x27\x27\x27 across lines (single-line strings and
+// comments skipped) and read only the lines that start outside one.
+let ml = null;
+const trackStrings = (line) => {
+    let i = 0;
+    while (i < line.length) {
+        if (ml !== null) {
+            if (ml.charAt(0) === "\"" && line[i] === "\\") { i += 2; continue; }
+            if (line.startsWith(ml, i)) {
+                i += 3;
+                for (let extra = 0; extra < 2 && line[i] === ml.charAt(0); extra++) i++;
+                ml = null;
+            } else i++;
+            continue;
+        }
+        const c = line[i];
+        if (c === "#") return;
+        if (c === "\"" || c === "\x27") {
+            if (line.startsWith(c + c + c, i)) { ml = c + c + c; i += 3; continue; }
+            i++;
+            while (i < line.length && line[i] !== c) i += (c === "\"" && line[i] === "\\") ? 2 : 1;
+            i++;
+            continue;
+        }
+        i++;
+    }
+};
 for (const line of cfg.split(/\r?\n/)) {
+    const insideString = ml !== null;
+    trackStrings(line);
+    if (insideString) continue;
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
@@ -533,7 +564,9 @@ for (const line of cfg.split(/\r?\n/)) {
     } else if (key !== null) {
         const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
         if (h) hash = h[1];
-        if (/^\s*enabled\s*=\s*false\b/.test(line)) off = true;
+        // codex reads enabled as a bool: anything but true discards the entry.
+        const e = line.match(/^\s*enabled\s*=\s*([^#]*?)\s*(?:#.*)?$/);
+        if (e && e[1] !== "true") off = true;
     }
 }
 flush();
@@ -576,6 +609,12 @@ const matcherOk = (m) => {
     // backslash, no bracket, no brace. A quantifier needs an atom before it (and
     // may then take one lazy ?), groups balance to at most 16 deep (Rust refuses
     // past 250) and no alternative or group is empty.
+    // HIMMEL-5350: no counted repetition, so the compiled size is linear in the
+    // length; a length cap keeps it far under the Rust compile-size limit.
+    // ponytail: a conservative length bound, not the crate real size accounting
+    // (it refuses some matchers codex would compile); revisit if a legitimate
+    // matcher over 1024 chars is ever refused, by compiling in the real crate.
+    if (m.length > 1024) return false;
     let prev = "start", depth = 0, lazy = false;
     for (const c of m) {
         if (/[A-Za-z0-9_-]|\./.test(c)) { prev = "atom"; lazy = false; continue; }
@@ -627,6 +666,9 @@ for (const event of Object.keys(events)) {
             }
             if (hook.type === "command") {
                 if (typeof hook.command !== "string") badShape.push(h + ".command is not a string");
+                // codex skips a command that is empty after Rust str::trim (Unicode
+                // White_Space; JS trim would also strip U+FEFF, which Rust keeps).
+                else if ([...hook.command].every((ch) => { const n = ch.codePointAt(0); return (n >= 9 && n <= 13) || (n >= 0x2000 && n <= 0x200a) || [32, 0x85, 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000].includes(n); })) badShape.push(h + ".command is empty (codex skips the hook)");
                 if (hook.commandWindows !== undefined && hook.command_windows !== undefined) badShape.push(h + " carries both commandWindows and command_windows");
                 if (!isStrOrNull(hook.commandWindows) || !isStrOrNull(hook.command_windows)) badShape.push(h + ".commandWindows is not a string");
                 if (!isU64OrNull(hook.timeout)) badShape.push(h + ".timeout is not a non-negative integer");
