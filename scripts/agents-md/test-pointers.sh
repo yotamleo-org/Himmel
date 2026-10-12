@@ -46,6 +46,12 @@ else expect 1 "write fails loudly when a pointer cannot be written" bash "$PTR" 
 chmod u+w "$F/sub/AGENTS.md"
 mkdir -p "$TMP/notgit"
 expect 2 "check refuses a root where git ls-files fails" env POINTERS_ROOT="$TMP/notgit" bash "$PTR" --check
+E="$TMP/rootonly"; mkdir -p "$E"; git -C "$E" init -q; printf '# root\n' > "$E/CLAUDE.md"; git -C "$E" add -A
+expect 0 "write with no non-root manuals succeeds" env POINTERS_ROOT="$E" bash "$PTR" --write
+if [ -f "$E/AGENTS.md" ]; then bad "write never creates the root AGENTS.md"; else ok "write never creates the root AGENTS.md"; fi
+mkdir -p "$F/café"; printf '# u\n' > "$F/café/CLAUDE.md"; git -C "$F" add -A
+bash "$PTR" --write >/dev/null 2>&1
+if [ -f "$F/café/AGENTS.md" ]; then ok "non-ASCII directory gets its pointer"; else bad "non-ASCII directory gets its pointer"; fi
 unset POINTERS_ROOT
 
 # ---- the real repo ---------------------------------------------------------

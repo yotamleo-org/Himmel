@@ -6,7 +6,8 @@
 #
 # Modes:  --write  create/refresh the pointers  |  --check  fail on a missing,
 #         stale or hand-edited pointer
-# Exit:   0 fresh/written · 1 stale or missing
+# Exit:   0 fresh/written · 1 stale, missing or unwritable · 2 bad argument or
+#         git ls-files failed
 # Env:    POINTERS_ROOT  repo to scan (default: this repo's root)
 #
 # Excluded: vendored upstream trees, where an added file would be himmel delta
@@ -27,17 +28,18 @@ want() { # $1 = source file name in the directory
 }
 
 rc=0
-files=$(git -C "$ROOT" ls-files) || { echo "pointers: git ls-files failed in $ROOT" >&2; exit 2; }
+files=$(git -C "$ROOT" ls-files -z | tr '\0' '\n'; exit "${PIPESTATUS[0]}") || { echo "pointers: git ls-files failed in $ROOT" >&2; exit 2; }
 dirs=$(printf '%s\n' "$files" | grep -E '(^|/)_?CLAUDE\.md$' | grep -vE "$EXCLUDE" | grep -v '^CLAUDE\.md$' \
   | sed 's|/\{0,1\}[^/]*$||' | sort -u)
 while IFS= read -r d; do
-  dir="$ROOT/$d"; [ -n "$d" ] || dir="$ROOT"
+  [ -n "$d" ] || continue  # root pair belongs to generate.mjs; also an empty list
+  dir="$ROOT/$d"
   if [ -f "$dir/CLAUDE.md" ]; then src=CLAUDE.md; else src=_CLAUDE.md; fi
   tgt="$dir/AGENTS.md"
   if [ "$MODE" = "--write" ]; then
-    want "$src" > "$tgt" || { echo "pointers: cannot write ${d:-.}/AGENTS.md" >&2; rc=1; }
+    want "$src" > "$tgt" || { echo "pointers: cannot write $d/AGENTS.md" >&2; rc=1; }
   elif [ ! -f "$tgt" ] || [ "$(want "$src")" != "$(tr -d '\r' < "$tgt")" ]; then
-    echo "pointers: ${d:-.}/AGENTS.md is missing or stale (source ${src})" >&2; rc=1
+    echo "pointers: $d/AGENTS.md is missing or stale (source ${src})" >&2; rc=1
   fi
 done <<EOF
 $dirs
