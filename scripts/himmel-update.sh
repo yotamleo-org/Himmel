@@ -33,6 +33,9 @@ cd "$ROOT"
 # shellcheck source=lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$ROOT/scripts/lib/load-dotenv.sh"
+# shellcheck source=lib/resolve-bun.sh
+. "$ROOT/scripts/lib/resolve-bun.sh"
+prefer_bun_on_path
 
 # is_dirty_tracked [DIR]
 # HIMMEL-3078: like guardrails/lib.sh's is_dirty(), but untracked files don't
@@ -488,7 +491,8 @@ update_codex() {
 # `himmelctl update` is meant to leave the whole station current, but the two
 # agent CLIs were never touched: the operator updated codex by hand and nothing
 # said anything about claude. codex is upgraded through the method that owns it
-# (npm global only; any other owner prints its own command and is left alone),
+# (user-owned npm global or an advertised standalone self-updater; package
+# managers print a needs-you remedy and are never executed),
 # behind the VM-first gate. claude is report-only: installed vs latest and the
 # update command. Both land in the chain-status table via _probe_tool_row.
 #   sync_agent_clis check | apply
@@ -546,7 +550,7 @@ _sync_codex_cli() {
         npm)    cmd="npm install -g @openai/codex@latest" ;;
         brew)   cmd="brew upgrade codex" ;;
         pacman) cmd="sudo pacman -Syu $(pacman -Qoq "$path" 2>/dev/null || echo codex)" ;;
-        *)      cmd="re-run the installer you used for $path" ;;
+        *)      cmd="reinstall $path from https://github.com/openai/codex/releases/latest" ;;
     esac
     _cli_proxy_version_cmp "$inst" "$latest" || rc=$?
     case "$rc" in
@@ -568,10 +572,19 @@ _sync_codex_cli() {
         _ver_row codex "$inst" "$latest" behind "run /himmel-update to upgrade"
         return 0
     fi
-    if [ "$owner" != "npm" ]; then
-        echo "    not auto-upgrading a $path install; run: $cmd"
-        _probe_tool_row codex skipped "$inst -> $latest — run: $cmd"
-        _ver_row codex "$inst" "$latest" behind "run: $cmd"
+    local standalone_update=0 help_text=""
+    if [ -z "$owner" ] && [ "$bin" = "$HOME/.local/bin/codex" ] && [ -O "$path" ] && [ -w "$path" ]; then
+        help_text="$("$bin" --help 2>/dev/null || true)"
+        if grep -qE '^[[:space:]]+update[[:space:]]' <<< "$help_text"; then
+            standalone_update=1
+            cmd="$bin update"
+        fi
+    fi
+    if { [ "$owner" != "npm" ] || [ ! -O "$path" ] || [ ! -w "$path" ]; } \
+        && [ "$standalone_update" -ne 1 ]; then
+        echo "    needs you: $cmd (not auto-upgrading $path)."
+        _probe_tool_row codex skipped "$inst -> $latest — needs you: $cmd"
+        _ver_row codex "$inst" "$latest" behind "needs you: $cmd"
         return 0
     fi
     gate_rc=0
@@ -582,10 +595,14 @@ _sync_codex_cli() {
         _ver_row codex "$inst" "$latest" behind "held by the VM-first gate"
         return 0
     fi
-    out="$($cmd 2>&1)" || rc=$?
+    if [ "$standalone_update" -eq 1 ]; then
+        out="$("$bin" update 2>&1)" || rc=$?
+    else
+        out="$(npm install -g @openai/codex@latest 2>&1)" || rc=$?
+    fi
     after="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
     if [ "$after" = "$latest" ]; then
-        echo "    codex $inst -> $after (upgraded via npm)."
+        echo "    codex $inst -> $after (upgraded via ${owner:-standalone})."
         _probe_tool_row codex updated "$inst -> $after"
         _ver_row codex "$after" "$latest" current
     else
@@ -2447,6 +2464,11 @@ report_toolchain() {
                        # is report-only in both.
     echo ""
     echo "==> node/npm/bun toolchain (HIMMEL-3068)"
+    warn_bun_versions
+    if [ "$mode" = "apply" ] && ! _vm_proof_gate toolchain; then
+        _probe_tool_row bun skipped "HELD by the VM-first gate"
+        mode=check
+    fi
 
     local nvmrc="$ROOT/.nvmrc"
     if [ ! -f "$nvmrc" ]; then

@@ -37,6 +37,7 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/cadence-format.sh"    "$CLONE/scripts/lib/cadence-format.sh" \
     && cp "$src_scripts/lib/resolve-hermes-py.sh" "$CLONE/scripts/lib/resolve-hermes-py.sh" \
     && cp "$src_scripts/lib/load-dotenv.sh"       "$CLONE/scripts/lib/load-dotenv.sh" \
+    && cp "$src_scripts/lib/resolve-bun.sh"        "$CLONE/scripts/lib/resolve-bun.sh" \
     && cp "$src_scripts/lib/vm-mode.sh"           "$CLONE/scripts/lib/vm-mode.sh" \
     && git init --quiet "$CLONE"; }; then
     echo "FAIL: mock clone setup" >&2
@@ -175,6 +176,109 @@ else
     assert_fail "pacman-owned bun → 'updated by pacman: sudo pacman -Syu bun': $OUT"
 fi
 rm -f "$STUBS/pacman"
+
+echo "bun: prefer the user install, warn on divergent versions, and retain VM proof"
+mkdir -p "$HOME/.bun/bin"
+cat > "$HOME/.bun/bin/bun" <<'EOF'
+#!/bin/sh
+case "$1" in
+    upgrade) echo user-bun >> "$STUB_STATE/bun.log" ;;
+    *) echo 1.4.3 ;;
+esac
+EOF
+chmod +x "$HOME/.bun/bin/bun"
+run_only toolchain
+if has 'bun 1\.4\.3 already current' && [ -f "$STATE/bun.log" ] && has '^    bun +up-to-date'; then
+    assert_pass "the user Bun wins over PATH and its own updater runs"
+else
+    assert_fail "preferred user Bun → self-upgrade and current row: $OUT"
+fi
+if has 'WARN.*bun.*1\.4\.3.*1\.2\.3'; then
+    assert_pass "different user and PATH Bun versions produce a WARN"
+else
+    assert_fail "dual Bun → differing-version WARN: $OUT"
+fi
+rm -f "$STATE/bun.log"
+printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+run_only toolchain
+if has 'HELD' && [ ! -f "$STATE/bun.log" ] && has '^    bun +skipped'; then
+    assert_pass "VM proof holds the preferred Bun upgrade"
+else
+    assert_fail "no VM proof → no Bun upgrade and HELD row: $OUT"
+fi
+printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+rm -rf "$HOME/.bun"
+
+reset_state
+cat > "$STUBS/pacman" <<'EOF'
+#!/bin/sh
+case "$1" in
+    -Qo) exit 0 ;;
+    -Qoq) echo codex ;;
+    *) echo forbidden-package-upgrade >> "$STUB_STATE/pm.log"; exit 1 ;;
+esac
+EOF
+chmod +x "$STUBS/pacman"
+run_only clis
+if has 'needs you.*sudo pacman -Syu codex' && [ ! -f "$STATE/pm.log" ] && [ ! -f "$STATE/npm.log" ]; then
+    assert_pass "package-manager Codex requires the user and never invokes an updater"
+else
+    assert_fail "package-manager Codex → needs-you remedy, no updater: $OUT"
+fi
+rm -f "$STUBS/pacman"
+
+echo "standalone Codex: use only its advertised self-updater"
+mkdir -p "$HOME/.local/bin"
+cat > "$HOME/.local/bin/codex" <<'EOF'
+#!/bin/sh
+case "$1" in
+    --version) printf 'codex-cli %s\n' "$(cat "$STUB_STATE/codex.ver")" ;;
+    --help) [ -f "$STUB_STATE/self-update" ] && echo '  update  Update Codex to the latest version' ;;
+    update) echo native-update >> "$STUB_STATE/native.log"; cp "$STUB_STATE/codex.latest" "$STUB_STATE/codex.ver" ;;
+esac
+exit 0
+EOF
+chmod +x "$HOME/.local/bin/codex"
+export CODEX_BIN="$HOME/.local/bin/codex"
+reset_state
+touch "$STATE/self-update"
+run_only clis
+if has '^    codex +updated' && [ -f "$STATE/native.log" ] && [ ! -f "$STATE/npm.log" ]; then
+    assert_pass "standalone Codex uses its own advertised updater, not npm"
+else
+    assert_fail "standalone Codex → native self-update, no npm: $OUT"
+fi
+reset_state
+rm -f "$STATE/native.log"
+cat > "$STUBS/pacman" <<'EOF'
+#!/bin/sh
+case "$1" in -Qo) exit 0 ;; -Qoq) echo codex ;; *) exit 1 ;; esac
+EOF
+chmod +x "$STUBS/pacman"
+run_only clis
+if has 'needs you.*sudo pacman -Syu codex' && [ ! -f "$STATE/native.log" ]; then
+    assert_pass "a local-bin alias to a package-owned Codex never uses its self-updater"
+else
+    assert_fail "package-owned Codex alias → manual remedy, no native update: $OUT"
+fi
+rm -f "$STUBS/pacman" "$STATE/native.log"
+reset_state
+printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+run_only clis
+if has 'HELD' && [ ! -f "$STATE/native.log" ]; then
+    assert_pass "standalone Codex update is held without VM proof"
+else
+    assert_fail "standalone without VM proof → HELD, no self-update: $OUT"
+fi
+printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+rm -f "$STATE/self-update"
+run_only clis
+if has 'needs you.*reinstall' && [ ! -f "$STATE/native.log" ] && [ ! -f "$STATE/npm.log" ]; then
+    assert_pass "standalone without an updater prints its reinstall remedy"
+else
+    assert_fail "standalone without updater → needs-you reinstall remedy: $OUT"
+fi
+unset CODEX_BIN
 
 echo "missing @himmel plugins: install line + table row"
 cat > "$TMP/market.json" <<'EOF'

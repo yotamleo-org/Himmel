@@ -120,11 +120,22 @@ assert_eq "uninstall rc" 0 "$RC"
 if [ -e "$HOME_DIR/$UNIT_REL" ]; then fail "unit removed"; else pass "unit removed"; fi
 assert_contains "disable" "systemctl --user disable --now himmel-flow-exporter.service" "$(cat "$LOG")"
 
+echo "case 7a: user Bun is preferred in the generated systemd unit (HIMMEL-5383)"
+setup Linux 200 200 1
+mkdir -p "$HOME_DIR/.bun/bin"
+cp "$BIN/bun" "$HOME_DIR/.bun/bin/bun"
+run install
+assert_eq "preferred Bun install rc" 0 "$RC"
+unit="$(cat "$HOME_DIR/$UNIT_REL" 2>/dev/null)"
+assert_contains "unit uses user Bun rather than PATH Bun" "ExecStart=\"$HOME_DIR/.bun/bin/bun\" run " "$unit"
+
 echo "case 7b: a % in the root or bun path is escaped as %% in the unit (HIMMEL-4342)"
 setup Linux 200 200 1
 PCT_ROOT="$TMP_ROOT/r%t"
 mkdir -p "$PCT_ROOT/scripts/observability" "$PCT_ROOT/b%n"
 cp "$SCRIPT" "$PCT_ROOT/scripts/observability/install-stack.sh"
+mkdir -p "$PCT_ROOT/scripts/lib"
+cp "$SCRIPT_DIR/../lib/resolve-bun.sh" "$PCT_ROOT/scripts/lib/resolve-bun.sh"
 printf '#!/bin/sh\nexit 0\n' > "$PCT_ROOT/b%n/bun"; chmod +x "$PCT_ROOT/b%n/bun"
 OUT="$(env -u XDG_CONFIG_HOME HOME="$HOME_DIR" PATH="$PCT_ROOT/b%n:$BIN:/usr/bin:/bin" bash "$PCT_ROOT/scripts/observability/install-stack.sh" install 2>&1)"; RC=$?
 assert_eq "percent install rc" 0 "$RC"
