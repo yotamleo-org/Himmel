@@ -1,8 +1,8 @@
-# v1.0.0 tag-cut checklist (HIMMEL-3603)
+# v1.0.0 tag-cut checklist
 
 This is the ordered list of steps for the console to run **once every
-fixVersion v1.0.0 gate ticket is closed** (HIMMEL-3604–3609 and the rest of
-the v1.0.0 fixVersion). It does not itself cut anything — this ticket only
+fixVersion v1.0.0 gate ticket is closed** (every issue in the
+v1.0.0 fixVersion). It does not itself cut anything — this ticket only
 prepares the mechanics.
 
 ## 0. Preconditions
@@ -13,7 +13,7 @@ prepares the mechanics.
 ## 1. Bump `VERSION`
 
 `VERSION` was deliberately left unbumped at `0.3.0` until the pre-cut PR (see
-the "VERSION" section below for why); HIMMEL-3603's pre-cut PR bumped it to
+the "VERSION" section below for why); the pre-cut PR bumped it to
 `1.0.0`. The steps that PR performed:
 
 1. On `main`, edit `VERSION` to `1.0.0` (bare, no `v` prefix, no trailing
@@ -23,7 +23,7 @@ the "VERSION" section below for why); HIMMEL-3603's pre-cut PR bumped it to
    git tag via the GitHub API; it never touches tracked files).
 3. Re-note `main`'s new tip sha — that is the sha the tag must point at.
 
-This step repeats for **every** release line (HIMMEL-4417), not just `1.0.0`:
+This step repeats for **every** release line, not just `1.0.0`:
 before the first `vX.Y.Z-pre.N` tag of a new `X.Y.Z`, land a PR that sets
 `VERSION` to the bare `X.Y.Z`. Two things enforce it:
 
@@ -44,7 +44,7 @@ tag by design. `scripts/jira`, `scripts/bitbucket` and every plugin's own
 
 `scripts/handover/console-kit/cut-tag.sh` (console-run only; never from a
 leg) accepts `<version>` as either `v<X>.<Y>.<Z>-pre.<N>` or a bare
-`v<X>.<Y>.<Z>` release (HIMMEL-3701). The bare form runs through every gate
+`v<X>.<Y>.<Z>` release. The bare form runs through every gate
 in section 4 below, plus one release-specific sequence rule: it is refused
 (exit 6) unless at least one `v<X>.<Y>.<Z>-pre.<N>` tag already exists on
 origin for that same `X.Y.Z`, or `--version-override <reason>` is given.
@@ -81,11 +81,11 @@ origin and creates no tag. Confirm the plan looks right before dropping
    unless `--version-override <reason>` is given.
 5. Every GitHub check-run at `<sha>` is `status=completed` with a conclusion
    in `{success, skipped, neutral}`, and at least one check-run exists
-   (HIMMEL-3572: check-runs is the authoritative read, not combined-status).
+   (check-runs is the authoritative read, not combined-status).
 6. The combined commit status, when it carries any statuses at all, is not
    `failure`/`error` (belt-and-suspenders, never the primary check).
 7. The commit's `CI` workflow run (read via the Actions API) exists and is
-   `status=completed conclusion=success` (HIMMEL-3627: guards against a
+   `status=completed conclusion=success` (guards against a
    commit whose CI run hasn't started yet, where check-runs alone would
    pass vacuously on unrelated Pages checks).
 
@@ -103,7 +103,7 @@ Before cutting, commit `docs/release/<TAG>-notes.md` (e.g.
 with that curated file (`--notes-file`, read at the tag); it does not rely on
 `--generate-notes` — with no notes file it falls back to generated notes bounded
 to the previous tag, but the first non-prerelease tag's unbounded generated notes
-exceed GitHub's 125000-char limit and fail (HIMMEL-3920).
+exceed GitHub's 125000-char limit and fail.
 
 ## 6. After the tag
 
@@ -115,7 +115,7 @@ exceed GitHub's 125000-char limit and fail (HIMMEL-3920).
   `## [Unreleased]` section becomes `## [v1.0.0] - <date>` automatically
   once the tag exists, no hand-editing.
 
-## 7. Docs and `llms.txt` reflect every user-facing change (HIMMEL-5251)
+## 7. Docs and `llms.txt` reflect every user-facing change
 
 Before cutting, the docs (`README.md`, `docs/`, plugin READMEs) and
 [`llms.txt`](../../llms.txt) reflect every user-facing change in the release,
