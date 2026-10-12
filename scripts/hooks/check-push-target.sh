@@ -39,7 +39,7 @@ branch_name_ok() {
     case "$1" in
         claude/?*) return 0 ;;
     esac
-    grep -Eq \
+    LC_ALL=C grep -Eq \
         '^((feat|fix|chore|docs|refactor|test)/[A-Za-z0-9][A-Za-z0-9._-]*|handover/[A-Z][A-Z0-9]*-[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*)$' <<<"$1"
 }
 
@@ -115,7 +115,14 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
                 _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
                 if [ "${BRANCH_NAME_OK:-}" != "1" ] && ! branch_name_ok "$_short"; then
                     _lsrc=0
-                    git ls-remote --exit-code --heads "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    # `--` keeps a dash-led remote name from reading as an
+                    # option; a hung remote is bounded (fails open on timeout,
+                    # rc 124 is not 2) where `timeout` exists.
+                    if command -v timeout >/dev/null 2>&1; then
+                        timeout 20 git ls-remote --exit-code --heads -- "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    else
+                        git ls-remote --exit-code --heads -- "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    fi
                     [ "$_lsrc" -eq 2 ] && check_new_branch_name "$PRE_COMMIT_REMOTE_BRANCH"
                 fi
                 ;;

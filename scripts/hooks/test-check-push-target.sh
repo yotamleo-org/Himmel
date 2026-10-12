@@ -177,6 +177,12 @@ expect_pass "bypass" \
 refs/heads/wip-stuff $SHA refs/heads/wip-stuff $ZERO
 REFS
 
+echo "TEST: BRANCH_NAME_OK=1 never bypasses the main refusal -> BLOCKED"
+expect_blocked "bypass + main" \
+    env BRANCH_NAME_OK=1 bash "$HOOK" <<REFS
+refs/heads/wip-stuff $SHA refs/heads/main $ZERO
+REFS
+
 # pre-commit hides the remote sha, so an invalid name is confirmed against the
 # remote itself (a local remote-tracking ref can be missing or stale).
 RT=$(mktemp -d) || exit 1
