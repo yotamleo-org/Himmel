@@ -22,23 +22,31 @@ fail=0
 ok() { pass=$((pass + 1)); echo "ok - $*"; }
 bad() { fail=$((fail + 1)); echo "not ok - $*"; }
 
-if grep -n -E 'HIMMEL-[0-9]+' "$README"; then
-  bad "README.md carries internal ticket IDs (listed above)"
-else
-  ok "README.md carries no internal ticket IDs"
-fi
+# forbid <pattern> <sample> <ok-msg> <bad-msg>: README.md must not match the
+# pattern. The sample is a line the pattern must match, so a broken pattern
+# fails here instead of passing silently; a grep error (status 2) fails too.
+forbid() {
+  if ! printf '%s\n' "$2" | grep -q -E "$1"; then
+    bad "pattern '$1' does not match its own sample"
+    return
+  fi
+  grep -n -E "$1" "$README"
+  case $? in
+    0) bad "$4 (listed above)" ;;
+    1) ok "$3" ;;
+    *) bad "grep failed on $README" ;;
+  esac
+}
 
-if grep -n -E 'in v1\.0\.0|until v1\.0\.1' "$README"; then
-  bad "README.md pins a support claim to a version (listed above)"
-else
-  ok "README.md support claims carry no version numbers"
-fi
-
-if grep -n -E 'github\.com/[^ )]*/actions/runs/[0-9]+' "$README"; then
-  bad "README.md links a single Actions run as evidence (listed above)"
-else
-  ok "README.md evidence links are filtered run lists, not single runs"
-fi
+forbid 'HIMMEL-[0-9]+' 'see HIMMEL-123' \
+  "README.md carries no internal ticket IDs" \
+  "README.md carries internal ticket IDs"
+forbid 'in v1\.0\.0|until v1\.0\.1' 'not supported in v1.0.0' \
+  "README.md support claims carry no version numbers" \
+  "README.md pins a support claim to a version"
+forbid 'github\.com/[^ )]*/actions/runs/[0-9]+' 'https://github.com/o/r/actions/runs/42' \
+  "README.md evidence links are filtered run lists, not single runs" \
+  "README.md links a single Actions run as evidence"
 
 if grep -q -F 'docs/assets/flows.svg' "$README"; then
   ok "README.md shows the flow graph"
