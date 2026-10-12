@@ -848,6 +848,19 @@ allow 'qmd "query"x y'
 allow 'echo q"md" "qu"ery x'
 allow 'grep -rn "q\"md\" q\"uery\"" scripts/'
 allow 'printf "%s\n" "a; qmd" status'
+# HIMMEL-4141: a word of empty quotes alone is an empty ARGUMENT, so what
+# follows it is no longer the verb; empty quotes inside a word still vanish.
+allow 'qmd "" query x'
+allow "qmd '' search x"
+allow 'qmd "" "" vsearch x'
+allow "qmd \$'' query x"
+allow 'qmd "" query'
+deny 'qmd ""query x'
+deny "qmd ''search x"
+deny 'qmd q""uery x'
+deny 'qmd query"" x'
+deny 'qmd --index "" query x'
+deny 'qmd "" status; qmd query x'
 # `<<` inside $((…)) is a shift, not a heredoc: the words are still read.
 allow "echo \$((1<<2)); qmd \$'query notes' y"
 # HIMMEL-4140 / HIMMEL-4151: a decoded nested string is still read as words.

@@ -146,12 +146,13 @@ esac
 # decoded text (HIMMEL-4151): the same bytes as the first line, one for one,
 # but a quoted or escaped byte prints as the byte itself — the value bash
 # hands the program — so a word's span in the first line is its value here.
-# ponytail: a word of empty quotes alone vanishes, so `qmd "" query x` reads
-# `qmd query x` and is over-denied; emit a placeholder for it (HIMMEL-4141).
+# A word made only of empty quotes (`qmd "" query x`) is an empty argument, so
+# it prints as `_` in both lines (HIMMEL-4141); empty quotes inside a longer
+# word (`query""`, `""query`) print nothing, as before.
 # shellcheck disable=SC1003,SC2016 # literal backslash, $ and ` bytes
 qmd_words() {
     local LC_ALL=C
-    local s="$1" out='' dec='' ctx='' top='' c c2 d v dv i=0 n ws=1 drop k qp=''
+    local s="$1" out='' dec='' ctx='' top='' c c2 d v dv i=0 n ws=1 drop k qp='' emp=0 m ro rd pc nc
     n=${#s}
     [ "$n" -le 16384 ] || return 1
     while [ "$i" -lt "$n" ]; do
@@ -161,13 +162,22 @@ qmd_words() {
         [ -z "$ctx" ] || top=${ctx:${#ctx}-1:1}
         case "$top$c" in [SD]\'|[SD]\") qp="$qp $i" ;; esac
         if [ "$top" = S ]; then
-            if [ "$c" = "'" ]; then ctx=${ctx%?}; else _qw_q "$c"; fi
+            if [ "$c" = "'" ]; then
+                ctx=${ctx%?}
+                if [ "$emp" = 1 ]; then out=$out$'\001' dec=$dec$'\001' emp=0; fi
+            else
+                emp=0; _qw_q "$c"
+            fi
             i=$((i + 1))
             continue
         fi
         if [ "$top" = D ]; then
+            [ "$c" = '"' ] || emp=0
             case "$c" in
-                '"') ctx=${ctx%?}; ws=0; i=$((i + 1)) ;;
+                '"')
+                    ctx=${ctx%?}; ws=0; i=$((i + 1))
+                    if [ "$emp" = 1 ]; then out=$out$'\001' dec=$dec$'\001' emp=0; fi
+                    ;;
                 '\')
                     case "$c2" in
                         '$'|'`'|'"'|'\') _qw_q "$c2"; i=$((i + 2)) ;;
@@ -189,8 +199,8 @@ qmd_words() {
         fi
         # Unquoted: the top level, or a `$(…)` / backtick opened inside "…".
         case "$c" in
-            "'") ctx=${ctx}S; ws=0; i=$((i + 1)) ;;
-            '"') ctx=${ctx}D; ws=0; i=$((i + 1)) ;;
+            "'") ctx=${ctx}S; ws=0; emp=1; i=$((i + 1)) ;;
+            '"') ctx=${ctx}D; ws=0; emp=1; i=$((i + 1)) ;;
             '\')
                 case "$c2" in
                     $'\n') ;;
@@ -202,7 +212,7 @@ qmd_words() {
             '$')
                 ws=0
                 if [ "$c2" = '"' ]; then
-                    ctx=${ctx}D; i=$((i + 2))
+                    ctx=${ctx}D; emp=1; i=$((i + 2))
                 elif [ "$c2" = '(' ] && [ "${s:i+2:1}" = '(' ]; then
                     # $((…)) is arithmetic, so a `<<` in it is a shift, not
                     # a heredoc. Its value is a number and prints as 0. One
@@ -225,6 +235,7 @@ qmd_words() {
                     # ANSI-C quoting: decode bash's escapes. A NUL ends the
                     # word's value; the rest of the `$'…'` is dropped.
                     i=$((i + 2)) drop=0
+                    if [ "${s:i:1}" = "'" ]; then out=$out$'\001' dec=$dec$'\001'; fi
                     while :; do
                         [ "$i" -lt "$n" ] || return 1
                         c=${s:i:1}
@@ -364,6 +375,30 @@ qmd_words() {
         esac
     done
     [ -z "$ctx" ] || return 1
+    # Settle each placeholder byte: a run standing alone as a word is one
+    # `_`; one touching other word bytes is dropped. Both lines move together.
+    case $out in
+        *$'\001'*)
+            m=${#out} i=0 ro='' rd=''
+            while [ "$i" -lt "$m" ]; do
+                c=${out:i:1}
+                if [ "$c" != $'\001' ]; then ro=$ro$c rd=$rd${dec:i:1}; i=$((i + 1)); continue; fi
+                k=$i
+                while [ "${out:k:1}" = $'\001' ]; do k=$((k + 1)); done
+                pc='' nc=${out:k:1}
+                [ "$i" -eq 0 ] || pc=${out:i-1:1}
+                case "$pc" in
+                    ''|' '|$'\t'|';'|'&'|'|'|'<'|'>'|'('|'`')
+                        case "$nc" in
+                            ''|' '|$'\t'|';'|'&'|'|'|'<'|'>'|')'|'`') ro=${ro}_ rd=${rd}_ ;;
+                        esac
+                        ;;
+                esac
+                i=$k
+            done
+            out=$ro dec=$rd
+            ;;
+    esac
     printf '%s\n:%s\n%s.' "$out" "$qp" "$dec"
 }
 # _qw_q C — append a quoted or escaped byte to qmd_words' output.
