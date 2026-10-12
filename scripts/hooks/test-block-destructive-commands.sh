@@ -1498,6 +1498,11 @@ for c in \
     'gh api -X DELETE "$EP"' \
     'gh api "repos/o/r/actions/secrets/$S" -f encrypted_value=x' \
     'gh api repos/o/r/*/x -X DELETE' \
+    'gh api -iXDELETE repos/o/r/rulesets/1' \
+    'gh api -ix DELETE repos/o/r/rulesets/1' \
+    'gh api -if body=x repos/o/r/rulesets' \
+    'gh api -X DELETE https://api.github.com/repos/o/r/rulesets/1' \
+    'gh api -X DELETE "https://api.github.com/repos/o/r/$TARGET"' \
     'gh auth logout' \
     'gh auth token' \
     'gh pr merge 1 --admin' \
@@ -1555,6 +1560,10 @@ for c in \
     'gh release list' \
     'gh ssh-key list' \
     'gh gpg-key list' \
+    'gh api -i repos/o/r/pulls/1' \
+    'gh api -iXGET repos/o/r/rulesets' \
+    'gh api -X GET https://api.github.com/repos/o/r/rulesets' \
+    'gh api -X POST "https://api.github.com/repos/o/r/issues/$N/comments" -f body=x' \
     'gh api -X POST "repos/o/r/issues/$N/comments" -f body=x' \
     'gh issue list' \
     'gh -R o/r pr view 1' \

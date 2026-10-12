@@ -1213,6 +1213,26 @@ _gh_api() {
             -f|--field|--raw-field|--input) body=1; j=$((j + 1)) ;;
             --field=*|--raw-field=*|--input=*|-f?*) body=1 ;;
             -h|--header|-q|--jq|-t|--template|--cache|--hostname|-p|--preview) j=$((j + 1)) ;;
+            -[a-z]?*)
+                # grouped short flags (-iXDELETE, -ifname=x): the first
+                # value-taking letter ends the group
+                s=${w#-}
+                while [ -n "$s" ]; do
+                    case "${s:0:1}" in
+                        x)
+                            o=${s:1}
+                            if [ -n "$o" ]; then
+                                m=$o; [ "$k" = W ] || m=unres
+                            else
+                                j=$((j + 1)); m=unres
+                                if [ "$j" -lt "$n" ] && [ "${_gc_k[j]}" = W ]; then m=${_gc_w[j]}; fi
+                            fi
+                            break ;;
+                        f) body=1; [ -n "${s:1}" ] || j=$((j + 1)); break ;;
+                        h|q|t|p) [ -n "${s:1}" ] || j=$((j + 1)); break ;;
+                    esac
+                    s=${s:1}
+                done ;;
             -*) ;;
             *) if [ -z "$ep" ]; then ep=$w; epk=$k; fi ;;
         esac
@@ -1223,6 +1243,13 @@ _gh_api() {
     fi
     case "$m" in delete|put|patch|post|unres) ;; *) return 0 ;; esac
     [ -n "$ep" ] || return 0
+    # a full URL endpoint (scheme://host/path) is checked on its path
+    s=${ep%%://*}
+    case "$s" in
+        "$ep"|*/*|'') ;;
+        *) ep=${ep#*://}; case "$ep" in */*) ep=/${ep#*/} ;; esac ;;
+    esac
+    ep=${ep#/api/v3}
     if [ "$epk" != W ]; then
         case "$ep" in
             '$'*) deny "gh api $m on a computed endpoint" ;;
