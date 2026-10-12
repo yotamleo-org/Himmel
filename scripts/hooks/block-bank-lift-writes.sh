@@ -1225,16 +1225,62 @@ check_sed_scripts() {
                 cand="${p#"${p%%[![:space:]]*}"}"
                 [ -n "$cand" ] || continue
                 # j2479a B1: sed script text is not a shell word, so a ${...}
-                # after a w is usually not a reference at all; an operator form
-                # the resolver cannot evaluate denies only when it names the lift.
+                # after a w is usually literal text. An operator form the
+                # resolver cannot evaluate is evaluated with every name it
+                # references unset; a set name or an indirection denies.
                 is_lift_dest "$cand" || continue
-                [ -z "$DEST_WHY" ] || _code_names_lift "$(_lower "$cand")" || continue
+                if [ -n "$DEST_WHY" ]; then
+                    _unset_eval "$cand"
+                    case $? in
+                        0) is_lift_dest "$REPLY" || continue ;;
+                        2) _code_names_lift "$(_lower "$cand")" || continue ;;
+                    esac
+                fi
                 deny "a sed w/W command writes the bank lift ($cand)$DEST_WHY"
             done
         done <<EOF
 $a
 EOF
     done
+    return 0
+}
+
+# _unset_eval <text>: REPLY = the text with each ${...} evaluated as the shell
+# would when the name it references is unset: ${N:-w} ${N-w} ${N:=w} ${N=w}
+# give w (evaluated in turn), every other form gives nothing. 1 = a
+# referenced name is set in the inherited environment, or the form is an
+# indirection (${!R}, zsh ${(P)R}); 2 = a form that is not ${NAME...} or
+# ${<digit or special>...} (not a shell expansion, e.g. ${{ x }}).
+# shellcheck disable=SC2016  # literal ${ text is matched, not expanded
+_unset_eval() {
+    local LC_ALL=C
+    local rest="$1" out='' body depth i ch op word guard=0
+    local re_nm='^([A-Za-z_][A-Za-z0-9_]*)(.*)$' re_sp='^([0-9]+|[@*#?$!-])(.*)$'
+    while [[ "$rest" == *'${'* ]]; do
+        guard=$((guard+1)); [ "$guard" -le 64 ] || return 1
+        out="$out${rest%%\$\{*}"; rest="${rest#*\$\{}"
+        depth=1; i=0
+        while [ "$depth" -gt 0 ] && [ "$i" -lt "${#rest}" ]; do
+            ch="${rest:$i:1}"
+            case "$ch" in '{') depth=$((depth+1)) ;; '}') depth=$((depth-1)) ;; esac
+            i=$((i+1))
+        done
+        [ "$depth" -eq 0 ] || return 2
+        body="${rest:0:$((i-1))}"; rest="${rest:$i}"
+        case "$body" in '!'*|'('*) return 1 ;; esac
+        case "$body" in [#^=~+]?*) body="${body#?}" ;; esac
+        if [[ "$body" =~ $re_nm ]]; then
+            _env0_get "${BASH_REMATCH[1]}"
+            [ -z "$REPLY" ] || return 1
+        elif ! [[ "$body" =~ $re_sp ]]; then
+            [ -z "$body" ] || [ "$body" = '#' ] || return 2
+            continue
+        fi
+        op="${BASH_REMATCH[2]}"
+        case "$op" in ':-'*|':='*) word="${op:2}" ;; '-'*|'='*) word="${op:1}" ;; *) word='' ;; esac
+        rest="$word$rest"
+    done
+    REPLY="$out$rest"
     return 0
 }
 

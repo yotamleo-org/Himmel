@@ -1660,6 +1660,12 @@ env_row "5348 sed -i -e script \${x:-y} (ctrl)"         allow "OTHER=1" "sed -i 
 env_row "5348 sed w in script text \${x:-y} (ctrl)"     allow "OTHER=1" "sed 's/w/\${x:-y}/' /tmp/x"
 env_row "5348 sed -i file still resolved, -e script"   deny  "$SPLIT" "sed -i -e 's/x/\${x:-y}/' \"\$A\"\"\$B\$C\""
 env_row "5348 sed w operator form naming the lift"     deny  "OTHER=1" "sed -n \"w \${X:-$HOME/.himmel/state/bank-lift.json}\" /tmp/x"
+# Delta-round codex-1: the operator form is evaluated with its names unset; a
+# set name (here the lift itself) or an indirection denies.
+env_row "5348 sed w \${V:-/tmp/out}, V = lift"          deny  "V=$LIFT" 'sed -n "w ${V:-/tmp/out}" /tmp/x'
+env_row "5348 sed w defaults spell the lift"           deny  "OTHER=1" "sed -n \"w \${q:-$HOME/.hi}mmel/state/bank-li\${q:-f}t.json\" /tmp/x"
+env_row "5348 sed w \${!R} indirection"                 deny  "R=V V=$LIFT" 'sed -n "w ${!R}" /tmp/x'
+env_row "5348 sed w \${V:-/tmp/out}, V unset (ctrl)"    allow "OTHER=1" 'sed -n "w ${V:-/tmp/out}" /tmp/x'
 # j2479a B2 (HIMMEL-5326): sort -o attached, clustered and abbreviated, and
 # cp/mv/install --t= target directory.
 env_row "5348 sort -o\"\$V\" attached"                   deny  "V=$LIFT" 'sort -o"$V" /tmp/y'
