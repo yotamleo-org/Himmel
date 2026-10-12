@@ -92,9 +92,10 @@ def _text(content):
 
 
 def parse(path):
-    """(calls, texts): calls in issue order as dicts {id, name, input, pos,
+    """(calls, texts): calls in issue order as dicts {id, name, input, pos, mid,
     result: None | {is_error, text, pos}}; texts as [(pos, text)] for
-    assistant text blocks. pos is the record's line index."""
+    assistant text blocks. pos is the record's line index; mid is the
+    assistant message.id, shared by the calls of one parallel batch."""
     calls, by_id, texts = [], {}, []
     with open(path, encoding="utf-8", errors="replace") as fh:
         for pos, line in enumerate(fh):
@@ -115,7 +116,9 @@ def parse(path):
                     tid = b.get("id")
                     if not isinstance(tid, str) or tid in by_id:
                         continue
-                    c = {"id": tid, "name": b.get("name"), "input": b.get("input"), "pos": pos, "result": None}
+                    mid = msg.get("id") if isinstance(msg.get("id"), str) else None
+                    c = {"id": tid, "name": b.get("name"), "input": b.get("input"), "pos": pos, "mid": mid,
+                         "result": None}
                     by_id[tid] = c
                     calls.append(c)
                 elif rec.get("type") == "assistant" and b.get("type") == "text" and isinstance(b.get("text"), str):
@@ -397,9 +400,9 @@ def score_calls(calls, texts, report=None):
             elif t and passed and OUTPUT_FAIL_RE.search(c["result"]["text"]):  # exit 0 hid a RED (HIMMEL-5023)
                 passed, t = False, (t[0], "pass+fail")
             if t and ((passed and t[1]) or t[1] == "pass+fail"):
-                runs.append((c["pos"], t[0], passed))
-    writes = [(c["pos"], p) for c in calls for p in [_written_path(c)] if p]
-    impl = [pos for pos, p in writes if is_impl_path(p)]
+                runs.append((c["pos"], t[0], passed, c["mid"]))
+    writes = [(c["pos"], p, c["mid"]) for c in calls for p in [_written_path(c)] if p]
+    impl = [(pos, mid) for pos, p, mid in writes if is_impl_path(p)]
 
     # red_before_green
     if not runs and not impl:
@@ -407,8 +410,10 @@ def score_calls(calls, texts, report=None):
     elif not impl:
         rbg = False
     else:
-        w = impl[0]
-        rbg = any(not ok and pos < w for pos, _, ok in runs) and any(ok and pos > w for pos, _, ok in runs)
+        # A run sent in the write's own message may finish on either side of it (HIMMEL-4672).
+        w, wm = impl[0]
+        ordered = [(pos, ok) for pos, _, ok, mid in runs if wm is None or mid != wm]
+        rbg = any(not ok and pos < w for pos, ok in ordered) and any(ok and pos > w for pos, ok in ordered)
 
     # denial_recovery, identical_denied_retries
     dl = denial_list(calls)
@@ -423,8 +428,9 @@ def score_calls(calls, texts, report=None):
     if not cl:
         vbc = None
     else:
-        last_write = max((pos for pos, p in writes if not p.lower().endswith(DOC_EXT)), default=-1)
-        fresh = [(t, ok) for pos, t, ok in runs if ok and pos > last_write]
+        last_write, lm = max(((pos, mid) for pos, p, mid in writes if not p.lower().endswith(DOC_EXT)),
+                             key=lambda w: w[0], default=(-1, None))
+        fresh = [(t, ok) for pos, t, ok, mid in runs if ok and pos > last_write and (lm is None or mid != lm)]
         vbc = all(any(not names or "*" in ts or names & ts for ts, _ in fresh) for names in cl)
     return {"red_before_green": rbg, "denial_recovery": recovery,
             "identical_denied_retries": retries, "verify_before_claim": vbc}

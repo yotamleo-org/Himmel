@@ -209,5 +209,29 @@ check "a non-test value is not a test run" '[ "$(tt "f=scripts/a/helper.sh; bash
 leg var-red-green 'f=scripts/a/test-x.sh; echo run; bash $f' "Exit code 1
 FAIL" 'f=scripts/a/test-x.sh; bash $f' "ok"
 check "a RED spelled bash \$f scores red_before_green" 'python3 "$TR" score "$TMP/var-red-green.jsonl" | jq -e ".red_before_green == true and .verify_before_claim == true" >/dev/null'
+echo "10. a write and a test run in one assistant message are unordered (HIMMEL-4672)"
+# batch <name> <red-msg> <write-msg> <green-msg>: a RED run, an impl Write, a green run, then a passing
+# claim; each call is stamped with the message.id given for it (one id = one parallel batch).
+batch() {
+  python3 - "$TMP/$1.jsonl" "$2" "$3" "$4" <<'PY'
+import json, sys
+p, m1, m2, m3 = sys.argv[1:]
+def a(m, b): return {"type": "assistant", "message": {"id": m, "content": [b]}}
+def u(i, t): return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i, "content": t, "is_error": t.startswith("Exit code")}]}}
+recs = [a(m1, {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "bash test-x.sh"}}),
+        a(m2, {"type": "tool_use", "id": "t2", "name": "Write", "input": {"file_path": "/r/impl.py", "content": "x"}}),
+        a(m3, {"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "bash test-x.sh"}}),
+        u("t1", "Exit code 1\nFAIL"), u("t2", "ok"), u("t3", "ok"),
+        {"type": "assistant", "message": {"id": "mz", "content": [{"type": "text", "text": "test-x.sh passes."}]}}]
+with open(p, "w") as fh:
+    fh.write("".join(json.dumps(r) + "\n" for r in recs))
+PY
+}
+batch batch-ordered m1 m2 m3
+check "control: RED, Write and green run in three messages score red_before_green and verify_before_claim" 'python3 "$TR" score "$TMP/batch-ordered.jsonl" | jq -e ".red_before_green == true and .verify_before_claim == true" >/dev/null'
+batch batch-green m1 m2 m2
+check "a green run sent in the same message as the impl Write is no pass after it" 'python3 "$TR" score "$TMP/batch-green.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == false" >/dev/null'
+batch batch-red m2 m2 m3
+check "a RED run sent in the same message as the impl Write is no RED before it" 'python3 "$TR" score "$TMP/batch-red.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == true" >/dev/null'
 echo "test-trajectory: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

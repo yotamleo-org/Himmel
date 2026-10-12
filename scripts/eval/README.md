@@ -199,9 +199,11 @@ Known ceilings:
 - Files written through Bash (`cat >`, `sed -i`) are not seen as
   implementation writes.
 - A RED caused by a syntax error in the test file still counts as a RED.
-- Order is the order calls were issued. Calls sent in one parallel batch
-  may finish in another order, so a write and a test run in the same batch
-  are ordered as issued.
+- Order is the order calls were issued, except that a test run sent in the
+  same assistant message (same `message.id`) as the write it is compared
+  with is unordered relative to it and counts as neither a RED before that
+  write nor a pass after it (HIMMEL-4672). A transcript without `message.id`
+  falls back to issue order.
 - Claim detection is a sentence-level regex, so an unusual wording can be
   missed or misread.
 
