@@ -90,12 +90,16 @@ for (const tail of SUITE_TAILS) {
   });
 }
 
+// HIMMEL-4830: the one leg profile that opts in to himmel-bus also allows its tools, both name forms.
+const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
+const expectedAllow = (name) => (name === 'leg-bus' ? [...REG.gateAllow, ...BUS_TOOL_ALLOW] : REG.gateAllow);
+
 for (const name of LEG_PROFILES) {
   test(`${name} emits every registry gateAllow rule`, () => {
     const settings = resolveProfile(REG, name);
     assert.ok(Array.isArray(settings.permissions?.allow), 'missing permissions.allow');
     assert.ok(settings.permissions.allow.length > 0);
-    assert.deepEqual(settings.permissions, { allow: REG.gateAllow });
+    assert.deepEqual(settings.permissions, { allow: expectedAllow(name) });
     assert.notEqual(settings.permissions.allow, REG.gateAllow, 'callers must not mutate the registry');
   });
 }
@@ -1378,7 +1382,7 @@ const SHIP_STEP_ANCHOR_RULES = [
 for (const name of LEG_PROFILES) {
   test(`HIMMEL-3783: ${name} with an anchor adds exactly every ship-step anchor twin, nothing more`, () => {
     const { permissions } = resolveProfile(REG, name, { anchor: ANCHOR, installed: [] });
-    assert.deepEqual(permissions.allow, [...REG.gateAllow, ...SHIP_STEP_ANCHOR_RULES]);
+    assert.deepEqual(permissions.allow, [...REG.gateAllow, ...SHIP_STEP_ANCHOR_RULES, ...(name === 'leg-bus' ? BUS_TOOL_ALLOW : [])]);
   });
 
   for (const rule of SHIP_STEP_ANCHOR_RULES) {
@@ -1570,13 +1574,13 @@ test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so o
 test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
   assert.deepEqual(mcpServersForProfile(REG, 'leg-bus'), ['qmd', 'himmel-bus']);
   assert.ok(!mcpServersForProfile(REG, 'leg-impl').includes('himmel-bus'), 'leg-impl is unchanged');
-  assert.deepEqual(resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins);
+  assert.deepEqual(resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, 'plugins are leg-impl\'s (HIMMEL-4830 adds none)');
   assert.equal(REG.profiles['leg-bus'].gateAllow, true);
   const dir = makeTmpDir('pp-bus-');
-  const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'marketplace', 'plugins'), mcpCatalog: REG.mcpCatalog });
+  const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'marketplace', 'plugins'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
   const def = cfg.mcpServers['himmel-bus'];
   assert.equal(def.command, 'npm');
-  assert.deepEqual(def.args, ['--prefix', 'marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
+  assert.deepEqual(def.args, ['--prefix', '/srv/himmel/marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
   assert.ok(!JSON.stringify(def).includes('${'), 'no placeholder left');
   assert.deepEqual(validateRegistry(REG), []);
 });
@@ -1596,4 +1600,75 @@ test('collectMcpServerDefs: the mcpCatalog tier loses to home/repo/manifest and 
   const opts = { homeConfigPath: home, repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: { x: { command: 'cat-x' }, y: { command: 'cat-y' } } };
   assert.deepEqual(collectMcpServerDefs(['x', 'y'], opts).mcpServers, { x: { command: 'home-x' }, y: { command: 'cat-y' } });
   assert.throws(() => collectMcpServerDefs(['z'], opts), /not defined/);
+});
+
+// HIMMEL-4830: himmel-bus T7. A catalog def may carry a ${HIMMEL_REPO} placeholder that the real
+// collector resolves to the primary checkout's absolute path; permissions.allow carries both
+// tool-name forms for a profile that opts in, and nothing for one that does not.
+const BUS_REG = {
+  floor: ['floor@m'],
+  base: ['floor@m'],
+  catalog: ['floor@m'],
+  mcpCatalog: {
+    'fx-bus': { command: 'npm', args: ['--prefix', '${HIMMEL_REPO}/marketplace/plugins/fx-bus', 'run', '--silent', 'start'] },
+  },
+  mcpAllow: { 'fx-bus': ['send', 'read'] },
+  profiles: {
+    operator: null,
+    optin: { enable: [], mcpServers: ['fx-bus'], contextBudget: 5000 },
+    optout: { enable: [], mcpServers: [], contextBudget: 5000 },
+  },
+};
+
+function busDefs(profile, repoRoot) {
+  const dir = makeTmpDir('pp-bus-fx-');
+  const names = mcpServersForProfile(BUS_REG, profile) ?? [];
+  return collectMcpServerDefs(names, { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: BUS_REG.mcpCatalog, repoRoot });
+}
+
+test('HIMMEL-4830: the fixture registry validates', () => {
+  assert.deepEqual(validateRegistry(BUS_REG), []);
+});
+
+test('HIMMEL-4830: an opted-in profile resolves ${HIMMEL_REPO} to the primary checkout path, none left', () => {
+  const def = busDefs('optin', '/srv/himmel').mcpServers['fx-bus'];
+  assert.deepEqual(def.args, ['--prefix', '/srv/himmel/marketplace/plugins/fx-bus', 'run', '--silent', 'start']);
+  assert.ok(!JSON.stringify(def).includes('${'), 'no placeholder left');
+});
+
+test('HIMMEL-4830: a placeholder with no repo root refuses rather than shipping the literal', () => {
+  assert.throws(() => busDefs('optin', undefined), /HIMMEL_REPO/);
+});
+
+test('HIMMEL-4830: an opted-in profile allows both tool-name forms of each tool; an opted-out one allows nothing extra', () => {
+  const allow = resolveProfile(BUS_REG, 'optin').permissions?.allow ?? [];
+  for (const tool of ['send', 'read']) {
+    assert.ok(allow.includes(`mcp__fx-bus__${tool}`), `standalone form of ${tool}`);
+    assert.ok(allow.includes(`mcp__plugin_fx-bus_fx-bus__${tool}`), `plugin form of ${tool}`);
+  }
+  assert.equal(resolveProfile(BUS_REG, 'optout').permissions, undefined);
+  assert.deepEqual(busDefs('optout', '/srv/himmel'), { mcpServers: {} });
+});
+
+test('HIMMEL-4830: mcpAllow shape is validated (unknown server, bad tool name)', () => {
+  assert.ok(validateRegistry({ ...BUS_REG, mcpAllow: { nope: ['send'] } }).some((e) => /mcpAllow.*nope/.test(e)));
+  assert.ok(validateRegistry({ ...BUS_REG, mcpAllow: { 'fx-bus': ['a b'] } }).some((e) => /mcpAllow/.test(e)));
+});
+
+test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and allows its tools on leg-bus and console', () => {
+  assert.deepEqual(validateRegistry(REG), []);
+  const dir = makeTmpDir('pp-bus-real-');
+  const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
+  assert.deepEqual(cfg.mcpServers['himmel-bus'].args, ['--prefix', '/srv/himmel/marketplace/plugins/himmel-bus', 'run', '--silent', 'start']);
+  for (const p of ['leg-bus', 'console']) {
+    const allow = resolveProfile(REG, p, { installed: [] }).permissions?.allow ?? [];
+    for (const n of ['mcp__himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__read']) assert.ok(allow.includes(n), `${p} allows ${n}`);
+  }
+  assert.ok(!(resolveProfile(REG, 'leg-impl', { installed: [] }).permissions?.allow ?? []).some((r) => r.includes('himmel-bus')), 'leg-impl opted out');
+});
+
+test('HIMMEL-4830: leg-bus enables no plugin beyond leg-impl (profile-manifest stays untouched)', () => {
+  const bus = resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins;
+  const impl = resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins;
+  assert.deepEqual(bus, impl);
 });

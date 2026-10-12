@@ -35,6 +35,20 @@
       ]
     },
     {
+      "name": "himmel-bus",
+      "source": "./plugins/himmel-bus",
+      "description": "Local chained message bus between himmel sessions (console, legs, paired judge): send and read tools over a stdio MCP server plus the `bus` CLI. Ships no .mcp.json: the server is defined in the plugin-profiles mcpCatalog and only profiles that opt in load it (HIMMEL-4830).",
+      "author": {
+        "name": "yotamleo"
+      },
+      "keywords": [
+        "himmel",
+        "bus",
+        "mcp",
+        "messaging"
+      ]
+    },
+    {
       "name": "handover",
       "source": "./plugins/handover",
       "description": "Handover tracking system — manages epics, tasks, standalones, and session handovers",

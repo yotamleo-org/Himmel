@@ -6,7 +6,7 @@
 // Consumed by the Bun spawn scripts (spawn-glm.ts / spawn-claudex.ts import
 // resolveProfileByName) and by a small CLI (measurement / launcher use).
 import { readFileSync, existsSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -110,8 +110,10 @@ function validateGateAllow(errors, rules) {
 // scan (spec'd for T3.1), so a weak heuristic here buys little and costs a
 // false rejection of ordinary paths. Returns a problem string, or null if clean.
 const SECRET_SHAPE_RE = /sk-[A-Za-z0-9]{10,}|gh[pousr]_[A-Za-z0-9]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{12,}|Bearer\s+\S+/;
+// HIMMEL-4830: the one placeholder collectMcpServerDefs resolves; any other ${...} stays malformed.
+const REPO_TOKEN = '${HIMMEL_REPO}';
 function credentialLiteralIssue(value) {
-  for (const token of value.match(/\$\w*/g) ?? []) {
+  for (const token of value.replaceAll(REPO_TOKEN, '').match(/\$\w*/g) ?? []) {
     if (!/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return `contains a malformed $-interpolation "${token}" (an embedded $VAR is fine, but this token isn't one — expected $ followed by a variable name)`;
   }
   if (SECRET_SHAPE_RE.test(value)) return 'looks like it contains an embedded credential literal';
@@ -357,6 +359,19 @@ export function validateRegistry(registry) {
     }
   }
 
+  // HIMMEL-4830: mcpAllow maps a catalog server to the tool names resolveProfile allows for a
+  // profile that lists it in mcpServers (both the standalone and the plugin-prefixed form).
+  const mcpAllow = registry?.mcpAllow;
+  if (mcpAllow !== undefined) {
+    if (mcpAllow === null || typeof mcpAllow !== 'object' || Array.isArray(mcpAllow)) errors.push('mcpAllow must be a non-null object');
+    else {
+      for (const [id, tools] of Object.entries(mcpAllow)) {
+        if (!/^[A-Za-z0-9_-]+$/.test(id) || !Object.hasOwn(mcpCatalog ?? {}, id)) errors.push(`mcpAllow entry "${id}" must name an mcpCatalog server`);
+        if (!Array.isArray(tools) || tools.length === 0 || !tools.every((t) => typeof t === 'string' && /^[A-Za-z0-9_-]+$/.test(t))) errors.push(`mcpAllow entry "${id}" must be a non-empty array of tool names ([A-Za-z0-9_-])`);
+      }
+    }
+  }
+
   if (profilesOk) {
     if (!Object.hasOwn(profiles, 'operator') || profiles.operator !== null) errors.push('profile "operator" must be present and null (the never-injected sentinel)');
     // "bare" itself is OPTIONAL (glm-1): a registry without it simply doesn't
@@ -449,6 +464,12 @@ export function resolveProfile(registry, name, opts = {}) {
   for (const id of (Array.isArray(spec?.enable) ? spec.enable : [])) enabledPlugins[id] = true; // 3. profile.enable on
   for (const id of addPlugins) enabledPlugins[id] = true;                 // 4. per-dispatch overlay on
   for (const id of (registry.floor ?? [])) enabledPlugins[id] = true;     // 5. floor forced on, LAST (inviolable)
+  // HIMMEL-4830: a profile that lists a server with an mcpAllow entry gets both tool-name forms
+  // (standalone --mcp-config and plugin-prefixed) allowed; an opted-out profile gets none.
+  const mcpAllow = [];
+  for (const server of (Array.isArray(spec?.mcpServers) ? spec.mcpServers : [])) {
+    for (const tool of (registry.mcpAllow?.[server] ?? [])) mcpAllow.push(`mcp__${server}__${tool}`, `mcp__plugin_${server}_${server}__${tool}`);
+  }
   if (spec?.gateAllow === true) {
     const allow = [...registry.gateAllow];
     if (opts.anchor !== undefined) {
@@ -456,9 +477,10 @@ export function resolveProfile(registry, name, opts = {}) {
         if (rule && !allow.includes(rule)) allow.push(rule);
       }
     }
+    for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
     return { enabledPlugins, permissions: { allow }, ...listingSettings(registry, [name], enabledPlugins, opts) };
   }
-  return { enabledPlugins, ...listingSettings(registry, [name], enabledPlugins, opts) };
+  return { enabledPlugins, ...(mcpAllow.length ? { permissions: { allow: mcpAllow } } : {}), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
 
 // HIMMEL-4021: sibling output, never extra Claude settings keys. Resolve the
@@ -675,7 +697,25 @@ function refuseIfPluginRootRef(name, def) {
   }
 }
 
-export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marketplaceDir, mcpCatalog = {} }) {
+// HIMMEL-4830: a catalog def may name the primary checkout as ${HIMMEL_REPO}; a standalone
+// --mcp-config gets no expansion, so it is replaced here with the absolute path. No repo root
+// is a refusal (a literal placeholder would start nothing), never a silent relative fallback.
+function resolveRepoToken(name, def, repoRoot) {
+  const has = (v) => typeof v === 'string' && v.includes(REPO_TOKEN);
+  const any = has(def.command) || (Array.isArray(def.args) && def.args.some(has)) || (def.env && typeof def.env === 'object' && Object.values(def.env).some(has));
+  if (!any) return def;
+  if (typeof repoRoot !== 'string' || !isAbsolute(repoRoot)) {
+    throw new Error(`plugin-profiles: mcpServers entry "${name}" references ${REPO_TOKEN} but no absolute primary-checkout path was given`);
+  }
+  const sub = (v) => (typeof v === 'string' ? v.replaceAll(REPO_TOKEN, repoRoot) : v);
+  const out = { ...def };
+  if (out.command !== undefined) out.command = sub(out.command);
+  if (Array.isArray(out.args)) out.args = out.args.map(sub);
+  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, sub(v)]));
+  return out;
+}
+
+export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marketplaceDir, mcpCatalog = {}, repoRoot }) {
   if (names.length === 0) return { mcpServers: {} };
   const readDefs = (path) => {
     if (!existsSync(path)) return {};
@@ -695,7 +735,7 @@ export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marke
       // HIMMEL-4400: last tier, the registry mcpCatalog — for a server whose upstream
       // plugin ships a flat-form .mcp.json that only exists in the plugin cache.
       if (!Object.hasOwn(manifest, name) && Object.hasOwn(mcpCatalog, name)) {
-        def = mcpCatalog[name];
+        def = resolveRepoToken(name, mcpCatalog[name], repoRoot);
       } else if (!Object.hasOwn(manifest, name)) {
         throw new Error(`plugin-profiles: mcpServers entry "${name}" is not defined in ${homeConfigPath}, ${repoMcpPath}, or ${manifestPath}`);
       }
@@ -757,6 +797,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
         repoMcpPath: join(process.cwd(), '.mcp.json'),
         marketplaceDir: join(SCRIPT_DIR, '..', '..', 'marketplace', 'plugins'),
         mcpCatalog: registry.mcpCatalog,
+        repoRoot: primaryCheckout(process.env.HIMMEL_REPO || SCRIPT_DIR) ?? undefined,
       });
       process.stdout.write(JSON.stringify(cfg) + '\n');
       process.exit(0);
