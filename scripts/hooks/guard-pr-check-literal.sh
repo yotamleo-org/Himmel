@@ -1942,7 +1942,11 @@ env_split_option() { # env_split_option <raw command> - false only when
                     case "$w" in
                         -O|+O|-o|+o|--rcfile|--init-file) nm[sg]=4 ;;
                         --) nm[sg]=5 ;;
-                        -*|+*) ;;
+                        # a cluster with o or O takes an option argument, so the
+                        # body's position is unclear: open every later word
+                        -*[Oo]*|+*[Oo]*) nm[sg]=1 ;;
+                        -[A-Za-z]*|+[A-Za-z]*) ;;
+                        -*|+*) nm[sg]=1 ;;
                         *) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;;
                     esac ;;
                 4) nm[sg]=2 ;;
