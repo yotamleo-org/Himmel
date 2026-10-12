@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# headless-claude-ok: HIMMEL-2179 probe the operator runs by hand; the comment below names the claude -p config it measures
 # launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 2 (HIMMEL-2179): --permission-mode dontAsk + --allowedTools.
 # Run A: allowlist covers Write -> verify artifact file exists.
@@ -14,7 +13,6 @@ TARGET_A="$PROBE_DIR/tmp-artifact.txt"
 TARGET_B="$PROBE_DIR/tmp-artifact-noaccess.txt"
 rm -f "$TARGET_A" "$TARGET_B"
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 2 \
   --permission-mode dontAsk --allowedTools "Bash(echo *),Write" \
   --output-format json "Write the single word OK to $TARGET_A" \
@@ -26,7 +24,6 @@ else
   echo "02a: artifact ABSENT"
 fi
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 2 \
   --permission-mode dontAsk --allowedTools "Bash(echo *)" \
   --output-format json "Write the single word OK to $TARGET_B" \

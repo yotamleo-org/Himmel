@@ -80,8 +80,6 @@ this doc. Highlights:
 - **Jira plugin enforcement:** committed code referencing Atlassian MCP Jira
   tools that have a `scripts/jira/` plugin equivalent is blocked
   (`mcp-plugin-refs`).
-- **Headless-claude gate:** new `claude -p` / `--print` / `--bg` invocations
-  must carry a `# headless-claude-ok: <reason>` marker (HIMMEL-128).
 - **CR-before-push:** the multi-agent CR marker described above
   (`check-cr-before-push.sh`).
 - **Platforms-tested:** shell / script changes must include a

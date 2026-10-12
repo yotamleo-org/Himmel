@@ -262,7 +262,6 @@ Pick ONE of two paths per clip:
 - **Firecrawl thin-body escalation (opt-in, LUNA-27 / HIMMEL-320).** When the batch tool is invoked with `--firecrawl-thin`, a thin clip whose canonical URL is a genuine **article/web** URL (NOT `x.com`/`twitter.com` → twitter-cli owns X; NOT `github.com` → luna-ingest; NOT `youtube.com`/`youtu.be` → playwright-youtube; NOT `reddit.com`/`old.reddit.com`/`redd.it` → reddit-enrich owns reddit; NOT `instagram.com` → ig-media-fetch (HIMMEL-770)) is escalated: `harvest-clip-body-batch.py` fetches clean markdown via firecrawl's `/v2/scrape` API and writes it as a `## Harvested content` section, marking `harvest_skill: firecrawl`, `harvest_status: ok`. This is a **credit-conscious escalation**, not a default — the free tier is 1000 credits/mo (~1 per scrape). Guards: `--firecrawl-budget N` (default 20) caps scrapes per run; once the cap is hit, or a fetch fails, the clip stays a **retryable partial** (no `harvested_at` written — a later run with fresh budget retries it). Needs `FIRECRAWL_API_KEY` (and optionally `FIRECRAWL_BASE_URL` for self-hosted firecrawl). Private/internal URLs (localhost, RFC1918 IPs, `.local`/`.lan`/`.internal`, basic-auth userinfo) are excluded too — the **G-1 privacy gate** applies to this egress path, so internal URLs are never shipped to a third-party scraper. The fetched markdown is untrusted web text → it is re-run through the Phase 4.5 injection screen, and `harvest_flag` is set on a hit. Without the flag, firecrawl is never touched and thin clips stay `partial` as above.
 - Else: log `✓ <clip> — harvested via clip-body, {Nb}b content (clip-body, no fetch), harvest_status=ok` (per G-7 logging contract — `{Nb}` is the body byte count). Phase 5 skips the body write entirely (no `## Harvested content` section needed — body already is the harvest); only the frontmatter `harvested_at:` + `harvest_skill: clip-body` markers are added.
 
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; this is not an invocation pattern -->
 **HIMMEL-128 contract:** all dispatch happens via `Skill` tool ONLY. NEVER `Bash: claude -p` / `--print` / `--bg`. NEVER any Anthropic API direct call. The clip-body path makes no external calls at all (no API keys needed); the github-ingest path uses `gh api` via luna-ingest.
 
 **Phase 4.5 — Injection screen (HIMMEL-256, flag-only — both paths, pre-harvest content only; luna-ingest output is NOT screened by this phase — see the github-ingest re-screen below).**
@@ -378,7 +377,6 @@ On any other exit path (1/2/3/4/5) MUST NOT write the marker, and it must not ex
 
 ### Notes for the agent
 
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; this is guidance, not an invocation -->
 - **Skill invocations**: use the `Skill` tool. Do NOT shell out via `Bash: claude -p`. HIMMEL-128 + Max-X5 billing.
 - **All writes preserve the original clip body.** Phase 5 G-3 invariant enforces this — never overwrite operator hand-edits in `## Why I Saved This` / `## How I Can Use This` / etc.
 - **MVP scope:** no fan-out, no recursion, no content-dedup. Those ship in LUNA-14.

@@ -301,6 +301,5 @@ After Phase 6, rewrite `<vault>/hot.md` (the Tier-2 hot cache — see the vault 
 - This command is autonomous — do NOT ask for confirmation between phases.
 - The ONLY destructive op is `mv` (relocate); never `rm` a clip. Reverting a failed graduation means moving the file back + undoing link edits.
 - Link-rewrite is the risk surface — always re-verify zero stale `[[Clippings/<OLD>]]` links remain before declaring a clip graduated; revert otherwise.
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; this is a prohibition note, not an invocation -->
 - No `claude -p` / `--print` / `--bg` / Anthropic API (HIMMEL-128). This command makes no external calls.
 - `_done/` and `_deferred.md` are inbox-scan exclusions in EVERY pipeline stage (harvest/triage/synthesize/archive) — see the Inbox-folder convention above.

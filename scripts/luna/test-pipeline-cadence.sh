@@ -244,7 +244,7 @@ export CADENCE_ALERT_SEND_CMD="$TMP_ROOT/alert-send-rec"
 VAULT="$TMP_ROOT/vault"
 mkdir -p "$VAULT"
 
-# Same pattern the no-headless-claude pre-commit gate uses (HIMMEL-128).
+# Word-bounded headless claude invocation (`-p` / `--print` / `--bg`).
 HEADLESS_RE='(^|[^A-Za-z0-9_-])claude[[:space:]]+(-p|--print|--bg)($|[^A-Za-z0-9_-])'
 
 # ============================================================================

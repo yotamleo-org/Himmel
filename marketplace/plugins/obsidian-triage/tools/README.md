@@ -620,8 +620,7 @@ pins the judge charter's path + sha256 so a scoring run is reproducible
 against the exact charter text it used.
 
 A judge — an **interactive Claude session, or a dispatched subagent, never
-a headless invocation** (no `-p`/`--print`/`--bg` flag — himmel's
-invocation-billing rule, `no-headless-claude` pre-commit gate) — reads
+a headless invocation** (no `-p`/`--print`/`--bg` flag) — reads
 `follow-judge-charter.md`
 (five 0-5 dimensions: `factual_reliability`, `resources`, `reach`,
 `focus_fit`, `substance`; the crypto-neutrality rule that scores

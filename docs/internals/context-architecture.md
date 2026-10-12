@@ -106,7 +106,7 @@ applies:
 
 - **Safety-critical** → `default-hook` (PreToolUse / pre-commit / pre-push). The
   cost of forgetting to invoke manually beats the cost of always running.
-  E.g. `block-edit-on-main`, `block-read-secrets`, `no-headless-claude`, `gitleaks`.
+  E.g. `block-edit-on-main`, `block-read-secrets`, `gitleaks`.
 - **Frame-shaping** (changes how Claude reads the *whole* task) → `default-rule`
   (root `CLAUDE.md`). E.g. "PRs require approval", conventional commits,
   "prefer plugin over MCP".

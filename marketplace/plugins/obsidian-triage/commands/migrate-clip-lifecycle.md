@@ -54,7 +54,6 @@ tail and never clobbering a prefix-sibling (`[[Clippings/<OLD>-extra]]`).
 
 ### Headless refusal (HIMMEL-128)
 
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; this is a prohibition note, not an invocation -->
 This command makes no `claude -p` / `--print` / `--bg` / API calls. Do not wrap
 the engine in a headless invocation. The engine is a deterministic node tool —
 run it directly via Bash.

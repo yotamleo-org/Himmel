@@ -6,7 +6,7 @@ suits a different failure mode, and collapsing everything onto one of them
 either burns bank on a session nobody watches or blocks a script waiting on
 a TTY that never attaches. This doc picks the mode per job; the billing
 facts themselves (same bank, no separate bucket) live in
-[`enforcement.md` "Claude invocation billing"](enforcement.md#claude-invocation-billing-himmel-128)
+[`enforcement.md` "Claude invocation billing"](enforcement.md#claude-invocation-billing)
 and are not restated here.
 
 ## Decision table
@@ -32,9 +32,9 @@ directly — one invocation site to audit instead of many
   (`claude-headless.sh:100`) and `bypassPermissions` is refused outright
   (`claude-headless.sh:100`, `die "--permission-mode bypassPermissions is
   refused"`); a direct (non-wrapper) `-p` call site declares it explicitly
-  the same way, per the `no-headless-claude` gate below.
+  the same way, per the CLAUDE.md "Claude invocation billing" rule.
 - **Billing:** same 5-hour/weekly bank as interactive use — see
-  [enforcement.md](enforcement.md#claude-invocation-billing-himmel-128).
+  [enforcement.md](enforcement.md#claude-invocation-billing).
   `claude-headless.sh` calls `scripts/lib/bank-preflight.sh` before
   dispatching and refuses on a non-`PROCEED` verdict
   (`claude-headless.sh:299-300`).
@@ -83,10 +83,9 @@ in the launching shell; the flag wins) — same profile injection, model and
   (`headed-arm.sh:574`), matching what a headed leg runs under by default
   (comment at `headed-arm.sh:570-573`), never `bypassPermissions`.
 - **Billing:** same bank as `-p` and headed — HIMMEL-3410's own ticket body
-  and [enforcement.md](enforcement.md#claude-invocation-billing-himmel-128)
-  agree there is no separate bucket. The call site carries its own
-  `# headless-claude-ok: HIMMEL-3403 console-armed leg; headed-arm-leg.sh ran
-  the bank/fleet preflight` marker (`headed-arm.sh:573`).
+  and [enforcement.md](enforcement.md#claude-invocation-billing)
+  agree there is no separate bucket. `headed-arm-leg.sh` runs the bank/fleet
+  preflight before this launch (HIMMEL-3403).
 - **Confirm / dedup:** after launch, `headed-arm.sh` polls
   `$CLAUDE_CLI agents --json` for up to 20s (100 × 0.2s) waiting for the new
   session name to appear, and fails closed with `UNCONFIRMED` (exit 7) if it
@@ -143,13 +142,13 @@ untouched. Vault content stays native. Wired today: the `claude-headless.sh` cho
 floor reviewer; `HIMMEL_CLAUDE_BIN` still wins, for tests) and the
 `hermes-critic.sh --route claude` pass. Other sites are follow-up.
 
-## Audit: existing `# headless-claude-ok:` sites
+## Audit: headless call sites (HIMMEL-3410)
 
-Full marker inventory: `git grep -n 'headless-claude-ok:'`. Call sites are
-grouped below; markers that are documentation/prohibition notes or test
-fixtures (no actual invocation) are not call sites and are omitted from the
-"real invocation" table. No call site is changed by this PR — misfits are
-flagged only.
+Taken from the `# headless-claude-ok:` marker inventory of the time (the
+marker and its gate were retired in HIMMEL-5424; line numbers are as of the
+audit). Documentation notes and test fixtures (no actual invocation) are
+not call sites and are omitted. No call site was changed by the audit —
+misfits are flagged only.
 
 ### Real invocation sites
 
@@ -170,15 +169,3 @@ No misfits found: every direct `-p` site in this repo is a one-shot,
 bank-preflighted, artifact-checked scripted/CI-shaped call, and the one
 `--bg` site is the long-lived, fleet-visible leg launcher — exactly the
 split this doc's decision table describes.
-
-### Non-invocation markers (excluded above)
-
-Documentation/prohibition notes that mention the ban without invoking
-`claude`: `marketplace/plugins/obsidian-triage/commands/{archive-clips,deepen-subject,harvest-clips,migrate-clip-lifecycle,synthesize-stubs}.md`,
-`marketplace/plugins/obsidian-triage/skills/{grow-feed-log,telegram-clip}/SKILL.md`,
-`marketplace/plugins/obsidian-triage/tests/{test-archive-clips,test-harvest-clips}.sh`
-(detection-pattern comments, not invocations), `scripts/guardrails/lint-fail-open.sh:53`
-and `scripts/hooks/block-tail-pipe-on-gates.sh:83` (convention references),
-and the gate's own source/tests
-(`scripts/hooks/check-no-headless-claude.sh`, `scripts/hooks/test-check-no-headless-claude.sh`,
-`scripts/handover/console-kit/test-fleet.sh:126`).

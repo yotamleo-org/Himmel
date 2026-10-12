@@ -15,7 +15,6 @@ All deterministic logic — URL→type classification, frontmatter assembly,
 filename, idempotency dedup, vault-containment — lives in the
 `tools/telegram-clip.mjs` CLI. This runbook only marshals the message fields
 into one CLI call and reports the result.
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; not an invocation -->
 **HIMMEL-128:** the tool is pure Node (no Anthropic API, no `claude -p`); invoke
 it with the `Bash` tool only.
 

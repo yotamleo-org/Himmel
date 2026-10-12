@@ -51,10 +51,9 @@ Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
 weekly bank as interactive use — headless is not a separate bucket. Unattended
 sites preflight with `scripts/lib/bank-preflight.sh`, parse
 `--output-format json`, and declare an
-explicit `--permission-mode` (never `bypassPermissions`). Committing a new
-headless call needs `# headless-claude-ok: <reason>` (`no-headless-claude`
-gate; `no-headless-gemini` is the twin). Evidence + re-measure recipe:
-[`docs/internals/enforcement.md`](docs/internals/enforcement.md#claude-invocation-billing-himmel-128).
+explicit `--permission-mode` (never `bypassPermissions`). Evidence, sources +
+re-measure recipe:
+[`docs/internals/enforcement.md`](docs/internals/enforcement.md#claude-invocation-billing).
 
 ### Subagent policy — delegation & escalation
 **Delegate what is genuinely independent and sizeable — and only that.** Don't
