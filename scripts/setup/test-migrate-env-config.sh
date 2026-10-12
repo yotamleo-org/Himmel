@@ -24,8 +24,15 @@ cat > "$ENVF" <<'EOF'
 HANDOVER_DIR=/val/conf/handovers
 CR_PROFILE=valconfprofile   # gutter comment
 JIRA_API_TOKEN=valsecrettoken
-CR_FLOOR_FALLBACK=claude-only
+CR_FLOOR_FALLBACK="claude-only"
 EOF
+
+# A flag missing its value is refused, not looped on.
+for flag in --env --vault; do
+    timeout 10 bash "$SCRIPT" "$flag" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" = 2 ]; then pass "$flag with no value exits 2"; else fail "$flag with no value exited $rc"; fi
+done
 
 # Dry run writes nothing and names keys only.
 out=$(bash "$SCRIPT" --env "$ENVF" --dry-run 2>&1)
@@ -61,7 +68,7 @@ if command -v jq >/dev/null 2>&1; then
     cmd=$(printf '%s\n' "$out" | grep '^  v=\$(awk' | head -n 1)
     (cd "$TMP" && bash -c "$cmd") >/dev/null 2>&1
     v=$(jq -r '.policy.CR_FLOOR_FALLBACK // empty' "$HOME/.himmel/config.json" 2>/dev/null)
-    if [ "$v" = claude-only ]; then pass "printed command writes the policy value"; else fail "printed command wrote '$v'"; fi
+    if [ "$v" = claude-only ]; then pass "printed command writes the policy value, its dotenv quotes stripped"; else fail "printed command wrote '$v'"; fi
     got=$( (unset CR_FLOOR_FALLBACK; . "$HERE/../lib/load-dotenv.sh"; load_policy --root "$TMP/none" CR_FLOOR_FALLBACK; printf '[%s]' "${CR_FLOOR_FALLBACK-}") 2>&1)
     has "load_policy reads the migrated value" "[claude-only]" "$got"
 else

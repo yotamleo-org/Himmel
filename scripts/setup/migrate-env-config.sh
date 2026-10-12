@@ -30,8 +30,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 envfile="" vault="" dry=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --env) envfile="${2:-}"; shift 2 ;;
-        --vault) vault="${2:-}"; shift 2 ;;
+        --env|--vault)
+            [ "$#" -ge 2 ] || { echo "migrate-env-config: $1 needs a value" >&2; exit 2; }
+            if [ "$1" = --env ]; then envfile="$2"; else vault="$2"; fi
+            shift 2 ;;
         --dry-run) dry=1; shift ;;
         -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
         *) echo "migrate-env-config: unknown argument: $1" >&2; exit 2 ;;
@@ -100,7 +102,7 @@ if [ "${#policy_keys[@]}" -gt 0 ]; then
     echo "Gate-policy keys found in .env: ${policy_keys[*]}"
     echo "An agent cannot write ~/.himmel/config.json. Run each line below at your own prompt; it reads the value from .env, so the value is not shown:"
     for key in "${policy_keys[@]}"; do
-        printf '  v=$(awk -v k=%s '\''{ i = index($0, "="); n = substr($0, 1, i - 1); gsub(/^[ \\t]+|[ \\t]+$/, "", n) } i && n == k { v = substr($0, i + 1); sub(/\\r$/, "", v); sub(/[ \\t]+#.*/, "", v); gsub(/^[ \\t]+|[ \\t]+$/, "", v); print v; exit }'\'' %q) && f=~/.himmel/config.json && { [ -f "$f" ] || echo {} > "$f"; } && jq --arg v "$v" '\''.policy.%s = $v'\'' "$f" > "$f.tmp" && mv "$f.tmp" "$f"\n' \
+        printf '  v=$(awk -v k=%s '\''{ i = index($0, "="); n = substr($0, 1, i - 1); gsub(/^[ \\t]+|[ \\t]+$/, "", n) } i && n == k { v = substr($0, i + 1); sub(/\\r$/, "", v); sub(/[ \\t]+#.*/, "", v); gsub(/^[ \\t]+|[ \\t]+$/, "", v); c = substr(v, 1, 1); if (length(v) > 1 && (c == sprintf("%%c", 34) || c == sprintf("%%c", 39)) && substr(v, length(v), 1) == c) v = substr(v, 2, length(v) - 2); print v; exit }'\'' %q) && f=~/.himmel/config.json && { [ -f "$f" ] || echo {} > "$f"; } && jq --arg v "$v" '\''.policy.%s = $v'\'' "$f" > "$f.tmp" && mv "$f.tmp" "$f"\n' \
             "$key" "$envfile" "$key"
     done
 fi

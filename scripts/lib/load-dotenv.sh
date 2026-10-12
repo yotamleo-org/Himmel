@@ -302,7 +302,7 @@ _load_dotenv_extract() {
 # The directory is fixed at $HOME/.himmel; no env var selects another one.
 # ponytail: the path follows $HOME, so a caller that controls HOME picks the
 # file; clear-cr-marker's seam guard does not cover HOME (it is always set).
-# Upgrade path: pin the directory from the passwd entry if a gate ever runs
+# Upgrade path (HIMMEL-5395): pin the directory from the passwd entry if a gate ever runs
 # under a caller-chosen HOME.
 # ponytail: policy keys live in config.json, not the tracked himmel.conf,
 # because no guard covers writes to himmel.conf yet; move them once one does.
