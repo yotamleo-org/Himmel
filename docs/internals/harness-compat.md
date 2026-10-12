@@ -698,8 +698,8 @@ exactly as before.
 Codex wiring and why — `shadow-ledger.mjs` ×7 + `session-run-hook.ts` ×4
 (observability, Claude-only events/plumbing), `trigger-cr-on-pr-create/push`
 (CR marker flow is Claude-driven), `block-jira-compound-write`,
-`block-tail-pipe-on-gates`, `block-rogue-claude-schedule`,
-`block-chokepoint-env-prefix`, `require-quiet-run`, `guard-memory-capture`,
+`block-tail-pipe-on-gates`,
+`block-chokepoint-env-prefix`, `guard-memory-capture`,
 `orchestrator-inline-guard` (candidates to mirror through the platform wrappers — each
 needs the tool-name audit above first), `graphify` hook-guards and
 `speak-reply` (Claude-specific tooling), `qmd-staleness-notice` /
@@ -714,6 +714,22 @@ Codex (now off); security-guidance ON both, Codex side now off (runner-fatal);
 superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
 `commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
 by design, mirrored into the project file — HIMMEL-589/596).
+
+**Shell-surface guards mirrored (HIMMEL-5422).** `block-git-stash`,
+`block-rogue-claude-schedule`, `require-quiet-run` and `block-edit-live-settings`
+were wired for Claude only; they are now in the `.codex/hooks.json` `Bash` chain,
+and the first, second and fourth also in the `PowerShell` chain, in the Claude
+chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
+tool, which is the Codex shell payload too, so no hook script changed.
+`require-quiet-run` is `Bash`-only by its own tool-name test, so it is not on the
+`PowerShell` matcher. Declared gap: `block-edit-live-settings`' Edit/Write arm
+reads `file_path`/`notebook_path`/`path`, and Codex edits through `apply_patch`,
+whose target paths sit in the patch text in `tool_input.command`; the hook has no
+`apply_patch` branch, so it is deliberately not wired on the edit matcher (it
+would be a silent no-op). Closing it needs a hook-script change, filed
+separately. Proved by the `chain_deny` rows in
+`scripts/codex/test-codex-hook-parity.sh`, which drive the chain `hooks.json`
+wires through the real adapter.
 
 **Hook-set prune + the exit-code contract (HIMMEL-1981, 2026-08-21).** The
 follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
