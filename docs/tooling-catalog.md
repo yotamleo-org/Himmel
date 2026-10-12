@@ -924,6 +924,29 @@ per classifier call when billed by API.
 
 The deny rules, not the classifier, are what stop destructive git (HIMMEL-5388): in the HIMMEL-5164 probe the classifier alone allowed a force push to main, and the seeded rules are injected only when the user settings file exists.
 
+**No-classifier fallback (HIMMEL-5271).** Opt in with leading `--dontask`
+(PowerShell `-DontAsk`) or `CLAUDEX_DONTASK=1`. The launcher selects `dontAsk`:
+unapproved calls are refused, not sent to the auto-mode classifier. An explicit
+`--permission-mode` (including `--permission-mode=manual`) wins and disables this
+fallback; without the opt-in, the existing launch path and mode are unchanged.
+
+Launch from a feature-branch worktree root with `.claude/settings.json`. A unique
+policy under `${XDG_STATE_HOME:-$HOME/.local/state}/claude-codex/sessions/` replaces
+the project's allow list and disables inherited user/project/local settings
+sources for this invocation only. Project hooks and denies are copied unchanged;
+seeded operator/destructive denies are additionally supplied as CLI deny rules.
+Neither project nor user-scope settings are rewritten. The policy files remain
+in session state for inspection.
+
+The exact grants cover absolute worktree-scoped git status/diff/log/show/
+ls-files/rev-parse/merge-base/add/commit, one non-force push of `HEAD` to that
+feature branch, the named shell suite runner and launcher-test runner (including
+its exact quiet-run wrapper), and gh pr create/view/list/checks/diff/edit/comment.
+No arbitrary interpreter, git-command, gh-command or PR-merge wildcard is added.
+Settings/allow-list injection, bypass flags and switching worktrees are refused
+in fallback mode. These are permission rules, not filesystem isolation: existing
+hooks remain necessary, and test execution trusts the worktree's runner code.
+
 **Guard files:** the lane uses `~/.config/claude-codex/phi-roots` and
 `~/.config/claude-codex/egress-denylist`, plus the launch-cwd `.salus` marker.
 A PHI-marked workspace is refused with no override; denylisted workspaces require

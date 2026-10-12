@@ -94,6 +94,7 @@ FORCE=0
 PREFLIGHT_ONLY=0
 GUARD_CHECK=0
 SEED_ONLY=0
+DONTASK="${CLAUDEX_DONTASK:-0}"
 # HIMMEL-5164: the auto-mode classifier defaults to claude-sonnet-5 when the proxy
 # serves it (the alias the client really sends: it logs "ANTHROPIC_DEFAULT_SONNET_MODEL=
 # claude-sonnet-5-5 cannot serve as the classifier; using the Sonnet 5 default").
@@ -105,6 +106,7 @@ CLASSIFIER_MODEL="${CLAUDEX_CLASSIFIER_MODEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --reseed) RESEED=1; shift ;;
+    --dontask) DONTASK=1; shift ;;
     # HIMMEL-5183: seed the lane config dir and exit 0 before the proxy probe and the
     # launch; the pilot jail seeds a row's config outside the lane, then binds the
     # policy files read-only. Not for use with --preflight-only (which skips the seed).
@@ -711,4 +713,55 @@ export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"
 export HIMMEL_SESSION_MODEL
+# HIMMEL-5271: explicit operator mode wins; otherwise dontAsk loads an isolated
+# per-launch policy, because --allowedTools alone would retain inherited grants.
+if [ "$DONTASK" = "1" ]; then
+  for _arg in "$@"; do
+    case "$_arg" in
+      --) break ;;
+      --permission-mode|--permission-mode=*) DONTASK=0; break ;;
+    esac
+  done
+fi
+if [ "$DONTASK" = "1" ]; then
+  for _arg in "$@"; do
+    case "$_arg" in
+      --) break ;;
+      --settings|--settings=*|--allowedTools|--allowedTools=*|--allowed-tools|--allowed-tools=*|--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--worktree|--worktree=*|-w)
+        echo "claude-codex: REFUSED - $_arg would alter the exact dontAsk policy or its worktree. Use an explicit --permission-mode to opt out." >&2
+        exit 3 ;;
+    esac
+  done
+  _policy="$(node - "$CONFIG_DIR/settings.json" /usr/bin/git "$HOME" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+try {
+  const git = process.argv[3];
+  const gitRule = git.includes(' ') ? `"${git}"` : git;
+  const root = execFileSync(git, ['rev-parse', '--show-toplevel'], {encoding:'utf8'}).trim();
+  if (fs.realpathSync(root) !== fs.realpathSync(process.cwd())) throw Error('launch from the worktree root');
+  if (/["*?\[\]\r\n]/.test(root)) throw Error('worktree path contains permission-rule metacharacters');
+  const branch = execFileSync(git, ['symbolic-ref', '--short', 'HEAD'], {encoding:'utf8'}).trim();
+  if (!/^(feat|fix|chore|docs|refactor|test|handover|claude)\/[A-Za-z0-9._/-]+$/.test(branch)) throw Error('launch from a feature branch, not main or detached HEAD');
+  const policy = JSON.parse(fs.readFileSync(path.join(root, '.claude/settings.json'), 'utf8'));
+  const seeded = fs.existsSync(process.argv[2]) ? JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) : {};
+  const allow = ['status','diff','log','show','ls-files','rev-parse','merge-base','add','commit'].map(op => `Bash(${gitRule} -C "${root}" ${op}:*)`);
+  allow.push(`Bash(${gitRule} -C "${root}" push origin HEAD:refs/heads/${branch})`);
+  allow.push('Bash(bash scripts/ci/run-shell-tests.sh:*)', 'Bash(bash scripts/test-claude-codex.sh)', 'Bash(bash scripts/quiet-run.sh suite -- bash scripts/test-claude-codex.sh)');
+  for (const op of ['create','view','list','checks','diff','edit','comment']) allow.push(`Bash(gh pr ${op}:*)`);
+  policy.permissions = {...policy.permissions, allow, defaultMode:'dontAsk'};
+  const base = path.join(process.env.XDG_STATE_HOME || path.join(process.argv[4], '.local/state'), 'claude-codex/sessions');
+  fs.mkdirSync(base, {recursive:true, mode:0o700});
+  const dir = fs.mkdtempSync(path.join(base, 'dontask-'));
+  const file = path.join(dir, 'settings.json');
+  fs.writeFileSync(file, JSON.stringify(policy), {mode:0o600});
+  fs.writeFileSync(path.join(dir, 'denied-tools'), (seeded.permissions?.deny || []).join(',') + '\n', {mode:0o600});
+  process.stdout.write(file);
+} catch (e) { console.error('claude-codex: REFUSED - dontAsk policy: ' + e.message); process.exit(3); }
+NODE
+)" || exit 3
+  IFS= read -r _denied < "${_policy%/*}/denied-tools" || exit 3
+  set -- --setting-sources "" --settings "$_policy" --disallowedTools "$_denied" --permission-mode dontAsk "$@"
+fi
 exec claude "$@"

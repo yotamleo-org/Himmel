@@ -153,6 +153,7 @@ if ([string]::IsNullOrEmpty($key)) {
 
 # --- flags lead, rest passes to claude verbatim ------------------------------
 $Reseed = $false
+$DontAsk = $env:CLAUDEX_DONTASK -eq '1'
 $Force  = $false
 # HIMMEL-1037: --preflight-only mirrors the bash twin — a cheap auth/liveness
 # probe (0=healthy, 2=unavailable) that exits without launching a worker.
@@ -175,6 +176,7 @@ for ($i = 0; $i -lt $args.Count; $i++) {
     }
     $ClassifierModel = [string]$args[$i + 1]; $i++; continue
   }
+  if ($leading -and ($a -ieq '-DontAsk' -or $a -ieq '--dontask')) { $DontAsk = $true; continue }
   if ($leading -and ($a -ieq '-Reseed' -or $a -ieq '--reseed')) { $Reseed = $true; continue }
   if ($leading -and ($a -ieq '-Force'  -or $a -ieq '--force'))  { $Force  = $true; continue }
   if ($leading -and ($a -ieq '-PreflightOnly' -or $a -ieq '--preflight-only')) { $PreflightOnly = $true; continue }
@@ -658,5 +660,56 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
   exit 5
 }
 
-& claude @ClaudeArgs
+# HIMMEL-5271: twin of bash's isolated, opt-in dontAsk policy. Operator mode wins.
+if ($DontAsk) {
+  foreach ($a in $ClaudeArgs) {
+    if ($a -eq '--') { break }
+    if ($a -eq '--permission-mode' -or $a.StartsWith('--permission-mode=')) { $DontAsk = $false; break }
+  }
+}
+if ($DontAsk) {
+  foreach ($a in $ClaudeArgs) {
+    if ($a -eq '--') { break }
+    if ($a -match '^(--settings|--allowedTools|--allowed-tools|--worktree)(=|$)' -or $a -in @('--dangerously-skip-permissions','--allow-dangerously-skip-permissions','-w')) {
+      [Console]::Error.WriteLine("claude-codex: REFUSED - $a would alter the exact dontAsk policy or its worktree. Use an explicit --permission-mode to opt out.")
+      exit 3
+    }
+  }
+  $PolicyJs = @'
+const fs = require('node:fs');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+try {
+  const git = process.argv[3];
+  const gitRule = git.includes(' ') ? `"${git}"` : git;
+  const root = execFileSync(git, ['rev-parse', '--show-toplevel'], {encoding:'utf8'}).trim();
+  if (fs.realpathSync(root) !== fs.realpathSync(process.cwd())) throw Error('launch from the worktree root');
+  if (/["*?\[\]\r\n]/.test(root)) throw Error('worktree path contains permission-rule metacharacters');
+  const branch = execFileSync(git, ['symbolic-ref', '--short', 'HEAD'], {encoding:'utf8'}).trim();
+  if (!/^(feat|fix|chore|docs|refactor|test|handover|claude)\/[A-Za-z0-9._/-]+$/.test(branch)) throw Error('launch from a feature branch, not main or detached HEAD');
+  const policy = JSON.parse(fs.readFileSync(path.join(root, '.claude/settings.json'), 'utf8'));
+  const seeded = fs.existsSync(process.argv[2]) ? JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) : {};
+  const allow = ['status','diff','log','show','ls-files','rev-parse','merge-base','add','commit'].map(op => `Bash(${gitRule} -C "${root}" ${op}:*)`);
+  allow.push(`Bash(${gitRule} -C "${root}" push origin HEAD:refs/heads/${branch})`);
+  allow.push('Bash(bash scripts/ci/run-shell-tests.sh:*)', 'Bash(bash scripts/test-claude-codex.sh)', 'Bash(bash scripts/quiet-run.sh suite -- bash scripts/test-claude-codex.sh)');
+  for (const op of ['create','view','list','checks','diff','edit','comment']) allow.push(`Bash(gh pr ${op}:*)`);
+  policy.permissions = {...policy.permissions, allow, defaultMode:'dontAsk'};
+  const base = path.join(process.env.XDG_STATE_HOME || path.join(process.argv[4], '.local/state'), 'claude-codex/sessions');
+  fs.mkdirSync(base, {recursive:true, mode:0o700});
+  const dir = fs.mkdtempSync(path.join(base, 'dontask-'));
+  const file = path.join(dir, 'settings.json');
+  fs.writeFileSync(file, JSON.stringify(policy), {mode:0o600});
+  fs.writeFileSync(path.join(dir, 'denied-tools'), (seeded.permissions?.deny || []).join(',') + '\n', {mode:0o600});
+  process.stdout.write(file);
+} catch (e) { console.error('claude-codex: REFUSED - dontAsk policy: ' + e.message); process.exit(3); }
+'@
+  $gitBinary = (Get-Command git -ErrorAction Stop).Source
+  $policy = $PolicyJs | & node - (Join-Path $ConfigDir 'settings.json') $gitBinary $HomeDir
+  if ($LASTEXITCODE -ne 0) { exit 3 }
+  $denied = [System.IO.File]::ReadAllText((Join-Path (Split-Path -Parent $policy) 'denied-tools')).TrimEnd("`n")
+  $launchArgs = @('--setting-sources', '', '--settings', $policy, '--disallowedTools', $denied, '--permission-mode', 'dontAsk') + $ClaudeArgs.ToArray()
+  & claude @launchArgs
+} else {
+  & claude @ClaudeArgs
+}
 exit $LASTEXITCODE

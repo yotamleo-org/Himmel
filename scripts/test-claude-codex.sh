@@ -508,6 +508,114 @@ run_launcher_expect "classifier flag: malformed alias refuses" 2 "invalid classi
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 run_launcher_expect "classifier flag: missing value refuses" 2 "needs a model alias" --classifier-model
 
+# HIMMEL-5271: the opt-in must replace inherited grants, not merely add to them.
+# Removing the mode/policy injection must fail these child-argv assertions.
+setup_dontask() {
+  setup
+  git -C "$WORK" init -q -b feat/canary
+  printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"],"deny":["Bash(operator-own-deny *)"]}}' > "$FAKEHOME/.claude/settings.json"
+  mkdir -p "$WORK/.claude"
+  printf '%s\n' '{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"true"}]}]},"permissions":{"allow":["Bash(node *)","Bash(git *)"],"deny":["Bash(git push --force *)"]}}' > "$WORK/.claude/settings.json"
+  cat > "$BIN/claude" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\0' "$@" > "$HOME/child-args.bin"
+MOCK
+  chmod +x "$BIN/claude"
+}
+assert_dontask() {
+  node - "$FAKEHOME/child-args.bin" "$WORK" "$FAKEHOME" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const [capture, work, home] = process.argv.slice(2);
+const args = fs.readFileSync(capture, 'utf8').split('\0').slice(0, -1);
+assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk', 'opt-in did not select dontAsk');
+assert.ok(!args.includes('--dontask'), 'launcher flag leaked to claude');
+assert.equal(args[args.indexOf('--setting-sources') + 1], '', 'inherited settings remain enabled');
+const policyPath = args[args.indexOf('--settings') + 1];
+assert.ok(policyPath.startsWith(path.join(home, '.local/state/claude-codex/sessions') + '/'), 'policy is not session-owned state');
+const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+const source = JSON.parse(fs.readFileSync(path.join(work, '.claude/settings.json'), 'utf8'));
+assert.deepEqual(policy.hooks, source.hooks, 'project hooks changed');
+assert.deepEqual(policy.permissions.deny, source.permissions.deny, 'project denies changed');
+const allow = policy.permissions.allow;
+assert.ok(allow.length > 0);
+assert.ok(!allow.some(r => /^Bash\((node|python3?|bash|git|gh) \*\)$/.test(r)), 'blanket grant survived');
+assert.ok(allow.includes(`Bash(/usr/bin/git -C "${work}" status:*)`));
+assert.ok(allow.includes('Bash(bash scripts/ci/run-shell-tests.sh:*)'));
+assert.ok(allow.includes('Bash(gh pr view:*)'));
+assert.ok(!allow.some(r => /git .*push.*\*/.test(r)), 'push has an unrestricted argument tail');
+assert.ok(!allow.some(r => /gh pr merge/.test(r)), 'merge is auto-approved');
+const denied = args[args.indexOf('--disallowedTools') + 1].split(',');
+assert.ok(denied.includes('Bash(operator-own-deny *)'), 'operator deny was lost');
+assert.ok(denied.includes('Bash(git push --force *)'), 'seeded destructive deny was lost');
+assert.ok(args.includes('canary prompt'), 'prompt was swallowed');
+NODE
+}
+setup_dontask
+run_launcher "dontAsk flag supplies isolated exact policy" --dontask -p 'canary prompt'
+assert_dontask
+setup_dontask
+CLAUDEX_DONTASK=1 run_launcher "dontAsk env supplies isolated exact policy" -p 'canary prompt'
+assert_dontask
+setup_dontask
+run_launcher "default launcher leaves argv unchanged" -p 'canary prompt'
+node - "$FAKEHOME/child-args.bin" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+assert.deepEqual(fs.readFileSync(process.argv[2], 'utf8').split('\0').slice(0, -1), ['-p', 'canary prompt']);
+NODE
+for mode_arg in '--permission-mode' '--permission-mode=manual'; do
+  setup_dontask
+  if [ "$mode_arg" = '--permission-mode' ]; then
+    run_launcher "explicit mode wins over dontAsk" --dontask --permission-mode manual -p 'canary prompt'
+  else
+    CLAUDEX_DONTASK=1 run_launcher "explicit equals mode wins over dontAsk env" "$mode_arg" -p 'canary prompt'
+  fi
+  node - "$FAKEHOME/child-args.bin" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const args = fs.readFileSync(process.argv[2], 'utf8').split('\0').slice(0, -1);
+assert.ok(!args.includes('--dontask'), 'launcher flag leaked');
+assert.ok(!args.includes('dontAsk'), 'operator mode was overridden');
+assert.ok(!args.includes('--setting-sources'), 'operator mode inherited opt-in policy');
+assert.ok(args.includes('manual') || args.includes('--permission-mode=manual'));
+NODE
+done
+
+for injection in '--settings={}' '--allowedTools=Bash' '--allowed-tools=Bash' '--dangerously-skip-permissions' '--worktree=elsewhere'; do
+  setup_dontask
+  run_launcher_expect "dontAsk refuses policy/worktree injection: $injection" 3 'exact dontAsk policy' --dontask "$injection"
+  [ ! -e "$FAKEHOME/child-args.bin" ] || { echo 'FAIL: injection launched the child'; FAILS=$((FAILS + 1)); }
+done
+setup_dontask
+git -C "$WORK" symbolic-ref HEAD refs/heads/main
+run_launcher_expect "dontAsk refuses main" 3 'feature branch' --dontask
+setup_dontask
+rm "$WORK/.claude/settings.json"
+run_launcher_expect "dontAsk refuses a missing project policy" 3 'dontAsk policy' --dontask
+
+# Execute the .ps1 policy builder even when pwsh is unavailable. This covers the
+# security predicate, not PowerShell argument parsing or Windows dispatch.
+setup_dontask
+node - "$HERE/claude-codex.ps1" "$WORK" "$FAKEHOME" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {spawnSync} = require('node:child_process');
+const [twin, work, home] = process.argv.slice(2);
+const js = fs.readFileSync(twin, 'utf8').match(/\$PolicyJs = @'\n([\s\S]*?)\n'@/)[1];
+const seeded = path.join(home, '.claude/settings.json');
+const child = spawnSync(process.execPath, ['-', seeded, '/usr/bin/git', home], {input:js, cwd:work, env:{...process.env, HOME:home}, encoding:'utf8'});
+assert.equal(child.status, 0, child.stderr);
+const policy = JSON.parse(fs.readFileSync(child.stdout, 'utf8'));
+const source = JSON.parse(fs.readFileSync(path.join(work, '.claude/settings.json'), 'utf8'));
+assert.deepEqual(policy.hooks, source.hooks);
+assert.deepEqual(policy.permissions.deny, source.permissions.deny);
+assert.ok(!policy.permissions.allow.includes('Bash(node *)'));
+assert.ok(policy.permissions.allow.includes(`Bash(/usr/bin/git -C "${work}" status:*)`));
+NODE
+
 if [ "$FAILS" -ne 0 ]; then
   echo "$FAILS test(s) failed"
   exit 1
