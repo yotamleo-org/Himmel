@@ -91,10 +91,12 @@ case "$verb" in
     up)
         lock_take
         [ "$(vm_state)" = "running" ] || "$VBOX" startvm "$VM" --type headless >/dev/null || die "startvm failed" 3
-        n=$(iters "$BOOT_WAIT"); i=0
-        while [ "$i" -lt "$n" ]; do
+        # wall-clock deadline: each probe can itself block up to its 15s timeout
+        end=$((SECONDS + BOOT_WAIT))
+        while :; do
             guest run --exe "$CMD_EXE" --timeout 15000 --wait-stdout -- cmd.exe /c ver >/dev/null 2>&1 && { echo "win-vm: guest up"; exit 0; }
-            sleep "$POLL"; i=$((i + 1))
+            [ "$SECONDS" -lt "$end" ] || break
+            sleep "$POLL"
         done
         die "guest did not answer within ${BOOT_WAIT}s" 3 ;;
     down)
@@ -126,8 +128,8 @@ case "$verb" in
         exe="$CMD_EXE"; timeout_ms=600000; custom=0
         while [ $# -gt 0 ]; do
             case "$1" in
-                --exe) exe="$2"; custom=1; shift 2 ;;
-                --timeout-ms) timeout_ms="$2"; shift 2 ;;
+                --exe) [ $# -ge 2 ] || die "run: --exe needs a path" 2; exe="$2"; custom=1; shift 2 ;;
+                --timeout-ms) [ $# -ge 2 ] || die "run: --timeout-ms needs a value" 2; timeout_ms="$2"; shift 2 ;;
                 --) shift; break ;;
                 *) die "usage: run [--exe PATH] [--timeout-ms N] -- ARGS..." 2 ;;
             esac

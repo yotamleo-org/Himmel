@@ -114,6 +114,9 @@ if [ "$rc" -ne 0 ] && [ "$rc" -ne 127 ] && ! grep -q 'snapshot win11 restore' "$
 reset
 tool frobnicate >/dev/null 2>&1; rc=$?
 if [ "$rc" -eq 2 ]; then pass "T9 unknown verb exits 2"; else fail_case "T9 rc=$rc"; fi
+reset
+tool run --exe >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 2 ]; then pass "T9b run --exe without an operand exits 2"; else fail_case "T9b rc=$rc"; fi
 
 # T10: the smoke cell restores, ships a bundle + the guest script, runs it under
 # PowerShell 5.1 with the tag, maps a guest failure (33) to 1, and always cleans up.
@@ -148,6 +151,9 @@ else
     reset
     FAKE_DOWN_RC=1 WIN_VM_BIN="$BIN/fake-win-vm.sh" HIMMEL_VM_LOCK_DIR="$WORK/locks" bash "$REPO_ROOT/scripts/vm/win-smoke-cell.sh" "$tag" >/dev/null 2>&1; rc=$?
     if [ "$rc" -eq 3 ]; then pass "T10c a failed shutdown turns a PASS into exit 3"; else fail_case "T10c rc=$rc"; fi
+    reset
+    FAKE_GUEST_RC=7 WIN_VM_BIN="$BIN/fake-win-vm.sh" HIMMEL_VM_LOCK_DIR="$WORK/locks" bash "$REPO_ROOT/scripts/vm/win-smoke-cell.sh" "$tag" >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 3 ]; then pass "T10d an infrastructure rc from the guest run exits 3"; else fail_case "T10d rc=$rc"; fi
 fi
 
 echo "---"

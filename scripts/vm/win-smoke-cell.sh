@@ -34,6 +34,7 @@ fi
 git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "no such tag: $TAG" 3
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/win-smoke-cell.XXXXXX") || exit 3
+trap 'rm -rf "$WORK"' EXIT   # replaced by cleanup() once the lock is held
 BUNDLE="$WORK/himmel-$TAG.bundle"
 git -C "$REPO_ROOT" bundle create "$BUNDLE" "$TAG" >/dev/null 2>&1 || die "git bundle create failed for $TAG" 3
 git -C "$REPO_ROOT" bundle verify "$BUNDLE" >/dev/null 2>&1 || die "git bundle verify failed" 3
@@ -75,4 +76,4 @@ bash "$WINVM" run --exe "$PS51" --timeout-ms 1500000 -- \
     -Bundle "$inbox\\$(basename "$BUNDLE")" -Tag "$TAG"
 rc=$?
 # VBoxManage maps a non-zero guest exit code to 33; the VERDICT line is the verdict.
-case "$rc" in 0) exit 0 ;; 1|33) exit 1 ;; *) echo "win-smoke-cell: guest run rc=$rc" >&2; exit 1 ;; esac
+case "$rc" in 0) exit 0 ;; 1|33) exit 1 ;; *) echo "win-smoke-cell: guest run rc=$rc" >&2; exit 3 ;; esac
