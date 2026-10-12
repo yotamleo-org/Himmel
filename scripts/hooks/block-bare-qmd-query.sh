@@ -172,7 +172,8 @@ qmd_words() {
             continue
         fi
         if [ "$top" = D ]; then
-            [ "$c" = '"' ] || emp=0
+            # a closing quote and a `\<newline>` continuation add no bytes
+            if [ "$c" != '"' ] && { [ "$c" != '\' ] || [ "$c2" != $'\n' ]; }; then emp=0; fi
             case "$c" in
                 '"')
                     ctx=${ctx%?}; ws=0; i=$((i + 1))

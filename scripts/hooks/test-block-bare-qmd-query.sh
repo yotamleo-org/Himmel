@@ -855,6 +855,8 @@ allow "qmd '' search x"
 allow 'qmd "" "" vsearch x'
 allow "qmd \$'' query x"
 allow 'qmd "" query'
+allow "qmd \"\\
+\" query x"
 allow "qmd \$'\\0' query x"
 allow "qmd \$'\\0abc' query x"
 deny "qmd \$'\\0'query x"
