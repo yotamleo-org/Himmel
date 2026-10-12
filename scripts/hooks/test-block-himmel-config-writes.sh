@@ -201,6 +201,48 @@ bash_case "a command naming neither -> allow" allow "git status"
 bash_case "config.json outside ~/.himmel -> allow" allow "cat $T/other/config.json"
 run "non-matcher tool (Read) -> allow" allow "$(jq -nc --arg p "$CFG" '{tool_name:"Read",tool_input:{file_path:$p}}')"
 
+echo "== apply_patch cost bound (HIMMEL-5351) =="
+# Codex's behaviour on a PreToolUse hook timeout is undocumented, so a padded
+# patch must be denied by an explicit cap and a patch at the cap must finish
+# well inside the shared 60 s budget (the old per-header readlink forks cost
+# ~5 ms each, ~5.4 s at 1000 headers on the dev box).
+big_patch() { # big_patch <headers> [<extra header line>]
+    local n="$1" i=0
+    printf '*** Begin Patch\n'
+    while [ "$i" -lt "$n" ]; do
+        printf '*** Update File: src/dir/file%s.txt\n@@\n-a\n+b\n' "$i"
+        i=$((i + 1))
+    done
+    [ -n "${2:-}" ] && printf '%s\n' "$2"
+    printf '*** End Patch\n'
+}
+now_ms() { local t; t=$(date +%s%N 2>/dev/null); case "$t" in *N|"") echo $(( $(date +%s) * 1000 )) ;; *) echo $((t / 1000000)) ;; esac; }
+bigjson() { jq -nc --rawfile c "$1" --arg cwd "$T/cwd" '{tool_name:"apply_patch",cwd:$cwd,tool_input:{command:$c}}'; }
+big_case() { # big_case <label> <block|allow> <patch-file> [<max ms>]
+    local label="$1" expect="$2" f="$3" max="${4:-}" s e got
+    bigjson "$f" > "$T/big.json"
+    s=$(now_ms)
+    bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    e=$(now_ms)
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" != "$expect" ]; then bad "$label - expected $expect got $got"; return; fi
+    if [ -n "$max" ] && [ $((e - s)) -gt "$max" ]; then bad "$label - took $((e - s)) ms, bound $max ms"; return; fi
+    ok "$label ($((e - s)) ms)"
+}
+mkdir -p "$T/cwd"
+big_patch 1000 > "$T/p1000.txt"
+big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" 3000
+big_patch 1001 > "$T/p1001.txt"
+big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
+big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
+big_case "config header after 999 benign ones -> block" block "$T/pcfg.txt"
+mkdir -p "$T/cwd/linkdir"
+ln -s "$HOME/.himmel" "$T/cwd/alias"
+big_patch 998 "*** Update File: alias/config.json" > "$T/palias.txt"
+big_case "symlinked-dir alias header after 998 benign ones -> block" block "$T/palias.txt"
+{ printf '*** Begin Patch\n*** Add File: big.txt\n'; head -c 600000 /dev/zero | tr '\0' 'x' | sed 's/^/+/'; printf '\n*** End Patch\n'; } > "$T/pbytes.txt"
+big_case "over-size patch body (no config named) -> block" block "$T/pbytes.txt"
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"
