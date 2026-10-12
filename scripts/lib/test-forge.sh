@@ -349,6 +349,15 @@ assert_eq "bitbucket create posts no trigger" "3" "$(trig_count)"
 assert_eq "pr_create stdout is still just the URL" "https://github.com/acme/widget/pull/42" \
     "$(FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 TRIG_HEAD=sha-fff forge_pr_create T B main feat/x 2>/dev/null)"
 
+# ── HIMMEL-4762: the local-git kind ──────────────────────────────────────────
+echo "TEST: FORGE=local-git derives the change id from the branch"
+LG_REPO="$TMP_ROOT/lg-repo"
+git init -q -b main "$LG_REPO"
+git -C "$LG_REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$LG_REPO" checkout -q -b feat/x
+assert_eq "local-git change id for feat/x" "br-feat-x" \
+    "$(cd "$LG_REPO" && FORGE=local-git forge_change_id feat/x 2>&1)"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

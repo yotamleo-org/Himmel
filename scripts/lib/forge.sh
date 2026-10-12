@@ -18,6 +18,18 @@
 # Backend command overrides (test seams, exact parallel to each other):
 #   GH_CMD          Default `gh`.
 #   BITBUCKET_CMD   Default `node <primary-checkout>/scripts/bitbucket/dist/index.js`.
+#
+# HIMMEL-4762 (HIMMEL-4748 WP4): two more kinds, local-git and none. The
+# detection precedence above now lives in scripts/lib/project-mode.sh
+# (project_mode_forge, which also reads git config himmel.forge). forge_detect
+# keeps its exits for github/bitbucket callers: 2 = invalid, 3 = the origin
+# names neither forge and nothing chose local-git or none explicitly. Only an
+# explicit FORGE / himmel.forge reaches the local-git or none backend, so no
+# existing caller is routed off gh/bitbucket by detection alone.
+#
+# Adapter ledger (a test aid, spec section 6.3): with HIMMEL_ADAPTER_LEDGER
+# set, every public verb appends one JSONL line {ts, tracker, forge, op, id,
+# rc, ms} to that file. Unset, nothing is written.
 
 # Resolve dir of this file so we can source the backends regardless of cwd.
 _FORGE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +40,18 @@ _FORGE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/forge-bitbucket.sh
 # shellcheck disable=SC1091
 . "$_FORGE_LIB_DIR/forge-bitbucket.sh"
+# shellcheck source=scripts/lib/project-mode.sh
+# shellcheck disable=SC1091
+. "$_FORGE_LIB_DIR/project-mode.sh"
+# The local-git and none backends are optional files: an adopter install that
+# ships only the github/bitbucket backends keeps working, and a verb on a
+# missing backend refuses with rc 4 (see _forge_route).
+# shellcheck source=scripts/lib/forge-localgit.sh
+# shellcheck disable=SC1091
+[ -f "$_FORGE_LIB_DIR/forge-localgit.sh" ] && . "$_FORGE_LIB_DIR/forge-localgit.sh"
+# shellcheck source=scripts/lib/forge-none.sh
+# shellcheck disable=SC1091
+[ -f "$_FORGE_LIB_DIR/forge-none.sh" ] && . "$_FORGE_LIB_DIR/forge-none.sh"
 
 # _forge_origin_host <url> — echo the lowercased HOST of a git remote URL:
 #   scheme://[userinfo@]host[:port]/path   (https, http, ssh, git, file, …)
@@ -61,51 +85,100 @@ _forge_origin_host() {
 }
 
 forge_detect() {
-    if [ -n "${FORGE:-}" ]; then
-        case "$FORGE" in
-            github|bitbucket) printf '%s\n' "$FORGE"; return 0 ;;
-            *)
-                echo "forge_detect: invalid FORGE='$FORGE' (expected github|bitbucket)" >&2
-                return 2
-                ;;
-        esac
+    local f explicit="" origin
+    if [ -n "${FORGE:-}" ] || [ -n "$(git config --get himmel.forge 2>/dev/null)" ]; then
+        explicit=1
     fi
-
-    local origin
+    # project_mode_forge prints its own one-line reason on an invalid or
+    # contradictory setting (I8: local-git on a github/bitbucket origin).
+    f=$(project_mode_forge --quiet) || return 2
+    case "$f" in
+        github|bitbucket) printf '%s\n' "$f"; return 0 ;;
+    esac
+    if [ -n "$explicit" ]; then
+        printf '%s\n' "$f"
+        return 0
+    fi
+    # Detection alone said local-git or none: today's exit 3, so a github or
+    # bitbucket caller fails loud instead of being routed to a local backend.
     origin=$(git remote get-url origin 2>/dev/null) || origin=""
     if [ -z "$origin" ]; then
-        echo "forge_detect: cannot determine forge — set FORGE=github|bitbucket or add a github.com/bitbucket.org origin" >&2
-        return 3
+        echo "forge_detect: cannot determine forge — set FORGE=github|bitbucket|local-git|none or add a github.com/bitbucket.org origin" >&2
+    else
+        echo "forge_detect: origin ($origin) is neither github.com nor bitbucket.org — set FORGE=github|bitbucket|local-git|none" >&2
     fi
+    return 3
+}
 
-    # HIMMEL-3325: decide on the HOST, never a substring of the URL — a path
-    # segment (github.com/bitbucket.org/x) or a longer hostname (notbitbucket.org)
-    # must not win. The host is the domain itself or a subdomain of it (git's SSH
-    # over 443 is ssh.github.com). Case-insensitive.
-    # scripts/himmelctl/lib/status-report.js targetUsesBitbucket applies the same
-    # rule; scripts/lib/fixtures/forge-origins.tsv holds the shared answers.
-    local host
-    host=$(_forge_origin_host "$origin")
-    case "$host" in
-        github.com|*.github.com)       printf 'github\n';    return 0 ;;
-        bitbucket.org|*.bitbucket.org) printf 'bitbucket\n'; return 0 ;;
-        *)
-            echo "forge_detect: origin ($origin) is neither github.com nor bitbucket.org — set FORGE=github|bitbucket" >&2
-            return 3
-            ;;
-    esac
+# _forge_json_str <s> — <s> as a JSON string literal: backslash and quote
+# escaped, control characters dropped.
+_forge_json_str() {
+    local s
+    s=$(printf '%s' "$1" | tr -d '\000-\037')
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    printf '"%s"' "$s"
+}
+
+# _forge_ms — milliseconds since the epoch (EPOCHREALTIME on bash 5, else
+# whole seconds; the ledger is a test aid, not a profiler).
+_forge_ms() {
+    local t="${EPOCHREALTIME:-}" frac
+    if [ -n "$t" ]; then
+        t=${t/,/.}
+        frac="${t#*.}000"
+        printf '%s%s\n' "${t%.*}" "${frac:0:3}"
+    else
+        printf '%s000\n' "$(date +%s)"
+    fi
+}
+
+# _forge_ledger <op> <forge> <id> <rc> <ms> — append one adapter-ledger line
+# when HIMMEL_ADAPTER_LEDGER is set. Best-effort: never changes the verb's rc.
+_forge_ledger() {
+    [ -n "${HIMMEL_ADAPTER_LEDGER:-}" ] || return 0
+    local tracker
+    tracker=$(project_mode_tracker 2>/dev/null) || tracker=""
+    printf '{"ts":%s,"tracker":%s,"forge":%s,"op":%s,"id":%s,"rc":%s,"ms":%s}\n' \
+        "$(_forge_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" "$(_forge_json_str "$tracker")" \
+        "$(_forge_json_str "$2")" "$(_forge_json_str "$1")" "$(_forge_json_str "$3")" "$4" "$5" \
+        >> "$HIMMEL_ADAPTER_LEDGER" 2>/dev/null || true
 }
 
 # _forge_dispatch <verb> <args...> — call gh_<verb> or bb_<verb> for the
 # detected forge. Internal; the public verbs below wrap it.
 _forge_dispatch() {
     local verb="$1"; shift
-    local f
+    if [ -n "${HIMMEL_ADAPTER_LEDGER:-}" ]; then
+        local t0 rc=0 f=""
+        t0=$(_forge_ms)
+        _forge_route "$verb" "$@" || rc=$?
+        f=$(forge_detect 2>/dev/null) || f=""
+        _forge_ledger "${verb#forge_}" "$f" "${1:-}" "$rc" "$(( $(_forge_ms) - t0 ))"
+        return "$rc"
+    fi
+    _forge_route "$verb" "$@"
+}
+
+# _forge_route <verb> <args...> — the dispatch itself. A verb a backend does
+# not carry refuses with rc 4, the "unsupported here" exit
+# every backend uses, rather than dying at rc 127.
+_forge_route() {
+    local verb="$1"; shift
+    local f fn=""
     f=$(forge_detect) || return $?
     case "$f" in
-        github)    "gh_${verb}" "$@" ;;
-        bitbucket) "bb_${verb}" "$@" ;;
+        github)    fn="gh_${verb}" ;;
+        bitbucket) fn="bb_${verb}" ;;
+        local-git) fn="lg_${verb}" ;;
+        none)      fn="none_${verb}" ;;
     esac
+    if declare -F "$fn" >/dev/null; then
+        "$fn" "$@"
+    else
+        echo "forge($f): ${verb#forge_} is not supported on a $f repo" >&2
+        return 4
+    fi
 }
 
 # ── public verbs ─────────────────────────────────────────────────────────────
@@ -126,3 +199,20 @@ forge_pr_has_merged()  { _forge_dispatch forge_pr_has_merged "$@"; }
 # Echoes the issue URL on success. The bitbucket backend returns rc 3 when the
 # issue tracker is disabled (spec §5.2) so the caller can degrade gracefully.
 forge_issue_create()   { _forge_dispatch forge_issue_create "$@"; }
+
+# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# forge_change_id <branch>: github/bitbucket the open PR number for the branch;
+#   local-git br-<branch, / to -, lowercased>, rc 2 when another branch's change
+#   record already holds that id; none rc 4.
+forge_change_id()      { _forge_dispatch forge_change_id "$@"; }
+# forge_change_view <id>: one JSON object {id, head, base, title, state, merged}.
+forge_change_view()    { _forge_dispatch forge_change_view "$@"; }
+# forge_change_open <branch> <title-file> <body-file>: local-git writes the
+#   change record and prints the change id; github/bitbucket open through
+#   forge_pr_create and refuse here with rc 4.
+forge_change_open()    { _forge_dispatch forge_change_open "$@"; }
+# forge_checks <ref> [gh pr checks args...]: one "<bucket>\t<name>" row per
+#   check (github); bitbucket, local-git and none rc 4 (local checks are WP5a).
+forge_checks()         { _forge_dispatch forge_checks "$@"; }
+# forge_repo_id: github/bitbucket owner/repo; local-git local:<abs git-common-dir>.
+forge_repo_id()        { _forge_dispatch forge_repo_id "$@"; }

@@ -66,10 +66,23 @@ go_gate() {
 _go_gate_verify() {
     local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4"
     local go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$head_sha"
-    local body="" want="" got="" trust=""
+    local body="" want="" got="" trust="" what="PR #$1"
+    # HIMMEL-4762: the first arg is a change id, ^([0-9]+|br-[a-z0-9._-]+)$ — a
+    # PR number, or a local-git change (br-<branch>, forge_change_id). Anything
+    # else (a path, a glob, an empty id) is refused before the GO file is read.
+    case "$pr_num" in
+        br-?*)
+            what="change $pr_num"
+            case "${pr_num#br-}" in *[!a-z0-9._-]*) pr_num="" ;; esac ;;
+        ''|*[!0-9]*) pr_num="" ;;
+    esac
+    if [ -z "$pr_num" ]; then
+        printf 'change id '"'"'%s'"'"' is neither a PR number nor a br-<branch> id (^([0-9]+|br-[a-z0-9._-]+)$) — refusing; no GO can be matched to it.\n' "$1"
+        return 2
+    fi
     if [ -n "$go_root" ]; then body=$(cat "$go_file" 2>/dev/null) || body=""; fi
     if [ -z "$go_root" ] || ! grep -qxF "head=$head_sha" <<< "$body"; then
-        printf 'PR #%s at %s has no console GO (%s) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it.\n' "$pr_num" "$head_sha" "$go_file"
+        printf '%s at %s has no console GO (%s) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it.\n' "$what" "$head_sha" "$go_file"
         return 2
     fi
     # HIMMEL-3895: a trust-reviewed GO signs its reviewer id too (go_mac's 4th
@@ -77,12 +90,12 @@ _go_gate_verify() {
     # ordinary GO, or edited in a trust GO, verifies as neither.
     trust=$(printf '%s\n' "$body" | sed -n 's/^trust-reviewed=//p' | head -n 1)
     if ! want=$(go_mac "$pr_num" "$head_sha" "$nwo" "$trust"); then
-        printf 'PR #%s at %s: cannot verify the console GO (%s) — no readable GO key at %s, or openssl is missing; send BLOCKED to your console (the console re-runs go.sh, which mints the key).\n' "$pr_num" "$head_sha" "$go_file" "$(go_key_file)"
+        printf '%s at %s: cannot verify the console GO (%s) — no readable GO key at %s, or openssl is missing; send BLOCKED to your console (the console re-runs go.sh, which mints the key).\n' "$what" "$head_sha" "$go_file" "$(go_key_file)"
         return 2
     fi
     got=$(printf '%s\n' "$body" | sed -n 's/^mac=//p' | head -n 1)
     if [ -z "$got" ] || [ "$got" != "$want" ]; then
-        printf 'PR #%s at %s: the GO file (%s) has no/invalid mac — not written by the console'"'"'s go.sh (or written before HIMMEL-3543); send BLOCKED to your console: the console re-runs go.sh %s %s.\n' "$pr_num" "$head_sha" "$go_file" "$pr_num" "$head_sha"
+        printf '%s at %s: the GO file (%s) has no/invalid mac — not written by the console'"'"'s go.sh (or written before HIMMEL-3543); send BLOCKED to your console: the console re-runs go.sh %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
         return 2
     fi
     printf '%s\n' "$trust"
@@ -102,15 +115,16 @@ go_trust_id_ok() {
 # reason on stdout. A merge touching a trust path (scripts/ci/ci-trust-paths.txt)
 # needs this, for a console leg and the operator path alike.
 go_trust_gate() {
-    local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4" reason="" trust=""
+    local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4" reason="" trust="" what="PR #$1"
     local go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$head_sha"
+    case "$pr_num" in br-*) what="change $pr_num" ;; esac
     if ! trust=$(_go_gate_verify "$pr_num" "$head_sha" "$go_root" "$nwo"); then
         reason=$trust
-        printf '%s\n' "${reason:-PR #$pr_num at $head_sha: no valid console GO ($go_file)}"
+        printf '%s\n' "${reason:-$what at $head_sha: no valid console GO ($go_file)}"
         return 2
     fi
     if ! go_trust_id_ok "$trust"; then
-        printf 'PR #%s at %s touches a CI trust path, and its GO (%s) is not trust-reviewed — an independent judge must review the trust-path change; send READY to your console, which grants it with go.sh --trust-reviewed <reviewer-id> %s %s.\n' "$pr_num" "$head_sha" "$go_file" "$pr_num" "$head_sha"
+        printf '%s at %s touches a CI trust path, and its GO (%s) is not trust-reviewed — an independent judge must review the trust-path change; send READY to your console, which grants it with go.sh --trust-reviewed <reviewer-id> %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
         return 2
     fi
     printf '%s\n' "$trust"
@@ -303,6 +317,15 @@ go_trust_verdict() {
 #     equal to <head-sha>.
 #   - On a match, <anchor> must contain origin's HEAD: a stale anchor runs a
 #     stale gate.
+#   - HIMMEL-4762, local-git: when <pr-num> is a br-<branch> change id, <nwo> is
+#     the repo id local:<git-common-dir> (forge_repo_id) and no API is asked. The
+#     list is `git show <default-branch>:scripts/ci/ci-trust-paths.txt` and the
+#     files are `git diff --no-renames --name-only <default-branch>...<head-sha>`
+#     (a rename lists both names), both read from that repo's refs. A missing
+#     list is `not-adopted` only in a repo other than the anchor's own; in the
+#     anchor's repo it refuses. On a match the anchor must contain the default
+#     branch's tip (its own repo) or origin's HEAD (another repo). The github
+#     body below is untouched.
 # rc 0 prints one line: `none`, `not-adopted`, or `hit <first matching path>`.
 # rc 2 prints `<phase> <reason>` (phase: tmp, list, files or anchor) — refused.
 # gh is ${GH:-gh}. The body is a subshell, so its temp-file trap, its helper
@@ -335,6 +358,55 @@ trust_path_check() (
     }
     tmp=$(mktemp "${TMPDIR:-/tmp}/mog-trust.XXXXXX") || refuse tmp "cannot create a temp file"
     trap 'rm -f "$tmp"' EXIT
+    case "$tp_pr" in
+        br-*)
+            unset GIT_CEILING_DIRECTORIES
+            case "$tp_nwo" in
+                local:/*) lg_dir=$(cd "${tp_nwo#local:}" 2>/dev/null && pwd -P) || lg_dir="" ;;
+                *) lg_dir="" ;;
+            esac
+            [ -n "$lg_dir" ] || refuse list "change $tp_pr needs the repo id local:<git-common-dir>, got '$tp_nwo'"
+            lg_git() { git --git-dir="$lg_dir" "$@"; }
+            lg_anchor=$(git -C "$anchor" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || lg_anchor=""
+            [ -n "$lg_anchor" ] && lg_anchor=$(cd "$lg_anchor" 2>/dev/null && pwd -P) || lg_anchor=""
+            lg_base=$(lg_git rev-parse --verify --quiet "refs/heads/$tp_branch^{commit}" 2>/dev/null) \
+                || refuse list "cannot read branch $tp_branch in $lg_dir"
+            if ! lg_git cat-file -e "$lg_base:scripts/ci/ci-trust-paths.txt" 2>/dev/null; then
+                # Only a repo positively other than the anchor's is "not adopted";
+                # an unresolvable anchor is not proof, so it refuses (fail closed).
+                if [ -n "$lg_anchor" ] && [ "$lg_anchor" != "$lg_dir" ]; then
+                    printf 'not-adopted\n'
+                    exit 0
+                fi
+                refuse list "scripts/ci/ci-trust-paths.txt is missing on $tp_branch in $lg_dir, the anchor's own repo"
+            fi
+            raw=$(lg_git show "$lg_base:scripts/ci/ci-trust-paths.txt" 2>/dev/null) \
+                || refuse list "cannot read scripts/ci/ci-trust-paths.txt from $tp_branch in $lg_dir"
+            printf '%s\n' "$raw" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+                | grep -Ev '^(#|$)' > "$tmp"
+            [ -s "$tmp" ] || refuse list "scripts/ci/ci-trust-paths.txt on $tp_branch has no patterns"
+            grep -E -f "$tmp" </dev/null >/dev/null 2>&1
+            [ "$?" -eq 2 ] && refuse list "scripts/ci/ci-trust-paths.txt on $tp_branch has an invalid pattern"
+            [ "$(lg_git rev-parse --verify --quiet "$tp_sha^{commit}" 2>/dev/null)" = "$tp_sha" ] \
+                || refuse files "change $tp_pr's head $tp_sha is not a commit in $lg_dir"
+            files=$(lg_git diff --no-renames --name-only "$lg_base...$tp_sha" 2>/dev/null) \
+                || refuse files "cannot list change $tp_pr's changed files"
+            hit=$(printf '%s\n' "$files" | grep -v '^$' | grep -E -f "$tmp" | head -n 1)
+            if [ -z "$hit" ]; then
+                printf 'none\n'
+                exit 0
+            fi
+            if [ "$lg_anchor" = "$lg_dir" ]; then
+                tip=$lg_base
+            else
+                tip=$(GIT_TERMINAL_PROMPT=0 git -C "$anchor" ls-remote origin HEAD 2>/dev/null | awk 'NR==1{print $1}')
+            fi
+            if [ -z "$tip" ] || ! git -C "$anchor" merge-base --is-ancestor "$tip" HEAD 2>/dev/null; then
+                refuse anchor "change $tp_pr touches trust path $hit and the anchor $anchor is behind $tp_branch (or origin is unreadable) — update the primary checkout, then re-run"
+            fi
+            printf 'hit %s\n' "$hit"
+            exit 0 ;;
+    esac
     rc=0
     raw=$("$gh_bin" api "repos/$tp_nwo/contents/scripts/ci/ci-trust-paths.txt?ref=$tp_branch" \
         -H 'Accept: application/vnd.github.raw' 2>&1) || rc=$?
@@ -421,6 +493,18 @@ go_key_file() {
 go_mac() {
     local nwo="$3"
     [ -n "$nwo" ] || return 1
+    # HIMMEL-4762: a local-git change id (br-<branch>) signs under its own domain
+    # tags, so no br-* GO verifies as a numeric PR's, nor the reverse; <nwo> is
+    # then the repo id forge_repo_id prints (local:<git-common-dir>).
+    case "$1" in
+        br-*)
+            if [ -n "${4:-}" ]; then
+                go_msg_mac himmel-go-br-trust-v1 "$nwo|$1|$2|$4"
+            else
+                go_msg_mac himmel-go-br-v1 "$nwo|$1|$2"
+            fi
+            return ;;
+    esac
     if [ -n "${4:-}" ]; then
         go_msg_mac himmel-go-trust-v1 "$nwo|$1|$2|$4"
     else
@@ -598,4 +682,37 @@ go_resolve_root() {
         return
     fi
     handover_root
+}
+
+# --- HIMMEL-4762: the READY / MERGED line grammar, one owner -----------------
+# parse_ready_line <line> — the one parser of a leg's READY and MERGED lines;
+# fleet.mjs's parseReadyLine mirrors it, and scripts/lib/fixtures/ready-lines.tsv
+# pins the two to the same answers. Accepted, with an optional `- ` bullet and
+# `HH:MM ` stamp in front:
+#     READY  #?<change-id> <sha 7-40 hex> ...
+#     MERGED #?<change-id> ...
+# <change-id> is a PR number of 2+ digits or br-[a-z0-9._-]+. In READY the id
+# ends at a blank and the sha at a character outside [A-Za-z0-9_-] (or the
+# line's end); in MERGED the id may be followed by full stops, then such a
+# character. Trailing dots are dropped from the id (`MERGED br-feat-x.` is
+# br-feat-x): a git branch never ends in a dot, and regex engines split a run
+# of dots between the id and what follows differently. Every other part of a
+# match is unique, so the shell and node answers agree.
+# rc 0 prints `<READY|MERGED><TAB><id without #><TAB><sha, empty for MERGED>`;
+# rc 1 (nothing printed) when the line is neither. Pure, bash 3.2-safe.
+parse_ready_line() {
+    local line="${1%$'\r'}" pre id end kind="" cid="" sha=""
+    pre='^(- )?([0-9]{1,2}:[0-9]{2}[[:blank:]]+)?'
+    id='#?([0-9]{2,}|br-[a-z0-9._-]+)'
+    end='([^A-Za-z0-9_-]|$)'
+    if [[ $line =~ ${pre}READY[[:blank:]]+${id}[[:blank:]]+([0-9a-f]{7,40})${end} ]]; then
+        kind=READY; cid=${BASH_REMATCH[3]}; sha=${BASH_REMATCH[4]}
+    elif [[ $line =~ ${pre}MERGED[[:blank:]]+${id}\.*([^A-Za-z0-9._-]|$) ]]; then
+        kind=MERGED; cid=${BASH_REMATCH[3]}
+    else
+        return 1
+    fi
+    while [ "${cid%.}" != "$cid" ]; do cid=${cid%.}; done
+    [ "$cid" != br- ] || return 1
+    printf '%s\t%s\t%s\n' "$kind" "$cid" "$sha"
 }

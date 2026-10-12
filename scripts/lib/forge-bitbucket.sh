@@ -160,3 +160,33 @@ bb_forge_issue_create() {
     fi
     return 1
 }
+
+# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# Thin wrappers: on Bitbucket a change id is the PR id.
+
+# echo the open PR id for BRANCH, or "" if none (= bb_forge_pr_find_open).
+bb_forge_change_id() {
+    bb_forge_pr_find_open "$@"
+}
+
+# echo one compact JSON object {id, head, base, title, state, merged} for PR ID,
+# projected from `pr get` (the CLI's PrIngestInfo: id, title, state,
+# source_branch, destination_branch, ...). That shape carries no head commit,
+# so head is "". Capture-then-parse, as above.
+bb_forge_change_view() {
+    local out
+    out=$(_bb pr get "$1") || return 1
+    printf '%s' "$out" |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j={};try{j=JSON.parse(s||"null")||{}}catch{};const st=String(j.state??"");process.stdout.write(JSON.stringify({id:String(j.id??""),head:"",base:String(j.destination_branch??""),title:String(j.title??""),state:st,merged:st==="MERGED"})+"\n")})'
+}
+
+# echo workspace/repo — the repo's id on this forge (= bb_forge_repo_nwo).
+bb_forge_repo_id() {
+    bb_forge_repo_nwo
+}
+
+# himmel reads no Bitbucket pipeline statuses yet: refuse with rc 4.
+bb_forge_checks() {
+    echo "forge(bitbucket): checks is not supported on bitbucket" >&2
+    return 4
+}
