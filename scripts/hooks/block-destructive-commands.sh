@@ -1152,7 +1152,7 @@ _gp_inv() {
 # ponytail: a graphql mutation (deleteBranchProtectionRule) and a gh whose
 # command word is computed ("$G" repo delete) are not modelled past the
 # unresolved text markers, upgrade path HIMMEL-5264 (the audit's G-series).
-_gh_re_unres='[^a-z0-9_-](secret|variable)[[:space:]]+(set|delete|remove)[^a-z0-9_-]|[^a-z0-9_-]workflow[[:space:]]+(disable|enable)[^a-z0-9_-]|[^a-z0-9_-]repo[[:space:]]+(delete|archive|unarchive|rename|transfer|edit)[^a-z0-9_-]|[^a-z0-9_-]release[[:space:]]+(delete|delete-asset)[^a-z0-9_-]|[^a-z0-9_-]ssh-key[[:space:]]+(add|delete)[^a-z0-9_-]|[^a-z0-9_-]auth[[:space:]]+(logout|token)[^a-z0-9_-]|[^a-z0-9_-]pr[[:space:]]+merge[[:space:]].*--admin'
+_gh_re_unres='[^a-z0-9_-](secret|variable)[[:space:]]+(set|delete|remove)[^a-z0-9_-]|[^a-z0-9_-]workflow[[:space:]]+(disable|enable)[^a-z0-9_-]|[^a-z0-9_-]repo[[:space:]]+(delete|archive|unarchive|rename|transfer|edit)[^a-z0-9_-]|[^a-z0-9_-]release[[:space:]]+(delete|delete-asset)[^a-z0-9_-]|[^a-z0-9_-](ssh|gpg)-key[[:space:]]+(add|delete)[^a-z0-9_-]|[^a-z0-9_-]auth[[:space:]]+(logout|token)[^a-z0-9_-]|[^a-z0-9_-]pr[[:space:]]+merge[[:space:]].*--admin'
 _gh_re_unres_api_m='[^a-z0-9_-]api[[:space:]].*(-x[[:space:]]*|--method[[:space:]=]+)(delete|put|patch|post)'
 _gh_re_unres_api_p='protection|rulesets|secrets|variables|/disable|/enable|/hooks|/keys|/transfer|/environments|repos/[^[:space:]/]+/[^[:space:]/]+([[:space:]]|/?$)'
 
@@ -1200,7 +1200,7 @@ _gh_ep_settings() {
 # when a field or --input is given, else GET; a GET (or an explicit GET with
 # fields) is a read and passes.
 _gh_api() {
-    local j=$1 n=${#_gc_w[@]} m='' body=0 ep='' epk='' w k s c=0
+    local j=$1 n=${#_gc_w[@]} m='' body=0 ep='' epk='' w k s o c=0
     while [ "$j" -lt "$n" ]; do
         w=${_gc_w[j]} k=${_gc_k[j]}
         case "$w" in
@@ -1233,6 +1233,20 @@ _gh_api() {
             s=${s/"${BASH_REMATCH[0]}"/x}
             c=$((c + 1))
         done
+        # an expansion past owner/repo can carry a whole settings suffix
+        # (repos/o/r/$T with T=rulesets/1), which the x substitution hides
+        if [ "$c" -gt 0 ]; then
+            o=${ep#/}; o=${o#repos/}
+            case "$o" in
+                */*/*)
+                    o=${o#*/}; o=${o#*/}
+                    case "${o%%/*}" in
+                        *'$'*|*'`'*) deny "gh api $m on a computed repository subpath" ;;
+                        actions|dependabot|codespaces|environments|branches|rulesets|hooks|keys)
+                            case "$o" in *'$'*|*'`'*) deny "gh api $m on a computed repository subpath" ;; esac ;;
+                    esac ;;
+            esac
+        fi
         ep=$s
     fi
     if _gh_ep_settings "$ep"; then deny "gh api $m on a repository settings path"; fi
@@ -1260,7 +1274,7 @@ _gh_inv() {
         workflow) case "$p2" in disable|enable) deny "gh workflow $p2" ;; esac ;;
         repo) case "$p2" in delete|archive|unarchive|rename|transfer|edit) deny "gh repo $p2" ;; esac ;;
         release) case "$p2" in delete|delete-asset) deny "gh release $p2" ;; esac ;;
-        ssh-key) case "$p2" in add|delete) deny "gh ssh-key $p2" ;; esac ;;
+        ssh-key|gpg-key) case "$p2" in add|delete) deny "gh $p1 $p2" ;; esac ;;
         auth) case "$p2" in logout|token) deny "gh auth $p2" ;; esac ;;
         pr)
             [ "$p2" = merge ] || return 0

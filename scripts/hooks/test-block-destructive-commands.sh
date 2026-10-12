@@ -1451,6 +1451,7 @@ fi
 # HIMMEL-5275: destructive gh verbs. The deny floor reads gh's argv (global
 # flags, wrappers, path-qualified binaries), so each verb is pinned in its
 # bypass spellings. Read forms and the merge paths other gates own stay allowed.
+# shellcheck disable=SC2016  # literal $VAR in a payload is the point
 for c in \
     'gh api -X DELETE repos/o/r/branches/main/protection' \
     'gh api -X PUT repos/o/r/branches/main/protection -f x=y' \
@@ -1489,6 +1490,10 @@ for c in \
     'gh release delete v1 --yes' \
     'gh ssh-key add k.pub' \
     'gh ssh-key delete 1' \
+    'gh gpg-key add k.pub' \
+    'gh gpg-key delete 1' \
+    'gh api -X DELETE "repos/o/r/$TARGET"' \
+    'gh api -X PUT repos/o/r/actions/secrets/$S' \
     'gh auth logout' \
     'gh auth token' \
     'gh pr merge 1 --admin' \
@@ -1510,6 +1515,7 @@ for c in \
     'gh pr merge 1 --squash && gh secret set A'; do
     assert_rc "5275 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
+# shellcheck disable=SC2016  # literal $VAR in a payload is the point
 for c in \
     'gh pr view 1' \
     'gh pr list --state open' \
@@ -1544,6 +1550,8 @@ for c in \
     'gh release view v1' \
     'gh release list' \
     'gh ssh-key list' \
+    'gh gpg-key list' \
+    'gh api -X POST "repos/o/r/issues/$N/comments" -f body=x' \
     'gh issue list' \
     'gh -R o/r pr view 1' \
     'himmel-gh pr-merge 1' \
