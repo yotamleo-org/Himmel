@@ -73,7 +73,7 @@ export type FleetSections = {
   attention: Attention[]; orphans: Attention[]; processOrphans: ProcessOrphan[];
   running: { console: Row | null; showConsole: boolean; rows: Row[] }[];
   finished: { row: Row; hops: Row[] }[]; hops: Record<string, Row[]>;
-  counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; total: number };
+  counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; live: number; total: number };
 };
 
 // HIMMEL-4925: cloud is a lane like native and claudex.
@@ -174,15 +174,16 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     counts: {
       running: live.filter((r) => r.state === "running").length, waiting: live.filter((r) => r.state === "waiting for GO").length,
       attention: attention.length, orphaned: orphans.length + processOrphans.length, finished: finishedEntries.length,
-      shown: rows.filter(shown).length, total: rows.filter(mine).length,
+      shown: rows.filter(shown).length, live: rows.filter((r) => !finished(r) && shown(r)).length, total: rows.filter(mine).length,
     },
   };
 }
 
-// A filter chip's badge: how many sessions (and, for "orphaned", wrappers) that filter alone shows, by the same predicate.
+// A filter chip's badge: how many live sessions (and, for "orphaned", wrappers) that filter alone shows, by the same
+// predicate. Finished sessions fold under Finished, not the live list, so they are not in the badge (HIMMEL-5380).
 export function filterCount(rows: Row[], f: Filters, procs: ProcessOrphan[] = []): number {
   const s = fleetSections(rows, null, f, procs);
-  return s.counts.shown + (f.states.includes("orphaned") ? s.processOrphans.length : 0);
+  return s.counts.live + (f.states.includes("orphaned") ? s.processOrphans.length : 0);
 }
 
 // A session name without its ticket and date: `HIMMEL-4912-N1497-sandbox-runner-2026-10-08` is `N1497 sandbox-runner`,

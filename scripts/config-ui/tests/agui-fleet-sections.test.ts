@@ -83,7 +83,7 @@ test("a cloud session with a live shepherd is shepherded, not awaiting one; its 
 
 test("counts: running and waiting are by state; orphaned counts session and process orphans", () => {
   const s = fleetSections(rows, null, NO_FILTERS, [{ pid: 7, owner: "orphan", ageMin: 45 }]);
-  expect(s.counts).toEqual({ running: 4, waiting: 1, attention: 3, orphaned: 2, finished: 3, shown: 16, total: 16 });
+  expect(s.counts).toEqual({ running: 4, waiting: 1, attention: 3, orphaned: 2, finished: 3, shown: 16, live: 12, total: 16 });
   expect(s.processOrphans).toEqual([{ pid: 7, owner: "orphan", ageMin: 45 }]);
 });
 
@@ -160,6 +160,20 @@ test("a filter chip's badge counts exactly what that filter shows: idle consoles
   expect(filterCount(idle, { lanes: [], states: ["idle"], text: "" })).toBe(shownBy(["idle"]).counts.shown);
   expect(filterCount(idle, { lanes: [], states: ["idle"], text: "" })).toBe(8);
   expect(filterCount(rows, { lanes: [], states: ["orphaned"], text: "" }, [{ pid: 7, owner: "orphan", ageMin: 45 }])).toBe(2);
+});
+
+// HIMMEL-5380: 4 finished cloud sessions and none running — the cloud chip read 4 while the Running list was empty.
+test("a lane chip counts the live sessions it shows, never the finished ones folded under Finished", () => {
+  const done = [BT, BS].flatMap((c) => [1, 2].map((i) => row(`cloud-${c}-${i}`, "cloud", c, cloud("done", { state: "idle" }))));
+  const only = [row(BT, "console", BT, { state: "wrapped", live: false, lock: "released" }), row(BS, "console", BS, { state: "wrapped", live: false, lock: "released" }), ...done];
+  const f = { lanes: ["cloud"], states: [], text: "" };
+  const s = fleetSections(only, null, f);
+  expect(s.running.flatMap((g) => g.rows)).toHaveLength(0);
+  expect(filterCount(only, f)).toBe(0);
+  // with one cloud session still working under a live console, the chip equals the Running rows
+  const live = [...only, row(BU, "console", BU, { state: "running" }), row("cloud-live", "cloud", BU, cloud("working", { state: "running" }))];
+  expect(filterCount(live, f)).toBe(fleetSections(live, null, f).running.flatMap((g) => g.rows).length);
+  expect(filterCount(live, f)).toBe(1);
 });
 
 test("sibling order: running, waiting, idle, unknown; newest first; then name", () => {
