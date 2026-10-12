@@ -559,6 +559,16 @@ setup_dontask
 CLAUDEX_DONTASK=1 run_launcher "dontAsk env supplies isolated exact policy" -p 'canary prompt'
 assert_dontask
 setup_dontask
+rm "$FAKEHOME/.claude/settings.json"
+run_launcher "dontAsk without seeded settings avoids an empty native operand" --dontask -p 'canary prompt'
+node - "$FAKEHOME/child-args.bin" <<'NODE' || FAILS=$((FAILS + 1))
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const args = fs.readFileSync(process.argv[2], 'utf8').split('\0').slice(0, -1);
+assert.ok(!args.includes('--disallowedTools'), 'empty deny operand must not be passed to a native child');
+assert.ok(args.includes('--permission-mode') && args.includes('dontAsk'));
+NODE
+setup_dontask
 run_launcher "default launcher leaves argv unchanged" -p 'canary prompt'
 node - "$FAKEHOME/child-args.bin" <<'NODE' || FAILS=$((FAILS + 1))
 const assert = require('node:assert/strict');
