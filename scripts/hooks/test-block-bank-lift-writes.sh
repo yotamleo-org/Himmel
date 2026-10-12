@@ -1637,6 +1637,15 @@ env_row "5348 cp \"\$A\"n name boundary"                 deny  "A=${LIFT%n}" 'cp
 env_row "5348 cp \"\$A\"te prefix outside state dir"     deny  "A=$HOME/.himmel/sta" 'cp x "$A"te/bank-lift.json'
 env_row "5348 cp \$A\\te backslash boundary"              deny  "A=$HOME/.himmel/sta" 'cp x $A\te/bank-lift.json'
 env_row "5348 cp \"\$A\"n benign (ctrl)"                 allow "A=/tmp/o" 'cp /tmp/y "$A"n'
+# Round-3 codex-1: the boundary check holds for EVERY writer, not a list.
+env_row "5348 sort -o \"\$A\"n name boundary"            deny  "A=${LIFT%n}" 'sort -o "$A"n y'
+env_row "5348 touch \"\$A\"n name boundary"              deny  "A=${LIFT%n}" 'touch "$A"n'
+env_row "5348 truncate \"\$A\"n name boundary"           deny  "A=${LIFT%n}" 'truncate -s0 "$A"n'
+env_row "5348 sed -i \"\$A\"n name boundary"             deny  "A=${LIFT%n}" 'sed -i s/a/b/ "$A"n'
+env_row "5348 sort -o \"\$A\"''n name boundary"          deny  "A=${LIFT%n}" "sort -o \"\$A\"''n y"
+env_row "5348 sort -o \"\$A\"\$'n' name boundary"        deny  "A=${LIFT%n}" "sort -o \"\$A\"\$'n' y"
+env_row "5348 sort -o \"\$A\"n benign (ctrl)"            allow "A=/tmp/o" 'sort -o "$A"n /tmp/y'
+env_row "5348 cat \"\$A\"/x read (ctrl)"                 allow "A=$ST" 'cat "$A"/x'
 }
 rows_5348
 

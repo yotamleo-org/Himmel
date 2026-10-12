@@ -2217,9 +2217,19 @@ if _cmd_writes "$REPLY"; then
         *'${!'*|*'${('*|*'typeset -n'*|*'declare -n'*|*'local -n'*)
             deny "the command writes and uses an indirect expansion or a nameref (\${! \${( typeset -n declare -n local -n), so the variable read is not provable (fail-closed)" ;;
     esac
-    # The raw command too: dequoting joins "$A"n into $An, a different name.
-    { _cmd_refs_lift "$REPLY" || _cmd_refs_lift "$CMD"; } \
+    _cmd_refs_lift "$REPLY" \
         && deny "the command writes (a redirect or tee/sponge/dd/cp/mv/install/rsync) and references an environment value that names the bank lift or its state dir (fail-closed)"
+fi
+# Dequoting joins "$A"n (A's value, then n) into $An, a different name, so
+# every destination dest_ref resolved from such a word read the wrong
+# variable. Where the raw command joins a $NAME to a following name character
+# across a quote, backslash or $'..', read its references on the raw text,
+# for any command, writer or not.
+# ponytail: accepted over-deny, a read like `cat "$A"n` whose joined value
+# names the lift or its state dir also denies; narrowing is HIMMEL-5341.
+_re_join='\$[A-Za-z_][A-Za-z0-9_]*["'"'"'\\$]+[A-Za-z0-9_]'
+if [[ "$CMD" =~ $_re_join ]] && _cmd_refs_lift "$CMD"; then
+    deny "the command joins an environment reference to the text after a quote (\"\$A\"n), and the joined value names the bank lift or its state dir (fail-closed)"
 fi
 # HIMMEL-5094: env/sudo -C/-D in any flag cluster (-iC, -0C), read on the whole
 # text independent of the wrapper parse, beside an archive word and a computed
