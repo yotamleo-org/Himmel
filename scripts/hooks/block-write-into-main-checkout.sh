@@ -3286,9 +3286,10 @@ _bwimc_is_shc_cflag() {
 # classified. Quotes, backslashes and `$'…'` are dropped first, so `g\it`,
 # `c''at` and `$'log'` read as the word they spell. Coarse and fail-closed: a
 # reader word anywhere in BODY counts, even as an argument.
-# ponytail: the allow-list is short, so a benign generator outside it (a
-# version manager not named) is a false deny, HIMMEL-5098; add the word when
-# one is seen.
+# ponytail: the allow-list is short and keyed on the whole argv shape, so a
+# benign generator outside it (dircolors -b, starship init, zoxide init, mise
+# activate, conda shell hook, brew shellenv, pyenv init --path) is a false
+# deny, HIMMEL-5098; add the shape when one is seen.
 _bwimc_body_reads_data() {
     local t="$1"
     case "$t" in
@@ -3309,34 +3310,74 @@ _bwimc_body_reads_data() {
     # generator; anything else (or a word that is not literal) is data.
     t="${t//>&/}"
     t="${t//&/$'\n'}"; t="${t//|/$'\n'}"; t="${t//;/$'\n'}"
-    local seg w words
+    local seg w words i n argv j
     while IFS= read -r seg; do
         while [[ "$seg" == [[:space:]\(\{\!]* ]]; do seg="${seg:1}"; done
         [ -n "$seg" ] || continue
         # shellcheck disable=SC2206  # word split is the point
         words=($seg)
-        for w in "${words[@]}"; do
+        n=${#words[@]}
+        # skip leading assignments (a valid name only: `wt/sub=x` is a command
+        # word) and keywords; a PATH assignment re-points every listed name
+        i=0
+        while [ "$i" -lt "$n" ]; do
+            w="${words[$i]}"
+            if [[ "$w" =~ ^[a-z_][a-z0-9_]*= ]]; then
+                case "$w" in path=*|path+=*) return 0 ;; esac
+                i=$((i+1)); continue
+            fi
             case "$w" in
-                [a-z_]*=*) continue ;;
-                if|then|elif|else|fi|do|done|while|until|time|true|false|:|'!'|'{'|'}'|'('|')') continue ;;
-            esac
-            # a path-qualified word (`/wt/echo`, `./date`) is an arbitrary
-            # program that only borrows a listed name: not a generator
-            case "$w" in */*) return 0 ;; esac
-            w="${w%.exe}"
-            case "$w" in
-                echo|date|ssh-agent|pyenv|rbenv|nodenv|direnv|pwd|basename|dirname|uname|whoami|hostname) ;;
-                printf) case " ${words[*]} " in *" -v"*) return 0 ;; esac ;;
-                git) # ONE path-printing rev-parse option, nothing after it (a second
-                     # option such as --symbolic --all prints ref names)
-                    case " ${words[*]} " in
-                        " git rev-parse --show-toplevel "|" git rev-parse --show-cdup "|" git rev-parse --show-prefix "|" git rev-parse --git-dir "|" git rev-parse --git-common-dir "|" git rev-parse --absolute-git-dir ") ;;
-                        *) return 0 ;;
-                    esac ;;
-                *) return 0 ;;
+                if|then|elif|else|fi|do|done|while|until|time|true|false|:|'!'|'{'|'}'|'('|')') i=$((i+1)); continue ;;
             esac
             break
         done
+        [ "$i" -lt "$n" ] || continue
+        w="${words[$i]}"
+        # a path-qualified word (`/wt/echo`, `./date`) is an arbitrary
+        # program that only borrows a listed name: not a generator
+        case "$w" in */*) return 0 ;; esac
+        w="${w%.exe}"
+        # the WHOLE argv shape is matched, not the first word: `ssh-agent cat
+        # f` and `direnv exec …` run the program named after the generator
+        argv=" ${words[*]:i} "
+        case "$w" in
+            echo|date|pwd|basename|dirname|uname|whoami|hostname) ;;
+            printf) case "$argv" in *" -v"*) return 0 ;; esac ;;
+            ssh-agent) # flags only: -s -c -k, and -a <socket>
+                j=$((i+1))
+                while [ "$j" -lt "$n" ]; do
+                    case "${words[$j]}" in
+                        -s|-c|-k) j=$((j+1)) ;;
+                        -a) [ $((j+1)) -lt "$n" ] || return 0; j=$((j+2)) ;;
+                        *) return 0 ;;
+                    esac
+                done ;;
+            direnv) # `direnv export <shell>` / `direnv hook <shell>`
+                [ $((n-i)) -eq 3 ] || return 0
+                case "${words[$((i+1))]}" in export|hook) ;; *) return 0 ;; esac
+                [[ "${words[$((i+2))]}" =~ ^[a-z0-9]+$ ]] || return 0 ;;
+            pyenv|rbenv|nodenv) # `init`, `init -`, `init - <shell>`, `sh-*`
+                [ $((n-i)) -ge 2 ] || return 0
+                case "${words[$((i+1))]}" in
+                    init)
+                        case $((n-i)) in
+                            2) ;;
+                            3) [ "${words[$((i+2))]}" = - ] || return 0 ;;
+                            4) [ "${words[$((i+2))]}" = - ] || return 0
+                               [[ "${words[$((i+3))]}" =~ ^[a-z0-9]+$ ]] || return 0 ;;
+                            *) return 0 ;;
+                        esac ;;
+                    sh-*) ;;
+                    *) return 0 ;;
+                esac ;;
+            git) # ONE path-printing rev-parse option, nothing after it (a second
+                 # option such as --symbolic --all prints ref names)
+                case "$argv" in
+                    " git rev-parse --show-toplevel "|" git rev-parse --show-cdup "|" git rev-parse --show-prefix "|" git rev-parse --git-dir "|" git rev-parse --git-common-dir "|" git rev-parse --absolute-git-dir ") ;;
+                    *) return 0 ;;
+                esac ;;
+            *) return 0 ;;
+        esac
     done <<< "$t"
     return 1
 }
@@ -3547,6 +3588,19 @@ _bwimc_check_interp_body() {
         done
     fi
     [ -n "$body" ] || return 0
+    # HIMMEL-5098: the allow-list trusts a generator's NAME, so a function,
+    # alias, PATH assignment or `hash -p` in the same command can make a listed
+    # name run anything: deny when one sits beside a substitution in the body.
+    # shellcheck disable=SC2016  # literal `$(` is the glob pattern
+    case "$body" in
+        *'$('*|*'`'*|*'<('*)
+            if [[ "$cmd" =~ [A-Za-z_][A-Za-z0-9_.:+-]*[[:space:]]*\(\)[[:space:]]*\{? ]] \
+                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])(function|alias)[[:space:]] ]] \
+                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])PATH\+?= ]] \
+                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])hash[[:space:]]+-[A-Za-z]*p ]]; then
+                _bwimc_deny "data-exec" "$body" "" ""
+            fi ;;
+    esac
     # HIMMEL-5098: a body that is (or holds) a substitution reading repository
     # or file data runs a command that is not in this text, so nothing below
     # can classify it. A stub byte in the body means a substitution of THIS
