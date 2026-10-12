@@ -1027,6 +1027,18 @@ ctl="$(run_is "$range")"
 : > "$SHIM4/calls"
 out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>/dev/null )"
 if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out"; fi
+# The control above compares the new selector with itself; this one compares it
+# with the selector as it was before HIMMEL-5363 (a full `git grep -E -f` per
+# round), read from the immutable base commit when this clone holds it.
+OLD_IS_SHA=dd22dd9f51730a1cac08ab7593f0e639160829a1
+mkdir -p "$SHIM4/oldcr"
+if cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/oldcr/anchor-handoff.sh" \
+    && git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/oldcr/impacted-suites.sh" 2>/dev/null; then
+    old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
+    if [ "$old_out" = "$out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
+else
+    pass "old-selector control not run: $OLD_IS_SHA is not in this clone (shallow)"
+fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
 # regex and cheap; the cost was the -f pattern FILE, so that is what must not
@@ -1049,6 +1061,20 @@ t0=$SECONDS
 out="$(run_is "$range")"; rc=$?
 elapsed=$((SECONDS - t0))
 if [ "$rc" -eq 0 ] && [ "$elapsed" -le 60 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 60s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
+
+# --- 37b. a candidate whose scratch copy cannot be created fails closed ------
+# The narrowing writes each candidate's matching lines to a scratch file; a
+# failed open of that file is rc 1, the code `grep` uses for "no match", so
+# without a checked create the suite was silently dropped at exit 0. A suite
+# whose name component is longer than NAME_MAX (committed through the index, so
+# the worktree never has to hold it) cannot be created under the scratch tree.
+LONGNAME="scripts/test-$(printf 'x%.0s' $(seq 1 300)).sh"
+long_blob="$(printf 'bash "$d/lib/clo-lib.sh"\n' | git -C "$FX" hash-object -w --stdin)"
+git -C "$FX" update-index --add --cacheinfo "100644,$long_blob,$LONGNAME"
+git -C "$FX" commit -q -m "chore: suite with an over-long name"
+change scripts/lib/clo-lib.sh
+out="$( cd "$FX" && bash "$IS" "$range" 2>"$SHIM4/long.err" )"; rc=$?
+if [ "$rc" -ne 0 ] && grepq "$(cat "$SHIM4/long.err")" -F 'scratch copy of'; then pass "uncreatable scratch copy: exits $rc naming the file, not a short list at 0"; else fail "uncreatable scratch copy: rc=$rc err=$(cat "$SHIM4/long.err") out=$out"; fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi

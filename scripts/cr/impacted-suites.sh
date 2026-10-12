@@ -713,6 +713,9 @@ grep_narrowed() {
         case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
         git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
         # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
+        # A redirect that cannot open its target is rc 1, the code for "no match":
+        # create the scratch copy in a checked step first or the suite is dropped.
+        : > "$narrow/$p" || io_fail "creating the ${what} scratch copy of ${p}"
         grep_rc=0
         LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
         [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
