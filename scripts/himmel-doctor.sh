@@ -3838,10 +3838,15 @@ check_c51_firecrawl_parked() {
 # python. Seams: HIMMEL_DOCTOR_GRAPHIFY_VENV (venv dir), HIMMEL_DOCTOR_UV.
 check_c52_graphify_ollama() {
     local uv_bin="${HIMMEL_DOCTOR_UV:-uv}" venv tooldir="" py="" c
-    if [ "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}" != ollama ]; then
-        emit OK C52-graphify-ollama "graph-cadence semantic backend is claude-cli -- [ollama] extra check skipped"
-        return 0
-    fi
+    case "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}" in
+        ollama) ;;
+        claude-cli)
+            emit OK C52-graphify-ollama "graph-cadence semantic backend is claude-cli -- [ollama] extra check skipped"
+            return 0 ;;
+        *)
+            emit WARN C52-graphify-ollama "GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND}' is not accepted -- graph-cadence will refuse it" "set GRAPH_CADENCE_SEMANTIC_BACKEND to claude-cli or ollama"
+            return 0 ;;
+    esac
     if [ -n "${HIMMEL_DOCTOR_GRAPHIFY_VENV:-}" ]; then
         venv="$HIMMEL_DOCTOR_GRAPHIFY_VENV"
     else
