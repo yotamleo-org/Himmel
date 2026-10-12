@@ -583,6 +583,8 @@ sh -c "bash -c \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""
 eval "bash -c \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""
 bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'" arg0
 bash -c -x "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c -- "-x; env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c -O extglob -- "-x; env -S 'bash scripts/cr/pr-check-context.sh\c'"
 bash -O extglob -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 bash -c -O extglob "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 env bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"

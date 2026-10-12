@@ -1934,10 +1934,12 @@ env_split_option() { # env_split_option <raw command> - false only when
                 2) # past a shell's -c: skip its options, then the body word
                     case "$w" in
                         -O|+O|-o|+o|--rcfile|--init-file) nm[sg]=4 ;;
+                        --) nm[sg]=5 ;;
                         -*|+*) ;;
                         *) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;;
                     esac ;;
                 4) nm[sg]=2 ;;
+                5) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;; # after --: the body, even when it starts with -
                 3) ;;
                 *)
                     if [ -z "${fw[sg]-}" ] && [ "${ST_A[$e]-}" != 1 ]; then
