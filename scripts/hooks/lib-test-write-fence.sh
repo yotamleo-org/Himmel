@@ -33,12 +33,20 @@ git config --global user.name t
 unset CODEX_EXTERNAL_WRITES_OK 2>/dev/null || true
 unset EDIT_ON_MAIN_OK 2>/dev/null || true
 
+# HIMMEL-4391: every setup step is checked. A failed git init / commit /
+# worktree add used to leave a missing or half-built fixture that the rows then
+# "tested" (and could still pass on), so the suite aborts at the first failure.
+_fixture_die() {  # _fixture_die <what failed>
+    echo "FIXTURE SETUP FAILED: $1 — aborting; rows would test a missing fixture, not the intended checkout topology" >&2
+    exit 1
+}
+
 mkrepo_committed() {  # mkrepo_committed <dir> <branch>
-    git init -q -b "$2" "$1" >/dev/null 2>&1
-    mkdir -p "$1/scripts/hooks" "$1/handovers"
-    : > "$1/README.md"
-    git -C "$1" add README.md >/dev/null 2>&1
-    git -C "$1" commit -q -m init >/dev/null 2>&1
+    git init -q -b "$2" "$1" >/dev/null 2>&1 || _fixture_die "git init -b $2 $1"
+    mkdir -p "$1/scripts/hooks" "$1/handovers" || _fixture_die "mkdir under $1"
+    : > "$1/README.md" || _fixture_die "create $1/README.md"
+    git -C "$1" add README.md >/dev/null 2>&1 || _fixture_die "git add in $1"
+    git -C "$1" commit -q -m init >/dev/null 2>&1 || _fixture_die "git commit in $1"
 }
 
 # $FIX/primary — main, with a .single-writer carve-out row target and the
@@ -47,7 +55,8 @@ mkrepo_committed "$FIX/primary" main
 echo ".single-writer" >> "$FIX/primary/.git/info/exclude"
 
 # $FIX/wt — linked worktree off primary, feat/x.
-git -C "$FIX/primary" worktree add -q -b feat/x "$FIX/wt" >/dev/null 2>&1
+git -C "$FIX/primary" worktree add -q -b feat/x "$FIX/wt" >/dev/null 2>&1 \
+    || _fixture_die "git worktree add feat/x $FIX/wt"
 
 # $FIX/featprimary — PRIMARY checkout (no worktree) on a feature branch.
 mkrepo_committed "$FIX/featprimary" feat/y
