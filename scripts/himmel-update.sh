@@ -659,15 +659,15 @@ _report_claude_cli() {
         0)
             echo "    claude $inst -> $latest available (report only, not auto-updated); run: claude update"
             _probe_tool_row claude skipped "$inst -> $latest — run: claude update"
-            _ver_row claude "$inst" "$latest" behind "run: claude update" ;;
+            _ver_row claude "$inst" "$latest" behind "run: claude update" ;; # launch-profile-ok: version-table label, not a launch
         1)
             echo "    claude $inst is current (latest $latest)."
             _probe_tool_row claude up-to-date "$inst"
-            _ver_row claude "$inst" "$latest" current ;;
+            _ver_row claude "$inst" "$latest" current ;; # launch-profile-ok: version-table label, not a launch
         *)
             echo "    claude ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
             _probe_tool_row claude skipped "cannot compare ${inst:-?} with ${latest:-?}"
-            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" ;;
+            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" ;; # launch-profile-ok: version-table label, not a launch
     esac
     return 0
 }
