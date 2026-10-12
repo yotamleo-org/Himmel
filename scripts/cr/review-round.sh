@@ -29,6 +29,10 @@
 # reviewed head has a COMPLETED check-run with conclusion failure (read through
 # gh api, none still running), the delta since it is at most 40 diff lines, and
 # the PR has not had this unlock before (.cired). Recorded in the ledger.
+# HIMMEL-5268: a non-empty --base-sha is verified once at intake against the
+# REMOTE only (gh api: default branch name, then compare <sha>...<default> must
+# be identical or ahead); no local ref names or vouches for it. Offline, no gh
+# or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
