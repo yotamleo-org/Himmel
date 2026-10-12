@@ -165,7 +165,7 @@ if [ "$(walks)" = 3 ]; then ok 'uncached launches each walk the runtime roots'; 
 ML="$TMP/mask-list"
 : > "$FINDLOG"
 OUT=$(counted bash "$RUNNER" --write-mask-list "$ML" 2>&1); RC=$?
-if [ "$RC" = 0 ] && [ -f "$ML" ] && [ "$(walks)" = 1 ] && [ "$(stat -c %a "$ML")" = 600 ]; then
+if [ "$RC" = 0 ] && [ -f "$ML" ] && [ "$(walks)" = 1 ] && [ "$(stat -c %a "$ML")" = 600 ]; then # gnu-ok: bwrap suite is Linux only
     ok 'mask list built with one walk, mode 600'
 else bad "mask list build: rc=$RC walks=$(walks) $OUT"; fi
 : > "$FINDLOG"
