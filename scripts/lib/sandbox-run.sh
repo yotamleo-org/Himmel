@@ -142,18 +142,23 @@ mask_fingerprint() {
     find "${runtime_inputs[@]}" -maxdepth 2 -type d -printf '%p\0%m\0%T@\0' 2>/dev/null | sha256sum | cut -d' ' -f1 # gnu-ok: Linux only
 }
 mask_list_trusted() {
-    local f="${SANDBOX_RUN_MASK_LIST:-}" magic epoch huid hroots hfp mode kind path now ttl=600
+    local f="${SANDBOX_RUN_MASK_LIST:-}" magic epoch huid hroots hfp hcount mode kind path now nul ttl=600
     [ -n "$f" ] && [ -f "$f" ] && [ ! -L "$f" ] || return 1
     [ "$(stat -c %u -- "$f")" = "$(id -u)" ] || return 1 # gnu-ok: Linux only
     mode=$(stat -c %a -- "$f") || return 1 # gnu-ok: Linux only
     [ $((8#$mode & 8#022)) -eq 0 ] || return 1
-    read -r magic epoch huid hroots hfp < "$f" || return 1
+    read -r magic epoch huid hroots hfp hcount < "$f" || return 1
     [ "$magic" = himmel-mask-list-v1 ] && [ "$huid" = "$(id -u)" ] && [ "$hroots" = "$mask_roots" ] || return 1
-    case "$epoch" in ''|*[!0-9]*) return 1 ;; esac
+    case "$epoch" in ''|*[!0-9]*|????????????*) return 1 ;; esac
+    case "$hcount" in ''|*[!0-9]*|????????*) return 1 ;; esac
     now=$(date +%s)
+    epoch=$((10#$epoch))
     [ "$epoch" -le "$now" ] && [ $((now - epoch)) -le "$ttl" ] || return 1
     [ "$hfp" = "$(mask_fingerprint)" ] || return 1
     tail -n +2 "$f" > "$mask_list" || return 1
+    # A truncated or header-only file must not read as a clean empty list.
+    nul=$(tr -cd '\0' < "$mask_list" | wc -c) || return 1
+    [ $((nul)) -eq $((2 * 10#$hcount)) ] || return 1
     while IFS= read -r -d '' kind && IFS= read -r -d '' path; do
         case "$kind" in d|f) ;; *) return 1 ;; esac
         [ -e "$path" ] || [ -L "$path" ] || return 1
@@ -164,7 +169,8 @@ if [ -n "$write_mask" ]; then
     walk_masks "$mask_list" || exit 125
     tmp_out=$(mktemp "$write_mask.XXXXXX") || exit 125
     chmod 600 "$tmp_out" || exit 125
-    { printf 'himmel-mask-list-v1 %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$(mask_fingerprint)"
+    nul=$(tr -cd '\0' < "$mask_list" | wc -c) || exit 125
+    { printf 'himmel-mask-list-v1 %s %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$(mask_fingerprint)" "$((nul / 2))"
       cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; exit 125; }
     mv -f "$tmp_out" "$write_mask" || exit 125
     exit 0

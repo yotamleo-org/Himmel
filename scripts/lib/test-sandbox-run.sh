@@ -174,20 +174,24 @@ for _ in 1 2 3; do
     SANDBOX_RUN_MASK_LIST="$ML" counted bash "$RUNNER" -- /usr/bin/true >/dev/null 2>&1 || cached_rc=$?
 done
 if [ "$cached_rc" = 0 ] && [ "$(walks)" = 0 ]; then ok 'three launches with a valid mask list walk zero times'; else bad "cached launches: rc=$cached_rc walks=$(walks)"; fi
-read -r h_magic h_epoch h_uid h_roots h_fp < "$ML"
+read -r h_magic h_epoch h_uid h_roots h_fp h_cnt < "$ML"
 mutated() { # name header-line [mode]
     { printf '%s\n' "$2"; tail -n +2 "$ML"; } > "$TMP/ml.$1"
     chmod "${3:-600}" "$TMP/ml.$1"
 }
-mutated stale "$h_magic 1 $h_uid $h_roots $h_fp"
-mutated future "$h_magic 99999999999 $h_uid $h_roots $h_fp"
-mutated roots "$h_magic $h_epoch $h_uid /usr:/bin $h_fp"
-mutated magic "bogus $h_epoch $h_uid $h_roots $h_fp"
-mutated fp "$h_magic $h_epoch $h_uid $h_roots 0000"
+mutated stale "$h_magic 1 $h_uid $h_roots $h_fp $h_cnt"
+mutated future "$h_magic 99999999999 $h_uid $h_roots $h_fp $h_cnt"
+mutated roots "$h_magic $h_epoch $h_uid /usr:/bin $h_fp $h_cnt"
+mutated magic "bogus $h_epoch $h_uid $h_roots $h_fp $h_cnt"
+mutated fp "$h_magic $h_epoch $h_uid $h_roots 0000 $h_cnt"
+mutated octal "$h_magic 0000000008 $h_uid $h_roots $h_fp $h_cnt"
+mutated count "$h_magic $h_epoch $h_uid $h_roots $h_fp $((h_cnt + 1))"
+mutated nocount "$h_magic $h_epoch $h_uid $h_roots $h_fp"
+head -c -1 "$ML" > "$TMP/ml.trunc"; chmod 600 "$TMP/ml.trunc"
 mutated worldw "$(head -n1 "$ML")" 666
 mutated groupw "$(head -n1 "$ML")" 664
 ln -s "$ML" "$TMP/ml.link"
-for variant in stale future roots magic fp worldw groupw link; do
+for variant in stale future roots magic fp octal count nocount trunc worldw groupw link; do
     : > "$FINDLOG"
     OUT=$(SANDBOX_RUN_MASK_LIST="$TMP/ml.$variant" counted bash "$RUNNER" -- /usr/bin/true 2>&1); RC=$?
     if [ "$RC" = 0 ] && [ "$(walks)" = 1 ]; then ok "untrusted mask list ($variant) rejected, full walk ran"; else bad "mask list $variant: rc=$RC walks=$(walks) $OUT"; fi
