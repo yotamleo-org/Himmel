@@ -52,6 +52,7 @@ block-chokepoint-env-prefix.sh|||deny|||-|||-|||ARMAUTOMERGE=1 bash scripts/hand
 block-destructive-commands.sh|||deny|||-|||-|||rm -rf /tmp/x
 block-edit-live-settings.sh|||deny|||-|||-|||cp x ~/.claude/settings.json
 block-git-stash.sh|||deny|||-|||-|||git stash
+block-himmel-config-writes.sh|||deny|||-|||-|||cp /tmp/f ~/.himmel/config.json
 block-jira-compound-write.sh|||deny|||-|||-|||node /x/scripts/jira/dist/index.js create --type Task --title a --desc "$(cat /tmp/a.md)"
 block-read-secrets.sh|||deny|||-|||-|||cat .env
 block-rogue-claude-schedule.sh|||deny|||-|||-|||schtasks /create /tn X /tr claude.exe /sc ONCE
