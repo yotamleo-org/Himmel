@@ -235,6 +235,20 @@ body
 E\
 OF
 bash scripts/check-ci.sh | tail -5'
+deny "payload after an EMPTY quoted heredoc delimiter" \
+     "cat <<''
+body
+
+bash scripts/check-ci.sh | tail -5"
+deny "payload after an ANSI-C quoted heredoc delimiter" \
+     "cat <<\$'EOF'
+it's data
+EOF
+bash scripts/check-ci.sh | tail -5"
+allow "gate | tail in an ANSI-C quoted heredoc body is data" \
+      "cat <<\$'EOF'
+\$(bash scripts/check-ci.sh | tail -5)
+EOF"
 allow "gate | tail inside a QUOTED heredoc body is data" \
       "cat <<'EOF'
 \$(bash scripts/check-ci.sh | tail -5)

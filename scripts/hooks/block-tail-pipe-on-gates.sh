@@ -544,11 +544,27 @@ normalise() {
                                 done
                                 j=$((j + 1)) ;;
                             \\) hk=1; hline+=${SC[j + 1]-}; j=$((j + 2)) ;;
+                            '$')
+                                case ${SC[j + 1]-} in
+                                    # `$'EOF'` (ANSI-C) and `$"EOF"` (locale) are
+                                    # QUOTED words: the `$` is dropped and the
+                                    # body is data. ANSI-C honours `\'`.
+                                    "'")
+                                        hk=1; j=$((j + 2))
+                                        while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do
+                                            if [ "${SC[j]-}" = \\ ]; then j=$((j + 1)); fi
+                                            hline+=${SC[j]-}; j=$((j + 1))
+                                        done
+                                        j=$((j + 1)) ;;
+                                    '"') hk=1; j=$((j + 1)) ;;
+                                    *) hline+=$ch; j=$((j + 1)) ;;
+                                esac ;;
                             ' ' | "$TAB" | "$NL" | ';' | '|' | '&' | '<' | '>' | '(' | ')') break ;;
                             *) hline+=$ch; j=$((j + 1)) ;;
                         esac
                     done
-                    if [ -z "$hline" ]; then
+                    # `<<''` is a valid EMPTY delimiter (an empty line ends it).
+                    if [ -z "$hline" ] && [ "$hk" -eq 0 ]; then
                         out=${out}${HEREDOC_MARK}
                         p=' '; i=$((i + 2)); continue
                     fi
