@@ -432,11 +432,36 @@ MOCK
   chmod +x "$BIN/claude" "$BIN/curl"
 }
 
-# default (flag off): the Sonnet alias stays on the codex model.
+# HIMMEL-5164: with nothing set, the Sonnet alias defaults to claude-sonnet-5-5
+# when the proxy serves it; the main/subagent models and the auto-mode switch stay.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
-run_launcher "classifier flag off: launch succeeds"
-grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: default launch must map the Sonnet alias to the codex model"; FAILS=$((FAILS + 1)); }
+run_launcher "classifier default, alias served: launch succeeds"
+for want in 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5' 'ANTHROPIC_MODEL=gpt-6.1-sol' 'CLAUDE_CODE_AUTO_MODE_SERVER=0'; do
+  grep -qxF "$want" "$FAKEHOME/child-env.txt" || { echo "FAIL: classifier default, alias served: child env missing $want"; FAILS=$((FAILS + 1)); }
+done
+! grep -q 'WARNING' "$WORK/out.txt" || { echo "FAIL: a served default must not warn"; FAILS=$((FAILS + 1)); }
+
+# default alias NOT served: one WARNING line naming the alias and the fallback, the
+# gateway classifier is used, the launch still runs (never no-classifier, never refuse).
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s' '{"object":"list","data":[{"id":"gpt-6.1-sol"}]}' > "$MODELS_FIXTURE_DIR/models-codex-only.json"
+MODELS_JSON="$MODELS_FIXTURE_DIR/models-codex-only.json" run_launcher "classifier default, alias not served: launch succeeds"
+for want in 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' 'CLAUDE_CODE_AUTO_MODE_SERVER=0'; do
+  grep -qxF "$want" "$FAKEHOME/child-env.txt" || { echo "FAIL: classifier default, alias not served: child env missing $want"; FAILS=$((FAILS + 1)); }
+done
+{ [ "$(grep -c 'WARNING' "$WORK/out.txt")" -eq 1 ] && grep 'WARNING' "$WORK/out.txt" | grep -q 'claude-sonnet-5-5' && grep 'WARNING' "$WORK/out.txt" | grep -q 'gpt-6.1-sol'; } || { echo "FAIL: an unserved default must print ONE warning naming the alias and the fallback"; cat "$WORK/out.txt"; FAILS=$((FAILS + 1)); }
+
+# explicit opt-out: 'gateway' (env and flag) keeps the gateway classifier even when
+# the Claude alias is served, with no warning.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+CLAUDEX_CLASSIFIER_MODEL=gateway run_launcher "classifier env gateway: launch succeeds"
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: CLAUDEX_CLASSIFIER_MODEL=gateway must keep the codex classifier"; FAILS=$((FAILS + 1)); }
+! grep -q 'WARNING' "$WORK/out.txt" || { echo "FAIL: the gateway opt-out must not warn"; FAILS=$((FAILS + 1)); }
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s\n' '{"permissions":{"allow":["Bash(python3 *)"]}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "classifier flag gateway: launch succeeds" --classifier-model gateway
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: --classifier-model gateway must keep the codex classifier"; FAILS=$((FAILS + 1)); }
 cp "$FAKEHOME/.claude-codex/settings.json" "$MODELS_FIXTURE_DIR/settings-default.json"
 
 # flag on: only the Sonnet alias moves; main, haiku, opus, subagent and the

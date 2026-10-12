@@ -161,8 +161,8 @@ $PreflightOnly = $false
 # pre-check — see the Invoke-GuardWorkspace call site below for what this does
 # and why it exists.
 $GuardCheck = $false
-# HIMMEL-5273: opt-in, default off — route ONLY the Sonnet alias (the auto-mode
-# classifier's default) to a gateway alias the proxy serves. Twin of the bash flag.
+# HIMMEL-5273: route ONLY the Sonnet alias (the auto-mode classifier's default)
+# to a gateway alias the proxy serves. Twin of the bash flag.
 $ClassifierModel = if ($env:CLAUDEX_CLASSIFIER_MODEL) { $env:CLAUDEX_CLASSIFIER_MODEL } else { '' }
 $ClaudeArgs = [System.Collections.Generic.List[string]]::new()
 $leading = $true
@@ -186,6 +186,12 @@ if ($ClassifierModel -notmatch '^[A-Za-z0-9._-]*$') {
   [Console]::Error.WriteLine("claude-codex: invalid classifier model alias '$ClassifierModel' (letters, digits, . _ - only).")
   exit 2
 }
+# HIMMEL-5164: default claude-sonnet-5-5 (warns + falls back when unserved); an
+# explicit value wins and refuses when unserved; `gateway` opts out. Twin of bash.
+$ClassifierExplicit = $false
+if (-not $ClassifierModel) { $ClassifierModel = 'claude-sonnet-5-5' }
+elseif ($ClassifierModel -ieq 'gateway') { $ClassifierModel = '' }
+else { $ClassifierExplicit = $true }
 
 # --- tiered egress guard -----------------------------------------------------
 $Cfg = Join-Path $HomeDir (Join-Path '.config' 'claude-codex')
@@ -571,8 +577,12 @@ if ($ClassifierModel) {
     $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
   } catch { $modelsBody = '' }
   if ($modelsBody -notmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"')) {
-    [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
-    exit 2
+    if ($ClassifierExplicit) {
+      [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
+      exit 2
+    }
+    [Console]::Error.WriteLine("claude-codex: WARNING - default classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); falling back to the gateway classifier ($CodexModel). Log in to cli-proxy-api's claude provider, or set CLAUDEX_CLASSIFIER_MODEL=gateway to silence this.")
+    $ClassifierModel = ''
   }
 }
 

@@ -900,14 +900,18 @@ bank, and opens mixed subagent lanes that the plain codex CLI harness does not.
 | `CLIPROXY_API_KEY` | Must match an `api-keys` entry in `~/.cli-proxy-api/config.yaml` |
 | `CLAUDE_CONFIG_DIR` | `$HOME/.claude-codex` |
 
-**Opt-in Sonnet classifier (HIMMEL-5273, default off).** By default the auto-mode
-classifier's Sonnet alias (`ANTHROPIC_DEFAULT_SONNET_MODEL`) maps to
-`$CODEX_MODEL`. `--classifier-model <alias>` (PowerShell: `-ClassifierModel`) or
-`CLAUDEX_CLASSIFIER_MODEL=<alias>` points only that alias at a Claude model the
-proxy serves (e.g. `claude-sonnet-5-5` via cli-proxy-api's claude provider, OAuth
-login `-claude-login`; never OpenRouter). The main, Haiku, Opus and subagent
-models and the seeded claudex `permissions.deny` rules are unchanged. The
-launcher refuses to start (exit 2) when the alias is not in the proxy's
+**Sonnet classifier (HIMMEL-5273; default since HIMMEL-5164).** The auto-mode
+classifier's Sonnet alias (`ANTHROPIC_DEFAULT_SONNET_MODEL`) now defaults to
+`claude-sonnet-5-5` when the proxy serves it (cli-proxy-api's claude provider, OAuth
+login `-claude-login`; never OpenRouter). When the default is not served the
+launcher prints one `WARNING` line naming the fallback and continues on the
+gateway classifier (`$CODEX_MODEL`); it never runs with no classifier
+(`CLAUDE_CODE_AUTO_MODE_SERVER=0` stays). `CLAUDEX_CLASSIFIER_MODEL=gateway` (or
+`--classifier-model gateway`, PowerShell `-ClassifierModel gateway`) opts out
+explicitly and silently. `--classifier-model <alias>` /
+`CLAUDEX_CLASSIFIER_MODEL=<alias>` pick another alias the proxy serves. The main, Haiku, Opus and subagent
+models and the seeded claudex `permissions.deny` rules are unchanged. An
+explicit alias refuses to start (exit 2) when it is not in the proxy's
 `/v1/models`. Side effect: `/model sonnet` and a subagent asking for "sonnet"
 also hit the Claude alias. VM sweep (cli-proxy-api 7.3.15, claude 2.1.263): the
 classifier really evaluates (`classifier_request_started … stage=xml_s1/xml_s2`,
