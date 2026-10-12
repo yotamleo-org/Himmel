@@ -24,7 +24,7 @@ trap 'rm -f "$EMPTY_BASELINE" "$SCOPED_BASELINE"' EXIT
 # no real baseline entry can accidentally mask a test), from the repo root.
 OUT=""
 run() {
-    OUT="$(cd "$REPO_ROOT" && GIT_ENV_SCRUB_BASELINE="$EMPTY_BASELINE" bash "$CHECKER" --tree "$@" 2>&1)"
+    OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$EMPTY_BASELINE" --tree "$@" 2>&1)"
     return $?
 }
 
@@ -91,7 +91,7 @@ SCOPED_BASELINE="$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-scoped-baseline.XXXXXX"
     printf 'JS:%s/baseline-listed.mjs:%s\n' "$CASES" "$hash"
 } > "$SCOPED_BASELINE"
 
-OUT="$(cd "$REPO_ROOT" && GIT_ENV_SCRUB_BASELINE="$SCOPED_BASELINE" bash "$CHECKER" --tree "$CASES/baseline-listed.sh" "$CASES/baseline-listed.mjs" 2>&1)"
+OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$SCOPED_BASELINE" --tree "$CASES/baseline-listed.sh" "$CASES/baseline-listed.mjs" 2>&1)"
 rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "T16 baseline-listed shell file and JS call are grandfathered"
@@ -124,7 +124,7 @@ expect_red "T22 scrub names in a COMMENT alone don't satisfy the window" comment
 # the fix, a nonexistent path matches neither `-f` nor `-d` and is silently
 # skipped, so the fixture below (deliberately never on disk) would previously
 # report zero findings and rc=0.
-T23_OUT="$(cd "$REPO_ROOT" && GIT_ENV_SCRUB_BASELINE="$EMPTY_BASELINE" bash "$CHECKER" --tree "$CASES/does-not-exist-xyz.sh" 2>&1)"
+T23_OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$EMPTY_BASELINE" --tree "$CASES/does-not-exist-xyz.sh" 2>&1)"
 T23_RC=$?
 if [ "$T23_RC" -ne 0 ] && grep -qF "does not exist" <<<"$T23_OUT"; then
     pass "T23 --tree on a nonexistent path fails, not clean"
@@ -142,7 +142,7 @@ fi
 # `git ls-files` legitimately returns an empty list.
 T24_REPO="$(mktemp -d "${TMPDIR:-/tmp}/git-env-scrub-empty-repo.XXXXXX")" || exit 2
 (cd "$T24_REPO" && git init -q && git config user.email t@t && git config user.name t) >/dev/null 2>&1
-T24_OUT="$(cd "$T24_REPO" && GIT_ENV_SCRUB_BASELINE="$EMPTY_BASELINE" bash "$CHECKER" --tree 2>&1)"
+T24_OUT="$(cd "$T24_REPO" && bash "$CHECKER" --baseline "$EMPTY_BASELINE" --tree 2>&1)"
 T24_RC=$?
 rm -rf "$T24_REPO"
 if [ "$T24_RC" -ne 0 ]; then
@@ -168,7 +168,7 @@ T25_REPO="$(mktemp -d "${TMPDIR:-/tmp}/git-env-scrub-staged-repo.XXXXXX")" || ex
     git commit -q -m init
     git mv scripts/other/x.sh scripts/hooks/x.sh
 ) >/dev/null 2>&1
-T25_OUT="$(cd "$T25_REPO" && GIT_ENV_SCRUB_BASELINE="$EMPTY_BASELINE" bash "$CHECKER" --staged 2>&1)"
+T25_OUT="$(cd "$T25_REPO" && bash "$CHECKER" --baseline "$EMPTY_BASELINE" --staged 2>&1)"
 T25_RC=$?
 rm -rf "$T25_REPO"
 if [ "$T25_RC" -eq 1 ] && grep -qF "scripts/hooks/x.sh" <<<"$T25_OUT"; then
@@ -192,7 +192,7 @@ T28_BASELINE="$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-stale-baseline.XXXXXX")" |
     cat "$REPO_ROOT/scripts/guardrails/git-env-baseline.txt"
     printf 'SHELL:scripts/hooks/does-not-exist-xyz.sh\n'
 } > "$T28_BASELINE"
-T28_OUT="$(cd "$REPO_ROOT" && GIT_ENV_SCRUB_BASELINE="$T28_BASELINE" bash "$CHECKER" --tree 2>&1)"
+T28_OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$T28_BASELINE" --tree 2>&1)"
 T28_RC=$?
 rm -f "$T28_BASELINE"
 if [ "$T28_RC" -eq 1 ] && grep -qF "stale" <<<"$T28_OUT" && grep -qF "does-not-exist-xyz.sh" <<<"$T28_OUT"; then
@@ -200,6 +200,102 @@ if [ "$T28_RC" -eq 1 ] && grep -qF "stale" <<<"$T28_OUT" && grep -qF "does-not-e
 else
     fail "T28 a stale baseline entry fails the full scan (rc=$T28_RC)"
     printf '%s\n' "$T28_OUT" | sed 's/^/    /'
+fi
+
+# ---- HIMMEL-5393: exemption forgery, exotic shell shapes, JS window, new
+# extensions, and the gate's own environment ----
+
+# Item 2 -- exemption forgery.
+expect_red   "T29 a marker mid-sentence in a comment is not an exemption"      marker-prose-unscrubbed.sh
+expect_red   "T30 helper name / git_env_scrub in a comment or string is no scrub" helper-name-in-comment-unscrubbed.sh
+expect_red   "T31 an unset inside a never-called function is no scrub"          unset-in-uncalled-fn-unscrubbed.sh
+expect_green "T32 the same function, called before git, is a scrub (control)"   unset-in-called-fn-scrubbed.sh
+expect_red   "T33 a bare '# sourced-lib' marker with no reason fails"           sourced-lib-no-reason.sh
+expect_red   "T34 a '// git-env-ok:' marker inside a JS string literal fails"   marker-in-string-unscrubbed.mjs
+
+# Item 3 -- exotic shell call shapes.
+expect_red   "T35 \\git is a git invocation"                                    backslash-git-unscrubbed.sh
+expect_red   "T36 a quoted variable holding git is a git invocation"            var-git-unscrubbed.sh
+expect_red   "T37 bash -c 'git ...' is a git invocation"                        bash-c-unscrubbed.sh
+expect_red   "T38 eval \"git ...\" is a git invocation"                         eval-unscrubbed.sh
+expect_red   "T39 a git payload on a line-continued bash -c is caught"          line-continued-unscrubbed.sh
+expect_red   "T40 \$# earlier on the line does not truncate the scan"           hash-truncates-unscrubbed.sh
+
+# Follow-up (b) -- the inline scrub needs the full set, not the original four.
+expect_red   "T41 a hand scrub of only the original four vars fails (shell)"    four-unset-unscrubbed.sh
+expect_red   "T42 a JS env dropping only the original four keys fails"          four-keys-unscrubbed.mjs
+expect_red   "T43 a per-call env -u of only the original four vars fails"       env-u-four-unscrubbed.sh
+expect_green "T44 a per-call env -u of every var passes (control)"              env-u-all-scrubbed.sh
+expect_green "T45 every key dropped inside the JS call passes (control)"        all-keys-scrubbed.mjs
+
+# Item 1 + wrapper helpers -- the JS window.
+expect_red   "T46 a nearby gitClean() call does not mask a raw call"            window-gitclean-masked-unscrubbed.mjs
+expect_red   "T47 scrub names only as string literals do not scrub"             window-string-names-unscrubbed.mjs
+expect_red   "T48 a local run('git', ...) wrapper call is flagged"              wrapper-run-unscrubbed.mjs
+expect_red   "T49 execFileSync(GIT, ...) with GIT = 'git' is flagged"           var-held-unscrubbed.mjs
+expect_green "T50 'git' as an argument of a non-spawn callee is not a call"     not-a-spawn-scrubbed.mjs
+
+# Item 4 -- extensions beyond .sh/.mjs/.js.
+expect_red   "T51 an unscrubbed .cjs entry point fails"                         unscrubbed.cjs
+expect_red   "T52 an unscrubbed .ts entry point fails"                          unscrubbed.ts
+expect_red   "T53 an unscrubbed .py entry point fails"                          unscrubbed.py
+expect_green "T54 a .py entry point dropping every var passes (control)"        scrubbed.py
+expect_red   "T55 an unscrubbed .ps1 entry point fails"                         unscrubbed.ps1
+expect_green "T56 a .ps1 entry point removing every var passes (control)"       scrubbed.ps1
+
+# Item 5 -- the gate does not trust its inherited environment.
+# T57: a baseline named only by the inherited GIT_ENV_SCRUB_BASELINE must not
+# be honoured: the file listed there would grandfather the red fixture.
+T57_BASELINE="$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-env-baseline.XXXXXX")" || exit 2
+printf 'SHELL:%s/unscrubbed-entry.sh\n' "$CASES" > "$T57_BASELINE"
+T57_OUT="$(cd "$REPO_ROOT" && env GIT_ENV_SCRUB_BASELINE="$T57_BASELINE" bash "$CHECKER" --tree "$CASES/unscrubbed-entry.sh" 2>&1)"
+T57_RC=$?
+rm -f "$T57_BASELINE"
+if [ "$T57_RC" -eq 1 ] && grep -qF "unscrubbed-entry.sh" <<<"$T57_OUT"; then
+    pass "T57 an inherited GIT_ENV_SCRUB_BASELINE is not honoured"
+else
+    fail "T57 an inherited GIT_ENV_SCRUB_BASELINE is not honoured (rc=$T57_RC)"
+    printf '%s\n' "$T57_OUT" | sed 's/^/    /'
+fi
+
+# T58/T59: the checker's own git calls run under a scrubbed environment — a
+# poisoned GIT_DIR must neither break its repo discovery nor hide a finding.
+T58_OUT="$(cd "$REPO_ROOT" && env GIT_DIR=/nonexistent/poison GIT_WORK_TREE=/nonexistent/poison GIT_COMMON_DIR=/nonexistent/poison GIT_INDEX_FILE=/nonexistent/poison bash "$CHECKER" --baseline "$EMPTY_BASELINE" --tree "$CASES/unscrubbed-entry.sh" 2>&1)"
+T58_RC=$?
+if [ "$T58_RC" -eq 1 ] && grep -qF "unscrubbed-entry.sh" <<<"$T58_OUT"; then
+    pass "T58 poisoned GIT_* in the caller's env does not break the scan"
+else
+    fail "T58 poisoned GIT_* in the caller's env does not break the scan (rc=$T58_RC)"
+    printf '%s\n' "$T58_OUT" | sed 's/^/    /'
+fi
+T59_OUT="$(cd "$REPO_ROOT" && env GIT_DIR=/nonexistent/poison GIT_WORK_TREE=/nonexistent/poison bash "$CHECKER" --baseline "$EMPTY_BASELINE" --tree "$CASES/unset-scrubbed.sh" 2>&1)"
+T59_RC=$?
+if [ "$T59_RC" -eq 0 ]; then
+    pass "T59 poisoned GIT_* in the caller's env does not fail a clean scan"
+else
+    fail "T59 poisoned GIT_* in the caller's env does not fail a clean scan (rc=$T59_RC)"
+    printf '%s\n' "$T59_OUT" | sed 's/^/    /'
+fi
+
+# T60 -- pin: --staged is a pre-commit gate and a hook legitimately runs with
+# GIT_INDEX_FILE pointing at the index being committed, so the self-scrub
+# must keep it. The file is staged ONLY in the alternate index.
+T60_REPO="$(mktemp -d "${TMPDIR:-/tmp}/git-env-scrub-altindex-repo.XXXXXX")" || exit 2
+T60_OUT="$(
+    cd "$T60_REPO" || exit 1
+    git init -q && git config user.email t@t && git config user.name t
+    mkdir -p scripts/hooks
+    printf '#!/usr/bin/env bash\ngit status\n' > scripts/hooks/alt.sh
+    GIT_INDEX_FILE="$T60_REPO/.git/alt-index" git add scripts/hooks/alt.sh
+    GIT_INDEX_FILE="$T60_REPO/.git/alt-index" bash "$CHECKER" --baseline "$EMPTY_BASELINE" --staged 2>&1
+    echo "rc=$?"
+)"
+rm -rf "$T60_REPO"
+if grep -qF "scripts/hooks/alt.sh" <<<"$T60_OUT" && grep -qx "rc=1" <<<"$T60_OUT"; then
+    pass "T60 --staged still reads the index named by GIT_INDEX_FILE"
+else
+    fail "T60 --staged still reads the index named by GIT_INDEX_FILE"
+    printf '%s\n' "$T60_OUT" | sed 's/^/    /'
 fi
 
 # T18 -- sanity: the real trust paths, under the real committed baseline,
