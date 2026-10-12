@@ -31,7 +31,7 @@ run_launcher() {
   local name="$1"
   shift
   ( cd "$WORK" && HOME="$FAKEHOME" PATH="$BIN:$PATH" CLIPROXY_API_KEY="test-key" \
-      CODEX_MODEL="${MODEL:-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
+      XDG_STATE_HOME="$FAKEHOME/.local/state" CODEX_MODEL="${MODEL:-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
       bash "$LAUNCHER" "$@" >"$WORK/out.txt" 2>&1 )
   local got=$?
   if [ "$got" -ne 0 ]; then
@@ -60,7 +60,7 @@ run_launcher_expect() {
   local name="$1" expected="$2" needle="$3"
   shift 3
   ( cd "$WORK" && HOME="$FAKEHOME" PATH="$BIN:$PATH" CLIPROXY_API_KEY="test-key" \
-      CODEX_MODEL="${MODEL:-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
+      XDG_STATE_HOME="$FAKEHOME/.local/state" CODEX_MODEL="${MODEL:-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
       bash "$LAUNCHER" "$@" >"$WORK/out.txt" 2>&1 )
   local got=$?
   if [ "$got" -ne "$expected" ]; then
@@ -531,7 +531,7 @@ const [capture, work, home] = process.argv.slice(2);
 const args = fs.readFileSync(capture, 'utf8').split('\0').slice(0, -1);
 assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk', 'opt-in did not select dontAsk');
 assert.ok(!args.includes('--dontask'), 'launcher flag leaked to claude');
-assert.equal(args[args.indexOf('--setting-sources') + 1], '', 'inherited settings remain enabled');
+assert.ok(args.includes('--setting-sources='), 'empty sources must survive native PowerShell argument passing');
 const policyPath = args[args.indexOf('--settings') + 1];
 assert.ok(policyPath.startsWith(path.join(home, '.local/state/claude-codex/sessions') + '/'), 'policy is not session-owned state');
 const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
@@ -578,7 +578,7 @@ const fs = require('node:fs');
 const args = fs.readFileSync(process.argv[2], 'utf8').split('\0').slice(0, -1);
 assert.ok(!args.includes('--dontask'), 'launcher flag leaked');
 assert.ok(!args.includes('dontAsk'), 'operator mode was overridden');
-assert.ok(!args.includes('--setting-sources'), 'operator mode inherited opt-in policy');
+assert.ok(!args.some(arg => arg.startsWith('--setting-sources')), 'operator mode inherited opt-in policy');
 assert.ok(args.includes('manual') || args.includes('--permission-mode=manual'));
 NODE
 done
@@ -606,7 +606,7 @@ const {spawnSync} = require('node:child_process');
 const [twin, work, home] = process.argv.slice(2);
 const js = fs.readFileSync(twin, 'utf8').match(/\$PolicyJs = @'\n([\s\S]*?)\n'@/)[1];
 const seeded = path.join(home, '.claude/settings.json');
-const child = spawnSync(process.execPath, ['-', seeded, '/usr/bin/git', home], {input:js, cwd:work, env:{...process.env, HOME:home}, encoding:'utf8'});
+const child = spawnSync(process.execPath, ['-', seeded, '/usr/bin/git', home], {input:js, cwd:work, env:{...process.env, HOME:home, XDG_STATE_HOME:path.join(home, '.local/state')}, encoding:'utf8'});
 assert.equal(child.status, 0, child.stderr);
 const policy = JSON.parse(fs.readFileSync(child.stdout, 'utf8'));
 const source = JSON.parse(fs.readFileSync(path.join(work, '.claude/settings.json'), 'utf8'));

@@ -762,6 +762,6 @@ try {
 NODE
 )" || exit 3
   IFS= read -r _denied < "${_policy%/*}/denied-tools" || exit 3
-  set -- --setting-sources "" --settings "$_policy" --disallowedTools "$_denied" --permission-mode dontAsk "$@"
+  set -- --setting-sources= --settings "$_policy" --disallowedTools "$_denied" --permission-mode dontAsk "$@"
 fi
 exec claude "$@"

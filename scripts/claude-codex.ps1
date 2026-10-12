@@ -707,7 +707,7 @@ try {
   $policy = $PolicyJs | & node - (Join-Path $ConfigDir 'settings.json') $gitBinary $HomeDir
   if ($LASTEXITCODE -ne 0) { exit 3 }
   $denied = [System.IO.File]::ReadAllText((Join-Path (Split-Path -Parent $policy) 'denied-tools')).TrimEnd("`n")
-  $launchArgs = @('--setting-sources', '', '--settings', $policy, '--disallowedTools', $denied, '--permission-mode', 'dontAsk') + $ClaudeArgs.ToArray()
+  $launchArgs = @('--setting-sources=', '--settings', $policy, '--disallowedTools', $denied, '--permission-mode', 'dontAsk') + $ClaudeArgs.ToArray()
   & claude @launchArgs
 } else {
   & claude @ClaudeArgs
