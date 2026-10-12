@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,7 @@ echo called >> "$STUB_LOG"
   echo "base_url=\${ANTHROPIC_BASE_URL:-}"; echo "oauth=\${CLAUDE_CODE_OAUTH_TOKEN:-}"
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
-  echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+  echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=')"
   echo "args=$*"; } > "$STUB_ENV"
 printf '%s' "$STUB_OUT"
@@ -154,7 +154,7 @@ test('absent key and selector/credential mismatch refuse before any spawn', () =
   const f = fixture();
   const absent = f.run(f.good, { ANTHROPIC_API_KEY: '' });
   assert.equal(absent.status, 2);
-  assert.match(absent.stderr, /ANTHROPIC_API_KEY is absent/);
+  assert.match(absent.stderr, /no ANTHROPIC_API_KEY and no key file for account A/);
   const mismatch = f.run(f.good, { HIMMEL_API_KEY_ID: 'key-b' });
   assert.equal(mismatch.status, 2);
   assert.match(mismatch.stderr, /key id does not match account A/);
@@ -360,5 +360,90 @@ test('HIMMEL-5433: measure-credit reads the key from a file, refreshes the snaps
   assert.match(seen, /^session_markers=0$/m);
   assert.match(seen, /--model claude-haiku-5-5/);
   assert.match(seen, /--max-budget-usd 0\.05/);
-  assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.remaining_usd, '1.75');
+  assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.remaining_usd, '1.750000');
+});
+
+const KEY_A = 'sk-ant-dummy-account-a-key-AAAA';
+const KEY_B = 'sk-ant-dummy-account-b-key-BBBB';
+function keyFiles(f, mode = 0o600) {
+  writeFileSync(join(f.dir, 'key-A.env'), `ANTHROPIC_API_KEY=${KEY_A}\n`, { mode });
+  writeFileSync(join(f.dir, 'key-B.env'), `ANTHROPIC_API_KEY=${KEY_B}\n`, { mode });
+  chmodSync(join(f.dir, 'key-A.env'), mode); chmodSync(join(f.dir, 'key-B.env'), mode);
+  const env = { ...f.env };
+  delete env.ANTHROPIC_API_KEY; delete env.HIMMEL_API_KEY_ID;
+  return env;
+}
+const launch = (env, extra = {}) => spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5',
+  '--permission-mode', 'plan', '--max-budget-usd', '0.10'], { env: { ...env, ...extra }, encoding: 'utf8' });
+
+test('HIMMEL-5433: with no key in the caller env the launcher reads key-<account>.env beside the ledger, child env only', () => {
+  const f = fixture();
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
+  assert.equal(JSON.parse(f.record().trim()).key_id, 'key-b');
+  for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(KEY_B));
+});
+
+test('HIMMEL-5433: a key file readable by others, or none at all, refuses before any reservation or spawn', () => {
+  const f = fixture();
+  const loose = launch(keyFiles(f, 0o644), { HIMMEL_API_ACCOUNT: 'A' });
+  assert.equal(loose.status, 2);
+  assert.match(loose.stderr, /key file for account A must be mode 600/);
+  const env = keyFiles(f);
+  rmSync(join(f.dir, 'key-A.env'));
+  const none = launch(env, { HIMMEL_API_ACCOUNT: 'A' });
+  assert.equal(none.status, 2);
+  assert.match(none.stderr, /no ANTHROPIC_API_KEY and no key file for account A/);
+  assert.equal(f.called(), false);
+  assert.equal(f.status().reserved_usd, '0.000000');
+});
+
+test('HIMMEL-5433: HIMMEL_API_ACCOUNT=auto spends the earliest-expiring grant first, never past its cap', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.expires_at += 7200;  // A expires after B
+  f.save();
+  const env = keyFiles(f);
+  const first = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-1' });
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
+  // B has 0.05 left: a 0.10 budget does not fit, so A takes the next call.
+  f.snapshot.accounts.B.remaining_usd = '0.05';
+  f.snapshot.accounts.B.reconciled_spent_usd = '0.012345';
+  f.save();
+  const second = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-2' });
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=AAAA$/m);
+  assert.deepEqual(f.record().trim().split('\n').map((l) => JSON.parse(l).account), ['B', 'A']);
+  // Neither fits: refuse, no spawn.
+  f.snapshot.accounts.A.remaining_usd = '0.05';
+  f.snapshot.accounts.A.reconciled_spent_usd = '0.012345';
+  f.save();
+  rmSync(f.paths.log);
+  const third = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-auto-3' });
+  assert.equal(third.status, 2);
+  assert.match(third.stderr, /no account has room/);
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot follow the pick', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /auto routing reads the per-account key files/);
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-5433: a Console refresh does not count already-billed ledger spend twice', () => {
+  const f = fixture();
+  assert.equal(f.run().status, 0);  // settles 0.012345 on A
+  const keyFile = join(f.dir, 'key.env');
+  writeFileSync(keyFile, `ANTHROPIC_API_KEY=${DUMMY}\n`, { mode: 0o600 });
+  const env = { ...f.env };
+  delete env.ANTHROPIC_API_KEY; delete env.HIMMEL_API_LANE; delete env.HIMMEL_API_KEY_ID; delete env.HIMMEL_API_JOB_ID;
+  // The Console now shows the first job billed: 2.00 - 0.012345.
+  const r = spawnSync('bash', [MEASURE, 'A', 'key-a', keyFile, '1.987655'], { env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  // The billed job once plus the measure call once, never the billed job twice.
+  assert.equal(f.status().spent_est_usd, '0.024690');
 });

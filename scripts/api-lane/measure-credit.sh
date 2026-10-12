@@ -24,17 +24,9 @@ case "$SOURCE" in
 esac
 [ -n "$KEY" ] || { echo "measure-credit: no ANTHROPIC_API_KEY in the key source" >&2; exit 2; }
 
-# Refresh the operator snapshot with the figure just read from the Console.
-# shellcheck disable=SC2016 # JavaScript template literals, not shell expansions
-HIMMEL_API_ACCOUNT="$ACCOUNT" node -e '
-  const { readFileSync, writeFileSync, renameSync } = require("node:fs");
-  const { join } = require("node:path");
-  const p = process.env.HIMMEL_API_CREDIT_SNAPSHOT || join(require("node:os").userInfo().homedir, ".himmel/state/api-credit/snapshot.json");
-  const s = JSON.parse(readFileSync(p, "utf8")); const a = s.accounts[process.env.HIMMEL_API_ACCOUNT];
-  if (!a) { console.error("measure-credit: no snapshot row for that account"); process.exit(2); }
-  a.remaining_usd = process.argv[1]; a.observed_at = Math.floor(Date.now() / 1000); a.source = "operator-console-snapshot";
-  writeFileSync(`${p}.tmp`, `${JSON.stringify(s, null, 2)}\n`, { mode: 0o600 }); renameSync(`${p}.tmp`, p);
-' "$BEFORE" || exit 2
+# Refresh the operator snapshot with the figure just read from the Console; the refresh also moves the
+# reconciled-spend watermark, so spend the Console already shows is not counted again (HIMMEL-5433).
+node "$REPO/scripts/api-lane/grant-snapshot.mjs" "$ACCOUNT" "$BEFORE" || exit 2
 
 # An empty scratch cwd keeps the call small: no project CLAUDE.md or hooks load.
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/measure-credit.XXXXXX")" || exit 2

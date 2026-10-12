@@ -44,17 +44,28 @@ Read Console > Billing (Promotional credits) and Console > Cost before the run
 and again 5-15 minutes after; the script refreshes the account's snapshot with
 the before figure and prints only the launcher verdict, outcome and cost.
 
+Measured 2026-10-13, account B, Haiku: the call returned success with
+`total_cost_usd` 0.0032, and Console > Billing (Promotional credits) went from
+$199.91 to $199.90 of $200. The spend landed on the credit, not on a card.
+Account A had a second $200 grant that expired unused on 2026-10-13.
+
+Should the lane spend it by default? Not in this change: the lane stays OFF
+(`HIMMEL_API_LANE` unset) until its switch-on leg (HIMMEL-4987). The credit
+does not roll over, so once that leg turns it on, `HIMMEL_API_ACCOUNT=auto`
+spends the grant that expires first, inside each account's own cap.
+
 ## What the launcher enforces
 
 | Rule | Where |
 |---|---|
-| `HIMMEL_API_LANE=on`, `HIMMEL_API_ACCOUNT=A\|B`, key present (never printed) | `claude-api.sh` |
-| `HIMMEL_API_KEY_ID` must equal the roster `key_id` of that account | `claude-api.sh`, `roster.mjs` |
+| `HIMMEL_API_LANE=on`, `HIMMEL_API_ACCOUNT=A\|B\|auto`, key present (never printed) | `claude-api.sh` |
+| Key: the caller's `ANTHROPIC_API_KEY` (then `HIMMEL_API_KEY_ID` is required), else `key-<account>.env` beside the ledger, which must be mode 600 and yours; the key is handed only to claude's env, never exported | `claude-api.sh` |
+| `HIMMEL_API_KEY_ID`, when set, must equal the roster `key_id` of that account | `claude-api.sh`, `roster.mjs` |
 | Conflicting provider flags / `ANTHROPIC_AUTH_TOKEN` / openrouter or claudex lane: refuse | `claude-api.sh` |
 | `-p` only; caller flags are an allowlist (`-p`, `--model`, `--permission-mode`, `--max-budget-usd`, `--output-format json`, `--effort`), so no `--bg`, `--cloud`, `--daemon`, bypass or skip-permissions; `--model` and `--effort` values must not start with a dash; `--permission-mode` is one of `default`, `plan`, `acceptEdits`, `dontAsk`, `auto` (exact case, never the bypass mode); explicit `--permission-mode`, `--model`, `--max-budget-usd` | `claude-api.sh` |
 | Bank gate is the API credit row only (`CADENCE_BANK_LANE=api`, opt-in via `HIMMEL_API_LANE=on`); the native bank is never read, so an exhausted native bank does not block and a funded one does not rescue an empty API account | `bank-preflight.sh` |
 | Reserve the full budget first; settle only on a verified result with `total_cost_usd`, else mark `unknown` and keep the reservation | `api-credit-state.mjs`, `outcome.mjs` |
-| No automatic A/B rotation and no subscription fallback: a refusal is final | `claude-api.sh` |
+| `auto` picks the account whose grant expires first among those with room for the whole budget under their own cap; a caller key is refused under `auto`; no subscription fallback: a refusal is final | `claude-api.sh`, `api-credit-state.mjs pick` |
 | Child env: OAuth, profile and federation vars removed, `ANTHROPIC_BASE_URL` pinned to `https://api.anthropic.com`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (live probe 2026-10-13, claude 2.1.296: Bash runs inside the bwrap sandbox) | `claude-api.sh` |
 | Claude Code session markers dropped (`CLAUDECODE`, `AI_AGENT`, `CLAUDE_PID`, `CLAUDE_EFFORT`, every `CLAUDE_CODE_*`), so the child is not billed as that session | `claude-api.sh` |
 | Tools fixed to `Read,Edit,Write,Glob,Grep,Bash` via `--tools` and `--allowedTools`, because the scrub forces permission mode `default` | `claude-api.sh` |
@@ -74,8 +85,16 @@ the before figure and prints only the launcher verdict, outcome and cost.
 only restate it, and the config location comes from the account home, not
 `$HOME`. Two sentinels (`<ledger>.initialized` and one beside the config) make
 deleting the ledger refuse instead of resetting spent credit. `key_id` is a
-non-secret label chosen by the operator; the key itself is only ever in the
-launching shell's `ANTHROPIC_API_KEY`.
+non-secret label chosen by the operator; the key itself is in
+`key-A.env` / `key-B.env` beside the config (one `ANTHROPIC_API_KEY=` line,
+mode 600), or in the launching shell's `ANTHROPIC_API_KEY`.
+
+The snapshot row of each account is refreshed from a Console reading with
+`node scripts/api-lane/grant-snapshot.mjs <A|B> <remaining-usd> [<grant-usd>
+<starts YYYY-MM-DD> <expires YYYY-MM-DD>]`; the long form (re)writes the grant
+(dates as 00:00 UTC). A refresh also moves `reconciled_spent_usd` to the spend
+the Console already shows, so a refresh after a settled call does not count
+that call twice.
 `HIMMEL_API_CREDIT_CONFIG` can still point at a second config with its own
 ledger; pinning it is HIMMEL-5444.
 
