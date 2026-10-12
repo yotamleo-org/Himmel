@@ -401,9 +401,13 @@ def _mask_list_path(runner):
     with _MASK_LOCK:
         if time.time() - _MASK["built"] > MASK_REFRESH_S:
             out = os.path.join(_MASK["dir"], "mask-list")
+            # PATH only: an inherited startup-file variable must not be sourced
+            # by the builder's bash any more than by a row's (guard-corpus
+            # bash-env row).
             r = subprocess.run(["bash", runner, "--write-mask-list", out],
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL)
+                               stderr=subprocess.DEVNULL,
+                               env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")})
             if r.returncode != 0:
                 _MASK["off"] = True
                 return None
