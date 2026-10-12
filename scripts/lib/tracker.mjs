@@ -31,7 +31,12 @@ export function parseLocalItem(text) {
     if (lines[0] !== '---') return out;
     for (let i = 1; i < lines.length && lines[i] !== '---'; i++) {
         const m = /^([a-z_]+):(?: (.*))?$/.exec(lines[i]);
-        if (m && m[1] in out) out[m[1]] = m[2] === undefined ? '' : m[2];
+        if (m && m[1] in out) {
+            let v = m[2] === undefined ? '' : m[2];
+            // the writer double-quotes titles; JSON.parse undoes \" and \\ alike
+            if (/^".*"$/.test(v)) { try { v = JSON.parse(v); } catch { /* keep raw */ } }
+            out[m[1]] = v;
+        }
     }
     return out;
 }

@@ -8,23 +8,21 @@
 
 _TRACKER_JIRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# _tracker_jira_cmd — print the command words of the Jira CLI.
-_tracker_jira_cmd() {
+# _tracker_jira_run <op> [args...] — run the CLI; stdout is the CLI's. JIRA_CMD
+# is a command line and is word-split on purpose; the default path is passed as
+# one quoted word so a primary checkout containing spaces still works.
+_tracker_jira_run() {
     local common
     if [ -n "${JIRA_CMD:-}" ]; then
-        printf '%s' "$JIRA_CMD"
-        return 0
+        # shellcheck disable=SC2086
+        $JIRA_CMD "$@"
+        return $?
     fi
-    common=$(git -C "$_TRACKER_JIRA_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-    printf 'node %s/scripts/jira/dist/index.js' "$(dirname "$common")"
-}
-
-# _tracker_jira_run <op> [args...] — run the CLI; stdout is the CLI's.
-_tracker_jira_run() {
-    local cmd
-    cmd=$(_tracker_jira_cmd) || { echo "tracker(jira): cannot locate the Jira CLI (set JIRA_CMD)" >&2; return 1; }
-    # shellcheck disable=SC2086  # JIRA_CMD is a command line ("node x.js"): word-split on purpose
-    $cmd "$@"
+    common=$(git -C "$_TRACKER_JIRA_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+        echo "tracker(jira): cannot locate the Jira CLI (set JIRA_CMD)" >&2
+        return 1
+    }
+    node "$(dirname "$common")/scripts/jira/dist/index.js" "$@"
 }
 
 _tracker_jira_id_pattern() { project_mode_id_pattern; }
@@ -95,5 +93,12 @@ _tracker_jira_query() {
             epic=*) jql="$jql AND parent = \"$v\"" ;;
         esac
     done
-    _tracker_jira_run list --jql "$jql" --limit 100 | awk -F'\t' 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
+    local out rows
+    out=$(_tracker_jira_run list --jql "$jql" --limit 100) || return 1
+    rows=$(printf '%s\n' "$out" | awk -F'\t' 'NF >= 4 { print $1 "\t" $3 "\t" $4 }')
+    [ -z "$rows" ] || printf '%s\n' "$rows"
+    # the CLI lists one page: say so when it is full, the local backend has no cap
+    if [ "$(printf '%s' "$rows" | grep -c .)" -ge 100 ]; then
+        echo "tracker(jira): query hit the 100-issue limit; the result may be truncated" >&2
+    fi
 }

@@ -82,7 +82,9 @@ _tracker_local_lock() {
     local lock="$1/.lock" tries="${TRACKER_LOCK_TRIES:-200}" owner again
     while :; do
         if mkdir "$lock" 2>/dev/null; then
-            printf '%s\n' "$$" > "$lock/owner"
+            # $BASHPID is the real process inside a $(...) mint; $$ (bash 3.2 has
+            # no BASHPID) names the parent shell, which can outlive the minter
+            printf '%s\n' "${BASHPID:-$$}" > "$lock/owner"
             return 0
         fi
         owner=$(cat "$lock/owner" 2>/dev/null)
@@ -111,14 +113,30 @@ _tracker_local_unlock() { rm -rf "$1/.lock"; }
 _tracker_local_field() {
     awk -v k="$2" '
         /^---$/ { n++; if (n == 2) exit; next }
-        n == 1 && $0 ~ "^" k ":( |$)" { sub("^" k ": ?", ""); print; exit }
+        n == 1 && $0 ~ "^" k ":( |$)" {
+            sub("^" k ": ?", "")
+            v = $0
+            if (v ~ /^".*"$/) {
+                v = substr(v, 2, length(v) - 2)
+                out = ""
+                for (i = 1; i <= length(v); i++) {
+                    c = substr(v, i, 1)
+                    if (c == "\\" && i < length(v)) { i++; c = substr(v, i, 1) }
+                    out = out c
+                }
+                v = out
+            }
+            print v
+            exit
+        }
     ' "$1"
 }
 
 # _tracker_local_id_new <type> <title> [body-file]
 _tracker_local_id_new() {
     local type="$1" title store prefix n id file
-    title=$(printf '%s' "$2" | tr '\n\r' '  ')
+    # double-quoted scalar (YAML-valid for ": " and " #"); readers unquote it
+    title=$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g')
     store=$(_tracker_local_store) || return 2
     prefix=$(_tracker_local_prefix) || return 2
     mkdir -p "$store" || return 1
@@ -128,12 +146,18 @@ _tracker_local_id_new() {
     id="$prefix-$n"
     file="$store/$id.md"
     {
-        printf -- '---\nid: %s\ntitle: %s\ntype: %s\nstatus: To Do\nfix_version:\nepic:\ncreated: %s\nlinks:\n---\n\n' \
+        printf -- '---\nid: %s\ntitle: "%s"\ntype: %s\nstatus: To Do\nfix_version:\nepic:\ncreated: %s\nlinks:\n---\n\n' \
             "$id" "$title" "$type" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         if [ -n "${3:-}" ] && [ -f "$3" ]; then cat "$3"; printf '\n'; fi
         printf '\n## Log\n'
     } > "$file" || { _tracker_local_unlock "$store"; return 1; }
-    printf '%s\n' "$((n + 1))" > "$store/next-id.tmp" && mv "$store/next-id.tmp" "$store/next-id"
+    if ! { printf '%s\n' "$((n + 1))" > "$store/next-id.tmp" && mv "$store/next-id.tmp" "$store/next-id"; }; then
+        # an id that was not advanced would be minted again over this item
+        rm -f "$file" "$store/next-id.tmp"
+        _tracker_local_unlock "$store"
+        echo "tracker(local): cannot advance $store/next-id" >&2
+        return 1
+    fi
     _tracker_local_unlock "$store"
     printf '%s\n' "$id"
 }
@@ -161,33 +185,48 @@ _tracker_local_title() {
     _tracker_local_field "$f" title
 }
 
+# Item edits are read-modify-write on one file, so they take the same store lock
+# as minting: two concurrent edits cannot share <file>.tmp or lose an append.
 _tracker_local_transition() {
-    local f cur back=0
+    local f cur back=0 store rc=0
     [ "${3:-}" = --allow-back ] && back=1
     f=$(_tracker_local_item "$1") || return $?
+    store=$(dirname "$f")
+    _tracker_local_lock "$store" || return 1
     cur=$(_tracker_local_field "$f" status)
-    _tracker_should_move "$cur" "$2" "$back" || return 0
-    awk -v s="$2" '
-        /^---$/ { n++ }
-        n == 1 && !done && /^status:( |$)/ { print "status: " s; done = 1; next }
-        { print }
-    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    if _tracker_should_move "$cur" "$2" "$back"; then
+        awk -v s="$2" '
+            /^---$/ { n++ }
+            n == 1 && !done && /^status:( |$)/ { print "status: " s; done = 1; next }
+            { print }
+        ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rc=1
+    fi
+    _tracker_local_unlock "$store"
+    return $rc
 }
 
 _tracker_local_comment() {
-    local f
+    local f store rc=0
     f=$(_tracker_local_item "$1") || return $?
-    grep -q '^## Log$' "$f" || printf '\n## Log\n' >> "$f"
-    { printf '\n### %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; cat "$2"; } >> "$f"
+    store=$(dirname "$f")
+    _tracker_local_lock "$store" || return 1
+    grep -q '^## Log$' "$f" || printf '\n## Log\n' >> "$f" || rc=1
+    { printf '\n### %s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; cat "$2"; } >> "$f" || rc=1
+    _tracker_local_unlock "$store"
+    return $rc
 }
 
 _tracker_local_link() {
-    local f
+    local f store rc=0
     f=$(_tracker_local_item "$1") || return $?
+    store=$(dirname "$f")
+    _tracker_local_lock "$store" || return 1
     LINK="$2" awk '
         /^---$/ { n++; if (n == 2) print "  - " ENVIRON["LINK"] }
         { print }
-    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rc=1
+    _tracker_local_unlock "$store"
+    return $rc
 }
 
 # _tracker_local_query [field=value ...] — every item whose front matter matches

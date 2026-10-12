@@ -56,7 +56,7 @@ case "$op" in
         ;;
     transition) printf '%s\n' "$2" > "$STUB_STATE/status.$1"; echo "$1 -> $2" ;;
     create) cat "$STUB_FIX/create.txt" ;;
-    list) cat "$STUB_FIX/list.tsv" ;;
+    list) [ -z "${STUB_LIST_FAIL:-}" ] || { echo "list failed" >&2; exit 1; }; cat "$STUB_FIX/list.tsv" ;;
     comment|link) echo ok ;;
     *) echo "stub: unknown op $op" >&2; exit 2 ;;
 esac
@@ -250,6 +250,38 @@ wait "$livepid" 2>/dev/null
 eq "I5 live-pid lock blocks rc" 1 "$rc"
 has "I5 live-pid lock message names the owner" "$livepid" "$(cat "$R/blocked.err")"
 [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "I5 a mint went through a live lock"
+
+# ---- review fixes (panel round 1) -------------------------------------------
+# a failed next-id advance must fail the mint, drop the item and free the lock
+fresh_env local
+mkdir -p "$TRACKER_STORE/next-id.tmp"
+out=$(tracker_id_new Task "no advance" 2>/dev/null); rc=$?
+eq "next-id advance failure fails the mint" 1 "$rc"
+[ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "item left behind after a failed next-id advance"
+[ ! -e "$TRACKER_STORE/.lock" ] && ok || bad "lock left behind after a failed next-id advance"
+
+# concurrent edits of one item go through the store lock: no lost link
+fresh_env local
+id=$(tracker_id_new Task "edited")
+i=0
+while [ "$i" -lt 10 ]; do
+    i=$((i + 1))
+    ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
+done
+wait
+eq "10 concurrent links all landed" 10 "$(grep -c '^  - LOCAL-1' "$TRACKER_STORE/$id.md")"
+eq "concurrent transition landed" "In Progress" "$(status_of "$id")"
+
+# a title with YAML-significant characters survives write and read
+fresh_env local
+id=$(tracker_id_new Task 'fix: a "quoted" title # with \ slash')
+eq "title round-trips through tracker_title" 'fix: a "quoted" title # with \ slash' "$(tracker_title "$id")"
+eq "title round-trips through tracker_get" 'fix: a "quoted" title # with \ slash' "$(tracker_get "$id" | json_field title)"
+
+# a failing jira list is a failed query, not an empty result (pipefail off)
+fresh_env jira
+( set +o pipefail; STUB_LIST_FAIL=1 tracker_query status="To Do" >/dev/null 2>&1; echo "$?" > "$R/qrc" )
+[ "$(cat "$R/qrc")" != 0 ] && ok || bad "failing jira list read as success"
 
 # ---- ledger: one JSONL line per op, nothing when unset ----------------------
 fresh_env local
