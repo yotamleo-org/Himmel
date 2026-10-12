@@ -1032,12 +1032,15 @@ if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass 
 # round), read from the immutable base commit when this clone holds it.
 OLD_IS_SHA=dd22dd9f51730a1cac08ab7593f0e639160829a1
 mkdir -p "$SHIM4/oldcr"
-if cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/oldcr/anchor-handoff.sh" \
-    && git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/oldcr/impacted-suites.sh" 2>/dev/null; then
+if ! git -C "$(dirname "$IS")" cat-file -e "$OLD_IS_SHA^{commit}" 2>/dev/null; then
+    pass "old-selector control not run: $OLD_IS_SHA is not in this clone (shallow)"
+elif ! cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/oldcr/anchor-handoff.sh"; then
+    fail "old-selector control setup: cannot copy anchor-handoff.sh"
+elif ! git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/oldcr/impacted-suites.sh"; then
+    fail "old-selector control setup: $OLD_IS_SHA is present but its selector could not be read"
+else
     old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
     if [ "$old_out" = "$out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
-else
-    pass "old-selector control not run: $OLD_IS_SHA is not in this clone (shallow)"
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
