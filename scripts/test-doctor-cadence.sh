@@ -10,6 +10,8 @@ set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REAL_ROOT="$(cd "$DIR/.." && pwd)"
+# shellcheck source=lib/timeout-bin.sh
+. "$DIR/lib/timeout-bin.sh"
 FAILED=0
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
@@ -183,7 +185,8 @@ run_cad & first_pid=$!
 i=0
 while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
 [ -s "$STUB_WHERE" ] && pass "first concurrent doctor started" || fail "first concurrent doctor started"
-timeout 3 bash "$P/scripts/doctor-cadence.sh" run >/dev/null 2>&1; overlap_rc=$?
+# Without timeout, the stub's gate still releases after five seconds.
+${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 3} bash "$P/scripts/doctor-cadence.sh" run >/dev/null 2>&1; overlap_rc=$?
 check "overlapping cadence exits cleanly" 0 "$overlap_rc"
 check "overlapping cadence does not start a second doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 touch "$STUB_GATE"
@@ -272,8 +275,12 @@ check "BSD stat keeps the HUD counts age" "doctor  1 FAIL  12 WARN (30h old)" "$
 # 11. hardening (CR round 1): a dangling --time fails fast instead of looping;
 # a runner dir with a space is quoted in the crontab line; an unreadable
 # crontab is never mistaken for an empty one.
-timeout 5 bash "$P/scripts/doctor-cadence.sh" arm --time >/dev/null 2>&1; rc=$?
-check "arm --time with no value fails fast (no hang)" 1 "$rc"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    "$_TIMEOUT_BIN" 5 bash "$P/scripts/doctor-cadence.sh" arm --time >/dev/null 2>&1; rc=$?
+    check "arm --time with no value fails fast (no hang)" 1 "$rc"
+else
+    echo "SKIP arm --time hang guard: no GNU timeout/gtimeout"
+fi
 SP="$W/run ner"
 DOCTORCAD_RUNNER_DIR="$SP" bash "$P/scripts/doctor-cadence.sh" arm --force >/dev/null 2>&1
 grep -qF "\"$SP/doctor-cadence.sh\"" "$FAKE_CRON" && pass "runner path with a space is quoted in the crontab line" || fail "runner path with a space is quoted in the crontab line"
