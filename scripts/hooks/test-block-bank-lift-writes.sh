@@ -1465,10 +1465,18 @@ echo "== HIMMEL-5159: redirect / tee to an inherited env value naming the lift =
 # The hook reads its own inherited environment: a bare $VAR / ${VAR} redirect
 # or tee target that resolves to the lift denies; a benign value stays allowed.
 # The variable is set in the HOOK's environment only, as a leg launcher would.
-env_row() {  # label expect VAR=value command
-    local rc got
-    # shellcheck disable=SC2086  # $3 is one or more space-free VAR=value words
-    printf '%s' "$(bash_json "$4")" | env $3 bash "$HOOK" >/dev/null 2>&1
+env_row() {  # label expect "VAR=value VAR=value" command
+    # A space starts a new assignment only before NAME=, so a value holding a
+    # space or a glob character (a TMPDIR-derived HOME) stays one argument.
+    local rc got rest re='^(.*) ([A-Za-z_][A-Za-z0-9_]*=.*)$'
+    local -a asg=()
+    rest=$3
+    while [[ "$rest" =~ $re ]]; do
+        asg=("${BASH_REMATCH[2]}" ${asg[@]+"${asg[@]}"})
+        rest=${BASH_REMATCH[1]}
+    done
+    asg=("$rest" ${asg[@]+"${asg[@]}"})
+    printf '%s' "$(bash_json "$4")" | env "${asg[@]}" bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected $2 got $got"; fi
@@ -1622,6 +1630,13 @@ env_row "5348 cp to inherited \$rest (resolver local)" deny  "rest=$LIFT" 'cp x 
 env_row "5348 cp to inherited \$CMD (hook global)"     deny  "CMD=$LIFT" 'cp x "$CMD"'
 env_row "5348 sort -o inherited \$REPLY"               deny  "REPLY=$LIFT" 'sort -o "$REPLY" y'
 env_row "5348 cp quote break via \$m \$pre"            deny  "m=$HOME/.himmel pre=/state/bank-lift.json" 'cp x "$m""$pre"'
+# Round-2 codex-1: a quote or backslash ends the name ("$A"n is A's value then
+# n), so dequoting to $An must not hide the reference to A.
+env_row "5348 redirect \"\$A\"n name boundary"           deny  "A=${LIFT%n}" 'echo hi > "$A"n'
+env_row "5348 cp \"\$A\"n name boundary"                 deny  "A=${LIFT%n}" 'cp x "$A"n'
+env_row "5348 cp \"\$A\"te prefix outside state dir"     deny  "A=$HOME/.himmel/sta" 'cp x "$A"te/bank-lift.json'
+env_row "5348 cp \$A\\te backslash boundary"              deny  "A=$HOME/.himmel/sta" 'cp x $A\te/bank-lift.json'
+env_row "5348 cp \"\$A\"n benign (ctrl)"                 allow "A=/tmp/o" 'cp /tmp/y "$A"n'
 }
 rows_5348
 

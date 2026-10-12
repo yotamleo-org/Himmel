@@ -2147,7 +2147,9 @@ _cmd_writes() {
 # _cmd_refs_lift <dequoted-text>: a $NAME / ${NAME...} reference whose
 # inherited value names the state dir or the lift, alone or with every
 # reference replaced by its value (~ read as HOME, //, /./ and /seg/../
-# collapsed), so values split across variables still match.
+# collapsed), so values split across variables still match. Quote and
+# backslash characters are dropped from the joined text, so on the RAW command
+# (where a quote still ends a name: "$A"n) it reads the shell's join.
 # shellcheck disable=SC2016  # literal $ text is matched, not expanded
 _cmd_refs_lift() {
     local LC_ALL=C rest="$1" n v exp='' pre m
@@ -2166,6 +2168,7 @@ _cmd_refs_lift() {
     done
     [ -n "$exp" ] || return 1
     exp="$exp$rest"
+    exp="${exp//[\"\'\\]/}"
     exp="${exp//\~\//$HOME/}"
     while [[ "$exp" == *//* ]]; do exp="${exp//\/\//\/}"; done
     while [[ "$exp" == */./* ]]; do exp="${exp//\/.\//\/}"; done
@@ -2214,7 +2217,8 @@ if _cmd_writes "$REPLY"; then
         *'${!'*|*'${('*|*'typeset -n'*|*'declare -n'*|*'local -n'*)
             deny "the command writes and uses an indirect expansion or a nameref (\${! \${( typeset -n declare -n local -n), so the variable read is not provable (fail-closed)" ;;
     esac
-    _cmd_refs_lift "$REPLY" \
+    # The raw command too: dequoting joins "$A"n into $An, a different name.
+    { _cmd_refs_lift "$REPLY" || _cmd_refs_lift "$CMD"; } \
         && deny "the command writes (a redirect or tee/sponge/dd/cp/mv/install/rsync) and references an environment value that names the bank lift or its state dir (fail-closed)"
 fi
 # HIMMEL-5094: env/sudo -C/-D in any flag cluster (-iC, -0C), read on the whole
