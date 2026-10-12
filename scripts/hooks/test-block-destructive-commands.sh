@@ -610,6 +610,8 @@ assert_rc "R14+ alias body with !git reset --hard"           2 "$(run_case "$(j_
 assert_rc "R14+ alias body with !git push --force"           2 "$(run_case "$(j_bash "git config alias.x '!git push --force origin main' && git x")")"
 assert_rc "R14+ --config-env= alias, body in an env var"     2 "$(run_case "$(j_bash "X='!git reset --hard' git --config-env=alias.y=X y")")"
 assert_rc "R14+ --config-env alias, separate value word"     2 "$(run_case "$(j_bash "git --config-env alias.y=X y")")"
+assert_rc "R14+ --config-env= ALIAS, uppercase key"         2 "$(run_case "$(j_bash "git --config-env=ALIAS.y=X y")")"
+assert_rc "R14+ --config-env Alias, mixed-case key"         2 "$(run_case "$(j_bash "git --config-env Alias.y=X y")")"
 assert_rc "R14+ credential.helper running a force push"      2 "$(run_case "$(j_bash "git -c credential.helper='!git push --force origin main' fetch")")"
 assert_rc "R14+ core.sshCommand running a hard reset"        2 "$(run_case "$(j_bash "git -c core.sshCommand='git reset --hard' fetch")")"
 assert_rc "R14- harmless alias"                              0 "$(run_case "$(j_bash "git config alias.st status && git st")")"
