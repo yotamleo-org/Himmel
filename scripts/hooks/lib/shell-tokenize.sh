@@ -446,7 +446,10 @@ _stx_walk() {
     while [ "$i" -lt "$n" ]; do
         c=${s:i:1}
         case $c in
-            '\') o=$o${s:i:2}; i=$((i + 2)); continue ;;
+            '\')
+                # a backslash-newline is a line continuation: the shell drops it
+                if [ "${s:i+1:1}" = $'\n' ]; then i=$((i + 2)); continue; fi
+                o=$o${s:i:2}; i=$((i + 2)); continue ;;
             '"') o=$o'"'; dq=$((1 - dq)); i=$((i + 1)); continue ;;
             '`')
                 _stx_end "$s" $((i + 1)) B || { o=$o${s:i}; break; }
@@ -454,6 +457,7 @@ _stx_walk() {
                 _stx_walk "$m" "${s:i+1:e-i-2}" 0 0
                 o=$o'`'$_SX'`'; i=$e; continue ;;
             '$')
+                while [ "${s:i+1:2}" = $'\\\n' ]; do s=${s:0:i+1}${s:i+3}; n=${#s}; done
                 c2=${s:i+1:1}
                 case $c2 in
                     '(')
@@ -574,6 +578,9 @@ _stx_bodies() {
                     case ${s:p:1} in
                         '\') p=$((p + 2)); continue ;;
                         '$' | '`')
+                            while [ "${s:p:1}" = '$' ] && [ "${s:p+1:2}" = $'\\\n' ]; do
+                                s=${s:0:p+1}${s:p+3}; n=${#s}; j=$((j - 2))
+                            done
                             if [ "${s:p:1}" = '`' ]; then
                                 _stx_end "$s" $((p + 1)) B || { j=$((n + 1)); break; }
                                 q=$_SX_E; _stx_walk "$m" "${s:p+1:q-p-2}" 0 0

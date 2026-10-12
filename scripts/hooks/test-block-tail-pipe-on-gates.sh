@@ -235,6 +235,14 @@ body
 E\
 OF
 bash scripts/check-ci.sh | tail -5'
+deny "backslash-newline between \$ and ( in an unquoted heredoc body" \
+     'cat <<EOF
+$\
+(bash scripts/check-ci.sh | tail -5)
+EOF'
+deny "backslash-newline between \$ and { of an expansion that is the gate" \
+     '$\
+{V:-bash} scripts/check-ci.sh | tail -5'
 deny "payload after an EMPTY quoted heredoc delimiter" \
      "cat <<''
 body
