@@ -3430,7 +3430,13 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # assignment, no `/` in its name (_bwimc_dx_gen). A generator whose output its
 # arguments spell (echo, printf, a date +FORMAT, an ssh-agent socket, a pyenv
 # sh-* version) is held to arguments that cannot spell a command: echo and
-# printf must compute to one inert word, which is then read again. A listed generator is only
+# printf must compute to one inert word, which is then read again. A path
+# generator (pwd, git rev-parse --show-toplevel …) counts only where its output
+# is read as a path, never inside an eval/-c body: a directory name is anyone's
+# text. A shell given -s reads its script from standard input, whatever words
+# follow. A heredoc body is located as the tokenizer reads it (after each
+# newline, the bodies queued before it, in order); one that cannot be located
+# denies. A listed generator is only
 # trusted when nothing in the command can re-point its name: a shadowing word
 # (hash alias enable function builtin command … zmodload autoload), a PATH /
 # zsh path / LD_PRELOAD change, a function definition or a source/`.` deny an
@@ -3524,9 +3530,10 @@ _bwimc_dx_crude() {
     return 0
 }
 
-# _bwimc_dx_gen SUB — 0 when substitution SUB is one listed generator.
+# _bwimc_dx_gen SUB [CODE] — 0 when substitution SUB is one listed generator.
+# CODE=1: its output is spliced into code, so path generators do not count.
 _bwimc_dx_gen() {
-    local IFS=$' \t\n' g e wi a0 na=0 k
+    local IFS=$' \t\n' g e wi a0 na=0 k code=${2:-0}
     local -a gl il av
     read -r -a gl <<< "${_dx_sg[$1]}" || true
     for g in ${gl[@]+"${gl[@]}"}; do
@@ -3547,7 +3554,9 @@ _bwimc_dx_gen() {
     [ "$na" -gt 0 ] || return 0
     a0=${av[0]}
     case "$a0" in
-        pwd|uname|whoami|hostname) return 0 ;;
+        uname|whoami|hostname) return 0 ;;
+        # a directory name is anyone's text: a path, never code
+        pwd) [ "$code" = 0 ]; return ;;
         echo|printf)
             # its arguments ARE its output: trusted only when that output is
             # computed here (no escape, no format) and is one inert word, which
@@ -3614,7 +3623,7 @@ _bwimc_dx_gen() {
                 *) return 1 ;;
             esac ;;
         git)
-            [ "$na" = 3 ] && [ "${av[1]}" = rev-parse ] || return 1
+            [ "$code" = 0 ] && [ "$na" = 3 ] && [ "${av[1]}" = rev-parse ] || return 1
             case "${av[2]}" in
                 --show-toplevel|--show-cdup|--show-prefix|--git-dir|--git-common-dir|--absolute-git-dir) return 0 ;;
             esac
@@ -3632,7 +3641,7 @@ _bwimc_dx_body() {
         e=${_dx_it[$p]}
         if [ "$one" = 1 ] && [ -n "$prev" ] && [ "$prev" = w ] && [ "${e:0:1}" = w ]; then break; fi
         if [ "${e:0:1}" = s ]; then
-            if _bwimc_dx_gen "${e#s}"; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1))
+            if _bwimc_dx_gen "${e#s}" 1; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1))
             else _bwimc_dx_deny "(an executed body runs a substitution that is not a listed generator)"; fi
         else
             wi=${e#w}
@@ -3650,27 +3659,61 @@ _bwimc_dx_body() {
     return 0
 }
 
+# _bwimc_dx_hdops — the heredoc operator words of the current tokenisation, in order.
+_bwimc_dx_hdops() {
+    local k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        case "${ST_RO[$k]}" in '<<'|'<<-'|[0-9]'<<'|[0-9]'<<-') printf '%s ' "$k" ;; esac
+        k=$((k + 1))
+    done
+}
+
 # _bwimc_dx_heredoc WI — queue the body of the heredoc whose delimiter is word WI.
+# Bodies are located as the tokenizer reads them: after each newline, the bodies
+# of every heredoc opened before it, in order. A line that opens heredocs is found
+# by tokenising the text up to it (in a subshell, so ST_* stay put).
 _bwimc_dx_heredoc() {
-    local wi=$1 d line chk body='' on=0 t="$_dx_text"
-    d=${ST_W[$wi]}
+    local wi=$1 t="$_dx_text" pre='' line chk body hw=-1 used=0 c n bs
+    local -a hd ops
+    read -r -a hd <<< "$(_bwimc_dx_hdops)" || true
     while [ -n "$t" ]; do
         line=${t%%$'\n'*}
         if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
-        if [ "$on" = 0 ]; then
-            case "$line" in *'<<'*) on=1 ;; esac
-            continue
+        pre="$pre$line"$'\n'
+        case "$line" in *'<<'*) ;; *) continue ;; esac
+        c=$( { st_tokenize "$pre" && _bwimc_dx_hdops; } 2>/dev/null ) \
+            || _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+        read -r -a ops <<< "$c" || true
+        n=${#ops[@]}
+        [ "$n" -gt "$used" ] || continue
+        bs=${line##*[!\\]}; [ "$bs" != "$line" ] || bs=$line
+        if [ $(( ${#bs} % 2 )) = 1 ]; then
+            _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
         fi
-        chk=$line
-        case "${ST_RO[$wi]}" in *-) while [ "${chk:0:1}" = $'\t' ]; do chk=${chk#?}; done ;; esac
-        [ "$chk" != "$d" ] || break
-        body="$body$line"$'\n'
+        while [ "$used" -lt "$n" ]; do
+            hw=${hd[$used]-}
+            [ -n "$hw" ] || _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+            body=''
+            while [ -n "$t" ]; do
+                line=${t%%$'\n'*}
+                if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+                pre="$pre$line"$'\n'
+                chk=$line
+                case "${ST_RO[$hw]}" in *-) while [ "${chk:0:1}" = $'\t' ]; do chk=${chk#?}; done ;; esac
+                [ "$chk" != "${ST_W[$hw]}" ] || break
+                body="$body$line"$'\n'
+            done
+            if [ "$hw" = "$wi" ]; then
+                if [ "${ST_Q[$wi]}" = 0 ]; then
+                    case "$body" in *'$'*|*'`'*) _bwimc_dx_deny "(an unquoted heredoc fed to a shell expands its body)" ;; esac
+                fi
+                [ -z "$body" ] || _bwimc_dx_queue "$body"
+                return 0
+            fi
+            used=$((used + 1))
+        done
     done
-    if [ "${ST_Q[$wi]}" = 0 ]; then
-        case "$body" in *'$'*|*'`'*) _bwimc_dx_deny "(an unquoted heredoc fed to a shell expands its body)" ;; esac
-    fi
-    [ -z "$body" ] || _bwimc_dx_queue "$body"
-    return 0
+    _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
 }
 
 # _bwimc_dx_shell START PIPE CTX — a shell at the command position.
@@ -3696,6 +3739,8 @@ _bwimc_dx_shell() {
         if [ -n "${ST_RO[$wi]}" ]; then q=$((q + 1)); continue; fi
         w=${ST_W[$wi]}
         if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; q=$((q + 1)); break; fi
+        # -s: the script is standard input, every later word a positional
+        [[ $w =~ ^-[A-Za-z]*s[A-Za-z]*$ ]] && break
         case "$w" in
             -o|-O|+o|+O|--rcfile|--init-file) q=$((q + 2)) ;;
             -*|+*) q=$((q + 1)) ;;
@@ -3869,6 +3914,7 @@ _bwimc_dx_text() {
             _bwimc_dx_crude "$t"
             return 0
         fi
+        _dx_text=$t2
     fi
     k=0
     while [ "$k" -lt "$ST_N" ]; do

@@ -305,6 +305,23 @@ _r5098 "224j brace group redirected from a file"     block '{ sh; } < @W@/msg'
 _r5098 "224k pipe into a group that reads then runs sh" block 'cat @W@/msg | { read -r x; sh; }'
 _r5098 "224l control: script with a redirected input" allow 'bash @W@/x.sh < @W@/msg'
 _r5098 "224m control: a pipe beside a script run"    allow 'cat @W@/msg | grep x; bash @W@/x.sh'
+# a path is anyone's text: path generators count only where a path is read
+_r5098 "225a eval of pwd"                            block 'eval "$(pwd)"'
+_r5098 "225b toplevel inside a -c body"              block 'bash -c "cd $(git rev-parse --show-toplevel) && ls"'
+_r5098 "225c eval of the show-prefix path"           block 'eval "$(git rev-parse --show-prefix)"'
+_r5098 "225d control: script under the toplevel"     allow 'bash "$(git rev-parse --show-toplevel)/x.sh"'
+# -s: the script is standard input, later words are positionals
+_r5098 "226a pipe into bash -s with a positional"     block 'cat @W@/msg | bash -s x'
+_r5098 "226b sh -s -- args from a file"               block 'sh -s -- a b < @W@/msg'
+_r5098 "226c clustered -es from a file"               block 'bash -es x < @W@/msg'
+_r5098 "226d control: -s after the script operand"    allow 'bash @W@/x.sh -s < @W@/msg'
+# a heredoc body is located as the tokenizer reads it, not by the first <<
+_r5098 "227a data heredoc before the shell's"          block "cat <<'EOF' >/dev/null${NL}ok${NL}EOF${NL}bash <<'EOF'${NL}eval \"\$(cat @W@/msg)\"${NL}EOF"
+_r5098 "227b quoted << on an earlier line"             block "echo \"<<\"${NL}EOF${NL}bash <<'EOF'${NL}eval \"\$(cat @W@/msg)\"${NL}EOF"
+_r5098 "227c continued heredoc line"                   block "bash <<'X' --rcfile \\${NL}X${NL}eval \"\$(cat @W@/msg)\"${NL}X"
+_r5098 "227d second heredoc on the line is the shell's" block "cat <<'A' >/dev/null; bash <<'B'${NL}a${NL}A${NL}eval \"\$(cat @W@/msg)\"${NL}B"
+_r5098 "227e control: nested heredoc in a shell body"  allow "bash <<'EOF'${NL}cat > /tmp/x <<'X'${NL}hi${NL}X${NL}EOF"
+_r5098 "227f control: second heredoc, literal body"    allow "cat <<'A' >/dev/null; bash <<'B'${NL}a${NL}A${NL}ls${NL}B"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
