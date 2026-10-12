@@ -250,6 +250,11 @@ deny "payload after a heredoc delimiter written with an ANSI-C hex escape" \
 it's data
 EOF
 bash scripts/check-ci.sh | tail -5"
+deny "ANSI-C heredoc delimiter with an escaped backslash is a literal backslash" \
+     "cat <<\$'\\\\nEOF'
+data
+\\nEOF
+bash scripts/check-ci.sh | tail -5"
 # shellcheck disable=SC2016  # payload is literal command text
 deny "nested double-quoted substitution in an unquoted heredoc body" \
      'cat <<EOF

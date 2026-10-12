@@ -573,7 +573,11 @@ normalise() {
                                         while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do
                                             if [ "${SC[j]-}" = \\ ]; then
                                                 case ${SC[j + 1]-} in
-                                                    "'" | '"' | \\) hraw+=${SC[j + 1]-} ;;
+                                                    "'" | '"') hraw+=${SC[j + 1]-} ;;
+                                                    # `%b` decodes `\\` itself; a
+                                                    # collapsed one would be read
+                                                    # as the escape that follows.
+                                                    \\) hraw+=\\\\ ;;
                                                     [0-7]) hraw+="\\0${SC[j + 1]-}" ;;
                                                     *) hraw+="\\${SC[j + 1]-}" ;;
                                                 esac
