@@ -94,11 +94,13 @@ FORCE=0
 PREFLIGHT_ONLY=0
 GUARD_CHECK=0
 SEED_ONLY=0
-# HIMMEL-5164: the auto-mode classifier defaults to claude-sonnet-5-5 when the proxy
-# serves it. An explicit flag/env value wins (and refuses when unserved); `gateway`
+# HIMMEL-5164: the auto-mode classifier defaults to claude-sonnet-5 when the proxy
+# serves it (the alias the client really sends: it logs "ANTHROPIC_DEFAULT_SONNET_MODEL=
+# claude-sonnet-5-5 cannot serve as the classifier; using the Sonnet 5 default").
+# An explicit flag/env value wins (and refuses when unserved); `gateway`
 # opts out (the gateway's codex model judges). An unserved DEFAULT warns and falls
 # back to the gateway classifier, never to no classifier (AUTO_MODE_SERVER=0 stays).
-CLASSIFIER_DEFAULT="claude-sonnet-5-5"
+CLASSIFIER_DEFAULT="claude-sonnet-5"
 CLASSIFIER_MODEL="${CLAUDEX_CLASSIFIER_MODEL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -119,7 +121,7 @@ while [ $# -gt 0 ]; do
     # and why it exists.
     --guard-check) GUARD_CHECK=1; shift ;;
     # HIMMEL-5273: route ONLY the Sonnet alias (the auto-mode classifier's default)
-    # to a gateway alias the operator's proxy serves, e.g. claude-sonnet-5-5
+    # to a gateway alias the operator's proxy serves, e.g. claude-sonnet-5
     # through cli-proxy-api's claude OAuth provider. `gateway` keeps the codex model.
     --classifier-model)
       if [ $# -lt 2 ] || [ -z "$2" ]; then
@@ -142,6 +144,12 @@ elif [ "$CLASSIFIER_MODEL" = "gateway" ]; then
   CLASSIFIER_MODEL=""
 else
   CLASSIFIER_EXPLICIT=1
+  # The client rejects this alias as a classifier and substitutes claude-sonnet-5, so
+  # accepting it would validate one alias and run another (HIMMEL-5164 probe).
+  if [ "$CLASSIFIER_MODEL" = "claude-sonnet-5-5" ]; then
+    echo "claude-codex: classifier model 'claude-sonnet-5-5' is refused: the client logs 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5 cannot serve as the classifier; using the Sonnet 5 default instead'. Use claude-sonnet-5, or 'gateway' to keep the codex classifier." >&2
+    exit 2
+  fi
 fi
 if [ "$SEED_ONLY" -eq 1 ] && [ "$PREFLIGHT_ONLY" -eq 1 ]; then
   echo "claude-codex: --seed-only and --preflight-only are mutually exclusive (the probe skips the seed)." >&2
@@ -658,7 +666,7 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL="$CODEX_MODEL"
 # remove this temporary switch when safeguards/safeguard_results pass through.
 # https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through
 # The client-side classifier runs on the Sonnet alias: since HIMMEL-5164 that is
-# claude-sonnet-5-5 when the proxy serves it (see CLASSIFIER_DEFAULT above). When it is
+# claude-sonnet-5 when the proxy serves it (see CLASSIFIER_DEFAULT above). When it is
 # not served the alias falls back to $CODEX_MODEL, which over-reads the user deny rules
 # (HIMMEL-5077) and once allowed a force push to main (HIMMEL-5264); the eval jail
 # (scripts/eval/lane-quality/pilot-4869/sandbox.sh) compensates with narrow allow rules.

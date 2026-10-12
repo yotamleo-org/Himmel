@@ -186,12 +186,18 @@ if ($ClassifierModel -notmatch '^[A-Za-z0-9._-]*$') {
   [Console]::Error.WriteLine("claude-codex: invalid classifier model alias '$ClassifierModel' (letters, digits, . _ - only).")
   exit 2
 }
-# HIMMEL-5164: default claude-sonnet-5-5 (warns + falls back when unserved); an
+# HIMMEL-5164: default claude-sonnet-5 (warns + falls back when unserved); an
 # explicit value wins and refuses when unserved; `gateway` opts out. Twin of bash.
 $ClassifierExplicit = $false
-if (-not $ClassifierModel) { $ClassifierModel = 'claude-sonnet-5-5' }
+if (-not $ClassifierModel) { $ClassifierModel = 'claude-sonnet-5' }
 elseif ($ClassifierModel -ieq 'gateway') { $ClassifierModel = '' }
-else { $ClassifierExplicit = $true }
+else {
+  $ClassifierExplicit = $true
+  if ($ClassifierModel -eq 'claude-sonnet-5-5') {
+    [Console]::Error.WriteLine("claude-codex: classifier model 'claude-sonnet-5-5' is refused: the client logs 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5-5 cannot serve as the classifier; using the Sonnet 5 default instead'. Use claude-sonnet-5, or 'gateway' to keep the codex classifier.")
+    exit 2
+  }
+}
 
 # --- tiered egress guard -----------------------------------------------------
 $Cfg = Join-Path $HomeDir (Join-Path '.config' 'claude-codex')
