@@ -63,6 +63,13 @@ patch_case "apply_patch benign file mentioning the config in its body -> allow" 
 patch_case "apply_patch no parseable header naming the config -> block (fail closed)" block "bogus patch for $CFG"
 patch_case "apply_patch no header, unrelated text -> allow" allow "bogus patch for $T/notes.txt"
 run "apply_patch command as an array naming the config -> block" block "$(jq -nc --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:["apply_patch", ("*** Begin Patch\n*** Add File: " + $p + "\n+{}\n*** End Patch")]}}')"
+# j2409e: codex trims every header line; so must the hook.
+patch_case "apply_patch trailing-space header on the config -> block" block "*** Begin Patch${NL}*** Add File: $CFG   ${NL}+{}${NL}*** End Patch"
+patch_case "apply_patch leading-space header after a benign one -> block" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}   *** Add File: $CFG${NL}+{}${NL}*** End Patch"
+patch_case "apply_patch tab-led and tab-trailed header -> block" block "$(printf '*** Begin Patch\n\t*** Update File: %s\t\n@@\n*** End Patch' "$CFG")"
+patch_case "apply_patch trailing-space benign header -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt   ${NL}+hi${NL}*** End Patch"
+run "apply_patch relative config.json with payload cwd in .himmel -> block" block "$(jq -nc --arg d "$HOME/.himmel" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
+run "apply_patch relative config.json with payload cwd elsewhere -> allow" allow "$(jq -nc --arg d "$T" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
 
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"

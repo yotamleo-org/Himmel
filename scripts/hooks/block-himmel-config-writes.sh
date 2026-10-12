@@ -33,7 +33,9 @@
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
 #   apply_patch (Codex's only edit tool) - any `*** Add File:` / `Update File:`
-#     / `Delete File:` / `Move to:` header whose path passes the same literal +
+#     / `Delete File:` / `Move to:` header (leading/trailing whitespace trimmed,
+#     as codex does; a relative path resolves against the payload `.cwd`)
+#     whose path passes the same literal +
 #     readlink -m check as the file tools; a patch with no parseable header
 #     that names `.himmel` and `config.*` denies (fail-closed).
 # ALLOWS everything else, silently. Reads of the file stay allowed.
@@ -118,9 +120,12 @@ case "$tool" in
         # Codex edits only through apply_patch; the paths are the header lines
         # of the patch text (same parse as block-bank-lift-writes.sh).
         patch=$(printf '%s' "$input" | jq -r '(.tool_input.command // .tool_input.patch // .tool_input.input // "") | if type == "array" then join("\n") else tostring end' 2>/dev/null) || patch=""
+        pcwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || pcwd=""
         seen=0
         while IFS= read -r ln; do
-            ln="${ln%$'\r'}"
+            # codex trims every header line (parse_one_hunk): so do we.
+            ln="${ln#"${ln%%[![:space:]]*}"}"
+            ln="${ln%"${ln##*[![:space:]]}"}"
             case "$ln" in
                 '*** Add File: '*) p="${ln#\*\*\* Add File: }" ;;
                 '*** Update File: '*) p="${ln#\*\*\* Update File: }" ;;
@@ -129,6 +134,13 @@ case "$tool" in
                 *) continue ;;
             esac
             seen=1
+            p="${p#"${p%%[![:space:]]*}"}"
+            p="${p%"${p##*[![:space:]]}"}"
+            # A relative patch path resolves against the payload cwd.
+            case "$p" in
+                /*|"~"*|"") ;;
+                *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
+            esac
             check_path apply_patch "$p"
         done <<EOF
 $patch
