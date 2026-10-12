@@ -349,6 +349,87 @@ ssh -p 2223 <windows_vm_user>@127.0.0.1
 
 ---
 
+## Windows VM: `win11` (VBoxManage guestcontrol, HIMMEL-2860)
+
+A second Windows guest, driven from a **Linux** station with no SSH and no
+open port: `VBoxManage guestcontrol` through the Guest Additions (7.2.20).
+It is the adopter-baseline target for Windows smoke cells; the older
+`win11_base_himmel` above stays the SSH/vmsdk path.
+
+| Setting | Value |
+|---------|-------|
+| VM | `win11` (VirtualBox, NAT, no forwarded ports) |
+| Guest user | `overlord`, password in `~/VirtualBox VMs/win11/win11-password.txt` (0600) |
+| Snapshots | `clean-install` (bare Windows 11), `adopter-baseline` (tools below, restored per cell) |
+| Tools in `adopter-baseline` | git 2.55 (Git for Windows), PowerShell 7.6 (`pwsh`), Windows PowerShell 5.1, node 22 (user scope), jq, Python 3.12 (user scope), `claude` (npm -g), `pre-commit` |
+
+### Drive it: `scripts/vm/win-vm.sh`
+
+```bash
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh status
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh up                 # headless start, waits for the guest
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh run -- git --version   # cmd.exe /c in the guest
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh run --exe 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -- -NoProfile -File C:\x.ps1
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh put ./file.ps1 '%USERPROFILE%\inbox\'
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh snapshot NAME      # powered off only; refuses an existing name
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh restore NAME       # powers off first
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh down
+```
+
+- **`WIN_VM_LIVE=1` rail.** Without it (or `VBOXMANAGE_PATH`, the test seam)
+  the tool refuses before any VBoxManage call, so a stray invocation cannot
+  touch the VM.
+- **Lock.** Lifecycle verbs take the same per-VM `vm-lock.sh` lock as the
+  Linux VMs (a second run waits; `WIN_VM_LOCK_HELD=1` is for a caller that
+  already holds it).
+- **Password.** Only ever `--passwordfile`; it is never on argv, in logs or in
+  a commit.
+- **Quoting.** `run` wraps the command in `cmd.exe /c`. Ship anything with
+  non-trivial quoting as a file with `put` and run the file.
+
+### Provisioning recipe (how `adopter-baseline` was built)
+
+1. Install Windows 11, Guest Additions, take `clean-install`.
+2. The guestcontrol token is a *filtered* (non-elevated) admin token, so
+   machine-scope installers hang waiting for UAC. Use `winget ... --scope user`
+   for node 22, jq and Python 3.12. Git for Windows has no user scope: run its
+   `winget install --id Git.Git` from the interactive desktop and accept UAC once.
+3. Run `scripts/vm/win-guest-prep.ps1` in the guest (user PATH only, idempotent):
+   adds `C:\Program Files\Git\bin` (so `bash` resolves) and creates
+   `python3.exe` next to `python.exe` (the stock `python3` is the Store stub).
+   Both are needed for himmelctl's preflight; see HIMMEL-5428.
+4. `npm -g install @anthropic-ai/claude-code`, `pip install --user pre-commit`
+   (uninstall calls `claude` and `pre_commit`).
+5. Power off, then `snapshot adopter-baseline`. To refresh a baseline, delete
+   the old snapshot first (`VBoxManage snapshot win11 delete adopter-baseline`),
+   then retake it; `win-vm.sh snapshot` refuses an existing name on purpose.
+
+### Smoke cell: `scripts/vm/win-smoke-cell.sh [<tag>]`
+
+```bash
+WIN_VM_LIVE=1 bash scripts/vm/win-smoke-cell.sh        # newest v* tag
+```
+
+Restores `adopter-baseline`, ships the tree as a **git bundle of the tag**
+(never `main`, never a bare archive: the hooks read `.git`), and runs
+`scripts/vm/win-smoke-guest.ps1` under Windows PowerShell 5.1:
+clone from the bundle, check out the tag, `git init` a project,
+`himmelctl install --scope project`, then `himmelctl uninstall --yes`. It
+always powers off and restores the baseline on the way out. Takes about ten
+minutes. Exit 0 = PASS, 1 = FAIL, 3 = the VM or guest was unreachable.
+
+Evidence is the Linux matrix's contract, one line per step
+(`CELL <name> | STEP <step> | CMD <command> | LAST <last 3 lines> | rc=<n>`),
+then `CHECK PASS|FAIL|XFAIL <name>` lines and one `VERDICT PASS|FAIL`.
+
+**Known Windows gaps** (reported as `XFAIL`, never hidden; filed under
+HIMMEL-4102, label `windows`): `uninstall.ps1` does not unwire the adopted
+project's `settings.json` (HIMMEL-5427); the adopter preflight cannot resolve
+`bash`/`python3` on a stock box (HIMMEL-5428). Arming a `claude` session in
+the guest is deferred (HIMMEL-5429).
+
+---
+
 ## Linux host
 
 Provisioning path when the **himmel station itself runs Linux** (verified
