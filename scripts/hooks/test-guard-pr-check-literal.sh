@@ -581,6 +581,17 @@ zsh -c "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 eval "true; env -S 'bash scripts/handover/merge-on-green.sh\c'"
 sh -c "bash -c \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""
 eval "bash -c \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""
+bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'" arg0
+bash -c -x "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -O extglob -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c -O extglob "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+env bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+timeout 5 bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+nice -n 5 eval env -S 'bash scripts/cr/pr-check-context.sh\c'
+sudo bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+X=1 eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+echo hi; eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+echo() { eval "$@"; }; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 NESTEDSPLIT
 # Controls: a nested env -S naming no target, a nested body with no env -S,
 # and env -S text in an argument no shell re-reads keep their verdicts.
@@ -594,6 +605,11 @@ bash -c 'bash scripts/cr/pr-check-context.sh'
 eval 'bash scripts/cr/pr-check-context.sh'
 git commit -m "note: env -S 'bash scripts/handover/merge-on-green.sh\c'"
 bash scripts/other/x.sh "env -S 'bash scripts/handover/merge-on-green.sh\c'"
+echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c 'true' "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+printf %s eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+cat eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+echo bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 NESTEDOK
 
 # ---- HIMMEL-3913: raw-text backstop - a reader writes text to a file, a later ----

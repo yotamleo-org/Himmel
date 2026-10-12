@@ -1910,8 +1910,16 @@ env_split_option() { # env_split_option <raw command> - false only when
     # ponytail: only shells and eval are re-read - su -c, script -c, watch,
     # a body held in a variable or read from stdin are not; upgrade path:
     # add the re-reader to the case below if one is seen carrying env -S.
-    local i j e w sk sg b
-    local -a nm=() nb=()
+    # HIMMEL-4503: a body is opened only by a word that RUNS its text. After
+    # `eval` every later word is body; after a shell's -c cluster (its own
+    # option arguments skipped) ONLY the one word the shell runs is body -
+    # the words after it are $0 and positionals. A segment whose command word
+    # is a plain data reader (echo, printf, cat, ...) opens nothing, as that
+    # command never runs its arguments - unless the command redefines a
+    # command (a function or an alias), where nothing is trusted.
+    local i j e w sk sg b redef=0
+    local -a nm=() nb=() fw=()
+    case "$1" in *'()'*|*'( )'*|*function*|*alias*|*enable*) redef=1 ;; esac
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
     i=0
@@ -1921,16 +1929,33 @@ env_split_option() { # env_split_option <raw command> - false only when
         w=${ST_W[$e]}
         if [ -z "${ST_RO[$e]}" ]; then
             sg=${ST_S[$e]}
-            if [ "${nm[sg]-}" = 1 ]; then
-                nb[sg]="${nb[sg]-} $w"
-            else
-                case "${w##*/}" in
-                    eval) nm[sg]=1 ;;
-                    bash|sh|zsh|dash|ksh|mksh) nm[sg]=0 ;;
-                    --*) ;;
-                    -*c*) [ "${nm[sg]-}" != 0 ] || nm[sg]=1 ;;
-                esac
-            fi
+            case "${nm[sg]-}" in
+                1) nb[sg]="${nb[sg]-} $w" ;;
+                2) # past a shell's -c: skip its options, then the body word
+                    case "$w" in
+                        -O|+O|-o|+o|--rcfile|--init-file) nm[sg]=4 ;;
+                        -*|+*) ;;
+                        *) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;;
+                    esac ;;
+                4) nm[sg]=2 ;;
+                3) ;;
+                *)
+                    if [ -z "${fw[sg]-}" ] && [ "${ST_A[$e]-}" != 1 ]; then
+                        fw[sg]=1
+                        case "${w##*/}" in
+                            echo|printf|cat|grep|egrep|fgrep|rg|head|tail|wc|true|false|:|test|'[')
+                                [ "$redef" = 1 ] || nm[sg]=3 ;;
+                        esac
+                    fi
+                    if [ "${nm[sg]-}" != 3 ]; then
+                        case "${w##*/}" in
+                            eval) nm[sg]=1 ;;
+                            bash|sh|zsh|dash|ksh|mksh) nm[sg]=0 ;;
+                            --*) ;;
+                            -*c*) [ "${nm[sg]-}" != 0 ] || nm[sg]=2 ;;
+                        esac
+                    fi ;;
+            esac
         fi
         [ "${w##*/}" = env ] || continue
         sk=0
