@@ -867,6 +867,18 @@ deny "watch \"qmd\" '' search x"
 deny "eval qmd \$'' query x"
 deny 'parallel qmd "" query x'
 deny 'parallel -j1 qmd "" query x'
+# sudo -s / -i (--shell, --login) and firejail's default shell join their
+# words with spaces and re-parse them, so the empty argument vanishes there;
+# a plain sudo hands its argv over as it is.
+deny 'sudo -s qmd "" query x'
+deny 'sudo -i qmd "" query x'
+deny 'sudo --shell qmd "" query x'
+deny 'sudo --login qmd "" query x'
+deny 'sudo -u bob -s qmd "" query x'
+deny 'firejail qmd "" query x'
+allow 'sudo qmd "" query x'
+allow 'sudo -u bob qmd "" query x'
+allow 'echo qmd query | sudo tee /dev/null'
 deny 'qmd ""query x'
 deny "qmd ''search x"
 deny 'qmd q""uery x'

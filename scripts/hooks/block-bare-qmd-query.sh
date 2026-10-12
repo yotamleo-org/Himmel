@@ -147,8 +147,9 @@ esac
 # but a quoted or escaped byte prints as the byte itself — the value bash
 # hands the program — so a word's span in the first line is its value here.
 # A word made only of empty quotes (`qmd "" query x`) is an empty argument, so
-# it prints as `_` in both lines (HIMMEL-4141); empty quotes inside a longer
-# word (`query""`, `""query`) print nothing, as before.
+# it prints as `_` in the first line and as a \001 byte in the decoded line
+# (HIMMEL-4141); empty quotes inside a longer word (`query""`, `""query`)
+# print nothing, as before.
 # shellcheck disable=SC1003,SC2016 # literal backslash, $ and ` bytes
 qmd_words() {
     local LC_ALL=C
@@ -1038,6 +1039,24 @@ qmd_nested() {
         else
             case "$tw" in do|then|else|elif|if|while|until|'!'|time|'{'|exec|command|builtin) pp=1 ;; *) pp=0 ;; esac
         fi
+        # HIMMEL-4141: sudo -s / -i (--shell, --login) and firejail's default
+        # shell join their words with spaces and re-parse them, so an empty
+        # argument (the placeholder byte) vanishes there: read the decoded
+        # words with it removed. The wrapper itself stays a plain program
+        # position (its argv is handed over as it is), so the top level reads
+        # it as before.
+        case "${t%.exe}" in
+            sudo|firejail)
+                x=${dec:i}
+                x=${x%%[;|&()$'\n']*}
+                x=${x//$'\001'/}
+                if [[ $x == *[qQ]* ]] && { [ "${t%.exe}" = firejail ] ||
+                    [[ " $x " =~ [[:space:]](-[[:alpha:]]*[si][[:alpha:]]*|--shell|--login)[[:space:]] ]]; }; then
+                    qmd_check "exec $x" $((depth + 1))
+                    if [ "$deny" = 1 ]; then return 0; fi
+                fi
+                ;;
+        esac
         nest_mode "$t" || continue
         pp=0
         piped=$pipe nw=${t%.exe} e0=$i enc=0 fo=0 ia=0 ct='' sj='' tk=0 hx=0 hs=0 tx=0
