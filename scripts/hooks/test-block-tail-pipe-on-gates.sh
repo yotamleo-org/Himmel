@@ -245,6 +245,16 @@ deny "payload after an ANSI-C quoted heredoc delimiter" \
 it's data
 EOF
 bash scripts/check-ci.sh | tail -5"
+deny "payload after a heredoc delimiter written with an ANSI-C hex escape" \
+     "cat <<\$'\\x45OF'
+it's data
+EOF
+bash scripts/check-ci.sh | tail -5"
+# shellcheck disable=SC2016  # payload is literal command text
+deny "nested double-quoted substitution in an unquoted heredoc body" \
+     'cat <<EOF
+$(echo "$(printf ")")"; bash scripts/check-ci.sh | tail -5)
+EOF'
 allow "gate | tail in an ANSI-C quoted heredoc body is data" \
       "cat <<\$'EOF'
 \$(bash scripts/check-ci.sh | tail -5)

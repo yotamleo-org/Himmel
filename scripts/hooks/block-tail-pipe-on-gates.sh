@@ -268,6 +268,39 @@ split_bytes() {
     done <<<"$1"
 }
 
+# paren_close <index just past `$(`> -- sets PC_END to the index of the `)`
+# closing that substitution (or the end of SC). Quote-aware: a `)` inside '...'
+# or "..." or after a backslash does not close it, and a `$(...)` nested inside
+# double quotes is matched recursively (panel r3, codex-2). Reads the caller's
+# SC and n, which bash scopes dynamically.
+paren_close() {
+    local j=$1 d=1
+    while [ "$j" -lt "$n" ]; do
+        case ${SC[j]-} in
+            \\) j=$((j + 1)) ;;
+            "'")
+                j=$((j + 1))
+                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do j=$((j + 1)); done ;;
+            '"')
+                j=$((j + 1))
+                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != '"' ]; do
+                    case ${SC[j]-} in
+                        \\) j=$((j + 1)) ;;
+                        '$')
+                            if [ "${SC[j + 1]-}" = '(' ]; then
+                                paren_close $((j + 2)); j=$PC_END
+                            fi ;;
+                    esac
+                    j=$((j + 1))
+                done ;;
+            '(') d=$((d + 1)) ;;
+            ')') d=$((d - 1)); [ "$d" -eq 0 ] && break ;;
+        esac
+        j=$((j + 1))
+    done
+    PC_END=$j
+}
+
 # lift_substs <text> -- the command substitutions (`$(...)` and backticks) of an
 # UNQUOTED heredoc body (HIMMEL-5334). Bash expands such a body, so a
 # substitution in it RUNS; every other byte of the body is data. Prints each one
@@ -291,26 +324,7 @@ lift_substs() {
                 i=$((j + 1)); continue ;;
             '$')
                 if [ "${SC[i + 1]-}" = '(' ]; then
-                    j=$((i + 2)); d=1
-                    # Quote-aware: a `)` inside '...' or "..." or after a
-                    # backslash does not close the substitution.
-                    while [ "$j" -lt "$n" ]; do
-                        case ${SC[j]-} in
-                            \\) j=$((j + 1)) ;;
-                            "'")
-                                j=$((j + 1))
-                                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do j=$((j + 1)); done ;;
-                            '"')
-                                j=$((j + 1))
-                                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != '"' ]; do
-                                    [ "${SC[j]-}" = "\\" ] && j=$((j + 1))
-                                    j=$((j + 1))
-                                done ;;
-                            '(') d=$((d + 1)) ;;
-                            ')') d=$((d - 1)); [ "$d" -eq 0 ] && break ;;
-                        esac
-                        j=$((j + 1))
-                    done
+                    paren_close $((i + 2)); j=$PC_END
                     out+="$NL$LIFT$(normalise "${s:$((i + 2)):$((j - i - 2))}")"
                     i=$((j + 1)); continue
                 fi ;;
@@ -336,7 +350,7 @@ normalise() {
     local s=$1 LC_ALL=C
     local -a SC
     local n=${#s} i=0 j d c ch qq p=$NL q='' out='' extra='' ctext
-    local ansi='' hdn=0 hk hbody hline hterm
+    local ansi='' hdn=0 hk hbody hline hterm hraw
     local -a HD_D HD_Q HD_T
     split_bytes "$s" "$n"
     while [ "$i" -lt "$n" ]; do
@@ -550,11 +564,25 @@ normalise() {
                                     # QUOTED words: the `$` is dropped and the
                                     # body is data. ANSI-C honours `\'`.
                                     "'")
-                                        hk=1; j=$((j + 2))
+                                        # Escapes are decoded the way bash does
+                                        # (`\x45`, `\105`, `E`, `\n`): collect
+                                        # the raw text, then run it through
+                                        # `printf %b`. `\'`, `\"` and `\\` are the
+                                        # literal character.
+                                        hk=1; j=$((j + 2)); hraw=''
                                         while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "'" ]; do
-                                            if [ "${SC[j]-}" = \\ ]; then j=$((j + 1)); fi
-                                            hline+=${SC[j]-}; j=$((j + 1))
+                                            if [ "${SC[j]-}" = \\ ]; then
+                                                case ${SC[j + 1]-} in
+                                                    "'" | '"' | \\) hraw+=${SC[j + 1]-} ;;
+                                                    [0-7]) hraw+="\\0${SC[j + 1]-}" ;;
+                                                    *) hraw+="\\${SC[j + 1]-}" ;;
+                                                esac
+                                                j=$((j + 2))
+                                            else
+                                                hraw+=${SC[j]-}; j=$((j + 1))
+                                            fi
                                         done
+                                        hline+=$(printf '%b' "$hraw")
                                         j=$((j + 1)) ;;
                                     '"') hk=1; j=$((j + 1)) ;;
                                     *) hline+=$ch; j=$((j + 1)) ;;
