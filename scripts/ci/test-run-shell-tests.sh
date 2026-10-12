@@ -1177,6 +1177,9 @@ else
   }
   check_timeout_2267 "scripts/test-propagate-public.sh" "2700"
   check_timeout_2267 "/repo/scripts/test-propagate-public.sh" "2700"
+  # HIMMEL-5375: adoption must not fall back to the 600s cap it hit in CI.
+  check_timeout_2267 "scripts/test-adopt.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
   check_timeout_2267 "scripts/ci/test-suite-concurrency.sh" "1500"
   check_timeout_2267 "/repo/scripts/ci/test-suite-concurrency.sh" "1500"
 
