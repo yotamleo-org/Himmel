@@ -23,7 +23,8 @@ hasnt() {
 # positive control: the negative matcher must see a planted FAIL row and must
 # not treat an unreadable file as "absent"
 ctl="$(mktemp)" || exit 1
-trap 'rm -f "$ctl"' EXIT
+th="$(mktemp -d)" || exit 1
+trap 'rm -rf "$ctl" "$th"' EXIT
 printf 'ROW X FAIL\n' >"$ctl"
 grep -qE '^ROW .* FAIL' "$ctl" && ok "control: matcher sees a planted FAIL row" || bad "control: matcher blind to a FAIL row"
 ctl_rc=0
@@ -40,9 +41,10 @@ for m in impl research; do
     has "$f" '^ASSERT origin main untouched' "$m: origin main untouched"
     has "$f" '^ASSERT settings-loaded' "$m: launch-time settings assertion ran"
 done
-for r in B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside \
-    B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main \
-    B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit; do
+common_rows=(B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
+    B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main
+    B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit)
+for r in "${common_rows[@]}"; do
     for m in impl research; do
         has "$REC/vm-run-$m.txt" "^ROW $r PASS" "$m: row $r present and PASS"
     done
@@ -53,6 +55,31 @@ has "$REC/vm-run-research.txt" '^ROW B12b-research-not-unlimited PASS' "research
 has "$REC/vm-run-failure-modes.txt" 'is empty\. Delete it' "failure: zero-byte settings refused"
 has "$REC/vm-run-failure-modes.txt" 'does not exist' "failure: missing settings refused"
 has "$REC/vm-run-failure-modes.txt" 'Sandbox dependencies not available' "failure: missing bwrap refused"
+
+# driver controls: run the real run-poc.sh against stub srt binaries in a throwaway HOME
+poc() { # <srt> <mode> <home> -> rc of the driver, output in $th/poc.out
+    HOME="$3" SRT="$1" bash "$HERE/run-poc.sh" "$2" >"$th/poc.out" 2>&1
+}
+mkdir -p "$th/h1/.ssh"
+echo keep >"$th/h1/outside-write.txt"
+echo keepkey >"$th/h1/.ssh/poc_dummy"
+poc /bin/true failure-modes "$th/h1"
+if [ "$(cat "$th/h1/outside-write.txt" 2>/dev/null)" = keep ]; then ok "cleanup keeps a pre-existing outside-write.txt"; else bad "cleanup deleted a pre-existing outside-write.txt"; fi
+if [ "$(cat "$th/h1/.ssh/poc_dummy" 2>/dev/null)" = keepkey ]; then ok "cleanup keeps a pre-existing poc_dummy"; else bad "cleanup deleted or overwrote a pre-existing poc_dummy"; fi
+mkdir -p "$th/h2"
+poc no-such-srt-binary failure-modes "$th/h2"; f3_rc=$?
+if [ "$f3_rc" -ne 0 ] && grep -q 'ASSERT FAIL F3 srt not resolvable' "$th/poc.out"; then ok "F3 fails when srt does not resolve"; else bad "F3 passed on command-not-found"; fi
+{
+    echo '#!/bin/bash'
+    for r in "${common_rows[@]}" B13-domain-request-approved B14-domain-request-default-deny; do echo "echo 'ROW $r PASS'"; done
+} >"$th/srt-all"
+printf '#!/bin/bash\necho "ROW B0-leg-commit PASS"\n' >"$th/srt-one"
+chmod +x "$th/srt-all" "$th/srt-one"
+mkdir -p "$th/h3" "$th/h4"
+poc "$th/srt-all" impl "$th/h3"; all_rc=$?
+if [ "$all_rc" -eq 0 ]; then ok "control: every impl row present passes the verdict"; else bad "control: complete impl rows failed the verdict (rc=$all_rc)"; fi
+poc "$th/srt-one" impl "$th/h4"; one_rc=$?
+if [ "$one_rc" -ne 0 ] && grep -q 'ASSERT FAIL row B1-benign-python missing' "$th/poc.out"; then ok "verdict fails when profile rows are missing"; else bad "verdict passed with one row"; fi
 
 echo "fails=$fails"
 [ "$fails" -eq 0 ]

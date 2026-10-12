@@ -9,14 +9,16 @@
 # control fifo as a full settings line, which srt applies to the running leg.
 #
 #   launcher-broker.sh <scratch> <worktree> <leg-branch> <ctl-fifo> <approve-file> <render-cmd-file> <approvals-log>
-# <render-cmd-file> holds the render-settings.sh argument prefix (profile and roots).
+# <render-cmd-file> holds the render-settings.sh argument prefix (profile and roots), one per line.
 # <approvals-log> must sit OUTSIDE every sandbox-writable root: the leg owns
 # <scratch>, so a log there could be a planted symlink to a host file.
 set -u
 
 scratch="$1" worktree="$2" leg_branch="$3" ctl="$4" approve="$5" render_args="$6" approvals_log="${7:?approvals-log outside the writable roots}"
 here="$(cd "$(dirname "$0")" && pwd)"
-approved=""
+approved=()
+rargs=()
+while IFS= read -r a; do rargs+=("$a"); done <"$render_args"
 
 while [ ! -f "$scratch/broker.stop" ]; do
     for f in "$scratch"/req/*.push "$scratch"/req/*.domain; do
@@ -37,9 +39,8 @@ while [ ! -f "$scratch/broker.stop" ]; do
             domain)
                 IFS=$'\t' read -r dom reason <"$f"
                 if grep -qxF "$dom" "$approve" 2>/dev/null; then
-                    approved="$approved $dom"
-                    # shellcheck disable=SC2046,SC2086 # render args are a trusted launcher file
-                    bash "$here/render-settings.sh" $(cat "$render_args") $approved >"$ctl"
+                    approved+=("$dom")
+                    bash "$here/render-settings.sh" "${rargs[@]}" "${approved[@]}" >"$ctl"
                     echo "APPROVED $dom (reason: $reason)" >"$base.out"
                     echo "$(date +%H:%M:%S) approve $dom :: $reason" >>"$approvals_log"
                     echo 0 >"$base.rc"

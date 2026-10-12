@@ -15,3 +15,4 @@ F4 settings file absent, no --settings (the launcher assertion exists for this):
 RAN
 defaults-start
   rc=0 (RAN = starts on built-in defaults)
+ASSERT F4 srt starts on defaults without --settings (the launcher assertion is required)

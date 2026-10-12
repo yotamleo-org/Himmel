@@ -15,6 +15,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SRT="${SRT:-srt}"
 mode="${1:-impl}"
 run_rc=0
+# cleanup removes only files this run created: record what already exists
+outside_pre=0
+[ -e "$HOME/outside-write.txt" ] && outside_pre=1
+dummy_made=0
 base="$HOME/poc-$mode"
 REQ_DOMAIN="${POC_REQ_DOMAIN:-example.com}"
 DENY_DOMAIN="${POC_DENY_DOMAIN:-example.org}"
@@ -42,16 +46,21 @@ fresh() {
     )
     # dummy credential, removed at the end (never a real key)
     mkdir -p "$HOME/.ssh"
-    echo "not-a-real-key" >"$HOME/.ssh/poc_dummy"
+    if [ ! -e "$HOME/.ssh/poc_dummy" ]; then
+        echo "not-a-real-key" >"$HOME/.ssh/poc_dummy"
+        dummy_made=1
+    fi
     printf '#!/usr/bin/env bash\nexec bash "%s/leg-battery.sh"\n' "$HERE" >"$base/bin/claude"
     chmod +x "$base/bin/claude"
 }
 
 launch() { # <profile> -> runs the battery under srt claude
     profile="$1"
-    printf '%s\n' "$profile $base/wt $base/scratch $base/handover" >"$base/render.args"
-    # shellcheck disable=SC2046,SC2086 # render args are a launcher-written file
-    bash "$HERE/render-settings.sh" $(cat "$base/render.args") >"$base/settings.json"
+    # one argument per line, so a path with spaces or globs stays one word
+    printf '%s\n' "$profile" "$base/wt" "$base/scratch" "$base/handover" >"$base/render.args"
+    rargs=()
+    while IFS= read -r a; do rargs+=("$a"); done <"$base/render.args"
+    bash "$HERE/render-settings.sh" "${rargs[@]}" >"$base/settings.json"
     # launch-time assertion: srt starts on defaults when settings are absent
     if [ ! -s "$base/settings.json" ] || ! grep -q allowedDomains "$base/settings.json"; then
         echo "ASSERT settings-not-loaded: refusing to launch"
@@ -73,7 +82,18 @@ launch() { # <profile> -> runs the battery under srt claude
     cat "$base/run.out"
     echo "srt exit rc=$srt_rc"
     [ "$srt_rc" -eq 0 ] || run_rc=1
-    if grep -q '^ROW .* FAIL' "$base/run.out" || ! grep -q '^ROW ' "$base/run.out"; then run_rc=1; fi
+    if grep -q '^ROW .* FAIL' "$base/run.out"; then run_rc=1; fi
+    # every profile row must be present and PASS, not just one row and no FAIL
+    want=(B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
+        B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main
+        B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit)
+    case "$profile" in
+        impl) want+=(B13-domain-request-approved B14-domain-request-default-deny) ;;
+        research) want+=(B12b-research-not-unlimited) ;;
+    esac
+    for r in "${want[@]}"; do
+        grep -q "^ROW $r PASS" "$base/run.out" || { echo "ASSERT FAIL row $r missing or not PASS"; run_rc=1; }
+    done
     touch "$base/scratch/broker.stop"
     wait "$broker" 2>/dev/null
     exec 4>&-
@@ -108,17 +128,30 @@ case "$mode" in
         echo "F3 bwrap absent from PATH:"
         mkdir -p "$base/nobwrap"
         for t in bash env sh socat rg node; do ln -sf "$(command -v "$t")" "$base/nobwrap/$t"; done
-        env PATH="$base/nobwrap" "$SRT" --settings "$base/empty.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
-        cat "$base/f.out"; echo "  rc=$f_rc (nonzero + no RAN = refuses, not unsandboxed)"
-        refused F3 "$f_rc" "$base/f.out"
+        # resolve srt BEFORE restricting PATH: command-not-found must not pass as a refusal
+        if srt_bin="$(command -v "$SRT")"; then
+            env PATH="$base/nobwrap" "$srt_bin" --settings "$base/empty.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
+            cat "$base/f.out"; echo "  rc=$f_rc (nonzero + no RAN = refuses, not unsandboxed)"
+            refused F3 "$f_rc" "$base/f.out"
+            grep -q 'Sandbox dependencies not available' "$base/f.out" || { echo "ASSERT FAIL F3 refused without srt's dependency error"; run_rc=1; }
+        else
+            echo "ASSERT FAIL F3 srt not resolvable: $SRT"; run_rc=1
+        fi
         echo "F4 settings file absent, no --settings (the launcher assertion exists for this):"
         mkdir -p "$base/emptyhome"
-        env HOME="$base/emptyhome" "$SRT" -c 'echo RAN; ls "$HOME" >/dev/null && echo defaults-start' ; echo "  rc=$? (RAN = starts on built-in defaults)"
+        env HOME="$base/emptyhome" "$SRT" -c 'echo RAN; ls "$HOME" >/dev/null && echo defaults-start' >"$base/f.out" 2>&1; f_rc=$?
+        cat "$base/f.out"; echo "  rc=$f_rc (RAN = starts on built-in defaults)"
+        if [ "$f_rc" -eq 0 ] && grep -qx RAN "$base/f.out" && grep -qx defaults-start "$base/f.out"; then
+            echo "ASSERT F4 srt starts on defaults without --settings (the launcher assertion is required)"
+        else
+            echo "ASSERT FAIL F4 did not start on defaults: recheck the launcher assertion premise"; run_rc=1
+        fi
         ;;
     *)
         echo "usage: run-poc.sh impl|research|failure-modes" >&2
         exit 2
         ;;
 esac
-rm -f "$HOME/.ssh/poc_dummy" "$HOME/outside-write.txt"
+if [ "$dummy_made" -eq 1 ]; then rm -f "$HOME/.ssh/poc_dummy"; fi
+if [ "$outside_pre" -eq 0 ]; then rm -f "$HOME/outside-write.txt"; fi
 exit "$run_rc"

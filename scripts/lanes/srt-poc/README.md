@@ -18,6 +18,7 @@ build tickets carry.
 | AppArmor `userns` profile for `/usr/bin/bwrap` on Ubuntu 24.04+; pin srt, bump VM-first | bwrap fails (`loopback: Failed RTM_NEWADDR`) until the profile is loaded | HIMMEL-5397 |
 | Research profile is a curated domain list | srt rejects `*` and `*.com` as overly broad | HIMMEL-5397 |
 | Push wrapper plus broker is the only push path; credential never in the box | a force push to an origin inside a writable root passes (row B5) | HIMMEL-5398 |
+| Broker answers into a launcher-owned spool, not the leg-writable one | symlink checks on `<id>.out`/`.rc` do not stop a leg swapping the `req` directory between check and write (known POC limit) | HIMMEL-5398 |
 | Console-approved domain requests, default deny, logged | blocked domain returns a 403 and the box cannot widen itself (rows B12-B14) | HIMMEL-5399 |
 | Real-model step (open POC item, below) | not run, needs an operator decision | HIMMEL-5400 |
 
