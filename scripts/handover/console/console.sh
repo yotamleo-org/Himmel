@@ -790,9 +790,15 @@ launch_cmd() {
     local console_settings
     console_settings=$(bash "$HERE/../../lanes/profile-settings.sh" console) \
         || { err "the console plugin profile did not resolve; refusing to print a full-plugin-set console launch (HIMMEL-4013)"; exit 2; }
-    printf 'cd %q && { bash %q %s %s %s %s; %s claude --settings %q --model %q --autocompact %s -n %s "load %s and continue"; }' \
+    # HIMMEL-5310: only the profile's MCP servers (--strict-mcp-config), as the
+    # armed launch does; the flags sit between --model and --autocompact.
+    local console_mcp mcp_flags=""
+    console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
+        || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server (HIMMEL-5310)"; exit 2; }
+    [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
+    printf 'cd %q && { bash %q %s %s %s %s; %s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"; }' \
         "$repo" "$HERE/record-launch.sh" "$1" "$CONSOLE_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
-        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$console_autocompact" "$1" "$2"
+        "$CONSOLE_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2"
 }
 
 # _console_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small

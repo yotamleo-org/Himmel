@@ -85,7 +85,10 @@ hook is the whole session's trust boundary.
 
 Every eval ends in exactly one of these, **each recorded as an ADR**
 (decision + why + date) so a future session doesn't re-open a settled
-question. Log the ADR in the registry (`registry.md`, HIMMEL-201).
+question. The registry row (`registry.md`, HIMMEL-201) lives in this repo
+and is the index that stops re-evaluation; the full write-up (method,
+evidence) lives in the handover state repo at `specs/adr/adr-<tool>.md`,
+never in himmel `docs/`.
 
 - **ADOPT** — install it, wire it into the default path. Requires a
   passed measurement (§4) or a tier-1 trivially-reversible call. The ADR
