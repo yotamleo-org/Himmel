@@ -110,6 +110,30 @@ _load_dotenv_primary_for() {  # $1 = candidate root dir
     printf '%s' "$dir"
 }
 
+# _load_dotenv_envfile [<root>] — the .env path load_dotenv reads: <root>/.env
+# when a root is given (an explicit --root bypasses CWD git resolution — never
+# trust the CWD repo), else the himmelctl cache dir's .env when present, else
+# the git-resolved primary checkout's .env. Prints nothing when unresolvable.
+_load_dotenv_envfile() {
+    local _lf_root="${1:-}"
+    if [ -n "$_lf_root" ]; then
+        printf '%s/.env' "$_lf_root"
+        return 0
+    fi
+    # HIMMEL-3059 S3: a read-only install tree (e.g. a packaged /usr/share
+    # prefix) can never HAVE an in-tree .env, so an adopter's overrides land
+    # under the himmelctl cache dir instead. Readers check there FIRST, then
+    # fall back to the git-resolved root, so an existing writable clone's
+    # .env is unaffected.
+    local _lf_cache="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}"
+    if [ -f "$_lf_cache/.env" ]; then
+        printf '%s/.env' "$_lf_cache"
+        return 0
+    fi
+    _lf_root=$(_load_dotenv_root) || return 0
+    printf '%s/.env' "$_lf_root"
+}
+
 load_dotenv() {
     local _ld_root=""
     if [ "${1:-}" = "--root" ]; then
@@ -118,27 +142,7 @@ load_dotenv() {
     local _ld_keys=("$@")
     [ "${#_ld_keys[@]}" -gt 0 ] || return 0
 
-    local _ld_envfile
-    # An explicit --root bypasses CWD git resolution (never trust the CWD repo).
-    if [ -n "$_ld_root" ]; then
-        _ld_envfile="$_ld_root/.env"
-    else
-        # HIMMEL-3059 S3: a read-only install tree (e.g. a packaged /usr/share
-        # prefix) can never HAVE an in-tree .env, so an adopter's overrides land
-        # under the himmelctl cache dir instead. Readers check there FIRST, then
-        # fall back to the git-resolved root, so an existing writable clone's
-        # .env is unaffected.
-        local _ld_cache="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}"
-        if [ -f "$_ld_cache/.env" ]; then
-            _ld_envfile="$_ld_cache/.env"
-        else
-            _ld_root=$(_load_dotenv_root) || return 0
-            _ld_envfile="$_ld_root/.env"
-        fi
-    fi
-    [ -f "$_ld_envfile" ] || return 0
-
-    local _ld_key _ld_line _ld_val
+    local _ld_key _ld_line _ld_val _ld_rc=0
     local _ld_pending=()
     for _ld_key in "${_ld_keys[@]}"; do
         # Absent means UNSET **or EMPTY** (HIMMEL-1922). `declare -p` is Bash
@@ -155,15 +159,61 @@ load_dotenv() {
     done
     [ "${#_ld_pending[@]}" -gt 0 ] || return 0
 
-    # Read .env once. awk compares the complete trimmed key (the equivalent of
-    # anchored ^KEY= matching), emits only the first match for each requested
-    # key, and leaves value trimming to the existing shell helper. The helper
-    # therefore forks at most once per requested match, not once per .env line.
+    # Config layers first (load-config.sh, sourced at the end of this file):
+    # a behaviour key comes from ~/.himmel/himmel.conf(.local), a gate-policy
+    # key from ~/.himmel/config.json .policy. A secret key never comes from
+    # either; it falls through to .env below. This advisory reader keeps going
+    # on an unreadable config.json (the notice says so); only load_policy, the
+    # gate reader, fails closed on it.
+    if declare -F _himmel_config_layers >/dev/null 2>&1; then
+        local _ld_found _ld_rest=()
+        if ! _ld_found=$(_himmel_config_layers "${_ld_pending[@]}"); then
+            printf 'himmel: ~/.himmel/config.json is unreadable; policy keys fall back to .env\n' >&2
+        fi
+        while IFS= read -r _ld_line; do
+            [ -n "$_ld_line" ] || continue
+            # shellcheck disable=SC2163 # exports the KEY=value the line holds
+            export "$_ld_line"
+        done <<EOF
+$_ld_found
+EOF
+        for _ld_key in "${_ld_pending[@]}"; do
+            if [ -z "${!_ld_key:-}" ]; then
+                _ld_rest[${#_ld_rest[@]}]="$_ld_key"
+            fi
+        done
+        [ "${#_ld_rest[@]}" -gt 0 ] || return 0
+        _ld_pending=("${_ld_rest[@]}")
+    fi
+
+    local _ld_envfile
+    _ld_envfile=$(_load_dotenv_envfile "$_ld_root")
+    [ -n "$_ld_envfile" ] && [ -f "$_ld_envfile" ] || return 0
+
+    # Read .env once. The helper forks at most once per requested match, not
+    # once per .env line. A non-secret key found here is legacy: it still
+    # applies for one release, with one deprecation notice per call.
+    local _ld_legacy=()
     while IFS= read -r _ld_line || [ -n "$_ld_line" ]; do
         _ld_key="${_ld_line%%=*}"
         _ld_val=$(_load_dotenv_trim "${_ld_line#*=}")
         export "$_ld_key=$_ld_val"
-    done < <(
+        if declare -F _himmel_key_class >/dev/null 2>&1 \
+            && [ "$(_himmel_key_class "$_ld_key")" != secret ]; then
+            _ld_legacy[${#_ld_legacy[@]}]="$_ld_key"
+        fi
+    done < <(_load_dotenv_extract "$_ld_envfile" "${_ld_pending[@]}")
+    if [ "${#_ld_legacy[@]}" -gt 0 ]; then
+        _himmel_deprecation_notice "${_ld_legacy[@]}"
+    fi
+    return 0
+}
+
+# _load_dotenv_extract <file> KEY... — print `KEY=<raw value>` for the first
+# line of each requested key in a dotenv-format file. Never executes the file.
+# awk compares the complete trimmed key (the equivalent of anchored ^KEY=
+# matching) and leaves value trimming to _load_dotenv_trim.
+_load_dotenv_extract() {
         awk '
             BEGIN {
                 for (i = 2; i < ARGC; i++) {
@@ -234,6 +284,14 @@ load_dotenv() {
                 }
                 return v
             }
-        ' "$_ld_envfile" "${_ld_pending[@]}"
-    )
+        ' "$@"
 }
+
+# The config layers and load_policy (the gate-policy reader) live beside this
+# file. A copy without it degrades to the .env-only loader above.
+_load_dotenv_config_lib="$(dirname "${BASH_SOURCE[0]}")/load-config.sh"
+if [ -r "$_load_dotenv_config_lib" ]; then
+    # shellcheck source=load-config.sh
+    . "$_load_dotenv_config_lib"
+fi
+unset _load_dotenv_config_lib

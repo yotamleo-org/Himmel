@@ -1279,14 +1279,36 @@ unset CR_REQUIRE_CROSS_MODEL
 # script tree, write the temp repo's .env, and leave the process env UNSET (4o
 # unset it) so the .env is the sole source. A .env-only flag + claude-only floor
 # must gate (exit 14) — which can only happen if the bridge actually read .env.
+# HOME points at an empty temp dir, so there is no ~/.himmel/config.json and the
+# legacy .env fallback is the path under test (with its deprecation notice).
+_real_home="$HOME"
 make_repo || exit 1
-mkdir -p "$tmp/scripts/lib"
+mkdir -p "$tmp/scripts/lib" "$tmp/home"
 cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
+cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
 printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$tmp/.env"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+export HOME="$tmp/home"
 run_clear "$tmp" 14 ".env bridge (no process-env): flag read from .env + claude-only floor → exit 14"
+export HOME="$_real_home"
 if marker_exists "$tmp"; then pass; else fail ".env bridge: marker must REMAIN"; fi
+case "$LAST_CLEAR_OUT" in *DEPRECATED*) pass ;; *) fail ".env bridge: legacy read must print the deprecation notice" ;; esac
+rm -rf "$tmp"
+
+# 4p2. The policy file wins: CR_REQUIRE_CROSS_MODEL=1 in ~/.himmel/config.json
+# .policy, no .env, process env unset → gate ON → exit 14.
+make_repo || exit 1
+mkdir -p "$tmp/scripts/lib" "$tmp/home/.himmel"
+cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
+cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' > "$tmp/home/.himmel/config.json"
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
+export HOME="$tmp/home"
+run_clear "$tmp" 14 "policy file flag + claude-only floor → exit 14"
+export HOME="$_real_home"
+if marker_exists "$tmp"; then pass; else fail "policy file flag: marker must REMAIN"; fi
 rm -rf "$tmp"
 
 # 4r. Malformed/legacy avail row with NO model field must not satisfy the
@@ -1317,22 +1339,24 @@ if marker_exists "$tmp"; then pass; else fail "whitespace/mis-cased Claude: mark
 rm -rf "$tmp"
 unset CR_REQUIRE_CROSS_MODEL
 
-# 4t. Process-env precedence over .env (coderabbit App). load_dotenv preserves an
-# already-set process var (load-dotenv.sh:71 exports only when unset), so a
-# process CR_REQUIRE_CROSS_MODEL=0 WINS over a .env CR_REQUIRE_CROSS_MODEL=1 — the
-# gate stays OFF and the claude-only floor clears (exit 0). Exercises the real
-# .env bridge; also guards that the thread-1 fail-closed load never fires on a
-# normal readable .env.
+# 4t. The process env does NOT override gate policy. CR_REQUIRE_CROSS_MODEL=1 in
+# ~/.himmel/config.json .policy and a process CR_REQUIRE_CROSS_MODEL=0: load_policy
+# ignores the env, the gate stays ON and the claude-only floor refuses (exit 14).
+# (Before the policy split the env won here and the marker cleared.)
 make_repo || exit 1
-mkdir -p "$tmp/scripts/lib"
+mkdir -p "$tmp/scripts/lib" "$tmp/home/.himmel"
 cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
-printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$tmp/.env"
+cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' > "$tmp/home/.himmel/config.json"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 export CR_REQUIRE_CROSS_MODEL=0
-run_clear "$tmp" 0 "process-env 0 overrides .env 1 → claude-only floor clears → exit 0"
-if marker_exists "$tmp"; then fail "process-env precedence: marker should be GONE"; else pass; fi
+export HOME="$tmp/home"
+run_clear "$tmp" 14 "process-env 0 does not override policy-file 1 → exit 14"
+export HOME="$_real_home"
+if marker_exists "$tmp"; then pass; else fail "env-ignoring policy: marker must REMAIN"; fi
+case "$LAST_CLEAR_OUT" in *"ignoring process-env CR_REQUIRE_CROSS_MODEL"*) pass ;; *) fail "env-ignoring policy: notice missing" ;; esac
 unset CR_REQUIRE_CROSS_MODEL
 rm -rf "$tmp"
 
@@ -1359,11 +1383,22 @@ unset CR_REQUIRE_CROSS_MODEL
 # clear — proving the refuse comes from the load failure, not a missing responder.
 make_repo || exit 1
 mkdir -p "$tmp/scripts/lib"
-printf '#!/usr/bin/env bash\nload_dotenv() { return 1; }\n' > "$tmp/scripts/lib/load-dotenv.sh"
+printf '#!/usr/bin/env bash\nload_dotenv() { return 1; }\nload_policy() { return 1; }\n' > "$tmp/scripts/lib/load-dotenv.sh"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 run_clear "$tmp" 14 "load_dotenv failure → fail-closed refuse → exit 14"
 if marker_exists "$tmp"; then pass; else fail "load failure: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 4w. A lib without load_policy (an old load-dotenv.sh, no load-config.sh) must
+# refuse rather than fall back to reading the flags from the process env.
+make_repo || exit 1
+mkdir -p "$tmp/scripts/lib"
+printf '#!/usr/bin/env bash\nload_dotenv() { return 0; }\n_load_dotenv_primary_for() { printf .; }\n' > "$tmp/scripts/lib/load-dotenv.sh"
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+run_clear "$tmp" 14 "lib without load_policy → fail-closed refuse → exit 14"
+if marker_exists "$tmp"; then pass; else fail "no load_policy: marker must REMAIN"; fi
 rm -rf "$tmp"
 
 # 5. Blocking findings at this head → refuse.
