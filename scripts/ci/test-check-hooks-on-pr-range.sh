@@ -28,6 +28,7 @@ expect() { # <label> <want-rc> <got-rc> <output>
 # second commit adds (default: a docs file).
 mkpr() {
   local d="$1" m1="$2" m2="${3:-}" f
+  [ -n "$d" ] && [ -d "$d" ] || { echo "FAIL: fixture directory missing ('$d')"; exit 1; }
   (
     set -e   # a failed fixture step aborts the subshell, never a misleading verdict
     fixture_enter_git_init_dir "$d" || exit 1
@@ -139,6 +140,13 @@ expect "non-hook path refused -> rc2" 2 "$rc" "$out"
 # --- --base with no value is a usage error, not an endless loop ---
 out="$(timeout 10 bash "$W" --base 2>&1)"; rc=$?
 expect "--base without a value -> rc2" 2 "$rc" "$out"
+
+# --- an explicit base that does not resolve is an error, not a silent pass ---
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
+git -C "$t" checkout -q --detach 'HEAD^2'
+out="$(run "$t" --first-commit --base deadbeefdeadbeef -- $PLAT)"; rc=$?
+expect "unresolvable --base -> rc2" 2 "$rc" "$out"
+rm -rf "$t"
 
 # --- a merge-only PR range is still checked (an evil merge adds a script) ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"

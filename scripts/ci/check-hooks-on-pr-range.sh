@@ -67,11 +67,13 @@ if git rev-parse --verify --quiet 'HEAD^2' >/dev/null 2>&1; then
   base="$(git rev-parse 'HEAD^1')"
   tip="$(git rev-parse 'HEAD^2')"
 else
-  base="$(git rev-parse --verify --quiet "${BASE:-${COMMIT_RANGE_BASE:-}}^{commit}" 2>/dev/null || true)"
-  if [ -z "$base" ]; then
+  want="${BASE:-${COMMIT_RANGE_BASE:-}}"
+  if [ -z "$want" ]; then
     echo "hooks-on-range: no PR range (not a merge ref, no --base) — nothing to check"
     exit 0
   fi
+  base="$(git rev-parse --verify --quiet "$want^{commit}" 2>/dev/null)" \
+    || { echo "ERR hooks-on-range: base '$want' does not resolve to a commit" >&2; exit 2; }
   tip="$(git rev-parse HEAD)"
 fi
 head="$(git rev-parse HEAD)"
