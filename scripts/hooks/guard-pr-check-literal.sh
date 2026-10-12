@@ -1898,6 +1898,9 @@ split_operand() { # split_operand <raw text starting at the operand> - print
     done
     printf '%s' "${s:0:i}"
 }
+ENV_SPLIT_NEST_CAP=32
+ENV_SPLIT_DEPTH=0
+ENV_SPLIT_CAPPED=0
 env_split_option() { # env_split_option <raw command> - false only when
     # st_tokenize proves no env word carries its OWN -S/--split-string:
     # env's options run up to its first program word (git log --stat is
@@ -1910,8 +1913,18 @@ env_split_option() { # env_split_option <raw command> - false only when
     # ponytail: only shells and eval are re-read - su -c, script -c, watch,
     # a body held in a variable or read from stdin are not; upgrade path:
     # add the re-reader to the case below if one is seen carrying env -S.
-    local i j e w sk sg b
+    # HIMMEL-4516: each nested body is re-tokenized by the slow bash
+    # tokenizer, so a 350-deep chain burned the whole hook budget (fail
+    # closed with a bare timeout). Past ENV_SPLIT_NEST_CAP nested bodies the
+    # re-read stops and the caller denies with a message naming the cap.
+    # ponytail: 32 is a guess far above any real command, far below the
+    # budget (350 deep = 11 s), upgrade path: a cheaper per-level re-scan.
+    local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=()
+    if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
+        ENV_SPLIT_CAPPED=1
+        return 0
+    fi
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
     i=0
@@ -1956,7 +1969,12 @@ env_split_option() { # env_split_option <raw command> - false only when
     done
     # After the scan: the recursive st_tokenize call overwrites ST_*.
     for b in ${nb[@]+"${nb[@]}"}; do
-        env_split_option "$b" && return 0
+        ENV_SPLIT_DEPTH=$((depth + 1))
+        if env_split_option "$b"; then
+            ENV_SPLIT_DEPTH=$depth
+            return 0
+        fi
+        ENV_SPLIT_DEPTH=$depth
     done
     return 1
 }
@@ -2025,7 +2043,10 @@ herestring_split_mention() { # herestring_split_mention <raw command> - true
     return 1
 }
 if [ "$hit" -eq 0 ] && [ "$mentions" -eq 1 ] && [ "$wrapped" -eq 1 ] \
-    && { split_unresolvable_mention "$cmd" || herestring_split_mention "$cmd"; }; then
+    && { split_unresolvable_mention "$cmd" || herestring_split_mention "$cmd" || [ "$ENV_SPLIT_CAPPED" -eq 1 ]; }; then
+    if [ "$ENV_SPLIT_CAPPED" -eq 1 ]; then
+        deny "a shell body nested more than $ENV_SPLIT_NEST_CAP levels deep (eval / bash -c inside eval / bash -c) is not re-read past that depth, so an env -S inside it cannot be ruled out; flatten the command or run the guarded target by its literal spelling (HIMMEL-4516)."
+    fi
     deny "an env -S / --split-string string naming a guarded target cannot be fully resolved (a backslash escape, '#' or '\$' - GNU env -S: \\c ignores the rest, '#' comments, \${VAR} expands), so which script runs is unprovable; run the target by its literal spelling with no env -S wrapper (HIMMEL-1813)."
 fi
 # An env -S line deferred here from the early check, so the more specific
