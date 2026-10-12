@@ -98,7 +98,7 @@ lg_forge_change_open() {
     mkdir -p "$dir" || return 1
     IFS= read -r title < "$title_file" || [ -n "$title" ] || title=""
     rec="$dir/$id.json"
-    tmp="$dir/.$id.json.$$"
+    tmp=$(mktemp "$dir/.$id.json.XXXXXX") || return 1
     {
         printf '{\n'
         printf '"id":%s,\n' "$(_lg_json_str "$id")"

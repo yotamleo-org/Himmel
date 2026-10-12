@@ -462,6 +462,20 @@ got=$(tpc o/r br-feat-hit "$HIT" "$LR")
 case "$got" in "2:list "*) ;; *) fail "9e: a br id with a non-local repo id was not refused: $got" ;; esac
 got=$(tpc "$LRID" br-feat-hit "$(printf '%040d' 9)" "$LR")
 case "$got" in "2:files "*) ;; *) fail "9e: a head that is not a commit in the repo was not refused: $got" ;; esac
+# A path with a newline in it must not split into lines that each miss an
+# end-anchored pattern: it refuses instead.
+LN="$ROOT/lgnl"; mkdir -p "$LN/scripts/ci"
+lg -C "$LN" init -q -b main
+printf '^scripts/ci/.*[.]sh$\n' > "$LN/scripts/ci/ci-trust-paths.txt"
+lg -C "$LN" add -A && lg -C "$LN" commit -q -m list
+LNID="local:$(cd "$LN/.git" && pwd -P)"
+lg -C "$LN" checkout -q -b feat/nl
+printf 'n\n' > "$LN/scripts/ci/evil
+.sh"; lg -C "$LN" add -A && lg -C "$LN" commit -q -m nl
+NL=$(lg -C "$LN" rev-parse HEAD)
+lg -C "$LN" checkout -q main
+got=$(tpc "$LNID" br-feat-nl "$NL" "$LN")
+case "$got" in "2:files "*) ;; *) fail "9e: a changed path holding a newline was not refused: $got" ;; esac
 # 9f. A hit needs the anchor to hold main's tip: an older anchor refuses.
 lg -C "$LR" worktree add -q --detach "$ROOT/lgold" "$(lg -C "$LR" rev-parse main)"
 printf 'z\n' > "$LR/z"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m moved

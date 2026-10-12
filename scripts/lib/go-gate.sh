@@ -391,10 +391,15 @@ trust_path_check() (
                 || refuse files "change $tp_pr's head $tp_sha is not a commit in $lg_dir"
             # -z and core.quotePath=false: git's default output quotes and
             # escapes a non-ASCII or control-character path, which an anchored
-            # pattern would then miss.
+            # pattern would then miss. A newline inside a path is mapped to
+            # \001 before the NULs become line ends, and such a path refuses:
+            # split at the newline, each half could miss an anchored pattern.
             files=$(lg_git -c core.quotePath=false diff --no-renames --name-only -z "$lg_base...$tp_sha" 2>/dev/null \
-                | tr '\000' '\n'; exit "${PIPESTATUS[0]}") \
+                | tr '\n\000' '\001\n'; exit "${PIPESTATUS[0]}") \
                 || refuse files "cannot list change $tp_pr's changed files"
+            case "$files" in
+                *$'\001'*) refuse files "change $tp_pr has a changed path holding a newline or \\001" ;;
+            esac
             hit=$(printf '%s\n' "$files" | grep -v '^$' | grep -E -f "$tmp" | head -n 1)
             if [ -z "$hit" ]; then
                 printf 'none\n'

@@ -244,6 +244,13 @@ RC=$?
 expect local-git "an open that raced past the check is refused" 2 ""
 assert_eq "local-git: the raced open left br-feat-a-b with feat/a-b" "feat/a-b" \
     "$(_lg_field "$LG_COMMON/himmel/changes/br-feat-a-b.json" branch)"
+# Concurrent subshells share $$, so the temp record name must not derive from
+# it: a path already taken at the $$ name must not stop an open.
+mkdir -p "$LG_COMMON/himmel/changes/.br-feat-a-b.json.$$"
+OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/a-b "$ROOT/title" "$ROOT/body" 2>/dev/null)
+RC=$?
+expect local-git "re-open with the \$\$ temp name taken" 0 br-feat-a-b
+rmdir "$LG_COMMON/himmel/changes/.br-feat-a-b.json.$$"
 
 # ── the base branch ──────────────────────────────────────────────────────────
 echo "TEST: local-git takes the repo's own default branch as the base"
