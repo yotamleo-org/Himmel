@@ -316,7 +316,7 @@ CFGEOF
 ensure_retry_config() {
   local key val
   for key in request-retry max-retry-interval; do
-    grep -q "^${key}:" "$CFG" && continue
+    grep -Eq "^${key}[[:space:]]*:" "$CFG" && continue
     case "$key" in
       request-retry) val="$RETRY_COUNT" ;;
       *) val="$RETRY_INTERVAL" ;;

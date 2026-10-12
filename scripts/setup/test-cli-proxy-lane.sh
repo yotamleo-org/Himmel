@@ -501,6 +501,19 @@ else
     fail "re-run does not duplicate the retry keys"
 fi
 
+echo "TEST 31: a retry key written as 'key : value' is recognised, not duplicated"
+F31="$(fixture retry-spaced-colon)"
+printf '%s\nrequest-retry : 5\nmax-retry-interval  : 10\n' "$RETRY_FIXTURE" > "$F31/.cli-proxy-api/config.yaml"
+HOME="$F31" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "spaced-colon install exit code" 0 "$RC"
+CFG31="$(cat "$F31/.cli-proxy-api/config.yaml")"
+if [ "$(grep -c '^request-retry' "$F31/.cli-proxy-api/config.yaml")" = "1" ] \
+    && [ "$(grep -c '^max-retry-interval' "$F31/.cli-proxy-api/config.yaml")" = "1" ]; then
+    pass "spaced-colon keys are not duplicated"
+else
+    fail "spaced-colon keys are not duplicated" "$CFG31"
+fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

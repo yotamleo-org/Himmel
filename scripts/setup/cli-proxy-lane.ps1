@@ -544,7 +544,7 @@ function Add-ProxyRetryConfig {
     $want = [ordered]@{ 'request-retry' = 3; 'max-retry-interval' = 30 }
     foreach ($key in $want.Keys) {
         $text = [System.IO.File]::ReadAllText($Cfg)
-        if ($text -match "(?m)^$([regex]::Escape($key)):") { continue }
+        if ($text -match "(?m)^$([regex]::Escape($key))[ \t]*:") { continue }
         if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) { $text += "`n" }
         $text += "${key}: $($want[$key])`n"
         [System.IO.File]::WriteAllText($Cfg, $text, (New-Object System.Text.UTF8Encoding $false))
