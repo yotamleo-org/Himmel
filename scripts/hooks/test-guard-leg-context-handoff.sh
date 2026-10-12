@@ -145,7 +145,7 @@ else
     bad "no structured deny - got: $out"
 fi
 for needle in "90 %" "$DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md" T-console \
-    "append-results.sh $DOC" "Do exactly this" LEG_CONTEXT_HANDOFF_OK; do
+    "append-results.sh '$DOC'" "Do exactly this" LEG_CONTEXT_HANDOFF_OK; do
     case "$reason" in
         *"$needle"*) ok "deny text names: $needle" ;;
         *) bad "deny text lacks '$needle' - got: $reason" ;;
@@ -199,6 +199,8 @@ check "single-quoted append-results.sh -> allow" allow \
     "$(bash_call "bash 'scripts/handover/console-kit/append-results.sh' $DOC \"WRAPPED — done\"")"
 check "quoted absolute path with a space -> allow" allow \
     "$(bash_call "bash \"/work/a b/himmel/scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
+check "single-quoted doc path with a space (as the deny message prints it) -> allow" allow \
+    "$(bash_call "bash scripts/handover/console-kit/append-results.sh '/work/a b/doc.md' \"BLOCKED — why\"")"
 check "quoted queue-lock.sh release -> allow" allow \
     "$(bash_call "bash \"scripts/handover/queue-lock.sh\" release $DOC tok")"
 check "quoted queue-lock.sh acquire -> block" block \
@@ -226,7 +228,7 @@ check "RESUME doc older than this session -> block" block "$LS"
 # HIMMEL-4692: the session start is the wall clock, so a RESUME doc written a
 # day ago (after any fixed date baked into the suite) is still older than it.
 ago=$(( $(date +%s) - 86400 ))
-stamp=$(date -d "@$ago" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$ago" +%Y%m%d%H%M.%S)
+stamp=$(date -d "@$ago" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$ago" +%Y%m%d%H%M.%S) # gnu-ok: paired with the BSD date -r
 touch -t "$stamp" "$RESUME"
 check "RESUME doc a day before this session -> block" block "$LS"
 session "load $DOC and continue" "2026-10-06T12:00:00+02:00"
@@ -367,7 +369,7 @@ printf 'resume\n' > "$RESUME"
 check_c "compact, a fresh RESUME doc is not the unlock -> block" block "$LS"
 rm -f "$RESUME"
 reason="$(printf '%s' "$LS" | LEG_MODE=compact run_leg bash "$HOOK" 2>&1 >/dev/null)"
-for needle in "mode compact" "git push" "CHECKPOINT <full sha of HEAD> pushed" "append-results.sh $DOC" \
+for needle in "mode compact" "git push" "CHECKPOINT <full sha of HEAD> pushed" "append-results.sh '$DOC'" \
     HIMMEL_LEG_CONTEXT_MODE "Do exactly this" \
     'git commit -m "<subject>" -m "<body>" --trailer' "one line" \
     "cannot push" "BLOCKED" "WRAPPED" "SendMessage your console T-console"; do
