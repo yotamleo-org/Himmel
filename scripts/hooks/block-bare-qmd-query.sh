@@ -1242,7 +1242,8 @@ qmd_nested() {
         # wrapper and a file search among the producer are no verb there.
         if [ -n "$piped" ] && [ "$mode" != env ] && [ "$mode" != alias ] &&
             { [[ ${w:e} =~ $PIPENL ]] || ! pipe_filter "${w:piped+1:e-piped-1}" "${dec:piped+1:e-piped-1}"; }; then
-            if [ "$mode" = int ] && [ "$so" = 1 ] && [ "$sx" = 0 ]; then
+            if [ "$mode" = int ] && [ "$so" = 1 ] && [ "$sx" = 0 ] &&
+                ! [[ ${w:piped+1:e-piped-1} =~ (exec|eval|system|popen|Popen|spawn|subprocess|child_process|os\.|\`|\$\() ]]; then
                 if names_verb_nb "${dec:pfrom+1:piped-pfrom-1}"; then deny=1; return 0; fi
             elif names_verb "${dec:pfrom+1:piped-pfrom-1}"; then
                 deny=1

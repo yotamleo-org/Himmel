@@ -1035,6 +1035,10 @@ deny "grep -rn 'qmd query' scripts | sh"
 deny "rg -n 'qmd query' scripts | bash"
 deny "grep -rn 'qmd query' scripts | python3"
 deny "rg --pre sh -n 'qmd query' scripts | xargs -n1 echo"
+# HIMMEL-4525 review: an interpreter that execs its own stdin runs the hits.
+deny "grep -h 'qmd query' commands.txt | python3 -c 'import sys; exec(sys.stdin.read())'"
+deny "grep -h 'qmd query' commands.txt | node -e 'require(\"child_process\").execSync(require(\"fs\").readFileSync(0,\"utf8\"))'"
+deny "$BQ | python3 -c 'import os,sys; os.system(sys.stdin.read())'"
 # A bare verb in any of those positions is still refused, also beside the wrapper.
 deny "qmd query x | python3 -c 'import sys'"
 deny "qmd query x | python3 -m json.tool"
