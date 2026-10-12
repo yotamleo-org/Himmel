@@ -594,6 +594,15 @@ assert_rc "R13+ lease --repo value, no real branch"          2 "$(run_case "$(j_
 assert_rc "R13+ --repo= with a lone +refspec"                 2 "$(run_case "$(j_bash 'git push --repo=origin +main')")"
 assert_rc "R13+ --repo with a lone +refspec"                  2 "$(run_case "$(j_bash 'git push --repo origin +main')")"
 assert_rc "R13+ --rep= abbreviation with a lone +refspec"     2 "$(run_case "$(j_bash 'git push --rep=origin +main')")"
+# HIMMEL-5358 CR round 3 (codex-1): a + behind an expansion still forces.
+# shellcheck disable=SC2016  # literal $ is the payload, not an expansion
+assert_rc "R13+ + refspec behind an empty expansion"         2 "$(run_case "$(j_bash 'git push origin "${P:-}+main"')")"
+# shellcheck disable=SC2016  # literal $ is the payload, not an expansion
+assert_rc "R13- expansion refspec without a +"              0 "$(run_case "$(j_bash 'git push origin "$B"')")"
+# HIMMEL-5358 CR round 3 (codex-2): an expansion run in a command word is capped.
+# shellcheck disable=SC2016  # literal $ is the payload, not an expansion
+_many=$(printf '${x}%.0s' $(seq 300))
+assert_rc "R13+ 300 adjacent expansions in a command word"   2 "$(run_case "$(j_bash "${_many}git status")")"
 assert_rc "R13+ lease wildcard refspec"                      2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/*:refs/heads/*')")"
 assert_rc "R13+ chained cd disables the carve-out"            2 "$(run_case "$(j_bash 'cd /tmp && git push --force-with-lease origin fix/x')")"
 # HIMMEL-2054 CR round 2 (panel): a clustered short-flag bundle containing

@@ -974,10 +974,15 @@ _gp_text() {
     _gp_unres "${t#*"${BASH_REMATCH[0]}"}"
 }
 
-# _gp_noexp_word WORD — REPLY is WORD with its $-expansions removed.
+# _gp_noexp_word WORD — REPLY is WORD with its $-expansions removed; over
+# 256 of them denies, like _noexp_strip.
 _gp_noexp_word() {
-    local s=$1
-    while [[ $s =~ $_gp_re_exp ]]; do s=${s/"${BASH_REMATCH[0]}"/}; done
+    local s=$1 n=0
+    while [[ $s =~ $_gp_re_exp ]]; do
+        [ "$n" -lt 256 ] || deny "more than 256 expansions at command position"
+        s=${s/"${BASH_REMATCH[0]}"/}
+        n=$((n + 1))
+    done
     REPLY=$s
 }
 
@@ -1065,7 +1070,8 @@ _gp_push() {
         j=$((j + 1))
     done
     while [ "$i" -lt "$np" ]; do
-        case "${pw[i]}" in +*) f=1 ;; esac
+        # An unresolved refspec may expand to a leading + ("${P:-}+main").
+        case "${pk[i]}:${pw[i]}" in *:+*|[PXG]:*+*) f=1 ;; esac
         i=$((i + 1))
     done
     [ "$f" = 0 ] || deny "force push"
