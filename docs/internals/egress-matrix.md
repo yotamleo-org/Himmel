@@ -64,8 +64,10 @@ Semantics.)*
 - **Provider policy — DeepSeek + Alibaba de-listed (2026-07-22).**
   The sanctioned provider set for vault/handover egress is **GLM (zai-glm) +
   Claude (anthropic) + Codex (openai-codex)**. DeepSeek and Alibaba were dropped
-  (bad results, operator judgment): every DeepSeek vault/handover cell (the
-  2026-07-05 extraction override, handover-state, enrichment)
+  (bad results, operator judgment): every DeepSeek vault/handover extraction and
+  enrichment cell (the 2026-07-05 extraction override, enrichment; the
+  station opt-in inference cells behind `HIMMEL_DEEPSEEK_INFERENCE_OK=1` stay
+  conditional)
   and every Alibaba cell (the five embedding/rerank pilot cells + the
   brief-scoped `handover-state × alibaba × inference` cell) is now explicit
   `deny`. Both providers stay **allow on `himmel-code`** via its `* ×` wildcard

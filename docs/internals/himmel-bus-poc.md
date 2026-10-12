@@ -53,7 +53,8 @@ registration is opt-in by profile and no profile opts in.
 - Cause: the launcher only registers when the leg profile lists `himmel-bus` in
   mcpServers (the `MCP_NAMES_JSON` case in headed-arm-leg.sh); the `leg-impl`
   profile does not, so the register block is skipped without a log line. The
-  bus is opted in on no profile today (the catalog entry is a separate follow-up).
+  bus was opted in on no leg profile at the time of this run (the catalog entry was
+  a separate follow-up; the `console` profile has since listed `himmel-bus`).
 - Not done on purpose: registering by hand.
 - Follow-up: a bus-enabled profile + catalog entry, and the silent skip noted under FAIL 1.
 - Re-run: launch a leg with a profile that lists `himmel-bus`; `echo

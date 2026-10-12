@@ -103,6 +103,10 @@ that run at edit time only block edits on main.
 
 ## 4. Commit
 
+The examples below use `PROJ-N` ticket IDs; they pass the gate when
+`JIRA_PROJECT_KEY=PROJ` (or a matching `TICKET_ID_PATTERN`) is set, as in
+[contributing](contributing.md).
+
 ```
 git add docs/contributing.md
 git commit -m "docs: [PROJ-289] toy change for daily-loop walkthrough"
@@ -111,7 +115,7 @@ git commit -m "docs: [PROJ-289] toy change for daily-loop walkthrough"
 The **commit-msg gate** (`check-commit-msg.sh`) runs and validates:
 
 ```
-Pattern:  type[(scope)][!]: [HIMMEL-N] message
+Pattern:  type[(scope)][!]: [PROJ-N] message
 Types:    feat fix chore docs refactor test style perf ci build revert
 ```
 
