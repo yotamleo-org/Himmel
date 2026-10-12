@@ -1023,10 +1023,10 @@ _gp_clean() { # J FORCED — clean's argv from word J; FORCED=1 when -c turned r
 # caller's pw (positional words) and pk (their kinds).
 _gp_lease_protected() {
     local i=1 b
-    [ "${#pw[@]}" -ge 2 ] || return 0
+    [ "$np" -ge 2 ] || return 0
     [ "${pw[0]}:${pk[0]}" = origin:W ] || return 0
     _gp_protected_set
-    while [ "$i" -lt "${#pw[@]}" ]; do
+    while [ "$i" -lt "$np" ]; do
         case "${pk[i]}" in P|X|G) return 0 ;; esac
         b=${pw[i]##*:}; b=${b#+}; b=${b#refs/heads/}
         case "$b" in ''|head|@*|*'*'*|*'$'*|*'`'*) return 0 ;; esac
@@ -1040,29 +1040,30 @@ _gp_lease_protected() {
 # its repository (-C, --git-dir, ...) or an assignment preceded it, which the
 # lease carve-out cannot follow.
 _gp_push() {
-    local j=$1 off=$2 w k c f=0 l=0 dd=0 i=1
+    local j=$1 off=$2 w k c f=0 l=0 dd=0 i=1 np=0
     local -a pw=() pk=()
     while [ "$j" -lt "${#_gc_w[@]}" ]; do
         w=${_gc_w[j]} k=${_gc_k[j]}
         if [ "$dd" = 1 ]; then
-            pw[${#pw[@]}]=$w; pk[${#pk[@]}]=$k
+            pw[np]=$w; pk[np]=$k; np=$((np + 1))
         else
             case "$w" in
                 --) dd=1 ;;
                 --force|--f|--fo|--for|--forc) f=1 ;;
                 --force-w*) l=1 ;;
-                --repo) off=1; j=$((j + 1)) ;;
-                --repo=*) off=1 ;;
+                # --repo names the remote: every positional word is a refspec.
+                --repo) off=1; i=0; j=$((j + 1)) ;;
+                --repo=*) off=1; i=0 ;;
                 -o|--push-option|--receive-pack|--exec|--recurse-submodules) j=$((j + 1)) ;;
                 --*) ;;
                 -*) c=${w#-}; c=${c%%o*}; case "$c" in *f*) f=1 ;; esac ;;
-                *) pw[${#pw[@]}]=$w; pk[${#pk[@]}]=$k ;;
+                *) pw[np]=$w; pk[np]=$k; np=$((np + 1)) ;;
             esac
             case "$k:$w" in X:*force*|G:*force*) f=1 ;; esac
         fi
         j=$((j + 1))
     done
-    while [ "$i" -lt "${#pw[@]}" ]; do
+    while [ "$i" -lt "$np" ]; do
         case "${pw[i]}" in +*) f=1 ;; esac
         i=$((i + 1))
     done
@@ -1185,7 +1186,7 @@ _gp_pass() {
         if [ "$d" -lt 2 ]; then
             e=${ST_W[k]}
             [ "${ST_A[k]}" != 1 ] || e=${e#*=}
-            case "$e" in *git*[[:space:]]*|*[[:space:]]*git*) rec[${#rec[@]}]=$e ;; esac
+            case "$e" in *git*[[:space:]]*|*[[:space:]]*git*) rec+=("$e") ;; esac
         fi
         k=$((k + 1))
     done
