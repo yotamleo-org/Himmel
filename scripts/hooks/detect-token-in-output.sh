@@ -35,7 +35,8 @@
 # ponytail: the token kinds are GitHub's only (the leak that motivated this);
 # other providers' key shapes are a one-line regex each, add on the first leak.
 
-input=$(cat 2>/dev/null) || exit 0
+# `read`, a builtin, so the clean path forks nothing (rc 1 at EOF is expected).
+IFS= read -r -d '' input 2>/dev/null || :
 
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
@@ -51,14 +52,23 @@ while [[ $rest =~ $tok_re ]]; do
 done
 
 # Per token: the kind and the variable it was assigned to, when the text shows
-# one. Quotes may be JSON-escaped (`\"`), hence the backslash in the bracket.
+# one. Names are read from the DECODED string values (jq), so an escaped `\n`
+# before `NAME=` does not become part of the name; without jq, the raw text.
+# Quotes may still be JSON-escaped there (`\"`), hence the backslash in the
+# bracket. A name that is itself a token is never used: it would echo it.
+scan=""
+if command -v jq >/dev/null 2>&1; then
+    scan=$(jq -r '[.. | strings] | join("\n")' <<<"$input" 2>/dev/null) || scan=""
+fi
+[ -n "$scan" ] || scan=$input
 desc=""
 for token in "${tokens[@]}"; do
     kind="${token%%_*}_"
     case "$token" in github_pat_*) kind="github_pat_" ;; esac
     var="unknown"
     name_re="([A-Za-z_][A-Za-z0-9_]*)[\"'\\\\]*[=:][[:space:]]*[\"'\\\\]*${token}"
-    if [[ $input =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
+    if [[ $scan =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
+    if [[ $var =~ $tok_re ]]; then var="unknown"; fi
     desc="${desc:+$desc; }${kind}…, variable ${var}"
 done
 

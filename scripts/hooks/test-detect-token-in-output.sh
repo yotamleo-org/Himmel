@@ -50,7 +50,7 @@ if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ] && [ "$(sent_count)" = 0 ]; then pass "c
 run_hook "$(j_post Bash s1 "SUITE_X=1
 GITHUB_PERSONAL_ACCESS_TOKEN=$TOK_GHO
 HOME=/home/u")"
-if [ "$rc" = 0 ] && grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && grep -q 'GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" \
+if [ "$rc" = 0 ] && grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && grep -q 'variable GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" \
     && grep -q 'Bash' "$TMP/out" && no_value "$TMP/out" "$TOK_GHO"; then
     pass "env line: alert names tool and variable, not the value"
 else fail "env line alert (rc=$rc): $(cut -c1-200 "$TMP/out")"; fi
@@ -100,6 +100,13 @@ if grep -q 'GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" && grep -q 'CODEX_TOKEN' "$
     && no_value "$TMP/out" "$TOK_GHP" && [ "$(sent_count)" = 5 ] && grep -q 'CODEX_TOKEN' "$TMP/sent.log"; then
     pass "second token behind an alerted one: named and paged"
 else fail "second token (count=$(sent_count)): $(cut -c1-200 "$TMP/out")"; fi
+
+# 9b. A token in the NAME position (token=token) is never echoed as the variable.
+run_hook "$(j_post Bash s8 "$TOK_PAT=$TOK_GHO")"
+if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT" && no_value "$TMP/out" "$TOK_GHO" \
+    && no_value "$TMP/sent.log" "$TOK_PAT"; then
+    pass "token in the name position is not echoed"
+else fail "token as variable name echoed"; fi
 
 # 10. Sender failure: no sentinel left, so a later call may retry the DM.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/send.sh"
