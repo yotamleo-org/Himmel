@@ -1974,7 +1974,7 @@ SHEOF
 exec 3<> "$1.idle"
 printf ready > "$1"
 n=0
-while [ -e "$1" ] && [ "$n" -lt 300 ]; do read -r -t 0.2 -u 3 _idle || :; n=$((n + 1)); done
+while [ -e "$1" ] && [ "$n" -lt 60 ]; do read -r -t 1 -u 3 _idle || :; n=$((n + 1)); done
 SHEOF
 
         # start_suite_holder <cwd> <script> [extra-argv...] — sets HOLDER_PID
