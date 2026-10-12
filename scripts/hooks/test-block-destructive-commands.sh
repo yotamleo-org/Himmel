@@ -1494,6 +1494,10 @@ for c in \
     'gh gpg-key delete 1' \
     'gh api -X DELETE "repos/o/r/$TARGET"' \
     'gh api -X PUT repos/o/r/actions/secrets/$S' \
+    'gh api "$EP" -X DELETE' \
+    'gh api -X DELETE "$EP"' \
+    'gh api "repos/o/r/actions/secrets/$S" -f encrypted_value=x' \
+    'gh api repos/o/r/*/x -X DELETE' \
     'gh auth logout' \
     'gh auth token' \
     'gh pr merge 1 --admin' \

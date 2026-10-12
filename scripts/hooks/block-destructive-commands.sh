@@ -1227,6 +1227,7 @@ _gh_api() {
         case "$ep" in
             '$'*) deny "gh api $m on a computed endpoint" ;;
         esac
+        [ "$epk" = G ] && deny "gh api $m on a globbed endpoint"
         s=$ep
         while [[ $s =~ $_gp_re_exp ]]; do
             [ "$c" -lt 256 ] || deny "more than 256 expansions at command position"
@@ -1258,7 +1259,13 @@ _gh_inv() {
     local j=$1 n=${#_gc_w[@]} w p1='' p2='' np=0 ai=0 e
     while [ "$j" -lt "$n" ]; do
         w=${_gc_w[j]}
-        case "${_gc_k[j]}" in P|X|G) _gp_join "$1"; _gh_unres "$REPLY"; return 0 ;; esac
+        case "${_gc_k[j]}" in
+            P|X|G)
+                # a computed argument after `api` still reaches _gh_api, which
+                # holds a computed endpoint and a computed method
+                if [ "$p1" = api ]; then break; fi
+                _gp_join "$1"; _gh_unres "$REPLY"; return 0 ;;
+        esac
         case "$w" in
             -r|--repo|--hostname) j=$((j + 2)); continue ;;
             -*) ;;
