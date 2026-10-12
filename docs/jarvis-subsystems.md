@@ -3,7 +3,7 @@
 himmel is evolving into an "agentic OS": Claude-main orchestrates a fleet across
 model backends, routes each task to the right model, validates with diverse
 critics, under a command-and-control surface, on a token-economical footing
-(epic **HIMMEL-654**). This page is the **adopter-facing** map of the optional
+(the Jarvis epic). This page is the **adopter-facing** map of the optional
 subsystems that make that up — what each is, whether it's on by default, how to
 enable it, and where the deep docs live.
 
@@ -15,7 +15,7 @@ enable it, and where the deep docs live.
 
 | Subsystem | Status | Default | Enable with |
 |---|---|---|---|
-| [GLM offload lane](#glm-offload-lane) | dormant (operator-dropped 2026-08-19, HIMMEL-1967) | **off** | `ZAI_API_KEY` + `GLM_LANE_OK` |
+| [GLM offload lane](#glm-offload-lane) | dormant (operator-dropped 2026-08-19) | **off** | `ZAI_API_KEY` + `GLM_LANE_OK` |
 | [Quota-gauge (cross-lane quota observability)](#quota-gauge--cross-lane-quota-observability) | shipped | **on** (passive) | no setup — reads only |
 | [Escalation channel](#escalation-channel) | shipped | **off** | rides the GLM lane |
 | [Statusline](#statusline) | shipped | opt-in | `scripts/lib/wire-statusline.sh` |
@@ -31,14 +31,14 @@ enable it, and where the deep docs live.
 under himmel's full hook/guardrail set. The worker spawns into its own git
 worktree, is inspected, and its output is validated before anything merges.
 
-**Gating (dormant by operator ruling).** The lane was dropped 2026-08-19
-(HIMMEL-1967): implementation work routes to native Claude subagents only, and
+**Gating (dormant by operator ruling).** The lane was dropped 2026-08-19:
+implementation work routes to native Claude subagents only, and
 this lane needs `GLM_LANE_OK` to opt back in, on top of `ZAI_API_KEY`.
 `scripts/telegram/glm-env.ts` **throws** if the key is absent, so `spawn-glm.ts`
 / the `claude-glm` launchers simply cannot start without it — but per
 `scripts/lanes/lanes.json`'s `readiness.passesRequired`, the lane must also show
 10 consecutive verify-return passes before dispatch routes work toward it
-(the HIMMEL-1575 startup-hang class). There is no SessionStart auto-activation.
+(the startup-hang class). There is no SessionStart auto-activation.
 
 **Safety.** Third-party lanes have no auto-mode classifier and usually run under
 `--permission-mode bypassPermissions`, so himmel substitutes a **deterministic
@@ -73,8 +73,8 @@ touchpoints (e.g. GLM's cap-guard) — no new fetch, no new poll — so there is
 no separate enable step; the ledger just accumulates as those touchpoints run.
 
 **Name history.** Originally shipped as "headroom" (WS9). Renamed
-`headroom` → `quota-gauge` in HIMMEL-697 to free the "Headroom" name for the
-unrelated HIMMEL-622 tool-adoption candidate.
+`headroom` → `quota-gauge` to free the "Headroom" name for an
+unrelated tool-adoption candidate.
 
 ## Escalation channel
 
@@ -105,7 +105,7 @@ workers are running.
 **What it is.** A terminal statusline for Claude Code showing session context
 (usage window, ledger segment, configurable bottom-row period). The current
 default renderer is **claude-hud**
-(`marketplace/plugins/claude-hud/dist/index.js`, HIMMEL-718), a forked Node
+(`marketplace/plugins/claude-hud/dist/index.js`), a forked Node
 renderer; the vendored bash bar in **`scripts/statusline/`** is retained as
 the rollback fallback.
 
@@ -157,7 +157,7 @@ and adjudication controls remain disabled until Phase 2." Fleet state also
 remains available the older way, through the `where-are-we` ledger and the
 `/morning-report` command; the console reads that same ledger rather than
 replacing it. The adoptable, productized judge module is tracked separately
-under **HIMMEL-2311**.
+as a planned follow-up.
 
 **Use it.** `bun scripts/fleet-control/server.ts serve` starts the server,
 binding **loopback only** (`127.0.0.1:7350` by default, override with

@@ -105,7 +105,7 @@ that run at edit time only block edits on main.
 
 ```
 git add docs/contributing.md
-git commit -m "docs: [HIMMEL-289] toy change for daily-loop walkthrough"
+git commit -m "docs: [PROJ-289] toy change for daily-loop walkthrough"
 ```
 
 The **commit-msg gate** (`check-commit-msg.sh`) runs and validates:
@@ -126,9 +126,9 @@ COMMIT REJECTED: message does not match conventional commit format.
   Types: feat fix chore docs refactor test style perf ci build revert
 
   Examples:
-    feat(auth): HIMMEL-22 add JWT validation
-    fix(api): HIMMEL-23 correct status code on 404
-    chore: HIMMEL-24 update dependencies
+    feat(auth): PROJ-22 add JWT validation
+    fix(api): PROJ-23 correct status code on 404
+    chore: PROJ-24 update dependencies
 
   Got: my bad message
 ```
@@ -152,7 +152,7 @@ Our toy change is docs-only — no trailers needed. For a change that DOES
 require them, the full commit looks like:
 
 ```
-fix(scripts): HIMMEL-42 correct bash exit code
+fix(scripts): PROJ-42 correct bash exit code
 
 Platforms tested: linux, windows
 Security reviewed: manual
@@ -201,7 +201,7 @@ On push, `check-cr-before-push.sh` writes a marker file at
 it just flags that a review is owed. You see:
 
 ```
-→ code-review: docs-audit marker written for docs/himmel-289-daily-loop (HEAD=abc1234). Run /pr-check (docs-audit lane: one code-reviewer with the docs charter) before opening the PR — docs are never zero-CR (HIMMEL-303).
+→ code-review: docs-audit marker written for docs/himmel-289-daily-loop (HEAD=abc1234). Run /pr-check (docs-audit lane: one code-reviewer with the docs charter) before opening the PR — docs are never zero-CR.
 ```
 
 (Our toy change edits `docs/contributing.md`, a reviewable doc, so it gets a
@@ -209,9 +209,9 @@ it just flags that a review is owed. You see:
 a handover-state-only diff gets none.) Push succeeds either way — the marker
 is advisory at push time and becomes a hard block at PR creation time.
 
-> **Docs-only path (HIMMEL-299/303):** Reviewable docs (`docs/`, repo
+> **Docs-only path:** Reviewable docs (`docs/`, repo
 > `*.md`/`*.txt`) are **never zero-CR**. The `code-review-before-push` gate
-> writes a **`docs-audit` marker** for them (HIMMEL-303), so `gh pr create`
+> writes a **`docs-audit` marker** for them, so `gh pr create`
 > is blocked until `/pr-check` clears it — same hard gate as code, but a
 > lighter lane: `/pr-check` reads the marker's `docs-audit` lane and runs ONE
 > `pr-review-toolkit:code-reviewer` with the docs charter (repo-claim accuracy
@@ -254,7 +254,7 @@ You cannot open a PR until the marker is cleared by a passing review.
 Once the marker is cleared (a marker is only ever skipped for a handover-only change):
 
 ```
-gh pr create --title "docs: [HIMMEL-289] toy change for daily-loop walkthrough" \
+gh pr create --title "docs: [PROJ-289] toy change for daily-loop walkthrough" \
   --body "Toy change per daily-loop walkthrough."
 ```
 

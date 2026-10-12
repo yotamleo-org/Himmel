@@ -4,7 +4,6 @@
 > Nothing here runs unless you start it by hand. It is not managed by
 > `himmelctl`, it is not in the adopter settings template, and merging it
 > changes the behaviour of exactly one thing: it adds a `/speak` command.
-> HIMMEL-1522.
 
 Local speech for the agent: it speaks replies aloud, and it can listen.
 
@@ -19,7 +18,7 @@ prompt would be. Speaking to the agent is not more private than typing to it;
 it is the same egress with a different keyboard. What local models buy you is
 that the *sound of the room* never becomes something that could be sent —
 which matters because the salus perimeter keys on file paths, and audio has
-none. See [HIMMEL-1548](#known-limits) for the consequence: while `jarvis.py` is
+none. See [Known limits](#known-limits) for the consequence: while `jarvis.py` is
 listening, anything said near the microphone can become such a transcript.
 
 ## What merging actually changes
@@ -119,7 +118,7 @@ cannot drive your speakers.
 - **`voice-loop.ps1`** — speak, a Claude run answers, the answer is spoken back.
   `-Continue` carries context across turns of that invocation only. ENTER sends
   early. Expect 10–30 s per turn; that is Claude's cold start, not the voice
-  layer (HIMMEL-1537).
+  layer.
 - **`jarvis.py`** — say "jarvis" to wake, "stop" or "shut off" to cut it off.
 - **`ptt.ps1`** — hold, talk, release; the transcript lands on the clipboard.
 
@@ -280,10 +279,8 @@ typing.
 
 ## Known limits
 
-| | |
-|---|---|
-| HIMMEL-1535 | The **confirm** tier is not built. Plan mode refuses those actions outright rather than speaking a confirmation back — safe, but not the designed behaviour. |
-| HIMMEL-1536 | No shell at all by voice, so no CI checks and no `git status`. A narrow read-only allow-list would restore the useful part. |
-| HIMMEL-1537 | 10–30 s per turn, all of it Claude's cold start. |
-| HIMMEL-1548 | A wake phrase is not proof of deliberate address — anything said near the mic while `jarvis.py` runs can reach the cloud. Bounded today because you launch it by hand. |
-| HIMMEL-1549 | The read-side profile is still a deny-list, and does not yet deliver the policy's hard `secrets` guarantee. Its own header says so. |
+- The **confirm** tier is not built. Plan mode refuses those actions outright rather than speaking a confirmation back — safe, but not the designed behaviour.
+- No shell at all by voice, so no CI checks and no `git status`. A narrow read-only allow-list would restore the useful part.
+- 10–30 s per turn, all of it Claude's cold start.
+- A wake phrase is not proof of deliberate address — anything said near the mic while `jarvis.py` runs can reach the cloud. Bounded today because you launch it by hand.
+- The read-side profile is still a deny-list, and does not yet deliver the policy's hard `secrets` guarantee. Its own header says so.
