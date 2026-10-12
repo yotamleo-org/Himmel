@@ -507,8 +507,10 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites.XXXXXX") || { echo "impacted-suites.sh: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 pats="$work/patterns"
+lits="$work/literals"   # HIMMEL-5363: one literal per pattern in $pats, see grep_narrowed
 found="$work/found"
 : > "$pats"
+: > "$lits"
 : > "$found"
 
 suite_re='(^|/)test-[^/]*\.sh$|\.test\.(mjs|js|ts)$'
@@ -552,6 +554,7 @@ needle_tail_ere() {
 }
 add_needle() {
     { needle_ere "$1"; printf '\n'; } >> "$pats" || io_fail "writing a needle"
+    printf '%s\n' "$1" >> "$lits" || io_fail "writing a needle literal"
 }
 # add_stem_needle <path> — HIMMEL-5160: a suite often names a script without its
 # extension (`guard_rc block-chokepoint-env-prefix`), so a changed *.sh whose
@@ -568,6 +571,7 @@ add_stem_needle() {
     case "$st" in *[-_]*) ;; *) return 0 ;; esac
     esc=$(printf '%s' "$st" | sed 's/[.[\*^$+?(){}|]/\\&/g') || io_fail "escaping a stem needle"
     printf '(^|[^A-Za-z0-9_.-])%s($|[^A-Za-z0-9_.-])\n' "$esc" >> "$pats" || io_fail "writing a stem needle"
+    printf '%s\n' "$st" >> "$lits" || io_fail "writing a stem needle literal"
 }
 
 # file_literal <path> [src] — the text a suite would use to name the file: its
@@ -615,6 +619,8 @@ bare_source_ere() {
     [ "${f#*/}" != "$f" ] || return 0
     [[ $name =~ $generic_re ]] && return 0
     case "$name" in *[-_.]*) return 0 ;; esac
+    # $2: the literal file the caller's grep_narrowed pass reads (the bare name).
+    printf '%s\n' "$name" >> "$2" || return 1
     { printf '%s(source|\\.)[[:space:]]+(--[[:space:]]+)?["'"'"']?([^[:space:]"'"'"']*/)?' "$src_lead"; needle_tail_ere "$name"; printf '\n'; } || return 1
     { printf 'shellcheck[[:space:]]+source=([^[:space:]]*/)?'; needle_tail_ere "$name"; printf '\n'; } || return 1
 }
@@ -635,7 +641,7 @@ while IFS= read -r f; do
     name="${f##*/}"
     add_needle "$(file_literal "$f")"
     add_stem_needle "$f"
-    bare_source_ere "$f" >> "$pats" || io_fail "writing a bare source needle"
+    bare_source_ere "$f" "$lits" >> "$pats" || io_fail "writing a bare source needle"
     printf '%s\n' "$f" >> "$seen" || io_fail "seeding the source closure"
     printf '%s\n' "$f" >> "$front" || io_fail "seeding the source closure"
     case "$f" in
@@ -676,23 +682,63 @@ if [ "$grep_rc" -gt 1 ]; then
     exit 2
 fi
 tr '\0' '\n' < "$work/varsrc.raw" | sed "s/^${head_sha}://" > "$varsrc" || io_fail "listing variable-sourcing files"
-# closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
-closure_grep() {
-    : > "$2.raw" || io_fail "creating the $3 hit list"   # a failed open is rc 1 below
+# grep_narrowed <patfile> <litfile> <outfile> <what> <pathspec>... — write to
+# <outfile>, one path per line, the files at head under <pathspec>... holding a
+# line that matches any ERE in <patfile> (HIMMEL-5363). The answer of
+# `git grep -z -l -E -f <patfile> <head> -- <pathspec>...`, without its cost: that
+# runs EVERY pattern over EVERY line, which on a 321-file vendored diff (~1.2k
+# patterns, ~1.7k files, 26 rounds) was 3184 CPU-seconds and a cancelled CI job.
+# Every pattern holds one literal of <litfile> as a required substring, so a file
+# or a line with none of them cannot match: one fixed-string pass keeps those
+# files, a second keeps those lines, and the unchanged ERE runs over what is left.
+# ponytail: a path holding a newline splits in two, as with the -z lists above;
+# upgrade path is NUL-reading consumers if one ever appears.
+grep_narrowed() {
+    local pf="$1" lf="$2" out="$3" what="$4" cand p narrow="$work/narrow.d"
+    shift 4
+    case "$pf" in /* | [A-Za-z]:[\\/]*) ;; *) pf="$PWD/$pf" ;; esac   # the ERE pass runs from $narrow
+    : > "$out" || io_fail "creating the ${what} hit list"   # a failed open is rc 1 below
+    : > "$work/narrow.cand" || io_fail "creating the ${what} candidate list"
     grep_rc=0
-    git grep -z -l -E -f "$1" "$head_sha" -- ':(glob)**/*.sh' > "$2.raw" || grep_rc=$?
+    git grep -z -l -F -f "$lf" "$head_sha" -- "$@" > "$work/narrow.cand" || grep_rc=$?
     if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) $3 — cannot tell which suites are impacted" >&2
+        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
         exit 2
     fi
-    tr '\0' '\n' < "$2.raw" | sed "s/^${head_sha}://" > "$2" || io_fail "reading $3"
+    [ -s "$work/narrow.cand" ] || return 0
+    rm -rf "$narrow"
+    mkdir "$narrow" || io_fail "creating the ${what} scratch tree"
+    while IFS= read -r -d '' cand; do
+        p="${cand#"${head_sha}:"}"
+        case "$p" in */*) mkdir -p -- "$narrow/${p%/*}" || io_fail "creating the ${what} scratch tree" ;; esac
+        git show "${head_sha}:${p}" > "$work/narrow.blob" || io_fail "reading ${p} at ${head_sha} for ${what}"
+        # LC_ALL=C -a: byte-exact, and a line that is not valid UTF-8 is still text.
+        grep_rc=0
+        LC_ALL=C grep -aF -f "$lf" "$work/narrow.blob" > "$narrow/$p" || grep_rc=$?
+        [ "$grep_rc" -le 1 ] || io_fail "narrowing ${p} for ${what}"
+    done < "$work/narrow.cand"
+    : > "$work/narrow.hits" || io_fail "creating the ${what} result file"
+    grep_rc=0
+    ( cd "$narrow" || exit 3
+      git grep --no-index --no-exclude-standard --threads=1 -z -l -E -f "$pf" ) > "$work/narrow.hits" || grep_rc=$?
+    if [ "$grep_rc" -gt 1 ]; then
+        echo "impacted-suites: git grep failed (rc=$grep_rc) ${what} — cannot tell which suites are impacted" >&2
+        exit 2
+    fi
+    tr '\0' '\n' < "$work/narrow.hits" > "$out" || io_fail "reading ${what}"
+}
+# closure_grep <patfile> <outfile> <what> — the .sh files at head matching any pattern.
+closure_grep() {
+    grep_narrowed "$1" "$work/srclits" "$2" "$3" ':(glob)**/*.sh'
 }
 while [ -s "$front" ]; do
     : > "$work/srcpats"
     : > "$work/asgpats"
     : > "$work/dirpats"
+    : > "$work/srclits"
     while IFS= read -r f; do
         lit=$(file_literal "$f" src)
+        printf '%s\n' "$lit" >> "$work/srclits" || io_fail "writing a source-edge literal"
         # A `/name` needle brings its own boundary: let the prefix reach right up to it.
         case "$lit" in
             /*) src_pre='[^#]*'; dir_pre='[^[:space:]]*' ;;
@@ -701,7 +747,7 @@ while [ -s "$front" ]; do
         { printf '%s(source|\\.)[[:space:]]%s' "$src_lead" "$src_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/srcpats" || io_fail "writing a source-edge pattern"
         { printf '^[[:space:]]*(export[[:space:]]+|local[[:space:]]+|readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*\\+?=.*'; needle_ere "$lit"; printf '\n'; } >> "$work/asgpats" || io_fail "writing an assignment pattern"
         { printf 'shellcheck[[:space:]]+source=%s' "$dir_pre"; needle_tail_ere "$lit"; printf '\n'; } >> "$work/dirpats" || io_fail "writing a directive pattern"
-        bare_source_ere "$f" >> "$work/srcpats" || io_fail "writing a bare source-edge pattern"
+        bare_source_ere "$f" "$work/srclits" >> "$work/srcpats" || io_fail "writing a bare source-edge pattern"
     done < "$front"
     closure_grep "$work/srcpats" "$work/hit.src" "walking the source closure"
     closure_grep "$work/dirpats" "$work/hit.dir" "reading shellcheck source directives"
@@ -961,6 +1007,7 @@ if grep -Fxq -- "$closure_suite" "$suites"; then
     else
         : > "$work/guarded-specs"
         : > "$work/cg-pats"
+        : > "$work/cg-lits"
         while IFS= read -r g; do
             printf ':(top)%s\n' "$g" >> "$work/guarded-specs" || io_fail "writing the guarded pathspecs"
         done < "$work/guarded"
@@ -972,16 +1019,15 @@ if grep -Fxq -- "$closure_suite" "$suites"; then
             done < "$work/guarded"
             [ "$cg_hit" -eq 0 ] || break
             { needle_ere "$(file_literal "$f" cg)"; printf '\n'; } >> "$work/cg-pats" || io_fail "writing a guarded-closure needle"
+            file_literal "$f" cg >> "$work/cg-lits" || io_fail "writing a guarded-closure literal"
         done < "$work/changed"
         if [ "$cg_hit" -eq 0 ] && [ -s "$work/cg-pats" ]; then
-            cg_rc=0
             # One search for every changed file; any path a guarded file can name
             # counts (HIMMEL-4533), not just scripts/handover|lanes|lib.
             # shellcheck disable=SC2046  # one pathspec per line, split on purpose
             # The suite's seeds skip test-*, so a test naming the file is no edge.
-            git grep -qE -f "$work/cg-pats" "$head_sha" -- $(tr '\n' ' ' < "$work/guarded-specs") ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' || cg_rc=$?
-            if [ "$cg_rc" -gt 1 ]; then io_fail "searching the guarded files for the changed files"; fi
-            [ "$cg_rc" -ne 0 ] || cg_hit=1
+            grep_narrowed "$work/cg-pats" "$work/cg-lits" "$work/cg.out" "searching the guarded files for the changed files" $(tr '\n' ' ' < "$work/guarded-specs") ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*'
+            [ ! -s "$work/cg.out" ] || cg_hit=1
         fi
         if [ "$cg_hit" -eq 1 ]; then printf '%s\n' "$closure_suite" >> "$found" || io_fail "recording the closure suite"; fi
     fi
@@ -992,19 +1038,12 @@ if [ -s "$pats" ]; then
     # about the PR as pushed. -l prefixes each path with "<head_sha>:".
     # rc 1 is "no match"; anything higher is a search that did not run, which
     # must not read as an empty impacted set.
-    : > "$work/grep.out" || io_fail "creating the search result file"   # a failed open is rc 1 below
-    grep_rc=0
-    # -z like the diff and ls-tree above (HIMMEL-4997): a suite path holding a
-    # non-ASCII byte, double quote, backslash or tab must come back as itself,
-    # not as a quoted "\303\251" the runner cannot open.
-    git grep -z -l -E -f "$pats" "$head_sha" -- \
-        ':(glob)**/test-*.sh' ':(glob)**/*.test.mjs' ':(glob)**/*.test.js' ':(glob)**/*.test.ts' \
-        > "$work/grep.out" || grep_rc=$?
-    if [ "$grep_rc" -gt 1 ]; then
-        echo "impacted-suites: git grep failed (rc=$grep_rc) — cannot tell which suites are impacted" >&2
-        exit 2
-    fi
-    tr '\0' '\n' < "$work/grep.out" | sed "s/^${head_sha}://" >> "$found" || io_fail "reading the search result"
+    # grep_narrowed searches with -z like the diff and ls-tree above (HIMMEL-4997):
+    # a suite path holding a non-ASCII byte, double quote, backslash or tab must
+    # come back as itself, not as a quoted "\303\251" the runner cannot open.
+    grep_narrowed "$pats" "$lits" "$work/grep.out" "searching the suites for the changed files" \
+        ':(glob)**/test-*.sh' ':(glob)**/*.test.mjs' ':(glob)**/*.test.js' ':(glob)**/*.test.ts'
+    cat "$work/grep.out" >> "$found" || io_fail "reading the search result"
 fi
 
 # HIMMEL-5114: a tree-scan suite asserts a property of the WHOLE tree (every
