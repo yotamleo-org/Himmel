@@ -494,12 +494,12 @@ contains 'a card shows the first sentence of the Impact block (HIMMEL-5381)' "$k
 not_contains 'a card stops after the first Impact sentence (HIMMEL-5381)' "$kt" 'A second sentence must not show'
 contains 'a card line is HTML-escaped (HIMMEL-5381)' "$kd" 'user &amp; more'
 contains 'a ticket without Impact falls back to its summary as the line (HIMMEL-5381)' "$kp" '<div class="kline">kanban prog ticket</div>'
-krender >/dev/null
+krender --jira-base-url "" >/dev/null
 contains 'with no base URL the key is plain text, never a made-up host (HIMMEL-5381)' "$(cat "$kout")" '<span class="kkey">HIMMEL-31</span>'
 not_contains 'with no base URL there is no browse link (HIMMEL-5381)' "$(cat "$kout")" '/browse/HIMMEL-31'
-kfp1="$(krender --emit-fp)"
+kfp1="$(krender --emit-fp --jira-base-url "")"
 krender --jira-base-url 'https://jira.example.test/' >/dev/null
-kfp2="$(krender --emit-fp)"
+kfp2="$(krender --emit-fp --jira-base-url "https://jira.example.test/")"
 if [ -n "$kfp1" ] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL: '$kfp1' vs '$kfp2'"; fi
 
 printf '%s\n' "$fails failure(s)"
