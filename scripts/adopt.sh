@@ -176,6 +176,7 @@ PORTABLE_FILES=(
   scripts/lib/branch-shipped.sh
   scripts/lib/worktree-inuse.sh
   scripts/lib/worktree-fresh-lock.sh
+  scripts/lib/git-clean.sh
   scripts/clean-garden.sh
   scripts/worktree.sh
   scripts/clean.sh
