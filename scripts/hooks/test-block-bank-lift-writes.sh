@@ -1646,6 +1646,35 @@ env_row "5348 sort -o \"\$A\"''n name boundary"          deny  "A=${LIFT%n}" "so
 env_row "5348 sort -o \"\$A\"\$'n' name boundary"        deny  "A=${LIFT%n}" "sort -o \"\$A\"\$'n' y"
 env_row "5348 sort -o \"\$A\"n benign (ctrl)"            allow "A=/tmp/o" 'sort -o "$A"n /tmp/y'
 env_row "5348 cat \"\$A\"/x read (ctrl)"                 allow "A=$ST" 'cat "$A"/x'
+# j2479a B1: a sed SCRIPT is not a destination, so its ${...} text never
+# fails closed; only sed -i FILE operands and a w/W filename are resolved.
+env_row "5348 sed -i script \${X:-C} (ctrl)"            allow "OTHER=1" "sed -i 's/^LC_ALL=C PS4=/LC_ALL=\${PROF_LC:-C} PS4=/' /tmp/x.sh"
+env_row "5348 sed -i script \${#1} (ctrl)"              allow "OTHER=1" "sed -i 's/x/\${#1}/' /tmp/x"
+env_row "5348 sed -i script \${12} (ctrl)"              allow "OTHER=1" "sed -i 's/x/\${12}/' /tmp/x"
+env_row "5348 sed -i script \${c//a/b} (ctrl)"          allow "OTHER=1" "sed -i 's/x/\${c//a/b}/' /tmp/x"
+env_row "5348 sed -i script \${x:0:5} (ctrl)"           allow "OTHER=1" "sed -i 's/x/\${x:0:5}/' /tmp/x"
+env_row "5348 sed -i script JS template (ctrl)"        allow "OTHER=1" "sed -i 's/a/\`\${b}\`/' /tmp/x.js"
+env_row "5348 sed -i script \${{ matrix }} (ctrl)"      allow "OTHER=1" "sed -i 's/s/\${{ matrix.shard }}/' /tmp/ci.yml"
+env_row "5348 sed -i script last-line address (ctrl)"  allow "OTHER=1" "sed -i '\${s/,\$//}' /tmp/f"
+env_row "5348 sed -i -e script \${x:-y} (ctrl)"         allow "OTHER=1" "sed -i -e 's/x/\${x:-y}/' /tmp/x"
+env_row "5348 sed w in script text \${x:-y} (ctrl)"     allow "OTHER=1" "sed 's/w/\${x:-y}/' /tmp/x"
+env_row "5348 sed -i file still resolved, -e script"   deny  "$SPLIT" "sed -i -e 's/x/\${x:-y}/' \"\$A\"\"\$B\$C\""
+env_row "5348 sed w operator form naming the lift"     deny  "OTHER=1" "sed -n \"w \${X:-$HOME/.himmel/state/bank-lift.json}\" /tmp/x"
+# j2479a B2 (HIMMEL-5326): sort -o attached, clustered and abbreviated, and
+# cp/mv/install --t= target directory.
+env_row "5348 sort -o\"\$V\" attached"                   deny  "V=$LIFT" 'sort -o"$V" /tmp/y'
+env_row "5348 sort -uo \"\$V\" cluster"                  deny  "V=$LIFT" 'sort -uo "$V" /tmp/y'
+env_row "5348 sort -uo\"\$V\" cluster attached"          deny  "V=$LIFT" 'sort -uo"$V" /tmp/y'
+env_row "5348 sort --out=\"\$V\" prefix"                 deny  "V=$LIFT" 'sort --out="$V" /tmp/y'
+env_row "5348 sort --o \"\$V\" prefix"                   deny  "V=$LIFT" 'sort --o "$V" /tmp/y'
+env_row "5348 sort -o literal lift attached"           deny  "OTHER=1" "sort -o$LIFT /tmp/y"
+env_row "5348 sort -uo /tmp/o (ctrl)"                  allow "OTHER=1" 'sort -uo /tmp/o /tmp/y'
+env_row "5348 sort -to separator is not -o (ctrl)"     allow "OTHER=1" 'sort -to /tmp/y'
+env_row "5348 cp --t= state dir"                       deny  "OTHER=1" 'cp /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 mv --t= state dir"                       deny  "OTHER=1" 'mv /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 install --t= state dir"                  deny  "OTHER=1" 'install /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 cp --t= quoted env state dir"            deny  "S=$ST" 'cp /tmp/bank-l?ft.json --t="$S"'
+env_row "5348 cp --t= /tmp (ctrl)"                     allow "OTHER=1" 'cp /tmp/bank-l?ft.json --t=/tmp/o'
 }
 rows_5348
 

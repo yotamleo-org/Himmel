@@ -1026,7 +1026,7 @@ check_copy() {
         if [ "$endopts" = 1 ]; then pos+=("$a"); continue; fi
         case "$a" in
             --) endopts=1 ;;
-            --target-directory=*|--targ*=*|--ta=*|--tar=*) tdir="${a#*=}" ;;
+            --target-directory=*|--targ*=*|--t=*|--ta=*|--tar=*) tdir="${a#*=}" ;;
             --t|--ta|--tar|--targ*) tdir="${1:-}"; shift ;;
             --no-target-directory) T=1 ;;
             --parents) [ "$verb" = cp ] && parents=1 ;;
@@ -1204,7 +1204,14 @@ check_sed_scripts() {
             *) ops+=("$a") ;;
         esac
     done
-    [ "$have" = 1 ] || [ "${#ops[@]}" -eq 0 ] || scripts+=("${ops[0]}")
+    # SED_FILES = the file operands: every operand but the script one.
+    SED_FILES=(); SED_SCRIPT_OP=""
+    if [ "$have" = 1 ]; then
+        SED_FILES=(${ops[@]+"${ops[@]}"})
+    elif [ "${#ops[@]}" -gt 0 ]; then
+        SED_SCRIPT_OP="${ops[0]}"; scripts+=("${ops[0]}")
+        SED_FILES=("${ops[@]:1}")
+    fi
     for a in ${scripts[@]+"${scripts[@]}"}; do
         low=$(_lower "$a")
         if _code_names_lift "$low" && [[ "$a" =~ $SED_E_RE ]]; then
@@ -1217,11 +1224,41 @@ check_sed_scripts() {
                 p="${p#*[wW]}"
                 cand="${p#"${p%%[![:space:]]*}"}"
                 [ -n "$cand" ] || continue
-                is_lift_dest "$cand" && deny "a sed w/W command writes the bank lift ($cand)$DEST_WHY"
+                # j2479a B1: sed script text is not a shell word, so a ${...}
+                # after a w is usually not a reference at all; an operator form
+                # the resolver cannot evaluate denies only when it names the lift.
+                is_lift_dest "$cand" || continue
+                [ -z "$DEST_WHY" ] || _code_names_lift "$(_lower "$cand")" || continue
+                deny "a sed w/W command writes the bank lift ($cand)$DEST_WHY"
             done
         done <<EOF
 $a
 EOF
+    done
+    return 0
+}
+
+# check_sort_output <args...>: deny when sort's output file is the lift.
+check_sort_output() {
+    local a v ch out
+    while [ $# -gt 0 ]; do
+        a="$1"; shift; out=""
+        case "$a" in
+            --) break ;;
+            --o=*|--ou=*|--out=*|--outp=*|--outpu=*|--output=*) out="${a#*=}" ;;
+            --o|--ou|--out|--outp|--outpu|--output) out="${1:-}"; [ $# -gt 0 ] && shift ;;
+            --*) ;;
+            -?*)
+                v="${a#-}"
+                while [ -n "$v" ]; do
+                    ch="${v:0:1}"; v="${v:1}"
+                    case "$ch" in
+                        o) if [ -n "$v" ]; then out="$v"; else out="${1:-}"; [ $# -gt 0 ] && shift; fi; break ;;
+                        k|t|S|T) [ -n "$v" ] || { [ $# -gt 0 ] && shift; }; break ;;
+                    esac
+                done ;;
+        esac
+        [ -n "$out" ] && is_lift_dest "$out" && deny "sort -o writes the bank lift ($out)$DEST_WHY"
     done
     return 0
 }
@@ -1973,6 +2010,9 @@ check_clause() {
         esac
         prev="$a"
     done
+    # sort -o in every spelling (j2479a B2, HIMMEL-5326): attached (-oF),
+    # clustered (-uo F, -uoF) and any --output prefix (--o, --out=F).
+    case "$cmd" in sort|gsort) check_sort_output "$@" ;; esac
 
     # Shells.
     if [[ "$cmd" =~ $SHELL_RE ]] || [ "$cmd" = busybox ]; then
@@ -2078,13 +2118,16 @@ check_clause() {
             for a in "$@"; do
                 case "$a" in --in-place*) inplace=1 ;; --*) ;; -*i*) inplace=1 ;; esac
             done
+            check_sed_scripts "$@"
+            # j2479a B1: only the FILE operands are destinations; the script
+            # operand keeps the literal check it had before the resolver.
             if [ "$inplace" = 1 ]; then
-                for a in "$@"; do
+                for a in ${SED_FILES[@]+"${SED_FILES[@]}"}; do
                     case "$a" in -*) continue ;; esac
                     is_lift_dest "$a" && deny "sed -i edits the bank lift ($a)$DEST_WHY"
                 done
-            fi
-            check_sed_scripts "$@" ;;
+                [ -n "$SED_SCRIPT_OP" ] && is_lift "$SED_SCRIPT_OP" && deny "sed -i edits the bank lift ($SED_SCRIPT_OP)"
+            fi ;;
         dd)
             for a in "$@"; do
                 case "$a" in of=*) is_lift_dest "${a#of=}" && deny "dd of= writes the bank lift (${a#of=})$DEST_WHY" ;; esac
