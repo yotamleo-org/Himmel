@@ -1057,6 +1057,24 @@ deny "$BQ | xargs -n1 qmd query"
 deny "$BQ; qmd query y | python3 -c 'import sys'"
 deny "ssh host '$BQ; qmd query y'"
 deny "grep -rn 'x' scripts; echo qmd query y | python3 -c 'import sys'"
+# HIMMEL-4525 judge: a search that PRINTS text of the caller's choosing
+# (-r/--replace, in a cluster or as --replace=) hides the verb in its program,
+# and an interpreter is relaxed only for a named reader form.
+RGR="rg -o -r 'c=\"qmd query x\";__import__(\"os\").system(c)' '.+' -m1 /etc/hostname"
+deny "$RGR | python3 -c 'import runpy as r;r.run_path(\"/dev/stdin\")'"
+deny "$RGR | python3 -m code"
+deny "$RGR | python3 -i -c 0"
+deny "rg -or 'qmd query x' '.+' -m1 /etc/hostname | python3 -c 'import sys'"
+deny "rg --replace='qmd query x' '.+' -m1 /etc/hostname | python3 -c 'import sys'"
+deny "rg -r 'qmd query x' '.+' /etc/hostname | xargs -n1 echo"
+deny "grep --label='qmd query x' -H x - | python3 -c 'import sys'"
+deny "rg -n 'qmd query' scripts | python3 -"
+deny "rg -n 'qmd query' scripts | python3 /dev/stdin"
+deny "$BQ | python3 -i -c 'import sys'"
+deny "$BQ | python3 -m code"
+deny "$BQ | python3 -c 'import runpy;runpy.run_path(\"/dev/stdin\")'"
+allow "rg -n 'qmd query' scripts | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "rg -l 'qmd query' scripts | python3 parse.py"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

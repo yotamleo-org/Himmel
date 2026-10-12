@@ -603,7 +603,7 @@ names_verb() {
 # reader needs a parser for every language — file under HIMMEL-4178 if seen.
 # shellcheck disable=SC1003 # a literal backslash in the tr set
 names_verb_nb() {
-    local s seg w rest='' ws k
+    local s seg w rest='' ws k ok
     s=$(printf '%s' "$1" | LC_ALL=C tr -d '"'\''\\' | LC_ALL=C tr '[:upper:]' '[:lower:]')
     s=${s//qmd-bounded.sh/ }
     [[ $s == *qmd* ]] || return 1
@@ -618,7 +618,28 @@ names_verb_nb() {
         w=${w##*/}
         case "$w" in
             rg|grep|egrep|fgrep)
-                case "$seg" in *--pre*) rest="$rest$seg"$'\n' ;; esac
+                # A search prints text of its own choosing with -r/--replace
+                # (rg), --format, --label, --*-separator and --pre: only a
+                # segment whose every option is a plain selector is set aside.
+                ok=1
+                for k in "${!ws[@]}"; do
+                    [ "$k" -gt 0 ] || continue
+                    case "${ws[k]}" in
+                        --) break ;;
+                        --recursive|--line-number|--files-with-matches|--ignore-case|--no-filename|--with-filename|--count|--word-regexp|--fixed-strings|--extended-regexp|--no-messages|--hidden|--include=*|--exclude=*|--glob=*|--type=*|--max-count=*) ;;
+                        -*)
+                            case "${ws[k]}" in
+                                --*) ok=0 ;;
+                                *)
+                                    # short cluster; r is rg's --replace
+                                    [[ ${ws[k]} =~ ^-[A-Za-z0-9]+$ ]] || ok=0
+                                    [ "$w" != rg ] || [[ ${ws[k]} != *r* ]] || ok=0
+                                    ;;
+                            esac
+                            ;;
+                    esac
+                done
+                if [ "$ok" = 0 ]; then rest="$rest$seg"$'\n'; fi
                 ;;
             *) rest="$rest$seg"$'\n' ;;
         esac
@@ -689,6 +710,34 @@ XARGSSAFE='^xargs([[:space:]]+-([0rtx]+|[nlps][[:space:]]*[0-9]+))*[[:space:]]+(
 _xargs_safe() {
     [ "$nofilt" = 0 ] || return 1
     [[ $1 =~ $XARGSSAFE ]] && [[ $2 =~ $XARGSSAFE ]]
+}
+# _int_reader STAGE DEC — HIMMEL-4525: succeed when STAGE, an interpreter
+# consumer, is one of the named reader forms, so the pipe reaches it as data:
+# `-m json.tool`, `-c`/`-e`/`-p`/`-ne` with one quoted code string free of
+# anything that can run text (no -i, no runpy/code/importlib, no /dev/ or
+# /proc/ path, no exec, eval, system, compile, subprocess or a substitution),
+# or a plain script file (.py .js .mjs .cjs .pl .rb) with plain arguments.
+# Every other interpreter invocation stays strict.
+# shellcheck disable=SC2016 # literal $ and ` bytes in the regexes
+_int_reader() {
+    local s=$1 lc
+    s=${s#"${s%%[![:space:]]*}"}
+    s=${s%"${s##*[![:space:]]}"}
+    if [[ $s =~ ^(python[0-9.]*)[[:space:]]+-m[[:space:]]+json\.tool([[:space:]]+[A-Za-z0-9_./=,:-]+)*$ ]]; then
+        return 0
+    fi
+    # STAGE is the stage's own words with quotes removed and a quoted space
+    # masked to `_`, so a code string is one word.
+    if [[ $s =~ ^(python[0-9.]*|node|nodejs|perl|ruby)[[:space:]]+-[lnpa]*[cep][[:space:]]+[^[:space:]]+$ ]]; then
+        lc=$(printf '%s' "$2" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+        [[ $lc == *'/dev/'* || $lc == *'/proc/'* || $lc == *'`'* || $lc == *'$('* || $lc == *'__'* ]] && return 1
+        [[ $lc =~ (exec|eval|system|popen|spawn|subprocess|child_process|compile|runpy|importlib|getattr|globals|locals|builtins|ctypes|require|import\(|os\.|vm\.|function|(^|[^[:alnum:]_])(code|pty|open|read_file)([^[:alnum:]_]|$)) ]] && return 1
+        return 0
+    fi
+    if [[ $s =~ ^(python[0-9.]*|node|nodejs|perl|ruby)[[:space:]]+[A-Za-z0-9_.-][A-Za-z0-9_./-]*\.(py|js|mjs|cjs|pl|rb)([[:space:]]+[A-Za-z0-9_./=,:-]+)*$ ]]; then
+        return 0
+    fi
+    return 1
 }
 # _qn_runs START — HIMMEL-4337: succeed when the piped stage holding the
 # executing element at START runs its stdin: it is no plain filter, read from
@@ -1243,7 +1292,7 @@ qmd_nested() {
         if [ -n "$piped" ] && [ "$mode" != env ] && [ "$mode" != alias ] &&
             { [[ ${w:e} =~ $PIPENL ]] || ! pipe_filter "${w:piped+1:e-piped-1}" "${dec:piped+1:e-piped-1}"; }; then
             if [ "$mode" = int ] && [ "$so" = 1 ] && [ "$sx" = 0 ] &&
-                ! [[ ${w:piped+1:e-piped-1} =~ (exec|eval|system|popen|Popen|spawn|subprocess|child_process|os\.|\`|\$\() ]]; then
+                _int_reader "${w:piped+1:e-piped-1}" "${dec:piped+1:e-piped-1}"; then
                 if names_verb_nb "${dec:pfrom+1:piped-pfrom-1}"; then deny=1; return 0; fi
             elif names_verb "${dec:pfrom+1:piped-pfrom-1}"; then
                 deny=1
