@@ -155,13 +155,17 @@ async function loadVm() {
   } catch (_) { state.vm = { data: null, error: "vm setting: server unreachable" }; }
   if (currentPage.id === "config") paint();
 }
+let vmSaving = false; // one save at a time: an older reply landing last must not overwrite a newer setting
 async function saveVm() {
   const d = state.vm && state.vm.draft;
-  if (!d) return;
+  if (!d || vmSaving) return;
+  vmSaving = true;
   const body = { mode: d.mode };
   if (d.mode === "remote") body.remote = { ssh: d.ssh.trim(), port: d.port.trim(), identity: d.identity.trim() };
   const sent = JSON.stringify(d);
-  const { ok, j } = await post("/api/vm", body);
+  let res;
+  try { res = await post("/api/vm", body); } finally { vmSaving = false; }
+  const { ok, j } = res;
   const edited = state.vm.draft && JSON.stringify(state.vm.draft) !== sent; // typed while the save was in flight: keep it
   state.vm = ok ? { data: j, error: null, draft: edited ? state.vm.draft : vmDraft(j), msg: { ok: true, text: "saved" } } : { ...state.vm, msg: { ok: false, text: j.error || "save failed" } };
   paint();
