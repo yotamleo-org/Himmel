@@ -12,8 +12,23 @@ fails=0
 ok() { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fails=$((fails + 1)); }
 
-has() { grep -qE -- "$2" "$1" && ok "$3" || bad "$3"; }
-hasnt() { grep -qE -- "$2" "$1" && bad "$3" || ok "$3"; }
+# grep exits 0 on a match, 1 on none and >1 on an error: only 1 proves absence
+has() { if grep -qE -- "$2" "$1" 2>/dev/null; then ok "$3"; else bad "$3"; fi; }
+hasnt() {
+    local rc=0
+    grep -qE -- "$2" "$1" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 1 ]; then ok "$3"; else bad "$3"; fi
+}
+
+# positive control: the negative matcher must see a planted FAIL row and must
+# not treat an unreadable file as "absent"
+ctl="$(mktemp)" || exit 1
+trap 'rm -f "$ctl"' EXIT
+printf 'ROW X FAIL\n' >"$ctl"
+grep -qE '^ROW .* FAIL' "$ctl" && ok "control: matcher sees a planted FAIL row" || bad "control: matcher blind to a FAIL row"
+ctl_rc=0
+grep -qE x "$REC/does-not-exist.txt" 2>/dev/null || ctl_rc=$?
+if [ "$ctl_rc" -eq 2 ]; then ok "control: unreadable file exits 2 (hasnt fails closed)"; else bad "control: unreadable file not an error"; fi
 
 for m in impl research; do
     f="$REC/vm-run-$m.txt"

@@ -23,7 +23,7 @@ home="${HOME:?}"
 # the JSON is printf-built, so refuse any argument that would need escaping
 for v in "$worktree" "$scratch" "$handover" "$home" "$@"; do
     case "$v" in
-        *\"* | *\\*) echo "render-settings: refusing a quote or backslash in an argument" >&2; exit 2 ;;
+        *\"* | *\\* | *[[:cntrl:]]*) echo "render-settings: refusing a quote, backslash or control character in an argument" >&2; exit 2 ;;
     esac
 done
 for d in "$@"; do

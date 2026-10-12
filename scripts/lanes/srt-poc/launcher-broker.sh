@@ -8,11 +8,13 @@
 # is denied (default on no answer is deny); an approved one is written to the
 # control fifo as a full settings line, which srt applies to the running leg.
 #
-#   launcher-broker.sh <scratch> <worktree> <leg-branch> <ctl-fifo> <approve-file> <render-cmd-file>
+#   launcher-broker.sh <scratch> <worktree> <leg-branch> <ctl-fifo> <approve-file> <render-cmd-file> <approvals-log>
 # <render-cmd-file> holds the render-settings.sh argument prefix (profile and roots).
+# <approvals-log> must sit OUTSIDE every sandbox-writable root: the leg owns
+# <scratch>, so a log there could be a planted symlink to a host file.
 set -u
 
-scratch="$1" worktree="$2" leg_branch="$3" ctl="$4" approve="$5" render_args="$6"
+scratch="$1" worktree="$2" leg_branch="$3" ctl="$4" approve="$5" render_args="$6" approvals_log="${7:?approvals-log outside the writable roots}"
 here="$(cd "$(dirname "$0")" && pwd)"
 approved=""
 
@@ -39,11 +41,11 @@ while [ ! -f "$scratch/broker.stop" ]; do
                     # shellcheck disable=SC2046,SC2086 # render args are a trusted launcher file
                     bash "$here/render-settings.sh" $(cat "$render_args") $approved >"$ctl"
                     echo "APPROVED $dom (reason: $reason)" >"$base.out"
-                    echo "$(date +%H:%M:%S) approve $dom :: $reason" >>"$scratch/approvals.log"
+                    echo "$(date +%H:%M:%S) approve $dom :: $reason" >>"$approvals_log"
                     echo 0 >"$base.rc"
                 else
                     echo "DENIED $dom (no approval on record)" >"$base.out"
-                    echo "$(date +%H:%M:%S) deny $dom :: $reason" >>"$scratch/approvals.log"
+                    echo "$(date +%H:%M:%S) deny $dom :: $reason" >>"$approvals_log"
                     echo 1 >"$base.rc"
                 fi
                 ;;

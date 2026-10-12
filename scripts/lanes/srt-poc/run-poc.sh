@@ -62,7 +62,7 @@ launch() { # <profile> -> runs the battery under srt claude
     echo "$REQ_DOMAIN" >"$base/approve.list"
     mkfifo "$base/ctl"
     exec 4<>"$base/ctl"
-    bash "$HERE/launcher-broker.sh" "$base/scratch" "$base/wt" feat/poc "$base/ctl" "$base/approve.list" "$base/render.args" &
+    bash "$HERE/launcher-broker.sh" "$base/scratch" "$base/wt" feat/poc "$base/ctl" "$base/approve.list" "$base/render.args" "$base/approvals.log" &
     broker=$!
     env PATH="$base/bin:$PATH" POC_PROFILE="$profile" POC_WT="$base/wt" POC_SCRATCH="$base/scratch" \
         POC_VICTIM="$base/victim" POC_ORIGIN="$base/origin.git" POC_INSIDE_ORIGIN="$base/scratch/inside-origin.git" \
@@ -77,7 +77,7 @@ launch() { # <profile> -> runs the battery under srt claude
     touch "$base/scratch/broker.stop"
     wait "$broker" 2>/dev/null
     exec 4>&-
-    [ -f "$base/scratch/approvals.log" ] && { echo "approvals.log:"; cat "$base/scratch/approvals.log"; } # fail-open-ok: report output only, no decision reads it
+    [ -f "$base/approvals.log" ] && { echo "approvals.log:"; cat "$base/approvals.log"; } # fail-open-ok: report output only, no decision reads it
     echo "origin.git refs after run:"
     git --git-dir="$base/origin.git" for-each-ref --format='  %(refname) %(objectname:short)'
     now="$(git --git-dir="$base/origin.git" rev-parse main)"
@@ -87,20 +87,30 @@ launch() { # <profile> -> runs the battery under srt claude
 case "$mode" in
     impl | research)
         fresh
-        launch "$mode"
+        launch "$mode" || run_rc=1
         ;;
     failure-modes)
         fresh
         bash "$HERE/render-settings.sh" impl "$base/wt" "$base/scratch" "$base/handover" >"$base/empty.json"
         : >"$base/zero.json"
+        # F1-F3 must REFUSE: a zero exit or a RAN line means srt ran unsandboxed
+        refused() { # <label> <rc> <output file>
+            if [ "$2" -eq 0 ] || grep -q RAN "$3"; then echo "ASSERT FAIL $1 did not refuse"; run_rc=1; fi
+        }
         echo "F1 invalid settings (zero bytes):"
-        "$SRT" --settings "$base/zero.json" -c 'echo RAN' ; echo "  rc=$? (nonzero = refuses)"
+        "$SRT" --settings "$base/zero.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
+        cat "$base/f.out"; echo "  rc=$f_rc (nonzero = refuses)"
+        refused F1 "$f_rc" "$base/f.out"
         echo "F2 missing --settings file:"
-        "$SRT" --settings "$base/nope.json" -c 'echo RAN' ; echo "  rc=$? (nonzero = refuses)"
+        "$SRT" --settings "$base/nope.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
+        cat "$base/f.out"; echo "  rc=$f_rc (nonzero = refuses)"
+        refused F2 "$f_rc" "$base/f.out"
         echo "F3 bwrap absent from PATH:"
         mkdir -p "$base/nobwrap"
         for t in bash env sh socat rg node; do ln -sf "$(command -v "$t")" "$base/nobwrap/$t"; done
-        env PATH="$base/nobwrap" "$SRT" --settings "$base/empty.json" -c 'echo RAN' ; echo "  rc=$? (nonzero + no RAN = refuses, not unsandboxed)"
+        env PATH="$base/nobwrap" "$SRT" --settings "$base/empty.json" -c 'echo RAN' >"$base/f.out" 2>&1; f_rc=$?
+        cat "$base/f.out"; echo "  rc=$f_rc (nonzero + no RAN = refuses, not unsandboxed)"
+        refused F3 "$f_rc" "$base/f.out"
         echo "F4 settings file absent, no --settings (the launcher assertion exists for this):"
         mkdir -p "$base/emptyhome"
         env HOME="$base/emptyhome" "$SRT" -c 'echo RAN; ls "$HOME" >/dev/null && echo defaults-start' ; echo "  rc=$? (RAN = starts on built-in defaults)"
