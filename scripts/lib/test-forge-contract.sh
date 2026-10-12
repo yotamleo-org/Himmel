@@ -251,6 +251,22 @@ OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/a-b "$ROOT/title" "$ROO
 RC=$?
 expect local-git "re-open with the \$\$ temp name taken" 0 br-feat-a-b
 rmdir "$LG_COMMON/himmel/changes/.br-feat-a-b.json.$$"
+# A body that cannot be copied publishes no record (root reads any file).
+if [ "$(id -u)" != 0 ]; then
+    printf 'body\n' > "$ROOT/body-unreadable"; chmod 000 "$ROOT/body-unreadable"
+    OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/bodyfail "$ROOT/title" "$ROOT/body-unreadable" 2>/dev/null)
+    RC=$?
+    expect local-git "open with an unreadable body" 1 ""
+    assert_eq "local-git: a failed body copy left no record" "absent" \
+        "$([ -e "$LG_COMMON/himmel/changes/br-feat-bodyfail.json" ] && echo present || echo absent)"
+    chmod 600 "$ROOT/body-unreadable"
+fi
+# change_view takes only an id in the change-id grammar: no path escape.
+printf '"branch":"main",\n' > "$LG_COMMON/himmel/escaped.json"
+OUT=$(cd "$LG" && FORGE=local-git forge_change_view ../escaped 2>/dev/null)
+RC=$?
+expect local-git "change_view of an id outside the grammar" 1 ""
+rm -f "$LG_COMMON/himmel/escaped.json"
 
 # ── the base branch ──────────────────────────────────────────────────────────
 echo "TEST: local-git takes the repo's own default branch as the base"

@@ -88,7 +88,7 @@ lg_forge_change_id() {
 # check. Re-opening the same branch rewrites its record (a temp file renamed
 # into place); a record owned by another branch refuses with rc 2.
 lg_forge_change_open() {
-    local branch="${1:-}" title_file="${2:-}" body_file="${3:-}" id dir title tmp rec owner
+    local branch="${1:-}" title_file="${2:-}" body_file="${3:-}" id dir title tmp btmp rec owner
     if [ -z "$branch" ] || [ ! -f "$title_file" ] || [ ! -f "$body_file" ]; then
         echo "forge(local-git): usage: change_open <branch> <title-file> <body-file>" >&2
         return 2
@@ -109,23 +109,32 @@ lg_forge_change_open() {
         printf '"opened_at":%s\n' "$(_lg_json_str "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
         printf '}\n'
     } > "$tmp" || { rm -f "$tmp"; return 1; }
+    # Stage the body before any record is published: a failed copy leaves no
+    # record pointing at a missing or stale body.
+    btmp=$(mktemp "$dir/.$id.body.md.XXXXXX") || { rm -f "$tmp"; return 1; }
+    cp "$body_file" "$btmp" 2>/dev/null || {
+        rm -f "$tmp" "$btmp"
+        echo "forge(local-git): cannot copy the body $body_file" >&2
+        return 1
+    }
     if ln "$tmp" "$rec" 2>/dev/null; then
         rm -f "$tmp"
+        mv -f "$btmp" "$dir/$id.body.md" || { rm -f "$btmp" "$rec"; return 1; }
     else
         if [ ! -f "$rec" ]; then
-            rm -f "$tmp"
+            rm -f "$tmp" "$btmp"
             echo "forge(local-git): cannot write the change record $rec" >&2
             return 1
         fi
         owner=$(_lg_field "$rec" branch)
         if [ "$owner" != "$branch" ]; then
-            rm -f "$tmp"
+            rm -f "$tmp" "$btmp"
             echo "forge(local-git): change id $id already belongs to branch '$owner' — '$branch' collides with it; rename one branch" >&2
             return 2
         fi
+        mv -f "$btmp" "$dir/$id.body.md" || { rm -f "$tmp" "$btmp"; return 1; }
         mv -f "$tmp" "$rec" || { rm -f "$tmp"; return 1; }
     fi
-    cp "$body_file" "$dir/$id.body.md" || return 1
     printf '%s\n' "$id"
 }
 
@@ -135,9 +144,13 @@ lg_forge_change_open() {
 # rc 1 when no change record holds <id>.
 lg_forge_change_view() {
     local id="${1:-}" dir rec branch base title head state merged=false
+    if ! printf '%s\n' "$id" | grep -Eq '^br-[a-z0-9._-]+$'; then
+        echo "forge(local-git): '$id' is not a change id (^br-[a-z0-9._-]+\$)" >&2
+        return 1
+    fi
     dir=$(_lg_changes_dir) || dir=""
     rec="$dir/$id.json"
-    if [ -z "$id" ] || [ -z "$dir" ] || [ ! -f "$rec" ]; then
+    if [ -z "$dir" ] || [ ! -f "$rec" ]; then
         echo "forge(local-git): no change record for '$id'" >&2
         return 1
     fi
