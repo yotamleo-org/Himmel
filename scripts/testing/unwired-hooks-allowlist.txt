@@ -26,3 +26,5 @@ narrow-allow.mjs|operator-run settings narrowing chokepoint (HIMMEL-1513), invok
 #
 # Shipped unwired on purpose, activation is an operator step:
 block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
+check-single-writer-push-floor.sh|pre-push floor run by the shim install-single-writer-floor.sh writes into .single-writer repos, not a registered hook
+install-single-writer-floor.sh|operator-run installer for .single-writer repos (HIMMEL-5284), not a hook
