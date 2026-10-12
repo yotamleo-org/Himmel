@@ -16,7 +16,7 @@ expect() { # <want-rc> <desc> <cmd...>
   if [ "$rc" -eq "$want" ]; then ok "$desc (rc=$rc)"; else bad "$desc (rc=$rc, want $want)"; fi
 }
 
-TMP="$(mktemp -d)" || exit 1; trap 'rm -rf "$TMP"' EXIT
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-pointers.XXXXXX")" || exit 1; trap 'rm -rf "$TMP"' EXIT
 F="$TMP/repo"; mkdir -p "$F/sub" "$F/tpl" "$F/marketplace/plugins/claude-hud"
 git -C "$F" init -q
 printf '# root\n' > "$F/CLAUDE.md"
