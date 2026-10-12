@@ -24,6 +24,11 @@
 # reviewed, is admitted without a judge record when that head raised critic
 # findings and every one is recorded fixed there. Consumed once: the .delta pair
 # carries trigger postcap-fixed and a post-cap round never chains into another.
+# HIMMEL-5257: once the delta round (and any post-cap round) is spent, a CI-red
+# reviewed head buys ONE more bounded delta round with no judge record: the last
+# reviewed head has a COMPLETED check-run with conclusion failure (read through
+# gh api, none still running), the delta since it is at most 40 diff lines, and
+# the PR has not had this unlock before (.cired). Recorded in the ledger.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -156,6 +161,8 @@ delta_run="$git_dir/cr-review-rounds/$branch.delta.run"
 verdict_state="$git_dir/cr-review-rounds/$branch.verdicts"
 # HIMMEL-4600: the head the last counted round ran on (start --head).
 head_state="$git_dir/cr-review-rounds/$branch.head"
+# HIMMEL-5257: "<from> <to> <failing check names>" once the CI-red unlock was used.
+cired_state="$git_dir/cr-review-rounds/$branch.cired"
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
     echo "review-round: cannot create state directory $state_dir" >&2
@@ -721,6 +728,93 @@ EOF
     exit 1
 )
 
+# HIMMEL-5257: ci_red_delta_lines <from> <to> prints how many diff lines the PR's
+# own diff changed from <from> to <to>; the base side of a merge-forward is not
+# counted (own_diff compares each head with its own base point). A changed line
+# counts twice (old and new). Without a captured base every line counts.
+# Fails (rc 1) when it cannot be measured.
+ci_red_delta_lines() {
+    if [ -z "$base_sha" ]; then
+        _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
+        printf '%s\n' "$_cl_num" | awk '
+            $1 == "-" || $2 == "-" { bad = 1 }
+            NF { n += $1 + $2 }
+            END { if (bad) n = 999999; print n + 0 }'
+        return 0
+    fi
+    _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
+    _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
+    _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
+    if own_diff "$_cl_ob" "$1" > "$_cl_tmp/a" && own_diff "$_cl_nb" "$2" > "$_cl_tmp/b"; then
+        _cl_rc=0
+        diff "$_cl_tmp/a" "$_cl_tmp/b" > "$_cl_tmp/d" 2>/dev/null || _cl_rc=$?
+        if [ "$_cl_rc" -le 1 ]; then
+            grep -c '^[<>]' "$_cl_tmp/d" || true
+            rm -rf "$_cl_tmp"
+            return 0
+        fi
+    fi
+    rm -rf "$_cl_tmp"
+    return 1
+}
+
+# HIMMEL-5257: ci_red_unlock <from> <to> succeeds when <from>, the last reviewed
+# head, is CI-red and <from>..<to> is within the line cap. Red means a COMPLETED
+# check-run with conclusion failure read from the API for <from>, and no
+# check-run there still running. Sets ci_red_names. The caller has already
+# established that the delta round was spent and .cired is absent.
+ci_red_cap=40
+ci_red_unlock() {
+    # shellcheck source=scripts/lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    ci_red_names=""
+    _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
+        --jq '.check_runs[] | [.status, (.conclusion // ""), .name] | @tsv' 2>/dev/null)" || {
+        echo "review-round: cannot read the check-runs of $1 (gh api) - no CI-red unlock (HIMMEL-5257)" >&2
+        return 1
+    }
+    _cr_pending=0
+    _cr_tab="$(printf '\t')"
+    while IFS="$_cr_tab" read -r _cr_s _cr_c _cr_n; do
+        [ -n "$_cr_s" ] || continue
+        if [ "$_cr_s" != "completed" ]; then _cr_pending=1; continue; fi
+        [ "$_cr_c" != "failure" ] || ci_red_names="${ci_red_names:+$ci_red_names,}$_cr_n"
+    done <<EOF
+$_cr_rows
+EOF
+    if [ "$_cr_pending" -eq 1 ]; then
+        echo "review-round: a check-run of $1 is still running - no CI-red unlock (HIMMEL-5257)" >&2
+        return 1
+    fi
+    if [ -z "$ci_red_names" ]; then
+        echo "review-round: $1 has no completed failing check-run - no CI-red unlock (HIMMEL-5257)" >&2
+        return 1
+    fi
+    _cr_lines="$(ci_red_delta_lines "$1" "$2")" || _cr_lines=""
+    case "$_cr_lines" in ''|*[!0-9]*)
+        echo "review-round: cannot measure $1..$2 - no CI-red unlock (HIMMEL-5257)" >&2
+        return 1 ;;
+    esac
+    if [ "$_cr_lines" -gt "$ci_red_cap" ]; then
+        echo "review-round: $1..$2 changes $_cr_lines diff lines, over the $ci_red_cap-line CI-red cap - no CI-red unlock (HIMMEL-5257)" >&2
+        return 1
+    fi
+    return 0
+}
+
+# HIMMEL-5257: record the unlock: one ledger row naming the failing checks, then
+# the once-per-PR marker staged as $cired_tmp. The caller moves it into place
+# only after the .delta round is recorded, so a failed state write never
+# consumes the unlock. Readers key on kind, so the row is ignored by every
+# gate and scorecard reader.
+ci_red_record() {
+    CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$SCRIPT_DIR/ledger-append.sh" ci-red-unlock \
+        --branch "$branch" --head "$delta_from" --reason "$ci_red_names" \
+        --detail "round runs on $delta_to" || return 1
+    printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_tmp" || return 1
+}
+
 # HIMMEL-4600: decide whether the round after the third may run, as the one
 # delta round. Sets delta_from/delta_to/delta_trigger, or says why not and
 # returns 8 (2 for an unresolvable --head). HIMMEL-4700: a judge NO-GO on the
@@ -876,6 +970,7 @@ EOF
 $delta_used
 EOF
         if [ -n "$used_from" ] && [ "$used_to" = "$delta_from" ] && [ "${used_trigger:-}" != "postcap-fixed" ] \
+            && [ "${used_trigger:-}" != "postcap-ci-red" ] \
             && [ "$(ledger_query allfixed "$delta_from")" = "allfixed" ]; then
             delta_trigger="postcap-fixed"
             delta_verdict=""
@@ -898,6 +993,14 @@ EOF
         return 0
     fi
     delta_verdict=""
+    # HIMMEL-5257: the delta round was spent and the last reviewed head is
+    # CI-red: one more bounded round, once per PR, no judge record needed.
+    if [ -n "$delta_used" ] && [ "$delta_used" != "unreadable" ] \
+        && [ ! -e "$cired_state" ] && [ ! -L "$cired_state" ] \
+        && ci_red_unlock "$delta_from" "$delta_to"; then
+        delta_trigger="postcap-ci-red"
+        return 0
+    fi
     delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (console-kit/write-verdict.sh) - $full_note; new work after the cap goes to the console"
     return 8
 }
@@ -954,16 +1057,27 @@ if [ "$verb" = "start" ]; then
             # Once both land, a failed counter write below is the HIMMEL-4616
             # pending pair, which restarts without the record.
             tmp_delta="$delta_state.tmp.$$"
+            cired_tmp="$cired_state.tmp.$$"
             bak_delta="$delta_state.bak.$$"
             had_delta=0
-            if [ -n "$delta_verdict" ] && [ -f "$delta_state" ]; then
+            if { [ -n "$delta_verdict" ] || [ "$delta_trigger" = "postcap-ci-red" ]; } && [ -f "$delta_state" ]; then
                 had_delta=1
                 cp -p "$delta_state" "$bak_delta" 2>/dev/null || delta_rc=5
             fi
+            if [ "$delta_rc" -eq 0 ] && [ "$delta_trigger" = "postcap-ci-red" ] && ! ci_red_record; then
+                echo "review-round: cannot record the CI-red unlock for $branch" >&2
+                delta_rc=5
+            fi
             if [ "$delta_rc" -ne 0 ] \
                 || ! printf '%s %s %s\n' "$delta_from" "$delta_to" "$delta_trigger" > "$tmp_delta" \
-                || ! mv "$tmp_delta" "$delta_state"; then
-                rm -f "$tmp_delta" "$bak_delta"
+                || ! mv "$tmp_delta" "$delta_state" \
+                || ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
+                # HIMMEL-5257: a CI-red round that did not fully land puts the
+                # spent .delta back, so the unlock is not half-consumed.
+                if [ "$delta_trigger" = "postcap-ci-red" ] && [ -f "$bak_delta" ]; then
+                    mv -f "$bak_delta" "$delta_state" 2>/dev/null || true
+                fi
+                rm -f "$tmp_delta" "$bak_delta" "$cired_tmp"
                 echo "review-round: cannot record the delta round for $branch" >&2
                 delta_rc=5
             elif [ -n "$delta_verdict" ]; then
@@ -985,6 +1099,7 @@ if [ "$verb" = "start" ]; then
                 fi
                 rm -f "$bak_delta"
             fi
+            rm -f "$bak_delta" "$cired_tmp"
         fi
         if [ "$delta_rc" -ne 0 ]; then
             SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \

@@ -201,6 +201,22 @@ check "5b default launch line carries no --autocompact 200000" \
 # HIMMEL-4013: the console launch line applies the console plugin profile.
 check "5b launch line carries --settings <console profile>" \
     "$(printf '%s\n' "$out5b" | grep -c -- 'claude --settings [^ ]*/console.json --model ')" "1"
+# HIMMEL-5310: the console loads only its profile's MCP servers (no graphify).
+check "5b launch line carries --mcp-config <console.mcp.json> --strict-mcp-config" \
+    "$(printf '%s\n' "$out5b" | grep -c -- '--mcp-config [^ ]*/console.mcp.json --strict-mcp-config ')" "1"
+# HIMMEL-5310: an allowlist that does not resolve (the settings still do) refuses
+# the printed launch line: rc 2 and no launch line at all.
+python3 - "$REPO_REAL/scripts/lanes/plugin-profiles.json" "$tmp/registry-5310.json" <<'PYE'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+json.dump(d, open(sys.argv[2], "w"))
+PYE
+rc5d=0
+out5d="$(PLUGIN_PROFILES_REGISTRY="$tmp/registry-5310.json" console new --bucket dryrepo5d --dry-run 2>&1)" || rc5d=$?
+check "5d unresolvable MCP allowlist: console new --dry-run exits 2" "$rc5d" "2"
+check "5d unresolvable MCP allowlist: no launch line printed" \
+    "$(printf '%s\n' "$out5d" | grep -c -- 'launch:')" "0"
 out5c="$(CONSOLE_CONTEXT=1m console new --bucket dryrepo5c --dry-run)"
 check "5c CONSOLE_CONTEXT=1m launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact auto')" "1"
@@ -1691,6 +1707,7 @@ cp -r "$REPO_REAL/scripts/lanes" "$own65/scripts/lanes"  # HIMMEL-4052: launch_c
 cp -r "$REPO_REAL/scripts/lib" "$own65/scripts/lib"
 cp -r "$REPO_REAL/scripts/handover" "$own65/scripts/handover"
 ln -s "$REPO_REAL/docs" "$own65/docs"
+ln -s "$REPO_REAL/marketplace" "$own65/marketplace"  # HIMMEL-5310: launch_cmd resolves the console MCP allowlist from the marketplace manifests
 mkdir -p "$own65/state-fixture-65/ownslug"
 printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/state-fixture-65" > "$own65/.env"
 foreign65="$tmp/foreign-repo-65"

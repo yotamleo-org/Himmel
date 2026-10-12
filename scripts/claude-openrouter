@@ -44,8 +44,9 @@ OPENROUTER_ANTHROPIC_BASE_URL="${OPENROUTER_ANTHROPIC_BASE_URL:-https://openrout
 # `:batch` variants are asynchronous and unsupported by interactive tier overrides.
 OPENROUTER_MODEL="${OPENROUTER_MODEL:-anthropic/claude-opus-5.5}"
 # Independent subagent tiers (HIMMEL-4083), verified against the public catalog
-# 2026-10-02. Haiku is 200k; Sonnet and Opus are 1M. Session pin stays separate.
-OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-4.5}"
+# 2026-10-02; Haiku re-pinned to 5.5 on 2026-10-11 (HIMMEL-5248: served, 1M
+# context). Sonnet and Opus are 1M. Session pin stays separate.
+OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-5.5}"
 OPENROUTER_SONNET="${OPENROUTER_SONNET:-anthropic/claude-sonnet-5.5}"
 OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
 # ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
@@ -53,6 +54,7 @@ OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
 validate_tier() { # $1 env name, $2 slug; exact membership rejects malformed input.
   case "$2" in
     anthropic/claude-sonnet-5.5|anthropic/claude-opus-5.5|\
+    anthropic/claude-haiku-5.5|\
     anthropic/claude-fable-5.1|anthropic/claude-opus-5|\
     anthropic/claude-sonnet-5|anthropic/claude-fable-5|\
     anthropic/claude-opus-4.8|anthropic/claude-opus-4.7|\
@@ -445,6 +447,16 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="$or_opus_label"
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
+# The client classifier's side query carries no reasoning, and the gateway 400s
+# ("Reasoning is mandatory") on mandatory-reasoning slugs, so every Bash call is
+# refused as "classifier unavailable" (HIMMEL-5248). EXTRA_BODY merges this into
+# every request; the `thinking` shape works, `reasoning.effort` does not.
+# ponytail: the budget also applies to the main loop, so every turn pays up to
+# 2048 thinking tokens, revisit when the classifier side query can carry its own
+# reasoning setting (HIMMEL-5248 upstream issue).
+if [ -z "${CLAUDE_CODE_EXTRA_BODY:-}" ]; then
+  export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"enabled","budget_tokens":2048}}'
+fi
 if [ "${LEG_LANE:-}" = openrouter ]; then
   echo "claude-openrouter: lane=openrouter slug=$OPENROUTER_MODEL alias=$ANTHROPIC_MODEL labels=$or_label" >&2
 fi

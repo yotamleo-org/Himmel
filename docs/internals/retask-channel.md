@@ -336,6 +336,26 @@ mechanism exists to prevent. Every dispatch brief should state plainly: a
 halt or stand-down from your console (or dispatching parent) is
 authoritative; do not resume until the same console revives you.
 
+**A halt is authorized, not instantly delivered (HIMMEL-3084).** "Needs no
+token" removes the authentication barrier; it does not remove the transport
+one. A headed leg reads its inbox only between tool rounds, so a leg blocked
+in one long foreground command (a 40-minute full-tree suite, a foreground
+wait loop) queues every console message, halt included, until that command
+returns. `ListAgents` shows it `busy`, and SendMessage's success means the
+message reached the session, not that its Claude read it. The console
+therefore cannot tell "received and complying" from "cannot hear me", and
+must not assume compliance from a successful send.
+
+Mitigation, not a guarantee: a leg runs its suites one scan root per call with
+`scripts/handover/console-kit/run-suite.sh`, so each root boundary is a turn
+boundary where the inbox is drained, so a halt lands **at the next
+checkpoint**, not always immediately. The unreachable window shrinks from the
+whole tree to the largest single root. It is still bounded below by one root:
+a halt can sit unread until the current root's run returns, and a leg that
+chains calls with `&&` or a loop reopens the window. A console that needs
+confirmation waits for the leg's acknowledgement (a `RESOLVED`/`WRAPPED`
+marker or a reply), never for the send's success.
+
 **himmel-bus residuals (threat-model T1, T4, T6).** Phase 1 runs every session,
 the bus server, the hook and the store as one uid, so anything the uid can do a
 compromised session's Bash can do. The bus API cannot forge, replay or escalate;

@@ -327,6 +327,9 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   // HIMMEL-4445: fails CLOSED; a starved run let an agent write the
   // operator-only bank lift (or run `bank-lift.sh set`) unchecked.
   'block-bank-lift-writes.sh',
+  // HIMMEL-4696 / HIMMEL-5290: fails CLOSED; a starved run let an agent write
+  // ~/.himmel/config.json and grant itself the graphify salus opt-in unchecked.
+  'block-himmel-config-writes.sh',
 ]);
 
 function envMs(name, fallback) {

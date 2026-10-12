@@ -107,6 +107,16 @@ if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
         fi
     done
 fi
+# HIMMEL-5257: review-round.sh reads the last reviewed head's check-runs through
+# `gh api`; the stub prints the fixture's "<status> <conclusion> <name>" rows.
+if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
+    case "${3:-}" in
+        repos/*/commits/*/check-runs)
+            [ "${GH_CHECKRUNS_RC:-0}" = 0 ] || exit "$GH_CHECKRUNS_RC"
+            [ -z "${GH_CHECKRUNS_FILE:-}" ] || cat "$GH_CHECKRUNS_FILE"
+            exit 0 ;;
+    esac
+fi
 for arg in "$@"; do
     [ "$arg" = "--head" ] && exit 0
 done
@@ -2132,6 +2142,83 @@ sd_fix3="$(git -C "$repo" rev-parse stranded)"
 sd2_out="$(start_round "$sd_fix3" clean stranded)"; sd2_rc=$?
 assert_eq "$sd2_rc" "8" "the fallback buys no second round on the consumed record"
 assert_has "$sd2_out" "no judge NO-GO for $sd_fix2 is recorded" "the refusal names the check against the reviewed delta head"
+
+# HIMMEL-5257: a CI-red last reviewed head buys one bounded post-cap round.
+# cired_case <branch> <rows>: the delta round ran and left a finding open (so
+# the post-cap-fixed trigger stays closed), the head it reviewed is
+# postcap_d_head, and gh api reports <rows> for it; a small commit follows.
+cired_rows() {
+    printf '%b' "$1" > "$tmp/checkruns.tsv"
+    GH_CHECKRUNS_FILE="$tmp/checkruns.tsv"
+    export GH_CHECKRUNS_FILE
+}
+cired_case() {
+    postcap_setup "$1" suggestion
+    cired_rows "$2"
+    postcap_fix "$1"
+}
+RED='completed\tsuccess\tlint\ncompleted\tfailure\tshell-unit (2)\n'
+cired_case cired "$RED"
+cired_out="$(postcap_start cired)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "a failed check-run at the reviewed head buys one post-cap round"
+assert_has "$cired_out" "pr-check: delta round 5 on cired (from $postcap_d_head)" "the CI-red round names its scope"
+assert_has "$(cat "$git_dir/cr-review-rounds/cired.delta" 2>/dev/null)" "$postcap_d_head $postcap_f_head postcap-ci-red" "the CI-red round is recorded in .delta"
+assert_has "$(cat "$git_dir/cr-critic-scores.jsonl")" '"kind":"ci-red-unlock","ts"' "the unlock is a ledger row"
+assert_has "$(grep '"ci-red-unlock"' "$git_dir/cr-critic-scores.jsonl")" '"reason":"shell-unit (2)"' "the ledger row names the failing check"
+# At most one per PR: a further commit on a still-red head gets nothing.
+cired_rows "$RED"
+printf 'again\n' >> "$repo/cired.txt"
+git -C "$repo" commit -q -am "cired again"
+postcap_f_head="$(git -C "$repo" rev-parse cired)"
+cired_out="$(postcap_start cired)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a second CI-red unlock on the same PR is refused"
+assert_eq "$(cat "$git_dir/cr-review-rounds/cired.round")" "5" "a refused second CI-red unlock leaves the counter at 5"
+
+cired_case ciredgreen 'completed\tsuccess\tlint\ncompleted\tsuccess\tshell-unit (2)\n'
+cired_out="$(postcap_start ciredgreen)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a green reviewed head buys no CI-red round"
+assert_eq "$(ls "$git_dir/cr-review-rounds/ciredgreen.cired" 2>/dev/null)" "" "a refused unlock leaves no marker"
+
+cired_case ciredrun 'in_progress\t\tlint\ncompleted\tfailure\tshell-unit (2)\n'
+cired_out="$(postcap_start ciredrun)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a check-run still in progress refuses the CI-red round"
+
+postcap_setup ciredbig suggestion
+cired_rows "$RED"
+n=0
+while [ "$n" -lt 45 ]; do printf 'line %s\n' "$n" >> "$repo/ciredbig.txt"; n=$((n + 1)); done
+git -C "$repo" commit -q -am "cired big"
+postcap_f_head="$(git -C "$repo" rev-parse ciredbig)"
+cired_out="$(postcap_start ciredbig)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "an over-cap delta refuses the CI-red round"
+assert_has "$cired_out" "CI-red cap" "the refusal names the cap"
+
+cired_case ciredapi "$RED"
+GH_CHECKRUNS_RC=1
+export GH_CHECKRUNS_RC
+cired_out="$(postcap_start ciredapi)"; cired_rc=$?
+unset GH_CHECKRUNS_RC
+assert_eq "$cired_rc" "8" "an unreadable check-run list refuses the CI-red round"
+
+# The base side of a merge-forward is not the PR's own change: a 60-line file
+# that main added does not count against the cap (panel-first-pass hands
+# review-round the captured base).
+postcap_setup ciredmf suggestion
+cired_rows "$RED"
+git -C "$repo" checkout -q main
+n=0
+while [ "$n" -lt 60 ]; do printf 'main %s\n' "$n" >> "$repo/ciredmf-main.txt"; n=$((n + 1)); done
+git -C "$repo" add ciredmf-main.txt
+git -C "$repo" commit -q -m "main moves for ciredmf"
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q ciredmf
+printf 'own\n' >> "$repo/ciredmf.txt"
+git -C "$repo" commit -q -am "ciredmf own edit"
+git -C "$repo" merge -q --no-edit main
+postcap_f_head="$(git -C "$repo" rev-parse ciredmf)"
+cired_out="$(postcap_start ciredmf)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "the base side of a merge-forward does not count against the CI-red cap ($cired_out)"
+assert_has "$(cat "$git_dir/cr-review-rounds/ciredmf.delta" 2>/dev/null)" "postcap-ci-red" "the merge-forward round is the CI-red one"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

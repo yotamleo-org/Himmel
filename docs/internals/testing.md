@@ -234,6 +234,25 @@ sweep is red, the aggregator records
 `selector-miss-ledger` artifact. Those rows name the red suites a PR run
 would not have selected.
 
+## A failed suite is retried once; a pass on retry is a FLAKE (HIMMEL-5116)
+
+`run-shell-tests.sh` re-runs a failed suite once, alone. Passing on the retry
+is a **FLAKE**: neither PASS nor FAIL, counted and listed in the summary, and
+appended to a jsonl ledger (suite, case lines, sha, run id, timestamp,
+repo id). On GitHub Actions a flake is also a `::warning` and a step-summary
+section; the ledger is uploaded with the failure logs.
+
+- A second flake of one suite inside `SUITE_FLAKE_WINDOW_DAYS` (default 7)
+  prints a "file a ticket" line. The repeat check matches the suite **and** the
+  repo id (HIMMEL-5121), so another repo's row never counts.
+- A suite that fails both attempts is a real FAIL and keeps both logs.
+- A suite whose header carries `# no-retry` is never retried, and a suite the
+  watchdog killed at its cap is never retried either.
+- The console tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
+  shows the same rows when this repo's ledger took a row since the console lock
+  started (HIMMEL-5131); `scripts/observability/suite-flake-summary.sh --format
+  detail` lists each row.
+
 ## Scan roots — what the corpus covers (HIMMEL-3193)
 
 The default scan root is `scripts` (a scoped run: `run-shell-tests.sh scripts/hooks`).

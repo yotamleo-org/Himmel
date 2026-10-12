@@ -211,7 +211,7 @@ for pair in \
   "ANTHROPIC_BASE_URL=https://openrouter.ai/api" \
   "ANTHROPIC_AUTH_TOKEN=or-test-123" \
   "ANTHROPIC_MODEL=anthropic/claude-opus-5.5" \
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5" \
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5" \
   "ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5" \
   "ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5" \
   "CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000" \
@@ -253,6 +253,16 @@ write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 t "model pin is a Claude 1M tier" 0
 grep -qE "ANTHROPIC_MODEL=anthropic/claude" "$WORK/child-env.txt" || { echo "FAIL: model is not a Claude slug"; FAILS=$((FAILS+1)); }
 grep -qF "CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000" "$WORK/child-env.txt" || { echo "FAIL: context window is not the 1M tier"; FAILS=$((FAILS+1)); }
+
+# --- HIMMEL-5248: the client classifier side query carries no reasoning and the gateway 400s on a
+# mandatory-reasoning slug, so the launcher must hand the child a thinking body (the `thinking` shape
+# is what worked live; `reasoning.effort` did not). A caller-set CLAUDE_CODE_EXTRA_BODY wins.
+grep -qF 'CLAUDE_CODE_EXTRA_BODY={"thinking":{"type":"enabled","budget_tokens":2048}}' "$WORK/child-env.txt" || { echo "FAIL: child lacks the default thinking EXTRA_BODY"; FAILS=$((FAILS+1)); }
+setup; KEY="or-test-123"; export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"disabled"}}'
+write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
+t "caller EXTRA_BODY launches" 0
+grep -qF 'CLAUDE_CODE_EXTRA_BODY={"thinking":{"type":"disabled"}}' "$WORK/child-env.txt" || { echo "FAIL: caller-set EXTRA_BODY was overwritten"; FAILS=$((FAILS+1)); }
+unset CLAUDE_CODE_EXTRA_BODY
 
 # --- T3c: OPENROUTER_MODEL override reaches the child verbatim
 setup; KEY="or-test-123"; export OPENROUTER_MODEL="anthropic/claude-sonnet-5"
@@ -471,7 +481,7 @@ for lane in standalone openrouter; do
   LEG_LANE="$lane" OPENROUTER_MODEL=anthropic/claude-sonnet-5 t "independent tiers ($lane)" 0
   for pair in \
     'ANTHROPIC_MODEL=anthropic/claude-sonnet-5' \
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5' \
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5' \
     'ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5' \
     'ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5'; do
     grep -qxF "$pair" "$WORK/child-env.txt" || { echo "FAIL: independent tiers missing $pair"; FAILS=$((FAILS+1)); }

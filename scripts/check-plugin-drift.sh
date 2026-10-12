@@ -188,7 +188,7 @@ fi
 # local plugin's marketplace.json entry ever gains a "version" key, extend this
 # check then; today it would be dead code.
 check_bump_required() {
-  local base_ref="${1:-}"
+  local base_ref="${1:-}" old_ref="HEAD"
   if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
     echo "ERR check-plugin-drift --bump-required: not inside a git repository" >&2
     return 1
@@ -203,7 +203,22 @@ check_bump_required() {
     fi
     changed="$(git diff --name-only --diff-filter=ACMRD "${base_ref}...HEAD" -- "$rel")"; diff_rc=$?
   else
-    changed="$(git diff --cached --name-only --diff-filter=ACMRD -- "$rel")"; diff_rc=$?
+    # Mid-merge (GH #2205): the staged diff against HEAD carries everything the
+    # merged-in parent brought, so count only what the merge result adds over
+    # MERGE_HEAD (the branch's own work) and compare versions against it too.
+    # Only a merge-forward qualifies: MERGE_HEAD must already be on the default
+    # branch. Any other incoming branch (feature into main, feature into
+    # feature) keeps the HEAD diff so its own plugin edits stay visible.
+    if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+      local dref
+      for dref in refs/remotes/origin/main refs/heads/main refs/remotes/origin/master refs/heads/master; do
+        if git rev-parse -q --verify "$dref" >/dev/null 2>&1 && git merge-base --is-ancestor MERGE_HEAD "$dref" 2>/dev/null; then
+          old_ref="MERGE_HEAD"
+          break
+        fi
+      done
+    fi
+    changed="$(git diff --cached --name-only --diff-filter=ACMRD "$old_ref" -- "$rel")"; diff_rc=$?
   fi
   if [ "$diff_rc" -ne 0 ]; then
     echo "ERR check-plugin-drift --bump-required: git diff failed (rc=$diff_rc) — cannot determine changed plugin files" >&2
@@ -239,7 +254,7 @@ try:
 except Exception:
     print("")' 2>/dev/null)"
     else
-      old_ver="$(git show "HEAD:$manifest" 2>/dev/null | python3 -c 'import json,sys
+      old_ver="$(git show "$old_ref:$manifest" 2>/dev/null | python3 -c 'import json,sys
 try:
     print(json.load(sys.stdin).get("version",""))
 except Exception:

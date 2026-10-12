@@ -227,6 +227,17 @@ than skipped, and why a leg that cannot identify the suites exercising its
 change should run the full tree (with `SUITE_LOCK_WAIT`, below) instead of
 guessing at a subtree.
 
+**Run several scoped roots as separate calls, so your inbox is read between
+them (HIMMEL-3084).** A leg blocked in one long foreground command cannot read
+a console halt until it returns. `bash scripts/handover/console-kit/run-suite.sh`
+runs exactly one scan root per call and prints
+`CHECKPOINT <i>/<n> <root> rc=<rc> next=<root|none>`; type each call as its own
+Bash command and follow `next=`. `--plan` lists the roots. Do not chain the
+calls with `&&` or a loop: the call boundary is the checkpoint. The window is
+still one root, so a root that is itself long (`scripts/hooks`) leaves a halt
+unread for that run's length; see the delivery limitation in
+[`retask-channel.md`](../internals/retask-channel.md).
+
 **When you do need the full tree, never hand-roll a retry loop.** An rc=2
 refusal used to send legs into their own invisible wait — and a queued leg is
 then indistinguishable from a **parked** one: both present as a leg that has

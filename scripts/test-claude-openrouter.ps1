@@ -242,7 +242,7 @@ try {
         'ANTHROPIC_BASE_URL=https://openrouter.ai/api',
         'ANTHROPIC_AUTH_TOKEN=or-test-123',
         'ANTHROPIC_MODEL=anthropic/claude-opus-5.5',
-        'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5',
         'ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5',
         'ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5',
         'CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000',
@@ -330,7 +330,7 @@ try {
     $env:OPENROUTER_MODEL = 'anthropic/claude-sonnet-5'
     Assert-Exit (Invoke-Launcher) 0 "independent tiers ($lane)"
     foreach ($pair in 'ANTHROPIC_MODEL=anthropic/claude-sonnet-5',
-                       'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-4.5',
+                       'ANTHROPIC_DEFAULT_HAIKU_MODEL=anthropic/claude-haiku-5.5',
                        'ANTHROPIC_DEFAULT_SONNET_MODEL=anthropic/claude-sonnet-5.5',
                        'ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-5.5') {
       if (FileHas $ChildEnv $pair) { Pass $pair } else { Fail "independent tier missing $pair" }

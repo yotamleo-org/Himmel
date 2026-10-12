@@ -51,16 +51,29 @@
 # can set it):
 #   graphify.salus_ollama_cloud_ok = true in $HOME/.himmel/config.json - allow
 #                                   salus x ollama-cloud. Absent, unreadable,
-#                                   malformed or not the JSON literal true = deny.
+#                                   malformed or not the JSON literal true = deny;
+#                                   so is a symlinked config or ~/.himmel
+#                                   (HIMMEL-4696). $HOME is the trust root in
+#                                   hook AND --eval mode: the caller's HOME is
+#                                   read as-is, with no passwd-home pinning (any
+#                                   seam to test it is itself caller-settable).
+#                                   Agent writes to the file are denied by
+#                                   scripts/hooks/block-himmel-config-writes.sh
+#                                   once that hook is wired (not yet).
 #
 # Backend -> provider map (backend name is lower-cased first):
 #   ollama          -> endpoint resolved in graphify's order (OLLAMA_BASE_URL,
 #                      then OLLAMA_HOST, then 127.0.0.1:11434) and the model
 #                      (--model, then OLLAMA_MODEL); see _ollama_provider:
 #                      loopback + local model -> local-ollama; ollama.com, or a
-#                      `-cloud`/`:cloud` model -> ollama-cloud; any other host
+#                      `-cloud`/`:cloud` model (whitespace trimmed, `:latest`
+#                      ignored; a local ALIAS of a cloud model is not detected,
+#                      see _ollama_provider) -> ollama-cloud; any other host
 #                      or an unparseable value -> ollama-unverified (HARD deny
-#                      on every corpus, before the matrix)
+#                      on every corpus, before the matrix). Loopback is exactly
+#                      localhost / 127.0.0.1 / [::1] BY DECISION (HIMMEL-4696):
+#                      other 127.x and 0.0.0.0 are refused, fail-closed; widen
+#                      only with a ticket that also widens semantic-update.sh.
 #   deepseek        -> deepseek
 #   openai          -> deepseek ONLY when OPENAI_BASE_URL or DEEPSEEK_BASE_URL
 #                      points at api.deepseek.com; otherwise the undeclared
@@ -1057,6 +1070,15 @@ _ollama_provider() {
         *) echo ollama-unverified; return ;;
     esac
     model="$(_lc "${ollama_model_flag:-${OLLAMA_MODEL:-}}")"
+    # HIMMEL-4696: trim surrounding whitespace (a trailing space/tab/newline in
+    # OLLAMA_MODEL must not hide the suffix) and ignore an explicit :latest tag.
+    model="${model#"${model%%[![:space:]]*}"}"
+    model="${model%"${model##*[![:space:]]}"}"
+    model="${model%:latest}"
+    # ponytail: a name heuristic - a local alias of a cloud model (`ollama cp
+    # gpt-oss:120b-cloud mine`) carries no -cloud/:cloud marker and classifies as
+    # local-ollama; the daemon's own model list is not consulted. Upgrade path:
+    # ask the local daemon (`ollama show`) for remote_host, HIMMEL-4696 follow-up.
     case "$model" in
         *-cloud|*:cloud) echo ollama-cloud ;;
         *)               echo local-ollama ;;
@@ -1071,6 +1093,10 @@ _salus_ollama_cloud_optin() {
     local f
     [ -n "${HOME:-}" ] || return 1
     f="$HOME/.himmel/config.json"
+    # HIMMEL-4696: a symlinked config, or a symlinked ~/.himmel, is no opt-in -
+    # a link can be planted without writing the operator's own file.
+    [ -L "$HOME/.himmel" ] && return 1
+    [ -L "$f" ] && return 1
     [ -f "$f" ] && [ -r "$f" ] || return 1
     node -e 'let j; try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { process.exit(1); }
 process.exit(j && j.graphify && j.graphify.salus_ollama_cloud_ok === true ? 0 : 1);' "$f" 2>/dev/null

@@ -116,6 +116,7 @@ D_PRCHECK_ENV="bash scripts/cr/pr-check-e""nv.sh CR_CLAUDE_AGENTS"
 D_LIFT="echo x > ~/.himmel/state/ba""nk-lift.json"
 D_LIFTSET="bash scripts/lib/ba""nk-lift.sh set seven_day"
 D_BUS="bus regis""ter x --role leg"
+D_HCFG="echo x > ~/.himmel/con""fig.json"
 A_OK="git status"
 
 printf '\nSingle-line command text\n'
@@ -150,6 +151,8 @@ check guard-pr-check-literal      Bash 0 "$A_OK"     "allow git status"
 check block-bank-lift-writes      Bash 2 "$D_LIFT"   "deny a redirect onto the bank lift"
 check block-bank-lift-writes      Bash 2 "$D_LIFTSET" "deny bank-lift.sh set"
 check block-bank-lift-writes      Bash 0 "$A_OK"     "allow git status"
+check block-himmel-config-writes  Bash 2 "$D_HCFG"  "deny a redirect onto the himmel config"
+check block-himmel-config-writes  Bash 0 "$A_OK"     "allow git status"
 check guard-bus-store             Bash 2 "$D_BUS"    "deny bus register"
 check guard-bus-store             Bash 0 "$A_OK"     "allow git status"
 
@@ -171,7 +174,8 @@ for _pair in \
     "block-tail-pipe-on-gates|$D_TAIL" \
     "require-quiet-run|$D_QUIET" \
     "block-bank-lift-writes|$D_LIFT" \
-    "block-bank-lift-writes|$D_LIFTSET"
+    "block-bank-lift-writes|$D_LIFTSET" \
+    "block-himmel-config-writes|$D_HCFG"
 do
     _h="${_pair%%|*}"; _c="${_pair#*|}"
     check "$_h" Bash 2 "$(printf 'echo hello\n%s' "$_c")"   "deny on a second line"

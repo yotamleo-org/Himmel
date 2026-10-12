@@ -73,7 +73,9 @@ $ConfigDir = Join-Path $HomeDir '.claude-codex'
 # already-seeded machine would silently keep the old seeded content forever. A
 # mismatch forces exactly one re-seed.
 # v1 = initial version (HIMMEL-1927: the claudex model-identity stanza).
-$SeedVersion = '1'
+# v3 = SanitizerJs also injects the destructive-category permissions.deny rules (HIMMEL-5270; v2 was bash-only, HIMMEL-4098).
+# v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings (HIMMEL-5289).
+$SeedVersion = '4'
 
 # --- key resolution: process env first, else the launcher-repo .env ----------
 # CLAUDE_CODEX_DOTENV_ROOT (test hook) pins the .env root; production falls back to
@@ -159,15 +161,30 @@ $PreflightOnly = $false
 # pre-check — see the Invoke-GuardWorkspace call site below for what this does
 # and why it exists.
 $GuardCheck = $false
+# HIMMEL-5273: opt-in, default off — route ONLY the Sonnet alias (the auto-mode
+# classifier's default) to a gateway alias the proxy serves. Twin of the bash flag.
+$ClassifierModel = if ($env:CLAUDEX_CLASSIFIER_MODEL) { $env:CLAUDEX_CLASSIFIER_MODEL } else { '' }
 $ClaudeArgs = [System.Collections.Generic.List[string]]::new()
 $leading = $true
-foreach ($a in $args) {
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $a = $args[$i]
+  if ($leading -and ($a -ieq '-ClassifierModel' -or $a -ieq '--classifier-model')) {
+    if ($i + 1 -ge $args.Count -or -not $args[$i + 1]) {
+      [Console]::Error.WriteLine("claude-codex: --classifier-model needs a model alias.")
+      exit 2
+    }
+    $ClassifierModel = [string]$args[$i + 1]; $i++; continue
+  }
   if ($leading -and ($a -ieq '-Reseed' -or $a -ieq '--reseed')) { $Reseed = $true; continue }
   if ($leading -and ($a -ieq '-Force'  -or $a -ieq '--force'))  { $Force  = $true; continue }
   if ($leading -and ($a -ieq '-PreflightOnly' -or $a -ieq '--preflight-only')) { $PreflightOnly = $true; continue }
   if ($leading -and ($a -ieq '-GuardCheck' -or $a -ieq '--guard-check')) { $GuardCheck = $true; continue }
   $leading = $false
   $ClaudeArgs.Add($a)
+}
+if ($ClassifierModel -notmatch '^[A-Za-z0-9._-]*$') {
+  [Console]::Error.WriteLine("claude-codex: invalid classifier model alias '$ClassifierModel' (letters, digits, . _ - only).")
+  exit 2
 }
 
 # --- tiered egress guard -----------------------------------------------------
@@ -404,6 +421,22 @@ const fs=require("fs");
 const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
 delete j.model;
 if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
+const A=[],B=(r)=>A.push("Bash("+r+")");
+for (const r of ["git push --force","git push --force *","git push --force*","git push -f*","git push --mirror*","git push --delete*","git push origin --delete*","git push * --force*","git push * -f*","git push * +*","git push * main","git push * master","git push * *:main","git push * *:master","git push * *refs/heads/main","git push * *refs/heads/master"]) { B(r); B("rtk "+r); }
+for (const f0 of ["-rf","-fr","-Rf","-fR","-r","-R","--recursive","-r -f","-f -r","-R -f","-f -R","--recursive --force","--force --recursive","-r --force","--force -r","-R --force","--force -R","--recursive -f","-f --recursive"]) for (const f of [f0,f0+" --"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
+for (const p of ["~/.ssh","~/.aws","~/.gnupg","~/.config/gh","~/.netrc","~/.codex/auth.json","~/.claude/.credentials.json","~/.cli-proxy-api"]) { B("* "+p+"*"); B("* \u0024HOME"+p.slice(1)+"*"); A.push("Read("+p+")","Read("+p+"/**)"); }
+A.push("Read(**/.env)","Read(**/.env.local)","Read(**/.env.*.local)");
+for (const e of [".env",".env.local"]) { B("* "+e); B("* */"+e); }
+for (const n of ["curl","wget"]) {
+  for (const s of ["sh","bash","zsh","sudo","python","python3"]) B(n+" * | "+s+"*");
+  for (const s of ["sh -c *\u0024("+n+"*","bash -c *\u0024("+n+"*","eval *\u0024("+n+"*","bash <("+n+"*","sh <("+n+"*","source <("+n+"*"]) B(s);
+}
+for (const r of ["curl -d @*","curl --data* @*","curl -F *","curl --form *","curl -T *","curl --upload-file *","curl * -d @*","curl * --data* @*","curl * -F *","curl * --form *","curl * -T *","curl * --upload-file *","wget --post-file*","wget --post-data*","wget * --post-file*","wget * --post-data*","nc *","ncat *","socat *"]) B(r);
+for (const r of ["terraform destroy*","terraform apply -destroy*","terraform apply * -destroy*","tofu destroy*","tofu apply -destroy*","pulumi destroy*","cdk destroy*","kubectl delete *","helm uninstall *","aws s3 rb *","aws s3 rm * --recursive*","aws * terminate-*","aws * delete-*","gcloud * delete *","az * delete *","docker system prune*"]) B(r);
+j.permissions=j.permissions||{};
+const dn=Array.isArray(j.permissions.deny)?j.permissions.deny:[];
+for (const r of A) if (!dn.includes(r)) dn.push(r);
+j.permissions.deny=dn;
 fs.writeFileSync(process.argv[2], JSON.stringify(j,null,2));
 '@
 
@@ -529,6 +562,20 @@ try {
 # Probe healthy — the dispatcher may now spin the worker (this run does not).
 if ($PreflightOnly) { exit 0 }
 
+# HIMMEL-5273: an alias the proxy does not serve would silently fall back to the
+# codex model (the classifier then judges on the model this flag exists to
+# replace), so refuse instead. Twin of the bash /v1/models check.
+if ($ClassifierModel) {
+  $modelsBody = ''
+  try {
+    $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
+  } catch { $modelsBody = '' }
+  if ($modelsBody -notmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"')) {
+    [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
+    exit 2
+  }
+}
+
 # --- launch: env contract mirrors the bash `exec env … claude "$@"` -----------
 # The CLAUDE_CODE_*/ENABLE_TOOL_SEARCH values follow the field-tested claudex
 # recipe: subagents stay on the codex lane, effort controls stay on, and
@@ -560,7 +607,7 @@ $env:ANTHROPIC_BASE_URL             = $CodexProxyBaseUrl
 $env:ANTHROPIC_AUTH_TOKEN           = $key
 $env:ANTHROPIC_MODEL                = $CodexModel
 $env:ANTHROPIC_DEFAULT_HAIKU_MODEL  = $CodexHaiku
-$env:ANTHROPIC_DEFAULT_SONNET_MODEL = $CodexModel
+$env:ANTHROPIC_DEFAULT_SONNET_MODEL = if ($ClassifierModel) { $ClassifierModel } else { $CodexModel }
 $env:ANTHROPIC_DEFAULT_OPUS_MODEL   = $CodexModel
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.

@@ -363,6 +363,13 @@ _suite_timeout_for() {
       # Linux. Same 1200s as test-uninstall.sh; SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
+    scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
+      # HIMMEL-5257. PR 2400 shard 6: every assertion passing, killed at 603s
+      # against the 600s default (CAP EXCEEDED); 373s idle on Linux locally
+      # after the CI-red unlock rows landed. 603s is a truncation floor, so
+      # 1200s is that x2 (the loaded-budget rule); SUITE_RUN_BUDGET stays the
+      # runaway backstop.
+      printf '1200' ;;
     scripts/test-check-ci.sh|*/scripts/test-check-ci.sh)
       # HIMMEL-1978. ~110 cases, each spawning dozens of gh-stub processes, so
       # it is the most load-sensitive suite here: measured 1009s on a swept box

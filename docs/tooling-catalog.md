@@ -355,7 +355,8 @@ having the file is not evidence of a working subscription. `/x-read`, `/x-pulse`
 tracked by this repo). `/notebooklm` (Gemini File Search) uses a different key
 and is unaffected by this decision. Decision record:
 `docs/tool-adoption/registry.md` (research-toolkit row) and
-`docs/tool-adoption/adr-obsidian-second-brain-research-toolkit.md`. Revisit if
+`specs/adr/adr-obsidian-second-brain-research-toolkit.md` in the handover
+state repo. Revisit if
 a subscription lands.
 
 **Commands:**
@@ -898,6 +899,22 @@ bank, and opens mixed subagent lanes that the plain codex CLI harness does not.
 | `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (twin of `GLM_CONTEXT_WINDOW`). Without it Claude Code assumes its ~200k default for the unrecognized `gpt-5.6-sol` slug and compacts early. gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
 | `CLIPROXY_API_KEY` | Must match an `api-keys` entry in `~/.cli-proxy-api/config.yaml` |
 | `CLAUDE_CONFIG_DIR` | `$HOME/.claude-codex` |
+
+**Opt-in Sonnet classifier (HIMMEL-5273, default off).** By default the auto-mode
+classifier's Sonnet alias (`ANTHROPIC_DEFAULT_SONNET_MODEL`) maps to
+`$CODEX_MODEL`. `--classifier-model <alias>` (PowerShell: `-ClassifierModel`) or
+`CLAUDEX_CLASSIFIER_MODEL=<alias>` points only that alias at a Claude model the
+proxy serves (e.g. `claude-sonnet-5-5` via cli-proxy-api's claude provider, OAuth
+login `-claude-login`; never OpenRouter). The main, Haiku, Opus and subagent
+models and the seeded claudex `permissions.deny` rules are unchanged. The
+launcher refuses to start (exit 2) when the alias is not in the proxy's
+`/v1/models`. Side effect: `/model sonnet` and a subagent asking for "sonnet"
+also hit the Claude alias. VM sweep (cli-proxy-api 7.3.15, claude 2.1.263): the
+classifier really evaluates (`classifier_request_started … stage=xml_s1/xml_s2`,
+no fail-closed "could not evaluate"); 4 of 4 classifier-judged destructive
+commands denied; 18 of 20 benign allowed (about 10% over-block on script
+execution, flaky); deny latency 3-9 s for s1, up to 28 s for s2; about USD 0.086
+per classifier call when billed by API.
 
 **Guard files:** the lane uses `~/.config/claude-codex/phi-roots` and
 `~/.config/claude-codex/egress-denylist`, plus the launch-cwd `.salus` marker.

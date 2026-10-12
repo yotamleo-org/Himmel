@@ -1270,6 +1270,54 @@ JSON
 done
 rm -rf "$W15"
 
+# 16. Merge-forward (GH #2205, HIMMEL-5261): during `git merge origin/main` the
+#     staged diff against HEAD carries everything the base brought in, so a
+#     branch that never touched the plugin failed the gate on the base's
+#     change. With MERGE_HEAD present only what the branch contributes over
+#     the merged-in parent counts; a branch edit still needs its bump.
+W16="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-w16.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
+(
+  cd "$W16" &&
+  git init -q -b main && git config user.email t@example.invalid && git config user.name t &&
+  mkdir -p marketplace/plugins/p/.claude-plugin &&
+  printf '{"name":"p","version":"1.0.0"}\n' > marketplace/plugins/p/.claude-plugin/plugin.json &&
+  printf 'a\n' > marketplace/plugins/p/f && printf 'x\n' > other &&
+  git add -A && git commit -q -m seed &&
+  git branch feat-clean && git branch feat-edit && git branch feat-bump &&
+  printf 'b\n' > marketplace/plugins/p/f && git commit -q -am 'base: unbumped plugin change'
+) || bad "merge-forward fixture setup failed"
+mf_run() {  # mf_run <branch> [pre-merge-step] -> merges main --no-commit, runs the gate
+  (
+    cd "$W16" && git checkout -q "$1" && printf '%s\n' "$1" >> other && git add other && git commit -q -m "$1 work" &&
+    case "${2:-}" in
+      edit) printf 'branch edit\n' > marketplace/plugins/p/g && git add -A && git commit -q -m 'branch plugin edit' ;;
+      bump) printf 'branch edit\n' > marketplace/plugins/p/g &&
+            printf '{"name":"p","version":"1.0.1"}\n' > marketplace/plugins/p/.claude-plugin/plugin.json &&
+            git add -A && git commit -q -m 'branch plugin edit + bump' ;;
+    esac || exit 99
+    if ! git merge -q --no-commit --no-ff main >/dev/null 2>&1; then echo "merge failed"; exit 99; fi
+    bash "$SCRIPT" --bump-required 2>&1
+  )
+}
+out16="$(mf_run feat-clean)"; rc16=$?
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'no plugin files changed'; then ok "merge-forward of a base-only plugin change passes (GH #2205)"; else bad "merge-forward false red (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+out16="$(mf_run feat-edit edit)"; rc16=$?
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge-forward still rejects an unbumped branch plugin edit (GH #2205)"; else bad "merge-forward let a branch edit through (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+out16="$(mf_run feat-bump bump)"; rc16=$?
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin bumped'; then ok "merge-forward accepts a bumped branch plugin edit (GH #2205)"; else bad "merge-forward rejected a bumped edit (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+# Merging an unbumped feature branch INTO main must still see its plugin edits.
+out16="$( cd "$W16" && git checkout -q main && git merge -q --no-commit --no-ff feat-edit >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge of an unbumped feature branch into main is still rejected (GH #2205)"; else bad "merge into main let an unbumped edit through (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+# ...and the same for a feature branch merged into another feature branch.
+out16="$( cd "$W16" && git checkout -q -B feat-x "$(git rev-list --max-parents=0 main)" && git merge -q --no-commit --no-ff feat-edit >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'was not bumped'; then ok "merge of an unbumped feature branch into another feature branch is still rejected (GH #2205)"; else bad "feature-into-feature merge let an unbumped edit through (rc=$rc16): $out16"; fi
+( cd "$W16" && git merge --abort >/dev/null 2>&1 )
+rm -rf "$W16"
+
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
 echo "all checks passed."

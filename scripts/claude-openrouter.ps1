@@ -51,13 +51,14 @@ $OpenRouterAnthropicBaseUrl = if ($env:OPENROUTER_ANTHROPIC_BASE_URL) { $env:OPE
 # ':batch' variants are asynchronous and unsupported by interactive tier overrides.
 $OpenRouterModel         = if ($env:OPENROUTER_MODEL) { $env:OPENROUTER_MODEL } else { 'anthropic/claude-opus-5.5' }
 # Independent subagent tiers (HIMMEL-4083), catalog verified 2026-10-02.
-$OpenRouterHaiku         = if ($env:OPENROUTER_HAIKU) { $env:OPENROUTER_HAIKU } else { 'anthropic/claude-haiku-4.5' }
+$OpenRouterHaiku         = if ($env:OPENROUTER_HAIKU) { $env:OPENROUTER_HAIKU } else { 'anthropic/claude-haiku-5.5' }
 $OpenRouterSonnet        = if ($env:OPENROUTER_SONNET) { $env:OPENROUTER_SONNET } else { 'anthropic/claude-sonnet-5.5' }
 $OpenRouterOpus          = if ($env:OPENROUTER_OPUS) { $env:OPENROUTER_OPUS } else { 'anthropic/claude-opus-5.5' }
 # ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
 # and its bash twin when adopting a newly listed OpenRouter Claude slug.
 $KnownTierSlugs = @(
   'anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5',
+  'anthropic/claude-haiku-5.5',
   'anthropic/claude-fable-5.1', 'anthropic/claude-opus-5',
   'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5',
   'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.7',
@@ -473,6 +474,13 @@ $env:ANTHROPIC_DEFAULT_OPUS_MODEL_NAME   = if ($OpenRouterOpus -ceq $OpenRouterM
 # ponytail: client-side auto classifier through the gateway (HIMMEL-4086),
 # remove this temporary switch when safeguards/safeguard_results pass through.
 $env:CLAUDE_CODE_AUTO_MODE_SERVER = '0'
+# The client classifier's side query carries no reasoning, and the gateway 400s
+# ("Reasoning is mandatory") on mandatory-reasoning slugs (HIMMEL-5248). EXTRA_BODY
+# merges this into every request; the `thinking` shape works, `reasoning.effort` does not.
+# ponytail: the budget also applies to the main loop, so every turn pays up to
+# 2048 thinking tokens, revisit when the classifier side query can carry its own
+# reasoning setting (HIMMEL-5248 upstream issue).
+if (-not $env:CLAUDE_CODE_EXTRA_BODY) { $env:CLAUDE_CODE_EXTRA_BODY = '{"thinking":{"type":"enabled","budget_tokens":2048}}' }
 if ($env:LEG_LANE -eq 'openrouter') {
   [Console]::Error.WriteLine("claude-openrouter: lane=openrouter slug=$OpenRouterModel alias=$($env:ANTHROPIC_MODEL) labels=$orLabel")
 }

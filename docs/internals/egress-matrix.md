@@ -241,6 +241,34 @@ same corpus × provider gets from the matrix.
 This section documents the contract only. It deliberately restates no matrix
 verdicts — `scripts/guardrails/egress-matrix.json` is authoritative.
 
+## Salus ollama-cloud opt-in and its trust root (HIMMEL-4696)
+
+The one persisted opt-in that lets the fence send a salus (PHI) corpus to
+ollama-cloud is `graphify.salus_ollama_cloud_ok` in `$HOME/.himmel/config.json`
+(HIMMEL-4185). Granting it is an operator call. Defense in depth around it:
+
+- **Symlink refusal.** The fence ignores the opt-in (treats it as not granted)
+  when `$HOME/.himmel` or `$HOME/.himmel/config.json` is a symlink — a link to
+  a file elsewhere that holds `true` is not an operator grant.
+- **Write guard (speed bump).** `scripts/hooks/block-himmel-config-writes.sh`
+  denies tool-driven writes to that file (file tools, and Bash commands that
+  name it other than plain reads). It is text matching, not a sandbox; its
+  header lists what it cannot see. **It is not wired yet** — wiring it into
+  `.claude/settings.json`, `.codex/hooks.json` and `wire-hook-bash.mjs` is
+  HIMMEL-5290, so until that lands the symlink refusal is the only live layer.
+- **`$HOME` is the trust root**, in hook mode and in `--eval` mode alike. The
+  fence reads the caller's `$HOME` and does not pin the passwd-database home; a
+  caller that controls its own `$HOME` controls the opt-in. That is by decision,
+  pinned by a test row, not an oversight.
+- **Loopback** means exactly `localhost`, `127.0.0.1` and `[::1]`. Other
+  `127.x` addresses and `0.0.0.0` are not loopback for the fence and are
+  refused fail-closed; widening the set is a matrix-review change, not a
+  config one.
+- **Cloud-model detection** is a name heuristic: surrounding whitespace is
+  trimmed and a `:latest` suffix ignored before testing `*-cloud` / `*:cloud`.
+  A local alias of a cloud model (made with `ollama cp`) is not detected —
+  the upgrade path is asking the daemon (`ollama show`) for the remote host.
+
 ## Consumers
 
 | Surface | What it reads |
