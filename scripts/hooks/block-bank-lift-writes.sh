@@ -457,15 +457,22 @@ _cmd_writes() {
 }
 # shellcheck disable=SC2016  # literal $ text is matched, not expanded
 _cmd_refs_lift() {
-    local LC_ALL=C rest="$1" n v
+    local LC_ALL=C rest="$1" n v exp='' pre
     local re='\$\{?[!#]?([A-Za-z_][A-Za-z0-9_]*)'
     while [[ "$rest" =~ $re ]]; do
         n="${BASH_REMATCH[1]}"
+        pre="${rest%%"${BASH_REMATCH[0]}"*}"
         rest="${rest#*"${BASH_REMATCH[0]}"}"
         if ! v=$(printenv -- "$n" 2>/dev/null); then v=''; fi
         case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
         if [ -n "$v" ] && is_lift "$v"; then return 0; fi
+        exp="$exp$pre$v"
     done
+    # Values split across variables (A=state-dir B=/state/bank- C=lift.json,
+    # `&>| "$A$B$C"`): no single value matches, so read the command with every
+    # reference replaced by its value and look for the state dir, then the name.
+    exp="$exp$rest"
+    case "$exp" in *"$STATE_REAL"*"$LIFT_NAME"*) return 0 ;; esac
     return 1
 }
 if _cmd_writes "$CMD" && _cmd_refs_lift "$CMD"; then

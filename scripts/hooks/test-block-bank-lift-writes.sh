@@ -1546,6 +1546,9 @@ env_row "5159 whole-cmd \$D bare word after redirect" deny "D=$LIFT" 'echo hi > 
 env_row "5159 whole-cmd cp x \"\$D/bank-lift.json\""  deny "D=$ST" 'cp x "$D/bank-lift.json"'
 env_row "5159 whole-cmd mv x \"\$D\" (D=lift)"        deny "D=$LIFT" 'mv x "$D"'
 env_row "5159 whole-cmd tee \${D} braced (D=lift)"    deny "D=$LIFT" 'echo hi | tee "${D}"'
+env_row "5159 whole-cmd &>| \"\$A\$B\$C\" split values"  deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'echo hi &>| "$A$B$C"'
+env_row "5159 whole-cmd &>| \"\$A/state/bank-\$C\" split text" deny "A=$HOME/.himmel C=lift.json" 'echo hi &>| "$A/state/bank-$C"'
+env_row "5159 whole-cmd > \"\$OUT\$SUF\" benign split (ctrl)" allow "OUT=/tmp/o SUF=.txt" 'echo hi > "$OUT$SUF"'
 env_row "5159 whole-cmd echo \"\$D\" no writer (ctrl)" allow "D=$LIFT" 'echo "$D"'
 env_row "5159 whole-cmd > /tmp/x with D set (ctrl)"   allow "D=$LIFT" 'echo hi > /tmp/x'
 }
