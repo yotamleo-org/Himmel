@@ -1947,10 +1947,14 @@ env_split_option() { # env_split_option <raw command> - false only when
                         -*[Oo]*|+*[Oo]*) nm[sg]=1 ;;
                         -[A-Za-z]*|+[A-Za-z]*) ;;
                         -*|+*) nm[sg]=1 ;;
-                        *) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;;
+                        # a body that expands $0, $1, $@ can run a later word:
+                        # keep every later word as a body (denies more, never less)
+                        *) nb[sg]="${nb[sg]-} $w"
+                           case "$w" in *'$'*) nm[sg]=1 ;; *) nm[sg]=3 ;; esac ;;
                     esac ;;
                 4) nm[sg]=2 ;;
-                5) nb[sg]="${nb[sg]-} $w"; nm[sg]=3 ;; # after --: the body, even when it starts with -
+                5) nb[sg]="${nb[sg]-} $w" # after --: the body, even when it starts with -
+                   case "$w" in *'$'*) nm[sg]=1 ;; *) nm[sg]=3 ;; esac ;;
                 3) ;;
                 *)
                     if [ -z "${fw[sg]-}" ] && [ "${ST_A[$e]-}" != 1 ]; then

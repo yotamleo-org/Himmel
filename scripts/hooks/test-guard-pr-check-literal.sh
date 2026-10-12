@@ -609,6 +609,10 @@ source ./defs.sh; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 . ./defs.sh; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 ./echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 /tmp/cat eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c 'eval "$1"' x "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c '"$@"' x env -S 'bash scripts/cr/pr-check-context.sh\c'
+bash -c 'eval "$0"' "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+bash -c -- 'eval "$1"' x "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 NESTEDSPLIT
 # Controls: a nested env -S naming no target, a nested body with no env -S,
 # and env -S text in an argument no shell re-reads keep their verdicts.
