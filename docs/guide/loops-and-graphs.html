@@ -277,7 +277,7 @@
         <div class="tabs" role="tablist" aria-label="Loops" id="tabs"></div>
         <div id="loop-panel" role="tabpanel" aria-live="polite">
           <div class="loop-head"><div><h3 id="loop-title"></h3><p id="loop-blurb"></p></div><span class="loop-meta" id="loop-meta"></span></div>
-          <svg class="diagram" id="diagram" viewBox="0 0 720 600" role="img" aria-labelledby="loop-title"></svg>
+          <svg class="diagram" id="diagram" viewBox="0 0 720 600" role="group" aria-labelledby="loop-title"></svg>
           <ol class="steps" id="steps"></ol>
         </div>
       </div>
@@ -671,7 +671,7 @@
     nodes.forEach(function (nd, i) {
       var a = -Math.PI / 2 + i * 2 * Math.PI / n;
       var x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
-      var changed = prevStates[nd.k] && prevStates[nd.k] !== nd.st;
+      var changed = prevStates[nd.k] && prevStates[nd.k] !== nd.st + '|' + nd.n;
       var g = sv('g', { 'class': 'node ' + nd.st + (changed ? ' changed' : ''), tabindex: '0', role: 'button', 'aria-label': (i + 1) + '. ' + nd.l + ': ' + whoLabel[nd.st] });
       if (nd.c) g.setAttribute('data-cadence', nd.c);
       g.appendChild(sv('circle', { cx: x, cy: y, r: 17 }));
@@ -697,7 +697,7 @@
       list.appendChild(li);
     });
     prevStates = {};
-    nodes.forEach(function (nd) { prevStates[nd.k] = nd.st; });
+    nodes.forEach(function (nd) { prevStates[nd.k] = nd.st + '|' + nd.n; });
     renderExplain();
     markTouched();
   }

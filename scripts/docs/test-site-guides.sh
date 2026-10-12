@@ -122,7 +122,7 @@ check_page() {
   while IFS= read -r id; do
     [ -n "$id" ] || continue
     jq -e --arg id "$id" '.cadences | map(.id) | index($id)' "$REGISTRY" >/dev/null || ids="$ids $id"
-  done < <(grep -o -E 'data-cadence="[^"]+"' "$page" | sed -E 's/^data-cadence="//; s/"$//' | sort -u)
+  done < <(grep -o -E "data-cadence=\"[^\"]+\"|[{,] c: '[^']+'" "$page" | sed -E "s/^data-cadence=\"//; s/\"\$//; s/^[{,] c: '//; s/'\$//" | sort -u)
   if [ -z "$ids" ]; then ok "$rel cadence ids are registry rows"; else bad "$rel cadence ids missing from the registry" "$ids"; fi
 
   text="$(strip_comments "$page")"
