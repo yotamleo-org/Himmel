@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SETTINGS="$ROOT/.claude/settings.json"
 fail=0
 
-command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not installed"; exit 0; }
+command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not installed, cannot assert the allow list"; exit 1; }
 
 for tool in \
   mcp__plugin_qmd_qmd__query mcp__plugin_qmd_qmd__get \
@@ -24,7 +24,7 @@ for tool in \
 done
 
 # Mutating/admin qmd tools must stay un-pre-approved.
-for tool in mcp__qmd__status mcp__qmd__multi_get mcp__qmd__*; do
+for tool in mcp__qmd__status mcp__qmd__multi_get 'mcp__qmd__*'; do
   if jq -e --arg t "$tool" '.permissions.allow | index($t) != null' "$SETTINGS" >/dev/null 2>&1; then
     echo "FAIL: allow list unexpectedly carries $tool"
     fail=1
