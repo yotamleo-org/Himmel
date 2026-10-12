@@ -513,12 +513,16 @@ _cli_bare_version() {
 # _npm_latest <package> — latest published version, empty when unreachable.
 _npm_latest() {
     command -v npm >/dev/null 2>&1 || return 0
-    local out
+    local out="" cache
+    # A private cache: --check and --versions promise to write nothing, and a
+    # bare `npm view` fills ~/.npm.
+    cache="$(mktemp -d "${TMPDIR:-/tmp}/himmel-npm-view.XXXXXX")" || return 0
     if command -v timeout >/dev/null 2>&1; then
-        out="$(timeout 30 npm view "$1" version 2>/dev/null)" || out=""
+        out="$(npm_config_cache="$cache" timeout 30 npm view "$1" version 2>/dev/null)" || out=""
     else
-        out="$(npm view "$1" version 2>/dev/null)" || out=""
+        out="$(npm_config_cache="$cache" npm view "$1" version 2>/dev/null)" || out=""
     fi
+    rm -rf "$cache"
     _cli_bare_version "$out"
 }
 
