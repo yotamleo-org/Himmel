@@ -27,17 +27,20 @@ want() { # $1 = source file name in the directory
 }
 
 rc=0
-dirs=$(git -C "$ROOT" ls-files | grep -E '(^|/)_?CLAUDE\.md$' | grep -vE "$EXCLUDE" | grep -v '^CLAUDE\.md$' \
+files=$(git -C "$ROOT" ls-files) || { echo "pointers: git ls-files failed in $ROOT" >&2; exit 2; }
+dirs=$(printf '%s\n' "$files" | grep -E '(^|/)_?CLAUDE\.md$' | grep -vE "$EXCLUDE" | grep -v '^CLAUDE\.md$' \
   | sed 's|/\{0,1\}[^/]*$||' | sort -u)
-for d in $dirs; do
+while IFS= read -r d; do
   dir="$ROOT/$d"; [ -n "$d" ] || dir="$ROOT"
   if [ -f "$dir/CLAUDE.md" ]; then src=CLAUDE.md; else src=_CLAUDE.md; fi
   tgt="$dir/AGENTS.md"
   if [ "$MODE" = "--write" ]; then
-    want "$src" > "$tgt"
+    want "$src" > "$tgt" || { echo "pointers: cannot write ${d:-.}/AGENTS.md" >&2; rc=1; }
   elif [ ! -f "$tgt" ] || [ "$(want "$src")" != "$(tr -d '\r' < "$tgt")" ]; then
     echo "pointers: ${d:-.}/AGENTS.md is missing or stale (source ${src})" >&2; rc=1
   fi
-done
+done <<EOF
+$dirs
+EOF
 [ "$rc" -eq 0 ] || echo "pointers: fix with: bash scripts/agents-md/pointers.sh --write" >&2
 exit "$rc"

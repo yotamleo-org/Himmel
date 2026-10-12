@@ -36,6 +36,16 @@ printf 'hand edit\n' >> "$F/sub/AGENTS.md"
 expect 1 "check fails on a hand-edited pointer" bash "$PTR" --check
 bash "$PTR" --write >/dev/null 2>&1
 expect 0 "check passes after re-write" bash "$PTR" --check
+mkdir -p "$F/has space"; printf '# sp\n' > "$F/has space/CLAUDE.md"; git -C "$F" add -A
+expect 1 "check fails on a directory name with a space" bash "$PTR" --check
+bash "$PTR" --write >/dev/null 2>&1
+if [ -f "$F/has space/AGENTS.md" ]; then ok "directory with a space gets its pointer"; else bad "directory with a space gets its pointer"; fi
+printf 'stale\n' > "$F/sub/AGENTS.md"; chmod a-w "$F/sub/AGENTS.md"
+if [ -w "$F/sub/AGENTS.md" ]; then ok "write-failure row skipped (running as a user that ignores modes)"
+else expect 1 "write fails loudly when a pointer cannot be written" bash "$PTR" --write; fi
+chmod u+w "$F/sub/AGENTS.md"
+mkdir -p "$TMP/notgit"
+expect 2 "check refuses a root where git ls-files fails" env POINTERS_ROOT="$TMP/notgit" bash "$PTR" --check
 unset POINTERS_ROOT
 
 # ---- the real repo ---------------------------------------------------------
