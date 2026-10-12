@@ -3977,7 +3977,8 @@ default (Opus 5.5 high measured ~2.7x cheaper per verdict, $8.23 vs $21.94,
 HIMMEL-3595); `headed-arm-leg.sh --judge` pins that for judge *sessions*, but an
 in-process `Agent` call passing `model: fable` silently overrides the agent's
 frontmatter, so this is the structural twin. The deny names HIMMEL-3630, the
-marker and the measured reason. No `model` (frontmatter/default applies), any
+marker and the measured reason. No `model` (that is
+`guard-subagent-model.sh`'s deny, below, not this hook's), any
 other model, another tool, or an unparseable payload → exit 0 with **no output**
 (workflow nudge, not a security fence: fails open, like `guard-leg-wakeup.sh`).
 The suite asserts `console-judge.md` still says `model: opus`, so a tier change
@@ -3986,6 +3987,23 @@ per-dispatch hook seam is known (they run inside the one `Workflow` tool call;
 `ponytail:` in the hook header, follow-up ticket in the PR body). Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`
 matcher, so there is no twin.
 Suite: `scripts/hooks/test-guard-agent-model.sh`.
+
+### `guard-subagent-model.sh` — an Agent dispatch must name a model (HIMMEL-2653, HIMMEL-5421)
+
+Fires on `Agent` (plugin-delivered, `marketplace/plugins/himmel-ops/hooks/hooks.json`).
+Denies (exit 2, structured `permissionDecision: deny`) any dispatch whose
+`tool_input.model` is absent, `null`, empty or whitespace-only, for **every**
+`subagent_type` except `fork` (a fork inherits the parent model and ignores
+`model`). A typed agent (`Explore`, `Plan`, `console-judge-ro`, a plugin agent)
+is no longer exempt: an unnamed model silently bills the parent tier. This
+hook owns "a model must be named"; `guard-agent-model.sh` owns "the named model
+must not be blocked" — neither repeats the other's check. The old
+`HIMMEL_REQUIRE_SUBAGENT_MODEL=1` opt-in is gone (deny is the default). Bypass:
+`SUBAGENT_MODEL_OK=1` in the launching shell. Fails open on a missing `jq`,
+unparseable or empty stdin, a non-`Agent` tool, a non-object `tool_input` or a
+wrong-typed `model` / `subagent_type`. Not covered: a `Workflow` script's
+`agent()` dispatches (same seam gap as above, HIMMEL-3849).
+Suite: `scripts/hooks/test-guard-subagent-model.sh`.
 
 ### `read-clamp.sh` — read-clamp PreToolUse hook (HIMMEL-2993)
 
