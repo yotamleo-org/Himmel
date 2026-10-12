@@ -920,10 +920,11 @@ git_default_branch() {
 # invocation. Its global options are skipped by git's own grammar, then the
 # subcommand's argv meets the deny rules. A word the hook cannot know (a
 # substitution, a $-expansion, a glob, an empty word, an unknown option, an
-# alias from -c or --config-env) in a global-option or subcommand position
-# leaves the invocation UNRESOLVED: its remaining words are read as text and
-# any destructive marker denies. A command word that is only an expansion
-# (`$(which git)`, "$GIT") is unresolved the same way.
+# alias from -c) in a global-option or subcommand position leaves the
+# invocation UNRESOLVED: its remaining words are read as text and any
+# destructive marker denies. A command word that is only an expansion
+# (`$(which git)`, "$GIT") is unresolved the same way. A --config-env alias
+# is refused outright: its body sits in an env var.
 #
 # Text the tokenizer does not model is retried with `${…}` flattened, then
 # with heredoc bodies dropped; past that, each line is tokenized alone or read
@@ -1104,14 +1105,16 @@ _gp_inv() {
                 case "${_gc_k[j + 1]}" in P|X|G) un=1; break ;; esac
                 case "$w:$v" in
                     *:) un=1; break ;;
-                    -c:alias.*|--config-env:alias.*) un=1; break ;;
+                    -c:alias.*) un=1; break ;;
+                    # The alias body sits in an env var the hook cannot read.
+                    --config-env:alias.*) deny "git --config-env alias" ;;
                     -c:clean.requireforce|-c:clean.requireforce=true|-c:clean.requireforce=1|-c:clean.requireforce=yes|-c:clean.requireforce=on) ;;
                     -c:clean.requireforce*|--config-env:clean.requireforce*) cf=1 ;;
                     -c:remote.*|-c:url.*|-c:push.*|-c:branch.*|-c:include*|-c:core.worktree*|-c:core.bare*) off=1 ;;
                 esac
                 [[ $v =~ ^[a-z0-9-]+\.[^=/]+= ]] || off=1
                 j=$((j + 2)) ;;
-            --config-env=alias.*) un=1; break ;;
+            --config-env=alias.*) deny "git --config-env alias" ;;
             --config-env=clean.requireforce*) off=1; cf=1; j=$((j + 1)) ;;
             --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|--attr-source=*|--shallow-file=*|--bare)
                 off=1; j=$((j + 1)) ;;
@@ -1179,6 +1182,15 @@ _gp_cmd() {
     return 0
 }
 
+# _gp_rec_word TEXT — add TEXT, leading blanks and one ! dropped, to the
+# caller's rec when it may hold a git command to walk.
+_gp_rec_word() {
+    local v=$1
+    v=${v#"${v%%[![:space:]]*}"}; v=${v#!}
+    case "$v" in *git*[[:space:]]*|*[[:space:]]*git*) rec+=("$v") ;; esac
+    return 0
+}
+
 # _gp_pass DEPTH LINES — walk the ST_* arrays st_tokenize just set. LINES is
 # the raw text to re-read line by line when it carries a heredoc, else empty.
 _gp_pass() {
@@ -1191,9 +1203,13 @@ _gp_pass() {
             segw[s]="${segw[s]:-} $k"
         fi
         if [ "$d" -lt 2 ]; then
+            # The word, and the text after its first `=` (a config value: an
+            # alias body, a !helper, core.sshCommand), each with a leading !
+            # dropped, since git runs `!cmd` through the shell.
             e=${ST_W[k]}
             [ "${ST_A[k]}" != 1 ] || e=${e#*=}
-            case "$e" in *git*[[:space:]]*|*[[:space:]]*git*) rec+=("$e") ;; esac
+            _gp_rec_word "$e"
+            case "$e" in *=*) _gp_rec_word "${e#*=}" ;; esac
         fi
         k=$((k + 1))
     done

@@ -603,6 +603,18 @@ assert_rc "R13- expansion refspec without a +"              0 "$(run_case "$(j_b
 # shellcheck disable=SC2016  # literal $ is the payload, not an expansion
 _many=$(printf '${x}%.0s' $(seq 300))
 assert_rc "R13+ 300 adjacent expansions in a command word"   2 "$(run_case "$(j_bash "${_many}git status")")"
+# HIMMEL-5358 judge j2441a: a git command inside a config value (an alias body,
+# a !helper, core.sshCommand) is read after its `=` with a leading ! dropped,
+# and an alias whose body lives in an env var (--config-env) is refused.
+assert_rc "R14+ alias body with !git reset --hard"           2 "$(run_case "$(j_bash "git config alias.undo '!git reset --hard HEAD~1' && git undo")")"
+assert_rc "R14+ alias body with !git push --force"           2 "$(run_case "$(j_bash "git config alias.x '!git push --force origin main' && git x")")"
+assert_rc "R14+ --config-env= alias, body in an env var"     2 "$(run_case "$(j_bash "X='!git reset --hard' git --config-env=alias.y=X y")")"
+assert_rc "R14+ --config-env alias, separate value word"     2 "$(run_case "$(j_bash "git --config-env alias.y=X y")")"
+assert_rc "R14+ credential.helper running a force push"      2 "$(run_case "$(j_bash "git -c credential.helper='!git push --force origin main' fetch")")"
+assert_rc "R14+ core.sshCommand running a hard reset"        2 "$(run_case "$(j_bash "git -c core.sshCommand='git reset --hard' fetch")")"
+assert_rc "R14- harmless alias"                              0 "$(run_case "$(j_bash "git config alias.st status && git st")")"
+assert_rc "R14- harmless !helper"                            0 "$(run_case "$(j_bash "git -c credential.helper='!gh auth git-credential' fetch")")"
+assert_rc "R14- harmless core.sshCommand"                    0 "$(run_case "$(j_bash "git -c core.sshCommand='ssh -i key' fetch")")"
 assert_rc "R13+ lease wildcard refspec"                      2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/*:refs/heads/*')")"
 assert_rc "R13+ chained cd disables the carve-out"            2 "$(run_case "$(j_bash 'cd /tmp && git push --force-with-lease origin fix/x')")"
 # HIMMEL-2054 CR round 2 (panel): a clustered short-flag bundle containing

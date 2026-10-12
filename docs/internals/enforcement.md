@@ -2158,7 +2158,10 @@ are stripped by git's own grammar (`-C`, `-c`, `--git-dir`, `--work-tree`,
 apply to the subcommand's own arguments. A word the tokenizer cannot resolve
 (an expansion or command substitution) in a global-option or subcommand
 position is refused for a destructive subcommand, and a word or assignment
-whose value carries a git command (`X="git reset --hard"; $X`) is re-parsed.
+whose value carries a git command (`X="git reset --hard"; $X`) is re-parsed,
+as is the text after a word's first `=` with a leading `!` dropped (an alias
+body, a `credential.helper=!…`, `core.sshCommand`). A `--config-env` alias is
+refused outright, since its body lives in an env var the hook cannot read.
 The lease carve-out survives an unrelated `-c key=value` (`core.pager`,
 `user.name`); `-C`, a `-c` touching `remote.*`/`url.*`/`push.*`/`branch.*`/
 `include*`/`core.worktree`/`core.bare`, or a malformed `-c` turn it off.
