@@ -111,8 +111,12 @@ echo "== after install: legitimate pushes still work =="
 git -C "$TMP_ROOT/a" reset -q --hard "origin/main" 2>/dev/null || git -C "$TMP_ROOT/a" reset -q --hard HEAD
 git -C "$TMP_ROOT/a" fetch -q origin 2>/dev/null
 git -C "$TMP_ROOT/a" reset -q --hard origin/main
-echo three > "$TMP_ROOT/a/c.txt"; git -C "$TMP_ROOT/a" add c.txt; git -C "$TMP_ROOT/a" commit -q -m three
+echo three > "$TMP_ROOT/a/c.txt"; git -C "$TMP_ROOT/a" add c.txt
+git -C "$TMP_ROOT/a" commit -q -m three; rc=$?
+assert_rc "fixture commit for the fast-forward push succeeds" 0 "$rc"
+tip=$(git -C "$TMP_ROOT/a" rev-parse HEAD)
 out=$(git -C "$TMP_ROOT/a" push origin main 2>&1); rc=$?
+check "fast-forward push advanced remote main to the new commit" test "$(git -C "$TMP_ROOT/a" ls-remote origin refs/heads/main | cut -f1)" = "$tip"
 assert_rc "fast-forward push to main still allowed (single-writer)" 0 "$rc"
 git -C "$TMP_ROOT/a" branch feat/x
 out=$(git -C "$TMP_ROOT/a" push origin feat/x 2>&1); rc=$?

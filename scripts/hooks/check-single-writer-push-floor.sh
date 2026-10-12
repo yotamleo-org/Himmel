@@ -13,7 +13,7 @@
 #
 # Stdin is git's pre-push contract: "<local_ref> <local_sha> <remote_ref>
 # <remote_sha>" per line. Exit 1 = refuse, 0 = allow.
-# No bypass, matching check-no-force-push.sh's main refusal: a deliberate
+# Security fence: fails CLOSED (a refusal is exit 1). No bypass, matching check-no-force-push.sh's main refusal: a deliberate
 # rewrite means removing the installed pre-push hook by hand.
 set -uo pipefail
 
