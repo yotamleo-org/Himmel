@@ -23,6 +23,9 @@
   "scripts/lib/claude-headless.sh": {
     "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK"]
   },
+  "scripts/codex/dispatch-codex-exec.sh": {
+    "seam_env_vars": ["CODEX_BIN", "CODEX_HOOK_TRUST_CHECK"]
+  },
   "scripts/quiet-run.sh": {
     "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL"],
     "internal_seams": ["HIMMEL_SUITE_SLOT_HELD"]

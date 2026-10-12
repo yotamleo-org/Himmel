@@ -32,6 +32,22 @@ The host-driven validator `scripts/test-install-symmetry-vm.sh [user@host] [port
 [identity]` GAP-skips the git-dependent suites when git is absent rather than
 failing, so it stays green on a not-yet-bootstrapped box.
 
+**Dependency-upgrade stage (HIMMEL-5267, opt-in).** `HIMMEL_VM_E2E_UPGRADE=1`
+makes that validator run `scripts/vm/upgrade-path-e2e.sh` after a green symmetry
+pass (also runnable alone). It pins the tree's baseline versions in the guest,
+upgrades to the station targets, and asserts: `himmel-doctor` shows no new FAIL
+(the two harness-artefact WARNs, C32 and C42, are allowlisted by name), the
+`cli-proxy-api` `/v1/models` answers 200, graphify update + query, qmd add +
+search, and `lane-canary.sh --dry-run`. The targets are stage inputs, not repo
+pins: `UPGRADE_AST_GREP_VERSION`, `UPGRADE_GRAPHIFY_VERSION`,
+`UPGRADE_CLIPROXY_VERSION`, `UPGRADE_CLIPROXY_SHA256`. `--expect-red` swaps in a
+bad sha and passes only when the stage fails on the checksum. Run it on a
+disposable `himmel-ar-N` clone and restore `suite-ready-v4` + power off after.
+Not covered: `himmel-update pull` (needs a credentialed clone) and the live lane
+canaries, which stay a host step after the station roll.
+`scripts/setup/cli-proxy-lane.sh` accepts `CLIPROXY_API_VERSION` +
+`CLIPROXY_API_SHA256` (both required together) to install a non-pinned release.
+
 The upgrade-path counterpart `scripts/test-luna-upgrade-vm.sh [user@host] [port]
 [identity]` (HIMMEL-493 Linux, HIMMEL-522 Windows) stages the real
 `templates/luna-second-brain/` to the VM and proves the `/luna-upgrade` ENGINE

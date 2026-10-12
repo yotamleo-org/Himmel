@@ -1,0 +1,32 @@
+{
+  "_comment": "HIMMEL-5317 graphify leg A/B task set. Ground truth is NOT stored here: truth.py computes it from the pinned base sha with the rule named in each task's `truth` field, so the answer is fixed before any run and the rubric is an exact set match.",
+  "base_sha": "ad9442348e96498bf5716249b2bf100627841b72",
+  "answer_format": "Finish your reply with exactly one line: ANSWER: [\"item1\", \"item2\", ...] -- a JSON array of strings, each a bare basename or repo-relative path as the question asks, no other text on that line.",
+  "tasks": [
+    {
+      "id": "t1-mustrun-members",
+      "truth": "mustrun-members",
+      "prompt": "In this repository, scripts/hooks/run-hook-with-bash.js defines a constant named MUST_RUN_CHAIN_MEMBERS. List every hook script basename that is a member of that set (e.g. 'foo.sh'). Read-only: do not modify anything."
+    },
+    {
+      "id": "t2-graphify-bin-suites",
+      "truth": "graphify-bin-suites",
+      "prompt": "List every tracked test file under scripts/ (a file whose basename starts with 'test-') that references scripts/lib/graphify-bin.sh, i.e. contains the string 'graphify-bin.sh'. Give repo-relative paths. Read-only: do not modify anything."
+    },
+    {
+      "id": "t3-go-sh-callers",
+      "truth": "go-sh-scripts",
+      "prompt": "List every tracked '.sh' file under scripts/ whose basename does NOT start with 'test-' and which is NOT under a directory named 'fixtures', and that mentions 'console-kit/go.sh' (the console GO writer) anywhere in its text, comments included, other than console-kit/go.sh itself. Give repo-relative paths. Read-only: do not modify anything."
+    },
+    {
+      "id": "t4-trust-path-readers",
+      "truth": "trust-list-mentions",
+      "prompt": "List every tracked file under scripts/ that mentions 'ci-trust-paths.txt' and whose basename does NOT start with 'test-', does NOT contain '.test.', is NOT under a directory named 'fixtures', and is not scripts/ci/ci-trust-paths.txt itself. Give repo-relative paths. Read-only: do not modify anything."
+    },
+    {
+      "id": "t5-qmd-only-profiles",
+      "truth": "qmd-only-profiles",
+      "prompt": "scripts/lanes/plugin-profiles.json defines named plugin profiles under its top-level 'profiles' key. List the names of every profile whose 'mcpServers' list is exactly [\"qmd\"] (qmd and nothing else). Read-only: do not modify anything."
+    }
+  ]
+}

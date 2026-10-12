@@ -14,8 +14,11 @@
 # to different paths, so neither can rewrite the settings an armed relaunch
 # already points at; identical content reuses one path. Old files are left alone.
 #
-# Usage: profile-settings.sh <profile>
+# Usage: profile-settings.sh <profile> [--mcp-config]
 #   stdout: absolute path of <hash>/<profile>.json; rc 0
+#   --mcp-config (HIMMEL-5310): the path of mcp-<hash>/<profile>.mcp.json holding
+#           the profile's mcpServers, for `--mcp-config <file> --strict-mcp-config`;
+#           empty output (rc 0) when the profile declares no mcpServers.
 #   rc 2:   FAIL CLOSED - unknown profile / resolver failure / unwritable dir.
 #           A launch that silently runs with the full plugin set is exactly the
 #           gap this exists to close, so callers must refuse on rc != 0.
@@ -26,8 +29,14 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROFILE="${1:-}"
+MODE=settings
 case "$PROFILE" in
-    ''|*[!A-Za-z0-9._-]*) echo "profile-settings: usage: profile-settings.sh <profile> (got '${PROFILE}')" >&2; exit 2 ;;
+    ''|*[!A-Za-z0-9._-]*) echo "profile-settings: usage: profile-settings.sh <profile> [--mcp-config] (got '${PROFILE}')" >&2; exit 2 ;;
+esac
+case "${2:-}" in
+    '') ;;
+    --mcp-config) MODE=mcp-config ;;
+    *) echo "profile-settings: unknown argument '$2'" >&2; exit 2 ;;
 esac
 DIR="${HIMMEL_PROFILE_SETTINGS_DIR:-${HOME:-/tmp}/.himmel/launch-profiles}"
 CWD="${HIMMEL_PROFILE_REPO:-$HERE/../..}"
@@ -47,10 +56,39 @@ esac
 DIR="$DIR/$HASH"
 mkdir -p "$DIR" 2>/dev/null || { echo "profile-settings: cannot create $DIR" >&2; exit 2; }
 OUT="$DIR/$PROFILE.json"
+if [ "$MODE" = mcp-config ]; then
+    # HIMMEL-5310: the profile's mcpServers allowlist as a --mcp-config file, for
+    # a launch that passes it with --strict-mcp-config. Empty output, rc 0: the
+    # profile declares no allowlist, so the launch adds nothing.
+    if ! NAMES="$(cd "$CWD" && node "$HERE/plugin-profiles.mjs" "$PROFILE" --mcp-servers 2>&1)"; then
+        echo "profile-settings: profile '$PROFILE' mcp-servers did not resolve: $NAMES" >&2
+        exit 2
+    fi
+    [ "$NAMES" = null ] && exit 0
+    if ! MCP="$(cd "$CWD" && node "$HERE/plugin-profiles.mjs" "$PROFILE" --mcp-config 2>&1)" || [ -z "$MCP" ]; then
+        echo "profile-settings: profile '$PROFILE' mcp-config did not resolve: $MCP" >&2
+        exit 2
+    fi
+    case "$MCP" in '{'*) ;; *) echo "profile-settings: profile '$PROFILE' mcp-config output is not JSON: $MCP" >&2; exit 2 ;; esac
+    # Own hash: the file's content depends on ~/.claude.json, not only the registry.
+    if command -v sha256sum >/dev/null 2>&1; then HASH="$(printf '%s\n' "$MCP" | sha256sum | cut -c1-12)"
+    else HASH="$(printf '%s\n' "$MCP" | shasum -a 256 | cut -c1-12)"; fi
+    DIR="${DIR%/*}/mcp-$HASH"
+    mkdir -p "$DIR" 2>/dev/null || { echo "profile-settings: cannot create $DIR" >&2; exit 2; }
+    # The servers' env/headers come from ~/.claude.json and may carry credentials.
+    chmod 700 "$DIR" 2>/dev/null || { echo "profile-settings: cannot restrict $DIR to 0700" >&2; exit 2; }
+    OUT="$DIR/$PROFILE.mcp.json"
+    JSON="$MCP"
+fi
 TMP="$OUT.tmp.$$"
 if ! printf '%s\n' "$JSON" > "$TMP" || ! mv -f "$TMP" "$OUT"; then
     rm -f "$TMP"
     echo "profile-settings: cannot write $OUT" >&2
     exit 2
 fi
-printf '%s\n' "$(cd "$DIR" && pwd)/$PROFILE.json"
+if [ "$MODE" = mcp-config ] && ! chmod 600 "$OUT" 2>/dev/null; then
+    rm -f "$OUT"
+    echo "profile-settings: cannot restrict $OUT to 0600" >&2
+    exit 2
+fi
+printf '%s\n' "$(cd "$DIR" && pwd)/${OUT##*/}"

@@ -2194,6 +2194,39 @@ check "43 headless console --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the console --settings (HIMMEL-4052)" "$out43" "--settings"
 
+# --- 43b (HIMMEL-5310): a console arm launches with only the console profile's
+# MCP servers: --mcp-config <file> + --strict-mcp-config, so a user-level server
+# (graphify) never reaches the console. Both the headed and the headless argv.
+for _m43 in headed headless; do
+  d43b="$tmp/c43b-$_m43"; mk_stub "$d43b" 1 alive
+  _hl43=0; [ "$_m43" = headless ] && _hl43=1
+  rc43b=0
+  out43b=$(HEADED_ARM_HEADLESS="$_hl43" LEG_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
+    KONSOLE_CMD="$d43b/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" HEADED_ARM_PROC="$d43b/proc" \
+    bash "$SCRIPT" --dry-run --role console "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
+  check "43b $_m43 console --dry-run: exit 0" "$rc43b" "0"
+  contains "43b $_m43 console: argv carries --strict-mcp-config (HIMMEL-5310)" "$out43b" "--strict-mcp-config"
+  contains "43b $_m43 console: argv carries the console --mcp-config file" "$out43b" "console.mcp.json"
+done
+
+# --- 43d (HIMMEL-5310): the console's MCP allowlist names an undefined server
+# (the settings still resolve): refuse, exit 2, konsole never invoked.
+d43d="$tmp/c43d"; mk_stub "$d43d" 1 alive
+python3 - "$HERE/../lanes/plugin-profiles.json" "$d43d/registry.json" <<'PYE'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+json.dump(d, open(sys.argv[2], "w"))
+PYE
+rc43d=0
+out43d=$(PLUGIN_PROFILES_REGISTRY="$d43d/registry.json" KONSOLE_CMD="$d43d/konsole" PGREP_CMD=true HEADED_ARM_CLAUDE_CLI=true \
+  HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43d/locks" HEADED_ARM_PROC="$d43d/proc" \
+  bash "$SCRIPT" --dry-run --role console "HIMMEL-mc43d" "doc43d.md" "$d43d/signal-never" "$PAST" "$d43d/log" 2>&1) || rc43d=$?
+check "43d unresolvable MCP allowlist: console --dry-run exits 2" "$rc43d" "2"
+contains "43d unresolvable MCP allowlist: names the MCP allowlist refusal" "$out43d" "console MCP allowlist did not resolve"
+[ ! -e "$d43d/record" ] && echo "ok - 43d konsole never invoked" \
+  || { echo "FAIL - 43d konsole was invoked despite the refusal"; fails=$((fails+1)); }
+
 # --- bb (HIMMEL-4832): HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
 # the session name via `bus bind <name> <pid>`. The bus CLI is a recording stub
 # (HEADED_ARM_BUS_CLI); the flag is consumed, never leaked into the session.
