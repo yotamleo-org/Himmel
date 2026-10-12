@@ -21,7 +21,7 @@ command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
 REAL_GIT="$(command -v git)"
-SHIM="$(mktemp -d /tmp/himmel-4391-gitshim.XXXXXX)" || exit 1
+SHIM="$(mktemp -d "${TMPDIR:-/tmp}/himmel-4391-gitshim.XXXXXX")" || exit 1
 OUT="$SHIM/out"; ERR="$SHIM/err"
 trap 'rm -rf "$SHIM"' EXIT
 

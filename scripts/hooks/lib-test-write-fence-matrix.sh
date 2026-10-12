@@ -375,6 +375,9 @@ _matrix_order_selftest() {
         "$cellfn" "$primary" "$wt" "$json" "$cmd" true
     fi
     rm -rf "$dir"
+    # The cell command must have run to completion in both arms, or its
+    # verdicts describe a broken fixture rather than an ordering.
+    [ "$m_realrc" = 0 ] || { printf 'FIXTURE-FAIL'; return 0; }
     # The reason query is part of the verdict: a runner that asks it AFTER the
     # mutation sees no deny reason in the mutate arm and one in the no-op arm.
     if [ -n "$m_err" ]; then printf '%s|%s|reason' "$m_d" "$m_f"; else printf '%s|%s|noreason' "$m_d" "$m_f"; fi
