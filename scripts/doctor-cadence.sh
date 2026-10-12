@@ -55,6 +55,7 @@ resolve_primary() {
 # comment every day. A Jira failure leaves the id unrecorded (retried next run).
 file_persisting_warns() { # <root> <keys> <log>; STATE_DIR/alerted.tsv = previous run
     local root="$1" keys="$2" log="$3" k id found desc proj="${JIRA_PROJECT_KEY:-HIMMEL}" tf="$STATE_DIR/ticketed.tsv"
+    local mirror="${DOCTORCAD_MIRROR_DIR:-${HOME:-}/.himmel/state/jira-mirror/$proj}" f candidate query
     local -a J
     if [ -n "${DOCTORCAD_JIRA_CMD:-}" ]; then read -ra J <<< "$DOCTORCAD_JIRA_CMD"
     elif [ -f "$root/scripts/jira/dist/index.js" ]; then J=(node "$root/scripts/jira/dist/index.js")
@@ -68,9 +69,31 @@ file_persisting_warns() { # <root> <keys> <log>; STATE_DIR/alerted.tsv = previou
         grep -qxF "$k" "$STATE_DIR/alerted.tsv" || continue
         id="${k#WARN }"
         grep -qxF "$id" "$tf" && continue
-        found="$(JIRA_PROJECT_KEY="$proj" "${J[@]}" list --jql "project = $proj AND labels = doctor AND statusCategory != Done AND summary ~ \"\\\"$id\\\"\"" 2>/dev/null)" || continue
+        # Search the local mirror first, then verify candidates live: the mirror
+        # may lag a ticket closure. Do not require our label on existing work.
+        query="project = $proj AND statusCategory != Done AND text ~ \"\\\"$id\\\"\""
+        for f in "$mirror"/"$proj"-*.md; do
+            [ -f "$f" ] || continue
+            grep -wF "$id" "$f" >/dev/null || continue
+            grep -q '^statusCategory: "Done"$' "$f" && continue
+            candidate="${f##*/}"; candidate="${candidate%.md}"
+            [[ "$candidate" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || continue
+            query="project = $proj AND statusCategory != Done AND (key = $candidate OR text ~ \"\\\"$id\\\"\")"
+            break
+        done
+        found="$(JIRA_PROJECT_KEY="$proj" "${J[@]}" list --jql "$query" 2>/dev/null)" || continue
         found="$(printf '%s\n' "$found" | grep -oE -m1 '^[A-Z][A-Z0-9]*-[0-9]+')" || found=""
-        desc="himmel-doctor WARN $id was present in two consecutive daily runs.
+        desc="## Impact
+The station has a persistent tool-health warning ($id).
+
+## What
+Resolve the warning or correct the doctor check if it is inaccurate.
+
+## Why
+The warning was present in two consecutive daily runs; leaving it unresolved teaches operators to ignore tool health.
+
+## Agent detail
+Check scripts/himmel-doctor.sh ($id) and its regression suite scripts/test-himmel-doctor.sh. Done when the warning is resolved or accurately classified with a paste-ready remedy.
 $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
         if [ -n "$found" ]; then
             JIRA_PROJECT_KEY="$proj" "${J[@]}" comment "$found" "$desc" >/dev/null 2>&1 || continue

@@ -6395,6 +6395,11 @@ git -C "$c60_t/hermes" remote add origin git@github.com:NousResearch/hermes-agen
 out="$(c60_run)"
 if grepq "$out" -F 'WARN C60-hermes-origin' && grepq "$out" -F 'remote set-url origin https://github.com/NousResearch/hermes-agent.git'; then pass "C60 ssh -> WARN"; else fail "C60 ssh -> $(printf '%s' "$out" | grep -A1 C60)"; fi
 
+echo "== C60-hermes-origin: global insteadOf must not hide an ssh origin =="
+printf '[url "https://github.com/"]\n\tinsteadOf = git@github.com:\n' > "$c60_t/global.gitconfig"
+out="$(GIT_CONFIG_GLOBAL="$c60_t/global.gitconfig" c60_run)"
+if grepq "$out" -F 'WARN C60-hermes-origin'; then pass "C60 rewritten ssh -> WARN"; else fail "C60 rewritten ssh -> $(printf '%s' "$out" | grep -A1 C60)"; fi
+
 echo "== C60-hermes-origin: https origin -> OK =="
 git -C "$c60_t/hermes" remote set-url origin https://github.com/NousResearch/hermes-agent.git
 out="$(c60_run)"

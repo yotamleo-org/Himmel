@@ -4010,7 +4010,8 @@ check_c59_codex_bank_cache() {
 # --- C60-hermes-origin: an ssh origin breaks `hermes update` (HIMMEL-5382) ------
 # hermes's updater runs git with the global url.insteadOf ignored
 # (GIT_CONFIG_GLOBAL=/dev/null) and ssh forced to BatchMode, so an ssh origin
-# fails the remote read. Read-only: it only reads the origin url.
+# can fail without a usable key/agent. Read-only: read the stored origin url,
+# not remote get-url, which applies the global insteadOf rewrite.
 check_c60_hermes_origin() {
     local co="${DOCTOR_HERMES_CHECKOUT:-}" url
     if [ -z "$co" ]; then
@@ -4023,9 +4024,9 @@ check_c60_hermes_origin() {
         emit INFO C60-hermes-origin "no hermes checkout at $co — origin not checked"
         return
     fi
-    url="$(git -C "$co" remote get-url origin 2>/dev/null)" || url=""
+    url="$(git -C "$co" config --get remote.origin.url 2>/dev/null)" || url=""
     case "$url" in
-        git@*|ssh://*) emit WARN C60-hermes-origin "hermes checkout origin is ssh ($url) — hermes update forces non-interactive git and cannot use it" "git -C $co remote set-url origin https://github.com/NousResearch/hermes-agent.git" ;;
+        git@*|ssh://*) emit WARN C60-hermes-origin "hermes checkout origin is ssh ($url) — hermes update ignores global URL rewrites and requires a usable non-interactive SSH key or agent" "git -C $(printf '%q' "$co") remote set-url origin https://github.com/NousResearch/hermes-agent.git" ;;
         '') emit INFO C60-hermes-origin "hermes checkout $co has no origin remote — not checked" ;;
         *) emit OK C60-hermes-origin "hermes checkout origin is not ssh ($url)" ;;
     esac
@@ -4035,7 +4036,7 @@ check_c60_hermes_origin() {
 # Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
 # unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
 check_c61_codex_cli() {
-    local bin="${DOCTOR_CODEX_BIN:-codex}" cur latest oldest
+    local bin="${DOCTOR_CODEX_BIN:-codex}" cur latest older timeout_bin="" t
     if ! command -v "$bin" >/dev/null 2>&1; then
         emit INFO C61-codex-cli "codex CLI not installed — version not checked"
         return
@@ -4043,14 +4044,28 @@ check_c61_codex_cli() {
     cur="$("$bin" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
     latest="${DOCTOR_CODEX_LATEST:-}"
     if [ -z "$latest" ] && command -v npm >/dev/null 2>&1; then
-        latest="$(timeout 10 npm view @openai/codex version 2>/dev/null | grep -oE '^[0-9]+(\.[0-9]+)+$' | head -1)"
+        for t in ${HIMMEL_DOCTOR_TIMEOUT_BINS:-timeout gtimeout}; do
+            timeout_bin="$(command -v "$t" 2>/dev/null)" && break
+            timeout_bin=""
+        done
+        # Without a timeout implementation, skip rather than hang on a registry.
+        if [ -n "$timeout_bin" ]; then
+            latest="$("$timeout_bin" 10 npm view @openai/codex version 2>/dev/null | grep -oE '^[0-9]+(\.[0-9]+)+$' | head -1)"
+        fi
     fi
     if [ -z "$cur" ] || [ -z "$latest" ]; then
         emit INFO C61-codex-cli "could not read the codex CLI version or the latest release — not checked"
         return
     fi
-    oldest="$(printf '%s\n%s\n' "$cur" "$latest" | sort -V | head -1)"
-    if [ "$cur" != "$latest" ] && [ "$oldest" = "$cur" ]; then
+    older="$(awk -v cur="$cur" -v latest="$latest" 'BEGIN {
+        n=split(cur, c, "."); m=split(latest, l, ".")
+        for (i=1; i<=n || i<=m; i++) {
+            if (c[i]+0 < l[i]+0) { print 1; exit }
+            if (c[i]+0 > l[i]+0) { print 0; exit }
+        }
+        print 0
+    }')"
+    if [ "$older" = 1 ]; then
         emit WARN C61-codex-cli "codex CLI $cur is older than the latest release $latest" "npm install -g @openai/codex@latest"
     else
         emit OK C61-codex-cli "codex CLI $cur is current (latest $latest)"

@@ -126,7 +126,11 @@ cat > "$W/jira" <<'SH'
 printf '%s\n' "$*" >> "$JIRA_LOG"
 case "$1" in
     list) cat "$JIRA_LIST_OUT" 2>/dev/null ;;
-    create) echo "HIMMEL-9001" ;;
+    create)
+        for heading in '## Impact' '## What' '## Why' '## Agent detail'; do
+            case "$*" in *"$heading"*) ;; *) exit 1 ;; esac
+        done
+        echo "HIMMEL-9001" ;;
 esac
 exit 0
 SH
@@ -139,7 +143,7 @@ run_cad
 check "a first-seen WARN files no ticket" 0 "$(jira_n create)"
 run_cad
 check "the same WARN in a 2nd consecutive run files one ticket" 1 "$(jira_n create)"
-grep '^create' "$JIRA_LOG" | grep -q 'C77-stuck' && pass "the ticket names the check id" || fail "the ticket names the check id"
+grep '^create.*C77-stuck' "$JIRA_LOG" >/dev/null && pass "the ticket names the check id" || fail "the ticket names the check id"
 run_cad
 check "a 3rd run does not file a second ticket" 1 "$(jira_n create)"
 # an existing open ticket for the id is extended, not re-filed
@@ -148,6 +152,14 @@ doctor_out "" "C78-old"
 run_cad; run_cad
 check "an existing ticket is not re-filed" 0 "$(jira_n create)"
 grep -q '^comment HIMMEL-123' "$JIRA_LOG" && pass "the existing ticket gets a comment" || fail "the existing ticket gets a comment"
+# Mirror candidates are searched before the live summary fallback.
+export DOCTORCAD_MIRROR_DIR="$W/mirror"
+mkdir -p "$DOCTORCAD_MIRROR_DIR"
+printf '%s\n' '---' 'statusCategory: "In Progress"' '---' '# HIMMEL-123: Existing tool health work' 'C78-old' > "$DOCTORCAD_MIRROR_DIR/HIMMEL-123.md"
+rm -rf "$STATE"; : > "$JIRA_LOG"
+run_cad; run_cad
+if grep -F 'key = HIMMEL-123' "$JIRA_LOG" >/dev/null; then pass "mirror candidate checked before filing"; else fail "mirror candidate checked before filing"; fi
+unset DOCTORCAD_MIRROR_DIR
 # a FAIL never files a ticket; a WARN that leaves and returns is not 2 consecutive
 rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
 doctor_out "C16-hooks" ""; run_cad; run_cad
