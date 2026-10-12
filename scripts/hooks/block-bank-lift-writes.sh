@@ -52,10 +52,12 @@
 # while that copy is byte-identical to the primary's (HIMMEL-4458; HIMMEL-4545
 # closed the edited-copy case: a worktree copy that differs no longer runs).
 # HIMMEL-4545 also closed a glob source into a computed destination
-# (d=<state>; cp dir/* "$d", --parents too). Still open, verified at base and
-# head: a redirect or tee to an inherited env value (`> "$X"`, X set outside
-# the command) is allowed, since denying every `> "$VAR"` would break the
-# fleet (HIMMEL-5159); upgrade path is the operator-owned lift above.
+# (d=<state>; cp dir/* "$d", --parents too). HIMMEL-5348 closed a write to an
+# inherited env value (`> "$X"`, `cp x "$A""$B$C"`, X set outside the
+# command): every write destination goes through one resolver (the
+# "destination resolver" section) that expands env references to their
+# inherited values, so only a value naming the lift denies, never every
+# `> "$VAR"`. What it cannot see stays under HIMMEL-5341 (below the resolver).
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
 # 211,645 rows (0.40 %): ~725 relative or computed copy destinations and
 # sources under an unproven cwd, 110 computed extraction destinations
@@ -334,6 +336,88 @@ _lift_ref1() {
 
 is_lift() { [ "$(lift_ref "$1")" = LIFT ]; }
 
+# ------------------------------------------------- destination resolver ---
+# HIMMEL-5348 (judge j2413f): ONE resolver for every write destination — a
+# redirect target, tee/sponge/touch/truncate, cp/mv/install/ln/rsync, dd of=,
+# sort -o and the other -o/--output options, sed -i and sed w, an
+# interpreter's path operand (perl -i), find/xargs operands. The tokenizer has
+# already dequoted the word (`"$A""$B$C"` and `"$A"/state/bank-"$C"` arrive as
+# one word); the resolver expands its environment references to the values
+# the hook inherited (the hook runs in the command's environment), and
+# lift_ref expands ~ and normalises (//, /./, ..). The verdict is the stronger
+# of the word as written and the expanded word, so no verdict the word earned
+# on its own is lost.
+# No parameter-expansion evaluator: the shell that runs the word may be zsh,
+# so any operator is unmodelled text and fails closed: a braced form other
+# than plain ${NAME} (${X:-y}, ${!R}, ${#V}, ${(P)R}), a zsh flag form
+# ($~X $=X $^X $#X $+X), a zsh modifier or subscript ($X:h, $X[1,-3]), and a
+# referenced value that itself names the state dir or the lift.
+# ponytail: accepted over-deny, an operator form in a destination
+# (`> "${LOG:-/tmp/l}"`) and a destination referencing a variable that holds
+# the state dir. Still fail OPEN (HIMMEL-5341): a variable the command assigns
+# first is read at its INHERITED value (the word as written is still judged),
+# a destination built from $(...) or backticks, and `$_`; upgrade path is an
+# assignment model under HIMMEL-5341.
+
+# _env_expand <dequoted-word>: REPLY = the word with every $NAME / ${NAME}
+# replaced by its inherited value (unset = empty); 1 = fail closed.
+# shellcheck disable=SC2016  # literal $ and ${ } text is matched, not expanded
+_env_expand() {
+    local LC_ALL=C
+    local rest="$1" out='' n v nxt
+    local re_br='^\$\{([A-Za-z_][A-Za-z0-9_]*)\}'
+    local re_nm='^\$([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ "$rest" == *'$'* ]]; do
+        out="$out${rest%%\$*}"; rest="\$${rest#*\$}"
+        if [[ "$rest" =~ $re_br ]]; then
+            n="${BASH_REMATCH[1]}"
+        elif [[ "$rest" =~ $re_nm ]]; then
+            n="${BASH_REMATCH[1]}"
+            nxt="${rest:${#BASH_REMATCH[0]}:1}"
+            case "$nxt" in ':'|'[') return 1 ;; esac
+        else
+            case "$rest" in '${'*|'$~'*|'$='*|'$^'*|'$#'*|'$+'*) return 1 ;; esac
+            out="$out\$"; rest="${rest:1}"; continue
+        fi
+        rest="${rest:${#BASH_REMATCH[0]}}"
+        v=$(printenv -- "$n" 2>/dev/null) || v=''
+        case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 1 ;; esac
+        if [ -n "$v" ] && is_lift "$v"; then return 1; fi
+        out="$out$v"
+    done
+    REPLY="$out$rest"
+}
+
+# dest_ref <word>: REPLY = LIFT | STATE | HIMMEL | HOME | NONE, the stronger of
+# lift_ref on the word and on its expanded form; DEST_X = the expanded word
+# (the word itself when it references nothing); DEST_WHY = a deny-message
+# suffix when the verdict is a fail-closed one.
+DEST_X=""; DEST_WHY=""
+dest_ref() {
+    local k
+    DEST_X="$1"; DEST_WHY=""
+    REPLY=$(lift_ref "$1")
+    [ "$REPLY" = LIFT ] && return 0
+    case "$1" in *'$'*) ;; *) return 0 ;; esac
+    k=$REPLY
+    if ! _env_expand "$1"; then
+        REPLY=LIFT
+        DEST_WHY="; it references the environment in a form the fence does not evaluate, or a value naming the lift or its state dir (fail-closed)"
+        return 0
+    fi
+    DEST_X=$REPLY
+    REPLY=$(lift_ref "$DEST_X")
+    case "$k:$REPLY" in
+        *:LIFT) ;;
+        STATE:*) REPLY=STATE ;;
+        HIMMEL:STATE) ;;
+        HIMMEL:*) REPLY=HIMMEL ;;
+        HOME:NONE) REPLY=HOME ;;
+    esac
+    return 0
+}
+is_lift_dest() { dest_ref "$1"; [ "$REPLY" = LIFT ]; }
+
 # ------------------------------------------------------------ file tools ---
 case "$tool" in
     Write|Edit|MultiEdit|NotebookEdit)
@@ -513,6 +597,7 @@ END {
         if (c == "&" && c2 == ">") {
             emit_mark(SB "W"); i++
             if (substr(s, i + 1, 1) == ">") i++
+            if (substr(s, i + 1, 1) == "!") i++
             continue
         }
         if (c == ";" || c == "&" || c == "|" || c == "(") { flush(); continue }
@@ -521,12 +606,14 @@ END {
             j = i + 1
             if (substr(s, j, 1) == ">") j++
             if (substr(s, j, 1) == "|") j++
+            if (substr(s, j, 1) == "!") j++
             if (substr(s, j, 1) == "&") {
                 j++
                 if (substr(s, j, 1) ~ /[0-9-]/) {
                     while (substr(s, j, 1) ~ /[0-9-]/) j++
                     emit_tok(); i = j - 1; continue
                 }
+                if (substr(s, j, 1) == "!") j++
             }
             emit_mark(SB "W"); i = j - 1; continue
         }
@@ -920,7 +1007,7 @@ _rel_unproven() {
 # aliasing rules.
 check_copy() {
     local verb="$1"; shift
-    local tdir="" T=0 sym=0 a v kind src srcb need dest dk endopts=0 parents=0 rel
+    local tdir="" T=0 sym=0 a v kind src srcb need dest dk dx endopts=0 parents=0 rel
     local -a pos=()
     while [ $# -gt 0 ]; do
         a="$1"; shift
@@ -984,7 +1071,8 @@ check_copy() {
     if [ "$sym" = 1 ]; then
         for src in ${pos[@]+"${pos[@]}"}; do
             _rel_unproven "$src" && deny "$verb links to a relative source ($src): $UNPROVEN_FIX"
-            case "$(lift_ref "$src")" in LIFT|STATE) deny "$verb links to the bank lift or its directory ($src)" ;; esac
+            dest_ref "$src"
+            case "$REPLY" in LIFT|STATE) deny "$verb links to the bank lift or its directory ($src)$DEST_WHY" ;; esac
         done
     fi
     # With the cwd unproven a relative destination cannot be placed (the
@@ -1006,12 +1094,14 @@ check_copy() {
             rel="$src"
             case "$verb:$rel" in rsync:*/./*) rel="${rel#*/./}" ;; esac
             rel="${rel#/}"
-            case "$(lift_ref "${dest%/}/$rel")" in
-                LIFT|STATE) deny "$verb --parents/-R recreates the bank lift's path under $dest ($src)" ;;
+            dest_ref "${dest%/}/$rel"
+            case "$REPLY" in
+                LIFT|STATE) deny "$verb --parents/-R recreates the bank lift's path under $dest ($src)$DEST_WHY" ;;
             esac
             if _is_dynamic "$dest"; then
-                case "$(lift_ref "/$rel")" in
-                    LIFT|STATE) deny "$verb --parents/-R recreates the bank lift's path under $dest ($src)" ;;
+                dest_ref "/$rel"
+                case "$REPLY" in
+                    LIFT|STATE) deny "$verb --parents/-R recreates the bank lift's path under $dest ($src)$DEST_WHY" ;;
                 esac
             fi
         done
@@ -1031,9 +1121,10 @@ check_copy() {
             done
         done
     fi
-    dk=$(lift_ref "$dest")
+    dest_ref "$dest"
+    dk=$REPLY; dx=$DEST_X
     case "$dk" in
-        LIFT) deny "$verb writes the bank lift ($dest)" ;;
+        LIFT) deny "$verb writes the bank lift ($dest)$DEST_WHY" ;;
         STATE) need="$LIFT_NAME" ;;
         HIMMEL) need=state ;;
         HOME) need=.himmel ;;
@@ -1046,7 +1137,7 @@ check_copy() {
     # that is a literal existing regular file cannot do that, so only an
     # unknowable or directory source denies here.
     if { [ "$dk" = STATE ] || [ "$dk" = HIMMEL ]; } && [ -z "$tdir" ]; then
-        kind=$(_expand "$dest")
+        kind=$(_expand "$dx")
         case "$kind" in
             '?/'*) ;;
             *) if [ ! -d "$kind" ]; then
@@ -1114,7 +1205,7 @@ check_sed_scripts() {
                 p="${p#*[wW]}"
                 cand="${p#"${p%%[![:space:]]*}"}"
                 [ -n "$cand" ] || continue
-                is_lift "$cand" && deny "a sed w/W command writes the bank lift ($cand)"
+                is_lift_dest "$cand" && deny "a sed w/W command writes the bank lift ($cand)$DEST_WHY"
             done
         done <<EOF
 $a
@@ -1168,7 +1259,7 @@ EOF
             case "$t" in
                 $'\002W')
                     i=$((i+1)); t="${tk[$i]:-}"
-                    if [ -n "$t" ] && is_lift "$t"; then deny "a redirect writes the bank lift ($t)"; fi
+                    if [ -n "$t" ] && is_lift_dest "$t"; then deny "a redirect writes the bank lift ($t)$DEST_WHY"; fi
                     ;;
                 $'\002R')
                     i=$((i+1)); fed=1
@@ -1852,7 +1943,8 @@ check_clause() {
     # operands, so appended words stay read operands too.
     if [ "$HAS_XARGS" = 1 ] && ! [[ "$cmd" =~ $READ_RE ]]; then
         for a in "$w" "$@"; do
-            case "$(lift_ref "$a")" in LIFT|STATE) deny "xargs feeds a command a bank-lift path ($a)" ;; esac
+            dest_ref "$a"
+            case "$REPLY" in LIFT|STATE) deny "xargs feeds a command a bank-lift path ($a)$DEST_WHY" ;; esac
         done
     fi
 
@@ -1861,11 +1953,11 @@ check_clause() {
     for a in "$@"; do
         case "$prev" in
             -o|-O|--output|--output-document|--out-file|--outfile)
-                is_lift "$a" && deny "$cmd $prev writes the bank lift ($a)" ;;
+                is_lift_dest "$a" && deny "$cmd $prev writes the bank lift ($a)$DEST_WHY" ;;
         esac
         case "$a" in
             --output=*|--output-document=*|--out-file=*|--outfile=*)
-                is_lift "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})" ;;
+                is_lift_dest "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})$DEST_WHY" ;;
         esac
         prev="$a"
     done
@@ -1929,7 +2021,8 @@ check_clause() {
         for a in "$@"; do
             # The code word itself (after -c/-e, or awk's program) is not a path.
             if [ "$iscode" = 0 ] && ! { [ "$seen" = 0 ] && [[ "$cmd" == *awk ]] && [[ "$a" != -* ]]; }; then
-                case "$(lift_ref "$a")" in LIFT|STATE) deny "an interpreter ($cmd) is handed the bank lift path ($a)" ;; esac
+                dest_ref "$a"
+                case "$REPLY" in LIFT|STATE) deny "an interpreter ($cmd) is handed the bank lift path ($a)$DEST_WHY" ;; esac
             fi
             iscode=0
             case "$a" in
@@ -1966,7 +2059,7 @@ check_clause() {
         tee|sponge|touch|truncate|patch|ex|ed)
             for a in "$@"; do
                 case "$a" in -*) continue ;; esac
-                is_lift "$a" && deny "$cmd writes the bank lift ($a)"
+                is_lift_dest "$a" && deny "$cmd writes the bank lift ($a)$DEST_WHY"
             done ;;
         sed|gsed)
             local inplace=0
@@ -1976,13 +2069,13 @@ check_clause() {
             if [ "$inplace" = 1 ]; then
                 for a in "$@"; do
                     case "$a" in -*) continue ;; esac
-                    is_lift "$a" && deny "sed -i edits the bank lift ($a)"
+                    is_lift_dest "$a" && deny "sed -i edits the bank lift ($a)$DEST_WHY"
                 done
             fi
             check_sed_scripts "$@" ;;
         dd)
             for a in "$@"; do
-                case "$a" in of=*) is_lift "${a#of=}" && deny "dd of= writes the bank lift (${a#of=})" ;; esac
+                case "$a" in of=*) is_lift_dest "${a#of=}" && deny "dd of= writes the bank lift (${a#of=})$DEST_WHY" ;; esac
             done ;;
         cp|mv|install|ln|rsync|gcp|gmv|gln|ginstall)
             _symlink_mode "${cmd#g}" "$@"
@@ -1992,7 +2085,8 @@ check_clause() {
             for a in "$@"; do case "$a" in -exec|-execdir|-ok|-okdir|-fprint|-fprint0|-fprintf|-fls) acts=1 ;; esac; done
             if [ "$acts" = 1 ]; then
                 for a in "$@"; do
-                    case "$(lift_ref "$a")" in LIFT|STATE) deny "find runs actions over a bank-lift path ($a)" ;; esac
+                    dest_ref "$a"
+                    case "$REPLY" in LIFT|STATE) deny "find runs actions over a bank-lift path ($a)$DEST_WHY" ;; esac
                 done
                 # -exec/-execdir/-ok/-okdir launch a command: check it as a clause.
                 local -a fx=()
@@ -2021,12 +2115,55 @@ check_clause() {
             if [[ "$cmd" =~ $MENTION_RE ]]; then
                 for a in "$@"; do
                     case "$a" in -*=*) a="${a#*=}" ;; esac
-                    case "$(lift_ref "$a")" in LIFT|STATE) deny "$cmd is handed a bank-lift path ($a)" ;; esac
+                    dest_ref "$a"
+                    case "$REPLY" in LIFT|STATE) deny "$cmd is handed a bank-lift path ($a)$DEST_WHY" ;; esac
                 done
             fi
             set_rule "$w" "${1:-}" $(( $# > 0 ? 1 : 0 )) "$(( fed != 0 ))" ;;
     esac
     return "$wrapped_rc"
+}
+
+# _cmd_writes <dequoted-text>: the text names a writer (a redirect, or the
+# words tee sponge dd cp mv install rsync as a substring; over-deny accepted).
+_cmd_writes() {
+    case "$1" in
+        *'>'*|*tee*|*sponge*|*dd*|*cp*|*mv*|*install*|*rsync*) return 0 ;;
+    esac
+    return 1
+}
+# _cmd_refs_lift <dequoted-text>: a $NAME / ${NAME...} reference whose
+# inherited value names the state dir or the lift, alone or with every
+# reference replaced by its value (~ read as HOME, //, /./ and /seg/../
+# collapsed), so values split across variables still match.
+# shellcheck disable=SC2016  # literal $ text is matched, not expanded
+_cmd_refs_lift() {
+    local LC_ALL=C rest="$1" n v exp='' pre m
+    local re='\$\{?[!#]?([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ "$rest" =~ $re ]]; do
+        n="${BASH_REMATCH[1]}"
+        m="${BASH_REMATCH[0]}"
+        pre="${rest%%"$m"*}"
+        rest="${rest#*"$m"}"
+        # A plain ${NAME} is replaced whole: its closing brace is not text.
+        case "$m" in '${'*) rest="${rest#\}}" ;; esac
+        v=$(printenv -- "$n" 2>/dev/null) || v=''
+        case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
+        if [ -n "$v" ] && is_lift "$v"; then return 0; fi
+        exp="$exp$pre$v"
+    done
+    [ -n "$exp" ] || return 1
+    exp="$exp$rest"
+    exp="${exp//\~\//$HOME/}"
+    while [[ "$exp" == *//* ]]; do exp="${exp//\/\//\/}"; done
+    while [[ "$exp" == */./* ]]; do exp="${exp//\/.\//\/}"; done
+    local re_dd='/([^/]+)/\.\./' guard=0
+    while [[ "$exp" =~ $re_dd ]] && [ "${BASH_REMATCH[1]}" != '..' ] && [ "$guard" -lt 64 ]; do
+        guard=$((guard + 1))
+        exp="${exp/"${BASH_REMATCH[0]}"//}"
+    done
+    case "$exp" in *"$STATE_REAL"*"$LIFT_NAME"*) return 0 ;; esac
+    return 1
 }
 
 # Layer 1: the whole-command mention rule (J1874). The trigger reads both the
@@ -2045,6 +2182,29 @@ case "$cwd_hits" in ''|0) ;; *) CWD_UNPROVEN=1 ;; esac
 xenv_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$XENV_RE")
 case "$xenv_hits" in ''|0) ;; *) XENV_SET=1 ;; esac
 if names_lift "$CMD" || names_lift "$WTOK"; then whole_command_gate "$CMD" 0; fi
+# HIMMEL-5348: an extra deny on the DEQUOTED text, never the only check (each
+# destination goes through dest_ref). The zsh clobber-pipe operators leave a
+# clause without a target the tokenizer reads, so they deny outright; beside a
+# writer, an indirect expansion or a nameref hides which variable is read, and
+# a reference whose value (alone, or joined with the text around it) names the
+# state dir or the lift denies (judges j2413d/e).
+# ponytail: accepted over-deny, fail closed: a writer word anywhere (`cp`
+# inside a longer word, a quoted `>`) plus such a variable, and every
+# clobber-pipe operator even to a benign target; narrowing is HIMMEL-5341.
+case "$CMD" in
+    *'&>|'*|*'>&|'*|*'&>>|'*)  # >&| also covers >>&|
+        deny "the command uses a zsh clobber-pipe operator (&>| >&| >>&| &>>|), which the fence cannot read a target from (fail-closed)" ;;
+esac
+_c_replace "$WTOK_SP" $'\002W' ' > '
+if _cmd_writes "$REPLY"; then
+    # shellcheck disable=SC2016  # literal ${ text is matched, not expanded
+    case "$REPLY" in
+        *'${!'*|*'${('*|*'typeset -n'*|*'declare -n'*|*'local -n'*)
+            deny "the command writes and uses an indirect expansion or a nameref (\${! \${( typeset -n declare -n local -n), so the variable read is not provable (fail-closed)" ;;
+    esac
+    _cmd_refs_lift "$REPLY" \
+        && deny "the command writes (a redirect or tee/sponge/dd/cp/mv/install/rsync) and references an environment value that names the bank lift or its state dir (fail-closed)"
+fi
 # HIMMEL-5094: env/sudo -C/-D in any flag cluster (-iC, -0C), read on the whole
 # text independent of the wrapper parse, beside an archive word and a computed
 # word: the parse may mistake the directory for the command, so the computed
