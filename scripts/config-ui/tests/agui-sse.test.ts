@@ -323,6 +323,30 @@ test("a subagent transcript longer than one read chunk still lands before the jo
   expect(lastFiller).toBeLessThan(agentResult);
 });
 
+// HIMMEL-4674: a timestamp that goes backwards inside one transcript is released in place, not re-sorted.
+test("a backwards timestamp within one transcript is emitted once, in file order, with one warning", async () => {
+  const h = home();
+  const rec = (text: string, ts: string) => JSON.stringify({
+    type: "assistant", isSidechain: false, uuid: `u-${text}`, sessionId: "sess-back", timestamp: ts,
+    message: { id: `msg_${text}`, role: "assistant", model: "claude-opus-5-5", content: [{ type: "text", text }] },
+  });
+  const p = journal(h, "-proj", RUN, [
+    rec("one", "2026-10-06T10:00:01.000Z"),
+    rec("two", "2026-10-06T10:00:04.000Z"),
+    rec("three", "2026-10-06T10:00:02.000Z"), // goes backwards
+    rec("four", "2026-10-06T10:00:05.000Z"),
+    rec("five", "2026-10-06T10:00:03.000Z"), // backwards again: still one warning for the file
+  ].join("\n") + "\n");
+  const warn = console.warn;
+  const warned: string[] = [];
+  console.warn = (...a: unknown[]) => { warned.push(a.join(" ")); };
+  let events: Record<string, unknown>[];
+  try { events = parse(await new Response(journalStream(p, { ...direct, maxMs: 800 })).text()); } finally { console.warn = warn; }
+  const texts = events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => e.delta);
+  expect(texts).toEqual(["one", "two", "three", "four", "five"]);
+  expect(warned.length).toBe(1);
+});
+
 test("an unreadable subagent transcript is dropped; the journal still streams to its end", async () => {
   const h = home();
   const { mainBody, subBody } = splitAgents();

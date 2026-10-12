@@ -200,6 +200,13 @@ export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 
+# Same for C60/C61 (HIMMEL-5382): never read the operator's real hermes checkout
+# or run the real codex CLI / npm registry; absent seams are an INFO skip,
+# dedicated cases point them at fixtures.
+export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
+export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
+unset DOCTOR_CODEX_LATEST
+
 # Keep unrelated cases from probing the operator's real qmd 'skills'
 # collection for C44 (HIMMEL-2222): most invocations below never override
 # PATH, so an inherited bun/qmd install would otherwise make check_c44 run a
@@ -6188,8 +6195,16 @@ printf '#!/bin/sh\nexit 0\n' > "$c52_t/ok/bin/python"
 printf '#!/bin/sh\nexit 1\n' > "$c52_t/missing/bin/python"
 chmod +x "$c52_t/ok/bin/python" "$c52_t/missing/bin/python"
 c52_run() { # <venv dir>
-    HIMMEL_DOCTOR_GRAPHIFY_VENV="$1" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c52_t/claude" HOME="$c52_t/home" bash "$DOC" --no-color 2>&1
+    GRAPH_CADENCE_SEMANTIC_BACKEND="${C52_BACKEND:-ollama}" HIMMEL_DOCTOR_GRAPHIFY_VENV="$1" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c52_t/claude" HOME="$c52_t/home" bash "$DOC" --no-color 2>&1
 }
+
+echo "== C52-graphify-ollama: default backend (claude-cli) + missing extra -> OK, never WARN (HIMMEL-5367) =="
+out="$(C52_BACKEND=claude-cli c52_run "$c52_t/missing")"
+if grepq "$out" 'OK   C52-graphify-ollama' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 claude-cli backend -> OK"; else fail "C52 claude-cli -> $(printf '%s' "$out" | grep -A1 C52)"; fi
+
+echo "== C52-graphify-ollama: unaccepted backend -> WARN naming the variable, not a claude-cli OK =="
+out="$(C52_BACKEND=bogus c52_run "$c52_t/ok")"
+if grepq "$out" 'WARN C52-graphify-ollama' && grepq "$out" -F "GRAPH_CADENCE_SEMANTIC_BACKEND='bogus'" && ! grepq "$out" 'OK   C52-graphify-ollama'; then pass "C52 unaccepted backend -> WARN"; else fail "C52 bogus -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 
 echo "== C52-graphify-ollama: no graphifyy venv -> OK (skipped) =="
 out="$(c52_run "$c52_t/absent")"
@@ -6368,5 +6383,50 @@ rm -f "$c59_t/codex-bank.json"
 out="$(c59_run)"
 if grepq "$out" -F 'INFO C59-codex-bank-cache' && ! grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 missing -> INFO"; else fail "C59 missing -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 rm -rf "$c59_t"
+
+# --- C60-hermes-origin / C61-codex-cli (HIMMEL-5382) ---
+c60_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c60.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c60_t/home"
+c60_run() { DOCTOR_HERMES_CHECKOUT="$c60_t/hermes" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1; }
+git init -q "$c60_t/hermes"
+
+echo "== C60-hermes-origin: ssh origin -> WARN naming the https remedy (RED) =="
+git -C "$c60_t/hermes" remote add origin git@github.com:NousResearch/hermes-agent.git
+out="$(c60_run)"
+if grepq "$out" -F 'WARN C60-hermes-origin' && grepq "$out" -F 'remote set-url origin https://github.com/NousResearch/hermes-agent.git'; then pass "C60 ssh -> WARN"; else fail "C60 ssh -> $(printf '%s' "$out" | grep -A1 C60)"; fi
+
+echo "== C60-hermes-origin: global insteadOf must not hide an ssh origin =="
+printf '[url "https://github.com/"]\n\tinsteadOf = git@github.com:\n' > "$c60_t/global.gitconfig"
+out="$(GIT_CONFIG_GLOBAL="$c60_t/global.gitconfig" c60_run)"
+if grepq "$out" -F 'WARN C60-hermes-origin'; then pass "C60 rewritten ssh -> WARN"; else fail "C60 rewritten ssh -> $(printf '%s' "$out" | grep -A1 C60)"; fi
+
+echo "== C60-hermes-origin: https origin -> OK =="
+git -C "$c60_t/hermes" remote set-url origin https://github.com/NousResearch/hermes-agent.git
+out="$(c60_run)"
+if grepq "$out" -F 'OK   C60-hermes-origin'; then pass "C60 https -> OK"; else fail "C60 https -> $(printf '%s' "$out" | grep -A1 C60)"; fi
+
+echo "== C60-hermes-origin: no checkout -> INFO, not a WARN =="
+out="$(DOCTOR_HERMES_CHECKOUT="$c60_t/none" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" -F 'INFO C60-hermes-origin' && ! grepq "$out" -F 'WARN C60-hermes-origin'; then pass "C60 missing -> INFO"; else fail "C60 missing -> $(printf '%s' "$out" | grep -A1 C60)"; fi
+
+printf '#!/usr/bin/env bash\necho "codex-cli 0.150.0"\n' > "$c60_t/codex"; chmod +x "$c60_t/codex"
+c61_run() { DOCTOR_CODEX_BIN="$c60_t/codex" DOCTOR_CODEX_LATEST="$1" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C61-codex-cli: installed older than latest -> WARN with the upgrade command (RED) =="
+out="$(c61_run 0.162.1)"
+if grepq "$out" -F 'WARN C61-codex-cli' && grepq "$out" -F 'npm install -g @openai/codex@latest'; then pass "C61 older -> WARN"; else fail "C61 older -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+
+echo "== C61-codex-cli: installed equals latest -> OK =="
+out="$(c61_run 0.150.0)"
+if grepq "$out" -F 'OK   C61-codex-cli'; then pass "C61 current -> OK"; else fail "C61 current -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+
+echo "== C61-codex-cli: installed newer than latest -> OK (never a downgrade WARN) =="
+out="$(c61_run 0.100.0)"
+if grepq "$out" -F 'OK   C61-codex-cli'; then pass "C61 newer -> OK"; else fail "C61 newer -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+
+echo "== C61-codex-cli: codex absent -> INFO =="
+out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+rm -rf "$c60_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

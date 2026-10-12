@@ -49,6 +49,61 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
+# A WARN present in two consecutive runs files ONE Jira ticket (HIMMEL-5382):
+# an open ticket carrying the check id is commented on instead of re-filed, and
+# ticketed.tsv remembers the ids already handled so a standing WARN does not
+# comment every day. A Jira failure leaves the id unrecorded (retried next run).
+file_persisting_warns() { # <root> <keys> <log>; STATE_DIR/alerted.tsv = previous run
+    local root="$1" keys="$2" log="$3" k id found desc proj="${JIRA_PROJECT_KEY:-HIMMEL}" tf="$STATE_DIR/ticketed.tsv"
+    local mirror="${DOCTORCAD_MIRROR_DIR:-${HOME:-}/.himmel/state/jira-mirror/$proj}" f candidate query
+    local -a J
+    if [ -n "${DOCTORCAD_JIRA_CMD:-}" ]; then read -ra J <<< "$DOCTORCAD_JIRA_CMD"
+    elif [ -f "$root/scripts/jira/dist/index.js" ]; then J=(node "$root/scripts/jira/dist/index.js")
+    else return 0; fi
+    touch "$tf"
+    # forget ids whose WARN is gone, so one that returns is looked up again
+    printf '%s\n' "$keys" | sed -n 's/^WARN //p' | grep -xFf - "$tf" > "$tf.new" || true
+    mv -f "$tf.new" "$tf"
+    while IFS= read -r k; do
+        case "$k" in WARN\ *) ;; *) continue ;; esac
+        grep -qxF "$k" "$STATE_DIR/alerted.tsv" || continue
+        id="${k#WARN }"
+        grep -qxF "$id" "$tf" && continue
+        # Search the local mirror first, then verify candidates live: the mirror
+        # may lag a ticket closure. Do not require our label on existing work.
+        query="project = $proj AND statusCategory != Done AND text ~ \"\\\"$id\\\"\""
+        for f in "$mirror"/"$proj"-*.md; do
+            [ -f "$f" ] || continue
+            grep -wF "$id" "$f" >/dev/null || continue
+            grep -q '^statusCategory: "Done"$' "$f" && continue
+            candidate="${f##*/}"; candidate="${candidate%.md}"
+            [[ "$candidate" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || continue
+            query="project = $proj AND statusCategory != Done AND (key = $candidate OR text ~ \"\\\"$id\\\"\")"
+            break
+        done
+        found="$(JIRA_PROJECT_KEY="$proj" "${J[@]}" list --jql "$query" 2>/dev/null)" || continue
+        found="$(printf '%s\n' "$found" | grep -oE -m1 '^[A-Z][A-Z0-9]*-[0-9]+')" || found=""
+        desc="## Impact
+The station has a persistent tool-health warning ($id).
+
+## What
+Resolve the warning or correct the doctor check if it is inaccurate.
+
+## Why
+The warning was present in two consecutive daily runs; leaving it unresolved teaches operators to ignore tool health.
+
+## Agent detail
+Check scripts/himmel-doctor.sh ($id) and its regression suite scripts/test-himmel-doctor.sh. Done when the warning is resolved or accurately classified with a paste-ready remedy.
+$(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
+        if [ -n "$found" ]; then
+            JIRA_PROJECT_KEY="$proj" "${J[@]}" comment "$found" "$desc" >/dev/null 2>&1 || continue
+        else
+            JIRA_PROJECT_KEY="$proj" "${J[@]}" create --type Task --title "[doctor] $id persists" --desc "$desc" --labels doctor >/dev/null 2>&1 || continue
+        fi
+        printf '%s\n' "$id" >> "$tf"
+    done <<< "$keys"
+}
+
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() {
@@ -83,6 +138,8 @@ cmd_run() {
         bash "$root/scripts/luna/cadence-alert.sh" clear himmel-doctor
         bash "$root/scripts/luna/cadence-alert.sh" fail himmel-doctor "new: $new" "$out"
     fi
+    # alerted.tsv is still the PREVIOUS run here: a WARN in both is persisting.
+    [ "$first" -eq 0 ] && file_persisting_warns "$root" "$keys" "$out"
     # advance the baseline only after the alert step; a disappeared finding
     # leaves it, so one that comes back alerts again.
     mv -f "$kf" "$STATE_DIR/alerted.tsv"

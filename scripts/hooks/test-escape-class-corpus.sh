@@ -81,11 +81,6 @@ block-bare-qmd-query.sh expansion-indirect-empty HIMMEL-5328
 block-bare-qmd-query.sh expansion-adjacent-empty HIMMEL-5328
 block-bare-qmd-query.sh expansion-empty-word HIMMEL-5328
 block-bare-qmd-query.sh expansion-empty-arg HIMMEL-5328
-block-destructive-commands.sh expansion-default-empty HIMMEL-5329
-block-destructive-commands.sh expansion-strip-empty HIMMEL-5329
-block-destructive-commands.sh expansion-indirect-empty HIMMEL-5329
-block-destructive-commands.sh expansion-adjacent-empty HIMMEL-5329
-block-destructive-commands.sh expansion-empty-word HIMMEL-5329
 block-git-stash.sh expansion-default-empty HIMMEL-5330
 block-git-stash.sh expansion-strip-empty HIMMEL-5330
 block-git-stash.sh expansion-indirect-empty HIMMEL-5330
@@ -127,14 +122,6 @@ block-bare-qmd-query.sh zsh-subscript-braced HIMMEL-5328
 block-bare-qmd-query.sh zsh-paramflag-indirect-empty HIMMEL-5328
 block-bare-qmd-query.sh zsh-modifier-empty-word HIMMEL-5328
 block-bare-qmd-query.sh zsh-modifier-empty-arg HIMMEL-5328
-block-destructive-commands.sh zsh-modifier-tail-braceless HIMMEL-5329
-block-destructive-commands.sh zsh-modifier-tail-braced HIMMEL-5329
-block-destructive-commands.sh zsh-modifier-root-braceless HIMMEL-5329
-block-destructive-commands.sh zsh-modifier-root-braced HIMMEL-5329
-block-destructive-commands.sh zsh-subscript-braceless HIMMEL-5329
-block-destructive-commands.sh zsh-subscript-braced HIMMEL-5329
-block-destructive-commands.sh zsh-paramflag-indirect-empty HIMMEL-5329
-block-destructive-commands.sh zsh-modifier-empty-word HIMMEL-5329
 block-git-stash.sh zsh-modifier-tail-braceless HIMMEL-5330
 block-git-stash.sh zsh-modifier-tail-braced HIMMEL-5330
 block-git-stash.sh zsh-modifier-root-braceless HIMMEL-5330

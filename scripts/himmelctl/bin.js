@@ -4477,6 +4477,7 @@ async function runPlan(answers, args) {
   // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
   // git-hook placement (HIMMEL-2818): never blocks on or masks adopt.sh's rc.
   const shimOk = applyHimmelctlPathShim(args);
+  ensureBusStateDirs();
   if (rc !== 0) {
     if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
     return rc;
@@ -5130,6 +5131,28 @@ function sameFsEntry(a, b) {
     return sa.ino !== 0 && sa.dev === sb.dev && sa.ino === sb.ino;
   } catch (_e) {
     return false;
+  }
+}
+
+// HIMMEL-5225: create $XDG_STATE_HOME/himmel and himmel/bus at 0700 so a fresh
+// station has the private bus directories before any bus use (himmel-bus's
+// store.busRoot() self-heals on first use, HIMMEL-5221). Idempotent: only a
+// directory created here is chmod'd; an existing one is left exactly as it is.
+// Best-effort, never fails the install.
+function ensureBusStateDirs() {
+  const xdg = process.env.XDG_STATE_HOME;
+  const stateHome = xdg && path.isAbsolute(xdg) ? xdg : path.join(os.homedir(), '.local', 'state');
+  // Missing ancestors (a fresh HOME without ~/.local) get the default mode;
+  // only the three directories below are ours to make private.
+  try { fs.mkdirSync(path.dirname(stateHome), { recursive: true }); } catch (_e) { return; }
+  for (const dir of [stateHome, path.join(stateHome, 'himmel'), path.join(stateHome, 'himmel', 'bus')]) {
+    if (fs.existsSync(dir)) continue;
+    try {
+      fs.mkdirSync(dir, { mode: 0o700 });
+      fs.chmodSync(dir, 0o700); // mkdir's mode is masked by the umask
+    } catch (_e) {
+      return;
+    }
   }
 }
 

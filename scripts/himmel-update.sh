@@ -3132,6 +3132,24 @@ backfill_user_claude_md() {
     return 0
 }
 
+# ─── bus state directories (HIMMEL-5225) ────────────────────────────────────
+# himmel-bus's store.busRoot() creates $XDG_STATE_HOME/himmel and himmel/bus on
+# first use (HIMMEL-5221); this is the belt-and-braces so a station has the
+# private directories before any bus use. Idempotent: only a directory this
+# call creates is made 0700 — an existing one is left exactly as it is.
+# Best-effort, never fails the update.
+ensure_bus_state_dirs() {
+    local state="${XDG_STATE_HOME:-}" d
+    case "$state" in /*) ;; *) state="$HOME/.local/state" ;; esac
+    # Missing ancestors (a fresh HOME without ~/.local) get the default mode;
+    # only the three directories below are ours to make private.
+    [ -e "$state" ] || mkdir -p "$(dirname "$state")" 2>/dev/null || true
+    for d in "$state" "$state/himmel" "$state/himmel/bus"; do
+        [ -e "$d" ] || mkdir -m 700 "$d" 2>/dev/null || true
+    done
+    return 0
+}
+
 # ─── existing advisory steps (best-effort; ALWAYS run, chain outcome or not)─
 # None of these are managed CHAIN items (headroom is HIMMEL-890 pending; graphify
 # is now covered by the best-effort sync_graphify step above, HIMMEL-1048) — they
@@ -3161,6 +3179,7 @@ sync_probe_tools apply || true
 report_guardrail_block
 report_dependency_readiness
 backfill_user_claude_md
+ensure_bus_state_dirs
 report_qmd_daemon_restart
 report_drift apply
 

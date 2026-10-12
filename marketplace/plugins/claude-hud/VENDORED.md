@@ -14,16 +14,17 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        d46bbd765c8bd54da56e0ecf17c7e649a5a0b7d1  # v0.9.0 release commit (HIMMEL-4085)
-pinned_upstream_tree: 72d8dc73bc13eb487284c5ce3e2274e79b80c97a  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   5f150a2b7a21630c43a851c83382845468bc883fe853a0bee39ec885f1a0d517  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-01
+pinned_commit:        33b51db6ceb5d0c91dc9c22404abcabacc8603b0  # v0.10.0 line, 19 commits past v0.9.0 (HIMMEL-4578)
+pinned_upstream_tree: f0475568040a00ad06aebcefb3c9601749a20877  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   e6054ab3e023ac0f1132b035c7121cd5a0b0875d6ddd528e52a62d4fce825916  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-12
 ```
 
-`pinned_commit` points at the **upstream** base `d46bbd7` (the v0.9.0
-release commit; tag object `8ef1e5e5` peels to it); the vendored tree is that base **plus** himmel's `customLineCommand` delta
-**plus** the trimmed `CLAUDE.md` **plus** any dependabot lockfile bumps landed
-since the vendor (see **Fork delta**
+`pinned_commit` points at the **upstream** base `33b51db` (the v0.10.0 line;
+the `v0.10.0` tag peels to the later release commit `75683c6`); the vendored
+tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
+session-token cache split, write-only context snapshot writer) **plus** any
+dependabot lockfile bumps landed since the vendor (see **Fork delta**
 below), so `vendored_tree_hash` reflects those deltas — it is a
 self-consistency hash over the CURRENT tree, not a claim that the tree equals
 `pinned_upstream_tree`. `fork_repo`
@@ -64,120 +65,63 @@ protected: editing it without bumping the pin trips the guard.
 
 ## Fork delta
 
-- **Cache-economics all-sessions scan never blocks a render (HIMMEL-2948,
-  2026-09-13):** `getAllSessionsCacheEconomics` in `src/cache-economics.ts`
-  used to `await` a full recursive scan of `~/.claude/projects/**/*.jsonl`
-  synchronously whenever its 30s cache was absent or expired, blocking that
-  statusline render; the plain `writeFileSync` also let a concurrent reader
-  observe partial JSON, and two HUD processes could race the same scan. It
-  now always returns the cached totals immediately (fresh or stale, zeros on
-  a cold start) and, when the cache is missing or expired, acquires an
-  `fs.mkdirSync`-based refresh lock (EEXIST = another refresh in flight; a
-  lock older than 120s by mtime is reclaimed once) and spawns a detached
-  child (`child_process.spawn(process.execPath, [process.argv[1],
-  '--refresh-cache-economics'], { detached: true, stdio: 'ignore' }).unref()`)
-  that runs the scan, writes the cache atomically (`<path>.tmp.<pid>` +
-  `fs.renameSync`, mode 0o600), and releases the lock in a `finally`. All new
-  effects (spawn, rename) are threaded through the existing
-  `CacheEconomicsDeps` injection so tests never fork a real process.
-  Behavior preserved: same return type, same TTL constant, same cache
-  schema. `vendored_tree_hash` re-recorded accordingly.
+- **Re-vendored to upstream v0.10.0 `33b51db` (HIMMEL-4578, 2026-10-12):** +19
+  commits past `d46bbd7` (v0.9.0), the upstream architecture rewrite:
+  `src/render/lines/*` is gone (elements now live in `render/parts.ts`,
+  `context.ts`, `usage.ts`, `vcs.ts`, `lines.ts`, `activity.ts`, arranged by
+  `expanded.ts` / `compact.ts`), config and transcript handling were rewritten,
+  and the HUD now trusts the stdin `cost`, `version` and `session_name` fields.
+  The layout moved, so the himmel delta was **ported by hand onto the new
+  layout** (nothing resurrected from the old tree) and each feature is pinned by
+  a test row that fails against pristine upstream:
+  - **`customLineCommand`** (HIMMEL-718): `src/custom-line-cmd.ts` carried as-is;
+    wiring in `src/config.ts` (default `''`, inline `.slice(0, 500)` rule — the
+    string is EXECUTED, so it must not go through the display sanitizer),
+    `src/index.ts` (runs in the existing `Promise.all`), `src/types.ts`
+    (`customLines`), `src/render/expanded.ts` and `src/render/compact.ts`
+    (append the lines last), README rows. Tests: `tests/custom-line-cmd.test.js`.
+  - **Claudex lane** (HIMMEL-2900): `isClaudexLane` + model-name branch in
+    `src/stdin.ts`; native-cost lookup nulled in `src/cost.ts`; cost slot renders
+    `status.unmeasured` and the context bar gains `format.configured`
+    (`src/render/parts.ts`, `src/render/context.ts`, i18n en/zh-Hans/zh-Hant).
+    Tests: `tests/claudex-lane.test.js` (7 CLI-driven rows, 4 delta + 3 controls).
+  - **Session-token cache split** (HIMMEL-2161, display preference): separate
+    cache-write / cache-read figures in `sessionTokensSummary`
+    (`src/render/parts.ts`, `format.cacheWrite` / `format.cacheRead` i18n keys).
+    `tests/render.test.js` zh row and `tests/golden/expected.txt` updated.
+  - **Context snapshot writer** (kept deliberately): v0.10.0 deleted
+    `src/context-cache.ts`, but `scripts/context-fill.sh` (console 45% handover
+    trigger, leg context guard, arm-resume) reads
+    `<config>/plugins/claude-hud/context-cache/<sha256(resolved transcript path)>.json`.
+    The file is re-added **write-only** and called from `src/index.ts` before the
+    usage lookup. Path and JSON fields (`used_percentage`, `remaining_percentage`,
+    `current_usage`, `context_window_size`, `saved_at` ms, `session_name`) are
+    byte-compatible with the v0.9.0 writer; it also keeps the #743 rule (0% with
+    live `current_usage` is cached as a derived percent). Dir mode 0700, file
+    mode 0600, 3s write TTL, 1% sampled sweep (7 days / 100 entries).
+    `scripts/context-fill.sh` is untouched. Test: `tests/context-cache.test.js`
+    runs the built HUD on a fixture transcript, then `context-fill.sh --percent`.
+  - **Dropped (with reasons):**
+    - Prompt-cache economics row (HIMMEL-2878) and its non-blocking all-sessions
+      scan hardening (HIMMEL-2948): upstream deleted `MODEL_PRICING` and
+      `estimateSessionCost`, which the row was built on. Console ruling: drop.
+      `scripts/lib/test-wire-statusline.sh` / `.ps1` left untouched. Follow-up if
+      wanted: HIMMEL-5359.
+    - HIMMEL-2161 `opusplan` / `haikuplan` repricing and the Sonnet 5 promo
+      cutover removal: moot, v0.10.0 has no estimate path.
+    - Trimmed `CLAUDE.md` (HIMMEL-1848): upstream's file is now ~36 lines, so
+      there is nothing left to trim.
+    - Leak-scanner markers on upstream fixture lines (HIMMEL-2958) and the
+      bun-only `withHome` test isolation (HIMMEL-2944): the upstream tests were
+      rewritten and the dropped lines no longer exist.
+  - **Lockfile:** upstream pins `brace-expansion` 5.0.6; re-applied the 5.0.9
+    floor lockfile-only (`npm update brace-expansion --package-lock-only
+    --ignore-scripts`, resolves 5.0.12, `package.json` unchanged).
+  `dist/` rebuilt from source (`npm ci --ignore-scripts && npm run build`).
+  Upstream suite in a clean env: see the PR body for the count and verdicts.
+  Note upstream's `README.md` / `CLAUDE.md` say `dist/` is built by CI and never
+  committed; himmel commits it because the statusline wires `dist/index.js`.
 
-  **CR round 1 follow-up:** the refresh lock now carries a `randomUUID()`
-  owner token (written into a file inside the lock dir), threaded through
-  `spawnRefresh`/the child argv/`runCacheEconomicsRefresh`, so a reclaimed
-  stale lock's original (superseded) holder can no longer delete the
-  reclaiming refresh's lock on release; `createSpawnRefresh` also releases
-  the lock on both a synchronous spawn failure and an asynchronous
-  `'error'` event from the child.
-
-  **CR round 2 follow-up:** `runCacheEconomicsRefresh` now checks its
-  `lockToken` still matches the lock's current owner immediately before
-  `writeCache` runs, so a refresh superseded by a stale-lock reclaim can no
-  longer publish its (stale) totals over a newer refresh's cache; `writeCache`'s
-  failure path now always attempts to unlink its pid-suffixed tmp file
-  (previously gated on the write having already succeeded, which could
-  leak a tmp file left behind by a partial `writeFileSync`, e.g. ENOSPC). A
-  third round-2 finding — a narrow TOCTOU window in the lock
-  reclaim/release sequence itself, inherent to a directory-based lock
-  without a real cross-process CAS primitive — is deferred to HIMMEL-3011.
-  `vendored_tree_hash` re-recorded accordingly.
-
-  **CR round 3 follow-up:** `acquireRefreshLock` now cleans up (`rmSync` the
-  freshly-created lock dir) and gives up the acquisition rather than handing
-  back a token when writing the owner file itself fails — a token
-  `isRefreshLockOwner`/`releaseRefreshLock` could never match would both
-  block publish forever and leak the lock dir. `CacheEconomicsDeps` also
-  gained a `writeFile` seam (mirroring the existing `rename` seam) so
-  `writeCache`'s regression test can genuinely drive a partial-write-then-throw
-  failure; the prior version of that test mocked `fs.writeFileSync` directly,
-  which is not portable — `node:fs`'s exports are non-configurable under both
-  bun's and plain node's `mock`/`spyOn` ("Cannot replace module namespace
-  object's binding's value" / "Cannot redefine property"). `vendored_tree_hash`
-  re-recorded accordingly.
-
-- **Leak-scanner markers on the `jarrod` fixture lines (HIMMEL-2958,
-  2026-09-13):** himmel's `scripts/guardrails/leak-classes.sh` dropped
-  `jarrod` from its `ALLOW_HOME_NAMES` global exemption (the last of the
-  human-shaped placeholder names removed there — see HIMMEL-2825/2951). Its
-  only dependents are the 13 `/Users/jarrod/...` / `C:\Users\jarrod\...` <!-- leak-allow: home-path fork-delta prose names the fixture placeholder, HIMMEL-2954 -->
-  fixture lines in `tests/render.test.js` (lines 360, 363, 368, 384, 386,
-  392, 394, 608, 610, 617, 618, 1538, 1548), each of which now carries a
-  trailing `// leak-allow: home-path upstream fixture name, HIMMEL-2958`
-  comment so the scanner still passes without the global exemption. Comment
-  additions only — no behavior change, `bun test` stays byte-for-byte green.
-  `vendored_tree_hash` re-recorded accordingly.
-
-- **Test-only station isolation fixes (HIMMEL-2944, 2026-09-12):** two bugs in
-  `tests/core.test.js` / `tests/index.test.js` made `bun test` fail on any
-  station with a populated `~/.claude.json` (19 cases), even though the
-  suite is green in CI (it never runs there — network-bound, excluded by
-  `scripts/ci/run-shell-tests.sh`). (1) 18 `countConfigs` fixtures mutated
-  `process.env.HOME` to redirect the counter at a fixture temp dir, but
-  bun's `os.homedir()` reads `HOME` once at process startup and never
-  re-reads it (Node's does) — fixed with a shared `withHome(homeDir)`
-  helper that `spyOn(os, 'homedir')` (`bun:test`) instead, which works
-  because `config-reader.ts` already does a namespace import
-  (`import * as os from 'node:os'`) that `spyOn` can intercept. (2) the
-  entrypoint test relied on re-importing `dist/index.js` with a
-  cache-busting query string to force a second module evaluation, but
-  bun's dynamic `import()` resolves distinct query strings to the same
-  cached module and evaluates it only once per process (Node's ESM loader
-  treats each query as a distinct module) — fixed by spawning a real
-  `node dist/index.js` child process, matching the plugin's other CLI
-  tests. No `src/`/`dist/` change; pin bump is test-file-only.
-  **CR round 1 follow-up:** the `spyOn` fix's static `import { spyOn } from
-  'bun:test'` broke `npm test` (`node --test`) with
-  `ERR_UNSUPPORTED_ESM_URL_SCHEME`, since `bun:test` isn't resolvable under
-  plain Node — fixed by loading it dynamically and only when
-  `typeof Bun !== 'undefined'`, falling back to plain `process.env.HOME`
-  mutation under Node (safe there, since Node's `os.homedir()` re-reads
-  `HOME` on every call). Also added the missing `result.status === 0`
-  assertion to the spawned-child test, matching every other `spawnSync`
-  test in `tests/integration.test.js`. Verified green under both
-  `node --test` and `bun test`.
-
-- **Prompt-cache economics line (HIMMEL-2878, 2026-09-12, opt-in, off by
-  default):** a new statusline row — `session r:<reads> w:<writes> hit:<pct>%
-  net <±$net> cost <$total>` plus an `all` row aggregating every historical
-  session transcript — ported from the legacy bash statusline's
-  `build_cache_lines`/`read_session_cache_stats`/
-  `read_all_sessions_cache_stats`/`format_tokens`/`get_model_savings_rate`
-  (`scripts/statusline/bin/statusline.sh`, untouched by this change). Gated
-  behind a new `display.showPromptCacheEconomics` config key (default
-  `false`); rendered only when set. v1 scope: the unbounded "all" window
-  only, no week/month periods; existing lines are unchanged. New files
-  `src/cache-economics.ts` (all-sessions aggregator, 30s file-cached like the
-  bash original, reusing `parseTranscript`'s per-file accumulation rather
-  than reimplementing the bash's jq dedup) and
-  `src/render/lines/prompt-cache-economics.ts`; wiring in `src/config.ts`,
-  `src/types.ts`, `src/index.ts`, `src/render/index.ts`,
-  `src/render/lines/index.ts`, `src/i18n/*`. Pricing deliberately reuses
-  `src/cost.ts`'s existing `MODEL_PRICING` table and cache-rate defaulting
-  (now exported as `resolveEffectiveCachePricing`) instead of duplicating the
-  bash's own hardcoded (and differently-priced) cache-rate table; an unknown
-  model renders `net —` / `cost —` rather than the bash's `?`-suffix
-  convention. Tests: `tests/prompt-cache-economics.test.js`.
 
 - **Landed (Phase 3.3, HIMMEL-718, `extra-cmd`=B — see the plan §Decisions):** a
   generic `customLineCommand` capability. When `display.customLineCommand` is set
@@ -187,12 +131,11 @@ protected: editing it without bumping the pin trips the guard.
   lines), sanitizes each line, and appends the command's **multiline** stdout as
   additional HUD lines. Files: new `src/custom-line-cmd.ts` (+ built `dist/`);
   wiring in `src/config.ts`, `src/index.ts`, `src/types.ts`,
-  `src/render/index.ts`; tests in `tests/custom-line-cmd.test.js`. himmel's own
+  `src/render/index.ts` (pre-v0.10.0); tests in `tests/custom-line-cmd.test.js`. himmel's own
   render logic (the where-are-we composer) stays in himmel `scripts/`, **not** in
-  this fork — this fork carries only the generic capability. **This is now the
-  ONLY himmel `src/` delta** (see the re-vendor notes below) — `CLAUDE.md` is
-  additionally trimmed (next bullet) and the lockfile carries automated
-  dependency bumps; see the dependabot bullet.
+  this fork — this fork carries only the generic capability. Carried through
+  every re-vendor since; see the v0.10.0 entry above for the current wiring
+  (file paths below are the pre-v0.10.0 layout).
 
 - **Claudex-lane labels (HIMMEL-2900, 2026-09-12):** under `CLAUDEX_LANE_OK=1`
   (a Claude Code harness driving Codex, not Claude) the renderer no longer
@@ -213,14 +156,6 @@ protected: editing it without bumping the pin trips the guard.
   > field** appending **raw multiline** stdout. The two are independent and both
   > wired; himmel uses `customLineCommand` (via `scripts/statusline/hud-custom-lines.sh`),
   > upstream's `extra-cmd` stays dormant (himmel sets no `--extra-cmd`).
-
-- **Trimmed `CLAUDE.md` (HIMMEL-1848, PR #1849):** upstream's `CLAUDE.md`
-  auto-loads into every himmel session that touches this subtree, so the
-  derivable parts (the `src/` file-tree listing, the stdin/transcript field
-  inventory, the dependency stanza) were cut and replaced with a pointer to
-  `src/types.ts`. No effect on the renderer — context hygiene only. It must be
-  **re-applied on every re-vendor**: the file stays upstream-derived (inside the
-  drift hash), it is deliberately NOT in `OWNED_RE`.
 
 - **Re-vendored to upstream v0.6.0 (HIMMEL-1238, 2026-07-21, issue #469):** the
   two previously-carried deltas were **dropped as upstream-absorbed**:
@@ -391,7 +326,8 @@ protected: editing it without bumping the pin trips the guard.
   `brace-expansion` 5.0.6 → 5.0.7 (dev-only transitive, PR #1374 /
   `a386a624`, re-recorded in HIMMEL-1262); `brace-expansion` 5.0.7 → 5.0.9
   (dev-only transitive via minimatch `^5.0.2`, dependabot alert #26,
-  HIMMEL-1408) — **still carried**: upstream `939eb66` and `d46bbd7` (v0.9.0)
+  HIMMEL-1408) — **still carried** (resolves 5.0.12 after the HIMMEL-4578
+  re-vendor): upstream `939eb66`, `d46bbd7` (v0.9.0) and `33b51db` (v0.10.0)
   still pin `brace-expansion` 5.0.6, so the HIMMEL-2138, HIMMEL-2274 and
   HIMMEL-4085 re-vendors kept the 5.0.9 floor per the re-vendor rule below rather than taking upstream's
   lockfile. Dependabot does NOT run

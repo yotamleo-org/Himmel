@@ -2150,6 +2150,25 @@ regardless of whether `--force`/`--force-with-lease` appears anywhere in the
 command at all, since a `+` refspec carries no server-side safety check of
 its own; this also covers a lease scoped to one ref (`--force-with-lease=main`)
 leaving a *different* `+`-prefixed refspec in the same push unprotected.
+Every git rule above judges argv, not flattened text (HIMMEL-5358): segments
+come from the shared tokenizer `scripts/hooks/lib/shell-tokenize.sh` (so a
+`#` comment or quoted prose is never read as a command), git's global options
+are stripped by git's own grammar (`-C`, `-c`, `--git-dir`, `--work-tree`,
+`--namespace`, `--config-env`, `-p`/`-P`/`--no-pager`, …), and the deny rules
+apply to the subcommand's own arguments. A word the tokenizer cannot resolve
+(an expansion or command substitution) in a global-option or subcommand
+position is refused for a destructive subcommand, and a word or assignment
+whose value carries a git command (`X="git reset --hard"; $X`) is re-parsed,
+as is the text after a word's first `=` with a leading `!` dropped (an alias
+body, a `credential.helper=!…`, `core.sshCommand`). A `--config-env` alias is
+refused outright, since its body lives in an env var the hook cannot read.
+A heredoc body gets no argv relief: each body line is held to the plain text
+markers (`git reset --hard`, `git clean -f`, `git filter-branch`, a forced
+`git push`), since a later command can run what it writes (an alias appended
+to `.git/config`).
+The lease carve-out survives an unrelated `-c key=value` (`core.pager`,
+`user.name`); `-C`, a `-c` touching `remote.*`/`url.*`/`push.*`/`branch.*`/
+`include*`/`core.worktree`/`core.bare`, or a malformed `-c` turn it off.
 Recognizes a bounded set of launcher wrappers
 (`sudo`, `env`, `cmd /c`, `powershell`/`pwsh -c`) and an executable-path
 prefix, so a wrapped or path-qualified form (`/usr/bin/env rm -rf /`,

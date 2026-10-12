@@ -6,7 +6,7 @@ import { renderRoadmap } from "/roadmap.js";
 import { fleetDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {} };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null };
 let feed = null;
 let lastProbe = null; // HIMMEL-4807: the newest 202 body ({ elapsedMs, progress }) while the first report runs
 let current = "triage";
@@ -25,13 +25,14 @@ let fleet = { data: null, error: null };
 // region nav and its 1/2/3 keys on that page only.
 // Health renders without a feed (D2): its bank and legs cards do not wait for the doctor report.
 let health = null; // GET /api/health, null while loading
+let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // HIMMEL-4943: declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null };
 const PAGES = [
-  { id: "config", label: "Config", regions: true, render: (f) => render(f, state) },
+  { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
@@ -144,6 +145,35 @@ async function refreshFeed() {
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFeed(); });
 
+// HIMMEL-4620: the vm.mode / vm.remote form. The draft is what the operator is typing; a saved or loaded answer resets it.
+const vmDraft = (d) => ({ mode: d.mode, ssh: (d.remote && d.remote.ssh) || "", port: d.remote && d.remote.port !== undefined ? String(d.remote.port) : "", identity: (d.remote && d.remote.identity) || "" });
+async function loadVm() {
+  const gen = ++vmLoadGen;
+  state.vm = { data: null, error: null };
+  try {
+    const r = await fetch("/api/vm", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== vmLoadGen) return;
+    state.vm = r.ok ? { data: j, error: null, draft: vmDraft(j) } : { data: null, error: j.error || `vm setting failed (${r.status})` };
+  } catch (_) { if (gen !== vmLoadGen) return; state.vm = { data: null, error: "vm setting: server unreachable" }; }
+  if (currentPage.id === "config") paint();
+}
+let vmSaving = false; // one save at a time: an older reply landing last must not overwrite a newer setting
+async function saveVm() {
+  const d = state.vm && state.vm.draft;
+  if (!d || vmSaving) return;
+  vmSaving = true;
+  const body = { mode: d.mode };
+  if (d.mode === "remote") body.remote = { ssh: d.ssh.trim(), port: d.port.trim(), identity: d.identity.trim() };
+  const sent = JSON.stringify(d);
+  let res;
+  try { res = await post("/api/vm", body); } finally { vmSaving = false; }
+  const { ok, j } = res;
+  const edited = state.vm.draft && JSON.stringify(state.vm.draft) !== sent; // typed while the save was in flight: keep it
+  state.vm = ok ? { data: j, error: null, draft: edited ? state.vm.draft : vmDraft(j), msg: { ok: true, text: "saved" } } : { ...state.vm, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
 // Only the newest call may paint, as with the feed.
 async function loadHealth() {
   const gen = ++healthGen;
@@ -183,6 +213,7 @@ async function loadRoadmap() {
   if (currentPage.id === "roadmap") paint();
 }
 document.addEventListener("change", (e) => {
+  if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
   const name = e.target.dataset.toolFilter;
@@ -232,6 +263,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
+  if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {
     state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };
@@ -259,6 +291,8 @@ document.addEventListener("click", (e) => {
   }
 });
 document.addEventListener("input", (e) => {
+  const vf = e.target.dataset.vm;
+  if (vf && vf !== "mode" && state.vm && state.vm.draft) { state.vm.draft[vf] = e.target.value; return; } // no repaint: keep the caret
   if (e.target.id === "q") { state.filt.q = e.target.value; paint(); return; }
   if (e.target.dataset.act === "consent") {
     // No repaint: keep the caret; only flip the confirm button.
@@ -270,7 +304,7 @@ document.addEventListener("input", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
-  if (!feed || e.target.matches("input")) return;
+  if (!feed || e.target.matches("input,select")) return;
   if (currentPage.regions && ["1", "2", "3"].includes(e.key)) return go(["triage", "controls", "inventory"][Number(e.key) - 1]);
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".bhead")) {
     e.preventDefault();

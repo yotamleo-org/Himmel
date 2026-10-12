@@ -44,6 +44,13 @@ EXE="$DIR/cli-proxy-api"
 CFG="$DIR/config.yaml"
 VER_STAMP="$DIR/cli-proxy-api.version"
 PORT=8317
+# Bounded request retry (HIMMEL-5391). CLIProxyAPI's request-retry runs extra
+# credential rounds on 403/408/429/500/502/503/504 (so it covers an upstream 502
+# and the auth-cooldown 503); max-retry-interval caps the cooldown wait, in
+# seconds (config.example.yaml, v7.3.15). Defaults are upstream's own; an
+# operator-set value in config.yaml is never overwritten.
+RETRY_COUNT=3
+RETRY_INTERVAL=30
 VERSION="7.3.15"
 # Station-target override (HIMMEL-5267): the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
@@ -295,10 +302,32 @@ port: ${PORT}
 auth-dir: "~/.cli-proxy-api"
 api-keys:
   - "${CLIPROXY_API_KEY}"
+request-retry: ${RETRY_COUNT}
+max-retry-interval: ${RETRY_INTERVAL}
 CFGEOF
   ) || die "writing $CFG failed"
   chmod 600 "$CFG" || die "chmod 600 $CFG failed"
   echo "wrote config: $CFG"
+}
+
+# ensure_retry_config: append any missing retry key to an existing config.yaml.
+# A key already present (any value, operator-set) is left untouched, so a
+# re-run is a no-op. Append keeps the file's 0600 mode.
+ensure_retry_config() {
+  local key val
+  for key in request-retry max-retry-interval; do
+    grep -Eq "^${key}[[:space:]]*:" "$CFG" && continue
+    case "$key" in
+      request-retry) val="$RETRY_COUNT" ;;
+      *) val="$RETRY_INTERVAL" ;;
+    esac
+    # a config.yaml with no trailing newline would glue the key to its last line
+    if [ -s "$CFG" ] && [ -n "$(tail -c1 "$CFG")" ]; then
+      printf '\n' >> "$CFG" || die "appending to $CFG failed"
+    fi
+    printf '%s: %s\n' "$key" "$val" >> "$CFG" || die "appending $key to $CFG failed"
+    echo "added $key: $val to $CFG"
+  done
 }
 
 install_binary() {
@@ -335,6 +364,7 @@ cmd_install() {
   mkdir -p "$DIR"
   if [ -f "$CFG" ]; then
     echo "config already present: $CFG"
+    ensure_retry_config
   else
     write_config
   fi
@@ -569,6 +599,7 @@ cmd_roll() {
   mkdir -p "$DIR"
   if [ -f "$CFG" ]; then
     echo "config already present: $CFG"
+    ensure_retry_config
   else
     write_config
   fi

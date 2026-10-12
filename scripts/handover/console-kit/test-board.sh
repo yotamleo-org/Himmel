@@ -609,10 +609,21 @@ QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null; rc=$?
 same 'failures panel: render succeeds, rc 0' "$rc" "0"
 fhtml="$(cat "$M/board.html")"
 fsnap="$(printf '%s\n' "$fhtml" | sed -n '/data-failures=/,/<\/section>/p')"
-same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section data-failures="2"><h2>Failure classes — this shift</h2><table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
+same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" data-failures="2"><h2>Failure classes — this shift</h2><div class="tscroll"><table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
 <tr data-class="denied/guard-a"><td>denied/guard-a</td><td>2</td><td>5</td><td>—</td><td>50 %</td><td>HIMMEL-4799 (filed 03:04)</td></tr>
 <tr data-class="suite/test-&lt;b&gt;x&lt;/b&gt;.sh"><td>suite/test-&lt;b&gt;x&lt;/b&gt;.sh</td><td>1</td><td>3</td><td>—</td><td>—</td><td>signal</td></tr>
-</table><p class="sub">memory inbox: 2 pending</p></section>'
+</table></div><p class="sub">memory inbox: 2 pending</p></section>'
+# HIMMEL-5374: the failures table spans the grid row and scrolls inside its own panel;
+# the ladder is a vertical label-left count-right list (no wrapping chip row).
+# RED control (pre-change board.mjs): no class="wide" on data-failures, no .tscroll
+# wrapper, and .ladder is a flex-wrap chip row.
+contains 'failures panel: spans the full grid row (HIMMEL-5374)' "$fhtml" '<section class="wide" data-failures="2">'
+contains 'failures panel: table scrolls inside its own wrapper (HIMMEL-5374)' "$fhtml" '<div class="tscroll"><table>'
+contains 'failures panel: wrapper scrolls horizontally, not the page (HIMMEL-5374)' "$fhtml" '.tscroll { overflow-x:auto; }'
+contains 'failures panel: class column never breaks mid-word (HIMMEL-5374)' "$fhtml" 'word-break:normal; overflow-wrap:normal;'
+contains 'failures panel: numeric columns right-aligned, nowrap (HIMMEL-5374)' "$fhtml" 'text-align:right; white-space:nowrap;'
+contains 'ladder: one row per phase, label left and count right (HIMMEL-5374)' "$fhtml" '.ladder li { display:flex; justify-content:space-between;'
+lacks 'ladder: no longer a wrapping chip row (HIMMEL-5374)' "$fhtml" '.ladder { display:flex; flex-wrap:wrap;'
 cat > "$HIMMEL_EVAL_RUNS_LEDGER" <<'RATES'
 {"eval":"leg-trajectory","run_id":"s1","status":"ok","ts":"2026-10-07T03:01:00Z","lane":"claudex","model":"gpt-6.1-sol","meta":{"leg":"N1","tool_health":[{"agent":{"id":"main","model":"gpt-6.1-sol"},"tool":"Bash","calls":50,"failures":5,"errors":0,"denials":5,"classes":{"denied/guard-a":5}}]}}
 RATES

@@ -70,6 +70,9 @@ cat > "$W/ps.txt" <<'FIX'
   213   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-k.sh && eval "echo hi && eval 'bash /p/console-wait.sh'; sleep 99999"
   214   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-l.sh && eval 'bash /p/console-wait.sh ; sleep 99999'
   215   101    03:00:00 /usr/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-6-m.sh && eval 'bash /p/console-wait.sh --timeout 600'
+  216   101    03:00:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-6-n.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB 2>/dev/null || true && eval 'bash "/p/console-wait.sh" "/b/c.md" --doc "/d/c.md" --token t-1 --legs-from "/d/c.fleet.json"' < /dev/null && pwd -P >| /tmp/claude-6b8f-cwd
+  217   101    03:00:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-6-o.sh 2>/dev/null || true && eval 'bash "/p/console-wait.sh" "/b/c.md" ; sleep 99999' < /dev/null && pwd -P >| /tmp/claude-6b8f-cwd
+  218   101    03:00:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-6-p.sh 2>/dev/null || true && eval 'bash "/p/console-wait.sh" "/b/c.md"' < /dev/null && pwd -P >| /etc/passwd
 FIX
 
 run() { # run [args...] — stdout of the SUT under the hermetic seams
@@ -79,7 +82,7 @@ run() { # run [args...] — stdout of the SUT under the hermetic seams
 
 out="$(run)"; rc=$?
 eq 'default: exact one-line inventory joined to owner names (>=30m)' \
-    'orphans=HIMMEL-111-N61:9/1560m,orphan:1/300m' "$out"
+    'orphans=HIMMEL-111-N61:11/1560m,orphan:1/300m' "$out"
 eq 'default: rc 0' 0 "$rc"
 
 out="$(TICK_ORPHAN_MIN=200 run)"
@@ -100,6 +103,9 @@ contains '--list still counts other-console-wait.sh (no path boundary)' "$out" '
 contains '--list still counts a nested eval that only quotes the waiter' "$out" 'pid=213'
 contains '--list still counts a waiter call chained with a shell operator' "$out" 'pid=214'
 lacks '--list omits the waiter called with plain flag args' "$out" 'pid=215'
+lacks '--list omits the waiter in the real quoted-args shape with the cwd tail (HIMMEL-5380)' "$out" 'pid=216'
+contains '--list still counts a quoted-args waiter chained with a shell operator' "$out" 'pid=217'
+contains '--list still counts a waiter whose cwd tail is not /tmp/claude-*-cwd' "$out" 'pid=218'
 contains '--list still counts a wrapper that only mentions console-wait.sh' "$out" 'pid=209'
 contains '--list still counts a quoted eval mention' "$out" 'pid=210'
 contains '--list still counts console-wait.sh.bak' "$out" 'pid=211'

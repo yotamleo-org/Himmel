@@ -16,7 +16,7 @@ USAGE
     node scripts/jira/dist/index.js mirror
     node scripts/jira/dist/index.js versions > ~/.himmel/state/jira-mirror/HIMMEL.versions.tsv
     python3 tracker.py --plan-dir <HIMMEL-3882 plan dir> --out <tracker.html> --luna-map <luna-map.json>
-        [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--refresh-luna]
+        [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--jira-base-url URL] [--refresh-luna]
     python3 tracker.py ... --emit-fp     print the freshness fingerprint and exit
 
 --versions-file defaults to <mirror-dir>.versions.tsv; its bytes (or '-' when missing) are a fingerprint input, so a
@@ -35,6 +35,7 @@ import re
 import subprocess
 import time
 from datetime import datetime, timezone
+from html import escape as esc
 
 MIRROR = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL')
 LUNA = os.path.expanduser('~/Documents/luna')
@@ -417,7 +418,7 @@ def jira_view(mir, legs, vers, prows, vnames):
         b, p = bucket(m), plan.get(num(k))
         lg = legs.get(num(k))
         tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
-                       ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None,
+                       ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
                        leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
     tk.sort(key=lambda t: t['k'])
 
@@ -428,6 +429,54 @@ def jira_view(mir, legs, vers, prows, vnames):
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
     return tk, cur, nxt, [a for a in al if a[1]]
+
+
+def first_sentence(s):
+    """HIMMEL-5381: the first sentence of a plain Impact block ('' for none), clipped for a card."""
+    m = re.match(r'(.+?[.!?])(?:\s|$)', s)
+    return clip(m.group(1) if m else s, 160)
+
+
+KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done', 'wont': 'done'}
+
+
+def kanban(tk, vers, cur, base):
+    """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
+
+    A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
+    one-line user-facing description. IN CI reads as In Review; wont do/fix as Done; a To Do ticket a live leg works reads
+    In Progress, as the main board does. The release being worked on (cur) opens expanded."""
+    base = base.strip().rstrip('/')
+    if not re.match(r'^https?://', base):
+        base = ''
+    out = []
+    for i, v in enumerate(vers):
+        a = [t for t in tk if t['v'] == i]
+        if not a:
+            continue
+        cols = {c: [] for c, _ in KCOLS}
+        for t in a:
+            cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
+        n_open = len(a) - len(cols['done'])
+        parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
+                 '<span class="kmeta">%d open of %d%s</span></summary><div class="kboard">'
+                 % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
+                    ' · released ' + esc(v['date']) if v['rel'] else '')]
+        for c, title in KCOLS:
+            parts.append('<div class="kcol" data-col="%s"><h3>%s <span class="kn">%d</span></h3>' % (c, title, len(cols[c])))
+            for t in cols[c]:
+                key = 'HIMMEL-%d' % t['k']
+                head = ('<a class="kkey" href="%s/browse/%s">%s</a>' % (esc(base, True), key, key)) if base \
+                    else '<span class="kkey">%s</span>' % key
+                parts.append('<div class="kcard">%s<div class="ktl">%s</div><div class="kline">%s</div></div>'
+                             % (head, esc(t['t']), esc(t['ln'])))
+            if not cols[c]:
+                parts.append('<div class="knone">None.</div>')
+            parts.append('</div>')
+        parts.append('</div></details>')
+        out.append(''.join(parts))
+    return ''.join(out) or '<p class="jsub">No release holds a ticket yet.</p>'
 
 
 def clip(s, n):
@@ -608,6 +657,9 @@ def main():
                          'else <luna-root>/handovers/yotamleo/himmel)')
     ap.add_argument('--drift-log', default=None,
                     help='append-only drift/unplanned/unthemed counts per render (default <handovers>/roadmap-drift.tsv)')
+    ap.add_argument('--jira-base-url', default=os.environ.get('JIRA_BASE_URL', ''),
+                    help='Jira base URL for the kanban cards\' browse links (default $JIRA_BASE_URL, as the jira CLI reads it; '
+                         'without one a card key is plain text)')
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
@@ -729,6 +781,9 @@ def main():
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
     jt, jc, jn, ja = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    kb = kanban(jt, jv, jc, a.jira_base_url)
+    for t in jt:
+        del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
     act = actuals()  # before ATS below: it sets ACT_NEWEST
     data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=upd[:16].replace('T', ' '),
@@ -744,7 +799,7 @@ def main():
                 EQ=' · '.join('%s %g' % x for x in zip(('XS', 'S', 'M', 'L', 'XL'), seq)) + ' S-equivalents'
                 if seq else 'not recorded in the plan')
     blob = json.dumps(data, separators=(',', ':'), ensure_ascii=False).replace('<', '\\u003c')
-    html = TEMPLATE.replace('__DATA__', blob)
+    html = re.sub(r'__DATA__|__KANBAN__', lambda m: blob if m.group(0) == '__DATA__' else kb, TEMPLATE)  # one pass: no re-scan of ticket text
     outp = OUT
     os.makedirs(os.path.dirname(outp), exist_ok=True)
     open(outp, 'w', encoding='utf-8').write(html)
@@ -976,6 +1031,18 @@ tr.jflash{animation:jflash .9s ease-out}
 #db .jrow .jtl{font-size:13px}
 #drawer:not([hidden]){animation:dslide .3s var(--ease)}
 @keyframes dslide{from{opacity:0;transform:translateX(24px)}}
+.krel{border:1px solid var(--line);margin:0 0 8px}
+.krel>summary{cursor:pointer;padding:8px 10px;font:600 13px var(--f-mono)}
+.krel>summary:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.kmeta{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
+.kboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 10px 10px}
+.kcol{background:var(--panel);border:1px solid var(--line);padding:10px;min-width:0}
+.kcol h3{font:600 12px var(--f-mono);margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
+.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="done"] h3{color:var(--done)}
+.kcard{border:1px solid var(--line);padding:8px 10px;margin:0 0 8px;background:var(--bg)}
+a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
+.ktl{font-size:12.5px;margin:2px 0;overflow-wrap:anywhere}.kline{font:12px/1.45 var(--f-sans);color:var(--dim);overflow-wrap:anywhere}
+.knone{color:var(--dim);font-size:12px}
 .plan{margin-top:48px;border-top:1px solid var(--line)}
 .plan>h2.jh{font:600 13px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;margin:28px 0 4px}
 .plan{font:14px/1.5 var(--f-sans)}
@@ -984,7 +1051,7 @@ tr.jflash{animation:jflash .9s ease-out}
 #decs.hot{color:var(--fail)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media (max-width:760px){
- .jboard{grid-template-columns:minmax(0,1fr)}.hero h1{font-size:27px}#rm td.barc,#rm th.barc{display:none}
+ .jboard,.kboard{grid-template-columns:minmax(0,1fr)}.hero h1{font-size:27px}#rm td.barc,#rm th.barc{display:none}
 }
 @media (max-width:560px){
  .shell{padding:0 16px 48px}.mast .in{padding:10px 16px}
@@ -1022,6 +1089,9 @@ tr.jflash{animation:jflash .9s ease-out}
 <div class="tw"><table><thead><tr><th>Version</th><th>State</th><th class="barc">Progress</th>
 <th>To Do</th><th>In Progress</th><th>In Review</th><th>IN CI</th><th>Done</th><th>Total</th></tr></thead><tbody id="vt"></tbody></table></div>
 <p class="jsub" id="vfold"></p></section>
+<section aria-labelledby="kh"><h2 id="kh">Release boards</h2>
+<p class="jsub">Open a release to see its tickets by status. Each card links to its Jira ticket and says what it means for a user.</p>
+__KANBAN__</section>
 </div>
 <section class="plan" aria-label="The plan">
 <h2 class="jh">The plan, folded</h2>

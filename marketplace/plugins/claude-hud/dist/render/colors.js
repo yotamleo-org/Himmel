@@ -66,9 +66,6 @@ export function magenta(text) {
 export function dim(text) {
     return colorize(text, DIM);
 }
-export function claudeOrange(text) {
-    return colorize(text, CLAUDE_ORANGE);
-}
 export function model(text, colors) {
     return withOverride(text, colors?.model, CYAN);
 }

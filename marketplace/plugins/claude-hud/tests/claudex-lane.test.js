@@ -1,187 +1,99 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { readFileSync } from "node:fs";
-import { estimateSessionCost, getNativeCostUsd } from "../dist/cost.js";
-import { renderCostEstimate } from "../dist/render/lines/cost.js";
-import { renderIdentityLine } from "../dist/render/lines/identity.js";
+// himmel delta rows on the v0.10.0 layout: the claudex lane (HIMMEL-2900) and the
+// session-token cache write/read split (HIMMEL-2161). Each row drives dist/index.js
+// the way Claude Code does, in a throwaway HOME with a clean environment.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, copyFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const entry = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const transcriptFixture = fileURLToPath(new URL('./golden/transcript.jsonl', import.meta.url));
 
 function stripAnsi(text) {
   return text
-    .replace(/\x1b\[[0-9;]*m/g, "")
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
 }
 
-function skipIfSpawnBlocked(result, t) {
-  if (result.error?.code === "EPERM") {
-    t.skip("spawnSync is blocked by sandbox policy in this environment");
-    return true;
-  }
-  return false;
-}
-
-function withEnv(overrides, fn) {
-  const originals = {};
-  for (const key of Object.keys(overrides)) {
-    originals[key] = process.env[key];
-    process.env[key] = overrides[key];
-  }
+async function run({ env = {}, display = {}, stdin = {} } = {}) {
+  const home = await mkdtemp(path.join(tmpdir(), 'hud-claudex-'));
   try {
-    return fn();
-  } finally {
-    for (const key of Object.keys(overrides)) {
-      if (originals[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = originals[key];
-      }
-    }
-  }
-}
-
-function basicStdin(fixturePath, projectDir) {
-  return JSON.stringify({
-    model: { display_name: "Opus" },
-    context_window: {
-      context_window_size: 200000,
-      current_usage: { input_tokens: 45000 },
-    },
-    transcript_path: fixturePath,
-    cwd: projectDir,
-  });
-}
-
-// (a) model line reads CODEX_MODEL under the lane, not the stdin display_name
-test("claudex lane: statusline model line reads CODEX_MODEL, not the stdin display_name", async (t) => {
-  const fixturePath = fileURLToPath(
-    new URL("./fixtures/transcript-render.jsonl", import.meta.url),
-  );
-  const homeDir = await mkdtemp(path.join(tmpdir(), "claude-hud-home-"));
-  const projectDir = path.join(homeDir, "dev", "apps", "my-project");
-  await mkdir(projectDir, { recursive: true });
-  try {
-    const result = spawnSync("node", ["dist/index.js"], {
-      cwd: path.resolve(process.cwd()),
-      input: basicStdin(fixturePath, projectDir),
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        HOME: homeDir,
-        LANG: "C",
-        CLAUDEX_LANE_OK: "1",
-        CODEX_MODEL: "gpt-6-astra",
-      },
-    });
-
-    if (skipIfSpawnBlocked(result, t)) return;
-
-    assert.equal(result.error, undefined, result.error?.message);
-    assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.match(firstLine, /\[gpt-6-astra\]/);
-    assert.ok(!firstLine.includes("Opus"), `expected no "Opus" in: ${firstLine}`);
-  } finally {
-    await rm(homeDir, { recursive: true, force: true });
-  }
-});
-
-// (e) control: without the lane env, the same fixture renders exactly as today
-test("claudex lane control: without the env, the same fixture renders exactly as today", async (t) => {
-  const fixturePath = fileURLToPath(
-    new URL("./fixtures/transcript-render.jsonl", import.meta.url),
-  );
-  const expectedPath = fileURLToPath(
-    new URL("./fixtures/expected/render-basic.txt", import.meta.url),
-  );
-  const expected = readFileSync(expectedPath, "utf8").trimEnd();
-  const homeDir = await mkdtemp(path.join(tmpdir(), "claude-hud-home-"));
-  const projectDir = path.join(homeDir, "dev", "apps", "my-project");
-  await mkdir(projectDir, { recursive: true });
-  try {
-    const { CLAUDEX_LANE_OK: _claudexLaneOk, ...controlEnv } = process.env;
-    const result = spawnSync("node", ["dist/index.js"], {
-      cwd: path.resolve(process.cwd()),
-      input: basicStdin(fixturePath, projectDir),
-      encoding: "utf8",
-      env: { ...controlEnv, HOME: homeDir, LANG: "C" },
-    });
-
-    if (skipIfSpawnBlocked(result, t)) return;
-
-    assert.equal(result.error, undefined, result.error?.message);
-    assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const normalized = stripAnsi(result.stdout).trimEnd();
-    assert.equal(normalized, expected);
-  } finally {
-    await rm(homeDir, { recursive: true, force: true });
-  }
-});
-
-// (b) + (c) cost slot renders "unmeasured" under the lane and never consults pricing
-test('claudex lane: cost slot renders "unmeasured", never a dollar figure', () => {
-  withEnv({ CLAUDEX_LANE_OK: "1" }, () => {
-    const ctx = {
-      stdin: { model: { display_name: "Opus" } },
-      transcript: {
-        sessionTokens: {
-          inputTokens: 100000,
-          outputTokens: 50000,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-        },
-      },
-      config: { display: { showCost: true }, colors: {} },
-    };
-    const line = stripAnsi(renderCostEstimate(ctx));
-    assert.ok(line.includes("unmeasured"), `expected "unmeasured" in: ${line}`);
-    assert.ok(!line.includes("$"), `expected no dollar figure in: ${line}`);
-  });
-});
-
-test("claudex lane: the pricing lookup is not consulted under the lane", () => {
-  withEnv({ CLAUDEX_LANE_OK: "1" }, () => {
-    const tokens = {
-      inputTokens: 100000,
-      outputTokens: 50000,
-      cacheCreationTokens: 0,
-      cacheReadTokens: 0,
-    };
-    assert.equal(
-      estimateSessionCost({ model: { display_name: "Claude Sonnet 4" } }, tokens),
-      null,
-    );
-    assert.equal(
-      getNativeCostUsd({
-        model: { display_name: "Claude Sonnet 4" },
+    const configDir = path.join(home, '.claude');
+    const project = path.join(home, 'dev', 'my-project');
+    const transcript = path.join(configDir, 'projects', 'lane', 'transcript.jsonl');
+    const pluginDir = path.join(configDir, 'plugins', 'claude-hud');
+    await mkdir(project, { recursive: true });
+    await mkdir(path.dirname(transcript), { recursive: true });
+    await mkdir(pluginDir, { recursive: true });
+    await copyFile(transcriptFixture, transcript);
+    await writeFile(path.join(pluginDir, 'config.json'), JSON.stringify({ display }));
+    const result = spawnSync(process.execPath, [entry], {
+      input: JSON.stringify({
+        model: { display_name: 'Opus' },
+        cwd: project,
+        transcript_path: transcript,
         cost: { total_cost_usd: 1.23 },
-      }),
-      null,
-    );
-  });
-});
-
-// (d) context line carries the "configured" denominator label under the lane
-test("claudex lane: context line carries the configured denominator label", () => {
-  withEnv({ CLAUDEX_LANE_OK: "1" }, () => {
-    const ctx = {
-      stdin: {
-        model: { display_name: "Opus" },
         context_window: {
           context_window_size: 200000,
-          current_usage: {
-            input_tokens: 10000,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
-          },
+          used_percentage: 5,
+          current_usage: { input_tokens: 10000 },
         },
-      },
-      config: { display: {}, colors: {} },
-    };
-    const line = stripAnsi(renderIdentityLine(ctx));
-    assert.ok(line.includes("configured"), `expected "configured" in: ${line}`);
-  });
+        ...stdin,
+      }),
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: configDir, LANG: 'C', ...env },
+    });
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 0, result.stderr);
+    return stripAnsi(result.stdout);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+}
+
+const LANE = { CLAUDEX_LANE_OK: '1', CODEX_MODEL: 'gpt-6-astra' };
+
+test('claudex lane: the model badge reads CODEX_MODEL, not the stdin display_name', async () => {
+  const out = await run({ env: LANE });
+  const first = out.split('\n')[0];
+  assert.match(first, /\[gpt-6-astra\]/);
+  assert.ok(!first.includes('Opus'), first);
+});
+
+test('claudex lane control: without the lane the badge is the stdin model', async () => {
+  const out = await run({ env: { CODEX_MODEL: 'gpt-6-astra' } });
+  const first = out.split('\n')[0];
+  assert.match(first, /\[Opus\]/);
+  assert.ok(!first.includes('gpt-6-astra'), first);
+});
+
+test('claudex lane: the cost slot reads unmeasured, never a dollar figure', async () => {
+  const out = await run({ env: LANE, display: { showCost: true } });
+  assert.match(out, /Cost unmeasured/);
+  assert.ok(!out.includes('$'), out);
+});
+
+test('claudex lane control: without the lane the native cost renders', async () => {
+  const out = await run({ display: { showCost: true } });
+  assert.match(out, /Cost \$1\.23/);
+  assert.ok(!out.includes('unmeasured'), out);
+});
+
+test('claudex lane: the context value carries the configured label', async () => {
+  const out = await run({ env: LANE });
+  assert.match(out, /\(configured\)/);
+});
+
+test('claudex lane control: without the lane the context value has no configured label', async () => {
+  const out = await run();
+  assert.ok(!out.includes('(configured)'), out);
+});
+
+test('session tokens: cache write and read are separate figures', async () => {
+  const out = await run({ display: { showSessionTokens: true } });
+  assert.match(out, /Tokens [\d.]+k? \(in: [^,]+, out: [^,]+, cache-w: [^,]+, cache-r: [^)]+\)/);
+  assert.ok(!/cache: /.test(out), out);
 });

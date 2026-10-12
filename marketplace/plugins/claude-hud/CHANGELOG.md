@@ -4,6 +4,33 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A folder name containing ` │ ` no longer leaves the project link open over the rest of the HUD when line 1 wraps.
+
+## [0.10.0] - 2026-10-01
+
+This release is a rewrite for simplicity, with the same options in about half the source and a quarter of the test code. It needs Claude Code v2.1.260 or later.
+
+### Changed
+- Read `version`, `cost`, `prompt_cache`, `session_name`, `output_style`, and `workspace.repo` from Claude Code's stdin instead of deriving them.
+- The prompt-cache expiry and hit rate come from Claude Code's `prompt_cache`, so the expiry no longer reads `expired` while the cache is warm.
+- `display.showCost` shows Claude Code's own cost; the local pricing-table estimate is removed.
+- Context percentage always follows Claude Code's `used_percentage`, falling back to the last request's size in the transcript when Claude Code reports none. `display.autocompactBuffer` and `display.promptCacheTtlSeconds` no longer exist.
+- Session duration is Claude Code's running time for the session.
+- Git status comes from one `git status --porcelain=v2` call, down from four or five, and the branch link comes from `workspace.repo`. A repository with no commits now shows its branch.
+- The compact layout gains expanded's branch link and push-threshold colours, and `display.timeFormat: "elapsed"` now works there.
+- `/claude-hud:setup` installs a small launcher and writes `settings.json` with a helper script instead of hand-built shell commands. Existing setups keep working; re-run setup to switch. It asks nothing unless it would replace another status line; customize afterwards by asking Claude or with `/claude-hud:configure`. A `refreshInterval` you set yourself is kept.
+- `/claude-hud:configure` asks one short set of questions and previews the diff.
+- The default HUD no longer parses the transcript, runs `claude --version`, or keeps context or transcript caches on disk.
+
+### Fixed
+- The macOS memory reading no longer blocks the rest of the render.
+- The daily cost ledger no longer throws on a non-string `session_id`.
+
+### Security
+- Sanitize the output style, tool names, tool targets (paths, Grep patterns, Bash commands), todo text, and the model name before display. They reached the terminal raw.
+- `/claude-hud:setup` writes `settings.json` through a dotfiles symlink and keeps its permissions.
+
 ## [0.9.0] - 2026-10-01
 
 ### Added
@@ -15,7 +42,6 @@ All notable changes to Claude HUD will be documented in this file.
 - `display.showCacheHitRate` option to show the session's prompt-cache hit rate as `Cache hit X%` (#741).
 - Expand a leading `~` and `${VAR}` in `display.externalUsagePath` and `display.externalUsageWritePath` (#760).
 - `display.showModelScopedUsage` option to hide the per-model weekly windows (e.g. Fable) while keeping the 5h/7d windows (#728).
-- Break the session-tokens line's combined cache figure into separate cache-write and cache-read totals.
 
 ### Fixed
 - Read `.claude.json` from inside `CLAUDE_CONFIG_DIR` when it is set, as Claude Code does, so `showAuth`, `showAuthUser`, and MCP counts work with a custom config directory (#776).
@@ -33,7 +59,6 @@ All notable changes to Claude HUD will be documented in this file.
 - Decode every C-style escape git uses in quoted porcelain paths (#765).
 - Count unmerged (`UU`, `UA`) paths in git file stats (#763).
 - Translate the elapsed usage-window suffix (#768).
-- Refresh stale per-model cost-estimate pricing (enterprise plan aliases) and drop the Sonnet 5 introductory-rate cutover date, which no current pricing reference corroborates.
 
 ### Security
 - Exit quietly when the setup command cannot resolve the plugin directory instead of running `dist/index.js` relative to the current project; re-run `/claude-hud:setup` to pick it up (#759).

@@ -81,7 +81,7 @@ export function redactPayload(e: AguiEvent, redact: (value: unknown) => unknown)
 
 // One followed file: the session journal, or one of its subagents' transcripts. The subagent discovery
 // and the line order are journal-merge.ts's, shared with the leg digest (HIMMEL-4670).
-type Source = { path: string; fh?: FileHandle; offset: number; size: number; tail: string; utf8: TextDecoder; last: { ts: number } };
+type Source = { path: string; fh?: FileHandle; offset: number; size: number; tail: string; utf8: TextDecoder; last: { ts: number }; backwards?: true };
 
 // Opens a validated realpath, then checks that the fd is still that file (HIMMEL-4657): the containment check in
 // resolveJournal/subagentFiles and this open are separate steps, so a swap in between must not be served.
@@ -145,7 +145,11 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
     grewAt = Date.now();
     const parts = (s.tail + s.utf8.decode(buf.subarray(0, bytesRead), { stream: true })).split("\n");
     s.tail = parts.pop()!;
-    return stampLines(parts, s.last, () => order++);
+    return stampLines(parts, s.last, () => order++, () => {
+      if (s.backwards) return; // one warning per file, however many lines regress
+      s.backwards = true;
+      console.warn(`agui: a timestamp in ${s.path} goes backwards; its lines are released in file order`);
+    });
   };
   const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => mapper.pushLine(l.text));
   return new ReadableStream<Uint8Array>({

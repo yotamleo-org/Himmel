@@ -30,7 +30,7 @@ WAKE='{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":270,"prompt":"x
 check() {
     local label="$1" expect="$2" json="$3"; shift 3
     local rc got
-    printf '%s' "$json" | env -u HIMMEL_CONSOLE_LEG "$@" bash "$HOOK" >/dev/null 2>&1
+    env -u HIMMEL_CONSOLE_LEG "$@" bash "$HOOK" <<< "$json" >/dev/null 2>&1
     rc=$?
     case "$rc" in
         0) got=allow ;;
@@ -45,14 +45,14 @@ check() {
 silent() {
     local label="$1" json="$2"; shift 2
     local out
-    out="$(printf '%s' "$json" | env -u HIMMEL_CONSOLE_LEG "$@" bash "$HOOK" 2>&1)"
+    out="$(env -u HIMMEL_CONSOLE_LEG "$@" bash "$HOOK" <<< "$json" 2>&1)"
     if [ -z "$out" ]; then ok "$label"; else
         bad "$label - expected no output, got: $out"; fi
 }
 
 echo "== marker set + ScheduleWakeup -> deny =="
 check "marker + ScheduleWakeup -> deny" block "$WAKE" HIMMEL_CONSOLE_LEG=1
-out="$(printf '%s' "$WAKE" | env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" 2>/dev/null)"
+out="$(env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" <<< "$WAKE" 2>/dev/null)"
 reason="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
 case "$reason" in
     "leg wakeup-deny: "*) ok "stdout JSON reason starts with 'leg wakeup-deny: '" ;;
@@ -65,7 +65,7 @@ esac
 decision="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
 if [ "$decision" = "deny" ]; then ok "permissionDecision is deny"; else
     bad "permissionDecision not deny - got: $decision"; fi
-err="$(printf '%s' "$WAKE" | env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" 2>&1 >/dev/null)"
+err="$(env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" <<< "$WAKE" 2>&1 >/dev/null)"
 case "$err" in
     "leg wakeup-deny: "*) ok "stderr carries the same deny text" ;;
     *) bad "stderr not 'leg wakeup-deny: ...' - got: $err" ;;
@@ -73,6 +73,10 @@ esac
 
 echo "== marker unset / not 1 -> allow, zero output (context cost 0) =="
 check "no marker + ScheduleWakeup -> allow" allow "$WAKE"
+# Larger than a pipe buffer: the early-exiting hook cannot consume the writer's
+# remaining bytes, making a piped stdin feeder fail with SIGPIPE (HIMMEL-4160).
+printf -v padding '%1048576s' ''
+check "no marker + large stdin -> allow without SIGPIPE" allow "$WAKE$padding"
 silent "no marker + ScheduleWakeup -> no output" "$WAKE"
 check "marker=0 + ScheduleWakeup -> allow" allow "$WAKE" HIMMEL_CONSOLE_LEG=0
 silent "marker=0 + ScheduleWakeup -> no output" "$WAKE" HIMMEL_CONSOLE_LEG=0

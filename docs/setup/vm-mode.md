@@ -45,6 +45,8 @@ changes what the resolver reads. Such a cadence is pre-selected only under
 (that selection is the ack), and under a config error it cannot be armed at
 all. `--from-profile` never arms it under `none` or an error.
 
+The config UI (`himmelctl ui`, Config page, "VM mode") edits the same `vm` section, validated by the same rules before anything is written.
+
 **Fail closed — and an error is not a `none`.** A config path that exists but
 is not a readable file (a directory, a dangling symlink), a config that cannot
 be parsed (or whose top level or `vm` is not an object), an unknown mode

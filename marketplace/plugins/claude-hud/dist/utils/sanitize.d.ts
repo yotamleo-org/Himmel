@@ -1,9 +1,3 @@
-/**
- * Strip ANSI escape sequences (CSI, OSC, 7-bit C1/Fe), control characters,
- * and bidi overrides from an untrusted string.
- *
- * Use this whenever displaying user-supplied or external text in the
- * terminal to prevent escape injection and layout corruption.
- */
+/** Untrusted text made safe to print: no escape sequences, controls, or bidi overrides. */
 export declare function sanitizeDisplayText(input: string): string;
 //# sourceMappingURL=sanitize.d.ts.map

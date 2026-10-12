@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="t d">
+<title id="t">himmel: four flows</title>
+<desc id="d">Ship a change: Jira ticket then /worktree then commit + push then /pr-check then CI green then merge; Run a fleet: one console, many legs: console then dispatch leg then leg ships a PR then console checks then GO file then merge + wrap; Carry work across sessions: session works then /handover then state repo then cap or restart then /handover-resume then picks up; Find what you already know: question then MEMORY.md then qmd search then graphify then source file then write back</desc>
+<style>.card{fill:#ffffff;stroke:#d0d7de}
+.title{fill:#1f2328;font:600 15px system-ui,-apple-system,'Segoe UI',sans-serif}
+.box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.5}
+.label{fill:#1f2328;font:600 13px system-ui,-apple-system,'Segoe UI',sans-serif}
+.cap{fill:#59636e;font:12px system-ui,-apple-system,'Segoe UI',sans-serif}
+.arrow{stroke:#8c959f;stroke-width:2;fill:none}
+.head{fill:#8c959f}
+.box.p{animation:box 9s linear infinite}
+.label.p{animation:label 9s linear infinite}
+.arrow.p{animation:arrow 9s linear infinite}
+.head.p{animation:head 9s linear infinite}
+@keyframes box{0%,14%{fill:#0969da;stroke:#0969da}22%,100%{fill:#f6f8fa;stroke:#d0d7de}}
+@keyframes label{0%,14%{fill:#ffffff}22%,100%{fill:#1f2328}}
+@keyframes arrow{0%,14%{stroke:#0969da}22%,100%{stroke:#8c959f}}
+@keyframes head{0%,14%{fill:#0969da}22%,100%{fill:#8c959f}}
+@media (prefers-color-scheme:dark){
+.card{fill:#0d1117;stroke:#3d444d}
+.title,.label{fill:#f0f6fc}
+.box{fill:#151b23;stroke:#3d444d}
+.cap{fill:#9198a1}
+.arrow{stroke:#656c76}
+.head{fill:#656c76}
+@keyframes box{0%,14%{fill:#1f6feb;stroke:#4493f8}22%,100%{fill:#151b23;stroke:#3d444d}}
+@keyframes label{0%,14%{fill:#ffffff}22%,100%{fill:#f0f6fc}}
+@keyframes arrow{0%,14%{stroke:#4493f8}22%,100%{stroke:#656c76}}
+@keyframes head{0%,14%{fill:#4493f8}22%,100%{fill:#656c76}}
+}
+@media (prefers-reduced-motion:reduce){.p{animation:none!important}}</style>
+<rect class="card" x="0.5" y="0.5" width="959" height="559" rx="12"/>
+<text class="title" x="24" y="42">1  Ship a change</text>
+<rect class="box p" style="animation-delay:0s" x="24" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:0s" x="87.5" y="81" text-anchor="middle">Jira ticket</text>
+<text class="cap" x="87.5" y="118" text-anchor="middle">every commit cites it</text>
+<line class="arrow p" style="animation-delay:0.6s" x1="155" y1="76" x2="171" y2="76"/>
+<path class="head p" style="animation-delay:0.6s" d="M175 76L168 71L168 81Z"/>
+<rect class="box p" style="animation-delay:1.2s" x="181" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:1.2s" x="244.5" y="81" text-anchor="middle">/worktree</text>
+<text class="cap" x="244.5" y="118" text-anchor="middle">own branch, never main</text>
+<line class="arrow p" style="animation-delay:1.8s" x1="312" y1="76" x2="328" y2="76"/>
+<path class="head p" style="animation-delay:1.8s" d="M332 76L325 71L325 81Z"/>
+<rect class="box p" style="animation-delay:2.4s" x="338" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:2.4s" x="401.5" y="81" text-anchor="middle">commit + push</text>
+<text class="cap" x="401.5" y="118" text-anchor="middle">hooks gate each step</text>
+<line class="arrow p" style="animation-delay:3s" x1="469" y1="76" x2="485" y2="76"/>
+<path class="head p" style="animation-delay:3s" d="M489 76L482 71L482 81Z"/>
+<rect class="box p" style="animation-delay:3.6s" x="495" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:3.6s" x="558.5" y="81" text-anchor="middle">/pr-check</text>
+<text class="cap" x="558.5" y="118" text-anchor="middle">panel of review agents</text>
+<line class="arrow p" style="animation-delay:4.2s" x1="626" y1="76" x2="642" y2="76"/>
+<path class="head p" style="animation-delay:4.2s" d="M646 76L639 71L639 81Z"/>
+<rect class="box p" style="animation-delay:4.8s" x="652" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:4.8s" x="715.5" y="81" text-anchor="middle">CI green</text>
+<text class="cap" x="715.5" y="118" text-anchor="middle">the impacted suites</text>
+<line class="arrow p" style="animation-delay:5.4s" x1="783" y1="76" x2="799" y2="76"/>
+<path class="head p" style="animation-delay:5.4s" d="M803 76L796 71L796 81Z"/>
+<rect class="box p" style="animation-delay:6s" x="809" y="54" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:6s" x="872.5" y="81" text-anchor="middle">merge</text>
+<text class="cap" x="872.5" y="118" text-anchor="middle">then /clean prunes</text>
+<text class="title" x="24" y="170">2  Run a fleet: one console, many legs</text>
+<rect class="box p" style="animation-delay:0.3s" x="24" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:0.3s" x="87.5" y="209" text-anchor="middle">console</text>
+<text class="cap" x="87.5" y="246" text-anchor="middle">plans the work</text>
+<line class="arrow p" style="animation-delay:0.9s" x1="155" y1="204" x2="171" y2="204"/>
+<path class="head p" style="animation-delay:0.9s" d="M175 204L168 199L168 209Z"/>
+<rect class="box p" style="animation-delay:1.5s" x="181" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:1.5s" x="244.5" y="209" text-anchor="middle">dispatch leg</text>
+<text class="cap" x="244.5" y="246" text-anchor="middle">own worktree + token</text>
+<line class="arrow p" style="animation-delay:2.1s" x1="312" y1="204" x2="328" y2="204"/>
+<path class="head p" style="animation-delay:2.1s" d="M332 204L325 199L325 209Z"/>
+<rect class="box p" style="animation-delay:2.7s" x="338" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:2.7s" x="401.5" y="209" text-anchor="middle">leg ships a PR</text>
+<text class="cap" x="401.5" y="246" text-anchor="middle">reports LIVE, READY</text>
+<line class="arrow p" style="animation-delay:3.3s" x1="469" y1="204" x2="485" y2="204"/>
+<path class="head p" style="animation-delay:3.3s" d="M489 204L482 199L482 209Z"/>
+<rect class="box p" style="animation-delay:3.9s" x="495" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:3.9s" x="558.5" y="209" text-anchor="middle">console checks</text>
+<text class="cap" x="558.5" y="246" text-anchor="middle">ready-check, judge</text>
+<line class="arrow p" style="animation-delay:4.5s" x1="626" y1="204" x2="642" y2="204"/>
+<path class="head p" style="animation-delay:4.5s" d="M646 204L639 199L639 209Z"/>
+<rect class="box p" style="animation-delay:5.1s" x="652" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:5.1s" x="715.5" y="209" text-anchor="middle">GO file</text>
+<text class="cap" x="715.5" y="246" text-anchor="middle">the console signs off</text>
+<line class="arrow p" style="animation-delay:5.7s" x1="783" y1="204" x2="799" y2="204"/>
+<path class="head p" style="animation-delay:5.7s" d="M803 204L796 199L796 209Z"/>
+<rect class="box p" style="animation-delay:6.3s" x="809" y="182" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:6.3s" x="872.5" y="209" text-anchor="middle">merge + wrap</text>
+<text class="cap" x="872.5" y="246" text-anchor="middle">merge-on-green</text>
+<text class="title" x="24" y="298">3  Carry work across sessions</text>
+<rect class="box p" style="animation-delay:0.6s" x="24" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:0.6s" x="87.5" y="337" text-anchor="middle">session works</text>
+<text class="cap" x="87.5" y="374" text-anchor="middle">decisions pile up</text>
+<line class="arrow p" style="animation-delay:1.2s" x1="155" y1="332" x2="171" y2="332"/>
+<path class="head p" style="animation-delay:1.2s" d="M175 332L168 327L168 337Z"/>
+<rect class="box p" style="animation-delay:1.8s" x="181" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:1.8s" x="244.5" y="337" text-anchor="middle">/handover</text>
+<text class="cap" x="244.5" y="374" text-anchor="middle">writes a markdown doc</text>
+<line class="arrow p" style="animation-delay:2.4s" x1="312" y1="332" x2="328" y2="332"/>
+<path class="head p" style="animation-delay:2.4s" d="M332 332L325 327L325 337Z"/>
+<rect class="box p" style="animation-delay:3s" x="338" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:3s" x="401.5" y="337" text-anchor="middle">state repo</text>
+<text class="cap" x="401.5" y="374" text-anchor="middle">your handover repo</text>
+<line class="arrow p" style="animation-delay:3.6s" x1="469" y1="332" x2="485" y2="332"/>
+<path class="head p" style="animation-delay:3.6s" d="M489 332L482 327L482 337Z"/>
+<rect class="box p" style="animation-delay:4.2s" x="495" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:4.2s" x="558.5" y="337" text-anchor="middle">cap or restart</text>
+<text class="cap" x="558.5" y="374" text-anchor="middle">relaunch is armed</text>
+<line class="arrow p" style="animation-delay:4.8s" x1="626" y1="332" x2="642" y2="332"/>
+<path class="head p" style="animation-delay:4.8s" d="M646 332L639 327L639 337Z"/>
+<rect class="box p" style="animation-delay:5.4s" x="652" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:5.4s" x="715.5" y="337" text-anchor="middle">/handover-resume</text>
+<text class="cap" x="715.5" y="374" text-anchor="middle">reads the doc back</text>
+<line class="arrow p" style="animation-delay:6s" x1="783" y1="332" x2="799" y2="332"/>
+<path class="head p" style="animation-delay:6s" d="M803 332L796 327L796 337Z"/>
+<rect class="box p" style="animation-delay:6.6s" x="809" y="310" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:6.6s" x="872.5" y="337" text-anchor="middle">picks up</text>
+<text class="cap" x="872.5" y="374" text-anchor="middle">where it stopped</text>
+<text class="title" x="24" y="426">4  Find what you already know</text>
+<rect class="box p" style="animation-delay:0.9s" x="24" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:0.9s" x="87.5" y="465" text-anchor="middle">question</text>
+<text class="cap" x="87.5" y="502" text-anchor="middle">in any session</text>
+<line class="arrow p" style="animation-delay:1.5s" x1="155" y1="460" x2="171" y2="460"/>
+<path class="head p" style="animation-delay:1.5s" d="M175 460L168 455L168 465Z"/>
+<rect class="box p" style="animation-delay:2.1s" x="181" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:2.1s" x="244.5" y="465" text-anchor="middle">MEMORY.md</text>
+<text class="cap" x="244.5" y="502" text-anchor="middle">index routes to notes</text>
+<line class="arrow p" style="animation-delay:2.7s" x1="312" y1="460" x2="328" y2="460"/>
+<path class="head p" style="animation-delay:2.7s" d="M332 460L325 455L325 465Z"/>
+<rect class="box p" style="animation-delay:3.3s" x="338" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:3.3s" x="401.5" y="465" text-anchor="middle">qmd search</text>
+<text class="cap" x="401.5" y="502" text-anchor="middle">keyword + vector</text>
+<line class="arrow p" style="animation-delay:3.9s" x1="469" y1="460" x2="485" y2="460"/>
+<path class="head p" style="animation-delay:3.9s" d="M489 460L482 455L482 465Z"/>
+<rect class="box p" style="animation-delay:4.5s" x="495" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:4.5s" x="558.5" y="465" text-anchor="middle">graphify</text>
+<text class="cap" x="558.5" y="502" text-anchor="middle">graph of the code</text>
+<line class="arrow p" style="animation-delay:5.1s" x1="626" y1="460" x2="642" y2="460"/>
+<path class="head p" style="animation-delay:5.1s" d="M646 460L639 455L639 465Z"/>
+<rect class="box p" style="animation-delay:5.7s" x="652" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:5.7s" x="715.5" y="465" text-anchor="middle">source file</text>
+<text class="cap" x="715.5" y="502" text-anchor="middle">the real file, read</text>
+<line class="arrow p" style="animation-delay:6.3s" x1="783" y1="460" x2="799" y2="460"/>
+<path class="head p" style="animation-delay:6.3s" d="M803 460L796 455L796 465Z"/>
+<rect class="box p" style="animation-delay:6.9s" x="809" y="438" width="127" height="44" rx="8"/>
+<text class="label p" style="animation-delay:6.9s" x="872.5" y="465" text-anchor="middle">write back</text>
+<text class="cap" x="872.5" y="502" text-anchor="middle">new lesson to memory</text>
+</svg>
