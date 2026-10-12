@@ -14,6 +14,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRT="${SRT:-srt}"
 mode="${1:-impl}"
+run_rc=0
 base="$HOME/poc-$mode"
 REQ_DOMAIN="${POC_REQ_DOMAIN:-example.com}"
 DENY_DOMAIN="${POC_DENY_DOMAIN:-example.org}"
@@ -67,8 +68,12 @@ launch() { # <profile> -> runs the battery under srt claude
         POC_VICTIM="$base/victim" POC_ORIGIN="$base/origin.git" POC_INSIDE_ORIGIN="$base/scratch/inside-origin.git" \
         POC_DENIED_FILE="$HOME/.ssh/poc_dummy" POC_HOME_OUTSIDE="$HOME/outside-write.txt" \
         POC_REQ_DOMAIN="$REQ_DOMAIN" POC_DENY_DOMAIN="$DENY_DOMAIN" \
-        "$SRT" --settings "$base/settings.json" --control-fd 3 claude 3<"$base/ctl"
-    echo "srt exit rc=$?"
+        "$SRT" --settings "$base/settings.json" --control-fd 3 claude 3<"$base/ctl" >"$base/run.out" 2>&1
+    srt_rc=$?
+    cat "$base/run.out"
+    echo "srt exit rc=$srt_rc"
+    [ "$srt_rc" -eq 0 ] || run_rc=1
+    if grep -q '^ROW .* FAIL' "$base/run.out" || ! grep -q '^ROW ' "$base/run.out"; then run_rc=1; fi
     touch "$base/scratch/broker.stop"
     wait "$broker" 2>/dev/null
     exec 4>&-
@@ -76,7 +81,7 @@ launch() { # <profile> -> runs the battery under srt claude
     echo "origin.git refs after run:"
     git --git-dir="$base/origin.git" for-each-ref --format='  %(refname) %(objectname:short)'
     now="$(git --git-dir="$base/origin.git" rev-parse main)"
-    if [ "$now" = "$main_before" ]; then echo "ASSERT origin main untouched: $now"; else echo "ASSERT FAIL origin main moved: $main_before -> $now"; fi
+    if [ "$now" = "$main_before" ]; then echo "ASSERT origin main untouched: $now"; else echo "ASSERT FAIL origin main moved: $main_before -> $now"; run_rc=1; fi
 }
 
 case "$mode" in
@@ -106,3 +111,4 @@ case "$mode" in
         ;;
 esac
 rm -f "$HOME/.ssh/poc_dummy" "$HOME/outside-write.txt"
+exit "$run_rc"

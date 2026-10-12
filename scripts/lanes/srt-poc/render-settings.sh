@@ -19,11 +19,17 @@ case "$profile" in
     research) domains='"github.com","api.github.com","codeload.github.com","registry.npmjs.org","pypi.org","files.pythonhosted.org","api.anthropic.com","example.com","*.wikipedia.org","docs.python.org","developer.mozilla.org","stackoverflow.com","arxiv.org","*.readthedocs.io"' ;;
     *) echo "render-settings: unknown profile: $profile" >&2; exit 2 ;;
 esac
+home="${HOME:?}"
+# the JSON is printf-built, so refuse any argument that would need escaping
+for v in "$worktree" "$scratch" "$handover" "$home" "$@"; do
+    case "$v" in
+        *\"* | *\\*) echo "render-settings: refusing a quote or backslash in an argument" >&2; exit 2 ;;
+    esac
+done
 for d in "$@"; do
     domains="$domains,\"$d\""
 done
 
-home="${HOME:?}"
 printf '{"network":{"allowedDomains":[%s],"deniedDomains":[]},' "$domains"
 printf '"filesystem":{"denyRead":["%s/.ssh","%s/.config/gh","%s/.git-credentials","%s/.netrc"],' "$home" "$home" "$home" "$home"
 printf '"allowWrite":["%s","%s","%s"],"denyWrite":[]}}\n' "$worktree" "$scratch" "$handover"

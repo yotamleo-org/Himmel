@@ -84,4 +84,8 @@ for spec in $refspecs; do
 done
 
 # shellcheck disable=SC2086 # flags and refspecs are validated words
-exec git push $flags "$remote" $refspecs
+# Hooks are disabled because this runs OUTSIDE the sandbox in a leg-writable
+# worktree. Config-injected commands (core.sshCommand, credential helpers,
+# includeIf) in the leg's .git/config are NOT closed here: the production
+# broker (HIMMEL-5398) must push from a launcher-owned clone instead.
+exec git -c core.hooksPath=/dev/null push $flags "$remote" $refspecs

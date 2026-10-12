@@ -19,9 +19,12 @@ approved=""
 while [ ! -f "$scratch/broker.stop" ]; do
     for f in "$scratch"/req/*.push "$scratch"/req/*.domain; do
         [ -f "$f" ] && [ -r "$f" ] || continue # unreadable request stays unanswered = denied
+        [ -L "$f" ] && continue                # a symlinked request stays unanswered = denied
         base="${f%.*}"
         kind="${f##*.}"
         [ -f "$base.rc" ] && continue
+        # the leg owns this directory: never write through a symlink it planted
+        if [ -L "$base.out" ] || [ -L "$base.rc" ]; then continue; fi
         case "$kind" in
             push)
                 args=()

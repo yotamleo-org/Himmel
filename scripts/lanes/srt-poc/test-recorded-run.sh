@@ -25,6 +25,13 @@ for m in impl research; do
     has "$f" '^ASSERT origin main untouched' "$m: origin main untouched"
     has "$f" '^ASSERT settings-loaded' "$m: launch-time settings assertion ran"
 done
+for r in B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside \
+    B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main \
+    B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit; do
+    for m in impl research; do
+        has "$REC/vm-run-$m.txt" "^ROW $r PASS" "$m: row $r present and PASS"
+    done
+done
 has "$REC/vm-run-impl.txt" '^ROW B13-domain-request-approved PASS' "impl: approved domain request round trip"
 has "$REC/vm-run-impl.txt" '^ROW B14-domain-request-default-deny PASS' "impl: unanswered request denied"
 has "$REC/vm-run-research.txt" '^ROW B12b-research-not-unlimited PASS' "research: not unlimited"
