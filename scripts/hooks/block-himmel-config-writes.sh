@@ -138,9 +138,25 @@ case "$tool" in
         esac
         # Additional deny: a header path that RESOLVES to the config without
         # naming .himmel (a symlinked directory or alias).
+        # codex trims Unicode White_Space (j2409f, codex-1 round 3), bash's
+        # [[:space:]] does not: strip the multi-byte members too, from header
+        # lines and from the extracted path, until stable.
+        uni_trim() {
+            local v="$1" prev="" u
+            while [ "$v" != "$prev" ]; do
+                prev="$v"
+                v="${v#"${v%%[![:space:]]*}"}"
+                v="${v%"${v##*[![:space:]]}"}"
+                for u in $'\xc2\xa0' $'\xc2\x85' $'\xe1\x9a\x80' $'\xe2\x80\x80' $'\xe2\x80\x81' $'\xe2\x80\x82' $'\xe2\x80\x83' $'\xe2\x80\x84' $'\xe2\x80\x85' $'\xe2\x80\x86' $'\xe2\x80\x87' $'\xe2\x80\x88' $'\xe2\x80\x89' $'\xe2\x80\x8a' $'\xe2\x80\xa8' $'\xe2\x80\xa9' $'\xe2\x80\xaf' $'\xe2\x81\x9f' $'\xe3\x80\x80'; do
+                    v="${v#"$u"}"
+                    v="${v%"$u"}"
+                done
+            done
+            UNI_TRIMMED="$v"
+        }
         while IFS= read -r ln; do
-            ln="${ln#"${ln%%[![:space:]]*}"}"
-            ln="${ln%"${ln##*[![:space:]]}"}"
+            uni_trim "$ln"
+            ln="$UNI_TRIMMED"
             case "$ln" in
                 '*** Add File: '*) p="${ln#\*\*\* Add File: }" ;;
                 '*** Update File: '*) p="${ln#\*\*\* Update File: }" ;;
@@ -149,12 +165,17 @@ case "$tool" in
                 *) continue ;;
             esac
             # A relative patch path (a `~`-led one included, codex does not
-            # expand it) resolves against the payload cwd.
-            case "$p" in
-                /*|"") ;;
-                *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
-            esac
-            check_path apply_patch "$p"
+            # expand it) resolves against the payload cwd. The path is checked
+            # as written AND Unicode-trimmed (codex trims; a file literally
+            # named with a trailing NBSP is the as-written variant).
+            uni_trim "$p"
+            for p in "$p" "$UNI_TRIMMED"; do
+                case "$p" in
+                    /*|"") ;;
+                    *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
+                esac
+                check_path apply_patch "$p"
+            done
         done <<EOF
 $patch
 EOF
