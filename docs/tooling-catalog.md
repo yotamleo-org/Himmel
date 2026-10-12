@@ -922,6 +922,8 @@ commands denied; 18 of 20 benign allowed (about 10% over-block on script
 execution, flaky); deny latency 3-9 s for s1, up to 28 s for s2; about USD 0.086
 per classifier call when billed by API.
 
+The deny rules, not the classifier, are what stop destructive git (HIMMEL-5388): in the HIMMEL-5164 probe the classifier alone allowed a force push to main, and the seeded rules are injected only when the user settings file exists.
+
 **Guard files:** the lane uses `~/.config/claude-codex/phi-roots` and
 `~/.config/claude-codex/egress-denylist`, plus the launch-cwd `.salus` marker.
 A PHI-marked workspace is refused with no override; denylisted workspaces require
