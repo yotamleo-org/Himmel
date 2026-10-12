@@ -70,6 +70,7 @@ cat > "$STUBS/npm" <<'EOF'
 case "$1 $2" in
     "view @openai/codex")           cat "$STUB_STATE/codex.latest" ;;
     "view @anthropic-ai/claude-code") cat "$STUB_STATE/claude.latest" ;;
+    "root -g") cat "$STUB_STATE/npm.root" ;;
     "install -g")
         echo "npm $*" >> "$STUB_STATE/npm.log"
         [ -f "$STUB_STATE/npm.fail" ] && { echo "npm ERR! EACCES" >&2; exit 243; }
@@ -97,6 +98,7 @@ run_only() {
 has() { grep -qE -- "$1" <<< "$OUT"; }
 
 reset_state() {
+    printf '%s\n' "$TMP/npmroot/lib/node_modules" > "$STATE/npm.root"
     printf '0.100.0\n' > "$STATE/codex.ver"
     printf '0.200.0\n' > "$STATE/codex.latest"
     printf '2.1.100\n' > "$STATE/claude.ver"
@@ -141,6 +143,32 @@ else
     assert_fail "vm.mode=none → HELD, no install: $OUT"
 fi
 printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+
+echo "npm Codex: the active npm must own the selected installation"
+reset_state
+printf '%s\n' "$TMP/other-node/lib/node_modules" > "$STATE/npm.root"
+run_only clis
+if has 'needs you.*npm.*selected Codex' && [ ! -f "$STATE/npm.log" ] \
+    && [ "$(cat "$STATE/codex.ver")" = '0.100.0' ]; then
+    assert_pass "a mismatched npm root never mutates either Codex installation"
+else
+    assert_fail "mismatched npm root → needs-you, no installation: $OUT"
+fi
+
+reset_state
+cat > "$STUBS/readlink" <<'EOF'
+#!/bin/sh
+[ "$1" = '-f' ] && exit 1
+exec /usr/bin/readlink "$@"
+EOF
+chmod +x "$STUBS/readlink"
+run_only clis
+if has '^    codex +updated' && grep -q 'install -g' "$STATE/npm.log" 2>/dev/null; then
+    assert_pass "npm Codex symlinks resolve with BSD-style readlink"
+else
+    assert_fail "BSD readlink → npm owner and upgrade: $OUT"
+fi
+rm -f "$STUBS/readlink"
 
 echo "claude CLI: reported, never updated"
 reset_state

@@ -497,6 +497,22 @@ update_codex() {
 # update command. Both land in the chain-status table via _probe_tool_row.
 #   sync_agent_clis check | apply
 
+# Resolve executable symlinks without GNU readlink flags (BSD/macOS too).
+_cli_realpath() {
+    local p="$1" dir link hops=0
+    [ -n "$p" ] || return 1
+    if [ -d "$p" ]; then (cd "$p" && pwd -P); return; fi
+    while :; do
+        dir="$(cd "$(dirname "$p")" && pwd -P)" || return 1
+        p="$dir/${p##*/}"
+        [ -L "$p" ] || { printf '%s\n' "$p"; return 0; }
+        [ "$hops" -lt 40 ] || return 1
+        hops=$((hops + 1))
+        link="$(readlink "$p")" || return 1
+        case "$link" in /*) p="$link" ;; *) p="$dir/$link" ;; esac
+    done
+}
+
 # _cli_owner <resolved path> — npm | brew | pacman, or empty when unknown.
 _cli_owner() {
     local p="$1"
@@ -544,7 +560,7 @@ _sync_codex_cli() {
     fi
     inst="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
     latest="$(_npm_latest @openai/codex)"
-    path="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
+    path="$(_cli_realpath "$bin" 2>/dev/null || echo "$bin")"
     owner="$(_cli_owner "$path")"
     case "$owner" in
         npm)    cmd="npm install -g @openai/codex@latest" ;;
@@ -586,6 +602,20 @@ _sync_codex_cli() {
         _probe_tool_row codex skipped "$inst -> $latest — needs you: $cmd"
         _ver_row codex "$inst" "$latest" behind "needs you: $cmd"
         return 0
+    fi
+    if [ "$owner" = "npm" ]; then
+        local npm_root
+        npm_root="$(npm root -g 2>/dev/null)" || npm_root=""
+        npm_root="$(_cli_realpath "$npm_root" 2>/dev/null)" || npm_root=""
+        case "$npm_root:$path" in
+            ?*:"$npm_root"/@openai/codex/*) ;;
+            *)
+                cmd="use the npm that owns the selected Codex ($path), then npm install -g @openai/codex@latest"
+                echo "    needs you: $cmd"
+                _probe_tool_row codex skipped "$inst -> $latest — needs you: $cmd"
+                _ver_row codex "$inst" "$latest" behind "needs you: $cmd"
+                return 0 ;;
+        esac
     fi
     gate_rc=0
     _vm_proof_gate codex_cli || gate_rc=$?
@@ -2536,7 +2566,7 @@ report_toolchain() {
     if command -v bun >/dev/null 2>&1; then
         local bun_before bun_after bun_path bun_owner bun_fix bun_out
         bun_before="$(bun --version 2>/dev/null)"
-        bun_path="$(readlink -f "$(command -v bun)" 2>/dev/null || command -v bun)"
+        bun_path="$(_cli_realpath "$(command -v bun)" 2>/dev/null || command -v bun)"
         bun_owner="$(_cli_owner "$bun_path")"
         case "$bun_owner" in
             pacman) bun_fix="sudo pacman -Syu bun" ;;
