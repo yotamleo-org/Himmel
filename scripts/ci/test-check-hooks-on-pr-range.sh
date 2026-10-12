@@ -29,6 +29,7 @@ expect() { # <label> <want-rc> <got-rc> <output>
 mkpr() {
   local d="$1" m1="$2" m2="${3:-}" f
   (
+    set -e   # a failed fixture step aborts the subshell, never a misleading verdict
     fixture_enter_git_init_dir "$d" || exit 1
     git init -q -b main
     git config user.email t@e; git config user.name t
@@ -47,7 +48,7 @@ mkpr() {
     mkdir -p scripts; echo main > scripts/main-only.sh; git add -A; git commit -q -m "chore: main moved on"
     git merge -q --no-ff --no-edit pr
     git checkout -q --detach HEAD
-  )
+  ) || { echo "FAIL: fixture setup for $d"; exit 1; }
 }
 run() { ( cd "$1" && shift && bash "$W" "$@" 2>&1 ); }
 mk() { local t; t="$(fixture_mktemp_dir)" || exit 1; echo "$t"; }
@@ -134,6 +135,27 @@ rm -rf "$t"
 # --- bad hook path is refused ---
 out="$(run "$REPO_ROOT" -- scripts/ci/check-no-secrets.sh)"; rc=$?
 expect "non-hook path refused -> rc2" 2 "$rc" "$out"
+
+# --- --base with no value is a usage error, not an endless loop ---
+out="$(timeout 10 bash "$W" --base 2>&1)"; rc=$?
+expect "--base without a value -> rc2" 2 "$rc" "$out"
+
+# --- a merge-only PR range is still checked (an evil merge adds a script) ---
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
+(
+  set -e
+  cd "$t"
+  main="$(git rev-parse 'HEAD^1')"; old="$(git rev-parse 'HEAD^1~1')"
+  git checkout -q --detach "$main"
+  mkdir -p scripts; echo evil > scripts/evil.sh; git add scripts/evil.sh
+  tree="$(git write-tree)"
+  tip="$(git commit-tree "$tree" -p "$main" -p "$old" -m "merge only")"
+  m="$(git commit-tree "$tree" -p "$main" -p "$tip" -m "merge")"
+  git checkout -q --detach "$m"
+) || fail "merge-only fixture setup"
+out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+expect "merge-only range, unattested script -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
 
 echo
 if [ "$failures" -gt 0 ]; then echo "$failures FAILED"; exit 1; fi

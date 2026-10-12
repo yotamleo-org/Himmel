@@ -34,7 +34,9 @@ BASE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --first-commit) FIRST=1; shift ;;
-    --base) BASE="${2:-}"; shift 2 ;;
+    --base)
+      [ $# -ge 2 ] || { echo "ERR hooks-on-range: --base needs a value" >&2; exit 2; }
+      BASE="$2"; shift 2 ;;
     --) shift; break ;;
     *) echo "ERR hooks-on-range: unknown arg '$1'" >&2; exit 2 ;;
   esac
@@ -75,12 +77,15 @@ fi
 head="$(git rev-parse HEAD)"
 
 first="$(git rev-list --reverse --no-merges "$base..$tip" 2>/dev/null | head -n 1)"
+# A merge-only range (an evil merge can add code) is still checked: fall back
+# to the oldest commit including merges.
+[ -n "$first" ] || first="$(git rev-list --reverse "$base..$tip" 2>/dev/null | head -n 1)"
 if [ -z "$first" ]; then
   echo "hooks-on-range: no commits in $base..$tip — nothing to check"
   exit 0
 fi
 
-tmp="$(mktemp -d)" || { echo "ERR hooks-on-range: mktemp failed" >&2; exit 2; }
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hooks-on-range.XXXXXX")" ||{ echo "ERR hooks-on-range: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/bin" || exit 2
 printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/gh"; chmod +x "$tmp/bin/gh"
