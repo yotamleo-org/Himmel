@@ -43,6 +43,7 @@ case "$op" in
     get)
         key="$1"
         [ "$key" != HIMMEL-404 ] || { echo "Issue Does Not Exist" >&2; exit 1; }
+        [ "$key" != HIMMEL-500 ] || { echo "401 Unauthorized" >&2; exit 1; }
         st="To Do"
         [ ! -f "$STUB_STATE/status.$key" ] || st=$(cat "$STUB_STATE/status.$key")
         case "$st" in
@@ -66,6 +67,7 @@ chmod +x "$STUB"
 # fresh_env <kind> — a fresh repo + store + stub state, env scrubbed of the
 # operator's own tracker settings.
 fresh_env() {
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
     unset TRACKER FORGE TICKET_ID_PATTERN TICKET_ID_REQUIRED HIMMEL_ADAPTER_LEDGER TRACKER_LOCK_TRIES
     export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
     R=$(mktemp -d "$T/env.XXXXXX") || exit 1
@@ -290,7 +292,8 @@ eq "the first item survives" first "$(tracker_title "$a")"
 # tabs and control characters in a title round-trip identically through both readers
 fresh_env local
 id=$(tracker_id_new Task "$(printf 'a\tb')")
-eq "tab title agrees across readers" "$(tracker_title "$id")" "$(tracker_get "$id" | json_field title)"
+eq "tab title is normalised to a space (title)" "a b" "$(tracker_title "$id")"
+eq "tab title is normalised to a space (get)" "a b" "$(tracker_get "$id" | json_field title)"
 
 # a link with a newline is refused; a link with YAML-significant text is stored verbatim
 fresh_env local
@@ -303,6 +306,16 @@ has "link with YAML-significant text stored quoted" '  - "https://e.invalid/?a: 
 fresh_env local
 tracker_id_new "Task
 status: Done" "bad type" >/dev/null 2>&1; eq "multiline type refused" 2 "$?"
+
+# a missing body file refuses the mint; an auth failure is not "absent"
+fresh_env local
+tracker_id_new Task "no body" "$R/missing-body.md" >/dev/null 2>&1; eq "missing body file refused" 2 "$?"
+[ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "item written despite a missing body file"
+mkdir -p "$TRACKER_STORE"; printf '08\n' > "$TRACKER_STORE/next-id"
+eq "leading-zero next-id is decimal" LOCAL-8 "$(tracker_id_new Task "zero")"
+fresh_env jira
+tracker_get HIMMEL-404 >/dev/null 2>&1; eq "jira absent issue is rc 3" 3 "$?"
+tracker_get HIMMEL-500 >/dev/null 2>&1; eq "jira CLI failure is rc 1, not absent" 1 "$?"
 
 # a failing jira list is a failed query, not an empty result (pipefail off)
 fresh_env jira

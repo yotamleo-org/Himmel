@@ -145,10 +145,14 @@ _tracker_local_id_new() {
     esac
     store=$(_tracker_local_store) || return 2
     prefix=$(_tracker_local_prefix) || return 2
+    if [ -n "${3:-}" ] && [ ! -f "$3" ]; then
+        echo "tracker(local): body file '$3' is not a file" >&2
+        return 2
+    fi
     mkdir -p "$store" || return 1
     _tracker_local_lock "$store" || return 1
     n=$(cat "$store/next-id" 2>/dev/null)
-    case "$n" in ''|*[!0-9]*) n=1 ;; esac
+    case "$n" in ''|*[!0-9]*) n=1 ;; *) n=$((10#$n)) ;; esac
     # never reuse an id whose item exists (a lost or malformed next-id, or a crash
     # between the item write and the advance)
     while [ -e "$store/$prefix-$n.md" ]; do n=$((n + 1)); done
@@ -157,9 +161,9 @@ _tracker_local_id_new() {
     {
         printf -- '---\nid: %s\ntitle: "%s"\ntype: %s\nstatus: To Do\nfix_version:\nepic:\ncreated: %s\nlinks:\n---\n\n' \
             "$id" "$title" "$type" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        if [ -n "${3:-}" ] && [ -f "$3" ]; then cat "$3"; printf '\n'; fi
+        if [ -n "${3:-}" ]; then cat "$3" || exit 1; printf '\n'; fi
         printf '\n## Log\n'
-    } > "$file" || { _tracker_local_unlock "$store"; return 1; }
+    } > "$file" || { rm -f "$file"; _tracker_local_unlock "$store"; return 1; }
     if ! { printf '%s\n' "$((n + 1))" > "$store/next-id.tmp" && mv "$store/next-id.tmp" "$store/next-id"; }; then
         # an id that was not advanced would be minted again over this item
         rm -f "$file" "$store/next-id.tmp"

@@ -39,10 +39,18 @@ _tracker_jira_id_new() {
     printf '%s\n' "$key"
 }
 
-# _tracker_jira_get <id> — normalised JSON. rc 3 when the CLI cannot read it.
+# _tracker_jira_get <id> — normalised JSON. rc 3 when the issue is absent, rc 1 when the CLI itself failed.
 _tracker_jira_get() {
-    local raw
-    raw=$(_tracker_jira_run get "$1" --json 2>/dev/null) || return 3
+    local raw err="${TMPDIR:-/tmp}/tracker-jira-err.$$" msg
+    if ! raw=$(_tracker_jira_run get "$1" --json 2>"$err"); then
+        msg=$(cat "$err" 2>/dev/null); rm -f "$err"
+        case "$msg" in
+            *[Nn]ot\ [Ff]ound*|*[Dd]oes\ [Nn]ot\ [Ee]xist*|*404*) return 3 ;;
+        esac
+        printf '%s\n' "tracker(jira): get $1 failed: $msg" >&2
+        return 1
+    fi
+    rm -f "$err"
     printf '%s' "$raw" | node "$_TRACKER_JIRA_DIR/tracker.mjs" normalize-jira
 }
 
