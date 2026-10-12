@@ -10,7 +10,7 @@
 set -uo pipefail
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/detect-token-in-output.sh"
-TMP=$(mktemp -d) || exit 1
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/detect-token.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 FAILED=0
