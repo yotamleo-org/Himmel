@@ -375,7 +375,22 @@ _matrix_order_selftest() {
         "$cellfn" "$primary" "$wt" "$json" "$cmd" true
     fi
     rm -rf "$dir"
-    printf '%s|%s' "$m_d" "$m_f"
+    # The reason query is part of the verdict: a runner that asks it AFTER the
+    # mutation sees no deny reason in the mutate arm and one in the no-op arm.
+    if [ -n "$m_err" ]; then printf '%s|%s|reason' "$m_d" "$m_f"; else printf '%s|%s|noreason' "$m_d" "$m_f"; fi
+}
+
+# RED-control twin for the reason query only: direct + fence are asked first,
+# the reason is asked after the command ran.
+_matrix_cell_exec_reason_late() {
+    local primary="$1" wt="$2" json="$3" run="${5:-$4}"
+    m_s1=$(_matrix_snapshot "$primary")
+    m_d=$(_run "$DIRECT" "$json")
+    m_f=$(_run "$FENCE" "$json")
+    ( cd "$wt" && bash -c "$run" ) >/dev/null 2>&1
+    m_realrc=$?
+    m_err=$(_run_stderr "$DIRECT" "$json")
+    m_s2=$(_matrix_snapshot "$primary")
 }
 
 # _matrix_run_slice K N — see the file header.
@@ -404,6 +419,13 @@ if [ "$M_ORDER_RED_MUT" != "$M_ORDER_RED_NOP" ] && [ "$M_ORDER_RED_MUT" != FIXTU
     ok "matrix ordering guard RED control: a post-mutation cell runner is detected ($M_ORDER_RED_MUT vs $M_ORDER_RED_NOP)"
 else
     bad "matrix ordering guard RED control: a reordered runner was NOT detected (mutate=$M_ORDER_RED_MUT noop=$M_ORDER_RED_NOP) — the ordering guard is vacuous"
+fi
+M_ORDER_REAS_MUT=$(_matrix_order_selftest _matrix_cell_exec_reason_late mutate)
+M_ORDER_REAS_NOP=$(_matrix_order_selftest _matrix_cell_exec_reason_late noop)
+if [ "$M_ORDER_REAS_MUT" != "$M_ORDER_REAS_NOP" ] && [ "$M_ORDER_REAS_MUT" != FIXTURE-FAIL ] && [ "$M_ORDER_REAS_NOP" != FIXTURE-FAIL ] && [ -n "$M_ORDER_REAS_MUT" ]; then
+    ok "matrix ordering guard RED control: a late reason query is detected ($M_ORDER_REAS_MUT vs $M_ORDER_REAS_NOP)"
+else
+    bad "matrix ordering guard RED control: a late reason query was NOT detected (mutate=$M_ORDER_REAS_MUT noop=$M_ORDER_REAS_NOP)"
 fi
 fi
 fi
