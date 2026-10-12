@@ -234,7 +234,7 @@ jobs:
       # hook's own vendored/fixture excludes), so nothing the hook refuses can
       # reach main. The old `shellcheck --severity=warning` over a hand-kept
       # file list let info-level findings (SC2119) through CI and fail locally.
-      - run: python -m pip install --disable-pip-version-check pre-commit==4.6.2
+      - run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # HIMMEL-4319: the hook is require_serial, so `--all-files` is one
       # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
       # shellcheck resolves `source` across the files of ONE invocation, so
@@ -988,7 +988,7 @@ jobs:
       # above: python -m pip works identically on every OS in this matrix.
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.6.2
+        run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,
       # but Git Bash is preinstalled + on PATH, so `bash …` runs under MSYS2.
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
@@ -1065,7 +1065,7 @@ jobs:
       # - name: Install pre-commit (Windows)
       #   if: runner.os == 'Windows'
       #   shell: bash
-      #   run: python -m pip install --disable-pip-version-check pre-commit==4.6.2
+      #   run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       #
       # - name: Vault sweeper suite (Windows only)
       #   if: runner.os == 'Windows'

@@ -24,7 +24,7 @@
 #     job must not have a channel through; nothing the shell-unit shards run
 #     needs it. The host also sets both off as machine config.
 #   - the packages the ubuntu shell-unit shard otherwise installs with sudo
-#     (at/atd, ffmpeg 6.1, pre-commit 4.6.2), since `runner` has no sudo.
+#     (at/atd, ffmpeg 6.1, pre-commit 4.7.0), since `runner` has no sudo.
 # ponytail: egress is a deny-private list, not a GitHub/mirror allow-list (IPs
 # rotate); upgrade to a GitHub + package-mirror allow-list per HIMMEL-5041.
 set -eu
@@ -57,7 +57,7 @@ if dpkg -s virtualbox-guest-utils >/dev/null 2>&1 || dpkg -s virtualbox-guest-x1
     apt-get purge -y virtualbox-guest-utils virtualbox-guest-x11
 fi
 python3 -m venv /opt/pre-commit
-/opt/pre-commit/bin/pip install --disable-pip-version-check pre-commit==4.6.2
+/opt/pre-commit/bin/pip install --disable-pip-version-check pre-commit==4.7.0
 ln -sf /opt/pre-commit/bin/pre-commit /usr/local/bin/pre-commit
 
 id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
