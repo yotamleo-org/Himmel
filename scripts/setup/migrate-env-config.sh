@@ -89,8 +89,15 @@ for key in ${config_keys[@]+"${config_keys[@]}"}; do
         echo "would move  $key"
         continue
     fi
-    mkdir -p "$confdir"
-    _load_dotenv_extract "$envfile" "$key" >> "$conf"
+    line=$(_load_dotenv_extract "$envfile" "$key")
+    if [ -z "$line" ]; then
+        echo "skip  $key (no value in .env)"
+        continue
+    fi
+    if ! { mkdir -p "$confdir" && printf '%s\n' "$line" >> "$conf"; } 2>/dev/null; then
+        echo "migrate-env-config: could not write $conf; $key was not moved. Keep it in .env." >&2
+        exit 1
+    fi
     echo "moved $key"
     moved=$((moved + 1))
 done
@@ -102,7 +109,7 @@ if [ "${#policy_keys[@]}" -gt 0 ]; then
     echo "Gate-policy keys found in .env: ${policy_keys[*]}"
     echo "An agent cannot write ~/.himmel/config.json. Run each line below at your own prompt; it reads the value from .env, so the value is not shown:"
     for key in "${policy_keys[@]}"; do
-        printf '  v=$(awk -v k=%s '\''{ i = index($0, "="); n = substr($0, 1, i - 1); gsub(/^[ \\t]+|[ \\t]+$/, "", n) } i && n == k { v = substr($0, i + 1); sub(/\\r$/, "", v); sub(/[ \\t]+#.*/, "", v); gsub(/^[ \\t]+|[ \\t]+$/, "", v); c = substr(v, 1, 1); if (length(v) > 1 && (c == sprintf("%%c", 34) || c == sprintf("%%c", 39)) && substr(v, length(v), 1) == c) v = substr(v, 2, length(v) - 2); print v; exit }'\'' %q) && f=~/.himmel/config.json && { [ -f "$f" ] || echo {} > "$f"; } && jq --arg v "$v" '\''.policy.%s = $v'\'' "$f" > "$f.tmp" && mv "$f.tmp" "$f"\n' \
+        printf '  v=$(awk -v k=%s '\''{ i = index($0, "="); n = substr($0, 1, i - 1); gsub(/^[ \\t]+|[ \\t]+$/, "", n) } i && n == k { v = substr($0, i + 1); sub(/\\r$/, "", v); sub(/[ \\t]+#.*/, "", v); gsub(/^[ \\t]+|[ \\t]+$/, "", v); c = substr(v, 1, 1); if (length(v) > 1 && (c == sprintf("%%c", 34) || c == sprintf("%%c", 39)) && substr(v, length(v), 1) == c) v = substr(v, 2, length(v) - 2); print v; exit }'\'' %q) && mkdir -p ~/.himmel && f=~/.himmel/config.json && { [ -f "$f" ] || echo {} > "$f"; } && jq --arg v "$v" '\''.policy.%s = $v'\'' "$f" > "$f.tmp" && mv "$f.tmp" "$f"\n' \
             "$key" "$envfile" "$key"
     done
 fi

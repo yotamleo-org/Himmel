@@ -71,9 +71,23 @@ if command -v jq >/dev/null 2>&1; then
     if [ "$v" = claude-only ]; then pass "printed command writes the policy value, its dotenv quotes stripped"; else fail "printed command wrote '$v'"; fi
     got=$( (unset CR_FLOOR_FALLBACK; . "$HERE/../lib/load-dotenv.sh"; load_policy --root "$TMP/none" CR_FLOOR_FALLBACK; printf '[%s]' "${CR_FLOOR_FALLBACK-}") 2>&1)
     has "load_policy reads the migrated value" "[claude-only]" "$got"
+    # The printed command creates ~/.himmel when it is missing.
+    rm -rf "$HOME/.himmel"
+    (cd "$TMP" && bash -c "$cmd") >/dev/null 2>&1
+    v=$(jq -r '.policy.CR_FLOOR_FALLBACK // empty' "$HOME/.himmel/config.json" 2>/dev/null)
+    if [ "$v" = claude-only ]; then pass "printed command creates ~/.himmel"; else fail "printed command without ~/.himmel wrote '$v'"; fi
 else
     echo "SKIP printed policy command (no jq)"
 fi
+
+# A destination that cannot be written is reported, never counted as moved.
+rm -rf "$HOME/.himmel"
+mkdir -p "$HOME/.himmel/himmel.conf"
+out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+rc=$?
+if [ "$rc" != 0 ]; then pass "unwritable himmel.conf exits non-zero"; else fail "unwritable himmel.conf exited 0"; fi
+lacks "unwritable himmel.conf reports nothing moved" "moved HANDOVER_DIR" "$out"
+rm -rf "$HOME/.himmel"
 
 # --vault links ~/.himmel/himmel.conf to the tracked vault file.
 rm -rf "$HOME/.himmel"

@@ -334,22 +334,27 @@ _himmel_deprecation_notice() {
 }
 
 # _himmel_policy_json <config.json> KEY... — print KEY=value for each key
-# present under .policy. Strings, numbers and booleans only; a value holding a
-# newline is dropped. Returns non-zero when the file cannot be parsed or node
-# is missing, so a gate can fail closed.
+# present under .policy. Strings, numbers and booleans only; null reads as
+# unset. Returns non-zero when the file cannot be parsed, node is missing, or
+# .policy or a requested value has any other shape, so a gate fails closed.
 _himmel_policy_json() {
     node -e '
         const fs = require("fs");
         const [file, ...keys] = process.argv.slice(1);
         const doc = JSON.parse(fs.readFileSync(file, "utf8"));
-        const policy = doc && typeof doc.policy === "object" && doc.policy !== null ? doc.policy : {};
+        const raw = doc && typeof doc === "object" ? doc.policy : undefined;
+        if (raw !== undefined && raw !== null && (typeof raw !== "object" || Array.isArray(raw))) process.exit(3);
+        const policy = raw || {};
+        let out = "";
         for (const key of keys) {
+            if (!Object.prototype.hasOwnProperty.call(policy, key) || policy[key] === null) continue;
             const v = policy[key];
-            if (!["string", "number", "boolean"].includes(typeof v)) continue;
+            if (!["string", "number", "boolean"].includes(typeof v)) process.exit(3);
             const s = String(v);
-            if (/[\r\n\0]/.test(s)) continue;
-            process.stdout.write(key + "=" + s + "\n");
+            if (/[\r\n\0]/.test(s)) process.exit(3);
+            out += key + "=" + s + "\n";
         }
+        process.stdout.write(out);
     ' "$@" 2>/dev/null
 }
 

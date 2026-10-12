@@ -89,6 +89,22 @@ printf '{not json\n' > "$HOME/.himmel/config.json"
 out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[rc=%s]" "$?"')
 assert_has "(c2) unparseable config.json returns non-zero" "[rc=1]" "$out"
 
+# (c3) A policy value that is not a string, number or boolean fails closed
+# rather than reading as unset; a null value or a null .policy is unset.
+reset
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":{"on":1}}}\n' > "$HOME/.himmel/config.json"
+out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[rc=%s]" "$?"')
+assert_has "(c3) a non-scalar policy value returns non-zero" "[rc=1]" "$out"
+printf '{"policy":"on"}\n' > "$HOME/.himmel/config.json"
+out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[rc=%s]" "$?"')
+assert_has "(c3) a non-object .policy returns non-zero" "[rc=1]" "$out"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":null}}\n' > "$HOME/.himmel/config.json"
+out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[%s|rc=%s]" "${CR_REQUIRE_CROSS_MODEL-}" "$?"')
+assert_has "(c3) a null policy value reads as unset" "[|rc=0]" "$out"
+printf '{"version":1,"policy":null}\n' > "$HOME/.himmel/config.json"
+out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[%s|rc=%s]" "${CR_REQUIRE_CROSS_MODEL-}" "$?"')
+assert_has "(c3) a null .policy reads as unset" "[|rc=0]" "$out"
+
 # (e) A policy key planted in the agent-writable himmel.conf is NOT honoured.
 reset
 printf '{"version":1}\n' > "$HOME/.himmel/config.json"
