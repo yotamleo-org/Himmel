@@ -34,6 +34,14 @@ cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/cadence-alert.sh"
 cat > "$P/scripts/himmel-doctor.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s|%s|%s\n' "$PWD" "$0" "$*" >> "$STUB_WHERE"
+if [ "${STUB_KILL_PARENT:-0}" = 1 ]; then
+    holder="$(ps -o ppid= -p "$PPID" | tr -d ' ')"
+    case "$(ps -o args= -p "$holder")" in
+        *"${0%/*}/doctor-cadence.sh run"*) kill -KILL "$holder" ;;
+        *) exit 2 ;;
+    esac
+    exit 0
+fi
 if [ -n "${STUB_GATE:-}" ]; then
     i=0
     while [ ! -f "$STUB_GATE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
@@ -177,11 +185,16 @@ doctor_out "" "C79-flap"; run_cad
 check "a WARN that left in between files no ticket" 0 "$(jira_n create)"
 # 8c. Hold the first doctor open: an overlapping run must exit cleanly without
 # invoking another doctor or filing the same persisting WARN twice.
+# A PATH without flock exercises the real Perl/kernel fallback, not a fake lock.
+mkdir -p "$W/no-flock-bin"
+for tool in bash cat date dirname git grep head mkdir mktemp mv perl ps rm sed sleep sort stat touch tr; do
+    ln -s "$(command -v "$tool")" "$W/no-flock-bin/$tool"
+done
 rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
 doctor_out "" "C80-overlap"; run_cad
 : > "$STUB_WHERE"
 export STUB_GATE="$W/doctor.release"
-run_cad & first_pid=$!
+PATH="$W/no-flock-bin" run_cad & first_pid=$!
 i=0
 while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
 [ -s "$STUB_WHERE" ] && pass "first concurrent doctor started" || fail "first concurrent doctor started"
@@ -189,12 +202,28 @@ while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); d
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 3} bash "$P/scripts/doctor-cadence.sh" run >/dev/null 2>&1; overlap_rc=$?
 check "overlapping cadence exits cleanly" 0 "$overlap_rc"
 check "overlapping cadence does not start a second doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+PATH="$W/no-flock-bin" run_cad; check "Perl flock fallback exits cleanly on overlap" 0 $?
+check "Perl flock fallback does not start a second doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 touch "$STUB_GATE"
 wait "$first_pid"; check "first concurrent cadence completes" 0 $?
 unset STUB_GATE
 check "overlapping cadence files one persisting WARN ticket" 1 "$(jira_n create)"
+: > "$STUB_WHERE"
 run_cad; check "cadence releases its lock after completion" 0 $?
+check "subsequent cadence actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 check "subsequent cadence does not re-file the ticket" 1 "$(jira_n create)"
+# A dead holder must not silently disable all later daily passes.
+STUB_KILL_PARENT=1 run_cad; check "killed cadence exits with SIGKILL status" 137 $?
+: > "$STUB_WHERE"
+run_cad; check "cadence can run after a killed holder" 0 $?
+check "cadence after a killed holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+: > "$STUB_WHERE"
+PATH="$W/no-flock-bin" run_cad; check "Perl flock fallback completes a cadence pass" 0 $?
+check "Perl flock fallback actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+PATH="$W/no-flock-bin" STUB_KILL_PARENT=1 run_cad; check "killed Perl-lock holder exits with SIGKILL status" 137 $?
+: > "$STUB_WHERE"
+run_cad; check "cadence can run after a killed Perl-lock holder" 0 $?
+check "cadence after a killed Perl-lock holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 unset DOCTORCAD_JIRA_CMD
 
 # 9. statusline segment: renders from a fixture, silent when absent / clean.

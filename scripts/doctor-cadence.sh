@@ -107,17 +107,24 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
-    local root out keys new="" k sev
+    local root out keys new="" k sev lock_rc
     root="$(resolve_primary)" || { echo "doctor-cadence: cannot resolve the primary checkout" >&2; return 2; }
     mkdir -p "$STATE_DIR" || return 2
-    # Hold through doctor, alerts and Jira filing: overlapping cron/manual runs
-    # skip this pass rather than reading or publishing the same baseline twice.
-    if ! mkdir "$STATE_DIR/.run-lock" 2>/dev/null; then
-        [ -d "$STATE_DIR/.run-lock" ] && return 0
-        return 2
+    # Hold through doctor, alerts and Jira filing. Keep the lock file's inode:
+    # the kernel releases the descriptor lock even after SIGKILL or a reboot.
+    exec 9>"$STATE_DIR/.run-lock" || return 2
+    if command -v flock >/dev/null 2>&1; then
+        flock -n 9; lock_rc=$?
+    else
+        # macOS lacks the flock utility; Perl uses the same process-scoped lock
+        # on the inherited descriptor, which this shell keeps open until exit.
+        perl -MFcntl=LOCK_EX,LOCK_NB -e '
+            open(my $lock, ">&=9") or exit 2;
+            flock($lock, LOCK_EX | LOCK_NB) or exit(($!{EWOULDBLOCK} || $!{EAGAIN}) ? 1 : 2);
+        '; lock_rc=$?
     fi
-    trap 'rmdir "$STATE_DIR/.run-lock"' EXIT
-    trap 'exit 1' HUP INT TERM
+    [ "$lock_rc" -eq 1 ] && return 0
+    [ "$lock_rc" -eq 0 ] || { echo "doctor-cadence: cannot acquire the run lock" >&2; return 2; }
     out="$STATE_DIR/last-run.log"
     (cd "$root" && bash "$root/scripts/himmel-doctor.sh" --no-color </dev/null) > "$out" 2>&1
     if ! grep -q '^Summary: ' "$out"; then
