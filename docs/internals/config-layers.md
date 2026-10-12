@@ -158,16 +158,21 @@ cannot be overridden from the environment.
   agents from writing, and their reader ignores the environment. This removes
   the env > config conflict for exactly the keys where it matters.
 - Nothing that works today stops working: every key still found only in
-  `.env` keeps its value for one release.
+  `.env` keeps its value until setup reads the new files.
 
 Policy keys can move into the tracked `himmel.conf` once a hook guards agent
 writes to it.
 
 ## Migrating an existing install
 
+Do not migrate yet. Setup, adopt and `himmelctl` still read and write these
+keys in `.env`, so `.env` stays the live file until they move to the new files.
+Until then the helper refuses a real run unless you pass `--ahead-of-setup`;
+`--dry-run` works at any time.
+
 1. Run `bash scripts/setup/migrate-env-config.sh --dry-run` to list the keys
    it would move. It prints key names only, never values.
-2. Run it again without `--dry-run` (add `--vault <luna vault>` on a luna
+2. Run it again with `--ahead-of-setup` instead of `--dry-run` (add `--vault <luna vault>` on a luna
    install to keep the file in the vault). Behaviour keys are copied into
    `~/.himmel/himmel.conf`; secrets are not touched.
 3. For gate-policy keys it prints one command per key. Run each at your own
@@ -176,8 +181,8 @@ writes to it.
 4. Start a session. When no `DEPRECATED` notice appears, delete the moved
    lines from `.env`.
 
-The `.env` fallback for non-secret keys is removed one release after this
-change ships.
+The `.env` fallback for non-secret keys is removed one release after setup,
+adopt and `himmelctl` read the new files.
 
 ## Not covered yet
 

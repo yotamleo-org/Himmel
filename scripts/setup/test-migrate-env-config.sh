@@ -34,13 +34,22 @@ for flag in --env --vault; do
     if [ "$rc" = 2 ]; then pass "$flag with no value exits 2"; else fail "$flag with no value exited $rc"; fi
 done
 
+# Until setup, adopt and himmelctl read the new files, a real run refuses
+# without the explicit opt-in, so nothing half-migrates a station.
+out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+rc=$?
+if [ "$rc" = 3 ]; then pass "a run without --ahead-of-setup exits 3"; else fail "a run without --ahead-of-setup exited $rc"; fi
+has "the refusal names the opt-in flag" "--ahead-of-setup" "$out"
+if [ -e "$HOME/.himmel/himmel.conf" ]; then fail "a refused run wrote himmel.conf"; else pass "a refused run wrote nothing"; fi
+rm -rf "$HOME/.himmel"
+
 # Dry run writes nothing and names keys only.
 out=$(bash "$SCRIPT" --env "$ENVF" --dry-run 2>&1)
 has "dry run names a config key" "would move  HANDOVER_DIR" "$out"
 if [ -e "$HOME/.himmel/himmel.conf" ]; then fail "dry run wrote himmel.conf"; else pass "dry run wrote nothing"; fi
 
 # A real run copies config keys, never secrets, and prints no values.
-out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+out=$(bash "$SCRIPT" --ahead-of-setup --env "$ENVF" 2>&1)
 conf=$(cat "$HOME/.himmel/himmel.conf")
 has "HANDOVER_DIR copied" "HANDOVER_DIR=/val/conf/handovers" "$conf"
 has "CR_PROFILE copied without its comment" "CR_PROFILE=valconfprofile" "$conf"
@@ -58,7 +67,7 @@ has "migrated key loads from himmel.conf" "[/val/conf/handovers]" "$got"
 lacks "migrated key prints no deprecation notice" "DEPRECATED" "$got"
 
 # Idempotent: a second run skips what is already there.
-out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+out=$(bash "$SCRIPT" --ahead-of-setup --env "$ENVF" 2>&1)
 has "second run skips" "skip  HANDOVER_DIR" "$out"
 n=$(grep -c '^HANDOVER_DIR=' "$HOME/.himmel/himmel.conf")
 if [ "$n" = 1 ]; then pass "no duplicate line"; else fail "duplicate HANDOVER_DIR lines: $n"; fi
@@ -83,7 +92,7 @@ fi
 # A destination that cannot be written is reported, never counted as moved.
 rm -rf "$HOME/.himmel"
 mkdir -p "$HOME/.himmel/himmel.conf"
-out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+out=$(bash "$SCRIPT" --ahead-of-setup --env "$ENVF" 2>&1)
 rc=$?
 if [ "$rc" != 0 ]; then pass "unwritable himmel.conf exits non-zero"; else fail "unwritable himmel.conf exited 0"; fi
 lacks "unwritable himmel.conf reports nothing moved" "moved HANDOVER_DIR" "$out"
@@ -92,7 +101,7 @@ rm -rf "$HOME/.himmel"
 # A himmel.conf whose last line has no newline keeps that setting intact.
 mkdir -p "$HOME/.himmel"
 printf 'USER_SLUG=keepme' > "$HOME/.himmel/himmel.conf"
-bash "$SCRIPT" --env "$ENVF" >/dev/null 2>&1
+bash "$SCRIPT" --ahead-of-setup --env "$ENVF" >/dev/null 2>&1
 if grep -qx 'USER_SLUG=keepme' "$HOME/.himmel/himmel.conf" && grep -q '^HANDOVER_DIR=' "$HOME/.himmel/himmel.conf"; then
     pass "append after a last line with no newline keeps both settings"
 else
@@ -104,7 +113,7 @@ rm -rf "$HOME/.himmel"
 mkdir -p "$HOME/.himmel" "$TMP/othervault"
 : > "$TMP/othervault/himmel.conf"
 ln -s "$TMP/othervault/himmel.conf" "$HOME/.himmel/himmel.conf"
-out=$(bash "$SCRIPT" --env "$ENVF" --vault "$TMP/vault" 2>&1)
+out=$(bash "$SCRIPT" --ahead-of-setup --env "$ENVF" --vault "$TMP/vault" 2>&1)
 rc=$?
 if [ "$rc" != 0 ]; then pass "--vault refuses a link to another file"; else fail "--vault accepted a link to another file"; fi
 lacks "--vault with a foreign link moves nothing" "moved HANDOVER_DIR" "$out"
@@ -112,7 +121,7 @@ rm -rf "$HOME/.himmel" "$TMP/vault"
 
 # --vault links ~/.himmel/himmel.conf to the tracked vault file.
 rm -rf "$HOME/.himmel"
-bash "$SCRIPT" --env "$ENVF" --vault "$TMP/vault" >/dev/null 2>&1
+bash "$SCRIPT" --ahead-of-setup --env "$ENVF" --vault "$TMP/vault" >/dev/null 2>&1
 if [ -L "$HOME/.himmel/himmel.conf" ] && grep -q '^HANDOVER_DIR=' "$TMP/vault/.himmel/himmel.conf"; then
     pass "--vault links himmel.conf to the vault copy"
 else
