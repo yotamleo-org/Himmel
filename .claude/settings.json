@@ -154,7 +154,9 @@
       "Bash(schtasks /query *)",
       "Bash(tasklist *)",
       "mcp__plugin_qmd_qmd__query",
-      "mcp__plugin_qmd_qmd__get"
+      "mcp__plugin_qmd_qmd__get",
+      "mcp__qmd__query",
+      "mcp__qmd__get"
     ],
     "deny": [
       "Bash(git push --force)",
