@@ -243,6 +243,7 @@ for tool in bash git jq python3 npm; do link_hermetic_tool "$tool" "$stubF"; don
 install_path="$(winpath "$binF"):$(winpath "$stubF"):$PATH"
 set +e
 out=$(PATH="$install_path" HOME="$(winpath "$homeF")" USERPROFILE="$(winpath "$homeF")" \
+  XDG_STATE_HOME="$(winpath "$work/caseF-state")" \
   HIMMELCTL_BASH="$bash_bin" HIMMELCTL_INTERACTIVE=0 \
   HIMMELCTL_CACHE_DIR="$(winpath "$work/caseF-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/caseF-cache")-luna-config.json" \
   HIMMELCTL_REPO_ROOT="$(winpath "$fixtureF")" \
@@ -259,6 +260,20 @@ SHIM_CALL_LOG="$(winpath "$work/install-shim-calls.log")" \
 [ "$(cat "$work/install-shim-calls.log")" = 'install:status' ] \
   || fail "caseF: install-applied launcher does not target this checkout"
 echo "ok: caseF successful install self-applies the same launcher"
+
+# ── F2: install creates the himmel XDG state home + bus at 0700 (HIMMEL-5225) ─
+# Its own XDG_STATE_HOME (caseF-state), never the real one; the fake HOME must
+# stay free of .local/state. POSIX modes only — skipped on Windows Git-Bash.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "ok: caseF2 state dirs skipped (no POSIX modes on Windows)" ;;
+  *)
+    mode_f2() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+    [ "$(mode_f2 "$work/caseF-state/himmel")" = 700 ] || fail "caseF2: himmel state dir is not 0700"
+    [ "$(mode_f2 "$work/caseF-state/himmel/bus")" = 700 ] || fail "caseF2: himmel/bus is not 0700"
+    [ ! -e "$homeF/.local/state" ] || fail "caseF2: install wrote the fake HOME's .local/state"
+    echo "ok: caseF2 install creates the himmel XDG state home and bus at 0700"
+    ;;
+esac
 
 # ── G: ownership marker — refuse unmarked/symlink collisions, replace marked, ─
 # ── atomic tmp+rename; stale marked .ps1 removed (Fix 3 + Fix 1 cleanup). ────
