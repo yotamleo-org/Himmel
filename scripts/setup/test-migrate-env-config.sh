@@ -89,6 +89,27 @@ if [ "$rc" != 0 ]; then pass "unwritable himmel.conf exits non-zero"; else fail 
 lacks "unwritable himmel.conf reports nothing moved" "moved HANDOVER_DIR" "$out"
 rm -rf "$HOME/.himmel"
 
+# A himmel.conf whose last line has no newline keeps that setting intact.
+mkdir -p "$HOME/.himmel"
+printf 'USER_SLUG=keepme' > "$HOME/.himmel/himmel.conf"
+bash "$SCRIPT" --env "$ENVF" >/dev/null 2>&1
+if grep -qx 'USER_SLUG=keepme' "$HOME/.himmel/himmel.conf" && grep -q '^HANDOVER_DIR=' "$HOME/.himmel/himmel.conf"; then
+    pass "append after a last line with no newline keeps both settings"
+else
+    fail "append after a last line with no newline corrupted himmel.conf"
+fi
+rm -rf "$HOME/.himmel"
+
+# --vault refuses a himmel.conf link that points at a different file.
+mkdir -p "$HOME/.himmel" "$TMP/othervault"
+: > "$TMP/othervault/himmel.conf"
+ln -s "$TMP/othervault/himmel.conf" "$HOME/.himmel/himmel.conf"
+out=$(bash "$SCRIPT" --env "$ENVF" --vault "$TMP/vault" 2>&1)
+rc=$?
+if [ "$rc" != 0 ]; then pass "--vault refuses a link to another file"; else fail "--vault accepted a link to another file"; fi
+lacks "--vault with a foreign link moves nothing" "moved HANDOVER_DIR" "$out"
+rm -rf "$HOME/.himmel" "$TMP/vault"
+
 # --vault links ~/.himmel/himmel.conf to the tracked vault file.
 rm -rf "$HOME/.himmel"
 bash "$SCRIPT" --env "$ENVF" --vault "$TMP/vault" >/dev/null 2>&1

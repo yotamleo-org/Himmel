@@ -69,7 +69,10 @@ if [ -n "$vault" ] && [ "$dry" -eq 0 ]; then
     mkdir -p "$vault/.himmel" "$confdir"
     [ -e "$tracked" ] || : > "$tracked"
     if [ -L "$conf" ]; then
-        :
+        if [ "$(readlink "$conf")" != "$tracked" ]; then
+            echo "migrate-env-config: $conf links somewhere other than $tracked; not changing it." >&2
+            exit 1
+        fi
     elif [ -e "$conf" ]; then
         echo "migrate-env-config: $conf already exists as a plain file; not replacing it with a link to $tracked." >&2
         exit 1
@@ -94,7 +97,10 @@ for key in ${config_keys[@]+"${config_keys[@]}"}; do
         echo "skip  $key (no value in .env)"
         continue
     fi
-    if ! { mkdir -p "$confdir" && printf '%s\n' "$line" >> "$conf"; } 2>/dev/null; then
+    # A last line with no newline gets one first, so the append starts a line.
+    if ! { mkdir -p "$confdir" \
+        && { [ ! -s "$conf" ] || [ -z "$(tail -c 1 "$conf")" ] || printf '\n' >> "$conf"; } \
+        && printf '%s\n' "$line" >> "$conf"; } 2>/dev/null; then
         echo "migrate-env-config: could not write $conf; $key was not moved. Keep it in .env." >&2
         exit 1
     fi
