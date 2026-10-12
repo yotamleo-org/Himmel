@@ -202,6 +202,66 @@ if [ "${res%%|*}" = "0" ]; then
 else
     fail "heredoc body denied as syntax (rc=${res%%|*})"
 fi
+# HIMMEL-5334: a heredoc body is data, and what FOLLOWS it still runs. The body
+# is dropped through its terminator, so a quoted body with an apostrophe or the
+# payload on the opener line no longer withdraws the whole guard.
+deny "payload after a quoted heredoc body" \
+     "cat <<'EOF'
+it's ; > here
+EOF
+bash scripts/ci/run-shell-tests.sh | tail -5"
+deny "payload on the heredoc opener line" \
+     'cat <<EOF; bash scripts/ci/run-shell-tests.sh | tail -5
+body
+EOF'
+deny "payload after a <<- heredoc with a tab-indented terminator" \
+     "cat <<-EOF
+	body
+	EOF
+bash scripts/check-ci.sh | tail"
+# shellcheck disable=SC2016  # payload is literal command text
+deny "command substitution in an UNQUOTED heredoc body runs" \
+     'cat <<EOF
+$(bash scripts/check-ci.sh | tail -5)
+EOF'
+allow "gate | tail inside a QUOTED heredoc body is data" \
+      "cat <<'EOF'
+\$(bash scripts/check-ci.sh | tail -5)
+EOF"
+allow "gate | tail documented in an unquoted heredoc body is data" \
+      'cat <<EOF
+never do: bash scripts/check-ci.sh | tail -20
+EOF'
+# HIMMEL-5334: ANSI-C `$'...'` — an escaped quote does not close the string.
+deny "gate | tail after an ANSI-C string with an escaped quote" \
+     "echo \$'it\\'s'; bash scripts/ci/run-shell-tests.sh | tail -5"
+allow "an operator inside an ANSI-C string is data" \
+      "echo \$'a\\'| tail'"
+# HIMMEL-5334: an expansion that may be empty does not hide the command word.
+deny "plain gate | tail (control)" 'bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion glued to the command word" \
+     '${V:-}bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "bare \$V before the command word" '$V bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion between launcher and gate" \
+     'bash ${V:-} scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion glued to tail" 'bash scripts/ci/run-shell-tests.sh | ${V:-}tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh \$V:t modifier before the command word" \
+     'V=/; $V:t bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh \${(P)V} flag before the command word" \
+     'V=Q; ${(P)V}bash scripts/ci/run-shell-tests.sh | tail -5'
+allow "a gate with no pipe stays allowed (control)" 'bash scripts/ci/run-shell-tests.sh'
+allow "a non-gate piped to tail stays allowed (control)" 'echo hi | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "an expansion before a non-gate command is not a gate" '${V:-}echo hi | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "redirect target expansion does not swallow the gate word" \
+     '2>$LOG bash scripts/check-ci.sh | tail'
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""

@@ -80,10 +80,11 @@
 #   * Everything else is untouched: `git log | tail`, a bare `tail -f file`, and
 #     the CORRECT shape `gate > out 2>&1; echo "RC=$?"; tail out` all pass.
 #   * Fail OPEN (exit 0) on anything unevaluable — missing jq, empty or
-#     unparseable stdin, a non-Bash tool, a command containing an UNQUOTED
-#     heredoc (`<<`), whose body text a scanner this flat cannot tell from syntax
-#     and which in this repo very often documents this exact shape, or a command
-#     over the 16KB cost bound (see below). Per
+#     unparseable stdin, a non-Bash tool, a heredoc opener with no delimiter word
+#     (a syntax error bash never runs), or a command over the 16KB cost bound
+#     (see below). A heredoc BODY is data (HIMMEL-5334): normalise() drops it
+#     through its terminator line, so the text after it is still scanned, and
+#     keeps only the `$(...)`/backtick bodies an UNQUOTED one runs. Per
 #     scripts/hooks/CLAUDE.md a workflow
 #     nudge fails open: a hook that cannot parse its input must not deny
 #     unrelated commands, and an over-matching nudge becomes the next thing
@@ -131,8 +132,6 @@
 #     tokenizer class rather than another table, and it is not a shape written
 #     here (agents write `bash <gate> | tail`). Do not implement `-c` payload
 #     recursion without re-deciding this.
-#   * an UNQUOTED heredoc (`<<`), whose body text a scanner this flat cannot tell
-#     from syntax and which in this repo very often documents this exact shape.
 #   * a command over the 16KB cost bound (see below).
 #   * a backslash-separated Windows path to a gate — nothing here writes one.
 # A real tokenizer stays the upgrade path if a genuine command ever trips on it.
@@ -233,6 +232,7 @@ C_SEMI=$'\004'
 GATE_ANY=${GATE_RE#'(^|/)'}
 GATE_ANY=${GATE_ANY%'$'}
 IP=''           # invoked_program_v's result
+SE=''           # strip_param_exp's result
 SG=0            # stmt_gate_flag's result
 SURF_VAR=''     # status_surfaced's result
 TAB=$'\t'
@@ -268,6 +268,46 @@ split_bytes() {
     done <<<"$1"
 }
 
+# lift_substs <text> -- the command substitutions (`$(...)` and backticks) of an
+# UNQUOTED heredoc body (HIMMEL-5334). Bash expands such a body, so a
+# substitution in it RUNS; every other byte of the body is data. Prints each one
+# as a lifted unit, the way normalise() does for the rest of the command.
+lift_substs() {
+    local s=$1 LC_ALL=C
+    local -a SC
+    local n=${#s} i=0 j d out='' ch
+    split_bytes "$s" "$n"
+    while [ "$i" -lt "$n" ]; do
+        ch=${SC[i]-}
+        case $ch in
+            \\) i=$((i + 2)); continue ;;
+            '`')
+                j=$((i + 1))
+                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != '`' ]; do
+                    [ "${SC[j]-}" = "\\" ] && j=$((j + 1))
+                    j=$((j + 1))
+                done
+                out+="$NL$LIFT$(normalise "${s:$((i + 1)):$((j - i - 1))}")"
+                i=$((j + 1)); continue ;;
+            '$')
+                if [ "${SC[i + 1]-}" = '(' ]; then
+                    j=$((i + 2)); d=1
+                    while [ "$j" -lt "$n" ]; do
+                        case ${SC[j]-} in
+                            '(') d=$((d + 1)) ;;
+                            ')') d=$((d - 1)); [ "$d" -eq 0 ] && break ;;
+                        esac
+                        j=$((j + 1))
+                    done
+                    out+="$NL$LIFT$(normalise "${s:$((i + 2)):$((j - i - 2))}")"
+                    i=$((j + 1)); continue
+                fi ;;
+        esac
+        i=$((i + 1))
+    done
+    printf '%s' "$out"
+}
+
 # ONE quote-aware pass over the WHOLE command (not per physical line, so a quote
 # or a pipeline that spans newlines is tracked correctly — panel r3, codex-2/3):
 #   * operators carried INSIDE quotes (`|`, `;`, `&`, newline) become spaces —
@@ -284,6 +324,8 @@ normalise() {
     local s=$1 LC_ALL=C
     local -a SC
     local n=${#s} i=0 j d c ch qq p=$NL q='' out='' extra='' ctext
+    local ansi='' hdn=0 hk hbody hline hterm
+    local -a HD_D HD_Q HD_T
     split_bytes "$s" "$n"
     while [ "$i" -lt "$n" ]; do
         c=${SC[i]-}
@@ -351,6 +393,17 @@ normalise() {
             fi
         fi
         if [ -n "$q" ]; then
+            # `$'...'` (ANSI-C quoting): a backslash escapes the next character,
+            # so `\'` does NOT close the string (HIMMEL-5334). Escaped quotes and
+            # operators are emitted as inert data, as in the `"..."` case below.
+            if [ -n "$ansi" ] && [ "$c" = "\\" ]; then
+                c=${SC[i + 1]-}
+                case $c in
+                    '|' | ';' | '&' | "$NL") c=' ' ;;
+                    '"' | "'") c='_' ;;
+                esac
+                out+=$c; p=$c; i=$((i + 2)); continue
+            fi
             # Inside DOUBLE quotes a backslash escapes the next character, so
             # `"a \" | tail"` is one quoted argument and the `"` does not close
             # the span (panel r6, codex-3). Single quotes have no escapes.
@@ -372,14 +425,52 @@ normalise() {
                 out+=$c; p=$c; i=$((i + 2)); continue
             fi
             if [ "$c" = "$q" ]; then
-                q=''
+                q=''; ansi=''
             else
                 case $c in '|' | ';' | '&' | "$NL") c=' ' ;; esac
             fi
             out+=$c; p=$c; i=$((i + 1)); continue
         fi
         case $c in
-            "'" | '"') q=$c ;;
+            "'" | '"')
+                q=$c; ansi=''
+                # `$'` opens an ANSI-C string; an escaped `\$'` or `$$'` does not.
+                if [ "$c" = "'" ] && [ "$p" = '$' ] && [ "$i" -ge 1 ] && [ "${SC[i - 1]-}" = '$' ] \
+                    && { [ "$i" -lt 2 ] || [ "${SC[i - 2]-}" != '$' ]; }; then
+                    ansi=1
+                fi
+                ;;
+            "$NL")
+                # Pending heredoc bodies start on the line after the opener. A
+                # body is data (HIMMEL-5334): drop it through its terminator line,
+                # keeping only the command substitutions an UNQUOTED one runs.
+                if [ "$hdn" -gt 0 ]; then
+                    out+=$NL; p=$NL; i=$((i + 1))
+                    hk=0
+                    while [ "$hk" -lt "$hdn" ]; do
+                        hbody=''
+                        while [ "$i" -lt "$n" ]; do
+                            hline=''
+                            while [ "$i" -lt "$n" ] && [ "${SC[i]-}" != "$NL" ]; do
+                                hline+=${SC[i]-}; i=$((i + 1))
+                            done
+                            i=$((i + 1))   # past the newline (or EOF)
+                            hterm=$hline
+                            if [ "${HD_T[hk]}" = 1 ]; then
+                                while :; do
+                                    case $hterm in "$TAB"*) hterm=${hterm#?} ;; *) break ;; esac
+                                done
+                            fi
+                            [ "$hterm" = "${HD_D[hk]}" ] && break
+                            hbody+="$hline$NL"
+                        done
+                        [ "${HD_Q[hk]}" = 1 ] || extra+=$(lift_substs "$hbody")
+                        hk=$((hk + 1))
+                    done
+                    hdn=0
+                    continue
+                fi
+                ;;
             '&')
                 # A standalone `&` backgrounds the command before it and STARTS a
                 # new statement, so `true & gate | tail` is two statements and
@@ -408,8 +499,32 @@ normalise() {
                         out+='<<<'          # here-string: consume all three
                         p=' '; i=$((i + 3)); continue
                     fi
-                    out=${out}${HEREDOC_MARK}
-                    p=' '; i=$((i + 2)); continue
+                    # Parse the delimiter word; the body is dropped at the next
+                    # newline (above). An opener with no word is a syntax error
+                    # bash never runs, so that one still withdraws.
+                    j=$((i + 2)); hline=''; hk=0; hterm=0
+                    if [ "${SC[j]-}" = '-' ]; then hterm=1; j=$((j + 1)); fi
+                    while [ "${SC[j]-}" = ' ' ] || [ "${SC[j]-}" = "$TAB" ]; do j=$((j + 1)); done
+                    while [ "$j" -lt "$n" ]; do
+                        ch=${SC[j]-}
+                        case $ch in
+                            "'" | '"')
+                                hk=1; j=$((j + 1))
+                                while [ "$j" -lt "$n" ] && [ "${SC[j]-}" != "$ch" ]; do
+                                    hline+=${SC[j]-}; j=$((j + 1))
+                                done
+                                j=$((j + 1)) ;;
+                            \\) hk=1; hline+=${SC[j + 1]-}; j=$((j + 2)) ;;
+                            ' ' | "$TAB" | "$NL" | ';' | '|' | '&' | '<' | '>' | '(' | ')') break ;;
+                            *) hline+=$ch; j=$((j + 1)) ;;
+                        esac
+                    done
+                    if [ -z "$hline" ]; then
+                        out=${out}${HEREDOC_MARK}
+                        p=' '; i=$((i + 2)); continue
+                    fi
+                    HD_D[hdn]=$hline; HD_Q[hdn]=$hk; HD_T[hdn]=$hterm; hdn=$((hdn + 1))
+                    out+=' '; p=' '; i=$j; continue
                 fi
                 ;;
             \\)
@@ -469,6 +584,58 @@ normalise() {
     printf '%s' "$out$extra"
 }
 
+# strip_param_exp <word> -- sets SE to <word> with every parameter expansion
+# removed (HIMMEL-5334): `${...}` (nesting-aware), `$NAME` plus a zsh `:x`
+# modifier or `[...]` subscript, `$1`/`$@`/`$*`, and the SUBST placeholder
+# normalise() leaves for `$(...)`. `$?`, `$$`, `$!`, `$#`, `$-` are never empty
+# and stay.
+strip_param_exp() {
+    local w=$1 i=0 n j d c nx out=''
+    n=${#w}
+    while [ "$i" -lt "$n" ]; do
+        c=${w:i:1}
+        nx=${w:i+1:1}
+        if [ "$c" = '$' ] && [ "$nx" = '{' ]; then
+            j=$((i + 2)); d=1
+            while [ "$j" -lt "$n" ]; do
+                case ${w:j:1} in
+                    '{') d=$((d + 1)) ;;
+                    '}') d=$((d - 1)); [ "$d" -eq 0 ] && break ;;
+                esac
+                j=$((j + 1))
+            done
+            i=$((j + 1)); continue
+        fi
+        if [ "$c" = '$' ]; then
+            case $nx in
+                [A-Za-z_])
+                    j=$((i + 1))
+                    while :; do
+                        case ${w:j:1} in [A-Za-z0-9_]) j=$((j + 1)) ;; *) break ;; esac
+                    done
+                    # zsh: `$V:t` / `$V:r` modifiers, `$V[1,-3]` subscripts
+                    while :; do
+                        case ${w:j:1} in
+                            ':') case ${w:j+1:1} in [A-Za-z]) j=$((j + 2)); continue ;; esac ;;
+                            '[')
+                                d=$j
+                                while [ "$d" -lt "$n" ] && [ "${w:d:1}" != ']' ]; do d=$((d + 1)); done
+                                if [ "$d" -lt "$n" ]; then j=$((d + 1)); continue; fi ;;
+                        esac
+                        break
+                    done
+                    i=$j; continue ;;
+                [0-9@*]) i=$((i + 2)); continue ;;
+            esac
+        fi
+        case ${w:i} in
+            SUBST*) i=$((i + 5)); continue ;;
+        esac
+        out+=$c; i=$((i + 1))
+    done
+    SE=$out
+}
+
 # The program a pipeline stage actually RUNS: first token that is neither a
 # leading `VAR=value` assignment, a grouping/negation prefix, nor a known
 # launcher or compound-command keyword. Empty when there is none.
@@ -518,6 +685,13 @@ invoked_program_v() {
                 continue
                 ;;
         esac
+        # HIMMEL-5334: a parameter expansion may be EMPTY at run time (`${V:-}`,
+        # `$V`, zsh `$V:t`/`${V[1,-3]}`/`${(P)V}`, an empty `$(:)` placeholder),
+        # so the word it sits in is the rest of the word, or nothing. Drop it and
+        # judge what remains: `${V:-}bash <gate>` is `bash <gate>`, a bare `$V` is
+        # no word at all. After the redirect test above, so `2>$LOG` keeps its
+        # shape. Fail closed: a non-empty `$V` only adds a false deny.
+        case $stripped in *'$'* | *SUBST*) strip_param_exp "$stripped"; stripped=$SE ;; esac
         # `(`/`{`/`!` glue onto the command they introduce (panel r3, codex-1),
         # and a compact subshell closes onto the LAST word — `(gate|tail)` leaves
         # `tail)` (panel r6, codex-2). Strip both ends.
