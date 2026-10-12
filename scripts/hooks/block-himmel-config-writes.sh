@@ -32,12 +32,14 @@
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
-#   apply_patch (Codex's only edit tool) - any `*** Add File:` / `Update File:`
-#     / `Delete File:` / `Move to:` header (leading/trailing whitespace trimmed,
-#     as codex does; a relative path resolves against the payload `.cwd`)
-#     whose path passes the same literal +
-#     readlink -m check as the file tools; a patch with no parseable header
-#     that names `.himmel` and `config.*` denies (fail-closed).
+#   apply_patch (Codex's only edit tool) - WHOLE-PATCH rule (j2409f): any patch
+#     whose text anywhere contains `.himmel` and a config name (`config.json`,
+#     `config.j*`, `config.*`, `conf*`) denies, whatever the headers,
+#     whitespace or encoding (a patch that merely mentions the path in its
+#     content denies too). ADDITIONALLY a `*** Add File:` / `Update File:` /
+#     `Delete File:` / `Move to:` header path (relative ones joined with the
+#     payload `.cwd`) that resolves to the config via `readlink -m` denies
+#     (a symlinked directory that never names `.himmel`).
 # ALLOWS everything else, silently. Reads of the file stay allowed.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
@@ -121,9 +123,22 @@ case "$tool" in
         # of the patch text (same parse as block-bank-lift-writes.sh).
         patch=$(printf '%s' "$input" | jq -r '(.tool_input.command // .tool_input.patch // .tool_input.input // "") | if type == "array" then join("\n") else tostring end' 2>/dev/null) || patch=""
         pcwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || pcwd=""
-        seen=0
+        # Whole-patch rule (j2409f: codex trims Unicode White_Space, so a
+        # header-parse match was a second NO-GO; stop mirroring its parser):
+        # deny when the patch text ANYWHERE carries `.himmel` and a config
+        # name, whatever the headers, whitespace or encoding. Over-denies a
+        # patch that only mentions the path in its content, on purpose.
+        lp=$(printf '%s' "$patch$input" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+        case "$lp" in
+            *.himmel*)
+                case "$lp" in
+                    *config.json*|*config.j\**|*config.\**|*conf\**) deny "apply_patch payload names .himmel and a config file (whole-patch rule; a patch that only mentions the path in its content is refused too)" ;;
+                esac
+                ;;
+        esac
+        # Additional deny: a header path that RESOLVES to the config without
+        # naming .himmel (a symlinked directory or alias).
         while IFS= read -r ln; do
-            # codex trims every header line (parse_one_hunk): so do we.
             ln="${ln#"${ln%%[![:space:]]*}"}"
             ln="${ln%"${ln##*[![:space:]]}"}"
             case "$ln" in
@@ -133,25 +148,16 @@ case "$tool" in
                 '*** Move to: '*) p="${ln#\*\*\* Move to: }" ;;
                 *) continue ;;
             esac
-            seen=1
-            p="${p#"${p%%[![:space:]]*}"}"
-            p="${p%"${p##*[![:space:]]}"}"
-            # A relative patch path resolves against the payload cwd.
+            # A relative patch path (a `~`-led one included, codex does not
+            # expand it) resolves against the payload cwd.
             case "$p" in
-                /*|"~"*|"") ;;
+                /*|"") ;;
                 *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
             esac
             check_path apply_patch "$p"
         done <<EOF
 $patch
 EOF
-        if [ "$seen" = 0 ]; then
-            # No recognisable header: fail closed only for the one subject.
-            lp=$(printf '%s' "$patch$input" | tr '[:upper:]' '[:lower:]')
-            case "$lp" in
-                *.himmel*config.*|*.himmel*conf\**) deny "apply_patch payload names ~/.himmel/config.json and has no parseable file header (fail-closed)" ;;
-            esac
-        fi
         exit 0
         ;;
     Bash) ;;
