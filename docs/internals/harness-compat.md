@@ -726,8 +726,8 @@ tool, which is the Codex shell payload too, so no hook script changed.
 reads `file_path`/`notebook_path`/`path`, and Codex edits through `apply_patch`,
 whose target paths sit in the patch text in `tool_input.command`; the hook has no
 `apply_patch` branch, so it is deliberately not wired on the edit matcher (it
-would be a silent no-op). Closing it needs a hook-script change, filed
-separately. Proved by the `chain_deny` rows in
+would be a silent no-op). Closing it needs a hook-script change, tracked in
+HIMMEL-5430. Proved by the `chain_deny` rows in
 `scripts/codex/test-codex-hook-parity.sh`, which drive the chain `hooks.json`
 wires through the real adapter.
 
