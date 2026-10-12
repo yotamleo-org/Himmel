@@ -1,22 +1,22 @@
-# Per-ticket usage records (HIMMEL-3994)
+# Per-ticket usage records
 
 One append-only record per ticket answers "what did it cost and how many review
 rounds did it take". It joins two computations that previously lived apart and
 is computed once; consumers read the store, never transcript JSONL. A third,
-opt-in join (PR and CI facts from `gh`, HIMMEL-4030) fails closed by
+opt-in join (PR and CI facts from `gh`) fails closed by
 construction; see "PR/CI join" below.
 
 | Input | Source |
 |---|---|
-| per-session tokens | `scripts/lib/bank-attribution.sh` output (HIMMEL-2764), reused not re-parsed |
+| per-session tokens | `scripts/lib/bank-attribution.sh` output, reused not re-parsed |
 | CR rounds, verdicts, estimated critic tokens | the CR critic ledger (`scripts/cr/ledger-append.sh`) |
 | PR and CI facts (opt-in) | `gh pr list` / `gh run list`, only with `--repo` |
 
 ## Commands
 
 ```
-bash scripts/usage/usage-compute.sh --range HIMMEL-3990..HIMMEL-4020   # append changed records
-bash scripts/usage/usage-compute.sh --tickets HIMMEL-3994 --print      # stdout only, no store
+bash scripts/usage/usage-compute.sh --range PROJ-100..PROJ-120   # append changed records
+bash scripts/usage/usage-compute.sh --tickets PROJ-123 --print      # stdout only, no store
 bash scripts/usage/usage-read.sh [--ticket KEY] [--all]                # latest per ticket / every version
 ```
 
@@ -66,8 +66,8 @@ not). Real tickets only; `_console` and `_unattributed` get no `pr`/`ci`.
 | `pr` | `{state:"none"}` (no PR title names the ticket), or `{state:"found", numbers[], merged, open, closed}` |
 | `ci` | `{state:"no-pr"}`, or `{state:"found", runs, completed, secs, basis}` |
 
-A title matches a ticket only on the whole key (`HIMMEL-90019` is not
-`HIMMEL-9001`). `ci` covers the runs on every matching PR's head branch,
+A title matches a ticket only on the whole key (`PROJ-90019` is not
+`PROJ-9001`). `ci` covers the runs on every matching PR's head branch,
 deduped by run id. `secs` sums `updatedAt - startedAt` over **completed** runs,
 so queue wait and in-flight runs are excluded; if any completed run lacks
 `startedAt`, all use `createdAt` and `basis` says `createdAt` (`none` when no run
@@ -95,11 +95,10 @@ run fail rather than store incomplete totals.
 
 ## Consumers
 
-The HIMMEL-3993 epic's readers: the effort model (HIMMEL-3992), the tool
-re-audit (HIMMEL-3883), routing (HIMMEL-774), leg A/B (HIMMEL-2986), the
-improvement lane (HIMMEL-1853), the tracker UI and cost reports. Siblings that
-will feed it: PR-body cost aggregation (HIMMEL-4003) and the CR-loop ledger
-(HIMMEL-4004).
+The usage-records epic's readers: the effort model, the tool
+re-audit, routing, leg A/B, the
+improvement lane, the tracker UI and cost reports. Siblings that
+will feed it: PR-body cost aggregation and the CR-loop ledger.
 
 ## Limits
 

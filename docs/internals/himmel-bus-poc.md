@@ -1,4 +1,4 @@
-# himmel-bus live POC (HIMMEL-4838)
+# himmel-bus live POC
 
 Result log for the first live run of himmel-bus between two real sessions.
 Until this passes, the bus is unit-tested only (store, identity, MCP send/read,
@@ -17,13 +17,13 @@ Status: **FAIL (five failures; the exchange never started)**.
 (no wait verb, delivery hooks not installed, MCP server deps absent);
 registration is opt-in by profile and no profile opts in.
 
-| # | Failing step | Ticket |
-|---|---|---|
-| 1 | `bus peers` refuses a 755 shared state dir | HIMMEL-5221 |
-| 2 | leg never registered (profile not opted in; skipped without a log line) | HIMMEL-5223 (+ comment on HIMMEL-5221) |
-| 3 | no `bus wait` verb | HIMMEL-4831 (T8) |
-| 4 | delivery hooks never installed | HIMMEL-5030 |
-| 5 | MCP server deps absent | HIMMEL-5222 |
+| # | Failing step |
+|---|---|
+| 1 | `bus peers` refuses a 755 shared state dir |
+| 2 | leg never registered (profile not opted in; skipped without a log line) |
+| 3 | no `bus wait` verb |
+| 4 | delivery hooks never installed |
+| 5 | MCP server deps absent |
 
 ### FAIL 1: bus CLI refuses the shared state directory (2026-10-11, base 07f052394)
 
@@ -39,7 +39,7 @@ registration is opt-in by profile and no profile opts in.
 - Consequence: launcher `bus register` has never succeeded on this station. It is
   fail-open and only writes `WARN bus register failed ... launching unbound` to
   the launch log, so nothing surfaced it.
-- Ticket: HIMMEL-5221 (fix scope includes making the launcher failure visible).
+- Follow-up: the fix scope includes making the launcher failure visible.
 - Unblock used for the re-run: operator `chmod 700 ~/.local/state/himmel`
   (done 2026-10-11; `stat` shows `700 overlord`).
 
@@ -53,10 +53,9 @@ registration is opt-in by profile and no profile opts in.
 - Cause: the launcher only registers when the leg profile lists `himmel-bus` in
   mcpServers (the `MCP_NAMES_JSON` case in headed-arm-leg.sh); the `leg-impl`
   profile does not, so the register block is skipped without a log line. The
-  bus is opted in on no profile today (HIMMEL-4830 owns the catalog entry).
+  bus is opted in on no profile today (the catalog entry is a separate follow-up).
 - Not done on purpose: registering by hand.
-- Ticket: HIMMEL-5223 (bus-enabled profile + catalog entry; builds on HIMMEL-4830),
-  with the silent skip noted on HIMMEL-5221.
+- Follow-up: a bus-enabled profile + catalog entry, and the silent skip noted under FAIL 1.
 - Re-run: launch a leg with a profile that lists `himmel-bus`; `echo
   $HIMMEL_BUS_NAME` is its own name and `bus status <name>` prints `live`.
 
@@ -65,7 +64,6 @@ registration is opt-in by profile and no profile opts in.
 - Step: look for a CLI verb that blocks until mail arrives.
 - Evidence: `bin/bus` accepts register|bind|rebind|adopt|status|peers|send|gc;
   `store.pending` is commented "Shared predicate for the wait CLI" but no CLI verb calls it.
-- Ticket: HIMMEL-4831 (T8 ask 2).
 - Re-run: `bus wait --for <name>` exits within 2 s of an append (today: usage, exit 64).
 
 ### FAIL 4: delivery hooks not installed
@@ -74,7 +72,6 @@ registration is opt-in by profile and no profile opts in.
 - Evidence: `grep -c bus-deliver ~/.claude/settings.json` prints 0; no entry in
   the repo `.claude/settings.json`; the hooks exist only in the
   `wire-hook-bash.mjs` inventory.
-- Ticket: HIMMEL-5030.
 - Re-run: `grep -c bus-deliver` on the leg's effective settings prints 2, and a
   message sent to a bound leg shows as `bus #n from <name>:` in its context.
 
@@ -88,7 +85,6 @@ registration is opt-in by profile and no profile opts in.
   the server then started and exited cleanly on stdin EOF. The primary checkout
   still has none, so a fresh clone still hits the failure; nothing in the repo
   installs the deps, and who or what installed them here is unidentified.
-- Ticket: HIMMEL-5222.
 - Re-run: `node marketplace/plugins/himmel-bus/server/index.mjs` stays up on
   stdio (today: ERR_MODULE_NOT_FOUND).
 
@@ -109,7 +105,7 @@ launched on `--profile leg-bus` from the PR's worktree launcher (dry-run showed
 P1 and P2 both got `no edge ... your edges: (none)`. By design the edge table
 allows only leg <-> console and a leg <-> judge/consult pair. The console was
 not on the bus either: the console profile lacks `himmel-bus`, so `console.sh`
-never registers it. Ticket: HIMMEL-5241.
+never registers it.
 
 ### Run 2: PASS (leg <-> console)
 
@@ -124,10 +120,10 @@ console`, bind pid 1852149).
 
 Result: register, send, `bus wait` receive, and reply `--re` all worked live
 through `bin/bus` and the `leg-bus` profile with installed server deps. Caveat:
-run 2 needed a hand-registered console (fixed by HIMMEL-5241, see run 3); leg <-> leg
+run 2 needed a hand-registered console (fixed since, see run 3); leg <-> leg
 needs a pair edge if wanted.
 
-### Run 3: PASS (leg <-> console, console registered by its launcher; HIMMEL-5241, 2026-10-11)
+### Run 3: PASS (leg <-> console, console registered by its launcher; 2026-10-11)
 
 No hand registration. Under a scratch handover root (not the operator console's
 bucket), with the `console` profile now listing `himmel-bus`:
@@ -140,8 +136,8 @@ bucket), with the `console` profile now listing `himmel-bus`:
    leg. `bus status <leg>` printed `live`.
 3. Leg `bus peers` listed the console. Leg `bus send <console> <body>` printed
    `sent #1` (no `no edge` refusal; run 1's failure).
-4. Console `bus wait` printed `bus #1 data from HIMMEL-5241-N1790-bus-probe-2026-10-11:`
-   then `| probe leg to console ping HIMMEL-5241`.
+4. Console `bus wait` printed `bus #1 data from <ticket-id>-N1790-bus-probe-2026-10-11:`
+   then `| probe leg to console ping <ticket-id>`.
 5. Console `bus send <leg> <body> --re 1` printed `sent #1`; the leg's `bus wait`
    returned `poc console reply`.
 

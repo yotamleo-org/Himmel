@@ -1,4 +1,4 @@
-# Graph publish cadence — reference (HIMMEL-2095)
+# Graph publish cadence — reference
 
 > The `HIMMEL-GraphPublish-Himmel` scheduler task, armed via
 > `scripts/luna/graphmap-cadence.sh` alongside its four sibling tasks
@@ -92,7 +92,7 @@ bash scripts/luna/graphmap-cadence.sh disarm     # removes all five
 ```
 
 The publish leg is grouped with the free structural (AST) pair for
-`--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
+`--ast-only` purposes: it needs no backend credential, so
 `--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
 weekly semantic pair untouched. Default schedule: **every 6 hours**,
 anchored at `:35` past (Windows: `<Repetition><Interval>PT6H</Interval>`;
@@ -101,14 +101,14 @@ own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
 stagger, because this leg is not free-and-instant like the AST pair: it can
 run `ast-update.sh`, open/refresh a PR, and drive `merge-on-green.sh`'s own
 `check-ci` watch, all in one fire. Both legs would otherwise contend for
-`ast-update.sh`'s HIMMEL-910 promote lock (skip-not-wait, so a collision is
+`ast-update.sh`'s promote lock (skip-not-wait, so a collision is
 a skipped-and-retried refresh next fire, not a failure — the wider offset
 just makes that the exception rather than the rule).
 
 Two fires of this leg itself are serialized by `graph-cadence.sh`'s own
 pipeline lock (`<worktree>.lock`), because each run `reset --hard` +
-`clean -fdx`es the same worktree. `mkdir` is the whole protocol (HIMMEL-2654,
-following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
+`clean -fdx`es the same worktree. `mkdir` is the whole protocol
+(following `scripts/luna/qmd-cadence.sh`, where three rounds of automatic
 stale-lock takeover each produced the next race). A run proceeds only if its
 own `mkdir` succeeded, and nothing ever removes a lock it did not create: the
 exit trap removes the run's own instance only, by owner token. The lock
@@ -152,7 +152,7 @@ Two ledgers, both written every run:
    this repo writes, so the existing cadence-audit/staleness tooling is not
    blind to this leg.
 
-**`HANDOVER_DIR` is required, not optional** (HIMMEL-2619 class): cron gives
+**`HANDOVER_DIR` is required, not optional** (a recurring class of cron failure): cron gives
 no login shell, so `HANDOVER_DIR` is exactly the variable that goes missing
 there. If it is unset, `graph-cadence.sh` refuses **loudly** — non-zero exit,
 a clear stderr message naming the variable, a line in the runner's own
@@ -164,11 +164,11 @@ publishes. Set it via `/handover-setup`, or see
 
 ## The standing ticket
 
-Every publish PR's commit subject carries `[HIMMEL-2095]` — this repo's CI
+Every publish PR's commit subject carries a `[<TICKET>]` ID — this repo's CI
 commit-range gate requires a ticket ID on every commit, and the PR's subject
 used to carry none at all (plausibly why the manual bypass was reached for
 in the first place; see "Why this exists" above). `graph-publish.sh --ticket
-<ID>` (default `HIMMEL-2095`, or `$GRAPH_PUBLISH_TICKET`) lets the standing
+<ID>` (default: the standing graph-publish ticket, or `$GRAPH_PUBLISH_TICKET`) lets the standing
 ticket change without editing code.
 
 ## The threshold, and its trade-off
@@ -192,7 +192,7 @@ default change therefore takes effect on the **very next scheduled fire**,
 with no re-arm needed. (`--threshold <N>` still exists for an ad-hoc manual
 run against a different value — it just isn't what the armed cadence uses.)
 
-## The `--semantic` step: which exit codes alert (HIMMEL-4512)
+## The `--semantic` step: which exit codes alert
 
 With `--semantic`, `graph-cadence.sh` runs `semantic-update.sh` on the
 dedicated worktree (local ollama) and classifies its exit code:
@@ -266,8 +266,7 @@ up) and its own scheduler task name (following the
 
 ## Explicitly out of scope
 
-graphify version bumps; the refresh-lock bugs (HIMMEL-2618/2106/1414/914 —
-this leg reuses `ast-update.sh`'s existing promote-lock, unmodified, and
+graphify version bumps; the known refresh-lock bugs (this leg reuses `ast-update.sh`'s existing promote-lock, unmodified, and
 does not fix them); luna's graph corpus (not wired in v1); arming the real
 crontab/schtasks (an operator action after review); the console's own
 `tick.sh`.

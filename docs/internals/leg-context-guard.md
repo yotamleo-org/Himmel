@@ -1,6 +1,6 @@
 # Leg context guard
 
-`scripts/hooks/guard-leg-context-handoff.sh` (HIMMEL-4569, HIMMEL-4710) is the
+`scripts/hooks/guard-leg-context-handoff.sh` is the
 one reference for what the leg context guard does, when it runs, and how a leg
 gets past it. The hook header carries the same facts for whoever edits the code.
 Hook wiring and the enforcement matrix are in
@@ -10,13 +10,13 @@ Hook wiring and the enforcement matrix are in
 
 A console-spawned leg auto-compacts at its `--autocompact` ceiling. Compaction
 is a backstop and not data loss: 309 of 349 compacted legs still reached
-`WRAPPED` (HIMMEL-4089). The guard is there for one job. When a launch wants
+`WRAPPED`. The guard is there for one job. When a launch wants
 uncommitted work pushed **before** that lossy summary, the guard makes the leg
 checkpoint, or hand off to a successor, first.
 
 ## Off by default
 
-The operator ruled on 2026-10-07 (HIMMEL-4710) that the guard is
+The operator ruled on 2026-10-07 that the guard is
 **off by default**. A leg launched without a mode never sees it: the hook exits 0 with no
 output for every PreToolUse call and every PreCompact, at any fill. Legs
 auto-compact anyway, and an always-on guard stopped every opus leg at 13 % fill.
@@ -64,7 +64,7 @@ A worked example: an opus leg pinned at `--autocompact 200000` reports a
 tokens, which is 15 % fill**.
 
 **Why 75 %.** Compactions have been observed firing from **157k** of a 200k
-ceiling (HIMMEL-4089: 157k-176k over 349 compactions). At 75 %, the leg has
+ceiling (157k-176k over 349 compactions). At 75 %, the leg has
 7000 tokens (3.5 pp of the ceiling) before the earliest compaction to commit,
 push and write the CHECKPOINT bullet.
 
@@ -74,14 +74,14 @@ earlier 65 % (130000) left 27000 tokens of room but stopped every opus leg at
 13 % fill. If a leg needs more headroom than 7000 tokens, raise the launcher
 ceiling; that is an operator decision.
 
-## The autocompact A/B arm (HIMMEL-5193)
+## The autocompact A/B arm
 
 The 200000 ceiling is the default for every leg. A measured A/B against 400000
 is opt-in and audited:
 
 - **Launch.** `LEG_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
   else refuses) on `headed-arm-leg.sh`, with the brief line
-  `> **Context:** ab-400k — operator-ruling: HIMMEL-5193`. It needs the standard
+  `> **Context:** ab-400k — operator-ruling: <reason>`. It needs the standard
   context and is refused with `LEG_CONTEXT=1m`. `200000` is the control arm and
   needs no line. `gen-briefs.py` writes both from a per-leg `ab_arm`
   (`200k` | `400k`) key.
@@ -191,8 +191,8 @@ The hook is also wired as a PreCompact hook:
 
 Claude Code does not document what follows a refused auto-compaction. This is
 why the threshold sits below the earliest observed compaction and the refusal
-is only the second line of defence. HIMMEL-4710 item 7 tracks measuring it on a
-VM leg.
+is only the second line of defence. Measuring it on a
+VM leg is a planned follow-up.
 
 ## Fail-open, scope and bypass
 

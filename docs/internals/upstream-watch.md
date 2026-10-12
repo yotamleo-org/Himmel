@@ -1,11 +1,11 @@
-# Upstream watch (HIMMEL-2367, HIMMEL-2426)
+# Upstream watch
 
 `scripts/upstreams/upstream-watch.sh` is a daily, delta-gated, zero-token scan
 of the operator's open upstream PRs/issues. bash + `gh` + `jq` + `node`; it
 never invokes claude. (`node` is used for exactly one thing — the handover-registry
 lookup that resolves the report bucket — and is guarded with `command -v` like
 the others, so a missing interpreter refuses with its own message instead of
-misreporting as an unmatched registry entry. HIMMEL-2433 tracks replacing it
+misreporting as an unmatched registry entry. A planned follow-up replaces it
 with jq, restoring the pure bash+gh+jq contract.) Armed via `scripts/upstreams/upstream-watch-cadence.sh` (one
 daily scheduled task, default 06:00 local).
 
@@ -37,7 +37,7 @@ script's own `resolve_himmel_root`, which honours `UPSTREAM_WATCH_HIMMEL_ROOT`
 for tests) and uses that entry's `bucket_name` (falling back to the registry
 key) plus its `user` (falling back to `user_slug()` when the entry carries
 none). This mirrors — in the forward direction — the reverse (bucket → path)
-lookup `arm-resume.sh` already does for its own HIMMEL-2147 fallback
+lookup `arm-resume.sh` already does for its own fallback
 (`scripts/handover/arm-resume.sh` around L2295).
 
 **Path matching is the trap**: the registry stores paths Windows-style and
@@ -57,8 +57,8 @@ Linux host can mount a case-insensitive one), so a case-only path difference is
 refused there rather than matched. That is the fail-CLOSED direction — exit 2,
 state untouched, nothing misfiled — which is why it ships this way rather than
 folding unconditionally. Comparing path IDENTITY (`stat` dev+ino) instead of
-strings is the real answer and is tracked as
-[HIMMEL-2449](https://yotamleo.atlassian.net/browse/HIMMEL-2449).
+strings is the real answer and is a known
+follow-up.
 
 If the registry is missing, has no matching entry, the matched entry's user
 cannot be resolved, or either resolved segment is not a single safe path

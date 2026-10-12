@@ -3,8 +3,8 @@
 Lean-invoke reference: three named mitigations, from Anthropic's Fable 5.1
 prompting guide's "Reduce safeguard false positives" section, audited against
 himmel in
-`handovers/yotamleo/himmel/specs/eval/HIMMEL-fable51-prompting-audit-2026-09-05.md`
-(HIMMEL-2586). The auto-memory topic file `claude-invocation-traps.md`
+`handovers/yotamleo/himmel/specs/eval/HIMMEL-fable51-prompting-audit-2026-09-05.md`.
+The auto-memory topic file `claude-invocation-traps.md`
 (`~/.claude/projects/<project>/memory/`) records refusal *symptoms*
 (content-filter 400, Fable refusal drops `[1m]`) — these are the three
 specific triggers/mitigations, not covered there.

@@ -1,4 +1,4 @@
-# Lesson sample-audit — precision gate (HIMMEL-767 deliverable 2)
+# Lesson sample-audit — precision gate
 
 ## Why
 
