@@ -92,13 +92,32 @@ if [ "$rc" = 0 ]; then pass "garbage stdin exits 0"; else fail "garbage stdin rc
 run_hook ''
 if [ "$rc" = 0 ]; then pass "empty stdin exits 0"; else fail "empty stdin rc=$rc"; fi
 
-# 9. Sender failure: no sentinel left, so a later call may retry the DM.
+# 9. Two tokens in one result: both named, and a token already alerted on does
+# not hide a NEW one behind it (codex-1).
+run_hook "$(j_post Bash s1 "GITHUB_PERSONAL_ACCESS_TOKEN=$TOK_GHO
+CODEX_TOKEN=$TOK_GHP")"
+if grep -q 'GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" && grep -q 'CODEX_TOKEN' "$TMP/out" \
+    && no_value "$TMP/out" "$TOK_GHP" && [ "$(sent_count)" = 5 ] && grep -q 'CODEX_TOKEN' "$TMP/sent.log"; then
+    pass "second token behind an alerted one: named and paged"
+else fail "second token (count=$(sent_count)): $(cut -c1-200 "$TMP/out")"; fi
+
+# 10. Sender failure: no sentinel left, so a later call may retry the DM.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/send.sh"
 run_hook "$(j_post Bash s6 "T=$TOK_GHP")"
 s6=$(find "$TMP/alerts" -name 's6__*' 2>/dev/null)
 if [ "$rc" = 0 ] && [ -z "$s6" ]; then pass "failed DM leaves no sentinel"; else fail "failed DM sentinel"; fi
 
-# 10. The sentinel never holds the token.
+# 11. Alert library missing: no sentinel left either (codex-3). Run a copy of the
+# hook from a directory with no ../lib beside it.
+mkdir -p "$TMP/nolib/hooks"
+cp "$HOOK" "$TMP/nolib/hooks/detect-token-in-output.sh"
+printf '%s' "$(j_post Bash s7 "T=$TOK_GHP")" | env TOKEN_ALERT_DIR="$TMP/alerts" \
+    bash "$TMP/nolib/hooks/detect-token-in-output.sh" >/dev/null 2>&1
+rc=$?
+s7=$(find "$TMP/alerts" -name 's7__*' 2>/dev/null)
+if [ "$rc" = 0 ] && [ -z "$s7" ]; then pass "missing alert lib leaves no sentinel"; else fail "missing lib sentinel (rc=$rc)"; fi
+
+# 12. The sentinel never holds the token.
 if ! grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"; then pass "sentinels hold no token"; else fail "token in sentinel dir"; fi
 
 echo ""

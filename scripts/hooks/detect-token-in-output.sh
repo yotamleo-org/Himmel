@@ -39,16 +39,28 @@ input=$(cat 2>/dev/null) || exit 0
 
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
-token="${BASH_REMATCH[1]}"
 
-kind="${token%%_*}_"
-case "$token" in github_pat_*) kind="github_pat_" ;; esac
+# Every distinct token in the text, not just the first: a token already alerted
+# on must not hide a new one printed after it.
+tokens=()
+rest=$input
+while [[ $rest =~ $tok_re ]]; do
+    t="${BASH_REMATCH[1]}"
+    case " ${tokens[*]-} " in *" $t "*) ;; *) tokens+=("$t") ;; esac
+    rest="${rest#*"$t"}"
+done
 
-# The variable the token was assigned to, when the text shows one. Quotes may be
-# JSON-escaped (`\"`), hence the backslash in the bracket.
-var="unknown"
-name_re="([A-Za-z_][A-Za-z0-9_]*)[\"'\\\\]*[=:][[:space:]]*[\"'\\\\]*${token}"
-if [[ $input =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
+# Per token: the kind and the variable it was assigned to, when the text shows
+# one. Quotes may be JSON-escaped (`\"`), hence the backslash in the bracket.
+desc=""
+for token in "${tokens[@]}"; do
+    kind="${token%%_*}_"
+    case "$token" in github_pat_*) kind="github_pat_" ;; esac
+    var="unknown"
+    name_re="([A-Za-z_][A-Za-z0-9_]*)[\"'\\\\]*[=:][[:space:]]*[\"'\\\\]*${token}"
+    if [[ $input =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
+    desc="${desc:+$desc; }${kind}…, variable ${var}"
+done
 
 tool="unknown"; session=""
 if command -v jq >/dev/null 2>&1; then
@@ -58,8 +70,10 @@ fi
 case "$tool" in *[!A-Za-z0-9_.:-]*|'') tool="unknown" ;; esac
 case "$session" in *[!A-Za-z0-9_.-]*) session="" ;; esac
 
-msg="TOKEN-IN-OUTPUT: a GitHub token (${kind}…, variable ${var}) appeared in a ${tool} tool call or result${session:+ in session ${session}}. It is now in the transcript: rotate it."
-ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your console or the operator now (tool ${tool}, variable ${var}; never the value)."
+what="a GitHub token"
+if [ "${#tokens[@]}" -gt 1 ]; then what="${#tokens[@]} GitHub tokens"; fi
+msg="TOKEN-IN-OUTPUT: ${what} (${desc}) appeared in a ${tool} tool call or result${session:+ in session ${session}}. It is now in the transcript: rotate it."
+ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your console or the operator now (tool ${tool}; ${desc}; never the value)."
 
 if command -v jq >/dev/null 2>&1; then
     jq -cn --arg m "$msg" --arg c "$ctx" \
@@ -68,26 +82,33 @@ else
     echo "$msg" >&2
 fi
 
-# One DM per (session, token).
+# One DM per (session, token): page when any token is new in this session. A
+# sentinel claimed here is released again if the DM cannot be sent (no alert
+# library, no chat id, a failed send), so a later call retries it.
 dir="${TOKEN_ALERT_DIR:-$HOME/.himmel/state/token-in-output}"
-hash=""
-if command -v sha256sum >/dev/null 2>&1; then
-    hash=$(printf '%s' "$token" | sha256sum 2>/dev/null) || hash=""
-elif command -v shasum >/dev/null 2>&1; then
-    hash=$(printf '%s' "$token" | shasum -a 256 2>/dev/null) || hash=""
-fi
-hash="${hash%% *}"
-[ -n "$hash" ] || exit 0
 mkdir -p "$dir" 2>/dev/null || exit 0
-key="${session:-nosession}__${hash:0:32}"
-( set -o noclobber; : > "$dir/$key" ) 2>/dev/null || exit 0
+claimed=()
+for token in "${tokens[@]}"; do
+    hash=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        hash=$(printf '%s' "$token" | sha256sum 2>/dev/null) || hash=""
+    elif command -v shasum >/dev/null 2>&1; then
+        hash=$(printf '%s' "$token" | shasum -a 256 2>/dev/null) || hash=""
+    fi
+    hash="${hash%% *}"
+    [ -n "$hash" ] || continue
+    key="${session:-nosession}__${hash:0:32}"
+    if ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then claimed+=("$dir/$key"); fi
+done
+[ "${#claimed[@]}" -gt 0 ] || exit 0
 
 lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../lib/merge-block-alert.sh"
+sent=0
 # shellcheck source=../lib/merge-block-alert.sh
 # shellcheck disable=SC1091
-{ [ -r "$lib" ] && . "$lib"; } 2>/dev/null || exit 0
-chat=$(_mba_operator_chat) || chat=""
-if [ -z "$chat" ] || ! _mba_send "$chat" "$msg" >/dev/null 2>&1; then
-    rm -f "$dir/$key" 2>/dev/null
+if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+    chat=$(_mba_operator_chat) || chat=""
+    if [ -n "$chat" ] && _mba_send "$chat" "$msg" >/dev/null 2>&1; then sent=1; fi
 fi
+if [ "$sent" = 0 ]; then rm -f "${claimed[@]}" 2>/dev/null; fi
 exit 0

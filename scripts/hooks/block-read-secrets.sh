@@ -962,7 +962,9 @@ g4_scan() {
 # ponytail: an accepted false positive on a membership test (`"CI" in
 # os.environ`) and on handing the mapping to a child (`env={**os.environ}`);
 # perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
-# real call of either shape.
+# real call of either shape. TEXT is the whole command, not the interpreter's
+# own clause, so a later clause naming os.environ (a commit message) also
+# denies; per-clause scanning that keeps the heredoc body is HIMMEL-5418.
 interp_env_dump() {
     local t="$1" a b c
     if [[ $t =~ /proc/[^/[:space:]]+/environ ]]; then return 0; fi
