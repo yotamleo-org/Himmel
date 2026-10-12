@@ -234,13 +234,16 @@ qmd_words() {
                 elif [ "$c2" = "'" ]; then
                     # ANSI-C quoting: decode bash's escapes. A NUL ends the
                     # word's value; the rest of the `$'…'` is dropped.
-                    i=$((i + 2)) drop=0
-                    if [ "${s:i:1}" = "'" ]; then out=$out$'\001' dec=$dec$'\001'; fi
+                    i=$((i + 2)) drop=0 m=${#out}
                     while :; do
                         [ "$i" -lt "$n" ] || return 1
                         c=${s:i:1}
                         case "$c" in "'"|'"') qp="$qp $i" ;; esac
-                        [ "$c" = "'" ] && { i=$((i + 1)); break; }
+                        if [ "$c" = "'" ]; then
+                            # an empty value (`$''`, `$'\0'`) is still an argument
+                            if [ "${#out}" -eq "$m" ]; then out=$out$'\001' dec=$dec$'\001'; fi
+                            i=$((i + 1)); break
+                        fi
                         if [ "$c" != '\' ]; then
                             [ "$drop" = 1 ] || _qw_q "$c"
                             i=$((i + 1))
