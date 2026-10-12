@@ -1251,9 +1251,49 @@ _gp_lines() {
     return 0
 }
 
+# _gp_body_line LINE — main's destructive-git text markers, for heredoc body
+# text, which the argv walk does not read as commands.
+_gp_body_line() {
+    local l=$1 g='(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+'
+    if [[ $l =~ ${g}reset[[:space:]]+--hard([^[:alnum:]_-]|$) ]]; then deny "git reset --hard"; fi
+    if [[ $l =~ ${g}clean[[:space:]]+-[[:alnum:]_]*f ]]; then deny "git clean -f"; fi
+    if [[ $l =~ ${g}filter-branch([^[:alnum:]_-]|$) ]]; then deny "git filter-branch"; fi
+    if [[ $l =~ ${g}push([^[:alnum:]_.-].*)?$ ]]; then
+        l=${BASH_REMATCH[3]}
+        if [[ $l =~ $_gp_re_pforce ]] || [[ $l =~ [[:space:]]\+[^[:space:]] ]]; then deny "force push"; fi
+    fi
+    return 0
+}
+
+# _gp_body TEXT — each heredoc body line, backslash-newlines joined, held to
+# _gp_body_line. A body is data, yet a later command can run it (an alias
+# written into .git/config), so the parser's relief never reaches it.
+_gp_body() {
+    local line t d rest re='(^|[^<])<<(-?)[[:space:]]*(["'"'"']?)([a-z_][a-z0-9_]*)\3'
+    local -a pend=()
+    t=${1//"$_bsnl"/}
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "${#pend[@]}" -gt 0 ]; then
+            d=$line
+            case "${pend[0]}" in -*) d=${d#"${d%%[!$'\t']*}"} ;; esac
+            if [ "$d" = "${pend[0]#-}" ]; then pend=("${pend[@]:1}"); else _gp_body_line "$line"; fi
+            continue
+        fi
+        rest=$line
+        while [[ $rest =~ $re ]]; do
+            d=${BASH_REMATCH[4]}
+            [ -z "${BASH_REMATCH[2]}" ] || d=-$d
+            pend[${#pend[@]}]=$d
+            rest=${rest#*"${BASH_REMATCH[0]}"}
+        done
+    done <<<"$t"
+    return 0
+}
+
 # _gp_scan TEXT DEPTH — one command text, lowercased.
 _gp_scan() {
     local t=$1
+    case "$t" in *'<<'*) _gp_body "$t" ;; esac
     if st_tokenize "$t"; then _gp_pass "$2" "$t"; return 0; fi
     _gu_flatten_params "$t"
     if [ "$GU_FLAT" != "$t" ] && st_tokenize "$GU_FLAT"; then _gp_pass "$2" "$t"; return 0; fi

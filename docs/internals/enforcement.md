@@ -2162,6 +2162,10 @@ whose value carries a git command (`X="git reset --hard"; $X`) is re-parsed,
 as is the text after a word's first `=` with a leading `!` dropped (an alias
 body, a `credential.helper=!…`, `core.sshCommand`). A `--config-env` alias is
 refused outright, since its body lives in an env var the hook cannot read.
+A heredoc body gets no argv relief: each body line is held to the plain text
+markers (`git reset --hard`, `git clean -f`, `git filter-branch`, a forced
+`git push`), since a later command can run what it writes (an alias appended
+to `.git/config`).
 The lease carve-out survives an unrelated `-c key=value` (`core.pager`,
 `user.name`); `-C`, a `-c` touching `remote.*`/`url.*`/`push.*`/`branch.*`/
 `include*`/`core.worktree`/`core.bare`, or a malformed `-c` turn it off.

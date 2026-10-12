@@ -617,6 +617,12 @@ assert_rc "R14+ core.sshCommand running a hard reset"        2 "$(run_case "$(j_
 assert_rc "R14- harmless alias"                              0 "$(run_case "$(j_bash "git config alias.st status && git st")")"
 assert_rc "R14- harmless !helper"                            0 "$(run_case "$(j_bash "git -c credential.helper='!gh auth git-credential' fetch")")"
 assert_rc "R14- harmless core.sshCommand"                    0 "$(run_case "$(j_bash "git -c core.sshCommand='ssh -i key' fetch")")"
+# HIMMEL-5358 judge j2441b: a heredoc body is held to main's text markers
+# (an alias written into .git/config), whatever the parser reads of the argv.
+assert_rc "R15+ heredoc alias body, then the alias run"      2 "$(run_case "$(j_bash $'cat >> .git/config <<\'EOF\'\n[alias]\n\tu = !git reset --hard\nEOF\ngit u')")"
+assert_rc "R15+ heredoc alias body alone"                    2 "$(run_case "$(j_bash $'cat >> .git/config <<\'EOF\'\n[alias]\n\tu = !git reset --hard\nEOF')")"
+assert_rc "R15+ heredoc body with a force push"              2 "$(run_case "$(j_bash $'cat > x.sh <<EOF\ngit push -f origin main\nEOF')")"
+assert_rc "R15- heredoc body with a harmless alias"          0 "$(run_case "$(j_bash $'cat >> .git/config <<\'EOF\'\n[alias]\n\tst = status\nEOF\ngit st')")"
 assert_rc "R13+ lease wildcard refspec"                      2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/*:refs/heads/*')")"
 assert_rc "R13+ chained cd disables the carve-out"            2 "$(run_case "$(j_bash 'cd /tmp && git push --force-with-lease origin fix/x')")"
 # HIMMEL-2054 CR round 2 (panel): a clustered short-flag bundle containing
