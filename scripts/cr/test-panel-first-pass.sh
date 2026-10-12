@@ -110,6 +110,27 @@ STUBEOF
 chmod +x "$fx/scripts/cr/critic-panel.sh"
 SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 
+# HIMMEL-5268: review-round.sh verifies --base-sha against the remote through
+# `gh api repos/<o>/<r>/compare/<sha>...<branch>`. This fixture has no GitHub
+# remote, so a PATH-side gh stub answers that one call (review-round.sh keeps
+# calling the real gh from PATH; there is no env seam that skips the check).
+mkdir -p "$tmp/ghbin"
+cat > "$tmp/ghbin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = api ]; then
+    case "${2:-}" in
+        repos/*/compare/*)
+            [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
+            printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            exit 0 ;;
+    esac
+fi
+printf 'unexpected gh invocation\n' >&2
+exit 1
+GHEOF
+chmod +x "$tmp/ghbin/gh"
+PATH="$tmp/ghbin:$PATH"; export PATH
+
 # --- fixture git repo: main + a real-diff branch + a no-diff branch --------
 repo="$tmp/repo"
 mkdir -p "$repo"
@@ -435,7 +456,9 @@ else
     rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/err"
     out="$( (cd "$repo2" && FAKE_RC=0 FAKE_OUT='[codex-1] f.txt:1 finding' \
         bash "$mutant2" --head "$r2_feature" --branch feature) 2>"$tmp/err" )"; rc=$?
-    if [ "$rc" -eq 0 ]; then ok "T13 control RAN to completion (exit 0)"; else bad "T13 control did not run to completion: exit $rc"; fi
+    # HIMMEL-5268: the stale base the mutant captures is now refused at review-round
+    # intake (exit 8), after the captured-base line it printed; before the fix it ran on.
+    if [ "$rc" -eq 8 ]; then ok "T13 control RAN and the intake refused the stale base (exit 8)"; else bad "T13 control: exit $rc, want 8 (stale base refused at intake)"; fi
     assert_has "$out" "captured diff base: main ($r2_local_main)" "T13 control reproduces the SPECIFIC wrong value (stale local main)"
     assert_lacks "$out" "main ($r2_upstream_main)" "T13 control does not carry the correct fetched origin sha"
 fi
@@ -487,6 +510,21 @@ if [ "$r3_rev" = "$r3_tracking_main" ]; then
 else
     bad "T14 resolved ref rev-parsed to $r3_rev, want the tracking commit $r3_tracking_main (got shadow $r3_shadow_main?)"
 fi
+
+# T15 (HIMMEL-5268): the base verification refuses end to end. The stub says the
+# captured base is not on the remote default branch, so review-round.sh exits 8
+# at intake and the panel is never invoked; the passing rows above prove the
+# same fixture reaches the panel when the stub answers "ahead".
+rm -rf "$repo/.git/cr-review-rounds"
+rm -f "$CALL_LOG" "$tmp/err"
+out="$( (cd "$repo" && GH_COMPARE_STATUS=diverged FAKE_RC=0 FAKE_OUT='MUST-NOT-REVIEW' \
+    bash "$SCRIPT" --head "$feature_sha" --branch feature) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+if [ "$rc" -ne 0 ]; then ok "T15 a base the remote does not vouch for aborts the run (rc=$rc)"; else bad "T15 diverged base was accepted"; fi
+assert_has "$err" "gh compare says 'diverged'" "T15 refusal names the remote verdict"
+assert_lacks "$out" "MUST-NOT-REVIEW" "T15 no findings from a refused run"
+if [ -f "$CALL_LOG" ]; then bad "T15 panel invoked past a refused base"; else ok "T15 panel never invoked"; fi
+rm -rf "$repo/.git/cr-review-rounds"
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*
