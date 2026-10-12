@@ -1460,7 +1460,7 @@ toml_edit "19m basic-quoted \"enabled\" = true stays trusted" 0 "" 'return text.
 toml_edit "19n nested array line before enabled = false is discarded" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
 toml_edit "19o nested array line before enabled = true stays trusted" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = true\n" + text.slice(nl);'
 toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n\"]\",\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
-toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\nenabled = false,\n]\n" + text.slice(nl);'
+toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n\"enabled = false\",\n]\n" + text.slice(nl);'
 toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
 
 echo
