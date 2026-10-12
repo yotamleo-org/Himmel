@@ -195,7 +195,8 @@ the leg's plugin set, appends the standing rules from
 brief template no longer repeats them — and exports `HIMMEL_LEAN_LEG=1` to
 quiet the advisory SessionStart hooks. It also now (HIMMEL-2935) passes
 `--mcp-config`/`--strict-mcp-config`, so a leg only ever sees the `qmd` MCP
-server, not the operator console's full USER-level MCP roster. A leg dispatched WITHOUT the flag is
+server, not the USER-level MCP roster (a console gets the same treatment since HIMMEL-5310:
+`qmd` and `himmel-bus` only). A leg dispatched WITHOUT the flag is
 unchanged in every respect, including its argv, so the preface must then be
 pasted into the brief. Detail:
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).

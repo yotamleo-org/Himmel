@@ -19,7 +19,7 @@ CLOUD-OK ticket and prints the launch line.
 |---|---|
 | The clone's `CLAUDE.md`, `.claude/{skills,agents,commands,rules}`, `.mcp.json` (single-repo session only) | Plugins not in the environment's profile; claude.ai-uploaded plugins (sync as `@synced` only) |
 | The repo's `.claude/settings.json` hooks and permissions | Your local `~/.claude` state; `settings.local.json` |
-| Plugins the environment setup script installs (`--with-plugins` / `--plugins <list>`) and their hooks | Plugin hooks of plugins outside the profile (see [`cloud-hooks-proposal.md`](../internals/cloud-hooks-proposal.md)) |
+| Plugins the environment setup script installs (`--with-plugins` / `--plugins <list>`) and their hooks | Plugin hooks of plugins outside the profile (see the state-repo proposal `specs/proposals/cloud-hooks-proposal.md`) |
 | Skills enabled on claude.ai; claude.ai MCP connectors only when enabled for the session (Atlassian for Jira: read, comment, file follow-ups, transition) | The local jira CLI, luna, the console inbox; context7 by default (see below) |
 | The environment setup script's installs (graphify, AST-only; qmd over the repo only, BM25); `CLAUDE_CODE_REMOTE=true` | Handover state; qmd over any vault; qmd vector search |
 
@@ -71,7 +71,7 @@ himmel-ops 0.4.22, lean-skills 0.2.2).
   denies `git checkout` there, even on a feature branch. A cloud session must
   `git worktree add -b <type/slug> .claude/worktrees/<name> origin/main` and work
   inside it. This settles the open question in
-  [`cloud-hooks-proposal.md`](../internals/cloud-hooks-proposal.md).
+  the state-repo proposal `specs/proposals/cloud-hooks-proposal.md`.
   `require-quiet-run` also refuses a bare suite run: wrap it as
   `bash scripts/quiet-run.sh suite -- <cmd>`.
 - **Consequence.** In a plugin-profile environment the three guard-value plugin

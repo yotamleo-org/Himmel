@@ -627,7 +627,16 @@ if [ "$ROLE" = "console" ]; then
         echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set (HIMMEL-4013)" >&2
         exit 2
     }
-    LAUNCH_ARGV=("$LAUNCHER" --settings "$_console_profile_settings" "${LAUNCH_ARGV[@]:1}")
+    # HIMMEL-5310: the console loads only the servers its profile names. Without
+    # --strict-mcp-config every user-level server (graphify, ...) leaks in and its
+    # tool schemas are paid on every turn. Empty output = no allowlist declared.
+    _console_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console --mcp-config) || {
+        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server (HIMMEL-5310)" >&2
+        exit 2
+    }
+    _console_profile_args=(--settings "$_console_profile_settings")
+    [ -z "$_console_profile_mcp" ] || _console_profile_args+=(--mcp-config "$_console_profile_mcp" --strict-mcp-config)
+    LAUNCH_ARGV=("$LAUNCHER" "${_console_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
 fi
 if [ "$HEADLESS" = "1" ]; then
     # auto is what a headed leg runs in (defaultMode=auto in the operator's
@@ -637,7 +646,7 @@ if [ "$HEADLESS" = "1" ]; then
     LAUNCH_ARGV=("$LAUNCHER" --bg --permission-mode auto --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
     # HIMMEL-4052: the rebuild above would drop the console profile --settings.
     if [ "$ROLE" = "console" ]; then
-        LAUNCH_ARGV=("$LAUNCHER" --settings "$_console_profile_settings" "${LAUNCH_ARGV[@]:1}")
+        LAUNCH_ARGV=("$LAUNCHER" "${_console_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
     fi
 fi
 

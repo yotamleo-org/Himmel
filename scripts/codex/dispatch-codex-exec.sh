@@ -77,9 +77,12 @@
 #   9. Hook-trust preflight (HIMMEL-5291): codex keys hook trust to the
 #      absolute .codex/hooks.json path, so a fresh worktree runs with none of
 #      himmel's hooks (HIMMEL-5288 gap 1). The dispatch refuses (exit 2, before
-#      the lock/ledger/registry) unless every PreToolUse hook of the worktree's
-#      hooks.json has a trusted entry in $CODEX_HOME/config.toml. There is no
-#      bypass: --dangerously-bypass-hook-trust stays refused by the filter.
+#      the lock/ledger/registry) unless every hook of every event of the
+#      worktree's hooks.json has a trusted entry in $CODEX_HOME/config.toml
+#      whose hash equals the one codex recomputes (HIMMEL-5293), under a
+#      primary checkout that resolves. There is no bypass:
+#      --dangerously-bypass-hook-trust stays refused by the filter, and a
+#      CODEX_BIN script naming it is refused too (HIMMEL-5297).
 #
 # Usage:
 #   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
@@ -106,6 +109,19 @@
 #
 # Bash 3.2 safe (macOS / Git Bash on Windows).
 set -uo pipefail
+
+# HIMMEL-5297: CODEX_BIN and CODEX_HOOK_TRUST_CHECK are registered seams
+# (scripts/chokepoints.json): refuse one that differs from the session's launch
+# env. Sourced by BASH_SOURCE, never PATH's dirname, before any seam is read.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "dispatch-codex-exec.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/codex/dispatch-codex-exec.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NORMALIZE="${CODEX_ACL_NORMALIZE:-$SCRIPT_DIR/normalize-worktree-acl.sh}"
@@ -335,29 +351,56 @@ if ! bash "$NORMALIZE" "$WORKTREE"; then
 fi
 
 # Invariant 9 (HIMMEL-5291): hook-trust preflight, fail-closed. codex keys hook
-# trust to the ABSOLUTE .codex/hooks.json path (of the worktree, or of the
-# primary checkout a worktree resolves to), so an untrusted tree would run the
+# trust to the ABSOLUTE .codex/hooks.json path of the PRIMARY checkout (a linked
+# worktree's hook discovery resolves there), so an untrusted tree would run the
 # lane with no himmel hooks at all (HIMMEL-5288 gap 1: an in-workspace force
 # push succeeded). The filter refuses --dangerously-bypass-hook-trust, so the
 # only honest options are to refuse or to run guarded: refuse unless every
-# PreToolUse hook of THIS worktree's hooks.json has a trusted state entry
-# (under the primary checkout the worktree resolves to; the worktree path itself
-# only when it IS the primary) in $CODEX_HOME/config.toml. Runs before
+# hook of the primary checkout's hooks.json has a trusted state entry in
+# $CODEX_HOME/config.toml, and refuse a worktree whose own hooks.json differs
+# from the primary's (the hooks in effect would not be the ones it carries). Runs before
 # the lock, the ledger start row and the job registry, so a refusal leaves
 # nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
 # CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
-# ponytail: presence of a trusted_hash, not its validity - codex recomputes the
-# hash from the hook definition, so an edited hooks.json under an already
-# trusted path still passes here and codex itself then drops that hook; upgrade
-# path is porting codex's hash once its algorithm is documented.
+# HIMMEL-5293: every hook of EVERY event is checked, and each trusted_hash must
+# equal the hash codex recomputes from the hook definition (openai/codex
+# rust-v0.161.0: hooks/src/engine/discovery.rs hook_hash() +
+# config/src/fingerprint.rs version_for_toml(); see the port in the node program
+# below), because an edited hooks.json under an already trusted path keeps a
+# stale hash that codex silently drops. A primary checkout that cannot be
+# resolved refuses instead of trusting the worktree's own path.
+# ponytail: the port tracks codex-cli 0.161.0's identity shape (command hooks
+# only; any other hook type refuses as unverifiable); a codex release that
+# changes the identity refuses every dispatch until this is re-ported, which is
+# the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
+# ponytail: the hooks.json reader is a closed grammar (known keys only, integer
+# tokens of at most 16 digits, nesting at most 32, matchers limited to literals
+# and | ( ) . * + ? ^ $) because JS and serde/Rust parse-semantic differences kept
+# surviving every open-ended refusal list; a valid hooks.json outside it (a
+# bracket class or escape in a matcher, a new handler field) refuses, which is
+# the fail-closed direction. Upgrade path is a Rust-regex-compatible validator
+# and a schema generated from the codex release (HIMMEL-5337).
 _hook_trust_check() {
-    local wt="$1" hooks_json="$1/.codex/hooks.json"
-    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="$1" common
-    # codex resolves a git worktree to its PRIMARY checkout and keys trust to
-    # that checkout's .codex/hooks.json (observed codex-cli 0.161.0, Linux).
+    local wt="$1" hooks_json=""
+    local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
+    # codex resolves a LINKED worktree's hook discovery to the PRIMARY checkout's
+    # .codex (rust-v0.161.0 config/src/state.rs hooks_config_folder, verified live
+    # on a linked worktree: hooks/list reports the primary's hooks.json path), so
+    # the file whose hooks run, and whose hashes codex recomputes, is the
+    # primary's - never the worktree's own copy.
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    case "$common" in */.git) primary="${common%/.git}" ;; esac
-    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: $wt has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
+    case "$common" in
+        */.git) primary="${common%/.git}" ;;
+        *) echo "cannot resolve the primary checkout of $wt (git-common-dir='${common:-unresolved}'): codex keys trust to that path, so the trust state cannot be verified" >&2; return 1 ;;
+    esac
+    hooks_json="$primary/.codex/hooks.json"
+    [ -f "$hooks_json" ] || { echo "dispatch-codex-exec.sh: the primary checkout $primary has no .codex/hooks.json - the lane would run with no himmel hook chain" >&2; return 1; }
+    if [ "$wt" != "$primary" ]; then
+        if [ ! -f "$wt/.codex/hooks.json" ] || ! cmp -s "$wt/.codex/hooks.json" "$hooks_json"; then
+            echo "$wt/.codex/hooks.json differs from (or is missing beside) the primary checkout's $hooks_json: codex runs the PRIMARY's hooks in a linked worktree, so the hooks in effect are not the ones this worktree carries" >&2
+            return 1
+        fi
+    fi
     # Git Bash: codex on Windows keys trust to the native path spelling.
     primary_native="$primary"
     if command -v cygpath >/dev/null 2>&1; then
@@ -367,42 +410,266 @@ _hook_trust_check() {
     node -e '
 const fs = require("fs");
 const [hooksFile, cfgFile, ...prefixes] = process.argv.slice(1);
+// codex (hooks/src config: HooksFile is deny_unknown_fields, serde rejects wrong
+// types and duplicate fields) loads ZERO hooks from a file that fails to parse,
+// so this parse is strict in the same directions: duplicate keys, unknown
+// top-level fields and wrong types refuse here instead of passing as trusted.
+const parseStrict = (text) => {
+    let i = 0;
+    const ws = () => { while (i < text.length && " \t\n\r".includes(text[i])) i++; };
+    const fail = (m) => { throw new Error(m + " at offset " + i); };
+    const str = () => {
+        const start = i;
+        i++;
+        while (i < text.length && text[i] !== "\"") { if (text[i] === "\\") i++; i++; }
+        if (i >= text.length) fail("unterminated string");
+        i++;
+        const s = JSON.parse(text.slice(start, i));
+        // serde_json rejects a lone surrogate escape that JSON.parse accepts, and
+        // codex then loads no hook at all.
+        if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s)) fail("lone surrogate escape in a string");
+        return s;
+    };
+    // serde_json stops at 128 levels; a shallower closed cap keeps the two readers
+    // from ever disagreeing on a deep document.
+    const val = (depth = 0) => {
+        ws();
+        const c = text[i];
+        if ((c === "{" || c === "[") && depth >= 32) fail("nesting deeper than 32");
+        if (c === "{") {
+            i++;
+            const o = Object.create(null);
+            ws();
+            if (text[i] === "}") { i++; return o; }
+            for (;;) {
+                ws();
+                if (text[i] !== "\"") fail("expected an object key");
+                const k = str();
+                if (Object.prototype.hasOwnProperty.call(o, k)) fail("duplicate key " + JSON.stringify(k));
+                ws();
+                if (text[i] !== ":") fail("expected a colon");
+                i++;
+                o[k] = val(depth + 1);
+                ws();
+                if (text[i] === ",") { i++; continue; }
+                if (text[i] === "}") { i++; return o; }
+                fail("expected a comma or a closing brace");
+            }
+        }
+        if (c === "[") {
+            i++;
+            const a = [];
+            ws();
+            if (text[i] === "]") { i++; return a; }
+            for (;;) {
+                a.push(val(depth + 1));
+                ws();
+                if (text[i] === ",") { i++; continue; }
+                if (text[i] === "]") { i++; return a; }
+                fail("expected a comma or a closing bracket");
+            }
+        }
+        if (c === "\"") return str();
+        const m = /^[^\s,\]}]+/.exec(text.slice(i));
+        if (!m) fail("unexpected token");
+        i += m[0].length;
+        if (m[0] === "true" || m[0] === "false" || m[0] === "null") return JSON.parse(m[0]);
+        // Closed number grammar: the only accepted token is a plain non-negative
+        // integer of at most 16 digits. A float, an exponent, a minus, a leading
+        // zero or an out-of-range number is read differently (or rejected) by
+        // serde_json, so it refuses here wherever it appears, known field or not.
+        if (!/^(?:0|[1-9][0-9]{0,15})$/.test(m[0])) fail("number token " + JSON.stringify(m[0].slice(0, 24)) + " is outside the accepted grammar");
+        return JSON.parse(m[0]);
+    };
+    const v = val();
+    ws();
+    if (i !== text.length) fail("trailing content");
+    return v;
+};
 let hooks;
 try {
-    hooks = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+    // fatal decoder: an invalid UTF-8 byte is a read error for codex (no hooks
+    // load), while a lenient decode would turn it into U+FFFD and pass.
+    hooks = parseStrict(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(fs.readFileSync(hooksFile)));
 } catch (error) {
-    console.error("cannot read " + hooksFile + ": " + error.message);
+    console.error("codex would load no hooks from " + hooksFile + ": " + error.message);
     process.exit(2);
 }
-const groups = (hooks.hooks || hooks).PreToolUse || [];
-let hookCount = 0;
+const crypto = require("crypto");
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isStrOrNull = (v) => v === undefined || v === null || typeof v === "string";
+// isSafeInteger, not isInteger: a value past 2^53 (1e20 overflows u64 and codex
+// rejects the whole file) cannot be told apart from an in-range one after a JS
+// parse, so the check refuses the whole band (fail-safe).
+const isU64OrNull = (v) => v === undefined || v === null || (Number.isSafeInteger(v) && v >= 0);
+const shape = [];
+if (!isObj(hooks)) {
+    shape.push("top level is not an object");
+} else {
+    for (const k of Object.keys(hooks)) {
+        if (k !== "description" && k !== "hooks") shape.push("unknown top-level field " + JSON.stringify(k));
+    }
+    if (!isStrOrNull(hooks.description)) shape.push("description is not a string");
+    if (hooks.hooks !== undefined && !isObj(hooks.hooks)) shape.push("hooks is not an object");
+}
+if (shape.length) {
+    console.error("codex would load no hooks from " + hooksFile + ": " + shape.join("; "));
+    process.exit(2);
+}
+const events = hooks.hooks || {};
 let cfg = "";
 try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = nothing trusted */ }
 // [hooks.state.<key>] tables: a literal (single-quoted) or basic ("...") key.
-const trusted = new Set();
-let key = null, hash = false, off = false;
-const flush = () => { if (key !== null && hash && !off) trusted.add(key); };
+// trusted: key -> the trusted_hash string (enabled = false entries drop out).
+const trusted = new Map();
+let key = null, hash = null, off = false;
+const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key, hash); };
 for (const line of cfg.split(/\r?\n/)) {
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
         key = m ? (m[1] !== undefined ? m[1] : m[2].replace(/\\(.)/g, "$1")) : null;
-        hash = false; off = false;
+        hash = null; off = false;
     } else if (key !== null) {
-        if (/^\s*trusted_hash\s*=\s*"[^"]+"/.test(line)) hash = true;
+        const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
+        if (h) hash = h[1];
         if (/^\s*enabled\s*=\s*false\b/.test(line)) off = true;
     }
 }
 flush();
+// Port of codex hook_hash(): sha256 of the compact JSON, object keys sorted, of
+// { event_name, matcher?, hooks: [normalized handler] }.
+const labels = { PreToolUse: "pre_tool_use", PermissionRequest: "permission_request", PostToolUse: "post_tool_use", PreCompact: "pre_compact", PostCompact: "post_compact", SessionStart: "session_start", SessionEnd: "session_end", UserPromptSubmit: "user_prompt_submit", SubagentStart: "subagent_start", SubagentStop: "subagent_stop", Stop: "stop", Interrupt: "interrupt" };
+const ctxEvents = new Set(["PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "SubagentStart"]);
+const sorted = (v) => Array.isArray(v) ? v.map(sorted)
+    : (v && typeof v === "object") ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {})
+    : v;
+// codex drops the matcher before hashing for these events (matcher_pattern_for_event).
+const noMatcherEvents = new Set(["UserPromptSubmit", "Stop", "Interrupt"]);
+const expectedHash = (event, group, hook) => {
+    const shortEvent = event === "SessionEnd" || event === "Interrupt";
+    const t = Number.isInteger(hook.timeout) ? hook.timeout : undefined;
+    const win = hook.commandWindows !== undefined ? hook.commandWindows : hook.command_windows;
+    const handler = {
+        type: "command",
+        command: (process.platform === "win32" && typeof win === "string") ? win : hook.command,
+        async: hook.async === true,
+        timeout: shortEvent ? Math.min(Math.max(t === undefined ? 1 : t, 1), 3) : Math.max(t === undefined ? 600 : t, 1),
+    };
+    if (typeof hook.statusMessage === "string") handler.statusMessage = hook.statusMessage;
+    if (ctxEvents.has(event) && Number.isInteger(hook.additionalContextLimit) && hook.additionalContextLimit !== 2500) {
+        handler.additionalContextLimit = hook.additionalContextLimit;
+    }
+    const identity = { event_name: labels[event], hooks: [handler] };
+    if (typeof group.matcher === "string" && !noMatcherEvents.has(event)) identity.matcher = group.matcher;
+    return "sha256:" + crypto.createHash("sha256").update(JSON.stringify(sorted(identity))).digest("hex");
+};
+// Strict shape of the known events (serde: wrong types, a duplicated command
+// alias, an unknown handler type or a missing required field fail the whole file
+// and codex then loads no hook at all).
+const badShape = [];
+const matcherOk = (m) => {
+    if (m === undefined || m === null || m === "" || m === "*") return true;
+    // Closed matcher grammar: JS RegExp and the Rust regex crate disagree on
+    // escapes, classes, counted repetition and lookaround, so only the subset both
+    // read the same is accepted: literals [A-Za-z0-9_-], | ( ) . * + ? ^ $, no
+    // backslash, no bracket, no brace. A quantifier needs an atom before it (and
+    // may then take one lazy ?), groups balance to at most 16 deep (Rust refuses
+    // past 250) and no alternative or group is empty.
+    let prev = "start", depth = 0, lazy = false;
+    for (const c of m) {
+        if (/[A-Za-z0-9_-]|\./.test(c)) { prev = "atom"; lazy = false; continue; }
+        if (c === "(") { if (++depth > 16) return false; prev = "start"; continue; }
+        if (c === ")") {
+            if (depth === 0 || prev === "start" || prev === "alt") return false;
+            depth--; prev = "atom"; lazy = false; continue;
+        }
+        if (c === "|") {
+            if (prev === "start" || prev === "alt") return false;
+            prev = "alt"; continue;
+        }
+        if (c === "^" || c === "$") { prev = "anchor"; continue; }
+        if (c === "*" || c === "+" || c === "?") {
+            if (prev === "atom") { prev = "quant"; lazy = false; continue; }
+            if (prev === "quant" && c === "?" && !lazy) { lazy = true; continue; }
+            return false;
+        }
+        return false;
+    }
+    if (depth !== 0 || prev === "start" || prev === "alt") return false;
+    try { new RegExp(m, "u"); return true; } catch (error) { return false; }
+};
+const known = (o, keys) => Object.keys(o).filter((k) => !keys.includes(k));
+const handlerKeys = {
+    command: ["type", "command", "commandWindows", "command_windows", "timeout", "async", "statusMessage", "additionalContextLimit"],
+    mcp_tool: ["type", "server", "tool", "timeout", "async", "statusMessage"],
+    prompt: ["type", "prompt", "model", "timeout", "statusMessage"],
+    agent: ["type", "prompt", "model", "timeout", "statusMessage"],
+};
+for (const event of Object.keys(events)) {
+    if (!labels[event]) { badShape.push("unknown hook event " + JSON.stringify(event) + " (closed schema)"); continue; }
+    const groups = events[event];
+    if (!Array.isArray(groups)) { badShape.push(event + " is not an array"); continue; }
+    groups.forEach((group, gi) => {
+        const at = event + "[" + gi + "]";
+        if (!isObj(group)) { badShape.push(at + " is not an object"); return; }
+        for (const k of known(group, ["matcher", "hooks"])) badShape.push(at + " has unknown field " + JSON.stringify(k));
+        if (!isStrOrNull(group.matcher)) badShape.push(at + ".matcher is not a string");
+        if (group.hooks !== undefined && !Array.isArray(group.hooks)) { badShape.push(at + ".hooks is not an array"); return; }
+        if (typeof group.matcher === "string" && !noMatcherEvents.has(event) && !matcherOk(group.matcher)) {
+            badShape.push(at + ".matcher is not a valid regular expression (codex skips the group)");
+        }
+        (group.hooks || []).forEach((hook, hi) => {
+            const h = at + ".hooks[" + hi + "]";
+            if (!isObj(hook)) { badShape.push(h + " is not an object"); return; }
+            if (typeof hook.type === "string" && Object.prototype.hasOwnProperty.call(handlerKeys, hook.type)) {
+                for (const k of known(hook, handlerKeys[hook.type])) badShape.push(h + " has unknown field " + JSON.stringify(k));
+            }
+            if (hook.type === "command") {
+                if (typeof hook.command !== "string") badShape.push(h + ".command is not a string");
+                if (hook.commandWindows !== undefined && hook.command_windows !== undefined) badShape.push(h + " carries both commandWindows and command_windows");
+                if (!isStrOrNull(hook.commandWindows) || !isStrOrNull(hook.command_windows)) badShape.push(h + ".commandWindows is not a string");
+                if (!isU64OrNull(hook.timeout)) badShape.push(h + ".timeout is not a non-negative integer");
+                if (hook.async !== undefined && typeof hook.async !== "boolean") badShape.push(h + ".async is not a boolean");
+                if (!isStrOrNull(hook.statusMessage)) badShape.push(h + ".statusMessage is not a string");
+                if (!isU64OrNull(hook.additionalContextLimit)) badShape.push(h + ".additionalContextLimit is not a non-negative integer");
+            } else if (hook.type === "mcp_tool") {
+                if (typeof hook.server !== "string" || typeof hook.tool !== "string") badShape.push(h + " mcp_tool needs string server and tool");
+            } else if (hook.type !== "prompt" && hook.type !== "agent") {
+                badShape.push(h + ".type is not a known hook handler type");
+            }
+        });
+    });
+}
+if (badShape.length) {
+    console.error("codex would load no hooks from " + hooksFile + ": " + badShape.join("; "));
+    process.exit(2);
+}
 const missing = [];
-groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
-    hookCount++;
-    const suffix = "/.codex/hooks.json:pre_tool_use:" + gi + ":" + hi;
-    const winSuffix = "\\.codex\\hooks.json:pre_tool_use:" + gi + ":" + hi;
-    const ok = prefixes.some(p => trusted.has(p + suffix) || trusted.has(p + winSuffix));
-    if (!ok) missing.push("pre_tool_use:" + gi + ":" + hi);
-}));
-if (hookCount === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
+let preCount = 0;
+for (const event of Object.keys(events)) {
+    const groups = events[event] || [];
+    if (!labels[event]) {
+        if (Array.isArray(groups) && groups.some(g => isObj(g) && Array.isArray(g.hooks) && g.hooks.length)) missing.push(event + " (unknown hook event, cannot verify)");
+        continue;
+    }
+    groups.forEach((group, gi) => (group.hooks || []).forEach((hook, hi) => {
+        if (event === "PreToolUse") preCount++;
+        const id = labels[event] + ":" + gi + ":" + hi;
+        const suffix = "/.codex/hooks.json:" + id;
+        const winSuffix = "\\.codex\\hooks.json:" + id;
+        let found, hit = false;
+        for (const p of prefixes) {
+            for (const k of [p + suffix, p + winSuffix]) {
+                if (trusted.has(k)) { hit = true; found = trusted.get(k); }
+            }
+        }
+        if (!hit) { missing.push(id); return; }
+        if (hook.type !== "command" || typeof hook.command !== "string") { missing.push(id + " (non-command hook, cannot verify its hash)"); return; }
+        if (found !== expectedHash(event, group, hook)) missing.push(id + " (stale trusted_hash: hooks.json changed since it was trusted)");
+    }));
+}
+if (preCount === 0) missing.push("pre_tool_use (hooks.json declares no PreToolUse hooks)");
 if (missing.length) {
     console.error(missing.join(", "));
     process.exit(1);
@@ -458,6 +725,23 @@ fi
 if ! command -v "$CODEX" >/dev/null 2>&1; then
     echo "dispatch-codex-exec.sh: codex CLI not found: $CODEX (install it or set CODEX_BIN)" >&2
     exit 127
+fi
+
+# HIMMEL-5297: the argv filter bounds the CALLER's flags, but CODEX_BIN can name
+# a wrapper that adds --dangerously-bypass-hook-trust (or the sandbox/rules
+# bypasses) itself. CODEX_BIN is a registered chokepoint seam (scripts/
+# chokepoints.json), and here a resolved script (shebang) naming a refused flag
+# is refused before launch, as is any such flag in the argv finally passed.
+# ponytail: a static text scan of a script wrapper - a compiled wrapper or a
+# flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
+# resolved codex install (basename + realpath allowlist, no own CODEX_HOME),
+# HIMMEL-5347.
+CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"
+if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODEX_RESOLVED" 2>/dev/null)" = "#!" ]; then
+    if grep -qE -e '--dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules' "$CODEX_RESOLVED" 2>/dev/null; then
+        echo "dispatch-codex-exec.sh: refusing CODEX_BIN '$CODEX': the script names a refused trust/sandbox bypass flag (the lane's argv filter cannot see a wrapper's own flags)" >&2
+        exit 2
+    fi
 fi
 
 # The worktree can vanish between the -d check and here (the preflight takes
@@ -531,6 +815,18 @@ if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
 fi
+# HIMMEL-5297: the argv codex is finally launched with never carries a refused
+# trust/sandbox bypass flag, whatever built it (the caller args were already
+# filtered; this covers the pin args and any later change to either).
+# shellcheck disable=SC2086 # pin_args is a fixed, space-safe flag list
+for _final_arg in $pin_args "$@"; do
+    case "$_final_arg" in
+        --dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules)
+            echo "dispatch-codex-exec.sh: refusing final argv carrying '$_final_arg'" >&2
+            exit 2 ;;
+    esac
+done
+
 # Invariants 5+6 (HIMMEL-800/840): NEVER exec codex in either path - exec
 # replaces this process image, which would drop the composed EXIT trap above
 # (losing both the shared-branch lock release and the fleet reap). Run codex
