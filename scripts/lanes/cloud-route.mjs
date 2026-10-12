@@ -9,7 +9,7 @@
 // operator's terminal and spends credit, so the tool only prints the line.
 //
 // Classes, first match wins:
-//   BLOCKED      ticket not To Do, the open-PR/held-file list is unknown, or a
+//   BLOCKED      ticket not To Do, the open-PR/held-file list or file tree is unknown, or a
 //                file it touches is held (one writer per file)
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal leg)
@@ -23,7 +23,8 @@
 //                send content to a model backend. Station-bound work is too
 //                (HIMMEL-4969): ~/.himmel or ~/.cache state, a test VM
 //                (himmel-ops:vm, vmsdk, VBoxManage), a LIVE ledger, arming a
-//                cadence (at/systemd)
+//                cadence (at/systemd); VM-only, "on a VM" and VM snapshot wording
+//                (HIMMEL-5218), and a named file the tree at the base cannot place
 //   VERIFY-LOCAL (HIMMEL-5163) a merged PR cites the ticket key, or touches a
 //                file it names, after the ticket was created: it may already be
 //                fixed on main, so a local leg verifies it first (a cloud session
@@ -40,7 +41,8 @@ const REPO = resolve(HERE, '..', '..');
 const MAX_ASKS = 3;
 const REPO_SLUG = 'yotamleo/Himmel';
 const HOOKS = /^scripts\/hooks\//;
-const NEEDS = /\bluna\b|\bvault\b|handover state|\$HANDOVER_DIR|\bstate[ -]repo\b|(?<![\w.-])handovers\/[\w.-]+\/|(?<![\w.-])specs\/HIMMEL-\d|\bqmd\s+(?:query|vsearch|embed|pull)\b|vector search|(?<![\w.-])\/graphify\b|semantic (?:graphify|extraction)|\bgraphify\b[^\n]*--backend|\bqmd\b[^\n]*?(?<![\w-])(?:-c|--collections?)[\s=]+['"]?(?!himmel(?![\w-]))[\w-]|(?:~|\$HOME|\$\{HOME\})\/\.(?:himmel|cache)\/|\btest VMs?\b|himmel-ops:vm|\bvmsdk\b|\bVBoxManage\b|\bLIVE\b[^\n.]{0,40}\bledger\b|\barm(?:s|ed|ing)?\b[^\n.]{0,40}\bcadence\b|\bsystemd[ -](?:timer|unit|service)s?\b|\batrm\b/i;
+const NEEDS = /\bluna\b|\bvault\b|handover state|\$HANDOVER_DIR|\bstate[ -]repo\b|(?<![\w.-])handovers\/[\w.-]+\/|(?<![\w.-])specs\/HIMMEL-\d|\bqmd\s+(?:query|vsearch|embed|pull)\b|vector search|(?<![\w.-])\/graphify\b|semantic (?:graphify|extraction)|\bgraphify\b[^\n]*--backend|\bqmd\b[^\n]*?(?<![\w-])(?:-c|--collections?)[\s=]+['"]?(?!himmel(?![\w-]))[\w-]|(?:~|\$HOME|\$\{HOME\})\/\.(?:himmel|cache)\/|\btest VMs?\b|himmel-ops:vm|\bvmsdk\b|\bVBoxManage\b|\bLIVE\b[^\n.]{0,40}\bledger\b|\barm(?:s|ed|ing)?\b[^\n.]{0,40}\bcadence\b|\bsystemd[ -](?:timer|unit|service)s?\b|\batrm\b|\bVM[- ]only\b|\b(?:on|in|inside) (?:a|the) (?:test )?VM\b|\bVM snapshots?\b/i;
+const BARE_RE = /(?<![\w./-])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?:\.(?:sh|mjs|js|py|ps1))?(?![\w/-]|\.\w)/g;
 const FILE_RE = /(?<![\w./-])((?:scripts|docs|marketplace|templates|tools|\.claude|\.github|\.codex)\/[\w.+@-]+(?:\/[\w.+@-]+)*\/?|CLAUDE\.md|AGENTS\.md|\.pre-commit-config\.yaml)/g;
 
 // The trust list is read as data, one extended regex per line (ci-trust-paths.txt).
@@ -62,6 +64,36 @@ export function extractFiles(text) {
     if (f && !out.includes(f)) out.push(f);
   }
   return out;
+}
+
+// HIMMEL-5218: a ticket may name a hook or script by its bare name (guard-pr-check-literal,
+// not scripts/hooks/guard-pr-check-literal.sh), so the hook, trust and held checks never saw
+// it. A hyphenated token that is the stem of a script under scripts/ at the base resolves to
+// every such path. ponytail: a hyphenated English word that is also a script stem resolves
+// too, which only over-routes local; narrow when it becomes noise.
+const SCRIPT_EXT = /\.(?:sh|mjs|js|py|ps1)$/;
+export function bareNames(text, tree) {
+  const stems = new Map();
+  for (const p of tree) {
+    if (!p.startsWith('scripts/') || !SCRIPT_EXT.test(p)) continue;
+    const stem = posix.basename(p).replace(SCRIPT_EXT, '');
+    stems.set(stem, [...(stems.get(stem) ?? []), p]);
+  }
+  const out = [];
+  for (const m of text.matchAll(BARE_RE)) for (const p of stems.get(m[1]) ?? []) if (!out.includes(p)) out.push(p);
+  return out;
+}
+
+// A named path the router cannot place: not in the tree and no sibling under its
+// directory either (a typo or a moved file; a new file in a known directory is placed).
+export function unresolved(files, tree) {
+  const set = new Set(tree);
+  const dirs = new Set(tree.map((p) => posix.dirname(p)));
+  return files.filter((f) => {
+    const d = f.replace(/\/$/, '');
+    if (set.has(d) || dirs.has(d) || tree.some((p) => p.startsWith(`${d}/`))) return false;
+    return !dirs.has(posix.dirname(d)) && !tree.some((p) => p.startsWith(`${posix.dirname(d)}/`));
+  });
 }
 
 // Ask lines: the numbered or bulleted lines under an "Asks:" header, else any
@@ -99,10 +131,12 @@ export function fixedBy(t, files, ctx) {
   return out;
 }
 
-// classifyTicket(ticket, {trust, held, heldUnknown, merged, mergedUnknown, now}) -> {class, reason, files, asks, prs?}. Pure.
+// classifyTicket(ticket, {trust, held, heldUnknown, merged, mergedUnknown, tree, treeUnknown, now}) -> {class, reason, files, asks, prs?}. Pure.
 // held is [{file, why}]; ticket.files (console-supplied) overrides text extraction.
 export function classifyTicket(t, ctx) {
-  const files = (t.files?.length ? t.files : extractFiles(`${t.title}\n${t.description}`)).map((f) => posix.normalize(f));
+  const text = `${t.title}\n${t.description}`;
+  const named = t.files?.length ? t.files : [...extractFiles(text), ...bareNames(text, ctx.tree ?? [])];
+  const files = [...new Set(named.map((f) => posix.normalize(f)))];
   const asks = Math.max(1, askLines(t.description).length);
   const v = (cls, reason) => ({ class: cls, reason, files, asks });
 
@@ -116,9 +150,12 @@ export function classifyTicket(t, ctx) {
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
   if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
-  const need = `${t.title}\n${t.description}`.match(NEEDS);
+  const need = text.match(NEEDS);
   if (need) return v('LOCAL-NATIVE', `run-time need '${need[0]}' — luna, vaults, handover state, the state repo, qmd models, semantic graphify, ~/.himmel state, test VMs, live ledgers and cadence arming stay on the station (the cloud has AST-only graphify and BM25 qmd search over the repo only: no qmd models, so no qmd query, vector search or embed)`);
   if (asks > MAX_ASKS) return v('LOCAL-NATIVE', `${asks} asks (more than ${MAX_ASKS}) — cloud sessions drop second asks`);
+  if (ctx.treeUnknown) return v('BLOCKED', 'file tree unavailable (git failed) — cannot resolve the named files');
+  const lost = ctx.tree ? unresolved(files, ctx.tree) : [];
+  if (lost.length) return v('LOCAL-NATIVE', `cannot resolve ${lost.join(', ')} at the base — no such file or directory, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (ctx.heldUnknown) return v('BLOCKED', 'open-PR file list unavailable (gh failed) — cannot prove the files are free');
   if (ctx.mergedUnknown) return v('BLOCKED', 'merged-PR list unavailable (gh failed) — cannot prove the ticket is not already fixed');
   const fixed = fixedBy(t, files, ctx);
@@ -200,6 +237,15 @@ function fetchTicket(key) {
   return parseJiraGet(execFileSync(bin, args, { encoding: 'utf8', env: { JIRA_PROJECT_KEY: 'HIMMEL', ...process.env } }));
 }
 
+// The file tree at the base: origin/main of the primary checkout, else its HEAD.
+function baseTree() {
+  const cwd = primaryCheckout();
+  for (const ref of ['origin/main', 'HEAD']) {
+    try { return gitClean(['ls-tree', '-r', '--name-only', ref], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n').filter(Boolean); } catch { /* try the next ref */ }
+  }
+  throw new Error('git ls-tree failed at origin/main and HEAD');
+}
+
 function openPrFiles() {
   const gh = process.env.CLOUD_ROUTE_GH_CMD || 'gh';
   const out = [];
@@ -252,7 +298,10 @@ function main(argv) {
   let merged = [];
   let mergedUnknown = false;
   try { merged = mergedPrs(keys); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
-  const ctx = { trust: loadTrust(), held, heldUnknown, merged, mergedUnknown };
+  let tree = [];
+  let treeUnknown = false;
+  try { tree = baseTree(); } catch (e) { treeUnknown = true; process.stderr.write(`cloud-route: git failed, file tree unknown — ${e.message.split('\n')[0]}\n`); }
+  const ctx = { trust: loadTrust(), held, heldUnknown, merged, mergedUnknown, tree, treeUnknown };
   const date = new Date().toISOString().slice(0, 10);
   const launches = [];
   if (!opt.classifyOnly) mkdirSync(opt.bucket, { recursive: true });
