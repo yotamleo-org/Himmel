@@ -74,6 +74,7 @@ if [ -e "$canary" ] || [ -L "$canary" ]; then
 fi
 
 if [ "$platform" = Darwin ]; then
+    [ -z "$write_mask" ] || { printf 'sandbox-run: --write-mask-list is Linux only\n' >&2; exit 125; }
     for input in "${inputs[@]}"; do
         special=$(find "$input" ! -type f ! -type d ! -type l -print -quit) || exit 125
         if [ -n "$special" ]; then
@@ -137,14 +138,14 @@ walk_masks() {
 mask_roots="${runtime_inputs[*]}"
 mask_roots="${mask_roots// /:}"
 mask_fingerprint() {
-    find "${runtime_inputs[@]}" -maxdepth 2 -type d -printf '%p\0%m\0%T@\0' 2>/dev/null \
-        | sha256sum | cut -d' ' -f1
+    # gnu-ok: Linux bwrap path only, Darwin exits above
+    find "${runtime_inputs[@]}" -maxdepth 2 -type d -printf '%p\0%m\0%T@\0' 2>/dev/null | sha256sum | cut -d' ' -f1 # gnu-ok: Linux only
 }
 mask_list_trusted() {
     local f="${SANDBOX_RUN_MASK_LIST:-}" magic epoch huid hroots hfp mode kind path now ttl=600
     [ -n "$f" ] && [ -f "$f" ] && [ ! -L "$f" ] || return 1
-    [ "$(stat -c %u -- "$f")" = "$(id -u)" ] || return 1
-    mode=$(stat -c %a -- "$f") || return 1
+    [ "$(stat -c %u -- "$f")" = "$(id -u)" ] || return 1 # gnu-ok: Linux only
+    mode=$(stat -c %a -- "$f") || return 1 # gnu-ok: Linux only
     [ $((8#$mode & 8#022)) -eq 0 ] || return 1
     read -r magic epoch huid hroots hfp < "$f" || return 1
     [ "$magic" = himmel-mask-list-v1 ] && [ "$huid" = "$(id -u)" ] && [ "$hroots" = "$mask_roots" ] || return 1
