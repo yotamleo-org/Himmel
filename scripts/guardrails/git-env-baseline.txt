@@ -8,7 +8,6 @@ JS:scripts/lanes/verify-return.mjs:3b1ccbdbe5ca
 JS:scripts/lanes/verify-return.mjs:7e4e294c8331
 JS:scripts/lanes/verify-return.mjs:94872fe33864
 JS:scripts/lanes/verify-return.mjs:e3c1f964dc20
-SHELL:scripts/cr/anchor-handoff.sh
 SHELL:scripts/cr/base-resolver.sh
 SHELL:scripts/cr/claude-floor-review.sh
 SHELL:scripts/cr/clear-cr-marker.sh
@@ -33,7 +32,6 @@ SHELL:scripts/cr/write-verdicts.sh
 SHELL:scripts/handover/arm-resume.sh
 SHELL:scripts/handover/auto-commit.sh
 SHELL:scripts/handover/breadcrumb.sh
-SHELL:scripts/handover/console/console.sh
 SHELL:scripts/handover/console-kit/ready-check.sh
 SHELL:scripts/handover/flush.sh
 SHELL:scripts/handover/generate-morning-briefing.sh

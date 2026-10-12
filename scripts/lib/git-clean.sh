@@ -2,12 +2,20 @@
 # scripts/lib/git-clean.sh — shared env-scrub helper for trust-path git calls
 # (HIMMEL-3570).
 #
-# WHY: a git subprocess on a trust path inherits the CALLER's GIT_DIR,
-# GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE. An attacker-set value for
-# any of the four steers which repo/worktree/index the call actually answers
-# about — PR 1212 (anchor-handoff.sh, `ls-files --error-unmatch` under a
+# WHY: a git subprocess on a trust path inherits the CALLER's repository-
+# redirecting GIT_* variables. An attacker-set value for any of them steers
+# which repo/worktree/index/object store the call actually answers about
+# (HIMMEL-3571 widened the set from four to the full list below) — PR 1212 (anchor-handoff.sh, `ls-files --error-unmatch` under a
 # poisoned GIT_DIR) and PR 1217 (plugin-profiles.mjs `primaryCheckout`, the
 # same class via `git rev-parse --git-common-dir`) are both this bug.
+#
+# The scrubbed set is git's own list of repository-local variables, as printed
+# by `git rev-parse --local-env-vars` (git help environment): GIT_DIR,
+# GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY,
+# GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_PREFIX, GIT_IMPLICIT_WORK_TREE,
+# GIT_GRAFT_FILE, GIT_NO_REPLACE_OBJECTS, GIT_REPLACE_REF_BASE,
+# GIT_SHALLOW_FILE, GIT_CONFIG, GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT.
+# scripts/lanes/git-clean.mjs carries the identical set.
 #
 # CAUTION — git hooks: `GIT_INDEX_FILE` is NOT always attacker-controlled
 # noise to scrub. A running git hook (e.g. `pre-commit` under `commit -a`)
@@ -35,9 +43,17 @@
 # git-env-ok: this file IS the scrub mechanism — git_clean's own `env -u`
 # prefix on its `git "$@"` call is the scrub, not a bare invocation needing one.
 git_clean() {
-    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX \
+        -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_NO_REPLACE_OBJECTS \
+        -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG \
+        -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT git "$@"
 }
 
 git_env_scrub() {
-    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+        GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
+        GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS \
+        GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG \
+        GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 }

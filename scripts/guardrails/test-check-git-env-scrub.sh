@@ -178,6 +178,30 @@ else
     printf '%s\n' "$T25_OUT" | sed 's/^/    /'
 fi
 
+# ---- HIMMEL-3571 ----
+
+# T26/T27 -- an execFileSync( call whose 'git' argument is on the next line.
+expect_red   "T26 multi-line execFileSync(\\n 'git' ...) is caught"        multiline-unscrubbed.mjs
+expect_green "T27 multi-line call with the scrub keys in its env passes"  multiline-scrubbed.mjs
+
+# T28 -- a baseline entry that no longer corresponds to a hit is STALE and
+# must fail the full scan, so the ratchet can shrink. One bogus entry on top
+# of the real baseline; the full real-tree scan must now exit 1 naming it.
+T28_BASELINE="$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-stale-baseline.XXXXXX")" || exit 2
+{
+    cat "$REPO_ROOT/scripts/guardrails/git-env-baseline.txt"
+    printf 'SHELL:scripts/hooks/does-not-exist-xyz.sh\n'
+} > "$T28_BASELINE"
+T28_OUT="$(cd "$REPO_ROOT" && GIT_ENV_SCRUB_BASELINE="$T28_BASELINE" bash "$CHECKER" --tree 2>&1)"
+T28_RC=$?
+rm -f "$T28_BASELINE"
+if [ "$T28_RC" -eq 1 ] && grep -qF "stale" <<<"$T28_OUT" && grep -qF "does-not-exist-xyz.sh" <<<"$T28_OUT"; then
+    pass "T28 a stale baseline entry fails the full scan"
+else
+    fail "T28 a stale baseline entry fails the full scan (rc=$T28_RC)"
+    printf '%s\n' "$T28_OUT" | sed 's/^/    /'
+fi
+
 # T18 -- sanity: the real trust paths, under the real committed baseline,
 # report clean. This is the ratchet's day-one promise.
 REAL_OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --tree 2>&1)"

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# scripts/lib/test-git-clean.sh — HIMMEL-3571: the shell and JS git-clean twins
+# (scripts/lib/git-clean.sh, scripts/lanes/git-clean.mjs) must scrub every
+# repository-redirecting GIT_* variable, identically.
+#
+# The set is `git rev-parse --local-env-vars` (git's own list of the
+# repository-local variables), hardcoded here so a newer git adding one shows
+# up as a reviewed diff, not a surprise CI failure.
+#
+# Platform guard: POSIX bash 3.2+ (no associative arrays), needs node for the
+# .mjs twin.
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VARS="GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT"
+
+failures=0
+pass() { printf '  PASS  %s\n' "$1"; }
+fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
+
+STUB_DIR="$(mktemp -d "${TMPDIR:-/tmp}/git-clean-test.XXXXXX")" || exit 2
+trap 'rm -rf "$STUB_DIR"' EXIT
+# A stub `git` that prints the GIT_* variables it inherited, one per line.
+cat > "$STUB_DIR/git" <<'STUB'
+#!/bin/sh
+env | grep '^GIT_' | sort
+exit 0
+STUB
+chmod +x "$STUB_DIR/git"
+
+# git_clean (shell twin): every var set to a poisoned value must be absent in
+# the child.
+(
+    for v in $VARS; do export "$v=/poison"; done
+    # shellcheck source=/dev/null
+    . "$REPO_ROOT/scripts/lib/git-clean.sh"
+    PATH="$STUB_DIR:$PATH" git_clean rev-parse
+) > "$STUB_DIR/sh-clean.out" 2>&1
+for v in $VARS; do
+    if grep -q "^$v=" "$STUB_DIR/sh-clean.out"; then
+        fail "sh git_clean leaks $v"
+    else
+        pass "sh git_clean scrubs $v"
+    fi
+done
+
+# git_env_scrub (shell twin): every var unset in the calling shell.
+for v in $VARS; do
+    got="$(
+        for w in $VARS; do export "$w=/poison"; done
+        # shellcheck source=/dev/null
+        . "$REPO_ROOT/scripts/lib/git-clean.sh"
+        git_env_scrub
+        eval "printf '%s' \"\${$v+set}\""
+    )"
+    if [ -z "$got" ]; then
+        pass "sh git_env_scrub unsets $v"
+    else
+        fail "sh git_env_scrub leaves $v set"
+    fi
+done
+
+# gitClean / gitCleanEnv (JS twin).
+if command -v node >/dev/null 2>&1; then
+    JS_OUT="$(
+        for v in $VARS; do export "$v=/poison"; done
+        PATH="$STUB_DIR:$PATH" node --input-type=module -e "
+import { gitClean } from '$REPO_ROOT/scripts/lanes/git-clean.mjs';
+process.stdout.write(gitClean(['rev-parse'], { encoding: 'utf8' }));
+" 2>&1
+    )"
+    for v in $VARS; do
+        if grep -q "^$v=" <<<"$JS_OUT"; then
+            fail "mjs gitClean leaks $v"
+        else
+            pass "mjs gitClean scrubs $v"
+        fi
+    done
+else
+    fail "node not found — cannot exercise the .mjs twin"
+fi
+
+echo
+echo "== summary =="
+if [ "$failures" -eq 0 ]; then
+    echo "ALL PASS"
+    exit 0
+else
+    echo "$failures FAILURE(S)"
+    exit 1
+fi

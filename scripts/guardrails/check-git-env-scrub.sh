@@ -238,6 +238,10 @@ strip_js_comment() {
 # --emit-baseline.
 HITS=()
 BASELINE_KEYS=()
+# USED_BASELINE: baseline keys that grandfathered a real hit this run — what
+# is left over in the baseline is stale (HIMMEL-3571).
+USED_BASELINE=()
+FULL_SCAN=0
 
 # ---- shell: file-level scan ----
 scan_shell_file() {
@@ -317,6 +321,7 @@ scan_shell_file() {
 
     local key="SHELL:$f"
     if [ "$EMIT_BASELINE" -ne 1 ] && [ -r "$BASELINE_FILE" ] && grep -qxF "$key" "$BASELINE_FILE"; then
+        USED_BASELINE+=("$key")
         return 0
     fi
     if [ "$has_shebang" -eq 0 ]; then
@@ -364,6 +369,15 @@ scan_js_file() {
         # fixup); each alternative requires its OWN immediate `(`, so
         # `exec` never matches inside `execSync`/`execFile`/`execFileSync`.
         m=$(printf '%s' "$line" | grep -E "(execFileSync|execFile|spawnSync|spawn|execSync|exec)\\([[:space:]]*['\"\`]git([[:space:]]|['\"\`])") || true
+        if [ -z "$m" ] && [ "$i" -lt "$n" ]; then
+            # Multi-line call (HIMMEL-3571): the opener ends the line and the
+            # 'git' argument starts the next one. The hit stays on the opener
+            # line, so the window and the baseline hash cover the call.
+            m=$(printf '%s' "$line" | grep -E "(execFileSync|execFile|spawnSync|spawn|execSync|exec)\\([[:space:]]*$") || true
+            if [ -n "$m" ]; then
+                m=$(printf '%s' "${lines[$i]}" | grep -E "^[[:space:]]*['\"\`]git([[:space:]]|['\"\`])") || true
+            fi
+        fi
         [ -n "$m" ] || continue
         # Window: this line plus the next 4, comment-stripped, joined, to see
         # a same-statement scrub (e.g. an `env:` object on a following line)
@@ -396,6 +410,7 @@ $(strip_js_comment "${lines[$j]}")"
         for idx in "${!remaining[@]}"; do
             if [ "${remaining[$idx]}" = "$hash" ]; then
                 unset 'remaining[idx]'
+                USED_BASELINE+=("JS:$f:$hash")
                 consumed=1
                 break
             fi
@@ -465,6 +480,7 @@ else
             echo "check-git-env-scrub: git ls-files failed while listing trust paths" >&2
             exit 2
         }
+        FULL_SCAN=1
         scanned=0
         while IFS= read -r f; do
             [ -z "$f" ] && continue
@@ -485,6 +501,41 @@ if [ "$EMIT_BASELINE" -eq 1 ]; then
         printf '%s\n' "${BASELINE_KEYS[@]}" | sort
     fi
     exit 0
+fi
+
+# Stale baseline entries (HIMMEL-3571): in the full real-tree scan only (a
+# --staged or PATH-scoped run sees a subset, so unused entries mean nothing),
+# an entry that grandfathered no hit is dead — the file was fixed, edited or
+# deleted. Failing on it is what lets the ratchet shrink. USED_BASELINE has
+# multiplicity: N identical JS keys in the baseline need N consumed hits.
+STALE=()
+if [ "$FULL_SCAN" -eq 1 ] && [ -r "$BASELINE_FILE" ]; then
+    used_list=""
+    [ "${#USED_BASELINE[@]}" -gt 0 ] && used_list=$(printf '%s\n' "${USED_BASELINE[@]}")
+    declare -a stale_pool=()
+    if [ -n "$used_list" ]; then
+        while IFS= read -r u; do stale_pool+=("$u"); done <<<"$used_list"
+    fi
+    while IFS= read -r bline || [ -n "$bline" ]; do
+        [ -z "$bline" ] && continue
+        found=-1
+        for idx in "${!stale_pool[@]}"; do
+            if [ "${stale_pool[$idx]}" = "$bline" ]; then found=$idx; break; fi
+        done
+        if [ "$found" -ge 0 ]; then
+            unset 'stale_pool[found]'
+        else
+            STALE+=("$bline")
+        fi
+    done < "$BASELINE_FILE"
+fi
+if [ "${#STALE[@]}" -gt 0 ]; then
+    echo "check-git-env-scrub: ${#STALE[@]} stale baseline entr(y/ies) in $BASELINE_FILE (no matching hit any more):" >&2
+    for s in "${STALE[@]}"; do
+        echo "  $s" >&2
+    done
+    echo "Remove them, or regenerate with: $0 --emit-baseline > scripts/guardrails/git-env-baseline.txt" >&2
+    [ "${#HITS[@]}" -gt 0 ] || exit 1
 fi
 
 if [ "${#HITS[@]}" -gt 0 ]; then
