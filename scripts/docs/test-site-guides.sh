@@ -109,7 +109,7 @@ unknown_keys() {
 }
 
 check_page() {
-  local page="$1" rel err text unknown dead ref ids id
+  local page="$1" rel err text unknown dead ref ids id hit
   rel="${page#"$ROOT"/}"
   [ -f "$page" ] || { bad "$rel exists"; return; }
 
@@ -126,7 +126,8 @@ check_page() {
   if [ -z "$ids" ]; then ok "$rel cadence ids are registry rows"; else bad "$rel cadence ids missing from the registry" "$ids"; fi
 
   text="$(strip_comments "$page")"
-  if printf '%s\n' "$text" | grep -q -i -E '<(script|link|img|iframe)[^>]+(src|href)="(https?:)?//|@import|url\((["'\'']?)(https?:)?//'; then
+  hit="$(printf '%s\n' "$text" | grep -i -E '<(script|link|img|iframe)[^>]+(src|href)="(https?:)?//|@import|url\((["'\'']?)(https?:)?//')"
+  if [ -n "$hit" ]; then
     bad "$rel loads something from the network"
   else
     ok "$rel is self-contained"
@@ -139,15 +140,16 @@ check_page() {
   done < <(printf '%s\n' "$text" | grep -o -E 'href="[^"]+"' | sed -E 's/^href="//; s/"$//' | sort -u)
   if [ -z "$dead" ]; then ok "$rel relative links resolve"; else bad "$rel dead relative links" "$dead"; fi
 
-  if printf '%s\n' "$text" | grep -q -E '\b(HIMMEL|LUNA|SALUS)-[0-9]+\b'; then
-    bad "$rel shows a ticket ID" "$(printf '%s\n' "$text" | grep -o -E '\b(HIMMEL|LUNA|SALUS)-[0-9]+\b' | sort -u | tr '\n' ' ')"
+  hit="$(printf '%s\n' "$text" | grep -o -E '\b(HIMMEL|LUNA|SALUS)-[0-9]+\b' | sort -u | tr '\n' ' ')"
+  if [ -n "$hit" ]; then
+    bad "$rel shows a ticket ID" "$hit"
   else
     ok "$rel shows no ticket ID"
   fi
 }
 
 # --- CONTROL: the key check must fail on a made-up key -------------------------
-tmp="$(mktemp -d)" || { echo "FAIL: mktemp" >&2; exit 1; }
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/site-guides.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 printf '<!doctype html>\n<html><body><p>Set <code data-key="HIMMEL_GUIDE_INVENTED_KNOB">HIMMEL_GUIDE_INVENTED_KNOB</code>.</p></body></html>\n' > "$tmp/fixture.html"
 if [ -n "$(unknown_keys "$tmp/fixture.html")" ]; then
