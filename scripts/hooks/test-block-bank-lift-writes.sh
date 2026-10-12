@@ -1536,6 +1536,18 @@ env_row "5159 redirect &>! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi &>
 env_row "5159 redirect >&! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi >&! "$D"'
 env_row "5159 redirect >! literal lift path"         deny "OTHER=1" "echo hi >! $LIFT"
 env_row "5159 redirect >! \$OUT (env=benign, ctrl)"  allow "OUT=/tmp/out.txt" 'echo hi >! "$OUT"'
+# Whole-command rule (judge j2413d): a writer word anywhere plus a reference
+# whose value names the state dir or the lift denies, whatever the operator.
+env_row "5159 whole-cmd &>| \"\$D\" clobber synonym"  deny "D=$LIFT" 'echo hi &>| "$D"'
+env_row "5159 whole-cmd >&| \"\$D\" clobber synonym"  deny "D=$LIFT" 'echo hi >&| "$D"'
+env_row "5159 whole-cmd >>&| \"\$D\" clobber synonym" deny "D=$LIFT" 'echo hi >>&| "$D"'
+env_row "5159 whole-cmd &>>| \"\$D\" clobber synonym" deny "D=$LIFT" 'echo hi &>>| "$D"'
+env_row "5159 whole-cmd \$D bare word after redirect" deny "D=$LIFT" 'echo hi > /tmp/o $D'
+env_row "5159 whole-cmd cp x \"\$D/bank-lift.json\""  deny "D=$ST" 'cp x "$D/bank-lift.json"'
+env_row "5159 whole-cmd mv x \"\$D\" (D=lift)"        deny "D=$LIFT" 'mv x "$D"'
+env_row "5159 whole-cmd tee \${D} braced (D=lift)"    deny "D=$LIFT" 'echo hi | tee "${D}"'
+env_row "5159 whole-cmd echo \"\$D\" no writer (ctrl)" allow "D=$LIFT" 'echo "$D"'
+env_row "5159 whole-cmd > /tmp/x with D set (ctrl)"   allow "D=$LIFT" 'echo hi > /tmp/x'
 }
 rows_5159
 

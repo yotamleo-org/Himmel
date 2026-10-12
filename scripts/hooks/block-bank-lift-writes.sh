@@ -67,8 +67,17 @@
 # echo > "$X"`), a target built from $(...) or backticks, and `$_`; the lookup
 # answers only the INHERITED value; upgrade path is HIMMEL-5341 (apply rule (b)
 # to every $NAME in a command that writes).
+# A whole-command rule (_cmd_refs_lift, before the tokenizer) denies any command
+# that names a writer (`>`, tee, sponge, dd, cp, mv, install, rsync, as a
+# substring) and references a variable whose inherited value names the state dir
+# or the lift, so no operator spelling (`&>|`, `>&|`) can route around it.
+# ponytail: that rule over-denies on purpose (a `2>&1` or `cp` inside a longer
+# word plus a variable holding the state dir), fail closed; a zsh glob
+# qualifier with code (`*(e:...:)`) is a channel the text layer cannot read,
+# HIMMEL-5346.
 # ponytail: the cp / dd of= / sort -o / install (and mv, rsync) destination
-# paths use is_lift only and do not resolve env values; HIMMEL-5326.
+# paths use is_lift only and do not resolve env values; the whole-command rule
+# covers an env reference, the value-blind remainder is HIMMEL-5326.
 # ponytail: accepted over-deny (HIMMEL-4545), measured on p22-hist at 845 of
 # 211,645 rows (0.40 %): ~725 relative or computed copy destinations and
 # sources under an unproven cwd, 110 computed extraction destinations
@@ -429,6 +438,39 @@ CMD="${CMD//$'\r'/}"
 # The tokenizer marks below start with the control byte \002, so no word of
 # the command can spell one; the byte in the input itself is refused.
 case "$CMD" in *$'\002'*|*$'\003'*|*$'\004'*|*$'\005'*|*$'\036'*|*$'\037'*) deny "the command carries a tokenizer control byte (\\x02-\\x05, \\x1e, \\x1f)" ;; esac
+
+# Whole-command rule (HIMMEL-5159, judge j2413d): runs before and independently
+# of the tokenizer, so no operator spelling can route a target around it. If the
+# raw text names any writer (`>` or the words tee sponge dd cp mv install rsync,
+# quoted or not, as a substring) and ANY $NAME / ${NAME...} reference anywhere
+# in it holds a value that names the state dir or the lift, deny.
+# ponytail: accepted over-deny, fail closed: a command that mentions any writer
+# word or `>` (a `2>&1`, a `->` in text, `cp` inside a longer word) plus a
+# variable holding the state dir denies even when the write is benign; the
+# per-target rules below stay as defence in depth (HIMMEL-5326 closes the
+# value-blind cp / dd / mv / rsync / install gap properly).
+_cmd_writes() {
+    case "$1" in
+        *'>'*|*tee*|*sponge*|*dd*|*cp*|*mv*|*install*|*rsync*) return 0 ;;
+    esac
+    return 1
+}
+# shellcheck disable=SC2016  # literal $ text is matched, not expanded
+_cmd_refs_lift() {
+    local LC_ALL=C rest="$1" n v
+    local re='\$\{?[!#]?([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ "$rest" =~ $re ]]; do
+        n="${BASH_REMATCH[1]}"
+        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        if ! v=$(printenv -- "$n" 2>/dev/null); then v=''; fi
+        case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
+        if [ -n "$v" ] && is_lift "$v"; then return 0; fi
+    done
+    return 1
+}
+if _cmd_writes "$CMD" && _cmd_refs_lift "$CMD"; then
+    deny "the command writes (a redirect or tee/sponge/dd/cp/mv/install/rsync) and references an environment value that names the bank lift or its state dir (whole-command fence, fail-closed)"
+fi
 
 # Tokenizer: shell text -> one CLAUSE per output line, tokens joined by \037,
 # a newline inside a token as \036. Quotes are removed (quoted metachars stay
