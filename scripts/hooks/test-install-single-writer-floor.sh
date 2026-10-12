@@ -124,6 +124,16 @@ assert_rc "feature-branch push still allowed" 0 "$rc"
 out=$(git -C "$TMP_ROOT/a" push origin :feat/x 2>&1); rc=$?
 assert_rc "delete of a non-main branch still allowed" 0 "$rc"
 
+echo "== missing target fails closed =="
+git -C "$TMP_ROOT/a" config --local himmel-single-writer-floor.target "$TMP_ROOT/gone.sh"
+out=$(git -C "$TMP_ROOT/a" push origin feat/x 2>&1); rc=$?
+assert_nonzero "push is refused when the floor target is missing" "$rc"
+assert_contains "missing-target refusal says so" "REFUSING this push" "$out"
+out=$(bash "$INSTALLER" "$TMP_ROOT/a" 2>&1); rc=$?
+assert_rc "re-install repairs the recorded target" 0 "$rc"
+out=$(git -C "$TMP_ROOT/a" push origin feat/x 2>&1); rc=$?
+assert_rc "push works again after the repair" 0 "$rc"
+
 echo "== idempotence =="
 sum1=$(cksum < "$hook")
 out=$(bash "$INSTALLER" "$TMP_ROOT/a" 2>&1); rc=$?

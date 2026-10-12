@@ -22,7 +22,8 @@
 # hooks would land somewhere other than the repo's own hooks dir).
 #
 # Run it from the PRIMARY himmel checkout: the shims record that checkout's
-# script paths, and a pruned worktree path makes them fail open.
+# script paths, and a pruned worktree path makes every push in the repo refuse
+# (fail closed) until the installer is re-run.
 #
 # Exit: 0 installed, 2 refused or failed.
 set -uo pipefail
@@ -74,13 +75,13 @@ cat > "$tmp" <<'HOOK' || { rm -f "$tmp"; die "cannot write $tmp"; }
 # himmel-single-writer-floor-v1
 # Shim installed by scripts/hooks/install-single-writer-floor.sh (HIMMEL-5284).
 # Static bytes; the target lives in `git config himmel-single-writer-floor.target`.
-# FAIL-OPEN if the target is gone (a pruned checkout must not brick every push):
-# it warns loudly and drains git's ref lines first.
+# FAIL-CLOSED if the target is gone: this hook is the repo's only force-push
+# floor, so a pruned checkout must refuse loudly, never silently stop protecting.
 target=$(git config --local --get himmel-single-writer-floor.target 2>/dev/null)
 if [ -z "$target" ] || [ ! -f "$target" ] || [ ! -r "$target" ]; then
-    echo "pre-push (himmel-single-writer-floor-v1): target '$target' missing -- ALLOWING this push (the force-push floor is NOT protecting; re-run install-single-writer-floor.sh)" >&2
+    echo "pre-push (himmel-single-writer-floor-v1): target '$target' missing -- REFUSING this push (the force-push floor cannot run; re-run install-single-writer-floor.sh from the primary himmel checkout)" >&2
     cat >/dev/null
-    exit 0
+    exit 1
 fi
 exec bash "$target" "$@"
 HOOK
