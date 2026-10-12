@@ -34,14 +34,6 @@ cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/cadence-alert.sh"
 cat > "$P/scripts/himmel-doctor.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s|%s|%s\n' "$PWD" "$0" "$*" >> "$STUB_WHERE"
-if [ "${STUB_KILL_PARENT:-0}" = 1 ]; then
-    holder="$(ps -o ppid= -p "$PPID" | tr -d ' ')"
-    case "$(ps -o args= -p "$holder")" in
-        *"${0%/*}/doctor-cadence.sh run"*) kill -KILL "$holder" ;;
-        *) exit 2 ;;
-    esac
-    exit 0
-fi
 if [ -n "${STUB_GATE:-}" ]; then
     i=0
     while [ ! -f "$STUB_GATE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
@@ -71,6 +63,30 @@ doctor_out() { # <fail-ids> <warn-ids>  (space separated)
       echo; echo "Summary: $nf FAIL  $nw WARN  0 INFO"; } > "$STUB_OUT"
 }
 run_cad() { bash "${1:-$P}/scripts/doctor-cadence.sh" run >/dev/null 2>&1; }
+kill_cad() { # Kill only an isolated fixture group, then await descriptor closure.
+    local pid pgid rc i=0 live
+    : > "$STUB_WHERE"
+    export STUB_GATE="$W/killed.release"
+    set -m
+    run_cad & pid=$!
+    set +m
+    while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+    pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+    if [ "$pgid" != "$pid" ] || [ ! -s "$STUB_WHERE" ]; then
+        touch "$STUB_GATE"; wait "$pid"; unset STUB_GATE
+        return 2
+    fi
+    kill -KILL -- "-$pid"
+    wait "$pid" 2>/dev/null; rc=$?
+    unset STUB_GATE
+    i=0
+    while [ "$i" -lt 100 ]; do
+        live="$(ps -eo pgid=,stat= | awk -v g="$pid" '$1 == g && $2 !~ /^Z/ {n++} END {print n+0}')" || return 2
+        [ "$live" -eq 0 ] && return "$rc"
+        sleep 0.05; i=$((i + 1))
+    done
+    return 2
+}
 sent_n() { wc -l < "$SENT" | tr -d ' '; }
 
 # 1. first run with a FAIL → exactly one alert naming it.
@@ -187,7 +203,7 @@ check "a WARN that left in between files no ticket" 0 "$(jira_n create)"
 # invoking another doctor or filing the same persisting WARN twice.
 # A PATH without flock exercises the real Perl/kernel fallback, not a fake lock.
 mkdir -p "$W/no-flock-bin"
-for tool in bash cat date dirname git grep head mkdir mktemp mv perl ps rm sed sleep sort stat touch tr; do
+for tool in awk bash cat date dirname git grep head mkdir mktemp mv perl ps rm sed sleep sort stat touch tr; do
     ln -s "$(command -v "$tool")" "$W/no-flock-bin/$tool"
 done
 rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
@@ -213,14 +229,14 @@ run_cad; check "cadence releases its lock after completion" 0 $?
 check "subsequent cadence actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 check "subsequent cadence does not re-file the ticket" 1 "$(jira_n create)"
 # A dead holder must not silently disable all later daily passes.
-STUB_KILL_PARENT=1 run_cad; check "killed cadence exits with SIGKILL status" 137 $?
+kill_cad; check "killed cadence exits with SIGKILL status" 137 $?
 : > "$STUB_WHERE"
 run_cad; check "cadence can run after a killed holder" 0 $?
 check "cadence after a killed holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 : > "$STUB_WHERE"
 PATH="$W/no-flock-bin" run_cad; check "Perl flock fallback completes a cadence pass" 0 $?
 check "Perl flock fallback actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
-PATH="$W/no-flock-bin" STUB_KILL_PARENT=1 run_cad; check "killed Perl-lock holder exits with SIGKILL status" 137 $?
+PATH="$W/no-flock-bin" kill_cad; check "killed Perl-lock holder exits with SIGKILL status" 137 $?
 : > "$STUB_WHERE"
 run_cad; check "cadence can run after a killed Perl-lock holder" 0 $?
 check "cadence after a killed Perl-lock holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
