@@ -208,6 +208,35 @@ echo "TEST: pre-commit shape, new valid branch -> PASS"
 expect_pass "configured shape, new valid branch" \
     env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/remote.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/fix/x bash "$HOOK" </dev/null
 
+# HIMMEL-5360: a remote whose pushurl differs from its fetch url. The new-ref
+# probe must ask the address the push goes to, not the one it is fetched from.
+git init -q --bare "$RT/fetch.git"
+git init -q --bare "$RT/push.git"
+git -C "$RT/work" push -q "$RT/fetch.git" HEAD:refs/heads/only-fetch
+git -C "$RT/work" push -q "$RT/push.git" HEAD:refs/heads/only-push
+git init -q "$RT/clone"
+git -C "$RT/clone" remote add split "$RT/fetch.git"
+git -C "$RT/clone" config remote.split.pushurl "$RT/push.git"
+
+# run_split BRANCH — the pre-commit shape, run from the clone with the split remote.
+# shellcheck disable=SC2329,SC2317  # invoked indirectly via expect_blocked_name/expect_pass "$@"
+run_split() {
+    (cd "$RT/clone" && env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=split PRE_COMMIT_REMOTE_BRANCH="refs/heads/$1" bash "$HOOK" </dev/null)
+}
+
+echo "TEST: pushurl differs, invalid name exists only on the push address -> PASS (never retroactive)"
+expect_pass "split remote, branch exists on the push address" \
+    run_split only-push
+
+echo "TEST: pushurl differs, invalid name exists only on the fetch address -> BLOCKED (new where it is pushed)"
+expect_blocked_name "split remote, branch absent on the push address" \
+    run_split only-fetch
+
+echo "TEST: no pushurl set -> falls back to the remote itself"
+git -C "$RT/clone" config --unset remote.split.pushurl
+expect_pass "split remote without pushurl, branch on the fetch address" \
+    run_split only-fetch
+
 # Summary ------------------------------------------------------------
 
 echo

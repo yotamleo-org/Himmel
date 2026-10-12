@@ -339,7 +339,7 @@ SHA rather than the branch NAME is deliberate — it also catches
 onto a branch, each of which lints a tree the push does not carry. Detached HEAD
 refuses too. Deletes and non-branch destinations are exempt (no working-tree
 content is claimed), a DIRTY working tree is a named, still-open ceiling, and
-`PUSH_FOREIGN_REF_OK=1` in the LAUNCHING shell is the explicit bypass — it
+`PUSH_FOREIGN_REF_OK=1 git push …` (a per-command prefix reaches this git hook) is the explicit bypass — it
 accepts a gate result computed from the wrong tree. **So: `git -C <worktree>
 push …`, not `git push <branch>` from the primary.** Note pre-commit OR-folds
 the legacy hook's exit code (`retv | run(...)`) rather than short-circuiting, so

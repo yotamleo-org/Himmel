@@ -115,13 +115,21 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
                 _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
                 if [ "${BRANCH_NAME_OK:-}" != "1" ] && ! branch_name_ok "$_short"; then
                     _lsrc=0
+                    # Ask the address the push goes to: a remote's pushurl can
+                    # differ from its fetch url, and a bare `ls-remote <name>`
+                    # queries the fetch one (HIMMEL-5360). `get-url --push`
+                    # falls back to the fetch url itself; a name git cannot
+                    # resolve (a bare path or URL) is used as given.
+                    _lsremote="${PRE_COMMIT_REMOTE_NAME:-origin}"
+                    _pushaddr=$(git remote get-url --push -- "$_lsremote" 2>/dev/null) || _pushaddr=""
+                    [ -n "$_pushaddr" ] && _lsremote="$_pushaddr"
                     # `--` keeps a dash-led remote name from reading as an
                     # option; a hung remote is bounded (fails open on timeout,
                     # rc 124 is not 2) where `timeout` exists.
                     if command -v timeout >/dev/null 2>&1; then
-                        timeout 20 git ls-remote --exit-code --heads -- "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                        timeout 20 git ls-remote --exit-code --heads -- "$_lsremote" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
                     else
-                        git ls-remote --exit-code --heads -- "${PRE_COMMIT_REMOTE_NAME:-origin}" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                        git ls-remote --exit-code --heads -- "$_lsremote" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
                     fi
                     [ "$_lsrc" -eq 2 ] && check_new_branch_name "$PRE_COMMIT_REMOTE_BRANCH"
                 fi
