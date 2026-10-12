@@ -145,8 +145,15 @@ case "$tool" in
         # [[:space:]] does not: strip the multi-byte members too, from header
         # lines and from the extracted path, until stable.
         uni_trim() {
-            local v="$1" prev="" u
+            local v="$1" prev="" u passes=0
             while [ "$v" != "$prev" ]; do
+                # Each pass costs O(length) x ~40 expansions, so a header padded
+                # with alternating space/NBSP runs is quadratic (7.5 KB took 17 s,
+                # 15 KB 98 s, HIMMEL-5351): a real header needs two passes at most.
+                passes=$((passes + 1))
+                if [ "$passes" -gt 8 ]; then
+                    deny "apply_patch header is padded with alternating whitespace runs (the guard cannot trim it inside the hook budget); remove the padding"
+                fi
                 prev="$v"
                 v="${v#"${v%%[![:space:]]*}"}"
                 v="${v%"${v##*[![:space:]]}"}"

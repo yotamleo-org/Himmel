@@ -251,6 +251,15 @@ big_case "oversized path header + symlinked config alias -> block" block "$T/plo
 saved_lc="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
 big_case "multibyte body over the byte cap (locale en_US.utf8) -> block" block "$T/pmb.txt"
 LC_ALL="$saved_lc"; export LC_ALL
+# A header padded with alternating space/NBSP needs one trim pass per pair and
+# each pass is O(length): 7.5 KB took 17 s and 15 KB 98 s on the base hook. A
+# padded header must be refused outright and quickly.
+{ printf '*** Begin Patch\n*** Add File: src/x.txt'; i=0; while [ "$i" -lt 2500 ]; do printf '\302\240 '; i=$((i + 1)); done; printf '\n*** End Patch\n'; } > "$T/ppad.txt"
+big_case "7.5 KB alternating space/NBSP padded header -> block inside the time bound" block "$T/ppad.txt" 3000
+{ printf '*** Begin Patch\n*** Add File: src/x.txt'; i=0; while [ "$i" -lt 40 ]; do printf '\302\240 '; i=$((i + 1)); done; printf '\n*** End Patch\n'; } > "$T/ppad-small.txt"
+big_case "short alternating-padded header (80 chars, base allows) -> block" block "$T/ppad-small.txt"
+{ printf '*** Begin Patch\n*** Add File: \302\240 src/x.txt \302\240\n*** End Patch\n'; } > "$T/ppad-ok.txt"
+big_case "ordinary NBSP-padded benign header -> allow" allow "$T/ppad-ok.txt"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
