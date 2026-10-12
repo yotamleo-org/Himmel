@@ -1448,6 +1448,111 @@ if [ $((SECONDS - start)) -gt 20 ]; then
     FAILED=$((FAILED + 1))
 fi
 
+# HIMMEL-5275: destructive gh verbs. The deny floor reads gh's argv (global
+# flags, wrappers, path-qualified binaries), so each verb is pinned in its
+# bypass spellings. Read forms and the merge paths other gates own stay allowed.
+for c in \
+    'gh api -X DELETE repos/o/r/branches/main/protection' \
+    'gh api -X PUT repos/o/r/branches/main/protection -f x=y' \
+    'gh api -XPUT repos/o/r/branches/main/protection' \
+    'gh api -xput repos/o/r/branches/main/protection' \
+    'gh api --method=PATCH repos/o/r/rulesets/1' \
+    'gh api --method DELETE /repos/o/r/rulesets/1' \
+    'gh api repos/o/r/rulesets -X DELETE' \
+    'gh api repos/o/r/rulesets -f name=x' \
+    'gh api -X POST repos/o/r/rulesets --input body.json' \
+    'gh api -X POST repos/o/r/branches/main/protection' \
+    'gh api -X PUT repos/o/r/actions/secrets/FOO -f encrypted_value=x' \
+    'gh api -X POST repos/o/r/actions/variables -f name=V -f value=1' \
+    'gh api -X PATCH repos/o/r/actions/variables/V' \
+    'gh api -X PUT repos/o/r/actions/workflows/ci.yml/disable' \
+    'gh api -X PUT repos/o/r/actions/workflows/12345/enable' \
+    'gh api -X PATCH repos/o/r -f archived=true' \
+    'gh api -X PATCH repos/o/r/' \
+    'gh api -X DELETE repos/o/r' \
+    'gh api -X POST repos/o/r/transfer -f new_owner=x' \
+    'gh api -X DELETE user/keys/1' \
+    'gh api -X PUT repos/o/r/environments/prod' \
+    'gh api -X POST repos/o/r/hooks' \
+    'gh secret set FOO' \
+    'gh secret delete FOO' \
+    'gh variable set FOO --body 1' \
+    'gh variable delete FOO' \
+    'gh workflow disable ci.yml' \
+    'gh workflow enable ci.yml' \
+    'gh repo delete o/r --yes' \
+    'gh repo archive o/r --yes' \
+    'gh repo unarchive o/r --yes' \
+    'gh repo rename new --yes' \
+    'gh repo transfer o/r x' \
+    'gh repo edit --default-branch x' \
+    'gh release delete v1 --yes' \
+    'gh ssh-key add k.pub' \
+    'gh ssh-key delete 1' \
+    'gh auth logout' \
+    'gh auth token' \
+    'gh pr merge 1 --admin' \
+    'gh pr merge --squash --admin 1' \
+    'gh pr merge 1 --squash --admin --match-head-commit abc' \
+    '/usr/bin/gh repo delete o/r' \
+    'command gh repo delete o/r' \
+    'env GH_TOKEN=x gh repo delete o/r' \
+    'GH_TOKEN=x gh repo archive o/r' \
+    'gh -R o/r repo delete' \
+    'gh --repo o/r secret set A' \
+    'gh -R o/r pr merge 1 --admin' \
+    'gh.exe repo delete o/r' \
+    'sudo gh repo delete o/r' \
+    'GH repo DELETE o/r' \
+    'true; gh repo delete o/r' \
+    'ls | gh repo delete o/r' \
+    'bash -c "gh repo delete o/r"' \
+    'gh pr merge 1 --squash && gh secret set A'; do
+    assert_rc "5275 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+for c in \
+    'gh pr view 1' \
+    'gh pr list --state open' \
+    'gh pr merge 1' \
+    'gh pr merge 1 --squash --delete-branch' \
+    'gh pr create --title x --body y' \
+    'gh run list -L 5' \
+    'gh run view 1 --log-failed' \
+    'gh api repos/o/r/pulls/1' \
+    'gh api repos/o/r/branches/main/protection' \
+    'gh api --method GET repos/o/r/rulesets' \
+    'gh api -X GET repos/o/r/actions/secrets' \
+    'gh api -XGET repos/o/r/actions/variables' \
+    'gh api graphql -f query=query{viewer{login}}' \
+    'gh api repos/o/r/issues/1/comments -f body=x' \
+    'gh api -X PUT repos/o/r/pulls/1/merge' \
+    'gh api -X DELETE repos/o/r/git/refs/heads/feat-x' \
+    'gh api -X PUT /user/starred/o/r' \
+    'gh api --include repos/o/r/commits' \
+    'gh repo view o/r --json name' \
+    'gh repo create o/r --private' \
+    'gh repo fork o/r --clone=false' \
+    'gh repo clone o/r' \
+    'gh auth status' \
+    'gh auth setup-git' \
+    'gh secret list' \
+    'gh variable list' \
+    'gh workflow run ci.yml --ref main' \
+    'gh workflow list' \
+    'gh workflow view ci.yml' \
+    'gh release create v1 --notes x' \
+    'gh release view v1' \
+    'gh release list' \
+    'gh ssh-key list' \
+    'gh issue list' \
+    'gh -R o/r pr view 1' \
+    'himmel-gh pr-merge 1' \
+    'git commit -m "gh repo delete o/r"' \
+    'grep -rn gh src/' \
+    'echo "gh secret set A"'; do
+    assert_rc "5275 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
