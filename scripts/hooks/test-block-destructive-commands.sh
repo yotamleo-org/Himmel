@@ -576,6 +576,13 @@ assert_rc "R13- lease refspec non-main"     0 "$(run_case "$(j_bash 'git push --
 assert_rc "R13+ lease to main"              2 "$(run_case "$(j_bash 'git push --force-with-lease origin main')")"
 assert_rc "R13+ lease to master"            2 "$(run_case "$(j_bash 'git push --force-with-lease origin master')")"
 assert_rc "R13+ lease refspec to main"      2 "$(run_case "$(j_bash 'git push --force-with-lease origin fix/x:main')")"
+# HIMMEL-5385: git resolves a push destination by its refs/%s rule, so
+# heads/main is main; the whole spelling family is main.
+assert_rc "R13+ lease to heads/main"        2 "$(run_case "$(j_bash 'git push --force-with-lease origin heads/main')")"
+assert_rc "R13+ lease refspec to heads/master" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin HEAD:heads/master')")"
+assert_rc "R13+ lease to refs/heads/main"   2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/main')")"
+assert_rc "R13+ lease refspec to refs/heads/master" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin HEAD:refs/heads/master')")"
+assert_rc "R13- lease to heads/fix/x"       0 "$(run_case "$(j_bash 'git push --force-with-lease origin heads/fix/x')")"
 assert_rc "R13+ lease no branch (ambiguous)" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin')")"
 assert_rc "R13+ lease no args (ambiguous)"  2 "$(run_case "$(j_bash 'git push --force-with-lease')")"
 assert_rc "R13+ lease plus bare force"      2 "$(run_case "$(j_bash 'git push --force-with-lease --force origin fix/x')")"

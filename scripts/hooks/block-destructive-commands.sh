@@ -1034,7 +1034,7 @@ _gp_lease_protected() {
     _gp_protected_set
     while [ "$i" -lt "$np" ]; do
         case "${pk[i]}" in P|X|G) return 0 ;; esac
-        b=${pw[i]##*:}; b=${b#+}; b=${b#refs/heads/}
+        b=${pw[i]##*:}; b=${b#+}; b=${b#refs/}; b=${b#heads/}
         case "$b" in ''|head|@*|*'*'*|*'$'*|*'`'*) return 0 ;; esac
         case "$_gp_prot" in *" $b "*) return 0 ;; esac
         i=$((i + 1))
