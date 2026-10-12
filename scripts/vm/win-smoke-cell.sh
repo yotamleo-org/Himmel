@@ -45,10 +45,17 @@ export WIN_VM_LOCK_HELD=1
 
 # shellcheck disable=SC2329  # invoked by the EXIT trap below
 cleanup() {
-    bash "$WINVM" down >/dev/null 2>&1
-    bash "$WINVM" restore "$BASELINE" >/dev/null 2>&1
+    local rc=$? bad=0
+    bash "$WINVM" down >/dev/null 2>&1 || bad=1
+    bash "$WINVM" restore "$BASELINE" >/dev/null 2>&1 || bad=1
     vm_lock_release "$VM"
     rm -rf "$WORK"
+    # A cell that left the VM running or the baseline unrestored is not a clean PASS.
+    if [ "$bad" -ne 0 ]; then
+        echo "win-smoke-cell: cleanup failed (VM may be running or baseline not restored)" >&2
+        [ "$rc" -eq 0 ] && rc=3
+    fi
+    exit "$rc"
 }
 trap cleanup EXIT
 

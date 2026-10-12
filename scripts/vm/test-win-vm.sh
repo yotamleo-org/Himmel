@@ -75,6 +75,10 @@ if [ "$rc" -ne 0 ] && [ "$rc" -ne 127 ] && ! grep -q 'snapshot win11 take' "$FAK
 reset
 tool snapshot adopter-baseline >/dev/null 2>&1; rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'snapshot win11 take adopter-baseline' "$FAKE_VBOX_CALLS"; then pass "T4b snapshot takes a new name"; else fail_case "T4b rc=$rc"; fi
+# a regex metacharacter in the name must not match another snapshot ('.' vs '-')
+reset
+tool snapshot clean.install >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'snapshot win11 take clean.install' "$FAKE_VBOX_CALLS"; then pass "T4c snapshot name compares literally"; else fail_case "T4c rc=$rc"; fi
 
 # T5: run wraps in cmd.exe /c, authenticates by password FILE, never the password on argv or in output
 reset
@@ -119,6 +123,7 @@ cat > "$BIN/fake-win-vm.sh" <<'EOS'
 echo "$*" >> "${FAKE_VBOX_CALLS:?}"
 case "$1" in
   run) case "$*" in *USERPROFILE*) echo 'D:\guest\home' ;; *powershell.exe*) exit "${FAKE_GUEST_RC:-0}" ;; esac ;;
+  down) exit "${FAKE_DOWN_RC:-0}" ;;
 esac
 exit 0
 EOS
@@ -140,6 +145,9 @@ else
     reset
     FAKE_GUEST_RC=33 WIN_VM_BIN="$BIN/fake-win-vm.sh" HIMMEL_VM_LOCK_DIR="$WORK/locks" bash "$REPO_ROOT/scripts/vm/win-smoke-cell.sh" "$tag" >/dev/null 2>&1; rc=$?
     if [ "$rc" -eq 1 ] && grep -q '^down$' "$FAKE_VBOX_CALLS"; then pass "T10b guest rc 33 maps to FAIL and still powers off"; else fail_case "T10b rc=$rc"; fi
+    reset
+    FAKE_DOWN_RC=1 WIN_VM_BIN="$BIN/fake-win-vm.sh" HIMMEL_VM_LOCK_DIR="$WORK/locks" bash "$REPO_ROOT/scripts/vm/win-smoke-cell.sh" "$tag" >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 3 ]; then pass "T10c a failed shutdown turns a PASS into exit 3"; else fail_case "T10c rc=$rc"; fi
 fi
 
 echo "---"

@@ -35,6 +35,8 @@
 #   HIMMEL_VM_LOCK_DIR / HIMMEL_VM_LOCK_WAIT: see vm-lock.sh.
 #
 # Exit: 0 ok; 1 failed; 2 usage; 3 environment (VM or guest unreachable).
+#       `run` also forwards VBoxManage's own status: 33 = the guest process
+#       exited non-zero (guestcontrol maps every guest exit code to 33).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -106,7 +108,9 @@ case "$verb" in
         [ $# -eq 1 ] || die "usage: snapshot NAME" 2
         lock_take
         [ "$(vm_state)" = "poweroff" ] || die "VM must be powered off to snapshot a cold baseline (run: down)" 1
-        if "$VBOX" snapshot "$VM" list --machinereadable 2>/dev/null | grep -q "^SnapshotName.*=\"$1\"\$"; then
+        # literal compare (awk), so a name with regex metacharacters cannot mis-match
+        snaps=$("$VBOX" snapshot "$VM" list --machinereadable 2>/dev/null)
+        if printf '%s\n' "$snaps" | awk -v n="$1" 'index($0, "SnapshotName") == 1 { v = substr($0, index($0, "=") + 1); if (v == "\"" n "\"") f = 1 } END { exit !f }'; then
             die "snapshot '$1' already exists" 1
         fi
         "$VBOX" snapshot "$VM" take "$1" >/dev/null || die "snapshot take failed" 1 ;;

@@ -1,4 +1,4 @@
-# win-guest-prep.ps1 — adopter-baseline PATH prep for the win11 test VM (HIMMEL-2860).
+# win-guest-prep.ps1 - adopter-baseline PATH prep for the win11 test VM (HIMMEL-2860).
 #
 # Run INSIDE the guest, once, on a clean-install guest that already has
 # Git for Windows, Python 3.12 and jq (winget, user scope; see docs/setup/vms.md).
