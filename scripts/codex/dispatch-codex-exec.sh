@@ -373,9 +373,11 @@ fi
 # only; any other hook type refuses as unverifiable); a codex release that
 # changes the identity refuses every dispatch until this is re-ported, which is
 # the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
-# ponytail: matcher validity uses JS RegExp plus a refusal of the lookaround and
-# backreference syntax the Rust regex crate lacks; other JS-vs-Rust pattern
-# differences stay unchecked, upgrade path is a Rust-regex-compatible validator.
+# ponytail: matcher validity is JS RegExp plus a refusal of lookaround and an
+# allow-list of escapes (a backslash only before ASCII punctuation or d D w W s S
+# b B); a valid Rust escape off the list (\x41, \p{L}) refuses too, which is the
+# fail-closed direction. Non-escape JS-vs-Rust differences stay unchecked,
+# upgrade path is a Rust-regex-compatible validator (HIMMEL-5337).
 _hook_trust_check() {
     local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
@@ -564,9 +566,16 @@ const matcherOk = (m) => {
     // The Rust regex crate has no lookaround, backreferences or atomic groups;
     // JS accepts them, so refuse the syntax codex would reject (fail-safe: an
     // escaped backslash before a digit is refused too).
-    if (/\(\?(?:=|!|<=|<!|>)|\\[1-9]|\\k</.test(m)) return false;
-    // JS accepts an unknown letter escape such as \q without the u flag; Rust does not.
-    if (/\\(?![dDsSwWbBAznrtfvaxuUpP])[A-Za-z]/.test(m)) return false;
+    if (/\(\?(?:=|!|<=|<!|>)/.test(m)) return false;
+    // Allow-list of escapes: a backslash may precede only an ASCII punctuation
+    // character or one of d D w W s S b B. JS accepts forms Rust rejects (\xZZ,
+    // unknown letters, octal, backrefs); anything off the list refuses.
+    for (let i = 0; i < m.length; i++) {
+        if (m[i] !== "\\") continue;
+        const c = m[i + 1];
+        if (c === undefined || !(/[!-\/:-@\[-`{-~]/.test(c) || "dDwWsSbB".includes(c))) return false;
+        i++;
+    }
     try { new RegExp(m); return true; } catch (error) { return false; }
 };
 for (const event of Object.keys(events)) {

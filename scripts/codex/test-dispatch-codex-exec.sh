@@ -1363,6 +1363,17 @@ shape_case "18u -0 timeout (serde reads F64 -0.0)" 2 "non-negative integer" 'ret
 shape_case "18v lone surrogate escape in description" 2 "lone surrogate" 'd.description = "PLACE"; return JSON.stringify(d).replace("PLACE", "\\ud800");'
 shape_case "18w invalid UTF-8 byte in description" 2 "not valid" 'd.description = "aPLACEb"; const [a, b] = JSON.stringify(d).split("PLACE"); return Buffer.concat([Buffer.from(a), Buffer.from([0xff]), Buffer.from(b)]);'
 shape_case "18s matcher with unknown letter escape" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\qb"; return d;'
+# 18x-18ab: escape allow-list (a backslash only before ASCII punctuation or
+# d D w W s S b B). JS accepts the refused forms, Rust rejects or mis-reads them.
+shape_case "18x matcher with malformed hex escape (\\xZZ)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\xZZ"; return d;'
+shape_case "18y matcher with hex escape (\\x41)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\x41"; return d;'
+shape_case "18z matcher with start-anchor escape (\\A)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\Aa"; return d;'
+shape_case "18aa matcher with unicode class (\\p{L})" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\p{L}"; return d;'
+shape_case "18ab matcher with octal escape (\\0)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\0"; return d;'
+# Allowed escapes parse, so only the (changed-matcher) hash is stale.
+shape_case "18ac escaped dot allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a\\.b"; return d;'
+shape_case "18ad class and boundary escapes allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "\\bfoo\\d\\s\\W"; return d;'
+shape_case "18ae escaped pipe and paren allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a\\|b\\(c\\)"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
