@@ -17,7 +17,7 @@
 # Metric provenance: scripts/observability/flow-exporter.ts (README.md
 # documents every family), except the windows_memory_* families, which come
 # straight from windows_exporter's built-in `memory` collector. Coverage table
-# + design rationale: scripts/observability/README.md#alerting-a-boundary-change.
+# + design rationale: scripts/observability/README.md#alerting-himmel-924.
 groups:
   - name: himmel-observability
     rules:
