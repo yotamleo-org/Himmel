@@ -500,7 +500,7 @@ not_contains 'with no base URL there is no browse link (HIMMEL-5381)' "$(cat "$k
 kfp1="$(krender --emit-fp --jira-base-url "")"
 krender --jira-base-url 'https://jira.example.test/' >/dev/null
 kfp2="$(krender --emit-fp --jira-base-url "https://jira.example.test/")"
-if [ -n "$kfp1" ] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL: '$kfp1' vs '$kfp2'"; fi
+if [[ "$kfp1" =~ ^[0-9a-f]{16}$ ]] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL or failed: '$kfp1' vs '$kfp2'"; fi
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
