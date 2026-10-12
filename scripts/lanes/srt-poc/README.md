@@ -39,7 +39,7 @@ host gateway reach from the guest, so every row below uses `srt` directly or
 
 ## Setup on the guest (Ubuntu 24.04)
 
-```
+```bash
 sudo apt-get update && sudo apt-get install -y bubblewrap socat ripgrep
 # AppArmor: allow bwrap to create user namespaces
 printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile bwrap /usr/bin/bwrap flags=(unconfined) {\n  userns,\n}\n' | sudo tee /etc/apparmor.d/bwrap-userns

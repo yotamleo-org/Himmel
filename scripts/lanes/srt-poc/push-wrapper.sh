@@ -66,7 +66,7 @@ for a in "$@"; do
 done
 
 [ -n "$remote" ] || refuse "no remote"
-printf '%s' "$remote" | grep -Eq '^[A-Za-z0-9_.-]+$' || refuse "remote must be a configured remote name, got: $remote"
+printf '%s' "$remote" | grep -Eq '^[A-Za-z0-9_.-]+$' || refuse "remote must be a configured remote name, got: $remote" # pipefail-ok: input is one short word
 [ -n "$refspecs" ] || refuse "no refspec"
 
 for spec in $refspecs; do
