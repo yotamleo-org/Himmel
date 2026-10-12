@@ -27,17 +27,17 @@ if ! command -v jq >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
     exit 1
 fi
 
-ROOT=$(mktemp -d) || exit 1
+SANDBOX=$(mktemp -d) || exit 1
 # shellcheck disable=SC2329,SC2317  # invoked via the EXIT trap
-cleanup() { rm -rf "$ROOT" 2>/dev/null || true; }
+cleanup() { rm -rf "$SANDBOX" 2>/dev/null || true; }
 trap cleanup EXIT
 
-export HOME="$ROOT/home"
+export HOME="$SANDBOX/home"
 mkdir -p "$HOME"
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$ROOT/gitconfig"
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$SANDBOX/gitconfig"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 unset HIMMEL_ADAPTER_LEDGER FORGE
-export CR_APP=0 CR_TRIGGER_LEDGER_PATH="$ROOT/cr-triggered-heads"
+export CR_APP=0 CR_TRIGGER_LEDGER_PATH="$SANDBOX/cr-triggered-heads"
 
 # shellcheck source=scripts/lib/forge.sh
 # shellcheck disable=SC1091
@@ -46,7 +46,7 @@ export CR_APP=0 CR_TRIGGER_LEDGER_PATH="$ROOT/cr-triggered-heads"
 # ── stubs ────────────────────────────────────────────────────────────────────
 # gh: route the subcommand to its fixture, then apply --jq / -q like gh does
 # (jq -r). Anything unrecorded fails, as a real gh call with no network would.
-GH_STUB="$ROOT/gh-stub"
+GH_STUB="$SANDBOX/gh-stub"
 cat > "$GH_STUB" <<EOF
 #!/usr/bin/env bash
 FIX="$FIX/github"
@@ -72,7 +72,7 @@ if [ -n "$q" ]; then printf '%s' "$json" | jq -r "$q"; else printf '%s\n' "$json
 EOF
 chmod +x "$GH_STUB"
 
-BB_STUB="$ROOT/bb-stub"
+BB_STUB="$SANDBOX/bb-stub"
 cat > "$BB_STUB" <<EOF
 #!/usr/bin/env bash
 FIX="$FIX/bitbucket"
@@ -95,14 +95,14 @@ export GH_CMD="$GH_STUB" BITBUCKET_CMD="$BB_STUB"
 
 # ── repos ────────────────────────────────────────────────────────────────────
 # github / bitbucket run in a repo with no origin (FORGE chooses the backend).
-HOSTED="$ROOT/hosted"
+HOSTED="$SANDBOX/hosted"
 git init -q -b main "$HOSTED"
 git -C "$HOSTED" commit -q --allow-empty -m init
 
 # local-git: a working repo whose origin is a file:// bare remote; feat/x has a
 # commit beyond main so its change reads OPEN.
-BARE="$ROOT/bare.git"
-LG="$ROOT/lg"
+BARE="$SANDBOX/bare.git"
+LG="$SANDBOX/lg"
 git init -q --bare -b main "$BARE"
 git init -q -b main "$LG"
 git -C "$LG" remote add origin "file://$BARE"
@@ -112,10 +112,10 @@ git -C "$LG" checkout -q -b feat/x
 git -C "$LG" commit -q --allow-empty -m "feat x"
 LG_HEAD=$(git -C "$LG" rev-parse HEAD)
 LG_COMMON=$(cd "$LG/.git" && pwd -P)
-printf 'feat: x\n' > "$ROOT/title"
-printf 'body\n' > "$ROOT/body"
+printf 'feat: x\n' > "$SANDBOX/title"
+printf 'body\n' > "$SANDBOX/body"
 
-NONE_REPO="$ROOT/none"
+NONE_REPO="$SANDBOX/none"
 git init -q -b main "$NONE_REPO"
 
 dir_for() {
@@ -169,7 +169,7 @@ for f in github bitbucket local-git none; do
     case "$f" in github) id=2464 ;; bitbucket) id=42 ;; local-git) id=br-feat-x ;; none) id=1 ;; esac
 
     # change_open: only local-git opens a change through the forge seam.
-    run "$f" forge_change_open feat/x "$ROOT/title" "$ROOT/body"
+    run "$f" forge_change_open feat/x "$SANDBOX/title" "$SANDBOX/body"
     case "$f" in
         local-git) expect "$f" "change_open feat/x" 0 br-feat-x ;;
         *)         expect "$f" "change_open is refused" 4 "" ;;
@@ -223,11 +223,11 @@ expect local-git "change_view of an unknown id" 1 ""
 
 # ── the change-id collision ──────────────────────────────────────────────────
 echo "TEST: local-git refuses a change-id collision"
-run local-git forge_change_open feat/a-b "$ROOT/title" "$ROOT/body"
+run local-git forge_change_open feat/a-b "$SANDBOX/title" "$SANDBOX/body"
 expect local-git "open feat/a-b" 0 br-feat-a-b
 run local-git forge_change_id feat-a/b
 expect local-git "change_id feat-a/b collides with feat/a-b" 2 ""
-run local-git forge_change_open feat-a/b "$ROOT/title" "$ROOT/body"
+run local-git forge_change_open feat-a/b "$SANDBOX/title" "$SANDBOX/body"
 expect local-git "open feat-a/b collides with feat/a-b" 2 ""
 assert_eq "local-git: the first record still owns br-feat-a-b" "feat/a-b" \
     "$(_lg_field "$LG_COMMON/himmel/changes/br-feat-a-b.json" branch)"
@@ -239,7 +239,7 @@ expect local-git "change_id of a branch outside the id grammar" 2 ""
 # (simulated by a change_id that skips the check), never overwrite the first.
 # shellcheck disable=SC2329 # invoked indirectly by forge_change_open
 OUT=$(cd "$LG" && lg_forge_change_id() { printf 'br-feat-a-b\n'; } &&
-    FORGE=local-git forge_change_open feat-a/b "$ROOT/title" "$ROOT/body" 2>/dev/null)
+    FORGE=local-git forge_change_open feat-a/b "$SANDBOX/title" "$SANDBOX/body" 2>/dev/null)
 RC=$?
 expect local-git "an open that raced past the check is refused" 2 ""
 assert_eq "local-git: the raced open left br-feat-a-b with feat/a-b" "feat/a-b" \
@@ -247,19 +247,19 @@ assert_eq "local-git: the raced open left br-feat-a-b with feat/a-b" "feat/a-b" 
 # Concurrent subshells share $$, so the temp record name must not derive from
 # it: a path already taken at the $$ name must not stop an open.
 mkdir -p "$LG_COMMON/himmel/changes/.br-feat-a-b.json.$$"
-OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/a-b "$ROOT/title" "$ROOT/body" 2>/dev/null)
+OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/a-b "$SANDBOX/title" "$SANDBOX/body" 2>/dev/null)
 RC=$?
 expect local-git "re-open with the \$\$ temp name taken" 0 br-feat-a-b
 rmdir "$LG_COMMON/himmel/changes/.br-feat-a-b.json.$$"
 # A body that cannot be copied publishes no record (root reads any file).
 if [ "$(id -u)" != 0 ]; then
-    printf 'body\n' > "$ROOT/body-unreadable"; chmod 000 "$ROOT/body-unreadable"
-    OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/bodyfail "$ROOT/title" "$ROOT/body-unreadable" 2>/dev/null)
+    printf 'body\n' > "$SANDBOX/body-unreadable"; chmod 000 "$SANDBOX/body-unreadable"
+    OUT=$(cd "$LG" && FORGE=local-git forge_change_open feat/bodyfail "$SANDBOX/title" "$SANDBOX/body-unreadable" 2>/dev/null)
     RC=$?
     expect local-git "open with an unreadable body" 1 ""
     assert_eq "local-git: a failed body copy left no record" "absent" \
         "$([ -e "$LG_COMMON/himmel/changes/br-feat-bodyfail.json" ] && echo present || echo absent)"
-    chmod 600 "$ROOT/body-unreadable"
+    chmod 600 "$SANDBOX/body-unreadable"
 fi
 # change_view takes only an id in the change-id grammar: no path escape.
 printf '"branch":"main",\n' > "$LG_COMMON/himmel/escaped.json"
@@ -270,13 +270,13 @@ rm -f "$LG_COMMON/himmel/escaped.json"
 
 # ── the base branch ──────────────────────────────────────────────────────────
 echo "TEST: local-git takes the repo's own default branch as the base"
-LGM="$ROOT/lgm"
+LGM="$SANDBOX/lgm"
 git init -q -b master "$LGM"
 git -C "$LGM" commit -q --allow-empty -m init
 git -C "$LGM" checkout -q -b feat/m
 git -C "$LGM" commit -q --allow-empty -m "feat m"
 field() { printf '%s' "$1" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s)[process.argv[1]])}catch{console.log("")}})' "$2"; }
-OUT=$(cd "$LGM" && FORGE=local-git forge_change_open feat/m "$ROOT/title" "$ROOT/body" 2>/dev/null); RC=$?
+OUT=$(cd "$LGM" && FORGE=local-git forge_change_open feat/m "$SANDBOX/title" "$SANDBOX/body" 2>/dev/null); RC=$?
 expect local-git "open feat/m in a master repo" 0 br-feat-m
 OUT=$(cd "$LGM" && FORGE=local-git forge_change_view br-feat-m 2>/dev/null)
 assert_eq "local-git: base is master" "master" "$(field "$OUT" base)"
@@ -301,7 +301,7 @@ VERBS="auth_status repo_nwo default_branch user_slug pr_find_open pr_create pr_s
 for f in github bitbucket local-git none; do
     bad=""
     for v in $VERBS; do
-        led="$ROOT/ledger-$f-$v.jsonl"
+        led="$SANDBOX/ledger-$f-$v.jsonl"
         ( cd "$(dir_for "$f")" && FORGE="$f" HIMMEL_ADAPTER_LEDGER="$led" "forge_$v" x x x x ) >/dev/null 2>&1 </dev/null
         n=0; [ -f "$led" ] && n=$(wc -l < "$led" | tr -d ' ')
         if [ "$n" != 1 ] || ! grep -q "\"forge\":\"$f\",\"op\":\"$v\"" "$led"; then
@@ -312,7 +312,7 @@ for f in github bitbucket local-git none; do
 done
 
 echo "TEST: adapter ledger — unset writes nothing"
-NOLEDGER="$ROOT/noledger"
+NOLEDGER="$SANDBOX/noledger"
 mkdir -p "$NOLEDGER"
 for f in github bitbucket local-git none; do
     for v in $VERBS; do
@@ -320,7 +320,7 @@ for f in github bitbucket local-git none; do
     done
 done
 assert_eq "no ledger file anywhere under the temp root" "" \
-    "$(find "$ROOT" -name '*.jsonl' ! -name 'ledger-*' -print)"
+    "$(find "$SANDBOX" -name '*.jsonl' ! -name 'ledger-*' -print)"
 
 echo
 echo "===================================="
