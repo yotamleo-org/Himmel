@@ -1,285 +1,115 @@
-import { readStdin, getUsageFromStdin } from "./stdin.js";
+import * as os from "node:os";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { getUsageFromStdin, isContextUnreported, readStdin } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
 import { render } from "./render/index.js";
-import { countConfigs } from "./config-reader.js";
-import { getGitStatus } from "./git.js";
+import { countConfigs, type ConfigCounts } from "./config-reader.js";
+import { getGitStatus, type GitRepoIdentity, type GitStatus } from "./git.js";
 import { getJjStatus, isJjRepo } from "./jj.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, type HudConfig } from "./config.js";
 import { parseExtraCmdArg, runExtraCmd } from "./extra-cmd.js";
 import { runCustomLineCommand, shouldRunCustomLine } from "./custom-line-cmd.js";
-import { getClaudeCodeVersion, resolveStdinClaudeCodeVersion } from "./version.js";
+import { writeContextSnapshot } from "./context-cache.js";
 import { getMemoryUsage } from "./memory.js";
-import {
-  getAllSessionsCacheEconomics,
-  runCacheEconomicsRefresh,
-  REFRESH_CACHE_ECONOMICS_FLAG,
-  getRefreshLockTokenFromArgv,
-} from "./cache-economics.js";
 import { readAuthInfo } from "./auth.js";
-import { resolveEffortLevel } from "./effort.js";
-import { applyContextWindowFallback } from "./context-cache.js";
-import { getUsageFromExternalSnapshot, writeExternalUsageSnapshot } from "./external-usage.js";
+import { getCostTotals } from "./daily-cost.js";
+import { getOutputSpeed } from "./speed.js";
+import { resolveUsage, writeExternalUsageSnapshot } from "./external-usage.js";
 import { setLanguage, t } from "./i18n/index.js";
-import type { RenderContext } from "./types.js";
-import type { GitStatus } from "./git.js";
-import type { HudConfig } from "./config.js";
+import type { StdinData, TranscriptData } from "./types.js";
 
-export { getUsageFromExternalSnapshot, writeExternalUsageSnapshot } from "./external-usage.js";
-import { fileURLToPath } from "node:url";
-import { realpathSync } from "node:fs";
+const EMPTY_TRANSCRIPT: TranscriptData = { tools: [], skills: [], mcpServers: [], mcpErrors: [], agents: [], todos: [] };
+const NO_COUNTS: ConfigCounts = { claudeMdCount: 0, rulesCount: 0, mcpCount: 0, hooksCount: 0 };
 
-export type MainDeps = {
-  readStdin: typeof readStdin;
-  getUsageFromStdin: typeof getUsageFromStdin;
-  getUsageFromExternalSnapshot: typeof getUsageFromExternalSnapshot;
-  writeExternalUsageSnapshot: typeof writeExternalUsageSnapshot;
-  parseTranscript: typeof parseTranscript;
-  countConfigs: typeof countConfigs;
-  getGitStatus: typeof getGitStatus;
-  getJjStatus: typeof getJjStatus;
-  isJjRepo: typeof isJjRepo;
-  loadConfig: typeof loadConfig;
-  parseExtraCmdArg: typeof parseExtraCmdArg;
-  runExtraCmd: typeof runExtraCmd;
-  runCustomLineCommand: typeof runCustomLineCommand;
-  getClaudeCodeVersion: typeof getClaudeCodeVersion;
-  getMemoryUsage: typeof getMemoryUsage;
-  getAllSessionsCacheEconomics: typeof getAllSessionsCacheEconomics;
-  readAuthInfo: typeof readAuthInfo;
-  applyContextWindowFallback: typeof applyContextWindowFallback;
-  render: typeof render;
-  now: () => number;
-  log: (...args: unknown[]) => void;
-};
-
-/**
- * Returns true when the HUD is disabled for this invocation via the
- * CLAUDE_HUD_DISABLE environment variable. Any non-blank value other than an
- * explicit negative (`0`, `false`, `off`, `no`, case-insensitive) disables the
- * HUD, so users can launch sessions without it (`CLAUDE_HUD_DISABLE=1 claude`)
- * while keeping the statusLine entry in settings.json intact.
- */
+// CLAUDE_HUD_DISABLE=1 blanks the HUD for one session while keeping the statusLine setting.
 export function isHudDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.CLAUDE_HUD_DISABLE?.trim().toLowerCase();
-  if (value === undefined || value === "") {
-    return false;
-  }
-  return value !== "0" && value !== "false" && value !== "off" && value !== "no";
+  return !!value && !["0", "false", "off", "no"].includes(value);
 }
 
-/**
- * Prefers jj when an eligible `.jj` marker is found and the opt-in is enabled.
- * If the bounded jj probe fails, Git remains the safe compatibility fallback.
- */
+function needsTranscript(config: HudConfig, stdin: StdinData): boolean {
+  const d = config.display;
+  return d.showTools || d.showSkills || d.showMcp || d.showAgents || d.showTodos
+    || d.showConfigCounts || d.showSessionTokens || d.showCompactions || d.showAdvisor
+    || d.showSessionStartDate || d.showLastResponseAt || d.showEffortLevel
+    || d.modelSource !== "stdin"
+    || isContextUnreported(stdin);
+}
+
+// jj wins in a repo that has one and opts in; git is the fallback when the jj probe fails.
 export async function resolveVcsStatus(
-  deps: Pick<MainDeps, "getGitStatus" | "getJjStatus" | "isJjRepo">,
   config: HudConfig,
   cwd?: string,
+  repo?: GitRepoIdentity | null,
 ): Promise<GitStatus | null> {
   if (!cwd) return null;
-  if (config.jjStatus.enabled && deps.isJjRepo(cwd)) {
-    const jjStatus = await deps.getJjStatus(cwd);
+  if (config.jjStatus.enabled && isJjRepo(cwd)) {
+    const jjStatus = await getJjStatus(cwd);
     if (jjStatus) return jjStatus;
   }
-  if (config.gitStatus.enabled) {
-    return deps.getGitStatus(cwd);
-  }
-  return null;
+  return config.gitStatus.enabled
+    ? getGitStatus(cwd, { lineDiffs: config.gitStatus.showFileStats, repo })
+    : null;
 }
 
-export async function main(overrides: Partial<MainDeps> = {}): Promise<void> {
-  if (isHudDisabled()) {
-    // Print nothing so Claude Code renders an empty statusline, and skip all
-    // work (stdin parse, transcript scan, git) on each event-driven refresh.
-    return;
-  }
-
-  const deps: MainDeps = {
-    readStdin,
-    getUsageFromStdin,
-    getUsageFromExternalSnapshot,
-    writeExternalUsageSnapshot,
-    parseTranscript,
-    countConfigs,
-    getGitStatus,
-    getJjStatus,
-    isJjRepo,
-    loadConfig,
-    parseExtraCmdArg,
-    runExtraCmd,
-    runCustomLineCommand,
-    getClaudeCodeVersion,
-    getMemoryUsage,
-    getAllSessionsCacheEconomics,
-    readAuthInfo,
-    applyContextWindowFallback,
-    render,
-    now: () => Date.now(),
-    log: console.log,
-    ...overrides,
-  };
+export async function main(): Promise<void> {
+  if (isHudDisabled()) return;
 
   try {
-    const stdin = await deps.readStdin();
+    const stdin = await readStdin();
+    const config = await loadConfig();
+    setLanguage(config.language);
 
     if (!stdin) {
-      // Running without stdin - this happens during setup verification
-      const config = await deps.loadConfig();
-      setLanguage(config.language);
-      const isMacOS = process.platform === "darwin";
-      deps.log(t("init.initializing"));
-      if (isMacOS) {
-        deps.log(t("init.macosNote"));
-      }
+      // Setup runs the command without input to check that it starts.
+      console.log(t("init.initializing"));
+      if (process.platform === "darwin") console.log(t("init.macosNote"));
       return;
     }
 
-    const transcriptPath = stdin.transcript_path ?? "";
-    const transcript = await deps.parseTranscript(transcriptPath);
+    const display = config.display;
+    const now = Date.now();
+    const extraCmd = parseExtraCmdArg();
+    const customLineCommand = display.customLineCommand;
+    const [transcript, gitStatus, extraLabel, memoryUsage, customLines] = await Promise.all([
+      needsTranscript(config, stdin) ? parseTranscript(stdin.transcript_path ?? "") : EMPTY_TRANSCRIPT,
+      resolveVcsStatus(config, stdin.cwd, stdin.workspace?.repo),
+      extraCmd ? runExtraCmd(extraCmd) : null,
+      display.showMemoryUsage && config.lineLayout === "expanded" ? getMemoryUsage() : null,
+      shouldRunCustomLine(customLineCommand)
+        ? runCustomLineCommand(customLineCommand, JSON.stringify(stdin), { cwd: stdin.cwd })
+        : null,
+    ]);
 
-    deps.applyContextWindowFallback(stdin, {}, transcript.sessionName, {
-      lastCompactBoundaryAt: transcript.lastCompactBoundaryAt,
-      lastCompactPostTokens: transcript.lastCompactPostTokens,
-    });
-
-    const { claudeMdCount, rulesCount, mcpCount, hooksCount, outputStyle } =
-      await deps.countConfigs(stdin.cwd);
-
-    const config = await deps.loadConfig();
-    setLanguage(config.language);
-    const gitStatus = await resolveVcsStatus(deps, config, stdin.cwd);
-
-    let usageData: RenderContext["usageData"] = null;
-    const shouldReadUsage = config.display.showUsage !== false;
-    const shouldWriteUsage = Boolean(config.display.externalUsageWritePath);
-    const stdinUsage = shouldReadUsage || shouldWriteUsage
-      ? deps.getUsageFromStdin(stdin)
-      : null;
-
-    if (shouldWriteUsage && stdinUsage) {
-      deps.writeExternalUsageSnapshot(config, stdinUsage, deps.now());
+    writeContextSnapshot(stdin);
+    const stdinUsage = getUsageFromStdin(stdin);
+    if (display.externalUsageWritePath && stdinUsage) {
+      writeExternalUsageSnapshot(config, stdinUsage, now);
     }
+    const usageData = display.showUsage ? resolveUsage(config, stdinUsage, now) : null;
 
-    if (shouldReadUsage) {
-      usageData = stdinUsage;
-      if (!usageData) {
-        usageData = deps.getUsageFromExternalSnapshot(config, deps.now());
-      } else if (config.display.externalUsagePath) {
-        const ext = deps.getUsageFromExternalSnapshot(config, deps.now());
-        if (ext != null) {
-          usageData = {
-            ...usageData,
-            ...(ext.balanceLabel != null && { balanceLabel: ext.balanceLabel }),
-            // If stdin did not provide sevenDay (e.g. third-party clients like the
-            // Claudian Obsidian plugin that only surface five_hour), fall back to the
-            // external snapshot so the weekly limit still shows in the HUD.
-            ...(usageData.sevenDay == null && ext.sevenDay != null && {
-              sevenDay: ext.sevenDay,
-              sevenDayResetAt: ext.sevenDayResetAt ?? null,
-            }),
-            // Likewise, model-scoped windows (e.g. Fable) are absent from stdin
-            // today (see #669); let an external feeder supply them until
-            // Claude Code forwards rate_limits.model_scoped itself. Stdin wins
-            // whenever it does carry scoped windows.
-            ...(usageData.scopedWindows == null && ext.scopedWindows != null && {
-              scopedWindows: ext.scopedWindows,
-            }),
-          };
-        }
-      }
-    }
-
-    const extraCmd = deps.parseExtraCmdArg();
-    const extraLabel = extraCmd ? await deps.runExtraCmd(extraCmd) : null;
-    const customLineCommand = config.display.customLineCommand;
-    const customLines = shouldRunCustomLine(customLineCommand)
-      ? await deps.runCustomLineCommand(customLineCommand, JSON.stringify(stdin), {
-        cwd: stdin.cwd,
-      })
-      : null;
-
-    const sessionDuration = formatSessionDuration(
-      transcript.sessionStart,
-      deps.now,
-    );
-    const claudeCodeVersion = config.display.showClaudeCodeVersion
-      ? (resolveStdinClaudeCodeVersion(stdin.version)
-        ?? await deps.getClaudeCodeVersion())
-      : undefined;
-    const effortInfo = config.display.showEffortLevel
-      ? resolveEffortLevel(stdin.effort, { ultracodeActive: transcript.ultracodeActive })
-      : null;
-    const memoryUsage =
-      config.display.showMemoryUsage && config.lineLayout === "expanded"
-        ? await deps.getMemoryUsage()
-        : null;
-    const authInfo =
-      config.display.showAuth || config.display.showAuthUser
-        ? deps.readAuthInfo()
-        : null;
-    const allSessionsCacheEconomics = config.display.showPromptCacheEconomics
-      ? await deps.getAllSessionsCacheEconomics()
-      : null;
-
-    const ctx: RenderContext = {
+    render({
       stdin,
       transcript,
-      claudeMdCount,
-      rulesCount,
-      mcpCount,
-      hooksCount,
-      sessionDuration,
+      ...(display.showConfigCounts ? countConfigs(stdin.cwd) : NO_COUNTS),
+      costTotals: display.showDailyCost || display.showWeeklyCost
+        ? getCostTotals(stdin, { allowRoutedCost: display.showRoutedCost, sevenDayResetAt: usageData?.sevenDayResetAt ?? null })
+        : null,
+      outputSpeed: display.showSpeed ? getOutputSpeed(stdin, os.homedir()) : null,
       gitStatus,
       usageData,
       memoryUsage,
       config,
       extraLabel,
       customLines,
-      outputStyle,
-      claudeCodeVersion,
-      effortLevel: effortInfo?.level,
-      effortSymbol: effortInfo?.symbol,
-      authInfo,
-      allSessionsCacheEconomics,
-    };
-
-    deps.render(ctx);
+      authInfo: display.showAuth || display.showAuthUser ? readAuthInfo() : null,
+    });
   } catch (error) {
-    deps.log(
-      "[claude-hud] Error:",
-      error instanceof Error ? error.message : "Unknown error",
-    );
+    console.log("[claude-hud] Error:", error instanceof Error ? error.message : "Unknown error");
   }
 }
 
-export function formatSessionDuration(
-  sessionStart?: Date,
-  now: () => number = () => Date.now(),
-): string {
-  if (!sessionStart) {
-    return "";
-  }
-
-  const ms = now() - sessionStart.getTime();
-  const mins = Math.floor(ms / 60000);
-
-  if (mins < 1) return "<1m";
-  if (mins < 60) return `${mins}m`;
-
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  return `${hours}h ${remainingMins}m`;
-}
-
-// True when this process was launched as the detached cache-economics
-// refresh child (spawned by getAllSessionsCacheEconomics), which should scan
-// + write the cache and exit rather than render a statusline.
-export function shouldRunCacheEconomicsRefresh(argv: string[] = process.argv): boolean {
-  return argv.includes(REFRESH_CACHE_ECONOMICS_FLAG);
-}
-
-const scriptPath = fileURLToPath(import.meta.url);
-const argvPath = process.argv[1];
 const isSamePath = (a: string, b: string): boolean => {
   try {
     return realpathSync(a) === realpathSync(b);
@@ -287,10 +117,6 @@ const isSamePath = (a: string, b: string): boolean => {
     return a === b;
   }
 };
-if (argvPath && isSamePath(argvPath, scriptPath)) {
-  if (shouldRunCacheEconomicsRefresh()) {
-    void runCacheEconomicsRefresh({}, getRefreshLockTokenFromArgv());
-  } else {
-    void main();
-  }
+if (process.argv[1] && isSamePath(process.argv[1], fileURLToPath(import.meta.url))) {
+  void main();
 }

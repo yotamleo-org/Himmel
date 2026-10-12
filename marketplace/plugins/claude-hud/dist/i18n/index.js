@@ -22,11 +22,8 @@ let currentLanguage = "en";
 export function setLanguage(lang) {
     currentLanguage = lang;
 }
-export function getLanguage() {
-    return currentLanguage;
-}
 // https://www.rfc-editor.org/info/bcp47
-export function getCanonicalLanguage() {
+function getCanonicalLanguage() {
     return CANONICAL[currentLanguage] ?? "en";
 }
 // https://www.unicode.org/reports/tr11/

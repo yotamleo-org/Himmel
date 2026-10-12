@@ -1,158 +1,27 @@
 import { isBedrockModelId, isClaudexLane, isVertexModelId } from './stdin.js';
-const TOKENS_PER_MILLION = 1_000_000;
-const CACHE_WRITE_MULTIPLIER = 1.25;
-const CACHE_WRITE_ONE_HOUR_MULTIPLIER = 2;
-const CACHE_READ_MULTIPLIER = 0.1;
-// Patterns are tried in order; the first match wins. Families with more specific
-// model lines (Haiku 4.x differs from Haiku 3.5) must come before any broader
-// fallback patterns to avoid silent under-pricing.
-const MODEL_PRICING = [
-    { pattern: /^minimax m2 7$/i, pricing: { inputUsdPerMillion: 0.3, outputUsdPerMillion: 1.2, cacheReadUsdPerMillion: 0.06, cacheWriteUsdPerMillion: 0.375 } },
-    { pattern: /\bopus 5(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 5, outputUsdPerMillion: 25 } },
-    { pattern: /\bopus 4 (?:[5-9]|\d{2,})\b/i, pricing: { inputUsdPerMillion: 5, outputUsdPerMillion: 25 } },
-    { pattern: /\bopus 4(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 } },
-    { pattern: /\bsonnet 5(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 2, outputUsdPerMillion: 10 } },
-    { pattern: /\bsonnet 4(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
-    { pattern: /\bsonnet 3 7\b/i, pricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
-    { pattern: /\bsonnet 3 5\b/i, pricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
-    { pattern: /\bhaiku 4(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 1, outputUsdPerMillion: 5 } },
-    { pattern: /\bhaiku 3 5\b/i, pricing: { inputUsdPerMillion: 0.8, outputUsdPerMillion: 4 } },
-    { pattern: /\bfable 5(?: \d+)?\b/i, pricing: { inputUsdPerMillion: 10, outputUsdPerMillion: 50 } },
-    // Enterprise plan aliases (e.g. opusplan, sonnetplan, haikuplan) track
-    // whatever model is currently the tier's default — repriced alongside the
-    // rows above whenever that default changes.
-    { pattern: /\bopusplan\b/i, pricing: { inputUsdPerMillion: 5, outputUsdPerMillion: 25 } },
-    { pattern: /\bsonnetplan\b/i, pricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
-    { pattern: /\bhaikuplan\b/i, pricing: { inputUsdPerMillion: 1, outputUsdPerMillion: 5 } },
-];
-function normalizeModelName(modelName) {
-    return modelName
-        .toLowerCase()
-        .replace(/^claude\s+/, '')
-        .replace(/\([^)]*\)/g, ' ')
-        .replace(/[._-]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-function matchModelPricing(modelName) {
-    const normalized = normalizeModelName(modelName);
-    for (const entry of MODEL_PRICING) {
-        if (entry.pattern.test(normalized)) {
-            return entry.pricing;
-        }
-    }
-    return null;
-}
-function calculateUsd(tokens, usdPerMillion) {
-    return (tokens * usdPerMillion) / TOKENS_PER_MILLION;
-}
-export function getModelPricing(stdin) {
-    const candidates = [
-        stdin.model?.display_name?.trim(),
-        stdin.model?.id?.trim(),
-    ];
-    for (const candidate of candidates) {
-        if (!candidate) {
-            continue;
-        }
-        const pricing = matchModelPricing(candidate);
-        if (pricing) {
-            return pricing;
-        }
-    }
-    return null;
-}
-// Cache convention mirrored from estimateSessionCost: a model that does not
-// publish explicit cache rates is priced at the standard prompt-caching
-// multipliers off its input rate (write = 1.25x, read = 0.1x). Flat 5-minute
-// write rate only; estimateSessionCost additionally prices 1-hour writes at 2x.
-export function resolveEffectiveCachePricing(pricing) {
-    const cacheWriteUsdPerMillion = pricing.cacheWriteUsdPerMillion === undefined
-        ? pricing.inputUsdPerMillion * CACHE_WRITE_MULTIPLIER
-        : pricing.cacheWriteUsdPerMillion ?? 0;
-    const cacheReadUsdPerMillion = pricing.cacheReadUsdPerMillion ?? pricing.inputUsdPerMillion * CACHE_READ_MULTIPLIER;
-    return { inputUsdPerMillion: pricing.inputUsdPerMillion, cacheReadUsdPerMillion, cacheWriteUsdPerMillion };
-}
-export function estimateSessionCost(stdin, sessionTokens, options) {
-    if (!sessionTokens) {
-        return null;
-    }
-    // No pricing table exists for the codex model actually serving this lane.
-    if (isClaudexLane()) {
-        return null;
-    }
-    if (!options?.allowRoutedCost && (isBedrockModelId(stdin.model?.id) || isVertexModelId(stdin.model?.id))) {
-        return null;
-    }
-    const pricing = getModelPricing(stdin);
-    if (!pricing) {
-        return null;
-    }
-    const totalTokens = sessionTokens.inputTokens
-        + sessionTokens.cacheCreationTokens
-        + sessionTokens.cacheReadTokens
-        + sessionTokens.outputTokens;
-    if (totalTokens === 0) {
-        return null;
-    }
-    const inputUsd = calculateUsd(sessionTokens.inputTokens, pricing.inputUsdPerMillion);
-    // 5-minute writes cost 1.25x input and 1-hour writes 2x; a published cache-write rate covers both.
-    const publishedCacheWrite = pricing.cacheWriteUsdPerMillion === undefined
-        ? undefined
-        : pricing.cacheWriteUsdPerMillion ?? 0;
-    const oneHourWrites = Math.min(sessionTokens.cacheCreationOneHourTokens ?? 0, sessionTokens.cacheCreationTokens);
-    const cacheCreationUsd = calculateUsd(sessionTokens.cacheCreationTokens - oneHourWrites, publishedCacheWrite ?? pricing.inputUsdPerMillion * CACHE_WRITE_MULTIPLIER) + calculateUsd(oneHourWrites, publishedCacheWrite ?? pricing.inputUsdPerMillion * CACHE_WRITE_ONE_HOUR_MULTIPLIER);
-    const cacheReadUsdPerMillion = pricing.cacheReadUsdPerMillion ?? pricing.inputUsdPerMillion * CACHE_READ_MULTIPLIER;
-    const cacheReadUsd = calculateUsd(sessionTokens.cacheReadTokens, cacheReadUsdPerMillion);
-    const outputUsd = calculateUsd(sessionTokens.outputTokens, pricing.outputUsdPerMillion);
-    return {
-        totalUsd: inputUsd + cacheCreationUsd + cacheReadUsd + outputUsd,
-        inputUsd,
-        cacheCreationUsd,
-        cacheReadUsd,
-        outputUsd,
-    };
-}
+// Claude Code's own session cost. Bedrock and Vertex bill through the cloud provider,
+// so their list-price figure is shown only with display.showRoutedCost, and only once
+// it is positive (it reads $0.00 until the first response).
 export function getNativeCostUsd(stdin, options) {
-    const nativeCost = stdin.cost?.total_cost_usd;
-    if (typeof nativeCost !== 'number' || !Number.isFinite(nativeCost)) {
-        return null;
-    }
+    // himmel delta (HIMMEL-2900): the claudex lane's cost is not Claude's, so it is never reported.
     if (isClaudexLane()) {
         return null;
     }
-    if (isBedrockModelId(stdin.model?.id) || isVertexModelId(stdin.model?.id)) {
-        // Routed native billing reads $0.00 until the first response; use it only when opted in and positive.
-        if (!options?.allowRoutedCost || nativeCost <= 0) {
-            return null;
-        }
-    }
-    return nativeCost;
-}
-export function resolveSessionCost(stdin, sessionTokens, options) {
-    const nativeCostUsd = getNativeCostUsd(stdin, options);
-    if (nativeCostUsd !== null) {
-        return {
-            totalUsd: nativeCostUsd,
-            source: 'native',
-        };
-    }
-    const estimate = estimateSessionCost(stdin, sessionTokens, options);
-    if (!estimate) {
+    const cost = stdin.cost?.total_cost_usd;
+    if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) {
         return null;
     }
-    return {
-        totalUsd: estimate.totalUsd,
-        source: 'estimate',
-    };
+    const routed = isBedrockModelId(stdin.model?.id) || isVertexModelId(stdin.model?.id);
+    if (routed && (!options?.allowRoutedCost || cost === 0)) {
+        return null;
+    }
+    return cost;
 }
 export function formatUsd(amount) {
-    if (amount >= 1) {
+    if (amount >= 1)
         return `$${amount.toFixed(2)}`;
-    }
-    if (amount >= 0.1) {
+    if (amount >= 0.1)
         return `$${amount.toFixed(3)}`;
-    }
     return `$${amount.toFixed(4)}`;
 }
 //# sourceMappingURL=cost.js.map

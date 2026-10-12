@@ -1,10 +1,11 @@
 import type { HudConfig } from './config.js';
-import type { GitStatus } from './git.js';
+import type { GitRepoIdentity, GitStatus } from './git.js';
 import type { AuthInfo } from './auth.js';
-import type { CacheEconomicsTotals } from './cache-economics.js';
+import type { CostTotals } from './daily-cost.js';
 export interface StdinData {
     session_id?: string;
-    version?: string | null;
+    session_name?: string;
+    version?: string;
     transcript_path?: string;
     cwd?: string;
     workspace?: {
@@ -12,10 +13,14 @@ export interface StdinData {
         project_dir?: string;
         added_dirs?: string[];
         git_worktree?: string;
+        repo?: GitRepoIdentity;
     } | null;
     model?: {
         id?: string;
         display_name?: string;
+    };
+    output_style?: {
+        name?: string;
     };
     context_window?: {
         context_window_size?: number;
@@ -38,30 +43,29 @@ export interface StdinData {
         total_lines_removed?: number | null;
     } | null;
     rate_limits?: {
-        five_hour?: {
-            used_percentage?: number | null;
-            resets_at?: number | null;
-        } | null;
-        seven_day?: {
-            used_percentage?: number | null;
-            resets_at?: number | null;
-        } | null;
-        /**
-         * Model-scoped weekly windows (e.g. the Fable weekly quota shown on /usage).
-         * Additive field — Claude Code's internal status schema defines it as
-         * { display_name, utilization (0-100 percent), resets_at (ISO-8601) } and only
-         * includes it when the server returns per-model windows.
-         */
-        model_scoped?: Array<{
-            display_name?: string | null;
-            utilization?: number | null;
-            resets_at?: string | null;
-        }> | null;
+        five_hour?: RateLimitWindow | null;
+        seven_day?: RateLimitWindow | null;
+        spend_limit?: RateLimitWindow | null;
     } | null;
-    effort?: string | {
-        level?: string | null;
-        [key: string]: unknown;
+    prompt_cache?: {
+        warm?: boolean;
+        caching_observed?: boolean;
+        ttl?: string;
+        expires_at?: number | null;
+        hit_ratio?: number | null;
     } | null;
+    effort?: {
+        level?: string;
+    } | null;
+    worktree?: {
+        name?: string;
+        path?: string;
+        branch?: string;
+    } | null;
+}
+interface RateLimitWindow {
+    used_percentage?: number | null;
+    resets_at?: number | null;
 }
 export interface ToolEntry {
     id: string;
@@ -91,7 +95,6 @@ export interface UsageData {
     fiveHourResetAt: Date | null;
     sevenDayResetAt: Date | null;
     balanceLabel?: string | null;
-    /** Model-scoped weekly windows (e.g. Fable) from stdin rate_limits.model_scoped. */
     scopedWindows?: ScopedUsageWindow[];
 }
 /** One model-scoped weekly quota window (e.g. label "Fable", used percent 0-100). */
@@ -111,11 +114,6 @@ export interface ExternalUsageSnapshot {
     } | null;
     updated_at?: string | number | null;
     balance_label?: string | null;
-    /**
-     * Model-scoped weekly windows (e.g. Fable). Mirrors the stdin
-     * `rate_limits.model_scoped` schema so external feeders can pass through
-     * the same shape Claude Code emits (e.g. from a get_usage response).
-     */
     model_scoped?: Array<{
         display_name?: string | null;
         utilization?: number | null;
@@ -135,7 +133,6 @@ export interface SessionTokenUsage {
     outputTokens: number;
     cacheCreationTokens: number;
     cacheReadTokens: number;
-    cacheCreationOneHourTokens: number;
 }
 export interface TranscriptData {
     tools: ToolEntry[];
@@ -150,14 +147,10 @@ export interface TranscriptData {
     agents: AgentEntry[];
     todos: TodoItem[];
     sessionStart?: Date;
-    sessionName?: string;
     lastAssistantResponseAt?: Date;
-    promptCacheAnchorAt?: Date;
-    promptCacheTtlSeconds?: number;
     sessionTokens?: SessionTokenUsage;
-    lastCompactBoundaryAt?: Date;
-    lastCompactPostTokens?: number;
     compactionCount?: number;
+    contextTokens?: number;
     advisorModel?: string;
     ultracodeActive?: boolean;
     lastAssistantModel?: string;
@@ -169,18 +162,15 @@ export interface RenderContext {
     rulesCount: number;
     mcpCount: number;
     hooksCount: number;
-    sessionDuration: string;
+    costTotals: CostTotals | null;
+    outputSpeed: number | null;
     gitStatus: GitStatus | null;
     usageData: UsageData | null;
     memoryUsage: MemoryInfo | null;
     config: HudConfig;
     extraLabel: string | null;
     customLines?: string[] | null;
-    outputStyle?: string;
-    claudeCodeVersion?: string;
-    effortLevel?: string;
-    effortSymbol?: string;
     authInfo?: AuthInfo | null;
-    allSessionsCacheEconomics?: CacheEconomicsTotals | null;
 }
+export {};
 //# sourceMappingURL=types.d.ts.map

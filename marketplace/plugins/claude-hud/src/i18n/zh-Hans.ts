@@ -10,7 +10,6 @@ export const zhHans: Messages = {
   "label.cacheHitRate": "缓存命中",
   "label.rules": "规则",
   "label.hooks": "钩子",
-  "label.estimatedCost": "估算",
   "label.cost": "费用",
   "label.today": "今日",
   "label.week": "本周",
@@ -19,9 +18,6 @@ export const zhHans: Messages = {
   "label.lastReply": "上次回复",
   "label.advisor": "顾问",
   "label.compactions": "压缩次数",
-  "label.cacheEconomicsSession": "会话",
-  "label.cacheEconomicsAll": "全部",
-  "label.cacheEconomicsCost": "费用",
 
   // Status
   "status.limitReached": "已达上限",

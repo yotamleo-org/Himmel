@@ -8,7 +8,6 @@ export type MessageKey =
   | "label.cacheHitRate"
   | "label.rules"
   | "label.hooks"
-  | "label.estimatedCost"
   | "label.cost"
   | "label.today"
   | "label.week"
@@ -17,9 +16,6 @@ export type MessageKey =
   | "label.lastReply"
   | "label.advisor"
   | "label.compactions"
-  | "label.cacheEconomicsSession"
-  | "label.cacheEconomicsAll"
-  | "label.cacheEconomicsCost"
   // Status
   | "status.limitReached"
   | "status.allTodosComplete"

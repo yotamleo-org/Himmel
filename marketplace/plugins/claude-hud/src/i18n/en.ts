@@ -10,7 +10,6 @@ export const en: Messages = {
   "label.cacheHitRate": "Cache hit",
   "label.rules": "rules",
   "label.hooks": "hooks",
-  "label.estimatedCost": "Est.",
   "label.cost": "Cost",
   "label.today": "Today",
   "label.week": "Week",
@@ -19,9 +18,6 @@ export const en: Messages = {
   "label.lastReply": "Last reply",
   "label.advisor": "Advisor",
   "label.compactions": "Compactions",
-  "label.cacheEconomicsSession": "session",
-  "label.cacheEconomicsAll": "all",
-  "label.cacheEconomicsCost": "cost",
 
   // Status
   "status.limitReached": "Limit reached",

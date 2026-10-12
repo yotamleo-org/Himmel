@@ -1,61 +1,26 @@
-import type { ScopedUsageWindow, StdinData, UsageData, TranscriptData } from './types.js';
+import type { StdinData, UsageData, TranscriptData } from './types.js';
 import type { ModelFormatMode } from './config.js';
-type StdinStream = Pick<NodeJS.ReadStream, 'setEncoding' | 'on' | 'off' | 'pause'> & {
+type StdinStream = Pick<NodeJS.ReadStream, 'setEncoding' | 'on' | 'pause'> & {
     isTTY?: boolean;
 };
-type ReadStdinOptions = {
-    firstByteTimeoutMs?: number;
-    idleTimeoutMs?: number;
-    maxBytes?: number;
-};
-export declare function readStdin(stream?: StdinStream, options?: ReadStdinOptions): Promise<StdinData | null>;
+export declare function readStdin(stream?: StdinStream): Promise<StdinData | null>;
 export declare function getTotalTokens(stdin: StdinData): number;
-export declare function getContextPercent(stdin: StdinData, autoCompactWindow?: number | null): number;
-export declare function getBufferedPercent(stdin: StdinData, autoCompactWindow?: number | null): number;
+export interface ContextUsage {
+    percent: number;
+    tokens: number;
+    size: number;
+}
+export declare function getContextUsage(stdin: StdinData, autoCompactWindow?: number | null, transcriptTokens?: number): ContextUsage;
+export declare function isContextUnreported(stdin: StdinData): boolean;
 export declare function getModelName(stdin: StdinData): string;
 export declare function isClaudexLane(env?: NodeJS.ProcessEnv): boolean;
-/**
- * Resolves the model name to display, respecting `display.modelSource` config.
- *
- * - "stdin":      Always use the model from Claude Code's stdin (display_name).
- * - "transcript": Always use the model from the API response (message.model).
- *                 Falls back to stdin when transcript has no assistant messages yet.
- * - "auto": Use stdin for Claude models, transcript for non-Claude.
- *                      Detects proxy redirects (cc-switch, LiteLLM, etc.) that
- *                      serve a different model than what Claude Code requested.
- */
 export declare function resolveModelName(stdin: StdinData, transcript: TranscriptData | undefined, modelSource?: 'auto' | 'stdin' | 'transcript'): string;
 export declare function isBedrockModelId(modelId?: string): boolean;
 export declare function isVertexModelId(modelId?: string): boolean;
-export declare function isEnterpriseModelId(modelId?: string): boolean;
-export declare function getProviderLabel(stdin: StdinData): string | null;
-export declare function shouldHideUsage(stdin: StdinData): boolean;
+export declare function getProviderLabel(stdin: StdinData, env?: NodeJS.ProcessEnv): string | null;
 export declare function getUsageFromStdin(stdin: StdinData): UsageData | null;
-/**
- * Parses `rate_limits.model_scoped` (model-scoped weekly windows, e.g. Fable).
- * The upstream schema carries `utilization` on the same 0-100 scale used by
- * the generic rate-limit windows. Malformed entries are dropped, and both the
- * retained entry count and label size are bounded because stdin is untrusted.
- */
-export declare function parseScopedWindows(modelScoped: unknown): ScopedUsageWindow[];
-/**
- * Strips redundant context-window size suffixes from model display names.
- *
- * Claude Code may include the context window size in the display name
- * (e.g. "Opus 4.6 (1M context)"), but the HUD already shows context
- * usage via the context bar — so the parenthetical is redundant.
- */
+export declare function stdinText(value: unknown, maxLength?: number): string | undefined;
 export declare function stripContextSuffix(name: string): string;
-/**
- * Formats a model name according to the user's chosen display settings.
- *
- * When `override` is set, it replaces the model name entirely.
- * Otherwise, `format` controls how the raw name is abbreviated:
- *
- *   full:    Return raw name unchanged   (e.g. "Opus 4.6 (1M context)")
- *   compact: Strip context-window suffix (e.g. "Opus 4.6")
- *   short:   Strip context suffix AND leading "Claude " prefix (e.g. "Opus 4.6")
- */
 export declare function formatModelName(name: string, format?: ModelFormatMode, override?: string): string;
 export {};
 //# sourceMappingURL=stdin.d.ts.map
