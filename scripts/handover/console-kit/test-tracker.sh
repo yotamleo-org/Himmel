@@ -455,5 +455,52 @@ contains 'stdout prints the drift trend (HIMMEL-4930)' "$trend" 'drift trend:'
 contains 'the page carries the drift trend (HIMMEL-4930)' "$(cat "$out" 2>/dev/null)" '"DT":[['
 rm -f "$plan/stage1/themes-overlay.tsv"
 
+# --- HIMMEL-5381: a per-release kanban, rendered as static HTML. A fixture release holds one ticket per status.
+kmir="$W/mirror-kanban"
+mkdir -p "$kmir"
+mdir="$kmir"
+mk 31 'To Do' '["v1.0.9"]' 'kanban todo ticket' 'To Do'
+mk 32 'In Progress' '["v1.0.9"]' 'kanban prog ticket' 'In Progress'
+mk 33 'In Progress' '["v1.0.9"]' 'kanban review ticket' 'In Review'
+mk 34 'In Progress' '["v1.0.9"]' 'kanban ci ticket' 'IN CI'
+mk 35 'Done' '["v1.0.9"]' 'kanban done ticket' 'Done'
+printf '%s\n' '' '## Description' '' 'Impact' 'Operators can now see the kanban of a release. A second sentence must not show.' 'What' 'x' '' '## Comments' '' '_(none)_' >> "$kmir/HIMMEL-31.md"
+printf '%s\n' '' '## Description' '' 'Impact' 'Cards say what a ticket means for a user & more.' 'What' 'x' '' '## Comments' '' '_(none)_' >> "$kmir/HIMMEL-35.md"
+kout="$W/kanban.html"
+krender() {
+    python3 "$HERE/tracker.py" --plan-dir "$plan" --out "$kout" --luna-map "$W/luna-map-k.json" \
+        --mirror-dir "$kmir" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" "$@" 2>&1
+}
+krender --jira-base-url 'https://jira.example.test/' >/dev/null
+khtml="$(cat "$kout" 2>/dev/null)"
+# kcol <html> <column title> -- the markup of one kanban column of the v1.0.9 release panel.
+kcol() { printf '%s' "$1" | python3 -c '
+import re, sys
+h = sys.stdin.read()
+p = re.search(r"<details class=\"krel\"[^>]*data-v=\"v1\.0\.9\".*?</details>", h, re.S)
+c = re.search(r"<div class=\"kcol\" data-col=\"" + sys.argv[1] + r"\">.*?(?=<div class=\"kcol\"|</div></details>)", p.group(0), re.S) if p else None
+print(c.group(0) if c else "")' "$2"; }
+contains 'a release panel holds a drill-down for v1.0.9 (HIMMEL-5381)' "$khtml" 'data-v="v1.0.9"'
+kt="$(kcol "$khtml" todo)"; kp="$(kcol "$khtml" prog)"; kr="$(kcol "$khtml" rev)"; kd="$(kcol "$khtml" "done")"
+contains 'To Do column holds the To Do ticket (HIMMEL-5381)' "$kt" 'HIMMEL-31'
+contains 'In Progress column holds the In Progress ticket (HIMMEL-5381)' "$kp" 'HIMMEL-32'
+contains 'In Review column holds the In Review ticket (HIMMEL-5381)' "$kr" 'HIMMEL-33'
+contains 'In Review column holds the IN CI ticket (HIMMEL-5381)' "$kr" 'HIMMEL-34'
+contains 'Done column holds the Done ticket (HIMMEL-5381)' "$kd" 'HIMMEL-35'
+not_contains 'a ticket sits in one column only (HIMMEL-5381)' "$kt$kp$kd" 'HIMMEL-33'
+contains 'a card links to the Jira browse URL from the configured base (HIMMEL-5381)' "$kt" 'href="https://jira.example.test/browse/HIMMEL-31"'
+contains 'a card shows the ticket summary (HIMMEL-5381)' "$kt" 'kanban todo ticket'
+contains 'a card shows the first sentence of the Impact block (HIMMEL-5381)' "$kt" 'Operators can now see the kanban of a release.'
+not_contains 'a card stops after the first Impact sentence (HIMMEL-5381)' "$kt" 'A second sentence must not show'
+contains 'a card line is HTML-escaped (HIMMEL-5381)' "$kd" 'user &amp; more'
+contains 'a ticket without Impact falls back to its summary as the line (HIMMEL-5381)' "$kp" '<div class="kline">kanban prog ticket</div>'
+krender >/dev/null
+contains 'with no base URL the key is plain text, never a made-up host (HIMMEL-5381)' "$(cat "$kout")" '<span class="kkey">HIMMEL-31</span>'
+not_contains 'with no base URL there is no browse link (HIMMEL-5381)' "$(cat "$kout")" '/browse/HIMMEL-31'
+kfp1="$(krender --emit-fp)"
+krender --jira-base-url 'https://jira.example.test/' >/dev/null
+kfp2="$(krender --emit-fp)"
+if [ -n "$kfp1" ] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL: '$kfp1' vs '$kfp2'"; fi
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
