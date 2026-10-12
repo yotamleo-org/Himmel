@@ -105,6 +105,7 @@ echo "    delete output: $out" | head -5
 assert_nonzero "delete of main is refused" "$rc"
 assert_contains "delete refusal names the cause" "Deleting 'main'" "$out"
 after=$(git -C "$TMP_ROOT/a" ls-remote origin refs/heads/main)
+check "remote main ref was readable before the pushes" test -n "$before"
 check "remote main untouched by refused pushes" test "$before" = "$after"
 
 echo "== after install: legitimate pushes still work =="
@@ -163,6 +164,20 @@ git -C "$TMP_ROOT/hp" config core.hooksPath "$TMP_ROOT/elsewhere"
 out=$(bash "$INSTALLER" "$TMP_ROOT/hp" 2>&1); rc=$?
 assert_nonzero "core.hooksPath set is refused" "$rc"
 assert_contains "hooksPath refusal says why" "core.hooksPath" "$out"
+
+new_fixture hpe
+git -C "$TMP_ROOT/hpe" config core.hooksPath ""
+out=$(bash "$INSTALLER" "$TMP_ROOT/hpe" 2>&1); rc=$?
+assert_nonzero "empty core.hooksPath is refused" "$rc"
+assert_contains "empty hooksPath refusal says why" "core.hooksPath" "$out"
+
+echo "== floor check fails closed when its lib is missing =="
+mkdir -p "$TMP_ROOT/nolib/hooks" "$TMP_ROOT/nolib/guardrails"
+cp "$SCRIPT_DIR/check-single-writer-push-floor.sh" "$TMP_ROOT/nolib/hooks/"
+out=$(printf 'refs/heads/main 0000000000000000000000000000000000000000 refs/heads/main 1111111111111111111111111111111111111111\n' \
+    | bash "$TMP_ROOT/nolib/hooks/check-single-writer-push-floor.sh" 2>&1); rc=$?
+assert_nonzero "missing guardrails lib refuses the push" "$rc"
+assert_contains "missing-lib refusal says so" "REFUSING this push" "$out"
 
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

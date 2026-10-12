@@ -49,7 +49,7 @@ root=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || die "$1 is not a gi
 prefix=$(git -C "$1" rev-parse --show-prefix 2>/dev/null)
 [ -z "$prefix" ] || die "$1 is inside a repository ($root), not its root -- pass the repo root"
 [ -f "$root/.single-writer" ] || die "$root has no .single-writer marker -- refusing (this installer is for single-writer repos; a normal checkout uses scripts/setup-hooks.sh)"
-if [ -n "$(git -C "$root" config --get core.hooksPath 2>/dev/null)" ]; then
+if git -C "$root" config --get core.hooksPath >/dev/null 2>&1; then   # rc 0 even when set to the empty string
     die "core.hooksPath is set in $root -- refusing (hooks would not land in the repo's own hooks dir; unset it and re-run)"
 fi
 

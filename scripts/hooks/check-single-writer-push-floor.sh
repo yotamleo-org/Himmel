@@ -18,9 +18,16 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# A missing lib would leave is_main_ref undefined and every delete skipped:
+# test readability first, never `. lib || ...` (bash 3.2 exits on a failed `.`).
+lib="$SCRIPT_DIR/../guardrails/lib.sh"
 # shellcheck source=../guardrails/lib.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/../guardrails/lib.sh"
+# shellcheck disable=SC1091,SC1090
+if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+    echo "ERROR: single-writer floor cannot load $lib -- REFUSING this push." >&2
+    cat >/dev/null
+    exit 1
+fi
 
 lines=$(cat)
 refuse=0
