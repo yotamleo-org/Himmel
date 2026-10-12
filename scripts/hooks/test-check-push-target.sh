@@ -224,6 +224,12 @@ run_split() {
     (cd "$RT/clone" && env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=split PRE_COMMIT_REMOTE_BRANCH="refs/heads/$1" bash "$HOOK" </dev/null)
 }
 
+# run_split_url BRANCH — same, with git's own push destination exported.
+# shellcheck disable=SC2329,SC2317  # invoked indirectly via expect_pass "$@"
+run_split_url() {
+    (cd "$RT/clone" && env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME=split PRE_COMMIT_REMOTE_URL="$RT/push.git" PRE_COMMIT_REMOTE_BRANCH="refs/heads/$1" bash "$HOOK" </dev/null)
+}
+
 echo "TEST: pushurl differs, invalid name exists only on the push address -> PASS (never retroactive)"
 expect_pass "split remote, branch exists on the push address" \
     run_split only-push
@@ -231,6 +237,11 @@ expect_pass "split remote, branch exists on the push address" \
 echo "TEST: pushurl differs, invalid name exists only on the fetch address -> BLOCKED (new where it is pushed)"
 expect_blocked_name "split remote, branch absent on the push address" \
     run_split only-fetch
+
+echo "TEST: git's own push destination wins over the remote's configured urls"
+git -C "$RT/clone" config remote.split.pushurl "$RT/fetch.git"
+expect_pass "PRE_COMMIT_REMOTE_URL names the push address, branch exists there" \
+    run_split_url only-push
 
 echo "TEST: no pushurl set -> falls back to the remote itself"
 git -C "$RT/clone" config --unset remote.split.pushurl

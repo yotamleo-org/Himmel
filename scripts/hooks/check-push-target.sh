@@ -117,12 +117,19 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
                     _lsrc=0
                     # Ask the address the push goes to: a remote's pushurl can
                     # differ from its fetch url, and a bare `ls-remote <name>`
-                    # queries the fetch one (HIMMEL-5360). `get-url --push`
-                    # falls back to the fetch url itself; a name git cannot
-                    # resolve (a bare path or URL) is used as given.
+                    # queries the fetch one (HIMMEL-5360). git hands pre-commit
+                    # the destination it is pushing to (PRE_COMMIT_REMOTE_URL),
+                    # which also covers several pushurls; without it `get-url
+                    # --push` gives the first pushurl, or the fetch url itself;
+                    # a name git cannot resolve (a bare path or URL) is used
+                    # as given.
                     _lsremote="${PRE_COMMIT_REMOTE_NAME:-origin}"
-                    _pushaddr=$(git remote get-url --push -- "$_lsremote" 2>/dev/null) || _pushaddr=""
-                    [ -n "$_pushaddr" ] && _lsremote="$_pushaddr"
+                    if [ -n "${PRE_COMMIT_REMOTE_URL:-}" ]; then
+                        _lsremote="$PRE_COMMIT_REMOTE_URL"
+                    else
+                        _pushaddr=$(git remote get-url --push -- "$_lsremote" 2>/dev/null) || _pushaddr=""
+                        [ -n "$_pushaddr" ] && _lsremote="$_pushaddr"
+                    fi
                     # `--` keeps a dash-led remote name from reading as an
                     # option; a hung remote is bounded (fails open on timeout,
                     # rc 124 is not 2) where `timeout` exists.
