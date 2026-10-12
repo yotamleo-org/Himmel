@@ -53,7 +53,7 @@ MOG="$SCRIPT_DIR/merge-on-green.sh"
 # removed by the one EXIT trap, so every site is covered without a per-site list.
 MOG_SUITE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/mog-suite.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 if [ -z "$MOG_SUITE_TMP" ] || [ ! -d "$MOG_SUITE_TMP" ]; then echo "FAIL: mktemp -d produced no suite TMPDIR" >&2; exit 1; fi
-trap 'rm -rf "$MOG_SUITE_TMP"' EXIT
+trap 'chmod -R u+rwX "$MOG_SUITE_TMP"; rm -rf "$MOG_SUITE_TMP"' EXIT
 export TMPDIR="$MOG_SUITE_TMP"
 
 # HIMMEL-3543: console-kit/go.sh mints, and the console-GO gate verifies with,
@@ -1966,14 +1966,15 @@ SHEOF
         # matches as a real runner, so a transient sleep child never gets
         # picked); here the holder is meant to be the ONLY process cwd'd
         # inside the tree, so a sleep child that also inherited that cwd
-        # could sort before the holder's own pid and get named instead. Run
-        # the sleep in a subshell cd'd outside the tree so no other process
-        # is ever cwd'd inside it during the idle window.
+        # could sort before the holder's own pid and get named instead.
+        # HIMMEL-3520: a builtin read on a FIFO idles without any fork; even
+        # readiness is written by a builtin, so there are no transient children.
         cat > "$SUITE_HOLDER_DIR/sleeper.sh" <<'SHEOF'
 #!/usr/bin/env bash
-touch "$1"
+exec 3<> "$1.idle"
+printf ready > "$1"
 n=0
-while [ -e "$1" ] && [ "$n" -lt 300 ]; do (cd / && sleep 0.2); n=$((n + 1)); done
+while [ -e "$1" ] && [ "$n" -lt 300 ]; do read -r -t 0.2 -u 3 _idle || :; n=$((n + 1)); done
 SHEOF
 
         # start_suite_holder <cwd> <script> [extra-argv...] — sets HOLDER_PID
@@ -1984,6 +1985,7 @@ SHEOF
             local hcwd="$1" hscript="$2"; shift 2
             HOLDER_READY="$SUITE_HOLDER_DIR/ready.$$.$RANDOM"
             rm -f "$HOLDER_READY"
+            mkfifo "$HOLDER_READY.idle" || return 1
             bash -c 'cd "$1" || exit 1; s="$2"; shift 2; exec bash "$s" "$@"' \
                 _ "$hcwd" "$hscript" "$HOLDER_READY" "$@" &
             HOLDER_PID=$!
