@@ -348,6 +348,16 @@ _r5098 "221e source of a variable path"              allow 'source "$HOME/env.sh
 _r5098 "221f quoted heredoc into bash, literal body" allow "bash <<'EOF'${NL}ls${NL}EOF"
 _r5098 "221g literal here-string into bash"          allow "bash <<< 'ls'"
 _r5098 "221h path command word"                      allow '"$HOME/bin/tool" x'
+# j2481b: only a path generator may build the command word
+_r5098 "229a echo spells the command word"           block '$(echo rm) -rf @P@/f'
+_r5098 "229b printf spells the command word"         block '$(printf tee) @P@/f'
+_r5098 "229c echo spells cp as the command word"     block '$(echo cp) a @P@/f'
+_r5098 "229d date output as the command word"        block '$(date +%s) @P@/f'
+_r5098 "229e uname output as the command word"       block '$(uname) @P@/f'
+_r5098 "229f empty rev-parse output glued to a verb" block '$(git rev-parse --show-cdup)rm -rf @P@/f'
+_r5098 "229i empty substitution glued to a verb"     block '$()rm -rf @P@/f'
+_r5098 "229g control: pwd builds the command path"   allow '"$(pwd)"/x'
+_r5098 "229h control: toplevel builds a script path" allow '$(git rev-parse --show-toplevel)/scripts/x.sh'
 # ALLOW: literals and known-benign substitutions
 _r5098 "210a eval literal double quotes"             allow 'eval "echo hi"'
 _r5098 "210b eval literal single quotes"             allow "eval 'ls -la'"

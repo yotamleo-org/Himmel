@@ -3584,6 +3584,8 @@ _bwimc_dx_crude() {
 
 # _bwimc_dx_gen SUB [CODE] — 0 when substitution SUB is one listed generator.
 # CODE=1: its output is spliced into code, so path generators do not count.
+# CODE=2: its output is the command word, so only a path generator that never
+# prints an empty or relative word counts (j2481b: an allowlist, not bad verbs).
 _bwimc_dx_gen() {
     local IFS=$' \t\n' g e wi a0 na=0 k code=${2:-0}
     local -a gl il av
@@ -3603,8 +3605,16 @@ _bwimc_dx_gen() {
         done
         na=${#av[@]}
     done
-    [ "$na" -gt 0 ] || return 0
+    if [ "$na" = 0 ]; then [ "$code" != 2 ]; return; fi
     a0=${av[0]}
+    if [ "$code" = 2 ]; then
+        case "$a0" in
+            pwd) [ "$na" = 1 ]; return ;;
+            git) [ "$na" = 3 ] && [ "${av[1]}" = rev-parse ] || return 1
+                case "${av[2]}" in --show-toplevel|--absolute-git-dir) return 0 ;; esac ;;
+        esac
+        return 1
+    fi
     case "$a0" in
         uname|whoami|hostname) return 0 ;;
         # a directory name is anyone's text: a path, never code
@@ -3864,7 +3874,7 @@ _bwimc_dx_site() {
     e=${_dx_it[$p]}
     if [ "${e:0:1}" = s ]; then
         [ "$ctx" != xr ] || return 0
-        if _bwimc_dx_gen "${e#s}"; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1)); return 0; fi
+        if _bwimc_dx_gen "${e#s}" 2; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1)); return 0; fi
         _bwimc_dx_deny "(a substitution's output runs as the command)"
     fi
     wi=${e#w}
