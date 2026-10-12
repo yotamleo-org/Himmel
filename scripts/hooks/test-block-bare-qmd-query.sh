@@ -860,6 +860,13 @@ allow "qmd \"\\
 allow "qmd \$'\\0' query x"
 allow "qmd \$'\\0abc' query x"
 deny "qmd \$'\\0'query x"
+deny 'eval qmd "" query x'
+deny 'watch qmd "" query x'
+deny "eval \"qmd\" '' search x"
+deny "watch \"qmd\" '' search x"
+deny "eval qmd \$'' query x"
+deny 'parallel qmd "" query x'
+deny 'parallel -j1 qmd "" query x'
 deny 'qmd ""query x'
 deny "qmd ''search x"
 deny 'qmd q""uery x'

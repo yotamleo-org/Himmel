@@ -394,7 +394,12 @@ qmd_words() {
                 case "$pc" in
                     ''|' '|$'\t'|';'|'&'|'|'|'<'|'>'|'('|'`')
                         case "$nc" in
-                            ''|' '|$'\t'|';'|'&'|'|'|'<'|'>'|')'|'`') ro=${ro}_ rd=${rd}_ ;;
+                            # The decoded line keeps the placeholder byte (same
+                            # length as the words line): eval and watch join
+                            # their args with blanks and re-parse, so an empty
+                            # argument adds nothing there, and the join below
+                            # skips a word that is only this byte.
+                            ''|' '|$'\t'|';'|'&'|'|'|'<'|'>'|')'|'`') ro=${ro}_ rd=${rd}$'\001' ;;
                         esac
                         ;;
                 esac
@@ -1162,7 +1167,9 @@ qmd_nested() {
                 ct=$ct$x sj="$sj $v"
             elif [ "$mode" = eval ] || [ "$mode" = run ]; then
                 # eval takes one option, the `--` that ends its options.
-                if [ -n "$scr" ] || [ "$mode" != eval ] || [ "$t" != '--' ]; then scr="$scr $v"; fi
+                # An empty argument (the placeholder byte) joins as nothing.
+                if [ "$v" = $'\001' ]; then :
+                elif [ -n "$scr" ] || [ "$mode" != eval ] || [ "$t" != '--' ]; then scr="$scr $v"; fi
             elif [ "$mode" = alias ]; then
                 # A definition whose value names qmd, in a command that
                 # names a verb (`alias q=qmd; q query x`), fails closed.
