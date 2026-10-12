@@ -607,6 +607,8 @@ echo (  ) { eval "$@"; }; echo eval "env -S 'bash scripts/cr/pr-check-context.sh
 echo(){ eval "$@"; }; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 source ./defs.sh; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 . ./defs.sh; echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+./echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
+/tmp/cat eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 NESTEDSPLIT
 # Controls: a nested env -S naming no target, a nested body with no env -S,
 # and env -S text in an argument no shell re-reads keep their verdicts.

@@ -1955,7 +1955,8 @@ env_split_option() { # env_split_option <raw command> - false only when
                 *)
                     if [ -z "${fw[sg]-}" ] && [ "${ST_A[$e]-}" != 1 ]; then
                         fw[sg]=1
-                        case "${w##*/}" in
+                        # a bare word only: ./echo or any path is an arbitrary executable
+                        case "$w" in
                             echo|printf|cat|grep|egrep|fgrep|rg|head|tail|wc|true|false|:|test|'[')
                                 [ "$redef" = 1 ] || nm[sg]=3 ;;
                         esac
