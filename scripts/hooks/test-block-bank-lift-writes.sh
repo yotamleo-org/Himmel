@@ -1563,6 +1563,10 @@ env_row "5159 judge-e &>| /tmp/x any clobber denied"   deny "X=1" 'echo hi &>| /
 env_row "5159 judge-e > \"\$S/o\" dot segment benign (ctrl)" allow "S=/tmp/./o" 'echo hi > "$S/o"'
 env_row "5159 whole-cmd echo \"\$D\" no writer (ctrl)" allow "D=$LIFT" 'echo "$D"'
 env_row "5159 whole-cmd > /tmp/x with D set (ctrl)"   allow "D=$LIFT" 'echo hi > /tmp/x'
+env_row "5159 codex braced split cp \${A}\${B}\${C}"   deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'cp x "${A}${B}${C}"'
+env_row "5159 codex braced split > \${A}\${B}\${C}"    deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'echo hi > "${A}${B}${C}"'
+env_row "5159 codex braced split mixed \${A}\$B\${C}"  deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'cp x "${A}$B${C}"'
+env_row "5159 codex braced benign split (ctrl)"        allow "A=/tmp B=/o- C=x" 'cp y "${A}${B}${C}"'
 }
 rows_5159
 

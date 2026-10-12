@@ -460,12 +460,15 @@ _cmd_writes() {
 }
 # shellcheck disable=SC2016  # literal $ text is matched, not expanded
 _cmd_refs_lift() {
-    local LC_ALL=C rest="$1" n v exp='' pre
+    local LC_ALL=C rest="$1" n v exp='' pre m
     local re='\$\{?[!#]?([A-Za-z_][A-Za-z0-9_]*)'
     while [[ "$rest" =~ $re ]]; do
         n="${BASH_REMATCH[1]}"
-        pre="${rest%%"${BASH_REMATCH[0]}"*}"
-        rest="${rest#*"${BASH_REMATCH[0]}"}"
+        m="${BASH_REMATCH[0]}"
+        pre="${rest%%"$m"*}"
+        rest="${rest#*"$m"}"
+        # A plain ${NAME} is replaced whole: its closing brace is not text.
+        case "$m" in '${'*) rest="${rest#\}}" ;; esac
         if ! v=$(printenv -- "$n" 2>/dev/null); then v=''; fi
         case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
         if [ -n "$v" ] && is_lift "$v"; then return 0; fi
