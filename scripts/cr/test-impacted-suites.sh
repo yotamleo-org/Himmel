@@ -1031,7 +1031,8 @@ if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non
 # One inline-pattern -E over the tree (the variable-sourcer scan) is a single
 # regex and cheap; the cost was the -f pattern FILE, so that is what must not
 # run against the head tree.
-if [ -s "$SHIM4/calls" ] && ! grep -F -e ' -E ' "$SHIM4/calls" | grep -F -e ' -f ' | grep -qv -F -e '--no-index'; then pass "no full-tree git grep -E -f: every pattern-file pass is --no-index over the narrowed tree"; else fail "full-tree ERE -f pass: $(cat "$SHIM4/calls")"; fi
+full_pass="$(grep -F -e ' -E ' "$SHIM4/calls" | grep -F -e ' -f ' | grep -v -F -e '--no-index')"
+if [ -s "$SHIM4/calls" ] && [ -z "$full_pass" ]; then pass "no full-tree git grep -E -f: every pattern-file pass is --no-index over the narrowed tree"; else fail "full-tree ERE -f pass: $(cat "$SHIM4/calls")"; fi
 
 # --- 37a. a PR-2430-shaped diff (300+ changed files, many suites) stays in budget
 # The budget is the loaded figure x2 (HIMMEL-5363 PR body carries the numbers).
