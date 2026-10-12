@@ -118,7 +118,10 @@ s7=$(find "$TMP/alerts" -name 's7__*' 2>/dev/null)
 if [ "$rc" = 0 ] && [ -z "$s7" ]; then pass "missing alert lib leaves no sentinel"; else fail "missing lib sentinel (rc=$rc)"; fi
 
 # 12. The sentinel never holds the token.
-if ! grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"; then pass "sentinels hold no token"; else fail "token in sentinel dir"; fi
+# grep exits 1 only on a clean "no match"; an error (2, a missing dir) fails.
+grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"
+g=$?
+if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no token"; else fail "token in sentinel dir (grep rc=$g)"; fi
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then echo "All cases passed."; exit 0; fi

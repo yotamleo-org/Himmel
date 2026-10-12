@@ -973,7 +973,8 @@ interp_env_dump() {
     while [[ $t =~ process\.env\.[A-Za-z_] ]]; do
         t="${t/process.env./}"
     done
-    case "$t" in *environ*|*process.env*) return 0 ;; esac
+    # Whole words only, so a script named check_environment.py is not a dump.
+    if [[ $t =~ (^|[^A-Za-z0-9_])(environ|process\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
     return 1
 }
 

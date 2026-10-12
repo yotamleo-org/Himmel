@@ -1047,6 +1047,8 @@ assert_rc "5412 ctl node process.env.HOME"      0 "$(run_case "$(j_bash "node -e
 assert_rc "5412 ctl node process.env[PATH]"     0 "$(run_case "$(j_bash "node -e 'console.log(process.env[\"PATH\"])'")")"
 assert_rc "5412 ctl env FOO=1 cmd"              0 "$(run_case "$(j_bash 'env FOO=1 make test')")"
 assert_rc "5412 ctl python script"              0 "$(run_case "$(j_bash 'python3 scripts/x.py --env prod')")"
+assert_rc "5412 ctl python script named environment" 0 "$(run_case "$(j_bash 'python3 scripts/check_environment.py')")"
+assert_rc "5412 python from os import environ"  2 "$(run_case "$(j_bash "python3 -c 'from os import environ; print(environ)'")")"
 assert_rc "5412 ctl git commit names environ"   0 "$(run_case "$(j_bash "git commit -m 'deny os.environ dumps and /proc/self/environ reads'")")"
 assert_rc "5412 ctl ls /proc/1"                 0 "$(run_case "$(j_bash 'ls /proc/1/')")"
 assert_rc "5412 ctl Read memory .md"            0 "$(run_case "$(j_read '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
