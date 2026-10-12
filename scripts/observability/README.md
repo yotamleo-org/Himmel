@@ -12,9 +12,9 @@ data stays missing: metric families are omitted when their substrate is absent,
 with two explicit-zero exceptions so a quiet, healthy state renders Normal in
 Grafana rather than NoData: `flow_run_in_flight{flow} 0` for a silent
 configured flow, and `hook_chain_budget_events_recent{action} 0`
-(HIMMEL-2478/2480) when no hook-chain skip log is found anywhere.
+when no hook-chain skip log is found anywhere.
 
-The session substrate (HIMMEL-1052) keeps that boundary intact: the ledger is
+The session substrate keeps that boundary intact: the ledger is
 written by a separate hook-side script (`session-run-hook.ts`) riding existing
 hook chokepoints, and the exporter only reads it. `GET /sessions.json` is a
 second read shape, not a second responsibility.
@@ -26,11 +26,9 @@ design (§3) pins, but its values are WINDOW-FOLDED: they decrease when rows age
 past 14 days, which Prometheus reads as a counter reset — `rate()`/`increase()`
 then briefly overcount around a slide. For the war-room panels (7d ranges over
 a 14d window, low row churn) that artifact is small and accepted; if it ever
-misleads, the fix is in-process monotonic accumulation in the collector child
-(HIMMEL-924), not a family rename here.
+misleads, the fix is in-process monotonic accumulation in the collector child, not a family rename here.
 
-Unpaired `start` rows older than a flow deadline are split by liveness
-(HIMMEL-2211): a row whose pid is confirmed dead on this host is exported as
+Unpaired `start` rows older than a flow deadline are split by liveness: a row whose pid is confirmed dead on this host is exported as
 `abandoned` — real hygiene information, but nothing is hung and no human can
 act, so it must not page; every other expired row (pid alive, unprobeable, no
 pid, or minted on another host) is exported as `stalled`. The flow-run ledger
@@ -87,7 +85,7 @@ Rules:
   ledgers alone.
 - `expected_tasks` is Windows-only. Non-Windows platforms omit the scheduled
   task family and add a comment in `/metrics`.
-- `expected_disabled_tasks` (HIMMEL-2075) allowlists tasks in `expected_tasks`
+- `expected_disabled_tasks` allowlists tasks in `expected_tasks`
   that are intentionally disabled right now — `HimmelScheduledTaskDisabled`
   skips them via `scheduled_task_expected_disabled{task}`. A task stays in
   `expected_tasks` for `scheduled_task_exists`/`enabled` coverage; this list
@@ -96,7 +94,7 @@ Rules:
 - `host_detectors_ttl_seconds` controls the Windows host detector cache. It
   defaults to 60 seconds.
 - `sessions.stale_after_seconds` is the transcript-inactivity threshold that
-  flips a live session to dead (HIMMEL-1052). It defaults to 900.
+  flips a live session to dead. It defaults to 900.
 - `quota_sources` is optional; every key has a derived default (claude:
   `$CLAUDE_USAGE_CACHE`, else `<tmp>/claude/statusline-usage-cache.json`;
   codex: `~/.codex/sessions`; glm: the quota-gauge ledger path).
@@ -120,7 +118,7 @@ A missing state file omits both families. Malformed state also fails soft: the
 scrape remains available and includes a `# clip_fetch_source_* omitted: ...`
 comment. Probe response bodies and credential values are never exported.
 
-Per-session tool-call health (HIMMEL-1462) is read from
+Per-session tool-call health is read from
 `~/.himmel/tool-call-census.jsonl` unless `HIMMEL_TOOL_CENSUS` overrides the
 path. `scripts/observability/tool-call-census.sh` writes that file by folding
 Claude Code session transcripts; the exporter never runs it. Rows whose
@@ -145,13 +143,12 @@ counter reset. A missing census file omits all three families; an unparseable
 row is skipped with a `# himmel_tool_* partial: ...` comment rather than
 costing the family.
 
-Hook-chain budget pressure (HIMMEL-2478/2480) is read from
+Hook-chain budget pressure is read from
 `.claude/logs/hook-chain-skips.jsonl`. By default the exporter folds the
 primary checkout's own log together with every worktree's log
 (`.claude/worktrees/*/.claude/logs/hook-chain-skips.jsonl`, summing per-action
 counts across all of them) — a worktree session writes to its OWN
-`.claude/logs`, invisible to the primary checkout's log otherwise (HIMMEL-2478
-CR finding 1). `RUN_HOOK_CHAIN_SKIP_LOG` overrides this to mean exactly one
+`.claude/logs`, invisible to the primary checkout's log otherwise. `RUN_HOOK_CHAIN_SKIP_LOG` overrides this to mean exactly one
 file — the same override `scripts/hooks/run-hook-with-bash.js`'s own writer
 honors, so it is the shared escape hatch for pointing both the writer and the
 reader at one log when they run from different roots. Each row records one
@@ -168,7 +165,7 @@ jitter, same grace as the tool census) into:
   included, so a quiet box renders Normal rather than NoData; when every log
   that exists failed to read, neither series is emitted at all, and the two
   Grafana rules reading this metric use `noDataState: NoData` for exactly that
-  case (HIMMEL-2478/2480).
+  case.
 
 No log found anywhere emits both actions at `0` plus a
 `# hook_chain_budget_events_recent: skip log absent, reporting 0` comment.
@@ -176,8 +173,8 @@ That is a limitation, not proof of a healthy fleet: `run-hook-with-bash.js`'s
 `logChainSkip` swallows every write error by design (logging must never be
 able to gate a tool call), so a writer that could never create the file in the
 first place looks identical on disk to a checkout that has simply never
-starved a chain member. HIMMEL-2488 tracks the writer-health beacon that would
-close that gap. A log that exists but cannot be read omits the whole family
+starved a chain member. A writer-health beacon that would
+close that gap is a planned follow-up. A log that exists but cannot be read omits the whole family
 with a `# hook_chain_budget_events_recent omitted: ...` comment — a fault
 worth alerting on, which is why the Grafana rules do not treat that absence
 as healthy — unless at least one OTHER log in the fold was readable, in which
@@ -188,7 +185,7 @@ own `# hook_chain_budget_events_recent partial: ...` comment rather than
 costing the family, same fail-soft contract as the tool census.
 
 - `hook_chain_skip_log_unreadable` — a GAUGE, always emitted, `0` when
-  healthy (HIMMEL-2478/2480 CR follow-up: a `#` scrape comment is not
+  healthy (a `#` scrape comment is not
   alertable, so the two failure classes above used to have no real series a
   rule could fire on). Counts, at scrape time, each path that exists but
   could not be read, plus `1` if `.claude/worktrees` exists but could not be
@@ -197,7 +194,7 @@ costing the family, same fail-soft contract as the tool census.
   `hook_chain_budget_events_recent` may be under-counting and the budget
   alerts cannot be trusted while it is set.
 
-Lane quota gauges (`lane_quota_used_pct{lane,bank,window}`, HIMMEL-1000) read
+Lane quota gauges (`lane_quota_used_pct{lane,bank,window}`) read
 real bank sources via `scripts/observability/quota-sources.ts`: the claude
 bank from the statusline usage cache (5h + weekly windows), the codex bank
 from the newest `~/.codex/sessions` rollout `rate_limits` row (weekly;
@@ -230,7 +227,7 @@ an explanatory `# agent_tree_*/orphan_* omitted: ...` comment.
   `hermes-gateway-orphan`, `codex-app-server-orphan`,
   `mcp-dead-parent-unattributed`). **Windows only** - see the next paragraph.
 
-`quiet_run_orphan_count{kind="suite"|"tail"}` (HIMMEL-3219) is the Linux twin,
+`quiet_run_orphan_count{kind="suite"|"tail"}` is the Linux twin,
 read straight from `/proc` by `quiet-run-orphans.ts` (report-only, never signals
 a process; a scan is ~15 ms). `kind="suite"` counts a `quiet-run.sh` wrapper, or a
 process holding a `quiet-run-*.log` open for writing, that has been reparented to
@@ -241,13 +238,13 @@ the family is omitted with a `# quiet_run_orphan_count omitted: ...` comment.
 A suite launched on purpose from a systemd unit or a `setsid`/`nohup` is
 counted too, and a log written by a different user reads as writer-less.
 
-`luna_git_unpushed_commits`/`luna_git_uncommitted_files` (HIMMEL-1199) are a
+`luna_git_unpushed_commits`/`luna_git_uncommitted_files` are a
 local-refs-only divergence read of the `vault_path` git clone, cached for 60s
 alongside the Luna backlog walk:
 
 - `luna_git_unpushed_commits` - `git rev-list --count @{u}..HEAD`. Omitted
   (no sample, not a fabricated `0`) when the branch has no upstream
-  configured. This is the exact signal for the HIMMEL-1199 incident: an
+  configured. This is the exact signal for a known incident: an
   auto-sync push silently blocked by a gitleaks false positive, so
   auto-committed commits piled up unpushed with zero visible signal. No
   fetch is ever run — a true "behind" count needs a fetch, which would
@@ -260,7 +257,7 @@ Any git error, missing repo, or timeout omits the whole family with an
 explanatory `# luna_git_* omitted: ...` comment, same fail-soft contract as
 the scheduled-task and host-detector families.
 
-## Eval results (HIMMEL-4652)
+## Eval results
 
 The exporter reads the eval-runs ledger (`~/.himmel/eval-runs.jsonl`, or
 `$HIMMEL_EVAL_RUNS_LEDGER`; writer `scripts/eval/lib/eval_runs.py`) and exports
@@ -297,7 +294,7 @@ on the last ok run and shows as `himmel_eval_last_run_ok 0`.
 - `HimmelEvalStale`: no run in 14 days, for the evals named in the selector's
   regex (`qmd-quality` today). Add an eval to the regex in both copies when it
   gets a timer; an eval run only by hand must stay out.
-- `HimmelEvalAbsent` (HIMMEL-4661): a scheduled eval with no
+- `HimmelEvalAbsent`: a scheduled eval with no
   `himmel_eval_last_run_age_seconds` series at all for 1h (never ran, or the
   ledger is gone), while `up{job="flow-exporter"} == 1`. One
   `absent_over_time` per scheduled eval; the exporter does not know the
@@ -318,12 +315,12 @@ operator's go: restart the exporter and reload Prometheus/Grafana per
 Suites: `flow-exporter.test.ts`, `test-promtool-validation.sh`,
 `test-dashboard-lint.sh`.
 
-## Live sessions and subagents (HIMMEL-1052)
+## Live sessions and subagents
 
 Three session populations exist in this harness, with three different owners:
 
 1. **Pipeline-cadence legs** (harvest/synthesize/health/armed-resume/vitals) —
-   `flow-runs.jsonl`, the Flows row above (HIMMEL-919/921).
+   `flow-runs.jsonl`, the Flows row above.
 2. **Dispatched lane workers** (GLM/claudex) — their own per-session
    `meta.json`/`outbox.jsonl` under the bridge root.
 3. **Interactive/foreground Claude Code sessions and the Task-tool subagents
@@ -342,7 +339,7 @@ Three session populations exist in this harness, with three different owners:
 Same shape discipline as `flow-runs.jsonl`: append-only JSONL, a fixed field
 list in a fixed order, rotation at 10MB into `.jsonl.1` (both files are read).
 Written by `session-run-hook.ts` (below); read by the exporter. Four row kinds,
-schema `v: 2` since HIMMEL-2022:
+schema `v: 2`:
 
 | kind / ev | fields |
 |---|---|
@@ -483,14 +480,14 @@ Aggregated only. `session_id` and `subagent_id` are unique per occurrence and
 unbounded over time, so they are **never** Prometheus labels.
 
 - `session_active_total{host}` — sessions running per the rule above.
-- `session_dead_total{host}` — crashed/orphaned/wedged sessions. HIMMEL-2075:
+- `session_dead_total{host}` — crashed/orphaned/wedged sessions. It
   only counts a dead session for `SESSION_DEAD_ALERT_TTL_SECONDS` (24h) after
   it went dead, so `HimmelSessionDead` fires for recent deaths, not the whole
   14d ledger backlog — the dashboard-facing `/sessions.json` status stays
-  `dead` for the full window regardless. HIMMEL-2149: `HimmelSessionDead` is
+  `dead` for the full window regardless. `HimmelSessionDead` is
   `severity: warn`, not `page` — the himmel end-row hook is already on the
-  HIMMEL-2004 detach/enqueue path, yet ghost sessions (transcript idle,
-  no end row) still occur, traced to HIMMEL-2148's SessionEnd envelope
+  detach/enqueue path, yet ghost sessions (transcript idle,
+  no end row) still occur, traced to the SessionEnd envelope
   cancellation upstream of this repo's hooks; neither pid (never populated
   in a SessionStart hook payload) nor the transcript carries a crash-vs-
   clean-exit signal this exporter can honestly act on. Severity alone does
@@ -498,7 +495,7 @@ unbounded over time, so they are **never** Prometheus labels.
   severity shared one repeat_interval) — `provisioning/alerting/policies.yaml`
   now carries a nested `severity = warn` route dropping the repeat interval
   to 168h (7d) instead of the page-level 12h, so warn alerts still deliver,
-  just far less often. Revisit once HIMMEL-2148 lands.
+  just far less often. Revisit once the upstream cancellation is fixed.
 - `session_end_outcome_total{reason}` — graceful exits in the sliding 14d
   window (same window-fold caveat as `flow_run_outcome_total`).
 - `subagent_active_total{host,subagent_type}` — subagents with an unpaired
@@ -557,12 +554,12 @@ transcript is unreadable, never 0. To render this as a Grafana table, add an
 Infinity/JSON datasource pointed at that URL; the dashboard ships the stat
 tiles (Prometheus-backed) plus a text panel naming this endpoint.
 
-## Install on Linux (HIMMEL-4289)
+## Install on Linux
 
 Opt-in: set `"observability": {"grafana": true}` in `~/.himmel/config.json`, then
 `himmelctl ensure observability-grafana` (or run
 `bash scripts/observability/install-grafana.sh install|status|uninstall` directly).
-Until opted in the item reads n/a, never red. macOS is deferred (HIMMEL-4406).
+Until opted in the item reads n/a, never red. macOS is deferred.
 
 It installs nothing as root. Pinned upstream tarballs (Prometheus 3.15.0,
 Grafana 13.2.3; amd64 and arm64) are downloaded to
@@ -646,8 +643,8 @@ didn't happen. Non-zero covers: any exporter not verifiably running (fresh
 install or otherwise), any exporter restored to its previous definition
 instead of the requested one, and a run that aborted partway through. Check
 the warnings and the final listing for which. (`-Hidden` is an interim
-measure; the durable single-service, cross-platform replacement is tracked
-in HIMMEL-1425. The `luna-sync-alert` interval task is unaffected.)
+measure; the durable single-service, cross-platform replacement is a planned
+follow-up. The `luna-sync-alert` interval task is unaffected.)
 
 "Verifiably running" is checked twice, not once: a task that enters Running
 and then dies during its own init (a port conflict, an S4U resource-access
@@ -672,8 +669,8 @@ two installs running against the same tasks in opposite modes at once could
 otherwise cross-confirm each other's flip as this run's own success. Running
 under the wrong principal is treated as not (yet) started rather than
 silently trusted. True cross-process serialization (so two installs can't
-interleave against the same tasks at all) is deferred to the supervisor,
-HIMMEL-1425 — running two installs against the same stack concurrently is
+interleave against the same tasks at all) is deferred to the supervisor
+follow-up — running two installs against the same stack concurrently is
 still not supported, this just stops one from mis-reporting success over it.
 
 Restoring a saved definition follows that exact same stop-first discipline,
@@ -730,12 +727,12 @@ URLs after the tasks are running:
 - Flow exporter: `http://127.0.0.1:9877/metrics`
 - windows_exporter: `http://127.0.0.1:9182/metrics`
 
-Import `dashboards/war-room-system.json` into Grafana. As of HIMMEL-924 the
+Import `dashboards/war-room-system.json` into Grafana. The
 `${DS_PROMETHEUS}` variable auto-binds to the provisioned Prometheus
 datasource (`provisioning/datasources/prometheus.yaml`, fixed `uid:
 prometheus`) — no manual bind step.
 
-## Health dashboard (HIMMEL-4292)
+## Health dashboard
 
 `dashboards/himmel-health.json` (uid `himmel-health`) is the operator-facing
 dashboard. It answers, in this order: is himmel healthy, what is failing and
@@ -756,7 +753,7 @@ plain "what to do" sentence. An alert without one shows its raw name.
 `@HIMMEL_DASHBOARDS_DIR@` path. Grafana loads only `*.yaml`/`*.yml`, so the
 template does nothing as shipped. `restart-stack.sh` copies `provisioning/`
 wholesale, and a provider whose path is missing would break Grafana on the
-station. The Linux Grafana installer (HIMMEL-4289) copies `dashboards/` to a
+station. The Linux Grafana installer copies `dashboards/` to a
 machine-local dir, then renders the template into the machine-local
 provisioning copy. Until then, import the JSON by hand.
 
@@ -770,15 +767,15 @@ provider `*.yaml` appears under `provisioning/dashboards/`.
 
 | Gap | Wanted | Where it goes |
 |---|---|---|
-| G1 | Console legs and their cost | HIMMEL-4290 makes it machine-readable; `/obs-report` (HIMMEL-4291) shows it |
+| G1 | Console legs and their cost | Machine-readable output is a planned follow-up; `/obs-report` shows it |
 | G4 | Advice per alert in the rules | The advice lives in the dashboard's `alertname` mapping instead |
 | G5 | Usage bank reset time | The exporter does not keep the usage cache's `resets_at` |
-| G6 | Windows auto-provisioning of this dashboard | `install-stack.ps1` copies only `provisioning/`; Windows is parked (HIMMEL-4102), Linux via HIMMEL-4289 |
-| G7 | Daily health check (himmel-doctor results) | `/obs-report`, HIMMEL-4291 |
-| G8 | Machine setup (`himmelctl status`) | `/obs-report`, HIMMEL-4291 |
-| G9 | qmd search index age | `/obs-report`, HIMMEL-4291 |
+| G6 | Windows auto-provisioning of this dashboard | `install-stack.ps1` copies only `provisioning/`; Windows is not supported, Linux via the Install on Linux section |
+| G7 | Daily health check (himmel-doctor results) | `/obs-report` |
+| G8 | Machine setup (`himmelctl status`) | `/obs-report` |
+| G9 | qmd search index age | `/obs-report` |
 
-## Alerting (HIMMEL-1199 — a boundary change)
+## Alerting (a boundary change)
 
 The flow exporter above stays a pure Prometheus reader — no alerting lives
 inside `flow-exporter.ts` or its request path. `luna-sync-alert.ts` is a
@@ -832,7 +829,7 @@ notification. Achieved: ≤70 min for a stalled sync (60 min `stale` threshold
 + ≤10 min poll granularity), and ≤40 min for a dead sweeper (30 min
 `sweeper-dead` threshold + ≤10 min poll granularity).
 
-## Alert rules + Telegram delivery (HIMMEL-924)
+## Alert rules + Telegram delivery
 
 Design doc: `observability-live-system-check.md` §5. Same passivity
 invariant as everything above — no alerting logic lives inside
@@ -858,12 +855,12 @@ one):
 Grafana's `[paths] provisioning` at it, alongside the datasource
 (`provisioning/datasources/prometheus.yaml`, fixed `uid: prometheus`) and
 the notification policy (`provisioning/alerting/policies.yaml`) — the
-default route (12h repeat) to the Telegram contact point, plus (HIMMEL-2149)
+default route (12h repeat) to the Telegram contact point, plus
 a nested `severity = warn` route on the SAME contact point at a 168h (7d)
 repeat, so a warn-severity alert still delivers but far less often than a
 page.
 
-**`noDataState` policy (HIMMEL-2478/2480, corrected after a measured
+**`noDataState` policy (corrected after a measured
 false-alert bug):** the criterion is what the query returns in the HEALTHY
 case, not whether `refId A` happens to be a bare selector. `NoData` is
 correct only when the healthy query still returns a PRESENT series valued 0
@@ -877,7 +874,7 @@ against `{state="alerting"} 0` while sending ~125 Telegram messages/day for
 `HimmelScheduledTaskDisabled`, `HimmelWatcherDown`, `HimmelKernelPoolCritical`,
 `HimmelAgentTreeRamRunaway`, `HimmelLunaInboxBacklogRising`,
 `HimmelKernelPoolHigh`, `HimmelKernelPoolLeakRate`, `HimmelCommitPressure`) now
-use `noDataState: OK`. `HimmelFlowStalled` keeps `KeepLast` (HIMMEL-2211, see
+use `noDataState: OK`. `HimmelFlowStalled` keeps `KeepLast` (see
 its comment in `rules.yaml`); the remaining 7 (`HimmelFlowRunTruncated`,
 `HimmelFlowRunError`, `HimmelOrphanProcesses`, `HimmelSessionDead`, and the
 three hook-chain rules — `HimmelHookChainBudgetPressure`,
@@ -886,8 +883,7 @@ three hook-chain rules — `HimmelHookChainBudgetPressure`,
 selector, unlike the 9 OK rules, but their series genuinely goes absent when
 `hookChainMetrics`/`defaultHookChainSkipLogPaths` (flow-exporter.ts) fails to
 read the skip log (or enumerate the worktrees directory, for
-`HimmelHookChainLogUnreadable`), and that absence is a fault worth alerting on
-(HIMMEL-2478/2480), not a healthy filter match. Full
+`HimmelHookChainLogUnreadable`), and that absence is a fault worth alerting on, not a healthy filter match. Full
 per-rule reasoning + the code smell that flags a rule needing `OK`
 (`refId B`'s `gt -1` evaluator) lives in `rules.yaml`'s header comment —
 this table is the enforced expectation in
@@ -895,33 +891,32 @@ this table is the enforced expectation in
 
 ### Failure-mode coverage
 
-Every HIMMEL-918 failure mode maps to a rule whose evaluation does not
+Every failure mode from the original incident postmortem maps to a rule whose evaluation does not
 depend on the failing component itself (the design's acceptance test, §5):
 
-| HIMMEL-918 mode | Rule(s) | Depends on the failing component? |
+| Incident mode | Rule(s) | Depends on the failing component? |
 |---|---|---|
 | 600s background-wait truncation | `HimmelFlowRunTruncated` (+ `HimmelFlowLastSuccessAgeExceeded` backstop) | No — reads the ledger's end row, written by the wrapper, not the model |
 | Permission-prompt stall / SIGKILL, no exit code | `HimmelFlowRunStalled` | No — exporter-inferred from an unpaired start row past deadline |
 | Transient CLI/API death | `HimmelFlowRunError` (or `HimmelFlowRunStalled` if it never writes an end row) | No |
 | 4-day silently-disabled scheduled task | `HimmelScheduledTaskDisabled` + `HimmelFlowLastSuccessAgeExceeded` | No — `Get-ScheduledTask`, independent of the flow itself |
 | The exporter/collector itself dying | `HimmelWatcherDown` (`up == 0`) | No — Prometheus's own scrape health, not the exporter's output |
-| 2026-09-03 spawn-storm hang (HIMMEL-2478) | `HimmelHookChainBudgetPressure` + `HimmelHookChainBudgetDenials` + `HimmelHookChainLogUnreadable` | No — reads the skip log `scripts/hooks/run-hook-with-bash.js` writes when a chain member blows its time budget, independent of the starved member itself; `HimmelHookChainLogUnreadable` covers the reader's own read/enumeration failures, which would otherwise degrade the first two silently |
+| 2026-09-03 spawn-storm hang | `HimmelHookChainBudgetPressure` + `HimmelHookChainBudgetDenials` + `HimmelHookChainLogUnreadable` | No — reads the skip log `scripts/hooks/run-hook-with-bash.js` writes when a chain member blows its time budget, independent of the starved member itself; `HimmelHookChainLogUnreadable` covers the reader's own read/enumeration failures, which would otherwise degrade the first two silently |
 
-Five more rules extend coverage past the 918 postmortem: `HimmelAgentTreeRamRunaway`,
+Five more rules extend coverage past that postmortem: `HimmelAgentTreeRamRunaway`,
 `HimmelOrphanProcesses` and `HimmelQuietRunOrphans` (host-level, design §4; the
-latter is the Linux `/proc` sibling, HIMMEL-3219), `HimmelLunaInboxBacklogRising`
-(pipeline-level, design §3), and `HimmelSessionDead` (session-level, HIMMEL-1052/1635).
+latter is the Linux `/proc` sibling), `HimmelLunaInboxBacklogRising`
+(pipeline-level, design §3), and `HimmelSessionDead` (session-level).
 Four more again cover kernel pool and commit pressure — see below.
 
-### Kernel pool + commit pressure (HIMMEL-1604)
+### Kernel pool + commit pressure
 
 OVERLORD8 has two reboot-only kernel-pinned leak families — File (nonpaged) and
-Token (paged) — that grow in proportion to file-handle churn (HIMMEL-1166 /
-HIMMEL-1993). Two long diagnostic sessions (2026-07-20, 2026-08-06) were spent on
+Token (paged) — that grow in proportion to file-handle churn. Two long diagnostic sessions (2026-07-20, 2026-08-06) were spent on
 them because nothing watched the metrics windows_exporter's `memory` collector was
 already scraping. These four rules close that gap using only already-scraped
-series — the per-tag `File`/`Toke` breakdown needs the poolmon textfile exporter
-tracked in HIMMEL-1166 and is deliberately NOT here.
+series — the per-tag `File`/`Toke` breakdown needs the poolmon textfile exporter,
+a planned follow-up, and is deliberately NOT here.
 
 | Rule | Expression shape | Threshold | `for` | Severity |
 |---|---|---|---|---|
@@ -949,7 +944,7 @@ suite (`alerts.rules.test.yml`) asserts each against a healthy post-boot fixture
 level/ratio rules firing), plus a synthetic +1.5 GiB/h climb that never reaches any
 level threshold, where the slope rule is the only thing that fires.
 
-### Delivery choice — seed from himmel's own `.env`, HIMMEL-2209
+### Delivery choice — seed from himmel's own `.env`
 
 `contact-points.yaml` interpolates `$GRAFANA_TELEGRAM_BOT_TOKEN`/
 `$GRAFANA_TELEGRAM_CHAT_ID` from the Grafana process's environment.
@@ -978,12 +973,12 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
 
 ### Tuning
 
-- `HimmelAgentTreeRamRunaway` (HIMMEL-2075) scales a 6 GiB base by
+- `HimmelAgentTreeRamRunaway` scales a 6 GiB base by
   `subagent_active_total`: +1 GiB per active subagent above 2, station-wide
   (`scalar(sum(...))`), so ordinary overnight-swarm fanout doesn't page on
   the flat default. Still no per-class config surface — both literals (base,
   per-subagent step) are literal defaults in both rule files; edit together.
-  HIMMEL-2149: the expression also excludes `class="other"` —
+  The expression also excludes `class="other"` —
   `host-detectors.ps1`'s catch-all for every process NOT descended from a
   recognized agent root (the rest of the desktop), which otherwise dwarfs
   the swarm-scaled threshold on a normal desktop. Still emitted on the
@@ -991,11 +986,11 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
   alert.
 - `HimmelFlowRunStalled`'s alerting bucket
   (`flow_run_outcome_total{outcome="stalled"}`) is capped at
-  `FLOW_STALLED_ALERT_TTL_SECONDS` (24h, HIMMEL-2149) measured from when a
+  `FLOW_STALLED_ALERT_TTL_SECONDS` (24h) measured from when a
   row became stalled — same shape as `SESSION_DEAD_ALERT_TTL_SECONDS` above.
   Without it a single killed worker paged on the alert's 12h interval for up
   to 14 days as its ghost start row aged through the ledger window.
-  HIMMEL-2211: that killed-worker case is now caught upstream — a row whose
+  That killed-worker case is now caught upstream — a row whose
   pid is confirmed dead on its own host is exported as `abandoned`, not
   `stalled`, so it never reaches this bucket at all. What remains (`stalled`,
   a live/unprobeable/foreign-host pid) still needs damping against a flapping
@@ -1008,7 +1003,7 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
 - `HimmelLunaInboxBacklogRising`'s 3-day/1h grace is a literal default in
   both rule files — no config surface exists yet in
   `observability.json`/`flow-exporter.ts`. Edit both files together.
-- The four HIMMEL-1604 pool/commit thresholds (12 GiB, 18 GiB, 1 GiB/h, 0.85)
+- The four pool/commit thresholds (12 GiB, 18 GiB, 1 GiB/h, 0.85)
   are literal defaults in both rule files, same convention as
   `HimmelAgentTreeRamRunaway` — there is no config surface, tune by editing the
   expression in `alerts.rules.yml` AND its Grafana twin together, then re-running
@@ -1020,12 +1015,11 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
   `host-detectors.ps1` (`Win32_Process`) and `flow-exporter.ts` gates it to
   `win32`, so on a Linux host the rule has no series to evaluate. It never
   covered quiet-run suites or `tail -f` followers either (both missed on
-  2026-08-29). `HimmelQuietRunOrphans` (HIMMEL-3219, `quiet_run_orphan_count > 0`
+  2026-08-29). `HimmelQuietRunOrphans` (`quiet_run_orphan_count > 0`
   for 30m, both rule files) covers those two shapes on Linux; the Windows
   equivalents remain uncovered.
 - `HimmelFlowLastSuccessAgeExceeded` needs a flow's `cadence_seconds`
-  declared in `observability.json` (`flow_cadence_seconds{flow}`,
-  HIMMEL-924) — a flow with no declared cadence is excluded from the `on
+  declared in `observability.json` (`flow_cadence_seconds{flow}`) — a flow with no declared cadence is excluded from the `on
   (flow)` join and never fires. If every flow lacks a declared cadence the
   whole query is empty; that resolves as `noDataState: OK` (see the
   `noDataState` policy above), not a fabricated healthy/unhealthy state.
@@ -1033,7 +1027,7 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
 ### Deliberately not here
 
 - Loki or log ingestion, and the two §7 log-based rules (error burst, log
-  silence) that depend on it — Loki/Alloy are HIMMEL-927's build, not yet
+  silence) that depend on it — Loki/Alloy are a planned build, not yet
   shipped.
 - A second delivery channel split by `severity` (`page` vs `warn`) — one
   flat policy today; the labels are there if an operator wants to add a

@@ -1,4 +1,4 @@
-# scripts/trust — the R0 shadow ledger (HIMMEL-1529)
+# scripts/trust — the R0 shadow ledger
 
 An append-only, hash-chained record of approval-shaped decisions. **Zero
 behaviour change**: it emits no permission decision, so adding or removing it
@@ -20,7 +20,7 @@ node scripts/trust/shadow-ledger.mjs report --days 7 --json
 twenty-minute sample scaled up yields a confident six-figure number that is pure
 artefact, and this is the one figure the programme is gated on.
 
-### It also refuses when it cannot prove it was COLLECTING (HIMMEL-1547)
+### It also refuses when it cannot prove it was COLLECTING
 
 The observation window runs from the first record to **now**, deliberately —
 measuring the spread between the first and last event is biased short at both
@@ -105,9 +105,9 @@ entry that lost its `timeout` (a command hook with no `timeout` defaults to
 **600 s**, not 10), refuses to wire when the recorder is not at the resolved
 path, refuses a hook shape it does not recognise rather than destroying it, and
 writes atomically against a stale-snapshot check. See
-[`wire-trust-hooks.mjs`](wire-trust-hooks.mjs) (HIMMEL-1551).
+[`wire-trust-hooks.mjs`](wire-trust-hooks.mjs).
 
-**Known interaction — HIMMEL-1552.** `scripts/hooks/wire-hook-bash.mjs`, the
+**Known interaction.** `scripts/hooks/wire-hook-bash.mjs`, the
 other sanctioned writer of this file, freezes the hook inventory as a constant
 and hard-fails on any event key it does not expect. A trust-wired settings file
 therefore makes it refuse:
@@ -120,15 +120,15 @@ PermissionRequest, Notification
 Nothing invokes that script today (verified across five chain legs — only its
 own test references it), so the incompatibility is latent rather than blocking.
 If you do need it, `himmelctl trust off` restores the file. The real fix is
-own-only validation plus a lock shared by both writers, tracked in HIMMEL-1552.
+own-only validation plus a lock shared by both writers, which is a planned follow-up.
 
 ### By hand, if you would rather not run the command
 
 `Edit(**/.claude/settings.json)` is an explicit deny rule, so an agent cannot
 wire this itself. Add these **seven** entries by hand — three appended to
 existing arrays (`PreToolUse`, `PostToolUse`) or added as `Notification`, the
-three outcome/permission keys HIMMEL-1539 added, and the `SessionStart`
-heartbeat HIMMEL-1547 added. Nothing else changes, and each is a
+three outcome/permission keys, and the `SessionStart`
+heartbeat. Nothing else changes, and each is a
 new array element or a new top-level key rather than an edit to an existing one,
 so it merges cleanly against in-flight hook-wiring branches.
 
@@ -168,7 +168,7 @@ himmel-ops plugin owns the existing Notification hook and is untouched):
 ```
 
 `PostToolUseFailure`, `PermissionDenied`, `PermissionRequest` — three more new
-top-level keys (HIMMEL-1539). Without them a failed call and a denied call both
+top-level keys. Without them a failed call and a denied call both
 land in `unresolved`, which corrupts the outcome data by construction:
 
 ```json
@@ -197,7 +197,7 @@ land in `unresolved`, which corrupts the outcome data by construction:
 ]
 ```
 
-`SessionStart` — the collector heartbeat (HIMMEL-1547). **No matcher**, so it
+`SessionStart` — the collector heartbeat. **No matcher**, so it
 fires on every session source (`startup`, `resume`, `clear`, `compact`); a
 matcher that misses one produces a gap the report then refuses a rate over.
 Append to the array if the key already exists:
@@ -247,14 +247,13 @@ It is recorded and reported **alongside** the Notification-derived count, not
 swapped in as the gate number: two independent estimators of one quantity are
 how you find out which is right, and silently switching would replace a measured
 figure with an unvalidated one while destroying the comparison that would have
-settled it. HIMMEL-1539 raised this as a design input for HIMMEL-1530;
-collecting both is what makes that decision evidence-based. `permission_mode` is
+settled it. Collecting both is what makes that decision evidence-based. `permission_mode` is
 persisted on the row as the only interactivity-adjacent signal available — it is
 **stored, not interpreted**, and no count splits on it until that distinction
 can actually be shown.
 
 The commands invoke `node` directly rather than `bash`, so they are not exposed
-to the Windows bash-resolution failure behind HIMMEL-1516/1526 (bare `bash`
+to the Windows bash-resolution failure (bare `bash`
 resolving to the system32 WSL stub or the zero-byte WindowsApps alias).
 `$CLAUDE_PROJECT_DIR` is quoted, as every existing hook command in
 `.claude/settings.json` quotes it: an unquoted expansion word-splits on a
@@ -288,9 +287,9 @@ There is deliberately **no acknowledgement path that restores the rate**.
 Deleting `drops.jsonl` does not make the lost event exist: the window still
 covers a gap, so the rate would return over data known to be incomplete.
 Restoring one honestly requires a durable `valid_since` checkpoint that moves
-the observation window past the loss — tracked in **HIMMEL-1547**, together with
+the observation window past the loss — a planned follow-up, together with
 the collector-liveness heartbeat it shares machinery with. The hash chain can only attest rows that landed; it
-is structurally blind to rows that never did, and before HIMMEL-1539 that
+is structurally blind to rows that never did, and before outcome tracking existed that
 blindness produced an understated rate that looked exactly like a quiet week.
 
 **The residual blind spot, stated rather than papered over.** `drops.jsonl`
