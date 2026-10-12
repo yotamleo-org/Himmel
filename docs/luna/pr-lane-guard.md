@@ -1,4 +1,4 @@
-# luna PR-lane guard — opt-in worktree isolation (HIMMEL-214)
+# luna PR-lane guard — opt-in worktree isolation
 
 ## Why
 
@@ -7,12 +7,12 @@ Worktree/branch isolation is structurally enforced only in himmel
 **two-lane model** in its `_CLAUDE.md` — PR lane (worktree + branch + PR)
 for structural files, plugin lane (direct commits to main via the
 github-sync plugin, or the `vault-autosync.{sh,ps1}` sweeper — the two are
-mutually exclusive opt-in/default sync mechanisms since HIMMEL-3066) for
+mutually exclusive opt-in/default sync mechanisms) for
 vault content — but nothing enforced the PR lane.
 A structural edit committed directly to luna `main` passed every luna hook
 (observed risk: luna PR #33 used a worktree voluntarily).
 
-Per HIMMEL-195 (structural > instructional), himmel now exports a portable
+Per the structural-over-instructional principle, himmel now exports a portable
 gate via `.pre-commit-hooks.yaml` that any repo can opt into. The gate is
 **path-scoped**: it blocks commits on `main` only when staged files match
 the consuming repo's `files:` regex, so luna's plugin-lane commits (daily
@@ -62,7 +62,7 @@ touch docs/probe.md && git add docs/probe.md && git commit -m "probe"
 git restore --staged docs/probe.md && rm docs/probe.md
 ```
 
-## Acceptance mapping (HIMMEL-214)
+## Acceptance mapping
 
 - Commit to luna `main` touching a PR-lane path → refused, message points
   at the two-lane rule. Met: gate blocks + prints "Two-lane rule: …".
