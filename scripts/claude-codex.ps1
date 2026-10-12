@@ -704,6 +704,7 @@ try {
 } catch (e) { console.error('claude-codex: REFUSED - dontAsk policy: ' + e.message); process.exit(3); }
 '@
   $gitBinary = (Get-Command git -ErrorAction Stop).Source
+  $OutputEncoding = [System.Text.Encoding]::UTF8
   $policy = $PolicyJs | & node - (Join-Path $ConfigDir 'settings.json') $gitBinary $HomeDir
   if ($LASTEXITCODE -ne 0) { exit 3 }
   $denied = [System.IO.File]::ReadAllText((Join-Path (Split-Path -Parent $policy) 'denied-tools')).TrimEnd("`n")
