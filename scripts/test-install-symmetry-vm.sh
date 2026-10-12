@@ -192,4 +192,16 @@ if [ "$rc" -eq 0 ]; then
 else
   echo "==> VM validation FAILED (rc=$rc)" >&2
 fi
+
+# 3. opt-in upgrade-path stage (HIMMEL-5267): HIMMEL_VM_E2E_UPGRADE=1 runs
+#    scripts/vm/upgrade-path-e2e.sh after a green symmetry pass. It installs tools
+#    into the guest HOME, so use a disposable clone and restore it afterwards. The
+#    station targets are stage inputs (UPGRADE_AST_GREP_VERSION,
+#    UPGRADE_GRAPHIFY_VERSION, UPGRADE_CLIPROXY_VERSION, UPGRADE_CLIPROXY_SHA256).
+#    Off by default: an unset var changes nothing above.
+if [ "$rc" -eq 0 ] && [ "${HIMMEL_VM_E2E_UPGRADE:-0}" = "1" ]; then
+  echo "==> upgrade-path stage (HIMMEL_VM_E2E_UPGRADE=1)"
+  bash "$REPO/scripts/vm/upgrade-path-e2e.sh" "$HOSTSPEC" "$PORT" "$IDENT"
+  rc=$?
+fi
 exit "$rc"

@@ -240,6 +240,9 @@ for a relay that is not coming.
 - **Search with Bash, not Grep/Glob (HIMMEL-4784).** A leg has no dedicated
   `Grep` or `Glob` tool (a call returns "No such tool available"): search with
   `git grep` / `grep` and list files with `git ls-files` / `find`.
+- **Structure questions: `bash scripts/graphify/leg-graph.sh query|explain "<q>"` before broad greps (HIMMEL-5313).**
+  It reads the primary checkout's graph from your worktree and prints a NOTE when
+  the graph is behind your HEAD; never `graphify path` (refused).
 - **Pasted links: `scripts/web/fetch-url.sh '<url>'` (HIMMEL-4908).** An x.com /
   instagram.com link gets WebFetch HTTP 402; this fetches it through Scrapling
   (no cookies) and prints author, handle, date, text and media. Never ask the

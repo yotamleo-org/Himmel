@@ -1,0 +1,82 @@
+himmel-doctor — Linux — checkout: /home/user/Documents/github/himmel
+
+OK   C1-guardrail: user-level guardrail block node path resolves
+OK   C2-obsidian: no shadowing claude-obsidian marketplace detected
+OK   C3-luna: luna vault clean (handovers/ churn ignored)
+OK   C6-mcp: no PATH-fragile bare-interpreter MCP servers
+OK   C6-hooks: no hooks wired to a missing bare interpreter
+WARN C7-shipped: worktree /home/user/Documents/github/himmel/.claude/worktrees/feat+himmel-4869-deepseek-phase-b-pilot (branch feat/himmel-4869-deepse
+       → verify, then prune with /clean (dry-runs first); do NOT reuse this branch name
+WARN C7-shipped: worktree /home/user/Documents/github/himmel/.claude/worktrees/fix+himmel-5250-adopt-pr-2333-bash32 (branch fix/record-hook-integrity-
+       → verify, then prune with /clean (dry-runs first); do NOT reuse this branch name
+WARN C7-shipped: worktree /home/user/Documents/github/himmel/.claude/worktrees/test+himmel-5232-review-gate-live-e2e (branch test/himmel-5232-review-g
+       → worktree has UNTRACKED files — /clean prunes it only if they are known-disposable tool strays, and refuses them as forgotten work otherwise;
+OK   C8-cadence: pipeline-cadence runners current (format v20)
+OK   C8-cadence: qmd-cadence runners current (format v20)
+OK   C9-scheduler: auto-arm scheduler backend present (linux)
+OK   C10-propagation: skipped (no private mirror tooling)
+OK   C11-glm-seed: skipped (no ~/.claude-glm -- glm-launcher lane not in use)
+OK   C12-codex: codex startup healthy (himmel plugins registered; no skill-truncation / hook-failure / oversized where-are-we in the last session)
+OK   C13-plugin-hooks: himmel-ops plugin hooks resolve in this checkout
+OK   C14-ollama-no-cloud: OLLAMA_NO_CLOUD=1 (zero-egress defense-in-depth pin is set)
+INFO C15-plugins-ondemand: 2 on-demand plugin(s) intentionally enabled (informational, not drift): codex@openai-codex, obsidian-triage@himmel
+OK   C15-plugins: enabled plugins are at the lean floor — no drift
+WARN C16-status: 1 himmelctl install/wiring finding(s) (delegated from 'himmelctl status --json')
+       → node scripts/himmelctl/bin.js status   # or: ... ensure
+       · degraded/claude-plugins-pluginSet: /home/user/.claude/settings.json: does not match the recorded pluginSet (missing: i-have-adhd@himmel)
+OK   C17-dep-readiness: no enabled skill is missing its declared API key, and no ready toolkit is mis-marked disabled
+INFO C19-observability: observability stack not desired on this host (himmelctl status: n/a or not wanted) -- not checked
+OK   C20-node: node v24.21.0 matches the .nvmrc pin (24)
+OK   C21-hermes-profile: hermes 'himmel_agent' profile default (gpt-6.1-sol) matches lanes.json
+WARN C22-chain-skips: chain member event(s) recorded in the last 24 h: 1x deny block-chokepoint-env-prefix.sh (ETIMEDOUT); 1x deny block-read-secrets.
+       → reason=ETIMEDOUT is budget starvation (see HIMMEL-2060 / DEFAULT_CHAIN_BUDGET_MS in scripts/hooks/run-hook-with-bash.js); reason=ENOBUFS is a
+INFO C23-unlanded: 1 unlanded (none aged), 27 landed-elsewhere, 9 stale local branch(es) — nothing urgent
+       → bash scripts/unlanded-work.sh   # full report
+OK   C24-cadence-registry: all 9 expected cadence task(s) present on the live scheduler
+OK   C25-orphans: no orphaned Claude-scratchpad watcher processes
+OK   C26-salus-marker: salus vault (/home/user/Documents/salus) carries both .salus-profile and .salus — PHI guards are armed
+OK   C27-guard-signals: no /home/user/.config/claude-glm (no phi-roots/egress-denylist declared here — skipped)
+OK   C28-guardrail-consent: guardrail-block-global is wired (C1-guardrail covers its health)
+OK   C29-child-session: no claude child-session launchers missing persistence
+OK   C30-bridge-liveness: telegram-bridge.service is running (pid 1520990, 0 restart(s) so far)
+OK   C31-tokensave-dropped: codex config at /home/user/.codex/config.toml does not wire tokensave — nothing to remove
+OK   C32-main-ref-guard: main-branch reference-transaction guard installed (/home/user/Documents/github/himmel/.git/hooks/reference-transaction)
+OK   C33-graph-stale: graph stale: ? commits behind main / last cadence run 1h ago (action=refreshed)
+OK   C34-cost-guards: lift set and VALID (standing=true)
+OK   C34-cost-guards: guard-subagent-model.sh exists and is registered under PreToolUse/Agent in hooks.json
+OK   C34-cost-guards: guard-implementor-dispatch.sh is weekly (seven_day)-bank-aware
+OK   C34-cost-guards: context-fill.sh supports --warn-at (handover-fill nudge)
+INFO C35-vm-ar: VBoxManage + venv python present, but scripts/vm/after-report.sh will still refuse an unset VBOXMANAGE_PATH without HIMMEL_VM_AR_LIVE=
+OK   C36-stray-tmp-git: no stray .git at the system temp dir root (/tmp/.git)
+OK   C37-vendored-skill-dupes: no lean-skills@himmel / upstream-plugin overlap
+OK   C38-uv-graphify: uv on PATH (graphify can install/update via himmel-update)
+OK   C39-gtimeout-darwin: not macOS — GNU timeout probe skipped
+OK   C40-qmd-vec: qmd vector search served a probe query in 20s (http://localhost:8181/mcp)
+WARN C40-qmd-vec: 394 docs not embedded, invisible to vec search
+       → bash scripts/luna/qmd-reindex.sh   # update + embed + cleanup
+OK   C41-mcp-argv-key: scanned 10 MCP config file(s); no credential passed on a server command line
+WARN C42-sweep-health: STUCK /home/user/Documents/github/himmel/.claude/worktrees/docs+himmel-4903-agents-md-review merged, but the worktree has untra
+       → bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean
+WARN C42-sweep-health: STUCK /home/user/Documents/github/himmel/.claude/worktrees/feat+himmel-4869-deepseek-phase-b-pilot merged, but the worktree is
+       → bash scripts/clean-garden.sh --dry-run   # fix the named reason, then re-run /clean
+OK   C43-rtk-hook: no bare rtk hook entry (guard-wrapped or absent)
+OK   C44-skill-index: 'skills' qmd collection present (486 files)
+OK   C45-qmd-daemon: qmd daemon pid 2957436: RSS 1504 MB, up 2-19:01:50 (ceiling 4096 MB)
+OK   C46-plugin-enabled-missing: every enabledPlugins=true entry is installed
+OK   C47-runaway-procs: no himmel-shaped process older than 30m is pegging a core (>= 90% CPU)
+OK   C48-tmp-usage: /tmp is 10% full (warn at 80%)
+OK   C49-qmd-embed-model: ok: index vectors match the configured model (hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf)
+INFO C56-qmd-orphans: 952 orphaned embedding chunks (1 %) -- below the 5 % WARN threshold
+OK   C50-qmd-fork-stamp: qmd fork stamp, HEAD and pin all 791fdf8a
+OK   C51-firecrawl-parked: no Firecrawl-parked items
+OK   C52-graphify-ollama: graphify [ollama] extra present (venv imports openai)
+INFO C53-vm-mode: vm.mode=local, local test VM not reachable at localhost:2222 (it is started on demand)
+       → start it with the himmel-ops:vm skill before a VM-proof step
+OK   C54-hook-copy-reaper: no orphaned hook copy is spinning a core
+OK   C55-project-mode: tracker=jira forge=github (ticket ID required)
+INFO C57-dotenv-allowlists: .env keys loaded by no consumer: ALIBABA_ANTHROPIC_BASE_URL, ALIBABA_API_HOST, ALIBABA_DASHSCOPE, ALIBABA_DASHSCOPE_BASE_U
+       → each loader must name its consumed keys; unused names can be intentional (for example a future API lane)
+OK   C58-mcp-sdk-v1: no @modelcontextprotocol/sdk (v1) dependency or import
+OK   C59-codex-bank-cache: codex bank cache is 46min old (TTL 6h)
+
+Summary: 0 FAIL  8 WARN  7 INFO

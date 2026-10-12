@@ -74,8 +74,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/anchor-handoff.sh" || exit 2
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -432,6 +432,14 @@ fi
 if [ "$kind" = "delegation" ]; then
   [ -n "$head" ]   || { echo "ledger-append.sh: delegation requires --head" >&2; exit 2; }
   [ -n "$reason" ] || { echo "ledger-append.sh: delegation requires --reason" >&2; exit 2; }
+fi
+
+# ci-red-unlock (HIMMEL-5257): review-round.sh granted the one CI-red post-cap
+# delta round. --head is the CI-red reviewed head, --reason the failing check
+# names (comma list), --detail the head the round runs on. NEVER deduped.
+if [ "$kind" = "ci-red-unlock" ]; then
+  [ -n "$head" ]   || { echo "ledger-append.sh: ci-red-unlock requires --head" >&2; exit 2; }
+  [ -n "$reason" ] || { echo "ledger-append.sh: ci-red-unlock requires --reason" >&2; exit 2; }
 fi
 
 # Secret scrub (HIMMEL-1176, reused for --text by HIMMEL-2078 CR round):
@@ -1173,6 +1181,12 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
          raw_path:e.RAW_PATH};
     if(e.DROPPED_N!=="") rec.dropped=Number(e.DROPPED_N);
     if(e.RESPONDING_MODEL) rec.responding_model=e.RESPONDING_MODEL;
+    dup=false;
+  } else if(e.KIND==="ci-red-unlock"){
+    // HIMMEL-5257: one row per CI-red post-cap unlock. Never deduped.
+    // Readers key on kind, so every gate and scorecard reader ignores it.
+    rec={kind:"ci-red-unlock",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,reason:e.REASON};
+    if(e.DETAIL) rec.detail=e.DETAIL;
     dup=false;
   } else if(e.KIND==="delegation"){
     // HIMMEL-2335: one row per anchor->branch delegation event. NEVER

@@ -428,6 +428,64 @@ out_ver_check=$(USERPROFILE='' HOME="$fake_home_ver" HIMMEL_UPDATE_CLAUDE_BIN="$
 assert_contains "check mode lists the version-bumped checkout plugin" "      telegram-himmel@himmel" "$out_ver_check"
 assert_not_contains "check mode does not list the current checkout plugin" "      qmd@himmel" "$out_ver_check"
 
+echo "Test: an enabled @himmel plugin the marketplace declares but that is NOT installed gets installed (HIMMEL-5294)"
+make_mock_clone
+# The fixture mirrors the real shape: the marketplace manifest declares the
+# vendored plugin (PR 2382 added i-have-adhd), the user settings enable it, and
+# installed_plugins.json has no record of it (the station's degraded state).
+mkdir -p "$CHECKOUT_DIR/marketplace/.claude-plugin"
+cat > "$CHECKOUT_DIR/marketplace/.claude-plugin/marketplace.json" <<'EOF'
+{
+  "name": "himmel",
+  "plugins": [
+    {"name": "i-have-adhd", "source": "./plugins/i-have-adhd"},
+    {"name": "off-by-choice", "source": "./plugins/off-by-choice"}
+  ]
+}
+EOF
+fake_home_inst="$TMP/fake-home-install"
+mkdir -p "$fake_home_inst/.claude/plugins"
+cat > "$fake_home_inst/.claude/settings.json" <<'EOF'
+{
+  "enabledPlugins": {
+    "i-have-adhd@himmel": true,
+    "off-by-choice@himmel": false,
+    "ghost@nowhere": true
+  }
+}
+EOF
+printf '%s\n' '{"version":2,"plugins":{}}' > "$fake_home_inst/.claude/plugins/installed_plugins.json"
+log_inst="$TMP/claude-invocations-inst.log"
+: > "$log_inst"
+claude_stub_inst="$TMP/claude-logging-stub-inst"
+make_claude_logging_stub "$claude_stub_inst" "$log_inst"
+out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_inst" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_inst/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1) || true
+log_inst_content="$(cat "$log_inst")"
+if [ -z "$log_inst_content" ]; then
+    assert_pass "check mode: never invoked claude to install"
+else
+    assert_fail "check mode: never invoked claude to install — log: $log_inst_content"
+fi
+assert_contains "check mode lists the missing enabled @himmel plugin" "would install:.*i-have-adhd@himmel\|      i-have-adhd@himmel" "$out_inst"
+out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_inst" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_inst/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+log_inst_content="$(cat "$log_inst")"
+assert_contains "installs the enabled @himmel plugin that is not installed" "plugin install i-have-adhd@himmel" "$log_inst_content"
+assert_not_contains "never installs a plugin the user left disabled" "plugin install off-by-choice@himmel" "$log_inst_content"
+assert_not_contains "never installs a non-@himmel plugin" "plugin install ghost@nowhere" "$log_inst_content"
+
+echo "Test: an empty installed_plugins.json is unreadable state, not 'nothing installed' (HIMMEL-5294)"
+: > "$fake_home_inst/.claude/plugins/installed_plugins.json"
+: > "$log_inst"
+out_inst=$(USERPROFILE='' HOME="$fake_home_inst" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_inst" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_inst/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || true
+log_inst_content="$(cat "$log_inst")"
+assert_not_contains "empty installed state installs nothing" "plugin install i-have-adhd@himmel" "$log_inst_content"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 [ "$fail" -eq 0 ]

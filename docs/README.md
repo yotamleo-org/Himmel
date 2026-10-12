@@ -56,7 +56,6 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 - [orchestration-patterns.md](orchestration-patterns.md) (+ [.notes.md](orchestration-patterns.notes.md) run log) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.
-- [internals/codex-orchestrator-audit.md](internals/codex-orchestrator-audit.md) — readiness audit for Codex-as-orchestrator.
 - [internals/lane-parity.md](internals/lane-parity.md) — the living compatibility index across delegation lanes.
 - [internals/validation-gates.md](internals/validation-gates.md) — placement doctrine for validation/quality gates across workflows.
 - [internals/worker-spawn-matrix.md](internals/worker-spawn-matrix.md) — native Hermes subagents vs. external lane workers.
@@ -66,7 +65,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [jira-projects.md](jira-projects.md) — Jira project setup + conventions.
 - [telegram-bridge.md](telegram-bridge.md) · [internals/telegram-bridge.md](internals/telegram-bridge.md) — the Telegram bridge.
 - [hermes-runbook.md](hermes-runbook.md) — the hermes junior-tier model lane.
-- [luna/README.md](luna/README.md) — the luna companion second-brain vault guides (incl. [end-session-wiki](luna/end-session-wiki.md) + its [schema](luna/end-session-wiki-schema.md), [emergence-crystallization](luna/emergence-crystallization.md), [pr-lane-guard](luna/pr-lane-guard.md), [compounding](luna/compounding.md), [google-health-connector-setup](luna/google-health-connector-setup.md), [salus-health-series-substrate-design](luna/salus-health-series-substrate-design.md)).
+- [luna/README.md](luna/README.md) — the luna companion second-brain vault guides (incl. [end-session-wiki](luna/end-session-wiki.md) + its [schema](luna/end-session-wiki-schema.md), [emergence-crystallization](luna/emergence-crystallization.md), [pr-lane-guard](luna/pr-lane-guard.md), [compounding](luna/compounding.md), [google-health-connector-setup](luna/google-health-connector-setup.md)).
 
 ## Setup (continued)
 
@@ -81,7 +80,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tool-adoption/rubric.md](tool-adoption/rubric.md) — the decision method every community-tool eval runs through.
 - [tool-adoption/registry.md](tool-adoption/registry.md) — every evaluated tool, recorded.
 - [tool-adoption/telemetry.md](tool-adoption/telemetry.md) — adoption-outcome telemetry for the registry.
-- [license-audit.md](license-audit.md) · [skills-taxonomy-audit.md](skills-taxonomy-audit.md) — audits.
+- [license-audit.md](license-audit.md) — the license audit.
 - [third-party-licenses.md](third-party-licenses.md) — the third-party license audit of direct npm dependencies.
 
 ## Publishing these docs (GitHub Pages)
