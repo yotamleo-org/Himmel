@@ -632,7 +632,7 @@
     loops.forEach(function (lp) {
       var b = el('button', { type: 'button', role: 'tab', id: 'tab-' + lp.id, 'aria-selected': String(lp.id === current), 'aria-controls': 'loop-panel', tabindex: lp.id === current ? '0' : '-1' }, lp.tab);
       b.className = 'tab';
-      b.addEventListener('click', function () { current = lp.id; prevStates = {}; render(); });
+      b.addEventListener('click', function () { current = lp.id; prevStates = {}; render(); document.getElementById('tab-' + lp.id).focus(); });
       b.addEventListener('keydown', function (e) {
         var i = loops.indexOf(lp);
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
