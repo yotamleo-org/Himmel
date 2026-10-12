@@ -629,6 +629,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'block-edit-live-settings.sh',
       'block-edit-on-main.sh',
       'block-git-stash.sh',
+      'block-himmel-config-writes.sh',
       'block-jira-compound-write.sh',
       'block-read-secrets.sh',
       'block-rogue-claude-schedule.sh',

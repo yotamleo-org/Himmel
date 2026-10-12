@@ -355,7 +355,8 @@ having the file is not evidence of a working subscription. `/x-read`, `/x-pulse`
 tracked by this repo). `/notebooklm` (Gemini File Search) uses a different key
 and is unaffected by this decision. Decision record:
 `docs/tool-adoption/registry.md` (research-toolkit row) and
-`docs/tool-adoption/adr-obsidian-second-brain-research-toolkit.md`. Revisit if
+`specs/adr/adr-obsidian-second-brain-research-toolkit.md` in the handover
+state repo. Revisit if
 a subscription lands.
 
 **Commands:**

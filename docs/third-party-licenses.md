@@ -100,7 +100,8 @@ from `cursor/plugins` (pstack) at pinned commit
 `e8d856f0273b42ebafe0ec3546bd645709e7c1b0`, path
 `pstack/skills/unslop/SKILL.md`. No `node_modules`/npm involvement — a
 single vendored markdown file, MIT-licensed. Decision record:
-[`tool-adoption/adr-unslop-skill.md`](tool-adoption/adr-unslop-skill.md).
+`specs/adr/adr-unslop-skill.md` in the handover state repo (registry row:
+[`tool-adoption/registry.md`](tool-adoption/registry.md)).
 
 MIT License text as it appeared at that commit
 (`pstack/LICENSE`), reproduced here per the license's own attribution
