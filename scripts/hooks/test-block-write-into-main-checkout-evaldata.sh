@@ -200,6 +200,15 @@ _r5098 "215g export PATH before eval"                block 'export PATH=/x/bin:$
 # an assignment is skipped only when the name is a valid identifier
 _r5098 "216a path-shaped word with an equals"        block 'eval "$(wt/sub=x)"'
 _r5098 "216b dotted word with an equals"             block 'eval "$(./sub=x)"'
+# j2422c: the shadowing rule is whole-command, and the allow-list is case-sensitive
+_r5098 "217a function shadows echo, source <(echo)"  block 'echo() { cat @W@/msg; }; source <(echo)'
+_r5098 "217b function shadows date, bash <(date)"    block 'date() { cat @W@/msg; }; bash <(date)'
+_r5098 "217c upper-case ECHO is not echo"            block 'eval "$(ECHO x)"'
+_r5098 "217d mixed-case Date is not date"            block 'eval "$(Date)"'
+_r5098 "217e enable -f loads a builtin"              block 'enable -f ./m.so echo; eval "$(echo)"'
+_r5098 "217f function shadows echo, dot of <(echo)"  block 'echo() { cat @W@/msg; }; . <(echo)'
+_r5098 "217g control: source <(echo literal)"        allow 'source <(echo ls)'
+_r5098 "217h control: lower-case echo and date"      allow 'eval "$(date +%s)"'
 _r5098 "211f unlisted program after a pipe"          block 'eval "$(echo x | tee f)"'
 _r5098 "212a source of toplevel plus path"           allow 'source "$(git rev-parse --show-toplevel)/scripts/lib/x.sh"'
 _r5098 "206a source of data, shell word as argument" block "source \"\$(cat @W@/msg)\" bash"

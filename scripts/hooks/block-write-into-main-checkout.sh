@@ -3300,7 +3300,8 @@ _bwimc_body_reads_data() {
     # a stub byte stands for a nested substitution whose own body the verb walk
     # already tested (_bwimc_sub_rd); it is not a command word of this body
     t="${t//$'\001'/}"
-    _tolower_ascii "$t"; t="$_TOLOWER_OUT"
+    # Case is kept: `ECHO` and `Date` are different executables on a
+    # case-sensitive system and so are not the listed generators.
     # An input redirect (whatever precedes the `<`: `fold</x`, `done</x`), a
     # process substitution or a zsh `=(…)` opener inside a body is data.
     [[ "$t" =~ \<([^\(\&]|$) ]] && return 0
@@ -3322,8 +3323,9 @@ _bwimc_body_reads_data() {
         i=0
         while [ "$i" -lt "$n" ]; do
             w="${words[$i]}"
-            if [[ "$w" =~ ^[a-z_][a-z0-9_]*= ]]; then
-                case "$w" in path=*|path+=*) return 0 ;; esac
+            if [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                _tolower_ascii "$w"
+                case "$_TOLOWER_OUT" in path=*|path+=*) return 0 ;; esac
                 i=$((i+1)); continue
             fi
             case "$w" in
@@ -3587,20 +3589,20 @@ _bwimc_check_interp_body() {
             fi
         done
     fi
-    [ -n "$body" ] || return 0
     # HIMMEL-5098: the allow-list trusts a generator's NAME, so a function,
-    # alias, PATH assignment or `hash -p` in the same command can make a listed
-    # name run anything: deny when one sits beside a substitution in the body.
-    # shellcheck disable=SC2016  # literal `$(` is the glob pattern
-    case "$body" in
-        *'$('*|*'`'*|*'<('*)
-            if [[ "$cmd" =~ [A-Za-z_][A-Za-z0-9_.:+-]*[[:space:]]*\(\)[[:space:]]*\{? ]] \
-                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])(function|alias)[[:space:]] ]] \
-                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])PATH\+?= ]] \
-                || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])hash[[:space:]]+-[A-Za-z]*p ]]; then
-                _bwimc_deny "data-exec" "$body" "" ""
-            fi ;;
-    esac
+    # alias, PATH assignment, `hash -p` or `enable` in the same command can
+    # make a listed name run anything. A whole-command rule, independent of
+    # which branch or body was read above: any of them beside an eval, source,
+    # `.`, shell `-c` or process substitution is denied. Over-denies.
+    if [ "$kind" != shc ] || [ -n "$body" ] || [ "$_bwimc_psok" = 1 ]; then
+        if [[ "$cmd" =~ [A-Za-z_][A-Za-z0-9_.:+-]*[[:space:]]*\(\)[[:space:]]*\{? ]] \
+            || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])(function|alias|enable)[[:space:]] ]] \
+            || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])PATH\+?= ]] \
+            || [[ "$cmd" =~ (^|[[:space:]\;\&\|\(\{])hash[[:space:]]+-[A-Za-z]*p ]]; then
+            _bwimc_deny "data-exec" "${body:-$cmd}" "" ""
+        fi
+    fi
+    [ -n "$body" ] || return 0
     # HIMMEL-5098: a body that is (or holds) a substitution reading repository
     # or file data runs a command that is not in this text, so nothing below
     # can classify it. A stub byte in the body means a substitution of THIS
