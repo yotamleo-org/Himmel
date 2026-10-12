@@ -1961,7 +1961,13 @@ env_split_option() { # env_split_option <raw command> - false only when
                             eval) nm[sg]=1 ;;
                             bash|sh|zsh|dash|ksh|mksh) nm[sg]=0 ;;
                             --*) ;;
-                            -*c*) [ "${nm[sg]-}" != 0 ] || nm[sg]=2 ;;
+                            -*c*)
+                                # -cO / -Oc take an option argument, so the body's position is
+                                # unclear: open every later word (denies more, never less)
+                                case "$w" in
+                                    *[Oo]*) [ "${nm[sg]-}" != 0 ] || nm[sg]=1 ;;
+                                    *) [ "${nm[sg]-}" != 0 ] || nm[sg]=2 ;;
+                                esac ;;
                         esac
                     fi ;;
             esac
