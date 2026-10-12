@@ -2,7 +2,7 @@
 // HIMMEL-1040 — resolver invariants for the named plugin-profile registry.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, cpSync } from 'node:fs';
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1049,6 +1049,25 @@ test('CLI: --mcp-config alone (no trailing argv) still succeeds', () => {
   const run = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
   assert.equal(run.status, 0, run.stderr);
   assert.ok(JSON.parse(run.stdout).mcpServers);
+});
+
+test('CLI: --mcp-config resolves the repo placeholder from a non-git copy with HIMMEL_REPO unset', () => {
+  // HIMMEL-4830: a scratch checkout (no .git, e.g. test-console.sh's fixture) must resolve to its own
+  // absolute path, never refuse; the primary-checkout lookup only wins when git can find one.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const copy = makeTmpDir('pp-cli-nongit-copy-');
+  mkdirSync(join(copy, 'scripts'), { recursive: true });
+  cpSync(join(here, '..'), join(copy, 'scripts', 'lanes'), { recursive: true });
+  cpSync(join(here, '..', '..', 'lib'), join(copy, 'scripts', 'lib'), { recursive: true });
+  cpSync(join(here, '..', '..', '..', 'marketplace', 'plugins', 'qmd'), join(copy, 'marketplace', 'plugins', 'qmd'), { recursive: true });
+  const home = makeTmpDir('pp-cli-nongit-home-');
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  delete env.HIMMEL_REPO;
+  const run = spawnSync(process.execPath, [join(copy, 'scripts', 'lanes', 'plugin-profiles.mjs'), 'console', '--mcp-config'], { encoding: 'utf8', cwd: copy, env });
+  assert.equal(run.status, 0, run.stderr);
+  const bus = JSON.parse(run.stdout).mcpServers['himmel-bus'];
+  assert.ok(bus.args.some((a) => a.startsWith(realpathSync(copy)) || a.startsWith(copy)), JSON.stringify(bus));
+  assert.ok(!JSON.stringify(bus).includes('${'), JSON.stringify(bus));
 });
 
 test('validateRegistry: a profile naming an id in both drop and enable is an error', () => {

@@ -797,7 +797,8 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
         repoMcpPath: join(process.cwd(), '.mcp.json'),
         marketplaceDir: join(SCRIPT_DIR, '..', '..', 'marketplace', 'plugins'),
         mcpCatalog: registry.mcpCatalog,
-        repoRoot: primaryCheckout(process.env.HIMMEL_REPO || SCRIPT_DIR) ?? undefined,
+        // the checkout holding this script when git finds no primary one (a scratch copy has no .git)
+        repoRoot: primaryCheckout(process.env.HIMMEL_REPO || SCRIPT_DIR) ?? resolve(SCRIPT_DIR, '..', '..'),
       });
       process.stdout.write(JSON.stringify(cfg) + '\n');
       process.exit(0);
