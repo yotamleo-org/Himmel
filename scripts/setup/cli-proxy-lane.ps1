@@ -535,6 +535,23 @@ function Install-ProxyBinary {
     }
 }
 
+# Add-ProxyRetryConfig: twin of the .sh ensure_retry_config (HIMMEL-5391).
+# CLIProxyAPI's request-retry runs extra credential rounds on 403/408/429/500/
+# 502/503/504 (an upstream 502 and the auth-cooldown 503); max-retry-interval
+# caps the cooldown wait in seconds (config.example.yaml, v7.3.15). Appends only
+# a key that is missing, so an operator-set value is kept and a re-run is a no-op.
+function Add-ProxyRetryConfig {
+    $want = [ordered]@{ 'request-retry' = 3; 'max-retry-interval' = 30 }
+    foreach ($key in $want.Keys) {
+        $text = [System.IO.File]::ReadAllText($Cfg)
+        if ($text -match "(?m)^$([regex]::Escape($key)):") { continue }
+        if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) { $text += "`n" }
+        $text += "${key}: $($want[$key])`n"
+        [System.IO.File]::WriteAllText($Cfg, $text, (New-Object System.Text.UTF8Encoding $false))
+        Write-Host "added ${key}: $($want[$key]) to $Cfg"
+    }
+}
+
 if ($AsLibrary) { return }
 
 $restartCompletedDuringInstall = $false
@@ -564,11 +581,14 @@ port: $Port
 auth-dir: "~/.cli-proxy-api"
 api-keys:
   - "$ApiKey"
+request-retry: 3
+max-retry-interval: 30
 "@
         [System.IO.File]::WriteAllText($Cfg, $yaml, (New-Object System.Text.UTF8Encoding $false))
         Write-Host "wrote config: $Cfg"
     } else {
         Write-Host "config already present: $Cfg"
+        Add-ProxyRetryConfig
     }
     # Version stamp makes -Install pin-aware (CR r1 codex-1, HIMMEL-1451): a
     # bare exe-exists check would skip the download forever, so bumping $Version

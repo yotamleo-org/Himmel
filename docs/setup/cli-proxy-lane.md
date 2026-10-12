@@ -181,6 +181,29 @@ bash scripts/setup/cli-proxy-lane.sh --verify
 Verify the lane end-to-end the same way as the Windows section above:
 `bash scripts/claude-codex -p "reply OK"`.
 
+## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
+
+An upstream codex `502` ends a claudex leg's turn, and the `503
+auth_unavailable` that follows is the proxy cooling down the only codex
+credential. `--install` / `-Install` (and `--roll`) write two keys to
+`config.yaml`, and only when they are missing, so an operator-set value is
+kept and a re-run changes nothing:
+
+| Key | Written | Meaning (CLIProxyAPI `config.example.yaml`, v7.3.15) |
+|---|---|---|
+| `request-retry` | `3` | extra credential retry rounds on 403/408/429/500/502/503/504 |
+| `max-retry-interval` | `30` | longest wait, in seconds, for a cooldown between rounds |
+
+An existing install picks them up by re-running `--install`, then
+`--restart` (the proxy reads `config.yaml` at start).
+
+**A second codex credential** (optional) gives the cooldown another credential
+to fall back to. CLIProxyAPI loads every `codex-*.json` in `auth-dir`, so add
+one by logging a second account in with the same device flow
+(`--login` / `-Login`, authorizing as the second account); it lands as its own
+`codex-<email>.json`. Logging the same account in again replaces its file, it
+does not add one. Two accounts mean two subscriptions' usage on one proxy.
+
 ## Notes
 
 - `config.yaml` pins `host: "127.0.0.1"` on purpose — the CLIProxyAPI default

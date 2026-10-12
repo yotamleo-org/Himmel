@@ -446,6 +446,61 @@ assert_rc "malformed-sha exit code" 1 "$RC"
 HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION=$'8.0.23\nevil' CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
 assert_rc "multiline-version exit code" 1 "$RC"
 
+# HIMMEL-5391: transient codex 5xx (a 502, then the auth-cooldown 503 on the only
+# credential) ended a claudex leg's turn. CLIProxyAPI's request-retry runs extra
+# credential rounds on 403/408/429/500/502/503/504 and max-retry-interval bounds
+# the cooldown wait (config.example.yaml, v7.3.15). The fixture below is the
+# shape of the station's real ~/.cli-proxy-api/config.yaml (no retry keys).
+RETRY_FIXTURE='host: "127.0.0.1"
+port: 8317
+auth-dir: "~/.cli-proxy-api"
+api-keys:
+  - "stub-key-28"'
+
+echo "TEST 28: fresh --install writes the bounded request retry"
+F28="$(fixture retry-fresh)"
+rm -f "$F28/.cli-proxy-api/config.yaml"
+HOME="$F28" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "fresh install exit code" 0 "$RC"
+CFG28="$(cat "$F28/.cli-proxy-api/config.yaml")"
+assert_contains "fresh config sets request-retry" "request-retry: 3" "$CFG28"
+assert_contains "fresh config bounds max-retry-interval" "max-retry-interval: 30" "$CFG28"
+
+echo "TEST 29: --install adds the retry keys to an existing config, keeping the rest"
+F29="$(fixture retry-existing)"
+printf '%s' "$RETRY_FIXTURE" > "$F29/.cli-proxy-api/config.yaml"
+chmod 600 "$F29/.cli-proxy-api/config.yaml"
+HOME="$F29" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "existing-config install exit code" 0 "$RC"
+CFG29="$(cat "$F29/.cli-proxy-api/config.yaml")"
+assert_contains "existing config gains request-retry" "request-retry: 3" "$CFG29"
+assert_contains "existing config gains max-retry-interval" "max-retry-interval: 30" "$CFG29"
+assert_contains "existing config keeps its api key" '  - "stub-key-28"' "$CFG29"
+assert_contains "existing config keeps its host" 'host: "127.0.0.1"' "$CFG29"
+if host_modes_stick; then
+    assert_rc "existing config stays 0600" "600" "$(host_mode_of "$F29/.cli-proxy-api/config.yaml")"
+fi
+
+echo "TEST 30: an operator-set retry value is kept and a re-run is idempotent"
+F30="$(fixture retry-operator)"
+printf '%s\nrequest-retry: 5\nmax-retry-interval: 10\n' "$RETRY_FIXTURE" > "$F30/.cli-proxy-api/config.yaml"
+HOME="$F30" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "operator-config install exit code" 0 "$RC"
+CFG30="$(cat "$F30/.cli-proxy-api/config.yaml")"
+assert_contains "operator request-retry kept" "request-retry: 5" "$CFG30"
+assert_contains "operator max-retry-interval kept" "max-retry-interval: 10" "$CFG30"
+if grepq "$CFG30" -F "request-retry: 3"; then fail "operator request-retry not overwritten" "default 3 found"; else pass "operator request-retry not overwritten"; fi
+CFG30_BEFORE="$(cat "$F30/.cli-proxy-api/config.yaml")"
+HOME="$F30" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+if [ "$(cat "$F30/.cli-proxy-api/config.yaml")" = "$CFG30_BEFORE" ]; then pass "re-run leaves operator config byte-identical"; else fail "re-run leaves operator config byte-identical"; fi
+HOME="$F29" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+if [ "$(grep -c '^request-retry:' "$F29/.cli-proxy-api/config.yaml")" = "1" ] \
+    && [ "$(grep -c '^max-retry-interval:' "$F29/.cli-proxy-api/config.yaml")" = "1" ]; then
+    pass "re-run does not duplicate the retry keys"
+else
+    fail "re-run does not duplicate the retry keys"
+fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
