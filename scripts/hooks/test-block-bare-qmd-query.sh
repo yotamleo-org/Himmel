@@ -1075,6 +1075,12 @@ deny "$BQ | python3 -m code"
 deny "$BQ | python3 -c 'import runpy;runpy.run_path(\"/dev/stdin\")'"
 allow "rg -n 'qmd query' scripts | python3 -c 'import sys; print(sys.stdin.read())'"
 allow "rg -l 'qmd query' scripts | python3 parse.py"
+# HIMMEL-4525 codex: a code string is relaxed only when every identifier in it
+# is a plain reader word, so perl qx and ruby spawn stay strict.
+deny "grep -h 'qmd query' commands.txt | perl -ne 'qx(\$_)'"
+deny "grep -h 'qmd query' commands.txt | perl -ne 'readpipe(\$_)'"
+deny "grep -h 'qmd query' commands.txt | ruby -ne 'spawn(\$_)'"
+allow "grep -h 'qmd query' commands.txt | perl -ne 'print'"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

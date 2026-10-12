@@ -732,6 +732,17 @@ _int_reader() {
         lc=$(printf '%s' "$2" | LC_ALL=C tr '[:upper:]' '[:lower:]')
         [[ $lc == *'/dev/'* || $lc == *'/proc/'* || $lc == *'`'* || $lc == *'$('* || $lc == *'__'* ]] && return 1
         [[ $lc =~ (exec|eval|system|popen|spawn|subprocess|child_process|compile|runpy|importlib|getattr|globals|locals|builtins|ctypes|require|import\(|os\.|vm\.|function|(^|[^[:alnum:]_])(code|pty|open|read_file)([^[:alnum:]_]|$)) ]] && return 1
+        # Every identifier must be a plain reader word: a code string that
+        # names anything else (perl qx/readpipe, ruby spawn, ...) stays strict.
+        local id
+        while IFS= read -r id; do
+            case $id in
+                ''|[0-9]*) ;;
+                python[0-9]*|node|nodejs|perl|ruby|c|e|p|ne|pe|lne|lpe|ane|ape|nae|pae|lane|lape) ;;
+                pipe|import|sys|print|printf|say|puts|stdin|read|readlines|readline|line|lines|for|in|if|while|chomp|split|join|sort|length|len|strip|rstrip|lstrip|lower|upper|json|load|loads|dumps|str|int|range|sorted|set|list|end|flush|write|stdout|each|gets|console|log|process|_) ;;
+                *) return 1 ;;
+            esac
+        done < <(printf '%s\n' "$lc" | LC_ALL=C tr -c 'a-z0-9_' '\n')
         return 0
     fi
     if [[ $s =~ ^(python[0-9.]*|node|nodejs|perl|ruby)[[:space:]]+[A-Za-z0-9_.-][A-Za-z0-9_./-]*\.(py|js|mjs|cjs|pl|rb)([[:space:]]+[A-Za-z0-9_./=,:-]+)*$ ]]; then
