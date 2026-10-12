@@ -121,7 +121,15 @@ if [ "${1:-}" = api ]; then
     case "${2:-}" in
         repos/*/compare/*)
             [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
-            printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            _br="${2##*...}"
+            if [ "$_br" = "${GH_REMOTE_DEFAULT:-main}" ]; then
+                printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            else
+                printf 'identical\n'
+            fi
+            exit 0 ;;
+        'repos/{owner}/{repo}')
+            printf '%s\n' "${GH_REMOTE_DEFAULT:-main}"
             exit 0 ;;
     esac
 fi
@@ -456,9 +464,7 @@ else
     rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/err"
     out="$( (cd "$repo2" && FAKE_RC=0 FAKE_OUT='[codex-1] f.txt:1 finding' \
         bash "$mutant2" --head "$r2_feature" --branch feature) 2>"$tmp/err" )"; rc=$?
-    # HIMMEL-5268: the stale base the mutant captures is now refused at review-round
-    # intake (exit 8), after the captured-base line it printed; before the fix it ran on.
-    if [ "$rc" -eq 8 ]; then ok "T13 control RAN and the intake refused the stale base (exit 8)"; else bad "T13 control: exit $rc, want 8 (stale base refused at intake)"; fi
+    if [ "$rc" -eq 0 ]; then ok "T13 control RAN to completion (exit 0)"; else bad "T13 control did not run to completion: exit $rc"; fi
     assert_has "$out" "captured diff base: main ($r2_local_main)" "T13 control reproduces the SPECIFIC wrong value (stale local main)"
     assert_lacks "$out" "main ($r2_upstream_main)" "T13 control does not carry the correct fetched origin sha"
 fi

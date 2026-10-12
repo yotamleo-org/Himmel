@@ -117,13 +117,27 @@ if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
             exit 0 ;;
     esac
 fi
-# HIMMEL-5268: review-round.sh asks the remote how --base-sha relates to the
-# default branch (`gh api repos/<o>/<r>/compare/<sha>...<branch> --jq .status`).
+# HIMMEL-5268: review-round.sh reads the remote default branch name, then asks
+# the remote how --base-sha relates to it
+# (`gh api repos/<o>/<r>/compare/<sha>...<branch> --jq .status`). The stub
+# HONOURS the branch argument: only the remote default ($GH_REMOTE_DEFAULT, main)
+# gets the fixture's verdict; any other branch is "identical" (a pushed PR branch
+# trivially contains its own head), which is what a retargeted local
+# origin/HEAD used to be able to exploit.
 if [ "${1:-}" = api ]; then
     case "${2:-}" in
         repos/*/compare/*)
             [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
-            printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            _br="${2##*...}"
+            if [ "$_br" = "${GH_REMOTE_DEFAULT:-main}" ]; then
+                printf '%s\n' "${GH_COMPARE_STATUS:-ahead}"
+            else
+                printf 'identical\n'
+            fi
+            exit 0 ;;
+        'repos/{owner}/{repo}')
+            [ "${GH_DEFAULT_RC:-0}" = 0 ] || exit "$GH_DEFAULT_RC"
+            printf '%s\n' "${GH_REMOTE_DEFAULT:-main}"
             exit 0 ;;
     esac
 fi
@@ -2258,7 +2272,8 @@ n=0
 while [ "$n" -lt 45 ]; do printf 'line %s\n' "$n" >> "$repo/ciredforge.txt"; n=$((n + 1)); done
 git -C "$repo" commit -q -am "ciredforge big"
 postcap_f_head="$(git -C "$repo" rev-parse ciredforge)"
-cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredforge --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+# the reviewed head is not on the remote default branch, so the remote refuses it
+cired_out="$(cd "$repo" && GH_COMPARE_STATUS=diverged bash "$fx/scripts/cr/review-round.sh" start --branch ciredforge --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "a --base-sha that is the reviewed head cannot shrink the delta to 0 ($cired_out)"
 assert_eq "$(ls "$git_dir/cr-review-rounds/ciredforge.cired" 2>/dev/null)" "" "a forged-base refusal leaves no marker"
 
@@ -2270,14 +2285,14 @@ cired_rows "$RED"
 postcap_fix ciredintake
 git -C "$repo" merge -q --no-edit main
 postcap_f_head="$(git -C "$repo" rev-parse ciredintake)"
-cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredintake --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+cired_out="$(cd "$repo" && GH_COMPARE_STATUS=diverged bash "$fx/scripts/cr/review-round.sh" start --branch ciredintake --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "a merge head given as its own --base-sha is refused at intake ($cired_out)"
-assert_has "$cired_out" "not the base this repository resolves" "the intake refusal names the base check"
+assert_has "$cired_out" "not on the remote main history" "the intake refusal names the remote base check"
 assert_eq "$(cat "$git_dir/cr-review-rounds/ciredintake.round")" "4" "an intake refusal does not advance the round counter"
 
-# The expected base comes from refs/remotes/origin/*, which a leg can rewrite:
-# the remote has the last word. Rewrite origin/main to the head and the local
-# equality passes, so only the gh compare refuses it.
+# No local ref names or vouches for the base (j2415b): the remote default branch
+# is read through gh and the remote compare is the only authority. A rewritten
+# refs/remotes/origin/main is simply not consulted.
 postcap_setup ciredref suggestion
 cired_rows "$RED"
 postcap_fix ciredref
@@ -2300,6 +2315,32 @@ export GH_COMPARE_RC
 cired_out="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" start --branch ciredgh --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
 unset GH_COMPARE_RC
 assert_eq "$cired_rc" "8" "a gh that cannot answer fails the base check closed ($cired_out)"
+
+# Offline / no usable gh: the remote default branch cannot be read, so every
+# --base-sha round refuses (exit 8), even for a base the fixture would vouch for.
+postcap_setup ciredoff suggestion
+cired_rows "$RED"
+postcap_fix ciredoff
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+cired_out="$(cd "$repo" && GH_DEFAULT_RC=1 bash "$fx/scripts/cr/review-round.sh" start --branch ciredoff --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "an unreadable remote default branch refuses the base round ($cired_out)"
+assert_has "$cired_out" "cannot be verified" "the offline refusal says the base cannot be verified"
+
+# j2415b RED: a leg retargets refs/remotes/origin/HEAD at its own pushed PR
+# branch. The old code read the default branch name from that local ref, so the
+# local equality passed and `compare H...<pr-branch>` came back identical. The
+# stub honours its branch argument (the remote default stays main and does not
+# contain H), so only a check that reads the default from the remote refuses.
+postcap_setup ciredhead suggestion
+cired_rows "$RED"
+postcap_fix ciredhead
+git -C "$repo" update-ref refs/remotes/origin/ciredhead "$postcap_f_head"
+git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/ciredhead
+cired_out="$(cd "$repo" && GH_COMPARE_STATUS=diverged bash "$fx/scripts/cr/review-round.sh" start --branch ciredhead --head "$postcap_f_head" --base-sha "$postcap_f_head" 2>&1)"; cired_rc=$?
+git -C "$repo" symbolic-ref --delete refs/remotes/origin/HEAD
+git -C "$repo" update-ref -d refs/remotes/origin/ciredhead
+assert_eq "$cired_rc" "8" "a retargeted origin/HEAD cannot name the base ($cired_out)"
+assert_has "$cired_out" "not on the remote main history" "the remote default (main), not the local ref, is compared"
 
 # own_diff must not run a textconv driver: one that prints nothing would
 # otherwise measure a 45-line change as 0 lines.

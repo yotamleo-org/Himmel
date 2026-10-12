@@ -150,29 +150,23 @@ fi
 
 # HIMMEL-5268: --base-sha is caller input and every merge-forward and CI-red
 # measure below trusts it, so it is verified once, here, before any consumer
-# reads it. It must be (a) the commit this repository resolves as the base, and
-# (b) on the real remote default branch's history (identical or behind it), read
-# through gh so a rewritten refs/remotes/origin/* cannot vouch for it. Anything
-# else, or a gh that cannot answer, refuses (exit 8).
+# reads it. No local ref names or vouches for the base: the default branch name
+# is read from the remote (gh api repos/{owner}/{repo}) and the remote compare
+# <sha>...<default> must report identical or ahead. Offline, no gh, an unreadable
+# answer or any other status refuses EVERY --base-sha round (exit 8, fail closed).
 if [ -n "$base_sha" ]; then
-    _vb_out="$(
-        # shellcheck source=/dev/null
-        . "$HIMMEL_ROOT/scripts/cr/base-resolver.sh" || exit 1
-        # shellcheck source=/dev/null
-        . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" || exit 1
-        _vb_def="$(default_branch .)" || exit 1
-        printf '%s %s\n' "$_vb_def" "$(git rev-parse --verify --quiet "$(cr_resolve_base_ref . "$_vb_def")^{commit}")"
-    )" || _vb_out=""
-    _vb_def="${_vb_out%% *}"
-    _vb_want="${_vb_out#* }"
-    _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
-    if [ -z "$_vb_def" ] || [ -z "$_vb_want" ] || [ -z "$_vb_got" ] || [ "$_vb_got" != "$_vb_want" ]; then
-        echo "review-round: --base-sha '$base_sha' is not the base this repository resolves - refused (HIMMEL-5268)" >&2
-        exit 8
-    fi
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
+    _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
+    case "$_vb_def" in
+        ''|*[!A-Za-z0-9._/-]*) _vb_def="" ;;
+    esac
+    if [ -z "$_vb_got" ] || [ -z "$_vb_def" ] || ! git check-ref-format --branch "$_vb_def" >/dev/null 2>&1; then
+        echo "review-round: --base-sha '$base_sha' cannot be verified (unresolvable commit or unreadable remote default branch) - refused (HIMMEL-5268)" >&2
+        exit 8
+    fi
     _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
     case "$_vb_status" in
         identical|ahead) ;;
