@@ -71,11 +71,24 @@ if not m:
 inner = re.fullmatch(r"\$\{\{\s*(.*?)\s*\}\}", " ".join(m.group(1).split()), re.DOTALL).group(1)
 inner = re.sub(r"fromJSON\((\x27[^\x27]*\x27)\)", lambda x: "json.loads(" + x.group(1) + ")", inner)
 inner = inner.replace("&&", " and ").replace("||", " or ")
-SCHED = {"schedule": "17 7 * * *", "schedule_main": "43 1,8,15,22 * * *"}
-for ev in ("pull_request", "workflow_dispatch", "schedule_main", "schedule"):
+NIGHTLY, MAINCRON = "17 7 * * *", "43 1,8,15,22 * * *"
+# (label, event_name, schedule, WINDOWS_NIGHTLY) -- HIMMEL-5441: an unset repo
+# variable reads as the empty string in an expression.
+CASES = (
+    ("pull_request", "pull_request", "", ""),
+    ("pull_request_on", "pull_request", "", "on"),
+    ("workflow_dispatch", "workflow_dispatch", "", ""),
+    ("workflow_dispatch_on", "workflow_dispatch", "", "on"),
+    ("schedule_main", "schedule", MAINCRON, ""),
+    ("schedule_main_on", "schedule", MAINCRON, "on"),
+    ("schedule", "schedule", NIGHTLY, ""),
+    ("schedule_off", "schedule", NIGHTLY, "off"),
+    ("schedule_on", "schedule", NIGHTLY, "on"),
+)
+for ev, name, sched, var in CASES:
     try:
-        gh = NS(event_name=("schedule" if ev.startswith("schedule") else ev), event=NS(schedule=SCHED.get(ev, "")))
-        val = eval(inner, {"__builtins__": {}, "json": json}, {"github": gh})
+        gh = NS(event_name=name, event=NS(schedule=sched))
+        val = eval(inner, {"__builtins__": {}, "json": json}, {"github": gh, "vars": NS(WINDOWS_NIGHTLY=var)})
     except Exception as e:
         print("expression does not evaluate for %s: %r" % (ev, e), file=sys.stderr); sys.exit(1)
     print("%s=%s" % (ev, ",".join(val)))
@@ -83,21 +96,23 @@ for ev in ("pull_request", "workflow_dispatch", "schedule_main", "schedule"):
 }
 
 check_matrix() {
-  # $1 = job id, $2 = expected schedule OS list (comma-joined)
+  # $1 = job id, $2 = expected nightly OS list when WINDOWS_NIGHTLY=on (comma-joined)
   local job="$1" want_sched="$2" out
   if ! out="$(eval_matrix "$job" 2>&1)"; then
     bad "$job: matrix expression not evaluable -- $out"
     return
   fi
   local ev got
-  for ev in pull_request workflow_dispatch schedule_main; do
+  # HIMMEL-5441: the windows leg is parked behind the WINDOWS_NIGHTLY repo
+  # variable, so every event but the nightly WITH the variable on is ubuntu only.
+  for ev in pull_request pull_request_on workflow_dispatch workflow_dispatch_on schedule_main schedule_main_on schedule schedule_off; do
     got="$(sed -n "s/^$ev=//p" <<< "$out")"
     if [ "$got" = "ubuntu-latest" ]; then ok "$job: $ev runs ubuntu-latest only"
     else bad "$job: $ev matrix is '$got' (expected ubuntu-latest only)"; fi
   done
-  got="$(sed -n 's/^schedule=//p' <<< "$out")"
-  if [ "$got" = "$want_sched" ]; then ok "$job: schedule (nightly) runs $want_sched"
-  else bad "$job: schedule matrix is '$got' (expected $want_sched)"; fi
+  got="$(sed -n 's/^schedule_on=//p' <<< "$out")"
+  if [ "$got" = "$want_sched" ]; then ok "$job: nightly with WINDOWS_NIGHTLY=on runs $want_sched"
+  else bad "$job: nightly with WINDOWS_NIGHTLY=on matrix is '$got' (expected $want_sched)"; fi
 }
 
 check_matrix shell-unit-shard "ubuntu-latest,windows-latest"

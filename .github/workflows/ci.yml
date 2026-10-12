@@ -507,7 +507,9 @@ jobs:
       # where this stays false so a red Windows leg still reports Linux.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        os: ${{ github.event.schedule == '17 7 * * *'
+        # HIMMEL-5441: the windows leg runs only while the WINDOWS_NIGHTLY repo
+        # variable is 'on' (unset = off) until the nightly is fixed on the win11 VM.
+        os: ${{ github.event.schedule == '17 7 * * *' && vars.WINDOWS_NIGHTLY == 'on'
                && fromJSON('["ubuntu-latest","windows-latest"]')
                || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
@@ -836,7 +838,8 @@ jobs:
       # the nightly keep the full red set so a red stays attributable.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        os: ${{ github.event.schedule == '17 7 * * *'
+        # HIMMEL-5441: windows only while the WINDOWS_NIGHTLY repo variable is 'on'.
+        os: ${{ github.event.schedule == '17 7 * * *' && vars.WINDOWS_NIGHTLY == 'on'
                && fromJSON('["ubuntu-latest","windows-latest"]')
                || fromJSON('["ubuntu-latest"]') }}
         # shard: [1..8] fans run-shell-tests.sh across 8 runners (HIMMEL-2872).
