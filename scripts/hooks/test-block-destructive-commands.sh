@@ -593,6 +593,7 @@ assert_rc "R13+ lease --repo value, no real branch"          2 "$(run_case "$(j_
 # positional word is a refspec and a lone `+main` is a force push.
 assert_rc "R13+ --repo= with a lone +refspec"                 2 "$(run_case "$(j_bash 'git push --repo=origin +main')")"
 assert_rc "R13+ --repo with a lone +refspec"                  2 "$(run_case "$(j_bash 'git push --repo origin +main')")"
+assert_rc "R13+ --rep= abbreviation with a lone +refspec"     2 "$(run_case "$(j_bash 'git push --rep=origin +main')")"
 assert_rc "R13+ lease wildcard refspec"                      2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/*:refs/heads/*')")"
 assert_rc "R13+ chained cd disables the carve-out"            2 "$(run_case "$(j_bash 'cd /tmp && git push --force-with-lease origin fix/x')")"
 # HIMMEL-2054 CR round 2 (panel): a clustered short-flag bundle containing

@@ -1051,9 +1051,10 @@ _gp_push() {
                 --) dd=1 ;;
                 --force|--f|--fo|--for|--forc) f=1 ;;
                 --force-w*) l=1 ;;
-                # --repo names the remote: every positional word is a refspec.
-                --repo) off=1; i=0; j=$((j + 1)) ;;
-                --repo=*) off=1; i=0 ;;
+                # --repo (or its abbreviation --rep) names the remote: every
+                # positional word is a refspec.
+                --rep|--repo) off=1; i=0; j=$((j + 1)) ;;
+                --rep=*|--repo=*) off=1; i=0 ;;
                 -o|--push-option|--receive-pack|--exec|--recurse-submodules) j=$((j + 1)) ;;
                 --*) ;;
                 -*) c=${w#-}; c=${c%%o*}; case "$c" in *f*) f=1 ;; esac ;;
