@@ -289,6 +289,30 @@ deny "empty expansion between launcher and gate" \
      'bash ${V:-} scripts/ci/run-shell-tests.sh | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
 deny "empty expansion glued to tail" 'bash scripts/ci/run-shell-tests.sh | ${V:-}tail -5'
+# The WORD of a default/alternate expansion is what runs when the test goes
+# that way, so a gate named there is still a gate (judge j2429a, HIGH).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word after a launcher" 'bash ${V:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word as the command" '${V:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word, statement separator" '${V:-./scripts/check-ci.sh}; echo done'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :+ alternate word" 'bash ${V:+./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the := assign-default word" 'bash ${V:=./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the - default word" 'bash ${V-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the = default word" 'bash ${V=./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the + alternate word" 'bash ${V+./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in a nested default word" 'bash ${V:-${W}/scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word with 2>&1" 'bash ${V:-./scripts/check-ci.sh} 2>&1 | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "a harmless default word piped to tail" 'echo ${V:-hello} | tail -1'
 # shellcheck disable=SC2016  # payload is literal command text
 deny "zsh \$V:t modifier before the command word" \
      'V=/; $V:t bash scripts/ci/run-shell-tests.sh | tail -5'

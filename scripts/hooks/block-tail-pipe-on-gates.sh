@@ -667,7 +667,7 @@ normalise() {
 # normalise() leaves for `$(...)`. `$?`, `$$`, `$!`, `$#`, `$-` are never empty
 # and stay.
 strip_param_exp() {
-    local w=$1 i=0 n j d c nx out=''
+    local w=$1 i=0 n j d c nx out='' inner
     n=${#w}
     while [ "$i" -lt "$n" ]; do
         c=${w:i:1}
@@ -681,6 +681,21 @@ strip_param_exp() {
                 esac
                 j=$((j + 1))
             done
+            # `${V:-WORD}` and its `:=` `:+` `-` `=` `+` forms expand to WORD
+            # whenever the test goes that way, so WORD can name the gate
+            # (`${V:-./scripts/check-ci.sh}`): keep it, stripped recursively,
+            # rather than dropping it with the rest of the expansion.
+            inner=${w:i+2:j-i-2}
+            case $inner in
+                [A-Za-z_]*)
+                    inner=${inner#"${inner%%[!A-Za-z0-9_]*}"} ;;
+                [0-9@*]*) inner=${inner#?} ;;
+                *) inner='' ;;
+            esac
+            case $inner in
+                ':-'* | ':='* | ':+'*) strip_param_exp "${inner#??}"; out+=$SE ;;
+                '-'* | '='* | '+'*) strip_param_exp "${inner#?}"; out+=$SE ;;
+            esac
             i=$((j + 1)); continue
         fi
         if [ "$c" = '$' ]; then
@@ -766,7 +781,8 @@ invoked_program_v() {
         # `$V`, zsh `$V:t`/`${V[1,-3]}`/`${(P)V}`, an empty `$(:)` placeholder),
         # so the word it sits in is the rest of the word, or nothing. Drop it and
         # judge what remains: `${V:-}bash <gate>` is `bash <gate>`, a bare `$V` is
-        # no word at all. After the redirect test above, so `2>$LOG` keeps its
+        # no word at all. The WORD of `${V:-WORD}` / `${V:+WORD}` is kept (it is
+        # what the expansion yields when the test goes that way). After the redirect test above, so `2>$LOG` keeps its
         # shape. Fail closed: a non-empty `$V` only adds a false deny.
         case $stripped in *'$'* | *SUBST*) strip_param_exp "$stripped"; stripped=$SE ;; esac
         # `(`/`{`/`!` glue onto the command they introduce (panel r3, codex-1),
