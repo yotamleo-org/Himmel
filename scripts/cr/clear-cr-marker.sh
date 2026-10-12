@@ -423,7 +423,7 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # gitignored .env lives only in the primary checkout — never in a linked
     # worktree, where all feature work happens. Byte-identical to the idiom at
     # critic-panel.sh:863 for this same variable.
-    # A lib without load_policy (load-config.sh missing) cannot honour the
+    # A lib without load_policy (a pre-split load-dotenv.sh) cannot honour the
     # env-ignoring contract: refuse rather than read the flags from the env.
     if ! declare -F load_policy >/dev/null 2>&1 \
         || ! load_policy --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then

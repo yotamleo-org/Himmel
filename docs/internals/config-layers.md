@@ -32,7 +32,7 @@ Behaviour keys, read by `load_dotenv` in `scripts/lib/load-dotenv.sh`:
 4. legacy `.env`, with a `DEPRECATED` notice on stderr
 5. the consumer's own default
 
-Gate-policy keys, read by `load_policy` in `scripts/lib/load-config.sh`:
+Gate-policy keys, read by `load_policy` in `scripts/lib/load-dotenv.sh`:
 
 1. `~/.himmel/config.json` `.policy`
 2. legacy `.env`, with a `DEPRECATED` notice
@@ -85,7 +85,7 @@ class has not been decided yet: account emails, chat IDs, cookie-file paths,
 service URLs, VM user names and the non-token Jira keys. Until each is
 classified with the operator, it is treated as a secret.
 
-The registry is `_himmel_key_class` in `scripts/lib/load-config.sh`. A key
+The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.
 
 `TICKET_ID_REQUIRED` and `TICKET_ID_EXEMPT_AUTHORS` loosen the commit-message

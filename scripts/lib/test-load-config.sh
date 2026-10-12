@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/load-config.sh — the behaviour-config / gate-policy
+# Tests for the config layers in scripts/lib/load-dotenv.sh — the behaviour-config / gate-policy
 # split out of .env. Hermetic: every case runs with HOME pointed at a temp dir,
 # so the operator's real ~/.himmel is never read.
 # Each case runs in its own $(...) subshell so exports stay scoped.

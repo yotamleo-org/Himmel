@@ -1285,7 +1285,6 @@ _real_home="$HOME"
 make_repo || exit 1
 mkdir -p "$tmp/scripts/lib" "$tmp/home"
 cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
-cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
 printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$tmp/.env"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
@@ -1301,7 +1300,6 @@ rm -rf "$tmp"
 make_repo || exit 1
 mkdir -p "$tmp/scripts/lib" "$tmp/home/.himmel"
 cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
-cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' > "$tmp/home/.himmel/config.json"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
@@ -1346,7 +1344,6 @@ unset CR_REQUIRE_CROSS_MODEL
 make_repo || exit 1
 mkdir -p "$tmp/scripts/lib" "$tmp/home/.himmel"
 cp "$SCRIPT_DIR/../lib/load-dotenv.sh" "$tmp/scripts/lib/load-dotenv.sh"
-cp "$SCRIPT_DIR/../lib/load-config.sh" "$tmp/scripts/lib/load-config.sh"
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' > "$tmp/home/.himmel/config.json"
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")"
@@ -1390,7 +1387,7 @@ run_clear "$tmp" 14 "load_dotenv failure → fail-closed refuse → exit 14"
 if marker_exists "$tmp"; then pass; else fail "load failure: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# 4w. A lib without load_policy (an old load-dotenv.sh, no load-config.sh) must
+# 4w. A lib without load_policy (a load-dotenv.sh from before the split) must
 # refuse rather than fall back to reading the flags from the process env.
 make_repo || exit 1
 mkdir -p "$tmp/scripts/lib"
