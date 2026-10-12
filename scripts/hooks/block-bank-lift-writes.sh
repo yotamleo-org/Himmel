@@ -448,7 +448,10 @@ case "$CMD" in *$'\002'*|*$'\003'*|*$'\004'*|*$'\005'*|*$'\036'*|*$'\037'*) deny
 # word or `>` (a `2>&1`, a `->` in text, `cp` inside a longer word) plus a
 # variable holding the state dir denies even when the write is benign; the
 # per-target rules below stay as defence in depth (HIMMEL-5326 closes the
-# value-blind cp / dd / mv / rsync / install gap properly).
+# value-blind cp / dd / mv / rsync / install gap properly). Also over-denied by
+# design: every zsh clobber-pipe operator (&>| >&| >>&| &>>|), and `${!` `${(`
+# or a -n nameref beside a writer; the upgrade path is the same evaluator.
+# sed -i / ln / perl -i / python -c with an env value stay open: HIMMEL-5326.
 _cmd_writes() {
     case "$1" in
         *'>'*|*tee*|*sponge*|*dd*|*cp*|*mv*|*install*|*rsync*) return 0 ;;
@@ -471,10 +474,38 @@ _cmd_refs_lift() {
     # Values split across variables (A=state-dir B=/state/bank- C=lift.json,
     # `&>| "$A$B$C"`): no single value matches, so read the command with every
     # reference replaced by its value and look for the state dir, then the name.
+    # A leading ~ reads as HOME and the path is normalised first (// and /./
+    # collapse, a /seg/../ pair resolves lexically), so a dotted spelling of
+    # the state dir still matches.
+    # No reference at all means a literal command, left to the tokenizer rules.
+    [ -n "$exp" ] || return 1
     exp="$exp$rest"
+    exp="${exp//\~\//$HOME/}"
+    while [[ "$exp" == *//* ]]; do exp="${exp//\/\//\/}"; done
+    while [[ "$exp" == */./* ]]; do exp="${exp//\/.\//\/}"; done
+    local re_dd='/([^/]+)/\.\./' guard=0
+    while [[ "$exp" =~ $re_dd ]] && [ "${BASH_REMATCH[1]}" != '..' ] && [ "$guard" -lt 64 ]; do
+        guard=$((guard + 1))
+        exp="${exp/"${BASH_REMATCH[0]}"//}"
+    done
     case "$exp" in *"$STATE_REAL"*"$LIFT_NAME"*) return 0 ;; esac
     return 1
 }
+# The zsh clobber-pipe operators exist only in zsh and leave the clause without
+# a target the tokenizer reads, so they are denied outright (judge j2413e).
+case "$CMD" in
+    *'&>|'*|*'>&|'*|*'&>>|'*)  # >&| also covers >>&|
+        deny "the command uses a zsh clobber-pipe operator (&>| >&| >>&| &>>|), which the fence cannot read a target from (fail-closed)" ;;
+esac
+# Indirect expansion and namerefs hide which variable is read: beside a writer
+# word or a redirect they are denied (judge j2413e).
+if _cmd_writes "$CMD"; then
+    # shellcheck disable=SC2016  # literal ${ text is matched, not expanded
+    case "$CMD" in
+        *'${!'*|*'${('*|*'typeset -n'*|*'declare -n'*|*'local -n'*)
+            deny "the command writes and uses an indirect expansion or a nameref (\${! \${( typeset -n declare -n local -n), so the variable read is not provable (fail-closed)" ;;
+    esac
+fi
 if _cmd_writes "$CMD" && _cmd_refs_lift "$CMD"; then
     deny "the command writes (a redirect or tee/sponge/dd/cp/mv/install/rsync) and references an environment value that names the bank lift or its state dir (whole-command fence, fail-closed)"
 fi
