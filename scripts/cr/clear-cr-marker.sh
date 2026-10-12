@@ -787,12 +787,12 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
   // is consistent with the tree, not that a sweep happened. Zero hits is kept
   // on purpose (HIMMEL-4637): a sweep of a FIXED class legitimately finds
   // nothing, so requiring one hit would refuse the honest record. Upgrade
-  // path: a second writer countersigning sweeps (HIMMEL-5162).
+  // path: a second writer countersigning sweeps (HIMMEL-5364).
   const SQ = String.fromCharCode(39), DQ = String.fromCharCode(34);
   const BS = String.fromCharCode(92), BQ = String.fromCharCode(96);
   const META = ";|&$()<>" + BQ + String.fromCharCode(10, 13, 0);
-  const gitRun = (args) => cp.execFileSync("git", args,
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000, maxBuffer: 16 * 1024 * 1024 });
+  const gitRun = (args, opt) => cp.execFileSync("git", args,
+      Object.assign({ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000, maxBuffer: 16 * 1024 * 1024 }, opt));
   const gitOk = (args) => { try { gitRun(args); return true; } catch { return false; } };
   const word = (s) => s.replace(/\s/g, "_");
   const safePath = (p) => p.length > 0 && p.indexOf(String.fromCharCode(0)) < 0 &&
@@ -843,11 +843,18 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
   const SHORT_OK = "niwEFGPIl";
   const LONG_OK = new Set(["--line-number", "--ignore-case", "--word-regexp", "--extended-regexp",
       "--fixed-strings", "--basic-regexp", "--perl-regexp"]);
-  // ponytail: git grep resolves a pathspec against cwd while inTree and isBlob
-  // resolve it against the repo root (ls-tree --full-tree), so a search scoped
-  // by a cwd-relative pathspec run from a subdir can mis-scope its hits, and a
-  // -P regex is bounded by the 20 s execFileSync timeout, not by a cost cap.
-  // Upgrade path: HIMMEL-5162 (the deferred HIMMEL-4641 item 5).
+  // HIMMEL-5162: git grep resolves a pathspec against cwd, while inTree and
+  // isBlob resolve it from the repo root, so a search runs with cwd at the top
+  // level. Its cost is bounded: a -P pattern over GREP_P_MAX chars is refused up
+  // front, and each search gets GREP_MS (below the 20 s default) and fails
+  // CLOSED as search-timeout.
+  // ponytail: the cap is a pattern length, not a regex complexity measure, so a
+  // short catastrophic -P pattern is bounded only by GREP_MS; upgrade path: a
+  // complexity check if one is ever seen to burn the budget.
+  const GREP_P_MAX = 200, GREP_MS = 5000;
+  let top;
+  try { top = gitRun(["rev-parse", "--show-toplevel"]).trim() || undefined; } catch { top = undefined; }
+  const grepRun = (args) => gitRun(args, { cwd: top, timeout: GREP_MS });
   // Parse and re-run one search at the tip once: { err } or { hits: [files] }.
   const searchCache = new Map();
   const runSearch = (cmd) => {
@@ -883,6 +890,8 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
               if (pos.length === 0) return { err: "search-no-pattern" };
               pats.push(pos.shift());
           }
+          const perl = flags.some((f) => f === "--perl-regexp" || f === "-P");
+          if (perl && pats.some((p) => p.length > GREP_P_MAX)) return { err: "search-pattern-too-costly" };
           for (const p of pos) {
               if (!safePath(p)) return { err: "search-pathspec-refused:" + word(p) };
               if (!/[*?[]/.test(p) && !inTree(e.FULL_SHA, p)) return { err: "search-pathspec-not-at-tip:" + word(p) };
@@ -893,17 +902,23 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
           for (const p of pats) args.push("-e", p);
           args.push(e.FULL_SHA, "--");
           let out = "";
-          try { out = gitRun(args.concat(pos)); }
-          catch (x) { if (x && x.status === 1) out = ""; else return { err: "search-failed" }; }
+          try { out = grepRun(args.concat(pos)); }
+          catch (x) {
+              if (x && x.status === 1) out = "";
+              else return { err: x && x.code === "ETIMEDOUT" ? "search-timeout" : "search-failed" };
+          }
           const pre = e.FULL_SHA + ":";
           const hits = [...new Set(out.split(String.fromCharCode(0)).filter(Boolean)
               .map((l) => l.startsWith(pre) ? l.slice(pre.length) : l))];
           // Text files the pathspec spans at the tip; no pathspec = the tree.
           let scope = 2;
           if (pos.length) {
-              try { scope = gitRun(["grep", "-l", "-z", "-I", "-e", "", e.FULL_SHA, "--"].concat(pos))
+              try { scope = grepRun(["grep", "-l", "-z", "-I", "-e", "", e.FULL_SHA, "--"].concat(pos))
                   .split(String.fromCharCode(0)).filter(Boolean).length; }
-              catch (x) { if (x && x.status === 1) scope = 0; else return { err: "search-failed" }; }
+              catch (x) {
+                  if (x && x.status === 1) scope = 0;
+                  else return { err: x && x.code === "ETIMEDOUT" ? "search-timeout" : "search-failed" };
+              }
           }
           return { hits, scope };
       })();

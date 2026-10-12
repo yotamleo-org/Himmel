@@ -2737,6 +2737,28 @@ rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-c
 if [ "$rc" -eq 14 ] && printf '%s' "$out" | grep -qF 'site-not-a-file:l.sh'; then pass; else
     fail "8z-sub a root symlink shadowed by sub/l.sh must be refused from a subdir (rc=$rc): $out"; fi
 rm -rf "$tmp"
+# 8z-grep. HIMMEL-5162: a single-site search's pathspec resolves from the repo
+# root like sites do. From sub/ the cwd-relative reading spans only sub/a.sh (one
+# file), so a root-scoped search over a.sh b.sh c.sh was refused as
+# search-scope-single-file.
+sweep_fixture
+(cd "$tmp" && mkdir -p sub && cp a.sh sub/a.sh && git add sub/a.sh \
+    && git commit -qm "round 3" && git push -q origin feat/x) >/dev/null 2>&1
+printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -F 'echo a' -- a.sh b.sh c.sh\n" "$_r1" > "$tmp/cand.txt"
+rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "8z-grep a root-scoped search must clear from a subdir (rc=$rc): $out"; fi
+rm -rf "$tmp"
+# 8z-cost. HIMMEL-5162: a -P pattern over the length cap is refused up front,
+# naming the cap, instead of being left to the search timeout.
+sweep_fixture
+_long=$(printf 'a%.0s' $(seq 1 300))
+printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -P -e 'echo a|%s' -- a.sh b.sh c.sh\n" "$_r1" "$_long" > "$tmp/cand.txt"
+run_clear "$tmp" 14 "8z-cost an over-long -P pattern is refused -> exit 14" --check-sweeps "$tmp/cand.txt" feat/x
+if grepq "$LAST_CLEAR_OUT" -F 'search-pattern-too-costly'; then pass; else
+    fail "8z-cost must name search-pattern-too-costly: $LAST_CLEAR_OUT"; fi
+printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -P -e 'echo a' -- a.sh b.sh c.sh\n" "$_r1" > "$tmp/cand.txt"
+run_clear "$tmp" 0 "8z-cost a short -P pattern still clears -> exit 0" --check-sweeps "$tmp/cand.txt" feat/x
+rm -rf "$tmp"
 
 # 5a-5e. HIMMEL-2128 — CR_FLOOR_FALLBACK=claude-only gate-3b escape. All five
 # cases require cross-model (else gate 3b never runs) and a Claude avail-ok row
