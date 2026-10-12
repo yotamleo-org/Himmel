@@ -1917,11 +1917,18 @@ env_split_option() { # env_split_option <raw command> - false only when
     # is a plain data reader (echo, printf, cat, ...) opens nothing, as that
     # command never runs its arguments - unless the command redefines a
     # command (a function or an alias), where nothing is trusted.
-    local i j e w sk sg b redef=0
+    local i j e w sk sg b k redef=0
     local -a nm=() nb=() fw=()
-    case "$1" in *'()'*|*'( )'*|*function*|*alias*|*enable*) redef=1 ;; esac
+    # any '(' (a function body needs one, in any spacing) or a word that can
+    # define or import a command turns the data-reader carve-out off
+    case "$1" in *'('*|*function*|*alias*|*enable*|*source*) redef=1 ;; esac
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
+    k=0
+    while [ "$redef" = 0 ] && [ "$k" -lt "$ST_N" ]; do
+        case "${ST_W[$k]}" in alias|unalias|enable|function|source|.) redef=1 ;; esac
+        k=$((k + 1))
+    done
     i=0
     while [ "$i" -lt "$ST_N" ]; do
         e=$i
