@@ -149,6 +149,83 @@ if [ "$RC" = 0 ] && [[ "$OUT" == *HIDDEN_MASKED* ]]; then
 else bad "unreadable runtime directory: rc=$RC $OUT"; fi
 OUT=$(bash "$RUNNER" -- python3 -I -c 'import resource; assert resource.getrlimit(resource.RLIMIT_AS)==(1073741824,1073741824); assert resource.getrlimit(resource.RLIMIT_CPU)==(60,60); assert resource.getrlimit(resource.RLIMIT_NPROC)==(128,128)' 2>&1); RC=$?
 if [ "$RC" = 0 ]; then ok 'child address-space CPU and process limits enforced'; else bad "resource limits: rc=$RC $OUT"; fi
+
+# HIMMEL-5055: one validated runtime mask list per run. A stub find logs each
+# call, so the rows count runtime walks (the -prune call) instead of timing.
+STUBBIN="$TMP/findstub"; FINDLOG="$TMP/finds.log"
+mkdir -p "$STUBBIN"
+# shellcheck disable=SC2016  # the stub's own variables expand when it runs
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "$STUB_FIND_LOG"\nexec /usr/bin/find "$@"\n' > "$STUBBIN/find"
+chmod +x "$STUBBIN/find"
+walks() { grep -c -- '-prune' "$FINDLOG" 2>/dev/null || true; }
+counted() { STUB_FIND_LOG="$FINDLOG" PATH="$STUBBIN:$PATH" "$@"; }
+: > "$FINDLOG"
+for _ in 1 2 3; do counted bash "$RUNNER" -- /usr/bin/true >/dev/null 2>&1; done
+if [ "$(walks)" = 3 ]; then ok 'uncached launches each walk the runtime roots'; else bad "uncached walks: $(walks)"; fi
+ML="$TMP/mask-list"
+: > "$FINDLOG"
+OUT=$(counted bash "$RUNNER" --write-mask-list "$ML" 2>&1); RC=$?
+if [ "$RC" = 0 ] && [ -f "$ML" ] && [ "$(walks)" = 1 ] && [ "$(stat -c %a "$ML")" = 600 ]; then
+    ok 'mask list built with one walk, mode 600'
+else bad "mask list build: rc=$RC walks=$(walks) $OUT"; fi
+: > "$FINDLOG"
+cached_rc=0
+for _ in 1 2 3; do
+    SANDBOX_RUN_MASK_LIST="$ML" counted bash "$RUNNER" -- /usr/bin/true >/dev/null 2>&1 || cached_rc=$?
+done
+if [ "$cached_rc" = 0 ] && [ "$(walks)" = 0 ]; then ok 'three launches with a valid mask list walk zero times'; else bad "cached launches: rc=$cached_rc walks=$(walks)"; fi
+read -r h_magic h_epoch h_uid h_roots h_fp < "$ML"
+mutated() { # name header-line [mode]
+    { printf '%s\n' "$2"; tail -n +2 "$ML"; } > "$TMP/ml.$1"
+    chmod "${3:-600}" "$TMP/ml.$1"
+}
+mutated stale "$h_magic 1 $h_uid $h_roots $h_fp"
+mutated future "$h_magic 99999999999 $h_uid $h_roots $h_fp"
+mutated roots "$h_magic $h_epoch $h_uid /usr:/bin $h_fp"
+mutated magic "bogus $h_epoch $h_uid $h_roots $h_fp"
+mutated fp "$h_magic $h_epoch $h_uid $h_roots 0000"
+mutated worldw "$(head -n1 "$ML")" 666
+mutated groupw "$(head -n1 "$ML")" 664
+ln -s "$ML" "$TMP/ml.link"
+for variant in stale future roots magic fp worldw groupw link; do
+    : > "$FINDLOG"
+    OUT=$(SANDBOX_RUN_MASK_LIST="$TMP/ml.$variant" counted bash "$RUNNER" -- /usr/bin/true 2>&1); RC=$?
+    if [ "$RC" = 0 ] && [ "$(walks)" = 1 ]; then ok "untrusted mask list ($variant) rejected, full walk ran"; else bad "mask list $variant: rc=$RC walks=$(walks) $OUT"; fi
+done
+# A cache this user does not own: the same file seen from another uid.
+: > "$FINDLOG"
+OUT=$(SANDBOX_RUN_MASK_LIST="$ML" STUB_FIND_LOG="$FINDLOG" PATH="$STUBBIN:$PATH" \
+    bwrap "${OUTER[@]}" --ro-bind /etc /etc --ro-bind "$ROOT" "$ROOT" --bind "$TMP" "$TMP" \
+    --unshare-all --unshare-user --uid 4242 --gid 4242 --die-with-parent --proc /proc --dev /dev \
+    --chdir "$ROOT" -- bash "$RUNNER" -- /usr/bin/true 2>&1); RC=$?
+if [ "$RC" = 0 ] && [ "$(walks)" = 1 ]; then ok 'mask list owned by another uid rejected, full walk ran'; else bad "foreign-owner mask list: rc=$RC walks=$(walks) $OUT"; fi
+# Nodes present at build time are masked from the cache; nodes created after
+# it (shallow or deep) change a fingerprinted directory and force a walk.
+mkdir -p "$TMP/rt2/late-dir/sub"
+python3 -I -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$TMP/rt2/early.sock"
+cat > "$TMP/outer-late.sh" <<'LATE'
+R=$1; ML=$2
+bash "$R" --write-mask-list "$ML" || echo BUILD_FAIL
+masked() { for f in "$@"; do if test -S "/etc/$f"; then echo "VISIBLE $f"; else echo "MASKED $f"; fi; done; }
+SANDBOX_RUN_MASK_LIST="$ML" bash "$R" -- bash -c "$(declare -f masked); masked early.sock"
+echo "WALKS-AFTER-CLEAN-CACHE $(grep -c -- -prune "$STUB_FIND_LOG")"
+sleep 0.3
+python3 -I -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' /etc/late-dir/sub/deep.sock
+SANDBOX_RUN_MASK_LIST="$ML" bash "$R" -- bash -c "$(declare -f masked); masked early.sock late-dir/sub/deep.sock"
+python3 -I -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' /etc/late.sock
+SANDBOX_RUN_MASK_LIST="$ML" bash "$R" -- bash -c "$(declare -f masked); masked late.sock"
+LATE
+: > "$FINDLOG"
+OUT=$(STUB_FIND_LOG="$FINDLOG" PATH="$STUBBIN:$PATH" bwrap "${OUTER[@]}" --bind "$TMP/rt2" /etc \
+    --ro-bind "$ROOT" "$ROOT" --bind "$TMP" "$TMP" --unshare-all --unshare-user --die-with-parent \
+    --proc /proc --dev /dev --chdir "$ROOT" -- bash "$TMP/outer-late.sh" "$RUNNER" "$TMP/ml.late" 2>&1); RC=$?
+if [ "$RC" = 0 ] && [[ "$OUT" == *'MASKED early.sock'* ]] && [[ "$OUT" == *'WALKS-AFTER-CLEAN-CACHE 1'* ]]; then
+    ok 'node present at cache build is masked from the cache without a second walk'
+else bad "cached mask of pre-existing socket: rc=$RC $OUT"; fi
+if [[ "$OUT" == *'MASKED late-dir/sub/deep.sock'* ]] && [[ "$OUT" == *'MASKED late.sock'* ]] \
+    && [[ "$OUT" != *VISIBLE* ]] && [ "$(walks)" = 3 ]; then
+    ok 'socket created after the cache was built is still masked via a full walk'
+else bad "late socket: rc=$RC walks=$(walks) $OUT"; fi
 fi
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

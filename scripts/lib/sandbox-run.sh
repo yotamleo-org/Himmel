@@ -2,6 +2,8 @@
 # HIMMEL-4912: containment for hook classification, never destructive exec mode.
 # Linux namespaces or Darwin sandbox-exec; missing confinement fails closed.
 # Usage: sandbox-run.sh [--canary ABSENT_PATH] [--read-only INPUT]... -- CMD [ARG...]
+#        sandbox-run.sh --write-mask-list FILE   (Linux: walk once, write a reusable list)
+# SANDBOX_RUN_MASK_LIST=FILE reuses that list when it validates (HIMMEL-5055).
 # Linux binds runtime/worktree/socket-free inputs and bounds HOME/tmp in tmpfs.
 # Darwin confines writes to private scratch; outputs use stdout/stderr only.
 set -uo pipefail
@@ -28,6 +30,7 @@ case "$platform" in
 esac
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)" || exit 125
 canary=''
+write_mask=''
 inputs=("$ROOT")
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -49,11 +52,15 @@ while [ "$#" -gt 0 ]; do
             esac
             inputs+=("$input")
             shift 2 ;;
+        --write-mask-list)
+            [ "$#" -ge 2 ] || exit 125
+            write_mask="$2"
+            shift 2 ;;
         --) shift; break ;;
         *) printf 'sandbox-run: unknown option: %s\n' "$1" >&2; exit 125 ;;
     esac
 done
-if [ "$#" -eq 0 ]; then
+if [ "$#" -eq 0 ] && [ -z "$write_mask" ]; then
     printf 'usage: sandbox-run.sh [--canary ABSENT_PATH] [--read-only INPUT]... -- COMMAND [ARG...]\n' >&2
     exit 125
 fi
@@ -116,9 +123,54 @@ done
 # Read-only runtime sockets still permit IPC. Hide special nodes and directories
 # whose contents cannot be inspected; never assume an unreadable tree is safe.
 mask_list="$scratch_root/runtime-masks"
-find "${runtime_inputs[@]}" \
-    \( -type d \( ! -readable -o ! -executable \) -printf 'd\0%p\0' -prune \) \
-    -o \( ! -type f ! -type d ! -type l -printf 'f\0%p\0' \) > "$mask_list" || exit 125
+walk_masks() {
+    find "${runtime_inputs[@]}" \
+        \( -type d \( ! -readable -o ! -executable \) -printf 'd\0%p\0' -prune \) \
+        -o \( ! -type f ! -type d ! -type l -printf 'f\0%p\0' \) > "$1"
+}
+# HIMMEL-5055: the full walk dominates a corpus run. A list is reused only when
+# it is ours (regular file, this uid, no group/other write), covers these roots,
+# is under the TTL, every listed path still exists, and the mtime/mode of every
+# directory within two levels of a root is unchanged since it was built. A node
+# created deeper than that after the build is the accepted ceiling, bounded by
+# the TTL; anything unverifiable falls back to the walk.
+mask_roots="${runtime_inputs[*]}"
+mask_roots="${mask_roots// /:}"
+mask_fingerprint() {
+    find "${runtime_inputs[@]}" -maxdepth 2 -type d -printf '%p\0%m\0%T@\0' 2>/dev/null \
+        | sha256sum | cut -d' ' -f1
+}
+mask_list_trusted() {
+    local f="${SANDBOX_RUN_MASK_LIST:-}" magic epoch huid hroots hfp mode kind path now ttl=600
+    [ -n "$f" ] && [ -f "$f" ] && [ ! -L "$f" ] || return 1
+    [ "$(stat -c %u -- "$f")" = "$(id -u)" ] || return 1
+    mode=$(stat -c %a -- "$f") || return 1
+    [ $((8#$mode & 8#022)) -eq 0 ] || return 1
+    read -r magic epoch huid hroots hfp < "$f" || return 1
+    [ "$magic" = himmel-mask-list-v1 ] && [ "$huid" = "$(id -u)" ] && [ "$hroots" = "$mask_roots" ] || return 1
+    case "$epoch" in ''|*[!0-9]*) return 1 ;; esac
+    now=$(date +%s)
+    [ "$epoch" -le "$now" ] && [ $((now - epoch)) -le "$ttl" ] || return 1
+    [ "$hfp" = "$(mask_fingerprint)" ] || return 1
+    tail -n +2 "$f" > "$mask_list" || return 1
+    while IFS= read -r -d '' kind && IFS= read -r -d '' path; do
+        case "$kind" in d|f) ;; *) return 1 ;; esac
+        [ -e "$path" ] || [ -L "$path" ] || return 1
+    done < "$mask_list"
+    return 0
+}
+if [ -n "$write_mask" ]; then
+    walk_masks "$mask_list" || exit 125
+    tmp_out=$(mktemp "$write_mask.XXXXXX") || exit 125
+    chmod 600 "$tmp_out" || exit 125
+    { printf 'himmel-mask-list-v1 %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$(mask_fingerprint)"
+      cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; exit 125; }
+    mv -f "$tmp_out" "$write_mask" || exit 125
+    exit 0
+fi
+if ! mask_list_trusted; then
+    walk_masks "$mask_list" || exit 125
+fi
 while IFS= read -r -d '' kind && IFS= read -r -d '' input; do
     case "$kind" in
         d) runtime_masks+=(--tmpfs "$input" --remount-ro "$input") ;;

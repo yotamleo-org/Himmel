@@ -91,6 +91,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 PLACEHOLDER = "@PRIMARY@"
@@ -384,6 +385,32 @@ def decision(rc, stdout):
 RANK = {"approve": 0, "pass": 1, "ask": 2, "deny": 3}
 
 
+# HIMMEL-5055: one runtime mask list per run instead of a system-root walk per
+# launch. sandbox-run.sh validates the file (owner, mode, roots, TTL 600s,
+# directory fingerprint) and walks itself when it cannot trust it, so a stale
+# or missing list only costs time. Rebuilt at half the TTL.
+_MASK = {"path": None, "built": 0.0, "dir": None, "off": False}
+_MASK_LOCK = threading.Lock()
+MASK_REFRESH_S = 300
+
+
+def _mask_list_path(runner):
+    """Path of a fresh mask list for the next launch, or None (walk instead)."""
+    if _MASK["dir"] is None or _MASK["off"]:
+        return None
+    with _MASK_LOCK:
+        if time.time() - _MASK["built"] > MASK_REFRESH_S:
+            out = os.path.join(_MASK["dir"], "mask-list")
+            r = subprocess.run(["bash", runner, "--write-mask-list", out],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            if r.returncode != 0:
+                _MASK["off"] = True
+                return None
+            _MASK["path"], _MASK["built"] = out, time.time()
+        return _MASK["path"]
+
+
 def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
                  handover, timeout_run, context=None):
     """Pipe a JSON payload to the hook on stdin.
@@ -438,6 +465,9 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
     env.pop("HANDOVER_DIR", None)
     argv.extend(["--", "/usr/bin/env"] + ["%s=%s" % item for item in env.items()])
     argv.extend(["bash", "-c", 'export HANDOVER_DIR="$TMPDIR/handover"; mkdir -p "$HANDOVER_DIR"; exec bash "$1"', "sandbox-hook", hook_path])
+    mask_list = _mask_list_path(runner)
+    if mask_list:
+        launch_env["SANDBOX_RUN_MASK_LIST"] = mask_list
     t0 = time.time()
     # stdout goes to a temp file, not a pipe: a pipe's EOF waits on every
     # process holding the write end, so a hook that backgrounds a child would
@@ -654,24 +684,26 @@ def main(argv):
                         transform=row.get("transform"), expect=row.get("expect"),
                         rb=rb, rh=rh, base=db, head=dh, tb=tb, th=th)
 
-        # Every sandbox launch scans the runtime tree (sandbox-run.sh runtime
-        # masks). On a cold CI disk the first parallel batch spent its whole
-        # --timeout-run in that scan (rows 0-3 TIMEOUT on both sides, later rows
-        # fine), so read the tree once, serially and unbounded, before the pool.
-        # ponytail: warms the page cache, does not remove the per-launch scan;
-        # the upgrade path is one mask list per run (HIMMEL-5055).
-        # A one-row corpus has no later rows to protect and the walk counts
-        # against its wall time (the bg-child test times a one-row run).
-        for root in (("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc")
-                     if len(corpus) > 1 else ()):
-            for dirpath, dirnames, filenames in os.walk(root):
-                for name in dirnames + filenames:
-                    try:
-                        os.lstat(os.path.join(dirpath, name))
-                    except OSError:
-                        pass
-        with ThreadPoolExecutor(args.jobs) as ex:
-            results = list(ex.map(one, enumerate(corpus)))
+        # Every sandbox launch used to walk the runtime tree (sandbox-run.sh
+        # runtime masks); on a cold CI disk the first parallel batch spent its
+        # whole --timeout-run there (rows 0-3 TIMEOUT on both sides). Build the
+        # mask list once, serially and unbounded, before the pool; launches then
+        # reuse it (HIMMEL-5055). A one-row corpus has no later rows to protect
+        # and the build counts against its wall time (the bg-child test times a
+        # one-row run), so it keeps the per-launch walk.
+        if len(corpus) > 1:
+            _MASK["dir"] = tempfile.mkdtemp(prefix="guard-corpus-mask.")
+            _MASK["built"] = 0.0
+            _MASK["off"] = False
+            _mask_list_path(os.path.abspath(os.path.join(
+                os.path.dirname(__file__), "..", "..", "lib", "sandbox-run.sh")))
+        try:
+            with ThreadPoolExecutor(args.jobs) as ex:
+                results = list(ex.map(one, enumerate(corpus)))
+        finally:
+            if _MASK["dir"]:
+                shutil.rmtree(_MASK["dir"], ignore_errors=True)
+            _MASK["dir"] = None
 
         # A regression is a CLEAN base-deny paired with a CLEAN head-allow.
         # Require head == 0 (a genuine allow), not merely "head != 2": a head
