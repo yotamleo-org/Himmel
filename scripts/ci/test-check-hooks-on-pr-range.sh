@@ -165,6 +165,27 @@ out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "merge-only range, unattested script -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
+# --- an unattested first merge cannot hide behind a later attested commit ---
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
+(
+  set -e
+  cd "$t"
+  main="$(git rev-parse 'HEAD^1')"; old="$(git rev-parse 'HEAD^1~1')"
+  git checkout -q --detach "$main"
+  mkdir -p scripts; echo evil > scripts/evil.sh; git add scripts/evil.sh
+  tree1="$(git write-tree)"
+  m1="$(git commit-tree "$tree1" -p "$main" -p "$old" -m "merge first")"
+  git checkout -q --detach "$m1"
+  echo note > docs-note.md; git add docs-note.md
+  git commit -q -m "feat: HIMMEL-1 later$TRAIL"
+  c="$(git rev-parse HEAD)"
+  m="$(git commit-tree "$(git write-tree)" -p "$main" -p "$c" -m "merge")"
+  git checkout -q --detach "$m"
+) || fail "merge-first fixture setup"
+out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+expect "unattested first merge, attested later commit -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
+
 echo
 if [ "$failures" -gt 0 ]; then echo "$failures FAILED"; exit 1; fi
 echo "all passed"

@@ -78,10 +78,10 @@ else
 fi
 head="$(git rev-parse HEAD)"
 
-first="$(git rev-list --reverse --no-merges "$base..$tip" 2>/dev/null | head -n 1)"
-# A merge-only range (an evil merge can add code) is still checked: fall back
-# to the oldest commit including merges.
-[ -n "$first" ] || first="$(git rev-list --reverse "$base..$tip" 2>/dev/null | head -n 1)"
+# The oldest commit of the range, merges included — the same "first commit" the
+# PR's commit list gives ready-check.sh item 5; an unattested merge cannot hide
+# behind a later ordinary commit that carries the trailers.
+first="$(git rev-list --reverse "$base..$tip" 2>/dev/null | head -n 1)"
 if [ -z "$first" ]; then
   echo "hooks-on-range: no commits in $base..$tip — nothing to check"
   exit 0
