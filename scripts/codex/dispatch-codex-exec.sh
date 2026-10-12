@@ -576,7 +576,9 @@ const matcherOk = (m) => {
         if (c === undefined || !(/[!-\/:-@\[-`{-~]/.test(c) || "dDwWsSbB".includes(c))) return false;
         i++;
     }
-    try { new RegExp(m); return true; } catch (error) { return false; }
+    // u flag: rejects the lenient web-compat syntax (stray brace, lone bracket)
+    // the Rust regex crate also rejects; fails closed on the rest.
+    try { new RegExp(m, "u"); return true; } catch (error) { return false; }
 };
 for (const event of Object.keys(events)) {
     if (!labels[event]) continue;

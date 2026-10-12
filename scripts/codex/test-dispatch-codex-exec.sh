@@ -1370,6 +1370,8 @@ shape_case "18y matcher with hex escape (\\x41)" 2 "regular expression" 'd.hooks
 shape_case "18z matcher with start-anchor escape (\\A)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\Aa"; return d;'
 shape_case "18aa matcher with unicode class (\\p{L})" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\p{L}"; return d;'
 shape_case "18ab matcher with octal escape (\\0)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\0"; return d;'
+shape_case "18af matcher with stray brace (a{)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a{"; return d;'
+shape_case "18ag matcher with lone bracket (a])" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a]"; return d;'
 # Allowed escapes parse, so only the (changed-matcher) hash is stale.
 shape_case "18ac escaped dot allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a\\.b"; return d;'
 shape_case "18ad class and boundary escapes allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "\\bfoo\\d\\s\\W"; return d;'
