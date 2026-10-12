@@ -102,17 +102,19 @@ esac
 
 # HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
-# is a must-run dependency: if it cannot be sourced, deny.
+# is a must-run dependency: if it cannot be sourced, deny. HIMMEL-5358: it is
+# loaded for PowerShell too, because the git argv parser below reads every
+# command through its tokenizer; only the unwrap re-scan stays Bash-only.
+case "${BASH_SOURCE[0]}" in
+    */*) _gu_lib=${BASH_SOURCE[0]%/*}/lib/guard-unwrap.sh ;;
+    *) _gu_lib=lib/guard-unwrap.sh ;;
+esac
+# shellcheck source=lib/guard-unwrap.sh
+if ! { [ -r "$_gu_lib" ] && . "$_gu_lib"; } 2>/dev/null; then
+    echo "block-destructive-commands: cannot load $_gu_lib - failing closed" >&2
+    exit 2
+fi
 if [ "$tool" != PowerShell ]; then
-    case "${BASH_SOURCE[0]}" in
-        */*) _gu_lib=${BASH_SOURCE[0]%/*}/lib/guard-unwrap.sh ;;
-        *) _gu_lib=lib/guard-unwrap.sh ;;
-    esac
-    # shellcheck source=lib/guard-unwrap.sh
-    if ! { [ -r "$_gu_lib" ] && . "$_gu_lib"; } 2>/dev/null; then
-        echo "block-destructive-commands: cannot load $_gu_lib - failing closed" >&2
-        exit 2
-    fi
     guard_unwrap "${BASH_SOURCE[0]}" "$cmd" || exit 2
 fi
 
@@ -141,6 +143,34 @@ if [[ $cmd == *"$_bsnl"* || $cmd == *"$_bscrlf"* ]]; then
     cmd_lc_join="${cmd_lc_join//"$_bsnl"/}"
     cmd_lc_join="${cmd_lc_join//[$'\r\n']/;}"
 fi
+# HIMMEL-5329: an expansion that is empty at run time can stand before the
+# command word (`${V:-}rm`, `$V rm`, zsh's `$V:t rm`, `$V[1,-3]rm`,
+# `${(P)V}rm`), so the shell runs `rm` while the text shows `${V:-}rm`.
+# cmd_lc_noexp drops every run of expansions at command position (start of
+# text or after ; & | ( or a backtick). A THIRD scan source: it only adds
+# denies. Built only when the text carries a `$`. Each pass rescans the text,
+# so past 256 runs the loop stops and the command is refused (below, once
+# deny exists) rather than paying a quadratic scan.
+# The rm scans below read their own scrubbed text and run the same strip.
+# shellcheck disable=SC2016 # a literal `$` in the ERE, not an expansion
+_noexp_re='(^[[:space:]]*|[;&|(`][[:space:]]*)(\$(\{[^}]*\}|[a-z_][a-z0-9_]*(:[a-z]|\[[^]]*\])*|[0-9#?*@!$-]))+[[:space:]]*'
+_noexp_over=0
+# _noexp_strip TEXT — REPLY is TEXT with command-position expansions dropped.
+_noexp_strip() {
+    local s=$1 n=0
+    while [[ $s =~ $_noexp_re ]]; do
+        if [ "$n" -ge 256 ]; then _noexp_over=1; break; fi
+        s=${s/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"}
+        n=$((n + 1))
+    done
+    REPLY=$s
+}
+cmd_lc_noexp=''
+_noexp=0
+if [[ $cmd_lc_join == *'$'* ]]; then
+    _noexp_strip "$cmd_lc_join"; cmd_lc_noexp=$REPLY
+    [ "$cmd_lc_noexp" = "$cmd_lc_join" ] || _noexp=1
+fi
 
 # contains ERE -> true iff $cmd_lc (or its joined twin cmd_lc_join) matches ERE.
 #
@@ -163,7 +193,8 @@ fi
 # unchanged. Equivalence is pinned per-rule in the paired test suite.
 contains() {
     local re="$1"
-    [[ $cmd_lc =~ $re ]] || [[ $cmd_lc_join =~ $re ]]
+    [[ $cmd_lc =~ $re ]] || [[ $cmd_lc_join =~ $re ]] \
+        || { [ "$_noexp" = 1 ] && [[ $cmd_lc_noexp =~ $re ]]; }
 }
 
 # Bracket-class substitutions over ASCII-only classes, run in the C locale: in a
@@ -172,12 +203,12 @@ contains() {
 # same string. Result in REPLY.
 _c_strip_quotes() { local LC_ALL=C; REPLY=${1//[\"\'\\]/}; }
 _c_keep_char() { local LC_ALL=C; REPLY=${1//[^$2]/}; }
-_c_seps_to_nl() { local LC_ALL=C; REPLY=${1//[;|&]/$'\n'}; }
 
 deny() {
     echo "block-destructive-commands: destructive command refused ($1)" >&2
     exit 2
 }
+[ "$_noexp_over" = 0 ] || deny "more than 256 expansions at command position"
 
 # Sanctioned CLIProxyAPI proxy lifecycle (HIMMEL-1451): bouncing the proxy
 # needs process termination (taskkill / Stop-Process / schtasks /end), all of
@@ -695,6 +726,12 @@ if [[ $cmd_lc_join != "$cmd_lc" ]]; then
 fi
 _rm_srcs=("$rm_scrub")
 [[ $rm_join != "$rm_scrub" ]] && _rm_srcs+=("$rm_join")
+# HIMMEL-5329: an empty expansion before the rm word (see cmd_lc_noexp).
+if [[ $rm_join == *'$'* ]]; then
+    _noexp_strip "$rm_join"
+    [ "$_noexp_over" = 0 ] || deny "more than 256 expansions at command position"
+    [[ $REPLY == "$rm_join" ]] || _rm_srcs+=("$REPLY")
+fi
 _sq="'"
 RM_ANSIC_ESC_PAT="(^|[^[:alnum:]_.-])rm(\\.exe)?([^|;&]*)\\\$${_sq}[^${_sq}]*\\\\"
 RM_OPT_DOLLAR_PAT="${RMPOS}"'rm(\.exe)?([^[:alnum:]_.-][^|;&]*)?([[:space:]]|\$\{ifs\})-[^[:space:]|;&]*\$'
@@ -871,236 +908,351 @@ git_default_branch() {
     printf '%s' "${ref#refs/remotes/origin/}" | LC_ALL=C tr '[:upper:]' '[:lower:]'
 }
 
-# True (rc 0) iff push_seg's (single ;/|/&-delimited, already-lowercased)
-# explicit push target is protected -- main/master, the resolved default
-# branch, or no explicit branch at all (ambiguous -> treated as protected,
-# i.e. refused). This is the deny-side twin of auto-approve-safe-bash.sh's
-# git_push_force_with_lease_is_safe (HIMMEL-212): that grants the identical
-# shape at the allow layer; this only needs to agree on when NOT to deny.
-git_push_lease_targets_protected() {
-    local seg="$1" tok branch db protected=' main master '
-    if db=$(git_default_branch) && [ -n "$db" ]; then
-        protected="$protected$db "
+# HIMMEL-5358: every git invocation is judged on its argv as the shared
+# tokenizer reads it (guard-unwrap.sh sourced shell-tokenize.sh above), never
+# by regexes over flattened text. Three review rounds on PR 2397 (HIMMEL-5274)
+# kept finding a spelling the text rules missed: a quoted `$(…)` as -C's value,
+# an apostrophe in a comment pairing with one on a later line.
+#
+# The walk: each segment's words join the logical command they belong to; a
+# `$(…)`, backtick or process substitution is a placeholder word in its parent
+# and a command of its own. Every word whose basename is git starts an
+# invocation. Its global options are skipped by git's own grammar, then the
+# subcommand's argv meets the deny rules. A word the hook cannot know (a
+# substitution, a $-expansion, a glob, an empty word, an unknown option, an
+# alias from -c or --config-env) in a global-option or subcommand position
+# leaves the invocation UNRESOLVED: its remaining words are read as text and
+# any destructive marker denies. A command word that is only an expansion
+# (`$(which git)`, "$GIT") is unresolved the same way.
+#
+# Text the tokenizer does not model is retried with `${…}` flattened, then
+# with heredoc bodies dropped; past that, each line is tokenized alone or read
+# as text after its first git word. A word holding whitespace and "git" (an
+# ssh or bash -c payload, a message, an assignment's value that a later `$X`
+# runs) is walked as a command too, two levels deep, and so is each raw line
+# of a heredoc: the text rules this replaces read both, and the walk keeps
+# every deny they gave. A `#` comment is the one thing it no longer reads.
+_gp_w='[^a-z0-9_-]'
+_gp_re_fb="${_gp_w}filter-branch${_gp_w}"
+_gp_re_reset="${_gp_w}reset${_gp_w}"
+_gp_re_hard='[[:space:]=]--h'
+_gp_re_clean="${_gp_w}clean${_gp_w}"
+_gp_re_cforce='[[:space:]]-[a-z0-9]*f|[[:space:]]--f|requireforce'
+_gp_re_push="${_gp_w}push${_gp_w}"
+_gp_re_pforce='--force|[[:space:]]-[a-z0-9]*f|[[:space:]:=]\+'
+_gp_re_text='(^|[^a-z0-9_.-])git(\.exe)?([^a-z0-9_-]|$)'
+# shellcheck disable=SC2016 # a literal `$` in the ERE, not an expansion
+_gp_re_exp='\$(\{[^}]*\}|[a-z_][a-z0-9_]*|[0-9#?*@!$-])'
+_gp_prot=' main master '
+_gp_prot_done=0
+
+# _gp_protected_set — add the resolved default branch to _gp_prot, once.
+_gp_protected_set() {
+    local db
+    [ "$_gp_prot_done" = 0 ] || return 0
+    _gp_prot_done=1
+    if db=$(git_default_branch) && [ -n "$db" ]; then _gp_prot="$_gp_prot$db "; fi
+    return 0
+}
+
+# _gp_unres TEXT — the markers an unresolved invocation is held to.
+_gp_unres() {
+    local r=" $1 "
+    if [[ $r =~ $_gp_re_fb ]]; then deny "git filter-branch"; fi
+    if [[ $r =~ $_gp_re_reset ]] && [[ $r =~ $_gp_re_hard ]]; then deny "git reset --hard"; fi
+    if [[ $r =~ $_gp_re_clean ]] && [[ $r =~ $_gp_re_cforce ]]; then deny "git clean -f"; fi
+    if [[ $r =~ $_gp_re_push ]] && [[ $r =~ $_gp_re_pforce ]]; then deny "force push"; fi
+    return 0
+}
+
+# _gp_text LINE — a line the tokenizer cannot read: everything after its
+# first git word is unresolved.
+_gp_text() {
+    local t
+    _c_strip_quotes "$1"; t=$REPLY
+    [[ $t =~ $_gp_re_text ]] || return 0
+    _gp_unres "${t#*"${BASH_REMATCH[0]}"}"
+}
+
+# _gp_noexp_word WORD — REPLY is WORD with its $-expansions removed.
+_gp_noexp_word() {
+    local s=$1
+    while [[ $s =~ $_gp_re_exp ]]; do s=${s/"${BASH_REMATCH[0]}"/}; done
+    REPLY=$s
+}
+
+# _gp_join J — REPLY is words J.. of the current command, space-joined.
+_gp_join() {
+    local j=$1 r=''
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do r="$r ${_gc_w[j]}"; j=$((j + 1)); done
+    REPLY=$r
+}
+
+_gp_reset() { # J — reset's argv from word J
+    local j=$1 w
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]}
+        case "$w" in
+            --) return 0 ;;
+            --h|--ha|--har|--hard) deny "git reset --hard" ;;
+        esac
+        case "${_gc_k[j]}:$w" in X:*--h*|G:*--h*) deny "git reset --hard" ;; esac
+        j=$((j + 1))
+    done
+    return 0
+}
+
+_gp_clean() { # J FORCED — clean's argv from word J; FORCED=1 when -c turned requireForce off
+    local j=$1 w
+    [ "$2" = 0 ] || deny "git clean -f"
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]}
+        case "$w" in
+            --) return 0 ;;
+            --f|--fo|--for|--forc|--force) deny "git clean -f" ;;
+            --*) ;;
+            -*f*) deny "git clean -f" ;;
+        esac
+        j=$((j + 1))
+    done
+    return 0
+}
+
+# _gp_lease_protected — true unless the lease push names origin and only
+# explicit branches outside main, master and the default branch. Reads the
+# caller's pw (positional words) and pk (their kinds).
+_gp_lease_protected() {
+    local i=1 b
+    [ "${#pw[@]}" -ge 2 ] || return 0
+    [ "${pw[0]}:${pk[0]}" = origin:W ] || return 0
+    _gp_protected_set
+    while [ "$i" -lt "${#pw[@]}" ]; do
+        case "${pk[i]}" in P|X|G) return 0 ;; esac
+        b=${pw[i]##*:}; b=${b#+}; b=${b#refs/heads/}
+        case "$b" in ''|head|@*|*'*'*|*'$'*|*'`'*) return 0 ;; esac
+        case "$_gp_prot" in *" $b "*) return 0 ;; esac
+        i=$((i + 1))
+    done
+    return 1
+}
+
+# _gp_push J OFF — push's argv from word J. OFF=1 when the invocation chose
+# its repository (-C, --git-dir, ...) or an assignment preceded it, which the
+# lease carve-out cannot follow.
+_gp_push() {
+    local j=$1 off=$2 w k c f=0 l=0 dd=0 i=1
+    local -a pw=() pk=()
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]} k=${_gc_k[j]}
+        if [ "$dd" = 1 ]; then
+            pw[${#pw[@]}]=$w; pk[${#pk[@]}]=$k
+        else
+            case "$w" in
+                --) dd=1 ;;
+                --force|--f|--fo|--for|--forc) f=1 ;;
+                --force-w*) l=1 ;;
+                --repo) off=1; j=$((j + 1)) ;;
+                --repo=*) off=1 ;;
+                -o|--push-option|--receive-pack|--exec|--recurse-submodules) j=$((j + 1)) ;;
+                --*) ;;
+                -*) c=${w#-}; c=${c%%o*}; case "$c" in *f*) f=1 ;; esac ;;
+                *) pw[${#pw[@]}]=$w; pk[${#pk[@]}]=$k ;;
+            esac
+            case "$k:$w" in X:*force*|G:*force*) f=1 ;; esac
+        fi
+        j=$((j + 1))
+    done
+    while [ "$i" -lt "${#pw[@]}" ]; do
+        case "${pw[i]}" in +*) f=1 ;; esac
+        i=$((i + 1))
+    done
+    [ "$f" = 0 ] || deny "force push"
+    [ "$l" = 1 ] || return 0
+    if [ "$off" = 1 ] || [ "$_gp_cd" = 1 ] || [ "${GU_CWD_UNKNOWN:-0}" = 1 ]; then
+        deny "force push"
     fi
-    local -a toks positional=()
-    # shellcheck disable=SC2206 # intentional whitespace split, single segment by construction
-    toks=($seg)
-    # HIMMEL-2054 CR: a handful of push flags take their value as a SEPARATE
-    # token (`-o ci.skip`, `--repo origin`) rather than glued (`-o=ci.skip`
-    # doesn't exist, but `--repo=origin` does) -- an un-skipped value token
-    # doesn't start with `-` and would misparse as the remote/branch
-    # positional, shifting the count and letting an ambiguous push (no real
-    # explicit branch) read as having one. Skip exactly the next token after
-    # any of these known value-taking flags.
-    local skip_next=0
-    for tok in ${toks[@]+"${toks[@]}"}; do   # HIMMEL-4626: bash <= 4.3 + set -u: empty array
-        if [ "$skip_next" -eq 1 ]; then
-            skip_next=0
-            continue
-        fi
-        case "$tok" in
-            -o|--push-option|--repo|--receive-pack|--exec|--recurse-submodules)
-                # HIMMEL-2054 CR round 8 (panel, codex-2): `--sign` (an
-                # abbreviation of `--signed[=<mode>]`) does NOT belong here --
-                # verified empirically that git parses `--signed`'s value ONLY
-                # via an attached `=`, never as a separate following token
-                # (an OPTIONAL-value long option, unlike the required-value
-                # ones above). Treating it as value-taking swallowed the NEXT
-                # real positional (remote/branch), shifting the count.
-                skip_next=1 ;;
-            -*) ;;                       # flag, not a positional (remote/branch)
-            *)
-                # HIMMEL-2054 CR round 5 (panel, codex-1): `toks=($seg)` word-
-                # splits but does NOT quote-remove -- a real shell WOULD strip
-                # matching quotes before git ever sees the argument (`'main'`
-                # pushes to main), but here the quote characters stay literal
-                # data and never string-match $protected. Strip one matching
-                # pair of outer quotes so the comparison sees what git would.
-                if [ "${#tok}" -ge 2 ]; then
-                    case "$tok" in
-                        '"'*'"') tok="${tok%\"}"; tok="${tok#\"}" ;;
-                        "'"*"'") tok="${tok%\'}"; tok="${tok#\'}" ;;
-                    esac
-                fi
-                positional+=("$tok") ;;
+    if _gp_lease_protected; then deny "force push"; fi
+    return 0
+}
+
+# _gp_inv J ASSIGNED UNRESOLVED — one git invocation whose first argument is
+# word J of the current command.
+_gp_inv() {
+    local j=$1 off=$2 un=$3 cf=0 w v
+    while [ "$un" = 0 ] && [ "$j" -lt "${#_gc_w[@]}" ]; do
+        w=${_gc_w[j]}
+        case "${_gc_k[j]}" in P|X|G) un=1; break ;; esac
+        case "$w" in
+            -c|-C|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source|--shallow-file)
+                # A -c key the push target does not depend on (core.pager,
+                # user.name, ...) leaves the lease carve-out on. The text is
+                # lowercased, so -C reads as -c: only a `section.key=value`
+                # word is taken as config; any other value may be a directory,
+                # and so may any word at all once the raw text has a -C.
+                [ "$w" = -c ] || off=1
+                case "$cmd" in *-C*) off=1 ;; esac
+                [ $((j + 1)) -lt "${#_gc_w[@]}" ] || return 0
+                v=${_gc_w[j + 1]}
+                case "${_gc_k[j + 1]}" in P|X|G) un=1; break ;; esac
+                case "$w:$v" in
+                    *:) un=1; break ;;
+                    -c:alias.*|--config-env:alias.*) un=1; break ;;
+                    -c:clean.requireforce|-c:clean.requireforce=true|-c:clean.requireforce=1|-c:clean.requireforce=yes|-c:clean.requireforce=on) ;;
+                    -c:clean.requireforce*|--config-env:clean.requireforce*) cf=1 ;;
+                    -c:remote.*|-c:url.*|-c:push.*|-c:branch.*|-c:include*|-c:core.worktree*|-c:core.bare*) off=1 ;;
+                esac
+                [[ $v =~ ^[a-z0-9-]+\.[^=/]+= ]] || off=1
+                j=$((j + 2)) ;;
+            --config-env=alias.*) un=1; break ;;
+            --config-env=clean.requireforce*) off=1; cf=1; j=$((j + 1)) ;;
+            --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|--attr-source=*|--shallow-file=*|--bare)
+                off=1; j=$((j + 1)) ;;
+            -p|-P|--paginate|--no-pager|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice|--no-lazy-fetch|--exec-path|--exec-path=*|--list-cmds=*|--html-path|--man-path|--info-path|-h|--help|-v|--version)
+                j=$((j + 1)) ;;
+            ''|-*) un=1; break ;;
+            *) break ;;
         esac
     done
-    [ "${#positional[@]}" -lt 2 ] && return 0   # no explicit branch -> ambiguous
-    # HIMMEL-2054 CR (panel, codex-2): git_default_branch() only resolves
-    # origin's default -- a lease push to any OTHER remote could force-update
-    # that remote's own (differently named, unresolved-here) default branch
-    # without ever matching $protected. Scope the carve-out to origin, the
-    # only remote this hook can reason about; any other remote is protected.
-    case "${positional[0]}" in
-        origin) ;;
-        *) return 0 ;;
+    if [ "$un" = 1 ]; then
+        _gp_join "$j"; _gp_unres "$REPLY"; return 0
+    fi
+    [ "$j" -lt "${#_gc_w[@]}" ] || return 0
+    case "${_gc_w[j]}" in
+        reset) _gp_reset $((j + 1)) ;;
+        clean) _gp_clean $((j + 1)) "$cf" ;;
+        filter-branch) deny "git filter-branch" ;;
+        push) _gp_push $((j + 1)) "$off" ;;
     esac
-    for tok in "${positional[@]:1}"; do
-        branch="${tok##*:}"              # refspec dst (src:dst), or the bare token
-        branch="${branch#+}"
-        branch="${branch#refs/heads/}"
-        case "$branch" in
-            '') return 0 ;;              # HIMMEL-2054 CR round 4 (panel,
-                                          # codex-1): the special bare `:` (or
-                                          # `+:`) "matching" refspec strips to
-                                          # an empty branch -- it can force-
-                                          # update any locally-matching remote
-                                          # branch, including main. Ambiguous
-                                          # -> protected.
-            head|'@'|'@'*) return 0 ;;   # HIMMEL-2054 CR (panel, codex-1;
-                                          # round 6 codex-2): HEAD, and its `@`
-                                          # shorthand (`@{...}` forms too), are
-                                          # symbolic refs for whatever is
-                                          # currently checked out -- this hook
-                                          # only inspects the command STRING, so
-                                          # it cannot statically know whether
-                                          # that resolves to main; ambiguous ->
-                                          # protected, same as no explicit
-                                          # branch at all.
-        esac
-        case "$branch" in
-            *'$'*|*'`'*) return 0 ;;     # HIMMEL-2054 CR round 6 (panel,
-                                          # codex-1): a shell variable or
-                                          # command-substitution branch
-                                          # argument (`origin "$branch"`,
-                                          # `` origin `cmd` ``) has a runtime
-                                          # value this hook -- which only
-                                          # inspects the command STRING, never
-                                          # executes it -- cannot resolve.
-                                          # Ambiguous -> protected.
-            *'*'*) return 0 ;;           # HIMMEL-2054 CR: a wildcard refspec dst
-                                          # (refs/heads/*:refs/heads/*) can match
-                                          # main/master -- treat as protected.
-        esac
-        case "$protected" in
-            *" $branch "*) return 0 ;;
-        esac
-    done
-    return 1
+    return 0
 }
 
-# True (rc 0) iff any pushed refspec after the remote carries a leading `+` --
-# git's OWN unconditional force marker for that one ref, independent of any
-# --force/--force-with-lease flag entirely (HIMMEL-2054 CR round 7, panel
-# codex-1; verified empirically: `git push origin +main` force-updates main
-# with NO force flag anywhere in the command, so neither bare_force_re nor
-# lease_re below ever fire for it -- a complete, flagless bypass otherwise).
-# Also closes a lease scoped to one ref (`--force-with-lease=main`) pairing
-# with a DIFFERENT `+`-prefixed refspec that the scoped lease never covers.
-# Always treated like a bare force -- denied regardless of which branch it
-# targets, since a `+` refspec carries no server-side safety check at all.
-git_push_has_plus_refspec() {
-    local seg="$1" tok
-    local -a toks positional=()
-    # shellcheck disable=SC2206 # intentional whitespace split, single segment by construction
-    toks=($seg)
-    local skip_next=0
-    for tok in ${toks[@]+"${toks[@]}"}; do   # HIMMEL-4626: bash <= 4.3 + set -u: empty array
-        if [ "$skip_next" -eq 1 ]; then
-            skip_next=0
-            continue
-        fi
-        case "$tok" in
-            -o|--push-option|--repo|--receive-pack|--exec|--recurse-submodules)
-                # HIMMEL-2054 CR round 8 (panel, codex-2): `--sign` (an
-                # abbreviation of `--signed[=<mode>]`) does NOT belong here --
-                # verified empirically that git parses `--signed`'s value ONLY
-                # via an attached `=`, never as a separate following token
-                # (an OPTIONAL-value long option, unlike the required-value
-                # ones above). Treating it as value-taking swallowed the NEXT
-                # real positional (remote/branch), shifting the count.
-                skip_next=1 ;;
-            -*) ;;
-            *)
-                if [ "${#tok}" -ge 2 ]; then
-                    case "$tok" in
-                        '"'*'"') tok="${tok%\"}"; tok="${tok#\"}" ;;
-                        "'"*"'") tok="${tok%\'}"; tok="${tok#\'}" ;;
-                    esac
-                fi
-                positional+=("$tok") ;;
-        esac
-    done
-    [ "${#positional[@]}" -lt 2 ] && return 1   # no explicit refspec to check
-    for tok in "${positional[@]:1}"; do
-        case "$tok" in
-            '+'*) return 0 ;;
-        esac
-    done
-    return 1
-}
-
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push([^[:alnum:]_.-]|$)'; then
-    # HIMMEL-2054: walk each ;/|/&-delimited segment independently (cmd_lc
-    # already folds newlines/CRs to ';', see line 48) so a force push chained
-    # after a benign one can't hide behind the first "git push" match.
-    push_line_re='(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+push(.*)$'
-    # HIMMEL-2054 CR (panel, codex-3, pre-existing on main): a standalone
-    # `-f` matched, but a clustered short-flag bundle like `-vf`/`-fv` did
-    # not -- the space+dash+letters+f+letters form below catches `-f`
-    # anywhere in such a bundle (a false-positive on a made-up flag just
-    # denies harder, the safe direction for this hook). round-3 (panel,
-    # codex-4): the bundle can also carry digits (git push's real `-4`/`-6`
-    # short flags), e.g. `-4f`. round-4 (panel, codex-3): a plain alnum class
-    # ALSO matched `-o`'s attached VALUE (`-ofoo` is `-o` with value "foo",
-    # not a force flag) -- git push's real clusterable single-char BOOLEAN
-    # flags are just n/u/q/v/4/6 plus f itself; `-o` takes an argument, so
-    # anything after it is opaque, not more flags. Scoped the bundle class to
-    # that known set instead of any letter/digit.
-    bare_force_re='(--force([^[:alnum:]_-]|$)|[[:space:]]-[nuqv46]*f[nuqv46]*([^[:alnum:]_-]|$))'
-    # HIMMEL-2054 CR round 3 (panel, codex-3): git accepts any unambiguous
-    # abbreviation of a long option, and `--force-w` is the shortest one
-    # that resolves ONLY to --force-with-lease (shorter prefixes are either
-    # ambiguous with --force-if-includes, or exact-match plain --force) --
-    # verified empirically against real git push. Matching just the literal
-    # full flag name let `--force-with-l`/`--force-w` etc slip past BOTH
-    # regexes untouched, a full undetected bypass. `[a-z-]*` covers any
-    # actual prefix of "ith-lease"; overmatching here just denies a
-    # malformed flag git itself would refuse anyway.
-    lease_re='--force-w[a-z-]*(=[^[:space:]]*)?([^[:alnum:]_-]|$)'
-    # HIMMEL-2054 CR: git_default_branch() resolves the CURRENT process cwd,
-    # not any directory a `cd` earlier in this same command line would select
-    # -- the hook never executes the command, it only inspects the string. A
-    # `cd`-then-push chain could therefore force-update another repo's real
-    # default branch under a non-main/master name that never gets protected.
-    # A `cd` anywhere in the command disables the branch-aware carve-out
-    # entirely for it (falls through to the always-safe deny below) rather
-    # than trying to track which directory the push actually runs in.
-    cd_chained=0
-    contains '(^|[^[:alnum:]_.-])cd([^[:alnum:]_.-]|$)' && cd_chained=1
-    _c_seps_to_nl "$cmd_lc"; _push_lines_a=$REPLY
-    _c_seps_to_nl "$cmd_lc_join"; _push_lines_b=$REPLY
-    while IFS= read -r seg; do
-        [[ $seg =~ $push_line_re ]] || continue
-        push_seg="${BASH_REMATCH[3]}"
-        # HIMMEL-2054 CR round 7: a `+`-prefixed refspec is checked ALONGSIDE
-        # bare_force_re, not only inside the lease_re branch below -- a
-        # scoped lease (`--force-with-lease=main`) still matches lease_re
-        # while leaving a DIFFERENT `+`-prefixed refspec in the same push
-        # completely unprotected; checking it only inside that branch would
-        # never see it once lease_re had already claimed the segment.
-        if [[ $push_seg =~ $bare_force_re ]] || git_push_has_plus_refspec "$push_seg"; then
-            deny "force push"
-        elif [[ $push_seg =~ $lease_re ]]; then
-            # HIMMEL-212/2054: a lease-protected force push to an explicit,
-            # non-default branch is safe (git refuses if the remote tip
-            # moved) -- refuse only main/master/default-branch, an
-            # ambiguous (no explicit branch) target, or a chained `cd`.
-            if [ "$cd_chained" -eq 1 ] || git_push_lease_targets_protected "$push_seg"; then
-                deny "force push"
+# _gp_cmd ENTRIES — one logical command: ST_W indices, P for a substitution.
+# Word kinds: A assignment, X live $, G glob, P substitution, W plain.
+_gp_cmd() {
+    local e i=0 n w b cp=-1 sa=0
+    _gc_w=() _gc_k=()
+    for e in $1; do
+        if [ "$e" = P ]; then
+            _gc_w[i]='$'; _gc_k[i]=P
+        else
+            _gc_w[i]=${ST_W[e]}
+            if [ "${ST_A[e]}" = 1 ]; then _gc_k[i]=A
+            elif [ "${ST_X[e]}" = 1 ]; then _gc_k[i]=X
+            elif [ "${ST_G[e]}" = 1 ]; then _gc_k[i]=G
+            else _gc_k[i]=W
             fi
         fi
-    done <<< "$_push_lines_a"$'\n'"$_push_lines_b"
-fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+reset[[:space:]]+--hard([^[:alnum:]_-]|$)'; then
-    deny "git reset --hard"
-fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+clean[[:space:]]+-[[:alnum:]_]*f'; then
-    deny "git clean -f"
-fi
-if contains '(^|[^[:alnum:]_.-])git(\.exe)?[[:space:]]+filter-branch([^[:alnum:]_-]|$)'; then
-    deny "git filter-branch"
-fi
+        i=$((i + 1))
+    done
+    n=$i
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        w=${_gc_w[i]}
+        if [ "${_gc_k[i]}" = A ]; then sa=1; i=$((i + 1)); continue; fi
+        if [ "$cp" -lt 0 ]; then
+            cp=$i
+            b=''
+            case "${_gc_k[i]}" in
+                P|G) b=- ;;
+                X) _gp_noexp_word "$w"; b=${REPLY##*/}; b=${b##*\\}; [ -n "$b" ] || b=- ;;
+            esac
+            case "$b" in
+                -) _gp_inv $((i + 1)) "$sa" 1 ;;
+                git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;;
+            esac
+            if [ -n "$b" ]; then i=$((i + 1)); continue; fi
+        fi
+        if [ "${_gc_k[i]}" != P ]; then
+            b=${w##*/}; b=${b##*\\}
+            case "$b" in git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;; esac
+        fi
+        i=$((i + 1))
+    done
+    return 0
+}
+
+# _gp_pass DEPTH LINES — walk the ST_* arrays st_tokenize just set. LINES is
+# the raw text to re-read line by line when it carries a heredoc, else empty.
+_gp_pass() {
+    local d=$1 hd=$ST_HEREDOC k s top=0 e
+    local -a segw=() ft=(T) fc=('') rec=()
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        if [ -z "${ST_RO[k]}" ]; then
+            s=${ST_S[k]}
+            segw[s]="${segw[s]:-} $k"
+        fi
+        if [ "$d" -lt 2 ]; then
+            e=${ST_W[k]}
+            [ "${ST_A[k]}" != 1 ] || e=${e#*=}
+            case "$e" in *git*[[:space:]]*|*[[:space:]]*git*) rec[${#rec[@]}]=$e ;; esac
+        fi
+        k=$((k + 1))
+    done
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        fc[top]="${fc[top]}${segw[s]:-}"
+        # shellcheck disable=SC2016 # separator tokens, not expansions
+        case "${ST_SEP[s]}" in
+            '$('|'<('|'>(')
+                fc[top]="${fc[top]} P"; top=$((top + 1)); ft[top]=P; fc[top]='' ;;
+            '`')
+                if [ "${ft[top]}" = B ]; then
+                    _gp_cmd "${fc[top]}"; top=$((top - 1))
+                else
+                    fc[top]="${fc[top]} P"; top=$((top + 1)); ft[top]=B; fc[top]=''
+                fi ;;
+            '(') top=$((top + 1)); ft[top]=S; fc[top]='' ;;
+            ')')
+                _gp_cmd "${fc[top]}"
+                if [ "$top" -gt 0 ]; then top=$((top - 1)); else fc[0]=''; fi ;;
+            *) _gp_cmd "${fc[top]}"; fc[top]='' ;;
+        esac
+        s=$((s + 1))
+    done
+    while [ "$top" -ge 0 ]; do _gp_cmd "${fc[top]}"; top=$((top - 1)); done
+    for e in ${rec[@]+"${rec[@]}"}; do _gp_scan "$e" $((d + 1)); done
+    if [ "$hd" = 1 ] && [ -n "$2" ]; then _gp_lines "$2" "$d"; fi
+    return 0
+}
+
+# _gp_lines TEXT DEPTH — backslash-newlines joined, each line tokenized alone
+# or, when it cannot be, read as text.
+_gp_lines() {
+    local t=$1 line
+    t=${t//"$_bsnl"/}
+    while IFS= read -r line; do
+        if st_tokenize "$line"; then _gp_pass "$2" ''; else _gp_text "$line"; fi
+    done <<<"$t"
+    return 0
+}
+
+# _gp_scan TEXT DEPTH — one command text, lowercased.
+_gp_scan() {
+    local t=$1
+    if st_tokenize "$t"; then _gp_pass "$2" "$t"; return 0; fi
+    _gu_flatten_params "$t"
+    if [ "$GU_FLAT" != "$t" ] && st_tokenize "$GU_FLAT"; then _gp_pass "$2" "$t"; return 0; fi
+    _gu_strip_heredocs "$GU_FLAT"
+    if [ "$GU_NOHD" != "$GU_FLAT" ] && st_tokenize "$GU_NOHD"; then
+        _gp_pass "$2" ''
+    fi
+    _gp_lines "$t" "$2"
+}
+
+# Only text that names git or one of its destructive subcommands pays for the
+# walk. A `cd` anywhere still turns the lease carve-out off (HIMMEL-2054): the
+# default branch is read from the hook's cwd, not the one the push runs in.
+case "$cmd_lc" in
+    *git*|*reset*|*clean*|*push*|*filter-branch*)
+        _gp_cd=0
+        if contains '(^|[^[:alnum:]_.-])cd([^[:alnum:]_.-]|$)'; then _gp_cd=1; fi
+        _gp_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+        _gp_lc=${_gp_lc//"$_bscrlf"/"$_bsnl"}
+        _gp_lc=${_gp_lc//$'\r'/$'\n'}
+        _gp_scan "$_gp_lc" 0
+        ;;
+esac
 if contains '(^|[^[:alnum:]_.-])curl(\.exe)?[^|;&]*\|[[:space:]]*(ba)?sh(\.exe)?([^[:alnum:]_.-]|$)'; then
     deny "remote exec pipe"
 fi

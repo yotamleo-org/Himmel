@@ -1226,6 +1226,165 @@ else
     echo "SKIP 4626 bash4.3 cases (no binary at $BASH43)"
 fi
 
+# HIMMEL-5274 (G1): git global options between `git` and the subcommand must not
+# hide push --force, reset --hard, clean -f or filter-branch.
+for c in \
+    'git -C x push --force' \
+    'git -C x push -f origin main' \
+    'git -C x push origin +main' \
+    'git -c a=b reset --hard' \
+    'git -c a=b -C x reset --hard HEAD~1' \
+    'git --no-pager clean -fdx' \
+    'git --git-dir=.git --work-tree=. reset --hard' \
+    'git --git-dir .git --work-tree . reset --hard' \
+    'git --namespace n filter-branch --tree-filter true' \
+    'git.exe -C x push --force' \
+    'git --no-pager -C x push --force-with-lease origin main' \
+    'git -C other push --force-with-lease origin feat/x' \
+    'ls; git -C x push --force' \
+    'git -C "my repo" reset --hard' \
+    "git -C 'my repo' push --force" \
+    'git -c "a=b c" clean -fd' \
+    'git -c user.name="a b" reset --hard' \
+    'git --git-dir="my dir" reset --hard' \
+    "git --work-tree='my dir' push --force" \
+    'git -C x status && git -C y reset --hard' \
+    'git -c "a.b=;" push --force' \
+    'git -C "a&b" push origin +main' \
+    "git -c 'x.y=a|b' push -f" \
+    'git -C ../other push --force-with-lease origin trunk -o "git push"'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+for c in \
+    'git -C x status' \
+    'git -C "my repo" status' \
+    'git -c a=b log --oneline' \
+    'git --no-pager diff' \
+    'git -C x push origin feat/x' \
+    'git -C x reset --soft HEAD~1' \
+    'git -C x commit -m "reset --hard"' \
+    'git --no-pager log --grep "clean -f"' \
+    'git -c "a.b=;" status'; do
+    assert_rc "5274 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+# HIMMEL-5274 judge j2397b: an escaped quote / $'..' must not open a fake quote
+# run that swallows real separators.
+q="'"
+for c in \
+    'echo git push origin \" ; git -C ../other push --force-with-lease origin trunk ; echo \"' \
+    "echo \$${q}\\${q}${q} ; git -C ../other push --force-with-lease origin trunk ; echo \$${q}\\${q}${q}" \
+    'X="git push "origin" " git -C ../other push --force-with-lease origin trunk' \
+    'git push origin feat/x ; git -c a=b push --force-with-lease origin trunk'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+assert_rc "5274 allow: plain lease push to a feature branch" 0 \
+    "$(run_case "$(j_bash 'git push --force-with-lease origin feat/x')")"
+# HIMMEL-5274: a backslash-escaped space/quote is part of an option VALUE.
+for c in \
+    'git -C my\ repo push --force' \
+    'git -C my\ repo reset --hard' \
+    'git --git-dir=my\ dir clean -fd' \
+    'git -c a\"b=c push --force' \
+    'git -C $'"'"'my repo'"'"' push --force'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+assert_rc "5274 allow: escaped-space option value, benign subcommand" 0 \
+    "$(run_case "$(j_bash 'git -C my\ repo status')")"
+# HIMMEL-5274: a command substitution is one option VALUE.
+# shellcheck disable=SC2016  # literal $( and backtick payloads are the point
+for c in \
+    'git -C $(printf %s .) reset --hard' \
+    'git -C $(echo $(pwd)) push --force' \
+    'git -C `printf %s .` clean -fd' \
+    'git --git-dir=$(printf %s .) reset --hard'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+# shellcheck disable=SC2016  # literal $( payload is the point of this case
+assert_rc "5274 allow: command-substitution option value, benign subcommand" 0 \
+    "$(run_case "$(j_bash 'git -C $(printf %s .) status')")"
+# Separator-heavy input must stay linear.
+semis=$(printf ' ; echo a%.0s' $(seq 1 2000))
+start=$SECONDS
+rc=$(run_case "$(j_bash "git push origin feat/x${semis}")")
+assert_rc "5274 separator-heavy command allowed" 0 "$rc"
+if [ $((SECONDS - start)) -gt 20 ]; then
+    echo "FAIL 5274 separator-heavy command too slow ($((SECONDS - start))s)"
+    FAILED=$((FAILED + 1))
+fi
+# HIMMEL-5154 linear time: a long run of global options must stay fast.
+long=$(printf ' -c a=b%.0s' $(seq 1 4000))
+start=$SECONDS
+rc=$(run_case "$(j_bash "git${long} status")")
+assert_rc "5274 long global-option run allowed" 0 "$rc"
+if [ $((SECONDS - start)) -gt 20 ]; then
+    echo "FAIL 5274 long global-option run too slow ($((SECONDS - start))s)"
+    FAILED=$((FAILED + 1))
+fi
+
+# HIMMEL-5358: git argv is parsed on the shared tokenizer. A word the tokenizer
+# cannot resolve before the subcommand fails closed; a comment, a heredoc or a
+# nested substitution never hides or invents a git invocation.
+# shellcheck disable=SC2016  # literal $ payloads are the point
+for c in \
+    $'ls # it\'s\ngit push --force-with-lease origin main\n# that\'s it' \
+    'git -C $(dirname "$(pwd)") reset --hard' \
+    'git -C "$(dirname "$(pwd)")" reset --hard' \
+    'git -C ${D:-a b} reset --hard' \
+    'git -C "$D" reset --hard' \
+    'git $OPTS reset --hard' \
+    '$(which git) reset --hard' \
+    '"$GIT" clean -fd' \
+    $'echo "it\'s" # x\ngit reset --hard' \
+    $'bash <<EOF\ngit reset --hard\nEOF' \
+    $'cat <<\'EOF\' | sh\ngit -C x reset --hard\nEOF' \
+    'echo "$(echo "$(git reset --hard)")"' \
+    'x=$(git -C "$(pwd)" reset --hard)' \
+    'ssh host "git reset --hard"' \
+    "git -c alias.wipe='reset --hard' wipe" \
+    'git -c clean.requireForce=false clean -d' \
+    'git clean --force' \
+    'git reset --ha' \
+    'git push --force-with-lease origin "$(git branch --show-current)"' \
+    'git --no-pager push --force-with-lease origin main' \
+    'GIT_DIR=/x/.git git push --force-with-lease origin feat/x' \
+    'git -c remote.origin.url=../other push --force-with-lease origin feat/x' \
+    'git -c url.x.insteadof=origin push --force-with-lease origin feat/x' \
+    'git -C a.b=c push --force-with-lease origin feat/x' \
+    'X="git reset --hard"; $X' \
+    "X='git clean -fd' && \$X" \
+    'X="git push -f origin main"; eval "$X"'; do
+    assert_rc "5358 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+# shellcheck disable=SC2016  # literal $ is the payload, not an expansion
+for c in \
+    'git --no-pager push --force-with-lease origin feat/x' \
+    'git -p push --force-with-lease origin feat/x' \
+    'git -P push --force-with-lease origin feat/x' \
+    'git -c core.pager=less push --force-with-lease origin feat/x' \
+    'git -c user.name=x push --force-with-lease origin feat/x' \
+    'git -C "$(git rev-parse --show-toplevel)" status' \
+    'git -C "$D" log --oneline -5' \
+    'git log --oneline | head -5' \
+    $'ls # it\'s\ngit push origin feat/x\n# that\'s it' \
+    'git -C x status; git push --force-with-lease origin feat/x' \
+    'git commit -m "$(printf "fix: x\n\nreset handling")"' \
+    'git push -u origin feat/x' \
+    'git reset HEAD~1' \
+    'git clean -nd'; do
+    assert_rc "5358 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
+done
+# HIMMEL-5329: stripping command-position expansions rescans the text each
+# pass, so a long run of them is refused after 256 passes instead of scanned.
+# shellcheck disable=SC2016  # literal $x payload is the point
+many=$(printf ' ; $x%.0s' $(seq 1 20000))
+start=$SECONDS
+rc=$(run_case "$(j_bash "echo a${many}")")
+assert_rc "5358 deny: 20000 command-position expansions" 2 "$rc"
+if [ $((SECONDS - start)) -gt 20 ]; then
+    echo "FAIL 5358 command-position expansion run too slow ($((SECONDS - start))s)"
+    FAILED=$((FAILED + 1))
+fi
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."
