@@ -1463,6 +1463,17 @@ toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use
 toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n\"enabled = false\",\n]\n" + text.slice(nl);'
 toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
 
+# 19s-19x (HIMMEL-5365): escapes in a header key decode like TOML (\n LF, \t TAB,
+# not n / t), a header key with \x or \e is refused (toml 1.0 fails the whole file,
+# 1.1 decodes it: unknown which codex links), \x in a quoted setting name decodes,
+# and an unterminated array / multi-line string at EOF trusts nothing.
+toml_edit "19s header key with \\n escape is not the real key (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("hooks.json", "hooks.jso\\n") + "\"]");'
+toml_edit "19t header key with \\t escape is not the real key (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("pre_tool", "pre_\\tool") + "\"]");'
+toml_edit "19u header key with \\x escape is refused" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("hooks.json", "hooks.jso\\x6E") + "\"]");'
+toml_edit "19v escaped quoted key (enab\\x6Ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\x6Ced\" = false\n");'
+toml_edit "19w unterminated array at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = [\n\"a\",\n";'
+toml_edit "19x unterminated multi-line string at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = \"\"\"\nopen\n";'
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1

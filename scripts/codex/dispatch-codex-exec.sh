@@ -556,13 +556,26 @@ const trackStrings = (line) => {
         i++;
     }
 };
-// The name of a key line, a quoted key decoded (\uXXXX, \UXXXXXXXX, \X) and trimmed:
-// fail closed, so " enabled " and "enabled" both read as enabled.
+// TOML basic-string escapes: \b \t \n \f \r \e \" \\ \uXXXX \UXXXXXXXX \xHH. A key
+// is compared decoded. HIMMEL-5365: strict (header keys) leaves \x, \e and an
+// unknown escape undecoded, so the key matches nothing: toml 1.0 fails the whole
+// file on \x / \e and 1.1 decodes it, and which one codex links is not verified.
+const basicEsc = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", e: "\x1b", "\"": "\"", "\\": "\\" };
+const decodeBasic = (s, strict) => s.replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|x([0-9A-Fa-f]{2})|([\s\S]))/g,
+    (all, u, big, x, ch) => {
+        if (ch === undefined) {
+            if (x !== undefined && strict) return all;
+            try { return String.fromCodePoint(parseInt(u || big || x, 16)); } catch (error) { return all; }
+        }
+        if (!Object.prototype.hasOwnProperty.call(basicEsc, ch) || (strict && ch === "e")) return strict ? all : ch;
+        return basicEsc[ch];
+    });
+// The name of a key line, a quoted key decoded and trimmed: fail closed, so
+// " enabled " and "enabled" both read as enabled.
 const keyName = (raw) => {
     if (raw.charAt(0) === "\x27") return raw.slice(1, -1).trim();
     if (raw.charAt(0) !== "\"") return raw;
-    return raw.slice(1, -1).replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/g,
-        (all, u, big, ch) => { try { return String.fromCodePoint(parseInt(u || big, 16)); } catch (error) { return ch === undefined ? all : ch; } }).trim();
+    return decodeBasic(raw.slice(1, -1), false).trim();
 };
 for (const line of cfg.split(/\r?\n/)) {
     const insideValue = ml !== null || depth > 0;
@@ -571,7 +584,7 @@ for (const line of cfg.split(/\r?\n/)) {
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
-        key = m ? (m[1] !== undefined ? m[1] : m[2].replace(/\\(.)/g, "$1")) : null;
+        key = m ? (m[1] !== undefined ? m[1] : decodeBasic(m[2], true)) : null;
         hash = null; off = false;
     } else if (key !== null) {
         const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
