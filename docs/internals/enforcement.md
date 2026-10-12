@@ -5546,6 +5546,18 @@ too. Exempt paths (no check): `docs/`, `handovers/`, `.agents/` (vendored),
 values, run one known subscription-authenticated `claude -p` job, then snapshot
 both values again and compare the deltas.
 
+**API-key `claude -p` and the monthly API credit (HIMMEL-5433, 2026-10-13):**
+the Help Center article on the Max/Team API credits says the credit covers
+`claude -p` and the Agent SDK "when you run them yourself with an API key from
+your linked Console organization, because that usage is billed as Agent SDK
+usage". The platform page's "Doesn't cover: Claude Code" row means interactive
+Claude Code; runs started by the GitHub Action, an IDE extension or the desktop
+app count as Claude Code usage "even with `-p`", and the same `-p` signed in
+with the plan draws the plan's limits, not the credit. So the API credit lane
+(`claude -p` + `ANTHROPIC_API_KEY`, [api-credit-lane.md](api-credit-lane.md))
+uses the covered surface; no switch to the SDK or the raw Messages API is
+needed. Source: https://support.claude.com/en/articles/17154008.
+
 Subagent transcripts are NOT flat files under the project directory. A
 session's own transcript is `~/.claude/projects/<slugified-cwd>/<sessionId>.jsonl`,
 but every subagent it dispatches writes to

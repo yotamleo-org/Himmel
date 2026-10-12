@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LAUNCH = join(HERE, 'claude-api.sh');
 const STRIP = join(HERE, 'strip-env.sh');
+const MEASURE = join(HERE, 'measure-credit.sh');
 const STATE = join(HERE, '..', 'lib', 'api-credit-state.mjs');
 const T = mkdtempSync(join(tmpdir(), 'claude-api-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
@@ -25,6 +26,7 @@ echo called >> "$STUB_LOG"
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
   echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
+  echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=')"
   echo "args=$*"; } > "$STUB_ENV"
 printf '%s' "$STUB_OUT"
 `;
@@ -104,6 +106,17 @@ test('HIMMEL-5073: the scrub forces default permission mode, so the launcher dec
   assert.match(seen, /--allowedTools Read,Edit,Write,Glob,Grep,Bash/);
   assert.match(seen, /--tools Read,Edit,Write,Glob,Grep,Bash/);
   assert.match(seen, /--permission-mode plan/);
+});
+
+test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
+  const f = fixture();
+  const r = f.run(f.good, { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',
+    CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 'msg-dummy', CLAUDE_CODE_EFFORT_LEVEL: 'max',
+    CLAUDE_EFFORT: 'max', CLAUDE_PID: '1', AI_AGENT: 'claude-code' });
+  assert.equal(r.status, 0, r.stderr);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.match(seen, /^session_markers=0$/m);
+  assert.match(seen, /^scrub=1$/m);
 });
 
 test('source metadata is preserved in the secret-free launch record', () => {
@@ -329,4 +342,23 @@ test('a non-API child is stripped of the key and every lane selector', () => {
   const lq = spawnSync('bash', [STRIP, '--', 'env'], { env: { ...f.env, LQ_API_KEY: DUMMY, LQ_API_ACCOUNT: 'B', LQ_API_KEY_ID: 'k', LQ_API_LANE: 'on' }, encoding: 'utf8' });
   assert.ok(!/^LQ_API_/m.test(lq.stdout), 'LQ_API_* survived strip-env');
   assert.match(r.stdout, /^PATH=/m);
+});
+
+test('HIMMEL-5433: measure-credit reads the key from a file, refreshes the snapshot and prints only outcome and cost', () => {
+  const f = fixture();
+  const keyFile = join(f.dir, 'key.env');
+  writeFileSync(keyFile, `ANTHROPIC_API_KEY=${DUMMY}\n`, { mode: 0o600 });
+  const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli' };
+  delete env.ANTHROPIC_API_KEY; delete env.HIMMEL_API_LANE; delete env.HIMMEL_API_KEY_ID; delete env.HIMMEL_API_JOB_ID;
+  const r = spawnSync('bash', [MEASURE, 'A', 'key-a', keyFile, '1.75'], { env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^total_cost_usd=0\.012345$/m);
+  assert.match(r.stdout, /^is_error=false$/m);
+  for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(DUMMY));
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.match(seen, /^key_present=1$/m);
+  assert.match(seen, /^session_markers=0$/m);
+  assert.match(seen, /--model claude-haiku-5-5/);
+  assert.match(seen, /--max-budget-usd 0\.05/);
+  assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.remaining_usd, '1.75');
 });

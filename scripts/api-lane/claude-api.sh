@@ -100,6 +100,14 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN CADENCE_BANK_LANE=api CADENCE_BAN
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
 ALLOWED_TOOLS="Read,Edit,Write,Glob,Grep,Bash"
 
+# HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
+# A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
+# id, messaging token ...), which make the child identify as that session; drop every one of them.
+SESSION_UNSET=()
+for v in $(compgen -e); do
+  case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
+done
+
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 trap 'rm -f "$OUT"' EXIT
 
@@ -112,7 +120,7 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 # headless-claude-ok: HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
-  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE \
+  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
   --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
