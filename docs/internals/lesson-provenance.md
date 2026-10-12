@@ -1,4 +1,4 @@
-# Lesson provenance schema v1 (HIMMEL-767)
+# Lesson provenance schema v1
 
 himmel's self-evolving loop (lessons → tickets / draft PRs) is
 garbage-in/garbage-out without trustable capture. This schema gives every
@@ -126,7 +126,7 @@ The deliverable-2 auditor and at-rest sweeps run the same validator
 *without* `--capture` (a well-formed `audit` block then passes).
 
 Exit code is `1` if any record is invalid, `0` otherwise (including the
-"not a lesson" case). Lean-invoke, not a hook (HIMMEL-177) — it rides the
+"not a lesson" case). Lean-invoke, not a hook — it rides the
 writers that already run at session end / compound time:
 
 - **auto-memory topic files** — a topic file that records a lesson
@@ -318,7 +318,7 @@ truth (15 entries: 9 prefix, 6 basename) — groups into these classes:
 - **`routing`** — `scripts/backends.json`: the block-backend-tier registry.
 - **`parity-guard`** — `parity_guard.py` / `glm-guard.ts` / `phi-egress-guard.ts`
   basenames: the hermes file-tool fence and its shared guard primitive
-  (renamed from `glm-guard.ts` under HIMMEL-2622; both basenames stay
+  (renamed from `glm-guard.ts`; both basenames stay
   registered until a hermes copy of the old name is confirmed gone), reached
   wherever they live (including the hermes checkout).
 - **`claude-md`** — `CLAUDE.md` / `AGENTS.md` basenames, root and every
@@ -329,7 +329,7 @@ truth (15 entries: 9 prefix, 6 basename) — groups into these classes:
 workers via the himmel-ops plugin hook wiring, and codex workers via
 `.codex/hooks.json`. A worker spawned without that marker is not
 fence-covered — the fence is inert by design when the marker is absent
-(zero always-on cost, HIMMEL-177) — and must never be given lessons→code
+(zero always-on cost) — and must never be given lessons→code
 work. A dispatcher can pre-flight a proposed change-set in CLI mode before
 ever spawning a worker:
 
@@ -342,6 +342,6 @@ path and exits 2 if at least one path denies, 0 if all allow.
 
 **Delivery note.** The Claude-lane half of this fence ships via the
 himmel-ops plugin `hooks.json` (`scripts/hooks/block-lesson-enforcement-writes.sh`),
-the same delivery path as `block-docker-privesc`/`block-merged-pr-commit`
-(HIMMEL-441/512): it is live only after `/himmel-update` (marketplace
+the same delivery path as `block-docker-privesc`/`block-merged-pr-commit`:
+it is live only after `/himmel-update` (marketplace
 re-sync) + a fresh session, not immediately on merge.

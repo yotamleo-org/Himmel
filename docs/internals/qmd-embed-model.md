@@ -1,7 +1,7 @@
-# qmd embed model — a per-machine option (HIMMEL-4232)
+# qmd embed model — a per-machine option
 
 qmd embeds documents with **embeddinggemma-300M** by default. **Qwen3-Embedding-0.6B**
-retrieves better on our golden set (HIMMEL-4184), but it is about twice the size and
+retrieves better on our golden set, but it is about twice the size and
 needs a GPU to build a whole index in reasonable time. So the model is a
 **per-machine option**: gemma stays the default, and a machine opts into Qwen with
 `scripts/luna/qmd-embed-model.sh`.
@@ -46,7 +46,7 @@ The gate only runs in `set`. `reembed`, `swap`, `qmd-reindex.sh`, the cadence an
 the doctor never call it, so an incremental `qmd embed` (new and changed
 documents only) keeps working on a `query`-class host.
 
-### Measured cost (HIMMEL-4232, 2026-10-04)
+### Measured cost (2026-10-04)
 
 These are CPU-only figures (`QMD_FORCE_CPU=1`). They come from a 32-thread x86 host
 under load (load average about 22, nice 19). Queries are synthetic, and the
@@ -62,7 +62,7 @@ chunks per minute for either model, at nice 19. The bottleneck was the host side
 not the GPU. A query-class host can afford Qwen's per-query cost. At its CPU rate,
 a daily delta of a few hundred chunks takes minutes, but a full corpus takes days.
 
-### Measured quality (HIMMEL-4184 harness, 38-query golden set)
+### Measured quality (38-query golden set)
 
 The table compares Qwen against gemma on the same four-collection corpus. It
 gives MRR, with hit@1 and hit@5 in brackets. Unscoped means a search over every
@@ -77,7 +77,7 @@ collection; scoped means a search limited to the golden collections.
 Lexical search scores the same under both models: 0.588 unscoped, 0.781 scoped.
 Qwen wins every vector-bearing cell. The reranker lowers gemma's unscoped score,
 and it is neutral (±0.01 MRR) under Qwen. It adds about 2.2 s at p50 unscoped,
-and the HIMMEL-4216 rerank timeout never fired.
+and the rerank timeout never fired.
 
 ## Switching a machine (copy, then swap)
 
@@ -85,7 +85,7 @@ Never re-embed the live index in place: `qmd embed --force` drops every vector
 first, so search is broken for the whole embed (hours). Build a copy instead,
 then swap it in. `reembed` consistently backs up the whole local index with
 SQLite's `.backup`; receiver-only `--collections` filtering was retired with
-the ship transport (HIMMEL-4896).
+the ship transport.
 
 ```bash
 # 0. Is this host build-capable?

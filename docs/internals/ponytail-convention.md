@@ -8,7 +8,7 @@ someone's memory.
 
 This is [upstream DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)'s
 convention, not a homegrown one — we adopted the marker text but, until
-HIMMEL-3511, neither credited it nor used its full shape. Upstream's own
+a later change, neither credited it nor used its full shape. Upstream's own
 `/ponytail-debt` skill (`skills/ponytail-debt/SKILL.md` in the installed
 plugin, `~/.claude/plugins/marketplaces/ponytail/`) is what makes the shape
 below load-bearing: it harvests every marker into a ledger and tags any that
@@ -56,7 +56,7 @@ upstream's method (`grep -rnE '(#|//) ?ponytail:' .`, skipping
 `node_modules`/`.git`/build output). Most existing markers predate this
 rewrite and name only a ceiling; the ledger's `no-trigger` count is that
 backlog, not a new problem this doc created. Backfilling triggers onto
-existing markers is phase 2 (tracked in HIMMEL-3511's follow-up, not this
+existing markers is phase 2 (a planned follow-up, not this
 PR) — this PR does not retro-edit any existing marker.
 
 ## Enforcement layer: documentation only, for now

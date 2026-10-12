@@ -8,8 +8,8 @@ cost low without losing the knowledge: push detail to layers that load **on
 demand**, and make retrieval — not always-loaded prose — the default.
 
 This doc is the anchor. The operating rules that reference it —
-[`CLAUDE.md`](../../CLAUDE.md) (the layer-selection frame, HIMMEL-177 /
-HIMMEL-195), [`operator-conventions.md`](../operator-conventions.md#memory--claudemd-hygiene)
+[`CLAUDE.md`](../../CLAUDE.md) (the layer-selection frame),
+[`operator-conventions.md`](../operator-conventions.md#memory--claudemd-hygiene)
 (the habits), and [`enforcement.md`](enforcement.md#operator-conventions--worked-examples)
 (worked escalation examples) — point here rather than restating it.
 
@@ -68,7 +68,7 @@ So:
 - **Cross-cutting frame-shaping → the root file**, kept short.
 - **Safety-critical → a structural gate.** Prose does not enforce; on the
   second drift of an instructional rule, escalate it to a hook/gate rather than
-  writing stronger prose (HIMMEL-195).
+  writing stronger prose.
 
 ## Memory as a map, not a backend
 
@@ -76,8 +76,8 @@ The same principle applies to durable facts. The always-loaded memory index is
 the **map** — one line per fact, pulled by relevance — while the facts
 themselves live in a searchable substrate and are retrieved by query. When the
 index nears its load budget, compound the durable facts out into the substrate
-and slim the index (himmel does this via the `memory-compound` skill,
-HIMMEL-569); the index never becomes the store.
+and slim the index (himmel does this via the `memory-compound` skill);
+the index never becomes the store.
 
 Three guards keep retrieval honest:
 
@@ -94,11 +94,11 @@ Three guards keep retrieval honest:
   memories (looked up on a symptom). It fails for **directive-shaped** ones — the
   model does not query for a rule it does not know it is violating, so a directive
   behind a query is dead. Directives stay resident, or become structural gates
-  (HIMMEL-195). The measured failure this corrects: a 1,472-char index line
+ The measured failure this corrects: a 1,472-char index line
   chaining ~24 gotchas at ~61 chars each **is** the store — the exact thing this
   section forbids. The doctrine was right; the implementation had drifted from it.
 
-## Layer selection — lean-invoke vs default (HIMMEL-177)
+## Layer selection — lean-invoke vs default
 
 When adding a rule or capability, pick the cheapest layer. **Default to
 lean-invoke** (the operator runs a slash command on demand) UNLESS a trigger
@@ -120,7 +120,7 @@ above creates drift: the file grows, both operator and Claude stop reading it,
 rules lose authority. Lean-invoke keeps the cost on the operator's side, which
 is the right side: the operator knows when a rule applies; Claude does not.
 
-## Enforcement strength — structural > instructional (HIMMEL-195)
+## Enforcement strength — structural > instructional
 
 Track the **drift count** per instructional rule. First drift is signal; on the
 **second** drift escalate to structural (PreToolUse hook, pre-commit/pre-push

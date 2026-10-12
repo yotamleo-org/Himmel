@@ -52,7 +52,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
 
-## Orchestration & lanes (HIMMEL-654 workstream series)
+## Orchestration & lanes
 
 - [orchestration-patterns.md](orchestration-patterns.md) (+ [.notes.md](orchestration-patterns.notes.md) run log) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.

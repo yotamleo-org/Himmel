@@ -1,4 +1,4 @@
-# Lane-adoption playbook (HIMMEL-1246)
+# Lane-adoption playbook
 
 > Sibling of [`rubric.md`](rubric.md), not a replacement for it. The rubric
 > decides whether to adopt a **community TOOL** (a skill, hook, MCP server).
@@ -18,7 +18,7 @@ latency, a context-compaction default sized for a 200k-token model, an
 identity file that hardcodes a different provider's name — and the new lane
 either timed out spuriously, compacted early, or ran under an
 under-specified persona, before anyone measured what the new lane actually
-needed. The GLM onboarding (HIMMEL-1241 epic) is the worked example this
+needed. The GLM onboarding is the worked example this
 playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 with the fix now checked into the repo as evidence of what "profile it, then
 tailor it" looks like in practice.
@@ -53,8 +53,8 @@ its own number instead of bumping the shared default for everyone.
 
 **GLM evidence:** `glm-5.2[1m]` measured **~205s / 23KB** response on a real
 panel run — close enough to the 240s ceiling that real-world variance tips it
-into a **spurious timeout** (HIMMEL-1245). The 240s constant itself predates
-GLM (`CHANGELOG.md`: "[HIMMEL-558] raise CRITIC_TIMEOUT_SECS default 150
+into a **spurious timeout**. The 240s constant itself predates
+GLM (`CHANGELOG.md`: "raise CRITIC_TIMEOUT_SECS default 150
 to 240s") — it was sized around the panel's existing (Codex-class) members,
 then a new lane inherited it without being measured against it.
 
@@ -62,10 +62,10 @@ then a new lane inherited it without being measured against it.
 wall-clock bound, measure its typical response latency and size, then set a
 per-lane override rather than trusting the shared default to fit.
 
-**Discrepancy flagged:** HIMMEL-1245 is not cited anywhere in-repo (no
-comment, no CHANGELOG line) — the 240s constant and its HIMMEL-558 origin are
+**Discrepancy flagged:** the spurious-timeout finding is not cited anywhere in-repo (no
+comment, no CHANGELOG line) — the 240s constant and its origin are
 real and grounded (`scripts/cr/critic-panel.sh`), but the GLM
-timeout-measurement finding itself is evidence carried in this ticket's brief,
+timeout-measurement finding itself is evidence carried in the onboarding brief,
 not yet landed as a code comment or test. Treat it as the motivating
 observation, not as something you can `grep` and confirm today.
 
@@ -83,7 +83,7 @@ fit" — codex lanes default to 272k even though the real backend window is
 **Tailor:** two separate config points, not one — there's no automatic
 projection from one to the other:
 - `lanes.json`'s per-lane `context.windowTokens` field (`glm`: 1000000, `claudex`:
-  900000 — HIMMEL-1833 operator ruling, 2026-08-17, launcher default
+  900000 — operator ruling, 2026-08-17, launcher default
   unchanged — see the registry, `haiku`: 200000) feeds the lane **resolver**
   (`scripts/lanes/resolve.mjs`), which uses it for the `/lanes` `[ctx: N]`
   **display annotation only** — no dispatch guard reads it; the dispatch-side
@@ -141,8 +141,8 @@ profile**: clone the senior SOUL's structure (identity, working principles,
 precedence ladder, hard limits) but swap the provider-specific line for the
 new lane's actual backend.
 
-**Discrepancy flagged:** the brief cites HIMMEL-559 for this axis, but the
-in-repo HIMMEL-559 (`scripts/agents-md/debrand.json`) is a **different,
+**Discrepancy flagged:** the nearest in-repo precedent
+(`scripts/agents-md/debrand.json`) is a **different,
 related** problem: it's the CLAUDE.md → AGENTS.md debranding pass that
 neutralizes Fable-specific identity language (*"the Fable main thread"* →
 *"the main thread"*) so a non-Claude driver reading the shared `CLAUDE.md`
@@ -188,7 +188,7 @@ per-dispatch model control — don't default to whichever is easiest to wire.
 **Tailor:** two structurally different spawn shapes exist:
 - **Hermes one-shot** (`scripts/hermes/invoke.sh` / `dispatch-trusted.sh`) —
   no worktree; `invoke.sh` wall-clock timeboxes + Nth-identical-deny aborts
-  it (HIMMEL-2025 — a parity_guard DENY is not terminal to hermes upstream),
+  it (a parity_guard DENY is not terminal to hermes upstream),
   `-z`
   auto-approval with a `todo`-only default toolset. Cheapest to dispatch,
   weakest isolation.
@@ -197,7 +197,7 @@ per-dispatch model control — don't default to whichever is easiest to wire.
   worktrees) over the lane's backend. Dedicated worktree + branch, durable
   session artifacts, native Claude Code hook coverage.
 
-**Evidence:** `docs/internals/worker-spawn-matrix.md` (HIMMEL-749) is the
+**Evidence:** `docs/internals/worker-spawn-matrix.md` is the
 grounded comparison — a full matrix of worktree isolation, guard/hook
 coverage, per-dispatch model selection, session artifacts, push/PR authority,
 permission handling, and supervision signal across all five spawn paths
@@ -207,11 +207,10 @@ clearest model/toolset selector... the GLM worker has the clearest worker
 artifact contract" — the two shapes trade off differently, and the matrix
 names which cells are `UNVERIFIED` per path rather than assuming parity.
 
-**Discrepancy flagged:** the brief cites HIMMEL-1113 for this axis. No
-HIMMEL-1113 reference exists anywhere in this repo (clean grep across code
-and docs). The comparison this axis needs is fully grounded instead by
-HIMMEL-749's `worker-spawn-matrix.md` — cite that as the evidence base;
-treat HIMMEL-1113 as a ticket number this worktree could not corroborate.
+**Discrepancy flagged:** the ticket the brief cites for this axis has no
+reference anywhere in this repo (clean grep across code and docs). The
+comparison this axis needs is fully grounded instead by
+`worker-spawn-matrix.md` — cite that as the evidence base.
 
 ---
 
@@ -239,14 +238,14 @@ new lane's backend is already a declared provider:
 
 **GLM evidence — a full ratify-then-reverse cycle.** `zai-glm` was declared
 (`"region": "CN"`) with narrow, dated, ticketed rules — `luna-personal` ×
-`zai-glm` × `extraction` was `allow+log`, ratified 2026-07-17 (HIMMEL-1122)
+`zai-glm` × `extraction` was `allow+log`, ratified 2026-07-17
 with a measured comparison against the prior incumbent recorded directly in
 the `why` field, and `handover-state` × `zai-glm` × `inference` was
 `conditional` on "brief-scoped... never bulk corpus runs." When the lane was
-dropped (HIMMEL-1749; Coding Plan lapsed 2026-08-17) all four cells were
-**reversed to explicit `deny` with the reversal recorded in each `why`**
-(HIMMEL-2224), and the `providers` note was annotated `DE-LISTED` — the same
-shape HIMMEL-1257 used for DeepSeek/Alibaba. **This is the pattern to copy
+dropped (Coding Plan lapsed 2026-08-17) all four cells were
+**reversed to explicit `deny` with the reversal recorded in each `why`**,
+and the `providers` note was annotated `DE-LISTED` — the same
+shape used earlier for DeepSeek/Alibaba. **This is the pattern to copy
 when a lane you onboarded goes away: reverse the rows, never delete them.** A
 deleted row falls through to `"default": "deny"` and reads identically to a
 provider that was never permitted, destroying the audit trail of what was
@@ -276,16 +275,16 @@ default routing — readiness is measured, never asserted.
   treatment on outcome-per-session signals, not token count) — the same
   protocol this playbook's sibling doc uses for tools, reused here for lanes.
 - The structural gate: `scripts/lanes/lane-readiness.mjs` +
-  `readiness.passesRequired` in `scripts/lanes/lanes.json` (HIMMEL-1626).
+  `readiness.passesRequired` in `scripts/lanes/lanes.json`.
   Readiness is computed from **trailing consecutive PASS rows** in the
-  verify-return ledger (HIMMEL-1621, `scripts/lanes/verify-return.mjs`) —
+  verify-return ledger (`scripts/lanes/verify-return.mjs`) —
   a single FAILED row resets the streak to zero. A lane below its gate reads
   `down`, and the dispatch guard (`scripts/hooks/guard-implementor-dispatch.sh`)
   treats `down` as **skip-toward-another-lane**, never as a hard refusal.
 
 **GLM evidence:** `lanes.json`'s `$readiness-note` records the live operator
 ruling (2026-08-07): **glm gated at 10 consecutive passes** (down since the
-HIMMEL-1575 startup-hang class was found), **claudex on probation at 5**
+startup-hang class was found), **claudex on probation at 5**
 consecutive passes to graduate. A lane can be fully *funded* (quota
 available) while still *not ready* (an operator ruling holds it down) —
 funding and readiness are deliberately different questions
@@ -301,13 +300,12 @@ shows the lane's dispatches keep passing their own verify-return checks; it
 says nothing about outcome-per-session on real work. Run the rubric §4
 measurement independently and don't let a clean pass streak substitute for it.
 
-**Discrepancy flagged:** the brief cites HIMMEL-1118 for the benchmark step.
-No HIMMEL-1118 reference exists anywhere in this repo. The grounded
-artifacts for "measure before trust" are the rubric's own protocol
-(HIMMEL-200, `docs/tool-adoption/rubric.md` §4) and the concrete structural
-gate that now backs it (HIMMEL-1626, `scripts/lanes/lane-readiness.mjs`) —
-cite those; treat HIMMEL-1118 as an open ticket this worktree could not
-corroborate against checked-in evidence.
+**Discrepancy flagged:** the ticket the brief cites for the benchmark step
+has no reference anywhere in this repo. The grounded artifacts for "measure
+before trust" are the rubric's own protocol
+(`docs/tool-adoption/rubric.md` §4) and the concrete structural
+gate that now backs it (`scripts/lanes/lane-readiness.mjs`) —
+cite those.
 
 ---
 

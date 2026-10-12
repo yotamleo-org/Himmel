@@ -1,4 +1,4 @@
-# Install provenance ledger (HIMMEL-3332)
+# Install provenance ledger
 
 Every himmel writer that installs something onto a machine records what it did
 in one append-only ledger, so an uninstall can later remove exactly what himmel
@@ -11,8 +11,7 @@ for the helpers that write it. The helpers ship in two dialects that emit
 | bash | `scripts/lib/provenance.sh` | shell writers (`source` it) |
 | node | `scripts/himmelctl/lib/provenance.js` | `himmelctl` writers (`require` it, or run it as a CLI) |
 
-The PowerShell dialect (for `.ps1` writers) is not shipped yet: it needs a
-Windows-tested lane and is tracked in HIMMEL-3346.
+The PowerShell dialect (for `.ps1` writers) is not shipped: Windows is not supported.
 
 Tests: `scripts/lib/test-provenance.sh` (bash) and
 `scripts/himmelctl/test/test-provenance-js.sh` (node, plus the bash-vs-node
@@ -78,7 +77,7 @@ line; line = the line without its terminator.
 is reserved with an exclusive create, so concurrent writers sharing one `iid`
 never collide on a name.
 
-### Ours snapshots: `snap` / `snap_skip` (HIMMEL-3787 S2c)
+### Ours snapshots: `snap` / `snap_skip`
 
 A `class=code` row of kind `file` / `shim` / `block` and op `create` / `replace`
 / `insert` also snapshots what himmel wrote — its **post** bytes (`--post-file`,
@@ -140,7 +139,7 @@ Test seams: `HIMMEL_PROVENANCE_NOW` fixes `t`; `prov_begin --iid` fixes the
 session id; `HIMMEL_PROVENANCE_DIR` relocates the ledger. Every test runs under a
 scratch `HOME` and never touches the real `~/.himmel`.
 
-## Reading verdicts and backup retention (HIMMEL-3787 S2a)
+## Reading verdicts and backup retention
 
 `scripts/lib/provenance-read.sh` folds raw rows into units and derives a
 verdict (`prov_read_verdict`) uninstall acts on. Besides the base
@@ -181,7 +180,7 @@ only after the backups directory moved, so a failed backups move leaves both
 live; and the `retained-*` mkdir is retried only on a name collision — any other
 failure (permission denied, read-only fs) fails at once with the real error.
 
-### TTY `[r]estore` saves the live file first (HIMMEL-3787 S2b)
+### TTY `[r]estore` saves the live file first
 
 On a real terminal without `--yes`, a `keep user-modified` unit with a readable
 backup offers `[k]eep` (default) or `[r]estore what you had before himmel`. A
@@ -201,7 +200,7 @@ removes anything; if the save cannot be made the file is kept, the unit is
 recorded `failed` and the run exits non-zero. `--yes` and non-TTY runs never
 reach the prompt, so they never delete.
 
-### The marked block in `CLAUDE.md` / `AGENTS.md` (HIMMEL-3787 S2d)
+### The marked block in `CLAUDE.md` / `AGENTS.md`
 
 `wire_user_claude_md` (`scripts/lib/user-claude-md.sh`) records the
 `HIMMEL:working-principles` block it writes into `~/.claude/CLAUDE.md` and
@@ -227,7 +226,7 @@ The strip re-verifies the block at apply time, so an edit made between the
 verdict and the strip is refused, not overwritten. The re-check and the strip
 are two steps, not one atomic operation: `ponytail: an edit landing in the few
 milliseconds between the re-check and the rewrite can still be lost, upgrade
-path is a flock on the file around both steps (HIMMEL-3787 follow-up)`. The helper's own refusals and
+path is a flock on the file around both steps (planned follow-up)`. The helper's own refusals and
 `<path>.himmel-uninstall-backup` sidecar are reused; `restore` is not supported
 for a block (there is no pre-state to restore).
 
@@ -237,7 +236,7 @@ not record a block yet): the block is stripped only when it is byte-identical to
 reported as `kept (block-unrecorded-modified)`. The standalone uninstall bundle
 therefore ships that template.
 
-### The reconcile report (HIMMEL-3787 S3)
+### The reconcile report
 
 Every uninstall, wet or `--dry-run` (headed `DRY: Reconcile report`), prints one
 report from this run's outcome records (`prov_read_reconcile_report`). It comes
@@ -286,7 +285,7 @@ visited (`ponytail:` in the function; the purge scan is the complete check).
   chmod, append or copy, so nothing is written through it into another file. A
   symlinked ledger *directory* (`~/.himmel` itself) is still followed.
 - An existing backup directory is not tightened to 0700 (only a newly created one
-  is); tracked in HIMMEL-3347.
+  is); a known limitation.
 - Hashing uses `sha256sum`, else `shasum -a 256` (`_prov_sha256`; stock macOS has
   only the latter); the node dialect uses its own `crypto`.
 - Backup cleanup at `install-end` and the reader that consumes the ledger belong

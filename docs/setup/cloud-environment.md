@@ -1,7 +1,7 @@
 # Cloud environment: from nothing to a working `claude --cloud` session
 
 How an adopter gets `claude --cloud` sessions on **their own fork** of himmel
-starting with the harness working (HIMMEL-4429, HIMMEL-5163). The cloud lane
+starting with the harness working. The cloud lane
 runs small, well-scoped tickets on an Anthropic-managed VM and opens a PR; a
 local shepherd then reviews and merges it. What a session has, and why the
 shepherd is mandatory, is in
@@ -10,7 +10,7 @@ reference: [cloud environments](https://code.claude.com/docs/en/cloud-environmen
 
 ## Why this is a paste, not a command
 
-Checked against the docs and the CLI on 2026-10-10 (HIMMEL-5163):
+Checked against the docs and the CLI on 2026-10-10:
 
 | Question | Answer | Source |
 |---|---|---|
@@ -65,13 +65,13 @@ Notes on the fields:
   claude.ai Atlassian connector, not the local jira CLI.
 - Leave `GH_TOKEN` and `GITHUB_TOKEN` unset so the GitHub proxy authenticates.
 - The two Bash timeouts must be set in this field: it is the only place they
-  reach the Bash tool (HIMMEL-4429).
+  reach the Bash tool.
 - Keep the setup script's trailing `|| true`: a non-zero setup script stops the
   session from starting, and a failed step should cost a tool, not the session.
 - The setup script installs shellcheck, `at` and pre-commit, builds the Jira CLI
   dist, installs the obsidian-triage deps and the lean plugin profile
   (himmel-ops, lean-skills; a claude.ai plugin upload never loads in a cloud
-  session), then graphify and qmd over the repo (HIMMEL-4726). Each build is
+  session), then graphify and qmd over the repo. Each build is
   bounded by `timeout` and a failure costs only that tool. Its last step stamps
   the script's hash for the self-check below.
 - **Network access** `Trusted` covers GitHub, npm, PyPI and the Ubuntu
@@ -141,7 +141,7 @@ version, a plugins directory, a `Graph: ... nodes` line, exactly one collection
 
 | The cloud has | How |
 |---|---|
-| Hooks | The repo's `.claude/settings.json`; plugin hooks through the setup script's plugin step (probed, HIMMEL-4273) |
+| Hooks | The repo's `.claude/settings.json`; plugin hooks through the setup script's plugin step (probed) |
 | graphify | Pinned at `scripts/lib/graphify-bin.sh`, no backend extra, AST-only (`graphify update .`): it parses code locally and calls no model |
 | qmd, repo only | The pinned fork and one collection, `himmel`, rebuilt on every setup run. BM25 only; a ticket that needs `qmd query`, vector search or another collection routes LOCAL-NATIVE |
 | Jira | The claude.ai Atlassian MCP connector, enabled for the session |

@@ -96,7 +96,7 @@ Detection caveat: the gateway's `/v1/models` endpoint is registry-backed and
 keeps returning 200 during an OAuth gap — probe a real completion
 (`/v1/messages`) to detect an auth gap, never `/v1/models`.
 
-## The logon-task launcher, and the Defender detection it trips (HIMMEL-1822)
+## The logon-task launcher, and the Defender detection it trips
 
 `-Register` registers the at-logon task with the action
 `wscript.exe //B //Nologo "<home>\.cli-proxy-api\start-hidden.vbs"`. The proxy
@@ -149,7 +149,7 @@ Until the exclusion is in place the proxy will **not** auto-start at logon
 while the task keeps vanishing). `-Register` detects a failed `/create` or a
 task that vanished right after creation and prints this guidance itself.
 
-## Linux bring-up (HIMMEL-2778)
+## Linux bring-up
 
 `scripts/setup/cli-proxy-lane.sh` (bash, run on the host) is the Linux twin of
 the `.ps1` above — same pinned release, same loopback-bound `config.yaml`,
@@ -211,7 +211,6 @@ does not add one. Two accounts mean two subscriptions' usage on one proxy.
   subscription endpoint. Always start via the script / `-config`.
 - `CLIPROXY_API_KEY` in `.env` must match the `api-keys` entry
   (`himmel-local-claudex`).
-- This re-exposes a subscription via OAuth; the ToS posture is operator-accepted
-  (HIMMEL-979).
+- This re-exposes a subscription via OAuth; the ToS posture is operator-accepted.
 - Windows hosts use `cli-proxy-lane.ps1` (above); Linux hosts use
-  `cli-proxy-lane.sh` (HIMMEL-2778). macOS has no twin yet.
+  `cli-proxy-lane.sh`. macOS has no twin yet.

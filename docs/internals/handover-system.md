@@ -1,6 +1,6 @@
 # Handover System — reference
 
-> Extracted from `CLAUDE.md` per HIMMEL-164 (state-not-prompt slimming).
+> Extracted from `CLAUDE.md` (state-not-prompt slimming).
 > CLAUDE.md keeps a session-time pointer; the full reference lives here.
 > The v2 handover skill
 > (`marketplace/plugins/handover/skills/handover/SKILL.md`) +
@@ -8,12 +8,12 @@
 > registered repos, paths, and routing — inspect/change via the
 > `/handover repos|register|init` slash commands, not by editing docs.
 
-**Post-HIMMEL-124 (2026-05-25):** all personal handover state has been
+**Since 2026-05-25:** all personal handover state has been
 centralized in your handover state repo (configured via `/handover-setup`
 / `$HANDOVER_DIR`). himmel `handovers/<USER_SLUG>/` is
 empty except for a README pointer. Three resolution layers — the v2
 handover skill's multi-repo registry (preferred for skills), the
-HIMMEL-118 single-root resolver (still wired for scripts), and a
+single-root resolver (still wired for scripts), and a
 recommended `HANDOVER_DIR` bridge for non-skill consumers.
 
 ## v2 multi-repo registry (preferred for skills)
@@ -28,8 +28,8 @@ slash commands to inspect or change state:
 - `/handover register` — add a new repo (prompts for path, user slug, aliases).
 - `/handover init` — bootstrap the registry on a fresh machine.
 
-**Bucket-name semantic (HIMMEL-147):** each registry entry carries an
-optional `bucket_name` field. The HIMMEL-129 bucket-layout resolver
+**Bucket-name semantic:** each registry entry carries an
+optional `bucket_name` field. The bucket-layout resolver
 reads this when deciding which `<state-root>/<bucket>/` directory a
 repo's handover state lands in. Default: slugified `basename(path)`.
 `/handover register` + `/handover repos add` refuse on collision —
@@ -39,16 +39,16 @@ entries auto-backfill from `basename(path)` on first read. Fresh-fork
 operators (e.g. forks of himmel named `cool-tool`) get the right
 bucket out of the box without code edits.
 
-**Branch-prefix semantic (HIMMEL-139):** the registry's `branch_prefix`
+**Branch-prefix semantic:** the registry's `branch_prefix`
 field is the **handover-mutation** prefix. It scopes branches created
 by `new-epic`, `new-task`, `new-standalone`, `end-session`, and
 `update-status` — the operations that mutate `<state-root>/`.
-Default: `handover/` (changed from `feat/` as of HIMMEL-139). This
+Default: `handover/` (changed from `feat/`). This
 is NOT the general feature-branch prefix used by `/worktree.sh` for
 ticket-driven feature development; those follow the `type/slug`
 convention enforced by `scripts/clean-garden.sh` (`feat|fix|chore|docs|refactor|test`).
 
-**Auto-branch + commit + push (HIMMEL-140):**
+**Auto-branch + commit + push:**
 `scripts/handover/auto-commit.sh` no longer commits on whatever branch
 is currently checked out. Each invocation:
 
@@ -70,7 +70,7 @@ fully validated). `--no-push` skips the push step (useful for tests
 or offline work). Smoke test:
 `bash scripts/handover/test-auto-commit.sh`.
 
-**Single-writer handover repos (HIMMEL-571):** a handover repo carrying a
+**Single-writer handover repos:** a handover repo carrying a
 gitignored `.single-writer` marker at its root commits handover state
 **directly on its default branch (main)** — `auto-commit.sh` skips the
 per-ticket branch + PR entirely (same direct path as `HANDOVER_DIRECT_MAIN=1`,
@@ -82,9 +82,9 @@ handover state onto a feature branch — fail-loud, pointing the operator at
 on-default (fail-open, never mis-refused). This is the design personal
 handover/state repos and vaults use so every session/worktree reads and
 writes one shared `main` — preventing the parallel-branch entanglement that
-blocked the HIMMEL-564 close-out.
+blocked an earlier close-out.
 
-**PR open/update + squash finisher (HIMMEL-141):**
+**PR open/update + squash finisher:**
 After every push on the branched path, `auto-commit.sh` invokes
 `scripts/handover/pr-open.sh` to open (first push) or update (later
 pushes) the PR for `<branch_prefix><TICKET>-<slug>`. Body has three
@@ -107,7 +107,7 @@ merged either way).
 Slash commands: `/handover-pr-open`, `/handover-pr-merge`. Smoke
 test: `bash scripts/handover/test-pr-open.sh`.
 
-**Session-end consolidation sweep (HIMMEL-143):**
+**Session-end consolidation sweep:**
 `scripts/handover/flush.sh` walks every local `handover/*` branch in
 the resolved handover repo and reconciles state:
 
@@ -128,7 +128,7 @@ Slash command: `/handover-flush` (+ `--dry-run`, `--cleanup`,
 `--no-pr-open` flags). Smoke test:
 `bash scripts/handover/test-flush.sh` (14/14 pass).
 
-**Pre-push CR runs on `handover/*` branches (HIMMEL-142):**
+**Pre-push CR runs on `handover/*` branches:**
 The `code-review-before-push` pre-commit hook
 (`.pre-commit-config.yaml` lines 154–161) has no `handover/*` exclusion
 — intentional. Operator decision: CR runs as a sanity audit to catch
@@ -147,39 +147,38 @@ docs-only-skip already wired into
 Smoke test: `bash scripts/hooks/test-check-cr-before-push.sh`
 (7/7 pass).
 
-Pre-HIMMEL-124 the skill resolved per-repo state under
-`<repo-root>/handovers/<user>/`. Post-HIMMEL-124 the expected target
+Previously the skill resolved per-repo state under
+`<repo-root>/handovers/<user>/`. Now the expected target
 is the **`<state-repo>`** for any personal state regardless of which repo
-triggered the skill. HIMMEL-129 added the bucket layer
+triggered the skill. A bucket layer was added
 (`<state-root>/<repo>/{epics,standalones}/` where `<repo>` ∈
 himmel | luna | luna_brain | cross) — SKILL.md resolver auto-detects
 the layer when any bucket dir exists under `<state-root>` and falls
 back to the flat layout otherwise.
 
-`luna_brain` is a **legacy built-in bucket, not an active repo bucket**
-(HIMMEL-1212). `luna_brain` ceased to be a separate local repo when
-HIMMEL-310 folded its content into `himmel/templates/luna-second-brain/`;
+`luna_brain` is a **legacy built-in bucket, not an active repo bucket**. `luna_brain` ceased to be a separate local repo when
+its content was folded into `himmel/templates/luna-second-brain/`;
 the bucket is empty and no repo is registered against it. It stays in
 the built-in vocab so the resolver needs no change — the `LUNA-BRAIN-*`
 ticket-prefix rule still resolves here
 (`marketplace/plugins/handover/skills/handover/references/resolution.md`),
 it just has nothing to route. Do not read the bucket as evidence of a
 live repo. (Distinct from upstream OSS **`luna-brain`**, the publish
-target the template ships to — see HIMMEL-315 and
+target the template ships to — see
 [`public-propagation.md`](public-propagation.md).)
 
-## HIMMEL-118 single-root resolver (still wired for scripts)
+## Single-root resolver (still wired for scripts)
 
 `scripts/lib/handover-path.sh` provides a single-root resolver that
 shell scripts use when they only know about one root:
 
 - **Mode A — inline (default)**: `HANDOVER_DIR` unset → `<repo>/handovers/`.
-  Post-HIMMEL-124 this resolves to a near-empty `himmel/handovers/` — the
+  Now this resolves to a near-empty `himmel/handovers/` — the
   only tracked content is a pair of README stubs (`handovers/README.md` and
   a per-user `handovers/<USER_SLUG>/README.md`) that mark the layout; no
   handover state lives there. Useful only for himmel-scoped legacy code.
 - **Mode B — external**: `HANDOVER_DIR` set → that path. **Recommended
-  default** post-HIMMEL-343: a `handovers/` folder **inside your
+  default**: a `handovers/` folder **inside your
   luna-style vault** — state becomes part of the knowledge base
   (wikilinkable, qmd-indexed, graphify-able) with no extra repo to sync:
   ```bash
@@ -196,16 +195,15 @@ shell scripts use when they only know about one root:
 
 Consumed by `scripts/handover/auto-commit.sh`,
 `scripts/handover/arm-resume.sh`, `setup.sh`'s step 6, and
-`docs/handover/overnight-mode.md` Phase 1 (plans-root resolution per
-HIMMEL-133).
+`docs/handover/overnight-mode.md` Phase 1 (plans-root resolution).
 
-`arm-resume.sh --automerge` (HIMMEL-1382) opt-in wires `ARMAUTOMERGE=1` and
+`arm-resume.sh --automerge` opt-in wires `ARMAUTOMERGE=1` and
 `CR_MERGE_GATE_OK=1` into the relaunched session's environment, so an armed
 chain's `merge` leg can actually reach `merge-on-green.sh`; omitted (both
 vars absent) by default.
 
 **The live-worker guard is scoped to the bridge root, not the caller**
-(HIMMEL-1463, #1551).
+(#1551).
 Before arming, `arm-resume.sh` census-checks for live lane workers and
 refuses to arm (`rc=10`) while any are running or unprobeable — but that
 census reads a SHARED bridge root with no per-session scoping, so a second,
@@ -223,7 +221,7 @@ points to a missing path. Mode + root are reportable via
 `/handover-link` (`status` default, `doctor` exits non-zero on
 misconfiguration).
 
-## Durable resume breadcrumb + resolver (HIMMEL-477, C3)
+## Durable resume breadcrumb + resolver (C3)
 
 `scripts/handover/breadcrumb.sh` makes an interrupted/armed resume
 failure-survivable. Twice an armed overnight resume found "no captured
@@ -249,14 +247,14 @@ stage, and the resolver REFUSES to silently degrade.
     fail-soft (`--jira-cmd` override / `--no-jira`; a jira failure degrades to
     git-only, never crashes).
 
-Neighbour to `handover-resume-armed` (HIMMEL-208) and the armed-resume
-profile (HIMMEL-457) — it does not replace them; it adds the
+Neighbour to `handover-resume-armed` and the armed-resume
+profile — it does not replace them; it adds the
 reconstruct-and-flag layer they lacked. Tests:
 `scripts/handover/test-breadcrumb.sh` (hermetic — temp `HANDOVER_DIR` + temp
 git repo + jira stub), incl. the epic-done self-test (deleted breadcrumb →
 flagged recovery; valid → deterministic).
 
-## Operator-gated wrap + resume briefs (HIMMEL-2369)
+## Operator-gated wrap + resume briefs
 
 On 2026-09-01 a leg sat idle for ~1.5h waiting on an operator settings edit,
 holding its queue lock and burning its prompt cache, until the console woke
@@ -268,7 +266,7 @@ tells a leg to wrap at once when its only remaining dependency is an operator
 action: append a resume brief, release the queue lock, and end the turn
 instead of idle-waiting.
 
-**Console Rulings clause (HIMMEL-2788):** the same templates also carry a
+**Console Rulings clause:** the same templates also carry a
 `## Console Rulings` clause, asserted byte-identical by the same test suite,
 prefacing every leg brief with how rulings actually reach it — a claudex leg
 via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native leg
@@ -296,7 +294,7 @@ write from git directly; only the leg's own un-externalized reasoning (the
 ordered next steps, judgment calls made mid-session) ever justifies paying
 for a fresh cold-start. Test: `bash scripts/handover/test-leg-resume-brief.sh`.
 
-## Periodic seat-liveness reconcile (HIMMEL-1880)
+## Periodic seat-liveness reconcile
 
 `scripts/handover/reconcile-workers.sh` used to run only when a dispatch or an
 arm triggered it, so an idle fleet never noticed a dead worker seat.
@@ -322,28 +320,28 @@ within the grace of its last `meta.json` write. Test:
 
 ## Migration timeline + open work
 
-- **HIMMEL-13** (done) — initial migration of cross-project subset
+- **Initial migration** (done) — cross-project subset
   (luna/, manual_notes.md, random_dreams.md) from himmel/handovers/
   → <state-repo>/handovers/.
-- **HIMMEL-124** (in progress) — full centralization. 234 files
+- **Full centralization** (in progress). 234 files
   migrated from himmel/handovers/<USER_SLUG>/* → <state-repo>/handovers/<USER_SLUG>/
   (PR #138). himmel side reduced to a stub README. **Remaining:**
   registry.json + SKILL.md updates to make <state-repo> the resolved
   default for personal-state ops.
-- **HIMMEL-129** (done 2026-05-25) — split flat
+- **Bucket layout** (done 2026-05-25) — split flat
   `<state-repo>/handovers/<USER_SLUG>/` layout into `cross/himmel/luna/luna_brain/`
   subfolders. 17 standalones + 15 epics routed by ticket prefix.
   `<state-repo>/README.md` + SKILL.md resolver updated; bucket layer is
   opt-in (activated by presence of any bucket dir under `<state-root>`).
 
-## User-slug resolution (HIMMEL-145)
+## User-slug resolution
 
 Handover bucket paths (`<state-root>/<USER_SLUG>/...`), registry.json
 `user` field, and a few scratch dirs need the operator's user slug.
 Resolved by `scripts/lib/user-slug.sh`:
 
 1. `$USER_SLUG` env var (preferred — explicit operator intent).
-2. GitHub username via `gh api user -q .login`, slugified (HIMMEL-297 — the
+2. GitHub username via `gh api user -q .login`, slugified (the
    slug is the GitHub user id; one network call, gated behind `$USER_SLUG`).
 3. `git config user.name` slugified (kebab-case, lowercase, non-alnum
    → dash, ≤30 chars) — offline fallback when gh is absent/unauthenticated.
@@ -357,6 +355,6 @@ Doc references to operator-specific paths should use the
 `{{USER_SLUG}}` placeholder in templates + `<USER_SLUG>` in prose.
 `scripts/test-user-slug-resolve.sh` smoke-tests all paths (18/18 pass).
 
-This is the HIMMEL-132 Phase 2 envification. Existing `<USER_SLUG>`-hardcoded
+This is the Phase 2 envification. Existing `<USER_SLUG>`-hardcoded
 references in journal/docs/* paths are out of scope — sweep deferred
 to a follow-up ticket if/when an alternate operator joins.

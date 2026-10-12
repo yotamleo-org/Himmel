@@ -34,6 +34,8 @@ chmod +x "$STUB_DIR/git"
 # the child.
 (
     for v in $VARS; do export "$v=/poison"; done
+    # shellcheck disable=SC2030
+    export GIT_NO_REPLACE_OBJECTS=1
     # shellcheck source=/dev/null
     . "$REPO_ROOT/scripts/lib/git-clean.sh"
     PATH="$STUB_DIR:$PATH" git_clean rev-parse
@@ -51,6 +53,15 @@ for v in $VARS; do
         pass "sh git_clean scrubs $v"
     fi
 done
+# HIMMEL-5393 (a): GIT_NO_REPLACE_OBJECTS is KEPT on purpose (git lists it as
+# a local var but it redirects nothing — it hardens: clear-cr-marker.sh sets it
+# itself, HIMMEL-3666). A helper that "completed" the set by scrubbing it would
+# silently drop that hardening for every caller.
+if grep -q '^GIT_NO_REPLACE_OBJECTS=1$' "$STUB_DIR/sh-clean.out"; then
+    pass "sh git_clean keeps GIT_NO_REPLACE_OBJECTS"
+else
+    fail "sh git_clean dropped GIT_NO_REPLACE_OBJECTS (it must stay set)"
+fi
 
 # git_env_scrub (shell twin): every var unset in the calling shell.
 for v in $VARS; do
@@ -68,11 +79,26 @@ for v in $VARS; do
         fail "sh git_env_scrub leaves $v set"
     fi
 done
+got="$(
+    # shellcheck disable=SC2030,SC2031
+    export GIT_NO_REPLACE_OBJECTS=1
+    # shellcheck source=/dev/null
+    . "$REPO_ROOT/scripts/lib/git-clean.sh"
+    git_env_scrub
+    printf 'ran:%s' "${GIT_NO_REPLACE_OBJECTS-unset}"
+)"
+if [ "$got" = "ran:1" ]; then
+    pass "sh git_env_scrub keeps GIT_NO_REPLACE_OBJECTS"
+else
+    fail "sh git_env_scrub dropped GIT_NO_REPLACE_OBJECTS (got '$got', it must stay set)"
+fi
 
 # gitClean / gitCleanEnv (JS twin).
 if command -v node >/dev/null 2>&1; then
     JS_OUT="$(
         for v in $VARS; do export "$v=/poison"; done
+        # shellcheck disable=SC2031
+        export GIT_NO_REPLACE_OBJECTS=1
         PATH="$STUB_DIR:$PATH" node --input-type=module -e "
 import { gitClean } from '$REPO_ROOT/scripts/lanes/git-clean.mjs';
 process.stdout.write(gitClean(['rev-parse'], { encoding: 'utf8' }));
@@ -89,6 +115,11 @@ process.stdout.write(gitClean(['rev-parse'], { encoding: 'utf8' }));
             pass "mjs gitClean scrubs $v"
         fi
     done
+    if grep -q '^GIT_NO_REPLACE_OBJECTS=1$' <<<"$JS_OUT"; then
+        pass "mjs gitClean keeps GIT_NO_REPLACE_OBJECTS"
+    else
+        fail "mjs gitClean dropped GIT_NO_REPLACE_OBJECTS (it must stay set)"
+    fi
 else
     fail "node not found — cannot exercise the .mjs twin"
 fi

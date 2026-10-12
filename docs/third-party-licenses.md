@@ -1,6 +1,6 @@
-# Third-Party License Audit (HIMMEL-2185)
+# Third-Party License Audit
 
-Pre-tag blocker for `v1.0.0-pre` (HIMMEL-297 sequence: himmel targets MIT).
+Pre-tag blocker for `v1.0.0-pre` (himmel targets MIT).
 Covers every tracked `package.json` in the repo (`git ls-files "*package.json"
 | grep -v node_modules`, `node_modules` excluded) — 16 manifests, 19 unique
 npm deps including devDependencies. **Scope: direct dependencies only**
@@ -94,7 +94,7 @@ exclusion from a bundle, correct usage does.
 
 ## Vendored skill: `unslop` (MIT, Lauren Tan)
 
-Added HIMMEL-3115 (2026-09-17), the first single-file skill vendored outside
+Added 2026-09-17, the first single-file skill vendored outside
 `marketplace/plugins/*`. Lives at `.claude/skills/unslop/SKILL.md`, sourced
 from `cursor/plugins` (pstack) at pinned commit
 `e8d856f0273b42ebafe0ec3546bd645709e7c1b0`, path
@@ -133,7 +133,7 @@ SOFTWARE.
 
 ## Vendored skill: `test-audit` (MIT, OpenClaw Foundation)
 
-Added HIMMEL-3580 (2026-09-24). Lives at `.claude/skills/test-audit/`
+Added 2026-09-24. Lives at `.claude/skills/test-audit/`
 (`SKILL.md` adapted, with its deviations listed in its own header;
 `CAMPAIGN.md` verbatim), sourced from `openclaw/openclaw` at pinned commit
 `1370643e394f956dfae2e42f43ee030b0072434b`, path
