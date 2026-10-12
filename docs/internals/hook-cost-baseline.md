@@ -1,6 +1,6 @@
-# PreToolUse:Bash cold-start cost — the true 4-matcher shape (HIMMEL-1843)
+# PreToolUse:Bash cold-start cost — the true 4-matcher shape
 
-`docs/internals/enforcement.md`'s dispatcher section (HIMMEL-2002) is stale on
+`docs/internals/enforcement.md`'s dispatcher section is stale on
 this point and is owned by a parked PR (#1322) rather than fixed here — this
 doc is the corrected, standalone baseline until that lands.
 
@@ -26,7 +26,7 @@ original estimate of 7. Groups 2–4 exist because they cover tool sets the
 `Monitor`); folding them into the `Bash` chain would silently drop that
 coverage and is out of scope here — see "Not in scope" below.
 
-`docs/internals/enforcement.md` (dispatcher section, HIMMEL-2002) currently
+`docs/internals/enforcement.md` (dispatcher section) currently
 reads "Bash tool call: 13 matching entries / 11 launcher processes → 4
 entries / 2 launchers" — the entry count (4) is still right but the launcher
 count (2) is stale: it undercounts groups 2–4 as sharing processes when each
@@ -40,11 +40,11 @@ fail-closed guarantees shipped — whole-chain validation before any member
 runs, first-deny-wins, a crashing must-run member denies instead of failing
 open, and budget-aware per-member timeouts within the entry's bound:
 
-- HIMMEL-3669 (#1310) — every deny-capable member is must-run
-- HIMMEL-3620 (#1295) — sub-floor member timeouts, entry-deadline bounding for advisory members
-- HIMMEL-3080 (#1259) — budget-starved must-run guards get their own evaluation window
-- HIMMEL-3601 (#1251) — a crashing must-run member denies rather than failing open
-- HIMMEL-2557 (#667) — an EPIPE on stdin write propagates the child's real status
+- #1310 — every deny-capable member is must-run
+- #1295 — sub-floor member timeouts, entry-deadline bounding for advisory members
+- #1259 — budget-starved must-run guards get their own evaluation window
+- #1251 — a crashing must-run member denies rather than failing open
+- #667 — an EPIPE on stdin write propagates the child's real status
 
 Groups 2–4 do not chain (each is a single script), so none of this hardening
 applies to them or needs to — there is nothing to chain.
@@ -70,7 +70,7 @@ collapse under concurrency is the **process count**: 4 separate node cold
 starts happen regardless, since each is a distinct OS process the kernel has
 to schedule and tear down.
 
-Since HIMMEL-4569 a second `*` group (`guard-leg-context-handoff.sh`, its own
+A second `*` group (`guard-leg-context-handoff.sh`, its own
 process because `auto-arm-on-cap.sh` stays out of every chain) makes it **5**.
 
 Regression guard: `scripts/hooks/bench-hook-stack.test.mjs` — "exactly 5

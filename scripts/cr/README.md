@@ -2,7 +2,7 @@
 
 Review-gate scripts (review rounds, verdict ledger, CR marker).
 
-## Live review-gate e2e (HIMMEL-5232)
+## Live review-gate e2e
 
 `scripts/cr/live-gate-e2e.sh` drives one canned PR through the gate against a
 REAL throwaway private repo, because the shell suites only ever see a stubbed
@@ -42,6 +42,6 @@ Notes:
   is visible on the next read.
 - **Known ceiling.** On a free-plan private repo both required-check reads return
   HTTP 403, so `check-ci.sh` fails closed and the merge refuses at exit 18 before
-  the GO gate; the merge-with-GO leg is not reachable (HIMMEL-5253, HIMMEL-5255).
+  the GO gate; the merge-with-GO leg is not reachable.
 
 `scripts/cr/test-live-gate-e2e.sh` holds the offline rows (the refusals only).

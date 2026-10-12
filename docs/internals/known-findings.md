@@ -1,4 +1,4 @@
-# Known findings — the pre-panel self-review (HIMMEL-2058)
+# Known findings — the pre-panel self-review
 
 CR rounds were being spent on finding classes the repo had already adjudicated:
 CodeRabbit re-taught the same five corrections thousands of times, and the critic
@@ -42,7 +42,7 @@ three places it feeds. The JSON is the source of truth; this page is the map.
 `known-findings.sh --list` prints the class table; `--json` on `--diff` gives
 machine output. Tests: `scripts/cr/test-known-findings.sh` (detectors on a
 fixture repo, prompt/list/json shapes, refresh on a copy, usage contract) and the
-HIMMEL-2058 block in `scripts/cr/test-critic-first-pass.sh` (prompt injection).
+prompt-injection block in `scripts/cr/test-critic-first-pass.sh`.
 
 ## Classes (2026-09-02 snapshot — regenerate with `--list`)
 
@@ -78,7 +78,7 @@ HIMMEL-2058 block in `scripts/cr/test-critic-first-pass.sh` (prompt injection).
 - CodeRabbit learnings export, 182 rows / 4,722 uses (up from 143 / 3,163 on
   2026-08-10): top 5 = 65 % of uses; errexit trio 1,786 (38 %), octal 552,
   handover-bootstrap 740 + 203 + 41, mktemp 220 (+ a contradicting 75-use entry),
-  `\s` 199, PS1 BOM 91 (stale, contradicts HIMMEL-1432).
+  `\s` 199, PS1 BOM 91 (stale, contradicts a later decision).
 - A learning **use** is CodeRabbit applying the learning, not re-raising the
   finding. Measured on the App's own review comments (703 finding-comments on
   225 PRs since 2026-07-01; 158 on 48 PRs since 08-10), the big-usage classes
@@ -98,12 +98,12 @@ HIMMEL-2058 block in `scripts/cr/test-critic-first-pass.sh` (prompt injection).
   all branches since 2026-08-01 mean 3.24 / median 2 (n = 348); last 30 branches
   mean 2.63 / median 2, 3.9 findings per branch, 1.17 round-1 Critical+Important
   per branch. CodeRabbit App: 3.3 finding-comments per PR since 08-10.
-- Of the 2026-08-10 analysis, nothing had been integrated: HIMMEL-1684 (the two
-  `.coderabbit.yaml` carve-outs) is still To Do, and no ledger mining beyond
+- Of the 2026-08-10 analysis, nothing had been integrated: the two
+  `.coderabbit.yaml` carve-outs are still To Do, and no ledger mining beyond
   `cr-tune`'s per-model buckets had happened. Full numbers + method in the
-  handover analysis note `HIMMEL-2058-cr-learnings-analysis-2026-08-23.md`.
+  handover analysis note of 2026-08-23 (`cr-learnings-analysis`).
 
-## What the 2026-09-02 refresh added (HIMMEL-2447)
+## What the 2026-09-02 refresh added
 
 - **The export's high-usage tail is now fully covered, and that is the finding.**
   227 rows / 4,824 uses: all 13 rows at >= 50 uses already map to an existing
@@ -125,7 +125,7 @@ HIMMEL-2058 block in `scripts/cr/test-critic-first-pass.sh` (prompt injection).
   on every PR buries the checklist it is meant to sharpen.
 - **Declined, with the reason recorded so the next refresh does not re-litigate:**
   the `<gate> | tail` return-code loss is already structurally enforced by the
-  registered PreToolUse hook `block-tail-pipe-on-gates.sh` (HIMMEL-1696), so it is
+  registered PreToolUse hook `block-tail-pipe-on-gates.sh`, so it is
   coverage, not a class; the ledger's `--set reason=` vs `--reason` trap is a
   CLI-workflow shape, not something a critic raises on a diff; `command -v` as a
   runnability probe had no App or ledger evidence in the window.
@@ -145,9 +145,9 @@ HIMMEL-2058 block in `scripts/cr/test-critic-first-pass.sh` (prompt injection).
   is how two detector defects reached review. The round-3 pair is the model to
   copy: bait `change1.sh:22` (`.agent_id // empty | type`) against control
   `change1.sh:15` (`(.agent_id | type) == "string"`), where flipping the one
-  token under test changes the verdict. General rule + rationale: HIMMEL-2450.
+  token under test changes the verdict.
 
-## Verdict labels: by-design vs disproved (HIMMEL-3797)
+## Verdict labels: by-design vs disproved
 
 `disproved` (the ledger's grammar — `scripts/cr/write-verdicts.sh`) means the
 critic's factual claim was checked and found wrong. It does not fit a finding
@@ -160,12 +160,12 @@ accurate finding against the critic that raised it.
 
 Independent judge J1407A (verdict:
 `handovers/yotamleo/himmel/verdicts/J1407A/verdict.md`) found exactly this on
-PR #1407: codex-1 (`headed-arm-leg.sh:468/469`, HIMMEL-3795) and codex-2
+PR #1407: codex-1 (`headed-arm-leg.sh:468/469`) and codex-2
 (`headed-arm-leg.sh:618`, same PR) were both ledger-recorded as `disproved`,
 but both claims are factually true — the round adjudicated "keep the
 behavior" as if it meant "the claim is wrong". The ledger rows are left
 unrewritten (out of scope for a doc-only follow-up); the relabel is recorded
-as a HIMMEL-3797 Jira comment instead, so a future `cr-tune` pass over this
+as a Jira comment instead, so a future `cr-tune` pass over this
 window can read the correct label without a ledger rewrite.
 
 Related: [`enforcement.md`](enforcement.md) (the CR gate), `/cr-tune` (per-model

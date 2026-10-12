@@ -24,19 +24,19 @@ back**; until then do not treat them as yours. Only then send **`{{LETTER}} LIVE
 session so it releases its lock and wraps — or, for a leg that stays silent,
 send it with that leg named as one that did not quote back, and why (ACTION
 ZERO step 9), rather than waiting on it indefinitely. `LIVE` first strands
-every leg that has not been re-briefed (HIMMEL-3254).
+every leg that has not been re-briefed.
 
 ## In flight
 
 {{LIVE_STATE}}
 
-<Copied verbatim from the predecessor's `## Live state` (HIMMEL-2973 S1) —
+<Copied verbatim from the predecessor's `## Live state` —
 each leg's nonce, lock release token and pid are already there; do not
 retype them. A leg not listed above is not alive — the successor confirms with
 ListAgents regardless.>
 
 **Legs** (fleet manifest, last Results marker of each; `console.sh next`
-filled this, HIMMEL-4902):
+filled this):
 
 {{LEG_LIST}}
 
@@ -47,7 +47,7 @@ filled this, HIMMEL-4902):
 **Held queue:** {{QUEUE_LINE}}
 **Last GO:** {{LAST_GO}}
 
-**Open judge calls** (HIMMEL-5071). Subagents still running in this session
+**Open judge calls**. Subagents still running in this session
 when `console.sh next` ran:
 
 {{JUDGE_CALLS}}

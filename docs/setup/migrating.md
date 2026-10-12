@@ -90,7 +90,7 @@ at project scope is not fighting this.
 
 ## State 3 — `origin` still points at the pre-cutover remote
 
-**The HIMMEL-2705 cutover has landed** — `yotamleo/Himmel` is now the
+**The cutover has landed** — `yotamleo/Himmel` is now the
 source of truth, and a release channel has tags to follow.
 
 Detect this state with `git remote -v`. If `origin` still names the
@@ -171,7 +171,7 @@ than deleting things by hand.
 A migration is a good moment to pick one, but this page does not define them:
 the channel model, the resolution order, and the exact behaviour when you are
 ahead of or diverged from a tag all live in
-[updating.md](updating.md#release-channels-himmel-2705). Two things worth
+[updating.md](updating.md#release-channels). Two things worth
 knowing while migrating:
 
 - `install` defaults a **new** station's saved install-profile file to
@@ -182,7 +182,7 @@ State 3 is the caveat: anyone still on the pre-cutover remote has no release
 tags to follow until they converge (`git remote set-url origin` +
 `git fetch --tags`, above).
 
-## The statusline's cached state (HIMMEL-3065)
+## The statusline's cached state
 
 The statusline is a renderer (`claude-hud`) with its own per-user state under
 `${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/claude-hud/`: cached session token

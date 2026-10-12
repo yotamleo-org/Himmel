@@ -1,4 +1,4 @@
-# Relay brief template (HIMMEL-2975)
+# Relay brief template
 
 The `>`-block a console writes into a relay's brief. The relay is a leg kind
 serving the console (see [`../glossary.md`](../glossary.md)) — launched via
@@ -47,7 +47,7 @@ full shape.
 <!-- -->
 > **What you hold vs. what the console holds.** You hold a lock on your OWN
 > relay doc only and never acquire the console doc. **A judge is not the
-> console** (HIMMEL-2975 lexicon, [`../glossary.md`](../glossary.md): the
+> console** (per the lexicon in [`../glossary.md`](../glossary.md): the
 > console alone holds the console-doc queue lock and the fleet's GO/RETASK
 > authority and mints every nonce; a judge holds nothing and is advisory). A
 > judge session holds only its own judge-doc lock, same as any leg — `go.sh`

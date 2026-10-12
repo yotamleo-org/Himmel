@@ -13,18 +13,17 @@ every rule traces to a ticket with a measurement or an incident behind it.
 
 | Target | Rule | Why |
 |---|---|---|
-| `.ps1` | Always `pwsh` (PowerShell 7+). `powershell.exe` 5.1 only with a **named reason per use**. | Operator ruling 2026-08-26 (HIMMEL-2126): 5.1 reads a BOM-less UTF-8 file as cp1252 — an em dash becomes a string terminator, and the parser error points at the WRONG line. Bit twice: ggs-local `run-bridges.ps1` (2026-08-05), station-ops `sweep-contention.ps1` (2026-08-26). |
-| `pwsh -File` list args | Pass ONE quoted comma string; split it inside the script. Never `-Levels 1,2,4,8` bare. | `pwsh -File` converts a bare comma list to a single int — `1,2,4,8` becomes `1248`. This is the HIMMEL-2119 fan-out bomb: 1248 workers spawned, host RAM to 96%. |
+| `.ps1` | Always `pwsh` (PowerShell 7+). `powershell.exe` 5.1 only with a **named reason per use**. | 5.1 reads a BOM-less UTF-8 file as cp1252 — an em dash becomes a string terminator, and the parser error points at the WRONG line. Bit twice: ggs-local `run-bridges.ps1` (2026-08-05), station-ops `sweep-contention.ps1` (2026-08-26). |
+| `pwsh -File` list args | Pass ONE quoted comma string; split it inside the script. Never `-Levels 1,2,4,8` bare. | `pwsh -File` converts a bare comma list to a single int — `1,2,4,8` becomes `1248`. This is the fan-out bomb: 1248 workers spawned, host RAM to 96%. |
 | Shell scripts | bash 3.2-safe (macOS floor). `scripts/hooks/CLAUDE.md` is normative for this repo's hooks. | Same rule as the hooks subtree; a bash-4-only construct (`mapfile`, associative arrays) silently breaks on macOS. |
 | Repo shell script invoked FROM PowerShell | Pin `& "C:\Program Files\Git\bin\bash.exe"`. Never bare `bash`. | Bare `bash` from PowerShell resolves the WSL stub (`C:\WINDOWS\system32\bash.exe`), which cannot read `C:\…` paths. Full trap + `resolveBash()`/`BASH_BIN` reference: [`environment-gotchas.md` § Windows: bare `bash`…](environment-gotchas.md#windows-bare-bash-resolves-to-the-system32-wsl-stub). |
 | `schtasks` create vs query | Pair them: **query → PowerShell, create → Git Bash.** | `schtasks /create` is AV-denied from both PowerShell generations on OVERLORD8 but works from Git Bash; `/query` is the reverse (MSYS mangles it). |
-| Here-strings / growing content in MSYS bash | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever (HIMMEL-2027). |
+| Here-strings / growing content in MSYS bash | Temp file or case-membership once content can exceed ~64 KiB, never a herestring. | A herestring ≥ 64 KiB wedges MSYS bash forever. |
 
 ## 2. What it costs — MSYS spawn economics
 
 External-process spawn from a bash script is not free, and the cost is not
-flat — it rises under contention. Measured on the PreToolUse Bash hook chain
-(HIMMEL-2119 / HIMMEL-2123):
+flat — it rises under contention. Measured on the PreToolUse Bash hook chain:
 
 - One external grandchild (grep/jq/git spawned from a bash script): **~34 ms
   idle, ~106 ms at 16-way load** — the marginal cost roughly **triples** under
@@ -33,7 +32,7 @@ flat — it rises under contention. Measured on the PreToolUse Bash hook chain
   hot-path spawn multiplies by call volume, not by how often you personally
   notice it.
 
-### Defork round 2 results (HIMMEL-2123, PR #1912)
+### Defork round 2 results (PR #1912)
 
 Per-member spawn count and ms/call, before → after:
 
@@ -62,7 +61,7 @@ pattern:
 - **`input=$(cat)` → `IFS= read -r -d '' input || true`.** A fail-closed fence
   built on this then needs an **explicit blank-input guard**: `jq <<<""` emits
   0 values with 0 errors, silently flipping the fence fail-open (caught twice
-  in the HIMMEL-2123 CR round).
+  in the defork CR round).
 - **N × `printf|jq` → one `jq` call emitting delimited multi-field rows.** The
   multi-line-capable field (`command`) goes **last** and is extracted as
   rest-of-string. A delimiter a JSON string could legally contain needs an
@@ -76,7 +75,7 @@ pattern:
 - **`tr a | tr b` → one `tr 'SET1' 'SET2'` call — only when the translations are
   independent.** Chained `tr` is not generally composable: if the second call acts
   on characters the first PRODUCED, a single merged call changes the result.
-  Verify byte-identical output on the real inputs per site (the HIMMEL-2123
+  Verify byte-identical output on the real inputs per site (the defork
   merges were). sed/cut/head one-liners on small strings → parameter expansion.
   `printf | jq -Rs` → `jq -n --arg`.
 - **Herestring `<<<` appends a trailing newline** — keep `printf` where a
@@ -89,7 +88,7 @@ pattern:
   This is the dominant shape: 10 of arm-resume's 11 py-armor call sites use it.
   The plain `py_armor` path (minority, 1 site) is a single interpreter spawn.
   Batch capture calls or replace the trivial ones — this is arm-resume's
-  remaining ~30s (HIMMEL-2125).
+  remaining ~30s.
 - **Leading-zero env values through `$(( ))` parse as octal and abort under
   `set -e`.** A digit-only check does not catch this (`0180` is all digits and
   still invalid octal). Normalize with `10#$value` before arithmetic.
@@ -108,21 +107,21 @@ Restated as a lookup table because a defork touches exactly this boundary:
 | Security fence (secrets, destructive commands, egress) | **Closed** — including on blank stdin, non-string fields, delimiter collisions, unparseable input | A false negative here is a security incident |
 | Watchdog | **Open** | Must never block a tool call on its own bug |
 | Workflow nudge | **Open** on its own infra errors (missing `jq`, unparseable JSON) | Failing closed denies every call the hook can't parse — the nudge becomes the next thing everyone bypasses |
-| Auto-approve gateway | Only ever grants | One documented deny carve-out (HIMMEL-2121) |
+| Auto-approve gateway | Only ever grants | One documented deny carve-out |
 
 ### Chain budgets (`scripts/hooks/run-hook-with-bash.js`)
 
 Nesting, largest to smallest: **entry 60s > chain 50s > member 15s > floor
 500ms.** Must-run members fail **closed** on starvation rather than being
-silently skipped (HIMMEL-2060). These are static numbers again post-defork —
-HIMMEL-2091's load-aware sizing was closed as superseded, since the
+silently skipped. These are static numbers again post-defork —
+Load-aware sizing was closed as superseded, since the
 post-defork sweep's N=16 P95 (7.4s) is >6× inside the 50s chain budget.
 Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
 
 ## 4. Measurement discipline
 
 - **Benchmark before/after around every perf change**, conditions recorded
-  HIMMEL-1564-style: box, load level, date, SHA. Land the numbers on the
+  in the same shape: box, load level, date, SHA. Land the numbers on the
   ticket before the next phase starts.
 - **Verify the ARTIFACT, not the rc.** A vacuous `exit 0` passes trivially;
   pin that the guarded path actually ran (the 2113c anti-vacuous pattern) —
@@ -132,8 +131,8 @@ Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
 - **A skip needs its own tally — never the pass counter.** A case that never
   ran must not be credited as a pass — not via the PASS counter or a `pass()`
   helper, and not via a token that reads as one (`PASS (skipped)`, a real
-  pass's `ok - ` prefix). HIMMEL-2258's fleet audit found 13 such sites across
-  8 suites, 2 firing every run (HIMMEL-2254 / #2029: a `.env` shield skipped 7
+  pass's `ok - ` prefix). A fleet audit found 13 such sites across
+  8 suites, 2 firing every run (#2029: a `.env` shield skipped 7
   cases on every primary checkout). Give a legitimate capability skip its own
   counter in the summary line instead (`test-check-hud-drift.sh`'s `_skips`,
   exit 77) — and don't let a setup shield "skip if it already exists": prefer
@@ -148,7 +147,7 @@ Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
   `sweep-contention.ps1`: avail ≥ 12 GiB, commit ≤ 80%, ≤ 250 bash processes,
   N ≤ 64.
 - **Size a `run-shell-tests.sh` per-suite cap from the LOADED case, not an
-  idle box** (HIMMEL-2401): a cap set from an idle benchmark's headroom gets
+  idle box**: a cap set from an idle benchmark's headroom gets
   consumed as a suite grows, so re-benchmark under the load the box actually
   carries and set the cap to `measured_loaded × 2`, dating the comment —
   never nudge a stale cap by a few seconds, that reproduces the ticket at the
@@ -181,7 +180,7 @@ names three recurring shapes:
 The measurement behind this: 27 of 242 `agreed` CR-ledger findings in the 14
 days to 2026-09-07 (11%) were this family, and 10 of those 27 were shape (a)
 specifically — always the same unguarded `$(mktemp` capture, the single most
-repeated defect class the ledger recorded in that window (HIMMEL-2709).
+repeated defect class the ledger recorded in that window.
 
 Only shape (a) is now structural: the `unchecked-mktemp` pre-commit gate
 (`scripts/hooks/check-unchecked-mktemp.sh`; enforcement detail + bypass in

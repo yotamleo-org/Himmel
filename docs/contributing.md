@@ -56,7 +56,7 @@ keep that working at any team size.
    `Platforms tested:` / `Security reviewed:` attestation trailers, which the
    pre-push gates require independently.
 
-4. **Push** opens a multi-agent CR marker (HIMMEL-26). Run
+4. **Push** opens a multi-agent CR marker. Run
    `/pr-check` (or `/pr-review-toolkit:review-pr`) in your Claude session
    before opening the PR; the marker blocks `gh pr create` until CR is clean.
 
@@ -83,10 +83,9 @@ this doc. Highlights:
 - **CR-before-push:** the multi-agent CR marker described above
   (`check-cr-before-push.sh`).
 - **Platforms-tested:** shell / script changes must include a
-  `Platforms tested: <platforms>` line in the commit body or PR description
-  (HIMMEL-113).
+  `Platforms tested: <platforms>` line in the commit body or PR description.
 - **PR mergeable + no force-push:** pre-push refuses pushes when the PR is
-  CONFLICTING or when a force-push targets `main` (HIMMEL-136).
+  CONFLICTING or when a force-push targets `main`.
 
 ## Cross-platform conventions
 

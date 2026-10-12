@@ -10,24 +10,24 @@ name `<TICKET>-N<k>-<slug>` — the doc name minus `-<date>-RESUME.md`. The leg'
 `legs:` line and what `tick.sh` prints. One derivation owns the mapping between
 the three, [`scripts/lib/leg-identity.sh`](../../scripts/lib/leg-identity.sh);
 it also accepts the legacy `<TICKET>-<slug>-leg[N]<k>-<date>-RESUME.md` spelling
-older buckets carry (HIMMEL-3277). Never rename a live doc to conform — a leg
+older buckets carry. Never rename a live doc to conform — a leg
 holds its queue lock on that exact path.
 
 A leg inherits **nothing** from the console's context. Everything it needs is
 in this file: if it is not written here, it does not exist.
 
-**v3 (HIMMEL-2830): the invariant rules moved out of the brief.** They live in
+**v3: the invariant rules moved out of the brief.** They live in
 [`leg-preface.md`](leg-preface.md), which
 `headed-arm-leg.sh --profile <name>` appends to the leg's system prompt
 (`--append-system-prompt-file`). **No rule was dropped — every one of them
 moved**, and the preface says so to the leg in its own words. What stays here
 is the part that is different for every leg: who this leg is, what it is doing,
 and what it must not touch. `headed-arm-leg.sh` **refuses** (exit 2) a launch
-with no `--profile` (HIMMEL-3267); `--no-profile` is the explicit opt-out, and
+with no `--profile`; `--no-profile` is the explicit opt-out, and
 then the preface is not injected, so paste it into the brief yourself or the
 leg is under-briefed.
 
-**Composed profiles (HIMMEL-4014).** `--profile` and the brief's `profile:` line
+**Composed profiles.** `--profile` and the brief's `profile:` line
 take a comma list (`design,design-motion`, no spaces): the leg gets the union of
 the members' plugin sets. `operator`, `bare` and the console/relay/judge role
 profiles cannot be members. A leg that needs a skill outside its fixed profile
@@ -57,7 +57,7 @@ template_version: 3
 > THIS document. Write its release token into your LIVE bullet exactly as
 > `queue-lock.sh` prints it — in backticks, never bare in prose and never
 > followed by punctuation — a bare token defeats the vault's anchored gitleaks
-> allowlist and stalls the handover auto-commit (HIMMEL-2910, HIMMEL-2937).
+> allowlist and stalls the handover auto-commit.
 > <Any per-leg deviation from the standing leg preface — a
 > required bypass env var already set in your launching shell, a lane that is
 > not native, a suite that must be run a particular way — goes here, in this
@@ -71,7 +71,7 @@ template_version: 3
 > its date and where it was given), e.g. `design: two interacting hooks` or
 > `operator-ruling: run only Opus 5.5 (operator 2026-09-22, console A)`.
 > <Omit this line entirely for a Sonnet or Haiku leg — `headed-arm-leg.sh`
-> (HIMMEL-2976/HIMMEL-2997/HIMMEL-3480) refuses to launch an Opus or Fable
+> refuses to launch an Opus or Fable
 > model without it.>
 
 > **Why (read the ticket first: `<the exact command that fetches it>`):**
@@ -83,7 +83,7 @@ template_version: 3
 > paths and what to take from each. Name what is private and must never reach
 > the tree.>
 
-> **Prior art (required, HIMMEL-4573):** <related tickets, prior fixes and graph
+> **Prior art (required):** <related tickets, prior fixes and graph
 > neighbours, each with its source. The console fills it at dispatch from one
 > qmd query over `jira-himmel` + the vault collection (lex+vec, `-c <name>`), plus one
 > `graphify query` when code structure matters. If the search found nothing,
@@ -94,19 +94,19 @@ template_version: 3
 > shows the paved path for this change, and what to copy from it. Omit the line
 > when no single file fits.>
 
-> **Trust paths (pre-dispatch, HIMMEL-4089):** <exact paths the planned scope
+> **Trust paths (pre-dispatch):** <exact paths the planned scope
 > plausibly needs; permitted read/write operations and exclusions; the
 > operator's up-front scope grant, or explicitly none needed. A brief grants
 > scope, not tool permissions. If authorization is missing, narrow before
 > dispatch; an auto-mode inbox EXPANSION needs operator confirmation in-window,
 > not merely a RETASK token.>
 
-> **Default if no ruling (optional, HIMMEL-4935):** `default-if-no-ruling (<N> min):
+> **Default if no ruling (optional):** `default-if-no-ruling (<N> min):
 > <action>` per question the console can pre-answer. NARROWING only: reduce scope,
 > defer to a named follow-up, or halt; never expand. It never replaces `GO`, a
 > merge, or a token-quoting message. Drop the line if no question is predictable.
 
-> **Guard escape tests (guard/hook tickets only, HIMMEL-4537; drop otherwise):**
+> **Guard escape tests (guard/hook tickets only; drop otherwise):**
 > the leg's escape and variant rows come only from route 1:
 > `scripts/eval/guard-corpus/gen` over the DENY rows the hook's suite already
 > carries, judged by `diff` as PreToolUse JSON. A non-Bash row is a copy of the
@@ -128,14 +128,14 @@ template_version: 3
 > 1. LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write
 >    the bullet with `scripts/handover/console-kit/append-results.sh <doc>
 >    "LIVE ..."` (leg-preface.md), never the Edit tool. A bullet never
->    contains `>`; write `→` or `to` (HIMMEL-3917). The LIVE bullet moves the
+>    contains `>`; write `→` or `to`. The LIVE bullet moves the
 >    ticket to In Progress and the PR open to In Review, by script
->    (leg-preface.md, HIMMEL-4419); do not transition it by hand.
+>    (leg-preface.md); do not transition it by hand.
 > 2. <the deliverables, one numbered item each, named by path>
 > 3. **Tests:** <the suite to write and the specific RED assertion to show
 >    first; the impacted suites you already know about, by name.> Suites run
 >    as `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — the
->    literal label `suite` is the only one auto-allowed (HIMMEL-3402).
+>    literal label `suite` is the only one auto-allowed.
 > 4. **Ship:** `<type>(<scope>): [<TICKET>] <subject>`, then the standing ship
 >    sequence. Trailers go in the FIRST commit, token first after the colon:
 >    `Platforms tested: <os>` and `Security reviewed: manual — <what you
@@ -143,18 +143,17 @@ template_version: 3
 >    `ad-hoc` in place of `manual`). The PR body carries one line
 >    `leg-burn: calls= avg-ctx= first-turn= compactions= cost-eq=` —
 >    `leg-pr-open.sh` computes and inserts it itself when the PR opens; never
->    run `leg-burn.sh` by hand (HIMMEL-3572). **`completes-ticket: yes|no`** — does this PR finish the
+>    run `leg-burn.sh` by hand. **`completes-ticket: yes|no`** — does this PR finish the
 >    cited ticket? `yes` → the leg merges with `--jira-transition`; `no` (the
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
->    it omits the flag. **The PR body carries a `## Ticket coverage` section**
->    (HIMMEL-4207): one list line per ask of each cited ticket, each ending
+>    it omits the flag. **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
 >    `done` or `deferred → HIMMEL-<n>` (`->` also accepted), e.g.
->    `- ask one: done` / `- ask two: deferred → HIMMEL-1234`. A deferred key
+>    `- ask one: done` / `- ask two: deferred → HIMMEL-<n>`. A deferred key
 >    must exist and still be open; `ready-check.sh` item 7 FAILs a missing
 >    section, an unmarked line, or a deferral to a nonexistent or Done/Closed
 >    ticket, so file the follow-up before you write the line. The marker is
 >    LAST with nothing after it; lint it yourself before READY with
->    `ready-check.sh --only 7 <pr>` (HIMMEL-4300). <Anything else unusual: a PR body that must carry other
+>    `ready-check.sh --only 7 <pr>`. <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
@@ -175,19 +174,19 @@ template_version: 3
 | RETASK token | Any text reaching the leg could re-task it; the nonce is what makes a revision authentic. |
 | Queue lock + release token | Two sessions edit one handover doc, and the later write wins silently. |
 | Explicit do-nots | Scope widens into a neighbouring leg's files and the fan-out collides. |
-| `description:` line (required) | A leg is named everywhere by its label and ticket (`N1452`, `HIMMEL-4749`), which says nothing about what it is doing, least of all with no tracker or forge to fetch a title from. The front-matter line is the one plain-language description a surface shows NEXT TO the label (never instead: tooling keys on the label); `leg_description` in `scripts/lib/leg-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-leg.sh` refuses the launch (no flag skips it). A doc whose `## Results` already holds a bullet has run, so it resumes without one (HIMMEL-4749). |
-| Prior art line (required) | In the 7 days to 2026-10-06 the qmd query tool was called 93 times, 85 of them by 16 of 565 legs and none by a console or judge: nothing in the brief asked for retrieval, so work was re-derived or duplicated (HIMMEL-4479 audit; graphify non-adoption was measured before in HIMMEL-2581). The console runs the retrieval once at dispatch and every leg inherits it. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh` refuses the launch unless `--no-prior-art-check` is passed (HIMMEL-4573). |
-| Exemplar line (optional) | A leg told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/console-kit/test-ready-check.sh`) makes the leg imitate that. Instructional only, no validator: judge it by drift before anyone gates it (HIMMEL-4428). |
+| `description:` line (required) | A leg is named everywhere by its label and ticket (`N1452`, `PROJ-123`), which says nothing about what it is doing, least of all with no tracker or forge to fetch a title from. The front-matter line is the one plain-language description a surface shows NEXT TO the label (never instead: tooling keys on the label); `leg_description` in `scripts/lib/leg-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-leg.sh` refuses the launch (no flag skips it). A doc whose `## Results` already holds a bullet has run, so it resumes without one. |
+| Prior art line (required) | In the 7 days to 2026-10-06 the qmd query tool was called 93 times, 85 of them by 16 of 565 legs and none by a console or judge: nothing in the brief asked for retrieval, so work was re-derived or duplicated (audit; graphify non-adoption was measured before). The console runs the retrieval once at dispatch and every leg inherits it. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh` refuses the launch unless `--no-prior-art-check` is passed. |
+| Exemplar line (optional) | A leg told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/console-kit/test-ready-check.sh`) makes the leg imitate that. Instructional only, no validator: judge it by drift before anyone gates it. |
 | The standing preface | Every rule the brief no longer repeats — reporting, RETASK asymmetry, RED-first, trailers in the first commit, GO-gated merge, the fill ceiling. It is injected by `--profile`, so a brief that omits it AND uses `--no-profile` is a leg running on vibes (a launch with neither is refused). |
-| `completes-ticket:` line | `merge-on-green.sh` closes the ticket only on `--jira-transition` (opt-in, HIMMEL-3143, because a default closes multi-PR tickets early). Without the line every leg guesses whether its PR finishes the ticket: in one shift six merges printed `would-transition` and five were closed by hand (HIMMEL-3271). It is a per-brief decision, never a default. |
-| Guard escape tests block (guard/hook tickets) | A leg hand-writing bypass-shaped rows was stopped by a safety classifier and parked (N1308, HIMMEL-4537); without the block the next guard leg improvises instances again, or retries a stop by rephrasing it. |
-| Tier line (Opus/Fable only) | Without a trimmed, non-blank reason opening with one of the four exact-lowercase category tags (`design`, `unverified-finding`, `tier-return`, `operator-ruling`), `headed-arm-leg.sh` refuses the launch (HIMMEL-2976/HIMMEL-2997/HIMMEL-3480, CLAUDE.md: "raise effort before tier") — the tag is validated and the free text after it must be non-blank, but its content is otherwise unrestricted, so a paraphrase can never be falsely rejected. For a standing operator ruling on model choice, `operator-ruling:` free text names the ruling, its date and where it was given, so the console can trace the Opus/Fable spend back to it. |
+| `completes-ticket:` line | `merge-on-green.sh` closes the ticket only on `--jira-transition` (opt-in, because a default closes multi-PR tickets early). Without the line every leg guesses whether its PR finishes the ticket: in one shift six merges printed `would-transition` and five were closed by hand (HIMMEL-3271). It is a per-brief decision, never a default. |
+| Guard escape tests block (guard/hook tickets) | A leg hand-writing bypass-shaped rows was stopped by a safety classifier and parked (N1308); without the block the next guard leg improvises instances again, or retries a stop by rephrasing it. |
+| Tier line (Opus/Fable only) | Without a trimmed, non-blank reason opening with one of the four exact-lowercase category tags (`design`, `unverified-finding`, `tier-return`, `operator-ruling`), `headed-arm-leg.sh` refuses the launch (CLAUDE.md: "raise effort before tier") — the tag is validated and the free text after it must be non-blank, but its content is otherwise unrestricted, so a paraphrase can never be falsely rejected. For a standing operator ruling on model choice, `operator-ruling:` free text names the ruling, its date and where it was given, so the console can trace the Opus/Fable spend back to it. |
 
 ## What the console must also do (2026-09-13)
 
 - (a) One plan task per leg, plus the stage-worker rule: run the context-fill
   probe after every completed step (ruling A1). The leg context guard
-  (`guard-leg-context-handoff.sh`, HIMMEL-4569) is off by default (HIMMEL-4710);
+  (`guard-leg-context-handoff.sh`) is off by default;
   arm with `--context-guard compact|handoff` to turn it on. When it is on, past
   75 % of the leg's `--autocompact` ceiling (15 % fill for an opus leg pinned
   at 200000 on its 1M window) it blocks ordinary work until the leg acts on its
@@ -195,7 +194,7 @@ template_version: 3
   bullet, then carries on through the compaction; `handoff` writes a
   `b`-suffixed successor brief and stops. Reference:
   `docs/internals/leg-context-guard.md`. The `--autocompact` ceiling stays the
-  backstop (HIMMEL-4089).
+  backstop.
 - (b) The console creates the leg's worktree before arming it, never after.
 - (c) Holding for the console's `GO` ends the leg's turn — never a Bash sleep
   loop; a leg that blocks in one never wakes to receive it.
@@ -205,9 +204,9 @@ template_version: 3
   task and every agent you spawned, then prove the subtree is clean with
   `bash scripts/handover/wrap-subtree-check.sh` — only its `CLOSABLE:` line
   makes the window closable." The console cannot kill a leg's orphaned
-  background shell (HIMMEL-2761); tick's `orphans=` field shows one that a
+  background shell; tick's `orphans=` field shows one that a
   leg left behind.
-- (f) **Bank-scarcity routing (HIMMEL-2772).** While the Claude weekly bank is
+- (f) **Bank-scarcity routing.** While the Claude weekly bank is
   the scarce bucket, an Opus leg (or console) that fans implementation chunks
   out sends them to **codex-exec first** (`scripts/codex/dispatch-codex-exec.sh`,
   Astra at `--reasoning-effort medium`, `low` for a mechanical chunk) and to a
@@ -220,8 +219,8 @@ template_version: 3
   worktree's `.git` is a pointer file outside it), so a chunk that merely ends
   in a commit still goes to codex-exec. Put the routing in the brief's Contract so the
   leg does not have to infer it; the full rule and its evidence live in
-  [`../internals/lane-calibration.md`](../internals/lane-calibration.md#bank-scarcity-routing-rule-himmel-2772).
-- (g) **Surface tickets route through minerva (HIMMEL-4375).** Before briefing a
+  [`../internals/lane-calibration.md`](../internals/lane-calibration.md#bank-scarcity-routing-rule).
+- (g) **Surface tickets route through minerva.** Before briefing a
   leg on a ticket that adds or aggregates a status, report, doctor, health,
   probe, check or inventory surface, the console needs a minerva spec and plan
   that pass `marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh`. At

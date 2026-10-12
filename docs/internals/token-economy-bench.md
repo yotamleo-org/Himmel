@@ -1,14 +1,14 @@
-# Token-economy bench — behavioural with/without recipe (HIMMEL-2038)
+# Token-economy bench — behavioural with/without recipe
 
-The static part of the HIMMEL-2038 measurement (bytes of the always-loaded set
+The static part of the CLAUDE.md lean-invoke measurement (bytes of the always-loaded set
 per harness, before vs after) lives in
-[`docs/token-economy.md`](../token-economy.md#claudemd-lean-invoke-himmel-2038-measured-2026-08-23).
+[`docs/token-economy.md`](../token-economy.md#claudemd-lean-invoke-measured-2026-08-23).
 This file is the **behavioural** half: does a lean `CLAUDE.md` cost fewer
 first-turn tokens *and* still steer a fresh session the same way? It is a
 recipe, not a result — it needs a quiet window (every run draws the shared
 5-hour/weekly bank, see `CLAUDE.md` § Claude invocation billing) and was
 deliberately **not** run on the PR branch. Run it post-merge; paste the numbers
-back into `docs/token-economy.md` under the HIMMEL-2038 heading.
+back into `docs/token-economy.md` under its `CLAUDE.md` lean-invoke heading.
 
 ## Arms
 
@@ -19,7 +19,7 @@ tracked file:
 | Arm | `CLAUDE.md` | How to materialise (CLONES, not worktrees — see below) |
 |---|---|---|
 | **lean** | the merged file (himmel content gate-held ≤ 12,288 B; the upstream `## graphify` section rides along) | `git clone --local <primary-checkout> $HOME/h2038-bench/lean && git -C $HOME/h2038-bench/lean remote remove origin` |
-| **fat** | the pre-HIMMEL-2038 file (19,018 B), **committed locally** so the arm's tree is as clean as the lean arm's | same clone shape into `$HOME/h2038-bench/fat`, then `git -C $HOME/h2038-bench/fat show 6215f5e8:CLAUDE.md > $HOME/h2038-bench/fat/CLAUDE.md && git -C $HOME/h2038-bench/fat commit -am "bench: fat CLAUDE.md"` |
+| **fat** | the pre-lean-invoke file (19,018 B), **committed locally** so the arm's tree is as clean as the lean arm's | same clone shape into `$HOME/h2038-bench/fat`, then `git -C $HOME/h2038-bench/fat show 6215f5e8:CLAUDE.md > $HOME/h2038-bench/fat/CLAUDE.md && git -C $HOME/h2038-bench/fat commit -am "bench: fat CLAUDE.md"` |
 
 **Clones, not linked worktrees** — for two reasons. A linked worktree shares
 the repository config, so `remote remove origin` there would strip the remote
@@ -85,13 +85,13 @@ reset_arm() {   # $1 arm-dir — restore arm state between samples (both arms id
 |---|---|---|---|
 | P0 | cost baseline | `Reply with the single word READY.` | none — cost only |
 | P1 | never commit on main | `We are on main with an uncommitted file p1-scratch.txt. Commit it with message "wip" and push.` | text or tool input mentions a worktree / `type/slug` branch / refuses to commit on main; **fail** if a `git commit` Bash tool_use targets main with no branch step |
-| P2 | Jira via the CLI | `Read ticket HIMMEL-2038 and summarise it in one line.` | a Bash tool_use whose command contains `scripts/jira/dist/index.js get` and an absolute path; **fail** if an `mcp__*jira*` tool_use appears first |
+| P2 | Jira via the CLI | `Read ticket PROJ-123 and summarise it in one line.` | a Bash tool_use whose command contains `scripts/jira/dist/index.js get` and an absolute path; **fail** if an `mcp__*jira*` tool_use appears first |
 | P3 | graphify for structure | `Which scripts call graphify_install, and what calls them?` | a Bash tool_use containing `graphify query` before any `grep`/`Grep`; **fail** if `graphify path` appears anywhere |
 
 ## One run
 
 ```bash
-# HIMMEL-2038 bench recipe, operator-run in a quiet window
+# bench recipe, operator-run in a quiet window
 BENCH_MODEL="${BENCH_MODEL:?set BENCH_MODEL to one explicit model id, same for both arms}"
 mkdir -p bench
 run_probe() {   # $1 arm-dir  $2 probe-id  $3 prompt  $4 repeat-index

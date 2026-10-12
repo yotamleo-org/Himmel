@@ -9,7 +9,7 @@ nothing and never rewrites a hand-edited file.
 These four defaults used to sit in himmel's project `CLAUDE.md`. They are
 general engineering defaults, not himmel invariants, so they belong on the
 user-scope layer where every project gets them once instead of every himmel
-session paying for them (HIMMEL-2038). Operator machines that already carry a
+session paying for them. Operator machines that already carry a
 user-scope `CLAUDE.md` with these principles are detected and left alone.
 
 **Why this is not the same file as

@@ -1,6 +1,6 @@
 # MCP server and client inventory
 
-Repository snapshot: 2026-10-07, HIMMEL-4819 slice 1. The migration target is
+Repository snapshot: 2026-10-07, slice 1 of the v2 migration. The migration target is
 protocol revision **2025-11-25** and the split TypeScript SDK at exact stable
 **2.3.1**. The parent ticket's alpha warning is stale: the npm registry lists
 stable 2.0.0 through 2.3.1. Protocol revision and SDK major are independent;
@@ -16,8 +16,8 @@ production implementations have source-derived counts instead.
 | Server / client | Owner and repository evidence | SDK version | Transport | Tool count | Migration risk / disposition |
 |---|---|---|---|---|---|
 | `luna-correlate` server | `marketplace/plugins/luna-correlate/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; pilot target: split server **2.3.1** | stdio, Bun | **5** | Low: low-level handlers retain JSON schemas, custom validation and text/error output. Exact pin; regression initializes, lists tools, calls offline `series.load`, rejects bad arguments/unknown tools and checks EOF. |
-| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.3.1** (HIMMEL-4864, spec 2025-11-25) | stdio, Node | **13** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
-| `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.3.1** (HIMMEL-4865) | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
+| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.3.1** (spec 2025-11-25) | stdio, Node | **13** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
+| `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.3.1** | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
 | Obsidian Local REST API embedded server | `templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api/{main.js,manifest.json}`; plugin **5.4.0** | Already split `@modelcontextprotocol/server`, `core`, `node` bundle; exact SDK release **not recorded** | Streamable HTTP (`NodeStreamableHTTPServerTransport`), sessionful/sessionless | **17** base + **2** signed-URL tools + **1** event-listener tool when enabled; extensions can add more | Medium: already v2 API (`McpServer.registerTool`, Standard Schema adapter). Re-vendor upstream, do not codemod compiled bundle; unknown exact pin needs upstream evidence. |
 | `fake-mcp` test server | `scripts/testing/fixtures/fake-mcp-server.mjs` | **None**, handwritten JSON-RPC | newline-delimited stdio, Node | **1** (`fake_echo`) | No dependency migration. Credential-free fixture echoes requested protocol; default 2025-06-18 is not a supported-version negotiation implementation. |
 | stdio regression test client | `marketplace/plugins/luna-correlate/tests/stdio.test.ts` | **None**, handwritten JSON-RPC test client | stdio subprocess | Calls the pilot's 5-tool list | No SDK object crossing. Uses literal 2025-11-25 initialize and offline fixtures. |
@@ -40,7 +40,7 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
-| Planned `himmel-bus` server | HIMMEL-4818 design / **HIMMEL-4827**; not implemented at this snapshot | Planned split server/client **2.3.1** | Planned stdio | **2** planned (`send`, `read`) | New-on-v2, not a remaining v1 migration. No edits in this slice. |
+| Planned `himmel-bus` server | Design only; not implemented at this snapshot | Planned split server/client **2.3.1** | Planned stdio | **2** planned (`send`, `read`) | New-on-v2, not a remaining v1 migration. No edits in this slice. |
 
 ## Pilot migration
 
@@ -68,9 +68,9 @@ the new stdio test calls no network tool.
 
 ## Staged completion
 
-- **HIMMEL-4864**: Jira CLI server migration (done, #2140).
-- **HIMMEL-4865**: telegram-himmel server migration (done, #2144).
-- **HIMMEL-4866**: doctor/CI lint against new v1 dependencies/imports, with
+- Jira CLI server migration (done, #2140).
+- telegram-himmel server migration (done, #2144).
+- Doctor/CI lint against new v1 dependencies/imports, with
   explicit vendored/external policy (done, see below).
 
 ## The v1 gate
@@ -88,8 +88,7 @@ v2 packages prints a NOTE that its exact version is unknown. Externally
 configured servers (npx, hosted, `.mcp.json`) are not scanned; the gate prints
 a NOTE saying so. Neither is ever reported as compliant.
 
-These follow-ups are linked by comment from **HIMMEL-4819**. Slice 1 does not
-complete the parent ticket. Exact unknown external/bundled versions are not
+Slice 1 does not complete the migration. Exact unknown external/bundled versions are not
 silently counted as compliant.
 
 ## Reproduce the inventory

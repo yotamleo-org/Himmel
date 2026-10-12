@@ -73,7 +73,7 @@ a terminal that was itself spawned from a claude session, and it clears the
 `CLAUDE_CODE_CHILD_SESSION` / `CLAUDE_PID` / `CLAUDE_CODE_SESSION_ID` variables
 that shell inherited. A console that keeps them writes no transcript and gets
 `UNKNOWN` from `scripts/context-fill.sh --percent` — which is the signal its
-own handover contract runs on (HIMMEL-3081). Trimming the line to just
+own handover contract runs on. Trimming the line to just
 `claude …` silently recreates that failure.
 
 Finally it prints the launch line. Run it in a terminal of its own:
@@ -84,8 +84,8 @@ env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
     claude --model '<model>[1m]' --autocompact auto -n <session-name> "load <doc> and continue"
 ```
 
-Consoles default to 1m context with `--autocompact auto` (HIMMEL-3884,
-console-class exemption from HIMMEL-2975). Both `console new` and `next`
+Consoles default to 1m context with `--autocompact auto`
+(a console-class exemption). Both `console new` and `next`
 accept `--context 1m|standard`, which overrides the environment and default.
 Use `--context standard` or `CONSOLE_CONTEXT=standard` in the launching shell
 to opt down to `--autocompact 200000`. The printed launch line and armed
@@ -107,10 +107,9 @@ it records the lock token `new` printed — confirming with `queue-lock.sh
 status` that the lock is held, and acquiring one only if it reports `free` —
 and tells its predecessor it is live.
 
-It also opens a **Telegram inbox** (HIMMEL-3355): it creates
+It also opens a **Telegram inbox**: it creates
 `<bridge root>/consoles/<session>.md` and watches it with its one event waiter,
-`console-kit/console-wait.sh`, run with Bash `run_in_background` (HIMMEL-3509:
-no `Monitor` re-arm loop, so an idle console takes no turns; a persisted read
+`console-kit/console-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle console takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so
 the operator's `/console <session> <text>` from
@@ -120,7 +119,7 @@ skipped GO verification. The console replies with
 `bun scripts/telegram/console-route.ts reply <chat_id> <text>`. Operator-side
 usage: [`../telegram-bridge.md`](../telegram-bridge.md#messaging-a-running-console).
 
-The same waiter **pages the operator** (HIMMEL-3724) when a leg's classifier
+The same waiter **pages the operator** when a leg's classifier
 denials reach `SHIP-STEP` or `PAUSE-RISK`: one Telegram message with the leg
 label, count and class, and nothing else. A paged leg is then **refused** on
 re-dispatch (`headed-arm-leg.sh` exits 14) until someone has looked and run
@@ -130,7 +129,7 @@ re-dispatch (`headed-arm-leg.sh` exits 14) until someone has looked and run
 
 ## Dispatching legs
 
-**Pre-dispatch trust-path check (HIMMEL-4089):** trace the planned scope and
+**Pre-dispatch trust-path check:** trace the planned scope and
 list the trust paths it will plausibly need (shared libraries, hooks, launchers,
 settings, or guardrail inventories). Put the exact paths, permitted operations,
 and exclusions in the initial brief, with the operator's up-front scope grant.
@@ -147,7 +146,7 @@ grammar rather than paraphrasing it: the token is the FIRST word after the
 colon — `Platforms tested: <os>`, `Security reviewed: manual — <what you
 checked>` (or `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
 in place of `manual`) — a paraphrase the leg copies faithfully is how a
-non-conforming trailer reaches the pre-push gate (HIMMEL-2982).
+non-conforming trailer reaches the pre-push gate.
 
 The console writes a brief from
 [`leg-brief-template.md`](leg-brief-template.md) and launches it headed:
@@ -184,34 +183,34 @@ Three pre-launch checks that each cost a console a dead leg when skipped:
   OAuth). Until the operator has logged in once (`/mcp`, pick
   `agent-native-dispatch`), the server needs auth and a leg cannot answer the
   prompt, which looks like a hung leg. Tool arguments go to Builder.io servers:
-  never use it on salus/PHI work. `block-agent-native-egress.sh` (HIMMEL-4328)
+  never use it on salus/PHI work. `block-agent-native-egress.sh`
   refuses the call from a salus session or when the payload names salus. `context7` needs no login. Do not arm a
   design-profile leg unattended (`--arm`, at-jobs, overnight) until a fresh
   session has been checked to keep the token.
 
-Pass **`--profile leg-impl`** (HIMMEL-2830) on a native-lane leg: it narrows
+Pass **`--profile leg-impl`** on a native-lane leg: it narrows
 the leg's plugin set, appends the standing rules from
 [`leg-preface.md`](leg-preface.md) to its system prompt — which is why the v3
 brief template no longer repeats them — and exports `HIMMEL_LEAN_LEG=1` to
-quiet the advisory SessionStart hooks. It also now (HIMMEL-2935) passes
+quiet the advisory SessionStart hooks. It also now passes
 `--mcp-config`/`--strict-mcp-config`, so a leg only ever sees the `qmd` MCP
-server, not the USER-level MCP roster (a console gets the same treatment since HIMMEL-5310:
+server, not the USER-level MCP roster (a console gets the same treatment:
 `qmd` and `himmel-bus` only). A leg dispatched WITHOUT the flag is
 unchanged in every respect, including its argv, so the preface must then be
 pasted into the brief. Detail:
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
 `headed-arm-leg.sh` exports `HIMMEL_CONSOLE_LEG=1`, which
-`block-leg-askuserquestion.sh` (HIMMEL-2923) uses to structurally deny
+`block-leg-askuserquestion.sh` uses to structurally deny
 `AskUserQuestion` on the leg, rather than relying on the brief's prose NEVER.
 
-`headed-arm-leg.sh` also exports `HIMMEL_CONSOLE_NAME` (HIMMEL-3435) into the
+`headed-arm-leg.sh` also exports `HIMMEL_CONSOLE_NAME` into the
 leg, resolved from the first of: a `--console <name>` flag, this launching
 shell's own `HIMMEL_CONSOLE_NAME`, or the console's own session name if it can
 be read reliably — never guessed from the process tree, and exported not at
 all if no source yields a name. A running console usually needs no flag: its
 own session name resolves automatically. This is what lets a leg's
-HIMMEL-3430 merge-block alert (`scripts/lib/merge-block-alert.sh`) route to
+merge-block alert (`scripts/lib/merge-block-alert.sh`) route to
 the console's own inbox instead of DMing the operator.
 
 **Idle capacity is the console's duty.** `tick.sh` appends `fleet=<live>/<cap>`
@@ -236,7 +235,7 @@ bullet can be wrong — recover the real one from
 `IDLE-HELD?` is heartbeat age, not death: a leg inside a long foreground suite
 makes no tool calls. Verify with `pgrep` against the leg's session name;
 never force-release on the flag alone.
-**`NOLIVE` and `FORKED` (HIMMEL-4234).** A leg that never took its lock or wrote
+**`NOLIVE` and `FORKED`.** A leg that never took its lock or wrote
 a marker bullet reads `FREE` forever, so the waiter's key never moved and the
 console was never woken. `legs=` now shows `<N>:NOLIVE` once a leg with no held
 lock and no marker bullet at all is older than `TICK_NOLIVE_MIN` minutes
@@ -249,7 +248,7 @@ forked or backgrounded into another one, usually without its preface. A
 both the same way: `ListAgents`, then `SendMessage` the leg its lock command
 (`queue-lock.sh acquire <its doc>`), your console session name and its RETASK
 token; if it is gone, relaunch it.
-`tick.sh --legs-from <manifest>` (HIMMEL-3748) reads the same absolute docs
+`tick.sh --legs-from <manifest>` reads the same absolute docs
 from a fleet manifest that `console-kit/fleet-manifest.sh add|remove` keeps,
 re-read every sample, so a dispatch or wrap needs no waiter re-start.
 Pass `--fleet <manifest>` before the positional arguments to
@@ -262,7 +261,7 @@ never update the manifest. An update failure returns nonzero and reports that
 the launch/close already happened; it does not undo it. Nonces remain console-only
 inputs to `live-state.sh --nonce`, never sourced from the manifest.
 
-**Lane canary** (HIMMEL-5230): `scripts/lanes/lane-canary.sh [--lanes a,b]
+**Lane canary**: `scripts/lanes/lane-canary.sh [--lanes a,b]
 [--timeout <sec>] [--out <report.json>] [--dry-run]` launches one no-op leg per
 lane through the real launcher and reports PASS, FAIL or SKIP with the time to
 the first Results bullet. Run it after a station update or a lane change; the
@@ -276,16 +275,16 @@ before treating it as a lane defect.
 
 ## Claudex legs: the inbox is the only channel
 
-A `--lane claudex` leg (`headed-arm-leg.sh`, HIMMEL-2782) runs under
+A `--lane claudex` leg (`headed-arm-leg.sh`) runs under
 `~/.claude-codex`, which keeps it out of the session registry `ListAgents`
 reads on both ends — `SendMessage` reaches it in neither direction, even
 though its socket is alive. The only channel either way is the file inbox
-(`inbox-send.sh`, HIMMEL-2788): console → leg is `inbox-send.sh <leg-session>
+(`inbox-send.sh`): console → leg is `inbox-send.sh <leg-session>
 --file <path>`, delivered as `PostToolUse`/`SessionStart` additionalContext on
 the leg's next tool call; leg → console is the same script addressed to the
 console's own session name. `AskUserQuestion` reaches nobody on a claudex leg
 while the operator is away — every claudex brief must say so and give the leg
-the console's exact session name (HIMMEL-2898 item 1).
+the console's exact session name.
 
 Inbox delivery is **tool-call-gated**. Before ending a turn at BLOCKED,
 READY, PR-READY, or a blocking question/PROBE ask, the leg arms ONE bounded
@@ -302,7 +301,7 @@ receive the authoritative inbox hook delivery before acting. The follower's
 `.md.cursor` never steals the hook's `.cursor/<session>` delivery cursor;
 restart drains lines appended during a re-arm gap without normal replay.
 Suppression can lose a wake, so expiry must trigger hook delivery too. The
-short claudex idle-wake probe (HIMMEL-4092, n=1) is not a four-hour soak or a
+short claudex idle-wake probe (n=1) is not a four-hour soak or a
 cross-lane persistence claim. No registry or hook authority changes here.
 
 ## Rulings
@@ -330,14 +329,14 @@ A ruling sent to the wrong name is never delivered and raises no error, so run
 `inbox-send.sh --pending` after sending.
 
 **A PR parked at the round-3 review cap gets one more round from the console,
-never from the leg** (HIMMEL-5058). Run
+never from the leg**. Run
 `scripts/handover/console-kit/grant-round.sh <pr> <new-head> <qid>`. It grants
 only on a signed judge record for that exact head, a PR that has reached the
 cap, a head that is still the PR's live head, and a qid no earlier grant
 consumed; one record buys one round. A leg or a relay is refused (exit 3). A
 judge's NO-GO on a head that follows the reviewed one by a test-only or
 comment-only commit is written with
-`write-verdict.sh ... --bind-reviewed <reviewed-sha>` (HIMMEL-5109): the verdict
+`write-verdict.sh ... --bind-reviewed <reviewed-sha>`: the verdict
 keeps naming the judged head and carries a signed `reviewed-head:` line, and any
 other delta is refused with nothing written.
 
@@ -348,15 +347,15 @@ green at that exact head, zero unresolved review threads, attestation trailers
 in the first commit) → `GO` → the leg merges and reports `MERGED #<n> → <sha>`.
 
 The Jira close is the leg's call from the brief, not a default:
-`merge-on-green.sh` transitions the ticket only on `--jira-transition`
-(HIMMEL-3143), and the brief's Ship contract carries `completes-ticket: yes|no`
-(HIMMEL-3271) — `yes` → the leg passes the flag, `no` (the ticket spans further
+`merge-on-green.sh` transitions the ticket only on `--jira-transition`,
+and the brief's Ship contract carries `completes-ticket: yes|no`
+— `yes` → the leg passes the flag, `no` (the ticket spans further
 PRs) → it omits it. After `MERGED`, re-read the ticket: the flag closes only the
 first `[KEY]` of the PR title, so a multi-key PR needs its other ticket checked
 by hand.
 
 `scripts/handover/console-kit/ready-check.sh <pr> <full-40-hex-head-sha>`
-mechanizes that independent verification (HIMMEL-3163): it re-runs checks
+mechanizes that independent verification: it re-runs checks
 1-6 (head match + clean merge state, statusCheckRollup all green, zero
 unresolved review threads, a CR-ledger row for that head, attestation
 trailers in the first commit, a ticket ID on every commit subject) and
@@ -386,11 +385,10 @@ The console sends GO by first running `bash scripts/handover/console-kit/go.sh
 <pr> <full head sha>` — the file IS the GO, the SendMessage is the
 notification: a leg launched by `headed-arm-leg.sh` carries
 `HIMMEL_CONSOLE_LEG=1`, and `merge-on-green.sh` refuses it (exit 17) without a
-GO for the exact head it certifies, so a push after GO needs a fresh one
-(HIMMEL-2919). `go.sh` runs `ready-check.sh` itself and writes nothing unless
-it passes (exit 4, HIMMEL-4565). A `--trust-reviewed <qid>` GO also needs the
-judge's ``**GO** for head `<sha>`.`` verdict under `verdicts/<qid>/` (exit 5,
-HIMMEL-3832).
+GO for the exact head it certifies, so a push after GO needs a fresh one.
+`go.sh` runs `ready-check.sh` itself and writes nothing unless
+it passes (exit 4). A `--trust-reviewed <qid>` GO also needs the
+judge's ``**GO** for head `<sha>`.`` verdict under `verdicts/<qid>/` (exit 5).
 
 An armed merge stops at "awaiting approval" wherever branch protection requires
 a review the automation identity cannot give — on a single-maintainer repo the
@@ -426,7 +424,7 @@ head, what is in flight leg by leg with nonces and lock tokens, rulings made,
 the held queue in launch order, what wrapped — then `touch` the signal path
 that `next --arm` printed and hand your live legs over by name.
 
-**Re-brief your live legs before you release** (HIMMEL-3082, HIMMEL-3254). Each
+**Re-brief your live legs before you release**. Each
 leg's brief names *you* as its console, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
 you send each leg — from your own session — a message naming the successor and
@@ -446,7 +444,7 @@ and why (ACTION ZERO step 9) — and it is the only evidence the arm actually fi
 and the successor completed ACTION ZERO; releasing on the `touch` alone leaves
 an unattended fleet if the launch failed.
 
-**Wrap only with no subagent still running** (HIMMEL-5071). An in-process
+**Wrap only with no subagent still running**. An in-process
 subagent, a judge call above all, dies with its parent session and its verdict
 with it. Wrap with `console.sh wrap <your doc> <release-token> '<line>'`: it
 writes `WRAPPED` and releases the lock, and refuses (exit 4, nothing written)
@@ -471,10 +469,10 @@ outlive the child.
 The HANDOFF is the successor's only required read. Written properly, the succession
 does not need the predecessor's transcript at all.
 
-## Switching the Claude account (HIMMEL-4430)
+## Switching the Claude account
 
 An account switch is a machine-level login: one active Claude account per
-machine (HIMMEL-1862), so it changes the bank every leg and console draws on,
+machine, so it changes the bank every leg and console draws on,
 not any routing. Do it at a boundary, in this order.
 
 **1. Before the switch — bring the legs to a boundary.** Let each leg reach a
@@ -505,7 +503,7 @@ parked and as the final action of the session, or from a plain terminal.
 
 **3. After the switch — refresh the usage cache.** The cache is stamped with the
 account that wrote it; `bank-preflight.sh` reports `BANK-UNKNOWN` while the
-stamp does not match the logged-in account (HIMMEL-3846 / HIMMEL-1712). Force
+stamp does not match the logged-in account. Force
 one re-derive, then confirm the new numbers:
 
 ```bash
@@ -517,7 +515,7 @@ Pass: `bank-preflight` prints the new account's `five_hour` / `seven_day` and
 `PROCEED` (or `SKIPPED-BANK` if that account is genuinely high). `BANK-UNKNOWN`
 means the cache is still the old account's — refresh again, or check the login.
 
-**4. Confirm the bank lift voided itself (HIMMEL-4423).** A lift is bound to the
+**4. Confirm the bank lift voided itself.** A lift is bound to the
 account that set it, so it is no lift under the new login; only the operator can
 set one (`bank-lift.sh set`). Verify:
 
@@ -546,7 +544,7 @@ An explicit ceiling still controls `five_hour`; either bank at 100 refuses,
 so extra usage is never spent. Plain `set` replaces it with a one-window lift;
 `clear` disables it. Agents must never run either form of `set`.
 
-The Done-when for HIMMEL-4430 needs the operator to walk this once at a real
+The Done-when for this change needs the operator to walk this once at a real
 switch and record the result (and the cache-probe verdict from step 1) in the PR.
 
 ## See also
