@@ -565,8 +565,8 @@ for (const line of cfg.split(/\r?\n/)) {
         const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
         if (h) hash = h[1];
         // codex reads enabled as a bool: anything but true discards the entry.
-        const e = line.match(/^\s*enabled\s*=\s*([^#]*?)\s*(?:#.*)?$/);
-        if (e && e[1] !== "true") off = true;
+        // Positive form: [\s\S] in the comment tail, since `.` skips U+2028/U+2029.
+        if (/^\s*enabled\s*=/.test(line) && !/^\s*enabled\s*=\s*true\s*(?:#[\s\S]*)?$/.test(line)) off = true;
     }
 }
 flush();

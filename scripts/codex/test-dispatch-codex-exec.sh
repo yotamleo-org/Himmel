@@ -1400,7 +1400,7 @@ shape_case "18av grammar-conformant matcher allowed" 2 "stale trusted_hash" 'd.h
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
 
-# 18aw-18bb (HIMMEL-5350): residual differences from codex. A matcher inside the
+# 18aw-18bc (HIMMEL-5350): residual differences from codex. A matcher inside the
 # closed grammar can still blow the Rust regex compile-size limit (no counted
 # repetition, so the cost is linear in its length: refuse past a conservative
 # length cap), and codex skips a command hook whose command is empty or only
@@ -1413,7 +1413,7 @@ shape_case "18ba whitespace-only command" 2 "command is empty" 'd.hooks.PreToolU
 shape_case "18bb NBSP-only command (Unicode White_Space)" 2 "command is empty" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xa0); return d;'
 shape_case "18bc BOM-only command is not White_Space to Rust" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xfeff); return d;'
 
-# 19a-e (HIMMEL-5350): the config.toml reader counts only what codex keeps. An
+# 19a-i (HIMMEL-5350): the config.toml reader counts only what codex keeps. An
 # entry whose `enabled` is not a TOML boolean is discarded by codex; a header
 # inside a multi-line string is string content, not a table.
 : > "$LOG"
@@ -1445,6 +1445,11 @@ toml_edit "19d header inside a multi-line basic string is not a table" 2 "pre_to
 toml_edit "19e header inside a multi-line literal string is not a table" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const end = text.indexOf("\n\n", at) + 2; return "note = \x27\x27\x27\n" + text.slice(at, end) + "\x27\x27\x27\n" + text.slice(0, at) + text.slice(end);'
 # a multi-line string that CLOSES before a real entry does not hide that entry.
 toml_edit "19f entry after a closed multi-line string still counts" 0 "" 'return "note = \"\"\"\nx\n\"\"\"\n" + text;'
+# a trailing comment holding U+2028/U+2029 (which JS `.` does not match) must not
+# make a `enabled = false` line unreadable and so leave the entry trusted.
+toml_edit "19g enabled = false with a U+2028 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2028) + "\n");'
+toml_edit "19h enabled = false with a U+2029 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2029) + "\n");'
+toml_edit "19i enabled = true with a U+2028 comment stays trusted" 0 "" 'return text.replace(header + "\n", header + "\nenabled = true # x" + String.fromCharCode(0x2028) + "\n");'
 
 echo
 if [ "$fails" -ne 0 ]; then
