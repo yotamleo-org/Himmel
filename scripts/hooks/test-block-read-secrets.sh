@@ -1006,6 +1006,52 @@ assert_rc "5292 ctl declare -fx"                0 "$(run_case "$(j_bash 'declare
 assert_rc "5292 ctl declare -fx myfn"           0 "$(run_case "$(j_bash 'declare -fx myfn')")"
 assert_rc "5292 declare -x still dumps"         2 "$(run_case "$(j_bash 'declare -x')")"
 
+# --- HIMMEL-5412: filtered env dumps, /proc environ reads, interpreter
+# whole-environment prints and transcript reads (the shapes that leaked the
+# gh and Codex GitHub tokens into transcripts), plus single-key controls.
+assert_rc "5412 tr < /proc/<pid>/environ"       2 "$(run_case "$(j_bash "tr '\\0' '\\n' < /proc/12345/environ")")"
+# shellcheck disable=SC2016
+assert_rc "5412 cat /proc/\$\$/environ | tr | grep" 2 "$(run_case "$(j_bash "cat /proc/\$\$/environ | tr '\\0' '\\n' | grep GITHUB")")"
+assert_rc "5412 strings /proc/self/environ"     2 "$(run_case "$(j_bash 'strings /proc/self/environ')")"
+assert_rc "5412 xargs -0 < /proc/1/environ"     2 "$(run_case "$(j_bash 'xargs -0 -n1 < /proc/1/environ')")"
+assert_rc "5412 sed /proc/1/environ"            2 "$(run_case "$(j_bash "sed 's/\\x0/\\n/g' /proc/1/environ")")"
+assert_rc "5412 python open /proc environ"      2 "$(run_case "$(j_bash "python3 -c \"print(open('/proc/self/environ').read())\"")")"
+assert_rc "5412 node readFileSync /proc environ" 2 "$(run_case "$(j_bash "node -e \"console.log(require('fs').readFileSync('/proc/1/environ','utf8'))\"")")"
+assert_rc "5412 env | grep -E filter"           2 "$(run_case "$(j_bash "env | grep -E '^(SUITE_|GITHUB_|FAIL_LOG)'")")"
+assert_rc "5412 printenv | grep -E filter"      2 "$(run_case "$(j_bash "printenv | grep -E 'SUITE_|GITHUB_'")")"
+assert_rc "5412 env | grep -i ^GIT"             2 "$(run_case "$(j_bash 'env | grep -i "^GIT"')")"
+assert_rc "5412 env | sort | grep"              2 "$(run_case "$(j_bash 'env | sort | grep GH')")"
+assert_rc "5412 export -p | grep"               2 "$(run_case "$(j_bash 'export -p | grep GIT')")"
+assert_rc "5412 declare -x | grep"              2 "$(run_case "$(j_bash 'declare -x | grep GIT')")"
+assert_rc "5412 set | grep"                     2 "$(run_case "$(j_bash 'set | grep GIT')")"
+assert_rc "5412 python dict(os.environ)"        2 "$(run_case "$(j_bash "python3 -c 'import os; print(dict(os.environ))'")")"
+assert_rc "5412 python environ comprehension"   2 "$(run_case "$(j_bash "python3 -c 'import os; print({k: v for k, v in os.environ.items() if k.startswith(\"GIT\")})'")")"
+assert_rc "5412 python print(os.environ)"       2 "$(run_case "$(j_bash "python -c 'import os; print(os.environ)'")")"
+assert_rc "5412 python heredoc environ dump"    2 "$(run_case "$(j_bash "python3 - <<'EOF'
+import os, json
+print(json.dumps(dict(os.environ)))
+EOF")")"
+assert_rc "5412 node JSON.stringify(process.env)" 2 "$(run_case "$(j_bash "node -e 'console.log(JSON.stringify(process.env))'")")"
+assert_rc "5412 node Object.entries(process.env)" 2 "$(run_case "$(j_bash "node -e 'for (const [k,v] of Object.entries(process.env)) console.log(k,v)'")")"
+assert_rc "5412 Read transcript .jsonl"         2 "$(run_case "$(j_read '/home/u/.claude/projects/-home-u-repo/0b1c2d3e-aaaa-bbbb-cccc-0123456789ab.jsonl')")"
+assert_rc "5412 Read subagent transcript .jsonl" 2 "$(run_case "$(j_read '/home/u/.claude/projects/-home-u-repo/0b1c2d3e/subagents/agent-1.jsonl')")"
+assert_rc "5412 bypass env | grep"              0 "$(run_case "$(j_bash 'env | grep GIT')" READ_SECRETS_OK=1)"
+# Single named non-secret keys still pass.
+assert_rc "5412 ctl printenv HOME"              0 "$(run_case "$(j_bash 'printenv HOME')")"
+# shellcheck disable=SC2016
+assert_rc "5412 ctl echo \$PATH"                0 "$(run_case "$(j_bash 'echo $PATH')")"
+assert_rc "5412 ctl python environ.get(PATH)"   0 "$(run_case "$(j_bash "python3 -c 'import os; print(os.environ.get(\"PATH\"))'")")"
+assert_rc "5412 ctl python environ[HOME]"       0 "$(run_case "$(j_bash "python3 -c 'import os; print(os.environ[\"HOME\"])'")")"
+assert_rc "5412 ctl python getenv"              0 "$(run_case "$(j_bash "python3 -c 'import os; print(os.getenv(\"HOME\"))'")")"
+assert_rc "5412 ctl node process.env.HOME"      0 "$(run_case "$(j_bash "node -e 'console.log(process.env.HOME)'")")"
+assert_rc "5412 ctl node process.env[PATH]"     0 "$(run_case "$(j_bash "node -e 'console.log(process.env[\"PATH\"])'")")"
+assert_rc "5412 ctl env FOO=1 cmd"              0 "$(run_case "$(j_bash 'env FOO=1 make test')")"
+assert_rc "5412 ctl python script"              0 "$(run_case "$(j_bash 'python3 scripts/x.py --env prod')")"
+assert_rc "5412 ctl git commit names environ"   0 "$(run_case "$(j_bash "git commit -m 'deny os.environ dumps and /proc/self/environ reads'")")"
+assert_rc "5412 ctl ls /proc/1"                 0 "$(run_case "$(j_bash 'ls /proc/1/')")"
+assert_rc "5412 ctl Read memory .md"            0 "$(run_case "$(j_read '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
+assert_rc "5412 ctl Read repo .jsonl"           0 "$(run_case "$(j_read '/home/u/repo/data/arms.jsonl')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

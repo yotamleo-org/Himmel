@@ -107,6 +107,17 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/run-hook.sh --sandbox detect-token-in-output.sh",
+            "commandWindows": ".codex/run-hook.cmd --sandbox detect-token-in-output.sh",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "SessionStart": [

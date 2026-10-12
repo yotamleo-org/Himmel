@@ -37,7 +37,10 @@
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ.
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5412 adds
+# a python/node command that prints the whole environment or reads
+# /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
+# of a session transcript .jsonl (is_transcript_path).
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
@@ -852,6 +855,7 @@ g4_scan() {
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
             cmd="${d##*/}"
             case "$cmd" in
+                python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
                 cp|scp|rsync|aws) cls=src ;;
                 gzip|bzip2|xz|zstd|lz4|lzma|pigz|brotli) cls=zip ;;
@@ -945,6 +949,41 @@ g4_scan() {
     esac
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
     return 0
+}
+
+# interp_env_dump TEXT (HIMMEL-5412): does a python/node command print the
+# WHOLE environment, or read /proc/*/environ? TEXT is the raw command, so a
+# `-c`/`-e` body and a `python3 - <<'EOF'` heredoc body are both in it. Single
+# named keys are removed first (`os.environ.get(`, `os.environ[`,
+# `process.env.HOME`, `process.env[`); any `environ` / `process.env` left over is
+# the whole mapping (`dict(os.environ)`, `JSON.stringify(process.env)`).
+# Called only when a clause command is an interpreter (g4_interp), so a commit
+# message naming os.environ is not a dump.
+# ponytail: an accepted false positive on a membership test (`"CI" in
+# os.environ`) and on handing the mapping to a child (`env={**os.environ}`);
+# perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
+# real call of either shape.
+interp_env_dump() {
+    local t="$1" a b c
+    if [[ $t =~ /proc/[^/[:space:]]+/environ ]]; then return 0; fi
+    a='environ.get('; b='environ['; c='process.env['
+    t="${t//"$a"/}"; t="${t//"$b"/}"; t="${t//"$c"/}"
+    while [[ $t =~ process\.env\.[A-Za-z_] ]]; do
+        t="${t/process.env./}"
+    done
+    case "$t" in *environ*|*process.env*) return 0 ;; esac
+    return 1
+}
+
+# is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
+# (`~/.claude/projects/<slug>/<session>.jsonl`, subagent ones below it). A
+# transcript holds every earlier tool result verbatim, so one that once printed
+# a token hands it to whoever Reads it.
+is_transcript_path() {
+    case "$1" in
+        */.claude/projects/*.jsonl|*\\.claude\\projects\\*.jsonl) return 0 ;;
+    esac
+    return 1
 }
 
 # scan_clause CLAUSE DEPTH (HIMMEL-4492): scan ONE clause and set the global
@@ -1270,6 +1309,13 @@ case "$tool" in
             bypass_hint
             exit 2
         fi
+        if is_transcript_path "$fp"; then
+            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
+            echo "⛔ block-read-secrets: refusing Read of a session transcript: $fp" >&2
+            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
+            bypass_hint
+            exit 2
+        fi
         ;;
 
     Grep)
@@ -1333,6 +1379,7 @@ case "$tool" in
         # assignment persists.
         glued_tok=""
         g4_note=""
+        g4_interp=0
         # HIMMEL-5277: the exfil / env-dump verbs run on guard_unwrap's
         # quote-aware segments, so a quoted `env` in a commit message is not a
         # clause. A command the tokenizer would not read falls back to the raw
@@ -1347,6 +1394,9 @@ case "$tool" in
         done <<EOF
 $normalized
 EOF
+        if [ "$g4_interp" = 1 ] && interp_env_dump "$cmd"; then
+            block=1; g4_note="an interpreter prints the whole environment or reads /proc/*/environ"
+        fi
 
         if [ "$block" = "1" ]; then
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
