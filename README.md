@@ -399,8 +399,8 @@ build on itself across sessions without re-explaining the context each time.
 - **Updating:** `/himmel-update` updates the harness (a `git pull` plus a
   marketplace re-sync; Claude Code's own `autoUpdate` does not deliver
   himmel). `/luna-upgrade` upgrades a companion vault separately.
-- **Uninstalling:** `node scripts/himmelctl/bin.js uninstall`. Preview it with
-  `--dry-run` first. It removes himmel's wiring and keeps your state unless you
+- **Uninstalling:** `node scripts/himmelctl/bin.js uninstall`. Preview it first
+  with `uninstall --dry-run`, which touches nothing. It removes himmel's wiring and keeps your state unless you
   pass `--purge-state` ([details](docs/setup/install.md#uninstalling)). All of
   this in full: [`docs/setup/updating.md`](docs/setup/updating.md).
 - **Global Claude Code config** (`~/.claude/`):
