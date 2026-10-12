@@ -3418,14 +3418,19 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # quoted, escaped, ANSI-C or spaced spelling of a word is the same word.
 #
 # Exec sites: eval; source / `.`; a shell (bash sh zsh dash ksh fish mksh
-# yash) given -c, a `<(…)`/`=(…)` script, a here-string, a heredoc or a pipe;
+# yash, matched on its basename, so /bin/sh too) given -c, a `<(…)`/`=(…)`
+# script, a here-string, a heredoc, or no script at all in a command that
+# carries a pipe or a standard-input redirect anywhere (it reads that data);
 # xargs with a replace flag (or a bodiless -c) into a shell; find -exec into
 # one; a command word that is a variable or a substitution. A site is allowed
 # only when its body is literal (a literal eval/-c/here-string/heredoc body is
 # tokenised again under the same rules, at most 16 texts) or every
 # substitution in it is a listed generator: one simple command of all-literal
 # words, matched case-sensitively on its whole argv shape, no redirect, no
-# assignment, no `/` in its name (_bwimc_dx_gen). A listed generator is only
+# assignment, no `/` in its name (_bwimc_dx_gen). A generator whose output its
+# arguments spell (echo, printf, a date +FORMAT, an ssh-agent socket, a pyenv
+# sh-* version) is held to arguments that cannot spell a command: echo and
+# printf must compute to one inert word, which is then read again. A listed generator is only
 # trusted when nothing in the command can re-point its name: a shadowing word
 # (hash alias enable function builtin command … zmodload autoload), a PATH /
 # zsh path / LD_PRELOAD change, a function definition or a source/`.` deny an
@@ -3454,7 +3459,11 @@ _BWIMC_DX_SPACED='(^|[[:space:];&|(])[A-Za-z_][A-Za-z0-9_]*[+]?=[[:space:]]+["'"
 _BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
 # shellcheck disable=SC2016  # a regex, not an expansion
 _BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
-_BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*|[0-9]+|nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs|then|do|else)[[:space:]]+)*(eval|source|[.]|bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs)([[:space:]]|$)'
+_BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
+# a date +FORMAT whose output is digits and punctuation only
+_BWIMC_DX_DATEFMT='^[+]([-:/._, 0-9]|%[sYmdHMSNjuwyeIklCGgVUWFTDRzn%]|%:z)*$'
+# a redirect that feeds a command's standard input from a file or descriptor
+_BWIMC_DX_INRO='^0?<[&>]?$'
 
 _bwimc_dx_deny() {
     _bwimc_deny "data-exec" "$1" "" ""
@@ -3538,17 +3547,45 @@ _bwimc_dx_gen() {
     [ "$na" -gt 0 ] || return 0
     a0=${av[0]}
     case "$a0" in
-        echo|date|pwd|basename|dirname|uname|whoami|hostname) return 0 ;;
-        printf)
-            for e in "${av[@]}"; do case "$e" in -v*) return 1 ;; esac; done
+        pwd|uname|whoami|hostname) return 0 ;;
+        echo|printf)
+            # its arguments ARE its output: trusted only when that output is
+            # computed here (no escape, no format) and is one inert word, which
+            # is then read again like a literal body
+            k=1; e=''
+            if [ "$a0" = echo ]; then
+                while [ "$k" -lt "$na" ] && [[ ${av[$k]} =~ ^-[neE]+$ ]]; do k=$((k + 1)); done
+                while [ "$k" -lt "$na" ]; do e="$e${e:+ }${av[$k]}"; k=$((k + 1)); done
+            else
+                [ "${av[1]-}" != -- ] || k=2
+                [ $((k + 1)) = "$na" ] || return 1
+                e=${av[$k]}
+                case "$e" in *%*) return 1 ;; esac
+            fi
+            case "$e" in *\\*) return 1 ;; esac
+            [ -z "$e" ] || [[ $e =~ ^[A-Za-z0-9_.,:+@-]+$ ]] || return 1
+            [ -z "$e" ] || _bwimc_dx_queue "$e"
             return 0 ;;
+        date)
+            # a +FORMAT prints its literal text: numeric directives only
+            g=0; k=1
+            while [ "$k" -lt "$na" ]; do
+                case "${av[$k]}" in
+                    -u|--utc|--universal) ;;
+                    +*) [[ ${av[$k]} =~ $_BWIMC_DX_DATEFMT ]] || return 1; g=1 ;;
+                    *) return 1 ;;
+                esac
+                k=$((k + 1))
+            done
+            [ "$g" = 1 ]; return ;;
         ssh-agent)
             k=1
             while [ "$k" -lt "$na" ]; do
                 case "${av[$k]}" in
                     -s|-c|-k) k=$((k + 1)) ;;
                     -a) [ $((k + 1)) -lt "$na" ] || return 1
-                        case "${av[$((k + 1))]}" in -*|'') return 1 ;; esac
+                        # the socket path is printed unquoted into the output
+                        [[ ${av[$((k + 1))]} =~ ^[A-Za-z0-9_./][A-Za-z0-9_./-]*$ ]] || return 1
                         k=$((k + 2)) ;;
                     *) return 1 ;;
                 esac
@@ -3567,7 +3604,13 @@ _bwimc_dx_gen() {
                         4) [ "${av[2]}" = - ] && [[ ${av[3]} =~ ^[a-z]+$ ]]; return ;;
                         *) return 1 ;;
                     esac ;;
-                sh-*) return 0 ;;
+                sh-*)
+                    k=2
+                    while [ "$k" -lt "$na" ]; do
+                        [[ ${av[$k]} =~ ^[A-Za-z0-9_.+-]+$ ]] || return 1
+                        k=$((k + 1))
+                    done
+                    return 0 ;;
                 *) return 1 ;;
             esac ;;
         git)
@@ -3656,6 +3699,7 @@ _bwimc_dx_shell() {
         case "$w" in
             -o|-O|+o|+O|--rcfile|--init-file) q=$((q + 2)) ;;
             -*|+*) q=$((q + 1)) ;;
+            /dev/stdin|/dev/fd/*|/proc/*/fd/*) break ;;
             *) op=$q; break ;;
         esac
     done
@@ -3685,12 +3729,13 @@ _bwimc_dx_shell() {
     if [ "$hs" -ge 0 ]; then _bwimc_dx_body "$hs" 1 ""; return 0; fi
     if [ "$hdw" -ge 0 ]; then _bwimc_dx_heredoc "$hdw"; return 0; fi
     [ "$pipe" = 0 ] || _bwimc_dx_deny "(a pipe feeds data into a shell)"
+    [ "$_BWIMC_DX_STDIN" = 0 ] || _bwimc_dx_deny "(a shell reads its script from a pipe or a redirected standard input)"
     return 0
 }
 
 # _bwimc_dx_site START PIPE CTX — the simple command whose argv starts at item START.
 _bwimc_dx_site() {
-    local p=$1 pipe=$2 ctx=$3 e wi w prev_a=0 n
+    local p=$1 pipe=$2 ctx=$3 e wi w b prev_a=0 n
     while [ "$p" -lt "$_dx_nit" ]; do
         e=${_dx_it[$p]}
         if [ "${e:0:1}" = s ]; then
@@ -3727,11 +3772,15 @@ _bwimc_dx_site() {
     fi
     wi=${e#w}
     w=${ST_W[$wi]}
+    # an exec word is matched on its basename: /bin/sh is sh
+    b=${w##*/}
     if [ "${ST_X[$wi]}" = 1 ]; then
-        case "$w" in */*) return 0 ;; esac
-        _bwimc_dx_deny "(a variable is the command word: $w)"
+        case "$w" in
+            */*) case "$b" in *'$'*|'') return 0 ;; esac ;;
+            *) _bwimc_dx_deny "(a variable is the command word: $w)" ;;
+        esac
     fi
-    case "$w" in
+    case "$b" in
         eval)
             _bwimc_dx_body $((p + 1)) 0 "" ;;
         source|.)
@@ -3770,7 +3819,7 @@ _bwimc_dx_site() {
                 p=$((p + 1))
             done ;;
         xargs|nice|nohup|env|timeout|sudo|doas|stdbuf|ionice|chrt|taskset|setsid|flock|exec|command|builtin|time)
-            local wr="$w" nctx="$ctx" pos=0
+            local wr="$b" nctx="$ctx" pos=0
             case "$wr" in timeout|chrt|taskset|flock) pos=1 ;; esac
             [ "$wr" != xargs ] || nctx=x
             p=$((p + 1))
@@ -3824,6 +3873,12 @@ _bwimc_dx_text() {
     k=0
     while [ "$k" -lt "$ST_N" ]; do
         if _bwimc_dx_wshadow "${ST_W[$k]}"; then _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1)); fi
+        [[ ${ST_RO[$k]} =~ $_BWIMC_DX_INRO ]] && _BWIMC_DX_STDIN=1
+        k=$((k + 1))
+    done
+    k=0
+    while [ "$k" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[$k]}" in '|'|'|&') _BWIMC_DX_STDIN=1 ;; esac
         k=$((k + 1))
     done
     _bwimc_dx_ngroup -1 0
@@ -3903,7 +3958,7 @@ _bwimc_dx_open() { # KIND — a substitution opens inside the current command
 # _bwimc_check_data_exec CMD — deny (data-exec) or return 0.
 _bwimc_check_data_exec() {
     local qi=0
-    _BWIMC_DX_SHADOW=0; _BWIMC_DX_ALLOW=0; _BWIMC_DX_SELF=0
+    _BWIMC_DX_SHADOW=0; _BWIMC_DX_ALLOW=0; _BWIMC_DX_SELF=0; _BWIMC_DX_STDIN=0
     _BWIMC_DX_Q=(); _BWIMC_DX_QN=0
     _bwimc_dx_queue "$1"
     while [ "$qi" -lt "$_BWIMC_DX_QN" ]; do

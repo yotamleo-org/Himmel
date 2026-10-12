@@ -266,6 +266,45 @@ _r5098 "219m eval of a glob"                         block 'eval *'
 _r5098 "219n pipe into bash -s"                      block 'cat @W@/msg | bash -s'
 _r5098 "219o nested literal eval of data"            block "eval 'eval \"\$(cat @W@/msg)\"'"
 _r5098 "219p bash -c of a variable"                  block 'bash -c "$m"'
+# /pr-check round 1: a generator whose output its arguments shape is only
+# trusted when that output is computed and inert
+_r5098 "222a eval printf of octal escapes"           block "eval \"\$(printf '\\164\\157\\165\\143\\150 @P@/pwned')\""
+_r5098 "222b eval echo of a write"                   block 'eval "$(echo touch @P@/pwned)"'
+_r5098 "222c eval echo -e of an escaped space"       block "eval \"\$(echo -e 'touch\\x20@P@/pwned')\""
+_r5098 "222d eval printf %s of a write"              block "eval \"\$(printf '%s ' touch @P@/pwned)\""
+_r5098 "222e echo of a write as the command word"    block '$(echo touch @P@/pwned)'
+_r5098 "222f bash <(printf of a write)"              block "bash <(printf 'touch @P@/pwned')"
+_r5098 "222g date format spelling a write"           block "eval \"\$(date '+touch @P@/pwned')\""
+_r5098 "222h dirname of a write"                     block "eval \"\$(dirname 'touch @P@/pwned/x')\""
+_r5098 "222i ssh-agent -a socket with a semicolon"   block "eval \"\$(ssh-agent -a '/tmp/s; touch @P@/pwned')\""
+_r5098 "222j pyenv sh-shell with a substitution"     block "eval \"\$(pyenv sh-shell '\$(touch @P@/pwned)')\""
+_r5098 "222k echo of a PATH assignment"              block 'eval "$(echo PATH=/tmp/b)"; eval "$(ssh-agent -s)"'
+_r5098 "222l control: eval echo of one word"         allow 'eval "$(echo ls)"'
+_r5098 "222m control: bash -c printf of one word"    allow 'bash -c "$(printf ls)"'
+_r5098 "222n control: numeric date format"           allow 'eval "$(date -u +%Y-%m-%d)"'
+# a shell is matched by its basename, wherever it is spelled
+_r5098 "223a pipe into /bin/sh"                      block 'cat @W@/msg | /bin/sh'
+_r5098 "223b /usr/bin/bash -c of data"               block '/usr/bin/bash -c "$(cat @W@/msg)"'
+_r5098 "223c env /bin/sh -c of data"                 block 'env /bin/sh -c "$(cat @W@/msg)"'
+_r5098 "223d xargs /bin/sh -c with no body"          block 'cat @W@/msg | xargs /bin/sh -c'
+_r5098 "223e variable path to a shell"               block '"$HOME/bin/bash" -c "$(cat @W@/msg)"'
+_r5098 "223f /usr/bin/find -exec /bin/sh -c data"    block "/usr/bin/find . -exec /bin/sh -c \"\$(cat @W@/msg)\" \\;"
+_r5098 "223g untokenisable text then /bin/sh"        block 'echo ${x:-$(date)} | /bin/sh'
+_r5098 "223h control: /bin/sh runs a script"         allow '/bin/sh @W@/x.sh'
+# a shell reading a redirected or piped standard input runs that data
+_r5098 "224a bash < file"                            block 'bash < @W@/msg'
+_r5098 "224b sh < file"                              block 'sh < @W@/msg'
+_r5098 "224c /bin/sh 0< file"                        block '/bin/sh 0< @W@/msg'
+_r5098 "224d bash <> file"                           block 'bash <> @W@/msg'
+_r5098 "224e exec < file then sh"                    block 'exec < @W@/msg; sh'
+_r5098 "224f pipe into bash /dev/stdin"              block 'cat @W@/msg | bash /dev/stdin'
+_r5098 "224g sh - < file"                            block 'sh - < @W@/msg'
+_r5098 "224h pipe into a literal eval of sh"         block "cat @W@/msg | eval sh"
+_r5098 "224i pipe into a subshell running sh"        block 'cat @W@/msg | (sh)'
+_r5098 "224j brace group redirected from a file"     block '{ sh; } < @W@/msg'
+_r5098 "224k pipe into a group that reads then runs sh" block 'cat @W@/msg | { read -r x; sh; }'
+_r5098 "224l control: script with a redirected input" allow 'bash @W@/x.sh < @W@/msg'
+_r5098 "224m control: a pipe beside a script run"    allow 'cat @W@/msg | grep x; bash @W@/x.sh'
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
