@@ -1354,17 +1354,17 @@ shape_case "18j duplicate key" 2 "duplicate key" 'return text.replace("\"timeout
 shape_case "18k hooks.hooks fallback shape (no hooks wrapper)" 2 "codex would load no hooks" 'return d.hooks;'
 shape_case "18l group hooks not an array" 2 "is not an array" 'd.hooks.Stop[0].hooks = {}; return d;'
 shape_case "18m invalid matcher regex" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "("; return d;'
-shape_case "18o u64 overflow (additionalContextLimit 1e20)" 2 "non-negative integer" 'd.hooks.Stop[0].hooks[0].additionalContextLimit = 1e20; return d;'
+shape_case "18o u64 overflow (additionalContextLimit 1e20)" 2 "outside the accepted grammar" 'd.hooks.Stop[0].hooks[0].additionalContextLimit = 1e20; return d;'
 shape_case "18p matcher with lookahead (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "Bash(?=x)"; return d;'
 shape_case "18q matcher with backreference (JS-only regex syntax)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(a)\\1"; return d;'
-shape_case "18r float-syntax timeout (60.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": 60.0");'
+shape_case "18r float-syntax timeout (60.0)" 2 "outside the accepted grammar" 'return text.replace("\"timeout\": 60", "\"timeout\": 60.0");'
 shape_case "18t JSON booleans stay booleans (async true parses, only the hash is stale)" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].async = true; return d;'
-shape_case "18u -0 timeout (serde reads F64 -0.0)" 2 "non-negative integer" 'return text.replace("\"timeout\": 60", "\"timeout\": -0");'
+shape_case "18u -0 timeout (serde reads F64 -0.0)" 2 "outside the accepted grammar" 'return text.replace("\"timeout\": 60", "\"timeout\": -0");'
 shape_case "18v lone surrogate escape in description" 2 "lone surrogate" 'd.description = "PLACE"; return JSON.stringify(d).replace("PLACE", "\\ud800");'
 shape_case "18w invalid UTF-8 byte in description" 2 "not valid" 'd.description = "aPLACEb"; const [a, b] = JSON.stringify(d).split("PLACE"); return Buffer.concat([Buffer.from(a), Buffer.from([0xff]), Buffer.from(b)]);'
 shape_case "18s matcher with unknown letter escape" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\qb"; return d;'
-# 18x-18ab: escape allow-list (a backslash only before ASCII punctuation or
-# d D w W s S b B). JS accepts the refused forms, Rust rejects or mis-reads them.
+# 18x-18ab: JS accepts these escapes, Rust rejects or mis-reads them; the closed
+# matcher grammar has no backslash at all.
 shape_case "18x matcher with malformed hex escape (\\xZZ)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\xZZ"; return d;'
 shape_case "18y matcher with hex escape (\\x41)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\x41"; return d;'
 shape_case "18z matcher with start-anchor escape (\\A)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\Aa"; return d;'
@@ -1372,10 +1372,30 @@ shape_case "18aa matcher with unicode class (\\p{L})" 2 "regular expression" 'd.
 shape_case "18ab matcher with octal escape (\\0)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\0"; return d;'
 shape_case "18af matcher with stray brace (a{)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a{"; return d;'
 shape_case "18ag matcher with lone bracket (a])" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a]"; return d;'
-# Allowed escapes parse, so only the (changed-matcher) hash is stale.
-shape_case "18ac escaped dot allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a\\.b"; return d;'
-shape_case "18ad class and boundary escapes allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "\\bfoo\\d\\s\\W"; return d;'
-shape_case "18ae escaped pipe and paren allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a\\|b\\(c\\)"; return d;'
+# Even escapes the old allow-list accepted now refuse (no backslash in the grammar).
+shape_case "18ac escaped dot refused" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\.b"; return d;'
+shape_case "18ad class and boundary escapes refused" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "\\bfoo\\d\\s\\W"; return d;'
+shape_case "18ae escaped pipe and paren refused" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a\\|b\\(c\\)"; return d;'
+# 18ah-18an: JS accepts these, Rust regex-syntax rejects them.
+shape_case "18ah matcher [\\b] (backspace in a class)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "[\\b]"; return d;'
+shape_case "18ai matcher [] (empty class)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "[]"; return d;'
+shape_case "18aj matcher [^] (negated empty class)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "[^]"; return d;'
+shape_case "18ak matcher a{4294967296} (repetition past the Rust limit)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a{4294967296}"; return d;'
+shape_case "18al matcher nested 300 groups" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "(".repeat(300) + "a" + ")".repeat(300); return d;'
+shape_case "18am matcher with empty alternative (a||b)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a||b"; return d;'
+shape_case "18an matcher with repeated quantifier (a**)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a**"; return d;'
+# 18ao-18as: a value in an UNKNOWN field never reaches a typed check, yet serde
+# fails the whole file on it (out of range number, deep nesting), and the closed
+# schema refuses any unknown key.
+shape_case "18ao unknown handler field with 1e400" 2 "outside the accepted grammar" 'return text.replace("\"timeout\": 60", "\"timeout\": 60, \"extra\": 1e400");'
+shape_case "18ap unknown handler field with a 400-digit integer" 2 "outside the accepted grammar" 'return text.replace("\"timeout\": 60", "\"timeout\": 60, \"extra\": " + "9".repeat(400));'
+shape_case "18aq nesting deeper than serde limit (200)" 2 "nesting deeper than 32" 'd.description = "PLACE"; return JSON.stringify(d).replace("\"PLACE\"", "[".repeat(200) + "]".repeat(200));'
+shape_case "18ar nesting deeper than 32 but inside serde limit (50)" 2 "nesting deeper than 32" 'd.description = "PLACE"; return JSON.stringify(d).replace("\"PLACE\"", "[".repeat(50) + "]".repeat(50));'
+shape_case "18as unknown handler field (extra:1)" 2 "unknown field" 'd.hooks.PreToolUse[0].hooks[0].extra = 1; return d;'
+shape_case "18at unknown group field" 2 "unknown field" 'd.hooks.PreToolUse[0].extra = "x"; return d;'
+shape_case "18au unknown event key" 2 "unknown hook event" 'd.hooks.NotAnEvent = []; return d;'
+# A matcher inside the closed grammar parses; only the hash is stale.
+shape_case "18av grammar-conformant matcher allowed" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "Bash|Read.*(a|b)+?$"; return d;'
 # 18n: codex drops the matcher of a Stop group before hashing, so a matcher there
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'

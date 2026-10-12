@@ -373,11 +373,13 @@ fi
 # only; any other hook type refuses as unverifiable); a codex release that
 # changes the identity refuses every dispatch until this is re-ported, which is
 # the fail-closed direction - upgrade path is re-reading discovery.rs on a bump.
-# ponytail: matcher validity is JS RegExp plus a refusal of lookaround and an
-# allow-list of escapes (a backslash only before ASCII punctuation or d D w W s S
-# b B); a valid Rust escape off the list (\x41, \p{L}) refuses too, which is the
-# fail-closed direction. Non-escape JS-vs-Rust differences stay unchecked,
-# upgrade path is a Rust-regex-compatible validator (HIMMEL-5337).
+# ponytail: the hooks.json reader is a closed grammar (known keys only, integer
+# tokens of at most 16 digits, nesting at most 32, matchers limited to literals
+# and | ( ) . * + ? ^ $) because JS and serde/Rust parse-semantic differences kept
+# surviving every open-ended refusal list; a valid hooks.json outside it (a
+# bracket class or escape in a matcher, a new handler field) refuses, which is
+# the fail-closed direction. Upgrade path is a Rust-regex-compatible validator
+# and a schema generated from the codex release (HIMMEL-5337).
 _hook_trust_check() {
     local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
@@ -428,9 +430,12 @@ const parseStrict = (text) => {
         if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(s)) fail("lone surrogate escape in a string");
         return s;
     };
-    const val = () => {
+    // serde_json stops at 128 levels; a shallower closed cap keeps the two readers
+    // from ever disagreeing on a deep document.
+    const val = (depth = 0) => {
         ws();
         const c = text[i];
+        if ((c === "{" || c === "[") && depth >= 32) fail("nesting deeper than 32");
         if (c === "{") {
             i++;
             const o = Object.create(null);
@@ -444,7 +449,7 @@ const parseStrict = (text) => {
                 ws();
                 if (text[i] !== ":") fail("expected a colon");
                 i++;
-                o[k] = val();
+                o[k] = val(depth + 1);
                 ws();
                 if (text[i] === ",") { i++; continue; }
                 if (text[i] === "}") { i++; return o; }
@@ -457,7 +462,7 @@ const parseStrict = (text) => {
             ws();
             if (text[i] === "]") { i++; return a; }
             for (;;) {
-                a.push(val());
+                a.push(val(depth + 1));
                 ws();
                 if (text[i] === ",") { i++; continue; }
                 if (text[i] === "]") { i++; return a; }
@@ -465,13 +470,15 @@ const parseStrict = (text) => {
             }
         }
         if (c === "\"") return str();
-        const m = /^(-?\d+(\.\d+)?([eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
+        const m = /^[^\s,\]}]+/.exec(text.slice(i));
         if (!m) fail("unexpected token");
         i += m[0].length;
-        // serde reads 15.0 / 15e0 as a float and rejects it for a u64 field, while
-        // JSON.parse yields the integer 15: keep float syntax non-integer (NaN).
-        // A leading minus is refused too: -0 is F64(-0.0) to serde_json.
-        if (/^(?:-|\d+[.eE])/.test(m[0])) return NaN;
+        if (m[0] === "true" || m[0] === "false" || m[0] === "null") return JSON.parse(m[0]);
+        // Closed number grammar: the only accepted token is a plain non-negative
+        // integer of at most 16 digits. A float, an exponent, a minus, a leading
+        // zero or an out-of-range number is read differently (or rejected) by
+        // serde_json, so it refuses here wherever it appears, known field or not.
+        if (!/^(?:0|[1-9][0-9]{0,15})$/.test(m[0])) fail("number token " + JSON.stringify(m[0].slice(0, 24)) + " is outside the accepted grammar");
         return JSON.parse(m[0]);
     };
     const v = val();
@@ -563,30 +570,50 @@ const expectedHash = (event, group, hook) => {
 const badShape = [];
 const matcherOk = (m) => {
     if (m === undefined || m === null || m === "" || m === "*") return true;
-    // The Rust regex crate has no lookaround, backreferences or atomic groups;
-    // JS accepts them, so refuse the syntax codex would reject (fail-safe: an
-    // escaped backslash before a digit is refused too).
-    if (/\(\?(?:=|!|<=|<!|>)/.test(m)) return false;
-    // Allow-list of escapes: a backslash may precede only an ASCII punctuation
-    // character or one of d D w W s S b B. JS accepts forms Rust rejects (\xZZ,
-    // unknown letters, octal, backrefs); anything off the list refuses.
-    for (let i = 0; i < m.length; i++) {
-        if (m[i] !== "\\") continue;
-        const c = m[i + 1];
-        if (c === undefined || !(/[!-\/:-@\[-`{-~]/.test(c) || "dDwWsSbB".includes(c))) return false;
-        i++;
+    // Closed matcher grammar: JS RegExp and the Rust regex crate disagree on
+    // escapes, classes, counted repetition and lookaround, so only the subset both
+    // read the same is accepted: literals [A-Za-z0-9_-], | ( ) . * + ? ^ $, no
+    // backslash, no bracket, no brace. A quantifier needs an atom before it (and
+    // may then take one lazy ?), groups balance to at most 16 deep (Rust refuses
+    // past 250) and no alternative or group is empty.
+    let prev = "start", depth = 0, lazy = false;
+    for (const c of m) {
+        if (/[A-Za-z0-9_-]|\./.test(c)) { prev = "atom"; lazy = false; continue; }
+        if (c === "(") { if (++depth > 16) return false; prev = "start"; continue; }
+        if (c === ")") {
+            if (depth === 0 || prev === "start" || prev === "alt") return false;
+            depth--; prev = "atom"; lazy = false; continue;
+        }
+        if (c === "|") {
+            if (prev === "start" || prev === "alt") return false;
+            prev = "alt"; continue;
+        }
+        if (c === "^" || c === "$") { prev = "anchor"; continue; }
+        if (c === "*" || c === "+" || c === "?") {
+            if (prev === "atom") { prev = "quant"; lazy = false; continue; }
+            if (prev === "quant" && c === "?" && !lazy) { lazy = true; continue; }
+            return false;
+        }
+        return false;
     }
-    // u flag: rejects the lenient web-compat syntax (stray brace, lone bracket)
-    // the Rust regex crate also rejects; fails closed on the rest.
+    if (depth !== 0 || prev === "start" || prev === "alt") return false;
     try { new RegExp(m, "u"); return true; } catch (error) { return false; }
 };
+const known = (o, keys) => Object.keys(o).filter((k) => !keys.includes(k));
+const handlerKeys = {
+    command: ["type", "command", "commandWindows", "command_windows", "timeout", "async", "statusMessage", "additionalContextLimit"],
+    mcp_tool: ["type", "server", "tool", "timeout", "async", "statusMessage"],
+    prompt: ["type", "prompt", "model", "timeout", "statusMessage"],
+    agent: ["type", "prompt", "model", "timeout", "statusMessage"],
+};
 for (const event of Object.keys(events)) {
-    if (!labels[event]) continue;
+    if (!labels[event]) { badShape.push("unknown hook event " + JSON.stringify(event) + " (closed schema)"); continue; }
     const groups = events[event];
     if (!Array.isArray(groups)) { badShape.push(event + " is not an array"); continue; }
     groups.forEach((group, gi) => {
         const at = event + "[" + gi + "]";
         if (!isObj(group)) { badShape.push(at + " is not an object"); return; }
+        for (const k of known(group, ["matcher", "hooks"])) badShape.push(at + " has unknown field " + JSON.stringify(k));
         if (!isStrOrNull(group.matcher)) badShape.push(at + ".matcher is not a string");
         if (group.hooks !== undefined && !Array.isArray(group.hooks)) { badShape.push(at + ".hooks is not an array"); return; }
         if (typeof group.matcher === "string" && !noMatcherEvents.has(event) && !matcherOk(group.matcher)) {
@@ -595,6 +622,9 @@ for (const event of Object.keys(events)) {
         (group.hooks || []).forEach((hook, hi) => {
             const h = at + ".hooks[" + hi + "]";
             if (!isObj(hook)) { badShape.push(h + " is not an object"); return; }
+            if (typeof hook.type === "string" && Object.prototype.hasOwnProperty.call(handlerKeys, hook.type)) {
+                for (const k of known(hook, handlerKeys[hook.type])) badShape.push(h + " has unknown field " + JSON.stringify(k));
+            }
             if (hook.type === "command") {
                 if (typeof hook.command !== "string") badShape.push(h + ".command is not a string");
                 if (hook.commandWindows !== undefined && hook.command_windows !== undefined) badShape.push(h + " carries both commandWindows and command_windows");
@@ -704,8 +734,8 @@ fi
 # is refused before launch, as is any such flag in the argv finally passed.
 # ponytail: a static text scan of a script wrapper - a compiled wrapper or a
 # flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
-# resolved codex install (basename + realpath allowlist) once a second lane
-# needs the override for real.
+# resolved codex install (basename + realpath allowlist, no own CODEX_HOME),
+# HIMMEL-5347.
 CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"
 if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODEX_RESOLVED" 2>/dev/null)" = "#!" ]; then
     if grep -qE -e '--dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules' "$CODEX_RESOLVED" 2>/dev/null; then
