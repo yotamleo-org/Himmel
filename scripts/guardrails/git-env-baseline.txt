@@ -150,7 +150,4 @@ FILE:scripts/hooks/end-session-wiki.ps1
 # JS: wrapper helpers whose spawn env is not the full set (claude-floor.mjs git(), verify-return.mjs exec,
 # hook-integrity.js spawnSync adds only GIT_NO_REPLACE_OBJECTS; the hook file is hook-integrity guarded).
 JS:scripts/cr/claude-floor.mjs:8770942d7fbd
-JS:scripts/cr/claude-floor.mjs:8a3277d37b9a
-JS:scripts/hooks/hook-integrity.js:6b30691dd8cb
 JS:scripts/hooks/hook-integrity.js:aa680b8503ce
-JS:scripts/lanes/verify-return.mjs:7d0bf724aa14

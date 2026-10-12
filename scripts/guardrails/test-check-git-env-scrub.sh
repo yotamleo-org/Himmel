@@ -298,6 +298,44 @@ else
     printf '%s\n' "$T60_OUT" | sed 's/^/    /'
 fi
 
+# T61/T62 -- a `${...}` substitution inside a template literal is code: a git
+# spawn there is flagged, and the helper-routed twin is the green control.
+expect_red   "T61 git spawn inside a template \${...} substitution is caught" template-subst-unscrubbed.mjs
+expect_green "T62 helper-routed call inside a template substitution passes"   template-subst-scrubbed.mjs
+
+# T63/T64 -- two identical unscrubbed calls on one line: one baseline entry
+# grandfathers one call, not both; two entries grandfather both.
+TWO_LINE="$(sed -n '7p' "$REPO_ROOT/$CASES/two-calls-one-line-unscrubbed.mjs")"
+TWO_TRIM="${TWO_LINE#"${TWO_LINE%%[![:space:]]*}"}"
+TWO_TRIM="${TWO_TRIM%"${TWO_TRIM##*[![:space:]]}"}"
+if command -v sha256sum >/dev/null 2>&1; then
+    TWO_HASH="$(printf '%s' "$TWO_TRIM" | sha256sum | cut -c1-12)"
+else
+    TWO_HASH="$(printf '%s' "$TWO_TRIM" | shasum -a 256 | cut -c1-12)"
+fi
+printf 'JS:%s/two-calls-one-line-unscrubbed.mjs:%s\n' "$CASES" "$TWO_HASH" > "$SCOPED_BASELINE"
+OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$SCOPED_BASELINE" --tree "$CASES/two-calls-one-line-unscrubbed.mjs" 2>&1)"
+rc=$?
+if [ "$rc" -eq 1 ] && grep -qF "two-calls-one-line-unscrubbed.mjs" <<<"$OUT"; then
+    pass "T63 one baseline entry does not cover two calls on a line"
+else
+    fail "T63 one baseline entry does not cover two calls on a line (rc=$rc)"
+    printf '%s\n' "$OUT" | sed 's/^/    /'
+fi
+printf 'JS:%s/two-calls-one-line-unscrubbed.mjs:%s\n' "$CASES" "$TWO_HASH" "$CASES" "$TWO_HASH" > "$SCOPED_BASELINE"
+OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --baseline "$SCOPED_BASELINE" --tree "$CASES/two-calls-one-line-unscrubbed.mjs" 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    pass "T64 two baseline entries cover two calls on a line (control)"
+else
+    fail "T64 two baseline entries cover two calls on a line (control) (rc=$rc)"
+    printf '%s\n' "$OUT" | sed 's/^/    /'
+fi
+
+# T65 -- an error constructor whose message starts with "git" is not a spawn
+# (cloud-route.mjs carries one; the template fix made it visible to the scan).
+expect_green "T65 new Error('git ...') message is not a spawn"                error-message-scrubbed.mjs
+
 # T18 -- sanity: the real trust paths, under the real committed baseline,
 # report clean. This is the ratchet's day-one promise.
 REAL_OUT="$(cd "$REPO_ROOT" && bash "$CHECKER" --tree 2>&1)"

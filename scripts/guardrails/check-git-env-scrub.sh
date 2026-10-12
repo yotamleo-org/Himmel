@@ -399,7 +399,7 @@ function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function addtok(type, val, ln, own) { nt++; TT[nt] = type; TV[nt] = val; TL[nt] = ln; TOWN[nt] = own }
 
 function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv, kw) {
-  tsp = 0; incom = 0; tbuf = ""
+  tsp = 0; incom = 0
   for (ln = 1; ln <= NR; ln++) {
     s = LINES[ln]; n = length(s); i = 1; seen = 0
     if (incom) {
@@ -409,27 +409,27 @@ function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv
     }
     while (i <= n) {
       c = substr(s, i, 1)
-      if (tsp > 0) {
-        top = TSTK[tsp]
-        if (top == "T") {
-          if (c == "\\") { tbuf = tbuf substr(s, i, 2); i += 2; continue }
-          if (c == "`") {
-            tsp--; tbuf = tbuf c
-            if (tsp == 0) { addtok("T", substr(tbuf, 2, length(tbuf) - 2), tline, 0); tbuf = ""; seen = 1 }
-            i++; continue
-          }
-          if (c == "$" && substr(s, i + 1, 1) == "{") { tsp++; TSTK[tsp] = "E"; TBR[tsp] = 0; tbuf = tbuf "${"; i += 2; continue }
-          tbuf = tbuf c; i++; continue
-        } else {
-          if (c == "{") TBR[tsp]++
-          else if (c == "}") { if (TBR[tsp] == 0) { tsp--; tbuf = tbuf c; i++; continue } TBR[tsp]-- }
-          else if (c == "`") { tsp++; TSTK[tsp] = "T"; tbuf = tbuf c; i++; continue }
-          else if (c == "\047" || c == "\"") {
-            j = i + 1
-            while (j <= n) { d = substr(s, j, 1); if (d == "\\") j += 2; else if (d == c) break; else j++ }
-            tbuf = tbuf substr(s, i, j - i + 1); i = j + 1; continue
-          }
-          tbuf = tbuf c; i++; continue
+      # Template text is buffered into a T token per chunk; a `${...}`
+      # substitution is ordinary code, so a call inside it is tokenized (and
+      # detected) like any other.
+      if (tsp > 0 && TSTK[tsp] == "T") {
+        if (c == "\\") { TBUF[tsp] = TBUF[tsp] substr(s, i, 2); i += 2; continue }
+        if (c == "`") {
+          addtok("T", TBUF[tsp], TLN[tsp], 0); tsp--; seen = 1
+          i++; continue
+        }
+        if (c == "$" && substr(s, i + 1, 1) == "{") {
+          addtok("T", TBUF[tsp], TLN[tsp], 0)
+          tsp++; TSTK[tsp] = "E"; TBR[tsp] = 0
+          i += 2; continue
+        }
+        TBUF[tsp] = TBUF[tsp] c; i++; continue
+      }
+      if (tsp > 0 && TSTK[tsp] == "E") {
+        if (c == "{") TBR[tsp]++
+        else if (c == "}") {
+          if (TBR[tsp] == 0) { tsp--; TBUF[tsp] = ""; TLN[tsp] = ln; i++; continue }
+          TBR[tsp]--
         }
       }
       if (c == " " || c == "\t") { i++; continue }
@@ -445,7 +445,7 @@ function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv
         while (j <= n) { d = substr(s, j, 1); if (d == "\\") j += 2; else if (d == c) break; else j++ }
         addtok("S", substr(s, i + 1, j - i - 1), ln, 0); seen = 1; i = j + 1; continue
       }
-      if (c == "`") { tsp = 1; TSTK[1] = "T"; tbuf = c; tline = ln; i++; continue }
+      if (c == "`") { tsp++; TSTK[tsp] = "T"; TBUF[tsp] = ""; TLN[tsp] = ln; i++; continue }
       if (c ~ /[A-Za-z_$]/) {
         j = i
         while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_$]/) j++
@@ -475,7 +475,7 @@ function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv
       }
       addtok("P", c, ln, 0); seen = 1; i++
     }
-    if (tsp > 0) tbuf = tbuf "\n"
+    if (tsp > 0 && TSTK[tsp] == "T") TBUF[tsp] = TBUF[tsp] "\n"
   }
 }
 
@@ -494,10 +494,9 @@ function detect(   k, a, cand, open, callee, m, depthp, nfound, v, ok, ln, kind,
       open = k + 1
     } else if (TT[k + 1] == "T" && TV[k + 1] ~ /^git([ \t]|$)/) cand = 1
     if (!cand) continue
-    if (callee ~ /^(if|while|switch|for|return|typeof|catch|function|includes|has|log|info|warn|error|debug|print|echo|console|equal|strictEqual|deepEqual|notEqual|notStrictEqual|ok|assert|push|add|indexOf|lastIndexOf|startsWith|endsWith|test|match|join|resolve|basename|dirname|toBe|toEqual|eq|set|get|delete|describe|it|require|String|some|every|filter|split|replace|format|which|exists|expect)$/) continue
+    if (callee ~ /^(if|while|switch|for|return|typeof|catch|function|includes|has|log|info|warn|error|debug|print|echo|console|equal|strictEqual|deepEqual|notEqual|notStrictEqual|ok|assert|push|add|indexOf|lastIndexOf|startsWith|endsWith|test|match|join|resolve|basename|dirname|toBe|toEqual|eq|set|get|delete|describe|it|require|String|some|every|filter|split|replace|format|which|exists|expect|Error|TypeError|RangeError|SyntaxError)$/) continue
     if (callee ~ /^(is[A-Z_]|can[A-Z]|check|find[A-Z]|has[A-Z]|command[A-Z]|assert|expect|which|exists|ensure)/) continue
     ln = TL[k]
-    if (ln in SEENLN) continue
     # scrub inside the call's own paren-balanced span
     delete FOUND; nfound = 0
     if (open > 0) {
@@ -525,7 +524,6 @@ function detect(   k, a, cand, open, callee, m, depthp, nfound, v, ok, ln, kind,
       if (r != "") continue
       kind = "noreason"
     }
-    SEENLN[ln] = 1
     print "H " ln " " kind
   }
 }
