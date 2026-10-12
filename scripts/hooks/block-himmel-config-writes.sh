@@ -100,6 +100,7 @@ CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
 # Caps on an apply_patch payload (HIMMEL-5351); see the apply_patch branch.
 MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
+MAX_HEADER_LINE_BYTES=4096
 
 # check_path TOOL PATH: deny when PATH is, or resolves to, the config.
 check_path() {
@@ -177,6 +178,9 @@ case "$tool" in
         if [ "$plen" -gt "$MAX_PATCH_BYTES" ]; then
             deny "apply_patch payload is $plen bytes, over the $MAX_PATCH_BYTES cap (the guard cannot finish inside the hook budget; split the patch)"
         fi
+        # Byte semantics for the per-line cap below (${#ln} counts characters
+        # under a multibyte locale); uni_trim matches byte sequences anyway.
+        LC_ALL=C
         nhdr=0
         cand=()
         while IFS= read -r ln; do
@@ -186,6 +190,12 @@ case "$tool" in
                 *'*** Add File: '*|*'*** Update File: '*|*'*** Delete File: '*|*'*** Move to: '*) ;;
                 *) continue ;;
             esac
+            # One pass of uni_trim is O(length) x ~40 removals, so a long header
+            # line costs about length squared (200 KB: 40 s, 400 KB: 186 s).
+            # No real path exceeds PATH_MAX; deny before any per-line work.
+            if [ "${#ln}" -gt "$MAX_HEADER_LINE_BYTES" ]; then
+                deny "apply_patch header line is ${#ln} bytes, over the $MAX_HEADER_LINE_BYTES cap (the guard cannot trim it inside the hook budget)"
+            fi
             uni_trim "$ln"
             ln="$UNI_TRIMMED"
             case "$ln" in

@@ -247,10 +247,23 @@ big_patch 998 "*** Update File: alias/config.json" > "$T/palias.txt"
 big_case "symlinked-dir alias header after 998 benign ones -> block" block "$T/palias.txt"
 { printf '*** Begin Patch\n*** Add File: big.txt\n'; head -c 600000 /dev/zero | tr '\0' 'x' | sed 's/^/+/'; printf '\n*** End Patch\n'; } > "$T/pbytes.txt"
 big_case "over-size patch body (no config named) -> block" block "$T/pbytes.txt"
-# One path over the OS single-argument limit makes the batched readlink fail to
-# exec; that must DENY, not read as "nothing resolves to the config".
+# One long header line is quadratic in uni_trim (200 KB took 40 s, 400 KB 186 s
+# on the previous head), so a header line over the cap is denied before any
+# per-line work; the symlinked config alias after it must not be reachable by
+# running the budget out.
 { printf '*** Begin Patch\n*** Update File: '; head -c 200000 /dev/zero | tr '\0' 'a'; printf '\n*** Update File: alias/config.json\n*** End Patch\n'; } > "$T/plong.txt"
-big_case "oversized path header + symlinked config alias -> block" block "$T/plong.txt"
+big_case "200 KB header line + symlinked config alias -> block inside the time bound" block "$T/plong.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 400000 /dev/zero | tr '\0' 'a'; printf '\n*** Update File: alias/config.json\n*** End Patch\n'; } > "$T/plong4.txt"
+big_case "400 KB header line + symlinked config alias -> block inside the time bound" block "$T/plong4.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 4100 /dev/zero | tr '\0' 'a'; printf '\n*** End Patch\n'; } > "$T/pcap1.txt"
+big_case "header line just over the 4096-byte cap -> block" block "$T/pcap1.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 4000 /dev/zero | tr '\0' 'a'; printf '\n*** End Patch\n'; } > "$T/pcap2.txt"
+big_case "header line just under the cap -> allow" allow "$T/pcap2.txt" 5000
+# The cap counts bytes: 2100 two-byte characters is 4200 bytes under a UTF-8 locale.
+{ printf '*** Begin Patch\n*** Update File: '; head -c 2100 /dev/zero | tr '\0' 'x' | sed 's/x/é/g'; printf '\n*** End Patch\n'; } > "$T/pcapmb.txt"
+saved_lc2="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
+big_case "multibyte header line over the byte cap (locale en_US.utf8) -> block" block "$T/pcapmb.txt" 5000
+LC_ALL="$saved_lc2"; export LC_ALL
 # The byte cap counts bytes, not characters: 300000 two-byte characters is 600000 bytes.
 { printf '*** Begin Patch\n*** Add File: big.txt\n'; i=0; while [ "$i" -lt 3 ]; do head -c 100000 /dev/zero | tr '\0' 'x' | sed 's/x/é/g; s/^/+/'; printf '\n'; i=$((i + 1)); done; printf '*** End Patch\n'; } > "$T/pmb.txt"
 saved_lc="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
