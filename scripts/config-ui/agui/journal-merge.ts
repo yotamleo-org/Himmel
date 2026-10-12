@@ -3,7 +3,7 @@
 // lines it has read so far, and mergeJournalFiles applies it to whole files for a batch reader (the leg
 // digest), so the page and the digest interleave subagent lines the same way.
 //
-// Order: by the record's "timestamp"; a line with none takes the last timestamp seen in its own file; ties
+// Order: by the record's "timestamp"; a line with none, or older than its file's last, takes that last one; ties
 // keep read order (files in the order given, then line order). A session's subagents write
 // <session>/subagents/agent-<id>.jsonl beside <session>.jsonl; only plain names are joined, a file whose
 // realpath leaves the journal's own directory is skipped, and at most MAX_SUBAGENTS are followed.
@@ -16,11 +16,17 @@ export const MAX_SUBAGENTS = 64; // files followed per session, beside the journ
 export type Line = { text: string; ts: number; order: number };
 const TS = /"timestamp"\s*:\s*"([^"]+)"/;
 
-// Stamps one file's complete lines with their time; `last` is that file's carried timestamp, updated.
-export function stampLines(texts: string[], last: { ts: number }, next: () => number): Line[] {
+// Stamps one file's complete lines with their time; `last` is that file's carried timestamp, updated. A line
+// older than the file's last one (the transcript's own clock going backwards, HIMMEL-4674) keeps the carried
+// time, so it stays in file order instead of sorting ahead of lines already released; `onRegress` is called
+// once per such line.
+export function stampLines(texts: string[], last: { ts: number }, next: () => number, onRegress?: () => void): Line[] {
   return texts.map((text) => {
     const ms = Date.parse(TS.exec(text)?.[1] ?? "");
-    if (Number.isFinite(ms)) last.ts = ms;
+    if (Number.isFinite(ms)) {
+      if (ms < last.ts) onRegress?.();
+      else last.ts = ms;
+    }
     return { text, ts: last.ts, order: next() };
   });
 }
