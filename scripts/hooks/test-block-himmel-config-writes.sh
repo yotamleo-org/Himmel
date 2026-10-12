@@ -48,6 +48,22 @@ file_case ".. segment resolving to the config -> block" block Write "$HOME/.himm
 file_case "another file in ~/.himmel -> allow" allow Write "$HOME/.himmel/notes.txt"
 file_case "a config.json elsewhere -> allow" allow Write "$T/other/config.json"
 
+echo "== apply_patch (Codex's only edit tool, j2409d) =="
+patch_case() { run "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}')"; }
+NL=$'\n'
+patch_case "apply_patch Add File on the config -> block" block "*** Begin Patch${NL}*** Add File: $CFG${NL}+{}${NL}*** End Patch"
+patch_case "apply_patch Update File on the config -> block" block "*** Begin Patch${NL}*** Update File: $CFG${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "apply_patch Delete File on the config -> block" block "*** Begin Patch${NL}*** Delete File: $CFG${NL}*** End Patch"
+patch_case "apply_patch Move to the config -> block" block "*** Begin Patch${NL}*** Update File: $T/x.json${NL}*** Move to: $CFG${NL}@@${NL}*** End Patch"
+patch_case "apply_patch symlink alias of the config -> block" block "*** Begin Patch${NL}*** Update File: $T/alias.json${NL}@@${NL}*** End Patch"
+patch_case "apply_patch .. segment resolving to the config -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/x/../config.json${NL}+{}${NL}*** End Patch"
+patch_case "apply_patch CRLF header on the config -> block" block "$(printf '*** Begin Patch\r\n*** Add File: %s\r\n+{}\r\n*** End Patch' "$CFG")"
+patch_case "apply_patch benign file -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
+patch_case "apply_patch benign file mentioning the config in its body -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+see $CFG${NL}*** End Patch"
+patch_case "apply_patch no parseable header naming the config -> block (fail closed)" block "bogus patch for $CFG"
+patch_case "apply_patch no header, unrelated text -> allow" allow "bogus patch for $T/notes.txt"
+run "apply_patch command as an array naming the config -> block" block "$(jq -nc --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:["apply_patch", ("*** Begin Patch\n*** Add File: " + $p + "\n+{}\n*** End Patch")]}}')"
+
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"
 # shellcheck disable=SC2016 # the literal $HOME spelling is the point

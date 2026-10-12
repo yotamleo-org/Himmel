@@ -32,6 +32,10 @@
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
+#   apply_patch (Codex's only edit tool) - any `*** Add File:` / `Update File:`
+#     / `Delete File:` / `Move to:` header whose path passes the same literal +
+#     readlink -m check as the file tools; a patch with no parseable header
+#     that names `.himmel` and `config.*` denies (fail-closed).
 # ALLOWS everything else, silently. Reads of the file stay allowed.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
@@ -46,7 +50,8 @@
 # (or `config.*`/`conf*`) in the text, so an interpreter that assembles the
 # path from pieces, `conf?g`, `[c]onfig`, split quotes, a script FILE that
 # writes the config without being handed its name, `eval`, a variable holding
-# the path, and a Bash command reaching it through a symlink alias (only
+# the path, cwd-indirection across calls (`cd ~/.himmel`, then a later
+# `cp x config.json` names no `.himmel`), and a Bash command reaching it through a symlink alias (only
 # file-tool paths are resolved) are not caught. Text matching, not a sandbox.
 # The graphify fence is the second layer: it refuses a symlinked config or
 # ~/.himmel itself. Upgrade path: an operator-owned (root-owned or separate-uid)
@@ -89,16 +94,51 @@ fi
 tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null) || tool=""
 CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
 
+# check_path TOOL PATH: deny when PATH is, or resolves to, the config.
+check_path() {
+    local t="$1" p="$2" r
+    [ -n "$p" ] || return 0
+    case "$p" in
+        */.himmel/config.json|.himmel/config.json) deny "$t targets $p" ;;
+    esac
+    r=$(readlink -m -- "$p" 2>/dev/null) || r=""
+    if [ -n "$r" ] && [ "$r" = "$(readlink -m -- "$CFG_REAL" 2>/dev/null)" ]; then
+        deny "$t target $p resolves to ~/.himmel/config.json"
+    fi
+    return 0
+}
+
 case "$tool" in
     Write|Edit|MultiEdit|NotebookEdit)
         p=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null) || p=""
-        [ -n "$p" ] || exit 0
-        case "$p" in
-            */.himmel/config.json|.himmel/config.json) deny "$tool targets $p" ;;
-        esac
-        r=$(readlink -m -- "$p" 2>/dev/null) || r=""
-        if [ -n "$r" ] && [ "$r" = "$(readlink -m -- "$CFG_REAL" 2>/dev/null)" ]; then
-            deny "$tool target $p resolves to ~/.himmel/config.json"
+        check_path "$tool" "$p"
+        exit 0
+        ;;
+    apply_patch)
+        # Codex edits only through apply_patch; the paths are the header lines
+        # of the patch text (same parse as block-bank-lift-writes.sh).
+        patch=$(printf '%s' "$input" | jq -r '(.tool_input.command // .tool_input.patch // .tool_input.input // "") | if type == "array" then join("\n") else tostring end' 2>/dev/null) || patch=""
+        seen=0
+        while IFS= read -r ln; do
+            ln="${ln%$'\r'}"
+            case "$ln" in
+                '*** Add File: '*) p="${ln#\*\*\* Add File: }" ;;
+                '*** Update File: '*) p="${ln#\*\*\* Update File: }" ;;
+                '*** Delete File: '*) p="${ln#\*\*\* Delete File: }" ;;
+                '*** Move to: '*) p="${ln#\*\*\* Move to: }" ;;
+                *) continue ;;
+            esac
+            seen=1
+            check_path apply_patch "$p"
+        done <<EOF
+$patch
+EOF
+        if [ "$seen" = 0 ]; then
+            # No recognisable header: fail closed only for the one subject.
+            lp=$(printf '%s' "$patch$input" | tr '[:upper:]' '[:lower:]')
+            case "$lp" in
+                *.himmel*config.*|*.himmel*conf\**) deny "apply_patch payload names ~/.himmel/config.json and has no parseable file header (fail-closed)" ;;
+            esac
         fi
         exit 0
         ;;
