@@ -119,6 +119,45 @@ run_cad
 check "crashed doctor sends one alert" 1 "$(sent_n)"
 check "crashed doctor leaves the counts file alone" "$before" "$(cat "$STATE/counts")"
 
+# 8b. HIMMEL-5382: a WARN seen in 2 consecutive runs files ONE deduplicated
+# Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
+cat > "$W/jira" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$JIRA_LOG"
+case "$1" in
+    list) cat "$JIRA_LIST_OUT" 2>/dev/null ;;
+    create) echo "HIMMEL-9001" ;;
+esac
+exit 0
+SH
+chmod +x "$W/jira"
+export JIRA_LOG="$W/jira.log" JIRA_LIST_OUT="$W/jira-list.out" DOCTORCAD_JIRA_CMD="$W/jira"
+jira_n() { grep -c "^$1" "$JIRA_LOG" 2>/dev/null || true; }
+rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
+doctor_out "" "C77-stuck"
+run_cad
+check "a first-seen WARN files no ticket" 0 "$(jira_n create)"
+run_cad
+check "the same WARN in a 2nd consecutive run files one ticket" 1 "$(jira_n create)"
+grep '^create' "$JIRA_LOG" | grep -q 'C77-stuck' && pass "the ticket names the check id" || fail "the ticket names the check id"
+run_cad
+check "a 3rd run does not file a second ticket" 1 "$(jira_n create)"
+# an existing open ticket for the id is extended, not re-filed
+rm -rf "$STATE"; : > "$JIRA_LOG"; printf 'HIMMEL-123\tTask\tTo Do\t[doctor] C78-old persists\n' > "$JIRA_LIST_OUT"
+doctor_out "" "C78-old"
+run_cad; run_cad
+check "an existing ticket is not re-filed" 0 "$(jira_n create)"
+grep -q '^comment HIMMEL-123' "$JIRA_LOG" && pass "the existing ticket gets a comment" || fail "the existing ticket gets a comment"
+# a FAIL never files a ticket; a WARN that leaves and returns is not 2 consecutive
+rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
+doctor_out "C16-hooks" ""; run_cad; run_cad
+check "a FAIL never files a ticket" 0 "$(jira_n create)"
+doctor_out "" "C79-flap"; run_cad
+doctor_out "" ""; run_cad
+doctor_out "" "C79-flap"; run_cad
+check "a WARN that left in between files no ticket" 0 "$(jira_n create)"
+unset DOCTORCAD_JIRA_CMD
+
 # 9. statusline segment: renders from a fixture, silent when absent / clean.
 SEG_STATE="$W/segstate"; mkdir -p "$SEG_STATE"
 seg() { HIMMEL_DOCTOR_STATE_DIR="$SEG_STATE" HIMMEL_WHERE_ARE_WE=off HIMMEL_STATUSLINE_ECON=off \

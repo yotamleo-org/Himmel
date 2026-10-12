@@ -4007,6 +4007,56 @@ check_c59_codex_bank_cache() {
     fi
 }
 
+# --- C60-hermes-origin: an ssh origin breaks `hermes update` (HIMMEL-5382) ------
+# hermes's updater runs git with the global url.insteadOf ignored
+# (GIT_CONFIG_GLOBAL=/dev/null) and ssh forced to BatchMode, so an ssh origin
+# fails the remote read. Read-only: it only reads the origin url.
+check_c60_hermes_origin() {
+    local co="${DOCTOR_HERMES_CHECKOUT:-}" url
+    if [ -z "$co" ]; then
+        if [ -n "${HERMES_HOME:-}" ]; then co="$HERMES_HOME/hermes-agent"
+        elif [ -n "${LOCALAPPDATA:-}" ]; then co="$LOCALAPPDATA/hermes/hermes-agent"
+        else co="${HOME:-}/.hermes/hermes-agent"
+        fi
+    fi
+    if [ ! -d "$co/.git" ] && [ ! -f "$co/.git" ]; then
+        emit INFO C60-hermes-origin "no hermes checkout at $co — origin not checked"
+        return
+    fi
+    url="$(git -C "$co" remote get-url origin 2>/dev/null)" || url=""
+    case "$url" in
+        git@*|ssh://*) emit WARN C60-hermes-origin "hermes checkout origin is ssh ($url) — hermes update forces non-interactive git and cannot use it" "git -C $co remote set-url origin https://github.com/NousResearch/hermes-agent.git" ;;
+        '') emit INFO C60-hermes-origin "hermes checkout $co has no origin remote — not checked" ;;
+        *) emit OK C60-hermes-origin "hermes checkout origin is not ssh ($url)" ;;
+    esac
+}
+
+# --- C61-codex-cli: codex CLI older than the latest release (HIMMEL-5382) ------
+# Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
+# unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
+check_c61_codex_cli() {
+    local bin="${DOCTOR_CODEX_BIN:-codex}" cur latest oldest
+    if ! command -v "$bin" >/dev/null 2>&1; then
+        emit INFO C61-codex-cli "codex CLI not installed — version not checked"
+        return
+    fi
+    cur="$("$bin" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
+    latest="${DOCTOR_CODEX_LATEST:-}"
+    if [ -z "$latest" ] && command -v npm >/dev/null 2>&1; then
+        latest="$(timeout 10 npm view @openai/codex version 2>/dev/null | grep -oE '^[0-9]+(\.[0-9]+)+$' | head -1)"
+    fi
+    if [ -z "$cur" ] || [ -z "$latest" ]; then
+        emit INFO C61-codex-cli "could not read the codex CLI version or the latest release — not checked"
+        return
+    fi
+    oldest="$(printf '%s\n%s\n' "$cur" "$latest" | sort -V | head -1)"
+    if [ "$cur" != "$latest" ] && [ "$oldest" = "$cur" ]; then
+        emit WARN C61-codex-cli "codex CLI $cur is older than the latest release $latest" "npm install -g @openai/codex@latest"
+    else
+        emit OK C61-codex-cli "codex CLI $cur is current (latest $latest)"
+    fi
+}
+
 # --- run ------------------------------------------------------------------------
 echo "himmel-doctor — $(uname -s 2>/dev/null || echo ?) — checkout: $REPO_ROOT"
 echo
@@ -4068,6 +4118,8 @@ check_c55_project_mode
 check_c57_dotenv_allowlists
 check_c58_mcp_sdk_v1
 check_c59_codex_bank_cache
+check_c60_hermes_origin
+check_c61_codex_cli
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 
