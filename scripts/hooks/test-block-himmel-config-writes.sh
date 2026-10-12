@@ -222,7 +222,12 @@ big_case() { # big_case <label> <block|allow> <patch-file> [<max ms>]
     local label="$1" expect="$2" f="$3" max="${4:-}" s e got
     bigjson "$f" > "$T/big.json"
     s=$(now_ms)
-    bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    # A regressed hook must fail this row, not stall the suite: 60 s is the Codex hook budget.
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 60 bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    else
+        bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    fi
     e=$(now_ms)
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" != "$expect" ]; then bad "$label - expected $expect got $got"; return; fi
