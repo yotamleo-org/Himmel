@@ -1292,6 +1292,19 @@ for c in \
 done
 assert_rc "5274 allow: escaped-space option value, benign subcommand" 0 \
     "$(run_case "$(j_bash 'git -C my\ repo status')")"
+# HIMMEL-5274 CR (CodeRabbit): a command substitution with spaces is one option
+# VALUE; `git -C $(printf %s .) reset --hard` must not hide the subcommand.
+# shellcheck disable=SC2016  # literal $( and backtick payloads are the point
+for c in \
+    'git -C $(printf %s .) reset --hard' \
+    'git -C $(echo $(pwd)) push --force' \
+    'git -C `printf %s .` clean -fd' \
+    'git --git-dir=$(printf %s .) reset --hard'; do
+    assert_rc "5274 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
+done
+# shellcheck disable=SC2016  # literal $( payload is the point of this case
+assert_rc "5274 allow: command-substitution option value, benign subcommand" 0 \
+    "$(run_case "$(j_bash 'git -C $(printf %s .) status')")"
 # Separator-heavy input must stay linear (judge minor item 3).
 semis=$(printf ' ; echo a%.0s' $(seq 1 2000))
 start=$SECONDS

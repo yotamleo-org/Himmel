@@ -1063,8 +1063,11 @@ git_push_has_plus_refspec() {
 # match stays linear (HIMMEL-5154). Over-deny only: an unknown value-taking
 # flag leaves its value as the "subcommand" and the rule just does not fire.
 # A value char is a backslash escape (`my\ repo`), a $'..' run, a closed quote
-# run or a plain char; every alternative starts on a distinct character.
-GIT_GCH='(\\.|\$'"'"'([^'"'"'\\]|\\.)*'"'"'|\$|"([^"\\]|\\.)*"|'"'"'[^'"'"']*'"'"'|[^[:space:];&|"'"'"'\\$])'
+# run, a $(..) or backtick command substitution (it may hold spaces; a nested
+# `$(a $(b))` ends at the first `)` and the trailing `)` is a plain char) or a
+# plain char; each starts on a distinct character, a backtick is not plain.
+# shellcheck disable=SC2016  # literal $( and backtick in an ERE, never expanded
+GIT_GCH='(\\.|\$'"'"'([^'"'"'\\]|\\.)*'"'"'|\$\([^)]*\)|\$|`[^`]*`|"([^"\\]|\\.)*"|'"'"'[^'"'"']*'"'"'|[^[:space:];&|"'"'"'\\$`])'
 GIT_GOPTS='(([[:space:]]+(-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)[[:space:]]+'"${GIT_GCH}+"')|([[:space:]]+-'"${GIT_GCH}*"'))*'
 GIT_HEAD='(^|[^[:alnum:]_.-])git(\.exe)?'"${GIT_GOPTS}"
 if contains "${GIT_HEAD}"'[[:space:]]+push([^[:alnum:]_.-]|$)'; then
