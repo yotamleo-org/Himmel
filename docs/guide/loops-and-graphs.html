@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loops and Graphs</title>
+<meta name="description" content="How himmel's loops run, what its graphs show, and what each setting changes about them.">
+<style>
+  :root {
+    --bg: #f4f6fa; --bg-2: #e9eef6; --surface: #ffffff; --surface-2: #f7f9fc;
+    --line: #d5dcea; --ink: #172033; --muted: #55607a; --faint: #8a93a8;
+    --accent: #2f62d8; --accent-soft: rgba(47,98,216,.12); --accent-ink: #224aa8;
+    --amber: #b7700f; --amber-soft: rgba(183,112,15,.13);
+    --red: #b8323a; --red-soft: rgba(184,50,58,.11);
+    --green: #2f7d4f; --green-soft: rgba(47,125,79,.12);
+    --shadow: 0 1px 2px rgba(23,32,51,.06), 0 6px 22px rgba(23,32,51,.06);
+    --serif: "Iowan Old Style", "Palatino Linotype", Charter, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1220; --bg-2: #121a2d; --surface: #151d31; --surface-2: #1a2339;
+      --line: #2a3654; --ink: #e8ecf5; --muted: #a3adc4; --faint: #6c7792;
+      --accent: #7aa2ff; --accent-soft: rgba(122,162,255,.14); --accent-ink: #9dbbff;
+      --amber: #e3a54a; --amber-soft: rgba(227,165,74,.15);
+      --red: #ef7d84; --red-soft: rgba(239,125,132,.14);
+      --green: #6cc596; --green-soft: rgba(108,197,150,.14);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.28);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1220; --bg-2: #121a2d; --surface: #151d31; --surface-2: #1a2339;
+    --line: #2a3654; --ink: #e8ecf5; --muted: #a3adc4; --faint: #6c7792;
+    --accent: #7aa2ff; --accent-soft: rgba(122,162,255,.14); --accent-ink: #9dbbff;
+    --amber: #e3a54a; --amber-soft: rgba(227,165,74,.15);
+    --red: #ef7d84; --red-soft: rgba(239,125,132,.14);
+    --green: #6cc596; --green-soft: rgba(108,197,150,.14);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.28);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    background-image: radial-gradient(ellipse 90% 340px at 50% -40px, var(--bg-2), transparent);
+    font: 16px/1.6 var(--sans);
+  }
+  a { color: var(--accent-ink); text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; }
+  code, .mono { font-family: var(--mono); font-size: .86em; }
+  code { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 .3em; overflow-wrap: anywhere; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 9; }
+  .skip:focus { left: 16px; }
+
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 16px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 0; font-size: 14px; color: var(--muted); }
+  .topbar nav { display: flex; gap: 16px; flex-wrap: wrap; }
+  .theme-btn { font: inherit; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); }
+
+  header.hero { padding: 48px 0 28px; max-width: 760px; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 600; color: var(--accent-ink); margin: 0 0 10px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(34px, 6vw, 52px); line-height: 1.08; letter-spacing: -.015em; margin: 0 0 14px; text-wrap: balance; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 62ch; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; margin: 0 0 8px; letter-spacing: -.01em; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  section { padding: 34px 0; }
+  .section-lede { color: var(--muted); max-width: 68ch; margin: 0 0 22px; }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 18px; padding: 0; list-style: none; font-size: 13.5px; color: var(--muted); }
+  .legend li { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 2px solid; }
+  .sw.auto { background: var(--accent); border-color: var(--accent); }
+  .sw.manual { background: var(--surface); border-color: var(--accent); }
+  .sw.gated { background: var(--amber-soft); border-color: var(--amber); }
+  .sw.off { background: transparent; border-color: var(--faint); border-style: dashed; }
+  .sw.blocked { background: var(--red-soft); border-color: var(--red); }
+
+  /* explorer layout */
+  .explorer { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+  .stage { padding: 18px; min-width: 0; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+  .tab { font: inherit; font-size: 14px; font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  .tab[aria-selected="true"] { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+  .tab:hover:not([aria-selected="true"]) { color: var(--ink); }
+  .loop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .loop-head p { margin: 0 0 6px; color: var(--muted); max-width: 60ch; }
+  .loop-meta { font-size: 13px; color: var(--faint); }
+  .diagram { width: 100%; max-width: 640px; display: block; margin: 6px auto 4px; }
+  .diagram text { font-family: var(--sans); }
+  .diagram .lbl { font-size: 13.5px; font-weight: 600; fill: var(--ink); }
+  .diagram .sub { font-size: 11.5px; fill: var(--muted); }
+  .diagram .center-t { font-family: var(--serif); font-size: 21px; font-weight: 600; fill: var(--ink); }
+  .diagram .center-s { font-size: 12px; fill: var(--muted); }
+  .diagram .track { fill: none; stroke: var(--line); stroke-width: 2; }
+  .diagram .flow { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 3 9; opacity: .55; animation: flow 1.6s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset: -24; } }
+  @media (prefers-reduced-motion: reduce) { .diagram .flow { animation: none; } * { transition: none !important; } }
+  .node circle { stroke-width: 3; transition: fill .25s, stroke .25s; }
+  .node.auto circle { fill: var(--accent); stroke: var(--accent); }
+  .node.manual circle { fill: var(--surface); stroke: var(--accent); }
+  .node.gated circle { fill: var(--amber-soft); stroke: var(--amber); }
+  .node.off circle { fill: var(--surface); stroke: var(--faint); stroke-dasharray: 4 4; }
+  .node.blocked circle { fill: var(--red-soft); stroke: var(--red); }
+  .node .ix { font-size: 12px; font-weight: 700; fill: var(--accent-ink); }
+  .node.auto .ix { fill: var(--surface); }
+  .node.off .ix { fill: var(--faint); }
+  .node.blocked .ix { fill: var(--red); }
+  .node.gated .ix { fill: var(--amber); }
+  .node.changed circle { filter: drop-shadow(0 0 6px var(--amber)); }
+  .node { cursor: pointer; }
+  .node:focus { outline: none; }
+  .node:focus-visible circle { stroke-width: 5; }
+
+  .steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); transition: background .25s, border-color .25s; }
+  .step.hl { border-color: var(--accent); background: var(--accent-soft); }
+  .step.flash { border-color: var(--amber); background: var(--amber-soft); }
+  .step .dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 2px solid var(--accent); color: var(--accent-ink); background: var(--surface); }
+  .step.auto .dot { background: var(--accent); color: var(--surface); }
+  .step.gated .dot { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+  .step.off .dot { border-color: var(--faint); border-style: dashed; color: var(--faint); }
+  .step.blocked .dot { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+  .step b { font-weight: 600; }
+  .step .who { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-left: 8px; color: var(--faint); }
+  .step.auto .who { color: var(--accent-ink); }
+  .step.gated .who { color: var(--amber); }
+  .step.blocked .who { color: var(--red); }
+  .step p { margin: 2px 0 0; font-size: 14.5px; color: var(--muted); }
+
+  /* settings panel */
+  .panel { padding: 16px; position: sticky; top: 14px; max-height: calc(100vh - 28px); overflow: auto; }
+  .panel h2 { font-size: 22px; }
+  .panel-lede { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+  .reset { font: inherit; font-size: 13px; color: var(--accent-ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  fieldset { border: 0; margin: 14px 0 0; padding: 0; }
+  legend.grp { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); padding: 0; margin: 0 0 6px; }
+  .setting { padding: 9px 10px; border-radius: 10px; border: 1px solid transparent; }
+  .setting + .setting { margin-top: 2px; }
+  .setting.touched { background: var(--amber-soft); border-color: var(--amber); }
+  .setting.focus { border-color: var(--accent); }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; }
+  .setting label, .setting .name { font-family: var(--mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+  .setting-row > :last-child { margin-left: auto; }
+  .where { display: inline-block; font-family: var(--sans); font-size: 11px; font-weight: 600; letter-spacing: .03em; padding: 0 7px; border-radius: 999px; margin-top: 2px; }
+  .where.conf { background: var(--accent-soft); color: var(--accent-ink); }
+  .where.policy { background: var(--red-soft); color: var(--red); }
+  .where.env { background: var(--green-soft); color: var(--green); }
+  .where.wizard { background: var(--amber-soft); color: var(--amber); }
+  select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; max-width: 170px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .2s; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .switch input:disabled + span { opacity: .45; }
+  .explain { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14.5px; }
+  .explain h3 { font-family: var(--mono); font-size: 13.5px; overflow-wrap: anywhere; }
+  .explain p { margin: 4px 0 0; color: var(--muted); }
+  .explain .eff { color: var(--ink); }
+
+  /* layers */
+  .layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .layer { padding: 16px; }
+  .layer .where { font-size: 12px; margin: 0 0 8px; }
+  .layer p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+  .soon { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); border: 1px solid var(--amber); border-radius: 999px; padding: 0 8px; vertical-align: 2px; margin-left: 6px; }
+  .order { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 16px 0 0; font-size: 14px; color: var(--muted); }
+  .order code { font-size: 13px; }
+  .order .arrow { color: var(--faint); }
+
+  /* graphs */
+  .graphs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .graph { padding: 16px; display: flex; flex-direction: column; }
+  .graph svg { width: 100%; height: 130px; margin: 2px 0 8px; }
+  .graph p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+  .graph ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
+  .gl { stroke: var(--line); stroke-width: 1.5; }
+  .gn { fill: var(--accent); }
+  .gn2 { fill: var(--amber); }
+  .gn3 { fill: var(--green); }
+  .timeline { margin: 18px 0 0; padding: 16px; }
+  .tl-row { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14.5px; }
+  .tl-row:first-of-type { border-top: 0; }
+  .tl-row b { font-weight: 600; }
+  .tl-bar { display: flex; gap: 3px; flex-wrap: wrap; }
+  .tick { width: 9px; height: 18px; border-radius: 3px; background: var(--accent-soft); }
+  .tick.on { background: var(--accent); }
+  .tick.amber { background: var(--amber); }
+  .tick.green { background: var(--green); }
+  .tl-note { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+
+  footer { padding: 30px 0 60px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); margin-top: 20px; }
+  footer nav { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+
+  @media (max-width: 960px) {
+    .explorer { grid-template-columns: minmax(0, 1fr); }
+    .panel { position: static; max-height: none; }
+    .layers, .graphs { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    header.hero { padding-top: 30px; }
+    .lede { font-size: 16.5px; }
+    .stage, .panel { padding: 14px; }
+    .tl-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    select { max-width: 150px; }
+    .diagram .lbl { font-size: 18px; }
+    .diagram .sub { display: none; }
+    .diagram .center-t { font-size: 28px; }
+    .diagram .center-s { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#explorer">Skip to the loop explorer</a>
+<div class="wrap">
+  <div class="topbar">
+    <nav aria-label="Site">
+      <a href="../README.md">Docs home</a>
+      <a href="installer-journey.html">Installer journey</a>
+      <a href="../adoption-trail.html">Adoption trail</a>
+    </nav>
+    <button class="theme-btn" id="theme" type="button" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+
+  <header class="hero">
+    <p class="kicker">himmel guide</p>
+    <h1>Loops and graphs</h1>
+    <p class="lede">himmel keeps work moving with a few loops: the loop one change goes through, a console steering many sessions at once, unattended overnight runs, and scheduled jobs that keep everything fresh. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
+  </header>
+
+  <!-- source: docs/internals/config-layers.md (new layout, in review), docs/configuration.md §4.1 -->
+  <section aria-labelledby="where-h">
+    <h2 id="where-h">Where settings live</h2>
+    <p class="section-lede">Settings are moving out of <code>.env</code> into a config file you can read and track. Each setting below carries a tag that names where it lives in this new layout.</p>
+    <div class="layers">
+      <div class="card layer">
+        <span class="where conf">himmel.conf</span><span class="soon">new layout</span>
+        <h3>Everyday settings</h3>
+        <p>Plain <code>KEY=value</code> lines in <code>~/.himmel/himmel.conf</code>. If you run the companion vault, the file is tracked there through a symlink, so your settings follow you between machines. A <code>himmel.conf.local</code> file beside it overrides it for one machine.</p>
+      </div>
+      <div class="card layer">
+        <span class="where policy">policy</span><span class="soon">new layout</span>
+        <h3>Gate policy</h3>
+        <p>Three settings decide how strict the review and merge gates are. They live under <code>policy</code> in <code>~/.himmel/config.json</code>, a file the agent cannot write. The environment cannot override them, so a session cannot loosen its own gates.</p>
+      </div>
+      <div class="card layer">
+        <span class="where env">.env</span>
+        <h3>Secrets only</h3>
+        <p>API tokens and credentials, such as <code>JIRA_API_TOKEN</code>. Nothing else belongs here in the new layout. A few runtime switches, like the graph refresh backend, stay plain environment variables.</p>
+      </div>
+    </div>
+    <p class="order" aria-label="Precedence, highest first"><span>Who wins, highest first:</span> <code>environment</code><span class="arrow">→</span><code>himmel.conf.local</code><span class="arrow">→</span><code>himmel.conf</code><span class="arrow">→</span><code>.env</code> (older installs)<span class="arrow">→</span><span>built-in default</span></p>
+  </section>
+
+  <section id="explorer" aria-labelledby="explorer-h">
+    <h2 id="explorer-h">The loop explorer</h2>
+    <p class="section-lede">Pick a loop, then change a setting. Steps that change light up, and the box under the settings says what happened in plain words.</p>
+    <ul class="legend" aria-label="Legend">
+      <li><span class="sw auto" aria-hidden="true"></span>runs on its own</li>
+      <li><span class="sw manual" aria-hidden="true"></span>you start it</li>
+      <li><span class="sw gated" aria-hidden="true"></span>waits on a gate</li>
+      <li><span class="sw off" aria-hidden="true"></span>not running</li>
+      <li><span class="sw blocked" aria-hidden="true"></span>cannot pass with these settings</li>
+    </ul>
+
+    <div class="explorer">
+      <div class="card stage">
+        <div class="tabs" role="tablist" aria-label="Loops" id="tabs"></div>
+        <div id="loop-panel" role="tabpanel" aria-live="polite">
+          <div class="loop-head"><div><h3 id="loop-title"></h3><p id="loop-blurb"></p></div><span class="loop-meta" id="loop-meta"></span></div>
+          <svg class="diagram" id="diagram" viewBox="0 0 720 600" role="img" aria-labelledby="loop-title"></svg>
+          <ol class="steps" id="steps"></ol>
+        </div>
+      </div>
+
+      <aside class="card panel" aria-labelledby="settings-h">
+        <div class="loop-head"><h2 id="settings-h">Settings</h2><button class="reset" type="button" id="reset">Reset to defaults</button></div>
+        <p class="panel-lede">Every control starts at the default a fresh install has.</p>
+        <form id="settings" onsubmit="return false">
+          <!-- source: docs/configuration.md §4.1 Initiative & autonomy; scripts/lib/initiative-legs.sh -->
+          <fieldset><legend class="grp">Your sessions</legend>
+            <div class="setting" data-key="HIMMEL_INITIATIVE">
+              <div class="setting-row"><label for="s-init">HIMMEL_INITIATIVE</label>
+                <select id="s-init" data-set="init"><option value="off">off</option><option value="prcheck">prcheck</option><option value="prcheck,handover">prcheck,handover</option><option value="all">all</option></select></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <!-- source: scripts/hooks/check-commit-msg.sh; docs/configuration.md §3.1 -->
+            <div class="setting" data-key="TICKET_ID_REQUIRED">
+              <div class="setting-row"><label for="s-ticket">TICKET_ID_REQUIRED</label>
+                <select id="s-ticket" data-set="ticket"><option value="1">1 (required)</option><option value="0">0 (optional)</option></select></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <!-- source: scripts/lib/handover-path.sh; docs/configuration.md §4.1 -->
+            <div class="setting" data-key="HANDOVER_DIR">
+              <div class="setting-row"><label for="s-hd">HANDOVER_DIR</label>
+                <select id="s-hd" data-set="handover"><option value="unset">unset (in the repo)</option><option value="set">a state repo</option></select></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <div class="setting" data-key="HIMMEL_WORKTREE_NUDGE">
+              <div class="setting-row"><label for="s-nudge">HIMMEL_WORKTREE_NUDGE</label>
+                <span class="switch"><input type="checkbox" id="s-nudge" data-set="nudge" role="switch"><span></span></span></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+          </fieldset>
+
+          <!-- source: docs/configuration.md §4.1 CR rows; scripts/cr/clear-cr-marker.sh; scripts/cr/claude-floor-review.sh -->
+          <fieldset><legend class="grp">Review gate</legend>
+            <div class="setting" data-key="CR_PROFILE">
+              <div class="setting-row"><label for="s-crp">CR_PROFILE</label>
+                <select id="s-crp" data-set="crProfile"><option value="unset">unset (free tier)</option><option value="paid">paid</option><option value="none">none</option></select></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <div class="setting" data-key="CR_CLAUDE_AGENTS">
+              <div class="setting-row"><label for="s-cra">CR_CLAUDE_AGENTS</label>
+                <span class="switch"><input type="checkbox" id="s-cra" data-set="crAgents" role="switch"><span></span></span></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <div class="setting" data-key="CR_REQUIRE_CROSS_MODEL">
+              <div class="setting-row"><label for="s-crx">CR_REQUIRE_CROSS_MODEL</label>
+                <span class="switch"><input type="checkbox" id="s-crx" data-set="crossModel" role="switch"><span></span></span></div>
+              <span class="where policy">policy</span>
+            </div>
+            <div class="setting" data-key="CR_FLOOR_FALLBACK">
+              <div class="setting-row"><label for="s-crf">CR_FLOOR_FALLBACK</label>
+                <select id="s-crf" data-set="floor"><option value="unset">unset</option><option value="claude-only">claude-only</option></select></div>
+              <span class="where policy">policy</span>
+            </div>
+          </fieldset>
+
+          <!-- source: docs/configuration.md §3.3 + §4.1; docs/handover/overnight-mode.md -->
+          <fieldset><legend class="grp">Unattended runs</legend>
+            <div class="setting" data-key="HIMMEL_OVERNIGHT">
+              <div class="setting-row"><label for="s-on">HIMMEL_OVERNIGHT</label>
+                <span class="switch"><input type="checkbox" id="s-on" data-set="overnight" role="switch"><span></span></span></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <div class="setting" data-key="HIMMEL_INITIATIVE_OVERNIGHT">
+              <div class="setting-row"><label for="s-ion">HIMMEL_INITIATIVE_OVERNIGHT</label>
+                <select id="s-ion" data-set="initOvernight"><option value="off">off</option><option value="prcheck,pr">prcheck,pr</option><option value="all">all</option></select></div>
+              <span class="where conf">himmel.conf</span>
+            </div>
+            <div class="setting" data-key="ARMAUTOMERGE">
+              <div class="setting-row"><label for="s-am">ARMAUTOMERGE</label>
+                <span class="switch"><input type="checkbox" id="s-am" data-set="automerge" role="switch"><span></span></span></div>
+              <span class="where policy">policy</span>
+            </div>
+          </fieldset>
+
+          <!-- source: scripts/himmelctl/lib/cadence-registry.json; docs/cadences.md; scripts/lib/vm-mode.sh -->
+          <fieldset><legend class="grp">Scheduled jobs</legend>
+            <div class="setting">
+              <div class="setting-row"><label for="s-vault">companion vault</label>
+                <span class="switch"><input type="checkbox" id="s-vault" data-set="vault" role="switch"><span></span></span></div>
+              <span class="where wizard">installer answer</span>
+            </div>
+            <div class="setting" data-key="vm.mode">
+              <div class="setting-row"><label for="s-vm">vm.mode</label>
+                <select id="s-vm" data-set="vm"><option value="local">local</option><option value="remote">remote</option><option value="none">none</option></select></div>
+              <span class="where wizard">installer answer</span>
+            </div>
+            <div class="setting" data-cadence="graphmap">
+              <div class="setting-row"><label for="s-gm">graphmap armed</label>
+                <span class="switch"><input type="checkbox" id="s-gm" data-set="graphmap" role="switch"><span></span></span></div>
+              <span class="where wizard">installer answer</span>
+            </div>
+          </fieldset>
+
+          <!-- source: scripts/graphify/graph-cadence.sh (--semantic); docs/internals/graph-cadence.md -->
+          <fieldset><legend class="grp">Graph refresh</legend>
+            <div class="setting" data-key="GRAPH_CADENCE_SEMANTIC_BACKEND">
+              <div class="setting-row"><label for="s-gb">GRAPH_CADENCE_SEMANTIC_BACKEND</label>
+                <select id="s-gb" data-set="backend"><option value="claude-cli">claude-cli</option><option value="ollama">ollama</option></select></div>
+              <span class="where env">environment</span>
+            </div>
+          </fieldset>
+        </form>
+        <div class="explain" id="explain" aria-live="polite"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- source: docs/internals/graph-cadence.md; docs/tooling-catalog.md (graphmap-cadence.sh entry); CLAUDE.md Retrieval routing -->
+  <section aria-labelledby="graphs-h">
+    <h2 id="graphs-h">The graphs</h2>
+    <p class="section-lede">A graph here is a map of a body of text or code: every file, function and idea is a node, and the links between them are edges. Sessions ask the graph how things connect before they search file by file.</p>
+    <div class="graphs">
+      <div class="card graph">
+        <svg viewBox="0 0 240 130" role="img" aria-label="A cluster of code nodes around two hubs">
+          <g class="gl"><line x1="70" y1="65" x2="30" y2="28"/><line x1="70" y1="65" x2="24" y2="92"/><line x1="70" y1="65" x2="88" y2="18"/><line x1="70" y1="65" x2="160" y2="70"/><line x1="160" y1="70" x2="206" y2="30"/><line x1="160" y1="70" x2="214" y2="104"/><line x1="160" y1="70" x2="132" y2="116"/><line x1="70" y1="65" x2="104" y2="110"/></g>
+          <circle class="gn" cx="70" cy="65" r="11"/><circle class="gn" cx="160" cy="70" r="9"/>
+          <circle class="gn2" cx="30" cy="28" r="5"/><circle class="gn2" cx="24" cy="92" r="5"/><circle class="gn2" cx="88" cy="18" r="5"/><circle class="gn2" cx="104" cy="110" r="5"/>
+          <circle class="gn3" cx="206" cy="30" r="5"/><circle class="gn3" cx="214" cy="104" r="5"/><circle class="gn3" cx="132" cy="116" r="5"/>
+        </svg>
+        <h3>The code graph</h3>
+        <p>himmel's own map, stored in <code>graphify-out/graph.json</code>. It groups the code into communities and marks its hub nodes, the files many others depend on.</p>
+        <ul>
+          <li>Ask it: <code>graphify query "…"</code> or <code>graphify explain "…"</code>.</li>
+          <li>A free structural pass reads the code itself. A weekly semantic pass has a model add meaning.</li>
+          <li>A refreshed graph reaches <code>main</code> only through a pull request that merges on green.</li>
+        </ul>
+      </div>
+      <div class="card graph">
+        <svg viewBox="0 0 240 130" role="img" aria-label="Notes linked into a web">
+          <g class="gl"><line x1="40" y1="40" x2="110" y2="30"/><line x1="110" y1="30" x2="190" y2="48"/><line x1="40" y1="40" x2="70" y2="100"/><line x1="70" y1="100" x2="150" y2="96"/><line x1="150" y1="96" x2="190" y2="48"/><line x1="110" y1="30" x2="150" y2="96"/><line x1="150" y1="96" x2="214" y2="110"/></g>
+          <rect class="gn3" x="30" y="32" width="20" height="16" rx="4"/><rect class="gn3" x="100" y="22" width="20" height="16" rx="4"/><rect class="gn3" x="180" y="40" width="20" height="16" rx="4"/><rect class="gn3" x="60" y="92" width="20" height="16" rx="4"/><rect class="gn" x="140" y="88" width="20" height="16" rx="4"/><rect class="gn2" x="204" y="102" width="20" height="16" rx="4"/>
+        </svg>
+        <h3>The vault graph</h3>
+        <p>The same tool run over your companion vault, if you keep one: notes, clips and daily entries linked by topic. This graph stays on your machine and is not committed.</p>
+        <ul>
+          <li>Structural pass daily at 00:05; semantic pass weekly, Sunday 13:00.</li>
+          <li>Search finds content; the graph explains how it hangs together.</li>
+        </ul>
+      </div>
+      <div class="card graph">
+        <svg viewBox="0 0 240 130" role="img" aria-label="Boxes connected left to right, a flow diagram">
+          <g class="gl"><line x1="58" y1="40" x2="92" y2="40"/><line x1="148" y1="40" x2="182" y2="40"/><line x1="120" y1="52" x2="120" y2="78"/></g>
+          <rect x="10" y="26" width="48" height="28" rx="6" fill="none" stroke="currentColor" class="gn" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+          <rect x="92" y="26" width="56" height="28" rx="6" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+          <rect x="182" y="26" width="48" height="28" rx="6" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+          <rect x="92" y="78" width="56" height="28" rx="6" style="fill:var(--amber-soft);stroke:var(--amber)"/>
+        </svg>
+        <h3>The flow diagrams</h3>
+        <p>Drawn by hand, not generated: how one change travels from your editor to <code>main</code>, what fires on every tool call, and how work is routed to other models.</p>
+        <ul>
+          <li><a href="../configuration.md">Configuration and workflow chains</a></li>
+          <li><a href="../architecture.md">Architecture</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- source: docs/internals/graph-cadence.md (schedule, threshold 15); docs/tooling-catalog.md (AST :15 hourly, semantic Sunday 13:00/13:20) -->
+    <div class="card timeline" aria-labelledby="tl-h">
+      <h3 id="tl-h">One day of graph refresh, once <span class="mono">graphmap</span> is armed</h3>
+      <div class="tl-row"><b>Structural pass</b><div><div class="tl-bar" id="tl-ast" aria-label="24 hourly runs"></div><div class="tl-note">Every hour at :15. Free: no model, no usage bank.</div></div></div>
+      <div class="tl-row"><b>Refresh and publish</b><div><div class="tl-bar" id="tl-pub" aria-label="4 runs a day"></div><div class="tl-note">Every 6 hours at :35. Publishes only when the graph is 15 or more commits behind <code>main</code>; otherwise it records a skip.</div></div></div>
+      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="weekly"></div><div class="tl-note">Weekly, Sunday 13:20 for himmel. Uses your Claude usage bank and skips itself when the bank is nearly spent.</div></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Every step and setting on this page comes from himmel's own code and docs; the page source cites the file beside each section.</div>
+    <nav aria-label="Further reading">
+      <a href="../cadences.md">Cadences reference</a>
+      <a href="../handover/running-a-console.md">Running a console</a>
+      <a href="../handover/overnight-mode.md">Overnight mode</a>
+      <a href="../internals/graph-cadence.md">Graph refresh internals</a>
+      <a href="../glossary.md">Glossary</a>
+    </nav>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var defaults = { init: 'off', ticket: '1', handover: 'unset', nudge: false, crProfile: 'unset', crAgents: false,
+    crossModel: false, floor: 'unset', overnight: false, initOvernight: 'off', automerge: false,
+    vault: false, vm: 'local', graphmap: false, backend: 'claude-cli' };
+  var s = {};
+  var last = null;
+
+  // Initiative legs: docs/configuration.md "Initiative & autonomy".
+  function legs() {
+    var on = s.overnight;
+    var v = on ? s.initOvernight : s.init;
+    if (v === 'off') return [];
+    if (v === 'all') return on ? ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'handover'] : ['prcheck', 'pr', 'ticket', 'handover'];
+    return v.split(',');
+  }
+  function has(l) { return legs().indexOf(l) !== -1; }
+
+  function reviewState() {
+    if (s.crossModel && s.crProfile === 'none' && s.floor !== 'claude-only') {
+      return { st: 'blocked', note: 'CR_PROFILE=none skips the cross-model panel, but the policy demands a non-Claude critic. The review marker can never clear.' };
+    }
+    var who = s.crProfile === 'none' ? 'Claude reviews the diff itself; no external critics run and nothing is spent outside your plan.'
+      : s.crProfile === 'paid' ? 'The paid critic panel (codex) reviews the diff, plus a Claude review.'
+      : 'The free tier runs; with no free critic configured it falls back to the codex critic where that lane is set up, else a Claude review.';
+    if (s.crAgents) who += ' Extra Claude reviewer agents fan out across the diff.';
+    if (s.crossModel) who += s.floor === 'claude-only'
+      ? ' The gate wants a non-Claude critic; if every one is out of quota, a fresh Claude review with no shared context counts as the floor.'
+      : ' The gate clears only once a non-Claude critic has passed this exact commit.';
+    return { st: has('prcheck') ? 'auto' : 'manual', note: who };
+  }
+
+  function mergeNote() {
+    return s.automerge ? 'Merges through merge-on-green: it waits for CI to pass and for branch protection to be confirmed, then merges.'
+      : 'With ARMAUTOMERGE off, merge-on-green refuses, so a merge is a plain squash merge.';
+  }
+
+  var loops = [
+    { id: 'work', tab: 'One change', title: 'The loop one change goes through',
+      blurb: 'From a fresh worktree to a merged pull request and a saved handover. Hooks and git gates fire at each step.',
+      meta: 'source: daily-loop walkthrough',
+      nodes: function () {
+        var r = reviewState();
+        return [
+          { k: 'worktree', l: 'Worktree', sub: 'isolated branch', st: 'manual', n: 'You run /worktree. Editing on main is always refused.' + (s.nudge ? ' The worktree nudge also reminds you before your first edit outside a worktree.' : '') },
+          { k: 'commit', l: 'Commit', sub: 'message gate', st: 'gated', n: s.ticket === '0' ? 'The commit-message gate checks the conventional shape only; a ticket ID is optional.' : 'The commit-message gate wants the conventional shape and a ticket ID in every subject.' },
+          { k: 'push', l: 'Push', sub: 'pre-push gates', st: 'gated', n: 'Pre-push gates run and record that a review is owed before a pull request can open.' },
+          { k: 'review', l: 'Review', sub: '/pr-check', st: r.st, n: (has('prcheck') ? 'Runs on its own when the work is done and verified. ' : 'You run /pr-check. ') + r.note },
+          { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'blocked' : (has('pr') ? 'auto' : 'manual'), n: r.st === 'blocked' ? 'Cannot open: the review marker never clears.' : (has('pr') ? 'Opened or refreshed for you once review is clean.' : 'You open it once review is clean.') },
+          { k: 'ci', l: 'CI', sub: 'checks', st: r.st === 'blocked' ? 'off' : 'auto', n: 'GitHub runs the checks; check-ci reads them for you.' },
+          { k: 'merge', l: 'Merge', sub: 'squash', st: r.st === 'blocked' ? 'off' : (has('merge') ? 'auto' : 'manual'), n: (has('merge') ? 'The session merges on its own. ' : 'You merge. ') + mergeNote() },
+          { k: 'ticket', l: 'Ticket', sub: 'tracker', st: has('ticket') ? 'auto' : 'manual', n: has('ticket') ? 'The ticket is moved for you.' : 'You move the ticket.' },
+          { k: 'handover', l: 'Handover', sub: 'saved notes', st: has('handover') ? 'auto' : 'manual', n: (has('handover') ? 'Written for you at the end. ' : 'You run /handover. ') + (s.handover === 'set' ? 'Saved to your separate state repo, so it survives a fresh clone.' : 'Saved under handovers/ inside this repo.') }
+        ];
+      } },
+    { id: 'console', tab: 'Console and legs', title: 'A console steering its legs',
+      blurb: 'A console is a long-lived session you talk to. It dispatches each ticket as its own session, a leg, with its own worktree and pull request, and merges only on its own go-ahead.',
+      meta: 'source: running-a-console, glossary',
+      nodes: function () {
+        var r = reviewState();
+        return [
+          { k: 'doc', l: 'Console', sub: 'doc + lock', st: 'manual', n: 'You start it with /console new. It holds a lock on its own document so two consoles never run one shift.' },
+          { k: 'dispatch', l: 'Dispatch', sub: 'one leg per ticket', st: 'auto', n: 'Each leg gets a brief, a worktree and a one-time token for authenticated changes of plan.' },
+          { k: 'live', l: 'Leg works', sub: 'LIVE', st: 'auto', n: 'The leg implements, tests and reports milestones to its handover document.' },
+          { k: 'finding', l: 'Questions', sub: 'FINDING', st: 'gated', n: 'A leg that needs a decision asks the console and keeps working on what does not depend on it.' },
+          { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : 'auto', n: r.note },
+          { k: 'ready', l: 'Ready', sub: 'READY', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Pull request open, review clean, CI green. The leg reports and waits.' },
+          { k: 'go', l: 'Go-ahead', sub: 'GO', st: r.st === 'blocked' ? 'off' : 'gated', n: 'Only the console writes the go-ahead. A leg never merges without it.' },
+          { k: 'merge', l: 'Merge', sub: 'merge-on-green', st: r.st === 'blocked' ? 'off' : (s.automerge ? 'auto' : 'manual'), n: mergeNote() },
+          { k: 'wrap', l: 'Wrap', sub: 'WRAPPED', st: 'auto', n: 'The leg releases its lock, checks nothing is left running, and the console closes its window.' },
+          { k: 'next', l: 'Hand over', sub: 'succession', st: 'manual', n: 'Near its context limit the console starts its successor with /console next and writes a handoff.' }
+        ];
+      } },
+    { id: 'overnight', tab: 'Overnight', title: 'An unattended overnight shift',
+      blurb: '/overnight-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_OVERNIGHT switches which steps run without asking.',
+      meta: 'source: overnight-mode',
+      nodes: function () {
+        var r = reviewState();
+        var off = !s.overnight;
+        return [
+          { k: 'lock', l: 'Queue lock', sub: 'one run per queue', st: 'auto', n: 'Taken first, so a second launch on the same queue stops instead of doubling the work.' },
+          { k: 'plan', l: 'Plan', sub: 'from the brief', st: 'auto', n: 'A written plan for the ticket, committed beside the handover.' },
+          { k: 'impl', l: 'Implement', sub: 'agents', st: off ? 'manual' : (has('execute') ? 'auto' : 'manual'), n: off ? 'HIMMEL_OVERNIGHT is off: the overnight initiative profile is not active.' : (has('execute') ? 'The execute step runs unasked.' : 'Not in the overnight step list; it waits for you.') },
+          { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : (off ? 'manual' : (has('prcheck') ? 'auto' : 'manual')), n: r.note },
+          { k: 'fix', l: 'Fix and re-review', sub: 'until clean', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Fix rounds repeat until no critical finding is left.' },
+          { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'off' : (!off && has('pr') ? 'auto' : 'manual'), n: !off && has('pr') ? 'Opened unasked.' : 'Waits for you.' },
+          { k: 'merge', l: 'Merge', sub: 'private repo', st: r.st === 'blocked' ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
+          { k: 'ticket', l: 'Ticket', sub: 'tracker', st: !off && has('ticket') ? 'auto' : 'manual', n: !off && has('ticket') ? 'Moved unasked.' : 'Waits for you.' },
+          { k: 'handover', l: 'Handover', sub: 'next session', st: !off && has('handover') ? 'auto' : 'manual', n: 'Writes the next session’s brief and files follow-up tickets.' }
+        ];
+      } },
+    { id: 'cadences', tab: 'Scheduled jobs', title: 'Scheduled jobs',
+      blurb: 'Each job is a crontab entry or scheduled task that you arm on purpose. Nothing arms itself, and the installer only offers the jobs whose requirement holds.',
+      meta: 'source: cadence-registry.json',
+      nodes: function () {
+        var v = s.vault;
+        function vaultJob(k, l, sub, n, armed) { return { k: k, l: l, sub: sub, st: !v ? 'off' : (armed ? 'auto' : 'manual'), n: !v ? 'Offered only when you run a companion vault.' : n }; }
+        var stall = !v ? 'off' : (s.vm === 'none' ? 'gated' : 'manual');
+        return [
+          { k: 'doctor', c: 'doctor', l: 'doctor', sub: 'daily', st: 'manual', n: 'Daily health check. Reports only, fixes nothing. Always offered.' },
+          { k: 'upstream-watch', c: 'upstream-watch', l: 'upstream-watch', sub: 'daily', st: 'manual', n: 'Scans himmel’s open upstream pull requests and issues; notifies only on a change. Always offered.' },
+          { k: 'drift-fix', c: 'drift-fix', l: 'drift-fix', sub: 'nightly', st: 'manual', n: 'Bumps pinned dependencies and opens an ordinary pull request. Never merges. Always offered.' },
+          vaultJob('pipeline', 'pipeline', 'daily + weekly', 'Daily fetch, harvest and synthesis over the vault; the one job the installer recommends.', false),
+          vaultJob('qmd', 'qmd', 'daily', 'Re-indexes your notes for search so the index never goes stale.', false),
+          vaultJob('graphmap', 'graphmap', 'hourly', s.graphmap ? 'Armed: the graph refresh runs on its own (see the Graph refresh loop).' : 'Not armed: the graphs refresh only when you run /graph-refresh.', s.graphmap),
+          { k: 'vault-stall', c: 'vault-stall', l: 'vault-stall', sub: 'every 15 min', st: stall, n: !v ? 'Offered only when you run a companion vault.' : (s.vm === 'none' ? 'Wants proof on a test VM first. With vm.mode none, picking it counts as your acknowledgement that you have a rollback point.' : 'A test VM is available (vm.mode ' + s.vm + '), so you can arm it like any other job. No profile picks it for you.') },
+          { k: 'codex-sweep', c: 'codex-sweep', l: 'codex-sweep', sub: 'daily', st: 'off', n: 'Offered only when you pick the codex lane in the installer.' },
+          { k: 'repo-sync', c: 'repo-sync', l: 'repo-sync', sub: 'daily', st: 'off', n: 'Windows only.' },
+          { k: 'pull-cadence', c: 'pull-cadence', l: 'pull-cadence', sub: 'daily', st: 'off', n: 'Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.' }
+        ];
+      } },
+    { id: 'graph', tab: 'Graph refresh', title: 'Keeping the code graph fresh',
+      blurb: 'Part of the graphmap job. A dedicated worktree does the refresh, so the checkout you work in is never switched or dirtied.',
+      meta: 'source: graph-cadence internals',
+      nodes: function () {
+        var armed = s.graphmap && s.vault;
+        var a = armed ? 'auto' : 'off';
+        var why = !s.vault ? 'graphmap is offered only with a companion vault. ' : (!s.graphmap ? 'graphmap is not armed. ' : '');
+        return [
+          { k: 'ast', l: 'Structural pass', sub: 'hourly :15', st: a, n: why + 'Re-parses the code; costs nothing.' },
+          { k: 'fetch', l: 'Measure', sub: 'every 6 h :35', st: a, n: why + 'Counts the commits on main since the graph was built.' },
+          { k: 'threshold', l: '15 behind?', sub: 'else skip', st: armed ? 'gated' : 'off', n: 'Below 15 commits it records a skip and stops. The threshold is fixed in the script, not a setting.' },
+          { k: 'publish', l: 'Publish PR', sub: 'chore branch', st: a, n: 'Opens or refreshes a pull request with the new graph. Never a direct push.' },
+          { k: 'merge', l: 'Merge on green', sub: 'merge-on-green', st: !armed ? 'off' : (s.automerge ? 'auto' : 'blocked'), n: s.automerge ? 'Merges once CI passes.' : 'merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.' },
+          { k: 'semantic', l: 'Semantic pass', sub: 'weekly', st: a, n: why + (s.backend === 'ollama'
+            ? 'With the semantic step on a local GPU (ollama): no usage bank check.'
+            : 'With claude-cli (Sonnet): draws on your Claude usage bank and skips itself when the bank is nearly spent.') + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
+          { k: 'ledger', l: 'Ledger', sub: 'one line per run', st: armed ? 'auto' : 'off', n: 'Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.' }
+        ];
+      } }
+  ];
+
+  var explain = {
+    init: { t: 'HIMMEL_INITIATIVE', d: 'Which steps a session runs without being asked once work is finished and verified. "all" means review, open the pull request, move the ticket and write the handover. Merging is never in the default set.' },
+    ticket: { t: 'TICKET_ID_REQUIRED', d: 'Whether every commit subject must carry a ticket ID. Set it to 0 if you do not track work in a tracker.' },
+    handover: { t: 'HANDOVER_DIR', d: 'Where session handovers are saved. Unset keeps them in the repo’s handovers/ folder; a path points at a separate state repo that outlives any one clone.' },
+    nudge: { t: 'HIMMEL_WORKTREE_NUDGE', d: 'A gentle reminder to start a worktree before editing. Editing on main is refused either way.' },
+    crProfile: { t: 'CR_PROFILE', d: 'Which critics review your diff in /pr-check. "none" is Claude only and spends nothing outside your plan; "paid" runs the codex panel. A missing critic never means no review: Claude reviews the diff itself.' },
+    crAgents: { t: 'CR_CLAUDE_AGENTS', d: 'Adds a fan-out of Claude reviewer agents inside /pr-check.' },
+    crossModel: { t: 'CR_REQUIRE_CROSS_MODEL', d: 'Gate policy. When on, the review marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.' },
+    floor: { t: 'CR_FLOOR_FALLBACK', d: 'Gate policy. With the cross-model rule on, "claude-only" lets a fresh Claude review with no shared context stand in when every other critic is out of quota. It is never counted as cross-model.' },
+    overnight: { t: 'HIMMEL_OVERNIGHT', d: 'Switches sessions to the overnight initiative profile, read from HIMMEL_INITIATIVE_OVERNIGHT instead of HIMMEL_INITIATIVE.' },
+    initOvernight: { t: 'HIMMEL_INITIATIVE_OVERNIGHT', d: 'The overnight step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_OVERNIGHT is on.' },
+    automerge: { t: 'ARMAUTOMERGE', d: 'Gate policy. Arms merge-on-green, the one merge path that waits for green CI and confirmed branch protection. Off, merge-on-green refuses.' },
+    vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
+    vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },
+    graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the weekly semantic refresh and the 6-hourly publish of himmel’s own graph.' },
+    backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your usage bank) or ollama (local GPU). Any other value is refused before work starts.' }
+  };
+
+  var current = 'work';
+  var prevStates = {};
+
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function sv(tag, attrs, text) {
+    var e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  var whoLabel = { auto: 'on its own', manual: 'you', gated: 'gate', off: 'not running', blocked: 'blocked' };
+
+  function renderTabs() {
+    var t = document.getElementById('tabs');
+    t.textContent = '';
+    loops.forEach(function (lp) {
+      var b = el('button', { type: 'button', role: 'tab', id: 'tab-' + lp.id, 'aria-selected': String(lp.id === current), 'aria-controls': 'loop-panel', tabindex: lp.id === current ? '0' : '-1' }, lp.tab);
+      b.className = 'tab';
+      b.addEventListener('click', function () { current = lp.id; prevStates = {}; render(); });
+      b.addEventListener('keydown', function (e) {
+        var i = loops.indexOf(lp);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          var n = loops[(i + (e.key === 'ArrowRight' ? 1 : loops.length - 1)) % loops.length];
+          current = n.id; prevStates = {}; render();
+          document.getElementById('tab-' + n.id).focus();
+        }
+      });
+      t.appendChild(b);
+    });
+  }
+
+  function select(k) {
+    var items = document.querySelectorAll('.step');
+    for (var i = 0; i < items.length; i++) items[i].classList.toggle('hl', items[i].getAttribute('data-k') === k);
+  }
+
+  function render() {
+    renderTabs();
+    var lp = loops.filter(function (x) { return x.id === current; })[0];
+    document.getElementById('loop-title').textContent = lp.title;
+    document.getElementById('loop-blurb').textContent = lp.blurb;
+    document.getElementById('loop-meta').textContent = lp.meta;
+    var nodes = lp.nodes();
+    var svg = document.getElementById('diagram');
+    svg.textContent = '';
+    var cx = 360, cy = 300, R = 190, n = nodes.length;
+    svg.appendChild(sv('circle', { cx: cx, cy: cy, r: R, 'class': 'track' }));
+    svg.appendChild(sv('circle', { cx: cx, cy: cy, r: R, 'class': 'flow' }));
+    var c1 = sv('text', { x: cx, y: cy - 4, 'text-anchor': 'middle', 'class': 'center-t' }, lp.tab);
+    var c2 = sv('text', { x: cx, y: cy + 20, 'text-anchor': 'middle', 'class': 'center-s' }, n + ' steps, clockwise');
+    svg.appendChild(c1); svg.appendChild(c2);
+    var list = document.getElementById('steps');
+    list.textContent = '';
+    nodes.forEach(function (nd, i) {
+      var a = -Math.PI / 2 + i * 2 * Math.PI / n;
+      var x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+      var changed = prevStates[nd.k] && prevStates[nd.k] !== nd.st;
+      var g = sv('g', { 'class': 'node ' + nd.st + (changed ? ' changed' : ''), tabindex: '0', role: 'button', 'aria-label': (i + 1) + '. ' + nd.l + ': ' + whoLabel[nd.st] });
+      if (nd.c) g.setAttribute('data-cadence', nd.c);
+      g.appendChild(sv('circle', { cx: x, cy: y, r: 17 }));
+      g.appendChild(sv('text', { x: x, y: y + 4, 'text-anchor': 'middle', 'class': 'ix' }, String(i + 1)));
+      var ca = Math.cos(a), sa = Math.sin(a);
+      var lx = cx + (R + 28) * ca, ly = cy + (R + 28) * sa + (sa < -0.5 ? -12 : sa > 0.5 ? 6 : -4);
+      var anchor = Math.abs(ca) < 0.3 ? 'middle' : (ca > 0 ? 'start' : 'end');
+      g.appendChild(sv('text', { x: lx, y: ly, 'text-anchor': anchor, 'class': 'lbl' }, nd.l));
+      g.appendChild(sv('text', { x: lx, y: ly + 15, 'text-anchor': anchor, 'class': 'sub' }, nd.sub));
+      g.addEventListener('click', function () { select(nd.k); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(nd.k); } });
+      svg.appendChild(g);
+      var li = el('li', { 'data-k': nd.k });
+      li.className = 'step ' + nd.st + (changed ? ' flash' : '');
+      li.appendChild(el('span', { 'class': 'dot', 'aria-hidden': 'true' }, String(i + 1)));
+      var body = el('div');
+      var head = el('div');
+      head.appendChild(el('b', null, nd.l));
+      head.appendChild(el('span', { 'class': 'who' }, whoLabel[nd.st]));
+      body.appendChild(head);
+      body.appendChild(el('p', null, nd.n));
+      li.appendChild(body);
+      list.appendChild(li);
+    });
+    prevStates = {};
+    nodes.forEach(function (nd) { prevStates[nd.k] = nd.st; });
+    renderExplain();
+    markTouched();
+  }
+
+  function renderExplain() {
+    var box = document.getElementById('explain');
+    box.textContent = '';
+    var k = last || 'init';
+    var ex = explain[k];
+    box.appendChild(el('h3', null, ex.t));
+    box.appendChild(el('p', null, ex.d));
+    var changes = Object.keys(defaults).filter(function (x) { return s[x] !== defaults[x]; });
+    box.appendChild(el('p', { 'class': 'eff' }, changes.length ? changes.length + ' setting' + (changes.length === 1 ? '' : 's') + ' changed from the default. Steps that changed state glow amber.' : 'Everything is at its default.'));
+  }
+
+  function markTouched() {
+    var inputs = document.querySelectorAll('[data-set]');
+    for (var i = 0; i < inputs.length; i++) {
+      var k = inputs[i].getAttribute('data-set');
+      var row = inputs[i].closest('.setting');
+      row.classList.toggle('touched', s[k] !== defaults[k]);
+      row.classList.toggle('focus', k === last);
+    }
+    document.getElementById('s-ion').disabled = !s.overnight;
+  }
+
+  function sync() {
+    var inputs = document.querySelectorAll('[data-set]');
+    for (var i = 0; i < inputs.length; i++) {
+      var k = inputs[i].getAttribute('data-set');
+      if (inputs[i].type === 'checkbox') inputs[i].checked = s[k]; else inputs[i].value = s[k];
+    }
+  }
+
+  document.getElementById('settings').addEventListener('change', function (e) {
+    var t = e.target, k = t.getAttribute('data-set');
+    if (!k) return;
+    s[k] = t.type === 'checkbox' ? t.checked : t.value;
+    last = k;
+    render();
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    s = JSON.parse(JSON.stringify(defaults)); last = null; sync(); render();
+  });
+
+  // timeline bars
+  function bars(id, n, on, cls) {
+    var b = document.getElementById(id);
+    for (var i = 0; i < n; i++) { var t = el('span', { 'class': 'tick' + (on(i) ? ' on' + (cls ? ' ' + cls : '') : '') }); b.appendChild(t); }
+  }
+  bars('tl-ast', 24, function () { return true; });
+  bars('tl-pub', 24, function (i) { return i % 6 === 0; }, 'amber');
+  bars('tl-sem', 24, function (i) { return i === 13; }, 'green');
+
+  // theme toggle: auto -> light -> dark
+  var modes = ['auto', 'light', 'dark'];
+  var tb = document.getElementById('theme');
+  var mode = 'auto';
+  try { mode = localStorage.getItem('himmel-guide-theme') || 'auto'; } catch (e) { mode = 'auto'; }
+  function applyTheme() {
+    if (mode === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', mode);
+    tb.textContent = 'Theme: ' + mode;
+  }
+  tb.addEventListener('click', function () {
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    try { localStorage.setItem('himmel-guide-theme', mode); } catch (e) { /* private window */ }
+    applyTheme();
+  });
+  applyTheme();
+
+  s = JSON.parse(JSON.stringify(defaults));
+  sync();
+  render();
+})();
+</script>
+</body>
+</html>

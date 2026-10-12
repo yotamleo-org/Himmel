@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installer Journey</title>
+<meta name="description" content="A step-by-step walk through the himmel installer: every question it asks, what you see, and what each answer changes.">
+<style>
+  :root {
+    --bg: #f4f6fa; --bg-2: #e9eef6; --surface: #ffffff; --surface-2: #f7f9fc;
+    --line: #d5dcea; --ink: #172033; --muted: #55607a; --faint: #8a93a8;
+    --accent: #2f62d8; --accent-soft: rgba(47,98,216,.12); --accent-ink: #224aa8;
+    --amber: #b7700f; --amber-soft: rgba(183,112,15,.13);
+    --green: #2f7d4f; --green-soft: rgba(47,125,79,.12);
+    --term-bg: #10172a; --term-ink: #dfe6f5; --term-dim: #8792ad; --term-hi: #9dbbff; --term-ok: #7fd3a3; --term-amber: #f0b660;
+    --shadow: 0 1px 2px rgba(23,32,51,.06), 0 6px 22px rgba(23,32,51,.06);
+    --serif: "Iowan Old Style", "Palatino Linotype", Charter, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1220; --bg-2: #121a2d; --surface: #151d31; --surface-2: #1a2339;
+      --line: #2a3654; --ink: #e8ecf5; --muted: #a3adc4; --faint: #6c7792;
+      --accent: #7aa2ff; --accent-soft: rgba(122,162,255,.14); --accent-ink: #9dbbff;
+      --amber: #e3a54a; --amber-soft: rgba(227,165,74,.15);
+      --green: #6cc596; --green-soft: rgba(108,197,150,.14);
+      --term-bg: #080c17;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.28);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1220; --bg-2: #121a2d; --surface: #151d31; --surface-2: #1a2339;
+    --line: #2a3654; --ink: #e8ecf5; --muted: #a3adc4; --faint: #6c7792;
+    --accent: #7aa2ff; --accent-soft: rgba(122,162,255,.14); --accent-ink: #9dbbff;
+    --amber: #e3a54a; --amber-soft: rgba(227,165,74,.15);
+    --green: #6cc596; --green-soft: rgba(108,197,150,.14);
+    --term-bg: #080c17;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.28);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    background-image: radial-gradient(ellipse 90% 340px at 50% -40px, var(--bg-2), transparent);
+    font: 16px/1.6 var(--sans);
+  }
+  a { color: var(--accent-ink); text-underline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 .3em; overflow-wrap: anywhere; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 9; }
+  .skip:focus { left: 16px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 16px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 0; font-size: 14px; color: var(--muted); }
+  .topbar nav { display: flex; gap: 16px; flex-wrap: wrap; }
+  .theme-btn { font: inherit; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); }
+  header.hero { padding: 48px 0 26px; max-width: 760px; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 600; color: var(--accent-ink); margin: 0 0 10px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(34px, 6vw, 52px); line-height: 1.08; letter-spacing: -.015em; margin: 0 0 14px; text-wrap: balance; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 62ch; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(24px, 3.6vw, 30px); line-height: 1.15; margin: 0 0 6px; letter-spacing: -.01em; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+
+  /* path chooser */
+  .path { padding: 16px 18px; margin: 0 0 18px; }
+  .path-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .path-head p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .choices { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .choice { min-width: 0; }
+  .choice > span { display: block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin: 0 0 4px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .seg button { font: inherit; font-size: 13.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+  .seg button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+  .reset { font: inherit; font-size: 13px; color: var(--accent-ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* stepper */
+  .journey { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 20px; align-items: start; }
+  .rail { padding: 10px; position: sticky; top: 14px; }
+  .rail ol { list-style: none; margin: 0; padding: 0; position: relative; }
+  .rail li { position: relative; }
+  .rail li + li::before { content: ""; position: absolute; left: 21px; top: -6px; height: 8px; width: 2px; background: var(--line); }
+  .rail button { width: 100%; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: center; text-align: left; font: inherit; font-size: 14.5px; color: var(--ink); background: none; border: 1px solid transparent; border-radius: 10px; padding: 6px 8px; cursor: pointer; }
+  .rail button:hover { background: var(--surface-2); }
+  .rail button[aria-current="step"] { background: var(--accent-soft); border-color: var(--accent); }
+  .rail .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 2px solid var(--accent); color: var(--accent-ink); background: var(--surface); }
+  .rail .done .n { background: var(--accent); color: var(--surface); }
+  .rail .skipped button { color: var(--faint); }
+  .rail .skipped .n { border-color: var(--faint); border-style: dashed; color: var(--faint); }
+  .rail .soon .n { border-color: var(--amber); color: var(--amber); }
+  .rail small { display: block; font-size: 12px; color: var(--faint); line-height: 1.3; }
+  .progress { height: 6px; border-radius: 999px; background: var(--line); margin: 6px 8px 12px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s; }
+
+  .stage { padding: 22px; min-width: 0; }
+  .stage-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .count { font-size: 13px; color: var(--faint); font-weight: 600; letter-spacing: .04em; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; padding: 0 8px; border: 1px solid; }
+  .badge.skip { color: var(--faint); border-color: var(--faint); }
+  .badge.soon { color: var(--amber); border-color: var(--amber); }
+  .badge.ask { color: var(--accent-ink); border-color: var(--accent); }
+  .badge.info { color: var(--green); border-color: var(--green); }
+  .intro { color: var(--muted); margin: 4px 0 16px; max-width: 66ch; }
+  .term { background: var(--term-bg); color: var(--term-ink); border-radius: 12px; padding: 0; overflow: hidden; border: 1px solid rgba(0,0,0,.2); }
+  .term-bar { display: flex; gap: 6px; padding: 9px 12px; background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.06); }
+  .term-bar i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.18); }
+  .term-bar span { margin-left: 8px; font: 12px var(--mono); color: var(--term-dim); }
+  pre { margin: 0; padding: 14px 16px; font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre .q { color: var(--term-hi); font-weight: 600; }
+  pre .d { color: var(--term-dim); }
+  pre .ok { color: var(--term-ok); }
+  pre .w { color: var(--term-amber); }
+  pre .in { color: #fff; }
+  .means { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+  .means > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .means h3 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+  .means p, .means li { color: var(--muted); font-size: 14.5px; margin: 0; }
+  .means ul { margin: 0; padding-left: 18px; }
+  .means li + li { margin-top: 4px; }
+  .skipnote { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--faint); color: var(--muted); }
+  .nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+  .nav button { font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 10px; padding: 8px 16px; cursor: pointer; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+  .nav button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .nav button:disabled { opacity: .4; cursor: default; }
+  footer { padding: 30px 0 60px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); margin-top: 36px; }
+  footer nav { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 1000px) { .choices { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 860px) {
+    .journey { grid-template-columns: minmax(0, 1fr); }
+    .rail { position: static; }
+    .rail ol { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+    .rail li + li::before { display: none; }
+    .rail button { grid-template-columns: 26px; padding: 4px; }
+    .rail button > span:last-child { display: none; }
+    .means { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    header.hero { padding-top: 30px; }
+    .lede { font-size: 16.5px; }
+    .choices { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .stage { padding: 16px; }
+    pre { font-size: 12px; padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#journey">Skip to the steps</a>
+<div class="wrap">
+  <div class="topbar">
+    <nav aria-label="Site">
+      <a href="../README.md">Docs home</a>
+      <a href="loops-and-graphs.html">Loops and graphs</a>
+      <a href="../getting-started.md">Getting started</a>
+    </nav>
+    <button class="theme-btn" id="theme" type="button" aria-label="Switch colour theme">Theme: auto</button>
+  </div>
+
+  <header class="hero">
+    <p class="kicker">himmel guide</p>
+    <h1>The installer, step by step</h1>
+    <p class="lede">One command asks you a short series of questions, shows you a summary, and only then changes anything. Pick your path below to see exactly which questions you will meet, what the terminal shows, and what each answer does.</p>
+  </header>
+
+  <!-- source: scripts/himmelctl/bin.js askQuestions() + PROFILE_PRESETS; scripts/himmelctl/lib/adopter-profile.js (lanes) -->
+  <section class="card path" aria-labelledby="path-h">
+    <div class="path-head"><div><h2 id="path-h">Your path</h2><p>A profile seeds the defaults; you can still change every answer.</p></div><button class="reset" type="button" id="reset">Start over</button></div>
+    <div class="choices" id="choices"></div>
+  </section>
+
+  <section class="journey" id="journey" aria-label="Installer steps">
+    <nav class="card rail" aria-label="Steps">
+      <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      <ol id="rail"></ol>
+    </nav>
+    <article class="card stage" id="stage" aria-live="polite">
+      <div class="stage-head"><span class="count" id="count"></span><span id="badge"></span></div>
+      <h2 id="title" tabindex="-1"></h2>
+      <p class="intro" id="intro"></p>
+      <div class="term" id="term-wrap">
+        <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>terminal</span></div>
+        <pre id="term" aria-label="What the terminal shows"></pre>
+      </div>
+      <div id="skipnote" class="skipnote" hidden></div>
+      <div class="means" id="means"></div>
+      <div class="nav"><button type="button" id="prev">Back</button><button type="button" class="primary" id="next">Next step</button></div>
+    </article>
+  </section>
+
+  <footer>
+    <div>Every question and line of output here comes from the installer's own code; the page source cites the file beside each step.</div>
+    <nav aria-label="Further reading">
+      <a href="../setup/install.md">Full install guide</a>
+      <a href="../himmelctl.md">himmelctl reference</a>
+      <a href="../configuration.md">Configuration</a>
+      <a href="../cadences.md">Scheduled jobs</a>
+      <a href="../setup/vm-mode.md">VM mode</a>
+    </nav>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // source: scripts/himmelctl/bin.js PROFILE_PRESETS
+  var presets = {
+    starter: { vault: 'none', handover: 'inline', alwaysOn: 'no', cadences: [] },
+    luna: { vault: 'default-template', handover: 'inline', alwaysOn: 'no', cadences: [] },
+    operator: { vault: 'existing', handover: 'external', alwaysOn: 'yes', cadences: ['pipeline', 'qmd', 'graphmap'] },
+    custom: { vault: 'none', handover: 'inline', alwaysOn: 'no', cadences: [] }
+  };
+  var p = {};
+  function reset() {
+    p = { profile: 'starter', vault: 'none', handover: 'inline', lanes: [], vm: 'local' };
+  }
+
+  var choiceDefs = [
+    { k: 'profile', label: 'Profile', opts: ['starter', 'luna', 'operator', 'custom'] },
+    { k: 'vault', label: 'Vault', opts: ['none', 'default-template', 'existing'], names: { none: 'none', 'default-template': 'new', existing: 'existing' } },
+    { k: 'handover', label: 'Handover', opts: ['inline', 'external'] },
+    { k: 'lanes', label: 'Extra lanes', opts: ['codex', 'hermes'], multi: true },
+    { k: 'vm', label: 'Test VM', opts: ['local', 'remote', 'none'] }
+  ];
+
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // Terminal lines: [class, text]; class '' = plain.
+  function menu(title, opts, def, help) {
+    var out = [['q', '? ' + title + ' [' + opts.join('|') + '] (default: ' + def + ')']];
+    opts.forEach(function (o, i) {
+      out.push(['', '  ' + (i + 1) + ') ' + o + (o === def ? ' (recommended — press Enter)' : '') + (help && help[o] ? ' — ' + help[o] : '')]);
+    });
+    return out;
+  }
+  function answer(a) { return [['in', '> ' + a]]; }
+
+  // source: scripts/himmelctl/bin.js PROFILE_HELP, SCOPE_HELP, VAULT_HELP, HANDOVER_HELP, ALWAYS_ON_HELP, SECRETS_WALK_HELP, BRIDGE_HELP, VM_HELP
+  var help = {
+    profile: { starter: 'core harness: hooks, guardrails, worktrees, statusline, jira CLI', luna: 'starter + the second-brain surface, nothing else (vault/qmd/cadences/PHI/secrets/bridge questions)', operator: 'the maintainer machine as a consumable profile (seeds defaults ONLY; lanes and every has-it-or-not feature are still asked)', custom: 'walk every question from scratch, no seeding' },
+    scope: { project: "this install's config lives inside this repo's own .claude/ — wire it again separately for another project", user: "this install's config lives at ~/.claude/ — applies once, to every project you open" },
+    vault: { none: 'no second brain on this machine; every vault question below is skipped', 'default-template': 'scaffold a fresh vault from templates/luna-second-brain', existing: 'point at the Obsidian vault you already have (in-place, STAMPED-gated upgrade)' },
+    handover: { inline: "no-op — handover state stays in this repo's own handovers/ (adopt.sh/setup.sh default)", external: 'persists HANDOVER_DIR to an external state repo you point at next' },
+    alwaysOn: { yes: 'print the unattended/scheduled-run hardening checklist (nothing is executed either way)', no: 'print a one-line pointer to the checklist instead' },
+    secrets: { run: 'walk each luna secret with an instruction card + probe (himmelctl never harvests the value)', skip: 'skip the walk-through' },
+    bridge: { off: 'no telegram bridge configured', on: 'configure telegram voice/text ingestion (.env path, whisper CLI/model, optional persistence)' },
+    vm: { local: 'the local test VM (ssh localhost:2222) — the default', remote: 'a VM you reach over ssh (asks for user@host, port, identity)', none: 'no VM available — VM-proof steps need an operator ack + rollback point' },
+    lanes: { codex: "requires the codex CLI + its own login; skip if you don't have it", hermes: 'gateway lane; own opt-in, own install profile, own credentials' }
+  };
+
+  // source: scripts/himmelctl/lib/cadence-registry.json (requires + description); bin.js offeredCadenceRows()
+  var cadenceRows = [
+    { id: 'pipeline', req: 'vault', d: 'daily fetch-health/harvest/synthesize + weekly health runs against the vault' },
+    { id: 'qmd', req: 'vault', d: 'daily qmd update+embed+completeness assert over every configured collection' },
+    { id: 'graphmap', req: 'vault', d: 'hourly free structural (AST) refresh + weekly semantic refresh of the luna/himmel graphify graphs' },
+    { id: 'codex-sweep', req: 'codex', d: 'recurring sweep of orphaned codex broker/MCP-fleet processes' },
+    { id: 'drift-fix', req: 'none', d: 'nightly /drift-fix (bump auto-bumpable pins, open an ordinary PR)' },
+    { id: 'upstream-watch', req: 'none', d: "daily scan of himmel's open upstream PRs/issues for a delta" },
+    { id: 'doctor', req: 'none', d: 'daily himmel-doctor run from the primary checkout' },
+    { id: 'vault-stall', req: 'vault', vm: true, d: 'every 15 min: detect a stalled vault auto-commit' }
+  ];
+  function offered() {
+    return cadenceRows.filter(function (r) {
+      if (r.req === 'vault') return p.vault !== 'none';
+      if (r.req === 'codex') return p.lanes.indexOf('codex') !== -1;
+      return true;
+    });
+  }
+  function hasVault() { return p.vault !== 'none'; }
+
+  var steps = [
+    // source: scripts/himmelctl/bin.js HARD_GATE_TOOLS; docs/getting-started.md §1; docs/setup/new-machine.md
+    { id: 'pre', short: 'Prerequisites', sub: 'tools + one command', kind: 'info',
+      intro: 'himmel is a harness for Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.',
+      term: function () { return [['d', '# 1. Claude Code itself (Linux/macOS)'], ['in', '$ curl -fsSL https://claude.ai/install.sh | bash'], ['d', '# 2. clone himmel once, then run the installer from the repo you want it in'], ['in', '$ git clone https://github.com/yotamleo/himmel'], ['in', '$ node himmel/scripts/himmelctl/bin.js install --scope project'], ['d', '# no Node yet? run this first, then re-run install:'], ['in', '$ bash himmel/scripts/himmelctl/bootstrap.sh']]; },
+      means: function () { return { see: ['A hard check for bash, git, jq and python3, plus npm or bun (npm is the one it recommends).', 'A missing tool stops the run before the first question, with the command to install it.'], does: ['Nothing yet. No question has been answered, and nothing on your machine has changed.'] }; } },
+    { id: 'profile', short: 'Profile', sub: 'how much to set up', kind: 'ask',
+      intro: 'The first question picks a starting point. A profile only fills in the default answers for the questions after it; it never skips a question.',
+      term: function () { return menu('profile', ['starter', 'luna', 'operator', 'custom'], 'starter', help.profile).concat(answer(p.profile)); },
+      means: function () {
+        var d = { starter: 'The core harness only: hooks, guardrails, worktrees, the status line and the Jira CLI.', luna: 'The starter set plus a fresh companion vault (a second-brain notes folder) and its questions.', operator: 'Seeds an existing vault, an external handover repo, an always-on machine and three scheduled jobs: pipeline, qmd and graphmap.', custom: 'No seeding at all. Every question starts from its plain default.' };
+        return { see: ['Four numbered options. Press Enter for starter, or type a number or a name.'], does: [d[p.profile]] };
+      } },
+    // source: bin.js SCOPE_HELP
+    { id: 'scope', short: 'Scope', sub: 'this repo or every repo', kind: 'ask',
+      intro: 'Where the installed config lives. The --scope flag you passed fills in the default.',
+      term: function () { return menu('scope', ['project', 'user'], 'project', help.scope).concat(answer('project')); },
+      means: function () { return { see: ['Two options; Enter keeps the value from --scope.'], does: ['project wires this repo only. user wires your user-level Claude Code config, so every project you open gets the harness.'] }; } },
+    // source: bin.js askQuestions() step 3 + the existing-vault STAMPED gate
+    { id: 'vault', short: 'Companion vault', sub: 'with or without notes', kind: 'ask',
+      intro: 'himmel can run with a companion vault: an Obsidian folder of notes, clips and daily entries that its scheduled jobs keep indexed. Saying none skips every vault question below.',
+      term: function () {
+        var t = menu('vault', ['none', 'default-template', 'existing'], presets[p.profile].vault, help.vault).concat(answer(p.vault));
+        if (hasVault()) t = t.concat([['q', '? vault path (default: ~/Documents/luna)'], ['in', '> ']]);
+        if (p.vault === 'existing') t.push(['w', 'Only a vault the template already stamped is upgraded in place; any other folder is refused and nothing runs.']);
+        return t;
+      },
+      means: function () {
+        var d = { none: 'No vault. The privacy, secrets and Telegram questions are skipped, and only the general scheduled jobs are offered.', 'default-template': 'A new vault is created from the bundled template at the path you give.', existing: 'Your existing vault is upgraded in place, but only if the template created it. Converting some other vault is not supported yet.' };
+        return { see: hasVault() ? ['The vault menu, then a path prompt. Enter accepts ~/Documents/luna.'] : ['The vault menu only.'], does: [d[p.vault]] };
+      } },
+    // source: bin.js HANDOVER_HELP; scripts/lib/handover-path.sh
+    { id: 'handover', short: 'Handover notes', sub: 'where sessions save state', kind: 'ask',
+      intro: 'Each session can end by writing a handover: what it did and what is next, so the next session picks up the thread. This is where those notes live.',
+      term: function () {
+        var t = menu('handover', ['inline', 'external'], presets[p.profile].handover, help.handover).concat(answer(p.handover));
+        if (p.handover === 'external') t = t.concat([['q', '? handover path (default: ~/.claude/handover-state)'], ['in', '> ']]);
+        return t;
+      },
+      means: function () { return { see: [p.handover === 'external' ? 'The menu, then a path prompt.' : 'The menu only.'], does: [p.handover === 'external' ? 'Records HANDOVER_DIR, pointing at a separate state repo. Your notes outlive any one clone and can be shared between machines.' : 'Notes stay in this repo’s handovers/ folder. Nothing is written for this answer.'] }; } },
+    // source: bin.js askLanes(); adopter-profile.js LANE_HELP + laneCrossModelDisclosureLines()
+    { id: 'lanes', short: 'Extra lanes', sub: 'other model families', kind: 'ask',
+      intro: 'A lane is another model family himmel can hand work to. Both are opt-in and need their own tools and logins. They matter mostly for review: a second model family catches what Claude misses.',
+      term: function () {
+        var t = [['d', 'note: codex and hermes add cross-model review to /pr-check — Claude tiers'], ['d', '  remain the only v1 implementation lanes (select codex/hermes below, or use'], ['d', '  --with-codex / --with-hermes non-interactively). Without one, the /pr-check'], ['d', '  review panel runs Claude-only, and CR_REQUIRE_CROSS_MODEL cannot be satisfied'], ['d', '  (see docs/configuration.md).'], ['q', '? lanes [codex,hermes|none] (default: none)'], ['', '  1) codex — ' + help.lanes.codex], ['', '  2) hermes — ' + help.lanes.hermes], ['', '  (Enter accepts the recommended default; comma-separate multiple numbers)']];
+        return t.concat(answer(p.lanes.length ? p.lanes.join(',') : 'none'));
+      },
+      means: function () {
+        var x = p.lanes.length ? 'Selected: ' + p.lanes.join(' and ') + '. Review in /pr-check can include a non-Claude critic.' : 'No extra lanes. Review is Claude-only, which always runs; a policy that demands a second model family cannot be met.';
+        return { see: ['A note on what lanes change, printed once, then a multi-select. Enter means none.'], does: [x].concat(p.lanes.indexOf('codex') !== -1 ? ['The codex-sweep scheduled job becomes available later on.'] : []) };
+      } },
+    // source: bin.js ALWAYS_ON_HELP
+    { id: 'always', short: 'Always-on machine', sub: 'unattended runs', kind: 'ask',
+      intro: 'Will this machine run work while you are away, such as scheduled jobs or overnight shifts?',
+      term: function () { return menu('always-on machine (unattended/scheduled runs)', ['yes', 'no'], presets[p.profile].alwaysOn, help.alwaysOn).concat(answer(presets[p.profile].alwaysOn)); },
+      means: function () { return { see: ['Two options.'], does: ['yes prints a hardening checklist for unattended machines; no prints a one-line pointer to it. Neither runs anything.'] }; } },
+    // source: bin.js askVm() + VM_HELP; asked only when an offered cadence has vm_proof
+    { id: 'vm', short: 'Test VM', sub: 'where risky steps are proved', kind: 'ask',
+      skip: function () { return hasVault() ? '' : 'Skipped on your path. This question appears only when a job that needs proof on a test VM is on offer, and the only such job (vault-stall) needs a companion vault.'; },
+      intro: 'Some jobs change your machine on a timer, so himmel wants them proved on a throwaway test VM first. Tell it where that VM is.',
+      term: function () {
+        var t = menu('vm.mode — where VM-proof steps run', ['local', 'remote', 'none'], 'local', help.vm).concat(answer(p.vm));
+        if (p.vm === 'remote') t = t.concat([['q', '? vm.remote.ssh (user@host)'], ['in', '> '], ['q', '? vm.remote.port (default: 22)'], ['in', '> '], ['q', '? vm.remote.identity (default: ~/.ssh/id_ed25519)'], ['in', '> ']]);
+        return t;
+      },
+      means: function () {
+        var d = { local: 'VM-proof steps run on the local test VM over ssh on port 2222.', remote: 'VM-proof steps run on a VM you reach over ssh; each field is asked again until it is valid.', none: 'No VM. A VM-gated job can still be armed, but only when you pick it yourself, as an acknowledgement that you have a way back.' };
+        return { see: ['Three options; remote asks three more fields.'], does: [d[p.vm], 'Saved as vm in ~/.himmel/config.json.'] };
+      } },
+    // source: bin.js askCadences(); cadence-registry.json
+    { id: 'cadences', short: 'Scheduled jobs', sub: 'what runs on a timer', kind: 'ask',
+      intro: 'A menu of recurring jobs you can arm now. Only jobs whose requirement your answers meet are listed, and nothing arms unless you choose it.',
+      term: function () {
+        var rows = offered();
+        var defs = presets[p.profile].cadences.filter(function (id) { return rows.some(function (r) { return r.id === id; }); });
+        var t = [['q', '? cadences — recurring scheduled jobs to arm now [' + rows.map(function (r) { return r.id; }).join(',') + '|none] (default: ' + (defs.join(',') || 'none') + ')']];
+        rows.forEach(function (r, i) {
+          var note = r.vm && p.vm === 'none' ? ' — needs VM proof first — vm.mode=none: arm only with an operator ack after a rollback point' : '';
+          t.push(['', '  ' + (i + 1) + ') ' + r.id + (defs.indexOf(r.id) !== -1 ? ' (recommended)' : '') + ' — ' + r.d + note]);
+        });
+        t.push(['', '  (Enter accepts the recommended defaults; comma-separate multiple numbers)']);
+        return t.concat(answer(defs.join(',') || 'none'));
+      },
+      means: function () {
+        var rows = offered();
+        return { see: [rows.length + ' jobs on offer for your path.', 'If you decline a job that is already armed from an earlier install, one more question asks whether to disarm it now.'], does: ['Each chosen job is armed with its own script; the rest are recorded as off. See the loops and graphs guide for what each job does.'] };
+      } },
+    // source: bin.js askQuestions() steps 9–11 (vault-gated); adopter-profile.js phiChecklistLines()
+    { id: 'privacy', short: 'Health data', sub: 'privacy declaration', kind: 'ask',
+      skip: function () { return hasVault() ? '' : 'Skipped on your path: asked only when you set up a companion vault.'; },
+      intro: 'If your vault will hold health records, himmel keeps them away from models outside your machine. It asks you to declare that, and prints the checklist you complete by hand.',
+      term: function () { return [['d', '── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────'], ['d', '  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)'], ['d', '  [ ] 2. add the vault\'s absolute path as a line in ~/.config/claude-glm/phi-roots'], ['d', '  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist'], ['q', '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)'], ['in', '> no']]; },
+      means: function () { return { see: ['A read-only checklist, then a yes/no question you must type in words. A bare number is not accepted here.', 'A second question asks about a separate personal or medical vault.'], does: ['Records your answer only. The markers themselves are yours to create.'] }; } },
+    // source: bin.js SECRETS_WALK_HELP; .env.example; docs/setup/install.md minimal config
+    { id: 'secrets', short: 'Secrets into .env', sub: 'tokens stay yours', kind: 'ask',
+      intro: 'Tokens and API keys go in .env and nowhere else. The installer never asks you to type a secret into it.',
+      term: function () {
+        if (!hasVault()) return [['d', '# no vault: there is no secrets walk. Add what you use to .env by hand,'], ['d', '# for example the Jira CLI:'], ['', 'JIRA_BASE_URL=https://your-site.atlassian.net'], ['', 'JIRA_EMAIL=you@example.com'], ['', 'JIRA_API_TOKEN=…'], ['', 'JIRA_PROJECT_KEY=ABC']];
+        return menu('walk through luna secrets now (instruction card + probe per secret; himmelctl never harvests the value itself)', ['run', 'skip'], 'skip', help.secrets).concat(answer('run'));
+      },
+      means: function () { return { see: hasVault() ? ['An instruction card per secret: where to get it and which .env line it belongs on, then a probe that checks it works.'] : ['No question. The .env.example file lists every optional secret.'], does: ['You paste each value into .env yourself; the installer only checks that it works. Every integration is optional.'] }; } },
+    // source: bin.js BRIDGE_HELP
+    { id: 'bridge', short: 'Telegram bridge', sub: 'voice and text notes', kind: 'ask',
+      skip: function () { return hasVault() ? '' : 'Skipped on your path: the bridge files messages into a companion vault.'; },
+      intro: 'An optional bridge that turns Telegram voice and text messages into vault notes, transcribed locally with whisper.',
+      term: function () { return menu('configure the telegram bridge (voice/text ingestion)?', ['off', 'on'], p.profile === 'operator' ? 'on' : 'off', help.bridge).concat(answer(p.profile === 'operator' ? 'on' : 'off')); },
+      means: function () { return { see: ['Two options; on asks for the bridge’s own .env path, the whisper program, the model and whether to keep it running.'], does: ['Off writes nothing. The bridge keeps its token in its own .env file.'] }; } },
+    // source: bin.js runPlan(): answers summary, "derived:" line, Proceed? [Y/n], --dry-run
+    { id: 'summary', short: 'Summary', sub: 'nothing changes before this', kind: 'info',
+      intro: 'Every answer so far was only collected. Now you see the full plan and the exact command it will run, and you confirm once.',
+      term: function () {
+        return [['d', '…your answers, one per line…'], ['', 'derived: adopt.sh --scope project …'], ['q', 'Proceed? [Y/n]'], ['in', '> '], ['ok', '✓ installed — re-run any time: it converges, it does not duplicate']];
+      },
+      means: function () { return { see: ['A summary of your answers, the derived command, and one confirm that defaults to yes.'], does: ['Add --dry-run to the install command to see the same plan and stop there.'] }; } },
+    // source: docs/internals/config-layers.md (new layout, in review); the config-file wizard step is not built yet
+    { id: 'config', short: 'Your config file', sub: 'coming soon', kind: 'soon',
+      intro: 'Coming soon: a step that writes your settings into a config file you can read, edit and track. Today the installer records answers in its own files; this step will gather them in one place.',
+      term: function () {
+        var t = [['d', '# coming soon — what the wizard will write'], ['', '~/.himmel/himmel.conf'], ['', '  USER_SLUG=jane-doe']];
+        if (p.handover === 'external') t.push(['', '  HANDOVER_DIR=~/.claude/handover-state']);
+        if (hasVault()) t.push(['', '  LUNA_VAULT_PATH=~/Documents/luna']);
+        t.push(['', '  TICKET_ID_REQUIRED=1']);
+        if (hasVault()) t.push(['d', '  ↳ tracked in your vault through a symlink, so it follows you between machines']);
+        t.push(['', '~/.himmel/himmel.conf.local   ← overrides for this machine only']);
+        t.push(['', '~/.himmel/config.json  policy  ← gate rules the agent cannot write']);
+        return t;
+      },
+      means: function () { return { see: ['A preview of the file before it is written.'], does: ['Everyday settings go in himmel.conf as KEY=value lines; an environment variable still wins over the file.', 'The three gate-policy settings go under policy in a file the agent cannot write, and the environment cannot override them.', '.env keeps secrets only.'] }; } },
+    // source: docs/getting-started.md §3; docs/daily-loop.md; docs/handover/running-a-console.md
+    { id: 'first', short: 'Your first session', sub: 'the loop starts', kind: 'info',
+      intro: 'The harness only acts inside a Claude Code session. Open one at the repo root and run one change through the loop.',
+      term: function () { return [['in', '$ claude'], ['in', '> /worktree my-first-change'], ['d', '  …edit, commit, push…'], ['in', '> /pr-check'], ['in', '> /handover'], ['d', '# later, to steer many sessions from one:'], ['in', '> /console new']]; },
+      means: function () { return { see: ['Hooks fire on every tool call from here on: editing on main is refused, commits are checked, a review is required before a pull request.'], does: ['/worktree gives you an isolated branch, /pr-check reviews the diff, /handover saves where you stopped.' + (p.handover === 'external' ? ' Your handovers land in the external state repo.' : '')] }; } }
+  ];
+
+  var cur = 0;
+  function isSkipped(st) { return st.skip ? st.skip() : ''; }
+
+  function renderChoices() {
+    var box = document.getElementById('choices');
+    box.textContent = '';
+    choiceDefs.forEach(function (c) {
+      var wrap = el('div', { 'class': 'choice', role: 'group', 'aria-labelledby': 'c-' + c.k });
+      wrap.appendChild(el('span', { id: 'c-' + c.k }, c.label));
+      var seg = el('div', { 'class': 'seg' });
+      c.opts.forEach(function (o) {
+        var on = c.multi ? p[c.k].indexOf(o) !== -1 : p[c.k] === o;
+        var b = el('button', { type: 'button', 'aria-pressed': String(on) }, c.names && c.names[o] ? c.names[o] : o);
+        if (c.k === 'vm' && !hasVault()) { b.disabled = true; b.title = 'Asked only with a companion vault'; }
+        b.addEventListener('click', function () {
+          if (c.multi) {
+            var i = p[c.k].indexOf(o);
+            if (i === -1) p[c.k].push(o); else p[c.k].splice(i, 1);
+          } else {
+            p[c.k] = o;
+            if (c.k === 'profile') { p.vault = presets[o].vault; p.handover = presets[o].handover; }
+          }
+          renderChoices(); render();
+        });
+        seg.appendChild(b);
+      });
+      wrap.appendChild(seg);
+      box.appendChild(wrap);
+    });
+  }
+
+  function renderRail() {
+    var ol = document.getElementById('rail');
+    ol.textContent = '';
+    steps.forEach(function (st, i) {
+      var sk = isSkipped(st);
+      var li = el('li');
+      li.className = (sk ? 'skipped' : '') + (st.kind === 'soon' ? ' soon' : '') + (i < cur && !sk ? ' done' : '');
+      var b = el('button', { type: 'button', 'aria-label': 'Step ' + (i + 1) + ': ' + st.short + (sk ? ' (skipped on your path)' : '') });
+      if (i === cur) b.setAttribute('aria-current', 'step');
+      b.appendChild(el('span', { 'class': 'n', 'aria-hidden': 'true' }, String(i + 1)));
+      var t = el('span');
+      t.appendChild(document.createTextNode(st.short));
+      t.appendChild(el('small', null, sk ? 'skipped on your path' : st.sub));
+      b.appendChild(t);
+      b.addEventListener('click', function () { cur = i; render(true); });
+      li.appendChild(b);
+      ol.appendChild(li);
+    });
+    var live = steps.filter(function (st) { return !isSkipped(st); });
+    var pos = live.indexOf(steps[cur]);
+    document.getElementById('bar').style.width = (pos < 0 ? 0 : ((pos + 1) / live.length) * 100) + '%';
+  }
+
+  function render(focus) {
+    renderRail();
+    var st = steps[cur];
+    var sk = isSkipped(st);
+    var live = steps.filter(function (x) { return !isSkipped(x); }).length;
+    document.getElementById('count').textContent = 'Step ' + (cur + 1) + ' of ' + steps.length + ' · ' + live + ' on your path';
+    var badge = document.getElementById('badge');
+    badge.textContent = '';
+    var bk = sk ? ['skip', 'skipped'] : st.kind === 'soon' ? ['soon', 'coming soon'] : st.kind === 'ask' ? ['ask', 'question'] : ['info', 'you see'];
+    badge.appendChild(el('span', { 'class': 'badge ' + bk[0] }, bk[1]));
+    var title = document.getElementById('title');
+    title.textContent = st.short;
+    document.getElementById('intro').textContent = st.intro;
+    var tw = document.getElementById('term-wrap');
+    var note = document.getElementById('skipnote');
+    var means = document.getElementById('means');
+    means.textContent = '';
+    if (sk) {
+      tw.hidden = true; note.hidden = false; note.textContent = sk;
+    } else {
+      tw.hidden = false; note.hidden = true;
+      var pre = document.getElementById('term');
+      pre.textContent = '';
+      st.term().forEach(function (ln) {
+        var span = el('span', ln[0] ? { 'class': ln[0] } : null, ln[1]);
+        pre.appendChild(span);
+        pre.appendChild(document.createTextNode('\n'));
+      });
+      var m = st.means();
+      [['What you see', m.see], ['What it does', m.does]].forEach(function (pair) {
+        var d = el('div');
+        d.appendChild(el('h3', null, pair[0]));
+        var ul = el('ul');
+        pair[1].forEach(function (x) { ul.appendChild(el('li', null, x)); });
+        d.appendChild(ul);
+        means.appendChild(d);
+      });
+    }
+    document.getElementById('prev').disabled = cur === 0;
+    var nx = document.getElementById('next');
+    nx.disabled = cur === steps.length - 1;
+    nx.textContent = cur === steps.length - 1 ? 'Done' : 'Next step';
+    if (focus) title.focus();
+  }
+
+  function move(d) {
+    var i = cur + d;
+    while (i > 0 && i < steps.length - 1 && isSkipped(steps[i])) i += d;
+    if (i >= 0 && i < steps.length) { cur = i; render(true); }
+  }
+  document.getElementById('prev').addEventListener('click', function () { move(-1); });
+  document.getElementById('next').addEventListener('click', function () { move(1); });
+  document.getElementById('reset').addEventListener('click', function () { reset(); cur = 0; renderChoices(); render(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'ArrowRight' && e.target.closest && e.target.closest('#journey')) { e.preventDefault(); move(1); }
+    if (e.key === 'ArrowLeft' && e.target.closest && e.target.closest('#journey')) { e.preventDefault(); move(-1); }
+  });
+
+  var modes = ['auto', 'light', 'dark'];
+  var tb = document.getElementById('theme');
+  var mode = 'auto';
+  try { mode = localStorage.getItem('himmel-guide-theme') || 'auto'; } catch (e) { mode = 'auto'; }
+  function applyTheme() {
+    if (mode === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', mode);
+    tb.textContent = 'Theme: ' + mode;
+  }
+  tb.addEventListener('click', function () {
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    try { localStorage.setItem('himmel-guide-theme', mode); } catch (e) { /* private window */ }
+    applyTheme();
+  });
+  applyTheme();
+
+  reset();
+  renderChoices();
+  render();
+})();
+</script>
+</body>
+</html>
