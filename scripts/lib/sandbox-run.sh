@@ -166,11 +166,15 @@ mask_list_trusted() {
     return 0
 }
 if [ -n "$write_mask" ]; then
+    # Fingerprint BEFORE the walk: a node created in between changes a directory
+    # after the recorded value, so the list fails validation instead of being
+    # certified as current.
+    build_fp=$(mask_fingerprint)
     walk_masks "$mask_list" || exit 125
     tmp_out=$(mktemp "$write_mask.XXXXXX") || exit 125
     chmod 600 "$tmp_out" || exit 125
     nul=$(tr -cd '\0' < "$mask_list" | wc -c) || exit 125
-    { printf 'himmel-mask-list-v1 %s %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$(mask_fingerprint)" "$((nul / 2))"
+    { printf 'himmel-mask-list-v1 %s %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$build_fp" "$((nul / 2))"
       cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; exit 125; }
     mv -f "$tmp_out" "$write_mask" || exit 125
     exit 0
