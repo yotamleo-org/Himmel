@@ -77,12 +77,15 @@
 # false allow only costs the pre-hook status quo (the autocompact backstop still
 # fires); upgrade path: if the fail-open warnings show up in leg logs, fix the
 # probe (HIMMEL-3081, HIMMEL-2342), never flip this to fail-closed.
-# ponytail: the Bash hand-off allow-list matches command TEXT and refuses only
-# `&&`, `||`, `$(` and newlines — a `;`-chained tail after an allowed script
-# slips through, because a bullet's quoted text may itself carry `;`; this is a
-# workflow nudge, not a fence (scripts/hooks/CLAUDE.md), and the permission
-# matcher already refuses compound shapes; upgrade path: parse the command
-# with the shell-word splitter auto-approve-safe-bash.sh uses if a leg abuses it.
+# ponytail: the Bash hand-off allow-list reads the script as one bare or quoted
+# word (HIMMEL-4692, so a quoted path or a checkout path with spaces passes) but
+# still matches the rest as TEXT through is_bare_command, which refuses
+# unquoted `& | ; < > ( )`, `$(`, backticks and newlines; a bullet's quoted `;`
+# is allowed on purpose, and this is a workflow nudge, not a fence
+# (scripts/hooks/CLAUDE.md), with the permission matcher refusing compound
+# shapes; upgrade path: parse the whole command with the shell-word splitter
+# auto-approve-safe-bash.sh uses if a leg abuses it. `git -C <dir>` still takes a
+# space-free dir.
 # ponytail: a CHECKPOINT proves HEAD was pushed, not that the tree is clean — a
 # clean-tree check would re-block every edit made between the checkpoint and the
 # compaction it exists to allow; and one still matching HEAD after a compaction
@@ -154,6 +157,31 @@ is_bare_command() {
         i=$((i + 1))
     done
     [ -z "$q" ]
+}
+
+# True when $1 (already is_bare_command) is `bash <script> ...` and <script> is,
+# as ONE parsed word, bare or "double"/'single' quoted with no $ or backslash,
+# an allowed hand-off script (HIMMEL-4692). A quoted word may carry spaces, so a
+# checkout path with spaces passes; a script after a path that merely ends in
+# the allowed name must sit on a path-segment boundary.
+is_handoff_script_call() {
+    local re rest word
+    re='^[[:space:]]*bash[[:space:]]+("([^"$\\`]*)"|'"'([^']*)'"'|([^][:space:]"'"'"'$\\`;&|<>()]+))(.*)$'
+    [[ $1 =~ $re ]] || return 1
+    word="${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    rest="${BASH_REMATCH[5]}"
+    # The word ends at a space or the end: nothing glued after its closing quote.
+    case "$rest" in ''|[[:space:]]*) ;; *) return 1 ;; esac
+    case "$word" in
+        scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh) ;;
+        scripts/handover/wrap-subtree-check.sh|*/scripts/handover/wrap-subtree-check.sh) ;;
+        scripts/context-fill.sh|*/scripts/context-fill.sh) ;;
+        scripts/handover/queue-lock.sh|*/scripts/handover/queue-lock.sh)
+            [[ $rest =~ ^[[:space:]]+release([[:space:]]|$) ]] || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    return 0
 }
 
 MODE="${HIMMEL_LEG_CONTEXT_MODE:-}"
@@ -242,7 +270,7 @@ case "$tool" in
         cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
         # A bare call only, or a second command rides the allow.
         if is_bare_command "$cmd"; then
-            if grep -qE '^[[:space:]]*bash[[:space:]]+([^[:space:]]*/)?(scripts/handover/console-kit/append-results\.sh|scripts/handover/queue-lock\.sh[[:space:]]+release|scripts/handover/wrap-subtree-check\.sh|scripts/context-fill\.sh)([[:space:]]|$)' <<< "$cmd"; then
+            if is_handoff_script_call "$cmd"; then
                 exit 0
             fi
             # WIP add/commit/push, and the status/rev-parse reads a
@@ -269,6 +297,12 @@ first=$(head -n 400 "$transcript" 2>/dev/null | jq -rc '
 started_iso=${first%%	*}
 first_text=${first#*	}
 doc=$(printf '%s' "$first_text" | grep -oE '/[^[:space:]"'"'"'`]+\.md' | head -n 1)
+if [ -z "$doc" ] || [ ! -f "$doc" ]; then
+    # HIMMEL-4692: the launcher's `load <doc> and continue` names a doc whose
+    # path may carry spaces, which the space-free match above truncates.
+    spaced=$(printf '%s' "$first_text" | sed -nE 's/^load (\/.*\.md) and continue.*$/\1/p' | head -n 1)
+    [ -z "$spaced" ] || doc=$spaced
+fi
 if [ -z "$doc" ] || [ ! -f "$doc" ] || [ ! -r "$doc" ]; then
     warn_allow "leg handover doc not found or unreadable in the first turn"
 fi
@@ -328,13 +362,16 @@ mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }  # gnu-o
 leg_id=$(printf '%s\n' "$stem" | tr '-' '\n' | grep -E '^[A-Z][0-9]+[a-z]?$' | head -n 1)
 leg_base=$(printf '%s' "$leg_id" | sed -E 's/[a-z]$//')
 next_stem="${stem%-RESUME}"
+no_successor=0
 if [ -n "$leg_id" ]; then
     suffix=${leg_id#"$leg_base"}
     case "$suffix" in
         '') next=b ;;
+        z) no_successor=1 ;;  # HIMMEL-4692: nothing follows z; never suggest the leg's own doc
         *) next=$(printf '%s' "$suffix" | tr 'a-y' 'b-z') ;;
     esac
-    next_stem=$(printf '%s' "$next_stem" | sed -E "s/(^|-)$leg_id(-|\$)/\\1$leg_base$next\\2/")
+    [ "$no_successor" = 1 ] ||
+        next_stem=$(printf '%s' "$next_stem" | sed -E "s/(^|-)$leg_id(-|\$)/\\1$leg_base$next\\2/")
 fi
 want="$dir/$next_stem-RESUME.md"
 
@@ -372,12 +409,17 @@ fi
 
 allowed="SendMessage, ListAgents, ToolSearch, TaskStop, append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
-stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your console ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/console-kit/append-results.sh ${doc} \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
+stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your console ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
 mode_note="The mode is set at launch by the console (HIMMEL_LEG_CONTEXT_MODE); it cannot be changed in-session."
 if [ "$MODE" = "compact" ]; then
-    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/console-kit/append-results.sh ${doc} \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
+    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
 else
-    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${want} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/console-kit/append-results.sh ${doc} \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
+    if [ "$no_successor" = 1 ]; then
+        write_to="a new *-RESUME.md in ${dir} that is not ${doc}, whose name carries the leg id ${leg_base} with no suffix (the leg id ${leg_id} ends in z, so no successor suffix exists)"
+    else
+        write_to="${want}"
+    fi
+    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} Bypass: LEG_CONTEXT_HANDOFF_OK=1 in the launching shell."
 fi
 
 if [ "$event" = "PreCompact" ]; then

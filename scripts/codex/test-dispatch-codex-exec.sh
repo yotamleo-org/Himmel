@@ -1400,6 +1400,69 @@ shape_case "18av grammar-conformant matcher allowed" 2 "stale trusted_hash" 'd.h
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
 
+# 18aw-18bc (HIMMEL-5350): residual differences from codex. A matcher inside the
+# closed grammar can still blow the Rust regex compile-size limit (no counted
+# repetition, so the cost is linear in its length: refuse past a conservative
+# length cap), and codex skips a command hook whose command is empty or only
+# Unicode White_Space (Rust str::trim; U+FEFF is not White_Space).
+shape_case "18aw matcher far past the compile-size limit (100000 dots)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = ".".repeat(100000); return d;'
+shape_case "18ax matcher at the length cap (1024) still parses" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].matcher = "a".repeat(1024); return d;'
+shape_case "18ay matcher one past the length cap (1025)" 2 "regular expression" 'd.hooks.PreToolUse[0].matcher = "a".repeat(1025); return d;'
+shape_case "18az empty command" 2 "command is empty" 'd.hooks.PreToolUse[0].hooks[0].command = ""; return d;'
+shape_case "18ba whitespace-only command" 2 "command is empty" 'd.hooks.PreToolUse[0].hooks[0].command = " \t\n "; return d;'
+shape_case "18bb NBSP-only command (Unicode White_Space)" 2 "command is empty" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xa0); return d;'
+shape_case "18bc BOM-only command is not White_Space to Rust" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xfeff); return d;'
+
+# 19a-i (HIMMEL-5350): the config.toml reader counts only what codex keeps. An
+# entry whose `enabled` is not a TOML boolean is discarded by codex; a header
+# inside a multi-line string is string content, not a table.
+: > "$LOG"
+trust_config "$TRUST_WT"
+run_trust "$TRUST_WT"
+assert_rc 0 "19a baseline: fully trusted config dispatches" "rc=$RC out=$OUT"
+# toml_edit <label> <rc> <needle> <mutator-js(text,key,hash)>: mutate the fully
+# trusted config.toml; key/hash are pre_tool_use:3:0's trust key and hash.
+toml_edit() {
+  trust_config "$TRUST_WT"
+  node -e '
+const fs = require("fs");
+const { execFileSync } = require("child_process");
+const [helper, hooks, wt, cfg, mut] = process.argv.slice(1);
+const rows = execFileSync("node", [helper, hooks], { encoding: "utf8" }).trim().split("\n").map((r) => r.split("\t"));
+const hash = rows.find((r) => r[0] === "pre_tool_use:3:0")[1];
+const header = "[hooks.state.\x27" + wt + "/.codex/hooks.json:pre_tool_use:3:0\x27]";
+const r = new Function("text", "header", "hash", mut)(fs.readFileSync(cfg, "utf8"), header, hash);
+fs.writeFileSync(cfg, r);
+' "$HOOK_HASH_JS" "$TRUST_WT/.codex/hooks.json" "$TRUST_WT" "$TRUST_HOME/config.toml" "$4"
+  : > "$LOG"
+  run_trust "$TRUST_WT"
+  assert_rc "$2" "$1" "rc=$RC out=$OUT"
+  if [ -n "$3" ]; then case "$OUT" in *"$3"*) pass "$1 names its cause";; *) fail "$1 out: $OUT";; esac; fi
+}
+toml_edit "19b enabled = \"yes\" (non-boolean) is a discarded entry" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = \"yes\"\n");'
+toml_edit "19c enabled = true stays trusted" 0 "" 'return text.replace(header + "\n", header + "\nenabled = true\n");'
+toml_edit "19d header inside a multi-line basic string is not a table" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const end = text.indexOf("\n\n", at) + 2; return "note = \"\"\"\n" + text.slice(at, end) + "\"\"\"\n" + text.slice(0, at) + text.slice(end);'
+toml_edit "19e header inside a multi-line literal string is not a table" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const end = text.indexOf("\n\n", at) + 2; return "note = \x27\x27\x27\n" + text.slice(at, end) + "\x27\x27\x27\n" + text.slice(0, at) + text.slice(end);'
+# a multi-line string that CLOSES before a real entry does not hide that entry.
+toml_edit "19f entry after a closed multi-line string still counts" 0 "" 'return "note = \"\"\"\nx\n\"\"\"\n" + text;'
+# a trailing comment holding U+2028/U+2029 (which JS `.` does not match) must not
+# make a `enabled = false` line unreadable and so leave the entry trusted.
+toml_edit "19g enabled = false with a U+2028 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2028) + "\n");'
+toml_edit "19h enabled = false with a U+2029 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2029) + "\n");'
+toml_edit "19i enabled = true with a U+2028 comment stays trusted" 0 "" 'return text.replace(header + "\n", header + "\nenabled = true # x" + String.fromCharCode(0x2028) + "\n");'
+
+# 19j-19q (HIMMEL-5355): a quoted `enabled` key is the same key to codex, and a
+# line starting with [ inside a multi-line array is an element, not a table header.
+toml_edit "19j basic-quoted \"enabled\" = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enabled\" = false\n");'
+toml_edit "19k literal-quoted single-quoted enabled = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\x27enabled\x27 = false\n");'
+toml_edit "19l quoted key with inner whitespace is discarded (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\" enabled \" = false\n");'
+toml_edit "19m basic-quoted \"enabled\" = true stays trusted" 0 "" 'return text.replace(header + "\n", header + "\n\"enabled\" = true\n");'
+toml_edit "19n nested array line before enabled = false is discarded" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
+toml_edit "19o nested array line before enabled = true stays trusted" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = true\n" + text.slice(nl);'
+toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n\"]\",\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
+toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n\"enabled = false\",\n]\n" + text.slice(nl);'
+toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1

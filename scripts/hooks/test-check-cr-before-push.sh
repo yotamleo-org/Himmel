@@ -993,6 +993,14 @@ case "$out" in
     *)
         fail "refusal must name main and feat/foreign-1809" "out: $out" ;;
 esac
+case "$out" in
+    *"LAUNCHING shell"*)
+        fail "refusal must not say a per-call prefix cannot reach the hook (HIMMEL-5360)" "out: $out" ;;
+    *"PUSH_FOREIGN_REF_OK=1 git push"*)
+        pass "refusal names the per-command prefix remedy" ;;
+    *)
+        fail "refusal must name the PUSH_FOREIGN_REF_OK=1 git push remedy" "out: $out" ;;
+esac
 if [ ! -f "$(marker_path feat/foreign-1809)" ]; then
     pass "refusal happens before any marker work"
 else

@@ -142,8 +142,9 @@ these RULES (e.g. `graphify path`), the RULES win. A live external URL is none o
 ## WORKFLOWS
 
 ### Worktree commands (one script, `scripts/clean-garden.sh`)
-`/worktree` (create), `/clean` (prune merged), `/clean_garden` (both). Branch
-must be `type/slug` (`feat|fix|chore|docs|refactor|test`).
+`/worktree` (create), `/clean` (prune merged), `/clean_garden` (both). A NEW
+branch is `type/slug` (`feat|fix|chore|docs|refactor|test`), `handover/<TICKET>-<slug>`
+or `claude/*`; `check-push-target` enforces it at pre-push.
 
 ### Compact instructions
 Carry ship state forward verbatim — **ticket ID**, **branch**, **worktree path**,

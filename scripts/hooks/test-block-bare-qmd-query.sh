@@ -993,6 +993,95 @@ deny 'sudo /tmp/a(b)/qmd query x'
 deny 'node /tmp/a(b)/qmd query x'
 allow '/tmp/a(b)/qmd status'
 
+# --- HIMMEL-4525: the sanctioned wrapper, and a file search for the words
+# `qmd query`, are no bare verb for a pipe consumer, a written-then-run file or a
+# launcher ---
+# The wrapper's own output is data to an interpreter that has a program of its
+# own (a code string, a script or module operand), to xargs running a plain
+# program, and to a file read by a later script operand.
+BQ='bash scripts/lib/qmd-bounded.sh query -c luna x'
+allow "$BQ | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "$BQ | python3 -m json.tool"
+allow "$BQ | node -e 'process.stdin.pipe(process.stdout)'"
+allow "$BQ | perl -ne 'print'"
+allow "$BQ | xargs -n1 echo"
+allow "$BQ | xargs -n1 dirname"
+allow "$BQ 2>&1 | python3 -c 'import sys'"
+allow "$BQ | head -5 | python3 -c 'import sys'"
+allow "$BQ > out.txt; python3 parse.py out.txt"
+allow "$BQ | tee out.txt | python3 parse.py out.txt"
+allow "ssh host 'bash ~/himmel/scripts/lib/qmd-bounded.sh query -c luna x'"
+allow 'ssh $host bash ~/himmel/scripts/lib/qmd-bounded.sh query -c luna x'
+allow "ssh host '$BQ' | python3 -c 'import sys'"
+# A search for the words, reading files, is no qmd program.
+allow "rg -n 'qmd query' scripts | xargs -n1 dirname"
+allow "grep -rn 'qmd query' scripts | python3 -c 'import sys'"
+allow "grep -rn 'qmd query' scripts | xargs -n1 dirname"
+allow "LC_ALL=C grep -rln 'qmd query' scripts | python3 -m json.tool"
+# What the wrapper's output or a search hit reaches as a PROGRAM stays refused.
+deny "$BQ | sh"
+deny "$BQ | bash"
+deny "$BQ | python3"
+deny "$BQ | python3 -"
+deny "$BQ | node"
+deny "$BQ | xargs -I{} {}"
+deny "$BQ | xargs sh -c 'echo'"
+deny "$BQ | awk '{system(\$0)}'"
+deny "$BQ > out.txt; sh out.txt"
+deny "$BQ > out.txt; python3 out.txt"
+deny "$BQ > out.txt; bash -c 'x' out.txt; sh out.txt"
+deny "$BQ | ssh host sh"
+deny "grep -rn 'qmd query' scripts | sh"
+deny "rg -n 'qmd query' scripts | bash"
+deny "grep -rn 'qmd query' scripts | python3"
+deny "rg --pre sh -n 'qmd query' scripts | xargs -n1 echo"
+# HIMMEL-4525 review: an interpreter that execs its own stdin runs the hits.
+deny "grep -h 'qmd query' commands.txt | python3 -c 'import sys; exec(sys.stdin.read())'"
+deny "grep -h 'qmd query' commands.txt | node -e 'require(\"child_process\").execSync(require(\"fs\").readFileSync(0,\"utf8\"))'"
+deny "$BQ | python3 -c 'import os,sys; os.system(sys.stdin.read())'"
+# A bare verb in any of those positions is still refused, also beside the wrapper.
+deny "qmd query x | python3 -c 'import sys'"
+deny "qmd query x | python3 -m json.tool"
+deny "qmd query x | node -e 'process.exit(0)'"
+deny "qmd query x | perl -ne 'print'"
+deny "qmd query x | xargs -n1 echo"
+deny "qmd query x > out.txt; python3 parse.py out.txt"
+deny "ssh host 'qmd query x'"
+deny "ssh host qmd query x"
+deny "echo qmd query x | python3 -c 'import sys'"
+deny "echo qmd query x | xargs -n1 echo"
+deny "echo qmd query x > out.txt; python3 parse.py out.txt"
+deny "$BQ > out.txt; echo qmd query y; python3 parse.py out.txt"
+deny "$BQ | python3 -c 'import os; os.system(\"qmd query x\")'"
+deny "$BQ | xargs -n1 qmd query"
+deny "$BQ; qmd query y | python3 -c 'import sys'"
+deny "ssh host '$BQ; qmd query y'"
+deny "grep -rn 'x' scripts; echo qmd query y | python3 -c 'import sys'"
+# HIMMEL-4525 judge: a search that PRINTS text of the caller's choosing
+# (-r/--replace, in a cluster or as --replace=) hides the verb in its program,
+# and an interpreter is relaxed only for a named reader form.
+RGR="rg -o -r 'c=\"qmd query x\";__import__(\"os\").system(c)' '.+' -m1 /etc/hostname"
+deny "$RGR | python3 -c 'import runpy as r;r.run_path(\"/dev/stdin\")'"
+deny "$RGR | python3 -m code"
+deny "$RGR | python3 -i -c 0"
+deny "rg -or 'qmd query x' '.+' -m1 /etc/hostname | python3 -c 'import sys'"
+deny "rg --replace='qmd query x' '.+' -m1 /etc/hostname | python3 -c 'import sys'"
+deny "rg -r 'qmd query x' '.+' /etc/hostname | xargs -n1 echo"
+deny "grep --label='qmd query x' -H x - | python3 -c 'import sys'"
+deny "rg -n 'qmd query' scripts | python3 -"
+deny "rg -n 'qmd query' scripts | python3 /dev/stdin"
+deny "$BQ | python3 -i -c 'import sys'"
+deny "$BQ | python3 -m code"
+deny "$BQ | python3 -c 'import runpy;runpy.run_path(\"/dev/stdin\")'"
+allow "rg -n 'qmd query' scripts | python3 -c 'import sys; print(sys.stdin.read())'"
+allow "rg -l 'qmd query' scripts | python3 parse.py"
+# HIMMEL-4525 codex: a code string is relaxed only when every identifier in it
+# is a plain reader word, so perl qx and ruby spawn stay strict.
+deny "grep -h 'qmd query' commands.txt | perl -ne 'qx(\$_)'"
+deny "grep -h 'qmd query' commands.txt | perl -ne 'readpipe(\$_)'"
+deny "grep -h 'qmd query' commands.txt | ruby -ne 'spawn(\$_)'"
+allow "grep -h 'qmd query' commands.txt | perl -ne 'print'"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

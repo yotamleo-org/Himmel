@@ -11,6 +11,14 @@
       "remedy": "AGENTS_MD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "BRANCH_NAME_OK",
+      "hooks": [
+        "scripts/hooks/check-push-target.sh"
+      ],
+      "bypasses": "Lets a push create a NEW branch whose name is outside type/slug, the handover ticket form and claude/* (scripts/hooks/check-push-target.sh).",
+      "remedy": "BRANCH_NAME_OK=1 git push ...   # a per-call prefix reaches the pre-push hook"
+    },
+    {
       "name": "BUS_STORE_GUARD_OK",
       "hooks": [
         "scripts/hooks/guard-bus-store.sh"
@@ -346,7 +354,7 @@
         "scripts/hooks/check-platforms-tested.sh"
       ],
       "bypasses": "Skips the \"check hookspath\" guard (scripts/hooks/check-hookspath.sh).",
-      "remedy": "PLATFORMS_TESTED_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "PLATFORMS_TESTED_OK=1 git push ...   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "PR_CHECK_ARGS_OK",
@@ -362,7 +370,7 @@
         "scripts/hooks/check-cr-before-push.sh"
       ],
       "bypasses": "Skips the \"check cr before push\" guard (scripts/hooks/check-cr-before-push.sh).",
-      "remedy": "PUSH_FOREIGN_REF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+      "remedy": "PUSH_FOREIGN_REF_OK=1 git push ...   # a per-call prefix reaches the pre-push hook"
     },
     {
       "name": "QMD_UNBOUNDED_OK",

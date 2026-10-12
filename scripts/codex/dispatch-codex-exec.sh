@@ -524,7 +524,50 @@ try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = noth
 const trusted = new Map();
 let key = null, hash = null, off = false;
 const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key, hash); };
+// HIMMEL-5350: a header-looking line inside a multi-line string is string content
+// to codex, so track """ / \x27\x27\x27 across lines (single-line strings and
+// comments skipped) and read only the lines that start outside one.
+// HIMMEL-5355: the same for a line inside a multi-line array or inline table
+// (bracket/brace depth outside strings): its [ line is an element, not a header.
+let ml = null, depth = 0;
+const trackStrings = (line) => {
+    let i = 0;
+    while (i < line.length) {
+        if (ml !== null) {
+            if (ml.charAt(0) === "\"" && line[i] === "\\") { i += 2; continue; }
+            if (line.startsWith(ml, i)) {
+                i += 3;
+                for (let extra = 0; extra < 2 && line[i] === ml.charAt(0); extra++) i++;
+                ml = null;
+            } else i++;
+            continue;
+        }
+        const c = line[i];
+        if (c === "#") return;
+        if (c === "\"" || c === "\x27") {
+            if (line.startsWith(c + c + c, i)) { ml = c + c + c; i += 3; continue; }
+            i++;
+            while (i < line.length && line[i] !== c) i += (c === "\"" && line[i] === "\\") ? 2 : 1;
+            i++;
+            continue;
+        }
+        if (c === "[" || c === "{") depth++;
+        else if ((c === "]" || c === "}") && depth > 0) depth--;
+        i++;
+    }
+};
+// The name of a key line, a quoted key decoded (\uXXXX, \UXXXXXXXX, \X) and trimmed:
+// fail closed, so " enabled " and "enabled" both read as enabled.
+const keyName = (raw) => {
+    if (raw.charAt(0) === "\x27") return raw.slice(1, -1).trim();
+    if (raw.charAt(0) !== "\"") return raw;
+    return raw.slice(1, -1).replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/g,
+        (all, u, big, ch) => { try { return String.fromCodePoint(parseInt(u || big, 16)); } catch (error) { return ch === undefined ? all : ch; } }).trim();
+};
 for (const line of cfg.split(/\r?\n/)) {
+    const insideValue = ml !== null || depth > 0;
+    trackStrings(line);
+    if (insideValue) continue;
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
@@ -533,10 +576,16 @@ for (const line of cfg.split(/\r?\n/)) {
     } else if (key !== null) {
         const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);
         if (h) hash = h[1];
-        if (/^\s*enabled\s*=\s*false\b/.test(line)) off = true;
+        // codex reads enabled as a bool: anything but true discards the entry.
+        // Positive form: [\s\S] in the comment tail, since `.` skips U+2028/U+2029.
+        // HIMMEL-5355: the key may be quoted ("enabled", \x27enabled\x27).
+        const kv = line.match(/^\s*("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27|[A-Za-z0-9_-]+)\s*=([\s\S]*)$/);
+        if (kv && keyName(kv[1]) === "enabled" && !/^\s*true\s*(?:#[\s\S]*)?$/.test(kv[2])) off = true;
     }
 }
 flush();
+// An unterminated string, array or table is a config codex cannot parse: trust nothing.
+if (ml !== null || depth > 0) trusted.clear();
 // Port of codex hook_hash(): sha256 of the compact JSON, object keys sorted, of
 // { event_name, matcher?, hooks: [normalized handler] }.
 const labels = { PreToolUse: "pre_tool_use", PermissionRequest: "permission_request", PostToolUse: "post_tool_use", PreCompact: "pre_compact", PostCompact: "post_compact", SessionStart: "session_start", SessionEnd: "session_end", UserPromptSubmit: "user_prompt_submit", SubagentStart: "subagent_start", SubagentStop: "subagent_stop", Stop: "stop", Interrupt: "interrupt" };
@@ -576,6 +625,12 @@ const matcherOk = (m) => {
     // backslash, no bracket, no brace. A quantifier needs an atom before it (and
     // may then take one lazy ?), groups balance to at most 16 deep (Rust refuses
     // past 250) and no alternative or group is empty.
+    // HIMMEL-5350: no counted repetition, so the compiled size is linear in the
+    // length; a length cap keeps it far under the Rust compile-size limit.
+    // ponytail: a conservative length bound, not the crate real size accounting
+    // (it refuses some matchers codex would compile); revisit if a legitimate
+    // matcher over 1024 chars is ever refused, by compiling in the real crate.
+    if (m.length > 1024) return false;
     let prev = "start", depth = 0, lazy = false;
     for (const c of m) {
         if (/[A-Za-z0-9_-]|\./.test(c)) { prev = "atom"; lazy = false; continue; }
@@ -627,6 +682,9 @@ for (const event of Object.keys(events)) {
             }
             if (hook.type === "command") {
                 if (typeof hook.command !== "string") badShape.push(h + ".command is not a string");
+                // codex skips a command that is empty after Rust str::trim (Unicode
+                // White_Space; JS trim would also strip U+FEFF, which Rust keeps).
+                else if ([...hook.command].every((ch) => { const n = ch.codePointAt(0); return (n >= 9 && n <= 13) || (n >= 0x2000 && n <= 0x200a) || [32, 0x85, 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000].includes(n); })) badShape.push(h + ".command is empty (codex skips the hook)");
                 if (hook.commandWindows !== undefined && hook.command_windows !== undefined) badShape.push(h + " carries both commandWindows and command_windows");
                 if (!isStrOrNull(hook.commandWindows) || !isStrOrNull(hook.command_windows)) badShape.push(h + ".commandWindows is not a string");
                 if (!isU64OrNull(hook.timeout)) badShape.push(h + ".timeout is not a non-negative integer");

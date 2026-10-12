@@ -2111,6 +2111,8 @@ set -e
   || fail "HIMMEL-2814 gap1 shared-payload: no fallback payload was left beside the PRIMARY's own (shared) hooks dir"
 [ -f "$crprimaryG1/.git/hooks/himmel-payload/scripts/lib/project-mode.sh" ] \
   || fail "HIMMEL-4758 shared-payload: the payload carries check-commit-msg.sh without the scripts/lib/project-mode.sh it sources"
+[ -f "$crprimaryG1/.git/hooks/himmel-payload/scripts/lib/git-clean.sh" ] \
+  || fail "HIMMEL-5308 shared-payload: the payload carries check-push-target.sh without the scripts/lib/git-clean.sh it sources"
 HOME="$pchome" git -C "$crprimaryG1" worktree add -q "$crwtG1" -b cr2814g1-worktree-branch
 
 # Resolve the hooks dir from the SIBLING's own view (it is the same physical
@@ -2166,10 +2168,22 @@ grepq "$poutG1" "Direct push to 'main' is not allowed" \
   || fail "HIMMEL-2814 gap1 shared-payload push: remote has refs/heads/main even though the push was refused"
 
 set +e
-poutG1b=$(HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:refs/heads/cr2814g1-ok 2>&1); prcG1b=$?
+poutG1b=$(HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:refs/heads/fix/cr2814g1-ok 2>&1); prcG1b=$?
 set -e
 [ "$prcG1b" -eq 0 ] \
   || fail "HIMMEL-2814 gap1 shared-payload push: a push to a non-main ref from the SIBLING worktree was refused: $poutG1b"
+# HIMMEL-5308: the gate sources scripts/lib/git-clean.sh; a payload without it
+# prints source errors on every push and git_env_scrub never runs.
+grepq "$poutG1b" 'No such file|cannot open|not found' \
+  && fail "HIMMEL-5308 shared-payload push: the pre-push gate printed source errors (payload is missing a file it sources): $poutG1b"
+# BRANCH_NAME_OK bypasses the branch-NAME check only, never the main refusal.
+set +e
+poutG1c=$(BRANCH_NAME_OK=1 HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:refs/heads/main 2>&1); prcG1c=$?
+set -e
+[ "$prcG1c" -ne 0 ] \
+  || fail "HIMMEL-5308 BRANCH_NAME_OK=1 let a push to main land"
+grepq "$poutG1c" "Direct push to 'main' is not allowed" \
+  || fail "HIMMEL-5308 BRANCH_NAME_OK=1 push to main was refused but not by the main gate: $poutG1c"
 echo "ok: HIMMEL-2814 gap1 shared-payload push: the SIBLING worktree's pre-push dispatcher (added after the primary adopt) genuinely gates a real git push via its fallback payload"
 
 # HIMMEL-2814 gap 2: the generated pre-push dispatcher's `cat > "$reffile"`
@@ -2329,8 +2343,8 @@ p4bk="$(jq -r '.pre.backup' <<< "$row")"
 row="$(prov_row "$p4led/provenance.jsonl" /scripts/hooks/block-edit-on-main.sh)"
 [ "$(jq -r '[.op,.pre.state,.class]|join(",")' <<< "$row")" = "create,absent,code" ] \
   || fail "HIMMEL-3332 S4: a copy into a clean target must be a create row: $row"
-[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "24" ] \
-  || fail "HIMMEL-3332 S4: expected 24 file rows (one per PORTABLE_FILES entry)"
+[ "$(jq -sr '[.[]|select(.kind=="file" and .manifest_row=="adopter-scripts")]|length' "$p4led/provenance.jsonl")" = "25" ] \
+  || fail "HIMMEL-3332 S4: expected 25 file rows (one per PORTABLE_FILES entry)"
 echo "ok: HIMMEL-3332 S4 copy_portable records create + replace rows; the user's bytes and mode are backed up"
 
 # a re-run finds our own bytes already there: noop rows, and NO new backups

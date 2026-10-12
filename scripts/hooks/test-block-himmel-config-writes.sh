@@ -201,6 +201,84 @@ bash_case "a command naming neither -> allow" allow "git status"
 bash_case "config.json outside ~/.himmel -> allow" allow "cat $T/other/config.json"
 run "non-matcher tool (Read) -> allow" allow "$(jq -nc --arg p "$CFG" '{tool_name:"Read",tool_input:{file_path:$p}}')"
 
+echo "== apply_patch cost bound (HIMMEL-5351) =="
+# Codex's behaviour on a PreToolUse hook timeout is undocumented, so a padded
+# patch must be denied by an explicit cap and a patch at the cap must finish
+# well inside the shared 60 s budget (the old per-header readlink forks cost
+# ~5 ms each, ~5.4 s at 1000 headers on the dev box).
+big_patch() { # big_patch <headers> [<extra header line>]
+    local n="$1" i=0
+    printf '*** Begin Patch\n'
+    while [ "$i" -lt "$n" ]; do
+        printf '*** Update File: src/dir/file%s.txt\n@@\n-a\n+b\n' "$i"
+        i=$((i + 1))
+    done
+    [ -n "${2:-}" ] && printf '%s\n' "$2"
+    printf '*** End Patch\n'
+}
+now_ms() { local t; t=$(date +%s%N 2>/dev/null); case "$t" in *N|"") echo $(( $(date +%s) * 1000 )) ;; *) echo $((t / 1000000)) ;; esac; }
+bigjson() { jq -nc --rawfile c "$1" --arg cwd "$T/cwd" '{tool_name:"apply_patch",cwd:$cwd,tool_input:{command:$c}}'; }
+big_case() { # big_case <label> <block|allow> <patch-file> [<max ms>]
+    local label="$1" expect="$2" f="$3" max="${4:-}" s e got
+    bigjson "$f" > "$T/big.json"
+    s=$(now_ms)
+    # A regressed hook must fail this row, not stall the suite: 60 s is the Codex hook budget.
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 60 bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    else
+        bash "$HOOK" < "$T/big.json" >/dev/null 2>&1; rc=$?
+    fi
+    e=$(now_ms)
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" != "$expect" ]; then bad "$label - expected $expect got $got"; return; fi
+    if [ -n "$max" ] && [ $((e - s)) -gt "$max" ]; then bad "$label - took $((e - s)) ms, bound $max ms"; return; fi
+    ok "$label ($((e - s)) ms)"
+}
+mkdir -p "$T/cwd"
+big_patch 1000 > "$T/p1000.txt"
+big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" 3000
+big_patch 1001 > "$T/p1001.txt"
+big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
+big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
+big_case "config header after 999 benign ones -> block" block "$T/pcfg.txt"
+mkdir -p "$T/cwd/linkdir"
+ln -s "$HOME/.himmel" "$T/cwd/alias"
+big_patch 998 "*** Update File: alias/config.json" > "$T/palias.txt"
+big_case "symlinked-dir alias header after 998 benign ones -> block" block "$T/palias.txt"
+{ printf '*** Begin Patch\n*** Add File: big.txt\n'; head -c 600000 /dev/zero | tr '\0' 'x' | sed 's/^/+/'; printf '\n*** End Patch\n'; } > "$T/pbytes.txt"
+big_case "over-size patch body (no config named) -> block" block "$T/pbytes.txt"
+# One long header line is quadratic in uni_trim (200 KB took 40 s, 400 KB 186 s
+# on the previous head), so a header line over the cap is denied before any
+# per-line work; the symlinked config alias after it must not be reachable by
+# running the budget out.
+{ printf '*** Begin Patch\n*** Update File: '; head -c 200000 /dev/zero | tr '\0' 'a'; printf '\n*** Update File: alias/config.json\n*** End Patch\n'; } > "$T/plong.txt"
+big_case "200 KB header line + symlinked config alias -> block inside the time bound" block "$T/plong.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 400000 /dev/zero | tr '\0' 'a'; printf '\n*** Update File: alias/config.json\n*** End Patch\n'; } > "$T/plong4.txt"
+big_case "400 KB header line + symlinked config alias -> block inside the time bound" block "$T/plong4.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 4100 /dev/zero | tr '\0' 'a'; printf '\n*** End Patch\n'; } > "$T/pcap1.txt"
+big_case "header line just over the 4096-byte cap -> block" block "$T/pcap1.txt" 5000
+{ printf '*** Begin Patch\n*** Update File: '; head -c 4000 /dev/zero | tr '\0' 'a'; printf '\n*** End Patch\n'; } > "$T/pcap2.txt"
+big_case "header line just under the cap -> allow" allow "$T/pcap2.txt" 5000
+# The cap counts bytes: 2100 two-byte characters is 4200 bytes under a UTF-8 locale.
+{ printf '*** Begin Patch\n*** Update File: '; head -c 2100 /dev/zero | tr '\0' 'x' | sed 's/x/é/g'; printf '\n*** End Patch\n'; } > "$T/pcapmb.txt"
+saved_lc2="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
+big_case "multibyte header line over the byte cap (locale en_US.utf8) -> block" block "$T/pcapmb.txt" 5000
+LC_ALL="$saved_lc2"; export LC_ALL
+# The byte cap counts bytes, not characters: 300000 two-byte characters is 600000 bytes.
+{ printf '*** Begin Patch\n*** Add File: big.txt\n'; i=0; while [ "$i" -lt 3 ]; do head -c 100000 /dev/zero | tr '\0' 'x' | sed 's/x/é/g; s/^/+/'; printf '\n'; i=$((i + 1)); done; printf '*** End Patch\n'; } > "$T/pmb.txt"
+saved_lc="${LC_ALL-}"; LC_ALL=en_US.utf8; export LC_ALL
+big_case "multibyte body over the byte cap (locale en_US.utf8) -> block" block "$T/pmb.txt"
+LC_ALL="$saved_lc"; export LC_ALL
+# A header padded with alternating space/NBSP needs one trim pass per pair and
+# each pass is O(length): 7.5 KB took 17 s and 15 KB 98 s on the base hook. A
+# padded header must be refused outright and quickly.
+{ printf '*** Begin Patch\n*** Add File: src/x.txt'; i=0; while [ "$i" -lt 2500 ]; do printf '\302\240 '; i=$((i + 1)); done; printf '\n*** End Patch\n'; } > "$T/ppad.txt"
+big_case "7.5 KB alternating space/NBSP padded header -> block inside the time bound" block "$T/ppad.txt" 3000
+{ printf '*** Begin Patch\n*** Add File: src/x.txt'; i=0; while [ "$i" -lt 40 ]; do printf '\302\240 '; i=$((i + 1)); done; printf '\n*** End Patch\n'; } > "$T/ppad-small.txt"
+big_case "short alternating-padded header (80 chars, base allows) -> block" block "$T/ppad-small.txt"
+{ printf '*** Begin Patch\n*** Add File: \302\240 src/x.txt \302\240\n*** End Patch\n'; } > "$T/ppad-ok.txt"
+big_case "ordinary NBSP-padded benign header -> allow" allow "$T/ppad-ok.txt"
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"

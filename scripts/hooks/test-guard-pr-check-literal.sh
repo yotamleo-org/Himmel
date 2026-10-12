@@ -596,6 +596,31 @@ git commit -m "note: env -S 'bash scripts/handover/merge-on-green.sh\c'"
 bash scripts/other/x.sh "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 NESTEDOK
 
+# ---- HIMMEL-4516: nested-body depth cap ------------------------------------
+# Each nested eval body is re-tokenized, so a 350-deep chain used to burn the
+# whole 15 s hook budget (a bare timeout). The guard now stops re-reading past
+# 32 nested bodies and denies with a message naming the cap; a chain AT the cap
+# is judged as before, and a deep chain must finish well inside the budget.
+nest_chain() { # nest_chain <depth> - <depth> `eval` words before a clean env grep
+    local n=$1 s="env LC_ALL=C grep -n 'pr-check\\|x' docs/a.md"
+    while [ "$n" -gt 0 ]; do s="eval $s"; n=$((n - 1)); done
+    printf '%s' "$s"
+}
+run "4516: 32-deep chain (at the cap) judged as before -> allow" 0 \
+    "$(payload "$(nest_chain 32)" "$WT")" "$HR"
+run "4516: 33-deep chain (one past the cap) -> deny" 2 \
+    "$(payload "$(nest_chain 33)" "$WT")" "$HR"
+need_in_err "4516: 33-deep deny names the cap" "nested more than 32 levels"
+T0=$SECONDS
+run "4516: 400-deep chain -> deny" 2 "$(payload "$(nest_chain 400)" "$WT")" "$HR"
+need_in_err "4516: 400-deep deny names the cap" "nested more than 32 levels"
+if [ $((SECONDS - T0)) -le 5 ]; then
+    echo "PASS 4516: 400-deep chain finished in $((SECONDS - T0))s (budget 15s)"
+else
+    echo "FAIL 4516: 400-deep chain took $((SECONDS - T0))s (want <= 5s)"
+    FAILED=$((FAILED + 1))
+fi
+
 # ---- HIMMEL-3913: raw-text backstop - a reader writes text to a file, a later ----
 # ---- executor runs it. The tokenizer reads the quoted here-string as inert, so
 # ---- only the raw scan can see it. Clean root: every deny below is the backstop's.

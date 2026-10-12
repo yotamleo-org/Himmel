@@ -144,7 +144,7 @@ push_remote_url="${2:-}"
 #
 # Returns 2 on refusal (caller exits), 0 otherwise. Delete pushes and pushes
 # whose destination is not a branch name no working-tree content and are
-# exempt; PUSH_FOREIGN_REF_OK=1 (set in the LAUNCHING shell) is the explicit
+# exempt; PUSH_FOREIGN_REF_OK=1 (a per-command prefix on git push reaches this hook) is the explicit
 # operator bypass and accepts that the gates inspected the current worktree,
 # not the pushed content.
 refuse_foreign_ref_push() {
@@ -177,7 +177,7 @@ refuse_foreign_ref_push() {
         if [ -n "$current" ] && [ -n "$head_sha" ] && [ "$local_sha" = "$head_sha" ]; then
             continue
         fi
-        echo "check-cr-before-push: refusing — pre-push gates lint the working tree of '${current:-detached HEAD}' but you are pushing '${branch}' (${local_ref}). Push from the branch's own worktree (git -C <wt> push …) or set PUSH_FOREIGN_REF_OK=1 in the LAUNCHING shell." >&2
+        echo "check-cr-before-push: refusing — pre-push gates lint the working tree of '${current:-detached HEAD}' but you are pushing '${branch}' (${local_ref}). Push from the branch's own worktree (git -C <wt> push …) or prefix the push with PUSH_FOREIGN_REF_OK=1 (PUSH_FOREIGN_REF_OK=1 git push …; the pre-push hook inherits it from your shell)." >&2
         return 2
     done <<REF_LINES
 $ref_lines

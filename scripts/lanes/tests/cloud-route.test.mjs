@@ -388,3 +388,67 @@ exit 1`);
   assert.match(r.stdout, /HIMMEL-9001\tVERIFY-LOCAL\t.*1982/);
   assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
 });
+
+// HIMMEL-5218: fixture text of the real tickets (no live Jira). 4503 and 4517 name the
+// hook only as guard-pr-check-literal; 4653 says VM-only / On a VM snapshot.
+const TREE = ['scripts/hooks/guard-pr-check-literal.sh', 'scripts/hooks/block-destructive-commands.sh', 'scripts/cr/pr-check-context.sh', 'scripts/lanes/example.sh', 'scripts/test-check-ci.sh', 'docs/x.md'];
+const T4503 = {
+  key: 'HIMMEL-4503', type: 'Task', status: 'To Do', title: 'guard-pr-check-literal: nested shell re-read over-denies eval/bash -c words in argument position',
+  description: "guard-pr-check-literal.sh re-reads a nested shell body by word presence.\n- echo eval \"bash scripts/cr/pr-check-context.sh\"\nFix sketch: open a body only when eval/the shell is the segment's command word.",
+};
+const T4517 = {
+  key: 'HIMMEL-4517', type: 'Task', status: 'To Do', title: 'guard-pr-check-literal: carriers not re-read nor named in ponytail (rbash, fish, busybox ash, python3 -c)',
+  description: 'guard-pr-check-literal.sh never re-reads these command carriers.\nEach one can carry a guarded scripts/cr gate-script invocation the guard does not see.',
+};
+const T4653 = {
+  key: 'HIMMEL-4653', type: 'Task', status: 'To Do', title: 'Controlled overnight end-to-end eval on a VM: seeded fixture ticket, console-to-merge scorecard',
+  description: 'The fleet scorecard (scripts/lanes/bench/scorecard/) measures production.\nAsk. On a VM snapshot with a scratch repo: seed one or two frozen fixture tickets, arm a console and let it run unattended.\nEst. 3 leg-days plus heavy bank per run. VM-only (standing rule).',
+};
+
+test('HIMMEL-5218: a bare hook name in the title resolves to its path and routes HOOK-BYPASS (4503, 4517 shaped)', () => {
+  for (const t of [T4503, T4517]) {
+    const v = classifyTicket(t, ctx({ tree: TREE }));
+    assert.equal(v.class, 'HOOK-BYPASS', t.key);
+    assert.ok(v.files.includes('scripts/hooks/guard-pr-check-literal.sh'), t.key);
+  }
+});
+
+test('HIMMEL-5218: a bare hook name hits the held-file check (open PR holds the hook)', () => {
+  const held = [{ file: 'scripts/hooks/guard-pr-check-literal.sh', why: 'open PR 2353' }];
+  for (const t of [T4503, T4517]) {
+    const v = classifyTicket(t, ctx({ tree: TREE, held }));
+    assert.equal(v.class, 'BLOCKED', t.key);
+    assert.match(v.reason, /PR 2353/);
+  }
+});
+
+test('HIMMEL-5218: bare names resolve with or without the extension, never as part of a path or a word', () => {
+  const v = (d) => classifyTicket(tk({ title: 't', description: `Edit docs/x.md. ${d}` }), ctx({ tree: TREE }));
+  assert.equal(v('See block-destructive-commands.').class, 'HOOK-BYPASS');
+  assert.equal(v('See block-destructive-commands.sh.').class, 'HOOK-BYPASS');
+  assert.equal(v('See scripts/lanes/block-destructive-commands-notes.md.').files.includes('scripts/hooks/block-destructive-commands.sh'), false);
+  assert.equal(v('A well-scoped, read-only change.').class, 'CLOUD-OK');
+});
+
+test('HIMMEL-5218: VM-only / on a VM / VM snapshot wording is a LOCAL-NATIVE run-time need (4653 shaped)', () => {
+  const v = classifyTicket(T4653, ctx({ tree: TREE }));
+  assert.equal(v.class, 'LOCAL-NATIVE');
+  assert.match(v.reason, /run-time need/);
+  for (const need of ['This is VM-only.', 'Run it on a VM first.', 'Take a VM snapshot before.', 'It runs inside the test VM.']) {
+    assert.equal(classifyTicket(tk({ description: `Edit scripts/lanes/example.sh. ${need}` }), ctx({ tree: TREE })).class, 'LOCAL-NATIVE', need);
+  }
+});
+
+test('HIMMEL-5218: a named file the router cannot resolve never gets CLOUD-OK', () => {
+  const v = classifyTicket(tk({ description: 'Edit scripts/gone-dir/missing.sh.' }), ctx({ tree: TREE }));
+  assert.equal(v.class, 'LOCAL-NATIVE');
+  assert.match(v.reason, /scripts\/gone-dir\/missing\.sh/);
+  assert.equal(classifyTicket(tk({ description: 'Edit scripts/lanes/new-file.sh.' }), ctx({ tree: TREE })).class, 'CLOUD-OK');
+  assert.equal(classifyTicket(tk({ description: 'Edit docs/x.md.' }), ctx({ tree: TREE })).class, 'CLOUD-OK');
+});
+
+test('HIMMEL-5218: an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
+  const v = classifyTicket(tk(), ctx({ treeUnknown: true }));
+  assert.equal(v.class, 'BLOCKED');
+  assert.match(v.reason, /file tree unavailable/);
+});

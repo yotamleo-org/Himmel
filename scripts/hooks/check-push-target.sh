@@ -20,10 +20,45 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../guardrails/lib.sh"
+# shellcheck source=../lib/git-clean.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/git-clean.sh"
+git_env_scrub
 
 block_main() {
     echo "ERROR: Direct push to 'main' is not allowed." >&2
     echo "       Open a PR from a worktree branch instead." >&2
+    exit 1
+}
+
+# HIMMEL-5308: a NEW branch must be type/slug (feat|fix|chore|docs|refactor|
+# test), handover/<TICKET>-<slug> or claude/*. Checked only when a branch is
+# being created on the remote — never retroactively, never on a delete or a
+# tag. Single-run bypass: BRANCH_NAME_OK=1 git push.
+branch_name_ok() {
+    case "$1" in
+        claude/?*) return 0 ;;
+    esac
+    LC_ALL=C grep -Eq \
+        '^((feat|fix|chore|docs|refactor|test)/[A-Za-z0-9][A-Za-z0-9._-]*|handover/[A-Z][A-Z0-9]*-[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*)$' <<<"$1"
+}
+
+is_zero_oid() {
+    case "$1" in
+        ''|*[!0]*) return 1 ;;
+    esac
+    return 0
+}
+
+check_new_branch_name() {
+    local ref="$1" branch
+    [ "${BRANCH_NAME_OK:-}" = "1" ] && return 0
+    case "$ref" in refs/heads/*) ;; *) return 0 ;; esac
+    branch="${ref#refs/heads/}"
+    branch_name_ok "$branch" && return 0
+    echo "ERROR: check-push-target: branch name '$branch' is not allowed for a new branch." >&2
+    echo "       Use type/slug (feat|fix|chore|docs|refactor|test), handover/<TICKET>-<slug> or claude/<slug>." >&2
+    echo "       Rename: git branch -m <new-name>. Single-run bypass: BRANCH_NAME_OK=1 git push." >&2
     exit 1
 }
 
@@ -35,9 +70,14 @@ if [ ! -t 0 ]; then
 fi
 
 if [ -n "$push_ref_lines" ]; then
-    while IFS=' ' read -r _local_ref _local_sha remote_ref _remote_sha; do
+    while IFS=' ' read -r _local_ref local_sha remote_ref remote_sha; do
         [ -z "$remote_ref" ] && continue
         is_main_ref "$remote_ref" && block_main
+        # New branch = remote sha all zeros (any length: SHA-1 or SHA-256); a
+        # delete push has a zero local sha.
+        if is_zero_oid "$remote_sha" && ! is_zero_oid "$local_sha"; then
+            check_new_branch_name "$remote_ref"
+        fi
     done <<REF_LINES
 $push_ref_lines
 REF_LINES
@@ -66,6 +106,42 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
     # below is defense-in-depth for a clone that has not (yet) run it.
     if [ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" ]; then
         is_main_ref "$PRE_COMMIT_REMOTE_BRANCH" && block_main
+        # pre-commit hides the remote sha and a local remote-tracking ref can
+        # be missing or stale, so an invalid name is confirmed against the
+        # remote itself: only "no such ref" (ls-remote rc 2) counts as new; an
+        # unreachable remote fails open (HIMMEL-5308).
+        case "$PRE_COMMIT_REMOTE_BRANCH" in
+            refs/heads/*)
+                _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
+                if [ "${BRANCH_NAME_OK:-}" != "1" ] && ! branch_name_ok "$_short"; then
+                    _lsrc=0
+                    # Ask the address the push goes to: a remote's pushurl can
+                    # differ from its fetch url, and a bare `ls-remote <name>`
+                    # queries the fetch one (HIMMEL-5360). git hands pre-commit
+                    # the destination it is pushing to (PRE_COMMIT_REMOTE_URL),
+                    # which also covers several pushurls; without it `get-url
+                    # --push` gives the first pushurl, or the fetch url itself;
+                    # a name git cannot resolve (a bare path or URL) is used
+                    # as given.
+                    _lsremote="${PRE_COMMIT_REMOTE_NAME:-origin}"
+                    if [ -n "${PRE_COMMIT_REMOTE_URL:-}" ]; then
+                        _lsremote="$PRE_COMMIT_REMOTE_URL"
+                    else
+                        _pushaddr=$(git remote get-url --push -- "$_lsremote" 2>/dev/null) || _pushaddr=""
+                        [ -n "$_pushaddr" ] && _lsremote="$_pushaddr"
+                    fi
+                    # `--` keeps a dash-led remote name from reading as an
+                    # option; a hung remote is bounded (fails open on timeout,
+                    # rc 124 is not 2) where `timeout` exists.
+                    if command -v timeout >/dev/null 2>&1; then
+                        timeout 20 git ls-remote --exit-code --heads -- "$_lsremote" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    else
+                        git ls-remote --exit-code --heads -- "$_lsremote" "refs/heads/$_short" >/dev/null 2>&1 || _lsrc=$?
+                    fi
+                    [ "$_lsrc" -eq 2 ] && check_new_branch_name "$PRE_COMMIT_REMOTE_BRANCH"
+                fi
+                ;;
+        esac
         exit 0
     fi
     # PRE_COMMIT=1 but no PRE_COMMIT_REMOTE_BRANCH: pre-commit's documented

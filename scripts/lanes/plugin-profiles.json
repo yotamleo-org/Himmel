@@ -58,16 +58,19 @@
     "lean-skills@himmel",
     "i-have-adhd@himmel"
   ],
-  "_comment_himmel_bus": "HIMMEL-5223 / HIMMEL-5222: himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. The path is relative to the leg's cwd, a himmel worktree (ponytail: a leg started outside a himmel checkout cannot start it, upgrade path HIMMEL-4830 packaging). `npm --prefix` runs the plugin's own `start` script, which installs the locked deps once and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
+  "_comment_himmel_bus": "HIMMEL-5223 / HIMMEL-5222: himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. HIMMEL-4830: the `${HIMMEL_REPO}` placeholder is resolved by collectMcpServerDefs to the primary checkout's absolute path (a launch with no resolvable checkout refuses), so the server starts from any cwd; mcpAllow names the tools allowed, in both the standalone and plugin-prefixed name forms, for a profile that lists the server. `npm --prefix` runs the plugin's own `start` script, which installs the locked deps once and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
   "mcpCatalog": {
     "himmel-bus": {
       "command": "npm",
-      "args": ["--prefix", "marketplace/plugins/himmel-bus", "run", "--silent", "start"]
+      "args": ["--prefix", "${HIMMEL_REPO}/marketplace/plugins/himmel-bus", "run", "--silent", "start"]
     },
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@0.0.83"]
     }
+  },
+  "mcpAllow": {
+    "himmel-bus": ["send", "read"]
   },
   "catalog": [
     "telegram@claude-plugins-official",
@@ -110,6 +113,7 @@
     "obsidian-triage@himmel",
     "pr-review-toolkit-himmel@himmel",
     "telegram-himmel@himmel",
+    "himmel-bus@himmel",
     "qmd@himmel",
     "codex@openai-codex",
     "taste-skill-core@himmel",
@@ -295,7 +299,7 @@
     },
     "leg-bus": {
       "gateAllow": true,
-      "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. Everything else is leg-impl's: same plugins, same gateAllow, same budget.",
+      "_comment": "HIMMEL-5223: leg-impl plus the himmel-bus MCP server, the only profile that opts in until HIMMEL-4841 rolls the bus out to every headed leg. himmel-bus in mcpServers is what makes headed-arm-leg.sh register the leg on the bus and bind its claude pid. HIMMEL-4830 adds the himmel-bus tool allow entries via mcpAllow; everything else is leg-impl's: same gateAllow, same budget.",
       "enable": [
         "pr-review-toolkit-himmel@himmel"
       ],

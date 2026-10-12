@@ -97,6 +97,10 @@ fi
 
 tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null) || tool=""
 CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
+# Caps on an apply_patch payload (HIMMEL-5351); see the apply_patch branch.
+MAX_PATCH_BYTES=524288
+MAX_PATCH_HEADERS=1000
+MAX_HEADER_LINE_BYTES=4096
 
 # check_path TOOL PATH: deny when PATH is, or resolves to, the config.
 check_path() {
@@ -142,8 +146,15 @@ case "$tool" in
         # [[:space:]] does not: strip the multi-byte members too, from header
         # lines and from the extracted path, until stable.
         uni_trim() {
-            local v="$1" prev="" u
+            local v="$1" prev="" u passes=0
             while [ "$v" != "$prev" ]; do
+                # Each pass costs O(length) x ~40 expansions, so a header padded
+                # with alternating space/NBSP runs is quadratic (7.5 KB took 17 s,
+                # 15 KB 98 s, HIMMEL-5351): a real header needs two passes at most.
+                passes=$((passes + 1))
+                if [ "$passes" -gt 8 ]; then
+                    deny "apply_patch header is padded with alternating whitespace runs (the guard cannot trim it inside the hook budget); remove the padding"
+                fi
                 prev="$v"
                 v="${v#"${v%%[![:space:]]*}"}"
                 v="${v%"${v##*[![:space:]]}"}"
@@ -154,7 +165,37 @@ case "$tool" in
             done
             UNI_TRIMMED="$v"
         }
+        # Bounded cost (HIMMEL-5351): the Codex PreToolUse budget is 60 s and
+        # its behaviour on a hook timeout is undocumented (the docs only say an
+        # MCP hook error/timeout "can fail the hook without blocking"), so a
+        # padded patch must DENY here instead of running out the clock. The
+        # header loop is fork-free (a case glob pre-filters header lines before
+        # the pure-bash trim; paths are collected and resolved by ONE readlink
+        # -m afterwards) and the caps bound what is left.
+        # Byte length, not ${#patch}: under a multibyte locale that counts characters.
+        plen=$(printf '%s' "$patch" | LC_ALL=C wc -c 2>/dev/null) || plen=$((MAX_PATCH_BYTES + 1))
+        plen=$((plen + 0))
+        if [ "$plen" -gt "$MAX_PATCH_BYTES" ]; then
+            deny "apply_patch payload is $plen bytes, over the $MAX_PATCH_BYTES cap (the guard cannot finish inside the hook budget; split the patch)"
+        fi
+        # Byte semantics for the per-line cap below (${#ln} counts characters
+        # under a multibyte locale); uni_trim matches byte sequences anyway.
+        LC_ALL=C
+        nhdr=0
+        cand=()
         while IFS= read -r ln; do
+            # A header, after trimming only OUTER whitespace, starts with
+            # `*** <Verb>: `, so the untrimmed line contains it (sound pre-filter).
+            case "$ln" in
+                *'*** Add File: '*|*'*** Update File: '*|*'*** Delete File: '*|*'*** Move to: '*) ;;
+                *) continue ;;
+            esac
+            # One pass of uni_trim is O(length) x ~40 removals, so a long header
+            # line costs about length squared (200 KB: 40 s, 400 KB: 186 s).
+            # No real path exceeds PATH_MAX; deny before any per-line work.
+            if [ "${#ln}" -gt "$MAX_HEADER_LINE_BYTES" ]; then
+                deny "apply_patch header line is ${#ln} bytes, over the $MAX_HEADER_LINE_BYTES cap (the guard cannot trim it inside the hook budget)"
+            fi
             uni_trim "$ln"
             ln="$UNI_TRIMMED"
             case "$ln" in
@@ -164,21 +205,42 @@ case "$tool" in
                 '*** Move to: '*) p="${ln#\*\*\* Move to: }" ;;
                 *) continue ;;
             esac
+            nhdr=$((nhdr + 1))
+            if [ "$nhdr" -gt "$MAX_PATCH_HEADERS" ]; then
+                deny "apply_patch carries more than $MAX_PATCH_HEADERS file headers (the guard cannot finish inside the hook budget; split the patch)"
+            fi
             # A relative patch path (a `~`-led one included, codex does not
             # expand it) resolves against the payload cwd. The path is checked
             # as written AND Unicode-trimmed (codex trims; a file literally
             # named with a trailing NBSP is the as-written variant).
             uni_trim "$p"
-            for p in "$p" "$UNI_TRIMMED"; do
+            trimmed="$UNI_TRIMMED"
+            for p in "$p" "$trimmed"; do
                 case "$p" in
                     /*|"") ;;
                     *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
                 esac
-                check_path apply_patch "$p"
+                case "$p" in
+                    */.himmel/config.json|.himmel/config.json) deny "apply_patch targets $p" ;;
+                esac
+                [ -n "$p" ] && cand[${#cand[@]}]="$p"
             done
         done <<EOF
 $patch
 EOF
+        if [ "${#cand[@]}" -gt 0 ]; then
+            cfg_res=$(readlink -m -- "$CFG_REAL" 2>/dev/null) || cfg_res=""
+            if [ -n "$cfg_res" ]; then
+                # A failed batch (e.g. one path over the OS argument limit) must
+                # DENY: an empty result would read as "nothing resolves to it".
+                resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
+                while IFS= read -r r; do
+                    [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
+                done <<EOF
+$resolved
+EOF
+            fi
+        fi
         exit 0
         ;;
     Bash) ;;
