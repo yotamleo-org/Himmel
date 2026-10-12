@@ -193,6 +193,33 @@ OUT="$(env -i PATH="$GF" HOME="$TMP/home" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP
 if [ "$RC" -eq 0 ] && [ "$(cat "$TMP/graph-cwd")" = "$FAKE" ] && [ -f "$FAKE/graphify-out/graph.json" ]; then ok "setup builds graph inside the session checkout"; else bad "graph not built inside checkout: $OUT"; fi
 rm -rf "$FAKE/scripts/jira/dist" "$FAKE/marketplace/plugins/obsidian-triage/tools/node_modules" "$FAKE/scripts/lib"
 
+# 6f. git gate hooks (HIMMEL-5442): the cloud clone has none installed, so the
+# pre-commit, commit-msg (attestation trailers, ticket ID) and pre-push gates
+# would not fire. A bare `pre-commit install` installs only the first, so all
+# three types are named. Hermetic: a stub pre-commit records its arguments.
+GT="$TMP/gitrepo"; mkdir -p "$GT/.git/hooks" "$GT/scripts/jira"
+: > "$GT/scripts/jira/package.json"
+GTB="$TMP/gtbin"; mkdir -p "$GTB"
+for t in timeout sh mkdir bash dirname pwd cat; do ln -s "$(command -v "$t")" "$GTB/$t"; done
+printf '#!/bin/sh\nexit 0\n' > "$GTB/shellcheck"; cp "$GTB/shellcheck" "$GTB/at"
+# shellcheck disable=SC2016  # stub script text, expanded when the stub runs
+printf '#!/bin/sh\npwd > "$HIMMEL_HOOK_LOG"\necho "$*" >> "$HIMMEL_HOOK_LOG"\nexit "${HIMMEL_HOOK_RC:-0}"\n' > "$GTB/pre-commit"
+chmod +x "$GTB/shellcheck" "$GTB/at" "$GTB/pre-commit"
+gt_run() { OUT="$(env -i PATH="$GTB" HIMMEL_CLOUD_ROOT="$GT" TMPDIR="$TMP" HIMMEL_HOOK_LOG="$TMP/hook.log" HIMMEL_HOOK_RC="${GT_RC:-0}" "$BASH_BIN" "$SETUP" $GT_ARGS 2>&1)"; RC=$?; }
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*"commit-msg"*"pre-push"*) ok "git gate hooks planned for all three stages" ;; *) bad "git-hooks step missing or incomplete: $OUT" ;; esac
+rm -f "$TMP/hook.log"; GT_ARGS="" gt_run
+if [ -f "$TMP/hook.log" ] && [ "$(sed -n 1p "$TMP/hook.log")" = "$GT" ]; then ok "hooks installed inside the session checkout"; else bad "pre-commit install not run in the checkout: $(cat "$TMP/hook.log" 2>/dev/null)"; fi
+case "$(sed -n 2p "$TMP/hook.log" 2>/dev/null)" in *"install"*"--hook-type pre-commit"*"--hook-type commit-msg"*"--hook-type pre-push"*) ok "all three hook types installed (a bare install gates only pre-commit)" ;; *) bad "hook types: $(sed -n 2p "$TMP/hook.log" 2>/dev/null)" ;; esac
+rm -f "$TMP/hook.log"; GT_RC=1 GT_ARGS="" gt_run
+if [ "$RC" -eq 0 ]; then ok "failing hook install keeps rc 0"; else bad "failing hook install rc=$RC: $OUT"; fi
+for h in pre-commit commit-msg pre-push; do : > "$GT/.git/hooks/$h"; done
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*) ok "installed git hooks are skipped" ;; *) bad "installed hooks not skipped: $OUT" ;; esac
+rm -rf "$GT/.git"
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*"not a git work tree"*) ok "no git work tree skips the hook step" ;; *) bad "no-git case: $OUT" ;; esac
+
 # 7. an unknown flag is refused (rc 2) rather than silently ignored.
 run "$EMPTY" --nope
 if [ "$RC" -eq 2 ]; then ok "unknown flag exits 2"; else bad "unknown flag rc=$RC"; fi

@@ -159,6 +159,42 @@ session's own worktree run `bash scripts/cloud/setup-env.sh` to rebuild both
 against that checkout. Never run a semantic `/graphify` extraction in the cloud:
 it would send content to a model backend.
 
+## Local-versus-cloud parity
+
+`bash scripts/cloud/parity-probe.sh` is a read-only probe: one `item<TAB>value`
+row per item under `## environment`, `settings`, `plugins`, `guards`, `gates`,
+`tools`, `jira` and `egress`. Run it locally and in a cloud session and diff the
+two (`--no-net` skips the egress rows). Each PreToolUse guard row is a harmless
+input the guard must refuse and reads `DENY`; `ALLOW` means that guard is off in
+that environment. The probe changes nothing.
+
+To run it in the cloud, start one session on the branch with the brief: run
+`bash scripts/cloud/setup-env.sh`, then `bash scripts/cloud/parity-probe.sh`, and
+post the full output as one top-level PR comment whose first line is
+`CLOUD-DONE <session URL>`.
+
+| Item | Local | Cloud | Gap and fix, or reason and ticket |
+|---|---|---|---|
+| Repo hooks (10 events, 40 commands) | wired, all scripts present | same files, from the repo's `.claude/settings.json` | none |
+| Repo allow / deny rules | 156 / 37 | same file | none |
+| User-scope deny rules and user `CLAUDE.md` | 36 deny, present | absent | Not closed here: the template would come from private user settings and rewriting live settings is VM-first. HIMMEL-5445 |
+| Plugin set and plugin hooks | 12 installed, 81 hook files | himmel-ops, lean-skills only (lean profile) | By design, setup time; whether plugin hooks fire in a cloud session is read from the probe's `plugin-hook-files` and `guard:` rows. HIMMEL-4206 |
+| PreToolUse guards (9 deny probes) | all `DENY` | read from the probe | A `guard:` row that is not `DENY` is a gap |
+| `pre-commit` binary | 4.6.2 | installed by `setup-env.sh` | none |
+| Git gate hooks (pre-commit, commit-msg, pre-push) | installed | **closed here:** step `git-hooks` runs `pre-commit install` for the three hook types | The hook environments themselves are fetched on first use, not at setup, to fit the ~5 min snapshot |
+| Attestation and ticket-ID gate | refuses a ticketless message (rc 1) | fires once the hooks above are installed (`attest:commit-msg-refuses-no-ticket`) | none |
+| bun, gitleaks, `HIMMEL_REPO` | present | not installed | HIMMEL-4580 |
+| shellcheck, `at`, node, jq, gh, git | present | shellcheck and `at` by setup; the rest in the image | none |
+| graphify | pinned 0.9.80 | **already closed (HIMMEL-4726):** pinned, AST-only | Build time against the budget: HIMMEL-4581 |
+| qmd | 2.8.3, 11 collections | `himmel` collection only, BM25 only | By design: vaults and handover state stay local; a ticket needing `qmd query` or vectors routes LOCAL-NATIVE |
+| Jira access | local jira CLI | claude.ai Atlassian connector only | By design: no token in the environment |
+| Bash timeouts | unset locally | set only through the dialog's variables | By design, see Notes above; `check-env.sh` reports a mismatch |
+| Egress | unrestricted | `Trusted` allowlist | By design; `net:` rows show a host the allowlist blocks |
+| luna, vaults, handover state, console bridge, hook-integrity bypass | present | absent | By design, local only; two-way console channel: HIMMEL-4277 |
+
+The cloud column of the guard, plugin and egress rows is what a cloud run of the
+probe prints; the PR that added this matrix carries that output as a comment.
+
 ## How a cloud PR lands
 
 1. `/cloud-route` classifies a ticket CLOUD-OK, writes the brief and prints the

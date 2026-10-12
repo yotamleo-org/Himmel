@@ -125,6 +125,24 @@ else
   run_step pre-commit install "pip" -- $TMO 120 python3 -m pip install --disable-pip-version-check --break-system-packages pre-commit
 fi
 
+# 3b. git gate hooks (HIMMEL-5442): a fresh clone has none, so the pre-commit,
+# commit-msg (ticket ID, attestation trailers) and pre-push gates never fire in
+# the cloud. A bare `pre-commit install` installs only the first type, so all
+# three are named. No --install-hooks: that would clone every hook repo inside
+# the ~5 min cached setup; pre-commit fetches them on first use. Acts on $ROOT,
+# so the session re-runs this script from its own clone (the setup-time clone
+# is throwaway). Non-fatal.
+if [ ! -e "$ROOT/.git" ]; then
+  plan git-hooks skip "not a git work tree"
+elif [ -f "$ROOT/.git/hooks/pre-commit" ] && [ -f "$ROOT/.git/hooks/commit-msg" ] && [ -f "$ROOT/.git/hooks/pre-push" ]; then
+  plan git-hooks skip "installed"
+elif have pre-commit || [ "$DRY" -eq 1 ]; then
+  # shellcheck disable=SC2016  # $1 is the sh -c positional arg (HIMMEL-4744)
+  soft_step git-hooks install "pre-commit install: pre-commit, commit-msg, pre-push" -- sh -c 'cd "$1" && pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push' sh "$ROOT"
+else
+  plan git-hooks skip "pre-commit absent"
+fi
+
 # 4. plugin cloud profile (HIMMEL-4273): install exactly $PLUGINS. Non-fatal.
 if [ -n "$PLUGINS" ]; then
   if have claude || [ "$DRY" -eq 1 ]; then
