@@ -1,9 +1,10 @@
 import { sanitizeTranscriptModel } from './model-source.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
 const NO_DATA_TIMEOUT_MS = 250;
+const IDLE_TIMEOUT_MS = 250;
 const MAX_STDIN_BYTES = 256 * 1024;
 // Returns null for a TTY (setup's manual run), no input, oversized input, or invalid JSON.
-// Resolves as soon as the buffered text parses, in case the writer leaves stdin open.
+// Resolves as soon as the buffered text parses, or after incomplete input goes idle.
 export function readStdin(stream = process.stdin) {
     if (stream.isTTY) {
         return Promise.resolve(null);
@@ -11,11 +12,13 @@ export function readStdin(stream = process.stdin) {
     return new Promise((resolve) => {
         let raw = '';
         let done = false;
+        let idleTimer;
         const finish = (value) => {
             if (done)
                 return;
             done = true;
             clearTimeout(noDataTimer);
+            clearTimeout(idleTimer);
             stream.pause();
             resolve(value);
         };
@@ -42,6 +45,10 @@ export function readStdin(stream = process.stdin) {
             const parsed = parse();
             if (parsed)
                 finish(parsed);
+            else {
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(() => finish(parse()), IDLE_TIMEOUT_MS);
+            }
         });
         stream.on('end', () => finish(parse()));
         stream.on('error', () => finish(null));

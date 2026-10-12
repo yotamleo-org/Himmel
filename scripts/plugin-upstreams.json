@@ -8,7 +8,7 @@
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
     "track": "release",
-    "synced_base": "skill-v4.5.0",
+    "synced_base": "skill-v4.5.2",
     "tag_prefix": "skill-v"
   },
   "obsidian-second-brain": {
@@ -40,14 +40,14 @@
     "standalone": true,
     "upstream_repo": "obra/superpowers",
     "track": "release",
-    "synced_base": "v6.4.2",
-    "ref": "8ca22dba9a94f28898bbce59f2537ff4d87c747d"
+    "synced_base": "v7.0.0",
+    "ref": "bb92a77741419a4ab5f06e711a283343f1ada0c3"
   },
   "mattpocock-skills": {
     "standalone": true,
     "upstream_repo": "mattpocock/skills",
     "track": "head",
-    "ref": "f3fc5632f401156837ee3872f14fe33ccf1024ea"
+    "ref": "49dd158d1076134a641b33efb035946536778336"
   },
   "coderabbit": {
     "standalone": true,
@@ -59,7 +59,7 @@
     "standalone": true,
     "upstream_repo": "DietrichGebert/ponytail",
     "track": "release",
-    "synced_base": "v4.13.0",
-    "ref": "08e952d7a8057a57ce561ff1330d093fd92eec67"
+    "synced_base": "v5.1.1",
+    "ref": "6135ace05cd72736594fcf2c6830bea22780f91a"
   }
 }

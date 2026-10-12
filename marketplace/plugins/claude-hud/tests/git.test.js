@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { getGitStatus, parseNumstat, parseStatus } from '../dist/git.js';
 
-const IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@test.com', '-c', 'commit.gpgsign=false'];
+const IDENTITY = ['-c', 'user.name=Test', '-c', 'user.email=test@test.com', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false'];
 
 async function withRepo(fn, { commit = true } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'claude-hud-git-'));
@@ -101,6 +101,28 @@ test('getGitStatus attaches line diffs, including to renamed and unusually named
   });
 });
 
+test('getGitStatus line diffs never rewrite the index', async () => {
+  await withRepo(async ({ dir, git, write }) => {
+    await write('a.txt', 'a\n');
+    await write('b.txt', 'b\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'files');
+    // b.txt gets a new mtime but the same content: stale stat data that porcelain `git diff`
+    // would refresh into .git/index under index.lock.
+    const old = new Date('2020-01-01T00:00:00Z');
+    await utimes(path.join(dir, 'b.txt'), old, old);
+    git('update-index', '--refresh');
+    await utimes(path.join(dir, 'b.txt'), new Date(), new Date());
+    await write('a.txt', 'a\nb\n');
+    const index = path.join(dir, '.git', 'index');
+    const before = await readFile(index);
+
+    const status = await getGitStatus(dir, { lineDiffs: true });
+    assert.deepEqual(status?.lineDiff, { added: 1, deleted: 0 });
+    assert.deepEqual(await readFile(index), before);
+  });
+});
+
 test('getGitStatus counts unmerged paths once each', async () => {
   await withRepo(async ({ dir, git, write }) => {
     await write('conflict.txt', 'base\n');
@@ -168,18 +190,105 @@ test('getGitStatus links GitHub branches and commits from the stdin repo identit
   });
 });
 
+// Writes git config entries to a file, escaped as git expects (a bare `;` would start a comment).
+function writeConfig(file, entries) {
+  for (const [key, value] of Object.entries(entries)) execFileSync('git', ['config', '--file', file, key, value]);
+}
+
+// Runs fn with a global git config holding `entries`, as git-lfs installs its filter.
+async function withGlobalConfig(entries, fn) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'claude-hud-global-'));
+  const file = path.join(dir, 'gitconfig');
+  writeConfig(file, entries);
+  const saved = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = file;
+  try {
+    await fn(dir);
+  } finally {
+    if (saved === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = saved;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+const OLD = new Date('2020-01-01T00:00:00Z');
+const exists = (file) => stat(file).then(() => true, () => false);
+
+// Commits `files` under `attributes`, then moves their mtimes so git has to hash them (through their filter) again.
+async function commitStale(dir, git, write, attributes, files) {
+  await write('.gitattributes', attributes);
+  for (const name of files) await write(name, `${name}\n`);
+  git('add', '.');
+  git('commit', '-q', '-m', 'files');
+  for (const name of files) await utimes(path.join(dir, name), OLD, OLD);
+}
+
 test('getGitStatus falls back to the branch alone when status times out', {
-  skip: process.platform === 'win32' ? 'needs a POSIX fsmonitor hook' : false,
+  skip: process.platform === 'win32' ? 'needs a POSIX filter command' : false,
 }, async () => {
   await withRepo(async ({ dir, git, write }) => {
-    const hook = path.join(dir, '.git', 'slow-fsmonitor');
-    await write('.git/slow-fsmonitor', '#!/bin/sh\nsleep 3\n');
-    await chmod(hook, 0o755);
-    git('config', 'core.fsmonitor', hook);
+    await commitStale(dir, git, write, '*.txt filter=slow\n', ['a.txt']);
+    // A filter from the user's own config still runs, so it can make status slow.
+    await withGlobalConfig({ 'filter.slow.clean': "sh -c 'sleep 3; cat'" }, async () => {
+      const started = Date.now();
+      assert.deepEqual(await getGitStatus(dir), { branch: 'main', isDirty: false, ahead: 0, behind: 0, branchUrl: undefined });
+      assert.ok(Date.now() - started < 2500, 'gave up on the slow status');
+    });
+  });
+});
 
-    const started = Date.now();
-    assert.deepEqual(await getGitStatus(dir), { branch: 'main', isDirty: false, ahead: 0, behind: 0, branchUrl: undefined });
-    assert.ok(Date.now() - started < 2500, 'gave up on the slow status');
+test('getGitStatus never runs commands named in the repository\'s own config', {
+  skip: process.platform === 'win32' ? 'needs POSIX commands' : false,
+}, async () => {
+  await withRepo(async ({ dir, git, write }) => {
+    await commitStale(dir, git, write, '*.txt filter=evil\n*.md filter=in.cluded\n', ['a.txt', 'b.md']);
+    await write('a.txt', 'a.txt\nmore\n');
+    const ran = (what) => path.join(dir, '.git', `ran-${what}`);
+    // GHSA-fq7j-8hxj-jfqh: core.fsmonitor runs on every status. A filter driver runs whenever git
+    // hashes a changed file, whether it's in .git/config or a file that config includes.
+    writeConfig(path.join(dir, '.git', 'config'), {
+      'core.fsmonitor': `touch '${ran('fsmonitor')}'`,
+      'filter.evil.clean': `sh -c 'touch "${ran('filter')}"; cat'`,
+      'include.path': 'included',
+    });
+    writeConfig(path.join(dir, '.git', 'included'), { 'filter.in.cluded.clean': `sh -c 'touch "${ran('included')}"; cat'` });
+
+    const status = await getGitStatus(dir, { lineDiffs: true });
+    assert.deepEqual(status?.lineDiff, { added: 1, deleted: 0 }, 'still reports the change');
+    for (const what of ['fsmonitor', 'filter', 'included']) assert.equal(await exists(ran(what)), false, what);
+  });
+});
+
+test('getGitStatus does not run git inside submodules, which reads their own config', {
+  skip: process.platform === 'win32' ? 'needs POSIX commands' : false,
+}, async () => {
+  await withRepo(async ({ dir: sub, git: subGit, write: subWrite }) => {
+    await commitStale(sub, subGit, subWrite, '*.txt filter=evil\n', ['s.txt']);
+    await withRepo(async ({ dir, git }) => {
+      git('-c', 'protocol.file.allow=always', 'submodule', '-q', 'add', sub, 'sm');
+      git('commit', '-q', '-m', 'submodule');
+      await utimes(path.join(dir, 'sm', 's.txt'), OLD, OLD);
+      const marker = path.join(dir, '.git', 'ran-submodule-filter');
+      writeConfig(path.join(dir, '.git', 'modules', 'sm', 'config'), { 'filter.evil.clean': `sh -c 'touch "${marker}"; cat'` });
+
+      assert.equal((await getGitStatus(dir, { lineDiffs: true }))?.branch, 'main');
+      assert.equal(await exists(marker), false);
+    });
+  });
+});
+
+test('getGitStatus keeps filters from the user\'s own config, such as git-lfs', {
+  skip: process.platform === 'win32' ? 'needs a POSIX filter command' : false,
+}, async () => {
+  await withRepo(async ({ dir, git, write }) => {
+    // Not named lfs: a machine with git-lfs installed has a system-wide filter.lfs.process, which wins over clean.
+    await commitStale(dir, git, write, '*.bin filter=mine\n', ['a.bin']);
+    await withGlobalConfig({}, async (globalDir) => {
+      const marker = path.join(globalDir, 'ran');
+      writeConfig(process.env.GIT_CONFIG_GLOBAL, { 'filter.mine.clean': `sh -c 'touch "${marker}"; cat'` });
+      await getGitStatus(dir, { lineDiffs: true });
+      assert.equal(await exists(marker), true);
+    });
   });
 });
 

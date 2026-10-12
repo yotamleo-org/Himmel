@@ -137,8 +137,15 @@ It also carries, for the terminal lint (HIMMEL-4375):
   exempt it. The lint detects the surface from the H1 and the first section,
   so name it there.
 
+**Choose the written-design size yourself.** At its brainstorming step "Size
+the Work", pick brainstorming step "A project with a written design" and say so;
+never let it settle on a quick task or a small change, and never take its
+skip-the-questions opt-out. Those end with no document, and the Stage-2 gate
+and the terminal lint both read the written spec.
+
 **HALT it before its auto-handoff to writing-plans.** When brainstorming has
-written + self-reviewed the spec and the design is approved, return HERE
+written the spec, run its brainstorming step "Builder check", and the document
+is approved, return HERE
 instead of letting it invoke writing-plans — minerva runs the spec-critic
 first.
 

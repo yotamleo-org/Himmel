@@ -14,14 +14,15 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        33b51db6ceb5d0c91dc9c22404abcabacc8603b0  # v0.10.0 line, 19 commits past v0.9.0 (HIMMEL-4578)
-pinned_upstream_tree: f0475568040a00ad06aebcefb3c9601749a20877  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   e6054ab3e023ac0f1132b035c7121cd5a0b0875d6ddd528e52a62d4fce825916  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-12
+pinned_commit:        45b58855001f7efab2b205b8d2ef524ab837c879  # v0.11.1 line, 15 commits past 33b51db (HIMMEL-5440)
+pinned_upstream_tree: 20f04e5c9de07b3a64daae8515d50433a13c7d11  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   4d73582523a17da1a067201ef4a9ec9f881382e0bcdba5ea30632c67d5f6a4bb  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-13
 ```
 
-`pinned_commit` points at the **upstream** base `33b51db` (the v0.10.0 line;
-the `v0.10.0` tag peels to the later release commit `75683c6`); the vendored
+`pinned_commit` points at the **upstream** base `45b5885` (the v0.11.1 line:
+upstream's `build: compile dist/ [auto]` commit after the `v0.11.1` release
+prep); the vendored
 tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
 session-token cache split, write-only context snapshot writer) **plus** any
 dependabot lockfile bumps landed since the vendor (see **Fork delta**
@@ -64,6 +65,23 @@ protected: editing it without bumping the pin trips the guard.
 > makes the drift guard protect *more* upstream files, not fewer.
 
 ## Fork delta
+
+- **Re-vendored to upstream v0.11.1 `45b5885` (HIMMEL-5440, 2026-10-13, fork-drift
+  issue #767):** +15 commits past `33b51db`. Upstream work: the GHSA-fq7j-8hxj-jfqh
+  security fix (git status no longer runs a repository's own `core.fsmonitor` or
+  filter-driver commands; `--ignore-submodules=dirty`), line diffs via
+  `git diff-index` so a timed-out render can't leave `.git/index.lock`, a
+  cross-process lock on the cost ledger, an idle timeout for stalled stdin,
+  fork-agent completions without `<tool-use-id>`, a placeable `sessionTokens`
+  element, and upstream's `@types/node` 26.6.2 to 26.6.4 dev bump. Applied as the
+  upstream `33b51db..45b5885` source diff onto the vendored tree: every hunk landed
+  cleanly except two, both against the himmel delta. `.claude-plugin/plugin.json`
+  took upstream's `0.11.1` over himmel's `0.10.1`. Upstream's new
+  `tests/render.test.js` row for `sessionTokens` was carried with the HIMMEL-2161
+  `cache-r` label in place of upstream's `cache`. `dist/` rebuilt from source
+  (`npm ci --ignore-scripts && npm test`, 399 pass, 5 skipped, 0 fail). Every file
+  outside the himmel delta and the brace-expansion lockfile floor (still 5.0.12)
+  is byte-identical to upstream `45b5885`, built `dist/` included.
 
 - **Re-vendored to upstream v0.10.0 `33b51db` (HIMMEL-4578, 2026-10-12):** +19
   commits past `d46bbd7` (v0.9.0), the upstream architecture rewrite:
