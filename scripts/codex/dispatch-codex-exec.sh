@@ -527,7 +527,9 @@ const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key
 // HIMMEL-5350: a header-looking line inside a multi-line string is string content
 // to codex, so track """ / \x27\x27\x27 across lines (single-line strings and
 // comments skipped) and read only the lines that start outside one.
-let ml = null;
+// HIMMEL-5355: the same for a line inside a multi-line array or inline table
+// (bracket/brace depth outside strings): its [ line is an element, not a header.
+let ml = null, depth = 0;
 const trackStrings = (line) => {
     let i = 0;
     while (i < line.length) {
@@ -549,13 +551,23 @@ const trackStrings = (line) => {
             i++;
             continue;
         }
+        if (c === "[" || c === "{") depth++;
+        else if ((c === "]" || c === "}") && depth > 0) depth--;
         i++;
     }
 };
+// The name of a key line, a quoted key decoded (\uXXXX, \UXXXXXXXX, \X) and trimmed:
+// fail closed, so " enabled " and "enabled" both read as enabled.
+const keyName = (raw) => {
+    if (raw.charAt(0) === "\x27") return raw.slice(1, -1).trim();
+    if (raw.charAt(0) !== "\"") return raw;
+    return raw.slice(1, -1).replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/g,
+        (all, u, big, ch) => { try { return String.fromCodePoint(parseInt(u || big, 16)); } catch (error) { return ch === undefined ? all : ch; } }).trim();
+};
 for (const line of cfg.split(/\r?\n/)) {
-    const insideString = ml !== null;
+    const insideValue = ml !== null || depth > 0;
     trackStrings(line);
-    if (insideString) continue;
+    if (insideValue) continue;
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
@@ -566,10 +578,14 @@ for (const line of cfg.split(/\r?\n/)) {
         if (h) hash = h[1];
         // codex reads enabled as a bool: anything but true discards the entry.
         // Positive form: [\s\S] in the comment tail, since `.` skips U+2028/U+2029.
-        if (/^\s*enabled\s*=/.test(line) && !/^\s*enabled\s*=\s*true\s*(?:#[\s\S]*)?$/.test(line)) off = true;
+        // HIMMEL-5355: the key may be quoted ("enabled", \x27enabled\x27).
+        const kv = line.match(/^\s*("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27|[A-Za-z0-9_-]+)\s*=([\s\S]*)$/);
+        if (kv && keyName(kv[1]) === "enabled" && !/^\s*true\s*(?:#[\s\S]*)?$/.test(kv[2])) off = true;
     }
 }
 flush();
+// An unterminated string, array or table is a config codex cannot parse: trust nothing.
+if (ml !== null || depth > 0) trusted.clear();
 // Port of codex hook_hash(): sha256 of the compact JSON, object keys sorted, of
 // { event_name, matcher?, hooks: [normalized handler] }.
 const labels = { PreToolUse: "pre_tool_use", PermissionRequest: "permission_request", PostToolUse: "post_tool_use", PreCompact: "pre_compact", PostCompact: "post_compact", SessionStart: "session_start", SessionEnd: "session_end", UserPromptSubmit: "user_prompt_submit", SubagentStart: "subagent_start", SubagentStop: "subagent_stop", Stop: "stop", Interrupt: "interrupt" };

@@ -1451,6 +1451,18 @@ toml_edit "19g enabled = false with a U+2028 comment is discarded" 2 "pre_tool_u
 toml_edit "19h enabled = false with a U+2029 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2029) + "\n");'
 toml_edit "19i enabled = true with a U+2028 comment stays trusted" 0 "" 'return text.replace(header + "\n", header + "\nenabled = true # x" + String.fromCharCode(0x2028) + "\n");'
 
+# 19j-19q (HIMMEL-5355): a quoted `enabled` key is the same key to codex, and a
+# line starting with [ inside a multi-line array is an element, not a table header.
+toml_edit "19j basic-quoted \"enabled\" = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enabled\" = false\n");'
+toml_edit "19k literal-quoted single-quoted enabled = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\x27enabled\x27 = false\n");'
+toml_edit "19l quoted key with inner whitespace is discarded (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\" enabled \" = false\n");'
+toml_edit "19m basic-quoted \"enabled\" = true stays trusted" 0 "" 'return text.replace(header + "\n", header + "\n\"enabled\" = true\n");'
+toml_edit "19n nested array line before enabled = false is discarded" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
+toml_edit "19o nested array line before enabled = true stays trusted" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n]\nenabled = true\n" + text.slice(nl);'
+toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use:3:0" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n\"]\",\n[\"a\"],\n]\nenabled = false\n" + text.slice(nl);'
+toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\nenabled = false,\n]\n" + text.slice(nl);'
+toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1
