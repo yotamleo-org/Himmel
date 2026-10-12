@@ -150,6 +150,10 @@ esac
 # it prints as `_` in the first line and as a \001 byte in the decoded line
 # (HIMMEL-4141); empty quotes inside a longer word (`query""`, `""query`)
 # print nothing, as before.
+# Launchers that join their words and re-parse them (eval, watch, parallel,
+# env -S, ssh, sudo, firejail) are read with the empty argument removed; any
+# other launcher that re-parses its argv is out of scope: this guard is a
+# cost fence, not a security boundary.
 # shellcheck disable=SC1003,SC2016 # literal backslash, $ and ` bytes
 qmd_words() {
     local LC_ALL=C
@@ -1039,19 +1043,20 @@ qmd_nested() {
         else
             case "$tw" in do|then|else|elif|if|while|until|'!'|time|'{'|exec|command|builtin) pp=1 ;; *) pp=0 ;; esac
         fi
-        # HIMMEL-4141: sudo -s / -i (--shell, --login) and firejail's default
-        # shell join their words with spaces and re-parse them, so an empty
-        # argument (the placeholder byte) vanishes there: read the decoded
-        # words with it removed. The wrapper itself stays a plain program
-        # position (its argv is handed over as it is), so the top level reads
-        # it as before.
+        # HIMMEL-4141: sudo's shell modes (-s, -i, --shell, --login, with
+        # abbreviated long options and bundled option arguments) and
+        # firejail's default shell join their words with spaces and re-parse
+        # them, so an empty argument (the placeholder byte) vanishes there:
+        # read the decoded words with it removed, for EVERY sudo and firejail
+        # (over-denying a plain sudo is the accepted direction). The wrapper
+        # itself stays a plain program position (its argv is handed over as
+        # it is), so the top level reads it as before.
         case "${t%.exe}" in
             sudo|firejail)
                 x=${dec:i}
                 x=${x%%[;|&()$'\n']*}
                 x=${x//$'\001'/}
-                if [[ $x == *[qQ]* ]] && { [ "${t%.exe}" = firejail ] ||
-                    [[ " $x " =~ [[:space:]](-[[:alpha:]]*[si][[:alpha:]]*|--shell|--login)[[:space:]] ]]; }; then
+                if [[ $x == *[qQ]* ]]; then
                     qmd_check "exec $x" $((depth + 1))
                     if [ "$deny" = 1 ]; then return 0; fi
                 fi
