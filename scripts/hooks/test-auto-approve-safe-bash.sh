@@ -294,6 +294,17 @@ assert "sort -S -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -S -- -o /tmp/
 assert "sort -T -- --compress-program PASS" PASS "$(decide "$(j_bash 'sort -T -- --compress-program=sh f')")"
 assert "sort -k 1 -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -k 1 -- -o f')")"
 assert "sort -T d -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -T d -- -o f')")"
+assert "sort --sort -- -o PASS"   PASS  "$(decide "$(j_bash 'sort --sort -- -o /tmp/pwned f')")"
+assert "sort -t -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -t -- -o /tmp/pwned f')")"
+assert "sort -k -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -k -- -o /tmp/pwned f')")"
+assert "sort -y -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -y -- -o /tmp/pwned f')")"
+# A redirect operator and its target are not sort arguments: a `--` target ends nothing (judge j2528b).
+assert "sort <<< -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<< -- -o /tmp/pwned f')")"
+assert "sort < -- -o PASS"        PASS  "$(decide "$(j_bash 'sort < -- -o /tmp/pwned f')")"
+assert "<<< -- sort -o PASS"      PASS  "$(decide "$(j_bash '<<< -- sort -o /tmp/pwned f')")"
+assert "sort <<< -- --compress PASS" PASS "$(decide "$(j_bash 'sort <<< -- --compress-program=sh f')")"
+assert "sort -T <in -- -o PASS"   PASS  "$(decide "$(j_bash 'sort -T <in -- -o /tmp/pwned f')")"
+assert "sort < in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort < in -- -o f')")"
 
 # --- Correctness-CR locks: false-negatives that should ALLOW ---
 assert "xxd file + redirect"      ALLOW "$(decide "$(j_bash 'xxd file 2>/dev/null')")"

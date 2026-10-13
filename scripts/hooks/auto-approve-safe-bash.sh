@@ -1211,11 +1211,15 @@ segment_is_safe() {
                                            # doesn't match a known long name
                                            # falls through to normal permission,
                                            # never a wider per-shape parse.
-                local sdd=0 sskip=0 ssv sln
+                local sdd=0 sskip=0 ssv sln srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
                     [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
+                    # A redirect operator and its target are not sort arguments: neither
+                    # may start or end `--` handling nor consume an option value. Both are
+                    # still checked for -o/--output (fail closed), only the state is kept.
+                    ssd0=$sdd ssk0=$sskip
                     ssv=$sskip; sskip=0           # 1 = this word is the previous option's value
                     case "$SW_VALUE" in
                         --) [ "$ssv" = 1 ] || sdd=1 ;;   # a value-consumed `--` ends nothing
@@ -1227,13 +1231,19 @@ segment_is_safe() {
                             guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1
                             case "$SW_VALUE" in
                                 *=*) ;;
-                                *) for sln in temporary-directory random-source buffer-size key field-separator files0-from batch-size parallel; do
+                                *) for sln in temporary-directory random-source buffer-size key field-separator files0-from batch-size parallel sort; do
                                        guard_is_long_abbrev "$sln" "$SW_VALUE" && sskip=1
                                    done ;;
                             esac ;;
                     esac
+                    if [ "$srt" = 1 ]; then
+                        sdd=$ssd0 sskip=$ssk0 srt=0   # this word was a redirect target
+                    elif is_redirect_word "$k" "$SW_VALUE"; then
+                        sdd=$ssd0 sskip=$ssk0
+                        [[ "$SW_VALUE" =~ $sre ]] && srt=1   # bare operator: the next word is its target
+                    fi
                 done ;;
-            xxd)                           # `xxd in out` / `xxd -r in out` writes
+            xxd)                          # `xxd in out` / `xxd -r in out` writes
                 local xops=0               # a 2nd positional = output file → write
                 for k in "${a[@]:$((i + 1))}"; do
                     shell_word_value "$k" || return 1
