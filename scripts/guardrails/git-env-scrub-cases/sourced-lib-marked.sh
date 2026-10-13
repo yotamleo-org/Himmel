@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# sourced-lib
+# sourced-lib: fixture — only ever sourced; the sourcing script owns the scrub
 # GREEN: shebang-less, invokes git in command position, but explicitly
 # declares itself sourced-only via the marker above — whatever sources this
 # owns the scrub.

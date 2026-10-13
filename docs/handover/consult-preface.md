@@ -36,7 +36,7 @@ call `AskUserQuestion`** (it parks you and blocks your inbox) and **never call
 **A partial sandbox, not a guarantee.** The envelope removes the file-edit
 tools, and Bash runs in Claude Code's sandbox: writes go to your consult doc
 file plus Claude Code's own temp dirs, and the repo is write-denied. You launch
-with `--setting-sources ""` (HIMMEL-4069): no user, project or local settings
+with `--setting-sources ""`: no user, project or local settings
 scope loads, so none of their `additionalDirectories`, Edit allows or sandbox
 keys can become a write root or widen the network. Their hooks, deny and ask
 rules and env (minus `CLAUDE_*` keys) are carried into your own settings

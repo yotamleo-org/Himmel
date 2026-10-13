@@ -2,7 +2,7 @@
 
 Reference docs for himmel features that touch the Luna Obsidian vault.
 
-Per the luna-area docs convention locked 2026-05-25 (HIMMEL-138 +
+Per the luna-area docs convention locked 2026-05-25 (see the
 `CLAUDE.md` "Luna-area docs convention" section): operator-facing
 reference docs (guides, runbooks, architecture) for luna-touching
 features in this repo live here. Personal-state work artifacts

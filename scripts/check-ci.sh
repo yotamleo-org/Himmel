@@ -535,8 +535,15 @@ if [ "$CR_ARMED" -eq 1 ]; then
     . "$(cd "$(dirname "$0")" && pwd)/lib/cr-ledger-evidence.sh"
 fi
 
+# HIMMEL-4762: the check-rollup read lives on the forge seam (_gh_pr_checks in
+# forge-github.sh, the same `gh pr checks [<selector>] <args>` call, args
+# verbatim); the github backend is called directly, so no forge detection runs
+# here.
+# shellcheck source=scripts/lib/forge-github.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$(cd "$(dirname "$0")" && pwd)/lib/forge-github.sh"
 pr_checks() {
-    if [ -n "$selector" ]; then gh pr checks "$selector" "$@"; else gh pr checks "$@"; fi
+    _gh_pr_checks "$selector" "$@"
 }
 
 pr_view() {

@@ -1,4 +1,4 @@
-# Prompt cache — the verified model, the audit, and the eval (HIMMEL-3837)
+# Prompt cache — the verified model, the audit, and the eval
 
 A prompt-cache claim in this repo is **not true until the eval shows it**. The
 eval is `scripts/eval/cache-probe.sh` (read-only; reads session transcript
@@ -13,7 +13,7 @@ A packaged write-up (method, fresh results, limits) is in [`docs/evals/prompt-ca
   level and everything after it. Default TTL is 5 minutes and refreshes on each
   use; a 1-hour tier exists (write 2× base, 5-minute write 1.25×, read 0.1×).
   Official: <https://platform.claude.com/docs/en/build-with-claude/prompt-caching>.
-- Preserved thinking (HIMMEL-3875; reported by the ticket from
+- Preserved thinking (reported from
   <https://platform.claude.com/docs/en/build-with-claude/preserved-thinking>,
   not independently verified here): on Fable 5.1, Opus 5.5, Sonnet 5.5 and
   Mythos 5.1 the API validates each thinking block's signature against the
@@ -55,9 +55,9 @@ TRUE / FALSE / UNVERIFIED, each with the eval scenario (a fixture in
 | 6 | the statusline's per-tier cache-expiry countdown (`docs/patches/2026-05-16-cache-statusline.md`) | **TRUE** — the TTL model holds on both tiers | live run L4; fixtures put a 10-minute gap warm on 1h and cold on 5m | `idle-ttl-5m`, `idle-ttl-1h`, `idle-ttl-violated` |
 | 7 | a cache-read collapse after a compaction or a long idle is not an external invalidation (the reading the probe applies) | **TRUE** — measured, not assumed | L1 classed 1 session `compacted`; fixtures | `compaction-lookalike`, `ttl-expiry`, `late-rewrite-unrelated`, `idle-compaction-lookalike` |
 | 8 | "the 76.5% read-ratio / `<40%` = structural issue" figures (`token-economy.md`) | **UNVERIFIED** — one-tweet heuristics from another workspace; himmel's measured 98.2% neither confirms nor refutes the threshold | — | none (no fixture: a threshold from elsewhere) |
-| 9 | "one extra cache write (~4k tokens) per session started or compacted after an index edit" (this doc, `SKILL.md` rail 6) | **UNVERIFIED** — an estimate from the index size, not a measured delta | — | none; ponytail: an estimate, upgrade path = a probe mode that diffs first-turn `cache_creation` before/after an edit (HIMMEL-3837 follow-up) |
-| 10 | "edits that invalidate thinking also restart the prompt cache; append-only with fixed system and tools is the cache-safe shape" (this doc, HIMMEL-3875) | **UNVERIFIED** — reported by the ticket from the preserved-thinking docs page, not measured | — | none; ponytail: ticket-reported, upgrade path = a `scripts/eval/cache-probe.sh` scenario that edits an earlier turn / the system prompt and asserts the rewrite |
-| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3, HIMMEL-4422) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly-bank reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any bank/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); ponytail: needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (HIMMEL-4422 follow-up) |
+| 9 | "one extra cache write (~4k tokens) per session started or compacted after an index edit" (this doc, `SKILL.md` rail 6) | **UNVERIFIED** — an estimate from the index size, not a measured delta | — | none; ponytail: an estimate, upgrade path = a probe mode that diffs first-turn `cache_creation` before/after an edit (follow-up) |
+| 10 | "edits that invalidate thinking also restart the prompt cache; append-only with fixed system and tools is the cache-safe shape" (this doc) | **UNVERIFIED** — reported from the preserved-thinking docs page, not measured | — | none; ponytail: reported, not measured, upgrade path = a `scripts/eval/cache-probe.sh` scenario that edits an earlier turn / the system prompt and asserts the rewrite |
+| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly-bank reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any bank/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); ponytail: needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (follow-up) |
 
 Counts: 3 TRUE, 4 FALSE (all fixed), 4 UNVERIFIED (noted, not guessed).
 Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
@@ -76,7 +76,7 @@ Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
 The probe reads only `usage` and timestamps; the runs put no transcript
 content in the repo.
 
-## Judge subagent TTL: predictions, baseline, ledger (HIMMEL-5180)
+## Judge subagent TTL: predictions, baseline, ledger
 
 **Docs facts** (<https://code.claude.com/docs/en/prompt-caching#which-ttl-each-request-gets>,
 <https://code.claude.com/docs/en/sub-agents>, read 2026-10-11): a subagent gets
@@ -215,7 +215,7 @@ reaches the transcript is invisible to the probe.
   that mixes tiers can have a 5-minute expiry read as `invalidated` (or a
   `warm` idle gap that rewrote), so the error is toward over-flagging, never
   toward hiding an invalidation; upgrade path: take the tier from the last
-  write turn before each pair (HIMMEL-3837 follow-up).
+  write turn before each pair (follow-up).
 - A rewrite is a read that falls below half the previous turn's with more
   created than read. A partial-prefix invalidation that keeps at least half the
   prior read (a late edit in a long history) reads as `kept`; the probe can rule

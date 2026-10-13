@@ -1,4 +1,4 @@
-# `scripts/codex/` — provision himmel under the Codex CLI (HIMMEL-597)
+# `scripts/codex/` — provision himmel under the Codex CLI
 
 User-global install for the **Codex** side of himmel, the twin of the hermes
 profile installer. The split:
@@ -24,21 +24,20 @@ line endings). It is **idempotent** and **non-destructive**:
 2. Enables the himmel plugin set if not already `installed, enabled`. Default
    set (all `@himmel`): `himmel-ops handover obsidian-triage telegram-himmel`.
    `himmel-ops` is the one that delivers the minerva / stuck-playbook / vm /
-   himmel-doctor / himmel-update skills + the himmel-ops hooks to Codex
-   (the HIMMEL-597 target).
+   himmel-doctor / himmel-update skills + the himmel-ops hooks to Codex.
 
-3. **Sanitizes external-plugin `hooks.json`** as a final phase (HIMMEL-651): a
+3. **Sanitizes external-plugin `hooks.json`** as a final phase: a
    few external plugins (warp, hookify, ralph-loop, security-guidance) ship a
    top-level `description` that Codex versions **before `rust-v0.143.0`** reject
    ("unknown field description"), skipping those hooks with a boot warning. The
    installer strips it via `sanitize-plugin-hooks.{sh,ps1}` (idempotent;
    non-fatal). himmel-owned plugins never ship that shape.
 
-   > **Deprecated (HIMMEL-1104).** Upstream fixed this: codex PR #30229 added
+   > **Deprecated.** Upstream fixed this: codex PR #30229 added
    > `description` to the `HooksFile` schema, shipping in **`rust-v0.143.0`**. On
    > that version or newer the key is accepted and this phase mutates external
    > upstream plugin files for no benefit — prefer upgrading codex. Removing the
-   > automatic invocation is tracked in **HIMMEL-1114**.
+   > automatic invocation is a planned follow-up.
 
 For plugin enablement it only ever *adds* — it never removes or disables a
 plugin, and a re-run on a provisioned machine is a no-op. (The sanitize phase
@@ -74,7 +73,7 @@ bash scripts/codex/sanitize-plugin-hooks.sh --dry-run    # report, change nothin
 pwsh -NoProfile -File scripts\codex\sanitize-plugin-hooks.ps1 -DryRun
 ```
 
-## probe-codex-hooks.ps1 — Windows pwsh-runner hook lint (HIMMEL-1982)
+## probe-codex-hooks.ps1 — Windows pwsh-runner hook lint
 
 codex-cli on Windows runs every hook command as
 `pwsh.exe -NoProfile -Command "<command>"`. Two traps follow: a command
@@ -110,7 +109,7 @@ Wired as an advisory (non-fatal) phase 4 of `install-himmel-codex.ps1`.
 Tests: `scripts/codex/test-probe-codex-hooks.ps1` (hermetic; never touches
 the real `~/.codex`).
 
-## Dispatching codex impl workers (lane chokepoint, HIMMEL-741/781)
+## Dispatching codex impl workers (lane chokepoint)
 
 The `codex-exec` impl lane (`scripts/lanes/lanes.json`) dispatches codex CLI
 sandbox workers into git worktrees **only through the chokepoint wrapper**
@@ -120,7 +119,7 @@ sandbox workers into git worktrees **only through the chokepoint wrapper**
 bash scripts/codex/dispatch-codex-exec.sh --worktree <worktree-path> [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
 ```
 
-The wrapper enforces the three invariants from the HIMMEL-741 diagnosis:
+The wrapper enforces the three invariants from the original diagnosis:
 
 1. **ACL preflight, fail-closed.** It runs
    `normalize-worktree-acl.sh <worktree>` before the codex CLI is invoked
@@ -129,7 +128,7 @@ The wrapper enforces the three invariants from the HIMMEL-741 diagnosis:
    subdirectories that missed the sandbox SID inheritance; the sandbox then
    fails with access denials that look like a broken `codex exec`. The
    preflight is a no-op on non-Windows platforms.
-2. **Model follows the codex critic in `scripts/cr/critics.json` (HIMMEL-2811).**
+2. **Model follows the codex critic in `scripts/cr/critics.json`.**
    The registry is read with Node.js; only an unreadable file uses the named
    fallback (`gpt-6.1-sol`). Readable but invalid data refuses the dispatch.
    `CODEX_CRITICS_FILE` overrides the registry path for tests. A caller-named
@@ -144,7 +143,7 @@ The wrapper enforces the three invariants from the HIMMEL-741 diagnosis:
    `-p`/`--profile` — either can rewrite `sandbox_permissions`) would point
    codex at a directory the ACL preflight never touched or drop the sandbox
    entirely — the wrapper rejects them all.
-5. **`--reasoning-effort <value>` passthrough (opt-in, HIMMEL-905).** The
+5. **`--reasoning-effort <value>` passthrough (opt-in).** The
    codex CLI has no native flag for this; pass
    `--reasoning-effort <none|low|medium|high|xhigh|max>` (or
    `--reasoning-effort=<value>`) and the wrapper validates the enum, strips
@@ -152,12 +151,12 @@ The wrapper enforces the three invariants from the HIMMEL-741 diagnosis:
    `-c model_reasoning_effort="<value>"` override (the caller's own raw
    `-c`/`--config` stays refused per invariant 4 above). Does **not** change
    model selection. Accepted values remain the shared filter's enum; model-
-   specific effort compatibility is a separate concern (HIMMEL-2585).
+   specific effort compatibility is a separate concern.
 
 Tests: `scripts/codex/test-dispatch-codex-exec.sh` (hermetic; stubs the codex
 CLI via `CODEX_BIN` and the preflight via `CODEX_ACL_NORMALIZE`).
 
-### `--shared-branch` (opt-in, HIMMEL-800)
+### `--shared-branch` (opt-in)
 
 ```sh
 bash scripts/codex/dispatch-codex-exec.sh --worktree <worktree-path> --shared-branch <branch> [codex exec args...]
@@ -186,11 +185,11 @@ help in that case):
 bash scripts/lib/shared-branch-lock.sh release <worktree-or-repo-dir> <branch>
 ```
 
-### Watchdog + ledger (HIMMEL-2023)
+### Watchdog + ledger
 
 The dispatch used to end in an **unbounded** `wait`, so a wedged headless run
 hung with no timeout, no kill, and no ledger row - invisible outside a headed
-TUI (HIMMEL-1788 instance 5). Now:
+TUI. Now:
 
 - the run is timeboxed to `CODEX_EXEC_TIMEOUT` seconds (default **1800**, the
   codex-exec lane's own `timeoutSeconds` in `scripts/lanes/lanes.json`; a
@@ -207,7 +206,7 @@ TUI (HIMMEL-1788 instance 5). Now:
   `dispatch-codex-wsl.sh` already fed.
 
 Stdout presence tracking retains **at most one byte** in a private temporary
-file (HIMMEL-2806). The owned relay forwards that byte plus the rest of stdout
+file. The owned relay forwards that byte plus the rest of stdout
 unchanged, including binary output, and is awaited before dispatch completion.
 Relay failure propagates when codex succeeds; a codex failure takes precedence
 over relay failure, and timeout takes precedence over both. Empty stdout and
@@ -218,18 +217,18 @@ A raw `codex exec` outside this chokepoint gets none of it, which is why
 `scripts/hooks/block-rogue-codex-exec.sh` refuses it (bypass
 `CODEX_EXEC_RAW_OK=1`).
 
-### Job registry + MCP-fleet reap (HIMMEL-840)
+### Job registry + MCP-fleet reap
 
 The codex-exec **CLI sandbox** (this dispatcher) leaks its own MCP-server
 fleet - plain `npx <mcp-server>` under `cmd.exe` wrappers - that
-`reap-mcp-fleet.ps1`'s HIMMEL-741 fingerprint cannot see: those processes
+`reap-mcp-fleet.ps1`'s fingerprint cannot see: those processes
 carry no codex path marker of their own once the `codex.exe` supervisor is
 gone, so they are structurally invisible to that app-server-only
 fingerprint. The dispatcher closes the gap itself instead of relying on a
 periodic sweep:
 
 1. It never `exec`s codex (in either the default or `--shared-branch` path)
-   - it runs codex as a **child**, so its pid is known immediately. Stdin defaults to `/dev/null`; only explicit `--stdin-brief` (after `--worktree <path>` and optional `--shared-branch <branch>`, before codex args) passes a pipe or redirected file through — even non-tty empty pipes can otherwise block to timeout (HIMMEL-2786).
+   - it runs codex as a **child**, so its pid is known immediately. Stdin defaults to `/dev/null`; only explicit `--stdin-brief` (after `--worktree <path>` and optional `--shared-branch <branch>`, before codex args) passes a pipe or redirected file through — even non-tty empty pipes can otherwise block to timeout.
 2. Right after the child starts, it writes a **job registry** entry under
    `CODEX_JOBS_DIR` (default `$HOME/.himmel/state/codex-exec-jobs/`), one
    file per job (`<epoch>-<codexpid>.json`: `codex_pid`, `dispatch_pid`,
@@ -239,7 +238,7 @@ periodic sweep:
    to terminate any still-live descendants of that pid - the leftover MCP
    fleet, if any - then removes the registry entry. **On a timeout or a
    nonzero codex exit the entry is MOVED to `$CODEX_JOBS_DIR/failed/` instead
-   of being deleted** (HIMMEL-2023): the failure's forensic trace outlives it,
+   of being deleted**: the failure's forensic trace outlives it,
    while leaving the live-jobs glob (`*.json` at the top level) so the
    maintenance scan below does not re-report a job that is already dead.
 
@@ -267,7 +266,7 @@ the reap primitive is invoked with the codex **child's** pid (env overrides
 `CODEX_JOBS_DIR` / `CODEX_REAP_HELPER` inject a tmpdir and a stub - no real
 process table or `$HOME` state is touched).
 
-### Superseded fleets under a LIVE app-server (HIMMEL-1309)
+### Superseded fleets under a LIVE app-server
 
 Both reapers above skip anything under a **live** app-server, because that
 fleet is "legitimately in use". That is right for one fleet and wrong for N
@@ -326,15 +325,15 @@ Enabling `himmel-ops` makes its **hooks** fire under Codex (e.g.
 `inject-minerva-critic` via `${CLAUDE_PLUGIN_ROOT}` — fail-open, exit-0-only).
 Whether an enabled plugin's **skills** auto-load under Codex vs only via
 project-local `.agents/skills/<name>/` wrappers is delivery-dependent; the
-**verified** skill-discovery path is `.agents/skills/` (HIMMEL-533). Guaranteed
-wrappers for the minerva/stuck-playbook/vm cluster are tracked in
-HIMMEL-604/607. See `docs/internals/harness-compat.md` §4.
+**verified** skill-discovery path is `.agents/skills/`. Guaranteed
+wrappers for the minerva/stuck-playbook/vm cluster are a planned
+follow-up. See `docs/internals/harness-compat.md` §4.
 
 ## Scope
 
 This installer is run-on-demand (like the hermes profile installer), separate
 from the Claude `setup.sh` `[N/10]` flow. Wiring it into the broader setup /
-`/himmel-update` flow is **HIMMEL-605** ("user-scope guardrail wiring for Codex").
+`/himmel-update` flow is a planned follow-up ("user-scope guardrail wiring for Codex").
 
 ## Tests
 
@@ -345,10 +344,10 @@ from the Claude `setup.sh` `[N/10]` flow. Wiring it into the broader setup /
 - `scripts/codex/test-install-himmel-codex.ps1` — the Windows twin.
 
 > Not to be confused with the project-local Codex **guardrail** wiring in the
-> repo's `.codex/` dir (hooks adapter, HIMMEL-427/565). That fires guardrails
+> repo's `.codex/` dir (hooks adapter). That fires guardrails
 > *under* Codex; this provisions the user-global plugin set.
 
-## dispatch-codex-wsl.sh (HIMMEL-999)
+## dispatch-codex-wsl.sh
 
 The `codex-wsl` impl lane dispatches codex CLI workers into an existing ext4
 clone inside a WSL distro. Use only the chokepoint:

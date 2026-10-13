@@ -1,52 +1,33 @@
-// forge/detect.mjs — JS mirror of forge_detect in scripts/lib/forge.sh.
+// forge/detect.mjs — the plugin's forge answer, delegated to
+// scripts/lib/project-mode.mjs (HIMMEL-4762, HIMMEL-4748 I2: one owner decides
+// the forge; this file no longer reads the origin host itself).
 //
-// Returns the forge backend for the current repo. Detection precedence:
-//   1. env.FORGE (github|bitbucket) verbatim — the override + test seam.
-//   2. else `git remote get-url origin`, its HOST (https, ssh://, scp-like; the
-//      domain or a subdomain of it, case-insensitive) matched against
-//      github.com / bitbucket.org — never a substring of the URL (HIMMEL-3337).
-//   3. else (no origin / unknown host / git error) → 'github'.
+// Precedence is project-mode's: env.FORGE > git config himmel.forge > the
+// origin HOST (github.com / bitbucket.org or a subdomain). The plugin drives
+// only the github and bitbucket backends, so:
+//   - bitbucket → 'bitbucket'
+//   - github, local-git, none → 'github'
+//   - an invalid or refused setting (FORGE=gitlab, local-git on a hosted
+//     origin) is ignored, as an invalid FORGE always was here: the answer falls
+//     back to the origin host alone (project-mode's --for-guard read).
 //
-// Note the ONE deliberate divergence from the shell seam: forge.sh returns
+// The ONE deliberate divergence from the shell seam stays: forge.sh returns
 // non-zero on an undetermined forge, but the plugin DEFAULTS TO github. The
 // existing github tests run in the himmel repo (github origin) and inject
 // execGh; github must stay the safe fallback so they pass unchanged and so a
 // detached/origin-less checkout keeps the legacy gh path.
 
-import { spawnSync } from 'node:child_process';
-
-// The lowercased HOST of a git remote URL — the same extraction as forge.sh
-// _forge_origin_host (scripts/lib/forge.sh) and originHost in
-// scripts/himmelctl/lib/status-report.js; scripts/lib/fixtures/forge-origins.tsv
-// holds the answers all three must give.
-//   scheme://[userinfo@]host[:port]/path   (https, http, ssh, git, file, …)
-//   [userinfo@]host:path                   (scp-like; a `:` before the first `/`)
-// Anything else (a local path, `host/path`) has no host and yields ''.
-function originHost(url) {
-  const u = String(url).trim().toLowerCase();
-  const scheme = /^([a-z0-9+.-]+):\/\/([^/]*)/.exec(u);
-  const authority = scheme ? scheme[2] : (u.split('/')[0].includes(':') ? u.split(':')[0] : '');
-  return authority.replace(/^.*@/, '').replace(/:.*$/, '').replace(/\.$/, ''); // one terminal DNS dot (HIMMEL-3358)
-}
+import { projectModeForge } from '../../../../scripts/lib/project-mode.mjs';
 
 export function detectForge(cwd = process.cwd(), env = process.env) {
-  if (env.FORGE === 'github' || env.FORGE === 'bitbucket') return env.FORGE;
-
-  let origin = '';
+  // FORGE comes from the caller's env (the test seam); git runs with the
+  // process env, as the origin read always did.
+  const o = { cwd, env: { ...process.env, FORGE: env.FORGE || '' } };
+  let f;
   try {
-    const r = spawnSync('git', ['remote', 'get-url', 'origin'], {
-      cwd,
-      encoding: 'utf8',
-    });
-    if (r.status === 0 && typeof r.stdout === 'string') origin = r.stdout.trim();
+    f = projectModeForge({ ...o, quiet: true });
   } catch {
-    origin = '';
+    f = projectModeForge({ ...o, forGuard: true });
   }
-
-  // HIMMEL-3337: decide on the HOST, never a substring — a path segment
-  // (github.com/bitbucket.org/x) or a longer hostname (notbitbucket.org) must not win.
-  const host = originHost(origin);
-  if (host === 'github.com' || host.endsWith('.github.com')) return 'github';
-  if (host === 'bitbucket.org' || host.endsWith('.bitbucket.org')) return 'bitbucket';
-  return 'github';
+  return f === 'bitbucket' ? 'bitbucket' : 'github';
 }

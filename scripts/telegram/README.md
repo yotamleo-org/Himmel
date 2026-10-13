@@ -22,7 +22,7 @@ see below.
 
 ---
 
-## Typed privileged Telegram ops (HIMMEL-4820)
+## Typed privileged Telegram ops
 
 The delta-grant op is **off by default** and requires its individual name in
 `TELEGRAM_AUTO_ACTIONS`; `1`, `all`, `on` and `yes` never enable it. The legacy
@@ -34,10 +34,10 @@ in the trust path; direct calls carrying the Claude Code agent marker refuse
 with rc=19. **Accepted trust ceiling:** like `merge-public`, this script relies
 on the trusted bridge and the inherited `CLAUDECODE` marker, not cryptographic
 caller provenance. A caller able to remove that marker is outside this check's
-protection. Signed operator approvals via the bus are the HIMMEL-4820 design
+protection. Signed operator approvals via the bus are the planned design
 upgrade; delta grants stay default-off, with an independent Opus judge before merge.
 
-- `/launch-bypass-leg …` is **retired** (HIMMEL-4905): always refuses with
+- `/launch-bypass-leg …` is **retired**: always refuses with
   rc=19, even when explicitly enabled and without an agent marker. Start hook
   legs at the station; a Telegram line never authorizes a hook-bypass launch.
 - `/cr-grant-delta <pr> <full-reviewed-head-sha>` grants the operator's
@@ -63,7 +63,7 @@ enable it. The launch op always returns 19 with station migration instructions.
 Slash console requests, staleness refusal, emergency `/lockdown` and its
 station-only reset are documented in [the adopter guide](../../docs/telegram-bridge.md#slash-console-requests-and-emergency-lockdown).
 
-### Break-glass ops (HIMMEL-5047)
+### Break-glass ops
 
 Typed station ops for an operator who is away from the station. They use the
 same trusted path as `/cr-grant-delta`: operator id, allowed chat, a whole
@@ -102,7 +102,7 @@ written to the audit log (results: `confirm-issued`, `confirm-refused`,
 revert PR. It is operator-initiated, confirm-coded and audited, and it reverts
 only the merged PR that is the default branch's HEAD.
 
-**`--hook-bypass` narrowly reverses HIMMEL-4905 for legs.** `/launch-leg` with
+**`--hook-bypass` narrowly reverses the earlier bypass retirement for legs.** `/launch-leg` with
 `--hook-bypass` exports only `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1`. Every other
 `*_OK` variable, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OWN_POLLER` is scrubbed from
 every child. It cannot name a path: only a label that resolves to a
@@ -113,7 +113,7 @@ sha256-recorded launcher (a manifest leg is refused with it). `/relaunch-console
 send `/revert-main <pr>`, then `/repin-hooks`, then relaunch what died with
 `/launch-leg` or `/relaunch-console`.
 
-**`/allow-rule <id>` (HIMMEL-5048)** applies ONE pre-reviewed permission rule
+**`/allow-rule <id>`** applies ONE pre-reviewed permission rule
 for a command shape the classifier keeps denying. The id is looked up in the
 checked-in registry [`allow-rules.json`](allow-rules.json) (`{"<id>": "<exact rule text>"}`);
 the message never carries rule text, an id that is not in the registry is
@@ -125,7 +125,7 @@ idempotent (a rule already present writes nothing and makes no backup) and the
 previous file is copied to `<file>.bak-<epoch>-<pid>` before every write. A target
 that is not a JSON object with an array `permissions.allow` is left alone
 (rc 27). The confirm prompt shows the rule text, and `/confirm` hands the
-executor the sha256 of exactly that text (HIMMEL-5127): `break-glass.sh` refuses
+executor the sha256 of exactly that text: `break-glass.sh` refuses
 (rc 26) when the registry's text at execute time hashes differently, and a
 registry that is not one BOM-free JSON document is refused (rc 26). Add a rule
 by PR to `allow-rules.json`: that review is the control.
@@ -136,7 +136,7 @@ The name is `allow-rule` in `TELEGRAM_AUTO_ACTIONS`, like the other break-glass 
 ```powershell
 # Start (or restart) the bridge — kills any stale bridge procs, starts ONE
 # supervisor, settles 35s, verifies no 409 AND real progress (offset advanced
-# or a poll heartbeat logged — HIMMEL-1510). This is the canonical Windows
+# or a poll heartbeat logged). This is the canonical Windows
 # launcher.
 pwsh -File scripts/telegram/restart-bridge.ps1
 
@@ -154,13 +154,13 @@ seeing 409 (investigate).
 
 `restart-bridge.sh` is the Stage-1 POSIX sibling of `restart-bridge.ps1`. It
 covers happy-path start/run/stop/status, the stale-lock recovery `flock` gives
-for free, and — since HIMMEL-2551 — a pidfile ledger used as an identity source
+for free, and a pidfile ledger used as an identity source
 with a **staleness refusal** (a recorded pid whose process started after the
 ledger was written is refused, the same class of guard as the PS1's
 `Test-LedgerPidValid`). Unlike the PS1 it still does **not** ship the
 `-FromLedger` verb itself, orphan `bun server.ts` detection, or the
 offset/heartbeat progress-proof verify — so it does not prove no-409/real
-progress after launch. Those remaining gaps are tracked as HIMMEL-2268, not
+progress after launch. Those remaining gaps are a known limitation, not
 silently dropped; see the script's own header comment for the full honesty
 note.
 
@@ -187,7 +187,7 @@ bash scripts/telegram/restart-bridge.sh run
 bash scripts/telegram/restart-bridge.sh start --repo /path/to/himmel
 ```
 
-**Kills are instance-scoped (HIMMEL-2551).** Matching `supervisor.ts` /
+**Kills are instance-scoped.** Matching `supervisor.ts` /
 `poller.ts` on the command line only narrows the *candidates* — every himmel
 checkout runs those same entrypoint names, so name-matching alone once let a
 sandboxed test fixture SIGKILL the operator's live bridge. A candidate is
@@ -236,7 +236,7 @@ pure shell, with no `git` binary to be missing, so there is no host on which
 the guard quietly stops guarding.
 (`scripts/ci/run-shell-tests.sh` exports it for every suite it launches.)
 
-`start`/`run` also refuse with **rc=4** (HIMMEL-2556) when another launcher's
+`start`/`run` also refuse with **rc=4** when another launcher's
 handoff is still in flight — a short window after `nohup`/`exec` where the
 future supervisor is already a live process but not yet visible to the
 `ps`-based candidate scan, so a concurrent launcher would otherwise find
@@ -319,7 +319,7 @@ dies (including on a signal). `StartLimitIntervalSec=600` +
 breaker. Five restarts in ten minutes leaves the unit `failed`, for a human
 (`systemctl --user reset-failed telegram-bridge.service` to clear it once
 you've fixed the cause). It was `Type=oneshot` + `RemainAfterExit=yes`
-around a detached `start` until HIMMEL-2551, which made systemd blind to the
+around a detached `start` in earlier versions, which made systemd blind to the
 supervisor: the unit reported `active (exited)` right through a dead bridge.
 **If you installed the unit before that change, the copy in
 `~/.config/systemd/user/` is stale — re-run the installer to pick up the new
@@ -373,7 +373,7 @@ token. Pick one. This guide covers the **bun** bridge.
 
 ---
 
-## Groups & channels (HIMMEL-238)
+## Groups & channels
 
 The bridge accepts a message if EITHER the sender is in `allowFrom` (DMs
 only — an `allowFrom` sender posting in a non-allowed group is still
@@ -416,7 +416,7 @@ bot's username is unresolved, the gate fails OPEN (every group behaves as if
 `requireMention` were unset) and logs a warning — it never silently goes
 quiet; gating activates on the retry that resolves it, no restart needed.
 
-### Posting with "Remain anonymous" on (HIMMEL-1358)
+### Posting with "Remain anonymous" on
 
 When a group ADMIN posts with Telegram's **Remain anonymous** switch on, Telegram
 strips the real sender and substitutes the fixed `GroupAnonymousBot` id
@@ -444,7 +444,7 @@ answer is not "triage only":
 - It does **not** grant any new capability. Allow-listing the group already lets
   every member submit work to the bridge (see the trust warning below), and
   `run-prompt.md` frames pending messages as the operator's requests regardless
-  of who sent them (tracked as HIMMEL-1359). What the flag changes is narrower
+  of who sent them (a known limitation). What the flag changes is narrower
   than "gets answered": an opted-in group's anonymous posts are guaranteed to be
   **enqueued** rather than subject to the classifier's ignore/ack verdict.
   Ordinary group messages stay fully triaged, and an enqueued message still waits
@@ -509,7 +509,7 @@ message lands in `~/.claude/handover/bridge/inbound.jsonl` with its `chat_id`.
 The poller reads access.json ONCE at startup — restart the bridge after every
 allowlist edit.
 
-**Verified live (2026-06-10, HIMMEL-238 acceptance):** an allowlisted group
+**Verified live (2026-06-10 acceptance):** an allowlisted group
 — plain message ingested, bounded run replied INTO the group, DM untouched;
 an allowlisted channel — first post surfaced its id via the gated-out log,
 allowlisted + restarted, posts then processed with replies into the channel.
@@ -544,8 +544,8 @@ Rules worth knowing before you edit that line:
 
 - The op names are exactly `arm-resume`, `merge-public` and `restart`. Unknown tokens are
   dropped, so `TELEGRAM_AUTO_ACTIONS=arm` enables **nothing** — the poller now
-  logs a startup `WARNING: … enables NOTHING` naming the bad tokens (HIMMEL-1270;
-  before that it was silent and indistinguishable from "off").
+  logs a startup `WARNING: … enables NOTHING` naming the bad tokens (before
+  that it was silent and indistinguishable from "off").
 - `=1`/`all`/`on`/`yes` enable the non-merge ops (`arm-resume` + `restart`)
   but **never** `merge-public`. The
   public merge is `EXPLICIT_ONLY` — it must be named, so an operator running `=1`
@@ -580,7 +580,7 @@ Rules worth knowing before you edit that line:
   failed — the acceptance and the outcome are separate events, because the
   process expects not to survive the first one.
 
-### Which `/restart` do you want? (HIMMEL-1272)
+### Which `/restart` do you want?
 
 The bridge can bounce itself, but the two rungs pick up different things, and the
 difference is the **environment freeze**:
@@ -624,7 +624,7 @@ After that the bridge can bounce itself.
 Semantics + threat model: [`docs/internals/enforcement.md`](../../docs/internals/enforcement.md).
 Where each knob is set: [`docs/configuration.md`](../../docs/configuration.md).
 
-## Group triage (HIMMEL-721)
+## Group triage
 
 Plain group/channel chat is fronted by a cheap classifier before the bridge
 spawns a bounded Claude run. DMs and explicit operator routes (`status`,
@@ -673,7 +673,7 @@ source groups need no allowlisting and the bot doesn't need to join them.
 Channel posts are anonymous (gating is chat-only) — anyone with post rights
 drives the bridge, so keep the channel's post rights tight.
 
-## Voice transcription (HIMMEL-251) — one-time machine setup
+## Voice transcription — one-time machine setup
 
 Voice notes (and audio files) in allowed chats are downloaded, transcribed
 locally via whisper.cpp (free, offline, multi-language), and forwarded to the
@@ -703,10 +703,9 @@ Overrides (poller env): `WHISPER_DIR` (install dir), `WHISPER_CLI`,
 `WHISPER_MODEL` (full path to the `.bin`), `FFMPEG_BIN`,
 `TRANSCRIBE_TIMEOUT_MS` (per step, default 120s).
 
-**Model guidance (HIMMEL-291):** `ggml-small.bin` is the built-in fallback —
+**Model guidance:** `ggml-small.bin` is the built-in fallback —
 `transcribe.ts` defaults to it when `WHISPER_MODEL` is unset (`base` is
-noticeably worse on non-English audio and multi-language is a hard requirement,
-HIMMEL-251). For **mixed Hebrew/English** voice notes — the common case here —
+noticeably worse on non-English audio and multi-language is a hard requirement). For **mixed Hebrew/English** voice notes — the common case here —
 prefer **`ggml-medium.bin`**: `small` garbled the first live he/en transcript,
 so medium is the recommended model for he/en and is the one configured in use
 (via `WHISPER_MODEL`, upgrade path below). Per-utterance language detection
@@ -730,21 +729,21 @@ For long notes (>90s of audio), medium on CPU can approach the 120s
 (Windows only). On macOS/Linux set `WHISPER_CLI` to the binary path
 (e.g. `/usr/local/bin/whisper-cli`).
 
-**Claude model pin (HIMMEL-671):** every bounded run spawns
+**Claude model pin:** every bounded run spawns
 `claude --model <m> …` with an explicit model — it never inherits the
 operator's default model (which may be Fable, whose time-limited quota is
 reserved for interactive work). `TELEGRAM_CLAUDE_MODEL` (poller env)
 overrides the model; blank/unset falls back to the baked-in default
 (`claude-opus-5-5`, a full id so it survives the alias moving). A `model:opus` /
 `model:sonnet` tag is pinned to `claude-opus-5-5` / `claude-sonnet-5-5` the same
-way (HIMMEL-3848); `model:haiku` stays the alias (no 5.5 twin). Channel-mode (`claude --channels`, operator-launched in a
+way; `model:haiku` stays the alias (no 5.5 twin). Channel-mode (`claude --channels`, operator-launched in a
 terminal) inherits that terminal's model and is intentionally NOT pinned.
 
 **Restart required:** all env vars above are read at poller start, not
 per-message. After changing any of them, restart the bridge:
 `pwsh -File scripts/telegram/restart-bridge.ps1`
 
-**Acceptance test (HIMMEL-268):** after install, verify end-to-end with the
+**Acceptance test:** after install, verify end-to-end with the
 sample WAV shipped alongside the binary:
 
 ```powershell
@@ -762,11 +761,11 @@ cwd): `bun test scripts/telegram/<file>.test.ts --dots`.
 The REAL-GIT cases build their throwaway repos under the OS temp dir through
 `fixture-repo.ts`, and tear them down with its `removeFixture` — which
 removes a path only if that helper created it, so a worktree you are working in
-is refused and named on stderr rather than reaped (HIMMEL-1888).
+is refused and named on stderr rather than reaped.
 
 When a case fails during a busy dispatch leg, run the same suite on `main`
 under the same load before concluding the branch broke it — this family has a
-measured history of failing purely with ambient load (HIMMEL-1786).
+measured history of failing purely with ambient load.
 
 ## Files
 
@@ -779,15 +778,15 @@ measured history of failing purely with ambient load (HIMMEL-1786).
 | `bus.ts` | per-session inbox/outbox/context bus on disk |
 | `gate.ts` | DM sender + group/channel chat allowlist checks |
 | `router.ts` | session classification (ticket vs chat) |
-| `transcribe.ts` | whisper.cpp voice-note transcription (HIMMEL-251) |
+| `transcribe.ts` | whisper.cpp voice-note transcription |
 | `transcribe-integration.test.ts` | live acceptance test (real binaries; needs `WHISPER_INTEGRATION_TEST=1`) |
 | `restart-bridge.ps1` | **the canonical Windows launcher** |
-| `restart-bridge.sh` | the Stage-1 POSIX launcher (Linux/macOS); parity gaps vs. the PS1 tracked as HIMMEL-2268 |
+| `restart-bridge.sh` | the Stage-1 POSIX launcher (Linux/macOS); parity gaps vs. the PS1 a known limitation |
 | `onboard.ts` | bounded onboarding run (`bun scripts/telegram/onboard.ts`) — reports chat.id/from.id for `access.json`; never writes it |
 | `install-logon-task.ps1` | register/remove/report the `HimmelTelegramBridge` reboot-persistence task |
 | `systemd/telegram-bridge.service` | systemd **user** unit template (`@HIMMEL_REPO@` placeholder) — Linux reboot-persistence twin of the logon task |
 | `run-prompt.md` | the prompt contract handed to each bounded run |
-| `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use (HIMMEL-1888) |
+| `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use |
 
 Bot: `@<your-bot-username>`. Token: `~/.claude/channels/telegram/.env`
 (`TELEGRAM_BOT_TOKEN=`). Logs + pidfile: `~/.claude/channels/telegram/`.

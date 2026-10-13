@@ -256,3 +256,43 @@ gh_forge_pr_merge() {
     printf '%s\n' "$out" >&2
     return 4
 }
+
+# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# On github a change id IS the PR number, so these are thin projections of the
+# reads above; no existing verb changes.
+
+# echo the open PR number for BRANCH, or "" if none (= gh_forge_pr_find_open).
+gh_forge_change_id() {
+    gh_forge_pr_find_open "$@"
+}
+
+# echo one compact JSON object {id, head, base, title, state, merged} for PR ID.
+gh_forge_change_view() {
+    _gh pr view "$1" --json number,headRefOid,baseRefName,title,state \
+        --jq '{id: (.number | tostring), head: .headRefOid, base: .baseRefName, title: .title, state: .state, merged: (.state == "MERGED")} | tojson'
+}
+
+# echo owner/repo — the repo's id on this forge (= gh_forge_repo_nwo).
+gh_forge_repo_id() {
+    gh_forge_repo_nwo
+}
+
+# _gh_pr_checks <ref> [gh pr checks args...] — the PR's check rollup, read
+# with `gh pr checks` (extracted from scripts/check-ci.sh pr_checks, which now
+# calls this). An empty <ref> lets gh resolve the PR from the current branch;
+# the args pass through verbatim, so check-ci.sh keeps its exact per-call
+# shapes, its bare no-args probe included.
+_gh_pr_checks() {
+    local ref="$1"; shift
+    if [ -n "$ref" ]; then _gh pr checks "$ref" "$@"; else _gh pr checks "$@"; fi
+}
+
+# gh_forge_checks <ref> [args...] — as above; with no extra args it prints one
+# "<bucket>\t<name>" row per check.
+gh_forge_checks() {
+    local ref="$1"; shift
+    if [ "$#" -eq 0 ]; then
+        set -- --json bucket,name --jq '.[] | "\(.bucket)\t\(.name)"'
+    fi
+    _gh_pr_checks "$ref" "$@"
+}

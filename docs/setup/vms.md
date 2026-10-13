@@ -8,7 +8,7 @@ To provision a fresh Ubuntu VM run: `python scripts/machine-setup/ubuntu-vm-setu
 
 No local VM, or proving on a remote one? Set `vm.mode` — see [vm-mode.md](vm-mode.md).
 
-## Dependency split — test-harness vs user-runtime (HIMMEL-469)
+## Dependency split — test-harness vs user-runtime
 
 Two **different** dependency sets; do not conflate them:
 
@@ -27,12 +27,12 @@ and the R6 `ensure-tools` apt path run non-interactively — a password-prompted
 On Ubuntu the provisioner (`ubuntu-vm-setup.py`, step 7c) installs this
 automatically: a *command-scoped* drop-in `/etc/sudoers.d/90-<user>-nopasswd`
 (`apt-get`/`apt`/`dpkg`/`systemctl`/`tee` only — never a blanket `NOPASSWD:ALL`),
-`visudo -cf`-validated before install and written `0440 root:root` (HIMMEL-492).
+`visudo -cf`-validated before install and written `0440 root:root`.
 The host-driven validator `scripts/test-install-symmetry-vm.sh [user@host] [port]
 [identity]` GAP-skips the git-dependent suites when git is absent rather than
 failing, so it stays green on a not-yet-bootstrapped box.
 
-**Dependency-upgrade stage (HIMMEL-5267, opt-in).** `HIMMEL_VM_E2E_UPGRADE=1`
+**Dependency-upgrade stage (opt-in).** `HIMMEL_VM_E2E_UPGRADE=1`
 makes that validator run `scripts/vm/upgrade-path-e2e.sh` after a green symmetry
 pass (also runnable alone). It pins the tree's baseline versions in the guest,
 upgrades to the station targets, and asserts: `himmel-doctor` shows no new FAIL
@@ -49,7 +49,7 @@ canaries, which stay a host step after the station roll.
 `CLIPROXY_API_SHA256` (both required together) to install a non-pinned release.
 
 The upgrade-path counterpart `scripts/test-luna-upgrade-vm.sh [user@host] [port]
-[identity]` (HIMMEL-493 Linux, HIMMEL-522 Windows) stages the real
+[identity]` stages the real
 `templates/luna-second-brain/` to the VM and proves the `/luna-upgrade` ENGINE
 (`scripts/upgrade.sh`): it runs the shipped hermetic engine suite + a real
 scaffold→rollback→upgrade roundtrip (asserts owned files refresh, user content is
@@ -74,10 +74,10 @@ The engine's real deps are a **working python + git + sha256sum** — NOT `node`
 the Microsoft Store stub (on PATH but emits no stdout), so the engine and the
 harness resolve a working interpreter by probing stdout, not `command -v`, and
 fall back `python3 → python → py`. A bootstrap-floor Linux VM lacking python3
-gets a best-effort `sudo apt-get install python3` (scoped NOPASSWD, HIMMEL-492).
+gets a best-effort `sudo apt-get install python3` (scoped NOPASSWD).
 Both VM e2e scripts exit 3 (not 1) when the VM is unreachable.
 
-### Skill-pass VM e2e (HIMMEL-493)
+### Skill-pass VM e2e
 
 `python scripts/test-luna-upgrade-skill-vm.py` (`--help` for options) is the
 **dogfood path**: it drives the `/luna-upgrade` SKILL via an interactive
@@ -97,7 +97,7 @@ pre-commit / PR CI — LLM-in-the-loop, VM-dependent, and billing-consuming mean
 it must never block a merge. Requires the `ubuntu_new` VM up with an authenticated
 `claude`.
 
-### Security-posture audit (HIMMEL-495)
+### Security-posture audit
 
 `python scripts/lib/vm_posture.py <vm> [--json]` runs a fixed battery of
 **read-only forensic checks** over the `vmsdk.VM` SSH layer and prints a
@@ -112,7 +112,7 @@ posture* only — the *functional* smoke ("is claude installed, is the vault
 present" — the `vm-probe*.py` `$TEMP` scripts) is a separate, still-needed
 concern and is NOT replaced by this tool.
 
-### Install-provenance round trip (HIMMEL-3332)
+### Install-provenance round trip
 
 `bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 checks that an uninstall removes exactly what the install brought. It runs on
@@ -167,7 +167,7 @@ failure (exit `2`).
 Under `--profile all` the seed step also drops executable stubs at
 `~/.local/bin/qmd` and `~/.local/bin/graphify`. `suite-ready-v4` ships neither
 tool, and arming the qmd and graphmap cadences needs both on `PATH`; without
-them the install exits 1 before any crontab line exists (HIMMEL-3351). With
+them the install exits 1 before any crontab line exists. With
 the stubs both installs succeed, the harness captures `crontab -l` at
 inventory B, and `cadence-crontab-armed-at-B` (direction `precondition`)
 requires a `# HIMMEL-Pipeline`, `# HIMMEL-Qmd` and `# HIMMEL-GraphMap` line
@@ -183,7 +183,7 @@ is removed, and neither counts as himmel residue.
 
 **Limit:** the stubs prove that a cadence arms and disarms. They do not prove
 that a cadence run works, because the real qmd needs the fork build plus about
-2.1GB of models (HIMMEL-2531).
+2.1GB of models.
 
 The seed step also plants user state for the two `--purge-state` targets:
 `~/.claude/channels/telegram/{.env,access.json}` and
@@ -201,8 +201,7 @@ Exit codes:
 - `2` in either mode: a usage error, a failed guest step or a failed
   precondition.
 
-`VBOXMANAGE_PATH` (or `HIMMEL_VM_AR_LIVE=1`) must be set explicitly
-(HIMMEL-2623).
+`VBOXMANAGE_PATH` (or `HIMMEL_VM_AR_LIVE=1`) must be set explicitly.
 
 **STATION-ONLY**: it needs a real VM, so it never runs in CI. Its hermetic
 twin, `scripts/vm/test-provenance-roundtrip-dry.sh`, fakes `VBoxManage`,

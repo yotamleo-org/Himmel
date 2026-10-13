@@ -1,4 +1,4 @@
-# Eval case study: prompt cache and the harness runner (HIMMEL-4550)
+# Eval case study: prompt cache and the harness runner
 
 What himmel measures about the prompt cache, how, and what the numbers say.
 Everything here was re-run on 2026-10-06 at commit `321346770`; the table is

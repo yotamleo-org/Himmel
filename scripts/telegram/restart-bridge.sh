@@ -260,15 +260,9 @@ done
 # that is the manager's environment after login import, not what the unit was
 # started with.
 #
-# APPEND, not prepend (CR codex-1). These are FALLBACK directories: the defect
-# is "the tool is not on PATH at all", and appending fixes exactly that while
-# leaving any tool the incoming PATH already resolves in charge. Prepending
-# would instead override a deliberately-placed executable earlier on PATH —
-# an operator pointing the bridge at a specific claude or bun build would be
-# silently overruled by whatever happens to sit in ~/.local/bin. An earlier
-# draft of this block prepended AND claimed in this very comment that an
-# earlier entry still won; it did not, which is the kind of claim a comment
-# should never make on the reader's behalf.
+# These tool dirs remain FALLBACKS for claude and other tools. Bun is selected
+# separately by prepare_bridge_bun: HIMMEL-5383 deliberately prefers the user
+# install in ~/.bun/bin, matching the updater and generated service units.
 #
 # Skip a dir that does not exist (no phantom entries on a host without bun);
 # skip one already present, so this is idempotent across the exec chain —
@@ -1008,6 +1002,15 @@ sweep_stale() {
   fi
 }
 
+prepare_bridge_bun() {
+  # The generated systemd unit launches this script, so it shares the same
+  # runtime selection as a manual start and the station updater.
+  # shellcheck source=../lib/resolve-bun.sh
+  . "$REPO/scripts/lib/resolve-bun.sh"
+  warn_bun_versions
+  prefer_bun_on_path
+}
+
 start_verb() {
   local lock bun_bin
   acquire_lock
@@ -1022,7 +1025,8 @@ start_verb() {
 
   sweep_stale
 
-  bun_bin=$(command -v bun) || { echo "[restart-bridge] 'bun' not found on PATH" >&2; exit 1; }
+  prepare_bridge_bun
+  bun_bin=$(resolve_bun) || { echo "[restart-bridge] 'bun' not found on PATH" >&2; exit 1; }
   mkdir -p "$(dirname "$LOG")"
   (
     cd "$BRIDGE_DIR"
@@ -1071,7 +1075,8 @@ run_verb() {
 
   sweep_stale
 
-  bun_bin=$(command -v bun) || { echo "[restart-bridge] 'bun' not found on PATH" >&2; exit 1; }
+  prepare_bridge_bun
+  bun_bin=$(resolve_bun) || { echo "[restart-bridge] 'bun' not found on PATH" >&2; exit 1; }
   cd "$BRIDGE_DIR"
   # ORDERING (HIMMEL-2556, hardened): write_launch_marker is called HERE,
   # immediately BEFORE the lock fd is closed below — this is the one place in

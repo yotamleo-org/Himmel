@@ -82,8 +82,9 @@
 #   * Fail OPEN (exit 0) on anything unevaluable — missing jq, empty or
 #     unparseable stdin, a non-Bash tool, a command containing an UNQUOTED
 #     heredoc (`<<`), whose body text a scanner this flat cannot tell from syntax
-#     and which in this repo very often documents this exact shape, or a command
-#     over the 16KB cost bound (see below). Per
+#     and which in this repo very often documents this exact shape (the variant
+#     forms below still judge it with the bodies cut out, HIMMEL-5362), or a
+#     command over the 16KB cost bound (see below). Per
 #     scripts/hooks/CLAUDE.md a workflow
 #     nudge fails open: a hook that cannot parse its input must not deny
 #     unrelated commands, and an over-matching nudge becomes the next thing
@@ -132,7 +133,9 @@
 #     here (agents write `bash <gate> | tail`). Do not implement `-c` payload
 #     recursion without re-deciding this.
 #   * an UNQUOTED heredoc (`<<`), whose body text a scanner this flat cannot tell
-#     from syntax and which in this repo very often documents this exact shape.
+#     from syntax and which in this repo very often documents this exact shape;
+#     only the variant forms (st_expand, HIMMEL-5362) judge the command with the
+#     bodies cut out and each `$(...)` of an unquoted body lifted to its own line.
 #   * a command over the 16KB cost bound (see below).
 #   * a backslash-separated Windows path to a gate — nothing here writes one.
 # A real tokenizer stays the upgrade path if a genuine command ever trips on it.
@@ -202,6 +205,12 @@ cmd="${result#*$'\n'}"
 # silently blind. Drop CRs before anything treats the text as syntax.
 cmd=${cmd//$'\r'/}
 
+# HIMMEL-5362: set by this hook on the child it runs over an expanded form of
+# the command (below). Read once and unset, so guard_unwrap's own children of
+# that child never inherit it.
+_tp_variant=${GUARD_TAILPIPE_VARIANT:-}
+unset GUARD_TAILPIPE_VARIANT
+
 # HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
 # is a must-run dependency: if it cannot be sourced, deny.
@@ -247,6 +256,55 @@ kind=pipe     # pipe: gate | tail/head; trailing: gate followed by a later segme
 # EVERY Bash call, so withdraw above the bound rather than tax the session; a
 # command that size is not the incident shape this guard exists for.
 [ "${#cmd}" -gt 16000 ] && exit 0
+
+# HIMMEL-5362: judge the argv the shell would really run, not only the text.
+# A parameter expansion can hide the command word (`${V:-}bash <gate>`,
+# `$V:t bash <gate>`) or BE it (`${V:-./scripts/check-ci.sh}`, a zsh
+# `(l::)` pad string), and a heredoc body or `$'...'` string can hide what
+# follows it. st_expand (lib/shell-tokenize.sh) rewrites the command once with
+# every expansion taking its TEXT side and once with every expansion empty,
+# heredoc bodies cut out; each form that differs from the command and still
+# names a gate (or `env`, whose split string reads as a gate) is run through
+# this same hook as a child, and its deny is ours. The plain-text scan below
+# still runs on the command itself, so a form can only add a denial. The
+# trailing rule reads the text form only: the empty form loses the `$?`/`$rc`
+# a status-surfacing segment reads.
+# ponytail: two forms, all-text and all-empty, so a command that needs one
+# expansion empty and another taken as text is not modelled, and the empty form
+# skips the trailing rule; upgrade path: per-expansion forms, on the first such
+# shape seen written.
+case $cmd in
+    *'$'* | *'<<'*)
+        _tp_depth=${GUARD_UNWRAP_DEPTH:-0}
+        case "$_tp_depth" in '' | *[!0-9]*) _tp_depth=$GU_MAX_DEPTH ;; esac
+        _tp_prev=$cmd
+        for _tp_mode in text empty; do
+            if ! st_expand "$_tp_mode" "$cmd"; then
+                echo "block-tail-pipe-on-gates: cannot model this command's expansions (nested too deep) - failing closed" >&2
+                exit 2
+            fi
+            _tp_v=$ST_EXP
+            [ "$_tp_v" != "$cmd" ] && [ "$_tp_v" != "$_tp_prev" ] || continue
+            _tp_prev=$_tp_v
+            _tp_t=${_tp_v//\\/}; _tp_t=${_tp_t//\"/}; _tp_t=${_tp_t//\'/}
+            if ! [[ $_tp_t =~ $GATE_ANY ]]; then
+                case $_tp_t in *env*) ;; *) continue ;; esac
+            fi
+            if [ "$_tp_depth" -ge "$GU_MAX_DEPTH" ]; then
+                echo "block-tail-pipe-on-gates: refusing a command nested more than $GU_MAX_DEPTH levels deep." >&2
+                exit 2
+            fi
+            if ! _tp_json=$(jq -cn --arg c "$_tp_v" '{tool_name:"Bash",tool_input:{command:$c}}' 2>/dev/null); then
+                echo "block-tail-pipe-on-gates: cannot build the expanded call - failing closed" >&2
+                exit 2
+            fi
+            if ! _tp_err=$(GUARD_UNWRAP_DEPTH=$((_tp_depth + 1)) GUARD_TAILPIPE_VARIANT=$_tp_mode "${BASH:-bash}" "${BASH_SOURCE[0]}" <<<"$_tp_json" 2>&1 >/dev/null); then
+                [ -z "$_tp_err" ] || printf '%s\n' "$_tp_err" >&2
+                echo "    (denied in the form the shell runs once parameter expansion is done and heredoc bodies are set aside)" >&2
+                exit 2
+            fi
+        done ;;
+esac
 
 # split_bytes <text> <length> -- fill the CALLER's local array SC with <text>,
 # one byte per element (HIMMEL-4678). The walkers below step through a command
@@ -1076,8 +1134,8 @@ case $normalised in *"$HEREDOC_MARK"*) exit 0 ;; esac
 # over the WHOLE command (newlines and lone `&` included), once, before the
 # per-line pipe scan. Original text only: guard_unwrap's rendered children drop
 # the `if`/`then` keywords, so a gate that is a condition would read as a bare
-# gate there.
-if [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ]; then
+# gate there. The HIMMEL-5362 text form keeps every keyword, so it is read too.
+if [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] || [ "$_tp_variant" = text ]; then
     scan_trailing_all "$normalised" || true
 fi
 

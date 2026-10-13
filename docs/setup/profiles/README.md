@@ -1,9 +1,9 @@
 # Install profiles
 
-HIMMEL-2307. This directory holds committed **v2 install-profile** files
+This directory holds committed **v2 install-profile** files
 (`schemaVersion: 2` — see `scripts/install/capture-operator-profile.mjs`'s
 header comment for the exact shape). Filename suffix `.install-profile.json`
-is load-bearing: a CI glob elsewhere (the HIMMEL-2308 schema-validation leg)
+is load-bearing: a CI glob elsewhere (the schema-validation leg)
 matches it across this directory.
 
 ## `operator.install-profile.json`
@@ -32,7 +32,7 @@ consecutive runs on an unchanged machine produce a byte-identical file.
 
 ## `adopter-project.install-profile.json` / `adopter-user.install-profile.json`
 
-HIMMEL-2752. Unlike `operator.install-profile.json` above, these carry **no
+Unlike `operator.install-profile.json` above, these carry **no
 placeholders** — every field is a concrete, runnable value (`profile:
 "starter"`, `pluginSet: "lean"`, no lanes, `vault.mode: "none"`, `handover.mode:
 "inline"`, no `bridge` section) and pass both schema validation and `install
@@ -69,7 +69,7 @@ this file for a missing `role` — is no longer true. A profile with no
 against the old role-based shape; any other `schemaVersion` value fails loud
 rather than being reinterpreted.
 
-HIMMEL-2348 dropped `tier` from what the wizard writes — it was a hardcoded
+The `tier` field was dropped from what the wizard writes — it was a hardcoded
 `'standard'` placeholder no reader ever consumed. `loadProfile` never
 enumerated it (it validates a named allowlist and ignores unknown keys), so a
 profile captured before this change and still carrying `tier` remains valid
@@ -105,4 +105,4 @@ that machine's `.env`). On drift, the fix is always the same: re-run the
 regenerate command above and commit.
 
 This directory's schema validity (not staleness) is a separate CI check
-owned by the HIMMEL-2308 leg — this suite does not duplicate it.
+owned by the schema-validation leg — this suite does not duplicate it.

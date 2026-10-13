@@ -202,6 +202,191 @@ if [ "${res%%|*}" = "0" ]; then
 else
     fail "heredoc body denied as syntax (rc=${res%%|*})"
 fi
+# HIMMEL-5334: a heredoc body is data, and what FOLLOWS it still runs. The body
+# is dropped through its terminator, so a quoted body with an apostrophe or the
+# payload on the opener line no longer withdraws the whole guard.
+deny "payload after a quoted heredoc body" \
+     "cat <<'EOF'
+it's ; > here
+EOF
+bash scripts/ci/run-shell-tests.sh | tail -5"
+deny "payload on the heredoc opener line" \
+     'cat <<EOF; bash scripts/ci/run-shell-tests.sh | tail -5
+body
+EOF'
+deny "payload after a <<- heredoc with a tab-indented terminator" \
+     "cat <<-EOF
+	body
+	EOF
+bash scripts/check-ci.sh | tail"
+# shellcheck disable=SC2016  # payload is literal command text
+deny "command substitution in an UNQUOTED heredoc body runs" \
+     'cat <<EOF
+$(bash scripts/check-ci.sh | tail -5)
+EOF'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "quoted ) inside an unquoted heredoc substitution does not close it" \
+     'cat <<EOF
+$(printf ")"; bash scripts/check-ci.sh | tail -5)
+EOF'
+deny "terminator split by backslash-newline in an unquoted heredoc" \
+     'cat <<EOF
+body
+E\
+OF
+bash scripts/check-ci.sh | tail -5'
+deny "backslash-newline between \$ and ( in an unquoted heredoc body" \
+     'cat <<EOF
+$\
+(bash scripts/check-ci.sh | tail -5)
+EOF'
+deny "backslash-newline between \$ and { of an expansion that is the gate" \
+     '$\
+{V:-bash} scripts/check-ci.sh | tail -5'
+deny "payload after an EMPTY quoted heredoc delimiter" \
+     "cat <<''
+body
+
+bash scripts/check-ci.sh | tail -5"
+deny "payload after an ANSI-C quoted heredoc delimiter" \
+     "cat <<\$'EOF'
+it's data
+EOF
+bash scripts/check-ci.sh | tail -5"
+deny "payload after a heredoc delimiter written with an ANSI-C hex escape" \
+     "cat <<\$'\\x45OF'
+it's data
+EOF
+bash scripts/check-ci.sh | tail -5"
+deny "ANSI-C heredoc delimiter with an escaped backslash is a literal backslash" \
+     "cat <<\$'\\\\nEOF'
+data
+\\nEOF
+bash scripts/check-ci.sh | tail -5"
+# shellcheck disable=SC2016  # payload is literal command text
+deny "nested double-quoted substitution in an unquoted heredoc body" \
+     'cat <<EOF
+$(echo "$(printf ")")"; bash scripts/check-ci.sh | tail -5)
+EOF'
+allow "gate | tail in an ANSI-C quoted heredoc body is data" \
+      "cat <<\$'EOF'
+\$(bash scripts/check-ci.sh | tail -5)
+EOF"
+allow "gate | tail inside a QUOTED heredoc body is data" \
+      "cat <<'EOF'
+\$(bash scripts/check-ci.sh | tail -5)
+EOF"
+allow "gate | tail documented in an unquoted heredoc body is data" \
+      'cat <<EOF
+never do: bash scripts/check-ci.sh | tail -20
+EOF'
+# HIMMEL-5334: ANSI-C `$'...'` — an escaped quote does not close the string.
+deny "gate | tail after an ANSI-C string with an escaped quote" \
+     "echo \$'it\\'s'; bash scripts/ci/run-shell-tests.sh | tail -5"
+allow "an operator inside an ANSI-C string is data" \
+      "echo \$'a\\'| tail'"
+# HIMMEL-5334: an expansion that may be empty does not hide the command word.
+deny "plain gate | tail (control)" 'bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion glued to the command word" \
+     '${V:-}bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "bare \$V before the command word" '$V bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion between launcher and gate" \
+     'bash ${V:-} scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "empty expansion glued to tail" 'bash scripts/ci/run-shell-tests.sh | ${V:-}tail -5'
+# The WORD of a default/alternate expansion is what runs when the test goes
+# that way, so a gate named there is still a gate (judge j2429a, HIGH).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word after a launcher" 'bash ${V:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word as the command" '${V:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word, statement separator" '${V:-./scripts/check-ci.sh}; echo done'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :+ alternate word" 'bash ${V:+./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the := assign-default word" 'bash ${V:=./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the - default word" 'bash ${V-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the = default word" 'bash ${V=./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the + alternate word" 'bash ${V+./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in a nested default word" 'bash ${V:-${W}/scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in the :- default word with 2>&1" 'bash ${V:-./scripts/check-ci.sh} 2>&1 | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "a harmless default word piped to tail" 'echo ${V:-hello} | tail -1'
+# A `${...}` whose body is not an allowlisted form stays verbatim, so its text
+# still reaches the gate regex (judge c2429b: replacement, subscripted default).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "replacement word names the gate" 'bash ${V/x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "global replacement word names the gate" 'bash ${V//x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "subscripted :- word names the gate" 'bash ${V[0]:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "[@] subscripted :- word names the gate" 'bash ${V[@]:-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "anchored-start replacement names the gate" 'bash ${V/#x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "anchored-end replacement names the gate" 'bash ${V/%x/./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "subscripted - word names the gate" 'bash ${V[1]-./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "indexed := word names the gate" 'bash ${arr[$i]:=./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh \$V:t modifier before the command word" \
+     'V=/; $V:t bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh \${(P)V} flag before the command word" \
+     'V=Q; ${(P)V}bash scripts/ci/run-shell-tests.sh | tail -5'
+allow "a gate with no pipe stays allowed (control)" 'bash scripts/ci/run-shell-tests.sh'
+allow "a non-gate piped to tail stays allowed (control)" 'echo hi | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "an expansion before a non-gate command is not a gate" '${V:-}echo hi | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "redirect target expansion does not swallow the gate word" \
+     '2>$LOG bash scripts/check-ci.sh | tail'
+# HIMMEL-5362: the expansion model stops past 32 nested levels (each level
+# re-reads its text) and the guard fails closed; 10 levels are modelled.
+_nest() {
+    local k=0 o='' c=''
+    # shellcheck disable=SC2016  # payload is literal command text
+    while [ "$k" -lt "$1" ]; do o=$o'${V:-'; c=$c'}'; k=$((k + 1)); done
+    printf '%s' "echo ${o}hi$c"
+}
+deny "expansions nested 40 deep fail closed" "$(_nest 40)"
+allow "expansions nested 10 deep are modelled" "$(_nest 10)"
+
+# HIMMEL-5362: zsh l/r pad strings and j/s separators are text the expansion
+# yields, so a gate spelled there is a gate (judge j2429c).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh (l::) pad string names the gate" 'bash ${(l:21::./scripts/check-ci.sh:)V} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh (l::) pad string with a strip after it" \
+     'bash ${(l:21::./scripts/check-ci.sh:)V#./scripts/check-ci.sh} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh (r::) pad string names the gate" 'bash ${(r:21::./scripts/check-ci.sh:)V} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh (j::) separator names the gate" 'bash ${(j:./scripts/check-ci.sh:)V} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "zsh (s::) separator names the gate" 'bash ${(s:./scripts/check-ci.sh:)V} | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "gate in a default word inside a command substitution" \
+     'X=$(${V:-./scripts/check-ci.sh} | tail -5)'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "an alternate word before the launcher can be empty" \
+     '${V:+x}bash scripts/ci/run-shell-tests.sh | tail -5'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "a harmless replacement word piped to tail" 'echo ${V/x/hello} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "a gate named only inside single quotes stays data" \
+      "echo '\${V:-./scripts/check-ci.sh}' | tail -1"
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""
