@@ -31,6 +31,11 @@ echo called >> "$STUB_LOG"
 printf '%s' "$STUB_OUT"
 `;
 
+// A call carrying Claude Code session markers runs under a parent whose argv[0] is `claude`, as it does
+// inside a real session. Without one, bank-preflight's seam guard (HIMMEL-3914) refuses the fixture's seams
+// on a tree that is its own primary checkout, as CI's is.
+const SESSION_ARGV0 = 'claude';
+
 function fixture() {
   const dir = mkdtempSync(join(T, 'case-'));
   const now = Math.floor(Date.now() / 1000);
@@ -110,9 +115,10 @@ test('HIMMEL-5073: the scrub forces default permission mode, so the launcher dec
 
 test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
   const f = fixture();
-  const r = f.run(f.good, { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',
+  const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',
     CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 'msg-dummy', CLAUDE_CODE_EFFORT_LEVEL: 'max',
-    CLAUDE_EFFORT: 'max', CLAUDE_PID: '1', AI_AGENT: 'claude-code' });
+    CLAUDE_EFFORT: 'max', CLAUDE_PID: '1', AI_AGENT: 'claude-code' };
+  const r = spawnSync('bash', [LAUNCH, ...f.good], { env, encoding: 'utf8', argv0: SESSION_ARGV0 });
   assert.equal(r.status, 0, r.stderr);
   const seen = readFileSync(f.paths.env, 'utf8');
   assert.match(seen, /^session_markers=0$/m);
@@ -350,7 +356,7 @@ test('HIMMEL-5433: measure-credit reads the key from a file, refreshes the snaps
   writeFileSync(keyFile, `ANTHROPIC_API_KEY=${DUMMY}\n`, { mode: 0o600 });
   const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli' };
   delete env.ANTHROPIC_API_KEY; delete env.HIMMEL_API_LANE; delete env.HIMMEL_API_KEY_ID; delete env.HIMMEL_API_JOB_ID;
-  const r = spawnSync('bash', [MEASURE, 'A', 'key-a', keyFile, '1.75'], { env, encoding: 'utf8' });
+  const r = spawnSync('bash', [MEASURE, 'A', 'key-a', keyFile, '1.75'], { env, encoding: 'utf8', argv0: SESSION_ARGV0 });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^total_cost_usd=0\.012345$/m);
   assert.match(r.stdout, /^is_error=false$/m);
