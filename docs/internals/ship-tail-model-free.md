@@ -14,9 +14,8 @@ merged, with no judgment call left in them — contains no `claude -p` /
 Verified by grepping all four for the pattern
 `(^|[^A-Za-z0-9_-])claude([^A-Za-z0-9_-].*)?[^A-Za-z0-9_-](-p|--print|--bg)($|[^A-Za-z0-9_-])`
 (the pattern `scripts/cr/test-ship-tail-model-free.sh` uses, broadened past
-`scripts/hooks/check-no-headless-claude.sh`'s immediately-after-`claude`
-match so a flag appearing after other flags on the same invocation also
-trips it — see "Regression guard" below) against
+an immediately-after-`claude` match so a flag appearing after other flags on
+the same invocation also trips it — see "Regression guard" below) against
 main at `92ee89588` (2026-09-26): zero matches.
 
 ## Scope: hermes-critic.sh is excluded, not missed
@@ -32,13 +31,9 @@ judgment.
 ## Regression guard
 
 `scripts/cr/test-ship-tail-model-free.sh` names the four files above and
-asserts none of them contain a headless call, independent of
-`scripts/hooks/check-no-headless-claude.sh`'s general billing gate. The two
-overlap in mechanism (both a word-bounded grep for `claude -p`/`--print`/
-`--bg`, though this test's pattern is broadened to also catch the flag
-appearing after other flags on the same invocation) but not in purpose: the billing
-gate is opt-in-markable (`# headless-claude-ok: <reason>`) and covers every
-staged file; this test has no opt-in escape, because the ship tail staying
-model-free is a purity invariant, not a billing decision. A future PR that
-adds a headless call to any of the four named files fails this test even if
-it correctly carries a `headless-claude-ok` marker for the billing gate.
+asserts none of them contain a headless call (a word-bounded grep for
+`claude -p`/`--print`/`--bg`, broadened to also catch the flag appearing
+after other flags on the same invocation). It has no opt-in escape, because
+the ship tail staying model-free is a purity invariant, not a billing
+decision: a future PR that adds a headless call to any of the four named
+files fails this test.

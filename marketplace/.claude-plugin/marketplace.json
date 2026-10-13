@@ -171,7 +171,7 @@
         "source": "git-subdir",
         "url": "https://github.com/pbakaus/impeccable.git",
         "path": "plugin",
-        "ref": "skill-v4.5.0"
+        "ref": "skill-v4.5.2"
       },
       "description": "[pbakaus/impeccable, vendor + attribution only, no carried delta] Design fluency for frontend work: 1 skill with 23 commands and 4 agents. Upstream's own marketplace.json declares source ./plugin, so the entry is a git-subdir source on that path (a url source with a path caches the WHOLE repo in Claude Code, so plugin/ agents and hooks never loaded; git-subdir caches only plugin/, probed HIMMEL-4012). Sourced via an explicit HTTPS git url (NOT the `github` shorthand, HIMMEL-549 / HIMMEL-2837) and pinned to an immutable tag per himmel supply-chain policy (HIMMEL-3069). Enabled only by the `design` lane profile (HIMMEL-4012).",
       "author": {
@@ -215,9 +215,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Leonxlnx/taste-skill.git",
-        "sha": "717446e07a78d4e6d7918b1fde1a263378eebac9"
+        "sha": "d237dd399d57524945c0c81327da5da19f7a468d"
       },
-      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 717446e07a78 per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
+      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha d237dd399d57 per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
       "strict": true,
       "author": {
         "name": "Leonxlnx",
@@ -308,9 +308,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "e245bc967342693c16977149ab667ded9736f252"
+        "sha": "eeea03435bd766f326df301b407fd4c54bc6ea7d"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha e245bc967342 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha eeea03435bd7 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
@@ -341,9 +341,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "7a2e22170ee838e859d8142ba825d83f8b6375e6"
+        "sha": "356c86b8190862bcfe4137f55ae7e7296194a0cf"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 7a2e22170ee8 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 356c86b81908 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"

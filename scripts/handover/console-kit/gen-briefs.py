@@ -20,7 +20,11 @@ false), extra (appended to the
 RED-first contract line), ab_arm (200k|400k, HIMMEL-5193: the autocompact A/B arm;
 the brief gets the `> **Context:** ab-<arm> — operator-ruling: HIMMEL-5193` line, the
 launcher exports LEG_AUTOCOMPACT_AB, the printed manifest add line passes --arm),
-model (default claude-sonnet-5-5), lane (the manifest
+model (default claude-sonnet-5-5), tier (HIMMEL-5457: {category, reason}; REQUIRED when model is an
+opus or fable model, because headed-arm-leg.sh refuses such a launch without a
+`> **Tier:** <opus|fable> — <category>: <reason>` line; category is one of
+design|unverified-finding|tier-return|operator-ruling, reason is non-blank single-line
+text; the brief gets that line, and nothing is written for a leg without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
 launchers written here). The brief follows
 the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
@@ -48,12 +52,20 @@ JUDGE_LINE = ("This touches a guard/gate, so the console runs an opus judge befo
               "`scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO).")
 ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fixture must be copied from the real environment "
             "(this PR's CI log, the upstream image config), not hand-written, and RED before the fix.")
+TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
+DEFAULT_MODEL = 'claude-sonnet-5-5'
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
 def die(msg, rc=1):
     print('gen-briefs: ' + msg, file=sys.stderr)
     sys.exit(rc)
+
+
+def tier_gate(model):
+    # Same MODEL-PREFIX match as headed-arm-leg.sh's Tier-line gate (HIMMEL-2976).
+    m = re.match(r'^(?:anthropic/)?claude-(opus|fable)-', model or '')
+    return m.group(1) if m else None
 
 
 def validate(leg, i):
@@ -73,6 +85,17 @@ def validate(leg, i):
     lane = leg.get('lane', 'native')
     if not isinstance(lane, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', lane):
         die('leg %s: lane %r must be a lowercase word (native, claudex, ...)' % (leg['label'], leg['lane']))
+    tier = leg.get('tier')
+    gate = tier_gate(leg.get('model') or DEFAULT_MODEL)
+    if tier is None:
+        if gate:
+            die('leg %s: model %s needs a tier {category, reason}; headed-arm-leg.sh refuses an %s launch without a Tier line' % (leg['label'], leg.get('model'), gate))
+    else:
+        if not isinstance(tier, dict) or tier.get('category') not in TIER_CATEGORIES:
+            die('leg %s: tier.category must be one of %s' % (leg['label'], '|'.join(TIER_CATEGORIES)))
+        reason = tier.get('reason')
+        if not isinstance(reason, str) or not reason.strip() or '\n' in reason or '\r' in reason:
+            die('leg %s: tier.reason must be non-blank single-line text' % leg['label'])
     if re.search(r'<[^<>\s]+>', leg['prior']) or leg['prior'].strip().lower().rstrip('.') == 'none':
         die('leg %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % leg['label'])
 
@@ -97,7 +120,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the console first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once.
-{abline}
+{abline}{tierline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -119,6 +142,8 @@ template_version: 3
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], others=others, also=also,
+           tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
+                     if l.get('tier') and tier_gate(l['model']) else ''),
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
@@ -200,7 +225,7 @@ def main():
     for l in legs:
         l['hook'] = bool(l.get('hook'))
         l['judge'] = bool(l.get('judge'))
-        l['model'] = l.get('model') or 'claude-sonnet-5-5'
+        l['model'] = l.get('model') or DEFAULT_MODEL
         l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
         l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
         l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))

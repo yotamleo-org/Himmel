@@ -176,7 +176,7 @@ seg() { HIMMEL_DOCTOR_STATE_DIR="$SEG_STATE" HIMMEL_WHERE_ARE_WE=off HIMMEL_STAT
         bash "$REAL_ROOT/scripts/statusline/hud-custom-lines.sh" </dev/null 2>/dev/null; }
 check "segment prints nothing when the state file is absent" "" "$(seg)"
 echo "fail=2 warn=5" > "$SEG_STATE/counts"
-check "segment renders the FAIL/WARN counts" "doctor  2 FAIL  5 WARN" "$(seg)"
+check "segment renders the FAIL/WARN counts" "himmel-doctor  2 FAIL  5 WARN" "$(seg)"
 echo "fail=0 warn=0" > "$SEG_STATE/counts"
 check "segment prints nothing when the doctor is clean" "" "$(seg)"
 echo "garbage" > "$SEG_STATE/counts"
@@ -184,12 +184,12 @@ check "segment prints nothing on a malformed state file" "" "$(seg)"
 
 # 9b. HIMMEL-4363: a counts file older than 24 h shows its age; a fresh one does not.
 echo "fail=1 warn=12" > "$SEG_STATE/counts"
-check "fresh counts show no age" "doctor  1 FAIL  12 WARN" "$(seg)"
+check "fresh counts show no age" "himmel-doctor  1 FAIL  12 WARN" "$(seg)"
 age_file() { perl -e 'utime $ARGV[0], $ARGV[0], $ARGV[1]' "$(($(date +%s) - $1))" "$2"; }
 age_file 259200 "$SEG_STATE/counts"
-check "counts over 24h old show the age in days" "doctor  1 FAIL  12 WARN (3d old)" "$(seg)"
+check "counts over 24h old show the age in days" "himmel-doctor  1 FAIL  12 WARN (3d old)" "$(seg)"
 age_file 108000 "$SEG_STATE/counts"
-check "counts 30h old show the age in hours" "doctor  1 FAIL  12 WARN (30h old)" "$(seg)"
+check "counts 30h old show the age in hours" "himmel-doctor  1 FAIL  12 WARN (30h old)" "$(seg)"
 # the shared writer: atomic (no tmp left behind), creates the dir, exact format.
 # shellcheck source=doctor-counts.sh
 . "$DIR/doctor-counts.sh" 2>/dev/null

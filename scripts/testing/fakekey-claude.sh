@@ -122,7 +122,7 @@ fakekey_run() {
     mock=$(cd "$(dirname "$mock")" && printf '%s/%s' "$(pwd)" "${mock##*/}")
     rm -f "$out/mock.port" "$out/mock.log"
     # shellcheck disable=SC2016  # the sh -c body expands inside the sandbox, not here
-    # headless-claude-ok: fake-key mock-backed test, HIMMEL-4411 (env -i here does the work native-auth-pin does for real launches)
+    # fake-key mock-backed test, HIMMEL-4411 (env -i here does the work native-auth-pin does for real launches)
     (cd "$out" && env -i "${envv[@]}" unshare -rn sh -c '
       ip link set lo up || exit 1
       "$1" "$2" --fixture "$3" --port-file "$4" --log "$5" & m=$!
@@ -138,12 +138,12 @@ fakekey_run() {
     printf '%s\n' "$rc" >"$out/rc"
     return 0
   fi
-  # headless-claude-ok: fake-key credential-free test, HIMMEL-4410
+  # fake-key credential-free test, HIMMEL-4410
   if [ "$sandbox" = 1 ]; then
     (cd "$out" && env -i "${envv[@]}" unshare -rn sh -c 'ip link set lo up && exec timeout "$@"' _ \
       "$secs" "$claude_bin" -p "say hi" --output-format json --debug "$@" >"$out/out.json" 2>"$out/err.txt")
   else
-    # headless-claude-ok: fake-key credential-free test, HIMMEL-4410
+    # fake-key credential-free test, HIMMEL-4410
     (cd "$out" && env -i "${envv[@]}" timeout "$secs" "$claude_bin" -p "say hi" --output-format json --debug "$@" \
       >"$out/out.json" 2>"$out/err.txt")
   fi

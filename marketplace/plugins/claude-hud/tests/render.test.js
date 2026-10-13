@@ -339,6 +339,27 @@ test('Chinese labels translate the session token summary in both layouts', () =>
   assert.match(lines(ctx({ transcript, config: compact(config) }))[0], /\| 词元: 23k \(输入: 12k, 输出: 7k, 缓存读: 4k\)$/);
 });
 
+test('the session token summary keeps its last line until elementOrder places it', () => {
+  const transcript = { sessionTokens: { inputTokens: 12345, outputTokens: 6789, cacheCreationTokens: 0, cacheReadTokens: 4321 } };
+  // himmel delta (HIMMEL-2161): the cache-read figure is labelled cache-r.
+  const tokens = 'Tokens 23k (in: 12k, out: 7k, cache-r: 4k)';
+  const show = { showSessionTokens: true };
+  assert.equal(lines(ctx({ transcript, config: { display: show } })).at(-1), tokens, 'the default order leaves it last');
+  assert.equal(lines(ctx({ transcript, config: { display: show, elementOrder: ['project', 'context'] } })).at(-1), tokens, 'so does an older custom order');
+
+  const merged = lines(ctx({
+    transcript,
+    config: { display: { ...show, mergeGroups: [['project', 'sessionTokens']] }, elementOrder: ['project', 'sessionTokens', 'context'] },
+  }));
+  assert.equal(merged.length, 2);
+  assert.match(merged[0], new RegExp(`my-project .*│ ${tokens.replace(/[()]/g, '\\$&')}$`));
+  assert.match(merged[1], /^Context/);
+
+  const placed = { display: show, elementOrder: ['sessionTokens', 'project'] };
+  assert.equal(lines(ctx({ transcript, config: placed }))[0], tokens);
+  assert.deepEqual(lines(ctx({ transcript, config: { ...placed, display: {} } })).length, 1, 'placed but turned off draws nothing');
+});
+
 test('wrap width: columns, then maxWidth, and forceMaxWidth overrides columns', () => {
   const long = ctx({ usageData: usage(), config: { maxWidth: 40 } });
   assert.equal(lines(long).length, 3, 'maxWidth applies when the width is unknown');

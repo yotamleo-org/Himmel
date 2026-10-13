@@ -138,7 +138,6 @@ inspect the JSON and do not send.
 
 ### Headless refusal (HIMMEL-128)
 
-<!-- headless-claude-ok: prohibition note, not an invocation -->
 This command makes no `claude -p` / `--print` / `--bg` / API calls. The engine
 is a deterministic node tool — never wrap it in a headless invocation.
 

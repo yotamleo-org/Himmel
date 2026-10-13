@@ -6,7 +6,7 @@
 # real claude turn and that its deny is HONOURED: the denied tool never executes.
 # CI proves hook scripts in isolation; this proves the wiring (HIMMEL-5030 shipped
 # bus hooks unwired for exactly this gap).
-# headless-claude-ok: mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
 #
 # The deny case scripts a Bash call `touch <sentinel>; git stash drop` which
 # block-git-stash.sh refuses. `--allowedTools` names both command shapes, which removes

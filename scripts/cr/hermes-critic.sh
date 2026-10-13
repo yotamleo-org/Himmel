@@ -44,7 +44,7 @@
 #
 # Bash 3.2 safe (macOS / Git Bash on Windows).
 set -uo pipefail
-# headless-claude-ok: the opt-in `--route claude` pass IS the CR critic lane's
+# the opt-in `--route claude` pass IS the CR critic lane's
 # sanctioned product surface (HIMMEL-2017), not unattended background work.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -324,7 +324,6 @@ run_claude_review() {
         echo "hermes-critic.sh: native-auth pin unavailable — refusing the claude route" >&2
         return 1
     fi
-    # headless-claude-ok: comment text only; the claude call it describes is marked at its launch site below
     # HIMMEL-3640: dedupe PATH before this direct `claude -p` launch — Claude
     # Code prepends each enabled plugin's bin/ dir at startup without
     # checking for an existing copy, so an already-duplicated inherited PATH
@@ -360,7 +359,7 @@ run_claude_review() {
         rm -rf "$scratch_dir"
         return 1
     fi
-    # headless-claude-ok: CR critic pass — this invocation IS the product (HIMMEL-2017).
+    # CR critic pass — this invocation IS the product (HIMMEL-2017).
     # HIMMEL-4459: the launch sits INSIDE the keyword-only gate, so a shadowed
     # `return`/`[`/`exit` above can skip a refusal but never reach this launch.
     # HIMMEL-4461: the `cd` precedes the gate (a shadowed `cd` could export a proxy

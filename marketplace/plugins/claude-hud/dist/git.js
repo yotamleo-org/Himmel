@@ -2,12 +2,45 @@ import { createDebug } from './debug.js';
 import { GitTimeoutError, runGit } from './git-runner.js';
 const debug = createDebug('git');
 const QUIET = ['-c', 'core.quotePath=false', '--no-optional-locks'];
+/**
+ * A repository's own config is as untrusted as its files, and git runs commands it names:
+ * core.fsmonitor on every status, and filter drivers whenever it hashes a changed file. Both
+ * are turned off for drivers that don't come from the user's global or system config, so
+ * git-lfs keeps working. A driver name git can't take back in `-c` makes git refuse to run.
+ * Callers also pass --ignore-submodules=dirty, since git inside a submodule reads its config.
+ */
+async function untrustedConfigOverrides(cwd) {
+    const overrides = ['-c', 'core.fsmonitor=false'];
+    let listed;
+    try {
+        listed = await runGit(cwd, ['config', '--show-scope', '-z', '--get-regexp', '^filter\\.'], 1000);
+    }
+    catch {
+        return overrides; // exits 1 when no filter is configured
+    }
+    const drivers = new Set();
+    const fields = listed.split('\0');
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+        const [scope, entry] = [fields[i], fields[i + 1]];
+        if (scope === 'global' || scope === 'system')
+            continue;
+        const key = entry.split('\n', 1)[0];
+        const name = key.slice('filter.'.length, key.lastIndexOf('.'));
+        if (name)
+            drivers.add(name);
+    }
+    for (const name of drivers) {
+        overrides.push('-c', `filter.${name}.clean=`, '-c', `filter.${name}.process=`, '-c', `filter.${name}.required=false`);
+    }
+    return overrides;
+}
 export async function getGitStatus(cwd, options = {}) {
     if (!cwd)
         return null;
+    const safe = [...QUIET, ...await untrustedConfigOverrides(cwd)];
     let output;
     try {
-        output = await runGit(cwd, [...QUIET, 'status', '--porcelain=v2', '--branch', '-z'], 1000);
+        output = await runGit(cwd, [...safe, 'status', '--porcelain=v2', '--branch', '-z', '--ignore-submodules=dirty'], 1000);
     }
     catch (err) {
         debug('git status failed:', err instanceof Error ? err.message : err);
@@ -29,7 +62,10 @@ export async function getGitStatus(cwd, options = {}) {
     status.fileStats = parsed.fileStats;
     if (options.lineDiffs) {
         try {
-            const diffs = parseNumstat(await runGit(cwd, [...QUIET, 'diff', '--numstat', '-z', 'HEAD'], 2000));
+            // diff-index, not diff: porcelain diff refreshes stale stat data into .git/index whatever
+            // --no-optional-locks says, and a timeout mid-write leaves .git/index.lock behind.
+            // -M keeps the rename detection diff turns on by default.
+            const diffs = parseNumstat(await runGit(cwd, [...safe, 'diff-index', '-M', '--numstat', '-z', '--ignore-submodules=dirty', 'HEAD'], 2000));
             status.lineDiff = { added: 0, deleted: 0 };
             for (const diff of diffs.values()) {
                 status.lineDiff.added += diff.added;
@@ -42,7 +78,7 @@ export async function getGitStatus(cwd, options = {}) {
             }
         }
         catch (err) {
-            debug('git diff --numstat failed:', err instanceof Error ? err.message : err);
+            debug('git diff-index --numstat failed:', err instanceof Error ? err.message : err);
         }
     }
     return status;
