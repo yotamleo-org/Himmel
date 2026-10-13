@@ -21,8 +21,8 @@ $ErrorActionPreference = 'Continue'
 # guestcontrol run has no console handle on some images.
 try {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-} catch { $null = $_ }
-$Cell ='win11-adopt-uninstall-project'
+} catch { Write-Warning 'OutputEncoding not set; native output may be OEM-decoded' }
+$Cell = 'win11-adopt-uninstall-project'
 $script:Fail = 0
 
 function Step([string]$Name, [string]$Cmd, [string]$Dir) {
