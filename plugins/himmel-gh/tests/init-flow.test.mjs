@@ -176,6 +176,8 @@ const INIT_CLI = pathResolve(fileURLToPath(new URL('.', import.meta.url)), '../l
 // HIMMEL-5464: the CLI used to spawn the runner's real `gh` (network, keyring),
 // so under CI load the 5000 ms default tripped. A fake `gh` first on PATH makes
 // the spawn deterministic; the timeout is a loaded budget, not an idle one.
+// The stub is a POSIX sh script: on win32 it is not found and the real gh runs
+// as before (the assertions hold either way; only the speed aid is lost).
 const CLI_TEST_TIMEOUT_MS = 30000;
 
 describe('init-cli unhandled-throw contract', () => {
@@ -191,6 +193,11 @@ describe('init-cli unhandled-throw contract', () => {
         env,
         timeout: CLI_TEST_TIMEOUT_MS,
       });
+      // A timed-out or killed child leaves empty output, which would pass the
+      // assertions below vacuously — require a normal exit first.
+      expect(r.error).toBeUndefined();
+      expect(r.signal).toBeNull();
+      expect(r.status).not.toBeNull();
       const stdoutLines = r.stdout.trim().split('\n').filter(Boolean);
       expect(stdoutLines.length).toBeLessThanOrEqual(1);
       expect(r.stderr).not.toMatch(/UnhandledPromiseRejection/);
