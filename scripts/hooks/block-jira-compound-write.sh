@@ -171,7 +171,7 @@ split_bytes() {
 
 quote_mask() {
     local s="$1" n i c nx st out top pv hd hd_set ln j hd_q hd_dash ad dq LC_ALL=C
-    local esc_end=-1 hx ev ch nx2 bl nul=0
+    local esc_end=-1 hx ev ch nx2 bl nul=0 cpv="" cpi=-1
     local -a SC
     local -a stk
     local sp=0
@@ -324,7 +324,12 @@ quote_mask() {
             # halves read as two words. Any other escape is one literal character
             # (blanked). esc_end marks the first byte after the escape: a `#` there
             # follows a word character (`a\ #b`, `\;#b`), so it opens no comment.
-            if [ "$nx" = $'\n' ]; then i=$((i + 2)); esc_end=$i; continue; fi
+            # A `#` right after a continuation is a comment only if the byte BEFORE
+            # the continuation was a boundary: cpv carries that byte forward.
+            if [ "$nx" = $'\n' ]; then
+                [ "$i" = "$cpi" ] || cpv="$pv"
+                i=$((i + 2)); cpi=$i; continue
+            fi
             out+="  "; i=$((i + 2)); esc_end=$i; continue
         fi
         # HIMMEL-5332: `$'...'` is ANSI-C quoting. A backslash escapes a quote there
@@ -356,7 +361,7 @@ quote_mask() {
                             while [ "${#hx}" -lt 3 ]; do
                                 case "${SC[j]-}" in [0-7]) hx+="${SC[j]}"; j=$((j + 1)) ;; *) break ;; esac
                             done
-                            ch=$((8#$hx)) ;;
+                            ch=$(( 8#$hx & 255 )) ;;   # bash keeps the low byte: \556 is \156
                         c) j=$((i + 3)) ;;
                         '') j=$((i + 1)) ;;
                     esac
@@ -385,6 +390,7 @@ quote_mask() {
             '"') st=2; out+=" "; i=$((i + 1)); continue ;;
         esac
         # A `#` starting a word begins a comment — data to end of line.
+        if [ "$i" = "$cpi" ]; then pv="$cpv"; fi
         if [ "$c" = '#' ] && [ "$pv" != "$c" ] && [ "$i" != "$esc_end" ]; then
             case "$pv" in
                 ''|' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')')
