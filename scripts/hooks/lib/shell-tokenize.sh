@@ -616,7 +616,8 @@ _stx_bodies() {
 # `'` is plain text), B a backtick. Returns 1 when it never closes.
 # shellcheck disable=SC2317,SC2329
 _stx_end() {
-    local s=$1 i=$2 st=$3 n=${#1} c t rest b
+    local s=$1 i=$2 st=$3 n=${#1} c t rest b j k l hd_n=0
+    local -a hd_d hd_t
     [ "$st" != C ] || [ "${4:-0}" = 0 ] || st=E
     while [ "$i" -lt "$n" ]; do
         # the same 32-deep bound as _stx_walk: each byte re-reads the stack
@@ -664,6 +665,40 @@ _stx_end() {
                     '(') case $t in P | p) st=${st}p ;; esac ;;
                     ')') case $t in P | p) st=${st%?} ;; esac ;;
                     '}') case $t in C | E) st=${st%?} ;; esac ;;
+                    '<')
+                        # a heredoc body inside $(...) is skipped, not scanned (HIMMEL-5411)
+                        case $t in
+                            P | p)
+                                if [ "${s:i:3}" = '<<<' ]; then i=$((i + 3)); continue; fi
+                                if [ "${s:i:2}" = '<<' ]; then
+                                    j=$((i + 2)); b=0
+                                    [ "${s:j:1}" != '-' ] || { b=1; j=$((j + 1)); }
+                                    while case ${s:j:1} in ' ' | $'\t') true ;; *) false ;; esac; do j=$((j + 1)); done
+                                    _stx_hdword "$s" "$j"
+                                    if [ -n "$_SX_W" ] || [ "$_SX_Q" = 1 ]; then
+                                        hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_n=$((hd_n + 1))
+                                        i=$_SX_E; continue
+                                    fi
+                                fi ;;
+                        esac ;;
+                    $'\n')
+                        case $t in
+                            P | p)
+                                if [ "$hd_n" -gt 0 ]; then
+                                    i=$((i + 1)); k=0
+                                    while [ "$k" -lt "$hd_n" ]; do
+                                        while [ "$i" -lt "$n" ]; do
+                                            rest=${s:i}; l=${rest%%$'\n'*}; i=$((i + ${#l} + 1))
+                                            if [ "${hd_t[k]}" = 1 ]; then
+                                                while [ "${l:0:1}" = $'\t' ]; do l=${l:1}; done
+                                            fi
+                                            [ "$l" != "${hd_d[k]}" ] || break
+                                        done
+                                        k=$((k + 1))
+                                    done
+                                    hd_n=0; continue
+                                fi ;;
+                        esac ;;
                     '#')
                         case $t in
                             P | p)

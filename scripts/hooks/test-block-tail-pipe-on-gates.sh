@@ -387,6 +387,17 @@ allow "a harmless replacement word piped to tail" 'echo ${V/x/hello} | tail -1'
 # shellcheck disable=SC2016  # payload is literal command text
 allow "a gate named only inside single quotes stays data" \
       "echo '\${V:-./scripts/check-ci.sh}' | tail -1"
+# HIMMEL-5411: a heredoc body inside $(...) is skipped, not scanned as command
+# text, so an apostrophe in it no longer hides a later gate from the model.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "quoted heredoc apostrophe inside \$(...) hides no gate" \
+     $'x=$(cat <<\'E\'\nit\'s\nE\n${V:-./scripts/check-ci.sh} | tail -1\n)'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "unquoted <<- heredoc apostrophe inside \$(...) hides no gate" \
+     $'x=$(cat <<-E\n\tit\'s\n\tE\n${V:-./scripts/check-ci.sh} | tail -1\n)'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "heredoc apostrophe inside \$(...) with no gate" \
+     $'x=$(cat <<\'E\'\nit\'s\nE\n)\necho "$x" | tail -1'
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""
