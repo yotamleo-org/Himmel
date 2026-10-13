@@ -353,6 +353,11 @@ _r5098 "228x padded timeout duration before a shell"     block "timeout 5s bash 
 _r5098 "228y padded quoted option argument before a shell" block "env -u \"x y\" bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228z padded option argument before a variable"   block "x=eval; nice -n 5 \$x \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228za control: padded sudo option argument before ls" allow "sudo -u root ls \"\$HOME\"; : ${_PAD}"
+# an ANSI-C span after a split assignment keeps its $: the name it decodes to is unknown
+_r5098 "228zb padded ANSI-C hex shell after a quoted-blank assignment" block "A='x y' \$'\\x62ash' -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228zc padded ANSI-C span inside a verb after a quoted-blank assignment" block "A='x y' e\$'\\166'al \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228zd padded ANSI-C octal verb after a quoted-blank assignment" block "A='x y' \$'\\145val' \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228ze control: padded ANSI-C argument after a quoted-blank assignment" allow "A='x y' printf \$'a\\tb'; : ${_PAD}"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'

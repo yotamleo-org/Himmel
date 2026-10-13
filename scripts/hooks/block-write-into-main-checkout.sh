@@ -3485,7 +3485,9 @@ _BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Z
 # the shell after it is no longer in command position. This awk pass removes
 # quotes word-aware instead: a blank inside quotes (or escaped) becomes _,
 # $( and backticks inside double quotes open a command again, $(( and (( are
-# arithmetic, a comment is dropped, a quoted heredoc body becomes _ and an
+# arithmetic, a $'…' or $"…" span keeps its $ (its decoded or translated text
+# is unknown here, so a command word holding one reads as built from an
+# expansion), a comment is dropped, a quoted heredoc body becomes _ and an
 # unquoted one is read as commands, one line at a time. The crude regexes run
 # on its output as well as on the plain dequoted text (HIMMEL-5349).
 # ponytail: a heredoc is located by its own << scan, not by the tokenizer, so a
@@ -3526,8 +3528,8 @@ BEGIN { sq = "\047"; sp = 0; st[0] = "C"; par[0] = 0; np = 0; qh = 0; cont = 0 }
         if (c == "\\") { if (i == n) { cont = 1; i++; continue }; o = o bl(c2); i += 2; continue }
         if (c == sq) { push("S"); i++; continue }
         if (c == "\"") { push("D"); i++; continue }
-        if (c == "$" && c2 == sq) { push("A"); i += 2; continue }
-        if (c == "$" && c2 == "\"") { push("D"); i += 2; continue }
+        if (c == "$" && c2 == sq) { o = o "$"; push("A"); i += 2; continue }
+        if (c == "$" && c2 == "\"") { o = o "$"; push("D"); i += 2; continue }
         if (c == "$" && c2 == "(" && substr(line, i + 2, 1) == "(") { o = o "$(("; push("M"); i += 3; continue }
         if (c == "$" && c2 == "(") { o = o "$("; push("C"); i += 2; continue }
         if (c == "(" && c2 == "(") { o = o "(("; push("M"); i += 2; continue }
