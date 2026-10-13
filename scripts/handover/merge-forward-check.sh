@@ -60,6 +60,13 @@
 # HIMMEL-5137: only success and failure are completed verdicts; any other conclusion
 # REFUSEs (cancelled routes a base to the cover), and none is accepted for the base
 # only with an empty file and never for a cover.
+# HIMMEL-5461: the covering run is usually the one that carries the fix, so a red the PR
+# inherited reads green there and looked like the PR's own. --base-cases-local <file>
+# (`<job><TAB><case>`, the cases reproduced FAILING at the merge-base by running the failing
+# suite there in a scratch worktree) lets a COVERING-run verdict yield: a job green on the
+# cover is still inherited when EVERY failing case of the PR's job is in that file, and it is
+# green on latest. It never overrides a completed run at the merge-base itself, and a case the
+# PR's own diff introduced does not fail at the merge-base, so it stays the PR's own red.
 # ponytail: the case lists are extracted from logs by the caller and taken as
 # given, so a wrong list can still mislead; upgrade path is parsing the failed
 # job logs here if that ever bites.
@@ -78,7 +85,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 git_env_scrub
 # a run with no job rows, or only cancelled/skipped rows and at least one cancelled, was cancelled (a superseded pending sweep has 0 jobs)
 is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="cancelled" && $2!="skipped" {o=1} END {exit !(n==0 || (!o && c))}' "$1"; }
-pr=""; base=""; latest=""; prc=""; bc=""; bsha=""; msha=""; lsha=""; psha=""; cover=""; csha=""; cfrom=""; bconc=""; cconc=""; bad=0
+pr=""; base=""; latest=""; prc=""; bc=""; bsha=""; msha=""; lsha=""; psha=""; cover=""; csha=""; cfrom=""; bconc=""; cconc=""; lc=""; cover_used=0; local_jobs=""; bad=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr) [ $# -ge 2 ] || { bad=1; break; }; pr="$2"; shift 2 ;;
@@ -93,6 +100,7 @@ while [ $# -gt 0 ]; do
     --base-cover) [ $# -ge 2 ] || { bad=1; break; }; cover="$2"; shift 2 ;;
     --base-cover-sha) [ $# -ge 2 ] || { bad=1; break; }; csha="$2"; shift 2 ;;
     --base-cover-from) [ $# -ge 2 ] || { bad=1; break; }; cfrom="$2"; shift 2 ;;
+    --base-cases-local) [ $# -ge 2 ] || { bad=1; break; }; lc="$2"; shift 2 ;;
     --main-base-conclusion) [ $# -ge 2 ] || { bad=1; break; }; bconc="$2"; shift 2 ;;
     --base-cover-conclusion) [ $# -ge 2 ] || { bad=1; break; }; cconc="$2"; shift 2 ;;
     *) bad=1; break ;;
@@ -101,11 +109,15 @@ done
 if [ "$bad" -eq 1 ] || [ ! -f "$pr" ] || [ ! -r "$pr" ] || [ ! -f "$base" ] || [ ! -r "$base" ] || [ ! -f "$latest" ] || [ ! -r "$latest" ] \
    || [ ! -r "$prc" ] || [ ! -r "$bc" ] || [ -z "$bsha" ] || [ -z "$msha" ] || [ -z "$lsha" ] || [ -z "$psha" ] || [ -z "$bconc" ] \
    || ! [[ "$lsha" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] (all but the --base-cover group required, shas non-empty, --latest-sha a full 40-hex sha)" >&2
+  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] (all but the --base-cover group required, shas non-empty, --latest-sha a full 40-hex sha)" >&2
   exit 2
 fi
 if [ -n "$cover$csha$cfrom$cconc" ] && { [ ! -f "$cover" ] || [ ! -r "$cover" ] || [ -z "$csha" ] || [ -z "$cfrom" ] || [ -z "$cconc" ]; }; then
-  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] (all but the --base-cover group required, shas non-empty; the group is all-or-none)" >&2
+  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] (all but the --base-cover group required, shas non-empty; the group is all-or-none)" >&2
+  exit 2
+fi
+if [ -n "$lc" ] && { [ ! -f "$lc" ] || [ ! -r "$lc" ]; }; then
+  echo "usage: --base-cases-local $lc is not a readable regular file (want <job><TAB><case> rows reproduced failing at the merge-base)" >&2
   exit 2
 fi
 for c in "$bconc" ${cconc:+"$cconc"}; do
@@ -125,7 +137,7 @@ for f in "$pr" "$base" "$latest" ${cover:+"$cover"}; do
     exit 2
   fi
 done
-for f in "$prc" "$bc"; do
+for f in "$prc" "$bc" ${lc:+"$lc"}; do
   if awk -F'\t' 'NF && (NF != 2 || $1 == "" || $2 == "") {exit 1}' "$f"; then :; else
     echo "usage: $f has a malformed row (want <job><TAB><case>): a misread case could hide the PR's own red" >&2
     exit 2
@@ -215,6 +227,7 @@ if is_cancelled "$base" || [ "$bconc" = cancelled ]; then
   fi
   base="$cover"
   verdict="$rcsha"
+  cover_used=1
   base_note=" — base verdict from the next completed covering main run at $rcsha (range $rcfrom..$rcsha), since the merge-base at $bsha has no completed run of its own"
 elif [ -n "$cover" ]; then
   echo "usage: the merge-base run at $bsha is not cancelled: its own verdict stands; drop --base-cover" >&2
@@ -231,15 +244,29 @@ while IFS= read -r job; do
   # a job name may repeat: base counts if ANY row is red, latest only if EVERY row is success
   b="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2=="failure"||$2=="timed_out"||$2=="startup_failure") {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") && !s {s=$2} END {if (!f && s) print s}' "$base")"
   l="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && $2!="success" {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") {s=1} END {if (!f && s) print "success"}' "$latest")"
+  pcases="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") {print $2}' "$prc")"
   case "$b" in failure|timed_out|startup_failure) inherited=1 ;; *) inherited=0 ;; esac
+  # HIMMEL-5461: the covering run may already hold the fix, so it reads green though the case failed at the
+  # merge-base. Only a covering-run verdict yields to a local reproduction at the merge-base: a completed run
+  # at the merge-base itself is that commit's own verdict. Every one of the PR's failing cases must reproduce.
+  local_ok=0; unrepro=""
+  if [ "$inherited" -ne 1 ] && [ "$cover_used" -eq 1 ] && [ -n "$lc" ] && [ -n "$pcases" ]; then
+    while IFS= read -r c; do
+      J="$job" C="$c" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2 "")==(ENVIRON["C"] "") {f=1} END {exit !f}' "$lc" || unrepro="${unrepro:+$unrepro; }$c"
+    done <<< "$pcases"
+    if [ -z "$unrepro" ]; then inherited=1; local_ok=1; fi
+  fi
   if [ "$inherited" -ne 1 ]; then
-    blocked="${blocked:+$blocked, }$job (base: ${b:-absent} — not inherited, the PR's own red)"
+    blocked="${blocked:+$blocked, }$job (base: ${b:-absent} — not inherited${unrepro:+; not reproduced at the merge-base: $unrepro}, the PR's own red)"
     continue
   elif [ "$l" != "success" ]; then
     blocked="${blocked:+$blocked, }$job (latest main: ${l:-absent} — not proven fixed)"
     continue
   fi
-  pcases="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") {print $2}' "$prc")"
+  if [ "$local_ok" -eq 1 ]; then
+    local_jobs="${local_jobs:+$local_jobs, }$job"
+    continue
+  fi
   if [ -z "$pcases" ]; then
     blocked="${blocked:+$blocked, }$job (no failing case recorded for the PR's job — cannot prove it inherited)"
     continue
@@ -257,5 +284,7 @@ if [ -n "$blocked" ]; then
   echo "REFUSE — red not proven inherited-and-fixed: $blocked$base_note. Report BLOCKED; do not merge forward."
   exit 1
 fi
-echo "ALLOW — every red job was red on the merge-base run with the same failing cases and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing both main run ids in a Results bullet."
+local_note=""
+[ -n "$local_jobs" ] && local_note=" — $local_jobs: every failing case reproduced failing at the merge-base locally (--base-cases-local), since the covering run already holds the fix"
+echo "ALLOW — every red job was red on the merge-base run with the same failing cases and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note$local_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing both main run ids in a Results bullet."
 exit 0
