@@ -1344,9 +1344,19 @@ async function main(): Promise<void> {
   const CLAUDEX_WINDOW_TOKENS = 272_000;
   const sessionDir = join(claudexSessionRoot(), `claudex-${slug}-${Date.now()}`);
   // HIMMEL-1357: resolve the repo's default branch (the shared PR's base) for
-  // the worker's merge instruction; any probe failure falls back to main.
+  // the worker's merge instruction. Prefer the open PR's actual base (a PR may
+  // target release/x in a main-default repo), then the repo default branch;
+  // any probe failure falls back to main.
   let baseBranch = "main";
-  if (sharedMode) { try { baseBranch = resolveDefaultBranch(gitProbe, absCwd); } catch { /* keep main */ } }
+  if (sharedMode) {
+    let prBase = "";
+    try {
+      const pv = Bun.spawnSync(["gh", "pr", "view", branch, "--json", "baseRefName", "--jq", ".baseRefName"], { cwd: absCwd, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
+      if (pv.exitCode === 0) prBase = pv.stdout.toString().trim();
+    } catch { /* no gh / no PR: fall through to the default branch */ }
+    if (prBase) baseBranch = prBase;
+    else { try { baseBranch = resolveDefaultBranch(gitProbe, absCwd); } catch { /* keep main */ } }
+  }
   const briefText = composeClaudexWorkerPrompt(task, sessionDir, branch, { shared: sharedMode, model, base: baseBranch });
   const overheadChars = measureOverheadChars(absCwd, homedir());
   const pre = preflightWindowCheck({ briefChars: briefText.length, overheadChars, windowTokens: CLAUDEX_WINDOW_TOKENS });
