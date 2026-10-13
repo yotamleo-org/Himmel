@@ -176,6 +176,7 @@ sleep 300 &
 B6_PID=$!
 mk_session glm glm-badwt-1 running "$B6_PID" glm/badwt "$TMP_ROOT/not-a-repo" >/dev/null
 out=$(run_stop glm-badwt-1); rc=$?
+kill -0 "$B6_PID" 2>/dev/null; b6_alive=$?
 kill "$B6_PID" 2>/dev/null; wait "$B6_PID" 2>/dev/null
 if [ "$rc" -eq 5 ]; then
     pass "B6: an uncheckpointable worktree refuses the stop of a live worker (exit 5), rather than killing with unsaved work"
@@ -186,6 +187,11 @@ if [ "$(meta_status "$BRIDGE_ROOT/glm-sessions/glm-badwt-1/meta.json")" = "runni
     pass "B6b: the refused live worker's session stays running"
 else
     fail "B6b: a refused live worker was annotated" "$out"
+fi
+if [ "$b6_alive" -eq 0 ]; then
+    pass "B6c: the refused live worker was not signalled (pid still alive)"
+else
+    fail "B6c: a refused live worker was signalled" "$out"
 fi
 
 # B7 (HIMMEL-1751): the recorded pid is ALREADY GONE and the worktree cannot be
