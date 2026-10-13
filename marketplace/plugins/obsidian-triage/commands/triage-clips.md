@@ -245,11 +245,11 @@ The flag (and its `harvest_flag_detail:` sibling) is never written or cleared by
 
 **Phase 7 — Mark processed (with stale-read guard + placement contract) — through `tools/triage-mark-processed.py`, never by hand.**
 
-**Read on demand:** For every clip, after Phase 6. A clip is marked processed ONLY through `triage-mark-processed.py` — never by hand. Read `<plugin>/references/triage-clips/phase-7-mark-processed.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
+**Read on demand:** For every clip, after Phase 6, BEFORE making the call — the call continues straight into Phase 8, so also read the Phase 8 reference named below first. A clip is marked processed ONLY through `triage-mark-processed.py` — never by hand. Read `<plugin>/references/triage-clips/phase-7-mark-processed.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 **Phase 8 — Move to evidence pool (runs ONLY after Phase 7 successfully marked `processed: true`) — inside the same `triage-mark-processed.py` call.**
 
-**Read on demand:** For every clip that Phase 7 marked `processed: true`; never before. Read `<plugin>/references/triage-clips/phase-8-evidence-move.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
+**Read on demand:** Load this together with Phase 7's reference, BEFORE the Phase 7 call, because that call executes Phase 8 (under `--dry-run` it writes nothing and still emits Phase 8's `⊘` line). The move itself happens only for a clip Phase 7 marked `processed: true`; never before. Read `<plugin>/references/triage-clips/phase-8-evidence-move.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ### Daily timeline (LUNA-90 — runs ONCE after the per-clip loop)
 
