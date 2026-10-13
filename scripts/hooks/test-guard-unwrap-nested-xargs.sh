@@ -73,7 +73,8 @@ COUNT_HOOK="$SCRATCH/count-hook.sh"
 cat >"$COUNT_HOOK" <<EOF
 #!/usr/bin/env bash
 set -uo pipefail
-cmd=\$(jq -r '.tool_input.command // empty')
+cmd=\$(jq -r '.tool_input.command // empty') || exit 3
+[ -n "\$cmd" ] || exit 3
 printf 'x\n' >>"$RENDER_LOG"
 . "$LIB" || exit 2
 guard_unwrap "\${BASH_SOURCE[0]}" "\$cmd" || exit 2
