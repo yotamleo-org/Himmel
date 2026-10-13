@@ -484,7 +484,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     case "$_rr_head" in
         *[!0-9a-f]*|'') _rr_head="" ;;
     esac
-    if [ "${#_rr_head}" -eq 40 ] && [ "$_rr_head" != "$tip" ] \
+    if { [ "${#_rr_head}" -eq 40 ] || [ "${#_rr_head}" -eq 64 ]; } && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
         && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" "$ledger" 2>/dev/null \
         && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant "$_rr_head" "$tip" >/dev/null 2>&1; then
@@ -501,7 +501,7 @@ panel_empty=$(CRITICS="$SCRIPT_DIR/critics.json" node -e '
   try { const p = JSON.parse(require("fs").readFileSync(process.env.CRITICS, "utf8")).panel;
         console.log(String(Array.isArray(p) && p.length === 0 ? 1 : 0)); } catch (_) { console.log("0"); }' 2>/dev/null)
 # shellcheck disable=SC2016  # $-refs below are JS inside a single-quoted node script, not shell
-verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
+verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" TIP_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
   const fs = require("fs"), e = process.env;
   const lines = fs.existsSync(e.LEDGER)
       ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
@@ -928,26 +928,26 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
           if (perl && pats.some((p) => p.length > GREP_P_MAX)) return { err: "search-pattern-too-costly" };
           for (const p of pos) {
               if (!safePath(p)) return { err: "search-pathspec-refused:" + word(p) };
-              if (!/[*?[]/.test(p) && !inTree(e.FULL_SHA, p)) return { err: "search-pathspec-not-at-tip:" + word(p) };
+              if (!/[*?[]/.test(p) && !inTree(e.TIP_SHA, p)) return { err: "search-pathspec-not-at-tip:" + word(p) };
           }
           // HIMMEL-4637: -z, so a non-ASCII path is its real name (git quotes it
           // otherwise) and a newline in a name cannot split one hit in two.
           const args = ["grep", "-l", "-z", "-I"].concat(flags);
           for (const p of pats) args.push("-e", p);
-          args.push(e.FULL_SHA, "--");
+          args.push(e.TIP_SHA, "--");
           let out = "";
           try { out = grepRun(args.concat(pos)); }
           catch (x) {
               if (x && x.status === 1) out = "";
               else return { err: x && x.code === "ETIMEDOUT" ? "search-timeout" : "search-failed" };
           }
-          const pre = e.FULL_SHA + ":";
+          const pre = e.TIP_SHA + ":";
           const hits = [...new Set(out.split(String.fromCharCode(0)).filter(Boolean)
               .map((l) => l.startsWith(pre) ? l.slice(pre.length) : l))];
           // Text files the pathspec spans at the tip; no pathspec = the tree.
           let scope = 2;
           if (pos.length) {
-              try { scope = grepRun(["grep", "-l", "-z", "-I", "-e", "", e.FULL_SHA, "--"].concat(pos))
+              try { scope = grepRun(["grep", "-l", "-z", "-I", "-e", "", e.TIP_SHA, "--"].concat(pos))
                   .split(String.fromCharCode(0)).filter(Boolean).length; }
               catch (x) {
                   if (x && x.status === 1) scope = 0;
@@ -969,8 +969,8 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
           const findingHead = resolve(v.head);
           for (const p of paths) {
               if (!safePath(p)) return "site-refused:" + word(p);
-              if (!inTree(e.FULL_SHA, p) && !inTree(findingHead, p)) return "site-not-at-tip:" + word(p);
-              if (!isBlob(e.FULL_SHA, p) && !isBlob(findingHead, p)) return "site-not-a-file:" + word(p);
+              if (!inTree(e.TIP_SHA, p) && !inTree(findingHead, p)) return "site-not-at-tip:" + word(p);
+              if (!isBlob(e.TIP_SHA, p) && !isBlob(findingHead, p)) return "site-not-a-file:" + word(p);
           }
           if (wantFile && paths.indexOf(wantFile) < 0) return "sites-omit-finding-file:" + word(wantFile);
           return "";
