@@ -1,0 +1,29 @@
+# ready-lines.tsv — HIMMEL-4762. One READY/MERGED line per row and the answer
+# both parsers must give: go-gate.sh's parse_ready_line (shell) and fleet.mjs's
+# parseReadyLine (node, `fleet.mjs --ready-lines <this file>`).
+# Columns (TAB-separated): line, kind, id, sha. kind `-` = no match. Empty
+# trailing columns are left off (a MERGED row has no sha); the test compares
+# with trailing TABs stripped.
+- 10:50 READY 2021 0123456789abcdef0123456789abcdef01234567 GREEN	READY	2021	0123456789abcdef0123456789abcdef01234567
+READY 2021 0123456789abcdef0123456789abcdef01234567 GREEN	READY	2021	0123456789abcdef0123456789abcdef01234567
+- READY #2021 abcdef1 GREEN	READY	2021	abcdef1
+READY #2021 abcdef1234	READY	2021	abcdef1234
+READY br-feat-x 0123456789abcdef0123456789abcdef01234567 GREEN	READY	br-feat-x	0123456789abcdef0123456789abcdef01234567
+- 9:05 READY br-feat-a.b_c abcdef1 GREEN	READY	br-feat-a.b_c	abcdef1
+- 9:05 READY br-feat+x abcdef1 GREEN	-
+- 9:05 READY br-feat-a.b abcdef1 GREEN	READY	br-feat-a.b	abcdef1
+- 11:02 MERGED #2021 → 0123456789abcdef0123456789abcdef01234567	MERGED	2021
+MERGED 2021	MERGED	2021
+MERGED #2021.	MERGED	2021
+MERGED br-feat-x	MERGED	br-feat-x
+- 12:00 MERGED br-feat-x.	MERGED	br-feat-x
+READY 7 abcdef1 GREEN	-
+READY 2021 abcdefg GREEN	-
+READY 2021 abc12 GREEN	-
+READY 2021 0123456789abcdef0123456789abcdef012345678 GREEN	-
+READY br-Feat-x abcdef1 GREEN	-
+READY br- abcdef1 GREEN	-
+MERGED br-.	-
+- LIVE — send READY 2021 abcdef1 at green	-
+- 10:00 LIVE — PR 2021 open, watching CI	-
+**READY** 2021 abcdef1	-

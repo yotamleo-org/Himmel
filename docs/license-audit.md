@@ -1,4 +1,4 @@
-# License audit (HIMMEL-132)
+# License audit
 
 Durable record of the license decision and the housekeeping that
 implemented it. Visibility (private → public) is a separate, deferred
@@ -34,7 +34,7 @@ for a harness meant to be copied and adapted.
   lockfiles are versioned, so the audit surface is the declared deps.
 - The allowlist permits **`Python-2.0`** (PSF License). It is permissive
   and GPL-compatible (no copyleft), consistent with MIT distribution.
-  Added (HIMMEL-179) when the broadened gate surfaced `argparse@2.0.1`
+  Added when the broadened gate surfaced `argparse@2.0.1`
   pulled transitively via `js-yaml` in
   `marketplace/plugins/obsidian-triage/tools`.
 
@@ -72,6 +72,5 @@ source + fork delta in its own `README.md`.
 ## Remaining deferred step
 
 **GitHub visibility flip (private → public) is NOT done here.** It is
-gated on an explicit operator decision and remains deferred under
-HIMMEL-132. This change is license-metadata housekeeping only; choosing a
+gated on an explicit operator decision and remains deferred. This change is license-metadata housekeeping only; choosing a
 license does not make the repository public.

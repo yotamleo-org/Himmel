@@ -6,7 +6,7 @@ each one has a wired reason (a per-suite cwd rule, a quiet reporter, a runner
 that both runs suites and reports the plan) — so this doc states them once,
 here, rather than re-deriving them per session.
 
-## Writing or reviewing a test (HIMMEL-3580)
+## Writing or reviewing a test
 
 Use the `test-audit` skill (`.claude/skills/test-audit/SKILL.md`, adapted from
 openclaw) whenever you write, change, review or sweep a test. Before adding a
@@ -16,10 +16,10 @@ that fails for an unrelated reason). Before removing a test it requires a
 candidate-evidence record. A new or repaired assertion is shown RED against the
 broken subject before it goes green.
 
-## Corpus/replay containment (HIMMEL-4912)
+## Corpus/replay containment
 
 Corpus/replay tests run through the sandbox runner; execution of destructive
-commands is VM-only (HIMMEL-4886). Feeding command text to a classification hook
+commands is VM-only. Feeding command text to a classification hook
 is not execution, but a hook or harness bug must still meet a filesystem fence.
 Invoke `bash scripts/lib/sandbox-run.sh -- <command> [args...]`: Linux bubblewrap
 namespaces, read-only runtime directories and worktree, fresh tmpfs HOME and
@@ -55,10 +55,9 @@ these payloads unsandboxed. Linux resource bounds are per process, not aggregate
 limits; do not use this classification runner for stress or destructive exec.
 The inode scans are preflight observations, not atomic filesystem snapshots.
 Concurrent changes to mounted runtime or fixture trees are outside this runner's
-containment guarantee; use an immutable VM environment for adversarial execution
-(HIMMEL-4886).
+containment guarantee; use an immutable VM environment for adversarial execution.
 
-## Chokepoint fixtures and the seam guard (HIMMEL-3914)
+## Chokepoint fixtures and the seam guard
 
 Every chokepoint in `scripts/chokepoints.json` sources
 `scripts/lib/chokepoint-seam-guard.sh` and exits 96 if that lib is missing.
@@ -75,14 +74,14 @@ gets exit 96 by design. Point it at a scratch copy instead.
 the same entrypoint CI's `shell-unit` job runs, matrixed over
 `ubuntu-latest` (the required, gating leg on every push/PR) plus
 `windows-latest` and `macos-latest` (advisory-only, `continue-on-error`,
-added on the nightly `schedule` **only** — HIMMEL-3853 removed the
-`force_all_os` dispatch input, so no PR and no manual dispatch runs a Windows
+added on the nightly `schedule` **only** — the
+`force_all_os` dispatch input was removed, so no PR and no manual dispatch runs a Windows
 or macOS shard). Running the
 full corpus is slow and noisy — run it in a subagent rather than foregrounding
 it in an interactive session.
 
-To verify a branch on macOS or Windows on demand, dispatch `os-verify`
-(HIMMEL-3839): it runs only the suites the branch impacts
+To verify a branch on macOS or Windows on demand, dispatch `os-verify`:
+it runs only the suites the branch impacts
 against `origin/main`, on one OS.
 
 ```bash
@@ -96,7 +95,7 @@ concurrent jobs and only 5 macOS, so keep to one OS unless the change is
 OS-specific. It needs `os-verify.yml` on the default branch, and a branch
 whose diff is docs-only reports `0 impacted shell suites` and passes.
 
-### macOS runs on its own cadence, not the nightly (HIMMEL-3902)
+### macOS runs on its own cadence, not the nightly
 
 macOS shell-unit is `.github/workflows/macos-cadence.yml` (`CI (os:macos
 cadence)`): Tuesday + Friday 05:43 UTC, the same 8-shard partition and
@@ -125,7 +124,7 @@ bash scripts/ci/macos-breakage.sh report --repo yotamleo/Himmel --limit 12
 It prints one line per recorded run (date, run id, head, previous head,
 red/new counts, new suites) then `runs` and `new_breakages` per ISO week.
 
-### A nightly OS red is a split slice, never a hold (HIMMEL-3853)
+### A nightly OS red is a split slice, never a hold
 
 Windows is verified by the nightly and macOS by the cadence above; nothing else
 runs them: there is no per-PR all-OS proof, and a PR is never blocked on an OS
@@ -137,16 +136,16 @@ red:
   consolidated issue (label `shell-extended-nightly-ci`) and closes it when the
   nightly goes green. A red Windows `bun-suites` leg is filed the same way by
   `scripts/ci/windows-nightly-issue.sh` (label `windows-alpha-ci`). A red
-  Windows *shell* shard is still masked by `continue-on-error` (HIMMEL-3699);
+  Windows *shell* shard is still masked by `continue-on-error`;
   read the `shell-unit-shard (windows-latest, …)` jobs of the nightly run
   directly. A red macOS cadence run files nothing: read the run's summary
   (new breakages) or `macos-breakage.sh report`.
 - **The console splits it.** The console turns each distinct failure cluster
-  into its own ticket under the epic that owns the OS-portability work
-  (HIMMEL-3719 for macOS), one slice per cluster. The slice is fixed and
+  into its own ticket under the epic that owns the OS-portability work,
+  one slice per cluster. The slice is fixed and
   verified like any other change; it is **never** a hold on an unrelated PR.
 - **Verifying a slice before the next cadence run** is optional and operator-
-  requested only: the diagnostic `os-verify.yml` workflow (HIMMEL-3839)
+  requested only: the diagnostic `os-verify.yml` workflow
   dispatches the impacted suites on one OS. It is not a per-PR gate and no leg
   dispatches it unasked.
 
@@ -154,7 +153,7 @@ red:
 plan without executing anything — use it to check what a change would trigger
 before committing to the long run.
 
-## Running a brand-new suite before its first commit (HIMMEL-4782)
+## Running a brand-new suite before its first commit
 
 `bash scripts/quiet-run.sh suite -- bash <path>` accepts a git-tracked
 `test-*.sh`, **or** an untracked one that lies inside the current worktree, so
@@ -176,7 +175,7 @@ range, so a suite still untracked is not listed and not run by it — commit the
 new suite first (or run it by the `quiet-run` form above), then the range
 selects it.
 
-## Impacted suites — which suites a change actually reaches (HIMMEL-2821)
+## Impacted suites — which suites a change actually reaches
 
 `bash scripts/cr/impacted-suites.sh <base>..<head>` lists every suite
 (`test-*.sh`, `*.test.mjs`/`.js`/`.ts`) whose text references the basename of a
@@ -193,14 +192,14 @@ through another script it calls is not listed.
 
 A `*.test.mjs`/`.js`/`.ts` suite's own runner is not "whatever's installed" —
 `impacted-suites.sh --runner <path>` prints the exact CI-equivalent command,
-read off `.github/workflows/ci.yml` (HIMMEL-3436: a node:test suite can pass
+read off `.github/workflows/ci.yml` (a node:test suite can pass
 under `node --test` and fail under a guessed `bun test` on an unrelated bun fs
 quirk, a false red no code change caused). It refuses non-zero, naming the
 path, rather than guessing, when the path has no mapping; `--runner-check` is
 a drift guard that fails when ci.yml runs a JS/TS test invocation the map does
 not yet cover.
 
-### PR shards run the impacted suites (HIMMEL-3897)
+### PR shards run the impacted suites
 
 On a pull request to `main`, the 8 `shell-unit-shard` jobs run only the
 suites that the **base** commit's `scripts/ci/impacted-selection.sh` selects
@@ -227,14 +226,14 @@ fails the check when:
 - a suite ran red;
 - a suite was left unrun.
 
-The main cron sweep (HIMMEL-5113: `ci.yml` has no push-to-main trigger),
+The main cron sweep (`ci.yml` has no push-to-main trigger),
 a `workflow_dispatch` and the nightly schedule keep the full sweep. When a main
 sweep is red, the aggregator records
 `impacted-suites.sh --selector-miss` rows in the step summary and in the
 `selector-miss-ledger` artifact. Those rows name the red suites a PR run
 would not have selected.
 
-## A failed suite is retried once; a pass on retry is a FLAKE (HIMMEL-5116)
+## A failed suite is retried once; a pass on retry is a FLAKE
 
 `run-shell-tests.sh` re-runs a failed suite once, alone. Passing on the retry
 is a **FLAKE**: neither PASS nor FAIL, counted and listed in the summary, and
@@ -244,16 +243,16 @@ section; the ledger is uploaded with the failure logs.
 
 - A second flake of one suite inside `SUITE_FLAKE_WINDOW_DAYS` (default 7)
   prints a "file a ticket" line. The repeat check matches the suite **and** the
-  repo id (HIMMEL-5121), so another repo's row never counts.
+  repo id, so another repo's row never counts.
 - A suite that fails both attempts is a real FAIL and keeps both logs.
 - A suite whose header carries `# no-retry` is never retried, and a suite the
   watchdog killed at its cap is never retried either.
 - The console tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
   shows the same rows when this repo's ledger took a row since the console lock
-  started (HIMMEL-5131); `scripts/observability/suite-flake-summary.sh --format
+  started; `scripts/observability/suite-flake-summary.sh --format
   detail` lists each row.
 
-## Scan roots — what the corpus covers (HIMMEL-3193)
+## Scan roots — what the corpus covers
 
 The default scan root is `scripts` (a scoped run: `run-shell-tests.sh scripts/hooks`).
 CI's shards pass root **`.`**, the whole-repo run: `scripts/`, `templates/` and
@@ -268,10 +267,9 @@ refuse to overlap rather than run the same trees twice.
 The obsidian-triage suites need `js-yaml`/`playwright` from `tools/node_modules`;
 CI installs them with `marketplace/plugins/obsidian-triage/tools/ensure-deps.sh` before
 the shards, and locally run that once (it exits non-zero on any npm/network failure).
-Suites that fail under the runner are quarantined on `SKIP_LIST` with a ticket ID
-(HIMMEL-3196 for the marketplace set) — never silently.
+Suites that fail under the runner are quarantined on `SKIP_LIST` with a ticket ID — never silently.
 
-**A `SKIP_LIST` suite is "uncovered", never "CI verifies" (HIMMEL-4112).** CI does
+**A `SKIP_LIST` suite is "uncovered", never "CI verifies".** CI does
 not run it, so a PR or handover that cites CI as its evidence is citing nothing.
 Look it up instead of recalling it: `bash scripts/handover/suite-coverage.sh
 <suite>...` parses `run-shell-tests.sh` (SKIP_LIST, the `extended` tier table and
@@ -281,7 +279,7 @@ the per-suite cap function) and answers per suite — runs in PR CI / nightly on
 `test-arm-resume-1879.sh` nightly at a 1700 s cap). Nothing in that answer is
 hand-copied, so it cannot drift from the runner.
 
-## Shard assignment — the duration ledger (HIMMEL-2894)
+## Shard assignment — the duration ledger
 
 `--shard <i>/<n>` splits the corpus across CI's `shell-unit-shard` matrix. The
 split is **not** round-robin: `scripts/ci/suite-durations.tsv` is a committed
@@ -319,7 +317,7 @@ still exactly the unsharded run list.
   `awk` or `sort`, a full `TMPDIR`, a broken `PATH` is local to one runner, so a
   shard recovering there would run a round-robin partition while its siblings
   ran a bin-packed one: some suites twice, others on no shard at all, every
-  shard still green — HIMMEL-1128's false-green class. So past that builtin
+  shard still green — the false-green class. So past that builtin
   probe there is no recovery, and no per-stage classification either. The
   correctness invariant is asked **once**, at the output: the finished plan must
   hold every eligible suite exactly once, and this shard's slice must be exactly
@@ -381,14 +379,14 @@ costs extra tail/grep round-trips to recover it.
 
 `claude plugin eval` runs an agent against a real Claude Code session, so
 every run is a billed call against the same 5-hour/weekly bank as
-interactive use (HIMMEL-128) — these suites are **on-demand only**, run via
+interactive use — these suites are **on-demand only**, run via
 `/plugin-eval <plugin> <suite>` (`.claude/commands/plugin-eval.md`), never
 wired into CI or a cadence, and never "all suites" in one invocation. The
 command bank-preflights (`scripts/plugin-eval-preflight.sh`, refusing when
 `bank-preflight.sh` returns `SKIPPED-BANK`) and checks the `claude` version
 floor the subcommand needs (2.1.269) before ever shelling out.
 
-Three suites ship under HIMMEL-2931:
+Three suites ship:
 
 - `marketplace/plugins/obsidian-triage/evals/telegram-clip-basic/` — a
   Telegram-message-shaped prompt against a seeded fixture vault, graded on
@@ -402,11 +400,11 @@ Three suites ship under HIMMEL-2931:
   the plugin, the same prompt has no reason to stay off `WebFetch`. Both arms
   use a fixture vault under the suite dir — never the real
   `~/Documents/luna`. **`prompt.md` is natural language, not a leading
-  `/obsidian-triage:read-link` line** (HIMMEL-2938) — a literal slash command
+  `/obsidian-triage:read-link` line** — a literal slash command
   made Claude Code's dispatcher intercept the unrecognized command in the
   WITHOUT arm and return a synthetic "Unknown command" response before any
   model turn ran, so that arm never got a chance to reach for `WebFetch` at
-  all. **Re-verified (2026-09-12, HIMMEL-2938):** WITH scored 1.00 clean (3/3
+  all. **Re-verified (2026-09-12):** WITH scored 1.00 clean (3/3
   runs, vault content surfaced, 0 WebFetch calls). WITHOUT scored 0.67 (2/3
   runs still found the fixture content directly via the generically-granted
   `Bash`/`Grep`/`Read` tools without calling `WebFetch`, since the prompt
@@ -429,7 +427,7 @@ Three suites ship under HIMMEL-2931:
   pass a call whose `collections` array held extra collections, or was empty
   with "himmel" appearing elsewhere in the JSON-stringified input — tightened
   to `"collections":\s*\[\s*"himmel"\s*\]` to assert the scope is exactly
-  `["himmel"]`. **Hardened further (HIMMEL-2938):** every WITH-only run makes
+  `["himmel"]`. **Hardened further:** every WITH-only run makes
   **2** calls to `mcp__plugin_qmd_qmd__query` (the mock's `query` tool takes
   one query string, so the model issues its lex- and vec-style sub-queries as
   two separate calls) — the original `scoped-query` grader's `min: 1` only
@@ -461,7 +459,7 @@ Three suites ship under HIMMEL-2931:
    `/plugin-eval`'s own preflight, not by a separate installed-version check
    elsewhere.
 
-## `test-ws5-invariants.sh` and renames (HIMMEL-3090, HIMMEL-3125)
+## `test-ws5-invariants.sh` and renames
 
 T13(b) is **not** rename-blind: its corpus is one full-tree
 `git diff "$BASE...HEAD"` (since #776/#777), so rename pairing applies — a
@@ -471,7 +469,7 @@ The residual is T15: its new-script list is `--diff-filter=A` limited to
 `scripts/`, so a rename from OUTSIDE `scripts/` reads as an addition — but T15
 is advisory (`WARN`, never a CI gate). Read the assertion, then decide.
 
-### T13(b) marker-only exemption (HIMMEL-3432)
+### T13(b) marker-only exemption
 
 A read-only process lookup naming a daemon (`pgrep -f 'claude daemon run'`,
 `pkill -0 -f '...'`, `ps ... | grep '...'`) is not a daemon start — it reads
@@ -495,7 +493,7 @@ must open with exactly `# t13b-ok: ` (or `// t13b-ok: `) — one space after
 `# t13b-ok:x` do not exempt; extra spaces after the colon are tolerated,
 ending up inside the trimmed reason).
 
-**Real trailing comment, not raw text (HIMMEL-3446).** The marker is now
+**Real trailing comment, not raw text.** The marker is now
 recognized by a minimal quote/brace-depth scan of the shipped line (no full
 tokenizer), not by a text search — `index(t, "# t13b-ok: ")` was the whole
 trust boundary once #1094 made the marker the only exemption, and a marker
@@ -521,7 +519,7 @@ that line, and the gate still leaves it exempted (`mk-mid-chain`/
 exempt is unchanged and out of scope here.
 
 **Nested substitution inside a quote, and escaped word boundaries
-(HIMMEL-3446 round 3).** The scan is a proper stack, not a single quote/depth
+(round 3).** The scan is a proper stack, not a single quote/depth
 pair: `${…}`/`$(…)`/backtick can open one level DEEPER while already inside a
 single, double or backtick quote (`x="$(echo " # t13b-ok: reason")"` and its
 backtick and `${y:-"…"}` forms no longer desync — the inner `"` closes the
@@ -536,8 +534,8 @@ Read the `smg-nested-*`/`smg-js-nested-template`/
 `smg-escaped-space-word-boundary` cases in
 `scripts/parity/test-t13b-daemon-prose.sh`. Two narrower quote-desync gaps
 (a JS regex literal, and bash's `$'…\'…'` ANSI-C escaped-quote form) are
-unrelated to this nesting fix, remain open, and are tracked under
-HIMMEL-3455 — flagged with a `ponytail:` at `find_marker_start()` and pinned
+unrelated to this nesting fix, remain open, and are tracked as known gaps —
+flagged with a `ponytail:` at `find_marker_start()` and pinned
 by the `sh-t13b-known-gap-*` fixture rows.
 
 Once a real comment opens, the reason after it must be non-trivial: at least
@@ -549,12 +547,12 @@ different line (same-line only, unchanged). `ponytail:` in the gate: the
 scan is per diff line with no concept of "this line is heredoc BODY
 content, not a shell comment" — a heredoc body line whose text happens to
 spell a real-looking marker still exempts a daemon shape on that same line;
-out of scope, tracked on HIMMEL-3446. Read cases in
+out of scope, a known gap. Read cases in
 `scripts/parity/test-t13b-daemon-prose.sh`. Precedent for a narrow, literal
-carve-out done right: HIMMEL-3414's exact-token `systemctl daemon-reload`
+carve-out done right: the exact-token `systemctl daemon-reload`
 strip, which this gate keeps unchanged.
 
-## VM round trip — station-only, never CI (HIMMEL-3332)
+## VM round trip — station-only, never CI
 
 `VBOXMANAGE_PATH=/usr/bin/VBoxManage bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 runs a seeded install/uninstall round trip on a real VirtualBox clone. The
@@ -585,7 +583,7 @@ Three readings that look like evidence and are not:
   exhausted — read the `X-Ratelimit-*` headers of a real call
   (`gh api -i graphql …`), not the summary endpoint.
 
-## Superseded runs under a runner backlog (HIMMEL-3811)
+## Superseded runs under a runner backlog
 
 With a large fleet the account's 20-job cap backs up, and superseded
 `pull_request` runs sit in workflow-level `queued` — the concurrency group does
@@ -593,7 +591,7 @@ not cancel them, and `codeowner-review-gate` / `workflow_dispatch` runs are
 outside it by design. From a console, `bash scripts/ci/cancel-superseded-runs.sh
 --dry-run [--branch <b>]` lists, and without `--dry-run` cancels, every live CI
 or codeowner-review-gate run on an open PR's branch whose head is not that PR's
-current head. It never touches a run at the current head (HIMMEL-3588), main, a
+current head. It never touches a run at the current head, main, a
 schedule run or a branch with no open PR, and any `gh` read error cancels
 nothing and exits 1. Cancels land ~20 s later. Console-run only; not yet wired
 into `tick.sh` or the leg ship flow.

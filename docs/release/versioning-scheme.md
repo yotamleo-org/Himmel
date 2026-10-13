@@ -1,4 +1,4 @@
-# Version naming scheme (HIMMEL-4873)
+# Version naming scheme
 
 How himmel releases are named in Jira (fix versions), tags and the tracker.
 
@@ -27,8 +27,8 @@ patches; they were milestones. They became minors:
 | `v1.0.7`, `v1.0.8` | `v1.6.0` |
 | `v1.0.22`, `23`, `25`, `32`, `34`, `37`, `38`, `42` | `v1.7.0` |
 
-The 27 empty versions in that range were archived. `v1.1.x` (ex `v1.0.2b..h`,
-HIMMEL-4872) is unchanged, and `v2/v3` stays a planning bucket: `v2.0.0` is
+The 27 empty versions in that range were archived. `v1.1.x` (ex `v1.0.2b..h`)
+is unchanged, and `v2/v3` stays a planning bucket: `v2.0.0` is
 created only when that line starts.
 
 ## Tooling

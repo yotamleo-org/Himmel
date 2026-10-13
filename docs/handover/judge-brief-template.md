@@ -37,8 +37,7 @@ finished answer looks like, not what the answer should be.
 
 **`resume_cwd` is the judge's scratch directory, never a path under the
 handover root.** `headed-arm-leg.sh` refuses (exit 15) any leg or judge whose
-doc's `resume_cwd` resolves inside the handover root (symlinks followed;
-HIMMEL-3874) — the root commonly lives in an Obsidian vault, and a judge
+doc's `resume_cwd` resolves inside the handover root (symlinks followed) — the root commonly lives in an Obsidian vault, and a judge
 whose working tree is there hung it twice. Write `resume_cwd` as an absolute
 path (a leading `~` is not expanded by `arm-resume.sh`) and `mkdir -p` it
 before launch: a `resume_cwd` that is not yet a directory is ignored and the
@@ -64,21 +63,20 @@ template_version: 1
 
 > **Tier:** opus — <category>: <free text>, matching whichever tier this
 > judge actually launches at: `opus` for the native-lane `--judge` default
-> (HIMMEL-3630) or `fable` when explicitly routed to Fable instead. The gate
+> or `fable` when explicitly routed to Fable instead. The gate
 > matches by MODEL PREFIX, not by default-vs-explicit, so this line is never
 > optional. `<category>` is exactly one of `design` (a multi-step design
 > question), `unverified-finding` (a finding the console could not verify at
 > Sonnet), `tier-return` (a Sonnet leg returned the question as above its
 > tier), or `operator-ruling` (a standing operator ruling on model choice,
-> e.g. `operator-ruling: HIMMEL-3630 default`).
+> e.g. `operator-ruling: Opus default for judges`).
 > `headed-arm-leg.sh:239-282` refuses the launch without this exact line —
 > `<category>: <free text>` must sit on this ONE physical line (the gate
 > reads one matched line, so wrapping the reason across a second markdown
 > line truncates it silently), the category tag is exact-lowercase, and the
 > free text after `: ` must be non-blank.
 
-> A native `--judge` defaults to `CLAUDE_CODE_EFFORT_LEVEL=high`
-> (HIMMEL-3795). To dispatch a judge at a non-high effort, set
+> A native `--judge` defaults to `CLAUDE_CODE_EFFORT_LEVEL=high`. To dispatch a judge at a non-high effort, set
 > `HIMMEL_CONSOLE_JUDGE_EFFORT=<level>` in the LAUNCHING shell before calling
 > `headed-arm-leg.sh --judge` — the channel meant for a console's deliberate
 > override (`headed-arm-leg.sh:461-466`; a caller-preset
@@ -95,7 +93,7 @@ template_version: 1
 > call with no clear precedent, a Sonnet leg returning the question as above
 > its tier.>
 
-> **Prior art (required, HIMMEL-4573):** <related tickets, prior fixes and graph
+> **Prior art (required):** <related tickets, prior fixes and graph
 > neighbours for THIS question, each with its source — pointers to what exists,
 > never the console's own conclusion (the judge stays blind). The console fills
 > it at dispatch from one qmd query over `jira-himmel` + the vault collection (lex+vec,
@@ -131,12 +129,11 @@ gathering, per the rule below.>
 > yours and each child's (repo extracts, probe trees, tarballs) — under
 > `~/.cache/himmel/verdicts/<qid>/`, never under `<handover root>`: the
 > handover root commonly lives inside an Obsidian vault, which indexes
-> every file regardless of `.gitignore` (HIMMEL-3705: 843k scratch files
+> every file regardless of `.gitignore` (843k scratch files
 > froze the vault). Not `/tmp` either — it can be tmpfs, so a full tree sits in RAM.
 > Only your verdict file belongs under `verdicts/<qid>/`.
 
-> **A PR-keyed `/tmp` dir (`j<PR>`) is made by the helper, never by `mkdir`
-> (HIMMEL-4325).** If you judge a PR and need a short-lived tree under
+> **A PR-keyed `/tmp` dir (`j<PR>`) is made by the helper, never by `mkdir`.** If you judge a PR and need a short-lived tree under
 > `/tmp/claude-<uid>/j<PR>`, create it with
 > `bash <primary checkout>/scripts/judge-dir.sh <PR> [suffix a-z]` — the absolute path
 > from the primary checkout, never a worktree's copy — and use the dir it prints.
@@ -147,11 +144,11 @@ gathering, per the rule below.>
 > floor. Writing your verdict with an evidence file inside the PR's own dir
 > (`j<PR>` or `j<PR><a-z>`, the `--pr` value) with `write-verdict.sh` drops a
 > `.verdict-written` marker that releases the dir to the reaper even while
-> your holder is alive (HIMMEL-5165, HIMMEL-5173). A second judge under the
+> your holder is alive. A second judge under the
 > same console must take another suffix: `judge-dir.sh` refuses a dir this
 > holder already filled.
 >
-> **Never `rsync`/`cp -a` the whole repo into scratch (HIMMEL-5165).** A full
+> **Never `rsync`/`cp -a` the whole repo into scratch.** A full
 > tree is about 6 GB; on 2026-10-10 finished judge dirs filled the 36 GB
 > `/tmp` tmpfs and failed a judge. Copy only `scripts/` plus the PR's changed
 > files, excluding `.git` and `.claude/worktrees`, or put the tree on disk
@@ -179,9 +176,9 @@ gathering, per the rule below.>
 > differential, fixture suite) under `python3 scripts/eval/harness-run.py
 > --deadline <sec> -- <cmd>`: a per-call killpg dies with the harness, and the
 > runner's subreaper sweep still reaps every hook copy the harness left in
-> flight (HIMMEL-4183).
+> flight.
 
-> **Guard escape tests (guard/hook PRs, HIMMEL-4537).** When the PR under
+> **Guard escape tests (guard/hook PRs).** When the PR under
 > review changes a hook or guard, its escapes are tested by exactly three
 > routes. Reasoning about escape CLASSES is expected; authoring an INSTANCE (a
 > bypass string, a new seed, a new transform) is not yours to do on any route.
@@ -277,7 +274,7 @@ gathering, per the rule below.>
 > holds at every step — writing rows, writing transforms, and reviewing or
 > designing the test policy itself.
 >
-> **Covered vs dropped (HIMMEL-4168).** The transforms (quoting, wrappers with
+> **Covered vs dropped.** The transforms (quoting, wrappers with
 > quoted flag values, nested `bash -c` to depth 4, assignment prefixes, `eval`,
 > `--`, backslash-newline, heredoc, and padding for timing) apply to any seed.
 > The deny-side **families reachable through `--seeds-file`** are
@@ -289,7 +286,7 @@ gathering, per the rule below.>
 > who needs destructive coverage writes a route-2 line; the operator supplies
 > those seeds.
 
-> **Ticket coverage (PR-review judges, HIMMEL-4207).** When the question is
+> **Ticket coverage (PR-review judges).** When the question is
 > whether a PR may merge, read the PR body's `## Ticket coverage` section against
 > the cited ticket's body and the diff, and answer: is every ask of the cited
 > ticket(s) done in the diff or deferred to an open ticket? A `done` line the
@@ -297,7 +294,7 @@ gathering, per the rule below.>
 > missing or already Done is a NO-GO line in your verdict. The console puts the
 > ticket body and the PR body in `## Evidence`.
 
-> **Judge checklist (code, CI and infra PRs, HIMMEL-5117).** A green CI and a
+> **Judge checklist (code, CI and infra PRs).** A green CI and a
 > clean review are not a verdict. Rule on these, each with evidence:
 > 1. **Real environment, not fixtures.** For a CI, infra or environment change,
 >    read this PR's own CI log and the upstream image or runner config; a unit
@@ -312,7 +309,7 @@ gathering, per the rule below.>
 >    a silent rc-0 drop; a symlink target replaced, not refused; a string
 >    compared across processes or sessions (`ps lstart`, `date`, `sort`, `ls`)
 >    without `TZ` and `LC_ALL` pinned (`proc-tree.sh:94` is the reference;
->    HIMMEL-3791 and j2271a both hit it).
+>    j2271a hit it).
 > 4. **Tree-scan suites.** A diff that ADDS a script, ledger, launch site or
 >    `.ps1`: name the tree-scan suites you ran in full (not only the impacted
 >    ones), with counts.
@@ -327,7 +324,7 @@ gathering, per the rule below.>
 > `merge-on-green.sh`, and you are never asked an authority-adjacent
 > question.
 
-> **NO-GO class (HIMMEL-4885).** Every new NO-GO evidence file carries exactly
+> **NO-GO class.** Every new NO-GO evidence file carries exactly
 > one `class:` field: a value or comma set from `option-parsing, cwd-indirection,
 > shell-parsing, tool-defaults, reader-allowlist, other`. In a delta brief, keep
 > the earlier class of a repeated finding; do not relabel it to buy another
@@ -337,7 +334,7 @@ gathering, per the rule below.>
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through
 > `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name>`
-> (HIMMEL-4689; `--pr` is required, HIMMEL-4928), which emits the exact line `go.sh --trust-reviewed` parses
+> (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
 > and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, and **end
 > your turn.** Do not wait for an ack, do not open a PR, do not merge
 > anything. The console kills your window when it reads the verdict — a
@@ -360,16 +357,16 @@ gathering, per the rule below.>
 | Part | What goes wrong without it |
 |---|---|
 | Blind-not-thin | A judge given the console's conclusion has nothing to independently confirm or reject — its verdict becomes a rubber stamp, defeating the reason a judge call or session exists. |
-| `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `leg_description` in `scripts/lib/leg-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-leg.sh --judge` refuses the launch (no flag skips it; HIMMEL-4749). |
-| Prior art line (required) | Console, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06 (HIMMEL-4479 audit), so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The console retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh --judge` refuses the launch unless `--no-prior-art-check` is passed (HIMMEL-4573). |
+| `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `leg_description` in `scripts/lib/leg-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-leg.sh --judge` refuses the launch (no flag skips it). |
+| Prior art line (required) | Console, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06, so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The console retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh --judge` refuses the launch unless `--no-prior-art-check` is passed. |
 | `## Evidence` as a real, numbered section | A judge whose evidence is scattered through prose cannot cite it by number in its verdict's `## Evidence checked`, breaking the verdict template's contract. |
-| Tier line | `headed-arm-leg.sh:239-282` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it (HIMMEL-2976/HIMMEL-2997) — every judge dispatch launches at one tier or the other (Opus by default since HIMMEL-3630), so this line is never optional. |
+| Tier line | `headed-arm-leg.sh:239-282` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it — every judge dispatch launches at one tier or the other (Opus by default), so this line is never optional. |
 | Completion condition | Without a stated shape for "done", a judge can return a verdict too vague to act on, or keep gathering evidence past the point the question needed — and a condition that only admits one answer produces a judge that cannot say no. |
 | RETASK block | The same asymmetry as a leg's: a narrowing needs no token, an EXPANSION does, and no revision from anyone widens what the judge may act with — which for a judge is nothing to begin with. |
 | Lifecycle rule | A judge that does not end its turn after writing its verdict holds a fleet slot the console cannot reclaim without killing the window itself. |
 | "Checkpoint to disk as you go" | The standard `--autocompact 200000` pin is too small for a design-grade question (design spec §3.2); a judge holding its reasoning only in context loses it at compaction. |
-| Scratch lives outside the handover root | Judges extract whole repo trees; under a vault-resident handover root they are indexed by Obsidian despite `.gitignore` (HIMMEL-3705: 843k files, 16 GB). `/tmp` is ruled out because it can be tmpfs. |
+| Scratch lives outside the handover root | Judges extract whole repo trees; under a vault-resident handover root they are indexed by Obsidian despite `.gitignore` (843k files, 16 GB). `/tmp` is ruled out because it can be tmpfs. |
 | Per-child scratch subdirectory | Parallel evidence-gatherers sharing one directory overwrite or interleave each other's output. |
-| Ticket coverage block | Three of 14 cloud PRs closed tickets Done with asks undone because the brief scoped them out and no judge asked whether the PR did every ask of the ticket it closes (HIMMEL-4207). |
-| Guard escape tests: three routes + classifier stop | On 2026-10-06 a safety classifier stopped a leg and an opus judge that were hand-writing bypass-shaped rows, and then the adversarial review of this very policy (HIMMEL-4537). Without the routes a guard PR either goes unjudged or its judge improvises instances; without the GO wording a GO on generated rows reads as "escape-proof"; without the stop rule a stopped session is rephrased or re-dispatched until something gets through. |
-| Fixtures under a group deadline | A judge's `subprocess.run(timeout=60)` fixture runner killed only the hook's direct `bash`; six looping `$(…)` subshells of a pre-merge hook revision ran on at 99.5 % CPU for ~3h45m (HIMMEL-3956). |
+| Ticket coverage block | Three of 14 cloud PRs closed tickets Done with asks undone because the brief scoped them out and no judge asked whether the PR did every ask of the ticket it closes. |
+| Guard escape tests: three routes + classifier stop | On 2026-10-06 a safety classifier stopped a leg and an opus judge that were hand-writing bypass-shaped rows, and then the adversarial review of this very policy. Without the routes a guard PR either goes unjudged or its judge improvises instances; without the GO wording a GO on generated rows reads as "escape-proof"; without the stop rule a stopped session is rephrased or re-dispatched until something gets through. |
+| Fixtures under a group deadline | A judge's `subprocess.run(timeout=60)` fixture runner killed only the hook's direct `bash`; six looping `$(…)` subshells of a pre-merge hook revision ran on at 99.5 % CPU for ~3h45m. |

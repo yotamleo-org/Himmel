@@ -392,6 +392,136 @@ got=$(sc_scope "$SCW" "$SCC")
 got=$(sc_scope "$SCN" "$SCC")
 [ "$got" = "anchor-name/scopenoenv" ] || fail "8b: the user-slug fallback ran in the caller's cwd, not the anchor's (got '$got')"
 
+# --- 9. HIMMEL-4762: change ids, the br-* mac domain, local-git trust paths --
+G9="$ROOT/g9"; mkdir -p "$G9/.locks/go"
+g9_gate() {  # <fn> <id> <sha> <nwo> -> rc of go_gate/go_trust_gate under PINHOME, reason on stdout
+    HOME="$PINHOME" bash -c 'unset -f go_gate go_trust_gate _go_gate_verify go_mac 2>/dev/null || true; . "$1"; "$2" "$3" "$4" "$5" "$6"' _ "$GO_GATE_SRC" "$1" "$2" "$3" "$G9" "$4"
+}
+g9_go() {  # <id> <sha> <nwo> [<mac-id>] - write a GO file for <id>, signed for <mac-id>
+    printf 'head=%s\nmac=%s\n' "$2" "$(pin_mac go_mac "${4:-$1}" "$2" "$3")" > "$G9/.locks/go/$1.$2"
+}
+# 9a. A br-* id signs under its own domain: HMAC over himmel-go-br-v1|<nwo>|<id>|<sha>.
+want=$(printf 'himmel-go-br-v1|local:/r/.git|br-x|%s' "$PINSHA" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(cat "$PINHOME/.config/himmel/go-hmac.key")" | awk '{print $NF}')
+[ "$(pin_mac go_mac br-x "$PINSHA" local:/r/.git)" = "$want" ] || fail "9a: go_mac br-x is not HMAC over himmel-go-br-v1|<nwo>|<id>|<sha>"
+want=$(printf 'himmel-go-br-trust-v1|o/r|br-x|%s|rev-1' "$PINSHA" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(cat "$PINHOME/.config/himmel/go-hmac.key")" | awk '{print $NF}')
+[ "$(pin_mac go_mac br-x "$PINSHA" o/r rev-1)" = "$want" ] || fail "9a: trust go_mac br-x is not HMAC over himmel-go-br-trust-v1|..."
+# 9b. A GO for br-x does not satisfy PR 7, nor the reverse; each passes for itself.
+g9_go 7 "$PINSHA" o/r br-x
+rc=0; g9_gate go_gate 7 "$PINSHA" o/r >/dev/null || rc=$?
+[ "$rc" -eq 2 ] || fail "9b: a GO signed for br-x satisfied PR 7 (rc=$rc)"
+g9_go br-x "$PINSHA" o/r 7
+rc=0; g9_gate go_gate br-x "$PINSHA" o/r >/dev/null || rc=$?
+[ "$rc" -eq 2 ] || fail "9b: a GO signed for PR 7 satisfied br-x (rc=$rc)"
+g9_go 7 "$PINSHA" o/r; g9_go br-x "$PINSHA" local:/r/.git
+rc=0; g9_gate go_gate 7 "$PINSHA" o/r >/dev/null || rc=$?
+[ "$rc" -eq 0 ] || fail "9b: PR 7's own GO was refused (rc=$rc)"
+rc=0; out=$(g9_gate go_gate br-x "$PINSHA" local:/r/.git) || rc=$?
+[ "$rc" -eq 0 ] || fail "9b: br-x's own GO was refused (rc=$rc): $out"
+# 9c. Ids outside ^([0-9]+|br-[a-z0-9._-]+)$ refuse before any file is read.
+for bad in "" "br-" "br-X" "../7" "7x" "br-a/b" "-7"; do
+    rc=0; out=$(g9_gate go_gate "$bad" "$PINSHA" o/r) || rc=$?
+    case "$rc:$out" in "2:change id '$bad' is neither"*) ;; *) fail "9c: id '$bad' was not refused as an id (rc=$rc): $out" ;; esac
+done
+# 9d. A numeric refusal is byte-identical to before HIMMEL-4762.
+rc=0; out=$(g9_gate go_gate 8 "$PINSHA" o/r) || rc=$?
+[ "$rc:$out" = "2:PR #8 at $PINSHA has no console GO ($G9/.locks/go/8.$PINSHA) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it." ] \
+    || fail "9d: the numeric no-GO refusal changed: $out"
+rc=0; out=$(g9_gate go_gate br-y "$PINSHA" o/r) || rc=$?
+case "$rc:$out" in "2:change br-y at $PINSHA has no console GO"*) ;; *) fail "9d: br-y's refusal does not name the change (rc=$rc): $out" ;; esac
+
+# 9e. trust_path_check for a local-git change reads the list and files from git.
+lg() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.name=t -c user.email=t@t "$@"; }
+tpc() {  # <repo-id> <id> <sha> <anchor> -> trust_path_check's rc:stdout
+    local o r=0
+    o=$(bash -c '. "$1"; shift; trust_path_check "$@"' _ "$GO_GATE_SRC" "$1" "$2" "$3" main "$4") || r=$?
+    printf '%s:%s' "$r" "$o"
+}
+LR="$ROOT/lgrepo"; mkdir -p "$LR/scripts/ci"
+lg -C "$LR" init -q -b main
+printf '# trust\n^scripts/ci/\n' > "$LR/scripts/ci/ci-trust-paths.txt"
+lg -C "$LR" add -A && lg -C "$LR" commit -q -m list
+LRID="local:$(cd "$LR/.git" && pwd -P)"
+lg -C "$LR" checkout -q -b feat/hit
+printf 'x\n' > "$LR/scripts/ci/new.sh"; printf '^nothing$\n' > "$LR/scripts/ci/ci-trust-paths.txt"
+lg -C "$LR" add -A && lg -C "$LR" commit -q -m hit
+HIT=$(lg -C "$LR" rev-parse HEAD)
+lg -C "$LR" checkout -q -b feat/clean main
+printf 'y\n' > "$LR/README"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m clean
+CLEAN=$(lg -C "$LR" rev-parse HEAD)
+lg -C "$LR" checkout -q -b feat/uni main
+printf 'u\n' > "$LR/scripts/ci/$(printf 'caf\303\251').sh"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m uni
+UNI=$(lg -C "$LR" rev-parse HEAD)
+lg -C "$LR" checkout -q main
+got=$(tpc "$LRID" br-feat-hit "$HIT" "$LR")
+[ "$got" = "0:hit scripts/ci/ci-trust-paths.txt" ] || fail "9e: a local-git change touching a trust path (the branch's own list edit ignored) is not a hit: $got"
+got=$(tpc "$LRID" br-feat-clean "$CLEAN" "$LR")
+[ "$got" = "0:none" ] || fail "9e: a local-git change touching no trust path is not none: $got"
+got=$(tpc "$LRID" br-feat-uni "$UNI" "$LR")
+[ "$got" = "0:hit scripts/ci/$(printf 'caf\303\251').sh" ] || fail "9e: a non-ASCII trust-path file (git's quoted path) is not a hit: $got"
+got=$(tpc o/r br-feat-hit "$HIT" "$LR")
+case "$got" in "2:list "*) ;; *) fail "9e: a br id with a non-local repo id was not refused: $got" ;; esac
+got=$(tpc "$LRID" br-feat-hit "$(printf '%040d' 9)" "$LR")
+case "$got" in "2:files "*) ;; *) fail "9e: a head that is not a commit in the repo was not refused: $got" ;; esac
+# A path with a newline in it must not split into lines that each miss an
+# end-anchored pattern: it refuses instead.
+LN="$ROOT/lgnl"; mkdir -p "$LN/scripts/ci"
+lg -C "$LN" init -q -b main
+printf '^scripts/ci/.*[.]sh$\n' > "$LN/scripts/ci/ci-trust-paths.txt"
+lg -C "$LN" add -A && lg -C "$LN" commit -q -m list
+LNID="local:$(cd "$LN/.git" && pwd -P)"
+lg -C "$LN" checkout -q -b feat/nl
+printf 'n\n' > "$LN/scripts/ci/evil
+.sh"; lg -C "$LN" add -A && lg -C "$LN" commit -q -m nl
+NL=$(lg -C "$LN" rev-parse HEAD)
+lg -C "$LN" checkout -q main
+got=$(tpc "$LNID" br-feat-nl "$NL" "$LN")
+case "$got" in "2:files "*) ;; *) fail "9e: a changed path holding a newline was not refused: $got" ;; esac
+# 9f. A hit needs the anchor to hold main's tip: an older anchor refuses.
+lg -C "$LR" worktree add -q --detach "$ROOT/lgold" "$(lg -C "$LR" rev-parse main)"
+printf 'z\n' > "$LR/z"; lg -C "$LR" add -A && lg -C "$LR" commit -q -m moved
+got=$(tpc "$LRID" br-feat-hit "$HIT" "$ROOT/lgold")
+case "$got" in "2:anchor "*) ;; *) fail "9f: a hit with an anchor behind main was not refused: $got" ;; esac
+# 9g. A hit refuses without a judge GO: go_trust_gate wants a trust-reviewed br GO.
+g9_go br-feat-hit "$HIT" "$LRID"
+rc=0; out=$(g9_gate go_trust_gate br-feat-hit "$HIT" "$LRID") || rc=$?
+case "$rc:$out" in "2:change br-feat-hit at $HIT touches a CI trust path"*) ;; *) fail "9g: an ordinary GO passed the trust gate for br-feat-hit (rc=$rc): $out" ;; esac
+printf 'head=%s\ntrust-reviewed=judge-1\nmac=%s\n' "$HIT" "$(pin_mac go_mac br-feat-hit "$HIT" "$LRID" judge-1)" > "$G9/.locks/go/br-feat-hit.$HIT"
+rc=0; out=$(g9_gate go_trust_gate br-feat-hit "$HIT" "$LRID") || rc=$?
+[ "$rc:$out" = "0:judge-1" ] || fail "9g: a trust-reviewed br GO was refused (rc=$rc): $out"
+# 9h. A missing list: not-adopted in a repo other than the anchor's, refused in the anchor's own.
+LM="$ROOT/lgmissing"; mkdir -p "$LM"; lg -C "$LM" init -q -b main
+printf 'a\n' > "$LM/a"; lg -C "$LM" add -A && lg -C "$LM" commit -q -m a
+lg -C "$LM" checkout -q -b feat/m; printf 'b\n' > "$LM/b"; lg -C "$LM" add -A && lg -C "$LM" commit -q -m b
+MH=$(lg -C "$LM" rev-parse HEAD); LMID="local:$(cd "$LM/.git" && pwd -P)"
+got=$(tpc "$LMID" br-feat-m "$MH" "$LR")
+[ "$got" = "0:not-adopted" ] || fail "9h: a missing list in another repo is not not-adopted: $got"
+got=$(tpc "$LMID" br-feat-m "$MH" "$LM")
+case "$got" in "2:list "*) ;; *) fail "9h: a missing list in the anchor's own repo was not refused: $got" ;; esac
+# 9i. github, unchanged: a 404 list is not-adopted only when the anchor's origin names another repo.
+printf '#!/usr/bin/env bash\necho "gh: Not Found (HTTP 404)" >&2\nexit 1\n' > "$ROOT/gh404"; chmod +x "$ROOT/gh404"
+GA="$ROOT/ghanchor"; mkdir -p "$GA"; lg -C "$GA" init -q
+lg -C "$GA" remote add origin https://github.com/other/repo.git
+got=$(GH="$ROOT/gh404" tpc o/r 7 "$PINSHA" "$GA")
+[ "$got" = "0:not-adopted" ] || fail "9i: github 404 with another repo's anchor is not not-adopted: $got"
+lg -C "$GA" remote set-url origin https://github.com/o/r.git
+got=$(GH="$ROOT/gh404" tpc o/r 7 "$PINSHA" "$GA")
+[ "$got" = "2:list scripts/ci/ci-trust-paths.txt is missing on o/r@main, and the harness anchor's origin does not prove it is another repo" ] \
+    || fail "9i: github 404 with this repo's anchor was not refused as before: $got"
+
+# 9j. scripts/lib/fixtures/ready-lines.tsv: parse_ready_line and fleet.mjs agree with the fixture.
+TSV="$HERE/fixtures/ready-lines.tsv"
+want=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f2-4)
+shell_out=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f1 | while IFS= read -r l; do
+    bash -c '. "$1"; parse_ready_line "$2"' _ "$GO_GATE_SRC" "$l" || printf -- '-\t\t\n'
+done | sed "s/$(printf '\t')*\$//")
+[ "$shell_out" = "$want" ] || fail "9j: parse_ready_line disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$shell_out") | tr '\n' ' ')"
+if command -v node >/dev/null 2>&1; then
+    node_out=$(node "$HERE/../handover/console-kit/fleet.mjs" --ready-lines "$TSV" | sed "s/$(printf '\t')*\$//")
+    [ "$node_out" = "$want" ] || fail "9j: fleet.mjs disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$node_out") | tr '\n' ' ')"
+else
+    fail "9j: node is missing, so fleet.mjs's parser cannot be checked"
+fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: test-go-gate.sh"
     exit 0

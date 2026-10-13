@@ -22,7 +22,7 @@ Run these, in order, and write the result as the first bullet under
    the handoff claims are alive but are absent here are gone. A handoff's
    "close these windows" list is stale by the time you read it — never relay a
    window as live without checking.
-> **One command for steps 2–6 and 8 (HIMMEL-4902):**
+> **One command for steps 2–6 and 8:**
 > `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
 > document's lock state in one summary (read-only; `--acquire` takes a `free`
@@ -55,7 +55,7 @@ Run these, in order, and write the result as the first bullet under
    return `UNKNOWN`, so the 45 % handover trigger below is unmeasurable and you
    must hand over on a proxy instead, treating this document as the only
    durable record of your state. Say so in the first bullet rather than
-   discovering it mid-shift (HIMMEL-3081).
+   discovering it mid-shift.
 6. **Host load:** `uptime`, and whatever else competes for RAM on this station.
    The harness kills background tasks under memory pressure, so a vanished
    watcher is not evidence of anything — poll CI by hand when that happens.
@@ -68,7 +68,7 @@ Run these, in order, and write the result as the first bullet under
    {{RELEASE_TOKEN}}
    ```
 
-   Which state to expect depends on how this document was made (HIMMEL-3304).
+   Which state to expect depends on how this document was made.
    `/console new` acquires the lock and writes its real token above: adopt it,
    copy it into your first bullet, and do not acquire again — that fails with
    `Work is owned elsewhere`, because the lock is held by the (now exited)
@@ -83,8 +83,7 @@ Run these, in order, and write the result as the first bullet under
    expected state. `held` with `none yet` means another console is still
    running on this doc or died holding it: find that session, do not take it
    over.
-9. **Re-brief every inherited leg BEFORE you announce yourself** (HIMMEL-3082,
-   HIMMEL-3254). Each inherited leg holds a brief naming the predecessor, and
+9. **Re-brief every inherited leg BEFORE you announce yourself**. Each inherited leg holds a brief naming the predecessor, and
    you are a different session: until a leg has verified the succession it can
    only refuse you, and once the predecessor has released and left there is
    nobody who can relay for you. (The predecessor can send every relay in one
@@ -109,31 +108,30 @@ Run these, in order, and write the result as the first bullet under
    release its lock and wrap. Sending `LIVE` first lets the predecessor leave
    before the legs have been re-briefed; the tick then reads
    `nonces=UNCONFIRMED:<leg>`.
-   **Then close the predecessor's window (HIMMEL-4968).** Once its doc's lock is
+   **Then close the predecessor's window.** Once its doc's lock is
    free and its last Results bullet reads `WRAPPED`, run
    `bash scripts/handover/console-kit/close-wrapped-leg.sh --console <predecessor doc>`
    (same checks as a leg: it refuses while the lock is held, the tail is not
    `WRAPPED`, or not exactly one live session carries its name; exit 6 means
    retry shortly; exit 7 means it still has a live subagent, a judge call
-   whose verdict would die with it: retry once it finishes, HIMMEL-5071).
+   whose verdict would die with it: retry once it finishes).
    Left open, the wrapped session is idle-compacted at full cost.
    **Before you re-dispatch any judge the predecessor asked**, read the
    HANDOFF's open judge calls and each qid's `verdicts/<qid>/` file: a written
    verdict is the answer; only a qid with no file and no running child is
    re-asked.
-10. **Start the event waiter now** (HIMMEL-3509; it replaces the `tick` and
+10. **Start the event waiter now** (it replaces the `tick` and
     `telegram` Monitor loops). Loops are pure code, never model turns: a
     `Monitor` arm is capped at 30 min, and every expiry woke this full-context
     session only to re-arm it. Instead, run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`** — both
-    are required: the default background limit (30 min) killed a waiter once
-    (HIMMEL-3940). The harness re-invokes you when the command exits:
+    are required: the default background limit (30 min) killed a waiter once. The harness re-invokes you when the command exits:
     `bash "{{KIT}}/console-wait.sh" "{{INBOX}}" --doc "<this file>" --token <your token> --legs "<absolute leg docs>"`
     (everything after the inbox path is passed to `tick.sh` unchanged). It is
     silent while nothing happens and **exits on the first real event**,
     printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> bank=<verdict>` plus the tick line, or
-    `WAKE underfilled capacity=UNDERFILLED:<slack>` (HIMMEL-4959: once per
+    `WAKE underfilled capacity=UNDERFILLED:<slack>` (once per
     streak, plus the tick line and `next-dispatchable.sh`'s ranked LOCAL/CLOUD
     list; dispatch it with `gen-briefs.py`), or
     `WAKE tick-fail samples=<n>` when 3 samples in a row failed (the tick or
@@ -169,15 +167,15 @@ Run these, in order, and write the result as the first bullet under
     that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
     non-zero or produced no TICK line (it runs under a 120 s timeout, so a hung
     tick cannot hold the Telegram path forever). A second waiter on the same
-    inbox is refused (exit 3, naming the live pid). Measured (HIMMEL-3509): a
+    inbox is refused (exit 3, naming the live pid). Measured: a
     background task that exits, or that is SIGKILLed from outside, re-invokes
     the idle session. **Not reproduced:** the harness-internal "low memory" kill
-    of a background task (HIMMEL-3097) — a waiter lost that way is visible only
-    as a stale heartbeat; HIMMEL-3510 tracks a bridge-side stale-heartbeat
-    alert.
+    of a background task — a waiter lost that way is visible only
+    as a stale heartbeat; a bridge-side stale-heartbeat
+    alert is a planned follow-up.
 
     **Re-start the waiter on every dispatch and every wrap, with absolute leg
-    doc paths** (HIMMEL-3293): stop the running one with `TaskStop` and start a
+    doc paths**: stop the running one with `TaskStop` and start a
     fresh one. The tick judges only the legs `--legs` names; a leg you
     dispatched after starting it is not in it. The tick says so rather than
     guessing: `legset=STALE:unarmed=<leg,…>` (in `## Live state`, not in the
@@ -190,7 +188,7 @@ Run these, in order, and write the result as the first bullet under
     another console's legs. `tick.sh`'s own `tick=` field still reads `UNKNOWN`
     (see its `ponytail:` comment); the heartbeat above is the liveness signal.
 
-    **Or arm from a fleet manifest and skip the re-starts** (HIMMEL-3748):
+    **Or arm from a fleet manifest and skip the re-starts**:
     keep the leg set in `<this file's stem>.fleet.json` next to this doc and
     start the waiter with `--legs-from "<that file>"` in place of `--legs`.
     On each dispatch run `bash "{{KIT}}/fleet-manifest.sh" add "<manifest>"
@@ -198,14 +196,14 @@ Run these, in order, and write the result as the first bullet under
     The tick re-reads the manifest every sample and the waiter takes a silent
     baseline when its leg set changes, so neither needs a re-start; the
     `legset=`/`unwatched=` checks above then compare against the manifest.
-    Then render the `legs:` entries from it (HIMMEL-3987) instead of editing
+    Then render the `legs:` entries from it instead of editing
     them: `bash "{{KIT}}/live-state.sh" "<this doc>" [--nonce <N-label>=<nonce>]`.
     It reads each leg's lock token from its held lock and keeps the nonce and
     pid already on the line; a leg not yet listed needs `--nonce` (the nonce is
     yours, never read from the leg or the manifest). A manifest leg holding no
     lock is left out. The rest of `## Live state` is still yours to edit.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
-11. **Open your Telegram inbox** (HIMMEL-3355). The operator can message you
+11. **Open your Telegram inbox**. The operator can message you
     from Telegram with `/console {{SESSION_NAME}} <text>`; the bridge appends
     one line per message to your inbox file, but only if the file already
     exists — creating it is what tells the bridge a console is listening. The
@@ -228,15 +226,14 @@ Run these, in order, and write the result as the first bullet under
     bridge outbox, not the terminal:
     `bun "{{REPO}}/scripts/telegram/console-route.ts" reply <chat_id> "<text>"`
     (the `chat=` value from the line you are answering).
-12. **Render and publish the console board** (HIMMEL-3361). The board is a
+12. **Render and publish the console board**. The board is a
     generated HTML page — fleet N/cap with idle slots, every leg's phase
     (LIVE → READY-TO-OPEN → PR open → READY → MERGED → WRAPPED, plus its own
     `WRAPPED, window still open` when a WRAPPED leg's claude window is still
     alive — derived from an independent process census, since tick.sh's `procs=`
     only counts HELD legs), what needs you, epic merged/total, the operator's
     open decisions — so the operator sees progress and convergence without
-    asking. Render it with `node "{{KIT}}/board.mjs" --doc "<this file>" --changed`
-    (HIMMEL-3745): `--changed` re-renders and prints `CHANGED <path>` or
+    asking. Render it with `node "{{KIT}}/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
     `UNCHANGED <path>` instead of the bare path, so you know from one line
     whether the render moved after a dispatch, verdict, GO, MERGED or WRAPPED
     (nonces and lock tokens are redacted from the file either way). Rendering
@@ -252,7 +249,7 @@ Run these, in order, and write the result as the first bullet under
     LOCAL file matches the current state; republishing the artifact stays your
     step.
 
-    **Keep the roadmap tracker current** (HIMMEL-3933; only when `## Live state`
+    **Keep the roadmap tracker current** (only when `## Live state`
     has a `tracker:` URL, else skip). On every MERGED and WRAPPED, and whenever
     the tick reads `tracker=STALE:<age>` or `tracker=MISSING`: refresh the Jira
     mirror (`node <primary>/scripts/jira/dist/index.js mirror`) and the version
@@ -272,7 +269,7 @@ Run these, in order, and write the result as the first bullet under
 
 > **Authority-bearing state — not a summary.** Per-leg RETASK nonces, lock
 > release tokens, the held queue and the last GO live HERE, on disk, not only
-> in this context window: `SessionStart:compact` (HIMMEL-2973 S1) re-injects
+> in this context window: `SessionStart:compact` re-injects
 > exactly this section after an autocompact, and `{{KIT}}/tick.sh` flags
 > `livestate=DRIFT:<leg>[,…]` when it disagrees with the leg locks actually
 > held (and `livestate=MALFORMED:<leg>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
@@ -283,7 +280,7 @@ Run these, in order, and write the result as the first bullet under
 > so a leg can stay on the predecessor's nonce for good and be fully
 > authenticated; the tick tells that apart from a leg that never accepted
 > (`nonces=RELAYED:<leg>` needs the leg's own `SUCCESSION accepted` bullet,
-> else `UNCONFIRMED:<leg>`; HIMMEL-3254).
+> else `UNCONFIRMED:<leg>`).
 >
 > **Every nonce and lock token is a single backtick span, one per leg, with no
 > trailing punctuation inside or directly after the span** — bare
@@ -292,12 +289,11 @@ Run these, in order, and write the result as the first bullet under
 > strips backticks before comparing.
 >
 > **`<leg>` is the leg's label, `N<k>`** (`N191` for
-> `HIMMEL-3269-N191-scorecard-discovery-…`; HIMMEL-3277) — the same label
+> `HIMMEL-3269-N191-scorecard-discovery-…`) — the same label
 > `tick.sh` prints in `legs=`. A label may contain letters, digits, `_`, `.`
 > and `-`, so a full doc stem also parses.
 >
-> **Prose is permitted on the `legs:` line, and the tick reads it as prose**
-> (HIMMEL-3280). Only a backtick span of exactly four non-empty colon-separated
+> **Prose is permitted on the `legs:` line, and the tick reads it as prose**. Only a backtick span of exactly four non-empty colon-separated
 > fields under a label is an entry. A span with whitespace, no colon, or a first
 > field that is not a leg label (`` `legs:` ``, `` `procs:2` ``,
 > `` `livestate=DRIFT:N192` ``, `` `N191` ``) is ignored, so a note may quote
@@ -311,7 +307,7 @@ Run these, in order, and write the result as the first bullet under
 > treated as prose even when malformed, so a truncated entry under such a label
 > reads as absent (`DRIFT`) rather than `MALFORMED`.
 >
-> **The `legs:` block may wrap** (HIMMEL-3281). The tick reads the whole block:
+> **The `legs:` block may wrap**. The tick reads the whole block:
 > every line that starts with `legs:`, plus the lines wrapped directly under it,
 > up to the first blank line or the next `field:` line (`queue:`, `last GO:`,
 > `acked:` — any line starting with a word and a colon) or the first list-marker
@@ -334,7 +330,7 @@ decisions: none
 
 > `board:` is the published console-board artifact URL (ACTION ZERO step 12);
 > `console.sh next` carries it to your successor with the rest of this section.
-> `tracker:` is the roadmap-tracker artifact URL (HIMMEL-3933); `none` (the
+> `tracker:` is the roadmap-tracker artifact URL; `none` (the
 > default) turns the tick's `tracker=` field off (`skip`), and `console.sh next`
 > carries the URL too. An optional `tracker-plan: <dir>` line overrides the plan
 > directory (default `<handover bucket>/specs/plan/HIMMEL-3882`).
@@ -367,22 +363,27 @@ Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
 `console-wait.sh`, started in ACTION ZERO step 10 with Bash
-`run_in_background` (HIMMEL-3509). Never arm them as `Monitor` loops — the
+`run_in_background`. Never arm them as `Monitor` loops — the
 tool caps an arm at 30 min, and every expiry costs a full-context turn only to
 re-arm.
 
 | Monitor | Cadence | What it is |
 |---|---|---|
-| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here** — the only unconditional check of the five, so its absence is the one that goes structurally unnoticed; the waiter's heartbeat (`<inbox>.wait`) is how you see it is live. The waiter passes its args to `tick.sh`: `--doc "<this file>" --token <your token> --legs "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"` (or comma-separated — `--legs` accepts space- **and** comma-separated docs, both spellings produce identical output; use absolute paths, because a bare leg doc name resolves against the handover ROOT, not your bucket, and reads `NOTFOUND`) — one batched line: heartbeat, leg locks, leg processes, armed jobs, suite locks, open PRs, bank. Per-leg lock status is one of **`FRESH`** (held, heartbeat current), **`STALE`** (held, heartbeat aged), **`WRAPPED`** (lock released and the leg's last status bullet says `WRAPPED` — the normal end of a leg, nothing to reclaim; HIMMEL-3293), **`NOLIVE`** (HIMMEL-4234: no lock, no marker bullet, and older than `TICK_NOLIVE_MIN` minutes (default 10) — the leg never went LIVE; `ListAgents`, then `SendMessage` it the `queue-lock.sh acquire <its doc>` command, your console session name and its token), **`FORKED`** (its session transcript ends in a `continued-in` record — forked or backgrounded, likely without its preface; message it the same way, or relaunch), **`FREE`** (the literal token `tick.sh` emits when the lock is gone while the leg has *not* wrapped — a lost lock, reclaim it; its own comments call this state "MISSING" as a concept, but `FREE` is what actually appears in `legs=`), **`UNVERIFIED`** (a lock *named* for the leg doc exists but records a path that does not resolve here, so `queue-lock.sh` can neither attribute it nor rule it out — **not** free: find its owner before anything else, never reclaim on it; HIMMEL-3290), or **`NOTFOUND`** (the leg doc did not resolve — a warning about a typo'd/nonexistent path, *not* a dead lock; never mistake it for a released lock). The line also ends `legset=<ok\|STALE:unarmed=…;unlisted=…\|unknown\|skip>` — see ACTION ZERO step 10: `STALE` means re-start the waiter, not leg trouble. It then ends `board=<ok\|STALE:<age>\|MISSING\|skip>` — whether `console-board.html` still matches the state; anything but `ok` means re-run ACTION ZERO step 12. Next comes `tracker=<ok\|STALE:<age>\|MISSING\|skip>` (HIMMEL-3933) — whether `roadmap-tracker.html` still matches the Jira mirror and the plan files (`skip` with no `tracker:` URL); `STALE`/`MISSING` means refresh, re-render and republish the tracker (step 12). Then `vault=<ok\|STALL:<age>,<n>\|PUSH-LAG:<age>\|skip\|unknown>` (HIMMEL-4911) — the notes vault's commit health: `STALL` = the vault's auto-commit is stuck (the waiter wakes you; reproduce with `git -C <vault> hook run pre-commit`, usually a gitleaks false positive in a staged file), `PUSH-LAG` = commits unpushed past `TICK_VAULT_PUSHLAG_MIN` |
+| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here** — the only unconditional check of the five, so its absence is the one that goes structurally unnoticed; the waiter's heartbeat (`<inbox>.wait`) is how you see it is live. The waiter passes its args to `tick.sh`: `--doc "<this file>" --token <your token> --legs "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"` (or comma-separated — `--legs` accepts space- **and** comma-separated docs, both spellings produce identical output; use absolute paths, because a bare leg doc name resolves against the handover ROOT, not your bucket, and reads `NOTFOUND`) — one batched line: heartbeat, leg locks, leg processes, armed jobs, suite locks, open PRs, bank. Per-leg lock status is one of **`FRESH`** (held, heartbeat current), **`STALE`** (held, heartbeat aged), **`WRAPPED`** (lock released and the leg's last status bullet says `WRAPPED` — the normal end of a leg, nothing to reclaim), **`NOLIVE`** (no lock, no marker bullet, and older than `TICK_NOLIVE_MIN` minutes (default 10) — the leg never went LIVE; `ListAgents`, then `SendMessage` it the `queue-lock.sh acquire <its doc>` command, your console session name and its token), **`FORKED`** (its session transcript ends in a `continued-in` record — forked or backgrounded, likely without its preface; message it the same way, or relaunch), **`FREE`** (the literal token `tick.sh` emits when the lock is gone while the leg has *not* wrapped — a lost lock, reclaim it; its own comments call this state "MISSING" as a concept, but `FREE` is what actually appears in `legs=`), **`UNVERIFIED`** (a lock *named* for the leg doc exists but records a path that does not resolve here, so `queue-lock.sh` can neither attribute it nor rule it out — **not** free: find its owner before anything else, never reclaim on it), or **`NOTFOUND`** (the leg doc did not resolve — a warning about a typo'd/nonexistent path, *not* a dead lock; never mistake it for a released lock). The line also ends `legset=<ok\|STALE:unarmed=…;unlisted=…\|unknown\|skip>` — see ACTION ZERO step 10: `STALE` means re-start the waiter, not leg trouble. It then ends `board=<ok\|STALE:<age>\|MISSING\|skip>` — whether `console-board.html` still matches the state; anything but `ok` means re-run ACTION ZERO step 12. Next comes `tracker=<ok\|STALE:<age>\|MISSING\|skip>` — whether `roadmap-tracker.html` still matches the Jira mirror and the plan files (`skip` with no `tracker:` URL); `STALE`/`MISSING` means refresh, re-render and republish the tracker (step 12). Then `vault=<ok\|STALL:<age>,<n>\|PUSH-LAG:<age>\|skip\|unknown>` — the notes vault's commit health: `STALL` = the vault's auto-commit is stuck (the waiter wakes you; reproduce with `git -C <vault> hook run pre-commit`, usually a gitleaks false positive in a staged file), `PUSH-LAG` = commits unpushed past `TICK_VAULT_PUSHLAG_MIN` |
 | bank | 300 s | poll `bank-preflight.sh`, emit only when the state word changes (headroom → park → weekly-ceiling) |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit only newly-completed runs |
 | notes repo | 300 s | the notes vault is already covered by the tick's `vault=` field (no loop to arm); only a *second* repo for handover state needs this: emit only on STALL (dirty files older than the commit cadence) or PUSH-LAG |
-| telegram | 1 s poll, event-driven | **Runs inside the step-10 waiter.** Operator messages sent from Telegram as `/console {{SESSION_NAME}} <text>`, the inbox being `{{INBOX}}`. The waiter drains it each second with `inbox-follow.sh --once` and wakes you with `WAKE telegram` plus the line(s). The persisted read cursor (`<inbox>.cursor`, a byte offset) means a line appended while no waiter ran is delivered on the next start, and delivered lines are not replayed (at-least-once: a waiter killed mid-emit can repeat one line) (HIMMEL-3356). The file must exist before the bridge will write to it (step 11). See step 11 for the authority these lines carry and how to reply |
+| telegram | 1 s poll, event-driven | **Runs inside the step-10 waiter.** Operator messages sent from Telegram as `/console {{SESSION_NAME}} <text>`, the inbox being `{{INBOX}}`. The waiter drains it each second with `inbox-follow.sh --once` and wakes you with `WAKE telegram` plus the line(s). The persisted read cursor (`<inbox>.cursor`, a byte offset) means a line appended while no waiter ran is delivered on the next start, and delivered lines are not replayed (at-least-once: a waiter killed mid-emit can repeat one line). The file must exist before the bridge will write to it (step 11). See step 11 for the authority these lines carry and how to reply |
 
 The three polling monitors are plain Bash loops over already-versioned inputs;
 write them in the session scratchpad, not in the repo. The context-fill probe
 (`scripts/context-fill.sh --percent`) **fails inside a Monitor** — run it in an
 ordinary Bash call.
+
+**Label what the operator asks for.** A ticket you file because the operator
+asked for it gets the Jira label `operator-directed`, and its Results bullet reads
+`OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the
+operator-directed bundle from that label and that bullet.
 
 ## Dispatching a leg
 
@@ -402,7 +403,7 @@ ordinary Bash call.
    the standing preface and the lean plugin set, and the launcher refuses
    (exit 2) an unprofiled launch. `--no-profile` is the explicit opt-out for a
    brief that pastes the preface itself. The launcher also exports
-   `HIMMEL_CONSOLE_NAME` into the leg (HIMMEL-3435) — this console's own
+   `HIMMEL_CONSOLE_NAME` into the leg — this console's own
    session name, resolved automatically, or an explicit `--console <name>` —
    so the leg's merge-block alerts can route back to this console instead of
    DMing the operator.
@@ -427,18 +428,18 @@ per decision point, not one per thought.
 A leg reports `READY <pr> <head> GREEN` plus its code-review status line. The
 console verifies independently — all check-runs success at that exact head,
 zero unresolved review threads, attestation trailers in the first commit —
-via `console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (HIMMEL-3163),
+via `console-kit/ready-check.sh <pr> <full-40-hex-head-sha>`,
 which mechanizes that checklist and prints `READY-CHECK PASS|FAIL`; it does
 not read the three-dot diff, which stays your own judgement call. Only then
 run `console-kit/go.sh <pr> <head>` — that write is the ACT of
-granting the GO (HIMMEL-3142: `gh pr merge` itself is gated on that file for
+granting the GO (`gh pr merge` itself is gated on that file for
 a console-spawned leg, not merely on hearing from you); answering `GO` over
 SendMessage is a notification to the leg, not the mechanism. The leg merges;
 it reports `MERGED #<n> → <sha>`; you pull the primary and the leg wraps
 (closing its ticket only if the brief says the PR completes it, below).
 `go.sh` re-runs `ready-check.sh` itself from your cwd (the primary) and
 refuses with exit 4, writing nothing, unless it passes. A head with no ok
-CR-ledger row cannot get a GO (HIMMEL-4565).
+CR-ledger row cannot get a GO.
 
 The Jira close is the leg's call from the brief, not a default: the Ship
 contract's `completes-ticket: yes|no` line tells the leg to merge with
@@ -450,7 +451,7 @@ ticket checked by hand.
 Never merge with open review threads, and never read a handoff calling a PR
 clean as evidence — query that PR yourself.
 
-**Trust-path PRs (HIMMEL-3895).** A PR whose diff touches a pattern in
+**Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite
 selector and shared libs, the merge gate and GO writer — the list is read
 from the default branch, never the PR head, so a PR cannot shrink it) does
@@ -461,13 +462,13 @@ that exact head run `console-kit/go.sh --trust-reviewed <qid> <pr>
 `go.sh` refuses with exit 5 unless `<root>/<user>/<bucket>/verdicts/<qid>/`
 holds a verdict whose first line under `## Verdict` is exactly
 ``**GO** for head `<head>`.``, with no NO-GO for that head and no unparsed
-verdict beside it (HIMMEL-3832). Brief the judge to write that line. The id is
+verdict beside it. Brief the judge to write that line. The id is
 signed into the GO's mac, so it
 cannot be added or edited after the fact, and a push after it needs a fresh
 trust-reviewed GO. A trust-path PR also refuses while the anchor checkout is
 behind `origin` (pull the primary first), so the gate it runs is current.
 
-To cut a pre-release tag yourself (HIMMEL-3572), run
+To cut a pre-release tag yourself, run
 `bash scripts/handover/console-kit/cut-tag.sh <version> <sha>` (`--dry-run`
 first to see the plan) — it creates the tag through the GitHub API, never
 `git tag`, so it needs no operator `!` step. It refuses unless `<sha>` is an
@@ -484,7 +485,7 @@ itself, not hardcoded to any one release line, so `v0.3.0-pre.9` and a future
 
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
 leg's window with `bash scripts/handover/console-kit/close-wrapped-leg.sh
-<leg-doc>` (HIMMEL-3572) — it verifies the lock is free and the doc's last
+<leg-doc>` — it verifies the lock is free and the doc's last
 Results marker is `WRAPPED`, signals the exactly-one live session that
 matches the leg (never a guess), and prunes ITS worktree once the PR is
 merged, all with no operator `!` step. Never run the
@@ -496,7 +497,7 @@ candidate. A worktree reported "in use" immediately after a wrap is the leg's
 own end-of-session hook still writing — re-run `--only` on it shortly.
 
 After the signal the close also digests the leg's session into the
-failure-loop ledgers (HIMMEL-4670 P3, `console-kit/leg-digest-step.sh`) and
+failure-loop ledgers (`console-kit/leg-digest-step.sh`) and
 prints exactly one line about it. The line is informational: it never changes
 the close's exit code or any other output line, and it never delays the close
 past its hard timeout (`CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT`, default 120 s).
@@ -515,7 +516,7 @@ digested afterwards with `bash scripts/handover/console-kit/leg-digest-step.sh
 --doc <leg-doc>` (spec §1.2 fallback): it finds the leg's sessions by name,
 `resume_cwd` and the doc's LIVE..WRAPPED window and prints one
 `<session> digest=…` line per session, or `digest=skipped:no-chain`. The
-`traj=` fields are recorded only — `rbg` and `vbc` are unreliable (HIMMEL-4698),
+`traj=` fields are recorded only — `rbg` and `vbc` are unreliable,
 never act on them.
 
 ## Standing rules
@@ -556,12 +557,11 @@ never act on them.
   `answer: <verdict line>` · `flipped: y|n`. Write `prior:` before you ask —
   a prior recorded afterwards measures nothing. This makes M3 (judge flip
   rate) countable by `grep`; keep the field names exactly as written here.
-- **Every judge call persists its verdict, trust path or not** (HIMMEL-5071):
+- **Every judge call persists its verdict, trust path or not**:
   `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
   --pr <n> --evidence-file <path>` writes `verdicts/<qid>/`. A verdict that
   lives only in your context dies with it; the file is what a successor reads.
-- **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**
-  (HIMMEL-5180): same read-only tool list, passes the ruling-20 console
+- **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console
   dispatch fence, and its body carries the judge contract. A judge reads and
   reasons; it never runs suites or polls CI (the leg's scripts do that), so it
   stays on the 5-minute cache TTL (prediction table:
@@ -592,7 +592,7 @@ At **{{FILL_PERCENT}} % fill or 90 k input in one turn**, hand over:
    today, and what wrapped. **The HANDOFF wins over this file's Results
    tail** — write it as the successor's only required read.
 
-   **Handover mode (HIMMEL-4902).** Once the successor validated, `next` writes
+   **Handover mode.** Once the successor validated, `next` writes
    `<your inbox>.handover`. While that marker is younger than
    `CONSOLE_WAIT_HANDOVER_MIN` (default 60) your waiter skips tick, bank and
    page work and wakes only for Telegram and LIVE — so **for up to 60 minutes
@@ -601,7 +601,7 @@ At **{{FILL_PERCENT}} % fill or 90 k input in one turn**, hand over:
    you keep running), `rm <your inbox>.handover`.
 3. `touch` the signal path step 1 printed to fire the arm, and hand your live
    legs to the successor by name.
-4. **Re-brief every live leg yourself, before you release** (HIMMEL-3254). The
+4. **Re-brief every live leg yourself, before you release**. The
    successor names itself to you during ACTION ZERO step 9, and hands you a
    fresh token for a leg only if it chose to issue one; send each
    leg, from **your own session**, a message naming the successor (its session
@@ -623,13 +623,13 @@ At **{{FILL_PERCENT}} % fill or 90 k input in one turn**, hand over:
    the lock:
    `bash scripts/handover/console/console.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4, nothing written) while any subagent of yours, a judge
-   call above all, is still running (HIMMEL-5071): wait for its result, persist
+   call above all, is still running: wait for its result, persist
    it with `write-verdict.sh`, then re-run. Never wrap around it by hand.
 
 Write every bullet below with
 `bash scripts/handover/console-kit/append-results.sh <doc> '<text>'`. A bullet
 never contains `>`; write `→` or `to` (`MERGED #n → <sha>`). The text is an
 argument, since the script takes no file, so a `>` beside a guarded script
-name is refused as a write channel (HIMMEL-3917).
+name is refused as a write channel.
 
 ## Results (newest at the bottom)

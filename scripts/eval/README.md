@@ -9,7 +9,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 
-## The eval-runs ledger (HIMMEL-4647)
+## The eval-runs ledger
 
 Every run of these four evals also appends one row to
 `~/.himmel/eval-runs.jsonl` (override: `HIMMEL_EVAL_RUNS_LEDGER`). That gives
@@ -89,7 +89,7 @@ Exit codes:
 | 2 | usage error |
 | 3 | nothing to compare (no candidate, no baseline, a candidate whose status is not `ok`, no gated metric with a value on both sides, or a malformed ledger line after the candidate, which may be this eval's newest run); never a pass |
 
-## lane-quality: repeats and judge calibration (HIMMEL-4648)
+## lane-quality: repeats and judge calibration
 
 `run.sh run --reps N` runs the task set N times into one run dir. `table`
 then shows the mean and a bootstrap 95% CI over the repeats for each task and
@@ -126,7 +126,7 @@ bash scripts/eval/lane-quality/run.sh table ~/.himmel/eval/lane-quality/<run-id>
 bash scripts/eval/lane-quality/run.sh calibration ~/.himmel/eval/lane-quality/<run-id> --judge2-model sonnet --max-usd 1
 ```
 
-## lane-quality: trajectory fields (HIMMEL-4651)
+## lane-quality: trajectory fields
 
 `lane-quality/trajectory.py` reads a run's session transcript and scores four
 fields. It makes no model call and draws no bank. `run.sh` writes the fields
@@ -202,7 +202,7 @@ Known ceilings:
 - Order is the order calls were issued, except that a test run sent in the
   same assistant message (same `message.id`) as the write it is compared
   with is unordered relative to it and counts as neither a RED before that
-  write nor a pass after it (HIMMEL-4672). A transcript without `message.id`
+  write nor a pass after it. A transcript without `message.id`
   falls back to issue order.
 - Claim detection is a sentence-level regex, so an unusual wording can be
   missed or misread.
@@ -218,7 +218,7 @@ per denied call, and `trajectory_v`. `identical` counts each later identical
 call against the most recent identical denial before it, so the counts sum to
 `identical_denied_retries`. Without the flag the output is unchanged.
 
-## leg-digest: one leg session's failures as class keys (HIMMEL-4670)
+## leg-digest: one leg session's failures as class keys
 
 `leg-digest/leg-digest.ts` (Bun) reads a leg's journal and its subagent
 transcripts, merged in the order the AG-UI page uses. It maps them with the
@@ -258,7 +258,7 @@ bun scripts/eval/leg-digest/leg-digest.ts --session <uuid>   # resolved under ~/
 
   The budget is 5 s per leg.
 
-### Tool health (HIMMEL-4816)
+### Tool health
 
 Digest v2 adds `metrics.tool_calls_by_tool`, `metrics.tool_failures_by_tool`
 and per-agent `tool_health` rows (tool, calls, failures, errors, denials,
@@ -297,7 +297,7 @@ plus per-lane comparisons and deltas relative to native. All rate math stays
 on the server; the page is read-only. Overrides are
 `HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_LEG_FAILURES_LEDGER`.
 
-## leg_ledger: digests into the leg ledgers (HIMMEL-4670 P2)
+## leg_ledger: digests into the leg ledgers
 
 `leg-digest/leg_ledger.py` writes one digest as:
 
@@ -316,7 +316,7 @@ agent and class), and a later `ok` digest supersedes a `partial` or
 `inconclusive` one with one more eval-runs row.
 
 ```bash
-python3 scripts/eval/leg-digest/leg_ledger.py record --digest d.json --leg N1 --ticket HIMMEL-1 [--console C --pr N --doc D]
+python3 scripts/eval/leg-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
 python3 scripts/eval/leg-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
 python3 scripts/eval/leg-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
 ```
