@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Smoke test for the nested-xargs render budget of scripts/hooks/lib/guard-unwrap.sh
+# (HIMMEL-4623, follow-up to HIMMEL-4576/4577).
+#
+# A stripped `xargs` adds a second, xargs-kept child render per level. That
+# child re-derived the stripped render its parent had already scanned, so each
+# nested `xargs sh -c` cost two depth units: a benign 3-deep shape hit the
+# 8-level cap, and the work grew with every level.
+#
+# Usage: bash scripts/hooks/test-guard-unwrap-nested-xargs.sh
+#
+# Exit codes:
+#   0 - all cases passed
+#   1 - at least one case failed
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+HOOK="$HERE/block-git-stash.sh"
+LIB="$HERE/lib/guard-unwrap.sh"
+
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/guard-unwrap-nested-xargs.XXXXXX") || exit 1
+trap 'rm -rf "$SCRATCH"' EXIT
+
+FAILED=0
+
+assert_rc() {
+    local label="$1" expected="$2" actual="$3"
+    if [ "$actual" = "$expected" ]; then
+        echo "PASS $label (rc=$actual)"
+    else
+        echo "FAIL $label - expected rc=$expected, got rc=$actual"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+assert_le() {
+    local label="$1" limit="$2" actual="$3"
+    if [ "$actual" -le "$limit" ]; then
+        echo "PASS $label ($actual <= $limit)"
+    else
+        echo "FAIL $label - expected <= $limit, got $actual"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# nest N BODY — BODY wrapped in N levels of `xargs sh -c "…"`, fed by one
+# `printf a |` at the outermost level (the J1946 T2 shape). Double quotes
+# matter: a double-quoted body is what sets the render trigger.
+nest() {
+    local n=$1 body=$2 q
+    while [ "$n" -gt 0 ]; do
+        q=${body//\\/\\\\}
+        q=${q//\"/\\\"}
+        body="xargs sh -c \"$q\""
+        n=$((n - 1))
+    done
+    printf 'printf a | %s' "$body"
+}
+
+j_bash() { jq -cn --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
+
+run_hook() {
+    local f="$SCRATCH/payload.json"
+    j_bash "$1" >"$f"
+    bash "$HOOK" <"$f" >/dev/null 2>&1
+    echo "$?"
+}
+
+# A stand-in hook that only logs each invocation then unwraps through the lib,
+# so the log line count is the number of renders the lib scanned.
+RENDER_LOG="$SCRATCH/renders.log"
+COUNT_HOOK="$SCRATCH/count-hook.sh"
+cat >"$COUNT_HOOK" <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+cmd=\$(jq -r '.tool_input.command // empty')
+printf 'x\n' >>"$RENDER_LOG"
+. "$LIB" || exit 2
+guard_unwrap "\${BASH_SOURCE[0]}" "\$cmd" || exit 2
+exit 0
+EOF
+
+count_renders() {
+    local f="$SCRATCH/count-payload.json"
+    : >"$RENDER_LOG"
+    j_bash "$1" >"$f"
+    bash "$COUNT_HOOK" <"$f" >/dev/null 2>&1
+    wc -l <"$RENDER_LOG" | tr -d ' '
+}
+
+# --- benign nested xargs: must stay rc 0 at every depth the cap allows ---
+for d in 1 2 3 4; do
+    assert_rc "benign ${d}-deep xargs sh -c" 0 "$(run_hook "$(nest "$d" 'echo hi')")"
+done
+
+# --- the HIMMEL-4576 deny ladder: a stash at any depth is still denied ---
+for d in 1 2 3 4; do
+    assert_rc "${d}-deep xargs sh -c 'git stash'" 2 "$(run_hook "$(nest "$d" 'git stash')")"
+done
+assert_rc "xargs git stash"            2 "$(run_hook 'printf a | xargs git stash')"
+assert_rc "xargs -n1 git stash push"   2 "$(run_hook 'printf a | xargs -n1 git stash push')"
+assert_rc "env xargs git stash"        2 "$(run_hook 'printf a | env X=1 xargs git stash')"
+assert_rc "xargs xargs git stash"      2 "$(run_hook 'printf a | xargs xargs git stash')"
+assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')"
+
+# --- render budget: linear in depth, not doubling per level ---
+# Each level costs the stripped render, the xargs-kept render (scanned once,
+# never unwrapped again) and its body: 3 per level plus the top call. Before
+# the fix the same shapes cost 6, 16, 35 scans at depth 1-3.
+for d in 1 2 3 4; do
+    assert_le "render count, ${d}-deep" "$((d * 3 + 1))" "$(count_renders "$(nest "$d" 'echo hi')")"
+done
+
+if [ "$FAILED" -ne 0 ]; then
+    echo "FAILED: $FAILED case(s)"
+    exit 1
+fi
+echo "all cases passed"
+exit 0

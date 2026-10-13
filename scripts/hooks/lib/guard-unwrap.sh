@@ -284,7 +284,7 @@ _gu_strip_heredocs() {
 # 2 (the denial already on stderr) when one is, or when a cap is reached.
 guard_unwrap() {
     local hook=$1 cmd=$2 depth=${GUARD_UNWRAP_DEPTH:-0} s k w e sep render='' seg child first
-    local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs=''
+    local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0
     local -a children=()
     GU_V=() GU_VS=() GU_SW=() GU_SR=() GU_CORE=() GU_LOOKUP=() GU_XA=()
     GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0
@@ -421,10 +421,17 @@ guard_unwrap() {
         children=("$child")
     fi
 
+    # The xargs-kept child exists only to give the hook the `xargs` word; the
+    # stripped render it would re-derive is its parent's other child, already
+    # scanned. Unwrapping it again costs a depth unit per nested xargs and
+    # doubles the renders (HIMMEL-4623).
+    [ "$xkept" != 1 ] || children=()
+
     cwd_env=''
     [ "$GU_CWD_UNKNOWN" = 0 ] || cwd_env=unknown
     rc=0
-    for child in "${children[@]}"; do
+    for child in "${children[@]+"${children[@]}"}"; do
+        ci=$((ci + 1))
         [ -n "$child" ] || continue
         [ "$child" != "$cmd" ] || continue
         if [ "$depth" -ge "$GU_MAX_DEPTH" ]; then
@@ -435,7 +442,7 @@ guard_unwrap() {
             echo "guard-unwrap: cannot build the unwrapped call - failing closed" >&2
             return 2
         fi
-        if err=$(GUARD_UNWRAP_DEPTH=$((depth + 1)) GUARD_UNWRAP_CWD=$cwd_env "${BASH:-bash}" "$hook" <<<"$child" 2>&1 >/dev/null); then
+        if err=$(GUARD_UNWRAP_DEPTH=$((depth + 1)) GUARD_UNWRAP_CWD=$cwd_env GUARD_UNWRAP_XKEPT=$((ci > 1 ? 1 : 0)) "${BASH:-bash}" "$hook" <<<"$child" 2>&1 >/dev/null); then
             continue
         else
             rc=$?
