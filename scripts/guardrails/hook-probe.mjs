@@ -25,12 +25,16 @@
 //   <hook> allow|deny|ask|passthrough|error|skipped rc=<n>
 //     reason: <first line of the deny/ask reason>
 //   PROBE ALLOW|DENY
-// Exit 0 = ALLOW, 1 = DENY (some hook refused), 2 = usage error.
+// Exit 0 = ALLOW, 1 = DENY (some hook refused), 2 = usage error or nothing to
+// probe (no PreToolUse entry matches the tool: an unprobed call is not ALLOW).
+// The probe fails CLOSED where the launcher's runChain does: a missing or
+// duplicate chain member, an integrity mismatch, and a must-run member that
+// crashes, dies on a signal, times out or overflows its buffer are all DENY.
 // An `ask` row is shown as such but does not make the verdict DENY: PROBE ALLOW
 // means no hook refused outright, so read the per-hook rows for a prompt.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,7 +51,18 @@ import {
 } from '../hooks/bench-hook-stack.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const { resolveBash } = createRequire(import.meta.url)(join(HERE, '..', 'hooks', 'run-hook-with-bash.js'));
+// The fail-closed policy lives in the launcher; read it from there, never copy it.
+const {
+  resolveBash,
+  MUST_RUN_CHAIN_MEMBERS,
+  MIN_MEMBER_TIMEOUT_MS,
+  memberTimeoutMs,
+  isRecoverableEpipe,
+  verifyProjectHookIntegrity,
+} = createRequire(import.meta.url)(join(HERE, '..', 'hooks', 'run-hook-with-bash.js'));
+
+// The launcher's own member output ceiling (MEMBER_MAX_BUFFER there, not exported).
+const MEMBER_MAX_BUFFER = 16 * 1024 * 1024;
 
 const USAGE = 'usage: hook-probe.mjs (--tool NAME --command CMD | --payload FILE [--tool NAME]) [--json] [--settings PATH]';
 
@@ -134,6 +149,52 @@ function singleLabel(command) {
   return names.find((n) => !LAUNCHERS.has(n)) || labelFor(command);
 }
 
+// Mirror of runChain's member verdict (run-hook-with-bash.js). Only a MUST_RUN
+// member fails closed on a crash (HIMMEL-3601), a timeout or a buffer overflow
+// (HIMMEL-2060); an advisory member's failure is a non-blocking error row.
+export function classifyMember(result, mustRun) {
+  if (result && result.error && !isRecoverableEpipe(result)) {
+    const code = result.error.code;
+    if (code === 'ETIMEDOUT' || code === 'ENOBUFS') {
+      return mustRun
+        ? { decision: 'deny', rc: null, reason: `must-run guard did not evaluate this call (${code}); failing closed` }
+        : { decision: 'error', rc: null, reason: `${code}: guard did not evaluate this call` };
+    }
+    return { decision: 'deny', rc: null, reason: `failed to start: ${result.error.message}` };
+  }
+  const status = result ? result.status : null;
+  const crashed = status === null || (status !== 0 && status !== 2);
+  if (mustRun && crashed) {
+    const why = status === null ? `signal ${result.signal}` : `rc=${status}`;
+    return { decision: 'deny', rc: status, reason: `must-run guard crashed instead of deciding (${why}); failing closed` };
+  }
+  return classify(result);
+}
+
+// runChain validates the WHOLE chain before running any member: a duplicate or a
+// member that is not a regular file denies outright. Returns deny rows, or [].
+function validateChain(members) {
+  const rows = [];
+  const seen = new Set();
+  if (members.length === 0) rows.push({ hook: '(empty chain)', decision: 'deny', rc: null, reason: 'chain names no members' });
+  for (const member of members) {
+    const hook = basename(member);
+    if (seen.has(member)) {
+      rows.push({ hook, decision: 'deny', rc: null, reason: `duplicate chain member ${member}` });
+      continue;
+    }
+    seen.add(member);
+    let isFile = false;
+    try {
+      isFile = statSync(member).isFile();
+    } catch {
+      isFile = false;
+    }
+    if (!isFile) rows.push({ hook, decision: 'deny', rc: null, reason: `chain member not found: ${member}` });
+  }
+  return rows;
+}
+
 // One row per probed unit: each --chain member on its own (so the deny names the
 // member), a non-chain entry as its whole command string.
 export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
@@ -143,8 +204,15 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
   for (const entry of enumerateHooks(settings)) {
     if (entry.event !== 'PreToolUse' || !matcherMatches(entry.matcher, payload.tool_name)) continue;
     const members = chainMembers(entry.command, cwd);
-    const units = members || [null];
-    for (const member of units) {
+    const entryMs = typeof entry.timeout === 'number' ? entry.timeout * 1000 : 60_000;
+    if (members) {
+      const invalid = validateChain(members);
+      if (invalid.length) {
+        for (const r of invalid) rows.push({ matcher: entry.matcher, ...r });
+        continue;
+      }
+    }
+    for (const member of members || [null]) {
       const hook = member ? basename(member) : singleLabel(entry.command);
       const skipped = SKIP.some((s) => (member || entry.command).includes(s));
       const row = { hook, matcher: entry.matcher };
@@ -152,11 +220,19 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
         rows.push({ ...row, decision: 'skipped', rc: null, reason: '' });
         continue;
       }
+      if (member) {
+        const integrity = verifyProjectHookIntegrity(member, payload.session_id);
+        if (!integrity.ok) {
+          rows.push({ ...row, decision: 'deny', rc: null, reason: `integrity mismatch for ${integrity.relPath || member}: ${integrity.reason}` });
+          continue;
+        }
+      }
+      // The launcher's window (grows with the payload), capped by the entry's own.
+      const window = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberTimeoutMs(Buffer.byteLength(input)), entryMs));
       const result = spawnSync(bash, member ? [member] : ['-c', entry.command], {
-        input, cwd, env, encoding: 'utf8', killSignal: 'SIGKILL',
-        timeout: typeof entry.timeout === 'number' ? entry.timeout * 1000 : 60_000,
+        input, cwd, env, encoding: 'utf8', killSignal: 'SIGKILL', timeout: window, maxBuffer: MEMBER_MAX_BUFFER,
       });
-      rows.push({ ...row, ...classify(result) });
+      rows.push({ ...row, ...(member ? classifyMember(result, MUST_RUN_CHAIN_MEMBERS.has(hook)) : classify(result)) });
     }
   }
   return rows;
@@ -200,6 +276,10 @@ function main(argv) {
   const scratch = mkdtempSync(join(tmpdir(), 'hook-probe-'));
   try {
     const rows = probe({ settings, settingsPath, payload, cwd, bash, scratch });
+    if (rows.length === 0) {
+      process.stderr.write(`hook-probe: no PreToolUse entry in ${settingsPath} matches tool ${payload.tool_name}; nothing was probed, so no verdict\n`);
+      return 2;
+    }
     const verdict = rows.some((r) => r.decision === 'deny') ? 'DENY' : 'ALLOW';
     process.stdout.write((opts.json
       ? JSON.stringify({ verdict, tool: payload.tool_name, settings: settingsPath, hooks: rows })

@@ -186,9 +186,10 @@ export function matcherMatches(matcher, tool) {
 // branches name the same members.
 export function chainMembers(command, projectDir) {
   const text = String(command);
-  const at = text.indexOf('--chain');
-  if (at < 0) return null;
-  const tail = text.slice(at + '--chain'.length).split(';')[0];
+  // The whole token: `--chain-file` and friends must not read as a chain.
+  const found = /(^|\s)--chain(?=\s|$)/.exec(text);
+  if (!found) return null;
+  const tail = text.slice(found.index + found[0].length).split(';')[0];
   // A quoted token may hold spaces ("$CLAUDE_PROJECT_DIR/…" under a spaced path).
   return (tail.match(/"[^"]*"|'[^']*'|\S+/g) || [])
     .map((tok) => tok.replace(/^["']|["']$/g, ''))

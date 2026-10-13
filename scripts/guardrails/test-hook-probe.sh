@@ -108,6 +108,109 @@ else
     fail "expected rc=1 PROBE DENY with stopReason; rc=$rc out=$out"
 fi
 
+# The probe must fail CLOSED exactly where runChain in run-hook-with-bash.js does
+# (HIMMEL-4425 NO-GO F1/F2): a chain it cannot fully evaluate is a DENY, never ALLOW.
+# chain_settings <file> <member>... writes a one-entry Bash chain settings fixture.
+chain_settings() {
+    local file="$1" members="" m; shift
+    for m in "$@"; do members="$members \\\"$m\\\""; done
+    # shellcheck disable=SC2016  # $CLAUDE_PROJECT_DIR is a literal in the settings command
+    printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"node \\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\\" --chain%s"}]}]}}\n' "$members" > "$file"
+}
+
+echo "== a missing chain member is a DENY (runChain: chain member not found) =="
+chain_settings "$TMP/settings-missing.json" "$TMP/no-such-member.sh"
+out=$(probe --settings "$TMP/settings-missing.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'no-such-member.sh'; then
+    pass "missing member denies and is named"
+else
+    fail "expected rc=1 PROBE DENY naming the missing member; rc=$rc out=$out"
+fi
+
+echo "== a duplicate chain member is a DENY =="
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$TMP/dup-member.sh"
+chain_settings "$TMP/settings-dup.json" "$TMP/dup-member.sh" "$TMP/dup-member.sh"
+out=$(probe --settings "$TMP/settings-dup.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY'; then
+    pass "duplicate member denies"
+else
+    fail "expected rc=1 PROBE DENY for a duplicate member; rc=$rc out=$out"
+fi
+
+echo "== a must-run member that exits non-zero is a DENY (HIMMEL-3601) =="
+mkdir -p "$TMP/crash" "$TMP/sig" "$TMP/slow" "$TMP/adv"
+printf '#!/usr/bin/env bash\ncat >/dev/null\necho boom >&2\nexit 1\n' > "$TMP/crash/block-git-stash.sh"
+chain_settings "$TMP/settings-crash.json" "$TMP/crash/block-git-stash.sh"
+out=$(probe --settings "$TMP/settings-crash.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'block-git-stash.sh deny'; then
+    pass "must-run crash denies"
+else
+    fail "expected rc=1 PROBE DENY from a crashed must-run member; rc=$rc out=$out"
+fi
+
+echo "== a must-run member killed by a signal is a DENY =="
+printf '#!/usr/bin/env bash\ncat >/dev/null\nkill -9 $$\n' > "$TMP/sig/block-git-stash.sh"
+chain_settings "$TMP/settings-sig.json" "$TMP/sig/block-git-stash.sh"
+out=$(probe --settings "$TMP/settings-sig.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'block-git-stash.sh deny'; then
+    pass "must-run signal death denies"
+else
+    fail "expected rc=1 PROBE DENY from a signalled must-run member; rc=$rc out=$out"
+fi
+
+echo "== a must-run member that outruns its window is a DENY (HIMMEL-2060) =="
+printf '#!/usr/bin/env bash\nsleep 4\n' > "$TMP/slow/block-read-secrets.sh"
+chain_settings "$TMP/settings-slow.json" "$TMP/slow/block-read-secrets.sh"
+out=$(RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=700 probe --settings "$TMP/settings-slow.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'block-read-secrets.sh deny'; then
+    pass "must-run timeout denies"
+else
+    fail "expected rc=1 PROBE DENY from a timed-out must-run member; rc=$rc out=$out"
+fi
+
+echo "== CONTROL: an advisory (non-must-run) member that crashes is NOT a deny =="
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 1\n' > "$TMP/adv/advisory-fixture.sh"
+chain_settings "$TMP/settings-adv.json" "$TMP/adv/advisory-fixture.sh"
+out=$(probe --settings "$TMP/settings-adv.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^PROBE ALLOW' && grepq "$out" '^advisory-fixture.sh error rc=1'; then
+    pass "advisory crash stays a non-blocking error row"
+else
+    fail "expected rc=0 PROBE ALLOW with an error row; rc=$rc out=$out"
+fi
+
+echo "== zero matched entries is an error, not PROBE ALLOW =="
+printf '{"hooks":{"PreToolUse":[{"matcher":"Write","hooks":[{"type":"command","command":"true"}]}]}}\n' > "$TMP/settings-none.json"
+out=$(probe --settings "$TMP/settings-none.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 2 ] && ! grepq "$out" '^PROBE ALLOW' && grepq "$out" 'no PreToolUse'; then
+    pass "no matching entry exits 2 with a message"
+else
+    fail "expected rc=2 with a no-PreToolUse message; rc=$rc out=$out"
+fi
+
+echo "== --chain-file is not a --chain entry =="
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf ok # --chain-file %s/list.txt"}]}]}}\n' "$TMP" > "$TMP/settings-chainfile.json"
+out=$(probe --settings "$TMP/settings-chainfile.json" --tool Bash --command 'git status'); rc=$?
+if ! grepq "$out" "^-file " && ! grepq "$out" "list.txt"; then
+    pass "--chain-file produced no chain member rows"
+else
+    fail "--chain-file was tokenised as a chain; rc=$rc out=$out"
+fi
+cat > "$TMP/chain-token.mjs" <<EOF
+import { chainMembers } from '$REPO_ROOT/scripts/hooks/bench-hook-stack.mjs';
+const r = [
+  chainMembers('node r.js --chain-file /a/b.sh', '/p'),
+  chainMembers('node r.js --chainx /a/b.sh', '/p'),
+  chainMembers('node r.js --chain /a/b.sh', '/p'),
+];
+process.stdout.write(JSON.stringify(r));
+EOF
+out=$(node "$TMP/chain-token.mjs" 2>&1)
+if [ "$out" = '[null,null,["/a/b.sh"]]' ]; then
+    pass "chainMembers matches the --chain token exactly"
+else
+    fail "expected [null,null,[\"/a/b.sh\"]]; got $out"
+fi
+
 echo "== usage errors exit 2 =="
 out=$(probe --tool Bash); rc=$?
 if [ "$rc" -eq 2 ]; then pass "missing --command rejected"; else fail "expected rc=2 got rc=$rc out=$out"; fi
