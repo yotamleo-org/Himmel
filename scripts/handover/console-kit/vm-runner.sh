@@ -92,7 +92,7 @@ ensure_clone() {
 install_unit() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
     # The units get the controller's repo and stop file, so on/off and the loops agree.
-    sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" \
+    sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" -e "s#@JOB_MAX@#$JOB_MAX#g" \
         "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
         > "$UNIT_DIR/$UNIT_PREFIX@.service" || die "cannot write the unit template"
     systemctl --user daemon-reload || die "systemctl --user daemon-reload failed"
@@ -124,6 +124,14 @@ cmd_on() {
     i=1
     while [ "$i" -le "$vms" ]; do
         systemctl --user start "$UNIT_PREFIX@$i.service" || { cmd_off >/dev/null; die "could not start $UNIT_PREFIX@$i — switched off again"; }
+        i=$((i + 1))
+    done
+    # Type=simple: a start that returns 0 can still die at once on a config or
+    # policy refusal. One settle, then every unit must be up, or roll back.
+    sleep "${HIMMEL_VM_RUNNER_SETTLE:-5}"
+    i=1
+    while [ "$i" -le "$vms" ]; do
+        unit_active "$i" || { cmd_off >/dev/null; die "$UNIT_PREFIX@$i exited right after start (see journalctl --user -u $UNIT_PREFIX@$i) — switched off again"; }
         i=$((i + 1))
     done
     # A lower --vms than the last run: stop the units above the requested count.

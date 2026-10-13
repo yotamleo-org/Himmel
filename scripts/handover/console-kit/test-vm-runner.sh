@@ -34,7 +34,7 @@ cat > "$TMP/bin/systemctl" <<'EOF'
 printf '%s\n' "$*" >> "$STUB/systemctl.argv"
 case "$*" in
     *is-active*) a="$*"; n="${a##*@}"; n="${n%.service}"; [ -e "$STUB/active-$n" ]; exit ;;
-    *"--user start"*) [ -z "${STUB_START_FAIL:-}" ] || exit 1; a="$*"; n="${a##*@}"; n="${n%.service}"; : > "$STUB/active-$n" ;;
+    *"--user start"*) [ -z "${STUB_START_FAIL:-}" ] || exit 1; a="$*"; n="${a##*@}"; n="${n%.service}"; [ -n "${STUB_START_DIES:-}" ] || : > "$STUB/active-$n" ;;
     *"--user stop"*) [ -z "${STUB_STOP_FAIL:-}" ] || exit 1; a="$*"; n="${a##*@}"; n="${n%.service}"; rm -f "$STUB/active-$n" ;;
 esac
 exit 0
@@ -70,7 +70,7 @@ reset() {
 run() {
     STUB="$TMP/stub" PATH="$TMP/bin:$PATH" HOME="$TMP/home" \
         HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
-        HIMMEL_VM_RUNNER_UNIT_DIR="$TMP/units" HIMMEL_VM_RUNNER_STATE_DIR="$TMP/state" \
+        HIMMEL_VM_RUNNER_UNIT_DIR="$TMP/units" HIMMEL_VM_RUNNER_STATE_DIR="$TMP/state" HIMMEL_VM_RUNNER_SETTLE=0 \
         HIMMEL_VM_RUNNER_VM_LIB="$TMP/vmlib.sh" VBOXMANAGE_PATH="$TMP/bin/VBoxManage" \
         bash "$SUT" "$@"
 }
@@ -94,7 +94,7 @@ if [ "$rc" -eq 0 ]; then ok "on exits 0"; else bad "on rc=$rc: $(cat "$TMP/out")
 [ ! -e "$TMP/stop" ] && ok "stop file removed" || bad "stop file still present"
 if [ -e "$TMP/stub/active-1" ] && [ -e "$TMP/stub/active-2" ]; then ok "units 1 and 2 started"; else bad "units not both started"; fi
 if grep -q "clone himmel-ci-2 from himmel-ci-1@ci-runner-v1" "$TMP/stub/vm.calls"; then ok "VM 2 cloned from himmel-ci-1@ci-runner-v1"; else bad "clone call: $(cat "$TMP/stub/vm.calls" 2>/dev/null)"; fi
-if grep -q "ExecStart=/bin/bash $REPO_ROOT/scripts/vm/ci-runner.sh run" "$TMP/units/himmel-ci-runner@.service" 2>/dev/null; then ok "unit installed with the repo root filled in"; else bad "unit file missing or unsubstituted"; fi
+if grep -qF "ExecStart=/bin/bash \"$REPO_ROOT/scripts/vm/ci-runner.sh\" run" "$TMP/units/himmel-ci-runner@.service" 2>/dev/null; then ok "unit installed with the repo root filled in"; else bad "unit file missing or unsubstituted"; fi
 
 echo "T3 --vms bounds"
 reset
@@ -159,7 +159,8 @@ reset
 run on >/dev/null 2>&1
 run on --vms 1 >/dev/null 2>&1
 if [ -e "$TMP/stub/active-1" ] && [ ! -e "$TMP/stub/active-2" ]; then ok "on --vms 1 after 2 stops unit 2"; else bad "unit 2 still up after --vms 1"; fi
-if grep -q '^Environment=HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel$' "$TMP/units/himmel-ci-runner@.service" && grep -q "^Environment=HIMMEL_CI_RUNNER_STOP_FILE=$TMP/stop\$" "$TMP/units/himmel-ci-runner@.service"; then ok "unit carries the controller's repo and stop file"; else bad "unit env lines: $(grep Environment= "$TMP/units/himmel-ci-runner@.service")"; fi
+U="$TMP/units/himmel-ci-runner@.service"
+if grep -qxF 'Environment="HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel"' "$U" && grep -qxF "Environment=\"HIMMEL_CI_RUNNER_STOP_FILE=$TMP/stop\"" "$U" && grep -qxF 'Environment="HIMMEL_CI_RUNNER_JOB_MAX=4500"' "$U"; then ok "unit carries the controller's repo, stop file and job budget"; else bad "unit env lines: $(grep Environment= "$TMP/units/himmel-ci-runner@.service")"; fi
 reset
 run on >/dev/null 2>&1
 GH_SET_FAIL=1 run off >"$TMP/out" 2>&1; rc=$?
@@ -184,6 +185,11 @@ reset
 case "$(run status --tick)" in ok:*) ok "unreadable variable with a unit up is not reported off" ;; *) bad "unreadable variable -> $(run status --tick)" ;; esac
 echo off > "$TMP/stub/var"
 [ "$(run status --tick)" = off ] && ok "variable off with a unit still up stays off (shutdown in progress)" || bad "off+unit -> $(run status --tick)"
+
+echo "T12 review fixes (HIMMEL-5037 round 3)"
+reset
+STUB_START_DIES=1 run on >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ "$(cat "$TMP/stub/var" 2>/dev/null)" = off ] && [ -e "$TMP/stop" ]; then ok "a unit that dies right after start: rc!=0, switched off again"; else bad "dead-after-start: rc=$rc var=$(cat "$TMP/stub/var" 2>/dev/null)"; fi
 
 echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?
