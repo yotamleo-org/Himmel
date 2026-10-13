@@ -368,7 +368,8 @@ cp "$tmp/real-fixed-cover" "$tmp/latest"
 : > "$tmp/base"; cp "$tmp/real-fixed-cover" "$tmp/cover"
 printf 'git-env-scrub\tfailure\n' > "$tmp/pr"
 printf 'git-env-scrub\tsrt-poc-env-finding\n' > "$tmp/pr-cases"; : > "$tmp/base-cases"
-mklocal() { { printf '# merge-base %s\n# command %s\n# log %s\n' "$1" 'bash scripts/ci/run-shell-tests.sh git-env-scrub' '/tmp/local-repro.log'; printf '%b' "$2"; } > "$tmp/local-cases"; }
+printf 'reproduced at the merge-base: srt-poc-env-finding FAILED\n' > "$tmp/local-repro.log"
+mklocal() { { printf '# merge-base %s\n# command %s\n# log %s\n' "$1" 'bash scripts/ci/run-shell-tests.sh git-env-scrub' "$tmp/local-repro.log"; printf '%b' "$2"; } > "$tmp/local-cases"; }
 mklocal "$CS" 'git-env-scrub\tsrt-poc-env-finding\t1\n'
 fixed=(--main-base-conclusion none --base-cover "$tmp/cover" --base-cover-conclusion success --base-cover-sha "$CC" --base-cover-from "$CP")
 runcov "fixed cover, no local reproduction: REFUSE as before (cannot tell inherited from the PR's own)" 1 'REFUSE.*git-env-scrub.*not inherited' "${fixed[@]}"
@@ -406,7 +407,17 @@ runcov "local reproduction with a non-sha merge-base header: usage, never ALLOW"
 mklocal "$CS" 'git-env-scrub\tsrt-poc-env-finding\t0\n'
 runcov "local reproduction row with exit status 0 (the case passed at the merge-base): REFUSE" 1 'REFUSE.*git-env-scrub.*srt-poc-env-finding' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
 mklocal "$CS" 'git-env-scrub\tsrt-poc-env-finding\t1\n'
-runcov "ALLOW cites the reproduction command and the local log" 0 'ALLOW.*run-shell-tests.sh git-env-scrub.*/tmp/local-repro.log' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+runcov "ALLOW cites the reproduction command and the local log" 0 'ALLOW.*run-shell-tests.sh git-env-scrub.*local-repro.log' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+rm -f "$tmp/local-repro.log"
+runcov "cited local log does not exist: usage, never ALLOW" 2 'missing or empty' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+: > "$tmp/local-repro.log"
+runcov "cited local log is empty: usage, never ALLOW" 2 'missing or empty' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+printf 'reproduced at the merge-base: srt-poc-env-finding FAILED\n' > "$tmp/local-repro.log"
+printf '# merge-base %s\n# command %s\ngit-env-scrub\tsrt-poc-env-finding\t1\n' "$CS" 'bash scripts/ci/run-shell-tests.sh git-env-scrub' > "$tmp/local-cases"
+runcov "local reproduction with a command header but no log header: usage, never ALLOW" 2 'log' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+printf '# merge-base %s\r\n# command %s\r\n# log %s\r\ngit-env-scrub\tsrt-poc-env-finding\t1\r\n' "$CS" 'bash scripts/ci/run-shell-tests.sh git-env-scrub' "$tmp/local-repro.log" > "$tmp/local-cases"
+runcov "CRLF local reproduction file: usage, never ALLOW (fail closed)" 2 'usage' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
+mklocal "$CS" 'git-env-scrub\tsrt-poc-env-finding\t1\n'
 printf 'git-env-scrub\tfailure\n' > "$tmp/pr"; printf 'git-env-scrub\tsrt-poc-env-finding\ngit-env-scrub\tsecond-case\n' > "$tmp/pr-cases"
 runcov "one job with two PR cases, only one reproduced at the merge-base: REFUSE" 1 'REFUSE.*git-env-scrub.*second-case' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
 printf 'git-env-scrub\tfailure\n' > "$tmp/pr"; printf 'git-env-scrub\tsrt-poc-env-finding\n' > "$tmp/pr-cases"

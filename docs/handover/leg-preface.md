@@ -440,7 +440,8 @@ by design.
   once, `git merge <the tip sha the ALLOW line prints>` (not `origin/main`, which
   may have moved since the check) — a merge commit;
   never rebase, never force-push — citing both main run ids in a Results
-  bullet. Exit 1 `REFUSE` (a job green or absent at the base, or a failing case
+  bullet (plus the local reproduction command and log path when the ALLOW line
+  names `--base-cases-local`, below). Exit 1 `REFUSE` (a job green or absent at the base, or a failing case
   the base did not fail, is your own red; a job red or absent on latest main,
   or a latest run that is off origin/main or older than the base verdict, is unproven) = do NOT merge forward; fix it, or
   report `BLOCKED` / `MAIN-RED` per the rule above. If your merge-base has no
@@ -462,7 +463,19 @@ by design.
   latest = `ALLOW`; green on the cover = `REFUSE`. Two accepted ceilings: the
   script takes "next" and "latest" from you and cannot see another completed run
   inside (from, cover] or newer than the latest you pass, and a red cover proves the failure existed somewhere in that
-  range, not at the merge-base itself (green on latest bounds it). Exit 3 = nothing red. Once
+  range, not at the merge-base itself (green on latest bounds it). When the
+  covering run already holds the fix (the red reads green there), the check
+  REFUSEs; reproduce the PR's failing case at the merge-base in a scratch
+  worktree and pass `--base-cases-local <f>`: a file with the headers
+  `# merge-base <40-hex sha>` (must equal `--base-sha`), `# command <the
+  reproduction command>` and `# log <path of the local log>` (the log must
+  exist and be non-empty), then one `<job><TAB><case><TAB><exit status>` row per
+  case that failed there (a zero status is no reproduction). Every failing case
+  of the PR's job must be listed, the job must be green on latest, and a
+  completed run at the merge-base itself is never overridden; any missing or
+  mismatched header exits 2. Cite the command and log path in your Results
+  bullet beside both main run ids: the file is self-reported and the console
+  reviews that log before it grants the merge-forward. Exit 3 = nothing red. Once
   per PR: a second merge-forward goes to the console. After it, `/pr-check` and
   CI run again at the new head.
 - **Never write "CI verifies" for a suite you have not looked up.** `bash scripts/handover/suite-coverage.sh <suite>...` reads

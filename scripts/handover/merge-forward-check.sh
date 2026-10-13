@@ -70,8 +70,9 @@
 # The file is bound to the merge-base: a required `# merge-base <40-hex>` header equal to
 # --base-sha (missing or mismatched exits 2), `# command` and `# log` headers that the ALLOW
 # line cites, and rows `<job><TAB><case><TAB><exit status>` (a zero status is no reproduction).
-# ponytail: the file is still self-reported by the leg; the console reviews the cited log. Upgrade
-# path is this script running the reproduction itself in a scratch worktree at the merge-base.
+# ponytail: the file is still self-reported by the leg; the script checks only that the cited log
+# exists and is non-empty, and the console reviews its content. Upgrade path is this script running
+# the reproduction itself in a scratch worktree at the merge-base.
 # ponytail: the case lists are extracted from logs by the caller and taken as
 # given, so a wrong list can still mislead; upgrade path is parsing the failed
 # job logs here if that ever bites.
@@ -161,6 +162,10 @@ if [ -n "$lc" ]; then
   fi
   if [ -z "$lc_cmd" ] || [ -z "$lc_log" ]; then
     echo "usage: $lc needs '# command <reproduction command>' and '# log <local log path>' headers so the ALLOW can cite them" >&2
+    exit 2
+  fi
+  if [ ! -f "$lc_log" ] || [ ! -s "$lc_log" ]; then
+    echo "usage: the '# log' file $lc_log is missing or empty: the cited reproduction log must exist so the console can review it" >&2
     exit 2
   fi
   if awk -F'\t' '/^#/ {next} NF && (NF != 3 || $1 == "" || $2 == "" || $3 !~ /^[0-9]+$/) {exit 1}' "$lc"; then :; else
@@ -306,10 +311,14 @@ while IFS= read -r job; do
 done <<< "$reds"
 
 if [ -n "$blocked" ]; then
-  echo "REFUSE — red not proven inherited-and-fixed: $blocked$base_note. Report BLOCKED; do not merge forward."
+  hint=""
+  [ "$cover_used" -eq 1 ] && hint=" If the covering run already holds the fix, see docs/handover/leg-preface.md (merge-forward, --base-cases-local)."
+  echo "REFUSE — red not proven inherited-and-fixed: $blocked$base_note.$hint Report BLOCKED; do not merge forward."
   exit 1
 fi
 allow_basis="was red on the merge-base run with the same failing cases"
-[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local at merge-base $bsha because the covering run already holds the fix; reproduction command: $lc_cmd; local log: $lc_log — the console checks that log)"
-echo "ALLOW — every red job $allow_basis and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing both main run ids in a Results bullet."
+[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local at merge-base $bsha because the covering run already holds the fix; reproduction command: $lc_cmd; local log: $lc_log — the console reviews that log)"
+cite="both main run ids"
+[ -n "$local_jobs" ] && cite="both main run ids PLUS the local reproduction command ($lc_cmd) and log path ($lc_log)"
+echo "ALLOW — every red job $allow_basis and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing $cite in a Results bullet."
 exit 0
