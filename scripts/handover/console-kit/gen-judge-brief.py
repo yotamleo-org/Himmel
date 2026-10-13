@@ -72,7 +72,7 @@ def validate(s):
     for k in ('question', 'reason', 'prior'):
         if not isinstance(s[k], str) or not s[k].strip():
             die('%s must be non-blank text' % k)
-    if '\n' in s['question']:
+    if '\n' in s['question'] or '\r' in s['question']:
         die('question must be one line (verbatim, one line)')
     if re.search(r'<[^<>\s][^<>]*>', s['prior']) or re.sub(r'[\W_]+$', '', s['prior'].strip().lower()) == 'none':
         die('prior art must be filled (a bare none or a <placeholder> fails brief-lint): use none found (<the query you ran>)')
@@ -93,11 +93,11 @@ def validate(s):
         die('tier.reason must be non-blank single-line text')
     if not tier_gate(s.get('model') or DEFAULT_MODEL):
         die('model %r is not an opus or fable model; a judge launches at one of them' % (s.get('model'),))
-    ev = s.get('evidence') or []
+    ev = s['evidence'] if s.get('evidence') is not None else []
     if not isinstance(ev, list) or not all(isinstance(e, dict) and isinstance(e.get('item'), str) and e['item'].strip()
                                   and isinstance(e.get('for'), str) and e['for'].strip() for e in ev):
         die('evidence must be a list of {item, for} with non-blank text')
-    at = s.get('attack') or []
+    at = s['attack'] if s.get('attack') is not None else []
     if not isinstance(at, list) or not all(isinstance(a, str) and a.strip() for a in at):
         die('attack must be a list of non-blank lines')
 

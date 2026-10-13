@@ -47,13 +47,22 @@ manifest="${doc%.md}.fleet.json"
 
 # The legs: block of ## Live state (the legs: line plus the lines wrapped under it).
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state / the bullet
-entries="$(awk '
+block="$(awk '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
     s && /^legs:/ { b = 1; print; next }
     b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
     b { print }
-' "$doc" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' | cut -d: -f1)"
+' "$doc")"
+# shellcheck disable=SC2016
+entries="$(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' | cut -d: -f1)"
+# anything left once the strict entries and the legs: marker are removed is a malformed entry
+# shellcheck disable=SC2016
+leftover="$(printf '%s\n' "$block" | sed -E 's/`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`//g; s/^legs://; s/[[:space:],]+//g' | tr -d '\n')"
+if [ -n "$leftover" ]; then
+    echo "INCOMPLETE 0/0 (malformed legs entry in $doc ## Live state: $leftover)"
+    exit 1
+fi
 
 # state of one leg doc: prints quoted-back or missing
 leg_state() {

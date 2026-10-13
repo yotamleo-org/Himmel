@@ -123,6 +123,14 @@ has "a doc path with a space is escaped in the printed command" "$out" 'append-r
 bash "$SUT" "$CDOC" --successor 'x"; touch /tmp/pwn; "' >/dev/null 2>&1; rc=$?
 eq "a successor with shell metacharacters is a usage error (rc 2)" "$rc" 2
 
+# a malformed leg entry beside a valid quoted-back leg must not read COMPLETE
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N8:Y-N8` junk\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "a malformed legs entry beside a valid one is not complete (rc 1)" "$rc" 1
+lacks "and prints no LIVE line for it" "$out" "append-results.sh"
+has "and names the malformed entry" "$out" "malformed"
+
 # no legs at all is not a complete set
 printf '# console\n\n## Live state\nlegs:\n' > "$CDOC"
 out="$(run)"; rc=$?
