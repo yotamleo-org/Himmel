@@ -38,9 +38,10 @@
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
 # ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5412 adds
-# a python/node command that prints the whole environment or reads
+# a python/node/bun/deno command that prints the whole environment or reads
 # /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
-# of a session transcript .jsonl (is_transcript_path).
+# of a session transcript .jsonl (is_transcript_path) or a Grep over one or
+# over ~/.claude/projects (is_transcript_tree).
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
@@ -959,22 +960,33 @@ g4_scan() {
 # the whole mapping (`dict(os.environ)`, `JSON.stringify(process.env)`).
 # Called only when a clause command is an interpreter (g4_interp), so a commit
 # message naming os.environ is not a dump.
+# Bun and Deno: `Bun.env` and `Deno.env.toObject()` are the whole mapping;
+# `Bun.env.HOME`, `Bun.env[`, `Deno.env.get(` / `Deno.env.has(` are single keys.
+# Python's bytes twin `os.environb` counts the same as `os.environ`.
 # ponytail: an accepted false positive on a membership test (`"CI" in
 # os.environ`) and on handing the mapping to a child (`env={**os.environ}`);
 # perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
 # real call of either shape. TEXT is the whole command, not the interpreter's
 # own clause, so a later clause naming os.environ (a commit message) also
 # denies; per-clause scanning that keeps the heredoc body is HIMMEL-5418.
+# Also HIMMEL-5418 (not matched here): an interpreter shell-out to `env`
+# (`os.system('env')`, `execSync('env')`), `process['env']` and a destructured
+# `const {env} = process`.
 interp_env_dump() {
-    local t="$1" a b c
+    local t="$1" k
     if [[ $t =~ /proc/[^/[:space:]]+/environ ]]; then return 0; fi
-    a='environ.get('; b='environ['; c='process.env['
-    t="${t//"$a"/}"; t="${t//"$b"/}"; t="${t//"$c"/}"
+    for k in 'environ.get(' 'environ[' 'environb.get(' 'environb[' \
+        'process.env[' 'Bun.env[' 'Deno.env.get(' 'Deno.env.has('; do
+        t="${t//"$k"/}"
+    done
     while [[ $t =~ process\.env\.[A-Za-z_] ]]; do
         t="${t/process.env./}"
     done
+    while [[ $t =~ Bun\.env\.[A-Za-z_] ]]; do
+        t="${t/Bun.env./}"
+    done
     # Whole words only, so a script named check_environment.py is not a dump.
-    if [[ $t =~ (^|[^A-Za-z0-9_])(environ|process\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
+    if [[ $t =~ (^|[^A-Za-z0-9_])(environb?|process\.env|Bun\.env|Deno\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
     return 1
 }
 
@@ -985,6 +997,28 @@ interp_env_dump() {
 is_transcript_path() {
     case "$1" in
         */.claude/projects/*.jsonl|*\\.claude\\projects\\*.jsonl) return 0 ;;
+    esac
+    return 1
+}
+
+# is_transcript_tree PATH (HIMMEL-5412): a Grep path that reaches transcripts:
+# a transcript itself, `~/.claude/projects`, or a directory below it. The
+# per-project `memory/` subtree and a named non-.jsonl file stay allowed.
+# ponytail: a Grep rooted ABOVE projects (`~/.claude`, `~`) still walks into
+# transcripts, and a Bash reader (`cat`/`grep -r`/`jq` on a transcript) is not
+# matched: both need a per-token path check across scan_clause's reader sites,
+# HIMMEL-5418.
+is_transcript_tree() {
+    local p="${1%/}" base
+    is_transcript_path "$p" && return 0
+    p="${p//\\//}"
+    case "$p" in
+        */.claude/projects) return 0 ;;
+        */.claude/projects/*/memory|*/.claude/projects/*/memory/*) return 1 ;;
+        */.claude/projects/*)
+            base="${p##*/}"
+            case "$base" in *.*) return 1 ;; esac
+            return 0 ;;
     esac
     return 1
 }
@@ -1327,6 +1361,13 @@ case "$tool" in
         if is_secret_path "$gpath"; then
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
             echo "⛔ block-read-secrets: refusing Grep on secret path: $gpath" >&2
+            bypass_hint
+            exit 2
+        fi
+        if is_transcript_tree "$gpath"; then
+            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
+            echo "⛔ block-read-secrets: refusing Grep over session transcripts: $gpath" >&2
+            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
             bypass_hint
             exit 2
         fi

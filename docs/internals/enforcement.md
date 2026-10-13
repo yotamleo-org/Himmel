@@ -1941,12 +1941,18 @@ print or grep the contents of a secret file (`.env`, `.env.*`,
 **Environment dumps and transcript reads (HIMMEL-5412).** Two GitHub tokens
 reached 33 and 29 transcripts through shapes this guard did not know. It now
 also denies a python/node/bun/deno command that prints the whole environment
-(`print(os.environ)`, `dict(os.environ)`, `console.log(process.env)`) or reads
-`/proc/<pid>/environ`, and a `Read` of a session transcript
-(`~/.claude/projects/**/*.jsonl`, subagent transcripts included): a transcript
-holds every earlier tool result verbatim. A single named key stays allowed
-(`os.environ.get("PATH")`, `os.environ["HOME"]`, `process.env.HOME`), as do
-`printenv HOME` and `echo $PATH`. The filtered shell dumps
+(`print(os.environ)`, `dict(os.environ)`, `os.environb`,
+`console.log(process.env)`, `Bun.env`, `Deno.env.toObject()`) or reads
+`/proc/<pid>/environ`, and a `Read` or `Grep` of a session transcript
+(`~/.claude/projects/**/*.jsonl`, subagent transcripts included; a `Grep`
+rooted at `~/.claude/projects` or a project directory below it too, except the
+`memory/` subtree): a transcript holds every earlier tool result verbatim. A
+single named key stays allowed (`os.environ.get("PATH")`, `os.environ["HOME"]`,
+`process.env.HOME`, `Bun.env.HOME`, `Deno.env.get("HOME")`), as do
+`printenv HOME` and `echo $PATH`. Not yet matched (HIMMEL-5418): a Bash reader
+of a transcript (`cat`, `grep -r`, `jq`), a `Grep` rooted above
+`~/.claude/projects`, an interpreter shell-out to `env`, `process['env']` and a
+destructured `{env} = process`. The filtered shell dumps
 (`env | grep`, `printenv | grep`, `export -p | grep`, `set | grep`) and shell
 `/proc/*/environ` reads were denied before (HIMMEL-5277/5292) and keep
 regression rows. The detection half is `detect-token-in-output.sh` below.
