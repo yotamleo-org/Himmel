@@ -486,7 +486,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     esac
     if [ "${#_rr_head}" -eq 40 ] && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
-        && ! grep -qF "${tip:0:7}" "$ledger" 2>/dev/null \
+        && ! grep -qE "\"(target_)?head\":\"${tip:0:7}" "$ledger" 2>/dev/null \
         && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant "$_rr_head" "$tip" >/dev/null 2>&1; then
         review_head="$_rr_head"
         echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths or comments since the reviewed head ${review_head:0:8} - gating on the reviewed head (HIMMEL-5416)." >&2

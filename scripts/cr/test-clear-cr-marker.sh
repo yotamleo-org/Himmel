@@ -3460,6 +3460,7 @@ review_b() {
     git -C "$t" commit -qm "fix: $p" >/dev/null 2>&1
     git -C "$t" push -q origin feat/x >/dev/null 2>&1
     B=$(git -C "$t" rev-parse --verify refs/heads/feat/x)
+    [ "$B" != "$sha" ] || fail "review_b: the delta commit did not advance the branch past the reviewed head"
     write_marker "$t" "$B"
     mkdir -p "$t/.git/cr-review-rounds/feat"
     printf '%s\n' "$sha" > "$t/.git/cr-review-rounds/feat/x.head"
