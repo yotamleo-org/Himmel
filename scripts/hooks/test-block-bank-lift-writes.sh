@@ -530,6 +530,16 @@ row "4545 A c''d link/.. then cp to plainlink"       deny  "c''d '$T/cwl/up/..' 
 row "4545 A pushd link/.. then cp to statelink"      deny  "pushd $T/cwl/up/.. && cp $T/src/other.txt statelink" "$T"
 row "4545 B {source,} then cp to plainlink"          deny  "n=\$(date +%H); {source,} /tmp/x; cp $T/src/other.txt plainlink" "$T"
 row "4545 B {.,} then cp to plainlink"               deny  "n=\$(date +%H); {.,} /tmp/x; cp $T/src/other.txt plainlink" "$T"
+# HIMMEL-5190: source, . and brace-built command words mark the cwd unproven
+# on their own; no $( ) is needed to deny a relative write onto a plain link.
+row "5190 source file then cp to plainlink (no \$( ))" deny  "source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 dot file then cp to plainlink (no \$( ))"    deny  ". $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 source then mv to plainlink chain"           deny  "source $T/src/other.txt && mv $T/src/other.txt plainlink2" "$T"
+row "5190 {source,} then cp to plainlink (no \$( ))"   deny  "{source,} $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 {.,} then cp to plainlink (no \$( ))"        deny  "{.,} $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 s{ource,} then cp to plainlink"              deny  "s{ource,} $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 c{d,} then cp to plainlink"                  deny  "c{d,} $T/cwl; cp $T/src/other.txt plainlink" "$T"
+row "5190 no source word, relative write (ctrl)"       allow "cp $T/src/other.txt nolink" "$T/cwl"
 row "4545 rsync --log-file= link after \$( )"        deny  "n=\$(date +%H); rsync -a --log-file=plainlink $T/src/other.txt out.txt" "$T/cwl"
 # A source that is HOME or one of its ancestors, by any spelling, can alias or
 # relocate the lift's whole tree; a plain-name test alone would pass it.

@@ -1165,7 +1165,14 @@ set_rule() {
 # bottom): cd/pushd/popd, eval, su/runuser/chroot, CDPATH, any chdir/--chdir,
 # find -execdir, a `(` or backtick (subshell, $( ), <( )), a { } brace group,
 # env/sudo with -C/-i, and a shell running a -c string.
-DIRWORD_RE='(^|[^A-Za-z0-9_.-])(cd|pushd|popd|eval|su|runuser|chroot)([^A-Za-z0-9_.-]|$)|CDPATH|chdir|-execdir|[(`]|(^|[[:space:];&|])[{]([[:space:]]|$)|(^|[^A-Za-z0-9_.-])(env|sudo)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[Ci]|(^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh|mksh|ash|fish|busybox)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*c'
+# HIMMEL-5190: `source` and `.` run a file in this shell (it may cd), and a
+# command word built by brace expansion (`{source,}`, `c{d,}`) can spell any of
+# the above; both count in COMMAND position only, so `cp a .` stays proven.
+# The relative-write relief (logical `cd -L`, brace expansion before matching)
+# is not built: ponytail: 0 unproven-cwd denials in 14 days of session
+# transcripts (HIMMEL-5190 Phase 1), build at 5 false positives per 14 days.
+# shellcheck disable=SC2016  # the backtick is a literal regex character
+DIRWORD_RE='(^|[^A-Za-z0-9_.-])(cd|pushd|popd|eval|su|runuser|chroot)([^A-Za-z0-9_.-]|$)|CDPATH|chdir|-execdir|[(`]|(^|[[:space:];&|])[{]([[:space:]]|$)|(^|[^A-Za-z0-9_.-])(env|sudo)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[Ci]|(^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh|mksh|ash|fish|busybox)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*c|(^|[;&|(`]|(then|do|else|elif|if|while|until|!)[[:space:]])[[:space:]]*(source|[.])([[:space:]]|$)|(^|[;&|(`]|(then|do|else|elif|if|while|until|!)[[:space:]])[[:space:]]*[^[:space:];&|(){}`]*[{][^[:space:];&|{}]*(,|[.][.])[^[:space:];&|{}]*[}]'
 # tar/unzip read options from these variables. A variable can be set in many
 # forms (prefix, export, env, declare/typeset/local, readonly, printf -v, read,
 # a nameref, +=, a nested body), so the BARE name anywhere in the raw text or
