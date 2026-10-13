@@ -450,8 +450,13 @@ else
     else
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
             main_path="marketplace/plugins/$plug/.claude-plugin/plugin.json"
-            # absent on main = new plugin, nothing to collide with; present but unreadable = FAIL
-            git cat-file -e "refs/remotes/origin/main:$main_path" 2>/dev/null || continue
+            # absent on main = new plugin, nothing to collide with; a failed tree read or an
+            # unreadable manifest = FAIL
+            if ! main_ls=$(git ls-tree --name-only refs/remotes/origin/main -- "$main_path" 2>/dev/null); then
+                bump_err="$bump_err; $plug cannot read origin/main's tree"
+                continue
+            fi
+            [ -n "$main_ls" ] || continue
             main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
             pr_ver=$(plug_manifest_ver "$SHA" "$plug")
             if ! printf '%s\n' "$main_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \
