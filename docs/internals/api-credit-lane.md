@@ -92,7 +92,7 @@ mode 600), or in the launching shell's `ANTHROPIC_API_KEY`.
 The snapshot row of each account is refreshed from a Console reading with
 `node scripts/api-lane/grant-snapshot.mjs <A|B> <remaining-usd> [<grant-usd>
 <starts YYYY-MM-DD> <expires YYYY-MM-DD>]`; the long form (re)writes the grant
-(dates as 00:00 UTC). A refresh also moves `reconciled_spent_usd` to the spend
+(dates as 00:00 UTC), run from the primary checkout. A refresh also moves `reconciled_spent_usd` to the spend
 the Console already shows, so a refresh after a settled call does not count
 that call twice.
 `HIMMEL_API_CREDIT_CONFIG` can still point at a second config with its own
@@ -115,6 +115,12 @@ or `/run/buildkit` exists but is not traversable (root `0700`), bwrap fails
 and every Bash call fails with it. ponytail: the launcher does not check for
 this, so the defect returns on a station that installs containerd, podman or
 buildkit; upgrade path: a launcher precheck that refuses with that reason.
+
+The same sandbox leaves empty mount stubs (`package.json`, lockfiles,
+`.npmrc`, `.env.*`, `.gitmodules`) in the working directory of a call
+(observed 2026-10-13, claude 2.1.296). An empty `package.json` at a repo
+root breaks node there, so launch from a scratch directory, as
+`measure-credit.sh` does, never from a checkout root.
 
 Wiring `strip-env.sh` into the lane launchers (`claude-lane.sh`, `lanes.json`)
 and a `backends.json` row are outside this PR's write scope and need a console
