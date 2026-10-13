@@ -186,6 +186,78 @@ out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "unattested first merge, attested later commit -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
+# --- HIMMEL-5468: a pull_request run that cannot resolve its range fails closed ---
+# A shallow (depth-1) clone of the merge ref is what actions/checkout makes when
+# fetch-depth: 0 is dropped: HEAD^2 is cut off, so there is no range to read.
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
+sh="$(mk)"; rmdir "$sh"
+git clone -q --depth 1 "file://$t" "$sh" 2>/dev/null || fail "shallow clone fixture"
+out="$( cd "$sh" && GITHUB_EVENT_NAME=pull_request bash "$W" --first-commit -- $PLAT 2>&1 )"; rc=$?
+expect "pull_request, shallow merge ref -> rc2" 2 "$rc" "$out"
+out="$( cd "$sh" && env -u GITHUB_EVENT_NAME bash "$W" --first-commit -- $PLAT 2>&1 )"; rc=$?
+expect "push (no PR event), shallow merge ref -> still rc0" 0 "$rc" "$out"
+rm -rf "$t" "$sh"
+
+# an empty range on a pull_request is unresolved, not "nothing to check"
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
+git -C "$t" checkout -q --detach 'HEAD^2'
+out="$( cd "$t" && GITHUB_EVENT_NAME=pull_request bash "$W" --first-commit --base HEAD -- $PLAT 2>&1 )"; rc=$?
+expect "pull_request, empty range -> rc2" 2 "$rc" "$out"
+out="$( cd "$t" && env -u GITHUB_EVENT_NAME bash "$W" --first-commit --base HEAD -- $PLAT 2>&1 )"; rc=$?
+expect "push (no PR event), empty range -> still rc0" 0 "$rc" "$out"
+rm -rf "$t"
+
+# --- HIMMEL-5468: a backdated commit cannot become the "first" commit ---
+# pr: A (unattested, real first) and a side branch C (attested, committer date
+# 2000) merged by M. Default rev-list order is by commit date, so --reverse
+# yields C first; --topo-order yields A.
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 base"
+(
+  set -e
+  cd "$t"
+  main="$(git rev-parse 'HEAD^1')"; pr="$(git rev-parse 'HEAD^2')"
+  fork="$(git rev-parse "$pr~1")"
+  git checkout -q --detach "$fork"
+  mkdir -p scripts; echo a > scripts/a.sh; git add scripts/a.sh
+  git commit -q -m "feat: HIMMEL-1 A unattested"
+  a="$(git rev-parse HEAD)"
+  git checkout -q --detach "$fork"
+  echo c > c.txt; git add c.txt
+  GIT_COMMITTER_DATE="2000-01-01T00:00:00" git commit -q -m "feat: HIMMEL-1 C backdated$TRAIL"
+  c="$(git rev-parse HEAD)"
+  git checkout -q --detach "$a"
+  git merge -q --no-ff -m "Merge C" "$c"
+  m="$(git rev-parse HEAD)"
+  git checkout -q --detach "$main"
+  mg="$(git commit-tree "$(git rev-parse "$m^{tree}")" -p "$main" -p "$m" -m "merge ref")"
+  git checkout -q --detach "$mg"
+) || fail "backdated fixture setup"
+out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+expect "backdated attested commit is not first -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
+
+# --- HIMMEL-5468: ci.yml keeps full history on the jobs that walk the range ---
+# job_has_full_fetch <workflow> <job>: the job's block carries an uncommented
+# `fetch-depth: 0`.
+job_has_full_fetch() {
+  awk -v job="$2" '
+    $0 ~ "^  " job ":[[:space:]]*$" { inj=1; next }
+    inj && /^  [A-Za-z0-9_-]+:/ { inj=0 }
+    inj && /^[[:space:]]*fetch-depth:[[:space:]]*0[[:space:]]*(#.*)?$/ { found=1 }
+    END { exit !found }' "$1"
+}
+CI="$REPO_ROOT/.github/workflows/ci.yml"
+for job in commit-lint doc-invariants; do
+  job_has_full_fetch "$CI" "$job"; rc=$?
+  expect "ci.yml $job pins fetch-depth: 0" 0 "$rc" "$job"
+  # the fixture is the real job block with its fetch-depth line removed
+  fx="$(mk)/ci.yml"
+  grep -v -E "^[[:space:]]*fetch-depth:[[:space:]]*0[[:space:]]*(#.*)?$" "$CI" > "$fx"
+  job_has_full_fetch "$fx" "$job"; rc=$?
+  expect "ci.yml without fetch-depth: 0 fails the pin ($job)" 1 "$rc" "$job"
+  rm -rf "$(dirname "$fx")"
+done
+
 echo
 if [ "$failures" -gt 0 ]; then echo "$failures FAILED"; exit 1; fi
 echo "all passed"

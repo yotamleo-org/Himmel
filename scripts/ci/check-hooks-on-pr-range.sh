@@ -17,7 +17,9 @@
 # Range: HEAD is a PR merge ref (HEAD^2 exists) -> HEAD^1..HEAD^2, the PR's own
 # commits (the same convention as check-commit-range.sh --merge-ref). Otherwise
 # <base>..HEAD with --base, or $COMMIT_RANGE_BASE. No base (a cron / dispatch
-# run) -> nothing to check, exit 0.
+# run) -> nothing to check, exit 0 — but under GITHUB_EVENT_NAME=pull_request an
+# unresolved or empty range, or a shallow checkout, is exit 2: a dropped
+# fetch-depth: 0 must fail the gate, never pass it vacuously (HIMMEL-5468).
 #
 # --first-commit: the attestation trailers must be in the PR's FIRST commit
 # (CLAUDE.md; ready-check.sh item 5), and the hooks accept a trailer from ANY
@@ -28,6 +30,15 @@
 #
 # Exit: the hook's own exit code; 2 = cannot resolve the range.
 set -uo pipefail
+
+# A pull_request run that cannot name its range is an error; any other event
+# (cron / dispatch / push) has no PR to check.
+no_range() { # <message>
+  if [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
+    echo "ERR hooks-on-range: $1 on a pull_request event" >&2; exit 2
+  fi
+  echo "hooks-on-range: $1 — nothing to check"; exit 0
+}
 
 FIRST=0
 BASE=""
@@ -63,14 +74,18 @@ if [ "$FIRST" -eq 1 ]; then
   esac
 fi
 
+if [ "${GITHUB_EVENT_NAME:-}" = pull_request ] \
+  && [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != false ]; then
+  echo "ERR hooks-on-range: shallow checkout on a pull_request event (needs fetch-depth: 0)" >&2; exit 2
+fi
+
 if git rev-parse --verify --quiet 'HEAD^2' >/dev/null 2>&1; then
   base="$(git rev-parse 'HEAD^1')"
   tip="$(git rev-parse 'HEAD^2')"
 else
   want="${BASE:-${COMMIT_RANGE_BASE:-}}"
   if [ -z "$want" ]; then
-    echo "hooks-on-range: no PR range (not a merge ref, no --base) — nothing to check"
-    exit 0
+    no_range "no PR range (not a merge ref, no --base)"
   fi
   base="$(git rev-parse --verify --quiet "$want^{commit}" 2>/dev/null)" \
     || { echo "ERR hooks-on-range: base '$want' does not resolve to a commit" >&2; exit 2; }
@@ -80,11 +95,13 @@ head="$(git rev-parse HEAD)"
 
 # The oldest commit of the range, merges included — the same "first commit" the
 # PR's commit list gives ready-check.sh item 5; an unattested merge cannot hide
-# behind a later ordinary commit that carries the trailers.
-first="$(git rev-list --reverse "$base..$tip" 2>/dev/null | head -n 1)"
+# behind a later ordinary commit that carries the trailers. --topo-order, not
+# commit date: a backdated GIT_COMMITTER_DATE must not pick the first commit.
+commits="$(git rev-list --reverse --topo-order "$base..$tip")" \
+  || { echo "ERR hooks-on-range: rev-list $base..$tip failed" >&2; exit 2; }
+first="${commits%%$'\n'*}"
 if [ -z "$first" ]; then
-  echo "hooks-on-range: no commits in $base..$tip — nothing to check"
-  exit 0
+  no_range "no commits in $base..$tip"
 fi
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/hooks-on-range.XXXXXX")" ||{ echo "ERR hooks-on-range: mktemp failed" >&2; exit 2; }
