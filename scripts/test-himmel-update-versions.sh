@@ -308,6 +308,16 @@ assert_eq "plugins: unreadable source version -> rc 0 (installed is current)" "0
 assert_contains "plugins: unreadable source version -> installed reported current (HIMMEL-5485)" "^ *plugins  *current" "$out"
 assert_not_contains "plugins: unreadable source version -> not unknown" "^ *plugins  *unknown" "$out"
 
+# HIMMEL-5485: a local manifest that does not parse is an unread source -> unknown.
+mkdir -p "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin"
+printf '{ not json\n' > "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin/plugin.json"
+printf '{"name":"himmel","plugins":[{"name":"gamma"}]}\n' > "$TMP/market-gamma.json"
+printf '{"plugins":{"gamma@himmel":[{"version":"1.0.0"}]}}\n' > "$TMP/installed-gamma.json"
+rc=0
+out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-gamma.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-gamma.json" \
+    LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions) || rc=$?
+assert_contains "plugins: malformed local manifest -> unknown, not current" "^ *plugins  *unknown" "$out"
+
 # HIMMEL-5485: an external plugin (git-subdir/url source) has no local dir, so
 # its source version comes from the marketplace entry, then the installed sha.
 ext_row() {   # <market-json> <installed-json> -> the --versions output, its rc

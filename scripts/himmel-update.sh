@@ -128,7 +128,14 @@ report_plugin_gap() {
                 # local dir). With neither, nothing declares a source, so there is
                 # no drift to count: the installed version (or its commit sha) is
                 # reported as current.
-                sv=$(jq -r '.version // empty' "$ROOT/marketplace/plugins/$name/.claude-plugin/plugin.json" 2>/dev/null | tr -d '\r' || true)
+                lp="$ROOT/marketplace/plugins/$name/.claude-plugin/plugin.json"
+                sv=$(jq -r '.version // empty' "$lp" 2>/dev/null | tr -d '\r' || true)
+                # A local manifest that exists but does not parse is an unread
+                # source, not an undeclared one: it stays unknown below.
+                bad_src=0
+                if [ -f "$lp" ] && ! jq -e . "$lp" >/dev/null 2>&1; then
+                    bad_src=1
+                fi
                 if [ -z "$sv" ]; then
                     sv=$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n) | .version // empty][0] // empty' "$market_json" 2>/dev/null | tr -d '\r' || true)
                 fi
@@ -137,7 +144,7 @@ report_plugin_gap() {
                         iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].gitCommitSha // empty' "$installed_json" 2>/dev/null | tr -d '\r' | cut -c1-7 || true)
                     fi
                     # No declared source: a readable installed version/sha is current.
-                    if [ -z "$iv" ]; then
+                    if [ -z "$iv" ] || [ "$bad_src" = 1 ]; then
                         unknown_ver="$unknown_ver $name"
                     fi
                 # An unreadable iv means the comparison was never made —
