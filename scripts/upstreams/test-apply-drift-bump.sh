@@ -367,6 +367,11 @@ cat > "$root/scripts/upstreams.json" <<'JSON'
 JSON
 out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "non-string companion fields are refused (rc=2), not an uncaught exception"; else fail "non-string companion — expected rc=2 got rc=$rc: $out"; fi
+cat > "$root/scripts/upstreams.json" <<'JSON'
+{"entries":[{"name":"proxy","kind":"tag_release","mode":"base","tracked_repo":"acme/proxy","synced_base":"7.3.15","version_pin":{"file":"scripts/setup/lane.ps1","template":"$Version = '{version}'"},"companion_pins":{},"tier":"A"}]}
+JSON
+out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a falsey non-list companion_pins is refused (rc=2), not skipped"; else fail "companion_pins {} — expected rc=2 got rc=$rc: $out"; fi
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] the REAL registry: graphify is auto-bumpable, qmd is not"

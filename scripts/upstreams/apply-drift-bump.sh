@@ -219,7 +219,7 @@ if not os.path.isfile(pin_path):
 # the caller supplies with --sha256 (this script stays offline, so it cannot
 # derive one). The bump moves every pin or none -- a half-moved split pin is the
 # bug this exists to prevent.
-companions = entry.get("companion_pins") or []
+companions = entry.get("companion_pins", [])
 if not isinstance(companions, list):
     die(2, "entry %r companion_pins must be a list of {file, template}" % name)
 need_sha = False
