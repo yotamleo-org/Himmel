@@ -179,12 +179,12 @@ function himmelctlBin(env: Env): string {
 // HIMMEL-5491: the Jira CLI the Kanban writes shell to, by absolute path. CONFIG_UI_JIRA_CLI replaces it (the tests' stub);
 // a worktree has no untracked dist/, so a checkout without one falls back to HIMMEL_REPO, then to the primary of a
 // checkout under .claude/worktrees/.
-function jiraBin(env: Env): string {
+export function jiraBin(env: Env, checkout: string = CHECKOUT): string {
   if (env.CONFIG_UI_JIRA_CLI) return env.CONFIG_UI_JIRA_CLI;
   const rel = "scripts/jira/dist/index.js";
-  const own = join(CHECKOUT, rel);
-  const i = CHECKOUT.indexOf(`${sep}.claude${sep}worktrees${sep}`);
-  const fallbacks = [env.HIMMEL_REPO ? join(env.HIMMEL_REPO, rel) : "", i < 0 ? "" : join(CHECKOUT.slice(0, i), rel)];
+  const own = join(checkout, rel);
+  const i = checkout.indexOf(`${sep}.claude${sep}worktrees${sep}`);
+  const fallbacks = [env.HIMMEL_REPO ? join(env.HIMMEL_REPO, rel) : "", i < 0 ? "" : join(checkout.slice(0, i), rel)];
   return [own, ...fallbacks].find((p) => p && existsSync(p)) ?? own;
 }
 

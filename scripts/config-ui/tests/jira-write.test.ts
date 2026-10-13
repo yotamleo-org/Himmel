@@ -4,7 +4,7 @@ import { test, expect, afterEach } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startServer } from "../server";
+import { startServer, jiraBin } from "../server";
 import { readRoadmap } from "../roadmap";
 import { renderKanban } from "../public/roadmap.js";
 
@@ -140,22 +140,19 @@ test("a theme slug over the 40-char write cap is offered disabled, not as a writ
   expect(html).toContain('<option value="ok">');
 });
 
-test("jira CLI path falls back to HIMMEL_REPO when this checkout has no dist/", async () => {
-  const d = mkdtempSync(join(tmpdir(), "jira-bin-"));
-  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
-  mkdirSync(join(d, "scripts/jira/dist"), { recursive: true });
-  const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
-  const log = join(dir, "jira.log");
-  writeFileSync(join(d, "scripts/jira/dist/index.js"),
-    `require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`);
-  const home = join(dir, "home"), root = join(dir, "root");
-  mkdirSync(home); mkdirSync(root);
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home,
-    HANDOVER_DIR: root, HIMMEL_REPO: d } });
-  cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
-  const r = await fetch(`http://127.0.0.1:${s.port}/api/roadmap/write`, { method: "POST",
-    headers: { "content-type": "application/json", origin: `http://127.0.0.1:${s.port}`, "x-himmel-token": TOKEN },
-    body: JSON.stringify({ key: "HIMMEL-1", status: "done" }) });
-  expect(r.status).toBe(200);
-  expect(readFileSync(log, "utf8")).toContain('["transition","HIMMEL-1","Done"]');
+test("jiraBin: the checkout's own dist/ wins, then HIMMEL_REPO, then the worktrees-layout primary; the test override beats all", () => {
+  const base = mkdtempSync(join(tmpdir(), "jira-bin-"));
+  cleanups.push(() => rmSync(base, { recursive: true, force: true }));
+  const rel = "scripts/jira/dist/index.js";
+  const touch = (root: string) => { mkdirSync(join(root, "scripts/jira/dist"), { recursive: true }); writeFileSync(join(root, rel), ""); return root; };
+  const primary = touch(join(base, "primary"));
+  const wt = join(primary, ".claude", "worktrees", "feat+x");
+  const plain = join(base, "elsewhere", "wt");
+  const repo = touch(join(base, "repo"));
+  mkdirSync(wt, { recursive: true }); mkdirSync(plain, { recursive: true });
+  expect(jiraBin({}, wt)).toBe(join(primary, rel));
+  expect(jiraBin({ HIMMEL_REPO: repo }, plain)).toBe(join(repo, rel));
+  expect(jiraBin({ HIMMEL_REPO: join(base, "missing") }, plain)).toBe(join(plain, rel));
+  expect(jiraBin({ HIMMEL_REPO: repo }, touch(join(base, "own")))).toBe(join(base, "own", rel));
+  expect(jiraBin({ CONFIG_UI_JIRA_CLI: "/x/stub.js", HIMMEL_REPO: repo }, plain)).toBe("/x/stub.js");
 });
