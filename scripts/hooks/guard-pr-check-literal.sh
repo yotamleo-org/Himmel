@@ -1919,8 +1919,12 @@ env_split_option() { # env_split_option <raw command> - false only when
     # re-read stops and the caller denies with a message naming the cap.
     # ponytail: 32 is a guess far above any real command, far below the
     # budget (350 deep = 11 s), upgrade path: a cheaper per-level re-scan.
+    # HIMMEL-5356: a segment piped (`|`, `|&`) into a shell is that shell's
+    # script, so its words are a body like an `eval`'s: `echo "env -S
+    # '<target>\c'" | bash` carries its env inside one quoted data word that
+    # no word scan sees. A reader piped into grep/wc stays data.
     local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
-    local -a nm=() nb=()
+    local -a nm=() nb=() pp=() pd=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
         return 0
@@ -1929,11 +1933,30 @@ env_split_option() { # env_split_option <raw command> - false only when
     [ "$ST_ANSIC" = 0 ] || return 0
     i=0
     while [ "$i" -lt "$ST_N" ]; do
+        j=$i
+        i=$((i + 1))
+        [ -z "${ST_RO[$j]}" ] || continue
+        sg=${ST_S[$j]}
+        [ "${pd[sg]-}" != 1 ] || continue
+        w=${ST_W[$j]}
+        case "$w" in [A-Za-z_]*=* | -* | env | command | exec | nohup | sudo | time) continue ;; esac
+        pd[sg]=1
+        case "${w##*/}" in
+            bash | sh | zsh | dash | ksh | mksh)
+                if [ "$sg" -gt 0 ]; then
+                    case "${ST_SEP[sg - 1]-}" in '|' | '|&') pp[sg - 1]=1 ;; esac
+                fi
+                ;;
+        esac
+    done
+    i=0
+    while [ "$i" -lt "$ST_N" ]; do
         e=$i
         i=$((i + 1))
         w=${ST_W[$e]}
         if [ -z "${ST_RO[$e]}" ]; then
             sg=${ST_S[$e]}
+            [ "${pp[sg]-}" != 1 ] || nm[sg]=1
             if [ "${nm[sg]-}" = 1 ]; then
                 nb[sg]="${nb[sg]-} $w"
             else

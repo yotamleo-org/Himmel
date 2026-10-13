@@ -596,6 +596,34 @@ git commit -m "note: env -S 'bash scripts/handover/merge-on-green.sh\c'"
 bash scripts/other/x.sh "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 NESTEDOK
 
+# ---- HIMMEL-5356: a data reader's output piped into a shell is not data ----
+# `echo eval "env -S '<target>\c'" | bash` hands the reader's text to a shell
+# that re-reads it as a script, so the reader exemption must not apply to a
+# segment whose output feeds bash/sh/zsh/dash/ksh. Clean root: every row is
+# the 1813 deny.
+while IFS= read -r v; do
+    run "5356: [$v] clean root -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+    need_in_err "5356: [$v] deny names the unresolvable split string" "cannot be fully resolved"
+done <<'PIPETOSHELL'
+echo eval "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash
+echo eval "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
+echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'" | bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
+printf '%s\n' "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" | zsh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | dash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /bin/sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ksh
+PIPETOSHELL
+# Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
+while IFS= read -r v; do
+    run "5356 control: [$v] clean root -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done <<'PIPEOK'
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'"
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | wc -c
+PIPEOK
+
 # ---- HIMMEL-4516: nested-body depth cap ------------------------------------
 # Each nested eval body is re-tokenized, so a 350-deep chain used to burn the
 # whole 15 s hook budget (a bare timeout). The guard now stops re-reading past
