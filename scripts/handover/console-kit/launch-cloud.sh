@@ -69,14 +69,15 @@ if [ -L "$rundir" ] || [ ! -O "$rundir" ]; then
     exit 2
 fi
 
-log="$rundir/cloud-$t.log"
-inner="$rundir/cloud-$t.run.sh"
+# per-invocation files: two launches of one ticket must not share a log.
+log="$rundir/cloud-$t.$$.log"
+inner="$rundir/cloud-$t.$$.run.sh"
 : > "$log"
 # shellcheck disable=SC2016 # the $(cat ...) expands in the inner script, not here.
 printf '#!/usr/bin/env bash\nexec claude --cloud "$(cat %q)" --permission-mode auto\n' "$brief" > "$inner"
 chmod +x "$inner"
 
-setsid nohup konsole --separate -p tabtitle="cloud-HIMMEL-$t" -e script -q -c "$inner" "$log" > /dev/null 2>&1 &
+setsid nohup konsole --separate -p tabtitle="cloud-HIMMEL-$t" -e script -q -c "$(printf '%q' "$inner")" "$log" > /dev/null 2>&1 &
 
 polls="${CLOUD_LAUNCH_POLLS:-20}"
 nap="${CLOUD_LAUNCH_SLEEP:-3}"
