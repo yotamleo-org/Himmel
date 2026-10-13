@@ -1123,6 +1123,12 @@ assert_rc "5484 ctl set +x"                     0 "$(run_case "$(j_bash 'set +x;
 assert_rc "5484 ctl git commit msg"             0 "$(run_case "$(j_bash "git commit -m 'deny bash -x and set -x traces'")")"
 assert_rc "5484 ctl echo string"                0 "$(run_case "$(j_bash 'echo "do not run bash -x here"')")"
 assert_rc "5484 ctl heredoc body set -x"        0 "$(run_case "$(j_bash $'cat > notes.md <<\'EOF\'\nrun set -x then bash -x\nEOF')")"
+# /pr-check round 2: an `-o` value is not an operand; zsh option names ignore case.
+assert_rc "5484 bash -o errexit -x s.sh"        2 "$(run_case "$(j_bash 'bash -o errexit -x s.sh')")"
+assert_rc "5484 set -o errexit -x"              2 "$(run_case "$(j_bash 'set -o errexit -x')")"
+assert_rc "5484 zsh -o XTRACE s.sh"             2 "$(run_case "$(j_bash 'zsh -o XTRACE s.sh')")"
+assert_rc "5484 ctl bash -o errexit s.sh -x"    0 "$(run_case "$(j_bash 'bash -o errexit s.sh -x')")"
+assert_rc "5484 ctl bash -o errexit s.sh"       0 "$(run_case "$(j_bash 'bash -o errexit s.sh')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

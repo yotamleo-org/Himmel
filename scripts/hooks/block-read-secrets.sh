@@ -894,8 +894,10 @@ g4_scan() {
             # script's own flag); `-O`/`--rcfile` values are skipped.
             bash|sh|zsh|dash|ksh|ash|mksh|rbash|set)
                 if [ "$xo" = 1 ]; then
-                    xo=0
-                    case "$d" in xtrace) xt=1 ;; esac
+                    # The `-o` value is not an operand (`bash -o errexit -x s.sh`);
+                    # zsh matches option names case- and underscore-insensitively.
+                    xo=0; nargs=$((nargs - 1))
+                    case "$d" in [xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;; esac
                 elif [ "$nargs" = 0 ] && [ "$xend" = 0 ]; then
                     case "$d" in
                         --) xend=1 ;;     # `set -- -x`: the rest are positionals
