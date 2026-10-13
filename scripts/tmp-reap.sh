@@ -332,7 +332,8 @@ for fam in $FAMILIES; do
         [ "$kept" -eq 0 ] || printf 'KEEP fixture  %s: %d kept (young or in use)\n' "$fam" "$kept"
         continue
     fi
-    kb="$(printf '%s' "$list" | tr '\n' '\0' | xargs -0 du -sck 2>/dev/null | tail -1 | cut -f1)"
+    # xargs may split the list into several du batches, each ending in its own total line: sum them all
+    kb="$(printf '%s' "$list" | tr '\n' '\0' | xargs -0 du -sck 2>/dev/null | awk -F'\t' '$2 == "total" { s += $1 } END { print s + 0 }')"
     fix_total=$((fix_total + ${kb:-0}))
     if [ "$APPLY" = 1 ]; then
         if printf '%s' "$list" | tr '\n' '\0' | xargs -0 rm -rf --; then
@@ -386,7 +387,10 @@ if [ "$APPLY" = 1 ] && [ "$SCOPED" = 0 ] && [ -d "$CLAUDE_ROOT" ]; then
         id="${f##*/cache-break-state-}"; id="${id%.json}"
         dest="$ARCHIVE/$MONTH/cache-break/$id/${f##*/}"
         [ -f "$dest" ] && continue
-        if ! { mkdir -p "${dest%/*}" 2>/dev/null && cp -p "$f" "$dest" 2>/dev/null && manifest_row "$f" "$dest" "$(sha "$dest")" "$(wc -c < "$dest" | tr -d ' ')" "$id" cache-break; }; then
+        # a copy without a verified sha and a manifest row is removed, so the next run retries it
+        if ! { mkdir -p "${dest%/*}" 2>/dev/null && cp -p "$f" "$dest" 2>/dev/null && sum="$(sha "$dest")" && [ -n "$sum" ] \
+                && manifest_row "$f" "$dest" "$sum" "$(wc -c < "$dest" | tr -d ' ')" "$id" cache-break; }; then
+            rm -f "$dest" 2>/dev/null
             printf 'SKIP cache-break %s (archive failed)\n' "$f"; failed=$((failed+1))
         fi
     done
