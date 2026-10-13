@@ -1725,6 +1725,16 @@ env_row "5348 j2479f curl \${V%/} names the lift"       deny  "V=$LIFT" 'curl "f
 env_row "5348 j2479f curl \$V:x names the lift"         deny  "V=$LIFT" 'curl "$V:x"'
 env_row "5348 j2479f ssh \${S%/} names the state dir"   deny  "S=$ST" 'ssh h "${S%/}"'
 env_row "5348 j2479f python3 \${!R} indirection to lift" deny "R=V V=$LIFT" 'python3 x.py "${!R}"'
+# Delta round 10 codex-1: values that are harmless one by one assemble the lift.
+env_row "5348 codex-1 python3 \${P%/}/\${S%/}/\${A%/}-\${B%/} assembles the lift" deny \
+    "P=$HOME/.himmel S=state A=bank B=lift.json" 'python3 x.py "${P%/}/${S%/}/${A%/}-${B%/}"'
+env_row "5348 codex-1 python3 \${A#x} prefix removal assembles the lift" deny \
+    "P=$HOME/.himmel S=state A=xbank" 'python3 x.py "$P/$S/${A#x}-lift.json"'
+env_row "5348 codex-1 zsh :h modifier on an unset name drops text" deny \
+    "P=$HOME/.himmel S=state" 'python3 x.py "$P/$S/bank-li$E:hft.json"'
+env_row "5348 codex-1 zsh subscript on an unset name drops text" deny \
+    "P=$HOME/.himmel S=state" 'python3 x.py "$P/$S/bank-li$E[x]ft.json"'
+env_row "5348 codex-1 python3 \${HOME%/}/notes (ctrl)" allow "OTHER=1" 'python3 x.py "${HOME%/}/notes"'
 }
 rows_5348
 

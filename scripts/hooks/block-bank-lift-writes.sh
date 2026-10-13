@@ -462,17 +462,114 @@ _refs_name_lift() {
     return 1
 }
 
+# _soft_eval <dequoted-word>: SOFT_B / SOFT_Z = the word as bash and as zsh
+# expand it, for the forms modelled here; 1 = a form not modelled (fail
+# closed). A set name: ${N} ${N:-w} ${N-w} ${N:=w} ${N=w} give its value,
+# ${N:+w} ${N+w} give w, and ${N%w} ${N%%w} ${N#w} ${N##w} are evaluated
+# (a glob w only where its pattern and literal readings agree); a zsh
+# modifier ($N:h) or subscript ($N[1]) on it fails closed. An unset name:
+# a braced form evaluates as _unset_eval does; zsh drops a one-letter
+# modifier or a subscript after it, which bash keeps as text.
+# shellcheck disable=SC2016,SC2295  # literal $ text; w is a pattern on purpose
+_soft_eval() {
+    local LC_ALL=C
+    local rest="$1" b='' z='' n v op w lit body depth i ch guard=0
+    local re_nm='^\$([A-Za-z_][A-Za-z0-9_]*)' re_bn='^([A-Za-z_][A-Za-z0-9_]*)(.*)$'
+    local re_fl='^\$([~=^+#])([A-Za-z_][A-Za-z0-9_]*)?'
+    SOFT_B=''; SOFT_Z=''
+    while [[ "$rest" == *'$'* ]]; do
+        guard=$((guard+1)); [ "$guard" -le 64 ] || return 1
+        b="$b${rest%%\$*}"; z="$z${rest%%\$*}"; rest="\$${rest#*\$}"
+        if [[ "$rest" == '${'* ]]; then
+            rest="${rest:2}"; depth=1; i=0
+            while [ "$depth" -gt 0 ] && [ "$i" -lt "${#rest}" ]; do
+                ch="${rest:$i:1}"
+                case "$ch" in '{') depth=$((depth+1)) ;; '}') depth=$((depth-1)) ;; esac
+                i=$((i+1))
+            done
+            [ "$depth" -eq 0 ] || return 1
+            body="${rest:0:$((i-1))}"; rest="${rest:$i}"
+            v=''; op=''
+            if [[ "$body" =~ $re_bn ]]; then
+                op="${BASH_REMATCH[2]}"; _env0_get "${BASH_REMATCH[1]}"; v=$REPLY
+            fi
+            if [ -z "$v" ]; then
+                _unset_eval "\${$body}"
+                case $? in
+                    0) b="$b$REPLY"; z="$z$REPLY" ;;
+                    2) b="$b\${$body}"; z="$z\${$body}" ;;
+                    *) return 1 ;;
+                esac
+                continue
+            fi
+            case "$op" in
+                ''|':-'*|':='*|'-'*|'='*) w="$v" ;;
+                '%'*|'#'*|':+'*|'+'*)
+                    case "$op" in '%%'*|'##'*|':+'*) w="${op:2}" ;; *) w="${op:1}" ;; esac
+                    case "$w" in *'$'*|*'`'*|*\\*) return 1 ;; esac
+                    case "$op" in
+                        '%%'*) lit="${v%%"$w"}"; w="${v%%$w}" ;;
+                        '%'*) lit="${v%"$w"}"; w="${v%$w}" ;;
+                        '##'*) lit="${v##"$w"}"; w="${v##$w}" ;;
+                        '#'*) lit="${v#"$w"}"; w="${v#$w}" ;;
+                        *) lit="$w" ;;
+                    esac
+                    [ "$lit" = "$w" ] || return 1 ;;
+                *) return 1 ;;
+            esac
+            b="$b$w"; z="$z$w"
+        elif [[ "$rest" =~ $re_nm ]]; then
+            rest="${rest:${#BASH_REMATCH[0]}}"
+            _env0_get "${BASH_REMATCH[1]}"; v=$REPLY
+            b="$b$v"; z="$z$v"
+            case "$rest" in
+                ':'[A-Za-z\&]*)
+                    [ -z "$v" ] || return 1
+                    case "${rest:1:1}" in [aAcehlpPqQrtux]) ;; *) return 1 ;; esac
+                    b="$b${rest:0:2}"; rest="${rest:2}" ;;
+                '['*)
+                    [ -z "$v" ] || return 1
+                    case "$rest" in *']'*) ;; *) continue ;; esac
+                    w="${rest%%]*}]"; b="$b$w"; rest="${rest:${#w}}" ;;
+            esac
+        elif [[ "$rest" =~ $re_fl ]]; then
+            # zsh $~N $=N $^N $+N $#N: bash reads $# (a count) or a literal $.
+            n="${BASH_REMATCH[2]}"
+            if [ -n "$n" ]; then _env0_get "$n"; [ -z "$REPLY" ] || return 1; fi
+            case "${BASH_REMATCH[1]}" in
+                '#') b="${b}0$n"; z="${z}0" ;;
+                '+') b="$b\$+$n"; z="${z}0" ;;
+                *) b="$b${BASH_REMATCH[0]}" ;;
+            esac
+            rest="${rest:${#BASH_REMATCH[0]}}"
+        else
+            b="$b\$"; z="$z\$"; rest="${rest:1}"
+        fi
+    done
+    SOFT_B="$b$rest"; SOFT_Z="$z$rest"
+}
+
 # arg_ref <word>: dest_ref for a word that is handed a path but is not a write
 # destination (an interpreter, mention-rule, xargs or find argument), judge
 # j2479f. An expansion the resolver does not model (`$H:x`, `$F[0]`,
-# `${x%/*}`, `${A:-b}`) falls back to the verdict on the word as written, and
-# fails closed only when a referenced value names the state dir or the lift.
+# `${x%/*}`, `${A:-b}`) is evaluated by _soft_eval under both shells, and the
+# verdict is the strongest of the word as written and both readings. It
+# fails closed on a form _soft_eval does not model, or when a referenced
+# value names the state dir or the lift.
+# ponytail: accepted over-deny here, a zsh modifier or subscript, or a glob
+# removal whose readings differ, on a SET name; upgrade path is HIMMEL-5341.
 arg_ref() {
+    local k r x
     dest_ref "$1"
     [ -n "$DEST_WHY" ] || return 0
-    if _refs_name_lift "$1"; then REPLY=LIFT; return 0; fi
+    if _refs_name_lift "$1" || ! _soft_eval "$1"; then REPLY=LIFT; return 0; fi
     DEST_X="$1"; DEST_WHY=""
-    REPLY=$(lift_ref "$1")
+    k=$(lift_ref "$1")
+    for x in "$SOFT_B" "$SOFT_Z"; do
+        r=$(lift_ref "$x")
+        case "$r" in LIFT) k=LIFT ;; STATE) [ "$k" = LIFT ] || k=STATE ;; esac
+    done
+    REPLY=$k
 }
 
 # ------------------------------------------------------------ file tools ---
