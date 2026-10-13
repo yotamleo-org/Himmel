@@ -9,11 +9,30 @@ import {
   lstatSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { userInfo } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCALE = 1000000n;
 const MAX_AGE = 600;
+// ponytail: no collector produces 'automatic-snapshot' yet, only the freshness rule for
+// it exists; upgrade path: the Admin cost_report collector (HIMMEL-4904 task 6).
+const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
+// HIMMEL-5519: parallel admissions queue on the ledger lock instead of failing; the
+// wait is bounded so a crashed holder still refuses, never admits.
+const LOCK_WAIT_MS = 5000;
+function takeLock(lock, env) {
+  const wait = Number.isSafeInteger(Number(env.HIMMEL_API_LOCK_WAIT_MS)) && Number(env.HIMMEL_API_LOCK_WAIT_MS) >= 0
+    ? Number(env.HIMMEL_API_LOCK_WAIT_MS) : LOCK_WAIT_MS;
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  const deadline = Date.now() + wait;
+  for (let pause = 5; ; pause = Math.min(pause * 2, 50)) {
+    try { mkdirSync(lock, { mode: 0o700 }); return; } catch (e) {
+      if (e.code !== 'EEXIST' || Date.now() >= deadline) refuse('ledger-locked-or-unwritable');
+    }
+    Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
+  }
+}
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v, k) => Object.hasOwn(v, k);
@@ -87,14 +106,17 @@ function row(config, snapshot, a, account, now) {
   const watermark = money(s.reconciled_spent_usd);
   const { spent, reserved } = totals(a);
   if (remaining > grant || cap > grant || watermark > spent || watermark > grant - remaining) refuse('unreconciled-amounts');
-  if (s.exclusive_org !== true || s.discrepancy !== false || a?.discrepancy || s.source !== 'operator-console-snapshot') refuse('unverified-or-discrepant');
+  if (s.exclusive_org !== true || s.discrepancy !== false || a?.discrepancy || !SOURCES.includes(s.source)) refuse('unverified-or-discrepant');
   for (const t of [s.starts_at, s.expires_at, s.observed_at]) {
     if (!Number.isSafeInteger(t) || t < 0) refuse('invalid-timestamp');
   }
   if (s.starts_at >= s.expires_at || s.starts_at > now || s.observed_at < s.starts_at) refuse('invalid-grant-interval');
   if (s.expires_at <= now) refuse('expired-grant', 'SKIPPED-BANK');
   const age = now - s.observed_at;
-  if (age < 0 || age > MAX_AGE) refuse('stale-snapshot', 'BANK-STALE');
+  // HIMMEL-5519: an operator reading never goes stale; the remaining credit is derived
+  // from it minus the ledger below, and the cap plus reserve accounting stay the hard
+  // stop. Only an automatically pulled snapshot carries a freshness window.
+  if (age < 0 || (s.source === 'automatic-snapshot' && age > MAX_AGE)) refuse('stale-snapshot', 'BANK-STALE');
   // Snapshot includes provider-observed spend. Subtract only local completions
   // after the explicit reconciliation watermark, plus every outstanding maximum.
   const consumed = grant - remaining + spent - watermark;
@@ -175,7 +197,7 @@ export function creditState(command, options = {}, env = process.env) {
     // the same transaction lock. The operator must use one ledger for the fleet.
     statePath = canonical(statePath);
     lock = `${statePath}.lock`;
-    try { mkdirSync(lock, { mode: 0o700 }); held = true; } catch { refuse('ledger-locked-or-unwritable'); }
+    takeLock(lock, env); held = true;
     // A file symlink/hardlink alias has another basename and therefore another
     // mutex. Reject it rather than read shared spend under an unrelated lock.
     try {
@@ -272,7 +294,7 @@ export function pickAccount(budget, env = process.env) {
 // as an unbilled settlement is read as that settlement (exclusive_org attests
 // there is none), upgrade path: the Admin cost_report collector (task 6 of the
 // HIMMEL-4904 plan).
-export function refreshSnapshot(env, account, { remaining, grant, starts, expires }) {
+export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot' }) {
   let lock = null;
   try {
     if (!['A', 'B'].includes(account)) refuse('account-required');
@@ -284,7 +306,7 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     // reservation, settlement or second refresh changes either file underneath it.
     const ledgerPath = resolve(config.ledger_path);
     const held = `${join(realpathSync(dirname(ledgerPath)), basename(ledgerPath))}.lock`;
-    try { mkdirSync(held, { mode: 0o700 }); lock = held; } catch { refuse('ledger-locked-or-unwritable'); }
+    takeLock(held, env); lock = held;
     const path = env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json');
     const snapshot = existsSync(path) ? read(path) : { version: 1, accounts: {} };
     if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts)) refuse('invalid-snapshot');
@@ -319,7 +341,7 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     s.reconciled_spent_usd = usd(mark);
     s.remaining_usd = usd(left);
     s.observed_at = Math.floor(Date.now() / 1000);
-    s.source = 'operator-console-snapshot';
+    s.source = source;
     snapshot.accounts[account] = s;
     writeFileSync(`${path}.${process.pid}.tmp`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
     renameSync(`${path}.${process.pid}.tmp`, path);
@@ -329,6 +351,91 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   } finally {
     if (lock) try { rmdirSync(lock); } catch { /* an orphan lock blocks admissions, never frees them */ }
+  }
+}
+
+// HIMMEL-5519: automatic snapshot. Remaining = the row's grant minus the Admin API cost
+// report's spend since the grant start (GET /v1/organizations/cost_report, x-api-key,
+// amounts in cents as decimal strings, daily buckets, paged). The report carries no
+// promotional-vs-card field, so spend past the grant reads as zero remaining, never as
+// credit; the write goes through refreshSnapshot so the watermark and lock are shared.
+// The key is read here only (env, then a dotenv file), never printed or put on argv.
+const COST_REPORT = 'https://api.anthropic.com/v1/organizations/cost_report';
+function adminKey(env, account) {
+  const name = `ANTHROPIC_ORG_${account}_KEY`;
+  if (env[name]) return env[name];
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  let files = [join(root, '.env')];
+  if (env.HIMMEL_DOTENV_FILE) files = [env.HIMMEL_DOTENV_FILE];
+  else {
+    try {
+      const common = execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      files.push(join(dirname(common), '.env'));
+    } catch { /* not a checkout: the worktree-local file only */ }
+  }
+  for (const file of files) {
+    let text;
+    try { text = readFileSync(file, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      if (!line.startsWith(`${name}=`)) continue;
+      const value = line.slice(name.length + 1).trim().replace(/^(["'])(.*)\1$/, '$2');
+      if (value) return value;
+    }
+  }
+  return '';
+}
+function centsToMicro(amount) {
+  if (typeof amount !== 'string' || !/^[0-9]{1,15}(\.[0-9]{1,12})?$/.test(amount)) refuse('invalid-cost-report');
+  const [whole, fraction = ''] = amount.split('.');
+  const padded = fraction.padEnd(4, '0');
+  // One cent is 10000 micro-dollars; a finer remainder rounds up (spend is never understated).
+  return BigInt(whole) * 10000n + BigInt(padded.slice(0, 4)) + (/[1-9]/.test(padded.slice(4)) ? 1n : 0n);
+}
+export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch } = {}) {
+  try {
+    if (!['A', 'B'].includes(account)) refuse('account-required');
+    const config = read(configPathFor(env));
+    configs(config);
+    if (!own(config.accounts, account)) refuse('account-not-configured');
+    const snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json'));
+    const row = object(snapshot) && object(snapshot.accounts) ? snapshot.accounts[account] : undefined;
+    if (!object(row)) refuse('missing-snapshot');
+    const grant = money(row.grant_usd);
+    if (!Number.isSafeInteger(row.starts_at) || row.starts_at < 0) refuse('invalid-timestamp');
+    const key = adminKey(env, account);
+    if (!key) refuse('admin-key-missing');
+    const startingAt = new Date(row.starts_at * 1000).toISOString().replace('.000Z', 'Z');
+    let spent = 0n, page = null, complete = false;
+    for (let i = 0; i < 20 && !complete; i++) {
+      const url = new URL(COST_REPORT);
+      url.searchParams.set('starting_at', startingAt);
+      url.searchParams.set('bucket_width', '1d');
+      url.searchParams.set('limit', '31');
+      if (page) url.searchParams.set('page', page);
+      let body;
+      try {
+        const res = await fetchImpl(url, { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error('http');
+        body = await res.json();
+      } catch { refuse('cost-report-unavailable'); }
+      if (!object(body) || !Array.isArray(body.data)) refuse('invalid-cost-report');
+      for (const b of body.data) {
+        if (!object(b) || !Array.isArray(b.results)) refuse('invalid-cost-report');
+        for (const r of b.results) {
+          if (!object(r) || r.currency !== 'USD') refuse('invalid-cost-report');
+          spent += centsToMicro(r.amount);
+        }
+      }
+      if (body.has_more !== true) complete = true;
+      else if (typeof body.next_page === 'string' && body.next_page) page = body.next_page;
+      else refuse('invalid-cost-report');
+    }
+    if (!complete) refuse('cost-report-too-long');
+    return refreshSnapshot(env, account, { remaining: usd(spent >= grant ? 0n : grant - spent), source: 'automatic-snapshot' });
+  } catch (e) {
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   }
 }
 

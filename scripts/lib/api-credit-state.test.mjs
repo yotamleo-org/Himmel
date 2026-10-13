@@ -106,7 +106,7 @@ test('funded account reports precise estimated headroom without writing spend', 
 
 const invalid = [
   ['missing account snapshot', (f) => delete f.snapshot.accounts.A, 'BANK-UNKNOWN'],
-  ['stale observation', (f) => { f.snapshot.accounts.A.observed_at = f.now - 601; }, 'BANK-STALE'],
+  ['stale automatic observation', (f) => { f.snapshot.accounts.A.source = 'automatic-snapshot'; f.snapshot.accounts.A.observed_at = f.now - 601; }, 'BANK-STALE'],
   ['expired grant', (f) => { f.snapshot.accounts.A.expires_at = f.now - 1; }, 'SKIPPED-BANK'],
   ['future observation', (f) => { f.snapshot.accounts.A.observed_at = f.now + 60; }, 'BANK-STALE'],
   ['future grant', (f) => { f.snapshot.accounts.A.starts_at = f.now + 60; }, 'BANK-UNKNOWN'],
@@ -308,7 +308,7 @@ test('corrupt job record cannot silently disappear from totals', () => {
 });
 
 test('orphan or busy transaction lock fails closed without reclamation', () => {
-  const f = fixture(); mkdirSync(`${f.paths.state}.lock`);
+  const f = fixture(); mkdirSync(`${f.paths.state}.lock`); f.env.HIMMEL_API_LOCK_WAIT_MS = '100';
   assert.equal(f.call('reserve', ['--id', 'job', '--usd', '1']).verdict, 'BANK-UNKNOWN');
 });
 
@@ -337,4 +337,134 @@ test('bank read prints API row and does not use native producer', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), 'PROCEED');
   assert.match(r.stderr, /api:A.*grant-cycle=cycle-a.*available-est=1\.000000/);
+});
+
+// HIMMEL-5519: the operator's reading carries no freshness window; the cap and the
+// reserve accounting are the overspend guard, so a two-hour-old reading still admits.
+test('an operator snapshot two hours old still admits within the cap', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.starts_at = f.now - 100000;
+  f.snapshot.accounts.A.observed_at = f.now - 7200;
+  f.save();
+  assert.equal(f.call().verdict, 'PROCEED');
+  assert.equal(f.call('reserve', ['--id', 'old', '--usd', '0.50']).verdict, 'PROCEED');
+  assert.equal(f.call().available_est_usd, '0.500000');
+});
+
+test('a stale operator reading still derives remaining credit from the ledger and refuses at zero', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.starts_at = f.now - 200000;
+  f.snapshot.accounts.A.observed_at = f.now - 86400;
+  f.save();
+  assert.equal(f.call('reserve', ['--id', 'a', '--usd', '1.00']).verdict, 'PROCEED');
+  const over = f.call('reserve', ['--id', 'b', '--usd', '0.01']);
+  assert.equal(over.verdict, 'SKIPPED-BANK');
+  assert.equal(over.reason, 'insufficient-headroom');
+});
+
+test('twenty parallel reserves all succeed under the cap and the next one over it refuses', async () => {
+  const f = fixture();
+  f.config.accounts.A.cap_usd = '0.20';
+  f.save();
+  const run = (id) => new Promise((resolve, reject) => {
+    const p = spawn(process.execPath, f.args('reserve', ['--id', id, '--usd', '0.01']), { env: f.env });
+    let out = ''; p.stdout.on('data', (b) => { out += b; }); p.on('error', reject);
+    p.on('close', (code) => { if (code !== 0) reject(new Error(`child ${code}`)); else resolve(JSON.parse(out)); });
+  });
+  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => run(`p${i}`)));
+  assert.deepEqual(results.map((r) => r.verdict), Array(20).fill('PROCEED'), JSON.stringify(results));
+  const over = f.call('reserve', ['--id', 'p20', '--usd', '0.01']);
+  assert.equal(over.verdict, 'SKIPPED-BANK');
+  assert.equal(over.reason, 'insufficient-headroom');
+  assert.equal(f.call().reserved_usd, '0.200000');
+});
+
+// HIMMEL-5519: an API call is not a subscription session; it takes its own slots.
+test('an API launch does not move the subscription FLEET count and has its own cap', () => {
+  const f = fixture();
+  const launch = (job) => bankApi(f, {
+    HIMMEL_API_LANE: 'on', HIMMEL_FLEET_CAP: '1', HIMMEL_API_MAX_CONCURRENT: '2',
+    CADENCE_BANK_LEG: `claude-api:${job}`, CADENCE_BANK_CALLER_PID: String(process.pid),
+  });
+  const one = launch('j1');
+  assert.equal(one.stdout.trim(), 'PROCEED', one.stderr);
+  assert.match(one.stderr, /FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0\/1/);
+  const two = launch('j2');
+  assert.equal(two.stdout.trim(), 'PROCEED', two.stderr);
+  assert.match(two.stderr, /FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0\/1/);
+  const three = launch('j3');
+  assert.equal(three.stdout.trim(), 'SKIPPED-FLEET', three.stderr);
+  assert.match(three.stderr, /api lane at\/over its own cap \(2\/2\)/);
+});
+
+// HIMMEL-5519: automatic snapshot from the Admin API cost report. HTTP is stubbed;
+// the key is a fixture string. Endpoint and fields per the Admin API cost_report docs:
+// GET /v1/organizations/cost_report, x-api-key, amounts in cents as decimal strings.
+const FIXTURE_KEY = 'fixture-admin-key-not-real';
+function costStub(pages, seen = []) {
+  let i = 0;
+  const fn = async (url, init) => {
+    seen.push({ url: String(url), headers: init.headers });
+    const body = pages[Math.min(i++, pages.length - 1)];
+    return { ok: body !== null, status: body === null ? 401 : 200, json: async () => body };
+  };
+  return fn;
+}
+const bucket = (...cents) => ({ starting_at: '2026-10-01T00:00:00Z', ending_at: '2026-10-02T00:00:00Z',
+  results: cents.map((amount) => ({ amount, currency: 'USD', description: null })) });
+
+test('pull derives remaining from cost-report spend since the grant start, across pages', async () => {
+  const f = fixture();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const seen = [];
+  const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
+  const r = await pullSnapshot(env, 'A', { fetchImpl: costStub([
+    { data: [bucket('50', '25.5')], has_more: true, next_page: 'page_2' },
+    { data: [bucket('4.5')], has_more: false, next_page: null },
+  ], seen) });
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(r.remaining_usd, '1.200000');
+  const row = JSON.parse(readFileSync(f.paths.snapshot)).accounts.A;
+  assert.equal(row.source, 'automatic-snapshot');
+  assert.equal(row.remaining_usd, '1.200000');
+  assert.equal(seen.length, 2);
+  const first = new URL(seen[0].url);
+  assert.equal(first.origin + first.pathname, 'https://api.anthropic.com/v1/organizations/cost_report');
+  assert.equal(first.searchParams.get('starting_at'), new Date((f.now - 1000) * 1000).toISOString().replace('.000Z', 'Z'));
+  assert.equal(new URL(seen[1].url).searchParams.get('page'), 'page_2');
+  assert.equal(seen[0].headers['x-api-key'], FIXTURE_KEY);
+  assert.equal(JSON.stringify(r).includes(FIXTURE_KEY), false);
+  assert.equal(f.call().verdict, 'PROCEED');
+});
+
+test('pull reads the key from a dotenv file, and spend over the grant leaves nothing', async () => {
+  const f = fixture();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const dotenv = join(f.dir, 'dotenv');
+  writeFileSync(dotenv, `OTHER=1\nANTHROPIC_ORG_A_KEY="${FIXTURE_KEY}"\n`);
+  const seen = [];
+  const r = await pullSnapshot({ ...f.env, HIMMEL_DOTENV_FILE: dotenv }, 'A', {
+    fetchImpl: costStub([{ data: [bucket('20000')], has_more: false, next_page: null }], seen) });
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(seen[0].headers['x-api-key'], FIXTURE_KEY);
+  assert.equal(r.remaining_usd, '0.000000');
+  assert.equal(f.call().verdict, 'SKIPPED-BANK');
+});
+
+test('pull failures leave the snapshot untouched and never echo the key', async () => {
+  const f = fixture();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const before = readFileSync(f.paths.snapshot, 'utf8');
+  const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
+  const unauthorized = await pullSnapshot(env, 'A', { fetchImpl: costStub([null]) });
+  assert.equal(unauthorized.verdict, 'BANK-UNKNOWN');
+  assert.equal(unauthorized.reason, 'cost-report-unavailable');
+  const thrown = await pullSnapshot(env, 'A', { fetchImpl: async () => { throw new Error(`boom ${FIXTURE_KEY}`); } });
+  assert.equal(thrown.reason, 'cost-report-unavailable');
+  assert.equal(JSON.stringify(thrown).includes(FIXTURE_KEY), false);
+  const nokey = await pullSnapshot({ ...f.env, HIMMEL_DOTENV_FILE: join(f.dir, 'absent') }, 'A', { fetchImpl: costStub([]) });
+  assert.equal(nokey.reason, 'admin-key-missing');
+  const bad = await pullSnapshot(env, 'A', { fetchImpl: costStub([{ data: [{ results: [{ amount: 'x', currency: 'USD' }] }], has_more: false }]) });
+  assert.equal(bad.verdict, 'BANK-UNKNOWN');
+  assert.equal(readFileSync(f.paths.snapshot, 'utf8'), before);
 });

@@ -714,6 +714,11 @@ SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
+# HIMMEL-5519: api-lane reservations (leg name claude-api:*) are counted apart from
+# the subscription FLEET and held to their own cap.
+fleet_api_reserved=0
+API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
+is_int "$API_CAP" || API_CAP=10
 _fleet_admitted=0
 _fleet_admit_iters=0
 while [ "$_fleet_admit_iters" -lt "${FLEET_ADMIT_RETRY_ITERS:-100}" ]; do
@@ -867,7 +872,10 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       if _fleet_reclaim_dead_reservation "$_fleet_resv" "$_fleet_resv_owner" "$_fleet_resv_expires" "$_fleet_resv_name" "$_fleet_resv_sname"; then
         continue
       fi
-      fleet_reserved=$((fleet_reserved + 1))
+      case "$_fleet_resv_sname" in
+        claude-api:*) fleet_api_reserved=$((fleet_api_reserved + 1)) ;;
+        *) fleet_reserved=$((fleet_reserved + 1)) ;;
+      esac
     done
     fleet_n=$((fleet_n + fleet_reserved))
   fi
@@ -896,7 +904,17 @@ if [ "$_fleet_admitted" -eq 0 ]; then
   else
     echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
   fi
-elif [ "$fleet_n" -ge "$FLEET_CAP" ]; then
+elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
+  if [ "${FLEET_CAP_OK:-}" = "1" ]; then
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — FLEET_CAP_OK bypass in effect (launching shell only), proceeding" >&2
+  elif [ "$LAUNCH_INTENT" = "1" ]; then
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — skipping leg=$LEG (HIMMEL_API_MAX_CONCURRENT)" >&2
+    _fleet_release_admit "$SLOTS/.admit"
+    emit SKIPPED-FLEET
+  else
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — not a declared launch (CADENCE_BANK_LAUNCH unset), reporting only" >&2
+  fi
+elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   # codex-3 (CR review, 2nd panel round, Suggestion): the documented
   # contract is FLEET_CAP_OK=1 specifically; a bare `-n` (non-empty) test
   # would also treat FLEET_CAP_OK=0 or FLEET_CAP_OK=false as an enabled

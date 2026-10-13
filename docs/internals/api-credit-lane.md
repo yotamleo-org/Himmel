@@ -100,6 +100,29 @@ ledger lock.
 `HIMMEL_API_CREDIT_CONFIG` can still point at a second config with its own
 ledger; pinning it is HIMMEL-5444.
 
+### Unattended running (HIMMEL-5519)
+
+- **No freshness window on an operator reading.** The remaining credit is derived:
+  the last reading minus the ledger's settled and reserved spend. The cap and the
+  reserve accounting stay the hard stop, and a derived remainder at or below zero
+  refuses (`insufficient-headroom`). Only an automatically pulled snapshot
+  (`source: automatic-snapshot`) goes `BANK-STALE` after 600 s.
+- **Automatic pull, opt-in:** `node scripts/api-lane/grant-snapshot.mjs --pull <A|B>`
+  reads the Admin API cost report (`GET /v1/organizations/cost_report`, daily buckets,
+  paged) since the row's `starts_at` and writes `grant - spend` as the remaining credit.
+  The admin key is `ANTHROPIC_ORG_A_KEY` / `ANTHROPIC_ORG_B_KEY`, from the environment or the
+  repo `.env`; it is read inside `api-credit-state.mjs` only, goes to
+  `api.anthropic.com` only, and is never printed or put on argv. A failed pull leaves the
+  snapshot untouched and returns `BANK-UNKNOWN`. **Limit:** the cost report has no
+  promotional-vs-card field, so every dollar since the grant start is attributed to the
+  grant; spend past the grant reads as zero remaining, never as credit. An operator reading
+  stays the fallback.
+- **Own concurrency cap:** api-lane launches (leg `claude-api:*`) are no longer counted in the
+  subscription FLEET cap. They are held to `HIMMEL_API_MAX_CONCURRENT` (default 10), refusing
+  `SKIPPED-FLEET` with `api lane at/over its own cap`.
+- **Ledger lock retry:** the mkdir lock is retried with jittered backoff for up to
+  `HIMMEL_API_LOCK_WAIT_MS` (default 5000) before `ledger-locked-or-unwritable`.
+
 ## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 
 > API credit lane: `scripts/api-lane/claude-api.sh` is the only API-key launch
