@@ -124,7 +124,7 @@ n_item=$(jq '[.rows[]|select(.source=="item")]|length' "$out")
 # a cadence's manifest item folds into its cadence row (spec §4: one identity)
 n_item_cad=$(jq '[.rows[]|select(.source=="cadence")]|length' "$out")
 [ "$n_item_cad" -eq 5 ] || fail "expected 5 cadence rows, got $n_item_cad"
-folded=$(jq -r '[.items[].id|select(.=="pipeline-cadence" or .=="graphmap-cadence" or .=="codex-sweep-cadence")]|length' "$repo_root/scripts/install/manifest.json")
+folded=$(jq -r '[.items[].id|select(.=="pipeline-cadence" or .=="graphmap-cadence" or .=="codex-sweep-cadence" or .=="doctor-cadence")]|length' "$repo_root/scripts/install/manifest.json")
 [ "$n_item" -eq $((manifest_n - folded)) ] || fail "item rows $n_item != manifest $manifest_n - folded $folded"
 pass "a1 item rows and 5 cadence rows"
 
