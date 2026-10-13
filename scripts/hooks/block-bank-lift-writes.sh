@@ -470,7 +470,8 @@ case "$CMD" in *$'\002'*|*$'\003'*|*$'\004'*|*$'\005'*|*$'\036'*|*$'\037'*) deny
 # a newline inside a token as \036. Quotes are removed (quoted metachars stay
 # literal), $'..' is decoded, backslash escapes become literals, comments and
 # line continuations drop. Redirects become the tokens \002W (write: > >> >|
-# &> <>) and \002R (read: < <<<) before their target. $( ), backticks, ( ),
+# &> <>), \002C (a `!` form: >! >>! &>! >&!, a zsh clobber whose next word
+# bash keeps as an operand) and \002R (read: < <<<) before their target. $( ), backticks, ( ),
 # <( ), >( ) open a nested depth whose clauses print as their own lines; the
 # outer word carries a "$" so it reads as dynamic. Heredoc bodies print as a
 # line "\002B\037<body>". A \002 decoded from $'..' prints a "\002X" line.
@@ -607,27 +608,27 @@ END {
         if (c == ")") { if (d > 0 && typ[d] == "p") close_sub(); else flush(); continue }
         if ((c == "<" || c == ">") && c2 == "(") { emit_tok(); i++; open_sub("p"); continue }
         if (c == "&" && c2 == ">") {
-            emit_mark(SB "W"); i++
+            i++
             if (substr(s, i + 1, 1) == ">") i++
-            if (substr(s, i + 1, 1) == "!") i++
+            if (substr(s, i + 1, 1) == "!") { i++; emit_mark(SB "C") } else emit_mark(SB "W")
             continue
         }
         if (c == ";" || c == "&" || c == "|" || c == "(") { flush(); continue }
         if (c == ">") {
             if (!quoted && tok ~ FDRE) tok = ""
-            j = i + 1
+            j = i + 1; bang = 0
             if (substr(s, j, 1) == ">") j++
             if (substr(s, j, 1) == "|") j++
-            if (substr(s, j, 1) == "!") j++
+            if (substr(s, j, 1) == "!") { j++; bang = 1 }
             if (substr(s, j, 1) == "&") {
                 j++
                 if (substr(s, j, 1) ~ /[0-9-]/) {
                     while (substr(s, j, 1) ~ /[0-9-]/) j++
                     emit_tok(); i = j - 1; continue
                 }
-                if (substr(s, j, 1) == "!") j++
+                if (substr(s, j, 1) == "!") { j++; bang = 1 }
             }
-            emit_mark(SB "W"); i = j - 1; continue
+            emit_mark(SB (bang ? "C" : "W")); i = j - 1; continue
         }
         if (c == "<") {
             if (!quoted && tok ~ FDRE) tok = ""
@@ -900,10 +901,12 @@ whole_command_gate() {
         while [ "$i" -lt "$nt" ]; do
             t="${tk[$i]//$'\036'/$'\n'}"
             case "$t" in
-                $'\002W')
+                $'\002W'|$'\002C')
                     i=$((i+1))
                     [ "${tk[$i]:-}" = /dev/null ] \
-                        || deny "the command names the bank lift and redirects output to ${tk[$i]:-?}; in such a command only /dev/null may be a redirect target" ;;
+                        || deny "the command names the bank lift and redirects output to ${tk[$i]:-?}; in such a command only /dev/null may be a redirect target"
+                    # bash reads `>!` as `>` to a file named `!`: the word is an operand too
+                    if [ "$t" = $'\002C' ] && [ -n "${tk[$i]:-}" ]; then args+=("${tk[$i]}"); fi ;;
                 $'\002R') i=$((i+1)) ;;
                 *) args+=("$t") ;;
             esac
@@ -1375,9 +1378,12 @@ EOF
         while [ "$i" -lt "$nt" ]; do
             t="${tk[$i]//$'\036'/$'\n'}"
             case "$t" in
-                $'\002W')
+                $'\002W'|$'\002C')
+                    local mk="$t"
                     i=$((i+1)); t="${tk[$i]:-}"
                     if [ -n "$t" ] && is_lift_dest "$t"; then deny "a redirect writes the bank lift ($t)$DEST_WHY"; fi
+                    # bash reads `>!` as `>` to a file named `!`: the word is an operand too
+                    if [ "$mk" = $'\002C' ] && [ -n "$t" ]; then args+=("$t"); fi
                     ;;
                 $'\002R')
                     i=$((i+1)); fed=1
@@ -2327,6 +2333,7 @@ case "$CMD" in
         deny "the command uses a zsh clobber-pipe operator (&>| >&| >>&| &>>|), which the fence cannot read a target from (fail-closed)" ;;
 esac
 _c_replace "$WTOK_SP" $'\002W' ' > '
+_c_replace "$REPLY" $'\002C' ' > '
 if _cmd_writes "$REPLY"; then
     # shellcheck disable=SC2016  # literal ${ text is matched, not expanded
     case "$REPLY" in

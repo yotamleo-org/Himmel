@@ -1544,6 +1544,14 @@ env_row "5159 redirect &>! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi &>
 env_row "5159 redirect >&! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi >&! "$D"'
 env_row "5159 redirect >! literal lift path"         deny "OTHER=1" "echo hi >! $LIFT"
 env_row "5159 redirect >! \$OUT (env=benign, ctrl)"  allow "OUT=/tmp/out.txt" 'echo hi >! "$OUT"'
+# CodeRabbit on PR 2479: in bash `>!` writes to a file named `!` and the next
+# word stays a command operand, so the word is both a target and an operand.
+row "5348 CR >! word stays an operand: cp src >! state dir"   deny 'cp /tmp/bank-l?ft.json >! ~/.himmel/state'
+row "5348 CR >>! word stays an operand: mv src >>! state dir"  deny 'mv /tmp/bank-l?ft.json >>! ~/.himmel/state'
+row "5348 CR &>! word stays an operand: cp src &>! state dir"  deny 'cp /tmp/bank-l?ft.json &>! ~/.himmel/state'
+row "5348 CR >&! word stays an operand: cp src >&! state dir"  deny 'cp /tmp/bank-l?ft.json >&! ~/.himmel/state'
+row "5348 CR &>>! word stays an operand: cp src &>>! state dir" deny 'cp /tmp/bank-l?ft.json &>>! ~/.himmel/state'
+row "5348 CR >! benign operand (ctrl)"                         allow 'cp /tmp/a >! /tmp/out'
 # Whole-command rule (judge j2413d): a writer word anywhere plus a reference
 # whose value names the state dir or the lift denies, whatever the operator.
 env_row "5159 whole-cmd &>| \"\$D\" clobber synonym"  deny "D=$LIFT" 'echo hi &>| "$D"'
