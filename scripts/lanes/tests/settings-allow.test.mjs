@@ -230,7 +230,15 @@ const LITERAL_FILE = /^(bash|bun|nohup bun) [A-Za-z0-9_./-]+\.(sh|ts|mjs|js):\*$
 // script (deliberately left out of EXACT_LITERALS above; see the RIDERS
 // comment). This list is ONLY for the structural check below, which scans
 // project-level ALLOW, not the leg-profile gateAllow the RIDERS check scans.
-const PROJECT_EXACT_LITERALS = ['bash scripts/cr/cr-scores.sh'];
+// HIMMEL-5037: the vm-runner console control, five exact literals (no `:*`).
+const PROJECT_EXACT_LITERALS = [
+  'bash scripts/cr/cr-scores.sh',
+  'bash scripts/handover/console-kit/vm-runner.sh on',
+  'bash scripts/handover/console-kit/vm-runner.sh on --vms 1',
+  'bash scripts/handover/console-kit/vm-runner.sh on --vms 2',
+  'bash scripts/handover/console-kit/vm-runner.sh off',
+  'bash scripts/handover/console-kit/vm-runner.sh status',
+];
 
 test('every path-naming Bash allow rule is a per-file literal, a step-0 literal or an enumerated quiet-run suite rule', () => {
   const pathRules = ALLOW.map((r) => /^Bash\(([\s\S]*)\)$/.exec(r)[1])
