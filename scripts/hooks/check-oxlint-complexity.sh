@@ -19,7 +19,8 @@
 # genuinely needs a higher ceiling, that is an operator call, not a
 # self-service edit.
 #
-# Fails OPEN (exit 0, loud WARN) when bunx/oxlint is unavailable or errors
+# Runs through `bun x` when only bun is installed (HIMMEL-5529).
+# Fails OPEN (exit 0, loud WARN) when bunx/bun/oxlint is unavailable or errors
 # out for a reason unrelated to a lint finding (e.g. no bun installed, no
 # network to fetch oxlint) — a lint gate must not brick commits on a box
 # that doesn't have bun.
@@ -36,8 +37,14 @@ OXLINT_VERSION=1.88.0
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root" || exit 1
 
-if ! command -v bunx >/dev/null 2>&1; then
-    echo "WARN check-oxlint-complexity: bunx not found on PATH — skipping complexity gate (fail-open)" >&2
+# bunx is bun's alias for `bun x`; some installs (e.g. ~/.bun/bin) ship only
+# `bun`, so fall back to it before failing open (HIMMEL-5529).
+if command -v bunx >/dev/null 2>&1; then
+    runner=(bunx)
+elif command -v bun >/dev/null 2>&1; then
+    runner=(bun x)
+else
+    echo "WARN check-oxlint-complexity: neither bunx nor bun found on PATH — skipping complexity gate (fail-open)" >&2
     exit 0
 fi
 
@@ -49,7 +56,7 @@ for f in scripts/hooks/*.mjs scripts/hooks/*.js scripts/observability/*.mjs scri
 done
 
 # shellcheck disable=SC2086 # word-split on purpose: directory/file list
-out=$(bunx "oxlint@$OXLINT_VERSION" -A all -W complexity \
+out=$("${runner[@]}" "oxlint@$OXLINT_VERSION" -A all -W complexity \
     --ignore-pattern 'dist/**' \
     --ignore-pattern 'node_modules/**' \
     --ignore-pattern '**/fixtures/**' \

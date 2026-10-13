@@ -6427,4 +6427,23 @@ out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
 rm -rf "$c60_t"
 
+# --- C62-oxlint-runner (HIMMEL-5529): can the oxlint commit gates run? ---
+c62_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c62.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c62_t/home"
+printf '#!/bin/sh\nexit 0\n' > "$c62_t/bun"; chmod +x "$c62_t/bun"
+c62_run() { HIMMEL_DOCTOR_BUNX="$1" HIMMEL_DOCTOR_BUN="$2" CLAUDE_DIR="$c62_t/home/claude" HOME="$c62_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C62-oxlint-runner: neither bunx nor bun -> WARN naming the fail-open + install remedy (RED) =="
+out="$(c62_run "$c62_t/no-bunx" "$c62_t/no-bun")"
+if grepq "$out" -F 'WARN C62-oxlint-runner' && grepq "$out" -F 'fail open' && grepq "$out" -F 'bun.sh/install'; then pass "C62 neither -> WARN"; else fail "C62 neither -> $(printf '%s' "$out" | grep -A1 C62)"; fi
+
+echo "== C62-oxlint-runner: bun without bunx -> OK via bun x (the station layout) =="
+out="$(c62_run "$c62_t/no-bunx" "$c62_t/bun")"
+if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'bun x'; then pass "C62 bun only -> OK"; else fail "C62 bun only -> $(printf '%s' "$out" | grep -A1 C62)"; fi
+
+echo "== C62-oxlint-runner: bunx present -> OK =="
+out="$(c62_run "$c62_t/bun" "$c62_t/no-bun")"
+if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'via bunx'; then pass "C62 bunx -> OK"; else fail "C62 bunx -> $(printf '%s' "$out" | grep -A1 C62)"; fi
+rm -rf "$c62_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
