@@ -51,14 +51,14 @@ def positive_int(s):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ledger")
-    ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--days", type=positive_int, default=7)
     ap.add_argument("--now", type=parse_now)
     ap.add_argument("--top", type=positive_int, default=5)
     ap.add_argument("--include-traj", action="store_true")
     a = ap.parse_args(argv)
 
     path = a.ledger or os.environ.get(LEDGER_ENV) or os.path.expanduser("~/.himmel/leg-failures.jsonl")
-    now = a.now or datetime.now(timezone.utc)
+    now = (a.now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     cutoff = now - timedelta(days=a.days)
 
     try:
@@ -88,16 +88,16 @@ def main(argv=None):
             if r.get("failure") == "traj" and not a.include_traj:
                 continue
             rows += 1
-            c = classes.setdefault(cls, {"sessions": {}, "count": 0})
+            c = classes.setdefault(cls, {"sessions": set(), "legs": {}, "count": 0})
             c["count"] += n
-            s = c["sessions"].setdefault(sess, [leg, 0])
-            s[1] += n
+            c["sessions"].add(sess)
+            c["legs"][leg] = c["legs"].get(leg, 0) + n
 
     ranked = sorted(classes.items(), key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["count"], kv[0]))
     print("session-retro: %s .. %s  rows=%d classes=%d skipped=%d  ledger=%s"
           % (cutoff.strftime("%Y-%m-%dT%H:%MZ"), now.strftime("%Y-%m-%dT%H:%MZ"), rows, len(classes), skipped, path))
     for i, (cls, c) in enumerate(ranked[: a.top], 1):
-        legs = [w for w, _ in sorted(c["sessions"].values(), key=lambda s: (-s[1], s[0]))[:EXAMPLES]]
+        legs = [w for w, _ in sorted(c["legs"].items(), key=lambda kv: (-kv[1], kv[0]))[:EXAMPLES]]
         print("%d\t%d\t%d\t%s\t%s" % (i, len(c["sessions"]), c["count"], cls, ",".join(legs)))
     return 0
 

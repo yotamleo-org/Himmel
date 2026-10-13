@@ -42,9 +42,10 @@ check "control: --include-traj lists it" 'grep -q "traj/red-before-green" "$TMP/
 echo "4. cap, read-only, missing ledger"
 sr --now 2026-10-09T00:00:00Z --top 1 >"$TMP/top1.out" 2>&1
 check "--top 1 prints one class row after the header" '[ "$(grep -c "^[0-9]" "$TMP/top1.out")" = 1 ]'
-BEFORE="$(sha256sum "$FX")"
+digest() { python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
+BEFORE="$(digest "$FX")"
 sr --now 2026-10-09T00:00:00Z >/dev/null 2>&1
-AFTER="$(sha256sum "$FX")"
+AFTER="$(digest "$FX")"
 check "the ledger is unchanged" '[ -n "$BEFORE" ] && [ "$AFTER" = "$BEFORE" ]'
 printf '%s\n' '{"ts":null,"session":"s","class":"c","count":1}' '{"ts":"2026-10-08T00:00:00","session":"s","class":"c","count":1}' '{"ts":"2026-10-08T00:00:00Z","session":null,"class":["x"],"count":1}' >"$TMP/bad.jsonl"
 python3 "$SR" --ledger "$TMP/bad.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/bad.out" 2>&1; brc=$?
@@ -59,6 +60,14 @@ python3 "$SR" --ledger "$FX" --now not-a-date >"$TMP/now.out" 2>&1; nrc=$?
 check "an invalid --now is a usage error (exit 2)" '[ "$nrc" = 2 ]'
 python3 "$SR" --ledger "$FX" --top -1 >"$TMP/neg.out" 2>&1; trc=$?
 check "a non-positive --top is a usage error (exit 2)" '[ "$trc" = 2 ]'
+
+printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":"N1","count":1}' '{"ts":"2026-10-08T00:00:01Z","session":"s","class":"c","leg":"N2","count":10}' >"$TMP/legs.jsonl"
+python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/legs.out" 2>&1
+check "example legs rank by leg occurrences within one session" 'grep -qE "c[[:space:]]+N2,N1$" "$TMP/legs.out"'
+python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1
+check "an offset --now is shown as the UTC instant" 'grep -q ".. 2026-10-09T00:00Z" "$TMP/off.out"'
+python3 "$SR" --ledger "$FX" --days -1 >"$TMP/days.out" 2>&1; drc=$?
+check "a non-positive --days is a usage error (exit 2)" '[ "$drc" = 2 ]'
 
 echo "test-session-retro: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
