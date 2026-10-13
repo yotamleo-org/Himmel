@@ -1924,7 +1924,7 @@ env_split_option() { # env_split_option <raw command> - false only when
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
     local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
-    local -a nm=() nb=() pp=() hs=() fc=() fl=()
+    local -a nm=() nb=() pp=() hs=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
         return 0
@@ -1944,14 +1944,20 @@ env_split_option() { # env_split_option <raw command> - false only when
         sg=${ST_S[$j]}
         w=${ST_W[$j]}
         if [ -z "${fc[sg]-}" ]; then
-            case "$w" in [A-Za-z_]*=* | -* | env | command | exec | nohup | sudo | time) ;; *) fc[sg]=${w##*/} ;; esac
+            case "$w" in
+                [A-Za-z_]*=*) ;;
+                -* | env | command | exec | nohup | sudo | time) wr[sg]=1 ;;
+                *) fc[sg]=${w##*/} ;;
+            esac
         fi
         case "${w##*/}" in bash | sh | zsh | dash | ksh | mksh) hs[sg]=1 ;; esac
     done
     sg=$((ST_NSEG - 1))
     while [ "$sg" -gt 0 ]; do
         if [ "${hs[sg]-}" = 1 ]; then
-            case "${fc[sg]-}" in
+            # a wrapper before the command word (`sudo -u grep bash`) means the
+            # first non-option word is not necessarily the command: no exemption
+            case "${wr[sg]-}${fc[sg]-}" in
                 grep | egrep | fgrep | rg | ag | ack | awk | sed | wc | which | type | echo | printf) ;;
                 *) fl[sg]=1 ;;
             esac

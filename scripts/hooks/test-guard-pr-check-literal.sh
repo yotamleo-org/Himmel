@@ -618,6 +618,7 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sort | grep x | sh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" |& cat | zsh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u root bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u grep bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | env FOO=1 bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | xargs -0 sh -c
 PIPETOSHELL
