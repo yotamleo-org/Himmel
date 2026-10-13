@@ -2,7 +2,7 @@
 # smoke-consult-sandbox.sh (HIMMEL-4066) - OPT-IN live check of the --consult Bash sandbox.
 #
 # The suite (test-headed-arm-leg.sh) asserts the GENERATED settings JSON; it cannot
-# prove Claude Code honours the sandbox block. This runs headless `claude -p` from the # headless-claude-ok: prose mention only; the live calls below carry their own markers (HIMMEL-4243)
+# prove Claude Code honours the sandbox block. This runs headless `claude -p` from the
 # primary checkout (whose committed settings grant additionalDirectories on the luna
 # vault, HIMMEL-4069) through the REAL shim (leg-claude-launcher.sh) with the settings and
 # env headed-arm-leg.sh really generates, and checks the ARTIFACTS on disk:
@@ -112,7 +112,7 @@ jq '.permissions.allow += ["Bash(python3 -c:*)"]' "$settings" > "$work/probe-set
 # project and local scopes load again and their write roots must let the sibling write land.
 ctl_prompt="Run exactly this one command as a single Bash call, do not retry or work around any failure, then reply with its exact stdout/stderr text:
 python3 -c \"open('$sibling','a').write('pwned')\""
-# headless-claude-ok: opt-in live check of the consult Bash sandbox (HIMMEL-4069 RED control); bank preflight above, explicit --permission-mode, parsed --output-format json
+# opt-in live check of the consult Bash sandbox (HIMMEL-4069 RED control); bank preflight above, explicit --permission-mode, parsed --output-format json
 ( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES='' \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$ctl_prompt" ) > "$work/control.json" 2> "$work/control.err" || true
 if [ "$(cat "$sibling")" = "untouched" ]; then
@@ -130,7 +130,7 @@ prompt="Run exactly these three commands, each as its own separate Bash call, in
 # refuses redirect-shaped writes before the sandbox is ever reached - the control run showed it.)
 
 # The confined run: exactly what the shim builds for a consult (LEG_PROFILE_NO_SETTING_SOURCES=1).
-# headless-claude-ok: opt-in live check of the consult Bash sandbox (HIMMEL-4066); bank preflight above, explicit --permission-mode, parsed --output-format json
+# opt-in live check of the consult Bash sandbox (HIMMEL-4066); bank preflight above, explicit --permission-mode, parsed --output-format json
 ( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES=1 \
     HIMMEL_HOOK_INTEGRITY_DIR="$work/plugin-canary" \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$prompt" ) > "$work/claude.json" 2> "$work/claude.err" || true

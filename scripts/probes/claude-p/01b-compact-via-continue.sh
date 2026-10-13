@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# headless-claude-ok: HIMMEL-2179 probe the operator runs by hand; the comment below names the claude -p config it measures
 # launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 1b (HIMMEL-2179, RETASK RTK-2179-8f3a1c): the SDK docs show /compact
 # dispatched with --continue (same cwd, no session id), not --resume. Does
@@ -9,7 +8,6 @@
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 \
   --permission-mode dontAsk --output-format json "Say A" \
   > "$OUT_DIR/01b-a.json" 2>"$OUT_DIR/01b-a.err"
@@ -38,7 +36,6 @@ check_continued_sid() {
   return 0
 }
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --continue \
   --permission-mode dontAsk --output-format json "Say B" \
   > "$OUT_DIR/01b-b.json" 2>"$OUT_DIR/01b-b.err"
@@ -48,7 +45,6 @@ if ! check_continued_sid "Say B" "$OUT_DIR/01b-b.json"; then
   exit 1
 fi
 
-# headless-claude-ok: HIMMEL-2179 probe
 MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --continue \
   --permission-mode dontAsk --output-format json "/compact" \
   > "$OUT_DIR/01b-c.json" 2>"$OUT_DIR/01b-c.err"

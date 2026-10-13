@@ -64,7 +64,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `plannotator-effective-html` | HTML design/UI artifact kit (design-artifact, html, html-diagram/-plan/-prototype/-wireframe) | ON-DEMAND — `design` profile only: measured 1 invocation in 1628 transcripts against ~630 tok/session cost, so it opts in per-dispatch instead of riding the ALWAYS tier |
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
-| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.0` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
+| `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
 | `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean legs and the console; catalog id `obsidian-second-brain@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
@@ -104,10 +104,10 @@ drift report; no marketplace install source or live setting is changed.
 
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
-| `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v6.4.2` (`8ca22dba9a94f28898bbce59f2537ff4d87c747d`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d` |
+| `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `49dd158d1076134a641b33efb035946536778336` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `59945da347a93f9937d3fb09f5ba81a16010351f` |
-| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v4.13.0` (`08e952d7a8057a57ce561ff1330d093fd92eec67`) |
+| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.1.1` (`6135ace05cd72736594fcf2c6830bea22780f91a`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -1924,7 +1924,7 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   writes nothing). A FAIL, or a WARN id absent from `alerted.tsv` (the set this
   script last alerted on; an ad-hoc doctor run never moves it), goes to Telegram through `scripts/luna/cadence-alert.sh`; the
   first-ever run is a baseline (FAILs only); a doctor that prints no Summary
-  line alerts too. `hud-custom-lines.sh` shows `doctor  N FAIL  M WARN` from
+  line alerts too. `hud-custom-lines.sh` shows `himmel-doctor  N FAIL  M WARN` from
   `counts` (read-only, silent when absent or clean). Registered in
   `cadence-registry.json` as `doctor`; cron only (Windows is parked).
   Report-only: repair is `himmel-update`'s drift pass. Arming is

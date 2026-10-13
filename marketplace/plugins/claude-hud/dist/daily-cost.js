@@ -9,6 +9,10 @@ const debug = createDebug('daily-cost');
 // Content changes always write; renders that only refresh last-seen times are throttled.
 export const DAILY_COST_WRITE_THROTTLE_MS = 30_000;
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// An update takes a few milliseconds, so a lock older than this belongs to a crashed process.
+const LOCK_STALE_MS = 2_000;
+const LOCK_WAIT_MS = 500;
+const LOCK_RETRY_MS = 10;
 const defaultDeps = {
     homeDir: () => os.homedir(),
     now: () => Date.now(),
@@ -77,12 +81,58 @@ function writeLedger(ledgerPath, ledger, now) {
         }
     }
 }
+// Renders run in separate processes that share one ledger. The rename in writeLedger keeps
+// the file whole, but two overlapping read-modify-write cycles still drop the earlier
+// writer's changes, including a whole new session and its baseline. A lock file taken with
+// O_EXCL makes each cycle run alone. The clock here is the real one, since `deps.now` is
+// the caller's logical time. If the lock can't be taken, the update goes ahead without it.
+function withLedgerLock(ledgerPath, update) {
+    const lockPath = `${ledgerPath}.lock`;
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    let held = false;
+    try {
+        fs.mkdirSync(path.dirname(ledgerPath), { recursive: true, mode: 0o700 });
+        while (!held) {
+            try {
+                fs.closeSync(fs.openSync(lockPath, 'wx', 0o600));
+                held = true;
+            }
+            catch (err) {
+                if (err.code !== 'EEXIST')
+                    throw err;
+                try {
+                    if (Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS)
+                        fs.rmSync(lockPath, { force: true });
+                }
+                catch {
+                    // The holder released it between the two calls; try again.
+                }
+                if (Date.now() >= deadline)
+                    throw new Error('timed out waiting for the ledger lock');
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_MS);
+            }
+        }
+    }
+    catch (err) {
+        debug('Updating the ledger without a lock:', err instanceof Error ? err.message : err);
+    }
+    try {
+        return update();
+    }
+    finally {
+        if (held)
+            fs.rmSync(lockPath, { force: true });
+    }
+}
 // Folds the session's native cost into the ledger and returns today's and this
 // week's spend across sessions, or null when nothing has been recorded.
 export function getCostTotals(stdin, options, deps = defaultDeps) {
+    const ledgerPath = getDailyCostLedgerPath(deps.homeDir());
+    return withLedgerLock(ledgerPath, () => updateLedger(ledgerPath, stdin, options, deps));
+}
+function updateLedger(ledgerPath, stdin, options, deps) {
     const now = deps.now();
     const today = localDateKey(now);
-    const ledgerPath = getDailyCostLedgerPath(deps.homeDir());
     const stored = readLedger(ledgerPath);
     const ledger = stored ?? { date: today, sessions: {}, week: { start: now, carry: 0 } };
     let changed = stored === null;

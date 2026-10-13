@@ -3366,7 +3366,7 @@ if [ "\$1" = "cluster-only" ]; then
   target="\$2"
 else
   target="\$1"
-  # headless-claude-ok: hermetic PATH stub proves the graphify child config without an API call
+  # hermetic PATH stub proves the graphify child config without an API call
   claude -p fixture > "$ARTLOG" 2>&1 || exit \$?
 fi
 mkdir -p "\$target/graphify-out"

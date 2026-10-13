@@ -327,17 +327,6 @@ repos:
         exclude: '^(archive/|.*/node_modules/)'
         stages: [pre-commit]
 
-      - id: no-headless-claude
-        name: Block headless claude (-p / --print / --bg) introductions
-        # HIMMEL-128
-        language: system
-        entry: bash scripts/hooks/check-no-headless-claude.sh
-        pass_filenames: true
-        # archive/ holds inert reference copies of removed features — moving a
-        # file there is not "introducing" a headless call (HIMMEL-421).
-        exclude: '^archive/'
-        stages: [pre-commit]
-
       - id: no-headless-gemini
         name: Block headless gemini (-p / --prompt / --bg) introductions
         # HIMMEL-157

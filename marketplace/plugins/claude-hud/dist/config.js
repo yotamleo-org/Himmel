@@ -39,6 +39,7 @@ const ELEMENTS = [
     'agents',
     'todos',
     'sessionTime',
+    'sessionTokens',
 ];
 // Orderable segments of the first line, shared by the expanded and compact layouts.
 const FIRST_LINE_SEGMENTS = [
@@ -53,7 +54,8 @@ const FIRST_LINE_SEGMENTS = [
     'speed',
     'auth',
 ];
-export const DEFAULT_ELEMENT_ORDER = [...ELEMENTS];
+// sessionTokens is left out so the tokens summary keeps its place on the last line until it's placed.
+export const DEFAULT_ELEMENT_ORDER = ELEMENTS.filter(element => element !== 'sessionTokens');
 export const DEFAULT_MERGE_GROUPS = [['context', 'usage']];
 // Empty keeps each renderer's native order until the user moves a segment.
 export const DEFAULT_PROJECT_LINE_ORDER = [];

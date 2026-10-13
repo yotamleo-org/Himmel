@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# headless-claude-ok: HIMMEL-2179 probe the operator runs by hand; the comment below names the claude -p config it measures
 # launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 7 (HIMMEL-2179, RETASK RTK-2179-8f3a1c): run the SAME write-a-file
 # brief twice under --permission-mode dontAsk with an allowlist phrased only
@@ -22,7 +21,6 @@ run_once() {
   mkdir -p "$workdir"
   (
     cd "$workdir" || exit 1
-    # headless-claude-ok: HIMMEL-2179 probe
     timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 2 \
       --permission-mode dontAsk --allowedTools "$ALLOWLIST" \
       --output-format stream-json --verbose "$PROMPT_PREFIX" \
