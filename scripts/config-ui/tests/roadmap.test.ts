@@ -149,6 +149,13 @@ test("the page renders every section and escapes ticket text", () => {
   expect(html).not.toContain("rm-board");
   expect(html).toContain('href="#/roadmap/v1.1.2"');
   expect(html).not.toContain("<script>x");
+  // the boards are where ticket titles render, so escaping is asserted there
+  const drill = renderRoadmap(r, { version: null, theme: null, ver: r.versions[r.tickets[0].v].n });
+  expect(drill).not.toContain("<script>x");
+  expect(drill).toContain("&lt;script&gt;x");
+  const board = renderKanban(r, { version: null, theme: null });
+  expect(board).not.toContain("<script>x");
+  expect(board).toContain("&lt;script&gt;x");
   // a theme filter narrows the drill-in board
   const tracker = renderRoadmap(r, { version: null, theme: r.themes.indexOf("tracker"), ver: "v1.1.2" });
   expect(tracker).not.toContain("Orphaned work");
