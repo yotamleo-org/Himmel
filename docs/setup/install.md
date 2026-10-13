@@ -136,10 +136,10 @@ Drop a `.single-writer` file at that repo's root (`touch .single-writer`) and
 on-main edits are allowed there. It is local and gitignored, so clones of the
 same repo stay protected — this is a per-checkout opt-out, not a repo policy.
 
-**4. The worktree workflow, and where the bypass goes.** `/worktree` creates an
+**4. The worktree workflow, and where the off switch goes.** `/worktree` creates an
 isolated branch and worktree next to your `.claude/` directory; `block-edit-on-main` and
 `check-worktree-isolation` keep work inside one. For a deliberate one-off, the
-bypass is `EDIT_ON_MAIN_OK=1` — and it must be set in the shell that **launches**
+off switch is `EDIT_ON_MAIN_OK=1` — and it must be set in the shell that **launches**
 Claude Code (`EDIT_ON_MAIN_OK=1 claude`). A per-call prefix inside a session does
 nothing, because the hook runs in a process that never sees it. This is the most
 common adopter confusion; it is worth reading twice.
@@ -148,7 +148,7 @@ common adopter confusion; it is worth reading twice.
 per-hook: remove the stanza from the `.claude/settings.json` the installer
 wired, or the hook id from `.pre-commit-config.yaml`.
 - **Reasonable to disable:** the ticket-ID requirement, the attestation
-  trailers, the doc-freshness advisory, and the backend-routing guard
+  trailers, the doc-freshness warn-only hook, and the backend-routing guard
   (`block-backend-tier.sh`) if you have no Jira.
 - **Keep:** `block-read-secrets.sh` (stops `.env`, `*.pem`, `id_rsa` and
   friends from reaching the model as tool results) and
@@ -166,7 +166,7 @@ worktree workflow.
 | Telegram (`scripts/telegram/`) | Remote dispatch and chat bridge | Absent without a bot token |
 | hermes (`scripts/hermes/`) | Free-inference junior and review lanes | Absent without API keys |
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
-| overnight mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
+| AFK (unattended) mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
 ## Verify
 

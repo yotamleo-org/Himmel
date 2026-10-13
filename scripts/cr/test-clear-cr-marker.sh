@@ -3440,6 +3440,115 @@ if marker_exists "$tmp"; then pass; else fail "10d: marker must REMAIN"; fi
 if grep -q 'reason=certify-refused-unreadable' "$tmp/.git/clear-cr-marker.log" 2>/dev/null; then pass; else fail "10d: audit line names certify-refused-unreadable"; fi
 rm -rf "$tmp"
 
+# 11a-11e. HIMMEL-5416 -- a pre-PR commit after the last review round (rounds
+# 1-3 plus the delta ran at head A, a test-file fix B landed, no PR yet) used to
+# deadlock: no critic row at B, and the one delta round is spent. When B only
+# touches test paths (HIMMEL-5109 rule) and has no ledger rows of its own, gate 3
+# is evaluated at the last counted round head A, which a critic did review.
+# review_b <tmp> <path> <content> -- commit <content> at <path> on top of $sha,
+# push it, and point the marker at the new tip (sets B).
+review_b() {
+    local t="$1" p="$2" c="$3"
+    # The copied fixture scripts differ from the template commit, so settle them
+    # into the reviewed head A first: A..B must hold ONLY the delta under test.
+    git -C "$t" add -A >/dev/null 2>&1
+    git -C "$t" commit -qm "A: reviewed head" >/dev/null 2>&1
+    sha=$(git -C "$t" rev-parse --verify refs/heads/feat/x)
+    mkdir -p "$t/$(dirname "$p")"
+    printf '%s\n' "$c" >> "$t/$p"
+    git -C "$t" add "$p" >/dev/null 2>&1
+    git -C "$t" commit -qm "fix: $p" >/dev/null 2>&1
+    git -C "$t" push -q origin feat/x >/dev/null 2>&1
+    B=$(git -C "$t" rev-parse --verify refs/heads/feat/x)
+    [ "$B" != "$sha" ] || fail "review_b: the delta commit did not advance the branch past the reviewed head"
+    write_marker "$t" "$B"
+    mkdir -p "$t/.git/cr-review-rounds/feat"
+    printf '%s\n' "$sha" > "$t/.git/cr-review-rounds/feat/x.head"
+}
+
+# 11a. test-only B, no rows at B, A reviewed and clean -> clears with no operator.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "11a trivial descendant of the reviewed head clears at gate 3 -> exit 0"
+if marker_exists "$tmp"; then fail "11a: marker must be cleared"; else pass; fi
+if grepq "$LAST_CLEAR_OUT" -F 'reviewed head'; then pass; else fail "11a: the clearance must name the reviewed head: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 11b. a non-test B is NOT reviewed -> still refused (no-responders).
+make_repo || exit 1
+review_b "$tmp" f.txt "echo changed behaviour"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11b non-trivial unreviewed delta is still refused -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "11b: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 11c. a blocking finding at A still blocks B (the gates run at A, not around it).
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(finding "$sha" crit "")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 15 "11c a blocking finding at the reviewed head still refuses -> exit 15"
+rm -rf "$tmp"
+
+# 11d. B carries its own ledger rows (a panel ran there): those are authoritative,
+# so a row-less-but-blocked B is judged on its own rows, never on A's.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(avail_bad "$B")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11d a head with its own ledger rows is judged on them -> exit 14"
+rm -rf "$tmp"
+
+# 11e. no recorded round head -> no fallback (fail closed).
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+rm -f "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11e no counted round head recorded -> exit 14"
+rm -rf "$tmp"
+
+# 11f. a comment-only delta in a NON-test script is not reviewed code: the
+# fallback takes test paths only (a "# " line in a .sh or a skill .md can still
+# change what runs or what an agent reads), so this stays refused.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/clear-cr-marker.sh "# a comment only delta"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11f comment-only delta in a non-test script is refused -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "11f: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 11g. the recorded round head is a symlink -> ignored (same-uid redirect).
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+rm -f "$tmp/.git/cr-review-rounds/feat/x.head"
+printf '%s\n' "$sha" > "$tmp/real-head"
+ln -s "$tmp/real-head" "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11g a symlinked round head file is refused -> exit 14"
+rm -rf "$tmp"
+
+# 11h. a short or non-hex recorded round head -> no fallback.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+printf '%s\n' "${sha:0:7}" > "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11h a short round head is refused -> exit 14"
+rm -rf "$tmp"
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+printf '%s\n' "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" > "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11h a non-hex round head is refused -> exit 14"
+rm -rf "$tmp"
+
 echo
 echo "clear-cr-marker: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -11,6 +11,8 @@ const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
 const TAIL_BYTES = 64 * 1024;
 const TREND_ROWS = 30;
 const NO_THEME = "(no theme)";
+const THEME_PREFIX = "theme-"; // HIMMEL-5491: the Jira label `theme-<slug>`, read before the plan overlay
+const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK"]);
 const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
 const NOTED = new Set(["READY", "WRAPPED"]);
@@ -31,7 +33,7 @@ export type SyncOp = { k: number; marker: string; argv: string[]; why: string };
 export type Roadmap = {
   state: "ok" | "absent"; reason?: string;
   mirror: { dir: string; count: number; newest: string };
-  releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[];
+  releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; themeSlugs: string[]; // themeSlugs: the label slug per theme ("" for no theme)
   plan: { state: "ok" | "absent"; reason?: string; dir?: string };
   cur: number; next: number;
   drift: { now: { drift: number; unplanned: number; unthemed: number }; trend: [string, number, number, number][] };
@@ -135,7 +137,7 @@ const normTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").tri
 
 export function readRoadmap(o: Opts): Roadmap {
   const mir = readMirror(o.mirrorDir);
-  const empty: Roadmap = { state: "absent", mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_THEME],
+  const empty: Roadmap = { state: "absent", mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_THEME], themeSlugs: [""],
     plan: { state: "absent" }, cur: -1, next: -1, drift: { now: { drift: 0, unplanned: 0, unthemed: 0 }, trend: [] },
     librarian: { staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] } };
   if (!mir.length) return { ...empty, reason: `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
@@ -151,7 +153,14 @@ export function readRoadmap(o: Opts): Roadmap {
     else planReason = `no stage3/placement.tsv in ${o.planDir}`;
   }
   const themeOf = o.planDir ? readTheme(o.planDir) : new Map<number, string>();
+  // HIMMEL-5491: a ticket's Jira theme label wins; a slug that matches a plan theme shows that theme's name.
+  const planNames = new Map([...themeOf.values()].map((n) => [slugOf(n), n] as [string, string]));
+  for (const m of mir) {
+    const lab = m.labels.find((l) => l.startsWith(THEME_PREFIX) && l.length > THEME_PREFIX.length);
+    if (lab) themeOf.set(m.k, planNames.get(lab.slice(THEME_PREFIX.length)) ?? lab.slice(THEME_PREFIX.length));
+  }
   const themes = [...new Set([NO_THEME, ...themeOf.values()])].sort();
+  const themeSlugs = themes.map((t) => (t === NO_THEME ? "" : slugOf(t)));
 
   // Legs: ticket number -> the last leg listed for it.
   const legs = new Map<number, Leg>();
@@ -207,7 +216,7 @@ export function readRoadmap(o: Opts): Roadmap {
 
   return {
     state: "ok", mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
-    releaseUnknown: unknown, versions, tickets, themes,
+    releaseUnknown: unknown, versions, tickets, themes, themeSlugs,
     plan: place ? { state: "ok", dir: o.planDir } : { state: "absent", reason: planReason },
     cur, next, drift: { now, trend: o.driftLog ? readTrend(o.driftLog) : [] }, librarian,
   };

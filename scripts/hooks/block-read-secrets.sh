@@ -1384,6 +1384,21 @@ case "$tool" in
         cmd="$_rd_cmd"
         [ -z "$cmd" ] && exit 0
 
+        # HIMMEL-5331: re-read the command with its variable expansions
+        # removed, so a `${V:-}cat .env` is judged as the `cat .env` the shell
+        # runs when V is empty. A must-run dependency: if it cannot be
+        # sourced, deny.
+        case "${BASH_SOURCE[0]}" in
+            */*) _gee_lib=${BASH_SOURCE[0]%/*}/../lib/guard-empty-expansion.sh ;;
+            *) _gee_lib=../lib/guard-empty-expansion.sh ;;
+        esac
+        # shellcheck source=../lib/guard-empty-expansion.sh
+        if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
+            echo "block-read-secrets: cannot load $_gee_lib - failing closed" >&2
+            exit 2
+        fi
+        guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
+
         # HIMMEL-4438: re-read the forms the shell actually runs (quotes
         # removed, wrappers stripped, `bash -c`/`eval` bodies) through this
         # same hook. The lib is a must-run dependency: if it cannot be

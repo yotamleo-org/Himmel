@@ -129,7 +129,7 @@ closure() {
   local seen="" queue f e
   queue="$(
     grep -ohE '<himmel_dir>/scripts/[A-Za-z0-9_./-]+\.(sh|js|mjs|py)' \
-      "$ROOT/.claude/commands/pr-check.md" "$ROOT/.agents/skills/pr-check/SKILL.md" \
+      "$ROOT/.claude/commands/pr-check.md" "$ROOT"/scripts/cr/pr-check-ref/*.md "$ROOT/.agents/skills/pr-check/SKILL.md" \
       | sed 's#^<himmel_dir>/##'
     for f in "$ROOT"/scripts/cr/*.sh "$ROOT"/scripts/cr/*.js "$ROOT"/scripts/cr/*.mjs; do
       [ -f "$f" ] || continue

@@ -116,6 +116,13 @@ test('contextTokens tracks the main conversation and compactions', async () => {
   ]);
   assert.equal(r.contextTokens, 10_000, 'subagent requests run against their own context');
 
+  // #809: a gateway's per-block thinking record carries all-zero usage mid-stream.
+  const streaming = await parse([
+    assistant({ timestamp: at(1) }, { usage: usage(1_000, 0, 500, 8_500) }),
+    assistant({ timestamp: at(2) }, { content: [{ type: 'thinking', thinking: '' }], usage: usage(0) }),
+  ]);
+  assert.equal(streaming.contextTokens, 10_000, 'a zero-usage record keeps the last real size');
+
   const compacted = await parse([
     assistant({ timestamp: at(1) }, { usage: usage(50_000) }),
     { type: 'system', subtype: 'compact_boundary' },

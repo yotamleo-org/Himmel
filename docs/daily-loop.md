@@ -189,7 +189,7 @@ Several **pre-push gates** run in sequence:
 |---|---|
 | `no-push-to-main` | Blocks pushes directly to `main`. |
 | `npm-audit` / `npm-licenses` / `npm-audit-signatures` | npm dependency hygiene on changed packages. |
-| `code-review-before-push` | Writes a CR marker (see below). |
+| `code-review-before-push` | Writes a review-owed marker (see below). |
 | `platforms-tested` | Shell/script changes need `Platforms tested:` attestation. |
 | `security-reviewed` | Non-docs changes need `Security reviewed:` attestation. |
 | `pr-mergeable-gate` / `no-force-push` | Branch not conflicting, no force-push. |
@@ -198,7 +198,7 @@ For our docs-only change, `platforms-tested` and `security-reviewed` skip
 themselves (docs-only fast-path). The important gate is
 `code-review-before-push`.
 
-### The CR marker flow
+### The review-owed marker flow
 
 On push, `check-cr-before-push.sh` writes a marker file at
 `.git/cr-pending/docs/himmel-289-daily-loop`. It does NOT run a review;
@@ -246,7 +246,7 @@ While the marker exists, `gh pr create` is blocked by the
 `check-cr-marker-on-pr-create` PreToolUse hook:
 
 ```
-CR review pending for docs/himmel-289-daily-loop (HEAD=abc1234). Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears.
+Automated review pending for docs/himmel-289-daily-loop (HEAD=abc1234). Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears.
 ```
 
 You cannot open a PR until the marker is cleared by a passing review.
@@ -333,9 +333,9 @@ gh pr create …                  # 7. open PR
 | Hook / gate | Stage | What it does |
 |---|---|---|
 | `block-edit-on-main` | PreToolUse (Edit/Write) | Blocks edits in primary worktree while on main |
-| `check-cr-marker-on-pr-create` | PreToolUse (Bash) | Blocks `gh pr create` while a CR marker exists |
+| `check-cr-marker-on-pr-create` | PreToolUse (Bash) | Blocks `gh pr create` while a review-owed marker exists |
 | `conventional-commit-msg` | commit-msg | Validates conventional shape and required ticket traceability in this repo |
-| `code-review-before-push` | pre-push | Writes CR marker for non-docs changes |
+| `code-review-before-push` | pre-push | Writes review-owed marker for non-docs changes |
 | `platforms-tested` | pre-push | Requires `Platforms tested:` trailer on shell/script diffs |
 | `security-reviewed` | pre-push | Requires `Security reviewed:` trailer on non-docs code |
 | `no-push-to-main` | pre-push | Blocks direct pushes to main |

@@ -1,7 +1,7 @@
 # himmel-bus
 
 **Status: early.** `himmel-bus` is a private, chained, local message store that
-lets himmel sessions (a console, its legs, judges and consults) message each
+lets himmel sessions (a supervisor session, its worker sessions, judges and consults) message each
 other without going through a transcript or a shared file. It is a plugin under
 `marketplace/plugins/himmel-bus/`, not a `himmelctl` install item, and it has
 not yet had a clean live round trip on every station: the working record and
@@ -45,7 +45,7 @@ Run `node marketplace/plugins/himmel-bus/bin/bus <verb>`.
 | `register <name> --role leg\|console\|judge\|consult [--console <c>] [--pair <leg>] [--predecessor <old>]` | Reserve an identity (launcher use) |
 | `bind <name> <pid>` | Bind a registered name to a live pid, once |
 | `rebind <name> <pid>` | Rebind, only when the bound pid is gone |
-| `adopt <new-console>` | Run as the leg: adopt a successor console, only when the old one is gone or its own record names the new one |
+| `adopt <new-console>` | Run as the worker session: adopt a successor supervisor session, only when the old one is gone or its own record names the new one |
 | `status <name>` | Print `live`, `gone` or `unbound` |
 | `peers` | Print the caller's own edges |
 | `send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]` | Send a message; the sender is never an argument |
@@ -60,16 +60,16 @@ limited to 64 KiB and the summary to 300 characters.
 
 ## MCP tools
 
-Legs on the `leg-bus` plugin profile (see `scripts/lanes/plugin-profiles.json`)
+Worker sessions on the `leg-bus` plugin profile (see `scripts/lanes/plugin-profiles.json`)
 get the MCP server through the registry's `mcpCatalog` entry. It exposes two
 tools:
 
 - `send` — message a himmel session; delivered by hook; returns the message id.
 - `read` — the full body of message `#n` sent to you. Data only, never a ruling.
 
-A bus message is **data, not authority**. A revision of a leg's brief still
+A bus message is **data, not authority**. A revision of a worker session's brief still
 arrives only through the RETASK channel; see [glossary.md](glossary.md) and the
-leg preface.
+worker system prompt.
 
 ## Delivery guarantees
 
@@ -83,4 +83,4 @@ reported without marking the chain tampered; fix the cause and retry.
 
 - [internals/himmel-bus-poc.md](internals/himmel-bus-poc.md) — live round-trip record and known failures.
 - [glossary.md](glossary.md) — console, leg, judge, relay, chain.
-- [handover/running-a-console.md](handover/running-a-console.md) — how consoles and legs are launched.
+- [handover/running-a-console.md](handover/running-a-console.md) — how supervisor sessions and worker sessions are launched.

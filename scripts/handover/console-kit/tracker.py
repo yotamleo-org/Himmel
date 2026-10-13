@@ -947,6 +947,12 @@ def main():
     for r in read_tsv(ovp)[1] if os.path.exists(ovp) else []:
         if r.get('theme') and theme.get(r['key'], '(no theme)') == '(no theme)':
             theme[r['key']] = r['theme']
+    # HIMMEL-5491: a Jira `theme-<slug>` label wins over the plan (the Kanban writes it); a slug matching a plan theme shows its name.
+    by_slug = {re.sub(r'[^a-z0-9]+', '-', t.lower()).strip('-'): t for t in set(theme.values())}
+    for k, m in mir.items():
+        lab = next((x for x in m.get('labels', []) if isinstance(x, str) and x.startswith('theme-') and len(x) > 6), '')
+        if lab:
+            theme[k] = by_slug.get(lab[6:], lab[6:])
     # HIMMEL-3957 row fields: user-facing impact (stage1 explain), readiness + T-shirt range (stage2).
     for p in sorted(glob.glob(os.path.join(ROOT, 'stage1', 'C??.explain.tsv'))):
         for r in read_tsv(p)[1]:
