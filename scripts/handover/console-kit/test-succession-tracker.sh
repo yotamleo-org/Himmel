@@ -95,13 +95,14 @@ cat > "$MAN" <<EOF
 ]}
 EOF
 sum_before="$(cksum < "$CDOC")"
+man_before="$(cksum < "$MAN")"
 out="$(run)"; rc=$?
 eq "every leg quoted back: complete (rc 0)" "$rc" 0
 has "COMPLETE 2/2 is printed" "$out" "COMPLETE 2/2"
 has "the exact LIVE line is printed for append-results.sh" "$out" "bash scripts/handover/console-kit/append-results.sh $CDOC \"LIVE —"
 lacks "the LIVE bullet carries no > character" "$(printf '%s\n' "$out" | grep 'append-results.sh')" ">"
 eq "it only prints: the console doc is untouched" "$(cksum < "$CDOC")" "$sum_before"
-eq "and the manifest is untouched too" "$(cksum < "$MAN")" "$(cksum < "$MAN")"
+eq "and the manifest is untouched too" "$(cksum < "$MAN")" "$man_before"
 
 # no legs at all is not a complete set
 printf '# console\n\n## Live state\nlegs:\n' > "$CDOC"

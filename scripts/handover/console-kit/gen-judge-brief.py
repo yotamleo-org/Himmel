@@ -80,6 +80,9 @@ def validate(s):
         die('pr must be a PR number')
     if bool(s.get('pr')) != bool(s.get('head')):
         die('pr and head go together (the judge reads the PR at that head)')
+    for k in ('description', 'completion', 'do_not', 'model'):
+        if s.get(k) is not None and (not isinstance(s[k], str) or not s[k].strip()):
+            die('%s must be non-blank text when given' % k)
     t = s['tier']
     if not isinstance(t, dict) or t.get('category') not in TIER_CATEGORIES:
         die('tier.category must be one of %s' % '|'.join(TIER_CATEGORIES))
@@ -89,8 +92,9 @@ def validate(s):
     if not tier_gate(s.get('model') or DEFAULT_MODEL):
         die('model %r is not an opus or fable model; a judge launches at one of them' % (s.get('model'),))
     ev = s.get('evidence') or []
-    if not isinstance(ev, list) or not all(isinstance(e, dict) and e.get('item') and e.get('for') for e in ev):
-        die('evidence must be a list of {item, for}')
+    if not isinstance(ev, list) or not all(isinstance(e, dict) and isinstance(e.get('item'), str) and e['item'].strip()
+                                  and isinstance(e.get('for'), str) and e['for'].strip() for e in ev):
+        die('evidence must be a list of {item, for} with non-blank text')
     at = s.get('attack') or []
     if not isinstance(at, list) or not all(isinstance(a, str) and a.strip() for a in at):
         die('attack must be a list of non-blank lines')
@@ -120,7 +124,8 @@ def evidence_text(s):
         out.append('%d. %s' % (n, text))
     if s.get('pr'):
         item('PR %s at head `%s`: the change under review. Read the diff at that head, not main '
-             '(`gh pr diff %s`; `git archive %s` for a tree).' % (s['pr'], s['head'], s['pr'], s['head']))
+             '(`git archive %s` for a tree; `gh pr diff %s` reads the PR\'s CURRENT head, so check '
+             '`gh pr view %s --json headRefOid` equals the head first).' % (s['pr'], s['head'], s['head'], s['pr'], s['pr']))
     for k in [s['ticket']] + [t for t in (s.get('tickets') or []) if t != s['ticket']]:
         item('Ticket %s: the ask(s) the change claims to meet '
              '(`JIRA_PROJECT_KEY=%s node <primary checkout>/scripts/jira/dist/index.js get %s`, comments included).'
@@ -145,7 +150,7 @@ def render(s, a, template):
     gate = tier_gate(model)
     desc = s.get('description') or ('Rule on %s: %s' % (s['ticket'], s['question']))
     desc = ' '.join(desc.split())
-    sub_para(paras, '---\nresume_cwd:', '---\nresume_cwd: %s\ndescription: %s\ntemplate_version: 1\n---' % (s['_scratch'], desc))
+    sub_para(paras, '---\nresume_cwd:', '---\nresume_cwd: %s\ndescription: %s\ntemplate_version: 1\n---' % (s['_scratch'], json.dumps(desc, ensure_ascii=False)))
     sub_para(paras, '# <TICKET> —', '# %s — judge verdict %s — %s, %s' % (s['ticket'], s['qid'], s['question'], a.date))
     sub_para(paras, '> **You are the judge for', paras[[i for i, p in enumerate(paras) if p.startswith('> **You are the judge for')][0]].replace('<model>', model))
     sub_para(paras, '> **Tier:**', '> **Tier:** %s — %s: %s' % (gate, s['tier']['category'], s['tier']['reason']))

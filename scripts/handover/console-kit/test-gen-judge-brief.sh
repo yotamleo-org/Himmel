@@ -62,7 +62,7 @@ has "the author doc is evidence" "$b" "$WORK/author-doc.md"
 has "an attack-list item is carried" "$b" "a bullet with trailing prose after the replaces clause"
 has "a console-supplied evidence item is carried" "$b" "the reviewer's finding text"
 has "the Lifecycle rule from the template survives" "$b" "**Lifecycle — the one rule.**"
-has "the front matter has the description" "$b" "description: Rule on whether the succession tracker's bullet parse is strict"
+has "the front matter has the description" "$b" "description: \"Rule on whether the succession tracker's bullet parse is strict\""
 has "resume_cwd is the scratch dir outside the handover root" "$b" "resume_cwd: $WORK/verdicts/j2599a/scratch"
 lacks "no <qid> placeholder is left" "$b" "<qid>"
 lacks "no <console session name> placeholder is left" "$b" "<console session name>"
@@ -73,10 +73,13 @@ lacks "the console's own conclusion field never appears" "$b" "conclusion"
 
 # the launcher's own Tier gate: a copy arms through headed-arm-leg.sh --dry-run
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
-mkdir -p "$WORK/arm" "$WORK/verdicts/j2599a/scratch"
+mkdir -p "$WORK/arm" "$WORK/handovers" "$WORK/verdicts/j2599a/scratch"
 rc=0; arm_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-leg.sh" --dry-run --judge --console "$CONSOLE" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
-case "$arm_out" in *"Tier"*"refus"*|*"Prior art"*) fail "headed-arm-leg --judge refused the generated brief: $arm_out" ;; *) pass "headed-arm-leg --judge's Tier and prior-art gates accept the generated brief" ;; esac
-: "$rc"
+if [ "$rc" = 0 ] && case "$arm_out" in *"headed-arm-leg: would exec:"*) true ;; *) false ;; esac; then
+    pass "headed-arm-leg --judge's Tier and prior-art gates accept the generated brief (dry-run completed, rc 0)"
+else
+    fail "headed-arm-leg --judge did not complete a dry run on the generated brief (rc=$rc): $arm_out"
+fi
 
 # refusals: nothing written
 rm -rf "$BUCKET"
@@ -101,6 +104,8 @@ mutate blank 'd["tier"]["reason"]="  "';                  refuse "a blank tier r
 mutate badqid 'd["qid"]="J 1"';                           refuse "a qid with a space is refused" badqid "qid"
 mutate concl 'd["conclusion"]="the finding is real"';     refuse "a spec carrying a conclusion is refused (blind, not thin)" concl "blind"
 mutate recom 'd["recommendation"]="NO-GO"';               refuse "a spec carrying a recommendation is refused" recom "blind"
+mutate badev 'd["evidence"]=[{"item":"x","for":5}]';       refuse "a non-string evidence field is refused with a diagnostic" badev "evidence"
+mutate badmodel 'd["model"]=7';                           refuse "a non-string model is refused with a diagnostic" badmodel "model"
 mutate badtk 'd["tickets"]=["not-a-key"]';                refuse "a malformed ticket key is refused" badtk "ticket"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
