@@ -20,7 +20,7 @@
    bash "<himmel_dir>/scripts/cr/impacted-suites.sh" --check <db_sha>..<head> --from-file <scratch-path>
    ```
    with `<scratch-path>` containing lines of the form:
-   ```
+   ```text
    SUITE <path> = PASS
    SUITE <path> = SKIP <reason>
    ```

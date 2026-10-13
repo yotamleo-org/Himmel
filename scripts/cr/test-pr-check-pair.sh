@@ -1060,7 +1060,11 @@ for r in $named_refs; do
 done
 for ref in "$CLAUDE_REF_DIR"/*.md; do
     b=$(basename "$ref")
-    printf '%s\n' "$named_refs" | grep -qxF "$b" && continue
+    case "
+$named_refs
+" in *"
+$b
+"*) continue ;; esac
     fail "scripts/cr/pr-check-ref/$b is not named by the driver -- an orphaned reference file is read by nobody"
 done
 
