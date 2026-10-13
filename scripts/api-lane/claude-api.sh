@@ -141,11 +141,12 @@ RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
+# The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
 # headless-claude-ok: HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
-env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
+ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
-  ANTHROPIC_API_KEY="$KEY" ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
+  ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
   --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
 RC=$?

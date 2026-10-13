@@ -92,9 +92,11 @@ mode 600), or in the launching shell's `ANTHROPIC_API_KEY`.
 The snapshot row of each account is refreshed from a Console reading with
 `node scripts/api-lane/grant-snapshot.mjs <A|B> <remaining-usd> [<grant-usd>
 <starts YYYY-MM-DD> <expires YYYY-MM-DD>]`; the long form (re)writes the grant
-(dates as 00:00 UTC), run from the primary checkout. A refresh also moves `reconciled_spent_usd` to the spend
-the Console already shows, so a refresh after a settled call does not count
-that call twice.
+(dates as 00:00 UTC), run from the primary checkout. A refresh also moves `reconciled_spent_usd` up by the
+billed spend added since the previous reading, never by more than the ledger
+spend added since, so a settled call is counted once whether or not the
+Console shows it yet. A new grant row starts it at zero. The refresh holds the
+ledger lock.
 `HIMMEL_API_CREDIT_CONFIG` can still point at a second config with its own
 ledger; pinning it is HIMMEL-5444.
 

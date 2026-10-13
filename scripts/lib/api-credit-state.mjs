@@ -264,12 +264,16 @@ export function pickAccount(budget, env = process.env) {
 
 // HIMMEL-5433: operator snapshot refresh from a Console reading. The reading
 // already includes every job the provider has billed, so the watermark moves up
-// to the ledger's settled spend; without it that spend counts twice. It is
-// capped at the provider-observed spend, so a Console figure that lags a fresh
-// settlement still counts the unbilled part locally.
-// ponytail: a Console figure that lags by more than the cap is read as current,
-// upgrade path: the Admin cost_report collector (task 6 of the HIMMEL-4904 plan).
+// with it; without that the billed spend counts twice. It moves by the smaller
+// of the local spend and the billed spend added since the previous reading, so
+// spend billed earlier (outside the ledger) never hides a settlement the Console
+// does not show yet. A new grant row starts the watermark at zero (conservative).
+// ponytail: billed spend from outside the ledger that lands in the same window
+// as an unbilled settlement is read as that settlement (exclusive_org attests
+// there is none), upgrade path: the Admin cost_report collector (task 6 of the
+// HIMMEL-4904 plan).
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires }) {
+  let lock = null;
   try {
     if (!['A', 'B'].includes(account)) refuse('account-required');
     const config = read(configPathFor(env));
@@ -279,7 +283,8 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     const path = env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json');
     const snapshot = existsSync(path) ? read(path) : { version: 1, accounts: {} };
     if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts)) refuse('invalid-snapshot');
-    const s = { ...(snapshot.accounts[account] ?? {}) };
+    const prior = snapshot.accounts[account];
+    const s = { ...(prior ?? {}) };
     if (grant !== undefined) {
       const day = (d) => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(d ?? '')) refuse('invalid-date');
@@ -292,22 +297,36 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     Object.assign(s, { organization_id: c.organization_id, cycle_id: c.cycle_id });
     const left = money(remaining), granted = money(s.grant_usd);
     if (left > granted) refuse('unreconciled-amounts');
+    // The ledger's own transaction lock: no reservation or settlement moves the
+    // spend between this read and the snapshot write, and no second refresh races it.
     const ledgerPath = resolve(config.ledger_path);
+    const held = `${join(realpathSync(dirname(ledgerPath)), basename(ledgerPath))}.lock`;
+    try { mkdirSync(held, { mode: 0o700 }); lock = held; } catch { refuse('ledger-locked-or-unwritable'); }
     const ledger = existsSync(ledgerPath) ? read(ledgerPath) : { version: 1, accounts: {} };
     ledgerCheck(ledger);
     const { spent } = totals(ledger.accounts[account]);
     const billed = granted - left;
-    s.reconciled_spent_usd = usd(spent < billed ? spent : billed);
+    const same = object(prior) && ['grant_usd', 'starts_at', 'expires_at'].every((k) => prior[k] === s[k]);
+    let mark = 0n;
+    if (same) {
+      const was = money(prior.reconciled_spent_usd);
+      const step = [spent - was, billed - (money(prior.grant_usd) - money(prior.remaining_usd))]
+        .reduce((x, y) => (x < y ? x : y));
+      mark = was + (step > 0n ? step : 0n);
+    }
+    s.reconciled_spent_usd = usd(mark);
     s.remaining_usd = usd(left);
     s.observed_at = Math.floor(Date.now() / 1000);
     s.source = 'operator-console-snapshot';
     snapshot.accounts[account] = s;
-    writeFileSync(`${path}.tmp`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
-    renameSync(`${path}.tmp`, path);
+    writeFileSync(`${path}.${process.pid}.tmp`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+    renameSync(`${path}.${process.pid}.tmp`, path);
     return { verdict: 'PROCEED', account, remaining_usd: s.remaining_usd,
       reconciled_spent_usd: s.reconciled_spent_usd, expires_at: s.expires_at };
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+  } finally {
+    if (lock) try { rmdirSync(lock); } catch { /* an orphan lock blocks admissions, never frees them */ }
   }
 }
 

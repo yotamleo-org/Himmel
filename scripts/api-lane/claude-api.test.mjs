@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -446,4 +446,38 @@ test('HIMMEL-5433: a Console refresh does not count already-billed ledger spend 
   assert.equal(r.status, 0, r.stderr);
   // The billed job once plus the measure call once, never the billed job twice.
   assert.equal(f.status().spent_est_usd, '0.024690');
+});
+
+test('HIMMEL-5433: the key reaches claude through the environment only, never through any argv', () => {
+  const f = fixture();
+  const bin = join(f.dir, 'bin');
+  const argv = join(f.dir, 'env-argv');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'env'), `#!/bin/bash\nprintf '%s\\n' "$*" >> "${argv}"\nexec /usr/bin/env "$@"\n`, { mode: 0o700 });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', PATH: `${bin}:${process.env.PATH}` });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=BBBB$/m);
+  const seen = readFileSync(argv, 'utf8');
+  assert.match(seen, /claude-stub/);
+  assert.ok(!seen.includes(KEY_B), 'key appeared in an env argv');
+  assert.ok(!readFileSync(f.paths.env, 'utf8').split('\n').find((l) => l.startsWith('args=')).includes(KEY_B));
+});
+
+test('HIMMEL-5433: a refresh while the Console lags a fresh settlement still counts that settlement', () => {
+  const f = fixture();
+  // 0.09 spent outside the ledger is already billed and reconciled.
+  f.snapshot.accounts.A.remaining_usd = '1.91'; f.save();
+  assert.equal(f.run().status, 0);  // settles 0.012345 on A, not yet on the Console
+  const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '1.91'], { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(f.status().spent_est_usd, '0.102345');
+});
+
+test('HIMMEL-5433: a refresh holds the ledger lock and refuses while another writer has it', () => {
+  const f = fixture();
+  mkdirSync(`${f.paths.state}.lock`);
+  const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00'], { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /ledger-locked-or-unwritable/);
+  assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.observed_at, f.snapshot.accounts.A.observed_at);
 });
