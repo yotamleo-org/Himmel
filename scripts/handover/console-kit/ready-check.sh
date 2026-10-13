@@ -292,7 +292,9 @@ else
         echo "[FAIL] 5. cannot read PR files (gh api .../pulls/$PR/files failed or returned nothing)"
         mark_fail
     else
-        sensitive=$(printf '%s\n' "$files_json" | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
+        # HIMMEL-5431: Markdown/text is never a script, even under scripts/
+        # (a docs-only README edit could otherwise never get a GO).
+        sensitive=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
         non_docs=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)
 
         need_plat=0; [ -n "$sensitive" ] && need_plat=1

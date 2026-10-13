@@ -300,6 +300,30 @@ rc=0; out="$(run)" || rc=$?
 check "docs-only: exit 0" "$rc" "0"
 contains "docs-only: check 5 passes" "$out" "[PASS] 5."
 
+# --- 5c2. HIMMEL-5431: Markdown/text under scripts/ needs no Platforms ---
+reset_stubs
+STUB_FILES="scripts/telegram/README.md"
+STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "scripts-readme-only: exit 0" "$rc" "0"
+contains "scripts-readme-only: check 5 passes" "$out" "[PASS] 5."
+contains "scripts-readme-only: platforms not needed" "$out" "Platforms tested (needed=0)"
+
+reset_stubs
+STUB_FILES="scripts/x/run.sh"
+STUB_COMMITS='[{"messageHeadline":"fix(x): [HIMMEL-1] tweak","messageBody":"Security reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+check "scripts-sh-only: exit 1" "$rc" "1"
+contains "scripts-sh-only: check 5 fails" "$out" "missing 'Platforms tested:'"
+
+reset_stubs
+STUB_FILES="scripts/telegram/README.md
+scripts/x/run.sh"
+STUB_COMMITS='[{"messageHeadline":"fix(x): [HIMMEL-1] tweak","messageBody":"Security reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+check "scripts-mixed: exit 1" "$rc" "1"
+contains "scripts-mixed: check 5 fails" "$out" "missing 'Platforms tested:'"
+
 # --- 5d. check 5 fails: PR files unreadable (API call failed) -----------
 reset_stubs
 STUB_FILES_FAIL=1
