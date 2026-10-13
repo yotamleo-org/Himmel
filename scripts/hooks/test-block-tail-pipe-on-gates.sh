@@ -417,10 +417,45 @@ deny "<< inside \$(( arithmetic is a shift, not a heredoc (apostrophe heredoc be
 # shellcheck disable=SC2016  # payload is literal command text
 deny "<< inside \$(( arithmetic at top level hides no gate" \
      $'x=$(( 1 <<2\n))\n${V:-./scripts/check-ci.sh} | tail -1'
-# A here-string is not a heredoc: no body is skipped after <<<.
+# `<<` in a bare `((` command inside $(...) is a shift too. The walker's own
+# `<` branch still reads it as a heredoc (HIMMEL-5546), which masks it at hook
+# level, so the substitution-end scan is asserted directly: with `<<2` taken
+# as a heredoc the body never terminates and the scan fails.
+# shellcheck disable=SC2016  # payload is literal text
+res=$(
+    # shellcheck source=lib/shell-tokenize.sh
+    . "$HERE/lib/shell-tokenize.sh" 2>/dev/null
+    _stx_end $'(( 1 <<2\n))\n)' 0 P
+    echo "$?:$_SX_E"
+)
+if [ "$res" = "0:13" ]; then
+    pass "<< inside a bare (( arithmetic command is a shift (_stx_end)"
+else
+    fail "<< inside a bare (( arithmetic command read as a heredoc (_stx_end got $res)"
+fi
+# A here-string is not a heredoc: no body is skipped after <<<. The extra `<`
+# makes a skipped body unterminated, so a missing `<<<` guard fails closed here.
 # shellcheck disable=SC2016  # payload is literal command text
 deny "here-string <<< inside \$(...) queues no heredoc" \
      $'x=$(cat <<<E\n${V:-./scripts/check-ci.sh} | tail -1\nE\n)'
+# shellcheck disable=SC2016  # payload is literal command text
+allow "<<<< inside \$(...) is no heredoc and no gate" \
+      $'x=$(cat <<<<E\nhi\n)\necho "$x" | tail -1'
+# A heredoc body ends at `DELIM)` too (bash re-reads the `)`), and a body line
+# ending in a backslash joins the next one: neither may let the scan run on to
+# the end of the text and withdraw. With no terminator at all it fails closed.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "heredoc terminated by DELIM) closes the substitution" \
+     $'x=$(cat <<E\nbody\nE)\n${V:-./scripts/check-ci.sh} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<<- heredoc terminated by a tab-indented DELIM)" \
+     $'x=$(cat <<-E\n\tbody\n\tE)\n${V:-./scripts/check-ci.sh} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "unquoted heredoc line ending DELIM-backslash joins the next line" \
+     $'x=$(cat <<E\nbody\nE\\\n\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "unterminated heredoc inside \$(...) fails closed" \
+     $'x=$(cat <<E\nbody\n)\n${V:-./scripts/check-ci.sh} | tail -1'
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""

@@ -616,8 +616,8 @@ _stx_bodies() {
 # `'` is plain text), B a backtick. Returns 1 when it never closes.
 # shellcheck disable=SC2317,SC2329
 _stx_end() {
-    local s=$1 i=$2 st=$3 n=${#1} c t rest b j k l m hd_n=0
-    local -a hd_d hd_t hd_l
+    local s=$1 i=$2 st=$3 n=${#1} c t rest b j k l m line f hd_n=0
+    local -a hd_d hd_q hd_t hd_l
     [ "$st" != C ] || [ "${4:-0}" = 0 ] || st=E
     while [ "$i" -lt "$n" ]; do
         # the same 32-deep bound as _stx_walk: each byte re-reads the stack
@@ -689,7 +689,7 @@ _stx_end() {
                                     while case ${s:j:1} in ' ' | $'\t') true ;; *) false ;; esac; do j=$((j + 1)); done
                                     _stx_hdword "$s" "$j"
                                     if [ -n "$_SX_W" ] || [ "$_SX_Q" = 1 ]; then
-                                        hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_l[hd_n]=${#st}; hd_n=$((hd_n + 1))
+                                        hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_q[hd_n]=$_SX_Q; hd_l[hd_n]=${#st}; hd_n=$((hd_n + 1))
                                         i=$_SX_E; continue
                                     fi
                                 fi ;;
@@ -702,15 +702,39 @@ _stx_end() {
                                     i=$((i + 1)); k=0; m=0
                                     while [ "$k" -lt "$hd_n" ]; do
                                         if [ "${hd_l[k]}" = "${#st}" ]; then
+                                            # no terminator = the body runs to the end of the text: fail closed
+                                            f=0
                                             while [ "$i" -lt "$n" ]; do
-                                                rest=${s:i}; l=${rest%%$'\n'*}; i=$((i + ${#l} + 1))
+                                                j=$i; line=''
+                                                while :; do
+                                                    rest=${s:i}; l=${rest%%$'\n'*}; i=$((i + ${#l} + 1))
+                                                    # an unquoted body joins a line ending in a backslash with the next
+                                                    if [ "${hd_q[k]}" = 0 ] && [ "$i" -le "$n" ]; then
+                                                        rest=${l##*[!\\]}
+                                                        [ "$rest" != "$l" ] || rest=$l
+                                                        if [ $((${#rest} % 2)) = 1 ]; then line=$line${l%?}; continue; fi
+                                                    fi
+                                                    line=$line$l; break
+                                                done
                                                 if [ "${hd_t[k]}" = 1 ]; then
-                                                    while [ "${l:0:1}" = $'\t' ]; do l=${l:1}; done
+                                                    while [ "${line:0:1}" = $'\t' ]; do line=${line:1}; done
                                                 fi
-                                                [ "$l" != "${hd_d[k]}" ] || break
+                                                if [ "$line" = "${hd_d[k]}" ]; then f=1; break; fi
+                                                # bash ends the body at `DELIM)` too, and that `)` closes the substitution
+                                                if [ "${line:0:${#hd_d[k]}+1}" = "${hd_d[k]})" ]; then
+                                                    i=$j
+                                                    [ "${hd_t[k]}" != 1 ] || while [ "${s:i:1}" = $'\t' ]; do i=$((i + 1)); done
+                                                    for ((l = 0; l < ${#hd_d[k]}; l++)); do
+                                                        while [ "${s:i:2}" = $'\\\n' ]; do i=$((i + 2)); done
+                                                        i=$((i + 1))
+                                                    done
+                                                    while [ "${s:i:2}" = $'\\\n' ]; do i=$((i + 2)); done
+                                                    f=1; break
+                                                fi
                                             done
+                                            if [ "$f" = 0 ]; then _SX_OVER=1; _SX_E=-1; return 1; fi
                                         else
-                                            hd_d[m]=${hd_d[k]}; hd_t[m]=${hd_t[k]}; hd_l[m]=${hd_l[k]}; m=$((m + 1))
+                                            hd_d[m]=${hd_d[k]}; hd_t[m]=${hd_t[k]}; hd_q[m]=${hd_q[k]}; hd_l[m]=${hd_l[k]}; m=$((m + 1))
                                         fi
                                         k=$((k + 1))
                                     done
