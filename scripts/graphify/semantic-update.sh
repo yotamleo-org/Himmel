@@ -105,6 +105,13 @@ if [ "$BACKEND" = "ollama" ]; then
   # the cloud path (refresh-graph-map.sh) never gets one, so its warning and any
   # real auth error stay visible.
   : "${OLLAMA_API_KEY:=ollama}"; export OLLAMA_API_KEY
+  # HIMMEL-4527: graphify derives num_ctx from the chunk size (32768 seen), which
+  # spilled qwen3.6:27b 55% to CPU, and its request timeout defaults to 600 s.
+  # Pin a context that should fit the 24 GB card and raise the timeout; a
+  # caller-set value of either wins.
+  # ponytail: num_ctx 16384 unmeasured, the GPU was unavailable; re-measure per HIMMEL-4527 when the 4090 returns from RMA
+  : "${GRAPHIFY_OLLAMA_NUM_CTX:=16384}"; export GRAPHIFY_OLLAMA_NUM_CTX
+  : "${GRAPHIFY_API_TIMEOUT:=1800}"; export GRAPHIFY_API_TIMEOUT
 fi
 
 # Egress first, before any copy or bank call (HIMMEL-1084 direct-eval contract:

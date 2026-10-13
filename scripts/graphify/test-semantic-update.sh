@@ -44,6 +44,8 @@ echo "graphify \$*" >> "$WS/calls.log"
 echo "OLLAMA_MODEL=\${OLLAMA_MODEL:-}" >> "$WS/env.log"
 echo "OLLAMA_API_KEY=\${OLLAMA_API_KEY-unset}" >> "$WS/env.log"
 echo "NO_AUTO_REFRESH=\${GRAPHIFY_NO_AUTO_REFRESH-unset}" >> "$WS/env.log"
+echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
+echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
 [ "\$1" = extract ] || exit 0
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 python3 - "\$2" <<'PY'
@@ -308,6 +310,19 @@ grep -qx 'OLLAMA_API_KEY=real-key' "$WS/env.log" && pass "T23c a caller-set OLLA
 C23D="$WS/c23d"; new_corpus "$C23D"; : > "$WS/env.log"
 out=$(run --name t23d --corpus-root "$C23D" --corpus-class himmel-code --backend claude-cli); rc=$?
 grep -qx 'OLLAMA_API_KEY=unset' "$WS/env.log" && pass "T23d claude-cli path gets no OLLAMA_API_KEY" || fail "T23d claude-cli key leak: $(cat "$WS/env.log")"
+grep -qx 'OLLAMA_NUM_CTX=unset' "$WS/env.log" && pass "T23h claude-cli path gets no GRAPHIFY_OLLAMA_NUM_CTX" || fail "T23h num_ctx leak: $(cat "$WS/env.log")"
+
+# T23e-g (HIMMEL-4527): qwen3.6:27b at graphify's auto-derived num_ctx (32768)
+# spilled 55% to CPU and every request outran graphify's 600 s default timeout.
+# The ollama path pins a GPU-fitting num_ctx and a raised request timeout; a
+# caller-set value of either wins.
+C23E="$WS/c23e"; new_corpus "$C23E"; : > "$WS/env.log"
+out=$(run --name t23e --corpus-root "$C23E" --corpus-class himmel-code --backend ollama); rc=$?
+grep -qx 'OLLAMA_NUM_CTX=16384' "$WS/env.log" && pass "T23e ollama path pins GRAPHIFY_OLLAMA_NUM_CTX=16384" || fail "T23e num_ctx: $(cat "$WS/env.log")"
+grep -qx 'API_TIMEOUT=1800' "$WS/env.log" && pass "T23f ollama path raises GRAPHIFY_API_TIMEOUT=1800" || fail "T23f timeout: $(cat "$WS/env.log")"
+C23G="$WS/c23g"; new_corpus "$C23G"; : > "$WS/env.log"
+out=$(GRAPHIFY_OLLAMA_NUM_CTX=8192 GRAPHIFY_API_TIMEOUT=300 run --name t23g --corpus-root "$C23G" --corpus-class himmel-code --backend ollama); rc=$?
+grep -qx 'OLLAMA_NUM_CTX=8192' "$WS/env.log" && grep -qx 'API_TIMEOUT=300' "$WS/env.log" && pass "T23g caller-set num_ctx and timeout are preserved" || fail "T23g caller override: $(cat "$WS/env.log")"
 
 # ollama_refused <name> <VAR=val...>: the script's OWN endpoint/model check
 # refuses before the fence, the bank, the copy and graphify.
