@@ -30,8 +30,9 @@
 _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # `${…}` is cut by a scanner, not a regex: a quoted brace inside it
 # (`${V+'"'"'{}'"'"'}git stash`) must not end the expansion early. Single
-# quotes, double quotes and backslashes are honoured; braces nest; an
-# unterminated expansion drops the rest of the line.
+# quotes, double quotes and backslashes are honoured; only `${` nests (a bare
+# `{` is a pattern character, as in `${V#{}`); an unterminated expansion drops
+# the rest of the line.
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
   s = $0; out = ""; n = length(s); i = 1
@@ -45,7 +46,7 @@ _GEE_AWK='{
         else if (c == "\\") i++
         else if (c == "\047" && q == "") q = "\047"
         else if (c == "\"") q = (q == "\"") ? "" : "\""
-        else if (q == "" && c == "{") depth++
+        else if (q == "" && c == "$" && substr(s, i + 1, 1) == "{") { depth++; i++ }
         else if (q == "" && c == "}") depth--
         i++
       }

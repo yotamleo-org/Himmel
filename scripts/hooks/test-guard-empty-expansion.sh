@@ -57,6 +57,8 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "\${V+'}'}$p $a"
     check deny "$h" "\${V+\"{\"}$p $a"
     check deny "$h" "\${V:-\\}}$p $a"
+    check deny "$h" "\${V#{}$p $a"
+    check deny "$h" "\${V:-\${Z}}$p $a"
   }
 }
 
