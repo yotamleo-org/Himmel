@@ -224,7 +224,9 @@ if not isinstance(companions, list):
     die(2, "entry %r companion_pins must be a list of {file, template}" % name)
 need_sha = False
 for c in companions:
-    if not isinstance(c, dict) or not c.get("file") or not c.get("template"):
+    if (not isinstance(c, dict) or not isinstance(c.get("file"), str)
+            or not isinstance(c.get("template"), str)
+            or not c["file"] or not c["template"]):
         die(2, "entry %r has a malformed companion_pins row (need {file, template})" % name)
     tpl = c["template"]
     if tpl.count("{version}") + tpl.count("{sha256}") != 1:

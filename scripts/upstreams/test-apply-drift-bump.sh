@@ -334,7 +334,7 @@ OLD_SHA=$(printf 'a%.0s' $(seq 1 64))
 NEW_SHA=$(printf 'b%.0s' $(seq 1 64))
 
 echo "[test-apply-drift-bump] split pin: .ps1 + companion VERSION/ASSET_SHA256 move together"
-root=$(make_split_fixture)
+root=$(make_split_fixture) || exit 1
 out=$(run_bump "$root" proxy 8.0.26 --sha256 "$NEW_SHA" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "split bump exits 0"; else fail "split bump exits 0 — got rc=$rc: $out"; fi
 assert_file_has "$root/scripts/setup/lane.ps1" "\$Version = '8.0.26'" "the registry version_pin (.ps1) moved"
@@ -347,7 +347,7 @@ assert_contains "$out" "lane.sh" "the BUMP line names the companion file"
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] split pin: refusals leave every file untouched"
-root=$(make_split_fixture)
+root=$(make_split_fixture) || exit 1
 out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a {sha256} companion without --sha256 is refused (rc=2)"; else fail "no --sha256 — expected rc=2 got rc=$rc: $out"; fi
 out=$(run_bump "$root" proxy 8.0.26 --sha256 not-a-sha 2>&1); rc=$?
@@ -358,6 +358,15 @@ out=$(run_bump "$root" proxy 8.0.26 --sha256 "$NEW_SHA" 2>&1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "a companion literal that is not at the old version aborts (rc=4)"; else fail "stale companion — expected rc=4 got rc=$rc: $out"; fi
 after=$(cat "$root/scripts/upstreams.json" "$root/scripts/setup/lane.ps1" "$root/scripts/setup/lane.sh")
 if [ "$before" = "$after" ]; then pass "registry, .ps1 and .sh are all untouched after the abort"; else fail "a refused split bump wrote something"; fi
+rm -rf "$root"
+
+echo "[test-apply-drift-bump] split pin: a non-string companion file/template is a registry error (rc=2)"
+root=$(make_split_fixture) || exit 1
+cat > "$root/scripts/upstreams.json" <<'JSON'
+{"entries":[{"name":"proxy","kind":"tag_release","mode":"base","tracked_repo":"acme/proxy","synced_base":"7.3.15","version_pin":{"file":"scripts/setup/lane.ps1","template":"$Version = '{version}'"},"companion_pins":[{"file":"scripts/setup/lane.sh","template":5}],"tier":"A"}]}
+JSON
+out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "non-string companion fields are refused (rc=2), not an uncaught exception"; else fail "non-string companion — expected rc=2 got rc=$rc: $out"; fi
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] the REAL registry: graphify is auto-bumpable, qmd is not"
