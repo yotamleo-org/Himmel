@@ -1853,6 +1853,7 @@ _bwimc_deny() {
         unresolved-chroot) why="it runs behind a chroot (chroot DIR, sudo -R/--chroot) whose new root could not be resolved, so its targets cannot be classified (failing closed, HIMMEL-4329)" ;;
         chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed, HIMMEL-4329)" ;;
         unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed, HIMMEL-3648)" ;;
+        data-exec) why="it executes DATA (eval, source, a shell -c / script / pipe / heredoc, or a variable command word fed by a substitution, a variable or a file) whose text the fence cannot read, so a write inside it cannot be classified (failing closed, HIMMEL-5349)" ;;
     esac
     {
         echo "⛔ block-write-into-main-checkout: refusing a write-shaped command — $why."
@@ -1882,6 +1883,11 @@ _bwimc_deny() {
                 # A shape refusal (HIMMEL-4815): the target was unreadable, not proven primary.
                 echo "    Retry (shape, not destination): one write per Bash call, an absolute"
                 echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file." ;;
+            data-exec)
+                # HIMMEL-5349: the data was unreadable, not proven to write the primary.
+                echo "    Retry (shape, not destination): read the data first (cat/git log), then"
+                echo "    run its commands as literal text in a separate Bash call — never eval,"
+                echo "    source or pipe into a shell what a file, a variable or git returns." ;;
         esac
     } >&2
     exit 2
@@ -3012,6 +3018,1179 @@ _bwimc_strip_comments() {
     _BWIMC_NC="$o"
 }
 
+# The shared tokenizer, inlined (never sourced: hook-integrity pins this file,
+# not a lib it sources). test-block-write-into-main-checkout-evaldata.sh fails
+# when this block drifts from scripts/hooks/lib/shell-tokenize.sh (HIMMEL-5349).
+# >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
+# st_tokenize CMD — split CMD into words and segments the way bash reads it,
+# expanding nothing. Returns 0 (ST_OK=1) on success, 1 (ST_OK=0) on anything
+# it does not model — an unterminated quote, an unmatched `)`, `;;`, a
+# backtick inside double quotes inside backticks, a `${…}` beyond a bare
+# name, a redirect with no target, more than 8 KiB — and the caller then
+# falls back to its older, stricter text scan. The cap bounds the hooks'
+# worst case well inside run-hook-with-bash.js's 15 s member timeout (J1242):
+# every loop here and in the callers is linear and fork-free, so an 8 KiB
+# command tokenizes in a fraction of a second.
+#   ST_N        number of words
+#   ST_W[i]     word i with quotes and escapes removed (a $'…' body
+#               decoded), nothing expanded
+#   ST_Q[i]     1 when any byte of word i was quoted or escaped
+#   ST_X[i]     1 when word i carries a live `$` (unquoted, or inside "…")
+#   ST_G[i]     1 when word i carries an unquoted * ? [ or { (a glob or
+#               brace expansion, which can become any word — even `-i`)
+#   ST_A[i]     1 when word i is assignment-shaped (an unquoted NAME=)
+#   ST_S[i]     segment index of word i
+#   ST_RO[i]    the redirect operator word i is the target of (`>`, `2>&`,
+#               `<<`, …), empty for an ordinary word
+#   ST_NSEG     number of segments
+#   ST_SEP[s]   operator ending segment s: ; & && | || |& nl ( ) $( ` <( >(
+#               or empty for the last one. A substitution's inner command is
+#               a segment of its own.
+#   ST_SUBST ST_HEREDOC ST_ANSIC ST_COMMENT — 1 when the command carries a
+#               live command/process substitution (including inside "…" and
+#               an unquoted heredoc body), a heredoc, a $'…' word, a comment.
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+st_tokenize() {
+    local LC_ALL=C
+    local s="$1" n i c c2 c3 ctx='' top w='' win=0 wq=0 wx=0 wg=0 wqpos=-1
+    local rop='' fd op rest body j bad=0 hd_n=0 hd_i=0
+    local -a hd_d hd_q hd_t
+    ST_OK=0 ST_N=0 ST_NSEG=0 ST_SUBST=0 ST_HEREDOC=0 ST_ANSIC=0 ST_COMMENT=0
+    ST_W=() ST_Q=() ST_X=() ST_G=() ST_A=() ST_S=() ST_RO=() ST_SEP=()
+    n=${#s}
+    [ "$n" -le 8192 ] || return 1
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        c=${s:i:1}
+        top=''
+        [ -z "$ctx" ] || top=${ctx:${#ctx}-1:1}
+        if [ "$top" = D ]; then
+            case "$c" in
+                '"') ctx=${ctx%?}; i=$((i + 1)) ;;
+                '\')
+                    c2=${s:i+1:1}
+                    case "$c2" in
+                        '$'|'`'|'"'|'\') _st_q; w=$w$c2; i=$((i + 2)) ;;
+                        $'\n') i=$((i + 2)) ;;
+                        *) _st_q; w=$w'\'; i=$((i + 1)) ;;
+                    esac
+                    ;;
+                '$')
+                    if [ "${s:i+1:1}" = '(' ]; then
+                        ST_SUBST=1; _st_seg '$('; ctx=${ctx}P; i=$((i + 2))
+                    else
+                        _st_q; wx=1; w=$w'$'; i=$((i + 1))
+                    fi
+                    ;;
+                '`')
+                    case "$ctx" in *B*) return 1 ;; esac
+                    ST_SUBST=1; _st_seg '`'; ctx=${ctx}B; i=$((i + 1))
+                    ;;
+                *) _st_q; w=$w$c; i=$((i + 1)) ;;
+            esac
+            continue
+        fi
+        case "$c" in
+            ' '|$'\t') _st_word; i=$((i + 1)) ;;
+            $'\n')
+                _st_seg nl; i=$((i + 1))
+                [ "$hd_i" -ge "$hd_n" ] || _st_heredocs
+                ;;
+            "'")
+                rest=${s:i+1}
+                case "$rest" in *"'"*) ;; *) return 1 ;; esac
+                body=${rest%%"'"*}
+                _st_q; w=$w$body; i=$((i + ${#body} + 2))
+                ;;
+            '"') _st_q; ctx=${ctx}D; i=$((i + 1)) ;;
+            '\')
+                c2=${s:i+1:1}
+                case "$c2" in
+                    $'\n') i=$((i + 2)) ;;
+                    '') _st_q; w=$w'\'; i=$((i + 1)) ;;
+                    *) _st_q; w=$w$c2; i=$((i + 2)) ;;
+                esac
+                ;;
+            '$')
+                c2=${s:i+1:1}
+                case "$c2" in
+                    "'")
+                        ST_ANSIC=1; body=''; j=$((i + 2))
+                        while [ "$j" -lt "$n" ]; do
+                            c3=${s:j:1}
+                            if [ "$c3" = '\' ]; then
+                                body=$body${s:j:2}; j=$((j + 2))
+                            elif [ "$c3" = "'" ]; then
+                                break
+                            else
+                                body=$body$c3; j=$((j + 1))
+                            fi
+                        done
+                        [ "$j" -lt "$n" ] || return 1
+                        # The shell runs the decoded word (`$'\x2dr'` is -r,
+                        # HIMMEL-4576). ${…@E} is bash 4.4+; an older bash
+                        # keeps the raw body, as before (declining here would
+                        # switch guard_unwrap off for the whole command, J1946
+                        # B1). The eval'd text is constant, never input.
+                        if [ "${BASH_VERSINFO[0]}" -gt 4 ] \
+                            || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then
+                            eval 'body=${body@E}'
+                        fi
+                        _st_q; w=$w$body; i=$((j + 1))
+                        ;;
+                    '"') _st_q; ctx=${ctx}D; i=$((i + 2)) ;;
+                    '(') ST_SUBST=1; _st_seg '$('; ctx=${ctx}P; i=$((i + 2)) ;;
+                    '{')
+                        rest=${s:i+2}
+                        body=${rest%%\}*}
+                        [ "$body" != "$rest" ] || return 1
+                        case "$body" in ''|*[!A-Za-z0-9_#!@*?$-]*) return 1 ;; esac
+                        win=1; wx=1; w=$w'${'$body'}'; i=$((i + ${#body} + 3))
+                        ;;
+                    *) win=1; wx=1; w=$w'$'; i=$((i + 1)) ;;
+                esac
+                ;;
+            '`')
+                if [ "$top" = B ]; then
+                    _st_seg '`'; ctx=${ctx%?}; _st_resume
+                else
+                    ST_SUBST=1; _st_seg '`'; ctx=${ctx}B
+                fi
+                i=$((i + 1))
+                ;;
+            '#')
+                if [ "$win" = 0 ]; then
+                    ST_COMMENT=1; rest=${s:i}; body=${rest%%$'\n'*}; i=$((i + ${#body}))
+                else
+                    w=$w'#'; i=$((i + 1))
+                fi
+                ;;
+            ';')
+                [ "${s:i+1:1}" != ';' ] || return 1
+                _st_seg ';'; i=$((i + 1))
+                ;;
+            '&')
+                c2=${s:i+1:1}
+                case "$c2" in
+                    '&') _st_seg '&&'; i=$((i + 2)) ;;
+                    '>')
+                        _st_word
+                        [ -z "$rop" ] || return 1
+                        if [ "${s:i+2:1}" = '>' ]; then rop='&>>'; i=$((i + 3)); else rop='&>'; i=$((i + 2)); fi
+                        ;;
+                    *) _st_seg '&'; i=$((i + 1)) ;;
+                esac
+                ;;
+            '|')
+                c2=${s:i+1:1}
+                case "$c2" in
+                    '|') _st_seg '||'; i=$((i + 2)) ;;
+                    '&') _st_seg '|&'; i=$((i + 2)) ;;
+                    *) _st_seg '|'; i=$((i + 1)) ;;
+                esac
+                ;;
+            '(') _st_seg '('; ctx=${ctx}S; i=$((i + 1)) ;;
+            ')')
+                case "$top" in
+                    P|S) _st_seg ')'; ctx=${ctx%?}; _st_resume; i=$((i + 1)) ;;
+                    *) return 1 ;;
+                esac
+                ;;
+            '<'|'>')
+                fd=''
+                if [ "$win" = 1 ] && [ "$wq" = 0 ] && [ -z "$rop" ]; then
+                    case "$w" in *[!0-9]*) ;; *) fd=$w; w=''; win=0; wqpos=-1 ;; esac
+                fi
+                _st_word
+                [ -z "$rop" ] || return 1
+                c2=${s:i+1:1}
+                c3=${s:i+2:1}
+                if [ "$c" = '<' ]; then
+                    case "$c2" in
+                        '<')
+                            if [ "$c3" = '<' ]; then op='<<<'
+                            elif [ "$c3" = '-' ]; then op='<<-'; ST_HEREDOC=1
+                            else op='<<'; ST_HEREDOC=1
+                            fi
+                            ;;
+                        '&') op='<&' ;;
+                        '>') op='<>' ;;
+                        '(') op='<(' ;;
+                        *) op='<' ;;
+                    esac
+                else
+                    case "$c2" in
+                        '>') op='>>' ;;
+                        '&') op='>&' ;;
+                        '|') op='>|' ;;
+                        '(') op='>(' ;;
+                        *) op='>' ;;
+                    esac
+                fi
+                case "$op" in
+                    '<('|'>(')
+                        [ -z "$fd" ] || return 1
+                        ST_SUBST=1; _st_seg "$op"; ctx=${ctx}P; i=$((i + 2))
+                        ;;
+                    *) rop=$fd$op; i=$((i + ${#op})) ;;
+                esac
+                ;;
+            *)
+                case "$c" in '*'|'?'|'['|'{') wg=1 ;; esac
+                win=1; w=$w$c; i=$((i + 1))
+                ;;
+        esac
+    done
+    [ -z "$ctx" ] || return 1
+    _st_word
+    [ -z "$rop" ] || return 1
+    ST_SEP[ST_NSEG]=''
+    ST_NSEG=$((ST_NSEG + 1))
+    [ "$bad" = 0 ] || return 1
+    ST_OK=1
+    return 0
+}
+
+# The helpers below run in st_tokenize's dynamic scope and share its locals.
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_q() { # the next byte appended to the word is quoted or escaped
+    [ "$wqpos" -ge 0 ] || wqpos=${#w}
+    wq=1; win=1
+}
+
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_word() { # flush the pending word, if one was started
+    local k e re='^[A-Za-z_][A-Za-z0-9_]*='
+    if [ "$win" = 1 ]; then
+        k=$ST_N
+        ST_W[k]=$w; ST_Q[k]=$wq; ST_X[k]=$wx; ST_G[k]=$wg
+        ST_S[k]=$ST_NSEG; ST_RO[k]=$rop; ST_A[k]=0
+        if [ -z "$rop" ] && [[ $w =~ $re ]]; then
+            e=${w%%=*}
+            if [ "$wqpos" -lt 0 ] || [ "$wqpos" -gt "${#e}" ]; then ST_A[k]=1; fi
+        fi
+        case "$rop" in
+            '<<'|'<<-'|[0-9]'<<'|[0-9]'<<-')
+                hd_d[hd_n]=$w; hd_q[hd_n]=$wq
+                case "$rop" in *-) hd_t[hd_n]=1 ;; *) hd_t[hd_n]=0 ;; esac
+                hd_n=$((hd_n + 1))
+                ;;
+        esac
+        ST_N=$((k + 1)); rop=''
+    fi
+    w=''; win=0; wq=0; wx=0; wg=0; wqpos=-1
+}
+
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_seg() { # end the current segment with operator $1
+    _st_word
+    [ -z "$rop" ] || bad=1
+    ST_SEP[ST_NSEG]=$1
+    ST_NSEG=$((ST_NSEG + 1))
+}
+
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_resume() { # back from a substitution: inside "…" the word goes on
+    case "$ctx" in *D) win=1; wq=1; [ "$wqpos" -ge 0 ] || wqpos=0 ;; esac
+}
+
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_heredocs() { # skip the bodies of every heredoc queued on the line just ended
+    local d line
+    while [ "$hd_i" -lt "$hd_n" ]; do
+        d=${hd_d[hd_i]}
+        while [ "$i" -lt "$n" ]; do
+            rest=${s:i}
+            line=${rest%%$'\n'*}
+            i=$((i + ${#line} + 1))
+            if [ "${hd_t[hd_i]}" = 1 ]; then
+                while [ "${line:0:1}" = $'\t' ]; do line=${line:1}; done
+            fi
+            [ "$line" != "$d" ] || break
+            if [ "${hd_q[hd_i]}" = 0 ]; then
+                case "$line" in *'$('*|*'`'*) ST_SUBST=1 ;; esac
+            fi
+        done
+        hd_i=$((hd_i + 1))
+    done
+}
+
+# st_lower STR — ST_LOWER is STR with A-Z folded to a-z (bytes, as `tr` does
+# in the C locale), without a fork: a fork per word is what made a padded
+# command outrun the runner's member timeout (J1242).
+# shellcheck disable=SC2034,SC2317,SC2329 # ST_LOWER is read by the caller; only block-edit calls it, the guard inlines the whole lib
+st_lower() {
+    local s="$1" u=ABCDEFGHIJKLMNOPQRSTUVWXYZ l=abcdefghijklmnopqrstuvwxyz i=0
+    while [ "$i" -lt 26 ]; do
+        s=${s//${u:i:1}/${l:i:1}}
+        i=$((i + 1))
+    done
+    ST_LOWER=$s
+}
+
+# st_sed_inert SCRIPT — 0 when SCRIPT is one sed command that can neither
+# write a file nor run one: an optional line address, then `p`, `d`, or a
+# single `s` command whose flags are only g p i I m M and digits (no `w`, no
+# `e`). Anything else — a second command, `e`, `w`, `r`, a newline — is 1.
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+st_sed_inert() {
+    local LC_ALL=C s="$1" d n i c part=0 re='^([0-9]+(,([0-9]+|\$))?|\$)'
+    case "$s" in *$'\n'*) return 1 ;; esac
+    if [[ $s =~ $re ]]; then s=${s:${#BASH_REMATCH[0]}}; fi
+    case "$s" in p|d) return 0 ;; s?*) ;; *) return 1 ;; esac
+    d=${s:1:1}
+    case "$d" in '\'|' ') return 1 ;; esac
+    n=${#s}
+    i=2
+    while [ "$i" -lt "$n" ] && [ "$part" -lt 2 ]; do
+        c=${s:i:1}
+        if [ "$c" = '\' ]; then i=$((i + 2)); continue; fi
+        [ "$c" != "$d" ] || part=$((part + 1))
+        i=$((i + 1))
+    done
+    [ "$part" = 2 ] || return 1
+    case "${s:i}" in *[!gpiImM0-9]*) return 1 ;; esac
+    return 0
+}
+
+# st_sed_args K INPLACE_OK — the words after a sed at word K, up to the end
+# of its segment. 0 when every script it runs is inert (st_sed_inert), each
+# one a plain word (no live `$`, no unquoted glob), no script comes from a
+# file (-f/--file), and -i/--in-place appears only when INPLACE_OK is 1.
+# Sets ST_SED_SCRIPTS to the script words' indexes, space-separated.
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+st_sed_args() {
+    local k=$1 inpl=$2 j sg a have=0 eo=0 scripts=''
+    sg=${ST_S[k]}
+    j=$((k + 1))
+    while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
+        if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
+        a=${ST_W[j]}
+        if [ "$eo" = 0 ]; then
+            case "$a" in
+                -e|--expression)
+                    j=$((j + 1))
+                    [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
+                    _st_sed_script "$j" "${ST_W[j]}" || return 1
+                    ;;
+                --expression=*) _st_sed_script "$j" "${a#--expression=}" || return 1 ;;
+                -e?*) _st_sed_script "$j" "${a#-e}" || return 1 ;;
+                -f*|--file|--file=*) return 1 ;;
+                -i*|--in-place|--in-place=*) [ "$inpl" = 1 ] || return 1 ;;
+                -l|--line-length) j=$((j + 1)) ;;
+                --line-length=*|-l[0-9]*) ;;
+                --) eo=1 ;;
+                --posix|--debug|--sandbox|--quiet|--silent|--regexp-extended|--separate|--unbuffered|--null-data|--zero-terminated|--follow-symlinks) ;;
+                -*[!nErsuz]*) return 1 ;;
+                -?*) ;;
+                *)
+                    if [ "$have" = 0 ]; then
+                        _st_sed_script "$j" "$a" || return 1
+                    fi
+                    ;;
+            esac
+        elif [ "$have" = 0 ]; then
+            _st_sed_script "$j" "$a" || return 1
+        fi
+        j=$((j + 1))
+    done
+    [ "$have" = 1 ] || return 1
+    ST_SED_SCRIPTS=$scripts
+    return 0
+}
+
+# shellcheck disable=SC1003,SC2016,SC2034 # literal \ ` $ bytes; ST_* are read by the caller
+_st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's scope
+    [ "${ST_X[$1]}" = 0 ] && [ "${ST_G[$1]}" = 0 ] || return 1
+    st_sed_inert "$2" || return 1
+    have=1
+    scripts="$scripts $1"
+}
+# <<< END shell-tokenize <<<
+
+# ---- HIMMEL-5349 / HIMMEL-5098: execution of DATA (eval, source, a shell) ----
+#
+# The scan above reads the command TEXT, so a write that only exists in data
+# the command executes — `eval "$(git log -1 --format=%B)"`, `bash -c "$m"`,
+# `cat f | sh`, `source <(cat f)` — is invisible to it. _bwimc_check_data_exec
+# judges every exec site on the dequoted, tokenised words of the whole
+# command (the shell-tokenize block above), never on the raw text, so a
+# quoted, escaped, ANSI-C or spaced spelling of a word is the same word.
+#
+# Exec sites: eval; source / `.`; a shell (bash sh zsh dash ksh fish mksh
+# yash, matched on its basename, so /bin/sh too) given -c, a `<(…)`/`=(…)`
+# script, a here-string, a heredoc, or no script at all in a command that
+# carries a pipe or a standard-input redirect anywhere (it reads that data);
+# xargs with a replace flag (or a bodiless -c) into a shell; find -exec into
+# one; a command word that is a variable or a substitution. A site is allowed
+# only when its body is literal (a literal eval/-c/here-string/heredoc body is
+# tokenised again under the same rules, at most 16 texts) or every
+# substitution in it is a listed generator: one simple command of all-literal
+# words, matched case-sensitively on its whole argv shape, no redirect, no
+# assignment, no `/` in its name (_bwimc_dx_gen). A generator whose output its
+# arguments spell (echo, printf, a date +FORMAT, an ssh-agent socket, a pyenv
+# sh-* version) is held to arguments that cannot spell a command: echo and
+# printf must compute to one inert word, which is then read again. A path
+# generator (pwd, git rev-parse --show-toplevel …) counts only where its output
+# is read as a path, never inside an eval/-c body: a directory name is anyone's
+# text. A shell given -s reads its script from standard input, whatever words
+# follow. A heredoc body is located as the tokenizer reads it (after each
+# newline, the bodies queued before it, in order); one that cannot be located
+# denies. A listed generator is only
+# trusted when nothing in the command can re-point its name: a shadowing word
+# (hash alias enable function builtin command … zmodload autoload), a PATH /
+# zsh path / LD_PRELOAD change, a function definition or a source/`.` deny an
+# allow-listed eval. Commands the tokenizer cannot model (beyond 8 KiB, a
+# `${x:-$(…)}`, `< <(…)`, `;;`) deny when an exec word stands at a command
+# position beside a `$`, a backtick, a `<` or a `|`, and so does a command
+# word that is itself a substitution or a variable (_bwimc_dx_crude).
+#
+# ponytail: generators outside the list (starship init, mise activate, brew
+# shellenv, `$(npm bin)/x`) are false denies, add a shape to _bwimc_dx_gen
+# when one is needed (HIMMEL-5349).
+# ponytail: a -c body's extent is guessed across substitutions (the tokenizer
+# keeps no glue), so `bash -c 'ls' "$(date)"`-style arguments over-deny, until
+# the tokenizer records word glue (HIMMEL-5349).
+# ponytail: source of a variable path (`source "$HOME/x.sh"`) is allowed: it
+# names a file, never data; and a PATH, function or alias change made by an
+# EARLIER Bash call is unseen (one command at a time), which is why an eval of
+# ANY variable is denied (HIMMEL-5349).
+# ponytail: the tokenizer is a byte-identical inlined copy (the lib is never
+# sourced at runtime); test-block-write-into-main-checkout-evaldata.sh fails
+# when it drifts from scripts/hooks/lib/shell-tokenize.sh (HIMMEL-5349).
+
+_BWIMC_DX_SHRE='^(hash|alias|unalias|enable|disable|function|functions|builtin|builtins|command|commands|aliases|galiases|saliases|dis_aliases|dis_functions|zmodload|autoload|PATH|path|FPATH|fpath|LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|DYLD_[A-Z_]*)$'
+_BWIMC_DX_FLAGRE='^-[A-Za-z]*(PATH|path)$'
+_BWIMC_DX_ZSHE='[$][{][(][^)]*e[^)]*[)]'
+_BWIMC_DX_SPACED='(^|[[:space:];&|(])[A-Za-z_][A-Za-z0-9_]*[+]?=[[:space:]]+["'"'"']*([$][(]|`)'
+_BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
+# shellcheck disable=SC2016  # a regex, not an expansion
+_BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
+# A prefix word is an assignment, a wrapper, a numeric-leading word (`nice 5`,
+# `timeout 5s`) or an option, and an option may take the next word as its
+# argument (`env -u x`, `sudo -u root`, HIMMEL-5456). No per-wrapper option
+# table: any option may consume one non-option word, which fails closed
+# (`sudo -E ls "$x"` reads `ls` as an argument and denies on `"$x"`).
+_BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*[[:space:]]+[^-[:space:]][^[:space:]]*|-[^[:space:]]*|[0-9][^[:space:]]*|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
+# the same command position holding a word built from an expansion: its name
+# is unknowable here (`x=ev; y=al; $x$y "$(cat f)"`, `$@`, `$x/ba$y`); an
+# assignment word is not a command word, and one holding a ( or a backtick
+# opens a substitution, never a command prefix; a `{` opens a group only
+# before a blank (`${a:-$b}` is an expansion). Matched after backtick pairs
+# become $( and ), so `pwd`/x ends its word at the closing one.
+# shellcheck disable=SC2016  # a regex, not an expansion
+_BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*[[:space:]]+[^-[:space:]()`][^[:space:]()`]*|-[^[:space:]]*|[0-9][^[:space:]()`]*|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*[^[:space:];&|()<>=]*[$][^[:space:]]'
+# The crude passes above read text with every quote removed, so a quoted or
+# escaped blank splits a word: `A="x y" bash -c …` reads as `A=x y bash`, and
+# the shell after it is no longer in command position. This awk pass removes
+# quotes word-aware instead: a blank inside quotes (or escaped) becomes _,
+# $( and backticks inside double quotes open a command again, $(( and (( are
+# arithmetic, a $'…' or $"…" span keeps its $ (its decoded or translated text
+# is unknown here, so a command word holding one reads as built from an
+# expansion), a comment is dropped, a quoted heredoc body becomes _ and an
+# unquoted one is read as commands, one line at a time. The crude regexes run
+# on its output as well as on the plain dequoted text (HIMMEL-5349).
+# ponytail: a heredoc is located by its own << scan, not by the tokenizer, so a
+# << it misplaces can hide the lines after it from this pass (the plain dequoted
+# pass still reads them); upgrade to the tokenizer's heredoc list if one escapes.
+# shellcheck disable=SC2016  # an awk program, not an expansion
+_BWIMC_DX_WAWK='
+function push(s) { sp++; st[sp] = s; par[sp] = 0 }
+function bl(ch) { return (ch == " " || ch == "\t") ? "_" : ch }
+function nexthd() {
+    if (qh >= np) { np = 0; qh = 0; return }
+    qh++; push(pq[qh] ? "Q" : "H"); hd[sp] = pd[qh]; hdash[sp] = pdash[qh]
+}
+BEGIN { sq = "\047"; sp = 0; st[0] = "C"; par[0] = 0; np = 0; qh = 0; cont = 0 }
+{
+    line = $0
+    if (st[sp] == "H" || st[sp] == "Q") {
+        ln = line; if (hdash[sp]) sub(/^\t+/, "", ln)
+        if (ln == hd[sp]) { sp--; printf "\n"; nexthd(); next }
+        if (st[sp] == "Q") { printf "_"; next }
+    }
+    n = length(line); i = 1; o = ""
+    while (i <= n) {
+        c = substr(line, i, 1); c2 = substr(line, i + 1, 1); s = st[sp]
+        if (s == "S") { if (c == sq) sp--; else o = o bl(c); i++; continue }
+        if (s == "A") {
+            if (c == "\\") { o = o bl(c2); i += 2; continue }
+            if (c == sq) sp--; else o = o bl(c)
+            i++; continue
+        }
+        if (s == "D") {
+            if (c == "\"") { sp--; i++; continue }
+            if (c == "\\") { o = o bl(c2); i += 2; continue }
+            if (c == "$" && c2 == "(") { o = o "$("; push("C"); i += 2; continue }
+            if (c == "`") { o = o "$("; push("B"); i++; continue }
+            o = o bl(c); i++; continue
+        }
+        if (c == "\\") { if (i == n) { cont = 1; i++; continue }; o = o bl(c2); i += 2; continue }
+        if (c == sq) { push("S"); i++; continue }
+        if (c == "\"") { push("D"); i++; continue }
+        if (c == "$" && c2 == sq) { o = o "$"; push("A"); i += 2; continue }
+        if (c == "$" && c2 == "\"") { o = o "$"; push("D"); i += 2; continue }
+        if (c == "$" && c2 == "(" && substr(line, i + 2, 1) == "(") { o = o "$(("; push("M"); i += 3; continue }
+        if (c == "$" && c2 == "(") { o = o "$("; push("C"); i += 2; continue }
+        if (c == "(" && c2 == "(") { o = o "(("; push("M"); i += 2; continue }
+        if (c == "`") {
+            if (s == "B") { o = o ")"; sp--; i++; continue }
+            o = o "$("; push("B"); i++; continue
+        }
+        if (c == "(") { par[sp]++; o = o c; i++; continue }
+        if (c == ")") {
+            if (par[sp] > 0) { par[sp]--; o = o c; i++; continue }
+            if (s == "M" && c2 == ")") { o = o "))"; sp--; i += 2; continue }
+            if (s == "C" && sp > 0) sp--
+            o = o c; i++; continue
+        }
+        if (c == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t;&|()]/)) break
+        if (s != "M" && c == "<" && c2 == "<" && substr(line, i + 2, 1) != "<") {
+            j = i + 2; dash = 0; w = ""; q = 0; qs = ""
+            if (substr(line, j, 1) == "-") { dash = 1; j++ }
+            while (substr(line, j, 1) == " " || substr(line, j, 1) == "\t") j++
+            while (j <= n) {
+                ch = substr(line, j, 1)
+                if (qs != "") { if (ch == qs) qs = ""; else w = w ch; j++; continue }
+                if (ch == sq || ch == "\"") { qs = ch; q = 1; j++; continue }
+                if (ch == "\\") { q = 1; w = w substr(line, j + 1, 1); j += 2; continue }
+                if (ch ~ /[ \t;&|<>()]/) break
+                w = w ch; j++
+            }
+            if (w != "") { np++; pd[np] = w; pq[np] = q; pdash[np] = dash }
+            o = o "<<" w; i = j; continue
+        }
+        o = o c; i++
+    }
+    if (cont) { cont = 0; printf "%s", o; next }
+    for (k = sp; k > 0 && st[k] != "H"; k--) ;
+    if (k > 0) sp = k
+    s = st[sp]
+    if (s == "S" || s == "A" || s == "D") o = o "_"; else o = o "\n"
+    printf "%s", o
+    if (s != "S" && s != "A" && s != "D" && s != "M" && np > qh) nexthd()
+}'
+# a date +FORMAT whose output is digits and punctuation only
+_BWIMC_DX_DATEFMT='^[+]([-:/._, 0-9]|%[sYmdHMSNjuwyeIklCGgVUWFTDRzn%]|%:z)*$'
+# a redirect that feeds a command's standard input from a file or descriptor
+_BWIMC_DX_INRO='^0?<[&>]?$'
+
+_bwimc_dx_deny() {
+    _bwimc_deny "data-exec" "$1" "" ""
+}
+
+# _bwimc_dx_wshadow WORD — 0 when WORD can re-point a command name.
+_bwimc_dx_wshadow() {
+    local w="$1" n v
+    n=${w%%=*}; n=${n%+}; n=${n%%\[*}
+    [[ $n =~ $_BWIMC_DX_SHRE ]] && return 0
+    case "$w" in *=*) v=${w#*=}; case "$v" in PATH|path) return 0 ;; esac ;; esac
+    [[ $w =~ $_BWIMC_DX_FLAGRE ]] && return 0
+    return 1
+}
+
+_bwimc_dx_queue() {
+    [ "$_BWIMC_DX_QN" -lt 16 ] || _bwimc_dx_deny "(eval/shell bodies nested more than 16 deep)"
+    _BWIMC_DX_Q[_BWIMC_DX_QN]=$1
+    _BWIMC_DX_QN=$((_BWIMC_DX_QN + 1))
+}
+
+# _bwimc_dx_crude TEXT — the fallback for a command the tokenizer cannot model.
+# The raw-text passes below run under a function-local LC_ALL=C: a UTF-8
+# ${x//…/…} or =~ re-decodes the whole text per match (HIMMEL-4729), and a
+# 45 KB prose heredoc then costs seconds.
+_bwimc_dx_pre() {
+    local LC_ALL=C
+    [[ $1 =~ $_BWIMC_DX_ZSHE ]] && _bwimc_dx_deny "(a zsh \${(e)…} expansion re-reads its text as code)"
+    [[ $1 =~ $_BWIMC_DX_SPACED ]] && _bwimc_dx_deny "(an empty assignment then a substitution runs the substitution's output)"
+    return 0
+}
+
+# _bwimc_dx_unbrace TEXT — t2 (the caller's) = TEXT with each simple ${…} as $_.
+_bwimc_dx_unbrace() {
+    local LC_ALL=C k=0
+    t2=$1
+    while [ "$k" -lt 64 ] && [[ $t2 =~ $_BWIMC_DX_BRACE ]]; do
+        t2=${t2/"${BASH_REMATCH[0]}"/\$_}; k=$((k + 1))
+    done
+}
+
+# _bwimc_dx_crudecode TEXT — print TEXT without its quoted heredoc bodies (data
+# no shell reads as code; a heredoc fed to a shell is already caught by the
+# exec-word pass), located as _bwimc_dx_heredoc locates them. TEXT is printed
+# whole when a line opening heredocs cannot be tokenised. Run it in a
+# subshell: it tokenises, which resets ST_*.
+_bwimc_dx_crudecode() {
+    local t="$1" pre='' out='' line chk body n used=0 hw bs found
+    local -a ops
+    while [ -n "$t" ]; do
+        line=${t%%$'\n'*}
+        if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+        pre="$pre$line"$'\n'; out="$out$line"$'\n'
+        case "$line" in *'<<'*) ;; *) continue ;; esac
+        if ! st_tokenize "$pre" 2>/dev/null; then printf '%s' "$1"; return 0; fi
+        read -r -a ops <<< "$(_bwimc_dx_hdops)" || true
+        n=${#ops[@]}
+        [ "$n" -gt "$used" ] || continue
+        bs=${line##*[!\\]}; [ "$bs" != "$line" ] || bs=$line
+        if [ $(( ${#bs} % 2 )) = 1 ]; then printf '%s' "$1"; return 0; fi
+        while [ "$used" -lt "$n" ]; do
+            hw=${ops[$used]}
+            body=''; found=0
+            while [ -n "$t" ]; do
+                line=${t%%$'\n'*}
+                if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+                chk=$line
+                case "${ST_RO[$hw]}" in *-) while [ "${chk:0:1}" = $'\t' ]; do chk=${chk#?}; done ;; esac
+                if [ "$chk" = "${ST_W[$hw]}" ]; then found=1; break; fi
+                body="$body$line"$'\n'
+            done
+            if [ "${ST_Q[$hw]}" = 0 ]; then pre="$pre$body"; out="$out$body"; fi
+            if [ "$found" = 1 ]; then pre="$pre$line"$'\n'; out="$out$line"$'\n'; fi
+            used=$((used + 1))
+        done
+    done
+    printf '%s' "$out"
+}
+
+_bwimc_dx_crude() {
+    local LC_ALL=C t="$1" c p x v w
+    local -a pieces
+    c=${t//\\/}; c=${c//\'/}; c=${c//\"/}
+    case "$t" in
+        *'$'*|*'`'*|*'<'*|*'|'*|*'=('*)
+            w=$(printf '%s\n' "$t" | awk "$_BWIMC_DX_WAWK") || _bwimc_dx_deny "(a command the tokenizer cannot model, and its word pass failed)"
+            # quoted heredoc bodies are prose, not code: both checks skip them
+            v=$(_bwimc_dx_crudecode "$t"); v=${v//\\/}; v=${v//\'/}; v=${v//\"/}
+            [[ $v =~ $_BWIMC_DX_CRUDE || $w =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
+            # pair backticks as $( and ), so a closing one ends a word
+            # shellcheck disable=SC2016  # a literal $(, not an expansion
+            while [[ $v == *'`'*'`'* ]]; do v=${v/'`'/'$('}; v=${v/'`'/')'}; done
+            [[ $v =~ $_BWIMC_DX_CRUDEVAR || $w =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
+    esac
+    [[ $c =~ $_BWIMC_DX_FDEF ]] && _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
+    p=${c//[^A-Za-z0-9_=+.\/\[\]-]/ }
+    read -r -a pieces <<< "$p" || true
+    x=0
+    while [ "$x" -lt "${#pieces[@]}" ]; do
+        if _bwimc_dx_wshadow "${pieces[$x]}"; then _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1)); fi
+        x=$((x + 1))
+    done
+    return 0
+}
+
+# _bwimc_dx_gen SUB [CODE] — 0 when substitution SUB is one listed generator.
+# CODE=1: its output is spliced into code, so path generators do not count.
+# CODE=2: its output is the command word, so only a path generator that never
+# prints an empty or relative word counts (j2481b: an allowlist, not bad verbs).
+_bwimc_dx_gen() {
+    local IFS=$' \t\n' g e wi a0 na=0 k code=${2:-0}
+    local -a gl il av
+    read -r -a gl <<< "${_dx_sg[$1]}" || true
+    for g in ${gl[@]+"${gl[@]}"}; do
+        [ "${_dx_ga[$g]}" = 0 ] || return 1
+        read -r -a il <<< "${_dx_gi[$g]}" || true
+        [ "${#il[@]}" -gt 0 ] || continue
+        [ "$na" = 0 ] || return 1
+        av=()
+        for e in "${il[@]}"; do
+            [ "${e:0:1}" = w ] || return 1
+            wi=${e#w}
+            [ "${ST_X[$wi]}${ST_G[$wi]}${ST_A[$wi]}" = 000 ] || return 1
+            [ -z "${ST_RO[$wi]}" ] || return 1
+            av[${#av[@]}]=${ST_W[$wi]}
+        done
+        na=${#av[@]}
+    done
+    if [ "$na" = 0 ]; then [ "$code" != 2 ]; return; fi
+    a0=${av[0]}
+    if [ "$code" = 2 ]; then
+        case "$a0" in
+            pwd) [ "$na" = 1 ]; return ;;
+            git) [ "$na" = 3 ] && [ "${av[1]}" = rev-parse ] || return 1
+                case "${av[2]}" in --show-toplevel|--absolute-git-dir) return 0 ;; esac ;;
+        esac
+        return 1
+    fi
+    case "$a0" in
+        uname|whoami|hostname) return 0 ;;
+        # a directory name is anyone's text: a path, never code
+        pwd) [ "$code" = 0 ]; return ;;
+        echo|printf)
+            # its arguments ARE its output: trusted only when that output is
+            # computed here (no escape, no format) and is one inert word, which
+            # is then read again like a literal body
+            k=1; e=''
+            if [ "$a0" = echo ]; then
+                while [ "$k" -lt "$na" ] && [[ ${av[$k]} =~ ^-[neE]+$ ]]; do k=$((k + 1)); done
+                while [ "$k" -lt "$na" ]; do e="$e${e:+ }${av[$k]}"; k=$((k + 1)); done
+            else
+                [ "${av[1]-}" != -- ] || k=2
+                [ $((k + 1)) = "$na" ] || return 1
+                e=${av[$k]}
+                case "$e" in *%*) return 1 ;; esac
+            fi
+            case "$e" in *\\*) return 1 ;; esac
+            [ -z "$e" ] || [[ $e =~ ^[A-Za-z0-9_.,:+@-]+$ ]] || return 1
+            [ -z "$e" ] || _bwimc_dx_queue "$e"
+            return 0 ;;
+        date)
+            # a +FORMAT prints its literal text: numeric directives only
+            g=0; k=1
+            while [ "$k" -lt "$na" ]; do
+                case "${av[$k]}" in
+                    -u|--utc|--universal) ;;
+                    +*) [[ ${av[$k]} =~ $_BWIMC_DX_DATEFMT ]] || return 1; g=1 ;;
+                    *) return 1 ;;
+                esac
+                k=$((k + 1))
+            done
+            [ "$g" = 1 ]; return ;;
+        ssh-agent)
+            k=1
+            while [ "$k" -lt "$na" ]; do
+                case "${av[$k]}" in
+                    -s|-c|-k) k=$((k + 1)) ;;
+                    -a) [ $((k + 1)) -lt "$na" ] || return 1
+                        # the socket path is printed unquoted into the output
+                        [[ ${av[$((k + 1))]} =~ ^[A-Za-z0-9_./][A-Za-z0-9_./-]*$ ]] || return 1
+                        k=$((k + 2)) ;;
+                    *) return 1 ;;
+                esac
+            done
+            return 0 ;;
+        direnv)
+            [ "$na" = 3 ] || return 1
+            case "${av[1]}" in export|hook) ;; *) return 1 ;; esac
+            [[ ${av[2]} =~ ^[a-z]+$ ]]; return ;;
+        pyenv|rbenv|nodenv)
+            case "${av[1]-}" in
+                init)
+                    case "$na" in
+                        2) return 0 ;;
+                        3) [ "${av[2]}" = - ] || [[ ${av[2]} =~ ^[a-z]+$ ]]; return ;;
+                        4) [ "${av[2]}" = - ] && [[ ${av[3]} =~ ^[a-z]+$ ]]; return ;;
+                        *) return 1 ;;
+                    esac ;;
+                sh-*)
+                    k=2
+                    while [ "$k" -lt "$na" ]; do
+                        [[ ${av[$k]} =~ ^[A-Za-z0-9_.+-]+$ ]] || return 1
+                        k=$((k + 1))
+                    done
+                    return 0 ;;
+                *) return 1 ;;
+            esac ;;
+        git)
+            [ "$code" = 0 ] && [ "$na" = 3 ] && [ "${av[1]}" = rev-parse ] || return 1
+            case "${av[2]}" in
+                --show-toplevel|--show-cdup|--show-prefix|--git-dir|--git-common-dir|--absolute-git-dir) return 0 ;;
+            esac
+            return 1 ;;
+    esac
+    return 1
+}
+
+# _bwimc_dx_body START ONE CTX — judge an exec body: every word literal, every
+# substitution a listed generator; a literal body is queued to be read again.
+# ONE=1 takes one shell word (glued across substitutions), else every item.
+_bwimc_dx_body() {
+    local p=$1 one=$2 ctx=$3 e wi txt='' prev=''
+    while [ "$p" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$p]}
+        if [ "$one" = 1 ] && [ -n "$prev" ] && [ "$prev" = w ] && [ "${e:0:1}" = w ]; then break; fi
+        if [ "${e:0:1}" = s ]; then
+            if _bwimc_dx_gen "${e#s}" 1; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1))
+            else _bwimc_dx_deny "(an executed body runs a substitution that is not a listed generator)"; fi
+        else
+            wi=${e#w}
+            if [ -n "${ST_RO[$wi]}" ] && [ -n "$prev" ]; then p=$((p + 1)); continue; fi
+            [ "${ST_X[$wi]}${ST_G[$wi]}" = 00 ] || _bwimc_dx_deny "(an executed body carries a variable or glob: ${ST_W[$wi]})"
+            txt="$txt${txt:+ }${ST_W[$wi]}"
+        fi
+        prev=${e:0:1}
+        p=$((p + 1))
+    done
+    if [ "$ctx" = fx ]; then
+        case "$txt" in *'{}'*) _bwimc_dx_deny "(a find/xargs placeholder inside an executed shell body)" ;; esac
+    fi
+    [ -z "$txt" ] || _bwimc_dx_queue "$txt"
+    return 0
+}
+
+# _bwimc_dx_hdops — the heredoc operator words of the current tokenisation, in order.
+_bwimc_dx_hdops() {
+    local k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        case "${ST_RO[$k]}" in '<<'|'<<-'|[0-9]'<<'|[0-9]'<<-') printf '%s ' "$k" ;; esac
+        k=$((k + 1))
+    done
+}
+
+# _bwimc_dx_heredoc WI — queue the body of the heredoc whose delimiter is word WI.
+# Bodies are located as the tokenizer reads them: after each newline, the bodies
+# of every heredoc opened before it, in order. A line that opens heredocs is found
+# by tokenising the text up to it (in a subshell, so ST_* stay put).
+_bwimc_dx_heredoc() {
+    local wi=$1 t="$_dx_text" pre='' line chk body hw=-1 used=0 c n bs
+    local -a hd ops
+    read -r -a hd <<< "$(_bwimc_dx_hdops)" || true
+    while [ -n "$t" ]; do
+        line=${t%%$'\n'*}
+        if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+        pre="$pre$line"$'\n'
+        case "$line" in *'<<'*) ;; *) continue ;; esac
+        c=$( { st_tokenize "$pre" && _bwimc_dx_hdops; } 2>/dev/null ) \
+            || _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+        read -r -a ops <<< "$c" || true
+        n=${#ops[@]}
+        [ "$n" -gt "$used" ] || continue
+        bs=${line##*[!\\]}; [ "$bs" != "$line" ] || bs=$line
+        if [ $(( ${#bs} % 2 )) = 1 ]; then
+            _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+        fi
+        while [ "$used" -lt "$n" ]; do
+            hw=${hd[$used]-}
+            [ -n "$hw" ] || _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+            body=''
+            while [ -n "$t" ]; do
+                line=${t%%$'\n'*}
+                if [ "$line" = "$t" ]; then t=''; else t=${t#*$'\n'}; fi
+                pre="$pre$line"$'\n'
+                chk=$line
+                case "${ST_RO[$hw]}" in *-) while [ "${chk:0:1}" = $'\t' ]; do chk=${chk#?}; done ;; esac
+                [ "$chk" != "${ST_W[$hw]}" ] || break
+                body="$body$line"$'\n'
+            done
+            if [ "$hw" = "$wi" ]; then
+                if [ "${ST_Q[$wi]}" = 0 ]; then
+                    case "$body" in *'$'*|*'`'*) _bwimc_dx_deny "(an unquoted heredoc fed to a shell expands its body)" ;; esac
+                fi
+                [ -z "$body" ] || _bwimc_dx_queue "$body"
+                return 0
+            fi
+            used=$((used + 1))
+        done
+    done
+    _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
+}
+
+# _bwimc_dx_shell START PIPE CTX — a shell at the command position.
+_bwimc_dx_shell() {
+    local p=$1 pipe=$2 ctx=$3 q e wi w n hasc=0 sopt=0 op=-1 hs=-1 hdw=-1 amb=0
+    q=$p
+    while [ "$q" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$q]}
+        if [ "${e:0:1}" = w ]; then
+            wi=${e#w}
+            case "${ST_RO[$wi]}" in
+                '<<<'|[0-9]'<<<') [ "$hs" -ge 0 ] || hs=$q ;;
+                '<<'|'<<-'|[0-9]'<<'|[0-9]'<<-') [ "$hdw" -ge 0 ] || hdw=$wi ;;
+            esac
+        fi
+        q=$((q + 1))
+    done
+    # Options run until the first operand, -c included (bash -c -e BODY), and
+    # every o or O in a cluster takes the next word (bash -euo pipefail). The
+    # first operand is the -c body, else the script (none after -s). A word
+    # with a live $ before any -c may itself be -c (F=-c; bash $F BODY), so it
+    # is skipped as an option and counted.
+    q=$p
+    while [ "$q" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$q]}
+        if [ "${e:0:1}" = s ]; then op=$q; break; fi
+        wi=${e#w}
+        if [ -n "${ST_RO[$wi]}" ]; then q=$((q + 1)); continue; fi
+        if [ "$hasc" = 0 ] && [ "${ST_X[$wi]}" = 1 ]; then amb=$((amb + 1)); q=$((q + 1)); continue; fi
+        w=${ST_W[$wi]}
+        if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; fi
+        # -s: the script is standard input, every later word a positional
+        [[ $w =~ ^-[A-Za-z]*s[A-Za-z]*$ ]] && sopt=1
+        if [[ $w =~ ^[-+][A-Za-z]*[oO][A-Za-z]*$ ]]; then n=${w//[!oO]/}; q=$((q + 1 + ${#n})); continue; fi
+        case "$w" in
+            --) q=$((q + 1)); [ "$q" -lt "$_dx_nit" ] && op=$q; break ;;
+            --rcfile|--init-file) q=$((q + 2)) ;;
+            -*|+*) q=$((q + 1)) ;;
+            /dev/stdin|/dev/fd/*|/proc/*/fd/*) [ "$hasc" = 1 ] && op=$q; break ;;
+            *) op=$q; break ;;
+        esac
+    done
+    # two such words: the first may be -c and the second its body; one: the
+    # first operand may be its body, so it is judged as one
+    [ "$amb" -lt 2 ] || _bwimc_dx_deny "(a shell option word is a variable, so it may be -c and a later one its body)"
+    if [ "$amb" = 1 ] && [ "$hasc" = 0 ] && [ "$op" -ge 0 ]; then _bwimc_dx_body "$op" 1 "$ctx"; fi
+    if [ "$hasc" = 1 ]; then
+        [ "$ctx" != xr ] || _bwimc_dx_deny "(xargs substitutes data into a shell -c body)"
+        q=$op
+        if [ "$q" -lt 0 ]; then
+            case "$ctx" in x*) _bwimc_dx_deny "(xargs passes data as a shell -c body)" ;; esac
+            return 0
+        fi
+        _bwimc_dx_body "$q" 1 "$ctx"
+        return 0
+    fi
+    [ "$sopt" = 0 ] || op=-1
+    # under xargs a script operand keeps the data positional; without one the
+    # data is the script and its options (bash -n +n -c CODE runs CODE)
+    if [ "$op" -lt 0 ] || [ "$ctx" = xr ]; then
+        case "$ctx" in x*) _bwimc_dx_deny "(xargs runs a shell on data)" ;; esac
+    fi
+    if [ "$op" -ge 0 ]; then
+        e=${_dx_it[$op]}
+        if [ "${e:0:1}" = s ]; then
+            if _bwimc_dx_gen "${e#s}"; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1))
+            else _bwimc_dx_deny "(a shell runs a script made by a substitution that is not a listed generator)"; fi
+        fi
+        return 0
+    fi
+    if [ "$hs" -ge 0 ]; then _bwimc_dx_body "$hs" 1 ""; return 0; fi
+    if [ "$hdw" -ge 0 ]; then _bwimc_dx_heredoc "$hdw"; return 0; fi
+    [ "$pipe" = 0 ] || _bwimc_dx_deny "(a pipe feeds data into a shell)"
+    [ "$_BWIMC_DX_STDIN" = 0 ] || _bwimc_dx_deny "(a shell reads its script from a pipe or a redirected standard input)"
+    return 0
+}
+
+# _bwimc_dx_site START PIPE CTX — the simple command whose argv starts at item START.
+_bwimc_dx_site() {
+    local p=$1 pipe=$2 ctx=$3 e wi w b prev_a=0 n
+    while [ "$p" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$p]}
+        if [ "${e:0:1}" = s ]; then
+            if [ "$prev_a" = 1 ]; then p=$((p + 1)); continue; fi
+            break
+        fi
+        wi=${e#w}
+        if [ -n "${ST_RO[$wi]}" ]; then p=$((p + 1)); continue; fi
+        if [ "$prev_a" = 1 ] && [ "${ST_Q[$wi]}" = 1 ] && [ -z "${ST_W[$wi]}" ]; then p=$((p + 1)); continue; fi
+        if [ "${ST_A[$wi]}" = 1 ]; then
+            prev_a=0
+            case "${ST_W[$wi]}" in *=) prev_a=1 ;; esac
+            p=$((p + 1)); continue
+        fi
+        prev_a=0
+        if [ "${ST_Q[$wi]}" = 0 ]; then
+            case "${ST_W[$wi]}" in
+                '!'|'{'|'}'|if|then|elif|else|fi|do|done|while|until|'[['|']]') p=$((p + 1)); continue ;;
+            esac
+        fi
+        # a quoted empty word glued to a substitution: the substitution is the word
+        if [ "${ST_Q[$wi]}" = 1 ] && [ -z "${ST_W[$wi]}" ] && [ $((p + 1)) -lt "$_dx_nit" ] \
+            && [ "${_dx_it[$((p + 1))]:0:1}" = s ]; then
+            p=$((p + 1))
+        fi
+        break
+    done
+    [ "$p" -lt "$_dx_nit" ] || return 0
+    e=${_dx_it[$p]}
+    if [ "${e:0:1}" = s ]; then
+        [ "$ctx" != xr ] || return 0
+        if _bwimc_dx_gen "${e#s}" 2; then _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1)); return 0; fi
+        _bwimc_dx_deny "(a substitution's output runs as the command)"
+    fi
+    wi=${e#w}
+    w=${ST_W[$wi]}
+    # an exec word is matched on its basename: /bin/sh is sh
+    b=${w##*/}
+    if [ "${ST_X[$wi]}" = 1 ]; then
+        case "$w" in
+            */*) case "$b" in *'$'*|'') _bwimc_dx_deny "(a variable names the command: $w)" ;; esac ;;
+            *) _bwimc_dx_deny "(a variable is the command word: $w)" ;;
+        esac
+    fi
+    case "$b" in
+        eval)
+            _bwimc_dx_body $((p + 1)) 0 "" ;;
+        source|.)
+            _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
+            p=$((p + 1))
+            while [ "$p" -lt "$_dx_nit" ]; do
+                e=${_dx_it[$p]}
+                if [ "${e:0:1}" = w ]; then
+                    wi=${e#w}
+                    if [ -n "${ST_RO[$wi]}" ] || [ "${ST_W[$wi]}" = -- ]; then p=$((p + 1)); continue; fi
+                    if [ "${ST_Q[$wi]}" = 1 ] && [ -z "${ST_W[$wi]}" ] && [ $((p + 1)) -lt "$_dx_nit" ] \
+                        && [ "${_dx_it[$((p + 1))]:0:1}" = s ]; then p=$((p + 1)); continue; fi
+                    case "${ST_W[$wi]}" in
+                        -|/dev/stdin|/dev/fd/*|/proc/*/fd/*) _bwimc_dx_deny "(source reads standard input or a descriptor)" ;;
+                    esac
+                    return 0
+                fi
+                if _bwimc_dx_gen "${e#s}"; then
+                    _BWIMC_DX_ALLOW=$((_BWIMC_DX_ALLOW + 1)); _BWIMC_DX_SELF=$((_BWIMC_DX_SELF + 1))
+                else
+                    _bwimc_dx_deny "(source reads a substitution that is not a listed generator)"
+                fi
+                return 0
+            done ;;
+        bash|sh|zsh|dash|ksh|fish|mksh|yash)
+            _bwimc_dx_shell $((p + 1)) "$pipe" "$ctx" ;;
+        find)
+            p=$((p + 1))
+            while [ "$p" -lt "$_dx_nit" ]; do
+                e=${_dx_it[$p]}
+                if [ "${e:0:1}" = w ]; then
+                    case "${ST_W[${e#w}]}" in
+                        -exec|-execdir|-ok|-okdir) _bwimc_dx_site $((p + 1)) 0 fx ;;
+                    esac
+                fi
+                p=$((p + 1))
+            done ;;
+        xargs|nice|nohup|env|timeout|sudo|doas|stdbuf|ionice|chrt|taskset|setsid|flock|exec|command|builtin|time)
+            local wr="$b" nctx="$ctx" pos=0
+            case "$wr" in timeout|chrt|taskset|flock) pos=1 ;; esac
+            [ "$wr" != xargs ] || nctx=x
+            p=$((p + 1))
+            while [ "$p" -lt "$_dx_nit" ]; do
+                e=${_dx_it[$p]}
+                [ "${e:0:1}" = w ] || break
+                wi=${e#w}
+                if [ -n "${ST_RO[$wi]}" ]; then p=$((p + 1)); continue; fi
+                w=${ST_W[$wi]}
+                case "$wr:$w" in
+                    xargs:-I*|xargs:-i*|xargs:--replace*|xargs:-J*) nctx=xr ;;
+                esac
+                case "$wr:$w" in
+                    command:-v|command:-V) return 0 ;;
+                    env:-S|env:--split-string|flock:-c|flock:--command)
+                        _bwimc_dx_body $((p + 1)) 1 "$nctx"; return 0 ;;
+                esac
+                case "$w" in
+                    --) p=$((p + 1)); break ;;
+                    -*|+*)
+                        n=1
+                        case "$wr:$w" in
+                            sudo:-[ugCDhprtUTR]|doas:-[uC]|nice:-n|timeout:-[sk]|env:-[uC]|ionice:-[cnpPu]|stdbuf:-[ioe]|flock:-[wE]|exec:-a|xargs:-[IdaELnPsJ]|xargs:--delimiter|xargs:--arg-file|xargs:--max-args|xargs:--max-procs|xargs:--replace) n=2 ;;
+                        esac
+                        p=$((p + n)); continue ;;
+                esac
+                if [ "${ST_A[$wi]}" = 1 ]; then p=$((p + 1)); continue; fi
+                if [ "$pos" -gt 0 ]; then pos=$((pos - 1)); p=$((p + 1)); continue; fi
+                break
+            done
+            _bwimc_dx_site "$p" "$pipe" "$nctx" ;;
+    esac
+    return 0
+}
+
+# _bwimc_dx_text TEXT — tokenise one text, group its simple commands, judge each.
+_bwimc_dx_text() {
+    local t="$1" t2 k IFS=$' \t\n'
+    local -a _dx_gi _dx_gp _dx_gs _dx_ga _dx_sk _dx_sp _dx_sg _dx_stk _dx_it
+    local _dx_ng=0 _dx_cur=0 _dx_cursub=-1 _dx_nsub=0 _dx_nst=0 _dx_nit=0 _dx_text="$1"
+    local s wi sep top lw li g e
+    _bwimc_dx_pre "$t"
+    if ! st_tokenize "$t"; then
+        t2=$t
+        [ "${#t}" -gt 8192 ] || _bwimc_dx_unbrace "$t"
+        if [ "$t2" = "$t" ] || ! st_tokenize "$t2"; then
+            _bwimc_dx_crude "$t"
+            return 0
+        fi
+        _dx_text=$t2
+    fi
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        if _bwimc_dx_wshadow "${ST_W[$k]}"; then _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1)); fi
+        [[ ${ST_RO[$k]} =~ $_BWIMC_DX_INRO ]] && _BWIMC_DX_STDIN=1
+        k=$((k + 1))
+    done
+    k=0
+    while [ "$k" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[$k]}" in '|'|'|&') _BWIMC_DX_STDIN=1 ;; esac
+        k=$((k + 1))
+    done
+    _bwimc_dx_ngroup -1 0
+    wi=0; s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        while [ "$wi" -lt "$ST_N" ] && [ "${ST_S[$wi]}" = "$s" ]; do
+            _dx_gi[_dx_cur]="${_dx_gi[$_dx_cur]} w$wi"; wi=$((wi + 1))
+        done
+        sep=${ST_SEP[$s]}
+        top=''
+        [ "$_dx_nst" = 0 ] || top=${_dx_stk[$((_dx_nst - 1))]%%:*}
+        if [ "$sep" = '`' ] && [ "$top" = '`' ]; then sep=')'; fi
+        # shellcheck disable=SC2016  # separator text, not an expansion
+        case "$sep" in
+            '$('|'<('|'>('|'`') _bwimc_dx_open "$sep" ;;
+            '(')
+                lw=${_dx_gi[$_dx_cur]##* }
+                li=-1
+                [ "${lw:0:1}" != w ] || li=${lw#w}
+                if [ "$li" -ge 0 ] && [ "${ST_W[$li]}" = '=' ] && [ "${ST_Q[$li]}" = 0 ]; then
+                    _dx_gi[_dx_cur]=${_dx_gi[$_dx_cur]% *}
+                    _bwimc_dx_open '=('
+                elif [ "$li" -ge 0 ] && [ "${ST_A[$li]}" = 1 ] && [ "${ST_W[$li]%=}" != "${ST_W[$li]}" ]; then
+                    _dx_stk[_dx_nst]="A:$_dx_cur:$_dx_cursub"; _dx_nst=$((_dx_nst + 1))
+                    _bwimc_dx_ngroup "$_dx_cursub" 0; _dx_ga[_dx_cur]=1
+                else
+                    if [ "$li" -ge 0 ] && [ "${_dx_gi[$_dx_cur]}" = " $lw" ] \
+                        && [ $((s + 1)) -lt "$ST_NSEG" ] && [ "${ST_SEP[$((s + 1))]}" = ')' ] \
+                        && { [ "$wi" -ge "$ST_N" ] || [ "${ST_S[$wi]}" != $((s + 1)) ]; }; then
+                        _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
+                    fi
+                    _dx_stk[_dx_nst]="(:$_dx_cur:$_dx_cursub"; _dx_nst=$((_dx_nst + 1))
+                    _bwimc_dx_ngroup "$_dx_cursub" 0
+                fi ;;
+            ')')
+                if [ "$_dx_nst" = 0 ]; then _bwimc_dx_ngroup "$_dx_cursub" 0
+                else
+                    _dx_nst=$((_dx_nst - 1)); e=${_dx_stk[$_dx_nst]}
+                    top=${e%%:*}; e=${e#*:}
+                    _dx_cursub=${e#*:}
+                    case "$top" in
+                        '(') _bwimc_dx_ngroup "$_dx_cursub" 0 ;;
+                        *) _dx_cur=${e%%:*} ;;
+                    esac
+                fi ;;
+            '|'|'|&') _bwimc_dx_ngroup "$_dx_cursub" 1 ;;
+            *) _bwimc_dx_ngroup "$_dx_cursub" 0 ;;
+        esac
+        s=$((s + 1))
+    done
+    g=0
+    while [ "$g" -lt "$_dx_ng" ]; do
+        if [ "${_dx_ga[$g]}" = 0 ]; then
+            read -r -a _dx_it <<< "${_dx_gi[$g]}" || true
+            _dx_nit=${#_dx_it[@]}
+            [ "$_dx_nit" = 0 ] || _bwimc_dx_site 0 "${_dx_gp[$g]}" ""
+        fi
+        g=$((g + 1))
+    done
+    return 0
+}
+
+# helpers in _bwimc_dx_text's dynamic scope
+_bwimc_dx_ngroup() { # SUB PIPE — start a new simple command
+    _dx_gi[_dx_ng]=''; _dx_gs[_dx_ng]=$1; _dx_gp[_dx_ng]=$2; _dx_ga[_dx_ng]=0
+    [ "$1" -lt 0 ] || _dx_sg[$1]="${_dx_sg[$1]} $_dx_ng"
+    _dx_cur=$_dx_ng; _dx_ng=$((_dx_ng + 1))
+}
+_bwimc_dx_open() { # KIND — a substitution opens inside the current command
+    _dx_gi[_dx_cur]="${_dx_gi[$_dx_cur]} s$_dx_nsub"
+    _dx_sk[_dx_nsub]=$1; _dx_sp[_dx_nsub]=$_dx_cur; _dx_sg[_dx_nsub]=''
+    _dx_stk[_dx_nst]="$1:$_dx_cur:$_dx_cursub"; _dx_nst=$((_dx_nst + 1))
+    _dx_cursub=$_dx_nsub; _dx_nsub=$((_dx_nsub + 1))
+    _bwimc_dx_ngroup "$_dx_cursub" 0
+}
+
+# _bwimc_check_data_exec CMD — deny (data-exec) or return 0.
+_bwimc_check_data_exec() {
+    local qi=0
+    _BWIMC_DX_SHADOW=0; _BWIMC_DX_ALLOW=0; _BWIMC_DX_SELF=0; _BWIMC_DX_STDIN=0
+    _BWIMC_DX_Q=(); _BWIMC_DX_QN=0
+    _bwimc_dx_queue "$1"
+    while [ "$qi" -lt "$_BWIMC_DX_QN" ]; do
+        _bwimc_dx_text "${_BWIMC_DX_Q[$qi]}"
+        qi=$((qi + 1))
+    done
+    if [ "$_BWIMC_DX_SHADOW" -gt 0 ] && [ "$_BWIMC_DX_ALLOW" -gt 0 ]; then
+        if ! { [ "$_BWIMC_DX_SELF" = 1 ] && [ "$_BWIMC_DX_SHADOW" = 1 ] && [ "$_BWIMC_DX_ALLOW" = 1 ]; }; then
+            _bwimc_dx_deny "(a listed generator runs in a command that can re-point its name: hash/alias/function/builtin/enable, a PATH change or a source)"
+        fi
+    fi
+    return 0
+}
+
 # --------------------------------------------------------------- scan
 
 _bwimc_cwd=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev/null || true)
@@ -3024,6 +4203,12 @@ case "$cmd" in
     *[$'\001'$'\002'$'\003'$'\004'$'\005'$'\006'$'\016']*)
         _bwimc_deny "marker-byte" "(raw control byte in command)" "" "" ;;
 esac
+
+# HIMMEL-5349 / HIMMEL-5098: deny execution of data (_bwimc_check_data_exec).
+# Every cwd: the data's write target is unknown, so no cwd proves it safe.
+if [ "${tool:-}" != PowerShell ] && [ "${EDIT_ON_MAIN_OK:-0}" != 1 ]; then
+    _bwimc_check_data_exec "$cmd"
+fi
 
 # HIMMEL-4359: a HOME assignment anywhere in the command (`HOME=x`, a prefix
 # `HOME=x cmd`, export/declare/typeset/local/readonly, `env [-i] HOME=x`, and

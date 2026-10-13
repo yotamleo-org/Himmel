@@ -1,7 +1,7 @@
 # Cloud environment: from nothing to a working `claude --cloud` session
 
 How an adopter gets `claude --cloud` sessions on **their own fork** of himmel
-starting with the harness working (HIMMEL-4429, HIMMEL-5163). The cloud lane
+starting with the harness working. The cloud lane
 runs small, well-scoped tickets on an Anthropic-managed VM and opens a PR; a
 local shepherd then reviews and merges it. What a session has, and why the
 shepherd is mandatory, is in
@@ -10,7 +10,7 @@ reference: [cloud environments](https://code.claude.com/docs/en/cloud-environmen
 
 ## Why this is a paste, not a command
 
-Checked against the docs and the CLI on 2026-10-10 (HIMMEL-5163):
+Checked against the docs and the CLI on 2026-10-10:
 
 | Question | Answer | Source |
 |---|---|---|
@@ -65,13 +65,13 @@ Notes on the fields:
   claude.ai Atlassian connector, not the local jira CLI.
 - Leave `GH_TOKEN` and `GITHUB_TOKEN` unset so the GitHub proxy authenticates.
 - The two Bash timeouts must be set in this field: it is the only place they
-  reach the Bash tool (HIMMEL-4429).
+  reach the Bash tool.
 - Keep the setup script's trailing `|| true`: a non-zero setup script stops the
   session from starting, and a failed step should cost a tool, not the session.
 - The setup script installs shellcheck, `at` and pre-commit, builds the Jira CLI
   dist, installs the obsidian-triage deps and the lean plugin profile
   (himmel-ops, lean-skills; a claude.ai plugin upload never loads in a cloud
-  session), then graphify and qmd over the repo (HIMMEL-4726). Each build is
+  session), then graphify and qmd over the repo. Each build is
   bounded by `timeout` and a failure costs only that tool. Its last step stamps
   the script's hash for the self-check below.
 - **Network access** `Trusted` covers GitHub, npm, PyPI and the Ubuntu
@@ -141,7 +141,7 @@ version, a plugins directory, a `Graph: ... nodes` line, exactly one collection
 
 | The cloud has | How |
 |---|---|
-| Hooks | The repo's `.claude/settings.json`; plugin hooks through the setup script's plugin step (probed, HIMMEL-4273) |
+| Hooks | The repo's `.claude/settings.json`; plugin hooks through the setup script's plugin step (probed) |
 | graphify | Pinned at `scripts/lib/graphify-bin.sh`, no backend extra, AST-only (`graphify update .`): it parses code locally and calls no model |
 | qmd, repo only | The pinned fork and one collection, `himmel`, rebuilt on every setup run. BM25 only; a ticket that needs `qmd query`, vector search or another collection routes LOCAL-NATIVE |
 | Jira | The claude.ai Atlassian MCP connector, enabled for the session |
@@ -152,12 +152,50 @@ version, a plugins directory, a `Graph: ... nodes` line, exactly one collection
 | Handover state | It lives in the state repo, which the cloud cannot reach; a cloud session reports through its PR |
 | A Jira token | Not in the environment on purpose; use the Atlassian connector |
 | Lane tickets (claudex, codex or another lane) | Cloud is Claude only; `/cloud-route` routes them LOCAL |
-| The console bridge and the hook-integrity bypass | Local launching-shell state; a ticket that edits `scripts/hooks/` routes HOOK-BYPASS |
+| The supervisor session bridge and the hook-integrity off switch | Local launching-shell state; a ticket that edits `scripts/hooks/` routes HOOK-BYPASS |
 
 The cached graph and index live in `/tmp/himmel-setup`, a frozen clone. In the
 session's own worktree run `bash scripts/cloud/setup-env.sh` to rebuild both
 against that checkout. Never run a semantic `/graphify` extraction in the cloud:
 it would send content to a model backend.
+
+## Local-versus-cloud parity
+
+`bash scripts/cloud/parity-probe.sh` is a read-only probe: one `item<TAB>value`
+row per item under `## environment`, `settings`, `plugins`, `guards`, `gates`,
+`tools`, `jira` and `egress`. Run it locally and in a cloud session and diff the
+two (`--no-net` skips the egress rows). Each PreToolUse guard row is a harmless
+input the guard must refuse and reads `DENY`; `ALLOW` means that guard is off in
+that environment. The probe changes nothing.
+
+To run it in the cloud, start one session on the branch with the brief: run
+`bash scripts/cloud/setup-env.sh`, then `bash scripts/cloud/parity-probe.sh`, and
+post the full output as one top-level PR comment whose first line is
+`CLOUD-DONE <session URL>`.
+
+| Item | Local | Cloud (measured) | Gap and fix, or reason and ticket |
+|---|---|---|---|
+| Repo hooks (10 events, 40 commands) | wired, all scripts present | identical, all scripts present | none |
+| Repo allow / deny rules | 156 / 37 | 156 / 37, same `deny-sha` | none |
+| User-scope deny rules and user `CLAUDE.md` | 36 deny, present | 0 deny, absent | Not closed here: the template would come from private user settings and rewriting live settings is VM-first. HIMMEL-5445 |
+| Plugin set and plugin hooks | 12 installed, 81 hook files | himmel-ops, lean-skills; 2 hook files | By design: the lean profile installs at setup time. The PreToolUse guards below are the repo's own hooks, not plugin hooks. HIMMEL-4206 |
+| PreToolUse guards (9 deny probes) | all `DENY` | all `DENY` | none |
+| `pre-commit` binary | 4.6.2 | 4.6.2 | none |
+| Git gate hooks (pre-commit, commit-msg, pre-push) | installed | **closed here:** a fresh clone had none; step `git-hooks` installs all three | The hook environments are fetched on first use, not at setup, to fit the ~5 min snapshot |
+| Attestation and ticket-ID gate | refuses a ticketless message (rc 1) | same, rc 1 | none |
+| bun | 1.4.3 | 1.4.2 | Image version, no action |
+| node, jq, gh, git | 24.21.0, 1.8.2, 2.102.0, 2.56.0 | 22.22.0, 1.7, 2.89.0, 2.43.0 | Image versions lag the station; the probe and its checks ran on both. No action |
+| gitleaks, `HIMMEL_REPO` | present | not probed, not installed by setup | HIMMEL-4580 |
+| shellcheck, `at` | present | present | none |
+| graphify | pinned 0.9.80 | image had 0.9.77, graph built AST-only. **Closed here:** setup skipped any present graphify; it now reinstalls one that differs from the pin, and the probe's `graphify-at-pin` row names a drift | Build time against the budget: HIMMEL-4581 |
+| qmd | 2.8.3 on PATH, 11 collections | installed by setup, no shim on PATH, so the probe read `<absent>`. **Closed here:** the probe resolves it through `qmd-bounded.sh` like setup does. One collection, `himmel`, BM25 only | By design: vaults and handover state stay local; a ticket needing a model-backed qmd query or vectors routes LOCAL-NATIVE |
+| Jira access | local jira CLI | Atlassian MCP connector; the CLI dist is built but there is no token | By design: no token in the environment |
+| Bash timeouts | unset locally | 600000 / 600000, set through the dialog | By design, see Notes above; `check-env.sh` reports a mismatch |
+| Egress | unrestricted | pypi, npm, ubuntu archive 200; `example.com` 000 (outside the `Trusted` list, by design); a HEAD to `github.com` got 400 from the GitHub proxy | **Closed here:** the probe uses GET |
+| luna, vaults, handover state, supervisor session bridge, hook-integrity off switch | present | absent | By design, local only; two-way supervisor session channel: HIMMEL-4277 |
+
+The cloud column is one cloud run of the probe on this change's branch:
+`setup-env.sh`, `parity-probe.sh` and `check-env.sh` all exited 0.
 
 ## How a cloud PR lands
 
@@ -169,7 +207,7 @@ it would send content to a model backend.
 3. A **local shepherd** takes it from there: `bash
    scripts/handover/console-kit/shepherd.sh <pr>` runs the coverage lint, the
    impacted suites, CI and the ready check; `/pr-check` and the CR gate run
-   locally, and the console merges on `GO`. The cloud session never merges and
+   locally, and the supervisor session merges on `GO`. The cloud session never merges and
    stops pushing once the shepherd comments.
 4. The ticket stays `In Progress` until the merge closes it.
 

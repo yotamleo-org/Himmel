@@ -64,7 +64,7 @@ deal, and every guard has an off switch (see
 |---|---|---|---|---|
 | **Scope** | `project` | The harness is wired in **this repo's** `.claude/settings.json` | Nothing extra | Everyone who clones the repo inherits it — commit the file deliberately |
 | | `user` | The harness is wired in **`~/.claude/settings.json`** | Nothing extra | Applies to *every* project you open on this machine, including ones you did not mean to gate |
-| **Install profile** | `starter` → `core` | 37 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored-himmel-331)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
+| **Install profile** | `starter` → `core` | 37 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
 | | `luna` | `core` plus the second-brain surface: vault scaffold, qmd index, graphify MCP, the clip cadences | `bun`, plus disk for the qmd index | A vault you now have to maintain; the cadences run on a schedule |
 | | `operator` / `custom` | `all` (46 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
@@ -76,7 +76,7 @@ deal, and every guard has an off switch (see
 Item membership is **data, not prose** — read
 [`scripts/install/manifest.json`](../../scripts/install/manifest.json) rather
 than trusting the counts above if they ever disagree. Channels are defined once,
-in [updating.md](updating.md#release-channels-himmel-2705); this table cites
+in [updating.md](updating.md#release-channels); this table cites
 them rather than restating the resolution rules. Two senses of "default" that
 are easy to conflate: the unset row is what the resolver falls back to when
 *nothing* is recorded, while `install` on a new station records `stable` — so a
@@ -136,10 +136,10 @@ Drop a `.single-writer` file at that repo's root (`touch .single-writer`) and
 on-main edits are allowed there. It is local and gitignored, so clones of the
 same repo stay protected — this is a per-checkout opt-out, not a repo policy.
 
-**4. The worktree workflow, and where the bypass goes.** `/worktree` creates an
+**4. The worktree workflow, and where the off switch goes.** `/worktree` creates an
 isolated branch and worktree next to your `.claude/` directory; `block-edit-on-main` and
 `check-worktree-isolation` keep work inside one. For a deliberate one-off, the
-bypass is `EDIT_ON_MAIN_OK=1` — and it must be set in the shell that **launches**
+off switch is `EDIT_ON_MAIN_OK=1` — and it must be set in the shell that **launches**
 Claude Code (`EDIT_ON_MAIN_OK=1 claude`). A per-call prefix inside a session does
 nothing, because the hook runs in a process that never sees it. This is the most
 common adopter confusion; it is worth reading twice.
@@ -148,7 +148,7 @@ common adopter confusion; it is worth reading twice.
 per-hook: remove the stanza from the `.claude/settings.json` the installer
 wired, or the hook id from `.pre-commit-config.yaml`.
 - **Reasonable to disable:** the ticket-ID requirement, the attestation
-  trailers, the doc-freshness advisory, and the backend-routing guard
+  trailers, the doc-freshness warn-only hook, and the backend-routing guard
   (`block-backend-tier.sh`) if you have no Jira.
 - **Keep:** `block-read-secrets.sh` (stops `.env`, `*.pem`, `id_rsa` and
   friends from reaching the model as tool results) and
@@ -166,7 +166,7 @@ worktree workflow.
 | Telegram (`scripts/telegram/`) | Remote dispatch and chat bridge | Absent without a bot token |
 | hermes (`scripts/hermes/`) | Free-inference junior and review lanes | Absent without API keys |
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
-| overnight mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
+| AFK (unattended) mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
 ## Verify
 

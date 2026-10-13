@@ -170,6 +170,7 @@ build_fixture() {
   cat > "$_d/scripts/adopt.sh" <<STUB
 #!/usr/bin/env bash
 printf 'adopt.sh: %s\n' "\$*" >> "$_d/adopt-calls.log"
+printf 'adopt.sh\n' >> "$_d/order-trace.log"
 exit 0
 STUB
   chmod +x "$_d/scripts/adopt.sh"
@@ -188,12 +189,14 @@ STUB
   cat > "$_d/scripts/lib/wire-luna-vault.sh" <<STUB
 #!/usr/bin/env bash
 printf 'wire-luna-vault.sh: %s\n' "\$*" >> "$_d/wire-luna-vault-calls.log"
+printf 'wire-luna-vault.sh\n' >> "$_d/order-trace.log"
 exit 0
 STUB
   chmod +x "$_d/scripts/lib/wire-luna-vault.sh"
   cat > "$_d/scripts/luna-upgrade-all.sh" <<STUB
 #!/usr/bin/env bash
 printf 'luna-upgrade-all.sh: %s\n' "\$*" >> "$_d/luna-upgrade-all-calls.log"
+printf 'luna-upgrade-all.sh\n' >> "$_d/order-trace.log"
 printf 'BACKUP\t/fake/backup/path\n'
 exit 0
 STUB
@@ -440,6 +443,10 @@ grepq "$out" -E -- 'via .*adopt\.sh --profile core --scope user' \
   || fail "caseM (HIMMEL-2460): epilogue must credit adopt.sh as the command that installed himmel (got: $out)"
 grepq "$out" -E -- 'via .*luna-upgrade-all\.sh' \
   && fail "caseM (HIMMEL-2460): epilogue must NOT credit luna-upgrade-all.sh as the install command (got: $out)"
+# HIMMEL-2507: the three stubs append to ONE shared trace, so the real call
+# ORDER is asserted (the per-script logs above prove only that each ran).
+[ "$(cat "$fixtureM/order-trace.log")" = "$(printf 'adopt.sh\nwire-luna-vault.sh\nluna-upgrade-all.sh')" ] \
+  || fail "caseM (HIMMEL-2507): execution order must be adopt.sh, wire-luna-vault.sh, luna-upgrade-all.sh (got: $(tr '\n' ' ' < "$fixtureM/order-trace.log"))"
 echo "ok: caseM stamped existing-vault accept -> adopt.sh then wire then apply invoked, BACKUP surfaced, uninstall footer printed, epilogue names adopt.sh"
 
 # ── Case N: stamped, interactive confirm decline -> neither script runs ────
@@ -1227,5 +1234,33 @@ grepq "$outY" -F '3' \
 grepq "$outY" -F 'would install (--dry-run' \
   && fail "caseY (HIMMEL-3308): a failed adopt.sh --dry-run must abort before the rest of the preview prints (got: $outY)"
 echo "ok: caseY a failing adopt.sh --dry-run aborts the preview and propagates its rc"
+
+# ── Case Z (HIMMEL-2507): sameFsEntry() compares dev/ino as BigInt ─────────
+# Two distinct 64-bit inodes above 2^53 collapse to the SAME JS Number, so a
+# Number compare calls two different checkouts identical. The stub serves
+# BigInts only when asked ({bigint:true}) and the lossy Number form otherwise;
+# the ino===0 degenerate guard (HIMMEL-2501) must still reject, and a genuinely
+# equal pair must still match.
+zCase=$(cat <<'NODEEOF'
+const bin = require(process.argv[2]);
+const fs = require('fs');
+const big = (ino) => (p, o) => (o && o.bigint
+  ? { dev: 7n, ino: ino[p] }
+  : { dev: 7, ino: Number(ino[p]) });
+const base = 2n ** 53n;
+fs.statSync = big({ a: base + 1n, b: base });
+if (bin.sameFsEntry('a', 'b') !== false) { console.error('FAIL: distinct >2^53 inodes compared equal'); process.exit(1); }
+fs.statSync = big({ a: base + 1n, b: base + 1n });
+if (bin.sameFsEntry('a', 'b') !== true) { console.error('FAIL: identical >2^53 inodes must match'); process.exit(1); }
+fs.statSync = big({ a: 0n, b: 0n });
+if (bin.sameFsEntry('a', 'b') !== false) { console.error('FAIL: ino 0n must not match'); process.exit(1); }
+console.log('ok');
+NODEEOF
+)
+outZ=$(printf '%s' "$zCase" | "$node_bin" - "$wizard" 2>&1); rcZ=$?
+if [ "$rcZ" -ne 0 ] || [ "$outZ" != "ok" ]; then
+  fail "caseZ (HIMMEL-2507): sameFsEntry bigint identity compare failed (rc=$rcZ): $outZ"
+fi
+echo "ok: caseZ sameFsEntry compares dev/ino as BigInt (distinct >2^53 inodes differ, ino 0 still rejected)"
 
 echo "PASS"

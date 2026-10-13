@@ -123,7 +123,6 @@ mkproc() {  # mkproc <pid> <startticks> <argv...>
 }
 printf '5000.00 4000.00\n' > "$W/proc/uptime"
 mkproc 1001 100000 konsole --separate -p tabtitle=HIMMEL-9001-N1-alpha -e env leg-claude --model 'claude-opus-5[1m]'
-# headless-claude-ok: fixture /proc cmdline text only; this suite launches nothing
 mkproc 1002 480000 claude --bg -n HIMMEL-9002-N2-beta --model claude-sonnet-5
 mkproc 1004 490000 konsole -e claude
 mkproc 1005 490000 konsole -e claude

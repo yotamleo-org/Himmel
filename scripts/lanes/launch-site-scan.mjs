@@ -27,7 +27,7 @@ function* walk(dir) {
     const p = join(dir, n);
     const st = statSync(p);
     if (st.isDirectory()) yield* walk(p);
-    else if (EXT.test(n) && !/^test-|\.test\.|^check-no-headless-claude/.test(n)) yield p;
+    else if (EXT.test(n) && !/^test-|\.test\./.test(n)) yield p;
   }
 }
 

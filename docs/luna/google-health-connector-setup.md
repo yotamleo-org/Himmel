@@ -1,6 +1,5 @@
 # Google Health Connector Setup Guide (alpha)
 
-- **Ticket:** HIMMEL-609
 - **Status:** ALPHA — opt-in, inert until configured
 - **API surface:** Google Health API v4 (`health.googleapis.com/v4`), the Fitbit-Web-API successor
 

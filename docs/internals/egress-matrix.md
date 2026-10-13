@@ -1,14 +1,15 @@
-# Data-egress matrix (HIMMEL-766)
+# Data-egress matrix
 
 **Source of truth: [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json).**
 One owned corpus × provider × purpose policy that every egress-enforcing
 surface reads, replacing per-tool hard-coded policy. It exists because four
 ad-hoc egress decisions (ollama-only → DeepSeek override → GLM-Clippings
 exception → Alibaba embeddings) accumulated across four documents with no
-single owner, producing a live contradiction (the HIMMEL-621/622 fence as
-specced denied Alibaba for luna content; HIMMEL-765 sends luna content to
-Alibaba for embeddings). *(That contradiction is now moot: HIMMEL-1257 de-listed
-DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
+single owner, producing a live contradiction (the graphify fence as
+specced denied Alibaba for luna content, while the embedding pilot sent luna
+content to Alibaba for embeddings). *(That contradiction is now moot: DeepSeek
+and Alibaba were de-listed entirely — see the provider-policy note in
+Semantics.)*
 
 ## Semantics
 
@@ -24,19 +25,19 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
 - **Load-bearing nuance:** embedding, rerank, and vision-embedding send FULL
   content (text or images) to the provider. An "embedding lane" is content
   egress, not metadata egress, and is gated accordingly.
-- **enrichment (HIMMEL-833)** is content egress like extraction — full note
+- **enrichment** is content egress like extraction — full note
   bodies leave the machine, plus the vault-wide top-200 tag vocabulary (tag
   names only, derived from all vault markdown) sent with each request as the
   allowed-tags list. Its `luna-personal × deepseek` cell was ratified 2026-07-10
-  (HIMMEL-833) then **REVERSED 2026-07-22 (HIMMEL-1257): now `deny`** — DeepSeek
+  then **REVERSED 2026-07-22: now `deny`** — DeepSeek
   de-listed (bad results). The GLM enrichment cell that replaced it
-  (`luna-personal × zai-glm × enrichment`, HIMMEL-1167) was itself **REVERSED
-  2026-08-29 (HIMMEL-2224): now `deny`** — see the GLM de-listing below. No
+  (`luna-personal × zai-glm × enrichment`) was itself **REVERSED
+  2026-08-29: now `deny`** — see the GLM de-listing below. No
   sanctioned CN enrichment lane remains; `enrich-chat-notes.py` ships
   `--provider claude`.
 - **`luna-personal × zai-glm × extraction`** was **ratified 2026-07-17**
-  (operator, HIMMEL-1122) as `allow+log`, and **REVERSED 2026-08-29
-  (HIMMEL-2224): now `deny`** — the GLM lane was dropped (below). The
+  (operator) as `allow+log`, and **REVERSED 2026-08-29:
+  now `deny`** — the GLM lane was dropped (below). The
   ratification reasoning is kept here because the matrix records *why a vendor
   was ever permitted*, not only its current verdict; read the rest of this
   bullet as history. **This WIDENS the permitted provider
@@ -53,34 +54,36 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
   vault was paying for the weaker backend purely because the matrix had no GLM
   cell. Scope is deliberately narrow:
   - `luna-personal × zai-glm × inference` stayed **deny** — extraction only,
-    and it still denies by *default* (HIMMEL-2224 added explicit deny rows only
+    and it still denies by *default* (the GLM de-listing added explicit deny rows only
     for the four cells that were open, it did not invent new rows).
-  - `salus × * × *` stays **deny, hard** — no override can flip it. The one carve-out is the explicit `salus × openai-codex × inference` allow row ahead of it (HIMMEL-5002, operator ruling 2026-10-08).
+  - `salus × * × *` stays **deny, hard** — no override can flip it. The one carve-out is the explicit `salus × openai-codex × inference` allow row ahead of it (operator ruling 2026-10-08).
   - **Not a default.** `refresh-graph-map.sh` keeps `BACKEND=claude-cli`
-    (HIMMEL-1049, the claude-only adopter story). GLM is a per-run opt-in for an
+    (the claude-only adopter story). GLM is a per-run opt-in for an
     operator who has a Coding Plan; an adopter without one is never expected to
     have it.
-- **Provider policy — DeepSeek + Alibaba de-listed (HIMMEL-1257, 2026-07-22).**
+- **Provider policy — DeepSeek + Alibaba de-listed (2026-07-22).**
   The sanctioned provider set for vault/handover egress is **GLM (zai-glm) +
   Claude (anthropic) + Codex (openai-codex)**. DeepSeek and Alibaba were dropped
-  (bad results, operator judgment): every DeepSeek vault/handover cell (the
-  2026-07-05 extraction override, HIMMEL-343 handover-state, HIMMEL-833
-  enrichment) and every Alibaba cell (the five HIMMEL-765 pilot cells + the
+  (bad results, operator judgment): every DeepSeek vault/handover extraction and
+  enrichment cell (the 2026-07-05 extraction override, enrichment; the
+  station opt-in inference cells behind `HIMMEL_DEEPSEEK_INFERENCE_OK=1` stay
+  conditional)
+  and every Alibaba cell (the five embedding/rerank pilot cells + the
   brief-scoped `handover-state × alibaba × inference` cell) is now explicit
   `deny`. Both providers stay **allow on `himmel-code`** via its `* ×` wildcard
   — the de-listing is about *private-content* egress, not public code, so
   `hard:true` is NOT used (that stays reserved for salus + gemini-keys-unset).
   The reversal is legible (each cell's `why` records it) and reversible (a
   future operator decision could re-add a cell). Salus PHI egress is untouched.
-- **Provider policy — GLM (zai-glm) de-listed (HIMMEL-2224, 2026-08-29).**
-  HIMMEL-1749 resolved the GLM lane as **DROP** (Coding Plan auto-renew
+- **Provider policy — GLM (zai-glm) de-listed (2026-08-29).**
+  The GLM lane was resolved as **DROP** (Coding Plan auto-renew
   cancelled 2026-08-12; the plan lapsed 2026-08-17) but its reversal branch
   never landed, leaving four cells live for 12 days. They are now explicit
-  `deny` on the same HIMMEL-1257 pattern: `luna-personal × zai-glm ×
-  extraction` (HIMMEL-1122), `luna-personal × zai-glm × enrichment`
-  (HIMMEL-1167), `luna-clippings × zai-glm × extraction` (the narrow G2.3
+  `deny` on the same pattern as the DeepSeek/Alibaba de-listing: `luna-personal × zai-glm ×
+  extraction`, `luna-personal × zai-glm × enrichment`,
+  `luna-clippings × zai-glm × extraction` (the narrow G2.3
   ladder exception) and `handover-state × zai-glm × inference` (the
-  brief-scoped worker cell). *(At the time, Kimi (`moonshot`, HIMMEL-1748)
+  brief-scoped worker cell). *(At the time, Kimi (`moonshot`)
   was adopted as the replacement CN extraction lane — see the kimi/moonshot
   retirement bullet below for why that no longer holds.)* Resist the urge to
   compress what remains into one provider list: the matrix is keyed by corpus
@@ -90,11 +93,11 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
   (allow+log, since retired) plus `anthropic`/`local-ollama`; **enrichment**
   on either corpus — `anthropic`/`local-ollama` only, no CN lane at all;
   `handover-state` **inference** — `openai-codex` (conditional, brief-scoped)
-  and `openrouter` (HIMMEL-1774) plus `anthropic`/`local-ollama`. Kimi held
+  and `openrouter` plus `anthropic`/`local-ollama`. Kimi held
   NO handover-state cell and no enrichment cell; Codex holds NO vault cell.
   This was a *record-integrity* fix, not an incident: nothing routed to GLM —
   no GLM lane appears in `scripts/lanes/resolve.mjs` — but a live `allow+log`
-  cell is exactly what a later leg would cite as pre-existing authorization.
+  cell is exactly what a later worker session would cite as pre-existing authorization.
   As with DeepSeek/Alibaba the rows
   are `deny`, **not deleted** (a deleted row falls through to `default: deny`
   and loses the history), **not `hard`**, and `himmel-code × zai-glm` stays
@@ -105,7 +108,7 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
   opened is now deny, so the flag opened nothing); `enrich-chat-notes.py`
   keeps its `glm` provider entry but its egress gate now refuses it, exactly
   as it already refuses `deepseek`.
-- **Provider policy — kimi/moonshot retired (HIMMEL-2101, operator ruling
+- **Provider policy — kimi/moonshot retired (operator ruling
   2026-08-24/2026-09-15: there is no kimi backend).** Unlike the
   DeepSeek/Alibaba/GLM de-listings above, the `moonshot` provider entry and
   its two `allow+log` rows (`luna-personal × moonshot × extraction`,
@@ -119,8 +122,8 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
   `luna-clippings` — `anthropic` (the operating substrate) is the only live
   allow cell either corpus has for extraction, and it is a plain `allow`, not
   `allow+log`. `graphmap-cadence.sh`'s weekly semantic refresh reverts to
-  `BACKEND="claude-cli"` (its pre-HIMMEL-1948 default, HIMMEL-1049), drawing
-  the operator's own interactive 5h/weekly bank — gated by `bank-preflight.sh`
+  `BACKEND="claude-cli"` (its earlier default), drawing
+  the operator's own interactive 5h/weekly subscription usage budget — gated by `bank-preflight.sh`
   inside `refresh-graph-map.sh`, not by this matrix. `graphify-fence.sh` drops
   `_map_kimi_endpoint` and its `kimi -> moonshot` mapping entirely;
   `--backend kimi` now hits the same undeclared-literal-provider fail-closed
@@ -131,18 +134,17 @@ DeepSeek + Alibaba entirely — see the provider-policy note in Semantics.)*
 Corpus membership resolves through the SAME primitives the live guards
 already use: `.salus` root markers and the
 `~/.config/claude-glm/{phi-roots,egress-denylist}` list files
-(`scripts/telegram/phi-egress-guard.ts` — renamed from `glm-guard.ts` under
-HIMMEL-2622 — and `scripts/hermes/assets/parity_guard.py`),
+(`scripts/telegram/phi-egress-guard.ts` — renamed from `glm-guard.ts` — and `scripts/hermes/assets/parity_guard.py`),
 plus vault/state roots from env or config — never hardcoded absolute paths.
 The matrix defines *policy*; membership resolution stays with the guards.
 
 List files are read line by line with surrounding whitespace (and a CRLF `\r`)
 trimmed and whole-line `#` comments skipped — in `graphify-fence.sh`
 (`_under_any_list`), its `graph-refresh.sh` twin, and `refresh-graph-map.sh`'s
-`_corpus_is_salus_root` alike (HIMMEL-3242). A line that trims to nothing is
+`_corpus_is_salus_root` alike. A line that trims to nothing is
 skipped, never compared (an empty root would prefix-match every path).
 
-## Staged-copy corpus declaration (`.graphify-corpus`, HIMMEL-778)
+## Staged-copy corpus declaration (`.graphify-corpus`)
 
 The 621/622 plan runs extraction on scratchpad **copies** of corpus content,
 never live vaults — but a copy classifies as nothing, so an undeclared copy is
@@ -168,11 +170,11 @@ filesystem marker walks use the original path form) so Windows Git-Bash
 candidates and the Bash tool's always-MSYS `$PWD` match the drive-lettered
 corpus roots.
 
-### `.graphify-backend` file-declared backend (HIMMEL-881)
+### `.graphify-backend` file-declared backend
 
 `graphify update` (and other LLM-free subcommands) take no `--backend` on the
 CLI, so a non-himmel corpus needs a declared provider from elsewhere to
-satisfy the fence's no-backend policy. `GRAPHIFY_DECLARED_BACKEND` (HIMMEL-779)
+satisfy the fence's no-backend policy. `GRAPHIFY_DECLARED_BACKEND`
 covers this, but it is launching-shell-only by design — a per-call `VAR=x`
 prefix or an in-session `export` never reaches the PreToolUse hook process —
 so an in-session or headless `graphify update` run could never satisfy it
@@ -204,7 +206,7 @@ the file path outright (a staged copy's declaration must not vouch for a
 real vault path listed beside it); mixed staged+real invocations need
 `--backend` or the launching-shell env var.
 
-## Direct-eval mode (`--eval`, HIMMEL-1084)
+## Direct-eval mode (`--eval`)
 
 The fence is wired only as a PreToolUse hook, which never sees graphify calls a
 script makes itself (cron/schtasks). Non-hook callers — currently
@@ -241,21 +243,21 @@ same corpus × provider gets from the matrix.
 This section documents the contract only. It deliberately restates no matrix
 verdicts — `scripts/guardrails/egress-matrix.json` is authoritative.
 
-## Salus ollama-cloud opt-in and its trust root (HIMMEL-4696)
+## Salus ollama-cloud opt-in and its trust root
 
 The one persisted opt-in that lets the fence send a salus (PHI) corpus to
-ollama-cloud is `graphify.salus_ollama_cloud_ok` in `$HOME/.himmel/config.json`
-(HIMMEL-4185). Granting it is an operator call. Defense in depth around it:
+ollama-cloud is `graphify.salus_ollama_cloud_ok` in `$HOME/.himmel/config.json`.
+Granting it is an operator call. Defense in depth around it:
 
 - **Symlink refusal.** The fence ignores the opt-in (treats it as not granted)
   when `$HOME/.himmel` or `$HOME/.himmel/config.json` is a symlink — a link to
   a file elsewhere that holds `true` is not an operator grant.
-- **Write guard (speed bump).** `scripts/hooks/block-himmel-config-writes.sh`
+- **Write guard (soft block (speed bump)).** `scripts/hooks/block-himmel-config-writes.sh`
   denies tool-driven writes to that file (file tools, and Bash commands that
   name it other than plain reads). It is text matching, not a sandbox; its
   header lists what it cannot see. **It is not wired yet** — wiring it into
   `.claude/settings.json`, `.codex/hooks.json` and `wire-hook-bash.mjs` is
-  HIMMEL-5290, so until that lands the symlink refusal is the only live layer.
+  a planned follow-up, so until that lands the symlink refusal is the only live layer.
 - **`$HOME` is the trust root**, in hook mode and in `--eval` mode alike. The
   fence reads the caller's `$HOME` and does not pin the passwd-database home; a
   caller that controls its own `$HOME` controls the opt-in. That is by decision,
@@ -273,24 +275,24 @@ ollama-cloud is `graphify.salus_ollama_cloud_ok` in `$HOME/.himmel/config.json`
 
 | Surface | What it reads |
 |---|---|
-| `scripts/guardrails/graphify-fence.sh` (HIMMEL-621 Phase G-F) | maps graphify `--backend` → provider, target path → corpus, purpose = `extraction`; verdict via `scripts/guardrails/egress-matrix-eval.mjs` (the reference semantics as a CLI); wired as the narrow `block-graphify-egress` PreToolUse hook |
-| `parity_guard.py` PHI/egress fence (HIMMEL-695) | the `salus` row (hard deny) — already enforced; the matrix documents the policy it implements |
-| `phi-egress-guard.ts` (renamed from `glm-guard.ts`, HIMMEL-2622) | same `salus`/denylist row |
-| `scripts/hermes/egress-gate.sh` — the Hermes dispatch chokepoint (`invoke.sh`, which `dispatch-trusted.sh` execs; HIMMEL-1259) | target = the `--prompt-file` path → corpus (`salus` / `luna-personal` / `luna-clippings` / `handover-state`), `--provider` → provider (required for a gated corpus), purpose = `inference`; verdict via `egress-matrix-eval.mjs`. Refuses with rc 4 before hermes spawns; `conditional` is honored only for `handover-state × openai-codex` (brief-scoped: exactly ONE regular file per dispatch — a directory / non-regular path, or a path under the handover root that resolves outside it, is refused), every other conditional cell fails closed. Permitted gated dispatches append `~/.himmel/hermes-egress.jsonl` (resolved path + byte size + sha256 of the dispatched snapshot — the "chokepoint audit is the ledger"). `invoke.sh` dispatches an immutable private mode-0600 snapshot the gate copied into a private directory it creates itself (`mktemp -d`, mode 0700, holding a 0600 file written exclusively under umask 077; the caller passes no destination and removes the directory on every exit path, so the gated bytes never sit in a caller-chosen or umask-perm file and the prompt is never opened for writing; the file identity and the resolved path are re-checked around the copy; a change detected there, or any copy/stat error, refuses), never the gated path again — so a swap or symlink retarget after the copy cannot change what hermes reads (HIMMEL-3221). Residual window a shell cannot close (the `ponytail:` note in the gate): a same-inode in-place edit before the copy, a swap undone before the post-copy checks, or a plain-file replacement landing before the first identity read is not detected. Public-code prompts are not gated, so `qwen`/`alibaba` stays a valid `--model` for `himmel-code` work. Limit: text/stdin prompts carry no path and are not classified |
-| `marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh` (HIMMEL-4328) | the `salus` × `builder-io` row (hard deny): refuses an `mcp__*agent-native*` call (the hosted Builder.io MCP that `builder-visual@himmel` registers) when the session cwd, its git toplevel or remotes, a `.salus` marker or a phi-roots/egress-denylist root marks salus, or the tool payload names salus. Plugin-shipped so it also fires in a salus session; it does not read the matrix at runtime, and `test-egress-matrix.mjs` pins the row |
-| HIMMEL-765 embedding/rerank pilot client | the `alibaba` × `embedding`/`rerank`/`vision-embedding` cells — all now explicit `deny` (Alibaba de-listed, HIMMEL-1257; the pilot is not being pursued) |
-| `scripts/eval/leg-digest/failure_router.py` (HIMMEL-4670 P5) | the `leg-failure-metadata` × `jira` × `ticketing` row (conditional): the router files and comments only a summary and body its own closed-alphabet check (`check-body`) passes, through the Jira CLI by absolute path, and logs one decision line per send. It does not read the matrix at runtime; `test-egress-matrix.mjs` 5d pins the conditional row |
-| HIMMEL-4938 Atlassian MCP catalog capture (a one-off station script, not a shipped consumer) | the `mcp-tool-catalog` × `atlassian-mcp` × `catalog-fetch` row (allow, operator ruling 2026-10-08): an auth-only `initialize` + `tools/list` call to `https://mcp.atlassian.com/v1/mcp`, no ticket, vault or corpus content. Every `tools/call`, other purpose and other corpus stays default-deny; `test-egress-matrix.mjs` 6 pins the scope |
+| `scripts/guardrails/graphify-fence.sh` | maps graphify `--backend` → provider, target path → corpus, purpose = `extraction`; verdict via `scripts/guardrails/egress-matrix-eval.mjs` (the reference semantics as a CLI); wired as the narrow `block-graphify-egress` PreToolUse hook |
+| `parity_guard.py` PHI/egress fence | the `salus` row (hard deny) — already enforced; the matrix documents the policy it implements |
+| `phi-egress-guard.ts` (renamed from `glm-guard.ts`) | same `salus`/denylist row |
+| `scripts/hermes/egress-gate.sh` — the Hermes dispatch sanctioned script (`invoke.sh`, which `dispatch-trusted.sh` execs) | target = the `--prompt-file` path → corpus (`salus` / `luna-personal` / `luna-clippings` / `handover-state`), `--provider` → provider (required for a gated corpus), purpose = `inference`; verdict via `egress-matrix-eval.mjs`. Refuses with rc 4 before hermes spawns; `conditional` is honored only for `handover-state × openai-codex` (brief-scoped: exactly ONE regular file per dispatch — a directory / non-regular path, or a path under the handover root that resolves outside it, is refused), every other conditional cell fails closed. Permitted gated dispatches append `~/.himmel/hermes-egress.jsonl` (resolved path + byte size + sha256 of the dispatched snapshot — the "chokepoint audit is the ledger"). `invoke.sh` dispatches an immutable private mode-0600 snapshot the gate copied into a private directory it creates itself (`mktemp -d`, mode 0700, holding a 0600 file written exclusively under umask 077; the caller passes no destination and removes the directory on every exit path, so the gated bytes never sit in a caller-chosen or umask-perm file and the prompt is never opened for writing; the file identity and the resolved path are re-checked around the copy; a change detected there, or any copy/stat error, refuses), never the gated path again — so a swap or symlink retarget after the copy cannot change what hermes reads. Residual window a shell cannot close (the `ponytail:` note in the gate): a same-inode in-place edit before the copy, a swap undone before the post-copy checks, or a plain-file replacement landing before the first identity read is not detected. Public-code prompts are not gated, so `qwen`/`alibaba` stays a valid `--model` for `himmel-code` work. Limit: text/stdin prompts carry no path and are not classified |
+| `marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh` | the `salus` × `builder-io` row (hard deny): refuses an `mcp__*agent-native*` call (the hosted Builder.io MCP that `builder-visual@himmel` registers) when the session cwd, its git toplevel or remotes, a `.salus` marker or a phi-roots/egress-denylist root marks salus, or the tool payload names salus. Plugin-shipped so it also fires in a salus session; it does not read the matrix at runtime, and `test-egress-matrix.mjs` pins the row |
+| embedding/rerank pilot client | the `alibaba` × `embedding`/`rerank`/`vision-embedding` cells — all now explicit `deny` (Alibaba de-listed; the pilot is not being pursued) |
+| `scripts/eval/leg-digest/failure_router.py` | the `leg-failure-metadata` × `jira` × `ticketing` row (conditional): the router files and comments only a summary and body its own closed-alphabet check (`check-body`) passes, through the Jira CLI by absolute path, and logs one decision line per send. It does not read the matrix at runtime; `test-egress-matrix.mjs` 5d pins the conditional row |
+| Atlassian MCP catalog capture (a one-off station script, not a shipped consumer) | the `mcp-tool-catalog` × `atlassian-mcp` × `catalog-fetch` row (allow, operator ruling 2026-10-08): an auth-only `initialize` + `tools/list` call to `https://mcp.atlassian.com/v1/mcp`, no ticket, vault or corpus content. Every `tools/call`, other purpose and other corpus stays default-deny; `test-egress-matrix.mjs` 6 pins the scope |
 
 ## Invariants (enforced by the test)
 
 - `default` is `deny`; salus × any-cloud × anything is a **hard** deny with
   no recordable override, except `salus × openai-codex × inference` (an
-  explicit allow row ahead of the wildcard, HIMMEL-5002 operator ruling
+  explicit allow row ahead of the wildcard, operator ruling
   2026-10-08, which also allows `luna-personal` and `luna-clippings` for
   codex inference only); google-gemini is denied everywhere (keys stay
-  unset); there are now **zero `pending-operator` cells** (the five HIMMEL-765
-  Alibaba cells were demoted to explicit `deny` by HIMMEL-1257); **DeepSeek +
+  unset); there are now **zero `pending-operator` cells** (the five
+  Alibaba embedding/rerank cells were demoted to explicit `deny`); **DeepSeek +
   Alibaba are de-listed** for vault/handover egress (explicit `deny`), and stay
   `allow` on `himmel-code` only; no bulk pipelines over handover-state.
 - Run: `node scripts/guardrails/test-egress-matrix.mjs`.
@@ -299,7 +301,7 @@ ollama-cloud is `graphify.salus_ollama_cloud_ok` in `$HOME/.himmel/config.json`
 
 Every change is a PR through the normal CR flow — the matrix is
 enforcement-path configuration. In particular the planned self-evolving
-loop (HIMMEL-767 family) is structurally denied writes here: a widened cell
+loop is structurally denied writes here: a widened cell
 must always be a human-merged diff. Flipping a `pending-operator` cell:
 change its `verdict` (typically to `allow+log`), delete `decision_needed`,
 note the operator decision + date in `why`, update the test's expectations,
@@ -307,8 +309,8 @@ and cite the ratifying ticket in the commit.
 
 ## Open operator decisions carried in the matrix
 
-- *(none)* — the former **HIMMEL-765 (Alibaba embedding/rerank)** decision (five
-  `pending-operator` cells) was **closed by HIMMEL-1257**: Alibaba de-listed for
+- *(none)* — the former **Alibaba embedding/rerank** decision (five
+  `pending-operator` cells) was **closed**: Alibaba de-listed for
   bad results, so those cells are now explicit `deny` and the pilot is not being
   pursued. Re-opening it would be a fresh operator ratification (a one-line PR
   flipping the relevant cells, per *Changing the matrix* above).

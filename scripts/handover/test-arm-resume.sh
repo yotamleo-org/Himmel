@@ -2984,6 +2984,7 @@ if [ "$n" -eq 2 ]; then echo "PASS T-awkfail both the un-reaped old entry and th
 snap_path=$(printf '%s' "$out" | grep -oE '/[^ ]*crontab\.snap\.[A-Za-z0-9]+(\.[A-Za-z0-9]+)?' | head -1)  # BSD mktemp -t appends ".<rand>" after XXXXXX
 if [ -n "$snap_path" ] && [ -s "$snap_path" ]; then
     echo "PASS T-awkfail snapshot preserved ($snap_path)"
+    rm -f "$snap_path"   # HIMMEL-1370: it lives under the real tmp, not $TMP
 else
     echo "FAIL T-awkfail snapshot missing or empty (path='$snap_path')"
     FAILED=$((FAILED+1))
@@ -4357,8 +4358,11 @@ rc=$?
 assert_rc "2128a no --automerge still arms (rc=0, advisory only)" 0 "$rc"
 assert_contains "2128a WARN fires when --automerge is not passed" "will NOT set ARMAUTOMERGE" "$out"
 
+# Policy keys are read by load_policy, which ignores the process env, so
+# every 2128b case drives them through the suite-owned .env seam.
+printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B=$(make_handover "$WORK_REPO")
-out=$(CR_REQUIRE_CROSS_MODEL=1 SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
+out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b cross-model + no fallback still arms (rc=0, advisory only)" 0 "$rc"
@@ -4367,25 +4371,24 @@ assert_contains "2128b WARN fires when CR_REQUIRE_CROSS_MODEL is on and CR_FLOOR
 # (b3) CR_FLOOR_FALLBACK set to an UNRECOGNIZED value ("claude_only" typo,
 # underscore not hyphen) -> WARN still fires. It never actually enables the
 # fallback (clear-cr-marker.sh only recognizes the exact "claude-only"
-# string), so production SHOULD warn here too. Non-empty process env wins
-# over any .env regardless of which .env is in play, so this case needs no
-# worktree-.env trick.
+# string), so production SHOULD warn here too.
+printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=claude_only\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B3=$(make_handover "$WORK_REPO")
-out=$(CR_REQUIRE_CROSS_MODEL=1 CR_FLOOR_FALLBACK=claude_only SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
+out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B3" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b3 cross-model + typo'd fallback value still arms (rc=0)" 0 "$rc"
 assert_contains "2128b3 WARN fires when CR_FLOOR_FALLBACK does not match the recognized claude-only value" "PARKING the whole armed chain" "$out"
 
-# (b2) CR_FLOOR_FALLBACK set to the recognized value -> no WARN. Non-empty
-# process env wins over any .env, so this case is deterministic with no
-# worktree-.env trick needed.
+# (b2) CR_FLOOR_FALLBACK set to the recognized value -> no WARN.
+printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=claude-only\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B2=$(make_handover "$WORK_REPO")
-out=$(CR_REQUIRE_CROSS_MODEL=1 CR_FLOOR_FALLBACK=claude-only SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
+out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B2" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b2 cross-model + fallback set still arms (rc=0)" 0 "$rc"
 assert_not_contains "2128b2 no WARN when CR_FLOOR_FALLBACK is set" "PARKING the whole armed chain" "$out"
+rm -f "$ARM_RESUME_DOTENV_ROOT/.env"
 fi
 
 # ---------------------------------------------------------------------------
@@ -4511,7 +4514,7 @@ out=$(env -u ARMAUTOMERGE SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_S
     bash "$ARM" --time "$(future_time)" --handover "$HO_3118D" --dry-run 2>&1)
 rc=$?
 assert_rc "3118d dotenv default alone still arms (rc=0)" 0 "$rc"
-assert_contains "3118d resolved state: automerge=1, merge_gate_bypass=0, dotenv source" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in .env))" "$out"
+assert_contains "3118d resolved state: automerge=1, merge_gate_bypass=0, dotenv source" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in the policy config or .env))" "$out"
 assert_contains "3118d launch text carries ARMAUTOMERGE=1 from the dotenv default" "ARMAUTOMERGE=1" "$out"
 assert_not_contains "3118d launch text does NOT carry CR_MERGE_GATE_OK=1 from a bare dotenv default" "ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1" "$out"
 
@@ -4537,7 +4540,7 @@ out=$(ARMAUTOMERGE=0 SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T
     bash "$ARM" --time "$(future_time)" --handover "$HO_3118F" --dry-run 2>&1)
 rc=$?
 assert_rc "3118f ambient ARMAUTOMERGE=0 + dotenv default still arms (rc=0)" 0 "$rc"
-assert_contains "3118f ambient value is ignored -- resolution reads the .env file, not the process env" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in .env))" "$out"
+assert_contains "3118f ambient value is ignored -- resolution reads the .env file, not the process env" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in the policy config or .env))" "$out"
 
 # (g) same assertion with the ambient var genuinely unset -- must resolve
 # IDENTICALLY to (f), proving a set-but-ignored ambient and a genuinely unset
@@ -4547,7 +4550,7 @@ out=$(env -u ARMAUTOMERGE SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_S
     bash "$ARM" --time "$(future_time)" --handover "$HO_3118G" --dry-run 2>&1)
 rc=$?
 assert_rc "3118g env -u ARMAUTOMERGE + dotenv default still arms (rc=0)" 0 "$rc"
-assert_contains "3118g unset ambient resolves the same as a set-but-ignored ambient (f)" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in .env))" "$out"
+assert_contains "3118g unset ambient resolves the same as a set-but-ignored ambient (f)" "automerge=1 merge_gate_bypass=0 (source: dotenv default (ARMAUTOMERGE=1 in the policy config or .env))" "$out"
 
 # (h) CR round 1 finding: an exact platform-specific grant assertion for the
 # Windows .cmd shape. Unlike the POSIX cron/WSL/at launch bodies, which emit
@@ -5800,6 +5803,14 @@ printf '"\\\\HIMMEL-Resume-fixture-repro","2026-01-01","Ready"\n'
 exit 0
 EOF
 chmod +x "$LTA/schtasks"
+# HIMMEL-1370: a cygpath that exits 0 with EMPTY output must not blank the
+# runner path -- LTA_EMPTY_CYG=1 makes this stub do exactly that.
+cat > "$LTA/cygpath" <<'CYGEOF'
+#!/usr/bin/env bash
+[ "${LTA_EMPTY_CYG:-0}" = "1" ] && exit 0
+for a in "$@"; do case "$a" in -*) ;; *) printf '%s\n' "$a" ;; esac; done
+CYGEOF
+chmod +x "$LTA/cygpath"
 
 out=$(TMPDIR="$TMP" win_env "$LTA" bash "$ARM" --list-temp-arms 2>&1)
 rc=$?
@@ -5807,6 +5818,11 @@ assert_rc "1879-1365 --list-temp-arms reports a temp-targeted arm on a NON-ENGLI
 assert_contains "1879-1365 the sweep names the offending task" "HIMMEL-Resume-fixture-repro" "$out"
 assert_contains "1879-1365 the sweep names the temp target" "scratchpad" "$out"
 assert_contains "1879-1365 the sweep is report-only" "REPORT ONLY" "$out"
+
+out=$(LTA_EMPTY_CYG=1 TMPDIR="$TMP" win_env "$LTA" bash "$ARM" --list-temp-arms 2>&1)
+rc=$?
+assert_rc "1370 an empty-output cygpath -u keeps the raw runner path, sweep still hits (rc=16)" 16 "$rc"
+assert_contains "1370 the sweep still names the temp target" "scratchpad" "$out"
 
 out=$(LTA_EMPTY=1 TMPDIR="$TMP" win_env "$LTA" bash "$ARM" --list-temp-arms 2>&1)
 rc=$?

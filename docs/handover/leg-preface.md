@@ -25,7 +25,7 @@ console by `SendMessage`, and you confirm the console's exact session name in
   `until … done` loop. Never end a turn waiting on a background job — a leg
   whose turn ends on a background job never wakes up.
 - **Never call `ScheduleWakeup`.** Every self-scheduled wake re-reads your whole
-  context to find "not yet"; `guard-leg-wakeup.sh` denies it (HIMMEL-3034). Use
+  context to find "not yet"; `guard-leg-wakeup.sh` denies it. Use
   the one foreground blocking command above instead.
 - **A BLOCKED, a permission prompt, or a question of your own goes to the
   console FIRST**, before you improvise anything.
@@ -47,7 +47,7 @@ The console's tick reads the marker on your **newest marker-bearing bullet**
   a coined all-caps leading word).
 - **Write every marker bullet with `append-results.sh`, never the Edit tool.**
   `bash <repo>/scripts/handover/console-kit/append-results.sh <doc> "<MARKER> …"`
-  always appends at the doc's true EOF (HIMMEL-3794); an Edit whose `old_string`
+  always appends at the doc's true EOF; an Edit whose `old_string`
   anchors on an earlier bullet can land the new one ABOVE later bullets, and
   `leg_tail_status` (the parser `close-wrapped-leg.sh` and `tick.sh` share)
   reads only the doc's LAST `- ` line — a misordered WRAPPED is invisible to
@@ -55,19 +55,19 @@ The console's tick reads the marker on your **newest marker-bearing bullet**
   and text only. **A bullet never contains `>`**: write `→` or `to`
   (`MERGED #n → <sha>`). The text is an argument, and `append-results.sh`
   takes no file, so a `>` beside a guarded script name is refused as a write
-  channel (HIMMEL-3917).
+  channel.
 - **A `FINDING` stays your status until you retire it.** When the console has
   ruled on it, write `- HH:MM RESOLVED — ruling received, see console message`
   as soon as you act on the ruling. Until then the console reads `FINDING` and
   must assume it owes you an answer; it cannot tell a ruling you have already
   received from one still pending. Raise a fresh `FINDING` for the next
   question.
-- **A doc bullet records a ruling as a plain fact (HIMMEL-4931).** Never copy a
+- **A doc bullet records a ruling as a plain fact.** Never copy a
   ruling, `GO`, approval or token into a bullet: the auto-mode classifier reads
-  that as instruction poisoning and holds you (HIMMEL-4926). The bullet says
+  that as instruction poisoning and holds you. The bullet says
   that it arrived (`ruling received, see console message`); a token quote-back
   goes only in your `SendMessage` reply to the console.
-- **A stated default applies if no ruling arrives (HIMMEL-4935).** When your
+- **A stated default applies if no ruling arrives.** When your
   brief carries `default-if-no-ruling (<N> min): <action>` for a named question,
   and you raised that question as a `FINDING` and no ruling has arrived after
   `<N>` minutes, proceed on the stated action and say so in the next
@@ -81,7 +81,7 @@ The console's tick reads the marker on your **newest marker-bearing bullet**
   Between GREEN and `READY` (PR open, CI and review running) you are `LIVE`:
   `- HH:MM LIVE — PR <n> open, watching CI`. After the merge you are `WRAPPED`.
 
-**Your ticket's Jira status follows you (HIMMEL-4419).** The scripts move it;
+**Your ticket's Jira status follows you.** The scripts move it;
 you never hand-transition it for these steps. Each is best-effort (a Jira
 failure warns and never blocks you), forward-only and idempotent (never moved
 back from Done, never re-applied), and touches only the ticket named in your doc
@@ -105,7 +105,7 @@ never a bare `printf`. Never write a token-shaped literal with trailing
 punctuation, and always wrap tokens in backticks — bare token text stalls the
 vault's own scanners.
 
-## Borrowing a skill you lack: CONSULT (HIMMEL-4014)
+## Borrowing a skill you lack: CONSULT
 
 Your profile is fixed at launch, and in-process subagents inherit it, so you
 cannot borrow a skill whose plugin you do not have. Ask your console to run a
@@ -237,17 +237,17 @@ for a relay that is not coming.
   turn. Never emit a text-only turn between tool calls. Read files by line
   range, not whole. Your fixed context is re-paid on every API call of a
   session that runs for hours.
-- **Search with Bash, not Grep/Glob (HIMMEL-4784).** A leg has no dedicated
+- **Search with Bash, not Grep/Glob.** A leg has no dedicated
   `Grep` or `Glob` tool (a call returns "No such tool available"): search with
   `git grep` / `grep` and list files with `git ls-files` / `find`.
-- **Structure questions: `bash scripts/graphify/leg-graph.sh query|explain "<q>"` before broad greps (HIMMEL-5313).**
+- **Structure questions: `bash scripts/graphify/leg-graph.sh query|explain "<q>"` before broad greps.**
   It reads the primary checkout's graph from your worktree and prints a NOTE when
   the graph is behind your HEAD; never `graphify path` (refused).
-- **Pasted links: `scripts/web/fetch-url.sh '<url>'` (HIMMEL-4908).** An x.com /
+- **Pasted links: `scripts/web/fetch-url.sh '<url>'`.** An x.com /
   instagram.com link gets WebFetch HTTP 402; this fetches it through Scrapling
   (no cookies) and prints author, handle, date, text and media. Never ask the
   operator for a paste.
-- **Pre-check a bucket file before you write or commit it (HIMMEL-4911).** The
+- **Pre-check a bucket file before you write or commit it.** The
   luna vault's pre-commit runs gitleaks; one generic-api-key false positive on
   prose stalls the vault's auto-commit for every session. Run
   `bash scripts/handover/console-kit/bucket-gitleaks.sh <file>`: `GITLEAKS ok`
@@ -260,15 +260,14 @@ for a relay that is not coming.
   no `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`.** A
   relative gate script is `bash scripts/cr/X.sh <args>`, never
   `bash "scripts/cr/X.sh"` and never `bash "$HIMMEL_REPO/..."` — the quote or
-  the `$VAR` alone sends an otherwise-correct call to the classifier
-  (HIMMEL-3724). The few scripts anchored to the primary checkout's absolute
+  the `$VAR` alone sends an otherwise-correct call to the classifier. The few scripts anchored to the primary checkout's absolute
   path instead (the merge, the CR-marker clear, below) are named as
   exceptions where they appear; everything else stays relative and unquoted.
   The matcher bails on all these shapes and a refused compound runs
   **nothing**.
 - **A shape denial → rewrite as one literal command per write** (absolute
   binary, no vars, no loops, body via file) **and retry once; a classifier
-  denial on a loop shape is a shape denial** (HIMMEL-4815). N writes = N
+  denial on a loop shape is a shape denial**. N writes = N
   separate Bash calls. A recipe that drops a meaning-bearing prefix (a
   `JIRA_BASE_URL=` / `JIRA_BOARD_ID=` target) is not a retry — ask the console.
 - **Never pipe into a gate script.** Write the input to a file with `Write`,
@@ -285,20 +284,19 @@ for a relay that is not coming.
   flag — the delay itself is what makes the retry non-identical, so retry the
   exact same command once); any denial after that one retry → route to the
   console, no further attempt. `[Out-of-Place Publication]` gets **no retry at
-  all**, first time seen or not — route to the console immediately
-  (HIMMEL-3020). The one exception is a denied `scripts/cr/` call spelled
+  all**, first time seen or not — route to the console immediately. The one exception is a denied `scripts/cr/` call spelled
   with an absolute `<himmel_dir>` path (the `/pr-check` marker panel): retry it
   ONCE as the relative literal `bash scripts/cr/<script>.sh <args>` from the
-  worktree root before it goes to the console (HIMMEL-4040) — only in a himmel
+  worktree root before it goes to the console — only in a himmel
   worktree root whose `scripts/cr/` matches the `HIMMEL_REPO` anchor's (the
   condition `guard-pr-check-literal.sh` enforces); in an adopter or drifted
   checkout keep the absolute spelling.
 - First choice for opening or updating a PR is
-  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (HIMMEL-3031):
+  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`:
   title and body are files, so the Bash command a leg types is always the
   same short fixed literal no matter what the PR says — the body never enters
   the command the classifier reads.
-- **Ship scratch never lands in the worktree root (HIMMEL-4334).** PR title and
+- **Ship scratch never lands in the worktree root.** PR title and
   body files, commit-message temp files, logs and verdict lists go in your
   session scratchpad, or under `.himmel-scratch/` if you have no
   scratchpad. A stray at the root pins the worktree as "possible forgotten
@@ -306,7 +304,7 @@ for a relay that is not coming.
 - Never use bare `git stash` / `git stash pop`: the stash stack is shared with
   every other worktree and another session may pop yours.
 - A background task "stopped because the system is running low on memory" is
-  not proof of memory pressure (HIMMEL-3097). Before believing it, read
+  not proof of memory pressure. Before believing it, read
   `/proc/pressure/memory` and the `memory.events` under `/sys/fs/cgroup` for
   the cgroup in `/proc/self/cgroup`: all-zero pressure (`total=` included) and
   `oom_kill 0` = no evidence of contention, so the kill is unexplained — these
@@ -328,8 +326,8 @@ An observation meant to be "clean" runs through `scripts/lib/clean-sandbox.sh
 hand-rolled `HOME=… cmd`, which keeps every other operator variable.
 
 **Corpus/replay tests run through the sandbox runner; execution of destructive
-commands is VM-only (HIMMEL-4886).** Use `bash scripts/lib/sandbox-run.sh --
-<command> [args...]` for corpus/replay classification (HIMMEL-4912). A missing
+commands is VM-only.** Use `bash scripts/lib/sandbox-run.sh --
+<command> [args...]` for corpus/replay classification. A missing
 bubblewrap or unavailable namespace on Linux, or missing/unusable sandbox-exec
 profile on Darwin, is a refusal, never permission to run unsandboxed. Darwin
 confines writes to private scratch and denies network; it does not claim Linux
@@ -340,11 +338,11 @@ throwaway tmp directory.
 (`git grep -l` from the worktree), not the suites in the directory you edited.
 `bash scripts/cr/impacted-suites.sh` lists them; with no argument it uses
 `$(git merge-base origin/main HEAD)..HEAD` (`origin/HEAD`'s target in place
-of `origin/main` when set) and prints that range to stderr (HIMMEL-4781), and an explicit `<base sha>..HEAD` works the same. Run those and name them with their counts, each as one literal
+of `origin/main` when set) and prints that range to stderr, and an explicit `<base sha>..HEAD` works the same. Run those and name them with their counts, each as one literal
 `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>` — nothing
 appended: no `>`, no `2>&1`, no `; echo`, no `sleep N;` prefix, no `| tail`.
 `quiet-run` already captures the output. The label is always the literal
-`suite`, the only one the allow list pre-approves (HIMMEL-3402); any other
+`suite`, the only one the allow list pre-approves; any other
 label, or a suite outside the enumerated directories, goes to the classifier
 by design.
 
@@ -353,15 +351,14 @@ by design.
 - Every PR body carries one line `leg-burn: calls= avg-ctx= first-turn=
   compactions= cost-eq=`. **Never run `leg-burn.sh` yourself** — a leg typing
   it as a standalone command was classifier-denied [Session Transcript
-  Tampering] (HIMMEL-3572). `scripts/lanes/leg-pr-open.sh` computes and
+  Tampering]. `scripts/lanes/leg-pr-open.sh` computes and
   inserts the line itself when you open the PR; if it can't resolve your
   session it writes `leg-burn: unavailable (<reason>)` instead and still
   opens the PR — neither case is something to fix by hand.
 - **Clearing the CR marker** is typed with the primary checkout's ABSOLUTE
   path, the same anchor shape as the merge: `bash <anchor>/scripts/cr/clear-cr-marker.sh`,
   where `<anchor>` is the primary checkout's absolute path (as above, never
-  your worktree). Your leg settings carry that exact literal as an allow rule
-  (HIMMEL-3572, mirroring HIMMEL-3567); the relative spelling
+  your worktree). Your leg settings carry that exact literal as an allow rule; the relative spelling
   (`bash scripts/cr/clear-cr-marker.sh`) also stays allowed, but the absolute
   one is what `guard-pr-check-literal.sh` itself tells you to run once the
   relative entry can't self-verify — typing it any other way falls to the
@@ -381,16 +378,16 @@ by design.
   background (`run_in_background`) poll loop against GitHub: wait on CI with
   `scripts/check-ci.sh` in the foreground (its shared cache and rate-limit
   backoff exist so the fleet stays under one API quota).
-- **Lint your own `## Ticket coverage` before `READY` (HIMMEL-4300).** The
+- **Lint your own `## Ticket coverage` before `READY`.** The
   console's ready-check bounces a PR body whose coverage line has any text after
-  its marker (`done pending review`, `deferred → HIMMEL-9 (see thread)`). Run
+  its marker (`done pending review`, `deferred → HIMMEL-<n> (see thread)`). Run
   `bash scripts/handover/console-kit/ready-check.sh --only 7 <pr>` once the PR
   is open — it is item 7 of the console's own check, same code, and prints each
   failing line with the accepted shape (`- <ask>: done` / `- <ask>: deferred →
   HIMMEL-<n>`, marker LAST, nothing after it). Fix the body
   (`bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`) until it prints
   `COVERAGE-LINT PASS`, then send `READY`.
-- **A red CI job on your PR is yours to triage (HIMMEL-4071) — and you never
+- **A red CI job on your PR is yours to triage — and you never
   tell the console about it, unless it is not the PR's fault.** The moment ONE
   required job fails, do not wait for the run to end and do not report the red.
   `scripts/check-ci.sh` prints each failed Actions job's log command; if it did
@@ -412,14 +409,14 @@ by design.
   merges you merge forward per the merge-forward rule below (never rebase, never force-push). If you suspect it is general but the data
   does not settle it, report `MAIN-RED? <job> <case> inconclusive` with what you
   saw.
-- **Merge-forward (HIMMEL-4112, corrected by HIMMEL-4114).** A leg never merges,
+- **Merge-forward.** A leg never merges,
   or merges forward past, a red its own change introduced. Merge-forward cures
   ONLY a red inherited from a broken base — one already red when you were cut
   and green on main now. Anything you cannot prove inherited is yours to fix
   (the "A red CI job on your PR is yours to triage" default above). Prove it
   with three job files, each `<job><TAB><conclusion>` (from
   `gh run view <id> --json jobs`): `--pr` your PR's run; `--main-base` main's
-  CI run (cron or dispatch; main no longer runs per merge, HIMMEL-5113) AT YOUR
+  CI run (cron or dispatch; main no longer runs per merge) AT YOUR
   MERGE-BASE (`git merge-base origin/main HEAD`, then
   `gh run list --commit <sha>`; no run there, the usual case, means an EMPTY
   regular file plus the cover trio below); `--main-latest` main's latest
@@ -443,7 +440,8 @@ by design.
   once, `git merge <the tip sha the ALLOW line prints>` (not `origin/main`, which
   may have moved since the check) — a merge commit;
   never rebase, never force-push — citing both main run ids in a Results
-  bullet. Exit 1 `REFUSE` (a job green or absent at the base, or a failing case
+  bullet (plus the local reproduction command and log path when the ALLOW line
+  names `--base-cases-local`, below). Exit 1 `REFUSE` (a job green or absent at the base, or a failing case
   the base did not fail, is your own red; a job red or absent on latest main,
   or a latest run that is off origin/main or older than the base verdict, is unproven) = do NOT merge forward; fix it, or
   report `BLOCKED` / `MAIN-RED` per the rule above. If your merge-base has no
@@ -465,24 +463,34 @@ by design.
   latest = `ALLOW`; green on the cover = `REFUSE`. Two accepted ceilings: the
   script takes "next" and "latest" from you and cannot see another completed run
   inside (from, cover] or newer than the latest you pass, and a red cover proves the failure existed somewhere in that
-  range, not at the merge-base itself (green on latest bounds it). Exit 3 = nothing red. Once
+  range, not at the merge-base itself (green on latest bounds it). When the
+  covering run already holds the fix (the red reads green there), the check
+  REFUSEs; reproduce the PR's failing case at the merge-base in a scratch
+  worktree and pass `--base-cases-local <f>`: a file with the headers
+  `# merge-base <40-hex sha>` (must equal `--base-sha`), `# command <the
+  reproduction command>` and `# log <path of the local log>` (the log must
+  exist and be non-empty), then one `<job><TAB><case><TAB><exit status>` row per
+  case that failed there (a zero status is no reproduction). Every failing case
+  of the PR's job must be listed, the job must be green on latest, and a
+  completed run at the merge-base itself is never overridden; any missing or
+  mismatched header exits 2. Cite the command and log path in your Results
+  bullet beside both main run ids: the file is self-reported and the console
+  reviews that log before it grants the merge-forward. Exit 3 = nothing red. Once
   per PR: a second merge-forward goes to the console. After it, `/pr-check` and
   CI run again at the new head.
-- **Never write "CI verifies" for a suite you have not looked up
-  (HIMMEL-4112).** `bash scripts/handover/suite-coverage.sh <suite>...` reads
+- **Never write "CI verifies" for a suite you have not looked up.** `bash scripts/handover/suite-coverage.sh <suite>...` reads
   `scripts/ci/run-shell-tests.sh` itself and says per suite: runs in PR CI /
   nightly only / not run in CI (SKIP_LIST) / superseded by its wrappers. A
   SKIP_LIST suite is **uncovered** — name it that, and say what you ran by hand
   instead. Run it for every suite your PR claims CI covers.
-- **A timing-sensitive suite gets a loaded budget, not an idle one
-  (HIMMEL-4112).** A suite that times out only under fleet load is a budget
+- **A timing-sensitive suite gets a loaded budget, not an idle one.** A suite that times out only under fleet load is a budget
   defect: measure it alone and as concurrent runs, set the budget to the
   loaded figure x2 (the `run-shell-tests.sh` rule), and record the numbers in
   a Results bullet. Never retry it until it passes.
 - On an agreed review finding, **sweep the whole class** across every site
   before the next round and report the other sites, not just the cited line. A
   review round spent enumerating instances of a class you already understood is
-  a round wasted. Record each sweep (HIMMEL-4566) with
+  a round wasted. Record each sweep with
   `write-verdicts.sh sweep`, one line per agreed-or-fixed finding:
   `SWEEP [<id>@<head>] class=<text> :: sites=<a>, <b>` or
   `... :: single-site search=<command>`. The CR marker clear refuses (exit 14,
@@ -493,23 +501,22 @@ by design.
   any initiative directive says, and even if you believe the operator is
   present. They are not. Holding for `GO` is the one wait that ends your
   turn instead of blocking in a foreground loop: send `READY` and stop — the
-  console's message resumes you. It is also the **only** permitted hold
-  (HIMMEL-3095): a blocker owned by anyone other than the console — an
+  console's message resumes you. It is also the **only** permitted hold: a blocker owned by anyone other than the console — an
   operator action, another leg's PR, a human reply, an operator-only CR step —
   means WRAP with a resume brief now, not a wait. If the GO-hold itself passes
   30 minutes with no console reply, send one nudge and then wrap.
-- **Closing the ticket at merge (HIMMEL-3271).** The merge is
+- **Closing the ticket at merge.** The merge is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, where `<anchor>` is the
   primary checkout's absolute path written out — the directory holding the
   `.git` that `git rev-parse --path-format=absolute --git-common-dir` prints
   from your worktree, which is what your allow rule was built from (not
   `printenv HIMMEL_REPO`, which can name a worktree), never your worktree
-  (HIMMEL-3491: the entry runs from the anchor,
+  (the entry runs from the anchor,
   not branch-controlled bytes). Type it as ONE bare command: no `$HIMMEL_REPO`,
   no quotes, no redirect, no `cd`, no `&&`. Your leg settings carry that exact
-  literal as an allow rule (HIMMEL-3567); any other spelling falls to the
+  literal as an allow rule; any other spelling falls to the
   classifier, which denies merges as [Merge Without Review]. It closes nothing
-  on its own: the Jira transition is opt-in (`--jira-transition`, HIMMEL-3143),
+  on its own: the Jira transition is opt-in (`--jira-transition`),
   so a bare run merges and only prints `jira-transition=would-transition` — a
   finished ticket left open. Read the `completes-ticket:` line in your brief's
   Ship contract; if it is absent, decide it yourself: does this PR finish the
@@ -536,12 +543,11 @@ closable-window banner. Then stop: a leg does not end its own session (no
 `/exit`; SessionEnd hooks are cancelled under load) —
 the console's `close-wrapped-leg.sh` ends the session, after it verifies the
 lock is free, the last marker is `WRAPPED` and `wrap-subtree-check.sh` reports
-`CLOSABLE`
-(HIMMEL-2414, HIMMEL-3572). A leg never idles: if you are gated on something
+`CLOSABLE`. A leg never idles: if you are gated on something
 outside your control, WRAP with a successor resume brief instead of waiting.
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
-then prove the process subtree is clean** (HIMMEL-2761 — TaskStop on an agent
+then prove the process subtree is clean** (TaskStop on an agent
 does not reap the background shell it started, and the console cannot kill it
 for you). The closable-window banner is the output of
 `bash scripts/handover/wrap-subtree-check.sh`: paste its `CLOSABLE:` line.
@@ -549,14 +555,13 @@ for you). The closable-window banner is the output of
 the banner by hand, and never send `WRAPPED` on a `WITHHELD:` result.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
-is on:** checkpoint or hand off. The guard (`guard-leg-context-handoff.sh`,
-HIMMEL-4569) is **off by default** (HIMMEL-4710): it runs only when your console
+is on:** checkpoint or hand off. The guard (`guard-leg-context-handoff.sh`) is **off by default**: it runs only when your console
 launched you with `--context-guard compact|handoff`, which sets
 `HIMMEL_LEG_CONTEXT_MODE`; you cannot change it in-session. The one reference is
 `docs/internals/leg-context-guard.md`. The threshold is 75 % of the ceiling, not
 of the window: an opus leg pinned at 200000 runs on a 1000000-token window, so it
 fires at 15 % fill (150k tokens), 7k before the earliest observed compaction
-(HIMMEL-4089: none fired below 157k of 200k). Past it the hook denies every call
+(none fired below 157k of 200k). Past it the hook denies every call
 but the hand-off ones; its deny names your mode and exactly what unlocks it.
 
 - **`compact`:** commit your WIP in one line (`git commit -m "<subject>" -m
@@ -579,8 +584,7 @@ never surprises you mid-edit.
 ## How your turns end
 
 This section stays last in this file on purpose: the Opus 5.5 prompting guide
-([Unattended agentic runs](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5#unattended-agentic-runs),
-HIMMEL-3479) says to put it at the end of the system prompt. It adapts that
+([Unattended agentic runs](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5#unattended-agentic-runs)) says to put it at the end of the system prompt. It adapts that
 guide's standing instruction for a leg. On the claudex lane,
 `leg-preface-claudex.md` is appended after it and overrides it: there, holding
 for `GO` means the background wait that file prescribes, not an ended turn.
@@ -607,7 +611,7 @@ ruling every remaining step depends on, already sent; `WRAPPED` and stop; the
 ≥ 75 % context hand-off. None of this overrides the need for confirmation on
 risky or destructive actions.
 
-**The GO-hold is the only permitted hold (HIMMEL-3095).** A blocker owned by
+**The GO-hold is the only permitted hold.** A blocker owned by
 anyone other than the console — an operator action, another leg's PR, a human
 reply — is not a reason to sit in the window: `WRAP` with a resume brief and
 exit now, the same as any other blocked-on-external case. And the GO-hold

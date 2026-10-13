@@ -1,4 +1,4 @@
-# Windows clean-machine runbook — full himmel dev + lane fleet, remote-driven (HIMMEL-852)
+# Windows clean-machine runbook — full himmel dev + lane fleet, remote-driven
 
 End-to-end walkthrough for taking a **factory-clean Windows 11 machine** to a
 full himmel dev machine — base toolchain, himmel + luna, ported credentials,

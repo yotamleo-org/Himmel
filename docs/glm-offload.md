@@ -1,16 +1,16 @@
-# GLM offload loop (HIMMEL-654)
+# GLM offload loop
 
-> **Status: dormant (operator ruling 2026-08-19, HIMMEL-1967).** Implementation
+> **Status: dormant (operator ruling 2026-08-19).** Implementation
 > work routes to native Claude subagents only; this lane is opt-in via
 > `GLM_LANE_OK` and, per `scripts/lanes/lanes.json`'s `readiness.passesRequired`,
 > must show 10 consecutive verify-return passes before dispatch routes toward it
-> (the HIMMEL-1575 startup-hang class). See `scripts/lanes/lanes.json` / `/lanes`
+> (the startup-hang class). See `scripts/lanes/lanes.json` / `/lanes`
 > for the live inventory and [`lane-calibration.md`](internals/lane-calibration.md)
 > for calibration detail. The mechanics below remain the reference for how the
 > lane works if re-enabled — this is not a "use this today" doc.
 
 Spawn a GLM-lane Claude worker from the main (Fable) session, inspect its
-output through files, validate the diff through the normal CR loop, and only
+output through files, validate the diff through the normal automated review loop, and only
 then push. The worker runs against the Z.ai GLM Anthropic-compatible endpoint —
 the same flat-rate Coding-Plan lane the `claude-glm` launcher uses — so it
 consumes GLM subscription quota, not Anthropic usage cap.
@@ -45,7 +45,7 @@ grafts the GLM lane onto that path via a standalone CLI
   block, spawn preflights the user layer (`~/.claude/settings.json`) and the
   checkout layers (`.claude/settings.json`, `.claude/settings.local.json`) and
   **refuses** on any `env.ANTHROPIC_*` or `model` key.
-- **Worker context diet (HIMMEL-654).** `buildGlmEnv` additionally
+- **Worker context diet.** `buildGlmEnv` additionally
   force-disables the env-gated session-shaping injections —
   `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_OVERNIGHT`, `HIMMEL_OVERNIGHT`,
   `HIMMEL_WHERE_ARE_WE`, `HIMMEL_DOC_FRESHNESS` all `0`,
@@ -61,7 +61,7 @@ grafts the GLM lane onto that path via a standalone CLI
 - **The GLM model pin ignores `TELEGRAM_CLAUDE_MODEL`.** GLM runs always pass
   `--model opus`, which maps through `ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2[1m]` —
   a poller-pinned raw Anthropic model id must never leak to the Z.ai endpoint.
-- **1M context + configurable window (HIMMEL-718).** The lane defaults to the
+- **1M context + configurable window.** The lane defaults to the
   `[1m]` 1M-context GLM variant and sets `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`
   so Claude Code stops auto-compacting/rejecting at the ~200k default (the
   documented "prompt too long" deaths). `spawn-glm --context big|small` (default
@@ -94,15 +94,15 @@ grafts the GLM lane onto that path via a standalone CLI
    code. The three printed paths are the inspect contract.
 3. **Validate** — the worker's output lands as local commits on the
    `glm/<slug>` branch. The main session reviews the diff through the existing
-   CR loop before anything is pushed.
+   automated review loop before anything is pushed.
 4. **Push by validator** — the push is performed by the operator, or by the
    validating session only under an operator authorization given in that
    session. GLM output is merge-quarantined until the WS4/WS7 gates cover the
    lane; the interim bound is human/Fable CR review of every GLM diff.
 
-## Claude-down ship flow (HIMMEL-750)
+## Claude-down ship flow
 
-When the Claude quota bank is maxed there is no validating session to run step
+When the Claude subscription usage budget is maxed there is no validating session to run step
 3/4 above. The claude-down ship lane keeps the branch moving to PR-ready WITHOUT
 Claude, while leaving the worker fully quarantined and merge operator-only. Two
 scripts:
@@ -119,7 +119,7 @@ scripts:
    clean panel it records `external_cr_verdict: pass (sha=<reviewed-sha>; critics=<n>)`
    into the session `meta.json` (a DISTINCT key from `d1_verdict`, which stays the
    Claude-validating-session lane's key) and prints a one-line PR-body snippet. It
-   does NOT touch the CR marker — the marker clear is bound to the pushed SHA in
+   does NOT touch the review-owed marker — the marker clear is bound to the pushed SHA in
    step 2.
 2. **`scripts/glm/ship-branch.sh glm/<slug> --session-dir <dir>`** — the push
    half, run FROM the trusted main checkout (it refuses to run from a
@@ -129,11 +129,11 @@ scripts:
    commits are added after the panel). Then it runs `git push -u origin <branch>`
    — the normal pre-push gates (attestation trailers, gitleaks) run here in a
    trusted context because the pusher legitimately owns them; NO `--no-verify`.
-   After a successful push it clears the CR marker only if the marker's SHA
+   After a successful push it clears the review-owed marker only if the marker's SHA
    equals the pushed SHA. It NEVER opens a PR and NEVER merges — it prints the
    exact `gh pr create` command for the operator.
 
-**Push a lane branch from ITS OWN worktree (HIMMEL-1809).** pre-commit's
+**Push a lane branch from ITS OWN worktree.** pre-commit's
 pre-push hooks lint the pusher's WORKING TREE, not the pushed commits, so a
 `git push <branch>` issued from the primary checkout (on `main`) inspects
 main's copy of every file the branch touched: findings cite line numbers the
@@ -154,7 +154,7 @@ unanchored push grant that could smuggle a refspec to `main`; the worker forging
 attestation trailers). Moving the push to the trusted main checkout, gated on
 `external_cr_verdict:pass` + reviewed-SHA==tip, is the adopted design.
 
-## Parent-finish protocol (HIMMEL-1641)
+## Parent-finish protocol
 
 `verify-return.mjs` (`node scripts/lanes/verify-return.mjs <branch>`) checks
 upstream + PR + a test-receipt trailer — a contract the GLM lane structurally
@@ -168,12 +168,12 @@ its window on a hard-blocked capability; the correct split is:
   the deny-hook refused) it appends one `{"type":"escalation","arm":"git-push",...}`
   outbox row and moves on — see §Escalation channel. A worker that finishes
   and only has that one blocked step left terminates with `meta.status:
-  "done_escalated"` (HIMMEL-1641) instead of burning the rest of its window —
+  "done_escalated"` instead of burning the rest of its window —
   read that status the same as `done`.
 - **Parent** — push `glm/<slug>` **from the PRIMARY checkout**, not the
   worker's worktree: the primary checkout is where the attestation trailers and
   push credentials legitimately live, and pushing from a worker worktree
-  bypasses that ownership. (Until HIMMEL-1961 the worktree also carried a
+  bypasses that ownership. (Until push protection became contract-only the worktree also carried a
   poisoned `remote.origin.pushurl` that made such a push fail on purpose; that
   mechanism is gone — the rule is now convention, not a wall.) Open the PR, then run
   `node scripts/lanes/verify-return.mjs glm/<slug> --ticket <TICKET>` — only
@@ -182,7 +182,7 @@ its window on a hard-blocked capability; the correct split is:
   push-block? …` stderr hint means exactly this: the parent hasn't pushed yet,
   not that the work is missing.
 
-`meta.status` also gains `killed-by-caller` (HIMMEL-1641): a dispatcher-side
+`meta.status` also gains `killed-by-caller`: a dispatcher-side
 kill (e.g. a bounded foreground call SIGTERMing the whole `spawn-glm` tree)
 now finalizes meta before the process dies, so that shape reads distinctly
 from `orphaned`/`failed` instead of masquerading as either.
@@ -199,7 +199,7 @@ bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--br
   branch (`glm/<slug>`), the worktree (`<cwd>/.claude/worktrees/glm+<slug>`),
   and the session dir name. Defaults to `t<timestamp>`. Mutually exclusive
   with `--branch` (see below).
-- `--branch <existing-branch>` — **shared-branch mode (HIMMEL-800)**: commit
+- `--branch <existing-branch>` — **shared-branch mode**: commit
   onto this caller-named, already-existing branch instead of minting
   `glm/<slug>` fresh. Mutually exclusive with `--name`. See
   §Shared-branch mode.
@@ -212,7 +212,7 @@ the poller's `<root>/sessions/` tree, so the live poller never scans, adopts,
 or Telegram-flushes it. The dir holds a minimal `meta.json`
 (`{status, pid, started_at, exit_code, lane: "glm", task_name}`, transitioned
 `running → done|failed|capped|blocked|timeout|done_escalated|killed-by-caller`
-by spawn-glm — the last two are HIMMEL-1641: `done_escalated` is a finished,
+by spawn-glm — the last two came with the parent-finish protocol: `done_escalated` is a finished,
 committed run whose only remaining step was a structurally-blocked git push
 (§Parent-finish protocol); `killed-by-caller` is a dispatcher-side SIGTERM
 finalize) and the spawn-glm-written
@@ -222,11 +222,11 @@ and `context.md`. The report verb is executed by the HOOK, never by any on-disk
 content: `block-glm-external-writes.sh` intercepts the fixed report command,
 decodes and schema-validates the payload, appends the outbox record itself, and
 then DENIES the Bash call (that denial is the success signal). The interceptor
-is a SERVICE that sits ABOVE the `GLM_EXTERNAL_WRITES_OK` bypass — the bypass
+is a SERVICE that sits ABOVE the `GLM_EXTERNAL_WRITES_OK` off switch — the off switch
 disables ENFORCEMENT (the near-miss denies and the push/gh/network classifiers),
 never the reporting service — so no session shape can silently downgrade a
 structured escalation. Under enforcement, every helper-mentioning near-miss
-still fails closed — on Bash and PowerShell alike (HIMMEL-1649 round 9); the
+still fails closed — on Bash and PowerShell alike (review round 9); the
 paragraph below states what changes under the bypass. The
 dispatcher-minted `append-outbox.sh` is therefore NOT a trust boundary and its
 writability is irrelevant on-lane, because it never executes there; it is kept
@@ -249,7 +249,7 @@ already do strictly more. Both halves are pinned by the `R4` cases in
 `scripts/hooks/test-block-glm-external-writes.sh`, including an assertion that
 the helper writes a byte-identical record to the one the hook writes.
 
-**And be equally precise about what the hook is a trust root FOR** (HIMMEL-1649
+**And be equally precise about what the hook is a trust root FOR** (review
 round 5). Everything above is a claim about the *helper* — that on-disk helper
 content does not execute under enforcement. It was never a claim about the hook
 file itself, and the earlier wording invited that reading. The honest invariant:
@@ -275,8 +275,8 @@ file itself, and the earlier wording invited that reading. The honest invariant:
 
 That last one is an architecture problem, not a hook edit — the guard has to run
 from a dispatcher-owned path outside worker Edit roots, or be hash-verified at
-invocation against a dispatcher-recorded digest. Tracked in **HIMMEL-1666**. The
-exposure is pre-existing lane architecture; what this ticket owned was the
+invocation against a dispatcher-recorded digest. Tracked as a known limitation. The
+exposure is pre-existing lane architecture; what that change owned was the
 overstated claim, now scoped.
 
 On exit the CLI prints exactly three machine-readable lines — the inspect
@@ -298,7 +298,7 @@ non-positive/non-numeric `--timeout-mins` or a value-taking flag with no value)
 or a plan refusal (non-himmel cwd, a settings conflict, **or a missing ZAI key**
 caught by the pre-side-effect preflight); `3` = a D2 guard refusal (PHI marker,
 phi-root, denylist, or unreadable guard config); `4` = (shared-branch mode
-only, HIMMEL-800) the shared-branch lock is already held by another
+only) the shared-branch lock is already held by another
 writer, or the lock helper failed to derive a git common dir — see
 §Shared-branch mode below; `1` = an operational failure surfaced by
 `main()`'s catch (e.g. `git worktree add` failed) — one `spawn-glm: <message>`
@@ -325,7 +325,7 @@ THE TASK: <task>
 As your FINAL action, append a one-line summary of what you did to <sessionDir>/context.md, then stop.
 ```
 
-## Shared-branch mode (HIMMEL-800)
+## Shared-branch mode
 
 The default lane (above) mints a fresh `glm/<slug>` worktree+branch every
 dispatch — right for a batch of independent, one-shot deliverables. Shared
@@ -339,7 +339,7 @@ opt-in.
 - **Own-branch (default, no `--branch`)** — independent deliverables, each
   its own PR: a batch fan-out (§Batch fan-out below), a standalone fix, any
   task where the worker's branch is disposable until reviewed and merged.
-- **Shared-branch (`--branch <b>`)** — iterative CR-fix rounds on a **live PR
+- **Shared-branch (`--branch <b>`)** — iterative review-fix rounds on a **live PR
   branch**: the reviewer leaves findings, a GLM worker fixes them in place on
   the SAME branch, round after round, without minting a new branch (and a new
   PR) per round.
@@ -408,7 +408,7 @@ a lock — not sole ownership — governs write access. Everything else in the
 worker contract (no push, no PR, the escalation channel, the outbox/context
 reporting paths) is unchanged from own-branch mode.
 
-**Push-tripwire scope — RETIRED (HIMMEL-1961).** Shared mode used to poison
+**Push-tripwire scope — RETIRED.** Shared mode used to poison
 the reused worktree's `pushurl` for the length of a dispatch and restore it in
 the same `finally` that released the lock. The mechanism is gone: a dispatch
 now leaves the operator's git config exactly as it found it, in every scope,
@@ -418,7 +418,7 @@ replaced it (nothing mechanical — the contract, the deny-hook, and the CR gate
 A worktree last dispatched BEFORE that removal can still carry the sentinel
 (`DISABLED-glm-quarantine`), and nothing produces it any more, so nothing will
 regenerate it. `scripts/lanes/stop-worker.sh` clears it whenever it halts a
-worker (HIMMEL-1929) — it only ever touches that exact value, leaving a real
+worker — it only ever touches that exact value, leaving a real
 `pushurl` alone, and it reports every clear it makes. To clear one by hand:
 
 ```bash
@@ -453,7 +453,7 @@ it never mints an `-rN` branch.
 > deadlocks on its first commit. Recorded in the acceptance section below once
 > observed.
 
-## Batch fan-out: N independent fixes → N GLM workers (HIMMEL-558)
+## Batch fan-out: N independent fixes → N GLM workers
 
 The single-worker loop above is the primitive; this is the orchestration pattern
 for a **multi-fix batch** — several independent, mechanical-to-moderate fixes
@@ -468,7 +468,7 @@ without cross-item judgment). A tightly-coupled set, or one that needs live
 end-to-end verification the main thread must watch (e.g. an A/B against a paid
 model), stays on the main thread — split the batch: fan the independent
 mechanical items, keep the coupled/verify-heavy ones inline. (Worked
-counter-example: HIMMEL-558's three CR fixes looked like a fan-out batch, but
+counter-example: one PR's three CR fixes looked like a fan-out batch, but
 1.1 needed a live codex A/B and 1.2's understanding fed 1.1 — a legitimate
 inline exception. The mechanical tail, e.g. the doc-only 1.3, was fan-able.)
 
@@ -477,13 +477,13 @@ inline exception. The mechanical tail, e.g. the doc-only 1.3, was fan-able.)
 - **GLM workers** (many, parallel) — one `spawn-glm` per fix, each on its own
   `glm/<slug>` worktree+branch. They edit + commit + (optionally) update Jira.
   They **never** push, PR, or merge (the worker prompt contract + the deny
-  hook; push protection is contract-only — HIMMEL-1961).
+  hook; push protection is contract-only).
 - **Main thread** (one writer) — owns everything the workers are fenced from:
-  1. **CR** — run the critic panel + reviewers over each worker's `glm/<slug>`
+  1. **Automated review** — run the critic panel + reviewers over each worker's `glm/<slug>`
      diff (the parent CR gate is the load-bearing control; §Honest enforcement).
      Fix findings inline or bounce the item back with a follow-up spawn.
   2. **Ship rails** — attestation trailers in the first commit, the pre-push
-     CR-marker, `gh pr create` only after a clean `/pr-check`. Workers produce
+     review-owed marker, `gh pr create` only after a clean `/pr-check`. Workers produce
      branches; the main thread turns each into a shipped PR.
   3. **Ledger recalc** — the CR ledger append (`ledger-append.sh`; the
      `cr-scores.sh` scorecard only *reads* it) runs on the main thread
@@ -519,7 +519,7 @@ by GLM quota + review throughput, not by parallel git.
 thread's CR gate; the batch pattern does not relax that — it just parallelizes
 the *authoring*, not the *shipping*.
 
-## Cap guard (HIMMEL-654)
+## Cap guard
 
 z.ai bills the GLM lane on a **5-hour usage cycle**: once the cycle's token
 quota is spent the endpoint returns HTTP 429 (`Usage limit reached for the past
@@ -557,7 +557,7 @@ the (reverse-engineered) monitor endpoint and warns if it is at/above
 HH:MM local`. It is **warn-only** — a heuristic-threshold refusal would strand
 work on a miscount. If the endpoint is unreachable / the schema has drifted /
 the key is blank, the warn is the visible-invisible line `usage invisible
-(monitor endpoint unavailable)` (HIMMEL-275: invisible usage must be
+(monitor endpoint unavailable)` (invisible usage must be
 visible-invisible, never silently absent). `fetchGlmUsage` returns `null` on
 any failure and never throws.
 
@@ -569,19 +569,19 @@ polarity.
 
 ## Honest enforcement inventory
 
-**Push protection is contract-only (HIMMEL-1961).** There is no mechanical
+**Push protection is contract-only.** There is no mechanical
 push fence on these lanes, and every dispatch report says so in as many words:
 `push protection: contract-only; pushing, opening a PR, and merging are NOT
 mechanically prevented by this lane`.
 
-Until HIMMEL-1961 spawn-glm set a worktree-scoped invalid push URL
+Until push protection became contract-only, spawn-glm set a worktree-scoped invalid push URL
 (`remote.origin.pushurl=DISABLED-glm-quarantine`) so a default-path `git push`
 failed loudly. It was retired rather than repaired, for the same reasons
-HIMMEL-1942 retired it from `dispatch-lane.sh`: it only affected remote-NAME
+it was retired from `dispatch-lane.sh` earlier: it only affected remote-NAME
 resolution (a worker that pushes to an explicit URL never consulted it),
 mutating shared git config was unsafe across concurrent dispatches and abnormal
 termination — it could permanently lose the operator's push configuration — and
-a hard-killed worker stranded the sentinel behind it (HIMMEL-1929). It bought
+a hard-killed worker stranded the sentinel behind it. It bought
 protection against accidents only, at the price of a real risk to operator
 config.
 
@@ -598,19 +598,18 @@ What remains, honestly labelled:
 A worker still inherits the operator's git credentials via the shared `~/.claude`,
 so none of this is a security boundary. A real fence needs credential and
 network isolation (sandboxed HOME, no remote write credential, the parent
-outside the sandbox owning push) — scoped, not built, on HIMMEL-1961, because
+outside the sandbox owning push) — scoped, not built, because
 today's threat model is a worker misreading a parent-authored brief rather than
 an adversary. The hard per-lane bound arrives with the WS4/WS7 gates.
 
-The D2 egress guards (`phi-egress-guard.ts`, renamed from `glm-guard.ts` under
-HIMMEL-2622) are **dormant-by-construction in v1**:
+The D2 egress guards (`phi-egress-guard.ts`, renamed from `glm-guard.ts`) are **dormant-by-construction in v1**:
 with the himmel-worktree cwd scope they can realistically fire only if the
 himmel tree itself is listed in `~/.config/claude-glm/{phi-roots,egress-denylist}`.
 They ship now (fail-closed, no `--force` on this path) because the vault
 follow-up is the next step and investigation blocker (b) mandates them on any
 env-only spawn path — do not weight them as a live v1 safety control.
 
-## Hardening: the deny-hook (HIMMEL-654 harden-first, HIMMEL-675)
+## Hardening: the deny-hook
 
 `scripts/hooks/block-glm-external-writes.sh` adds a deterministic in-session
 layer — the classifier substitute the GLM lane otherwise lacks (third-party
@@ -636,7 +635,7 @@ dependency fetch, not an external write).
 the **Jira CLI** (`node scripts/jira/dist/index.js …` or bare `jira`) — writes
 are audited in Jira history and recoverable, so GLM workers may update status,
 add comments, and file followup tickets; **qmd KB reads**
-(`mcp__plugin_qmd_qmd__*`); and (HIMMEL-675) **`gh issue <anything>`** — the
+(`mcp__plugin_qmd_qmd__*`); and **`gh issue <anything>`** — the
 full issue surface, reads AND writes, because cr-deferred followups are gh
 issues (audited in GitHub + recoverable) — plus read-only **PR/CI context**
 (`gh pr view|diff|checks|status|list`, `gh run view|list|watch`). The gh
@@ -646,8 +645,8 @@ occurrences vs allowed ones, so `gh pr view 1 && gh pr merge 1` still denies
 CLI-first — `block-backend-tier` enforces that in every session), and the
 obsidian-vault MCP stays blocked (vault offload is the v2 follow-up).
 
-**The guard stack is two layers** (it was three until HIMMEL-1961 retired the
-poisoned-pushurl tripwire):
+**The guard stack is two layers** (it was three until the
+poisoned-pushurl tripwire was retired):
 
 1. **deny-hook** (this hook) — deterministic, in-session, blocks the write
    shapes above before they run.
@@ -674,7 +673,7 @@ installed-plugin cache is **version-keyed**
 `hooks.json` edit is invisible to `/himmel-update`'s re-sync — the cache never
 refreshes and the new/changed hook never reaches workers. #856 added a
 `hooks.json` entry without bumping `himmel-ops`'s `version`, which is exactly
-why the deny-hook did not go live until the HIMMEL-675 `0.4.0` bump. Bump the
+why the deny-hook did not go live until the `0.4.0` bump. Bump the
 plugin `version` in `.claude-plugin/plugin.json` whenever you change its
 `hooks.json`.
 
@@ -688,7 +687,7 @@ when the cwd is a himmel checkout AND its separate seeded `CLAUDE_CONFIG_DIR`
 wrapper no-ops. spawn-glm workers (himmel worktrees, shared `~/.claude`) are the
 covered target.
 
-**Bypass:** `GLM_EXTERNAL_WRITES_OK=1` set in the shell that spawns the worker
+**Off switch:** `GLM_EXTERNAL_WRITES_OK=1` set in the shell that spawns the worker
 (session-sticky; a per-call prefix does not reach the hook).
 
 **Known limitations** (CR-gate backstopped): a wrapper that displaces
@@ -700,7 +699,7 @@ JSON); and in-process network is invisible to a command-text hook — bun/node
 `fetch`, INCLUDING `bun`-invoking the Telegram bridge send path
 (`scripts/telegram/telegram-api.ts` sendMessage, a real external write).
 
-## Escalation channel (HIMMEL-654)
+## Escalation channel
 
 A blocked GLM worker can record a capability request and **degrade gracefully**
 instead of retrying into the deny wall; a parent/operator grants a specific,
@@ -727,7 +726,7 @@ only. All state is a per-session append-only ledger
 
   Worker text is never spliced into shell — it travels as base64url argv data
   and the hook, not the worker, performs the append. It DOES become a structured
-  ledger record, but only through a fail-closed schema gate (HIMMEL-1649):
+  ledger record, but only through a fail-closed schema gate:
   `type` must be `note` or `escalation`; an escalation's capability/arm/reason/
   step must all be strings; unknown keys, non-string whitelisted fields, and an
   over-cap payload are all refused with nothing appended. A payload that is not
@@ -765,7 +764,7 @@ mis-anchored / expired / exhausted grant line, leaves the arm denying. Like the
 deny-hook itself, this is an **accidental-shape guard for a same-user worker**,
 not a containment wall — the load-bearing control remains the parent CR gate.
 
-## Peak-hours & quota windows (lane scheduling, HIMMEL-654 decision #4)
+## Peak-hours & quota windows (lane scheduling, decision #4)
 
 Time-aware routing facts for the three worker lanes, researched 2026-07-03
 (vault-first + official docs; verify the time-boxed items before relying on
@@ -775,7 +774,7 @@ them past their dates).
 |---|---|---|---|---|---|
 | **GLM** (z.ai Coding Plan) | Prompts per **5-hour rolling cycle** (Pro ≈ 400/5h; Lite ≈ 80; Max ≈ 1600) — NOT a daily bank. Advanced models burn quota by a **time-of-day multiplier**. | 5h cycle starts at first prompt. | **14:00–18:00 UTC+8** (= 08:00–12:00 Berlin summer) → **3× quota burn**. Documented effect is COST, not latency. | Outside the peak window; under the off-peak **1× promo (through Sept 2026, then 2×)** it is the cheapest bulk lane in the fleet. | Multiplier: official. Latency-at-peak: unconfirmed. |
 | **Claude** (Anthropic Max) | **5-hour rolling window + weekly (`seven_day`) cap**, usage-metered; Opus drains faster. | 5h window from first message; weekly is the harder ceiling. Live counters: `api.anthropic.com/api/oauth/usage` (cached `/tmp/claude/statusline-usage-cache.json`). | **No clock-based peak** — degradation is depletion-based. | Route by counter (`five_hour`/`seven_day` utilization), not clock; arm-resume handles reset boundaries. | High (official mechanics). |
-| **Codex** (OpenAI) | Two windows: primary **300 min** + secondary **10080 min (weekly)** — the weekly is the real cap. Separate OpenAI bank (independent of Claude quota). | Rolling windows that fully reset. Local pull: grep `~/.codex/logs_2.sqlite*` for `"secondary"`/`used_percent` (freshest in `-wal`). | **No published clock peak**; OpenAI throttles dynamically under aggregate load. | Route by the weekly `used_percent` counter; primary overflow lane when Claude's weekly cap is spent. | Windows: high. Reset anchor detail: community-sourced. |
+| **Codex** (OpenAI) | Two windows: primary **300 min** + secondary **10080 min (weekly)** — the weekly is the real cap. Separate OpenAI subscription usage budget (independent of Claude quota). | Rolling windows that fully reset. Local pull: grep `~/.codex/logs_2.sqlite*` for `"secondary"`/`used_percent` (freshest in `-wal`). | **No published clock peak**; OpenAI throttles dynamically under aggregate load. | Route by the weekly `used_percent` counter; primary overflow lane when Claude's weekly cap is spent. | Windows: high. Reset anchor detail: community-sourced. |
 
 Routing rules:
 
@@ -818,7 +817,7 @@ Routing rules:
   proven. Default-mode guidance stands: expect possible deadlock-until-
   timeout on unapproved tools; prefer bypassPermissions for unattended
   runs (at the time of this record the pushurl tripwire + guard-checked cwd
-  were the compensating controls; the tripwire is gone as of HIMMEL-1961, so
+  were the compensating controls; the tripwire is gone as of its retirement, so
   the deny-hook and the CR gate carry that weight now).
 - **Execution-time findings folded back into the code:** settings `model`
   key → warning not refusal (`2135712e`); `.env` resolution falls back to

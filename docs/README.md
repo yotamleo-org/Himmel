@@ -6,10 +6,11 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 - [why-himmel.md](why-himmel.md) — the case for the harness: the five failure modes it exists for, the evidence, and what it costs you.
 - [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
-- [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/console model, the Jira seam, the observability chain.
+- [system-design.md](system-design.md) — the narrative design document: goals, the parts, one ticket's flow from file to merge, the trust and safety model, and the trade-offs behind the key decisions.
+- [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/supervisor session model, the Jira seam, the observability chain.
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
-- [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / advisory, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
+- [configuration.md](configuration.md) — the canonical configuration + control-surface reference: the chains (mermaid), every gate classified HARD / auth-gated / warn-only, every knob by surface, and the off-switches. Pairs with [.env.example](../.env.example), the per-key flag map.
 - [ui.md](ui.md) — the UI surfaces: the `himmelctl ui` config console, the console board, and the roadmap tracker; what each is, how to start it, where it opens.
 
 ## Setup
@@ -35,7 +36,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched — not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.
 - [operator-conventions.md](operator-conventions.md) — durable operator working-habits.
 - [contributing.md](contributing.md) — the contribution workflow.
-- [glm-offload.md](glm-offload.md) — the GLM-lane offload loop (spawn a GLM worker from the main session, review its diff through the normal CR loop).
+- [glm-offload.md](glm-offload.md) — the GLM-lane offload loop (spawn a GLM worker from the main session, review its diff through the normal automated review loop).
 - [token-economy.md](token-economy.md) — per-boundary token-optimizer policy — who owns which token cost and where it's paid.
 
 ## How enforcement works (internals)
@@ -45,14 +46,14 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/jira-plugin.md](internals/jira-plugin.md) — the local Jira CLI ↔ Atlassian MCP op mapping.
 - [internals/stuck-playbook.md](internals/stuck-playbook.md) — guardrail-recovery escape hatches.
 - [handover/overnight-mode.md](handover/overnight-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
-- [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a console with `/console new|next`; the console + leg-brief templates.
+- [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a supervisor session with `/console new|next`; the supervisor session + worker-session-brief templates.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses — the compatibility matrix + per-feature port/guard/accept decisions.
 - [internals/environment-gotchas.md](internals/environment-gotchas.md) — Windows / Git-Bash / git-worktree / scheduler / Bash-tool / content-filter environment traps.
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
 
-## Orchestration & lanes (HIMMEL-654 workstream series)
+## Orchestration & lanes
 
 - [orchestration-patterns.md](orchestration-patterns.md) (+ [.notes.md](orchestration-patterns.notes.md) run log) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.

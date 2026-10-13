@@ -7,9 +7,10 @@
 #
 # Usage: claude-api.sh -p [prompt] --model M --permission-mode default|plan|acceptEdits|dontAsk|auto \
 #                      --max-budget-usd N [--output-format json] [--effort E]  (no other flags)
-# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B  HIMMEL_API_KEY_ID=<roster id>
-#        ANTHROPIC_API_KEY (presence only; never printed, logged or passed on a command line)
-# OFF by default. No A/B rotation, no subscription fallback: a refusal is final.
+# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
+#        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
+#        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
+# OFF by default. No subscription fallback: a refusal is final.
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -19,9 +20,9 @@ refuse() { echo "claude-api: refused: $*" >&2; exit 2; }
 
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
-case "${HIMMEL_API_ACCOUNT:-}" in A|B) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B" ;; esac
-[ -n "${ANTHROPIC_API_KEY:-}" ] || refuse "ANTHROPIC_API_KEY is absent"
-[ -n "${HIMMEL_API_KEY_ID:-}" ] || refuse "HIMMEL_API_KEY_ID is absent"
+case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B (or auto)" ;; esac
+[ "$HIMMEL_API_ACCOUNT" != auto ] || [ -z "${ANTHROPIC_API_KEY:-}" ] ||
+  refuse "auto routing reads the per-account key files; a caller ANTHROPIC_API_KEY cannot follow the pick"
 
 # --- conflicting providers outrank the key or bill elsewhere: refuse, never guess ---
 for v in CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY; do
@@ -71,6 +72,14 @@ case "$MODEL" in *[!A-Za-z0-9._:/@-]*) refuse "--model has characters outside [A
 [ -n "$BUDGET" ] || refuse "--max-budget-usd is required"
 case "$FORMAT" in ""|json) ;; *) refuse "--output-format must be json" ;; esac
 
+# --- HIMMEL-5433: auto = the grant that expires first among accounts with room for the whole budget ---
+if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
+  PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
+  case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
+  HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([AB]\)".*/\1/p')"
+  [ -n "$HIMMEL_API_ACCOUNT" ] || refuse "auto routing returned no account"
+fi
+
 # --- roster: the selector must map to the credential's recorded key id ---
 ROSTER="$(node "$REPO/scripts/api-lane/roster.mjs")" || refuse "roster: ${ROSTER#reason=}"
 ROSTER_KEY="" ROSTER_ORG="" ROSTER_CYCLE="" STATE_DIR=""
@@ -83,12 +92,27 @@ done <<EOF
 $ROSTER
 EOF
 [ -n "$ROSTER_KEY" ] || refuse "roster has no key_id for account $HIMMEL_API_ACCOUNT"
-[ "$HIMMEL_API_KEY_ID" = "$ROSTER_KEY" ] || refuse "key id does not match account $HIMMEL_API_ACCOUNT"
+
+# --- key: a caller key must name its roster id; otherwise the account's own key file beside the ledger ---
+# HIMMEL-5433: the key is held in a shell variable and handed only to claude's env below, never exported.
+KEY="${ANTHROPIC_API_KEY:-}"
+if [ -n "$KEY" ]; then
+  [ -n "${HIMMEL_API_KEY_ID:-}" ] || refuse "HIMMEL_API_KEY_ID is absent"
+else
+  KEY_FILE="$STATE_DIR/key-$HIMMEL_API_ACCOUNT.env"
+  [ -f "$KEY_FILE" ] || refuse "no ANTHROPIC_API_KEY and no key file for account $HIMMEL_API_ACCOUNT"
+  [ -n "$(find "$KEY_FILE" -maxdepth 0 -perm 600 -user "$(id -u)")" ] || # gnu-ok: BSD find has -maxdepth/-perm/-user too
+    refuse "key file for account $HIMMEL_API_ACCOUNT must be mode 600 and owned by you"
+  KEY="$(sed -n 's/^ANTHROPIC_API_KEY=//p' "$KEY_FILE" | head -n 1)"
+  [ -n "$KEY" ] || refuse "key file for account $HIMMEL_API_ACCOUNT has no ANTHROPIC_API_KEY line"
+fi
+[ -z "${HIMMEL_API_KEY_ID:-}" ] || [ "$HIMMEL_API_KEY_ID" = "$ROSTER_KEY" ] ||
+  refuse "key id does not match account $HIMMEL_API_ACCOUNT"
 
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
+BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
   CADENCE_BANK_LEG="${CADENCE_BANK_LEG:-claude-api:$JOB_ID}" \
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
@@ -100,6 +124,14 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN CADENCE_BANK_LANE=api CADENCE_BAN
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
 ALLOWED_TOOLS="Read,Edit,Write,Glob,Grep,Bash"
 
+# HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
+# A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
+# id, messaging token ...), which make the child identify as that session; drop every one of them.
+SESSION_UNSET=()
+for v in $(compgen -e); do
+  case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
+done
+
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 trap 'rm -f "$OUT"' EXIT
 
@@ -109,10 +141,11 @@ RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
-# headless-claude-ok: HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
-env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
+# The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
+# HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
+ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
-  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE \
+  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
   --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"

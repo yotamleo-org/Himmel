@@ -6,7 +6,9 @@
 > your first PR-gated loop in about 15 minutes.
 >
 > Deciding whether it is worth it? Read [**Why himmel**](docs/why-himmel.md),
-> the failure modes it exists for and what each one costs. Want the wiring?
+> the failure modes it exists for and what each one costs. Want the design
+> in one read? [**System design**](docs/system-design.md) explains the parts,
+> one ticket's flow, the trust model and the trade-offs. Want the wiring?
 > [**Architecture**](docs/architecture.md) draws the enforcement layers,
 > handover, fleet, Jira seam and observability chain.
 
@@ -35,7 +37,7 @@ Claude remembering a paragraph of instructions.
   last one stopped, with the decisions and the reasons for them intact.
 - **Work runs while you sleep.** `/overnight-shift` hands scoped tickets to
   parallel agents that branch, review themselves and open PRs. When a session
-  nears its usage cap, a watchdog schedules a relaunch with the operating
+  nears its usage cap, a usage-cap auto-relaunch schedules a relaunch with the operating
   system's scheduler, so a long run survives the cap.
 - **Mistakes are blocked, not just discouraged.** Hooks stop edits on `main`,
   reads of secret files, and opening a PR without a passing review, at the
@@ -62,7 +64,7 @@ Claude remembering a paragraph of instructions.
 ## How it flows
 
 <p align="center">
-  <img src="docs/assets/flows.svg" alt="Four himmel flows, each a row of six steps: shipping a change, running a fleet of legs from a console, carrying work across sessions, and finding what you already know" width="960">
+  <img src="docs/assets/flows.svg" alt="Four himmel flows, each a row of six steps: shipping a change, running a fleet of worker sessions from a supervisor session, carrying work across sessions, and finding what you already know" width="960">
 </p>
 
 The graph walks four flows that make up most of a day with himmel. Each box
@@ -77,13 +79,14 @@ format, secrets, the attestation lines that say what was tested. `/pr-check`
 then runs the review panel. Once CI is green on the suites the change touches,
 the PR merges and `/clean` prunes the finished worktree.
 
-**2. Run a fleet: one console, many legs.** For bigger runs, one Claude
-session acts as the *console*. It plans the work and dispatches *legs*, other
-Claude sessions that each own one ticket, one worktree and one PR. A leg
-reports back with short status markers (`LIVE`, `READY`) and never merges on
-its own. The console checks the PR (and can ask an independent judge agent
-for a second opinion), writes a GO file to sign off, and the leg merges
-through `merge-on-green.sh`. The [glossary](docs/glossary.md) defines console,
+**2. Run a fleet: one supervisor session, many worker sessions.** For bigger
+runs, one Claude session acts as the *supervisor session*. It plans the work
+and starts *worker sessions*, other Claude sessions that each own one ticket,
+one worktree and one PR. A worker session reports back with short status
+markers (`LIVE`, `READY`) and never merges on its own. The supervisor session
+checks the PR (and can ask an independent judge subagent for a second
+opinion), writes a GO file (merge approval) to sign off, and the worker
+session merges through `merge-on-green.sh`. The [glossary](docs/glossary.md) defines console,
 leg, judge and the rest.
 
 **3. Carry work across sessions.** A session that has made decisions writes
@@ -335,7 +338,7 @@ Every feature has one doc that owns its detail; the full map is
   [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
 - Handover system (multi-repo registry, auto-branch, PR, flush):
   [`docs/internals/handover-system.md`](docs/internals/handover-system.md)
-- Overnight unattended runs (`/overnight-shift`, `/stop` to halt):
+- AFK (unattended) mode runs (`/overnight-shift`, `/stop` to halt):
   [`docs/handover/overnight-mode.md`](docs/handover/overnight-mode.md)
 
 **Lifecycle and delegation**

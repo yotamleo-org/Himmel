@@ -1,10 +1,10 @@
-# Validation / quality gates — placement doctrine (HIMMEL-654 WS7)
+# Validation / quality gates — placement doctrine (WS7)
 
 WS7 owns WHERE validation gates sit on himmel's workflows: gate placement,
 rubric chains, PASS/FAIL semantics, the report contract, human-checkpoint
 doctrine, lane trust tiers, and the unquarantine gate for cheap-lane
 (GLM/Codex) outputs. Every mechanic it invokes is an ALREADY-SHIPPED instrument
-(the HIMMEL-414 CR stack + spawn-glm PR #843); WS7 places them, it does not
+(the automated review stack + spawn-glm PR #843); WS7 places them, it does not
 respec them. It unquarantines the GLM/Codex capacity WS1 already shipped.
 
 Spec: `<state-repo>/handovers/<user>/himmel/specs/design/ws7-validation-gates.md`.
@@ -70,12 +70,12 @@ spawn-glm session meta AND the PR body. D5's gated-merge count reads that record
 + git history (NOT the CR ledger, which carries critic findings, not lane
 verdicts).
 
-**Enforcement honesty:** the CR-marker hook
+**Enforcement honesty:** the review-owed marker hook
 (`scripts/hooks/check-cr-before-push.sh` +
 `scripts/hooks/check-cr-marker-on-pr-create.sh`) structurally enforces the
-panel/CR half. The R1-R4 lane-rubric verdict is BEHAVIORALLY enforced v1
+panel/automated review half. The R1-R4 lane-rubric verdict is BEHAVIORALLY enforced v1
 (validating-session discipline); its structural enforcement is the deferred
-lane-marker hook (§9), escalated on drift per HIMMEL-195.
+lane-marker hook (§9), escalated on drift.
 
 ## 2. Rubric chains per artifact class (D2)
 
@@ -88,7 +88,7 @@ mechanic invoked is a shipped instrument.
 | Code diff (GLM/Codex lane) | D1 lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
 | Docs-only diff | docs-audit lane (never-zero-CR) | verdict/marker fail-closed | merge (operator) |
 | Spec/plan artifacts (minerva) | Stage-2/4 adversarial critics (same-family today — known blind spot; the cross-model lane arrives with WS4 D1 artifact-critic, a FUTURE instrument, non-blocking) | critics advisory; orchestrator gates advance (fail-closed on a missing critic round) | operator ratifies ⚑ forks |
-| Handover state | exempt (HIMMEL-142) — no gate | exempt — no gate | none |
+| Handover state | exempt — no gate | exempt — no gate | none |
 
 **Lane rubric (the D1 extension, applied to cheap-lane diffs on top of the full
 lane):**
@@ -129,7 +129,7 @@ every critic errors/times out (`panel_rc=1`), OR the panel cannot be run at all
 the explicit opt-out and also lands Claude-only; an empty diff simply skips the
 panel.
 
-The clarification this needs (HIMMEL-1101): a **registry fallback is NOT
+The clarification this needs: a **registry fallback is NOT
 unavailability** — the panel RAN, on the paid anchor. Of the four shapes below,
 only 3 and 4 reach Claude-only; 1 and 2 BILL:
 
@@ -141,39 +141,39 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    default today: `critics.json` holds exactly one row (`codex`/`gpt-6.1-sol`, tier
    `paid`) and no free anchor, so an unset `CR_PROFILE` (tier filter `free`)
    matches nothing and lands here.
-   The free lane was REMOVED DELIBERATELY (operator, HIMMEL-1101): the free
-   critics made more trouble than they were worth — HIMMEL-667 dropped
-   gptoss+kimi on a 12%/13% agreed-rate (noise), and the surviving qwen3coder
-   anchor kept erroring rc=1 (HIMMEL-953). This is a decision, not drift; the
+   The free lane was REMOVED DELIBERATELY (operator decision): the free
+   critics made more trouble than they were worth — gptoss+kimi were
+   dropped on a 12%/13% agreed-rate (noise), and the surviving qwen3coder
+   anchor kept erroring rc=1. This is a decision, not drift; the
    panel is paid-by-default on purpose and only the docs had lagged.
 3. **The selected panel runs but every critic errors/times out** (panel rc=1)
    ⇒ Claude-only fail-open, exactly as this fork has always specified.
    Unchanged, and still fires. Observed live 2026-07-17: the sole registered
    critic (paid codex) returned rc=1 for a whole run once its weekly bank was
    exhausted — with no free row registered, that is 0/1 panel critics.
-   **This does NOT by itself block the CR gate.** `clear-cr-marker.sh` counts
+   **This does NOT by itself block the automated review gate.** `clear-cr-marker.sh` counts
    ANY ledger `avail … status=ok` as a responder (`:176`), so the interactive
    lane's own Claude floor review can still certify the HEAD while every panel
    critic is down. What a single-critic roster costs is the panel's own
    cross-model redundancy, not the gate's ability to certify. Accepted
-   knowingly (HIMMEL-1101).
+   knowingly.
 
-   **Narrowed by HIMMEL-2704.** This paragraph used to name a second escape —
+   **Narrowed.** This paragraph used to name a second escape —
    the non-panel CodeRabbit CLI pass in `/pr-check` step 3.2, which recorded an
    availability row of its own. That pass is deleted (CodeRabbit is the App
    only), so the Claude floor is the sole remaining one. Under
    `CR_REQUIRE_CROSS_MODEL=1` a panel-wide outage is much closer to closed:
    gate 3b requires a non-Claude `avail … ok` at the SHA, and only the panel
    itself can still supply one (the codex adversarial pass that used to record
-   `avail --model codex-adv` was removed in HIMMEL-3818, and a legacy row of
+   `avail --model codex-adv` was removed, and a legacy row of
    that name no longer counts). A Claude-only floor keeps the marker closed
    (exit 14) until a panel critic responds.
 
    The caveat that survives: the panel's non-Claude rows can share a provider.
    An OpenAI-side outage or an exhausted bank takes the `codex` row out, and
    then nothing can satisfy gate 3b. That single point of failure is what
-   HIMMEL-1904 re-introduced when the `glm` row was retired, and it is the
-   reason HIMMEL-2711 is filed.
+   was re-introduced when the `glm` row was retired, and it is a known
+   limitation.
 4. **The panel cannot be run at all** — e.g. the diff could not be produced
    (`pr-check.md:99`, "critic panel unavailable — claude-only review (git diff
    failed …)") ⇒ Claude-only fail-open. `CR_PROFILE=none` is the explicit
@@ -205,7 +205,7 @@ per-token billing.
   as a one-action operator step.
 - **Batching bound:** the review surface batches into the consolidated morning
   report; fan-out ceiling ≈6-8 tickets/shift (rubber-stamp threshold) — a WS7
-  checkpoint property, owned operationally by the overnight-mode doc.
+  checkpoint property, owned operationally by the AFK (unattended) mode doc.
 - **Checkpoint placement rule:** a human checkpoint is REQUIRED where a verdict
   is (a) irreversible outward (merge, publish, external write) or (b) a
   trust-tier promotion (§5). Everything else is agent-adjudicated.
@@ -232,12 +232,12 @@ Every D1/D2 gate FAIL emits a machine-findable record stored with the run
 artifacts. **Emission points:**
 
 - lane fails → the spawn-glm session dir (shipped);
-- blocking CR fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
+- blocking automated review fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
   writes them to the SAME `<session-dir>/gate-report.jsonl` as lane fails.
 
 This is the ONE added emission WS7 places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
-CR fails are NOT persisted (they block the marker and get fixed in place), so
+automated review fails are NOT persisted (they block the marker and get fixed in place), so
 the corpus was missing the failures that matter. WS10's self-improvement loop
 consumes these ("failed traces become the next test cases"); WS7 places the
 emission points, WS10 owns the loop. No new storage system (YAGNI) — session
@@ -245,7 +245,7 @@ dirs + issues are the corpus v1, with the one added write above.
 
 ## 7. CI promotion path (D7 — ⚑ Fork D)
 
-Shell-unit CI (`workflow_dispatch`-only, HIMMEL-494) is advisory evidence a
+Shell-unit CI (`workflow_dispatch`-only) is advisory evidence a
 validating session MAY cite, never a PASS substitute, until promoted.
 
 **⚑ Fork D DEFAULT (unmeasured constants — ratify or retune before promotion):**
@@ -275,15 +275,15 @@ gate; adopting it is a WS6-gated tool decision, not a WS7 build item.
 
 The GLM-only lane-marker hook
 (`scripts/hooks/block-cheap-lane-pr-without-verdict.sh`) and its paired suite
-were removed in HIMMEL-4899: the GLM implementation lane is gone, and the hook
+were removed: the GLM implementation lane is gone, and the hook
 was never wired into either hook inventory. Removal changes no dispatched
 protection.
 
 The live claudex implementation lane runs through the Claude Code harness
-([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model-himmel-2782)),
-with publication subject to its permission classifier. The console's
+([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model)),
+with publication subject to its permission classifier. The supervisor session's
 `scripts/handover/console-kit/ready-check.sh` separately refuses a head without
-an `ok` CR-ledger row. These cover publication authorization and CR readiness,
+an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
 not the historical GLM `d1_verdict` field.
 
 D1 lane-rubric verdict persistence remains behavioral (validating-session

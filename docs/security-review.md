@@ -1,6 +1,6 @@
-# Security-review playbook (HIMMEL-176)
+# Security-review playbook
 
-The `security-reviewed` pre-push hook (`scripts/hooks/check-security-reviewed.sh`) gates pushes on a `Security reviewed: <token>` attestation in a commit body or PR description whenever the diff vs `origin/main` touches non-docs code. The hook does NOT run the review itself — that would introduce a new headless-Claude call against the same usage bank [HIMMEL-128](../CLAUDE.md#claude-invocation-billing) governs. The operator runs the review on demand using whichever mechanism fits the change, then attests the result.
+The `security-reviewed` pre-push hook (`scripts/hooks/check-security-reviewed.sh`) gates pushes on a `Security reviewed: <token>` attestation in a commit body or PR description whenever the diff vs `origin/main` touches non-docs code. The hook does NOT run the review itself — that would introduce a new headless-Claude call against the same subscription usage budget the [Claude invocation billing rule](../CLAUDE.md#claude-invocation-billing) governs. The operator runs the review on demand using whichever mechanism fits the change, then attests the result.
 
 This file is the recommended playbook for picking a review method and writing the attestation line. For *after* something sensitive has already been committed/pushed (token, bot username, chat/user id, PII), see the [leak-scrub runbook](leak-scrub-runbook.md).
 
@@ -18,7 +18,7 @@ Pick one. Add to a commit body in the push range OR to the PR description.
 |---|---|
 | `manual` | Operator did a focused security read of the diff (input handling, authn/authz, secrets exposure, command injection, SSRF, deserialization, path traversal). Best for small/medium diffs. |
 | `claude-code-security-review` | Operator invoked `anthropics/claude-code-security-review` (slash command from the upstream repo, or the GitHub Action against a draft PR). Best for medium/large diffs where the focused prompt is worth the extra tokens. |
-| `pr-review-toolkit` | Operator ran `/pr-check` or `/pr-review-toolkit:review-pr` and the fanout included a reviewer covering the security lens. The existing multi-agent CR already includes `silent-failure-hunter` which catches some security-class issues; this token is for cases where the operator explicitly verified the security coverage. |
+| `pr-review-toolkit` | Operator ran `/pr-check` or `/pr-review-toolkit:review-pr` and the fanout included a reviewer covering the security lens. The existing multi-agent automated review already includes `silent-failure-hunter` which catches some security-class issues; this token is for cases where the operator explicitly verified the security coverage. |
 | `ad-hoc` | Informal review — the diff is small, the surface is well-understood, the operator made a judgement call. Use sparingly; prefer `manual` for anything non-trivial. Also covers "no-security-surface" cases (e.g. comment-only rename, internal test fixture change, log-message wording) — use `ad-hoc` with a 1-line rationale in the same commit body. |
 
 (`n/a` was considered as a no-surface token but rejected — the literal string `n/a` appears naturally inside file paths and gameable substrings. Use `ad-hoc` for low-risk diffs or the docs-only fast-path / `[skip security-review]` marker for clearly-not-relevant cases.)
@@ -43,7 +43,7 @@ Refs: HIMMEL-N
 
 ## Example PR-body attestation
 
-If the commit messages don't carry the line, the hook falls back to `gh pr view --json body` and matches there. That satisfies the pre-push gate only: a console's `ready-check.sh` check 5 reads the PR's **first commit** alone, so for a console-merged PR the trailer belongs there (recovery: [stuck-playbook](internals/stuck-playbook.md)). Add a section to the PR description:
+If the commit messages don't carry the line, the hook falls back to `gh pr view --json body` and matches there. That satisfies the pre-push gate only: a supervisor session's `ready-check.sh` check 5 reads the PR's **first commit** alone, so for a PR merged by the supervisor session the trailer belongs there (recovery: [stuck-playbook](internals/stuck-playbook.md)). Add a section to the PR description:
 
 ```
 ## Security review
@@ -68,7 +68,7 @@ For emergencies or when the gate is wrong:
 | Gate | Layer | What it catches |
 |---|---|---|
 | `gitleaks` | pre-commit | Hardcoded secrets in the diff |
-| `code-review-before-push` | pre-push | Multi-agent CR (correctness, code quality, silent failures) |
+| `code-review-before-push` | pre-push | Multi-agent automated review (correctness, code quality, silent failures) |
 | `security-reviewed` | pre-push | **THIS** — security-lens attestation (operator-driven) |
 | `platforms-tested` | pre-push | Cross-platform behaviour (shell/script changes) |
 
@@ -91,6 +91,6 @@ If any answer is "yes, and I'm not 100% sure the fix is right", file a follow-up
 
 ## Why this pattern (and not a literal upstream-action wrapper)?
 
-[HIMMEL-128](../CLAUDE.md#claude-invocation-billing): a split of headless Claude calls onto a separate Agent SDK credit bucket was announced for 2026-06-15 but PAUSED at cutover (observed 2026-06-21) and is not what this guidance rests on today. HIMMEL-1748 measured (2026-08-11/12) that subscription-authenticated `claude -p` draws from the **same** 5-hour/weekly usage bank as interactive sessions — a 48-chunk run exhausted that bank about 2.9 hours in. Wrapping `anthropics/claude-code-security-review` as a literal pre-push hook would fire a headless Claude call on every push against that same shared bank — at scale, that bank (also needed for the operator's own interactive work) would be the bottleneck.
+[Claude invocation billing](../CLAUDE.md#claude-invocation-billing): a split of headless Claude calls onto a separate Agent SDK credit bucket was announced for 2026-06-15 but PAUSED at cutover (observed 2026-06-21) and is not what this guidance rests on today. A measurement (2026-08-11/12) showed that subscription-authenticated `claude -p` draws from the **same** 5-hour/weekly subscription usage budget as interactive sessions — a 48-chunk run exhausted that budget about 2.9 hours in. Wrapping `anthropics/claude-code-security-review` as a literal pre-push hook would fire a headless Claude call on every push against that same shared budget — at scale, that budget (also needed for the operator's own interactive work) would be the bottleneck.
 
 Lean-invoke (operator runs review on demand) + structural attestation gate (push blocked without the line) gives the same enforcement strength without the headless cost. The trade-off: the operator owns picking the right review method per diff. The recommended-tokens table above is the playbook.

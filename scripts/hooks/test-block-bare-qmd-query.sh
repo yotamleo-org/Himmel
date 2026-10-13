@@ -707,7 +707,7 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 # timed RC LABEL CMD — assert the exit code and a wall time under 1 s
 # (EPOCHREALTIME is bash 5; without it, SECONDS bounds it to 2 s).
 timed() {
-    local want=$1 label=$2 input t0 t1 rc ms
+    local want=$1 label=$2 input t0 t1 rc ms budget=${4:-1000}
     input=$(j_bash "$3")
     t0=${EPOCHREALTIME:-$SECONDS}
     rc=$(run_case "$input")
@@ -719,10 +719,10 @@ timed() {
         ms=$(( (t1 - t0) * 1000 ))
         if [ "$ms" -le 1000 ]; then ms=0; fi
     fi
-    if [ "$ms" -lt 1000 ]; then
+    if [ "$ms" -lt "$budget" ]; then
         echo "PASS $label in ${ms}ms"
     else
-        echo "FAIL $label took ${ms}ms (budget 1000ms)"
+        echo "FAIL $label took ${ms}ms (budget ${budget}ms)"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -732,7 +732,10 @@ timed 2 'deny: 700 sh words, then a nested -c' "echo ${pad_sh}; bash -ec \"qmd q
 timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu\"ery x'"
 timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}"
 timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}"
-timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}"
+# HIMMEL-5328: this row holds a `$`, so guard_expansion_recheck re-feeds the
+# hook once on the stripped text (about 2x). Measured: 812ms idle locally,
+# 1809ms on the loaded CI shard (PR 2506, run 38363586521); budget = 2x CI.
+timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" 3600
 
 # HIMMEL-4505: stdin-fed residuals. A shell option's argument (-o errexit,
 # -O extglob, --rcfile f) is no program operand, at/batch read their job from
@@ -848,6 +851,57 @@ allow 'qmd "query"x y'
 allow 'echo q"md" "qu"ery x'
 allow 'grep -rn "q\"md\" q\"uery\"" scripts/'
 allow 'printf "%s\n" "a; qmd" status'
+# HIMMEL-4141: a word of empty quotes alone is an empty ARGUMENT, so what
+# follows it is no longer the verb; empty quotes inside a word still vanish.
+allow 'qmd "" query x'
+allow "qmd '' search x"
+allow 'qmd "" "" vsearch x'
+allow "qmd \$'' query x"
+allow 'qmd "" query'
+allow "qmd \"\\
+\" query x"
+allow "qmd \$'\\0' query x"
+allow "qmd \$'\\0abc' query x"
+deny "qmd \$'\\0'query x"
+deny 'eval qmd "" query x'
+deny 'watch qmd "" query x'
+deny "eval \"qmd\" '' search x"
+deny "watch \"qmd\" '' search x"
+deny "eval qmd \$'' query x"
+deny 'parallel qmd "" query x'
+deny 'parallel -j1 qmd "" query x'
+# sudo -s / -i (--shell, --login) and firejail's default shell join their
+# words with spaces and re-parse them, so the empty argument vanishes there.
+deny 'sudo -s qmd "" query x'
+deny 'sudo -i qmd "" query x'
+deny 'sudo --shell qmd "" query x'
+deny 'sudo --login qmd "" query x'
+deny 'sudo -u bob -s qmd "" query x'
+deny 'firejail qmd "" query x'
+# ssh joins its words and the remote shell re-parses them; env -S splits its
+# operand, and the words after it, through the same joined string.
+deny 'ssh host qmd "" query x'
+deny 'ssh -p 22 host qmd "" query x'
+deny "ssh host qmd '' search x"
+deny 'env -S qmd "" query x'
+deny "env -S'qmd' '' query x"
+deny 'env -i -S qmd "" query x'
+# sudo takes abbreviated long options (--sh, --logi) and bundled option
+# arguments (-sD/tmp, -sC3), so every sudo is read through the re-parse:
+# a plain sudo with an empty argument over-denies, the accepted direction.
+deny 'sudo --sh qmd "" query x'
+deny 'sudo --logi qmd "" query x'
+deny 'sudo -sD/tmp qmd "" query x'
+deny 'sudo -sC3 qmd "" query x'
+deny 'sudo qmd "" query x'
+deny 'sudo -u bob qmd "" query x'
+allow 'echo qmd query | sudo tee /dev/null'
+deny 'qmd ""query x'
+deny "qmd ''search x"
+deny 'qmd q""uery x'
+deny 'qmd query"" x'
+deny 'qmd --index "" query x'
+deny 'qmd "" status; qmd query x'
 # `<<` inside $((…)) is a shift, not a heredoc: the words are still read.
 allow "echo \$((1<<2)); qmd \$'query notes' y"
 # HIMMEL-4140 / HIMMEL-4151: a decoded nested string is still read as words.

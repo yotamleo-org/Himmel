@@ -145,8 +145,8 @@ else
     fail "expected exit 2, got rc=$rc" "out: $out"
 fi
 case "$out" in
-    *"CR review pending for feat/X"*) pass "stderr names the head branch feat/X" ;;
-    *) fail "expected 'CR review pending for feat/X' in stderr" "out: $out" ;;
+    *"Automated review pending for feat/X"*) pass "stderr names the head branch feat/X" ;;
+    *) fail "expected 'Automated review pending for feat/X' in stderr" "out: $out" ;;
 esac
 
 # Test 2: --head=feat/X form, marker present -> BLOCK ----------------
@@ -178,8 +178,8 @@ else
     fail "expected exit 2, got rc=$rc" "out: $out"
 fi
 case "$out" in
-    *"CR review pending for feat/X"*) pass "stderr names bare branch feat/X (owner stripped)" ;;
-    *) fail "expected 'CR review pending for feat/X' in stderr" "out: $out" ;;
+    *"Automated review pending for feat/X"*) pass "stderr names bare branch feat/X (owner stripped)" ;;
+    *) fail "expected 'Automated review pending for feat/X' in stderr" "out: $out" ;;
 esac
 
 # Test 3: --head feat/X, NO marker -> allow (exit 0) ----------------
@@ -406,7 +406,7 @@ else
     fail "expected exit 2 for foreign repo with marker, got rc=$rc" "out: $out"
 fi
 case "$out" in
-    *"CR review pending for feat/foreign"*) pass "stderr names the FOREIGN repo branch" ;;
+    *"Automated review pending for feat/foreign"*) pass "stderr names the FOREIGN repo branch" ;;
     *) fail "expected the foreign branch in stderr" "out: $out" ;;
 esac
 
@@ -453,7 +453,7 @@ else
     fail "expected exit 2 from .tool_input.cwd, got rc=$rc" "out: $out"
 fi
 case "$out" in
-    *"CR review pending for feat/tool"*) pass "stderr names the .tool_input.cwd repo's branch" ;;
+    *"Automated review pending for feat/tool"*) pass "stderr names the .tool_input.cwd repo's branch" ;;
     *) fail "expected feat/tool in stderr" "out: $out" ;;
 esac
 

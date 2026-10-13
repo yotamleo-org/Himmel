@@ -576,6 +576,13 @@ assert_rc "R13- lease refspec non-main"     0 "$(run_case "$(j_bash 'git push --
 assert_rc "R13+ lease to main"              2 "$(run_case "$(j_bash 'git push --force-with-lease origin main')")"
 assert_rc "R13+ lease to master"            2 "$(run_case "$(j_bash 'git push --force-with-lease origin master')")"
 assert_rc "R13+ lease refspec to main"      2 "$(run_case "$(j_bash 'git push --force-with-lease origin fix/x:main')")"
+# HIMMEL-5385: git resolves a push destination by its refs/%s rule, so
+# heads/main is main; the whole spelling family is main.
+assert_rc "R13+ lease to heads/main"        2 "$(run_case "$(j_bash 'git push --force-with-lease origin heads/main')")"
+assert_rc "R13+ lease refspec to heads/master" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin HEAD:heads/master')")"
+assert_rc "R13+ lease to refs/heads/main"   2 "$(run_case "$(j_bash 'git push --force-with-lease origin refs/heads/main')")"
+assert_rc "R13+ lease refspec to refs/heads/master" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin HEAD:refs/heads/master')")"
+assert_rc "R13- lease to heads/fix/x"       0 "$(run_case "$(j_bash 'git push --force-with-lease origin heads/fix/x')")"
 assert_rc "R13+ lease no branch (ambiguous)" 2 "$(run_case "$(j_bash 'git push --force-with-lease origin')")"
 assert_rc "R13+ lease no args (ambiguous)"  2 "$(run_case "$(j_bash 'git push --force-with-lease')")"
 assert_rc "R13+ lease plus bare force"      2 "$(run_case "$(j_bash 'git push --force-with-lease --force origin fix/x')")"
@@ -665,6 +672,26 @@ git init -q -b release/stable "$h2054_slash_fixture/work"
 h2054_slash_rc=$(cd "$h2054_slash_fixture/work" && printf '%s' "$(j_bash 'git push --force-with-lease origin release/stable')" | bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" --read-only "$h2054_slash_fixture" -- bash "$HOOK" >/dev/null 2>&1; echo $?)
 assert_rc "R13+ lease to default branch containing a slash" 2 "$h2054_slash_rc"
 rm -rf "$h2054_slash_fixture"
+# HIMMEL-5385 judge round: a default branch literally named heads/prod sits in
+# the protected set under that name, so the bare dst `heads/prod` must stay
+# denied even though the heads/ shorthand strip would turn it into `prod`.
+h5385_heads_fixture=$(mktemp -d "${TMPDIR:-/tmp}/h5385-heads-XXXXXX") || exit 1
+git init -q --bare "$h5385_heads_fixture/remote.git"
+git init -q -b heads/prod "$h5385_heads_fixture/work"
+(
+    cd "$h5385_heads_fixture/work" || exit 1
+    git config user.email t@t.local
+    git config user.name t
+    echo hi > f.txt
+    git add f.txt
+    git commit -q -m init
+    git remote add origin ../remote.git
+    git push -q origin heads/prod
+    git remote set-head origin heads/prod
+) >/dev/null 2>&1
+h5385_heads_rc=$(cd "$h5385_heads_fixture/work" && printf '%s' "$(j_bash 'git push --force-with-lease origin heads/prod')" | bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" --read-only "$h5385_heads_fixture" -- bash "$HOOK" >/dev/null 2>&1; echo $?)
+assert_rc "R13+ lease to default branch literally named heads/prod" 2 "$h5385_heads_rc"
+rm -rf "$h5385_heads_fixture"
 # HIMMEL-2054 CR round 4 (panel): the bare `:` "matching" refspec strips to
 # an empty branch and can force-update any locally-matching remote branch,
 # including main -- ambiguous, must be protected; a bundle's non-force

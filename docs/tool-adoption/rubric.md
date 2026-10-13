@@ -1,12 +1,12 @@
-# Tool-adoption rubric — the decision method (HIMMEL-200)
+# Tool-adoption rubric — the decision method
 
 > The method every himmel community-tool eval runs through (token
 > optimizers, memory layers, PreToolUse hooks, MCP servers, skills).
-> Part of the HIMMEL-199 framework: this rubric decides; the registry
-> (`registry.md`, HIMMEL-201) records the decision so it
+> Part of the tool-adoption framework: this rubric decides; the registry
+> (`registry.md`) records the decision so it
 > isn't re-litigated. Onboarding a model **lane** instead of a tool (GLM,
 > claudex, a future frontier model)? See the sibling
-> [`lane-adoption-playbook.md`](lane-adoption-playbook.md) (HIMMEL-1246).
+> [`lane-adoption-playbook.md`](lane-adoption-playbook.md).
 
 ## Why
 
@@ -18,8 +18,8 @@ rubric forces every eval to name its goal, pick a trust posture
 proportional to blast radius, and end in a recorded decision (ADR).
 
 **Open tool-eval tickets route through this file** before any
-install/measure: HIMMEL-167 (skill-factory), HIMMEL-170 (token-savior),
-HIMMEL-182 (tdd-guard), HIMMEL-183 (context-mode), LUNA-44 (engram).
+install/measure: skill-factory, token-savior, tdd-guard, context-mode,
+engram.
 Each should cite this rubric's decision states + measurement protocol in
 its ADR.
 
@@ -73,7 +73,7 @@ SKILL.md / commands / hooks for prompt-injection patterns
 reader-agent tool-invocation requests, allowlist/approval
 manipulation, prompt-exfiltration requests) — ~36% of public skills
 carry prompt-injection vectors
-(@affaan, 2026-05-26; HIMMEL-256). The `/harvest-clips` Phase 4.5
+(@affaan, 2026-05-26). The `/harvest-clips` Phase 4.5
 pattern list (`marketplace/plugins/obsidian-triage/tools/harvest-clip-body-batch.py`
 `INJECTION_PATTERNS`) is the reusable starting point.
 
@@ -85,7 +85,7 @@ hook is the whole session's trust boundary.
 
 Every eval ends in exactly one of these, **each recorded as an ADR**
 (decision + why + date) so a future session doesn't re-open a settled
-question. The registry row (`registry.md`, HIMMEL-201) lives in this repo
+question. The registry row (`registry.md`) lives in this repo
 and is the index that stops re-evaluation; the full write-up (method,
 evidence) lives in the handover state repo at `specs/adr/adr-<tool>.md`,
 never in himmel `docs/`.
@@ -127,14 +127,14 @@ Adopt on evidence from a **real himmel workday**, not a synthetic demo.
 4. **Compare on outcome, not bytes.** The tool wins only if the *session*
    went better — work shipped with less friction. A token drop with
    equal-or-worse outcomes is a REJECT, not a win.
-   Where the eval ran an `effort-assess` estimate (HIMMEL-3997), record
+   Where the eval ran an `effort-assess` estimate, record
    estimate vs actual too: the same KPI the effort-route recommender is judged on.
 
 The before/after baseline above applies to **net-new installs**. For
 items **already in use** — our own skills/tools running every session,
 with no "without" baseline to capture — the accepted protocol is
 **measure-during**: 0-token-cost live telemetry captured as a side-effect
-while real work runs, analysed later (HIMMEL-236 — record format + emit
+while real work runs, analysed later (record format + emit
 lib: [`telemetry.md`](telemetry.md)). The verdict is
 still outcome-per-session, just earned retroactively from real workdays
 instead of an A/B.
@@ -146,7 +146,7 @@ moves in the "good" direction (tokens down) and never captures regressions
 (work that didn't ship, loops that got worse) is exactly the metric to
 distrust. The honest signals are the messy ones.
 
-## 5. Per-sprint re-audit (HIMMEL-3883)
+## 5. Per-sprint re-audit
 
 A verdict holds for the models it was measured on. A new model (a new
 Claude tier, a GPT release such as GPT-6.1 Sol) can flip it: a terse-output
@@ -158,8 +158,7 @@ model has changed since it was measured, plus up to **2 new candidates**.
 Timebox: one small leg. It counts against the sprint's planned capacity,
 not the surprise margin.
 
-**Each re-check answers four questions** (first case: caveman, removed in
-HIMMEL-2033):
+**Each re-check answers four questions** (first case: caveman, which was removed):
 
 1. **Upstream alive?** Last push, open issues, licence. A "dead upstream"
    reason expires when upstream resumes.
@@ -172,7 +171,7 @@ HIMMEL-2033):
    in both arms), from `claude -p --output-format json` usage and
    `total_cost_usd`, repriced from `modelUsage` at list prices where the
    reported cost is off. This is the burn-pricing method of the
-   HIMMEL-2763 cost-reduction work
+   cost-reduction work
    ([`lane-calibration.md`](../internals/lane-calibration.md)). Count the
    tool's own prompt text as input cost. Record n per cell; n=1 shows
    "no clear win", not an effect size.
@@ -186,5 +185,5 @@ gain, not only a token drop.
 
 **Record** the verdict (a §3 re-audit state), the measured-on model IDs
 and the re-open trigger in the registry's
-[re-audit ledger](registry.md#re-audit-ledger-himmel-3883), with the
+[re-audit ledger](registry.md#re-audit-ledger), with the
 evidence in a dated `reaudit-<yyyy-mm>-sprint<n>.md` beside it.

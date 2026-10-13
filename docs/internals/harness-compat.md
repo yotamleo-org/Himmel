@@ -1,13 +1,13 @@
 # Harness compatibility — running himmel under Codex (and beyond)
 
-> **Platform tier (HIMMEL-3125):** this doc's **Windows** content (Git Bash,
+> **Platform tier:** this doc's **Windows** content (Git Bash,
 > `.ps1` twins, WSL) describes the **alpha** tier — code paths present, best
 > effort, not CI-gated. Linux and macOS are the **Supported** tier. See the
 > [README support matrix](../../README.md#support-matrix). New scripts target
 > bash (still bash 3.2-safe, for macOS); a `.ps1` twin is optional, added only
 > when someone is actually working the Windows path — except hooks that run in
 > a PowerShell-dispatched context (e.g. `SessionEnd`), which still need a twin
-> in lockstep with the `.sh`. Enforcement is advisory at every site that used
+> in lockstep with the `.sh`. Enforcement is warn-only at every site that used
 > to hard-block on a missing twin: the pre-commit gate
 > (`scripts/hooks/check-new-shell-platform-guard.sh`,
 > `.pre-commit-config.yaml:536`) and CI's T15 check
@@ -27,34 +27,33 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 > **Per-lane parity?** The living lane-parity index (invariant guard set + lane x dimension table, the successor to this doc's Codex-centric frame) is in [`lane-parity.md`](lane-parity.md).
 
 > **Status:** the **Codex** column is triple-validated (openai/codex source +
-> context7 `/openai/codex` v0.75.0 + official docs, 2026-06-21, HIMMEL-427). The
-> **Cursor / Copilot / Gemini** columns were audited 2026-06-21 (HIMMEL-472,
-> official docs + superpowers' shipped cross-harness manifests); a few cells with
+> context7 `/openai/codex` v0.75.0 + official docs, 2026-06-21). The
+> **Cursor / Copilot / Gemini** columns were audited 2026-06-21
+> (official docs + superpowers' shipped cross-harness manifests); a few cells with
 > no authoritative source are marked *unverified* inline.
 >
-> This doc is the HIMMEL-427 deliverable under epic **HIMMEL-470** (multi-harness
-> support). The ports it recommends are tracked as 470's children: **427**
-> (guardrail hook port), **471** (AGENTS.md generation), **472**
-> (Cursor / Copilot / Gemini audit), **473** (per-critic prompt adaptation). The
-> 472 audit spawned follow-ups **487** (Cursor hooks), **488** (rejected Hermes
-> CR-skill integration), **489** (soft-deferred Gemini/Copilot ports), and
-> **554** (Codex where-are-we/status context). **533** now owns selective Codex
-> command/skill ports, including `pr-check`.
+> This doc is the deliverable of the multi-harness support effort. The ports it
+> recommends are the guardrail hook port, AGENTS.md generation, the
+> Cursor / Copilot / Gemini audit and per-critic prompt adaptation. The audit
+> spawned follow-ups: Cursor hooks, a rejected Hermes CR-skill integration,
+> soft-deferred Gemini/Copilot ports, and Codex where-are-we/status context.
+> Selective Codex command/skill ports, including `pr-check`, are now their own
+> track.
 
 ## Frame matrix
 
 | Surface | Claude Code | Codex | Cursor | Copilot CLI | Gemini CLI |
 |---|---|---|---|---|---|
-| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.{sh,cmd}`→`codex-hook-adapter.sh` (HIMMEL-427/HIMMEL-2019) | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` | ✅ `.gemini/settings.json` `hooks`; events **PascalCase** (`BeforeTool`); stdin JSON |
+| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.{sh,cmd}`→`codex-hook-adapter.sh` | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` | ✅ `.gemini/settings.json` `hooks`; events **PascalCase** (`BeforeTool`); stdin JSON |
 | **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ | ✅ | ✅ |
 | **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) | ✅ "extensions" gallery (`gemini-extension.json`) |
 | **Skills** | native | ✅ native skill loading | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** | ✅ `SKILL.md` (gemini-native); `.gemini/skills/` |
 | **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified | ✅ **TOML** `.gemini/commands/` (`:` namespacing) |
 | **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`/`GEMINI.md`) | **`GEMINI.md`** |
 | **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) | ✅ `.gemini/agents/*.md` |
-| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** (HIMMEL-595) | ❌ same | ❌ same | ❌ same |
+| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ❌ same | ❌ same | ❌ same |
 
-> **Status (HIMMEL-472, 2026-06-21):** Cursor / Copilot / Gemini columns are now
+> **Status (2026-06-21):** Cursor / Copilot / Gemini columns are now
 > audited (web + official docs). Several earlier hints were **stale** and are
 > corrected above: Cursor **does** have a marketplace; all three have blocking
 > hooks, `SKILL.md` skills, subagents, and custom commands; `CURSOR_PLUGIN_ROOT`
@@ -62,7 +61,7 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 **Headline.** Two facts dominate the port decisions:
 1. **The rule file is nearly free.** **Codex, Copilot CLI, and Cursor read
-   `AGENTS.md`** — so HIMMEL-471's generated repo `AGENTS.md` now carries
+   `AGENTS.md`** — so the generated repo `AGENTS.md` now carries
    himmel's rules for those harnesses, with freshness enforced by the
    `agents-md-fresh` gate. Only **Gemini** needs a distinct `GEMINI.md` (same
    content, different filename — a one-line generator target).
@@ -84,7 +83,7 @@ leave them low-priority until there's demand.
 
 ## Hook-chain smoke demo — run after any hook/runner change
 
-`scripts/codex/hook-smoke-demo.sh` (HIMMEL-2000) is the end-to-end proof that
+`scripts/codex/hook-smoke-demo.sh` is the end-to-end proof that
 the *project* hook chain still fires clean in **both** harnesses. Run it after
 any change to `.codex/hooks.json`, `.codex/run-hook.{sh,cmd}`, the adapter,
 `.claude/settings.json` hook entries, `scripts/hooks/run-hook-with-bash.js`, or
@@ -104,7 +103,7 @@ so a broken hook set can never touch the real checkout — and runs four legs:
 |---|---|
 | `codex-exec` | a real `codex exec` turn (a shell call plus a file read) exits 0, proves both tool calls, and emits no hook-failure banner in stdout/stderr or the session rollout |
 | `codex-replay` | `probe-codex-hooks.ps1 -Replay` **executes** every project hook — the positive control that separates "clean" from "never fired" |
-| `claude-print` | the same turn under `claude -p --model haiku` (bank-gated via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
+| `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
 | `claude-replay` | every `run-hook-with-bash.js` PreToolUse entry in `.claude/settings.json` is fed a canned benign payload and must exit **0** |
 
 The two replay legs are deliberately asymmetric. `codex-replay` covers every
@@ -170,7 +169,7 @@ untracked, so the clone itself carries no credentials and no Jira CLI either.
 
 ## Codex deep-dive
 
-### 1. Hooks — Claude-compatible; Windows wiring + block-decision fixed (HIMMEL-427)
+### 1. Hooks — Claude-compatible; Windows wiring + block-decision fixed
 
 Codex implements a hook engine literally named `ClaudeHooksEngine`. The
 PreToolUse contract mirrors Claude Code's:
@@ -214,7 +213,7 @@ guardrail that merely exits 2 is reported as a *failed (non-blocking)* hook and
 **the tool call proceeds**. So even with the path bugs fixed, the guardrails
 would *fire but never block*.
 
-**The fix (HIMMEL-427, split by HIMMEL-2019).** Tracked
+**The fix.** Tracked
 `.codex/hooks.json` routes `command` through `.codex/run-hook.sh --sandbox` on
 Unix and `commandWindows` through `.codex/run-hook.cmd --sandbox` on Windows.
 Both derive + export `CLAUDE_PROJECT_DIR` from their own location; the Windows
@@ -222,19 +221,19 @@ wrapper finds Git Bash explicitly (skipping the System32 stub). The wrapper
 delegates to `.codex/codex-hook-adapter.sh`, which runs the guardrail and,
 for PreToolUse/PermissionRequest exit 2, re-emits the block as Codex's JSON
 `permissionDecision:"deny"` (the guardrail's stderr → reason) and exits 0.
-**Non-exit-2 outcomes are swallowed, not passed through (HIMMEL-1987):**
+**Non-exit-2 outcomes are swallowed, not passed through:**
 Codex 0.149 rejects a Claude `permissionDecision:"allow"`/`updatedInput`
 envelope ("unsupported permissionDecision:allow"), so the adapter never
-forwards guardrail stdout to Codex's stdout — an allow, an advisory, or empty
+forwards guardrail stdout to Codex's stdout — an allow, a warn-only message, or empty
 output is captured and re-emitted only on the adapter's OWN stderr, and
-execution proceeds. The adapter always exits 0 on this path (HIMMEL-1987): the
+execution proceeds. The adapter always exits 0 on this path: the
 guardrail's own non-2 exit code is deliberately NOT propagated, because Codex
 renders any nonzero non-deny hook as a "failed" banner even though the tool
 call still proceeds regardless — spurious noise for a guardrail that simply
 exited nonzero. Only a BLOCK — a guardrail exit 2, or an explicit stdout
 `permissionDecision:"deny"` — reaches Codex, as deny JSON.
 
-**Lifecycle exit-2 contract (HIMMEL-565).** Exit 2 on a **non-permission**
+**Lifecycle exit-2 contract.** Exit 2 on a **non-permission**
 lifecycle event (PostToolUse, SessionStart, UserPromptSubmit) does NOT translate
 to a permission deny — those events have no permission gate, and their
 `*.command.output` schema (per the openai/codex *generated* schemas) carries
@@ -251,7 +250,7 @@ execution, then exits 2 only to feed its "write a handover now" message to the
 model — previously the adapter mistranslated that to a **bogus PreToolUse deny**
 (wrong event, and a permission gate for a tool that already ran).
 
-**Advisory SessionStart/UserPromptSubmit wiring (HIMMEL-596).** Three advisory
+**Warn-only SessionStart/UserPromptSubmit wiring.** Three warn-only
 SessionStart hooks (`inject-initiative`, `inject-where-are-we`,
 `inject-doc-freshness`) are wired into `.codex/hooks.json` SessionStart via
 the platform wrappers with `--sandbox`, alongside `check-update-available`. Because these hooks
@@ -262,7 +261,7 @@ event** (`hook_event_name ∈ {SessionStart, UserPromptSubmit}`), NOT on the exi
 code: it captures the combined output and always exits 0 (exit-0 stdout AND a
 defensive exit-2's stderr both funnel to additionalContext — there is no deny
 path for these no-permission-gate events). Event-gating means it never touches
-the PreToolUse/PostToolUse path, which (HIMMEL-1987) does NOT pass a guardrail's
+the PreToolUse/PostToolUse path, which does NOT pass a guardrail's
 stdout through either: Codex rejects a Claude `permissionDecision:"allow"`/
 `updatedInput` envelope outright, so an allow from `auto-approve-safe-bash` (or
 the Claude-only `rtk-hook-guard`) is swallowed — a correct no-op, since Codex's
@@ -287,8 +286,7 @@ The guardrails stay single-sourced — they keep working verbatim under Claude
 Code, which never invokes the adapter (only `.codex/hooks.json` does). Verified
 live against codex-cli 0.141.0: a secret read (`block-read-secrets`) is
 **Blocked**; a benign command is allowed. Unit-tested both platform wrappers,
-exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart
-(HIMMEL-565)**, explicit sandbox/no-sandbox mode parsing, and Windows
+exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart**, explicit sandbox/no-sandbox mode parsing, and Windows
 Git-Bash-startup fail-closed handling
 (`scripts/hooks/test-codex-run-hook.{sh,ps1}`). Live Codex lifecycle probes of
 the auto-arm path remain a follow-up; the no-token fixture is the gate that has
@@ -312,11 +310,10 @@ now passed.
   `codex exec` needs `--dangerously-bypass-hook-trust` to run not-yet-trusted
   hooks (interactive Codex prompts to trust them once).
 
-**A fresh worktree's hooks are untrusted, so the exec lane refuses to start
-(HIMMEL-5291).** Codex keys hook trust to the absolute `.codex/hooks.json` path
+**A fresh worktree's hooks are untrusted, so the exec lane refuses to start.** Codex keys hook trust to the absolute `.codex/hooks.json` path
 (`[hooks.state."<abs path>:pre_tool_use:<group>:<hook>"]` + `trusted_hash` in
 `$CODEX_HOME/config.toml`; for a git worktree codex resolves to the primary
-checkout's path), so an untrusted tree runs `codex exec` with no himmel hooks: the HIMMEL-5288 VM audit saw an
+checkout's path), so an untrusted tree runs `codex exec` with no himmel hooks: a VM audit saw an
 in-workspace force push to a bare repo succeed under `workspace-write` /
 `approval: never`, and the hook block it once trusted. `dispatch-codex-exec.sh`
 (invariant 9) now refuses with exit 2, before the lock, ledger row and job
@@ -328,7 +325,7 @@ project hooks at the prompt, then re-dispatch. There is no bypass —
 tests presence of a `trusted_hash`, not its validity (Codex recomputes it and
 drops a hook whose definition changed).
 
-**Headless `codex exec` must fail LOUD (HIMMEL-2023 / HIMMEL-1788 instance 5).**
+**Headless `codex exec` must fail LOUD.**
 Without the headed TUI nobody sees a wedge, so four holes were closed at once.
 (1) **Watchdog.** `scripts/codex/dispatch-codex-exec.sh` ended in an unbounded
 `wait`; the codex-exec lane's `timeoutSeconds` in `scripts/lanes/lanes.json` was
@@ -352,7 +349,7 @@ crosses on `<&0` (the lane's `briefDelivery: "stdin"` depends on it).
 PreToolUse/PostToolUse entries carry an explicit `timeout` (Codex otherwise
 defaults to 600 s, so one guardrail chain could stall a turn ten minutes);
 `test-codex-hook-parity.sh` now asserts this for all events, not lifecycle only
-(HIMMEL-1985 had skipped the permission-gate ones). Single-script entries mirror
+(an earlier version had skipped the permission-gate ones). Single-script entries mirror
 their `.claude/settings.json` twin (15, or 60 for `auto-arm-on-cap` /
 `block-edit-on-main`); multi-script **chains** get 60, because Codex runs the
 chain sequentially inside ONE command where Claude wires the same guards as N
@@ -360,9 +357,9 @@ independent entries. Adding a `timeout` field does **not** re-trust: the trust
 key is `<abs path>:<event>:<i>:<j>` (see above), and neither the `command`
 strings nor the entry count/order changed. (4) **Native rogue guard.**
 `scripts/hooks/block-rogue-codex-exec.sh` mirrors `block-rogue-codex-wsl.sh` for
-raw native `codex exec` (bypass `CODEX_EXEC_RAW_OK=1`), wired in the himmel-ops
+raw native `codex exec` (off switch `CODEX_EXEC_RAW_OK=1`), wired in the himmel-ops
 plugin `hooks.json` beside its WSL sibling. Mirroring both into
-`.codex/hooks.json` remains open as HIMMEL-1014.
+`.codex/hooks.json` remains open (a known gap).
 
 **Alternative considered — plugin delivery.** Shipping via the `himmel-ops`
 plugin (Codex injects `CLAUDE_PLUGIN_ROOT` for plugin hooks) would fix the *path*
@@ -370,15 +367,15 @@ bugs but **not** the exit-2-vs-JSON one — the adapter translation is required
 regardless of delivery mechanism. Project-file delivery + adapter was chosen as
 the smaller change.
 
-The converse bit himmel later (HIMMEL-589): two SECURITY guards that *do* ship
-via the `himmel-ops` plugin `hooks.json` — `block-docker-privesc.sh` (HIMMEL-441)
-and `block-merged-pr-commit.sh` (HIMMEL-512) — resolve their script via
+The converse bit himmel later: two SECURITY guards that *do* ship
+via the `himmel-ops` plugin `hooks.json` — `block-docker-privesc.sh`
+and `block-merged-pr-commit.sh` — resolve their script via
 `$CLAUDE_PROJECT_DIR`, which Codex injects for **neither** plugin nor project
 hooks (plugin hooks get `CLAUDE_PLUGIN_ROOT` instead — see §1), so under Codex
 the wrapper's `[ -f "$h" ]` was false and the guards silently no-op'd
 (root-equivalent docker mounts + merged-PR commits went unguarded). Fix: mirror both into `.codex/hooks.json` via the platform wrappers, which
 derives the root from its own location. **Both guards are now live-verified under
-Codex (codex-cli 0.142.0, HIMMEL-650):** with the project `.codex/hooks.json`
+Codex (codex-cli 0.142.0):** with the project `.codex/hooks.json`
 already trusted (no `--dangerously-bypass-hook-trust`), a `codex exec` attempt of
 `docker run … -v /etc:…:rw` and a `git commit` on a merged-PR branch (cwd = a
 merged worktree) each surface as a Codex `PreToolUse Blocked` carrying the guard's
@@ -387,11 +384,11 @@ verbatim reason — so the docker-privesc and merged-PR-commit guards genuinely
 payload through the platform wrapper → `permissionDecision:"deny"`, benign control
 allowed) back the same conclusion at zero token cost. The non-security plugin SessionStart
 hooks (`inject-where-are-we` / `inject-doc-freshness`) shared the same
-root-resolution bug; **HIMMEL-596** mirrors them (plus `inject-initiative`) into
+root-resolution bug; himmel now mirrors them (plus `inject-initiative`) into
 `.codex/hooks.json` SessionStart with the exit-0 `additionalContext` wrap above
 (live Codex firing pending a probe).
 
-**SessionEnd → Codex `Stop` (HIMMEL-596 follow-up, HIMMEL-599).** himmel's three
+**SessionEnd → Codex `Stop`.** himmel's three
 SessionEnd hooks — `refresh-where-are-we-on-end` + `jira-nudge-on-end` (himmel-ops
 plugin) and `end-session-wiki` (user-scope settings-template) — are now wired into
 a `.codex/hooks.json` **`Stop`** key via the platform wrappers with `--sandbox`, the same
@@ -403,10 +400,10 @@ SessionStart, the Stop **output** schema (`stop.command.output`) has **no
 `additionalContext` / `hookSpecificOutput`** — only a `continue`/`decision`/
 `systemMessage` gate. So the adapter does NOT wrap Stop output as
 `additionalContext`; it has a dedicated **`Stop` branch** that runs the hook for
-its side effects, routes any output to the adapter's stderr as advisory (never to
+its side effects, routes any output to the adapter's stderr as warn-only (never to
 Codex's Stop *decision* parser, and never through the generic exit-2 path that
 would emit a `hookSpecificOutput` shape Stop's strict `deny_unknown_fields` schema
-rejects), and always exits 0 — a SessionEnd advisory hook must never block
+rejects), and always exits 0 — a SessionEnd warn-only hook must never block
 teardown. `jira-nudge`'s operator-reaching surface under Codex is its Telegram
 relay, not stdout. Covered by the no-token fixture
 `scripts/hooks/test-codex-stop-hooks.sh` (static wiring + behavioral, incl. a
@@ -414,12 +411,11 @@ gate-ON nudge case and the exit-2-protection case). `scripts/codex/test-codex-ho
 also asserts Claude→Codex inventory parity for end-side members, with every
 non-mirrored basename listed in a declared exemption table.
 
-**`telegram-session-end` is wired to Codex `SessionEnd`, NOT `Stop`
-(HIMMEL-2021).** It was the one unmirrored member with an operator-visible cost:
+**`telegram-session-end` is wired to Codex `SessionEnd`, NOT `Stop`.** It was the one unmirrored member with an operator-visible cost:
 an unattended Codex session ended with no notification at all. It is the only
 end-side member NOT on `Stop`, and that split is the point. Codex fires `Stop` at
 the end of every assistant TURN, so a `Stop` wiring would relay a Telegram
-message per turn, and the HIMMEL-2004 queue cannot collapse them: `detach_queued`
+message per turn, and the Stop queue cannot collapse them: `detach_queued`
 drains stdin before enqueuing, so `entryKey` has no `session_id` to key on and
 falls back to a random suffix — and even a shared key only merges entries still
 PENDING, never two turns drained minutes apart. The three ledger/note hooks are
@@ -427,7 +423,7 @@ idempotent refreshes, so per-turn is merely wasteful for them; an operator ping
 is not.
 
 `SessionEnd` fires once, and its 1–3 s cap — the reason the other three could not
-go there (HIMMEL-599: `end-session-wiki` runs a synchronous transcript scan plus
+go there (`end-session-wiki` runs a synchronous transcript scan plus
 an unbounded `curl`) — is not a constraint for this one, because it is
 enqueue-and-exit: the hook writes one queue entry and returns, and the bounded
 worker does the transcript scan and the relay afterwards, outside the event's
@@ -462,7 +458,7 @@ Side effects need a `workspace-write` sandbox (Codex suppresses hook writes unde
 end of the exec turn, followed by `SessionEnd` — see the event matrix below. Keep
 the Stop wiring (SessionEnd's 1–3s cap cannot carry `end-session-wiki`).
 
-#### Windows hook runner = `pwsh -Command` — the two traps (HIMMEL-1982)
+#### Windows hook runner = `pwsh -Command` — the two traps
 
 **Live finding (2026-08-21, codex-cli 0.149.0, native Windows, no WSL).** A
 himmel Codex session stalled ~10 min per hook (`UserPromptSubmit hook timed out
@@ -495,7 +491,7 @@ quoted-path ones still rc=1 (PATH-independent). `& "C:\Program Files\Git\bin\bas
 → rc 0 / 0.45s on arm A. Operator-side fix applied the same night: global
 hooks.json = rtk-hook-guard via `& "…Git\bin\bash.exe"` only (the
 response-compression hooks dropped — they were OFF in Claude too, and the plugin
-was removed outright in HIMMEL-2033); `security-guidance` + `hookify` `enabled = false` for
+was removed outright); `security-guidance` + `hookify` `enabled = false` for
 Codex (hookify is OFF in Claude; security-guidance is fatal under this runner);
 `codex exec` in himmel went from 180s+600s of stalls to **13s** wall.
 
@@ -540,7 +536,7 @@ one via `/mnt/c` — the lane's quota probe reads `$HOME/.codex/sessions` in-dis
 and the project `.codex/hooks.json` resolves through `run-hook.sh`.
 So neither the pwsh quoted-path trap nor the `& "C:\…bash.exe"` global rewrite
 reaches it. Unverified because WSL itself was wedged on the box and the lane is
-dormant (`CODEX_WSL_LANE_OK` opt-in, HIMMEL-1967); re-probe with `codex exec` in
+dormant (`CODEX_WSL_LANE_OK` opt-in); re-probe with `codex exec` in
 the in-distro clone after `wsl --shutdown` clears the hang.
 
 **Same benchmark on the other two harnesses (2026-08-21, no finding):** Claude Code
@@ -554,7 +550,7 @@ Notification, telegram, speak-reply, end-session-wiki, CR triggers, shadow-ledge
 session-run-hook). hermes has no hook runner of this kind — its `pre_tool_call`
 hook, `parity_guard.py` (timeout 10), costs ~125ms per call.
 
-#### hermes end-side hooks (HIMMEL-2021)
+#### hermes end-side hooks
 
 hermes wires shell hooks from the `hooks:` block of a profile `config.yaml`;
 `hermes_cli/plugins.py`'s `VALID_HOOKS` doubles as the allow-list, and it carries
@@ -585,8 +581,8 @@ Three details that are not guessable:
   eviction); `on_session_end` fires from `agent/turn_finalizer.py` and is
   **turn-scoped**, so wiring the relay there would notify on every turn.
 - **One entry, not one per member.** The hook command is a single
-  `run-hook-with-bash.js --chain --lifecycle <member> <member>` launch
-  (HIMMEL-2002/2003). `--lifecycle` marks the chain advisory: every member runs,
+  `run-hook-with-bash.js --chain --lifecycle <member> <member>` launch.
+  `--lifecycle` marks the chain warn-only: every member runs,
   stderr is forwarded, the chain always exits 0. It also resolves Git Bash
   itself, which a bare `bash` spawned by hermes on Windows would not (the
   `System32\bash.exe` WSL-stub trap).
@@ -597,7 +593,7 @@ Three details that are not guessable:
   ignores it, and `telegram-session-end` needs only `.cwd`, degrading to a
   status with no last-assistant summary rather than failing.
 
-Both members are enqueue-and-exit through the HIMMEL-2004 Stop queue, so the
+Both members are enqueue-and-exit through the Stop queue, so the
 hook returns in well under its `timeout: 20` and one bounded worker does the
 work. Registration is gated by hermes' first-use consent prompt
 (`~/.hermes/shell-hooks-allowlist.json`, or `--accept-hooks` /
@@ -607,17 +603,17 @@ asserts the produced inventory against a declared expected set, in both the full
 and the degraded (no node on PATH) install shapes — a dropped hook type fails
 loudly instead of silently.
 
-**A parity_guard DENY is not terminal upstream (HIMMEL-2025).** hermes'
+**A parity_guard DENY is not terminal upstream.** hermes'
 `agent/tool_executor.py` feeds a `pre_tool_call` block back to the model as an
 ordinary tool result (`{"error": block_message}`) — it does not end the turn
 or the run. `run_agent.py`'s `max_iterations` defaults to `sys.maxsize`, so a
 headless run whose every tool call is denied can retry indefinitely,
-burning the bank silently with no verdict (found by the HIMMEL-1969 audit).
-himmel bounds this at its own chokepoint rather than upstream: `invoke.sh`
+burning the subscription usage budget silently with no verdict (found by an audit).
+himmel bounds this at its own sanctioned script rather than upstream: `invoke.sh`
 (the single shell-out point, `scripts/hermes/invoke.sh`) wraps every one-shot
 in a hard wall-clock timebox (`HERMES_INVOKE_TIMEOUT`, default 1800s, matching
 the `hermes-oneshot` lane's `timeoutSeconds`) and kills the process TREE on
-expiry (rc 124), mirroring `dispatch-codex-exec.sh`'s watchdog (HIMMEL-2023).
+expiry (rc 124), mirroring `dispatch-codex-exec.sh`'s watchdog.
 Layered on top, `parity_guard.py` counts identical (same tool + args hash)
 denies in a row and, at the Nth (`PARITY_GUARD_DENY_ESCALATE_N`, default 3),
 writes an abort marker under `PARITY_GUARD_STATE_DIR` (a per-run dir
@@ -630,7 +626,7 @@ protection; the deny-counter state has no effect without
 `PARITY_GUARD_STATE_DIR` set, so it fails open to hermes' pre-existing
 (unbounded) behavior in that case.
 
-**A hermes run can hit its OWN iteration budget and still exit 0 (HIMMEL-2049).**
+**A hermes run can hit its OWN iteration budget and still exit 0.**
 Separately from the deny-loop above, hermes' turn loop
 (`agent/conversation_loop.py`) counts one iteration per model API call (not
 per tool call — several tool calls can land inside one iteration's response)
@@ -663,7 +659,7 @@ treats any non-zero `invoke.sh` rc as a failed route and falls back).
 `scripts/hermes/test-invoke.sh` feeds a captured banner through a stub and
 asserts rc 126 + the ledger outcome.
 
-**hermes exposes no live agent cwd to that hook (HIMMEL-2008).** The payload's
+**hermes exposes no live agent cwd to that hook.** The payload's
 `cwd` is `Path.cwd()` of the agent PROCESS (`agent/shell_hooks.py`
 `_serialize_payload`) — the session launch dir, i.e. the primary checkout on
 main — while the directory the agent actually works in after a `cd` lives in an
@@ -697,32 +693,48 @@ exactly as before.
 **Claude ↔ Codex hook alignment (2026-08-21 audit):** Claude-side hooks with no
 Codex wiring and why — `shadow-ledger.mjs` ×7 + `session-run-hook.ts` ×4
 (observability, Claude-only events/plumbing), `trigger-cr-on-pr-create/push`
-(CR marker flow is Claude-driven), `block-jira-compound-write`,
-`block-tail-pipe-on-gates`, `block-rogue-claude-schedule`,
-`block-chokepoint-env-prefix`, `require-quiet-run`, `guard-memory-capture`,
+(review-owed marker flow is Claude-driven), `block-jira-compound-write`,
+`block-tail-pipe-on-gates`,
+`block-chokepoint-env-prefix`, `guard-memory-capture`,
 `orchestrator-inline-guard` (candidates to mirror through the platform wrappers — each
 needs the tool-name audit above first), `graphify` hook-guards and
 `speak-reply` (Claude-specific tooling), `qmd-staleness-notice` /
-`graphify-freshness-advisory` (advisory; cheap to mirror), and — the two the
-original audit omitted (HIMMEL-2021) — `telegram-notification.sh`, which is
+`graphify-freshness-advisory` (warn-only; cheap to mirror), and — the two the
+original audit omitted — `telegram-notification.sh`, which is
 **runtime-impossible** (Codex has no `Notification` event, see the matrix above),
 and `telegram-session-end.sh`, which was the gap and is now **mirrored** onto
 Codex `SessionEnd` (not `Stop` — see the paragraph above). Plugins: the
 response-compression plugin was OFF both sides (Codex global file had stale
-entries — removed) and is gone entirely as of HIMMEL-2033; hookify ON only in
+entries — removed) and is gone entirely; hookify ON only in
 Codex (now off); security-guidance ON both, Codex side now off (runner-fatal);
 superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
 `commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
-by design, mirrored into the project file — HIMMEL-589/596).
+by design, mirrored into the project file).
 
-**Hook-set prune + the exit-code contract (HIMMEL-1981, 2026-08-21).** The
+**Shell-surface guards mirrored.** `block-git-stash`,
+`block-rogue-claude-schedule`, `require-quiet-run` and `block-edit-live-settings`
+were wired for Claude only; they are now in the `.codex/hooks.json` `Bash` chain,
+and the first, second and fourth also in the `PowerShell` chain, in the Claude
+chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
+tool, which is the Codex shell payload too, so no hook script changed.
+`require-quiet-run` is `Bash`-only by its own tool-name test, so it is not on the
+`PowerShell` matcher. Declared gap: `block-edit-live-settings`' Edit/Write arm
+reads `file_path`/`notebook_path`/`path`, and Codex edits through `apply_patch`,
+whose target paths sit in the patch text in `tool_input.command`; the hook has no
+`apply_patch` branch, so it is deliberately not wired on the edit matcher (it
+would be a silent no-op). Closing it needs a hook-script change, tracked as a
+follow-up ticket. Proved by the `chain_deny` rows in
+`scripts/codex/test-codex-hook-parity.sh`, which drive the chain `hooks.json`
+wires through the real adapter.
+
+**Hook-set prune + the exit-code contract (2026-08-21).** The
 follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
 `exit code 1` per session, on a box at 73% RAM with ~90 bash processes
-(HIMMEL-1978) — resolved into three separate causes, all re-probed post-reboot:
+— resolved into three separate causes, all re-probed post-reboot:
 
 - **The Codex set was never a superset of Claude's**, it is a subset: SessionStart
   carries 4 of Claude's 9, and PreToolUse mirrors 12 of ~26. The one genuine
-  drift was `improve-on-submit` — HIMMEL-708 un-wired that no-op hook from
+  drift was `improve-on-submit` — an earlier change un-wired that no-op hook from
   `.claude/settings.json` (#899) and the Codex copy stayed, so every prompt paid
   a pwsh→cmd→bash chain for a guaranteed `exit 0`. Now removed, and
   `scripts/codex/test-codex-hook-parity.sh` gates the inventory: every guardrail
@@ -730,7 +742,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   declared `CODEX_ONLY` allowlist (`block-terminal-write-fence`,
   `end-session-wiki`), every referenced script must exist, and every lifecycle
   entry must carry an explicit `timeout` (Codex's default is 600s).
-- **`check-update-available` is NOT Claude-only** and stays wired: post-HIMMEL-1844
+- **`check-update-available` is NOT Claude-only** and stays wired: since its fix
   it reads local remote-tracking refs and detaches the fetch, replaying in 0.81s.
 - **The timeouts were load, amplified by the wrapper chain.** Replayed on a
   healthy box (`probe-codex-hooks.ps1 -Replay`), every himmel-owned hook (project
@@ -740,7 +752,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   bash(smoke) → bash(adapter) → bash(guardrail), five processes per hook, and
   under fork pressure the smoke spawn is itself what fails. It now runs the
   adapter directly and checks its code afterwards: the adapter exits 0 on every
-  normal path (a block lives in its stdout JSON — HIMMEL-1987), so a nonzero code
+  normal path (a block lives in its stdout JSON), so a nonzero code
   in sandbox mode means the adapter never ran → emit the fail-closed deny and
   `exit /b 0`. Propagating that code was strictly worse: Codex rendered
   "hook exited with code 1" *and* failed open. `--no-sandbox` still surfaces the
@@ -771,7 +783,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
   into the `.ps1` twin meant it never fired on the update path.
 
-**PreToolUse dispatcher (HIMMEL-1989, RAM program P0-2).** Codex launches a full
+**PreToolUse dispatcher (RAM program P0-2).** Codex launches a full
 `pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
 PreToolUse entries a Bash tool call matched cost nine of them (parallel
 diagnostic batches peaked at 119–120 Git Bash processes). A `run-hook.cmd`
@@ -807,11 +819,11 @@ launches drops:
   matching blocks silently re-multiply the launches and would not stand out in a
   diff.
 - `--lifecycle` semantics are untouched, and Stop stays one entry per hook.
-  SessionStart is now chained too (HIMMEL-2003): ONE
+  SessionStart is now chained too: ONE
   `.codex/run-hook.cmd --sandbox --lifecycle a.sh+b.sh+c.sh+d.sh` entry, 4
   launches → 1 — so its positional trust keys shift 4→1 and the operator must
   **re-trust the hook once**, exactly as after #1804 (see the trap below).
-- **The Claude wiring now mirrors this** (HIMMEL-2002): `.claude/settings.json`
+- **The Claude wiring now mirrors this**: `.claude/settings.json`
   carries the same disjoint matchers and the same chains, dispatched by
   `run-hook-with-bash.js --chain` — see
   [`enforcement.md`](enforcement.md#claude-pretooluse-dispatcher-himmel-2002).
@@ -822,14 +834,14 @@ launches drops:
 next interactive session — and an operator-set `enabled = false` follows the
 *position*, not the hook it was aimed at.
 
-**codex-cli 0.153's clamp is loud, not silent (HIMMEL-2492).** Beyond capping
+**codex-cli 0.153's clamp is loud, not silent.** Beyond capping
 SessionEnd hook timeouts to 3s, it now prints `⚠ clamping SessionEnd hook
 timeout to 3s in <file>` once per over-declared entry at startup — an
 over-declaration is both noise AND a hook killed mid-flight: on Windows the
-launch chain alone measures 0.6-3s under load (HIMMEL-2480), the same
-silent-no-run class as HIMMEL-2148. himmel-ops therefore declares `timeout: 3`
+launch chain alone measures 0.6-3s under load, the same
+silent-no-run class as earlier timeout incidents. himmel-ops therefore declares `timeout: 3`
 on every SessionEnd entry, and every SessionEnd hook full-body detaches
-(HIMMEL-636/661) so the parent returns well inside the clamp — gate:
+so the parent returns well inside the clamp — gate:
 `scripts/hooks/test-session-end-timeout-budget.sh`. The plugin cache is
 version-keyed, so a `hooks.json` change to SessionEnd needs a
 `.claude-plugin/plugin.json` version bump to reach an installed codex, plus the
@@ -842,7 +854,7 @@ one-time hook re-trust the Trap above already describes.
 the project root, concatenating root→local (local wins), capped at
 `project_doc_max_bytes` (32 KiB).
 
-HIMMEL-471 has landed: himmel now generates a real repo `AGENTS.md` from
+Himmel now generates a real repo `AGENTS.md` from
 `CLAUDE.md`, adapted to GPT anatomy (see §Prompt anatomy). `CLAUDE.md` remains
 the source of truth; `AGENTS.md` is the Codex/Copilot/Cursor-facing generated
 artifact with a generated-file banner, explicit precedence ladder, and
@@ -860,12 +872,12 @@ node scripts/agents-md/generate.mjs --check
 plugins' `hooks.json` (warp, hookify, ralph-loop, security-guidance) carry a
 top-level `description` key that Codex **before `rust-v0.143.0`** rejects
 ("unknown field description") — Codex skips just those hooks and runs normally
-(per-plugin isolation, verified HIMMEL-1104). No himmel-owned plugin ships that
+(per-plugin isolation, verified). No himmel-owned plugin ships that
 shape. **Fixed upstream:** codex PR #30229 added `description` to the `HooksFile`
 schema, shipping in **`rust-v0.143.0`** — on that version or newer the key is
-accepted and no sanitizing is needed (HIMMEL-1104; removal of the automatic
-phase is HIMMEL-1114). **Sanitize** (supersedes the 2026-06-20 "accept",
-operator decision 2026-06-30, HIMMEL-651): `scripts/codex/sanitize-plugin-hooks.{sh,ps1}`
+accepted and no sanitizing is needed (removal of the automatic
+phase is a planned follow-up). **Sanitize** (supersedes the 2026-06-20 "accept",
+operator decision 2026-06-30): `scripts/codex/sanitize-plugin-hooks.{sh,ps1}`
 strips the top-level `description` from every `hooks.json` under
 `~/.codex/plugins/cache/` (idempotent; re-run after a plugin update re-adds the
 field). `install-himmel-codex.{sh,ps1}` runs it automatically as its final phase.
@@ -877,34 +889,34 @@ Skills load natively under Codex. himmel's project-local **slash commands**
 slash-command surface. **Accept / port selectively** (TBD per command).
 
 **Codex skill-discovery root = project-local `.agents/skills/<name>/SKILL.md`**
-(HIMMEL-533, live-verified codex-cli 0.142.0: a project-local probe skill
+(live-verified codex-cli 0.142.0: a project-local probe skill
 loaded + ran from the worktree). The `.gitignore` ignores only
 `.agents/skills/source-command-*/` (the external-installer mirror that trips
 `clean-garden`); hand-authored `.agents/skills/<name>/` is tracked.
 
-**HIMMEL-533 delivered** the high-value "driver" commands as thin **tracked**
+**Delivered:** the high-value "driver" commands as thin **tracked**
 `.agents/skills/` wrappers that shell the same harness-neutral `scripts/` the
 Claude commands use (no logic duplication; Claude `.claude/commands/*.md`
 untouched): `worktree`, `clean`, `clean-garden`, `shell-lint`,
 and `pr-check`. `pr-check` is the **panel-only** subset — it runs the pure-shell
-critic panel (`scripts/cr/critic-panel.sh`) and clears the CR marker only when
+critic panel (`scripts/cr/critic-panel.sh`) and clears the review-owed marker only when
 the panel reports 0 Critical + 0 Important (retains on findings, panel
 unavailable, or a `docs-audit` lane). It does **not** dispatch the Claude
 `pr-review-toolkit` reviewer agents. Codex native `/review` participation is a
-post-HIMMEL-527 follow-up (shared `cr-context.sh` assembler).
+follow-up once the shared `cr-context.sh` assembler lands.
 
 Tier-A skills split by **delivery mechanism**: the enabled himmel plugins
 (`handover@himmel`, `obsidian-triage@himmel`, `telegram-himmel@himmel`) carry
 their own skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
 vm, himmel-doctor, himmel-update) require `himmel-ops@himmel` enabled in
 user-global `~/.codex/config.toml` — provisioned **reproducibly** by
-`scripts/codex/install-himmel-codex.{sh,ps1}` (HIMMEL-597; the codex-CLI half of
+`scripts/codex/install-himmel-codex.{sh,ps1}` (the codex-CLI half of
 the install split, twin of the hermes `scripts/hermes/install-himmel-profile.*`).
 The installer drives the `codex` CLI (`codex plugin marketplace add` /
 `codex plugin add`), idempotent + non-destructive. Independent of plugin-skill
 loading, the **verified** Codex skill-discovery path is project-local
-`.agents/skills/<name>/SKILL.md` (HIMMEL-533); guaranteed wrappers for the
-minerva/stuck-playbook/vm cluster are tracked in HIMMEL-604/607.
+`.agents/skills/<name>/SKILL.md`; guaranteed wrappers for the
+minerva/stuck-playbook/vm cluster are a planned follow-up.
 
 ### 5. Subagents
 
@@ -921,9 +933,9 @@ Codex's config surface (`~/.codex/config.toml`) ≠ `.claude/settings.json`:
 `[mcp_servers.*]`, `[projects.*]` trust levels, `[windows] sandbox`. Permissions
 and hook wiring live here, not in `.claude/`.
 
-### 7. Status context — statusLine is Claude-only (HIMMEL-554)
+### 7. Status context — statusLine is Claude-only
 
-Claude's `statusLine.command` is wired to the hud node renderer `marketplace/plugins/claude-hud/dist/index.js` (HIMMEL-718), with the bash bar `scripts/where-are-we/statusline.sh` retained as the rollback fallback;
+Claude's `statusLine.command` is wired to the hud node renderer `marketplace/plugins/claude-hud/dist/index.js`, with the bash bar `scripts/where-are-we/statusline.sh` retained as the rollback fallback;
 Codex has no equivalent visual statusline surface. The Codex port should inject
 the same advisory context through a Codex-native context path (likely
 SessionStart/UserPromptSubmit additional context), not by porting the rendered
@@ -933,25 +945,24 @@ and the CR score/usage ledger (`cr-critic-scores.jsonl`, `CR_USAGE_LOG=1`,
 `scripts/cr/cr-scores.sh`) for review status. The context path must stay
 offline/fail-open and must not widen guardrail permissions.
 
-### 8. Flow-audit follow-ups (HIMMEL-470 record)
+### 8. Flow-audit follow-ups
 
-After the Codex hook-wrapper port landed, the completed HIMMEL-470 audit left
+After the Codex hook-wrapper port landed, the completed multi-harness audit left
 follow-up work rather than another broad implementation pass. The internal matrix classifies each high-value
 flow as works under Codex, needs a Codex adapter, Claude-only by
 design, a separate feature request, or unknown pending evidence.
 Public/reference docs should point to the owner tickets rather than duplicate
 that working matrix.
 
-- **PR flow:** design a Codex `pr-check` skill under **HIMMEL-533**. It should
+- **PR flow:** design a Codex `pr-check` skill. It should
   reuse the shell critic panel, define how explicit external-diff approval is
-  captured, decide whether Codex native `/review` participates, and clear the CR
+  captured, decide whether Codex native `/review` participates, and clear the review-owed
   marker only after adjudication.
-- **Status context:** keep Codex where-are-we/status work under **HIMMEL-554**.
+- **Status context:** keep Codex where-are-we/status work as its own track.
   Reuse ledgers; do not emulate Claude's visual statusline.
 - **Hook confidence:** file an owner ticket for no-token fixture coverage of
   individual guardrails and lifecycle events before any live Codex probe. The
-  first lifecycle case — PostToolUse auto-arm's exit-2 contract — is **resolved
-  (HIMMEL-565)**: exit 2 on non-permission events now emits `additionalContext`,
+  first lifecycle case — PostToolUse auto-arm's exit-2 contract — is **resolved**: exit 2 on non-permission events now emits `additionalContext`,
   not a bogus PreToolUse deny (see §1). Live auto-arm lifecycle probe still
   pending.
 - **Install/update confidence:** file an owner ticket for disposable VM or
@@ -962,7 +973,7 @@ Do not start command ports or Codex status-context wiring from the audit chunk
 itself. A live Codex probe should run only after the matrix row names the exact
 question it answers and the no-token preconditions that must pass first.
 
-### 9. Interactive questions (`AskUserQuestion`) — Claude-only, graceful prose degradation (HIMMEL-595)
+### 9. Interactive questions (`AskUserQuestion`) — Claude-only, graceful prose degradation
 
 `AskUserQuestion` is a **Claude-Code-only interactive multiple-choice tool**, not
 a lifecycle hook event — so unlike the SessionStart/Stop ports (596/599) there is
@@ -976,7 +987,7 @@ is lost is the structured-choice UI, **not** the question/answer exchange — no
 
 **The one real risk** is a model that, seeing "use `AskUserQuestion`", tries to
 *call a tool that does not exist* and stalls/errors at a **confirm/disambiguation
-gate** instead of narrating. HIMMEL-595 mitigates this on the **3 gates where
+gate** instead of narrating. himmel mitigates this on the **3 gates where
 failing to ask would matter** with a one-line "if `AskUserQuestion` is unavailable,
 ask the same question as plain text and act on the typed answer" guard:
 `/overnight-shift` dispatch confirm (`.claude/commands/overnight-shift.md`),
@@ -992,7 +1003,7 @@ with no gate semantics: `jira-init|create|comment`;
 slug/hygiene prompts. `luna-upgrade`/`luna-upgrade-all` already confirm via prose
 (they never used the tool) and needed no change.
 
-**Follow-up (HIMMEL-649, deferred by operator 2026-06-30):** the *complete* Codex
+**Follow-up (deferred by operator 2026-06-30):** the *complete* Codex
 treatment — measure the actual usage gap on the cosmetic sites under real Codex
 runs, and consider a harness-agnostic structured-confirm convention/helper so a
 skill expresses "ask a multiple-choice question" once and it renders as
@@ -1000,7 +1011,7 @@ skill expresses "ask a multiple-choice question" once and it renders as
 input-format validation/retry on the typed answer), instead of per-skill fallback
 prose. "The content isn't lacked, just rough around the edges."
 
-### 10. Cheap-lane branch provenance — the `codex/*` convention (HIMMEL-654 WS7)
+### 10. Cheap-lane branch provenance — the `codex/*` convention
 
 Hermes-Codex work branches are named `codex/<slug>` (mirrors the spawn-glm
 `glm/<slug>` convention). This prefix is the Codex lane's positive cheap-lane
@@ -1014,15 +1025,15 @@ branch is indistinguishable from ordinary Claude work (spec D1.1), so structural
 cheap-lane enforcement for Codex waits on a future hermes task→branch provenance
 record; until it ships, `codex/*` PRs rely on behavioral verdict discipline.
 
-## Cursor / Copilot / Gemini deep-dive (HIMMEL-472)
+## Cursor / Copilot / Gemini deep-dive
 
 Audited 2026-06-21 (official docs + superpowers' shipped `hooks-cursor.json`,
 `.cursor-plugin/`, `.codex-plugin/`, `gemini-extension.json`). Per-harness
 port/guard/accept:
 
 ### Cursor (priority: second after Codex)
-- **Rule file — ACCEPT (covered by HIMMEL-471).** Cursor reads
-  `AGENTS.md`, so HIMMEL-471's generated file works as-is. Optional upside: a
+- **Rule file — ACCEPT (covered by the generated `AGENTS.md`).** Cursor reads
+  `AGENTS.md`, so the generated file works as-is. Optional upside: a
   `.cursor/rules/*.mdc` variant for glob-scoped rules (defer).
 - **Skills / subagents — ACCEPT.** Cursor reads `.claude/skills` and
   `.claude/agents` directly → near drop-in.
@@ -1034,7 +1045,7 @@ port/guard/accept:
 - **Marketplace — ACCEPT** (exists, contrary to the earlier "no marketplace" note).
 
 ### Copilot CLI (SOFT-DEFER — no free usage)
-- **Rule file — ACCEPT.** Reads `AGENTS.md` (HIMMEL-471 covers it);
+- **Rule file — ACCEPT.** Reads `AGENTS.md` (the generated file covers it);
   also reads `CLAUDE.md`/`GEMINI.md`.
 - **Skills — ACCEPT** (reads `.claude/skills`). **Subagents** `*.agent.md` — port selectively.
 - **Hooks — PORT, with a gotcha.** `.github/hooks/*.json`, fails CLOSED, BUT
@@ -1044,7 +1055,7 @@ port/guard/accept:
 
 ### Gemini CLI (SOFT-DEFER — no free usage)
 - **Rule file — PORT (small).** Needs `GEMINI.md` (distinct filename); same body
-  as AGENTS.md → a one-line extra target on the HIMMEL-471 generator. Soft-deferred.
+  as AGENTS.md → a one-line extra target on the AGENTS.md generator. Soft-deferred.
 - **Skills / subagents** — gemini-native `SKILL.md` (`.gemini/skills/`) +
   `.gemini/agents/*.md` — port selectively.
 - **Hooks — PORT.** `.gemini/settings.json` `hooks`, **PascalCase** events
@@ -1053,18 +1064,18 @@ port/guard/accept:
 ### CR reviewer under non-Claude harnesses (answers "pr-review-toolkit for codex?")
 The **cross-model critic panel** (`scripts/cr/critic-panel.sh` + hermes) is pure
 shell → already runs under any harness. Only the **Claude-subagent** layer
-(`/pr-check`'s `pr-review-toolkit:*` Agent dispatches) does not auto-carry. The 472
-audit identified brooks-lint as a possible analog, but HIMMEL-488 later rejected
-the deeper Hermes review-skill integration as redundant and unsafe for himmel's
-guardrails. **Current decision:** HIMMEL-533 owns a thin Codex `pr-check` skill
-over the existing shell panel, with the Codex native `/review` role decided after
-HIMMEL-527 supplies the shared context assembler.
+(`/pr-check`'s `pr-review-toolkit:*` Agent dispatches) does not auto-carry. The
+audit identified brooks-lint as a possible analog, but the deeper Hermes review-skill
+integration was later rejected as redundant and unsafe for himmel's
+guardrails. **Current decision:** a thin Codex `pr-check` skill
+over the existing shell panel, with the Codex native `/review` role decided once
+the shared context assembler lands.
 
-### CR gate in an adopter's own repo (HIMMEL-2035)
+### CR gate in an adopter's own repo
 An adopter arms one repo, run from himmel's **primary checkout**, with
 `bash <primary-checkout>/scripts/cr/install-cr-gate.sh --target <path>`, then
 reviews by starting a session whose cwd IS that repo and running a bare
-`/pr-check` there — `/pr-check` takes no argument, ever (HIMMEL-2226, operator
+`/pr-check` there — `/pr-check` takes no argument, ever (operator
 ruling 2026-08-31); cwd alone selects the repo under review. The installed
 `pre-push` hook has himmel's gate path **baked in at install time**, so the
 himmel checkout must stay reachable at
@@ -1075,20 +1086,20 @@ gate fails closed with a message naming the remedy (re-run the installer);
 
 ## Port / guard / accept decisions
 
-| Item | Decision | Where |
-|---|---|---|
-| Git gates (pre-commit/push) | **Accept** — fire on every harness | — |
-| PreToolUse guardrails (Codex) | **Ported** — tracked `.codex/hooks.json` through `run-hook.{sh,cmd}` + adapter | HIMMEL-427/HIMMEL-2019 |
-| Rule file (CLAUDE.md → AGENTS.md) | **Port** — covers Codex **+ Copilot + Cursor** | HIMMEL-471 |
-| Rule file → `GEMINI.md` | **Port (small), SOFT-DEFER** — extra generator target | HIMMEL-489 |
-| Hooks → Cursor (`.cursor/hooks.json`, fail-open) | **Port** (priority 2) | HIMMEL-487 |
-| Hooks → Copilot / Gemini | **Port, SOFT-DEFER** (no free usage) | HIMMEL-489 |
-| Skills / subagents (Cursor, Copilot) | **Accept** — read `.claude/*` directly | — |
-| Driver commands → Codex skills | **Ported (delivered)** — thin tracked `.agents/skills/` wrappers (worktree/clean/clean-garden/shell-lint/pr-check) shelling existing `scripts/`; live-verified under codex-cli 0.142.0 | HIMMEL-533 |
-| CR reviewer skill for Codex | **Ported (panel-only)** — Codex `pr-check` skill runs the shell panel + clears the CR marker on clean; native `/review` participation deferred post-HIMMEL-527 | HIMMEL-533 |
-| where-are-we / status context for Codex | **Port** — use Codex-native advisory context, not Claude `statusLine.command` | HIMMEL-554 |
-| Marketplace (all) | **Accept** — each has one | — |
-| `AskUserQuestion` (interactive tool) | **Accept (degrades to prose) + guard the 3 gates** — Claude-only tool, no equivalent elsewhere; minimal conversational-fallback line on the confirm/disambiguation gates; complete treatment deferred | HIMMEL-595 → HIMMEL-649 |
+| Item | Decision |
+|---|---|
+| Git gates (pre-commit/push) | **Accept** — fire on every harness |
+| PreToolUse guardrails (Codex) | **Ported** — tracked `.codex/hooks.json` through `run-hook.{sh,cmd}` + adapter |
+| Rule file (CLAUDE.md → AGENTS.md) | **Port** — covers Codex **+ Copilot + Cursor** |
+| Rule file → `GEMINI.md` | **Port (small), SOFT-DEFER** — extra generator target |
+| Hooks → Cursor (`.cursor/hooks.json`, fail-open) | **Port** (priority 2) |
+| Hooks → Copilot / Gemini | **Port, SOFT-DEFER** (no free usage) |
+| Skills / subagents (Cursor, Copilot) | **Accept** — read `.claude/*` directly |
+| Driver commands → Codex skills | **Ported (delivered)** — thin tracked `.agents/skills/` wrappers (worktree/clean/clean-garden/shell-lint/pr-check) shelling existing `scripts/`; live-verified under codex-cli 0.142.0 |
+| Automated review skill for Codex | **Ported (panel-only)** — Codex `pr-check` skill runs the shell panel + clears the review-owed marker on clean; native `/review` participation deferred until the shared context assembler lands |
+| where-are-we / status context for Codex | **Port** — use Codex-native advisory context, not Claude `statusLine.command` |
+| Marketplace (all) | **Accept** — each has one |
+| `AskUserQuestion` (interactive tool) | **Accept (degrades to prose) + guard the 3 gates** — Claude-only tool, no equivalent elsewhere; minimal conversational-fallback line on the confirm/disambiguation gates; complete treatment deferred |
 
 ## Prompt anatomy — why rules must be *adapted*, not copied
 
@@ -1107,7 +1118,7 @@ differences (GPT-5 prompting guide + the `everything-codex` migration):
   constraints to behavioral text." References to `.claude/settings.json`, "the
   Skill tool", or "PreToolUse hook" must be reworded as behavior.
 
-The same per-model adaptation applies to the CR critic panel (HIMMEL-473):
+The same per-model adaptation applies to the CR critic panel:
 GPT/codex critics get contradiction-resolution + spec tags; open models
 (qwen) need stronger JSON-obedience scaffolding; Claude adjudicators get
 XML/`IMPORTANT`. When reviewing prompt behavior, use the status ledgers too:
@@ -1124,7 +1135,7 @@ usage without coupling the prompt contract to one harness.
 - [Codex AGENTS.md discovery](https://developers.openai.com/codex/guides/agents-md)
 - [GPT-5 prompting guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
 - context7 `/luohaothu/everything-codex` (everything-claude-code → Codex migration).
-- **HIMMEL-472 (Cursor/Copilot/Gemini, 2026-06-21):** cursor.com/docs (hooks,
+- **Cursor/Copilot/Gemini audit (2026-06-21):** cursor.com/docs (hooks,
   rules, plugins, skills, subagents, slash-commands) · docs.github.com/copilot
   (hooks-configuration/reference, custom-instructions, CLI plugins + marketplace,
   skills, custom agents) · geminicli.com/docs (hooks, GEMINI.md, extensions,

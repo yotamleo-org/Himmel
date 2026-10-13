@@ -52,10 +52,9 @@ resolve_root() {
     (cd "$SCRIPT_DIR/../.." && pwd)
 }
 
-find_bun() {
-    if command -v bun 2>/dev/null; then return 0; fi
-    [ -x "$HOME/.bun/bin/bun" ] && echo "$HOME/.bun/bin/bun"
-}
+# shellcheck source=../lib/resolve-bun.sh
+. "$SCRIPT_DIR/../lib/resolve-bun.sh"
+find_bun() { resolve_bun; }
 
 # sed, not ${s//x/&y}: bash 5.2 patsub_replacement treats a bare & in the replacement as the match
 xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }

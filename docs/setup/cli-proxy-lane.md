@@ -96,7 +96,7 @@ Detection caveat: the gateway's `/v1/models` endpoint is registry-backed and
 keeps returning 200 during an OAuth gap — probe a real completion
 (`/v1/messages`) to detect an auth gap, never `/v1/models`.
 
-## The logon-task launcher, and the Defender detection it trips (HIMMEL-1822)
+## The logon-task launcher, and the Defender detection it trips
 
 `-Register` registers the at-logon task with the action
 `wscript.exe //B //Nologo "<home>\.cli-proxy-api\start-hidden.vbs"`. The proxy
@@ -130,7 +130,7 @@ Add-MpPreference -ExclusionPath "$env:USERPROFILE\.cli-proxy-api\start-hidden.vb
 .\scripts\setup\cli-proxy-lane.ps1 -Register
 ```
 
-**Residual risk, accepted (CR round):** `start-hidden.vbs` is a user-writable
+**Residual risk, accepted (automated review round):** `start-hidden.vbs` is a user-writable
 file that runs automatically at every sign-in, so excluding it — narrowly
 scoped or not — creates an antivirus blind spot for whatever content sits at
 that exact path: a process already running as the signed-in user (the
@@ -149,7 +149,7 @@ Until the exclusion is in place the proxy will **not** auto-start at logon
 while the task keeps vanishing). `-Register` detects a failed `/create` or a
 task that vanished right after creation and prints this guidance itself.
 
-## Linux bring-up (HIMMEL-2778)
+## Linux bring-up
 
 `scripts/setup/cli-proxy-lane.sh` (bash, run on the host) is the Linux twin of
 the `.ps1` above — same pinned release, same loopback-bound `config.yaml`,
@@ -181,6 +181,29 @@ bash scripts/setup/cli-proxy-lane.sh --verify
 Verify the lane end-to-end the same way as the Windows section above:
 `bash scripts/claude-codex -p "reply OK"`.
 
+## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
+
+An upstream codex `502` ends a claudex worker session's turn, and the `503
+auth_unavailable` that follows is the proxy cooling down the only codex
+credential. `--install` / `-Install` (and `--roll`) write two keys to
+`config.yaml`, and only when they are missing, so an operator-set value is
+kept and a re-run changes nothing:
+
+| Key | Written | Meaning (CLIProxyAPI `config.example.yaml`, v7.3.15) |
+|---|---|---|
+| `request-retry` | `3` | extra credential retry rounds on 403/408/429/500/502/503/504 |
+| `max-retry-interval` | `30` | longest wait, in seconds, for a cooldown between rounds |
+
+An existing install picks them up by re-running `--install`, then
+`--restart` (the proxy reads `config.yaml` at start).
+
+**A second codex credential** (optional) gives the cooldown another credential
+to fall back to. CLIProxyAPI loads every `codex-*.json` in `auth-dir`, so add
+one by logging a second account in with the same device flow
+(`--login` / `-Login`, authorizing as the second account); it lands as its own
+`codex-<email>.json`. Logging the same account in again replaces its file, it
+does not add one. Two accounts mean two subscriptions' usage on one proxy.
+
 ## Notes
 
 - `config.yaml` pins `host: "127.0.0.1"` on purpose — the CLIProxyAPI default
@@ -188,7 +211,6 @@ Verify the lane end-to-end the same way as the Windows section above:
   subscription endpoint. Always start via the script / `-config`.
 - `CLIPROXY_API_KEY` in `.env` must match the `api-keys` entry
   (`himmel-local-claudex`).
-- This re-exposes a subscription via OAuth; the ToS posture is operator-accepted
-  (HIMMEL-979).
+- This re-exposes a subscription via OAuth; the ToS posture is operator-accepted.
 - Windows hosts use `cli-proxy-lane.ps1` (above); Linux hosts use
-  `cli-proxy-lane.sh` (HIMMEL-2778). macOS has no twin yet.
+  `cli-proxy-lane.sh`. macOS has no twin yet.

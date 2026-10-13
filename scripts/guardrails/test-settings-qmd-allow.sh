@@ -23,8 +23,11 @@ for tool in \
   fi
 done
 
-# Mutating/admin qmd tools must stay un-pre-approved.
-for tool in mcp__qmd__status mcp__qmd__multi_get 'mcp__qmd__*'; do
+# status and multi_get are read-only but stay un-pre-approved: the allow list is
+# scoped to query/get (least privilege). A bare server name or a wildcard
+# pre-approves every tool on that server, so those are rejected too.
+for tool in mcp__qmd__status mcp__qmd__multi_get 'mcp__qmd__*' \
+  mcp__qmd mcp__plugin_qmd_qmd 'mcp__plugin_qmd_qmd__*'; do
   if jq -e --arg t "$tool" '.permissions.allow | index($t) != null' "$SETTINGS" >/dev/null 2>&1; then
     echo "FAIL: allow list unexpectedly carries $tool"
     fail=1

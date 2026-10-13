@@ -1,6 +1,6 @@
 # `ponytail:` debt ledger
 
-Generated with upstream's method (`grep -rnE '(#|//) ?ponytail:' .`, skipping `node_modules`/`.git`/build output) — see [`ponytail-debt`](https://github.com/DietrichGebert/ponytail/blob/main/skills/ponytail-debt/SKILL.md) and [`ponytail-convention.md`](ponytail-convention.md). Snapshot at `015f4cf34ba628a4fad2a419b4eb52b66c85c67c`, 2026-09-23. `scripts/` is under concurrent edit (HIMMEL-3511 scope note), so line numbers drift — regenerate rather than trusting this file long after that sha.
+Generated with upstream's method (`grep -rnE '(#|//) ?ponytail:' .`, skipping `node_modules`/`.git`/build output) — see [`ponytail-debt`](https://github.com/DietrichGebert/ponytail/blob/main/skills/ponytail-debt/SKILL.md) and [`ponytail-convention.md`](ponytail-convention.md). Snapshot at `015f4cf34ba628a4fad2a419b4eb52b66c85c67c`, 2026-09-23. `scripts/` is under concurrent edit, so line numbers drift — regenerate rather than trusting this file long after that sha.
 
 Each row: `file:line`, the ceiling (what was simplified), and the upgrade path or `no-trigger` if the marker names none. Backfilling triggers onto the `no-trigger` rows is phase 2 — not done here; this is a read-only harvest.
 
@@ -111,10 +111,10 @@ Each row: `file:line`, the ceiling (what was simplified), and the upgrade path o
 - `scripts/hooks/stop-queue.mjs:445`, shape-based, so a credential in an unguessable shape still gets — no-trigger
 - `scripts/hooks/stop-queue.mjs:471`, trimming rewrites the log, and an enqueuer appending between the — atomic (tmp + rename), so no reader ever sees a half-written log. Upgrade path if the census ever has to be lossless: trim under the worker lock AND make enqueue take it for the append.
 - `scripts/hooks/stop-queue.mjs:721`, this makes the CONSEQUENCE of a wrong staleness judgement safe; it — no-trigger
-- `scripts/hooks/stop-queue.mjs:740`, one gap in that rule is left (HIMMEL-3294), and it is the one POSIX — no-trigger
+- `scripts/hooks/stop-queue.mjs:740`, one gap in that rule is left, and it is the one POSIX — no-trigger
 - `scripts/hooks/test-crlf-boundary.sh:262`, this section spawns dozens of nested bash+env+git+gh processes: a — so a wedge fails loudly in ~20s rather than hanging the suite. Upgrade path: none needed — a rare bounded retry is cheaper than chasing an upstream MSYS bug.
 - `scripts/hooks/trigger-cr-on-push.sh:38`, resolves the PR via `gh pr view` for the CURRENT checked-out — no-trigger
-- `scripts/jira/sync-versions.mjs:147`, HIMMEL-3431 — releasing an unreleased version is the one — no-trigger
+- `scripts/jira/sync-versions.mjs:147`, releasing an unreleased version is the one — no-trigger
 - `scripts/lanes/bench/scorecard/lib/scorecard-lib.sh:34`, the primary dir name is this machine's himmel checkout path — no-trigger
 - `scripts/lanes/bench/scorecard/lib/scorecard-lib.sh:90`, the older `leg<Letter><k>` titles (legG3, legS1 ...) still fall to — no-trigger
 - `scripts/lanes/bench/scorecard/lib/scorecard-lib.sh:92`, a leg-shaped title leg_identity does not recognise still races on the — no-trigger
@@ -176,6 +176,6 @@ Each row: `file:line`, the ceiling (what was simplified), and the upgrade path o
 - `scripts/vault/backfill-source-identity.mjs:149`, a README over the API's 1 MB inline limit returns empty `.content`, — no-trigger
 - `scripts/vm/lib/assert-provenance.sh:23`, residue is grouped by its first three path components under HOME — no-trigger
 - `scripts/vm/lib/seed-provenance.sh:25`, a stub is not a real qmd or graphify. It proves the arm and the — no-trigger
-- `templates/luna-second-brain/scripts/upgrade.sh:511`, a HASH cannot be compared newline/JSON-insensitively (HIMMEL-3037), — no-trigger
+- `templates/luna-second-brain/scripts/upgrade.sh:511`, a HASH cannot be compared newline/JSON-insensitively, — no-trigger
 
 **173 markers, 157 with no trigger.**

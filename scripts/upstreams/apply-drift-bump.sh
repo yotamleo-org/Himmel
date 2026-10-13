@@ -30,7 +30,14 @@
 # CURRENT while the fork sits unrebased, laundering the signal.
 #
 # Usage:
-#   bash scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--dry-run]
+#   bash scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--sha256 <hex>] [--dry-run]
+#
+# Split pins (HIMMEL-4283): an entry may add `companion_pins`, a list of
+# {file, template} rows for literals that live elsewhere than `version_pin`
+# (cli-proxy-api: the Linux twin's VERSION= and ASSET_SHA256=). Each template
+# holds ONE placeholder, {version} or {sha256}; a {sha256} row needs --sha256
+# <64-hex> (this script is offline and cannot derive a checksum). Every pin
+# moves or none does; a companion not sitting at the old version aborts rc=4.
 #
 # Env / test seams:
 #   DRIFT_REGISTRY    registry path (default: <repo>/scripts/upstreams.json).
@@ -52,7 +59,7 @@ REPO_ROOT="${DRIFT_REPO_ROOT:-$(cd "$SELF_DIR/../.." && pwd)}"
 REGISTRY="${DRIFT_REGISTRY:-$REPO_ROOT/scripts/upstreams.json}"
 
 usage() {
-  echo "usage: apply-drift-bump.sh <name> <new-version> [--dry-run]" >&2
+  echo "usage: apply-drift-bump.sh <name> <new-version> [--sha256 <hex>] [--dry-run]" >&2
   echo "  <name>         a tag_release/base entry in scripts/upstreams.json" >&2
   echo "  <new-version>  the upstream version to pin to (leading 'v' optional)" >&2
   echo "  exit: 0 bumped | 1 already current | 2 usage/registry | 3 SKIP not" >&2
@@ -62,9 +69,15 @@ usage() {
 NAME=""
 NEW_VER=""
 DRY_RUN=0
+NEW_SHA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --sha256)
+      shift
+      [ $# -gt 0 ] || { echo "apply-drift-bump: --sha256 needs a value" >&2; usage; exit 2; }
+      NEW_SHA="$1"
+      ;;
     -h|--help) usage; exit 2 ;;
     -*) echo "apply-drift-bump: unknown flag '$1'" >&2; usage; exit 2 ;;
     *)
@@ -95,10 +108,10 @@ fi
 # any failure) lives in python: it is the only interpreter here that can re-parse
 # the JSON to PROVE the edit landed as intended, and reading/writing with
 # newline='' keeps CRLF/LF exactly as found (this repo is worked on from Windows).
-python3 - "$REGISTRY" "$REPO_ROOT" "$NAME" "$NEW_VER" "$DRY_RUN" <<'PY'
+python3 - "$REGISTRY" "$REPO_ROOT" "$NAME" "$NEW_VER" "$DRY_RUN" "$NEW_SHA" <<'PY'
 import json, os, re, sys
 
-reg_path, repo_root, name, new_raw, dry = sys.argv[1:6]
+reg_path, repo_root, name, new_raw, dry, new_sha = sys.argv[1:7]
 dry = dry == "1"
 
 def die(code, msg):
@@ -137,6 +150,8 @@ def cmp_ver(a, b):
 if not VER_RE.match(new_raw):
     die(2, "target version %r is not a version string" % new_raw)
 new_ver = norm(new_raw)
+if new_sha and not re.match(r'^[0-9a-f]{64}$', new_sha):
+    die(2, "--sha256 %r is not a lowercase 64-char hex sha256" % new_sha)
 
 try:
     reg_text = read_text(reg_path)
@@ -196,14 +211,74 @@ pin_path = os.path.join(repo_root, pin_rel)
 if not os.path.isfile(pin_path):
     die(4, "version_pin file not found: %s" % pin_path)
 
+# --- companion pins (HIMMEL-4283) -------------------------------------------
+# An entry whose pin literal lives in more than one place (cli-proxy-api: the
+# registry's version_pin is the .ps1, the Linux twin's VERSION= and ASSET_SHA256=
+# are separate literals) declares the rest as `companion_pins`, each
+# {file, template} with ONE placeholder: {version}, or {sha256} for a checksum
+# the caller supplies with --sha256 (this script stays offline, so it cannot
+# derive one). The bump moves every pin or none -- a half-moved split pin is the
+# bug this exists to prevent.
+companions = entry.get("companion_pins", [])
+if not isinstance(companions, list):
+    die(2, "entry %r companion_pins must be a list of {file, template}" % name)
+need_sha = False
+for c in companions:
+    if (not isinstance(c, dict) or not isinstance(c.get("file"), str)
+            or not isinstance(c.get("template"), str)
+            or not c["file"] or not c["template"]):
+        die(2, "entry %r has a malformed companion_pins row (need {file, template})" % name)
+    tpl = c["template"]
+    if tpl.count("{version}") + tpl.count("{sha256}") != 1:
+        die(2, "entry %r companion template must hold exactly one {version} or "
+               "{sha256} placeholder (got %r)" % (name, tpl))
+    crel = c["file"]
+    if os.path.isabs(crel) or ".." in crel.replace("\\", "/").split("/"):
+        die(2, "entry %r companion file must be a repo-relative path without '..' "
+               "(got %r)" % (name, crel))
+    if "{sha256}" in tpl:
+        need_sha = True
+if need_sha and not new_sha:
+    die(2, "entry %r pins a sha256: pass --sha256 <64-hex> of the new release asset" % name)
+if new_sha and not need_sha:
+    die(2, "entry %r declares no {sha256} companion pin; --sha256 does not apply" % name)
+
+# path -> [original text, new text]; insertion order is the write order
+edits = {}
+def load(rel):
+    p = os.path.join(repo_root, rel)
+    if rel not in edits:
+        if not os.path.isfile(p):
+            die(4, "pin file not found: %s" % p)
+        t = read_text(p)
+        edits[rel] = [t, t]
+    return edits[rel]
+
 old_lit = template.replace("{version}", old_ver)
 new_lit = template.replace("{version}", new_ver)
 
-pin_text = read_text(pin_path)
-hits = pin_text.count(old_lit)
+main = load(pin_rel)
+hits = main[1].count(old_lit)
 if hits != 1:
     die(4, "pin literal %r occurs %d time(s) in %s — expected exactly 1; "
            "fix version_pin.template in the registry" % (old_lit, hits, pin_rel))
+main[1] = main[1].replace(old_lit, new_lit)
+
+SHA_RE = r'[0-9a-f]{64}'
+verify = [(pin_rel, new_lit, old_lit)]
+for c in companions:
+    crel, ctpl = c["file"], c["template"]
+    pair = load(crel)
+    pat = re.escape(ctpl).replace(re.escape("{version}"), re.escape(old_ver)) \
+                         .replace(re.escape("{sha256}"), SHA_RE)
+    found = re.findall(pat, pair[1])
+    if len(found) != 1:
+        die(4, "companion pin %r matches %d time(s) in %s at %s — expected "
+               "exactly 1; the Linux and .ps1 pins have drifted apart, fix them "
+               "by hand first" % (ctpl, len(found), crel, old_ver))
+    c_new = ctpl.replace("{version}", new_ver).replace("{sha256}", new_sha or "")
+    pair[1] = re.sub(pat, lambda _m: c_new, pair[1])
+    verify.append((crel, c_new, found[0] if "{version}" in ctpl else None))
 
 # --- registry edit: rewrite synced_base INSIDE this entry only ---------------
 # A bare `"synced_base": "<old>"` replace would be ambiguous the moment two
@@ -218,52 +293,37 @@ if not sb_m:
     die(4, "could not locate this entry's synced_base literal in %s" % reg_path)
 new_reg_text = reg_text[:sb_m.start()] + sb_m.group(1) + new_ver + sb_m.group(2) \
              + reg_text[sb_m.end():]
-new_pin_text = pin_text.replace(old_lit, new_lit)
 
-files = "%s, %s" % (os.path.relpath(reg_path, repo_root).replace("\\", "/"), pin_rel)
+files = ", ".join([os.path.relpath(reg_path, repo_root).replace("\\", "/")] + list(edits))
 if dry:
     print("DRY %s %s -> %s (files: %s)" % (name, old_ver, new_ver, files))
     sys.exit(0)
 
-# The registry write is inside the restore-protected region too (CR codex-3).
-# It used to sit OUTSIDE any try: a failure part-way through THAT write (disk
-# full, a lock, a permissions flip) left scripts/upstreams.json truncated or
-# half-written with nothing to put it back — the one outcome this script exists
-# to make impossible. Restoring from `reg_text` is safe even when the write
-# never started, so the guard costs nothing.
-try:
-    write_text(reg_path, new_reg_text)
-except Exception as exc:
-    try:
-        write_text(reg_path, reg_text)
-    except Exception:
-        die(4, "could not write %s (%s) AND could not restore it — inspect the "
-               "file by hand before re-running" % (reg_path, exc))
-    die(4, "could not write %s (%s) — registry restored" % (reg_path, exc))
-try:
-    write_text(pin_path, new_pin_text)
-except Exception as exc:
-    # The failed open(p, "w") in write_text TRUNCATED the pin file before the
-    # write raised, so restoring only the registry (as this used to) leaves the
-    # pin empty — contradicting the "both files are left untouched" invariant
-    # restore() below guarantees. Restore the pin from pin_text too (CR round-9).
-    try:
-        write_text(reg_path, reg_text)
-        write_text(pin_path, pin_text)
-    except Exception:
-        die(4, "could not write %s (%s) AND could not restore the files — inspect "
-               "both files by hand before re-running" % (pin_rel, exc))
-    die(4, "could not write %s (%s) — both files restored" % (pin_rel, exc))
+# Every write is inside the restore-protected region: a failure part-way (disk
+# full, a lock, a permissions flip) must never leave the registry or ANY pin file
+# truncated or half-moved -- the one outcome this script exists to prevent. The
+# failed open(p, "w") TRUNCATES before the write raises, so restoring from the
+# originals read above is safe even when a given write never started.
+def restore_all():
+    write_text(reg_path, reg_text)
+    for rel, pair in edits.items():
+        write_text(os.path.join(repo_root, rel), pair[0])
 
-# --- verify, or put both files back exactly as they were ---------------------
 def restore(msg):
     try:
-        write_text(reg_path, reg_text)
-        write_text(pin_path, pin_text)
+        restore_all()
     except Exception as exc:
-        die(4, "%s — AND the restore failed (%s); inspect both files by hand" % (msg, exc))
-    die(4, "%s — both files restored" % msg)
+        die(4, "%s — AND the restore failed (%s); inspect the files by hand" % (msg, exc))
+    die(4, "%s — %s restored" % (msg, "both files" if len(edits) == 1 else "all files"))
 
+try:
+    write_text(reg_path, new_reg_text)
+    for rel, pair in edits.items():
+        write_text(os.path.join(repo_root, rel), pair[1])
+except Exception as exc:
+    restore("could not write the bump (%s)" % exc)
+
+# --- verify, or put every file back exactly as it was -------------------------
 try:
     after = json.loads(read_text(reg_path))
 except Exception as exc:
@@ -285,9 +345,10 @@ for b, a in zip(before_entries, after_entries):
     elif a != b:
         restore("unrelated entry %r was modified" % b.get("name"))
 
-verify_pin = read_text(pin_path)
-if verify_pin.count(new_lit) != 1 or verify_pin.count(old_lit) != 0:
-    restore("pin literal in %s did not land exactly once" % pin_rel)
+for rel, want, gone in verify:
+    got = read_text(os.path.join(repo_root, rel))
+    if got.count(want) != 1 or (gone and got.count(gone) != 0):
+        restore("pin literal %r in %s did not land exactly once" % (want, rel))
 
 print("BUMP %s %s -> %s (files: %s)" % (name, old_ver, new_ver, files))
 sys.exit(0)

@@ -7,7 +7,7 @@ they almost always mean the first one.
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
 | Config console | One local web app: Config, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
-| Console board | One generated HTML page: the fleet, each leg's phase, what needs the console | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel console |
+| Console board | One generated HTML page: the fleet, each worker session's phase, what needs the supervisor session | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel supervisor session |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/console-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
 ## The config console (`himmelctl ui`)
@@ -30,8 +30,10 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
 - **Pages** (the left rail): `#/config` (install items, doctor checks, scheduled
   jobs, lanes, flags and secrets by presence), `#/health` (one verdict:
   All clear / Needs a look / Act now), `#/toolhealth` (tool-call failure and
-  denial rates by model and lane), `#/roadmap` (releases and the kanban,
-  live from the Jira mirror), and **Fleet** at `/agui/`.
+  denial rates by model and lane), `#/roadmap` (releases, drift, sync and
+  librarian, live from the Jira mirror; click a version for its kanban at
+  `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
+  hideable), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant
   text, tool-call cards, subagents, failures. The page needs a one-time build
@@ -43,20 +45,20 @@ Full reference, endpoints and environment overrides:
 
 ## The console board and roadmap tracker
 
-Both belong to the himmel **console**, the long-running session that
-dispatches and watches legs ([glossary](glossary.md)). They are static HTML
-files the console renders from its own state and republishes as artifacts, not
+Both belong to the himmel **supervisor session**, the long-running session that
+dispatches and watches worker sessions ([glossary](glossary.md)). They are static HTML
+files the supervisor session renders from its own state and republishes as artifacts, not
 servers.
 
-- **Board** (`board.mjs`): fleet size against the cap, each leg's phase from
-  LIVE to WRAPPED, what needs the console, epic progress and open decisions.
+- **Board** (`board.mjs`): fleet size against the cap, each worker session's phase from
+  LIVE to WRAPPED, what needs the supervisor session, epic progress and open decisions.
   `--changed` prints `CHANGED <path>` or `UNCHANGED <path>`.
 - **Tracker** (`tracker.py`): release panels and a kanban by Jira version and
   theme. Run `node scripts/jira/dist/index.js mirror` first; without a mirror
   it has nothing to show. The same view also lives live at `#/roadmap` in the
   config console.
 
-Both are Linux-only console tooling; an install without a console does not
+Both are Linux-only supervisor session tooling; an install without a supervisor session does not
 have them in use.
 
 ## Keeping this page current

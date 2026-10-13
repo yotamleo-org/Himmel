@@ -40,6 +40,44 @@ const run = promisify(execFile);
 // ---------------------------------------------------------------- args
 const USAGE = 'usage: fleet.mjs --doc <console doc> (--serve [--port 7788] | --out <file.html> | --json) [--logs <dir>] [--handover-root <dir>] [--repo <dir>]';
 const args = process.argv.slice(2);
+
+// parseReadyLine <line> — HIMMEL-4762: the mirror of go-gate.sh's
+// parse_ready_line (read its comment for the grammar); the shared fixture
+// scripts/lib/fixtures/ready-lines.tsv pins the two to the same answers.
+// Returns { kind, id, sha } (sha '' for MERGED) or null.
+function parseReadyLine(line) {
+    const s = String(line).replace(/\r$/, '');
+    const pre = '^(?:- )?(?:[0-9]{1,2}:[0-9]{2}[ \\t]+)?';
+    const id = '#?([0-9]{2,}|br-[a-z0-9._-]+)';
+    const end = '(?:[^A-Za-z0-9_-]|$)';
+    let m = new RegExp(`${pre}READY[ \\t]+${id}[ \\t]+([0-9a-f]{7,40})${end}`).exec(s);
+    let r = m ? { kind: 'READY', id: m[1], sha: m[2] } : null;
+    if (!r) {
+        m = new RegExp(`${pre}MERGED[ \\t]+${id}\\.*(?:[^A-Za-z0-9._-]|$)`).exec(s);
+        r = m ? { kind: 'MERGED', id: m[1], sha: '' } : null;
+    }
+    if (!r) return null;
+    r.id = r.id.replace(/\.+$/, '');
+    return r.id === 'br-' ? null : r;
+}
+
+// --ready-lines <tsv>: print parseReadyLine's answer for column 1 of every
+// non-blank, non-# line, as `<kind>\t<id>\t<sha>` or `-\t\t` (no match).
+if (args[0] === '--ready-lines') {
+    if (args.length !== 2) {
+        console.error('usage: fleet.mjs --ready-lines <tsv>');
+        process.exit(2);
+    }
+    const out = [];
+    for (const l of readFileSync(args[1], 'utf8').split('\n')) {
+        if (l === '' || l.startsWith('#')) continue;
+        const r = parseReadyLine(l.split('\t')[0]);
+        out.push(r ? `${r.kind}\t${r.id}\t${r.sha}` : '-\t\t');
+    }
+    process.stdout.write(out.length ? `${out.join('\n')}\n` : '');
+    process.exit(0);
+}
+
 const opt = {};
 for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -180,7 +218,9 @@ const idOf = (name) => identities.get(name) || { label: '', names: [] };
 
 // ---------------------------------------------------------------- leg docs
 const STATUS_RE = /^- (?:(\d{1,2}):(\d{2})\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE)(?![A-Za-z0-9_])(.*)$/;
-const PR_RE = /^- (?:\d{1,2}:\d{2}\s+)?(?:LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b|READY\s+#?(\d{2,})\s+[0-9a-f]{7,}|MERGED\s+#(\d{2,})\b)/;
+// HIMMEL-4762: READY and MERGED lines go through parseReadyLine (the mirror of
+// go-gate.sh's parse_ready_line); PR_RE keeps only the LIVE "PR #n open" form.
+const PR_RE = /^- (?:\d{1,2}:\d{2}\s+)?LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b/;
 const readLegDoc = (file, now) => {
     const text = readText(file);
     if (text === null) return null;
@@ -190,7 +230,10 @@ const readLegDoc = (file, now) => {
     let status = null;
     for (const b of bullets) {
         const pm = PR_RE.exec(b);
-        if (pm) pr = Number(pm[1] || pm[2] || pm[3]);
+        if (pm) pr = Number(pm[1]);
+        // A br-<branch> change (local-git) has no PR number, so it leaves pr null.
+        const rl = parseReadyLine(b);
+        if (rl) pr = /^[0-9]+$/.test(rl.id) ? Number(rl.id) : null;
         const sm = STATUS_RE.exec(b);
         if (sm) {
             let ageSec = null;

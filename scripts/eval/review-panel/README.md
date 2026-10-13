@@ -1,4 +1,4 @@
-# review-panel recall eval (HIMMEL-4649)
+# review-panel recall eval
 
 How many real defects does the review panel (`scripts/cr/critic-panel.sh`, the
 critic half of `/pr-check`) catch, and how often does it raise one that is not

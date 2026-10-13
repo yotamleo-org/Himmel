@@ -231,7 +231,7 @@ assert_contains "register confirms readiness before reporting started" "register
 
 echo "TEST 4: --status parses a stubbed healthy /v1/models"
 F4="$(fixture status --with-exe-config --with-oauth)"
-printf '7.3.15\n' > "$F4/.cli-proxy-api/cli-proxy-api.version"
+printf '8.0.27\n' > "$F4/.cli-proxy-api/cli-proxy-api.version"
 HOME="$F4" STUB_HTTP_CODE="200" STUB_SYSTEMCTL_ENABLED="0" run --status
 assert_rc "status exit code (all green)" 0 "$RC"
 assert_contains "status reports the proxy running" "running:     OK" "$OUT"
@@ -273,7 +273,7 @@ assert_contains "activating stop issues systemctl stop" "stop cli-proxy-api.serv
 
 echo "TEST 10: --status flags a reachable-but-unauthenticated proxy (HTTP 401) as not fully OK"
 F10="$(fixture status-401 --with-exe-config --with-oauth)"
-printf '7.3.15\n' > "$F10/.cli-proxy-api/cli-proxy-api.version"
+printf '8.0.27\n' > "$F10/.cli-proxy-api/cli-proxy-api.version"
 HOME="$F10" STUB_HTTP_CODE="401" STUB_SYSTEMCTL_ENABLED="0" run --status
 assert_rc "401 status exit code (not fully OK)" 1 "$RC"
 assert_contains "401 status names the mismatch" "UNAUTHENTICATED" "$OUT"
@@ -364,9 +364,9 @@ F19="$(fixture roll-running --with-exe-config)"
 STOPFILE19="$TMPROOT/stopfile-19"
 HOME="$F19" STUB_SHA256="$STUB_SHA256" STUB_SYSTEMCTL_STOPFILE="$STOPFILE19" STUB_SYSTEMCTL_STATE="active" STUB_SYSTEMCTL_ACTIVE="0" STUB_SYSTEMCTL_ENABLED="0" STUB_SYSTEMCTL_MAINPID="5555" STUB_SS_LISTEN_PID="5555" STUB_HTTP_CODE="200" run --roll
 assert_rc "roll-against-running-unit exit code" 0 "$RC"
-assert_contains "roll ends at the pinned version" "rolled to v7.3.15" "$OUT"
+assert_contains "roll ends at the pinned version" "rolled to v8.0.27" "$OUT"
 STAMP19="$(cat "$F19/.cli-proxy-api/cli-proxy-api.version" 2>/dev/null)"
-if [ "$STAMP19" = "7.3.15" ]; then pass "version stamp converged to the pin"; else fail "version stamp converged to the pin" "got: '$STAMP19'"; fi
+if [ "$STAMP19" = "8.0.27" ]; then pass "version stamp converged to the pin"; else fail "version stamp converged to the pin" "got: '$STAMP19'"; fi
 
 echo "TEST 20 (RED control): --roll refuses a live bounce without --force"
 F20="$(fixture roll-live-bounce --with-exe-config)"
@@ -379,11 +379,11 @@ if [ "$STAMP20" = "7.2.158" ]; then pass "roll live-bounce refusal left the old 
 
 echo "TEST 21: --roll is a no-op when already at the pin"
 F21="$(fixture roll-noop --with-exe-config)"
-printf '7.3.15\n' > "$F21/.cli-proxy-api/cli-proxy-api.version"
+printf '8.0.27\n' > "$F21/.cli-proxy-api/cli-proxy-api.version"
 SYSTEMCTL_LOG21="$TMPROOT/systemctl-21.log"
 HOME="$F21" STUB_SYSTEMCTL_LOG="$SYSTEMCTL_LOG21" run --roll
 assert_rc "roll no-op exit code" 0 "$RC"
-assert_contains "roll no-op message names the pin" "already at pinned v7.3.15" "$OUT"
+assert_contains "roll no-op message names the pin" "already at pinned v8.0.27" "$OUT"
 assert_contains "roll no-op names itself" "--roll is a no-op" "$OUT"
 if [ -f "$SYSTEMCTL_LOG21" ]; then fail "roll no-op never touches systemctl" "log: $(cat "$SYSTEMCTL_LOG21")"; else pass "roll no-op never touches systemctl"; fi
 
@@ -445,6 +445,74 @@ assert_rc "malformed-sha exit code" 1 "$RC"
 # grep is line-wise: a valid first line must not carry a second one into the URL.
 HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION=$'8.0.23\nevil' CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
 assert_rc "multiline-version exit code" 1 "$RC"
+
+# HIMMEL-5391: transient codex 5xx (a 502, then the auth-cooldown 503 on the only
+# credential) ended a claudex leg's turn. CLIProxyAPI's request-retry runs extra
+# credential rounds on 403/408/429/500/502/503/504 and max-retry-interval bounds
+# the cooldown wait (config.example.yaml, v7.3.15). The fixture below is the
+# shape of the station's real ~/.cli-proxy-api/config.yaml (no retry keys).
+RETRY_FIXTURE='host: "127.0.0.1"
+port: 8317
+auth-dir: "~/.cli-proxy-api"
+api-keys:
+  - "stub-key-28"'
+
+echo "TEST 28: fresh --install writes the bounded request retry"
+F28="$(fixture retry-fresh)"
+rm -f "$F28/.cli-proxy-api/config.yaml"
+HOME="$F28" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "fresh install exit code" 0 "$RC"
+CFG28="$(cat "$F28/.cli-proxy-api/config.yaml")"
+assert_contains "fresh config sets request-retry" "request-retry: 3" "$CFG28"
+assert_contains "fresh config bounds max-retry-interval" "max-retry-interval: 30" "$CFG28"
+
+echo "TEST 29: --install adds the retry keys to an existing config, keeping the rest"
+F29="$(fixture retry-existing)"
+printf '%s' "$RETRY_FIXTURE" > "$F29/.cli-proxy-api/config.yaml"
+chmod 600 "$F29/.cli-proxy-api/config.yaml"
+HOME="$F29" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "existing-config install exit code" 0 "$RC"
+CFG29="$(cat "$F29/.cli-proxy-api/config.yaml")"
+assert_contains "existing config gains request-retry" "request-retry: 3" "$CFG29"
+assert_contains "existing config gains max-retry-interval" "max-retry-interval: 30" "$CFG29"
+assert_contains "existing config keeps its api key" '  - "stub-key-28"' "$CFG29"
+assert_contains "existing config keeps its host" 'host: "127.0.0.1"' "$CFG29"
+if host_modes_stick; then
+    assert_rc "existing config stays 0600" "600" "$(host_mode_of "$F29/.cli-proxy-api/config.yaml")"
+fi
+
+echo "TEST 30: an operator-set retry value is kept and a re-run is idempotent"
+F30="$(fixture retry-operator)"
+printf '%s\nrequest-retry: 5\nmax-retry-interval: 10\n' "$RETRY_FIXTURE" > "$F30/.cli-proxy-api/config.yaml"
+HOME="$F30" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "operator-config install exit code" 0 "$RC"
+CFG30="$(cat "$F30/.cli-proxy-api/config.yaml")"
+assert_contains "operator request-retry kept" "request-retry: 5" "$CFG30"
+assert_contains "operator max-retry-interval kept" "max-retry-interval: 10" "$CFG30"
+if grepq "$CFG30" -F "request-retry: 3"; then fail "operator request-retry not overwritten" "default 3 found"; else pass "operator request-retry not overwritten"; fi
+CFG30_BEFORE="$(cat "$F30/.cli-proxy-api/config.yaml")"
+HOME="$F30" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+if [ "$(cat "$F30/.cli-proxy-api/config.yaml")" = "$CFG30_BEFORE" ]; then pass "re-run leaves operator config byte-identical"; else fail "re-run leaves operator config byte-identical"; fi
+HOME="$F29" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+if [ "$(grep -c '^request-retry:' "$F29/.cli-proxy-api/config.yaml")" = "1" ] \
+    && [ "$(grep -c '^max-retry-interval:' "$F29/.cli-proxy-api/config.yaml")" = "1" ]; then
+    pass "re-run does not duplicate the retry keys"
+else
+    fail "re-run does not duplicate the retry keys"
+fi
+
+echo "TEST 31: a retry key written as 'key : value' is recognised, not duplicated"
+F31="$(fixture retry-spaced-colon)"
+printf '%s\nrequest-retry : 5\nmax-retry-interval  : 10\n' "$RETRY_FIXTURE" > "$F31/.cli-proxy-api/config.yaml"
+HOME="$F31" CLIPROXY_API_KEY="stub-key-28" STUB_SHA256="$STUB_SHA256" run --install
+assert_rc "spaced-colon install exit code" 0 "$RC"
+CFG31="$(cat "$F31/.cli-proxy-api/config.yaml")"
+if [ "$(grep -c '^request-retry' "$F31/.cli-proxy-api/config.yaml")" = "1" ] \
+    && [ "$(grep -c '^max-retry-interval' "$F31/.cli-proxy-api/config.yaml")" = "1" ]; then
+    pass "spaced-colon keys are not duplicated"
+else
+    fail "spaced-colon keys are not duplicated" "$CFG31"
+fi
 
 echo
 echo "===================================="

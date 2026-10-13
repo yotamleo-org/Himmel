@@ -2217,6 +2217,14 @@ raw_mention() {
         # after `env`. A chokepoint is never called through `env -<opt>`.
         [[ $t =~ (^|[^[:alnum:]_-])env[[:space:]]+- ]] \
             && deny_text_layer "env with an option (clears or rewrites the environment) beside a sanctioned chokepoint"
+        # HIMMEL-4049: two launchers whose own option clears the environment,
+        # beside a chokepoint word: `setpriv --reset-env` (getopt_long takes any
+        # unique prefix, so any --res* token; no other setpriv option starts so)
+        # and `nix-shell --pure` (nix does not abbreviate). `timeout -k` /
+        # `--kill-after` keeps the environment (verified live) and stays out.
+        [[ $t =~ (^|[^[:alnum:]_-])setpriv[[:space:]]+(.*[[:space:]])?--res \
+            || $t =~ (^|[^[:alnum:]_-])nix-shell[[:space:]]+(.*[[:space:]])?--pure([^[:alnum:]_-]|$) ]] \
+            && deny_text_layer "setpriv --reset-env or nix-shell --pure (clears the environment) beside a sanctioned chokepoint"
         # Deny-leaning, no var-name needed, beside a chokepoint word: a
         # declare/typeset/local +x (drops the export attribute), exec with an
         # option (-c clears the env), ${!prefix*} indirect names, export -n,

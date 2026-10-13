@@ -18,11 +18,16 @@ PR introducing this file).
 
 ## Conventions
 
-- Epics: `<PROJECT>-N` (e.g. `HIMMEL-29` for VirtualBox VM Management).
+- Epics: `<PROJECT>-N` (e.g. `PROJ-29` for VirtualBox VM Management).
 - Standalones (himmel concept): historically not in Jira — tracked only in
   `<state-repo>/handovers/<USER_SLUG>/<repo>/standalones/` (`<repo>` ∈ himmel | luna |
   cross in practice; `luna_brain` remains a built-in resolver bucket but is
-  inactive — see HIMMEL-1212; post-HIMMEL-129 bucket layout). New convention from
+  inactive; current bucket layout). New convention from
   2026-05-19 forward files standalones as Stories in their topical project
   (e.g. Luna-related standalones → LUNA-N Story under
   `<state-repo>/handovers/<USER_SLUG>/luna/standalones/`).
+- Theme label (HIMMEL-5491): a ticket carries at most one `theme-<slug>` label (`<slug>` is lowercase `a-z0-9` with
+  single hyphens, at most 40 characters). The config-ui Kanban theme select writes it through the Jira CLI and
+  replaces any other `theme-*` label; other labels are kept. The config-ui roadmap and the console-kit tracker read it
+  first and fall back to the plan's stage1 / overlay theme only when no label is set. A slug that matches a plan theme
+  (lowercased, non-alphanumerics to `-`) shows that theme's plan name.

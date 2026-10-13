@@ -1,6 +1,10 @@
 # himmel architecture — the diagrams
 
-Five views of how the harness is wired. A box that names a repo path points at
+Five views of how the harness is wired. For the narrative version — what the
+parts are, how one ticket moves through them and why it is built this way —
+start with [`system-design.md`](system-design.md).
+
+A box that names a repo path points at
 a file you can open and read — with one exception, `scripts/jira/dist/index.js`,
 a generated build artifact that only exists after a build (see "Keeping these
 accurate" below). The diagrams also contain actor and external-system boxes
@@ -133,7 +137,7 @@ flowchart TD
     W --> C
 ```
 
-**The invariant that makes it work.** One leg is one file: state and orders
+**The invariant that makes it work.** One worker session is one file: state and orders
 never split across two documents, so a resuming session cannot read half the
 picture. The queue lock is structural rather than advisory because prose
 coordination between two armed sessions failed three ways in one night — the

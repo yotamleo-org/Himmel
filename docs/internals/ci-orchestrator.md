@@ -1,4 +1,4 @@
-# CI Orchestrator (HIMMEL-502)
+# CI Orchestrator
 
 A queue + scheduling layer over himmel's scarce CI compute (one Linux VM, a
 load-contended laptop, unreliable GitHub Actions). It serializes, prioritizes,

@@ -1028,15 +1028,19 @@ _gp_clean() { # J FORCED — clean's argv from word J; FORCED=1 when -c turned r
 # explicit branches outside main, master and the default branch. Reads the
 # caller's pw (positional words) and pk (their kinds).
 _gp_lease_protected() {
-    local i=1 b
+    local i=1 b o
     [ "$np" -ge 2 ] || return 0
     [ "${pw[0]}:${pk[0]}" = origin:W ] || return 0
     _gp_protected_set
     while [ "$i" -lt "$np" ]; do
         case "${pk[i]}" in P|X|G) return 0 ;; esac
-        b=${pw[i]##*:}; b=${b#+}; b=${b#refs/heads/}
+        # o keeps the name as typed (refs/heads/ only) because a default
+        # branch literally named heads/x sits in _gp_prot under that name;
+        # b is the git refs/%s shorthand-stripped form. Deny on either.
+        o=${pw[i]##*:}; o=${o#+}; o=${o#refs/heads/}
+        b=${pw[i]##*:}; b=${b#+}; b=${b#refs/}; b=${b#heads/}
         case "$b" in ''|head|@*|*'*'*|*'$'*|*'`'*) return 0 ;; esac
-        case "$_gp_prot" in *" $b "*) return 0 ;; esac
+        case "$_gp_prot" in *" $b "*|*" $o "*) return 0 ;; esac
         i=$((i + 1))
     done
     return 1

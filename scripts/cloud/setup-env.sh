@@ -125,6 +125,29 @@ else
   run_step pre-commit install "pip" -- $TMO 120 python3 -m pip install --disable-pip-version-check --break-system-packages pre-commit
 fi
 
+# 3b. git gate hooks (HIMMEL-5442): a fresh clone has none, so the pre-commit,
+# commit-msg (ticket ID, attestation trailers) and pre-push gates never fire in
+# the cloud. A bare `pre-commit install` installs only the first type, so all
+# three are named. No --install-hooks: that would clone every hook repo inside
+# the ~5 min cached setup; pre-commit fetches them on first use. Acts on $ROOT,
+# so the session re-runs this script from its own clone (the setup-time clone
+# is throwaway). Non-fatal.
+hooks_path=""
+if have git && [ -e "$ROOT/.git" ]; then hooks_path="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"; fi
+if [ ! -e "$ROOT/.git" ]; then
+  plan git-hooks skip "not a git work tree"
+elif [ -n "$hooks_path" ]; then
+  # git runs hooks from core.hooksPath, not .git/hooks, and `pre-commit install` refuses while it is set
+  plan git-hooks skip "core.hooksPath set ($hooks_path): hooks owned elsewhere, not installing"
+elif [ -x "$ROOT/.git/hooks/pre-commit" ] && [ -x "$ROOT/.git/hooks/commit-msg" ] && [ -x "$ROOT/.git/hooks/pre-push" ]; then  # -x: git ignores a non-executable hook
+  plan git-hooks skip "installed"
+elif have pre-commit || [ "$DRY" -eq 1 ]; then
+  # shellcheck disable=SC2016  # $1 is the sh -c positional arg (HIMMEL-4744)
+  soft_step git-hooks install "pre-commit install: pre-commit, commit-msg, pre-push" -- sh -c 'cd "$1" && pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push' sh "$ROOT"
+else
+  plan git-hooks skip "pre-commit absent"
+fi
+
 # 4. plugin cloud profile (HIMMEL-4273): install exactly $PLUGINS. Non-fatal.
 if [ -n "$PLUGINS" ]; then
   if have claude || [ "$DRY" -eq 1 ]; then
@@ -176,7 +199,14 @@ GV=""
 while IFS= read -r line; do
   if [[ "$line" =~ GRAPHIFY_VERSION:-([0-9][0-9.]*)\} ]]; then GV="${BASH_REMATCH[1]}"; break; fi
 done < "$ROOT/scripts/lib/graphify-bin.sh" 2>/dev/null
+# A cached image can ship graphify at another version than the pin (0.9.77 against
+# 0.9.80, HIMMEL-5442): a parsed version that differs from the pin is reinstalled;
+# one that cannot be parsed counts as present.
+GCUR=""
 if have graphify; then
+  GCUR="$("$TMO" 20 graphify --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1)"
+fi
+if have graphify && { [ -z "$GV" ] || [ -z "$GCUR" ] || [ "$GCUR" = "$GV" ]; }; then
   plan graphify skip "present"
 elif [ -z "$GV" ]; then
   plan graphify skip "no graphify pin in this tree"

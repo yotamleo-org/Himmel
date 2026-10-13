@@ -116,6 +116,13 @@ test('contextTokens tracks the main conversation and compactions', async () => {
   ]);
   assert.equal(r.contextTokens, 10_000, 'subagent requests run against their own context');
 
+  // #809: a gateway's per-block thinking record carries all-zero usage mid-stream.
+  const streaming = await parse([
+    assistant({ timestamp: at(1) }, { usage: usage(1_000, 0, 500, 8_500) }),
+    assistant({ timestamp: at(2) }, { content: [{ type: 'thinking', thinking: '' }], usage: usage(0) }),
+  ]);
+  assert.equal(streaming.contextTokens, 10_000, 'a zero-usage record keeps the last real size');
+
   const compacted = await parse([
     assistant({ timestamp: at(1) }, { usage: usage(50_000) }),
     { type: 'system', subtype: 'compact_boundary' },
@@ -182,6 +189,16 @@ test('agents report the resolved model, and background agents finish at their qu
   assert.deepEqual([fg.model, fg.status, fg.endTime?.toISOString()], ['claude-haiku-4-5', 'completed', '2026-10-01T00:00:05.000Z']);
   assert.deepEqual([bg.background, bg.status, bg.endTime?.toISOString()], [true, 'completed', '2026-10-01T00:01:00.000Z']);
   assert.deepEqual([async.type, async.background, async.status], ['agent', true, 'running'], 'needs a task-id to complete');
+});
+
+test('a notification missing <tool-use-id> still completes its agent via the launch agentId', async () => {
+  const r = await parse([
+    toolUse('fork1', 'Agent', { subagent_type: 'fork' }, '2026-10-01T00:00:01.000Z'),
+    toolResult('fork1', { timestamp: '2026-10-01T00:00:02.000Z', toolUseResult: { status: 'async_launched', agentId: 'a1b2c3' } }),
+    { type: 'queue-operation', operation: 'enqueue', timestamp: '2026-10-01T00:01:00.000Z', content: '<task-notification>\n<task-id>a1b2c3</task-id>\n<output-file>...</output-file>\n<status>completed</status>\n</task-notification>' },
+  ]);
+  const [fork1] = r.agents;
+  assert.deepEqual([fork1.background, fork1.status, fork1.endTime?.toISOString()], [true, 'completed', '2026-10-01T00:01:00.000Z']);
 });
 
 test('TaskCreate ids survive TodoWrite rewrites, including duplicate content', async () => {

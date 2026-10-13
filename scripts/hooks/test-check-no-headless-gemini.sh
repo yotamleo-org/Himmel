@@ -257,6 +257,18 @@ rc=$(run_hook "-lead.js" </dev/null)
 assert_rc "T33 marked headless call in a file named -lead.js" 0 "$rc"
 rm -f "$TMP/-lead.js"
 
+# T34 (HIMMEL-5463): the deny message must not name the retired
+# no-headless-claude gate as a live sibling → message free of it
+printf "%s\n" 'gemini -p "summarize"' > "$TMP/deny.sh"
+msg=$(cd "$TMP" && bash "$HOOK" "deny.sh" 2>&1 >/dev/null </dev/null)
+hook_rc=$?
+case "$msg" in
+    *no-headless-claude*) rc=1 ;;
+    *"Refs: HIMMEL-157"*) if [ "$hook_rc" = 1 ]; then rc=0; else rc=1; fi ;;
+    *) rc=1 ;;
+esac
+assert_rc "T34 deny message does not name retired no-headless-claude gate" 0 "$rc"
+
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
     echo "FAIL $FAILED case(s)"

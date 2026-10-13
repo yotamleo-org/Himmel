@@ -86,6 +86,10 @@ class Parser {
     todos = [];
     taskIndex = new Map();
     agentCompletions = new Map();
+    // Some task-notifications omit <tool-use-id>, carrying only <task-id> (= the
+    // launch toolUseResult's agentId). Map agentId -> toolUseId from the launch
+    // result so those notifications can still resolve completion.
+    agentIdToToolUseId = new Map();
     // Claude Code logs one API response several times, sometimes non-adjacently, so usage
     // is the per-field max per message id. Ids evicted to bound memory settle into `settled`.
     usageById = new Map();
@@ -132,8 +136,10 @@ class Parser {
         }
         // A background agent's tool_result lands at launch; its completion is this enqueue.
         if (entry.type === 'queue-operation' && entry.operation === 'enqueue' && typeof entry.content === 'string' && at) {
-            const toolUseId = /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(entry.content)?.[1];
-            if (toolUseId && /<task-id>[^<]+<\/task-id>/.test(entry.content))
+            const taskId = /<task-id>([^<]+)<\/task-id>/.exec(entry.content)?.[1];
+            const toolUseId = /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(entry.content)?.[1] ??
+                (taskId ? this.agentIdToToolUseId.get(taskId) : undefined);
+            if (toolUseId && taskId)
                 this.agentCompletions.set(toolUseId, at);
         }
         if (Array.isArray(entry.message?.content)) {
@@ -166,8 +172,11 @@ class Parser {
             cacheCreationTokens: count(raw.cache_creation_input_tokens),
             cacheReadTokens: count(raw.cache_read_input_tokens),
         };
-        if (entry.isSidechain !== true) {
-            this.data.contextTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens;
+        // A main-conversation request always sends some context, so zero is a placeholder: gateways that
+        // write one record per content block give thinking blocks all-zero usage. Keep the last real size.
+        const contextTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens;
+        if (entry.isSidechain !== true && contextTokens > 0) {
+            this.data.contextTokens = contextTokens;
         }
         const id = entry.message?.id;
         if (typeof id === 'string' && id && id.length <= MESSAGE_ID_MAX_LEN) {
@@ -257,6 +266,9 @@ class Parser {
         }
         const agent = this.agents.get(id);
         if (agent) {
+            const agentId = entry.toolUseResult?.agentId;
+            if (typeof agentId === 'string' && agentId)
+                this.agentIdToToolUseId.set(agentId, id);
             // resolvedModel is what the subagent actually ran on, so it beats the caller's alias.
             agent.model = sanitizeTranscriptModel(entry.toolUseResult?.resolvedModel) ?? agent.model;
             if (entry.toolUseResult?.isAsync === true || entry.toolUseResult?.status === 'async_launched') {

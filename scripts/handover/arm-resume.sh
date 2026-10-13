@@ -912,7 +912,10 @@ EOF
                 _lta_body=""
                 # cygpath the win path back to the MSYS view so we can read it.
                 if command -v cygpath >/dev/null 2>&1 && [ -n "$_lta_bat" ]; then
-                    _lta_bat=$(cygpath -u "$_lta_bat" 2>/dev/null || printf '%s' "$_lta_bat")
+                    # HIMMEL-1370: a cygpath that exits 0 with EMPTY output must
+                    # not blank the path -- keep the raw one unless it converted.
+                    _lta_conv=$(cygpath -u "$_lta_bat" 2>/dev/null) || _lta_conv=""
+                    [ -n "$_lta_conv" ] && _lta_bat=$_lta_conv
                 fi
                 [ -f "$_lta_bat" ] && _lta_body=$(tr -d '\r' < "$_lta_bat")
                 if [ -z "$_lta_body" ]; then
@@ -1668,12 +1671,18 @@ elif [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # DISTINCTLY NAMED variable immediately -- nothing downstream reads the
     # bare ARMAUTOMERGE shell variable again, so it can no longer be confused
     # with a live ambient one.
+    # ARMAUTOMERGE is gate policy: load_policy reads it from
+    # ~/.himmel/config.json .policy (legacy .env fallback, with a deprecation
+    # notice) and never from the process env. A lib copy without load_policy
+    # keeps the .env-only read.
     unset ARMAUTOMERGE
-    if load_dotenv --root "$(_arm_dotenv_root)" ARMAUTOMERGE; then
+    _arm_policy_reader=load_dotenv
+    if declare -F load_policy >/dev/null 2>&1; then _arm_policy_reader=load_policy; fi
+    if "$_arm_policy_reader" --root "$(_arm_dotenv_root)" ARMAUTOMERGE; then
         _ARM_DOTENV_AUTOMERGE="${ARMAUTOMERGE:-}"
         unset ARMAUTOMERGE
         case "$(printf '%s' "$_ARM_DOTENV_AUTOMERGE" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
-            1|true|on|yes) AUTOMERGE=1; AUTOMERGE_SOURCE="dotenv default (ARMAUTOMERGE=$_ARM_DOTENV_AUTOMERGE in .env)" ;;
+            1|true|on|yes) AUTOMERGE=1; AUTOMERGE_SOURCE="dotenv default (ARMAUTOMERGE=$_ARM_DOTENV_AUTOMERGE in the policy config or .env)" ;;
         esac
         # AUTOMERGE_GRANTS_MERGE_GATE stays 0 -- the dotenv path never grants
         # the merge-gate bypass, only ARMAUTOMERGE.
@@ -1712,7 +1721,11 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # A load_dotenv READ FAILURE here is advisory-only (unlike clear-cr-marker's
     # fail-closed refusal): this WARN can only ever be over- or under-fired,
     # never wrongly clear anything, so arming must never refuse over it.
-    if load_dotenv --root "$(_arm_dotenv_root)" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
+    # Read through load_policy when present, so this WARN sees exactly what
+    # clear-cr-marker will enforce (the policy file, never the process env).
+    _arm_policy_reader=load_dotenv
+    if declare -F load_policy >/dev/null 2>&1; then _arm_policy_reader=load_policy; fi
+    if "$_arm_policy_reader" --root "$(_arm_dotenv_root)" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
         case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
             1|true|on|yes)
                 # HIMMEL-2128 codex-2: key on the RECOGNIZED value, not mere

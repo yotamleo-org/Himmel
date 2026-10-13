@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Regression guard for HIMMEL-3608: the deterministic ship tail
 # (merge-on-green.sh, ready-check.sh, tick.sh, check-ci.sh) must never gain a
-# headless-claude-ok: comment text only; this test asserts the ship tail never gains such a call
 # headless `claude -p`/`--print`/`--bg` call. See docs/internals/ship-tail-model-free.md
 # for the ruling this test encodes.
 #
-# Distinct in intent from scripts/hooks/check-no-headless-claude.sh (a general
-# billing gate over ALL staged files, opt-in-markable): this test names the
-# ship-tail file set specifically and has no opt-in escape, because the
-# invariant it protects is not billing but "this path never needs a model."
+# This test names the ship-tail file set specifically and has no opt-in
+# escape, because the invariant it protects is not billing but "this path
+# never needs a model."
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$DIR/../.."
@@ -20,10 +18,8 @@ SHIP_TAIL_FILES=(
     "scripts/check-ci.sh"
 )
 
-# Word-bounded `claude ... -p`/`--print`/`--bg` detection, in the spirit of
-# scripts/hooks/check-no-headless-claude.sh but kept independent here so this
-# test's failure mode doesn't depend on that gate's file. Broadened past that
-# gate's immediately-after-`claude` match so a flag appearing after other
+# Word-bounded `claude ... -p`/`--print`/`--bg` detection. Broadened past an
+# immediately-after-`claude` match so a flag appearing after other
 # flags on the same invocation (`claude --output-format json -p`) still trips
 # it.
 PATTERN='(^|[^A-Za-z0-9_-])claude([^A-Za-z0-9_-].*)?[^A-Za-z0-9_-](-p|--print|--bg)($|[^A-Za-z0-9_-])'

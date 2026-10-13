@@ -1,4 +1,4 @@
-# Orchestration patterns (HIMMEL-654 WS3)
+# Orchestration patterns
 
 Coordination doctrine for himmel fan-outs, verify loops, and overnight shifts,
 so every future dispatch stops re-deriving it. **The binding physical
@@ -14,7 +14,7 @@ clip path or a shipped himmel code path); the resolved evidence table is at the
 foot of the doc.
 
 Here *orchestrator* and *coordinator* mean the parent session running a fan-out,
-not a console role; console, leg, judge and relay are defined once in
+not a supervisor session role; supervisor session, worker session, judge subagent and relay are defined once in
 [`glossary.md`](glossary.md).
 
 ## 1. Default shape: map-reduce-and-manage
@@ -40,7 +40,7 @@ its failure edge:
 | Shape | Use when | Breaks when |
 |---|---|---|
 | **fan-out-synthesize** | independent subtasks, one artifact to assemble (per-ticket overnight dispatch) | routing is ambiguous — the coordinator can't cleanly partition the work |
-| **adversarial-verify** | findings must survive independent refutation (CR rounds) | the verifier shares context with the producer (rubber-stamps) |
+| **adversarial-verify** | findings must survive independent refutation (review rounds) | the verifier shares context with the producer (rubber-stamps) |
 | **loop-until-done** | unknown-size discovery; converge on a target/quiet count | no orchestrator-owned stop-condition — the loop never terminates |
 | **peer-negotiation** (deliberation ONLY, never writes) | exploring competing hypotheses, design debate | any peer is allowed to write — it degrades into an unstructured swarm |
 
@@ -95,11 +95,11 @@ _Evidence:_ Cognition / walden_yan
   after 3 stuck iterations; any run >1 h gets a separate judge (Av1dlive,
   `Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md`).
 - **Claim-and-record shared state:** claim before start, record when done
-  (0xMorlex) — the same doctrine the HIMMEL-536 ADR's claim-file fallback rides.
+  (0xMorlex) — the same doctrine the machine-aware budget ADR's claim-file fallback rides.
 
-_Shipped verifier lanes:_ the heavy-CR panel (`scripts/cr/critic-panel.sh`) and
-`/pr-check` steps 4.6 (handover CR-findings capture, HIMMEL-416 F2/C2) and 4.7
-(CR→bug-tracker lifecycle, HIMMEL-446) are himmel's standing verifier topology.
+_Shipped verifier lanes:_ the heavy automated review panel (`scripts/cr/critic-panel.sh`) and
+`/pr-check` steps 4.6 (handover automated review findings capture) and 4.7
+(automated review→bug-tracker lifecycle) are himmel's standing verifier topology.
 
 ## 6. Durability
 
@@ -108,14 +108,14 @@ step (else a restart duplicates subagents). _Evidence:_ Inngest 3-layer durable
 orchestration
 (`Clippings/_evidence/telegram-1781861527-tweet-from-x-com-i-status-2067677007140278630.md`)
 is the external articulation. _Shipped:_ himmel already implements this as the
-**where-are-we ledger** (HIMMEL-514, injected by
+**where-are-we ledger** (injected by
 `scripts/hooks/inject-where-are-we.sh`) plus next-session handover snapshots and
 the armed-resume chain (`scripts/handover/arm-resume.sh` +
 `scripts/lib/scheduler-backend.sh`).
 
 ## 7. Concurrency
 
-The **machine-aware concurrency budget** (HIMMEL-536; the ADR migrated out of
+The **machine-aware concurrency budget** (the ADR migrated out of
 himmel `docs/` to the state repo per the "Where artifacts land" rule) gates the
 himmel-OWNED dispatch points (`/overnight-shift`, subagent fan-out scripts,
 arm-resume scheduling). The GA Workflow tool's 16-concurrent / 1000-total caps
@@ -153,4 +153,4 @@ Each doctrine claim → its pointer → resolved (clip/path exists as of 2026-07
 | §5 | shipped verifier topology | `scripts/cr/critic-panel.sh`; `.claude/commands/pr-check.md` (4.6/4.7) | ✔ paths exist |
 | §6 | durability = checkpoint/resume | luna `Clippings/_evidence/telegram-1781861527-tweet-from-x-com-i-status-2067677007140278630.md` (Inngest) | ✔ clip exists |
 | §6 | shipped durability | `scripts/hooks/inject-where-are-we.sh`; `scripts/handover/arm-resume.sh`; `scripts/lib/scheduler-backend.sh` | ✔ paths exist |
-| §7 | machine-aware budget; Workflow caps = ceiling | HIMMEL-536 (ADR now in the state repo, not himmel `docs/`) | ✔ ticket record |
+| §7 | machine-aware budget; Workflow caps = ceiling | machine-aware budget ADR (now in the state repo, not himmel `docs/`) | ✔ ticket record |

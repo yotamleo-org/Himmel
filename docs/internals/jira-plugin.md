@@ -1,6 +1,6 @@
 # Jira plugin ↔ MCP mapping — reference
 
-> Extracted from `CLAUDE.md` per HIMMEL-164 (state-not-prompt slimming).
+> Extracted from `CLAUDE.md` (state-not-prompt slimming).
 > The rule ("prefer the local Jira CLI over Atlassian MCP") stays in
 > CLAUDE.md and is enforced structurally by the
 > `block-backend-tier.sh` PreToolUse hook + the `mcp-plugin-refs`
@@ -28,42 +28,42 @@ For Jira ops in this repo, default to the local CLI at
 
 | Op          | Plugin                                                                      | MCP                                                              |
 |-------------|-----------------------------------------------------------------------------|------------------------------------------------------------------|
-| Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any (HIMMEL-3610), and a `Fix versions:` line when it has any (HIMMEL-3713); add `--short` for header-only) | `getJiraIssue`                                                   |
-| List/search | `... list --jql "..."`; `... list --label <l>` filters by label (HIMMEL-243; composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default, HIMMEL-3610 — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
-| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated, HIMMEL-243; `--fix-version` validated against the project's versions, HIMMEL-3713 — a Bug without it defaults to the earliest unreleased version, HIMMEL-4489) | `createJiraIssue`                                                |
-| Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels since HIMMEL-243) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`, HIMMEL-3610); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name (HIMMEL-3713) | `editJiraIssue`                                                  |
+| Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any, and a `Fix versions:` line when it has any; add `--short` for header-only) | `getJiraIssue`                                                   |
+| List/search | `... list --jql "..."`; `... list --label <l>` filters by label (composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
+| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it defaults to the earliest unreleased version) | `createJiraIssue`                                                |
+| Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name | `editJiraIssue`                                                  |
 | Comment     | `... comment HIMMEL-N "text"`                                               | `addCommentToJiraIssue`                                          |
-| Comments    | `... comments HIMMEL-N [--last N]` (HIMMEL-3162 — read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
+| Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
 | Attach      | `... attach HIMMEL-N file.png`                                              | (none — MCP has no attach)                                       |
 | Transition  | `... transition HIMMEL-N Done`                                              | `getTransitionsForJiraIssue` + `transitionJiraIssue` (two calls) |
-| Transitions | `... transitions HIMMEL-N` (HIMMEL-149 — id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
-| Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (HIMMEL-197 — close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
+| Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
+| Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--dry-run]` (close source + create target + copy comments) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
-| Link        | `... link HIMMEL-A HIMMEL-B --type Relates` (HIMMEL-210; case-insensitive type, validated against the live type list). Directional types: the FIRST key is the inward issue, so `link A B --type Blocks` stores "A is blocked by B" (B blocks A); the output prints exactly that stored relation (`Linked: A is blocked by B`, HIMMEL-3901), matching `links` | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
-| Links       | `... links HIMMEL-N` (HIMMEL-1731; lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
-| Unlink      | `... unlink HIMMEL-INWARD HIMMEL-OUTWARD [--type Relates]` (HIMMEL-1731; resolves the REST id from the directed pair and refuses ambiguous matches) | (none — use `DELETE /rest/api/3/issueLink/{id}`) |
-| Assign      | `... assign HIMMEL-N <email\|accountId>` (`-`/`unassigned` clears, `auto` = default assignee; email → accountId via `/user/search`) (HIMMEL-437) | `editJiraIssue` (assignee field) |
-| Attachments | `... attachments HIMMEL-N` (list) / `... download HIMMEL-N [id] [--all] [--out dir]` (HIMMEL-437) | (none — MCP has no attachment download) |
-| Worklog     | `... worklog add HIMMEL-N --time 1h [--comment ...]` / `... worklog list HIMMEL-N` (HIMMEL-437) | `addWorklogToJiraIssue` (no list) |
-| Watchers    | `... watch HIMMEL-N [user]` / `... unwatch HIMMEL-N [user]` / `... watchers HIMMEL-N` (HIMMEL-437) | (none) |
-| Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) (HIMMEL-437) | (none — MCP has no Agile-board ops) |
-| Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (HIMMEL-3890; `--name` renames in place, HIMMEL-4872; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (HIMMEL-4469; REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (HIMMEL-4006; REST `POST /version/{id}/move`) / `... fix-version HIMMEL-N --add\|--remove <name>` (HIMMEL-3429; REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
-| Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (HIMMEL-3889; read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
-| Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (HIMMEL-3890; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
-| Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (HIMMEL-3890; Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
-| Resolution  | `... resolution HIMMEL-N` (HIMMEL-3890; re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
+| Link        | `... link HIMMEL-A HIMMEL-B --type Relates` (case-insensitive type, validated against the live type list). Directional types: the FIRST key is the inward issue, so `link A B --type Blocks` stores "A is blocked by B" (B blocks A); the output prints exactly that stored relation (`Linked: A is blocked by B`), matching `links` | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
+| Links       | `... links HIMMEL-N` (lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
+| Unlink      | `... unlink HIMMEL-INWARD HIMMEL-OUTWARD [--type Relates]` (resolves the REST id from the directed pair and refuses ambiguous matches) | (none — use `DELETE /rest/api/3/issueLink/{id}`) |
+| Assign      | `... assign HIMMEL-N <email\|accountId>` (`-`/`unassigned` clears, `auto` = default assignee; email → accountId via `/user/search`) | `editJiraIssue` (assignee field) |
+| Attachments | `... attachments HIMMEL-N` (list) / `... download HIMMEL-N [id] [--all] [--out dir]` | (none — MCP has no attachment download) |
+| Worklog     | `... worklog add HIMMEL-N --time 1h [--comment ...]` / `... worklog list HIMMEL-N` | `addWorklogToJiraIssue` (no list) |
+| Watchers    | `... watch HIMMEL-N [user]` / `... unwatch HIMMEL-N [user]` / `... watchers HIMMEL-N` | (none) |
+| Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) | (none — MCP has no Agile-board ops) |
+| Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... fix-version HIMMEL-N --add\|--remove <name>` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
+| Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
+| Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
+| Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
+| Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
 
 **Use MCP only when the plugin lacks the operation** (custom-field
 discovery, account-ID lookup via `lookupJiraAccountId`). Confluence now has
 a sibling CLI (see below) — prefer it over the Confluence MCP tools. The MCP block in
 `block-backend-tier.sh` derives its blocked-set by introspecting
 the CLI's verbs (`node …/index.js --list-commands`) against a small
-verb→MCP-method map (HIMMEL-231) — an MCP method is refused iff its mapped
+verb→MCP-method map — an MCP method is refused iff its mapped
 verb is a real CLI verb, so the set tracks this table automatically instead
 of drifting from a hand-maintained literal. E.g. `getTransitionsForJiraIssue`
-is refused post-HIMMEL-149 because the `transition` verb exists; dogfood it.
+is refused because the `transition` verb exists; dogfood it.
 
-**JIRA_PROJECT_KEY is required (HIMMEL-146).** The plugin no longer
+**JIRA_PROJECT_KEY is required.** The plugin no longer
 hardcodes `HIMMEL` as a fallback in `projectKey()`. Operators must set
 `JIRA_PROJECT_KEY=<your-key>` in `.env` or the launching shell.
 `scripts/setup.sh` step 0.4 verifies this at install time and fails
@@ -101,7 +101,7 @@ re-`get` and check the underscores explicitly — this is an artifact check,
 not a formatting preference. `edit --desc-file` repairs a corrupted body in
 place.
 
-**Ticket shape: a plain block, then Agent detail (HIMMEL-5226).** Every ticket
+**Ticket shape: a plain block, then Agent detail.** Every ticket
 body carries three short sections anyone can read without knowing the code,
 then one section for the agent doing the work (the lint checks that all four
 are present and non-empty, not their order):
@@ -131,7 +131,7 @@ body-less create of any other type is refused like a body without the block.
 `edit` is not gated, so an old ticket can be amended later.
 
 Writing rules, adopted from the roadmap pipeline's plain-language ruling
-(HIMMEL-3882 frame §18, luna vault): write for someone who has never read the
+(frame §18, luna vault): write for someone who has never read the
 code; prefer "the merge check can pass even when a test never ran" over a
 script-and-exit-code phrasing; no rubric terms or internal jargon without a
 gloss; say plainly when a ticket is internal-only ("Internal: ..."); keep the
@@ -146,8 +146,8 @@ the body text leaves the field empty and the ticket unsorted in any priority
 view.
 
 **A bare literal `JIRA_PROJECT_KEY=<KEY>` env-prefix is the ONE approvable
-non-locale prefix (HIMMEL-4780).** `JIRA_PROJECT_KEY=HIMMEL node <repo-root>/scripts/jira/dist/index.js
-comment HIMMEL-1 --comment-file f.md` auto-approves exactly like the bare form;
+non-locale prefix.** `JIRA_PROJECT_KEY=HIMMEL node <repo-root>/scripts/jira/dist/index.js
+comment HIMMEL-N --comment-file f.md` auto-approves exactly like the bare form;
 `--project <KEY>` remains the plain way to target another project. The innocuous
 locale/timezone prefixes (`LANG`, `LANGUAGE`, `LC_*`, `TZ`) stay approvable beside
 it. Any OTHER
@@ -161,7 +161,7 @@ worktree fails `MODULE_NOT_FOUND` and can silently fail a `create`. Always
 invoke `node <repo-root>/scripts/jira/dist/index.js <op>` by absolute path,
 never the global `jira` shim.
 
-## Versions mirror the GitHub release tags (HIMMEL-3429)
+## Versions mirror the GitHub release tags
 
 Jira's version field (`fixVersions`, multi-valued) mirrors the GitHub release
 tags: one Jira version per published tag, same name (`v0.3.0-pre.6`), released,
@@ -197,16 +197,16 @@ The sync reads reachability from the tags of the clone it runs in, so it must
 run from a clone of the repo whose releases it lists (`--repo` must match), and
 `--apply` refuses when a published tag is missing locally (`git fetch --tags`).
 
-**Bug default fixVersion (HIMMEL-4489).** `create --type Bug` without
+**Bug default fixVersion.** `create --type Bug` without
 `--fix-version` sets the earliest unreleased, unarchived version from the project's
 versions and prints one stderr line saying so; an explicit `--fix-version` always
 wins, and when no unreleased version can be read the Bug is filed with no
 fixVersion and a warning. Other types are untouched. There is no date cutoff and
-no deferral of every Bug (the HIMMEL-3411 v1 bug freeze and its `freeze-check` op
+no deferral of every Bug (the v1 bug freeze and its `freeze-check` op
 were removed by operator ruling 2026-10-05): the release gate is the `v1-blocker`
 label and priority, which the board shows.
 
-## Confluence CLI (HIMMEL-437)
+## Confluence CLI
 
 A sibling binary `scripts/jira/dist/confluence.js` (same package, same
 `.env` auth) covers routine Confluence ops. It is registered as the
@@ -220,7 +220,7 @@ atlassian-prefixed services and blocks on whichever has the mapped verb
 default; two ops have no v2 equivalent and stay on **v1**
 (`/wiki/rest/api`): **CQL search** and **attachment upload**.
 
-**Auth (HIMMEL-437):** a *scoped* Jira API token returns `401` against
+**Auth:** a *scoped* Jira API token returns `401` against
 Confluence (`/wiki`) — same gotcha as the bitbucket CLI. The confluence CLI
 uses `CONFLUENCE_EMAIL` / `CONFLUENCE_API_TOKEN` when **both** are set
 (point them at a Confluence-capable, i.e. scopeless/full-account, Atlassian
@@ -241,7 +241,7 @@ works only if that token covers Confluence too).
 The verb↔MCP-method rows above mirror `_CONFLUENCE_VERB_METHOD_MAP` in
 `block-backend-tier.sh` — keep them in sync.
 
-## Mutation breadcrumbs (HIMMEL-618)
+## Mutation breadcrumbs
 
 Every ticket-workflow mutating verb (`transition`, `comment`, `create`, `move`,
 `edit`, `assign`, `worklog`, `link`, `unlink`, `sprint`, `fix-version`) writes a breadcrumb file under
@@ -257,5 +257,5 @@ on a `repo-key` (basename of `git remote get-url origin`, `.git` stripped —
 stable across worktrees) and let the hook match on `epoch >= session-start`.
 The path + token sanitization (`[^A-Za-z0-9._-]` → `-`) MUST stay byte-identical
 between the TS writer and the bash reader. The nudge hook consumes these to
-decide whether a ticket-scoped session already synced Jira (advisory, default
+decide whether a ticket-scoped session already synced Jira (warn-only, default
 OFF).

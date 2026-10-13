@@ -582,7 +582,68 @@ if ($ClassifierModel) {
   try {
     $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
   } catch { $modelsBody = '' }
-  if ($modelsBody -notmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"')) {
+  # HIMMEL-5296: the alias must also be served by cli-proxy's Claude OAuth provider
+  # (owned_by "anthropic"); a missing or other owned_by fails closed. Entries are
+  # flat, so split on '}' and take ALL of the alias's entries (HIMMEL-5489: a
+  # duplicated id is a second provider, so every one must be owned_by anthropic).
+  $entries = @(($modelsBody -split '}') | Where-Object { $_ -cmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"') })
+  $entry = $entries | Select-Object -First 1
+  # HIMMEL-5489: owned_by "anthropic" proves only a Claude-FORMAT provider (CLIProxyAPI
+  # v8.0.27 hardcodes it for a claude-api-key entry whatever its base-url, and uses the
+  # provider NAME for an openai-compatibility entry), so cli-proxy's config and auth
+  # files must also show the Claude OAuth login serving the alias with no claude-api-key,
+  # vertex-api-key or naming openai-compatibility entry. Fail closed; never echoes a key.
+  function Test-ClaudeOauthOnly([string]$Alias) {
+    # a remote proxy (CLAUDE_CODEX_REMOTE_PROXY_OK=1) is not the server this local
+    # config describes, so the proof does not apply to it
+    if ($env:CLAUDE_CODEX_REMOTE_PROXY_OK -eq '1') { return $false }
+    $cfg = Join-Path $HomeDir '.cli-proxy-api/config.yaml'
+    if (-not (Test-Path -LiteralPath $cfg -PathType Leaf)) { return $false }
+    try { $lines = Get-Content -LiteralPath $cfg -ErrorAction Stop } catch { return $false }
+    $authDir = ''
+    foreach ($l in $lines) {
+      if ($l -match '^auth-dir:\s*(.*?)\s*(#.*)?$') { $authDir = $Matches[1].Trim('"', "'"); break }
+    }
+    if (-not $authDir) { $authDir = Join-Path $HomeDir '.cli-proxy-api' }
+    elseif ($authDir -eq '~' -or $authDir.StartsWith('~/') -or $authDir.StartsWith('~\')) { $authDir = $HomeDir + $authDir.Substring(1) }
+    if (-not (Test-Path -LiteralPath $authDir -PathType Container)) { return $false }
+    $re = '(^|[^A-Za-z0-9._-])' + [regex]::Escape($Alias.ToLowerInvariant()) + '([^A-Za-z0-9._-]|$)'
+    $cur = ''
+    $seen = $false
+    foreach ($l in $lines) {
+      if ($l -match '^\s*#') { continue }
+      if ($l -match '^(---|\.\.\.)\s*$') { continue }
+      # a YAML escape (c...) anywhere can spell a key or the alias past the raw-text
+      # matches: fail closed (the auth-dir line may hold a Windows path)
+      if ($l -notmatch '^auth-dir:' -and $l -cmatch '\\[uUx]') { return $false }
+      # only a plain block-style mapping with unindented root keys is parsed: an
+      # indented or flow-style root would hide the keys below, so it fails closed
+      if (-not $seen -and $l -notmatch '^\s*$') { $seen = $true; if ($l -match '^[\s{\[-]') { return $false } }
+      if ($l -match '^["'']?([A-Za-z0-9_-]+)["'']?\s*:\s*(.*?)\s*(#.*)?$') {
+        $cur = $Matches[1]; $val = $Matches[2]
+        if (($cur -ceq 'claude-api-key' -or $cur -ceq 'vertex-api-key') -and $val -and $val -notin @('[]', '{}', 'null', '~')) { return $false }
+        if ($cur -ceq 'openai-compatibility' -and $val.ToLowerInvariant() -match $re) { return $false }
+        continue
+      }
+      if ($l -match '^\s*$') { continue }
+      if ($cur -ceq 'claude-api-key' -or $cur -ceq 'vertex-api-key') { return $false }
+      if ($cur -ceq 'openai-compatibility' -and $l.ToLowerInvariant() -match $re) { return $false }
+    }
+    foreach ($f in (Get-ChildItem -LiteralPath $authDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+      try { $raw = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { continue }
+      if ($raw -cmatch '"type"\s*:\s*"claude"' -and $raw -cnotmatch '"disabled"\s*:\s*true') { return $true }
+    }
+    return $false
+  }
+  $oauthOnly = $entry -and (-not ($entries | Where-Object { $_ -cnotmatch '"owned_by"\s*:\s*"anthropic"' })) -and (Test-ClaudeOauthOnly $ClassifierModel)
+  if ($entry -and -not $oauthOnly) {
+    if ($ClassifierExplicit) {
+      [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by must be `"anthropic`" for every entry, and ~/.cli-proxy-api must show the claude login serving it with no claude-api-key or openai-compatibility entry); the classifier never goes through another provider.")
+      exit 2
+    }
+    [Console]::Error.WriteLine("claude-codex: WARNING - default classifier model '$ClassifierModel' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by is not `"anthropic`" for every entry, or ~/.cli-proxy-api shows no sole claude login for it); falling back to the gateway classifier ($CodexModel).")
+    $ClassifierModel = ''
+  } elseif (-not $entry) {
     if ($ClassifierExplicit) {
       [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
       exit 2

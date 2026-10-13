@@ -1,6 +1,6 @@
 # CI (`scripts/ci/`)
 
-Helpers for the public-CI workflow (`.github/workflows/ci.yml`, HIMMEL-494).
+Helpers for the public-CI workflow (`.github/workflows/ci.yml`).
 
 ---
 
@@ -54,8 +54,7 @@ sed -n '/^SKIP_LIST="/,/^"$/p' scripts/ci/run-shell-tests.sh
 
 It carries a fuller per-entry reason than this table ever did.
 
-**Write entries repo-root-relative, and they are scan-root invariant
-(HIMMEL-2260).** An entry is spelled from the repo root —
+**Write entries repo-root-relative, and they are scan-root invariant.** An entry is spelled from the repo root —
 `scripts/handover/test-arm-resume.sh`, the same convention `SUITE_TIER`
 already used — and is matched on a `/` boundary against each suite's full
 path under the *resolved* scan root. Two properties follow:
@@ -93,7 +92,7 @@ graduation is a bug to track, not a permanent skip.
 ## SUITE_REQUIRE_TOOL — capability-conditional suites
 
 A suite whose only blocker is a host TOOL (not a VM, not credentials) belongs
-in `SUITE_REQUIRE_TOOL`, not `SKIP_LIST` (HIMMEL-1792): it **runs on every
+in `SUITE_REQUIRE_TOOL`, not `SKIP_LIST`: it **runs on every
 host that has the tool** and is `[SKIP]`ped loudly with its reason where the
 tool is absent — a SKIP_LIST entry would make it dead weight on exactly the
 hosts whose coverage it exists to add. Entries are repo-root-relative, one per
@@ -108,7 +107,7 @@ drive the skip branch deterministically.
 ## SUITE_TIER — declarative corpus reduction
 
 A second, orthogonal axis from SKIP_LIST/SUITE_REQUIRE_TOOL: `SUITE_TIER`
-(HIMMEL-2120) marks a suite `extended` when it is heavy/slow enough that
+marks a suite `extended` when it is heavy/slow enough that
 running it on every per-PR/agent invocation is not worth the wall-clock —
 without ever dropping it from the corpus the way SKIP_LIST would. Grammar,
 one entry per line:
@@ -134,10 +133,10 @@ decides whether a suite is *offered* to the later filters, not whether it
 ultimately runs.
 
 The production table currently carries three `extended` entries, assigned from
-measured per-suite cost under the >300s rule (HIMMEL-2120 Task 6, HIMMEL-3132):
+measured per-suite cost under the >300s rule:
 `scripts/test-check-ci.sh` (559s), `scripts/handover/test-arm-resume-identity.sh`
 (814s), and `scripts/handover/test-arm-resume-1879.sh` (843s). (`test-arm-resume-queue-lock.sh`
-left the table under HIMMEL-3166: re-measured at 19s local / 18s Linux CI on
+left the table: re-measured at 19s local / 18s Linux CI on
 2026-09-18, far under the rule, so it runs per-PR.) Env-overridable
 (`SUITE_TIER`), the same seam `SUITE_REQUIRE_TOOL` exposes, so the runner
 self-test can drive fast/extended deterministically without touching the

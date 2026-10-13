@@ -1,22 +1,22 @@
-# Per-ticket usage records (HIMMEL-3994)
+# Per-ticket usage records
 
 One append-only record per ticket answers "what did it cost and how many review
 rounds did it take". It joins two computations that previously lived apart and
 is computed once; consumers read the store, never transcript JSONL. A third,
-opt-in join (PR and CI facts from `gh`, HIMMEL-4030) fails closed by
+opt-in join (PR and CI facts from `gh`) fails closed by
 construction; see "PR/CI join" below.
 
 | Input | Source |
 |---|---|
-| per-session tokens | `scripts/lib/bank-attribution.sh` output (HIMMEL-2764), reused not re-parsed |
-| CR rounds, verdicts, estimated critic tokens | the CR critic ledger (`scripts/cr/ledger-append.sh`) |
+| per-session tokens | `scripts/lib/bank-attribution.sh` output, reused not re-parsed |
+| automated review rounds, verdicts, estimated critic tokens | the automated review critic ledger (`scripts/cr/ledger-append.sh`) |
 | PR and CI facts (opt-in) | `gh pr list` / `gh run list`, only with `--repo` |
 
 ## Commands
 
 ```
-bash scripts/usage/usage-compute.sh --range HIMMEL-3990..HIMMEL-4020   # append changed records
-bash scripts/usage/usage-compute.sh --tickets HIMMEL-3994 --print      # stdout only, no store
+bash scripts/usage/usage-compute.sh --range PROJ-100..PROJ-120   # append changed records
+bash scripts/usage/usage-compute.sh --tickets PROJ-123 --print      # stdout only, no store
 bash scripts/usage/usage-read.sh [--ticket KEY] [--all]                # latest per ticket / every version
 ```
 
@@ -31,14 +31,14 @@ outside the tree.
 ## Join keys
 
 - **Ticket** is the key. A session joins by its custom title starting `KEY-n`;
-  a CR ledger row joins by the `KEY-n` inside its branch name.
+  an automated review ledger row joins by the `KEY-n` inside its branch name.
 - A session whose title contains `console` is kind `console`; `judge` is kind
   `judge`; everything else is `leg`.
 - A console spans many tickets, so its title does not name one. Console
   sessions with no `KEY-n` prefix go to the pseudo-ticket `_console` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
   ticket's record whenever the range changes). Sessions with no key and no
-  `console` go to `_unattributed`. A console titled with a ticket key stays
+  `console` go to `_unattributed`. A supervisor session titled with a ticket key stays
   under that ticket, in `totals.console`.
 
 ## Record (one JSON object per line, keys sorted)
@@ -66,8 +66,8 @@ not). Real tickets only; `_console` and `_unattributed` get no `pr`/`ci`.
 | `pr` | `{state:"none"}` (no PR title names the ticket), or `{state:"found", numbers[], merged, open, closed}` |
 | `ci` | `{state:"no-pr"}`, or `{state:"found", runs, completed, secs, basis}` |
 
-A title matches a ticket only on the whole key (`HIMMEL-90019` is not
-`HIMMEL-9001`). `ci` covers the runs on every matching PR's head branch,
+A title matches a ticket only on the whole key (`PROJ-90019` is not
+`PROJ-9001`). `ci` covers the runs on every matching PR's head branch,
 deduped by run id. `secs` sums `updatedAt - startedAt` over **completed** runs,
 so queue wait and in-flight runs are excluded; if any completed run lacks
 `startedAt`, all use `createdAt` and `basis` says `createdAt` (`none` when no run
@@ -95,20 +95,19 @@ run fail rather than store incomplete totals.
 
 ## Consumers
 
-The HIMMEL-3993 epic's readers: the effort model (HIMMEL-3992), the tool
-re-audit (HIMMEL-3883), routing (HIMMEL-774), leg A/B (HIMMEL-2986), the
-improvement lane (HIMMEL-1853), the tracker UI and cost reports. Siblings that
-will feed it: PR-body cost aggregation (HIMMEL-4003) and the CR-loop ledger
-(HIMMEL-4004).
+The usage-records epic's readers: the effort model, the tool
+re-audit, routing, worker session A/B, the
+improvement lane, the tracker UI and cost reports. Siblings that
+will feed it: PR-body cost aggregation and the automated review loop ledger.
 
 ## Limits
 
-`--since` windows session tokens only; CR stays all-time, so use it
+`--since` windows session tokens only; automated review stays all-time, so use it
 for token questions, not for a stored record you mean to compare across runs.
 A whole compute-then-append run holds a `<store>/.lock` directory, so an older
 snapshot never publishes after a newer one. Table parsing assumes session
 titles contain no ` | `. Sessions are keyed by title, so distinct sessions
-sharing a title merge into one `legs[]` entry. Judge calls are counted as
+sharing a title merge into one `legs[]` entry. Judge subagents are counted as
 `judge`-titled sessions only. An explicit `--projects` or `--ledger` that is
 missing or unreadable exits non-zero before anything is written; the default
 projects dir and default ledger may be absent (a note on stderr, treated as

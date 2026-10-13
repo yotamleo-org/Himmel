@@ -5,7 +5,7 @@
 # Claude Code HONOURS the consult sandbox block for the tool_use it is handed. It is
 # NOT evidence of real-model behaviour (what a model chooses to run, or says after a
 # refusal); smoke-consult-sandbox.sh is the live, bank-spending twin for that.
-# headless-claude-ok: mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
 #
 # The consult settings are the ones headed-arm-leg.sh --consult really generates (same
 # stubs as smoke-consult-sandbox.sh), run with `--setting-sources ""` like the shim does.

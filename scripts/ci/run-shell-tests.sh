@@ -370,6 +370,13 @@ _suite_timeout_for() {
       # 1200s is that x2 (the loaded-budget rule); SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
+    scripts/test-adopt.sh|*/scripts/test-adopt.sh)
+      # HIMMEL-5375: last 10 main CI runs (2026-10-10 to 2026-10-12) took
+      # 408-568s, including a 539s passing retry; PR 2444 run 38246023775
+      # shard 4 was killed at 603s against the 600s default (a truncation
+      # floor). 1200s is about 2x the worst measured CI time; the global
+      # default and SUITE_RUN_BUDGET runaway backstop stay unchanged.
+      printf '1200' ;;
     scripts/test-check-ci.sh|*/scripts/test-check-ci.sh)
       # HIMMEL-1978. ~110 cases, each spawning dozens of gh-stub processes, so
       # it is the most load-sensitive suite here: measured 1009s on a swept box

@@ -600,13 +600,83 @@ fi
 # replace), so an EXPLICIT alias refuses instead; without curl it cannot be
 # verified: refuse. The DEFAULT alias (HIMMEL-5164) warns and falls back to the
 # gateway classifier instead, so a station without the claude login still launches.
+# HIMMEL-5296: the alias must also be served by cli-proxy's Claude OAuth provider
+# (/v1/models owned_by "anthropic"): the standing ruling is that the safety
+# classifier never goes to OpenRouter. A missing or other owned_by fails closed.
+# HIMMEL-5489: owned_by "anthropic" proves only a Claude-FORMAT provider: CLIProxyAPI
+# v8.0.27 hardcodes "anthropic" for every claude-api-key entry whatever its base-url
+# (sdk/cliproxy/service_models.go:898) and uses the provider NAME for an
+# openai-compatibility entry (:801, so a provider named "anthropic" reports it). So
+# the alias is also accepted only when cli-proxy's config and auth files show the
+# Claude OAuth login serving it and no key/compat entry routes it elsewhere.
+# Prints nothing, never a key; returns 0 only on that proof (fail closed: an
+# unreadable config, a missing or disabled claude auth file, any claude-api-key or
+# vertex-api-key entry, or an openai-compatibility entry naming the alias is 1).
+_cliproxy_claude_oauth_only() {
+  # a remote proxy (CLAUDE_CODEX_REMOTE_PROXY_OK=1) is not the server this local
+  # config describes, so the proof does not apply to it
+  if [ "${CLAUDE_CODEX_REMOTE_PROXY_OK:-}" = "1" ]; then return 1; fi
+  _cfg="$HOME/.cli-proxy-api/config.yaml"
+  [ -r "$_cfg" ] || return 1
+  _authdir="$(awk '/^auth-dir:/ { v=$0; sub(/^auth-dir:[ \t]*/, "", v); sub(/[ \t]*#.*$/, "", v); sub(/[ \t]+$/, "", v); print v; exit }' "$_cfg" | tr -d "'\"")"
+  [ -n "$_authdir" ] || _authdir="$HOME/.cli-proxy-api"
+  case "$_authdir" in
+    \~|\~/*) _authdir="$HOME${_authdir#\~}" ;;
+  esac
+  [ -d "$_authdir" ] || return 1
+  _alias="$1"
+  ALIAS="$_alias" awk '
+    function nonempty(v) { return v != "" && v != "[]" && v != "{}" && v != "null" && v != "~" }
+    BEGIN { a = tolower(ENVIRON["ALIAS"]); gsub(/\./, "\\.", a); re = "(^|[^A-Za-z0-9._-])" a "([^A-Za-z0-9._-]|$)" }
+    /^[ \t]*#/ { next }
+    /^(---|\.\.\.)[ \t]*$/ { next }
+    # a YAML escape (c...) anywhere can spell a key or the alias past the raw-text
+    # matches: fail closed (the auth-dir line may hold a Windows path)
+    !/^auth-dir:/ && /\\[uUx]/ { bad = 1 }
+    # only a plain block-style mapping with unindented root keys is parsed: an
+    # indented or flow-style root would hide the keys below, so it fails closed
+    !seen && !/^[ \t]*$/ { seen = 1; if ($0 ~ /^[ \t{\[-]/) bad = 1 }
+    /^["\047]?[A-Za-z0-9_-]+["\047]?[ \t]*:/ {
+      key = $0; sub(/[ \t]*:.*$/, "", key); gsub(/["\047]/, "", key)
+      val = $0; sub(/^[^:]*:[ \t]*/, "", val); sub(/[ \t]*#.*$/, "", val)
+      cur = key
+      if ((cur == "claude-api-key" || cur == "vertex-api-key") && nonempty(val)) bad = 1
+      if (cur == "openai-compatibility" && tolower(val) ~ re) bad = 1
+      next
+    }
+    /^[ \t]*$/ { next }
+    {
+      if (cur == "claude-api-key" || cur == "vertex-api-key") bad = 1
+      if (cur == "openai-compatibility" && tolower($0) ~ re) bad = 1
+    }
+    END { exit bad ? 1 : 0 }
+  ' "$_cfg" || return 1
+  for _f in "$_authdir"/*.json; do
+    [ -f "$_f" ] && [ -r "$_f" ] || continue
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"claude"' "$_f" 2>/dev/null || continue
+    grep -Eq '"disabled"[[:space:]]*:[[:space:]]*true' "$_f" 2>/dev/null && continue
+    return 0
+  done
+  return 1
+}
+
 if [ -n "$CLASSIFIER_MODEL" ]; then
   _served=0
+  _oauth=0
   if command -v curl >/dev/null 2>&1; then
     _models="$(printf 'header "Authorization: Bearer %s"\n' "$CLIPROXY_API_KEY" \
       | curl -sf -m 3 --noproxy '*' -K - "$CODEX_PROXY_BASE_URL/v1/models" 2>/dev/null)"
-    if printf '%s' "$_models" | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\""; then
+    # join a pretty-printed body, then one model object per line (the entries are
+    # flat), then ALL of the alias's entries: a duplicated id is a second provider,
+    # so every one must be owned_by anthropic, not just the first
+    _entries="$(printf '%s' "$_models" | tr '\n' ' ' | tr '}' '\n' \
+      | grep -E "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\"" || true)"
+    if [ -n "$_entries" ]; then
       _served=1
+      if ! printf '%s\n' "$_entries" | grep -Evq '"owned_by"[[:space:]]*:[[:space:]]*"anthropic"' \
+         && _cliproxy_claude_oauth_only "$CLASSIFIER_MODEL"; then
+        _oauth=1
+      fi
     fi
   elif [ "$CLASSIFIER_EXPLICIT" -eq 1 ]; then
     echo "claude-codex: --classifier-model needs curl to verify the alias is served by the proxy." >&2
@@ -618,6 +688,13 @@ if [ -n "$CLASSIFIER_MODEL" ]; then
       exit 2
     fi
     echo "claude-codex: WARNING - default classifier model '$CLASSIFIER_MODEL' is not served by the proxy at $CODEX_PROXY_BASE_URL (/v1/models); falling back to the gateway classifier ($CODEX_MODEL). Log in to cli-proxy-api's claude provider, or set CLAUDEX_CLASSIFIER_MODEL=gateway to silence this." >&2
+    CLASSIFIER_MODEL=""
+  elif [ "$_oauth" -ne 1 ]; then
+    if [ "$CLASSIFIER_EXPLICIT" -eq 1 ]; then
+      echo "claude-codex: classifier model '$CLASSIFIER_MODEL' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by must be \"anthropic\" for every entry, and ~/.cli-proxy-api must show the claude login serving it with no claude-api-key or openai-compatibility entry); the classifier never goes through another provider." >&2
+      exit 2
+    fi
+    echo "claude-codex: WARNING - default classifier model '$CLASSIFIER_MODEL' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by is not \"anthropic\" for every entry, or ~/.cli-proxy-api shows no sole claude login for it); falling back to the gateway classifier ($CODEX_MODEL)." >&2
     CLASSIFIER_MODEL=""
   fi
 fi

@@ -556,13 +556,37 @@ const trackStrings = (line) => {
         i++;
     }
 };
-// The name of a key line, a quoted key decoded (\uXXXX, \UXXXXXXXX, \X) and trimmed:
-// fail closed, so " enabled " and "enabled" both read as enabled.
+// TOML basic-string escapes: \b \t \n \f \r \e \" \\ \uXXXX \UXXXXXXXX \xHH. A key
+// is compared decoded. HIMMEL-5365: strict (header keys) returns null on \x, \e,
+// an unknown escape or an invalid code point and the caller refuses the key:
+// toml 1.0 fails the whole file on \x / \e and 1.1 decodes it, which one codex
+// links is not verified, and the raw text could equal a real key that itself
+// holds a backslash (a Windows path, a\x41).
+const basicEsc = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", e: "\x1b", "\"": "\"", "\\": "\\" };
+const decodeBasic = (s, strict) => {
+    let bad = false;
+    const out = s.replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|x([0-9A-Fa-f]{2})|([\s\S]))/g,
+        (all, u, big, x, ch) => {
+            if (ch === undefined) {
+                if (x !== undefined && strict) { bad = true; return all; }
+                const cp = parseInt(u || big || x, 16);
+                if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { if (strict) bad = true; return all; }
+                return String.fromCodePoint(cp);
+            }
+            if (!Object.prototype.hasOwnProperty.call(basicEsc, ch) || (strict && ch === "e")) {
+                if (strict) bad = true;
+                return strict ? all : ch;
+            }
+            return basicEsc[ch];
+        });
+    return bad ? null : out;
+};
+// The name of a key line, a quoted key decoded and trimmed: fail closed, so
+// " enabled " and "enabled" both read as enabled.
 const keyName = (raw) => {
     if (raw.charAt(0) === "\x27") return raw.slice(1, -1).trim();
     if (raw.charAt(0) !== "\"") return raw;
-    return raw.slice(1, -1).replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/g,
-        (all, u, big, ch) => { try { return String.fromCodePoint(parseInt(u || big, 16)); } catch (error) { return ch === undefined ? all : ch; } }).trim();
+    return decodeBasic(raw.slice(1, -1), false).trim();
 };
 for (const line of cfg.split(/\r?\n/)) {
     const insideValue = ml !== null || depth > 0;
@@ -571,7 +595,8 @@ for (const line of cfg.split(/\r?\n/)) {
     if (/^\s*\[/.test(line)) {
         flush();
         const m = line.match(/^\s*\[hooks\.state\.(?:\x27([^\x27]+)\x27|"((?:[^"\\]|\\.)*)")\]\s*(?:#.*)?$/);
-        key = m ? (m[1] !== undefined ? m[1] : m[2].replace(/\\(.)/g, "$1")) : null;
+        // decodeBasic returns null for an escape it refuses: key = null trusts nothing.
+        key = m ? (m[1] !== undefined ? m[1] : decodeBasic(m[2], true)) : null;
         hash = null; off = false;
     } else if (key !== null) {
         const h = line.match(/^\s*trusted_hash\s*=\s*"([^"]+)"/);

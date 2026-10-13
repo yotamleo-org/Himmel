@@ -1,4 +1,4 @@
-# Lesson provenance schema v1 (HIMMEL-767)
+# Lesson provenance schema v1
 
 himmel's self-evolving loop (lessons → tickets / draft PRs) is
 garbage-in/garbage-out without trustable capture. This schema gives every
@@ -126,7 +126,7 @@ The deliverable-2 auditor and at-rest sweeps run the same validator
 *without* `--capture` (a well-formed `audit` block then passes).
 
 Exit code is `1` if any record is invalid, `0` otherwise (including the
-"not a lesson" case). Lean-invoke, not a hook (HIMMEL-177) — it rides the
+"not a lesson" case). Lean-invoke, not a hook — it rides the
 writers that already run at session end / compound time:
 
 - **auto-memory topic files** — a topic file that records a lesson
@@ -151,7 +151,7 @@ always-on hooks.
 ## Write-fence (deliverable 3)
 
 The self-evolving loop this schema feeds is **propose-only**: a lesson can
-only reach code as a ticket or a draft-PR body, through the existing CR +
+only reach code as a ticket or a draft-PR body, through the existing automated review +
 operator-merge gate. It is never allowed to edit enforcement surfaces
 directly. That posture is now backed by a structural fence, not just
 convention: `scripts/guardrails/lesson-write-fence.sh` denies the loop
@@ -164,7 +164,7 @@ inverted model instead of enumerating write-shaped verbs.
 **Round 4: deny-list → allow-list inversion.** Rounds 1–3b each closed one
 more per-verb write-shape gap on a deny-list of known writers — glued
 redirects, attached `-t` flags, PowerShell built-in aliases — and each
-round's adversarial CR found a *new* gap the same way (`ln -sf`,
+round's adversarial automated review found a *new* gap the same way (`ln -sf`,
 `truncate`, `mkdir`, ...): enumerating "every way to write a file" is an
 open set, so a deny-list on that set converges slowly if at all. Round 4
 inverts the rule: a small closed set of command-position verbs **proven to
@@ -295,7 +295,7 @@ above — `env`/`sudo`/`timeout`/`exec`/... — is handled, now including
 ahead of a git clause for hook-routing detection too; an unlisted or
 user-defined wrapper is not) are accepted out-of-charter gaps (documented
 in the fence's own header). Those shapes are exactly what the
-CR/operator-merge primary gate exists to catch — this fence is
+automated review/operator-merge primary gate exists to catch — this fence is
 **defense-in-depth under that gate, not a replacement for it**: a bad
 lesson can never disable the gate that would catch it, because the gate
 itself sits outside the fence's write path.
@@ -318,7 +318,7 @@ truth (15 entries: 9 prefix, 6 basename) — groups into these classes:
 - **`routing`** — `scripts/backends.json`: the block-backend-tier registry.
 - **`parity-guard`** — `parity_guard.py` / `glm-guard.ts` / `phi-egress-guard.ts`
   basenames: the hermes file-tool fence and its shared guard primitive
-  (renamed from `glm-guard.ts` under HIMMEL-2622; both basenames stay
+  (renamed from `glm-guard.ts`; both basenames stay
   registered until a hermes copy of the old name is confirmed gone), reached
   wherever they live (including the hermes checkout).
 - **`claude-md`** — `CLAUDE.md` / `AGENTS.md` basenames, root and every
@@ -329,7 +329,7 @@ truth (15 entries: 9 prefix, 6 basename) — groups into these classes:
 workers via the himmel-ops plugin hook wiring, and codex workers via
 `.codex/hooks.json`. A worker spawned without that marker is not
 fence-covered — the fence is inert by design when the marker is absent
-(zero always-on cost, HIMMEL-177) — and must never be given lessons→code
+(zero always-on cost) — and must never be given lessons→code
 work. A dispatcher can pre-flight a proposed change-set in CLI mode before
 ever spawning a worker:
 
@@ -342,6 +342,6 @@ path and exits 2 if at least one path denies, 0 if all allow.
 
 **Delivery note.** The Claude-lane half of this fence ships via the
 himmel-ops plugin `hooks.json` (`scripts/hooks/block-lesson-enforcement-writes.sh`),
-the same delivery path as `block-docker-privesc`/`block-merged-pr-commit`
-(HIMMEL-441/512): it is live only after `/himmel-update` (marketplace
+the same delivery path as `block-docker-privesc`/`block-merged-pr-commit`:
+it is live only after `/himmel-update` (marketplace
 re-sync) + a fresh session, not immediately on merge.

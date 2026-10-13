@@ -48,5 +48,5 @@ pip-compile --generate-hashes pyproject.toml -o requirements.txt
 
 ## Reference
 
-- Task brief: HIMMEL-84 python-uv-lock-verify (tracked in the operator's private handover repo)
-- Epic plan: HIMMEL-19 security-tooling (tracked in the operator's private handover repo)
+- Task brief: python-uv-lock-verify (tracked in the operator's private handover repo)
+- Epic plan: security-tooling (tracked in the operator's private handover repo)

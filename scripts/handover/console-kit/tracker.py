@@ -16,7 +16,7 @@ USAGE
     node scripts/jira/dist/index.js mirror
     node scripts/jira/dist/index.js versions > ~/.himmel/state/jira-mirror/HIMMEL.versions.tsv
     python3 tracker.py --plan-dir <HIMMEL-3882 plan dir> --out <tracker.html> --luna-map <luna-map.json>
-        [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--refresh-luna]
+        [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--jira-base-url URL] [--refresh-luna]
     python3 tracker.py ... --emit-fp     print the freshness fingerprint and exit
 
 --versions-file defaults to <mirror-dir>.versions.tsv; its bytes (or '-' when missing) are a fingerprint input, so a
@@ -35,6 +35,7 @@ import re
 import subprocess
 import time
 from datetime import datetime, timezone
+from html import escape as esc
 
 MIRROR = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL')
 LUNA = os.path.expanduser('~/Documents/luna')
@@ -152,20 +153,54 @@ def live_legs():
 
 
 TS_RE = re.compile(r'^- (\d{1,2}):(\d{2})\b')
+DATE_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
 IDLE_MIN = 180
 ACT_NEWEST = 0.0  # newest mtime among the wrapped-leg docs actuals() last read (HIMMEL-4930)
+# ponytail: no cost column (token spend per leg is not in the mirror or the leg doc); upgrade: mirror each PR's leg-burn
+# line (HIMMEL-2763 pricing) and add cost beside wall and active.
+SOURCE = ('wall = first Results bullet to WRAPPED, dated from the leg doc\'s name (station clock, shown in UTC); '
+          'active = the gaps between bullets of 3 h or less; dated = legs whose wall could be dated. '
+          'cost: not measured (it needs the PR\'s leg-burn line in the mirror).')
+
+
+def leg_docs():
+    return sorted(glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) + glob.glob(os.path.join(HANDOVERS, 'logs', 'HIMMEL-*-N*-*.md')))
+
+
+def leg_span(p, text):
+    """(wall min or None, active min, start epoch or None, end epoch or None) of one leg doc's Results bullets (HIMMEL-5453).
+
+    Bullets carry only the station's local HH:MM: the doc name's date dates the first one and each backwards step of the
+    clock is the next day. A doc name with no date gives no wall, only active minutes.
+    ponytail: a silent gap over 24 h between two bullets reads as under 24 h; upgrade: date each bullet from the luna
+    commit that first holds it."""
+    ls = text.partition('\n## Results')[2].split('\n## ')[0].splitlines()
+    w = [i for i, l in enumerate(ls) if (m := MARK_RE.match(l)) and m.group(1) == 'WRAPPED']
+    ts = [int(x.group(1)) * 60 + int(x.group(2)) for x in (TS_RE.match(l) for l in ls[:w[-1] + 1 if w else None]) if x]
+    ab, day = [], 0
+    for i, t in enumerate(ts):
+        if i and t < ts[i - 1]:
+            day += 1
+        ab.append(day * 1440 + t)
+    active = sum(g for g in (b - a for a, b in zip(ab, ab[1:])) if g <= IDLE_MIN)
+    d = DATE_RE.findall(os.path.basename(p))
+    if not ab or not d:
+        return None, active, None, None
+    y, mo, dd = (int(x) for x in d[-1])
+
+    def epoch(m):
+        return time.mktime((y, mo, dd + m // 1440, (m % 1440) // 60, m % 60, 0, 0, 0, -1))
+    s, e = epoch(ab[0]), epoch(ab[-1])
+    return int(round((e - s) / 60)), active, s, e
 
 
 def actuals():
-    """{ticket number: [wrapped legs, active minutes]}: what the done work actually took, to measure the estimates against.
-
-    Minutes are the gaps between a leg doc's timestamped Results bullets; a gap over IDLE_MIN is idle time, not work.
-    ponytail: bullet gaps are a proxy for leg wall time, upgrade to the PR body's leg-burn cost-eq when it is mirrored."""
+    """{ticket number: [wrapped legs, wall min, active min, dated legs, first start epoch, last end epoch]} (HIMMEL-5453):
+    what the done work actually took, to measure the estimates against. leg_span() says how each number is measured."""
     global ACT_NEWEST
     out = {}
     ACT_NEWEST = 0.0
-    docs = glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) + glob.glob(os.path.join(HANDOVERS, 'logs', 'HIMMEL-*-N*-*.md'))
-    for p in sorted(docs):
+    for p in leg_docs():
         m = LEG_RE.match(os.path.basename(p))
         if not m or leg_marker(p)[0] != 'WRAPPED':
             continue
@@ -173,12 +208,15 @@ def actuals():
             text = open(p, encoding='utf-8', errors='replace').read()
         except OSError:
             continue
-        results = text.partition('\n## Results')[2]
-        ts = [int(x.group(1)) * 60 + int(x.group(2)) for x in (TS_RE.match(l) for l in results.splitlines()) if x]
-        mins = sum(g for g in ((b - a) % 1440 for a, b in zip(ts, ts[1:])) if g <= IDLE_MIN)
-        r = out.setdefault(int(m.group(1)), [0, 0])
+        wall, active, s, e = leg_span(p, text)
+        r = out.setdefault(int(m.group(1)), [0, 0, 0, 0, None, None])
         r[0] += 1
-        r[1] += mins
+        r[2] += active
+        if wall is not None:
+            r[1] += wall
+            r[3] += 1
+            r[4] = s if r[4] is None else min(r[4], s)
+            r[5] = e if r[5] is None else max(r[5], e)
         try:
             ACT_NEWEST = max(ACT_NEWEST, os.path.getmtime(p))
         except OSError:
@@ -186,9 +224,96 @@ def actuals():
     return out
 
 
+# HIMMEL-5453: who filed what. A leg doc's Results bullet saying "filed HIMMEL-m" spawned m from the leg's ticket; a
+# console doc's OPERATOR bullet (not a RULING, IS AWAKE or ITEMS line) saying "Filed HIMMEL-m" makes m operator-directed.
+# Only the ticket key is read, never the bullet's clock time.
+FILED_RE = re.compile(r'(?i)\bfiled\s+((?:HIMMEL-\d+(?:\s*(?:,|\+|&|and)\s*)?)+)')
+OPER_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?\**OPERATOR\b(?!\**\s*(?:RULINGS?|IS AWAKE|ITEMS)\b)')
+
+
+def filed_keys(line):
+    return [int(k) for g in FILED_RE.findall(line) for k in re.findall(r'HIMMEL-(\d+)', g)]
+
+
+def filings():
+    """({spawned ticket number: filing leg's ticket number}, {operator-directed ticket numbers}) from the handover docs."""
+    leg, op = {}, set()
+    for p in leg_docs():
+        m = LEG_RE.match(os.path.basename(p))
+        if not m:
+            continue
+        n = int(m.group(1))
+        try:
+            text = open(p, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        for l in text.partition('\n## Results')[2].split('\n## ')[0].splitlines():
+            if l.startswith('- '):
+                for k in filed_keys(l):
+                    if k > n:  # an origin is always the older ticket
+                        leg.setdefault(k, n)
+    for p in sorted(glob.glob(os.path.join(HANDOVERS, '*console*.md')) + glob.glob(os.path.join(HANDOVERS, 'logs', '*console*.md'))):
+        try:
+            ls = open(p, encoding='utf-8', errors='replace').read().splitlines()
+        except OSError:
+            continue
+        for l in ls:
+            if OPER_RE.match(l):
+                op.update(filed_keys(l))
+    return leg, op
+
+
+# A description or title naming the ticket this one came from. The first hit by position wins; it must be older.
+ORIGIN_RE = re.compile(r'(?i)\[(HIMMEL-\d+)\s+follow-?up\]|(HIMMEL-\d+)\s+follow-?up|'
+                       r'\b(?:deferred|spun out|split out|carved out|spawned|follow-?up|followup)\b'
+                       r'(?:\s+(?:from|of|to|for|on))?[^\n.]{0,60}?(HIMMEL-\d+)|\bfrom\s+(HIMMEL-\d+)')
+
+
+def origin_ref(n, text):
+    for m in ORIGIN_RE.finditer(text):
+        k = num(next(g for g in m.groups() if g))
+        if k < n:
+            return k
+    return None
+
+
+def bundles(mir, planned, op, leg_filed):
+    """{ticket number: anchor} for every unplanned ticket that reaches one (HIMMEL-5453): a planned ticket number, or 'op'.
+
+    A ticket's origin is, first hit wins: its mirror parent (never an Epic) or a relates link, a description or title
+    reference, the leg doc that filed it. Origins are strictly older, so the walk up a chain always ends; it stops at
+    the first planned or operator-directed ticket. Operator-directed tickets are anchors of their own bundle."""
+    org = {}
+    for k, m in mir.items():
+        n = num(k)
+        par = num(m['parent']) if m.get('parent') else None
+        if par and par < n and (mir.get('HIMMEL-%d' % par) or {}).get('type') != 'Epic':
+            org[n] = par
+            continue
+        rel = [x for x in m.get('rel', []) if x < n]
+        o = rel[0] if rel else origin_ref(n, m.get('otext', ''))
+        if o is None:
+            o = leg_filed.get(n)
+        if o is not None:
+            org[n] = o
+    out = {}
+    for k in mir:
+        n = num(k)
+        if n in planned:
+            continue
+        c = n
+        while c not in planned and c not in op and c in org:
+            c = org[c]
+        if c in planned:
+            out[n] = c
+        elif c in op:
+            out[n] = 'op'
+    return out
+
+
 def fingerprint():
     """16 hex over the mirror's newest `updated:`, the plan + stage1/stage2 files' bytes, the versions file, the live legs
-    and the wrapped legs' actuals (what the page shows)."""
+    and the wrapped legs' actuals and the handover docs' filings (what the page shows)."""
     upd = ''
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         for l in open(p, encoding='utf-8', errors='replace'):
@@ -204,6 +329,8 @@ def fingerprint():
     h.update(open(VERSIONS, 'rb').read() if os.path.isfile(VERSIONS) else b'-')
     h.update(json.dumps(sorted(live_legs().items())).encode())
     h.update(json.dumps(sorted(actuals().items())).encode())
+    lf, op = filings()
+    h.update(json.dumps([sorted(lf.items()), sorted(op)]).encode())
     return h.hexdigest()[:16]
 
 
@@ -417,7 +544,7 @@ def jira_view(mir, legs, vers, prows, vnames):
         b, p = bucket(m), plan.get(num(k))
         lg = legs.get(num(k))
         tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
-                       ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None,
+                       ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
                        leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
     tk.sort(key=lambda t: t['k'])
 
@@ -428,6 +555,54 @@ def jira_view(mir, legs, vers, prows, vnames):
     nxt = next((i for i in range(len(vers)) if i > cur and not vers[i]['rel'] and any(t['v'] == i for t in tk)), -1)
     al = [[i, [t['k'] for t in tk if t['v'] == i and open_(t)]] for i in range(len(vers)) if vers[i]['rel']]
     return tk, cur, nxt, [a for a in al if a[1]]
+
+
+def first_sentence(s):
+    """HIMMEL-5381: the first sentence of a plain Impact block ('' for none), clipped for a card."""
+    m = re.match(r'(.+?[.!?])(?:\s|$)', s)
+    return clip(m.group(1) if m else s, 160)
+
+
+KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('done', 'Done'))
+KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'rev', 'done': 'done', 'wont': 'done'}
+
+
+def kanban(tk, vers, cur, base):
+    """HIMMEL-5381: one <details> per release with tickets, holding a 4-column board (To Do, In Progress, In Review, Done).
+
+    A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
+    one-line user-facing description. IN CI reads as In Review; wont do/fix as Done; a To Do ticket a live leg works reads
+    In Progress, as the main board does. The release being worked on (cur) opens expanded."""
+    base = base.strip().rstrip('/')
+    if not re.match(r'^https?://', base):
+        base = ''
+    out = []
+    for i, v in enumerate(vers):
+        a = [t for t in tk if t['v'] == i]
+        if not a:
+            continue
+        cols = {c: [] for c, _ in KCOLS}
+        for t in a:
+            cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
+        n_open = len(a) - len(cols['done'])
+        parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
+                 '<span class="kmeta">%d open of %d%s</span></summary><div class="kboard">'
+                 % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
+                    ' · released ' + esc(v['date']) if v['rel'] else '')]
+        for c, title in KCOLS:
+            parts.append('<div class="kcol" data-col="%s"><h3>%s <span class="kn">%d</span></h3>' % (c, title, len(cols[c])))
+            for t in cols[c]:
+                key = 'HIMMEL-%d' % t['k']
+                head = ('<a class="kkey" href="%s/browse/%s">%s</a>' % (esc(base, True), key, key)) if base \
+                    else '<span class="kkey">%s</span>' % key
+                parts.append('<div class="kcard">%s<div class="ktl">%s</div><div class="kline">%s</div></div>'
+                             % (head, esc(t['t']), esc(t['ln'])))
+            if not cols[c]:
+                parts.append('<div class="knone">None.</div>')
+            parts.append('</div>')
+        parts.append('</div></details>')
+        out.append(''.join(parts))
+    return ''.join(out) or '<p class="jsub">No release holds a ticket yet.</p>'
 
 
 def clip(s, n):
@@ -471,18 +646,26 @@ def plain_impact(body):
 
 
 def read_mirror():
-    """{key: dict(st, sn, cat, fv, upd, title, type, impact)} from the mirror frontmatter; sn is the Jira status name, cat its category."""
+    """{key: dict(st, sn, cat, fv, upd, title, type, impact, labels, parent, rel, otext)} from the mirror; sn is the Jira
+    status name, cat its category; rel the relates-linked ticket numbers, otext the title and description (HIMMEL-5453)."""
     out = {}
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         txt = open(p, encoding='utf-8', errors='replace').read()
         parts = txt.split('---', 2)
         if len(parts) < 3:
             continue
-        fm = {}
+        fm, sub, rel = {}, '', []
         for l in parts[1].splitlines():
             if ':' in l and not l.startswith(' '):
                 k, v = l.split(':', 1)
                 fm[k.strip()] = v.strip()
+                sub = ''
+            elif l.startswith('  ') and not l.startswith('   ') and ':' in l:
+                sub = l.split(':', 1)[0].strip()
+                if sub == 'relates':
+                    rel += [num(x) for x in KEY_RE.findall(l)]
+            elif sub == 'relates':
+                rel += [num(x) for x in KEY_RE.findall(l)]
         key = fm.get('key', '').strip('"')
         if not key:
             continue
@@ -491,6 +674,14 @@ def read_mirror():
             fv = json.loads(fm.get('fixVersions', '[]'))
         except ValueError:
             fv = []
+        try:
+            lab = json.loads(fm.get('labels', '[]'))
+        except ValueError:
+            lab = []
+        try:
+            par = json.loads(fm.get('parent', 'null'))
+        except ValueError:
+            par = None
         cat = fm.get('statusCategory', '').strip('"')
         try:
             sn = json.loads(fm.get('status', '""'))
@@ -498,7 +689,9 @@ def read_mirror():
             sn = ''
         out[key] = dict(st=2 if cat == 'Done' else 1 if cat == 'In Progress' else 0, sn=sn if isinstance(sn, str) else '', cat=cat, fv=fv,
                         upd=fm.get('updated', '').strip('"'), title=m.group(1) if m else '',
-                        type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]))
+                        type=fm.get('type', '').strip('"'), impact=plain_impact(parts[2]),
+                        labels=lab if isinstance(lab, list) else [], parent=par if isinstance(par, str) and KEY_RE.fullmatch(par) else '',
+                        rel=rel, otext=(m.group(1) if m else '') + '\n' + parts[2].split('\n## Comments', 1)[0])
     return out
 
 
@@ -593,6 +786,111 @@ def luna_map(keys, refresh):
     return {k: ent[k]['notes'] for k in keys if k in ent}
 
 
+def utc_dt(s):
+    """A Jira stamp (2026-09-30T10:00:00.000+0200) as an aware UTC datetime, or None."""
+    m = re.match(r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$', s or '')
+    if not m:
+        return None
+    z = (m.group(3) or 'Z').replace('Z', '+0000').replace(':', '')
+    return datetime.strptime(m.group(1) + 'T' + m.group(2) + z, '%Y-%m-%dT%H:%M:%S%z').astimezone(timezone.utc)
+
+
+def utc_stamp(s):
+    d = utc_dt(s)
+    return d.strftime('%Y-%m-%d %H:%M UTC') if d else ''
+
+
+def ez(t):
+    return datetime.fromtimestamp(t, timezone.utc).strftime('%Y-%m-%dT%H:%MZ') if t is not None else ''
+
+
+BENCH_COLS = ('key', 'title', 'size', 'est_seq', 'own_legs', 'own_dated', 'own_wall_min', 'own_active_min',
+              'bundle_n', 'bundle_open', 'bundle_done', 'bundle_legs', 'bundle_dated', 'bundle_wall_min', 'bundle_active_min',
+              'total_wall_min', 'total_active_min', 'min_per_seq', 'ratio', 'first_utc', 'end_utc', 'members')
+
+
+def bench(mir, rows, n_plan, act, seqm, erange):
+    """The benchmark (HIMMEL-5453): per planned item its estimate, its own actuals, its spawned bundle and the total, then
+    the operator-directed bundle and the unattributed unplanned train tickets. Each row is a list in BENCH_COLS order
+    (members as ticket numbers); ratio = total wall minutes per S-equivalent over the median of the measured done items."""
+    planned = {r[0] for r in rows[:n_plan]}
+    leg_filed, op = filings()
+    op |= {num(k) for k, m in mir.items() if 'operator-directed' in m.get('labels', [])}
+    anc = bundles(mir, planned, op, leg_filed)
+
+    def est_of(k):
+        sz = [seqm.get(x) for x in erange.get(k, '').split('–')]
+        return sum(sz) / len(sz) if sz and None not in sz else None
+
+    def stat(ns):
+        s = dict(n=len(ns), open=0, done=0, legs=0, dated=0, wall=0, active=0, first=None, end=None)
+        for n in ns:
+            m = mir.get('HIMMEL-%d' % n)
+            s['done' if m and m['st'] == 2 else 'open'] += 1
+            a = act.get(n)
+            if a:
+                s['legs'] += a[0]
+                s['wall'] += a[1]
+                s['active'] += a[2]
+                s['dated'] += a[3]
+                if a[4] is not None:
+                    s['first'] = a[4] if s['first'] is None else min(s['first'], a[4])
+                    s['end'] = a[5] if s['end'] is None else max(s['end'], a[5])
+        return s
+
+    def row(key, title, size, est, own, b, members, done, rs=None):
+        tw = (own['wall'] if own else 0) + b['wall']
+        # the legs the ratio divides: the operator bundle counts only its estimated members. An undated leg adds no
+        # wall, so a ratio over any undated leg would understate the actual: it is left blank.
+        legs, dated, rw = (rs['legs'], rs['dated'], rs['wall']) if rs else \
+            ((own['legs'] if own else 0) + b['legs'], (own['dated'] if own else 0) + b['dated'], tw)
+        mps = round(rw / est, 1) if est and rw and done and legs == dated else None
+        fs = [x for x in ((own or {}).get('first'), b['first']) if x is not None]
+        es = [x for x in ((own or {}).get('end'), b['end']) if x is not None]
+        return [key, title, size, round(est, 2) if est else None] + \
+            ([own['legs'], own['dated'], own['wall'], own['active']] if own else [None] * 4) + \
+            [b['n'], b['open'], b['done'], b['legs'], b['dated'], b['wall'], b['active'],
+             tw, (own['active'] if own else 0) + b['active'], mps, None,
+             ez(min(fs)) if fs else '', ez(max(es)) if es else '', members]
+
+    out = []
+    for r in rows[:n_plan]:
+        ms = sorted(n for n, a in anc.items() if a == r[0])
+        out.append(row('HIMMEL-%d' % r[0], r[1], r[10] or '', r[6], stat([r[0]]), stat(ms), ms, r[2] == 2))
+    om = sorted(n for n, a in anc.items() if a == 'op')
+    ob = stat(om)
+    oe = {n: e for n, e in ((n, est_of('HIMMEL-%d' % n)) for n in om)
+          if e is not None and mir.get('HIMMEL-%d' % n, {}).get('st') == 2}
+    opr = row('operator-directed', 'operator-directed bundle (min per S-eq over its %d estimated done of %d)' % (len(oe), len(om)),
+              '', sum(oe.values()) if oe else None, None, ob, om, bool(oe), stat(list(oe)))
+    um = sorted(r[0] for r in rows[n_plan:] if r[7] == 2 and r[0] not in anc)
+    unr = row('unattributed', 'unplanned train tickets with no planned or operator origin', '', None, None, stat(um), um, False)
+    mps = sorted(x[17] for x in out + [opr] if x[17] is not None)
+    med = (mps[(len(mps) - 1) // 2] + mps[len(mps) // 2]) / 2 if mps else None
+    for x in out + [opr]:
+        if x[17] is not None and med:
+            x[18] = round(x[17] / med, 2)
+    return out, opr, unr
+
+
+def write_bench(path, out, opr, unr):
+    fmt = {3: '%g', 17: '%.1f', 18: '%.2f'}
+
+    def cell(i, v):
+        if v is None:
+            return ''
+        if isinstance(v, list):
+            return ','.join('HIMMEL-%d' % n for n in v)
+        if i in fmt:
+            return fmt[i] % v
+        return str(v).replace('\t', ' ')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write('\t'.join(BENCH_COLS) + '\n')
+        for x in out + [opr, unr]:
+            fh.write('\t'.join(cell(i, v) for i, v in enumerate(x)) + '\n')
+
+
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
     ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
@@ -608,6 +906,9 @@ def main():
                          'else <luna-root>/handovers/yotamleo/himmel)')
     ap.add_argument('--drift-log', default=None,
                     help='append-only drift/unplanned/unthemed counts per render (default <handovers>/roadmap-drift.tsv)')
+    ap.add_argument('--jira-base-url', default=os.environ.get('JIRA_BASE_URL', ''),
+                    help='Jira base URL for the kanban cards\' browse links (default $JIRA_BASE_URL, as the jira CLI reads it; '
+                         'without one a card key is plain text)')
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
@@ -646,6 +947,12 @@ def main():
     for r in read_tsv(ovp)[1] if os.path.exists(ovp) else []:
         if r.get('theme') and theme.get(r['key'], '(no theme)') == '(no theme)':
             theme[r['key']] = r['theme']
+    # HIMMEL-5491: a Jira `theme-<slug>` label wins over the plan (the Kanban writes it); a slug matching a plan theme shows its name.
+    by_slug = {re.sub(r'[^a-z0-9]+', '-', t.lower()).strip('-'): t for t in set(theme.values())}
+    for k, m in mir.items():
+        lab = next((x for x in m.get('labels', []) if isinstance(x, str) and x.startswith('theme-') and len(x) > 6), '')
+        if lab:
+            theme[k] = by_slug.get(lab[6:], lab[6:])
     # HIMMEL-3957 row fields: user-facing impact (stage1 explain), readiness + T-shirt range (stage2).
     for p in sorted(glob.glob(os.path.join(ROOT, 'stage1', 'C??.explain.tsv'))):
         for r in read_tsv(p)[1]:
@@ -720,7 +1027,7 @@ def main():
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r.get('close_evidence', ''), 70)])
 
-    upd = max((m['upd'] for m in mir.values()), default='')
+    upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
     nothm = sum(1 for r in rows if r[5] == tidx['(no theme)'] and r[2] != 2)  # open only
     lg, cur = ledger_lines(rows, vers, nothm)
     seq = rules['seq']
@@ -729,12 +1036,17 @@ def main():
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
     jt, jc, jn, ja = jira_view(mir, legs, jv, rows[:n_plan], vers)
+    kb = kanban(jt, jv, jc, a.jira_base_url)
+    for t in jt:
+        del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}
     act = actuals()  # before ATS below: it sets ACT_NEWEST
-    data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=upd[:16].replace('T', ' '),
+    bn, bop, bun = bench(mir, rows, n_plan, act, seqm, erange)
+    write_bench(OUT + '.bench.tsv', bn, bop, bun)
+    data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=utc_stamp(upd),
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
-                LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v for n, v in sorted(act.items())}, L=LAYERS, T=themes, P=rows,
+                LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes, P=rows,
                 U=unpl, DR=dirs, N=notes, LG=lg, CUR=cur, JV=jv, JT=jt, JC=jc, JN=jn, JA=ja, RU=ru,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
@@ -744,7 +1056,7 @@ def main():
                 EQ=' · '.join('%s %g' % x for x in zip(('XS', 'S', 'M', 'L', 'XL'), seq)) + ' S-equivalents'
                 if seq else 'not recorded in the plan')
     blob = json.dumps(data, separators=(',', ':'), ensure_ascii=False).replace('<', '\\u003c')
-    html = TEMPLATE.replace('__DATA__', blob)
+    html = re.sub(r'__DATA__|__KANBAN__', lambda m: blob if m.group(0) == '__DATA__' else kb, TEMPLATE)  # one pass: no re-scan of ticket text
     outp = OUT
     os.makedirs(os.path.dirname(outp), exist_ok=True)
     open(outp, 'w', encoding='utf-8').write(html)
@@ -752,6 +1064,8 @@ def main():
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
     cov = sum(1 for r in rows[:n_plan] if r[8])
+    print('wrote %s.bench.tsv: %d planned items, operator bundle %d, unattributed %d'
+          % (outp, len(bn), bop[8], bun[8]))
     print('wrote %s (%.1f KB): %d planned, %d unplanned, %d drift, %d unthemed, %d unplaced; mirror %d issues'
           % (outp, os.path.getsize(outp) / 1024, n_plan, unp, drift, nothm, len(unpl), len(mir)))
     if dt:
@@ -976,6 +1290,18 @@ tr.jflash{animation:jflash .9s ease-out}
 #db .jrow .jtl{font-size:13px}
 #drawer:not([hidden]){animation:dslide .3s var(--ease)}
 @keyframes dslide{from{opacity:0;transform:translateX(24px)}}
+.krel{border:1px solid var(--line);margin:0 0 8px}
+.krel>summary{cursor:pointer;padding:8px 10px;font:600 13px var(--f-mono)}
+.krel>summary:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.kmeta{color:var(--dim);font-weight:400;font-size:12px;margin-left:8px}
+.kboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 10px 10px}
+.kcol{background:var(--panel);border:1px solid var(--line);padding:10px;min-width:0}
+.kcol h3{font:600 12px var(--f-mono);margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
+.kcol[data-col="todo"] h3{color:var(--todo)}.kcol[data-col="prog"] h3{color:var(--prog)}.kcol[data-col="rev"] h3{color:var(--rev)}.kcol[data-col="done"] h3{color:var(--done)}
+.kcard{border:1px solid var(--line);padding:8px 10px;margin:0 0 8px;background:var(--bg)}
+a.kkey{color:var(--accent)}.kkey{font:11px var(--f-mono)}
+.ktl{font-size:12.5px;margin:2px 0;overflow-wrap:anywhere}.kline{font:12px/1.45 var(--f-sans);color:var(--dim);overflow-wrap:anywhere}
+.knone{color:var(--dim);font-size:12px}
 .plan{margin-top:48px;border-top:1px solid var(--line)}
 .plan>h2.jh{font:600 13px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;margin:28px 0 4px}
 .plan{font:14px/1.5 var(--f-sans)}
@@ -984,7 +1310,7 @@ tr.jflash{animation:jflash .9s ease-out}
 #decs.hot{color:var(--fail)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media (max-width:760px){
- .jboard{grid-template-columns:minmax(0,1fr)}.hero h1{font-size:27px}#rm td.barc,#rm th.barc{display:none}
+ .jboard,.kboard{grid-template-columns:minmax(0,1fr)}.hero h1{font-size:27px}#rm td.barc,#rm th.barc{display:none}
 }
 @media (max-width:560px){
  .shell{padding:0 16px 48px}.mast .in{padding:10px 16px}
@@ -1022,6 +1348,9 @@ tr.jflash{animation:jflash .9s ease-out}
 <div class="tw"><table><thead><tr><th>Version</th><th>State</th><th class="barc">Progress</th>
 <th>To Do</th><th>In Progress</th><th>In Review</th><th>IN CI</th><th>Done</th><th>Total</th></tr></thead><tbody id="vt"></tbody></table></div>
 <p class="jsub" id="vfold"></p></section>
+<section aria-labelledby="kh"><h2 id="kh">Release boards</h2>
+<p class="jsub">Open a release to see its tickets by status. Each card links to its Jira ticket and says what it means for a user.</p>
+__KANBAN__</section>
 </div>
 <section class="plan" aria-label="The plan">
 <h2 class="jh">The plan, folded</h2>
@@ -1162,13 +1491,14 @@ function model(D){
  // gains(): done work per train version, newest first: what users got.
  function gains(){var g=[];for(var i=V.length-1;i>=0;i--){if(!train(i))continue;var d=order(inV(i).filter(function(p){return p[2]==2}));
   if(d.length)g.push({i:i,done:d,n:inV(i).length,s:summary(d,"theme")})}return g}
- // act(p): what a done ticket took, [wrapped legs, active minutes]; null while open or when no wrapped leg doc names it.
+ // act(p): what a done ticket took, [wrapped legs, wall minutes, active minutes, dated legs]; null while open or when no wrapped leg doc names it.
  function act(p){return p[2]==2&&D.ACT&&D.ACT[String(p[0])]||null}
  var SZ=["XS","S","M","L","XL"];
  function szk(e){var s=String(e).split("–");return SZ.indexOf(s[0])*10+SZ.indexOf(s[s.length-1])}
  function med(a){var s=a.slice().sort(function(x,y){return x-y}),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null}
- // accuracy(): measured done tickets grouped by their size estimate, smallest first, each with its median minutes and legs.
- function accuracy(){var g={};P.forEach(function(p){var a=act(p);if(a&&p[10])(g[p[10]]=g[p[10]]||[]).push({p:p,legs:a[0],min:a[1]})});
+ // accuracy(): measured done tickets grouped by their size estimate, smallest first, each with its median wall minutes and
+ // legs; a ticket with no dated leg doc has no wall time and is left out.
+ function accuracy(){var g={};P.forEach(function(p){var a=act(p);if(a&&a[3]!==0&&p[10])(g[p[10]]=g[p[10]]||[]).push({p:p,legs:a[0],min:a[1]})});
   return Object.keys(g).sort(function(x,y){return szk(x)-szk(y)}).map(function(k){var r=g[k].sort(function(x,y){return x.min-y.min||x.p[0]-y.p[0]});
    return {size:k,n:r.length,rows:r,med:med(r.map(function(x){return x.min})),legs:med(r.map(function(x){return x.legs}))}})}
  return {KIND:KIND,READY:READY,train:train,vname:vname,inV:inV,inT:inT,inTrain:inTrain,leg:leg,tally:tally,load:load,summary:summary,
@@ -1266,8 +1596,22 @@ var WI={},ALL=false,BAND=["Stops now","Blocks release","Queue health"];
 function num(x){return x==null?"–":x===Math.round(x)?String(x):f2(x)}
 function bw(b){return b.what+" "+num(b.used)+" of "+num(b.cap)}
 function fmtMin(m){return m==null?"–":m<60?Math.round(m)+" min":(Math.round(m/6)/10)+" h"}
+// renderBench(h): the benchmark (HIMMEL-5453): each planned item with its own legs or a spawned bundle, then the
+// operator-directed and unattributed bundles; raw inputs sit beside the ratio. Row fields follow BENCH_COLS in tracker.py.
+function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN]:[]);if(!rows.length)return;
+ var tb=el("table","ld"),hr=el("tr"),n=function(v){return v==null||v===""?"–":String(v)};
+ ["Item","Size","Est S-eq","Own wall / active (dated/legs)","Bundle n (open/done)","Bundle wall / active (dated/legs)","Total wall","Min per S-eq","Ratio"]
+  .forEach(function(x){hr.appendChild(el("th",null,x))});tb.appendChild(hr);
+ rows.forEach(function(x){var tr=el("tr");
+  [x[0]+(x[1]?" "+x[1]:""),n(x[2]),n(x[3]),x[4]==null?"–":fmtMin(x[6])+" / "+fmtMin(x[7])+" ("+x[5]+"/"+x[4]+")",
+   x[8]+" ("+x[9]+"/"+x[10]+")",fmtMin(x[13])+" / "+fmtMin(x[14])+" ("+x[12]+"/"+x[11]+")",fmtMin(x[15]),
+   x[17]==null?"–":x[17].toFixed(1),x[18]==null?"–":x[18].toFixed(2)].forEach(function(c){tr.appendChild(el("td",null,c))});
+  tr.title=x[21].length?x[21].map(function(k){return "HIMMEL-"+k}).join(", "):"no bundle";tb.appendChild(tr)});
+ h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the leg that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical), blank while any of its legs is undated. Hover a row for its bundle."));
+ h.appendChild(add(el("div","tw"),tb));h.appendChild(el("p","fact",D.SRC))}
 function renderAcc(){var h=$("accb"),ac=M.accuracy(),mx=1;h.textContent="";
  h.appendChild(el("p","fact","Re-read from the Jira mirror and the wrapped-leg docs on every render. Jira "+D.mir+" · newest wrapped-leg doc "+(D.ATS||"none")+"."));
+ renderBench(h);
  if(!ac.length){h.appendChild(el("p","fact","No done ticket has both a size estimate and a wrapped leg yet."));return}
  ac.forEach(function(x){x.rows.forEach(function(r){mx=Math.max(mx,r.min)})});
  ac.forEach(function(x){var r=el("div","ar"),tr=el("div","atr"),m=el("b");tr.setAttribute("role","img");

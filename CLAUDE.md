@@ -48,13 +48,12 @@ mapping: [`docs/internals/jira-plugin.md`](docs/internals/jira-plugin.md).
 
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
-weekly bank as interactive use — headless is not a separate bucket. Unattended
+weekly subscription usage budget as interactive use — headless is not a separate bucket. Unattended
 sites preflight with `scripts/lib/bank-preflight.sh`, parse
 `--output-format json`, and declare an
-explicit `--permission-mode` (never `bypassPermissions`). Committing a new
-headless call needs `# headless-claude-ok: <reason>` (`no-headless-claude`
-gate; `no-headless-gemini` is the twin). Evidence + re-measure recipe:
-[`docs/internals/enforcement.md`](docs/internals/enforcement.md#claude-invocation-billing-himmel-128).
+explicit `--permission-mode` (never `bypassPermissions`). Evidence, sources +
+re-measure recipe:
+[`docs/internals/enforcement.md`](docs/internals/enforcement.md#claude-invocation-billing).
 
 ### Subagent policy — delegation & escalation
 **Delegate what is genuinely independent and sizeable — and only that.** Don't
@@ -75,7 +74,7 @@ lever, not a flat default.
 hard call; using the top-tier lane AS parent is an operator choice, and it then
 delegates every implementation chunk downward. Work above your tier? Return it. **Inline implementation on a
 top-tier parent is the anti-pattern** (`orchestrator-inline-guard`) — sole
-exception: ONE trivial CR-fix per PR; from the second CR round on, batch the
+exception: ONE trivial review-fix per PR; from the second review round on, batch the
 rest to a worker lane in shared-branch mode.
 
 Invariants (not model-tuned): spawn depth and concurrency are capped by
@@ -149,7 +148,7 @@ or `claude/*`; `check-push-target` enforces it at pre-push.
 ### Compact instructions
 Carry ship state forward verbatim — **ticket ID**, **branch**, **worktree path**,
 committed-vs-dirty, whether the attestation trailers are in the first commit,
-CR-marker / `/pr-check` state + **unresolved CR findings**, and the **remaining
+review-owed marker / `/pr-check` state + **unresolved review findings**, and the **remaining
 ordered steps**. Drop tool-output dumps and superseded plans — recoverable from
 the repo; ship state isn't.
 
@@ -175,7 +174,7 @@ here (an enumeration drifts silently); the Codex lane re-wires the
 same guardrails in `.codex/hooks.json`. Per-hook behaviour + guardrail matrix:
 [`docs/internals/enforcement.md`](docs/internals/enforcement.md).
 
-**Session-critical (kept inline — needed at a glance):** hook bypass = a session
+**Session-critical (kept inline — needed at a glance):** hook off switch = a session
 env var set in the LAUNCHING shell (e.g. `EDIT_ON_MAIN_OK=1 claude`); a per-call
 prefix does NOT work. Per-repo opt-out: a local gitignored `.single-writer` at a
 repo root allows on-main edits there (single-writer repos — personal vaults,

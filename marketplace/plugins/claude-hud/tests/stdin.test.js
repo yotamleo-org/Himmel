@@ -36,6 +36,24 @@ test('readStdin parses JSON as soon as it is complete and rejects bad input', as
   assert.equal(await readStdin({ isTTY: true }), null);
 });
 
+test('readStdin returns null when incomplete input goes idle', async () => {
+  for (const input of ['{"model":', '   ']) {
+    const stream = new PassThrough();
+    const pending = readStdin(stream);
+    stream.write(input);
+    assert.equal(await pending, null, `input ${JSON.stringify(input)}`);
+    stream.end();
+  }
+});
+
+test('readStdin keeps waiting when another chunk arrives before the idle timeout', async () => {
+  const stream = new PassThrough();
+  const pending = readStdin(stream);
+  stream.write('{"model":');
+  setTimeout(() => stream.end('{"display_name":"Opus"}}'), 20);
+  assert.deepEqual(await pending, { model: { display_name: 'Opus' } });
+});
+
 test('getContextUsage prefers used_percentage and falls back to tokens', () => {
   const window = { context_window_size: 200_000, current_usage: usage(30_000, 5_000, 5_000) };
   assert.deepEqual(getContextUsage({ context_window: { ...window, used_percentage: 21.6 } }), { percent: 22, tokens: 40_000, size: 200_000 });

@@ -1463,6 +1463,53 @@ toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use
 toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n\"enabled = false\",\n]\n" + text.slice(nl);'
 toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
 
+# 19s-19x (HIMMEL-5365): escapes in a header key decode like TOML (\n LF, \t TAB,
+# not n / t), a header key with \x or \e is refused (toml 1.0 fails the whole file,
+# 1.1 decodes it: unknown which codex links), \x in a quoted setting name decodes,
+# and an unterminated array / multi-line string at EOF trusts nothing.
+toml_edit "19s header key with \\n escape is not the real key (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("hooks.json", "hooks.jso\\n") + "\"]");'
+toml_edit "19t header key with \\t escape is not the real key (fail closed)" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("pre_tool", "pre_\\tool") + "\"]");'
+toml_edit "19u header key with \\x escape is refused" 2 "pre_tool_use:3:0" 'return text.replace(header, "[hooks.state.\"" + header.slice(14, -2).replace("hooks.json", "hooks.jso\\x6E") + "\"]");'
+toml_edit "19v escaped quoted key (enab\\x6Ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\x6Ced\" = false\n");'
+toml_edit "19w unterminated array at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = [\n\"a\",\n";'
+toml_edit "19x unterminated multi-line string at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = \"\"\"\nopen\n";'
+
+# 19y-19ae (HIMMEL-5365): a REAL key may hold a backslash (a Windows path, a POSIX
+# directory named a\x41). A raw, unescaped backslash in a basic-quoted header is an
+# escape to TOML (1.1 decodes \x41 to A, \e is ESC; 1.0 refuses the file), so the
+# raw text must not be trusted even when it equals the real key; the escaped form
+# (\\ doubled) and the literal-quoted form are the same key as the real one.
+# bs_case <label> <rc> <worktree dir name> <raw|escaped|literal>
+bs_case() {
+  local wt="$TMP/.claude/worktrees/$3"
+  mkdir -p "$wt/.codex"
+  cp "$REAL_HOOKS" "$wt/.codex/hooks.json"
+  git -C "$wt" init -q -b main
+  trust_config "$wt"
+  node -e '
+const fs = require("fs");
+const [cfg, mode] = process.argv.slice(1);
+const out = fs.readFileSync(cfg, "utf8").split("\n").map((line) => {
+  if (!line.startsWith("[hooks.state.\x27") || !line.endsWith("\x27]")) return line;
+  const inner = line.slice(14, -2);
+  if (mode === "raw") return "[hooks.state.\"" + inner + "\"]";
+  if (mode === "escaped") return "[hooks.state.\"" + inner.replace(/\\/g, "\\\\") + "\"]";
+  return line;
+}).join("\n");
+fs.writeFileSync(cfg, out);
+' "$TRUST_HOME/config.toml" "$4"
+  : > "$LOG"
+  run_trust "$wt"
+  assert_rc "$2" "$1" "rc=$RC out=$OUT"
+}
+bs_case "19y real key a\\x41 as literal-quoted header stays trusted" 0 'a\x41' literal
+bs_case "19z real key a\\x41 as escaped basic header (a\\\\x41) stays trusted" 0 'a\x41' escaped
+bs_case "19aa real key a\\x41 written raw in a basic header is refused" 2 'a\x41' raw
+bs_case "19ab real key a\\eb written raw in a basic header is refused (\\e)" 2 'a\eb' raw
+bs_case "19ac real key a\\wb written raw in a basic header is refused (unknown escape)" 2 'a\wb' raw
+bs_case "19ad real key a\\U0011FFFF written raw is refused (out of range)" 2 'a\U0011FFFF' raw
+bs_case "19ae real key a\\n written raw is refused (decodes to LF, not the key)" 2 'a\nb' raw
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1

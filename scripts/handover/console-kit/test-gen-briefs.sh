@@ -168,6 +168,28 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="
 python3 "$SUT" "$WORK/ab-bad.json" --base 4ccb59d --console BZ --bucket "$WORK/b10" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/ab-bad.err" && [ ! -e "$WORK/b10/launch-N901.sh" ] && pass "an invalid ab_arm is refused before anything is written" || fail "bad ab_arm rc=$rc"
 
+# HIMMEL-5457: an opus (or fable) leg needs a tier {category, reason}; without it nothing is
+# written (exit 1), with it the brief carries the Tier line headed-arm-leg.sh's own gate accepts.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/opus-no.json"
+python3 "$SUT" "$WORK/opus-no.json" --base 4ccb59d --console BZ --bucket "$WORK/b11" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-no.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'tier' "$WORK/opus-no.err" && [ ! -e "$WORK/b11/launch-N901.sh" ] && ! ls "$WORK/b11"/*.md >/dev/null 2>&1 && pass "an opus leg without a tier is refused and nothing is written" || fail "opus without tier rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design: the gate shape is open"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/opus-ok.json"
+python3 "$SUT" "$WORK/opus-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b12" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-ok.err"; rc=$?
+[ "$rc" = 0 ] && pass "an opus leg with a tier generates (rc 0)" || fail "opus with tier rc=$rc: $(cat "$WORK/opus-ok.err")"
+TD="$(find "$WORK/b12" -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n 1)"
+has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:** opus — design: multi-step design: the gate shape is open"
+# the launcher's own gate is the check: a copy without resume_cwd (as in the arming row above) arms, not refused.
+mkdir -p "$WORK/tier-arm"; grep -v '^resume_cwd:' "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
+rc=0; tier_out="$(HEADED_ARM_LEG_PREFLIGHT="$WORK/preflight.sh" LEG_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "headed-arm-leg.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-leg.sh rc=$rc: $tier_out"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/tier-badcat.json"
+python3 "$SUT" "$WORK/tier-badcat.json" --base 4ccb59d --console BZ --bucket "$WORK/b13" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-badcat.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'tier.category' "$WORK/tier-badcat.err" && pass "a tier category outside the four tags is refused" || fail "bad tier category rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"  "}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/tier-blank.json"
+python3 "$SUT" "$WORK/tier-blank.json" --base 4ccb59d --console BZ --bucket "$WORK/b14" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-blank.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/tier-blank.err" && pass "a blank tier reason is refused" || fail "blank tier reason rc=$rc"
+lacks "a sonnet leg's brief has no Tier line" "$b1" "**Tier:**"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

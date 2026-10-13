@@ -3,9 +3,9 @@
 #
 # Refuses commits that introduce `gemini -p` / `gemini --prompt` / `gemini
 # --bg` (headless gemini-cli) invocations into executable code paths. The
-# same billing/quota risk that motivated the no-headless-claude gate
-# (HIMMEL-128) applies to gemini-cli: headless one-shot runs eat quota
-# silently. Interactive `gemini "$prompt"` invocations (no `-p`, no
+# same billing/quota risk that once motivated a sibling headless-claude gate
+# (HIMMEL-128, since retired) applies to gemini-cli: headless one-shot runs
+# eat quota silently. Interactive `gemini "$prompt"` invocations (no `-p`, no
 # `--prompt`, no `--bg`) are the preferred form.
 #
 # Catches the case where a contributor (human or agent) adds a `gemini -p`
@@ -154,7 +154,7 @@ if [ "${#violations[@]}" -gt 0 ]; then
         echo "For a multi-line call the marker may sit on any line from the one above"
         echo "the call's opening line through the reported (program) line."
         echo ""
-        echo "Refs: HIMMEL-157 (mirrors HIMMEL-128 no-headless-claude)."
+        echo "Refs: HIMMEL-157."
     } >&2
     exit 1
 fi

@@ -1,10 +1,10 @@
-# Review panel — what the CR ledger says about its critics (HIMMEL-4482)
+# Review panel — what the CR ledger says about its critics
 
 > Evaluation write-up, read off the production ledger. Numbers are a fixed cut
 > (`--until 2026-10-06T20:00:00Z`) and re-run byte-for-byte with the command at
 > the end. The controlled complement — seeded defects with a hidden key, which
-> measures recall — is [`scripts/eval/review-panel/`](../../scripts/eval/review-panel/README.md)
-> (HIMMEL-4649). This page measures what that one cannot: how the panel behaves
+> measures recall — is [`scripts/eval/review-panel/`](../../scripts/eval/review-panel/README.md).
+> This page measures what that one cannot: how the panel behaves
 > on real PRs, and why its findings get thrown out.
 
 ## What is being measured
@@ -67,7 +67,7 @@ Read across the whole ledger:
   Half (49.4%) were agreed, and 30.2% were deferred.
 - **Deferral is mostly a review-budget decision, not a quality verdict.**
   `/pr-check` stops after three rounds and defers every Suggestion still open
-  at the cap. Since HIMMEL-4034 (2026-10-01) a deferral carries a follow-up
+  at the cap. Since 2026-10-01 a deferral carries a follow-up
   class: of the 556 classed deferrals, 292 are `polish`, 250 `hardening` and 14
   `escape` (a defect that would reach users). The other 1,171 predate the class.
 - **Severity does not buy precision.** Critical findings were ruled true 78.8%
@@ -82,9 +82,9 @@ Read across the whole ledger:
 ## Before and after: the gpt-6.1-sol re-pin
 
 The panel's critic model is pinned in `scripts/cr/critics.json`. The ledger
-window covers three re-pins of the `codex` slug: gpt-5.6-sol → gpt-6-astra
-(HIMMEL-2546), → gpt-6-sol on 2026-09-23 (HIMMEL-3500, #1155), → gpt-6.1-sol on
-2026-09-29 (HIMMEL-3879, #1462). The last one is the cleanest comparison: the
+window covers three re-pins of the `codex` slug: gpt-5.6-sol → gpt-6-astra,
+→ gpt-6-sol on 2026-09-23 (#1155), → gpt-6.1-sol on
+2026-09-29 (#1462). The last one is the cleanest comparison: the
 two eras sit back to back, both have complete verdicts, and the change was
 model-only ("logic unchanged" in the PR).
 
@@ -108,9 +108,9 @@ again disjoint. Suggestions improved less, and their intervals touch.
 What could still confound it: the PRs differ between the eras (no PR was
 reviewed by both models), and `/pr-check` changed in the same fortnight. The
 process changes that bear on verdicts were checked against the eras. The
-disproval evidence bar (HIMMEL-3373, 2026-09-21) predates both, so it applies
-to both. The follow-up-class change (HIMMEL-4034, 2026-10-01) touches only
-deferrals. The removal of the dormant adversarial pass (HIMMEL-3818, 09-29)
+disproval evidence bar (2026-09-21) predates both, so it applies
+to both. The follow-up-class change (2026-10-01) touches only
+deferrals. The removal of the dormant adversarial pass (09-29)
 affected a different slug with three rows. So the comparison is
 observational, not controlled, but nothing found in the window explains a
 halving of disproved findings except the model. The recall side, whether
@@ -147,7 +147,7 @@ What the classes say:
   rejects it, a macOS `date -r` claim refuted on a macOS runner. The shared
   shape is a confident statement about shell, git or platform semantics.
   Most of these were refuted by a measurement, which is what the disproval
-  evidence bar (HIMMEL-3373) requires.
+  evidence bar requires.
 - **Another quarter are right about the code and wrong about the intent.**
   `intent-blind` findings describe real behaviour that was chosen: a fence
   that over-denies on purpose, a ratio whose formula a ticket fixes, a race

@@ -439,7 +439,7 @@ case "$doc_counts" in
                           if [ "$doc_h" -ge 48 ]; then doc_age=" ($((doc_h / 24))d old)"
                           elif [ "$doc_h" -ge 24 ]; then doc_age=" (${doc_h}h old)"; fi ;;
                    esac
-                   append "$(printf 'doctor  %s FAIL  %s WARN%s' "$doc_fail" "$doc_warn" "$doc_age")"
+                   append "$(printf 'himmel-doctor  %s FAIL  %s WARN%s' "$doc_fail" "$doc_warn" "$doc_age")"
                fi ;;
         esac ;;
 esac

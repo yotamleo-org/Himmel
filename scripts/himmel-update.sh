@@ -33,6 +33,9 @@ cd "$ROOT"
 # shellcheck source=lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$ROOT/scripts/lib/load-dotenv.sh"
+# shellcheck source=lib/resolve-bun.sh
+. "$ROOT/scripts/lib/resolve-bun.sh"
+prefer_bun_on_path
 
 # is_dirty_tracked [DIR]
 # HIMMEL-3078: like guardrails/lib.sh's is_dirty(), but untracked files don't
@@ -120,10 +123,35 @@ report_plugin_gap() {
             # from the marketplace source is an update the re-sync has not landed.
             if [ -n "${VER_FILE:-}" ]; then
                 iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].version // empty' "$installed_json" 2>/dev/null | tr -d '\r' || true)
-                sv=$(jq -r '.version // empty' "$ROOT/marketplace/plugins/$name/.claude-plugin/plugin.json" 2>/dev/null | tr -d '\r' || true)
-                # An unreadable iv or sv means the comparison was never made —
+                # Source version read order (HIMMEL-5485): the local plugin.json,
+                # then the marketplace entry's .version (an external plugin has no
+                # local dir). With neither, nothing declares a source, so there is
+                # no drift to count: the installed version (or its commit sha) is
+                # reported as current.
+                lp="$ROOT/marketplace/plugins/$name/.claude-plugin/plugin.json"
+                sv=$(jq -r '.version // empty' "$lp" 2>/dev/null | tr -d '\r' || true)
+                # A local manifest that exists but does not parse is an unread
+                # source, not an undeclared one: it stays unknown below.
+                bad_src=0
+                if [ -f "$lp" ] && ! jq -e . "$lp" >/dev/null 2>&1; then
+                    bad_src=1
+                fi
+                if [ -z "$sv" ] && [ "$bad_src" = 0 ]; then
+                    sv=$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n) | .version // empty][0] // empty' "$market_json" 2>/dev/null | tr -d '\r' || true)
+                fi
+                if [ "$bad_src" = 1 ]; then
+                    unknown_ver="$unknown_ver $name"
+                elif [ -z "$sv" ]; then
+                    if [ -z "$iv" ]; then
+                        iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].gitCommitSha // empty' "$installed_json" 2>/dev/null | tr -d '\r' | cut -c1-7 || true)
+                    fi
+                    # No declared source: a readable installed version/sha is current.
+                    if [ -z "$iv" ]; then
+                        unknown_ver="$unknown_ver $name"
+                    fi
+                # An unreadable iv means the comparison was never made —
                 # report unknown for this plugin, not "current" (HIMMEL-3416).
-                if [ -z "$iv" ] || [ -z "$sv" ]; then
+                elif [ -z "$iv" ]; then
                     unknown_ver="$unknown_ver $name"
                 elif [ "$iv" != "$sv" ]; then
                     drifted="$drifted $name($iv->$sv)"
@@ -139,6 +167,7 @@ EOF
 
     if [ -z "$missing" ] && [ -z "$shadowed" ]; then
         echo "    all $total @$mp_name plugins installed from @$mp_name."
+        _probe_tool_row plugins up-to-date "$ok/$total @$mp_name installed"
         if [ -n "$unknown_ver" ]; then
             _ver_row plugins "$ok/$total installed" "$total declared" unknown "could not read version for:$unknown_ver${drifted:+; version drift:$drifted}"
         elif [ -n "$drifted" ]; then
@@ -151,6 +180,11 @@ EOF
 
     _ver_row plugins "$ok/$total installed" "$total declared" behind "some not installed from @$mp_name, or shadowed by another marketplace${drifted:+; version drift:$drifted}"
     echo "    $ok/$total @$mp_name plugins installed from @$mp_name."
+    if [ -n "$missing" ]; then
+        _probe_tool_row plugins skipped "$(printf '%s' "$missing" | sed 's/^ *//' | paste -sd ';' | sed 's/;/; /g')"
+    elif [ -n "$shadowed" ]; then
+        _probe_tool_row plugins skipped "shadowed by another marketplace — see the migrate command above"
+    fi
     if [ -n "$missing" ]; then
         echo ""
         echo "    Not installed — install from @$mp_name:"
@@ -475,6 +509,200 @@ update_codex() {
     if ! bash "$installer"; then
         echo "    warn: codex re-provision/sanitize failed (non-fatal) — run bash scripts/codex/install-himmel-codex.sh yourself." >&2
     fi
+    return 0
+}
+
+# ─── codex / claude CLI versions (HIMMEL-5383) ───────────────────────────────
+# `himmelctl update` is meant to leave the whole station current, but the two
+# agent CLIs were never touched: the operator updated codex by hand and nothing
+# said anything about claude. codex is upgraded through the method that owns it
+# (user-owned npm global or an advertised standalone self-updater; package
+# managers print a needs-you remedy and are never executed),
+# behind the VM-first gate. claude is report-only: installed vs latest and the
+# update command. Both land in the chain-status table via _probe_tool_row.
+#   sync_agent_clis check | apply
+
+# Resolve executable symlinks without GNU readlink flags (BSD/macOS too).
+_cli_realpath() {
+    local p="$1" dir link hops=0
+    [ -n "$p" ] || return 1
+    if [ -d "$p" ]; then (cd "$p" && pwd -P); return; fi
+    while :; do
+        dir="$(cd "$(dirname "$p")" && pwd -P)" || return 1
+        p="$dir/${p##*/}"
+        [ -L "$p" ] || { printf '%s\n' "$p"; return 0; }
+        [ "$hops" -lt 40 ] || return 1
+        hops=$((hops + 1))
+        link="$(readlink "$p")" || return 1
+        case "$link" in /*) p="$link" ;; *) p="$dir/$link" ;; esac
+    done
+}
+
+# _cli_owner <resolved path> — npm | brew | pacman, or empty when unknown.
+_cli_owner() {
+    local p="$1"
+    if command -v pacman >/dev/null 2>&1 && pacman -Qo "$p" >/dev/null 2>&1; then
+        echo pacman; return 0
+    fi
+    case "$p" in
+        */node_modules/*)                           echo npm ;;
+        */Cellar/*|/opt/homebrew/*|*/linuxbrew/*)   echo brew ;;
+    esac
+    return 0
+}
+
+_cli_bare_version() {
+    printf '%s\n' "$1" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*' | head -1 || true
+}
+
+# _npm_latest <package> — latest published version, empty when unreachable.
+_npm_latest() {
+    command -v npm >/dev/null 2>&1 || return 0
+    local out="" cache
+    # A private cache: --check and --versions promise to write nothing, and a
+    # bare `npm view` fills ~/.npm.
+    cache="$(mktemp -d "${TMPDIR:-/tmp}/himmel-npm-view.XXXXXX")" || return 0
+    if command -v timeout >/dev/null 2>&1; then
+        out="$(npm_config_cache="$cache" timeout 30 npm view "$1" version 2>/dev/null)" || out=""
+    else
+        out="$(npm_config_cache="$cache" npm view "$1" version 2>/dev/null)" || out=""
+    fi
+    rm -rf "$cache"
+    _cli_bare_version "$out"
+}
+
+_sync_codex_cli() {
+    local mode="$1" bin inst latest path owner cmd rc=0 out after gate_rc
+    if [ -n "${CODEX_BIN:-}" ]; then
+        bin="$CODEX_BIN"; [ -x "$bin" ] || bin=""
+    else
+        bin="$(command -v codex 2>/dev/null || true)"
+    fi
+    if [ -z "$bin" ]; then
+        echo "    codex: not on PATH — nothing to update."
+        _ver_row codex - - n/a "not on PATH"
+        return 0
+    fi
+    inst="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
+    latest="$(_npm_latest @openai/codex)"
+    path="$(_cli_realpath "$bin" 2>/dev/null || echo "$bin")"
+    owner="$(_cli_owner "$path")"
+    case "$owner" in
+        npm)    cmd="npm install -g @openai/codex@latest" ;;
+        brew)   cmd="brew upgrade codex" ;;
+        pacman) cmd="sudo pacman -Syu $(pacman -Qoq "$path" 2>/dev/null || echo codex)" ;;
+        *)      cmd="reinstall $path from https://github.com/openai/codex/releases/latest" ;;
+    esac
+    _cli_proxy_version_cmp "$inst" "$latest" || rc=$?
+    case "$rc" in
+        1)
+            echo "    codex ${inst:-?} is current (latest $latest)."
+            _probe_tool_row codex up-to-date "$inst"
+            _ver_row codex "$inst" "$latest" current
+            return 0 ;;
+        0) ;;
+        *)
+            echo "    codex ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
+            _probe_tool_row codex skipped "cannot compare ${inst:-?} with ${latest:-?}"
+            _ver_row codex "${inst:--}" "${latest:--}" unknown "cannot compare"
+            return 0 ;;
+    esac
+    echo "    codex $inst -> $latest available (installed via ${owner:-unknown}: $path)."
+    if [ "$mode" = "check" ]; then
+        _probe_tool_row codex skipped "$inst -> $latest update available — run without --check"
+        _ver_row codex "$inst" "$latest" behind "run /himmel-update to upgrade"
+        return 0
+    fi
+    local standalone_update=0 help_text=""
+    if [ -z "$owner" ] && [ "$bin" = "$HOME/.local/bin/codex" ] && [ -O "$path" ] && [ -w "$path" ]; then
+        help_text="$("$bin" --help 2>/dev/null || true)"
+        if grep -qE '^[[:space:]]+update[[:space:]]' <<< "$help_text"; then
+            standalone_update=1
+            cmd="$bin update"
+        fi
+    fi
+    if { [ "$owner" != "npm" ] || [ ! -O "$path" ] || [ ! -w "$path" ]; } \
+        && [ "$standalone_update" -ne 1 ]; then
+        echo "    needs you: $cmd (not auto-upgrading $path)."
+        _probe_tool_row codex skipped "$inst -> $latest — needs you: $cmd"
+        _ver_row codex "$inst" "$latest" behind "needs you: $cmd"
+        return 0
+    fi
+    if [ "$owner" = "npm" ]; then
+        local npm_root
+        npm_root="$(npm root -g 2>/dev/null)" || npm_root=""
+        npm_root="$(_cli_realpath "$npm_root" 2>/dev/null)" || npm_root=""
+        case "$npm_root:$path" in
+            ?*:"$npm_root"/@openai/codex/*) ;;
+            *)
+                cmd="use the npm that owns the selected Codex ($path), then npm install -g @openai/codex@latest"
+                echo "    needs you: $cmd"
+                _probe_tool_row codex skipped "$inst -> $latest — needs you: $cmd"
+                _ver_row codex "$inst" "$latest" behind "needs you: $cmd"
+                return 0 ;;
+        esac
+    fi
+    gate_rc=0
+    _vm_proof_gate codex_cli || gate_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+        echo "    not upgrading: codex stays on $inst (latest $latest)." >&2
+        _probe_tool_row codex skipped "HELD by the VM-first gate — $inst -> $latest, then: $cmd"
+        _ver_row codex "$inst" "$latest" behind "held by the VM-first gate"
+        return 0
+    fi
+    if [ "$standalone_update" -eq 1 ]; then
+        out="$("$bin" update 2>&1)" || rc=$?
+    else
+        out="$(npm install -g @openai/codex@latest 2>&1)" || rc=$?
+    fi
+    after="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
+    if [ "$after" = "$latest" ]; then
+        echo "    codex $inst -> $after (upgraded via ${owner:-standalone})."
+        _probe_tool_row codex updated "$inst -> $after"
+        _ver_row codex "$after" "$latest" current
+    else
+        echo "    codex upgrade failed — $(_last_line_trimmed "$out")" >&2
+        echo "    retry by hand: $cmd" >&2
+        _probe_tool_row codex failed "$inst stays; retry: $cmd"
+        _ver_row codex "$inst" "$latest" behind "upgrade failed"
+    fi
+    return 0
+}
+
+_report_claude_cli() {
+    local bin inst latest rc=0
+    bin="$(command -v claude 2>/dev/null || true)"
+    if [ -z "$bin" ]; then
+        echo "    claude: not on PATH."
+        _ver_row claude - - n/a "not on PATH"
+        return 0
+    fi
+    inst="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
+    latest="$(_npm_latest @anthropic-ai/claude-code)"
+    _cli_proxy_version_cmp "$inst" "$latest" || rc=$?
+    case "$rc" in
+        0)
+            echo "    claude $inst -> $latest available (report only, not auto-updated); run: claude update"
+            _probe_tool_row claude skipped "$inst -> $latest — run: claude update"
+            _ver_row claude "$inst" "$latest" behind "run: claude update" ;; # launch-profile-ok: version-table label, not a launch
+        1)
+            echo "    claude $inst is current (latest $latest)."
+            _probe_tool_row claude up-to-date "$inst"
+            _ver_row claude "$inst" "$latest" current ;; # launch-profile-ok: version-table label, not a launch
+        *)
+            echo "    claude ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
+            _probe_tool_row claude skipped "cannot compare ${inst:-?} with ${latest:-?}"
+            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" ;; # launch-profile-ok: version-table label, not a launch
+    esac
+    return 0
+}
+
+sync_agent_clis() {
+    local mode="$1"   # check | apply
+    echo ""
+    echo "==> codex / claude CLI (HIMMEL-5383)"
+    _sync_codex_cli "$mode"
+    _report_claude_cli
     return 0
 }
 
@@ -2291,6 +2519,11 @@ report_toolchain() {
                        # is report-only in both.
     echo ""
     echo "==> node/npm/bun toolchain (HIMMEL-3068)"
+    warn_bun_versions
+    if [ "$mode" = "apply" ] && ! _vm_proof_gate toolchain; then
+        _probe_tool_row bun skipped "HELD by the VM-first gate"
+        mode=check
+    fi
 
     local nvmrc="$ROOT/.nvmrc"
     if [ ! -f "$nvmrc" ]; then
@@ -2356,18 +2589,35 @@ report_toolchain() {
     fi
 
     if command -v bun >/dev/null 2>&1; then
-        local bun_before bun_after
+        local bun_before bun_after bun_path bun_owner bun_fix bun_out
         bun_before="$(bun --version 2>/dev/null)"
+        bun_path="$(_cli_realpath "$(command -v bun)" 2>/dev/null || command -v bun)"
+        bun_owner="$(_cli_owner "$bun_path")"
+        case "$bun_owner" in
+            pacman) bun_fix="sudo pacman -Syu bun" ;;
+            brew)   bun_fix="brew upgrade bun" ;;
+            npm)    bun_fix="npm install -g bun@latest" ;;
+            *)      bun_fix="bun upgrade" ;;
+        esac
         if [ "$mode" = "apply" ]; then
-            if bun upgrade >/dev/null 2>&1; then
+            if [ "$bun_owner" = "pacman" ] || [ "$bun_owner" = "brew" ]; then
+                # bun upgrade replaces the binary in place; a package-owned one is not
+                # writable by the user, so it always fails — name the real updater.
+                echo "    bun $bun_before is owned by $bun_owner ($bun_path) — updated by $bun_owner, not bun upgrade; run: $bun_fix"
+                _probe_tool_row bun skipped "updated by $bun_owner — run: $bun_fix"
+            elif bun_out="$(bun upgrade 2>&1)"; then
                 bun_after="$(bun --version 2>/dev/null)"
                 if [ "$bun_after" != "$bun_before" ]; then
                     echo "    bun $bun_before -> $bun_after (self-upgraded)."
+                    _probe_tool_row bun updated "$bun_before -> $bun_after"
                 else
                     echo "    bun $bun_before already current."
+                    _probe_tool_row bun up-to-date "$bun_before"
                 fi
             else
-                echo "    bun $bun_before — self-upgrade failed (non-fatal); run: bun upgrade" >&2
+                echo "    bun $bun_before — self-upgrade failed (non-fatal): $(_last_line_trimmed "$bun_out")" >&2
+                echo "    fix: $bun_fix   (bun is at $bun_path${bun_owner:+, owned by $bun_owner})" >&2
+                _probe_tool_row bun failed "$(_last_line_trimmed "$bun_out") — run: $bun_fix"
             fi
         else
             echo "    bun $bun_before (check mode — self-upgrade deferred to apply)."
@@ -2853,7 +3103,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain tools drift drift-check" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -2885,11 +3135,13 @@ if [ "${1:-}" = "--only" ]; then
         cli_proxy)     sync_cli_proxy || only_rc=1 ;;
         marketplaces)  sync_marketplaces ;;
         toolchain)     report_toolchain apply ;;
+        clis)          sync_agent_clis apply ;;
+        plugins)       report_plugin_gap ;;
         tools)         sync_probe_tools apply || only_rc=1 ;;
         drift)         report_drift apply ;;
         drift-check)   report_drift check ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain tools drift drift-check" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -2926,6 +3178,7 @@ if [ "${1:-}" = "--versions" ]; then
         sync_cli_proxy check || true
         report_toolchain check || true
         sync_probe_tools check || true
+        sync_agent_clis check || true
         _ver_pm_rows
     } >/dev/null 2>&1
     versions_rc=0
@@ -2963,6 +3216,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     update_qmd_fork check || true
     run_hermes_step check || true
     update_codex check || true
+    sync_agent_clis check || true
     update_luna_template check || true
     # HIMMEL-2134 Axis-B rows: both are read-only in check mode (a version-stamp
     # comparison and a registry listing) — neither rolls the proxy nor calls the
@@ -3132,6 +3386,24 @@ backfill_user_claude_md() {
     return 0
 }
 
+# ─── bus state directories (HIMMEL-5225) ────────────────────────────────────
+# himmel-bus's store.busRoot() creates $XDG_STATE_HOME/himmel and himmel/bus on
+# first use (HIMMEL-5221); this is the belt-and-braces so a station has the
+# private directories before any bus use. Idempotent: only a directory this
+# call creates is made 0700 — an existing one is left exactly as it is.
+# Best-effort, never fails the update.
+ensure_bus_state_dirs() {
+    local state="${XDG_STATE_HOME:-}" d
+    case "$state" in /*) ;; *) state="$HOME/.local/state" ;; esac
+    # Missing ancestors (a fresh HOME without ~/.local) get the default mode;
+    # only the three directories below are ours to make private.
+    [ -e "$state" ] || mkdir -p "$(dirname "$state")" 2>/dev/null || true
+    for d in "$state" "$state/himmel" "$state/himmel/bus"; do
+        [ -e "$d" ] || mkdir -m 700 "$d" 2>/dev/null || true
+    done
+    return 0
+}
+
 # ─── existing advisory steps (best-effort; ALWAYS run, chain outcome or not)─
 # None of these are managed CHAIN items (headroom is HIMMEL-890 pending; graphify
 # is now covered by the best-effort sync_graphify step above, HIMMEL-1048) — they
@@ -3140,6 +3412,7 @@ backfill_user_claude_md() {
 # of always running regardless of the pull/marketplace/jira/qmd/luna outcome,
 # including the security-relevant update_codex hooks.json re-sanitize.
 update_codex apply
+sync_agent_clis apply || true
 rewire_statusline
 sync_graphify
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
@@ -3161,6 +3434,7 @@ sync_probe_tools apply || true
 report_guardrail_block
 report_dependency_readiness
 backfill_user_claude_md
+ensure_bus_state_dirs
 report_qmd_daemon_restart
 report_drift apply
 
