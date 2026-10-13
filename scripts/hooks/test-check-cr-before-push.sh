@@ -392,7 +392,7 @@ else
         "before: $prior_marker_content / after: $new_marker_content / out: $out"
 fi
 case "$out" in
-    *"keeping the existing BOUND CR marker"*) pass "hook explains it kept the bound marker" ;;
+    *"keeping the existing BOUND review-owed marker"*) pass "hook explains it kept the bound marker" ;;
     *) fail "expected bound-marker-preserved message" "actual: $out" ;;
 esac
 git -C "$REPO" checkout -q main
@@ -1116,7 +1116,7 @@ else
     fail "held marker lock -> expected exit 2 got $rc" "out: $out"
 fi
 case "$out" in
-    *"holds the CR marker lock"*)
+    *"holds the review-owed marker lock"*)
         pass "the refusal names the lock, not a generic marker-write failure" ;;
     *)
         fail "held-lock refusal must name the lock" "out: $out" ;;

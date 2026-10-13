@@ -170,6 +170,51 @@ case " $CADENCE_RUNNER_BASENAMES " in
     fail=$((fail + 1)); echo "  FAIL: upstream-watch missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
 esac
 
+echo "[test-cadence-format] cadence_runner_stamp sees armed graphmap AST/publish runners (HIMMEL-4285)"
+# The weekly semantic runners (graphmap-luna/-himmel) are NOT armed here: only
+# the three structural .sh runners exist, which is the live shape the probe
+# missed ("not armed — no runner files found" while they sat in the crontab).
+_ast_tmp="$(mktemp -d -t cadence-ast.XXXXXX)" || exit 1
+for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel; do
+  printf '#!/usr/bin/env bash\n# %s 17\n' "$CADENCE_FORMAT_MARKER" > "$_ast_tmp/$_n.sh"
+done
+_ast_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_ast_tmp")"; _ast_rc=$?
+if [ "$_ast_rc" -eq 0 ] && [ "$_ast_got" = 17 ]; then
+  pass=$((pass + 1)); echo "  ok: AST/publish-only .sh runners are seen (stamp 17)"
+else
+  fail=$((fail + 1)); echo "  FAIL: AST/publish-only .sh runners not seen (rc=$_ast_rc stamp='$_ast_got', want rc=0 stamp=17)"
+fi
+# Each basename alone must be seen: one row per runner, so a missing entry in
+# CADENCE_RUNNER_BASENAMES names the exact runner (HIMMEL-4285).
+for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence; do
+  _one_tmp="$(mktemp -d -t cadence-one.XXXXXX)" || exit 1
+  printf '#!/usr/bin/env bash\n# %s 17\n' "$CADENCE_FORMAT_MARKER" > "$_one_tmp/$_n.sh"
+  _one_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_one_tmp")"; _one_rc=$?
+  if [ "$_one_rc" -eq 0 ] && [ "$_one_got" = 17 ]; then
+    pass=$((pass + 1)); echo "  ok: $_n alone is seen (stamp 17)"
+  else
+    fail=$((fail + 1)); echo "  FAIL: $_n alone not seen (rc=$_one_rc stamp='$_one_got', want rc=0 stamp=17)"
+  fi
+  rm -rf "$_one_tmp"
+done
+# One stale runner among them must pull the minimum down, not be masked.
+printf '#!/usr/bin/env bash\n# %s 12\n' "$CADENCE_FORMAT_MARKER" > "$_ast_tmp/graphmap-publish-himmel.sh"
+_ast_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_ast_tmp")"
+if [ "$_ast_got" = 12 ]; then
+  pass=$((pass + 1)); echo "  ok: a stale publish runner pulls the minimum to 12"
+else
+  fail=$((fail + 1)); echo "  FAIL: expected minimum 12 with a stale publish runner, got '$_ast_got'"
+fi
+rm -rf "$_ast_tmp"
+
+echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes doctor-cadence (HIMMEL-4285)"
+case " $CADENCE_RUNNER_BASENAMES " in
+  *" doctor-cadence "*)
+    pass=$((pass + 1)); echo "  ok: doctor-cadence is a probed runner basename" ;;
+  *)
+    fail=$((fail + 1)); echo "  FAIL: doctor-cadence missing from CADENCE_RUNNER_BASENAMES: '$CADENCE_RUNNER_BASENAMES'" ;;
+esac
+
 echo "[test-cadence-format] cadence_wsh_probe — prefers pwsh over powershell.exe (HIMMEL-2126)"
 # shellcheck source=scripts/lib/hermetic-path.sh
 # shellcheck disable=SC1091

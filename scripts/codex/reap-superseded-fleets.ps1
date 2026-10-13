@@ -304,7 +304,7 @@ function Get-BlindFleetRootPids {
 # tree — and the only thing left between it and Stop-Process is a name allow-list
 # holding node/python/cmd/bash/pwsh, which such a process trivially satisfies.
 # (The kill loop's creation-time identity check does NOT catch it: that compares
-# the impostor against ITS OWN snapshot, which matches — it is the same process,
+# the lookalike against ITS OWN snapshot, which matches — it is the same process,
 # just not ours.)
 #
 # The invariant that closes it: a process spawned BY this subtree cannot predate

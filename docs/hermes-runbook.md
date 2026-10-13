@@ -63,7 +63,7 @@ hermes config set model.default <provider/model>
 The `model:` block in `config.yaml` is `{default, provider, base_url}`, with an
 ordered `fallback_providers:` list for resilience — himmel's live chain and
 fallback policy are in [Provider routes](#provider-routes-wired-2026-06-12)
-below. For himmel's **CR paid-escalation** lane (`codex` / `gpt-6.1-sol`), log in to
+below. For himmel's **automated review paid-escalation** lane (`codex` / `gpt-6.1-sol`), log in to
 Codex once:
 
 ```bash
@@ -95,7 +95,7 @@ export HERMES_HOME="$HOME/.hermes"
 export HERMES_PY="$HERMES_HOME/hermes-agent/venv/bin/python"
 ```
 
-Smoke-test the CR chokepoint (spends your provider's free credits, not paid
+Smoke-test the automated review's sanctioned script (spends your provider's free credits, not paid
 budget):
 
 ```bash
@@ -201,14 +201,14 @@ free model with write/git/PR control.
 | Route | Reviewer | Cost |
 |---|---|---|
 | `hermes` (**default**) | `scripts/hermes/invoke.sh` with **no `--model`** — the `himmel_agent` profile default | free today (see below) |
-| `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription bank** — gated by `scripts/lib/bank-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
+| `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription usage budget** — gated by `scripts/lib/bank-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
 
 Route selection — an explicit `--route` / `CRITIC_ROUTE` always wins; otherwise
 it is derived from `--implementer`:
 
 | `--implementer` | Route | Why |
 |---|---|---|
-| *(none)* | `hermes` | default: free front-tier profile model, no bank spend |
+| *(none)* | `hermes` | default: free front-tier profile model, no subscription usage budget spend |
 | `hermes` | `claude` | hermes wrote it, so Claude reviews it |
 | `codex` | `hermes` | cross-family **only while the hermes reviewer is not codex** |
 | `claude` | `hermes` | cross-family — but a **claude-family hermes reviewer leaves no cross-family route, so the script exits 2** rather than return a verdict that looks cross-family and is not; pass `--route` to override deliberately |
@@ -244,7 +244,7 @@ PATH="/c/nvm4w/nodejs:$PATH" \
 
 Tests: `bash scripts/cr/test-hermes-critic.sh` — fully stubbed (`HERMES_PY` for
 the default route, a `claude` shim on `PATH` for `--route claude`), so it never
-spends the bank. It is in the `run-shell-tests.sh` SKIP_LIST; run it directly.
+spends the subscription usage budget. It is in the `run-shell-tests.sh` SKIP_LIST; run it directly.
 
 ## Free-tier SOUL tuning (559)
 
@@ -549,7 +549,7 @@ one-shot auto-detect on `-m` re-overrides a profile's provider.
 
 ### Consumers
 
-The CR panel's free critic is anchored via this lane to the model in
+The automated review panel's free critic is anchored via this lane to the model in
 the registry's anchor row. The shipped
 `scripts/cr/critics.json` carries UNIVERSAL defaults; when YOUR account's
 free quotas exhaust, record the swap in the gitignored
