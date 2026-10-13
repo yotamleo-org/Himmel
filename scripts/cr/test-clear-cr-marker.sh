@@ -3511,6 +3511,44 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "11e no counted round head recorded -> exit 14"
 rm -rf "$tmp"
 
+# 11f. a comment-only delta in a NON-test script is not reviewed code: the
+# fallback takes test paths only (a "# " line in a .sh or a skill .md can still
+# change what runs or what an agent reads), so this stays refused.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/clear-cr-marker.sh "# a comment only delta"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11f comment-only delta in a non-test script is refused -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "11f: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 11g. the recorded round head is a symlink -> ignored (same-uid redirect).
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+rm -f "$tmp/.git/cr-review-rounds/feat/x.head"
+printf '%s\n' "$sha" > "$tmp/real-head"
+ln -s "$tmp/real-head" "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11g a symlinked round head file is refused -> exit 14"
+rm -rf "$tmp"
+
+# 11h. a short or non-hex recorded round head -> no fallback.
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+printf '%s\n' "${sha:0:7}" > "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11h a short round head is refused -> exit 14"
+rm -rf "$tmp"
+make_repo || exit 1
+review_b "$tmp" scripts/cr/test-x.sh "echo renamed"
+printf '%s\n' "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" > "$tmp/.git/cr-review-rounds/feat/x.head"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "11h a non-hex round head is refused -> exit 14"
+rm -rf "$tmp"
+
 echo
 echo "clear-cr-marker: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

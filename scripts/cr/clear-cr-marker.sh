@@ -469,14 +469,17 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # HIMMEL-5416: a pre-PR commit after the last allowed review round has no round
 # of its own to buy (a judge NO-GO binds only to an open PR, and gh pr create
 # waits on this marker), so it deadlocked. When the tip has NO ledger row at all
-# and is a trivial descendant (HIMMEL-5109: test paths or comments only) of the
-# head the last counted round ran on, every ledger gate below is evaluated at
-# that reviewed head instead. A tip a panel ran on is judged on its own rows, and
-# a non-trivial unreviewed delta keeps the no-responders refusal.
+# and is a trivial descendant of the head the last counted round ran on, in
+# --tests-only mode (every changed path is a test path; the comment-only branch of
+# HIMMEL-5109 is NOT used here, because this clears with no critic review of the
+# delta and a comment-prefixed line in a non-test script still executes), every
+# ledger gate below is evaluated at that reviewed head instead. A tip a panel ran
+# on is judged on its own rows, and any other unreviewed delta keeps the
+# no-responders refusal.
 # ponytail: the substitute head is read from <branch>.head, written by
 # review-round.sh start --head and writable by the same uid (HIMMEL-3578); what
-# it can buy is the clearance of a test-/comment-only delta over a head a critic
-# did review, never of a head with code changes. Upgrade path: sign the file.
+# it can buy is the clearance of a tests-paths-only delta over a head a critic
+# did review, never of a head with non-test changes. Upgrade path: sign the file.
 review_head="$tip"
 _rr_head_file="$git_dir/cr-review-rounds/$branch.head"
 if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
@@ -487,7 +490,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     if { [ "${#_rr_head}" -eq 40 ] || [ "${#_rr_head}" -eq 64 ]; } && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
         && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" "$ledger" 2>/dev/null \
-        && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant "$_rr_head" "$tip" >/dev/null 2>&1; then
+        && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
         review_head="$_rr_head"
         echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths or comments since the reviewed head ${review_head:0:8} - gating on the reviewed head (HIMMEL-5416)." >&2
         audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
