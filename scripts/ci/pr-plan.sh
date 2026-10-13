@@ -98,7 +98,7 @@ while IFS= read -r path; do
     [ "$rc" -le 1 ] || full_plan "bad-regex: $grp"
     if [ "$rc" -eq 0 ]; then
       matched=1
-      [ "$grp" = benign ] || printf '%s\n' "$grp" >> "$hit_file"
+      [ "$grp" = benign ] || printf '%s\n' "$grp" >> "$hit_file" || full_plan "hit-file-write-failed"
     fi
   done <<EOF
 $inputs
@@ -110,8 +110,13 @@ EOF
 
 [ -z "$unknown" ] || { emit_all true full "unknown-path: $unknown" "${groups[@]}"; exit 0; }
 
-printf 'mode=impacted\nreason=base-sourced plan\n'
+out=""
 for g in "${groups[@]}"; do
-  if grep -qxF -- "$g" "$hit_file"; then printf 'run_%s=true\n' "$g"; else printf 'run_%s=false\n' "$g"; fi
+  grep -qxF -- "$g" "$hit_file"
+  rc=$?
+  # grep exits 2 on an unreadable hit file: that is a broken plan, not a miss
+  [ "$rc" -le 1 ] || full_plan "hit-file-unreadable"
+  if [ "$rc" -eq 0 ]; then out="${out}run_${g}=true"$'\n'; else out="${out}run_${g}=false"$'\n'; fi
 done
+printf 'mode=impacted\nreason=base-sourced plan\n%s' "$out"
 exit 0
