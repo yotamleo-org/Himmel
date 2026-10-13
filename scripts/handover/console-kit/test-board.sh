@@ -579,6 +579,36 @@ printf 'not json\n' > "$LC"
 LEG_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
 lacks 'cost line: a ledger with no usable row today renders nothing' "$(cat "$M/board.html")" 'data-cost-legs'
 
+# --- exploration cost (HIMMEL-5516): digest markers, median / worst 5 / flag, threshold by env
+XD="$W/leg-digest"
+mkdir -p "$XD"
+NOWMS="$(( $(date +%s) * 1000 ))"
+xrow() { # <session-prefix> <tokens> <cut> <started_ts>
+    printf '{"session":"%s-0000","model":"claude-sonnet-5-5","started_ts":%s,"status":"ok","exploration":{"tokens":%s,"sub_tokens":0,"reads":3,"searches":2,"cut":"%s"}}\n' "$1" "$4" "$2" "$3" > "$XD/$1-0000.json"
+}
+xrow aaaaaaa1 20000 edit "$NOWMS"
+xrow aaaaaaa2 30000 edit "$NOWMS"
+xrow aaaaaaa3 50000 commit "$NOWMS"
+xrow aaaaaaa4 60000 edit "$NOWMS"
+xrow aaaaaaa5 70000 edit "$NOWMS"
+xrow aaaaaaa6 150000 edit "$NOWMS"
+xrow bbbbbbb1 900000 none "$NOWMS"
+xrow ccccccc1 800000 edit 1000
+LEG_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
+same 'exploration: render still succeeds, rc 0' "$rc" "0"
+xhtml="$(cat "$M/board.html")"
+contains 'exploration: six cut sessions (not the cut-none one, not the old one)' "$xhtml" 'data-exploration="6"'
+contains 'exploration: median of the six' "$xhtml" 'median 55k tokens before first edit'
+contains 'exploration: one session over the 100000 default' "$xhtml" 'data-exploration-over="1"'
+contains 'exploration: the worst session leads the table' "$xhtml" 'data-session="aaaaaaa6"'
+lacks 'exploration: the table holds only the worst 5' "$xhtml" 'data-session="aaaaaaa1"'
+lacks 'exploration: a session with no edit is not in the panel' "$xhtml" 'bbbbbbb1'
+LEG_EXPLORATION_FLAG_TOKENS=55000 LEG_DIGEST_STATE_DIR="$XD" mrun >/dev/null; rc=$?
+contains 'exploration: the env threshold moves the flag (3 over 55000)' "$(cat "$M/board.html")" 'data-exploration-over="3"'
+LEG_DIGEST_STATE_DIR="$W/no-such-dir" mrun >/dev/null; rc=$?
+same 'exploration: absent state dir, rc 0' "$rc" "0"
+lacks 'exploration: absent state dir renders nothing' "$(cat "$M/board.html")" 'data-exploration'
+
 # --- failure classes this shift (HIMMEL-4670): the leg-failures ledger since the
 # console lock's start, the router log's latest decision per class, the memory
 # inbox count. Never fatal; not part of the fingerprint.
