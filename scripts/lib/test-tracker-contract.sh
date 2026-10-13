@@ -47,6 +47,7 @@ case "$op" in
         [ "$key" != HIMMEL-506 ] || { echo "jira: get $key failed: HTTP 404: {\"errorMessages\":[\"Issue Does Not Exist\"]}" >&2; exit 1; }
         [ "$key" != HIMMEL-502 ] || { echo "jira: get $key failed: HTTP 404: <html><body><h1>Not Found</h1>nginx</body></html>" >&2; exit 1; }
         [ "$key" != HIMMEL-507 ] || { echo "jira: get $key failed: HTTP 404: <html><body>Issue does not exist</body></html>" >&2; exit 1; }
+        [ "$key" != HIMMEL-508 ] || { echo "jira: get $key failed: HTTP 404: {\"errorMessages\":[\"Upstream failure\"],\"errors\":{\"detail\":\"issue does not exist\"}}" >&2; exit 1; }
         [ "$key" != HIMMEL-503 ] || { echo "jira: get $key failed: HTTP 404:" >&2; exit 1; }
         [ "$key" != HIMMEL-505 ] || { echo "Issue Does Not Exist" >&2; exit 1; }
         [ "$key" != HIMMEL-500 ] || { echo "401 Unauthorized" >&2; exit 1; }
@@ -342,6 +343,7 @@ tracker_get HIMMEL-503 >/dev/null 2>&1; eq "jira bare 404 with no not-found text
 tracker_get HIMMEL-502 >/dev/null 2>&1; eq "jira proxy HTML Not Found body is rc 1, not absent" 1 "$?"
 tracker_get HIMMEL-506 >/dev/null 2>&1; eq "jira 404 JSON body naming Issue Does Not Exist in any case is rc 3" 3 "$?"
 tracker_get HIMMEL-507 >/dev/null 2>&1; eq "jira 404 HTML body that says Issue does not exist is rc 1, not absent" 1 "$?"
+tracker_get HIMMEL-508 >/dev/null 2>&1; eq "jira 404 JSON with the phrase outside errorMessages is rc 1, not absent" 1 "$?"
 tracker_get HIMMEL-505 >/dev/null 2>&1; eq "jira not-found text outside the CLI's own line is rc 1" 1 "$?"
 
 # the stderr capture file is mktemp-made: a planted predictable path is never written through,
