@@ -3986,7 +3986,7 @@ _bwimc_dx_site() {
     b=${w##*/}
     if [ "${ST_X[$wi]}" = 1 ]; then
         case "$w" in
-            */*) case "$b" in *'$'*|'') return 0 ;; esac ;;
+            */*) case "$b" in *'$'*|'') _bwimc_dx_deny "(a variable names the command: $w)" ;; esac ;;
             *) _bwimc_dx_deny "(a variable is the command word: $w)" ;;
         esac
     fi

@@ -376,6 +376,11 @@ _r5098 "231a control: xargs bash -n"                   allow "git ls-files '*.sh
 _r5098 "231b control: xargs bash script"               allow "git ls-files '*.sh' | xargs bash scripts/lint.sh"
 _r5098 "231c xargs bash with no script runs data"      block 'cat @W@/msg | xargs bash -n'
 _r5098 "231d xargs -I bash script"                     block 'cat @W@/msg | xargs -I{} bash {}'
+# a path command word whose basename is a variable names an unknown command
+_r5098 "232a /bin/\$x -c git log"                     block 'x=sh; /bin/$x -c "$(git log -1 --format=%B)"'
+_r5098 "232b pipe into /usr/bin/\$x"                  block 'x=sh; cat @W@/msg | /usr/bin/$x'
+_r5098 "232c empty basename after a variable dir"     block 'd=/bin/sh; "$d"/ -c "$(cat @W@/msg)"'
+_r5098 "232d control: literal basename under \$HOME"  allow '"$HOME/bin/tool" "$(git log -1 --format=%s)"'
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
