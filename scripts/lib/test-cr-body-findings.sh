@@ -93,6 +93,8 @@ sed -e 's/Outside diff range comments (2)/Outside diff range comments: 2/' \
     -e 's/^\(> <summary>.*\) (1)<\/summary>/\1: 1<\/summary>/' "$OUTSIDE_BODY" > "$OUTSIDE_COLON_BODY"
 mk_json_from_file "$RESP_DIR/outside-colon.json"      "$UID_OK"    "$HEAD"  "$OUTSIDE_COLON_BODY"
 mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
+mk_json_from_str  "$RESP_DIR/colon-suffix-1.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1.5</summary> <!-- cr-comment:v1:abc123 -->"
+mk_json_from_str  "$RESP_DIR/colon-suffix-2.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1foo</summary> <!-- cr-comment:v1:abc123 -->"
 echo '[]' > "$RESP_DIR/zero-reviews.json"
 echo '{}' > "$RESP_DIR/non-array.json"
 # identity: right body, WRONG user.id at head -> must be treated as no review.
@@ -169,6 +171,8 @@ t nitpick-pr466-parses-at-head                nitpick-466         0 "outside=0 n
 t nitpick-colon-form-counts-1                 nitpick-colon       0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t outside-colon-form-counts-2                 outside-colon       0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
 t colon-malformed-count-blocks                colon-malformed     2
+t colon-decimal-count-blocks                  colon-suffix-1      2
+t colon-alnum-suffix-count-blocks             colon-suffix-2      2
 t clean-body-all-zero                        clean               0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=1 substantive=1"
 # anti-drift canaries — the whole point of this reader. rc 2: POSITIVE
 # evidence of an unparseable finding (the body SHOWS a section keyword but

@@ -168,7 +168,7 @@ def has_content: test("\\S");
 # the paren form so every regex below sees ONE shape; a non-numeric count stays
 # unmatched, so the drift canaries still return rc 2.
 def norm:
-  gsub("(?<h>comments?): (?<n>[0-9]+)(?![0-9])"; "\(.h) (\(.n))")
+  gsub("(?<h>comments?): (?<n>[0-9]+)(?![0-9A-Za-z.])";"\(.h) (\(.n))")
   | gsub("<summary>(?<f>[^<\\n]+): (?<n>[0-9]+)</summary>"; "<summary>\(.f) (\(.n))</summary>");
 '
 
