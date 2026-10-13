@@ -337,5 +337,28 @@ else
     fail "ledger directory is created at mode 700 (mode=$ledger_mode)"
 fi
 
+# Case 18 (HIMMEL-5408): a multi-line --file ruling is delivered whole — every
+# line's content lands in ONE inbox bullet and ONE doc bullet, never just line 1.
+ML_FILE="$WORK/multiline-ruling.txt"
+printf 'GO line one\nline two\n\nline three\nline four\nline five\n' > "$ML_FILE"
+ML_DOC="$WORK/ml-doc.md"
+printf '# Leg doc\n\n## Console Rulings (newest at the bottom)\n- 08:00 existing bullet\n\n## Results\nsome text\n' > "$ML_DOC"
+ML_SESSION="HIMMEL-5408-ml-leg"
+ML_INBOX="$HANDOVER_DIR/inbox/$ML_SESSION.md"
+out="$(bash "$SCRIPT" "$ML_SESSION" --file "$ML_FILE" --doc "$ML_DOC" 2>&1)"; rc=$?
+ml_ok=1
+for needle in 'GO line one' 'line two' 'line three' 'line four' 'line five'; do
+    grep -qF "$needle" "$ML_DOC" || ml_ok=0
+    grep -qF "$needle" "$ML_INBOX" 2>/dev/null || ml_ok=0
+done
+ml_inbox_lines="$(wc -l < "$ML_INBOX" 2>/dev/null | tr -d '[:space:]')"
+ml_doc_bullets="$(grep -c 'GO line one' "$ML_DOC")"
+if [ "$rc" -eq 0 ] && [ "$ml_ok" -eq 1 ] && [ "$ml_inbox_lines" = "1" ] && [ "$ml_doc_bullets" = "1" ] \
+    && grep -qF 'GO line one / line two / line three / line four / line five' "$ML_INBOX"; then
+    pass "a multi-line --file ruling lands whole in one inbox bullet and one doc bullet"
+else
+    fail "a multi-line --file ruling lands whole (rc=$rc ok=$ml_ok inbox_lines=$ml_inbox_lines doc_bullets=$ml_doc_bullets out='$out')"
+fi
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "SOME FAILED"; exit 1
