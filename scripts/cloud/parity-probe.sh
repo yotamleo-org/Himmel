@@ -92,14 +92,14 @@ if [ -d "$PD" ]; then
   if [ -f "$PD/installed_plugins.json" ] && have jq; then
     row plugins-installed "$(jq -r '.plugins // . | keys | join(",")' "$PD/installed_plugins.json" 2>/dev/null | cut -c1-300)"
   else
-    row plugins-installed "$(find "$PD" -maxdepth 1 -mindepth 1 -exec basename {} \; 2>/dev/null | tr '\n' ',' | cut -c1-300)"
+    row plugins-installed "$(find "$PD" -maxdepth 1 -mindepth 1 -exec basename {} \; 2>/dev/null | tr '\n' ',' | cut -c1-300)"  # gnu-ok: BSD find has -maxdepth/-mindepth/-exec
   fi
   row plugin-hook-files "$(find "$PD" -name hooks.json 2>/dev/null | wc -l | tr -d ' ')"
-  row plugins-installed-count "$(find "$PD" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')"
+  row plugins-installed-count "$(find "$PD" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')"  # gnu-ok: BSD find has -maxdepth/-mindepth
 else
   row plugin-dir "<absent>"
 fi
-row marketplace-plugins "$(find "$ROOT/marketplace/plugins" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+row marketplace-plugins "$(find "$ROOT/marketplace/plugins" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"  # gnu-ok: BSD find has -maxdepth/-mindepth
 
 # --------------------------------------------------------------- guard probes
 section guards

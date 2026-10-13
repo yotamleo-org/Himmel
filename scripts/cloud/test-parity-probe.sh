@@ -69,7 +69,7 @@ before="$(git -C "$ROOT" status --porcelain 2>/dev/null | { sha256sum 2>/dev/nul
 TMPDIR="$TMP" bash "$PROBE" --no-net >/dev/null 2>&1
 after="$(git -C "$ROOT" status --porcelain 2>/dev/null | { sha256sum 2>/dev/null || shasum -a 256; })"
 if [ "$before" = "$after" ]; then ok "run leaves the work tree untouched"; else bad "probe changed the work tree"; fi
-leftover="$(find "$TMP" -mindepth 1 -maxdepth 1 -name 'parity-msg.*' | wc -l | tr -d ' ')"
+leftover="$(find "$TMP" -mindepth 1 -maxdepth 1 -name 'parity-msg.*' | wc -l | tr -d ' ')"  # gnu-ok: BSD find has -maxdepth/-mindepth
 if [ "$leftover" = "0" ]; then ok "run leaves no scratch file"; else bad "$leftover scratch file(s) left"; fi
 
 # 6. an unknown flag is refused (rc 2).
