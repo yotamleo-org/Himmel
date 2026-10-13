@@ -291,6 +291,12 @@ guard_unwrap() {
     GU_CWD_UNKNOWN=0
     [ "${GUARD_UNWRAP_CWD:-}" != unknown ] || GU_CWD_UNKNOWN=1
     case "$depth" in ''|*[!0-9]*) depth=$GU_MAX_DEPTH ;; esac
+    # The marker is ours to set on a child, never an input: read it once and
+    # unset it so a spawn of the hook's own (block-tail-pipe-on-gates.sh's
+    # expanded-form children) never inherits it, and honour it only below the
+    # top call so a caller-set value cannot make every child skipped.
+    unset GUARD_UNWRAP_XKEPT
+    [ "$depth" -gt 0 ] || xkept=0
 
     if ! st_tokenize "$cmd"; then
         _gu_flatten_params "$cmd"

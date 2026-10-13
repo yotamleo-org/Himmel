@@ -116,6 +116,46 @@ for d in 1 2 3 4; do
     assert_le "render count, ${d}-deep" "$((d * 3 + 1))" "$n"
 done
 
+# --- the xargs-kept marker is an internal channel, not an input ---
+# A caller-set marker at depth 0 must not make the guard skip its children
+# (that would let every nested body through), and the marker must not reach a
+# process the hook spawns after unwrapping (block-tail-pipe-on-gates.sh runs
+# its expanded forms that way).
+run_hook_env() {
+    local f="$SCRATCH/payload.json" cmd=$1
+    shift
+    j_bash "$cmd" >"$f"
+    env "$@" bash "$HOOK" <"$f" >/dev/null 2>&1
+    echo "$?"
+}
+
+assert_rc "XKEPT=1 at depth 0 still denies a nested stash" 2 \
+    "$(run_hook_env 'sh -c "git stash"' GUARD_UNWRAP_XKEPT=1)"
+assert_rc "XKEPT=1 at depth 0 still denies a nested xargs stash" 2 \
+    "$(run_hook_env "$(nest 2 'git stash')" GUARD_UNWRAP_XKEPT=1)"
+assert_rc "xargs-kept child still runs the hook's own text scan" 2 \
+    "$(run_hook_env 'git stash' GUARD_UNWRAP_DEPTH=1 GUARD_UNWRAP_XKEPT=1)"
+
+LEAK_HOOK="$SCRATCH/leak-hook.sh"
+cat >"$LEAK_HOOK" <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+cmd=\$(jq -r '.tool_input.command // empty') || exit 3
+. "$LIB" || exit 2
+guard_unwrap "\${BASH_SOURCE[0]}" "\$cmd" || exit 2
+bash -c 'printf "%s" "\${GUARD_UNWRAP_XKEPT-unset}"' >"$SCRATCH/leak.out"
+exit 0
+EOF
+j_bash 'echo hi' >"$SCRATCH/leak-payload.json"
+env GUARD_UNWRAP_DEPTH=1 GUARD_UNWRAP_XKEPT=1 bash "$LEAK_HOOK" <"$SCRATCH/leak-payload.json" >/dev/null 2>&1
+leak=$(cat "$SCRATCH/leak.out" 2>/dev/null)
+if [ "$leak" = unset ]; then
+    echo "PASS marker not inherited by a process the hook spawns"
+else
+    echo "FAIL marker not inherited by a process the hook spawns - got '$leak'"
+    FAILED=$((FAILED + 1))
+fi
+
 if [ "$FAILED" -ne 0 ]; then
     echo "FAILED: $FAILED case(s)"
     exit 1
