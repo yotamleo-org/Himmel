@@ -14,6 +14,9 @@
 #   known-findings.sh --diff [<range>] [--json] checklist for `git diff <range>` (default <default-branch>...HEAD)
 #   known-findings.sh --prompt                  critic-prompt block (prompt:true classes)
 #   known-findings.sh --list                    markdown table (human index)
+#   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
+#                                               then the promotion queue: prompt/advisory classes with
+#                                               agreed ledger recurrences, most first (HIMMEL-4426)
 #   known-findings.sh --refresh [--learnings <export.csv>]
 # Env: KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
@@ -36,14 +39,15 @@ while [ $# -gt 0 ]; do
                  if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then RANGE="$2"; shift 2; else RANGE=""; shift; fi;;
     --prompt)    MODE=prompt; shift;;
     --list)      MODE=list; shift;;
+    --ladder)    MODE=ladder; shift;;
     --refresh)   MODE=refresh; shift;;
     --learnings) [ $# -ge 2 ] || { echo "known-findings.sh: --learnings requires a csv path" >&2; exit 2; }; LEARNINGS="$2"; shift 2;;
     --json)      JSON=1; shift;;
-    -h|--help)   sed -n '2,20p' "$0"; exit 0;;
+    -h|--help)   sed -n '2,23p' "$0"; exit 0;;
     *) echo "known-findings.sh: unknown option $1" >&2; exit 2;;
   esac
 done
-[ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --refresh is required" >&2; exit 2; }
+[ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --ladder | --refresh is required" >&2; exit 2; }
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
@@ -74,6 +78,17 @@ const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON 
 const ROOT = process.env.REPO_ROOT;
 const db = JSON.parse(fs.readFileSync(KF, "utf8"));
 const classes = db.classes || [];
+// HIMMEL-4426: `rung` is the top rung of the correction ladder the class has
+// reached (see the `_schema` note). A class without a valid one is a schema
+// error, never a silent miss in the --ladder count. Checked in the catalogue-
+// maintenance modes only: --diff and --prompt sit on the critic hot path, where
+// a schema error would silently drop the checklist / prompt block.
+const RUNGS = ["design", "gate", "advisory", "prompt", "human"];
+const badRung = ["list", "ladder", "refresh"].includes(MODE) ? classes.filter(c => !RUNGS.includes(c.rung)) : [];
+if (badRung.length) {
+  console.error(`known-findings.sh: schema: ${badRung.length} class(es) without a valid rung (${RUNGS.join("|")}): ${badRung.map(c => `${c.id}=${JSON.stringify(c.rung ?? null)}`).join(", ")}`);
+  process.exit(2);
+}
 
 // glob → RegExp: ** = any path, * = one segment, ? = one char. Placeholders
 // first, so the "*" pass cannot rewrite the ".*" the "**" pass just emitted.
@@ -91,9 +106,25 @@ const baseName = (f) => f.split("/").pop();
 if (MODE === "list") {
   // Paste-safe markdown cells (HIMMEL-2450): escape | and collapse newlines.
   const cell = (v) => String(v ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
-  console.log("| id | kind | source | detector | title |");
-  console.log("|---|---|---|---|---|");
-  for (const c of classes) console.log(`| \`${cell(c.id)}\` | ${cell(c.kind)} | ${cell(c.source)} | ${cell(c.detector ? c.detector.type : "—")} | ${cell(c.title)} |`);
+  console.log("| id | kind | rung | source | detector | title |");
+  console.log("|---|---|---|---|---|---|");
+  for (const c of classes) console.log(`| \`${cell(c.id)}\` | ${cell(c.kind)} | ${cell(c.rung)} | ${cell(c.source)} | ${cell(c.detector ? c.detector.type : "—")} | ${cell(c.title)} |`);
+  process.exit(0);
+}
+
+if (MODE === "ladder") {
+  // Count per rung, then the promotion queue: a class whose top rung is prompt
+  // or advisory and that has agreed recurrences in the ledger evidence (the
+  // file-bucket verdict history `--refresh` wrote — not the class alone).
+  const counts = Object.fromEntries(RUNGS.map(r => [r, 0]));
+  for (const c of classes) counts[c.rung]++;
+  console.log(`known-findings ladder: ${classes.length} class(es)`);
+  console.log("rung counts: " + RUNGS.map(r => `${r}=${counts[r]}`).join(" "));
+  const agreedOf = (c) => ((c.evidence || {}).ledger || {}).agreed || 0;
+  const queue = classes.filter(c => (c.rung === "prompt" || c.rung === "advisory") && agreedOf(c) > 0)
+    .sort((a, b) => agreedOf(b) - agreedOf(a));
+  console.log(`\npromotion queue (prompt/advisory classes with agreed ledger recurrences, most first): ${queue.length}`);
+  for (const c of queue) console.log(`  [${c.id}] rung=${c.rung} kind=${c.kind} agreed=${agreedOf(c)}`);
   process.exit(0);
 }
 

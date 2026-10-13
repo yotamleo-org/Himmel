@@ -257,5 +257,5 @@ on a `repo-key` (basename of `git remote get-url origin`, `.git` stripped —
 stable across worktrees) and let the hook match on `epoch >= session-start`.
 The path + token sanitization (`[^A-Za-z0-9._-]` → `-`) MUST stay byte-identical
 between the TS writer and the bash reader. The nudge hook consumes these to
-decide whether a ticket-scoped session already synced Jira (advisory, default
+decide whether a ticket-scoped session already synced Jira (warn-only, default
 OFF).

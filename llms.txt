@@ -37,7 +37,7 @@ All five paths: [docs/setup/updating.md](docs/setup/updating.md).
 
 ## Enforcement
 
-Structural, not prose: Claude Code PreToolUse/PostToolUse hooks plus `pre-commit` / `commit-msg` / `pre-push` git gates. **Do not read an enumerated hook list from any document — it drifts.** The live inventory is `.claude/settings.json` and `.pre-commit-config.yaml`; the classification of every gate as HARD / auth-gated / advisory, plus each layer's off-switch, is [docs/configuration.md](docs/configuration.md). Bypasses are session env vars set in the *launching* shell, never a per-call prefix.
+Structural, not prose: Claude Code PreToolUse/PostToolUse hooks plus `pre-commit` / `commit-msg` / `pre-push` git gates. **Do not read an enumerated hook list from any document — it drifts.** The live inventory is `.claude/settings.json` and `.pre-commit-config.yaml`; the classification of every gate as HARD / auth-gated / warn-only, plus each layer's off-switch, is [docs/configuration.md](docs/configuration.md). Off switches are session env vars set in the *launching* shell, never a per-call prefix.
 
 Data egress from graph extraction is fenced by one policy file, `scripts/guardrails/egress-matrix.json`.
 

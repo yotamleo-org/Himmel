@@ -75,23 +75,6 @@ check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='
-block-bare-qmd-query.sh expansion-default-empty HIMMEL-5328
-block-bare-qmd-query.sh expansion-strip-empty HIMMEL-5328
-block-bare-qmd-query.sh expansion-indirect-empty HIMMEL-5328
-block-bare-qmd-query.sh expansion-adjacent-empty HIMMEL-5328
-block-bare-qmd-query.sh expansion-empty-word HIMMEL-5328
-block-bare-qmd-query.sh expansion-empty-arg HIMMEL-5328
-block-git-stash.sh expansion-default-empty HIMMEL-5330
-block-git-stash.sh expansion-strip-empty HIMMEL-5330
-block-git-stash.sh expansion-indirect-empty HIMMEL-5330
-block-git-stash.sh expansion-adjacent-empty HIMMEL-5330
-block-git-stash.sh expansion-empty-word HIMMEL-5330
-block-git-stash.sh expansion-empty-arg HIMMEL-5330
-block-read-secrets.sh expansion-default-empty HIMMEL-5331
-block-read-secrets.sh expansion-strip-empty HIMMEL-5331
-block-read-secrets.sh expansion-indirect-empty HIMMEL-5331
-block-read-secrets.sh expansion-adjacent-empty HIMMEL-5331
-block-read-secrets.sh expansion-empty-word HIMMEL-5331
 block-jira-compound-write.sh bs-newline-inside-word HIMMEL-5332
 block-jira-compound-write.sh ansi-c-escaped-quote HIMMEL-5332
 block-jira-compound-write.sh ansi-c-command-word HIMMEL-5332
@@ -104,36 +87,10 @@ block-jira-compound-write.sh expansion-adjacent-empty HIMMEL-5332
 block-jira-compound-write.sh expansion-empty-word HIMMEL-5332
 block-rogue-claude-schedule.sh bs-newline-inside-word HIMMEL-5333
 guard-pr-check-literal.sh ansi-c-command-word HIMMEL-5335
-block-bare-qmd-query.sh zsh-modifier-tail-braceless HIMMEL-5328
-block-bare-qmd-query.sh zsh-modifier-tail-braced HIMMEL-5328
-block-bare-qmd-query.sh zsh-modifier-root-braceless HIMMEL-5328
-block-bare-qmd-query.sh zsh-modifier-root-braced HIMMEL-5328
-block-bare-qmd-query.sh zsh-subscript-braceless HIMMEL-5328
-block-bare-qmd-query.sh zsh-subscript-braced HIMMEL-5328
-block-bare-qmd-query.sh zsh-paramflag-indirect-empty HIMMEL-5328
-block-bare-qmd-query.sh zsh-modifier-empty-word HIMMEL-5328
-block-bare-qmd-query.sh zsh-modifier-empty-arg HIMMEL-5328
-block-git-stash.sh zsh-modifier-tail-braceless HIMMEL-5330
-block-git-stash.sh zsh-modifier-tail-braced HIMMEL-5330
-block-git-stash.sh zsh-modifier-root-braceless HIMMEL-5330
-block-git-stash.sh zsh-modifier-root-braced HIMMEL-5330
-block-git-stash.sh zsh-subscript-braceless HIMMEL-5330
-block-git-stash.sh zsh-subscript-braced HIMMEL-5330
-block-git-stash.sh zsh-paramflag-indirect-empty HIMMEL-5330
-block-git-stash.sh zsh-modifier-empty-word HIMMEL-5330
-block-git-stash.sh zsh-modifier-empty-arg HIMMEL-5330
 block-jira-compound-write.sh zsh-modifier-tail-braceless HIMMEL-5332
 block-jira-compound-write.sh zsh-modifier-root-braceless HIMMEL-5332
 block-jira-compound-write.sh zsh-subscript-braceless HIMMEL-5332
 block-jira-compound-write.sh zsh-modifier-empty-word HIMMEL-5332
-block-read-secrets.sh zsh-modifier-tail-braceless HIMMEL-5331
-block-read-secrets.sh zsh-modifier-tail-braced HIMMEL-5331
-block-read-secrets.sh zsh-modifier-root-braceless HIMMEL-5331
-block-read-secrets.sh zsh-modifier-root-braced HIMMEL-5331
-block-read-secrets.sh zsh-subscript-braceless HIMMEL-5331
-block-read-secrets.sh zsh-subscript-braced HIMMEL-5331
-block-read-secrets.sh zsh-paramflag-indirect-empty HIMMEL-5331
-block-read-secrets.sh zsh-modifier-empty-word HIMMEL-5331
 '
 
 # block-write-into-main-checkout.sh exempts any path with a tmp/ or temp/

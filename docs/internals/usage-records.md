@@ -9,7 +9,7 @@ construction; see "PR/CI join" below.
 | Input | Source |
 |---|---|
 | per-session tokens | `scripts/lib/bank-attribution.sh` output, reused not re-parsed |
-| CR rounds, verdicts, estimated critic tokens | the CR critic ledger (`scripts/cr/ledger-append.sh`) |
+| automated review rounds, verdicts, estimated critic tokens | the automated review critic ledger (`scripts/cr/ledger-append.sh`) |
 | PR and CI facts (opt-in) | `gh pr list` / `gh run list`, only with `--repo` |
 
 ## Commands
@@ -31,14 +31,14 @@ outside the tree.
 ## Join keys
 
 - **Ticket** is the key. A session joins by its custom title starting `KEY-n`;
-  a CR ledger row joins by the `KEY-n` inside its branch name.
+  an automated review ledger row joins by the `KEY-n` inside its branch name.
 - A session whose title contains `console` is kind `console`; `judge` is kind
   `judge`; everything else is `leg`.
 - A console spans many tickets, so its title does not name one. Console
   sessions with no `KEY-n` prefix go to the pseudo-ticket `_console` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
   ticket's record whenever the range changes). Sessions with no key and no
-  `console` go to `_unattributed`. A console titled with a ticket key stays
+  `console` go to `_unattributed`. A supervisor session titled with a ticket key stays
   under that ticket, in `totals.console`.
 
 ## Record (one JSON object per line, keys sorted)
@@ -96,18 +96,18 @@ run fail rather than store incomplete totals.
 ## Consumers
 
 The usage-records epic's readers: the effort model, the tool
-re-audit, routing, leg A/B, the
+re-audit, routing, worker session A/B, the
 improvement lane, the tracker UI and cost reports. Siblings that
-will feed it: PR-body cost aggregation and the CR-loop ledger.
+will feed it: PR-body cost aggregation and the automated review loop ledger.
 
 ## Limits
 
-`--since` windows session tokens only; CR stays all-time, so use it
+`--since` windows session tokens only; automated review stays all-time, so use it
 for token questions, not for a stored record you mean to compare across runs.
 A whole compute-then-append run holds a `<store>/.lock` directory, so an older
 snapshot never publishes after a newer one. Table parsing assumes session
 titles contain no ` | `. Sessions are keyed by title, so distinct sessions
-sharing a title merge into one `legs[]` entry. Judge calls are counted as
+sharing a title merge into one `legs[]` entry. Judge subagents are counted as
 `judge`-titled sessions only. An explicit `--projects` or `--ledger` that is
 missing or unreadable exits non-zero before anything is written; the default
 projects dir and default ledger may be absent (a note on stderr, treated as

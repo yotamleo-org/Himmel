@@ -10,6 +10,8 @@ set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REAL_ROOT="$(cd "$DIR/.." && pwd)"
+# shellcheck source=lib/timeout-bin.sh
+. "$DIR/lib/timeout-bin.sh"
 FAILED=0
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
@@ -32,6 +34,11 @@ cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/cadence-alert.sh"
 cat > "$P/scripts/himmel-doctor.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s|%s|%s\n' "$PWD" "$0" "$*" >> "$STUB_WHERE"
+if [ -n "${STUB_GATE:-}" ]; then
+    i=0
+    while [ ! -f "$STUB_GATE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+    [ -f "$STUB_GATE" ] || exit 1
+fi
 cat "$STUB_OUT"
 SH
 git -C "$P" add -A
@@ -56,6 +63,30 @@ doctor_out() { # <fail-ids> <warn-ids>  (space separated)
       echo; echo "Summary: $nf FAIL  $nw WARN  0 INFO"; } > "$STUB_OUT"
 }
 run_cad() { bash "${1:-$P}/scripts/doctor-cadence.sh" run >/dev/null 2>&1; }
+kill_cad() { # Kill only an isolated fixture group, then await descriptor closure.
+    local pid pgid rc i=0 live
+    : > "$STUB_WHERE"
+    export STUB_GATE="$W/killed.release"
+    set -m
+    run_cad & pid=$!
+    set +m
+    while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+    pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+    if [ "$pgid" != "$pid" ] || [ ! -s "$STUB_WHERE" ]; then
+        touch "$STUB_GATE"; wait "$pid"; unset STUB_GATE
+        return 2
+    fi
+    kill -KILL -- "-$pid"
+    wait "$pid" 2>/dev/null; rc=$?
+    unset STUB_GATE
+    i=0
+    while [ "$i" -lt 100 ]; do
+        live="$(ps -eo pgid=,stat= | awk -v g="$pid" '$1 == g && $2 !~ /^Z/ {n++} END {print n+0}')" || return 2
+        [ "$live" -eq 0 ] && return "$rc"
+        sleep 0.05; i=$((i + 1))
+    done
+    return 2
+}
 sent_n() { wc -l < "$SENT" | tr -d ' '; }
 
 # 1. first run with a FAIL → exactly one alert naming it.
@@ -168,6 +199,47 @@ doctor_out "" "C79-flap"; run_cad
 doctor_out "" ""; run_cad
 doctor_out "" "C79-flap"; run_cad
 check "a WARN that left in between files no ticket" 0 "$(jira_n create)"
+# 8c. Hold the first doctor open: an overlapping run must exit cleanly without
+# invoking another doctor or filing the same persisting WARN twice.
+# A PATH without flock exercises the real Perl/kernel fallback, not a fake lock.
+mkdir -p "$W/no-flock-bin"
+for tool in awk bash cat date dirname git grep head mkdir mktemp mv perl ps rm sed sleep sort stat touch tr; do
+    ln -s "$(command -v "$tool")" "$W/no-flock-bin/$tool"
+done
+rm -rf "$STATE"; : > "$JIRA_LOG"; : > "$JIRA_LIST_OUT"
+doctor_out "" "C80-overlap"; run_cad
+: > "$STUB_WHERE"
+export STUB_GATE="$W/doctor.release"
+PATH="$W/no-flock-bin" run_cad & first_pid=$!
+i=0
+while [ ! -s "$STUB_WHERE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+[ -s "$STUB_WHERE" ] && pass "first concurrent doctor started" || fail "first concurrent doctor started"
+# Without timeout, the stub's gate still releases after five seconds.
+${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 3} bash "$P/scripts/doctor-cadence.sh" run >/dev/null 2>&1; overlap_rc=$?
+check "overlapping cadence exits cleanly" 0 "$overlap_rc"
+check "overlapping cadence does not start a second doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+PATH="$W/no-flock-bin" run_cad; check "Perl flock fallback exits cleanly on overlap" 0 $?
+check "Perl flock fallback does not start a second doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+touch "$STUB_GATE"
+wait "$first_pid"; check "first concurrent cadence completes" 0 $?
+unset STUB_GATE
+check "overlapping cadence files one persisting WARN ticket" 1 "$(jira_n create)"
+: > "$STUB_WHERE"
+run_cad; check "cadence releases its lock after completion" 0 $?
+check "subsequent cadence actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+check "subsequent cadence does not re-file the ticket" 1 "$(jira_n create)"
+# A dead holder must not silently disable all later daily passes.
+kill_cad; check "killed cadence exits with SIGKILL status" 137 $?
+: > "$STUB_WHERE"
+run_cad; check "cadence can run after a killed holder" 0 $?
+check "cadence after a killed holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+: > "$STUB_WHERE"
+PATH="$W/no-flock-bin" run_cad; check "Perl flock fallback completes a cadence pass" 0 $?
+check "Perl flock fallback actually invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
+PATH="$W/no-flock-bin" kill_cad; check "killed Perl-lock holder exits with SIGKILL status" 137 $?
+: > "$STUB_WHERE"
+run_cad; check "cadence can run after a killed Perl-lock holder" 0 $?
+check "cadence after a killed Perl-lock holder invokes the doctor" 1 "$(wc -l < "$STUB_WHERE" | tr -d ' ')"
 unset DOCTORCAD_JIRA_CMD
 
 # 9. statusline segment: renders from a fixture, silent when absent / clean.
@@ -215,11 +287,45 @@ bash "$P/scripts/doctor-cadence.sh" disarm >/dev/null 2>&1; check "disarm exits 
 grep -q 'HIMMEL-Doctor' "$FAKE_CRON"; rc=$?
 check "disarm removes the entry (grep: 1 = absent from a readable file)" 1 "$rc"
 
+# 10b. BSD stat/date accept -f %m and -r <epoch>, not GNU's forms.
+REAL_STAT="$(command -v stat)"; REAL_DATE="$(command -v date)"
+export REAL_STAT REAL_DATE
+mkdir -p "$W/bsd-bin"
+cat > "$W/bsd-bin/stat" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+    -c) exit 1 ;;
+    -f) [ "$2" = %m ] || exit 1
+        "$REAL_STAT" -c %Y "$3" 2>/dev/null || "$REAL_STAT" -f %m "$3" ;;
+    *) exit 1 ;;
+esac
+SH
+cat > "$W/bsd-bin/date" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+    -d) exit 1 ;;
+    -r) case "$2" in ''|*[!0-9]*) exit 1 ;; esac
+        "$REAL_DATE" -d "@$2" "$3" 2>/dev/null || "$REAL_DATE" -r "$2" "$3" ;;
+    *) "$REAL_DATE" "$@" ;;
+esac
+SH
+chmod +x "$W/bsd-bin/stat" "$W/bsd-bin/date"
+perl -e 'utime 172800, 172800, $ARGV[0]' "$STATE/counts"
+st="$(TZ=UTC bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *'(1970-01-03 00:00)'*) pass "native status renders counts mtime" ;; *) fail "native status renders counts mtime ($st)" ;; esac
+st="$(PATH="$W/bsd-bin:$PATH" TZ=UTC bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *'(1970-01-03 00:00)'*) pass "BSD status renders counts mtime" ;; *) fail "BSD status renders counts mtime ($st)" ;; esac
+check "BSD stat keeps the HUD counts age" "himmel-doctor  1 FAIL  12 WARN (30h old)" "$(PATH="$W/bsd-bin:$PATH" seg)"
+
 # 11. hardening (CR round 1): a dangling --time fails fast instead of looping;
 # a runner dir with a space is quoted in the crontab line; an unreadable
 # crontab is never mistaken for an empty one.
-timeout 5 bash "$P/scripts/doctor-cadence.sh" arm --time >/dev/null 2>&1; rc=$?
-check "arm --time with no value fails fast (no hang)" 1 "$rc"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    "$_TIMEOUT_BIN" 5 bash "$P/scripts/doctor-cadence.sh" arm --time >/dev/null 2>&1; rc=$?
+    check "arm --time with no value fails fast (no hang)" 1 "$rc"
+else
+    echo "SKIP arm --time hang guard: no GNU timeout/gtimeout"
+fi
 SP="$W/run ner"
 DOCTORCAD_RUNNER_DIR="$SP" bash "$P/scripts/doctor-cadence.sh" arm --force >/dev/null 2>&1
 grep -qF "\"$SP/doctor-cadence.sh\"" "$FAKE_CRON" && pass "runner path with a space is quoted in the crontab line" || fail "runner path with a space is quoted in the crontab line"
@@ -238,7 +344,8 @@ if [ "$rc" -ne 0 ] && grep -q keepme "$FAKE_CRON"; then pass "a failed crontab r
 printf '0 1 * * * keepme\n' > "$FAKE_CRON"
 : > "$W/notadir"
 DOCTORCAD_RUNNER_DIR="$W/notadir/sub" bash "$P/scripts/doctor-cadence.sh" arm >/dev/null 2>&1; rc=$?
-if [ "$rc" -ne 0 ] && ! grep -q 'HIMMEL-Doctor' "$FAKE_CRON"; then pass "an unwritable runner dir fails arm without installing the crontab"; else fail "an unwritable runner dir fails arm without installing the crontab (rc=$rc)"; fi
+grep -q 'HIMMEL-Doctor' "$FAKE_CRON"; grep_rc=$?
+if [ "$rc" -ne 0 ] && [ "$grep_rc" -eq 1 ]; then pass "an unwritable runner dir fails arm without installing the crontab"; else fail "an unwritable runner dir fails arm without installing the crontab (rc=$rc, grep=$grep_rc)"; fi
 DOCTORCAD_RUNNER_DIR="$W/runner2" bash "$P/scripts/doctor-cadence.sh" arm >/dev/null 2>&1
 head -1 "$W/runner2/doctor-cadence.sh" | grep -qx '#!/usr/bin/env bash' && pass "the runner uses a bash shebang" || fail "the runner uses a bash shebang"
 
@@ -247,6 +354,27 @@ PCT="$W/100%/run"
 DOCTORCAD_RUNNER_DIR="$PCT" bash "$P/scripts/doctor-cadence.sh" arm --force >/dev/null 2>&1
 grep -qF "\"$W/100\\%/run/doctor-cadence.sh\"" "$FAKE_CRON" && pass "a % in the runner path is escaped in the crontab line" || fail "a % in the runner path is escaped in the crontab line"
 DOCTORCAD_RUNNER_DIR="$PCT" bash "$P/scripts/doctor-cadence.sh" disarm >/dev/null 2>&1
+
+# A grep error at the negative assertion must fail the real suite, not count
+# as absence. Run it once with that grep call fault-injected (no recursion).
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    REAL_GREP="$(command -v grep)"
+    export REAL_GREP
+    mkdir -p "$W/grep-bin"
+    cat > "$W/grep-bin/grep" <<'SH'
+#!/usr/bin/env bash
+if [ "$#" -eq 3 ] && [ "$1" = -q ] && [ "$2" = HIMMEL-Doctor ] && [ "$3" = "${FAKE_CRON:-}" ] &&
+   "$REAL_GREP" -qx '0 1 \* \* \* keepme' "$3"; then
+    exit 2
+fi
+exec "$REAL_GREP" "$@"
+SH
+    chmod +x "$W/grep-bin/grep"
+    PATH="$W/grep-bin:$PATH" DOCTORCAD_TEST_GREP_ERROR=1 bash "$DIR/test-doctor-cadence.sh" > "$W/grep-error.log" 2>&1; rc=$?
+    check "a grep error makes the suite fail" 1 "$rc"
+    grep -q '^FAIL an unwritable runner dir fails arm without installing the crontab' "$W/grep-error.log" &&
+        pass "a grep error fails the negative assertion" || fail "a grep error fails the negative assertion"
+fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "test-doctor-cadence: all passed"; exit 0; fi

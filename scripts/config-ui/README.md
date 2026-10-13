@@ -94,7 +94,15 @@ hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason i
 - **tracker.py** stays the CLI/offline renderer until the page reaches parity; the semantics here are a port of it.
 - **Sync plan.** `legSync` lists the Jira CLI commands that mirror each leg marker onto its ticket (flag and comment
   a stuck leg, clear the flag on resume, note READY/WRAPPED once). The console kit is the one writer; legs never
-  write Jira and this page never does. It never moves a status.
+  write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
+- **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
+  Jira, and the per-card theme select sets its single `theme-<slug>` label (replacing any other `theme-*` label;
+  convention in `docs/jira-projects.md`). Both go through `POST /api/roadmap/write` (token gate, same-origin and JSON
+  checks, the machine write lock, one audit row per write), body `{key, status}` or `{key, theme}` with `theme: null`
+  clearing it. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the theme slug before any
+  child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
+  incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
+  card back and shows the reason above the board.
 - **Librarian.** Stale In Progress, version drift, unthemed, released-but-open and duplicate titles, as proposals
   only. A fixVersion move or a close needs operator approval or a recorded standing rule. Lane: Opus judgement,
   bulk passes on Haiku. Cadence: event-driven on MERGED/WRAPPED plus a daily sweep.

@@ -93,7 +93,7 @@ cookieless (Scrapling metadata + yt-dlp subtitles). The storage state only feeds
 the logged-in Playwright fallback, so rebuild it only if you want that fallback.
 
 `playwright-auth-save.mjs youtube` opens a real browser and asks you to log in.
-Google blocks that sign-in as automated often enough that it is no longer the
+Google usually blocks that sign-in as automated, so it is no longer the
 first thing to try. A cookie-exporter browser extension was tried too, but its
 export was missing the `HttpOnly` login cookies (an extension only sees those
 if it was granted the `cookies` permission and reads them via `chrome.cookies`
