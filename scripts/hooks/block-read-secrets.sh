@@ -893,15 +893,29 @@ g4_scan() {
             # flags before the first operand count (`bash s.sh -x` is the
             # script's own flag); `-O`/`--rcfile` values are skipped.
             bash|sh|zsh|dash|ksh|ash|mksh|rbash|set)
-                if [ "$xo" = 1 ]; then
+                if [ "$xo" != 0 ]; then
                     # The `-o` value is not an operand (`bash -o errexit -x s.sh`);
                     # zsh matches option names case- and underscore-insensitively.
-                    xo=0; nargs=$((nargs - 1))
-                    case "$d" in [xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;; esac
-                elif [ "$nargs" = 0 ] && [ "$xend" = 0 ]; then
+                    # (`+o NAME` only consumes the value: `set +o xtrace` is off.)
+                    nargs=$((nargs - 1))
+                    if [ "$xo" = 1 ]; then
+                        case "$d" in [xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;; esac
+                    fi
+                    xo=0
+                elif [ "$xend" = 0 ] && [ "$nargs" = 1 ]; then
+                    # A `+e` / `+o X` / `+O X` flag was just counted as the
+                    # first operand: count it as a flag (bare `set` dumps the
+                    # environment, `set +x` does not) and keep scanning for -x.
+                    case "$d" in
+                        +O) nargs=0; nflags=$((nflags + 1)); skipv=1 ;;
+                        +o) nargs=0; nflags=$((nflags + 1)); xo=2 ;;
+                        +*) nargs=0; nflags=$((nflags + 1)) ;;
+                    esac
+                elif [ "$xend" = 0 ]; then
                     case "$d" in
                         --) xend=1 ;;     # `set -- -x`: the rest are positionals
-                        --rcfile|--init-file|-O|+O) skipv=1 ;;
+                        --rcfile|--init-file|-O) skipv=1 ;;
+                        --[xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;;   # zsh --xtrace
                         --*) ;;
                         -*x*) xt=1 ;;
                         -*o) xo=1 ;;

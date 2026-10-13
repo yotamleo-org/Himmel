@@ -1129,6 +1129,12 @@ assert_rc "5484 set -o errexit -x"              2 "$(run_case "$(j_bash 'set -o 
 assert_rc "5484 zsh -o XTRACE s.sh"             2 "$(run_case "$(j_bash 'zsh -o XTRACE s.sh')")"
 assert_rc "5484 ctl bash -o errexit s.sh -x"    0 "$(run_case "$(j_bash 'bash -o errexit s.sh -x')")"
 assert_rc "5484 ctl bash -o errexit s.sh"       0 "$(run_case "$(j_bash 'bash -o errexit s.sh')")"
+# /pr-check round 3: `+` flags are not operands; zsh long --xtrace.
+assert_rc "5484 bash +e -x s.sh"                2 "$(run_case "$(j_bash 'bash +e -x s.sh')")"
+assert_rc "5484 bash +o errexit -x s.sh"        2 "$(run_case "$(j_bash 'bash +o errexit -x s.sh')")"
+assert_rc "5484 zsh --xtrace s.sh"              2 "$(run_case "$(j_bash 'zsh --xtrace s.sh')")"
+assert_rc "5484 ctl set +o xtrace"              0 "$(run_case "$(j_bash 'set +o xtrace')")"
+assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
