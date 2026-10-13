@@ -7,7 +7,7 @@
 > bash (still bash 3.2-safe, for macOS); a `.ps1` twin is optional, added only
 > when someone is actually working the Windows path — except hooks that run in
 > a PowerShell-dispatched context (e.g. `SessionEnd`), which still need a twin
-> in lockstep with the `.sh`. Enforcement is advisory at every site that used
+> in lockstep with the `.sh`. Enforcement is warn-only at every site that used
 > to hard-block on a missing twin: the pre-commit gate
 > (`scripts/hooks/check-new-shell-platform-guard.sh`,
 > `.pre-commit-config.yaml:536`) and CI's T15 check
@@ -103,7 +103,7 @@ so a broken hook set can never touch the real checkout — and runs four legs:
 |---|---|
 | `codex-exec` | a real `codex exec` turn (a shell call plus a file read) exits 0, proves both tool calls, and emits no hook-failure banner in stdout/stderr or the session rollout |
 | `codex-replay` | `probe-codex-hooks.ps1 -Replay` **executes** every project hook — the positive control that separates "clean" from "never fired" |
-| `claude-print` | the same turn under `claude -p --model haiku` (bank-gated via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
+| `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
 | `claude-replay` | every `run-hook-with-bash.js` PreToolUse entry in `.claude/settings.json` is fed a canned benign payload and must exit **0** |
 
 The two replay legs are deliberately asymmetric. `codex-replay` covers every
@@ -224,7 +224,7 @@ for PreToolUse/PermissionRequest exit 2, re-emits the block as Codex's JSON
 **Non-exit-2 outcomes are swallowed, not passed through:**
 Codex 0.149 rejects a Claude `permissionDecision:"allow"`/`updatedInput`
 envelope ("unsupported permissionDecision:allow"), so the adapter never
-forwards guardrail stdout to Codex's stdout — an allow, an advisory, or empty
+forwards guardrail stdout to Codex's stdout — an allow, a warn-only message, or empty
 output is captured and re-emitted only on the adapter's OWN stderr, and
 execution proceeds. The adapter always exits 0 on this path: the
 guardrail's own non-2 exit code is deliberately NOT propagated, because Codex
@@ -250,7 +250,7 @@ execution, then exits 2 only to feed its "write a handover now" message to the
 model — previously the adapter mistranslated that to a **bogus PreToolUse deny**
 (wrong event, and a permission gate for a tool that already ran).
 
-**Advisory SessionStart/UserPromptSubmit wiring.** Three advisory
+**Warn-only SessionStart/UserPromptSubmit wiring.** Three warn-only
 SessionStart hooks (`inject-initiative`, `inject-where-are-we`,
 `inject-doc-freshness`) are wired into `.codex/hooks.json` SessionStart via
 the platform wrappers with `--sandbox`, alongside `check-update-available`. Because these hooks
@@ -357,7 +357,7 @@ independent entries. Adding a `timeout` field does **not** re-trust: the trust
 key is `<abs path>:<event>:<i>:<j>` (see above), and neither the `command`
 strings nor the entry count/order changed. (4) **Native rogue guard.**
 `scripts/hooks/block-rogue-codex-exec.sh` mirrors `block-rogue-codex-wsl.sh` for
-raw native `codex exec` (bypass `CODEX_EXEC_RAW_OK=1`), wired in the himmel-ops
+raw native `codex exec` (off switch `CODEX_EXEC_RAW_OK=1`), wired in the himmel-ops
 plugin `hooks.json` beside its WSL sibling. Mirroring both into
 `.codex/hooks.json` remains open (a known gap).
 
@@ -400,10 +400,10 @@ SessionStart, the Stop **output** schema (`stop.command.output`) has **no
 `additionalContext` / `hookSpecificOutput`** — only a `continue`/`decision`/
 `systemMessage` gate. So the adapter does NOT wrap Stop output as
 `additionalContext`; it has a dedicated **`Stop` branch** that runs the hook for
-its side effects, routes any output to the adapter's stderr as advisory (never to
+its side effects, routes any output to the adapter's stderr as warn-only (never to
 Codex's Stop *decision* parser, and never through the generic exit-2 path that
 would emit a `hookSpecificOutput` shape Stop's strict `deny_unknown_fields` schema
-rejects), and always exits 0 — a SessionEnd advisory hook must never block
+rejects), and always exits 0 — a SessionEnd warn-only hook must never block
 teardown. `jira-nudge`'s operator-reaching surface under Codex is its Telegram
 relay, not stdout. Covered by the no-token fixture
 `scripts/hooks/test-codex-stop-hooks.sh` (static wiring + behavioral, incl. a
@@ -582,7 +582,7 @@ Three details that are not guessable:
   **turn-scoped**, so wiring the relay there would notify on every turn.
 - **One entry, not one per member.** The hook command is a single
   `run-hook-with-bash.js --chain --lifecycle <member> <member>` launch.
-  `--lifecycle` marks the chain advisory: every member runs,
+  `--lifecycle` marks the chain warn-only: every member runs,
   stderr is forwarded, the chain always exits 0. It also resolves Git Bash
   itself, which a bare `bash` spawned by hermes on Windows would not (the
   `System32\bash.exe` WSL-stub trap).
@@ -608,8 +608,8 @@ loudly instead of silently.
 ordinary tool result (`{"error": block_message}`) — it does not end the turn
 or the run. `run_agent.py`'s `max_iterations` defaults to `sys.maxsize`, so a
 headless run whose every tool call is denied can retry indefinitely,
-burning the bank silently with no verdict (found by an audit).
-himmel bounds this at its own chokepoint rather than upstream: `invoke.sh`
+burning the subscription usage budget silently with no verdict (found by an audit).
+himmel bounds this at its own sanctioned script rather than upstream: `invoke.sh`
 (the single shell-out point, `scripts/hermes/invoke.sh`) wraps every one-shot
 in a hard wall-clock timebox (`HERMES_INVOKE_TIMEOUT`, default 1800s, matching
 the `hermes-oneshot` lane's `timeoutSeconds`) and kills the process TREE on
@@ -693,13 +693,13 @@ exactly as before.
 **Claude ↔ Codex hook alignment (2026-08-21 audit):** Claude-side hooks with no
 Codex wiring and why — `shadow-ledger.mjs` ×7 + `session-run-hook.ts` ×4
 (observability, Claude-only events/plumbing), `trigger-cr-on-pr-create/push`
-(CR marker flow is Claude-driven), `block-jira-compound-write`,
+(review-owed marker flow is Claude-driven), `block-jira-compound-write`,
 `block-tail-pipe-on-gates`,
 `block-chokepoint-env-prefix`, `guard-memory-capture`,
 `orchestrator-inline-guard` (candidates to mirror through the platform wrappers — each
 needs the tool-name audit above first), `graphify` hook-guards and
 `speak-reply` (Claude-specific tooling), `qmd-staleness-notice` /
-`graphify-freshness-advisory` (advisory; cheap to mirror), and — the two the
+`graphify-freshness-advisory` (warn-only; cheap to mirror), and — the two the
 original audit omitted — `telegram-notification.sh`, which is
 **runtime-impossible** (Codex has no `Notification` event, see the matrix above),
 and `telegram-session-end.sh`, which was the gap and is now **mirrored** onto
@@ -899,7 +899,7 @@ loaded + ran from the worktree). The `.gitignore` ignores only
 Claude commands use (no logic duplication; Claude `.claude/commands/*.md`
 untouched): `worktree`, `clean`, `clean-garden`, `shell-lint`,
 and `pr-check`. `pr-check` is the **panel-only** subset — it runs the pure-shell
-critic panel (`scripts/cr/critic-panel.sh`) and clears the CR marker only when
+critic panel (`scripts/cr/critic-panel.sh`) and clears the review-owed marker only when
 the panel reports 0 Critical + 0 Important (retains on findings, panel
 unavailable, or a `docs-audit` lane). It does **not** dispatch the Claude
 `pr-review-toolkit` reviewer agents. Codex native `/review` participation is a
@@ -956,7 +956,7 @@ that working matrix.
 
 - **PR flow:** design a Codex `pr-check` skill. It should
   reuse the shell critic panel, define how explicit external-diff approval is
-  captured, decide whether Codex native `/review` participates, and clear the CR
+  captured, decide whether Codex native `/review` participates, and clear the review-owed
   marker only after adjudication.
 - **Status context:** keep Codex where-are-we/status work as its own track.
   Reuse ledgers; do not emulate Claude's visual statusline.
@@ -1096,7 +1096,7 @@ gate fails closed with a message naming the remedy (re-run the installer);
 | Hooks → Copilot / Gemini | **Port, SOFT-DEFER** (no free usage) |
 | Skills / subagents (Cursor, Copilot) | **Accept** — read `.claude/*` directly |
 | Driver commands → Codex skills | **Ported (delivered)** — thin tracked `.agents/skills/` wrappers (worktree/clean/clean-garden/shell-lint/pr-check) shelling existing `scripts/`; live-verified under codex-cli 0.142.0 |
-| CR reviewer skill for Codex | **Ported (panel-only)** — Codex `pr-check` skill runs the shell panel + clears the CR marker on clean; native `/review` participation deferred until the shared context assembler lands |
+| Automated review skill for Codex | **Ported (panel-only)** — Codex `pr-check` skill runs the shell panel + clears the review-owed marker on clean; native `/review` participation deferred until the shared context assembler lands |
 | where-are-we / status context for Codex | **Port** — use Codex-native advisory context, not Claude `statusLine.command` |
 | Marketplace (all) | **Accept** — each has one |
 | `AskUserQuestion` (interactive tool) | **Accept (degrades to prose) + guard the 3 gates** — Claude-only tool, no equivalent elsewhere; minimal conversational-fallback line on the confirm/disambiguation gates; complete treatment deferred |

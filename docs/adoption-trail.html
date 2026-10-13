@@ -1038,7 +1038,7 @@ claude</pre>
         into the commit message itself, as trailer lines such as
         <span class="mono">Platforms tested: linux</span> and
         <span class="mono">Security reviewed: manual</span>, which the push
-        gate checks; and <dfn>CR</dfn> is short for code review, the pre-PR
+        gate checks; and <dfn>CR</dfn> is short for automated review, the pre-PR
         review gate this level runs &mdash; himmel's docs say &ldquo;CR
         findings&rdquo; for the comments any reviewer leaves on a pull
         request. CodeRabbit, an automated pull-request review app, is one
@@ -1273,7 +1273,7 @@ claude</pre>
         <span class="lvl-tag">LEVEL 6</span>
         <h2>Always-on operations</h2>
         <p>Harden for unattended work: always-on hardening, handover state
-        so work survives any single session, overnight runs, and a real
+        so work survives any single session, AFK (unattended) runs, and a real
         monitoring stack — <b>Grafana, Prometheus and himmel's own
         exporters, installed on your machine</b> — feeding alerts to your
         bridge.</p>
@@ -1310,15 +1310,15 @@ claude</pre>
         <h2>Command a fleet</h2>
         <p>Two words first, because the rest of this level uses them (both
         are defined in the <a href="glossary.md">glossary</a>). A
-        <b>leg</b> is one work session that owns exactly one ticket, in
-        its own worktree. The <b>console</b> is the one session you keep
-        in front of you: it reviews legs at their stop points, holds the
+        <b>worker session</b> is one work session that owns exactly one ticket, in
+        its own worktree. The <b>supervisor session</b> is the one session you keep
+        in front of you: it reviews worker sessions at their stop points, holds the
         sole authority to release a merge, and escalates to you only what
         genuinely needs you.</p>
-        <p>The summit is many legs running at once under one console.
+        <p>The summit is many worker sessions running at once under one supervisor session.
         They coordinate through a <b>written layer</b> — mission briefs
-        plus handover and roadmap documents every leg reads and appends —
-        and by direct messages to the console when something is
+        plus handover and roadmap documents every worker session reads and appends —
+        and by direct messages to the supervisor session when something is
         urgent.</p>
         <p>A read-only console for watching it happen ships today: a local
         web UI showing fleet state, escalations and a live event stream.
@@ -1328,17 +1328,17 @@ claude</pre>
           <li><button class="chip" data-detail="briefs">Mission
           briefs</button></li>
           <li><button class="chip" data-detail="legs">Parallel
-          legs</button></li>
+          worker sessions</button></li>
           <li><button class="chip" data-detail="comms">Written comms
           layer</button></li>
           <li><button class="chip" data-detail="stops">Stop-point
           reviews</button></li>
-          <li><button class="chip" data-detail="merge-auth">Console-gated
+          <li><button class="chip" data-detail="merge-auth">Supervisor-session-gated
           merge</button></li>
           <li><button class="chip" data-detail="fleet-control">Fleet
           console (read-only)</button></li>
           <li><button class="chip roadmap" data-detail="rm-judge">Installable
-          console module</button></li>
+          supervisor session module</button></li>
         </ul>
         <p class="impact"><b>Impact:</b> you stop being the bottleneck of
         one session. A night's work is many tickets shipped in parallel —
@@ -1366,7 +1366,7 @@ claude</pre>
   <section class="doc" id="glossary">
     <h2>Glossary</h2>
     <p class="sub">The words this page leans on, in one place. Fleet terms
-    (leg, console, and the rest) are defined once, in the project's
+    (worker session, supervisor session, and the rest) are defined once, in the project's
     <a href="glossary.md">glossary</a>; the entries below agree with it.</p>
     <dl class="gloss">
       <dt>attestation</dt>
@@ -1381,7 +1381,7 @@ claude</pre>
       <dd>Short for CodeRabbit, an automated pull-request review app. Also
       used loosely for the review comments (&ldquo;CR findings&rdquo;) a
       pull request collects from any reviewer.</dd>
-      <dt>console</dt>
+      <dt>supervisor session</dt>
       <dd>The one session you keep in front of you when running several at
       once; it reviews the others and holds the authority to release a
       merge. See the <a href="glossary.md">glossary</a>.</dd>
@@ -1401,7 +1401,7 @@ claude</pre>
       can run work on. The optional review lanes (codex, hermes) give a
       second opinion on your diff. The <span class="mono">/lanes</span>
       command lists the ones available to you.</dd>
-      <dt>leg</dt>
+      <dt>worker session</dt>
       <dd>One work session that owns exactly one ticket, in its own
       worktree. See the <a href="glossary.md">glossary</a>.</dd>
       <dt>panel</dt>
@@ -1537,7 +1537,7 @@ claude</pre>
       '<p>Every question has a safe default. <span class="mono">--dry-run</span> shows the whole plan first.</p>' },
     'jira-cli': { t: 'Jira CLI', s: 'ship', h:
       '<p>A bundled command-line Jira client himmel <b>brings</b> — tickets are created, read, commented and transitioned from the terminal, so agents and humans share one audited path.</p>' +
-      '<p>It is the sanctioned chokepoint: the guard hooks route agent ticket-writes through it.</p>' },
+      '<p>It is the sanctioned script: the guard hooks route agent ticket-writes through it.</p>' },
     'handover': { t: 'Handover system', s: 'ship', h:
       '<p>Work state that survives any single session: per-ticket handover notes, a state directory (inline or an external repo), and a registry. Set up interactively with <span class="mono">/handover-setup</span>.</p>' +
       '<p>This is what lets a session stop mid-task and a successor resume cold without losing decisions.</p>' },
@@ -1546,7 +1546,7 @@ claude</pre>
     'himmel-ops': { t: 'himmel-ops', s: 'ship', h:
       '<p>himmel’s core ops plugin: the <b>guard hooks</b> behind Level 1 plus the operational commands the workflow runs on — worktree management, review gating, update and doctor flows.</p>' },
     'superpowers': { t: 'superpowers', s: 'ship', h:
-      '<p>A community plugin himmel installs and builds on: it powers the <b>overnight planning and subagent-driven implementation</b> flows — the plan-then-implement-with-reviews pipeline that autonomous runs execute.</p>' },
+      '<p>A community plugin himmel installs and builds on: it powers the <b>AFK (unattended) planning and subagent-driven implementation</b> flows — the plan-then-implement-with-reviews pipeline that autonomous runs execute.</p>' },
     'claude-obsidian': { t: 'claude-obsidian', s: 'ship', h:
       '<p>AgriciDaniel’s <b>claude-obsidian</b> plugin, installed <b>from upstream and pinned to a release tag</b> (himmel’s fork was retired once its fixes landed upstream): the vault connection layer Claude uses to read and write your Obsidian notes.</p>' },
     'luna-correlate': { t: 'luna-correlate', s: 'ship', h:
@@ -1620,22 +1620,22 @@ claude</pre>
     'hud': { t: 'claude-hud statusline', s: 'ship', h:
       '<p>A heads-up statusline himmel <b>brings, vendored in-repo</b>: context-fill bar, usage and quota windows, model badge, and a prompt-cache expiry clock — the live dashboard of every session.</p>' },
     'bank': { t: 'Budget preflight', s: 'ship', h:
-      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the bank cannot afford. Anything that dispatches a batch of work checks it first.</p>' },
+      '<p>Before heavy or unattended work, a preflight reads your quota windows and refuses to launch what the subscription usage budget cannot afford. Anything that dispatches a batch of work checks it first.</p>' },
     'fill': { t: 'Self-read context fill', s: 'ship', h:
       '<p>A session can read its <b>own</b> context-window fill as a number instead of guessing. It also distinguishes a stale or unknown reading: rather than serving a frozen snapshot as though it were current, it refuses and says so — so a decision to wrap up is never made on a number that quietly stopped updating.</p>' },
     'gemini-cli': { t: 'gemini-cli', s: 'ship', h:
-      '<p>Google’s gemini-cli, installed as a dependency and dispatched through a single chokepoint. Its win is a large context window for big-input reads and parallel triage.</p>' +
+      '<p>Google’s gemini-cli, installed as a dependency and dispatched through a single sanctioned script. Its win is a large context window for big-input reads and parallel triage.</p>' +
       '<p>A <b>context</b> tool, not a spend control — and not a review or implementation lane.</p>' },
     'rtk': { t: 'rtk output trimming', s: 'ship', h:
       '<p>A token-optimizing command proxy in the stack: it trims verbose command output before it reaches the model, cutting cost on chatty tools.</p>' },
     'rm-headless': { t: 'Headless runs with budget guard', s: 'road', h:
       '<p><b>Roadmap.</b> One-shot headless agent runs wired through the budget preflight, so scripted invocations can’t drain your interactive quota.</p>' },
     'overnight': { t: 'Overnight shifts', s: 'ship', h:
-      '<p>A documented autonomous pipeline: plan, implement with reviews, heavy review rounds, PR, and a handover — run overnight on a well-scoped ticket, with clear rules for the few things that must stop and wait for a human.</p>' },
+      '<p>A documented autonomous pipeline: plan, implement with reviews, heavy review rounds, PR, and a handover — run in AFK (unattended) mode on a well-scoped ticket, with clear rules for the few things that must stop and wait for a human.</p>' },
     'handover-sessions': { t: 'Session handover', s: 'ship', h:
       '<p>Sessions write resumable state and can arm their own successors on a schedule, so work chains across sessions without a human re-briefing each one.</p>' },
     'morning': { t: 'Morning report', s: 'ship', h:
-      '<p>One consolidated report per overnight run: a row per ticket, decisions-needed grouped at the top. You review one artifact, not N branches.</p>' },
+      '<p>One consolidated report per AFK (unattended) run: a row per ticket, decisions-needed grouped at the top. You review one artifact, not N branches.</p>' },
     'monitoring': { t: 'Grafana + Prometheus + exporters', s: 'ship', h:
       '<p>A real monitoring stack installed on your machine: Prometheus scraping himmel’s own '
       + 'exporters for session and flow health, Grafana dashboards, and alerts routed to your bridge.</p>' +
@@ -1647,20 +1647,20 @@ claude</pre>
     'rm-report': { t: 'Templatable report', s: 'road', h:
       '<p><b>Roadmap.</b> The morning report becomes a template you shape to your needs, instead of one fixed layout.</p>' },
     'briefs': { t: 'Mission briefs', s: 'ship', h:
-      '<p>Every leg starts from a written brief: scope, constraints, verified context, and what to do at a stop point. A leg inherits nothing implicitly, so the brief has to carry everything.</p>' },
-    'legs': { t: 'Parallel legs', s: 'ship', h:
+      '<p>Every worker session starts from a written brief: scope, constraints, verified context, and what to do at a stop point. A worker session inherits nothing implicitly, so the brief has to carry everything.</p>' },
+    'legs': { t: 'Parallel worker sessions', s: 'ship', h:
       '<p>Independent work sessions, each owning one ticket in its own isolated worktree — many tickets progress at once without stepping on each other.</p>' },
     'comms': { t: 'Written comms layer', s: 'ship', h:
-      '<p>Legs coordinate through <b>writing, not shared memory</b>: briefs carry everything a leg needs, and handover and roadmap documents are read and appended by every leg as work progresses. Anything urgent goes to the console as a direct message. The written layer is why work survives any single session dying.</p>' },
+      '<p>Worker sessions coordinate through <b>writing, not shared memory</b>: briefs carry everything a worker session needs, and handover and roadmap documents are read and appended by every worker session as work progresses. Anything urgent goes to the supervisor session as a direct message. The written layer is why work survives any single session dying.</p>' },
     'stops': { t: 'Stop-point reviews', s: 'ship', h:
-      '<p>A leg drives its PR to a clean review verdict, then <b>stops</b> and reports. The console reviews the evidence — never a leg’s own word for it — before anything merges.</p>' },
-    'merge-auth': { t: 'Console-gated merge', s: 'ship', h:
-      '<p>A merge needs the console’s explicit go: the console writes a per-PR, per-commit GO file, and the sanctioned merge gate refuses a console-launched leg without it. The gate also verifies checks, resolved threads and the reviewed head, so a leg cannot merge its own work on its own say-so.</p>' },
+      '<p>A worker session drives its PR to a clean review verdict, then <b>stops</b> and reports. The supervisor session reviews the evidence — never a worker session’s own word for it — before anything merges.</p>' },
+    'merge-auth': { t: 'Supervisor-session-gated merge', s: 'ship', h:
+      '<p>A merge needs the supervisor session’s explicit go: the supervisor session writes a per-PR, per-commit GO file (merge approval), and the sanctioned merge gate refuses a worker session launched by the supervisor session without it. The gate also verifies checks, resolved threads and the reviewed head, so a worker session cannot merge its own work on its own say-so.</p>' },
     'fleet-control': { t: 'Fleet console (read-only)', s: 'ship', h:
       '<p>A local web console bound to <span class="mono">127.0.0.1:7350</span>, with routes for <span class="mono">/fleet</span>, <span class="mono">/escalations</span> and a live <span class="mono">/events</span> stream.</p>' +
       '<p>It states its own scope plainly: “Read-only Phase 1 pane. Dispatch and adjudication controls remain disabled until Phase 2.”</p>' },
-    'rm-judge': { t: 'Installable console module', s: 'road', h:
-      '<p><b>Roadmap.</b> The read-only console already runs, and so do the pieces around it — briefs, the written comms layer, stop-point reviews, one merge authority, the morning report. Making the console an installable module, and building the dispatch and adjudication controls it does not yet have, is the roadmap.</p>' },
+    'rm-judge': { t: 'Installable supervisor session module', s: 'road', h:
+      '<p><b>Roadmap.</b> The read-only console already runs, and so do the pieces around it — briefs, the written comms layer, stop-point reviews, one merge authority, the morning report. Making the supervisor session an installable module, and building the dispatch and adjudication controls it does not yet have, is the roadmap.</p>' },
     'xp-memory': { t: 'Memory compounding', s: 'wip', h:
       '<p><b>Testing in progress.</b> Persistent agent memory plus vault synthesis feeding each other, so lessons learned tonight change behavior tomorrow. Running daily; not yet proven enough to promise.</p>' },
     'xp-skill-eval': { t: 'Skill eval & optimization loops', s: 'wip', h:

@@ -313,7 +313,7 @@ $cycProcs = @(
 $cycDesc = @(Get-DescendantPids -Procs $cycProcs -RootPid 710)
 Check 'cycle: root NOT in own descendants' (-not ($cycDesc -contains 710)) "got=$($cycDesc -join ',')"
 Check 'cycle: peer listed exactly once'    ((@($cycDesc | Where-Object { $_ -eq 720 })).Count -eq 1) "got=$($cycDesc -join ',')"
-# Stale-PPID impostor (codex CR round 4): an unrelated process whose recorded
+# Stale-PPID lookalike (codex CR round 4): an unrelated process whose recorded
 # PPID was recycled into a tree pid is OLDER than its claimed parent - the
 # creation-time ordering filter must drop it, keep real (younger) children,
 # and fail open when a CreationDate is missing for the kill-tree walk.
@@ -321,12 +321,12 @@ $tWalk = Get-Date '2026-07-11 03:00:00'
 $ppidProcs = @(
   (RecT 730 1   'node.exe'   'walk-root'      $tWalk)
   (RecT 731 730 'node.exe'   'real-child'     ($tWalk.AddSeconds(5)))    # younger -> kin
-  (RecT 732 730 'node.exe'   'ppid-impostor'  ($tWalk.AddSeconds(-300))) # older -> stale PPID
+  (RecT 732 730 'node.exe'   'ppid-lookalike'  ($tWalk.AddSeconds(-300))) # older -> stale PPID
   (Rec  733 730 'node.exe'   'undated-child')                            # no CreationDate -> fail-open, kept
 )
 $ppidDesc = @(Get-DescendantPids -Procs $ppidProcs -RootPid 730)
 Check 'younger real child kept'        ($ppidDesc -contains 731) "got=$($ppidDesc -join ',')"
-Check 'stale-PPID impostor excluded'   (-not ($ppidDesc -contains 732)) "got=$($ppidDesc -join ',')"
+Check 'stale-PPID lookalike excluded'   (-not ($ppidDesc -contains 732)) "got=$($ppidDesc -join ',')"
 Check 'kill-tree keeps undated child (fail-open)' ($ppidDesc -contains 733) "got=$($ppidDesc -join ',')"
 $verifiedPpidDesc = @(Get-DescendantPids -Procs $ppidProcs -RootPid 730 -VerifiedEdgesOnly)
 Check 'exclusion walk drops undated edge (fail-closed)' (-not ($verifiedPpidDesc -contains 733)) "got=$($verifiedPpidDesc -join ',')"

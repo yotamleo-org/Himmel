@@ -55,7 +55,7 @@ These have no wizard row; arm them directly with the same three verbs.
 | Script | What it does | Notes |
 |---|---|---|
 | `scripts/handover/reconcile-cadence.sh` | Periodic seat-liveness check: runs `reconcile-workers.sh --report` and orphans only seats whose pid is confirmed dead past the grace window | `arm [--interval-min N]` (default 10; `N` must divide 60). One crontab entry tagged `HIMMEL-ReconcileCadence`; Windows twin is `reconcile-cadence.ps1` |
-| `scripts/eval/leg-digest/failure-review-cadence.sh` | Daily failure review: runs the failure router over recorded leg failures and shows what failed. No model is run | **Dry-run by default**: a scheduled run files nothing and calls no Jira. `arm --live` opts in to live routing. `arm [--vault PATH] [--live]` |
+| `scripts/eval/leg-digest/failure-review-cadence.sh` | Daily failure review: runs the failure router over recorded worker session failures and shows what failed. No model is run | **Dry-run by default**: a scheduled run files nothing and calls no Jira. `arm --live` opts in to live routing. `arm [--vault PATH] [--live]` |
 | `scripts/eval/qmd-quality/qmd-quality-cadence.sh` | Weekly qmd retrieval-quality eval; appends metrics and alerts when MRR drops | `arm --golden <file> [--index <file>] [--day 0-6]`. The index snapshot is deleted after every run |
 
 ## Choosing

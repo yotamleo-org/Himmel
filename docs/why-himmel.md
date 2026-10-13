@@ -137,7 +137,7 @@ timeout, so the scrape timeout went to 30 s. The reasoning is written into
 
 - **Unattended runs that survive their own interruptions.** A scoped ticket
   runs end to end — branch, build, self-review, PR — and on approaching a
-  usage cap, a watchdog schedules an OS-level relaunch so the run resumes
+  usage cap, a usage-cap auto-relaunch schedules an OS-level relaunch so the run resumes
   instead of dying.
 - **Review before merge, not after.** Push writes a review-owed marker; the PR
   gate refuses while it exists; a clean multi-agent review clears it. The
