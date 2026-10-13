@@ -466,6 +466,33 @@ command -v node >/dev/null 2>&1 || {
     exit 11
 }
 ledger="$git_dir/cr-critic-scores.jsonl"
+# HIMMEL-5416: a pre-PR commit after the last allowed review round has no round
+# of its own to buy (a judge NO-GO binds only to an open PR, and gh pr create
+# waits on this marker), so it deadlocked. When the tip has NO ledger row at all
+# and is a trivial descendant (HIMMEL-5109: test paths or comments only) of the
+# head the last counted round ran on, every ledger gate below is evaluated at
+# that reviewed head instead. A tip a panel ran on is judged on its own rows, and
+# a non-trivial unreviewed delta keeps the no-responders refusal.
+# ponytail: the substitute head is read from <branch>.head, written by
+# review-round.sh start --head and writable by the same uid (HIMMEL-3578); what
+# it can buy is the clearance of a test-/comment-only delta over a head a critic
+# did review, never of a head with code changes. Upgrade path: sign the file.
+review_head="$tip"
+_rr_head_file="$git_dir/cr-review-rounds/$branch.head"
+if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
+    _rr_head=$(sed -n '1p' "$_rr_head_file" 2>/dev/null || true)
+    case "$_rr_head" in
+        *[!0-9a-f]*|'') _rr_head="" ;;
+    esac
+    if [ "${#_rr_head}" -eq 40 ] && [ "$_rr_head" != "$tip" ] \
+        && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
+        && ! grep -qF "${tip:0:7}" "$ledger" 2>/dev/null \
+        && bash "$SCRIPT_DIR/review-round.sh" trivial-descendant "$_rr_head" "$tip" >/dev/null 2>&1; then
+        review_head="$_rr_head"
+        echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths or comments since the reviewed head ${review_head:0:8} - gating on the reviewed head (HIMMEL-5416)." >&2
+        audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
+    fi
+fi
 # HIMMEL-3107: is the configured critic panel EMPTY? Read from the FIXED
 # sibling critics.json (no env seam, same as the ledger). Only a readable file
 # whose .panel is an empty array counts; missing/unreadable => 0 (not empty),
@@ -474,7 +501,7 @@ panel_empty=$(CRITICS="$SCRIPT_DIR/critics.json" node -e '
   try { const p = JSON.parse(require("fs").readFileSync(process.env.CRITICS, "utf8")).panel;
         console.log(String(Array.isArray(p) && p.length === 0 ? 1 : 0)); } catch (_) { console.log("0"); }' 2>/dev/null)
 # shellcheck disable=SC2016  # $-refs below are JS inside a single-quoted node script, not shell
-verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$tip" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
+verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$branch}" FULL_SHA="$review_head" PANEL_EMPTY="${panel_empty:-0}" BRANCH="$branch" node -e '
   const fs = require("fs"), e = process.env;
   const lines = fs.existsSync(e.LEDGER)
       ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
