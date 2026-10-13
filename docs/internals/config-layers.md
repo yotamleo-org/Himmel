@@ -16,8 +16,8 @@ which they are read.
 | Install profile | `~/.claude/himmel/install-profile.json` | `himmelctl install` | no | the wizard's answers, replayed by `--from-profile` |
 | Handover registry | `~/.claude/handover/registry.json` | `/handover` | no | handover repos, buckets, branch prefixes |
 | Plugin and lane profiles | `scripts/machine-setup/` profiles, console-kit `--profile` | himmel repo | yes | which plugins and tools a session loads |
-| Console rules | console template, leg and judge prefaces, hooks | himmel repo | yes | how consoles and legs behave |
-| Per-console state | the fleet manifest in the handover bucket | the console | in the state repo | which legs are live, their docs and tokens |
+| Supervisor session rules | supervisor session template, worker and judge system prompts, hooks | himmel repo | yes | how supervisor sessions and worker sessions behave |
+| Per-supervisor session state | the fleet manifest in the handover bucket | the supervisor session | in the state repo | which worker sessions are live, their docs and tokens |
 
 Status and state are never tracked as configuration: a file that changes
 every session (fleet manifest, queue locks, ledgers) is state, not config.
@@ -121,17 +121,17 @@ HIMMEL_INITIATIVE=prcheck,pr,ticket,handover
 
 ## Console rules
 
-Prose and hooks stay where they are: the console template, the leg and judge
-prefaces, and the hooks are code, reviewed in the himmel repo. A rule that is
-a tunable number or switch moves to `himmel.conf`; per-console state stays in
+Prose and hooks stay where they are: the supervisor session template, the worker and judge
+system prompts, and the hooks are code, reviewed in the himmel repo. A rule that is
+a tunable number or switch moves to `himmel.conf`; per-supervisor-session state stays in
 the fleet manifest.
 
-Example: the fleet size cap. The rule "a console never runs more legs than
-the cap" stays in the console template and its enforcing script. The number
+Example: the fleet size cap. The rule "a supervisor session never runs more worker sessions than
+the cap" stays in the supervisor session template and its enforcing script. The number
 itself is a tunable knob, so it belongs in configuration, not prose. Raising
 it loosens a safety limit, so its home is the policy section of
 `config.json`, not `himmel.conf`; until it joins that list it stays a
-guarded process-env variable (`HIMMEL_FLEET_CAP`). Which legs are live right
+guarded process-env variable (`HIMMEL_FLEET_CAP`). Which worker sessions are live right
 now is state, so it stays in the fleet manifest.
 
 ## Why this route

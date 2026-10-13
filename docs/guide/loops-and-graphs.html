@@ -234,7 +234,7 @@
   <header class="hero">
     <p class="kicker">himmel guide</p>
     <h1>Loops and graphs</h1>
-    <p class="lede">himmel keeps work moving with a few loops: the loop one change goes through, a console steering many sessions at once, unattended overnight runs, and scheduled jobs that keep everything fresh. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
+    <p class="lede">himmel keeps work moving with a few loops: the loop one change goes through, a supervisor session steering many sessions at once, AFK (unattended) runs, and scheduled jobs that keep everything fresh. Its graphs map the code so sessions can find their way. Change a setting on the right and see which loop it touches.</p>
   </header>
 
   <!-- source: docs/internals/config-layers.md (new layout, in review), docs/configuration.md §4.1 -->
@@ -440,9 +440,9 @@
     <!-- source: docs/internals/graph-cadence.md (schedule, threshold 15); docs/tooling-catalog.md (AST :15 hourly, semantic Sunday 13:00/13:20) -->
     <div class="card timeline" aria-labelledby="tl-h">
       <h3 id="tl-h">One day of graph refresh, once <span class="mono">graphmap</span> is armed</h3>
-      <div class="tl-row"><b>Structural pass</b><div><div class="tl-bar" id="tl-ast" aria-label="24 hourly runs"></div><div class="tl-note">Every hour at :15. Free: no model, no usage bank.</div></div></div>
+      <div class="tl-row"><b>Structural pass</b><div><div class="tl-bar" id="tl-ast" aria-label="24 hourly runs"></div><div class="tl-note">Every hour at :15. Free: no model, no subscription usage budget.</div></div></div>
       <div class="tl-row"><b>Refresh and publish</b><div><div class="tl-bar" id="tl-pub" aria-label="4 runs a day"></div><div class="tl-note">Every 6 hours at :35. Publishes only when the graph is 15 or more commits behind <code>main</code>; otherwise it records a skip.</div></div></div>
-      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="weekly"></div><div class="tl-note">Weekly, Sunday 13:20 for himmel. Uses your Claude usage bank and skips itself when the bank is nearly spent.</div></div></div>
+      <div class="tl-row"><b>Semantic pass</b><div><div class="tl-bar" id="tl-sem" aria-label="weekly"></div><div class="tl-note">Weekly, Sunday 13:20 for himmel. Uses your Claude subscription usage budget and skips itself when the budget is nearly spent.</div></div></div>
     </div>
   </section>
 
@@ -450,8 +450,8 @@
     <div>Every step and setting on this page comes from himmel's own code and docs; the page source cites the file beside each section.</div>
     <nav aria-label="Further reading">
       <a href="../cadences.md">Cadences reference</a>
-      <a href="../handover/running-a-console.md">Running a console</a>
-      <a href="../handover/overnight-mode.md">Overnight mode</a>
+      <a href="../handover/running-a-console.md">Running a supervisor session</a>
+      <a href="../handover/overnight-mode.md">AFK (unattended) mode</a>
       <a href="../internals/graph-cadence.md">Graph refresh internals</a>
       <a href="../glossary.md">Glossary</a>
     </nav>
@@ -479,7 +479,7 @@
 
   function reviewState() {
     if (s.crossModel && s.crProfile === 'none' && s.floor !== 'claude-only') {
-      return { st: 'blocked', note: 'CR_PROFILE=none skips the cross-model panel, but the policy demands a non-Claude critic. The review marker can never clear.' };
+      return { st: 'blocked', note: 'CR_PROFILE=none skips the cross-model panel, but the policy demands a non-Claude critic. The review-owed marker can never clear.' };
     }
     var who = s.crProfile === 'none' ? 'Claude reviews the diff itself; no external critics run and nothing is spent outside your plan.'
       : s.crProfile === 'paid' ? 'The paid critic panel (codex) reviews the diff, plus a Claude review.'
@@ -507,7 +507,7 @@
           { k: 'commit', l: 'Commit', sub: 'message gate', st: 'gated', n: s.ticket === '0' ? 'The commit-message gate checks the conventional shape only; a ticket ID is optional.' : 'The commit-message gate wants the conventional shape and a ticket ID in every subject.' },
           { k: 'push', l: 'Push', sub: 'pre-push gates', st: 'gated', n: 'Pre-push gates run and record that a review is owed before a pull request can open.' },
           { k: 'review', l: 'Review', sub: '/pr-check', st: r.st, n: (has('prcheck') ? 'Runs on its own when the work is done and verified. ' : 'You run /pr-check. ') + r.note },
-          { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'blocked' : (has('pr') ? 'auto' : 'manual'), n: r.st === 'blocked' ? 'Cannot open: the review marker never clears.' : (has('pr') ? 'Opened or refreshed for you once review is clean.' : 'You open it once review is clean.') },
+          { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'blocked' : (has('pr') ? 'auto' : 'manual'), n: r.st === 'blocked' ? 'Cannot open: the review-owed marker never clears.' : (has('pr') ? 'Opened or refreshed for you once review is clean.' : 'You open it once review is clean.') },
           { k: 'ci', l: 'CI', sub: 'checks', st: r.st === 'blocked' ? 'off' : 'auto', n: 'GitHub runs the checks; check-ci reads them for you.' },
           { k: 'merge', l: 'Merge', sub: 'squash', st: r.st === 'blocked' ? 'off' : (has('merge') ? 'auto' : 'manual'), n: (has('merge') ? 'The session merges on its own. ' : 'You merge. ') + mergeNote() },
           { k: 'ticket', l: 'Ticket', sub: 'tracker', st: has('ticket') ? 'auto' : 'manual', n: has('ticket') ? 'The ticket is moved for you.' : 'You move the ticket.' },
@@ -515,24 +515,24 @@
         ];
       } },
     { id: 'console', tab: 'Console and legs', title: 'A console steering its legs',
-      blurb: 'A console is a long-lived session you talk to. It dispatches each ticket as its own session, a leg, with its own worktree and pull request, and merges only on its own go-ahead.',
+      blurb: 'A supervisor session is a long-lived session you talk to. It dispatches each ticket as its own session, a worker session, with its own worktree and pull request, and merges only on its own go-ahead.',
       meta: 'source: running-a-console, glossary',
       nodes: function () {
         var r = reviewState();
         return [
-          { k: 'doc', l: 'Console', sub: 'doc + lock', st: 'manual', n: 'You start it with /console new. It holds a lock on its own document so two consoles never run one shift.' },
-          { k: 'dispatch', l: 'Dispatch', sub: 'one leg per ticket', st: 'auto', n: 'Each leg gets a brief, a worktree and a one-time token for authenticated changes of plan.' },
-          { k: 'live', l: 'Leg works', sub: 'LIVE', st: 'auto', n: 'The leg implements, tests and reports milestones to its handover document.' },
-          { k: 'finding', l: 'Questions', sub: 'FINDING', st: 'gated', n: 'A leg that needs a decision asks the console and keeps working on what does not depend on it.' },
+          { k: 'doc', l: 'Supervisor session', sub: 'doc + lock', st: 'manual', n: 'You start it with /console new. It holds a lock on its own document so two supervisor sessions never run one shift.' },
+          { k: 'dispatch', l: 'Dispatch', sub: 'one worker session per ticket', st: 'auto', n: 'Each worker session gets a brief, a worktree and a one-time token for authenticated changes of plan.' },
+          { k: 'live', l: 'Worker session works', sub: 'LIVE', st: 'auto', n: 'The worker session implements, tests and reports milestones to its handover document.' },
+          { k: 'finding', l: 'Questions', sub: 'FINDING', st: 'gated', n: 'A worker session that needs a decision asks the supervisor session and keeps working on what does not depend on it.' },
           { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : 'auto', n: r.note },
-          { k: 'ready', l: 'Ready', sub: 'READY', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Pull request open, review clean, CI green. The leg reports and waits.' },
-          { k: 'go', l: 'Go-ahead', sub: 'GO', st: r.st === 'blocked' ? 'off' : 'gated', n: 'Only the console writes the go-ahead. A leg never merges without it.' },
+          { k: 'ready', l: 'Ready', sub: 'READY', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Pull request open, review clean, CI green. The worker session reports and waits.' },
+          { k: 'go', l: 'Go-ahead', sub: 'GO', st: r.st === 'blocked' ? 'off' : 'gated', n: 'Only the supervisor session writes the GO file (merge approval). A worker session never merges without it.' },
           { k: 'merge', l: 'Merge', sub: 'merge-on-green', st: r.st === 'blocked' ? 'off' : (s.automerge ? 'auto' : 'manual'), n: mergeNote() },
-          { k: 'wrap', l: 'Wrap', sub: 'WRAPPED', st: 'auto', n: 'The leg releases its lock, checks nothing is left running, and the console closes its window.' },
-          { k: 'next', l: 'Hand over', sub: 'succession', st: 'manual', n: 'Near its context limit the console starts its successor with /console next and writes a handoff.' }
+          { k: 'wrap', l: 'Wrap', sub: 'WRAPPED', st: 'auto', n: 'The worker session releases its lock, checks nothing is left running, and the supervisor session closes its window.' },
+          { k: 'next', l: 'Hand over', sub: 'succession', st: 'manual', n: 'Near its context limit the supervisor session starts its successor with /console next and writes a handoff.' }
         ];
       } },
-    { id: 'overnight', tab: 'Overnight', title: 'An unattended overnight shift',
+    { id: 'overnight', tab: 'AFK mode', title: 'An unattended overnight shift',
       blurb: '/overnight-shift fans a fixed list of well-scoped tickets out to agents inside one session while you sleep. HIMMEL_OVERNIGHT switches which steps run without asking.',
       meta: 'source: overnight-mode',
       nodes: function () {
@@ -543,7 +543,7 @@
           { k: 'plan', l: 'Plan', sub: 'from the brief', st: 'auto', n: 'A written plan for the ticket, committed beside the handover.' },
           { k: 'impl', l: 'Implement', sub: 'agents', st: off ? 'manual' : (has('execute') ? 'auto' : 'manual'), n: off ? 'HIMMEL_OVERNIGHT is off: the overnight initiative profile is not active.' : (has('execute') ? 'The execute step runs unasked.' : 'Not in the overnight step list; it waits for you.') },
           { k: 'review', l: 'Review', sub: '/pr-check', st: r.st === 'blocked' ? 'blocked' : (off ? 'manual' : (has('prcheck') ? 'auto' : 'manual')), n: r.note },
-          { k: 'fix', l: 'Fix and re-review', sub: 'until clean', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Fix rounds repeat until no critical finding is left.' },
+          { k: 'fix', l: 'Fix and re-review', sub: 'until clean', st: r.st === 'blocked' ? 'off' : 'auto', n: 'Review rounds repeat until no critical finding is left.' },
           { k: 'pr', l: 'Pull request', sub: 'opened', st: r.st === 'blocked' ? 'off' : (!off && has('pr') ? 'auto' : 'manual'), n: !off && has('pr') ? 'Opened unasked.' : 'Waits for you.' },
           { k: 'merge', l: 'Merge', sub: 'private repo', st: r.st === 'blocked' ? 'off' : (!off && has('merge') ? 'auto' : 'manual'), n: (!off && has('merge') ? 'The merge step authorizes an unattended merge. ' : 'Not enabled: the run stops at the pull request. ') + mergeNote() },
           { k: 'ticket', l: 'Ticket', sub: 'tracker', st: !off && has('ticket') ? 'auto' : 'manual', n: !off && has('ticket') ? 'Moved unasked.' : 'Waits for you.' },
@@ -584,8 +584,8 @@
           { k: 'publish', l: 'Publish PR', sub: 'chore branch', st: a, n: 'Opens or refreshes a pull request with the new graph. Never a direct push.' },
           { k: 'merge', l: 'Merge on green', sub: 'merge-on-green', st: !armed ? 'off' : (s.automerge ? 'auto' : 'blocked'), n: s.automerge ? 'Merges once CI passes.' : 'merge-on-green refuses without ARMAUTOMERGE; the pull request waits for you.' },
           { k: 'semantic', l: 'Semantic pass', sub: 'weekly', st: a, n: why + (s.backend === 'ollama'
-            ? 'With the semantic step on a local GPU (ollama): no usage bank check.'
-            : 'With claude-cli (Sonnet): draws on your Claude usage bank and skips itself when the bank is nearly spent.') + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
+            ? 'With the semantic step on a local GPU (ollama): no subscription usage budget check.'
+            : 'With claude-cli (Sonnet): draws on your Claude subscription usage budget and skips itself when the budget is nearly spent.') + ' GRAPH_CADENCE_SEMANTIC_BACKEND applies when the refresh runs with its semantic step.' },
           { k: 'ledger', l: 'Ledger', sub: 'one line per run', st: armed ? 'auto' : 'off', n: 'Every run appends what it did (skipped, refreshed, published, merged or failed); the doctor surfaces failures.' }
         ];
       } }
@@ -598,7 +598,7 @@
     nudge: { t: 'HIMMEL_WORKTREE_NUDGE', d: 'A gentle reminder to start a worktree before editing. Editing on main is refused either way.' },
     crProfile: { t: 'CR_PROFILE', d: 'Which critics review your diff in /pr-check. "none" is Claude only and spends nothing outside your plan; "paid" runs the codex panel. A missing critic never means no review: Claude reviews the diff itself.' },
     crAgents: { t: 'CR_CLAUDE_AGENTS', d: 'Adds a fan-out of Claude reviewer agents inside /pr-check.' },
-    crossModel: { t: 'CR_REQUIRE_CROSS_MODEL', d: 'Gate policy. When on, the review marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.' },
+    crossModel: { t: 'CR_REQUIRE_CROSS_MODEL', d: 'Gate policy. When on, the review-owed marker clears only after a critic from a different model family has passed the exact commit, so a Claude-only review is not enough.' },
     floor: { t: 'CR_FLOOR_FALLBACK', d: 'Gate policy. With the cross-model rule on, "claude-only" lets a fresh Claude review with no shared context stand in when every other critic is out of quota. It is never counted as cross-model.' },
     overnight: { t: 'HIMMEL_OVERNIGHT', d: 'Switches sessions to the overnight initiative profile, read from HIMMEL_INITIATIVE_OVERNIGHT instead of HIMMEL_INITIATIVE.' },
     initOvernight: { t: 'HIMMEL_INITIATIVE_OVERNIGHT', d: 'The overnight step list. "all" adds implementing and merging to the daytime set. It has no effect unless HIMMEL_OVERNIGHT is on.' },
@@ -606,7 +606,7 @@
     vault: { t: 'companion vault', d: 'Your installer answer about a second-brain vault. The vault jobs (pipeline, qmd, graphmap, vault-stall) are offered only with one.' },
     vm: { t: 'vm.mode', d: 'Where steps that need proof on a test VM run: the local VM, a remote one over ssh, or none. With none, arming a VM-gated job needs your explicit pick as an acknowledgement.' },
     graphmap: { t: 'graphmap', d: 'Arming this job runs the hourly structural refresh, the weekly semantic refresh and the 6-hourly publish of himmel’s own graph.' },
-    backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your usage bank) or ollama (local GPU). Any other value is refused before work starts.' }
+    backend: { t: 'GRAPH_CADENCE_SEMANTIC_BACKEND', d: 'Which model does the graph refresh’s semantic step: claude-cli (default, uses your subscription usage budget) or ollama (local GPU). Any other value is refused before work starts.' }
   };
 
   var current = 'work';

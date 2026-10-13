@@ -446,7 +446,7 @@ function Get-ProcessTreeIndex {
 # recorded PPID when its real parent dies, so an UNRELATED process can carry
 # a stale PPID that a broker-tree pid has since RECYCLED into - the walk
 # would sweep it in. The canonical filter is creation-time ordering: a real
-# child can never be OLDER than its parent, while a stale-PPID impostor
+# child can never be OLDER than its parent, while a stale-PPID lookalike
 # predates the recycled pid it points at. A claimed child older than its
 # claimed parent (2s tolerance, matching Test-ProcessStartMatches) is skipped.
 #
@@ -485,7 +485,7 @@ function Get-DescendantPids {
       $childKey = [string]$child
       if ($seen.ContainsKey($childKey)) { continue }   # pid-reuse cycle guard
       # Creation-time ordering (codex round 4): a claimed child measurably
-      # OLDER than its claimed parent is a stale-PPID impostor, not kin.
+      # OLDER than its claimed parent is a stale-PPID lookalike, not kin.
       $hasChildCreated = $created.ContainsKey($childKey)
       $hasParentCreated = $created.ContainsKey($curKey)
       if ($VerifiedEdgesOnly -and (-not $hasChildCreated -or -not $hasParentCreated)) { continue }

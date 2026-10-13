@@ -35,7 +35,7 @@ A packaged write-up (method, fresh results, limits) is in [`docs/evals/prompt-ca
 - A session's first request reads a warm shared prefix (system + tools).
 - An idle gap at or past the session's TTL re-pays the whole prefix on wake; a
   shorter gap does not. That, not "burning" anything while idle, is the cost of
-  a parked leg.
+  a parked worker session.
 - A full-prefix rewrite that coincides with an event is only evidence against
   the event once compaction and TTL expiry are ruled out — the probe does that.
 
@@ -51,13 +51,13 @@ TRUE / FALSE / UNVERIFIED, each with the eval scenario (a fixture in
 | 2 | "every graphify write invalidates Claude Code's prompt cache … full re-upload" (`.gitignore:24`) | **FALSE** — fixed (reworded as file-search/context hygiene) | live run L2: 14 sessions across the graph.json write (03:15:18), 14 kept / 0 invalidated | `no-invalidation` |
 | 3 | "exiting gives the relaunch a clean prompt cache" (`arm-resume.sh` self-resume note, `hop.sh` /exit banner) | **FALSE** — fixed (the real reason, avoiding two processes on one handover, stays) | live run L3: a new session's first turn is warm in 1199 of 1210 sessions | `first-turn-warm`, `first-turn-cold` |
 | 4 | "himmel has never measured its own read-ratio" (`docs/token-economy.md`) | **FALSE** (stale) — updated with the measured 98.2% | live run L3 | `first-turn-warm` |
-| 5 | an idle leg re-primes cold when woken (`handover-system.md` § Operator-gated wrap; `*-next-session.md` clause) | **TRUE** — the wake re-pays the prefix; "burns" is figurative, an idle session costs nothing | live run L4: 113 of 126 gaps past the TTL rewrote, 41 of 14,659 shorter gaps did | `idle-ttl-5m`, `idle-ttl-1h`, `idle-none` |
+| 5 | an idle worker session re-primes cold when woken (`handover-system.md` § Operator-gated wrap; `*-next-session.md` clause) | **TRUE** — the wake re-pays the prefix; "burns" is figurative, an idle session costs nothing | live run L4: 113 of 126 gaps past the TTL rewrote, 41 of 14,659 shorter gaps did | `idle-ttl-5m`, `idle-ttl-1h`, `idle-none` |
 | 6 | the statusline's per-tier cache-expiry countdown (`docs/patches/2026-05-16-cache-statusline.md`) | **TRUE** — the TTL model holds on both tiers | live run L4; fixtures put a 10-minute gap warm on 1h and cold on 5m | `idle-ttl-5m`, `idle-ttl-1h`, `idle-ttl-violated` |
 | 7 | a cache-read collapse after a compaction or a long idle is not an external invalidation (the reading the probe applies) | **TRUE** — measured, not assumed | L1 classed 1 session `compacted`; fixtures | `compaction-lookalike`, `ttl-expiry`, `late-rewrite-unrelated`, `idle-compaction-lookalike` |
 | 8 | "the 76.5% read-ratio / `<40%` = structural issue" figures (`token-economy.md`) | **UNVERIFIED** — one-tweet heuristics from another workspace; himmel's measured 98.2% neither confirms nor refutes the threshold | — | none (no fixture: a threshold from elsewhere) |
 | 9 | "one extra cache write (~4k tokens) per session started or compacted after an index edit" (this doc, `SKILL.md` rail 6) | **UNVERIFIED** — an estimate from the index size, not a measured delta | — | none; ponytail: an estimate, upgrade path = a probe mode that diffs first-turn `cache_creation` before/after an edit (follow-up) |
 | 10 | "edits that invalidate thinking also restart the prompt cache; append-only with fixed system and tools is the cache-safe shape" (this doc) | **UNVERIFIED** — reported from the preserved-thinking docs page, not measured | — | none; ponytail: reported, not measured, upgrade path = a `scripts/eval/cache-probe.sh` scenario that edits an earlier turn / the system prompt and asserts the rewrite |
-| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly-bank reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any bank/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); ponytail: needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (follow-up) |
+| 11 | "an account switch rewrites the full prefix of running sessions" (token-maxxing guide technique 3) | **UNVERIFIED** — no account switch has been measured. L5 is a weekly subscription usage budget reset on the SAME account (not a switch): 2 live sessions kept their prefix and survived the change, 0 invalidated, 0 compacted. It rules out "any subscription-usage budget/login-adjacent event rewrites the prefix", not the per-account claim | live run L5 | `account-switch` (the probe reads a kept pair); ponytail: needs a real switch to another account, re-run `invalidation --event <switch ISO>` over sessions live across it (follow-up) |
 
 Counts: 3 TRUE, 4 FALSE (all fixed), 4 UNVERIFIED (noted, not guessed).
 Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
@@ -71,7 +71,7 @@ Unrelated caches (gh, graphify, qmd, npm, `USAGE_CACHE_TTL`,
 | L2 | `invalidation --event @<primary>/graphify-out/graph.json` | `verdict: not-invalidated kept=14 invalidated=0`, read-ratio 99.0 % |
 | L3 | `first-turn` | `verdict: warm-start warm=1199 cold=11`, read-ratio 98.2 % |
 | L4 | `idle-gap` | `verdict: ttl-consistent cold-expected=126 cold-rewrote=113 warm-expected=14659 warm-rewrote=41` |
-| L5 | `invalidation --event 2026-10-05T16:00:00Z` (2026-10-05 weekly-bank reset at 100 %, same account, between ~15:55Z and ~16:16Z; events 15:55Z and 16:10Z give the same verdict) over the console and leg N1182 transcripts | `verdict: not-invalidated kept=2 invalidated=0 compacted=0 ttl=0`, read-ratio 98.1 %; console 317.5k to 319.5k read across a 2101 s gap, N1182 155k to 119k read with a 15.8k write (1605 s gap, still above half). Both sessions survived the change |
+| L5 | `invalidation --event 2026-10-05T16:00:00Z` (2026-10-05 weekly subscription usage budget reset at 100 %, same account, between ~15:55Z and ~16:16Z; events 15:55Z and 16:10Z give the same verdict) over the supervisor session and worker session N1182 transcripts | `verdict: not-invalidated kept=2 invalidated=0 compacted=0 ttl=0`, read-ratio 98.1 %; supervisor session 317.5k to 319.5k read across a 2101 s gap, N1182 155k to 119k read with a 15.8k write (1605 s gap, still above half). Both sessions survived the change |
 
 The probe reads only `usage` and timestamps; the runs put no transcript
 content in the repo.
@@ -116,13 +116,13 @@ the context size when an idle gap `g` lands:
 | Pattern | Gaps | Winner | Break-even / expected effect |
 |---|---|---|---|
 | short paper judge (under 5 min wall, reads files, no test run) | none over 300 s | **5m** | never breaks even; 1h costs +0.75 `W`, predicted +35 to 50 % of the judge's input-token-equivalent cost |
-| ~~judge that idles on a test run or CI wait over 5 min~~ | **retired 2026-10-11**: operator rule, judges never wait on CI or tests (the leg's scripts do) | 5m | pattern no longer exists; was predicted 1h at a single late gap ≥ 65 % of context |
+| ~~judge that idles on a test run or CI wait over 5 min~~ | **retired 2026-10-11**: operator rule, judges never wait on CI or tests (the worker session's scripts do) | 5m | pattern no longer exists; was predicted 1h at a single late gap ≥ 65 % of context |
 | long escape hunt (many files, long model turns) | gaps are model generation time, rarely over 300 s | **5m** unless a model turn plus its tool call exceeds 5 min | gap between message timestamps includes generation, so it is an upper bound on idle; unobserved over 300 s in the baseline (max 144 s) |
 | resumed judge (same agent messaged again after 5 to 60 min) | one gap of 300 s to 3600 s at full context | **1h** only if that gap lands at ≥ 65 % of final context | the one pattern that can still favour 1h; unobserved so far, so it stays a prediction |
 
-### Baseline (2026-10-10 shift, 8 Explore judge calls, all on 5m)
+### Baseline (2026-10-10 shift, 8 Explore judge subagents, all on 5m)
 
-Source: the 8 `agent-*.jsonl` under the console session's `subagents/`. Rows
+Source: the 8 `agent-*.jsonl` under the supervisor session's `subagents/`. Rows
 from `scripts/eval/judge-cache-row.sh` (usage rows deduped by message id).
 Counterfactual 1h cost = 2 × `cc` + 0.1 × `cr`, valid only because no gap
 passed 300 s (reads are identical on both tiers); actual 5m = 1.25 × `cc` +
@@ -158,7 +158,7 @@ break-even.
 
 ### The ledger recipe
 
-After each judge call, append one row (judge, agent, model, TTL actually
+After each judge subagent run, append one row (judge, agent, model, TTL actually
 billed, wall s, turns, cc 5m, cc 1h, read, longest gap, gaps over 300 s):
 
 ```bash

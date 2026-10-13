@@ -406,6 +406,16 @@
       "offboard": "advise"
     },
     {
+      "id": "doctor-cadence",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "DOCTORCAD_RUNNER_DIR", "defaultSubdir": ".claude/doctor-cadence" },
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "guardrail-block-global",
       "kind": "wiring",
       "scopes": ["user"],

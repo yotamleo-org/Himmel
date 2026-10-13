@@ -2,7 +2,7 @@
 // HIMMEL-1040 — resolver invariants for the named plugin-profile registry.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, cpSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1312,7 +1312,18 @@ function runbookCodeLines(text) {
   return out;
 }
 
-const criticCalls = (relPath) => runbookCodeLines(readFileSync(join(REPO_ROOT, relPath), 'utf8'))
+// HIMMEL-5509: the Claude runbook is a driver (.claude/commands/pr-check.md)
+// plus per-stage reference files in scripts/cr/pr-check-ref/. Its text is the
+// driver followed by the reference files in name order.
+const REF_DIR = join(REPO_ROOT, 'scripts', 'cr', 'pr-check-ref');
+const readRunbook = (relPath) => {
+  const text = readFileSync(join(REPO_ROOT, relPath), 'utf8');
+  if (relPath !== '.claude/commands/pr-check.md') return text;
+  const refs = readdirSync(REF_DIR).filter((f) => f.endsWith('.md')).sort();
+  return text + refs.map((f) => readFileSync(join(REF_DIR, f), 'utf8')).join('');
+};
+
+const criticCalls = (relPath) => runbookCodeLines(readRunbook(relPath))
   .map((l) => l.trim())
   .filter((l) => !l.startsWith('#') && CRITIC_LINE_RE.test(l));
 // The documented himmel-lane substitution: drop the `"<himmel_dir>/` prefix and
@@ -1344,7 +1355,7 @@ test('/pr-check (Codex twin): its external-critic calls name only scripts that h
 
 for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKILL.md']) {
   test(`${file} documents the himmel-lane relative spelling and the operator ruling`, () => {
-    const text = readFileSync(join(REPO_ROOT, file), 'utf8');
+    const text = readRunbook(file);
     assert.match(text, /HIMMEL-3338/, 'missing the HIMMEL-3338 marker');
     assert.match(text, /`himmel_dir=` equals `repo=`/, 'missing the himmel-lane substitution condition');
     assert.match(text, /bash scripts\/cr\/<script>\.sh/, 'missing the relative spelling');
