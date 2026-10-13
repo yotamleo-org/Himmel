@@ -79,7 +79,7 @@ inner="$rundir/cloud-$t.$$.run.sh"
 printf '#!/usr/bin/env bash\nexec claude --cloud "$(cat %q)" --permission-mode auto\n' "$brief" > "$inner"
 chmod +x "$inner"
 
-setsid nohup konsole --separate -p tabtitle="cloud-HIMMEL-$t" -e script -q -c "$(printf '%q' "$inner")" "$log" > /dev/null 2>&1 &
+setsid nohup konsole --separate -p tabtitle="cloud-HIMMEL-$t" -e script -q -c "$(printf '%q' "$inner")" "$log" > /dev/null 2>&1 &  # t13b-ok: one-shot konsole window, exits when claude --cloud returns; not a service
 
 polls="${CLOUD_LAUNCH_POLLS:-20}"
 nap="${CLOUD_LAUNCH_SLEEP:-3}"
