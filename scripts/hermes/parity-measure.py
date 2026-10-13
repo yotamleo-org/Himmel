@@ -134,7 +134,9 @@ def load_chain_members():
 
 
 def matcher_hits(matcher, tool):
-    return any(re.fullmatch(p, tool) for p in matcher.split("|")) or matcher == "*"
+    if matcher in ("", "*"):
+        return True
+    return any(p == tool or (p not in ("", "*") and re.fullmatch(p, tool)) for p in matcher.split("|"))
 
 
 def is_deny(rc, out):
@@ -146,7 +148,9 @@ def is_deny(rc, out):
     try:
         doc = json.loads(out)
     except ValueError:
-        return False
+        if out[0] in "{[":
+            raise HarnessError("hook emitted unparseable JSON: " + out[:60])
+        return False  # plain advisory text: PreToolUse ignores it
     if not isinstance(doc, dict):
         return False
     spec = doc.get("hookSpecificOutput") or {}
@@ -172,8 +176,12 @@ class Sandbox:
         main = os.path.join(self.root, "main-repo")
         feat = os.path.join(self.root, "feat-repo")
         os.makedirs(os.path.join(main, "src"))
-        git = ["git", "-C", main, "-c", "user.name=parity", "-c", "user.email=p@example.invalid"]
-        quiet = {"check": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+        # fixture git runs on the sandbox env (no GIT_* from the launching
+        # shell) with no hooks, so nothing can leave the throwaway repos
+        git = ["git", "-C", main, "-c", "user.name=parity", "-c", "user.email=p@example.invalid",
+               "-c", "core.hooksPath=" + os.devnull, "-c", "commit.gpgsign=false"]
+        quiet = {"check": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                 "env": self.env({"GIT_CONFIG_NOSYSTEM": "1"})}
         subprocess.run(["git", "init", "-q", "-b", "main", main], **quiet)
         with open(os.path.join(main, "README.md"), "w") as f:
             f.write("parity fixture\n")
