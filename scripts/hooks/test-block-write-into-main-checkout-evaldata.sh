@@ -381,6 +381,23 @@ _r5098 "232a /bin/\$x -c git log"                     block 'x=sh; /bin/$x -c "$
 _r5098 "232b pipe into /usr/bin/\$x"                  block 'x=sh; cat @W@/msg | /usr/bin/$x'
 _r5098 "232c empty basename after a variable dir"     block 'd=/bin/sh; "$d"/ -c "$(cat @W@/msg)"'
 _r5098 "232d control: literal basename under \$HOME"  allow '"$HOME/bin/tool" "$(git log -1 --format=%s)"'
+# a variable in option position may itself be -c (judge j2481f)
+_r5098 "233a bash -e \$X -c variable body"              block 'bash -e $X -c "$m"'
+_r5098 "233b sh \$DBG -c variable body"                 block 'sh $DBG -c "$m"'
+_r5098 "233c bash \$OPTS -c git log"                    block 'bash $OPTS -c "$(git log -1 --format=%B)"'
+_r5098 "233d bash \${OPTS} -c git log"                  block 'bash ${OPTS} -c "$(git log -1 --format=%B)"'
+_r5098 "233e F=-c; bash \$F git log"                    block 'F=-c; bash $F "$(git log -1 --format=%B)"'
+_r5098 "233f bash \"\$F\" git log"                      block 'bash "$F" "$(git log -1 --format=%B)"'
+_r5098 "233g two variables: the second may be a body"  block 'bash $F "$m"'
+_r5098 "233i control: bash \$OPTS ./run.sh"             allow 'bash $OPTS ./run.sh'
+_r5098 "233j control: bash -e \$X -c literal body"      allow "bash -e \$X -c 'ls'"
+_r5098 "233k control: bash -x \$F"                      allow 'bash -x $F'
+# pins for option shapes the judge probed (j2481f)
+_r5098 "233l bash -O extglob -c git log"                block 'bash -O extglob -c "$(git log -1 --format=%B)"'
+_r5098 "233m bash +O extglob -c git log"                block 'bash +O extglob -c "$(git log -1 --format=%B)"'
+_r5098 "233n bash -Oextglob -c git log"                 block 'bash -Oextglob -c "$(git log -1 --format=%B)"'
+_r5098 "233o bash --rcfile f -c git log"                block 'bash --rcfile @W@/rc -c "$(git log -1 --format=%B)"'
+_r5098 "233p control: bash -O extglob -c literal"      allow "bash -O extglob -c 'ls'"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'

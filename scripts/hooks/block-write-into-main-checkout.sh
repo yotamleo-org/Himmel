@@ -3877,7 +3877,7 @@ _bwimc_dx_heredoc() {
 
 # _bwimc_dx_shell START PIPE CTX — a shell at the command position.
 _bwimc_dx_shell() {
-    local p=$1 pipe=$2 ctx=$3 q e wi w n hasc=0 sopt=0 op=-1 hs=-1 hdw=-1
+    local p=$1 pipe=$2 ctx=$3 q e wi w n hasc=0 sopt=0 op=-1 hs=-1 hdw=-1 amb=0
     q=$p
     while [ "$q" -lt "$_dx_nit" ]; do
         e=${_dx_it[$q]}
@@ -3892,13 +3892,16 @@ _bwimc_dx_shell() {
     done
     # Options run until the first operand, -c included (bash -c -e BODY), and
     # every o or O in a cluster takes the next word (bash -euo pipefail). The
-    # first operand is the -c body, else the script (none after -s).
+    # first operand is the -c body, else the script (none after -s). A word
+    # with a live $ before any -c may itself be -c (F=-c; bash $F BODY), so it
+    # is skipped as an option and counted.
     q=$p
     while [ "$q" -lt "$_dx_nit" ]; do
         e=${_dx_it[$q]}
         if [ "${e:0:1}" = s ]; then op=$q; break; fi
         wi=${e#w}
         if [ -n "${ST_RO[$wi]}" ]; then q=$((q + 1)); continue; fi
+        if [ "$hasc" = 0 ] && [ "${ST_X[$wi]}" = 1 ]; then amb=$((amb + 1)); q=$((q + 1)); continue; fi
         w=${ST_W[$wi]}
         if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; fi
         # -s: the script is standard input, every later word a positional
@@ -3912,6 +3915,10 @@ _bwimc_dx_shell() {
             *) op=$q; break ;;
         esac
     done
+    # two such words: the first may be -c and the second its body; one: the
+    # first operand may be its body, so it is judged as one
+    [ "$amb" -lt 2 ] || _bwimc_dx_deny "(a shell option word is a variable, so it may be -c and a later one its body)"
+    if [ "$amb" = 1 ] && [ "$hasc" = 0 ] && [ "$op" -ge 0 ]; then _bwimc_dx_body "$op" 1 "$ctx"; fi
     if [ "$hasc" = 1 ]; then
         [ "$ctx" != xr ] || _bwimc_dx_deny "(xargs substitutes data into a shell -c body)"
         q=$op
