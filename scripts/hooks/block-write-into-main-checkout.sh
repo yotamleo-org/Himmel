@@ -3660,8 +3660,9 @@ _bwimc_dx_crude() {
     case "$t" in
         *'$'*|*'`'*|*'<'*|*'|'*|*'=('*)
             w=$(printf '%s\n' "$t" | awk "$_BWIMC_DX_WAWK") || _bwimc_dx_deny "(a command the tokenizer cannot model, and its word pass failed)"
-            [[ $c =~ $_BWIMC_DX_CRUDE || $w =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
+            # quoted heredoc bodies are prose, not code: both checks skip them
             v=$(_bwimc_dx_crudecode "$t"); v=${v//\\/}; v=${v//\'/}; v=${v//\"/}
+            [[ $v =~ $_BWIMC_DX_CRUDE || $w =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
             # pair backticks as $( and ), so a closing one ends a word
             # shellcheck disable=SC2016  # a literal $(, not an expansion
             while [[ $v == *'`'*'`'* ]]; do v=${v/'`'/'$('}; v=${v/'`'/')'}; done
@@ -3876,7 +3877,7 @@ _bwimc_dx_heredoc() {
 
 # _bwimc_dx_shell START PIPE CTX — a shell at the command position.
 _bwimc_dx_shell() {
-    local p=$1 pipe=$2 ctx=$3 q e wi w hasc=0 op=-1 hs=-1 hdw=-1
+    local p=$1 pipe=$2 ctx=$3 q e wi w n hasc=0 sopt=0 op=-1 hs=-1 hdw=-1
     q=$p
     while [ "$q" -lt "$_dx_nit" ]; do
         e=${_dx_it[$q]}
@@ -3889,6 +3890,9 @@ _bwimc_dx_shell() {
         fi
         q=$((q + 1))
     done
+    # Options run until the first operand, -c included (bash -c -e BODY), and
+    # every o or O in a cluster takes the next word (bash -euo pipefail). The
+    # first operand is the -c body, else the script (none after -s).
     q=$p
     while [ "$q" -lt "$_dx_nit" ]; do
         e=${_dx_it[$q]}
@@ -3896,31 +3900,34 @@ _bwimc_dx_shell() {
         wi=${e#w}
         if [ -n "${ST_RO[$wi]}" ]; then q=$((q + 1)); continue; fi
         w=${ST_W[$wi]}
-        if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; q=$((q + 1)); break; fi
+        if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; fi
         # -s: the script is standard input, every later word a positional
-        [[ $w =~ ^-[A-Za-z]*s[A-Za-z]*$ ]] && break
+        [[ $w =~ ^-[A-Za-z]*s[A-Za-z]*$ ]] && sopt=1
+        if [[ $w =~ ^[-+][A-Za-z]*[oO][A-Za-z]*$ ]]; then n=${w//[!oO]/}; q=$((q + 1 + ${#n})); continue; fi
         case "$w" in
-            -o|-O|+o|+O|--rcfile|--init-file) q=$((q + 2)) ;;
+            --) q=$((q + 1)); [ "$q" -lt "$_dx_nit" ] && op=$q; break ;;
+            --rcfile|--init-file) q=$((q + 2)) ;;
             -*|+*) q=$((q + 1)) ;;
-            /dev/stdin|/dev/fd/*|/proc/*/fd/*) break ;;
+            /dev/stdin|/dev/fd/*|/proc/*/fd/*) [ "$hasc" = 1 ] && op=$q; break ;;
             *) op=$q; break ;;
         esac
     done
     if [ "$hasc" = 1 ]; then
         [ "$ctx" != xr ] || _bwimc_dx_deny "(xargs substitutes data into a shell -c body)"
-        while [ "$q" -lt "$_dx_nit" ]; do
-            e=${_dx_it[$q]}
-            if [ "${e:0:1}" = w ] && [ -n "${ST_RO[${e#w}]}" ]; then q=$((q + 1)); continue; fi
-            break
-        done
-        if [ "$q" -ge "$_dx_nit" ]; then
+        q=$op
+        if [ "$q" -lt 0 ]; then
             case "$ctx" in x*) _bwimc_dx_deny "(xargs passes data as a shell -c body)" ;; esac
             return 0
         fi
         _bwimc_dx_body "$q" 1 "$ctx"
         return 0
     fi
-    case "$ctx" in x*) _bwimc_dx_deny "(xargs runs a shell on data)" ;; esac
+    [ "$sopt" = 0 ] || op=-1
+    # under xargs a script operand keeps the data positional; without one the
+    # data is the script and its options (bash -n +n -c CODE runs CODE)
+    if [ "$op" -lt 0 ] || [ "$ctx" = xr ]; then
+        case "$ctx" in x*) _bwimc_dx_deny "(xargs runs a shell on data)" ;; esac
+    fi
     if [ "$op" -ge 0 ]; then
         e=${_dx_it[$op]}
         if [ "${e:0:1}" = s ]; then

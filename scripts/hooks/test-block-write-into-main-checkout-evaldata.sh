@@ -358,6 +358,24 @@ _r5098 "228zb padded ANSI-C hex shell after a quoted-blank assignment" block "A=
 _r5098 "228zc padded ANSI-C span inside a verb after a quoted-blank assignment" block "A='x y' e\$'\\166'al \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228zd padded ANSI-C octal verb after a quoted-blank assignment" block "A='x y' \$'\\145val' \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228ze control: padded ANSI-C argument after a quoted-blank assignment" allow "A='x y' printf \$'a\\tb'; : ${_PAD}"
+# quoted heredoc prose naming a shell is not code, past 8 KiB too (j2481e)
+_r5098 "228zf control: padded quoted heredoc naming bash x.sh" allow "cat > @W@/n.md <<'EOF'${NL}bash x.sh | sort runs the lint${NL}${_PAD}${NL}EOF"
+_r5098 "228zg padded shell fed a quoted heredoc"          block "bash <<'EOF'${NL}eval \"\$(cat @W@/msg)\"${NL}EOF${NL}: ${_PAD}"
+# shell options: an o in a cluster takes a word, -c's body follows its options (j2481e)
+_r5098 "230a bash -euo pipefail -c git log"            block 'bash -euo pipefail -c "$(git log -1 --format=%B)"'
+_r5098 "230b bash -c -- variable body"                 block 'm=$(cat @W@/msg); bash -c -- "$m"'
+_r5098 "230c sh -c -e cat body"                        block 'sh -c -e "$(cat @W@/msg)"'
+_r5098 "230d bash -oc pipefail with a cat body"        block 'bash -oc pipefail "$(cat @W@/msg)"'
+_r5098 "230e bash -s -c cat body"                      block 'bash -s -c "$(cat @W@/msg)"'
+_r5098 "230f bash -c -o pipefail cat body"             block 'bash -c -o pipefail "$(cat @W@/msg)"'
+_r5098 "230g control: bash -euo pipefail script"       allow 'bash -euo pipefail @W@/x.sh'
+_r5098 "230h control: bash -c -- literal body"         allow "bash -c -- 'echo ok'"
+_r5098 "230i control: bash -s with a positional"       allow 'bash -s "$(cat @W@/msg)"'
+# under xargs a script operand keeps the data positional (j2481e)
+_r5098 "231a control: xargs bash -n"                   allow "git ls-files '*.sh' | xargs bash -n @W@/x.sh"
+_r5098 "231b control: xargs bash script"               allow "git ls-files '*.sh' | xargs bash scripts/lint.sh"
+_r5098 "231c xargs bash with no script runs data"      block 'cat @W@/msg | xargs bash -n'
+_r5098 "231d xargs -I bash script"                     block 'cat @W@/msg | xargs -I{} bash {}'
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
