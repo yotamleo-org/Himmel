@@ -10,6 +10,7 @@ export HOME="$TMP/home"; mkdir -p "$HOME"
 FIXDIR="$SCRIPT_DIR/fixtures/cr-body"
 OUTSIDE_BODY="$FIXDIR/pr-1261-outside-diff-2.body.txt"   # real: outside=2 nitpick=0 additional=0 markers=2
 NITPICK_BODY="$FIXDIR/pr-466-nitpick.body.txt"           # real: outside=0 nitpick=1 additional=0 markers=1
+NITPICK_COLON_BODY="$FIXDIR/pr-2549-nitpick-colon.body.txt" # real (HIMMEL-5583): `Nitpick comments: 1`, `<summary>path: 1</summary>`
 
 # ── synthetic fixtures (kept inline — small, one-off; NOT captured CodeRabbit
 # output like the two files above) ──────────────────────────────────────────
@@ -84,6 +85,14 @@ mk_json_from_str  "$RESP_DIR/markers-no-section.json" "$UID_OK"    "$HEAD"  "$MA
 # prior-only: the outside-diff body attached to a review at an OLDER head
 # (commit_id != HEAD) and NO review at HEAD at all.
 mk_json_from_file "$RESP_DIR/prior-only.json"         "$UID_OK"    "$PRIOR" "$OUTSIDE_BODY"
+mk_json_from_file "$RESP_DIR/nitpick-colon.json"      "$UID_OK"    "$HEAD"  "$NITPICK_COLON_BODY"
+# outside-diff colon form: the real pr-1261 body with ONLY its count headers
+# rewritten to the colon shape (no real colon-form outside-diff body exists yet).
+OUTSIDE_COLON_BODY="$TMP/outside-colon.body.txt"
+sed -e 's/Outside diff range comments (2)/Outside diff range comments: 2/' \
+    -e 's/^\(> <summary>.*\) (1)<\/summary>/\1: 1<\/summary>/' "$OUTSIDE_BODY" > "$OUTSIDE_COLON_BODY"
+mk_json_from_file "$RESP_DIR/outside-colon.json"      "$UID_OK"    "$HEAD"  "$OUTSIDE_COLON_BODY"
+mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
 echo '[]' > "$RESP_DIR/zero-reviews.json"
 echo '{}' > "$RESP_DIR/non-array.json"
 # identity: right body, WRONG user.id at head -> must be treated as no review.
@@ -156,7 +165,11 @@ t() { # t <name> <GH_STUB_MODE> <expected-rc> [<expected-stdout-line>]
 
 t outside-diff-pr1261-parses-at-head          outside-1261        0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
 t nitpick-pr466-parses-at-head                nitpick-466         0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
-t clean-body-all-zero                         clean               0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=1 substantive=1"
+# HIMMEL-5583: colon-count headers (real PR #2549 body); the old paren form is unchanged above.
+t nitpick-colon-form-counts-1                 nitpick-colon       0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t outside-colon-form-counts-2                 outside-colon       0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
+t colon-malformed-count-blocks                colon-malformed     2
+t clean-body-all-zero                        clean               0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=1 substantive=1"
 # anti-drift canaries — the whole point of this reader. rc 2: POSITIVE
 # evidence of an unparseable finding (the body SHOWS a section keyword but
 # won't parse), never a false 0/"pass" (which would be rc 1's territory —

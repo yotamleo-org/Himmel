@@ -163,6 +163,13 @@ def sum_matches(re):
 def count_matches(re):
   ( [ scan(re) ] | length );
 def has_content: test("\\S");
+# HIMMEL-5583: CodeRabbit now writes counts as "comments: N" and
+# "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
+# the paren form so every regex below sees ONE shape; a non-numeric count stays
+# unmatched, so the drift canaries still return rc 2.
+def norm:
+  gsub("(?<h>comments?): (?<n>[0-9]+)(?![0-9])"; "\(.h) (\(.n))")
+  | gsub("<summary>(?<f>[^<\\n]+): (?<n>[0-9]+)</summary>"; "<summary>\(.f) (\(.n))</summary>");
 '
 
 # The review SELECTOR, shared by the count program and the per-finding
@@ -177,12 +184,12 @@ _CBF_JQ_SELECT='
 | ( [ $bot[] | select(.commit_id == $head) ] ) as $headr
 | ( [ $bot[] | select(.commit_id != $head) ] ) as $priorr
 | ( [ $headr[] | select((.body // "") | has_content) ] ) as $sub
-| ( $sub | sort_by(.submitted_at, .id) | .[-1] | (.body // "") ) as $chosen
+| ( $sub | sort_by(.submitted_at, .id) | .[-1] | (.body // "") | norm ) as $chosen
 '
 
 # shellcheck disable=SC2016  # this is a jq program, not a shell variable
 _CBF_JQ_COUNTS='
-| ( [ $priorr[] | (.body // "") ] ) as $pb
+| ( [ $priorr[] | (.body // "" | norm) ] ) as $pb
 | {
     outside:       ( $chosen | sum_matches(outside_re) ),
     nitpick:       ( $chosen | sum_matches(nitpick_re) ),
@@ -247,7 +254,7 @@ _CBF_JQ_PRIOR_HEADS='
 | ( [ $priorr[] | select((.body // "") | has_content) ]
     | group_by(.commit_id)
     | map( sort_by(.submitted_at, .id) | .[-1] )
-    | map( select((.body // "") | sum_matches(outside_re) > 0) )
+    | map( select((.body // "" | norm) | sum_matches(outside_re) > 0) )
     | sort_by(.submitted_at, .id)
     | map(.commit_id) ) as $heads
 | $heads[]
