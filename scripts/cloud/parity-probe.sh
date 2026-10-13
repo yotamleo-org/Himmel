@@ -146,11 +146,12 @@ if [ -f "$H/check-commit-msg.sh" ]; then
   if [ -n "$mf" ]; then
     printf 'feat: no ticket id here\n' > "$mf"
     rc=0; bounded 20 bash "$H/check-commit-msg.sh" "$mf" >/dev/null 2>&1 || rc=$?
-    # 124 = timed out, 126/127 = not runnable, 137/143 = killed: the gate never decided
+    # the gate refuses with exactly rc 1; any other nonzero (timeout 124, not
+    # runnable 126/127, killed 137/143, crash 139 ...) means it never decided
     case "$rc" in
       0) verdict=ALLOW ;;
-      124|126|127|137|143) verdict=ERR ;;
-      *) verdict=DENY ;;
+      1) verdict=DENY ;;
+      *) verdict=ERR ;;
     esac
     row "attest:commit-msg-refuses-no-ticket" "$verdict rc=$rc"
     rm -f "$mf"
@@ -203,7 +204,8 @@ row obsidian-deps "$([ -d "$ROOT/marketplace/plugins/obsidian-triage/tools/node_
 
 # ---------------------------------------------------------------- jira access
 section jira
-row jira-token-set "$([ -n "${JIRA_API_TOKEN:-}${JIRA_TOKEN:-}${JIRA_BASE_URL:-}" ] && echo yes || echo no)"
+row jira-token-set "$([ -n "${JIRA_API_TOKEN:-}${JIRA_TOKEN:-}" ] && echo yes || echo no)"
+row jira-base-url-set "$([ -n "${JIRA_BASE_URL:-}" ] && echo yes || echo no)"
 row jira-cli "$([ -f "$ROOT/scripts/jira/dist/index.js" ] && echo built || echo absent)"
 row atlassian-mcp-guard "$([ -f "$H/block-backend-tier.sh" ] && echo present || echo MISSING)"
 row jira-path "$([ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && echo "Atlassian MCP connector (no token in the VM)" || echo "jira CLI (primary checkout dist)")"

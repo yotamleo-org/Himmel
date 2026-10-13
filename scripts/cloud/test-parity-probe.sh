@@ -49,6 +49,13 @@ case "$OUT6" in *$'attest:commit-msg-refuses-no-ticket\tERR rc=124'*) ok "a gate
 printf '#!/bin/sh\nexit 1\n' > "$TMP/lax/scripts/hooks/check-commit-msg.sh"
 OUT7="$(HIMMEL_CLOUD_ROOT="$TMP/lax" bash "$PROBE" --no-net 2>&1)"
 case "$OUT7" in *$'attest:commit-msg-refuses-no-ticket\tDENY rc=1'*) ok "a refusing gate reads DENY" ;; *) bad "refusal read as: $(printf '%s\n' "$OUT7" | grep 'commit-msg-refuses')" ;; esac
+printf '#!/bin/sh\nexit 139\n' > "$TMP/lax/scripts/hooks/check-commit-msg.sh"
+OUT8="$(HIMMEL_CLOUD_ROOT="$TMP/lax" bash "$PROBE" --no-net 2>&1)"
+case "$OUT8" in *$'attest:commit-msg-refuses-no-ticket\tERR rc=139'*) ok "a crashed gate reads ERR, not DENY" ;; *) bad "crash read as: $(printf '%s\n' "$OUT8" | grep 'commit-msg-refuses')" ;; esac
+
+# 3c. a base URL alone is not a Jira credential.
+OUT9="$(env -u JIRA_API_TOKEN -u JIRA_TOKEN JIRA_BASE_URL=https://example.invalid bash "$PROBE" --no-net 2>&1)"
+case "$OUT9" in *$'jira-token-set\tno'*) ok "JIRA_BASE_URL alone leaves jira-token-set no" ;; *) bad "url-only read as: $(printf '%s\n' "$OUT9" | grep 'jira-token-set')" ;; esac
 
 # 4. an empty tree: missing guards read MISSING, not DENY, and the run survives.
 mkdir -p "$TMP/empty"
