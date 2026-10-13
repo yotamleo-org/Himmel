@@ -333,7 +333,7 @@ for fam in $FAMILIES; do
         continue
     fi
     # xargs may split the list into several du batches, each ending in its own total line: sum them all
-    kb="$(printf '%s' "$list" | tr '\n' '\0' | xargs -0 du -sck 2>/dev/null | awk -F'\t' '$2 == "total" { s += $1 } END { print s + 0 }')"
+    kb="$(printf '%s' "$list" | tr '\n' '\0' | LC_ALL=C xargs -0 du -sck 2>/dev/null | awk -F'\t' '$2 == "total" { s += $1 } END { print s + 0 }')"
     fix_total=$((fix_total + ${kb:-0}))
     if [ "$APPLY" = 1 ]; then
         if printf '%s' "$list" | tr '\n' '\0' | xargs -0 rm -rf --; then
