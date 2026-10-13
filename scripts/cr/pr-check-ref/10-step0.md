@@ -60,7 +60,7 @@
    pr-check-context: cr_diff_files=<comma-joined, sorted, deduped set this run decided on (HIMMEL-3382) — the merge-base diff of committed history plus working-tree/untracked changes under the guarded paths (scripts/cr/, scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh, scripts/handover/resolve-active-item.sh and the rest of cr_guarded in pr-check-context.sh); empty when the diff proved clean or could not be computed>
    ```
    `lane=` is read, not substituted into any later fence (HIMMEL-2226 round 2) —
-   see step 2 below. `anchor_lane=` and `delegated=` are informational — read
+   see step 2 (`20-step2-lanes.md`). `anchor_lane=` and `delegated=` are informational — read
    them to confirm which checkout is actually driving this run; nothing
    downstream substitutes either one.
 
