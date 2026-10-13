@@ -545,6 +545,8 @@ row "5190 builtin . then cp to plainlink"               deny  "builtin . $T/src/
 row "5190 if source then cp to plainlink"               deny  "if source $T/src/other.txt; then cp $T/src/other.txt plainlink; fi" "$T"
 row "5190 X=1 c{d,} then cp to plainlink"               deny  "X=1 c{d,} $T/cwl; cp $T/src/other.txt plainlink" "$T"
 row "5190 command {source,} then cp to plainlink"       deny  "command {source,} $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 command -p source then cp to plainlink"       deny  "command -p source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 builtin -- . then cp to plainlink"            deny "builtin -- . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
 row "5190 no source word, relative write (ctrl)"       allow "cp $T/src/other.txt nolink" "$T/cwl"
 row "5190 echo if source (arg, not command) (ctrl)"     allow "echo if source x; cp $T/src/other.txt nolink" "$T/cwl"
 row "4545 rsync --log-file= link after \$( )"        deny  "n=\$(date +%H); rsync -a --log-file=plainlink $T/src/other.txt out.txt" "$T/cwl"
