@@ -272,7 +272,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
       # subscription token is dropped here too, so no layer between can hand it to the agent.
       unset CLAUDE_CODE_OAUTH_TOKEN
       export HIMMEL_API_JOB_ID="lq-$RUN_ID-$stem"
-      # HIMMEL-4986 lane-quality api agent run, launcher bank gate and ledger reservation, explicit permission mode, budget-capped
+      # HIMMEL-4986 lane-quality api agent run, launcher bank check and ledger reservation, explicit permission mode, budget-capped
       # launch-profile-ok: HIMMEL-4986 the eval measures the lane's own default config, not a leg profile
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
         timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \

@@ -103,6 +103,7 @@ $PortableFiles = @(
     'scripts/hooks/block-read-secrets.sh',
     'scripts/hooks/lib/guard-unwrap.sh',
     'scripts/hooks/lib/shell-tokenize.sh',
+    'scripts/lib/guard-empty-expansion.sh',
     'scripts/guardrails/lib.sh',
     'scripts/guardrails/guard-gh.sh',
     'scripts/lib/py-armor.sh',

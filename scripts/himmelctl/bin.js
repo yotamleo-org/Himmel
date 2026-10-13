@@ -5122,13 +5122,17 @@ function primaryCheckoutRoot(dir) {
 // false, never throws, when either path can't be stat'd.
 function sameFsEntry(a, b) {
   try {
-    const sa = fs.statSync(a);
-    const sb = fs.statSync(b);
+    // HIMMEL-2507: 64-bit inodes above 2^53 lose precision as JS Numbers, so
+    // two distinct entries could compare equal. Ask for BigInts; BigInt()
+    // also normalizes a stat result that ignored the option.
+    const sa = fs.statSync(a, { bigint: true });
+    const sb = fs.statSync(b, { bigint: true });
     // HIMMEL-2501: a filesystem that does not report inode numbers can
     // return ino===0 (and dev===0) for every entry, which would otherwise
     // make this compare equal for ANY two paths. Reject that degenerate
     // case explicitly rather than letting a false identity match through.
-    return sa.ino !== 0 && sa.dev === sb.dev && sa.ino === sb.ino;
+    const ino = BigInt(sa.ino);
+    return ino !== 0n && BigInt(sa.dev) === BigInt(sb.dev) && ino === BigInt(sb.ino);
   } catch (_e) {
     return false;
   }

@@ -16,7 +16,7 @@ Companion to `docs/orchestration-patterns.md`. Records the SC4 proof-run of the
   coalesces a crashed/malformed reviewer into an empty findings array, so a
   reviewer failure is indistinguishable from a clean review (a silent-failure).
   **Accepted as a known limitation of this thin proof artifact** (the script is
-  the critic-hardened plan's verbatim demo, not production CR infra; the `?.`
+  the critic-hardened plan's verbatim demo, not production automated review infra; the `?.`
   degrade-to-empty is deliberate demo robustness). Not rewritten — recorded here
   transparently, per the doctrine's own no-silent-failure invariant (§5).
 

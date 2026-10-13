@@ -1,10 +1,11 @@
 {
-  "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; twin-missing = a .sh/.ps1 twin exists but is not in the diff; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). Hand-edit everything else; keep ids stable (they are cited in PR comments).",
+  "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; twin-missing = a .sh/.ps1 twin exists but is not in the diff; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). `rung` (required, HIMMEL-4426) is the TOP rung of the correction ladder the class has reached, highest first: design = the defect cannot be written (structure removes it); gate = a hook / pre-commit / CI check blocks it; advisory = a deterministic detector or lint advisory reports it but nothing blocks; prompt = only critic-prompt / reviewer-instruction text holds it; human = judgment with no automation. A class with a `detector` and no gate is advisory; no detector but `prompt: true` is prompt. Promote a class up the ladder when `known-findings.sh --ladder` queues it (agreed recurrences); keep the gate-vs-advisory rationale in `coverage`. A missing or unknown rung exits 2 in --list, --ladder and --refresh. Hand-edit everything else; keep ids stable (they are cited in PR comments).",
   "refreshed_at": "2026-10-13",
   "classes": [
     {
       "id": "errexit-false-positive",
       "kind": "rebuttal",
+      "rung": "advisory",
       "title": "errexit hazards claimed in scripts that do not (or do not relevantly) use set -e",
       "source": "coderabbit-learning",
       "globs": [
@@ -47,6 +48,7 @@
     {
       "id": "octal-leading-zero",
       "kind": "rebuttal",
+      "rung": "advisory",
       "title": "leading-zero operands: decimal in `[ ]`, octal only in arithmetic contexts",
       "source": "coderabbit-learning",
       "globs": [
@@ -89,6 +91,7 @@
     {
       "id": "handover-root-bootstrap",
       "kind": "rebuttal",
+      "rung": "advisory",
       "title": "handover-path.sh / handover_root demanded of a script that touches no handover path",
       "source": "coderabbit-learning",
       "globs": [
@@ -130,6 +133,7 @@
     {
       "id": "mktemp-no-template",
       "kind": "fix",
+      "rung": "advisory",
       "title": "bare `mktemp` / `mktemp -d` without a template (BSD/macOS portability)",
       "source": "coderabbit-learning",
       "globs": [
@@ -172,6 +176,7 @@
     {
       "id": "gnu-only-utility",
       "kind": "fix",
+      "rung": "advisory",
       "title": "GNU-only command or flag in cross-platform shell (timeout, find -maxdepth, sed -i, date -d, readlink -f, grep -P, \\s, hardcoded /usr/bin/cat)",
       "source": "cr-app-comments",
       "globs": [
@@ -215,6 +220,7 @@
     {
       "id": "bash32-portability",
       "kind": "fix",
+      "rung": "advisory",
       "title": "bash 4+ construct (mapfile/readarray, declare -A, ${v,,}, |&, &>>)",
       "source": "coderabbit-learning",
       "globs": [
@@ -258,6 +264,7 @@
     {
       "id": "ps1-twin-parity",
       "kind": "checklist",
+      "rung": "advisory",
       "title": "a .sh/.ps1 twin changed without its counterpart",
       "source": "coderabbit-learning",
       "globs": [
@@ -300,6 +307,7 @@
     {
       "id": "ps1-bom-policy",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "UTF-8 BOM: required on a non-ASCII .ps1, an error on any .sh",
       "source": "coderabbit-learning",
       "globs": [
@@ -338,6 +346,7 @@
     {
       "id": "test-coverage-gap",
       "kind": "checklist",
+      "rung": "advisory",
       "title": "source changed, no test changed",
       "source": "cr-app-comments",
       "globs": [
@@ -384,6 +393,7 @@
     {
       "id": "docs-flag-drift",
       "kind": "checklist",
+      "rung": "advisory",
       "title": "a removed/renamed `--flag` is still documented",
       "source": "cr-app-comments",
       "globs": [
@@ -432,6 +442,7 @@
     {
       "id": "grep-q-pipe-under-pipefail",
       "kind": "fix",
+      "rung": "advisory",
       "title": "`<producer> | grep -q` under `set -o pipefail` (early exit SIGPIPEs the producer; a negated guard inverts)",
       "source": "ledger",
       "globs": [
@@ -475,6 +486,7 @@
     {
       "id": "jq-alternative-swallows-false",
       "kind": "fix",
+      "rung": "advisory",
       "title": "jq's `//` swallows `false` as well as `null` — use has()/type for presence, not `// empty`",
       "source": "ledger",
       "globs": [
@@ -525,6 +537,7 @@
     {
       "id": "non-ascii-bracket-expression",
       "kind": "fix",
+      "rung": "advisory",
       "title": "non-ASCII literal inside a grep/sed/awk bracket expression never matches under the default locale — use an alternation",
       "source": "ledger",
       "globs": [
@@ -572,6 +585,7 @@
     {
       "id": "md-fence-no-lang",
       "kind": "fix",
+      "rung": "advisory",
       "title": "fenced code block without a language tag (markdownlint MD040)",
       "source": "cr-app-comments",
       "globs": [
@@ -610,6 +624,7 @@
     {
       "id": "hook-fail-direction",
       "kind": "checklist",
+      "rung": "advisory",
       "title": "new hook without a stated fail-open/fail-closed direction + bypass",
       "source": "ledger",
       "globs": [
@@ -647,6 +662,7 @@
     {
       "id": "test-fixture-stub-fidelity",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "stub-fidelity / over-verification findings against a test fixture",
       "source": "ledger",
       "globs": [
@@ -685,6 +701,7 @@
     {
       "id": "docs-prose-relitigation",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "doc-wording findings that contradict the implementing script",
       "source": "ledger",
       "globs": [
@@ -722,6 +739,7 @@
     {
       "id": "worker-worktree-plugin-profile",
       "kind": "fix",
+      "rung": "prompt",
       "title": "spawn-glm/spawn-claudex: plugin-profile resolution and failure teardown target the worker worktree, never the dispatcher",
       "source": "coderabbit-learning",
       "globs": [
@@ -753,6 +771,7 @@
     {
       "id": "scheduler-task-xml-encoding",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "UTF-16 / BOM claims about scheduled-task XML in the schtasks emitter family",
       "source": "ledger",
       "globs": [
@@ -799,6 +818,7 @@
     {
       "id": "pr-check-anchor-handshake-escalation",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "PR_CHECK_ANCHOR_DELEGATED handshake called forgeable => privilege escalation",
       "source": "coderabbit-learning",
       "globs": [
@@ -837,6 +857,7 @@
     {
       "id": "cr-avail-artifact-perspective-scoping",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "CR-ledger availability rows claimed to need artifact/perspective scoping",
       "source": "critic-panel",
       "globs": [
@@ -876,6 +897,7 @@
     {
       "id": "test-setup-unchecked-vacuous-green",
       "kind": "checklist",
+      "rung": "prompt",
       "title": "test setup or child-process status unchecked — the suite cannot fail (vacuous green)",
       "source": "cr-app-comments",
       "globs": [
@@ -912,6 +934,7 @@
     {
       "id": "exit-contract-drift",
       "kind": "checklist",
+      "rung": "prompt",
       "title": "an exit code gains a second meaning without its documented contract being updated",
       "source": "cr-app-comments",
       "globs": [
@@ -952,6 +975,7 @@
     {
       "id": "suggestion-verdict-flow",
       "kind": "rebuttal",
+      "rung": "prompt",
       "title": "Suggestion findings need a verdict for the marker gate even though they never enter blocking counts — the flow is documented",
       "source": "cr-app-comments",
       "globs": [

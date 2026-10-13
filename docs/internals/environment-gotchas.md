@@ -1386,7 +1386,7 @@ tip commit stays a reachable object, so `git branch <name> <tip-sha>`
 restores it; keep the tip SHA around before removing anything you might
 want back.
 
-## YouTube/Google cookie extraction needs `yt-dlp --cookies-from-browser`, not a cookie-export extension
+## YouTube/Google cookie extraction: run `youtube-state-from-chrome.py`, not a cookie-export extension
 
 A browser cookie-export extension's Netscape export of a Google-auth domain
 typically drops the **HttpOnly login cookie set** (session/login tokens),
@@ -1396,25 +1396,27 @@ the export "succeeded". Signing in through an automation-controlled browser
 doesn't help either: Google refuses sign-in on a browser it detects as
 automated.
 
-**What works:** read the real browser profile's cookie store with `yt-dlp`
-(it decrypts via the OS keyring):
+**What works:** `scripts/luna/youtube-state-from-chrome.py` (HIMMEL-4271). It
+reads the real browser profile's cookie store through `yt-dlp` (decrypted via
+the OS keyring), keeps only the `youtube.com` / `google.com` cookies, and
+writes the Playwright storage state to `~/.luna/playwright-state/youtube.json`:
 
 ```bash
-yt-dlp --cookies-from-browser 'chrome:<profile>' --cookies cookies.txt \
-       --skip-download --no-warnings --quiet 'https://www.youtube.com/watch?v=...'
+python3 scripts/luna/youtube-state-from-chrome.py [--profile <name>] [--from-cookies <path>]
 ```
 
-A non-zero exit code from that call is fine — the jar is written on exit.
-Pick the profile whose cookie-store file has a live/recent mtime. Then
-convert the Netscape-format cookies to whatever session format the consuming
-tool needs (e.g. Playwright's `storageState` JSON: `{"cookies":[{name,
-value, domain, path, expires, httpOnly, secure, sameSite}], "origins":[]}`),
-keeping only the relevant domains.
+`--profile` is the real profile DIRECTORY name (`Default`, `'Profile 1'`);
+pick the profile whose cookie-store file has a live/recent mtime.
+`--from-cookies PATH` converts a Netscape jar you exported yourself. A
+non-zero `yt-dlp` exit is fine — the script judges the jar, not the exit
+code. Full usage and verification:
+[`marketplace/plugins/obsidian-triage/README.md`](../../marketplace/plugins/obsidian-triage/README.md).
 
-**How to apply:** for any Google-authenticated service, go straight to
-`--cookies-from-browser`; don't spend time on an automated-browser login
-flow for it. The extension-export route is fine for services that only need
-non-HttpOnly cookies — Google's login cookies are the case that needs this.
+**How to apply:** for any Google-authenticated service, go straight to this
+route; don't spend time on an automated-browser login flow
+(`playwright-auth-save.mjs youtube` is usually blocked by Google). The
+extension-export route is fine for services that only need non-HttpOnly
+cookies — Google's login cookies are the case that needs this.
 
 ## The `obsidian-vault` MCP times out at a hardcoded 6s even when the server is healthy
 

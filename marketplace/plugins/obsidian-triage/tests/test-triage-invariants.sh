@@ -883,7 +883,13 @@ echo "Test 10: evidence_origin is a QUOTED, round-tripped YAML scalar (HIMMEL-17
 # Clip ids are filenames: they open with @ (YAML-reserved) and contain ' #'
 # (comment start). A bare scalar either fails parse-before-write and blocks
 # Phase 8 forever, or parses WRONG and truncates the path the drain relies on.
-CMD="$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md"
+CMD="$TMP/triage-clips.all.md"  # HIMMEL-5513: body plus its on-demand references
+cat "$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md" "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md > "$CMD"
+unlinked=""
+for ref in "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md; do
+    grep -qF "references/triage-clips/$(basename "$ref")" "$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md" || unlinked="$unlinked $(basename "$ref")"
+done
+assert "every references/triage-clips file is linked from the command body" "" "$unlinked"
 grep -q "evidence_origin: '<OLD>'" "$CMD" \
   && r=ok || r=missing
 assert "runbook emits evidence_origin single-quoted" "ok" "$r"
@@ -937,10 +943,12 @@ echo "Test 12: every mark/move route goes through triage-mark-processed.py (HIMM
 # route Phase 7, Phase 8, the debt drain and any fan-out through it, and must
 # no longer carry a hand-runnable move recipe a subagent could copy instead.
 TOOL_NAME="triage-mark-processed.py"
-section() { awk -v s="$1" -v e="$2" 'index($0,s)==1{p=1} p&&e!=""&&index($0,e)==1&&index($0,s)!=1{exit} p' "$CMD"; }
-for spec in "**Phase 7|**Phase 8" "**Phase 8|### Daily timeline" "### Phase-8 debt drain|### Phase 0"; do
-    s="${spec%%|*}"; e="${spec#*|}"
-    out=$(section "$s" "$e" | grep -F "$TOOL_NAME"); if [ -n "$out" ]; then r=ok; else r=missing; fi
+# HIMMEL-5513: Phase 7/8 and the debt drain moved to references/triage-clips/;
+# each section is read from its own reference file (it starts at the heading).
+REFS="$(cd "$(dirname "$0")/.." && pwd)/references/triage-clips"
+for spec in "**Phase 7|phase-7-mark-processed.md" "**Phase 8|phase-8-evidence-move.md" "### Phase-8 debt drain|phase-8-debt-drain.md"; do
+    s="${spec%%|*}"; f="${spec#*|}"
+    out=$(awk -v s="$s" 'index($0,s)==1{p=1} p' "$REFS/$f" | grep -F "$TOOL_NAME"); if [ -n "$out" ]; then r=ok; else r=missing; fi
     assert "section '$s' routes through $TOOL_NAME" "ok" "$r"
 done
 # shellcheck disable=SC2016 # literal $LAST_WRITE_SHA text is the match target

@@ -262,7 +262,7 @@ contains 'idle capacity is highlighted' "$html" 'data-idle="6"'
 # --- merged this shift + fingerprint + title
 contains 'merged PRs this shift are listed' "$html" '#1995'
 contains 'the tick fingerprint is embedded for tick.sh board=' "$html" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
-contains 'the page has a name title, not a summary' "$html" '<title>Console Board</title>'
+contains 'the page has a name title, not a summary' "$html" '<title>Supervisor Session Board</title>'
 contains 'the page themes for dark mode' "$html" 'prefers-color-scheme: dark'
 
 # --- tick input: the console's own arm (absolute leg docs), no token, no heartbeat
@@ -314,8 +314,8 @@ contains 'a failing label lookup names why' "$failerr" 'the lookup failed'
 contains 'a failing label lookup renders the unavailable banner' "$failhtml" 'data-banner="labels-unavailable"'
 TICK_STUB_FAIL=1 BOARD_LEGID="$W/legid-fail.sh" run --out "$W/fail-empty-board.html" >/dev/null
 failemptyhtml="$(cat "$W/fail-empty-board.html" 2>/dev/null)"
-contains 'a failing lookup with no tick legs says so in the Legs panel, not "no legs"' "$failemptyhtml" '<p class="none">leg labels unavailable</p>'
-lacks 'a failing lookup with no tick legs does not claim no legs' "$failemptyhtml" 'no legs'
+contains 'a failing lookup with no tick legs says so in the Legs panel, not "no legs"' "$failemptyhtml" '<p class="none">worker-session labels unavailable</p>'
+lacks 'a failing lookup with no tick legs does not claim no legs' "$failemptyhtml" 'no worker sessions'
 
 # One label for three names: the first leg still renders, the shortfall is reported.
 # shellcheck disable=SC2016  # the helper body is literal, evaluated by the board's bash
@@ -327,7 +327,7 @@ contains 'a short label lookup still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a short label lookup warns with the shortfall' "$shorterr" 'returned 1 of'
 contains 'a short label lookup renders the unavailable banner' "$shorthtml" 'data-banner="labels-unavailable"'
 contains 'a short label lookup keeps the legs it did label' "$shorthtml" 'data-label="N1"'
-lacks 'a short label lookup does not claim no legs' "$shorthtml" 'no legs'
+lacks 'a short label lookup does not claim no legs' "$shorthtml" 'no worker sessions'
 
 # --- HIMMEL-3745 (Ask 3): a WRAPPED leg whose claude window is still alive is its
 # own needs-the-console state, derived from an independent process census -- never
@@ -609,7 +609,7 @@ QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null; rc=$?
 same 'failures panel: render succeeds, rc 0' "$rc" "0"
 fhtml="$(cat "$M/board.html")"
 fsnap="$(printf '%s\n' "$fhtml" | sed -n '/data-failures=/,/<\/section>/p')"
-same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" data-failures="2"><h2>Failure classes — this shift</h2><div class="tscroll"><table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
+same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" data-failures="2"><h2>Failure classes — this shift</h2><div class="tscroll"><table><tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
 <tr data-class="denied/guard-a"><td>denied/guard-a</td><td>2</td><td>5</td><td>—</td><td>50 %</td><td>HIMMEL-4799 (filed 03:04)</td></tr>
 <tr data-class="suite/test-&lt;b&gt;x&lt;/b&gt;.sh"><td>suite/test-&lt;b&gt;x&lt;/b&gt;.sh</td><td>1</td><td>3</td><td>—</td><td>—</td><td>signal</td></tr>
 </table></div><p class="sub">memory inbox: 2 pending</p></section>'
@@ -713,23 +713,23 @@ BL="$W/bank-lift-show.txt"
 bl_html() { BANK_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
 html="$(bl_html '')"
 same 'bank lift: no lift renders, rc 0' "$rc" "0"
-contains 'bank lift: no lift reads "no lift set"' "$html" '<p class="sub" data-bank-lift="none">bank lift: no lift set</p>'
+contains 'bank lift: no lift reads "no lift set"' "$html" '<p class="sub" data-bank-lift="none">weekly budget override: no lift set</p>'
 for reason in expired account window trust parse; do
     printf '{\n  "window": "seven_day",\n  "until": 1791000000\n}\nbank-lift: INVALID: %s\n' "$reason" > "$BL"
     contains "bank lift: a set lift that is INVALID shows its reason ($reason)" "$(bl_html "$BL")" \
-        "<p class=\"sub\" data-bank-lift=\"invalid\">bank lift: lift set but INVALID: $reason</p>"
+        "<p class=\"sub\" data-bank-lift=\"invalid\">weekly budget override: lift set but INVALID: $reason</p>"
 done
 printf '{\n  "window": "seven_day",\n  "until": 1791000000,\n  "standing": false,\n  "account": "0123456789abcdef"\n}\nbank-lift: VALID\n' > "$BL"
 html="$(TZ=UTC bl_html "$BL")"
-contains 'bank lift: a valid window lift shows its until' "$html" '<p class="sub" data-bank-lift="valid">bank lift: VALID until 2026-10-03 04:00 · window</p>'
+contains 'bank lift: a valid window lift shows its until' "$html" '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 lacks 'bank lift: the account hash never reaches the board' "$html" '0123456789abcdef'
 printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
 contains 'bank lift: a valid standing lift says standing' "$(TZ=UTC bl_html "$BL")" \
-    '<p class="sub" data-bank-lift="valid">bank lift: VALID until 2026-10-03 04:00 · standing</p>'
+    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
 printf 'bank-lift: INVALID: <b>x</b>\n' > "$BL"
 contains 'bank lift: an unexpected reason is escaped' "$(bl_html "$BL")" 'INVALID: &lt;b&gt;x&lt;/b&gt;'
 printf 'garbage\n' > "$BL"
-contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">bank lift: unavailable</p>'
+contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
 html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
 

@@ -56,9 +56,9 @@ keep that working at any team size.
    `Platforms tested:` / `Security reviewed:` attestation trailers, which the
    pre-push gates require independently.
 
-4. **Push** opens a multi-agent CR marker. Run
+4. **Push** opens a multi-agent review-owed marker. Run
    `/pr-check` (or `/pr-review-toolkit:review-pr`) in your Claude session
-   before opening the PR; the marker blocks `gh pr create` until CR is clean.
+   before opening the PR; the marker blocks `gh pr create` until automated review is clean.
 
 5. **Open the PR**: `gh pr create --body-file <file>` (writing the body to
    a file avoids heredoc / shell-substitution surprises).
@@ -80,7 +80,7 @@ this doc. Highlights:
 - **Jira plugin enforcement:** committed code referencing Atlassian MCP Jira
   tools that have a `scripts/jira/` plugin equivalent is blocked
   (`mcp-plugin-refs`).
-- **CR-before-push:** the multi-agent CR marker described above
+- **CR-before-push:** the multi-agent review-owed marker described above
   (`check-cr-before-push.sh`).
 - **Platforms-tested:** shell / script changes must include a
   `Platforms tested: <platforms>` line in the commit body or PR description.
@@ -128,7 +128,7 @@ bash scripts/handover/test-auto-commit.sh
 | Repo-wide rules + conventions  | [`CLAUDE.md`](../CLAUDE.md)                         |
 | First-time setup               | [`docs/setup/new-machine.md`](setup/new-machine.md) |
 | Handover system                | [`docs/handover/`](handover/)                       |
-| Overnight mode                 | [`docs/handover/overnight-mode.md`](handover/overnight-mode.md) |
+| AFK (unattended) mode          | [`docs/handover/overnight-mode.md`](handover/overnight-mode.md) |
 | Luna-area docs convention      | [`docs/luna/`](luna/)                               |
 | Tooling catalog                | [`docs/tooling-catalog.md`](tooling-catalog.md)     |
 
