@@ -444,7 +444,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
             # `[`/`exit` above can skip a refusal but never reach this launch.
             if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
                 # launch-profile-ok: the demo proves the PreToolUse hook chain fires; a profile would change what it measures (HIMMEL-4013)
-                # headless-claude-ok: hook-chain smoke demo (HIMMEL-2000); bank-gated above, --model haiku, one read-only turn
+                # hook-chain smoke demo (HIMMEL-2000); bank-gated above, --model haiku, one read-only turn
                 env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$LEG_TIMEOUT"} claude -p "$PROMPT" \
                     --model haiku --permission-mode default --output-format json
             else

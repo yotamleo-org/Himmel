@@ -1924,7 +1924,7 @@ should monitor it daily not as a puller and with tokens"). Pure bash + `gh` +
   writes nothing). A FAIL, or a WARN id absent from `alerted.tsv` (the set this
   script last alerted on; an ad-hoc doctor run never moves it), goes to Telegram through `scripts/luna/cadence-alert.sh`; the
   first-ever run is a baseline (FAILs only); a doctor that prints no Summary
-  line alerts too. `hud-custom-lines.sh` shows `doctor  N FAIL  M WARN` from
+  line alerts too. `hud-custom-lines.sh` shows `himmel-doctor  N FAIL  M WARN` from
   `counts` (read-only, silent when absent or clean). Registered in
   `cadence-registry.json` as `doctor`; cron only (Windows is parked).
   Report-only: repair is `himmel-update`'s drift pass. Arming is

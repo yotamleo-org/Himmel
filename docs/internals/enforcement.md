@@ -38,14 +38,12 @@ Stages currently wired:
   field lists (`--json "$FIELDS"`) and subcommands with no `--json`
   support are skipped; a missing `gh` skips the gate loudly rather than
   blocking the commit.
-- **Headless-claude gate (pre-commit):** no-headless-claude (blocks new
-  `claude -p` / `claude --print` / `claude --bg` introductions unless
-  the call has a `# headless-claude-ok: <reason>` marker on the same or
-  preceding line — see "Claude invocation billing" below).
-- **Headless-gemini gate (pre-commit):** no-headless-gemini (mirrors
-  no-headless-claude for `gemini -p` / `--prompt` / `--bg`; opt-in marker
-  `# headless-gemini-ok: <reason>`; HIMMEL-157).
-  Both gates exempt the root `CHANGELOG.md` (`is_exempt()`): it's fully
+- **Headless-gemini gate (pre-commit):** no-headless-gemini (blocks new
+  `gemini -p` / `--prompt` / `--bg` introductions unless the call has a
+  `# headless-gemini-ok: <reason>` marker; HIMMEL-157). Headless `claude`
+  calls have no commit gate (retired in HIMMEL-5424) — see "Claude
+  invocation billing" below.
+  The gate exempts the root `CHANGELOG.md` (`is_exempt()`): it's fully
   generated from immutable commit subjects by `scripts/gen-changelog.sh`,
   so it can only RECORD a headless call, never introduce one, and its own
   opt-in marker can't survive regeneration (HIMMEL-2250). A nested
@@ -1388,7 +1386,7 @@ script — passes. Intermediate stages are irrelevant; line continuations are
 folded first; the correct shape it prescribes is
 `<cmd> > <file> 2>&1; echo "RC=$?"; tail -80 <file>` (it also names
 `${PIPESTATUS[0]}`). Fails OPEN on anything unevaluable. Bypass: a **same-line**
-`# tail-pipe-ok: <reason>` marker (mirrors `# headless-claude-ok:`) — not an env
+`# tail-pipe-ok: <reason>` marker — not an env
 prefix, which `block-chokepoint-env-prefix.sh` would itself deny.
 HIMMEL-2082 extends it to the trailing-segment shape: a gate followed by a later
 `;`/`&&`/`||`, newline or `&` segment anywhere in the command
@@ -5521,18 +5519,35 @@ Tests: `scripts/telegram/{router,auto-action,poller}.test.ts` (bun) +
 `scripts/telegram/test-auto-action.sh` + `scripts/test-merge-public-on-green.sh`
 (privileged-script smoke).
 
-## Claude invocation billing (HIMMEL-128)
+## Claude invocation billing
 
-Anthropic announced that from **2026-06-15** it would split headless Claude
-Code invocations (`claude -p`, `claude --print`, `claude --bg`, Agent SDK)
-onto a separate monthly Agent SDK credit bucket on Max subscriptions. The
-split was **PAUSED** at the announced cutover, observed **2026-06-21**.
+Subscription-authenticated `claude -p` / `--print` / `--bg` draws from the
+**same** 5-hour/weekly usage bank as interactive sessions. Verified
+2026-10-13 (HIMMEL-5424):
 
-HIMMEL-1748 then measured the actual subscription-authenticated CLI path on
-**2026-08-11/12**: `claude -p` draws from the **same** 5-hour/weekly usage
-bank as interactive sessions. A 48-chunk luna refresh exhausted that bank
-about 2.9 hours in and chunks 27-48 failed. Invocation shape is therefore
-not the current cost question; pre-run bank state is.
+- Anthropic's Help Center says the previously announced headless/Agent SDK
+  billing change is paused and that the Agent SDK, `claude -p` and
+  third-party apps still draw from subscription limits; its 2026-10-07
+  update repeats that they still run on subscription limits.
+- New on 2026-10-07: Max and Team plans get monthly API credits (Max 5x
+  $100, Max 20x $200, Team up to $500 pooled; no rollover). They are spent
+  only through an API key from a linked Console org, the credit page lists
+  Claude Code as not covered, and the credits do not change Claude or Claude
+  Code usage limits. The Help Center adds that the credits do cover
+  `claude -p` and the Agent SDK when you run them with an API key from the
+  linked org; `claude -p` signed in with the plan, and runs started by the
+  GitHub Action, an IDE extension or the desktop app, still draw the plan's
+  usage limits.
+- HIMMEL-1748 measured the CLI path on 2026-08-11/12: `claude -p` drew from
+  the same bank; a 48-chunk luna refresh exhausted it about 2.9 hours in and
+  chunks 27-48 failed. Invocation shape is therefore not the cost question;
+  pre-run bank state is.
+
+Sources:
+https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan,
+https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers,
+https://support.claude.com/en/articles/17154008,
+https://code.claude.com/docs/en/headless.md.
 
 **Rule for scripts in this repo:** scheduled or unattended sites route
 through `scripts/lib/bank-preflight.sh` before spending. Headless calls parse
@@ -5544,21 +5559,11 @@ Which headless shape fits which job (`claude -p` vs `claude --bg` vs headed)
 — env inheritance, permission-mode, confirm/dedup, fleet-UI visibility per
 mode: [`headless-modes.md`](headless-modes.md).
 
-The `no-headless-claude` pre-commit hook
-(`scripts/hooks/check-no-headless-claude.sh`) flags new `claude -p` /
-`--print` / `--bg` introductions unless an opt-in marker is present:
-
-```bash
-# headless-claude-ok: <one-line reason>
-claude --print "$prompt"
-```
-
-The mechanism verifies marker **presence only**. It does not parse the reason;
-any string passes. Its honest purpose is to force a pause and a documented
-decision at every new headless introduction; it does not validate the preflight,
-JSON-output, or permission-mode conventions. Same-line trailing comments work
-too. Exempt paths (no check): `docs/`, `handovers/`, `.agents/` (vendored),
-`.claude/commands/*.md` (slash-command docs), `CLAUDE.md`.
+HIMMEL-5424 retired the `no-headless-claude` pre-commit gate and its
+`# headless-claude-ok:` marker: it verified marker presence only, never the
+preflight, JSON-output or permission-mode conventions, so it added friction
+at every call site without controlling spend. `bank-preflight.sh` is the
+drain control.
 
 **Re-measure recipe:** snapshot the `five_hour` and `seven_day` `utilization`
 values, run one known subscription-authenticated `claude -p` job, then snapshot
@@ -5604,7 +5609,7 @@ lose authority.
 Examples per layer:
 - **Safety-critical → `default-hook`** (the cost of forgetting to invoke
   manually is bigger than the cost of always running): `block-edit-on-main`,
-  `block-read-secrets`, `no-headless-claude`, `gitleaks`.
+  `block-read-secrets`, `gitleaks`.
 - **Frame-shaping → `default-rule`** (changes how Claude reads the *entire*
   task): "PRs require approval", conventional commits, "prefer plugin over MCP".
 - **High frequency × low marginal cost → `default-rule + installed skill`**:
@@ -5622,10 +5627,6 @@ Each was instructional first, escalated to structural after drift:
   `block-mcp-when-plugin-exists.sh`, generalised to registry-driven routing in
   HIMMEL-400) + pre-commit `mcp-plugin-refs` gate (structural-pair — defense
   in depth).
-- **Headless-claude billing (HIMMEL-128)** — CLAUDE.md "Claude invocation
-  billing" section → pre-commit hook `check-no-headless-claude.sh` (after
-  recognising the 2026-06-15 billing-split was an irreversible enforcement
-  deadline, not a recommendation).
 - **Edit-on-main** — operator preference → PreToolUse hook
   `block-edit-on-main.sh` (convention was clear, slip was cheap; the hook
   removes the slip surface entirely).

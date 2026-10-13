@@ -103,14 +103,12 @@
 #
 # BYPASS: a same-line `# tail-pipe-ok: <reason>` marker on the offending
 # physical line — for the genuine case where the exit code really does not matter. It
-# mirrors the existing `# headless-claude-ok:` convention and is deliberately NOT
-# an env prefix (the shape scripts/hooks/CLAUDE.md documents for PreToolUse
+# is deliberately NOT an env prefix (the shape scripts/hooks/CLAUDE.md documents for PreToolUse
 # bypasses): a `VAR=1 bash scripts/…` prefix on a sanctioned chokepoint is itself
 # denied by block-chokepoint-env-prefix.sh, and a per-call env prefix cannot
 # reach a hook process anyway (HIMMEL-203). The marker is honoured only where it
 # is real shell text — one carried inside a quoted argument is data, not an
-# opt-out. Presence is what is verified, not the reason's content, same as the
-# headless-claude gate.
+# opt-out. Presence is what is verified, not the reason's content.
 #
 # SCANNER CEILING (deliberate, bounded — ADJUDICATED in HIMMEL-1979): this is a
 # flat character walk, not a shell parser. It tracks quotes (with double-quote

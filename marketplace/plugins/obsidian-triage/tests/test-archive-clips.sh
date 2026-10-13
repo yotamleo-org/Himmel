@@ -63,7 +63,6 @@ if grep -qE "DRY_RUN=1" "$CMD" && grep -qF "DRY-RUN CONTRACT VIOLATION" "$CMD"; 
 assert "dry-run hard gate present" "yes" "$dry"
 
 echo "Test 4: HIMMEL-128 — no headless claude invocation pattern"
-# headless-claude-ok: the regex below is the detection pattern the test searches FOR; not an invocation
 if grep -qE '^[^#>]*Bash:[[:space:]]*claude[[:space:]]+(-p|--print|--bg)' "$CMD"; then viol=yes; else viol=no; fi
 assert "no Bash: claude invocation" "no" "$viol"
 

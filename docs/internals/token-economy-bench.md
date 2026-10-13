@@ -91,7 +91,7 @@ reset_arm() {   # $1 arm-dir — restore arm state between samples (both arms id
 ## One run
 
 ```bash
-# headless-claude-ok: bench recipe, operator-run in a quiet window
+# bench recipe, operator-run in a quiet window
 BENCH_MODEL="${BENCH_MODEL:?set BENCH_MODEL to one explicit model id, same for both arms}"
 mkdir -p bench
 run_probe() {   # $1 arm-dir  $2 probe-id  $3 prompt  $4 repeat-index

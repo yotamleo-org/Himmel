@@ -380,6 +380,11 @@ write them in the session scratchpad, not in the repo. The context-fill probe
 (`scripts/context-fill.sh --percent`) **fails inside a Monitor** — run it in an
 ordinary Bash call.
 
+**Label what the operator asks for.** A ticket you file because the operator
+asked for it gets the Jira label `operator-directed`, and its Results bullet reads
+`OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the
+operator-directed bundle from that label and that bullet.
+
 ## Dispatching a leg
 
 1. Write the brief from

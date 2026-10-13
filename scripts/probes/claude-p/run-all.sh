@@ -3,7 +3,7 @@
 # (aborts everything on SKIPPED-BANK), then probes 1/1b/2/3/3b/3c/3d/4/5/7,
 # then a second bank snapshot + delta. Logs everything to tmp/run-all.log; each
 # probe's own artifacts land in tmp/ under its own prefix. This script does
-# not itself invoke claude in -p mode — no headless-claude-ok marker needed.
+# not itself invoke claude in -p mode.
 # shellcheck source=./common.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"

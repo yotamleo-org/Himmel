@@ -52,7 +52,7 @@
 #                 ${var^^}, |&, &>>) — not 3.2-safe, the macOS default.
 #   [gnu-flag]    GNU-only flags (sed -i no-suffix, date -d, readlink -f, grep -P,
 #                 stat -c) without a same-line BSD fallback; exempt via
-#                 `# gnu-ok: <reason>` (mirrors the repo's headless-claude-ok hatch).
+#                 `# gnu-ok: <reason>`.
 #   [echo-e]      `echo -e` / `echo -n` — non-portable; use printf.
 #
 # Exit: 0 = clean, 1 = findings, 2 = usage error.
@@ -143,8 +143,7 @@ EOF
 }
 
 # True if line $2 (1-indexed) of file $1 carries a `# gnu-ok: <reason>` marker,
-# on that line or the line immediately above — mirrors the repo's
-# `headless-claude-ok` opt-in pattern (scripts/hooks/check-no-headless-claude.sh).
+# on that line or the line immediately above.
 _has_gnu_ok() {
     local file="$1" line_no="$2"
     sed -n "${line_no}p" "$file" 2>/dev/null | grep -q 'gnu-ok' && return 0
@@ -396,8 +395,7 @@ EOF
     # suite's fixtures/assertions, which embed the same patterns/tags on
     # purpose — would flag itself (the BASH32 pattern mentions `mapfile`; the
     # echo-e hint says `echo -e`). Skip them for these two files only —
-    # BOM/errexit/shellcheck still run on both. This mirrors
-    # check-no-headless-claude exempting its own pattern-documenting file.
+    # BOM/errexit/shellcheck still run on both.
     case "$f" in
         *scripts/lint/shell-lint.sh|*scripts/lint/test-shell-lint.sh) _skip_advisory=1 ;;
         *) _skip_advisory=0 ;;
