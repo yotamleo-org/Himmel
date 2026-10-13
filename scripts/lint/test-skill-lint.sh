@@ -498,6 +498,11 @@ if [ "$EC18D" -eq 2 ]; then pass "--changed with --staged is a usage error"; els
 OUT18E="$(cd "$CH" && bash "$LINT" --changed 2>&1)"; EC18E=$?
 if [ "$EC18E" -eq 2 ]; then pass "--changed without a range is a usage error"; else fail "expected exit 2, got $EC18E" "$OUT18E"; fi
 
+(cd "$CH" && git mv .claude/commands/new-big.md .claude/commands/ren-big.md && git -c user.name=t -c user.email=t@t commit -q -m rename)
+OUT18F="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18F=$?
+if [ "$EC18F" -eq 1 ]; then pass "--changed lints a renamed in-scope body"; else fail "expected exit 1, got $EC18F" "$OUT18F"; fi
+assert_contains "--changed reports the renamed file" "ren-big.md" "$OUT18F"
+
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
