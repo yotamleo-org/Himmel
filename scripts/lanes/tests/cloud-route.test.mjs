@@ -581,8 +581,9 @@ test('CLI: an unreadable reservation log blocks routing instead of being ignored
 
 test('CLI: a record with an invalid ticket string is skipped and does not drop the other reservations', () => {
   const { route, seed } = reserveStubs();
-  seed(rec({ ticket: '[' }), rec());
+  seed(rec({ ticket: '[' }), rec({ ticket: ['HIMMEL-9101'] }), rec());
   const r = route('HIMMEL-9102');
   assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /routed HIMMEL-9101/);
   assert.match(r.stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
 });

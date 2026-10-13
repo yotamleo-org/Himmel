@@ -145,7 +145,7 @@ export function reservedFiles(text, ctx = {}) {
   for (const line of String(text ?? '').split('\n')) {
     let r;
     try { r = JSON.parse(line); } catch { continue; }
-    if (!r || r.class !== 'CLOUD-OK' || !/^[A-Z][A-Z0-9]*-\d+$/.test(r.ticket) || !Array.isArray(r.files)) continue;
+    if (!r || r.class !== 'CLOUD-OK' || typeof r.ticket !== 'string' || !/^[A-Z][A-Z0-9]*-\d+$/.test(r.ticket) || !Array.isArray(r.files)) continue;
     const at = Date.parse(r.time ?? '');
     if (Number.isNaN(at) || now - at > RESERVATION_HOURS * 3600e3) continue;
     const cites = new RegExp(`(?<![A-Za-z0-9])${r.ticket}(?!\\d)`);
@@ -353,8 +353,9 @@ function main(argv) {
   try { merged = mergedPrs(keys); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
   // reservations from earlier runs; read after merged so a merged PR can release them
   const log = opt.bucket ? join(opt.bucket, 'cloud-route.jsonl') : null;
-  if (log && existsSync(log)) {
-    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { heldUnknown = true; process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations unknown — ${e.message.split('\n')[0]}\n`); }
+  if (log) {
+    // only a confirmed-missing log means "no reservations"; any other failure is unknown
+    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { if (e.code !== 'ENOENT') { heldUnknown = true; process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations unknown — ${e.message.split('\n')[0]}\n`); } }
   }
   let tree = [];
   let treeUnknown = false;
