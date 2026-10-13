@@ -93,6 +93,20 @@ esac
 
 [ -z "$cmd" ] && exit 0
 
+# HIMMEL-5330: re-read the command with its variable expansions removed, so a
+# `${V:-}git stash` or `git ${V:-} stash` is judged as the `git stash` the shell
+# runs when V is empty. A must-run dependency: if it cannot be sourced, deny.
+case "${BASH_SOURCE[0]}" in
+    */*) _gee_lib=${BASH_SOURCE[0]%/*}/../lib/guard-empty-expansion.sh ;;
+    *) _gee_lib=../lib/guard-empty-expansion.sh ;;
+esac
+# shellcheck source=../lib/guard-empty-expansion.sh
+if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
+    echo "block-git-stash: cannot load $_gee_lib - failing closed" >&2
+    exit 2
+fi
+guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'git.*stash|stash.*git' || exit 2
+
 # HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
 # is a must-run dependency: if it cannot be sourced, deny.

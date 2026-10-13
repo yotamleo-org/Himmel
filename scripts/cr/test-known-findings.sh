@@ -147,7 +147,7 @@ contains "diff5 RED control: a non-bin source in the same dir still needs its ow
 # the default JSON (dormant per the ticket) -- exercised here with a minimal
 # custom class whose globs allow a bare "bin.js".
 cat > "$tmp/root-bin-kf.json" <<'KFJSON'
-{"classes":[{"id":"root-bin-gap","kind":"checklist","title":"t","source":"s","globs":["bin.js"],"detector":{"type":"no-test-change"},"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
+{"classes":[{"id":"root-bin-gap","kind":"checklist","rung":"advisory","title":"t","source":"s","globs":["bin.js"],"detector":{"type":"no-test-change"},"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
 KFJSON
 rootrepo="$tmp/rootrepo"; mkdir -p "$rootrepo/test"
 ( cd "$rootrepo" && git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false ) || { echo "FAIL - root-bin fixture init"; exit 1; }
@@ -174,17 +174,39 @@ not_contains "prompt: fix classes excluded" "$p" "[mktemp-no-template]"
 
 # --list: markdown table with every class id
 l="$(bash "$SCRIPT" --list 2>&1)"
-contains "list: table header" "$l" "| id | kind | source | detector | title |"
+contains "list: table header" "$l" "| id | kind | rung | source | detector | title |"
 contains "list: has gnu-only-utility row" "$l" '`gnu-only-utility`'
 # HIMMEL-2450: a pipe (or newline) in any cell must not split the markdown row.
 cat > "$tmp/pipe-kf.json" <<'KFJSON'
-{"classes":[{"id":"pipe-title","kind":"checklist","title":"a|b\nc","source":"s|t","globs":[],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
+{"classes":[{"id":"pipe-title","kind":"checklist","rung":"human","title":"a|b\nc","source":"s|t","globs":[],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
 KFJSON
 lp="$(KNOWN_FINDINGS_FILE="$tmp/pipe-kf.json" bash "$SCRIPT" --list 2>&1)"
 lrow="$(grep -F '`pipe-title`' <<< "$lp")"
 contains "list: pipe in title escaped" "$lrow" 'a\|b c'
 contains "list: pipe in source escaped" "$lrow" 's\|t'
-check "list: pipe-title is one row with 6 unescaped separators" "$(tr -cd '|' <<< "${lrow//\\|/}" | wc -c | tr -d ' ')" "6"
+check "list: pipe-title is one row with 7 unescaped separators" "$(tr -cd '|' <<< "${lrow//\\|/}" | wc -c | tr -d ' ')" "7"
+
+# HIMMEL-4426: every class carries a rung (design|gate|advisory|prompt|human).
+# --ladder prints the count per rung, then the promotion queue (prompt/advisory
+# classes with agreed ledger recurrences); a class missing/with a bad rung is a
+# schema error (exit 2), never a silent miss.
+rungs="$(node -e 'const j=require(process.argv[1]);const ok=["design","gate","advisory","prompt","human"];console.log(j.classes.filter(c=>!ok.includes(c.rung)).length)' "$HERE/known-findings.json" 2>&1)"
+check "rung: every shipped class has a valid rung" "$rungs" "0"
+lad="$(bash "$SCRIPT" --ladder 2>&1)"; ladrc=$?
+check "ladder: exit 0" "$ladrc" "0"
+contains "ladder: rung counts header" "$lad" "rung counts:"
+contains "ladder: lists every rung" "$lad" "design=0 gate=0 advisory="
+contains "ladder: promotion queue section" "$lad" "promotion queue"
+contains "ladder: queue names an advisory class with agreed recurrences" "$lad" "[errexit-false-positive]"
+not_contains "ladder: a class with 0 agreed recurrences is not queued" "$lad" "[pr-check-anchor-handshake-escalation]"
+cat > "$tmp/norung-kf.json" <<'KFJSON'
+{"classes":[{"id":"no-rung","kind":"checklist","title":"t","source":"s","globs":[],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
+KFJSON
+KNOWN_FINDINGS_FILE="$tmp/norung-kf.json" bash "$SCRIPT" --list >/dev/null 2>&1; check "schema: class missing rung fails (--list)" "$?" "2"
+KNOWN_FINDINGS_FILE="$tmp/norung-kf.json" bash "$SCRIPT" --prompt >/dev/null 2>&1; check "schema: --prompt stays fail-soft on a class missing rung" "$?" "0"
+KNOWN_FINDINGS_FILE="$tmp/norung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&1; check "schema: class missing rung fails (--ladder)" "$?" "2"
+sed 's/"kind":"checklist"/"kind":"checklist","rung":"bogus"/' "$tmp/norung-kf.json" > "$tmp/badrung-kf.json"
+KNOWN_FINDINGS_FILE="$tmp/badrung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&1; check "schema: class with an invalid rung fails" "$?" "2"
 
 # --refresh on a COPY: ledger + learnings evidence rewritten; shipped JSON untouched
 cp "$HERE/known-findings.json" "$tmp/kf.json"
