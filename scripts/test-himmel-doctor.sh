@@ -921,7 +921,7 @@ out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" 
     SWEEP_BAT_DIR="$t/sweep" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     CADENCE_RUNNER_PLATFORM_OS=windows \
-    bash "$DOC" --no-color 2>&1)"
+    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: codex-sweep-cadence runners are stale' \
     && grepq "$out" 'bash scripts/cleanup/codex-sweep-cadence.sh arm --force'; then
     pass "C8 -> WARN (stale codex-sweep runner)"
@@ -936,7 +936,7 @@ printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old graphmap\n' "$ST
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
     SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
-    bash "$DOC" --no-color 2>&1)"
+    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: graphmap-cadence runners are stale' \
     && grepq "$out" 'bash scripts/luna/graphmap-cadence.sh arm --force'; then
     pass "C8 -> WARN (stale graphmap runner)"
@@ -952,7 +952,7 @@ out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" 
     SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     QMD_CADENCE_BAT_DIR="$t/qmd" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
-    bash "$DOC" --no-color 2>&1)"
+    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: qmd-cadence runners are stale' \
     && grepq "$out" 'bash scripts/luna/qmd-cadence.sh arm --force'; then
     pass "C8 -> WARN (stale qmd runner)"
