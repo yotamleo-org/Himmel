@@ -1215,6 +1215,12 @@ segment_is_safe() {
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    # HIMMEL-3655: bash ends a word at an unquoted `<`/`>`, this tokenizer
+                    # does not, so a glued redirect (`-T</dev/null`) hides that the option
+                    # consumed the next word; a heredoc/herestring (`<<-`, `<<<`) makes
+                    # the next word a delimiter, not an argument. Neither is modelled: PASS.
+                    case "$k" in *'<<'*) return 1 ;; esac
+                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
                     [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
                     # A redirect operator and its target are not sort arguments: neither
                     # may start or end `--` handling nor consume an option value. Both are
@@ -1300,6 +1306,8 @@ segment_is_safe() {
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into one of these
+                    # a glued redirect (`--pre</dev/null sh`) ends the word in bash only
+                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
                     case "$SW_VALUE" in
                         --*)
                             guard_is_long_abbrev "pre-glob" "$SW_VALUE" && return 1
