@@ -76,6 +76,13 @@ test("refused with no CLI call: missing token, bad key, unknown status, bad them
   expect(b.audit()).toEqual([]);
 });
 
+test("a get that does not look like the ticket is refused before any label edit", async () => {
+  const b = boot({ STUB_JIRA_GET_RAW: "" });
+  const r = await b.post({ key: "HIMMEL-3", theme: "x" });
+  expect(r.status).toBe(502);
+  expect(b.calls().map((c) => c[0])).toEqual(["get"]);
+});
+
 test("a Jira refusal comes back as an error, is audited with its rc, and the mirror is not refreshed", async () => {
   const b = boot({ STUB_JIRA_FAIL: "transition" });
   const r = await b.post({ key: "HIMMEL-1", status: "done" });

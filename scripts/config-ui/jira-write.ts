@@ -67,6 +67,9 @@ export async function applyWrite(req: WriteReq, d: WriteDeps): Promise<WriteResu
     // --labels is a full replace in the CLI, so the set is read live from Jira, not from the (possibly stale) mirror.
     const got = await d.run(jira(d, "get", req.key), WRITE_MS);
     if (got.rc !== 0) return fail(502, "could not read the ticket's labels", jira(d, "get", req.key), got.rc, null, got.stdout + got.stderr);
+    // `get` prints `KEY<TAB>type<TAB>status<TAB>title` first and omits the Labels line when there are none, so an
+    // output that is not the ticket's own header must not read as "no labels" (the edit would wipe the real ones).
+    if (!got.stdout.startsWith(req.key + "\t")) return fail(502, "unexpected ticket output", jira(d, "get", req.key), got.rc, null, got.stdout);
     const line = /^Labels:[ \t]*(.*)$/m.exec(got.stdout)?.[1] ?? "";
     const labels = line.split(",").map((l) => l.trim()).filter(Boolean);
     if (!labels.every((l) => LABEL_RE.test(l))) return fail(502, "unreadable labels line", jira(d, "get", req.key), got.rc, null);

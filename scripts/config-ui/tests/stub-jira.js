@@ -4,4 +4,5 @@ const { appendFileSync } = require("node:fs");
 const argv = process.argv.slice(2);
 if (process.env.STUB_JIRA_LOG) appendFileSync(process.env.STUB_JIRA_LOG, JSON.stringify(argv) + "\n");
 if (process.env.STUB_JIRA_FAIL === argv[0]) { console.error("stub jira: refused " + argv[0]); process.exit(1); }
-if (argv[0] === "get") console.log(`${argv[1]}\tStory\tTo Do\tstub title\n\nLabels: ${process.env.STUB_JIRA_LABELS || ""}\nPriority: Medium`);
+if (argv[0] === "get" && process.env.STUB_JIRA_GET_RAW !== undefined) console.log(process.env.STUB_JIRA_GET_RAW);
+else if (argv[0] === "get") console.log(`${argv[1]}\tStory\tTo Do\tstub title\n\nLabels: ${process.env.STUB_JIRA_LABELS || ""}\nPriority: Medium`);

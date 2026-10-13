@@ -581,7 +581,7 @@ contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5
     "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
 # HIMMEL-5491: a Jira `theme-<slug>` label is the ticket's theme, ahead of the plan's stage1 / overlay theme.
-printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 > "$plan/stage1/C02.tsv"
+printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
 tl() {  # tl <n> <labels json>
     printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' \
         'fixVersions: []' 'type: "Bug"' "labels: $2" '---' "# HIMMEL-$1: label theme ticket $1" > "$mir/HIMMEL-$1.md"
@@ -589,12 +589,14 @@ tl() {  # tl <n> <labels json>
 tl 8 '["theme-tooling"]'
 tl 9 '["other", "theme-fresh-label"]'
 tl 10 '["theme-fresh-label"]'
+tl 11 '["theme-build-tools"]'
 tout="$W/theme.html"
 python3 "$HERE/tracker.py" --plan-dir "$plan" --out "$tout" --luna-map "$W/luna-map.json" \
     --mirror-dir "$mir" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" >/dev/null 2>&1
 thtml="$(cat "$tout" 2>/dev/null)"
 contains 'a theme label with no plan theme becomes a theme (HIMMEL-5491)' "$thtml" '"fresh-label"'
-not_contains 'a theme label that names a plan theme reuses its name (HIMMEL-5491)' "$thtml" '"theme-tooling"'
+contains 'a theme label that names a plan theme shows the plan name (HIMMEL-5491)' "$thtml" '"Build Tools"'
+not_contains 'that label is not shown as a new theme of its own (HIMMEL-5491)' "$thtml" '"build-tools"'
 not_contains 'the Jira theme label wins over the stage1 theme (HIMMEL-5491)' "$thtml" '"legacy"'
 
 printf '%s\n' "$fails failure(s)"
