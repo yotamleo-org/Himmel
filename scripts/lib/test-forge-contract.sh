@@ -242,6 +242,13 @@ run local-git forge_change_id "$(printf 'feat/ok\n../x')"
 expect local-git "change_id of a multiline branch" 2 ""
 run local-git forge_change_view "$ML"
 expect local-git "change_view of a multiline id" 1 ""
+# rc 1 alone would also be the "no record" lookup failure; assert the grammar
+# diagnostic so the row proves the id check, not the missing file.
+ERR=$(cd "$LG" && FORGE=local-git forge_change_view "$ML" 2>&1 >/dev/null)
+case "$ERR" in
+    *"is not a change id"*) assert_eq "local-git: multiline id is refused by the grammar check" ok ok ;;
+    *) assert_eq "local-git: multiline id is refused by the grammar check" "is not a change id" "$ERR" ;;
+esac
 # Two opens racing past the ownership check: the second must still refuse
 # (simulated by a change_id that skips the check), never overwrite the first.
 # shellcheck disable=SC2329 # invoked indirectly by forge_change_open
