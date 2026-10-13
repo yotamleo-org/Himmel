@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# scripts/eval/test-session-retro.sh - hermetic suite for session-retro.py (HIMMEL-5514).
+# Fixture rows are real leg-failures rows (scripts/eval/fixtures/session-retro-ledger.jsonl).
+# Never ~/.himmel. No model call, no bank.
+#  1. classes rank by distinct sessions, then count, and name example legs;
+#  2. --days/--now bound the window by row ts (rows before the cutoff drop out);
+#  3. trajectory metrics (traj/*) are not stalls and are excluded unless asked for;
+#  4. --top caps the list; the ledger is read-only; a missing ledger exits 2.
+#
+# check() evals its condition, so the single quotes are deliberate.
+# shellcheck disable=SC2016,SC2034
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SR="$HERE/session-retro.py"
+FX="$HERE/fixtures/session-retro-ledger.jsonl"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/session-retro-test.XXXXXX")" || { echo "test-session-retro: mktemp -d failed" >&2; exit 1; }
+trap 'rm -rf "$TMP"' EXIT
+PASS=0; FAIL=0
+ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
+bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
+check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
+sr() { python3 "$SR" --ledger "$FX" "$@"; }
+
+echo "1. ranking and example legs"
+sr --now 2026-10-09T00:00:00Z >"$TMP/all.out" 2>"$TMP/all.err"; rc=$?
+check "exits 0" '[ "$rc" = 0 ]'
+check "the most-recurring class is first, with 3 sessions, 9 occurrences" 'sed -n 2p "$TMP/all.out" | grep -qE "^1[[:space:]]+3[[:space:]]+9[[:space:]]+denied/guard-pr-check-literal"'
+check "example legs are named" 'sed -n 2p "$TMP/all.out" | grep -q "N1375"'
+check "ties on sessions break on count (quiet-run 2 sessions / 4 before single-session classes)" 'sed -n 3p "$TMP/all.out" | grep -qE "denied/require-quiet-run"'
+
+echo "2. window"
+sr --now 2026-10-14T01:20:00Z >"$TMP/win.out" 2>&1
+check "rows before the cutoff drop out (guard-pr-check-literal falls to 1 session)" 'grep -qE "^[0-9]+[[:space:]]+1[[:space:]]+4[[:space:]]+denied/guard-pr-check-literal" "$TMP/win.out"'
+sr --now 2026-10-14T01:20:00Z --days 30 >"$TMP/wide.out" 2>&1
+check "control: a wider window brings them back" 'grep -qE "^1[[:space:]]+3[[:space:]]+9[[:space:]]+denied/guard-pr-check-literal" "$TMP/wide.out"'
+
+echo "3. trajectory metrics"
+check "traj/* is absent by default" '! grep -q "traj/" "$TMP/all.out"'
+sr --now 2026-10-09T00:00:00Z --include-traj >"$TMP/traj.out" 2>&1
+check "control: --include-traj lists it" 'grep -q "traj/red-before-green" "$TMP/traj.out"'
+
+echo "4. cap, read-only, missing ledger"
+sr --now 2026-10-09T00:00:00Z --top 1 >"$TMP/top1.out" 2>&1
+check "--top 1 prints one class row after the header" '[ "$(grep -c "^[0-9]" "$TMP/top1.out")" = 1 ]'
+BEFORE="$(sha256sum "$FX")"
+sr --now 2026-10-09T00:00:00Z >/dev/null 2>&1
+check "the ledger is unchanged" '[ "$(sha256sum "$FX")" = "$BEFORE" ]'
+python3 "$SR" --ledger "$TMP/none.jsonl" >"$TMP/miss.out" 2>&1; mrc=$?
+check "a missing ledger exits 2 with a message" '[ "$mrc" = 2 ] && grep -q "cannot read" "$TMP/miss.out"'
+
+echo "test-session-retro: $PASS passed, $FAIL failed"
+[ "$FAIL" -eq 0 ]
