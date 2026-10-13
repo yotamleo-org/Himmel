@@ -115,13 +115,14 @@ export function classify(result) {
   } catch {
     out = null;
   }
+  // continue=false stops execution whatever permission verdict rides beside it.
+  if (out && out.continue === false) return { decision: 'deny', rc, reason: firstLine(out.stopReason) || 'continue=false' };
   const specific = out && out.hookSpecificOutput;
   const verdict = specific && specific.permissionDecision;
   if (verdict === 'deny' || verdict === 'ask' || verdict === 'allow') {
     return { decision: verdict, rc, reason: firstLine(specific.permissionDecisionReason) };
   }
   if (out && out.decision === 'block') return { decision: 'deny', rc, reason: firstLine(out.reason) };
-  if (out && out.continue === false) return { decision: 'deny', rc, reason: firstLine(out.stopReason) || 'continue=false' };
   return { decision: 'passthrough', rc, reason: '' };
 }
 

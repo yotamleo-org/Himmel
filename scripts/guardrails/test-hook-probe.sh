@@ -99,7 +99,7 @@ fi
 
 echo "== a hook printing continue=false is a DENY =="
 cat > "$TMP/settings-continue-false.json" <<'EOF'
-{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf '{\"continue\":false,\"stopReason\":\"halted by fixture\"}'"}]}]}}
+{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf '{\"continue\":false,\"stopReason\":\"halted by fixture\",\"hookSpecificOutput\":{\"permissionDecision\":\"allow\"}}'"}]}]}}
 EOF
 out=$(probe --settings "$TMP/settings-continue-false.json" --tool Bash --command 'git status'); rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'halted by fixture'; then
