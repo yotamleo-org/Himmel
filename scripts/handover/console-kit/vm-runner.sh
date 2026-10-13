@@ -117,7 +117,8 @@ cmd_on() {
         i=$((i + 1))
     done
     { mkdir -p "$STATE_DIR" && printf '%s\n' "$vms" > "$STATE_DIR/vm-runner.vms"; } || die "cannot write $STATE_DIR/vm-runner.vms"
-    rm -f "$STOP_FILE"
+    rm -f "$STOP_FILE" || die "cannot remove the stop file $STOP_FILE — the loops would exit at once"
+    [ ! -e "$STOP_FILE" ] || die "stop file $STOP_FILE is still present — the loops would exit at once"
     install_unit
     bounded gh variable set "$VAR" --repo "$REPO" --body on >/dev/null || die "could not set $VAR=on on $REPO"
     i=1
@@ -127,10 +128,13 @@ cmd_on() {
     done
     # A lower --vms than the last run: stop the units above the requested count.
     while [ "$i" -le "$MAX_VMS" ]; do
-        systemctl --user stop "$UNIT_PREFIX@$i.service" 2>/dev/null || true
+        if ! systemctl --user stop "$UNIT_PREFIX@$i.service" 2>/dev/null && unit_active "$i"; then
+            cmd_off >/dev/null
+            die "could not stop $UNIT_PREFIX@$i above --vms $vms — switched off again"
+        fi
         i=$((i + 1))
     done
-    echo "vm-runner: on — $vms VM(s) serving $REPO"
+    echo "vm-runner: on —$vms VM(s) serving $REPO"
 }
 
 cmd_off() {
@@ -158,7 +162,7 @@ cmd_off() {
 
 # unit_journal <i> — the unit's recent log, one `<epoch> <message>` per line.
 unit_journal() {
-    journalctl --user -u "$UNIT_PREFIX@$1.service" -o short-unix --no-pager -n 200 2>/dev/null \
+    journalctl --user -u "$UNIT_PREFIX@$1.service" -o short-unix --no-pager -n 2000 2>/dev/null \
         | sed -n 's/^\([0-9][0-9]*\)\.[0-9]* [^ ]* [^ ]*: \(.*\)$/\1 \2/p'
 }
 
@@ -205,7 +209,9 @@ tick_token() {
         fi
         i=$((i + 1))
     done
-    if [ "$var" != on ]; then echo off; return; fi
+    # An unreadable variable (gh down, auth) with a unit up is judged as on, so
+    # DEAD/STUCK stay visible; an explicit off with a unit up is a shutdown.
+    if [ "$var" != on ] && { [ -n "$var" ] || [ "$up" -eq 0 ]; }; then echo off; return; fi
     if [ "$up" -eq 0 ]; then echo DEAD; return; fi
     if [ "$stuck" -eq 1 ]; then echo STUCK; return; fi
     echo "ok:$up/$want,busy=$(runners_busy)"

@@ -169,6 +169,22 @@ run on >/dev/null 2>&1
 STUB_STOP_FAIL=1 run off >"$TMP/out" 2>&1; rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'still running' "$TMP/out"; then ok "off: unit that will not stop -> rc!=0"; else bad "off with failed stop: rc=$rc"; fi
 
+echo "T11 review fixes (HIMMEL-5037 round 2)"
+reset
+run on >/dev/null 2>&1
+STUB_STOP_FAIL=1 run on --vms 1 >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ -e "$TMP/stub/active-2" ]; then ok "on --vms 1: unit above the count that will not stop -> rc!=0"; else bad "on --vms 1 with a stuck unit: rc=$rc"; fi
+reset
+mkdir -p "$TMP/stop/keep"
+run on >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$TMP/stub/var" ] && [ ! -e "$TMP/stub/active-1" ]; then ok "on: stop file that will not go -> rc!=0, nothing enabled"; else bad "on with a stuck stop file: rc=$rc"; fi
+rm -rf "$TMP/stop"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"; : > "$TMP/stub/active-1"
+case "$(run status --tick)" in ok:*) ok "unreadable variable with a unit up is not reported off" ;; *) bad "unreadable variable -> $(run status --tick)" ;; esac
+echo off > "$TMP/stub/var"
+[ "$(run status --tick)" = off ] && ok "variable off with a unit still up stays off (shutdown in progress)" || bad "off+unit -> $(run status --tick)"
+
 echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "unknown subcommand: rc=2" || bad "usage rc=$rc"
