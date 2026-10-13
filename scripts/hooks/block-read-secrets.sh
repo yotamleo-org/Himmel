@@ -1040,25 +1040,35 @@ interp_env_dump() {
     return 1
 }
 
-# xt_scrub_segs TEXT (HIMMEL-5484): one line per clause of the raw command
-# that runs under a scrubbed environment (`env -i`, `--ignore-environment`,
-# `-`): the words after the env options and NAME=VALUE words, quotes and
-# redirects dropped, single-spaced. g4_scan compares a clause against these
-# lines, because guard_unwrap re-reads the wrapper-stripped form and that form
-# no longer shows the `env -i`. A clause this split misreads simply does not
-# match, so the trace is denied (fail closed).
-# ponytail: a raw whitespace split, not the tokenizer, so a quoted separator
-# or a redirect glued to a word misses and denies; the same words elsewhere in
-# the command under no `env -i` also match. Revisit if guard_unwrap hands a
-# child its wrapper context (HIMMEL-5484 follow-up).
+# xt_scrub_segs TEXT (HIMMEL-5484): one line per tokenizer segment of the
+# command that runs under a scrubbed environment (`env -i`,
+# `--ignore-environment`, `-`): the dequoted non-redirect words after the env
+# options and NAME=VALUE words, single-spaced. g4_scan compares a clause against
+# these lines, because guard_unwrap re-reads the wrapper-stripped form and that
+# form no longer shows the `env -i`. The list is built from st_tokenize's
+# segments, the same reading g4_scan gets, never from a raw split: a comment, a
+# glued redirect or a `$'-x'` word is read one way by both sides. When the
+# tokenizer cannot read the command the list is empty, so a trace is denied.
+# ponytail: the same words elsewhere in the command under no `env -i` also
+# match (that segment is dropped, so the trace denies); a segment with a live
+# `$`, a glob or a newline in a word never counts as scrubbed. Revisit if
+# guard_unwrap hands a child its wrapper context (HIMMEL-5484 follow-up).
 xt_scrub_segs() {
-    local seg w i n scrub out="" un="" nl=$'\n' skip
+    local s k i n w seg conf scrub out="" un="" nl=$'\n'
     local -a ws
-    while IFS= read -r seg; do
-        set -f
-        # shellcheck disable=SC2206 # intentional word split
-        ws=($seg)
-        set +f
+    st_tokenize "$1" || return 0
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        ws=(); conf=0; k=0
+        while [ "$k" -lt "$ST_N" ]; do
+            if [ "${ST_S[k]}" = "$s" ] && [ -z "${ST_RO[k]}" ]; then
+                ws[${#ws[@]}]="${ST_W[k]}"
+                case "${ST_W[k]}" in *"$nl"*) conf=1 ;; esac
+                if [ "${ST_X[k]:-0}" = 1 ] || [ "${ST_G[k]:-0}" = 1 ]; then conf=1; fi
+            fi
+            k=$((k + 1))
+        done
+        s=$((s + 1))
         n=${#ws[@]}; i=0; scrub=0
         [ "$n" -gt 0 ] || continue
         if [ "${ws[0]##*/}" = env ]; then
@@ -1076,24 +1086,15 @@ xt_scrub_segs() {
             [ "$scrub" = 1 ] || i=0
         fi
         [ "$i" -lt "$n" ] || continue
-        seg=""; skip=0
+        seg=""
         while [ "$i" -lt "$n" ]; do
-            w="${ws[i]//[\'\"\\]/}"
+            seg="$seg${seg:+ }${ws[i]}"
             i=$((i + 1))
-            if [ "$skip" = 1 ]; then skip=0; continue; fi
-            case "$w" in
-                [0-9]*[\<\>]*|[\<\>]*)
-                    # a lone operator takes the next word as its target
-                    [ -n "${w//[0-9<>&]/}" ] || skip=1
-                    continue ;;
-            esac
-            seg="$seg${seg:+ }$w"
         done
-        [ -z "$seg" ] || if [ "$scrub" = 1 ]; then out="$out$seg$nl"; else un="$un$seg$nl"; fi
-    done <<EOF
-${1//[;|&()\`]/$nl}
-EOF
-    # A scrubbed clause whose words also sit inside an unscrubbed clause
+        [ -n "$seg" ] || continue
+        if [ "$scrub" = 1 ] && [ "$conf" = 0 ]; then out="$out$seg$nl"; else un="$un$seg$nl"; fi
+    done
+    # A scrubbed segment whose words also sit inside an unscrubbed segment
     # (`env -i bash -x s; bash -x s`) cannot be told apart in the child: drop it.
     while IFS= read -r seg; do
         [ -n "$seg" ] || continue

@@ -1137,6 +1137,11 @@ assert_rc "5484 ctl set +o xtrace"              0 "$(run_case "$(j_bash 'set +o 
 assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
 assert_rc "5484 ctl bash s.sh arg -x"           0 "$(run_case "$(j_bash 'bash s.sh arg -x')")"
 assert_rc "5484 ctl bash s.sh +e -x"            0 "$(run_case "$(j_bash 'bash s.sh +e -x')")"
+# Judge j2544b: the scrub list is read from the tokenizer, never a raw split.
+assert_rc "5484 scrub text hidden in a comment" 2 "$(run_case "$(j_bash 'bash -x>/dev/null s.sh # ; env -i bash -x s.sh')")"
+assert_rc "5484 scrub then ansi-c -x word"      2 "$(run_case "$(j_bash $'env -i bash -x s.sh; bash $\'-x\' s.sh')")"
+assert_rc "5484 ctl scrubbed trace, glued redirect" 0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh 2>/dev/null')")"
+assert_rc "5484 ctl scrubbed trace, ansi-c word"    0 "$(run_case "$(j_bash $'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash $\'-x\' s.sh')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
