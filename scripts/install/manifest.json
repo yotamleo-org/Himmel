@@ -22,6 +22,7 @@
       "deps": [],
       "probe": { "type": "settings-hooks", "file": ".claude/settings.json", "key": "hooks.PreToolUse" },
       "install": { "type": "wire", "target": "pretooluse-hooks" },
+      "noNetwork": { "path": "install" },
       "unwire": { "type": "wire", "target": "pretooluse-hooks" },
       "removable": "per-item",
       "provenance": { "kinds": ["json-elem"] }
@@ -34,6 +35,7 @@
       "deps": [],
       "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "statusLine.command", "verifyScript": true, "verifyHudConfig": true },
       "install": { "type": "wire", "target": "statusline" },
+      "noNetwork": { "path": "install" },
       "unwire": { "type": "wire", "target": "statusline" },
       "removable": "per-item",
       "provenance": { "kinds": ["json-key", "file"] }
