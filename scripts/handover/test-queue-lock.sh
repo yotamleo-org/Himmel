@@ -2974,6 +2974,10 @@ D_CLAUDE_PID=$!
 d_lock wrapped-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-wrapped-leg"
 ( exec -a node-wrapper bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-wrapped-leg ) &
 D_WRAPPED_PID=$!
+# And one that carries the doc only in its environment, never on argv.
+d_lock env-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-env-leg"
+( HIMMEL_5541_FIXTURE_DOC=HIMMEL-5541-fixture-env-leg exec sleep 60 ) &
+D_ENV_PID=$!
 sleep 0.3
 out="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"; rc=$?
 if grepq "$out" "slug=dead-leg .*status=STALE-DEAD" && [ "$rc" -eq 20 ]; then
@@ -2987,14 +2991,16 @@ else
     fail "T97: alive-owner lock misread (out=$out)"
 fi
 if ! grepq "$out" "slug=otherhost-leg .*STALE-DEAD" && ! grepq "$out" "slug=opaque-leg .*STALE-DEAD" \
-    && ! grepq "$out" "slug=claude-leg .*STALE-DEAD" && ! grepq "$out" "slug=wrapped-leg .*STALE-DEAD"; then
-    pass "T98: other-host, opaque-token and live-claude-session locks are not provably dead"
+    && ! grepq "$out" "slug=claude-leg .*STALE-DEAD" && ! grepq "$out" "slug=wrapped-leg .*STALE-DEAD" \
+    && ! grepq "$out" "slug=env-leg .*STALE-DEAD"; then
+    pass "T98: other-host, opaque-token, live-claude-session and env-only locks are not provably dead"
 else
     fail "T98: an unprovable lock read STALE-DEAD (out=$out)"
 fi
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"; rrc=$?
 if [ ! -d "$D_QDIR/dead-leg.lock" ] && [ -d "$D_QDIR/alive-leg.lock" ] && [ -d "$D_QDIR/otherhost-leg.lock" ] \
-    && [ -d "$D_QDIR/opaque-leg.lock" ] && [ -d "$D_QDIR/claude-leg.lock" ]; then
+    && [ -d "$D_QDIR/opaque-leg.lock" ] && [ -d "$D_QDIR/claude-leg.lock" ] \
+    && [ -d "$D_QDIR/wrapped-leg.lock" ] && [ -d "$D_QDIR/env-leg.lock" ]; then
     pass "T99: --reap-dead releases only the provably dead lock (rc=$rrc)"
 else
     fail "T99: reap removed/kept the wrong locks (rc=$rrc out=$rout)"
@@ -3027,7 +3033,23 @@ if [ "$rc" -eq 12 ] && grepq "$out" "status: STALE-DEAD"; then
 else
     fail "T102: single status (rc=$rc out=$out)"
 fi
-kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" 2>/dev/null
+# T103: a takeover claim held on the slug blocks the reap (the lock stays and
+# the sweep says so); once the claim is gone the same lock is reaped.
+d_lock claimed-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claimed-leg"
+mkdir -p "$D_QDIR/claimed-leg.lock.claim"
+rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"
+if [ -d "$D_QDIR/claimed-leg.lock" ] && grepq "$rout" "slug=claimed-leg .*reap=skipped-claimed"; then
+    rmdir "$D_QDIR/claimed-leg.lock.claim"
+    HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+    if [ ! -d "$D_QDIR/claimed-leg.lock" ]; then
+        pass "T103: a held takeover claim blocks the reap; without it the lock is reaped"
+    else
+        fail "T103: lock survived the reap after the claim was released"
+    fi
+else
+    fail "T103: claimed lock was reaped or not reported (out=$rout)"
+fi
+kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null
 
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"

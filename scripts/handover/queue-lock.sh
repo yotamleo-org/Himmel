@@ -928,9 +928,15 @@ _ql_owner_provably_dead() {
         # starts with claude (node-launched or wrapped sessions); queue-lock's
         # own invocations (this status call, in any subshell) are excluded.
         case "$cargs" in
-            *queue-lock.sh*) ;;
+            *queue-lock.sh*) continue ;;
             *"$stem"*) return 1 ;;
         esac
+        # a session handed the doc through its environment rather than argv:
+        # same-user /proc/<pid>/environ is readable; unreadable = no evidence
+        # either way, so it is skipped, never read as proof of death.
+        if [ -r "/proc/$cpid/environ" ] && grep -qaF -- "$stem" "/proc/$cpid/environ" 2>/dev/null; then
+            return 1
+        fi
     done <<EOF
 $procs
 EOF
@@ -2587,15 +2593,26 @@ _ql_sweep_one_root() {
             # HIMMEL-5541: past the TTL with a provably dead owner. Not a held
             # lock any more -- stop guard / tick skip it; --reap-dead releases it.
             if [ "${_QL_SW_REAP:-0}" -eq 1 ]; then
-                # ponytail: re-reading owner.json narrows but does not close the window to a takeover between the re-read and rm, upgrade path: an atomic rename-then-verify once queue-lock has a lock-dir rename primitive
-                if [ "$(cat "$lockdir/owner.json" 2>/dev/null)" != "$o_raw" ]; then
+                # Take the same mkdir takeover claim a stale taker holds, so a
+                # concurrent takeover and this reap are mutually exclusive, then
+                # CAS-verify owner.json under it before the rm.
+                # ponytail: same accepted microsecond window as the takeover path (a holder releasing then a third party acquiring between verify and rm), upgrade path: a lock-dir rename primitive once queue-lock has one
+                local rclaim="${lockdir}.claim" rtoken="reap-pid$$-r$RANDOM"
+                if ! mkdir "$rclaim" 2>/dev/null \
+                    || ! ( set -C; printf '%s' "$rtoken" > "$rclaim/owner" ) 2>/dev/null; then
+                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=skipped-claimed$sfx"
+                    flagged=1
+                elif [ "$(cat "$lockdir/owner.json" 2>/dev/null)" != "$o_raw" ]; then
+                    _ql_takeover_claim_release "$rclaim" "$rtoken" || true
                     echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=skipped-changed$sfx"
                     flagged=1
                 elif ! : >> "$qdir/takeovers.log" 2>/dev/null; then
+                    _ql_takeover_claim_release "$rclaim" "$rtoken" || true
                     echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed-log-unwritable$sfx"
                     flagged=1
                 else
                     rm -rf "$lockdir" 2>/dev/null
+                    _ql_takeover_claim_release "$rclaim" "$rtoken" || true
                     if [ -d "$lockdir" ]; then
                         printf '%s REAP-FAILED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
                             "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
