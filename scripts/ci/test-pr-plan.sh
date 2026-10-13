@@ -15,6 +15,8 @@
 #   P8  a .sh edit                          -> lint true, node_suites false
 #   P9  every gate named in ci.yml's plan consumers exists in the plan output
 #   P10 an invalid regex in the list         -> every gate true (fail closed)
+#   A1-A11 gate audit: every file a gated job's suites execute (one hop) is in
+#          that job's gate group or a trust path, so a skip cannot hide a run
 #   S1-S5  shard-has-work.sh: empty / [RUN ] / --list failure / no footer fail
 #          closed to true, and a >64 KiB listing is not misread under pipefail
 #
@@ -167,6 +169,94 @@ have=$(grep -oE '^[a-z_]+' "$SRC_ROOT/scripts/ci/pr-job-gates.txt" | grep -v '^b
 missing=$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$have"))
 if [ -n "$want" ] && [ -z "$missing" ]; then pass "P9 ci.yml reads only gates the input list defines"
 else fail "P9 ci.yml reads undefined gates: ${missing:-<none read>}"; fi
+
+# A1-A11: gate-completeness audit. A gated job that skips because the diff
+# touched none of its listed paths is only safe if every file its entry suites
+# EXECUTE (the file plus the files it names, one hop, comments stripped) falls in
+# its own gate group or is a trust path (trust paths force every gate true).
+# HIMMEL-5524 trust judge: claude-startup ran headed-arm-leg.sh and
+# plugin-profiles.mjs, which the group did not name, so it skipped and passed.
+TRACKED="$SB/tracked.txt"
+git -C "$SRC_ROOT" ls-files > "$TRACKED"
+cat > "$SB/refs.awk" <<'AWK'
+BEGIN { while ((getline p < tracked) > 0) T[p] = 1 }
+{
+  e = $0; out[e] = 1
+  if (e !~ /\.(sh|bash|mjs|cjs|js|ts|py|awk)$/) next
+  d = e; if (!sub(/\/[^\/]*$/, "", d)) d = ""
+  f = root "/" e
+  while ((getline line < f) > 0) {
+    t = line; sub(/^[ \t]+/, "", t)
+    if (t ~ /^(#|\/\/|\*)/) continue
+    while (match(line, /[A-Za-z0-9_.@+\/-]+\.(sh|bash|mjs|cjs|js|ts|py|awk)/)) {
+      tok = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
+      n = split(tok, parts, "/")
+      for (i = 1; i <= n; i++) {
+        s = parts[i]
+        for (j = i + 1; j <= n; j++) s = s "/" parts[j]
+        sub(/^(\.\/)+/, "", s)
+        if (s in T) out[s] = 1
+        c = (d == "" ? s : d "/" s)
+        while (c ~ /[^\/]+\/\.\.\//) sub(/[^\/]+\/\.\.\//, "", c)
+        if (c in T) out[c] = 1
+      }
+    }
+  }
+  close(f)
+}
+END { for (k in out) print k }
+AWK
+TRUST_ALT=$(grep -vE '^[[:space:]]*(#|$)' "$SRC_ROOT/scripts/ci/ci-trust-paths.txt" | sed -E 's/.*/(&)/' | paste -sd'|' -)
+audit_closure() { # audit_closure <entries-file> — entries plus the files they name
+  awk -v tracked="$TRACKED" -v root="$SRC_ROOT" -f "$SB/refs.awk" "$1" | sort -u
+}
+audit_gap() { # audit_gap <group> <entries-file> — executed files outside the group
+  local alt
+  alt=$(grep -E "^$1[[:space:]]" "$INPUTS_SRC" | sed -E 's/^[^[:space:]]+[[:space:]]+//; s/.*/(&)/' | paste -sd'|' -)
+  if [ -z "$alt" ]; then echo "<group $1 has no gate lines>"; return; fi
+  audit_closure "$2" | grep -E '\.(sh|bash|mjs|cjs|js|ts|py|awk)$' \
+    | { grep -vE "$alt" || true; } | { grep -vE "$TRUST_ALT" || true; } | { grep -v '^\.github/' || true; }
+}
+audit_case() { # audit_case <label> <group> <entries-file>
+  local gap
+  gap=$(audit_gap "$2" "$3" | head -8 | paste -sd' ' -)
+  if [ -z "$gap" ]; then pass "$1 gate $2 covers every file its suites execute"
+  else fail "$1 gate $2 misses executed files: $gap"; fi
+}
+tests_under() { # tests_under <ERE of dirs> — tracked test files under those dirs
+  grep -E "^($1)/" "$TRACKED" | grep -E '(\.test\.|\.spec\.|/tests?/|/test-[^/]*$)' | grep -E '\.(ts|js|mjs|sh)$' || true  # pipefail-ok: filtered listing
+}
+EF="$SB/entries.txt"
+printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh scripts/testing/test-claude-mock-turn.sh \
+  scripts/testing/test-mock-consult-sandbox.sh scripts/testing/test-mock-hook-smoke.sh \
+  scripts/testing/test-mock-hook-live-turn.sh > "$EF"
+audit_case A1 claude_startup "$EF"
+printf '%s\n' scripts/hooks/check-guardrail-matrices.sh > "$EF"
+audit_case A2 guardrail_matrices "$EF"
+printf '%s\n' scripts/guardrails/check-git-env-scrub.sh > "$EF"
+audit_case A3 git_env_scrub "$EF"
+printf '%s\n' scripts/ci/run-unchecked-mktemp-under-bwk.sh > "$EF"
+audit_case A4 bwk_gate "$EF"
+printf '%s\n' scripts/hooks/check-lockfile-integrity.sh scripts/hooks/check-uv-lock.sh scripts/hooks/check-npm-audit.sh \
+  scripts/hooks/check-npm-licenses.sh scripts/hooks/check-npm-audit-signatures.sh > "$EF"
+audit_case A5 deps_audit "$EF"
+printf '%s\n' scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh > "$EF"
+audit_case A6 plugin_version_bump "$EF"
+printf '%s\n' scripts/install/flag-registry-lint.mjs > "$EF"
+audit_case A7 lint "$EF"
+{ grep -E '^scripts/(lanes|trust|where-are-we|lessons|observability)/.*\.test\.mjs$' "$TRACKED" || true  # pipefail-ok: filtered listing
+  printf '%s\n' scripts/op-env-parity.test.mjs scripts/hooks/check-hook-lib-suites.sh; } > "$EF"
+audit_case A8 lanes_and_trust "$EF"
+tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus' > "$EF"
+audit_case A9 node_suites "$EF"
+tests_under 'scripts/luna-vitals|scripts/telegram|scripts/vault|scripts/config-ui|marketplace/plugins/luna-correlate|marketplace/plugins/telegram-himmel|scripts/fleet-control|scripts/observability' > "$EF"
+audit_case A10 bun_suites "$EF"
+# A11 control: the audit sees the one-hop reference the judge found (a vacuous
+# closure would pass every A case above).
+printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh > "$EF"
+if audit_closure "$EF" | grep -qx 'scripts/lanes/plugin-profiles.mjs'; then
+  pass "A11 audit closure reaches scripts/lanes/plugin-profiles.mjs from test-fakekey-claude-startup.sh"
+else fail "A11 audit closure missed a known reference (vacuous audit)"; fi
 
 # S1-S5: scripts/ci/shard-has-work.sh against a stub run-shell-tests.sh whose
 # --list output STUB_MODE picks (the real selector is covered by its own suite).

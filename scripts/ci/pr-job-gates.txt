@@ -29,7 +29,7 @@ benign          ^\.github/(CODEOWNERS|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE)
 
 # node-suites matrix (jira, bitbucket, himmel-run, ci-orchestrator, himmel-gh,
 # himmel-jira, himmel-bus): each package's own dir plus what it imports.
-node_suites     ^scripts/(jira|bitbucket|himmel-run|ci-orchestrator|telegram|guardrails)/
+node_suites     ^scripts/(jira|bitbucket|himmel-run|ci-orchestrator|telegram|guardrails|lanes)/
 node_suites     ^scripts/handover/console-kit/
 node_suites     ^plugins/(himmel-gh|himmel-jira)/
 node_suites     ^marketplace/plugins/himmel-bus/
@@ -37,6 +37,8 @@ node_suites     (^|/)package(-lock)?\.json$
 
 # bun-suites matrix.
 bun_suites      ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
+bun_suites      ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-setup|trust)/
+bun_suites      ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
 bun_suites      ^marketplace/plugins/(luna-correlate|telegram-himmel)/
 bun_suites      ^\.bun-version$
 bun_suites      (^|/)bun\.lock$
@@ -46,11 +48,19 @@ jira_cli_smoke  ^scripts/jira/
 jira_cli_smoke  (^|/)package(-lock)?\.json$
 
 claude_startup  ^scripts/(testing|hooks|lib)/
+# The five startup suites execute headed-arm*, plugin-profiles.mjs, codex/cr/git
+# helpers and clean-garden.sh; test-pr-plan.sh audits that every file they run
+# falls in this group (or is a trust path).
+claude_startup  ^scripts/(handover|lanes|codex|cr|git)/
+claude_startup  ^scripts/(clean-garden|quiet-run)\.sh$
 claude_startup  ^\.claude/
 claude_startup  ^\.bun-version$
 
 lanes_and_trust ^scripts/(lanes|trust|where-are-we|lessons|observability|hooks|lib)/
 lanes_and_trust ^scripts/(op-env-parity|test-claude-codex)
+lanes_and_trust ^scripts/(cr|eval|git|guardrails|handover|himmelctl|setup|telegram|upstreams)/
+lanes_and_trust ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
+lanes_and_trust ^marketplace/plugins/obsidian-triage/tools/
 
 guardrail_matrices ^scripts/guardrails/
 guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
@@ -67,15 +77,20 @@ lint            \.(sh|bash)$
 lint            ^\.shellcheckrc$
 lint            ^\.pre-commit-config\.yaml$
 lint            ^scripts/(hooks|install|himmelctl)/
+# extensionless shebang scripts (scripts/claude-glm, */bin/*, lean-skills task-*)
+# are shellchecked by file type, not by a .sh suffix.
+lint            (^|/)[^/.]+$
 
 
 plugin_version_bump ^(marketplace/plugins|plugins)/
+plugin_version_bump ^scripts/upstreams/
 
 deps_audit      (^|/)package(-lock)?\.json$
 deps_audit      (^|/)bun\.lock$
 deps_audit      (^|/)uv\.lock$
 deps_audit      (^|/)pyproject\.toml$
 deps_audit      ^\.bun-version$
+deps_audit      ^scripts/hooks/check-(lockfile-integrity|uv-lock|npm-audit|npm-licenses|npm-audit-signatures)\.sh$
 
 # Paths that are neither benign nor a listed input but harmless to the gates
 # above ONLY because the job that reads them always runs (leak-classes,
