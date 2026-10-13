@@ -14,7 +14,7 @@ clip path or a shipped himmel code path); the resolved evidence table is at the
 foot of the doc.
 
 Here *orchestrator* and *coordinator* mean the parent session running a fan-out,
-not a console role; console, leg, judge and relay are defined once in
+not a supervisor session role; supervisor session, worker session, judge subagent and relay are defined once in
 [`glossary.md`](glossary.md).
 
 ## 1. Default shape: map-reduce-and-manage
@@ -40,7 +40,7 @@ its failure edge:
 | Shape | Use when | Breaks when |
 |---|---|---|
 | **fan-out-synthesize** | independent subtasks, one artifact to assemble (per-ticket overnight dispatch) | routing is ambiguous — the coordinator can't cleanly partition the work |
-| **adversarial-verify** | findings must survive independent refutation (CR rounds) | the verifier shares context with the producer (rubber-stamps) |
+| **adversarial-verify** | findings must survive independent refutation (review rounds) | the verifier shares context with the producer (rubber-stamps) |
 | **loop-until-done** | unknown-size discovery; converge on a target/quiet count | no orchestrator-owned stop-condition — the loop never terminates |
 | **peer-negotiation** (deliberation ONLY, never writes) | exploring competing hypotheses, design debate | any peer is allowed to write — it degrades into an unstructured swarm |
 
@@ -97,9 +97,9 @@ _Evidence:_ Cognition / walden_yan
 - **Claim-and-record shared state:** claim before start, record when done
   (0xMorlex) — the same doctrine the machine-aware budget ADR's claim-file fallback rides.
 
-_Shipped verifier lanes:_ the heavy-CR panel (`scripts/cr/critic-panel.sh`) and
-`/pr-check` steps 4.6 (handover CR-findings capture) and 4.7
-(CR→bug-tracker lifecycle) are himmel's standing verifier topology.
+_Shipped verifier lanes:_ the heavy automated review panel (`scripts/cr/critic-panel.sh`) and
+`/pr-check` steps 4.6 (handover automated review findings capture) and 4.7
+(automated review→bug-tracker lifecycle) are himmel's standing verifier topology.
 
 ## 6. Durability
 

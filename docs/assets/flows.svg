@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="t d">
 <title id="t">himmel: four flows</title>
-<desc id="d">Ship a change: Jira ticket then /worktree then commit + push then /pr-check then CI green then merge; Run a fleet: one console, many legs: console then dispatch leg then leg ships a PR then console checks then GO file then merge + wrap; Carry work across sessions: session works then /handover then state repo then cap or restart then /handover-resume then picks up; Find what you already know: question then MEMORY.md then qmd search then graphify then source file then write back</desc>
+<desc id="d">Ship a change: Jira ticket then /worktree then commit + push then /pr-check then CI green then merge; Run a fleet: one supervisor session, many worker sessions: supervisor session then dispatch worker then worker ships a PR then ready-check then GO file then merge + wrap; Carry work across sessions: session works then /handover then state repo then cap or restart then /handover-resume then picks up; Find what you already know: question then MEMORY.md then qmd search then graphify then source file then write back</desc>
 <style>.card{fill:#ffffff;stroke:#d0d7de}
 .title{fill:#1f2328;font:600 15px system-ui,-apple-system,'Segoe UI',sans-serif}
 .box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.5}
@@ -59,30 +59,30 @@
 <rect class="box p" style="animation-delay:6s" x="809" y="54" width="127" height="44" rx="8"/>
 <text class="label p" style="animation-delay:6s" x="872.5" y="81" text-anchor="middle">merge</text>
 <text class="cap" x="872.5" y="118" text-anchor="middle">then /clean prunes</text>
-<text class="title" x="24" y="170">2  Run a fleet: one console, many legs</text>
+<text class="title" x="24" y="170">2  Run a fleet: one supervisor session, many worker sessions</text>
 <rect class="box p" style="animation-delay:0.3s" x="24" y="182" width="127" height="44" rx="8"/>
-<text class="label p" style="animation-delay:0.3s" x="87.5" y="209" text-anchor="middle">console</text>
+<text class="label p" style="animation-delay:0.3s" x="87.5" y="209" text-anchor="middle">supervisor session</text>
 <text class="cap" x="87.5" y="246" text-anchor="middle">plans the work</text>
 <line class="arrow p" style="animation-delay:0.9s" x1="155" y1="204" x2="171" y2="204"/>
 <path class="head p" style="animation-delay:0.9s" d="M175 204L168 199L168 209Z"/>
 <rect class="box p" style="animation-delay:1.5s" x="181" y="182" width="127" height="44" rx="8"/>
-<text class="label p" style="animation-delay:1.5s" x="244.5" y="209" text-anchor="middle">dispatch leg</text>
+<text class="label p" style="animation-delay:1.5s" x="244.5" y="209" text-anchor="middle">dispatch worker</text>
 <text class="cap" x="244.5" y="246" text-anchor="middle">own worktree + token</text>
 <line class="arrow p" style="animation-delay:2.1s" x1="312" y1="204" x2="328" y2="204"/>
 <path class="head p" style="animation-delay:2.1s" d="M332 204L325 199L325 209Z"/>
 <rect class="box p" style="animation-delay:2.7s" x="338" y="182" width="127" height="44" rx="8"/>
-<text class="label p" style="animation-delay:2.7s" x="401.5" y="209" text-anchor="middle">leg ships a PR</text>
+<text class="label p" style="animation-delay:2.7s" x="401.5" y="209" text-anchor="middle">worker ships a PR</text>
 <text class="cap" x="401.5" y="246" text-anchor="middle">reports LIVE, READY</text>
 <line class="arrow p" style="animation-delay:3.3s" x1="469" y1="204" x2="485" y2="204"/>
 <path class="head p" style="animation-delay:3.3s" d="M489 204L482 199L482 209Z"/>
 <rect class="box p" style="animation-delay:3.9s" x="495" y="182" width="127" height="44" rx="8"/>
-<text class="label p" style="animation-delay:3.9s" x="558.5" y="209" text-anchor="middle">console checks</text>
-<text class="cap" x="558.5" y="246" text-anchor="middle">ready-check, judge</text>
+<text class="label p" style="animation-delay:3.9s" x="558.5" y="209" text-anchor="middle">ready-check</text>
+<text class="cap" x="558.5" y="246" text-anchor="middle">+ judge subagent</text>
 <line class="arrow p" style="animation-delay:4.5s" x1="626" y1="204" x2="642" y2="204"/>
 <path class="head p" style="animation-delay:4.5s" d="M646 204L639 199L639 209Z"/>
 <rect class="box p" style="animation-delay:5.1s" x="652" y="182" width="127" height="44" rx="8"/>
 <text class="label p" style="animation-delay:5.1s" x="715.5" y="209" text-anchor="middle">GO file</text>
-<text class="cap" x="715.5" y="246" text-anchor="middle">the console signs off</text>
+<text class="cap" x="715.5" y="246" text-anchor="middle">merge approval</text>
 <line class="arrow p" style="animation-delay:5.7s" x1="783" y1="204" x2="799" y2="204"/>
 <path class="head p" style="animation-delay:5.7s" d="M803 204L796 199L796 209Z"/>
 <rect class="box p" style="animation-delay:6.3s" x="809" y="182" width="127" height="44" rx="8"/>

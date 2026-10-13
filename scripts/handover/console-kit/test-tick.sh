@@ -217,9 +217,9 @@ if [ "$rc" -eq 0 ] && [ "$verbose_lines" -gt 1 ]; then
 else
     fail "--verbose emits multiple lines (rc=$rc lines=$verbose_lines)"
 fi
-contains '--verbose labels leg locks' "$verbose" 'leg locks: N61:FRESH,N65:FREE'
+contains '--verbose labels leg locks' "$verbose" 'worker-session locks: N61:FRESH,N65:FREE'
 contains '--verbose labels context fill' "$verbose" 'fill: 28'
-contains '--verbose labels leg models (HIMMEL-2976, HIMMEL-3145)' "$verbose" 'leg models: sonnet:1'
+contains '--verbose labels leg models (HIMMEL-2976, HIMMEL-3145)' "$verbose" 'worker-session models: sonnet:1'
 
 # --- a console FOR another checkout lists that checkout's PRs, not himmel's.
 # console.sh records the project on the doc's project line; the gh stub answers
@@ -678,7 +678,7 @@ case "$burn_out" in *'no transcript found'*) fail '--burn leaks leg-burn stderr 
 # And without the flag the field is absent entirely, not empty.
 noburn_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61')"
 case "$noburn_out" in *burn=*) fail 'burn= appears without --burn' ;; *) pass 'burn= is absent without --burn' ;; esac
-contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --legs 'HIMMEL-111-legN61')" 'leg burn (first-turn/avg-ctx): N61:74.3k/128.1k'
+contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --legs 'HIMMEL-111-legN61')" 'worker-session burn (first-turn/avg-ctx): N61:74.3k/128.1k'
 
 # --- HIMMEL-3145: current-convention leg names (<TICKET>-N<k>-<slug>, no
 # "-leg" substring at all -- docs/handover/console-template.md:104 is the
@@ -1972,7 +1972,7 @@ frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= follows or= (HIMMEL-4670)' "$f4670" ' or=skip fails=1/1@error/Edit*1'
 case "$f4670" in *' fails='*' '*) fail "fails= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'fails= is the last field when spare= is absent (HIMMEL-4670)' ;; esac
-contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'leg failures: 1/1@error/Edit*1'
+contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'
 # HIMMEL-4786: ~<k> = legs whose wrap digest was skipped this shift (the step's

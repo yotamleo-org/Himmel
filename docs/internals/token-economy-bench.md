@@ -6,7 +6,7 @@ per harness, before vs after) lives in
 This file is the **behavioural** half: does a lean `CLAUDE.md` cost fewer
 first-turn tokens *and* still steer a fresh session the same way? It is a
 recipe, not a result — it needs a quiet window (every run draws the shared
-5-hour/weekly bank, see `CLAUDE.md` § Claude invocation billing) and was
+5-hour/weekly subscription usage budget, see `CLAUDE.md` § Claude invocation billing) and was
 deliberately **not** run on the PR branch. Run it post-merge; paste the numbers
 back into `docs/token-economy.md` under its `CLAUDE.md` lean-invoke heading.
 
@@ -50,7 +50,7 @@ git -C $HOME/h2038-bench/fat  status --short   # clean too (the fat swap is comm
 ## The probes
 
 Four prompts, each run **N = 5** times per arm, arms interleaved
-(fat, lean, fat, lean, …) so a bank-state drift hits both evenly. `--max-turns 3`
+(fat, lean, fat, lean, …) so a usage budget drift hits both evenly. `--max-turns 3`
 bounds cost. The probes judge **intent** from the transcript, not effects — but
 do NOT rely on headless permission denial to prevent side effects: the repo's
 own hooks and allow-list still apply in the arm clones, so some Bash calls
