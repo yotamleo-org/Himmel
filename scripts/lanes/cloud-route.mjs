@@ -9,7 +9,7 @@
 // operator's terminal and spends credit, so the tool only prints the line.
 //
 // Classes, first match wins:
-//   BLOCKED      ticket not To Do, the open-PR/held-file list or file tree is unknown, or a
+//   BLOCKED      ticket not To Do/Backlog/Open, the open-PR/held-file list or file tree is unknown, or a
 //                file it touches is held (one writer per file)
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal leg)
@@ -43,7 +43,7 @@ const REPO_SLUG = 'yotamleo/Himmel';
 const HOOKS = /^scripts\/hooks\//;
 const NEEDS = /\bluna\b|\bvault\b|handover state|\$HANDOVER_DIR|\bstate[ -]repo\b|(?<![\w.-])handovers\/[\w.-]+\/|(?<![\w.-])specs\/HIMMEL-\d|\bqmd\s+(?:query|vsearch|embed|pull)\b|vector search|(?<![\w.-])\/graphify\b|semantic (?:graphify|extraction)|\bgraphify\b[^\n]*--backend|\bqmd\b[^\n]*?(?<![\w-])(?:-c|--collections?)[\s=]+['"]?(?!himmel(?![\w-]))[\w-]|(?:~|\$HOME|\$\{HOME\})\/\.(?:himmel|cache)\/|\btest VMs?\b|himmel-ops:vm|\bvmsdk\b|\bVBoxManage\b|\bLIVE\b[^\n.]{0,40}\bledger\b|\barm(?:s|ed|ing)?\b[^\n.]{0,40}\bcadence\b|\bsystemd[ -](?:timer|unit|service)s?\b|\batrm\b|\bVM[- ]only\b|\b(?:on|in|inside) (?:a|the) (?:test )?VM\b|\bVM snapshots?\b/i;
 const BARE_RE = /(?<![\w./-])([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?:\.(?:sh|mjs|js|py|ps1))?(?![\w/-]|\.\w)/g;
-const FILE_RE = /(?<![\w./-])((?:scripts|docs|marketplace|templates|tools|\.claude|\.github|\.codex)\/[\w.+@-]+(?:\/[\w.+@-]+)*\/?|CLAUDE\.md|AGENTS\.md|\.pre-commit-config\.yaml)/g;
+const FILE_RE = /(?<![\w./-])((?:scripts|docs|marketplace|templates|tools|skills|plugins|packaging|tests|\.agents|\.claude|\.github|\.codex)\/[\w.+@-]+(?:\/[\w.+@-]+)*\/?|CLAUDE\.md|AGENTS\.md|\.pre-commit-config\.yaml)/g;
 
 // The trust list is read as data, one extended regex per line (ci-trust-paths.txt).
 export function loadTrust(path = join(REPO, 'scripts', 'ci', 'ci-trust-paths.txt')) {
@@ -55,6 +55,22 @@ export function parseJiraGet(raw) {
   const nl = text.indexOf('\n');
   const [key, type, status, ...title] = (nl < 0 ? text : text.slice(0, nl)).split('\t');
   return { key, type, status, title: title.join('\t'), description: nl < 0 ? '' : text.slice(nl + 1).trim(), raw: text };
+}
+
+// HIMMEL-4266: a slashed path (ending in an extension or a trailing slash) that FILE_RE does
+// not recognise is silently dropped from the file list, so it cannot be checked against held
+// files. A URL or a slashed word (and/or, owner/repo) is not one. ponytail: an extensionless
+// path outside the known roots (src/lib/foo) is still invisible, upgrade path HIMMEL-4266
+// follow-up (resolve against the tree).
+const PATH_RE = /(?<![\w./:@-])((?:[\w.+@-]+\/)+(?:[\w.+@-]*\.[A-Za-z][A-Za-z0-9]{0,4})?)(?![\w+@-]|\.\w)/g;
+const KNOWN_ROOT = new RegExp(`^${FILE_RE.source}`);
+export function unrecognisedPaths(text) {
+  const out = [];
+  for (const m of text.matchAll(PATH_RE)) {
+    const p = m[1].replace(/^\.\//, '');
+    if (p && !KNOWN_ROOT.test(p) && !out.includes(p)) out.push(p);
+  }
+  return out;
 }
 
 export function extractFiles(text) {
@@ -97,13 +113,15 @@ export function unresolved(files, tree) {
 }
 
 // Ask lines: the numbered or bulleted lines under an "Asks:" header, else any
-// numbered line; a ticket with none is one ask.
+// numbered line, else any bulleted line (HIMMEL-4266); a ticket with none is one ask.
 export function askLines(description) {
   const lines = description.split('\n');
   const pick = (ls, re) => ls.filter((l) => re.test(l)).map((l) => l.trim());
   const at = lines.findIndex((l) => /^\s*asks?\s*:/i.test(l));
   const under = at >= 0 ? pick(lines.slice(at + 1), /^\s*(\d+[.)]|[-*])\s/) : [];
-  return under.length ? under : pick(lines, /^\s*\d+[.)]\s/);
+  if (under.length) return under;
+  const numbered = pick(lines, /^\s*\d+[.)]\s/);
+  return numbered.length ? numbered : pick(lines, /^\s*[-*]\s/);
 }
 
 const overlaps = (a, b) => a === b || (b.endsWith('/') && a.startsWith(b)) || (a.endsWith('/') && b.startsWith(a));
@@ -140,8 +158,9 @@ export function classifyTicket(t, ctx) {
   const asks = Math.max(1, askLines(t.description).length);
   const v = (cls, reason) => ({ class: cls, reason, files, asks });
 
-  if (!/^(to do|backlog|open)$/i.test(t.status ?? '')) return v('BLOCKED', `status is '${t.status}', not To Do — already in flight or done`);
-  if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
+  if (!/^(to do|backlog|open)$/i.test(t.status ?? '')) return v('BLOCKED', `status is '${t.status}', not To Do/Backlog/Open — already in flight or done`);
+  // a run-time need (state-repo spec paths and the like) is the more specific LOCAL-NATIVE reason
+  const strange = t.files?.length || NEEDS.test(text) ? [] : unrecognisedPaths(text);
   for (const f of files) {
     const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
     if (h) return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
@@ -150,6 +169,8 @@ export function classifyTicket(t, ctx) {
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
   if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
+  if (strange.length) return v('LOCAL-NATIVE', `unrecognised path ${strange.join(', ')} — outside the known roots, so the hook, trust and held checks cannot be trusted (pass files)`);
+  if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
   const need = text.match(NEEDS);
   if (need) return v('LOCAL-NATIVE', `run-time need '${need[0]}' — luna, vaults, handover state, the state repo, qmd models, semantic graphify, ~/.himmel state, test VMs, live ledgers and cadence arming stay on the station (the cloud has AST-only graphify and BM25 qmd search over the repo only: no qmd models, so no qmd query, vector search or embed)`);
   if (asks > MAX_ASKS) return v('LOCAL-NATIVE', `${asks} asks (more than ${MAX_ASKS}) — cloud sessions drop second asks`);
@@ -176,7 +197,7 @@ export function buildBrief(t, o = {}) {
   const exists = o.exists ?? (() => true);
   const named = files.map((f) => `- \`${f}\`${exists(f) ? '' : ' (not on main: create it)'}`).join('\n');
   const asks = askLines(t.description);
-  const coverage = asks.length ? asks.map((a) => `- ${a.replace(/^\d+[.)]\s*/, '')} — done`).join('\n') : `- ${t.title} — done`;
+  const coverage = asks.length ? asks.map((a) => `- ${a.replace(/^(?:\d+[.)]|[-*])\s*/, '')} — done`).join('\n') : `- ${t.title} — done`;
   const completes = o.completes ?? 'yes';
   const change = o.change ?? "Implement the ticket's asks above, in the named files only.";
   return `You are working in a cloud clone of the GitHub repo yotamleo/Himmel. This is a small, well-scoped task. Work only from this brief and the repo. You have no local state. Jira is reachable only through the Atlassian MCP connector (the local jira CLI is absent in the cloud), and that connector may not be enabled in your session. If the Atlassian MCP tools are listed in this session, use them; otherwise do not try a workaround, and list each skipped Jira step under a \`## Jira steps not done\` heading in the PR body so the local shepherd completes it. With the tools: read the ticket, comment, file follow-ups with the fixVersion this brief names. Either way, cite the ticket key in your commits and the PR. If the context7 MCP tools are listed in this session, use them for current library docs; otherwise WebFetch the library's own docs.
