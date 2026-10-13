@@ -6797,9 +6797,12 @@ async function cmdEnsure(args) {
     }
     failed = failed.filter((f) => stillIds.has(f.id));
   }
-  if (stillNotConverged.length > 0 || disableErrors.length > 0 || failed.length > 0 || pruneRejected) {
+  if (stillNotConverged.length > 0 || disableErrors.length > 0 || failed.length > 0 || pruneRejected || refused.length > 0) {
     if (stillNotConverged.length > 0) {
       console.error(`himmelctl: ${stillNotConverged.length} item(s) still not converged: ${stillNotConverged.map((r) => r.id).join(', ')}`);
+    }
+    if (refused.length > 0 && stillNotConverged.length === 0) {
+      console.error(`himmelctl: --no-network refused ${refused.length} item(s), see above.`);
     }
     if (failed.length > 0) {
       console.error(`himmelctl: ${failed.length} install(s) failed: ${failed.map((f) => `${f.id} (${f.reason})`).join(', ')}`);

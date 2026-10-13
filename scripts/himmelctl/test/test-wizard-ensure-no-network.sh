@@ -149,6 +149,7 @@ echo "ok: c — --prune is not valid with --no-network"
 # ── d: dry-run previews only the declared item ─────────────────────────────
 t=$(fresh_target td); : > "$work/log"
 rc=0; out=$(run_ensure "$t" "$fixture_repo" --no-network --dry-run) || rc=$?
+[ "$rc" -eq 1 ] || fail "d: dry-run with refusals must exit 1 (rc=$rc): $out"
 grepq "$out" -F 'wire-statusline.sh' || fail "d: declared item not previewed: $out"
 grepq "$out" -F 'DRY: bash -c' && fail "d: a build/qmd/dep command was previewed: $out"
 grepq "$out" -F 'adopt.sh' && fail "d: adopt.sh was previewed: $out"
@@ -163,6 +164,7 @@ JSON
 echo '{"schemaVersion":1,"harness":"claude","targets":{}}' > "$cache/state.json"
 : > "$STUB_LOG"
 rc=0; out=$(run_ensure "$t" "$repo_root" --no-network --profile all --dry-run) || rc=$?
+[ "$rc" -eq 1 ] || fail "e: shipped manifest dry-run with refusals must exit 1 (rc=$rc): $out"
 [ -z "$(stub_calls)" ] || fail "e: a network-capable stub was called: $(stub_calls)"
 for bad in 'DRY: bash -c' 'adopt.sh' 'setup.sh' 'install-plugins.sh' 'DRY: sudo' 'apt-get' 'bun ' 'npm '; do
   grepq "$out" -F "$bad" && fail "e: network-capable command previewed ($bad): $out"
