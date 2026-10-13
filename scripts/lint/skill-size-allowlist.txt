@@ -1,0 +1,9 @@
+# skill-lint size-check allowlist (HIMMEL-5513).
+# One `<repo-relative path><TAB><reason>` per line; `#` starts a comment.
+# An entry exempts the body from [size-warn] and [size-fail]. Add one only for
+# an upstream-owned body (trimming it just drifts from upstream) or a body
+# another ticket is already splitting; himmel-owned bodies get trimmed.
+.claude/commands/pr-check.md	owned by HIMMEL-5509 (driver split in flight)
+marketplace/plugins/lean-skills/skills/subagent-driven-development/SKILL.md	upstream-owned fork (superpowers), see marketplace/plugins/lean-skills/VENDORED.md
+marketplace/plugins/lean-skills/skills/writing-skills/SKILL.md	upstream-owned fork (superpowers), see marketplace/plugins/lean-skills/VENDORED.md
+marketplace/plugins/lean-skills/skills/executing-plans/SKILL.md	upstream-owned fork (superpowers), see marketplace/plugins/lean-skills/VENDORED.md

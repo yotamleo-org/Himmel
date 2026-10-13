@@ -47,7 +47,7 @@ function planHtml(k, p) {
     const typed = p.consent && p.consent.kind === "typed";
     const ok = !typed || p.typed === p.consent.expect;
     return `<div class="plan"><div class="ro">dry-run · nothing has changed</div><pre>$ ${esc(p.command)}\n${esc(p.output)}</pre>
-      ${p.bank && p.bank !== "none" ? `<div class="ro">bank: ${esc(p.bank)}</div>` : ""}<div class="ro">takes effect: ${esc(p.effect)}</div>
+      ${p.bank && p.bank !== "none" ? `<div class="ro">usage budget: ${esc(p.bank)}</div>` : ""}<div class="ro">takes effect: ${esc(p.effect)}</div>
       ${typed ? `<label>type <b>${esc(p.consent.expect)}</b> to confirm <input data-act="consent" ${dk} value="${esc(p.typed)}" autocomplete="off"></label>` : ""}
       <button class="btn primary" data-act="run" ${dk}${ok ? "" : " disabled"}>confirm</button>${cancel}
       <span class="ro">preview id expires in 5 min</span></div>`;

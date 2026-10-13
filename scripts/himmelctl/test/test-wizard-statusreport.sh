@@ -1146,4 +1146,52 @@ echo "$outL" | jq -e '.bareTildeNoSep == .inputBareTildeNoSep' >/dev/null \
   || fail "case l: a bare ~something (no separator) must still fall through unexpanded — expandHome's own header comment documents this as deliberate (got: $outL)"
 echo "ok: case l — expandHome() direct unit coverage (platform-neutral: every expectation built via Node's own path.join, none hand-assembled with / or \\): ~\\ now resolves to real nested directory segments; ~/, bare ~, a non-tilde path, and a bare ~something all stay byte-identical to before"
 
+# ── case m (HIMMEL-4285): an UNARMED doctor-cadence reads n/a (opt-in), never
+# red. The row is profiles:["core","all"] so it is desired broadly; doctor-
+# cadence.sh refuses to arm on Windows, so a red there could never be cleared.
+caseM_dir="$work/caseM-target"; mkdir -p "$caseM_dir"
+homeM="$work/homeM"; mkdir -p "$homeM"
+cacheM="$work/cacheM"; mkdir -p "$cacheM"
+emptyM="$work/emptyM-runners"; mkdir -p "$emptyM"
+manifestM="$work/manifestM.json"
+cat > "$manifestM" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "doctor-cadence",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "DOCTORCAD_RUNNER_DIR", "defaultSubdir": ".claude/doctor-cadence" }
+    }
+  ]
+}
+JSON
+MANIFEST_M_PATH="$(winpath "$manifestM")"
+export MANIFEST_M_PATH
+outM=$(cd "$caseM_dir" && HOME="$homeM" USERPROFILE="$(winpath "$homeM")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheM")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheM")-luna-config.json" HIMMELCTL_REPO_ROOT="$(winpath "$repo_root")" DOCTORCAD_RUNNER_DIR="$(winpath "$emptyM")" "$node_bin" -e "
+const { statusReport } = require(process.env.STATUS_REPORT_LIB);
+const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_M_PATH, 'utf8'));
+const answers = {
+  role: 'adopter', tier: 'standard', scope: 'user',
+  vault: { mode: 'none', path: '' },
+  handover: { mode: 'none', path: '' },
+  pluginSet: 'lean', lanes: [], alwaysOn: false,
+};
+const report = statusReport({ manifest, scope: 'user', targetPath: process.cwd(), answers });
+console.log(JSON.stringify(report));
+")
+echo "$outM" | jq -e '.items[0].actual == "absent"' >/dev/null \
+  || fail "case m: unarmed doctor-cadence probe.actual should be absent (got: $outM)"
+echo "$outM" | jq -e '.items[0].severity == "n/a"' >/dev/null \
+  || fail "case m: unarmed doctor-cadence must downgrade to n/a, not red (got: $outM)"
+echo "$outM" | jq -e '.items[0].detail | test("opt-in"; "i")' >/dev/null \
+  || fail "case m: doctor-cadence n/a detail should name it as opt-in (got: $outM)"
+echo "$outM" | jq -e '.summary.red == 0' >/dev/null \
+  || fail "case m: unarmed doctor-cadence must not count toward summary.red (got: $outM)"
+echo "ok: case m — an unarmed doctor-cadence reads n/a (opt-in), never red"
+
 echo "PASS"

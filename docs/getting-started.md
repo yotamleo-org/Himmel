@@ -94,7 +94,7 @@ workflow on a real branch (≈15 min). Optional, but the best way to build trust
 what each guard does.
 
 Going unattended later: `/overnight-shift --limit 5` dispatches scoped tickets as
-parallel agents that open PRs while you sleep ([overnight mode](handover/overnight-mode.md)).
+parallel agents that open PRs while you sleep ([AFK (unattended) mode](handover/overnight-mode.md)).
 
 ## Initiative mode + planning pipelines
 
@@ -105,20 +105,20 @@ Two optional accelerators sit on top of the loop. Both are opt-in.
 When set, each session proactively drives finished work toward shipping at
 *natural completion points* (a logical chunk is done **and** verified), instead
 of waiting for you to say "ship it" each time. In the default (interactive)
-profile, the `all` master switch runs four legs, in order:
+profile, the `all` master switch runs four auto-ship steps, in order:
 
 1. **`prcheck`** — run `/pr-check` and loop until the review is clean.
 2. **`pr`** — open or refresh the PR.
 3. **`ticket`** — transition the Jira ticket.
 4. **`handover`** — write the handover.
 
-> **Merging is opt-in, never a surprise.** None of the four interactive legs
-> merges. The full grammar does include `merge` and `public` legs — used by
+> **Merging is opt-in, never a surprise.** None of the four interactive auto-ship steps
+> merges. The full grammar does include `merge` and `public` auto-ship steps — used by
 > the overnight profile or an explicit subset. Know exactly what `merge`
-> means before enabling it: **the leg itself authorizes an autonomous private
+> means before enabling it: **the auto-ship step itself authorizes an autonomous private
 > merge** — `ARMAUTOMERGE` only selects *which* merge path it takes (the
-> CI-certified chokepoint vs a plain squash-merge), it is not an extra on/off
-> gate. The off switch is simply not enabling the leg. The `public` leg stops
+> CI-certified sanctioned script vs a plain squash-merge), it is not an extra on/off
+> gate. The off switch is simply not enabling the step. The `public` auto-ship step stops
 > at PR-ready; the public merge always stays a human action. See
 > [configuration.md](configuration.md) for the complete grammar and gate
 > conditions. The directive also can't relax any safety rail — every gate in
@@ -134,16 +134,16 @@ HIMMEL_INITIATIVE=all claude        # the four interactive legs
 HIMMEL_INITIATIVE=prcheck,pr claude # just CR + open the PR
 ```
 
-Grammar: a master switch `1`/`true`/`on`/`yes`/`all` (= the four legs above),
+Grammar: a master switch `1`/`true`/`on`/`yes`/`all` (= the four auto-ship steps above),
 or a comma-separated subset of the full vocabulary
 `plan,execute,prcheck,pr,ticket,merge,public,handover`. Case-insensitive,
 whitespace-tolerant; an unset/falsy/typo value is **OFF** (the default), a
 byte-identical no-op. A separate overnight profile (`HIMMEL_OVERNIGHT` +
-`HIMMEL_INITIATIVE_OVERNIGHT`) widens `all` to six legs for unattended runs —
-grammar, per-leg semantics, and profiles:
+`HIMMEL_INITIATIVE_OVERNIGHT`) widens `all` to six auto-ship steps for unattended runs —
+grammar, per-step semantics, and profiles:
 [configuration.md](configuration.md).
 
-**Most people should leave the aggressive legs OFF.** Default is OFF for a
+**Most people should leave the aggressive auto-ship steps OFF.** Default is OFF for a
 reason — auto-opening PRs and transitioning tickets is a lot of initiative. If
 you want some of it, start conservative (`prcheck`, or `prcheck,handover`) and
 reserve `all` (or the overnight profile) for trusted/overnight contexts.
@@ -202,10 +202,10 @@ guard is yours to lift:
   Jira CLI talks only to your own Atlassian site. The exceptions, all
   switchable: a throttled session-start update check (a plain `git fetch` of
   your own himmel clone's remote, no data sent — `UPDATE_CHECK_DISABLE=1`);
-  the usage-cap watchdog, which schedules a local session relaunch when a cap
+  the usage-cap auto-relaunch, which schedules a local session relaunch when a cap
   approaches (`AUTO_ARM_DISABLE=1`); and `/pr-check`'s external review
   critics, which run only where you configured their lane — `CR_PROFILE=none`
-  forces a Claude-only review with no external spend. The full map:
+  forces a Claude-only automated review with no external spend. The full map:
   [configuration.md](configuration.md).
 
 ## Where to go next

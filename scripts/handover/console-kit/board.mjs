@@ -494,7 +494,7 @@ const cloudPanel = (() => {
 // field but until/standing; not part of the fingerprint; never fatal.
 const BANK_LIFT_BIN = process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'bank-lift.sh');
 const bankLiftLine = (() => {
-    const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">bank lift: ${text}</p>`;
+    const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">weekly budget override: ${text}</p>`;
     try {
         let out = '';
         try {
@@ -549,7 +549,7 @@ const costSection = (() => {
         const fmt = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v)));
         const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
         const per = Object.keys(byClass).sort().map((c) => `${safe(c, 20)} ${fmt(median(byClass[c]))}`).join(', ');
-        return `<section data-cost-legs="${n}"><h2>Cost today</h2><p class="sub">${n} leg${n === 1 ? '' : 's'} · ${fmt(total)} cost-eq · median ${per}</p></section>`;
+        return `<section data-cost-legs="${n}"><h2>Cost today</h2><p class="sub">${n} worker session${n === 1 ? '' : 's'} · ${fmt(total)} cost-eq · median ${per}</p></section>`;
     } catch { return ''; }
 })();
 
@@ -610,7 +610,7 @@ const failuresSection = (() => {
         const toolHealth = readToolHealth(process.env, new URLSearchParams({ since: start }));
         const rates = toolHealth.class_rates || {}, counts = toolHealth.class_counts || {};
         const tr = sorted.map(([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.legs.size}</td><td>${c.events}</td><td>${typeof rates[cls] === 'number' && counts[cls] === c.events ? `${(rates[cls] * 100).toFixed(1)} %` : '—'}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`).join('\n');
-        return `<section class="wide" data-failures="${sorted.length}">${title}<div class="tscroll"><table><tr><th>class</th><th>legs</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>\n${tr}\n</table></div>${inboxLine}</section>`;
+        return `<section class="wide" data-failures="${sorted.length}">${title}<div class="tscroll"><table><tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>\n${tr}\n</table></div>${inboxLine}</section>`;
     } catch { return unavailable; }
 })();
 
@@ -641,7 +641,7 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Console Board</title>
+<title>Supervisor Session Board</title>
 ${fp ? `<meta name="console-board-fp" content="${fp}">` : ''}
 ${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}
 <style>
@@ -673,7 +673,7 @@ table { width:100%; border-collapse:collapse; font-size:.85rem; } th, td { text-
 </head>
 <body>
 <main>
-<h1>Console Board</h1>
+<h1>Supervisor Session Board</h1>
 <p class="sub">${safe(consoleName)} · rendered ${stamp}${lastGo ? ` · last GO ${safe(lastGo)}` : ''}${queueLine ? ` · queue ${safe(queueLine)}` : ''}</p>
 ${fp ? '' : '<p class="banner">tick unavailable — this board has no state fingerprint and will read STALE until it is re-rendered.</p>'}
 ${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels unavailable — ${safe(labelFailure)}; the legs below may be missing or incomplete, not an empty fleet.</p>` : ''}
@@ -681,7 +681,7 @@ ${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels 
 <section>
 <h2>Fleet</h2>
 ${fleetOk ? `<div class="fleet" data-fleet="${fleetLive}/${fleetCap}">${fleetLive}<small>/${fleetCap} legs live</small></div>${idle ? `<div class="idle" data-idle="${idle}">${idle} idle slot${idle === 1 ? '' : 's'} — underfilled</div>` : ''}` : '<p class="none">fleet unavailable</p>'}
-<p class="sub">bank ${safe(field.bank || '?')} · gql ${safe(field.gql || '?')}</p>
+<p class="sub">subscription usage budget ${safe(field.bank || '?')} · gql ${safe(field.gql || '?')}</p>
 ${bankLiftLine}
 </section>
 <section>
@@ -693,17 +693,17 @@ ${ladder}
 ${costSection}
 ${failuresSection}
 ${flakesSection}
-${panel('Needs the console', needRows, 'nothing waiting on the console')}
+${panel('Needs the supervisor session', needRows, 'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
 <section class="wide">
-<h2>Legs</h2>
-${legs.length ? `<ul>${legs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'leg labels unavailable' : 'no legs'}</p>`}
+<h2>Worker sessions</h2>
+${legs.length ? `<ul>${legs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no worker sessions'}</p>`}
 </section>
 ${cloudPanel}
 ${panel('Open PRs', prRows, openPrs ? 'none open' : 'gh unavailable')}
 ${panel('Merged in the last 24 hours', mergedRows, mergedPrs ? 'none' : 'gh unavailable')}
-${panel('Console log — newest last', logRows, 'no Results yet')}
+${panel('Supervisor session log — newest last', logRows, 'no Results yet')}
 </div>
 </main>
 </body>

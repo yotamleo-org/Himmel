@@ -128,10 +128,10 @@ Slash command: `/handover-flush` (+ `--dry-run`, `--cleanup`,
 `--no-pr-open` flags). Smoke test:
 `bash scripts/handover/test-flush.sh` (14/14 pass).
 
-**Pre-push CR runs on `handover/*` branches:**
+**Pre-push automated review runs on `handover/*` branches:**
 The `code-review-before-push` pre-commit hook
 (`.pre-commit-config.yaml` lines 154–161) has no `handover/*` exclusion
-— intentional. Operator decision: CR runs as a sanity audit to catch
+— intentional. Operator decision: automated review runs as a sanity audit to catch
 accidental code edits sneaking into handover branches. The
 docs-only-skip already wired into
 `scripts/hooks/check-cr-before-push.sh` (line 115 filters out `.md`
@@ -139,9 +139,9 @@ docs-only-skip already wired into
 
 - Pure handover state diff (only `.md` / `handovers/*` files) →
   hook prints `handover-state-only change — skipping marker write`, exits 0.
-  No CR gate. Runtime effectively 0s.
+  No review gate. Runtime effectively 0s.
 - Mixed code + state diff (code creep into a handover branch) →
-  CR marker written; operator must run `/pr-check` (or
+  review-owed marker written; operator must run `/pr-check` (or
   `/pr-review-toolkit:review-pr`) before opening the PR.
 
 Smoke test: `bash scripts/hooks/test-check-cr-before-push.sh`
@@ -199,7 +199,7 @@ Consumed by `scripts/handover/auto-commit.sh`,
 
 `arm-resume.sh --automerge` opt-in wires `ARMAUTOMERGE=1` and
 `CR_MERGE_GATE_OK=1` into the relaunched session's environment, so an armed
-chain's `merge` leg can actually reach `merge-on-green.sh`; omitted (both
+chain's `merge` auto-ship step can actually reach `merge-on-green.sh`; omitted (both
 vars absent) by default.
 
 **The live-worker guard is scoped to the bridge root, not the caller**
@@ -207,7 +207,7 @@ vars absent) by default.
 Before arming, `arm-resume.sh` census-checks for live lane workers and
 refuses to arm (`rc=10`) while any are running or unprobeable — but that
 census reads a SHARED bridge root with no per-session scoping, so a second,
-unrelated concurrent chain's workers can block an arm that has nothing to
+unrelated concurrent ticket sequence's workers can block an arm that has nothing to
 do with them. `ARM_WITH_LIVE_WORKERS=1` bypasses the refusal (and the
 worker-reconciliation/list failure cases that hit the same code path) —
 trace the blocking pid up to its root process before reaching for the
@@ -235,8 +235,8 @@ stage, and the resolver REFUSES to silently degrade.
   `head_sha`, `completed[]`, `next_step`. Auto-detects the git facts from the
   `--cwd` repo. Emitted from the seams that already run between stages
   (`/overnight-shift` post-fanout step 7, `/pr-check`, the handover writer) —
-  there is no per-leg dispatch runtime to hook (`inject-initiative.sh` is
-  SessionStart-only; the legs are self-paced prose).
+  there is no per-step dispatch runtime to hook (`inject-initiative.sh` is
+  SessionStart-only; the auto-ship steps are self-paced prose).
 - **`resolve`** — on resume, classifies the stop-point:
   - **FRESH** (`exit 0`) — breadcrumb's `head_sha` == current `HEAD` →
     deterministic resume; prints the recorded `next_step` + `completed`.
@@ -256,41 +256,41 @@ flagged recovery; valid → deterministic).
 
 ## Operator-gated wrap + resume briefs
 
-On 2026-09-01 a leg sat idle for ~1.5h waiting on an operator settings edit,
-holding its queue lock and burning its prompt cache, until the console woke
-it (a cold re-prime) just to produce a state summary the console could have
+On 2026-09-01 a worker session sat idle for ~1.5h waiting on an operator settings edit,
+holding its queue lock and burning its prompt cache, until the supervisor session woke
+it (a cold re-prime) just to produce a state summary the supervisor session could have
 written from git. The `## Operator-Gated Wrap` clause now carried verbatim in
 every `*-next-session.md` template (`marketplace/plugins/handover/templates/`,
 asserted byte-identical by `scripts/handover/test-template-operator-gated-clause.sh`)
-tells a leg to wrap at once when its only remaining dependency is an operator
+tells a worker session to wrap at once when its only remaining dependency is an operator
 action: append a resume brief, release the queue lock, and end the turn
 instead of idle-waiting.
 
 **Console Rulings clause:** the same templates also carry a
 `## Console Rulings` clause, asserted byte-identical by the same test suite,
-prefacing every leg brief with how rulings actually reach it — a claudex leg
-via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native leg
+prefacing every worker session brief with how rulings actually reach it — a claudex worker session
+via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native worker session
 via a direct `SendMessage` — so the doc's own `## Console Rulings` section is
-what a leg checks, not something it idle-waits or gets pasted. See
+what a worker session checks, not something it idle-waits or gets pasted. See
 [`lane-calibration.md`](lane-calibration.md#non-claude-lane-calibration)'s
 "claudex console reachability" note for the delivery mechanism itself.
 
 `scripts/handover/leg-resume-brief.sh <leg-doc> [--branch <name>] [--repo <path>] [--dry-run]`
-is the console-side half of that clause: it reconstructs everything about a
-leg's state that git already knows (worktree path, `git status --short`,
+is the supervisor-session-side half of that clause: it reconstructs everything about a
+worker session's state that git already knows (worktree path, `git status --short`,
 merge-base + head SHAs and their subjects, dirty paths) and appends a
-`## RESUME BRIEF (generated ...)` section to the leg's own handover doc,
+`## RESUME BRIEF (generated ...)` section to the worker session's own handover doc,
 never rewriting or truncating it. The branch is read from `--branch` or
 inferred from a single `feat/`|`fix/`|`chore/`|`docs/`|`refactor/`|`test/`
 token in the doc body (ambiguous or absent → exit 2, pass `--branch`
-explicitly). `--repo` overrides the script's own repo, for a leg that
+explicitly). `--repo` overrides the script's own repo, for a worker session that
 lives in another repository. The ordered remaining steps are deliberately NOT filled in —
-they live only in the leg's own reasoning, so the script emits a TODO block
+they live only in the worker session's own reasoning, so the script emits a TODO block
 instead of inventing them.
 
-The rule this encodes: **wake a cold leg only when its private context is
-the only source of a fact.** Anything git-recoverable is the console's job to
-write from git directly; only the leg's own un-externalized reasoning (the
+The rule this encodes: **wake a cold worker session only when its private context is
+the only source of a fact.** Anything git-recoverable is the supervisor session's job to
+write from git directly; only the worker session's own un-externalized reasoning (the
 ordered next steps, judgment calls made mid-session) ever justifies paying
 for a fresh cold-start. Test: `bash scripts/handover/test-leg-resume-brief.sh`.
 

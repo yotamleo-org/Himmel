@@ -2,7 +2,7 @@
 // HIMMEL-4925: the menu is one collapsible block, closed by default at phone width so the fleet is the first screen.
 // Its filters (lane, state, text, finished inline) narrow every section of the fleet page and are kept per viewer;
 // each live console shows its running / waiting / attention / orphan counts, and finished consoles fold under them.
-import { consoleGroups, EMPTY_FILTERS, filtering, orphanReason, rowHref, useFilters, useOpen, visibleRows, type FleetState, type Row, type ViewFilters } from "./Fleet";
+import { consoleGroups, EMPTY_FILTERS, filtering, orphanReason, roleLabel, rowHref, useFilters, useOpen, visibleRows, type FleetState, type Row, type ViewFilters } from "./Fleet";
 import { filterCount, fleetSections, isLive, NO_FILTERS, type ProcessOrphan } from "./fleet-model";
 import { consoleHash } from "./stream";
 
@@ -27,7 +27,7 @@ function FilterBlock({ rows, procs }: { rows: Row[]; procs: ProcessOrphan[] | nu
     <button type="button" key={v} className={`fleet-chip-btn${on ? " on" : ""}`} aria-pressed={on} onClick={() => set(flip(f))}>{label}{v in n && <span className="fleet-count">{n[v]}</span>}</button>;
   return <div className="fleet-filters" role="group" aria-label="Filters">
     <h2>Filter</h2>
-    <input className="fleet-search" type="search" value={f.text} placeholder="ticket, leg id or slug" aria-label="Filter by ticket, leg id or slug"
+    <input className="fleet-search" type="search" value={f.text} placeholder="ticket, worker-session id or slug" aria-label="Filter by ticket, worker-session id or slug"
       onChange={(e) => set({ ...f, text: e.currentTarget.value })} />
     <div className="fleet-chips" aria-label="Lane">{LANES.map((l) => chip(l, l, f.lanes.includes(l), (x) => ({ ...x, lanes: toggle(x.lanes, l) })))}</div>
     <div className="fleet-chips" aria-label="State">{STATES.map(([v, label]) => chip(v, label, f.states.includes(v), (x) => ({ ...x, states: toggle(x.states, v) })))}</div>
@@ -53,19 +53,19 @@ export function FleetMenu({ state, token, selected }: { state: FleetState; token
     <summary><a className="console-page" href={consoleHash(token, g.console.name)} aria-current={selected === g.console.name ? "page" : undefined}>{g.console.name}</a></summary>
     {isLive(g.console) && <small className="fleet-console-counts">{counts(g.console.name)}</small>}
     <SessionLink row={g.console} token={token} />
-    <ul>{g.rows.filter((r) => r.state !== "wrapped").map((r) => <li key={r.name}><SessionLink row={r} token={token} /><small>{r.role} · {r.lane ?? "native"}</small></li>)}</ul>
+    <ul>{g.rows.filter((r) => r.state !== "wrapped").map((r) => <li key={r.name}><SessionLink row={r} token={token} /><small>{roleLabel(r.role)} · {r.lane ?? "native"}</small></li>)}</ul>
     {g.rows.some((r) => r.state === "wrapped") && <details className="fleet-menu-wrapped"><summary>Wrapped</summary>
       <ul>{g.rows.filter((r) => r.state === "wrapped").map((r) => <li key={r.name}><SessionLink row={r} token={token} /></li>)}</ul>
     </details>}
   </details>;
-  return <nav className="fleet-menu" aria-label="Consoles">
+  return <nav className="fleet-menu" aria-label="Supervisor sessions">
     <details className="fleet-menu-all" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary><h2>{`Filters · Consoles (${live.length} running · ${done.length} finished)`}</h2>
+      <summary><h2>{`Filters · Supervisor sessions (${live.length} running · ${done.length} finished)`}</h2>
         {all.counts.orphaned > 0 && <span className="fleet-orphan-count">{` · ${all.counts.orphaned} orphaned`}</span>}</summary>
       <FilterBlock rows={sessions} procs={state.fleet?.processOrphans} />
-      <h2>Consoles</h2>
+      <h2>Supervisor sessions</h2>
       {live.map(group)}
-      {done.length > 0 && <details className="fleet-menu-finished"><summary>{`Finished consoles (${done.length})`}</summary>{done.map(group)}</details>}
+      {done.length > 0 && <details className="fleet-menu-finished"><summary>{`Finished supervisor sessions (${done.length})`}</summary>{done.map(group)}</details>}
       {ungroupedWrapped.length > 0 && <details className="fleet-menu-wrapped"><summary>Wrapped</summary>
         <ul>{ungroupedWrapped.map((r) => <li key={r.name}><SessionLink row={r} token={token} /></li>)}</ul>
       </details>}

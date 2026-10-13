@@ -24,7 +24,8 @@
 # It lives beside 4410's suite under scripts/testing/, off the scripts/lib trust path.
 #
 # Usage: bash scripts/testing/test-claude-mock-turn.sh
-# Exit: 0 all passed (a skipped case is named), 1 a case failed, 77 no claude CLI.
+# Exit: 0 all passed (a skipped case is named), 1 a case failed, 77 a prerequisite
+# is missing (no node on PATH, or no claude CLI) and nothing else failed.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +51,11 @@ trap '[ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null; rm -rf "$WORK"' EXIT
 jsq() { node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const v=eval(process.argv[2]);process.stdout.write(String(v))' "$1" "$2" 2>/dev/null; }
 # jsonl_q <file> <js-expression over `rows`>
 jsonl_q() { node -e 'const rows=require("fs").readFileSync(process.argv[1],"utf8").split("\n").filter(Boolean).map(l=>JSON.parse(l));const v=eval(process.argv[2]);process.stdout.write(String(v))' "$1" "$2" 2>/dev/null; }
+# M2 ordering: the turn-0 reply is the FIRST /v1/messages request and the turn-1 reply the SECOND,
+# so an unexpected request in between cannot pass (shared with the RED control in U5).
+M2_ORDER='const m=rows.filter(r=>r.path==="/v1/messages");m.length>=2&&m[0].turn===0&&m[1].turn===1'
+# rc_is_zero <file> — the recorded exit status is exactly 0 (shared with the RED control in U6).
+rc_is_zero() { [ "$(cat "$1" 2>/dev/null)" = 0 ]; }
 
 # ---- U: the mock alone, on the host loopback (it binds 127.0.0.1 only) ----
 echo "== U mock-anthropic alone =="
@@ -76,6 +82,16 @@ if [ "$CT" = '200 {"input_tokens":1}' ]; then pass "U2 count_tokens answers"; el
 NF=$(node -e 'fetch(process.argv[1]+"/v1/nope",{method:"GET"}).then(r=>process.stdout.write(String(r.status)))' "$BASE" 2>/dev/null)
 if [ "$NF" = 404 ] && [ "$(jsonl_q "$ULOG" 'rows.some(r=>r.path==="/v1/nope"&&r.status===404)')" = true ]; then pass "U3 unknown path: 404 and logged"; else fail "U3 404/log (status=$NF)"; fi
 kill "$MOCK_PID" 2>/dev/null; MOCK_PID=""
+# U5/U6 RED controls (HIMMEL-4457): the turn assertions' own expressions against synthetic input.
+printf '%s\n' '{"path":"/v1/messages","turn":0}' '{"path":"/v1/messages","turn":1}' >"$WORK/order-ok.log"
+printf '%s\n' '{"path":"/v1/messages","turn":0}' '{"path":"/v1/messages","turn":null}' '{"path":"/v1/messages","turn":1}' >"$WORK/order-extra.log"
+if [ "$(jsonl_q "$WORK/order-ok.log" "$M2_ORDER")" = true ] && [ "$(jsonl_q "$WORK/order-extra.log" "$M2_ORDER")" = false ]; then
+  pass "U5 M2 ordering passes turn0,turn1 and fails an extra request inserted before turn 1"
+else fail "U5 M2 ordering expression is vacuous or wrong"; fi
+echo 0 >"$WORK/rc-ok"; echo 1 >"$WORK/rc-bad"
+if rc_is_zero "$WORK/rc-ok" && ! rc_is_zero "$WORK/rc-bad" && ! rc_is_zero "$WORK/rc-missing"; then
+  pass "U6 H rc check passes 0 and fails a nonzero or missing rc"
+else fail "U6 H rc check is vacuous or wrong"; fi
 
 # ---- N: the ANTHROPIC_* strip seam ----
 echo "== N native-auth-pin test seam =="
@@ -143,6 +159,9 @@ else fail "M2 turn counts in $RLOG"; fi
 if [ -s "$RLOG" ] && [ "$(jsonl_q "$RLOG" 'const t=rows.find(r=>r.turn===1);t.body.messages.some(m=>m.role==="user"&&Array.isArray(m.content)&&m.content.some(c=>c.type==="tool_result"&&JSON.stringify(c.content).includes("mock-tool-output-4411")))')" = true ]; then
   pass "M2 second request carried the tool_result with the command's real output"
 else fail "M2 no tool_result round trip in the request log"; fi
+if [ -s "$RLOG" ] && [ "$(jsonl_q "$RLOG" "$M2_ORDER")" = true ]; then
+  pass "M2 the turn-1 request is the second /v1/messages request (nothing in between)"
+else fail "M2 turn-1 request is not the second /v1/messages request in $RLOG"; fi
 TJ=$(find "$WORK/turn/cfg/projects" -name '*.jsonl' 2>/dev/null | sed -n 1p)
 if [ -n "$TJ" ] && [ "$(jsonl_q "$TJ" 'const s=JSON.stringify(rows);s.includes("\"type\":\"tool_use\"")&&s.includes("\"name\":\"Bash\"")&&s.includes("\"type\":\"tool_result\"")&&s.includes("mock-tool-output-4411")')" = true ]; then
   pass "M3 transcript JSONL holds the Bash tool_use and its tool_result"
@@ -206,6 +225,7 @@ HEOF
   if [ -s "$H/mock.log" ] && [ "$(jsonl_q "$H/mock.log" 'rows.filter(r=>r.path==="/v1/messages").length>=2&&rows.filter(r=>r.path==="/v1/messages").every(r=>r.body&&r.body.model&&r.body.model!=="canary-model-must-be-stripped")')" = true ]; then
     pass "H2 the pin stripped the ANTHROPIC_DEFAULT_SONNET_MODEL canary (--model sonnet resolved to a real model) while the seam kept the loopback base URL (mock saw the turns)"
   else fail "H2 request log missing or the canary model leaked"; fi
+  if rc_is_zero "$H/headless.rc"; then pass "H3 the wrapper exited 0"; else fail "H3 wrapper rc=$(cat "$H/headless.rc" 2>/dev/null || echo missing): $(head -c 300 "$H/headless.err" 2>/dev/null)"; fi
   fi
 else
   skip "H no jq on PATH (claude-headless.sh needs it)"
