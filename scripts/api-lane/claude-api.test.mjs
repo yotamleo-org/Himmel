@@ -517,8 +517,10 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
   let second;
   try {
     const until = Date.now() + 15000;
-    while (!existsSync(f.paths.env) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
-    assert.equal(existsSync(f.paths.env), true, 'first call never reached the stub');
+    // The stub creates the env file before it writes ppid/resv_pid, so wait for both fields.
+    const complete = () => existsSync(f.paths.env) && /^resv_pid=\d+$/m.test(readFileSync(f.paths.env, 'utf8'));
+    while (!complete() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(complete(), true, 'first call never reached the stub');
     // The reservation names the launcher shell that waits on claude, not a dead subshell.
     const seen = readFileSync(f.paths.env, 'utf8');
     const ppid = /^ppid=(\d+)$/m.exec(seen)[1];

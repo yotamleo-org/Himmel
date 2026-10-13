@@ -137,8 +137,8 @@ for v in $(compgen -e); do
   case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
 done
 
-OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 # Release the fleet-slot reservation at call end, only when its pid file names this shell.
+# The trap is installed straight after admission so no later refusal can strand the slot.
 # shellcheck disable=SC2329 # invoked from the EXIT trap string below
 release_slot() {
   # shellcheck source=scripts/lib/fleet-reservation-key.sh
@@ -150,7 +150,9 @@ release_slot() {
   done
   return 0
 }
+OUT=""
 trap 'rm -f "$OUT"; release_slot' EXIT
+OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
