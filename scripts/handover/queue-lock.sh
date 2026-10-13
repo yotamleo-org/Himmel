@@ -159,7 +159,9 @@
 #              11 held, FRESH (owner.json printed to stdout; a CORRUPT
 #                 lock dir -- owner.json missing/unreadable -- also
 #                 reports 11, fail-closed, and SAYS it is corrupt)
-#              12 held, STALE -- eligible for takeover (owner.json printed)
+#              12 held, STALE -- eligible for takeover (owner.json printed);
+#                 `status: STALE-DEAD` (HIMMEL-5541) is the same rc 12 when
+#                 the owner is PROVABLY dead (see _ql_owner_provably_dead)
 #   self-heartbeat (HIMMEL-2318): ALWAYS 0, and silent on stdout and stderr --
 #              it is a hook, so every failure (no scope, no registered lock,
 #              a refused heartbeat, garbage stdin) degrades to a no-op
@@ -259,6 +261,12 @@ status --sweep (HIMMEL-2369) enumerates every held lock under a handover
 ROOT's .locks/queue/ in one shot, flagging any whose heartbeat exceeds
 QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700s, HIMMEL-2381) as IDLE-HELD?.
 Exit 20 if anything is flagged, 0 otherwise (including "no held locks").
+A lock past the TTL whose owner is provably dead (HIMMEL-5541: this host, a
+<host>-pid<N> token with no live pid N, no live claude process naming the doc)
+reads status=STALE-DEAD -- not a held lock for the console stop guard or the
+tick. `status --sweep --reap-dead [<root>]` releases ONLY those, logging each to
+<root>/.locks/queue/takeovers.log; a lock whose owner cannot be proven dead is
+never reaped, whatever its age.
 
 self-heartbeat (HIMMEL-2318) is the hook verb: it refreshes the heartbeat of
 the locks the calling session acquired (throttled by
@@ -880,6 +888,48 @@ _ql_lock_is_fresh() {
     [ -n "$hb_epoch" ] && [ -n "$now_epoch" ] || return 0
     [ $((now_epoch - hb_epoch)) -lt "$ttl" ] && return 0
     _ql_holder_live "$1" "$ttl"
+}
+
+# _ql_owner_provably_dead <lockdir> <ttl> -- HIMMEL-5541: rc 0 ONLY on positive
+# proof that the holder is gone, never on the absence of evidence. Every one of
+# these must hold: owner.json names THIS host; the session token is exactly
+# <host>-pid<N> with N digits; no live pid N (kill -0 then ps -p, so an EPERM
+# pid reads alive); the liveness probe (_ql_holder_live) does not keep it
+# alive; and no live claude process names the lock's doc (the session name is
+# the doc's stem, which is on the claude command line). A missing census, an
+# unreadable field or another host is rc 1 (not proven), so the reap can only
+# ever release a lock whose owner is demonstrably dead.
+# ponytail: the token's pid is the acquiring shell, which dies with its Bash call, so pid-gone alone proves nothing -- the claude-process-names-the-doc check carries the proof, upgrade path: record the claude pid in owner.json when the harness exposes it
+_ql_owner_provably_dead() {
+    local lk="$1" ttl="$2" host session pid doc stem procs line cpid cargs
+    [ -f "$lk/owner.json" ] || return 1
+    host=$(_ql_json_field "$lk/owner.json" host)
+    [ -n "$host" ] && [ "$host" = "$(_ql_hostname)" ] || return 1
+    session=$(_ql_json_field "$lk/owner.json" session)
+    case "$session" in "$host"-pid*) pid="${session#"$host"-pid}" ;; *) return 1 ;; esac
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    command -v ps >/dev/null 2>&1 || return 1
+    kill -0 "$pid" 2>/dev/null && return 1
+    ps -p "$pid" >/dev/null 2>&1 && return 1
+    _ql_holder_live "$lk" "$ttl" && return 1
+    doc=$(_ql_json_field "$lk/owner.json" handover)
+    stem="${doc##*/}"
+    stem="${stem%.md}"
+    [ -n "$stem" ] || return 1
+    procs=$(ps -eo pid=,args= 2>/dev/null) || return 1
+    [ -n "$procs" ] || return 1
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        cpid="${line%% *}"
+        cargs="${line#* }"
+        [ "$cpid" = "$$" ] && continue
+        case "$cargs" in
+            claude\ *|*/claude\ *) case "$cargs" in *"$stem"*) return 1 ;; esac ;;
+        esac
+    done <<EOF
+$procs
+EOF
+    return 0
 }
 
 # _ql_scan_pick <canonical-doc> [skip-lockdir] -- print the lock dir that
@@ -2175,6 +2225,11 @@ queue_lock_status() {
     # sweep's own 0 / 20.
     if [ "$ho" = "--sweep" ]; then
         shift
+        _QL_SW_REAP=0
+        if [ "${1:-}" = "--reap-dead" ]; then
+            _QL_SW_REAP=1
+            shift
+        fi
         if [ "$#" -gt 1 ]; then
             echo "queue-lock: status --sweep takes at most one <handover-dir> operand (got $#) -- quote a path containing spaces" >&2
             _ql_usage >&2
@@ -2261,6 +2316,10 @@ queue_lock_status() {
         stale=0
         echo "WARN queue-lock: heartbeat age ${age}s is past the TTL (${ttl}s) but the holder's transcript on this host was written ${_QL_LIVE_AGE}s ago -- the holder is LIVE, reporting FRESH" >&2
     fi
+    if [ "$stale" -eq 1 ] && _ql_owner_provably_dead "$lockdir" "$ttl"; then
+        echo "status: STALE-DEAD (age ${age}s >= ttl ${ttl}s; owner pid gone, no live claude session names this doc)"
+        return 12
+    fi
     if [ "$stale" -eq 1 ]; then
         echo "status: STALE (age ${age}s >= ttl ${ttl}s)"
         return 12
@@ -2313,6 +2372,10 @@ queue_lock_status() {
 # contract a caller parses this output against.
 # status is one of:
 #   OK            -- held, heartbeat age below the idle-warn threshold
+#   STALE-DEAD    -- (HIMMEL-5541) heartbeat age >= QUEUE_LOCK_TTL_SECONDS AND
+#                    the owner is provably dead (_ql_owner_provably_dead).
+#                    Flagged (rc=20) until reaped; `--reap-dead` releases it
+#                    and prints reap=released (or reap=failed, still flagged).
 #   IDLE-HELD?    -- heartbeat age >= QUEUE_LOCK_IDLE_WARN_SECONDS (the SAME
 #                    knob and comparison as the single-queue status
 #                    idle-warn; see _ql_idle_warn_threshold -- one
@@ -2454,7 +2517,8 @@ _ql_sweep_one_root() {
     local root="$1" sfx="$2"
     local qdir="$root/.locks/queue"
     [ -d "$qdir" ] || return 0
-    local idle_warn now_epoch
+    local idle_warn now_epoch ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
+    case "$ttl" in ''|*[!0-9]*) ttl=21600 ;; esac
     idle_warn=$(_ql_idle_warn_threshold)
     now_epoch=$(_ql_now_epoch)
     local found=0 flagged=0 lockdir slug
@@ -2514,7 +2578,25 @@ _ql_sweep_one_root() {
                 [ "$age" -lt 0 ] && age=0
             fi
         fi
-        if [ "$age" -ge 0 ] && [ "$age" -ge "$idle_warn" ]; then
+        if [ "$age" -ge 0 ] && [ "$age" -ge "$ttl" ] && _ql_owner_provably_dead "$lockdir" "$ttl"; then
+            # HIMMEL-5541: past the TTL with a provably dead owner. Not a held
+            # lock any more -- stop guard / tick skip it; --reap-dead releases it.
+            if [ "${_QL_SW_REAP:-0}" -eq 1 ]; then
+                printf '%s REAPED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
+                    "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
+                    >> "$qdir/takeovers.log" 2>/dev/null || true
+                rm -rf "$lockdir" 2>/dev/null
+                if [ -d "$lockdir" ]; then
+                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed$sfx"
+                    flagged=1
+                else
+                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=released$sfx"
+                fi
+            else
+                echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD$sfx"
+                flagged=1
+            fi
+        elif [ "$age" -ge 0 ] && [ "$age" -ge "$idle_warn" ]; then
             echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=IDLE-HELD?$sfx"
             flagged=1
         elif [ "$age" -ge 0 ]; then

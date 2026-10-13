@@ -70,6 +70,7 @@ case "$1" in
     # HIMMEL-4670 P4: a held console lock prints its owner.json (started = the shift start).
     case "$2" in *console-fails*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-07T03:00:00Z","heartbeat":"2026-10-07T03:10:00Z"}' 'status: FRESH'; exit 11 ;; esac
     case "$2" in *N61*|*-N1-*|*-N2-*|*-N191-*|*-leg192-*|*-legN194-*|*odd-name*|*-N301-*|*-N302-*|*-N303-*) printf '%s\n' 'status: FRESH'; exit 11 ;;
+    *-N390-*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-01T00:00:00Z","heartbeat":"2026-10-01T00:00:00Z"}' 'status: STALE-DEAD (age 99999s >= ttl 21600s; owner pid gone, no live claude session names this doc)'; exit 12 ;;
     *-N380-*) printf '%s\n' 'held -- UNVERIFIED lock: /r/.locks/queue/x.lock is named for this doc but records /elsewhere/x.md, which does not resolve here'; exit 11 ;; *) printf '%s\n' free; exit 0 ;; esac ;;
 esac
 exit 2
@@ -1357,6 +1358,16 @@ contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail
 u3290="HIMMEL-3380-N380-unverified-2026-09-22-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$u3290.md"
 contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --legs "$W/handover/$u3290.md" 2>/dev/null)" 'legs=N380:UNVERIFIED '
+
+# --- HIMMEL-5541: a past-TTL lock whose owner is provably dead (status
+# `STALE-DEAD`, rc 12) reads STALE-DEAD and is NOT a held leg: it must not
+# fold into the FRESH/STALE held set. RED control (pre-fix tick.sh):
+# legs=N390:STALE.
+d5541="HIMMEL-5541-N390-stale-dead-2026-10-01-RESUME"
+printf '%s\n' '# leg' '- 12:00 LIVE — working' > "$W/handover/$d5541.md"
+out5541="$(bash "$SUT" --legs "$W/handover/$d5541.md" 2>/dev/null)"
+contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'legs=N390:STALE-DEAD '
+not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'legs=N390:STALE '
 
 # --- HIMMEL-3361: board=<ok|STALE:<age>|MISSING|skip> -- the console's progress
 # board (console-board.html, written by board.mjs next to the console doc) must be

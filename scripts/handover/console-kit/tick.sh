@@ -419,6 +419,7 @@ for leg in $LEGS_SPLIT; do
             lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$leg_doc" 2>&1)" || true
             case "$lock_out" in
                 *'status: FRESH'*) lock_status=FRESH ;;
+                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;   # HIMMEL-5541: not held; held_legs / held_n skip it
                 *'status: STALE'*) lock_status=STALE ;;
                 *UNVERIFIED*) lock_status=UNVERIFIED ;;
                 free*) lock_status=FREE ;;
