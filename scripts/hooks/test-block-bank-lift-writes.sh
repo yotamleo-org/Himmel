@@ -1681,6 +1681,14 @@ env_row "5348 sed w \${#}"                               deny  "OTHER=1" 'sed -n
 env_row "5348 sed w \${\$}"                              deny  "OTHER=1" 'sed -n "w ${$}" /tmp/x'
 env_row "5348 sed w \${-}"                               deny  "OTHER=1" 'sed -n "w ${-}" /tmp/x'
 env_row "5348 sed w \${0}"                               deny  "OTHER=1" 'sed -n "w ${0}" /tmp/x'
+# j2479c: `--` ends sed's options, so every later word is an operand.
+env_row "5348 sed -i -- s/a/b/ -e \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -e "$V"'
+env_row "5348 sed -i -- s/a/b/ -f \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -f "$V"'
+env_row "5348 sed -i -- s/a/b/ -l \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -l "$V"'
+env_row "5348 sed -i -- s/a/b/ /tmp/x (ctrl)"            allow "V=$LIFT" 'sed -i -- s/a/b/ /tmp/x'
+# j2479c: the --expr prefix branch with the lift only in the env (the
+# literal-path row above is caught by the mention gate whatever the parser).
+env_row "5348 sed -n --expr=\"w \$V\", V = lift"          deny  "V=$LIFT" 'sed -n --expr="w $V" /tmp/x'
 # j2479a B2 (HIMMEL-5326): sort -o attached, clustered and abbreviated, and
 # cp/mv/install --t= target directory.
 env_row "5348 sort -o\"\$V\" attached"                   deny  "V=$LIFT" 'sort -o"$V" /tmp/y'

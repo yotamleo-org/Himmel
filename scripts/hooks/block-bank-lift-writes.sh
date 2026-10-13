@@ -1177,15 +1177,18 @@ SED_E_RE='(^|[[:space:];{}!/0-9$])e([[:space:]]|$)'
 # --expression value, else the first operand; -f files are not read.
 check_sed_scripts() {
     local -a scripts=() ops=()
-    local a nx="" have=0 rest ch line p cand low nm
+    local a nx="" have=0 eoo=0 rest ch line p cand low nm
     SED_FAILCLOSED=0
     for a in "$@"; do
         case "$nx" in
             e) scripts+=("$a"); nx=""; continue ;;
             skip) nx=""; continue ;;
         esac
+        # j2479c: after `--` every word is an operand (getopt), dashes too.
+        if [ "$eoo" = 1 ]; then ops+=("$a"); continue; fi
         case "$a" in
-            --|-) ;;
+            --) eoo=1 ;;
+            -) ;;
             --*)
                 # j2479b: GNU sed takes any unambiguous abbreviation; --e* is
                 # --expression, --fi* is --file. Any other long option not
@@ -2194,7 +2197,6 @@ check_clause() {
             # operand keeps the literal check it had before the resolver.
             if [ "$inplace" = 1 ]; then
                 for a in ${SED_FILES[@]+"${SED_FILES[@]}"}; do
-                    case "$a" in -*) continue ;; esac
                     is_lift_dest "$a" && deny "sed -i edits the bank lift ($a)$DEST_WHY"
                 done
                 [ -n "$SED_SCRIPT_OP" ] && is_lift "$SED_SCRIPT_OP" && deny "sed -i edits the bank lift ($SED_SCRIPT_OP)"
