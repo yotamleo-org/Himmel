@@ -52,5 +52,13 @@ check "a null or timezone-less ts is skipped or read, never a crash" '[ "$brc" =
 python3 "$SR" --ledger "$TMP/none.jsonl" >"$TMP/miss.out" 2>&1; mrc=$?
 check "a missing ledger exits 2 with a message" '[ "$mrc" = 2 ] && grep -q "cannot read" "$TMP/miss.out"'
 
+printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":{"x":1},"count":1}' >"$TMP/leg.jsonl"
+python3 "$SR" --ledger "$TMP/leg.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/leg.out" 2>&1; lrc=$?
+check "a non-string leg is skipped, not a crash" '[ "$lrc" = 0 ] && grep -q "skipped=1" "$TMP/leg.out"'
+python3 "$SR" --ledger "$FX" --now not-a-date >"$TMP/now.out" 2>&1; nrc=$?
+check "an invalid --now is a usage error (exit 2)" '[ "$nrc" = 2 ]'
+python3 "$SR" --ledger "$FX" --top -1 >"$TMP/neg.out" 2>&1; trc=$?
+check "a non-positive --top is a usage error (exit 2)" '[ "$trc" = 2 ]'
+
 echo "test-session-retro: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

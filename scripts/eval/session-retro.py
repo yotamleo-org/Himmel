@@ -34,17 +34,31 @@ def parse_ts(s):
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def parse_now(s):
+    try:
+        return parse_ts(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError("not an ISO 8601 timestamp: %r" % s)
+
+
+def positive_int(s):
+    n = int(s)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be at least 1: %r" % s)
+    return n
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ledger")
     ap.add_argument("--days", type=int, default=7)
-    ap.add_argument("--now")
-    ap.add_argument("--top", type=int, default=5)
+    ap.add_argument("--now", type=parse_now)
+    ap.add_argument("--top", type=positive_int, default=5)
     ap.add_argument("--include-traj", action="store_true")
     a = ap.parse_args(argv)
 
     path = a.ledger or os.environ.get(LEDGER_ENV) or os.path.expanduser("~/.himmel/leg-failures.jsonl")
-    now = parse_ts(a.now) if a.now else datetime.now(timezone.utc)
+    now = a.now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=a.days)
 
     try:
@@ -63,8 +77,9 @@ def main(argv=None):
                 r = json.loads(line)
                 ts = parse_ts(r["ts"])
                 cls, sess, n = r["class"], r["session"], int(r["count"])
-                if not isinstance(cls, str) or not isinstance(sess, str):
-                    raise ValueError("class and session must be strings")
+                leg = r.get("leg") or sess[:8]
+                if not isinstance(cls, str) or not isinstance(sess, str) or not isinstance(leg, str):
+                    raise ValueError("class, session and leg must be strings")
             except (ValueError, KeyError, TypeError, AttributeError):
                 skipped += 1
                 continue
@@ -75,7 +90,7 @@ def main(argv=None):
             rows += 1
             c = classes.setdefault(cls, {"sessions": {}, "count": 0})
             c["count"] += n
-            s = c["sessions"].setdefault(sess, [r.get("leg") or sess[:8], 0])
+            s = c["sessions"].setdefault(sess, [leg, 0])
             s[1] += n
 
     ranked = sorted(classes.items(), key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["count"], kv[0]))
