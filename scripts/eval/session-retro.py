@@ -30,7 +30,8 @@ EXAMPLES = 3
 
 
 def parse_ts(s):
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
 def main(argv=None):
@@ -62,7 +63,7 @@ def main(argv=None):
                 r = json.loads(line)
                 ts = parse_ts(r["ts"])
                 cls, sess, n = r["class"], r["session"], int(r["count"])
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, AttributeError):
                 skipped += 1
                 continue
             if ts < cutoff or ts > now:

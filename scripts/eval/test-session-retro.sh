@@ -44,7 +44,11 @@ sr --now 2026-10-09T00:00:00Z --top 1 >"$TMP/top1.out" 2>&1
 check "--top 1 prints one class row after the header" '[ "$(grep -c "^[0-9]" "$TMP/top1.out")" = 1 ]'
 BEFORE="$(sha256sum "$FX")"
 sr --now 2026-10-09T00:00:00Z >/dev/null 2>&1
-check "the ledger is unchanged" '[ "$(sha256sum "$FX")" = "$BEFORE" ]'
+AFTER="$(sha256sum "$FX")"
+check "the ledger is unchanged" '[ -n "$BEFORE" ] && [ "$AFTER" = "$BEFORE" ]'
+printf '%s\n' '{"ts":null,"session":"s","class":"c","count":1}' '{"ts":"2026-10-08T00:00:00","session":"s","class":"c","count":1}' >"$TMP/bad.jsonl"
+python3 "$SR" --ledger "$TMP/bad.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/bad.out" 2>&1; brc=$?
+check "a null or timezone-less ts is skipped or read, never a crash" '[ "$brc" = 0 ] && grep -q "skipped=1" "$TMP/bad.out"'
 python3 "$SR" --ledger "$TMP/none.jsonl" >"$TMP/miss.out" 2>&1; mrc=$?
 check "a missing ledger exits 2 with a message" '[ "$mrc" = 2 ] && grep -q "cannot read" "$TMP/miss.out"'
 
