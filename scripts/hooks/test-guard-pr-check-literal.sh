@@ -621,6 +621,9 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u root bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u grep bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | env FOO=1 bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | xargs -0 sh -c
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (cat | bash)
 PIPETOSHELL
 # Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do

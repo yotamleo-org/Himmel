@@ -1963,7 +1963,12 @@ env_split_option() { # env_split_option <raw command> - false only when
             esac
         fi
         if [ "${fl[sg]-}" = 1 ]; then
-            case "${ST_SEP[sg - 1]-}" in '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;; esac
+            # a `(` group opener is the empty segment between the pipe and the
+            # grouped body (`| (bash)`): the flow passes through it
+            case "${ST_SEP[sg - 1]-}" in
+                '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;;
+                '(') fl[sg - 1]=1 ;;
+            esac
         fi
         sg=$((sg - 1))
     done
