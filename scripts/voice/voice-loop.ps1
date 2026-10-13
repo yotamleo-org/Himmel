@@ -12,8 +12,7 @@
   -Continue carries context across voice turns.
 
   Billing: uses the INTERACTIVE `claude "<prompt>"` form with stdin ignored,
-  the same shape the Telegram bridge uses. Deliberately not `-p`/`--print`,
-  which bills to a separate bucket and is blocked by the HIMMEL-128 gate.
+  the same shape the Telegram bridge uses.
 
   Expect ~10-30s per turn. That is Claude's cold start, not the voice layer --
   synthesis is ~1s and transcription is a few hundred ms. Keeping a session

@@ -207,7 +207,7 @@ judge_call() {
     # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
     native_auth_pin_env
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-      # headless-claude-ok: HIMMEL-4090 blind judge call (HIMMEL-4648 second judge too), bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
+      # HIMMEL-4090 blind judge call (HIMMEL-4648 second judge too), bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
       # launch-profile-ok: HIMMEL-4090 the judge runs with --tools "", so no tool profile applies
       timeout "$TIMEOUT" "$CLAUDE_BIN" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
         --max-budget-usd "$budget" --no-session-persistence --json-schema "$(cat "$HERE/judge-schema.json")" --tools ""
@@ -272,7 +272,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
       # subscription token is dropped here too, so no layer between can hand it to the agent.
       unset CLAUDE_CODE_OAUTH_TOKEN
       export HIMMEL_API_JOB_ID="lq-$RUN_ID-$stem"
-      # headless-claude-ok: HIMMEL-4986 lane-quality api agent run, launcher bank gate and ledger reservation, explicit permission mode, budget-capped
+      # HIMMEL-4986 lane-quality api agent run, launcher bank gate and ledger reservation, explicit permission mode, budget-capped
       # launch-profile-ok: HIMMEL-4986 the eval measures the lane's own default config, not a leg profile
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
         timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
@@ -282,7 +282,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
     native_auth_pin_env
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-      # headless-claude-ok: HIMMEL-4090 lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
+      # HIMMEL-4090 lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
       # launch-profile-ok: HIMMEL-4090 the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a leg profile
       timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Zero-cost full Claude turn against a scripted local API (HIMMEL-4411, epic HIMMEL-4409).
 #
-# headless-claude-ok: mock-backed — fake key, loopback-only netns, zero spend; the claude launch itself is in fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch itself is in fakekey-claude.sh (HIMMEL-4411)
 # Drives a REAL headless claude turn through scripts/testing/fakekey-claude.sh with
 # FAKEKEY_MOCK_FIXTURE: the harness starts scripts/testing/mock-anthropic/ INSIDE
 # the loopback-only network namespace and points ANTHROPIC_BASE_URL at it. The
@@ -188,7 +188,7 @@ printf 'say hi' | bash "$REPO/scripts/lib/claude-headless.sh" --role mock-turn -
 echo $? >"$H/headless.rc"
 kill "$m" 2>/dev/null; wait "$m" 2>/dev/null
 HEOF
-  # headless-claude-ok: mock-backed — fake key, loopback-only netns, zero spend; bank-preflight faked through its own cache seams (HIMMEL-4411)
+  # mock-backed — fake key, loopback-only netns, zero spend; bank-preflight faked through its own cache seams (HIMMEL-4411)
   env -i PATH="$(dirname "$(command -v claude)"):$(dirname "$(command -v node)"):/usr/local/bin:/usr/bin:/bin" \
     HOME="$H/home" CLAUDE_CONFIG_DIR="$H/cfg" REPO="$REPO" MOCK="$MOCK" H="$H" \
     ANTHROPIC_API_KEY="$FAKEKEY_KEY" ANTHROPIC_DEFAULT_SONNET_MODEL=canary-model-must-be-stripped \

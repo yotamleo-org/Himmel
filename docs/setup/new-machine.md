@@ -444,7 +444,6 @@ own fail-open path instead of printing anything.)
 These will error `mapfile: command not found` on macOS system bash (3.2). Either install `bash` 4+ via `brew install bash`, or convert the `mapfile` use to a `while IFS= read` loop (cheap port if needed):
 
 - `scripts/luna/sweep-himmel.sh`
-- `scripts/hooks/check-no-headless-claude.sh`
 - `scripts/hooks/check-mcp-plugin-refs.sh`
 - `scripts/hooks/check-lockfile-integrity.sh`
 - `scripts/hooks/check-npm-audit.sh`

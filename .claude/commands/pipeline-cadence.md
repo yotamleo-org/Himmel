@@ -32,10 +32,7 @@ drift was only visible once a week, and the haiku pin makes nightly cheap).
 Each task launches a **bounded interactive** claude session in the luna
 vault — `claude --model <pin> --settings <fragment> "<prompt>" < NUL` on
 Windows / `< /dev/null` on POSIX (the bounded-run primitive: the session
-runs the full turn on stdin-EOF, then exits clean). NOT `claude -p`/`--print`: headless
-invocations bill to the separate Agent SDK bucket from 2026-06-15 (HIMMEL-128);
-this stays on Max quota and passes the `no-headless-claude` gate without a
-marker. `status` parses each leg's pinned model back out of its runner, so an
+runs the full turn on stdin-EOF, then exits clean). `status` parses each leg's pinned model back out of its runner, so an
 armed-but-wrong-model cadence is visible.
 
 **Auto-approve injection (HIMMEL-575).** The runs fire in the luna vault cwd,

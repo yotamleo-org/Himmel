@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013) # headless-claude-ok: prose mention only; the two real claude -p calls below carry their own markers (HIMMEL-4243)
+# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 5 (HIMMEL-2179): start a session in the worktree, then --resume it
 # from a different cwd ($TEMP). CLI is 2.1.250; docs claim cross-directory
 # resume since 2.1.223. Verify by ARTIFACT: does the resumed call actually
@@ -11,7 +11,6 @@
 SID="$(node -e "console.log(require('crypto').randomUUID())")"
 echo "05: session_id=$SID"
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --session-id "$SID" \
   --permission-mode dontAsk --output-format json "Say A" \
   > "$OUT_DIR/05-a.json" 2>"$OUT_DIR/05-a.err"
@@ -21,7 +20,6 @@ ALT_DIR="${TEMP:-/tmp}"
 (
   cd "$ALT_DIR" || exit 1
   echo "05: resuming from cwd=$(pwd)"
-  # headless-claude-ok: HIMMEL-2179 probe
   timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
     --permission-mode dontAsk --output-format json "Say B" \
     > "$OUT_DIR/05-b.json" 2>"$OUT_DIR/05-b.err"

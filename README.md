@@ -6,7 +6,9 @@
 > your first PR-gated loop in about 15 minutes.
 >
 > Deciding whether it is worth it? Read [**Why himmel**](docs/why-himmel.md),
-> the failure modes it exists for and what each one costs. Want the wiring?
+> the failure modes it exists for and what each one costs. Want the design
+> in one read? [**System design**](docs/system-design.md) explains the parts,
+> one ticket's flow, the trust model and the trade-offs. Want the wiring?
 > [**Architecture**](docs/architecture.md) draws the enforcement layers,
 > handover, fleet, Jira seam and observability chain.
 

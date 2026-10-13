@@ -1,42 +1,39 @@
 #!/usr/bin/env bash
 # guard-subagent-model.sh — PreToolUse hook (matcher "Agent"): [HIMMEL-2653]
-# structural nudge for root CLAUDE.md's "Every dispatch names an explicit
-# model" rule. An Agent dispatch with no `model` inherits the PARENT
-# session's model — silently billing the scarcer parent tier (Sonnet/Opus/
-# Fable) for work that could have run on a cheaper one. Nothing enforced this
-# before; it was prose only.
+# structural enforcement of root CLAUDE.md's "Every dispatch names an explicit
+# model" rule. An Agent dispatch with no `model` inherits the PARENT session's
+# model (or falls to the agent definition's default) — silently billing the
+# scarcer parent tier for work that could have run on a cheaper one. Nothing
+# enforced this before; it was prose only, then a WARN for untyped dispatches.
 #
 # WHY NOW: a 24h/4.40e9-token measurement (HIMMEL-2653) found subagents at
 # 50.06% of raw spend, with subagent_type "general-purpose" alone at 49.85% —
 # the dominant shape is exactly the unnamed-model, generic-worker dispatch
-# this hook targets.
+# this hook targets. HIMMEL-5421 extended the deny to every typed agent: a
+# typed agent with no model passed with no signal at all.
 #
-# TRIP CONDITION (both must hold):
-#   1. tool_input.model is absent, empty, or whitespace-only.
-#   2. tool_input.subagent_type is absent/empty OR exactly "general-purpose".
-# A NAMED specialist subagent_type (Explore, statusline-setup, a plugin
-# agent, ...) is NOT tripped even with no model — those carry their own model
-# in their own agent definition, so an absent `model` field here says nothing
-# about what actually runs.
+# OWNERSHIP (HIMMEL-5421): this hook owns "a model must be named";
+# guard-agent-model.sh owns "the named model must not be a blocked one".
+# Neither duplicates the other's check.
 #
-# DEFAULT ACTION: WARN — allow (exit 0) plus a visible
-# permissionDecisionReason, the same shape guard-implementor-dispatch.sh
-# already emits for its own WARN path. Set HIMMEL_REQUIRE_SUBAGENT_MODEL=1 to
-# escalate to a hard DENY (exit 2). This mirrors the WARN/HARD split of the
-# sibling bank guards in this file: default advisory, opt-in enforcement.
+# DENY CONDITION (both must hold):
+#   1. tool_input.model is absent, null, empty, or whitespace-only
+#      (explicit null counts as absent, HIMMEL-2680).
+#   2. tool_input.subagent_type is anything but "fork". A fork always inherits
+#      the parent model and ignores `model`, so a missing one says nothing.
 #
 # Escape hatch (set in the shell that LAUNCHED Claude Code; session-sticky):
-#   SUBAGENT_MODEL_OK=1   silences both the WARN and the DENY.
+#   SUBAGENT_MODEL_OK=1   lets an unnamed-model dispatch through.
 #
 # FAIL-OPEN ON EVERYTHING ELSE: unreadable/unparseable stdin, a non-Agent
-# tool, missing tool_input, any jq failure — all exit 0 silently. This is a
-# workflow nudge (scripts/hooks/CLAUDE.md's fail-open-vs-closed rule), not a
-# security fence: a guard that blocks dispatch because it could not parse a
-# payload is worse than the drift it prevents. Purely structural on two
-# payload fields — no transcript read, no prompt-text intent detection.
+# tool, missing tool_input, a wrong-typed model/subagent_type, any jq failure —
+# all exit 0 silently. This is a workflow nudge (scripts/hooks/CLAUDE.md's
+# fail-open-vs-closed rule), not a security fence: a guard that blocks dispatch
+# because it could not parse a payload is worse than the drift it prevents.
+# Purely structural on two payload fields — no transcript read, no prompt-text
+# intent detection.
 #
-# Bash 3.2-compatible. Exit codes: 0 allow (optionally with a WARN reason);
-# 2 deny (only under HIMMEL_REQUIRE_SUBAGENT_MODEL=1).
+# Bash 3.2-compatible. Exit codes: 0 allow; 2 deny.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Reads the hook payload from stdin and shells out to jq; NOT ported to native
@@ -97,30 +94,15 @@ subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type // empty
 model_trimmed=$(printf '%s' "$model" | tr -d '[:space:]')
 [ -z "$model_trimmed" ] || exit 0
 
-case "$subagent_type" in
-    ''|general-purpose) ;;
-    *) exit 0 ;;
-esac
+# fork inherits the parent model and ignores `model`.
+[ "$subagent_type" != "fork" ] || exit 0
 
 shape="${subagent_type:-<no-subagent_type>}/<no-model>"
 
-if [ "${HIMMEL_REQUIRE_SUBAGENT_MODEL:-0}" = "1" ]; then
-    cat >&2 <<EOF
-guard-subagent-model: unnamed-model Agent dispatch DENIED ($shape) —
-HIMMEL_REQUIRE_SUBAGENT_MODEL=1 is set. An Agent dispatch with no model
-silently inherits the PARENT session's model, billing the scarcer parent
-tier for work that may not need it (root CLAUDE.md: "Every dispatch names
-an explicit model").
+deny_msg="guard-subagent-model: unnamed-model Agent dispatch DENIED ($shape) — an Agent dispatch with no model silently inherits the PARENT session's model, billing the scarcer parent tier for work that may not need it (root CLAUDE.md: \"Every dispatch names an explicit model\"). Pass an explicit model on this dispatch; /lanes lists the live tiers/lanes available on this machine. subagent_type \"fork\" is exempt (it inherits the parent model). Deliberate override: relaunch with SUBAGENT_MODEL_OK=1 in the launching shell."
 
-Pass an explicit model on this dispatch. /lanes lists the live tiers/lanes
-available on this machine.
-
-Deliberate override: relaunch with SUBAGENT_MODEL_OK=1 in the launching shell.
-EOF
-    exit 2
-fi
-
-reason=$(printf '%s' "guard-subagent-model: unnamed-model Agent dispatch ($shape) inherits the parent session's model — pass an explicit model (see /lanes for the live inventory). (SUBAGENT_MODEL_OK=1 to silence; HIMMEL_REQUIRE_SUBAGENT_MODEL=1 to enforce)" | jq -Rs . 2>/dev/null) \
-    || reason='"guard-subagent-model: unnamed-model Agent dispatch — pass an explicit model"'
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":%s}}\n' "$reason"
-exit 0
+reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
+    || reason_json='"guard-subagent-model: unnamed-model Agent dispatch DENIED — pass an explicit model (SUBAGENT_MODEL_OK=1 to override)"'
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason_json"
+printf '%s\n' "$deny_msg" >&2
+exit 2

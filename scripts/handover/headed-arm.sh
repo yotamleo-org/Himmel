@@ -642,7 +642,7 @@ if [ "$HEADLESS" = "1" ]; then
     # auto is what a headed leg runs in (defaultMode=auto in the operator's
     # user settings), declared here because an unattended launch must never
     # rely on the default (CLAUDE.md "Claude invocation billing").
-    # headless-claude-ok: HIMMEL-3403 console-armed leg; headed-arm-leg.sh ran the bank/fleet preflight
+    # HIMMEL-3403 console-armed leg; headed-arm-leg.sh ran the bank/fleet preflight
     LAUNCH_ARGV=("$LAUNCHER" --bg --permission-mode auto --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
     # HIMMEL-4052: the rebuild above would drop the console profile --settings.
     if [ "$ROLE" = "console" ]; then

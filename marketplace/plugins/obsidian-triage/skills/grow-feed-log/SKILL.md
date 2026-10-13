@@ -16,7 +16,6 @@ All deterministic logic — table/section insertion, cell sanitization,
 idempotency dedup, vault-containment, the `updated:` frontmatter bump — lives
 in the `tools/grow-feed-log.mjs` CLI. This runbook does the extraction
 judgement work and marshals the result into ONE CLI call.
-<!-- headless-claude-ok: documenting the HIMMEL-128 ban; not an invocation -->
 **HIMMEL-128:** the tool is pure Node (no Anthropic API, no `claude -p`);
 invoke it with the `Bash` tool only.
 

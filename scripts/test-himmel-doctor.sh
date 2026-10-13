@@ -2809,7 +2809,6 @@ echo "== C29 (macOS route): no procfs -> ps -axo tree + ps -E environ; only the 
 #   300 claude under claude 200 (Bash-tool child)    -> skipped
 #   400 claude whose PROMPT holds the marker text    -> skipped (args stripped)
 #   500 claude by full path, marker, no persistence  -> WARN (comm path stripped)
-# headless-claude-ok: prose naming the argv shape, starts nothing
 #   700 claude -p, 800 claude daemon run, both marked -> skipped
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 ps-route: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
@@ -2831,7 +2830,6 @@ printf 'claude' > "$fix/200.args"; printf 'TERM=xterm CLAUDE_PID=89183 CLAUDE_CO
 printf 'claude --model m hi' > "$fix/300.args"; printf 'CLAUDE_CODE_CHILD_SESSION=1' > "$fix/300.env"
 printf 'claude say CLAUDE_CODE_CHILD_SESSION=1 here' > "$fix/400.args"; printf 'HOME=/x' > "$fix/400.env"
 printf 'claude' > "$fix/500.args"; printf 'CLAUDE_CODE_CHILD_SESSION=1' > "$fix/500.env"
-# headless-claude-ok: stub ps output naming the argv C29 skips, starts nothing
 printf 'claude -p hello' > "$fix/700.args"; printf 'CLAUDE_CODE_CHILD_SESSION=1' > "$fix/700.env"
 printf 'claude daemon run' > "$fix/800.args"; printf 'CLAUDE_CODE_CHILD_SESSION=1' > "$fix/800.env"
 cat > "$t/ps" <<PS

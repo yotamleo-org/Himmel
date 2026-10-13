@@ -46,5 +46,4 @@ content edits to a subject the operator owns — not auto-reverted.
 
 ### Headless refusal (HIMMEL-128)
 
-<!-- headless-claude-ok: prohibition note, not an invocation -->
 Drive luna-ingest interactively; never wrap it in a headless `claude -p` call.

@@ -5,7 +5,7 @@
 # REAL claude session starts in a throwaway clone of this checkout, runs the scripted
 # tool calls and stops with the project hook chain firing and ZERO hook failures. It is
 # NOT evidence of real-model behaviour; hook-smoke-demo.sh is the live, bank-spending twin.
-# headless-claude-ok: mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
 #
 # A hook that stops running fails OPEN and nothing in the transcript says so, which is why
 # the smoke asserts a positive: the hook chain's own debug lines for the tool calls, not

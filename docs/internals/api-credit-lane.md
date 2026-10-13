@@ -1,7 +1,7 @@
 # API credit lane
 
 Billing counterpart to the `claude -p` rule in
-[enforcement.md](enforcement.md#claude-invocation-billing-himmel-128). The lane
+[enforcement.md](enforcement.md#claude-invocation-billing). The lane
 spends a Console organization's API credit, not the subscription bank. It is
 **OFF by default** and has exactly one entry point:
 `scripts/api-lane/claude-api.sh`.
