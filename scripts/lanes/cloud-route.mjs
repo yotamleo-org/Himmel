@@ -145,11 +145,16 @@ export function reservedFiles(text, ctx = {}) {
   for (const line of String(text ?? '').split('\n')) {
     let r;
     try { r = JSON.parse(line); } catch { continue; }
-    if (!r || r.class !== 'CLOUD-OK' || typeof r.ticket !== 'string' || !Array.isArray(r.files)) continue;
+    if (!r || r.class !== 'CLOUD-OK' || !/^[A-Z][A-Z0-9]*-\d+$/.test(r.ticket) || !Array.isArray(r.files)) continue;
     const at = Date.parse(r.time ?? '');
     if (Number.isNaN(at) || now - at > RESERVATION_HOURS * 3600e3) continue;
     const cites = new RegExp(`${r.ticket}(?!\\d)`);
-    if ((ctx.merged ?? []).some((pr) => cites.test(`${pr.title ?? ''}\n${pr.body ?? ''}`))) continue;
+    // only a PR merged after the reservation was made releases it
+    const released = (ctx.merged ?? []).some((pr) => {
+      const m = Date.parse(pr.mergedAt ?? '');
+      return !Number.isNaN(m) && m >= at && cites.test(`${pr.title ?? ''}\n${pr.body ?? ''}`);
+    });
+    if (released) continue;
     for (const file of r.files) if (typeof file === 'string' && file) out.push({ file, why: `routed ${r.ticket} in an earlier run` });
   }
   return out;

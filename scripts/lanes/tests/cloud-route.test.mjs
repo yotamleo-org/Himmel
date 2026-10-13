@@ -541,14 +541,31 @@ test('CLI: only CLOUD-OK records reserve, and a corrupt, filesless or timeless l
   assert.match(r.stdout, /HIMMEL-9102\tCLOUD-OK/);
 });
 
-test('CLI: a merged PR citing the reserved ticket releases its files', () => {
-  const { dir, route, seed } = reserveStubs();
-  seed(rec());
-  const gh = stub(dir, 'gh5499', `
+function mergedStub(dir, mergedAt) {
+  return stub(dir, 'gh5499', `
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
-  echo '[{"number":2001,"title":"feat: [HIMMEL-9100] x","body":"","mergedAt":"2000-01-01T00:00:00Z","files":[]}]'; exit 0
+  echo '[{"number":2001,"title":"feat: [HIMMEL-9100] x","body":"","mergedAt":"${mergedAt}","files":[]}]'; exit 0
 fi
 if [ "$1 $2" = "pr list" ]; then exit 0; fi
 exit 1`);
-  assert.match(route('HIMMEL-9102', gh).stdout, /HIMMEL-9102\tCLOUD-OK/);
+}
+
+test('CLI: a merged PR citing the reserved ticket releases its files', () => {
+  const { dir, route, seed } = reserveStubs();
+  seed(rec());
+  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(0.5))).stdout, /HIMMEL-9102\tCLOUD-OK/);
+});
+
+test('CLI: a PR merged before the reservation was made does not release it', () => {
+  const { dir, route, seed } = reserveStubs();
+  seed(rec());
+  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(5))).stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
+});
+
+test('CLI: a record with an invalid ticket string is skipped and does not drop the other reservations', () => {
+  const { route, seed } = reserveStubs();
+  seed(rec({ ticket: '[' }), rec());
+  const r = route('HIMMEL-9102');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
 });
