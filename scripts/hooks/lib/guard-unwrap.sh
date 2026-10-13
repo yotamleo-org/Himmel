@@ -197,6 +197,16 @@ _gu_shell_bodies() {
     local -a idx
     read -r -a idx <<<"${GU_SW[s]}"
     n=${#idx[@]}
+    # A segment whose command word is a builtin that never executes its
+    # arguments (`echo bash -c 'git stash'`) holds shell words as data
+    # (HIMMEL-4543). A `$(…)` or backtick inside it is its own segment, so it
+    # is still read; `;`, `|` and `&&` start a new segment with its own word.
+    j=${GU_CORE[s]:-0}
+    if [ "$j" -lt "$n" ]; then
+        case "${ST_W[idx[j]]}" in
+            echo|printf|:|true|false) return 0 ;;
+        esac
+    fi
     j=0
     while [ "$j" -lt "$n" ]; do
         b=${ST_W[idx[j]]##*/}

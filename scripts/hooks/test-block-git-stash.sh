@@ -214,6 +214,23 @@ assert_rc "4438 past variant cap denies"      2 "$(run_case "$(j_bash "$many")")
 assert_rc "4438 bash -c 'git status'"         0 "$(run_case "$(j_bash "bash -c 'git status'")")"
 assert_rc "4438 echo 'git stash' (data)"      0 "$(run_case "$(j_bash "echo 'git stash'")")"
 assert_rc "4438 bash -c 'git stash list'"     0 "$(run_case "$(j_bash "bash -c 'git stash list'")")"
+# HIMMEL-4543: a shell word in a data position of a non-executing builtin is
+# text, not a command, so its -c body is not read.
+assert_rc "4543 echo bash -c 'git stash' (data)"        0 "$(run_case "$(j_bash "echo bash -c 'git stash'")")"
+assert_rc "4543 printf %s bash -c 'git stash' (data)"   0 "$(run_case "$(j_bash "printf '%s\n' bash -c 'git stash'")")"
+assert_rc "4543 : bash -c 'git stash' (data)"           0 "$(run_case "$(j_bash ": bash -c 'git stash'")")"
+assert_rc "4543 true sh -c 'git stash pop' (data)"      0 "$(run_case "$(j_bash "true sh -c 'git stash pop'")")"
+# ...and the executing shapes beside it stay denied.
+assert_rc "4543 echo x; bash -c 'git stash'"            2 "$(run_case "$(j_bash "echo x; bash -c 'git stash'")")"
+assert_rc "4543 echo x | bash -c 'git stash'"           2 "$(run_case "$(j_bash "echo x | bash -c 'git stash'")")"
+assert_rc "4543 echo \$(bash -c 'git stash')"           2 "$(run_case "$(j_bash "echo \$(bash -c 'git stash')")")"
+assert_rc "4543 echo \`bash -c 'git stash'\`"           2 "$(run_case "$(j_bash "echo \`bash -c 'git stash'\`")")"
+assert_rc "4543 echo \"\$(bash -c 'git stash')\""       2 "$(run_case "$(j_bash "echo \"\$(bash -c 'git stash')\"")")"
+assert_rc "4543 echo >(bash -c 'git stash')"            2 "$(run_case "$(j_bash "echo >(bash -c 'git stash')")")"
+assert_rc "4543 find -exec sh -c 'git stash'"           2 "$(run_case "$(j_bash "find . -exec sh -c 'git stash' \\;")")"
+assert_rc "4543 xargs bash -c 'git stash'"              2 "$(run_case "$(j_bash "echo a | xargs bash -c 'git stash'")")"
+assert_rc "4543 sudo -u u bash -c 'git stash'"          2 "$(run_case "$(j_bash "sudo -u u bash -c 'git stash'")")"
+assert_rc "4543 env X=1 bash -c 'git stash'"            2 "$(run_case "$(j_bash "env X=1 bash -c 'git stash'")")"
 # A keyword-led body must reach a fixpoint, not grow to the depth cap.
 assert_rc "4438 timeout bash -c 'until …' loop" 0 "$(run_case "$(j_bash "timeout 9 bash -c 'until [ \"\$(echo x)\" = x ]; do sleep 1; done'; echo ok")")"
 assert_rc "4438 timeout bash -c 'until … git stash'" 2 "$(run_case "$(j_bash "timeout 9 bash -c 'until false; do git stash; done'")")"
