@@ -393,6 +393,9 @@ runcov "merge-base's own completed green run + local reproduction, no cover: REF
 printf 'git-env-scrub\tsrt-poc-env-finding\tx\n' > "$tmp/local-cases"
 runcov "malformed local reproduction row: usage, never ALLOW" 2 'malformed' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
 runcov "--base-cases-local file missing: usage, never ALLOW" 2 'usage' "${fixed[@]}" --base-cases-local "$tmp/no-such-file"
+runcov "--base-cases-local given an empty path: usage, never silently skipped" 2 'usage' "${fixed[@]}" --base-cases-local ""
+printf 'git-env-scrub\tsrt-poc-env-finding\n' > "$tmp/local-cases"
+runcov "local-reproduction ALLOW does not claim a merge-base run supplied the evidence" 0 'ALLOW — every red job was proven inherited.*reproduced failing at the merge-base locally' "${fixed[@]}" --base-cases-local "$tmp/local-cases"
 
 # input errors
 set3 'a\tfailure\n' 'a\tfailure\n' 'a\tsuccess\n'
