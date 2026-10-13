@@ -27,10 +27,32 @@
 # `$V${Z}git` does not read `$Vgit` once `${Z}` is gone; then nested-brace
 # expansions, innermost first (the loop label).
 # shellcheck disable=SC2016 # sed program text: the `$` is a regex literal
-_GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g
-:a
-s/\$\{[^{}]*\}//g
-ta'
+_GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
+# `${…}` is cut by a scanner, not a regex: a quoted brace inside it
+# (`${V+'"'"'{}'"'"'}git stash`) must not end the expansion early. Single
+# quotes, double quotes and backslashes are honoured; braces nest; an
+# unterminated expansion drops the rest of the line.
+# shellcheck disable=SC2016 # awk program text
+_GEE_AWK='{
+  s = $0; out = ""; n = length(s); i = 1
+  while (i <= n) {
+    c = substr(s, i, 1)
+    if (c == "$" && substr(s, i + 1, 1) == "{") {
+      depth = 1; i += 2; q = ""
+      while (i <= n && depth > 0) {
+        c = substr(s, i, 1)
+        if (q == "\047") { if (c == "\047") q = "" }
+        else if (c == "\\") i++
+        else if (c == "\047" && q == "") q = "\047"
+        else if (c == "\"") q = (q == "\"") ? "" : "\""
+        else if (q == "" && c == "{") depth++
+        else if (q == "" && c == "}") depth--
+        i++
+      }
+    } else { out = out c; i++ }
+  }
+  print out
+}'
 
 guard_expansion_recheck() {
     local hook=$1 input=$2 cmd=$3 stripped child err rc depth=${GUARD_EXPANSION_DEPTH:-0}
@@ -44,7 +66,7 @@ guard_expansion_recheck() {
     fi
     # newlines ride as SOH so an expansion that spans lines is one match.
     if ! stripped=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
-        | LC_ALL=C sed -E "$_GEE_SED" | LC_ALL=C tr '\001' '\n'); then
+        | LC_ALL=C sed -E "$_GEE_SED" | LC_ALL=C awk "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
         echo "guard-empty-expansion: cannot strip expansions - failing closed" >&2
         return 2
     fi

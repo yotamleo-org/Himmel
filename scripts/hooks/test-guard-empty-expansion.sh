@@ -52,6 +52,11 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "V=ab; \${V[1,-3]}$p $a"
     check deny "$h" "V=Q; \${(P)V}$p $a"
     check deny "$h" "echo hi; \${V:-}$p $a"
+    # a quoted brace inside the expansion must not end it early (HIMMEL-5328 round 1)
+    check deny "$h" "\${V+'{}'}$p $a"
+    check deny "$h" "\${V+'}'}$p $a"
+    check deny "$h" "\${V+\"{\"}$p $a"
+    check deny "$h" "\${V:-\\}}$p $a"
   }
 }
 
