@@ -35,6 +35,14 @@ GUARD = os.path.join(HERE, "assets", "parity_guard.py")
 # Chain members that are session plumbing, not a deny decision: they write
 # state (arming, context hand-off) and never exist to refuse a payload class.
 SIDE_EFFECT_MEMBERS = {"auto-arm-on-cap.sh", "guard-leg-context-handoff.sh"}
+# Wired PreToolUse commands that are not `bash <hook>.sh` members: a shadow
+# ledger, a run-event recorder and a graph nudge, none a verdict source for the
+# corpus. Any other unparsed command aborts the run.
+NON_SH_MEMBERS = (
+    "scripts/trust/shadow-ledger.mjs",
+    "scripts/observability/session-run-hook.ts",
+    "graphify hook-guard",
+)
 
 # Claude Code tool -> (hermes tool, arg renamer).
 def _hermes_map(tool, args):
@@ -124,7 +132,10 @@ def load_chain_members():
         members = []
         for hook in group.get("hooks", []):
             first = hook.get("command", "").split("; else")[0]
-            for name in re.findall(r"scripts/hooks/([\w.-]+\.sh)", first):
+            names = re.findall(r"scripts/hooks/([\w.-]+\.sh)", first)
+            if not names and hook.get("type") == "command" and not any(m in first for m in NON_SH_MEMBERS):
+                raise HarnessError("unparsed PreToolUse hook: " + hook.get("command", "")[:80])
+            for name in names:
                 if name in SIDE_EFFECT_MEMBERS or name in [os.path.basename(m) for m in members]:
                     continue
                 members.append(os.path.join(REPO, "scripts", "hooks", name))
