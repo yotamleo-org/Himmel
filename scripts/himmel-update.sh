@@ -136,15 +136,17 @@ report_plugin_gap() {
                 if [ -f "$lp" ] && ! jq -e . "$lp" >/dev/null 2>&1; then
                     bad_src=1
                 fi
-                if [ -z "$sv" ]; then
+                if [ -z "$sv" ] && [ "$bad_src" = 0 ]; then
                     sv=$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n) | .version // empty][0] // empty' "$market_json" 2>/dev/null | tr -d '\r' || true)
                 fi
-                if [ -z "$sv" ]; then
+                if [ "$bad_src" = 1 ]; then
+                    unknown_ver="$unknown_ver $name"
+                elif [ -z "$sv" ]; then
                     if [ -z "$iv" ]; then
                         iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].gitCommitSha // empty' "$installed_json" 2>/dev/null | tr -d '\r' | cut -c1-7 || true)
                     fi
                     # No declared source: a readable installed version/sha is current.
-                    if [ -z "$iv" ] || [ "$bad_src" = 1 ]; then
+                    if [ -z "$iv" ]; then
                         unknown_ver="$unknown_ver $name"
                     fi
                 # An unreadable iv means the comparison was never made —

@@ -311,11 +311,12 @@ assert_not_contains "plugins: unreadable source version -> not unknown" "^ *plug
 # HIMMEL-5485: a local manifest that does not parse is an unread source -> unknown.
 mkdir -p "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin"
 printf '{ not json\n' > "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin/plugin.json"
-printf '{"name":"himmel","plugins":[{"name":"gamma"}]}\n' > "$TMP/market-gamma.json"
+printf '{"name":"himmel","plugins":[{"name":"gamma","version":"1.0.0"}]}\n' > "$TMP/market-gamma.json"
 printf '{"plugins":{"gamma@himmel":[{"version":"1.0.0"}]}}\n' > "$TMP/installed-gamma.json"
 rc=0
 out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-gamma.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-gamma.json" \
     LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions) || rc=$?
+assert_eq "plugins: malformed local manifest + marketplace version -> rc 3" "3" "$rc"
 assert_contains "plugins: malformed local manifest -> unknown, not current" "^ *plugins  *unknown" "$out"
 
 # HIMMEL-5485: an external plugin (git-subdir/url source) has no local dir, so
@@ -327,9 +328,11 @@ ext_row() {   # <market-json> <installed-json> -> the --versions output, its rc
         LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions
 }
 mk_ext='{"name":"himmel","plugins":[{"name":"ext","source":{"source":"url","url":"https://example.invalid/ext.git"},"version":"3.1.0"}]}'
-out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.1.0"}]}}') || true
+rc=0; out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.1.0"}]}}') || rc=$?
+assert_eq "ext: marketplace entry version = installed -> rc 0" "0" "$rc"
 assert_contains "ext: marketplace entry version = installed -> current" "^ *plugins  *current  *1/1 installed" "$out"
-out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.0.0"}]}}') || true
+rc=0; out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.0.0"}]}}') || rc=$?
+assert_eq "ext: marketplace entry version differs -> rc 1" "1" "$rc"
 assert_contains "ext: marketplace entry version differs -> behind, names drift" "^ *plugins  *behind .*ext(3\\.0\\.0->3\\.1\\.0)" "$out"
 mk_sha='{"name":"himmel","plugins":[{"name":"ext","source":{"source":"url","url":"https://example.invalid/ext.git"}}]}'
 out=$(ext_row "$mk_sha" '{"plugins":{"ext@himmel":[{"version":"13ac0ec","gitCommitSha":"13ac0ec1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"}]}}') || true
