@@ -1688,6 +1688,15 @@ test("composeRespawnHandover emits --carry-from <capped sessionDir> (HIMMEL-682)
   expect(s).toMatch(/-r\d+/);                                 // -rN name preserved
 });
 
+test("composeRespawnHandover (HIMMEL-1071): flag values with a space or quote survive a shell split", () => {
+  const s = composeRespawnHandover({ task: "t", cwd: "/tmp/a b", slug: "job-r1", sessionDir: "/tmp/s d/it's", branch: "glm/job", resumeAtIso: "2026-07-04T02:10:00.000Z", profile: "lane content", addPlugins: ["a@m", "b c@m"] });
+  expect(s).toContain("--cwd '/tmp/a b'");
+  expect(s).toContain(`--carry-from '/tmp/s d/it'"'"'s'`);
+  expect(s).toContain("--profile 'lane content'");
+  expect(s).toContain("--add-plugins 'a@m,b c@m'");
+  expect(s).toContain("--cwd '/tmp/a b' --name");
+});
+
 test("composeRespawnHandover (HIMMEL-1040): carries a non-default --profile + --add-plugins; omits both on defaults", () => {
   const withProfile = composeRespawnHandover({ task: "t", cwd: "C:/repo", slug: "job-r1", sessionDir: "C:/s", branch: "glm/job", resumeAtIso: "2026-07-04T02:10:00.000Z", profile: "lane-content", addPlugins: ["a@m", "b@m"] });
   expect(withProfile).toContain("--profile lane-content");

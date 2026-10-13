@@ -1876,6 +1876,8 @@ export function nextRetrySlug(slug: string): string {
 // Self-contained cold-start respawn handover (spec (b) 3): the armed session
 // may be a fresh cold start — everything needed to re-dispatch is inline.
 const shellSingleQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
+// HIMMEL-1071: quote only values a shell would split or interpret, so plain values stay byte-identical.
+const shellArg = (value: string): string => (/^[A-Za-z0-9_@%+=:,./~-]+$/.test(value) ? value : shellSingleQuote(value));
 export function composeRespawnHandover(p: { task: string; cwd: string; slug: string; timeoutMins?: number; permMode?: string; sessionDir: string; branch: string; resumeAtIso: string; shared?: boolean; profile?: string; addPlugins?: string[]; roundsOverride?: string }): string {
   const respawnName = nextRetrySlug(p.slug);
   // HIMMEL-800: a shared-mode respawn carries --branch (the caller-named
@@ -1884,13 +1886,13 @@ export function composeRespawnHandover(p: { task: string; cwd: string; slug: str
   // HIMMEL-1040: carry --profile only when it differs from the default, and
   // --add-plugins only when a non-empty overlay was set, so the respawn lands on
   // the same lean profile the original dispatch selected.
-  const profileFlag = p.profile && p.profile !== DEFAULT_LANE_PROFILE ? `--profile ${p.profile}` : "";
-  const addPluginsFlag = p.addPlugins && p.addPlugins.length ? `--add-plugins ${p.addPlugins.join(",")}` : "";
+  const profileFlag = p.profile && p.profile !== DEFAULT_LANE_PROFILE ? `--profile ${shellArg(p.profile)}` : "";
+  const addPluginsFlag = p.addPlugins && p.addPlugins.length ? `--add-plugins ${shellArg(p.addPlugins.join(","))}` : "";
   // A cap is a continuation of the SAME authorized dispatch, not a new round.
   // Preserve the recorded authority and single-quote it so spaces/metacharacters
   // remain data when the markdown command is executed by a shell.
   const roundsOverrideFlag = p.roundsOverride ? `--rounds-override ${shellSingleQuote(p.roundsOverride)}` : "";
-  const flags = [`--cwd ${p.cwd}`, p.shared ? `--branch ${p.branch}` : `--name ${respawnName}`, p.timeoutMins !== undefined ? `--timeout-mins ${p.timeoutMins}` : "", p.permMode ? `--permission-mode ${p.permMode}` : "", profileFlag, addPluginsFlag, roundsOverrideFlag, `--carry-from ${p.sessionDir}`].filter(Boolean).join(" ");
+  const flags = [`--cwd ${shellArg(p.cwd)}`, p.shared ? `--branch ${shellArg(p.branch)}` : `--name ${shellArg(respawnName)}`, p.timeoutMins !== undefined ? `--timeout-mins ${p.timeoutMins}` : "", p.permMode ? `--permission-mode ${shellArg(p.permMode)}` : "", profileFlag, addPluginsFlag, roundsOverrideFlag, `--carry-from ${shellArg(p.sessionDir)}`].filter(Boolean).join(" ");
   return [
     "---",
     "type: handover",

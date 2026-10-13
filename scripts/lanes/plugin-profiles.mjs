@@ -762,10 +762,12 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
   const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
   try {
     if (argv[0] === '--list') {
+      if (argv.length > 1) die(2, `plugin-profiles: unknown argument "${argv[1]}"`);
       for (const name of Object.keys(loadRegistry().profiles ?? {})) process.stdout.write(name + '\n');
       process.exit(0);
     }
     if (argv[0] === '--validate') {
+      if (argv.length > 1) die(2, `plugin-profiles: unknown argument "${argv[1]}"`);
       const errs = validateRegistry(loadRegistry());
       if (errs.length) die(1, 'plugin-profiles: registry invalid:\n  - ' + errs.join('\n  - '));
       process.stdout.write('plugin-profiles: registry valid\n');
