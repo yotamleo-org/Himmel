@@ -14,8 +14,9 @@
 # matrix jobs (node_suites, bun_suites) stay started and skip their steps so
 # their required check names still report.
 #
-# Jobs with no group always run: leak-classes, commit-lint, doc-invariants,
-# unchecked-mktemp-range and the shell-unit shards (they select for themselves).
+# Jobs with no group always run: leak-classes, secret-scan (a secret can land
+# in any file), commit-lint, doc-invariants, unchecked-mktemp-range and the
+# shell-unit shards (they select for themselves).
 
 benign          ^docs/
 benign          ^templates/
@@ -67,9 +68,6 @@ lint            ^\.shellcheckrc$
 lint            ^\.pre-commit-config\.yaml$
 lint            ^scripts/(hooks|install|himmelctl)/
 
-secret_scan     ^\.github/
-secret_scan     ^\.gitleaks
-secret_scan     ^scripts/(guardrails|hooks)/
 
 plugin_version_bump ^(marketplace/plugins|plugins)/
 

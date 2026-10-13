@@ -14,6 +14,7 @@
 #   P7  no base (push / schedule)           -> every gate true
 #   P8  a .sh edit                          -> lint true, node_suites false
 #   P9  every gate named in ci.yml's plan consumers exists in the plan output
+#   P10 an invalid regex in the list         -> every gate true (fail closed)
 #   S1-S5  shard-has-work.sh: empty / [RUN ] / --list failure / no footer fail
 #          closed to true, and a >64 KiB listing is not misread under pipefail
 #
@@ -144,6 +145,20 @@ out=$(plan "$BASE" "$H_SH")
 if [ "$(val "$out" run_lint)" = true ] && [ "$(val "$out" run_node_suites)" = false ]; then
   pass "P8 .sh edit: lint true, node_suites false"
 else fail "P8 .sh edit: $out"; fi
+
+# P10: an invalid regex in the base's list is a broken gate list, not a miss
+g checkout -q -B badre "$BASE"
+printf 'node_suites\t[\n' >> "$SB/scripts/ci/pr-job-gates.txt"
+g commit -q -am "gates list with an invalid regex"
+BADRE=$(g rev-parse HEAD)
+g update-ref refs/remotes/origin/main "$BADRE"
+printf '# edit\n' >> "$SB/docs/note.md"
+g commit -q -am "docs edit on a broken list"
+H_BADRE=$(g rev-parse HEAD)
+out=$(plan "$BADRE" "$H_BADRE")
+if all_is "$out" true && [ "$(val "$out" mode)" = full ]; then pass "P10 invalid regex in the list: all gates true"
+else fail "P10 invalid regex in the list: $out"; fi
+g update-ref refs/remotes/origin/main "$BASE"
 
 # P9: every needs.plan.outputs.run_X the workflow reads is a gate the planner prints
 CI_YML="$SRC_ROOT/.github/workflows/ci.yml"

@@ -95,7 +95,6 @@ jobs:
       run_git_env_scrub: ${{ steps.plan.outputs.run_git_env_scrub }}
       run_bwk_gate: ${{ steps.plan.outputs.run_bwk_gate }}
       run_lint: ${{ steps.plan.outputs.run_lint }}
-      run_secret_scan: ${{ steps.plan.outputs.run_secret_scan }}
       run_plugin_version_bump: ${{ steps.plan.outputs.run_plugin_version_bump }}
       run_deps_audit: ${{ steps.plan.outputs.run_deps_audit }}
     steps:
@@ -127,8 +126,6 @@ jobs:
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
 
   secret-scan:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_secret_scan == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 8s over 10 green PR runs; 2x, floor 10
     steps:
@@ -351,16 +348,16 @@ jobs:
             node: '24'
     steps:
       - uses: actions/checkout@v7
-      - if: needs.plan.outputs.run_node_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node || '22' }}
           cache: 'npm'
           cache-dependency-path: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}/package-lock.json
-      - if: needs.plan.outputs.run_node_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: npm ci
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
-      - if: needs.plan.outputs.run_node_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
 
@@ -608,11 +605,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - if: needs.plan.outputs.run_bun_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - if: needs.plan.outputs.run_bun_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own
@@ -622,7 +619,7 @@ jobs:
       # This is the largest bun test surface in the repo (971 tests) and had no
       # CI step at all until HIMMEL-2620. It runs on both matrix legs because
       # three of its cases are platform-sensitive by construction.
-      - if: needs.plan.outputs.run_bun_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: bun test scripts/telegram --dots
       # HIMMEL-3215: the luna source-identity suites (source-identity +
       # backfill, 40 tests) had no CI step, so a regression in
@@ -635,7 +632,7 @@ jobs:
       # A step in this job (not a new job) rides the already-required
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest' && needs.plan.outputs.run_bun_suites != 'false'
+        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: bun test scripts/vault/tests --dots
       # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
@@ -643,25 +640,25 @@ jobs:
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics,
       # which the non-gating Windows nightly (parked) would only turn red.
       - name: Config UI tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest' && needs.plan.outputs.run_bun_suites != 'false'
+        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: bun test scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
       # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
       # run for the suite that was always there under tests/.
-      - if: needs.plan.outputs.run_bun_suites != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bun test
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest' && needs.plan.outputs.run_bun_suites != 'false'
+        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bun test
       # HIMMEL-3827: fleet-control (9 files) and observability (bun files) had
       # no CI step. Repo-root cwd like the suites above; ubuntu only (POSIX
       # fixtures, spawned servers) so the non-gating Windows leg stays quiet.
       - name: fleet-control + observability tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest' && needs.plan.outputs.run_bun_suites != 'false'
+        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
         run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bun test scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
       # A red Windows nightly must not fail silently now that it is non-gating
       # (HIMMEL-3125): upsert one consolidated issue rather than opening a new
@@ -832,13 +829,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - if: needs.plan.outputs.run_deps_audit != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
-      - if: needs.plan.outputs.run_deps_audit != 'false'
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
@@ -864,26 +861,26 @@ jobs:
       # npm path is `npm ci --dry-run` (no install needed); bun path is
       # `bun install --frozen-lockfile --dry-run` (setup-bun above provides bun).
       - name: lockfile integrity (npm + bun)
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-lockfile-integrity.sh
 
       # uv lock integrity (python) — pre-commit `uv-lock-integrity`. No
       # pyproject.toml in the tree today, so this self-skips (kept for lockstep:
       # the day a python project lands, CI gates its uv.lock with no further edit).
       - name: uv lock integrity (python)
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-uv-lock.sh
 
       # npm audit (production, high+) — pre-push `npm-audit`. Self-installs prod
       # deps (`npm ci --omit=dev --ignore-scripts`) for every committed
       # package.json, leaving node_modules in place for the signatures step below.
       - name: npm audit (production, high+)
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit.sh
 
       # npm license allowlist — pre-push `npm-licenses`.
       - name: npm license allowlist
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-licenses.sh
 
       # HIMMEL-2573: this gate has a hard floor (npm >= 11) that the pinned
@@ -898,7 +895,7 @@ jobs:
       # Print the version so the next time this floor and this runtime drift
       # apart, it's one glance at the log instead of an investigation.
       - name: upgrade npm to meet the audit-signatures floor (>= 11)
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: |
           npm i -g npm@^11
           npm --version
@@ -908,7 +905,7 @@ jobs:
       # step above materialized for the scripts/{jira,bitbucket,himmel-run}
       # packages, so it MUST run after that step.
       - name: npm audit signatures (production)
-        if: needs.plan.outputs.run_deps_audit != 'false'
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit-signatures.sh
 
   # Multi-OS, gated to the nightly to stay free-tier-cheap: every non-schedule

@@ -241,7 +241,8 @@ lines) and exposes one `run_<group>` output per gated job. A gated job skips onl
 when the plan succeeded and said `false`; a plan that failed, printed nothing
 or did not run (push, schedule, dispatch) runs everything. The plan is all-true
 on a trust-path diff, a path no group names, a base without the gates file or
-any selector error. Non-matrix required jobs (`secret-scan`, `lint`,
+any selector error, or an invalid regex in the list. `secret-scan` is not
+gated (a secret can land in any file). Non-matrix required jobs (`lint`,
 `guardrail-matrices`, ...) skip at job level, which reports `skipped`. The
 matrix required jobs (`node-suites`, `bun-suites`) and `security-scan` always
 start and skip their steps, so every required name still reports.

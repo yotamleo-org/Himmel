@@ -92,7 +92,11 @@ while IFS= read -r path; do
     re=${line#"$grp"}
     re=${re#"${re%%[![:space:]]*}"}
     [ -n "$re" ] || continue
-    if printf '%s\n' "$path" | grep -qE -- "$re"; then  # pipefail-ok: one path line, far under PIPE_BUF
+    printf '%s\n' "$path" | grep -qE -- "$re"  # pipefail-ok: one path line, far under PIPE_BUF
+    rc=$?
+    # grep exits 2 on an invalid regex: that is a broken gate list, not a miss
+    [ "$rc" -le 1 ] || full_plan "bad-regex: $grp"
+    if [ "$rc" -eq 0 ]; then
       matched=1
       [ "$grp" = benign ] || printf '%s\n' "$grp" >> "$hit_file"
     fi
