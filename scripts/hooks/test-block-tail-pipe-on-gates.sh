@@ -398,6 +398,11 @@ deny "unquoted <<- heredoc apostrophe inside \$(...) hides no gate" \
 # shellcheck disable=SC2016  # payload is literal command text
 allow "heredoc apostrophe inside \$(...) with no gate" \
      $'x=$(cat <<\'E\'\nit\'s\nE\n)\necho "$x" | tail -1'
+# A newline inside a nested $(...) on the operator line belongs to the nested
+# command, not to the parent's pending heredoc (queue is per nesting level).
+# shellcheck disable=SC2016  # payload is literal command text
+deny "heredoc queue is per substitution level" \
+     $'x=$(cat <<E $(echo a\nb)\nbody\nE\n${V:-./scripts/check-ci.sh} | tail -1\n)'
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""

@@ -616,8 +616,8 @@ _stx_bodies() {
 # `'` is plain text), B a backtick. Returns 1 when it never closes.
 # shellcheck disable=SC2317,SC2329
 _stx_end() {
-    local s=$1 i=$2 st=$3 n=${#1} c t rest b j k l hd_n=0
-    local -a hd_d hd_t
+    local s=$1 i=$2 st=$3 n=${#1} c t rest b j k l m hd_n=0
+    local -a hd_d hd_t hd_l
     [ "$st" != C ] || [ "${4:-0}" = 0 ] || st=E
     while [ "$i" -lt "$n" ]; do
         # the same 32-deep bound as _stx_walk: each byte re-reads the stack
@@ -663,7 +663,12 @@ _stx_end() {
                                 fi ;;
                         esac ;;
                     '(') case $t in P | p) st=${st}p ;; esac ;;
-                    ')') case $t in P | p) st=${st%?} ;; esac ;;
+                    ')')
+                        case $t in
+                            P | p)
+                                st=${st%?}
+                                while [ "$hd_n" -gt 0 ] && [ "${hd_l[hd_n-1]}" -gt "${#st}" ]; do hd_n=$((hd_n - 1)); done ;;
+                        esac ;;
                     '}') case $t in C | E) st=${st%?} ;; esac ;;
                     '<')
                         # a heredoc body inside $(...) is skipped, not scanned (HIMMEL-5411)
@@ -676,7 +681,7 @@ _stx_end() {
                                     while case ${s:j:1} in ' ' | $'\t') true ;; *) false ;; esac; do j=$((j + 1)); done
                                     _stx_hdword "$s" "$j"
                                     if [ -n "$_SX_W" ] || [ "$_SX_Q" = 1 ]; then
-                                        hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_n=$((hd_n + 1))
+                                        hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_l[hd_n]=${#st}; hd_n=$((hd_n + 1))
                                         i=$_SX_E; continue
                                     fi
                                 fi ;;
@@ -684,19 +689,24 @@ _stx_end() {
                     $'\n')
                         case $t in
                             P | p)
-                                if [ "$hd_n" -gt 0 ]; then
-                                    i=$((i + 1)); k=0
+                                # only this level's heredocs: a parent's wait for ITS newline
+                                if [ "$hd_n" -gt 0 ] && [ "${hd_l[hd_n-1]}" = "${#st}" ]; then
+                                    i=$((i + 1)); k=0; m=0
                                     while [ "$k" -lt "$hd_n" ]; do
-                                        while [ "$i" -lt "$n" ]; do
-                                            rest=${s:i}; l=${rest%%$'\n'*}; i=$((i + ${#l} + 1))
-                                            if [ "${hd_t[k]}" = 1 ]; then
-                                                while [ "${l:0:1}" = $'\t' ]; do l=${l:1}; done
-                                            fi
-                                            [ "$l" != "${hd_d[k]}" ] || break
-                                        done
+                                        if [ "${hd_l[k]}" = "${#st}" ]; then
+                                            while [ "$i" -lt "$n" ]; do
+                                                rest=${s:i}; l=${rest%%$'\n'*}; i=$((i + ${#l} + 1))
+                                                if [ "${hd_t[k]}" = 1 ]; then
+                                                    while [ "${l:0:1}" = $'\t' ]; do l=${l:1}; done
+                                                fi
+                                                [ "$l" != "${hd_d[k]}" ] || break
+                                            done
+                                        else
+                                            hd_d[m]=${hd_d[k]}; hd_t[m]=${hd_t[k]}; hd_l[m]=${hd_l[k]}; m=$((m + 1))
+                                        fi
                                         k=$((k + 1))
                                     done
-                                    hd_n=0; continue
+                                    hd_n=$m; continue
                                 fi ;;
                         esac ;;
                     '#')
