@@ -64,6 +64,8 @@ def validate(s):
         die('spec missing: %s' % ', '.join(missing))
     if not isinstance(s['qid'], str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', s['qid']):
         die('qid %r must be letters, digits, - or _' % (s['qid'],))
+    if s.get('tickets') is not None and not isinstance(s['tickets'], list):
+        die('tickets must be a list of ticket keys')
     keys = [s['ticket']] + list(s.get('tickets') or [])
     if not all(isinstance(k, str) and re.fullmatch(r'[A-Z]+-\d+', k) for k in keys):
         die('ticket keys must look like HIMMEL-123 (got %r)' % (keys,))
@@ -152,7 +154,10 @@ def render(s, a, template):
     desc = ' '.join(desc.split())
     sub_para(paras, '---\nresume_cwd:', '---\nresume_cwd: %s\ndescription: %s\ntemplate_version: 1\n---' % (s['_scratch'], json.dumps(desc, ensure_ascii=False)))
     sub_para(paras, '# <TICKET> —', '# %s — judge verdict %s — %s, %s' % (s['ticket'], s['qid'], s['question'], a.date))
-    sub_para(paras, '> **You are the judge for', paras[[i for i, p in enumerate(paras) if p.startswith('> **You are the judge for')][0]].replace('<model>', model))
+    judge_at = [i for i, p in enumerate(paras) if p.startswith('> **You are the judge for')]
+    if len(judge_at) != 1:
+        die('template drift: expected one paragraph starting %r, found %d' % ('> **You are the judge for', len(judge_at)))
+    sub_para(paras, '> **You are the judge for', paras[judge_at[0]].replace('<model>', model))
     sub_para(paras, '> **Tier:**', '> **Tier:** %s — %s: %s' % (gate, s['tier']['category'], s['tier']['reason']))
     sub_para(paras, '> **The question (verbatim', '> **The question (verbatim, one line):** %s' % s['question'])
     sub_para(paras, '> **Reason (why', '> **Reason (why this needs a judge, not the console\'s own read):** %s' % s['reason'])
@@ -217,11 +222,13 @@ def main():
     spec['_scratch'] = scratch
     text = render(spec, a, template)
     doc = os.path.join(a.bucket, '%s-judge-%s-%s-RESUME.md' % (spec['ticket'], spec['qid'], a.date))
-    if os.path.exists(doc):
-        die('%s already exists; refusing to overwrite a judge brief' % doc)
     os.makedirs(a.bucket, exist_ok=True)
     os.makedirs(scratch, exist_ok=True)
-    with open(doc, 'w') as f:
+    try:
+        f = open(doc, 'x')
+    except FileExistsError:
+        die('%s already exists; refusing to overwrite a judge brief' % doc)
+    with f:
         f.write(text)
     print('%s %s %s' % (spec['qid'], spec['_nonce'], doc))
 

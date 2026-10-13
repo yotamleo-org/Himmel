@@ -79,6 +79,14 @@ has "a prose line mentioning SUCCESSION accepted is not a bullet" "$(one N5)" "N
 has "an ambiguous bullet (trailing text) is missing, never accepted" "$(one N6)" "N6 missing"
 has "a successor that merely starts with the name does not match" "$(one N7)" "N7 missing"
 
+# the handshake is read from the Results section only, and backticks must balance
+printf '# leg\n\n## Instructions\n\n%s\n\n## Results (newest at the bottom)\n\n- 03:00 LIVE — started\n' "$(q "$SUCC" "$PRED")" > "$WORK/N10.md"
+mkleg N11 "- 03:00 LIVE — started" "- 04:17 SUCCESSION accepted: \`$SUCC replaces $PRED"
+mkleg N12 "- 03:00 LIVE — started" "- 04:17 SUCCESSION accepted: $SUCC\` replaces \`$PRED"
+has "a strict bullet outside the Results section confirms nothing" "$(one N10)" "N10 missing"
+has "an opening backtick with no closing one is missing" "$(one N11)" "N11 missing"
+has "a closing backtick with no opening one is missing" "$(one N12)" "N12 missing"
+
 # a leg held in Live state with no manifest row cannot be read
 # shellcheck disable=SC2016
 printf '# console\n\n## Live state\nlegs: `N9:Y-N9-aa:lockA:11`\n' > "$CDOC"
@@ -103,6 +111,17 @@ has "the exact LIVE line is printed for append-results.sh" "$out" "bash scripts/
 lacks "the LIVE bullet carries no > character" "$(printf '%s\n' "$out" | grep 'append-results.sh')" ">"
 eq "it only prints: the console doc is untouched" "$(cksum < "$CDOC")" "$sum_before"
 eq "and the manifest is untouched too" "$(cksum < "$MAN")" "$man_before"
+
+# the printed command is safe to paste: a doc path with a space is escaped, a successor that
+# could break the quoted message is a usage error
+SPD="$WORK/sp ace"; mkdir -p "$SPD"
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11`\n' > "$SPD/c.md"
+printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$SPD/c.fleet.json"
+out="$(bash "$SUT" "$SPD/c.md" --successor "$SUCC" 2>&1)"
+has "a doc path with a space is escaped in the printed command" "$out" 'append-results.sh '"$WORK"'/sp\ ace/c.md '
+bash "$SUT" "$CDOC" --successor 'x"; touch /tmp/pwn; "' >/dev/null 2>&1; rc=$?
+eq "a successor with shell metacharacters is a usage error (rc 2)" "$rc" 2
 
 # no legs at all is not a complete set
 printf '# console\n\n## Live state\nlegs:\n' > "$CDOC"

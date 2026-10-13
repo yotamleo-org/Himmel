@@ -41,6 +41,8 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 { [ -n "$successor" ] && [ -f "$doc" ]; } || usage
+# the successor is pasted into a quoted message in the printed command: a session name only
+case "$successor" in *[!A-Za-z0-9_.-]*) echo "succession-tracker.sh: --successor must be a session name (letters, digits, . _ -)" >&2; exit 2 ;; esac
 manifest="${doc%.md}.fleet.json"
 
 # The legs: block of ## Live state (the legs: line plus the lines wrapped under it).
@@ -57,11 +59,15 @@ entries="$(awk '
 leg_state() {
     local ldoc="$1" line inc
     [ -f "$ldoc" ] || { echo missing; return; }
-    # the latest line mentioning the handshake decides
-    line="$(grep 'SUCCESSION accepted' "$ldoc" | tail -n 1)"
+    # the latest line in the Results section mentioning the handshake decides; the same text
+    # in the brief or any other section confirms nothing
+    line="$(awk '/^## Results/ { s = 1; next } s && /^## / { s = 0 } s && /SUCCESSION accepted/ { l = $0 } END { print l }' "$ldoc")"
     [ -n "$line" ] || { echo missing; return; }
+    # backticks come as a balanced pair or not at all
     # shellcheck disable=SC2016
-    inc="$(printf '%s\n' "$line" | sed -nE 's/^- ([0-9]{2}:[0-9]{2} )?(LIVE — )?SUCCESSION accepted: `?([A-Za-z0-9_.-]+)`? replaces `?[A-Za-z0-9_.-]+`?[[:space:]]*$/\3/p')"
+    inc="$(printf '%s\n' "$line" | sed -nE \
+        -e 's/^- ([0-9]{2}:[0-9]{2} )?(LIVE — )?SUCCESSION accepted: `([A-Za-z0-9_.-]+)` replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/\3/p' \
+        -e 's/^- ([0-9]{2}:[0-9]{2} )?(LIVE — )?SUCCESSION accepted: ([A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/\3/p' | head -n 1)"
     if [ -n "$inc" ] && [ "$inc" = "$successor" ]; then echo quoted-back; else echo missing; fi
 }
 
@@ -89,7 +95,7 @@ if [ "$total" -eq 0 ]; then
 fi
 if [ "$ok" -eq "$total" ]; then
     echo "COMPLETE $ok/$total"
-    echo "bash scripts/handover/console-kit/append-results.sh $doc \"LIVE — succession complete: all $total inherited legs quoted back to $successor\""
+    printf 'bash scripts/handover/console-kit/append-results.sh %q "LIVE — succession complete: all %s inherited legs quoted back to %s"\n' "$doc" "$total" "$successor"
     exit 0
 fi
 echo "INCOMPLETE $ok/$total (waiting on: $pending)"

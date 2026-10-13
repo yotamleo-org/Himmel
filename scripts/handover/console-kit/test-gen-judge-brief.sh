@@ -106,6 +106,7 @@ mutate concl 'd["conclusion"]="the finding is real"';     refuse "a spec carryin
 mutate recom 'd["recommendation"]="NO-GO"';               refuse "a spec carrying a recommendation is refused" recom "blind"
 mutate badev 'd["evidence"]=[{"item":"x","for":5}]';       refuse "a non-string evidence field is refused with a diagnostic" badev "evidence"
 mutate badmodel 'd["model"]=7';                           refuse "a non-string model is refused with a diagnostic" badmodel "model"
+mutate badtl 'd["tickets"]=123';                          refuse "a non-list tickets value is refused with a diagnostic" badtl "tickets must be a list"
 mutate badtk 'd["tickets"]=["not-a-key"]';                refuse "a malformed ticket key is refused" badtk "ticket"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
