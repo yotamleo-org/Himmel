@@ -315,7 +315,7 @@ st="$(TZ=UTC bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
 case "$st" in *'(1970-01-03 00:00)'*) pass "native status renders counts mtime" ;; *) fail "native status renders counts mtime ($st)" ;; esac
 st="$(PATH="$W/bsd-bin:$PATH" TZ=UTC bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
 case "$st" in *'(1970-01-03 00:00)'*) pass "BSD status renders counts mtime" ;; *) fail "BSD status renders counts mtime ($st)" ;; esac
-check "BSD stat keeps the HUD counts age" "doctor  1 FAIL  12 WARN (30h old)" "$(PATH="$W/bsd-bin:$PATH" seg)"
+check "BSD stat keeps the HUD counts age" "himmel-doctor  1 FAIL  12 WARN (30h old)" "$(PATH="$W/bsd-bin:$PATH" seg)"
 
 # 11. hardening (CR round 1): a dangling --time fails fast instead of looping;
 # a runner dir with a space is quoted in the crontab line; an unreadable
