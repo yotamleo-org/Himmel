@@ -22,9 +22,10 @@ const unknown = (reason: string): QuotaWindow =>
 
 // A bare number is epoch seconds (ms when huge); a string is ISO. null = unusable.
 function ms(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v > 1e12 ? v : v * 1000;
-  if (typeof v === "string") { const t = Date.parse(v); if (Number.isFinite(t)) return t; }
-  return null;
+  let t: number | null = null;
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) t = v > 1e12 ? v : v * 1000;
+  else if (typeof v === "string") { const p = Date.parse(v); if (Number.isFinite(p)) t = p; }
+  return t !== null && Math.abs(t) <= 8.64e15 ? t : null; // outside the Date range, toISOString() would throw
 }
 const iso = (t: number | null) => (t === null ? null : new Date(t).toISOString());
 
@@ -38,10 +39,12 @@ function read(file: string, what: string): { json: Record<string, unknown> } | {
   return { reason: `${what} cache unreadable` };
 }
 
-function window(used: unknown, resets: unknown, capturedMs: number | null, now: number, maxAgeS: number): QuotaWindow {
-  if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100) return unknown("window not reported");
-  if (capturedMs === null) return { ...unknown("cache has no capture time"), used_pct: null };
+function window(used: unknown, resets: unknown, capturedMs: number | null, now: number, maxAgeS: number, notReported = "window not reported"): QuotaWindow {
+  if (capturedMs === null) return unknown("cache has no capture time");
   const age = Math.max(0, Math.floor((now - capturedMs) / 1000));
+  // An unreported window still says how old the cache holding that gap is.
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100)
+    return { ...unknown(notReported), captured_at: iso(capturedMs), age_s: age };
   const r = ms(resets);
   return {
     used_pct: used, resets_at: iso(r), captured_at: iso(capturedMs), age_s: age,
@@ -86,7 +89,7 @@ function codex(env: Env, now: number): Quota["codex"] {
   }
   const one = (label: string) => {
     const b = best.get(label);
-    return b ? window(b.used, b.resets, captured, now, ttl) : unknown("not reported by this plan");
+    return window(b ? b.used : null, b ? b.resets : null, captured, now, ttl, "not reported by this plan");
   };
   return { five_hour: one("5h"), weekly: one("weekly") };
 }

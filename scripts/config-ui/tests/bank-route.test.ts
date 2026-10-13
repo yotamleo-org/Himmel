@@ -126,3 +126,17 @@ test("panel: unknown shows 'unknown (why)' and its age, never 0 %; possibly rese
   expect(html).toContain("74");
   expect(html).not.toMatch(/five_hour[^<]*\b0 ?%/);
 });
+
+test("a finite timestamp outside the Date range is unknown, not an endpoint error", async () => {
+  const s = boot({ claude: claudeCache("2026-10-13T11:58:00Z", { five_hour: { utilization: 9, resets_at: 1e300 } }) });
+  const res = await fetch(`http://127.0.0.1:${s.port}/api/bank`, { headers: { "X-Himmel-Token": TOKEN } });
+  expect(res.status).toBe(200);
+  const b = await res.json();
+  expect(b.claude.five_hour).toMatchObject({ used_pct: 9, resets_at: null });
+});
+
+test("an unreported window keeps the cache capture time and age", async () => {
+  const s = boot({ codex: codexCache("2026-10-13T11:00:00Z", [weekly(12, epoch("2026-10-18T00:00:00Z"))]) });
+  const b = await get(s.port);
+  expect(b.codex.five_hour).toMatchObject({ state: "unknown", used_pct: null, age_s: 3600, captured_at: "2026-10-13T11:00:00.000Z" });
+});

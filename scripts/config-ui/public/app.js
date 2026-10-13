@@ -185,7 +185,7 @@ async function loadHealth() {
     ]);
     j = r.ok ? await r.json() : null;
     if (!j) toast(`health sources failed (${r.status})`);
-    else if (qr && qr.ok) j.quota = await qr.json();
+    else if (qr && qr.ok) j.quota = await qr.json().catch(() => undefined); // a bad bank body must not drop the health cards
   } catch (_) { j = null; toast("health sources: server unreachable"); }
   if (gen !== healthGen) return;
   const gone = { state: "error", reason: "health endpoint unreachable" };
