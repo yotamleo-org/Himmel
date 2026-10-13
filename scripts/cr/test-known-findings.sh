@@ -221,6 +221,14 @@ contains "refresh with a missing ledger says so" "$rml" "ledger not readable"
 ev_after="$(node -e 'const j=require(process.argv[1]);console.log(JSON.stringify(j.classes.find(c=>c.id==="hook-fail-direction").evidence.ledger))' "$tmp/kf.json" 2>&1)"
 check "refresh with a missing ledger leaves ledger evidence unchanged" "$ev_after" "$ev_before"
 
+# HIMMEL-5465: CodeRabbit's export starts with a UTF-8 BOM (EF BB BF) — the first
+# header must still read as "Learning". BOM-free input (learn.csv above) is the control.
+{ printf '\357\273\277'; cat "$tmp/learn.csv"; } > "$tmp/learn-bom.csv"
+cp "$HERE/known-findings.json" "$tmp/kf-bom.json"
+rb="$(KNOWN_FINDINGS_FILE="$tmp/kf-bom.json" CR_LEDGER="$tmp/ledger.jsonl" bash "$SCRIPT" --refresh --learnings "$tmp/learn-bom.csv" 2>&1)"; rbrc=$?
+check "refresh: BOM-prefixed learnings csv exits 0" "$rbrc" "0"
+contains "refresh: BOM csv parses (export summary)" "$rb" "learnings export: 2 rows, 257 uses, 1 rows matched no class"
+
 # --prompt: the HIMMEL-2377 anchor-handshake rebuttal is present, and the
 # framing forbids re-raising it unless the code regressed.
 contains "prompt: anchor-handshake rebuttal present" "$p" "[pr-check-anchor-handshake-escalation]"

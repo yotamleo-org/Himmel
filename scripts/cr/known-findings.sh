@@ -251,7 +251,7 @@ if (MODE === "refresh") {
   // 2) learnings export (CodeRabbit CSV): attribute rows to classes by learning_match; report the unmatched top-10.
   let unmatched = [];
   if (process.env.LEARNINGS) {
-    const csv = fs.readFileSync(process.env.LEARNINGS, "utf8");
+    const csv = fs.readFileSync(process.env.LEARNINGS, "utf8").replace(/^﻿/, ""); // CodeRabbit exports start with a UTF-8 BOM
     const recs = []; let f = "", row = [], q = false; // RFC-4180 state machine (quotes, doubled quotes, embedded newlines)
     for (let i = 0; i < csv.length; i++) { const ch = csv[i];
       if (q) { if (ch === "\"") { if (csv[i + 1] === "\"") { f += "\""; i++; } else q = false; } else f += ch; }
