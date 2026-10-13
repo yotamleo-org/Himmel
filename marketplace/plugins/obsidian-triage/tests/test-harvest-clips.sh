@@ -67,6 +67,13 @@ if [ "$exists" = "no" ]; then
     echo "Results: $pass passed, $fail failed"; exit 1
 fi
 
+echo "Test 1b: every references/harvest-clips file is linked from the command body (HIMMEL-5513)"
+unlinked=""
+for ref in "$PLUGIN_DIR"/references/harvest-clips/*.md; do
+    grep -qF "references/harvest-clips/$(basename "$ref")" "$PLUGIN_DIR/commands/harvest-clips.md" || unlinked="$unlinked $(basename "$ref")"
+done
+assert "no unlinked reference files" "" "$unlinked"
+
 echo "Test 2: frontmatter allowed-tools includes Skill (dispatch table needs it)"
 fm_lines=$(awk '/^---$/{c++; next} c==1' "$CMD")
 if grep -qE "^allowed-tools:.*\bSkill\b" <<<"$fm_lines"; then

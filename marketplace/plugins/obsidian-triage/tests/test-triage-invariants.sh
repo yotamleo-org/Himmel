@@ -885,6 +885,11 @@ echo "Test 10: evidence_origin is a QUOTED, round-tripped YAML scalar (HIMMEL-17
 # Phase 8 forever, or parses WRONG and truncates the path the drain relies on.
 CMD="$TMP/triage-clips.all.md"  # HIMMEL-5513: body plus its on-demand references
 cat "$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md" "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md > "$CMD"
+unlinked=""
+for ref in "$(cd "$(dirname "$0")/.." && pwd)"/references/triage-clips/*.md; do
+    grep -qF "references/triage-clips/$(basename "$ref")" "$(cd "$(dirname "$0")/.." && pwd)/commands/triage-clips.md" || unlinked="$unlinked $(basename "$ref")"
+done
+assert "every references/triage-clips file is linked from the command body" "" "$unlinked"
 grep -q "evidence_origin: '<OLD>'" "$CMD" \
   && r=ok || r=missing
 assert "runbook emits evidence_origin single-quoted" "ok" "$r"

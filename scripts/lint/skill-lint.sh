@@ -160,6 +160,10 @@ FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-30000}"
 case "$WARN_BYTES$FAIL_BYTES" in
     *[!0-9]*|'') printf 'skill-lint: SKILL_LINT_WARN_BYTES/SKILL_LINT_FAIL_BYTES must be integers\n' >&2; exit 2 ;;
 esac
+# More than 15 digits overflows bash's integer range and would silently skip the comparison.
+if [ "${#WARN_BYTES}" -gt 15 ] || [ "${#FAIL_BYTES}" -gt 15 ]; then
+    printf 'skill-lint: SKILL_LINT_WARN_BYTES/SKILL_LINT_FAIL_BYTES must be at most 15 digits\n' >&2; exit 2
+fi
 
 _root="$(git rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$_root" ] || { printf 'skill-lint: not inside a git work tree\n' >&2; exit 2; }
