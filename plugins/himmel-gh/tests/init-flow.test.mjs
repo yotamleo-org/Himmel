@@ -166,19 +166,39 @@ describe('runInit', () => {
 });
 
 import { spawnSync } from 'node:child_process';
-import { resolve as pathResolve } from 'node:path';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, delimiter, resolve as pathResolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const INIT_CLI = pathResolve(fileURLToPath(new URL('.', import.meta.url)), '../lib/init-cli.mjs');
 
+// HIMMEL-5464: the CLI used to spawn the runner's real `gh` (network, keyring),
+// so under CI load the 5000 ms default tripped. A fake `gh` first on PATH makes
+// the spawn deterministic; the timeout is a loaded budget, not an idle one.
+const CLI_TEST_TIMEOUT_MS = 30000;
+
 describe('init-cli unhandled-throw contract', () => {
   it('unexpected throw → one-line summary on stderr, non-zero exit, no node stack', () => {
-    const r = spawnSync(process.execPath, [INIT_CLI], { encoding: 'utf8' });
-    const stdoutLines = r.stdout.trim().split('\n').filter(Boolean);
-    expect(stdoutLines.length).toBeLessThanOrEqual(1);
-    expect(r.stderr).not.toMatch(/UnhandledPromiseRejection/);
-    expect(r.stderr).not.toMatch(/at process\.<anonymous>/);
-  });
+    const dir = mkdtempSync(join(tmpdir(), 'himmel-gh-fake-'));
+    try {
+      const fakeGh = join(dir, 'gh');
+      writeFileSync(fakeGh, '#!/bin/sh\necho "You are not logged in" >&2\nexit 1\n');
+      chmodSync(fakeGh, 0o755);
+      const env = { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}` };
+      const r = spawnSync(process.execPath, [INIT_CLI], {
+        encoding: 'utf8',
+        env,
+        timeout: CLI_TEST_TIMEOUT_MS,
+      });
+      const stdoutLines = r.stdout.trim().split('\n').filter(Boolean);
+      expect(stdoutLines.length).toBeLessThanOrEqual(1);
+      expect(r.stderr).not.toMatch(/UnhandledPromiseRejection/);
+      expect(r.stderr).not.toMatch(/at process\.<anonymous>/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TEST_TIMEOUT_MS + 5000);
 });
 
 describe('buildErrorStderr', () => {
