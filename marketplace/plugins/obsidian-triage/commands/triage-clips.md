@@ -136,7 +136,7 @@ night, and the debt stays unpaid (HIMMEL-1713).
 
 ### Phase-8 debt drain (HIMMEL-1713)
 
-**Read on demand:** Run this drain at the point this runbook reaches it (after the vault index, before the per-clip loop, when `--dry-run` is not set). Read `<plugin>/references/triage-clips/phase-8-debt-drain.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
+**Read on demand:** Run this drain at the point this runbook reaches it (before the per-clip loop, in every run including `--dry-run`, which previews it per the reference; a drain-only pass may skip Phase 0). Read `<plugin>/references/triage-clips/phase-8-debt-drain.md` (`<plugin>` is this runbook's plugin root, `marketplace/plugins/obsidian-triage`) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ### Phase 0 — Build vault index (run ONCE before the per-clip loop)
 

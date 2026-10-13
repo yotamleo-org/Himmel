@@ -248,7 +248,7 @@ assert "promotion does NOT appear in the UTC-day note ($BUTC)" "excluded" "$f"
 
 # ── Structural: runbooks invoke the tool ─────────────────────────────────────
 echo "Test 14: triage + synthesize runbooks wire daily-timeline.mjs"
-if grep -qF 'tools/daily-timeline.mjs' "$PLUGIN_DIR/commands/triage-clips.md" "$PLUGIN_DIR"/references/triage-clips/*.md; then f=yes; else f=no; fi
+if grep -qF 'tools/daily-timeline.mjs' "$PLUGIN_DIR/commands/triage-clips.md" || { grep -qF 'references/triage-clips/daily-timeline.md' "$PLUGIN_DIR/commands/triage-clips.md" && grep -qF 'tools/daily-timeline.mjs' "$PLUGIN_DIR/references/triage-clips/daily-timeline.md"; }; then f=yes; else f=no; fi
 assert "triage-clips.md invokes daily-timeline.mjs" "yes" "$f"
 if grep -qF 'tools/daily-timeline.mjs' "$PLUGIN_DIR/commands/synthesize-stubs.md"; then f=yes; else f=no; fi
 assert "synthesize-stubs.md invokes daily-timeline.mjs" "yes" "$f"
