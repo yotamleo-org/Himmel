@@ -594,6 +594,9 @@ if ($ClassifierModel) {
   # files must also show the Claude OAuth login serving the alias with no claude-api-key,
   # vertex-api-key or naming openai-compatibility entry. Fail closed; never echoes a key.
   function Test-ClaudeOauthOnly([string]$Alias) {
+    # a remote proxy (CLAUDE_CODEX_REMOTE_PROXY_OK=1) is not the server this local
+    # config describes, so the proof does not apply to it
+    if ($env:CLAUDE_CODEX_REMOTE_PROXY_OK -eq '1') { return $false }
     $cfg = Join-Path $HomeDir '.cli-proxy-api/config.yaml'
     if (-not (Test-Path -LiteralPath $cfg -PathType Leaf)) { return $false }
     try { $lines = Get-Content -LiteralPath $cfg -ErrorAction Stop } catch { return $false }
@@ -606,8 +609,13 @@ if ($ClassifierModel) {
     if (-not (Test-Path -LiteralPath $authDir -PathType Container)) { return $false }
     $re = '(^|[^A-Za-z0-9._-])' + [regex]::Escape($Alias.ToLowerInvariant()) + '([^A-Za-z0-9._-]|$)'
     $cur = ''
+    $seen = $false
     foreach ($l in $lines) {
       if ($l -match '^\s*#') { continue }
+      if ($l -match '^(---|\.\.\.)\s*$') { continue }
+      # only a plain block-style mapping with unindented root keys is parsed: an
+      # indented or flow-style root would hide the keys below, so it fails closed
+      if (-not $seen -and $l -notmatch '^\s*$') { $seen = $true; if ($l -match '^[\s{\[-]') { return $false } }
       if ($l -match '^["'']?([A-Za-z0-9_-]+)["'']?\s*:\s*(.*?)\s*(#.*)?$') {
         $cur = $Matches[1]; $val = $Matches[2]
         if (($cur -ceq 'claude-api-key' -or $cur -ceq 'vertex-api-key') -and $val -and $val -notin @('[]', '{}', 'null', '~')) { return $false }

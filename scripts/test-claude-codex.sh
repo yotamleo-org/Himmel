@@ -613,6 +613,23 @@ setup; write_child_mocks; MODEL="gpt-6.1-sol"
 rm -f "$FAKEHOME/.cli-proxy-api/config.yaml"
 run_launcher_expect "classifier flag: unreadable cli-proxy config refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 
+# a root the line parser cannot read (indented keys, flow style) must fail closed.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat > "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+  host: "127.0.0.1"
+  claude-api-key:
+    - api-key: "fake-or-secret-3333"
+CFG
+run_launcher_expect "classifier flag: indented-root config refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran with an unparseable indented config"; FAILS=$((FAILS + 1)); }
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s\n' '{host: "127.0.0.1", claude-api-key: [{api-key: "fake-or-secret-4444"}]}' > "$FAKEHOME/.cli-proxy-api/config.yaml"
+run_launcher_expect "classifier flag: flow-style config refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+! grep -q 'fake-or-secret-4444' "$WORK/out.txt" || { echo "FAIL: the refusal echoed flow-config key material"; FAILS=$((FAILS + 1)); }
+# a remote proxy is not the server the local config describes.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+CLAUDE_CODEX_REMOTE_PROXY_OK=1 run_launcher_expect "classifier flag: remote-proxy override refuses (local config does not apply)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+
 # duplicate ids: EVERY entry for the alias must be owned by anthropic, not just the first.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 printf '%s' '{"object":"list","data":[{"id":"claude-sonnet-5","owned_by":"anthropic"},{"id":"claude-sonnet-5","owned_by":"openrouter"},{"id":"gpt-6.1-sol","owned_by":"openai"}]}' > "$MODELS_FIXTURE_DIR/models-dup.json"

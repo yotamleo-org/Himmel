@@ -613,6 +613,9 @@ fi
 # unreadable config, a missing or disabled claude auth file, any claude-api-key or
 # vertex-api-key entry, or an openai-compatibility entry naming the alias is 1).
 _cliproxy_claude_oauth_only() {
+  # a remote proxy (CLAUDE_CODEX_REMOTE_PROXY_OK=1) is not the server this local
+  # config describes, so the proof does not apply to it
+  if [ "${CLAUDE_CODEX_REMOTE_PROXY_OK:-}" = "1" ]; then return 1; fi
   _cfg="$HOME/.cli-proxy-api/config.yaml"
   [ -r "$_cfg" ] || return 1
   _authdir="$(awk '/^auth-dir:/ { v=$0; sub(/^auth-dir:[ \t]*/, "", v); sub(/[ \t]*#.*$/, "", v); sub(/[ \t]+$/, "", v); print v; exit }' "$_cfg" | tr -d "'\"")"
@@ -626,6 +629,10 @@ _cliproxy_claude_oauth_only() {
     function nonempty(v) { return v != "" && v != "[]" && v != "{}" && v != "null" && v != "~" }
     BEGIN { a = tolower(ENVIRON["ALIAS"]); gsub(/\./, "\\.", a); re = "(^|[^A-Za-z0-9._-])" a "([^A-Za-z0-9._-]|$)" }
     /^[ \t]*#/ { next }
+    /^(---|\.\.\.)[ \t]*$/ { next }
+    # only a plain block-style mapping with unindented root keys is parsed: an
+    # indented or flow-style root would hide the keys below, so it fails closed
+    !seen && !/^[ \t]*$/ { seen = 1; if ($0 ~ /^[ \t{\[-]/) bad = 1 }
     /^["\047]?[A-Za-z0-9_-]+["\047]?[ \t]*:/ {
       key = $0; sub(/[ \t]*:.*$/, "", key); gsub(/["\047]/, "", key)
       val = $0; sub(/^[^:]*:[ \t]*/, "", val); sub(/[ \t]*#.*$/, "", val)
