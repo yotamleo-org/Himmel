@@ -26,9 +26,12 @@ function filters(d, ui) {
   return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Theme", d.themes, ui.theme)}</div>`;
 }
 
-// HIMMEL-5491: one select per card; the option value is the theme's label slug ("" clears it).
-const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Theme of HIMMEL-${t.k}">${d.themes.map((x, i) =>
-  `<option value="${esc((d.themeSlugs || [])[i] ?? "")}"${t.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select>`;
+// HIMMEL-5491: one select per card; the option value is the theme's label slug ("" clears it). A slug over the write
+// route's 40-char cap is shown but disabled, so it is never offered as a write the server would refuse.
+const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Theme of HIMMEL-${t.k}">${d.themes.map((x, i) => {
+  const slug = (d.themeSlugs || [])[i] ?? "";
+  return `<option value="${esc(slug)}"${t.theme === i ? " selected" : ""}${slug.length > 40 ? " disabled" : ""}>${esc(x)}</option>`;
+}).join("")}</select>`;
 
 function cardHtml(t, d, showVersion, w) {
   const lg = t.leg ? `<div class="rm-leg"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";

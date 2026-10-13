@@ -130,3 +130,32 @@ test("the Kanban card carries a theme select and a draggable card; columns are d
   expect(html).toContain('<option value="tracker" selected>');
   expect(renderKanban(data, {})).not.toContain('draggable="true"');
 });
+
+test("a theme slug over the 40-char write cap is offered disabled, not as a write the server would refuse", () => {
+  const long = "a".repeat(41);
+  const data = { state: "ok", versions: [{ n: "v1.1.2", rel: false, date: "", counts: {}, open: [] }], themes: ["(no theme)", "ok", "Long"], themeSlugs: ["", "ok", long],
+    tickets: [{ k: 7, t: "x", s: "To Do", b: "todo", v: 0, theme: 0, pv: null, drift: 0, labels: [], leg: null }], mirror: { count: 1, newest: "" } };
+  const html = renderKanban(data, { writes: true });
+  expect(html).toContain(`<option value="${long}" disabled>`);
+  expect(html).toContain('<option value="ok">');
+});
+
+test("jira CLI path falls back to HIMMEL_REPO when this checkout has no dist/", async () => {
+  const d = mkdtempSync(join(tmpdir(), "jira-bin-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  mkdirSync(join(d, "scripts/jira/dist"), { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
+  const log = join(dir, "jira.log");
+  writeFileSync(join(d, "scripts/jira/dist/index.js"),
+    `require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`);
+  const home = join(dir, "home"), root = join(dir, "root");
+  mkdirSync(home); mkdirSync(root);
+  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home,
+    HANDOVER_DIR: root, HIMMEL_REPO: d } });
+  cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
+  const r = await fetch(`http://127.0.0.1:${s.port}/api/roadmap/write`, { method: "POST",
+    headers: { "content-type": "application/json", origin: `http://127.0.0.1:${s.port}`, "x-himmel-token": TOKEN },
+    body: JSON.stringify({ key: "HIMMEL-1", status: "done" }) });
+  expect(r.status).toBe(200);
+  expect(readFileSync(log, "utf8")).toContain('["transition","HIMMEL-1","Done"]');
+});
