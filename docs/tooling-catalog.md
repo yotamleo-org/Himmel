@@ -781,7 +781,7 @@ CLI tools of the code kit (0 listing tokens, not plugins), installed by
 
 | Tool | Install | Drift row (`scripts/upstreams.json`) |
 |------|---------|--------------------------------------|
-| `ast-grep` 0.45.3 (structural search/rewrite, MIT) | npm `@ast-grep/cli`, pinned | `ast-grep`, `tag_release` base, auto-bumpable via `version_pin` |
+| `ast-grep` 0.50.0 (structural search/rewrite, MIT) | npm `@ast-grep/cli`, pinned | `ast-grep`, `tag_release` base, auto-bumpable via `version_pin` |
 | `shfmt` (shell formatter) | system package manager | `shfmt`, probe, report-only |
 | `bats` (bash test runner) | system package manager | `bats`, probe, report-only |
 
