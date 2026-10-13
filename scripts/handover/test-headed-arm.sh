@@ -338,11 +338,18 @@ sfx_run() { # <case dir> <model> -> the dry-run argv line
 }
 contains     "suffix: claude-opus-4-6 gets [1m]"                "$(sfx_run opus46 claude-opus-4-6)" "claude-opus-4-6[1m]"
 contains     "suffix: claude-sonnet-4-6 gets [1m]"              "$(sfx_run sonnet46 claude-sonnet-4-6)" "claude-sonnet-4-6[1m]"
-not_contains "suffix: claude-sonnet-5-5 launches bare"          "$(sfx_run sonnet55 claude-sonnet-5-5)" "claude-sonnet-5-5[1m]"
-not_contains "suffix: claude-haiku-5-5 launches bare"           "$(sfx_run haiku55 claude-haiku-5-5)" "claude-haiku-5-5[1m]"
-not_contains "suffix: gpt-5.6-sol never gets [1m]"              "$(sfx_run gpt gpt-5.6-sol)" "gpt-5.6-sol[1m]"
-not_contains "suffix: glm-5.1 never gets [1m]"                  "$(sfx_run glm glm-5.1)" "glm-5.1[1m]"
-not_contains "suffix: a slash id never gets [1m]"               "$(sfx_run slash openrouter/deepseek-v4)" "deepseek-v4[1m]"
+# A bare launch must prove the launcher ran (argv carries --autocompact auto),
+# else an early failure with no model argv would pass as "suffix omitted".
+bare_launch() { # <label> <case> <model>
+  local out; out="$(sfx_run "$2" "$3")"
+  contains     "suffix: $1 launches (argv present)" "$out" "--autocompact auto"
+  not_contains "suffix: $1 launches bare"            "$out" "$3[1m]"
+}
+bare_launch "claude-sonnet-5-5"            sonnet55 claude-sonnet-5-5
+bare_launch "claude-haiku-5-5"             haiku55  claude-haiku-5-5
+bare_launch "gpt-5.6-sol never [1m]"       gpt      gpt-5.6-sol
+bare_launch "glm-5.1 never [1m]"           glm      glm-5.1
+bare_launch "a slash id never [1m]"        slash    openrouter/deepseek-v4
 contains     "suffix: a native-1M id still passes --autocompact auto" "$(sfx_run sonnet55b claude-sonnet-5-5)" "--autocompact auto"
 
 # --- 1x (HIMMEL-5501). Claude Code version floor ----------------------------

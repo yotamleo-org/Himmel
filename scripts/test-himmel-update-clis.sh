@@ -70,6 +70,7 @@ case "$1" in
     update)
         echo "claude update" >> "$STUB_STATE/claude.update.log"
         [ -f "$STUB_STATE/claude.update.fail" ] && { echo "update failed: EACCES" >&2; exit 1; }
+        [ -f "$STUB_STATE/claude.update.partial" ] && { cat "$STUB_STATE/claude.update.partial" > "$STUB_STATE/claude.ver"; echo "update failed: half written" >&2; exit 1; }
         if [ -f "$STUB_STATE/claude.update.stuck" ]; then cat "$STUB_STATE/claude.update.stuck" > "$STUB_STATE/claude.ver"
         else cp "$STUB_STATE/claude.latest" "$STUB_STATE/claude.ver"; fi ;;
     *) printf '%s (Claude Code)\n' "$(cat "$STUB_STATE/claude.ver")" ;;
@@ -113,7 +114,7 @@ reset_state() {
     printf '0.200.0\n' > "$STATE/codex.latest"
     printf '2.1.100\n' > "$STATE/claude.ver"
     printf '2.1.296\n' > "$STATE/claude.latest"
-    rm -f "$STATE/npm.log" "$STATE/npm.fail" "$STATE/claude.update.log" "$STATE/claude.update.fail" "$STATE/claude.update.stuck"
+    rm -f "$STATE/npm.log" "$STATE/npm.fail" "$STATE/claude.update.log" "$STATE/claude.update.fail" "$STATE/claude.update.stuck" "$STATE/claude.update.partial"
 }
 
 echo "codex CLI: upgraded through its install method"
@@ -224,6 +225,24 @@ if [ "$RC" -ne 0 ] && has 'still below the floor' && has '^    claude +failed'; 
     assert_pass "an update that leaves claude below the floor fails loudly (rc != 0)"
 else
     assert_fail "stuck below floor → FAIL + failed row + rc 1 (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.285\n' > "$STATE/claude.update.stuck"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.285' && has 'latest is 2\.1\.296'; then
+    assert_pass "an update that lands above the floor but short of latest says so"
+else
+    assert_fail "above floor, short of latest → updated + latest note (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.290\n' > "$STATE/claude.update.partial"
+run_only clis
+if [ "$RC" -ne 0 ] && has '^    claude +failed' && has 'updater exited 1'; then
+    assert_pass "a failing updater is never reported as updated even if the version moved"
+else
+    assert_fail "updater rc 1 with moved version → failed row + rc 1 (rc=$RC): $OUT"
 fi
 
 reset_state

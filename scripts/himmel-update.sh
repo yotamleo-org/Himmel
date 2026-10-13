@@ -753,10 +753,24 @@ _sync_claude_cli() {
     [ -z "$after" ] || { floor_rc=0; claude_version_lt "$after" "$CLAUDE_MIN_VERSION" || floor_rc=$?; }
     if [ "$floor_rc" -eq 1 ]; then
         # at or above the floor now
-        if [ "$after" != "$inst" ]; then
-            echo "    claude $inst -> $after (upgraded via ${owner:-native})."
-            _probe_tool_row claude updated "$inst -> $after"
-            _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+        if [ "$rc" -ne 0 ]; then
+            echo "    claude updater exited $rc (now $after) — $(_last_line_trimmed "$out")" >&2
+            echo "    retry by hand: $cmd" >&2
+            _probe_tool_row claude failed "updater exit $rc ($inst -> $after); retry: $cmd"
+            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch
+            return 1
+        elif [ "$after" != "$inst" ]; then
+            local after_cmp=0
+            _cli_proxy_version_cmp "$after" "$latest" || after_cmp=$?
+            if [ "$after_cmp" -eq 0 ]; then
+                echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest is $latest)."
+                _probe_tool_row claude updated "$inst -> $after (latest $latest)"
+                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch
+            else
+                echo "    claude $inst -> $after (upgraded via ${owner:-native})."
+                _probe_tool_row claude updated "$inst -> $after"
+                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+            fi
         else
             echo "    claude upgrade did not change $after — $(_last_line_trimmed "$out")" >&2
             echo "    retry by hand: $cmd" >&2
