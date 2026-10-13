@@ -92,7 +92,7 @@ while IFS= read -r path; do
     re=${line#"$grp"}
     re=${re#"${re%%[![:space:]]*}"}
     [ -n "$re" ] || continue
-    if printf '%s\n' "$path" | grep -qE -- "$re"; then
+    if printf '%s\n' "$path" | grep -qE -- "$re"; then  # pipefail-ok: one path line, far under PIPE_BUF
       matched=1
       [ "$grp" = benign ] || printf '%s\n' "$grp" >> "$hit_file"
     fi

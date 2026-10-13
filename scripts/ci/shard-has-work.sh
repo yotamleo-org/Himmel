@@ -30,8 +30,12 @@ case "$out" in
   *"== Summary =="*) ;;
   *) echo "shard-has-work: no summary footer, assuming work" >&2; echo "has_work=true"; exit 0 ;;
 esac
-if printf '%s\n' "$out" | grep -q '^\[RUN \]'; then
-  echo "has_work=true"
-else
-  echo "has_work=false"
-fi
+# No pipe: a long listing under pipefail would SIGPIPE the producer of a
+# `| grep -q` and read a shard that HAS work as empty (fail-open).
+nl='
+'
+run_marker='[RUN ]'
+case "$nl$out" in
+  *"${nl}${run_marker}"*) echo "has_work=true" ;;
+  *) echo "has_work=false" ;;
+esac

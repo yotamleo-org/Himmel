@@ -14,6 +14,8 @@
 #   P7  no base (push / schedule)           -> every gate true
 #   P8  a .sh edit                          -> lint true, node_suites false
 #   P9  every gate named in ci.yml's plan consumers exists in the plan output
+#   S1-S5  shard-has-work.sh: empty / [RUN ] / --list failure / no footer fail
+#          closed to true, and a >64 KiB listing is not misread under pipefail
 #
 # Platform guard: bash-only, no .ps1 twin; git + tar, Linux CI is the caller.
 #
@@ -81,8 +83,8 @@ H_SH=$(branch sh scripts/tools/foo.sh '# edit')
 plan() { (cd "$SB" && bash "$SB/scripts/ci/pr-plan.sh" "$@" 2>/dev/null); }
 val() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
 all_is() { # all_is <output> <true|false> — every run_ line has that value
-  printf '%s\n' "$1" | grep '^run_' | grep -qv "=$2\$" && return 1
-  printf '%s\n' "$1" | grep -q '^run_'
+  printf '%s\n' "$1" | grep '^run_' | grep -qv "=$2\$" && return 1  # pipefail-ok: a few lines of output
+  printf '%s\n' "$1" | grep -q '^run_'  # pipefail-ok: a few lines of output
 }
 
 # P1
@@ -150,5 +152,31 @@ have=$(grep -oE '^[a-z_]+' "$SRC_ROOT/scripts/ci/pr-job-gates.txt" | grep -v '^b
 missing=$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$have"))
 if [ -n "$want" ] && [ -z "$missing" ]; then pass "P9 ci.yml reads only gates the input list defines"
 else fail "P9 ci.yml reads undefined gates: ${missing:-<none read>}"; fi
+
+# S1-S5: scripts/ci/shard-has-work.sh against a stub run-shell-tests.sh whose
+# --list output STUB_MODE picks (the real selector is covered by its own suite).
+SHW="$SB/shw"
+mkdir -p "$SHW"
+cp "$SRC_ROOT/scripts/ci/shard-has-work.sh" "$SHW/shard-has-work.sh"
+cat > "$SHW/run-shell-tests.sh" <<'STUB'
+#!/usr/bin/env bash
+case "$STUB_MODE" in
+  fail) exit 1 ;;
+  nofooter) echo "[RUN ] a/test-x.sh"; exit 0 ;;
+  empty) echo "[SKIP] a/test-x.sh"; echo "== Summary =="; exit 0 ;;
+  run) echo "[SKIP] a/test-x.sh"; echo "[RUN ] a/test-y.sh"; echo "== Summary =="; exit 0 ;;
+  big) echo "[RUN ] a/test-y.sh"; i=0; while [ "$i" -lt 4000 ]; do echo "[SKIP] a/some/long/path/test-$i.sh # padding padding padding"; i=$((i+1)); done; echo "== Summary =="; exit 0 ;;
+esac
+STUB
+shw() { STUB_MODE="$1" bash "$SHW/shard-has-work.sh" 1/8 . 2>/dev/null; }
+s_case() { # s_case <label> <mode> <expected>
+  got=$(shw "$2")
+  if [ "$got" = "$3" ]; then pass "$1: $3"; else fail "$1 got: $got"; fi
+}
+s_case "S1 clean empty listing" empty has_work=false
+s_case "S2 a [RUN ] line" run has_work=true
+s_case "S3 --list failure (fail closed)" fail has_work=true
+s_case "S4 no summary footer (fail closed)" nofooter has_work=true
+s_case "S5 listing over 64 KiB with an early [RUN ]" big has_work=true
 
 rst_tally
