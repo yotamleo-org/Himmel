@@ -425,7 +425,9 @@ test('pull derives remaining from cost-report spend since the grant start, acros
   assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
   assert.equal(r.remaining_usd, '1.200000');
   const row = JSON.parse(readFileSync(f.paths.snapshot)).accounts.A;
-  assert.equal(row.source, 'automatic-snapshot');
+  // A pull keeps the row's source, so the operator reading stays the fallback past 600 s.
+  assert.equal(row.source, 'operator-console-snapshot');
+  assert.equal(row.pulled_at, row.observed_at);
   assert.equal(row.remaining_usd, '1.200000');
   assert.equal(seen.length, 2);
   const first = new URL(seen[0].url);
@@ -472,4 +474,39 @@ test('pull failures leave the snapshot untouched and never echo the key', async 
   const seenInit = [];
   await pullSnapshot(env, 'A', { fetchImpl: async (u, init) => { seenInit.push(init); return { ok: true, json: async () => ({ data: [], has_more: false }) }; } });
   assert.equal(seenInit[0].redirect, 'error');
+});
+
+test('a pull that reports more credit than the row holds keeps the smaller figure', async () => {
+  const f = fixture();
+  f.snapshot.accounts.A.remaining_usd = '1.00'; f.save();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
+  // 2.00 grant less 0.50 reported spend would read 1.50, above the row's 1.00.
+  const r = await pullSnapshot(env, 'A', { fetchImpl: costStub([{ data: [bucket('50')], has_more: false, next_page: null }]) });
+  assert.equal(r.remaining_usd, '1.000000', JSON.stringify(r));
+  assert.equal(JSON.parse(readFileSync(f.paths.snapshot)).accounts.A.remaining_usd, '1.000000');
+});
+
+test('a reading or watermark that lands while the pull is in flight refuses the pull', async () => {
+  const f = fixture();
+  const { pullSnapshot } = await import('./api-credit-state.mjs');
+  const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
+  const fetchImpl = async () => {
+    f.snapshot.accounts.A.remaining_usd = '1.50'; f.save();
+    return { ok: true, status: 200, json: async () => ({ data: [bucket('10')], has_more: false, next_page: null }) };
+  };
+  const r = await pullSnapshot(env, 'A', { fetchImpl });
+  assert.equal(r.verdict, 'BANK-UNKNOWN');
+  assert.equal(r.reason, 'grant-changed');
+  assert.equal(JSON.parse(readFileSync(f.paths.snapshot)).accounts.A.remaining_usd, '1.50');
+});
+
+test('an empty HIMMEL_API_LOCK_WAIT_MS falls back to the default wait', () => {
+  const f = fixture(); f.env.HIMMEL_API_LOCK_WAIT_MS = '';
+  const lock = `${f.paths.state}.lock`; mkdirSync(lock);
+  // Free the lock after 300 ms: a zero wait would refuse at once, the default retries past it.
+  const releaser = spawn('sh', ['-c', `sleep 0.3; rmdir '${lock}'`]);
+  const r = f.call('reserve', ['--id', 'job', '--usd', '1']);
+  releaser.kill();
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
 });

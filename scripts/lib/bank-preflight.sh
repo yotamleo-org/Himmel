@@ -714,7 +714,7 @@ SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
-# HIMMEL-5519: api-lane reservations (leg name claude-api:*) are counted apart from
+# HIMMEL-5519: api-lane reservations (lane file = api) are counted apart from
 # the subscription FLEET and held to their own cap.
 fleet_api_reserved=0
 API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
@@ -872,8 +872,9 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       if _fleet_reclaim_dead_reservation "$_fleet_resv" "$_fleet_resv_owner" "$_fleet_resv_expires" "$_fleet_resv_name" "$_fleet_resv_sname"; then
         continue
       fi
-      case "$_fleet_resv_sname" in
-        claude-api:*) fleet_api_reserved=$((fleet_api_reserved + 1)) ;;
+      _fleet_resv_lane="$(cat "${_fleet_resv}lane" 2>/dev/null)" || _fleet_resv_lane=""
+      case "$_fleet_resv_lane" in
+        api) fleet_api_reserved=$((fleet_api_reserved + 1)) ;;
         *) fleet_reserved=$((fleet_reserved + 1)) ;;
       esac
     done
@@ -969,6 +970,10 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
+        # HIMMEL-5519: the lane keys the api-vs-fleet split, never the leg name (an
+        # inherited CADENCE_BANK_LEG could escape both caps). A reservation without
+        # it counts as fleet: the census may over-count, never under-count.
+        printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null || true
         return 0
       fi
       rm -rf "$dir" 2>/dev/null

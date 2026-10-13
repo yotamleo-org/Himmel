@@ -105,8 +105,8 @@ ledger; pinning it is HIMMEL-5444.
 - **No freshness window on an operator reading.** The remaining credit is derived:
   the last reading minus the ledger's settled and reserved spend. The cap and the
   reserve accounting stay the hard stop, and a derived remainder at or below zero
-  refuses (`insufficient-headroom`). Only an automatically pulled snapshot
-  (`source: automatic-snapshot`) goes `BANK-STALE` after 600 s.
+  refuses (`insufficient-headroom`). Only a row whose `source` is
+  `automatic-snapshot` goes `BANK-STALE` after 600 s.
 - **Automatic pull, opt-in:** `node scripts/api-lane/grant-snapshot.mjs --pull <A|B>`
   reads the Admin API cost report (`GET /v1/organizations/cost_report`, daily buckets,
   paged) since the row's `starts_at` and writes `grant - spend` as the remaining credit.
@@ -115,13 +115,25 @@ ledger; pinning it is HIMMEL-5444.
   `api.anthropic.com` only, and is never printed or put on argv. A failed pull leaves the
   snapshot untouched and returns `BANK-UNKNOWN`. **Limit:** the cost report has no
   promotional-vs-card field, so every dollar since the grant start is attributed to the
-  grant; spend past the grant reads as zero remaining, never as credit. An operator reading
-  stays the fallback.
-- **Own concurrency cap:** api-lane launches (leg `claude-api:*`) are no longer counted in the
-  subscription FLEET cap. They are held to `HIMMEL_API_MAX_CONCURRENT` (default 10), refusing
-  `SKIPPED-FLEET` with `api lane at/over its own cap`.
+  grant; spend past the grant reads as zero remaining, never as credit.
+  A pull keeps the row's own `source` (an operator reading stays an operator
+  reading, so it never goes stale on its own and a pull that stops running strands
+  nothing) and stamps `pulled_at`. Within one grant remaining credit can only
+  fall, so a pull that reports more than the row holds keeps the smaller figure,
+  and a pull refuses (`grant-changed`) when the row's grant, reading or
+  watermark changed while the report was in flight.
+- **Own concurrency cap:** a reservation belongs to the api lane by its `lane`
+  file (written from the launch lane), not by its name, so an inherited
+  `CADENCE_BANK_LEG` cannot escape it. api-lane launches are not counted in the
+  subscription FLEET cap; they are held to `HIMMEL_API_MAX_CONCURRENT` (default 10),
+  refusing `SKIPPED-FLEET` with `api lane at/over its own cap`. `claude-api.sh`
+  owns its reservation with its own pid, which waits on `claude`, and releases it
+  when the call ends (EXIT trap), so the cap bounds calls actually in flight.
+- **Keys:** the launcher unsets `ANTHROPIC_ORG_A_KEY` / `ANTHROPIC_ORG_B_KEY` for the
+  bank gate and for the `claude` child.
 - **Ledger lock retry:** the mkdir lock is retried with jittered backoff for up to
-  `HIMMEL_API_LOCK_WAIT_MS` (default 5000) before `ledger-locked-or-unwritable`.
+  `HIMMEL_API_LOCK_WAIT_MS` (default 5000; unset or empty means the default)
+  before `ledger-locked-or-unwritable`.
 
 ## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 

@@ -23,8 +23,10 @@ const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
 // wait is bounded so a crashed holder still refuses, never admits.
 const LOCK_WAIT_MS = 5000;
 function takeLock(lock, env) {
-  const wait = Number.isSafeInteger(Number(env.HIMMEL_API_LOCK_WAIT_MS)) && Number(env.HIMMEL_API_LOCK_WAIT_MS) >= 0
-    ? Number(env.HIMMEL_API_LOCK_WAIT_MS) : LOCK_WAIT_MS;
+  // An empty value is unset (Number('') is 0, which would disable the retry).
+  const raw = env.HIMMEL_API_LOCK_WAIT_MS;
+  const wait = raw !== undefined && raw !== '' && Number.isSafeInteger(Number(raw)) && Number(raw) >= 0
+    ? Number(raw) : LOCK_WAIT_MS;
   const sleeper = new Int32Array(new SharedArrayBuffer(4));
   const deadline = Date.now() + wait;
   for (let pause = 5; ; pause = Math.min(pause * 2, 50)) {
@@ -295,7 +297,7 @@ export function pickAccount(budget, env = process.env) {
 // as an unbilled settlement is read as that settlement (exclusive_org attests
 // there is none), upgrade path: the Admin cost_report collector (task 6 of the
 // HIMMEL-4904 plan).
-export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect }) {
+export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
     if (!['A', 'B'].includes(account)) refuse('account-required');
@@ -315,7 +317,9 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     const s = { ...(prior ?? {}) };
     // A pull computed its figure from one grant row before awaiting HTTP; if a grant
     // replacement landed meanwhile that figure belongs to the old grant.
-    if (expect && (!object(prior) || ['grant_usd', 'starts_at', 'expires_at', 'cycle_id'].some((k) => prior[k] !== expect[k]))) refuse('grant-changed');
+    // It also pins the reading itself, so a pull cannot overwrite an operator reading or a
+    // watermark that landed while the HTTP call was in flight.
+    if (expect && (!object(prior) || Object.keys(expect).some((k) => prior[k] !== expect[k]))) refuse('grant-changed');
     if (grant !== undefined) {
       const day = (d) => {
         const t = Date.parse(`${d}T00:00:00Z`);
@@ -328,7 +332,11 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
         exclusive_org: true, discrepancy: false });
     } else if (!own(snapshot.accounts, account)) refuse('missing-snapshot');
     Object.assign(s, { organization_id: c.organization_id, cycle_id: c.cycle_id });
-    const left = money(remaining), granted = money(s.grant_usd);
+    let left = money(remaining);
+    const granted = money(s.grant_usd);
+    // Within one grant the remaining credit can only fall: a pulled figure above the row's
+    // own (a lagging or partial report) keeps the smaller, so a pull never admits more.
+    if (pulled && object(prior)) { const was = money(prior.remaining_usd); if (left > was) left = was; }
     if (left > granted) refuse('unreconciled-amounts');
     const ledger = existsSync(ledgerPath) ? read(ledgerPath) : { version: 1, accounts: {} };
     ledgerCheck(ledger);
@@ -346,6 +354,7 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     s.remaining_usd = usd(left);
     s.observed_at = Math.floor(Date.now() / 1000);
     s.source = source;
+    if (pulled) s.pulled_at = s.observed_at;
     snapshot.accounts[account] = s;
     writeFileSync(`${path}.${process.pid}.tmp`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
     renameSync(`${path}.${process.pid}.tmp`, path);
@@ -438,8 +447,11 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
       else refuse('invalid-cost-report');
     }
     if (!complete) refuse('cost-report-too-long');
-    return refreshSnapshot(env, account, { remaining: usd(spent >= grant ? 0n : grant - spent), source: 'automatic-snapshot',
-      expect: { grant_usd: row.grant_usd, starts_at: row.starts_at, expires_at: row.expires_at, cycle_id: row.cycle_id } });
+    // The row keeps its source: a pull never turns an operator reading into one that goes
+    // stale in 600 s and refuses every launch with nothing scheduled to pull again.
+    return refreshSnapshot(env, account, { remaining: usd(spent >= grant ? 0n : grant - spent), source: row.source, pulled: true,
+      expect: { grant_usd: row.grant_usd, starts_at: row.starts_at, expires_at: row.expires_at, cycle_id: row.cycle_id,
+        remaining_usd: row.remaining_usd, observed_at: row.observed_at, reconciled_spent_usd: row.reconciled_spent_usd } });
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   }

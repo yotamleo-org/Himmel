@@ -112,8 +112,13 @@ fi
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
-  CADENCE_BANK_LEG="${CADENCE_BANK_LEG:-claude-api:$JOB_ID}" \
+LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_BANK_LEG: it could escape the api cap
+# HIMMEL-5519: the reservation is owned by THIS shell, which waits on claude below, so it
+# lives exactly as long as the call and the cap bounds real concurrency. (The default
+# owner, bank-preflight's own $$ in a command substitution, dies at once.)
+BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
+  CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
+  CADENCE_BANK_LEG="$LEG_NAME" CADENCE_BANK_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
@@ -133,7 +138,19 @@ for v in $(compgen -e); do
 done
 
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
-trap 'rm -f "$OUT"' EXIT
+# Release the fleet-slot reservation at call end, only when its pid file names this shell.
+# shellcheck disable=SC2329 # invoked from the EXIT trap string below
+release_slot() {
+  # shellcheck source=scripts/lib/fleet-reservation-key.sh
+  . "$REPO/scripts/lib/fleet-reservation-key.sh" 2>/dev/null || return 0
+  local slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}" key dir
+  for key in "$(fleet_reservation_key "$LEG_NAME")" "$(fleet_hash_key "$LEG_NAME")"; do
+    dir="$slots/$key"
+    [ "$(cat "$dir/pid" 2>/dev/null)" = "$$" ] && rm -rf "$dir"
+  done
+  return 0
+}
+trap 'rm -f "$OUT"; release_slot' EXIT
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
@@ -145,6 +162,7 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 # HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
+  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
