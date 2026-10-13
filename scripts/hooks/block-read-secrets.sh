@@ -37,7 +37,9 @@
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5412 adds
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5484 adds
+# shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
+# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; `env -i` scrubs it). HIMMEL-5412 adds
 # a python/node/bun/deno command that prints the whole environment or reads
 # /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
 # of a session transcript .jsonl (is_transcript_path) or a Grep over one or
@@ -822,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 scrub=0 cmd_i=0 nl=$'\n'
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -844,8 +846,16 @@ g4_scan() {
         if [ -z "$cmd" ]; then
             if [ "$wrap_val" = 1 ]; then wrap_val=0; continue; fi
             case "$d" in
+                # HIMMEL-5484: an inherited trace switch (SHELLOPTS=xtrace,
+                # BASH_XTRACEFD) makes the next shell print its environment.
+                SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
                 [A-Za-z_]*=*) continue ;;
                 -*)
+                    # `env -i` / `--ignore-environment` / `-` hands the child a
+                    # scrubbed environment, so a trace has nothing to leak.
+                    if [ "$wrap" = env ]; then
+                        case "$d" in -i|--ignore-environment|-) scrub=1 ;; esac
+                    fi
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
                     continue ;;
                 sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|do|'{'|'!'|*/sudo|*/doas|*/env|*/xargs|*/nice|*/nohup|*/timeout)
@@ -854,7 +864,7 @@ g4_scan() {
                     continue ;;
             esac
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
-            cmd="${d##*/}"
+            cmd="${d##*/}"; cmd_i=$i
             case "$cmd" in
                 python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
@@ -879,6 +889,21 @@ g4_scan() {
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
         esac
         case "$cmd" in
+            # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
+            # flags before the first operand count (`bash s.sh -x` is the
+            # script's own flag); `-O`/`--rcfile` values are skipped.
+            bash|sh|zsh|dash|ksh|ash|mksh|rbash|set)
+                if [ "$xo" = 1 ]; then
+                    xo=0
+                    case "$d" in xtrace) xt=1 ;; esac
+                elif [ "$nargs" = 0 ]; then
+                    case "$d" in
+                        --rcfile|--init-file|-O|+O) skipv=1 ;;
+                        --*) ;;
+                        -*x*) xt=1 ;;
+                        -*o) xo=1 ;;
+                    esac
+                fi ;;
             printenv)
                 case "$d" in -*) ;; *) if g4_envish_name "$d"; then hit=1; note="printenv of a credential variable"; fi ;; esac ;;
             declare|typeset|export|readonly)
@@ -886,6 +911,7 @@ g4_scan() {
                     -*[fF]*) ;;     # HIMMEL-5292: function mode, not variables
                     -*[px]*) pflag=1 ;;
                     -*)   ;;
+                    SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1 ;;
                     *)    nnames=$((nnames + 1))
                           if [ "$pflag" = 1 ] && g4_envish_name "${d%%=*}"; then hit=1; note="$cmd -p of a credential variable"; fi ;;
                 esac ;;
@@ -948,6 +974,13 @@ g4_scan() {
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
     esac
+    if [ "$xt" = 1 ] && [ "$scrub" = 0 ] && [ -n "$cmd" ] && [ -n "${HIMMEL_BRS_XT_SCRUB:-}" ]; then
+        w="${g4w[*]:cmd_i}"
+        case "$nl$HIMMEL_BRS_XT_SCRUB$nl" in *"$nl${w//[\'\"\\]/}$nl"*) scrub=1 ;; esac
+    fi
+    if [ "$xt" = 1 ] && [ "$scrub" = 0 ]; then
+        hit=1; note="shell tracing prints the inherited environment into the transcript (run it under env -i HOME=... PATH=...)"
+    fi
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
     return 0
 }
@@ -988,6 +1021,60 @@ interp_env_dump() {
     # Whole words only, so a script named check_environment.py is not a dump.
     if [[ $t =~ (^|[^A-Za-z0-9_])(environb?|process\.env|Bun\.env|Deno\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
     return 1
+}
+
+# xt_scrub_segs TEXT (HIMMEL-5484): one line per clause of the raw command
+# that runs under a scrubbed environment (`env -i`, `--ignore-environment`,
+# `-`): the words after the env options and NAME=VALUE words, quotes and
+# redirects dropped, single-spaced. g4_scan compares a clause against these
+# lines, because guard_unwrap re-reads the wrapper-stripped form and that form
+# no longer shows the `env -i`. A clause this split misreads simply does not
+# match, so the trace is denied (fail closed).
+# ponytail: a raw whitespace split, not the tokenizer, so a quoted separator
+# or a redirect glued to a word misses and denies; the same words elsewhere in
+# the command under no `env -i` also match. Revisit if guard_unwrap hands a
+# child its wrapper context (HIMMEL-5484 follow-up).
+xt_scrub_segs() {
+    local seg w i n scrub out="" nl=$'\n' skip
+    local -a ws
+    while IFS= read -r seg; do
+        set -f
+        # shellcheck disable=SC2206 # intentional word split
+        ws=($seg)
+        set +f
+        n=${#ws[@]}; i=0; scrub=0
+        [ "$n" -gt 0 ] || continue
+        [ "${ws[0]##*/}" = env ] || continue
+        i=1
+        while [ "$i" -lt "$n" ]; do
+            w="${ws[i]}"
+            case "$w" in
+                -i|--ignore-environment|-) scrub=1 ;;
+                -u|-C|-S|--unset|--chdir|--split-string) i=$((i + 1)) ;;
+                -*|[A-Za-z_]*=*) ;;
+                *) break ;;
+            esac
+            i=$((i + 1))
+        done
+        [ "$scrub" = 1 ] && [ "$i" -lt "$n" ] || continue
+        seg=""; skip=0
+        while [ "$i" -lt "$n" ]; do
+            w="${ws[i]//[\'\"\\]/}"
+            i=$((i + 1))
+            if [ "$skip" = 1 ]; then skip=0; continue; fi
+            case "$w" in
+                [0-9]*[\<\>]*|[\<\>]*)
+                    # a lone operator takes the next word as its target
+                    [ -n "${w//[0-9<>&]/}" ] || skip=1
+                    continue ;;
+            esac
+            seg="$seg${seg:+ }$w"
+        done
+        [ -z "$seg" ] || out="$out$seg$nl"
+    done <<EOF
+${1//[;|&()\`]/$nl}
+EOF
+    printf '%s' "$out"
 }
 
 # is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
@@ -1412,6 +1499,14 @@ case "$tool" in
             if ! { [ -r "$_gu_lib" ] && . "$_gu_lib"; } 2>/dev/null; then
                 echo "block-read-secrets: cannot load $_gu_lib - failing closed" >&2
                 exit 2
+            fi
+            # HIMMEL-5484: guard_unwrap re-runs this hook on the wrapper-
+            # stripped form, so a trace under `env -i` would deny there; the
+            # top level hands the children the scrubbed forms it saw. It always
+            # overwrites, so a value from the launching shell never counts.
+            if [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ]; then
+                HIMMEL_BRS_XT_SCRUB=$(xt_scrub_segs "$cmd")
+                export HIMMEL_BRS_XT_SCRUB
             fi
             GU_QUOTE_ARGS=1 guard_unwrap "${BASH_SOURCE[0]}" "$cmd" || exit 2
             if [ "$GU_CWD_UNKNOWN" = 1 ] && rs_shift_glob_secret "$cmd"; then
