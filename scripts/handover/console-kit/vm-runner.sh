@@ -22,9 +22,9 @@
 #
 # Platform guard (linux-only): systemd --user units and VirtualBox.
 #
-# ponytail: `off` stops a loop mid-job (GitHub reruns it); a drain mode that
-# waits for in-flight jobs is the upgrade if reruns ever cost more than a
-# stuck kill switch.
+# ponytail: `off` stops a loop mid-job (that job is lost and must be re-run by
+# hand); a drain mode that waits for in-flight jobs is the upgrade if lost jobs
+# ever cost more than a stuck kill switch.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,13 +82,18 @@ ensure_clone() {
     fail() { die "$1"; }
     vm_env_init
     vm_lock_acquire_waiting "$name" || die "could not take the vm-lock on $name"
-    vm_clone_ensure "$SNAPSHOT"
+    if ! vm_clone_ensure "$SNAPSHOT"; then
+        vm_lock_release "$name"
+        die "could not ensure the clone $name from $BASE_VM@$SNAPSHOT"
+    fi
     vm_lock_release "$name"
 }
 
 install_unit() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
-    sed "s#@REPO_ROOT@#$REPO_ROOT#g" "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
+    # The units get the controller's repo and stop file, so on/off and the loops agree.
+    sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" \
+        "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
         > "$UNIT_DIR/$UNIT_PREFIX@.service" || die "cannot write the unit template"
     systemctl --user daemon-reload || die "systemctl --user daemon-reload failed"
 }
@@ -120,21 +125,35 @@ cmd_on() {
         systemctl --user start "$UNIT_PREFIX@$i.service" || { cmd_off >/dev/null; die "could not start $UNIT_PREFIX@$i — switched off again"; }
         i=$((i + 1))
     done
-    echo "vm-runner: on — $vms VM(s) serving $REPO"
-}
-
-cmd_off() {
-    local i=1
-    # Variable first: routed jobs fall back to hosted runners at once.
-    bounded gh variable set "$VAR" --repo "$REPO" --body off >/dev/null \
-        || echo "vm-runner: WARNING could not set $VAR=off on $REPO — the stop file and units still go down" >&2
-    mkdir -p "$(dirname "$STOP_FILE")" && : > "$STOP_FILE" || echo "vm-runner: WARNING could not write $STOP_FILE" >&2
+    # A lower --vms than the last run: stop the units above the requested count.
     while [ "$i" -le "$MAX_VMS" ]; do
         systemctl --user stop "$UNIT_PREFIX@$i.service" 2>/dev/null || true
         i=$((i + 1))
     done
+    echo "vm-runner: on — $vms VM(s) serving $REPO"
+}
+
+cmd_off() {
+    local i=1 rc=0
+    # Variable first: routed jobs fall back to hosted runners at once.
+    if ! bounded gh variable set "$VAR" --repo "$REPO" --body off >/dev/null; then
+        echo "vm-runner: WARNING could not set $VAR=off on $REPO — the stop file and units still go down" >&2
+        rc=1
+    fi
+    if ! { mkdir -p "$(dirname "$STOP_FILE")" && : > "$STOP_FILE"; }; then
+        echo "vm-runner: WARNING could not write $STOP_FILE" >&2
+        rc=1
+    fi
+    while [ "$i" -le "$MAX_VMS" ]; do
+        if ! systemctl --user stop "$UNIT_PREFIX@$i.service" 2>/dev/null && unit_active "$i"; then
+            echo "vm-runner: WARNING $UNIT_PREFIX@$i is still running" >&2
+            rc=1
+        fi
+        i=$((i + 1))
+    done
     rm -f "$STATE_DIR/tick-vmrun-cache"
-    echo "vm-runner: off"
+    if [ "$rc" -eq 0 ]; then echo "vm-runner: off"; else echo "vm-runner: off INCOMPLETE — see warnings" >&2; fi
+    return "$rc"
 }
 
 # unit_journal <i> — the unit's recent log, one `<epoch> <message>` per line.

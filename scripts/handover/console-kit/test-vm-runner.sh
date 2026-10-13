@@ -24,7 +24,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 printf '%s\n' "$*" >> "$STUB/gh.argv"
 case "$*" in
     *fork-pr-contributor-approval*) echo "${GH_APPROVAL-all_external_contributors}"; [ -n "${GH_APPROVAL-x}" ] ;;
-    "variable set"*) a="$*"; echo "${a##* }" > "$STUB/var" ;;
+    "variable set"*) [ -z "${GH_SET_FAIL:-}" ] || exit 1; a="$*"; echo "${a##* }" > "$STUB/var" ;;
     *actions/variables/HIMMEL_VM_RUNNER*) [ -e "$STUB/var" ] && cat "$STUB/var" || exit 1 ;;
     *actions/runners*) echo "${GH_BUSY:-0}" ;;
 esac
@@ -35,7 +35,7 @@ printf '%s\n' "$*" >> "$STUB/systemctl.argv"
 case "$*" in
     *is-active*) a="$*"; n="${a##*@}"; n="${n%.service}"; [ -e "$STUB/active-$n" ]; exit ;;
     *"--user start"*) [ -z "${STUB_START_FAIL:-}" ] || exit 1; a="$*"; n="${a##*@}"; n="${n%.service}"; : > "$STUB/active-$n" ;;
-    *"--user stop"*) a="$*"; n="${a##*@}"; n="${n%.service}"; rm -f "$STUB/active-$n" ;;
+    *"--user stop"*) [ -z "${STUB_STOP_FAIL:-}" ] || exit 1; a="$*"; n="${a##*@}"; n="${n%.service}"; rm -f "$STUB/active-$n" ;;
 esac
 exit 0
 EOF
@@ -60,7 +60,7 @@ cat > "$TMP/vmlib.sh" <<'EOF'
 vm_env_init() { :; }
 vm_lock_acquire_waiting() { echo "lock $1" >> "$STUB/vm.calls"; }
 vm_lock_release() { echo "release $1" >> "$STUB/vm.calls"; }
-vm_clone_ensure() { echo "clone $CLONE_NAME from $SOURCE_VM@$1" >> "$STUB/vm.calls"; }
+vm_clone_ensure() { echo "clone $CLONE_NAME from $SOURCE_VM@$1" >> "$STUB/vm.calls"; [ -z "${STUB_CLONE_FAIL:-}" ]; }
 EOF
 
 reset() {
@@ -150,6 +150,24 @@ GH_APPROVAL=first_time_contributors run doctor 2>&1 | grep -q '^FAIL.*first_time
 STUB_REACH=1 run doctor 2>&1 | grep -q '^FAIL.*loopback reachable' && ok "running VM that reaches the loopback FAILs" || bad "NAT assert not flagged"
 echo on > "$TMP/stub/var"; : > "$TMP/units/himmel-ci-runner@.service"
 run doctor 2>&1 | grep -q '^FAIL.*runner DEAD' && ok "variable on with no unit FAILs (DEAD)" || bad "DEAD not flagged"
+
+echo "T10 review fixes (HIMMEL-5037 round 1)"
+reset
+STUB_CLONE_FAIL=1 run on >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$TMP/stub/var" ] && [ ! -e "$TMP/stub/active-2" ] && grep -q '^release himmel-ci-2' "$TMP/stub/vm.calls"; then ok "clone failure: rc!=0, nothing started, lock released"; else bad "clone failure: rc=$rc"; fi
+reset
+run on >/dev/null 2>&1
+run on --vms 1 >/dev/null 2>&1
+if [ -e "$TMP/stub/active-1" ] && [ ! -e "$TMP/stub/active-2" ]; then ok "on --vms 1 after 2 stops unit 2"; else bad "unit 2 still up after --vms 1"; fi
+if grep -q '^Environment=HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel$' "$TMP/units/himmel-ci-runner@.service" && grep -q "^Environment=HIMMEL_CI_RUNNER_STOP_FILE=$TMP/stop\$" "$TMP/units/himmel-ci-runner@.service"; then ok "unit carries the controller's repo and stop file"; else bad "unit env lines: $(grep Environment= "$TMP/units/himmel-ci-runner@.service")"; fi
+reset
+run on >/dev/null 2>&1
+GH_SET_FAIL=1 run off >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ -e "$TMP/stop" ] && [ ! -e "$TMP/stub/active-1" ] && ! grep -qx 'vm-runner: off' "$TMP/out"; then ok "off: variable write failed -> rc!=0, units still stopped"; else bad "off with failed variable: rc=$rc $(cat "$TMP/out")"; fi
+reset
+run on >/dev/null 2>&1
+STUB_STOP_FAIL=1 run off >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'still running' "$TMP/out"; then ok "off: unit that will not stop -> rc!=0"; else bad "off with failed stop: rc=$rc"; fi
 
 echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?

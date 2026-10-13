@@ -7,6 +7,8 @@ Description=himmel-vm Actions runner loop for himmel-ci-%i (HIMMEL-5037)
 Type=simple
 Environment=HIMMEL_CI_RUNNER_VM=himmel-ci-%i
 Environment=HIMMEL_VM_AR_LIVE=1
+Environment=HIMMEL_CI_RUNNER_REPO=@REPO@
+Environment=HIMMEL_CI_RUNNER_STOP_FILE=@STOP_FILE@
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/bin/bash @REPO_ROOT@/scripts/vm/ci-runner.sh run
 # A crash restarts; a clean exit (switched off) and the refusal codes do not
