@@ -85,6 +85,23 @@ d=$(make_repo "README.md" "docs: readme") || exit 1
 assert_rc "docs only"                                 0 "$(run_in "$d")"
 rm -rf "$d"
 
+# HIMMEL-5490: docs-only Markdown/text under scripts/ is not a script.
+d=$(make_repo "scripts/telegram/README.md" "docs: telegram readme") || exit 1
+assert_rc "scripts/ README.md only needs no attestation"  0 "$(run_in "$d")"
+rm -rf "$d"
+
+d=$(make_repo "scripts/notes.txt" "docs: notes") || exit 1
+assert_rc "scripts/ .txt only needs no attestation"       0 "$(run_in "$d")"
+rm -rf "$d"
+
+d=$(make_repo "scripts/telegram/README.md scripts/foo.sh" "feat: foo and readme") || exit 1
+assert_rc "scripts/ README.md + .sh + no attestation = block" 1 "$(run_in "$d")"
+rm -rf "$d"
+
+d=$(make_repo "scripts/telegram/README.md scripts/data.json" "feat: data") || exit 1
+assert_rc "scripts/ README.md + non-doc file = block"     1 "$(run_in "$d")"
+rm -rf "$d"
+
 d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: linux, windows\n')") || exit 1
 assert_rc "sensitive + attestation linux+windows"     0 "$(run_in "$d")"
 rm -rf "$d"
