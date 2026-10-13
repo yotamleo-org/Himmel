@@ -261,7 +261,12 @@ rm -f "$TMP/-lead.js"
 # no-headless-claude gate as a live sibling → message free of it
 printf "%s\n" 'gemini -p "summarize"' > "$TMP/deny.sh"
 msg=$(cd "$TMP" && bash "$HOOK" "deny.sh" 2>&1 >/dev/null </dev/null)
-case "$msg" in *no-headless-claude*) rc=1 ;; *) rc=0 ;; esac
+hook_rc=$?
+case "$msg" in
+    *no-headless-claude*) rc=1 ;;
+    *"Refs: HIMMEL-157"*) rc=$hook_rc; [ "$hook_rc" = 1 ] && rc=0 ;;
+    *) rc=1 ;;
+esac
 assert_rc "T34 deny message does not name retired no-headless-claude gate" 0 "$rc"
 
 if [ "$FAILED" -gt 0 ]; then
