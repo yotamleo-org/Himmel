@@ -1,0 +1,34 @@
+tf-destroy	terraform destroy
+tf-destroy-chdir	terraform -chdir=infra destroy -auto-approve
+tf-apply-destroy	terraform apply -destroy
+tofu-destroy	tofu destroy
+pulumi-destroy	pulumi destroy --yes
+kubectl-delete	kubectl delete pod web-1
+kubectl-delete-ns-flag	kubectl -n prod delete deployment api
+kubectl-drain	kubectl drain node-1 --ignore-daemonsets
+helm-uninstall	helm uninstall release -n prod
+aws-delete	aws rds delete-db-instance --db-instance-identifier x
+aws-terminate	aws ec2 terminate-instances --instance-ids i-1
+gcloud-delete	gcloud compute instances delete vm-1
+az-delete	az group delete --name rg
+sql-drop-table	psql -c "DROP TABLE users"
+sql-drop-lower	psql -c 'drop database app'
+sql-truncate	mysql -e "TRUNCATE TABLE users"
+sql-delete-from	sqlite3 app.db "DELETE FROM users"
+sql-heredoc	psql <<EOF\nDROP TABLE users;\nEOF
+redis-flushall	redis-cli FLUSHALL
+redis-flushall-lower	redis-cli -h cache flushall
+dropdb	dropdb mydb
+prisma-reset	prisma migrate reset --force
+npx-prisma-reset	npx prisma migrate reset
+docker-system-prune	docker system prune -af
+docker-volume-prune	docker volume prune -f
+docker-volume-rm	docker volume rm data
+compose-down-v	docker compose down -v
+compose-down-volumes	docker-compose down --volumes
+wrapped-bash-c	bash -c 'terraform destroy'
+wrapped-env	env AWS_PROFILE=x terraform destroy
+wrapped-sudo	sudo kubectl delete node n1
+quoted-verb	terraform "destroy"
+second-line	echo hi\nkubectl delete pod x
+after-and	cd infra && terraform destroy
