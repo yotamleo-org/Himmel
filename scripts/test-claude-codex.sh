@@ -626,6 +626,15 @@ setup; write_child_mocks; MODEL="gpt-6.1-sol"
 printf '%s\n' '{host: "127.0.0.1", claude-api-key: [{api-key: "fake-or-secret-4444"}]}' > "$FAKEHOME/.cli-proxy-api/config.yaml"
 run_launcher_expect "classifier flag: flow-style config refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 ! grep -q 'fake-or-secret-4444' "$WORK/out.txt" || { echo "FAIL: the refusal echoed flow-config key material"; FAILS=$((FAILS + 1)); }
+# a YAML escape spelling the alias in a compat entry must fail closed.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+openai-compatibility:
+  - name: "anthropic"
+    models:
+      - alias: "claude-sonnet-5"
+CFG
+run_launcher_expect "classifier flag: escaped compat alias refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 # a remote proxy is not the server the local config describes.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 CLAUDE_CODEX_REMOTE_PROXY_OK=1 run_launcher_expect "classifier flag: remote-proxy override refuses (local config does not apply)" 2 "Claude OAuth" --classifier-model claude-sonnet-5

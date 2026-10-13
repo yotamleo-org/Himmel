@@ -624,7 +624,8 @@ if ($ClassifierModel) {
       }
       if ($l -match '^\s*$') { continue }
       if ($cur -ceq 'claude-api-key' -or $cur -ceq 'vertex-api-key') { return $false }
-      if ($cur -ceq 'openai-compatibility' -and $l.ToLowerInvariant() -match $re) { return $false }
+      # a YAML escape (c...) can spell the alias past the raw-text match: fail closed
+      if ($cur -ceq 'openai-compatibility' -and ($l.ToLowerInvariant() -match $re -or $l -cmatch '\\[uUx]')) { return $false }
     }
     foreach ($f in (Get-ChildItem -LiteralPath $authDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
       try { $raw = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { continue }

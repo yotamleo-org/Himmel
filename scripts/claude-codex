@@ -644,7 +644,8 @@ _cliproxy_claude_oauth_only() {
     /^[ \t]*$/ { next }
     {
       if (cur == "claude-api-key" || cur == "vertex-api-key") bad = 1
-      if (cur == "openai-compatibility" && tolower($0) ~ re) bad = 1
+      # a YAML escape (c...) can spell the alias past the raw-text match: fail closed
+      if (cur == "openai-compatibility" && (tolower($0) ~ re || $0 ~ /\\[uUx]/)) bad = 1
     }
     END { exit bad ? 1 : 0 }
   ' "$_cfg" || return 1
