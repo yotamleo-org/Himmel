@@ -440,6 +440,65 @@ Notes a future reader needs:
   profile default moves and these numbers expire with it. Nothing in this repo
   pins ox-alpha by name, which is deliberate.
 
+## Provider-terms posture — each lane's auth path
+
+One row per lane in `scripts/lanes/lanes.json` (HIMMEL-4424). The question per
+row: is the credential used inside the vendor's own client, and what do the
+provider's published terms say. Terms were fetched **2026-10-13**; a verdict
+cites only what the fetched page says. `UNVERIFIED` means the terms are silent
+or the page could not be read, not that the use is fine. A `RISK` row is an
+operator decision; nothing here reroutes a lane.
+
+| Lane | Front-end client | Back-end provider | Auth type | Vendor's own client? | Verdict |
+|---|---|---|---|---|---|
+| haiku | Claude Code | Anthropic | subscription OAuth | yes | OK ([1]) |
+| sonnet | Claude Code | Anthropic | subscription OAuth | yes | OK ([1]) |
+| opus | Claude Code | Anthropic | subscription OAuth | yes | OK ([1]) |
+| fable | Claude Code | Anthropic | subscription OAuth | yes | OK ([1]) |
+| glm | Claude Code (`spawn-glm.ts`) | z.ai | subscription (Coding Plan); metered key is the second path | no (Anthropic's client, z.ai's plan) | OK ([2]); subscription cancelled 2026-08-18 (HIMMEL-1904) |
+| claudex | Claude Code (`claude-codex`) via local CLIProxyAPI | OpenAI (codex) | subscription OAuth | no (ChatGPT credential driven through a proxy by a non-OpenAI client) | UNVERIFIED ([3]) |
+| hermes-critics | hermes | OpenAI (`openai-codex` per `critics.json`) | subscription OAuth | no (hermes) | UNVERIFIED ([3]) |
+| codex | hermes (paid critic) | OpenAI (`openai-codex`) | subscription OAuth | no (hermes) | UNVERIFIED ([3]) |
+| copilot-cli | GitHub Copilot CLI | GitHub | subscription (free tier) | yes | OK ([4]) |
+| hermes-oneshot | hermes | whatever the `himmel_agent` profile sets (Nous at the last check) | profile-dependent, not subscription OAuth | n/a | n/a, no subscription OAuth row |
+| codex-exec | codex CLI | OpenAI | subscription OAuth | yes | OK ([3]) |
+| codex-wsl | codex CLI (WSL) | OpenAI | subscription OAuth | yes | OK ([3]) |
+| antigravity-cli | `agy` | Google | subscription (Google AI Plus) | yes | UNVERIFIED ([5]) |
+| ollama-local | ollama | local | none | n/a | n/a |
+| openrouter-free | OpenRouter API | OpenRouter | API key (free models) | n/a | n/a |
+| openrouter-claude | Claude Code (`claude-openrouter`) | OpenRouter, Anthropic models | metered API key | n/a | n/a |
+| ollama-cloud | ollama | ollama.com | free account | yes | n/a, not subscription OAuth |
+
+Citations (checked 2026-10-13):
+
+- [1] <https://code.claude.com/docs/en/legal-and-compliance> — OAuth "is
+  intended exclusively for purchasers of Claude Free, Pro, Max, Team, and
+  Enterprise subscription plans and is designed to support ordinary use of
+  Claude Code and other native Anthropic applications"; third parties may not
+  "route requests through Free, Pro, or Max plan credentials on behalf of
+  their users". Own unmodified binary: OK.
+- [2] <https://docs.z.ai/devpack/overview> — "The plan can be applied to agent
+  tools such as ZCode, Claude Code, Codex, OpenCode". Silent on direct API
+  calls with the plan key.
+- [3] <https://learn.chatgpt.com/docs/auth> (redirect of
+  `developers.openai.com/codex/auth`) — "Sign in with ChatGPT for subscription
+  access"; "Access tokens are intended for trusted scripts, schedulers, and
+  private CI runners"; "For general OpenAI API calls, continue to use Platform
+  API keys". It does not address third-party clients holding ChatGPT
+  credentials; OpenAI's terms of use returned HTTP 403 and were not read. The
+  codex CLI rows are the vendor's own client, so OK. The proxy and hermes rows
+  stay UNVERIFIED. `scripts/cr/critics.json` `_compliance` carries the
+  operator's standing reading that a subscription lane is "launcher-only (ToS
+  restricts it to officially supported tools)"; that reading is not
+  confirmed by the page above.
+- [4] <https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli> —
+  "To use the CLI programmatically, include the `-p` or `--prompt`
+  command-line option". The additional-products terms page is silent on CLI
+  use and on which plans include it.
+- [5] <https://policies.google.com/terms/generative-ai/use-policy> — silent on
+  subscription credentials and automation; the Google AI Plus plan terms and
+  `agy` headless use were not found.
+
 ## Effort calibration
 
 Effort is a **per-dispatch** lever — use the full scale per item, do not flatten
