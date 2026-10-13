@@ -873,13 +873,17 @@ if [ "$rc" -ne 0 ]; then
     # one, so failure-classify.sh does not file it under malformed-output. A
     # status code / quota / auth word in the body still classifies finer there.
     # Bounded + bullet-free so a genuine short review that merely MENTIONS a
-    # quota is not mistaken for one.
-    # ponytail: line-level shape match on a <=600-byte body; a vendor error in a
-    # wording not listed here stays malformed-output until the shape is added.
+    # quota is not mistaken for one. The keyword alone is not enough: the body
+    # must also carry a vendor-error shape (an API/Error/HTTP line prefix or a
+    # JSON error envelope), so prose that quotes a keyword stays
+    # malformed-output (HIMMEL-5103).
+    # ponytail: keyword list and prefix shapes cover only the vendor error
+    # wordings seen so far, extend them as new vendor wordings are observed.
     _cfp_up=0
     if [ "$(printf '%s' "$raw" | wc -c | tr -d '[:space:]')" -le 600 ] \
         && ! grep -qE '^[[:space:]]*(- \[|#{1,6} )' <<< "$raw" \
-        && grep -qiE 'API call failed|overloaded|(rate[ -]?limit|quota)[^.]{0,20}(exceeded|reached|exhausted)|too many requests|unauthori[sz]ed|try again later|service unavailable|internal server error|bad gateway|(http|status|error|code)[^0-9]{0,12}(401|403|429|5[0-9][0-9])([^0-9]|$)' <<< "$raw"; then
+        && grep -qiE 'API call failed|overloaded|(rate[ -]?limit|quota)[^.]{0,20}(exceeded|reached|exhausted)|too many requests|unauthori[sz]ed|try again later|service unavailable|internal server error|bad gateway|(http|status|error|code)[^0-9]{0,12}(401|403|429|5[0-9][0-9])([^0-9]|$)' <<< "$raw" \
+        && grep -qiE '^[[:space:]]*(API call failed|((API|HTTP|upstream|provider|server)[[:space:]]+)?error([[:space:]]+(code|[0-9]{3}))?[[:space:]]*[(:-]|HTTP/?[0-9.]*[[:space:]]+[0-9]{3}([^0-9]|$))|"error"[[:space:]]*:|"type"[[:space:]]*:[[:space:]]*"[a-z_]*error"' <<< "$raw"; then
         _cfp_up=1
     fi
     # Raw-output log intentionally NOT cleaned up — it is the fail-open diagnostic artifact.
