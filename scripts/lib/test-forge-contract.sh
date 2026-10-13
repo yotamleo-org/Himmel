@@ -235,6 +235,13 @@ run local-git forge_change_id feat/a-b
 expect local-git "change_id feat/a-b still resolves" 0 br-feat-a-b
 run local-git forge_change_id "feat/a+b"
 expect local-git "change_id of a branch outside the id grammar" 2 ""
+# A multiline value must fail as a whole: a per-line match passes on its first
+# line (br-ok) and lets the second (../x) through.
+ML=$(printf 'br-ok\n../x')
+run local-git forge_change_id "$(printf 'feat/ok\n../x')"
+expect local-git "change_id of a multiline branch" 2 ""
+run local-git forge_change_view "$ML"
+expect local-git "change_view of a multiline id" 1 ""
 # Two opens racing past the ownership check: the second must still refuse
 # (simulated by a change_id that skips the check), never overwrite the first.
 # shellcheck disable=SC2329 # invoked indirectly by forge_change_open
