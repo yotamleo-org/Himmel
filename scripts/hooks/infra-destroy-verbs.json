@@ -10,7 +10,7 @@
   "runners": ["npx", "bunx", "pnpx", "pnpm", "yarn", "npm", "uvx", "pipx"],
   "rules": [
     { "id": "terraform-destroy", "bins": ["terraform", "tofu", "terragrunt"], "argv_any": ["^destroy$"], "note": "terraform, tofu or terragrunt destroy" },
-    { "id": "terraform-apply-destroy", "bins": ["terraform", "tofu", "terragrunt"], "argv_all": ["^apply$", "^-{1,2}destroy$"], "note": "terraform, tofu or terragrunt apply -destroy" },
+    { "id": "terraform-apply-destroy", "bins": ["terraform", "tofu", "terragrunt"], "argv_all": ["^apply$", "^-{1,2}destroy(=.*)?$"], "note": "terraform, tofu or terragrunt apply -destroy" },
     { "id": "pulumi-destroy", "bins": ["pulumi"], "argv_any": ["^destroy$"], "note": "pulumi destroy" },
     { "id": "kubectl-delete-drain", "bins": ["kubectl", "oc"], "argv_any": ["^(delete|drain)$"], "note": "kubectl delete or drain" },
     { "id": "helm-uninstall", "bins": ["helm"], "argv_any": ["^(uninstall|delete)$"], "note": "helm uninstall" },

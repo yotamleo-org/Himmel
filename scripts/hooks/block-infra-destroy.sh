@@ -151,7 +151,7 @@ eval_segment() {
 scan_words() {
     local bin
     [ $# -gt 0 ] || return 0
-    bin=${1##*/}; bin=${bin%.exe}; bin=${bin%.cmd}
+    bin=$(printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
     case " $runners " in
         *" $bin "*)
             shift
@@ -163,7 +163,7 @@ scan_words() {
                 esac
             done
             [ $# -gt 0 ] || return 0
-            bin=${1##*/}; bin=${bin%.exe}; bin=${bin%.cmd}
+            bin=$(printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
             ;;
     esac
     shift

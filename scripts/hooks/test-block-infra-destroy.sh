@@ -49,6 +49,11 @@ assert_rc() {
 
 run_fixture() {
     local file="$1" want="$2" id cmd
+    if [ ! -r "$file" ]; then
+        echo "FAIL fixture $file unreadable"
+        FAILED=$((FAILED + 1))
+        return
+    fi
     while IFS=$'\t' read -r id cmd; do
         [ -n "$id" ] || continue
         cmd=${cmd//\\n/$'\n'}
@@ -73,10 +78,12 @@ assert_rc "non-Bash tool ignored" 0 "$rc"
 # A missing verbs table fails closed (security fence).
 if [ -f "$HOOK" ]; then
     tmp=$(mktemp -d) || exit 1
-    cp "$HOOK" "$tmp/block-infra-destroy.sh"
-    mkdir -p "$tmp/lib" && cp "$DIR"/lib/*.sh "$tmp/lib/"
-    rc=0
-    jq -cn --arg c "$first_deny" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$tmp/block-infra-destroy.sh" >/dev/null 2>&1 || rc=$?
+    if cp "$HOOK" "$tmp/block-infra-destroy.sh" && mkdir -p "$tmp/lib" && cp "$DIR"/lib/*.sh "$tmp/lib/" && [ -r "$tmp/lib/guard-unwrap.sh" ]; then
+        rc=0
+        jq -cn --arg c "$first_deny" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$tmp/block-infra-destroy.sh" >/dev/null 2>&1 || rc=$?
+    else
+        rc=setup-failed
+    fi
     rm -rf "$tmp"
 else rc=0; fi
 assert_rc "missing verbs table fails closed" 2 "$rc"
