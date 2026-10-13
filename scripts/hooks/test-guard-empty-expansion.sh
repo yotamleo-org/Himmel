@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# test-guard-empty-expansion.sh — block-bare-qmd-query.sh, block-git-stash.sh and
+# block-read-secrets.sh deny their protected command behind a variable expansion
+# that expands to nothing (HIMMEL-5328, HIMMEL-5330, HIMMEL-5331), and keep
+# allowing read-only look-alikes that name no protected target.
+#
+# Nothing is executed: each command is only piped to a hook as JSON, with a
+# scratch HOME. Platform guard: bash 3.2-safe; needs jq (SKIP without).
+# shellcheck disable=SC2016  # commands are literal text with $ expansions, never expanded here
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
+T=$(mktemp -d "${TMPDIR:-/tmp}/gee.XXXXXX") || exit 1
+trap 'rm -rf "$T"' EXIT
+mkdir -p "$T/home" "$T/cwd"
+
+pass=0; fail=0
+
+# verdict <hook> <command> -> V=deny|allow
+verdict() {
+  local json rc
+  json=$(jq -cn --arg c "$2" --arg d "$T/cwd" \
+    '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')
+  (cd "$T/cwd" && printf '%s' "$json" | env -i HOME="$T/home" PATH="$PATH" TMPDIR="$T" \
+    bash "$HERE/$1" >/dev/null 2>&1)
+  rc=$?
+  case "$rc" in 2) V=deny ;; 0) V=allow ;; *) V="rc=$rc" ;; esac
+}
+
+check() {  # <want> <hook> <command>
+  verdict "$2" "$3"
+  if [ "$V" = "$1" ]; then
+    pass=$((pass+1))
+  else
+    fail=$((fail+1)); echo "FAIL $2: want $1, got $V: $3"
+  fi
+}
+
+# the protected command, then each way an empty expansion hides it
+deny_shapes() {  # <hook> <program words before the arguments> <arguments>
+  local h=$1 p=$2 a=$3
+  # shellcheck disable=SC2016  # the commands are literal text with $ expansions
+  {
+    check deny "$h" "$p $a"
+    check deny "$h" "\${V:-}$p $a"
+    check deny "$h" "\${V%x}$p $a"
+    check deny "$h" "R=Q; \${!R}$p $a"
+    check deny "$h" "\$V\${Z}$p $a"
+    check deny "$h" "\$V $p $a"
+    check deny "$h" "V=/; \$V:t$p $a"
+    check deny "$h" "V=ab; \${V[1,-3]}$p $a"
+    check deny "$h" "V=Q; \${(P)V}$p $a"
+    check deny "$h" "echo hi; \${V:-}$p $a"
+  }
+}
+
+deny_shapes block-git-stash.sh 'git' 'stash'
+check deny block-git-stash.sh 'git ${V:-} stash'
+check deny block-git-stash.sh 'git $V stash drop'
+deny_shapes block-bare-qmd-query.sh 'qmd' 'query hello'
+check deny block-bare-qmd-query.sh 'qmd ${V:-} query hello'
+check deny block-bare-qmd-query.sh 'qmd $V search hello'
+deny_shapes block-read-secrets.sh 'cat' '.env'
+check deny block-read-secrets.sh 'cat ${V:-} .env'
+
+# read-only look-alikes that name no protected target stay allowed
+check allow block-git-stash.sh 'echo ${V:-x}'
+check allow block-git-stash.sh 'ls $D'
+check allow block-git-stash.sh 'git stash list'
+check allow block-git-stash.sh '${V:-}git stash list'
+check allow block-git-stash.sh 'git ${V:-} stash show'
+check allow block-git-stash.sh 'git ${V:-} status'
+check allow block-git-stash.sh 'grep -rn "git stash" $DIR'
+check allow block-bare-qmd-query.sh 'echo ${V:-x}'
+check allow block-bare-qmd-query.sh 'ls $D'
+check allow block-bare-qmd-query.sh 'grep qmd $F'
+check allow block-bare-qmd-query.sh 'qmd ${V:-} status'
+check allow block-bare-qmd-query.sh '${V:-}qmd get $ID'
+check allow block-bare-qmd-query.sh 'echo qmd query $X'
+check allow block-read-secrets.sh 'echo ${V:-x}'
+check allow block-read-secrets.sh 'ls $D'
+check allow block-read-secrets.sh 'cat $F'
+check allow block-read-secrets.sh 'cat ${V:-} README.md'
+check allow block-read-secrets.sh '${V:-}cat README.md'
+check allow block-read-secrets.sh 'grep -n foo "$DIR/notes.md"'
+
+echo "guard-empty-expansion: $pass passed, $fail failed"
+[ "$fail" = 0 ]

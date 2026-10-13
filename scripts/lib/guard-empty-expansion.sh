@@ -1,0 +1,66 @@
+# shellcheck shell=bash
+# guard-empty-expansion.sh — re-read a command with its variable expansions
+# removed (HIMMEL-5328, HIMMEL-5330, HIMMEL-5331). Sourced by
+# block-bare-qmd-query.sh, block-git-stash.sh and block-read-secrets.sh.
+#
+# Those hooks match the command TEXT at command position. A variable expansion
+# that expands to nothing (`${V:-}git stash`, `$V${Z}cat .env`, `$V qmd query x`,
+# `git ${V:-} stash`, `R=Q; ${!R}git stash`, zsh `$V:t`, `$V[1,-3]`, `${(P)V}`)
+# sits in front of, or between the words of, the protected command, and the
+# regex reads the expansion as part of a different word. The hook cannot know
+# what a variable holds, so it reads the command twice: as written, and with
+# every expansion removed. The caller's own scan of the original text still
+# runs, so the stripped form can only add a deny, never remove one.
+#
+# ponytail: every `${…}` and `$name` is dropped, empty or not, so a hook can
+# over-deny a command whose expansion was a real, non-empty word that made the
+# protected program a mere argument (`$RUNNER git stash`) — the safe direction;
+# `$(…)` and `$'…'` are untouched. Upgrade path: track variable values across
+# the command (HIMMEL-4178).
+#
+# guard_expansion_recheck HOOK INPUT_JSON COMMAND
+#   returns 0 when the command holds no expansion, the stripped form equals it,
+#   or the hook (re-run on the stripped form) allows it; 2 otherwise, with the
+#   child's deny text on stderr.
+
+# `$name`, `$1`, `$@` and zsh's braceless `:t`/`:r`/`[1,-3]` tails first, so
+# `$V${Z}git` does not read `$Vgit` once `${Z}` is gone; then nested-brace
+# expansions, innermost first (the loop label).
+# shellcheck disable=SC2016 # sed program text: the `$` is a regex literal
+_GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g
+:a
+s/\$\{[^{}]*\}//g
+ta'
+
+guard_expansion_recheck() {
+    local hook=$1 input=$2 cmd=$3 stripped child err rc depth=${GUARD_EXPANSION_DEPTH:-0}
+    case "$cmd" in *'$'*) ;; *) return 0 ;; esac
+    case "$depth" in
+        *[!0-9]*|'') depth=0 ;;
+    esac
+    if [ "$depth" -ge 4 ]; then
+        echo "guard-empty-expansion: refusing a command re-read more than 4 levels deep." >&2
+        return 2
+    fi
+    # newlines ride as SOH so an expansion that spans lines is one match.
+    if ! stripped=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
+        | LC_ALL=C sed -E "$_GEE_SED" | LC_ALL=C tr '\001' '\n'); then
+        echo "guard-empty-expansion: cannot strip expansions - failing closed" >&2
+        return 2
+    fi
+    [ "$stripped" != "$cmd" ] || return 0
+    if ! child=$(jq -c --arg c "$stripped" '
+        if (.tool_input | has("command")) and .tool_input.command != null
+        then .tool_input.command = $c else .tool_input.cmd = $c end' <<<"$input" 2>/dev/null); then
+        echo "guard-empty-expansion: cannot build the stripped call - failing closed" >&2
+        return 2
+    fi
+    if err=$(GUARD_EXPANSION_DEPTH=$((depth + 1)) "${BASH:-bash}" "$hook" <<<"$child" 2>&1 >/dev/null); then
+        return 0
+    else
+        rc=$?
+    fi
+    [ -z "$err" ] || printf '%s\n' "$err" >&2
+    echo "    (denied with its variable expansions removed — a variable that expands to nothing leaves this command; rc=$rc)" >&2
+    return 2
+}
