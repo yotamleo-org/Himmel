@@ -233,6 +233,25 @@ sweep is red, the aggregator records
 `selector-miss-ledger` artifact. Those rows name the red suites a PR run
 would not have selected.
 
+### PR jobs and shard setup skip when the diff cannot reach them
+
+On a pull request a `plan` job (HIMMEL-5524) runs the **base** commit's
+`scripts/ci/pr-plan.sh` over `scripts/ci/pr-job-gates.txt` (`<group> <ERE>`
+lines) and exposes one `run_<group>` output per gated job. A gated job skips only
+when the plan succeeded and said `false`; a plan that failed, printed nothing
+or did not run (push, schedule, dispatch) runs everything. The plan is all-true
+on a trust-path diff, a path no group names, a base without the gates file or
+any selector error. Non-matrix required jobs (`secret-scan`, `lint`,
+`guardrail-matrices`, ...) skip at job level, which reports `skipped`. The
+matrix required jobs (`node-suites`, `bun-suites`) and `security-scan` always
+start and skip their steps, so every required name still reports.
+
+In each `shell-unit-shard`, `scripts/ci/shard-has-work.sh` asks
+`run-shell-tests.sh --list` whether the shard has anything to run under the
+same selection env and skips the apt/bun/ffmpeg/gitleaks/pre-commit setup when
+it has not. The run step and manifest upload stay unconditional, so the
+aggregator's manifest verification is unchanged.
+
 ## A failed suite is retried once; a pass on retry is a FLAKE
 
 `run-shell-tests.sh` re-runs a failed suite once, alone. Passing on the retry

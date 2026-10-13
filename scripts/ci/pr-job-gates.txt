@@ -1,0 +1,86 @@
+# scripts/ci/pr-job-gates.txt — HIMMEL-5524: which diff paths feed which
+# pull_request job. Read by scripts/ci/pr-plan.sh from the BASE commit, so a PR
+# cannot narrow its own gates except by editing this file, which is a trust path
+# (scripts/ci/) and so forces every gate true.
+#
+# Line format: <group><whitespace><ERE>, matched against each changed path.
+# A group is true when ANY changed path matches ANY of its lines. A changed path
+# that matches NO line (not even `benign`) is an unknown diff and makes every
+# gate true (fail closed). Over-listing a path is safe (the job just runs);
+# under-listing is the bug, so when a job starts reading a new directory, add it.
+#
+# Group names become the `run_<group>` outputs the `plan` job exposes. The
+# aggregator-less jobs gated on them report `skipped` (a pass) when false. The
+# matrix jobs (node_suites, bun_suites) stay started and skip their steps so
+# their required check names still report.
+#
+# Jobs with no group always run: leak-classes, commit-lint, doc-invariants,
+# unchecked-mktemp-range and the shell-unit shards (they select for themselves).
+
+benign          ^docs/
+benign          ^templates/
+benign          ^handovers/
+benign          \.md$
+benign          ^LICENSE
+benign          ^\.gitignore$
+benign          ^\.gitattributes$
+benign          ^\.github/(CODEOWNERS|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE)
+
+# node-suites matrix (jira, bitbucket, himmel-run, ci-orchestrator, himmel-gh,
+# himmel-jira, himmel-bus): each package's own dir plus what it imports.
+node_suites     ^scripts/(jira|bitbucket|himmel-run|ci-orchestrator|telegram|guardrails)/
+node_suites     ^scripts/handover/console-kit/
+node_suites     ^plugins/(himmel-gh|himmel-jira)/
+node_suites     ^marketplace/plugins/himmel-bus/
+node_suites     (^|/)package(-lock)?\.json$
+
+# bun-suites matrix.
+bun_suites      ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
+bun_suites      ^marketplace/plugins/(luna-correlate|telegram-himmel)/
+bun_suites      ^\.bun-version$
+bun_suites      (^|/)bun\.lock$
+bun_suites      (^|/)package(-lock)?\.json$
+
+jira_cli_smoke  ^scripts/jira/
+jira_cli_smoke  (^|/)package(-lock)?\.json$
+
+claude_startup  ^scripts/(testing|hooks|lib)/
+claude_startup  ^\.claude/
+claude_startup  ^\.bun-version$
+
+lanes_and_trust ^scripts/(lanes|trust|where-are-we|lessons|observability|hooks|lib)/
+lanes_and_trust ^scripts/(op-env-parity|test-claude-codex)
+
+guardrail_matrices ^scripts/guardrails/
+guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
+guardrail_matrices voice
+
+git_env_scrub   ^scripts/(handover|lanes|hooks|cr|lib)/
+git_env_scrub   scrub
+
+bwk_gate        unchecked-mktemp
+bwk_gate        ^scripts/lib/
+bwk_gate        \.(sh|bash)$
+
+lint            \.(sh|bash)$
+lint            ^\.shellcheckrc$
+lint            ^\.pre-commit-config\.yaml$
+lint            ^scripts/(hooks|install|himmelctl)/
+
+secret_scan     ^\.github/
+secret_scan     ^\.gitleaks
+secret_scan     ^scripts/(guardrails|hooks)/
+
+plugin_version_bump ^(marketplace/plugins|plugins)/
+
+deps_audit      (^|/)package(-lock)?\.json$
+deps_audit      (^|/)bun\.lock$
+deps_audit      (^|/)uv\.lock$
+deps_audit      (^|/)pyproject\.toml$
+deps_audit      ^\.bun-version$
+
+# Paths that are neither benign nor a listed input but harmless to the gates
+# above ONLY because the job that reads them always runs (leak-classes,
+# doc-invariants, commit-lint): scripts that are not shell/ts and live in a
+# tree no gated job reads.
+benign          ^scripts/(statusline|luna|gemini|hermes|himmelctl|install)/.*\.(ps1|json|txt|yml|yaml)$
