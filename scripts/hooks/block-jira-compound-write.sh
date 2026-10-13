@@ -171,7 +171,7 @@ split_bytes() {
 
 quote_mask() {
     local s="$1" n i c nx st out top pv hd hd_set ln j hd_q hd_dash ad dq LC_ALL=C
-    local esc_end=-1 hx ev ch nx2 bl
+    local esc_end=-1 hx ev ch nx2 bl nul=0
     local -a SC
     local -a stk
     local sp=0
@@ -197,7 +197,9 @@ quote_mask() {
                 '{') ad=$((ad + 1)) ;;
                 '}') ad=$((ad - 1)); [ "$ad" -le 0 ] && st=0 ;;
             esac
-            out+=" "; i=$((i + 1)); continue
+            # HIMMEL-5332: emit nothing — the expansion may be empty, so `n${Z}ode`
+            # is the word `node`; a blank would split it into `n` and `ode`.
+            i=$((i + 1)); continue
         fi
         if [ "$st" = 5 ]; then
             # Inside ARITHMETIC — `$((…))` or the `((…))` command. Bash EVALUATES
@@ -333,7 +335,7 @@ quote_mask() {
         # and cannot forge a separator. An unterminated span is a syntax error (nothing
         # runs): unparseable, fail open like any unbalanced quote.
         if [ "$c" = '$' ] && [ "$nx" = "'" ]; then
-            i=$((i + 2))
+            i=$((i + 2)); nul=0
             while :; do
                 [ "$i" -lt "$n" ] || return 1
                 c="${SC[i]-}"
@@ -358,6 +360,8 @@ quote_mask() {
                         c) j=$((i + 3)) ;;
                         '') j=$((i + 1)) ;;
                     esac
+                    # A NUL escape ends the string in bash (node followed by NUL is `node`).
+                    [ "$ch" = 0 ] && nul=1
                     case "$ch" in
                         *[!0-9]*|'') ch="_" ;;
                         *) if [ "$ch" -gt 32 ] && [ "$ch" -lt 127 ]; then
@@ -368,6 +372,7 @@ quote_mask() {
                 else
                     i=$((i + 1))
                 fi
+                [ "$nul" = 1 ] && continue
                 case "$ch" in
                     [A-Za-z0-9/._:-]) out+="$ch" ;;
                     *) out+="_" ;;
@@ -479,7 +484,7 @@ quote_mask() {
         # this, a `;` inside one (`echo ${x:-a; node …/index.js create --title y}`)
         # split off a bogus statement that read as a real write and got bounced.
         if [ "$c" = '$' ] && [ "$nx" = '{' ]; then
-            ad=1; st=6; out+="  "; i=$((i + 2)); continue
+            ad=1; st=6; i=$((i + 2)); continue
         fi
         # Arithmetic first: `$((` is arithmetic EXPANSION, not `$(` around a subshell,
         # and a bare `((` is the arithmetic COMMAND. Both evaluate, neither executes.
@@ -532,7 +537,8 @@ quote_mask() {
                     esac
                     break
                 done
-                while [ "$i" -lt "$j" ]; do out+=" "; i=$((i + 1)); done
+                # Emit nothing: the expansion may be empty, so `n$@ode` is the word `node`.
+                i=$j
                 continue
             fi
         fi
