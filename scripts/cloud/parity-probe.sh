@@ -134,7 +134,10 @@ case "$HOOKDIR" in /*) ;; *) HOOKDIR="$ROOT/$HOOKDIR" ;; esac
 hp="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"
 row core.hooksPath "${hp:-<unset>}"
 for stage in pre-commit commit-msg pre-push; do
-  if [ -x "$HOOKDIR/$stage" ]; then row "git-hook:$stage" "installed"; else row "git-hook:$stage" "NOT-INSTALLED"; fi
+  if [ -x "$HOOKDIR/$stage" ]; then
+    # an executable hook that never mentions pre-commit is another owner's, not our gate
+    if grep -q 'pre-commit' "$HOOKDIR/$stage" 2>/dev/null; then row "git-hook:$stage" "installed"; else row "git-hook:$stage" "other-owner (does not invoke pre-commit)"; fi
+  else row "git-hook:$stage" "NOT-INSTALLED"; fi
 done
 row pre-commit-config "$([ -f "$ROOT/.pre-commit-config.yaml" ] && echo "present hooks=$(grep -c '^ *- id:' "$ROOT/.pre-commit-config.yaml")" || echo absent)"
 for g in check-commit-msg.sh check-platforms-tested.sh; do

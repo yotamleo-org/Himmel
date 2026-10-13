@@ -132,8 +132,13 @@ fi
 # the ~5 min cached setup; pre-commit fetches them on first use. Acts on $ROOT,
 # so the session re-runs this script from its own clone (the setup-time clone
 # is throwaway). Non-fatal.
+hooks_path=""
+if have git && [ -e "$ROOT/.git" ]; then hooks_path="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"; fi
 if [ ! -e "$ROOT/.git" ]; then
   plan git-hooks skip "not a git work tree"
+elif [ -n "$hooks_path" ]; then
+  # git runs hooks from core.hooksPath, not .git/hooks, and `pre-commit install` refuses while it is set
+  plan git-hooks skip "core.hooksPath set ($hooks_path): hooks owned elsewhere, not installing"
 elif [ -x "$ROOT/.git/hooks/pre-commit" ] && [ -x "$ROOT/.git/hooks/commit-msg" ] && [ -x "$ROOT/.git/hooks/pre-push" ]; then  # -x: git ignores a non-executable hook
   plan git-hooks skip "installed"
 elif have pre-commit || [ "$DRY" -eq 1 ]; then

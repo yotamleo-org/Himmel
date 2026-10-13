@@ -217,7 +217,7 @@ printf '#!/bin/sh\nexit 0\n' > "$GTB/shellcheck"; cp "$GTB/shellcheck" "$GTB/at"
 # shellcheck disable=SC2016  # stub script text, expanded when the stub runs
 printf '#!/bin/sh\npwd > "$HIMMEL_HOOK_LOG"\necho "$*" >> "$HIMMEL_HOOK_LOG"\nexit "${HIMMEL_HOOK_RC:-0}"\n' > "$GTB/pre-commit"
 chmod +x "$GTB/shellcheck" "$GTB/at" "$GTB/pre-commit"
-gt_run() { OUT="$(env -i PATH="$GTB" HIMMEL_CLOUD_ROOT="$GT" TMPDIR="$TMP" HIMMEL_HOOK_LOG="$TMP/hook.log" HIMMEL_HOOK_RC="${GT_RC:-0}" "$BASH_BIN" "$SETUP" $GT_ARGS 2>&1)"; RC=$?; }
+gt_run() { OUT="$(env -i PATH="$GTB" HIMMEL_CLOUD_ROOT="$GT" TMPDIR="$TMP" HIMMEL_HOOK_LOG="$TMP/hook.log" HIMMEL_HOOK_RC="${GT_RC:-0}" GT_HOOKSPATH="${GT_HOOKSPATH:-}" "$BASH_BIN" "$SETUP" $GT_ARGS 2>&1)"; RC=$?; }
 GT_ARGS="--dry-run" gt_run
 case "$OUT" in *"step=git-hooks action=install"*"commit-msg"*"pre-push"*) ok "git gate hooks planned for all three stages" ;; *) bad "git-hooks step missing or incomplete: $OUT" ;; esac
 rm -f "$TMP/hook.log"; GT_ARGS="" gt_run
@@ -232,6 +232,16 @@ case "$OUT" in *"step=git-hooks action=install"*) ok "non-executable hook files 
 for h in pre-commit commit-msg pre-push; do chmod +x "$GT/.git/hooks/$h"; done
 GT_ARGS="--dry-run" gt_run
 case "$OUT" in *"step=git-hooks action=skip"*) ok "installed git hooks are skipped" ;; *) bad "installed hooks not skipped: $OUT" ;; esac
+# core.hooksPath redirects git away from .git/hooks and `pre-commit install` refuses
+# while it is set, so the .git/hooks check says nothing about what git will run
+rm -f "$GT/.git/hooks/pre-push"
+# shellcheck disable=SC2016  # stub script text, expanded when the stub runs
+printf '#!/bin/sh\n[ -n "$GT_HOOKSPATH" ] && { echo "$GT_HOOKSPATH"; exit 0; }\nexit 1\n' > "$GTB/git"; chmod +x "$GTB/git"
+GT_HOOKSPATH=/elsewhere/hooks GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*"core.hooksPath"*) ok "core.hooksPath set skips the hook install and names it" ;; *) bad "core.hooksPath not honoured: $OUT" ;; esac
+GT_HOOKSPATH="" GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*) ok "core.hooksPath unset still installs" ;; *) bad "unset core.hooksPath: $OUT" ;; esac
+rm -f "$GTB/git"
 rm -rf "$GT/.git"
 GT_ARGS="--dry-run" gt_run
 case "$OUT" in *"step=git-hooks action=skip"*"not a git work tree"*) ok "no git work tree skips the hook step" ;; *) bad "no-git case: $OUT" ;; esac
