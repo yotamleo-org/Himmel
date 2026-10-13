@@ -42,7 +42,10 @@ op="$1"; shift
 case "$op" in
     get)
         key="$1"
-        [ "$key" != HIMMEL-404 ] || { echo "Issue Does Not Exist" >&2; exit 1; }
+        [ "$key" != HIMMEL-404 ] || { echo "jira: get $key failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2; exit 1; }
+        [ "$key" != HIMMEL-502 ] || { echo "jira: get $key failed: HTTP 502: <html><body><h1>Not Found</h1>nginx</body></html>" >&2; exit 1; }
+        [ "$key" != HIMMEL-503 ] || { echo "jira: get $key failed: HTTP 404:" >&2; exit 1; }
+        [ "$key" != HIMMEL-505 ] || { echo "Issue Does Not Exist" >&2; exit 1; }
         [ "$key" != HIMMEL-500 ] || { echo "401 Unauthorized" >&2; exit 1; }
         st="To Do"
         [ ! -f "$STUB_STATE/status.$key" ] || st=$(cat "$STUB_STATE/status.$key")
@@ -311,18 +314,39 @@ status: Done" "bad type" >/dev/null 2>&1; eq "multiline type refused" 2 "$?"
 fresh_env local
 tracker_id_new Task "no body" "$R/missing-body.md" >/dev/null 2>&1; eq "missing body file refused" 2 "$?"
 [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "item written despite a missing body file"
+# a body file that is a regular file yet unreadable. chmod 000 stays readable for root, so
+# fall back to /proc/self/mem (a regular file whose read fails with EIO even for root)
 mkdir -p "$TRACKER_STORE"; printf 'body\n' > "$R/unreadable.md"; chmod 000 "$R/unreadable.md"
-if [ ! -r "$R/unreadable.md" ]; then
+unreadable="$R/unreadable.md"
+if [ -r "$unreadable" ]; then
+    unreadable=/proc/self/mem
+    cat "$unreadable" >/dev/null 2>&1 && unreadable=""
+fi
+if [ -n "$unreadable" ] && [ -f "$unreadable" ]; then
     # an unreadable body returns from the mint (never exits the caller) and leaves nothing behind
-    tracker_id_new Task "unreadable body" "$R/unreadable.md" >/dev/null 2>&1; rc=$?
+    tracker_id_new Task "unreadable body" "$unreadable" >/dev/null 2>&1; rc=$?
     eq "unreadable body file fails the mint" 1 "$rc"
     [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && [ ! -e "$TRACKER_STORE/.lock" ] && ok || bad "item or lock left behind after an unreadable body"
+else
+    echo "SKIP: no unreadable-file fixture on this platform" >&2
 fi
 mkdir -p "$TRACKER_STORE"; printf '08\n' > "$TRACKER_STORE/next-id"
 eq "leading-zero next-id is decimal" LOCAL-8 "$(tracker_id_new Task "zero")"
 fresh_env jira
 tracker_get HIMMEL-404 >/dev/null 2>&1; eq "jira absent issue is rc 3" 3 "$?"
 tracker_get HIMMEL-500 >/dev/null 2>&1; eq "jira CLI failure is rc 1, not absent" 1 "$?"
+tracker_get HIMMEL-503 >/dev/null 2>&1; eq "jira bare 404 with no not-found text is rc 1" 1 "$?"
+tracker_get HIMMEL-502 >/dev/null 2>&1; eq "jira proxy HTML Not Found body is rc 1, not absent" 1 "$?"
+tracker_get HIMMEL-505 >/dev/null 2>&1; eq "jira not-found text outside the CLI's own line is rc 1" 1 "$?"
+
+# the stderr capture file is mktemp-made: a planted predictable path is never written through,
+# and nothing is left behind
+mkdir "$R/tmp"; : > "$R/victim"
+ln -s "$R/victim" "$R/tmp/tracker-jira-err.$$"
+ln -s "$R/victim" "$R/tmp/tracker-jira-err"
+TMPDIR="$R/tmp" tracker_get HIMMEL-500 >/dev/null 2>&1
+eq "jira get stderr never goes through a predictable path" 0 "$(wc -c < "$R/victim" | tr -d ' ')"
+eq "jira get leaves no stderr temp file" 2 "$(find "$R/tmp" -mindepth 1 | wc -l | tr -d ' ')"
 
 # a failing jira list is a failed query, not an empty result (pipefail off)
 fresh_env jira
