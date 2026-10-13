@@ -184,6 +184,19 @@ if [ "$_ast_rc" -eq 0 ] && [ "$_ast_got" = 17 ]; then
 else
   fail=$((fail + 1)); echo "  FAIL: AST/publish-only .sh runners not seen (rc=$_ast_rc stamp='$_ast_got', want rc=0 stamp=17)"
 fi
+# Each basename alone must be seen: one row per runner, so a missing entry in
+# CADENCE_RUNNER_BASENAMES names the exact runner (HIMMEL-4285).
+for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence; do
+  _one_tmp="$(mktemp -d -t cadence-one.XXXXXX)" || exit 1
+  printf '#!/usr/bin/env bash\n# %s 17\n' "$CADENCE_FORMAT_MARKER" > "$_one_tmp/$_n.sh"
+  _one_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_one_tmp")"; _one_rc=$?
+  if [ "$_one_rc" -eq 0 ] && [ "$_one_got" = 17 ]; then
+    pass=$((pass + 1)); echo "  ok: $_n alone is seen (stamp 17)"
+  else
+    fail=$((fail + 1)); echo "  FAIL: $_n alone not seen (rc=$_one_rc stamp='$_one_got', want rc=0 stamp=17)"
+  fi
+  rm -rf "$_one_tmp"
+done
 # One stale runner among them must pull the minimum down, not be masked.
 printf '#!/usr/bin/env bash\n# %s 12\n' "$CADENCE_FORMAT_MARKER" > "$_ast_tmp/graphmap-publish-himmel.sh"
 _ast_got="$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$_ast_tmp")"
