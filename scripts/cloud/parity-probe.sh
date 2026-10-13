@@ -167,12 +167,23 @@ ver git git --version
 ver shellcheck shellcheck --version
 ver at at -V
 ver graphify graphify --version
-ver qmd qmd --version
+# qmd installed by qmd-bin.sh may have no shim on PATH (HIMMEL-4814): resolve it
+# the way setup-env.sh does, through qmd-bounded.sh, before calling it absent.
+QMD_OK=0
+if have qmd; then
+  ver qmd qmd --version; QMD_OK=1
+elif [ -f "$ROOT/scripts/lib/qmd-bounded.sh" ] && QV="$(QMD_TIMEOUT_SECS=30 bounded 40 bash "$ROOT/scripts/lib/qmd-bounded.sh" --version 2>/dev/null | first_line | cut -c1-60)" && [ -n "$QV" ]; then
+  row tool:qmd "$QV (not on PATH, via qmd-bounded.sh)"; QMD_OK=1
+else
+  row tool:qmd "<absent>"
+fi
 GPIN=""
 [ -f "$ROOT/scripts/lib/graphify-bin.sh" ] && GPIN="$(grep -oE 'GRAPHIFY_VERSION:-[0-9][0-9.]*' "$ROOT/scripts/lib/graphify-bin.sh" | head -n 1 | sed 's/.*:-//')"
 row graphify-pin "${GPIN:-<none>}"
+GCUR="$(bounded 20 graphify --version 2>/dev/null | first_line | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1)"
+if [ -z "$GCUR" ] || [ -z "$GPIN" ]; then row graphify-at-pin "n/a"; elif [ "$GCUR" = "$GPIN" ]; then row graphify-at-pin "yes"; else row graphify-at-pin "NO installed=$GCUR pin=$GPIN"; fi
 row graphify-graph "$([ -f "$ROOT/graphify-out/graph.json" ] && echo present || echo absent)"
-if have qmd && [ -f "$ROOT/scripts/lib/qmd-bounded.sh" ]; then
+if [ "$QMD_OK" -eq 1 ] && [ -f "$ROOT/scripts/lib/qmd-bounded.sh" ]; then
   row qmd-collections "$(QMD_TIMEOUT_SECS=30 bash "$ROOT/scripts/lib/qmd-bounded.sh" collection list 2>/dev/null | sed -n 's/^\([A-Za-z0-9_-]*\) (qmd:.*/\1/p' | tr '\n' ',' | cut -c1-200)"
 else
   row qmd-collections "<n/a>"
@@ -193,7 +204,8 @@ EM="$ROOT/scripts/guardrails/egress-matrix.json"
 row egress-matrix "$([ -f "$EM" ] && { sha256sum "$EM" 2>/dev/null || shasum -a 256 "$EM"; } | cut -c1-12 || echo MISSING)"
 if [ "$NET" -eq 1 ] && have curl; then
   for u in https://github.com https://pypi.org https://registry.npmjs.org https://archive.ubuntu.com https://example.com; do
-    code="$(bounded 10 curl -s -o /dev/null -m 8 -I -w '%{http_code}' "$u" 2>/dev/null)"
+    # GET, not HEAD: the cloud GitHub proxy answers a HEAD on github.com with 400
+    code="$(bounded 10 curl -s -o /dev/null -m 8 -w '%{http_code}' "$u" 2>/dev/null)"
     row "net:${u#https://}" "${code:-000}"
   done
 else

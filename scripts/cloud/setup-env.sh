@@ -194,7 +194,14 @@ GV=""
 while IFS= read -r line; do
   if [[ "$line" =~ GRAPHIFY_VERSION:-([0-9][0-9.]*)\} ]]; then GV="${BASH_REMATCH[1]}"; break; fi
 done < "$ROOT/scripts/lib/graphify-bin.sh" 2>/dev/null
+# A cached image can ship graphify at another version than the pin (0.9.77 against
+# 0.9.80, HIMMEL-5442): a parsed version that differs from the pin is reinstalled;
+# one that cannot be parsed counts as present.
+GCUR=""
 if have graphify; then
+  GCUR="$("$TMO" 20 graphify --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1)"
+fi
+if have graphify && { [ -z "$GV" ] || [ -z "$GCUR" ] || [ "$GCUR" = "$GV" ]; }; then
   plan graphify skip "present"
 elif [ -z "$GV" ]; then
   plan graphify skip "no graphify pin in this tree"

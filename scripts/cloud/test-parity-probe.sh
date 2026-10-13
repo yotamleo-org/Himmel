@@ -48,6 +48,22 @@ OUT3="$(HIMMEL_CLOUD_ROOT="$TMP/empty" bash "$PROBE" --no-net 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ]; then ok "empty tree exits 0"; else bad "empty tree rc=$RC"; fi
 case "$OUT3" in *$'guard:block-git-stash\tMISSING'*) ok "absent guard reads MISSING" ;; *) bad "absent guard not MISSING: $OUT3" ;; esac
 
+# 4b. HIMMEL-5442 cloud run: qmd was installed but had no shim on PATH, and
+# graphify sat at 0.9.77 against a 0.9.80 pin. The qmd row resolves through
+# qmd-bounded.sh; graphify-at-pin names the drift.
+QB="$TMP/qbin"; mkdir -p "$QB" "$TMP/qfix/scripts/lib"
+for t in bash env sh grep sed tr cut head tail awk sort wc cat rm mktemp date uname id sha256sum dirname basename find timeout; do
+  p="$(command -v "$t" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$QB/$t"
+done
+# shellcheck disable=SC2016  # $1 belongs to the stub script
+printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "qmd 9.9.9"\nexit 0\n' > "$TMP/qfix/scripts/lib/qmd-bounded.sh"
+printf '#!/bin/sh\necho "graphify 0.9.77"\n' > "$QB/graphify"; chmod +x "$QB/graphify"
+# shellcheck disable=SC2016  # literal fixture text
+printf '%s\n' '_graphify_version() { echo "${GRAPHIFY_VERSION:-0.9.80}"; }' > "$TMP/qfix/scripts/lib/graphify-bin.sh"
+OUT5="$(env -i PATH="$QB" HIMMEL_CLOUD_ROOT="$TMP/qfix" "$QB/bash" "$PROBE" --no-net 2>&1)"
+case "$OUT5" in *$'tool:qmd\tqmd 9.9.9 (not on PATH, via qmd-bounded.sh)'*) ok "qmd off PATH resolves through qmd-bounded.sh" ;; *) bad "qmd off PATH read absent: $(printf '%s\n' "$OUT5" | grep 'tool:qmd')" ;; esac
+case "$OUT5" in *$'graphify-at-pin\tNO installed=0.9.77 pin=0.9.80'*) ok "graphify off the pin is named" ;; *) bad "graphify drift not named: $(printf '%s\n' "$OUT5" | grep 'graphify')" ;; esac
+
 # 5. read-only: the tree and the scratch dir are unchanged by a run.
 before="$(git -C "$ROOT" status --porcelain 2>/dev/null | { sha256sum 2>/dev/null || shasum -a 256; })"
 TMPDIR="$TMP" bash "$PROBE" --no-net >/dev/null 2>&1

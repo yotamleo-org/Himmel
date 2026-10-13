@@ -148,6 +148,18 @@ run "$GQ" --dry-run
 case "$OUT" in *"step=graphify action=skip"*) ok "present graphify is skipped" ;; *) bad "present graphify not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd action=skip"*) ok "present qmd is skipped" ;; *) bad "present qmd not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd-index action=refresh $FAKE --name himmel"*) ok "an existing himmel collection is rebuilt from this clone" ;; *) bad "existing himmel collection not refreshed (stale index): $OUT" ;; esac
+# HIMMEL-5442: the cloud image shipped graphify 0.9.77 while the pin was 0.9.80
+# and "present" skipped the install, so the version drifted from the pin. A
+# present graphify at another version is reinstalled at the pin; at the pin, or
+# with an unparseable version, it is skipped.
+GV="$TMP/gver"; mkdir -p "$GV"; cp "$GQ"/* "$GV/"
+for t in head grep; do ln -s "$(command -v "$t")" "$GV/$t"; done   # the version parse
+printf '#!/bin/sh\necho "graphify 9.8.6"\n' > "$GV/graphify"; chmod +x "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=install graphifyy==9.8.7 "*) ok "graphify off the pin is reinstalled at the pin" ;; *) bad "graphify off the pin not reinstalled: $OUT" ;; esac
+printf '#!/bin/sh\necho "graphify 9.8.7"\n' > "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=skip"*) ok "graphify at the pin is skipped" ;; *) bad "graphify at the pin not skipped: $OUT" ;; esac
 # a failing graphify / qmd install is NON-fatal and does not stop the next step.
 GF="$TMP/gfail"; mkdir -p "$GF"; cp "$HAVE"/* "$GF/"
 for t in timeout sh tail mkdir bash; do ln -s "$(command -v "$t")" "$GF/$t"; done
