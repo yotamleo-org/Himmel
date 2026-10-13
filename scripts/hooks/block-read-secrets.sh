@@ -824,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 scrub=0 cmd_i=0 nl=$'\n'
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 scrub=0 cmd_i=0 nl=$'\n'
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -896,8 +896,9 @@ g4_scan() {
                 if [ "$xo" = 1 ]; then
                     xo=0
                     case "$d" in xtrace) xt=1 ;; esac
-                elif [ "$nargs" = 0 ]; then
+                elif [ "$nargs" = 0 ] && [ "$xend" = 0 ]; then
                     case "$d" in
+                        --) xend=1 ;;     # `set -- -x`: the rest are positionals
                         --rcfile|--init-file|-O|+O) skipv=1 ;;
                         --*) ;;
                         -*x*) xt=1 ;;
@@ -1035,7 +1036,7 @@ interp_env_dump() {
 # the command under no `env -i` also match. Revisit if guard_unwrap hands a
 # child its wrapper context (HIMMEL-5484 follow-up).
 xt_scrub_segs() {
-    local seg w i n scrub out="" nl=$'\n' skip
+    local seg w i n scrub out="" un="" nl=$'\n' skip
     local -a ws
     while IFS= read -r seg; do
         set -f
@@ -1044,19 +1045,21 @@ xt_scrub_segs() {
         set +f
         n=${#ws[@]}; i=0; scrub=0
         [ "$n" -gt 0 ] || continue
-        [ "${ws[0]##*/}" = env ] || continue
-        i=1
-        while [ "$i" -lt "$n" ]; do
-            w="${ws[i]}"
-            case "$w" in
-                -i|--ignore-environment|-) scrub=1 ;;
-                -u|-C|-S|--unset|--chdir|--split-string) i=$((i + 1)) ;;
-                -*|[A-Za-z_]*=*) ;;
-                *) break ;;
-            esac
-            i=$((i + 1))
-        done
-        [ "$scrub" = 1 ] && [ "$i" -lt "$n" ] || continue
+        if [ "${ws[0]##*/}" = env ]; then
+            i=1
+            while [ "$i" -lt "$n" ]; do
+                w="${ws[i]}"
+                case "$w" in
+                    -i|--ignore-environment|-) scrub=1 ;;
+                    -u|-C|-S|--unset|--chdir|--split-string) i=$((i + 1)) ;;
+                    -*|[A-Za-z_]*=*) ;;
+                    *) break ;;
+                esac
+                i=$((i + 1))
+            done
+            [ "$scrub" = 1 ] || i=0
+        fi
+        [ "$i" -lt "$n" ] || continue
         seg=""; skip=0
         while [ "$i" -lt "$n" ]; do
             w="${ws[i]//[\'\"\\]/}"
@@ -1070,11 +1073,19 @@ xt_scrub_segs() {
             esac
             seg="$seg${seg:+ }$w"
         done
-        [ -z "$seg" ] || out="$out$seg$nl"
+        [ -z "$seg" ] || if [ "$scrub" = 1 ]; then out="$out$seg$nl"; else un="$un$seg$nl"; fi
     done <<EOF
 ${1//[;|&()\`]/$nl}
 EOF
-    printf '%s' "$out"
+    # A scrubbed clause whose words also sit inside an unscrubbed clause
+    # (`env -i bash -x s; bash -x s`) cannot be told apart in the child: drop it.
+    while IFS= read -r seg; do
+        [ -n "$seg" ] || continue
+        case "$nl$un" in *"$seg"*) continue ;; esac
+        printf '%s\n' "$seg"
+    done <<EOF
+$out
+EOF
 }
 
 # is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
