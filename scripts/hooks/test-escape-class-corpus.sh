@@ -75,22 +75,8 @@ check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='
-block-jira-compound-write.sh bs-newline-inside-word HIMMEL-5332
-block-jira-compound-write.sh ansi-c-escaped-quote HIMMEL-5332
-block-jira-compound-write.sh ansi-c-command-word HIMMEL-5332
-block-jira-compound-write.sh hash-after-escaped-blank HIMMEL-5332
-block-jira-compound-write.sh hash-after-escaped-operator HIMMEL-5332
-block-jira-compound-write.sh quoted-heredoc-operator HIMMEL-5332
-block-jira-compound-write.sh quoted-redirect-operator HIMMEL-5332
-block-jira-compound-write.sh quoted-semicolon HIMMEL-5332
-block-jira-compound-write.sh expansion-adjacent-empty HIMMEL-5332
-block-jira-compound-write.sh expansion-empty-word HIMMEL-5332
 block-rogue-claude-schedule.sh bs-newline-inside-word HIMMEL-5333
 guard-pr-check-literal.sh ansi-c-command-word HIMMEL-5335
-block-jira-compound-write.sh zsh-modifier-tail-braceless HIMMEL-5332
-block-jira-compound-write.sh zsh-modifier-root-braceless HIMMEL-5332
-block-jira-compound-write.sh zsh-subscript-braceless HIMMEL-5332
-block-jira-compound-write.sh zsh-modifier-empty-word HIMMEL-5332
 '
 
 # block-write-into-main-checkout.sh exempts any path with a tmp/ or temp/
