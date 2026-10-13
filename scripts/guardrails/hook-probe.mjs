@@ -28,8 +28,11 @@
 // Exit 0 = ALLOW, 1 = DENY (some hook refused), 2 = usage error or nothing to
 // probe (no PreToolUse entry matches the tool: an unprobed call is not ALLOW).
 // The probe fails CLOSED where the launcher's runChain does: a missing or
-// duplicate chain member, an integrity mismatch, and a must-run member that
-// crashes, dies on a signal, times out or overflows its buffer are all DENY.
+// duplicate chain member, an integrity mismatch, any member killed by a signal,
+// and a must-run member that crashes, times out or overflows its buffer are all
+// DENY. The pin check needs a session record: it runs only when the caller names
+// a session (--session ID, or a --payload carrying session_id); otherwise the
+// output says `integrity: not checked` rather than implying it passed.
 // An `ask` row is shown as such but does not make the verdict DENY: PROBE ALLOW
 // means no hook refused outright, so read the per-hook rows for a prompt.
 
@@ -64,13 +67,19 @@ const {
 // The launcher's own member output ceiling (MEMBER_MAX_BUFFER there, not exported).
 const MEMBER_MAX_BUFFER = 16 * 1024 * 1024;
 
-const USAGE = 'usage: hook-probe.mjs (--tool NAME --command CMD | --payload FILE [--tool NAME]) [--json] [--settings PATH]';
+// A session id nobody supplied: it names no integrity record, so it is never
+// used to claim the pin check ran.
+const DEFAULT_SESSION = 'hook-probe';
+
+const USAGE = 'usage: hook-probe.mjs (--tool NAME --command CMD | --payload FILE [--tool NAME]) [--session ID] [--json] [--settings PATH]';
 
 class UsageError extends Error {}
 
 export function parseArgs(argv) {
-  const opts = { tool: null, command: null, payload: null, settings: null, json: false };
-  const takesValue = { '--tool': 'tool', '--command': 'command', '--payload': 'payload', '--settings': 'settings' };
+  const opts = { tool: null, command: null, payload: null, settings: null, session: null, json: false };
+  const takesValue = {
+    '--tool': 'tool', '--command': 'command', '--payload': 'payload', '--settings': 'settings', '--session': 'session',
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--json') { opts.json = true; continue; }
@@ -91,7 +100,7 @@ export function parseArgs(argv) {
 // Build the one PreToolUse payload every hook will see.
 export function buildPayload(opts, cwd) {
   const base = {
-    session_id: 'hook-probe',
+    session_id: opts.session || DEFAULT_SESSION,
     transcript_path: join(cwd, '.claude', 'hook-probe-transcript.jsonl'),
     cwd,
     hook_event_name: 'PreToolUse',
@@ -163,10 +172,14 @@ export function classifyMember(result, mustRun) {
     return { decision: 'deny', rc: null, reason: `failed to start: ${result.error.message}` };
   }
   const status = result ? result.status : null;
-  const crashed = status === null || (status !== 0 && status !== 2);
+  // runChain maps a non-number status (killed by a signal) to 2 for EVERY
+  // member, advisory included, so it denies there too.
+  if (status === null) {
+    return { decision: 'deny', rc: null, reason: `guard did not decide (signal ${result && result.signal}); failing closed` };
+  }
+  const crashed = status !== 0 && status !== 2;
   if (mustRun && crashed) {
-    const why = status === null ? `signal ${result.signal}` : `rc=${status}`;
-    return { decision: 'deny', rc: status, reason: `must-run guard crashed instead of deciding (${why}); failing closed` };
+    return { decision: 'deny', rc: status, reason: `must-run guard crashed instead of deciding (rc=${status}); failing closed` };
   }
   return classify(result);
 }
@@ -197,6 +210,12 @@ function validateChain(members) {
 
 // One row per probed unit: each --chain member on its own (so the deny names the
 // member), a non-chain entry as its whole command string.
+// `payload.session_id` names the integrity record to check chain members against;
+// the default id has none, so the pin check is skipped (see integrityChecked).
+export function integrityChecked(payload) {
+  return typeof payload.session_id === 'string' && payload.session_id !== DEFAULT_SESSION;
+}
+
 export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
   const env = { ...process.env, ...benchEnv(scratch, cwd, pluginRootFor(settingsPath)) };
   const input = JSON.stringify(payload) + '\n';
@@ -220,7 +239,7 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
         rows.push({ ...row, decision: 'skipped', rc: null, reason: '' });
         continue;
       }
-      if (member) {
+      if (member && integrityChecked(payload)) {
         const integrity = verifyProjectHookIntegrity(member, payload.session_id);
         if (!integrity.ok) {
           rows.push({ ...row, decision: 'deny', rc: null, reason: `integrity mismatch for ${integrity.relPath || member}: ${integrity.reason}` });
@@ -241,12 +260,13 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
   return rows;
 }
 
-export function formatText(rows, verdict) {
+export function formatText(rows, verdict, integrity = 'checked') {
   const lines = [];
   for (const r of rows) {
     lines.push(`${r.hook} ${r.decision} rc=${r.rc === null ? '-' : r.rc}`);
     if (r.reason && (r.decision === 'deny' || r.decision === 'ask' || r.decision === 'error')) lines.push(`  reason: ${r.reason}`);
   }
+  if (integrity !== 'checked') lines.push('integrity: not checked (no session record; pass --session ID or a --payload carrying session_id)');
   lines.push(`PROBE ${verdict}`);
   return lines.join('\n');
 }
@@ -284,9 +304,10 @@ function main(argv) {
       return 2;
     }
     const verdict = rows.some((r) => r.decision === 'deny') ? 'DENY' : 'ALLOW';
+    const integrity = integrityChecked(payload) ? 'checked' : 'not checked';
     process.stdout.write((opts.json
-      ? JSON.stringify({ verdict, tool: payload.tool_name, settings: settingsPath, hooks: rows })
-      : formatText(rows, verdict)) + '\n');
+      ? JSON.stringify({ verdict, tool: payload.tool_name, settings: settingsPath, integrity, hooks: rows })
+      : formatText(rows, verdict, integrity)) + '\n');
     return verdict === 'DENY' ? 1 : 0;
   } finally {
     rmSync(scratch, { recursive: true, force: true });

@@ -178,6 +178,34 @@ else
     fail "expected rc=0 PROBE ALLOW with an error row; rc=$rc out=$out"
 fi
 
+echo "== an ADVISORY member killed by a signal is a DENY (runChain maps a null status to 2) =="
+printf '#!/usr/bin/env bash\ncat >/dev/null\nkill -9 $$\n' > "$TMP/adv/advisory-killed.sh"
+chain_settings "$TMP/settings-adv-sig.json" "$TMP/adv/advisory-killed.sh"
+out=$(probe --settings "$TMP/settings-adv-sig.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" '^advisory-killed.sh deny'; then
+    pass "advisory signal death denies"
+else
+    fail "expected rc=1 PROBE DENY from a signalled advisory member; rc=$rc out=$out"
+fi
+
+echo "== integrity: not checked without a session record, DENY on a pin mismatch with one =="
+# A real in-repo member pinned to a wrong blob sha in a fixture record.
+mkdir -p "$TMP/integ"
+printf '{"pins":{"scripts/hooks/block-git-stash.sh":"0000000000000000000000000000000000000000"}}\n' > "$TMP/integ/probe-fixture.json"
+chain_settings "$TMP/settings-integ.json" "$REPO_ROOT/scripts/hooks/block-git-stash.sh"
+out=$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK=0 HIMMEL_HOOK_INTEGRITY_DIR="$TMP/integ" probe --settings "$TMP/settings-integ.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^integrity: not checked'; then
+    pass "no session id: output says integrity was not checked"
+else
+    fail "expected rc=0 and an 'integrity: not checked' line; rc=$rc out=$out"
+fi
+out=$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK=0 HIMMEL_HOOK_INTEGRITY_DIR="$TMP/integ" probe --settings "$TMP/settings-integ.json" --session probe-fixture --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'integrity mismatch' && ! grepq "$out" 'integrity: not checked'; then
+    pass "--session with a mismatching pin record denies"
+else
+    fail "expected rc=1 PROBE DENY with 'integrity mismatch'; rc=$rc out=$out"
+fi
+
 echo "== zero matched entries is an error, not PROBE ALLOW =="
 printf '{"hooks":{"PreToolUse":[{"matcher":"Write","hooks":[{"type":"command","command":"true"}]}]}}\n' > "$TMP/settings-none.json"
 out=$(probe --settings "$TMP/settings-none.json" --tool Bash --command 'git status'); rc=$?
