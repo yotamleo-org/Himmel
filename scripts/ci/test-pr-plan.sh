@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # scripts/ci/test-pr-plan.sh — scripts/ci/pr-plan.sh (HIMMEL-5524): the
 # BASE-sourced per-job plan a pull_request prints so jobs whose inputs the diff
 # does not touch skip. Each case runs a COPY of the planner inside a throwaway
