@@ -931,9 +931,8 @@ _ql_owner_provably_dead() {
             *queue-lock.sh*) continue ;;
             *"$stem"*) return 1 ;;
         esac
-        # a session handed the doc through its environment rather than argv:
-        # same-user /proc/<pid>/environ is readable; unreadable = no evidence
-        # either way, so it is skipped, never read as proof of death.
+        # a session handed the doc through its environment rather than argv.
+        # ponytail: a non-dumpable process (password manager, compositor, setuid helper) has an unreadable environ even for its own user and is skipped rather than failing closed -- failing closed would block every reap on a desktop host (5 such processes on the dev box, none an agent session, which is dumpable), upgrade path: revisit if a session launcher ever drops dumpability
         if [ -r "/proc/$cpid/environ" ] && grep -qaF -- "$stem" "/proc/$cpid/environ" 2>/dev/null; then
             return 1
         fi
@@ -2598,8 +2597,17 @@ _ql_sweep_one_root() {
                 # CAS-verify owner.json under it before the rm.
                 # ponytail: same accepted microsecond window as the takeover path (a holder releasing then a third party acquiring between verify and rm), upgrade path: a lock-dir rename primitive once queue-lock has one
                 local rclaim="${lockdir}.claim" rtoken="reap-pid$$-r$RANDOM"
-                if ! mkdir "$rclaim" 2>/dev/null \
-                    || ! ( set -C; printf '%s' "$rtoken" > "$rclaim/owner" ) 2>/dev/null; then
+                local rclaim_ok=0
+                if mkdir "$rclaim" 2>/dev/null; then
+                    if ( set -C; printf '%s' "$rtoken" > "$rclaim/owner" ) 2>/dev/null; then
+                        rclaim_ok=1
+                    else
+                        # never strand a claim we created but could not brand
+                        # (rmdir refuses a co-winner's non-empty dir)
+                        rmdir "$rclaim" 2>/dev/null
+                    fi
+                fi
+                if [ "$rclaim_ok" -ne 1 ]; then
                     echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=skipped-claimed$sfx"
                     flagged=1
                 elif [ "$(cat "$lockdir/owner.json" 2>/dev/null)" != "$o_raw" ]; then
