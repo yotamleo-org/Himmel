@@ -1110,7 +1110,14 @@ emit_runner() {
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
+    # Shared emitter (HIMMEL-4286, runner format v22): a flow-run row for the
+    # leg and a cadence-alert fail/clear on its outcome. Every non-zero rc of
+    # qmd-reindex.sh is a failure (its rc 0 is the only success), so no skip
+    # list is passed.
+    cadence_posix_leg_start "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" qmd-reindex HIMMEL-Qmd-Reindex
     printf '    _rc=0; %s || _rc=$?\n' "$payload"
+    cadence_posix_leg_end "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" \
+        "$(printf '%q' "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")" qmd-reindex
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
     # PROPAGATE the runner's exit code (CR finding [codex-1]). Without this the

@@ -689,8 +689,15 @@ emit_runner() {
     printf '{\n'
     printf '    echo "[fired $(date "+%%Y-%%m-%%d %%H:%%M:%%S")]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
+    # Shared emitter (HIMMEL-4286, runner format v22): flow-run row + cadence-
+    # alert fail/clear. rc 10 is a handled delta, so it counts as success.
+    local q_flow_lib q_alert_lib
+    q_flow_lib=$(posix_sh_quote "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")
+    q_alert_lib=$(posix_sh_quote "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")
+    cadence_posix_leg_start "$q_flow_lib" upstream-watch HIMMEL-UpstreamWatch
     printf '    %s\n' "$payload"
     printf '    _rc=$?\n'
+    cadence_posix_leg_end "$q_flow_lib" "$q_alert_lib" upstream-watch "0 10"
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
     # rc=10 is upstream-watch.sh's own "delta found, handled" success code
