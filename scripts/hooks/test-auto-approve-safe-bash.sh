@@ -305,6 +305,11 @@ assert "<<< -- sort -o PASS"      PASS  "$(decide "$(j_bash '<<< -- sort -o /tmp
 assert "sort <<< -- --compress PASS" PASS "$(decide "$(j_bash 'sort <<< -- --compress-program=sh f')")"
 assert "sort -T <in -- -o PASS"   PASS  "$(decide "$(j_bash 'sort -T <in -- -o /tmp/pwned f')")"
 assert "sort < in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort < in -- -o f')")"
+# An attached value ends the cluster scan: `-Tdirk` is -T with value `dirk`, not a
+# trailing -k that takes the next word (panel codex-1), so `--` still terminates.
+assert "sort -Tdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -Tdirk -- -o f')")"
+assert "sort -Tk -- -o f ALLOW"   ALLOW "$(decide "$(j_bash 'sort -Tk -- -o f')")"
+assert "sort -uTdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -uTdirk -- -o f')")"
 
 # --- Correctness-CR locks: false-negatives that should ALLOW ---
 assert "xxd file + redirect"      ALLOW "$(decide "$(j_bash 'xxd file 2>/dev/null')")"

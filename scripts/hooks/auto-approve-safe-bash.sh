@@ -1211,7 +1211,7 @@ segment_is_safe() {
                                            # doesn't match a known long name
                                            # falls through to normal permission,
                                            # never a wider per-shape parse.
-                local sdd=0 sskip=0 ssv sln srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
+                local sdd=0 sskip=0 ssv sln ssc srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
@@ -1225,7 +1225,15 @@ segment_is_safe() {
                         --) [ "$ssv" = 1 ] || sdd=1 ;;   # a value-consumed `--` ends nothing
                         -[!-]*)
                             case "${SW_VALUE#-}" in *o*) return 1 ;; esac
-                            case "${SW_VALUE#-}" in *[kSTty]) sskip=1 ;; esac ;;   # cluster ends in a value-taking letter
+                            # The first value-taking letter ends the cluster: the rest of
+                            # the word is its value; only a trailing one takes the next word.
+                            ssc=${SW_VALUE#-}
+                            while [ -n "$ssc" ]; do
+                                case "${ssc:0:1}" in
+                                    [kSTty]) [ "${#ssc}" = 1 ] && sskip=1; break ;;
+                                esac
+                                ssc=${ssc:1}
+                            done ;;
                         --*)
                             guard_is_long_abbrev "output" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1
