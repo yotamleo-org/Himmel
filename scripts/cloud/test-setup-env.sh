@@ -226,6 +226,10 @@ case "$(sed -n 2p "$TMP/hook.log" 2>/dev/null)" in *"install"*"--hook-type pre-c
 rm -f "$TMP/hook.log"; GT_RC=1 GT_ARGS="" gt_run
 if [ "$RC" -eq 0 ]; then ok "failing hook install keeps rc 0"; else bad "failing hook install rc=$RC: $OUT"; fi
 for h in pre-commit commit-msg pre-push; do : > "$GT/.git/hooks/$h"; done
+# git ignores a hook that is not executable, so present-but-not-executable is NOT installed
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*) ok "non-executable hook files are reinstalled" ;; *) bad "non-executable hooks read as installed: $OUT" ;; esac
+for h in pre-commit commit-msg pre-push; do chmod +x "$GT/.git/hooks/$h"; done
 GT_ARGS="--dry-run" gt_run
 case "$OUT" in *"step=git-hooks action=skip"*) ok "installed git hooks are skipped" ;; *) bad "installed hooks not skipped: $OUT" ;; esac
 rm -rf "$GT/.git"

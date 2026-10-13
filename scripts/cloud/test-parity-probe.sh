@@ -42,6 +42,14 @@ printf '#!/bin/sh\nexit 0\n' > "$TMP/lax/scripts/hooks/block-git-stash.sh"
 OUT4="$(HIMMEL_CLOUD_ROOT="$TMP/lax" bash "$PROBE" --no-net 2>&1)"
 case "$OUT4" in *$'guard:block-git-stash\tALLOW'*) ok "a guard that does not refuse reads ALLOW" ;; *) bad "lax guard not ALLOW: $OUT4" ;; esac
 
+# 3b. a commit-msg gate that never decided (timeout rc 124) is ERR, not DENY.
+printf '#!/bin/sh\nexit 124\n' > "$TMP/lax/scripts/hooks/check-commit-msg.sh"
+OUT6="$(HIMMEL_CLOUD_ROOT="$TMP/lax" bash "$PROBE" --no-net 2>&1)"
+case "$OUT6" in *$'attest:commit-msg-refuses-no-ticket\tERR rc=124'*) ok "a gate that timed out reads ERR, not DENY" ;; *) bad "timeout read as: $(printf '%s\n' "$OUT6" | grep 'commit-msg-refuses')" ;; esac
+printf '#!/bin/sh\nexit 1\n' > "$TMP/lax/scripts/hooks/check-commit-msg.sh"
+OUT7="$(HIMMEL_CLOUD_ROOT="$TMP/lax" bash "$PROBE" --no-net 2>&1)"
+case "$OUT7" in *$'attest:commit-msg-refuses-no-ticket\tDENY rc=1'*) ok "a refusing gate reads DENY" ;; *) bad "refusal read as: $(printf '%s\n' "$OUT7" | grep 'commit-msg-refuses')" ;; esac
+
 # 4. an empty tree: missing guards read MISSING, not DENY, and the run survives.
 mkdir -p "$TMP/empty"
 OUT3="$(HIMMEL_CLOUD_ROOT="$TMP/empty" bash "$PROBE" --no-net 2>&1)"; RC=$?

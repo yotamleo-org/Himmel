@@ -95,7 +95,11 @@ if [ -d "$PD" ]; then
     row plugins-installed "$(find "$PD" -maxdepth 1 -mindepth 1 -exec basename {} \; 2>/dev/null | tr '\n' ',' | cut -c1-300)"  # gnu-ok: BSD find has -maxdepth/-mindepth/-exec
   fi
   row plugin-hook-files "$(find "$PD" -name hooks.json 2>/dev/null | wc -l | tr -d ' ')"
-  row plugins-installed-count "$(find "$PD" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')"  # gnu-ok: BSD find has -maxdepth/-mindepth
+  if [ -f "$PD/installed_plugins.json" ] && have jq; then
+    row plugins-installed-count "$(jq -r '.plugins // . | keys | length' "$PD/installed_plugins.json" 2>/dev/null)"
+  else
+    row plugins-installed-count "$(find "$PD" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')"  # gnu-ok: BSD find has -maxdepth/-mindepth
+  fi
 else
   row plugin-dir "<absent>"
 fi
@@ -142,7 +146,13 @@ if [ -f "$H/check-commit-msg.sh" ]; then
   if [ -n "$mf" ]; then
     printf 'feat: no ticket id here\n' > "$mf"
     rc=0; bounded 20 bash "$H/check-commit-msg.sh" "$mf" >/dev/null 2>&1 || rc=$?
-    row "attest:commit-msg-refuses-no-ticket" "$([ "$rc" -ne 0 ] && echo DENY || echo ALLOW) rc=$rc"
+    # 124 = timed out, 126/127 = not runnable, 137/143 = killed: the gate never decided
+    case "$rc" in
+      0) verdict=ALLOW ;;
+      124|126|127|137|143) verdict=ERR ;;
+      *) verdict=DENY ;;
+    esac
+    row "attest:commit-msg-refuses-no-ticket" "$verdict rc=$rc"
     rm -f "$mf"
   else
     row "attest:commit-msg-refuses-no-ticket" "ERR mktemp failed"

@@ -134,7 +134,7 @@ fi
 # is throwaway). Non-fatal.
 if [ ! -e "$ROOT/.git" ]; then
   plan git-hooks skip "not a git work tree"
-elif [ -f "$ROOT/.git/hooks/pre-commit" ] && [ -f "$ROOT/.git/hooks/commit-msg" ] && [ -f "$ROOT/.git/hooks/pre-push" ]; then
+elif [ -x "$ROOT/.git/hooks/pre-commit" ] && [ -x "$ROOT/.git/hooks/commit-msg" ] && [ -x "$ROOT/.git/hooks/pre-push" ]; then  # -x: git ignores a non-executable hook
   plan git-hooks skip "installed"
 elif have pre-commit || [ "$DRY" -eq 1 ]; then
   # shellcheck disable=SC2016  # $1 is the sh -c positional arg (HIMMEL-4744)
