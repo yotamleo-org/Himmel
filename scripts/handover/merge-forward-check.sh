@@ -67,6 +67,11 @@
 # cover is still inherited when EVERY failing case of the PR's job is in that file, and it is
 # green on latest. It never overrides a completed run at the merge-base itself, and a case the
 # PR's own diff introduced does not fail at the merge-base, so it stays the PR's own red.
+# The file is bound to the merge-base: a required `# merge-base <40-hex>` header equal to
+# --base-sha (missing or mismatched exits 2), `# command` and `# log` headers that the ALLOW
+# line cites, and rows `<job><TAB><case><TAB><exit status>` (a zero status is no reproduction).
+# ponytail: the file is still self-reported by the leg; the console reviews the cited log. Upgrade
+# path is this script running the reproduction itself in a scratch worktree at the merge-base.
 # ponytail: the case lists are extracted from logs by the caller and taken as
 # given, so a wrong list can still mislead; upgrade path is parsing the failed
 # job logs here if that ever bites.
@@ -137,12 +142,32 @@ for f in "$pr" "$base" "$latest" ${cover:+"$cover"}; do
     exit 2
   fi
 done
-for f in "$prc" "$bc" ${lc:+"$lc"}; do
+for f in "$prc" "$bc"; do
   if awk -F'\t' 'NF && (NF != 2 || $1 == "" || $2 == "") {exit 1}' "$f"; then :; else
     echo "usage: $f has a malformed row (want <job><TAB><case>): a misread case could hide the PR's own red" >&2
     exit 2
   fi
 done
+lc_cmd=""; lc_log=""
+if [ -n "$lc" ]; then
+  # HIMMEL-5461: the file is bound to THIS merge-base (a copied PR-cases file carries no such header) and
+  # names the command and log that produced it, so the ALLOW line is checkable by the console.
+  lc_mb="$(awk '/^# merge-base /{print $3; exit}' "$lc")"
+  lc_cmd="$(awk '/^# command /{sub(/^# command +/, ""); print; exit}' "$lc")"
+  lc_log="$(awk '/^# log /{sub(/^# log +/, ""); print; exit}' "$lc")"
+  if [ "$lc_mb" != "$bsha" ] || ! [[ "$lc_mb" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "usage: $lc needs a '# merge-base <40-hex sha>' header equal to --base-sha $bsha (got '${lc_mb:-none}'): the reproduction must be bound to this merge-base" >&2
+    exit 2
+  fi
+  if [ -z "$lc_cmd" ] || [ -z "$lc_log" ]; then
+    echo "usage: $lc needs '# command <reproduction command>' and '# log <local log path>' headers so the ALLOW can cite them" >&2
+    exit 2
+  fi
+  if awk -F'\t' '/^#/ {next} NF && (NF != 3 || $1 == "" || $2 == "" || $3 !~ /^[0-9]+$/) {exit 1}' "$lc"; then :; else
+    echo "usage: $lc has a malformed row (want <job><TAB><case><TAB><exit status>): a misread case could hide the PR's own red" >&2
+    exit 2
+  fi
+fi
 
 # a parse failure here must not read as "nothing red": it is an input error
 if ! reds="$(awk -F'\t' '$2=="failure"||$2=="timed_out"||$2=="startup_failure" {print $1}' "$pr")"; then
@@ -252,7 +277,7 @@ while IFS= read -r job; do
   local_ok=0; unrepro=""
   if [ "$inherited" -ne 1 ] && [ "$cover_used" -eq 1 ] && [ -n "$lc" ] && [ -n "$pcases" ]; then
     while IFS= read -r c; do
-      J="$job" C="$c" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2 "")==(ENVIRON["C"] "") {f=1} END {exit !f}' "$lc" || unrepro="${unrepro:+$unrepro; }$c"
+      J="$job" C="$c" awk -F'\t' '/^#/ {next} ($1 "")==(ENVIRON["J"] "") && ($2 "")==(ENVIRON["C"] "") && $3 != 0 {f=1} END {exit !f}' "$lc" || unrepro="${unrepro:+$unrepro; }$c"
     done <<< "$pcases"
     if [ -z "$unrepro" ]; then inherited=1; local_ok=1; fi
   fi
@@ -285,6 +310,6 @@ if [ -n "$blocked" ]; then
   exit 1
 fi
 allow_basis="was red on the merge-base run with the same failing cases"
-[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local because the covering run already holds the fix)"
+[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local at merge-base $bsha because the covering run already holds the fix; reproduction command: $lc_cmd; local log: $lc_log — the console checks that log)"
 echo "ALLOW — every red job $allow_basis and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing both main run ids in a Results bullet."
 exit 0
