@@ -157,6 +157,7 @@ scan_words() {
             shift
             while [ $# -gt 0 ]; do
                 case "$1" in
+                    -p|--package|-c|--call|-w|--workspace|--prefix|--cache) shift; [ $# -gt 0 ] && shift ;;
                     -*|dlx|exec|run|x) shift ;;
                     *) break ;;
                 esac
@@ -192,6 +193,7 @@ else
     # positions exist, so every word is tried as the command word. A form this
     # guard cannot read counts as a denied one if a verb rule fires.
     _flat=${cmd//[;&|()\"\'\`]/ }
+    _flat=${_flat//$'\n'/ }
     read -r -a _all <<<"$_flat"
     _k=0
     while [ "$_k" -lt "${#_all[@]}" ]; do
