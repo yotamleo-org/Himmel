@@ -2970,6 +2970,10 @@ d_lock claude-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claude
 # but the session is not, so the lock is not provably dead.
 ( exec -a claude bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-claude-leg ) &
 D_CLAUDE_PID=$!
+# Same for a wrapped session that is not named claude (node launcher, wrapper).
+d_lock wrapped-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-wrapped-leg"
+( exec -a node-wrapper bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-wrapped-leg ) &
+D_WRAPPED_PID=$!
 sleep 0.3
 out="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"; rc=$?
 if grepq "$out" "slug=dead-leg .*status=STALE-DEAD" && [ "$rc" -eq 20 ]; then
@@ -2983,7 +2987,7 @@ else
     fail "T97: alive-owner lock misread (out=$out)"
 fi
 if ! grepq "$out" "slug=otherhost-leg .*STALE-DEAD" && ! grepq "$out" "slug=opaque-leg .*STALE-DEAD" \
-    && ! grepq "$out" "slug=claude-leg .*STALE-DEAD"; then
+    && ! grepq "$out" "slug=claude-leg .*STALE-DEAD" && ! grepq "$out" "slug=wrapped-leg .*STALE-DEAD"; then
     pass "T98: other-host, opaque-token and live-claude-session locks are not provably dead"
 else
     fail "T98: an unprovable lock read STALE-DEAD (out=$out)"
@@ -3023,7 +3027,7 @@ if [ "$rc" -eq 12 ] && grepq "$out" "status: STALE-DEAD"; then
 else
     fail "T102: single status (rc=$rc out=$out)"
 fi
-kill "$D_CLAUDE_PID" 2>/dev/null; wait "$D_CLAUDE_PID" 2>/dev/null
+kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" 2>/dev/null
 
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"

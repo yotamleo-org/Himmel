@@ -895,8 +895,9 @@ _ql_lock_is_fresh() {
 # these must hold: owner.json names THIS host; the session token is exactly
 # <host>-pid<N> with N digits; no live pid N (kill -0 then ps -p, so an EPERM
 # pid reads alive); the liveness probe (_ql_holder_live) does not keep it
-# alive; and no live claude process names the lock's doc (the session name is
-# the doc's stem, which is on the claude command line). A missing census, an
+# alive; and no live process (queue-lock's own excepted) names the lock's doc
+# (the session name is the doc's stem, which is on the claude command line, or
+# on a wrapper's). A missing census, an
 # unreadable field or another host is rc 1 (not proven), so the reap can only
 # ever release a lock whose owner is demonstrably dead.
 # ponytail: the token's pid is the acquiring shell, which dies with its Bash call, so pid-gone alone proves nothing -- the claude-process-names-the-doc check carries the proof, upgrade path: record the claude pid in owner.json when the harness exposes it
@@ -923,8 +924,12 @@ _ql_owner_provably_dead() {
         cpid="${line%% *}"
         cargs="${line#* }"
         [ "$cpid" = "$$" ] && continue
+        # any live process naming the doc blocks the reap -- not only one that
+        # starts with claude (node-launched or wrapped sessions); queue-lock's
+        # own invocations (this status call, in any subshell) are excluded.
         case "$cargs" in
-            claude\ *|*/claude\ *) case "$cargs" in *"$stem"*) return 1 ;; esac ;;
+            *queue-lock.sh*) ;;
+            *"$stem"*) return 1 ;;
         esac
     done <<EOF
 $procs
@@ -2582,15 +2587,27 @@ _ql_sweep_one_root() {
             # HIMMEL-5541: past the TTL with a provably dead owner. Not a held
             # lock any more -- stop guard / tick skip it; --reap-dead releases it.
             if [ "${_QL_SW_REAP:-0}" -eq 1 ]; then
-                printf '%s REAPED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
-                    "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
-                    >> "$qdir/takeovers.log" 2>/dev/null || true
-                rm -rf "$lockdir" 2>/dev/null
-                if [ -d "$lockdir" ]; then
-                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed$sfx"
+                # ponytail: re-reading owner.json narrows but does not close the window to a takeover between the re-read and rm, upgrade path: an atomic rename-then-verify once queue-lock has a lock-dir rename primitive
+                if [ "$(cat "$lockdir/owner.json" 2>/dev/null)" != "$o_raw" ]; then
+                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=skipped-changed$sfx"
+                    flagged=1
+                elif ! : >> "$qdir/takeovers.log" 2>/dev/null; then
+                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed-log-unwritable$sfx"
                     flagged=1
                 else
-                    echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=released$sfx"
+                    rm -rf "$lockdir" 2>/dev/null
+                    if [ -d "$lockdir" ]; then
+                        printf '%s REAP-FAILED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
+                            "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
+                            >> "$qdir/takeovers.log" 2>/dev/null || true
+                        echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed$sfx"
+                        flagged=1
+                    else
+                        printf '%s REAPED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
+                            "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
+                            >> "$qdir/takeovers.log" 2>/dev/null || true
+                        echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=released$sfx"
+                    fi
                 fi
             else
                 echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD$sfx"
