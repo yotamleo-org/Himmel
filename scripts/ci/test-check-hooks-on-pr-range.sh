@@ -231,7 +231,10 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 base"
   git checkout -q --detach "$main"
   mg="$(git commit-tree "$(git rev-parse "$m^{tree}")" -p "$main" -p "$m" -m "merge ref")"
   git checkout -q --detach "$mg"
-) || fail "backdated fixture setup"
+)
+# a separate statement: as the left side of `||` the subshell's set -e is off
+setup_rc=$?
+[ "$setup_rc" -eq 0 ] || fail "backdated fixture setup"
 out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "backdated attested commit is not first -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
