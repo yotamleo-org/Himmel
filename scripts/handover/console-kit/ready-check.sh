@@ -457,6 +457,11 @@ else
                 continue
             fi
             [ -n "$main_ls" ] || continue
+            if ! pr_ls=$(git ls-tree --name-only "$SHA" -- "$main_path" 2>/dev/null); then
+                bump_err="$bump_err; $plug cannot read the PR tree"
+                continue
+            fi
+            [ -n "$pr_ls" ] || continue  # plugin removed by the PR — nothing to bump
             main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
             pr_ver=$(plug_manifest_ver "$SHA" "$plug")
             if ! printf '%s\n' "$main_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \

@@ -551,6 +551,10 @@ PR_SAME=$(pr_head 0.4.71 from-pr)
 PR_AHEAD=$(pr_head 0.4.72 from-pr)
 PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
 PR_PRE=$(pr_head 0.4.71-alpha from-pr)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+git -C "$WORK" rm -rq "$PLUG"
+git -C "$WORK" commit -q -m "fix: pr removes the plugin"
+PR_DEL=$(git -C "$WORK" rev-parse HEAD)
 # a second plugin whose manifest on main carries no version (unreadable there)
 BADP=marketplace/plugins/bad
 pr_head 0.4.72 from-pr >/dev/null
@@ -597,6 +601,9 @@ contains "prerelease PR version: check 9 fails" "$out" "[FAIL] 9."
 run_bump "$PR_BAD" "$BADP/.claude-plugin/plugin.json"
 check "unreadable main manifest: exit 1" "$rc" "1"
 contains "unreadable main manifest: check 9 fails" "$out" "[FAIL] 9."
+
+run_bump "$PR_DEL" "$PLUG/body.txt"
+contains "plugin removed by the PR: check 9 passes" "$out" "[PASS] 9."
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."
