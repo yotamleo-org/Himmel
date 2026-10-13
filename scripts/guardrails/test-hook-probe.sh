@@ -97,6 +97,17 @@ else
     fail "sentinel created: the probed command ran"
 fi
 
+echo "== a hook printing continue=false is a DENY =="
+cat > "$TMP/settings-continue-false.json" <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf '{\"continue\":false,\"stopReason\":\"halted by fixture\"}'"}]}]}}
+EOF
+out=$(probe --settings "$TMP/settings-continue-false.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'halted by fixture'; then
+    pass "continue=false classified as deny with its stopReason"
+else
+    fail "expected rc=1 PROBE DENY with stopReason; rc=$rc out=$out"
+fi
+
 echo "== usage errors exit 2 =="
 out=$(probe --tool Bash); rc=$?
 if [ "$rc" -eq 2 ]; then pass "missing --command rejected"; else fail "expected rc=2 got rc=$rc out=$out"; fi

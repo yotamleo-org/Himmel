@@ -121,6 +121,7 @@ export function classify(result) {
     return { decision: verdict, rc, reason: firstLine(specific.permissionDecisionReason) };
   }
   if (out && out.decision === 'block') return { decision: 'deny', rc, reason: firstLine(out.reason) };
+  if (out && out.continue === false) return { decision: 'deny', rc, reason: firstLine(out.stopReason) || 'continue=false' };
   return { decision: 'passthrough', rc, reason: '' };
 }
 
@@ -151,7 +152,8 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
         continue;
       }
       const result = spawnSync(bash, member ? [member] : ['-c', entry.command], {
-        input, cwd, env, encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL',
+        input, cwd, env, encoding: 'utf8', killSignal: 'SIGKILL',
+        timeout: typeof entry.timeout === 'number' ? entry.timeout * 1000 : 60_000,
       });
       rows.push({ ...row, ...classify(result) });
     }
