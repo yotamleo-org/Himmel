@@ -600,13 +600,23 @@ fi
 # replace), so an EXPLICIT alias refuses instead; without curl it cannot be
 # verified: refuse. The DEFAULT alias (HIMMEL-5164) warns and falls back to the
 # gateway classifier instead, so a station without the claude login still launches.
+# HIMMEL-5296: the alias must also be served by cli-proxy's Claude OAuth provider
+# (/v1/models owned_by "anthropic"): the standing ruling is that the safety
+# classifier never goes to OpenRouter. A missing or other owned_by fails closed.
 if [ -n "$CLASSIFIER_MODEL" ]; then
   _served=0
+  _oauth=0
   if command -v curl >/dev/null 2>&1; then
     _models="$(printf 'header "Authorization: Bearer %s"\n' "$CLIPROXY_API_KEY" \
       | curl -sf -m 3 --noproxy '*' -K - "$CODEX_PROXY_BASE_URL/v1/models" 2>/dev/null)"
-    if printf '%s' "$_models" | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\""; then
+    # one model object per line (the entries are flat), then the alias's own entry
+    _entry="$(printf '%s' "$_models" | tr '}' '\n' \
+      | grep -E "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\"" | head -n 1)"
+    if [ -n "$_entry" ]; then
       _served=1
+      if printf '%s' "$_entry" | grep -Eq '"owned_by"[[:space:]]*:[[:space:]]*"anthropic"'; then
+        _oauth=1
+      fi
     fi
   elif [ "$CLASSIFIER_EXPLICIT" -eq 1 ]; then
     echo "claude-codex: --classifier-model needs curl to verify the alias is served by the proxy." >&2
@@ -618,6 +628,13 @@ if [ -n "$CLASSIFIER_MODEL" ]; then
       exit 2
     fi
     echo "claude-codex: WARNING - default classifier model '$CLASSIFIER_MODEL' is not served by the proxy at $CODEX_PROXY_BASE_URL (/v1/models); falling back to the gateway classifier ($CODEX_MODEL). Log in to cli-proxy-api's claude provider, or set CLAUDEX_CLASSIFIER_MODEL=gateway to silence this." >&2
+    CLASSIFIER_MODEL=""
+  elif [ "$_oauth" -ne 1 ]; then
+    if [ "$CLASSIFIER_EXPLICIT" -eq 1 ]; then
+      echo "claude-codex: classifier model '$CLASSIFIER_MODEL' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by must be \"anthropic\"); the classifier never goes through another provider." >&2
+      exit 2
+    fi
+    echo "claude-codex: WARNING - default classifier model '$CLASSIFIER_MODEL' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by is not \"anthropic\"); falling back to the gateway classifier ($CODEX_MODEL)." >&2
     CLASSIFIER_MODEL=""
   fi
 fi

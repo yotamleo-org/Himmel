@@ -582,7 +582,18 @@ if ($ClassifierModel) {
   try {
     $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
   } catch { $modelsBody = '' }
-  if ($modelsBody -notmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"')) {
+  # HIMMEL-5296: the alias must also be served by cli-proxy's Claude OAuth provider
+  # (owned_by "anthropic"); a missing or other owned_by fails closed. Entries are
+  # flat, so split on '}' and take the alias's own entry.
+  $entry = ($modelsBody -split '}') | Where-Object { $_ -match ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"') } | Select-Object -First 1
+  if ($entry -and $entry -notmatch '"owned_by"\s*:\s*"anthropic"') {
+    if ($ClassifierExplicit) {
+      [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by must be `"anthropic`"); the classifier never goes through another provider.")
+      exit 2
+    }
+    [Console]::Error.WriteLine("claude-codex: WARNING - default classifier model '$ClassifierModel' is not served by cli-proxy's Claude OAuth provider (/v1/models owned_by is not `"anthropic`"); falling back to the gateway classifier ($CodexModel).")
+    $ClassifierModel = ''
+  } elseif (-not $entry) {
     if ($ClassifierExplicit) {
       [Console]::Error.WriteLine("claude-codex: classifier model '$ClassifierModel' is not served by the proxy at $CodexProxyBaseUrl (/v1/models); add its provider to cli-proxy-api and log in first.")
       exit 2

@@ -416,7 +416,10 @@ run_launcher_expect "guard-check: a nonexistent path fails closed" 3 "" --guard-
 # codex login and the claude OAuth login both present.
 MODELS_FIXTURE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-test.models.XXXXXX")" || exit 1
 SANDBOXES+=("$MODELS_FIXTURE_DIR")
-printf '%s' '{"object":"list","data":[{"id":"claude-opus-5-5"},{"id":"claude-fable-5-1"},{"id":"claude-sonnet-5-5"},{"id":"claude-sonnet-5"},{"id":"claude-haiku-5-5"},{"id":"claude-sonnet-4-6"},{"id":"gpt-6-sol"},{"id":"gpt-6.1-sol"},{"id":"codex-auto-review"},{"id":"gpt-image-2"}]}' > "$MODELS_FIXTURE_DIR/models.json"
+# HIMMEL-5296: each entry carries owned_by (the claude OAuth provider reports
+# "anthropic"); claude-sonnet-or is an OpenRouter-served alias, sonnet-noprov has no
+# owned_by at all (a proxy that cannot report the provider).
+printf '%s' '{"object":"list","data":[{"id":"claude-opus-5-5","owned_by":"anthropic"},{"id":"claude-fable-5-1","owned_by":"anthropic"},{"id":"claude-sonnet-5-5","owned_by":"anthropic"},{"id":"claude-sonnet-5","owned_by":"anthropic"},{"id":"claude-haiku-5-5","owned_by":"anthropic"},{"id":"claude-sonnet-4-6","owned_by":"anthropic"},{"id":"gpt-6-sol","owned_by":"openai"},{"id":"gpt-6.1-sol","owned_by":"openai"},{"id":"codex-auto-review","owned_by":"openai"},{"id":"gpt-image-2","owned_by":"openai"},{"id":"or-sonnet","owned_by":"openrouter"},{"id":"sonnet-noprov"}]}' > "$MODELS_FIXTURE_DIR/models.json"
 export MODELS_JSON="$MODELS_FIXTURE_DIR/models.json"
 write_child_mocks() {
   cat > "$BIN/claude" <<'MOCK'
@@ -501,6 +504,21 @@ run_launcher_expect "classifier flag: claude-sonnet-5-5 refused (client cannot s
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 run_launcher_expect "classifier flag: alias missing from /v1/models refuses" 2 "not served by the proxy" --classifier-model claude-sonnet-or
 [ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a missing classifier alias"; FAILS=$((FAILS + 1)); }
+
+# HIMMEL-5296: served, but not by the Claude OAuth provider (OpenRouter owned_by), or
+# the proxy reports no provider at all: refuse (fail closed), child never runs.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+run_launcher_expect "classifier flag: OpenRouter-served alias refuses" 2 "Claude OAuth provider" --classifier-model or-sonnet
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite an OpenRouter-served classifier alias"; FAILS=$((FAILS + 1)); }
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+run_launcher_expect "classifier flag: alias with no owned_by refuses (fail closed)" 2 "Claude OAuth provider" --classifier-model sonnet-noprov
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a classifier alias with no reported provider"; FAILS=$((FAILS + 1)); }
+# the same alias as the DEFAULT warns and falls back to the gateway classifier.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s' '{"object":"list","data":[{"id":"claude-sonnet-5","owned_by":"openrouter"},{"id":"gpt-6.1-sol","owned_by":"openai"}]}' > "$MODELS_FIXTURE_DIR/models-or-default.json"
+MODELS_JSON="$MODELS_FIXTURE_DIR/models-or-default.json" run_launcher "classifier default, OpenRouter-served: launch falls back"
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: a non-OAuth default must fall back to the gateway classifier"; FAILS=$((FAILS + 1)); }
+grep -q 'WARNING.*Claude OAuth provider' "$WORK/out.txt" || { echo "FAIL: a non-OAuth default must warn"; FAILS=$((FAILS + 1)); }
 
 # a malformed alias or a missing value is a usage refusal.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
