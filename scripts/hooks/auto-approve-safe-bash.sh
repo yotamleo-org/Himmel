@@ -1211,18 +1211,26 @@ segment_is_safe() {
                                            # doesn't match a known long name
                                            # falls through to normal permission,
                                            # never a wider per-shape parse.
-                local sdd=0
+                local sdd=0 sskip=0 ssv sln
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
                     [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
+                    ssv=$sskip; sskip=0           # 1 = this word is the previous option's value
                     case "$SW_VALUE" in
-                        --) sdd=1 ;;
+                        --) [ "$ssv" = 1 ] || sdd=1 ;;   # a value-consumed `--` ends nothing
                         -[!-]*)
-                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
+                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac
+                            case "${SW_VALUE#-}" in *[kSTty]) sskip=1 ;; esac ;;   # cluster ends in a value-taking letter
                         --*)
                             guard_is_long_abbrev "output" "$SW_VALUE" && return 1
-                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1 ;;
+                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1
+                            case "$SW_VALUE" in
+                                *=*) ;;
+                                *) for sln in temporary-directory random-source buffer-size key field-separator files0-from batch-size parallel; do
+                                       guard_is_long_abbrev "$sln" "$SW_VALUE" && sskip=1
+                                   done ;;
+                            esac ;;
                     esac
                 done ;;
             xxd)                           # `xxd in out` / `xxd -r in out` writes
