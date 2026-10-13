@@ -101,7 +101,7 @@ if [ -n "$KEY" ]; then
 else
   KEY_FILE="$STATE_DIR/key-$HIMMEL_API_ACCOUNT.env"
   [ -f "$KEY_FILE" ] || refuse "no ANTHROPIC_API_KEY and no key file for account $HIMMEL_API_ACCOUNT"
-  [ -n "$(find "$KEY_FILE" -maxdepth 0 -perm 600 -user "$(id -u)")" ] ||
+  [ -n "$(find "$KEY_FILE" -maxdepth 0 -perm 600 -user "$(id -u)")" ] || # gnu-ok: BSD find has -maxdepth/-perm/-user too
     refuse "key file for account $HIMMEL_API_ACCOUNT must be mode 600 and owned by you"
   KEY="$(sed -n 's/^ANTHROPIC_API_KEY=//p' "$KEY_FILE" | head -n 1)"
   [ -n "$KEY" ] || refuse "key file for account $HIMMEL_API_ACCOUNT has no ANTHROPIC_API_KEY line"

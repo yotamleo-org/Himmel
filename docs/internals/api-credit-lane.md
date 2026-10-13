@@ -36,7 +36,7 @@ https://support.claude.com/en/articles/15036540.
 To measure it, the operator runs ONE Haiku call (budget $0.05) with the key
 read by the script itself, never typed into a model session:
 
-```
+```bash
 bash scripts/api-lane/measure-credit.sh <A|B> <key-id> <op://ref | env file> <promotional-remaining-usd>
 ```
 
