@@ -9,7 +9,13 @@
 #
 # Prints the ROW lines of leg-battery.sh plus the launcher-side assertions.
 set -u
-unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+# the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
+# (inline: this script runs where the lib may not be reachable)
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+    GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX \
+    GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE \
+    GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG \
+    GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRT="${SRT:-srt}"
