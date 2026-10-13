@@ -550,8 +550,21 @@ pr_head() {  # <version> <content> -> commit on a branch off the base, pushed as
 PR_SAME=$(pr_head 0.4.71 from-pr)
 PR_AHEAD=$(pr_head 0.4.72 from-pr)
 PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
+PR_PRE=$(pr_head 0.4.71-alpha from-pr)
+# a second plugin whose manifest on main carries no version (unreadable there)
+BADP=marketplace/plugins/bad
+pr_head 0.4.72 from-pr >/dev/null
+mkdir -p "$WORK/$BADP/.claude-plugin"
+printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "fix: pr touches bad"
+PR_BAD=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q main
 write_plugin 0.4.71 from-main "feat: main shipped 0.4.71"
+mkdir -p "$WORK/$BADP/.claude-plugin"
+printf '{"name":"bad"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "feat: main bad manifest"
 git -C "$WORK" push -q origin main
 
 run_bump() {  # <pr head> <files> -> sets rc/out
@@ -576,6 +589,14 @@ contains "plugin below main: check 9 fails" "$out" "[FAIL] 9."
 run_bump "$PR_AHEAD" "$PLUG/body.txt"
 contains "plugin ahead of main: check 9 passes" "$out" "[PASS] 9."
 notcontains "plugin ahead of main: no check fails" "$out" "[FAIL]"
+
+run_bump "$PR_PRE" "$PLUG/body.txt"
+check "prerelease PR version: exit 1" "$rc" "1"
+contains "prerelease PR version: check 9 fails" "$out" "[FAIL] 9."
+
+run_bump "$PR_BAD" "$BADP/.claude-plugin/plugin.json"
+check "unreadable main manifest: exit 1" "$rc" "1"
+contains "unreadable main manifest: check 9 fails" "$out" "[FAIL] 9."
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."

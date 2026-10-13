@@ -449,13 +449,18 @@ else
         bump_err="cannot fetch PR head $SHA"
     else
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
+            main_path="marketplace/plugins/$plug/.claude-plugin/plugin.json"
+            # absent on main = new plugin, nothing to collide with; present but unreadable = FAIL
+            git cat-file -e "refs/remotes/origin/main:$main_path" 2>/dev/null || continue
             main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
-            [ -n "$main_ver" ] || continue  # not on main yet — nothing to collide with
             pr_ver=$(plug_manifest_ver "$SHA" "$plug")
-            if [ -z "$pr_ver" ]; then
-                bump_err="$bump_err; $plug has no readable version in the PR (main is $main_ver)"
-            elif ! jq -n -e --arg a "$main_ver" --arg b "$pr_ver" '
-                def k: gsub("-"; ".") | split(".") | map(tonumber? // .);
+            if ! printf '%s\n' "$main_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \
+                || ! printf '%s\n' "$pr_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+                bump_err="$bump_err; $plug version not plain x.y.z (main '${main_ver:-none}', PR '${pr_ver:-none}')"
+                continue
+            fi
+            if ! jq -n -e --arg a "$main_ver" --arg b "$pr_ver" '
+                def k: split(".") | map(tonumber);
                 ($b | k) > ($a | k)' >/dev/null 2>&1; then
                 bump_err="$bump_err; $plug is $pr_ver in the PR but origin/main is already $main_ver — bump above main"
             fi
