@@ -16,6 +16,7 @@ import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { ActionError, buildTable, loadRegistries, resolveAction, type Resolved } from "./actions";
 import { acquireLock, runChild, type Lock } from "./lock";
 import { readBank, readLegs, readMode, readMonitoring, readToolHealth } from "./health-sources";
+import { readQuota } from "./quota-sources";
 import { appendAudit } from "./audit";
 import { journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
@@ -375,6 +376,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           readMonitoring(env),
         ]);
         return json(redactOut({ bank, legs, monitoring, mode: readMode(root, env) }));
+      }
+      // HIMMEL-5486: the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
+      if (path === "/api/bank") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(readQuota(env, now())));
       }
       // HIMMEL-4943: the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request.
       // Read-only: the sync list is a plan the console kit executes, never run here.

@@ -179,9 +179,13 @@ async function loadHealth() {
   const gen = ++healthGen;
   let j;
   try {
-    const r = await fetch("/api/health", { headers: { "X-Himmel-Token": token } });
+    const [r, qr] = await Promise.all([
+      fetch("/api/health", { headers: { "X-Himmel-Token": token } }),
+      fetch("/api/bank", { headers: { "X-Himmel-Token": token } }).catch(() => null), // HIMMEL-5486: the panel degrades alone
+    ]);
     j = r.ok ? await r.json() : null;
     if (!j) toast(`health sources failed (${r.status})`);
+    else if (qr && qr.ok) j.quota = await qr.json();
   } catch (_) { j = null; toast("health sources: server unreachable"); }
   if (gen !== healthGen) return;
   const gone = { state: "error", reason: "health endpoint unreachable" };

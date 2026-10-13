@@ -40,6 +40,18 @@ the page.
 | Legs and the usage bank | bank: the newest row with bank numbers in the last 64 KiB of `$CADENCE_BANK_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; legs: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with bank numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
+The **Bank windows** card (HIMMEL-5486) is fed by `GET /api/bank` (token-gated,
+GET only), which reads the two caches `bank-preflight` reads and never spawns a
+probe: the Claude usage cache (`$CADENCE_BANK_CACHE`, else `$CLAUDE_USAGE_CACHE`,
+default `/tmp/claude/statusline-usage-cache.json`, stale after
+`$CADENCE_BANK_MAX_AGE`, default 600 s) and the Codex bank cache
+(`$CODEX_BANK_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
+`$CODEX_BANK_CACHE_TTL_SECONDS`, default 6 h). Per bank and window it returns
+`{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
+possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
+does not report (Codex 5h is often null), is `unknown (why)`, never 0 %; a
+`resets_at` already in the past reads `possibly reset`.
+
 Verdict: any `fail` row or a firing `severity="page"` alert → **Act now**; any
 `warn` row or any firing alert → **Needs a look**; else **All clear**.
 Monitoring URLs are loopback-only (`HIMMEL_PROMETHEUS_URL`, default
