@@ -279,6 +279,12 @@ assert "sort -uo clustered write" PASS  "$(decide "$(j_bash 'sort -uo /tmp/pwned
 assert "sort plain"               ALLOW "$(decide "$(j_bash 'sort f')")"
 assert "sort -u plain"            ALLOW "$(decide "$(j_bash 'sort -u f')")"
 assert "sort -k2 plain"           ALLOW "$(decide "$(j_bash 'sort -k2 f')")"
+# HIMMEL-3655: after a literal `--` every word is positional, so a file named
+# -o... is read, not an output option. A real -o BEFORE `--` still falls through.
+assert "sort -- -o file ALLOW"    ALLOW "$(decide "$(j_bash 'sort -- -o file')")"
+assert "sort -u -- -ofile ALLOW"  ALLOW "$(decide "$(j_bash 'sort -u -- -ofile')")"
+assert "sort -o out -- f PASS"    PASS  "$(decide "$(j_bash 'sort -o /tmp/pwned -- f')")"
+assert "sort --output= -- PASS"   PASS  "$(decide "$(j_bash 'sort --output=/tmp/pwned -- f')")"
 
 # --- Correctness-CR locks: false-negatives that should ALLOW ---
 assert "xxd file + redirect"      ALLOW "$(decide "$(j_bash 'xxd file 2>/dev/null')")"
@@ -1547,6 +1553,15 @@ assert "rg --pre glob falls through"          PASS  "$(decide "$(j_bash 'rg --pr
 assert "rg pattern ALLOW"                     ALLOW "$(decide "$(j_bash 'rg pattern')")"
 assert "rg -n pat dir ALLOW"                  ALLOW "$(decide "$(j_bash 'rg -n pat dir')")"
 assert "rg -i --hidden pat ALLOW"             ALLOW "$(decide "$(j_bash 'rg -i --hidden pat')")"
+# HIMMEL-3985: a short-option cluster stops at an argument-taking letter, the
+# rest of the word is its value (-e zebra), not a -z flag.
+assert "rg -ezebra file ALLOW"                ALLOW "$(decide "$(j_bash 'rg -ezebra file')")"
+assert "rg -nezebra file ALLOW"               ALLOW "$(decide "$(j_bash 'rg -nezebra file')")"
+assert "rg -zn pat falls through"             PASS  "$(decide "$(j_bash 'rg -zn pat dir')")"
+assert "rg -nz pat falls through"             PASS  "$(decide "$(j_bash 'rg -nz pat dir')")"
+assert "rg -ie pat -z falls through"          PASS  "$(decide "$(j_bash 'rg -ie pat -z dir')")"
+assert "ag -Gzebra pat ALLOW"                 ALLOW "$(decide "$(j_bash 'ag -Gzebra pat')")"
+assert "ag -nz pat falls through"             PASS  "$(decide "$(j_bash 'ag -nz pat')")"
 assert "grep -r x . ALLOW"                    ALLOW "$(decide "$(j_bash 'grep -r x .')")"
 assert "ag pat ALLOW"                         ALLOW "$(decide "$(j_bash 'ag pat')")"
 

@@ -1211,10 +1211,13 @@ segment_is_safe() {
                                            # doesn't match a known long name
                                            # falls through to normal permission,
                                            # never a wider per-shape parse.
+                local sdd=0
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
                     case "$SW_VALUE" in
+                        --) sdd=1 ;;
                         -[!-]*)
                             case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
                         --*)
@@ -1266,6 +1269,8 @@ segment_is_safe() {
             rg|ripgrep|ag)                 # HIMMEL-3668: `--pre`/`--hostname-bin` run a
                                            # program per file, `-z` runs decompressors,
                                            # `ag --pager` runs a program. FAIL CLOSED.
+                local zc zi zv='gGpmW'     # ag letters that take a value
+                case "$bin" in rg|ripgrep) zv='efgtTmABCjdEMr' ;; esac
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into one of these
@@ -1275,7 +1280,15 @@ segment_is_safe() {
                             guard_is_long_abbrev "hostname-bin" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "search-zip" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "pager" "$SW_VALUE" && return 1 ;;
-                        -[!-]*) case "${SW_VALUE#-}" in *z*) return 1 ;; esac ;;
+                        -[!-]*)
+                            # HIMMEL-3985: the first value-taking letter ends the
+                            # cluster; the rest of the word is its value (-ezebra).
+                            zi=1
+                            while [ "$zi" -lt "${#SW_VALUE}" ]; do
+                                zc="${SW_VALUE:$zi:1}"; zi=$((zi + 1))
+                                [ "$zc" = z ] && return 1
+                                case "$zv" in *"$zc"*) break ;; esac
+                            done ;;
                     esac
                 done ;;
             tree)                          # `tree -o FILE` / `--output FILE` writes
