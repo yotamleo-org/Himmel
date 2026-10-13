@@ -430,6 +430,51 @@ dest_ref() {
 }
 is_lift_dest() { dest_ref "$1"; [ "$REPLY" = LIFT ]; }
 
+# _refs_name_lift <word>: 0 when a name the word references (after $ or ${,
+# through ! # ~ = ^ + and zsh (flags)) is set in the inherited environment
+# and its value names the state dir or the lift, directly or through one
+# level of indirection (the value is itself a set name).
+# shellcheck disable=SC2016  # literal $ text is matched, not expanded
+_refs_name_lift() {
+    local LC_ALL=C
+    local rest="$1" n v _hop re_id='^([A-Za-z_][A-Za-z0-9_]*)'
+    while [[ "$rest" == *'$'* ]]; do
+        rest="${rest#*\$}"
+        rest="${rest#\{}"
+        while :; do
+            case "$rest" in
+                [#~=+^!]*) rest="${rest:1}" ;;
+                '('*')'*) rest="${rest#*)}" ;;
+                *) break ;;
+            esac
+        done
+        [[ "$rest" =~ $re_id ]] || continue
+        n="${BASH_REMATCH[1]}"
+        for _hop in 1 2; do
+            _env0_get "$n"; v=$REPLY
+            [ -n "$v" ] || break
+            case "$v" in *"$STATE_REAL"*|*"$LIFT_NAME"*) return 0 ;; esac
+            case "$(lift_ref "$v")" in LIFT|STATE) return 0 ;; esac
+            [[ "$v" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || break
+            n=$v
+        done
+    done
+    return 1
+}
+
+# arg_ref <word>: dest_ref for a word that is handed a path but is not a write
+# destination (an interpreter, mention-rule, xargs or find argument), judge
+# j2479f. An expansion the resolver does not model (`$H:x`, `$F[0]`,
+# `${x%/*}`, `${A:-b}`) falls back to the verdict on the word as written, and
+# fails closed only when a referenced value names the state dir or the lift.
+arg_ref() {
+    dest_ref "$1"
+    [ -n "$DEST_WHY" ] || return 0
+    if _refs_name_lift "$1"; then REPLY=LIFT; return 0; fi
+    DEST_X="$1"; DEST_WHY=""
+    REPLY=$(lift_ref "$1")
+}
+
 # ------------------------------------------------------------ file tools ---
 case "$tool" in
     Write|Edit|MultiEdit|NotebookEdit)
@@ -2067,7 +2112,7 @@ check_clause() {
     # operands, so appended words stay read operands too.
     if [ "$HAS_XARGS" = 1 ] && ! [[ "$cmd" =~ $READ_RE ]]; then
         for a in "$w" "$@"; do
-            dest_ref "$a"
+            arg_ref "$a"
             case "$REPLY" in LIFT|STATE) deny "xargs feeds a command a bank-lift path ($a)$DEST_WHY" ;; esac
         done
     fi
@@ -2148,7 +2193,7 @@ check_clause() {
         for a in "$@"; do
             # The code word itself (after -c/-e, or awk's program) is not a path.
             if [ "$iscode" = 0 ] && ! { [ "$seen" = 0 ] && [[ "$cmd" == *awk ]] && [[ "$a" != -* ]]; }; then
-                dest_ref "$a"
+                arg_ref "$a"
                 case "$REPLY" in LIFT|STATE) deny "an interpreter ($cmd) is handed the bank lift path ($a)$DEST_WHY" ;; esac
             fi
             iscode=0
@@ -2219,7 +2264,7 @@ check_clause() {
             for a in "$@"; do case "$a" in -exec|-execdir|-ok|-okdir|-fprint|-fprint0|-fprintf|-fls) acts=1 ;; esac; done
             if [ "$acts" = 1 ]; then
                 for a in "$@"; do
-                    dest_ref "$a"
+                    arg_ref "$a"
                     case "$REPLY" in LIFT|STATE) deny "find runs actions over a bank-lift path ($a)$DEST_WHY" ;; esac
                 done
                 # -exec/-execdir/-ok/-okdir launch a command: check it as a clause.
@@ -2249,7 +2294,7 @@ check_clause() {
             if [[ "$cmd" =~ $MENTION_RE ]]; then
                 for a in "$@"; do
                     case "$a" in -*=*) a="${a#*=}" ;; esac
-                    dest_ref "$a"
+                    arg_ref "$a"
                     case "$REPLY" in LIFT|STATE) deny "$cmd is handed a bank-lift path ($a)$DEST_WHY" ;; esac
                 done
             fi

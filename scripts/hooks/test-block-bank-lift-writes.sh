@@ -1712,6 +1712,19 @@ env_row "5348 mv --t= state dir"                       deny  "OTHER=1" 'mv /tmp/
 env_row "5348 install --t= state dir"                  deny  "OTHER=1" 'install /tmp/bank-l?ft.json --t=~/.himmel/state'
 env_row "5348 cp --t= quoted env state dir"            deny  "S=$ST" 'cp /tmp/bank-l?ft.json --t="$S"'
 env_row "5348 cp --t= /tmp (ctrl)"                     allow "OTHER=1" 'cp /tmp/bank-l?ft.json --t=/tmp/o'
+# j2479f (over-deny): an argument that is handed a path but is not a write
+# destination falls back to the word as written when its expansion is
+# unmodelled; it fails closed only when a referenced value names the lift.
+env_row "5348 j2479f curl \$HOST:\$PORT url"            allow "HOST=example.com PORT=8080" 'curl "http://$HOST:$PORT/x"'
+env_row "5348 j2479f curl -u \$U:\$P"                   allow "U=me P=pw" 'curl -u "$U:$P"'
+env_row "5348 j2479f scp \$H:/f"                        allow "H=host" 'scp "$H":/f .'
+env_row "5348 j2479f ssh remote \${x%/*}"               allow "OTHER=1" "ssh h 'echo \${x%/*}'"
+env_row "5348 j2479f perl -lane \$F[0]"                 allow "OTHER=1" "perl -lane 'print \$F[0]' f"
+env_row "5348 j2479f python3 \${A:-b}"                  allow "OTHER=1" 'python3 x.py "${A:-b}"'
+env_row "5348 j2479f curl \${V%/} names the lift"       deny  "V=$LIFT" 'curl "file://${V%/}"'
+env_row "5348 j2479f curl \$V:x names the lift"         deny  "V=$LIFT" 'curl "$V:x"'
+env_row "5348 j2479f ssh \${S%/} names the state dir"   deny  "S=$ST" 'ssh h "${S%/}"'
+env_row "5348 j2479f python3 \${!R} indirection to lift" deny "R=V V=$LIFT" 'python3 x.py "${!R}"'
 }
 rows_5348
 
