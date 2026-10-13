@@ -628,27 +628,15 @@ run_launcher_expect "classifier flag: flow-style config refuses (fail closed)" 2
 ! grep -q 'fake-or-secret-4444' "$WORK/out.txt" || { echo "FAIL: the refusal echoed flow-config key material"; FAILS=$((FAILS + 1)); }
 # a YAML escape spelling the alias in a compat entry must fail closed.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
-cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
-openai-compatibility:
-  - name: "anthropic"
-    models:
-      - alias: "claude-sonnet-5"
-CFG
+BS=$(printf '%s' "$(printf '\134')")
+printf '%s\n' 'openai-compatibility:' '  - name: "anthropic"' '    models:' "      - alias: \"${BS}u0063laude-sonnet-5\"" >> "$FAKEHOME/.cli-proxy-api/config.yaml"
 run_launcher_expect "classifier flag: escaped compat alias refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 # an escape inside an inline compat entry, or in a root key, fails closed too.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
-cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
-openai-compatibility:
-  - {name: "anthropic", models: [{alias: "claude-sonnet-5"}]}
-CFG
+printf '%s\n' 'openai-compatibility:' "  - {name: \"anthropic\", models: [{alias: \"claude${BS}u002dsonnet-5\"}]}" >> "$FAKEHOME/.cli-proxy-api/config.yaml"
 run_launcher_expect "classifier flag: escaped inline compat alias refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
-cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
-"openai-compatibility":
-  - name: "anthropic"
-    models:
-      - alias: "claude-sonnet-5"
-CFG
+printf '%s\n' "\"openai${BS}u002dcompatibility\":" '  - name: "anthropic"' '    models:' '      - alias: "claude-sonnet-5"' >> "$FAKEHOME/.cli-proxy-api/config.yaml"
 run_launcher_expect "classifier flag: escaped root key refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 # a remote proxy is not the server the local config describes.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
