@@ -51,7 +51,10 @@ mkpr() {
     git checkout -q --detach HEAD
   ) || { echo "FAIL: fixture setup for $d"; exit 1; }
 }
-run() { ( cd "$1" && shift && bash "$W" "$@" 2>&1 ); }
+# GITHUB_EVENT_NAME is scrubbed: the Actions runner exports pull_request, which
+# turns an unresolved range into rc2 (HIMMEL-5468). Rows that want the PR-event
+# behaviour set it themselves.
+run() { ( cd "$1" && shift && env -u GITHUB_EVENT_NAME bash "$W" "$@" 2>&1 ); }
 mk() { local t; t="$(fixture_mktemp_dir)" || exit 1; echo "$t"; }
 
 TRAIL=$'\n\nPlatforms tested: linux\nSecurity reviewed: manual — read the diff'
