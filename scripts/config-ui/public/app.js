@@ -2,7 +2,7 @@
 import { render, renderNav, renderHeader, renderProbe } from "/render.js";
 import { renderHealth } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
-import { renderRoadmap } from "/roadmap.js";
+import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { fleetDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -30,19 +30,24 @@ let healthGen = 0; // declared before route() runs: a reload at #/health calls l
 let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // HIMMEL-4943: declared before route() runs, as healthGen is
-const roadmapUi = { version: null, theme: null };
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false }; // ver = the #/roadmap/<version> drill-in, from the route
 const PAGES = [
   { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: () => renderRoadmap(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
+  { id: "kanban", label: "Kanban", needsFeed: false, render: () => renderKanban(roadmap, roadmapUi), onVisit: () => { if (!roadmap) loadRoadmap(); } },
 ];
 let currentPage = PAGES[0];
 
 function route() {
-  const id = (/^#\/(\w+)/.exec(location.hash) || [])[1];
+  const m = /^#\/(\w+)(?:\/([^/?#]+))?/.exec(location.hash) || [];
+  const id = m[1];
   currentPage = PAGES.find((p) => p.id === id) || PAGES[0];
   if (id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id);
+  let ver = null;
+  if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
+  roadmapUi.ver = ver;
   renderPages();
   loadFleet();
   if (currentPage.onVisit) currentPage.onVisit();
@@ -210,10 +215,11 @@ async function loadRoadmap() {
   } catch (_) { data = { state: "error", reason: "server unreachable" }; }
   if (gen !== roadmapGen) return;
   roadmap = data;
-  if (currentPage.id === "roadmap") paint();
+  if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
 document.addEventListener("change", (e) => {
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
+  if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
   const name = e.target.dataset.toolFilter;

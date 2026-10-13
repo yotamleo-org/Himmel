@@ -69,8 +69,10 @@ a document fallback reads the assigned leg's title, not sibling mentions. Ledger
 ## Roadmap page (`#/roadmap`)
 
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
-request: no static render, no republish. The page draws release panels, a kanban by version and theme, the drift
-counts and trend, the leg to Jira sync plan and the librarian's lists.
+request: no static render, no republish. The page draws release panels, the drift counts and trend, the leg to Jira
+sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
+theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
+hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
 
 - **Sources.** The Jira mirror (`HIMMEL_JIRA_MIRROR`, else `~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY or HIMMEL>`)
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,

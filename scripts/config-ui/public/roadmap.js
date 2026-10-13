@@ -14,7 +14,7 @@ function releasesHtml(d) {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0);
     const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : i === d.cur ? "running" : i === d.next ? "next" : "planned";
     const alert = v.open.length ? `<div class="alert"><span class="st fail">open</span> ${v.open.length} still open on a released version: ${v.open.map((k) => `HIMMEL-${k}`).map(esc).join(", ")}</div>` : "";
-    return `<div class="card rm-rel${i === d.cur ? " cur" : ""}"><h3>${esc(v.n)} <span class="ro">${esc(tag)}</span></h3>
+    return `<div class="card rm-rel${i === d.cur ? " cur" : ""}"><h3><a href="#/roadmap/${encodeURIComponent(v.n)}">${esc(v.n)}</a> <span class="ro">${esc(tag)}</span></h3>
       <div class="kv">${COLS.map(([b, l]) => `${esc(l)} ${c[b]}`).join(" · ")} · ${total} total</div>${alert}</div>`;
   }).join("");
 }
@@ -25,22 +25,47 @@ function filters(d, ui) {
   return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Theme", d.themes, ui.theme)}</div>`;
 }
 
-function cardHtml(t, d) {
+function cardHtml(t, d, showVersion) {
   const lg = t.leg ? `<div class="rm-leg"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st warn">unplanned</span>` : "";
+  const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   return `<div class="rm-card"><b>HIMMEL-${t.k}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
-    <div class="ro">${esc(d.themes[t.theme])} ${dr}</div>${lg}</div>`;
+    <div class="ro">${ver}${esc(d.themes[t.theme])} ${dr}</div>${lg}</div>`;
 }
 
-function kanbanHtml(d, ui) {
-  const shown = d.tickets.filter((t) => (ui.version == null || t.v === ui.version) && (ui.theme == null || t.theme === ui.theme));
-  const head = `<div class="rm-bar">${filters(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
-  if (!shown.length) return head + `<div class="empty">No tickets match.</div>`;
-  const vers = [...new Set(shown.map((t) => t.v))].sort((a, b) => a - b);
-  return head + vers.map((v) => `<h3 class="rm-ver">${esc(d.versions[v].n)}</h3><div class="rm-board">${COLS.map(([b, l]) => {
-    const cards = shown.filter((t) => t.v === v && t.b === b);
-    return `<div class="rm-col"><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d)).join("")}</div>`;
-  }).join("")}</div>`).join("");
+// One board: a column per status over the given tickets. Won't and CI stay hidden while empty so a quiet board stays short.
+function boardHtml(d, tickets, showVersion) {
+  return `<div class="rm-board">${COLS.filter(([b]) => b !== "wont" || tickets.some((t) => t.b === b)).map(([b, l]) => {
+    const cards = tickets.filter((t) => t.b === b);
+    return `<div class="rm-col"><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion)).join("")}</div>`;
+  }).join("")}</div>`;
+}
+
+const themeSel = (d, ui) => `<label>Theme <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
+  `<option value="${i}"${ui.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
+const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme === ui.theme);
+
+// HIMMEL-5488: #/roadmap/<version>, one version's board.
+function versionHtml(d, ui) {
+  const back = `<p><a href="#/roadmap">← Roadmap</a></p>`;
+  const v = d.versions.findIndex((x) => x.n === ui.ver);
+  if (v < 0) return back + `<div class="empty">${esc(ui.ver)}: no such version in the mirror.</div>`;
+  const shown = byTheme(d, ui).filter((t) => t.v === v);
+  const head = `<div class="rm-bar">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
+  return back + section("rm-version", d.versions[v].n, `${shown.length} tickets in this version; the leg marker shows on the card.`,
+    head + (shown.length ? boardHtml(d, shown, false) : `<div class="empty">No tickets match.</div>`));
+}
+
+// HIMMEL-5488: #/kanban, every version on one board with no version filter. Done can be hidden.
+export function renderKanban(data, ui) {
+  if (!data) return `<p class="sub" id="status">loading…</p>`;
+  if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
+  const u = ui || {};
+  const shown = byTheme(data, u).filter((t) => !(u.hideDone && t.b === "done"));
+  const head = `<div class="rm-bar">${themeSel(data, u)}<label><input type="checkbox" data-rm-hide-done${u.hideDone ? " checked" : ""}> Hide Done</label>`
+    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
+  return section("rm-kanban", "Kanban", `Every train ticket across versions (${shown.length} shown).`,
+    head + (shown.length ? boardHtml(data, shown, true) : `<div class="empty">No tickets match.</div>`));
 }
 
 function driftHtml(d) {
@@ -78,10 +103,12 @@ export function renderRoadmap(data, ui) {
   if (!data) return `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "roadmap unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   const u = ui || {};
+  if (u.ver) return versionHtml(data, u);
+  const bar = `<div class="rm-bar">${filters(data, u)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
   return [
-    section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}).`, releasesHtml(data)),
-    section("rm-kanban", "Kanban", "Train tickets by version and status; the leg marker shows on the card.", kanbanHtml(data, u)),
+    section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}). Open a version for its kanban.`, releasesHtml(data)),
     section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(data)),
+    bar, // narrows the sync and librarian lists below
     section("rm-sync", "Leg to Jira sync", "What the legs say that Jira does not yet.", syncHtml(data, u)),
     section("rm-librarian", "Librarian", "Ready-to-approve cleanups.", librarianHtml(data, u)),
   ].join("\n");
