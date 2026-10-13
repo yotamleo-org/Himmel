@@ -803,10 +803,10 @@ if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null; then
     # With the default, a missing validator (rc 127 in the `if`) lands here and
     # the default HARD thresholds stay in force: the deny direction is kept.
     elif [ "${BANK_LIFT_REASON:-unknown}" != missing ]; then
-        warn "bank lift invalid (${BANK_LIFT_REASON:-unknown}) — retaining default HARD thresholds unless explicitly overridden"
+        warn "weekly budget override (bank lift) invalid (${BANK_LIFT_REASON:-unknown}) — retaining default HARD thresholds unless explicitly overridden"
     fi
 else
-    warn "bank lift validator unreadable — retaining default HARD thresholds unless explicitly overridden"
+    warn "weekly budget override (bank lift) validator unreadable — retaining default HARD thresholds unless explicitly overridden"
 fi
 
 # five_hour ---------------------------------------------------------------

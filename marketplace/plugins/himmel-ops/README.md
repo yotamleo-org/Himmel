@@ -167,7 +167,7 @@ pure type-to-tier router, this reads live Jira and open-PR files and writes into
 the console bucket.
 
 The classifier (`scripts/lanes/cloud-route.mjs`, first match wins): BLOCKED for a
-ticket not To Do or a file held by an open PR or the console's list; HOOK-BYPASS
+ticket not To Do or a file held by an open PR or the supervisor session's list; HOOK-BYPASS
 for `scripts/hooks/`; LOCAL-NATIVE for a trust path (`scripts/ci/ci-trust-paths.txt`),
 a Jira/qmd/graphify/luna/handover-state need, more than 3 asks, or no named file.
 Every verdict carries a one-line reason, and one record per ticket (ticket, class,

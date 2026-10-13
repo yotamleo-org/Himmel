@@ -22,7 +22,7 @@ main at `92ee89588` (2026-09-26): zero matches.
 
 `scripts/cr/hermes-critic.sh:343` calls `claude -p --output-format json
 --permission-mode plan ...`. This is the nearest headless call to the ship
-tail, but it IS the CR review itself — the step where a model judges the
+tail, but it IS the automated review itself — the step where a model judges the
 diff. "Model-free" describes the mechanical tail that acts on a review's
 verdict (merge, ready-check, CI polling), not the review that produces the
 verdict. Out of scope for this ruling by definition: a review needs
