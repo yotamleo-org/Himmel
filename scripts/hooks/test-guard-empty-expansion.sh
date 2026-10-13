@@ -63,6 +63,10 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "\${V:-\$(true })}$p $a"
     check deny "$h" "\${V:-\`true }\`}$p $a"
     check deny "$h" "\${V:-\$(echo ')}')}$p $a"
+    # a quoted paren inside the substitution must not end it (delta round)
+    check deny "$h" "\${V:-\$(printf \"\" \")\"; true })}$p $a"
+    check deny "$h" "\${V:-\$(echo \"\$(true })\")}$p $a"
+    check deny "$h" "\${V:-\$( (true) ; true })}$p $a"
   }
 }
 

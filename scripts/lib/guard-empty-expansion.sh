@@ -40,7 +40,7 @@ _GEE_AWK='{
   while (i <= n) {
     c = substr(s, i, 1)
     if (c == "$" && substr(s, i + 1, 1) == "{") {
-      depth = 1; i += 2; q = ""; bt = 0; pd = 0
+      depth = 1; i += 2; q = ""; bt = 0; L = 0
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
         if (q == "\047") { if (c == "\047") q = "" }
@@ -49,11 +49,11 @@ _GEE_AWK='{
         else if (c == "`") bt = 1
         else if (c == "\047" && q == "") q = "\047"
         else if (c == "\"") q = (q == "\"") ? "" : "\""
-        else if (c == "$" && substr(s, i + 1, 1) == "(") { pd++; i++ }
-        else if (pd > 0 && c == "(") pd++
-        else if (pd > 0 && c == ")") pd--
-        else if (pd == 0 && q == "" && c == "$" && substr(s, i + 1, 1) == "{") { depth++; i++ }
-        else if (pd == 0 && q == "" && c == "}") depth--
+        else if (c == "$" && substr(s, i + 1, 1) == "(") { L++; sq[L] = q; sp[L] = 0; q = ""; i++ }
+        else if (L > 0 && q == "" && c == "(") sp[L]++
+        else if (L > 0 && q == "" && c == ")") { if (sp[L] > 0) sp[L]--; else { q = sq[L]; L-- } }
+        else if (L == 0 && q == "" && c == "$" && substr(s, i + 1, 1) == "{") { depth++; i++ }
+        else if (L == 0 && q == "" && c == "}") depth--
         i++
       }
     } else { out = out c; i++ }
