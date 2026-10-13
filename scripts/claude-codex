@@ -630,6 +630,9 @@ _cliproxy_claude_oauth_only() {
     BEGIN { a = tolower(ENVIRON["ALIAS"]); gsub(/\./, "\\.", a); re = "(^|[^A-Za-z0-9._-])" a "([^A-Za-z0-9._-]|$)" }
     /^[ \t]*#/ { next }
     /^(---|\.\.\.)[ \t]*$/ { next }
+    # a YAML escape (c...) anywhere can spell a key or the alias past the raw-text
+    # matches: fail closed (the auth-dir line may hold a Windows path)
+    !/^auth-dir:/ && /\\[uUx]/ { bad = 1 }
     # only a plain block-style mapping with unindented root keys is parsed: an
     # indented or flow-style root would hide the keys below, so it fails closed
     !seen && !/^[ \t]*$/ { seen = 1; if ($0 ~ /^[ \t{\[-]/) bad = 1 }
@@ -644,8 +647,7 @@ _cliproxy_claude_oauth_only() {
     /^[ \t]*$/ { next }
     {
       if (cur == "claude-api-key" || cur == "vertex-api-key") bad = 1
-      # a YAML escape (c...) can spell the alias past the raw-text match: fail closed
-      if (cur == "openai-compatibility" && (tolower($0) ~ re || $0 ~ /\\[uUx]/)) bad = 1
+      if (cur == "openai-compatibility" && tolower($0) ~ re) bad = 1
     }
     END { exit bad ? 1 : 0 }
   ' "$_cfg" || return 1

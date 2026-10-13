@@ -635,6 +635,21 @@ openai-compatibility:
       - alias: "claude-sonnet-5"
 CFG
 run_launcher_expect "classifier flag: escaped compat alias refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+# an escape inside an inline compat entry, or in a root key, fails closed too.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+openai-compatibility:
+  - {name: "anthropic", models: [{alias: "claude-sonnet-5"}]}
+CFG
+run_launcher_expect "classifier flag: escaped inline compat alias refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+"openai-compatibility":
+  - name: "anthropic"
+    models:
+      - alias: "claude-sonnet-5"
+CFG
+run_launcher_expect "classifier flag: escaped root key refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 # a remote proxy is not the server the local config describes.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 CLAUDE_CODEX_REMOTE_PROXY_OK=1 run_launcher_expect "classifier flag: remote-proxy override refuses (local config does not apply)" 2 "Claude OAuth" --classifier-model claude-sonnet-5

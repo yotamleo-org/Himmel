@@ -613,6 +613,9 @@ if ($ClassifierModel) {
     foreach ($l in $lines) {
       if ($l -match '^\s*#') { continue }
       if ($l -match '^(---|\.\.\.)\s*$') { continue }
+      # a YAML escape (c...) anywhere can spell a key or the alias past the raw-text
+      # matches: fail closed (the auth-dir line may hold a Windows path)
+      if ($l -notmatch '^auth-dir:' -and $l -cmatch '\\[uUx]') { return $false }
       # only a plain block-style mapping with unindented root keys is parsed: an
       # indented or flow-style root would hide the keys below, so it fails closed
       if (-not $seen -and $l -notmatch '^\s*$') { $seen = $true; if ($l -match '^[\s{\[-]') { return $false } }
@@ -624,8 +627,7 @@ if ($ClassifierModel) {
       }
       if ($l -match '^\s*$') { continue }
       if ($cur -ceq 'claude-api-key' -or $cur -ceq 'vertex-api-key') { return $false }
-      # a YAML escape (c...) can spell the alias past the raw-text match: fail closed
-      if ($cur -ceq 'openai-compatibility' -and ($l.ToLowerInvariant() -match $re -or $l -cmatch '\\[uUx]')) { return $false }
+      if ($cur -ceq 'openai-compatibility' -and $l.ToLowerInvariant() -match $re) { return $false }
     }
     foreach ($f in (Get-ChildItem -LiteralPath $authDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
       try { $raw = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop } catch { continue }
