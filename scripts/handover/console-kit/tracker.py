@@ -174,8 +174,9 @@ def leg_span(p, text):
     clock is the next day. A doc name with no date gives no wall, only active minutes.
     ponytail: a silent gap over 24 h between two bullets reads as under 24 h; upgrade: date each bullet from the luna
     commit that first holds it."""
-    results = text.partition('\n## Results')[2]
-    ts = [int(x.group(1)) * 60 + int(x.group(2)) for x in (TS_RE.match(l) for l in results.splitlines()) if x]
+    ls = text.partition('\n## Results')[2].split('\n## ')[0].splitlines()
+    w = [i for i, l in enumerate(ls) if (m := MARK_RE.match(l)) and m.group(1) == 'WRAPPED']
+    ts = [int(x.group(1)) * 60 + int(x.group(2)) for x in (TS_RE.match(l) for l in ls[:w[-1] + 1 if w else None]) if x]
     ab, day = [], 0
     for i, t in enumerate(ts):
         if i and t < ts[i - 1]:
@@ -227,7 +228,7 @@ def actuals():
 # console doc's OPERATOR bullet (not a RULING, IS AWAKE or ITEMS line) saying "Filed HIMMEL-m" makes m operator-directed.
 # Only the ticket key is read, never the bullet's clock time.
 FILED_RE = re.compile(r'(?i)\bfiled\s+((?:HIMMEL-\d+(?:\s*(?:,|\+|&|and)\s*)?)+)')
-OPER_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?\**OPERATOR\b(?!\s*(?:RULINGS?|IS AWAKE|ITEMS)\b)')
+OPER_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?\**OPERATOR\b(?!\**\s*(?:RULINGS?|IS AWAKE|ITEMS)\b)')
 
 
 def filed_keys(line):

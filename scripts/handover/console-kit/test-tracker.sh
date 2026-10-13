@@ -535,12 +535,13 @@ bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 
 # A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
 printf '%s\n' '# leg' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
     '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
+# A note after WRAPPED and a later section's bullet are past the measured span.
 printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — filed HIMMEL-103 for the second gap' '- 10:45 WRAPPED — merged' \
-    > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
+    '- 11:30 note after the wrap' '## Notes' '- 12:00 a later note' > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
 printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:30 WRAPPED — merged' > "$bh/HIMMEL-102-N94-no-date.md"
 printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:20 WRAPPED — merged' > "$bh/HIMMEL-105-N93-operator-ask-2026-10-03.md"
 printf '%s\n' '# console' '## Results' '- 22:57 OPERATOR: do the thing. Filed HIMMEL-105; DISPATCH N93' \
-    '- 23:10 OPERATOR RULING: Filed HIMMEL-109 is not an ask' > "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
+    '- 23:10 OPERATOR RULING: Filed HIMMEL-109 is not an ask' '- 23:15 **OPERATOR** RULING: Filed HIMMEL-109 again' > "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
 bout="$W/bench.html"
 brender() {
     TZ=Europe/Berlin python3 "$HERE/tracker.py" --plan-dir "$bplan" --out "$bout" --luna-map "$W/luna-map-b.json" \
