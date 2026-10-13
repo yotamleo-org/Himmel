@@ -493,3 +493,62 @@ test('HIMMEL-5218: an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
   assert.equal(v.class, 'BLOCKED');
   assert.match(v.reason, /file tree unavailable/);
 });
+
+// HIMMEL-5499: a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
+// cloud-route.jsonl, until an age cap, or until a merged PR cites the ticket.
+function reserveStubs() {
+  const s = setup();
+  const jira = stub(s.dir, 'jira5499', `
+case "$2" in
+  HIMMEL-9101) printf 'HIMMEL-9101\\tTask\\tTo Do\\tfirst\\n\\nEdit scripts/lanes/example.sh.\\n';;
+  HIMMEL-9102) printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n';;
+  *) exit 1;;
+esac`);
+  const route = (key, gh = s.gh) => spawnSync(process.execPath, [CLI, '--bucket', s.bucket, '--console', 'AD', key], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+  });
+  const seed = (...recs) => writeFileSync(join(s.bucket, 'cloud-route.jsonl'), recs.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
+  return { ...s, route, seed };
+}
+const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+const rec = (over) => ({ ticket: 'HIMMEL-9100', class: 'CLOUD-OK', reason: 'r', files: ['scripts/lanes/example.sh'], brief: null, time: hoursAgo(1), ...over });
+
+test('CLI: a second invocation over one bucket is BLOCKED on the file the first routed', () => {
+  const { route } = reserveStubs();
+  const first = route('HIMMEL-9101');
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(first.stdout, /HIMMEL-9101\tCLOUD-OK/);
+  const second = route('HIMMEL-9102');
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(second.stdout, /HIMMEL-9102\tBLOCKED\t.*scripts\/lanes\/example\.sh is held \(routed HIMMEL-9101 in an earlier run\)/);
+});
+
+test('CLI: an expired reservation does not block, and a fresh one does', () => {
+  const stale = reserveStubs();
+  stale.seed(rec({ time: hoursAgo(49) }));
+  assert.match(stale.route('HIMMEL-9102').stdout, /HIMMEL-9102\tCLOUD-OK/);
+  const fresh = reserveStubs();
+  fresh.seed(rec({ time: hoursAgo(47) }));
+  assert.match(fresh.route('HIMMEL-9102').stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
+});
+
+test('CLI: only CLOUD-OK records reserve, and a corrupt, filesless or timeless line is skipped', () => {
+  const { route, seed } = reserveStubs();
+  seed('not json {', '[1,2]', 'null', { ticket: 'HIMMEL-9100', class: 'CLOUD-OK', reason: 'old record', time: hoursAgo(1) },
+    rec({ time: 'never' }), rec({ files: 'scripts/lanes/example.sh' }), rec({ files: [7, null] }), rec({ class: 'BLOCKED' }));
+  const r = route('HIMMEL-9102');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9102\tCLOUD-OK/);
+});
+
+test('CLI: a merged PR citing the reserved ticket releases its files', () => {
+  const { dir, route, seed } = reserveStubs();
+  seed(rec());
+  const gh = stub(dir, 'gh5499', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
+  echo '[{"number":2001,"title":"feat: [HIMMEL-9100] x","body":"","mergedAt":"2000-01-01T00:00:00Z","files":[]}]'; exit 0
+fi
+if [ "$1 $2" = "pr list" ]; then exit 0; fi
+exit 1`);
+  assert.match(route('HIMMEL-9102', gh).stdout, /HIMMEL-9102\tCLOUD-OK/);
+});

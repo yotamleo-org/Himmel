@@ -128,6 +128,33 @@ const overlaps = (a, b) => a === b || (b.endsWith('/') && a.startsWith(b)) || (a
 
 const STALE_DAYS = 14;
 
+// HIMMEL-5499: a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
+// cloud-route.jsonl. A reservation ends at RESERVATION_HOURS, or when a merged PR cites the
+// ticket; an open PR needs no release rule, its files are already held. ponytail: a ticket
+// outside this run that left To Do without a merged PR (closed, abandoned) keeps its files
+// until the cap, because its status would cost a Jira read per record, upgrade path HIMMEL-5499
+// follow-up (read the status of reserved keys once per run).
+export const RESERVATION_HOURS = 48;
+
+// reservedFiles(jsonlText, {now, merged}) -> [{file, why}]. Skips what it cannot read: a corrupt
+// line, a record without files (written before HIMMEL-5499), without a parseable time, or not
+// CLOUD-OK. A record in the future is kept, so a clock step cannot free a file early.
+export function reservedFiles(text, ctx = {}) {
+  const now = ctx.now ?? Date.now();
+  const out = [];
+  for (const line of String(text ?? '').split('\n')) {
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    if (!r || r.class !== 'CLOUD-OK' || typeof r.ticket !== 'string' || !Array.isArray(r.files)) continue;
+    const at = Date.parse(r.time ?? '');
+    if (Number.isNaN(at) || now - at > RESERVATION_HOURS * 3600e3) continue;
+    const cites = new RegExp(`${r.ticket}(?!\\d)`);
+    if ((ctx.merged ?? []).some((pr) => cites.test(`${pr.title ?? ''}\n${pr.body ?? ''}`))) continue;
+    for (const file of r.files) if (typeof file === 'string' && file) out.push({ file, why: `routed ${r.ticket} in an earlier run` });
+  }
+  return out;
+}
+
 // fixedBy(ticket, files, ctx) -> [{number, why, mergedAt}]: merged PRs that cite the key
 // (not a longer one: HIMMEL-46860) or touch a named file, merged after the ticket was
 // created. Jira's `get` carries no creation date, so without ticket.created (console spec)
@@ -319,6 +346,11 @@ function main(argv) {
   let merged = [];
   let mergedUnknown = false;
   try { merged = mergedPrs(keys); } catch (e) { mergedUnknown = true; process.stderr.write(`cloud-route: gh failed, merged PRs unknown — ${e.message.split('\n')[0]}\n`); }
+  // reservations from earlier runs; read after merged so a merged PR can release them
+  const log = opt.bucket ? join(opt.bucket, 'cloud-route.jsonl') : null;
+  if (log && existsSync(log)) {
+    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations ignored — ${e.message.split('\n')[0]}\n`); }
+  }
   let tree = [];
   let treeUnknown = false;
   try { tree = baseTree(); } catch (e) { treeUnknown = true; process.stderr.write(`cloud-route: git failed, file tree unknown — ${e.message.split('\n')[0]}\n`); }
@@ -341,7 +373,7 @@ function main(argv) {
         writeFileSync(brief, buildBrief({ ...t, files: v.files }, { consoleId: opt.console, date, exists, change: s.change, branchType: s.branchType, completes: s.completes }));
         launches.push(launchLine(brief));
       }
-      appendFileSync(join(opt.bucket, 'cloud-route.jsonl'), JSON.stringify({ ticket: key, class: v.class, reason: v.reason, brief, time: new Date().toISOString() }) + '\n');
+      appendFileSync(join(opt.bucket, 'cloud-route.jsonl'), JSON.stringify({ ticket: key, class: v.class, reason: v.reason, files: v.files, brief, time: new Date().toISOString() }) + '\n');
     }
   }
   if (launches.length) process.stdout.write(`\nOperator launch lines (run each in your terminal; this tool never launches):\n${launches.join('\n')}\n`);
