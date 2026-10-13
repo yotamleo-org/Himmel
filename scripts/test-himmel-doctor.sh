@@ -961,6 +961,22 @@ else
 fi
 rm -rf "$t"
 
+echo "== C8: stale upstream-watch runner -> WARN + upstream-watch re-arm hint =="
+t="$(mktemp -d)" || exit 1; mkdir -p "$t/claude" "$t/uw"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old upstream-watch\n' "$STALE_CADENCE_VER" > "$t/uw/upstream-watch.sh"
+out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
+    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    QMD_CADENCE_BAT_DIR="$t/qmd-empty" UPSTREAMWATCH_BAT_DIR="$t/uw" \
+    DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
+    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
+if grepq "$out" 'WARN C8-cadence: upstream-watch-cadence runners are stale' \
+    && grepq "$out" 'bash scripts/upstreams/upstream-watch-cadence.sh arm --force'; then
+    pass "C8 -> WARN (stale upstream-watch runner)"
+else
+    fail "C8 -> $(printf '%s' "$out" | grep C8)"
+fi
+rm -rf "$t"
+
 echo "== C8: pipeline-only current runner -> OK, no false nudges =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/pipeline"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho current runner\n' "$CADENCE_VER" > "$t/pipeline/pipeline-harvest.sh"

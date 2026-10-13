@@ -402,6 +402,28 @@ case "$_out" in
   *" 4 skipped"*) pass=$((pass + 1)); echo "  ok: a skip-listed rc is recorded as skipped" ;;
   *) fail=$((fail + 1)); echo "  FAIL: skip rc 4 not recorded skipped: $_out" ;;
 esac
+# Under cron the runner's PATH is the minimal /usr/bin:/bin, but the alert
+# sender needs bun (~/.bun/bin): the alert call must carry the ARM-time PATH
+# snapshot (HIMMEL-2840 shape), never the fire-time one.
+mkdir -p "$_leg_tmp/bunbin"
+printf '#!/bin/sh\nexit 0\n' > "$_leg_tmp/bunbin/bun"
+chmod 755 "$_leg_tmp/bunbin/bun"
+cat > "$_leg_tmp/alert-path.sh" <<'STUB'
+#!/bin/sh
+printf 'bun=%s\n' "$(command -v bun)" >> "$LEG_CALLS"
+exit 0
+STUB
+chmod 755 "$_leg_tmp/alert-path.sh"
+{
+  printf 'log=%s/leg.log\n_rc=3\n' "$_leg_tmp"
+  PATH="$_leg_tmp/bunbin:$PATH" cadence_posix_leg_end "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-path.sh" demo-flow
+} > "$_leg_tmp/leg-path.sh"
+: > "$_leg_tmp/calls"
+env -i PATH=/usr/bin:/bin LEG_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg-path.sh"
+case "$(cat "$_leg_tmp/calls")" in
+  *"bun=$_leg_tmp/bunbin/bun"*) pass=$((pass + 1)); echo "  ok: the alert call resolves bun from the arm-time PATH under a minimal fire PATH" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: alert call did not see the arm-time PATH: $(cat "$_leg_tmp/calls")" ;;
+esac
 rm -rf "$_leg_tmp"
 
 echo

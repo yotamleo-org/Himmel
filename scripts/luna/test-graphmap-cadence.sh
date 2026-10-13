@@ -680,7 +680,10 @@ for what in ast_luna ast_himmel; do
     # `fix/...-bank-preflight` branch, or any path under `.claude/`) would
     # fail an assertion the runner itself never violates.
     assert_not_contains "$what runner has no bank-preflight" "bank-preflight" "${body//$HIMMEL_ROOT_EXP/}"
-    assert_not_contains "$what runner never shells claude"   "claude" "${body//$HIMMEL_ROOT_EXP/}"
+    # The alert call also pins the arm-time PATH (HIMMEL-4286): data, and it may
+    # legitimately carry a .claude dir, so strip it before the "claude" check.
+    body_nopath=$(printf '%s' "$body" | sed -E 's/PATH=[^ ]+ //g')
+    assert_not_contains "$what runner never shells claude"   "claude" "${body_nopath//$HIMMEL_ROOT_EXP/}"
     assert_not_contains "$what runner has no --backend flag (LLM-free update)" "--backend" "$body"
     assert_not_contains "$what runner has no --settings (not a claude session)" "--settings" "$body"
 done

@@ -175,7 +175,10 @@
 # completed one, through cadence_posix_leg_start / cadence_posix_leg_end below.
 # An armed v21 runner of those kinds fails silently and leaves no ledger row.
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
-# its own rows) and the .bat twins stay on HIMMEL-4197. Re-arm with
+# its own rows). The alert call pins the arm-time PATH so the sender finds bun
+# under cron. NOT covered: the codex-sweep runner and every graphmap/qmd/
+# upstream-watch .bat twin (HIMMEL-4197 tracks only the pipeline .bat twins;
+# these are HIMMEL-5576). Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
 CADENCE_RUNNER_FORMAT_VERSION=22
@@ -206,7 +209,7 @@ cadence_posix_leg_start() {
 }
 # shellcheck disable=SC2016  # as above
 cadence_posix_leg_end() {
-    local q_flow_lib="$1" q_alert_lib="$2" flow="$3" ok="${4:-0}" skip="${5:-}" rc pat
+    local q_flow_lib="$1" q_alert_lib="$2" flow="$3" ok="${4:-0}" skip="${5:-}" rc pat q_path
     pat=""
     for rc in $ok; do pat="$pat${pat:+|}$rc"; done
     printf '    case "$_rc" in\n'
@@ -218,8 +221,11 @@ cadence_posix_leg_end() {
     printf '    esac\n'
     printf '    test "$_flow_run_id" != "" && %s --append-end %s "$_flow_run_id" "" "$_rc" "$_flow_outcome" "" "" >/dev/null 2>&1 || true\n' "$q_flow_lib" "$flow"
     printf '    case "$_flow_outcome" in\n'
-    printf '        complete) %s clear %s || true ;;\n' "$q_alert_lib" "$flow"
-    printf '        error) %s fail %s "rc-$_rc" "$log" || true ;;\n' "$q_alert_lib" "$flow"
+    # The alert sender needs bun, which lives off cron's minimal PATH: pin the
+    # ARM-time PATH (HIMMEL-2840) onto the alert calls only, never the payload's.
+    q_path=$(printf '%q' "$PATH")
+    printf '        complete) PATH=%s %s clear %s || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
+    printf '        error) PATH=%s %s fail %s "rc-$_rc" "$log" || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
     printf '    esac\n'
 }
 
