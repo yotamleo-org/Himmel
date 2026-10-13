@@ -7,7 +7,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-PATTERN='node:(http|https|http2|net|dgram|tls|dns)|fetch\(|XMLHttpRequest|WebSocket|from .(http|https|net|dgram|tls|dns).'
+PATTERN='node:(http|https|http2|net|dgram|tls|dns)|fetch[[:space:]]*\(|XMLHttpRequest|WebSocket|from .(http|https|net|dgram|tls|dns).'
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -20,7 +20,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 # Control: each network shape is caught.
 i=0
-for line in "import http from 'node:http';" "await fetch('https://x.test');" "import net from 'node:net';" "import dgram from 'node:dgram';"; do
+for line in "import http from 'node:http';" "await fetch('https://x.test');" "import net from 'node:net';" "import dgram from 'node:dgram';" "await fetch ('https://x.test');"; do
   i=$((i+1))
   printf '%s\n' "$line" > "$tmp/planted$i.mjs"
   if [ -n "$(hits "$tmp/planted$i.mjs")" ]; then pass "control $i: planted network use is detected"; else fail "control $i: lint missed: $line"; fi
