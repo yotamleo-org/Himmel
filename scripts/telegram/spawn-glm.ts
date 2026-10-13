@@ -1877,7 +1877,7 @@ export function nextRetrySlug(slug: string): string {
 // may be a fresh cold start — everything needed to re-dispatch is inline.
 const shellSingleQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 // HIMMEL-1071: quote only values a shell would split or interpret, so plain values stay byte-identical.
-const shellArg = (value: string): string => (/^[A-Za-z0-9_@%+=:,./~-]+$/.test(value) ? value : shellSingleQuote(value));
+const shellArg = (value: string): string => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : shellSingleQuote(value));
 export function composeRespawnHandover(p: { task: string; cwd: string; slug: string; timeoutMins?: number; permMode?: string; sessionDir: string; branch: string; resumeAtIso: string; shared?: boolean; profile?: string; addPlugins?: string[]; roundsOverride?: string }): string {
   const respawnName = nextRetrySlug(p.slug);
   // HIMMEL-800: a shared-mode respawn carries --branch (the caller-named

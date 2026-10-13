@@ -1695,6 +1695,8 @@ test("composeRespawnHandover (HIMMEL-1071): flag values with a space or quote su
   expect(s).toContain("--profile 'lane content'");
   expect(s).toContain("--add-plugins 'a@m,b c@m'");
   expect(s).toContain("--cwd '/tmp/a b' --name");
+  // a leading ~ would be expanded by the shell, so it is quoted too
+  expect(composeRespawnHandover({ task: "t", cwd: "~/repo", slug: "job-r1", sessionDir: "C:/s", branch: "glm/job", resumeAtIso: "2026-07-04T02:10:00.000Z" })).toContain("--cwd '~/repo'");
 });
 
 test("composeRespawnHandover (HIMMEL-1040): carries a non-default --profile + --add-plugins; omits both on defaults", () => {
