@@ -197,7 +197,7 @@ describe('init-cli unhandled-throw contract', () => {
       // assertions below vacuously — require a normal exit first.
       expect(r.error).toBeUndefined();
       expect(r.signal).toBeNull();
-      expect(r.status).not.toBeNull();
+      expect(r.status).toBeGreaterThan(0);
       const stdoutLines = r.stdout.trim().split('\n').filter(Boolean);
       expect(stdoutLines.length).toBeLessThanOrEqual(1);
       expect(r.stderr).not.toMatch(/UnhandledPromiseRejection/);
