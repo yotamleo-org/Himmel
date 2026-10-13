@@ -64,6 +64,11 @@ fs.writeFileSync(p,JSON.stringify(o,null,2));
 
 run_stop() { bash "$STOP" "$@" 2>&1; }
 
+# meta_status <meta.json> -- the session's recorded status ("" when unreadable).
+meta_status() {
+    node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status))}catch(_){}' "$1"
+}
+
 # HIMMEL-1929 push-quarantine helpers. set_pushurl seeds the worktree-scoped
 # remote.origin.pushurl the way the retired lane quarantine used to
 # (repo-level extensions.worktreeConfig=true, then a --worktree scoped value)
@@ -165,13 +170,55 @@ else
     fail "B5b: --dry-run cleared remote.origin.pushurl on a worker it never signalled" "$out"
 fi
 
-# B6: a worktree that cannot be checkpointed ABORTS the stop -- fail-safe.
-mk_session glm glm-badwt-1 running 999004 glm/badwt "$TMP_ROOT/not-a-repo" >/dev/null
+# B6: a worktree that cannot be checkpointed ABORTS the stop of a LIVE worker --
+# fail-safe. The pid is a real running process so the refusal is the live case.
+sleep 300 &
+B6_PID=$!
+mk_session glm glm-badwt-1 running "$B6_PID" glm/badwt "$TMP_ROOT/not-a-repo" >/dev/null
 out=$(run_stop glm-badwt-1); rc=$?
+kill "$B6_PID" 2>/dev/null; wait "$B6_PID" 2>/dev/null
 if [ "$rc" -eq 5 ]; then
-    pass "B6: an uncheckpointable worktree refuses the stop (exit 5), rather than killing with unsaved work"
+    pass "B6: an uncheckpointable worktree refuses the stop of a live worker (exit 5), rather than killing with unsaved work"
 else
     fail "B6: expected rc=5, got $rc" "$out"
+fi
+if [ "$(meta_status "$BRIDGE_ROOT/glm-sessions/glm-badwt-1/meta.json")" = "running" ]; then
+    pass "B6b: the refused live worker's session stays running"
+else
+    fail "B6b: a refused live worker was annotated" "$out"
+fi
+
+# B7 (HIMMEL-1751): the recorded pid is ALREADY GONE and the worktree cannot be
+# checkpointed. Refusing protects nothing (there is no signal to send) and left
+# the dead session reading "running"; it must be annotated terminal, with an rc
+# that tells the checkpoint failure apart from a clean already-exited.
+sleep 300 &
+B7_PID=$!
+kill "$B7_PID" 2>/dev/null; wait "$B7_PID" 2>/dev/null
+mk_session glm glm-baddead-1 running "$B7_PID" glm/baddead "$TMP_ROOT/not-a-repo" >/dev/null
+out=$(run_stop glm-baddead-1); rc=$?
+B7_META="$BRIDGE_ROOT/glm-sessions/glm-baddead-1/meta.json"
+if [ "$rc" -eq 7 ]; then
+    pass "B7: dead pid + uncheckpointable worktree exits 7 (distinct from the live refusal)"
+else
+    fail "B7: expected rc=7, got $rc" "$out"
+fi
+if [ "$(meta_status "$B7_META")" = "already-exited" ]; then
+    pass "B7b: the dead worker's session was annotated already-exited, not left running"
+else
+    fail "B7b: session status is '$(meta_status "$B7_META")', expected already-exited" "$out"
+fi
+case "$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).stop_checkpoint))}catch(_){}' "$B7_META")" in
+    *"checkpoint-failed: no worker worktree recorded"*) pass "B7c: stop_checkpoint records why the checkpoint failed" ;;
+    *) fail "B7c: stop_checkpoint does not record the checkpoint failure" "$out" ;;
+esac
+# B7d: --dry-run changes nothing, so it must not annotate.
+mk_session glm glm-baddead-2 running "$B7_PID" glm/baddead2 "$TMP_ROOT/not-a-repo" >/dev/null
+out=$(run_stop --dry-run glm-baddead-2); rc=$?
+if [ "$(meta_status "$BRIDGE_ROOT/glm-sessions/glm-baddead-2/meta.json")" = "running" ]; then
+    pass "B7d: --dry-run on a dead worker with a failing checkpoint does not annotate"
+else
+    fail "B7d: --dry-run annotated the session" "$out"
 fi
 
 echo "RUN C: end-to-end stop of a live process"
