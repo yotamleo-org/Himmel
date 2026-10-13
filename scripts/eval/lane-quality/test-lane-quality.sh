@@ -22,6 +22,9 @@ PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
+# nogrep <grep args>: true only when grep ran and matched nothing (rc 1); a grep
+# error (rc 2, e.g. a missing file) is not absence.
+nogrep() { grep "$@"; [ $? -eq 1 ]; }
 
 # A tiny stand-in for the pinned himmel tree: finding-verify cites the real
 # cache-probe.sh, so it is copied in byte for byte.
@@ -57,6 +60,7 @@ cat >"$TMP/bin/claude" <<'FAKE'
 echo "$*" >>"$LQ_FAKE_LOG"
 case " $* " in *" --json-schema "*)
   cat >>"$LQ_FAKE_LOG.judge"
+  [ -z "${LQ_FAKE_5HSEQ:-}" ] || wc -l <"$LQ_FAKE_5HSEQ" | tr -d ' ' >"$LQ_FAKE_5HSEQ.atjudge"
   [ -z "${LQ_FAKE_JUDGE_HANG:-}" ] || sleep 10
   echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"correctness":4,"scope_discipline":4,"test_quality":4,"honesty":4,"notes":"n"}}'
   exit 0 ;;
@@ -80,6 +84,7 @@ if [ -n "${LQ_FAKE_COMMIT:-}" ]; then
   echo x >stray.txt
   git add stray.txt lq-work && git -c user.name=t -c user.email=t@t commit -qm stray --no-verify
 fi
+[ -z "${LQ_FAKE_BIG:-}" ] || head -c 70000 /dev/zero | tr '\0' x >lq-work/big.txt
 [ -z "${LQ_FAKE_DRAIN:-}" ] || echo SKIPPED-BANK >"$LQ_FAKE_DRAIN"
 [ -z "${LQ_FAKE_NOJSON:-}" ] || exit 124
 sid="sess-$t"
@@ -90,12 +95,15 @@ sid="sess-$t"
   echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu2","is_error":true,"content":"PreToolUse:Bash hook error: refusing"}]}}'
   echo '{"type":"system","subtype":"compact_boundary"}'
 } >"$LQ_TRANSCRIPTS/p/$sid.jsonl"
-jq -cn --arg s "$sid" --argjson mu "${LQ_FAKE_MU:-null}" '{type:"result",subtype:"success",is_error:false,session_id:$s,total_cost_usd:0.5,num_turns:3,duration_ms:1000,permission_denials:[{tool_name:"Bash"}],result:"Done by claude-haiku-4-5 via openrouter on the native lane; tests pass."} + (if $mu == null then {} else {modelUsage: $mu} end) + (if $ENV.LQ_FAKE_NOCOST then {total_cost_usd: null} else {} end)'
+jq -cn --arg s "$sid" --argjson mu "${LQ_FAKE_MU:-null}" '{type:"result",subtype:"success",is_error:false,session_id:$s,total_cost_usd:0.5,num_turns:3,duration_ms:1000,permission_denials:[{tool_name:"Bash"}],result:("Done by claude-haiku-4-5 via openrouter on the native lane; tests pass." + ($ENV.LQ_FAKE_SAY // ""))} + (if $mu == null then {} else {modelUsage: $mu} end) + (if $ENV.LQ_FAKE_NOCOST then {total_cost_usd: null} else {} end)'
 FAKE
 chmod +x "$TMP/bin/claude"
 # LQ_FAKE_PROCEED_N=<n>: only the first n calls PROCEED (counted in LQ_FAKE_CALLS).
 cat >"$TMP/bin/preflight" <<'FAKE'
 #!/usr/bin/env bash
+if [ -n "${LQ_FAKE_5HSEQ:-}" ]; then # LQ_FAKE_5HSEQ=<file>: five_hour is the 1-based call count
+  echo x >>"$LQ_FAKE_5HSEQ"; LQ_FAKE_5H="$(wc -l <"$LQ_FAKE_5HSEQ" | tr -d ' ')"
+fi
 echo "bank-preflight: five_hour=${LQ_FAKE_5H:-10.0} seven_day=3.0" >&2
 [ -z "${LQ_FAKE_PFENV:-}" ] || env >>"$LQ_FAKE_PFENV"
 if [ -n "${LQ_FAKE_PROCEED_N:-}" ]; then
@@ -128,15 +136,15 @@ check "bank reading recorded" '[ "$(jq -s -r ".[0].bank_5h_before" "$R")" = 10.0
 check "peek at hidden tests flagged" '[ "$(jq -s ".[0].peeked" "$R")" = true ]'
 check "scope ok" '[ "$(jq -s "map(select(.scope_ok)) | length" "$R")" = 2 ]'
 check "judge scores recorded" '[ "$(jq -s ".[0].judge.correctness" "$R")" = 4 ]'
-check "judge packet hides the model" '[ -s "$TMP/fake.log.judge" ] && ! grep -qi "haiku" "$TMP/fake.log.judge"'
-check "judge packet hides the lane" '[ -s "$TMP/fake.log.judge" ] && ! grep -qi "openrouter" "$TMP/fake.log.judge"'
-check "judge packet hides the native lane" '[ -s "$TMP/fake.log.judge" ] && ! grep -qiw "native" "$TMP/fake.log.judge"'
+check "judge packet hides the model" '[ -s "$TMP/fake.log.judge" ] && nogrep -qi "haiku" "$TMP/fake.log.judge"'
+check "judge packet hides the lane" '[ -s "$TMP/fake.log.judge" ] && nogrep -qi "openrouter" "$TMP/fake.log.judge"'
+check "judge packet hides the native lane" '[ -s "$TMP/fake.log.judge" ] && nogrep -qiw "native" "$TMP/fake.log.judge"'
 check "judge packet carries the diff" 'grep -q "semver-cmp" "$TMP/fake.log.judge"'
 check "agent call declares a permission mode" 'grep -q -- "--permission-mode auto" "$TMP/fake.log"'
 check "worktrees removed" '[ -z "$(ls -A "$TMP/work" 2>/dev/null)" ]'
 check "judge cost counts toward the budget" 'grep -q "spent 1.0400 USD" "$TMP/run1.log"'
 check "judge call is budget-capped" 'grep -- "--json-schema" "$TMP/fake.log" | grep -q -- "--max-budget-usd"'
-check "judge packet hides the model version" '! grep -q "4-5" "$TMP/fake.log.judge"'
+check "judge packet hides the model version" 'nogrep -q "4-5" "$TMP/fake.log.judge"'
 EL="$HIMMEL_EVAL_RUNS_LEDGER"
 check "sweep appends one eval-runs row" '[ "$(jq -s "map(select(.artifact | contains(\"/out1/\"))) | length" "$EL")" = 1 ]'
 check "eval-runs row is a valid lane-quality row (n=2, ok)" '[ "$(jq -s -r "map(select(.artifact | contains(\"/out1/\")))[0] | \"\(.eval) \(.n) \(.status) \(.metrics.accept_ok_rate == 1)\"" "$EL")" = "lane-quality 2 ok true" ] && python3 "$HERE/../lib/eval_runs.py" validate "$EL" >/dev/null'
@@ -208,7 +216,7 @@ check "api lane refuses a judged run (the judge is native)" '[ "$rc" -eq 64 ] &&
 api_run "$TMP/out-api2" --no-judge --dry-run --tasks cr-fix,class-sweep >"$TMP/api2.log" 2>&1
 rc=$?
 check "api dry-run exits 0, names the cap and the command, spends nothing" '[ "$rc" -eq 0 ] && grep -q "cap 1 USD" "$TMP/api2.log" && grep -q "claude-api.sh\|claude-api" "$TMP/api2.log" && [ ! -e "$APIENV" ] && [ ! -s "$TMP/fake.log" ] && [ ! -e "$TMP/out-api2/runs.jsonl" ]'
-check "api dry-run never prints the key" '! grep -q "sk-ant-dummy" "$TMP/api2.log"'
+check "api dry-run never prints the key" 'nogrep -q "sk-ant-dummy" "$TMP/api2.log"'
 HIMMEL_API_LANE='' bash "$RUN_API" run --lane api --model m --no-judge --dry-run --out "$TMP/out-api3" >"$TMP/api3.log" 2>&1
 rc=$?
 check "api dry-run refuses while the lane is OFF" '[ "$rc" -ne 0 ] && grep -q "OFF" "$TMP/api3.log"'
@@ -216,7 +224,7 @@ api_run "$TMP/out-api4" --no-judge --tasks cr-fix,class-sweep,shell-red-green >"
 rc=$?
 check "api lane stops at the \$1 cap (two 0.5 tasks of three)" '[ "$rc" -eq 0 ] && [ "$(wc -l <"$TMP/out-api4/runs.jsonl" | tr -d " ")" = 2 ] && grep -q "budget cap reached" "$TMP/api4.log"'
 check "api rows record the lane" '[ "$(jq -s -r "map(.lane) | unique | join(\",\")" "$TMP/out-api4/runs.jsonl")" = api ]'
-check "the launcher gets the key and no OAuth token" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV" && ! grep -q "oauth-dummy" "$APIENV" && grep -q "^oauth=$" "$APIENV"'
+check "the launcher gets the key and no OAuth token" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV" && nogrep -q "oauth-dummy" "$APIENV" && grep -q "^oauth=$" "$APIENV"'
 check "each call has its own job id and a budget at most the cap" '[ "$(grep -c "^job=lq-" "$APIENV")" = 2 ] && [ "$(grep "^job=" "$APIENV" | sort -u | wc -l | tr -d " ")" = 2 ] && awk "{for(i=1;i<NF;i++) if(\$i==\"--max-budget-usd\"){n++; if(\$(i+1)+0>1) bad=1}} END{exit !(n==2 && !bad)}" "$APIENV"'
 check "api rows ignore the native bank for gating" '[ -s "$TMP/out-api4/runs.jsonl" ]'
 : >"$TMP/fake.log"; rm -f "$APIENV"
@@ -232,13 +240,13 @@ check "a launcher refusal is recorded as an error and stops the sweep" '[ "$(wc 
 ACCENV="$TMP/accept.env"; rm -f "$ACCENV" "$APIENV"
 LQ_FAKE_ACCEPTENV="$ACCENV" api_run "$TMP/out-api7" --no-judge --tasks cr-fix >"$TMP/api7.log" 2>&1
 check "acceptance code ran (the env dump exists)" '[ -s "$ACCENV" ]'
-check "acceptance runs without ANTHROPIC_API_KEY and the lane selectors" '[ -s "$ACCENV" ] && ! grep -q "^ANTHROPIC_API_KEY=" "$ACCENV" && ! grep -q "^HIMMEL_API_" "$ACCENV"'
+check "acceptance runs without ANTHROPIC_API_KEY and the lane selectors" '[ -s "$ACCENV" ] && nogrep -q "^ANTHROPIC_API_KEY=" "$ACCENV" && nogrep -q "^HIMMEL_API_" "$ACCENV"'
 # judge: accept.sh's direct parent (the timeout wrapper) must not carry the key either, so strip-env runs outside it.
 mkdir -p "$TMP/tbin"; REALTIMEOUT="$(command -v timeout)"
 printf '#!/usr/bin/env bash\ncase "$*" in *accept.sh*) env >"%s/timeout.env" ;; esac\nexec "%s" "$@"\n' "$TMP" "$REALTIMEOUT" >"$TMP/tbin/timeout"; chmod +x "$TMP/tbin/timeout"
 rm -f "$TMP/timeout.env"
 PATH="$TMP/tbin:$PATH" api_run "$TMP/out-api7b" --no-judge --tasks cr-fix >"$TMP/api7b.log" 2>&1
-check "accept.sh's timeout parent carries no API key or lane selector" '[ -s "$TMP/timeout.env" ] && ! grep -q "^ANTHROPIC_API_KEY=" "$TMP/timeout.env" && ! grep -q "^HIMMEL_API_" "$TMP/timeout.env"'
+check "accept.sh's timeout parent carries no API key or lane selector" '[ -s "$TMP/timeout.env" ] && nogrep -q "^ANTHROPIC_API_KEY=" "$TMP/timeout.env" && nogrep -q "^HIMMEL_API_" "$TMP/timeout.env"'
 # HIMMEL-5069 R4: LQ_LANE_BIN must not replace the launcher on the api lane.
 printf '#!/usr/bin/env bash\ntouch "%s/poison.ran"\nexit 0\n' "$TMP" >"$TMP/bin/poison"; chmod +x "$TMP/bin/poison"
 rm -f "$APIENV" "$TMP/poison.ran"
@@ -253,7 +261,7 @@ check "LQ_REPO's launcher never runs on the api lane" '[ ! -e "$TMP/poison.ran" 
 # so it must not hold the key either.
 rm -f "$TMP/pf.env"
 LQ_FAKE_PFENV="$TMP/pf.env" api_run "$TMP/out-api10" --no-judge --tasks cr-fix >"$TMP/api10.log" 2>&1
-check "the bank preflight runs without the API key and lane selectors on the api lane" '[ -s "$TMP/pf.env" ] && ! grep -q "^ANTHROPIC_API_KEY=" "$TMP/pf.env" && ! grep -q "^HIMMEL_API_" "$TMP/pf.env"'
+check "the bank preflight runs without the API key and lane selectors on the api lane" '[ -s "$TMP/pf.env" ] && nogrep -q "^ANTHROPIC_API_KEY=" "$TMP/pf.env" && nogrep -q "^HIMMEL_API_" "$TMP/pf.env"'
 
 # judge B2: run.sh's own git calls (worktree add, the fixture commit, git add -A) fire hooks in an LQ_REPO-selected
 # repo and an agent-written core.fsmonitor, so the key and lane selectors must not be in run.sh's environment at all.
@@ -265,8 +273,8 @@ done
 LQ_FAKE_FSMON="$TMP/fsmon.env" api_run "$TMP/out-api11" --no-judge --tasks cr-fix >"$TMP/api11.log" 2>&1
 for h in post-checkout reference-transaction post-index-change post-commit; do rm -f "$TMP/repo/.git/hooks/$h"; done
 git -C "$TMP/repo" config --unset core.fsmonitor 2>/dev/null
-check "a hook in LQ_REPO sees no API key or lane selector from run.sh's git calls" '[ -s "$TMP/hook.env" ] && ! grep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/hook.env"'
-check "an agent-written core.fsmonitor sees no API key or lane selector" '[ -s "$TMP/fsmon.env" ] && ! grep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/fsmon.env"'
+check "a hook in LQ_REPO sees no API key or lane selector from run.sh's git calls" '[ -s "$TMP/hook.env" ] && nogrep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/hook.env"'
+check "an agent-written core.fsmonitor sees no API key or lane selector" '[ -s "$TMP/fsmon.env" ] && nogrep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/fsmon.env"'
 check "the launcher still receives the key and selectors" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV" && grep -q "^sel=on/B/key-b$" "$APIENV"'
 
 # judge j2229c B1: run.sh's base-sha check is a git call on LQ_REPO; in a partial clone a missing object makes git run
@@ -282,7 +290,7 @@ git -C "$LZ" config remote.origin.promisor true
 printf '#!/usr/bin/env bash\nenv >>"%s"\nexit 1\n' "$TMP/lz.env" >"$TMP/lzssh"; chmod +x "$TMP/lzssh"
 git -C "$LZ" config core.sshCommand "$TMP/lzssh"
 LQ_REPO="$LZ" LQ_BASE_SHA=1111111111111111111111111111111111111111 api_run "$TMP/out-lz1" --no-judge --dry-run --tasks cr-fix >"$TMP/lz1.log" 2>&1
-check "a partial-clone lazy fetch from the base-sha check sees no API key or lane selector" '[ -s "$TMP/lz.env" ] && ! grep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/lz.env"'
+check "a partial-clone lazy fetch from the base-sha check sees no API key or lane selector" '[ -s "$TMP/lz.env" ] && nogrep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/lz.env"'
 
 # judge j2229c B2: an exported LQ_API_KEY (even empty) on entry must not stay exported: hooks, the preflight and
 # accept.sh would inherit it.
@@ -294,7 +302,7 @@ for v in "" leak-lq-key; do
   LQ_API_KEY="$v" LQ_API_ACCOUNT="$v" LQ_API_KEY_ID="$v" LQ_FAKE_PFENV="$TMP/pf.env" LQ_FAKE_ACCEPTENV="$ACCENV" \
     api_run "$TMP/out-lq1" --no-judge --tasks cr-fix >"$TMP/lq1.log" 2>&1
   for h in post-checkout reference-transaction; do rm -f "$TMP/repo/.git/hooks/$h"; done
-  check "an inherited exported LQ_API_KEY ('$v') reaches no hook, preflight or acceptance code" '[ -s "$TMP/hook.env" ] && [ -s "$TMP/pf.env" ] && [ -s "$ACCENV" ] && ! grep -q "^LQ_API_" "$TMP/hook.env" "$TMP/pf.env" "$ACCENV"'
+  check "an inherited exported LQ_API_KEY ('$v') reaches no hook, preflight or acceptance code" '[ -s "$TMP/hook.env" ] && [ -s "$TMP/pf.env" ] && [ -s "$ACCENV" ] && nogrep -q "^LQ_API_" "$TMP/hook.env" "$TMP/pf.env" "$ACCENV"'
   check "the launcher still receives the key after an inherited LQ_API_KEY ('$v')" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV"'
 done
 
@@ -345,7 +353,7 @@ LQ_FAKE_MU="$MU_HAIKU" LQ_LANE_BIN="$TMP/bin/claude-openrouter" LQ_METERED_PROBE
 rc=$?
 check "openrouter lane runs" '[ "$rc" -eq 0 ] && [ "$(wc -l <"$TMP/out15/runs.jsonl" | tr -d " ")" = 1 ]'
 check "openrouter agent goes through the lane launcher" 'grep -q -- "--permission-mode auto" "$TMP/fake.log.launcher"'
-check "openrouter judge stays native" '! grep -q -- "--json-schema" "$TMP/fake.log.launcher" && [ "$(jq -s ".[0].judge.correctness" "$TMP/out15/runs.jsonl")" = 4 ]'
+check "openrouter judge stays native" 'nogrep -q -- "--json-schema" "$TMP/fake.log.launcher" && [ "$(jq -s ".[0].judge.correctness" "$TMP/out15/runs.jsonl")" = 4 ]'
 check "metered balance recorded" '[ "$(jq -s -r ".[0].metered_before" "$TMP/out15/runs.jsonl")" = 8.9070935 ]'
 check "native rows carry no metered balance" '[ "$(jq -s ".[0].metered_before" "$R")" = null ]'
 check "openrouter cost repriced from modelUsage" 'jq -s ".[0].cost_usd" "$TMP/out15/runs.jsonl" | awk "{exit !(\$1 > 0.1199 && \$1 < 0.1201)}" && [ "$(jq -s ".[0].reported_cost_usd" "$TMP/out15/runs.jsonl")" = 0.5 ]'
@@ -402,7 +410,7 @@ check "a bank drained mid-task stops the sweep" '[ "$rc" -eq 75 ] && [ "$(wc -l 
 LQ_WORK_ROOT="$TMP/blocked" bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge \
   --out "$TMP/out6" >"$TMP/run6.log" 2>&1
 rc=$?
-check "a failed worktree add fails the sweep" '[ "$rc" -ne 0 ] && ! grep -q "lane-quality: done" "$TMP/run6.log"'
+check "a failed worktree add fails the sweep" '[ "$rc" -ne 0 ] && nogrep -q "lane-quality: done" "$TMP/run6.log"'
 
 RO="$TMP/ro"
 git init -q "$RO" && git -C "$RO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
@@ -516,7 +524,7 @@ check "weighted kappa against a constant second judge is 0" 'jq -e ".metrics.kap
 check "calibration writes a valid eval-runs row" '[ "$(jq -s -r "map(select(.eval == \"lane-quality-calibration\")) | length" "$EL")" = 1 ] && python3 "$HERE/../lib/eval_runs.py" validate "$EL" >/dev/null'
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --no-ledger >"$TMP/cal3.json" 2>/dev/null
-check "a stored second-judge result is reused, never re-judged" '! grep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal3.json" >/dev/null'
+check "a stored second-judge result is reused, never re-judged" 'nogrep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal3.json" >/dev/null'
 : >"$FX/a.r2.judge2.sonnet__low.json"; : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --no-ledger >/dev/null 2>&1
 check "an empty second-judge result is judged again" '[ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 1 ] && [ -s "$FX/a.r2.judge2.sonnet__low.json" ]'
@@ -528,7 +536,7 @@ bash "$RUN" calibration "$FX" --judge2-model a --judge2-effort b --json --no-led
 check "colliding second-judge configurations each make their own calls" '[ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -c -- "--model a-b")" = 4 ] && [ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model a " | grep -c -- "--effort b")" = 4 ]'
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model a --judge2-effort b --json --no-ledger >"$TMP/cal-ab.json" 2>/dev/null
-check "an exact rerun of either configuration reuses its stored result" '! grep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal-ab.json" >/dev/null'
+check "an exact rerun of either configuration reuses its stored result" 'nogrep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal-ab.json" >/dev/null'
 : >"$TMP/fake.log"
 LQ_FAKE_TOKEN=SKIPPED-BANK bash "$RUN" calibration "$FX" --judge2-model haiku --json --no-ledger >/dev/null 2>&1
 rc=$?
@@ -548,6 +556,46 @@ bash "$RUN" calibration "$FX" --timeout 00 --json --no-ledger >/dev/null 2>"$TMP
 rc=$?
 check "calibration refuses --timeout 00" '[ "$rc" -eq 64 ] && grep -q -- "--timeout must be positive" "$TMP/cal-t00.err"'
 check "weighted kappa ignores a pair off the 1..5 scale" '[ "$(kap "[1,2,6]" "[1,2,3]")" = 1.0 ]'
+
+echo "6. runner polish (HIMMEL-4264)"
+# a: two runs in one second get distinct run ids (the clock is pinned to prove it)
+mkdir -p "$TMP/fdate"
+printf '#!/usr/bin/env bash\ncase "$*" in *%%Y%%m%%d*) echo 20260101T000000Z ;; *) exec "%s" "$@" ;; esac\n' "$(command -v date)" >"$TMP/fdate/date"
+chmod +x "$TMP/fdate/date"
+for i in 1 2; do
+  PATH="$TMP/fdate:$PATH" bash "$RUN" run --lane native --model m --tasks cr-fix --no-judge --out "$TMP/out-id$i" >"$TMP/id$i.log" 2>&1
+done
+check "two runs in the same second get distinct run ids" '[ -s "$TMP/out-id1/runs.jsonl" ] && [ -s "$TMP/out-id2/runs.jsonl" ] && [ "$(jq -r .run_id "$TMP/out-id1/runs.jsonl")" != "$(jq -r .run_id "$TMP/out-id2/runs.jsonl")" ]'
+# b: an over-60KB diff is cut with a visible marker; a small one is not
+: >"$TMP/fake.log.judge"
+LQ_FAKE_BIG=1 bash "$RUN" run --lane native --model m --tasks shell-red-green --out "$TMP/out-tr" >"$TMP/tr.log" 2>&1
+check "an over-60KB judge packet carries the truncation marker" 'grep -qF "[truncated at 60000 bytes]" "$TMP/out-tr/shell-red-green.judge-packet.md"'
+check "a small judge packet carries no truncation marker" '[ -s "$TMP/out10/shell-red-green.judge-packet.md" ] && nogrep -qF "[truncated" "$TMP/out10/shell-red-green.judge-packet.md"'
+# c: a sweep stopped on unknown cost exits non-zero and still writes its partial ledger row
+LQ_FAKE_NOJSON=1 bash "$RUN" run --lane native --model m --tasks shell-red-green,finding-verify --no-judge --out "$TMP/out-uc" >"$TMP/uc.log" 2>&1
+rc=$?
+check "a sweep stopped on unknown cost exits 76" '[ "$rc" -eq 76 ]'
+check "an unknown-cost stop keeps a partial eval-runs row" '[ "$(jq -s -r "map(select((.artifact // \"\") | contains(\"/out-uc/\")))[0].status" "$EL")" = partial ]'
+bash "$RUN" run --lane native --model m --tasks shell-red-green,finding-verify,cr-fix --max-usd 0.6 --no-judge --out "$TMP/out-cap" >"$TMP/cap.log" 2>&1
+rc=$?
+check "a budget-cap stop still exits 0" '[ "$rc" -eq 0 ] && grep -q "budget cap reached" "$TMP/cap.log"'
+# d: bank-after is read after the judge call
+rm -f "$TMP/h5seq" "$TMP/h5seq.atjudge"
+LQ_FAKE_5HSEQ="$TMP/h5seq" bash "$RUN" run --lane native --model m --tasks shell-red-green --out "$TMP/out-bk" >"$TMP/bk.log" 2>&1
+check "bank-after is read after the judge ran" '[ -s "$TMP/h5seq.atjudge" ] && awk -v a="$(jq -s -r ".[0].bank_5h_after" "$TMP/out-bk/runs.jsonl")" -v j="$(cat "$TMP/h5seq.atjudge")" "BEGIN{exit !(a + 0 > j + 0)}"'
+# e: the literal --model and --judge-model values never reach the judge; a lookalike (dot is not a wildcard) stays
+: >"$TMP/fake.log.judge"
+LQ_FAKE_SAY=' ran vendor/zz.v2, judged by judgemodel-q; vendorXzzYv2 stays.' \
+  bash "$RUN" run --lane native --model vendor/zz.v2 --judge-model judgemodel-q --tasks shell-red-green --out "$TMP/out-rd" >"$TMP/rd.log" 2>&1
+check "the literal --model and --judge-model values are redacted from the packet" '[ -s "$TMP/fake.log.judge" ] && nogrep -qF "vendor/zz.v2" "$TMP/fake.log.judge" && nogrep -qF "judgemodel-q" "$TMP/fake.log.judge"'
+check "redaction matches the model literally, not as a pattern" 'grep -qF "vendorXzzYv2" "$TMP/fake.log.judge"'
+# f: a grep error (rc 2) is not absence
+check "nogrep fails on a grep error and passes on no match" 'type nogrep >/dev/null 2>&1 && ! nogrep -q x "$TMP/no-such-file" && printf y >"$TMP/nogrep.t" && nogrep -q x "$TMP/nogrep.t"'
+# g: table takes a run directory with a space in its path
+mkdir -p "$TMP/sp ace" && cp "$TMP/out1/runs.jsonl" "$TMP/sp ace/runs.jsonl"
+bash "$RUN" table "$TMP/sp ace" >"$TMP/table-sp.md" 2>&1
+rc=$?
+check "table renders a run directory whose path has a space" '[ "$rc" -eq 0 ] && [ "$(grep -c "| native | claude-haiku-4-5 |" "$TMP/table-sp.md")" -ge 2 ]'
 
 echo "test-lane-quality: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
