@@ -47,13 +47,13 @@ _tracker_jira_get() {
     if ! raw=$(_tracker_jira_run get "$1" --json 2>"$err"); then
         msg=$(cat "$err" 2>/dev/null); rm -f "$err"
         # absent only on the CLI's own `jira: get <KEY> failed: HTTP 404: <body>` line (get.ts) whose body
-        # names "Issue does not exist" (Jira's errorMessages JSON, any case); a bare 404 or a proxy's HTML
+        # names "Issue does not exist" inside Jira's errorMessages JSON (any case); a bare 404 or a proxy's HTML
         # "Not Found" body is a failure (rc 1), not absence
         while IFS= read -r line; do
             case "$line" in
                 "jira: get $1 failed: HTTP 404: "*)
                     case $(printf '%s' "${line#"jira: get $1 failed: HTTP 404: "}" | tr '[:upper:]' '[:lower:]') in
-                        *"issue does not exist"*) return 3 ;;
+                        *'"errormessages"'*"issue does not exist"*) return 3 ;;
                     esac ;;
             esac
         done <<EOF_MSG
