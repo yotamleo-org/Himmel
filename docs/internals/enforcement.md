@@ -5533,8 +5533,11 @@ Subscription-authenticated `claude -p` / `--print` / `--bg` draws from the
   $100, Max 20x $200, Team up to $500 pooled; no rollover). They are spent
   only through an API key from a linked Console org, the credit page lists
   Claude Code as not covered, and the credits do not change Claude or Claude
-  Code usage limits. Whether `claude -p` run under such a key counts as
-  covered is unstated — tracked as a follow-up measurement.
+  Code usage limits. The Help Center adds that the credits do cover
+  `claude -p` and the Agent SDK when you run them with an API key from the
+  linked org; `claude -p` signed in with the plan, and runs started by the
+  GitHub Action, an IDE extension or the desktop app, still draw the plan's
+  usage limits.
 - HIMMEL-1748 measured the CLI path on 2026-08-11/12: `claude -p` drew from
   the same bank; a 48-chunk luna refresh exhausted it about 2.9 hours in and
   chunks 27-48 failed. Invocation shape is therefore not the cost question;
@@ -5543,6 +5546,7 @@ Subscription-authenticated `claude -p` / `--print` / `--bg` draws from the
 Sources:
 https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan,
 https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers,
+https://support.claude.com/en/articles/17154008,
 https://code.claude.com/docs/en/headless.md.
 
 **Rule for scripts in this repo:** scheduled or unattended sites route
