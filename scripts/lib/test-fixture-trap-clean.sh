@@ -6,7 +6,7 @@ set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 node - "$HERE/../.." <<'NODE'
 const fs=require('fs'), path=require('path'), os=require('os'), cp=require('child_process'), assert=require('assert');
-const repo=path.resolve(process.argv[2]), root=fs.mkdtempSync(path.join(os.tmpdir(),'fx-'));
+const repo=path.resolve(process.argv[2]), root=fs.mkdtempSync(path.join(fs.existsSync('/tmp')?'/tmp':os.tmpdir(),'fx-'));
 let passed=0, failed=0;
 function test(name, fn) { try { fn(); passed++; console.log('ok: '+name); } catch(e) { failed++; console.error('FAIL: '+name+' — '+e.message); } }
 function dirs(dir) {
@@ -29,7 +29,8 @@ try {
   ['scripts/handover/test-merge-on-green.sh','mog-'],
   ['scripts/test-lane-mirror-seed.sh','clean-sandbox.']
  ])test(suite+' EXIT removes every '+prefix+' fixture',()=>{
-  // Keep Unix socket fixture paths below sockaddr_un's pathname limit.
+  // Keep Unix socket fixture paths below sockaddr_un's pathname limit: the root is under /tmp,
+  // not os.tmpdir() (CI's TMPDIR is already /tmp/himmel-suite.XXXXXX deep).
   const scratch=path.join(root,String(passed+failed));
   const r=cp.spawnSync('bash',[path.join(repo,'scripts/lib/clean-sandbox.sh'),'--scratch',scratch,'--','bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
   assert.strictEqual(r.status,0,'suite exit '+r.status+'; '+(r.error||'')+'\n'+r.stdout+'\n'+r.stderr);
