@@ -1924,30 +1924,42 @@ env_split_option() { # env_split_option <raw command> - false only when
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
     local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
-    local -a nm=() nb=() pp=() pd=()
+    local -a nm=() nb=() pp=() hs=() fc=() fl=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
         return 0
     fi
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
+    # Pre-pass (HIMMEL-5356): hs[sg]=1 when segment sg names a shell word
+    # anywhere (so `sudo -u root bash` and `env X=1 bash` count) unless its
+    # command word is a pattern reader (`| grep bash`); pp[sg]=1 when sg's
+    # output flows through a `|`/`|&` chain into such a segment, so
+    # `echo ... | cat | bash` is read as a body too.
     i=0
     while [ "$i" -lt "$ST_N" ]; do
         j=$i
         i=$((i + 1))
         [ -z "${ST_RO[$j]}" ] || continue
         sg=${ST_S[$j]}
-        [ "${pd[sg]-}" != 1 ] || continue
         w=${ST_W[$j]}
-        case "$w" in [A-Za-z_]*=* | -* | env | command | exec | nohup | sudo | time) continue ;; esac
-        pd[sg]=1
-        case "${w##*/}" in
-            bash | sh | zsh | dash | ksh | mksh)
-                if [ "$sg" -gt 0 ]; then
-                    case "${ST_SEP[sg - 1]-}" in '|' | '|&') pp[sg - 1]=1 ;; esac
-                fi
-                ;;
-        esac
+        if [ -z "${fc[sg]-}" ]; then
+            case "$w" in [A-Za-z_]*=* | -* | env | command | exec | nohup | sudo | time) ;; *) fc[sg]=${w##*/} ;; esac
+        fi
+        case "${w##*/}" in bash | sh | zsh | dash | ksh | mksh) hs[sg]=1 ;; esac
+    done
+    sg=$((ST_NSEG - 1))
+    while [ "$sg" -gt 0 ]; do
+        if [ "${hs[sg]-}" = 1 ]; then
+            case "${fc[sg]-}" in
+                grep | egrep | fgrep | rg | ag | ack | awk | sed | wc | which | type | echo | printf) ;;
+                *) fl[sg]=1 ;;
+            esac
+        fi
+        if [ "${fl[sg]-}" = 1 ]; then
+            case "${ST_SEP[sg - 1]-}" in '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;; esac
+        fi
+        sg=$((sg - 1))
     done
     i=0
     while [ "$i" -lt "$ST_N" ]; do
