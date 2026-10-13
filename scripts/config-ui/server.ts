@@ -22,6 +22,7 @@ import { journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { legSync, readRoadmap } from "./roadmap";
 import { readVm, writeVm } from "./vm-config";
+import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 
 const LOOPBACK = "127.0.0.1";
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
@@ -175,6 +176,15 @@ function himmelctlBin(env: Env): string {
   return env.CONFIG_UI_HIMMELCTL ?? resolve(import.meta.dir, "../himmelctl/bin.js");
 }
 
+// HIMMEL-5491: the Jira CLI the Kanban writes shell to, by absolute path. CONFIG_UI_JIRA_CLI replaces it (the tests' stub);
+// a worktree has no untracked dist/, so a checkout under .claude/worktrees/ falls back to its primary's.
+function jiraBin(env: Env): string {
+  if (env.CONFIG_UI_JIRA_CLI) return env.CONFIG_UI_JIRA_CLI;
+  const own = join(CHECKOUT, "scripts/jira/dist/index.js");
+  const i = CHECKOUT.indexOf(`${sep}.claude${sep}worktrees${sep}`);
+  return existsSync(own) || i < 0 ? own : join(CHECKOUT.slice(0, i), "scripts/jira/dist/index.js");
+}
+
 export type Progress = { i: number; n: number; source: string };
 // HIMMEL-4807: one `himmel-probe {"i","n","source"}` line, validated; null for anything else.
 export function parseProbeLine(line: string): Progress | null {
@@ -297,6 +307,28 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: p.argv.join(" "), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
+  }
+
+  // HIMMEL-5491: a Kanban drop or theme select, written to Jira by the CLI under the same write lock and audit as an action.
+  async function roadmapWriteRoute(b: Record<string, unknown>): Promise<Response> {
+    const req = parseWrite(b);
+    if ("error" in req) return json({ error: req.error }, 400);
+    const lock = acquireLock(lockPath);
+    if ("busy" in lock) return json({ error: lock.busy }, 409);
+    const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
+    const childEnv = { ...env, JIRA_PROJECT_KEY: env.JIRA_PROJECT_KEY || "HIMMEL" };
+    let res: WriteResult | undefined;
+    try {
+      res = await applyWrite(req, { bin: jiraBin(env), mirrorDir,
+        run: (argv, timeoutMs) => runChild(argv, { cwd: root, env: childEnv, timeoutMs, onSpawn: lock.setGroup }) });
+    } catch { /* audited below as an error */ } finally { lock.release(); }
+    let audit = "ok";
+    try {
+      appendAudit(auditPath, { time: new Date(now()).toISOString(), action: req.action, target: req.key, value: req.value, argv: res?.argv ?? [], rc: res?.rc ?? null,
+        before: res?.before ?? null, after: res?.after ?? null, ...(!res || res.outcome ? { outcome: "error" as const } : {}) });
+    } catch { audit = "failed"; }
+    if (!res) return json({ error: "internal error", audit }, 500);
+    return json(redactOut({ ...res.body, audit }), res.status);
   }
 
   let idle: ReturnType<typeof setTimeout> | undefined;
@@ -422,7 +454,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       // HIMMEL-4620: the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm") return new Response("not found", { status: 404 });
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/roadmap/write") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -432,6 +464,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       try { b = JSON.parse(text); } catch { return json({ error: "bad json" }, 400); }
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
+      if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });
