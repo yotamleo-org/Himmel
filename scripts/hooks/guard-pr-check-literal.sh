@@ -1923,7 +1923,7 @@ env_split_option() { # env_split_option <raw command> - false only when
     # script, so its words are a body like an `eval`'s: `echo "env -S
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
-    local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
+    local i j e w sk sg b gd k depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=() pp=() hs=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
@@ -1968,6 +1968,29 @@ env_split_option() { # env_split_option <raw command> - false only when
             case "${ST_SEP[sg - 1]-}" in
                 '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;;
                 '(') fl[sg - 1]=1 ;;
+                ';' | '&' | '&&' | '||' | nl)
+                    # a list inside a group: the group's stdin reaches every
+                    # command in it, so the shell here reads the group's
+                    # input. Walk back to the opening `(` or `{` and flag it.
+                    gd=0
+                    k=$((sg - 1))
+                    while [ "$k" -ge 0 ]; do
+                        # shellcheck disable=SC2016
+                        case "${ST_SEP[k]-}" in
+                            '$(' | '`' | '<(' | '>(') break ;;
+                            ')') gd=$((gd + 1)) ;;
+                        esac
+                        [ "${fc[k]-}" != '}' ] || gd=$((gd + 1))
+                        if [ "${ST_SEP[k]-}" = '(' ] || [ "${fc[k]-}" = '{' ]; then
+                            if [ "$gd" -eq 0 ]; then
+                                fl[k]=1
+                                break
+                            fi
+                            gd=$((gd - 1))
+                        fi
+                        k=$((k - 1))
+                    done
+                    ;;
             esac
         fi
         sg=$((sg - 1))
