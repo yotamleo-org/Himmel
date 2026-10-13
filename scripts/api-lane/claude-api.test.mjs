@@ -481,3 +481,19 @@ test('HIMMEL-5433: a refresh holds the ledger lock and refuses while another wri
   assert.match(r.stdout, /ledger-locked-or-unwritable/);
   assert.equal(JSON.parse(readFileSync(f.paths.snapshot, 'utf8')).accounts.A.observed_at, f.snapshot.accounts.A.observed_at);
 });
+
+test('HIMMEL-5433: a refresh takes the ledger lock before it reads the snapshot', () => {
+  const f = fixture();
+  mkdirSync(`${f.paths.state}.lock`);
+  writeFileSync(f.paths.snapshot, '{ not json');
+  const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00'], { env: f.env, encoding: 'utf8' });
+  assert.match(r.stdout, /ledger-locked-or-unwritable/);
+});
+
+test('HIMMEL-5433: a grant date that does not exist on the calendar is refused, not rolled over', () => {
+  const f = fixture();
+  const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00', '2.00', '2026-01-01', '2026-02-30'],
+    { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /invalid-date/);
+});

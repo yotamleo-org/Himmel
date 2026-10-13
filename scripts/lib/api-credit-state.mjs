@@ -280,6 +280,11 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     configs(config);
     if (!own(config.accounts, account)) refuse('account-not-configured');
     const c = config.accounts[account];
+    // The ledger's own transaction lock, held across both reads and the write: no
+    // reservation, settlement or second refresh changes either file underneath it.
+    const ledgerPath = resolve(config.ledger_path);
+    const held = `${join(realpathSync(dirname(ledgerPath)), basename(ledgerPath))}.lock`;
+    try { mkdirSync(held, { mode: 0o700 }); lock = held; } catch { refuse('ledger-locked-or-unwritable'); }
     const path = env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json');
     const snapshot = existsSync(path) ? read(path) : { version: 1, accounts: {} };
     if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts)) refuse('invalid-snapshot');
@@ -287,8 +292,10 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     const s = { ...(prior ?? {}) };
     if (grant !== undefined) {
       const day = (d) => {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d ?? '')) refuse('invalid-date');
-        return Math.floor(Date.parse(`${d}T00:00:00Z`) / 1000);
+        const t = Date.parse(`${d}T00:00:00Z`);
+        // Date.parse rolls 2026-02-30 over to March: only a date that round-trips is real.
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') || !Number.isFinite(t) || new Date(t).toISOString().slice(0, 10) !== d) refuse('invalid-date');
+        return Math.floor(t / 1000);
       };
       // A new grant row: exclusive use of the org is the operator's attestation.
       Object.assign(s, { grant_usd: usd(money(grant)), starts_at: day(starts), expires_at: day(expires),
@@ -297,11 +304,6 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     Object.assign(s, { organization_id: c.organization_id, cycle_id: c.cycle_id });
     const left = money(remaining), granted = money(s.grant_usd);
     if (left > granted) refuse('unreconciled-amounts');
-    // The ledger's own transaction lock: no reservation or settlement moves the
-    // spend between this read and the snapshot write, and no second refresh races it.
-    const ledgerPath = resolve(config.ledger_path);
-    const held = `${join(realpathSync(dirname(ledgerPath)), basename(ledgerPath))}.lock`;
-    try { mkdirSync(held, { mode: 0o700 }); lock = held; } catch { refuse('ledger-locked-or-unwritable'); }
     const ledger = existsSync(ledgerPath) ? read(ledgerPath) : { version: 1, accounts: {} };
     ledgerCheck(ledger);
     const { spent } = totals(ledger.accounts[account]);
