@@ -108,11 +108,19 @@ check 'no output exits 1' 1 "$rc"
 check 'no output adds no tsv row' 2 "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
 
 # --- portability: no hardcoded user path ---------------------------------------
-if grep -nE '/home/[A-Za-z]|yotamleo|/run/user/[0-9]' "$LAUNCH" >/dev/null 2>&1; then
-    fail 'script hardcodes a user path'
+hardcode_re='/home/[A-Za-z]|yotamleo|/run/user/[0-9]'
+printf 'x=/%s/someone/y\n' home > "$WORK/positive-control.txt"
+if grep -qE "$hardcode_re" "$WORK/positive-control.txt"; then
+    pass 'portability matcher detects a hardcoded path (positive control)'
 else
-    if [ -r "$LAUNCH" ]; then pass 'script has no hardcoded user path'; else fail 'script missing'; fi
+    fail 'portability matcher misses a hardcoded path'
 fi
+grep -qE "$hardcode_re" "$LAUNCH"; g=$?
+case "$g" in
+    1) pass 'script has no hardcoded user path' ;;
+    0) fail 'script hardcodes a user path' ;;
+    *) fail "portability grep errored (rc=$g)" ;;
+esac
 
 if [ "$fails" -eq 0 ]; then printf 'ALL PASS\n'; exit 0; fi
 printf '%s FAILED\n' "$fails"

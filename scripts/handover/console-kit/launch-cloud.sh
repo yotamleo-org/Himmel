@@ -68,6 +68,8 @@ if [ -L "$rundir" ] || [ ! -O "$rundir" ]; then
     echo "launch-cloud: run dir $rundir is not a directory we own" >&2
     exit 2
 fi
+# mkdir -m leaves an existing dir's mode alone; make sure no one else can write.
+chmod 700 "$rundir"
 
 # per-invocation files: two launches of one ticket must not share a log.
 log="$rundir/cloud-$t.$$.log"
