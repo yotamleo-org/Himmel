@@ -30,7 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # HIMMEL-5513: sections moved to references/harvest-clips/ are part of the
 # runbook contract, so the greps below read the body plus its references.
-CMD_ALL="$(mktemp)" || exit 1
+CMD_ALL="$(mktemp "${TMPDIR:-/tmp}/harvest-clips-all.XXXXXX")" || exit 1
 trap 'rm -f "$CMD_ALL"' EXIT
 cat "$PLUGIN_DIR/commands/harvest-clips.md" "$PLUGIN_DIR"/references/harvest-clips/*.md > "$CMD_ALL"
 CMD="$CMD_ALL"
@@ -340,7 +340,7 @@ fi
 assert "harvest-clips.md documents Phase 4.5 injection screen" "yes" "$found"
 
 # 13b — triage runbook documents metadata-only handling for flagged clips.
-TRIAGE_CMD="$(mktemp)" || exit 1
+TRIAGE_CMD="$(mktemp "${TMPDIR:-/tmp}/triage-clips-all.XXXXXX")" || exit 1
 trap 'rm -f "$CMD_ALL" "$TRIAGE_CMD"' EXIT
 cat "$PLUGIN_DIR/commands/triage-clips.md" "$PLUGIN_DIR"/references/triage-clips/*.md > "$TRIAGE_CMD"
 # (msys grep quirk: -i + -F SIGABRTs on non-ASCII files — use exact case)

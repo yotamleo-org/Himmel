@@ -208,7 +208,7 @@ elif [ "$EXPLICIT" -eq 0 ]; then
 fi
 
 ALLOWLIST="${SKILL_LINT_SIZE_ALLOWLIST:-$_root/scripts/lint/skill-size-allowlist.txt}"
-ALLOWED=""   # newline-separated repo-relative paths exempt from the size check
+ALLOWED=$'\n'   # newline-delimited repo-relative paths exempt from the size check
 if [ -f "$ALLOWLIST" ]; then
     while IFS= read -r _al || [ -n "$_al" ]; do
         case "$_al" in ''|'#'*) continue ;; esac
@@ -239,7 +239,9 @@ while IFS= read -r f && IFS= read -r content_src; do
 
     _rel="${f#"$_root"/}"
     _bytes="$(wc -c < "$content_src" | tr -d '[:space:]')"
-    if ! printf '%s' "$ALLOWED" | grep -qxF -- "$_rel"; then
+    _allowed=0
+    case "$ALLOWED" in *$'\n'"$_rel"$'\n'*) _allowed=1 ;; esac
+    if [ "$_allowed" -eq 0 ]; then
         if [ "$_bytes" -ge "$FAIL_BYTES" ]; then
             file_report="$file_report  [size-fail] body is $_bytes bytes (fail threshold $FAIL_BYTES) — split into a core body plus on-demand reference files"$'\n'
             file_issues=$((file_issues + 1))
