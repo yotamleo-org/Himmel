@@ -1062,6 +1062,10 @@ assert_rc "5412 Grep ~/.claude/projects"        2 "$(run_case "$(j_grep '~/.clau
 assert_rc "5412 Grep dotted slug dir"           2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo.example')")"
 assert_rc "5412 Grep memory/.. escape"          2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/..')")"
 assert_rc "5412 Grep tool-results dir"          2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e/tool-results')")"
+# CodeRabbit: the memory exemption is one slug deep, not any `memory` below projects.
+assert_rc "5412 Grep session-nested memory"     2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e/memory')")"
+assert_rc "5412 Grep session-nested memory .md" 2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e/memory/x.md')")"
+assert_rc "5412 Grep projects/./memory"         2 "$(run_case "$(j_grep '/home/u/.claude/projects/./memory')")"
 assert_rc "5412 ctl Grep memory dir"          0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory')")"
 assert_rc "5412 ctl Grep memory .md"            0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
 assert_rc "5412 bun Bun.env"                    2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"

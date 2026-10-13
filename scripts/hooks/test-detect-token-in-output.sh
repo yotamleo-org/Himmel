@@ -124,6 +124,36 @@ rc=$?
 s7=$(find "$TMP/alerts" -name 's7__*' 2>/dev/null)
 if [ "$rc" = 0 ] && [ -z "$s7" ]; then pass "missing alert lib leaves no sentinel"; else fail "missing lib sentinel (rc=$rc)"; fi
 
+# 11b. A claim whose hook was killed before the send (empty sentinel older than
+# 2 minutes) is reclaimed and paged; a confirmed one ("sent") is not.
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/usr/bin/env bash\nprintf "%%s\\t%%s\\n" "$1" "$2" >>"$SENT_LOG"\n' >"$TMP/send.sh"
+run_hook "$(j_post Bash s9 "T=$TOK_GHP")"
+s9=$(find "$TMP/alerts" -name 's9__*' 2>/dev/null)
+before=$(sent_count)
+if [ -n "$s9" ] && [ "$(cat "$s9")" = sent ]; then pass "sent DM confirms its sentinel"; else fail "sentinel not confirmed"; fi
+touch -t 200001010000 "$s9"
+run_hook "$(j_post Bash s9 "T=$TOK_GHP")"
+if [ "$(sent_count)" = "$before" ]; then pass "confirmed stale sentinel still suppresses"; else fail "confirmed sentinel re-paged"; fi
+: >"$s9"; touch -t 200001010000 "$s9"
+run_hook "$(j_post Bash s9 "T=$TOK_GHP")"
+if [ "$(sent_count)" = "$((before + 1))" ] && [ "$(cat "$s9")" = sent ]; then
+    pass "abandoned claim is reclaimed and paged"
+else fail "abandoned claim (count=$(sent_count), before=$before)"; fi
+: >"$s9"
+run_hook "$(j_post Bash s9 "T=$TOK_GHP")"
+if [ "$(sent_count)" = "$((before + 1))" ]; then pass "fresh in-flight claim suppresses"; else fail "fresh claim re-paged"; fi
+
+# 11c. Fired as PostToolUseFailure: the output names that event.
+run_hook "$(jq -cn --arg r "T=$TOK_GHP" '{hook_event_name:"PostToolUseFailure",tool_name:"Bash",session_id:"s10",tool_input:{command:"x"},error:$r}')"
+if [ "$(jq -r '.hookSpecificOutput.hookEventName' "$TMP/out" 2>/dev/null)" = PostToolUseFailure ]; then
+    pass "PostToolUseFailure answered with its own event name"
+else fail "failure event name: $(cut -c1-200 "$TMP/out")"; fi
+run_hook "$(jq -cn --arg r "T=$TOK_GHP" '{hook_event_name:"Bogus",tool_name:"Bash",session_id:"s11",tool_response:$r}')"
+if [ "$(jq -r '.hookSpecificOutput.hookEventName' "$TMP/out" 2>/dev/null)" = PostToolUse ]; then
+    pass "unknown event name falls back to PostToolUse"
+else fail "bogus event name: $(cut -c1-200 "$TMP/out")"; fi
+
 # 12. The sentinel never holds the token.
 # grep exits 1 only on a clean "no match"; an error (2, a missing dir) fails.
 grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"

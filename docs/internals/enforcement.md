@@ -4573,7 +4573,9 @@ Spec: `scripts/hooks/test-detect-dirty-primary.sh`.
 
 ### `detect-token-in-output.sh` — GitHub token in a tool call or result (HIMMEL-5412)
 
-PostToolUse on every tool (`*` here, `.*` in `.codex/hooks.json`). The
+PostToolUse and PostToolUseFailure on every tool (`*` here; PostToolUse `.*`
+in `.codex/hooks.json`, which has no failure event), so a failed call's
+error text is scanned too. The
 DETECTION half of the HIMMEL-5412 pair; `block-read-secrets.sh` is the
 PREVENTION half. It scans the whole hook input as text for the gitleaks GitHub
 shapes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` + 36 alphanumerics, `github_pat_` +
@@ -4583,7 +4585,9 @@ one Telegram DM through `merge-block-alert.sh`'s sender, naming the tool, the
 token kind and the variable it was assigned to when the text shows one, never
 the value. One DM per (session, token); the sentinel under
 `~/.himmel/state/token-in-output` is a sha256 prefix, never the token, and a
-failed send removes it so a later call retries. Fail-open, always exits 0; the
+failed send removes it so a later call retries; a sent DM writes `sent` into
+it, and an empty one older than 2 minutes (a hook killed mid-send) is
+reclaimed. Fail-open, always exits 0; the
 clean path is a bash regex on stdin and forks nothing.
 
 Spec: `scripts/hooks/test-detect-token-in-output.sh` (fixture tokens are built

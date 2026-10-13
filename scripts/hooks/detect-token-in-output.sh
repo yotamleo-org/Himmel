@@ -86,15 +86,20 @@ msg="TOKEN-IN-OUTPUT: ${what} (${desc}) appeared in a ${tool} tool call or resul
 ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your console or the operator now (tool ${tool}; ${desc}; never the value)."
 
 if command -v jq >/dev/null 2>&1; then
-    jq -cn --arg m "$msg" --arg c "$ctx" \
-        '{systemMessage: $m, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}'
+    # Wired for PostToolUse and PostToolUseFailure: answer with the event it fired on.
+    event=$(jq -r '.hook_event_name // "PostToolUse"' <<<"$input" 2>/dev/null) || event="PostToolUse"
+    case "$event" in PostToolUse|PostToolUseFailure) ;; *) event="PostToolUse" ;; esac
+    jq -cn --arg m "$msg" --arg c "$ctx" --arg e "$event" \
+        '{systemMessage: $m, hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}'
 else
     echo "$msg" >&2
 fi
 
 # One DM per (session, token): page when any token is new in this session. A
 # sentinel claimed here is released again if the DM cannot be sent (no alert
-# library, no chat id, a failed send), so a later call retries it.
+# library, no chat id, a failed send), so a later call retries it. A sent DM
+# writes "sent" into its sentinel; an empty one older than 2 minutes is a claim
+# whose hook was killed mid-send (the 60s hook timeout), so it is reclaimed.
 dir="${TOKEN_ALERT_DIR:-$HOME/.himmel/state/token-in-output}"
 mkdir -p "$dir" 2>/dev/null || exit 0
 claimed=()
@@ -108,6 +113,9 @@ for token in "${tokens[@]}"; do
     hash="${hash%% *}"
     [ -n "$hash" ] || continue
     key="${session:-nosession}__${hash:0:32}"
+    if [ -f "$dir/$key" ] && [ ! -s "$dir/$key" ] && [ -n "$(find "$dir/$key" -mmin +2 2>/dev/null)" ]; then
+        rm -f "$dir/$key" 2>/dev/null
+    fi
     if ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then claimed+=("$dir/$key"); fi
 done
 [ "${#claimed[@]}" -gt 0 ] || exit 0
@@ -120,5 +128,9 @@ if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     chat=$(_mba_operator_chat) || chat=""
     if [ -n "$chat" ] && _mba_send "$chat" "$msg" >/dev/null 2>&1; then sent=1; fi
 fi
-if [ "$sent" = 0 ]; then rm -f "${claimed[@]}" 2>/dev/null; fi
+if [ "$sent" = 0 ]; then
+    rm -f "${claimed[@]}" 2>/dev/null
+else
+    for f in "${claimed[@]}"; do printf 'sent\n' > "$f" 2>/dev/null; done
+fi
 exit 0

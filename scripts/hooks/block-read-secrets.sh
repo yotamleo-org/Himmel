@@ -1019,8 +1019,13 @@ is_transcript_tree() {
         *) return 1 ;;
     esac
     case "/$p/" in */../*) return 0 ;; esac
-    case "$p" in
-        */.claude/projects/*/memory|*/.claude/projects/*/memory/*) return 1 ;;
+    # The exemption is exactly <projects>/<one slug>/memory: a glob `*` would
+    # span `/` and exempt a `memory` dir below a session directory.
+    local rel slug
+    rel="${p#*/.claude/projects/}"
+    slug="${rel%%/*}"
+    case "${rel#"$slug"}" in
+        /memory|/memory/*) [ -n "$slug" ] && [ "$slug" != . ] && return 1 ;;
     esac
     return 0
 }
