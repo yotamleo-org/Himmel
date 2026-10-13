@@ -707,7 +707,7 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 # timed RC LABEL CMD — assert the exit code and a wall time under 1 s
 # (EPOCHREALTIME is bash 5; without it, SECONDS bounds it to 2 s).
 timed() {
-    local want=$1 label=$2 input t0 t1 rc ms
+    local want=$1 label=$2 input t0 t1 rc ms budget=${4:-1000}
     input=$(j_bash "$3")
     t0=${EPOCHREALTIME:-$SECONDS}
     rc=$(run_case "$input")
@@ -719,10 +719,10 @@ timed() {
         ms=$(( (t1 - t0) * 1000 ))
         if [ "$ms" -le 1000 ]; then ms=0; fi
     fi
-    if [ "$ms" -lt 1000 ]; then
+    if [ "$ms" -lt "$budget" ]; then
         echo "PASS $label in ${ms}ms"
     else
-        echo "FAIL $label took ${ms}ms (budget 1000ms)"
+        echo "FAIL $label took ${ms}ms (budget ${budget}ms)"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -732,7 +732,10 @@ timed 2 'deny: 700 sh words, then a nested -c' "echo ${pad_sh}; bash -ec \"qmd q
 timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu\"ery x'"
 timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}"
 timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}"
-timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}"
+# HIMMEL-5328: this row holds a `$`, so guard_expansion_recheck re-feeds the
+# hook once on the stripped text (about 2x). Measured: 812ms idle locally,
+# 1809ms on the loaded CI shard (PR 2506, run 38363586521); budget = 2x CI.
+timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" 3600
 
 # HIMMEL-4505: stdin-fed residuals. A shell option's argument (-o errexit,
 # -O extglob, --rcfile f) is no program operand, at/batch read their job from

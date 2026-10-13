@@ -912,7 +912,10 @@ EOF
                 _lta_body=""
                 # cygpath the win path back to the MSYS view so we can read it.
                 if command -v cygpath >/dev/null 2>&1 && [ -n "$_lta_bat" ]; then
-                    _lta_bat=$(cygpath -u "$_lta_bat" 2>/dev/null || printf '%s' "$_lta_bat")
+                    # HIMMEL-1370: a cygpath that exits 0 with EMPTY output must
+                    # not blank the path -- keep the raw one unless it converted.
+                    _lta_conv=$(cygpath -u "$_lta_bat" 2>/dev/null) || _lta_conv=""
+                    [ -n "$_lta_conv" ] && _lta_bat=$_lta_conv
                 fi
                 [ -f "$_lta_bat" ] && _lta_body=$(tr -d '\r' < "$_lta_bat")
                 if [ -z "$_lta_body" ]; then

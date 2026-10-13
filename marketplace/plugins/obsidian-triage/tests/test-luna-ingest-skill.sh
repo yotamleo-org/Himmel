@@ -157,7 +157,9 @@ for marker in \
     "### B-issue" \
     "bitbucket.org" \
     "source_type: bitbucket"; do
-    if grep -qF "$marker" "$SKILL"; then
+    # The branch body lives in references/luna-ingest/bitbucket-branch.md (HIMMEL-5513);
+    # the SKILL.md body keeps the heading and the read-on-demand pointer.
+    if grep -qF "$marker" "$SKILL" "$PLUGIN_DIR/references/luna-ingest/bitbucket-branch.md"; then
         present=yes
     else
         present=no

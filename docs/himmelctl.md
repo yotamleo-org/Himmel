@@ -22,7 +22,7 @@ the ones those pages only mention in passing.
 | `uninstall` | yes | Offboard himmel; code only unless `--purge-state` |
 | `scope` | yes (`set`) | Read or switch the install scope |
 | `profile` | yes (`lean`/`full`/`enable`/`disable`) | Inspect or toggle the plugin profile (same engine as `/profile`) |
-| `config` | yes (`set`) | Toggle capabilities: initiative legs, lanes, opt-in hooks |
+| `config` | yes (`set`) | Toggle capabilities: initiative auto-ship steps, lanes, opt-in hooks |
 | `deps` | `ensure`/`upgrade` only | Check, install or bump the declared toolchain |
 | `gaps` | no | What this setup lacks relative to a reference install profile |
 | `trust` | yes | Wire or unwire the trust shadow ledger's hook entries |
@@ -117,7 +117,7 @@ himmelctl config set <path> on|off
 
 | Path | Controls |
 |---|---|
-| `initiative.<leg>` | Initiative legs (`HIMMEL_INITIATIVE` steps) |
+| `initiative.<leg>` | Initiative auto-ship steps (`HIMMEL_INITIATIVE` steps) |
 | `lanes.<id>` | Delegation lanes |
 | `hooks.plugin.<name>` | Opt-in hook plugins; set-only, runs `claude plugin enable` or `disable` |
 

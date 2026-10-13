@@ -41,7 +41,7 @@ runs, first-deny-wins, a crashing must-run member denies instead of failing
 open, and budget-aware per-member timeouts within the entry's bound:
 
 - #1310 — every deny-capable member is must-run
-- #1295 — sub-floor member timeouts, entry-deadline bounding for advisory members
+- #1295 — sub-floor member timeouts, entry-deadline bounding for warn-only members
 - #1259 — budget-starved must-run guards get their own evaluation window
 - #1251 — a crashing must-run member denies rather than failing open
 - #667 — an EPIPE on stdin write propagates the child's real status

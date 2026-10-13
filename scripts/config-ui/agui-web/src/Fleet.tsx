@@ -103,6 +103,8 @@ export function useFilters(): [ViewFilters, (f: ViewFilters) => void] {
   }];
 }
 export const filtering = (f: Filters) => f.lanes.length > 0 || f.states.length > 0 || f.text.trim() !== "";
+// HIMMEL-5504: display name for a session role; the role value itself (console, leg) is a parsed key and stays.
+export const roleLabel = (role: string) => role === "console" ? "supervisor session" : role === "leg" ? "worker session" : role;
 
 function Section({ id, title, count, initial, force = false, className, children }: { id: string; title: string; count: number; initial: boolean; force?: boolean; className?: string; children: ReactNode }) {
   const [open, setOpen] = useOpen(id, initial);
@@ -153,7 +155,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {unavailable && <p className="run-error" role="alert">The process census failed: this list is not the fleet.</p>}
         {fleet?.census === "degraded" && <p className="quiet">Some sessions could not be read; the list may be incomplete.</p>}
         {!fleet && !error && <div className="fleet-skel" aria-hidden="true"><i /><i /><i /></div>}
-        {selected && fleet && !known && <p className="quiet">Console not found: {selected}. <a href={`#t=${encodeURIComponent(token)}`}>The whole fleet</a></p>}
+        {selected && fleet && !known && <p className="quiet">Supervisor session not found: {selected}. <a href={`#t=${encodeURIComponent(token)}`}>The whole fleet</a></p>}
         {s.attention.length > 0 && <Section id="attention" title="Needs attention" count={counts.attention} initial={true} className="fleet-attention">
           <Attention items={s.attention} token={token} now={now} />
         </Section>}
@@ -260,7 +262,7 @@ function Orphans({ sessions, procs, unread, token, now }: { sessions: ReturnType
         <td className="fleet-action">{p.owner === "orphan" ? `close: kill ${p.pid}` : "ask the owning session to TaskStop"}</td>
       </tr>)}</tbody>
     </table>}
-    {procs.length > 0 && <p className="quiet">Shell-tool wrappers older than 30 minutes (TICK_ORPHAN_MIN), as the console tick reports them.</p>}
+    {procs.length > 0 && <p className="quiet">Shell-tool wrappers older than 30 minutes (TICK_ORPHAN_MIN), as the supervisor-session tick reports them.</p>}
     {unread && <p className="quiet">The process-orphan inventory could not be read this poll.</p>}
   </>;
 }
@@ -276,7 +278,7 @@ function Finished({ entries, token, now }: { entries: ReturnType<typeof fleetSec
       return <li key={r.name} className={`fleet-row finished ${CLS[r.state]}`} id={rowId(r.name)} tabIndex={-1}>
         <span className="fleet-who">
           <NameLink row={r} token={token} />
-          <span className="fleet-role">{[r.role === "console" && hops.length > 0 ? "console chain" : r.role, r.ticket].filter(Boolean).join(" · ")}</span>
+          <span className="fleet-role">{[r.role === "console" && hops.length > 0 ? "supervisor sessions" : roleLabel(r.role), r.ticket].filter(Boolean).join(" · ")}</span>
           {hops.length > 0 && <span className="fleet-hops">{`${hops.length + 1} hops: `}{hops.map((h, i) => <span key={h.name}>{i > 0 && ", "}<HopLink row={h} token={token} /></span>)}</span>}
         </span>
         <span className="fleet-meta">
@@ -366,7 +368,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
       </div>
       {open && <div className="fleet-detail">
         <div className="fleet-detail-head">
-          <span className="fleet-role">{[row.role, row.model, row.lane && `${row.lane} bank`].filter(Boolean).join(" · ")}</span>
+          <span className="fleet-role">{[roleLabel(row.role), row.model, row.lane && `${row.lane} usage budget`].filter(Boolean).join(" · ")}</span>
           {href && <a className="fleet-runlink" href={href} {...(row.run ? {} : { target: "_blank", rel: "noreferrer" })}>{row.run ? "open run page →" : "open cloud session →"}</a>}
         </div>
         <div className="fleet-status">
@@ -395,7 +397,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           {row.usage?.fill != null
             ? <span className="fleet-context">{`context ${row.usage.fill}% of ${k(row.usage.ceiling)}`}<Meter fill={row.usage.fill} /></span>
             : <span className="fleet-context">{row.cloud ? "tokens not measured (cloud)" : row.usage ? "context unknown (no trusted window)" : "context not measured"}</span>}
-          {row.role === "leg" && <a className="fleet-link" href={pageHref({ here: "agui", token, id: "health" })}>legs and bank on Health</a>}
+          {row.role === "leg" && <a className="fleet-link" href={pageHref({ here: "agui", token, id: "health" })}>worker sessions and usage budget on Health</a>}
           <details className="fleet-more">
             <summary>{[row.agents.length > 0 && plural(row.agents.length, "subagent"), "usage"].filter(Boolean).join(" · ")}</summary>
             {row.agents.length > 0 && (

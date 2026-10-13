@@ -2,7 +2,7 @@
 
 Billing counterpart to the `claude -p` rule in
 [enforcement.md](enforcement.md#claude-invocation-billing). The lane
-spends a Console organization's API credit, not the subscription bank. It is
+spends a Console organization's API credit, not the subscription usage budget. It is
 **OFF by default** and has exactly one entry point:
 `scripts/api-lane/claude-api.sh`.
 
@@ -15,7 +15,7 @@ first present wins: cloud-provider flags (`CLAUDE_CODE_USE_BEDROCK|VERTEX|FOUNDR
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `apiKeyHelper`,
 `CLAUDE_CODE_OAUTH_TOKEN`, profile/federation, subscription OAuth.
 Not proven without a live call: promotional-grant-first debit and the exact
-stop point of `--max-budget-usd`. A live proof needs the console's GO.
+stop point of `--max-budget-usd`. A live proof needs the supervisor session's GO.
 
 ## Does the credit cover this lane (answered from the docs, 2026-10-13)
 
@@ -50,8 +50,8 @@ $199.91 to $199.90 of $200. The spend landed on the credit, not on a card.
 Account A had a second $200 grant that expired unused on 2026-10-13.
 
 Should the lane spend it by default? Not in this change: the lane stays OFF
-(`HIMMEL_API_LANE` unset) until its switch-on leg (HIMMEL-4987). The credit
-does not roll over, so once that leg turns it on, `HIMMEL_API_ACCOUNT=auto`
+(`HIMMEL_API_LANE` unset) until its switch-on worker session (HIMMEL-4987). The credit
+does not roll over, so once that worker session turns it on, `HIMMEL_API_ACCOUNT=auto`
 spends the grant that expires first, inside each account's own cap.
 
 ## What the launcher enforces
@@ -63,7 +63,7 @@ spends the grant that expires first, inside each account's own cap.
 | `HIMMEL_API_KEY_ID`, when set, must equal the roster `key_id` of that account | `claude-api.sh`, `roster.mjs` |
 | Conflicting provider flags / `ANTHROPIC_AUTH_TOKEN` / openrouter or claudex lane: refuse | `claude-api.sh` |
 | `-p` only; caller flags are an allowlist (`-p`, `--model`, `--permission-mode`, `--max-budget-usd`, `--output-format json`, `--effort`), so no `--bg`, `--cloud`, `--daemon`, bypass or skip-permissions; `--model` and `--effort` values must not start with a dash; `--permission-mode` is one of `default`, `plan`, `acceptEdits`, `dontAsk`, `auto` (exact case, never the bypass mode); explicit `--permission-mode`, `--model`, `--max-budget-usd` | `claude-api.sh` |
-| Bank gate is the API credit row only (`CADENCE_BANK_LANE=api`, opt-in via `HIMMEL_API_LANE=on`); the native bank is never read, so an exhausted native bank does not block and a funded one does not rescue an empty API account | `bank-preflight.sh` |
+| Usage budget gate is the API credit row only (`CADENCE_BANK_LANE=api`, opt-in via `HIMMEL_API_LANE=on`); the native subscription usage budget is never read, so an exhausted native subscription usage budget does not block and a funded one does not rescue an empty API account | `bank-preflight.sh` |
 | Reserve the full budget first; settle only on a verified result with `total_cost_usd`, else mark `unknown` and keep the reservation | `api-credit-state.mjs`, `outcome.mjs` |
 | `auto` picks the account whose grant expires first among those with room for the whole budget under their own cap; a caller key is refused under `auto`; no subscription fallback: a refusal is final | `claude-api.sh`, `api-credit-state.mjs pick` |
 | Child env: OAuth, profile and federation vars removed, `ANTHROPIC_BASE_URL` pinned to `https://api.anthropic.com`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (live probe 2026-10-13, claude 2.1.296: Bash runs inside the bwrap sandbox) | `claude-api.sh` |
@@ -100,7 +100,7 @@ ledger lock.
 `HIMMEL_API_CREDIT_CONFIG` can still point at a second config with its own
 ledger; pinning it is HIMMEL-5444.
 
-## Proposed CLAUDE.md line (for the operator or console to apply)
+## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 
 > API credit lane: `scripts/api-lane/claude-api.sh` is the only API-key launch
 > path, OFF unless `HIMMEL_API_LANE=on`. Never export `ANTHROPIC_API_KEY` into a
@@ -125,6 +125,6 @@ root breaks node there, so launch from a scratch directory, as
 `measure-credit.sh` does, never from a checkout root.
 
 Wiring `strip-env.sh` into the lane launchers (`claude-lane.sh`, `lanes.json`)
-and a `backends.json` row are outside this PR's write scope and need a console
+and a `backends.json` row are outside this PR's write scope and need a supervisor session
 ruling. Until then `claude-headless.sh` already strips `ANTHROPIC_*` for native
 children.

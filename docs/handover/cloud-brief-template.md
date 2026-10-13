@@ -248,6 +248,10 @@ completes-ticket: yes|no
 claude --cloud "$(cat cloud-brief-HIMMEL-<n>.md)" --permission-mode auto
 ```
 
+A console launches it through the kit instead, which opens the session in its
+own konsole window and appends it to the bucket's `cloud-sessions.tsv`:
+`bash scripts/handover/console-kit/launch-cloud.sh <n>`.
+
 Steering a running session is headless (`claude -p "<msg>" --cloud <id>`) and
 draws the same bank as interactive use (see CLAUDE.md, "Claude invocation
 billing"). There is no completion callback: the shepherd polls the PR with `gh`.
