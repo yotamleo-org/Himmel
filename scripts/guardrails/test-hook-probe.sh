@@ -187,11 +187,21 @@ else
     fail "expected rc=2 with a no-PreToolUse message; rc=$rc out=$out"
 fi
 
+echo "== a non-chain command runs on the entry's own timeout, not the member window =="
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"sleep 1.5"}]}]}}\n' > "$TMP/settings-nonchain-slow.json"
+out=$(RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=500 probe --settings "$TMP/settings-nonchain-slow.json" --tool Bash --command 'git status'); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" 'passthrough rc=0' && ! grepq "$out" ' error '; then
+    pass "non-chain command not cut short by the member window"
+else
+    fail "expected passthrough rc=0 for a 1.5s non-chain command; rc=$rc out=$out"
+fi
+
 echo "== --chain-file is not a --chain entry =="
-printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf ok # --chain-file %s/list.txt"}]}]}}\n' "$TMP" > "$TMP/settings-chainfile.json"
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","timeout":10,"command":"printf ran > %s/chainfile-ran # --chain-file %s/list.txt"}]}]}}\n' "$TMP" "$TMP" > "$TMP/settings-chainfile.json"
 out=$(probe --settings "$TMP/settings-chainfile.json" --tool Bash --command 'git status'); rc=$?
-if ! grepq "$out" "^-file " && ! grepq "$out" "list.txt"; then
-    pass "--chain-file produced no chain member rows"
+# Positive evidence: the entry ran as one whole command (the sentinel exists), rc 0, no chain rows.
+if [ "$rc" -eq 0 ] && [ -f "$TMP/chainfile-ran" ] && grepq "$out" '^PROBE ALLOW' && ! grepq "$out" "^-file " && ! grepq "$out" "list.txt"; then
+    pass "--chain-file ran as one command, no chain member rows"
 else
     fail "--chain-file was tokenised as a chain; rc=$rc out=$out"
 fi

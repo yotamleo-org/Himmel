@@ -227,8 +227,11 @@ export function probe({ settings, settingsPath, payload, cwd, bash, scratch }) {
           continue;
         }
       }
-      // The launcher's window (grows with the payload), capped by the entry's own.
-      const window = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberTimeoutMs(Buffer.byteLength(input)), entryMs));
+      // A chain member gets the launcher's window (grows with the payload),
+      // capped by the entry's own; a non-chain command runs on the entry's alone.
+      const window = member
+        ? Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberTimeoutMs(Buffer.byteLength(input)), entryMs))
+        : entryMs;
       const result = spawnSync(bash, member ? [member] : ['-c', entry.command], {
         input, cwd, env, encoding: 'utf8', killSignal: 'SIGKILL', timeout: window, maxBuffer: MEMBER_MAX_BUFFER,
       });
