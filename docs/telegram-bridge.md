@@ -76,9 +76,8 @@ The first word names a console only when that inbox already exists; otherwise
 it is part of the bare text. `/consoles` lists live names, heartbeat timestamps,
 and bucket/project (older consoles without launch metadata show `unknown`).
 The first word also selects a console by a unique fragment of its name, and a
-message to an armed console that is busy is queued rather than dropped
-(HIMMEL-5125). `/console`, the fleet verbs and `/lockdown` accept any letter
-case and the `/verb@botname` form (HIMMEL-5148, HIMMEL-5150); the auto ops stay
+message to an armed console that is busy is queued rather than dropped. `/console`, the fleet verbs and `/lockdown` accept any letter
+case and the `/verb@botname` form; the auto ops stay
 strict.
 
 Each console's first waiter arm queues a DM: “Console <name> is live — just
@@ -184,7 +183,7 @@ taken over, `/console` free text, `/mergepub` and `/cr-grant-delta` remain
 one-factor operator authority until lockdown; this slice adds no approval
 capability or second factor.
 
-**Break-glass ops (HIMMEL-5047).** For an operator away from the station:
+**Break-glass ops.** For an operator away from the station:
 `/station-status`, `/revert-main <pr>`, `/repin-hooks`,
 `/launch-leg <N-label> [--hook-bypass]`, `/cr-reset <pr>`,
 `/close-wrapped [<N-label>]`, `/relaunch-console [<name>]` and
@@ -197,18 +196,18 @@ private chat with the bot, never in a group.
 - `/revert-main` reverts only the PR that is main's current HEAD, and merges
   its revert with `--admin`: that is break-glass, and it is
   operator-initiated, confirm-coded and audited.
-- `/launch-leg --hook-bypass` narrowly reverses HIMMEL-4905 for legs. It
+- `/launch-leg --hook-bypass` narrowly reverses the leg hook-bypass lockout. It
   exports only `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1`, and only for a
   sha256-recorded launcher; a manifest leg is refused with it.
 - Lockout recovery is `/revert-main <pr>` then `/repin-hooks`.
-- `/allow-rule <id>` (HIMMEL-5048) adds one pre-reviewed permission rule for a
+- `/allow-rule <id>` adds one pre-reviewed permission rule for a
   command shape the classifier keeps denying. The rule text comes only from the
   checked-in registry `scripts/telegram/allow-rules.json`, never from the
   message; an unknown id is refused. It writes the primary checkout's untracked
   `.claude/settings.local.json` (never the tracked `settings.json`), is
   idempotent, and backs the old file up before writing.
 
-Full table: [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops-himmel-5047).
+Full table: [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops).
 
 After deploying an updated bridge, restart it **at the station** on Linux:
 `bash scripts/telegram/restart-bridge.sh` (do not start a second poller).

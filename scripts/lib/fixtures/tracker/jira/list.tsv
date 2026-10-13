@@ -1,0 +1,3 @@
+HIMMEL-5384	Task	In Progress	One source of truth for CLAUDE.md and AGENTS.md in himmel and luna, with a drift check
+HIMMEL-5284	Task	In Progress	Guard gap G11: state and vault repos get a client-side force-push floor (GitHub protection unavailable)
+HIMMEL-5275	Task	In Progress	Guard gap G2: a destructive-verb floor for gh (api -X DELETE/PUT/PATCH incl. branch protection removal, secret set, workflow edits, repo archive/edit, admin merges of pull requests)

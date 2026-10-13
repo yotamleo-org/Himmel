@@ -64,7 +64,7 @@ The harness uses `sed` + `eval` to extract only the cache functions section from
 
 ---
 
-## Bottom-row period (HIMMEL-617)
+## Bottom-row period
 
 The `all` bottom row is period-configurable via `HIMMEL_STATUSLINE_PERIOD`:
 

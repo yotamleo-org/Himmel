@@ -333,5 +333,18 @@ t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-f
 t25_got=$(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' -- scripts/cr scripts/handover ':!*test-*' | sort | tr '\n' ' ' | sed 's/ $//')
 check "$t25_got" "$t25_want" "T25 hand-off entry set matches the pinned list ($t25_n found)"
 
+# HIMMEL-5393 (c): every `env -u` rev-parse/ls-files site scrubs the FULL
+# repository-redirecting set, not the original three/four - GIT_OBJECT_DIRECTORY
+# or GIT_CONFIG_COUNT poisoned the same resolve the F4 trio did.
+t26_bad=0
+# shellcheck disable=SC2016
+t26_sites=$(grep -c '"$_ah_env" -u ' "$DIR/anchor-handoff.sh")
+for t26_v in GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT; do
+    # shellcheck disable=SC2016
+    t26_have=$(grep '"$_ah_env" -u ' "$DIR/anchor-handoff.sh" | grep -c -- "-u $t26_v ")
+    [ "$t26_have" = "$t26_sites" ] || { t26_bad=$((t26_bad + 1)); echo "  T26: $t26_v missing from $((t26_sites - t26_have)) of $t26_sites env -u sites"; }
+done
+check "$t26_bad|$([ "$t26_sites" -ge 5 ] && echo sites-found)" "0|sites-found" "T26 every anchor-handoff env -u site scrubs the full 14-var set"
+
 echo "anchor-handoff: $pass passed, $([ "$fail" = 0 ] && echo 0 || echo some) failed"
 exit "$fail"

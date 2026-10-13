@@ -27,7 +27,7 @@ this guide is the operational checklist, that doc is the reference.
 ## 2. Instruction file — `AGENTS.md` (not `CLAUDE.md`)
 
 Codex does not read `CLAUDE.md`; it reads **`AGENTS.md`**. himmel generates a real
-repo `AGENTS.md` from `CLAUDE.md` (HIMMEL-471), adapted to GPT anatomy. It's
+repo `AGENTS.md` from `CLAUDE.md`, adapted to GPT anatomy. It's
 tracked and kept fresh by the `agents-md-fresh` pre-commit gate. Nothing to do at
 setup — it's already in the repo. (If you edit `CLAUDE.md`, regenerate with
 `node scripts/agents-md/generate.mjs`.)
@@ -37,23 +37,23 @@ setup — it's already in the repo. (If you edit `CLAUDE.md`, regenerate with
 Codex loads marketplaces + `@himmel` plugins from `config.toml`. The himmel
 marketplace and the `himmel-ops` plugin (stuck-playbook / minerva / vm /
 himmel-doctor skills **and** the plugin-delivered security hooks) are enabled
-there (HIMMEL-597). Verify your `~/.codex/config.toml` registers the himmel
+there. Verify your `~/.codex/config.toml` registers the himmel
 marketplace and enables `himmel-ops@himmel`. A few external plugins (warp,
 hookify, ralph-loop, security-guidance) ship a top-level `description` in their
 `hooks.json` that Codex **before `rust-v0.143.0`** rejects ("unknown field
 description") and skips with a boot warning. `install-himmel-codex.{sh,ps1}`
 strips it automatically as its final phase via
-`scripts/codex/sanitize-plugin-hooks.{sh,ps1}` (HIMMEL-651); re-run that script
+`scripts/codex/sanitize-plugin-hooks.{sh,ps1}`; re-run that script
 standalone after a `codex` plugin update re-adds the field
 (`bash scripts/codex/sanitize-plugin-hooks.sh`, or the `.ps1` twin). See
 harness-compat.md §3.
 
-> **Deprecated — prefer upgrading codex (HIMMEL-1104).** Upstream fixed the
+> **Deprecated — prefer upgrading codex.** Upstream fixed the
 > parser: codex PR #30229 added `description` to the `HooksFile` schema, shipping
 > in **`rust-v0.143.0`**. On that version or newer the key is accepted, the boot
 > warning does not occur, and the sanitizer only mutates external upstream plugin
 > files for no benefit. It is retained as a manual escape hatch for installs
-> pinned below `rust-v0.143.0`. Removing the automatic phase is **HIMMEL-1114**.
+> pinned below `rust-v0.143.0`. Removing the automatic phase is a planned follow-up.
 
 ## 4. Hooks — the PreToolUse guardrails
 
@@ -84,8 +84,7 @@ auto-arm). The PreToolUse *block* decision fires in any sandbox mode.
 ## 5. Skills — `.agents/skills/`
 
 himmel's driver commands load natively under Codex as thin `.agents/skills/<name>/SKILL.md`
-wrappers that shell the same `scripts/` the Claude `.claude/commands/` use
-(HIMMEL-533/604/607): `worktree`, `clean`, `clean-garden`, `shell-lint`,
+wrappers that shell the same `scripts/` the Claude `.claude/commands/` use: `worktree`, `clean`, `clean-garden`, `shell-lint`,
 `pr-check`, the handover-flow cluster (`handover-commit`,
 `handover-flush`, `handover-arm-resume`, `context-hop`, `handover-link`,
 `handover-pr-open`, `handover-pr-merge`), and `cr-scores`, `retitle`, `quiet-run`,
@@ -97,7 +96,7 @@ surface.
 ## 6. Verify the guardrails actually block
 
 Confirm a guard *blocks* at Codex runtime (this is the security-critical check —
-G1 was that two guards silently no-op'd under Codex before HIMMEL-589):
+G1 was that two guards silently no-op'd under Codex before the fix):
 
 ```bash
 # From the primary checkout. Put the trigger in a file so your own shell's
@@ -115,10 +114,10 @@ aren't trusted/loaded — re-check §3/§4.
 ## 7. Known Claude-only / degraded surfaces under Codex
 
 - **`AskUserQuestion`** is a Claude-only interactive tool — under Codex it
-  degrades to a plain conversational prose question (HIMMEL-595; harness-compat §9).
+  degrades to a plain conversational prose question (harness-compat §9).
 - **statusLine** (where-are-we bar) is Claude-only; Codex status context is a
-  separate follow-up (HIMMEL-554).
-- **SessionEnd→`Stop`** hooks fire (HIMMEL-599), but `end-session-wiki` capture
+  separate follow-up.
+- **SessionEnd→`Stop`** hooks fire, but `end-session-wiki` capture
   self-guards out on **Windows** (its `.ps1` twin can't ride the bash wrapper) —
   capture works on Linux/macOS Codex.
 - **Live runtime probes** for some lifecycle events (auto-arm PostToolUse,

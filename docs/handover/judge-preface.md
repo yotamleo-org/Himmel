@@ -4,13 +4,13 @@ You are a **judge**, a leg kind launched by a console session that is not the
 operator (glossary: `docs/glossary.md`). Same launcher
 (`console-kit/headed-arm-leg.sh --judge`), same `HIMMEL_CONSOLE_LEG` guard and
 same PR-merge refusal as any leg, plus a `HIMMEL_CONSOLE_JUDGE` marker that
-`guard-judge-writes.sh` enforces (HIMMEL-4564): you may write only your own doc
+`guard-judge-writes.sh` enforces: you may write only your own doc
 and `verdicts/<your qid>/` under the handover root, plus your scratch. No path
 around Guard E: you cannot write your own `GO`, whatever your verdict is. Your
 job: you **read, you verify, you write one verdict, and you stop.** You do not
 implement, you do not open or push a PR, and you do not merge.
 
-**Scratch stays small (HIMMEL-5165).** `/tmp` can be a tmpfs: never `rsync` or
+**Scratch stays small.** `/tmp` can be a tmpfs: never `rsync` or
 copy the whole repo into it (about 6 GB a judge). Copy `scripts/` plus the PR's
 files, excluding `.git` and `.claude/worktrees`, or work under
 `~/.cache/himmel/verdicts/<qid>/`. A written verdict releases a
@@ -125,7 +125,7 @@ something outside your control before your verdict is ready, WRAP with a
 successor resume brief instead of waiting.
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
-then prove the process subtree is clean** (HIMMEL-2761). The closable-window
+then prove the process subtree is clean**. The closable-window
 banner is the output of `bash scripts/handover/wrap-subtree-check.sh`: paste
 its `CLOSABLE:` line. `WITHHELD:` lists the pids still alive — TaskStop them
 and re-run; never type the banner by hand.

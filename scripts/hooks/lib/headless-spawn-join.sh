@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# Shared argv-spawn detection for the two headless commit gates (HIMMEL-4124):
-# scripts/hooks/check-no-headless-claude.sh and check-no-headless-gemini.sh.
-# Sourced, never run. Each gate passes its own program literal and opt-in marker,
-# so the spawn pattern and the multi-line join are written once and cannot drift.
+# Argv-spawn detection for the headless commit gate (HIMMEL-4124):
+# scripts/hooks/check-no-headless-gemini.sh. Sourced, never run. The gate passes
+# its own program literal and opt-in marker, so the spawn pattern and the
+# multi-line join stay in one place.
 
 # headless_spawn_pattern <program-ERE>
 # Prints the SPAWN_PATTERN for one program (e.g. `claude(\.exe)?`). Deny-leaning

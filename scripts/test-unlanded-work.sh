@@ -501,6 +501,29 @@ out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --health 2
 if [ "$rc" -eq 1 ] && grepq "$out" -E '^SWEEP-ERROR feat/himmel-9250-nohead .*not present locally'; then pass "unfetched merged head -> SWEEP-ERROR with the cause"; else fail "unfetched head -> rc=$rc out=$out"; fi
 rm -rf "$t"
 
+echo "== --health: stale remote ref of a merged, deleted branch -> head fetched by sha, no alarm (#2453) =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/unlanded-9260.XXXXXX")" || exit 1; make_repo "$t/repo"
+git init -q --bare "$t/origin.git"
+git -C "$t/origin.git" config uploadpack.allowReachableSHA1InWant true
+git -C "$t/repo" remote add origin "$t/origin.git"
+git -C "$t/repo" checkout -q -b feat/himmel-9260-stale
+commit_dated "$t/repo" 0 stale.md "first push" "feat: first push"
+git -C "$t/repo" update-ref refs/remotes/origin/feat/himmel-9260-stale HEAD   # the last tip this clone fetched
+commit_dated "$t/repo" 0 stale2.md "pushed before merge" "feat: second push"
+head9260="$(git -C "$t/repo" rev-parse HEAD)"
+git -C "$t/repo" push -q origin "HEAD:refs/pull/260/head"                     # the forge keeps the PR head; the branch is gone
+git -C "$t/repo" checkout -q main
+git -C "$t/repo" branch -q -D feat/himmel-9260-stale
+git -C "$t/repo" reflog expire --expire=now --all
+git -C "$t/repo" gc -q --prune=now
+refs_before="$(git -C "$t/repo" for-each-ref)"
+if git -C "$t/repo" cat-file -e "${head9260}^{commit}" 2>/dev/null; then fail "fixture: merged head should be absent locally"; fi
+make_gh_stub "$t/stub" "feat/himmel-9260-stale:MERGED:260:$head9260"
+out="$(cd "$t/repo" && GH_CMD="$t/stub/gh" bash "$SCRIPT" --base main --health 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "stale remote ref behind its merged head -> head fetched, no SWEEP-ERROR, rc0"; else fail "stale remote ref -> rc=$rc out=$out"; fi
+if [ "$(git -C "$t/repo" for-each-ref)" = "$refs_before" ] && [ ! -e "$t/repo/.git/FETCH_HEAD" ]; then pass "prefetch writes no ref and no FETCH_HEAD"; else fail "prefetch changed refs or wrote FETCH_HEAD"; fi
+rm -rf "$t"
+
 echo "== --health: forge unavailable -> SWEEP-ERROR (forge), not a silent healthy =="
 t="$(mktemp -d)"; make_repo "$t/repo"
 mkdir -p "$t/stub"; printf '#!/bin/sh\nexit 1\n' > "$t/stub/gh"; chmod +x "$t/stub/gh"

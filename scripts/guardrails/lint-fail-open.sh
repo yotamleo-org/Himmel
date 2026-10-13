@@ -50,7 +50,7 @@
 #                       unmeasured bank passed the refuse gate.
 #
 # Deliberate exceptions are marked INLINE, with the reason recorded where the
-# next reader needs it (house style of `# headless-claude-ok:`):
+# next reader needs it:
 #
 #   # fail-open-ok: <reason>        (shell — on the flagged line)
 #   // fail-open-ok: <reason>       (JS/TS)

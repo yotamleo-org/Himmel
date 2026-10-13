@@ -1,7 +1,6 @@
 # Glossary
 
-The one place himmel's fleet vocabulary is defined (HIMMEL-3136, from the
-HIMMEL-2975 operator rulings). Everything else — templates, prefaces, command
+The one place himmel's fleet vocabulary is defined. Everything else — templates, prefaces, command
 files, guard messages, internals docs — links here instead of restating a
 definition, because a term defined in two places drifts.
 
@@ -9,7 +8,7 @@ definition, because a term defined in two places drifts.
 
 | Term | Meaning |
 |---|---|
-| **CR** | Code review — the pre-PR review gate and everything named for it: the CR marker, the CR ledger, the critic panel, `/pr-check` (operator ruling, 2026-09-24). CodeRabbit is one best-effort CI reviewer inside that gate (HIMMEL-3360) and is always spelled out, never abbreviated CR. |
+| **CR** | Code review — the pre-PR review gate and everything named for it: the CR marker, the CR ledger, the critic panel, `/pr-check` (operator ruling, 2026-09-24). CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
 | **Console** | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the nonce mint. It dispatches legs, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/console new` starts one. |
 | **Judge** | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the console acts.** Several may run in parallel on one question with different scopes. Two shapes — see [Judge: call and session](#judge-call-and-session). |
 | **Consolidator** | Combines several judges' outputs into one reconciled answer, so the console does not absorb N judgments. A lexicon term only: nothing in the repo implements it yet. |
@@ -20,12 +19,12 @@ definition, because a term defined in two places drifts.
 | **Arming** | Launching a headed or headless session on a schedule (`arm-resume.sh`, `headed-arm.sh`, `/console new --arm`). |
 | **Manual override** | An ad-hoc operator-side session — a whiteboard. It passes work to the console as a ticket and a brief, never as a relayed ruling. |
 | **Succession** | One console handing over to the next: the outgoing console arms its successor and writes a HANDOFF (`/console next`). Not a chain — a chain is legs. |
-| **himmel-bus** | The local, hash-chained message bus between a console and its legs (`marketplace/plugins/himmel-bus`; HIMMEL-4818). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered console (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
+| **himmel-bus** | The local, hash-chained message bus between a console and its legs (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered console (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
 names a script (`scripts/clean-garden.sh`) and CI components. *Conductor* is
-the cross-project layer (HIMMEL-3129), not a role in this fleet.
+the cross-project layer, not a role in this fleet.
 
 ## Who holds what
 
@@ -52,7 +51,7 @@ A judge is a **leg kind**: a *judge leg*. A judge session is launched by the
 leg launcher (`console-kit/headed-arm-leg.sh --judge`), runs under the leg
 guards, and carries the same `HIMMEL_CONSOLE_LEG` marker as any leg, plus a
 `HIMMEL_CONSOLE_JUDGE` marker that `scripts/hooks/guard-judge-writes.sh` reads
-(HIMMEL-4564) to confine its writes to its own doc and qid; it cannot write its
+to confine its writes to its own doc and qid; it cannot write its
 own GO. What differs from a
 work leg is the job: it reads, verifies, writes one verdict file and stops. It
 does not implement, push or merge.

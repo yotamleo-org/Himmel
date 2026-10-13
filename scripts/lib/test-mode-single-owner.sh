@@ -9,7 +9,8 @@
 #   js     a read of env.JIRA_PROJECT_KEY
 #   both   a github.com / bitbucket.org host literal
 # ALLOW lists the surfaces whose own test is owned by a later work package
-# (merge-on-green.sh by WP3b, detect.mjs by WP4); each removes its entry.
+# (merge-on-green.sh by WP3b; detect.mjs left it in WP4, HIMMEL-4762); each
+# removes its entry.
 # A RED control proves the patterns can fire before the real surfaces are read.
 set -uo pipefail
 
@@ -23,7 +24,6 @@ plugins/himmel-gh/lib/forge/detect.mjs
 "
 ALLOW="
 scripts/handover/merge-on-green.sh
-plugins/himmel-gh/lib/forge/detect.mjs
 "
 SHELL_KEY_TEST='-[nz] +"?\$\{?JIRA_PROJECT_KEY'
 JS_KEY_READ='env\.JIRA_PROJECT_KEY'

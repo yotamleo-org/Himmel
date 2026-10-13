@@ -5,9 +5,9 @@ Defines the structure of every session note auto-filed into the Luna Obsidian va
 **Status:** shipped — the `SessionEnd` hook writes these notes live; see [`end-session-wiki.md`](end-session-wiki.md) for the operational controls (opt-out, dry-run, repo-config).
 
 **Cross-references:**
-- Epic context: HIMMEL-18 end-session-wiki-hook (tracked in the operator's private handover repo)
-- Task brief: HIMMEL-79 session-note-schema (tracked in the operator's private handover repo)
-- `SessionEnd` payload contract: HIMMEL-78 stop-hook-spike spike-results (origin/spike/end-session-stop-hook; tracked in the operator's private handover repo)
+- Epic context: end-session-wiki-hook (tracked in the operator's private handover repo)
+- Task brief: session-note-schema (tracked in the operator's private handover repo)
+- `SessionEnd` payload contract: stop-hook-spike spike-results (origin/spike/end-session-stop-hook; tracked in the operator's private handover repo)
 - Luna vault operating manual: `<luna>/`_CLAUDE.md` (AI-First Vault Rule §0)
 
 **See also:** [`end-session-wiki.md`](./end-session-wiki.md) — operational controls (opt-out env var, repo-local config, dry-run mode, logs).
@@ -119,7 +119,7 @@ crystallized_at:
 
 After the frontmatter, every session note has exactly these six h2 sections, in this order: `## Summary`, `## Decisions`, `## Files Touched`, `## Commands`, `## Follow-ups`, `## Raw Conversation`. (The for-future-Claude preamble in 3.1 sits above the first h2 and is not itself an h2.) Empty sections are written with a single-line `_None._` placeholder rather than omitted, so the shape is predictable for future-Claude.
 
-An optional seventh section, `## Lessons` (§3.6a), may appear between `## Follow-ups` and `## Raw Conversation` — it is **crystallizer-only** (HIMMEL-767): the mechanical render never emits it, and it is present only when the LLM synthesis pass identified a genuine reusable lesson.
+An optional seventh section, `## Lessons` (§3.6a), may appear between `## Follow-ups` and `## Raw Conversation` — it is **crystallizer-only**: the mechanical render never emits it, and it is present only when the LLM synthesis pass identified a genuine reusable lesson.
 
 ### 3.1 For-future-Claude preamble (above first h2)
 
@@ -191,7 +191,7 @@ Bullet list of TODOs surfaced during the session — explicit deferrals, "next s
 
 If none: `_None._`.
 
-### 3.6a `## Lessons` (optional, crystallizer-only, HIMMEL-767)
+### 3.6a `## Lessons` (optional, crystallizer-only)
 
 Present only when the LLM crystallization pass (see
 [`end-session-wiki.md` → Crystallization](./end-session-wiki.md#crystallization-llm-upgrade))

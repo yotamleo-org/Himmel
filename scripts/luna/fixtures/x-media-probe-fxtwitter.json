@@ -1,0 +1,27 @@
+{
+  "recorded": "2026-10-12 via api.fxtwitter.com/status/266031293945503744",
+  "tweet": {
+    "url": "https://x.com/BarackObama/status/266031293945503744",
+    "id": "266031293945503744",
+    "media": {
+      "all": [
+        {
+          "type": "photo",
+          "id": "266031293949698048",
+          "url": "https://pbs.twimg.com/media/A7EiDWcCYAAZT1D.jpg?name=orig",
+          "width": 800,
+          "height": 532
+        }
+      ],
+      "photos": [
+        {
+          "type": "photo",
+          "id": "266031293949698048",
+          "url": "https://pbs.twimg.com/media/A7EiDWcCYAAZT1D.jpg?name=orig",
+          "width": 800,
+          "height": 532
+        }
+      ]
+    }
+  }
+}

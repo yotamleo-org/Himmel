@@ -80,7 +80,6 @@ SHELL:scripts/hooks/check-main-ref-transaction.sh
 SHELL:scripts/hooks/check-mcp-plugin-refs.sh
 SHELL:scripts/hooks/check-new-shell-platform-guard.sh
 SHELL:scripts/hooks/check-no-force-push.sh
-SHELL:scripts/hooks/check-no-headless-claude.sh
 SHELL:scripts/hooks/check-no-headless-gemini.sh
 SHELL:scripts/hooks/check-no-ticket-id-in-user-strings.sh
 SHELL:scripts/hooks/check-npm-audit.sh
@@ -120,3 +119,34 @@ SHELL:scripts/lanes/bench/scorecard/dead-parts.sh
 SHELL:scripts/lanes/bench/scorecard/merged-count.sh
 SHELL:scripts/lanes/leg-pr-open.sh
 SHELL:scripts/lanes/stop-worker.sh
+
+# --- HIMMEL-5393: findings that appeared when the gate was tightened. Each is a
+# --- real call site, baselined (not exempted) and tracked for widening by HIMMEL-5403.
+
+# Shell: unsets only the original four vars (full 14-var set required now).
+SHELL:scripts/cr/live-gate-e2e.sh
+SHELL:scripts/handover/console-kit/action-zero.sh
+SHELL:scripts/handover/console-kit/handoff-facts.sh
+SHELL:scripts/handover/console-kit/run-suite.sh
+SHELL:scripts/lanes/lane-canary.sh
+SHELL:scripts/lib/go-gate.sh
+# Shell: unsets 11 of 14 (misses GIT_IMPLICIT_WORK_TREE, GIT_GRAFT_FILE, GIT_SHALLOW_FILE).
+SHELL:scripts/cr/pr-check-context.sh
+# Shell hook: unsets only four; editing scripts/hooks/*.sh in a leg trips the hook-integrity guard.
+SHELL:scripts/hooks/guard-leg-context-handoff.sh
+# Shell test stub: a heredoc fake-git fixture that falls through to /usr/bin/git; not a gate call.
+SHELL:scripts/hooks/capture-baseline.sh
+# Shell test libs: sourced by the write-fence suites (HIMMEL-4391/N1894 own them); bare sourced-lib marker has no reason yet.
+SHELL:scripts/hooks/lib-test-write-fence-matrix.sh
+SHELL:scripts/hooks/lib-test-write-fence.sh
+# Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked, epic HIMMEL-4102.
+FILE:scripts/handover/console-kit/gen-briefs.py
+FILE:scripts/hooks/check-agents-md-fresh.ps1
+FILE:scripts/hooks/check-commit-msg.ps1
+FILE:scripts/hooks/check-doc-guard.ps1
+FILE:scripts/hooks/check-hookspath.ps1
+FILE:scripts/hooks/end-session-wiki.ps1
+# JS: wrapper helpers whose spawn env is not the full set (claude-floor.mjs git(), verify-return.mjs exec,
+# hook-integrity.js spawnSync adds only GIT_NO_REPLACE_OBJECTS; the hook file is hook-integrity guarded).
+JS:scripts/cr/claude-floor.mjs:8770942d7fbd
+JS:scripts/hooks/hook-integrity.js:aa680b8503ce

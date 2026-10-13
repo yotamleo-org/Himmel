@@ -1,4 +1,4 @@
-# Follow-up triage (HIMMEL-4034)
+# Follow-up triage
 
 Every version spawns follow-ups: CR suggestions deferred, judge RESCOPEs,
 residual gaps. This is the rule for where each one goes, so a version ships on
@@ -54,7 +54,7 @@ Read-only. Prints, per fixVersion:
   estimate:** an unlabelled ticket counts as a follow-up only when its summary
   contains `follow-up`, `followup`, `deferred` or `residual`, so a follow-up
   without those words is missed and an ordinary ticket with one is counted. An
-  explicit marker (label or link type) is left to the HIMMEL-4045 backfill;
+  explicit marker (label or link type) is left to a planned backfill;
 - the hardening share of the version's load against the cap (`ok` / `OVER`).
   Load is the version's tickets that are neither labelled nor keyword-matched
   as follow-ups, so the share is an estimate for the same reason;

@@ -244,7 +244,7 @@ export CADENCE_ALERT_SEND_CMD="$TMP_ROOT/alert-send-rec"
 VAULT="$TMP_ROOT/vault"
 mkdir -p "$VAULT"
 
-# Same pattern the no-headless-claude pre-commit gate uses (HIMMEL-128).
+# Word-bounded headless claude invocation (`-p` / `--print` / `--bg`).
 HEADLESS_RE='(^|[^A-Za-z0-9_-])claude[[:space:]]+(-p|--print|--bg)($|[^A-Za-z0-9_-])'
 
 # ============================================================================
@@ -590,7 +590,7 @@ assert_contains "health runner stamps the format version (HIMMEL-588)"  "# himme
 assert_contains "harvest runner restores arm-time PATH snapshot (HIMMEL-2840)" '; export PATH' "$harvest_sh"
 assert_contains "synth runner restores arm-time PATH snapshot (HIMMEL-2840)"   '; export PATH' "$synth_sh"
 assert_contains "health runner restores arm-time PATH snapshot (HIMMEL-2840)"  '; export PATH' "$health_sh"
-assert_contains "harvest runner cds into vault" "cd $VAULT || exit 1" "$harvest_sh"
+assert_contains "harvest runner cds into vault" "cd $VAULT || {" "$harvest_sh"
 assert_contains "harvest runner runs /harvest-clips" "/harvest-clips" "$harvest_sh"
 assert_contains "harvest runner chains /triage-clips" "/triage-clips" "$harvest_sh"
 # The sh runner embeds the prompt via printf %q, which backslash-escapes
@@ -610,7 +610,7 @@ assert_contains "harvest DONE: a remaining backlog still completes (HIMMEL-4684)
 assert_contains "harvest DONE: backlog is reported, not withheld (HIMMEL-4684)" "report the remaining counts and still print the marker" "$harvest_sh_plain"
 assert_contains "harvest DONE: a real step failure withholds it (HIMMEL-4684)" "Withhold the marker only when a step itself failed or aborted" "$harvest_sh_plain"
 assert_contains "harvest runner bounded run"         "< /dev/null"    "$harvest_sh"
-assert_contains "synth runner cds into vault" "cd $VAULT || exit 1" "$synth_sh"
+assert_contains "synth runner cds into vault" "cd $VAULT || {" "$synth_sh"
 assert_contains "synth runner runs /synthesize-clips" "/synthesize-clips" "$synth_sh"
 assert_contains "synth runner chains /archive-clips"  "/archive-clips"    "$synth_sh"
 assert_contains "synth runner bounded run"            "< /dev/null"       "$synth_sh"
@@ -1151,7 +1151,7 @@ touch "$CSTATE/fail-write"
 rc=0; out=$(run_cron arm --vault "$VAULT2" --force 2>&1) || rc=$?
 assert_rc "cron force re-arm install failure rc 4" 4 "$rc"
 synth_sh=$(cat "$CRON_DIR/pipeline-synthesize.sh" 2>/dev/null || echo MISSING)
-assert_contains "old runner still points at the old vault" "cd $VAULT || exit 1" "$synth_sh"
+assert_contains "old runner still points at the old vault" "cd $VAULT || {" "$synth_sh"
 assert_not_contains "no new-config runner promoted" "vault2" "$synth_sh"
 if ! compgen -G "$CRON_DIR/*.tmp.*" >/dev/null; then
     pass "no staged .tmp runner litter after failed --force re-arm"
@@ -1461,6 +1461,31 @@ assert_rc "a non-zero leg keeps its rc" 5 "$rc"
 assert_contains "non-zero rc is logged as FAILED" "[PIPELINE-LEG-FAILED rc=5]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
 assert_contains "non-zero rc alerts with reason rc-5" "pipeline-harvest rc-5 " "$(cat "$CADENCE_ALERT_FILE")"
 assert_rc "non-zero rc sends once" 1 "$(count_lines "$ALERT_SENDS")"
+# The truncated outcome (HIMMEL-4226): rc 0 plus the background-task truncation
+# signature classifies `truncated`, which is neither complete nor an rc failure.
+cat >"$TMP_ROOT/bin-rec/claude-truncated" <<'STUB'
+#!/usr/bin/env bash
+echo "claude-stub-ran"
+echo "Background tasks still running, terminating"
+STUB
+chmod +x "$TMP_ROOT/bin-rec/claude-truncated"
+reset_alerts
+use_claude truncated
+rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?
+assert_rc "a truncated leg (rc 0) exits 3" 3 "$rc"
+assert_contains "a truncated leg is logged as FAILED" "[PIPELINE-LEG-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_contains "a truncated leg alerts with reason no-completion-marker" "pipeline-harvest no-completion-marker " "$(cat "$CADENCE_ALERT_FILE")"
+assert_rc "a truncated leg sends once" 1 "$(count_lines "$ALERT_SENDS")"
+# A runner that dies at its cd into the vault alerts too, not only one that
+# reaches the claude launch (HIMMEL-4226).
+sed "s#^    cd [^ ]* #    cd $TMP_ROOT/no-such-vault #" "$FIRE_DIR/pipeline-harvest.sh" > "$FIRE_DIR/pipeline-harvest-novault.sh"
+reset_alerts
+use_claude ok
+rc=0; sh "$FIRE_DIR/pipeline-harvest-novault.sh" || rc=$?
+assert_rc "a runner that cannot cd into the vault exits 1" 1 "$rc"
+assert_contains "a vault cd failure is logged as FAILED" "[PIPELINE-LEG-FAILED cd-vault]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_contains "a vault cd failure alerts with reason cd-vault" "pipeline-harvest cd-vault " "$(cat "$CADENCE_ALERT_FILE")"
+assert_rc "a vault cd failure sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # A bank skip alerts only on the SECOND night running: the runner rotates the
 # previous night's log to .log.prev, and that is where the first skip lives.
 printf '#!/bin/sh\necho SKIPPED-BANK\n' > "$TMP_ROOT/bank-skip-stub.sh"

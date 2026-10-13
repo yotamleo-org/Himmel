@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# headless-claude-ok: HIMMEL-2179 probe the operator runs by hand; the comment below names the claude -p config it measures
 # launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 1 (HIMMEL-2179): does resuming a session in -p mode and sending
 # "/compact" actually compact? Verify by ARTIFACT: find the session JSONL and look for a
@@ -18,17 +17,14 @@ echo "01: session_id=$SID"
 
 find_jsonl() { find "$HOME/.claude/projects" -name "${SID}.jsonl" 2>/dev/null | head -1; }
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --session-id "$SID" \
   --permission-mode dontAsk --output-format json "Say A" > "$OUT_DIR/01-a.json" 2>"$OUT_DIR/01-a.err"
 echo "01a rc=$?"
 
-# headless-claude-ok: HIMMEL-2179 probe
 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
   --permission-mode dontAsk --output-format json "Say B" > "$OUT_DIR/01-b.json" 2>"$OUT_DIR/01-b.err"
 echo "01b rc=$?"
 
-# headless-claude-ok: HIMMEL-2179 probe
 MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
   --permission-mode dontAsk --output-format json "/compact" > "$OUT_DIR/01-c.json" 2>"$OUT_DIR/01-c.err"
 echo "01c rc=$?"
@@ -48,11 +44,9 @@ echo "01: compact_boundary_count=$BOUNDARY_COUNT result_c=\"$RESULT_C\""
 # history negative (not some other kind of failure).
 if [ "$BOUNDARY_COUNT" = "0" ] && printf '%s' "$RESULT_C" | grep -qiE 'not enough|insufficient'; then
   echo "01: retrying — one more exchange then /compact again"
-  # headless-claude-ok: HIMMEL-2179 probe
   timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
     --permission-mode dontAsk --output-format json "Say C" > "$OUT_DIR/01-d.json" 2>"$OUT_DIR/01-d.err"
   echo "01d rc=$?"
-  # headless-claude-ok: HIMMEL-2179 probe
   MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
     --permission-mode dontAsk --output-format json "/compact" > "$OUT_DIR/01-e.json" 2>"$OUT_DIR/01-e.err"
   echo "01e rc=$?"

@@ -1252,9 +1252,27 @@ fi
 #      konsole), pointed at the cache the same way uninstall reads it, so the
 #      two cannot drift onto two paths. A dry-run must NAME the location, and a
 #      wet run must remove it with the dir - a survivor is HIMMEL-3251 residue.
+#      HIMMEL-5401: the launcher is a seam-guarded chokepoint, and its guard
+#      denies a seam that differs from the claude session's launch env on the
+#      ANCHOR (primary) copy only. So the suite runs a fixture copy of the
+#      launcher and of the guard lib, every other script symlinked from the
+#      real tree - run from the primary under a claude session it would
+#      otherwise exit 96 before writing the record.
 mk_cache
-LEG_SH="$(dirname "$CLI")/handover/console-kit/headed-arm-leg.sh"
-LLD="$TMP/launch20c"; mkdir -p "$LLD"
+REAL_SCRIPTS="$(dirname "$CLI")"
+LLD="$TMP/launch20c"; mkdir -p "$LLD/scripts/lib" "$LLD/scripts/handover/console-kit"
+for _e in "$REAL_SCRIPTS"/*; do
+    case "${_e##*/}" in lib|handover) ;; *) ln -s "$_e" "$LLD/scripts/${_e##*/}" ;; esac
+done
+for _e in "$REAL_SCRIPTS"/lib/*; do ln -s "$_e" "$LLD/scripts/lib/${_e##*/}"; done
+for _e in "$REAL_SCRIPTS"/handover/*; do
+    case "${_e##*/}" in console-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
+done
+for _e in "$REAL_SCRIPTS"/handover/console-kit/*; do ln -s "$_e" "$LLD/scripts/handover/console-kit/${_e##*/}"; done
+for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-leg.sh; do
+    rm -f "$LLD/scripts/$_e"; cp "$REAL_SCRIPTS/$_e" "$LLD/scripts/$_e"
+done
+LEG_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
 # HIMMEL-4619: the arming gate lints every brief (description + Prior art line).

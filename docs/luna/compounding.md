@@ -54,7 +54,7 @@ writes proposal pages to `Clippings/_synthesis/`. Proposals only — it never
 restructures the vault.
 
 - **Entry point:** `/synthesize-clips`
-- **Cadence:** daily (HIMMEL-506 — synthesis runs nightly once model-pinned)
+- **Cadence:** daily (synthesis runs nightly once model-pinned)
 
 ### Stage 4 — Archive
 
@@ -76,7 +76,7 @@ cadence:
 | Weekly (Sun 04:00) | Vault health | `/obsidian-health` |
 
 Each leg launches with an explicit cheap `--model` pin
-(harvest/synth = `claude-sonnet-5-5`, health = `haiku` — HIMMEL-506) so the cadence
+(harvest/synth = `claude-sonnet-5-5`, health = `haiku`) so the cadence
 never inherits the operator's saved default tier; the cheap pins are what
 make the daily synthesize frequency affordable.
 
@@ -169,8 +169,8 @@ quietly compounds and one with silent gaps.
 
 | Tier | What it captures | Entry point |
 |------|------------------|-------------|
-| **Automatic** | Session **summary** (decisions/commands/follow-ups) on graceful `SessionEnd` — enabled by default (HIMMEL-469) | `end-session-wiki` hook — no action required |
-| **Semi-automatic** (scheduled) | Inbox clips → triaged + synthesized notes; periodic vault health | `/pipeline-cadence arm` schedules `/harvest-clips`→`/triage-clips` (daily), `/synthesize-clips`→`/archive-clips` (daily), `vault-lint` (obsidian-triage:vault-lint, daily) — each leg pinned to a cheap `--model` (HIMMEL-506). Generic `/schedule` + `/loop` drive any recurring pass. |
+| **Automatic** | Session **summary** (decisions/commands/follow-ups) on graceful `SessionEnd` — enabled by default | `end-session-wiki` hook — no action required |
+| **Semi-automatic** (scheduled) | Inbox clips → triaged + synthesized notes; periodic vault health | `/pipeline-cadence arm` schedules `/harvest-clips`→`/triage-clips` (daily), `/synthesize-clips`→`/archive-clips` (daily), `vault-lint` (obsidian-triage:vault-lint, daily) — each leg pinned to a cheap `--model`. Generic `/schedule` + `/loop` drive any recurring pass. |
 | **Manual** (you invoke it) | The mid-session findings/sources the automatic path misses | see list below |
 
 **Manual capture — what you must invoke explicitly:**

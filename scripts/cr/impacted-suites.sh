@@ -916,7 +916,6 @@ scripts/*.js scripts/lanes/test-launch-site-profiles.sh
 scripts/*.ps1 scripts/lanes/test-launch-site-profiles.sh
 !test-* scripts/lanes/test-launch-site-profiles.sh
 !*.test.* scripts/lanes/test-launch-site-profiles.sh
-!check-no-headless-claude* scripts/lanes/test-launch-site-profiles.sh
 !*/node_modules/* scripts/lanes/test-launch-site-profiles.sh
 !*/dist/* scripts/lanes/test-launch-site-profiles.sh
 !*/fixtures/* scripts/lanes/test-launch-site-profiles.sh

@@ -1,0 +1,27 @@
+{
+  "id": "34648",
+  "key": "HIMMEL-4759",
+  "self": "https://jira.example.invalid/rest/api/3/issue/34648",
+  "fields": {
+    "summary": "HIMMEL-4748 WP2: tracker seam with jira/local/none backends, JIRA_CMD seam, contract suite",
+    "issuetype": {
+      "name": "Task",
+      "subtask": false
+    },
+    "status": {
+      "name": "In Progress"
+    },
+    "fixVersions": [
+      {
+        "self": "https://jira.example.invalid/rest/api/3/version/10112",
+        "id": "10112",
+        "name": "v1.3.0",
+        "archived": false,
+        "released": false
+      }
+    ],
+    "labels": [
+      "tracker-forge"
+    ]
+  }
+}

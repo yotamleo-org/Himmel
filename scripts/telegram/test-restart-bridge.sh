@@ -95,7 +95,8 @@ unset HIMMEL_REPO 2>/dev/null || true
 # fake `bun` below never reads it, so an empty stub is enough.
 FIXTURE_REPO="$WORK/repo"
 FIXTURE_BRIDGE_DIR="$FIXTURE_REPO/scripts/telegram"
-mkdir -p "$FIXTURE_BRIDGE_DIR"
+mkdir -p "$FIXTURE_BRIDGE_DIR" "$FIXTURE_REPO/scripts/lib"
+cp "$REPO_ROOT/scripts/lib/resolve-bun.sh" "$FIXTURE_REPO/scripts/lib/resolve-bun.sh"
 : > "$FIXTURE_BRIDGE_DIR/supervisor.ts"
 
 # Declare ourselves a test fixture. restart-bridge.sh REFUSES start/stop/run
@@ -2032,12 +2033,8 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   poll_until "$HOMEBUN_POLLER_PAT" 0 30 >/dev/null
   poll_until "$HOMEBUN_SUPERVISOR_PAT" 0 10 >/dev/null
 
-  # PRECEDENCE (CR codex-1). The tool dirs are APPENDED, not prepended, so a
-  # bun the incoming PATH already resolves stays in charge — an operator who
-  # deliberately points the bridge at a specific build must not be silently
-  # overruled by whatever happens to sit in ~/.bun/bin. An earlier draft
-  # prepended while its comment claimed the opposite; this case exists so the
-  # ordering is pinned by a launch rather than asserted in prose.
+  # HIMMEL-5383 deliberately makes the user Bun authoritative even when a
+  # different Bun is first on the incoming PATH. Pin that by an actual launch.
   #
   # Both bun copies are present and identical in behaviour, so the ONLY thing
   # distinguishing them is the argv path the launcher execs — which is exactly
@@ -2052,11 +2049,11 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   PRECEDENCE_POLLER_PAT="$PRECEDENCE_BIN/bun poller.ts"
   precedence_rc=0
   run_with_timeout 20 env PATH="$PRECEDENCE_BIN:$NOBUN_BIN" bash "$SCRIPT" --repo "$FIXTURE_REPO" start >"$WORK/log-2582-precedence.log" 2>&1 || precedence_rc=$?
-  check "HIMMEL-2582: a bun already on PATH wins over \$HOME/.bun/bin (dirs are appended)" 0 "$precedence_rc"
-  precedence_pollers=$(poll_until "$PRECEDENCE_POLLER_PAT" 1 30)
-  check "HIMMEL-2582: the launcher exec'd the PATH bun, not the \$HOME/.bun/bin one" 1 "$precedence_pollers"
-  homebun_leaked=$(count_procs "$HOMEBUN_POLLER_PAT")
-  check "HIMMEL-2582: \$HOME/.bun/bin/bun was NOT used while a PATH bun existed" 0 "$homebun_leaked"
+  check "HIMMEL-5383: user Bun precedence start succeeds" 0 "$precedence_rc"
+  homebun_pollers=$(poll_until "$HOMEBUN_POLLER_PAT" 1 30)
+  check "HIMMEL-5383: the bridge launches the preferred user Bun even with a PATH Bun" 1 "$homebun_pollers"
+  precedence_pollers=$(count_procs "$PRECEDENCE_POLLER_PAT")
+  check "HIMMEL-5383: the PATH Bun is not launched when user Bun exists" 0 "$precedence_pollers"
 
   stop_bridge >"$WORK/log-2582-precedence-stop.log" 2>&1
   poll_until "$PRECEDENCE_POLLER_PAT" 0 30 >/dev/null

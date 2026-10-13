@@ -395,6 +395,10 @@ fi
 # flag can only make the gate STRICTER (fail-closed), so reading it from the
 # trusted local .env never weakens the gate; the GATE INTEGRITY seams (ledger,
 # check-ci, gh) stay non-overridable.
+# Both flags are gate policy: load_policy reads them from ~/.himmel/config.json
+# .policy (legacy .env fallback, with a deprecation notice) and IGNORES the
+# process env, so `CR_FLOOR_FALLBACK=claude-only bash clear-cr-marker.sh` cannot
+# loosen gate 3b. Layer table: docs/internals/config-layers.md.
 if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/../lib/load-dotenv.sh"
@@ -419,8 +423,11 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # gitignored .env lives only in the primary checkout — never in a linked
     # worktree, where all feature work happens. Byte-identical to the idiom at
     # critic-panel.sh:863 for this same variable.
-    if ! load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
-        echo "clear-cr-marker: could not load CR_REQUIRE_CROSS_MODEL/CR_FLOOR_FALLBACK from .env (read failure) — refusing (cannot certify the configured cross-model policy)." >&2
+    # A lib without load_policy (a pre-split load-dotenv.sh) cannot honour the
+    # env-ignoring contract: refuse rather than read the flags from the env.
+    if ! declare -F load_policy >/dev/null 2>&1 \
+        || ! load_policy --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
+        echo "clear-cr-marker: could not load CR_REQUIRE_CROSS_MODEL/CR_FLOOR_FALLBACK from ~/.himmel/config.json or .env (read failure) — refusing (cannot certify the configured cross-model policy)." >&2
         audit "REFUSED reason=dotenv-unreadable branch=$branch sha=$tip"
         exit 14
     fi

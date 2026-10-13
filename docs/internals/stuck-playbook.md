@@ -1,16 +1,16 @@
-# Stuck playbook — operational escape-hatches (HIMMEL-211)
+# Stuck playbook — operational escape-hatches
 
 Load-on-trigger reference for the moments Claude gets *stuck* on himmel's own
 guardrails: an auto-mode write was denied, a Bash command fell through to the
 classifier, a permission prompt denied a command, or a pre-push gate failed.
 These are **operational/recovery** rules — they used to live in the root
-`CLAUDE.md` but were migrated here (HIMMEL-211) because they are not session-time frame-shaping:
+`CLAUDE.md` but were migrated here because they are not session-time frame-shaping:
 they only matter at the moment of the symptom, and paying for them on every
 session is the bloat the [4 CLAUDE.md rules](#why-this-is-a-playbook-not-a-claudemd-rule)
 warn against. The `himmel-ops:stuck-playbook` skill surfaces this file when the
 stuck condition is detected; it carries zero always-on token cost otherwise.
 
-**First principle (HIMMEL-195): prefer a structural fix over a workaround.** If a
+**First principle: prefer a structural fix over a workaround.** If a
 shape keeps getting blocked, the fix is usually a hook/CLI change (a new
 `auto-approve-safe-bash` case, a CLI flag), not a cleverer command that dodges
 the classifier. The cases below are the residual judgment calls after the
@@ -19,7 +19,7 @@ if a write is denied after following this playbook, defer to the operator.**
 
 ---
 
-## Symptom: a Bash command is stopped by a permission prompt (HIMMEL-203)
+## Symptom: a Bash command is stopped by a permission prompt
 
 Claude Code's native permission matcher **bails out and PROMPTS** on any command
 containing variable expansion (`$t`), command substitution `$(…)`, backticks, or
@@ -28,12 +28,12 @@ renders and waits. Headless/auto it does **not** hang: an undocumented ~3 s stdi
 watchdog ("no stdin data received in 3s, proceeding without it") drops the
 session to non-interactive, and a prompt that cannot render resolves as a **DENY
 at rc=0** — the session continues (`subtype:success`, `is_error:false`) with the
-action silently not performed. 4/4 live probes (HIMMEL-1969, 2026-08-22) denied
+action silently not performed. 4/4 live probes (2026-08-22) denied
 that way, across three shapes: `-p --permission-mode manual`, `-p
 --permission-mode auto`, and a bare `claude "<prompt>"` with no `-p` on a
 never-delivering stdin pipe (the arm-resume/schtasks shape). The silent no-op —
 not a hang — is the failure mode to design for: verify the ARTIFACT, never the
-return code (the HIMMEL-1869 artifact-check rule).
+return code (the artifact-check rule).
 
 The `auto-approve-safe-bash` PreToolUse hook auto-grants read-only/inspection
 commands plus the allow-listed Jira CLI (incl. such loops/pipes with `$var` that
@@ -48,13 +48,13 @@ operator, don't reshape to dodge it.
 
 ---
 
-## Symptom: a leg needs a tracked file back at HEAD and `git checkout -- <path>` is denied (HIMMEL-2934)
+## Symptom: a leg needs a tracked file back at HEAD and `git checkout -- <path>` is denied
 
 Every TDD RED control needs a way to restore a dirtied tracked file to HEAD
 before implementing, but `Bash(git checkout -- *)` is a `deny` entry in
 `.claude/settings.json` (a deny beats any allow, so an allow rule cannot fix
 this) and `git restore` matches no rule at all, so it falls to the classifier
-and resolves as a silent headless DENY (HIMMEL-203). N158 and N159 each lost
+and resolves as a silent headless DENY. N158 and N159 each lost
 several turns to this on 2026-09-12.
 
 **What to do:** `bash scripts/git/restore-to-head.sh <path> [<path>...]` —
@@ -94,11 +94,11 @@ Never try bare `git checkout -- <path>` or `git restore` yourself to work around
 
 ---
 
-## Symptom: a Jira write fell through to the classifier and was DENIED (HIMMEL-205 / 203)
+## Symptom: a Jira write fell through to the classifier and was DENIED
 
 In auto-mode the `auto-approve-safe-bash` hook grants the Jira CLI wholesale —
 reads AND writes (`transition`/`comment`/`edit`) — so ticket writes run
-unattended (operator-trusted; HIMMEL-205). The catch is command **SHAPE**, not
+unattended (operator-trusted). The catch is command **SHAPE**, not
 the write itself: the hook auto-approves only when every segment of a compound
 command resolves to a recognised-safe binary.
 
@@ -110,13 +110,13 @@ command resolves to a recognised-safe binary.
 **What to do:** prefer a literal `node …/jira …` (bare or `cd`-prefixed). A
 shape denial → rewrite as one literal command per write (absolute binary, no
 vars, no loops, body via file) and retry once; a classifier denial on a loop
-shape is a shape denial (HIMMEL-4815: `block-jira-compound-write.sh` now
+shape is a shape denial (`block-jira-compound-write.sh` now
 bounces loop, `$J` and `xargs` shapes itself with that recipe). If the single
 literal write is still denied, that is not a shape problem — defer to the
 operator, do **not** reshape again to dodge the classifier. See
 [`overnight-mode.md`](../handover/overnight-mode.md) § Auto-mode classifier &
 attestation. Multi-line bodies: use `--comment-file <path>` / `--desc-file
-<path>` so the shell command stays single-line (HIMMEL-209).
+<path>` so the shell command stays single-line.
 
 ---
 
@@ -133,7 +133,7 @@ auto-mode the amend is flagged as gate-circumvention and **HARD-blocked
 **What to do if the branch is already pushed without the trailer:** recut it.
 The pre-push gate accepts a trailer in any commit of the range or the PR body,
 but the console's `ready-check.sh` check 5 reads **only the PR's first
-commit** (HIMMEL-4128) — a PR-body or later-commit trailer clears the push gate
+commit** — a PR-body or later-commit trailer clears the push gate
 and still FAILS ready-check, so the PR can never be merged by a console. A
 typical case: a docs-only first commit (which needs no trailer), then a later
 commit adds a non-docs path (which does).
@@ -142,7 +142,7 @@ commit adds a non-docs path (which does).
 2. Make **ONE ordinary new commit** with the whole change, carrying the
    `Platforms tested:` / `Security reviewed:` trailers, each on its own line.
    Not `git commit --amend`, and not a `git commit-tree` rebuild of the old
-   first commit (both are classifier-vetoed, HIMMEL-2982).
+   first commit (both are classifier-vetoed).
 3. Push, open a new PR, and close the old one with a pointer to it.
 
 Proven in practice: #1650 was recut as #1654, which passed ready-check and
@@ -152,22 +152,22 @@ this recovery and the gate agree.
 **What to do if the FIRST commit carries a trailer whose token doesn't
 conform** — a genuine `Security reviewed:` line whose text doesn't start with
 `manual` / `claude-code-security-review` / `pr-review-toolkit` / `ad-hoc`
-(`scripts/hooks/check-security-reviewed.sh`'s `TOKEN_RE`, HIMMEL-1681): the
+(`scripts/hooks/check-security-reviewed.sh`'s `TOKEN_RE`): the
 sanctioned recovery is a **follow-up commit** carrying a conforming trailer
 line — never `git commit --amend`, never a `git commit-tree` rebuild of the
-first commit; both are classifier-vetoed (HIMMEL-2982).
+first commit; both are classifier-vetoed.
 
 ---
 
-## Symptom: a PR merge was blocked (`--admin` / approval gate) (HIMMEL-224)
+## Symptom: a PR merge was blocked (`--admin` / approval gate)
 
 Overnight Phase 9 used to merge with `gh pr merge --squash --admin`. `--admin`
 exists to **bypass branch protection** — but this repo has none (the protection
 API returns 403 on a free private repo; PR `reviewDecision` is empty). So
 `--admin` bypasses nothing useful, yet the auto-mode classifier reads it as
 "bypassing the approval gate = destructive op outside the worktree" and
-**HARD-vetoes** it. That stalled the HIMMEL-221 run outright and forced an
-explicit in-session authorization on HIMMEL-222.
+**HARD-vetoes** it. That stalled a run outright and forced an
+explicit in-session authorization.
 
 **What to do:**
 
@@ -181,7 +181,7 @@ explicit in-session authorization on HIMMEL-222.
    retries with `--admin`.
 3. **If still blocked, defer to the operator** as a one-action handover ("merge
    PR #N"). Do **NOT** retry the merge via a different command path — the
-   classifier flags that as evasion and hardens the block (HIMMEL-195 first
+   classifier flags that as evasion and hardens the block (first
    principle: structural fix over workaround — here the structural fix is
    *not emitting `--admin`*, already shipped in `pr-merge.sh` + overnight-mode
    Phase 9).
@@ -192,13 +192,13 @@ repo authorization file. The durable fix is to never emit an unnecessary
 
 ---
 
-## Symptom: `merge-on-green.sh` exits 22 — "main-red gate: main's latest completed CI run … is failure" (HIMMEL-5115)
+## Symptom: `merge-on-green.sh` exits 22 — "main-red gate: main's latest completed CI run … is failure"
 
 `merge-on-green.sh` refuses while the newest **completed** run of the `CI`
 workflow on the default branch is red (cancelled and skipped runs are skipped;
 it falls back to the next older completed one), unless the PR is the declared
 fix. Eight merges once landed on an already-red main and turned 3 root breaks
-into 11 red-main merges. Since HIMMEL-5113 main CI is a cron/dispatch sweep, so
+into 11 red-main merges. Main CI is a cron/dispatch sweep, so
 the run covers a **range**; the message names it (`<previous sweep head>..<red
 head>`). The PR's own green rollup is not the question here: main is.
 
@@ -213,11 +213,11 @@ head>`). The PR's own green rollup is not the question here: main is.
    fragment), or any `.sh` script named on a `##[error]` line of its failed
    log. A declaration is read up to the first whitespace, so **a job whose name
    contains spaces cannot be declared by `suite=`: declare `run=<red run id>`
-   instead** (HIMMEL-5135). It is
+   instead**. It is
    verified against the run, never trusted: a wrong run id or an unrelated name
    is refused with the same exit 22. Trailers belong in the FIRST commit; a
    late declaration costs a new commit, never `--amend`.
-   **Or the console writes a fix-GO** (HIMMEL-5134), when a commit line is not
+   **Or the console writes a fix-GO**, when a commit line is not
    an option: `bash <anchor>/scripts/handover/console-kit/go.sh --fix-main-red
    <red run id> <pr> <full head sha>`, from the console (a leg cannot; it needs
    the same ready-check PASS as any GO). The signed file names ONE red run, one
@@ -262,7 +262,7 @@ name must be `type/slug` with type in `feat|fix|chore|docs|refactor|test`.
 
 ---
 
-## Symptom: `git commit`/`git push` to main is refused even with `--no-verify` (HIMMEL-2095)
+## Symptom: `git commit`/`git push` to main is refused even with `--no-verify`
 
 A `reference-transaction` hook (`scripts/hooks/check-main-ref-transaction.sh`,
 installed by `scripts/hooks/install-main-ref-transaction.sh`) refuses any
@@ -311,7 +311,7 @@ same way as every other main-branch guard: `touch <repo-root>/.single-writer`.
 
 ---
 
-## Symptom: every Write/Edit under `/tmp` is refused with "cannot determine branch for '/tmp'" (HIMMEL-2739)
+## Symptom: every Write/Edit under `/tmp` is refused with "cannot determine branch for '/tmp'"
 
 `block-edit-on-main` walks UP from the edited path looking for a `.git` to
 determine the current branch; a stray `.git` anywhere in an **ancestor** of
@@ -325,7 +325,7 @@ and temp fixture on the station then failed closed with:
 cannot determine branch for '/tmp' - refusing to evaluate
 ```
 
-`himmel-doctor`'s **C36-stray-tmp-git** check (HIMMEL-2739) catches this now
+`himmel-doctor`'s **C36-stray-tmp-git** check catches this now
 — WARN naming the exact `rmdir` remedy when the stray `.git` is empty, or
 naming it and stopping (never deleting content) when it is not.
 
@@ -343,7 +343,7 @@ you own and `git init` only on that absolute path you just created.
 
 ---
 
-## Symptom: an ad-hoc Bash line containing the literal word "enable" is refused in a worktree-pinned session (HIMMEL-2739)
+## Symptom: an ad-hoc Bash line containing the literal word "enable" is refused in a worktree-pinned session
 
 Once a session is pinned to a worktree (`EnterWorktree`), the harness's own
 worktree-isolation guard refuses non-trivial Bash commands whose text
@@ -365,11 +365,11 @@ standing workaround to normalize.
 
 ---
 
-## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one leg's session (HIMMEL-3283)
+## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one leg's session
 
 A worktree-pinned leg that has been running `git` normally can reach a state
-where its `git` Bash calls are refused. Observed 2026-09-20, leg N198
-(HIMMEL-3279). The text as recorded — both `...` are elisions in the record (the
+where its `git` Bash calls are refused. Observed 2026-09-20, leg N198.
+The text as recorded — both `...` are elisions in the record (the
 full message was not preserved), and the worktree path is the leg's own:
 
 ```text
@@ -380,7 +380,7 @@ String-match on `runs rtk with a git command among its operands`. `git grep`
 finds no himmel-authored match for this text, so it is not one of
 `scripts/hooks/*.sh`: it is Claude Code's own worktree-isolation screen, which
 statically reads each Bash command line of an `EnterWorktree`-pinned session
-(HIMMEL-3283; the same screen emits `redirects git to the shared checkout via
+(the same screen emits `redirects git to the shared checkout via
 -C`, which is a correct refusal and stays one).
 Observed refused: `git diff -U0 <file>`, `git diff -U0 -- <file>` and a bare
 `git status --short`. Earlier in the same session `git grep` and `git log` ran
@@ -389,7 +389,7 @@ fine — **partial function is not evidence against this symptom**: a leg where
 
 **Why it happens.** The rtk PreToolUse hook rewrites `git …` to `rtk git …`,
 and the isolation screen cannot establish the executable behind `rtk git`.
-Measured over the local transcripts (HIMMEL-3283): 0 of 8701 rtk-rewritten git
+Measured over the local transcripts: 0 of 8701 rtk-rewritten git
 calls were refused in sessions that are not `EnterWorktree`-pinned, 112 of 391
 in pinned ones — and inconsistently *within* a pinned session (the same command
 shapes flip between ok and refused; nothing in the session state, cwd or hook
@@ -398,9 +398,9 @@ refused, and neither is `git grep`/`merge-base`/`rev-parse`, which rtk does not
 rewrite. The same screen also refuses `rtk gh` / `rtk ssh` / `rtk shellcheck`
 when git appears in their text (10 cases).
 
-**The fix (HIMMEL-3283).** `scripts/hooks/rtk-hook-guard.sh` forwards no rtk
+**The fix.** `scripts/hooks/rtk-hook-guard.sh` forwards no rtk
 rewrite that names git as a word when the hook payload's cwd is inside a
-`.claude/worktrees/` tree (and, since HIMMEL-2953, in the claudex lane), so the
+`.claude/worktrees/` tree (and in the claudex lane), so the
 harness sees plain `git`. Nothing hook-visible marks a session as pinned, hence
 the cwd proxy; the cost is that rtk's git output compression is also lost in
 *unpinned* worktree sessions. It takes effect once the checkout the user-scope
@@ -457,7 +457,7 @@ cause is not identified, so do not spend the session diagnosing your own conduct
 - **Never run the leg's refused git command on its behalf.** That is permission
   laundering, exactly as for `[Out-of-Place Publication]` above.
 - Write the leg's message to a **console-owned** file in the state repo (the
-  N198 record, `HIMMEL-3279-N198-BLOCKED-state-2026-09-20.md`, is the shape) so
+  N198 record, `<TICKET>-N198-BLOCKED-state-2026-09-20.md`, is the shape) so
   the reasoning survives the leg's transcript.
 - Recover by **re-dispatching a fresh leg onto the identical worktree**: same
   path, branch and base, the state file in its brief. Release the stale lock
@@ -469,9 +469,9 @@ cause is not identified, so do not spend the session diagnosing your own conduct
   not evidence in the new session.
 - **If a fresh leg on the same worktree is refused with the same text, the
   session-scoped reading is wrong** — that is structural. Stop, note it on
-  HIMMEL-3283, and take it to the operator.
+  the ticket, and take it to the operator.
 
-**Settled (HIMMEL-3283):** the suppression now covers a native leg whose cwd is in
+**Settled:** the suppression now covers a native leg whose cwd is in
 `.claude/worktrees/` (see above), so a hook-produced `rtk git` no longer reaches
 the screen there. The session-scoped reading above was the right observation
 with the wrong variable: what the "session rules" varied was the `EnterWorktree`
@@ -487,7 +487,7 @@ and is unreported upstream.
 
 ---
 
-## Symptom: `/pr-check` step 0's canonical fence is refused — "runs bash in a plain command … cannot be shown not to run git" (HIMMEL-3536)
+## Symptom: `/pr-check` step 0's canonical fence is refused — "runs bash in a plain command … cannot be shown not to run git"
 
 The leg called `EnterWorktree`. That refusal comes from the worktree-isolation
 screen, which reads only `EnterWorktree`-pinned sessions: the fence runs the
@@ -516,7 +516,7 @@ with cwd set to the leg's worktree, and hands the leg the output.
 
 ---
 
-## Symptom: a denial right after a quoted, prefixed, or piped spelling of a ship step (HIMMEL-3724)
+## Symptom: a denial right after a quoted, prefixed, or piped spelling of a ship step
 
 `bash "scripts/cr/X.sh"` (quoted), `bash "$HIMMEL_REPO/scripts/cr/X.sh"`
 (variable-prefixed), `cd <worktree> && bash scripts/...`, or
@@ -553,19 +553,19 @@ the re-run.
 
 ---
 
-## Symptom: a new test suite's one-line invocation is refused as a recursive-delete deny (HIMMEL-2898)
+## Symptom: a new test suite's one-line invocation is refused as a recursive-delete deny
 
 A one-line `bash <suite> … | grep … | tail` can get refused even though the
 line names no delete flag of its own: many suites' standard cleanup trap
 (`rm -rf "$TMPDIR"` or similar) lives in the suite's own source, and something
 reads that trap text when the suite is unfamiliar and the invocation is
-compound (piped/redirected). Confirmed once (HIMMEL-2898 item 4, N125's
+compound (piped/redirected). Confirmed once (N125's
 `test-finding-reraise.sh`); the same suite ran clean when invoked through
-`quiet-run.sh`. **Since HIMMEL-2834 (#744) this can no longer be
+`quiet-run.sh`. **Since #744 this can no longer be
 `block-destructive-commands.sh` itself** — that hook anchors its recursive-rm
 checks on command position over the actual command string and never reads a
 grep pattern or a heredoc BODY, so it cannot see into a suite's own source at
-all; this symptom now names the auto-mode classifier (HIMMEL-2798 class), not
+all; this symptom now names the auto-mode classifier, not
 this hook. Tell them apart by the deny text: `recursive rm` (or another
 short, self-named reason) is this hook, deterministic; text quoting script
 content, or the literal `Stage 2 classifier error`, is the classifier.
@@ -573,7 +573,7 @@ content, or the literal `Stage 2 classifier error`, is the classifier.
 **What to do:** run every suite — new or old — only through `bash
 scripts/quiet-run.sh suite -- bash <suite>` as **one literal command**, never
 a hand-rolled compound. This is already the sanctioned shape in every leg
-brief. The label is the literal `suite`: since HIMMEL-3402 only that label is
+brief. The label is the literal `suite`: only that label is
 auto-allowed, so any other label goes to the classifier.
 
 ---
@@ -585,7 +585,7 @@ commands like any other, so `block-destructive-commands` inspects the **whole
 command string**, including a quoted TEXT argument — not just the binary
 being invoked. Quoting a guarded flag (e.g. naming the force-push flag, or
 echoing a suite's `rm -rf` cleanup line) gets refused even though the flag
-never runs. Confirmed twice (HIMMEL-2898 item 5): a leg's `inbox-send.sh`
+never runs. Confirmed twice: a leg's `inbox-send.sh`
 call and a console's `printf` log bullet, both denied for quoting text only.
 
 **What to do:** write the text with the **Write tool** first, then pass it by
@@ -597,7 +597,7 @@ form fails.
 
 ---
 
-## Symptom: an outward-facing command (`gh pr create` / `gh pr comment` / `git push`) is denied with `Stage 2 classifier error` (HIMMEL-3020)
+## Symptom: an outward-facing command (`gh pr create` / `gh pr comment` / `git push`) is denied with `Stage 2 classifier error`
 
 `Stage 2 classifier error - blocking based on stage 1 assessment (usually
 transient — retrying often succeeds)` reads like a plain retry hint, but a
@@ -626,8 +626,7 @@ head:
 - `gh pr create` / `gh pr comment` — pass the body via `--body-file` instead
   of inline, so the retry is not byte-identical to the denied call. Better
   still, first choice before any retry: publish with
-  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (HIMMEL-3031,
-  ruling H2 / HIMMEL-3026) — the body never enters the command at all, so
+  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (ruling H2) — the body never enters the command at all, so
   there is nothing in the invocation for the classifier to react to.
 - `git push` — there is no body flag to vary; the delay and the intervening
   read are themselves what makes the retry non-identical (a different point
@@ -641,7 +640,7 @@ the leg's window via `!`.
 
 ---
 
-## Symptom: `[Out-of-Place Publication]` denial on a publish step (HIMMEL-3020)
+## Symptom: `[Out-of-Place Publication]` denial on a publish step
 
 The escalated form of the row above: a harder denial that follows an
 identical, immediate retry of a `Stage 2 classifier error` denial on an
@@ -656,7 +655,7 @@ console with the exact denial text; the console never runs the denied command
 itself (permission laundering) — it routes it to the operator's own shell or
 the leg's window via `!`.
 
-(HIMMEL-3285) A leg's writes to its own handover doc are a common source of
+A leg's writes to its own handover doc are a common source of
 this symptom, since the resolved handover root sits outside the leg's working
 directories. `headed-arm-leg.sh --profile` now grants every generated leg
 settings file (native and claudex) only the leg **doc's own directory** as a
@@ -675,7 +674,7 @@ does not pick this up — the interim above still applies to it.
 
 ---
 
-## Symptom: a leg's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge (HIMMEL-3131)
+## Symptom: a leg's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge
 
 `HANDOVER_DIR=<root> bash scripts/handover/queue-lock.sh release <doc> <token>`
 acquired the lock at session start, but the same shape is denied after the
@@ -705,7 +704,7 @@ reads the session narrative (a merge just happened), not only the payload.
 ## Symptom: `check-ci.sh --pr N` prints usage and stops — no gate ran
 
 `scripts/check-ci.sh` takes the PR number **positionally**; an unknown flag
-(`--pr`, `--watch`) makes it print usage and exit **64** (`EX_USAGE`, HIMMEL-3317 —
+(`--pr`, `--watch`) makes it print usage and exit **64** (`EX_USAGE` —
 it used to share exit 2 with a genuine cannot-evaluate, so a caller reading only
 `$?` recorded a gate result for a gate that never ran), and it prints the
 `check-ci: verdict exit=64` marker line. A caller that swallows the rc (a pipe
@@ -744,7 +743,7 @@ so an arm that "went through" is not evidence the brief was in place.
 ## Symptom: a background task "stopped because the system is running low on memory" at zero pressure
 
 Observed only in leg sessions: the same command exits 0 from the console and
-dies in the leg (HIMMEL-3097). All-zero `/proc/pressure/memory` (including
+dies in the leg. All-zero `/proc/pressure/memory` (including
 `total=`) and `oom_kill 0` in the session cgroup's `memory.events` mean there
 is **no evidence of contention**; the kill is unexplained, not explained by
 memory. The leg preface carries the exact reading recipe.
@@ -770,7 +769,7 @@ it, so keep working while you wait.
 
 ---
 
-## Symptom: a commit failed and files I never touched came back changed (HIMMEL-2223)
+## Symptom: a commit failed and files I never touched came back changed
 
 `pre-commit install`'s generated `pre-commit` hook stashes every unstaged
 change to a tracked file to a patch (`~/.cache/pre-commit/patch<N>-<pid>`)
@@ -825,7 +824,7 @@ to actually confirm.
    worktree, not HEAD. Loop with `--include=<file>` to isolate a single
    remaining diff.
 3. Do not try to park the volatile files with `git stash` — it is refused by
-   `block-git-stash` (HIMMEL-1755: the stash stack is shared across
+   `block-git-stash` (the stash stack is shared across
    worktrees). `git checkout -- <path>` on them may also be denied; copy the
    file aside into the scratchpad instead if you need to compare it.
 4. Land the commit one of two ways, both needing an **operator OK**:
@@ -849,7 +848,7 @@ Root `CLAUDE.md` is **state, not a prompt** — frame-shaping invariants only, p
 for on every session. Operational/troubleshooting rules (the above) are
 prunable, per-user, and only relevant at the moment of the symptom, so they live
 load-on-trigger here instead (decision locked: memory
-`feedback_no_operational_rules_in_claudemd`; layer-selection HIMMEL-177;
-structural>instructional HIMMEL-195). The 9-author convergence behind "short
+`feedback_no_operational_rules_in_claudemd`; layer-selection and
+structural>instructional rules). The 9-author convergence behind "short
 CLAUDE.md beats long" is synthesized in the luna vault at
 `Clippings/synthesis/2026-05-26-concept-claude-md-patterns.md`.
