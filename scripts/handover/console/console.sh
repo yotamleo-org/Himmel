@@ -72,6 +72,8 @@ CONSOLE_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_COD
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh"
 . "$HERE/../../lib/console-context.sh"
+# shellcheck source=../../lib/claude-version.sh
+. "$HERE/../../lib/claude-version.sh"
 # shellcheck source=../../lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
@@ -767,9 +769,16 @@ else
 fi
 console_autocompact="$(console_context_autocompact "$CONSOLE_CONTEXT_RESOLVED_MODE")"
 launch_model="$(console_context_strip_1m_suffix "$model")"
-if [ "$CONSOLE_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model"; then
+if [ "$CONSOLE_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model" \
+    && console_context_model_takes_1m_suffix "$launch_model"; then
     launch_model="${launch_model}[1m]"
 fi
+# HIMMEL-5501: the launch line carries --autocompact and an Opus 5.5 id, which a
+# CLI below the floor rejects at parse time. An --arm run refuses here, before
+# any doc, lock or arm exists; a print-only or dry-run only warns.
+_floor_dry=1
+{ [ "$ARM" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; } && _floor_dry=0
+claude_floor_gate console.sh "$_floor_dry" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
 # launch_cmd <session> <doc> -- the command line printed for an operator to
 # paste. HIMMEL-3299: no launcher runs for it, so the console's durable launch

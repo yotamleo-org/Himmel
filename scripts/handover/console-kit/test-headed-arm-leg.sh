@@ -610,10 +610,10 @@ cat > "$d_sanctioned/konsole" <<'KONSOLE_STUB_EOF'
 exit 0
 KONSOLE_STUB_EOF
 chmod 755 "$d_sanctioned/konsole"
-rc=0; out="$(CONSOLE_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 1m 2>&1)" || rc=$?
+rc=0; out="$(CONSOLE_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-4-6 1m 2>&1)" || rc=$?
 check "headed-arm.sh --dry-run, sanctioned pair (CONSOLE_CONTEXT=1m, context=1m): exit 0" "$rc" "0"
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries --autocompact auto" "$out" "--autocompact auto"
-contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries the [1m] model suffix" "$out" "claude-sonnet-5[1m]"
+contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries the [1m] model suffix" "$out" "claude-sonnet-4-6[1m]"
 
 for off in "standard" "yes" "true" "1M" ""; do
   rc=0; out="$(LEG_CONTEXT="$off" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/leg.log claude-sonnet-5 2>&1)" || rc=$?
@@ -807,7 +807,7 @@ d8profile="$tmp/c8profile"; mk_launch_stubs "$d8profile" "HIMMEL-4021-ceiling"; 
 rc=0
 mkdir -p "$tmp/profile fleet"
 PLUGIN_PROFILES_REGISTRY="$ceiling_reg" LEG_CONTEXT='' RUN_LEG_ARGS='--profile design' \
-  run_leg "$d8profile" "$tmp/repo8profile" "HIMMEL-4021-ceiling" "claude-sonnet-5" \
+  run_leg "$d8profile" "$tmp/repo8profile" "HIMMEL-4021-ceiling" "claude-sonnet-4-6" \
   "$PROCEED_PREFLIGHT" "$tmp/profile fleet/manifest.json" >/dev/null 2>&1 || rc=$?
 check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.legs[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
 wait_record "$d8profile" || true
@@ -815,7 +815,7 @@ rec8profile="$(cat "$d8profile/record" 2>/dev/null || true)"
 check "profile numeric ceiling: full launch succeeds" "$rc" "0"
 contains "profile numeric ceiling: renderer carries 400000" "$rec8profile" "--autocompact 400000"
 not_contains "profile numeric ceiling: no hard-coded auto" "$rec8profile" "--autocompact auto"
-contains "profile numeric ceiling: model has 1m mode" "$rec8profile" "claude-sonnet-5[1m]"
+contains "profile numeric ceiling: model has 1m mode" "$rec8profile" "claude-sonnet-4-6[1m]"
 log8profile="$(cat "$d8profile/log" 2>/dev/null || true)"
 contains "profile numeric ceiling: wrapper names profile source" "$log8profile" "headed-arm-leg: context=1m (profile design contextMode 1m)"
 contains "profile numeric ceiling: renderer names profile source" "$log8profile" "context=1m (profile design contextMode 1m); model="
@@ -855,13 +855,13 @@ HEADED_ARM_LEG_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d9c/konsole" PGREP_CMD="$d9c/pgrep" \
 LEG_REPO="$tmp/repo9c" HEADED_ARM_LOCK_DIR="$d9c/locks" HEADED_ARM_PROC="$d9c/proc" \
 LEG_CONTEXT=1m \
-  bash "$SCRIPT" --no-profile "HIMMEL-6666-leg" "$doc_context_ok" "$d9c/signal-never" "$PAST" "$d9c/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+  bash "$SCRIPT" --no-profile "HIMMEL-6666-leg" "$doc_context_ok" "$d9c/signal-never" "$PAST" "$d9c/log" "claude-sonnet-4-6" >/dev/null 2>&1 || rc=$?
 wait_record "$d9c" || true
 rec9c="$(cat "$d9c/record" 2>/dev/null || true)"
 env9c="$(cat "$d9c/env-record" 2>/dev/null || true)"
 check "full launch, sanctioned Context line: exit 0" "$rc" "0"
 contains "full launch, sanctioned Context line: --autocompact auto reaches konsole's argv" "$rec9c" "--autocompact auto"
-contains "full launch, sanctioned Context line: model carries the [1m] suffix" "$rec9c" "claude-sonnet-5[1m]"
+contains "full launch, sanctioned Context line: model carries the [1m] suffix" "$rec9c" "claude-sonnet-4-6[1m]"
 contains "full launch, sanctioned Context line: CONSOLE_CONTEXT=1m reaches konsole's own env" "$env9c" "CONSOLE_CONTEXT=1m"
 not_contains "full launch, sanctioned Context line: internal autocompact requirement does not leak into the launched leg" "$env9c" "HEADED_ARM_REQUIRED_AUTOCOMPACT="
 logline9c="$(cat "$d9c/log" 2>/dev/null || true)"
@@ -903,6 +903,7 @@ mutant="$mutantdir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016  # literal source-text mutation, not shell expansion
 sed 's/ --autocompact "$AUTOCOMPACT"//' "$HEADED_ARM" > "$mutant"
 cp "$HERE/../../lib/console-context.sh" "$mutantdir/scripts/lib/console-context.sh"
+cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh"
 chmod 755 "$mutant"
 d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"
 mrc=0
@@ -2680,6 +2681,7 @@ mk_headless_stubs() {
   cat > "$dir/claude" <<CLAUDE_EOF
 #!/usr/bin/env bash
 d="\$(dirname "\$0")"
+[ "\${1:-}" = --version ] && { echo "2.1.296 (Claude Code)"; exit 0; }
 if [ "\${1:-}" = agents ]; then
   [ -e "\$d/agents-fail" ] && exit 3
   [ -e "\$d/agents-object" ] && { echo '{}'; exit 0; }

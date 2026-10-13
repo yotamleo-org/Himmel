@@ -81,8 +81,15 @@ Finally it prints the launch line. Run it in a terminal of its own:
 ```text
 env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
     CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 \
-    claude --model '<model>[1m]' --autocompact auto -n <session-name> "load <doc> and continue"
+    claude --model '<model>' --autocompact auto -n <session-name> "load <doc> and continue"
 ```
+
+`[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
+`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
+and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
+(HIMMEL-5501). `--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
+newer: an armed launch on an older CLI refuses and names `claude update`
+(`/himmel-update` brings it current).
 
 Consoles default to 1m context with `--autocompact auto`
 (a console-class exemption). Both `console new` and `next`

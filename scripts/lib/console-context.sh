@@ -24,6 +24,9 @@
 # Functions:
 #   console_context_valid <value>            -- rc 0 iff value is 1m|standard
 #   console_context_model_is_fable <model>   -- rc 0 iff model is Fable-family
+#   console_context_model_takes_1m_suffix <model>
+#                                             -- rc 0 iff the model needs [1m] to
+#                                                run 1M (opus-4-6 / sonnet-4-6)
 #   console_context_has_1m_suffix <model>    -- rc 0 iff model ends in [1m]
 #   console_context_strip_1m_suffix <model>  -- prints model with [1m] stripped
 #   console_context_autocompact <mode>       -- prints the autocompact value
@@ -58,6 +61,19 @@ console_context_valid() {
 console_context_model_is_fable() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         *fable*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# console_context_model_takes_1m_suffix <model> -- HIMMEL-5501. [1m] only
+# SELECTS 1M on Opus 4.6 / Sonnet 4.6 (plan-gated there). Opus 4.7+, Sonnet 5+,
+# Haiku 5.5 and Fable run 1M natively, so a bare id plus --autocompact auto is
+# the launch; a non-Anthropic id (gpt-*, glm-*, deepseek-*, anything with `/`)
+# never takes the suffix (an HTTP 400 on gpt-5.6-sol[1m], docs/tooling-catalog.md).
+console_context_model_takes_1m_suffix() {
+    case "$1" in */*) return 1 ;; esac
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        *opus-4-6*|*sonnet-4-6*) return 0 ;;
         *) return 1 ;;
     esac
 }

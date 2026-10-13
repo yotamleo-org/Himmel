@@ -566,6 +566,8 @@ EOF
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/console-context.sh"
+# shellcheck source=../lib/claude-version.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-version.sh"
 
 # Arg parsing — accept --flag <value> or --flag=<value>, any order,
 # unknown flags are rejected loudly. Avoids the v1 "$3 == --force"
@@ -1104,6 +1106,9 @@ if [ "$CONTEXT_MODE" = "1m" ]; then
         # models (alias and full id forms alike) -- never claim to have
         # set 1m context on one. Say so instead of staying silent.
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=auto still is)"
+    elif ! console_context_model_takes_1m_suffix "$MODEL"; then
+        # HIMMEL-5501: native-1M and non-Anthropic ids launch bare.
+        CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=auto still is)"
     else
         MODEL="${MODEL}[1m]"
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL"
@@ -1116,6 +1121,11 @@ fi
 # Same stdout-not-stderr, guard-time-not-only-banner reasoning as the
 # MODEL_REASON echo above.
 echo "arm-resume: $CONTEXT_REASON (autocompact=$AUTOCOMPACT)"
+
+# HIMMEL-5501: the relaunch passes --autocompact and the resolved model id; a
+# CLI below the floor rejects them at parse time, so nothing fires and nothing
+# says why. Refuse before any scheduler work (a dry run only warns).
+claude_floor_gate arm-resume "$DRY_RUN" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
 # HIMMEL-2779: worker legs are capped by the explicit CLI argv pair, not by a
 # model suffix (Fable-family launches can silently strip [1m]). Refuse before
