@@ -1135,6 +1135,8 @@ assert_rc "5484 bash +o errexit -x s.sh"        2 "$(run_case "$(j_bash 'bash +o
 assert_rc "5484 zsh --xtrace s.sh"              2 "$(run_case "$(j_bash 'zsh --xtrace s.sh')")"
 assert_rc "5484 ctl set +o xtrace"              0 "$(run_case "$(j_bash 'set +o xtrace')")"
 assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
+assert_rc "5484 ctl bash s.sh arg -x"           0 "$(run_case "$(j_bash 'bash s.sh arg -x')")"
+assert_rc "5484 ctl bash s.sh +e -x"            0 "$(run_case "$(j_bash 'bash s.sh +e -x')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

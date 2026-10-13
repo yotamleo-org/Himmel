@@ -911,7 +911,7 @@ g4_scan() {
                         +o) nargs=0; nflags=$((nflags + 1)); xo=2 ;;
                         +*) nargs=0; nflags=$((nflags + 1)) ;;
                     esac
-                elif [ "$xend" = 0 ]; then
+                elif [ "$xend" = 0 ] && [ "$nargs" = 0 ]; then
                     case "$d" in
                         --) xend=1 ;;     # `set -- -x`: the rest are positionals
                         --rcfile|--init-file|-O) skipv=1 ;;
