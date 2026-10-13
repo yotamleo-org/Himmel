@@ -17,7 +17,12 @@ param(
     [string]$Work = (Join-Path $env:USERPROFILE 'cell')
 )
 $ErrorActionPreference = 'Continue'
-$Cell = 'win11-adopt-uninstall-project'
+# Native output is OEM-decoded by default (HIMMEL-2256); guarded because a
+# guestcontrol run has no console handle on some images.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch { $null = $_ }
+$Cell ='win11-adopt-uninstall-project'
 $script:Fail = 0
 
 function Step([string]$Name, [string]$Cmd, [string]$Dir) {
