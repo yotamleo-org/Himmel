@@ -4,6 +4,11 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-13
+
+### Fixed
+- The context bar no longer drops to 0% mid-response behind gateways that write all-zero usage for thinking blocks; it keeps the last real size (#809).
+
 ## [0.11.1] - 2026-10-12
 
 ### Security

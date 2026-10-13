@@ -151,7 +151,7 @@ always-on hooks.
 ## Write-fence (deliverable 3)
 
 The self-evolving loop this schema feeds is **propose-only**: a lesson can
-only reach code as a ticket or a draft-PR body, through the existing CR +
+only reach code as a ticket or a draft-PR body, through the existing automated review +
 operator-merge gate. It is never allowed to edit enforcement surfaces
 directly. That posture is now backed by a structural fence, not just
 convention: `scripts/guardrails/lesson-write-fence.sh` denies the loop
@@ -164,7 +164,7 @@ inverted model instead of enumerating write-shaped verbs.
 **Round 4: deny-list → allow-list inversion.** Rounds 1–3b each closed one
 more per-verb write-shape gap on a deny-list of known writers — glued
 redirects, attached `-t` flags, PowerShell built-in aliases — and each
-round's adversarial CR found a *new* gap the same way (`ln -sf`,
+round's adversarial automated review found a *new* gap the same way (`ln -sf`,
 `truncate`, `mkdir`, ...): enumerating "every way to write a file" is an
 open set, so a deny-list on that set converges slowly if at all. Round 4
 inverts the rule: a small closed set of command-position verbs **proven to
@@ -295,7 +295,7 @@ above — `env`/`sudo`/`timeout`/`exec`/... — is handled, now including
 ahead of a git clause for hook-routing detection too; an unlisted or
 user-defined wrapper is not) are accepted out-of-charter gaps (documented
 in the fence's own header). Those shapes are exactly what the
-CR/operator-merge primary gate exists to catch — this fence is
+automated review/operator-merge primary gate exists to catch — this fence is
 **defense-in-depth under that gate, not a replacement for it**: a bad
 lesson can never disable the gate that would catch it, because the gate
 itself sits outside the fence's write path.
