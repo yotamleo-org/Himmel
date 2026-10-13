@@ -172,8 +172,11 @@ class Parser {
             cacheCreationTokens: count(raw.cache_creation_input_tokens),
             cacheReadTokens: count(raw.cache_read_input_tokens),
         };
-        if (entry.isSidechain !== true) {
-            this.data.contextTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens;
+        // A main-conversation request always sends some context, so zero is a placeholder: gateways that
+        // write one record per content block give thinking blocks all-zero usage. Keep the last real size.
+        const contextTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens;
+        if (entry.isSidechain !== true && contextTokens > 0) {
+            this.data.contextTokens = contextTokens;
         }
         const id = entry.message?.id;
         if (typeof id === 'string' && id && id.length <= MESSAGE_ID_MAX_LEN) {

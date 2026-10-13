@@ -53,7 +53,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `github` | GitHub integration (issues, PRs, repos) | ON-DEMAND — cached, off by default |
 | `feature-dev` | Feature development workflow (explorer, architect, reviewer agents) | ON-DEMAND — cached, off by default |
 | `claude-md-management` | Manages CLAUDE.md files across projects | ON-DEMAND — cached, off by default |
-| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the CR gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending)) |
+| `security-guidance` | Security analysis and guidance | ON-DEMAND — cached, off by default (retired in favor of the automated review gate — see [new-machine.md §6](setup/new-machine.md#security-guidance--recommended-off-operator-decision-pending)) |
 | `commit-commands` | Git commit helpers and conventions | ON-DEMAND — cached, off by default |
 | `claude-code-setup` | Setup assistant for new Claude Code environments | ON-DEMAND — cached, off by default |
 | `pr-review-toolkit` | PR review tools (code, tests, types, silent failures, comments) | ON-DEMAND — cached, off by default (himmel ships its own `pr-review-toolkit-himmel@himmel` fork instead, which IS on the ALWAYS tier) |
@@ -65,7 +65,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.5.2` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean legs and the console; catalog id `obsidian-second-brain@himmel` |
+| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `user`, `lane-content` and `telegram` profiles (plus the operator profile); off in lean worker sessions and the supervisor session; catalog id `obsidian-second-brain@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
 | `shadcn-mcp` | himmel wrapper plugin for the shadcn/ui registry MCP (`npx shadcn@4.21.0 mcp`, no API key; upstream ships no plugin) | ON-DEMAND, `design` core |
@@ -96,7 +96,7 @@ implemented profiles or permission to enable a plugin. The existing resolver's
 live installed-ID overlay leaves all four off in managed profiles; operator is
 the existing unmanaged sentinel. This change does not restore dormant IDs to
 `plugin-profiles.json`: doing that also requires updating the old catalog-absence
-assertions in its test (console deferred that scope). Until that follow-up,
+assertions in its test (the supervisor session deferred that scope). Until that follow-up,
 these names are documentation candidates, not `--add-plugins` catalog members.
 Pins are refreshed adoption targets, **not** claims that the local install was
 updated. `scripts/plugin-upstreams.json` tracks these standalone targets in the
@@ -107,7 +107,7 @@ drift report; no marketplace install source or live setting is changed.
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
 | `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `49dd158d1076134a641b33efb035946536778336` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `59945da347a93f9937d3fb09f5ba81a16010351f` |
-| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.1.1` (`6135ace05cd72736594fcf2c6830bea22780f91a`) |
+| `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.2.0` (`2961b52fc1fe6a5a87c7a959a79512e5c2f3ffe5`) |
 
 `scroll-world@scroll-world` also remains installed and off by default.
 
@@ -422,7 +422,7 @@ SessionEnd `Hook cancelled` 5s-timeout noise is tracked upstream
 at openai/codex-plugin-cc#474. The `yotamleo/codex-plugin-cc` fork and tag
 `v1.0.6-himmel.1` remain parked, unreferenced by any marketplace entry.
 
-**RETIRED:** the companion's `adversarial-review` mode was integrated into `/pr-check` step 3.1 as an availability-gated extra cross-model pass, dormant until its removal; removed 2026-09-29 (same OpenAI bank as the panel `codex` critic, 6 % agreed vs 23 %).
+**RETIRED:** the companion's `adversarial-review` mode was integrated into `/pr-check` step 3.1 as an availability-gated extra cross-model pass, dormant until its removal; removed 2026-09-29 (same OpenAI subscription usage budget as the panel `codex` critic, 6 % agreed vs 23 %).
 **Windows ACL hardening:** aged Codex worktrees can lose inherited
 sandbox ACEs on child directories. Before an unattended Codex dispatch into an
 existing worktree, run `pwsh -NoProfile -File scripts\codex\normalize-worktree-acl.ps1 <worktree>`
@@ -497,7 +497,7 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 **What:** Harness-meta operational skills for himmel.
 **Skills:** `himmel-ops:stuck-playbook` (load-on-trigger guardrail-recovery playbook), `himmel-ops:minerva` (grill→brainstorm→critic→spec→critic→plan pipeline with adversarial critic loops; the one front door for grill / stress-test / brainstorm), `himmel-ops:vm` (lean-invoke VM lifecycle + e2e runbook), `himmel-ops:memory-compound` (lean-invoke auto-memory→vault compaction with a qmd findability gate), `himmel-ops:effort-assess` (PILOT reference-class effort record with a DoD refusal and a version tail check).
 **Commands:** `/minerva` — runs the minerva pipeline; `/memory-compound` — runs the auto-memory compaction pass; `/fanout` — validates + confirms + dispatches N work items to the invariant-policy lane by type, refusing destructive/irreversible items below the judgement tier and any dormant lane; `/cloud-route` — classifies tickets for the cloud credit lane, writes the cloud brief and prints the operator launch line without launching.
-**Hook:** `hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Advisory, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
+**Hook:** `hooks/hooks.json` wires a PreToolUse(`matcher: "Skill"`) hook `inject-minerva-critic.sh` — injects the minerva critic loop when `lean-skills:brainstorming`/`lean-skills:writing-plans` fires without `/minerva`, and routes `lean-skills:grilling` into minerva Stage 1a. The match is namespace-agnostic (substring on `brainstorming`/`writing-plans`), so retained `superpowers:` aliases still trigger it. Warn-only, fail-open; kill switch `MINERVA_HOOK_DISABLE=1`.
 **Plugin path:** `marketplace/plugins/himmel-ops/`
 
 ---
@@ -605,9 +605,9 @@ through the forge seam (`forge_pr_find_open` / `forge_pr_create` /
 existing open PR's body instead of opening a second one), refuses on `main`,
 with no upstream, or with an empty body file, and prints exactly one line on
 success: `PR <number> <url> <head-sha>`. The point (ruling H2):
-a leg's Bash command is always this same short two-file-path literal no
+a worker session's Bash command is always this same short two-file-path literal no
 matter what the PR body says, so the body text — the thing the auto-mode
-classifier reacts to — never appears in the command a leg
+classifier reacts to — never appears in the command a worker session
 types; it only ever reaches `gh`/`bb` as an argv element of the child process
 the forge seam execs. No retry logic (that's the stuck-playbook's job). Tests:
 `scripts/lanes/test-leg-pr-open.sh` (hermetic — a `GH_CMD` stub records argv
@@ -773,7 +773,7 @@ code kit; the content/research and ops kits follow separately.
 
 | Profile | Members | Listing cost | Use |
 |---------|---------|--------------|-----|
-| `code` | `typescript-lsp`, `pyright-lsp`, `code-simplifier` (all `@claude-plugins-official`) | ~0.2k | a leg on a typed TS/Python repo; the language-server binary must exist on the machine |
+| `code` | `typescript-lsp`, `pyright-lsp`, `code-simplifier` (all `@claude-plugins-official`) | ~0.2k | a worker session on a typed TS/Python repo; the language-server binary must exist on the machine |
 | `code-ui` | `playwright@claude-plugins-official` (MCP) | est 3-5k, unmeasured | browser-driven e2e, UI lanes only |
 
 CLI tools of the code kit (0 listing tokens, not plugins), installed by
@@ -836,7 +836,7 @@ changing which config dir loads, so hooks are unaffected).
     state until added (the same staleness class).
 - `profiles` — `operator` (`null` sentinel: full `~/.claude`, never injected),
   `user` (adopter set), `lane-impl` (impl workers: floor +
-  `pr-review-toolkit-himmel`), `lane-review` (CR-only, same lean set),
+  `pr-review-toolkit-himmel`), `lane-review` (automated review-only, same lean set),
   `lane-content` (impl + `claude-obsidian` + `obsidian-triage`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
   allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-operator-console)).
@@ -885,7 +885,7 @@ registry validation) + the `--settings` cases in the spawn/launcher suites.
 subscription through a self-hosted CLIProxyAPI Anthropic-compatible proxy: the
 claudex pattern from the theo/t3.gg recipe. It keeps himmel's full Claude Code
 harness (skills, hooks, guardrails, worktrees) while spending the codex weekly
-bank, and opens mixed subagent lanes that the plain codex CLI harness does not.
+subscription usage budget, and opens mixed subagent lanes that the plain codex CLI harness does not.
 
 **Env table:**
 
@@ -995,7 +995,7 @@ levels read from the proxy `main.log` `apply.go` lines. Feeds the
 per-lane effort/tier calibration._
 
 **Operating rules (from theo's gpt-5.6-sol post-mortem).** The lane
-spends the codex weekly bank, so GPT-5.6's token-burn mechanics apply. These are
+spends the codex weekly subscription usage budget, so GPT-5.6's token-burn mechanics apply. These are
 encoded where the lane runs (the launcher default + `lanes.json`), not just as
 vault prose; the full mechanics live in luna
 `30-Resources/Tech/CLIProxyAPI.md`.
@@ -1021,7 +1021,7 @@ vault prose; the full mechanics live in luna
   copy.** Claude Code gives each subagent a FRESH context (see the codex-CLI
   contrast below), so the claudex lane avoids theo's worst multiplier (the v2
   full-history copy); still, every subagent turn is a separate gpt-5.6-sol
-  consumer on the codex bank, so fan out deliberately and chunk big plans.
+  consumer on the codex subscription usage budget, so fan out deliberately and chunk big plans.
 
 Two of theo's rules are **codex-CLI-specific, not claudex levers** — they belong
 to the raw `codex-exec` / hermes gpt lanes (item 3, deferred), not
@@ -1089,7 +1089,7 @@ APPLIED, one remains UNTESTED, not refuted:
 **What:** the codex-lane twin of `spawn-glm` —
 lets a parent Claude session hand a scoped implementation chunk to an inline
 gpt-5.6-sol worker running the FULL himmel harness (skills/hooks/guardrails/
-worktree) on the **codex weekly bank**, with the same review/merge contract as
+worktree) on the **codex weekly subscription usage budget**, with the same review/merge contract as
 the GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
 (`bash <primary-repo>/scripts/claude-codex --permission-mode <mode>
 <pointer-prompt>`, cwd = the minted worker worktree) rather than
@@ -1101,7 +1101,7 @@ resolves its key from). Own-branch mode mints `claudex/<slug>`
 (`.claude/worktrees/claudex+<slug>`); `--branch <existing>` selects
 shared-branch mode (reuses `scripts/lib/shared-branch-lock.sh` under the
 `"codex"` lane name, serializing writers onto an existing PR branch — the
-same iterative CR-fix-round pattern as GLM's shared mode). Sessions live
+same iterative review-fix round pattern as GLM's shared mode). Sessions live
 under `<BRIDGE_ROOT>/claudex-sessions/` (a sibling of `glm-sessions/`);
 `meta.json` records `lane: "codex"`.
 
@@ -1109,7 +1109,7 @@ under `<BRIDGE_ROOT>/claudex-sessions/` (a sibling of `glm-sessions/`);
 bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 ```
 
-**Codex weekly bank preflight (D4):** reads the LAST
+**Codex weekly subscription usage budget preflight (D4):** reads the LAST
 `"secondary":{"used_percent":<N>` occurrence from a bounded tail read of
 `~/.codex/logs_2.sqlite` (the rollout log; `secondary` = weekly, `primary` =
 5h) — fail-**OPEN** on any read error (a cold/absent log never bricks a
@@ -1290,7 +1290,7 @@ default-path pushurl tripwire was removed (it fenced nothing and
 could lose operator push configuration), so push protection is **contract-only**
 and every dispatch report says so. A worker inherits operator git credentials
 via the shared `~/.claude`; the in-session accident guard is
-`block-glm-external-writes.sh` and the load-bearing control is the CR gate (no
+`block-glm-external-writes.sh` and the load-bearing control is the automated review gate (no
 GLM branch merges except by the validating session). D2 guards are
 dormant-by-construction in v1 (himmel-worktree cwd scope). Uses GLM flat-rate
 Coding-Plan quota, sanctioned by the operator directive — the per-token block
@@ -1310,7 +1310,7 @@ legs are recorded in [`docs/glm-offload.md`](glm-offload.md).
 **What:** One Bash dispatcher for every available `class: "impl"` registry lane.
 The parent invokes it directly with the Bash tool's `run_in_background: true`;
 no Claude wrapper agent supervises or polls the worker. Session-shaped lanes
-retain their chokepoint's isolated worktree/session behavior. One-shot lanes get
+retain their sanctioned script's isolated worktree/session behavior. One-shot lanes get
 a dispatcher-owned worktree, session directory, metadata, and process-tree
 deadline. Every outcome returns a compact status, diffstat, outbox, and failure
 log report; the parent still owns review + merge.
@@ -1324,8 +1324,8 @@ Lane selection is registry-driven: `--lane` > `HIMMEL_IMPL_LANE` > the
 The tracked registry declares no `defaultImplLane` (impl routes to native
 Claude subagents only — operator ruling 2026-08-19): an
 unqualified dispatch refuses and names the Agent-tool path instead of
-silently spending a GPT-backed bank. Unavailable choices fail with exit 2 and
-list available impl lanes; they never silently spend a different bank.
+silently spending a GPT-backed subscription usage budget. Unavailable choices fail with exit 2 and
+list available impl lanes; they never silently spend a different subscription usage budget.
 `--context blank` is the default, while
 `--context fork --context-file <path>` prepends explicitly delimited inherited
 background. Test: `bash scripts/telegram/test-dispatch-lane.sh`.
@@ -1341,13 +1341,13 @@ traps, roster caveats); restating that prose here would just create a second
 copy that drifts (a known drift class; see also
 [`lane-calibration.md`](internals/lane-calibration.md#non-claude-lane-calibration)).
 What's pinned here is the **exact dispatch shape** — several of these lanes
-enforce a wrapper chokepoint, and calling the underlying binary bare is either
+enforce a wrapper sanctioned script, and calling the underlying binary bare is either
 wrong (not on PATH) or bypasses the wrapper's guards (hook-blocked).
 
-| Lane (`lanes.json` id) | Dispatch — never call the bare binary/underlying CLI directly where a chokepoint is named |
+| Lane (`lanes.json` id) | Dispatch — never call the bare binary/underlying CLI directly where a sanctioned script is named |
 |---|---|
 | GitHub Copilot CLI (`copilot-cli`) | `bash scripts/copilot/dispatch-copilot.sh --worktree <wt> <args>` — enforces allow-list passthrough, worktree containment, granular grants |
-| hermes one-shot (`hermes-oneshot`) | `bash scripts/hermes/dispatch-trusted.sh <args>` (trusted-engine writes) or `scripts/hermes/invoke.sh` (untrusted default `todo` toolset) — the `/pr-check`-internal `hermes-critics`/`codex(paid)` critic lanes route through this same chokepoint; see the CR Scripts section below |
+| hermes one-shot (`hermes-oneshot`) | `bash scripts/hermes/dispatch-trusted.sh <args>` (trusted-engine writes) or `scripts/hermes/invoke.sh` (untrusted default `todo` toolset) — the `/pr-check`-internal `hermes-critics`/`codex(paid)` critic lanes route through this same sanctioned script; see the CR Scripts section below |
 | codex CLI sandbox (`codex-exec`) | `bash scripts/codex/dispatch-codex-exec.sh --worktree <wt> [--stdin-brief] <args>` — ACL preflight fail-closed, model from the codex critic in `scripts/cr/critics.json` (explicit override wins), bounded one-byte stdout presence tracking; stdin defaults to `/dev/null`, only explicit `--stdin-brief` passes a caller-supplied brief through (after optional `--shared-branch <branch>`, before codex args) |
 | codex WSL lane (`codex-wsl`) | `bash scripts/codex/dispatch-codex-wsl.sh --distro <name> --clone <in-distro-abs-path> [--brief-file <path>] [args...]` — raw `wsl ... codex exec` is hook-blocked |
 | Antigravity CLI (`antigravity-cli`) | `agy -p <prompt>` (headless; PATH-installed CLI, no repo wrapper — permission flags only, no hook surface today) |
@@ -1644,7 +1644,7 @@ view into the vault — the bridge between the derived graph and the KB.
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
   staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
   original default) — drawing the SAME interactive 5h/weekly Anthropic
-  bank as a live session, gated by `bank-preflight.sh` inside
+  subscription usage budget as a live session, gated by `bank-preflight.sh` inside
   `refresh-graph-map.sh` (SKIPPED-BANK stops the run) — each firing
   `refresh-graph-map.sh` for its corpus. The
   structural/AST pair (`HIMMEL-GraphMapAst-Luna` / `-Himmel`) is **asymmetric**
@@ -1662,10 +1662,10 @@ view into the vault — the bridge between the derived graph and the KB.
   the same `graphify-out` (both sides resolve `GRAPHIFY_OUT` identically —
   `refresh-graph-map.sh` honours the relative form and refuses an
   absolute one, which its scratch-then-promote model cannot express): no LLM,
-  no bank, no `bank-preflight`, never shells
+  no subscription usage budget, no `bank-preflight`, never shells
   `claude` — and is **free**. schtasks (Windows, StartWhenAvailable XML) / crontab
   (POSIX); dedup-guarded; hermetic test `test-graphmap-cadence.sh`. Arming is
-  an operator flip (weekly `claude-cli` bank draw on the semantic pair only —
+  an operator flip (weekly `claude-cli` subscription usage budget draw on the semantic pair only —
   the AST pair costs nothing), not auto-armed. `arm` also FAILS FAST when
   `claude` is not resolvable on PATH at arm time (restoring the
   original resolution) — the scheduler's minimal PATH carries neither
@@ -1999,7 +1999,7 @@ on a dedicated public fork using free public runners.
   - **Whole-run budget** (`SUITE_RUN_BUDGET`, default 7200s) — stops between suites and names what did not run; a truncated run exits non-zero rather than reporting green. It was described here as a runaway backstop, but measurement showed otherwise: 397 suites are discovered, 381 run, and the 2026-08-29 reference run spent its whole 7200s on real work while reaching 174 of them, so on this hardware the budget bounds an *ordinary* run.
   - **Resume rotation** (`SUITE_ROTATE`, default 1) — discovery is sorted, so a truncated run used to drop the *same* 207-suite tail forever (all of `scripts/lib`, `scripts/luna`, `scripts/machine-setup`, `scripts/parity`, `scripts/statusline`, `scripts/upstreams`). A truncated run now records the first suite it did not reach; the next run over the same scan root starts there and wraps to the top, covering the whole ring across ~3 budget windows. It **reorders, never filters** — a single run's suite set is unchanged — and truncation still exits 1, so the blind spot becomes temporary without a partial run reading as a pass. Inert with no cursor on disk (so a fresh CI container is byte-identical to before); `SUITE_ROTATE=0` disables it, `SUITE_ROTATE_STATE` overrides the cursor path (default `$HOME/.himmel/himmel-shell-suite-<scan-slug>.cursor`, deliberately not `TMPDIR`, which `tmp-sweep.sh` clears).
   - **Stdin isolation** — suites run with stdin on `/dev/null` and the runner reads its list on fd 3, so no suite can block an unattended run on a prompt or consume the remaining suite list.
-  - **Visible wait** (`SUITE_LOCK_WAIT`, default `0`). The runner never used to wait at all: a held lock refused on sight, so legs hand-rolled their own retry loops and a *queued* leg became indistinguishable from a *parked* one (opposite remedies — patience vs a nudge — and getting it backwards is how a coordinator creates a second-writer race). Set it to a number of seconds and the run queues instead, printing a repeating `WAITING:` line every `SUITE_LOCK_WAIT_INTERVAL` seconds (default 60) that names the **current** holder's pid/host/elapsed hold plus how long this run has waited; `ACQUIRED:` on success, and the full `REFUSED` verdict plus exit 2 when the budget runs out. Every attempt is the unmodified acquire, so staleness/CAS/takeover behaviour is unchanged — this adds a cadence and a heartbeat, not a second way to get the lock. Default `0` keeps the historical refuse-on-sight *behaviour* — same decision, same exit 2, no waiting. The refusal TEXT is not byte-identical: it gains three lines naming `SUITE_LOCK_WAIT` as the way to queue instead, so anything asserting on the exact refusal output sees them.
+  - **Visible wait** (`SUITE_LOCK_WAIT`, default `0`). The runner never used to wait at all: a held lock refused on sight, so worker sessions hand-rolled their own retry loops and a *queued* worker session became indistinguishable from a *parked* one (opposite remedies — patience vs a nudge — and getting it backwards is how a coordinator creates a second-writer race). Set it to a number of seconds and the run queues instead, printing a repeating `WAITING:` line every `SUITE_LOCK_WAIT_INTERVAL` seconds (default 60) that names the **current** holder's pid/host/elapsed hold plus how long this run has waited; `ACQUIRED:` on success, and the full `REFUSED` verdict plus exit 2 when the budget runs out. Every attempt is the unmodified acquire, so staleness/CAS/takeover behaviour is unchanged — this adds a cadence and a heartbeat, not a second way to get the lock. Default `0` keeps the historical refuse-on-sight *behaviour* — same decision, same exit 2, no waiting. The refusal TEXT is not byte-identical: it gains three lines naming `SUITE_LOCK_WAIT` as the way to queue instead, so anything asserting on the exact refusal output sees them.
   - Other env: `SUITE_LOCK=0` (opt out of the lock), `SUITE_LOCK_DIR` (override the lock path), `SUITE_LOCK_TTL` (default 4h). Those durations must be positive integers; `0` is rejected, since for each of them it would disable the guard it configures. `SUITE_LOCK_WAIT` is the deliberate exception — a budget rather than a guard, where `0` legitimately means "do not queue" (a malformed value falls back to `0`, never to an unbounded wait).
   - **Per-suite temp root** — each suite runs with `TMPDIR`/`TMP`/`TEMP` pointed at its own `himmel-suite.XXXXXX` dir, which the runner deletes after the suite (or after the watchdog kills it). A terminated suite never runs its own cleanup traps, so without this it left every `mktemp` behind: /tmp on the dev box reached ~149,600 entries that way.
 - `scripts/ci/tmp-sweep.sh` — lean-invoke sweep of himmel's own leftover fixture trees out of `%TEMP%`/`$TMPDIR`. **Dry-run by default**; `--apply` deletes, `--older-than <hours>` (default 6) is the age floor, `--root <dir>` overrides the temp root, `--bytes` adds a (slow) reclaimable-size figure, `--include-bare-mktemp` opts into `tmp.XXXXXX` (coreutils mktemp's default template — not exclusively ours, so it is off by default). Matches only top-level entries whose name starts with one of a derived allow-list of our own `mktemp`/`mkdtempSync` prefixes; never follows or removes symlinks; resolves the root with `pwd -P` and refuses anything that is not at or under `$TMPDIR`/`$TEMP`/`$TMP`/`/tmp`/`/var/tmp`. Every allow-list entry is a complete `mktemp`/`mkdtempSync` template prefix, or the shared fixed part of a family of them (`bench-run-batch-`, `lane-bank-`) — never a bare family stem. Exit 2 on usage error or a refused root; exit 3 when `--apply` left matched entries behind (the survivor count is on stderr — dry-run never returns it). Suite: `scripts/ci/test-tmp-sweep.sh`.
@@ -2017,11 +2017,11 @@ Full reference: [`scripts/ci/README.md`](../scripts/ci/README.md).
 Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` command; not invoked standalone in normal workflows.
 
 - `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them as GitHub issues tagged `cr-deferred`. Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
-- `scripts/cr/critic-first-pass.sh` — generic model-parametrized CR reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
-- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI bank on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
-- `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot chokepoint); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
+- `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
+- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+- `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
-- `scripts/cr/pr-check-external.sh` — **Claude-free CR runner**: reviews a branch with NO Claude session so review still runs when the Claude quota bank is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the CR/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the CR marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
+- `scripts/cr/pr-check-external.sh` — **Claude-free automated review runner**: reviews a branch with NO Claude session so review still runs when the Claude subscription usage budget is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the automated review/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the review-owed marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
 
 ## OpenRouter free-tier watcher (`scripts/openrouter/free-watch.sh`)
 
@@ -2053,7 +2053,7 @@ Rerun it on monitoring-key rotation — never reuse the master pair for polling.
 
 ## GLM ship lane (`scripts/glm/`)
 
-- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the CR marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
+- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin). See [`docs/glm-offload.md`](glm-offload.md) "Claude-down ship flow".
 
 ---
 

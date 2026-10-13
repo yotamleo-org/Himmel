@@ -370,13 +370,13 @@ fi
 # refinement is out of scope; a present marker is never a false block here
 # because check-cr-before-push only writes it when a CR is genuinely owed.)
 if [ "$resolved_from_head" = "1" ]; then
-    echo "CR review pending for ${branch}. Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
+    echo "Automated review pending for ${branch}. Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
     exit 2
 fi
 
 current_head=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || true)
 if [ -z "$current_head" ]; then
-    echo "CR review pending for ${branch} — cannot read HEAD — refusing to create a PR with a pending CR marker; run \`git rev-parse HEAD\` in the worktree." >&2
+    echo "Automated review pending for ${branch} — cannot read HEAD — refusing to create a PR with a pending review-owed marker; run \`git rev-parse HEAD\` in the worktree." >&2
     exit 2
 fi
 
@@ -388,11 +388,11 @@ marker_sha=$(awk -F' [|] ' '{print $2; exit}' "$marker" 2>/dev/null || true)
 short_head=$(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "$current_head")
 
 if [ "$marker_sha" = "$current_head" ]; then
-    echo "CR review pending for ${branch} (HEAD=${short_head}). Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
+    echo "Automated review pending for ${branch} (HEAD=${short_head}). Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
     exit 2
 fi
 
 # Marker exists but SHA mismatch — new commits were added after the last marker.
 # Block as a stale-marker re-review case.
-echo "CR review pending for ${branch} (HEAD=${short_head}) — stale marker — re-review needed. Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
+echo "Automated review pending for ${branch} (HEAD=${short_head}) — stale marker — re-review needed. Run /pr-check (or /pr-review-toolkit:review-pr) first. After review passes, marker auto-clears." >&2
 exit 2

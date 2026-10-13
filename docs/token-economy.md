@@ -96,7 +96,7 @@ them so a later re-measure is reproducible.
 ### `inject-initiative.sh` → pointer form (measured 2026-08-23)
 
 **Method.** Byte-sum of the hook's own stdout — the exact string the SessionStart
-chain injects — per leg set, on this machine, both harnesses (Claude Code
+chain injects — per auto-ship step set, on this machine, both harnesses (Claude Code
 `.claude/settings.json` and Codex `.codex/hooks.json` run the same script):
 
 ```bash
@@ -105,15 +105,15 @@ printf '{}' | HIMMEL_INITIATIVE=all bash scripts/hooks/inject-initiative.sh | wc
 
 Before-figures come from the pre-change script (`git show <base>:scripts/hooks/inject-initiative.sh`)
 run the same way, with `HIMMEL_REPO` pointed at an empty dir so no local `.env`
-perturbs the leg set. This is the same listing-sum method as the
+perturbs the auto-ship step set. This is the same listing-sum method as the
 2026-08-22 context-preload audit, narrowed to the one block that changed.
 
-| Leg set | Before (B) | After (B) | Delta |
+| Auto-ship step set | Before (B) | After (B) | Delta |
 |---|---:|---:|---:|
 | `prcheck,pr` | 1,707 | 350 | −1,357 (−80%) |
-| `all` (interactive: 4 legs) | 1,803 | 366 | −1,437 (−80%) |
-| `all` (overnight: 6 legs) | 2,477 | 376 | −2,101 (−85%) |
-| all 8 legs (widest) | 3,155 | 378 | −2,777 (−88%) |
+| `all` (interactive: 4 auto-ship steps) | 1,803 | 366 | −1,437 (−80%) |
+| `all` (overnight: 6 auto-ship steps) | 2,477 | 376 | −2,101 (−85%) |
+| all 8 auto-ship steps (widest) | 3,155 | 378 | −2,777 (−88%) |
 
 After-figures are for a **canonical install** — a primary checkout, whose
 absolute runbook path is 74 B on the reference machine — computed as
@@ -272,7 +272,7 @@ other half is that a fresh session still refuses to commit on main, still routes
 Jira through the CLI, still reaches for `graphify query` on a structure
 question. The with/without recipe (arms, probes, metrics, acceptance) is in
 [`docs/internals/token-economy-bench.md`](internals/token-economy-bench.md); it
-needs a quiet bank window, so it runs post-merge and its numbers land here.
+needs a quiet subscription usage budget window, so it runs post-merge and its numbers land here.
 
 ## Pointers
 

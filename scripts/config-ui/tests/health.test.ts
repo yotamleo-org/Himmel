@@ -46,7 +46,7 @@ test("renderHealth escapes every feed, ledger, legs and alert string", () => {
 test("renderHealth with no feed and no health still renders all five sections", () => {
   const html = renderHealth(null, null);
   expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(
-    ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Legs and the usage bank", "Search and graph freshness"]);
+    ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Search and graph freshness"]);
   expect(html).toContain("No data");
 });
 
