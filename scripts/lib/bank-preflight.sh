@@ -962,7 +962,8 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     local dir="$1"   # failed (not a dup — e.g. ENAMETOOLONG), 2 duplicate,
     if mkdir "$dir" 2>/dev/null; then    # 3 metadata write failed
       if printf '%s\n' "$(( $(date +%s) + ${FLEET_RESERVE_TTL:-1800} ))" > "$dir/expires" 2>/dev/null &&
-         printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null; then
+         printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
+         printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
         # HIMMEL-3012: the raw leg name, for the consume check in the prune
         # pass — the directory name is a hash whenever $LEG cannot be one
         # directory component. HIMMEL-3216: one line, guaranteed by the
@@ -970,10 +971,9 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
-        # HIMMEL-5519: the lane keys the api-vs-fleet split, never the leg name (an
-        # inherited CADENCE_BANK_LEG could escape both caps). A reservation without
-        # it counts as fleet: the census may over-count, never under-count.
-        printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null || true
+        # HIMMEL-5519: `lane` (written above, refusing admission on failure) keys the
+        # api-vs-fleet split, never the leg name: an inherited CADENCE_BANK_LEG could
+        # escape both caps, and a lost lane file would under-count the api cap.
         return 0
       fi
       rm -rf "$dir" 2>/dev/null

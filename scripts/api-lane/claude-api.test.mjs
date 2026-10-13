@@ -512,20 +512,26 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
   const env = { ...f.env, HIMMEL_API_MAX_CONCURRENT: '1', STUB_HOLD: hold };
   const first = spawn('bash', [LAUNCH, ...f.good], { env, stdio: 'ignore' });
   const done = new Promise((resolve) => first.on('close', resolve));
-  const until = Date.now() + 15000;
-  while (!existsSync(f.paths.env) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
-  assert.equal(existsSync(f.paths.env), true, 'first call never reached the stub');
-  // The reservation names the launcher shell that waits on claude, not a dead subshell.
-  const seen = readFileSync(f.paths.env, 'utf8');
-  const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
-  assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
-  // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
-  const second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_BANK_LEG: 'inherited-leg' }, encoding: 'utf8' });
+  // Whatever fails below, the held stub is released and the child reaped, never left looping.
+  const release = () => { rmSync(hold, { force: true }); first.kill(); };
+  let second;
+  try {
+    const until = Date.now() + 15000;
+    while (!existsSync(f.paths.env) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(existsSync(f.paths.env), true, 'first call never reached the stub');
+    // The reservation names the launcher shell that waits on claude, not a dead subshell.
+    const seen = readFileSync(f.paths.env, 'utf8');
+    const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
+    assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
+    // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
+    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_BANK_LEG: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
+  } finally { rmSync(hold, { force: true }); }
   assert.equal(second.status, 2);
   assert.match(second.stderr, /api bank gate said SKIPPED-FLEET/);
   assert.match(second.stderr, /api lane at\/over its own cap \(1\/1\)/);
-  rmSync(hold);
+  const timer = setTimeout(release, 20000);
   assert.equal(await done, 0);
+  clearTimeout(timer);
   // Released at call end: the slot dir holds no reservation and the next call is admitted.
   assert.deepEqual(readdirSync(env.HIMMEL_FLEET_SLOTS).filter((n) => n.startsWith('claude-api:')), []);
   const third = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...f.env, HIMMEL_API_MAX_CONCURRENT: '1', HIMMEL_API_JOB_ID: 'job-3' }, encoding: 'utf8' });
