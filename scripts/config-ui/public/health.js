@@ -86,7 +86,7 @@ function bankHtml(health) {
     body = `<div class="kv"><b>${esc(r.verdict)}</b> · five_hour ${esc(r.five_hour)} % · seven_day ${esc(r.seven_day)} %${r.degraded ? " · degraded" : ""}</div>
       <div class="ro">${esc(r.ts)}${r.age !== "" && r.age != null ? ` · ${esc(r.age)} min old` : ""} · read from the bank-preflight ledger, never re-measured here</div>`;
   } else body = nodata(b.reason || "no bank-preflight ledger");
-  return `<div class="card" id="bank"><h3>Last bank preflight</h3>${body}</div>`;
+  return `<div class="card" id="bank"><h3>Last subscription usage budget preflight</h3>${body}</div>`;
 }
 
 // HIMMEL-5486: the Claude and Codex bank windows from GET /api/bank. Unknown shows "unknown (why)" and its age, never 0 %.
@@ -103,12 +103,12 @@ function quotaHtml(health) {
   const q = health && health.quota;
   let body;
   if (!health) body = nodata("loading");
-  else if (!q) body = nodata("the bank windows did not load");
+  else if (!q) body = nodata("the subscription usage budget windows did not load");
   else body = [
     quotaRow("claude", "5h", q.claude.five_hour), quotaRow("claude", "weekly", q.claude.seven_day),
     quotaRow("codex", "5h", q.codex.five_hour), quotaRow("codex", "weekly", q.codex.weekly),
   ].join("") + `<div class="ro">read from the caches bank-preflight reads, never re-measured here</div>`;
-  return `<div class="card" id="quota"><h3>Bank windows</h3>${body}</div>`;
+  return `<div class="card" id="quota"><h3>Subscription usage budget windows</h3>${body}</div>`;
 }
 
 function legsHtml(health) {
@@ -116,9 +116,9 @@ function legsHtml(health) {
   let body;
   if (!health) body = nodata("loading");
   else if (l.state === "ok") {
-    body = l.legs.length ? l.legs.map((x) => `<div class="leg"><span class="mk">${esc(x.status)}</span><span class="doc" title="${esc(x.doc)}">${esc(String(x.doc).split("/").pop())}</span></div>`).join("") : `<div class="empty">The fleet manifest lists no legs.</div>`;
+    body = l.legs.length ? l.legs.map((x) => `<div class="leg"><span class="mk">${esc(x.status)}</span><span class="doc" title="${esc(x.doc)}">${esc(String(x.doc).split("/").pop())}</span></div>`).join("") : `<div class="empty">The fleet manifest lists no worker sessions.</div>`;
   } else body = nodata(l.state === "absent" ? `no fleet manifest (${l.reason || "none found"})` : l.reason || "legs view failed");
-  return `<div class="card" id="legs"><h3>Legs</h3>${body}</div>`;
+  return `<div class="card" id="legs"><h3>Worker sessions</h3>${body}</div>`;
 }
 
 function searchHtml(feed) {
@@ -133,7 +133,7 @@ export function renderHealth(feed, health) {
     section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, health) + modeHtml(health)),
     section("broken", "What is broken, and what do I do", "Failing and drifting rows, worst first, with the fix to run in your terminal.", brokenHtml(feed, health)),
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
-    section("legs-bank", "Legs and the usage bank", "Read-only: the newest bank-preflight ledger row and each leg's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
+    section("legs-bank", "Worker sessions and the subscription usage budget", "Read-only: the newest bank-preflight ledger row and each worker session's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
     section("search", "Search and graph freshness", "From the doctor's search rows.", searchHtml(feed)),
   ].join("\n");
 }

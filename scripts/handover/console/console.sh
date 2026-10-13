@@ -100,10 +100,10 @@ wrap (the predecessor's last step, run from its own session) writes the
 WRAPPED bullet and releases the lock, and refuses (exit 4, nothing written)
 while this session has a live in-process subagent (HIMMEL-5071).
 
-Consoles default to 1m. --context overrides CONSOLE_CONTEXT and the default;
+Supervisor sessions (consoles) default to 1m. --context overrides CONSOLE_CONTEXT and the default;
 --context standard or CONSOLE_CONTEXT=standard opts down to 200000.
 
---name on next selects which console succession to continue; defaults to the name
+--name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "console".
 --date on next overrides the day used for the successor's own name and
@@ -115,7 +115,7 @@ rolled over since.
 (plugin /console from any repo); bucket/prefix derive from it instead of
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
-the console doc, and a leg for the project is dispatched into it explicitly
+the console doc, and a worker session (leg) for the project is dispatched into it explicitly
 with LEG_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
 --bucket/--prefix still override it when given.
 USAGE

@@ -7,7 +7,7 @@ they almost always mean the first one.
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
 | Config console | One local web app: Config, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
-| Console board | One generated HTML page: the fleet, each leg's phase, what needs the console | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel console |
+| Console board | One generated HTML page: the fleet, each worker session's phase, what needs the supervisor session | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel supervisor session |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/console-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
 ## The config console (`himmelctl ui`)
@@ -45,20 +45,20 @@ Full reference, endpoints and environment overrides:
 
 ## The console board and roadmap tracker
 
-Both belong to the himmel **console**, the long-running session that
-dispatches and watches legs ([glossary](glossary.md)). They are static HTML
-files the console renders from its own state and republishes as artifacts, not
+Both belong to the himmel **supervisor session**, the long-running session that
+dispatches and watches worker sessions ([glossary](glossary.md)). They are static HTML
+files the supervisor session renders from its own state and republishes as artifacts, not
 servers.
 
-- **Board** (`board.mjs`): fleet size against the cap, each leg's phase from
-  LIVE to WRAPPED, what needs the console, epic progress and open decisions.
+- **Board** (`board.mjs`): fleet size against the cap, each worker session's phase from
+  LIVE to WRAPPED, what needs the supervisor session, epic progress and open decisions.
   `--changed` prints `CHANGED <path>` or `UNCHANGED <path>`.
 - **Tracker** (`tracker.py`): release panels and a kanban by Jira version and
   theme. Run `node scripts/jira/dist/index.js mirror` first; without a mirror
   it has nothing to show. The same view also lives live at `#/roadmap` in the
   config console.
 
-Both are Linux-only console tooling; an install without a console does not
+Both are Linux-only supervisor session tooling; an install without a supervisor session does not
 have them in use.
 
 ## Keeping this page current

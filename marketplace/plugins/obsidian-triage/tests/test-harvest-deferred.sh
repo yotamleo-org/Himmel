@@ -8,8 +8,10 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tool="$here/../tools/harvest-clip-body-batch.py"
-hc="$here/../commands/harvest-clips.md"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/harvest-deferred.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
+# HIMMEL-5513: the runbook body plus its on-demand references.
+hc="$tmp/harvest-clips.all.md"
+cat "$here/../commands/harvest-clips.md" "$here"/../references/harvest-clips/*.md > "$hc"
 
 cat > "$tmp/t.py" <<'PY'
 import importlib.util, subprocess, sys
@@ -188,7 +190,7 @@ python3 "$tmp/t.py" "$tool" "$tmp"
 
 # Runbook contract: the class table, and G-8 writes the marker when every
 # partial is deferred-class.
-table=$(awk '/^### Partial classes/{p=1;next} /^### /{if(p) exit} p' "$hc")
+table=$(awk '/^### Partial classes/{p=1;next} /^### /{if(p) exit} p' "$here/../references/harvest-clips/partial-classes.md")
 for row in "thin-body" "enricher-gap" "ig_media_pending" "x_media_pending" "firecrawl" \
            "stale-read" "rate-limited" "failed" "catastrophic" "needs-attention" \
            "harvest_defer_count" ".harvest-pending.md"; do
@@ -198,6 +200,6 @@ for cls in "stale-read" "rate-limited" "catastrophic"; do
     hit=$(grep -F -- "$cls" <<< "$table" | grep -i "block" || true); [ -n "$hit" ] \
         || { echo "FAIL: class table does not mark $cls as blocking"; exit 1; }
 done
-g8=$(awk '/^### G-8/{p=1;next} /^### /{if(p) exit} p' "$hc")
+g8=$(awk '/^### G-8/{p=1;next} /^### /{if(p) exit} p' "$here/../references/harvest-clips/g-8-completion-marker.md")
 grep -qi "deferred" <<< "$g8" || { echo "FAIL: G-8 does not admit deferred partials"; exit 1; }
 echo "HARVEST-DEFERRED PASS"

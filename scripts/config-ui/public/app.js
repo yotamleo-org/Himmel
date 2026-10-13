@@ -30,7 +30,7 @@ let healthGen = 0; // declared before route() runs: a reload at #/health calls l
 let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // HIMMEL-4943: declared before route() runs, as healthGen is
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false }; // ver = the #/roadmap/<version> drill-in, from the route
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // HIMMEL-5491: writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
 const PAGES = [
   { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
@@ -221,7 +221,46 @@ async function loadRoadmap() {
   roadmap = data;
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
+// HIMMEL-5491: a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
+// on a refusal nothing local changed, so the card is back where it was and the reason is shown above the board.
+let rmWriting = false;
+async function writeRoadmap(body) {
+  if (rmWriting || !roadmap || roadmap.state !== "ok") return;
+  const t = roadmap.tickets.find((x) => x.k === Number(String(body.key).replace("HIMMEL-", "")));
+  if (!t) return;
+  rmWriting = true; roadmapUi.writeError = null;
+  const { ok, j } = await post("/api/roadmap/write", body);
+  rmWriting = false;
+  if (!ok) { roadmapUi.writeError = `${body.key}: ${j.error || "write failed"}${j.output ? " (" + String(j.output).trim().slice(0, 200) + ")" : ""}`; return paint(); }
+  if ("status" in j) { const c = COLS_BY_ID[j.status]; t.b = j.status; t.s = j.name || c || t.s; }
+  else {
+    let i = roadmap.themeSlugs.indexOf(j.theme || "");
+    if (i < 0) { roadmap.themes.push(j.theme); roadmap.themeSlugs.push(j.theme); i = roadmap.themes.length - 1; }
+    t.theme = i;
+  }
+  paint();
+  if (j.mirror === "refreshed") loadRoadmap();
+}
+const COLS_BY_ID = { todo: "To Do", prog: "In Progress", rev: "In Review", ci: "IN CI", done: "Done", wont: "wont do" };
+let rmDrag = null;
+document.addEventListener("dragstart", (e) => {
+  const c = e.target.closest && e.target.closest("[data-rm-card]");
+  if (!c) return;
+  rmDrag = Number(c.dataset.rmCard);
+  try { e.dataTransfer.setData("text/plain", "HIMMEL-" + rmDrag); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
+});
+document.addEventListener("dragover", (e) => { if (rmDrag !== null && e.target.closest && e.target.closest("[data-rm-drop]")) e.preventDefault(); });
+document.addEventListener("drop", (e) => {
+  const col = e.target.closest && e.target.closest("[data-rm-drop]");
+  if (rmDrag === null || !col) return;
+  e.preventDefault();
+  const k = rmDrag; rmDrag = null;
+  const t = roadmap && roadmap.tickets.find((x) => x.k === k);
+  if (t && t.b !== col.dataset.rmDrop) writeRoadmap({ key: "HIMMEL-" + k, status: col.dataset.rmDrop });
+});
+document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
+  if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, theme: e.target.value === "" ? null : e.target.value });
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;

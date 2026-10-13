@@ -197,7 +197,7 @@ $noCreation = @([pscustomobject]@{ ProcessId = 601; ParentProcessId = 600; Name 
                 [pscustomobject]@{ ProcessId = 603; ParentProcessId = 601; Name = 'bun.exe'; CommandLine = $LUNA })
 Check 'roots with no CreationDate are skipped, never guessed' (@(Get-SupersededFleetRoots -Procs $noCreation -Now $Now).Count -eq 0)
 
-Write-Host "Test 14: stale-PPID impostors never reach the kill set (codex adversarial finding)"
+Write-Host "Test 14: stale-PPID lookalikes never reach the kill set (codex adversarial finding)"
 # Get-DescendantPids' stale-PPID filter is fail-OPEN (it keeps a link when either
 # creation date is unknown) because sweep-codex-orphans.ps1 gates orphan
 # CLASSIFICATION separately via the client-pipe test. This tool has no such second
@@ -207,18 +207,18 @@ Write-Host "Test 14: stale-PPID impostors never reach the kill set (codex advers
 # pid joins the tree, and the name allow-list (node/python/cmd/bash/pwsh) does not
 # stop it. Select-VerifiedDescendants re-gates on the root's creation time.
 $rootCreated = $Now.AddMinutes(-60)
-$impostorProcs = @(
+$lookalikeProcs = @(
   (Rec 700 100 'bun.exe'    $LUNA 60)    # superseded fleet root
   (Rec 701 700 'bun.exe'    $SERVER 60)  # genuine child, same age as its root
   (Rec 702 701 'python.exe' 'python helper.py' 59)  # genuine grandchild, NEWER than the root
   (Rec 703 700 'python.exe' 'python unrelated-long-running.py' 300)  # STALE-PPID IMPOSTOR: 5h old, predates its "parent"
 )
 $walked = @(701, 702, 703)   # what the fail-open PPID walk yields
-$verified = Select-VerifiedDescendants -Procs $impostorProcs -Pids ([int[]]$walked) -RootCreated $rootCreated
+$verified = Select-VerifiedDescendants -Procs $lookalikeProcs -Pids ([int[]]$walked) -RootCreated $rootCreated
 $vs = @($verified | Sort-Object)
 Check 'genuine same-age child 701 kept'        ($vs -contains 701)
 Check 'genuine newer grandchild 702 kept'      ($vs -contains 702)
-Check 'stale-PPID impostor 703 DROPPED (predates its claimed root)' (-not ($vs -contains 703)) "got=$($vs -join ',')"
+Check 'stale-PPID lookalike 703 DROPPED (predates its claimed root)' (-not ($vs -contains 703)) "got=$($vs -join ',')"
 Check 'verified set is exactly {701,702}'      (($vs -join ',') -eq '701,702') "got=$($vs -join ',')"
 
 # Fail CLOSED, not open: an unreadable creation time is exactly what must not be
@@ -228,9 +228,9 @@ Check 'descendant with NO creation time is dropped (fail closed)' `
   ((Select-VerifiedDescendants -Procs $noDate -Pids ([int[]]@(801)) -RootCreated $rootCreated).Count -eq 0)
 # A pid that vanished between the walk and the re-gate is simply absent.
 Check 'pid absent from the table is dropped, not assumed kin' `
-  ((Select-VerifiedDescendants -Procs $impostorProcs -Pids ([int[]]@(999999)) -RootCreated $rootCreated).Count -eq 0)
+  ((Select-VerifiedDescendants -Procs $lookalikeProcs -Pids ([int[]]@(999999)) -RootCreated $rootCreated).Count -eq 0)
 # Clock-skew tolerance matches Test-ProcessStartMatches (2s), so a child recorded
-# a hair before its parent is still kin, not an impostor.
+# a hair before its parent is still kin, not a lookalike.
 $skew = @([pscustomobject]@{ ProcessId = 802; ParentProcessId = 700; Name = 'bun.exe'; CommandLine = $SERVER; CreationDate = $rootCreated.AddSeconds(-1) })
 Check 'child 1s "older" than its root survives (2s skew tolerance)' `
   ((Select-VerifiedDescendants -Procs $skew -Pids ([int[]]@(802)) -RootCreated $rootCreated) -contains 802)
@@ -238,7 +238,7 @@ $skew2 = @([pscustomobject]@{ ProcessId = 803; ParentProcessId = 700; Name = 'bu
 Check 'child 30s older than its root is dropped (beyond tolerance)' `
   ((Select-VerifiedDescendants -Procs $skew2 -Pids ([int[]]@(803)) -RootCreated $rootCreated).Count -eq 0)
 Check 'empty pid list does not throw' `
-  ((Select-VerifiedDescendants -Procs $impostorProcs -Pids ([int[]]@()) -RootCreated $rootCreated).Count -eq 0)
+  ((Select-VerifiedDescendants -Procs $lookalikeProcs -Pids ([int[]]@()) -RootCreated $rootCreated).Count -eq 0)
 
 Write-Host "Test 15: platform guard survives Windows PowerShell 5.1 ([codex-1]/[glm-3])"
 # $IsWindows is a PS6+ automatic variable. Under 5.1 it is UNDEFINED ($null), so a

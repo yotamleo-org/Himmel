@@ -256,6 +256,27 @@ out="$(cd "$CWD" && reap --apply)"; rc=$?
 check "apply from a cwd with family-named files rc 0" "$rc" 0
 absent "11. old fixture reaped despite cwd files" "$ROOT/mog-run.old"
 
+echo "== 16. cache-break archive: manifest row only when sha succeeded (HIMMEL-4263) =="
+build_tree; printf '{"k":1}\n' > "$ROOT/claude-$(id -u)/cache-break-state-aaaa.json"
+mkdir -p "$T/nosha"
+for t in sha256sum shasum; do printf '#!/bin/sh\nexit 1\n' > "$T/nosha/$t"; chmod +x "$T/nosha/$t"; done
+out="$(PATH="$T/nosha:$PATH" reap --apply)"; rc=$?
+contains "16. sha failure is reported as a skipped cache-break" "$out" "SKIP cache-break"
+check "16. sha failure: --apply exits non-zero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
+check "16. no cache-break manifest row with an empty sha" "$(jq -r 'select(.kind=="cache-break")|.id' "$ARCH/MANIFEST.jsonl" 2>/dev/null | wc -l | tr -d ' ')" 0
+absent "16. the unrecorded copy is removed so a later run retries it" "$ARCH/$(date +%Y-%m)/cache-break/aaaa/cache-break-state-aaaa.json"
+out="$(reap --apply)"
+check "16. a working sha archives it with a non-empty sha256" "$(jq -r 'select(.kind=="cache-break")|.sha256' "$ARCH/MANIFEST.jsonl" | grep -c '^[0-9a-f]\{64\}$')" 1
+
+echo "== 17. fixture du sums every xargs batch (HIMMEL-4263) =="
+build_tree
+for n in a b c; do mkdir -p "$ROOT/mog-run.$n"; head -c 65536 /dev/zero > "$ROOT/mog-run.$n/f"; old "$ROOT/mog-run.$n/f" "$ROOT/mog-run.$n"; done
+mkdir -p "$T/onebatch"
+printf '#!/bin/sh\nexec %s -n 1 "$@"\n' "$(command -v xargs)" > "$T/onebatch/xargs"; chmod +x "$T/onebatch/xargs"
+want=0; for n in old a b c; do want=$((want + $(du -sk "$ROOT/mog-run.$n" | cut -f1))); done
+out="$(PATH="$T/onebatch:$PATH" reap)"
+contains "17. reported fixture size is the sum of all batches" "$out" "REAP fixture  mog-run.*: 4 dir(s), ${want}K;"
+
 echo "== 12. scoped to one leg (HIMMEL-4235): --judge / --session =="
 build_tree
 touch -t 200001010000 "$ROOT/claude-$(id -u)/j9001"

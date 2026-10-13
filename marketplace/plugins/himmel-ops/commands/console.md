@@ -3,7 +3,7 @@ description: Start or arm a console (new) or hand it over (next) from any repo �
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 
-Starts or hands over a console (defined in `docs/glossary.md` in the himmel
+Starts or hands over a supervisor session (defined in `docs/glossary.md` in the himmel
 checkout). Background + the operating contract: `docs/handover/running-a-console.md`.
 
 This command runs from **any directory**: first resolve the himmel checkout —
@@ -11,11 +11,11 @@ This command runs from **any directory**: first resolve the himmel checkout —
 toplevel (a foreign repo shipping its own `console.sh` must never win over
 himmel's) — then point `console.sh` at the PROJECT this session is actually
 running in via `--project`. That is the whole point of this plugin copy over
-the project-local `.claude/commands/console.md`: a console started from e.g.
+the project-local `.claude/commands/console.md`: a supervisor session started from e.g.
 `~/Websites` or a Websites repo gets THAT project's own bucket/prefix derived
 from the handover registry (or its basename, unregistered) — never himmel's
-own `JIRA_PROJECT_KEY`. The console session itself always runs in the himmel
-checkout: `--project` is recorded as data in the console doc, and a leg for
+own `JIRA_PROJECT_KEY`. The supervisor session itself always runs in the himmel
+checkout: `--project` is recorded as data in the console doc, and a worker session for
 the project is dispatched into it explicitly with `LEG_REPO=<path>`.
 
 ```bash
@@ -84,8 +84,8 @@ esac
   from `docs/handover/console-template.md`, acquire the queue lock on it, and
   print the launch line. A second `new` the same day bumps the letter; it never
   overwrites.
-- `/console next` — from a running console, write the successor stub (letter
-  bumped, pointed at this console and its HANDOFF) plus this console's
+- `/console next` — from a running supervisor session, write the successor stub (letter
+  bumped, pointed at this supervisor session and its HANDOFF) plus this supervisor session's
   `-HANDOFF.md` skeleton. Run it at 45 % context fill or after 90 k input
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
@@ -112,7 +112,7 @@ esac
   `--bucket`/`--prefix`.
 
 Record the printed `release-token: ` line — now backticked around the token
-itself (HIMMEL-2910) — in the console's first Results bullet verbatim:
+itself (HIMMEL-2910) — in the supervisor session's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
 Linux/macOS only — `--arm` launches through konsole. The Windows station arms

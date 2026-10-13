@@ -129,8 +129,13 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CLAUDE_RUNBOOK="$ROOT/.claude/commands/pr-check.md"
+CLAUDE_DRIVER="$ROOT/.claude/commands/pr-check.md"
+CLAUDE_REF_DIR="$ROOT/scripts/cr/pr-check-ref"
 CODEX_SKILL="$ROOT/.agents/skills/pr-check/SKILL.md"
+# HIMMEL-5509: the Claude runbook is a small driver plus per-stage reference
+# files. Every check below asserts a behaviour is present in "the runbook", so
+# CLAUDE_RUNBOOK is the driver followed by the reference files in name order,
+# concatenated into one scratch file (built once the scratch dir exists).
 
 PASS=0
 FAIL=0
@@ -202,6 +207,13 @@ lane_marker_check() {
 # `git -C` and would point the fixture's init/add/commit at the CALLER's repo.
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/pr-check-pair.XXXXXX") || { echo "mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
+CLAUDE_RUNBOOK="$tmp/pr-check-runbook.md"
+if [ -f "$CLAUDE_DRIVER" ]; then
+    cat "$CLAUDE_DRIVER" > "$CLAUDE_RUNBOOK"
+    for ref in "$CLAUDE_REF_DIR"/*.md; do
+        [ -f "$ref" ] && cat "$ref" >> "$CLAUDE_RUNBOOK"
+    done
+fi
 fx() {
     env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
         GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -C "$1" \
@@ -283,6 +295,7 @@ run_diff_block() {
 for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     [ -f "$f" ] || { echo "missing pr-check file: $f" >&2; exit 1; }
     n="${f#"$ROOT"/}"
+    [ "$f" = "$CLAUDE_RUNBOOK" ] && n=".claude/commands/pr-check.md+scripts/cr/pr-check-ref"
     code=$(code_lines "$f")
 
     # (0) anti-vacuity. Every check below reads $code; an empty extraction
@@ -1018,6 +1031,41 @@ for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     else
         fail "$n: HIMMEL-4040 relative-literal-for-every-call rule missing -- a leg following the absolute fence is classifier-denied [Out-of-Place Publication]"
     fi
+done
+
+# --- HIMMEL-5509: the Claude runbook is a driver that loads on every run, so it
+# stays small; per-stage detail lives in scripts/cr/pr-check-ref/ and is read
+# only when its stage runs. Pin the driver's size, that every reference file the
+# driver names exists, and that no reference file is orphaned (a file the driver
+# never points at would be loaded by nobody).
+driver_limit=10240
+driver_bytes=$(wc -c < "$CLAUDE_DRIVER" | tr -d ' ')
+if [ "$driver_bytes" -lt "$driver_limit" ]; then
+    pass "pr-check.md driver is $driver_bytes bytes (< $driver_limit)"
+else
+    fail "pr-check.md driver is $driver_bytes bytes (>= $driver_limit) -- move per-stage detail into scripts/cr/pr-check-ref/ and point at it (HIMMEL-5509)"
+fi
+named_refs=$(grep -oE '`[0-9]{2}-[a-z0-9.-]+\.md`' "$CLAUDE_DRIVER" | tr -d '`' | sort -u)
+if [ -n "$named_refs" ]; then
+    pass "driver names reference files"
+else
+    fail "driver names no reference file under scripts/cr/pr-check-ref/ -- the pointer check below would be vacuous"
+fi
+for r in $named_refs; do
+    if [ -f "$CLAUDE_REF_DIR/$r" ]; then
+        pass "driver pointer resolves: $r"
+    else
+        fail "driver names $r but scripts/cr/pr-check-ref/$r does not exist"
+    fi
+done
+for ref in "$CLAUDE_REF_DIR"/*.md; do
+    b=$(basename "$ref")
+    case "
+$named_refs
+" in *"
+$b
+"*) continue ;; esac
+    fail "scripts/cr/pr-check-ref/$b is not named by the driver -- an orphaned reference file is read by nobody"
 done
 
 echo "test-pr-check-pair: $PASS passed, $FAIL failed"

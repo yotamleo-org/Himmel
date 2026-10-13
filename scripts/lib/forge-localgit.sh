@@ -52,6 +52,14 @@ _lg_default_base() {
     printf 'main\n'
 }
 
+# _lg_valid_id <id> — rc 0 when the WHOLE value is ^br-[a-z0-9._-]+$. A [[ =~ ]]
+# match is anchored on the string, not per line, so a value carrying a newline
+# (br-ok, newline, ../x) is refused rather than passing on its first line.
+_lg_valid_id() {
+    local re='^br-[a-z0-9._-]+$'
+    [[ $1 =~ $re ]]
+}
+
 # lg_forge_change_id [branch] — print br-<branch>; the current branch when none
 # is given. rc 2 when the id is not ^br-[a-z0-9._-]+$, or when the change
 # record for that id already belongs to another branch (feat/a-b and feat-a/b
@@ -64,7 +72,7 @@ lg_forge_change_id() {
         return 2
     fi
     id="br-$(printf '%s' "$branch" | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
-    if ! printf '%s\n' "$id" | grep -Eq '^br-[a-z0-9._-]+$'; then
+    if ! _lg_valid_id "$id"; then
         echo "forge(local-git): branch '$branch' gives change id '$id', outside ^br-[a-z0-9._-]+\$ — rename the branch" >&2
         return 2
     fi
@@ -144,7 +152,7 @@ lg_forge_change_open() {
 # rc 1 when no change record holds <id>.
 lg_forge_change_view() {
     local id="${1:-}" dir rec branch base title head state merged=false
-    if ! printf '%s\n' "$id" | grep -Eq '^br-[a-z0-9._-]+$'; then
+    if ! _lg_valid_id "$id"; then
         echo "forge(local-git): '$id' is not a change id (^br-[a-z0-9._-]+\$)" >&2
         return 1
     fi

@@ -4,7 +4,7 @@ WS7 owns WHERE validation gates sit on himmel's workflows: gate placement,
 rubric chains, PASS/FAIL semantics, the report contract, human-checkpoint
 doctrine, lane trust tiers, and the unquarantine gate for cheap-lane
 (GLM/Codex) outputs. Every mechanic it invokes is an ALREADY-SHIPPED instrument
-(the CR stack + spawn-glm PR #843); WS7 places them, it does not
+(the automated review stack + spawn-glm PR #843); WS7 places them, it does not
 respec them. It unquarantines the GLM/Codex capacity WS1 already shipped.
 
 Spec: `<state-repo>/handovers/<user>/himmel/specs/design/ws7-validation-gates.md`.
@@ -70,10 +70,10 @@ spawn-glm session meta AND the PR body. D5's gated-merge count reads that record
 + git history (NOT the CR ledger, which carries critic findings, not lane
 verdicts).
 
-**Enforcement honesty:** the CR-marker hook
+**Enforcement honesty:** the review-owed marker hook
 (`scripts/hooks/check-cr-before-push.sh` +
 `scripts/hooks/check-cr-marker-on-pr-create.sh`) structurally enforces the
-panel/CR half. The R1-R4 lane-rubric verdict is BEHAVIORALLY enforced v1
+panel/automated review half. The R1-R4 lane-rubric verdict is BEHAVIORALLY enforced v1
 (validating-session discipline); its structural enforcement is the deferred
 lane-marker hook (§9), escalated on drift.
 
@@ -151,7 +151,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    Unchanged, and still fires. Observed live 2026-07-17: the sole registered
    critic (paid codex) returned rc=1 for a whole run once its weekly bank was
    exhausted — with no free row registered, that is 0/1 panel critics.
-   **This does NOT by itself block the CR gate.** `clear-cr-marker.sh` counts
+   **This does NOT by itself block the automated review gate.** `clear-cr-marker.sh` counts
    ANY ledger `avail … status=ok` as a responder (`:176`), so the interactive
    lane's own Claude floor review can still certify the HEAD while every panel
    critic is down. What a single-critic roster costs is the panel's own
@@ -205,7 +205,7 @@ per-token billing.
   as a one-action operator step.
 - **Batching bound:** the review surface batches into the consolidated morning
   report; fan-out ceiling ≈6-8 tickets/shift (rubber-stamp threshold) — a WS7
-  checkpoint property, owned operationally by the overnight-mode doc.
+  checkpoint property, owned operationally by the AFK (unattended) mode doc.
 - **Checkpoint placement rule:** a human checkpoint is REQUIRED where a verdict
   is (a) irreversible outward (merge, publish, external write) or (b) a
   trust-tier promotion (§5). Everything else is agent-adjudicated.
@@ -232,12 +232,12 @@ Every D1/D2 gate FAIL emits a machine-findable record stored with the run
 artifacts. **Emission points:**
 
 - lane fails → the spawn-glm session dir (shipped);
-- blocking CR fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
+- blocking automated review fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
   writes them to the SAME `<session-dir>/gate-report.jsonl` as lane fails.
 
 This is the ONE added emission WS7 places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
-CR fails are NOT persisted (they block the marker and get fixed in place), so
+automated review fails are NOT persisted (they block the marker and get fixed in place), so
 the corpus was missing the failures that matter. WS10's self-improvement loop
 consumes these ("failed traces become the next test cases"); WS7 places the
 emission points, WS10 owns the loop. No new storage system (YAGNI) — session
@@ -281,9 +281,9 @@ protection.
 
 The live claudex implementation lane runs through the Claude Code harness
 ([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model)),
-with publication subject to its permission classifier. The console's
+with publication subject to its permission classifier. The supervisor session's
 `scripts/handover/console-kit/ready-check.sh` separately refuses a head without
-an `ok` CR-ledger row. These cover publication authorization and CR readiness,
+an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
 not the historical GLM `d1_verdict` field.
 
 D1 lane-rubric verdict persistence remains behavioral (validating-session

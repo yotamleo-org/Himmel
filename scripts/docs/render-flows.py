@@ -29,12 +29,12 @@ FLOWS = [
         ("CI green", "the impacted suites"),
         ("merge", "then /clean prunes"),
     ]),
-    ("2  Run a fleet: one console, many legs", [
-        ("console", "plans the work"),
-        ("dispatch leg", "own worktree + token"),
-        ("leg ships a PR", "reports LIVE, READY"),
-        ("console checks", "ready-check, judge"),
-        ("GO file", "the console signs off"),
+    ("2  Run a fleet: one supervisor session, many worker sessions", [
+        ("supervisor session", "plans the work"),
+        ("dispatch worker", "own worktree + token"),
+        ("worker ships a PR", "reports LIVE, READY"),
+        ("ready-check", "+ judge subagent"),
+        ("GO file", "merge approval"),
         ("merge + wrap", "merge-on-green"),
     ]),
     ("3  Carry work across sessions", [

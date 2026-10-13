@@ -10,7 +10,7 @@
 > lane works if re-enabled — this is not a "use this today" doc.
 
 Spawn a GLM-lane Claude worker from the main (Fable) session, inspect its
-output through files, validate the diff through the normal CR loop, and only
+output through files, validate the diff through the normal automated review loop, and only
 then push. The worker runs against the Z.ai GLM Anthropic-compatible endpoint —
 the same flat-rate Coding-Plan lane the `claude-glm` launcher uses — so it
 consumes GLM subscription quota, not Anthropic usage cap.
@@ -94,7 +94,7 @@ grafts the GLM lane onto that path via a standalone CLI
    code. The three printed paths are the inspect contract.
 3. **Validate** — the worker's output lands as local commits on the
    `glm/<slug>` branch. The main session reviews the diff through the existing
-   CR loop before anything is pushed.
+   automated review loop before anything is pushed.
 4. **Push by validator** — the push is performed by the operator, or by the
    validating session only under an operator authorization given in that
    session. GLM output is merge-quarantined until the WS4/WS7 gates cover the
@@ -102,7 +102,7 @@ grafts the GLM lane onto that path via a standalone CLI
 
 ## Claude-down ship flow
 
-When the Claude quota bank is maxed there is no validating session to run step
+When the Claude subscription usage budget is maxed there is no validating session to run step
 3/4 above. The claude-down ship lane keeps the branch moving to PR-ready WITHOUT
 Claude, while leaving the worker fully quarantined and merge operator-only. Two
 scripts:
@@ -119,7 +119,7 @@ scripts:
    clean panel it records `external_cr_verdict: pass (sha=<reviewed-sha>; critics=<n>)`
    into the session `meta.json` (a DISTINCT key from `d1_verdict`, which stays the
    Claude-validating-session lane's key) and prints a one-line PR-body snippet. It
-   does NOT touch the CR marker — the marker clear is bound to the pushed SHA in
+   does NOT touch the review-owed marker — the marker clear is bound to the pushed SHA in
    step 2.
 2. **`scripts/glm/ship-branch.sh glm/<slug> --session-dir <dir>`** — the push
    half, run FROM the trusted main checkout (it refuses to run from a
@@ -129,7 +129,7 @@ scripts:
    commits are added after the panel). Then it runs `git push -u origin <branch>`
    — the normal pre-push gates (attestation trailers, gitleaks) run here in a
    trusted context because the pusher legitimately owns them; NO `--no-verify`.
-   After a successful push it clears the CR marker only if the marker's SHA
+   After a successful push it clears the review-owed marker only if the marker's SHA
    equals the pushed SHA. It NEVER opens a PR and NEVER merges — it prints the
    exact `gh pr create` command for the operator.
 
@@ -222,7 +222,7 @@ and `context.md`. The report verb is executed by the HOOK, never by any on-disk
 content: `block-glm-external-writes.sh` intercepts the fixed report command,
 decodes and schema-validates the payload, appends the outbox record itself, and
 then DENIES the Bash call (that denial is the success signal). The interceptor
-is a SERVICE that sits ABOVE the `GLM_EXTERNAL_WRITES_OK` bypass — the bypass
+is a SERVICE that sits ABOVE the `GLM_EXTERNAL_WRITES_OK` off switch — the off switch
 disables ENFORCEMENT (the near-miss denies and the push/gh/network classifiers),
 never the reporting service — so no session shape can silently downgrade a
 structured escalation. Under enforcement, every helper-mentioning near-miss
@@ -339,7 +339,7 @@ opt-in.
 - **Own-branch (default, no `--branch`)** — independent deliverables, each
   its own PR: a batch fan-out (§Batch fan-out below), a standalone fix, any
   task where the worker's branch is disposable until reviewed and merged.
-- **Shared-branch (`--branch <b>`)** — iterative CR-fix rounds on a **live PR
+- **Shared-branch (`--branch <b>`)** — iterative review-fix rounds on a **live PR
   branch**: the reviewer leaves findings, a GLM worker fixes them in place on
   the SAME branch, round after round, without minting a new branch (and a new
   PR) per round.
@@ -479,11 +479,11 @@ inline exception. The mechanical tail, e.g. the doc-only 1.3, was fan-able.)
   They **never** push, PR, or merge (the worker prompt contract + the deny
   hook; push protection is contract-only).
 - **Main thread** (one writer) — owns everything the workers are fenced from:
-  1. **CR** — run the critic panel + reviewers over each worker's `glm/<slug>`
+  1. **Automated review** — run the critic panel + reviewers over each worker's `glm/<slug>`
      diff (the parent CR gate is the load-bearing control; §Honest enforcement).
      Fix findings inline or bounce the item back with a follow-up spawn.
   2. **Ship rails** — attestation trailers in the first commit, the pre-push
-     CR-marker, `gh pr create` only after a clean `/pr-check`. Workers produce
+     review-owed marker, `gh pr create` only after a clean `/pr-check`. Workers produce
      branches; the main thread turns each into a shipped PR.
   3. **Ledger recalc** — the CR ledger append (`ledger-append.sh`; the
      `cr-scores.sh` scorecard only *reads* it) runs on the main thread
@@ -687,7 +687,7 @@ when the cwd is a himmel checkout AND its separate seeded `CLAUDE_CONFIG_DIR`
 wrapper no-ops. spawn-glm workers (himmel worktrees, shared `~/.claude`) are the
 covered target.
 
-**Bypass:** `GLM_EXTERNAL_WRITES_OK=1` set in the shell that spawns the worker
+**Off switch:** `GLM_EXTERNAL_WRITES_OK=1` set in the shell that spawns the worker
 (session-sticky; a per-call prefix does not reach the hook).
 
 **Known limitations** (CR-gate backstopped): a wrapper that displaces
@@ -774,7 +774,7 @@ them past their dates).
 |---|---|---|---|---|---|
 | **GLM** (z.ai Coding Plan) | Prompts per **5-hour rolling cycle** (Pro ≈ 400/5h; Lite ≈ 80; Max ≈ 1600) — NOT a daily bank. Advanced models burn quota by a **time-of-day multiplier**. | 5h cycle starts at first prompt. | **14:00–18:00 UTC+8** (= 08:00–12:00 Berlin summer) → **3× quota burn**. Documented effect is COST, not latency. | Outside the peak window; under the off-peak **1× promo (through Sept 2026, then 2×)** it is the cheapest bulk lane in the fleet. | Multiplier: official. Latency-at-peak: unconfirmed. |
 | **Claude** (Anthropic Max) | **5-hour rolling window + weekly (`seven_day`) cap**, usage-metered; Opus drains faster. | 5h window from first message; weekly is the harder ceiling. Live counters: `api.anthropic.com/api/oauth/usage` (cached `/tmp/claude/statusline-usage-cache.json`). | **No clock-based peak** — degradation is depletion-based. | Route by counter (`five_hour`/`seven_day` utilization), not clock; arm-resume handles reset boundaries. | High (official mechanics). |
-| **Codex** (OpenAI) | Two windows: primary **300 min** + secondary **10080 min (weekly)** — the weekly is the real cap. Separate OpenAI bank (independent of Claude quota). | Rolling windows that fully reset. Local pull: grep `~/.codex/logs_2.sqlite*` for `"secondary"`/`used_percent` (freshest in `-wal`). | **No published clock peak**; OpenAI throttles dynamically under aggregate load. | Route by the weekly `used_percent` counter; primary overflow lane when Claude's weekly cap is spent. | Windows: high. Reset anchor detail: community-sourced. |
+| **Codex** (OpenAI) | Two windows: primary **300 min** + secondary **10080 min (weekly)** — the weekly is the real cap. Separate OpenAI subscription usage budget (independent of Claude quota). | Rolling windows that fully reset. Local pull: grep `~/.codex/logs_2.sqlite*` for `"secondary"`/`used_percent` (freshest in `-wal`). | **No published clock peak**; OpenAI throttles dynamically under aggregate load. | Route by the weekly `used_percent` counter; primary overflow lane when Claude's weekly cap is spent. | Windows: high. Reset anchor detail: community-sourced. |
 
 Routing rules:
 
