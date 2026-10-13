@@ -54,6 +54,13 @@
 #      (`->` accepted). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do. A Jira error reads UNKNOWN and fails — never a PASS.
+#   9. Plugin version bump vs CURRENT origin/main (HIMMEL-5469): every plugin
+#      under marketplace/plugins/ the PR touches must be versioned strictly
+#      above origin/main's manifest (same rule as check-plugin-drift.sh
+#      --bump-required, but against main now, not the merge-base — two PRs
+#      bumping to the same version merge CLEAN). Fetches origin/main and the PR
+#      head (refs/pull/<n>/head) into the caller's repo; a PR touching no
+#      plugin never reaches git. Any fetch/read failure FAILs.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
@@ -414,6 +421,54 @@ EOF
         mark_fail
     fi
 fi
+
+if [ "$ONLY7" -eq 0 ]; then
+# ── 9. plugin version bump vs CURRENT origin/main (HIMMEL-5469) ─────────────
+# The --bump-required rule of scripts/check-plugin-drift.sh (HIMMEL-3551), run
+# against main as it is NOW rather than the PR's merge-base: two PRs can bump
+# the same plugin to the same version with different content, which merges
+# cleanly (check 1 stays CLEAN) and leaves stale installs. Every plugin the PR
+# touches must carry a version strictly above origin/main's. Inline rather than
+# calling check-plugin-drift.sh, which hardwires HEAD and the caller's checkout.
+# A PR touching no plugin never reaches git. Fetch or read failure = FAIL.
+plug_files=$(printf '%s\n' "$files_json" | grep -E '^marketplace/plugins/[^/]+/' || true)
+if [ -z "$files_json" ]; then
+    echo "[FAIL] 9. cannot read PR files — plugin version bump not checked"
+    mark_fail
+elif [ -z "$plug_files" ]; then
+    echo "[PASS] 9. no plugin files touched — version bump not applicable"
+else
+    bump_err=""
+    plug_manifest_ver() {  # <ref> <plugin> — prints the manifest "version", empty when absent
+        git show "$1:marketplace/plugins/$2/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' 2>/dev/null
+    }
+    if ! git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null; then
+        bump_err="cannot fetch origin/main"
+    elif ! git cat-file -e "$SHA^{commit}" 2>/dev/null \
+        && { ! git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || ! git cat-file -e "$SHA^{commit}" 2>/dev/null; }; then
+        bump_err="cannot fetch PR head $SHA"
+    else
+        for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
+            main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
+            [ -n "$main_ver" ] || continue  # not on main yet — nothing to collide with
+            pr_ver=$(plug_manifest_ver "$SHA" "$plug")
+            if [ -z "$pr_ver" ]; then
+                bump_err="$bump_err; $plug has no readable version in the PR (main is $main_ver)"
+            elif ! jq -n -e --arg a "$main_ver" --arg b "$pr_ver" '
+                def k: gsub("-"; ".") | split(".") | map(tonumber? // .);
+                ($b | k) > ($a | k)' >/dev/null 2>&1; then
+                bump_err="$bump_err; $plug is $pr_ver in the PR but origin/main is already $main_ver — bump above main"
+            fi
+        done
+    fi
+    if [ -z "$bump_err" ]; then
+        echo "[PASS] 9. every plugin the PR touches is versioned above current origin/main"
+    else
+        echo "[FAIL] 9. plugin version bump:${bump_err#;}"
+        mark_fail
+    fi
+fi
+fi  # ONLY7 == 0: check 9
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

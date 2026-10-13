@@ -516,6 +516,70 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
 check "own-checkout .env: exit 0" "$rc" "0"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
+# --- 9. HIMMEL-5469: the plugin version bump is re-checked against the CURRENT
+# origin/main. Two PRs can each bump a plugin to the same version with different
+# content; mergeStateStatus stays CLEAN, so check 1 cannot see it. Fixture: a
+# bare origin; WORK builds history and pushes each PR head to refs/pull/77/head;
+# CLONE (what run() cds into) is cloned BEFORE main moves, so its origin/main is
+# stale and has none of the PR objects — check 9 must fetch both.
+PLUG=marketplace/plugins/demo
+ORIGIN="$tmp/origin.git"
+WORK="$tmp/work"
+CLONE="$tmp/clone"
+git init -q --bare "$ORIGIN"
+git init -q -b main "$WORK"
+git -C "$WORK" config user.email t@example.com
+git -C "$WORK" config user.name tester
+git -C "$WORK" remote add origin "$ORIGIN"
+write_plugin() {  # <version> <content>
+    mkdir -p "$WORK/$PLUG/.claude-plugin"
+    printf '{"name":"demo","version":"%s"}\n' "$1" > "$WORK/$PLUG/.claude-plugin/plugin.json"
+    printf '%s\n' "$2" > "$WORK/$PLUG/body.txt"
+    git -C "$WORK" add -A
+    git -C "$WORK" commit -q -m "$3"
+}
+write_plugin 0.4.70 base "chore: base"
+git -C "$WORK" push -q origin main
+BASE_OID=$(git -C "$WORK" rev-parse HEAD)
+git clone -q "$ORIGIN" "$CLONE"
+pr_head() {  # <version> <content> -> commit on a branch off the base, pushed as the PR head
+    git -C "$WORK" checkout -q -B pr "$BASE_OID"
+    write_plugin "$1" "$2" "fix: pr"
+    git -C "$WORK" rev-parse HEAD
+}
+PR_SAME=$(pr_head 0.4.71 from-pr)
+PR_AHEAD=$(pr_head 0.4.72 from-pr)
+PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
+git -C "$WORK" checkout -q main
+write_plugin 0.4.71 from-main "feat: main shipped 0.4.71"
+git -C "$WORK" push -q origin main
+
+run_bump() {  # <pr head> <files> -> sets rc/out
+    git -C "$WORK" push -q -f origin "$1:refs/pull/$PR/head"
+    local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
+    SHA="$1"; REPO="$CLONE"; LEDGER="$CLONE/.git/cr-critic-scores.jsonl"
+    reset_stubs
+    STUB_FILES="$2"
+    rc=0; out="$(run)" || rc=$?
+    SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
+}
+
+run_bump "$PR_SAME" "$PLUG/body.txt"
+check "plugin same-version-as-main: exit 1" "$rc" "1"
+contains "plugin same-version-as-main: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin same-version-as-main: names the plugin" "$out" "demo"
+
+run_bump "$PR_UNBUMPED" "$PLUG/body.txt"
+check "plugin below main: exit 1" "$rc" "1"
+contains "plugin below main: check 9 fails" "$out" "[FAIL] 9."
+
+run_bump "$PR_AHEAD" "$PLUG/body.txt"
+contains "plugin ahead of main: check 9 passes" "$out" "[PASS] 9."
+notcontains "plugin ahead of main: no check fails" "$out" "[FAIL]"
+
+run_bump "$PR_SAME" "README.md"
+contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
     echo "ALL PASS"
