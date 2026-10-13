@@ -354,7 +354,8 @@ done
 ml_inbox_lines="$(wc -l < "$ML_INBOX" 2>/dev/null | tr -d '[:space:]')"
 ml_doc_bullets="$(grep -c 'GO line one' "$ML_DOC")"
 if [ "$rc" -eq 0 ] && [ "$ml_ok" -eq 1 ] && [ "$ml_inbox_lines" = "1" ] && [ "$ml_doc_bullets" = "1" ] \
-    && grep -qF 'GO line one / line two / line three / line four / line five' "$ML_INBOX"; then
+    && grep -qF 'GO line one / line two / line three / line four / line five' "$ML_INBOX" \
+    && grep -qF 'GO line one / line two / line three / line four / line five' "$ML_DOC"; then
     pass "a multi-line --file ruling lands whole in one inbox bullet and one doc bullet"
 else
     fail "a multi-line --file ruling lands whole (rc=$rc ok=$ml_ok inbox_lines=$ml_inbox_lines doc_bullets=$ml_doc_bullets out='$out')"
