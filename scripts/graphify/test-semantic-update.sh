@@ -379,7 +379,7 @@ run_api() { env "${LANE_ENV[@]}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; 
 
 echo "T32: claude-api with the lane OFF fails closed: exit 2, nothing copied, no claude-cli fallback"
 C32="$WS/c32"; new_corpus "$C32"; : > "$WS/calls.log"
-out=$(PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t32 --corpus-root "$C32" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t32 --corpus-root "$C32" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 2 ] && [[ "$out" == *"API lane"* ]] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] \
   && pass "T32 refused, nothing invoked" || fail "T32 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
@@ -426,7 +426,9 @@ case "$lane" in
   "lane -p --model sonnet --permission-mode default --max-budget-usd 0.25 --effort low | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
   *) fail "T37 lane call: $lane" ;;
 esac
-grep -q json-schema "$WS/claude-help.out" && fail "T37 shim --help advertises --json-schema" || pass "T37 shim --help omits --json-schema"
+grep -q -- 'primary\|shim' "$WS/claude-help.out" || fail "T37 shim --help output missing (positive control)"
+grep -q json-schema "$WS/claude-help.out"; h37=$?
+case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"

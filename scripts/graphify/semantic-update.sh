@@ -84,8 +84,10 @@ if [ -n "${GRAPHIFY_OUT:-}" ] && [ "$GRAPHIFY_OUT" != "graphify-out" ]; then
 fi
 OUT_DIR="$CORPUS_ROOT/graphify-out"
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-0.25}"
-case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
-case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+if [ "$BACKEND" = "claude-api" ]; then
+  case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+  case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
 # --backend ollama (HIMMEL-4185): local model, zero egress, no bank draw. This
