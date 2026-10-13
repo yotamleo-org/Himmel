@@ -442,6 +442,16 @@ _long_abbrev() {
     done
     return 1
 }
+# Generic output option: any prefix of a spelling, except that a read-only verb
+# (READ_RE: grep --o is --only-matching) only counts the full spelling.
+_out_opt() {
+    local n="${1%%=*}"
+    if [[ "$2" =~ $READ_RE ]]; then
+        case "$n" in output|output-document|out-file|outfile) return 0 ;; esac
+        return 1
+    fi
+    _long_abbrev "$1" output output-document out-file outfile
+}
 
 # _refs_name_lift <word>: 0 when a name the word references (after $ or ${,
 # through ! # ~ = ^ + and zsh (flags)) is set in the inherited environment
@@ -2268,9 +2278,9 @@ check_clause() {
         case "$a" in
             -o|-O) pexp=1 ;;
             --*=*)
-                _long_abbrev "${a#--}" output output-document out-file outfile \
+                _out_opt "${a#--}" "$cmd" \
                     && is_lift_dest "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})$DEST_WHY" ;;
-            --*) _long_abbrev "${a#--}" output output-document out-file outfile && pexp=1 ;;
+            --*) _out_opt "${a#--}" "$cmd" && pexp=1 ;;
         esac
         prev="$a"
     done
