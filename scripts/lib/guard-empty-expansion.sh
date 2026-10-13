@@ -18,8 +18,9 @@
 # `$(…)` and `$'…'` are untouched. Upgrade path: track variable values across
 # the command (HIMMEL-4178).
 #
-# ponytail: a `${…}` holding `$(`, a backtick, or that the scanner cannot prove
-# balanced is the class four review rounds kept finding new bypass spellings in,
+# ponytail: a `${…}` holding `$(`, a backtick, any quote or backslash (the flat
+# quote scan ends early on nested double quotes and ANSI-C `$'\''`), or that the
+# scanner cannot prove balanced is the class four review rounds kept finding new bypass spellings in,
 # so when such a command also names the hook's protected target (TARGET_ERE) it
 # is denied outright, whatever the scanner made of it; this over-denies a real
 # `git stash "${X:-$(cmd)}"`-style call. Upgrade path: a real shell parser
@@ -50,6 +51,7 @@ _GEE_AWK='{
       depth = 1; i += 2; q = ""; bt = 0; L = 0
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
+        if (c == "\047" || c == "\"" || c == "\\") hard = 1
         if (q == "\047") { if (c == "\047") q = "" }
         else if (c == "\\") i++
         else if (bt) { if (c == "`") bt = 0 }

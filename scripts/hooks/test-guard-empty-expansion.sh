@@ -70,6 +70,10 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     # a substitution the scanner cannot prove balanced fails closed (ruling)
     check deny "$h" "\${V:-\$(echo \"}$p $a"
     check deny "$h" "\${V:-\`echo \"}$p $a"
+    # nested double quotes and an ANSI-C quote inside the expansion end the
+    # flat quote scan early; any quote or backslash in the body fails closed
+    check deny "$h" "\${V+\"\${Z:-\"}\"}\"}$p $a"
+    check deny "$h" "\${V+\$'\\''}'}$p $a"
   }
 }
 
