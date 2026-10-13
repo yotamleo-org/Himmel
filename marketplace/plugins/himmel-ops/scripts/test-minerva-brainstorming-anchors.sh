@@ -25,7 +25,12 @@ if [ -z "$anchors" ]; then
 fi
 while IFS= read -r a; do
   [ -n "$a" ] || continue
-  if grep -qF -- "$a" "$brain"; then echo "ok - brainstorming step \"$a\" exists"
+  # A step is defined, not merely mentioned: a heading, a bold lead-in or a
+  # table row's first cell. A prose mention of a removed step does not count.
+  if awk -v a="$a" '
+    /^#+ / { h=$0; sub(/^#+ /,"",h); if (h==a) f=1 }
+    index($0,"**" a "**")==1 || index($0,"**" a ":**")==1 || index($0,"| " a " |")==1 { f=1 }
+    END { exit !f }' "$brain"; then echo "ok - brainstorming step \"$a\" exists"
   else echo "FAIL - brainstorming step \"$a\" is not in the vendored brainstorming/SKILL.md"; fails=$((fails+1)); fi
 done <<EOF
 $anchors

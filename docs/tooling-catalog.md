@@ -105,7 +105,7 @@ drift report; no marketplace install source or live setting is changed.
 | Plugin ID | Availability / default | Candidate profile | Refreshed target pin |
 |-----------|------------------------|-------------------|----------------------|
 | `superpowers@claude-plugins-official` | Available, off by default | `workflow-full` — upstream workflow kit, alternative to lean-skills | `obra/superpowers` `v7.0.0` (`bb92a77741419a4ab5f06e711a283343f1ada0c3`) |
-| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d` |
+| `mattpocock-skills@claude-plugins-official` | Available, off by default | `typescript-coach` — TypeScript/workflow coaching | `mattpocock/skills` HEAD `49dd158d1076134a641b33efb035946536778336` |
 | `coderabbit@claude-plugins-official` | Available, off by default | `review-coderabbit` — optional keyed review skills; credential decision remains open | `coderabbitai/skills` HEAD `59945da347a93f9937d3fb09f5ba81a16010351f` |
 | `ponytail@ponytail` | Available, off by default | `honesty-audit` — deliberate-simplification audit | `DietrichGebert/ponytail` `v5.1.1` (`6135ace05cd72736594fcf2c6830bea22780f91a`) |
 
