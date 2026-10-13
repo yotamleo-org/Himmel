@@ -302,7 +302,7 @@ tries to close.
 | `code-review-before-push` — writes the review-owed marker | pre-push | auth-gated | run `/pr-check` to clean (clears it); `SKIP_CR=1 git push` (per-command) skips writing |
 | `platforms-tested` attestation (`Platforms tested: <os>` on shell/script diffs) | pre-push | auth-gated | the trailer in any commit of the push range or the PR body; `[skip platforms-check]`; `PLATFORMS_TESTED_OK=1` (`scripts/hooks/check-platforms-tested.sh`) |
 | `security-reviewed` attestation (`Security reviewed: <token>` on non-docs diffs) | pre-push | auth-gated | same shapes: trailer / `[skip security-review]` / `SKIP_SECURITY_REVIEW=1`; docs-only diffs exempt |
-| `pr-mergeable-gate` | pre-push | warn-only | refuses only a locally-proven merge conflict; `SKIP_PR_MERGEABLE=1` |
+| `pr-mergeable-gate` | pre-push | HARD for a locally-proven merge conflict; warn-only otherwise | refuses only a locally-proven merge conflict; `SKIP_PR_MERGEABLE=1` |
 
 > Note on "first commit": CLAUDE.md's convention says attestation trailers
 > belong in the FIRST commit after genuinely testing/reviewing. The hooks
