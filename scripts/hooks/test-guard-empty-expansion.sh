@@ -59,6 +59,10 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "\${V:-\\}}$p $a"
     check deny "$h" "\${V#{}$p $a"
     check deny "$h" "\${V:-\${Z}}$p $a"
+    # a brace inside a command substitution must not end the expansion (round 3)
+    check deny "$h" "\${V:-\$(true })}$p $a"
+    check deny "$h" "\${V:-\`true }\`}$p $a"
+    check deny "$h" "\${V:-\$(echo ')}')}$p $a"
   }
 }
 

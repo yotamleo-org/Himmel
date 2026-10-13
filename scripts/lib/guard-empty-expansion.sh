@@ -31,23 +31,29 @@ _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # `${…}` is cut by a scanner, not a regex: a quoted brace inside it
 # (`${V+'"'"'{}'"'"'}git stash`) must not end the expansion early. Single
 # quotes, double quotes and backslashes are honoured; only `${` nests (a bare
-# `{` is a pattern character, as in `${V#{}`); an unterminated expansion drops
-# the rest of the line.
+# `{` is a pattern character, as in `${V#{}`); a `}` inside `$(…)` or backticks
+# does not close it (`${V:-$(true })}git stash`); an unterminated expansion
+# drops the rest of the line.
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
   s = $0; out = ""; n = length(s); i = 1
   while (i <= n) {
     c = substr(s, i, 1)
     if (c == "$" && substr(s, i + 1, 1) == "{") {
-      depth = 1; i += 2; q = ""
+      depth = 1; i += 2; q = ""; bt = 0; pd = 0
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
         if (q == "\047") { if (c == "\047") q = "" }
         else if (c == "\\") i++
+        else if (bt) { if (c == "`") bt = 0 }
+        else if (c == "`") bt = 1
         else if (c == "\047" && q == "") q = "\047"
         else if (c == "\"") q = (q == "\"") ? "" : "\""
-        else if (q == "" && c == "$" && substr(s, i + 1, 1) == "{") { depth++; i++ }
-        else if (q == "" && c == "}") depth--
+        else if (c == "$" && substr(s, i + 1, 1) == "(") { pd++; i++ }
+        else if (pd > 0 && c == "(") pd++
+        else if (pd > 0 && c == ")") pd--
+        else if (pd == 0 && q == "" && c == "$" && substr(s, i + 1, 1) == "{") { depth++; i++ }
+        else if (pd == 0 && q == "" && c == "}") depth--
         i++
       }
     } else { out = out c; i++ }
