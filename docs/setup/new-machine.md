@@ -116,7 +116,7 @@ evaluated both (a second Windows station, 2026-07-12):
   installing manually, ALL THREE:
   `pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push`.
   A bare `pre-commit install` installs only the pre-commit hook type — the
-  commit-msg + pre-push gates (attestation trailers, CR-marker write,
+  commit-msg + pre-push gates (attestation trailers, review-owed marker write,
   conventional-commit lint) are then silently absent and the first push
   goes out ungated (a real workday hit exactly this).
 
@@ -383,9 +383,9 @@ complete (no changes made)" without touching the `at` queue) and is the safe
 way to see what an arm will actually run. Because the fired session has no
 TTY/stdin, any permission-gated action it hits resolves as a silent DENY at
 rc=0 after a ~3s stdin watchdog rather than hanging — pass `--automerge` if
-the arm must push a chain through green PRs unattended (it sets
+the arm must push a ticket sequence through green PRs unattended (it sets
 `ARMAUTOMERGE=1` + `CR_MERGE_GATE_OK=1` on the launched session); without it
-the script only WARNs and the chain stops at the first green PR. `.env`'s
+the script only WARNs and the ticket sequence stops at the first green PR. `.env`'s
 `ARMAUTOMERGE` is only the **default** used when `--automerge` was not passed
 on this invocation — an explicit flag always wins over it.
 
@@ -518,7 +518,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | `HANDOVER_DIR` | Handover state root (Mode B — external state repo). | Run `/handover-setup`. Bridged from `.env`. Unset = inline `<repo>/handovers/`. |
 | `LUNA_VAULT_PATH` | Luna vault root for end-session capture. | Your Obsidian vault path. **Not** bridged — export it. Unset → `~/Documents/luna`. |
 | `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-glm`/`claude-routed` re-seed their isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
-| `HIMMEL_INITIATIVE` | Drive-to-ship legs (opt-in, default OFF). | Uncomment one line in `.env` (leg grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
+| `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
 | `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
 | `GEMINI_API_KEY` | Gemini — `scripts/gemini/invoke.sh`. | Google AI Studio API key. Optional. |
@@ -540,7 +540,7 @@ pin, checked (advisory, never a hard fail) by `/himmel-doctor`.
 | Linux | Add `export OLLAMA_NO_CLOUD=1` to your shell profile, or if `ollama` runs as a systemd user service, a drop-in: `systemctl --user edit ollama.service` → `Environment=OLLAMA_NO_CLOUD=1` |
 
 For the full inventory — optional Bitbucket, Confluence, VM, and hermes keys,
-the CR / `pr-check` critic profile (`CR_PROFILE`), handover/overnight tuning,
+the automated review / `pr-check` critic profile (`CR_PROFILE`), handover/AFK (unattended) mode tuning,
 Telegram bridge flags, and the SESSION-ONLY guardrail-bypass list — read the
 annotated [`.env.example`](../../.env.example); it is the single source of
 truth (the complete operator flag map) and every entry there
@@ -572,7 +572,7 @@ Source of truth: [`docs/setup/global-claude-md.md`](global-claude-md.md) and [`d
 `~/.claude/settings.json`'s `model` key sets the station-wide default **model**.
 Write it bare — `"model": "claude-fable-5-1"`, never `"claude-fable-5-1[1m]"`.
 Say why precisely, because the measurements below do not support the stronger
-claim: a suffix there is a station-wide default nobody chose per leg, and it is
+claim: a suffix there is a station-wide default nobody chose per worker session, and it is
 not even a reliable one. Fable — the very family in the example — silently
 strips `[1m]`, so that exact string set nothing at all; and dropping the suffix
 did **not** move plain launches off a 1M window. So write it bare as
@@ -581,7 +581,7 @@ mode — and set the mode where it is actually observable, at arming.
 
 Context mode is an **arming-time** choice instead: `--context 1m|standard` on
 `scripts/handover/arm-resume.sh` (7th positional on `headed-arm.sh`), defaulting
-to `standard` for every arm, console or not — a console (armed
+to `standard` for every arm, supervisor session or not — a supervisor session (armed
 through `console.sh`, which has no `--context` flag of its own) can still
 opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching shell. The measured
 behaviour of both levers — which model ids accept the suffix, what a plain launch
@@ -701,7 +701,7 @@ the required-environment table.
 | vault | `none` \| `default-template` \| `existing` | `none` scaffolds no vault; `default-template` scaffolds a luna vault from template — if the destination already exists it is **refused** unless it carries the luna stamp (`adopt.sh` would skip the copy and silently adopt whatever is there), and a stamped destination is reused with the summary saying so rather than claiming a scaffold; `existing` wires a STAMPED luna vault (non-luna→luna conversion deferred). Skipping adopt.sh/setup.sh wiring entirely (no pre-commit hooks/guardrails/statusline/env.HIMMEL_REPO — operator wires manually) has no in-wizard option: don't run the wizard. |
 | handover | `inline` \| `external` | `external` persists `HANDOVER_DIR` to an external state repo. |
 | pluginSet | `lean` | The only option (the default). `full` was dropped: its enable set didn't reflect what himmel actually runs — see §6 for the documented per-plugin manual recipe instead. |
-| lanes | `codex` \| `hermes` \| `none` (comma list) | Universal now. Default `none`. **v1 ships Claude tiers as the only implementation lanes — codex and hermes are offered ONLY as cross-model review (CR) lanes for `/pr-check`, never as implementation lanes.** `ollama-local` and `copilot-cli` — the two lanes this question used to default-select — are dropped from the wizard entirely; they still exist as ordinary (now `dormant`) rows in `scripts/lanes/lanes.json`, reachable only by an operator who opts in directly with that registry's `optInEnv` (`OLLAMA_LOCAL_LANE_OK=1` / `COPILOT_CLI_LANE_OK=1`), never through himmelctl. The interactive menu carries a help line per option naming what it needs (e.g. "codex — requires the codex CLI + its own login; skip if you don't have it") — selecting either AT THE PROMPT is itself the explicit consent `--with-codex` / `--with-hermes` provide non-interactively. The `--lanes` CSV flag stays restricted to `none` only: naming `codex`/`hermes` there is still refused (so the flag never becomes a second, quieter door around that consent), and naming `ollama`/`copilot` there is refused the SAME way — one door, not two — with the refusal naming the `lanes.json` opt-in env instead of pretending a `--with-ollama` flag exists. **Without codex or hermes selected (by either door), `/pr-check`'s review panel runs Claude-only and `CR_REQUIRE_CROSS_MODEL` cannot be satisfied — the wizard discloses this at the question and the summary reflects the resulting floor.** |
+| lanes | `codex` \| `hermes` \| `none` (comma list) | Universal now. Default `none`. **v1 ships Claude tiers as the only implementation lanes — codex and hermes are offered ONLY as cross-model automated review lanes for `/pr-check`, never as implementation lanes.** `ollama-local` and `copilot-cli` — the two lanes this question used to default-select — are dropped from the wizard entirely; they still exist as ordinary (now `dormant`) rows in `scripts/lanes/lanes.json`, reachable only by an operator who opts in directly with that registry's `optInEnv` (`OLLAMA_LOCAL_LANE_OK=1` / `COPILOT_CLI_LANE_OK=1`), never through himmelctl. The interactive menu carries a help line per option naming what it needs (e.g. "codex — requires the codex CLI + its own login; skip if you don't have it") — selecting either AT THE PROMPT is itself the explicit consent `--with-codex` / `--with-hermes` provide non-interactively. The `--lanes` CSV flag stays restricted to `none` only: naming `codex`/`hermes` there is still refused (so the flag never becomes a second, quieter door around that consent), and naming `ollama`/`copilot` there is refused the SAME way — one door, not two — with the refusal naming the `lanes.json` opt-in env instead of pretending a `--with-ollama` flag exists. **Without codex or hermes selected (by either door), `/pr-check`'s review panel runs Claude-only and `CR_REQUIRE_CROSS_MODEL` cannot be satisfied — the wizard discloses this at the question and the summary reflects the resulting floor.** |
 | alwaysOn | `yes` \| `no` | Universal now. Default `no`. Chooses the machine-hardening **checklist** over a one-line pointer — nothing is executed either way (see below). |
 | cadences | per-cadence multi-select: `pipeline`, `qmd`, `graphmap`, `codex-sweep`, `drift-fix`, `upstream-watch`, `doctor`, `repo-sync`, `pull-cadence` — comma list or `none` | PER-ROW gated, not whole-question vault gated: `pipeline`/`qmd`/`graphmap` are offered only when vault≠`none`; `codex-sweep` only when the `codex` lane was selected above; `drift-fix`/`upstream-watch`/`doctor` carry `requires:'none'` and are ALWAYS offered (they need neither a vault nor a lane); `repo-sync` carries `requires:'platform:windows'` (schtasks only, no crontab arm path) and is offered only on a Windows host; `pull-cadence` is offered only once `GOOGLE_HEALTH_REFRESH_TOKEN` is set in the primary checkout's `.env` (docs/luna/google-health-connector-setup.md) — asked only when at least one row is offered, so e.g. a vault-less, codex-less machine still gets asked (offering `drift-fix`/`upstream-watch`, plus `repo-sync` on Windows). Replaces the old binary luna-cadence question: pick WHICH recurring cadence jobs to arm now, not all-or-nothing. Enter accepts the profile-seeded recommended set (`operator` seeds `pipeline,qmd,graphmap`; every other profile seeds none). `pipeline` arms via the flags himmelctl derives from `luna.cadence.*` (see [Adopter config file](#adopter-config-file--himmelconfigjson) below); every other row arms via its own script's all-default invocation (no per-adopter schedule surface yet). `luna.cadence.enabled` mirrors the `pipeline` selection for older readers. If the config document could not be saved it refuses to arm any unit, rather than leaving machine state the config cannot account for. `scripts/graphify/graph-cadence.sh` is NOT a separate row — it has no `cmd_arm` of its own; arming `graphmap` already arms it unconditionally as a fifth, standalone task. |
 | disarm cadence | `yes` \| `no` | Asked only when at least one offered cadence above was declined, naming every declined unit. Default `no`. A `yes` runs each declined unit's own `disarm` subcommand with consent (`--dry-run` shows it) to tear down any already-armed jobs; a `no` leaves them armed and the run's summary says so explicitly, per declined unit, rather than implying `off` already disarmed anything. |
@@ -1189,7 +1189,7 @@ himmel clone:
 - **UNIVERSAL (user scope):** `auto-approve-safe-bash`, `block-edit-on-main`,
   `block-read-secrets` (PreToolUse) + `inject-initiative` (SessionStart). Without
   user-scope wiring, a session launched outside the repo has no auto-approve (so
-  the allow-listed Jira CLI gets denied) and no leg-injector (so `HIMMEL_INITIATIVE`
+  the allow-listed Jira CLI gets denied) and no auto-ship-step injector (so `HIMMEL_INITIATIVE`
   never fires).
 - **HIMMEL-DEV-ONLY (project scope):** `check-cr-marker-on-pr-create`,
   `block-backend-tier`, `auto-arm-on-cap`, `check-update-available`, … — they only
@@ -1208,7 +1208,7 @@ For *another* adopted project that also carries a project-scope copy, setup prin
 an advisory listing the dupes + the `unwire-pretooluse-hooks --scope project
 --target <repo>` command to collapse them (never automatic).
 
-`HIMMEL_INITIATIVE` and the overnight pair are read from the himmel clone's `.env`
+`HIMMEL_INITIATIVE` and the AFK (unattended) pair are read from the himmel clone's `.env`
 by the SessionStart hook (a value exported in the launching shell or set in
 settings.json `env` still wins); they ship **commented** in `.env.example`, so the
 opt-in default-OFF is preserved — uncomment one line to enable.
@@ -1571,7 +1571,7 @@ Turn any of these back on with one command
 of every turn**, an **agentic commit review on every `git commit`**, and ~9 hooks
 per session (Claude *and* Codex wiring). himmel already gates the same surface,
 harder and later: the `/pr-check` cross-model critic panel must be clean before
-`gh pr create` (the CR-marker hook blocks it otherwise), and the CodeRabbit App
+`gh pr create` (the review-owed marker hook blocks it otherwise), and the CodeRabbit App
 review — which can only run once the PR exists — must be clean, with zero
 unresolved threads, before merge. Running `security-guidance` too means paying a
 model call per turn for a weaker version of a check those gates already block

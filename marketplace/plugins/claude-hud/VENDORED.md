@@ -14,14 +14,14 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        45b58855001f7efab2b205b8d2ef524ab837c879  # v0.11.1 line, 15 commits past 33b51db (HIMMEL-5440)
+pinned_commit:        02d73c416b52b4e510a9be004fca469f961cd5bc  # v0.11.2, 3 commits past 45b5885 (HIMMEL-5505)
 pinned_upstream_tree: 20f04e5c9de07b3a64daae8515d50433a13c7d11  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   4d73582523a17da1a067201ef4a9ec9f881382e0bcdba5ea30632c67d5f6a4bb  # sha256 over VENDORED.manifest
+vendored_tree_hash:   4a892a4c88928915749c2f762da5358d2f5ff0799c71bde628fb5627ec9da0e2  # sha256 over VENDORED.manifest
 vendored_at:          2026-10-13
 ```
 
-`pinned_commit` points at the **upstream** base `45b5885` (the v0.11.1 line:
-upstream's `build: compile dist/ [auto]` commit after the `v0.11.1` release
+`pinned_commit` points at the **upstream** base `02d73c4` (v0.11.2:
+upstream's `build: compile dist/ [auto]` commit after the `v0.11.2` release
 prep); the vendored
 tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
 session-token cache split, write-only context snapshot writer) **plus** any
@@ -65,6 +65,14 @@ protected: editing it without bumping the pin trips the guard.
 > makes the drift guard protect *more* upstream files, not fewer.
 
 ## Fork delta
+
+- **Re-vendored to upstream v0.11.2 `02d73c4` (HIMMEL-5505, 2026-10-13, fork-drift
+  issue #767):** +3 commits past `45b5885`. Upstream work: the transcript parser
+  keeps the last real context size over zero-usage records, plus the release prep
+  and compiled `dist/`. Applied as the upstream `45b5885..02d73c4` diff onto the
+  vendored tree (clean, no hunk touched the himmel delta); every file outside the
+  himmel delta and the brace-expansion lockfile floor is byte-identical to upstream
+  `02d73c4`, built `dist/` included.
 
 - **Re-vendored to upstream v0.11.1 `45b5885` (HIMMEL-5440, 2026-10-13, fork-drift
   issue #767):** +15 commits past `33b51db`. Upstream work: the GHSA-fq7j-8hxj-jfqh

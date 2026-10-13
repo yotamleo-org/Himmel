@@ -130,7 +130,7 @@ Add-MpPreference -ExclusionPath "$env:USERPROFILE\.cli-proxy-api\start-hidden.vb
 .\scripts\setup\cli-proxy-lane.ps1 -Register
 ```
 
-**Residual risk, accepted (CR round):** `start-hidden.vbs` is a user-writable
+**Residual risk, accepted (automated review round):** `start-hidden.vbs` is a user-writable
 file that runs automatically at every sign-in, so excluding it — narrowly
 scoped or not — creates an antivirus blind spot for whatever content sits at
 that exact path: a process already running as the signed-in user (the
@@ -183,7 +183,7 @@ Verify the lane end-to-end the same way as the Windows section above:
 
 ## Transient 5xx: bounded retry and a second credential (HIMMEL-5391)
 
-An upstream codex `502` ends a claudex leg's turn, and the `503
+An upstream codex `502` ends a claudex worker session's turn, and the `503
 auth_unavailable` that follows is the proxy cooling down the only codex
 credential. `--install` / `-Install` (and `--roll`) write two keys to
 `config.yaml`, and only when they are missing, so an operator-set value is

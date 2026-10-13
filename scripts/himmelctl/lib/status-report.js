@@ -387,6 +387,12 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/luna/graphmap-cadence.sh arm)`;
       }
+      // HIMMEL-4285: doctor-cadence is opt-in too (and doctor-cadence.sh
+      // refuses to arm on Windows, so a red there could never be cleared).
+      if (item.id === 'doctor-cadence') {
+        severity = 'n/a';
+        detail = `${probe.detail} — opt-in (bash scripts/doctor-cadence.sh arm)`;
+      }
       // HIMMEL-1100: the user-scope guardrail block is armed via an explicit
       // `setup-hooks.sh --guardrail-mode global` opt-in — never the default
       // (project mode). 'degraded' (armed but the baked node path rotted —

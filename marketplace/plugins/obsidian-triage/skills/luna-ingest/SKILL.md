@@ -68,222 +68,11 @@ ERR luna-ingest: only github.com and bitbucket.org URLs supported. Twitter + art
 
 ## Issue branch — github issue URLs (HIMMEL-239)
 
-When `<github-url>` matches `^https?://(www\.)?github\.com/<owner>/<repo>/issues/(\d+)$` (query/fragment stripped first), run THIS branch instead of Phases 1–3.6 and the Phase 4 repo synthesis. The repo phases assume a README + 1-hop ref pool; an issue has neither, so this branch is deliberately flat: fetch → safety-filter → write. `--deep`, `--research`, and `--limit` are repo-only flags — if passed alongside an issue URL, ignore them with one stderr line: `WARN luna-ingest: --deep/--research/--limit are repo-only; ignored for issue URLs.`
-
-**I-1 — Fetch.** Extract `<owner>/<repo>` + `<n>`. Validate `<owner>/<repo>` with the same Phase 1 regex (leading-char rule included). Then:
-
-```bash
-gh api "repos/${owner_repo}/issues/${n}" --jq '{title, state, body, user: .user.login, labels: [.labels[].name], comments, created_at, closed_at, html_url}'
-```
-
-- 404 → rc=5, nothing written (issue deleted or repo private/renamed).
-- Other `gh api` failure → rc=2 with stderr inlined.
-- Also fetch repo metadata (`gh api "repos/${owner_repo}"` — same Phase 1 jq) for the trust-tier inputs. If THIS call fails but the issue call succeeded, continue with `trust_tier: community-thin`, `trust_tier_reason: repo metadata unavailable → conservative default`.
-
-Comments (skip when the issue's `comments` count is 0):
-
-```bash
-gh api "repos/${owner_repo}/issues/${n}/comments" --paginate --jq '.[] | {user: .user.login, created_at, body}'
-```
-
-Cap at the **30 most-reacted-or-earliest** comments (take the first 30 returned; the API returns oldest-first). If more existed, record `tail-skipped: <N-30> comments` in § Audit log.
-
-**I-2 — Safety pre-filter.** Run the Phase 1.5 algorithm unchanged over: issue `title`, joined `labels[]`, and the first 8 KB of the issue `body`. Same rc=6 / `--allow-unsafe` semantics.
-
-**I-3 — Write.** Destination: `<vault>/<dest-category>/<owner>-<repo>-issue-<n>.md` (Phase 4 slugify on `<owner>-<repo>`; same path-safety invariant; rc=3 if the file exists). Compute `trust_tier` from the REPO owner via the Phase 4 rules (the issue author does not affect the tier). Structure:
-
-```markdown
----
-type: tech-ingest
-source: <issue html_url>
-source_type: github-issue
-ingested_at: <UTC ISO-8601>
-ingest_spec_version: 1   # HIMMEL-3055 — see Phase 4 "Identity" fields; same versioning rule applies here
-# last_revalidated OMITTED on a fresh ingest (HIMMEL-3055) — see Phase 4 for the full rule
-ingest_command: /luna-ingest
-issue_state: <open|closed>
-issue_author: <user.login>
-issue_labels:
-  - <label>
-comment_count: <N>
-tags:                # HIMMEL-247: REQUIRED — Phase 4 "Tags derivation", issue variant
-  - github
-  - github-issue
-  - <tag>
-trust_tier: <tier>
-trust_tier_reason: <text>
-safety_flag: <term-or-blank>
----
-
-# <repo-name> issue #<n> — <issue title>
-
-## Source
-
-[<owner>/<repo>#<n>](<html_url>) — <state>, opened <created_at> by @<user.login><", closed <closed_at>" when closed>
-
-## Summary
-
-<3-5 bullet TL;DR: what the issue reports, root cause if identified, resolution state>
-
-## Issue body
-
-<the issue body as markdown, verbatim — trim only trailing template boilerplate>
-
-## Key comments
-
-<for each kept comment with substance (skip "+1"/"same here" noise): `> **@<user>** · <created_at>` followed by the comment body or its load-bearing excerpt. If none: `_(no substantive comments)_`>
-
-## Audit log
-
-- Comments fetched: <K> of <N> (tail-skipped: <T>)
-- API calls: <2-or-3>
-- Trust tier: <tier> (<reason>)
-- Safety flag: <term-or-none>
-```
-
-Exit codes are the standard set (0 written, 2 env, 3 exists, 5 source fetch failed, 6 safety-blocked). The harvest-clips github dispatch needs no change: issue clips it dispatches here now land an issue note, and its rc=3 dedup contract holds (back-reference the existing `<owner>-<repo>-issue-<n>` note).
+**Read on demand:** When the URL is a github issue URL (`/issues/<n>`) — before doing anything else for it. Read `<plugin>/references/luna-ingest/issue-branch.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Bitbucket branch — bitbucket.org URLs (HIMMEL-329)
 
-When the URL host is `bitbucket.org`, run THIS branch instead of the github
-Phases 1–4 / issue branch. It dispatches to the himmel **bitbucket CLI** —
-`node <himmel-root>/scripts/bitbucket/dist/index.js <verb> --repo <ws>/<repo>`
-— the `gh` analogue for Bitbucket Cloud. `<himmel-root>` is the himmel primary
-checkout; the CLI's `dist/` is gitignored, so it must be built once
-(`cd scripts/bitbucket && npm i && npm run build`). Auth comes from the repo-root
-env file (`BITBUCKET_EMAIL` / `BITBUCKET_API_TOKEN`); a missing build or missing
-creds surfaces as a CLI error → rc=2 (env unusable).
-
-**B-0 — Parse + route.** Strip protocol/query/fragment, then:
-- `bitbucket.org/<ws>/<repo>/pull-requests/<n>` → **B-PR** sub-branch.
-- `bitbucket.org/<ws>/<repo>/issues/<n>` → **B-issue** sub-branch.
-- otherwise (`/<ws>/<repo>`, optionally `/src/<branch>/…`) → **B-repo** sub-branch.
-
-Extract `<ws>/<repo>` by stripping any `/src/…`, `/pull-requests/…`, `/issues/…`
-suffix and a trailing `/`. Validate `<ws>/<repo>` with the **same** Phase 1
-regex (`^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*$`, leading-char
-rule rejecting `.`/`..`); else rc=1. The CLI receives it verbatim via `--repo`.
-
-### B-repo — repository ingest
-
-**B-repo-1 Fetch.** `bitbucket repo get --repo <ws>/<repo>` → JSON `{name,
-full_name, description, language, default_branch, url, updated_on, is_private,
-readme}`. CLI rc≠0 (network / auth / repo 404) → **rc=5**, nothing written
-(same contract as github Phase 1 source-fetch failure). `readme: null` (no
-`README.md` on the default branch) → record `README: missing`.
-
-**B-repo-1.5 Safety pre-filter.** Run the **Phase 1.5** algorithm unchanged over
-`name`, `description`, and the first 8 KB of `readme`. Bitbucket has **no
-`topics[]`** — skip that field. Same rc=6 / `--allow-unsafe` semantics and the
-same `safety_flag` propagation.
-
-**B-repo-2 Reference extraction + classification.** Write `readme` to a temp file
-and run the **existing Phase 2 + Phase 3 unchanged** — they extract `github.com`
-refs and classify them via `gh api`. github refs in a Bitbucket README are the
-common, supported case. **bitbucket.org refs are NOT followed in MVP**
-(BB→BB ref-following is a v2 follow-up): extract them separately
-(`grep -oE 'https://bitbucket\.org/[^ )]+'`) and list them under § Open questions
-as `bitbucket.org refs not followed (HIMMEL-329 MVP — v2 follow-up)`. `--limit`
-applies to the github refs as usual.
-
-**B-repo-3 Trust tier (bitbucket variant).** Bitbucket Cloud exposes **no
-`stargazers_count`**. Apply the Phase 4 "Trust-tier auto-classification" rules
-with these deltas:
-- rule 0 (safety short-circuit), rule 1 (`anthropic-official`), rule 2
-  (`known-author`, owner = `<ws>` lowercased) — **unchanged**.
-- rule 3 (`community-active`) — **cannot fire** (no star signal) → skip it.
-- rule 4 (`community-thin`) — default for any non-allowlisted owner.
-
-`trust_tier_reason` for the rule-4 case: `bitbucket: no star signal,
-updated_on=<YYYY-MM-DD> → community-thin`.
-
-**B-repo-4 Synthesis.** Write the **same Phase 4 note shape** under
-`<vault>/<dest>/<ws>-<repo>.md` (same slugify + path-safety invariant + rc=3 on
-existing), with these frontmatter deltas:
-- `source_type: bitbucket` (not `github`).
-- **Omit `stars:` and `topics:`** — no Bitbucket equivalent; do NOT emit a fake
-  `0` / empty list.
-- `language:` from `repo get`; `license: unknown` (`repo get` returns no SPDX).
-- `tags:` — first tag is `bitbucket` (parallel to github's first-tag `github`);
-  since there are no `topics[]`, infer 2–4 domain tags from name + description +
-  README per the Tags-derivation **rule 3** fallback (prefer the vault's existing
-  tag vocabulary). Minimum 2 tags.
-- The `## Referenced repos (1-hop)` section lists the **github** refs only;
-  the `## Open questions` section carries the unfollowed-bitbucket-refs note.
-- **Omit `upstream_commit`** (HIMMEL-3055) — `bitbucket repo get` returns no default-branch HEAD
-  SHA and there is no cheap CLI call for one; do NOT emit a fake or stale value. `upstream_pushed_at`
-  comes from `updated_on`; `readme_sha256` hashes `readme` the same way as the github path (omit if
-  `readme: missing`); `ingest_spec_version` and `ingest_scope` are populated the same as Phase 4.
-
-`--deep` source-scan is **skipped on a Bitbucket source** (the LUNA-57
-`component-scan.mjs` is `gh`-API-only and cannot scan a Bitbucket repo) — emit a
-one-line stderr warn and continue; integrate/take-parts **github** refs are still
-scanned. `--research` (LUNA-64) is forge-agnostic (WebSearch) and runs normally.
-
-### B-PR — pull-request ingest
-
-`bitbucket.org/<ws>/<repo>/pull-requests/<n>`. Flat fetch → write (like the
-github issue branch — a PR has no README + ref pool).
-
-**B-PR-1 Fetch.** `bitbucket pr get <n> --repo <ws>/<repo>` → `{id, title, state,
-description, author, source_branch, destination_branch, url, created_on,
-updated_on}`. CLI rc≠0 → rc=5, nothing written. Also fetch `bitbucket repo get
---repo <ws>/<repo>` for the trust-tier owner input; if THAT fails but the PR
-fetch succeeded, continue with `trust_tier: community-thin`,
-`trust_tier_reason: repo metadata unavailable → conservative default`.
-
-**B-PR-2 Safety pre-filter.** Phase 1.5 algorithm over PR `title` +
-`description` (first 8 KB). Same rc=6 / `--allow-unsafe` semantics.
-
-**B-PR-3 Write.** `<vault>/<dest>/<ws>-<repo>-pr-<n>.md` (slugify `<ws>-<repo>`;
-rc=3 if it exists). Compute `trust_tier` from the repo owner via B-repo-3.
-Frontmatter mirrors the github issue note with `source_type: bitbucket-pr`,
-`pr_state`, `pr_author`, `source_branch`, `destination_branch`; `tags:`
-`bitbucket`, `bitbucket-pr`, then up to 3 inferred domain tags. Body:
-
-```markdown
-# <repo> PR #<n> — <title>
-
-## Source
-[<ws>/<repo> PR #<n>](<url>) — <state>, opened <created_on> by @<author>; <source_branch> → <destination_branch>
-
-## Summary
-<3-5 bullet TL;DR of what the PR changes, derived from title + description>
-
-## Description
-<the PR description verbatim as markdown; `_(no description)_` if empty>
-
-## Audit log
-- API calls: <1-or-2>
-- Trust tier: <tier> (<reason>)
-- Safety flag: <term-or-none>
-```
-
-### B-issue — issue ingest
-
-`bitbucket.org/<ws>/<repo>/issues/<n>`.
-
-**B-issue-1 Fetch.** `bitbucket issue get <n> --repo <ws>/<repo>` → `{id, title,
-state, kind, content, reporter, url, created_on, updated_on}`. The CLI exits **3**
-when the issue tracker is disabled OR the issue is gone (404) → map to **rc=5**,
-nothing written (parallel to the github issue branch's 404 → rc=5). Other CLI
-rc≠0 → rc=2. Also fetch `repo get` for the trust-tier owner (same degrade as
-B-PR-1 on failure).
-
-**B-issue-2 Safety pre-filter.** Phase 1.5 over issue `title` + `content`
-(first 8 KB). Same rc=6 / `--allow-unsafe` semantics.
-
-**B-issue-3 Write.** `<vault>/<dest>/<ws>-<repo>-issue-<n>.md` (rc=3 if exists).
-Frontmatter mirrors the github issue note with `source_type: bitbucket-issue`,
-`issue_state`, `issue_kind`, `issue_reporter`; `tags:` `bitbucket`,
-`bitbucket-issue`, then up to 3 inferred domain tags. Body mirrors the github
-issue note's `# … issue #<n>`, `## Source`, `## Summary`, `## Issue body`,
-`## Audit log` (drop `## Key comments` — the MVP bitbucket issue read fetches no
-comment thread; note that under § Audit log as `Comments: not fetched (MVP)`).
-
-The harvest-clips dispatch contract is unchanged: a bitbucket.org clip dispatched
-here now lands the matching note, and the rc=3 dedup invariant holds (back-ref
-the existing `<ws>-<repo>[-pr|-issue]-<n>` note).
+**Read on demand:** When the URL host is `bitbucket.org` (repo, PR or issue) — before doing anything else for it. Read `<plugin>/references/luna-ingest/bitbucket-branch.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 1 — Source fetch (github URL)
 
@@ -418,95 +207,11 @@ For each ref `<o>/<r>` in the cleaned ref list:
 
 ## Phase 3.5 — Deep component scan (LUNA-57, `--deep` only)
 
-Skip this entire phase unless `--deep` was passed.
-
-Run the component scanner once per repo, gh-API only (no clone). The source
-repo is ALWAYS scanned; a 1-hop ref is scanned ONLY when its Phase-3 verdict
-is `integrate` or `take-parts` (the repos actually worth lifting from — refs
-verdicted `inspire`/`skip`/`api_failure` are not scanned). Propagate the
-source's `trust_tier` + `safety_flag` into the scan so every Components/ note
-inherits the parent's risk annotation. Compute the source `trust_tier` inline
-here using the Phase-4 "Trust-tier auto-classification" rules — all their
-inputs (`owner`, `stargazers_count`, `pushed_at`, plus the `safety_flag` set
-in Phase 1.5) are already available at this point, so there is no need to wait
-for the Phase-4 Write step.
-
-For the SOURCE repo (writes the deduped library + returns JSON for the
-Tech-note section):
-```bash
-bun "$TOOLS/component-scan.mjs" --repo "$owner_repo" --vault "$VAULT" \
-  --components-dir "$COMPONENTS_DIR" --trust-tier "$trust_tier" \
-  --safety-flag "$safety_flag" --max-components "$MAX_COMPONENTS" --emit json \
-  [--dry-run]
-```
-Capture the JSON — its `components[]` array feeds the Phase-4
-`## Reusable components` section.
-
-For each ref `<o>/<r>` with verdict ∈ {integrate, take-parts} (library
-dedup only; the Tech-note section summarises ref scans by count + link):
-```bash
-bun "$TOOLS/component-scan.mjs" --repo "<o>/<r>" --vault "$VAULT" \
-  --components-dir "$COMPONENTS_DIR" --trust-tier "$ref_trust_tier" \
-  --safety-flag "$safety_flag" --max-components "$MAX_COMPONENTS" --emit json \
-  [--dry-run]
-```
-`$ref_trust_tier` is computed per-ref from that ref's OWN Phase-3 metadata
-(description / language / stars / pushed_at / license / topics already
-fetched in Phase 3) via the same Phase-4 "Trust-tier auto-classification"
-rules; `$safety_flag` here is the SOURCE's Phase-1.5 flag — refs are not run
-through the Phase-1.5 pre-filter, so they conservatively inherit the parent
-source's flag.
-
-When the skill was invoked with `--dry-run`, pass `--dry-run` to
-component-scan too (it then prints the JSON inventory + would-write notes
-without touching the vault, rc=0).
-
-`$TOOLS` = `<plugin-root>/tools`. The tool is HIMMEL-128 compliant (no
-headless claude — it shells `gh`, not `claude`). A non-zero exit (rc=4)
-means ≥1 component file failed to fetch; record the count under § Open
-questions and continue — partial inventories are honest, not fatal.
+**Read on demand:** Only when `--deep` was passed; skip otherwise. Read `<plugin>/references/luna-ingest/phase-3-5-deep-scan.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 3.6 — Research enrichment (LUNA-64, `--research` only)
 
-Skip this entire phase unless `--research` was passed. Orthogonal to
-Phase 3.5 — if both `--deep` and `--research` were passed, both phases run
-(Phase 3.5 first, then this one).
-
-This is the **lightweight inline** research path: you (Claude) run the web
-research yourself via the WebSearch / WebFetch tools. Do NOT shell out to the
-obsidian-second-brain `research_deep.py` script, and do NOT call Perplexity /
-Grok — those (plus vault-wide `/obsidian-save` propagation) are the full
-`/research-deep` command, deferred to a later LUNA-64 follow-up. Scope here:
-**the SOURCE repo only** (1-hop refs are not researched in MVP — keeps the
-tool-call budget bounded).
-
-1. **Dry-run short-circuit.** If `--dry-run` was passed, skip the web queries
-   entirely (avoids spending tool calls on a no-write run); print
-   `DRY luna-ingest: would run research enrichment for <owner_repo>` to stderr
-   and continue to Phase 4 (the `## Research enrichment` section is then
-   rendered as `_(dry-run — research not executed)_`; do NOT set
-   `research_enriched` — this is a degraded branch).
-2. **Run 3–5 WebSearch queries** about the source repo. Seed them from the
-   repo name + description + primary topics, covering these axes (drop any axis
-   the repo metadata makes irrelevant):
-   - maturity / adoption (is it actively used in production? release cadence?)
-   - notable alternatives / what people compare it to
-   - known limitations, gotchas, or common complaints
-   - community sentiment + recency (how recent is the discourse?)
-   Use WebFetch to pull a specific source when a search result needs
-   confirmation. Keep total fetches modest (≤5) — this is enrichment, not a
-   full research report.
-3. **Synthesize** the findings into 4–8 bullets for the `## Research
-   enrichment` section (rendered in Phase 4). Every external claim carries a
-   recency marker (the source's date, or "as of <month YYYY>") and a source
-   URL inline — consistent with the luna vault's AI-first sourcing rule.
-4. **Graceful degradation.** If WebSearch/WebFetch is unavailable or returns
-   nothing usable, do NOT fail the ingest: render the section as `_(research
-   enrichment requested but web search returned no usable results)_`, add a
-   one-line note under § Open questions, and continue. Do NOT set
-   `research_enriched` (the note is not enriched). A partial note is better
-   than no note — same rule as the component-scan partial path. No new exit
-   code: `--research` failure never changes rc.
+**Read on demand:** Only when `--research` was passed; skip otherwise. Read `<plugin>/references/luna-ingest/phase-3-6-research.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 4 — Synthesis
 
@@ -520,64 +225,11 @@ If the target file already exists: refuse with rc=3 unless `--force` was passed 
 
 ### Trust-tier auto-classification (LUNA-43)
 
-Compute the synthesis's `trust_tier` field from the source repo's `owner` (extracted as `owner = owner_repo.split('/')[0]`, then lowercased) before the Write step. All allowlist + literal comparisons in this section are **case-insensitive** — both sides lowercased before equality.
-
-**Apply rules in this order, top-to-bottom, first match wins — do NOT reorder. Every rule short-circuits all later rules; rules 3 and 4 are NOT mutually exclusive on their own (both could match a given repo), but the "first match wins" semantic resolves the ambiguity in favour of rule 3 when both fire.**
-
-0. **Safety short-circuit — `unknown-risk`.** If `safety_flag` (populated by Phase 1.5) is non-blank → `trust_tier = unknown-risk`, skip rules 1-4. This MUST execute before the owner-based rules so the audit-log `Trust tier: unknown-risk (reason: safety_flag=<term>)` is consistent regardless of who owns the repo.
-1. **`anthropic-official`** — lowercased `owner` ∈ {`anthropics`, `anthropic`}.
-2. **`known-author`** — lowercased `owner` ∈ the curated allowlist below. Default allowlist (all entries already lowercase):
-   - Individual authors: `kepano`, `mattpocock`, `karpathy`, `obra`, `wshobson`, `everyinc`, `nizos`, `letta-ai`
-   - Orgs: `microsoft`, `vercel`, `vercel-labs`, `github`, `browser-use`, `hkuds`, `smtg-ai`, `nousresearch`, `zilliztech`, `topoteretes`, `mksglu`
-   - Operator extension: `LUNA_INGEST_TRUSTED_AUTHORS=<comma-separated owners>` adds to the allowlist (additions are lowercased before comparison; no removals).
-3. **`community-active`** — none of the above matched AND `stargazers_count ≥ 100` AND `pushed_at` within the last 180 days.
-4. **`community-thin`** — none of the above matched (default fallback for any non-allowlisted owner that did not satisfy rule 3).
-
-(`stargazers_count` is the field name returned by `gh api repos/<owner_repo>` in Phase 1 — do NOT alias it to `stars` in the rule logic; the frontmatter `stars:` field is the rendered value, the gh-api source name stays canonical in code paths.)
-
-Populate `trust_tier_reason` with a 1-line justification matching the tier:
-- rule 0 → `safety_flag=<term> → unknown-risk`
-- rule 1 → `owner=<owner-as-fetched> → anthropic-official`
-- rule 2 → `owner=<owner-as-fetched> in known-author allowlist`
-- rule 3 → `stargazers_count=<N>, pushed_at=<YYYY-MM-DD> → community-active`
-- rule 4 → `stargazers_count=<N>, pushed_at=<YYYY-MM-DD> → community-thin`
-
-Operators retro-tagging older Tech pages should rely on the Phase 4 § Audit log row `Trust tier: <tier> (<reason>)` rather than re-deriving manually.
+**Read on demand:** Always, in Phase 4 before the Write step, to compute `trust_tier` and `trust_tier_reason` (the Bitbucket branch's B-repo-3 deltas and the issue branch's I-3 also apply these rules). Read `<plugin>/references/luna-ingest/trust-tier.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ### Tags derivation (HIMMEL-247)
 
-`tags:` is REQUIRED in every emitted note's frontmatter — the vault's Tech
-notes are tag-queried (Dataview / triage tooling), and an untagged note is
-invisible to those queries. The original Phase 4 / I-3 templates never
-emitted it — every pre-fix tech-ingest note shipped untagged (all 29
-`type: tech-ingest` notes as of 2026-06-11; HIMMEL-247 backfilled them).
-The "~90 earlier Tech notes that carry tags" in the ticket are
-clipper-pipeline `type: tech-resource` notes — a different emitter, not
-luna-ingest output. Never omit it.
-
-Rules (repo notes):
-
-1. First tag is always `github` — matches the existing `30-Resources/Tech/`
-   scheme (the dominant tag in that folder).
-2. Then the repo's `topics[]` from the Phase 1 metadata, each normalized the
-   Phase 1.5 way (lowercase, runs of `[-_\s]+` → a single `-`), deduped,
-   capped at **5** topic tags. When more than 5 topics exist, pick the most
-   content-salient ones (what the repo IS, not its stack minutiae), preferring
-   topics that already appear in the vault's tag vocabulary — NOT blind
-   API/alphabetical order.
-3. If the repo has no topics (or fewer than 2 survive normalization), infer
-   2–4 domain tags from the name + description + README — prefer the vault's
-   existing tag vocabulary (e.g. `claude-code`, `ai-agents`, `mcp`,
-   `obsidian`, `cli`, `automation`, `memory`, `skills`) over minting a new
-   term; check existing Tech-note tags before coining one.
-4. Minimum 2 tags total — never a bare `tags:` with no entries, never
-   `github` alone.
-
-Issue notes (I-3) use the variant: `github`, `github-issue`, then up to 3
-topic tags derived the same way (repo `topics[]` when the I-1 repo-metadata
-fetch succeeded; else inferred from the issue labels + title).
-
-Write the file. Structure:
+**Read on demand:** Always, in Phase 4 before building the frontmatter (every emitted note needs `tags:`). Read `<plugin>/references/luna-ingest/tags-derivation.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ```markdown
 ---
@@ -695,52 +347,11 @@ If --deep was NOT passed, omit this section entirely.>
 
 ### Revalidation invariant (HIMMEL-3055)
 
-A prose `## Re-validation` section (written by a future revalidation sweep, not by this MVP)
-MUST rewrite every structured field it confirms — `stars`, `upstream_pushed_at`,
-`upstream_commit`, `trust_tier`, `trust_tier_reason`, `readme_sha256` — not just narrate the
-outcome. A note whose prose says "CONFIRMED alive" while its `stars:` frontmatter still holds a
-three-week-old count is the same class of defect as a vacuous ledger: the structured fields are
-what tooling reads, and prose that disagrees with them is worse than no prose at all. Every such
-rewrite also sets `last_revalidated` to the check time and adds a `revalidation_delta:` one-liner
-(stars delta, `upstream_pushed_at` delta, verdict delta) — this is the one case where writing
-`last_revalidated` is correct, because a real check genuinely happened.
+**Read on demand:** Only when writing or reviewing a `## Re-validation` section; a fresh ingest never does. Read `<plugin>/references/luna-ingest/revalidation-invariant.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ### Semantic layer (HIMMEL-3055 — schema defined, NOT yet populated)
 
-Identity (`upstream_commit`, `readme_sha256`, …) answers "did the repo move". It says nothing
-about what the repo is *for* — the layer that makes the corpus clusterable and searchable rather
-than a bare list of URLs. That is a **model pass**, so it does not run over all 443 repos in this
-MVP — it only earns its cost on a ranked slice a later session selects (see the staleness report's
-ranking). This section defines the fields so a future ingest/backfill pass has a fixed target;
-it does **not** populate them, and no code in this skill writes them yet.
-
-Proposed fields, on the same `tech-ingest` frontmatter:
-
-- `concepts:` — 3-8 normalised concept tags describing what the repo *does*, drawn from a
-  controlled vocabulary (free text defeats clustering). Seed vocabulary: `agent-harness`,
-  `cost-optimization`, `model-routing`, `guardrails`, `orchestration`, `retrieval`, `installer`,
-  `observability`, `review-gate`, `memory`, `sandboxing`, `eval`. Extend deliberately when a repo
-  genuinely doesn't fit (e.g. `browser-automation` for an anti-detect browser agent) — record the
-  addition and why in the note that first needed it, don't mint terms ad hoc per-repo.
-- `solves:` — one sentence, the problem it solves, in the repo's own terms.
-- `maps_to:` — which himmel surface it bears on, if any: `console/leg`, `lane-registry`,
-  `hooks/gates`, `cost-programme`, `installer`, `cr-panel`, `vault`, or `none`. `none` is the
-  common, legitimate answer — a field that always finds a connection means nothing.
-- `value_tier:` — `integrate` / `take-parts` / `inspire` / `skip` (reuses `verdict_summary`'s
-  vocabulary for the repo itself rather than inventing a second scale).
-- `value_reason:` — one line justifying the tier, so it can be audited or disagreed with later.
-
-**Every semantic field carries the `ingest_spec_version` and `upstream_commit` it was derived
-against.** These are judgements, not facts — they can be wrong, and they go stale when a repo
-changes direction (a repo in this corpus was ingested as a job-application tool and is now an
-anti-bot browser agent: `feder-cr/AIHawk`, formerly `jobs_applier_ai_agent_aihawk` — see the
-HIMMEL-3055 staleness report for the worked example). Without the commit anchor, nobody can tell
-whether a stored judgement still applies to the code it was made about.
-
-Five hand-derived examples proving this schema resolves without contradiction across a job-search
-bot turned browser agent, a vendored proxy, an Electron orchestrator, a second-brain plugin, and
-an unrelated SaaS product are in the HIMMEL-3055 staleness report (`§ Semantic layer hand-proof`),
-not applied to any vault note — this is a schema proof, not a backfill.
+**Read on demand:** Only when touching the not-yet-populated semantic fields (`concepts`, `solves`, `maps_to`, `value_tier`, `value_reason`); this MVP never writes them. Read `<plugin>/references/luna-ingest/semantic-layer.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 5 — Daily-note backref (deferred to v2)
 

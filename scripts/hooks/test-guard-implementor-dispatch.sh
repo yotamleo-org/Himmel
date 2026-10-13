@@ -874,21 +874,21 @@ assert_rc 'explicit weekly HARD overrides standing lift' 2 "$(lift_hook lift-env
 assert_rc 'no lift retains weekly refusal' 2 "$(lift_hook lift-absent BANK_LIFT_FILE="$TMP/no-lift.json")"
 lift_policy "$LIFT_RESET" deadbeefdeadbeef true
 assert_rc 'other-account lift refuses weekly 90' 2 "$(lift_hook lift-account)"
-assert_contains 'other-account lift is loud' 'bank lift invalid (account)' "$(cat "$TMP/err-lift-account")"
+assert_contains 'other-account lift is loud' 'weekly budget override (bank lift) invalid (account)' "$(cat "$TMP/err-lift-account")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 chmod 666 "$LIFT_POLICY"
 assert_rc 'untrusted lift refuses weekly 90' 2 "$(lift_hook lift-trust)"
-assert_contains 'untrusted lift is loud' 'bank lift invalid (trust)' "$(cat "$TMP/err-lift-trust")"
+assert_contains 'untrusted lift is loud' 'weekly budget override (bank lift) invalid (trust)' "$(cat "$TMP/err-lift-trust")"
 lift_policy 1 "$LIFT_ACCOUNT" false
 assert_rc 'expired window lift refuses weekly 90' 2 "$(lift_hook lift-expired)"
-assert_contains 'expired lift is loud' 'bank lift invalid (expired)' "$(cat "$TMP/err-lift-expired")"
+assert_contains 'expired lift is loud' 'weekly budget override (bank lift) invalid (expired)' "$(cat "$TMP/err-lift-expired")"
 printf '%s' '{broken' > "$LIFT_POLICY"
 assert_rc 'malformed lift refuses weekly 90' 2 "$(lift_hook lift-parse)"
-assert_contains 'malformed lift is loud' 'bank lift invalid (parse)' "$(cat "$TMP/err-lift-parse")"
+assert_contains 'malformed lift is loud' 'weekly budget override (bank lift) invalid (parse)' "$(cat "$TMP/err-lift-parse")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 chmod 000 "$LIFT_POLICY"
 assert_rc 'unreadable lift refuses weekly 90' 2 "$(lift_hook lift-unreadable)"
-assert_contains 'unreadable lift is loud' 'bank lift invalid (parse)' "$(cat "$TMP/err-lift-unreadable")"
+assert_contains 'unreadable lift is loud' 'weekly budget override (bank lift) invalid (parse)' "$(cat "$TMP/err-lift-unreadable")"
 lift_policy "$LIFT_RESET" "$LIFT_ACCOUNT" true
 printf '{"account":"deadbeefdeadbeef","five_hour":{"utilization":10,"resets_at":%s},"seven_day":{"utilization":90,"resets_at":%s}}' "$LIFT_RESET" "$LIFT_RESET" > "$TMP/lift-other-cache.json"
 assert_rc 'standing lift rejects other-account cache' 2 "$(lift_hook lift-cache-account IMPL_GUARD_CACHE_PATH="$TMP/lift-other-cache.json")"

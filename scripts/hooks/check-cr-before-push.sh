@@ -669,7 +669,7 @@ write_marker_for_branch() {
                 existing_ref=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$5); print $5; exit}' "$marker_path" 2>/dev/null || true)
                 existing_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$marker_path" 2>/dev/null || true)
                 if [ -n "$existing_remote" ] && [ "$existing_ref" = "refs/heads/$branch" ] && [ -n "$existing_endpoint" ]; then
-                    echo "→ code-review: keeping the existing BOUND CR marker for '${branch}' — this invocation carried no ref-update data and could not re-derive the remote binding, so it will NOT downgrade the marker to unbound. If HEAD has genuinely moved unreviewed, push it for real (even an empty commit) to remint the marker." >&2
+                    echo "→ code-review: keeping the existing BOUND review-owed marker for '${branch}' — this invocation carried no ref-update data and could not re-derive the remote binding, so it will NOT downgrade the marker to unbound. If HEAD has genuinely moved unreviewed, push it for real (even an empty commit) to remint the marker." >&2
                     return 0
                 fi
             fi
@@ -683,7 +683,7 @@ write_marker_for_branch() {
     # set-url can repoint it after the push), so the endpoint must be pinned.
     if [ -n "$remote_ref" ]; then
         if [ -z "$push_remote_name" ]; then
-            echo "→ code-review: pushed ref '$remote_ref' has no remote identity — refusing the push (cannot bind the CR marker to the future PR head)" >&2
+            echo "→ code-review: pushed ref '$remote_ref' has no remote identity — refusing the push (cannot bind the review-owed marker to the future PR head)" >&2
             return 2
         fi
         if [ -z "$push_remote_url" ]; then
@@ -799,7 +799,7 @@ write_marker_for_branch() {
     # above, so no `set -e` abort can leak the lock between acquire and release.
     lock_lib="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
     if [ ! -f "$lock_lib" ]; then
-        echo "→ code-review: branch-lock library missing at ${lock_lib} — refusing the push (the CR marker cannot be written without mutual exclusion against a concurrent clear; bypass with SKIP_CR=1 or git push --no-verify)" >&2
+        echo "→ code-review: branch-lock library missing at ${lock_lib} — refusing the push (the review-owed marker cannot be written without mutual exclusion against a concurrent clear; bypass with SKIP_CR=1 or git push --no-verify)" >&2
         return 2
     fi
     # Tuning knob for the WAIT only (both directions fail closed: a shorter
@@ -812,7 +812,7 @@ write_marker_for_branch() {
     SHARED_BRANCH_LOCK_NS=himmel-cr-marker SHARED_BRANCH_LOCK_HOLDER_PID=$$ \
         bash "$lock_lib" acquire-wait "." "$branch" "check-cr-before-push" "$lock_wait" 300 || lock_rc=$?
     if [ "$lock_rc" -ne 0 ]; then
-        echo "→ code-review: another writer holds the CR marker lock for '${branch}' (waited ${lock_wait}s, lock rc=${lock_rc}) — refusing the push. /pr-check is clearing this branch's marker right now; let it finish, then push again (bypass with SKIP_CR=1 or git push --no-verify)" >&2
+        echo "→ code-review: another writer holds the review-owed marker lock for '${branch}' (waited ${lock_wait}s, lock rc=${lock_rc}) — refusing the push. /pr-check is clearing this branch's marker right now; let it finish, then push again (bypass with SKIP_CR=1 or git push --no-verify)" >&2
         return 2
     fi
     lock_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
@@ -826,7 +826,7 @@ write_marker_for_branch() {
     # lock stays put — with no record, a release cannot tell this run's lock
     # from a replacement holder's.
     if [ -z "$lock_owner" ]; then
-        echo "→ code-review: the CR marker lock for '${branch}' was acquired but its holder record is EMPTY (zero-byte or unreadable owner.json) — refusing the push, because this write cannot be proven mutually excluded against /pr-check's marker clear. Nothing was written. The lock is left in place; if nothing else is running, clear it with: SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash scripts/lib/shared-branch-lock.sh release . '${branch}' (bypass with SKIP_CR=1 or git push --no-verify)" >&2
+        echo "→ code-review: the review-owed marker lock for '${branch}' was acquired but its holder record is EMPTY (zero-byte or unreadable owner.json) — refusing the push, because this write cannot be proven mutually excluded against /pr-check's marker clear. Nothing was written. The lock is left in place; if nothing else is running, clear it with: SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash scripts/lib/shared-branch-lock.sh release . '${branch}' (bypass with SKIP_CR=1 or git push --no-verify)" >&2
         return 2
     fi
     # The marker as it stands BEFORE this write. If the release below proves
@@ -897,18 +897,18 @@ write_marker_for_branch() {
                 elif ! mv "${rollback_claim}" "${marker_path}" 2>/dev/null; then
                     # Last resort failed too — keep the claim rather than
                     # leave the branch with no marker at all.
-                    echo "→ code-review: WARNING: could not restore the previous CR marker for '${branch}' — it is still on disk at ${rollback_claim}, but ${marker_path} is EMPTY, so \`gh pr create\` is UNGATED for this branch until you move it back" >&2
+                    echo "→ code-review: WARNING: could not restore the previous review-owed marker for '${branch}' — it is still on disk at ${rollback_claim}, but ${marker_path} is EMPTY, so \`gh pr create\` is UNGATED for this branch until you move it back" >&2
                 fi
             fi
         fi
-        echo "→ code-review: the CR marker lock for '${branch}' changed hands (or its holder record became unreadable) while this push was writing the marker — refusing the push, because the write was not mutually excluded against /pr-check's marker clear. Re-run the push (bypass with SKIP_CR=1 or git push --no-verify)" >&2
+        echo "→ code-review: the review-owed marker lock for '${branch}' changed hands (or its holder record became unreadable) while this push was writing the marker — refusing the push, because the write was not mutually excluded against /pr-check's marker clear. Re-run the push (bypass with SKIP_CR=1 or git push --no-verify)" >&2
         return 2
     fi
     if [ "$release_rc" -ne 0 ]; then
-        echo "→ code-review: WARNING: could not release the CR marker lock for '${branch}' — the next writer reclaims it after the TTL" >&2
+        echo "→ code-review: WARNING: could not release the review-owed marker lock for '${branch}' — the next writer reclaims it after the TTL" >&2
     fi
     if [ "$write_rc" -ne 0 ]; then
-        echo "→ code-review: failed to write the CR marker at ${marker_path} (rc=${write_rc}) — refusing the push" >&2
+        echo "→ code-review: failed to write the review-owed marker at ${marker_path} (rc=${write_rc}) — refusing the push" >&2
         return 2
     fi
 
@@ -973,7 +973,7 @@ certify_pushed_ref() {
         return 2
     fi
     if [ "$destination_sha" != "$local_sha" ]; then
-        echo "→ code-review: pushed destination '$branch' resolves locally to ${destination_sha:0:8}, not pushed SHA ${local_sha:0:8} — refusing the push (CR markers cannot safely certify a divergent renamed refspec; bypass with SKIP_CR=1 or git push --no-verify)" >&2
+        echo "→ code-review: pushed destination '$branch' resolves locally to ${destination_sha:0:8}, not pushed SHA ${local_sha:0:8} — refusing the push (review-owed markers cannot safely certify a divergent renamed refspec; bypass with SKIP_CR=1 or git push --no-verify)" >&2
         return 2
     fi
 

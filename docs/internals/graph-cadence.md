@@ -20,7 +20,7 @@ in this repo goes through (`d05ef8ca` "update graphify", `913073df` ".",
 `378c21f9`/`310646da` "graphify update"). `graph-cadence.sh` exists to remove
 the reason that happened: an unattended runner that measures staleness,
 refreshes, publishes via a PR, and auto-merges it through the sanctioned
-chokepoint.
+script.
 
 ## What it does, in order
 
@@ -38,7 +38,7 @@ chokepoint.
 5. At/above threshold: `ast-update.sh` (the free, AST-only structural
    refresh), `graph-publish.sh` (open/refresh the publish PR), then
    `merge-on-green.sh` (`ARMAUTOMERGE=1`, the sanctioned auto-merge
-   chokepoint) — all three against a **dedicated worktree**, never the
+   script) — all three against a **dedicated worktree**, never the
    primary checkout (see below). A failing refresh short-circuits the
    remaining legs (see `graph-cadence.sh`'s own header for why this diverges
    from `ggs-cadence.sh`'s "run every leg regardless" convention).
@@ -196,14 +196,14 @@ run against a different value — it just isn't what the armed cadence uses.)
 
 With `--semantic`, `graph-cadence.sh` runs `semantic-update.sh` on the
 dedicated worktree and classifies its exit code. The backend is
-`GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, bank-gated) or
+`GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, gated on the subscription usage budget) or
 `ollama` (opt-in, local, needs a GPU); any other value refuses (rc 1) before
 any work (HIMMEL-5367).
 
 | rc | meaning | cadence result |
 |---|---|---|
 | 0 | ok, or no change since the last pass (no-op) | green; clears the `graph-semantic-<slug>` alert |
-| 3 | bank at/over threshold, nothing touched (claude-cli only; the ollama path skips the bank) | benign skip: green, no alert, an existing alert is left standing |
+| 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check) | benign skip: green, no alert, an existing alert is left standing |
 | 4 | promote lock held by another graph refresh, nothing touched | benign skip: green, no alert, an existing alert is left standing |
 | 1, 2, other | usage/IO, fence deny, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
 
@@ -272,5 +272,5 @@ up) and its own scheduler task name (following the
 graphify version bumps; the refresh-lock bugs (HIMMEL-2618/2106/1414/914 —
 this leg reuses `ast-update.sh`'s existing promote-lock, unmodified, and
 does not fix them); luna's graph corpus (not wired in v1); arming the real
-crontab/schtasks (an operator action after review); the console's own
+crontab/schtasks (an operator action after review); the supervisor session's own
 `tick.sh`.

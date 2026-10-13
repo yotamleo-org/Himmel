@@ -30,9 +30,9 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "jarrodwatts/claude-hud",
-      "pinned_commit": "45b58855001f7efab2b205b8d2ef524ab837c879",
+      "pinned_commit": "02d73c416b52b4e510a9be004fca469f961cd5bc",
       "tier": "A",
-      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = v0.11.1 commit 45b5885 (HIMMEL-5440; previously v0.10.0 33b51db, HIMMEL-4578). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
+      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = v0.11.2 commit 02d73c4 (HIMMEL-5505; previously v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
     },
     {
       "name": "hermes-agent",
@@ -165,7 +165,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "Graphify-Labs/graphify",
-      "synced_base": "0.9.87",
+      "synced_base": "0.9.89",
       "latest_source": "release",
       "version_pin": { "file": "scripts/lib/graphify-bin.sh", "template": "GRAPHIFY_VERSION:-{version}" },
       "tier": "A",

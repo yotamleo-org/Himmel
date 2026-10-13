@@ -17,7 +17,8 @@ JS
 LIB="$LIBURL" node "$tmp/h.mjs"
 # Doc-contract: the runbook must instruct partial+thin-body, and must shell out
 # to the mechanical is-thin-cli (not "eyeball it").
-hc="$here/../commands/harvest-clips.md"
+hc="$tmp/harvest-clips.all.md"  # HIMMEL-5513: body plus its on-demand references
+cat "$here/../commands/harvest-clips.md" "$here"/../references/harvest-clips/*.md > "$hc"
 grep -qi "thin-body" "$hc" || { echo "FAIL: harvest-clips missing thin-body rule"; exit 1; }
 grep -q "is-thin-cli.mjs" "$hc" || { echo "FAIL: harvest-clips not wired to is-thin-cli shim"; exit 1; }
 

@@ -61,7 +61,7 @@ pattern:
 - **`input=$(cat)` → `IFS= read -r -d '' input || true`.** A fail-closed fence
   built on this then needs an **explicit blank-input guard**: `jq <<<""` emits
   0 values with 0 errors, silently flipping the fence fail-open (caught twice
-  in the defork CR round).
+  in the defork review round).
 - **N × `printf|jq` → one `jq` call emitting delimited multi-field rows.** The
   multi-line-capable field (`command`) goes **last** and is extracted as
   rest-of-string. A delimiter a JSON string could legally contain needs an
@@ -177,7 +177,7 @@ names three recurring shapes:
   return code thrown away, so a child that crashed or never completed reads
   as a pass.
 
-The measurement behind this: 27 of 242 `agreed` CR-ledger findings in the 14
+The measurement behind this: 27 of 242 `agreed` automated review ledger findings in the 14
 days to 2026-09-07 (11%) were this family, and 10 of those 27 were shape (a)
 specifically — always the same unguarded `$(mktemp` capture, the single most
 repeated defect class the ledger recorded in that window.
