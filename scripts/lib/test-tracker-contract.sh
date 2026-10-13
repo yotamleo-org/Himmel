@@ -42,8 +42,10 @@ op="$1"; shift
 case "$op" in
     get)
         key="$1"
-        [ "$key" != HIMMEL-404 ] || { echo "jira: get $key failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2; exit 1; }
-        [ "$key" != HIMMEL-502 ] || { echo "jira: get $key failed: HTTP 502: <html><body><h1>Not Found</h1>nginx</body></html>" >&2; exit 1; }
+        # the CLI prints the raw Jira JSON body (get.ts + client.ts: `HTTP <status>: <body>`)
+        [ "$key" != HIMMEL-404 ] || { echo "jira: get $key failed: HTTP 404: {\"errorMessages\":[\"Issue does not exist or you do not have permission to see it.\"],\"errors\":{}}" >&2; exit 1; }
+        [ "$key" != HIMMEL-506 ] || { echo "jira: get $key failed: HTTP 404: {\"errorMessages\":[\"Issue Does Not Exist\"]}" >&2; exit 1; }
+        [ "$key" != HIMMEL-502 ] || { echo "jira: get $key failed: HTTP 404: <html><body><h1>Not Found</h1>nginx</body></html>" >&2; exit 1; }
         [ "$key" != HIMMEL-503 ] || { echo "jira: get $key failed: HTTP 404:" >&2; exit 1; }
         [ "$key" != HIMMEL-505 ] || { echo "Issue Does Not Exist" >&2; exit 1; }
         [ "$key" != HIMMEL-500 ] || { echo "401 Unauthorized" >&2; exit 1; }
@@ -337,6 +339,7 @@ tracker_get HIMMEL-404 >/dev/null 2>&1; eq "jira absent issue is rc 3" 3 "$?"
 tracker_get HIMMEL-500 >/dev/null 2>&1; eq "jira CLI failure is rc 1, not absent" 1 "$?"
 tracker_get HIMMEL-503 >/dev/null 2>&1; eq "jira bare 404 with no not-found text is rc 1" 1 "$?"
 tracker_get HIMMEL-502 >/dev/null 2>&1; eq "jira proxy HTML Not Found body is rc 1, not absent" 1 "$?"
+tracker_get HIMMEL-506 >/dev/null 2>&1; eq "jira 404 JSON body naming Issue Does Not Exist in any case is rc 3" 3 "$?"
 tracker_get HIMMEL-505 >/dev/null 2>&1; eq "jira not-found text outside the CLI's own line is rc 1" 1 "$?"
 
 # the stderr capture file is mktemp-made: a planted predictable path is never written through,
