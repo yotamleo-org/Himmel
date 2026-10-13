@@ -848,6 +848,57 @@ allow 'qmd "query"x y'
 allow 'echo q"md" "qu"ery x'
 allow 'grep -rn "q\"md\" q\"uery\"" scripts/'
 allow 'printf "%s\n" "a; qmd" status'
+# HIMMEL-4141: a word of empty quotes alone is an empty ARGUMENT, so what
+# follows it is no longer the verb; empty quotes inside a word still vanish.
+allow 'qmd "" query x'
+allow "qmd '' search x"
+allow 'qmd "" "" vsearch x'
+allow "qmd \$'' query x"
+allow 'qmd "" query'
+allow "qmd \"\\
+\" query x"
+allow "qmd \$'\\0' query x"
+allow "qmd \$'\\0abc' query x"
+deny "qmd \$'\\0'query x"
+deny 'eval qmd "" query x'
+deny 'watch qmd "" query x'
+deny "eval \"qmd\" '' search x"
+deny "watch \"qmd\" '' search x"
+deny "eval qmd \$'' query x"
+deny 'parallel qmd "" query x'
+deny 'parallel -j1 qmd "" query x'
+# sudo -s / -i (--shell, --login) and firejail's default shell join their
+# words with spaces and re-parse them, so the empty argument vanishes there.
+deny 'sudo -s qmd "" query x'
+deny 'sudo -i qmd "" query x'
+deny 'sudo --shell qmd "" query x'
+deny 'sudo --login qmd "" query x'
+deny 'sudo -u bob -s qmd "" query x'
+deny 'firejail qmd "" query x'
+# ssh joins its words and the remote shell re-parses them; env -S splits its
+# operand, and the words after it, through the same joined string.
+deny 'ssh host qmd "" query x'
+deny 'ssh -p 22 host qmd "" query x'
+deny "ssh host qmd '' search x"
+deny 'env -S qmd "" query x'
+deny "env -S'qmd' '' query x"
+deny 'env -i -S qmd "" query x'
+# sudo takes abbreviated long options (--sh, --logi) and bundled option
+# arguments (-sD/tmp, -sC3), so every sudo is read through the re-parse:
+# a plain sudo with an empty argument over-denies, the accepted direction.
+deny 'sudo --sh qmd "" query x'
+deny 'sudo --logi qmd "" query x'
+deny 'sudo -sD/tmp qmd "" query x'
+deny 'sudo -sC3 qmd "" query x'
+deny 'sudo qmd "" query x'
+deny 'sudo -u bob qmd "" query x'
+allow 'echo qmd query | sudo tee /dev/null'
+deny 'qmd ""query x'
+deny "qmd ''search x"
+deny 'qmd q""uery x'
+deny 'qmd query"" x'
+deny 'qmd --index "" query x'
+deny 'qmd "" status; qmd query x'
 # `<<` inside $((…)) is a shift, not a heredoc: the words are still read.
 allow "echo \$((1<<2)); qmd \$'query notes' y"
 # HIMMEL-4140 / HIMMEL-4151: a decoded nested string is still read as words.
