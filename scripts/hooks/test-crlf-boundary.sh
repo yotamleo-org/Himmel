@@ -570,7 +570,7 @@ case "$1 $2" in
     esac ;;
   "api repos/o/r/commits/abc123/check-runs"*) echo '{"check_runs":[]}' ;;
   "api repos/o/r/commits/abc123/statuses"*)
-    echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+    echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
   *) echo '{}' ;;
 esac
 STUB
