@@ -3475,6 +3475,94 @@ _BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_
 # become $( and ), so `pwd`/x ends its word at the closing one.
 # shellcheck disable=SC2016  # a regex, not an expansion
 _BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*[^[:space:];&|()<>=]*[$][^[:space:]]'
+# The crude passes above read text with every quote removed, so a quoted or
+# escaped blank splits a word: `A="x y" bash -c …` reads as `A=x y bash`, and
+# the shell after it is no longer in command position. This awk pass removes
+# quotes word-aware instead: a blank inside quotes (or escaped) becomes _,
+# $( and backticks inside double quotes open a command again, $(( and (( are
+# arithmetic, a comment is dropped, a quoted heredoc body becomes _ and an
+# unquoted one is read as commands, one line at a time. The crude regexes run
+# on its output as well as on the plain dequoted text (HIMMEL-5349).
+# ponytail: a heredoc is located by its own << scan, not by the tokenizer, so a
+# << it misplaces can hide the lines after it from this pass (the plain dequoted
+# pass still reads them); upgrade to the tokenizer's heredoc list if one escapes.
+# shellcheck disable=SC2016  # an awk program, not an expansion
+_BWIMC_DX_WAWK='
+function push(s) { sp++; st[sp] = s; par[sp] = 0 }
+function bl(ch) { return (ch == " " || ch == "\t") ? "_" : ch }
+function nexthd() {
+    if (qh >= np) { np = 0; qh = 0; return }
+    qh++; push(pq[qh] ? "Q" : "H"); hd[sp] = pd[qh]; hdash[sp] = pdash[qh]
+}
+BEGIN { sq = "\047"; sp = 0; st[0] = "C"; par[0] = 0; np = 0; qh = 0; cont = 0 }
+{
+    line = $0
+    if (st[sp] == "H" || st[sp] == "Q") {
+        ln = line; if (hdash[sp]) sub(/^\t+/, "", ln)
+        if (ln == hd[sp]) { sp--; printf "\n"; nexthd(); next }
+        if (st[sp] == "Q") { printf "_"; next }
+    }
+    n = length(line); i = 1; o = ""
+    while (i <= n) {
+        c = substr(line, i, 1); c2 = substr(line, i + 1, 1); s = st[sp]
+        if (s == "S") { if (c == sq) sp--; else o = o bl(c); i++; continue }
+        if (s == "A") {
+            if (c == "\\") { o = o bl(c2); i += 2; continue }
+            if (c == sq) sp--; else o = o bl(c)
+            i++; continue
+        }
+        if (s == "D") {
+            if (c == "\"") { sp--; i++; continue }
+            if (c == "\\") { o = o bl(c2); i += 2; continue }
+            if (c == "$" && c2 == "(") { o = o "$("; push("C"); i += 2; continue }
+            if (c == "`") { o = o "$("; push("B"); i++; continue }
+            o = o bl(c); i++; continue
+        }
+        if (c == "\\") { if (i == n) { cont = 1; i++; continue }; o = o bl(c2); i += 2; continue }
+        if (c == sq) { push("S"); i++; continue }
+        if (c == "\"") { push("D"); i++; continue }
+        if (c == "$" && c2 == sq) { push("A"); i += 2; continue }
+        if (c == "$" && c2 == "\"") { push("D"); i += 2; continue }
+        if (c == "$" && c2 == "(" && substr(line, i + 2, 1) == "(") { o = o "$(("; push("M"); i += 3; continue }
+        if (c == "$" && c2 == "(") { o = o "$("; push("C"); i += 2; continue }
+        if (c == "(" && c2 == "(") { o = o "(("; push("M"); i += 2; continue }
+        if (c == "`") {
+            if (s == "B") { o = o ")"; sp--; i++; continue }
+            o = o "$("; push("B"); i++; continue
+        }
+        if (c == "(") { par[sp]++; o = o c; i++; continue }
+        if (c == ")") {
+            if (par[sp] > 0) { par[sp]--; o = o c; i++; continue }
+            if (s == "M" && c2 == ")") { o = o "))"; sp--; i += 2; continue }
+            if (s == "C" && sp > 0) sp--
+            o = o c; i++; continue
+        }
+        if (c == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t;&|()]/)) break
+        if (s != "M" && c == "<" && c2 == "<" && substr(line, i + 2, 1) != "<") {
+            j = i + 2; dash = 0; w = ""; q = 0; qs = ""
+            if (substr(line, j, 1) == "-") { dash = 1; j++ }
+            while (substr(line, j, 1) == " " || substr(line, j, 1) == "\t") j++
+            while (j <= n) {
+                ch = substr(line, j, 1)
+                if (qs != "") { if (ch == qs) qs = ""; else w = w ch; j++; continue }
+                if (ch == sq || ch == "\"") { qs = ch; q = 1; j++; continue }
+                if (ch == "\\") { q = 1; w = w substr(line, j + 1, 1); j += 2; continue }
+                if (ch ~ /[ \t;&|<>()]/) break
+                w = w ch; j++
+            }
+            if (w != "") { np++; pd[np] = w; pq[np] = q; pdash[np] = dash }
+            o = o "<<" w; i = j; continue
+        }
+        o = o c; i++
+    }
+    if (cont) { cont = 0; printf "%s", o; next }
+    for (k = sp; k > 0 && st[k] != "H"; k--) ;
+    if (k > 0) sp = k
+    s = st[sp]
+    if (s == "S" || s == "A" || s == "D") o = o "_"; else o = o "\n"
+    printf "%s", o
+    if (s != "S" && s != "A" && s != "D" && s != "M" && np > qh) nexthd()
+}'
 # a date +FORMAT whose output is digits and punctuation only
 _BWIMC_DX_DATEFMT='^[+]([-:/._, 0-9]|%[sYmdHMSNjuwyeIklCGgVUWFTDRzn%]|%:z)*$'
 # a redirect that feeds a command's standard input from a file or descriptor
@@ -3559,17 +3647,18 @@ _bwimc_dx_crudecode() {
 }
 
 _bwimc_dx_crude() {
-    local LC_ALL=C t="$1" c p x v
+    local LC_ALL=C t="$1" c p x v w
     local -a pieces
     c=${t//\\/}; c=${c//\'/}; c=${c//\"/}
     case "$t" in
         *'$'*|*'`'*|*'<'*|*'|'*|*'=('*)
-            [[ $c =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
+            w=$(printf '%s\n' "$t" | awk "$_BWIMC_DX_WAWK") || _bwimc_dx_deny "(a command the tokenizer cannot model, and its word pass failed)"
+            [[ $c =~ $_BWIMC_DX_CRUDE || $w =~ $_BWIMC_DX_CRUDE ]] && _bwimc_dx_deny "(an exec word beside a substitution, variable, pipe or redirect the tokenizer cannot model)"
             v=$(_bwimc_dx_crudecode "$t"); v=${v//\\/}; v=${v//\'/}; v=${v//\"/}
             # pair backticks as $( and ), so a closing one ends a word
             # shellcheck disable=SC2016  # a literal $(, not an expansion
             while [[ $v == *'`'*'`'* ]]; do v=${v/'`'/'$('}; v=${v/'`'/')'}; done
-            [[ $v =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
+            [[ $v =~ $_BWIMC_DX_CRUDEVAR || $w =~ $_BWIMC_DX_CRUDEVAR ]] && _bwimc_dx_deny "(a command named by a substitution or variable in a command the tokenizer cannot model)" ;;
     esac
     [[ $c =~ $_BWIMC_DX_FDEF ]] && _BWIMC_DX_SHADOW=$((_BWIMC_DX_SHADOW + 1))
     p=${c//[^A-Za-z0-9_=+.\/\[\]-]/ }

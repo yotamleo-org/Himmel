@@ -339,6 +339,13 @@ _r5098 "228l control: padded quoted heredoc of prose"   allow "cat > @W@/n.md <<
 _r5098 "228n control: padded closing backtick ends its word" allow ": ${_PAD}; echo \`date\`/x"
 _r5098 "228o padded command word with a mid-word backtick" block "x=al; : ${_PAD}; ev\`echo \$x\` \"\$(cat @W@/msg)\""
 _r5098 "228m control: padded <<- body with tab-led end" allow "cat > @W@/n.md <<-'EOF'${NL}\$x run${NL}${_PAD}${NL}	EOF"
+# a quoted or escaped blank inside an assignment value is not a word break
+_r5098 "228p padded quoted-blank assignment before a shell" block "A=\"x y\" bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228q padded escaped-blank assignment before a shell" block "A=x\\ y bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228r padded ANSI-C quoted assignment before a shell" block "A=\$'x\\' y' bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228s padded quoted-blank assignment before a variable" block "x=eval; A='x y' \$x \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228t padded quoted-blank assignment inside a substitution" block "echo \"\$(A='x y' bash -c \"\$(cat @W@/msg)\")\"; : ${_PAD}"
+_r5098 "228u control: padded quoted-blank assignment before ls" allow "A=\"x y\" ls; : ${_PAD}"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
