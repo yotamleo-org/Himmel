@@ -766,10 +766,14 @@ _sync_claude_cli() {
                 echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest is $latest)."
                 _probe_tool_row claude updated "$inst -> $after (latest $latest)"
                 _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch
-            else
+            elif [ "$after_cmp" -eq 1 ]; then
                 echo "    claude $inst -> $after (upgraded via ${owner:-native})."
                 _probe_tool_row claude updated "$inst -> $after"
                 _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+            else
+                echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest ${latest:-?} unknown, cannot confirm current)."
+                _probe_tool_row claude updated "$inst -> $after (latest ${latest:-?} unknown)"
+                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
             fi
         else
             echo "    claude upgrade did not change $after — $(_last_line_trimmed "$out")" >&2

@@ -237,6 +237,16 @@ else
 fi
 
 reset_state
+printf 'unavailable\n' > "$STATE/claude.latest"
+printf '2.1.285\n' > "$STATE/claude.update.stuck"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.285' && has 'cannot confirm current'; then
+    assert_pass "an upgrade with no readable registry latest is never labelled current"
+else
+    assert_fail "unknown latest → updated + cannot confirm current (rc=$RC): $OUT"
+fi
+
+reset_state
 printf '2.1.290\n' > "$STATE/claude.update.partial"
 run_only clis
 if [ "$RC" -ne 0 ] && has '^    claude +failed' && has 'updater exited 1'; then
