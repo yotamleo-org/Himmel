@@ -433,6 +433,25 @@ case "$*" in *v1/models*) cat "$MODELS_JSON" ;; esac
 exit 0
 MOCK
   chmod +x "$BIN/claude" "$BIN/curl"
+  write_cliproxy_fixture
+}
+
+# HIMMEL-5489: the classifier alias is accepted only when cli-proxy's Claude OAuth
+# auth file serves it. The config shape is the station's real config.yaml (host,
+# port, auth-dir, api-keys, retry) and the auth file carries the real claude auth
+# file's key set; every value is fake.
+write_cliproxy_fixture() {
+  mkdir -p "$FAKEHOME/.cli-proxy-api"
+  cat > "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+host: "127.0.0.1"
+port: 8317
+auth-dir: "~/.cli-proxy-api"
+api-keys:
+  - "fake-proxy-key-0000"
+request-retry: 3
+max-retry-interval: 30
+CFG
+  printf '%s' '{"access_token":"fake-access-0000","account_uuid":"","claude_device_ids":"","disabled":false,"email":"fake@example.invalid","expired":"2099-01-01T00:00:00Z","id_token":"","last_refresh":"2026-01-01T00:00:00Z","organization_name":"","organization_uuid":"","refresh_token":"fake-refresh-0000","type":"claude"}' > "$FAKEHOME/.cli-proxy-api/claude-fake@example.invalid.json"
 }
 
 # HIMMEL-5164: with nothing set, the Sonnet alias defaults to claude-sonnet-5
@@ -525,6 +544,84 @@ printf '%s' '{"object":"list","data":[{"id":"claude-sonnet-5","owned_by":"openro
 MODELS_JSON="$MODELS_FIXTURE_DIR/models-or-default.json" run_launcher "classifier default, OpenRouter-served: launch falls back"
 grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: a non-OAuth default must fall back to the gateway classifier"; FAILS=$((FAILS + 1)); }
 grep -q 'WARNING.*Claude OAuth provider' "$WORK/out.txt" || { echo "FAIL: a non-OAuth default must warn"; FAILS=$((FAILS + 1)); }
+
+# HIMMEL-5489: /v1/models owned_by "anthropic" proves only a Claude-FORMAT provider
+# (CLIProxyAPI v8.0.27 hardcodes "anthropic" for a claude-api-key entry whatever
+# its base-url, sdk/cliproxy/service_models.go:898, and uses the provider NAME for
+# an openai-compatibility entry, :801), so the config and auth files decide.
+# claude-api-key entry with a custom base-url (OpenRouter's Anthropic endpoint).
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+claude-api-key:
+  - api-key: "fake-or-secret-1111"
+    base-url: "https://openrouter.example.invalid/api"
+CFG
+run_launcher_expect "classifier flag: claude-api-key entry (custom base-url) refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a claude-api-key entry"; FAILS=$((FAILS + 1)); }
+! grep -q 'fake-or-secret-1111' "$WORK/out.txt" || { echo "FAIL: the refusal echoed key material"; FAILS=$((FAILS + 1)); }
+# the same config with the DEFAULT alias warns and falls back to the gateway.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+claude-api-key:
+  - api-key: "fake-or-secret-1111"
+    base-url: "https://openrouter.example.invalid/api"
+CFG
+run_launcher "classifier default, claude-api-key entry: launch falls back"
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: a claude-api-key default must fall back to the gateway classifier"; FAILS=$((FAILS + 1)); }
+! grep -q 'fake-or-secret-1111' "$WORK/out.txt" || { echo "FAIL: the fallback warning echoed key material"; FAILS=$((FAILS + 1)); }
+
+# openai-compatibility provider NAMED anthropic that serves the alias.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+openai-compatibility:
+  - name: "anthropic"
+    base-url: "https://openrouter.example.invalid/api/v1"
+    api-key-entries:
+      - api-key: "fake-or-secret-2222"
+    models:
+      - name: "anthropic/claude-sonnet-5"
+        alias: "claude-sonnet-5"
+CFG
+run_launcher_expect "classifier flag: compat provider named anthropic serving the alias refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a compat provider serving the alias"; FAILS=$((FAILS + 1)); }
+! grep -q 'fake-or-secret-2222' "$WORK/out.txt" || { echo "FAIL: the refusal echoed compat key material"; FAILS=$((FAILS + 1)); }
+# a compat provider that does NOT serve the alias leaves the OAuth alias usable.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+cat >> "$FAKEHOME/.cli-proxy-api/config.yaml" <<'CFG'
+openai-compatibility:
+  - name: "anthropic"
+    base-url: "https://openrouter.example.invalid/api/v1"
+    models:
+      - name: "vendor/other-model"
+        alias: "or-other"
+CFG
+run_launcher "classifier flag on, compat provider serves other ids: launch succeeds" --classifier-model claude-sonnet-5
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5' "$FAKEHOME/child-env.txt" || { echo "FAIL: an unrelated compat provider must not block the OAuth alias"; FAILS=$((FAILS + 1)); }
+
+# no Claude OAuth auth file: only the codex login exists, so nothing proves OAuth serves it.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+rm -f "$FAKEHOME/.cli-proxy-api/"claude-*.json
+printf '%s' '{"type":"codex","email":"fake@example.invalid"}' > "$FAKEHOME/.cli-proxy-api/codex-fake@example.invalid.json"
+run_launcher_expect "classifier flag: no claude OAuth auth file refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran with no claude OAuth auth file"; FAILS=$((FAILS + 1)); }
+# a disabled claude auth file does not serve either.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s' '{"disabled":true,"email":"fake@example.invalid","type":"claude"}' > "$FAKEHOME/.cli-proxy-api/claude-fake@example.invalid.json"
+run_launcher_expect "classifier flag: disabled claude OAuth auth file refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+# no config at all: fail closed.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+rm -f "$FAKEHOME/.cli-proxy-api/config.yaml"
+run_launcher_expect "classifier flag: unreadable cli-proxy config refuses (fail closed)" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+
+# duplicate ids: EVERY entry for the alias must be owned by anthropic, not just the first.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s' '{"object":"list","data":[{"id":"claude-sonnet-5","owned_by":"anthropic"},{"id":"claude-sonnet-5","owned_by":"openrouter"},{"id":"gpt-6.1-sol","owned_by":"openai"}]}' > "$MODELS_FIXTURE_DIR/models-dup.json"
+MODELS_JSON="$MODELS_FIXTURE_DIR/models-dup.json" run_launcher_expect "classifier flag: duplicate id with a non-anthropic entry refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
+[ ! -e "$FAKEHOME/child-ran" ] || { echo "FAIL: child ran despite a duplicate non-anthropic entry"; FAILS=$((FAILS + 1)); }
+# the non-anthropic entry first, anthropic second: still refused.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '%s' '{"object":"list","data":[{"id":"claude-sonnet-5","owned_by":"openrouter"},{"id":"claude-sonnet-5","owned_by":"anthropic"},{"id":"gpt-6.1-sol","owned_by":"openai"}]}' > "$MODELS_FIXTURE_DIR/models-dup2.json"
+MODELS_JSON="$MODELS_FIXTURE_DIR/models-dup2.json" run_launcher_expect "classifier flag: duplicate id, non-anthropic first, refuses" 2 "Claude OAuth" --classifier-model claude-sonnet-5
 
 # a malformed alias or a missing value is a usage refusal.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
