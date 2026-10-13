@@ -430,6 +430,19 @@ dest_ref() {
 }
 is_lift_dest() { dest_ref "$1"; [ "$REPLY" = LIFT ]; }
 
+# _long_abbrev <name[=value]> <full>...: the option name (dashes already
+# stripped, any =value cut off) is a non-empty prefix of one of the full
+# spellings, so getopt_long reads it as that option (HIMMEL-5438).
+_long_abbrev() {
+    local n="${1%%=*}" f
+    shift
+    [ -n "$n" ] || return 1
+    for f in "$@"; do
+        case "$f" in "$n"*) return 0 ;; esac
+    done
+    return 1
+}
+
 # _refs_name_lift <word>: 0 when a name the word references (after $ or ${,
 # through ! # ~ = ^ + and zsh (flags)) is set in the inherited environment
 # and its value names the state dir or the lift, directly or through one
@@ -1827,11 +1840,15 @@ _dest_verdict() {
 # _dest_verdict. pax -r (no copy destination) and 7z -spf keep members' own
 # absolute names, so they deny whatever the destination.
 check_extract_coarse() {
-    local c="$1" a v ch mode=0 skip=0 first=1 rd=0 wr=0 spec=0
+    local c="$1" a v ch n mode=0 skip=0 first=1 rd=0 wr=0 spec=0 eo=0 unk=0
     local -a dests=() ops=()
     shift
     for a in "$@"; do
-        if [ "$skip" = 1 ]; then skip=0; dests+=("$a"); continue; fi
+        # skip=1: the next word is a destination; skip=2: an option value to ignore.
+        if [ "$skip" != 0 ]; then
+            if [ "$skip" = 1 ]; then dests+=("$a"); fi
+            skip=0; continue
+        fi
         case "$c" in
             7z|7za|7zr|7zz)
                 case "$a" in
@@ -1841,9 +1858,11 @@ check_extract_coarse() {
                     *) if [ "$first" = 1 ]; then case "$a" in x|e|X) mode=1 ;; esac; first=0; fi ;;
                 esac ;;
             pax)
+                # After -- every word is an operand (HIMMEL-5459).
                 case "$a" in
-                    --) ;;
-                    -*) v="${a#-}"
+                    --) eo=1 ;;
+                    -*) if [ "$eo" = 1 ]; then ops+=("$a"); continue; fi
+                        v="${a#-}"
                         while [ -n "$v" ]; do
                             ch="${v:0:1}"; v="${v:1}"
                             case "$ch" in r) rd=1 ;; w) wr=1 ;; s) spec=1 ;; esac
@@ -1851,19 +1870,33 @@ check_extract_coarse() {
                     *) ops+=("$a") ;;
                 esac ;;
             ar)
+                # getopt_long: any prefix of --output is the output directory;
+                # an option this list does not know fails closed once ar extracts.
                 case "$a" in
-                    --output=*) dests+=("${a#*=}") ;;
-                    --output) skip=1 ;;
-                    --*) ;;
+                    --) ;;
+                    --*) n="${a#--}"
+                        if _long_abbrev "$n" output; then
+                            case "$n" in *=*) dests+=("${a#*=}") ;; *) skip=1 ;; esac
+                        else
+                            case "${n%%=*}" in
+                                help|version|thin) ;;
+                                plugin|target|record-libdeps) case "$n" in *=*) ;; *) skip=2 ;; esac ;;
+                                *) unk=1 ;;
+                            esac
+                        fi ;;
                     -*) case "$a" in *x*) mode=1 ;; esac ;;
                     *) if [ "$first" = 1 ]; then case "$a" in *x*) mode=1 ;; esac; first=0; fi ;;
                 esac ;;
             jar)
                 case "$a" in
-                    -x|--extract) mode=1 ;;
-                    --dir=*) dests+=("${a#*=}") ;;
-                    --dir|-C) skip=1 ;;
-                    --*) ;;
+                    -x) mode=1 ;;
+                    -C) skip=1 ;;
+                    --*) n="${a#--}"
+                        if _long_abbrev "$n" extract; then
+                            mode=1
+                        elif _long_abbrev "$n" dir; then
+                            case "$n" in *=*) dests+=("${a#*=}") ;; *) skip=1 ;; esac
+                        fi ;;
                     *) if [ "$first" = 1 ]; then case "$a" in *x*) mode=1 ;; esac; first=0; fi ;;
                 esac ;;
             dpkg|dpkg-deb)
@@ -1876,8 +1909,12 @@ check_extract_coarse() {
             unar)
                 mode=1
                 case "$a" in
-                    -o|-output-directory|--output-directory) skip=1 ;;
-                    -o?*) dests+=("${a#-o}") ;;
+                    -*) n="${a#-}"; n="${n#-}"
+                        if _long_abbrev "$n" output-directory; then
+                            case "$n" in *=*) dests+=("${a#*=}") ;; *) skip=1 ;; esac
+                        else
+                            case "$a" in -o?*) dests+=("${a#-o}") ;; esac
+                        fi ;;
                 esac ;;
         esac
     done
@@ -1894,7 +1931,8 @@ check_extract_coarse() {
             dests+=("${ops[1]}") ;;
         *)
             [ "$mode" = 1 ] || return 0
-            EXTRACT_SEEN=1 ;;
+            EXTRACT_SEEN=1
+            [ "$unk" = 1 ] && deny "$c extracts with a long option the fence does not model (an abbreviated or unknown spelling can name the output directory); spell the destination as --output=<dir>" ;;
     esac
     _dest_verdict "$c" 0 ${dests[@]+"${dests[@]}"}
 }
@@ -2219,15 +2257,20 @@ check_clause() {
     fi
 
     # Generic output-file options (-o / -O / --output[=] / --output-document).
-    local prev=""
+    # A getopt_long abbreviation (--o, --out=F, --output-doc) is the same
+    # option (HIMMEL-5438), so any prefix of a spelling counts.
+    local prev="" pexp=0
     for a in "$@"; do
-        case "$prev" in
-            -o|-O|--output|--output-document|--out-file|--outfile)
-                is_lift_dest "$a" && deny "$cmd $prev writes the bank lift ($a)$DEST_WHY" ;;
-        esac
+        if [ "$pexp" = 1 ] && is_lift_dest "$a"; then
+            deny "$cmd $prev writes the bank lift ($a)$DEST_WHY"
+        fi
+        pexp=0
         case "$a" in
-            --output=*|--output-document=*|--out-file=*|--outfile=*)
-                is_lift_dest "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})$DEST_WHY" ;;
+            -o|-O) pexp=1 ;;
+            --*=*)
+                _long_abbrev "${a#--}" output output-document out-file outfile \
+                    && is_lift_dest "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})$DEST_WHY" ;;
+            --*) _long_abbrev "${a#--}" output output-document out-file outfile && pexp=1 ;;
         esac
         prev="$a"
     done
