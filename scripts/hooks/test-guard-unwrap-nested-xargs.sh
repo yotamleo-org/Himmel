@@ -85,6 +85,7 @@ count_renders() {
     : >"$RENDER_LOG"
     j_bash "$1" >"$f"
     bash "$COUNT_HOOK" <"$f" >/dev/null 2>&1
+    echo "$?" >"$SCRATCH/count-rc"
     wc -l <"$RENDER_LOG" | tr -d ' '
 }
 
@@ -108,7 +109,10 @@ assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')
 # never unwrapped again) and its body: 3 per level plus the top call. Before
 # the fix the same shapes cost 6, 16, 35 scans at depth 1-3.
 for d in 1 2 3 4; do
-    assert_le "render count, ${d}-deep" "$((d * 3 + 1))" "$(count_renders "$(nest "$d" 'echo hi')")"
+    n=$(count_renders "$(nest "$d" 'echo hi')")
+    # An early deny or cap abort would shrink the count and pass the budget.
+    assert_rc "count hook ${d}-deep ran to completion" 0 "$(cat "$SCRATCH/count-rc")"
+    assert_le "render count, ${d}-deep" "$((d * 3 + 1))" "$n"
 done
 
 if [ "$FAILED" -ne 0 ]; then
