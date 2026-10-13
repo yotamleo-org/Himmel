@@ -300,7 +300,7 @@ rm -rf "$root"
 # ASSET_SHA256= are companions). The bump must move ALL of them or none.
 make_split_fixture() {
   local root
-  root=$(mktemp -d) || exit 1
+  root=$(mktemp -d "${TMPDIR:-/tmp}/apply-drift-split.XXXXXX") || exit 1
   mkdir -p "$root/scripts/setup"
   cat > "$root/scripts/upstreams.json" <<'JSON'
 {
@@ -352,7 +352,7 @@ out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a {sha256} companion without --sha256 is refused (rc=2)"; else fail "no --sha256 — expected rc=2 got rc=$rc: $out"; fi
 out=$(run_bump "$root" proxy 8.0.26 --sha256 not-a-sha 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a malformed --sha256 is refused (rc=2)"; else fail "bad --sha256 — expected rc=2 got rc=$rc: $out"; fi
-sed -i 's/^VERSION=.*/VERSION="9.9.9"/' "$root/scripts/setup/lane.sh"
+printf '# pinned at v7.3.15, a comment that must survive\nVERSION="9.9.9"\nASSET_SHA256="%s"\n' "$OLD_SHA" > "$root/scripts/setup/lane.sh"
 before=$(cat "$root/scripts/upstreams.json" "$root/scripts/setup/lane.ps1" "$root/scripts/setup/lane.sh")
 out=$(run_bump "$root" proxy 8.0.26 --sha256 "$NEW_SHA" 2>&1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "a companion literal that is not at the old version aborts (rc=4)"; else fail "stale companion — expected rc=4 got rc=$rc: $out"; fi
