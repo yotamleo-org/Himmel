@@ -160,7 +160,9 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
   tip="$(git commit-tree "$tree" -p "$main" -p "$old" -m "merge only")"
   m="$(git commit-tree "$tree" -p "$main" -p "$tip" -m "merge")"
   git checkout -q --detach "$m"
-) || fail "merge-only fixture setup"
+)
+setup_rc=$?
+[ "$setup_rc" -eq 0 ] || fail "merge-only fixture setup"
 out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "merge-only range, unattested script -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
@@ -181,7 +183,9 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
   c="$(git rev-parse HEAD)"
   m="$(git commit-tree "$(git write-tree)" -p "$main" -p "$c" -m "merge")"
   git checkout -q --detach "$m"
-) || fail "merge-first fixture setup"
+)
+setup_rc=$?
+[ "$setup_rc" -eq 0 ] || fail "merge-first fixture setup"
 out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "unattested first merge, attested later commit -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
