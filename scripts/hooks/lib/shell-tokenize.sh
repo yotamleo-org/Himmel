@@ -662,16 +662,24 @@ _stx_end() {
                                     _stx_ansi "$s" $((i + 2)); i=$_SX_E; continue
                                 fi ;;
                         esac ;;
-                    '(') case $t in P | p) st=${st}p ;; esac ;;
+                    '(')
+                        # `$((` and `((` are arithmetic (state a): `<<` there is a shift, not a heredoc
+                        case $t in
+                            P)
+                                if [ "${s:i-2:2}" = '$(' ] || [ "${s:i+1:1}" = '(' ]; then st=${st}a; else st=${st}p; fi ;;
+                            p) if [ "${s:i+1:1}" = '(' ]; then st=${st}a; else st=${st}p; fi ;;
+                            a) st=${st}a ;;
+                        esac ;;
                     ')')
                         case $t in
-                            P | p)
+                            P | p | a)
                                 st=${st%?}
                                 while [ "$hd_n" -gt 0 ] && [ "${hd_l[hd_n-1]}" -gt "${#st}" ]; do hd_n=$((hd_n - 1)); done ;;
                         esac ;;
                     '}') case $t in C | E) st=${st%?} ;; esac ;;
                     '<')
                         # a heredoc body inside $(...) is skipped, not scanned (HIMMEL-5411)
+                        # ponytail: a heredoc inside backticks still desyncs the scan, upgrade when a backtick-heredoc bypass is reported (follow-up of HIMMEL-5411)
                         case $t in
                             P | p)
                                 if [ "${s:i:3}" = '<<<' ]; then i=$((i + 3)); continue; fi

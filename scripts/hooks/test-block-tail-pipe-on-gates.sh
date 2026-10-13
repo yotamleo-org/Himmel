@@ -403,6 +403,24 @@ allow "heredoc apostrophe inside \$(...) with no gate" \
 # shellcheck disable=SC2016  # payload is literal command text
 deny "heredoc queue is per substitution level" \
      $'x=$(cat <<E $(echo a\nb)\nbody\nE\n${V:-./scripts/check-ci.sh} | tail -1\n)'
+# A `)` closing a nested substitution drops that level's queued heredocs, so a
+# later nested level's newline is not read as the stale heredoc's body.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "heredoc queue entry is dropped when its substitution closes" \
+     $'x=$(echo $(cat <<E) $(echo a\nb)\n${V:-./scripts/check-ci.sh} | tail -1\n)'
+# `<<` inside $(( is a shift, so its newline is not a heredoc body: the
+# apostrophe heredoc before it desyncs the plain scan, and a heredoc skip
+# through the arithmetic would hide the gate that follows.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< inside \$(( arithmetic is a shift, not a heredoc (apostrophe heredoc before it)" \
+     $'y=$(cat <<E\nit\'s\nE\nx=$(( 1 <<2\n))\n${V:-./scripts/check-ci.sh} | tail -1\n)'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< inside \$(( arithmetic at top level hides no gate" \
+     $'x=$(( 1 <<2\n))\n${V:-./scripts/check-ci.sh} | tail -1'
+# A here-string is not a heredoc: no body is skipped after <<<.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "here-string <<< inside \$(...) queues no heredoc" \
+     $'x=$(cat <<<E\n${V:-./scripts/check-ci.sh} | tail -1\nE\n)'
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""
