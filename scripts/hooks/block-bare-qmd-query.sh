@@ -141,7 +141,7 @@ if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
     echo "block-bare-qmd-query: cannot load $_gee_lib - failing closed" >&2
     exit 2
 fi
-guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" || exit 2
+guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'qmd' || exit 2
 
 # qmd_words CMD — print CMD with each word's quotes and escapes removed the
 # way bash removes them (HIMMEL-4121), so `qmd "qu"ery`, `qmd $'\x71uery'`,

@@ -67,6 +67,9 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "\${V:-\$(printf \"\" \")\"; true })}$p $a"
     check deny "$h" "\${V:-\$(echo \"\$(true })\")}$p $a"
     check deny "$h" "\${V:-\$( (true) ; true })}$p $a"
+    # a substitution the scanner cannot prove balanced fails closed (ruling)
+    check deny "$h" "\${V:-\$(echo \"}$p $a"
+    check deny "$h" "\${V:-\`echo \"}$p $a"
   }
 }
 
@@ -81,6 +84,12 @@ check deny block-read-secrets.sh 'cat ${V:-} .env'
 
 # read-only look-alikes that name no protected target stay allowed
 check allow block-git-stash.sh 'echo ${V:-x}'
+# a command substitution inside an expansion stays allowed when no target is named
+for h in block-git-stash.sh block-bare-qmd-query.sh block-read-secrets.sh; do
+  check allow "$h" 'echo "${X:-$(date)}"'
+  check allow "$h" 'ls "${D:-$(pwd)}"'
+  check allow "$h" 'git log "${R:-$(cat f)}"'
+done
 check allow block-git-stash.sh 'ls $D'
 check allow block-git-stash.sh 'git stash list'
 check allow block-git-stash.sh '${V:-}git stash list'

@@ -105,7 +105,7 @@ if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
     echo "block-git-stash: cannot load $_gee_lib - failing closed" >&2
     exit 2
 fi
-guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" || exit 2
+guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'git.*stash|stash.*git' || exit 2
 
 # HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
