@@ -18,10 +18,12 @@
 # `$(…)` and `$'…'` are untouched. Upgrade path: track variable values across
 # the command (HIMMEL-4178).
 #
-# ponytail: a `${…}` holding `$(`, a backtick, any quote or backslash (the flat
-# quote scan ends early on nested double quotes and ANSI-C `$'\''`), or that the
-# scanner cannot prove balanced is the class four review rounds kept finding new bypass spellings in,
-# so when such a command also names the hook's protected target (TARGET_ERE) it
+# ponytail: a `${…}` body is an ALLOWLIST (letters, digits, `_`, `: - + = ? # % /
+# @ * ^ , . ~`, space, or a nested `${…}`); anything else in it (`$(`, a backtick,
+# a quote, a backslash, `$[`, a bracket or paren, a bare `$`), or a body the
+# scanner cannot prove balanced, is the class five review rounds kept finding new
+# bypass spellings in (HIMMEL-5328), so when such a command also names the
+# hook's protected target (TARGET_ERE) it
 # is denied outright, whatever the scanner made of it; this over-denies a real
 # `git stash "${X:-$(cmd)}"`-style call. Upgrade path: a real shell parser
 # (HIMMEL-4178).
@@ -45,13 +47,14 @@ _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
   s = $0; out = ""; n = length(s); i = 1; hard = 0
+  safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:+=?#%/@*^,.~ -}"
   while (i <= n) {
     c = substr(s, i, 1)
     if (c == "$" && substr(s, i + 1, 1) == "{") {
       depth = 1; i += 2; q = ""; bt = 0; L = 0
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
-        if (c == "\047" || c == "\"" || c == "\\") hard = 1
+        if (!(c == "$" && substr(s, i + 1, 1) == "{") && index(safe, c) == 0) hard = 1
         if (q == "\047") { if (c == "\047") q = "" }
         else if (c == "\\") i++
         else if (bt) { if (c == "`") bt = 0 }

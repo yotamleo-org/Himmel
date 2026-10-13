@@ -73,7 +73,11 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     # nested double quotes and an ANSI-C quote inside the expansion end the
     # flat quote scan early; any quote or backslash in the body fails closed
     check deny "$h" "\${V+\"\${Z:-\"}\"}\"}$p $a"
-    check deny "$h" "\${V+\$'\\''}'}$p $a"
+    check deny "$h" "\${V+\$'\\'}'}$p $a"
+    # a body is an allowlist: a `$` not followed by `{`, a bracket or a paren
+    # fails closed (zsh/ksh `$[…]` arithmetic hides a `}`; round 9)
+    check deny "$h" "\${V+\$[}]}$p $a"
+    check deny "$h" "\${V:-\$((1))}$p $a"
   }
 }
 
