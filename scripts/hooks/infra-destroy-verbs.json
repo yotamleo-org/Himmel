@@ -17,7 +17,7 @@
     { "id": "aws-delete-terminate", "bins": ["aws"], "argv_any": ["^(delete|terminate)(-[a-z0-9-]+)?$"], "note": "aws delete-* or terminate-*" },
     { "id": "gcloud-delete", "bins": ["gcloud"], "argv_any": ["^delete$"], "note": "gcloud ... delete" },
     { "id": "az-delete", "bins": ["az"], "argv_any": ["^delete$"], "note": "az ... delete" },
-    { "id": "sql-destroy", "bins": ["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "duckdb", "clickhouse-client", "mongosh"], "text_any": ["(^|[^a-z_])drop[[:space:]]+(table|database|schema|index|view|user|role|collection)([^a-z_]|$)", "(^|[^a-z_])truncate([[:space:]]+table)?[[:space:]]+[a-z_\"`'\\[]", "(^|[^a-z_])delete[[:space:]]+from([^a-z_]|$)", "\\.(drop(database|collection)?)[[:space:]]*\\("], "note": "SQL DROP, TRUNCATE or DELETE FROM through a SQL client" },
+    { "id": "sql-destroy", "bins": ["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "duckdb", "clickhouse-client", "mongosh"], "text_any": ["(^|[^a-z_])drop([[:space:]]|/\\*[^*]*\\*/)+(table|database|schema|index|view|user|role|collection)([^a-z_]|$)", "(^|[^a-z_])truncate(([[:space:]]|/\\*[^*]*\\*/)+table)?([[:space:]]|/\\*[^*]*\\*/)+[a-z_\"`'\\[]", "(^|[^a-z_])delete([[:space:]]|/\\*[^*]*\\*/)+from([^a-z_]|$)", "\\.(drop(database|collection)?)[[:space:]]*\\("], "note": "SQL DROP, TRUNCATE or DELETE FROM through a SQL client" },
     { "id": "redis-flush", "bins": ["redis-cli", "valkey-cli"], "text_any": ["(^|[^a-z_])flush(all|db)([^a-z_]|$)"], "note": "redis FLUSHALL or FLUSHDB" },
     { "id": "dropdb", "bins": ["dropdb", "dropuser", "dropdb.exe"], "always": true, "note": "dropdb" },
     { "id": "mysqladmin-drop", "bins": ["mysqladmin"], "argv_any": ["^drop$"], "note": "mysqladmin drop" },

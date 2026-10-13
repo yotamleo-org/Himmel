@@ -32,6 +32,9 @@ wrapped-sudo	sudo kubectl delete node n1
 quoted-verb	terraform "destroy"
 second-line	echo hi\nkubectl delete pod x
 after-and	cd infra && terraform destroy
+win-path-exe	'C:\tools\terraform.exe' destroy
+npx-call-string	npx -c 'prisma migrate reset'
+sql-comment-gap	psql -c 'DROP/**/TABLE users'
 apply-destroy-eq	terraform apply -destroy=true
 upper-bin	KUBECTL delete pod web-1
 redis-quoted-verb	redis-cli "FLUSHALL"

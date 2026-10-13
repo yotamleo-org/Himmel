@@ -150,20 +150,30 @@ eval_segment() {
 # runner (npx prisma ...) to the tool it runs, then evaluate.
 scan_words() {
     local bin
+    local -a cw
     [ $# -gt 0 ] || return 0
-    bin=$(printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
+    bin=$(printf '%s' "${1##*[/\\]}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
     case " $runners " in
         *" $bin "*)
             shift
             while [ $# -gt 0 ]; do
                 case "$1" in
-                    -p|--package|-c|--call|-w|--workspace|--prefix|--cache) shift; [ $# -gt 0 ] && shift ;;
+                    -c|--call)
+                        # npx -c '<command string>': the value is itself a command.
+                        shift
+                        if [ $# -gt 0 ]; then
+                            read -r -a cw <<<"$1"
+                            scan_words "${cw[@]}"
+                            shift
+                        fi
+                        ;;
+                    -p|--package|-w|--workspace|--prefix|--cache) shift; [ $# -gt 0 ] && shift ;;
                     -*|dlx|exec|run|x) shift ;;
                     *) break ;;
                 esac
             done
             [ $# -gt 0 ] || return 0
-            bin=$(printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
+            bin=$(printf '%s' "${1##*[/\\]}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
             ;;
     esac
     shift
