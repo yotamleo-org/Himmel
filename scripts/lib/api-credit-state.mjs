@@ -15,8 +15,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCALE = 1000000n;
 const MAX_AGE = 600;
-// ponytail: no collector produces 'automatic-snapshot' yet, only the freshness rule for
-// it exists; upgrade path: the Admin cost_report collector (HIMMEL-4904 task 6).
+// ponytail: the cost report cannot separate promotional from card spend, so
+// 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
+// path: a promotional-credit balance endpoint, if Anthropic exposes one.
 const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
 // HIMMEL-5519: parallel admissions queue on the ledger lock instead of failing; the
 // wait is bounded so a crashed holder still refuses, never admits.
@@ -294,7 +295,7 @@ export function pickAccount(budget, env = process.env) {
 // as an unbilled settlement is read as that settlement (exclusive_org attests
 // there is none), upgrade path: the Admin cost_report collector (task 6 of the
 // HIMMEL-4904 plan).
-export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot' }) {
+export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect }) {
   let lock = null;
   try {
     if (!['A', 'B'].includes(account)) refuse('account-required');
@@ -312,6 +313,9 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
     if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts)) refuse('invalid-snapshot');
     const prior = snapshot.accounts[account];
     const s = { ...(prior ?? {}) };
+    // A pull computed its figure from one grant row before awaiting HTTP; if a grant
+    // replacement landed meanwhile that figure belongs to the old grant.
+    if (expect && (!object(prior) || ['grant_usd', 'starts_at', 'expires_at', 'cycle_id'].some((k) => prior[k] !== expect[k]))) refuse('grant-changed');
     if (grant !== undefined) {
       const day = (d) => {
         const t = Date.parse(`${d}T00:00:00Z`);
@@ -416,7 +420,7 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
       let body;
       try {
         const res = await fetchImpl(url, { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-          signal: AbortSignal.timeout(15000) });
+          redirect: 'error', signal: AbortSignal.timeout(15000) });
         if (!res.ok) throw new Error('http');
         body = await res.json();
       } catch { refuse('cost-report-unavailable'); }
@@ -428,12 +432,14 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
           spent += centsToMicro(r.amount);
         }
       }
-      if (body.has_more !== true) complete = true;
+      if (typeof body.has_more !== 'boolean') refuse('invalid-cost-report');
+      if (!body.has_more) complete = true;
       else if (typeof body.next_page === 'string' && body.next_page) page = body.next_page;
       else refuse('invalid-cost-report');
     }
     if (!complete) refuse('cost-report-too-long');
-    return refreshSnapshot(env, account, { remaining: usd(spent >= grant ? 0n : grant - spent), source: 'automatic-snapshot' });
+    return refreshSnapshot(env, account, { remaining: usd(spent >= grant ? 0n : grant - spent), source: 'automatic-snapshot',
+      expect: { grant_usd: row.grant_usd, starts_at: row.starts_at, expires_at: row.expires_at, cycle_id: row.cycle_id } });
   } catch (e) {
     return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
   }

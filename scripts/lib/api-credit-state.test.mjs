@@ -466,5 +466,10 @@ test('pull failures leave the snapshot untouched and never echo the key', async 
   assert.equal(nokey.reason, 'admin-key-missing');
   const bad = await pullSnapshot(env, 'A', { fetchImpl: costStub([{ data: [{ results: [{ amount: 'x', currency: 'USD' }] }], has_more: false }]) });
   assert.equal(bad.verdict, 'BANK-UNKNOWN');
+  const noFlag = await pullSnapshot(env, 'A', { fetchImpl: costStub([{ data: [bucket('10')] }]) });
+  assert.equal(noFlag.reason, 'invalid-cost-report');
   assert.equal(readFileSync(f.paths.snapshot, 'utf8'), before);
+  const seenInit = [];
+  await pullSnapshot(env, 'A', { fetchImpl: async (u, init) => { seenInit.push(init); return { ok: true, json: async () => ({ data: [], has_more: false }) }; } });
+  assert.equal(seenInit[0].redirect, 'error');
 });
