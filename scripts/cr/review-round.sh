@@ -47,7 +47,7 @@ usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
     echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>]" >&2
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
-    echo "       review-round.sh trivial-descendant <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
+    echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
 
@@ -88,6 +88,9 @@ trivial_descendant() {
 $_td_paths
 EOF
     [ "$_td_ok" -eq 0 ] || return 0
+    # HIMMEL-5416: --tests-only drops the comment branch for the clear-cr-marker
+    # fallback, which clears with no critic review of from..to.
+    [ "${_td_tests_only:-0}" -eq 0 ] || return 1
     # Binary edits and mode/create/delete changes carry no +/- text line, so a
     # text-only scan would miss them: refuse any of them outright.
     _td_bin="$(git diff --no-renames --numstat "$1" "$2" 2>/dev/null | grep -E '^-' || true)"
@@ -113,6 +116,8 @@ shift
 # HIMMEL-5109: read-only, writes no state, so it needs no --branch: the answer
 # is a pure function of the two commits in cwd's repository.
 if [ "$verb" = "trivial-descendant" ]; then
+    _td_tests_only=0
+    if [ "${1:-}" = "--tests-only" ]; then _td_tests_only=1; shift; fi
     [ $# -eq 2 ] || usage
     trivial_descendant "$1" "$2"
     exit $?

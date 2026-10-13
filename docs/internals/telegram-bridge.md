@@ -69,7 +69,7 @@ crash mid-write can't leave a torn byte-offset. (`meta.json` / `offset` /
 
 ## Hardening
 
-Non-blocking minor items from the PR #222 heavy CR:
+Non-blocking minor items from the PR #222 heavy automated review:
 
 - **Malformed `getUpdates` tolerance.** `getUpdates` returns `j.result ?? []`,
   so an `ok:true` response that omits `result` yields an empty batch instead of

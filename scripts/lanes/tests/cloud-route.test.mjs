@@ -142,6 +142,47 @@ test('bulleted asks under an Asks: header count toward the 3-ask limit', () => {
   assert.equal(classifyTicket(tk({ description: d }), ctx()).class, 'LOCAL-NATIVE');
 });
 
+// HIMMEL-4266
+test('LOCAL-NATIVE: a path outside the known roots cannot be checked against held files', () => {
+  for (const d of ['Edit scripts/a.sh and src/lib/widget.ts.', 'Edit scripts/a.sh and vendor/foo/bar.json.', 'Edit scripts/a.sh and the lib/foo/ directory.', 'Edit scripts/a.sh and ./config/app.yaml.', 'Edit scripts/a.sh and ./scripts/b.sh.', 'Edit scripts/a.sh and config/settings.properties.', 'Edit scripts/a.sh and src/schema.graphql.']) {
+    const v = classifyTicket(tk({ description: d }), ctx());
+    assert.equal(v.class, 'LOCAL-NATIVE', d);
+    assert.match(v.reason, /unrecognised path/);
+  }
+  const only = classifyTicket(tk({ description: 'Edit src/lib/widget.ts.' }), ctx());
+  assert.equal(only.class, 'LOCAL-NATIVE');
+  assert.match(only.reason, /unrecognised path src\/lib\/widget\.ts/);
+});
+
+test('CLOUD-OK: URLs, slashed words and console-supplied files are not unrecognised paths', () => {
+  for (const d of ['Edit scripts/a.sh. See https://example.com/docs/page.html for context.', 'Edit scripts/a.sh. It reads and/or writes yotamleo/Himmel and origin/main.']) {
+    assert.equal(classifyTicket(tk({ description: d }), ctx()).class, 'CLOUD-OK', d);
+  }
+  assert.equal(classifyTicket(tk({ description: 'Edit src/lib/widget.ts.', files: ['docs/x.md'] }), ctx()).class, 'CLOUD-OK');
+});
+
+test('header-less bulleted asks count toward the 3-ask limit', () => {
+  const d = 'Edit scripts/a.sh.\n- one\n- two\n- three\n- four';
+  const v = classifyTicket(tk({ description: d }), ctx());
+  assert.equal(v.class, 'LOCAL-NATIVE');
+  assert.match(v.reason, /4 asks/);
+  assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh.\n- one\n- two\n- three' }), ctx()).class, 'CLOUD-OK');
+  assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh.\n1. one\n2. two\n- note a\n- note b\n- note c\n- note d' }), ctx()).asks, 2);
+});
+
+test('bulleted asks coverage lines carry no stray bullet marker', () => {
+  const b = buildBrief(tk({ files: ['scripts/a.sh'], raw: 'x', description: 'Edit scripts/a.sh.\n- first\n* second' }), { date: '2026-10-13' });
+  assert.match(b, /^- first — done$/m);
+  assert.match(b, /^- second — done$/m);
+});
+
+test('status set: To Do, Backlog and Open are routable; anything else is BLOCKED and the reason names the set', () => {
+  for (const s of ['To Do', 'Backlog', 'Open']) assert.equal(classifyTicket(tk({ status: s }), ctx()).class, 'CLOUD-OK', s);
+  const v = classifyTicket(tk({ status: 'In Progress' }), ctx());
+  assert.equal(v.class, 'BLOCKED');
+  assert.match(v.reason, /not To Do\/Backlog\/Open/);
+});
+
 test('explicit files override text extraction', () => {
   const v = classifyTicket(tk({ description: 'Make it better.', files: ['docs/x.md'] }), ctx());
   assert.equal(v.class, 'CLOUD-OK');

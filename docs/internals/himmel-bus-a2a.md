@@ -15,7 +15,7 @@ envelope change, a task lifecycle, streaming, push, an inbound parser.
 
 A bus record's `c` flag marks a ruling-bearing message (GO, HALT, RETASK
 text). Authority in himmel comes from out-of-band facts: the RETASK nonce
-issued at dispatch, the GO file, the sender's pid-proven identity
+issued at dispatch, the GO file (merge approval), the sender's pid-proven identity
 (`docs/internals/retask-channel.md` §1). A2A has no field for any of these,
 and an A2A peer is, at best, an unauthenticated remote.
 
@@ -26,7 +26,7 @@ and an A2A peer is, at best, an unauthenticated remote.
    AgentCard field, and it redacts the body in code: `toA2AMessage` runs `b`
    through `scripts/handover/console-kit/redact.mjs` (RETASK tokens, nonces,
    lock tokens, keys), so a token a sender wrote into a body does not leave the
-   renderer. A2A cannot widen a leg's scope.
+   renderer. A2A cannot widen a worker session's scope.
 3. **Outbound, `c` lives only under `metadata`.** The renderer emits no A2A
    field a consumer could read as authority (no task state, no `taskId`, no
    extension). A `c=1` message is byte-identical to its `c=0` twin outside
@@ -58,7 +58,7 @@ and an A2A peer is, at best, an unauthenticated remote.
 
 Generated from `peers/*.json`, bound peers only (a registered, unbound name has
 no session). Fields: `name` = peer name, `description` from role and owning
-console, `version` = `1.0.0`, `capabilities` all false, text/plain in and out,
+supervisor session, `version` = `1.0.0`, `capabilities` all false, text/plain in and out,
 one `bus-message` skill tagged `himmel-bus` and the role.
 `supportedInterfaces` is empty because `AgentInterface.url` is required and no
 endpoint exists; a card with no interface is not discoverable, which is the

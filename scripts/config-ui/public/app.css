@@ -91,6 +91,8 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .rm-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;align-items:start}
 .rm-col{border:1px solid var(--line);padding:6px;min-width:0}
 .rm-col h4{margin:0 0 6px;font-size:12px;color:var(--dim)}
+.rm-card[draggable]{cursor:grab}
+.rm-theme{max-width:100%;font:inherit}
 .rm-card{background:var(--panel);border:1px solid var(--line);padding:6px 8px;margin-bottom:6px;overflow-wrap:anywhere}
 .rm-leg{margin-top:4px;color:var(--warn)}
 .rm-rel.cur{border-color:var(--accent)}

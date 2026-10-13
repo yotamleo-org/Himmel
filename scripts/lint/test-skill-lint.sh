@@ -403,5 +403,141 @@ assert_contains "finding names the real tab-holding path" "$TABDIR/tab-bad-skill
 assert_contains "[no-name] reported for the tab-path file" "no-name" "$OUT15B"
 
 # ---------------------------------------------------------------------------
+# Case 16: body size cap (HIMMEL-5513)
+# ---------------------------------------------------------------------------
+printf '\nCase 16: [size-warn] / [size-fail] / allowlist / command bodies\n'
+
+SZDIR="$TMP_ROOT/size"
+mkdir -p "$SZDIR/big-skill" "$SZDIR/commands"
+{
+    printf -- '---\nname: big-skill\ndescription: a long body\n---\n'
+    head -c 300 /dev/zero | tr '\0' 'x'; printf '\n'
+} > "$SZDIR/big-skill/SKILL.md"
+{ printf '# cmd without frontmatter\n'; head -c 300 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$SZDIR/commands/big-cmd.md"
+
+OUT16A="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16A=$?
+if [ "$EC16A" -eq 1 ]; then pass "body over fail threshold exits 1"; else fail "expected exit 1, got $EC16A" "$OUT16A"; fi
+assert_contains "[size-fail] tag present" "[size-fail]" "$OUT16A"
+
+OUT16B="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=400 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16B=$?
+if [ "$EC16B" -eq 0 ]; then pass "body between warn and fail exits 0"; else fail "expected exit 0, got $EC16B" "$OUT16B"; fi
+assert_contains "[size-warn] tag present" "[size-warn]" "$OUT16B"
+
+OUT16C="$(SKILL_LINT_WARN_BYTES=1000 SKILL_LINT_FAIL_BYTES=2000 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16C=$?
+if [ "$EC16C" -eq 0 ]; then pass "body under warn exits 0"; else fail "expected exit 0, got $EC16C" "$OUT16C"; fi
+assert_not_contains "no size tag under warn" "[size-" "$OUT16C"
+
+OUT16D="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" "$SZDIR/commands/big-cmd.md" 2>&1)"; EC16D=$?
+if [ "$EC16D" -eq 1 ]; then pass "command body over fail threshold exits 1"; else fail "expected exit 1, got $EC16D" "$OUT16D"; fi
+assert_contains "command body gets [size-fail]" "[size-fail]" "$OUT16D"
+assert_not_contains "command body skips frontmatter checks" "no-frontmatter" "$OUT16D"
+
+# Allowlist: keyed on the repo-relative path, so build a repo-shaped fixture.
+AL_REPO="$TMP_ROOT/alrepo"
+mkdir -p "$AL_REPO/.claude/commands"
+cp "$SZDIR/commands/big-cmd.md" "$AL_REPO/.claude/commands/big-cmd.md"
+printf '# reasons\n.claude/commands/big-cmd.md\tupstream-owned fork\n' > "$AL_REPO/allow.txt"
+(cd "$AL_REPO" && git init -q)
+OUT16E="$(cd "$AL_REPO" && SKILL_LINT_SIZE_ALLOWLIST="$AL_REPO/allow.txt" SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" 2>&1)"; EC16E=$?
+if [ "$EC16E" -eq 0 ]; then pass "allowlisted body is exempt"; else fail "expected exit 0, got $EC16E" "$OUT16E"; fi
+OUT16F="$(cd "$AL_REPO" && SKILL_LINT_SIZE_ALLOWLIST="$AL_REPO/none.txt" SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" 2>&1)"; EC16F=$?
+if [ "$EC16F" -eq 1 ]; then pass "same body without allowlist entry fails"; else fail "expected exit 1, got $EC16F" "$OUT16F"; fi
+
+OUT16G="$(SKILL_LINT_FAIL_BYTES=abc bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16G=$?
+if [ "$EC16G" -eq 2 ]; then pass "non-integer threshold is a usage error"; else fail "expected exit 2, got $EC16G" "$OUT16G"; fi
+
+# ---------------------------------------------------------------------------
+# Case 17: two-level default thresholds (warn 20000, hard fail 60000)
+# ---------------------------------------------------------------------------
+printf '\nCase 17: default thresholds warn at 20000 and hard-fail at 60000\n'
+
+TL="$TMP_ROOT/twolevel"
+mkdir -p "$TL/mid-skill" "$TL/huge-skill"
+{ printf -- '---\nname: mid-skill\ndescription: mid\n---\n'; head -c 45000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/mid-skill/SKILL.md"
+{ printf -- '---\nname: huge-skill\ndescription: huge\n---\n'; head -c 65000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/huge-skill/SKILL.md"
+
+OUT17A="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/mid-skill/SKILL.md" 2>&1)"; EC17A=$?
+if [ "$EC17A" -eq 0 ]; then pass "45000-byte body warns but exits 0 by default"; else fail "expected exit 0, got $EC17A" "$OUT17A"; fi
+assert_contains "45000-byte body carries [size-warn]" "[size-warn]" "$OUT17A"
+assert_not_contains "45000-byte body has no [size-fail]" "[size-fail]" "$OUT17A"
+
+OUT17B="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/huge-skill/SKILL.md" 2>&1)"; EC17B=$?
+if [ "$EC17B" -eq 1 ]; then pass "65000-byte outlier exits 1 by default"; else fail "expected exit 1, got $EC17B" "$OUT17B"; fi
+assert_contains "65000-byte outlier carries [size-fail]" "[size-fail]" "$OUT17B"
+
+# ---------------------------------------------------------------------------
+# Case 18: --changed <range> lints only the in-scope files that range touched
+# ---------------------------------------------------------------------------
+printf '\nCase 18: --changed <range>\n'
+
+CH="$TMP_ROOT/chrepo"
+mkdir -p "$CH/.claude/commands"
+(cd "$CH" && git init -q && git config commit.gpgsign false)
+head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/old-big.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m base)
+head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/new-big.md"
+printf 'notes\n' > "$CH/NOTES.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m change)
+printf 'more notes\n' >> "$CH/NOTES.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m notes-only)
+
+OUT18A="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~2..HEAD~1 2>&1)"; EC18A=$?
+if [ "$EC18A" -eq 1 ]; then pass "--changed fails on an oversize body the range added"; else fail "expected exit 1, got $EC18A" "$OUT18A"; fi
+assert_contains "--changed reports the changed file" "new-big.md" "$OUT18A"
+assert_not_contains "--changed skips an untouched oversize file" "old-big.md" "$OUT18A"
+
+OUT18B="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18B=$?
+if [ "$EC18B" -eq 0 ]; then pass "--changed over a range with no in-scope files exits 0"; else fail "expected exit 0, got $EC18B" "$OUT18B"; fi
+
+OUT18C="$(cd "$CH" && bash "$LINT" --changed not-a-range 2>&1)"; EC18C=$?
+if [ "$EC18C" -eq 2 ]; then pass "--changed with an unresolvable range is a usage error"; else fail "expected exit 2, got $EC18C" "$OUT18C"; fi
+assert_contains "unresolvable range names the failed git diff" "git diff failed" "$OUT18C"
+
+OUT18D="$(cd "$CH" && bash "$LINT" --changed HEAD~1..HEAD --staged 2>&1)"; EC18D=$?
+if [ "$EC18D" -eq 2 ]; then pass "--changed with --staged is a usage error"; else fail "expected exit 2, got $EC18D" "$OUT18D"; fi
+assert_contains "--changed with --staged says mutually exclusive" "mutually exclusive" "$OUT18D"
+
+OUT18E="$(cd "$CH" && bash "$LINT" --changed 2>&1)"; EC18E=$?
+if [ "$EC18E" -eq 2 ]; then pass "--changed without a range is a usage error"; else fail "expected exit 2, got $EC18E" "$OUT18E"; fi
+assert_contains "--changed without a range says it needs one" "needs a git range" "$OUT18E"
+
+OUT18G="$(cd "$CH" && bash "$LINT" --changed HEAD~1..HEAD .claude/commands/old-big.md 2>&1)"; EC18G=$?
+if [ "$EC18G" -eq 2 ]; then pass "--changed with file args is a usage error"; else fail "expected exit 2, got $EC18G" "$OUT18G"; fi
+assert_contains "--changed with file args says mutually exclusive" "mutually exclusive" "$OUT18G"
+
+(cd "$CH" && git mv .claude/commands/new-big.md .claude/commands/ren-big.md && git -c user.name=t -c user.email=t@t commit -q -m rename)
+OUT18F="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18F=$?
+if [ "$EC18F" -eq 1 ]; then pass "--changed lints a renamed in-scope body"; else fail "expected exit 1, got $EC18F" "$OUT18F"; fi
+assert_contains "--changed reports the renamed file" "ren-big.md" "$OUT18F"
+
+# A rename INTO a command dir of an over-limit body (git reports status R): both modes.
+mkdir -p "$CH/docs"
+head -c 300 /dev/zero | tr '\0' 'y' > "$CH/docs/over.md"
+head -c 301 /dev/zero | tr '\0' 'z' > "$CH/docs/over2.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m docover)
+(cd "$CH" && git mv docs/over.md .claude/commands/moved-in.md && git -c user.name=t -c user.email=t@t commit -q -m movein)
+OUT18H="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18H=$?
+if [ "$EC18H" -eq 1 ]; then pass "--changed lints a body renamed into a command dir"; else fail "expected exit 1, got $EC18H" "$OUT18H"; fi
+assert_contains "--changed reports the moved-in body" "moved-in.md" "$OUT18H"
+
+(cd "$CH" && git mv docs/over2.md .claude/commands/moved-staged.md)
+OUT18I="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --staged 2>&1)"; EC18I=$?
+if [ "$EC18I" -eq 1 ]; then pass "--staged lints a body renamed into a command dir"; else fail "expected exit 1, got $EC18I" "$OUT18I"; fi
+assert_contains "--staged reports the moved-in body" "moved-staged.md" "$OUT18I"
+(cd "$CH" && git -c user.name=t -c user.email=t@t commit -q -m movestaged)
+
+# A path with a space survives the newline-delimited file list.
+head -c 300 /dev/zero | tr '\0' 'w' > "$CH/.claude/commands/spaced name.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m spaced)
+OUT18J="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18J=$?
+if [ "$EC18J" -eq 1 ]; then pass "--changed lints a path with a space"; else fail "expected exit 1, got $EC18J" "$OUT18J"; fi
+assert_contains "--changed reports the spaced path" "spaced name.md" "$OUT18J"
+
+# A deleted body has no content to lint: exit 0.
+(cd "$CH" && git rm -q ".claude/commands/spaced name.md" && git -c user.name=t -c user.email=t@t commit -q -m deleted)
+OUT18K="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18K=$?
+if [ "$EC18K" -eq 0 ]; then pass "--changed over a deletion exits 0"; else fail "expected exit 0, got $EC18K" "$OUT18K"; fi
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

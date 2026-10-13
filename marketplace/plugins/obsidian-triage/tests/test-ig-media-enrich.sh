@@ -821,7 +821,7 @@ LIB="$LIBURL" node "$tmp/ig-thin.mjs" >/dev/null 2>&1 && a=ok || a=no
 assert "isThinInstagramBody predicate + instagram host dispatch" ok "$a"
 
 # doc-contract: harvest-clips.md marks ig_media_pending on instagram clips
-grep -q 'ig_media_pending' "$SCRIPT_DIR/../commands/harvest-clips.md" && a=ok || a=no
+grep -q 'ig_media_pending' "$SCRIPT_DIR/../commands/harvest-clips.md" "$SCRIPT_DIR"/../references/harvest-clips/*.md && a=ok || a=no
 assert "harvest-clips.md mentions ig_media_pending" ok "$a"
 
 # --- Task 6b: migrate-engine ig_media_pending guard + Phase-8 doc-contract ---
@@ -840,9 +840,9 @@ grep -qE '^PLAN pending-clip ' "$tmp/mig.out" && a=present || a=absent
 assert "ig_media_pending clip NOT in the migrate plan (held)" absent "$a"
 
 # doc-contract: triage-clips.md Phase-8 step-0 hold
-grep -q 'ig_media_pending' "$SCRIPT_DIR/../commands/triage-clips.md" && a=ok || a=no
+grep -q 'ig_media_pending' "$SCRIPT_DIR/../commands/triage-clips.md" "$SCRIPT_DIR"/../references/triage-clips/*.md && a=ok || a=no
 assert "triage-clips.md mentions ig_media_pending" ok "$a"
-grep -q 'stays in inbox (ig_media_pending)' "$SCRIPT_DIR/../commands/triage-clips.md" && a=ok || a=no
+grep -q 'stays in inbox (ig_media_pending)' "$SCRIPT_DIR/../commands/triage-clips.md" "$SCRIPT_DIR"/../references/triage-clips/*.md && a=ok || a=no
 assert "triage-clips.md has the stays-in-inbox success line" ok "$a"
 
 # --- Test 19: carry-forward - clear ig_media_pending on verified enrichment

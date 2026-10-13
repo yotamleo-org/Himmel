@@ -28,7 +28,12 @@ set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CMD="$PLUGIN_DIR/commands/harvest-clips.md"
+# HIMMEL-5513: sections moved to references/harvest-clips/ are part of the
+# runbook contract, so the greps below read the body plus its references.
+CMD_ALL="$(mktemp "${TMPDIR:-/tmp}/harvest-clips-all.XXXXXX")" || exit 1
+trap 'rm -f "$CMD_ALL"' EXIT
+cat "$PLUGIN_DIR/commands/harvest-clips.md" "$PLUGIN_DIR"/references/harvest-clips/*.md > "$CMD_ALL"
+CMD="$CMD_ALL"
 FIXTURES="$SCRIPT_DIR/fixtures/clips"
 
 pass=0
@@ -61,6 +66,13 @@ assert "$CMD exists" "yes" "$exists"
 if [ "$exists" = "no" ]; then
     echo "Results: $pass passed, $fail failed"; exit 1
 fi
+
+echo "Test 1b: every references/harvest-clips file is linked from the command body (HIMMEL-5513)"
+unlinked=""
+for ref in "$PLUGIN_DIR"/references/harvest-clips/*.md; do
+    grep -qF "references/harvest-clips/$(basename "$ref")" "$PLUGIN_DIR/commands/harvest-clips.md" || unlinked="$unlinked $(basename "$ref")"
+done
+assert "no unlinked reference files" "" "$unlinked"
 
 echo "Test 2: frontmatter allowed-tools includes Skill (dispatch table needs it)"
 fm_lines=$(awk '/^---$/{c++; next} c==1' "$CMD")
@@ -335,7 +347,9 @@ fi
 assert "harvest-clips.md documents Phase 4.5 injection screen" "yes" "$found"
 
 # 13b — triage runbook documents metadata-only handling for flagged clips.
-TRIAGE_CMD="$PLUGIN_DIR/commands/triage-clips.md"
+TRIAGE_CMD="$(mktemp "${TMPDIR:-/tmp}/triage-clips-all.XXXXXX")" || exit 1
+trap 'rm -f "$CMD_ALL" "$TRIAGE_CMD"' EXIT
+cat "$PLUGIN_DIR/commands/triage-clips.md" "$PLUGIN_DIR"/references/triage-clips/*.md > "$TRIAGE_CMD"
 # (msys grep quirk: -i + -F SIGABRTs on non-ASCII files — use exact case)
 if grep -qF "harvest_flag: injection-suspect" "$TRIAGE_CMD" \
     && grep -qF "metadata only" "$TRIAGE_CMD"; then
@@ -653,7 +667,7 @@ else
 fi
 
 echo "Test 14: G-2 dead-PID lock recovery documented (HIMMEL-1138)"
-g2_section=$(awk '/^### G-2/{p=1;next} /^### /{if(p) exit} p' "$CMD")
+g2_section=$(awk '/^### G-2/{p=1;next} /^### /{if(p) exit} p' "$PLUGIN_DIR/references/harvest-clips/g-2-lockfile.md")
 
 out=$(printf '%s' "$g2_section" | grep -E "kill -0")
 out2=$(printf '%s' "$g2_section" | grep -iE "not running")
@@ -696,7 +710,7 @@ fi
 assert "G-2 removes/invalidates .harvest.done at start" "yes" "$marker_invalidate"
 
 echo "Test 16: G-8 completion marker written LAST, only on a clean run (HIMMEL-1137)"
-g8_section=$(awk '/^### G-8/{p=1;next} /^### /{if(p) exit} p' "$CMD")
+g8_section=$(awk '/^### G-8/{p=1;next} /^### /{if(p) exit} p' "$PLUGIN_DIR/references/harvest-clips/g-8-completion-marker.md")
 
 out=$(printf '%s' "$g8_section" | grep -F ".harvest.done")
 out2=$(printf '%s' "$g8_section" | grep -iE "atomic|\bmv\b")

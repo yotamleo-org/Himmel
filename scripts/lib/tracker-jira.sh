@@ -41,13 +41,25 @@ _tracker_jira_id_new() {
 
 # _tracker_jira_get <id> — normalised JSON. rc 3 when the issue is absent, rc 1 when the CLI itself failed.
 _tracker_jira_get() {
-    local raw err msg
+    local raw err msg line
+    # ponytail: a signal mid-call leaks this temp file (a trap here would clobber the caller's INT/TERM traps), upgrade by saving and restoring the caller's traps when a consumer (WP3a/WP3b/WP9) installs its own around tracker calls
     err=$(mktemp "${TMPDIR:-/tmp}/tracker-jira-err.XXXXXX") || return 1
     if ! raw=$(_tracker_jira_run get "$1" --json 2>"$err"); then
         msg=$(cat "$err" 2>/dev/null); rm -f "$err"
-        case "$msg" in
-            *[Nn]ot\ [Ff]ound*|*[Dd]oes\ [Nn]ot\ [Ee]xist*) return 3 ;;
-        esac
+        # absent only on the CLI's own `jira: get <KEY> failed: HTTP 404: <body>` line (get.ts) whose body
+        # is JSON whose errorMessages array has an "Issue does not exist" entry (any case); a bare 404 or a proxy's HTML
+        # "Not Found" body is a failure (rc 1), not absence
+        while IFS= read -r line; do
+            case "$line" in
+                "jira: get $1 failed: HTTP 404: "*)
+                    # parse the body: an errorMessages ENTRY must say it, not any substring of any field
+                    if printf '%s' "${line#"jira: get $1 failed: HTTP 404: "}" | node -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{try{const m=JSON.parse(s).errorMessages;process.exit(Array.isArray(m)&&m.some(x=>/issue does not exist/i.test(String(x)))?0:1)}catch{process.exit(1)}})'; then
+                        return 3
+                    fi ;;
+            esac
+        done <<EOF_MSG
+$msg
+EOF_MSG
         printf '%s\n' "tracker(jira): get $1 failed: $msg" >&2
         return 1
     fi

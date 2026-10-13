@@ -46,7 +46,7 @@ Each invocation checks an absent host-side canary, including non-zero exits.
 The canary's execution control is only a harmless touch in a throwaway tmp dir.
 The CI architecture lint enforces `guard-corpus/diff` and the destructive-command
 hook suite. Other fixture/replay owners currently warn, not certify: migrate the
-hook latency and stack benchmarks, chokepoint registry fixture suite, and Codex
+hook latency and stack benchmarks, sanctioned script registry fixture suite, and Codex
 smoke/PowerShell replay paths before treating those as station-safe. The three
 sandbox/replay/classification suites select `sandbox-exec` on macOS and missing
 confinement fails the run instead of green-skipping coverage. Windows retains a
@@ -59,9 +59,9 @@ containment guarantee; use an immutable VM environment for adversarial execution
 
 ## Chokepoint fixtures and the seam guard
 
-Every chokepoint in `scripts/chokepoints.json` sources
+Every sanctioned script in `scripts/chokepoints.json` sources
 `scripts/lib/chokepoint-seam-guard.sh` and exits 96 if that lib is missing.
-A fixture that copies a chokepoint into a scratch tree must therefore copy the
+A fixture that copies a sanctioned script into a scratch tree must therefore copy the
 lib beside it, at the same relative path (`<tree>/scripts/lib/`). The guard
 enforces only on the anchor checkout's own copy. A scratch copy's tree root is
 never the anchor, so a fixture can still set seams per call. A suite that
@@ -140,14 +140,14 @@ red:
   read the `shell-unit-shard (windows-latest, …)` jobs of the nightly run
   directly. A red macOS cadence run files nothing: read the run's summary
   (new breakages) or `macos-breakage.sh report`.
-- **The console splits it.** The console turns each distinct failure cluster
+- **The supervisor session splits it.** The supervisor session turns each distinct failure cluster
   into its own ticket under the epic that owns the OS-portability work,
   one slice per cluster. The slice is fixed and
   verified like any other change; it is **never** a hold on an unrelated PR.
 - **Verifying a slice before the next cadence run** is optional and operator-
   requested only: the diagnostic `os-verify.yml` workflow
-  dispatches the impacted suites on one OS. It is not a per-PR gate and no leg
-  dispatches it unasked.
+  dispatches the impacted suites on one OS. It is not a per-PR gate and no worker
+  session dispatches it unasked.
 
 `bash scripts/ci/run-shell-tests.sh --list [scan-root]` prints the run/skip
 plan without executing anything — use it to check what a change would trigger
@@ -247,8 +247,8 @@ section; the ledger is uploaded with the failure logs.
 - A suite that fails both attempts is a real FAIL and keeps both logs.
 - A suite whose header carries `# no-retry` is never retried, and a suite the
   watchdog killed at its cap is never retried either.
-- The console tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
-  shows the same rows when this repo's ledger took a row since the console lock
+- The supervisor session tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
+  shows the same rows when this repo's ledger took a row since the supervisor session lock
   started; `scripts/observability/suite-flake-summary.sh --format
   detail` lists each row.
 
@@ -378,11 +378,11 @@ costs extra tail/grep round-trips to recover it.
 ## Plugin evals (on-demand, billed)
 
 `claude plugin eval` runs an agent against a real Claude Code session, so
-every run is a billed call against the same 5-hour/weekly bank as
+every run is a billed call against the same 5-hour/weekly subscription usage budget as
 interactive use — these suites are **on-demand only**, run via
 `/plugin-eval <plugin> <suite>` (`.claude/commands/plugin-eval.md`), never
 wired into CI or a cadence, and never "all suites" in one invocation. The
-command bank-preflights (`scripts/plugin-eval-preflight.sh`, refusing when
+command preflights the usage budget (`scripts/plugin-eval-preflight.sh`, refusing when
 `bank-preflight.sh` returns `SKIPPED-BANK`) and checks the `claude` version
 floor the subcommand needs (2.1.269) before ever shelling out.
 
@@ -437,7 +437,7 @@ Three suites ship:
   exactly `["himmel"]`
   (`^(?!.*"collections":\s*\[\s*"himmel"\s*\]).*$`), so a genuinely
   out-of-scope call — including one that omits `collections` entirely, which
-  an earlier `"collections":`-substring form of this regex missed (CR round 1)
+  an earlier `"collections":`-substring form of this regex missed (review round 1)
   — fails the run regardless of how many in-scope calls also happened. A
   `max: 1` on `scoped-query` itself was tried and reverted — re-verified
   (2026-09-12) against the real 2-calls-per-run behavior, it produced a false
@@ -588,10 +588,10 @@ Three readings that look like evidence and are not:
 With a large fleet the account's 20-job cap backs up, and superseded
 `pull_request` runs sit in workflow-level `queued` — the concurrency group does
 not cancel them, and `codeowner-review-gate` / `workflow_dispatch` runs are
-outside it by design. From a console, `bash scripts/ci/cancel-superseded-runs.sh
+outside it by design. From a supervisor session, `bash scripts/ci/cancel-superseded-runs.sh
 --dry-run [--branch <b>]` lists, and without `--dry-run` cancels, every live CI
 or codeowner-review-gate run on an open PR's branch whose head is not that PR's
 current head. It never touches a run at the current head, main, a
 schedule run or a branch with no open PR, and any `gh` read error cancels
-nothing and exits 1. Cancels land ~20 s later. Console-run only; not yet wired
-into `tick.sh` or the leg ship flow.
+nothing and exits 1. Cancels land ~20 s later. Run from a supervisor session only; not yet wired
+into `tick.sh` or the worker session ship flow.

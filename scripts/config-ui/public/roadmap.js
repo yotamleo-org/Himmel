@@ -1,6 +1,7 @@
 // HIMMEL-4943: the Roadmap page. Pure rendering, no DOM: renderRoadmap(data, ui) → HTML.
 // data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes or null.
-// Everything shown is the server's live read; the page proposes only, and nothing here writes Jira.
+// Everything shown is the server's live read. HIMMEL-5491: with ui.writes the Kanban cards are draggable and carry a theme
+// select, and app.js posts the drop or the select to /api/roadmap/write. The rest of the page proposes only.
 import { esc } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
@@ -25,24 +26,35 @@ function filters(d, ui) {
   return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Theme", d.themes, ui.theme)}</div>`;
 }
 
-function cardHtml(t, d, showVersion) {
+// HIMMEL-5491: one select per card; the option value is the theme's label slug ("" clears it). A slug over the write
+// route's 40-char cap is shown but disabled, so it is never offered as a write the server would refuse.
+const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Theme of HIMMEL-${t.k}">${d.themes.map((x, i) => {
+  const slug = (d.themeSlugs || [])[i] ?? "";
+  return `<option value="${esc(slug)}"${t.theme === i ? " selected" : ""}${slug.length > 40 ? " disabled" : ""}>${esc(x)}</option>`;
+}).join("")}</select>`;
+
+function cardHtml(t, d, showVersion, w) {
   const lg = t.leg ? `<div class="rm-leg"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
-  return `<div class="rm-card"><b>HIMMEL-${t.k}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
-    <div class="ro">${ver}${esc(d.themes[t.theme])} ${dr}</div>${lg}</div>`;
+  const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
+  return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>HIMMEL-${t.k}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
+    <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets. Won't and CI stay hidden while empty so a quiet board stays short.
-function boardHtml(d, tickets, showVersion) {
-  return `<div class="rm-board">${COLS.filter(([b]) => b !== "wont" || tickets.some((t) => t.b === b)).map(([b, l]) => {
+// With w every column is a drop target, Won't included: a writable board must be able to receive it.
+function boardHtml(d, tickets, showVersion, w) {
+  return `<div class="rm-board">${COLS.filter(([b]) => w || b !== "wont" || tickets.some((t) => t.b === b)).map(([b, l]) => {
     const cards = tickets.filter((t) => t.b === b);
-    return `<div class="rm-col"><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion)).join("")}</div>`;
+    return `<div class="rm-col"${w ? ` data-rm-drop="${b}"` : ""}><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion, w)).join("")}</div>`;
   }).join("")}</div>`;
 }
 
 const themeSel = (d, ui) => `<label>Theme <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
   `<option value="${i}"${ui.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
+// A refused or failed write: shown above the board, the card has already moved back (the board is redrawn from the server).
+const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st fail">refused</span> ${esc(ui.writeError)}</div>` : "");
 const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme === ui.theme);
 
 // HIMMEL-5488: #/roadmap/<version>, one version's board.
@@ -51,9 +63,9 @@ function versionHtml(d, ui) {
   const v = d.versions.findIndex((x) => x.n === ui.ver);
   if (v < 0) return back + `<div class="empty">${esc(ui.ver)}: no such version in the mirror.</div>`;
   const shown = byTheme(d, ui).filter((t) => t.v === v);
-  const head = `<div class="rm-bar">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
+  const head = `<div class="rm-bar">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
   return back + section("rm-version", d.versions[v].n, `${shown.length} tickets in this version; the leg marker shows on the card.`,
-    head + (shown.length ? boardHtml(d, shown, false) : `<div class="empty">No tickets match.</div>`));
+    head + (shown.length ? boardHtml(d, shown, false, ui.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
 // HIMMEL-5488: #/kanban, every version on one board with no version filter. Done can be hidden.
@@ -63,9 +75,9 @@ export function renderKanban(data, ui) {
   const u = ui || {};
   const shown = byTheme(data, u).filter((t) => !(u.hideDone && t.b === "done"));
   const head = `<div class="rm-bar">${themeSel(data, u)}<label><input type="checkbox" data-rm-hide-done${u.hideDone ? " checked" : ""}> Hide Done</label>`
-    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
-  return section("rm-kanban", "Kanban", `Every train ticket across versions (${shown.length} shown).`,
-    head + (shown.length ? boardHtml(data, shown, true) : `<div class="empty">No tickets match.</div>`));
+    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(u)}`;
+  return section("rm-kanban", "Kanban", `Every train ticket across versions (${shown.length} shown).${u.writes ? " Drag a card to another column to change its Jira status." : ""}`,
+    head + (shown.length ? boardHtml(data, shown, true, u.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
 function driftHtml(d) {
