@@ -65,6 +65,7 @@ no_model  "gpt id never suffixed"       gpt-6-astra
 no_model  "glm id never suffixed"       glm-5
 no_model  "deepseek id never suffixed"  deepseek-v4
 no_model  "slash id never suffixed"     anthropic/claude-opus-4-6
+no_model  "non-claude id embedding the family" gpt-opus-4-6
 no_model  "empty model"                 ""
 
 [ "$fails" -eq 0 ] && echo "all passed" && exit 0

@@ -73,7 +73,7 @@ console_context_model_is_fable() {
 console_context_model_takes_1m_suffix() {
     case "$1" in */*) return 1 ;; esac
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-        *opus-4-6*|*sonnet-4-6*) return 0 ;;
+        claude-opus-4-6*|claude-sonnet-4-6*|opus-4-6*|sonnet-4-6*) return 0 ;;
         *) return 1 ;;
     esac
 }
