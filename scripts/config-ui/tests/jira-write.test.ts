@@ -76,6 +76,22 @@ test("refused with no CLI call: missing token, bad key, unknown status, bad them
   expect(b.audit()).toEqual([]);
 });
 
+test("a description line that starts with Labels: is not read as the ticket's labels", async () => {
+  const b = boot({ STUB_JIRA_LABELS: "product, theme-old, leg-blocked", STUB_JIRA_DESC: "intro\nLabels: decoy\nmore" });
+  const r = await b.post({ key: "HIMMEL-12", theme: "tracker" });
+  expect(r.status).toBe(200);
+  expect(b.calls().find((c) => c[0] === "get")).toEqual(["get", "HIMMEL-12", "--json"]);
+  expect(b.calls().find((c) => c[0] === "edit")).toEqual(["edit", "HIMMEL-12", "--labels", "product,leg-blocked,theme-tracker"]);
+});
+
+test("clearing the theme of a ticket whose only label is the theme is refused, with no edit call", async () => {
+  const b = boot({ STUB_JIRA_LABELS: "theme-only" });
+  const r = await b.post({ key: "HIMMEL-12", theme: null });
+  expect(r.status).toBe(422);
+  expect((await r.json()).error).toMatch(/last label/);
+  expect(b.calls().map((c) => c[0])).toEqual(["get"]);
+});
+
 test("a get that does not look like the ticket is refused before any label edit", async () => {
   const b = boot({ STUB_JIRA_GET_RAW: "" });
   const r = await b.post({ key: "HIMMEL-3", theme: "x" });

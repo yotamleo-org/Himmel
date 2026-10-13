@@ -65,15 +65,20 @@ export async function applyWrite(req: WriteReq, d: WriteDeps): Promise<WriteResu
     extra = { status: req.status, name: STATUS_NAMES[req.status] };
   } else {
     // --labels is a full replace in the CLI, so the set is read live from Jira, not from the (possibly stale) mirror.
-    const got = await d.run(jira(d, "get", req.key), WRITE_MS);
-    if (got.rc !== 0) return fail(502, "could not read the ticket's labels", jira(d, "get", req.key), got.rc, null, got.stdout + got.stderr);
-    // `get` prints `KEY<TAB>type<TAB>status<TAB>title` first and omits the Labels line when there are none, so an
-    // output that is not the ticket's own header must not read as "no labels" (the edit would wipe the real ones).
-    if (!got.stdout.startsWith(req.key + "\t")) return fail(502, "unexpected ticket output", jira(d, "get", req.key), got.rc, null, got.stdout);
-    const line = /^Labels:[ \t]*(.*)$/m.exec(got.stdout)?.[1] ?? "";
-    const labels = line.split(",").map((l) => l.trim()).filter(Boolean);
-    if (!labels.every((l) => LABEL_RE.test(l))) return fail(502, "unreadable labels line", jira(d, "get", req.key), got.rc, null);
+    // The labels come from `get --json` (fields.labels), never the human output: there the Labels line follows the
+    // description body, so a description line starting `Labels:` would read as the ticket's labels and the edit would wipe them.
+    const getArgv = jira(d, "get", req.key, "--json");
+    const got = await d.run(getArgv, WRITE_MS);
+    if (got.rc !== 0) return fail(502, "could not read the ticket's labels", getArgv, got.rc, null, got.stdout + got.stderr);
+    let issue: { key?: unknown; fields?: { labels?: unknown } } | null = null;
+    try { issue = JSON.parse(got.stdout); } catch { /* answered below */ }
+    const raw = issue?.fields?.labels;
+    if (!issue || issue.key !== req.key || !Array.isArray(raw)) return fail(502, "unexpected ticket output", getArgv, got.rc, null, got.stdout);
+    const labels = raw.filter((l): l is string => typeof l === "string");
+    if (labels.length !== raw.length || !labels.every((l) => LABEL_RE.test(l))) return fail(502, "unreadable labels", getArgv, got.rc, null);
     const next = [...labels.filter((l) => !l.startsWith(THEME_PREFIX)), ...(req.theme ? [THEME_PREFIX + req.theme] : [])];
+    // The CLI's --labels refuses an empty set and it has no remove or clear option, so the last label cannot go.
+    if (next.length === 0) return fail(422, "the Jira CLI cannot remove a ticket's last label, so its theme cannot be cleared here", jira(d, "edit", req.key, "--labels", ""), null, null);
     argv = jira(d, "edit", req.key, "--labels", next.join(","));
     before = { labels: labels.filter((l) => l.startsWith(THEME_PREFIX)).join(",") };
     extra = { theme: req.theme, labels: next };
