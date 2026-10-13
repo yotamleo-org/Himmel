@@ -167,6 +167,34 @@ export function toolNameFor(matcher) {
   return toolNamesFor(matcher)[0];
 }
 
+// Does a settings matcher select this tool? Same alternation grammar Claude
+// Code uses: '' / '*' match everything, otherwise an anchored regex. An
+// unparseable matcher selects nothing rather than throwing.
+export function matcherMatches(matcher, tool) {
+  const raw = String(matcher || '').trim();
+  if (!raw || raw === '*') return true;
+  try {
+    return new RegExp(`^(?:${raw})$`).test(tool);
+  } catch {
+    return false;
+  }
+}
+
+// The member scripts of a `--chain` entry (HIMMEL-2002), with $CLAUDE_PROJECT_DIR
+// expanded, or null when the command is not a chain. Only the first branch of
+// the launcher's `if …; then <chain>; else <chain>; fi` wrapper is read — both
+// branches name the same members.
+export function chainMembers(command, projectDir) {
+  const text = String(command);
+  const at = text.indexOf('--chain');
+  if (at < 0) return null;
+  const tail = text.slice(at + '--chain'.length).split(';')[0];
+  return tail.split(/\s+/)
+    .map((tok) => tok.replace(/^"|"$/g, ''))
+    .filter((tok) => tok && !tok.startsWith('--'))
+    .map((tok) => tok.replace(/\$\{?CLAUDE_PROJECT_DIR\}?/g, projectDir));
+}
+
 // A representative, deliberately BENIGN stdin payload for one event.
 export function payloadFor(event, matcher, cwd) {
   const base = {
