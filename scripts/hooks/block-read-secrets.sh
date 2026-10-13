@@ -1002,25 +1002,27 @@ is_transcript_path() {
 }
 
 # is_transcript_tree PATH (HIMMEL-5412): a Grep path that reaches transcripts:
-# a transcript itself, `~/.claude/projects`, or a directory below it. The
-# per-project `memory/` subtree and a named non-.jsonl file stay allowed.
+# a transcript itself, `~/.claude/projects`, or anything below it. Only the
+# per-project `memory/` subtree stays allowed, and only with no `..` in the
+# path (`memory/..` is the project directory again). A slug can hold a dot
+# (`-home-u-repo.example`), so a basename is never taken as "a file".
 # ponytail: a Grep rooted ABOVE projects (`~/.claude`, `~`) still walks into
 # transcripts, and a Bash reader (`cat`/`grep -r`/`jq` on a transcript) is not
 # matched: both need a per-token path check across scan_clause's reader sites,
 # HIMMEL-5418.
 is_transcript_tree() {
-    local p="${1%/}" base
+    local p="${1%/}"
     is_transcript_path "$p" && return 0
     p="${p//\\//}"
     case "$p" in
-        */.claude/projects) return 0 ;;
-        */.claude/projects/*/memory|*/.claude/projects/*/memory/*) return 1 ;;
-        */.claude/projects/*)
-            base="${p##*/}"
-            case "$base" in *.*) return 1 ;; esac
-            return 0 ;;
+        */.claude/projects|*/.claude/projects/*) ;;
+        *) return 1 ;;
     esac
-    return 1
+    case "/$p/" in */../*) return 0 ;; esac
+    case "$p" in
+        */.claude/projects/*/memory|*/.claude/projects/*/memory/*) return 1 ;;
+    esac
+    return 0
 }
 
 # scan_clause CLAUSE DEPTH (HIMMEL-4492): scan ONE clause and set the global

@@ -1059,7 +1059,10 @@ assert_rc "5412 Grep projects dir"              2 "$(run_case "$(j_grep '/home/u
 assert_rc "5412 Grep projects slug dir"         2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/')")"
 # shellcheck disable=SC2088  # a literal tilde, as the Grep tool receives it
 assert_rc "5412 Grep ~/.claude/projects"        2 "$(run_case "$(j_grep '~/.claude/projects')")"
-assert_rc "5412 ctl Grep memory dir"            0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory')")"
+assert_rc "5412 Grep dotted slug dir"           2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo.example')")"
+assert_rc "5412 Grep memory/.. escape"          2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/..')")"
+assert_rc "5412 Grep tool-results dir"          2 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e/tool-results')")"
+assert_rc "5412 ctl Grep memory dir"          0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory')")"
 assert_rc "5412 ctl Grep memory .md"            0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
 assert_rc "5412 bun Bun.env"                    2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"
 assert_rc "5412 bun JSON.stringify(Bun.env)"    2 "$(run_case "$(j_bash "bun -e 'console.log(JSON.stringify(Bun.env))'")")"
