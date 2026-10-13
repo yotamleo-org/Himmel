@@ -389,7 +389,12 @@ out=$(run_api --name t33 --corpus-root "$C33" --corpus-class himmel-code --backe
 ext=$(grep '^graphify extract' "$WS/calls.log")
 [ "$rc" -eq 0 ] && pass "T33 exit 0" || fail "T33 exit 0 (got $rc): $out"
 case "$ext" in *"--backend claude-cli"*) pass "T33 extract uses --backend claude-cli" ;; *) fail "T33 extract args: $ext" ;; esac
-grep -qx bank "$WS/calls.log" && fail "T33 native bank-preflight called" || pass "T33 native bank not consulted"
+grep -qx bank "$WS/calls.log"; g33=$?
+case "$g33" in 1) pass "T33 native bank not consulted" ;; 0) fail "T33 native bank-preflight called" ;; *) fail "T33 calls.log unreadable (grep rc=$g33)" ;; esac
+echo "T33b: a zero per-call budget is refused before any work"
+C33B="$WS/c33b"; new_corpus "$C33B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=0.0 run_api --name t33b --corpus-root "$C33B" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"positive decimal"* ]] && pass "T33b zero budget refused" || fail "T33b (rc=$rc): $out"
 grep -q '^CLAUDE_BIN=.*graphify-semantic-t33-' "$WS/env.log" && pass "T33 graphify's claude is the scratch shim" || fail "T33 claude bin: $(grep CLAUDE_BIN "$WS/env.log")"
 [ -z "$(scratch)" ] && pass "T33 scratch (and shim) cleaned" || fail "T33 scratch left"
 
