@@ -327,7 +327,11 @@ quote_mask() {
             # A `#` right after a continuation is a comment only if the byte BEFORE
             # the continuation was a boundary: cpv carries that byte forward.
             if [ "$nx" = $'\n' ]; then
-                [ "$i" = "$cpi" ] || cpv="$pv"
+                # An escaped byte before the continuation (`a\ \<NL>#b`) is word
+                # text, never a boundary, whatever character it was.
+                if [ "$i" = "$cpi" ]; then :
+                elif [ "$i" = "$esc_end" ]; then cpv="x"
+                else cpv="$pv"; fi
                 i=$((i + 2)); cpi=$i; continue
             fi
             out+="  "; i=$((i + 2)); esc_end=$i; continue
@@ -362,7 +366,8 @@ quote_mask() {
                                 case "${SC[j]-}" in [0-7]) hx+="${SC[j]}"; j=$((j + 1)) ;; *) break ;; esac
                             done
                             ch=$(( 8#$hx & 255 )) ;;   # bash keeps the low byte: \556 is \156
-                        c) j=$((i + 3)) ;;
+                        c) j=$((i + 3))     # \cX is a control byte; X of @ or backtick is NUL
+                           case "${SC[i + 2]-}" in '@'|'`') ch=0 ;; esac ;;
                         '') j=$((i + 1)) ;;
                     esac
                     # A NUL escape ends the string in bash (node followed by NUL is `node`).
