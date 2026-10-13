@@ -247,7 +247,7 @@ def filings():
             text = open(p, encoding='utf-8', errors='replace').read()
         except OSError:
             continue
-        for l in text.partition('\n## Results')[2].splitlines():
+        for l in text.partition('\n## Results')[2].split('\n## ')[0].splitlines():
             if l.startswith('- '):
                 for k in filed_keys(l):
                     if k > n:  # an origin is always the older ticket
@@ -838,10 +838,13 @@ def bench(mir, rows, n_plan, act, seqm, erange):
                     s['end'] = a[5] if s['end'] is None else max(s['end'], a[5])
         return s
 
-    def row(key, title, size, est, own, b, members, done, rw=None):
+    def row(key, title, size, est, own, b, members, done, rs=None):
         tw = (own['wall'] if own else 0) + b['wall']
-        rw = tw if rw is None else rw  # the wall the ratio divides: the operator bundle counts only its estimated members
-        mps = round(rw / est, 1) if est and rw and done else None
+        # the legs the ratio divides: the operator bundle counts only its estimated members. An undated leg adds no
+        # wall, so a ratio over any undated leg would understate the actual: it is left blank.
+        legs, dated, rw = (rs['legs'], rs['dated'], rs['wall']) if rs else \
+            ((own['legs'] if own else 0) + b['legs'], (own['dated'] if own else 0) + b['dated'], tw)
+        mps = round(rw / est, 1) if est and rw and done and legs == dated else None
         fs = [x for x in ((own or {}).get('first'), b['first']) if x is not None]
         es = [x for x in ((own or {}).get('end'), b['end']) if x is not None]
         return [key, title, size, round(est, 2) if est else None] + \
@@ -859,7 +862,7 @@ def bench(mir, rows, n_plan, act, seqm, erange):
     oe = {n: e for n, e in ((n, est_of('HIMMEL-%d' % n)) for n in om)
           if e is not None and mir.get('HIMMEL-%d' % n, {}).get('st') == 2}
     opr = row('operator-directed', 'operator-directed bundle (min per S-eq over its %d estimated done of %d)' % (len(oe), len(om)),
-              '', sum(oe.values()) if oe else None, None, ob, om, bool(oe), stat(list(oe))['wall'])
+              '', sum(oe.values()) if oe else None, None, ob, om, bool(oe), stat(list(oe)))
     um = sorted(r[0] for r in rows[n_plan:] if r[7] == 2 and r[0] not in anc)
     unr = row('unattributed', 'unplanned train tickets with no planned or operator origin', '', None, None, stat(um), um, False)
     mps = sorted(x[17] for x in out + [opr] if x[17] is not None)
@@ -1598,7 +1601,7 @@ function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN
    x[8]+" ("+x[9]+"/"+x[10]+")",fmtMin(x[13])+" / "+fmtMin(x[14])+" ("+x[12]+"/"+x[11]+")",fmtMin(x[15]),
    x[17]==null?"–":x[17].toFixed(1),x[18]==null?"–":x[18].toFixed(2)].forEach(function(c){tr.appendChild(el("td",null,c))});
   tr.title=x[21].length?x[21].map(function(k){return "HIMMEL-"+k}).join(", "):"no bundle";tb.appendChild(tr)});
- h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the leg that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical). Hover a row for its bundle."));
+ h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the leg that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical), blank while any of its legs is undated. Hover a row for its bundle."));
  h.appendChild(add(el("div","tw"),tb));h.appendChild(el("p","fact",D.SRC))}
 function renderAcc(){var h=$("accb"),ac=M.accuracy(),mx=1;h.textContent="";
  h.appendChild(el("p","fact","Re-read from the Jira mirror and the wrapped-leg docs on every render. Jira "+D.mir+" · newest wrapped-leg doc "+(D.ATS||"none")+"."));

@@ -535,9 +535,9 @@ bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 
 # A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
 printf '%s\n' '# leg' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
     '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
-# A note after WRAPPED and a later section's bullet are past the measured span.
+# A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the leg's.
 printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — filed HIMMEL-103 for the second gap' '- 10:45 WRAPPED — merged' \
-    '- 11:30 note after the wrap' '## Notes' '- 12:00 a later note' > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
+    '- 11:30 note after the wrap' '## Notes' '- 12:00 a later note: filed HIMMEL-107 elsewhere' > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
 printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:30 WRAPPED — merged' > "$bh/HIMMEL-102-N94-no-date.md"
 printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:20 WRAPPED — merged' > "$bh/HIMMEL-105-N93-operator-ask-2026-10-03.md"
 printf '%s\n' '# console' '## Results' '- 22:57 OPERATOR: do the thing. Filed HIMMEL-105; DISPATCH N93' \
@@ -562,7 +562,7 @@ contains 'A to B to C rolls up to the first planned ancestor; a leg-filed and a 
 contains 'the bundle counts open and done (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_n) $(bcol HIMMEL-100 bundle_open) $(bcol HIMMEL-100 bundle_done)" '4 2 2'
 contains 'the bundle folds into the item total (HIMMEL-5453)' "$(bcol HIMMEL-100 own_wall_min) $(bcol HIMMEL-100 bundle_wall_min) $(bcol HIMMEL-100 total_wall_min)" '1500 45 1545'
 contains 'the bundle coverage counts its dated legs (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated)" '2 1'
-contains 'the ratio sits beside its raw inputs (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2.2 702.3 1.00'
+contains 'a ratio over partly undated legs is left blank (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) [$(bcol HIMMEL-100 min_per_seq)] [$(bcol HIMMEL-100 ratio)]" '2.2 [] []'
 contains 'the dated span is printed in UTC (HIMMEL-5453)' "$(bcol HIMMEL-100 first_utc) $(bcol HIMMEL-100 end_utc)" '2026-10-01T20:00Z 2026-10-02T21:00Z'
 contains 'the operator bundle holds labelled, backfilled and their spawned tickets (HIMMEL-5453)' \
     "$(bcol operator-directed members)" 'HIMMEL-104,HIMMEL-105,HIMMEL-106'
@@ -575,6 +575,10 @@ bfp1="$(brender --emit-fp)"
 printf '%s\n' '- 23:20 OPERATOR: one more. Filed HIMMEL-107' >> "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
 bfp2="$(brender --emit-fp)"
 if [ -n "$bfp1" ] && [ "$bfp1" != "$bfp2" ]; then pass 'a new OPERATOR filing moves the fingerprint (HIMMEL-5453)'; else fail 'a new OPERATOR filing left the fingerprint'; fi
+mv "$bh/HIMMEL-102-N94-no-date.md" "$bh/HIMMEL-102-N94-now-dated-2026-10-02.md"
+brender >/dev/null
+contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5453)' \
+    "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]
