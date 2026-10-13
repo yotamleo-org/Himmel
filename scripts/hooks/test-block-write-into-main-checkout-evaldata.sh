@@ -346,6 +346,13 @@ _r5098 "228r padded ANSI-C quoted assignment before a shell" block "A=\$'x\\' y'
 _r5098 "228s padded quoted-blank assignment before a variable" block "x=eval; A='x y' \$x \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228t padded quoted-blank assignment inside a substitution" block "echo \"\$(A='x y' bash -c \"\$(cat @W@/msg)\")\"; : ${_PAD}"
 _r5098 "228u control: padded quoted-blank assignment before ls" allow "A=\"x y\" ls; : ${_PAD}"
+# a wrapper's option argument is part of the prefix, not the command (HIMMEL-5456)
+_r5098 "228v padded env option argument before a shell"  block "env -u x bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228w padded sudo option argument before a shell" block "sudo -u root bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228x padded timeout duration before a shell"     block "timeout 5s bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228y padded quoted option argument before a shell" block "env -u \"x y\" bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228z padded option argument before a variable"   block "x=eval; nice -n 5 \$x \"\$(cat @W@/msg)\"; : ${_PAD}"
+_r5098 "228za control: padded sudo option argument before ls" allow "sudo -u root ls \"\$HOME\"; : ${_PAD}"
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'

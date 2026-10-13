@@ -3466,7 +3466,12 @@ _BWIMC_DX_SPACED='(^|[[:space:];&|(])[A-Za-z_][A-Za-z0-9_]*[+]?=[[:space:]]+["'"
 _BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
 # shellcheck disable=SC2016  # a regex, not an expansion
 _BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
-_BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
+# A prefix word is an assignment, a wrapper, a numeric-leading word (`nice 5`,
+# `timeout 5s`) or an option, and an option may take the next word as its
+# argument (`env -u x`, `sudo -u root`, HIMMEL-5456). No per-wrapper option
+# table: any option may consume one non-option word, which fails closed
+# (`sudo -E ls "$x"` reads `ls` as an argument and denies on `"$x"`).
+_BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*[[:space:]]+[^-[:space:]][^[:space:]]*|-[^[:space:]]*|[0-9][^[:space:]]*|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
 # the same command position holding a word built from an expansion: its name
 # is unknowable here (`x=ev; y=al; $x$y "$(cat f)"`, `$@`, `$x/ba$y`); an
 # assignment word is not a command word, and one holding a ( or a backtick
@@ -3474,7 +3479,7 @@ _BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_
 # before a blank (`${a:-$b}` is an expansion). Matched after backtick pairs
 # become $( and ), so `pwd`/x ends its word at the closing one.
 # shellcheck disable=SC2016  # a regex, not an expansion
-_BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*|[0-9]+|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*[^[:space:];&|()<>=]*[$][^[:space:]]'
+_BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]()`]*|-[^[:space:]]*[[:space:]]+[^-[:space:]()`][^[:space:]()`]*|-[^[:space:]]*|[0-9][^[:space:]()`]*|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*[^[:space:];&|()<>=]*[$][^[:space:]]'
 # The crude passes above read text with every quote removed, so a quoted or
 # escaped blank splits a word: `A="x y" bash -c …` reads as `A=x y bash`, and
 # the shell after it is no longer in command position. This awk pass removes
