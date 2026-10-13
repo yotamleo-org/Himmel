@@ -62,12 +62,12 @@ export function parseJiraGet(raw) {
 // files. A URL or a slashed word (and/or, owner/repo) is not one. ponytail: an extensionless
 // path outside the known roots (src/lib/foo) is still invisible, upgrade path HIMMEL-4266
 // follow-up (resolve against the tree).
-const PATH_RE = /(?<![\w./:@-])((?:[\w.+@-]+\/)+(?:[\w.+@-]*\.[A-Za-z][A-Za-z0-9]{0,4})?)(?![\w+@-]|\.\w)/g;
+const PATH_RE = /(?<![\w./:@-])((?:[\w.+@-]+\/)+(?:[\w.+@-]*\.[A-Za-z][A-Za-z0-9]{0,11})?)(?![\w+@-]|\.\w)/g;
 const KNOWN_ROOT = new RegExp(`^${FILE_RE.source}`);
 export function unrecognisedPaths(text) {
   const out = [];
   for (const m of text.matchAll(PATH_RE)) {
-    const p = m[1].replace(/^\.\//, '');
+    const p = m[1];
     if (p && !KNOWN_ROOT.test(p) && !out.includes(p)) out.push(p);
   }
   return out;

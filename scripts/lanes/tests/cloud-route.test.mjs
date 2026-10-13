@@ -144,7 +144,7 @@ test('bulleted asks under an Asks: header count toward the 3-ask limit', () => {
 
 // HIMMEL-4266
 test('LOCAL-NATIVE: a path outside the known roots cannot be checked against held files', () => {
-  for (const d of ['Edit scripts/a.sh and src/lib/widget.ts.', 'Edit scripts/a.sh and vendor/foo/bar.json.', 'Edit scripts/a.sh and the lib/foo/ directory.', 'Edit scripts/a.sh and ./config/app.yaml.']) {
+  for (const d of ['Edit scripts/a.sh and src/lib/widget.ts.', 'Edit scripts/a.sh and vendor/foo/bar.json.', 'Edit scripts/a.sh and the lib/foo/ directory.', 'Edit scripts/a.sh and ./config/app.yaml.', 'Edit scripts/a.sh and ./scripts/b.sh.', 'Edit scripts/a.sh and config/settings.properties.', 'Edit scripts/a.sh and src/schema.graphql.']) {
     const v = classifyTicket(tk({ description: d }), ctx());
     assert.equal(v.class, 'LOCAL-NATIVE', d);
     assert.match(v.reason, /unrecognised path/);
