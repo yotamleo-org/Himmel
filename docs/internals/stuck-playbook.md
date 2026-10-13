@@ -769,6 +769,24 @@ it, so keep working while you wait.
 
 ---
 
+## Symptom: `vm-runner.sh on|off|status` is denied by the classifier (HIMMEL-5037)
+
+The VM CI runner's only control entry point is
+`bash scripts/handover/console-kit/vm-runner.sh on|off|status` (optionally
+`on --vms 1` or `on --vms 2`), each pre-approved as one exact literal in
+`.claude/settings.json`. A denial means that allow rule is missing or does not
+match the text you typed (a quote, a `VAR=` prefix, an absolute path, an extra
+flag, a `cd … &&`, a pipe). **Never reshape the command**, never call
+`scripts/vm/ci-runner.sh`, `VBoxManage` or `systemctl` directly to get the same
+effect, and never widen the rule to a wildcard.
+
+**What to do:** retype the bare relative literal once from the worktree root.
+If it is still denied, report `BLOCKED` to the console naming the exact text
+that was refused; the operator runs `! bash scripts/handover/console-kit/vm-runner.sh <on|off|status>`
+at the station. `off` is the kill switch and is always safe to ask for.
+
+---
+
 ## Symptom: a commit failed and files I never touched came back changed
 
 `pre-commit install`'s generated `pre-commit` hook stashes every unstaged

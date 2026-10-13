@@ -1,0 +1,19 @@
+[Unit]
+Description=himmel-vm Actions runner loop for himmel-ci-%i (HIMMEL-5037)
+# Started and stopped only by scripts/handover/console-kit/vm-runner.sh; the
+# loop itself exits 0 when the repo variable is off or the stop file exists.
+
+[Service]
+Type=simple
+Environment=HIMMEL_CI_RUNNER_VM=himmel-ci-%i
+Environment=HIMMEL_VM_AR_LIVE=1
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash @REPO_ROOT@/scripts/vm/ci-runner.sh run
+# A crash restarts; a clean exit (switched off) and the refusal codes do not
+# (3 = fork-PR approval policy weaker, 2 = bad config).
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=2 3
+# TERM lets the loop's EXIT trap deregister the runner and power the VM off.
+KillMode=mixed
+TimeoutStopSec=120

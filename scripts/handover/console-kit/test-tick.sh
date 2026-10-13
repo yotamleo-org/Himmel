@@ -202,7 +202,7 @@ mkdir -p "$W/console-work/chain"
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip'
+expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -1896,7 +1896,7 @@ printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
 STUB
 spare_has() { case "$2" in *' spare='*) fail "$1 (out='$2')" ;; *) pass "$1" ;; esac; }
 spare_out="$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT")"
-contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? spare=33@6h'
+contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? vmrun=off spare=33@6h'
 spare_has 'spare= is absent below the spare threshold (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")"
 spare_has 'spare= is absent when the reset is more than 24h out (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=24.5h unspent_at_reset=60.0' bash "$SUT")"
 spare_has 'spare= is absent when the monitor reads ? (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=? unspent_at_reset=?' bash "$SUT")"
@@ -1971,7 +1971,8 @@ frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= follows or= (HIMMEL-4670)' "$f4670" ' or=skip fails=1/1@error/Edit*1'
-case "$f4670" in *' fails='*' '*) fail "fails= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'fails= is the last field when spare= is absent (HIMMEL-4670)' ;; esac
+contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
+case "$f4670" in *' vmrun='*' '*) fail "vmrun= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'vmrun= is the last field when spare= is absent (HIMMEL-5037)' ;; esac
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

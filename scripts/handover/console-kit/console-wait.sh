@@ -39,6 +39,9 @@
 # cloud= (HIMMEL-5163; class only, wakes ONLY on a move to STALL -- never on a
 # change of the ticket list, nor a move back to ok/skip; absent from an older
 # tick line, never a failure),
+# vmrun= (HIMMEL-5037; class only, wakes ONLY on a move to DEAD or STUCK -- never
+# on the busy count, nor a move back to ok/off; absent from an older tick line,
+# never a failure),
 # denials= (HIMMEL-3724 -- a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -225,16 +228,18 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud denials; do
+    for f in legs livestate prs tails legset board tracker vault cloud vmrun denials; do
         v="$(field "$f" "$tick_line")"
         # HIMMEL-3933: tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= (HIMMEL-4911) is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = vmrun ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
-        case "$f" in board|tracker|vault|cloud) v="${v%%:*}" ;; esac
+        case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
+        # HIMMEL-5037: vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
+        [ "$f" = vmrun ] && v="${v%%,*}"
         key="$key$f=$v|"
     done
     key="${key}bank=$bank"
@@ -258,7 +263,8 @@ key_field() {
 # itself a wake (only a move to STALE/MISSING is); strip it from a changed=
 # list so a combined change still names its other real fields.
 drop_board_ok() {
-    local board_new tracker_new vault_new cloud_new
+    local board_new tracker_new vault_new cloud_new vmrun_new
+    vmrun_new="$(key_field vmrun "$2")"
     board_new="$(key_field board "$2")"
     tracker_new="$(key_field tracker "$2")"
     vault_new="$(key_field vault "$2")"
@@ -272,6 +278,10 @@ drop_board_ok() {
         fi
         # HIMMEL-5163: cloud= wakes only on a class move TO STALL, never back to ok/skip.
         [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
+        # HIMMEL-5037: vmrun= wakes only on a class move TO DEAD / STUCK.
+        if [ "$f" = vmrun ]; then
+            case "$vmrun_new" in DEAD|STUCK) ;; *) continue ;; esac
+        fi
         printf '%s\n' "$f"
     done | paste -sd, -
 }

@@ -206,6 +206,9 @@ export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
 export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
 unset DOCTOR_CODEX_LATEST
+# Same for C62-vm-runner (HIMMEL-5037): never run the real vm-runner.sh doctor
+# (it would probe the operator's VirtualBox and GitHub); absent seam = INFO skip.
+export DOCTOR_VM_RUNNER="$FAKEROOT/no-such-vm-runner.sh"
 
 # Keep unrelated cases from probing the operator's real qmd 'skills'
 # collection for C44 (HIMMEL-2222): most invocations below never override
@@ -6426,5 +6429,24 @@ echo "== C61-codex-cli: codex absent -> INFO =="
 out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
 rm -rf "$c60_t"
+
+# --- C62-vm-runner (HIMMEL-5037): rows come from vm-runner.sh doctor ---
+c62_t="$(mktemp -d)" || exit 1
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC62-vm-runner\tsnapshot ci-runner-v1 present\n"' 'printf "FAIL\tC62-vm-runner\trunner DEAD: variable on, no unit up\n"' > "$c62_t/runner-fail.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC62-vm-runner\tfork-approval policy all_external_contributors\n"' > "$c62_t/runner-ok.sh"
+c62_run() { DOCTOR_VM_RUNNER="$1" CLAUDE_DIR="$c62_t/claude" HOME="$c62_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C62-vm-runner: a FAIL row from vm-runner.sh doctor surfaces as FAIL =="
+out="$(c62_run "$c62_t/runner-fail.sh")"
+if grepq "$out" -F 'FAIL C62-vm-runner: runner DEAD' && grepq "$out" -F 'OK   C62-vm-runner: snapshot ci-runner-v1 present'; then pass "C62 FAIL row -> FAIL"; else fail "C62 FAIL row -> $(printf '%s' "$out" | grep C62)"; fi
+
+echo "== C62-vm-runner: healthy rows -> OK, no FAIL =="
+out="$(c62_run "$c62_t/runner-ok.sh")"
+if grepq "$out" -F 'OK   C62-vm-runner: fork-approval' && ! grepq "$out" -F 'FAIL C62-vm-runner'; then pass "C62 ok -> OK"; else fail "C62 ok -> $(printf '%s' "$out" | grep C62)"; fi
+
+echo "== C62-vm-runner: runner script absent -> INFO =="
+out="$(c62_run "$c62_t/none.sh")"
+if grepq "$out" -F 'INFO C62-vm-runner' && ! grepq "$out" -F 'FAIL C62-vm-runner'; then pass "C62 absent -> INFO"; else fail "C62 absent -> $(printf '%s' "$out" | grep C62)"; fi
+rm -rf "$c62_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
