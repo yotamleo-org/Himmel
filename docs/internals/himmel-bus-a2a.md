@@ -23,25 +23,25 @@ and an A2A peer is, at best, an unauthenticated remote.
    including a `metadata.c` of its own, a bridge stamps `c=0`.
 2. **The RETASK nonce and EXPANSION/REDIRECT stay out of band.** The renderer
    never adds one as a Message part of its own, a metadata value or an
-   AgentCard field. A2A cannot widen a leg's scope. A token a sender wrote into
-   a body travels as body text (decision 4); that local rendering to its own
-   recipient is the one exception, and a future remote export must redact
-   token-shaped text from `b` before it leaves the host.
+   AgentCard field, and it redacts the body in code: `toA2AMessage` runs `b`
+   through `scripts/handover/console-kit/redact.mjs` (RETASK tokens, nonces,
+   lock tokens, keys), so a token a sender wrote into a body does not leave the
+   renderer. A2A cannot widen a leg's scope.
 3. **Outbound, `c` lives only under `metadata`.** The renderer emits no A2A
    field a consumer could read as authority (no task state, no `taskId`, no
    extension). A `c=1` message is byte-identical to its `c=0` twin outside
    `metadata` (test row `a c=1 record carries the flag only in metadata`).
-4. **Rendering is local and per recipient.** The body is passed through as
-   written, tokens included, because the recipient already holds it. A future
-   server must authorize each read against the bound identity; the renderer is
-   not an access check.
+4. **The body is redacted in code, not by convention.** Redaction is not an
+   access check: a future server must still authorize each read against the
+   bound identity. The renderer is pure and local; it relies on no caller to
+   strip tokens first.
 
 ## Mapping
 
 | Bus | A2A v1.0.0 | Status |
 |---|---|---|
 | `i` (record id) | `Message.messageId` | match |
-| `b` (body) | `Message.parts = [{text: b}]` | match; text only, no files or data parts |
+| `b` (body) | `Message.parts = [{text: b}]` | match, redacted in code (decision 2); text only, no files or data parts |
 | `re` (reply-to `n`) | `Message.metadata.re` | carried as data; not `referenceTaskIds` (bus messages are not tasks) |
 | `h` (chain hash) | `Message.metadata.h` | carried as data; integrity stays a store property |
 | `c` (authority flag) | `Message.metadata.c` | **gap**: A2A has no authority concept; metadata only (decision 3) |

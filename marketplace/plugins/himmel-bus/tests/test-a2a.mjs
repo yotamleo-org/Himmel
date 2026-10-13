@@ -56,6 +56,16 @@ test('a c=1 record carries the flag only in metadata, never as an authority fiel
   assert.equal(m.role, 'ROLE_AGENT');
 });
 
+test('a c=1 body never carries a RETASK token, nonce or lock token out of the renderer', () => {
+  const token = `R-${'0123456789abcdef'.repeat(2)}`;
+  const body = `GO 7 abc quoting ${token}, nonce V-N255-93f72f64, lock host-x-pid909468`;
+  const text = a2a.toA2AMessage(rec({ c: 1, b: body })).parts[0].text;
+  assert.doesNotMatch(text, /R-[0-9a-f]{16,}/);
+  assert.doesNotMatch(text, /V-N255-93f72f64/);
+  assert.doesNotMatch(text, /host-x-pid909468/);
+  assert.match(text, /^GO 7 abc/);
+});
+
 test('absent re and h are omitted, not null', () => {
   const m = a2a.toA2AMessage(rec({ h: undefined }));
   assert.deepEqual(m.metadata, { c: 0 });
