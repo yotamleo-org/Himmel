@@ -108,7 +108,9 @@ assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')
 # --- HIMMEL-4543: a shell word in a non-executing builtin's data position is
 # not read, but every executing position still is ---
 assert_rc "echo bash -c 'git stash' is data"   0 "$(run_hook "echo bash -c 'git stash'")"
-assert_rc "printf a | xargs echo bash -c 'git stash' is data" 0 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
+assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 2 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
+assert_rc "sudo -R echo bash -c 'git stash'"   2 "$(run_hook "sudo -R echo bash -c 'git stash'")"
+assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 2 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
 assert_rc "find -exec sh -c 'git stash'"       2 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
 assert_rc "xargs bash -c 'git stash'"          2 "$(run_hook "printf a | xargs bash -c 'git stash'")"
 assert_rc "sudo -u u bash -c 'git stash'"      2 "$(run_hook "sudo -u u bash -c 'git stash'")"

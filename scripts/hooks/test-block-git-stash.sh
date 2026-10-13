@@ -231,6 +231,13 @@ assert_rc "4543 find -exec sh -c 'git stash'"           2 "$(run_case "$(j_bash 
 assert_rc "4543 xargs bash -c 'git stash'"              2 "$(run_case "$(j_bash "echo a | xargs bash -c 'git stash'")")"
 assert_rc "4543 sudo -u u bash -c 'git stash'"          2 "$(run_case "$(j_bash "sudo -u u bash -c 'git stash'")")"
 assert_rc "4543 env X=1 bash -c 'git stash'"            2 "$(run_case "$(j_bash "env X=1 bash -c 'git stash'")")"
+# The data-position skip trusts only a bare command word at position 0: a
+# wrapper option the tables miss, or a shadowing function, must still deny.
+assert_rc "4543 sudo -R echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "sudo -R echo bash -c 'git stash'")")"
+assert_rc "4543 sudo --chroot echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "sudo --chroot echo bash -c 'git stash'")")"
+assert_rc "4543 doas -a echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "doas -a echo bash -c 'git stash'")")"
+assert_rc "4543 echo(){ \"\$@\"; }; echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "echo(){ \"\$@\"; }; echo bash -c 'git stash'")")"
+assert_rc "4543 true(){ \"\$@\"; }; true bash -c 'git stash'" 2 "$(run_case "$(j_bash "true(){ \"\$@\"; }; true bash -c 'git stash'")")"
 # A keyword-led body must reach a fixpoint, not grow to the depth cap.
 assert_rc "4438 timeout bash -c 'until …' loop" 0 "$(run_case "$(j_bash "timeout 9 bash -c 'until [ \"\$(echo x)\" = x ]; do sleep 1; done'; echo ok")")"
 assert_rc "4438 timeout bash -c 'until … git stash'" 2 "$(run_case "$(j_bash "timeout 9 bash -c 'until false; do git stash; done'")")"
