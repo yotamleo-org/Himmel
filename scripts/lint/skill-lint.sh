@@ -28,9 +28,10 @@
 #   bash scripts/lint/skill-lint.sh FILE...      # lint exactly the named files
 #   bash scripts/lint/skill-lint.sh --changed RANGE
 #                                                 # lint only the in-scope files that
-#                                                 # `git diff --name-only RANGE` shows
-#                                                 # added/changed/renamed (working-tree
-#                                                 # content, e.g. origin/main...HEAD).
+#                                                 # `git diff --name-only --diff-filter=ACMR
+#                                                 # RANGE` lists (added, copied, modified
+#                                                 # or renamed; working-tree content, e.g.
+#                                                 # origin/main...HEAD). Deletions are skipped.
 #                                                 # Exclusive with --staged and FILE...
 #   bash scripts/lint/skill-lint.sh --help
 #
@@ -193,6 +194,7 @@ if [ -n "$CHANGED" ] && { [ "$STAGED" -eq 1 ] || [ "$EXPLICIT" -eq 1 ]; }; then
 fi
 
 if [ -n "$CHANGED" ]; then
+    # ponytail: a non-ASCII path is C-quoted by core.quotePath and so skipped here (as under --staged), switch to `git diff -z` + `read -d ''` under HIMMEL-5526
     if ! _changed="$(cd "$_root" && git diff --name-only --diff-filter=ACMR "$CHANGED" -- 2>/dev/null)"; then
         printf 'skill-lint: --changed: git diff failed for range: %s\n' "$CHANGED" >&2; exit 2
     fi
@@ -206,7 +208,7 @@ $_changed
 EOF
 elif [ "$STAGED" -eq 1 ]; then
     command -v git >/dev/null 2>&1 || { printf 'skill-lint: --staged needs git on PATH\n' >&2; exit 2; }
-    if ! _staged="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACM)"; then
+    if ! _staged="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACMR)"; then
         printf 'skill-lint: --staged: git diff --cached failed\n' >&2; exit 2
     fi
     STAGE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/skill-lint-staged.XXXXXX")" || {

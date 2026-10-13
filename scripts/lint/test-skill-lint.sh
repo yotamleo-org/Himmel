@@ -472,7 +472,7 @@ printf '\nCase 18: --changed <range>\n'
 
 CH="$TMP_ROOT/chrepo"
 mkdir -p "$CH/.claude/commands"
-(cd "$CH" && git init -q)
+(cd "$CH" && git init -q && git config commit.gpgsign false)
 head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/old-big.md"
 (cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m base)
 head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/new-big.md"
@@ -491,17 +491,52 @@ if [ "$EC18B" -eq 0 ]; then pass "--changed over a range with no in-scope files 
 
 OUT18C="$(cd "$CH" && bash "$LINT" --changed not-a-range 2>&1)"; EC18C=$?
 if [ "$EC18C" -eq 2 ]; then pass "--changed with an unresolvable range is a usage error"; else fail "expected exit 2, got $EC18C" "$OUT18C"; fi
+assert_contains "unresolvable range names the failed git diff" "git diff failed" "$OUT18C"
 
 OUT18D="$(cd "$CH" && bash "$LINT" --changed HEAD~1..HEAD --staged 2>&1)"; EC18D=$?
 if [ "$EC18D" -eq 2 ]; then pass "--changed with --staged is a usage error"; else fail "expected exit 2, got $EC18D" "$OUT18D"; fi
+assert_contains "--changed with --staged says mutually exclusive" "mutually exclusive" "$OUT18D"
 
 OUT18E="$(cd "$CH" && bash "$LINT" --changed 2>&1)"; EC18E=$?
 if [ "$EC18E" -eq 2 ]; then pass "--changed without a range is a usage error"; else fail "expected exit 2, got $EC18E" "$OUT18E"; fi
+assert_contains "--changed without a range says it needs one" "needs a git range" "$OUT18E"
+
+OUT18G="$(cd "$CH" && bash "$LINT" --changed HEAD~1..HEAD .claude/commands/old-big.md 2>&1)"; EC18G=$?
+if [ "$EC18G" -eq 2 ]; then pass "--changed with file args is a usage error"; else fail "expected exit 2, got $EC18G" "$OUT18G"; fi
+assert_contains "--changed with file args says mutually exclusive" "mutually exclusive" "$OUT18G"
 
 (cd "$CH" && git mv .claude/commands/new-big.md .claude/commands/ren-big.md && git -c user.name=t -c user.email=t@t commit -q -m rename)
 OUT18F="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18F=$?
 if [ "$EC18F" -eq 1 ]; then pass "--changed lints a renamed in-scope body"; else fail "expected exit 1, got $EC18F" "$OUT18F"; fi
 assert_contains "--changed reports the renamed file" "ren-big.md" "$OUT18F"
+
+# A rename INTO a command dir of an over-limit body (git reports status R): both modes.
+mkdir -p "$CH/docs"
+head -c 300 /dev/zero | tr '\0' 'y' > "$CH/docs/over.md"
+head -c 301 /dev/zero | tr '\0' 'z' > "$CH/docs/over2.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m docover)
+(cd "$CH" && git mv docs/over.md .claude/commands/moved-in.md && git -c user.name=t -c user.email=t@t commit -q -m movein)
+OUT18H="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18H=$?
+if [ "$EC18H" -eq 1 ]; then pass "--changed lints a body renamed into a command dir"; else fail "expected exit 1, got $EC18H" "$OUT18H"; fi
+assert_contains "--changed reports the moved-in body" "moved-in.md" "$OUT18H"
+
+(cd "$CH" && git mv docs/over2.md .claude/commands/moved-staged.md)
+OUT18I="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --staged 2>&1)"; EC18I=$?
+if [ "$EC18I" -eq 1 ]; then pass "--staged lints a body renamed into a command dir"; else fail "expected exit 1, got $EC18I" "$OUT18I"; fi
+assert_contains "--staged reports the moved-in body" "moved-staged.md" "$OUT18I"
+(cd "$CH" && git -c user.name=t -c user.email=t@t commit -q -m movestaged)
+
+# A path with a space survives the newline-delimited file list.
+head -c 300 /dev/zero | tr '\0' 'w' > "$CH/.claude/commands/spaced name.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m spaced)
+OUT18J="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18J=$?
+if [ "$EC18J" -eq 1 ]; then pass "--changed lints a path with a space"; else fail "expected exit 1, got $EC18J" "$OUT18J"; fi
+assert_contains "--changed reports the spaced path" "spaced name.md" "$OUT18J"
+
+# A deleted body has no content to lint: exit 0.
+(cd "$CH" && git rm -q ".claude/commands/spaced name.md" && git -c user.name=t -c user.email=t@t commit -q -m deleted)
+OUT18K="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18K=$?
+if [ "$EC18K" -eq 0 ]; then pass "--changed over a deletion exits 0"; else fail "expected exit 0, got $EC18K" "$OUT18K"; fi
 
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
