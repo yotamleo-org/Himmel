@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # skill-lint.sh — in-tree SKILL.md frontmatter hygiene gate (HIMMEL-3609, v1).
 #
-# A v1 regression guard, not a platform: three mechanically-checkable rules
+# A v1 regression guard, not a platform: four mechanically-checkable rules
 # over the repo-owned SKILL.md corpus (frontmatter presence, name==dirname,
-# no duplicate name). Description-length policy is NOT this script's job —
+# no duplicate name, body size cap). Description-length policy is NOT this script's job —
 # that is the existing `skill-description-cap` pre-commit hook
 # (scripts/lanes/skill-cost.mjs --max-desc 120), which is vendoring-aware;
 # duplicating it here would be a second, weaker length policy.
@@ -13,6 +13,9 @@
 #   .claude/skills/*/SKILL.md
 #   plugins/himmel-gh/skills/*/SKILL.md
 #   plugins/himmel-jira/skills/*/SKILL.md
+# Slash-command bodies are in scope for the SIZE check only (HIMMEL-5513):
+#   marketplace/plugins/*/commands/*.md
+#   .claude/commands/*.md
 # Deliberately out of scope: .agents/skills/** (generated Codex-compat
 # mirror), the bench-scorecard test fixture, and any externally-sourced
 # marketplace skill not vendored in this repo.
@@ -32,6 +35,17 @@
 #   [name-mismatch]   `name:` does not equal the skill's parent directory name.
 #   [dup-name]        two or more scanned SKILL.md files share the same
 #                     `name:` value (routing collision risk).
+#
+#   [size-fail]       body is at least SKILL_LINT_FAIL_BYTES (default 30000)
+#                     bytes — split it into a core body plus reference files the
+#                     body reads on demand. Exit 1.
+#   [size-warn]       body is at least SKILL_LINT_WARN_BYTES (default 20000)
+#                     bytes. Advisory: printed, exit code unchanged.
+#
+# Upstream-owned bodies (vendored/forked, so trimming them would only drift
+# from upstream) and bodies owned by another ticket are exempt via
+# SKILL_LINT_SIZE_ALLOWLIST (default scripts/lint/skill-size-allowlist.txt):
+# one `<repo-relative path><TAB><reason>` per line, `#` comments allowed.
 #
 # Note on [dup-name] scope: duplicates are detected only within the set of
 # files actually scanned this run (the full tree by default, or the staged/
@@ -139,7 +153,13 @@ while [ $# -gt 0 ]; do
 done
 
 # In-scope path patterns (ERE, matched against a repo-root-relative path).
-IN_SCOPE_RE='^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md)$'
+IN_SCOPE_RE='^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
+
+WARN_BYTES="${SKILL_LINT_WARN_BYTES:-20000}"
+FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-30000}"
+case "$WARN_BYTES$FAIL_BYTES" in
+    *[!0-9]*|'') printf 'skill-lint: SKILL_LINT_WARN_BYTES/SKILL_LINT_FAIL_BYTES must be integers\n' >&2; exit 2 ;;
+esac
 
 _root="$(git rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$_root" ] || { printf 'skill-lint: not inside a git work tree\n' >&2; exit 2; }
@@ -177,12 +197,23 @@ elif [ "$EXPLICIT" -eq 0 ]; then
         "$_root"/marketplace/plugins/*/skills/*/SKILL.md \
         "$_root"/.claude/skills/*/SKILL.md \
         "$_root"/plugins/himmel-gh/skills/*/SKILL.md \
-        "$_root"/plugins/himmel-jira/skills/*/SKILL.md
+        "$_root"/plugins/himmel-jira/skills/*/SKILL.md \
+        "$_root"/marketplace/plugins/*/commands/*.md \
+        "$_root"/.claude/commands/*.md
     do
         for _f in $_pat; do
             [ -f "$_f" ] && FILES="$FILES$_f"$'\n'"$_f"$'\n'
         done
     done
+fi
+
+ALLOWLIST="${SKILL_LINT_SIZE_ALLOWLIST:-$_root/scripts/lint/skill-size-allowlist.txt}"
+ALLOWED=""   # newline-separated repo-relative paths exempt from the size check
+if [ -f "$ALLOWLIST" ]; then
+    while IFS= read -r _al || [ -n "$_al" ]; do
+        case "$_al" in ''|'#'*) continue ;; esac
+        ALLOWED="$ALLOWED${_al%%$'\t'*}"$'\n'
+    done < "$ALLOWLIST"
 fi
 
 CHECKED=0
@@ -202,7 +233,24 @@ while IFS= read -r f && IFS= read -r content_src; do
     file_issues=0
     file_report=""
 
-    if ! _has_frontmatter "$content_src"; then
+    # Command bodies get the size check only: they carry no name:/dir contract.
+    _is_command=0
+    [ "$(basename "$f")" = "SKILL.md" ] || _is_command=1
+
+    _rel="${f#"$_root"/}"
+    _bytes="$(wc -c < "$content_src" | tr -d '[:space:]')"
+    if ! printf '%s' "$ALLOWED" | grep -qxF -- "$_rel"; then
+        if [ "$_bytes" -ge "$FAIL_BYTES" ]; then
+            file_report="$file_report  [size-fail] body is $_bytes bytes (fail threshold $FAIL_BYTES) — split into a core body plus on-demand reference files"$'\n'
+            file_issues=$((file_issues + 1))
+        elif [ "$_bytes" -ge "$WARN_BYTES" ]; then
+            printf '%s:\n  [size-warn] body is %s bytes (warn threshold %s, fail %s)\n' "$f" "$_bytes" "$WARN_BYTES" "$FAIL_BYTES"
+        fi
+    fi
+
+    if [ "$_is_command" -eq 1 ]; then
+        :
+    elif ! _has_frontmatter "$content_src"; then
         file_report="$file_report  [no-frontmatter] file does not open with a ---/--- frontmatter block"$'\n'
         file_issues=$((file_issues + 1))
     else

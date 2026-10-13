@@ -403,5 +403,49 @@ assert_contains "finding names the real tab-holding path" "$TABDIR/tab-bad-skill
 assert_contains "[no-name] reported for the tab-path file" "no-name" "$OUT15B"
 
 # ---------------------------------------------------------------------------
+# Case 16: body size cap (HIMMEL-5513)
+# ---------------------------------------------------------------------------
+printf '\nCase 16: [size-warn] / [size-fail] / allowlist / command bodies\n'
+
+SZDIR="$TMP_ROOT/size"
+mkdir -p "$SZDIR/big-skill" "$SZDIR/commands"
+{
+    printf -- '---\nname: big-skill\ndescription: a long body\n---\n'
+    head -c 300 /dev/zero | tr '\0' 'x'; printf '\n'
+} > "$SZDIR/big-skill/SKILL.md"
+{ printf '# cmd without frontmatter\n'; head -c 300 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$SZDIR/commands/big-cmd.md"
+
+OUT16A="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16A=$?
+if [ "$EC16A" -eq 1 ]; then pass "body over fail threshold exits 1"; else fail "expected exit 1, got $EC16A" "$OUT16A"; fi
+assert_contains "[size-fail] tag present" "[size-fail]" "$OUT16A"
+
+OUT16B="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=400 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16B=$?
+if [ "$EC16B" -eq 0 ]; then pass "body between warn and fail exits 0"; else fail "expected exit 0, got $EC16B" "$OUT16B"; fi
+assert_contains "[size-warn] tag present" "[size-warn]" "$OUT16B"
+
+OUT16C="$(SKILL_LINT_WARN_BYTES=1000 SKILL_LINT_FAIL_BYTES=2000 bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16C=$?
+if [ "$EC16C" -eq 0 ]; then pass "body under warn exits 0"; else fail "expected exit 0, got $EC16C" "$OUT16C"; fi
+assert_not_contains "no size tag under warn" "[size-" "$OUT16C"
+
+OUT16D="$(SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" "$SZDIR/commands/big-cmd.md" 2>&1)"; EC16D=$?
+if [ "$EC16D" -eq 1 ]; then pass "command body over fail threshold exits 1"; else fail "expected exit 1, got $EC16D" "$OUT16D"; fi
+assert_contains "command body gets [size-fail]" "[size-fail]" "$OUT16D"
+assert_not_contains "command body skips frontmatter checks" "no-frontmatter" "$OUT16D"
+
+# Allowlist: keyed on the repo-relative path, so build a repo-shaped fixture.
+AL_REPO="$TMP_ROOT/alrepo"
+mkdir -p "$AL_REPO/.claude/commands"
+cp "$SZDIR/commands/big-cmd.md" "$AL_REPO/.claude/commands/big-cmd.md"
+printf '# reasons\n.claude/commands/big-cmd.md\tupstream-owned fork\n' > "$AL_REPO/allow.txt"
+(cd "$AL_REPO" && git init -q)
+OUT16E="$(cd "$AL_REPO" && SKILL_LINT_SIZE_ALLOWLIST="$AL_REPO/allow.txt" SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" 2>&1)"; EC16E=$?
+if [ "$EC16E" -eq 0 ]; then pass "allowlisted body is exempt"; else fail "expected exit 0, got $EC16E" "$OUT16E"; fi
+OUT16F="$(cd "$AL_REPO" && SKILL_LINT_SIZE_ALLOWLIST="$AL_REPO/none.txt" SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" 2>&1)"; EC16F=$?
+if [ "$EC16F" -eq 1 ]; then pass "same body without allowlist entry fails"; else fail "expected exit 1, got $EC16F" "$OUT16F"; fi
+
+OUT16G="$(SKILL_LINT_FAIL_BYTES=abc bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&1)"; EC16G=$?
+if [ "$EC16G" -eq 2 ]; then pass "non-integer threshold is a usage error"; else fail "expected exit 2, got $EC16G" "$OUT16G"; fi
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
