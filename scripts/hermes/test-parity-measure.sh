@@ -11,7 +11,7 @@ TOOL="${1:-$SCRIPT_DIR/parity-measure.py}"   # $1: a mutated copy, to prove the 
 PY="$(command -v python3 || command -v python)" || { echo "SKIP: no python"; exit 0; }
 command -v git >/dev/null 2>&1 || { echo "SKIP: no git"; exit 0; }
 
-TMP="$(mktemp -d)" || exit 1; trap 'rm -rf "$TMP"' EXIT
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/parity-measure.XXXXXX")" || exit 1; trap 'rm -rf "$TMP"' EXIT
 fails=0
 ok()   { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }

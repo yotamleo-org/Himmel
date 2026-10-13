@@ -30,8 +30,8 @@ Hermes with a terminal toolset and no fixes is **not** safe as-is.
 
 Nothing is executed: hooks and the guard only classify JSON on stdin. The run is
 hermetic (throwaway HOME, a main checkout and a linked `feat/x` worktree, stub
-`gh`/`jira`/`curl` first on PATH, every `HIMMEL_*`/`HERMES_*`/bypass variable
-stripped). `test-parity-measure.sh` proves the harness separates MATCH, GAP and
+`gh`/`jira`/`curl` first on PATH, every `HIMMEL_*`/`HERMES_*` and `*_OK`/`*_BYPASS`/`*_SKIP`
+variable stripped; a hook exiting other than 0 or 2 aborts the run with exit 2). `test-parity-measure.sh` proves the harness separates MATCH, GAP and
 OVER-DENY (a swapped classifier fails three assertions) and that a fixture
 command that would delete a sentinel never runs.
 
@@ -125,5 +125,5 @@ installer; not exercised by the corpus.
 3. Extend `SECRET_READ` to the CC secret-path list (gap 4).
 4. Match `git clean` with combined flags (`-fd`, `-fdx`) (gap 5).
 5. Port the chokepoint registry check for seam-variable prefixes (gap 6).
-6. Add `parity-measure.sh` to CI so a new CC hook that lands without a
+6. Keep `parity-measure.py` (via `test-parity-measure.sh`) in CI so a new CC hook that lands without a
    `parity_guard.py` twin shows up as a GAP instead of silently diverging.

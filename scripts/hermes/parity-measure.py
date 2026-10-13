@@ -184,10 +184,12 @@ class Sandbox:
         self.repos = {"main": main, "feat": feat}
 
     def env(self, extra=None):
+        # every session-env bypass (*_OK, *_BYPASS, *_SKIP, e.g. ROGUE_SCHEDULE_OK)
+        # is stripped so the launching shell cannot change a verdict
         keep = {k: v for k, v in os.environ.items()
                 if not (k.startswith("HIMMEL_") or k.startswith("HERMES_")
-                        or k in ("SKIP_CR", "EDIT_ON_MAIN_OK", "TERMINAL_CWD",
-                                 "CLAUDE_PROJECT_DIR", "GH_CMD"))}
+                        or k.endswith(("_OK", "_BYPASS", "_SKIP"))
+                        or k in ("SKIP_CR", "TERMINAL_CWD", "CLAUDE_PROJECT_DIR", "GH_CMD"))}
         keep.update({
             "HOME": self.home,
             "PATH": self.stub + os.pathsep + os.environ.get("PATH", ""),
@@ -211,6 +213,10 @@ class Sandbox:
         shutil.rmtree(self.root, ignore_errors=True)
 
 
+class HarnessError(Exception):
+    """A classifier crashed: the run measured nothing and must not look like parity."""
+
+
 def cc_verdict(sb, chains, tool, args, cwd):
     payload = json.dumps({"tool_name": tool, "tool_input": args,
                           "hook_event_name": "PreToolUse", "cwd": cwd,
@@ -227,6 +233,9 @@ def cc_verdict(sb, chains, tool, args, cwd):
                                    timeout=20)
             except subprocess.TimeoutExpired:
                 return "deny", os.path.basename(hook) + " (timeout, fail-closed)"
+            if p.returncode not in (0, 2):
+                raise HarnessError("%s exited %d: %s" % (
+                    os.path.basename(hook), p.returncode, p.stderr.strip()[:120]))
             if is_deny(p.returncode, p.stdout):
                 return "deny", os.path.basename(hook)
     return "allow", "-" if ran else "(no chain wired)"
@@ -299,9 +308,19 @@ def main(argv=None):
             corpus = [tuple(r) for r in json.load(f)]
     env = {"HERMES_EXTERNAL_WRITES_OK": "1"} if ns.external_writes else None
     rows = measure(corpus, env, ns.guard)
-    print(json.dumps(rows, indent=1) if ns.format == "json" else render(rows, ns.gaps_only))
+    if ns.gaps_only:
+        rows = [r for r in rows if r["parity"] != "MATCH"]
+    print(json.dumps(rows, indent=1) if ns.format == "json" else render(rows, False))
     return 0
 
 
+def run():
+    try:
+        return main()
+    except Exception as e:  # harness error: exit 2, never a silent "parity"
+        print("parity-measure: harness error: %s" % e, file=sys.stderr)
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())
