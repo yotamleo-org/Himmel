@@ -16,7 +16,7 @@ Output: one header line, then `rank sessions count class legs`, where legs are
 up to three example legs (most occurrences first; the session prefix stands in
 for a row with no leg label).
 
-Exit: 0 ok, 2 unreadable ledger.
+Exit: 0 ok, 2 usage error (argparse) or unreadable ledger (the message says which).
 """
 
 import argparse
@@ -63,6 +63,8 @@ def main(argv=None):
                 r = json.loads(line)
                 ts = parse_ts(r["ts"])
                 cls, sess, n = r["class"], r["session"], int(r["count"])
+                if not isinstance(cls, str) or not isinstance(sess, str):
+                    raise ValueError("class and session must be strings")
             except (ValueError, KeyError, TypeError, AttributeError):
                 skipped += 1
                 continue
