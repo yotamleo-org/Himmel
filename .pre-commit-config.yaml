@@ -533,7 +533,7 @@ repos:
         language: system
         entry: bash scripts/lint/skill-lint.sh
         # HIMMEL-5513: command bodies are in scope for the SIZE cap only
-        # (warn 20000 / fail 30000 bytes, env-overridable; upstream-owned
+        # (warn 20000 / fail 60000 bytes, env-overridable; upstream-owned
         # bodies sit in scripts/lint/skill-size-allowlist.txt).
         files: '^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
         stages: [pre-commit]

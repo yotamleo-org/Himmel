@@ -447,5 +447,57 @@ OUT16G="$(SKILL_LINT_FAIL_BYTES=abc bash "$LINT" "$SZDIR/big-skill/SKILL.md" 2>&
 if [ "$EC16G" -eq 2 ]; then pass "non-integer threshold is a usage error"; else fail "expected exit 2, got $EC16G" "$OUT16G"; fi
 
 # ---------------------------------------------------------------------------
+# Case 17: two-level default thresholds (warn 20000, hard fail 60000)
+# ---------------------------------------------------------------------------
+printf '\nCase 17: default thresholds warn at 20000 and hard-fail at 60000\n'
+
+TL="$TMP_ROOT/twolevel"
+mkdir -p "$TL/mid-skill" "$TL/huge-skill"
+{ printf -- '---\nname: mid-skill\ndescription: mid\n---\n'; head -c 45000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/mid-skill/SKILL.md"
+{ printf -- '---\nname: huge-skill\ndescription: huge\n---\n'; head -c 65000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$TL/huge-skill/SKILL.md"
+
+OUT17A="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/mid-skill/SKILL.md" 2>&1)"; EC17A=$?
+if [ "$EC17A" -eq 0 ]; then pass "45000-byte body warns but exits 0 by default"; else fail "expected exit 0, got $EC17A" "$OUT17A"; fi
+assert_contains "45000-byte body carries [size-warn]" "[size-warn]" "$OUT17A"
+assert_not_contains "45000-byte body has no [size-fail]" "[size-fail]" "$OUT17A"
+
+OUT17B="$(env -u SKILL_LINT_WARN_BYTES -u SKILL_LINT_FAIL_BYTES bash "$LINT" "$TL/huge-skill/SKILL.md" 2>&1)"; EC17B=$?
+if [ "$EC17B" -eq 1 ]; then pass "65000-byte outlier exits 1 by default"; else fail "expected exit 1, got $EC17B" "$OUT17B"; fi
+assert_contains "65000-byte outlier carries [size-fail]" "[size-fail]" "$OUT17B"
+
+# ---------------------------------------------------------------------------
+# Case 18: --changed <range> lints only the in-scope files that range touched
+# ---------------------------------------------------------------------------
+printf '\nCase 18: --changed <range>\n'
+
+CH="$TMP_ROOT/chrepo"
+mkdir -p "$CH/.claude/commands"
+(cd "$CH" && git init -q)
+head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/old-big.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m base)
+head -c 300 /dev/zero | tr '\0' 'x' > "$CH/.claude/commands/new-big.md"
+printf 'notes\n' > "$CH/NOTES.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m change)
+printf 'more notes\n' >> "$CH/NOTES.md"
+(cd "$CH" && git add -A && git -c user.name=t -c user.email=t@t commit -q -m notes-only)
+
+OUT18A="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~2..HEAD~1 2>&1)"; EC18A=$?
+if [ "$EC18A" -eq 1 ]; then pass "--changed fails on an oversize body the range added"; else fail "expected exit 1, got $EC18A" "$OUT18A"; fi
+assert_contains "--changed reports the changed file" "new-big.md" "$OUT18A"
+assert_not_contains "--changed skips an untouched oversize file" "old-big.md" "$OUT18A"
+
+OUT18B="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18B=$?
+if [ "$EC18B" -eq 0 ]; then pass "--changed over a range with no in-scope files exits 0"; else fail "expected exit 0, got $EC18B" "$OUT18B"; fi
+
+OUT18C="$(cd "$CH" && bash "$LINT" --changed not-a-range 2>&1)"; EC18C=$?
+if [ "$EC18C" -eq 2 ]; then pass "--changed with an unresolvable range is a usage error"; else fail "expected exit 2, got $EC18C" "$OUT18C"; fi
+
+OUT18D="$(cd "$CH" && bash "$LINT" --changed HEAD~1..HEAD --staged 2>&1)"; EC18D=$?
+if [ "$EC18D" -eq 2 ]; then pass "--changed with --staged is a usage error"; else fail "expected exit 2, got $EC18D" "$OUT18D"; fi
+
+OUT18E="$(cd "$CH" && bash "$LINT" --changed 2>&1)"; EC18E=$?
+if [ "$EC18E" -eq 2 ]; then pass "--changed without a range is a usage error"; else fail "expected exit 2, got $EC18E" "$OUT18E"; fi
+
+# ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

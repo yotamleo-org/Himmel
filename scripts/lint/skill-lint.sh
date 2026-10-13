@@ -26,6 +26,12 @@
 #                                                 # of in-scope SKILL.md paths, not
 #                                                 # whatever is currently on disk
 #   bash scripts/lint/skill-lint.sh FILE...      # lint exactly the named files
+#   bash scripts/lint/skill-lint.sh --changed RANGE
+#                                                 # lint only the in-scope files that
+#                                                 # `git diff --name-only RANGE` shows
+#                                                 # added/changed/renamed (working-tree
+#                                                 # content, e.g. origin/main...HEAD).
+#                                                 # Exclusive with --staged and FILE...
 #   bash scripts/lint/skill-lint.sh --help
 #
 # Checks:
@@ -36,11 +42,13 @@
 #   [dup-name]        two or more scanned SKILL.md files share the same
 #                     `name:` value (routing collision risk).
 #
-#   [size-fail]       body is at least SKILL_LINT_FAIL_BYTES (default 30000)
-#                     bytes — split it into a core body plus reference files the
-#                     body reads on demand. Exit 1.
+#   [size-fail]       body is at least SKILL_LINT_FAIL_BYTES (default 60000)
+#                     bytes — a true outlier: split it into a core body plus
+#                     reference files the body reads on demand. Exit 1.
 #   [size-warn]       body is at least SKILL_LINT_WARN_BYTES (default 20000)
-#                     bytes. Advisory: printed, exit code unchanged.
+#                     bytes — the trim target. Advisory: printed, exit code
+#                     unchanged. Both thresholds are env-overridable integers
+#                     (at most 15 digits).
 #
 # Upstream-owned bodies (vendored/forked, so trimming them would only drift
 # from upstream) and bodies owned by another ticket are exempt via
@@ -132,6 +140,7 @@ _has_frontmatter() {
 
 STAGED=0
 EXPLICIT=0
+CHANGED=""
 # ALTERNATING newline-separated lines (bash 3.2-safe; no arrays): a display
 # path on one line, its content path on the next. display-path is what gets
 # printed; content-path is what gets linted. They differ only under --staged,
@@ -145,6 +154,11 @@ trap _cleanup_stage_tmp EXIT
 while [ $# -gt 0 ]; do
     case "$1" in
         --staged) STAGED=1; shift ;;
+        --changed)
+            if [ $# -lt 2 ] || [ -z "$2" ] || [[ "$2" == -* ]]; then
+                printf 'skill-lint: --changed needs a git range argument\n' >&2; exit 2
+            fi
+            CHANGED="$2"; shift 2 ;;
         --help|-h) usage; exit 0 ;;
         --) shift; while [ $# -gt 0 ]; do FILES="$FILES$1"$'\n'"$1"$'\n'; EXPLICIT=1; shift; done ;;
         -*) printf 'skill-lint: unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -156,7 +170,7 @@ done
 IN_SCOPE_RE='^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
 
 WARN_BYTES="${SKILL_LINT_WARN_BYTES:-20000}"
-FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-30000}"
+FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-60000}"
 case "$WARN_BYTES$FAIL_BYTES" in
     *[!0-9]*|'') printf 'skill-lint: SKILL_LINT_WARN_BYTES/SKILL_LINT_FAIL_BYTES must be integers\n' >&2; exit 2 ;;
 esac
@@ -173,7 +187,24 @@ if [ "$STAGED" -eq 1 ] && [ "$EXPLICIT" -eq 1 ]; then
     exit 2
 fi
 
-if [ "$STAGED" -eq 1 ]; then
+if [ -n "$CHANGED" ] && { [ "$STAGED" -eq 1 ] || [ "$EXPLICIT" -eq 1 ]; }; then
+    printf 'skill-lint: --changed is mutually exclusive with --staged and explicit file args\n' >&2
+    exit 2
+fi
+
+if [ -n "$CHANGED" ]; then
+    if ! _changed="$(cd "$_root" && git diff --name-only --diff-filter=ACM "$CHANGED" -- 2>/dev/null)"; then
+        printf 'skill-lint: --changed: git diff failed for range: %s\n' "$CHANGED" >&2; exit 2
+    fi
+    while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        [[ "$_f" =~ $IN_SCOPE_RE ]] || continue
+        [ -f "$_root/$_f" ] || continue
+        FILES="$FILES$_root/$_f"$'\n'"$_root/$_f"$'\n'
+    done <<EOF
+$_changed
+EOF
+elif [ "$STAGED" -eq 1 ]; then
     command -v git >/dev/null 2>&1 || { printf 'skill-lint: --staged needs git on PATH\n' >&2; exit 2; }
     if ! _staged="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACM)"; then
         printf 'skill-lint: --staged: git diff --cached failed\n' >&2; exit 2
