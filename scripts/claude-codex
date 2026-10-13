@@ -609,8 +609,9 @@ if [ -n "$CLASSIFIER_MODEL" ]; then
   if command -v curl >/dev/null 2>&1; then
     _models="$(printf 'header "Authorization: Bearer %s"\n' "$CLIPROXY_API_KEY" \
       | curl -sf -m 3 --noproxy '*' -K - "$CODEX_PROXY_BASE_URL/v1/models" 2>/dev/null)"
-    # one model object per line (the entries are flat), then the alias's own entry
-    _entry="$(printf '%s' "$_models" | tr '}' '\n' \
+    # join a pretty-printed body, then one model object per line (the entries are
+    # flat), then the alias's own entry
+    _entry="$(printf '%s' "$_models" | tr '\n' ' ' | tr '}' '\n' \
       | grep -E "\"id\"[[:space:]]*:[[:space:]]*\"$(printf '%s' "$CLASSIFIER_MODEL" | sed 's/[.]/\\./g')\"" | head -n 1)"
     if [ -n "$_entry" ]; then
       _served=1

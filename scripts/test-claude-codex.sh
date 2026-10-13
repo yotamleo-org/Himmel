@@ -495,6 +495,12 @@ setup; write_child_mocks; MODEL="gpt-6.1-sol"
 CLAUDEX_CLASSIFIER_MODEL=claude-sonnet-5 run_launcher "classifier env on: launch succeeds"
 grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5' "$FAKEHOME/child-env.txt" || { echo "FAIL: CLAUDEX_CLASSIFIER_MODEL must map the Sonnet alias"; FAILS=$((FAILS + 1)); }
 
+# a pretty-printed /v1/models body (one field per line) still resolves the alias's owned_by.
+setup; write_child_mocks; MODEL="gpt-6.1-sol"
+printf '{\n  "object": "list",\n  "data": [\n    {\n      "id": "claude-sonnet-5",\n      "owned_by": "anthropic"\n    },\n    {\n      "id": "gpt-6.1-sol",\n      "owned_by": "openai"\n    }\n  ]\n}\n' > "$MODELS_FIXTURE_DIR/models-pretty.json"
+MODELS_JSON="$MODELS_FIXTURE_DIR/models-pretty.json" run_launcher "classifier flag on, pretty-printed models: launch succeeds" --classifier-model claude-sonnet-5
+grep -qxF 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5' "$FAKEHOME/child-env.txt" || { echo "FAIL: a pretty-printed OAuth-served alias must map the Sonnet alias"; FAILS=$((FAILS + 1)); }
+
 # the alias the client rejects as a classifier is refused outright (env and flag), child never runs.
 setup; write_child_mocks; MODEL="gpt-6.1-sol"
 run_launcher_expect "classifier flag: claude-sonnet-5-5 refused (client cannot serve it)" 2 "cannot serve as the classifier" --classifier-model claude-sonnet-5-5
