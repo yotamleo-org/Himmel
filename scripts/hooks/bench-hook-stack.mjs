@@ -189,7 +189,8 @@ export function chainMembers(command, projectDir) {
   const at = text.indexOf('--chain');
   if (at < 0) return null;
   const tail = text.slice(at + '--chain'.length).split(';')[0];
-  return tail.split(/\s+/)
+  // A quoted token may hold spaces ("$CLAUDE_PROJECT_DIR/…" under a spaced path).
+  return (tail.match(/"[^"]*"|\S+/g) || [])
     .map((tok) => tok.replace(/^"|"$/g, ''))
     .filter((tok) => tok && !tok.startsWith('--'))
     .map((tok) => tok.replace(/\$\{?CLAUDE_PROJECT_DIR\}?/g, projectDir));

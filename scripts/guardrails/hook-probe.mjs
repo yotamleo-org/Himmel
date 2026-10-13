@@ -26,6 +26,8 @@
 //     reason: <first line of the deny/ask reason>
 //   PROBE ALLOW|DENY
 // Exit 0 = ALLOW, 1 = DENY (some hook refused), 2 = usage error.
+// An `ask` row is shown as such but does not make the verdict DENY: PROBE ALLOW
+// means no hook refused outright, so read the per-hook rows for a prompt.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';

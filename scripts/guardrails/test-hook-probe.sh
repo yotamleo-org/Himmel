@@ -59,10 +59,11 @@ fi
 
 echo "== state-writing hook leaves the real state dir untouched =="
 mkdir -p "$TMP/real-arm" "$TMP/real-where"
-before=$(find "$TMP/real-arm" "$TMP/real-where" | sort | cksum)
-out=$(AUTO_ARM_STATE_DIR="$TMP/real-arm" WHERE_ARE_WE_STATE_DIR="$TMP/real-where" probe --tool Bash --command 'git status')
-after=$(find "$TMP/real-arm" "$TMP/real-where" | sort | cksum)
-if [ "$before" = "$after" ] && grepq "$out" 'auto-arm-on-cap.sh'; then
+printf 'seed\n' > "$TMP/real-arm/seed"
+before=$(find "$TMP/real-arm" "$TMP/real-where" | sort | cksum; cat "$TMP/real-arm/seed" | cksum)
+out=$(AUTO_ARM_STATE_DIR="$TMP/real-arm" WHERE_ARE_WE_STATE_DIR="$TMP/real-where" probe --tool Bash --command 'git status'); rc=$?
+after=$(find "$TMP/real-arm" "$TMP/real-where" | sort | cksum; cat "$TMP/real-arm/seed" | cksum)
+if [ "$rc" -eq 0 ] && [ "$before" = "$after" ] && grepq "$out" -E '^auto-arm-on-cap.sh (allow|passthrough) rc=0'; then
     pass "auto-arm-on-cap ran and real state dir unchanged"
 else
     fail "state dir changed or auto-arm-on-cap not probed; before=$before after=$after out=$out"
@@ -89,8 +90,8 @@ else
 fi
 
 echo "== the probed command is never executed =="
-out=$(probe --tool Bash --command "touch $TMP/sentinel")
-if [ ! -e "$TMP/sentinel" ]; then
+out=$(probe --tool Bash --command "touch $TMP/sentinel"); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" '^PROBE ALLOW' && [ ! -e "$TMP/sentinel" ]; then
     pass "probed command did not run"
 else
     fail "sentinel created: the probed command ran"
