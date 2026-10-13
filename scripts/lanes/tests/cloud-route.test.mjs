@@ -2,7 +2,7 @@
 // Fixture tickets + stubbed Jira/gh: no live calls, no real bucket.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -541,10 +541,10 @@ test('CLI: only CLOUD-OK records reserve, and a corrupt, filesless or timeless l
   assert.match(r.stdout, /HIMMEL-9102\tCLOUD-OK/);
 });
 
-function mergedStub(dir, mergedAt) {
+function mergedStub(dir, mergedAt, title = 'feat: [HIMMEL-9100] x') {
   return stub(dir, 'gh5499', `
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then
-  echo '[{"number":2001,"title":"feat: [HIMMEL-9100] x","body":"","mergedAt":"${mergedAt}","files":[]}]'; exit 0
+  echo '[{"number":2001,"title":"${title}","body":"","mergedAt":"${mergedAt}","files":[]}]'; exit 0
 fi
 if [ "$1 $2" = "pr list" ]; then exit 0; fi
 exit 1`);
@@ -560,6 +560,23 @@ test('CLI: a PR merged before the reservation was made does not release it', () 
   const { dir, route, seed } = reserveStubs();
   seed(rec());
   assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(5))).stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
+});
+
+test('CLI: a PR citing a longer-prefixed key does not release the reservation', () => {
+  const { dir, route, seed } = reserveStubs();
+  seed(rec());
+  assert.match(route('HIMMEL-9102', mergedStub(dir, hoursAgo(0.5), 'feat: [XHIMMEL-9100] x')).stdout, /HIMMEL-9102\tBLOCKED\t.*routed HIMMEL-9100 in an earlier run/);
+});
+
+test('CLI: an unreadable reservation log blocks routing instead of being ignored', () => {
+  const { dir, bucket } = reserveStubs();
+  mkdirSync(join(bucket, 'cloud-route.jsonl'));
+  const jira = stub(dir, 'jira5499b', `printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n'`);
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9102'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: join(dir, 'gh') },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9102\tBLOCKED\t.*reservation log is unreadable/);
 });
 
 test('CLI: a record with an invalid ticket string is skipped and does not drop the other reservations', () => {

@@ -148,7 +148,7 @@ export function reservedFiles(text, ctx = {}) {
     if (!r || r.class !== 'CLOUD-OK' || !/^[A-Z][A-Z0-9]*-\d+$/.test(r.ticket) || !Array.isArray(r.files)) continue;
     const at = Date.parse(r.time ?? '');
     if (Number.isNaN(at) || now - at > RESERVATION_HOURS * 3600e3) continue;
-    const cites = new RegExp(`${r.ticket}(?!\\d)`);
+    const cites = new RegExp(`(?<![A-Za-z0-9])${r.ticket}(?!\\d)`);
     // only a PR merged after the reservation was made releases it
     const released = (ctx.merged ?? []).some((pr) => {
       const m = Date.parse(pr.mergedAt ?? '');
@@ -209,7 +209,7 @@ export function classifyTicket(t, ctx) {
   if (ctx.treeUnknown) return v('BLOCKED', 'file tree unavailable (git failed) — cannot resolve the named files');
   const lost = ctx.tree ? unresolved(files, ctx.tree) : [];
   if (lost.length) return v('LOCAL-NATIVE', `cannot resolve ${lost.join(', ')} at the base — no such file or directory, so the hook, trust and held checks cannot be trusted (pass files)`);
-  if (ctx.heldUnknown) return v('BLOCKED', 'open-PR file list unavailable (gh failed) — cannot prove the files are free');
+  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   if (ctx.mergedUnknown) return v('BLOCKED', 'merged-PR list unavailable (gh failed) — cannot prove the ticket is not already fixed');
   const fixed = fixedBy(t, files, ctx);
   if (fixed.length) return { ...v('VERIFY-LOCAL', `may already be fixed on main — ${fixed.map((f) => `PR ${f.number} (${f.why}, merged ${String(f.mergedAt).slice(0, 10)})`).join('; ')}; verify locally before any cloud session`), prs: fixed.map((f) => f.number) };
@@ -354,7 +354,7 @@ function main(argv) {
   // reservations from earlier runs; read after merged so a merged PR can release them
   const log = opt.bucket ? join(opt.bucket, 'cloud-route.jsonl') : null;
   if (log && existsSync(log)) {
-    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations ignored — ${e.message.split('\n')[0]}\n`); }
+    try { held.push(...reservedFiles(readFileSync(log, 'utf8'), { merged })); } catch (e) { heldUnknown = true; process.stderr.write(`cloud-route: cannot read ${log}, earlier reservations unknown — ${e.message.split('\n')[0]}\n`); }
   }
   let tree = [];
   let treeUnknown = false;
