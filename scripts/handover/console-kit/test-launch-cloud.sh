@@ -97,15 +97,47 @@ printf 'second\n' > "$BUCKET/cloud-brief-HIMMEL-5678.md"
 bash "$LAUNCH" 5678 >/dev/null 2>&1
 check 'second launch appends a row' 2 "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
 
+# --- guards: a prompt-free allow rule runs this script, so each must be pinned --
+rows_before="$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
+
+# (a) a ticket with a path separator is refused before anything is written. The
+# traversal target exists, so without the guard the launch would go through.
+RUN_A="$WORK/run-a"
+mkdir -p "$RUN_A/cloud-a" "$BUCKET/cloud-brief-HIMMEL-a"
+printf 'traversal\n' > "$BUCKET/cloud-brief-HIMMEL-a/b.md"
+HIMMEL_CONSOLE_RUNDIR="$RUN_A" bash "$LAUNCH" a/b >/dev/null 2>&1; rc=$?
+check 'ticket with a slash exits 2' 2 "$rc"
+check 'ticket with a slash creates no log or inner script' 0 "$(find "$RUN_A" -type f | wc -l | tr -d ' ')"
+check 'ticket with a slash adds no tsv row' "$rows_before" "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
+
+# (b) a symlinked run dir is refused and nothing is written through it.
+rows_before="$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
+REAL_B="$WORK/real-b"
+mkdir -p "$REAL_B"
+ln -s "$REAL_B" "$WORK/link-b"
+HIMMEL_CONSOLE_RUNDIR="$WORK/link-b" bash "$LAUNCH" 1234 >/dev/null 2>&1; rc=$?
+check 'symlinked run dir exits 2' 2 "$rc"
+check 'symlinked run dir receives no files' 0 "$(find "$REAL_B" -type f | wc -l | tr -d ' ')"
+check 'symlinked run dir adds no tsv row' "$rows_before" "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
+
+# (c) an existing run dir with loose permissions is tightened to 700.
+RUN_C="$WORK/run-c"
+mkdir -p "$RUN_C"
+chmod 755 "$RUN_C"
+HIMMEL_CONSOLE_RUNDIR="$RUN_C" bash "$LAUNCH" 1234 >/dev/null 2>&1; rc=$?
+check 'launch into a pre-existing run dir exits 0' 0 "$rc"
+check 'pre-existing 0755 run dir is mode 700 after a launch' 1 "$(find "$RUN_C" -maxdepth 0 -perm 700 | wc -l | tr -d ' ')"
+
 # --- no output ever appears ---------------------------------------------------
 cat > "$BIN/claude" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
 printf 'third\n' > "$BUCKET/cloud-brief-HIMMEL-4242.md"
+rows_pre="$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
 out="$(bash "$LAUNCH" 4242 2>&1)"; rc=$?
 check 'no output exits 1' 1 "$rc"
-check 'no output adds no tsv row' 2 "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
+check 'no output adds no tsv row' "$rows_pre" "$(wc -l < "$BUCKET/cloud-sessions.tsv" | tr -d ' ')"
 
 # --- portability: no hardcoded user path ---------------------------------------
 hardcode_re='/home/[A-Za-z]|yotamleo|/run/user/[0-9]'
