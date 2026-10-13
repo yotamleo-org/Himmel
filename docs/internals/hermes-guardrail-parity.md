@@ -30,8 +30,9 @@ Hermes with a terminal toolset and no fixes is **not** safe as-is.
 
 Nothing is executed: hooks and the guard only classify JSON on stdin. The run is
 hermetic (throwaway HOME, a main checkout and a linked `feat/x` worktree, stub
-`gh`/`jira`/`curl` first on PATH, every `HIMMEL_*`/`HERMES_*` and `*_OK`/`*_BYPASS`/`*_SKIP`
-variable stripped; a hook exiting other than 0 or 2 aborts the run with exit 2). `test-parity-measure.sh` proves the harness separates MATCH, GAP and
+`gh`/`jira`/`curl` first on PATH, child env built from an allowlist so no
+launching-shell variable such as `*_OK` bypasses, `BASH_ENV` or `GIT_DIR` leaks in; a
+hook or guard that crashes, times out or exits other than 0/2 aborts the run with exit 2). `test-parity-measure.sh` proves the harness separates MATCH, GAP and
 OVER-DENY (a swapped classifier fails three assertions) and that a fixture
 command that would delete a sentinel never runs.
 

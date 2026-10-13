@@ -184,12 +184,11 @@ class Sandbox:
         self.repos = {"main": main, "feat": feat}
 
     def env(self, extra=None):
-        # every session-env bypass (*_OK, *_BYPASS, *_SKIP, e.g. ROGUE_SCHEDULE_OK)
-        # is stripped so the launching shell cannot change a verdict
+        # allowlist, not a blacklist: nothing from the launching shell (bypass
+        # vars, BASH_ENV, GIT_DIR, PYTHON*, LD_PRELOAD...) can change a verdict
         keep = {k: v for k, v in os.environ.items()
-                if not (k.startswith("HIMMEL_") or k.startswith("HERMES_")
-                        or k.endswith(("_OK", "_BYPASS", "_SKIP"))
-                        or k in ("SKIP_CR", "TERMINAL_CWD", "CLAUDE_PROJECT_DIR", "GH_CMD"))}
+                if k in ("LANG", "LANGUAGE", "TERM", "TMPDIR", "TZ", "USER", "LOGNAME", "SHELL")
+                or k.startswith("LC_")}
         keep.update({
             "HOME": self.home,
             "PATH": self.stub + os.pathsep + os.environ.get("PATH", ""),
@@ -232,7 +231,7 @@ def cc_verdict(sb, chains, tool, args, cwd):
                                    capture_output=True, cwd=cwd, env=sb.env(),
                                    timeout=20)
             except subprocess.TimeoutExpired:
-                return "deny", os.path.basename(hook) + " (timeout, fail-closed)"
+                raise HarnessError("%s timed out" % os.path.basename(hook))
             if p.returncode not in (0, 2):
                 raise HarnessError("%s exited %d: %s" % (
                     os.path.basename(hook), p.returncode, p.stderr.strip()[:120]))
@@ -244,14 +243,21 @@ def cc_verdict(sb, chains, tool, args, cwd):
 def hermes_verdict(sb, tool, args, cwd, extra_env=None, guard_path=GUARD):
     htool, hargs = _hermes_map(tool, args)
     payload = json.dumps({"tool_name": htool, "tool_input": hargs, "cwd": cwd})
-    p = subprocess.run([sys.executable, "-I", guard_path], input=payload, text=True,
-                       capture_output=True, cwd=cwd, env=sb.env(extra_env),
-                       timeout=20)
+    try:
+        p = subprocess.run([sys.executable, "-I", guard_path], input=payload, text=True,
+                           capture_output=True, cwd=cwd, env=sb.env(extra_env),
+                           timeout=20)
+    except subprocess.TimeoutExpired:
+        raise HarnessError("parity_guard timed out")
+    if p.returncode != 0:
+        raise HarnessError("parity_guard exited %d: %s" % (p.returncode, p.stderr.strip()[:120]))
     try:
         doc = json.loads(p.stdout)
     except ValueError:
-        return "deny", "guard error: " + (p.stderr.strip()[:60] or p.stdout.strip()[:60])
-    return ("deny", doc.get("reason", "")[:70]) if doc.get("decision") == "block" else ("allow", "-")
+        raise HarnessError("parity_guard emitted non-JSON: " + (p.stderr.strip()[:60] or p.stdout.strip()[:60]))
+    if not isinstance(doc, dict):
+        raise HarnessError("parity_guard emitted non-object JSON")
+    return ("deny", str(doc.get("reason", ""))[:70]) if doc.get("decision") == "block" else ("allow", "-")
 
 
 def measure(corpus, extra_hermes_env=None, guard_path=GUARD):
