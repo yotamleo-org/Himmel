@@ -138,6 +138,15 @@ assert_contains "daemon-reload" "systemctl --user daemon-reload" "$calls"
 assert_contains "enable all three" "systemctl --user enable himmel-observability-prometheus.service himmel-observability-grafana.service himmel-observability-grafana-alert-hook.service" "$calls"
 assert_contains "restart all three" "systemctl --user restart himmel-observability-prometheus.service" "$calls"
 
+echo "case 1b: the hook unit prefers user Bun over system PATH (HIMMEL-5383)"
+setup Linux 1 1
+mkdir -p "$HOME_DIR/.bun/bin"
+cp "$BIN/bun" "$HOME_DIR/.bun/bin/bun"
+run install
+assert_eq "preferred Bun install rc" 0 "$RC"
+hook_unit="$(cat "$HOME_DIR/$UNIT_REL/himmel-observability-grafana-alert-hook.service" 2>/dev/null)"
+assert_contains "hook unit uses the preferred user Bun" "ExecStart=\"$HOME_DIR/.bun/bin/bun\" run " "$hook_unit"
+
 echo "case 2: a checksum mismatch aborts before anything is installed"
 setup Linux 0 1
 run install

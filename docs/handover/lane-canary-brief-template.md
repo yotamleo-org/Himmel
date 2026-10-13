@@ -6,7 +6,7 @@ template_version: 3
 
 # Lane canary — @LANE@ @STAMP@
 
-> **Prior art:** HIMMEL-5230 lane canary; no-op by design, rendered by `scripts/lanes/lane-canary.sh`.
+> **Prior art:** lane canary; no-op by design, rendered by `scripts/lanes/lane-canary.sh`.
 > **Console:** none. Nobody reads this leg: send no messages, ask no questions, open no PR.
 
 **You are a lane canary leg on the @LANE@ lane.** Do exactly the three steps below,

@@ -114,7 +114,7 @@ bash scripts/himmel-update.sh               # from a shell, in the himmel checko
 node scripts/himmelctl/bin.js update        # thin wrapper, same engine
 ```
 
-Every update ends with an **installer-drift pass** (HIMMEL-4246; `--only drift`,
+Every update ends with an **installer-drift pass** (`--only drift`,
 read-only twin `--only drift-check`, also run by `--check`). It runs
 `himmelctl status --json`, converges the allow-listed items (today
 `pre-commit-hooks`, via `himmelctl ensure --items <id> --yes`) and re-checks, then
@@ -123,7 +123,7 @@ re-auth, a leaked `url.*.insteadOf` in the repo's local git config (WARN with th
 unset command, never auto-deleted), a codex `plugin-unregistered` that the
 installer did not fix — in a loud **DRIFT** block with a remedy line.
 
-`ensure --items <id>` (HIMMEL-4267) is scoped to exactly those items: it does not
+`ensure --items <id>` is scoped to exactly those items: it does not
 run the additive recorded-profile reconcile (that belongs to bare `ensure`,
 `install` and `update`, which converge the whole profile), never writes other
 items into the target's `state.json`, and for `pre-commit-hooks` runs
@@ -131,16 +131,16 @@ items into the target's `state.json`, and for `pre-commit-hooks` runs
 statusline or `CLAUDE.md` changes). A requested item whose own post-check is green
 is not failed by an unrelated installer step; it prints a warning instead.
 
-`scripts/himmel-update.sh` (HIMMEL-893), in **apply mode** (no `--check`),
+`scripts/himmel-update.sh`, in **apply mode** (no `--check`),
 refuses to run against a **dirty checkout** (uncommitted changes) — commit or
 stash first, then re-run. (The read-only `--check` mode does not reject a dirty
 tree; it reports the chain without pulling.) If you are **developing with local
 tracked diffs you deliberately keep** (e.g. locally-installed skills that append
 to `skills-lock.json` / `.gitignore`), set `HIMMEL_UPDATE_AUTOSTASH=1` to
-autostash them around the pull instead of refusing (HIMMEL-1197):
+autostash them around the pull instead of refusing:
 `HIMMEL_UPDATE_AUTOSTASH=1 bash scripts/himmel-update.sh`. Prefer the
 per-invocation form shown; exporting it in your shell profile leaves the
-HIMMEL-893 guard defeated for **every** future update (any dirty state), so unset
+dirty-tree guard defeated for **every** future update (any dirty state), so unset
 it when done. If the reapply conflicts (upstream changed the same file) the pull
 still applies but the step reports `failed` and your changes are preserved in
 `git stash list` for manual recovery. On a clean tree it runs a
@@ -158,7 +158,7 @@ in a closing status table:
    to take effect.
 4. **qmd fork update** — qmd ships from a himmel-pinned fork outside this
    checkout, so `git pull` here never touches it.
-5. **hermes junior-tier update** (HIMMEL-426) — hermes is a separate editable
+5. **hermes junior-tier update** — hermes is a separate editable
    git checkout outside this repo; pulls + reinstalls it, skipping cleanly
    when hermes isn't installed.
 6. **luna template upgrade** (`LUNA_VAULT_PATH`) — content-preserving refresh
@@ -172,21 +172,20 @@ skipped.
 
 After the chain — win or lose, these never abort and always run,
 including on a chain failure — six **best-effort advisory
-steps** run: a codex plugin re-sync + hooks.json re-sanitize (HIMMEL-742), a
-statusLine hud re-wire (HIMMEL-718), a **plugin install-state report**
-(HIMMEL-434 — `marketplace update` only re-syncs *already-installed*
+steps** run: a codex plugin re-sync + hooks.json re-sanitize, a
+statusLine hud re-wire, a **plugin install-state report**
+(`marketplace update` only re-syncs *already-installed*
 plugins, so it can't surface a himmel plugin that is missing or being served
 from a non-`@himmel` marketplace; the report prints the
 `claude plugin install …@himmel` / migrate commands for any gap; run it
 standalone with `bash scripts/himmel-update.sh --plugins-check`), a lean
-plugin-set reconcile (HIMMEL-1032), stale cadence-runner / guardrail-mode
-block drift checks, and a **retired-plugin removal offer** (HIMMEL-2033 —
-`scripts/machine-setup/remove-retired-plugin.sh`: silent when the retired
+plugin-set reconcile, stale cadence-runner / guardrail-mode
+block drift checks, and a **retired-plugin removal offer** (`scripts/machine-setup/remove-retired-plugin.sh`: silent when the retired
 response-compression plugin is absent; on a TTY it asks `Remove now? [Y/n]`
 with the default being remove; a non-interactive run prints the advisory and
 the two manual commands and removes nothing).
 
-## Release channels (HIMMEL-2705)
+## Release channels
 
 By default, `scripts/himmel-update.sh`'s pull step is exactly what it has
 always been: `git pull --ff-only` on whatever branch you have checked out.
@@ -243,7 +242,7 @@ guarantee as the unset-channel path — it does fetch tags from `origin` first
 (writing Git objects/refs, same as any `git fetch`), but never switches,
 pulls, or otherwise changes what you're on.
 
-## Installs without a git checkout (HIMMEL-3247)
+## Installs without a git checkout
 
 A release-tarball or native-package install (for example under
 `/usr/share/himmel`) has no `.git`, so there is no upstream to pull. himmel
@@ -268,7 +267,7 @@ tells that case apart by the install's own root having no `.git`, and:
 To actually update such an install, use the route it came from. A release
 tarball installed with the README recipe has the versioned layout (each release
 in `~/.local/share/himmel/<version>/`, with `current` pointing at the live one;
-HIMMEL-3059 S4). `himmelctl update` updates it: it downloads the latest
+`himmelctl update` updates it: it downloads the latest
 release, verifies its sha256 (and its attestation when `gh` is installed and
 logged in), extracts it into a new version directory and only then swaps
 `current`. A failed download or verify leaves `current` untouched. The previous
@@ -284,7 +283,7 @@ The only thing the check fetches is the latest release tag, from a fixed HTTPS
 URL that no environment variable can redirect; nothing is downloaded or
 executed.
 
-## Is this station up to date? (HIMMEL-3400)
+## Is this station up to date?
 
 ```bash
 himmelctl --version         # himmel 0.3.0 + git describe string + commit
@@ -322,7 +321,7 @@ still need doing:
   specific to that release — a one-time migration, a config field that moved,
   a dependency bump — is carried in that release's notes, not repeated here.
 
-## Machine-local catch-up (HIMMEL-2134)
+## Machine-local catch-up
 
 A merged pin bump reaches this checkout's **repo**. It does not reach the
 **machine**. `git pull` updates `scripts/lib/graphify-bin.sh` and
@@ -337,10 +336,10 @@ instant the bump merges, while the host keeps running the old build. No
 `BEHIND` row will ever tell you about it, which is why these steps are
 unconditional rather than drift-driven:
 
-- **graphify pin sync** (HIMMEL-1048) — reinstalls at the pinned version. When
+- **graphify pin sync** — reinstalls at the pinned version. When
   live `graphify-mcp` processes hold the `uv` tool dir it refuses to force and
   prints the exact reinstall command instead.
-- **cli-proxy-api host roll** (HIMMEL-2134) — rolls the proxy only when the
+- **cli-proxy-api host roll** — rolls the proxy only when the
   machine's version stamp is **strictly older** than the `$Version` pin. A host
   at or ahead of the pin is left alone (never a downgrade), and a version that
   cannot be compared — no `python3`, or a stamp that is not a version — is left
@@ -348,18 +347,18 @@ unconditional rather than drift-driven:
   `cli-proxy-lane.ps1` owns the risk when it does roll: pin-aware, refuses to
   bounce under a live codex-lane client, staged rollback, health-gated on
   `/v1/models`.
-- **installed-marketplaces catch-up** (HIMMEL-2134) —
+- **installed-marketplaces catch-up** —
   `scripts/upstreams/update-marketplaces.sh` re-syncs the `mkt-manual` rows
   (`autoUpdate` off) nothing else refreshes. Failure-isolated: every row is
   attempted regardless of the previous row.
-- **qmd daemon-restart notice** (HIMMEL-2134) — a new qmd build on disk does not
+- **qmd daemon-restart notice** — a new qmd build on disk does not
   reload the daemon already resident on :8181, and stopping that process is
   termination an agent may not perform. The step prints the operator commands;
   it never kills anything.
-- **node/npm/bun toolchain** (HIMMEL-3068) — reports node against the pinned
+- **node/npm/bun toolchain** — reports node against the pinned
   `.nvmrc` at the pin's own granularity (major, major.minor or
   major.minor.patch) as match / behind pin / ahead of pin, and a non-numeric
-  pin such as `lts/*` as a plain report (HIMMEL-3088; never moves it — a live lane is very likely running on the
+  pin such as `lts/*` as a plain report (never moves it — a live lane is very likely running on the
   current node the instant this runs; prints the `nvm`/`fnm` fix instead) and
   self-upgrades npm/bun in place via their own built-in updaters. If `bun` is
   missing entirely, the qmd fork step's "skipped" status gets a loud
@@ -378,12 +377,12 @@ Plain `git pull` works too if you don't need the rest of the chain.
 ## When changes take effect
 
 - **Hooks**: immediately on the next tool call — PreToolUse/etc. re-read the
-  script from disk each invocation. (This is why the [HIMMEL-392] hook fix needs
+  script from disk each invocation. (This is why the hook fix needs
   only a pull, no restart.)
 - **Plugins / slash commands / skills**: loaded at session start — **restart**
   any running Claude session to pick them up.
 
-## Lean plugin set — keeping session-start context low (HIMMEL-1032)
+## Lean plugin set — keeping session-start context low
 
 Every **enabled** plugin injects its agents + skills + commands into the
 context at session start, whether or not you use it. Ad-hoc `/plugin` installs
@@ -516,8 +515,7 @@ decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
   remote and `git pull upstream main` — a plain `git pull origin` only pulls your
   fork.
 - Whether the *default* registration should switch to a github (floating) source
-  so plugins auto-deliver without a pull is tracked as a deliberate trade-off in
-  HIMMEL-398 (it would leave the core hooks pull-only regardless).
+  so plugins auto-deliver without a pull is a deliberate trade-off (it would leave the core hooks pull-only regardless).
 - **Vendored plugin served from its external marketplace?** If `--plugins-check`
   flags `claude-obsidian` / `obsidian` as "served from another marketplace", an
   external auto-updating copy is shadowing the himmel SHA pin. Migrate it to the

@@ -1,4 +1,4 @@
-# Local macOS test lane (Docker-OSX) — HIMMEL-4980
+# Local macOS test lane (Docker-OSX)
 
 A console-owned way to get a real macOS proof for BSD-userland, `ps`/`stat`/`sed`,
 `sandbox-exec`, Keychain and launchd/cron fixes, on the Linux station. It is a
@@ -106,5 +106,5 @@ local testing; this doc does not make the licensing question go away.
 
 ## Not done yet
 
-- The `himmel-ops:vm`-style entry (item 3 of the ticket) and any suite run in a
-  guest: blocked on the interactive install above. HIMMEL-4980 stays open.
+- The `himmel-ops:vm`-style entry and any suite run in a
+  guest: blocked on the interactive install above. The lane stays open.

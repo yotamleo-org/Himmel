@@ -1,4 +1,4 @@
-# Skill-usage telemetry — measure-during for in-use tools (HIMMEL-236)
+# Skill-usage telemetry — measure-during for in-use tools
 
 > The 0-cost live measurement seam behind the
 > [rubric §4](rubric.md#4-measurement-protocol) measure-during protocol.
@@ -6,8 +6,7 @@
 > handover-arm-resume, the jira CLI, the bridge) a before/after baseline
 > is impossible — there is no "without" workday to capture. Instead,
 > outcome-per-session signals are recorded as a side-effect of real
-> sessions and analysed later. Part of the HIMMEL-199 framework; child
-> of HIMMEL-167.
+> sessions and analysed later. Part of the tool-adoption framework.
 
 ## The 0-cost contract (the point — preserve it)
 

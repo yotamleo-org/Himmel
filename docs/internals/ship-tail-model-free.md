@@ -1,4 +1,4 @@
-# Ship tail is model-free (HIMMEL-3608)
+# Ship tail is model-free
 
 ## Ruling
 

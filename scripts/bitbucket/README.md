@@ -1,6 +1,6 @@
 # bitbucket-cli — himmel Bitbucket Cloud CLI
 
-The transport layer for himmel's Bitbucket Cloud forge support (HIMMEL-325/326).
+The transport layer for himmel's Bitbucket Cloud forge support.
 Mirrors `scripts/jira/`: a small `commander` CLI over a thin client, invoked **by
 absolute path** as `node scripts/bitbucket/dist/index.js <op>`. It wraps the
 `@coderabbitai/bitbucket` SDK (an `openapi-fetch` typed client generated from
@@ -47,7 +47,7 @@ work for Bitbucket (verified 401; scoped tokens are per-app).
 
 Workspace/repo are derived from the `origin` remote (override with
 `BITBUCKET_WORKSPACE` + `BITBUCKET_REPO_SLUG`); the read verbs (`repo get` /
-`pr get` / `issue get`, HIMMEL-329) also accept `--repo <ws>/<repo>` to target an
+`pr get` / `issue get`) also accept `--repo <ws>/<repo>` to target an
 arbitrary URL-named repo (the luna-ingest ingestion path). himmel never lists
 workspaces (CHANGE-2770). A live smoke test lives in `tests/live-smoke.sh`
 (creds-gated, manual, not CI).

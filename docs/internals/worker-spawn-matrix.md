@@ -1,10 +1,10 @@
-# Worker-spawn matrix: native Hermes subagents vs external lane workers (HIMMEL-749)
+# Worker-spawn matrix: native Hermes subagents vs external lane workers
 
 > Draft status: evidence-based snapshot from this worktree plus this worker's live
 > Hermes delegation surface. Treat any `UNVERIFIED` cell as a follow-up seed, not
 > as a negative proof.
 
-> **Status (2026-08-19, HIMMEL-1967):** the GLM worker, Hermes one-shot, and
+> **Status (2026-08-19):** the GLM worker, Hermes one-shot, and
 > Codex worker spawn paths below are impl-dormant by operator ruling — native
 > Claude subagents are the ruled default, and an unqualified impl dispatch
 > refuses toward that path rather than picking one of these lanes. Each
@@ -21,7 +21,7 @@ Repository files read for this draft:
 
 - `scripts/telegram/spawn-glm.ts`
 - `scripts/telegram/run.ts`
-- `scripts/telegram/phi-egress-guard.ts` (renamed from `glm-guard.ts`, HIMMEL-2622)
+- `scripts/telegram/phi-egress-guard.ts` (renamed from `glm-guard.ts`)
 - `scripts/telegram/run-prompt.md`
 - `scripts/hermes/invoke.sh`
 - `scripts/hermes/dispatch-trusted.sh`
@@ -77,7 +77,7 @@ launcher: Claude Code, Hermes one-shot, Codex/companion, or GLM-through-Claude.
 It has OS/process-level isolation, its own logs/transcripts/outbox, and often a
 dedicated git worktree/branch. The parent/operator inspects artifacts and merges
 or pushes later. Guard coverage is lane-specific: Claude hooks for Claude Code,
-`phi-egress-guard` (renamed from `glm-guard`, HIMMEL-2622) plus GLM env fences
+`phi-egress-guard` (renamed from `glm-guard`) plus GLM env fences
 for the GLM lane, `parity_guard.py` for Hermes,
 and Codex hook adapters / health probes for Codex.
 
@@ -90,10 +90,10 @@ with separate filesystem/process/session artifacts and separate guard wiring.
 | Spawn path | Worktree isolation | Guard / hook coverage | Per-dispatch model selection | Session artifacts | Push / PR authority | Permission-prompt handling | Supervision / liveness signal |
 |---|---|---|---|---|---|---|---|
 | **Hermes-native `delegate_task` subagent** | Separate terminal session; no repo worktree is created by the tool itself. Parent must brief/write-scope any worktree discipline. | Hermes tool guard surface inherited from parent profile/toolsets. For this profile, `parity_guard.py` is documented as the main-tier guard in `docs/hermes-runbook.md` and `docs/internals/lane-parity.md`, and **child hook parity is VERIFIED** (red-path probe, 2026-07-07 session 11): a `himmel_agent` `delegate_task` child ran an allowed terminal command (temp-file write landed) while its denied-class `curl` to a LIVE local listener never connected — the network-CLI fence applies to native children. Caveat: the deny *string* is unretrievable from a one-shot parent (see per-dispatch column). | **Global pin only — CONFIRMED as the contract** (2026-07-07 probes): the tool schema has no `model`/`provider` arg, and `background=false` is also IGNORED on the one-shot surface — the tool force-dispatches `mode: "background"`. | Child result returns into parent conversation **only on a persistent/gateway session** (`delegation.status` gateway RPC); a one-shot parent exits before the forced-background child reports, so the result is UNREACHABLE from one-shots (verified 2026-07-07 — the parity probe had to observe the child via filesystem side effects + a local listener instead). No durable transcript/outbox. | No special authority reduction by the tool. Must follow parent/user policy: no push/PR unless explicitly authorized. | `subagent_auto_approve=false` in config; exact child prompt/approval behavior is **UNVERIFIED**. | Parent receives completion summary. Not durable if parent exits. No external liveness probe verified. |
-| **Hermes one-shot via `scripts/hermes/invoke.sh` / `dispatch-trusted.sh`** | `invoke.sh` runs in caller's current directory; no worktree creation. Isolation depends on caller creating/choosing a worktree first. | `invoke.sh` uses Hermes with default `todo` toolset unless `--toolsets` opts in. `dispatch-trusted.sh` sets `HERMES_EXTERNAL_WRITES_OK=1` and defaults to `--profile himmel_agent`; `parity_guard.py` remains the fence and fail-closes external writes unless the engine is trusted. | **Yes — LIVE-PROVEN** (2026-07-07 session 11): `invoke.sh --model qwen3-coder-plus` routed to the Alibaba provider (model self-identified) while the unflagged default stayed `gpt-5.5`/openai-codex — two providers from two dispatches on the same surface. Failure mode is loud, not silent: an alias that does not resolve (observed: `qwen-flash`) falls through to the DEFAULT provider, which rejects the unknown model name with HTTP 400. `--profile` selects profile; `--toolsets` selects toolsets. | Optional `--log <path>` tees stdout/stderr. Hermes owns its normal session store; exact one-shot transcript path was not verified in repo files. | `dispatch-trusted.sh` allows trusted-engine external writes through `parity_guard.py`; push/PR still require operator authorization by higher-level policy. GLM/z.ai signals override the opt-in and are refused. | One-shot uses `-z` / yolo-style auto-approval in `invoke.sh`; therefore the default toolset is intentionally `todo` to avoid unattended terminal/browser/fs access unless a caller opts in. | Exit code is Hermes' return code, UNLESS the watchdog fires: `invoke.sh` wall-clock timeboxes (`HERMES_INVOKE_TIMEOUT`, default 1800s) and kills the process tree (rc 124), and separately aborts early (rc 125) on `PARITY_GUARD_DENY_ESCALATE_N` (default 3) identical `parity_guard` denies in a row — a DENY is not terminal to hermes upstream (HIMMEL-2025). Optional log file. |
-| **External Claude Code worker (Telegram bounded run via `scripts/telegram/run.ts`)** | Runs in the provided `cwd` / `sessionCwd`; it does not itself create a worktree. Ticket/vault callers choose cwd. | Native Claude Code hooks for the spawned cwd. `run.ts` strips `TELEGRAM_OWN_POLLER`; vault sessions load vault-local hooks. | **Yes.** `run.ts` builds `claude --model <model>`; default `opus`, override via `TELEGRAM_CLAUDE_MODEL`. GLM lane passes a model override via `laneModel('glm')`. | Bus files: inbox/outbox/context paths are embedded in the prompt. The prompt contract appends replies to outbox JSONL and progress to `context.md`. Claude transcripts are under `~/.claude/projects/<escaped-cwd>` by Claude Code convention, but this row's launcher does not print that path. | Prompt permits audited Jira ops but not self-polling. Push/PR authority depends on the brief; no generic push tripwire in `run.ts`. | Bounded run closes stdin, so it cannot answer permission prompts. `run.ts` documents that unapproved tools fall through to prompts and are denied/hang; vault sessions may pass `--permission-mode bypassPermissions` only because the vault hooks still enforce containment. See permission-window follow-up **HIMMEL-748**. | `runSession` returns code, pid, capped/blocked/timedOut, and tail; kills process tree on timeout; detects usage caps and content-filter blocks. |
-| **claude-glm / GLM worker via `scripts/telegram/spawn-glm.ts`** | **Yes.** `git worktree add <cwd>/.claude/worktrees/glm+<slug> -b glm/<slug>`; prompt says work only inside that dedicated worktree. | `phi-egress-guard.ts` (renamed from `glm-guard.ts`, HIMMEL-2622) checks `.salus`, `phi-roots`, and `egress-denylist` fail-closed before the run. `spawn-glm.ts` leaves the operator's git config untouched — the `remote.origin.pushurl` quarantine it used to apply was removed in HIMMEL-1961 (it fenced nothing and could lose push configuration). GLM env is built by `glm-env`; Claude Code hooks also apply to the spawned Claude run where present. | **Limited / lane-pinned.** GLM run passes the lane model alias, not the poller default. Per-dispatch context window is selectable by `--context big` or `--context small`; no arbitrary per-call model flag in `spawn-glm.ts` was verified. | `sessionDir=<BRIDGE_ROOT>/glm-sessions/glm-<slug>-<ts>` contains `brief.md`, `meta.json`, `outbox.jsonl`, `context.md`, `run.log`, optional `grants.jsonl`, `respawn-handover.md`. Launcher prints `session-dir`, `transcript-dir`, and exit. | Prompt hard-rules: never push, never open PR; validating session owns git/PR. Push protection is CONTRACT-ONLY and every dispatch report says so; the parent CR gate is the load-bearing control (HIMMEL-1961). Jira writes are allowed via audited CLI. | Stdin-closed Claude run inherits the bounded-run permission posture. Guard-blocked steps should append an escalation JSON line to outbox and continue. Grants support read/write shape classification; autonomous mode refuses write-shaped grants and records escalation. See **HIMMEL-748** for permission-window parity. | `meta.json` transitions running -> done/failed/capped/blocked/timeout. Cap guard records `resume_at`, may arm `arm-resume.sh`, and writes respawn handover. `run.log` stores tail; quota gauge records GLM usage signals. |
-| **Codex worker / Codex lane surfaces** | Codex itself uses the caller workspace. Branch provenance convention is `codex/<slug>` per `docs/internals/harness-compat.md`; dedicated worktree creation is outside the codex supervision scripts read here. | Codex direct guard path is `.codex/hooks.json` -> `.codex/run-hook.{sh,cmd}` -> adapter -> native guard scripts per `harness-compat.md` / `lane-parity.md`. `scripts/codex/*` adds observability/supervision, not the primary guard fence. | **UNVERIFIED in repo files read.** Codex model selection surface is not described in the inspected `scripts/codex/*` supervision scripts. | Codex session rollouts live under `$CODEX_HOME/sessions/rollout-*.jsonl`; startup warnings in `$CODEX_HOME/logs_2.sqlite`. Codex companion job state lives under `$CLAUDE_PLUGIN_DATA/state/<slug>-<hash>/state.json` or fallbacks documented in `companion-liveness.sh`. | `lane-parity.md` marks `codex-direct` write-authority / external-write e2e proof as `GAP`; docs say native block hooks are reached through adapter, but codex external-write through-adapter proof remains missing. | `harness-compat.md` says Codex hooks block by stdout JSON `permissionDecision:"deny"`, not Claude exit 2; the adapter translates. Interactive permission-window parity is **UNVERIFIED** here and belongs with **HIMMEL-748**. | `startup-health.sh` reports degraded startup signals: ignored hooks, skill/plugin prompt truncation, oversized `_where-are-we`. `companion-liveness.sh` flags queued/running jobs with no live runner. `reap-mcp-fleet.{sh,ps1}` reports/reaps orphaned Windows MCP fleet processes. |
+| **Hermes one-shot via `scripts/hermes/invoke.sh` / `dispatch-trusted.sh`** | `invoke.sh` runs in caller's current directory; no worktree creation. Isolation depends on caller creating/choosing a worktree first. | `invoke.sh` uses Hermes with default `todo` toolset unless `--toolsets` opts in. `dispatch-trusted.sh` sets `HERMES_EXTERNAL_WRITES_OK=1` and defaults to `--profile himmel_agent`; `parity_guard.py` remains the fence and fail-closes external writes unless the engine is trusted. | **Yes — LIVE-PROVEN** (2026-07-07 session 11): `invoke.sh --model qwen3-coder-plus` routed to the Alibaba provider (model self-identified) while the unflagged default stayed `gpt-5.5`/openai-codex — two providers from two dispatches on the same surface. Failure mode is loud, not silent: an alias that does not resolve (observed: `qwen-flash`) falls through to the DEFAULT provider, which rejects the unknown model name with HTTP 400. `--profile` selects profile; `--toolsets` selects toolsets. | Optional `--log <path>` tees stdout/stderr. Hermes owns its normal session store; exact one-shot transcript path was not verified in repo files. | `dispatch-trusted.sh` allows trusted-engine external writes through `parity_guard.py`; push/PR still require operator authorization by higher-level policy. GLM/z.ai signals override the opt-in and are refused. | One-shot uses `-z` / yolo-style auto-approval in `invoke.sh`; therefore the default toolset is intentionally `todo` to avoid unattended terminal/browser/fs access unless a caller opts in. | Exit code is Hermes' return code, UNLESS the watchdog fires: `invoke.sh` wall-clock timeboxes (`HERMES_INVOKE_TIMEOUT`, default 1800s) and kills the process tree (rc 124), and separately aborts early (rc 125) on `PARITY_GUARD_DENY_ESCALATE_N` (default 3) identical `parity_guard` denies in a row — a DENY is not terminal to hermes upstream. Optional log file. |
+| **External Claude Code worker (Telegram bounded run via `scripts/telegram/run.ts`)** | Runs in the provided `cwd` / `sessionCwd`; it does not itself create a worktree. Ticket/vault callers choose cwd. | Native Claude Code hooks for the spawned cwd. `run.ts` strips `TELEGRAM_OWN_POLLER`; vault sessions load vault-local hooks. | **Yes.** `run.ts` builds `claude --model <model>`; default `opus`, override via `TELEGRAM_CLAUDE_MODEL`. GLM lane passes a model override via `laneModel('glm')`. | Bus files: inbox/outbox/context paths are embedded in the prompt. The prompt contract appends replies to outbox JSONL and progress to `context.md`. Claude transcripts are under `~/.claude/projects/<escaped-cwd>` by Claude Code convention, but this row's launcher does not print that path. | Prompt permits audited Jira ops but not self-polling. Push/PR authority depends on the brief; no generic push tripwire in `run.ts`. | Bounded run closes stdin, so it cannot answer permission prompts. `run.ts` documents that unapproved tools fall through to prompts and are denied/hang; vault sessions may pass `--permission-mode bypassPermissions` only because the vault hooks still enforce containment. See the permission-window parity GAP below. | `runSession` returns code, pid, capped/blocked/timedOut, and tail; kills process tree on timeout; detects usage caps and content-filter blocks. |
+| **claude-glm / GLM worker via `scripts/telegram/spawn-glm.ts`** | **Yes.** `git worktree add <cwd>/.claude/worktrees/glm+<slug> -b glm/<slug>`; prompt says work only inside that dedicated worktree. | `phi-egress-guard.ts` (renamed from `glm-guard.ts`) checks `.salus`, `phi-roots`, and `egress-denylist` fail-closed before the run. `spawn-glm.ts` leaves the operator's git config untouched — the `remote.origin.pushurl` quarantine it used to apply was removed (it fenced nothing and could lose push configuration). GLM env is built by `glm-env`; Claude Code hooks also apply to the spawned Claude run where present. | **Limited / lane-pinned.** GLM run passes the lane model alias, not the poller default. Per-dispatch context window is selectable by `--context big` or `--context small`; no arbitrary per-call model flag in `spawn-glm.ts` was verified. | `sessionDir=<BRIDGE_ROOT>/glm-sessions/glm-<slug>-<ts>` contains `brief.md`, `meta.json`, `outbox.jsonl`, `context.md`, `run.log`, optional `grants.jsonl`, `respawn-handover.md`. Launcher prints `session-dir`, `transcript-dir`, and exit. | Prompt hard-rules: never push, never open PR; validating session owns git/PR. Push protection is CONTRACT-ONLY and every dispatch report says so; the parent CR gate is the load-bearing control. Jira writes are allowed via audited CLI. | Stdin-closed Claude run inherits the bounded-run permission posture. Guard-blocked steps should append an escalation JSON line to outbox and continue. Grants support read/write shape classification; autonomous mode refuses write-shaped grants and records escalation. See the permission-window parity GAP below. | `meta.json` transitions running -> done/failed/capped/blocked/timeout. Cap guard records `resume_at`, may arm `arm-resume.sh`, and writes respawn handover. `run.log` stores tail; quota gauge records GLM usage signals. |
+| **Codex worker / Codex lane surfaces** | Codex itself uses the caller workspace. Branch provenance convention is `codex/<slug>` per `docs/internals/harness-compat.md`; dedicated worktree creation is outside the codex supervision scripts read here. | Codex direct guard path is `.codex/hooks.json` -> `.codex/run-hook.{sh,cmd}` -> adapter -> native guard scripts per `harness-compat.md` / `lane-parity.md`. `scripts/codex/*` adds observability/supervision, not the primary guard fence. | **UNVERIFIED in repo files read.** Codex model selection surface is not described in the inspected `scripts/codex/*` supervision scripts. | Codex session rollouts live under `$CODEX_HOME/sessions/rollout-*.jsonl`; startup warnings in `$CODEX_HOME/logs_2.sqlite`. Codex companion job state lives under `$CLAUDE_PLUGIN_DATA/state/<slug>-<hash>/state.json` or fallbacks documented in `companion-liveness.sh`. | `lane-parity.md` marks `codex-direct` write-authority / external-write e2e proof as `GAP`; docs say native block hooks are reached through adapter, but codex external-write through-adapter proof remains missing. | `harness-compat.md` says Codex hooks block by stdout JSON `permissionDecision:"deny"`, not Claude exit 2; the adapter translates. Interactive permission-window parity is **UNVERIFIED** here and is a known open item. | `startup-health.sh` reports degraded startup signals: ignored hooks, skill/plugin prompt truncation, oversized `_where-are-we`. `companion-liveness.sh` flags queued/running jobs with no live runner. `reap-mcp-fleet.{sh,ps1}` reports/reaps orphaned Windows MCP fleet processes. |
 
 ## Cross-path notes
 
@@ -110,7 +110,7 @@ with separate filesystem/process/session artifacts and separate guard wiring.
 - Codex supervision is mostly observability around an external harness: startup
   health, companion-job liveness, and Windows MCP-fleet reaping.
 
-## Smoke-proof record (2026-07-07, session 11 — the HIMMEL-749 acceptance criteria, each proven or named-gap)
+## Smoke-proof record (2026-07-07, session 11 — the acceptance criteria, each proven or named-gap)
 
 - **Supervision smoke (hermes parent → external GLM worker):** a
   `dispatch-trusted.sh` one-shot ran `spawn-glm` end-to-end (worker
@@ -129,7 +129,7 @@ with separate filesystem/process/session artifacts and separate guard wiring.
   hermes parent can call to spawn a Claude-lane bounded worker. The GLM
   worker it did spawn IS a Claude Code process (claude-glm lane), so
   harness-supervision is proven; the pure-Claude lane needs the `runSession`
-  CLI entry that the HIMMEL-735 fleet-control build story now lists as a
+  CLI entry that the fleet-control build story now lists as a
   prerequisite. This is the one AC cell satisfied-with-named-gap.
 
 ## Gaps and follow-up proof needed
@@ -158,14 +158,14 @@ with separate filesystem/process/session artifacts and separate guard wiring.
   `run.ts` does not have the GLM push tripwire. Proof wanted: identify every
   caller that passes worktree/branch briefs into bounded Claude runs and whether
   those briefs prohibit push/PR.
-- `GAP` - Permission-window parity (**HIMMEL-748**): bounded Claude/GLM runs close
+- `GAP` - Permission-window parity: bounded Claude/GLM runs close
   stdin and cannot answer prompts; vault runs use `bypassPermissions`; Codex and
   Hermes one-shots use different approval paths. Need one matrix of which prompts
   can appear, which are auto-approved/denied, and which stall.
 - `GAP` - Startup context parity: Codex has `startup-health.sh`; GLM has prompt
   window preflight; Hermes one-shot/native subagents do not have a comparable
   startup-context degradation detector documented here.
-- `GAP` - Codex direct guard proofs (**HIMMEL-745**): `lane-parity.md` still marks
+- `GAP` - Codex direct guard proofs: `lane-parity.md` still marks
   codex-direct write-authority / external-write through-adapter proof as `GAP`.
   Need e2e proof that the Codex adapter blocks the external-write shapes, not
   only that the native guard scripts and adapter unit path exist.
@@ -175,7 +175,7 @@ with separate filesystem/process/session artifacts and separate guard wiring.
 - `UNVERIFIED` - Codex worktree isolation: the inspected files document branch
   provenance and supervision, not the dispatcher that creates or assigns Codex
   worktrees. Proof wanted from the fleet dispatcher or dynamic lane registry.
-- `GAP` - Dynamic lane registry (**HIMMEL-689**): this matrix is static. A living
+- `GAP` - Dynamic lane registry: this matrix is static. A living
   registry should name each lane, dispatcher command, model selector, guard proof,
   artifact root, and liveness probe so orchestrators do not route by stale prose.
 - `UNVERIFIED` - `external Claude Code worker` row is represented here by the
@@ -183,7 +183,7 @@ with separate filesystem/process/session artifacts and separate guard wiring.
   worker path read for this task. If there is another non-Telegram Claude worker
   dispatcher, add it as a separate row with its own artifact and authority proof.
 
-## Approval-window / permission contract (HIMMEL-748 — ratified 2026-07-07)
+## Approval-window / permission contract (ratified 2026-07-07)
 
 Operator-ratified decision: **no hermes-native auto-classifier.** Only Claude
 Code carries a native semantic classifier; the fleet does not re-implement a
@@ -200,7 +200,7 @@ validation:
    the lane has one). hermes MUST NOT proxy or re-answer the worker's
    permission prompts. Bounded workers run stdin-closed: an un-allowlisted
    prompt is a deterministic denial, surfaced as an outbox escalation line
-   (`{"type":"escalation",...}`, the HIMMEL-314/682 grants contract), never a
+   (`{"type":"escalation",...}`, the grants contract), never a
    stall.
 3. **Approval-window UX term:** a hermes approval window for a SPAWN shows the
    lane, branch, and toolset/grant list — the policy surface — not raw command
@@ -208,7 +208,7 @@ validation:
 4. **Post-hoc validation stays load-bearing:** the parent session reviews the
    branch diff + outbox/artifacts before any push/PR (single-writer ship flow).
 
-Evidence note (codex-direct, HIMMEL-745 probe 2026-07-07): the deterministic
+Evidence note (codex-direct probe, 2026-07-07): the deterministic
 hook path denied a patch-tool write on a main checkout, while a terminal-path
 write (`pwsh Set-Content`) went through — the fix for such gaps is structural
 (extend the hook matcher to the terminal tool), not a classifier copy, which

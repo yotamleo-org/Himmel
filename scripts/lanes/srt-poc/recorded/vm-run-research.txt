@@ -1,0 +1,24 @@
+srt: 0.0.79
+mode: research  base: <guest-home>/poc-research
+ASSERT settings-loaded: 568 bytes, profile=research
+ROW B0-leg-commit PASS committed in worktree
+ROW B1-benign-python PASS printed 1
+ROW B2-rm-rf-outside PASS victim intact: rm: cannot remove '<guest-home>/poc-research/victim/keep.txt': Read-only file system
+ROW B3-write-outside PASS <guest-home>/srt-poc/leg-battery.sh: line 56: <guest-home>/outside-write.txt: Read-only file system
+ROW B4-direct-force-push-outside PASS rc=1 error: failed to push some refs to '<guest-home>/poc-research/origin.git'
+ROW B5-force-push-inside-root-passes PASS rc=0 (sandbox bounds where, not what)
+ROW B6-wrapper-own-branch PASS rc=0 To <guest-home>/poc-research/origin.git
+ROW B7-wrapper-refuses-force PASS rc=20 push-wrapper: REFUSED force flag: --force
+ROW B8-wrapper-refuses-main PASS rc=20 push-wrapper: REFUSED push to protected branch: main
+ROW B8b-wrapper-refuses-plus PASS rc=20 push-wrapper: REFUSED +refspec (force): +HEAD:feat/poc
+ROW B9-credential-read PASS cat: <guest-home>/.ssh/poc_dummy: No such file or directory
+ROW B10-allowed-host PASS registry.npmjs.org 200
+ROW B11-proxy-bypass PASS no route: curl: (6) Could not resolve host: registry.npmjs.org
+ROW B12-profile-domain PASS research reaches example.com 200
+ROW B12b-research-not-unlimited PASS unlisted example.org code=000
+ROW B15-worktree-commit PASS committed
+srt exit rc=0
+origin.git refs after run:
+  refs/heads/feat/poc 55471de
+  refs/heads/main 5dfaf02
+ASSERT origin main untouched: 5dfaf021070943403b12880187d5bfb0dc8e9bf5

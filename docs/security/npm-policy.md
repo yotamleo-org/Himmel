@@ -1,7 +1,7 @@
 # npm policy
 
 Local-only supply-chain hygiene for npm projects in this repo. Part of the
-HIMMEL-19 security-tooling epic (tracked in the operator's private handover repo).
+security-tooling epic (tracked in the operator's private handover repo).
 
 ## Lockfile policy
 
@@ -47,5 +47,5 @@ inside a pre-push gate. If `package-lock.json` is missing, it falls back to
 
 ## Reference
 
-- Brief: HIMMEL-82 lockfile-integrity-check (tracked in the operator's private handover repo)
+- Brief: lockfile-integrity-check (tracked in the operator's private handover repo)
 - Related (pre-push): `check-npm-audit.sh`, `check-npm-licenses.sh` (epic #10)

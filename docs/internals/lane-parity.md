@@ -1,6 +1,6 @@
-# Lane-parity index (WS5, HIMMEL-654)
+# Lane-parity index (WS5)
 
-> **Status:** WS5 Task 0 skeleton (HIMMEL-654). The living successor to the 562
+> **Status:** WS5 Task 0 skeleton. The living successor to the 562
 > compatibility audit and the per-lane extension of
 > [`harness-compat.md`](harness-compat.md). The invariant guard set is sourced
 > from root `CLAUDE.md` ENFORCEMENT (per-hook detail in
@@ -8,8 +8,7 @@
 > binding contract; this doc implements D1 (a living index, doc + tested
 > subset), D6 (doctrine lives here, not root `CLAUDE.md`), D7 (merge-trust is a
 > WS7-owned column the index consumes, not the trust gate). D9 (no
-> `claude-codex` row) was **RETIRED 2026-07-13** (operator decision,
-> HIMMEL-979) — see the superseded-lock note below.
+> `claude-codex` row) was **RETIRED 2026-07-13** (operator decision) — see the superseded-lock note below.
 
 > **Note:** this index records compatibility/parity, not current routing —
 > dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec,
@@ -95,15 +94,15 @@ of the 9 ENFORCEMENT PreToolUse hooks -- so it has no home among the six
 deny-guards above. It is recorded here as its own dimension row so every
 write-fence cell sits in a real row (no home-less cell). The hermes
 GLM-engine write-fence cell flipped `pending:Task3` -> `tested` when Task 3
-confirmed HIMMEL-695 landed it (see the conformance notes below).
+confirmed the write-fence landed (see the conformance notes below).
 
 | Lane | Write-authority / external-write fence |
 |---|---|
 | main-claude | auto-mode classifier |
 | glm-spawn | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 | glm-launcher | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
-| codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute, HIMMEL-745), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
-| hermes-main (DEFAULT; engines codex-5.5 + GLM) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (HIMMEL-695 write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The four OTHER deny-guards were ported into parity_guard by Task 6 / HIMMEL-731 (all now `present`). |
+| codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
+| hermes-main (DEFAULT; engines codex-5.5 + GLM) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The four OTHER deny-guards were ported into parity_guard by Task 6 (all now `present`). |
 | hermes-junior | n/a -- read-only tier (`luna_vault_guard`) |
 | gemini / copilot / cursor | `deferred` |
 
@@ -154,11 +153,11 @@ carveout). codex-direct reaches the native block-* hooks THROUGH the
 `.codex/hooks.json` adapter (the exit-2 to deny translation proved by
 `test-codex-run-hook.sh`); the per-guard codex resolution is enumerated in the
 Task 2 guard x lane sub-table. hermes-main's `parity_guard` fences both
-engines; the GLM-engine write-fence LANDED (HIMMEL-695) and is resolved in the
+engines; the GLM-engine write-fence LANDED and is resolved in the
 write-authority row above (`tested:scripts/hermes/test-parity-guard.sh`); the
 residual non-write-fence GAPs are enumerated in the guard-parity table below.
 
-**`claude-codex` lock (D9) — RETIRED 2026-07-13 (operator decision, HIMMEL-979).**
+**`claude-codex` lock (D9) — RETIRED 2026-07-13 (operator decision).**
 D9 locked "Codex reaches real work ONLY via `codex-direct` or `hermes` — never
 a `claude` backend swap" at a time when no Anthropic-compatible codex endpoint
 existed. The claudex pattern (a self-hosted CLIProxyAPI OAuth-wrapping the
@@ -166,7 +165,7 @@ codex subscription behind an Anthropic-compatible surface; theo/t3.gg recipe,
 field evidence in luna) changed the feasibility AND the payoff: the swap keeps
 the FULL native himmel harness — every PreToolUse hook fires natively, exactly
 as in the `claude-glm` lane, so guard parity is native-column, not an adapter
-column. The launcher shipped as `scripts/claude-codex{,.ps1}` (HIMMEL-979); the
+column. The launcher shipped as `scripts/claude-codex{,.ps1}`; the
 old T14(a) invariant — which FAILED the suite whenever any `claude-codex`
 launcher file appeared in a branch diff — was retired in the same change. A
 full index row for the lane (guard x lane cells) is deferred to the next
@@ -190,14 +189,14 @@ dimension row -- is `tested:<path>` (no `GAP`, no `pending:`). The write-fence
 row counts toward `tested`-green because write-authority is the load-bearing
 parity dimension (Task 0): a lane is fully guard-tested only once its
 write-fence is also tested. Task 3 confirmed the hermes-main GLM-engine
-write-fence LANDED (HIMMEL-695: `parity_guard.py` fences plain push /
+write-fence LANDED (`parity_guard.py` fences plain push /
 remote-URL rewrite / gh PR-mutation / network CLIs, fail-closed on an
 untrusted or unknown engine, proved by `test-parity-guard.sh`), so the
 write-authority cell flips from `pending:Task3` to
 `tested:scripts/hermes/test-parity-guard.sh`. Task 3's enumeration found four
 deny-guards `parity_guard.py` did NOT enforce (`block-edit-on-main`,
 `block-backend-tier` / MCP-fence, `block-docker-privesc`,
-`block-merged-pr-commit`); **Task 6 / HIMMEL-731 ported all four into
+`block-merged-pr-commit`); **Task 6 ported all four into
 `parity_guard.py`** (proved by `test-parity-guard.sh`), so those four
 hermes-main cells are now `tested` and the row is `tested`-green. All six
 deny-guards plus the write-fence are now PRESENT under hermes.
@@ -228,10 +227,10 @@ Notes on the cells:
   `~/.claude-glm` copy (glm-launcher).
 - **codex-direct.** Each deny-guard is proved by the codex proving PAIR --
   `tested:scripts/hooks/test-codex-run-hook.sh` (the `.codex/hooks.json`
-  adapter's exit-2 to `deny` translation, HIMMEL-427) PLUS the NATIVE
+  adapter's exit-2 to `deny` translation) PLUS the NATIVE
   `tested:scripts/hooks/test-block-<guard>.sh` the adapter reaches (all six
-  native fixtures exist). HIMMEL-745 closed the two remaining codex-direct
-  GAPs with a through-adapter END-TO-END fixture,
+  native fixtures exist). The two remaining codex-direct
+  GAPs were closed with a through-adapter END-TO-END fixture,
   `scripts/hooks/test-codex-adapter-e2e.sh`: it drives
   `.codex/codex-hook-adapter.sh` against the REAL guardrails
   (`CLAUDE_PROJECT_DIR` = the checkout) and asserts the JSON `deny` lands for a
@@ -242,7 +241,7 @@ Notes on the cells:
   `block-edit-on-main.sh` only on the Edit|Write matcher, so the PATCH path was
   denied but the TERMINAL path (a pwsh/bash command that writes a file, pushes,
   or hits the network) succeeded, and codex has NO auto-mode classifier to
-  catch it (HIMMEL-748 deterministic-guards-only). `block-terminal-write-fence.sh`
+  catch it (deterministic-guards-only). `block-terminal-write-fence.sh`
   is the codex-lane classifier substitute for that terminal surface
   (external-write class fail-closed behind `CODEX_EXTERNAL_WRITES_OK`; a
   write-on-main class honouring `.single-writer`), unit-tested by
@@ -253,13 +252,13 @@ Notes on the cells:
   fence; both engines are exercised by
   `tested:scripts/hermes/test-parity-guard.sh`. The GLM-engine write-fence cell
   in the write-authority row is RESOLVED by Task 3 to
-  `tested:scripts/hermes/test-parity-guard.sh`: HIMMEL-695 landed the
-  write-fence in `parity_guard.py` (plain push / remote-URL rewrite / gh
+  `tested:scripts/hermes/test-parity-guard.sh`: the
+  write-fence landed in `parity_guard.py` (plain push / remote-URL rewrite / gh
   PR-mutation / network CLIs, fail-closed on an untrusted or unknown engine),
   so it is PRESENT and tested -- the earlier "only `git push --force`" reading
   is superseded. The four non-write-fence GAPs (edit-on-main, docker-privesc,
-  merged-PR-commit, MCP-fence) were PORTED into `parity_guard.py` by Task 6 /
-  HIMMEL-731 and are now `present` (proved by `test-parity-guard.sh`), so the
+  merged-PR-commit, MCP-fence) were PORTED into `parity_guard.py` by Task 6
+  and are now `present` (proved by `test-parity-guard.sh`), so the
   hermes-main column is `tested`-green.
 - **hermes-junior.** `GAP` -- its `luna_vault_guard` is a hermes-side artifact
   with no in-repo test.
@@ -274,18 +273,18 @@ hermes, since himmel's Claude Code PreToolUse hooks do NOT load there -- actuall
 enforce, for BOTH engines (codex-5.5 + GLM) the `himmel_agent` profile is
 pointed at? Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
 (Claude-Code-specific mechanics with no hermes analog), `GAP` (not enforced --
-filed under HIMMEL-563, porting is Task 6).
+filed for porting, which is Task 6).
 
 | Invariant deny-guard | parity_guard.py status (both engines) | Verdict |
 |---|---|---|
-| `block-read-secrets` | `SECRET_READ` regex on `read_file` / `search_files` (any arg key): `.env` / `.envrc` / `.ssh` / `id_rsa` / `.pem` / `.key` / `secrets.yaml` / channel tokens / `.git-credentials` / `hosts.yml` / `credentials.json`. PHI egress fence (HIMMEL-695) refuses reads under a `.salus` / `phi-roots` / `egress-denylist` root. | `present` |
-| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap (HIMMEL-647) is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
-| write-authority / external-write-fence (cross-lane dimension) | HIMMEL-695 landed the engine-gated write-fence: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
-| `block-edit-on-main` | `_edit_on_main_reason` (HIMMEL-731) refuses a `write_file` / `patch` / `delete_file` into a repo whose checked-out branch is the default branch (main/master), and a terminal `git commit` there. Branch read cheaply from `.git/HEAD` (worktree/submodule `gitdir:` indirection). Honors the `.single-writer` opt-out; a worker's own `type/slug` branch commits freely (carve-out). `check_write_path` still blocks the guard / profile `config.yaml` / `SOUL.md` / Claude's home. | `present` (main-branch edit/commit lock ported) |
-| `block-merged-pr-commit` | `_merged_pr_reason` (HIMMEL-731) queries the branch's merged-PR count via `gh` (GH_CMD-overridable) before a terminal `git commit` and refuses on >0. HYGIENE guard: fail-open on gh absent/errored/non-numeric; a fresh no-PR branch is allowed. | `present` (merged-PR-branch detection ported) |
-| `block-docker-privesc` | `TERMINAL_DESTRUCTIVE` covers recursive delete / disk / scheduler / process / registry / force-push / `curl|sh`; the `DOCKER_PRIVESC` regex (HIMMEL-731) adds `docker`/`podman` privesc shapes -- `--privileged`, `--pid host`, `--volumes-from`, root-equivalent `--cap-add`, the docker socket, root `--user`, and secret-bearing host-root bind mounts (`/` `/etc` `/root`). | `present` (container privesc block ported; ro/rw + system-dir nuance not modelled -- over-block is fail-safe) |
-| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, `.*` since HIMMEL-2637 -- it included `mcp__.*` from HIMMEL-731) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
-| dispatch coverage (matcher) | hermes `fullmatch`es the `pre_tool_call` matcher against the tool name and that is its ONLY blocking event, so every tool the pattern missed was never judged. The hand-listed pattern left `execute_code`, `delegate_task`, `browser_*`, `skill_manage`, `process_manage`, `cronjob_manage`, `send_message` and the rest of the registry outside every fence above, and carried four dead terms (`delete_file`/`remove_file`/`move_file`/`rename_file` are `skill_manage` action values, not tools). HIMMEL-2637: the matcher is `.*`; `parity_guard.classify_tool` gives every registry tool a class -- `code` tools (`execute_code`, `browser_exec`, `browser_cdp`, `cronjob_manage`, `process_manage`) get the terminal deny-guards run over their command text (literal-text scan; obfuscation is not caught), `skill_manage` an action allow-list plus the write-fence on its (batch) paths, `text_to_speech`/`desktop_project` the write-fence on their path arg, and every other known tool a secret/PHI-path scan of its non-prose args. An unclassified tool is refused fail-closed. No known tool is blanket-denied. The outbound tools (`send_message`, `ha_call_service`, ...) are NOT engine-fenced (operator decision). `test-hook-inventory.sh` statically scans the installed hermes registry and fails when a tool is undelivered or unclassified. | `present` (dispatch coverage proved against the installed registry) |
+| `block-read-secrets` | `SECRET_READ` regex on `read_file` / `search_files` (any arg key): `.env` / `.envrc` / `.ssh` / `id_rsa` / `.pem` / `.key` / `secrets.yaml` / channel tokens / `.git-credentials` / `hosts.yml` / `credentials.json`. PHI egress fence refuses reads under a `.salus` / `phi-roots` / `egress-denylist` root. | `present` |
+| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
+| write-authority / external-write-fence (cross-lane dimension) | The engine-gated write-fence landed: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
+| `block-edit-on-main` | `_edit_on_main_reason` refuses a `write_file` / `patch` / `delete_file` into a repo whose checked-out branch is the default branch (main/master), and a terminal `git commit` there. Branch read cheaply from `.git/HEAD` (worktree/submodule `gitdir:` indirection). Honors the `.single-writer` opt-out; a worker's own `type/slug` branch commits freely (carve-out). `check_write_path` still blocks the guard / profile `config.yaml` / `SOUL.md` / Claude's home. | `present` (main-branch edit/commit lock ported) |
+| `block-merged-pr-commit` | `_merged_pr_reason` queries the branch's merged-PR count via `gh` (GH_CMD-overridable) before a terminal `git commit` and refuses on >0. HYGIENE guard: fail-open on gh absent/errored/non-numeric; a fresh no-PR branch is allowed. | `present` (merged-PR-branch detection ported) |
+| `block-docker-privesc` | `TERMINAL_DESTRUCTIVE` covers recursive delete / disk / scheduler / process / registry / force-push / `curl\|sh`; the `DOCKER_PRIVESC` regex adds `docker`/`podman` privesc shapes -- `--privileged`, `--pid host`, `--volumes-from`, root-equivalent `--cap-add`, the docker socket, root `--user`, and secret-bearing host-root bind mounts (`/` `/etc` `/root`). | `present` (container privesc block ported; ro/rw + system-dir nuance not modelled -- over-block is fail-safe) |
+| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
+| dispatch coverage (matcher) | hermes `fullmatch`es the `pre_tool_call` matcher against the tool name and that is its ONLY blocking event, so every tool the pattern missed was never judged. The hand-listed pattern left `execute_code`, `delegate_task`, `browser_*`, `skill_manage`, `process_manage`, `cronjob_manage`, `send_message` and the rest of the registry outside every fence above, and carried four dead terms (`delete_file`/`remove_file`/`move_file`/`rename_file` are `skill_manage` action values, not tools). The matcher is now `.*`; `parity_guard.classify_tool` gives every registry tool a class -- `code` tools (`execute_code`, `browser_exec`, `browser_cdp`, `cronjob_manage`, `process_manage`) get the terminal deny-guards run over their command text (literal-text scan; obfuscation is not caught), `skill_manage` an action allow-list plus the write-fence on its (batch) paths, `text_to_speech`/`desktop_project` the write-fence on their path arg, and every other known tool a secret/PHI-path scan of its non-prose args. An unclassified tool is refused fail-closed. No known tool is blanket-denied. The outbound tools (`send_message`, `ha_call_service`, ...) are NOT engine-fenced (operator decision). `test-hook-inventory.sh` statically scans the installed hermes registry and fails when a tool is undelivered or unclassified. | `present` (dispatch coverage proved against the installed registry) |
 
 **GLM-engine write-fence vs `scripts/hooks/block-glm-external-writes.sh`.** The
 hermes runtime does not load that CC hook, so `parity_guard` is the sole
@@ -293,23 +292,23 @@ external-write fence for every engine on the `himmel_agent` profile. Compared
 shape-by-shape against the hook (the behavior spec): `git push` (plain),
 `git remote set-url` / `config ...url`, the `gh` carve-out (`issue *` + PR/run
 reads only), and the network-CLI set (`curl`/`wget`/`iwr`/`irm`) all match --
-the terminal / file external-write shapes are at PARITY (present, HIMMEL-695).
-The MCP surface -- once the ONE residual gap -- is now CLOSED by Task 6 /
-HIMMEL-731: `wire_parity_guard.py`'s matcher included `mcp__.*` (now `.*`, HIMMEL-2637) and
+the terminal / file external-write shapes are at PARITY (present).
+The MCP surface -- once the ONE residual gap -- is now CLOSED by Task 6:
+`wire_parity_guard.py`'s matcher included `mcp__.*` (now `.*`) and
 `parity_guard.main()` blanket-denies every `mcp__*` tool except the read-only
 `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`), mirroring
 `block-glm-external-writes.sh`. So an MCP tool call now invokes the guard and is
 fenced on the default lane -- `block-backend-tier` is `present` above.
 
 **Bonus (not in the deny-guard set, recorded for completeness):** the
-unconditional PHI / data-egress fence (HIMMEL-695, F-B5) fires on EVERY engine
+unconditional PHI / data-egress fence (F-B5) fires on EVERY engine
 on this cloud profile -- a `.salus`-marked path or a configured `phi-roots` /
 `egress-denylist` root is refused for read / search / write / delete
 (symlink/junction-safe via `realpath`, fail-closed on an unreadable list). It is
 `present` and proved by `test-parity-guard.sh`; it is not one of the six
 deny-guards, so it is not a parity GAP, just an additional fence hermes carries.
 
-**Ported by Task 6 / HIMMEL-731 (the four GAPs are now closed in
+**Ported by Task 6 (the four GAPs are now closed in
 `parity_guard`, proved by `test-parity-guard.sh`):**
 
 - a branch-aware main-branch edit/commit lock (`_edit_on_main_reason`) --
@@ -322,5 +321,5 @@ deny-guards, so it is not a parity GAP, just an additional fence hermes carries.
   carve-out (mirror `block-glm-external-writes.sh`) --
   `block-backend-tier` / MCP-external-write parity (the load-bearing one).
 
-All four are now `present`; with the write-fence already PRESENT (HIMMEL-695),
+All four are now `present`; with the write-fence already PRESENT,
 the hermes guard gap is CLOSED and the hermes-main column is `tested`-green.

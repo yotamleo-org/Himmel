@@ -1,4 +1,4 @@
-# API credit lane (HIMMEL-4904, HIMMEL-4985)
+# API credit lane
 
 Billing counterpart to the `claude -p` rule in
 [enforcement.md](enforcement.md#claude-invocation-billing-himmel-128). The lane

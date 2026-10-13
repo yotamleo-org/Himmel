@@ -1,88 +1,92 @@
 #!/usr/bin/env bash
 # scripts/guardrails/check-git-env-scrub.sh — gate: trust-path git calls must
-# scrub GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE (HIMMEL-3570).
+# scrub the repository-redirecting GIT_* variables (HIMMEL-3570, HIMMEL-3571,
+# HIMMEL-5393).
 #
-# WHY: a git subprocess on a trust path inherits the caller's four GIT_*
-# env vars, so an attacker-set value steers which repo/worktree/index it
-# actually answers about (PR 1212 anchor-handoff.sh, PR 1217
-# plugin-profiles.mjs — both this class). This gate does NOT fix either
-# existing site; it stops a THIRD one from landing.
+# WHY: a git subprocess on a trust path inherits the caller's GIT_* env, so an
+# attacker-set value steers which repo/worktree/index/object store it actually
+# answers about (PR 1212 anchor-handoff.sh, PR 1217 plugin-profiles.mjs — both
+# this class). This gate stops a new unscrubbed call from landing.
+#
+# The scrub set is the 14 variables scripts/lib/git-clean.sh and
+# scripts/lanes/git-clean.mjs clear (GIT_NO_REPLACE_OBJECTS is deliberately
+# NOT in it, HIMMEL-3666). A hand scrub of only the original four no longer
+# counts.
 #
 # Trust paths (fixed, not discovered): scripts/handover/**, scripts/lanes/**,
 # scripts/hooks/**, scripts/cr/**, scripts/lib/go-gate.sh. Excluded within
-# those: test-*.sh, *.test.mjs, *.test.js, and anything under a fixtures/ or
-# test-fixtures/ directory — those run git in scratch fixtures by design.
+# those: test-*.sh, *.test.{mjs,js,cjs,ts}, test-*.ps1, test_*.py, and
+# anything under a fixtures/ or test-fixtures/ directory — those run git in
+# scratch fixtures by design.
 #
-# Two detectors, deliberately different units (console ruling on the first
-# draft, 2026-09-24 — a per-call baseline churned on every insertion and
-# counted case-pattern/string/comment mentions of "git" as calls):
+# Scanned extensions: .sh .mjs .js .cjs .ts .py .ps1.
 #
-#   shell (*.sh)   FILE-LEVEL. Any .sh file that invokes `git` in command
-#                  position anywhere must scrub the four vars ONCE, before
-#                  that first invocation: an `unset` of all four (can be
-#                  split across several `unset` lines), or sourcing
-#                  scripts/lib/git-clean.sh and calling its git_env_scrub, or
-#                  a standalone file-level `# git-env-ok: <reason>` comment
-#                  line. A call to the git_clean wrapper never counts as a
-#                  bare invocation (its name doesn't match the `git` word
-#                  boundary), so a file that only ever calls it needs no
-#                  scrub line at all. A shebang-less .sh with NO git
-#                  invocation at all is skipped without comment (the common
-#                  case — a sourced-only lib of plain functions); one that
-#                  DOES invoke git must additionally carry a standalone
-#                  `# sourced-lib` marker if it truly is only ever sourced
-#                  (whatever sources it owns the scrub) — otherwise it is
-#                  scanned exactly like a shebang'd entry point, since the
-#                  absence of a shebang alone doesn't prove the file is never
-#                  run directly (`bash script.sh` needs none).
-#                  "Command position" = git preceded by start-of-line, or a
-#                  shell separator/operator (`;`, `&`, `|`, `(`, backtick,
-#                  whitespace) and followed by whitespace or end-of-line, on
-#                  a line with quoted-string content and trailing comments
-#                  stripped first — so a case-pattern label, a string
-#                  literal, or a comment mentioning "git" is never a hit.
+# Three detectors, deliberately different units:
 #
-#   JS (*.mjs/.js) PER-CALL (no file-wide scrub primitive exists without
-#                  side effects). An execFileSync/spawnSync/execSync/spawn
-#                  of 'git' with no scrub visible in the same statement (the
-#                  matched line plus the next few) is a hit unless it carries
-#                  a same-line `// git-env-ok: <reason>`. A call to the
-#                  shared gitClean() helper (scripts/lanes/git-clean.mjs) is
-#                  never flagged the same way.
+#   shell (*.sh)   FILE-LEVEL. A file that invokes git must scrub the full set
+#                  ONCE, before that first invocation: `unset` of all 14
+#                  (several lines allowed), or sourcing scripts/lib/git-clean.sh
+#                  (a real `.`/`source` command) and calling git_env_scrub as a
+#                  command, or a per-call `env -u NAME ...` of all 14 on the
+#                  call itself, or an own-line `# git-env-ok: <reason>` comment.
+#                  An unset / git_env_scrub inside a function counts only when
+#                  that function is called before the first invocation.
+#                  A git invocation is `git`, `\git`, a path ending /git, a
+#                  variable assigned a git path (`G=$(command -v git)`) at
+#                  command position, or the same inside `bash -c '...'` /
+#                  `eval "..."` payloads. Line continuations are joined; a `#`
+#                  starts a comment only at a word start (`$#`, `${#x}` do not).
+#                  A shebang-less .sh that invokes git needs an own-line
+#                  `# sourced-lib: <reason>` marker (a bare marker fails).
 #
-# Exemption: a non-empty reason only — a bare marker still fails (same
-# convention as leak-classes.sh's `leak-allow:`).
+#   JS (.mjs/.js/.cjs/.ts)  PER-CALL, token-based (strings, comments and
+#                  templates are real tokens, not regex text). Any call whose
+#                  first argument is the string 'git' (or 'git ...') — a spawn
+#                  primitive or a wrapper such as run('git', ...) — or a const
+#                  holding 'git', is a hit unless ALL 14 names appear in that
+#                  call's own paren-balanced argument span as real code (a bare
+#                  identifier, a quoted object key, or x['NAME']), or its line
+#                  carries a real trailing `// git-env-ok: <reason>` comment.
+#                  A nearby gitClean() call masks nothing.
 #
-# Ratchet: scripts/guardrails/git-env-baseline.txt. `SHELL:<path>` entries
-# grandfather a whole shell file (no scrub found) — no line number, so
-# inserting a line above the file's git calls does not churn it. `JS:<path>:
-# <hash>` entries grandfather one unscrubbed JS call in that file with that
-# trimmed-line content hash, WITH MULTIPLICITY — N identical baselined lines
-# in one file grandfather up to N identical current hits; a new (N+1)th
-# occurrence, or any changed line, is not grandfathered. Burning the baseline
-# down is later HIMMEL-3570 slices, not this PR.
+#   py/ps1         FILE-LEVEL, like shell: all 14 names must appear in code
+#                  before the first git call, or `# git-env-ok: <reason>`.
+#
+# Exemption: a non-empty reason only — a bare marker still fails.
+#
+# Ratchet: scripts/guardrails/git-env-baseline.txt (`#` lines are comments).
+# `SHELL:<path>` / `FILE:<path>` grandfather a whole file; `JS:<path>:<hash>`
+# grandfathers one unscrubbed JS call by trimmed-line hash, WITH MULTIPLICITY.
+#
+# The gate does not trust its environment: it clears the GIT_* set from its own
+# process (keeping GIT_INDEX_FILE under --staged, where a hook legitimately
+# points it at the index being committed) and reads the baseline only from the
+# tracked default or an explicit --baseline FILE — never from an inherited
+# variable.
 #
 # Modes:
-#   --staged            scan trust-path files as they are STAGED (git index),
-#                        for the pre-commit hook.
-#   --tree [PATH...]     scan trust-path files on disk (working tree), for the
-#                        CI job. Explicit PATH args override the default
-#                        trust-path set — used by the test suite to point at
-#                        fixtures instead of the real trust paths.
-#   --emit-baseline      scan the real trust paths on disk and print every
-#                        current hit's baseline key to stdout, one per line —
-#                        regenerates scripts/guardrails/git-env-baseline.txt.
-#                        Ignores any existing baseline (every hit is emitted,
-#                        not just new ones), and always exits 0.
+#   [--baseline FILE] --staged        scan trust-path files as STAGED.
+#   [--baseline FILE] --tree [PATH...] scan trust-path files on disk; PATH args
+#                                      override the default trust-path set.
+#   --emit-baseline                   print every hit's baseline key; exit 0.
 #
-# Exit: 0 = clean (or fail-open below); 1 = unscrubbed/unexempted hit(s) found
-# outside the baseline; 2 = usage/setup error.
+# Exit: 0 = clean; 1 = unscrubbed/unexempted hit(s) outside the baseline;
+# 2 = usage/setup error.
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 --staged | --tree [PATH...] | --emit-baseline" >&2
+    echo "usage: $0 [--baseline FILE] --staged | --tree [PATH...] | --emit-baseline" >&2
     exit 2
 }
+
+SCRUB_VARS="GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT"
+
+BASELINE_ARG=""
+if [ "${1:-}" = "--baseline" ]; then
+    [ "$#" -ge 2 ] || usage
+    BASELINE_ARG="$2"
+    shift 2
+fi
 
 MODE=""
 TREE_PATHS=()
@@ -109,16 +113,45 @@ case "${1:-}" in
         ;;
 esac
 
+# Self-scrub: this gate's own git calls (repo discovery, ls-files, diff
+# --cached, show) must not follow an inherited redirect.
+for _v in $SCRUB_VARS; do
+    if [ "$MODE" = staged ] && [ "$_v" = GIT_INDEX_FILE ]; then continue; fi
+    unset "$_v"
+done
+unset _v
+
+if [ -n "$BASELINE_ARG" ]; then
+    case "$BASELINE_ARG" in
+        /*) : ;;
+        *) BASELINE_ARG="$PWD/$BASELINE_ARG" ;;
+    esac
+fi
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "check-git-env-scrub: not inside a git repo" >&2; exit 2; }
 cd "$REPO_ROOT"
 
-# GIT_ENV_SCRUB_BASELINE overrides the baseline path — used by
-# test-check-git-env-scrub.sh to point at a fixture baseline instead of the
-# real one; unset in every production caller (pre-commit, CI).
-BASELINE_FILE="${GIT_ENV_SCRUB_BASELINE:-$REPO_ROOT/scripts/guardrails/git-env-baseline.txt}"
+BASELINE_FILE="${BASELINE_ARG:-$REPO_ROOT/scripts/guardrails/git-env-baseline.txt}"
+
+# Baseline entries (comments and blanks dropped), one per array element.
+BASE_ENTRIES=()
+if [ "$EMIT_BASELINE" -ne 1 ] && [ -r "$BASELINE_FILE" ]; then
+    while IFS= read -r _b || [ -n "$_b" ]; do
+        case "$_b" in ''|'#'*) continue ;; esac
+        BASE_ENTRIES+=("$_b")
+    done < "$BASELINE_FILE"
+fi
+
+baseline_has() {
+    local e
+    [ "${#BASE_ENTRIES[@]}" -gt 0 ] || return 1
+    for e in "${BASE_ENTRIES[@]}"; do
+        [ "$e" = "$1" ] && return 0
+    done
+    return 1
+}
 
 sha256_hex() {
-    # sha256sum (GNU coreutils) or shasum -a 256 (BSD/macOS, no sha256sum).
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum
     else
@@ -127,9 +160,6 @@ sha256_hex() {
 }
 
 line_hash() {
-    # First 12 hex chars of the sha256 of the trimmed line content — stable
-    # under re-indentation of SURROUNDING code, sensitive to a change of THIS
-    # line, which is exactly what the ratchet wants to key on.
     printf '%s' "$1" | sha256_hex | cut -c1-12
 }
 
@@ -143,99 +173,415 @@ trim() {
 is_excluded_path() {
     case "$1" in
         */test-*.sh|test-*.sh) return 0 ;;
-        *.test.mjs|*.test.js) return 0 ;;
+        */test-*.ps1|test-*.ps1|*.Tests.ps1) return 0 ;;
+        */test_*.py|test_*.py) return 0 ;;
+        *.test.mjs|*.test.js|*.test.cjs|*.test.ts) return 0 ;;
         */fixtures/*|*/test-fixtures/*) return 0 ;;
     esac
     return 1
 }
 
-# ---- quote/comment-aware code stripping ----
-# Replaces single- and double-quoted string content with spaces and truncates
-# at the first unquoted `#`, in one pass. This is what keeps a case-pattern
-# label, a string literal ("run git status"), and a comment from ever being
-# mistaken for a real invocation, without a full shell tokenizer.
-#
-# A `$(...)` command substitution is left un-blanked even when it opens
-# inside a double-quoted string (`out="$(git rev-parse HEAD)"` is a common,
-# real invocation) — cmdsub tracks the paren depth of the substitution and
-# suspends the enclosing double-quote's blanking for its extent, restoring it
-# once the substitution's parens balance back to zero (HIMMEL-3570 CR fixup).
-strip_code() {
-    awk '
-    {
-        out = ""; instr = 0; cmdsub = 0; saved_instr = 0
-        n = length($0)
-        for (i = 1; i <= n; i++) {
-            c = substr($0, i, 1)
-            if (cmdsub == 0 && instr != 1 && c == "$" && substr($0, i+1, 1) == "(") {
-                saved_instr = instr
-                instr = 0
-                cmdsub = 1
-                out = out "$("
-                i++
-                continue
-            }
-            if (cmdsub > 0) {
-                if (c == "(") { cmdsub++; out = out c; continue }
-                if (c == ")") {
-                    cmdsub--
-                    out = out c
-                    if (cmdsub == 0) { instr = saved_instr }
-                    continue
-                }
-            }
-            if (instr == 0) {
-                if (c == "#") { break }
-                else if (c == "\047") { instr = 1; out = out " " }
-                else if (c == "\"") { instr = 2; out = out " " }
-                else { out = out c }
-            } else if (instr == 1) {
-                if (c == "\047") { instr = 0 } else { out = out " " }
-            } else {
-                if (c == "\\") { i++; out = out "  " }
-                else if (c == "\"") { instr = 0 }
-                else { out = out " " }
-            }
-        }
-        print out
-    }' <<<"$1"
-}
-
-is_git_invocation() {
-    # code_only: comment/quote-stripped. A `git` word: start-of-line or a
-    # shell separator before it, whitespace or end-of-line after it. Excludes
-    # `git_clean` (next char `_`) and a case-label `git)` (next char `)`) by
-    # construction.
-    #
-    # Captured rather than piped into `grep -q` (pipefail-ok would not save
-    # us here: grep is the last command, so a match is never masked — but a
-    # SIGPIPE-killed producer under pipefail WOULD still flip the pipeline
-    # non-zero on an otherwise-real match; capturing sidesteps that class
-    # entirely, HIMMEL-1430).
-    local m
-    m=$(printf '%s' "$1" | grep -E '(^|[;&|(`[:space:]])git([[:space:]]|$)') || true
-    [ -n "$m" ]
-}
-
-exemption_reason_js() {
-    printf '%s' "$1" | grep -oE '//[[:space:]]*git-env-ok:.*' | tail -n1 || true
-}
-
-# Blanks everything from the first `//` onward — naive (does not track
-# strings), so a `//` inside a string literal is a rare accepted false
-# negative for this heuristic gate. Used ONLY for the scrub-window text so a
-# comment MENTIONING the four GIT_* names can't fake a real scrub (HIMMEL-3570
-# CR fixup) — never applied to the raw line used for call/exemption matching.
-strip_js_comment() {
+scannable() {
     case "$1" in
-        *'//'*) printf '%s' "${1%%//*}" ;;
-        *) printf '%s' "$1" ;;
+        *.sh|*.mjs|*.js|*.cjs|*.ts|*.py|*.ps1) return 0 ;;
     esac
+    return 1
 }
+
+# ---- shell detector (awk, one pass per file) ----
+# Prints one line: R <first-unscrubbed-line|0> <exempt> <exempt-noreason>
+#                    <sourced-lib> <sourced-lib-noreason>
+read -r -d '' SH_AWK <<'AWK' || true
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+
+# Blanks quoted content and truncates at a word-start `#`; leaves "$NAME"
+# unquoted so a quoted variable expansion stays visible. Sets rawcut to the
+# raw text before the comment.
+function strip(s,   out, n, i, c, prev, instr, cmdsub, saved, rest) {
+  out = ""; instr = 0; cmdsub = 0; saved = 0; n = length(s); rawcut = s
+  for (i = 1; i <= n; i++) {
+    c = substr(s, i, 1)
+    prev = (i > 1) ? substr(s, i - 1, 1) : ""
+    if (cmdsub == 0 && instr != 1 && c == "$" && substr(s, i + 1, 1) == "(") {
+      saved = instr; instr = 0; cmdsub = 1; out = out "$("; i++; continue
+    }
+    if (cmdsub > 0) {
+      if (c == "(") { cmdsub++; out = out c; continue }
+      if (c == ")") { cmdsub--; out = out c; if (cmdsub == 0) instr = saved; continue }
+    }
+    if (instr == 0) {
+      if (c == "\\") { out = out c substr(s, i + 1, 1); i++; continue }
+      if (c == "#" && (i == 1 || prev ~ /[ \t;&|(]/)) { rawcut = substr(s, 1, i - 1); break }
+      else if (c == "\047") { instr = 1; out = out " " }
+      else if (c == "\"") {
+        rest = substr(s, i)
+        if (match(rest, /^"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"/)) {
+          out = out " " substr(rest, 2, RLENGTH - 2) " "; i += RLENGTH - 1; continue
+        }
+        instr = 2; out = out " "
+      } else out = out c
+    } else if (instr == 1) {
+      if (c == "\047") instr = 0; else out = out " "
+    } else {
+      if (c == "\\") { i++; out = out "  " }
+      else if (c == "\"") instr = 0
+      else out = out " "
+    }
+  }
+  return out
+}
+
+# Splits code on command separators into SEGS[]/TERMS[]; returns the count.
+function split_segs(code,   n, i, c, cur, k) {
+  n = length(code); cur = ""; k = 0
+  for (i = 1; i <= n; i++) {
+    c = substr(code, i, 1)
+    if (c == ";" || c == "&" || c == "|" || c == "(" || c == ")" || c == "{" || c == "}" || c == "`") {
+      if (trim(cur) != "" || c == ")") { k++; SEGS[k] = cur; TERMS[k] = c }
+      cur = ""
+    } else cur = cur c
+  }
+  if (trim(cur) != "") { k++; SEGS[k] = cur; TERMS[k] = "" }
+  return k
+}
+
+function comment(t,   r) {
+  if (match(t, /^#[ \t]*git-env-ok:/)) {
+    r = trim(substr(t, RLENGTH + 1)); if (r != "") exempt = 1; else exempt_nr = 1
+    return
+  }
+  if (match(t, /^#[ \t]*sourced-lib:/)) {
+    r = trim(substr(t, RLENGTH + 1)); if (r != "") srclib = 1; else srclib_nr = 1
+    return
+  }
+  if (t ~ /^#[ \t]*sourced-lib[ \t]*$/) srclib_nr = 1
+}
+
+function is_env_word(x,   nm) {
+  if (x ~ /^(.*\/)?env$/) return 1
+  if (x ~ /^\$/) { nm = x; gsub(/[${}]/, "", nm); return (nm in ISENV) }
+  return 0
+}
+
+# Is the git invocation scrubbed at this point? SEGU = per-call -u names.
+function scrubbed_now(   k, v) {
+  if (helper_scrub || (infn != "" && (infn in FNHELP))) return 1
+  for (k = 1; k <= nsv; k++) {
+    v = SV[k]
+    if (((GSET SUBSEP v) in SET) || (infn != "" && ((infn SUBSEP v) in SET)) || (v in SEGU)) continue
+    return 0
+  }
+  return 1
+}
+
+function invoke(no) {
+  if (!scrubbed_now()) { first = no; stop = 1 }
+}
+
+function seg(s, term, no,   w, nw, i, idx, x, cw, vn, k, tgt, probe, envseen) {
+  s = trim(s)
+  if (s == "") return
+  nw = split(s, w, /[ \t]+/)
+  if (nw == 1 && term == ")") return
+  delete SEGU
+  idx = 1; wrapped = 0; envseen = 0
+  while (idx <= nw) {
+    x = w[idx]
+    if (x ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { idx++; continue }
+    if (x ~ /^(!|then|do|else|elif|if|while|until|time|command|exec|builtin|nohup|nice|sudo|xargs|stdbuf|timeout)$/ || is_env_word(x)) { if (is_env_word(x)) envseen = 1; wrapped = 1; idx++; continue }
+    if (wrapped && x ~ /^-/) { if (x == "-u" && envseen && idx < nw) SEGU[w[idx + 1]] = 1; if (x == "-u" || x == "-C" || x == "-S" || x == "-n") idx += 2; else idx++; continue }
+    if (wrapped && x ~ /^[0-9.]+[smhd]?$/) { idx++; continue }
+    break
+  }
+  cw = (idx <= nw) ? w[idx] : ""
+  sub(/^\\/, "", cw)
+  tgt = (infn == "") ? GSET : infn
+  if (cw == "unset") {
+    for (k = idx + 1; k <= nw; k++) if (w[k] in ISSV) SET[tgt, w[k]] = 1
+    return
+  }
+  if (cw == "git_env_scrub") {
+    if (helper_src) { if (infn == "") helper_scrub = 1; else FNHELP[infn] = 1 }
+    return
+  }
+  if (cw != "" && (cw in FNDEF)) {
+    for (k = 1; k <= nsv; k++) if (((cw SUBSEP SV[k]) in SET)) SET[tgt, SV[k]] = 1
+    if ((cw in FNHELP) && helper_src) { if (infn == "") helper_scrub = 1; else FNHELP[infn] = 1 }
+    return
+  }
+  isgit = 0
+  if (cw == "git" || cw ~ /^(\/|~\/|\.\.?\/).*\/git$/ || cw ~ /^\/git$/) isgit = 1
+  else if (cw ~ /^\$/) { vn = cw; gsub(/[${}]/, "", vn); if (vn in ISGIT) isgit = 1 }
+  if (!isgit) {
+    probe = " " s ((term == "") ? " " : "")
+    if (probe ~ /[ \t\\]git[ \t]/) isgit = 1
+  }
+  if (isgit) invoke(no)
+}
+
+function process(line, no,   t, code, nseg, k, tmp, rhs, vname, pay, opens, closes, fname) {
+  if (stop) return
+  t = trim(line)
+  if (t == "") return
+  if (substr(t, 1, 1) == "#") { comment(t); return }
+  if (pendfn != "") { if (t ~ /^\{/) { infn = pendfn; fndepth = depth } pendfn = "" }
+  code = strip(line)
+  if (rawcut ~ /(^|[;&|(]|then|do|else)[ \t]*(\.|source)[ \t]+[^;&|]*git-clean\.sh/) helper_src = 1
+  if (match(rawcut, /^[ \t]*(local[ \t]+|export[ \t]+|readonly[ \t]+|declare[ \t]+(-[A-Za-z]+[ \t]+)?)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+    tmp = substr(rawcut, RSTART, RLENGTH); rhs = substr(rawcut, RSTART + RLENGTH)
+    vname = tmp; sub(/=$/, "", vname); sub(/^.*[ \t]/, "", vname)
+    if (rhs ~ /^["\047]?(git|\/[^ \t"\047]*\/git|\$\{[A-Za-z_0-9]+:-(\/[^}]*\/)?git\}|\$\([^)]*[ \t]git[ \t]*(\|\|[^)]*)?\))["\047]?([ \t;&|)]|$)/) ISGIT[vname] = 1
+    if (rhs ~ /^["\047]?(env|\/[^ \t"\047]*\/env|\$\{[A-Za-z_0-9]+:-(\/[^}]*\/)?env\}|\$\([^)]*[ \t]env[ \t]*(\|\|[^)]*)?\))["\047]?([ \t;&|)]|$)/) ISENV[vname] = 1
+  }
+  # function definition?
+  fname = ""
+  if (match(code, /^[ \t]*(function[ \t]+)?[A-Za-z_][A-Za-z0-9_.:-]*[ \t]*\(\)/) || match(code, /^[ \t]*function[ \t]+[A-Za-z_][A-Za-z0-9_.:-]*/)) {
+    tmp = substr(code, RSTART, RLENGTH)
+    sub(/^[ \t]*function[ \t]+/, "", tmp); sub(/[ \t]*\(\).*$/, "", tmp); sub(/^[ \t]+/, "", tmp)
+    fname = tmp
+    FNDEF[fname] = 1
+    if (substr(code, RSTART + RLENGTH) ~ /\{/) { infn = fname; fndepth = depth }
+    else pendfn = fname
+  }
+  # bash -c '<payload>' / eval <payload>: scan the raw payload for a git word
+  pay = ""
+  if (match(rawcut, /(^|[;&|( \t`])(bash|sh|zsh|dash|ksh)[ \t]+-[A-Za-z]*c[A-Za-z]*[ \t]+/)) pay = substr(rawcut, RSTART + RLENGTH)
+  else if (match(rawcut, /(^|[;&|( \t`])eval[ \t]+/)) pay = substr(rawcut, RSTART + RLENGTH)
+  if (pay != "" && (" " pay " ") ~ /[;&|( \t`"\047\\]git[ \t"\047;)|&]/) {
+    delete SEGU
+    tmp = rawcut
+    while (match(tmp, /-u[ \t]+[A-Za-z_][A-Za-z0-9_]*/)) {
+      vname = substr(tmp, RSTART, RLENGTH); sub(/^-u[ \t]+/, "", vname); SEGU[vname] = 1
+      tmp = substr(tmp, RSTART + RLENGTH)
+    }
+    invoke(no)
+    if (stop) return
+  }
+  nseg = split_segs(code)
+  for (k = 1; k <= nseg && !stop; k++) seg(SEGS[k], TERMS[k], no)
+  tmp = code; gsub(/\$\{[^}]*\}/, "X", tmp)
+  opens = gsub(/\{/, "{", tmp); closes = gsub(/\}/, "}", tmp)
+  depth += opens - closes
+  if (infn != "" && depth <= fndepth) infn = ""
+}
+
+BEGIN {
+  nsv = split(scrub, SV, " ")
+  for (i = 1; i <= nsv; i++) ISSV[SV[i]] = 1
+  GSET = "@g"; first = 0; stop = 0; depth = 0; infn = ""; pendfn = ""
+  pend = ""; pendno = 0; helper_src = 0; helper_scrub = 0
+  exempt = 0; exempt_nr = 0; srclib = 0; srclib_nr = 0
+}
+{
+  if (pend == "") pendno = NR
+  physical = $0
+  line = pend physical
+  pend = ""
+  tt = physical; sub(/^[ \t]+/, "", tt)
+  if (substr(tt, 1, 1) != "#" && physical ~ /\\$/) {
+    m = physical; nb = 0
+    while (substr(m, length(m), 1) == "\\") { nb++; m = substr(m, 1, length(m) - 1) }
+    if (nb % 2 == 1) { pend = substr(line, 1, length(line) - 1) " "; next }
+  }
+  process(line, pendno)
+}
+END {
+  if (pend != "") process(pend, pendno)
+  print "R " first " " exempt " " exempt_nr " " srclib " " srclib_nr
+}
+AWK
+
+# ---- JS detector (awk: tokenizer + per-call span) ----
+# Prints `H <line> <kind>` (kind = unscrubbed | noreason), one per hit line.
+read -r -d '' JS_AWK <<'AWK' || true
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+function addtok(type, val, ln, own) { nt++; TT[nt] = type; TV[nt] = val; TL[nt] = ln; TOWN[nt] = own }
+
+function tokenize(   ln, s, n, i, c, top, j, d, p, sub1, seen, two, prevt, prevv, kw) {
+  tsp = 0; incom = 0
+  for (ln = 1; ln <= NR; ln++) {
+    s = LINES[ln]; n = length(s); i = 1; seen = 0
+    if (incom) {
+      p = index(s, "*/")
+      if (p == 0) continue
+      i = p + 2; incom = 0
+    }
+    while (i <= n) {
+      c = substr(s, i, 1)
+      # Template text is buffered into a T token per chunk; a `${...}`
+      # substitution is ordinary code, so a call inside it is tokenized (and
+      # detected) like any other.
+      if (tsp > 0 && TSTK[tsp] == "T") {
+        if (c == "\\") { TBUF[tsp] = TBUF[tsp] substr(s, i, 2); i += 2; continue }
+        if (c == "`") {
+          addtok("T", TBUF[tsp], TLN[tsp], 0); tsp--; seen = 1
+          i++; continue
+        }
+        if (c == "$" && substr(s, i + 1, 1) == "{") {
+          addtok("T", TBUF[tsp], TLN[tsp], 0)
+          tsp++; TSTK[tsp] = "E"; TBR[tsp] = 0
+          i += 2; continue
+        }
+        TBUF[tsp] = TBUF[tsp] c; i++; continue
+      }
+      if (tsp > 0 && TSTK[tsp] == "E") {
+        if (c == "{") TBR[tsp]++
+        else if (c == "}") {
+          if (TBR[tsp] == 0) { tsp--; TBUF[tsp] = ""; TLN[tsp] = ln; i++; continue }
+          TBR[tsp]--
+        }
+      }
+      if (c == " " || c == "\t") { i++; continue }
+      two = substr(s, i, 2)
+      if (two == "//") { addtok("C", substr(s, i), ln, !seen); break }
+      if (two == "/*") {
+        p = index(substr(s, i + 2), "*/")
+        if (p == 0) { incom = 1; break }
+        i = i + p + 3; continue
+      }
+      if (c == "\047" || c == "\"") {
+        j = i + 1
+        while (j <= n) { d = substr(s, j, 1); if (d == "\\") j += 2; else if (d == c) break; else j++ }
+        addtok("S", substr(s, i + 1, j - i - 1), ln, 0); seen = 1; i = j + 1; continue
+      }
+      if (c == "`") { tsp++; TSTK[tsp] = "T"; TBUF[tsp] = ""; TLN[tsp] = ln; i++; continue }
+      if (c ~ /[A-Za-z_$]/) {
+        j = i
+        while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_$]/) j++
+        addtok("I", substr(s, i, j - i), ln, 0); seen = 1; i = j; continue
+      }
+      if (c ~ /[0-9]/) {
+        j = i
+        while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_.]/) j++
+        addtok("N", substr(s, i, j - i), ln, 0); seen = 1; i = j; continue
+      }
+      if (c == "/") {
+        prevt = (nt > 0) ? TT[nt] : ""; prevv = (nt > 0) ? TV[nt] : ""
+        kw = (prevt == "I" && prevv ~ /^(return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await)$/)
+        if (!kw && (prevt == "I" || prevt == "N" || prevt == "S" || prevt == "T" || (prevt == "P" && (prevv == ")" || prevv == "]" || prevv == "}")))) {
+          addtok("P", c, ln, 0); seen = 1; i++; continue
+        }
+        j = i + 1; d = 0
+        while (j <= n) {
+          p = substr(s, j, 1)
+          if (p == "\\") { j += 2; continue }
+          if (p == "[") d = 1
+          else if (p == "]") d = 0
+          else if (p == "/" && d == 0) break
+          j++
+        }
+        addtok("R", "", ln, 0); seen = 1; i = j + 1; continue
+      }
+      addtok("P", c, ln, 0); seen = 1; i++
+    }
+    if (tsp > 0 && TSTK[tsp] == "T") TBUF[tsp] = TBUF[tsp] "\n"
+  }
+}
+
+function detect(   k, a, cand, open, callee, m, m2, depthp, nfound, v, ok, ln, kind, r) {
+  for (k = 1; k + 3 <= nt; k++) {
+    if (TT[k] == "I" && TV[k] ~ /^(const|let|var)$/ && TT[k + 1] == "I" && TT[k + 2] == "P" && TV[k + 2] == "=" && TT[k + 3] == "S" && TV[k + 3] ~ /^git([ \t]|$)/) GITC[TV[k + 1]] = 1
+  }
+  for (k = 1; k <= nt; k++) if (TT[k] == "C") COM[TL[k]] = TV[k]
+  # Drop the comment tokens so one sitting between `(` and the first
+  # argument cannot hide the call.
+  m2 = 0
+  for (k = 1; k <= nt; k++) {
+    if (TT[k] == "C") continue
+    m2++; TT[m2] = TT[k]; TV[m2] = TV[k]; TL[m2] = TL[k]; TOWN[m2] = TOWN[k]
+  }
+  for (k = m2 + 1; k <= nt; k++) { delete TT[k]; delete TV[k]; delete TL[k]; delete TOWN[k] }
+  nt = m2
+  for (k = 1; k <= nt; k++) {
+    if (TT[k] != "I") continue
+    callee = TV[k]; cand = 0; open = 0
+    if (TT[k + 1] == "P" && TV[k + 1] == "(") {
+      a = k + 2
+      if ((TT[a] == "S" || TT[a] == "T") && TV[a] ~ /^git([ \t]|$)/) cand = 1
+      else if (TT[a] == "I" && (TV[a] in GITC)) cand = 1
+      open = k + 1
+    } else if (TT[k + 1] == "T" && TV[k + 1] ~ /^git([ \t]|$)/) cand = 1
+    if (!cand) continue
+    if (callee ~ /^(if|while|switch|for|return|typeof|catch|function|includes|has|log|info|warn|error|debug|print|echo|console|equal|strictEqual|deepEqual|notEqual|notStrictEqual|ok|assert|push|add|indexOf|lastIndexOf|startsWith|endsWith|test|match|join|resolve|basename|dirname|toBe|toEqual|eq|set|get|delete|describe|it|require|String|some|every|filter|split|replace|format|which|exists|expect|Error|TypeError|RangeError|SyntaxError)$/) continue
+    if (callee ~ /^(is[A-Z_]|can[A-Z]|check|find[A-Z]|has[A-Z]|command[A-Z]|assert|expect|which|exists|ensure)/) continue
+    ln = TL[k]
+    # scrub inside the call's own paren-balanced span
+    delete FOUND; nfound = 0
+    if (open > 0) {
+      depthp = 0
+      for (m = open; m <= nt; m++) {
+        if (TT[m] == "P" && TV[m] == "(") depthp++
+        else if (TT[m] == "P" && TV[m] == ")") { depthp--; if (depthp == 0) break }
+        v = TV[m]
+        if (TT[m] == "I" && (v in ISSV)) FOUND[v] = 1
+        else if (TT[m] == "S" && (v in ISSV)) {
+          ok = 0
+          if (TT[m + 1] == "P" && TV[m + 1] == ":") ok = 1
+          if (m >= 2 && TT[m - 1] == "P" && TV[m - 1] == "[" && (TT[m - 2] == "I" || (TT[m - 2] == "P" && (TV[m - 2] == "]" || TV[m - 2] == ")")))) ok = 1
+          if (ok) FOUND[v] = 1
+        }
+      }
+      for (v in FOUND) nfound++
+    }
+    if (nfound >= nsv) continue
+    # real trailing comment marker on the call's line
+    kind = "unscrubbed"
+    r = ""
+    if ((ln in COM) && match(COM[ln], /^\/\/[ \t]*git-env-ok:/)) {
+      r = trim(substr(COM[ln], RLENGTH + 1))
+      if (r != "") continue
+      kind = "noreason"
+    }
+    print "H " ln " " kind
+  }
+}
+
+BEGIN { nsv = split(scrub, SV, " "); for (i = 1; i <= nsv; i++) ISSV[SV[i]] = 1; nt = 0 }
+{ LINES[NR] = $0 }
+END { tokenize(); detect() }
+AWK
+
+# ---- py / ps1 detector (awk, file-level) ----
+# Prints `R <first|0> <exempt> <exempt-noreason>`.
+read -r -d '' FL_AWK <<'AWK' || true
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+function has_name(code, nm,   re) {
+  re = "(^|[^A-Za-z0-9_])" nm "([^A-Za-z0-9_]|$)"
+  return (code ~ re)
+}
+BEGIN { nsv = split(scrub, SV, " "); first = 0; exempt = 0; exempt_nr = 0; blockc = 0 }
+{
+  t = trim($0)
+  if (first) next
+  if (lang == "ps1") {
+    if (blockc) { if (t ~ /#>/) blockc = 0; next }
+    if (t ~ /^<#/) { if (t !~ /#>/) blockc = 1; next }
+  }
+  if (t == "") next
+  if (t ~ /^#/) {
+    if (match(t, /^#[ \t]*git-env-ok:/)) {
+      r = trim(substr(t, RLENGTH + 1)); if (r != "") exempt = 1; else exempt_nr = 1
+    }
+    next
+  }
+  code = $0
+  p = match(code, /[ \t]#/)
+  if (p > 0) code = substr(code, 1, p - 1)
+  for (k = 1; k <= nsv; k++) if (has_name(code, SV[k])) SEEN[SV[k]] = 1
+  gc = 0
+  if (lang == "py") { if (code ~ /["\047]git(["\047]|[ \t])/) gc = 1 }
+  else { if ((" " code " ") ~ /[ \t;|({&]git[ \t]/) gc = 1 }
+  if (gc) {
+    all = 1
+    for (k = 1; k <= nsv; k++) if (!(SV[k] in SEEN)) { all = 0; break }
+    if (!all) first = NR
+  }
+}
+END { print "R " first " " exempt " " exempt_nr " 0 0" }
+AWK
 
 # HITS accumulates human-readable "file[:line]: message" for the report.
-# BASELINE_KEYS accumulates the matching machine keys, in the same order, for
-# --emit-baseline.
+# BASELINE_KEYS accumulates the matching machine keys, in the same order.
 HITS=()
 BASELINE_KEYS=()
 # USED_BASELINE: baseline keys that grandfathered a real hit this run — what
@@ -243,183 +589,92 @@ BASELINE_KEYS=()
 USED_BASELINE=()
 FULL_SCAN=0
 
-# ---- shell: file-level scan ----
-scan_shell_file() {
-    local f="$1" src="$2"
-    is_excluded_path "$f" && return 0
-    # A shebang-less .sh is USUALLY a sourced-only lib (whatever invokes it is
-    # the entry point on the hook for scrubbing) — but that can't be assumed:
-    # a shebang-less file that itself runs `git` in command position must say
-    # so explicitly (a `# sourced-lib` marker), or it is scanned exactly like
-    # an entry point. This is what stops a future shebang-less script that
-    # IS an entry point (e.g. always invoked as `bash script.sh`) from being
-    # silently exempted by the absence of a shebang alone.
-    local first_line
-    IFS= read -r first_line < "$src" || first_line=""
-    local has_shebang=0
-    case "$first_line" in '#!'*) has_shebang=1 ;; esac
-
-    local lineno=0 line trimmed code_only
-    local first_invoke=0
-    local have_unset_dir=0 have_unset_wt=0 have_unset_cd=0 have_unset_if=0
-    local sourced_helper=0 called_scrub=0 sourced_lib_marker=0
-    local file_exempt_reason=""
-    while IFS= read -r line || [ -n "$line" ]; do
-        lineno=$((lineno + 1))
-        trimmed=$(trim "$line")
-        [ -z "$trimmed" ] && continue
-
-        if [ -z "$file_exempt_reason" ]; then
-            case "$trimmed" in
-                '#'*git-env-ok:*)
-                    file_exempt_reason=$(trim "${trimmed#*git-env-ok:}")
-                    ;;
-            esac
-        fi
-        # Exact standalone marker only (like git-env-ok's colon requirement)
-        # — a comment that merely MENTIONS "sourced-lib" in prose (e.g. this
-        # file's own docstring) must never count.
-        case "$trimmed" in '# sourced-lib') sourced_lib_marker=1 ;; esac
-
-        case "$trimmed" in '#'*) continue ;; esac
-        code_only=$(strip_code "$line")
-
-        if [ "$first_invoke" -eq 0 ] && is_git_invocation "$code_only"; then
-            first_invoke=$lineno
-            break
-        fi
-
-        case "$code_only" in *unset*)
-            case "$code_only" in *GIT_DIR*) have_unset_dir=1 ;; esac
-            case "$code_only" in *GIT_WORK_TREE*) have_unset_wt=1 ;; esac
-            case "$code_only" in *GIT_COMMON_DIR*) have_unset_cd=1 ;; esac
-            case "$code_only" in *GIT_INDEX_FILE*) have_unset_if=1 ;; esac
-        ;; esac
-        # Raw-line substring checks (not the stripped code_only): these two
-        # markers are specific literal strings, not a git-command-position
-        # question, and stripping mishandles nested $(...) quoting (e.g.
-        # `. "$(dirname "$0")/../lib/git-clean.sh"`) in a way that can blank
-        # out the substring. A false hit inside a comment is harmless here.
-        case "$line" in *git-clean.sh*) sourced_helper=1 ;; esac
-        case "$line" in *git_env_scrub*) called_scrub=1 ;; esac
-    done < "$src"
-
-    [ "$first_invoke" -eq 0 ] && return 0
-
-    if [ -n "$file_exempt_reason" ]; then
+# File-level result handling shared by shell and py/ps1.
+# $1 file, $2 awk R line, $3 key prefix, $4 has_shebang (shell only), $5 hint
+file_level_verdict() {
+    local f="$1" res="$2" prefix="$3" has_shebang="$4" first exempt exempt_nr srclib srclib_nr _r
+    read -r _r first exempt exempt_nr srclib srclib_nr <<<"$res"
+    [ "${first:-0}" -eq 0 ] && return 0
+    [ "$exempt" -eq 1 ] && return 0
+    if [ "$has_shebang" -eq 0 ] && [ "$srclib" -eq 1 ] && [ "$prefix" = SHELL ]; then
         return 0
     fi
-    if [ "$have_unset_dir" -eq 1 ] && [ "$have_unset_wt" -eq 1 ] && [ "$have_unset_cd" -eq 1 ] && [ "$have_unset_if" -eq 1 ]; then
-        return 0
-    fi
-    if [ "$sourced_helper" -eq 1 ] && [ "$called_scrub" -eq 1 ]; then
-        return 0
-    fi
-    if [ "$has_shebang" -eq 0 ] && [ "$sourced_lib_marker" -eq 1 ]; then
-        return 0
-    fi
-
-    local key="SHELL:$f"
-    if [ "$EMIT_BASELINE" -ne 1 ] && [ -r "$BASELINE_FILE" ] && grep -qxF "$key" "$BASELINE_FILE"; then
+    local key="$prefix:$f"
+    if [ "$EMIT_BASELINE" -ne 1 ] && baseline_has "$key"; then
         USED_BASELINE+=("$key")
         return 0
     fi
-    if [ "$has_shebang" -eq 0 ]; then
-        HITS+=("$f:$first_invoke: no GIT_* env scrub before first git invocation (shebang-less — mark '# sourced-lib' if this file is only ever sourced)")
+    if [ "$exempt_nr" -eq 1 ]; then
+        HITS+=("$f:$first: git-env-ok marker with no reason")
+    elif [ "$srclib_nr" -eq 1 ] && [ "$has_shebang" -eq 0 ]; then
+        HITS+=("$f:$first: sourced-lib marker with no reason, and no GIT_* env scrub before first git invocation")
+    elif [ "$has_shebang" -eq 0 ] && [ "$prefix" = SHELL ]; then
+        HITS+=("$f:$first: no GIT_* env scrub before first git invocation (shebang-less — mark '# sourced-lib: <reason>' if this file is only ever sourced)")
     else
-        HITS+=("$f:$first_invoke: no GIT_* env scrub before first git invocation")
+        HITS+=("$f:$first: no GIT_* env scrub before first git invocation")
     fi
     BASELINE_KEYS+=("$key")
 }
 
-# ---- JS: per-call scan (unchanged shape, new baseline key) ----
-scan_js_file() {
-    local f="$1" content="$2" lineno=0 line trimmed marker reason window
+scan_shell_file() {
+    local f="$1" src="$2"
     is_excluded_path "$f" && return 0
-    local -a lines=()
-    while IFS= read -r line || [ -n "$line" ]; do
-        lines+=("$line")
-    done < "$content"
-    local n="${#lines[@]}"
+    local first_line has_shebang=0 res
+    IFS= read -r first_line < "$src" || first_line=""
+    case "$first_line" in '#!'*) has_shebang=1 ;; esac
+    res=$(LC_ALL=C awk -v scrub="$SCRUB_VARS" "$SH_AWK" "$src")
+    file_level_verdict "$f" "$res" SHELL "$has_shebang"
+}
+
+scan_filelevel_file() {
+    local f="$1" src="$2" lang="$3" res
+    is_excluded_path "$f" && return 0
+    res=$(LC_ALL=C awk -v scrub="$SCRUB_VARS" -v lang="$lang" "$FL_AWK" "$src")
+    file_level_verdict "$f" "$res" FILE 1
+}
+
+scan_js_file() {
+    local f="$1" content="$2" hits h lineno kind line trimmed hash
+    is_excluded_path "$f" && return 0
+    hits=$(LC_ALL=C awk -v scrub="$SCRUB_VARS" "$JS_AWK" "$content")
+    [ -n "$hits" ] || return 0
 
     local -a remaining=()
-    if [ "$EMIT_BASELINE" -ne 1 ] && [ -f "$BASELINE_FILE" ]; then
-        while IFS= read -r bline || [ -n "$bline" ]; do
-            case "$bline" in
-                "JS:$f:"*) remaining+=("${bline#JS:"$f":}") ;;
+    if [ "$EMIT_BASELINE" -ne 1 ] && [ "${#BASE_ENTRIES[@]}" -gt 0 ]; then
+        local e
+        for e in "${BASE_ENTRIES[@]}"; do
+            case "$e" in
+                "JS:$f:"*) remaining+=("${e#JS:"$f":}") ;;
             esac
-        done < "$BASELINE_FILE"
+        done
     fi
 
-    local i=0
-    while [ "$i" -lt "$n" ]; do
-        lineno=$((i + 1))
-        line="${lines[$i]}"
+    while IFS= read -r h; do
+        [ -n "$h" ] || continue
+        lineno=$(printf '%s' "$h" | cut -d' ' -f2)
+        kind=$(printf '%s' "$h" | cut -d' ' -f3)
+        line=$(sed -n "${lineno}p" "$content")
         trimmed=$(trim "$line")
-        i=$((i + 1))
-        [ -z "$trimmed" ] && continue
-        case "$trimmed" in '//'*) continue ;; esac
-        local m
-        # A quote/backtick opening char, then "git", then either the SAME
-        # closing char (the array-arg form, `'git'`) or whitespace (a
-        # single quoted/backtick multi-word command, `'git status'` /
-        # `` `git status` ``) — catches both shapes the array-only match
-        # (`execFileSync('git', [...])`) missed. `exec`/`execFile` (no
-        # `Sync`) are real Node call forms this list omitted (HIMMEL-3570 CR
-        # fixup); each alternative requires its OWN immediate `(`, so
-        # `exec` never matches inside `execSync`/`execFile`/`execFileSync`.
-        m=$(printf '%s' "$line" | grep -E "(execFileSync|execFile|spawnSync|spawn|execSync|exec)\\([[:space:]]*['\"\`]git([[:space:]]|['\"\`])") || true
-        if [ -z "$m" ] && [ "$i" -lt "$n" ]; then
-            # Multi-line call (HIMMEL-3571): the opener ends the line and the
-            # 'git' argument starts the next one. The hit stays on the opener
-            # line, so the window and the baseline hash cover the call.
-            m=$(printf '%s' "$line" | grep -E "(execFileSync|execFile|spawnSync|spawn|execSync|exec)\\([[:space:]]*$") || true
-            if [ -n "$m" ]; then
-                m=$(printf '%s' "${lines[$i]}" | grep -E "^[[:space:]]*['\"\`]git([[:space:]]|['\"\`])") || true
-            fi
-        fi
-        [ -n "$m" ] || continue
-        # Window: this line plus the next 4, comment-stripped, joined, to see
-        # a same-statement scrub (e.g. an `env:` object on a following line)
-        # without a comment MENTIONING the scrub names satisfying the check.
-        local end=$((lineno + 4))
-        [ "$end" -gt "$n" ] && end=$n
-        window=$(strip_js_comment "$line")
-        local j=$lineno
-        while [ "$j" -lt "$end" ]; do
-            window="$window
-$(strip_js_comment "${lines[$j]}")"
-            j=$((j + 1))
-        done
-        case "$window" in
-            *GIT_DIR*GIT_WORK_TREE*GIT_COMMON_DIR*GIT_INDEX_FILE*) continue ;;
-            *"gitClean("*) continue ;;
-        esac
-        marker=$(exemption_reason_js "$line")
-        if [ -n "$marker" ]; then
-            reason=$(trim "${marker#*:}")
-            [ -n "$reason" ] && continue
+        if [ "$kind" = noreason ]; then
             HITS+=("$f:$lineno: git-env-ok marker with no reason")
             continue
         fi
-
-        local hash
         hash=$(line_hash "$trimmed")
-        local consumed=0
-        local idx
-        for idx in "${!remaining[@]}"; do
-            if [ "${remaining[$idx]}" = "$hash" ]; then
-                unset 'remaining[idx]'
-                USED_BASELINE+=("JS:$f:$hash")
-                consumed=1
-                break
-            fi
-        done
+        local consumed=0 idx
+        if [ "${#remaining[@]}" -gt 0 ]; then
+            for idx in "${!remaining[@]}"; do
+                if [ "${remaining[$idx]}" = "$hash" ]; then
+                    unset 'remaining[idx]'
+                    USED_BASELINE+=("JS:$f:$hash")
+                    consumed=1
+                    break
+                fi
+            done
+        fi
         [ "$consumed" -eq 1 ] && continue
-
         HITS+=("$f:$lineno: unscrubbed JS git subprocess call")
         BASELINE_KEYS+=("JS:$f:$hash")
-    done
+    done <<<"$hits"
 }
 
 is_trust_path() {
@@ -432,21 +687,21 @@ scan_one() {
     local f="$1" src="$2"
     case "$f" in
         *.sh) scan_shell_file "$f" "$src" ;;
-        *.mjs|*.js) scan_js_file "$f" "$src" ;;
+        *.mjs|*.js|*.cjs|*.ts) scan_js_file "$f" "$src" ;;
+        *.py) scan_filelevel_file "$f" "$src" py ;;
+        *.ps1) scan_filelevel_file "$f" "$src" ps1 ;;
     esac
 }
 
 if [ "$MODE" = staged ]; then
     tmp_list=$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-list.XXXXXX") || exit 2
     trap 'rm -f "$tmp_list"' EXIT
-    # ACMR, not ACM: a rename INTO a trust path (`git mv x scripts/hooks/y`,
-    # status R100) must be scanned too — ACM alone let it slip past pre-commit
-    # (console adversarial review, 2026-09-24).
+    # ACMR, not ACM: a rename INTO a trust path must be scanned too.
     git diff --cached --name-only --diff-filter=ACMR > "$tmp_list"
     while IFS= read -r f || [ -n "$f" ]; do
         [ -z "$f" ] && continue
         is_trust_path "$f" || continue
-        case "$f" in *.sh|*.mjs|*.js) : ;; *) continue ;; esac
+        scannable "$f" || continue
         tmp_blob=$(mktemp "${TMPDIR:-/tmp}/git-env-scrub-blob.XXXXXX") || exit 2
         if git show ":$f" > "$tmp_blob" 2>/dev/null; then
             scan_one "$f" "$tmp_blob"
@@ -457,25 +712,21 @@ else
     if [ "${#TREE_PATHS[@]}" -gt 0 ]; then
         for p in "${TREE_PATHS[@]}"; do
             if [ -f "$p" ]; then
-                case "$p" in *.sh|*.mjs|*.js) scan_one "$p" "$p" ;; esac
+                scannable "$p" && scan_one "$p" "$p"
             elif [ -d "$p" ]; then
                 while IFS= read -r f; do
                     scan_one "$f" "$f"
-                done < <(find "$p" -type f \( -name '*.sh' -o -name '*.mjs' -o -name '*.js' \) | sort)
+                done < <(find "$p" -type f \( -name '*.sh' -o -name '*.mjs' -o -name '*.js' -o -name '*.cjs' -o -name '*.ts' -o -name '*.py' -o -name '*.ps1' \) | sort)
             else
                 # A renamed/moved fixture must FAIL loud, not silently scan
-                # nothing and report clean (console adversarial review,
-                # 2026-09-24).
+                # nothing and report clean.
                 echo "check-git-env-scrub: --tree path does not exist: $p" >&2
                 exit 2
             fi
         done
     else
-        # No `2>/dev/null`, no process substitution: capture the list and its
-        # own exit status directly, so a `git ls-files` failure is never
-        # swallowed, and floor the scan at >0 files so an empty result (a
-        # detached/corrupt worktree, a moved trust path) can never read as
-        # "clean" either (console adversarial review, 2026-09-24).
+        # Captured with its own exit status, and floored at >0 files so an
+        # empty listing can never read as "clean".
         tree_list=$(git ls-files 'scripts/handover' 'scripts/lanes' 'scripts/hooks' 'scripts/cr' 'scripts/lib/go-gate.sh') || {
             echo "check-git-env-scrub: git ls-files failed while listing trust paths" >&2
             exit 2
@@ -484,7 +735,7 @@ else
         scanned=0
         while IFS= read -r f; do
             [ -z "$f" ] && continue
-            case "$f" in *.sh|*.mjs|*.js) : ;; *) continue ;; esac
+            scannable "$f" || continue
             is_trust_path "$f" || continue
             scanned=$((scanned + 1))
             scan_one "$f" "$f"
@@ -503,21 +754,15 @@ if [ "$EMIT_BASELINE" -eq 1 ]; then
     exit 0
 fi
 
-# Stale baseline entries (HIMMEL-3571): in the full real-tree scan only (a
-# --staged or PATH-scoped run sees a subset, so unused entries mean nothing),
-# an entry that grandfathered no hit is dead — the file was fixed, edited or
-# deleted. Failing on it is what lets the ratchet shrink. USED_BASELINE has
-# multiplicity: N identical JS keys in the baseline need N consumed hits.
+# Stale baseline entries (HIMMEL-3571): in the full real-tree scan only, an
+# entry that grandfathered no hit is dead. USED_BASELINE has multiplicity.
 STALE=()
-if [ "$FULL_SCAN" -eq 1 ] && [ -r "$BASELINE_FILE" ]; then
-    used_list=""
-    [ "${#USED_BASELINE[@]}" -gt 0 ] && used_list=$(printf '%s\n' "${USED_BASELINE[@]}")
+if [ "$FULL_SCAN" -eq 1 ] && [ "${#BASE_ENTRIES[@]}" -gt 0 ]; then
     declare -a stale_pool=()
-    if [ -n "$used_list" ]; then
-        while IFS= read -r u; do stale_pool+=("$u"); done <<<"$used_list"
+    if [ "${#USED_BASELINE[@]}" -gt 0 ]; then
+        for u in "${USED_BASELINE[@]}"; do stale_pool+=("$u"); done
     fi
-    while IFS= read -r bline || [ -n "$bline" ]; do
-        [ -z "$bline" ] && continue
+    for bline in "${BASE_ENTRIES[@]}"; do
         found=-1
         for idx in "${!stale_pool[@]}"; do
             if [ "${stale_pool[$idx]}" = "$bline" ]; then found=$idx; break; fi
@@ -527,7 +772,7 @@ if [ "$FULL_SCAN" -eq 1 ] && [ -r "$BASELINE_FILE" ]; then
         else
             STALE+=("$bline")
         fi
-    done < "$BASELINE_FILE"
+    done
 fi
 if [ "${#STALE[@]}" -gt 0 ]; then
     echo "check-git-env-scrub: ${#STALE[@]} stale baseline entr(y/ies) in $BASELINE_FILE (no matching hit any more):" >&2
@@ -544,11 +789,11 @@ if [ "${#HITS[@]}" -gt 0 ]; then
         echo "  $h" >&2
     done
     echo "" >&2
-    echo "Shell: scrub GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE (unset, or" >&2
-    echo "source scripts/lib/git-clean.sh and call git_env_scrub) before the file's" >&2
-    echo "first git invocation, or mark the file '# git-env-ok: <reason>'." >&2
-    echo "JS: route the call through gitClean() in scripts/lanes/git-clean.mjs, or" >&2
-    echo "mark the line '// git-env-ok: <reason>'." >&2
+    echo "Shell: unset the full GIT_* set (see scripts/lib/git-clean.sh), or source it" >&2
+    echo "and call git_env_scrub, before the file's first git invocation, or mark the" >&2
+    echo "file '# git-env-ok: <reason>'." >&2
+    echo "JS: route the call through gitClean() in scripts/lanes/git-clean.mjs, drop" >&2
+    echo "every name in the call's env, or mark the line '// git-env-ok: <reason>'." >&2
     exit 1
 fi
 

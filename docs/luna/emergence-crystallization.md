@@ -1,4 +1,4 @@
-# Emergence → self-improvement crystallization — PARKED design (HIMMEL-217)
+# Emergence → self-improvement crystallization — PARKED design
 
 > **PARKED, not built.** This records the design for a triggered
 > emergence-to-improvement pass so the idea survives parking (operator
@@ -61,18 +61,18 @@ a candidate to a real ticket; the pass never files Jira issues itself.
 
 ## Relations & routing
 
-- **Extends HIMMEL-216** (derive-action-items loop). 216 is the *one-time*
-  inventory review; **217 is the ongoing, emergence-driven feeder** that
-  keeps supplying candidates as the vault grows. 217 is the recurring
-  engine; 216 was the initial sweep.
+- **Extends** the derive-action-items loop. That loop is the *one-time*
+  inventory review; **this pass is the ongoing, emergence-driven feeder** that
+  keeps supplying candidates as the vault grows. This is the recurring
+  engine; the derive-action-items loop was the initial sweep.
 - **Builds on** `roadmap-clips` (LUNA-59, for the open-Jira dedup),
   `obsidian-emerge`, and `obsidian-synthesize` / `synthesize-clips` (for
   detection + the synthesis-page output). **Complements** `wiki-lint`
   (lint keeps the graph healthy; this pass reads the graph it maintains).
 - **Routing of self-improvement candidates** (once the operator promotes
   them, and as a hint on each proposal):
-  - **Tool installs** → HIMMEL-199 (the tool-adoption framework /
-    rubric+registry).
+  - **Tool installs** → the tool-adoption framework /
+    rubric+registry ([`docs/tool-adoption/rubric.md`](../tool-adoption/rubric.md)).
   - **Memory / context** clusters → LUNA-44.
 
 ## Eventual build DoD
@@ -88,6 +88,6 @@ eventual feature):
 
 ## Status
 
-**PARKED** per HIMMEL-217, operator decision Q4=b ("park but document").
+**PARKED** by operator decision ("park but document").
 Not built; build later. This doc is the captured intent so the future
 session implements from here rather than re-deriving.
