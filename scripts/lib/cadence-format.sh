@@ -166,8 +166,11 @@
 # run obsidian-triage's daily-timeline.mjs after the leg (must-not-abort: a
 # failure logs and never changes the runner's exit code). Re-arm with
 # `pipeline-cadence.sh arm --force`.
+# v21 (HIMMEL-4226): the pipeline POSIX runners alert (`[PIPELINE-LEG-FAILED
+# cd-vault]`) when the cd into the vault fails. Re-arm with
+# `pipeline-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=20
+CADENCE_RUNNER_FORMAT_VERSION=21
 
 # Marker line stamped into each generated runner
 # (.bat: `rem <marker> N`; .sh: `# <marker> N`).

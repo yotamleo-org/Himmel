@@ -1,4 +1,4 @@
-# Telegram bridge (HIMMEL-207/208; delivery: HIMMEL-226)
+# Telegram bridge
 
 An always-on remote Telegram bridge for Claude Code. An immortal bun
 poller owns the single Telegram poll slot (`getUpdates`) and delivers each
@@ -8,7 +8,7 @@ does one turn, replies, and exits (Max quota, no `-p`). A file bus carries
 per-session inbox / outbox / context so work survives across runs, caps, and
 crashes.
 
-> [!important] Armed/overnight relaunches do NOT use `--channels` (HIMMEL-225).
+> [!important] Armed/overnight relaunches do NOT use `--channels`.
 > Telegram reachability comes from the always-on bun bridge, **not** from a
 > `claude` session holding `--channels`. A `--channels` Telegram relaunch
 > alongside the live bridge is a 2nd `getUpdates` consumer (→ 409 Conflict)
@@ -19,7 +19,7 @@ crashes.
 > `--channels` (rc=5) while the bridge is live (`ARM_CHANNELS_OK=1` overrides,
 > after `bun supervisor.ts --kill`).
 
-## Cold-spawn-per-message delivery (HIMMEL-226)
+## Cold-spawn-per-message delivery
 
 Each inbound message is handled by a **bounded one-turn cold `claude` run**, not
 a long-lived warm child. `makeRunFn` (in `poller.ts`) `peekPending`s the durable
@@ -29,8 +29,8 @@ commits the consumed cursor **only on a clean (non-capped) run**; `buildPrompt`
 passes `context.md` so a cold reply still carries prior-turn continuity. After a
 clean run it drains by re-running until `peekPending` returns 0.
 
-> [!note] Why cold, not warm (HIMMEL-226 revert of HIMMEL-222).
-> HIMMEL-222 tried a **persistent warm child** with a piped stdin, writing one
+> [!note] Why cold, not warm.
+> An earlier design tried a **persistent warm child** with a piped stdin, writing one
 > line per turn. That never drove a turn: interactive `claude "<prompt>"`
 > processes + replies only at **EOF**, never on a newline written to a
 > still-open stdin pipe — so the warm child consumed the inbox line, stayed
@@ -50,7 +50,7 @@ of up to 30s. The flush path touches only the outbox files; the run path touches
 only inbox/meta/pending — disjoint, so the concurrent timer adds no shared-file
 race.
 
-### Inter-session IPC (T6 / HIMMEL-219 messaging)
+### Inter-session IPC (T6 messaging)
 `bun bus.ts send <target> <text>` calls `sendToSession`, which `ensureSession`s
 the target and appends the message to its durable `inbox.jsonl`. The poller's
 per-tick `deliverAllPending` scan runs pending lines for **every** session
@@ -67,9 +67,9 @@ Every committed cursor (inbound, per-session outbox, inbox `.consumed`, and the
 crash mid-write can't leave a torn byte-offset. (`meta.json` / `offset` /
 `context.md` were already atomic.)
 
-## Hardening (HIMMEL-221)
+## Hardening
 
-Non-blocking minor items from the HIMMEL-207 PR #222 heavy CR:
+Non-blocking minor items from the PR #222 heavy CR:
 
 - **Malformed `getUpdates` tolerance.** `getUpdates` returns `j.result ?? []`,
   so an `ok:true` response that omits `result` yields an empty batch instead of
@@ -99,13 +99,13 @@ Non-blocking minor items from the HIMMEL-207 PR #222 heavy CR:
   first (so it can't respawn the poller) then the poller, and removes the file.
   (On Windows the scoped `restart-bridge.ps1` remains the preferred lever — it
   also clears 409-conflicting duplicate pollers left by older launches.)
-- **Registry changes need no restart (HIMMEL-3504, HIMMEL-4687).** Every
+- **Registry changes need no restart.** Every
   dispatch resolves the `telegram` plugin profile (`--settings` and
   `--mcp-config`) through `loadPluginProfilesModule`, which re-imports
   `scripts/lanes/plugin-profiles.mjs` and its lazy local graph from a fresh copy
   whenever one of those files' mtimes changes. A merge that changes the registry
   and its validator together is picked up on the next dispatch.
-- **Repeated identical dispatch failure alerts once (HIMMEL-4687).** A run that
+- **Repeated identical dispatch failure alerts once.** A run that
   throws before the worker spawns leaves the message pending, so the session is
   re-dispatched and fails again on every tick. After
   `DISPATCH_FAIL_ALERT_AFTER` (5) identical failures in a row for one session,
@@ -162,7 +162,7 @@ interactive runs (no dev-channel load, no prompt to hang on).
   for a matching message, and reports the ids it arrived on — it never
   writes `access.json` itself.
 
-HIMMEL-208 fast-resume is an independent capability for recovering a closed
+Fast-resume is an independent capability for recovering a closed
 session's stop-point: `scripts/telegram/armed-session-track.ts` +
 `/handover-resume-armed`.
 
@@ -183,14 +183,14 @@ and verifies it settled with no 409. `-StatusOnly` reports without touching
 anything. **Restart (POSIX — Linux/macOS):** `bash
 scripts/telegram/restart-bridge.sh start` is the Stage-1 sibling — same
 bun-process-only kill scoping and a token-scoped `flock` for serialization,
-but it does NOT verify no-409/settled progress after launch (HIMMEL-2268
-tracks that remaining PS1 parity). `status` reports without touching
+but it does NOT verify no-409/settled progress after launch (that remaining
+PS1 parity is a known gap). `status` reports without touching
 anything; `--repo <path>` points at a non-default checkout. **Stop
 (cross-platform):** `bun supervisor.ts --kill` (reads the `supervisor.pid`
 file written under the bridge root) or `bash
 scripts/telegram/restart-bridge.sh stop`.
 
-**Kills are INSTANCE-scoped (HIMMEL-2551).** Matching `supervisor.ts` /
+**Kills are INSTANCE-scoped.** Matching `supervisor.ts` /
 `poller.ts` on the command line narrows the candidate set; it is not an
 ownership test, because every himmel checkout on a machine runs those same two
 entrypoint names. `restart-bridge.sh` therefore kills a candidate only when it
@@ -235,7 +235,7 @@ ledger pid whose process was created after the ledger was written. Drop the
 staleness check and honouring the ledger across checkouts would license
 `kill -9` on another checkout's supervisor that merely inherited a recycled
 pid; drop the ledger source instead and a worktree and the primary checkout
-stop seeing each other and both poll one token. Earlier rounds of HIMMEL-2551
+stop seeing each other and both poll one token. Earlier rounds of this fix
 each fixed one of those by breaking the other. When a timestamp cannot be read
 at all the check reports *undeterminable* rather than inventing a verdict, and
 an undeterminable verdict licenses ownership **only where there is no cwd
@@ -277,7 +277,7 @@ Two related levers came with it:
   diagnosable. Loud and fixable, rather than quietly permitted.
   `status` and `--print-lock-path` are read-only and unaffected.
 
-**Launch handoff (HIMMEL-2556).** `start`/`run`'s lock is released before the
+**Launch handoff.** `start`/`run`'s lock is released before the
 process they just launched is *visible* to process discovery — `list_bridge_pids`'
 candidate set is derived from a live `ps` scan matching `supervisor.ts`/
 `poller.ts` command lines, and neither verb can hold the lock across that
@@ -342,7 +342,7 @@ relaunch it every 10s forever). Five restarts in ten minutes leaves the unit
 `failed`, for a human. (It was `Type=oneshot` + `RemainAfterExit=yes` around a detached
 `start`, which made systemd blind to the supervisor's lifetime: the unit
 happily reported `active (exited)` through the silent bridge deaths
-HIMMEL-2551 was filed for.) *Operator note:* an already-installed unit file is
+this fix was filed for.) *Operator note:* an already-installed unit file is
 a rendered COPY — it stays on the old shape until `himmelctl`'s
 bridge-persistence install step is re-run. Recipe:
 `scripts/telegram/README.md`'s "survive a reboot" section.

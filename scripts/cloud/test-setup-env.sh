@@ -148,6 +148,18 @@ run "$GQ" --dry-run
 case "$OUT" in *"step=graphify action=skip"*) ok "present graphify is skipped" ;; *) bad "present graphify not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd action=skip"*) ok "present qmd is skipped" ;; *) bad "present qmd not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd-index action=refresh $FAKE --name himmel"*) ok "an existing himmel collection is rebuilt from this clone" ;; *) bad "existing himmel collection not refreshed (stale index): $OUT" ;; esac
+# HIMMEL-5442: the cloud image shipped graphify 0.9.77 while the pin was 0.9.80
+# and "present" skipped the install, so the version drifted from the pin. A
+# present graphify at another version is reinstalled at the pin; at the pin, or
+# with an unparseable version, it is skipped.
+GV="$TMP/gver"; mkdir -p "$GV"; cp "$GQ"/* "$GV/"
+for t in head grep; do ln -s "$(command -v "$t")" "$GV/$t"; done   # the version parse
+printf '#!/bin/sh\necho "graphify 9.8.6"\n' > "$GV/graphify"; chmod +x "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=install graphifyy==9.8.7 "*) ok "graphify off the pin is reinstalled at the pin" ;; *) bad "graphify off the pin not reinstalled: $OUT" ;; esac
+printf '#!/bin/sh\necho "graphify 9.8.7"\n' > "$GV/graphify"
+run "$GV" --dry-run
+case "$OUT" in *"step=graphify action=skip"*) ok "graphify at the pin is skipped" ;; *) bad "graphify at the pin not skipped: $OUT" ;; esac
 # a failing graphify / qmd install is NON-fatal and does not stop the next step.
 GF="$TMP/gfail"; mkdir -p "$GF"; cp "$HAVE"/* "$GF/"
 for t in timeout sh tail mkdir bash; do ln -s "$(command -v "$t")" "$GF/$t"; done
@@ -192,6 +204,47 @@ chmod +x "$GF/graphify"
 OUT="$(env -i PATH="$GF" HOME="$TMP/home" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP" "$BASH_BIN" "$SETUP" 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ] && [ "$(cat "$TMP/graph-cwd")" = "$FAKE" ] && [ -f "$FAKE/graphify-out/graph.json" ]; then ok "setup builds graph inside the session checkout"; else bad "graph not built inside checkout: $OUT"; fi
 rm -rf "$FAKE/scripts/jira/dist" "$FAKE/marketplace/plugins/obsidian-triage/tools/node_modules" "$FAKE/scripts/lib"
+
+# 6f. git gate hooks (HIMMEL-5442): the cloud clone has none installed, so the
+# pre-commit, commit-msg (attestation trailers, ticket ID) and pre-push gates
+# would not fire. A bare `pre-commit install` installs only the first, so all
+# three types are named. Hermetic: a stub pre-commit records its arguments.
+GT="$TMP/gitrepo"; mkdir -p "$GT/.git/hooks" "$GT/scripts/jira"
+: > "$GT/scripts/jira/package.json"
+GTB="$TMP/gtbin"; mkdir -p "$GTB"
+for t in timeout sh mkdir bash dirname pwd cat; do ln -s "$(command -v "$t")" "$GTB/$t"; done
+printf '#!/bin/sh\nexit 0\n' > "$GTB/shellcheck"; cp "$GTB/shellcheck" "$GTB/at"
+# shellcheck disable=SC2016  # stub script text, expanded when the stub runs
+printf '#!/bin/sh\npwd > "$HIMMEL_HOOK_LOG"\necho "$*" >> "$HIMMEL_HOOK_LOG"\nexit "${HIMMEL_HOOK_RC:-0}"\n' > "$GTB/pre-commit"
+chmod +x "$GTB/shellcheck" "$GTB/at" "$GTB/pre-commit"
+gt_run() { OUT="$(env -i PATH="$GTB" HIMMEL_CLOUD_ROOT="$GT" TMPDIR="$TMP" HIMMEL_HOOK_LOG="$TMP/hook.log" HIMMEL_HOOK_RC="${GT_RC:-0}" GT_HOOKSPATH="${GT_HOOKSPATH:-}" "$BASH_BIN" "$SETUP" $GT_ARGS 2>&1)"; RC=$?; }
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*"commit-msg"*"pre-push"*) ok "git gate hooks planned for all three stages" ;; *) bad "git-hooks step missing or incomplete: $OUT" ;; esac
+rm -f "$TMP/hook.log"; GT_ARGS="" gt_run
+if [ -f "$TMP/hook.log" ] && [ "$(sed -n 1p "$TMP/hook.log")" = "$GT" ]; then ok "hooks installed inside the session checkout"; else bad "pre-commit install not run in the checkout: $(cat "$TMP/hook.log" 2>/dev/null)"; fi
+case "$(sed -n 2p "$TMP/hook.log" 2>/dev/null)" in *"install"*"--hook-type pre-commit"*"--hook-type commit-msg"*"--hook-type pre-push"*) ok "all three hook types installed (a bare install gates only pre-commit)" ;; *) bad "hook types: $(sed -n 2p "$TMP/hook.log" 2>/dev/null)" ;; esac
+rm -f "$TMP/hook.log"; GT_RC=1 GT_ARGS="" gt_run
+if [ "$RC" -eq 0 ]; then ok "failing hook install keeps rc 0"; else bad "failing hook install rc=$RC: $OUT"; fi
+for h in pre-commit commit-msg pre-push; do : > "$GT/.git/hooks/$h"; done
+# git ignores a hook that is not executable, so present-but-not-executable is NOT installed
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*) ok "non-executable hook files are reinstalled" ;; *) bad "non-executable hooks read as installed: $OUT" ;; esac
+for h in pre-commit commit-msg pre-push; do chmod +x "$GT/.git/hooks/$h"; done
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*) ok "installed git hooks are skipped" ;; *) bad "installed hooks not skipped: $OUT" ;; esac
+# core.hooksPath redirects git away from .git/hooks and `pre-commit install` refuses
+# while it is set, so the .git/hooks check says nothing about what git will run
+rm -f "$GT/.git/hooks/pre-push"
+# shellcheck disable=SC2016  # stub script text, expanded when the stub runs
+printf '#!/bin/sh\n[ -n "$GT_HOOKSPATH" ] && { echo "$GT_HOOKSPATH"; exit 0; }\nexit 1\n' > "$GTB/git"; chmod +x "$GTB/git"
+GT_HOOKSPATH=/elsewhere/hooks GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*"core.hooksPath"*) ok "core.hooksPath set skips the hook install and names it" ;; *) bad "core.hooksPath not honoured: $OUT" ;; esac
+GT_HOOKSPATH="" GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=install"*) ok "core.hooksPath unset still installs" ;; *) bad "unset core.hooksPath: $OUT" ;; esac
+rm -f "$GTB/git"
+rm -rf "$GT/.git"
+GT_ARGS="--dry-run" gt_run
+case "$OUT" in *"step=git-hooks action=skip"*"not a git work tree"*) ok "no git work tree skips the hook step" ;; *) bad "no-git case: $OUT" ;; esac
 
 # 7. an unknown flag is refused (rc 2) rather than silently ignored.
 run "$EMPTY" --nope

@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { renderRoadmap } from "../public/roadmap.js";
+import { renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -143,20 +143,72 @@ test("the page renders every section and escapes ticket text", () => {
   const r = read(station());
   r.tickets[0].t = "<script>x</script>";
   const html = renderRoadmap(r, { version: null, theme: null });
-  for (const id of ["rm-releases", "rm-kanban", "rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
+  for (const id of ["rm-releases", "rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
+  // HIMMEL-5488: the long inline board is gone from the overview; each version links to its own drill-in page
+  expect(html).not.toContain('id="rm-kanban"');
+  expect(html).not.toContain("rm-board");
+  expect(html).toContain('href="#/roadmap/v1.1.2"');
   expect(html).not.toContain("<script>x");
-  expect(html).toContain("classifier permission hold");
-  // a theme filter narrows the board
-  const tracker = renderRoadmap(r, { version: null, theme: r.themes.indexOf("tracker") });
+  // the boards are where ticket titles render, so escaping is asserted there
+  const drill = renderRoadmap(r, { version: null, theme: null, ver: r.versions[r.tickets[0].v].n });
+  expect(drill).not.toContain("<script>x");
+  expect(drill).toContain("&lt;script&gt;x");
+  const board = renderKanban(r, { version: null, theme: null });
+  expect(board).not.toContain("<script>x");
+  expect(board).toContain("&lt;script&gt;x");
+  // a theme filter narrows the drill-in board
+  const tracker = renderRoadmap(r, { version: null, theme: r.themes.indexOf("tracker"), ver: "v1.1.2" });
   expect(tracker).not.toContain("Orphaned work");
   expect(renderRoadmap(null, {})).toContain("loading");
   expect(renderRoadmap({ state: "absent", reason: "no Jira mirror" }, {})).toContain("no Jira mirror");
 });
 
-test("the rail lists Roadmap next to Fleet, and it is a console route", () => {
+test("the rail lists Roadmap and Kanban after Fleet, and both are console routes", () => {
   const labels = navLinks({ here: "console", token: TOKEN, current: "roadmap" }).map((l) => l.label);
-  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Roadmap"]);
+  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Roadmap", "Kanban"]);
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "roadmap" });
+  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "kanban" });
+});
+
+test("#/roadmap/<version>: one version's board, four status columns, ticket links, the other versions absent", () => {
+  const r = read(station());
+  const html = renderRoadmap(r, { version: null, theme: null, ver: "v1.1.2" });
+  expect(html).toContain("v1.1.2");
+  for (const col of ["To do", "In progress", "In review", "Done"]) expect(html).toContain(col);
+  expect(html).toContain("Roadmap in the ui"); // HIMMEL-1, v1.1.2
+  expect(html).toContain("Resumed work");      // HIMMEL-5, v1.1.2
+  expect(html).not.toContain("Shipped thing"); // HIMMEL-3, v1.1.1
+  expect(html).not.toContain("Left behind");   // HIMMEL-4, v1.1.1
+  expect(html).toContain('href="#/roadmap"');  // back to the overview
+  expect(html).not.toContain('id="rm-sync"');  // the overview's panels do not repeat here
+  expect(html).toContain("<b>HIMMEL-1</b>");
+  expect(html).toContain("classifier permission hold"); // the leg marker rides the card
+  // an unknown version says so instead of drawing an empty board
+  const none = renderRoadmap(r, { version: null, theme: null, ver: "v9.9.9" });
+  expect(none).toContain("v9.9.9");
+  expect(none).toContain("no such version");
+});
+
+test("#/kanban: every version's tickets on one board, no version filter, Done hideable", () => {
+  const r = read(station());
+  const all = renderKanban(r, { version: null, theme: null, hideDone: false });
+  for (const t of ["Roadmap in the ui", "Shipped thing", "Left behind", "Resumed work", "Roadmap in the UI!"]) expect(all).toContain(t);
+  expect(all).not.toContain('data-rm-filter="version"');
+  expect(all).toContain('data-rm-filter="theme"');
+  const hidden = renderKanban(r, { version: null, theme: null, hideDone: true });
+  expect(hidden).not.toContain("Shipped thing");
+  expect(hidden).toContain("Left behind");
+  // the theme filter still narrows it
+  expect(renderKanban(r, { version: null, theme: r.themes.indexOf("tracker"), hideDone: false })).not.toContain("Orphaned work");
+});
+
+test("kanban pages: an empty mirror shows the empty state, not a blank board", () => {
+  const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", legs: { state: "absent" } });
+  expect(renderKanban(r, { hideDone: false })).toContain("no Jira mirror");
+  expect(renderRoadmap(r, { ver: "v1.1.2" })).toContain("no Jira mirror");
+  expect(renderKanban(null, {})).toContain("loading");
+  const none = { ...read(station()), tickets: [] };
+  expect(renderKanban(none, { hideDone: false })).toContain("No tickets");
 });
 
 test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the env names", async () => {

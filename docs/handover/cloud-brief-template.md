@@ -1,7 +1,6 @@
 # Cloud brief template
 
-The brief a console hands to `claude --cloud` for a small, well-scoped ticket
-(HIMMEL-4206). A cloud session sees the repo clone plus the claude.ai MCP
+The brief a console hands to `claude --cloud` for a small, well-scoped ticket. A cloud session sees the repo clone plus the claude.ai MCP
 connectors that are enabled for that session (see "claude.ai connectors in the
 cloud" below), plus whatever plugins the environment's setup script installs (see below). It has no handover
 state and no console inbox. A plugin uploaded on claude.ai (Customize, Plugins)
@@ -26,7 +25,7 @@ CLOUD-OK ticket and prints the launch line.
 So the local shepherd stays mandatory: it runs `/pr-check`, the CR gate and the
 merge. The cloud session ships a PR and stops.
 
-The mechanical half of the shepherd is scripted (HIMMEL-4942):
+The mechanical half of the shepherd is scripted:
 `bash scripts/handover/console-kit/shepherd.sh <pr>` makes a detached worktree of
 the PR head, runs the coverage lint, the impacted shell suites, `check-ci.sh` and
 `ready-check.sh`, and prints one `SHEPHERD <pr> <head> READY-CANDIDATE|NEEDS-LEG
@@ -36,7 +35,7 @@ cannot run `/pr-check` (a model-session runbook): with no `ok` CR-ledger row for
 the head it reports `panel: NOT-RUN` and the PR still needs a `/pr-check` round.
 A clean candidate needs no shepherd leg; the console reads the diff, GOs and merges.
 
-## claude.ai connectors in the cloud (probed 2026-10-08, HIMMEL-4971)
+## claude.ai connectors in the cloud (probed 2026-10-08)
 
 Probed from a cloud session launched with the generated brief: `ToolSearch`
 found no `context7` or Atlassian tools, and `SearchMcpRegistry` reported both
@@ -50,7 +49,7 @@ thereby enabled in a cloud session, so the brief must not assume it:
   comment, file follow-ups) could not run; enable the connector for the session
   before launch, or the session reports the Jira steps as not done in its PR.
 
-## Plugin hooks in the cloud (probed 2026-10-04, HIMMEL-4273)
+## Plugin hooks in the cloud (probed 2026-10-04)
 
 Probed from a cloud session started in a `--with-plugins` environment:
 `CLAUDE_CODE_REMOTE=true`, `HOME=/root`, `CLAUDE_PROJECT_DIR=/home/user/Himmel`,
@@ -103,7 +102,7 @@ below are the background and the plugin-free variant.
    bounded to fit the platform's roughly 5-minute setup cache. Set
    `BASH_DEFAULT_TIMEOUT_MS=600000` and `BASH_MAX_TIMEOUT_MS=600000` in the
    environment's own "Environment variables" field: a cloud probe showed that
-   field is the only route that reaches the Bash tool (HIMMEL-4429).
+   field is the only route that reaches the Bash tool.
    Network access: "Trusted" is enough for apt, pip and npm.
 2. **Skills.** `bash scripts/cloud/package-skills.sh` writes one zip per skill
    under `${TMPDIR:-/tmp}/himmel-cloud-skills`. Upload each at claude.ai
@@ -135,7 +134,7 @@ below are the background and the plugin-free variant.
      `${CLAUDE_PLUGIN_ROOT}` to that frozen clone while the hook scripts come
      from the session clone (`$CLAUDE_PROJECT_DIR/scripts/hooks/`), so a stale
      cache can pair an old runner with new scripts.
-   - Verified 2026-10-04 (HIMMEL-4273): 10 `himmel-ops:` and 13 `lean-skills:`
+   - Verified 2026-10-04: 10 `himmel-ops:` and 13 `lean-skills:`
      skills listed.
 
 ## Brief sections (reproduce in order)
@@ -216,7 +215,7 @@ substitutes, all of them on GitHub or Jira, which it reaches:
 | Jira close at merge | Unchanged: the local shepherd merges and closes; the session never transitions past `In Progress` |
 
 The `CLOUD-<MARKER>` first-line shape matches the `CLOUD-ACK` reply proven on
-2026-10-04 and the reader HIMMEL-4277 builds into the tick.
+2026-10-04 and the reader built into the tick.
 
 ## PR body contract
 
@@ -229,7 +228,7 @@ completes-ticket: yes|no
 ```
 
 - **One line per ask** of each cited ticket, each `done` or `deferred → HIMMEL-<n>`
-  (HIMMEL-4207: the console's ready-check fails a missing section, a deferred key
+  (the console's ready-check fails a missing section, a deferred key
   that does not exist and one already Done). The console files a follow-up
   ticket for every ask the brief scopes out BEFORE writing the brief and names
   each key in `## The change`; the session writes it as `deferred → HIMMEL-<n>`.
@@ -248,6 +247,10 @@ completes-ticket: yes|no
 ```bash
 claude --cloud "$(cat cloud-brief-HIMMEL-<n>.md)" --permission-mode auto
 ```
+
+A console launches it through the kit instead, which opens the session in its
+own konsole window and appends it to the bucket's `cloud-sessions.tsv`:
+`bash scripts/handover/console-kit/launch-cloud.sh <n>`.
 
 Steering a running session is headless (`claude -p "<msg>" --cloud <id>`) and
 draws the same bank as interactive use (see CLAUDE.md, "Claude invocation

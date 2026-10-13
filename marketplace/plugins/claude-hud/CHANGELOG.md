@@ -4,12 +4,29 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-12
+
+### Security
+- Git status no longer runs commands that a repository's own config names. A directory whose `.git/config` (or a file it includes, or a submodule's config) set `core.fsmonitor` or a filter driver could run any command as you on every render ([GHSA-fq7j-8hxj-jfqh](https://github.com/jarrodwatts/claude-hud/security/advisories/GHSA-fq7j-8hxj-jfqh)). Filters from your global or system config, such as git-lfs, still run.
+
+### Changed
+- Uncommitted changes inside a submodule no longer mark the repository dirty; a submodule moved to a new commit still does.
+
+## [0.11.0] - 2026-10-12
+
+### Added
+- A `sessionTokens` element, so `elementOrder`, `display.mergeGroups`, and `display.rightAlign` can place the `display.showSessionTokens` summary, for example on the first line. It isn't in the default order: left out, the summary keeps its own last line (#808).
+
 ### Fixed
+- Fork agents whose completion notice has no `<tool-use-id>` no longer stay `◐` running after they finish (#798, #799).
+- Input that stalls partway through stdin no longer keeps the HUD waiting until Claude Code closes the pipe (#801, #805).
+- Two sessions updating the daily and weekly cost ledger at the same moment no longer drop one session's baseline (#800, #802).
+- Line diffs come from `git diff-index`, which never writes the index, so a timed-out render can't leave `.git/index.lock` behind. `--no-optional-locks` didn't stop `git diff` from writing it (#807).
 - A folder name containing ` │ ` no longer leaves the project link open over the rest of the HUD when line 1 wraps.
 
 ## [0.10.0] - 2026-10-01
 
-This release is a rewrite for simplicity, with the same options in about half the source and a quarter of the test code. It needs Claude Code v2.1.260 or later.
+This release is a rewrite for simplicity, with the same options (except `display.showDiskUsage`, below) in about half the source and a quarter of the test code. It needs Claude Code v2.1.260 or later.
 
 ### Changed
 - Read `version`, `cost`, `prompt_cache`, `session_name`, `output_style`, and `workspace.repo` from Claude Code's stdin instead of deriving them.
@@ -22,6 +39,9 @@ This release is a rewrite for simplicity, with the same options in about half th
 - `/claude-hud:setup` installs a small launcher and writes `settings.json` with a helper script instead of hand-built shell commands. Existing setups keep working; re-run setup to switch. It asks nothing unless it would replace another status line; customize afterwards by asking Claude or with `/claude-hud:configure`. A `refreshInterval` you set yourself is kept.
 - `/claude-hud:configure` asks one short set of questions and previews the diff.
 - The default HUD no longer parses the transcript, runs `claude --version`, or keeps context or transcript caches on disk.
+
+### Removed
+- `display.showDiskUsage`. OS gauges are out of scope; show free disk space with `--extra-cmd` instead. Unknown config keys are ignored, so a config that still sets it keeps working without the segment (#796).
 
 ### Fixed
 - The macOS memory reading no longer blocks the rest of the render.

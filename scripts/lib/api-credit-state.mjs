@@ -242,8 +242,103 @@ export function creditState(command, options = {}, env = process.env) {
   }
 }
 
+// HIMMEL-5433: routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts
+// whose own row has room for the whole budget (each under its own cap), spend
+// the grant that expires first; a tie goes to A. The reservation re-checks headroom, so a race
+// with another launch can only refuse, never overspend.
+export function pickAccount(budget, env = process.env) {
+  try {
+    const need = money(budget);
+    const config = read(configPathFor(env));
+    configs(config);
+    const rows = Object.keys(config.accounts).sort()
+      .map((account) => creditState('status', {}, { ...env, HIMMEL_API_ACCOUNT: account }))
+      .filter((r) => r.verdict === 'PROCEED' && money(r.available_est_usd) >= need)
+      .sort((x, y) => x.expires_at - y.expires_at);
+    if (rows.length === 0) return { verdict: 'SKIPPED-BANK', reason: 'no-account-with-headroom' };
+    return { verdict: 'PROCEED', account: rows[0].account, expires_at: rows[0].expires_at };
+  } catch (e) {
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+  }
+}
+
+// HIMMEL-5433: operator snapshot refresh from a Console reading. The reading
+// already includes every job the provider has billed, so the watermark moves up
+// with it; without that the billed spend counts twice. It moves by the smaller
+// of the local spend and the billed spend added since the previous reading, so
+// spend billed earlier (outside the ledger) never hides a settlement the Console
+// does not show yet. A new grant row starts the watermark at zero (conservative).
+// ponytail: billed spend from outside the ledger that lands in the same window
+// as an unbilled settlement is read as that settlement (exclusive_org attests
+// there is none), upgrade path: the Admin cost_report collector (task 6 of the
+// HIMMEL-4904 plan).
+export function refreshSnapshot(env, account, { remaining, grant, starts, expires }) {
+  let lock = null;
+  try {
+    if (!['A', 'B'].includes(account)) refuse('account-required');
+    const config = read(configPathFor(env));
+    configs(config);
+    if (!own(config.accounts, account)) refuse('account-not-configured');
+    const c = config.accounts[account];
+    // The ledger's own transaction lock, held across both reads and the write: no
+    // reservation, settlement or second refresh changes either file underneath it.
+    const ledgerPath = resolve(config.ledger_path);
+    const held = `${join(realpathSync(dirname(ledgerPath)), basename(ledgerPath))}.lock`;
+    try { mkdirSync(held, { mode: 0o700 }); lock = held; } catch { refuse('ledger-locked-or-unwritable'); }
+    const path = env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json');
+    const snapshot = existsSync(path) ? read(path) : { version: 1, accounts: {} };
+    if (!object(snapshot) || snapshot.version !== 1 || !object(snapshot.accounts)) refuse('invalid-snapshot');
+    const prior = snapshot.accounts[account];
+    const s = { ...(prior ?? {}) };
+    if (grant !== undefined) {
+      const day = (d) => {
+        const t = Date.parse(`${d}T00:00:00Z`);
+        // Date.parse rolls 2026-02-30 over to March: only a date that round-trips is real.
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') || !Number.isFinite(t) || new Date(t).toISOString().slice(0, 10) !== d) refuse('invalid-date');
+        return Math.floor(t / 1000);
+      };
+      // A new grant row: exclusive use of the org is the operator's attestation.
+      Object.assign(s, { grant_usd: usd(money(grant)), starts_at: day(starts), expires_at: day(expires),
+        exclusive_org: true, discrepancy: false });
+    } else if (!own(snapshot.accounts, account)) refuse('missing-snapshot');
+    Object.assign(s, { organization_id: c.organization_id, cycle_id: c.cycle_id });
+    const left = money(remaining), granted = money(s.grant_usd);
+    if (left > granted) refuse('unreconciled-amounts');
+    const ledger = existsSync(ledgerPath) ? read(ledgerPath) : { version: 1, accounts: {} };
+    ledgerCheck(ledger);
+    const { spent } = totals(ledger.accounts[account]);
+    const billed = granted - left;
+    const same = object(prior) && ['grant_usd', 'starts_at', 'expires_at'].every((k) => prior[k] === s[k]);
+    let mark = 0n;
+    if (same) {
+      const was = money(prior.reconciled_spent_usd);
+      const step = [spent - was, billed - (money(prior.grant_usd) - money(prior.remaining_usd))]
+        .reduce((x, y) => (x < y ? x : y));
+      mark = was + (step > 0n ? step : 0n);
+    }
+    s.reconciled_spent_usd = usd(mark);
+    s.remaining_usd = usd(left);
+    s.observed_at = Math.floor(Date.now() / 1000);
+    s.source = 'operator-console-snapshot';
+    snapshot.accounts[account] = s;
+    writeFileSync(`${path}.${process.pid}.tmp`, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+    renameSync(`${path}.${process.pid}.tmp`, path);
+    return { verdict: 'PROCEED', account, remaining_usd: s.remaining_usd,
+      reconciled_spent_usd: s.reconciled_spent_usd, expires_at: s.expires_at };
+  } catch (e) {
+    return { verdict: e.verdict || 'BANK-UNKNOWN', reason: e.verdict ? e.message : 'state-io-failure' };
+  } finally {
+    if (lock) try { rmdirSync(lock); } catch { /* an orphan lock blocks admissions, never frees them */ }
+  }
+}
+
 function main() {
   const [command, ...args] = process.argv.slice(2);
+  if (command === 'pick') {
+    const ok = args.length === 2 && args[0] === '--usd';
+    console.log(JSON.stringify(ok ? pickAccount(args[1]) : { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' }));
+    return;
+  }
   const options = {};
   for (let i = 0; i < args.length; i += 2) {
     const name = args[i]?.slice(2);

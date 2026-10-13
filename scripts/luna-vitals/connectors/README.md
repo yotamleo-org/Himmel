@@ -1,4 +1,4 @@
-# luna-vitals connectors — Google Health API (HIMMEL-609, alpha)
+# luna-vitals connectors — Google Health API (alpha)
 
 Opt-in connector that pulls wearable vitals from the **Google Health API**
 (`health.googleapis.com/v4`, the Fitbit-Web-API successor) into the luna-vitals

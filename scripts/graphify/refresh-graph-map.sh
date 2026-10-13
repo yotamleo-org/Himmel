@@ -60,7 +60,6 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # (routes through the locally-installed `claude` CLI). The claude-ONLY adopter
 # story needs claude-cli, not claude.
 # BILLING (HIMMEL-1748, measured 2026-08-11/12): subscription-authenticated
-# headless-claude-ok: documentation of graphify's intentional subscription-authenticated CLI dispatch
 # `claude -p` draws from the SAME 5-hour/weekly usage bank as the operator's
 # interactive sessions — there is NO separate headless bucket for subscription
 # auth. (The HIMMEL-128 "separate bucket" note that used to live in the dispatch
@@ -406,7 +405,6 @@ GRAPHIFY_MAP="${GRAPHIFY_MAP_BIN:-graphify}"   # test hook: stub graphify
 # cadence is a separate concern, out of scope for this knob.
 # claude-cli NOTE (HIMMEL-1748): graphify FORCE-SERIALIZES the claude-cli
 # backend (llm.py: max_concurrency=1 unless GRAPHIFY_CLAUDE_CLI_PARALLEL=1 —
-# headless-claude-ok: documents why graphify keeps its intentional CLI subprocesses serial
 # parallel `claude -p` subprocesses conflict over session state), so this knob
 # and the --max-concurrency flags below are a NO-OP for claude-cli; they govern
 # the API backends only (claude, the glm remap, deepseek, ...).
@@ -2340,23 +2338,13 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   }
 
   echo "refresh-graph-map: incremental update on scratchpad copy ($SCRATCH) backend=$BACKEND deadline=${GRAPHIFY_RUN_DEADLINE_SECONDS}s" >&2
-  # Billing note (NOT a gate marker — see below). Under the default BACKEND
-  # (claude-cli) graphify shells the claude CLI headlessly from inside these two
-  # dispatches. CORRECTED 2026-08-12 (HIMMEL-1748): an earlier cut claimed this
-  # billed on a "separate headless bucket" (HIMMEL-128) — measured, it does NOT:
-  # headless-claude-ok: documentation of the intentional graphify CLI backend dispatch
-  # subscription-authenticated `claude -p` draws from the SAME 5h/weekly usage
-  # bank as interactive sessions. The sonnet model pin above is what keeps the
-  # cadence's draw acceptable; operators who want zero bank draw use an API
-  # backend (glm) instead.
-  # Deliberately NOT a `headless-claude-ok:` marker (HIMMEL-1070, public CR
-  # thread): the no-headless-claude gate matches `claude` + `-p|--print|--bg` in
-  # THIS repo's shell, and these lines invoke `graphify`. The gate never fires
-  # here, so a marker would suppress nothing and would imply an enforcement that
-  # does not exist. (It also matches PROSE - an earlier cut of this very comment
-  # tripped the gate by containing the literal flag, so the marker would only
-  # have been suppressing itself.) The real control for what those nested calls
-  # can reach is the reroute-selector clearing above + the egress fence.
+  # Billing note. Under the default BACKEND (claude-cli) graphify shells the
+  # claude CLI headlessly from inside these two dispatches. Measured 2026-08-12
+  # (HIMMEL-1748): subscription-authenticated `claude -p` draws from the SAME
+  # 5h/weekly usage bank as interactive sessions. The sonnet model pin above is
+  # what keeps the cadence's draw acceptable; operators who want zero bank draw
+  # use an API backend (glm) instead. The real control for what those nested
+  # calls can reach is the reroute-selector clearing above + the egress fence.
   _rc=0
   _run_bounded "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then

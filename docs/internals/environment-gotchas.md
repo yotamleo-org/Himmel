@@ -38,7 +38,7 @@ stub Codex's hook wrapper has to skip — see `harness-compat.md`.)
 your interactive shell's. The telegram bridge's supervisor is started by the
 `HimmelTelegramBridge` scheduled task under `pwsh -NoProfile`, whose PATH puts
 System32 ahead of `Git\bin`, so every `bash` the poller spawned hit the stub and
-exited 127 (HIMMEL-1279). Two things make this hard to see:
+exited 127. Two things make this hard to see:
 
 - **POSIX-ifying the path does not help.** The stub eats the backslashes during
   the WSL argv translation, so the error text reads
@@ -55,7 +55,7 @@ last minus `system32`/`windowsapps`) rather than a literal `"bash"`. Shell side
 has `cygpath`; the `.ps1` side has the snippet above.
 
 The rule covers **tests and support scripts too**, not just production
-launchers (HIMMEL-1992): Node/`.mjs` sites take `resolveBash()` from
+launchers: Node/`.mjs` sites take `resolveBash()` from
 `scripts/hooks/run-hook-with-bash.js`, Bun/TS sites take `BASH_BIN` from
 `scripts/telegram/run.ts`, and a `.ps1` resolves Git Bash once per script.
 `scripts/hooks/run-hook-with-bash.test.mjs` lints the covered trees for a new
@@ -114,8 +114,8 @@ Calling `wsl.exe` from a Git Bash session puts every argument through MSYS path
 conversion first: `/mnt/c/...` looks like a POSIX absolute path, so MSYS
 rewrites it to `C:\msys64\mnt\c\...`-style Windows paths before `wsl.exe` ever
 sees it — the command then fails inside the distro on a path that doesn't
-exist. Measured live during the HIMMEL-939 eval (a second Windows station,
-2026-07-12).
+exist. Measured live during an eval on a second Windows station
+(2026-07-12).
 
 Prefix the call with `MSYS_NO_PATHCONV=1`:
 
@@ -127,15 +127,14 @@ For `/`-prefixed argument *fragments* that are not standalone paths (flags like
 `/tmp/x:/y` mappings, or args where only part is a path), `MSYS_NO_PATHCONV=1`
 alone may not cover it — add `MSYS2_ARG_CONV_EXCL='*'` to exclude everything
 from conversion. The in-repo precedent used to be the CodeRabbit WSL lane in
-`scripts/cr/coderabbit-review.sh` (HIMMEL-926); that script was deleted by
-HIMMEL-2704, so the rule now stands on its own.
+`scripts/cr/coderabbit-review.sh`; that script has since been deleted,
+so the rule now stands on its own.
 
 ## WSL: the /mnt/c performance cliff
 
 WSL processes operating on a Windows checkout through `/mnt/c` are not "a bit
 slower" — they are the **worst possible configuration**, slower than Git Bash
-itself. Measured on the himmel repo (a second Windows station, 2026-07-12,
-HIMMEL-939 eval):
+itself. Measured on the himmel repo (a second Windows station, 2026-07-12):
 
 | operation | Git Bash (C:\ checkout) | WSL on `/mnt/c` | WSL on ext4 clone |
 |---|---|---|---|
@@ -156,7 +155,7 @@ side — the cliff is filesystem IO, not process spawn.
 himmel's Claude hooks parse their JSON stdin with `jq` and **fail closed** —
 a missing `jq` reads as "cannot verify, refuse". In a bare WSL Ubuntu (no
 toolchain provisioned), `block-destructive-commands.sh` refused in 240 ms
-during the HIMMEL-939 eval: fast, silent, and every guarded operation is
+during that eval: fast, silent, and every guarded operation is
 blocked, which presents as "hooks are broken under WSL" when the actual
 problem is a missing binary.
 
@@ -251,7 +250,7 @@ settings.json hooks (skill + CLAUDE.md + version-stamp refresh only), so a fixed
 Claude hook survives re-install — but `graphify codex install` / `graphify gemini
 install` still re-emit the backslash path (harmless under cmd.exe, but re-normalize
 to the `C:/…` form for consistency + space-safety). A durable himmel-owned
-post-install path-normalizer is tracked in HIMMEL-1168.
+post-install path-normalizer is a known gap.
 
 Upgrade gotcha: `uv tool upgrade graphifyy` from **inside** a live session running
 the graphify MCP server + hooks can leave the `graphify` CLI shim unwritten — a
@@ -303,7 +302,7 @@ a fresh adopter; it is not — treat it as benign unless the embed itself
 errors or hangs. For genuine Metal problems, the underlying
 node-llama-cpp/ggml backend exposes a `GGML_METAL_NO_RESIDENCY` residency
 knob (per the issue-#276 report; macOS-native layer). Reported on the
-fresh-machine adopt run in public issue #276 (G6, HIMMEL-752); the message
+fresh-machine adopt run in public issue #276 (G6); the message
 is emitted by qmd's upstream node-llama-cpp, so himmel documents it rather
 than suppressing stderr (a blanket filter would hide real errors).
 
@@ -322,7 +321,7 @@ error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-glm.ts'  
 From the repo root the same suite runs normally. (It used to leave two
 `pushurl poison` cases failing on untouched `main` — a Windows
 EBUSY-on-temp-cleanup issue, not a cwd one; those cases went away with the
-mechanism in HIMMEL-1961. Other temp-repo cases in this suite still fail
+mechanism. Other temp-repo cases in this suite still fail
 intermittently under load for the same EBUSY reason.)
 
 Why it costs time rather than just failing: the errors name the *source* file the
@@ -330,7 +329,7 @@ wiring points at, not the cwd, so it reads as a broken import or a missing build
 artifact. The instinct is to go looking for a wiring bug that does not exist.
 CLAUDE.md's Tests section carries the one-line rule; this is the reproduction.
 
-Found by the wave-1 orchestration-MVP session (HIMMEL-1615), which recorded it as
+Found by the wave-1 orchestration-MVP session, which recorded it as
 a trap after the generalisation bit it.
 
 ## Anthropic output content-filter trips on policy text and minified blobs
@@ -383,7 +382,7 @@ Mitigations:
   `model_refusal_fallback` before blaming the arm environment — refusal flags
   on routine harness code are typically false positives.
 
-Preserved-thinking cost (HIMMEL-3875; read matrix reported by the ticket from
+Preserved-thinking cost (read matrix reported by the ticket from
 the Anthropic preserved-thinking docs, not independently verified): the
 fallback continues the **same** session on another model, and a model can only
 read some other models' thinking blocks — Opus 5.5 can't read Fable blocks,
@@ -468,7 +467,7 @@ Two independent mitigations:
     files: '\.(sh|ps1|yaml|yml|json|toml)$'
   ```
 
-  This is what the luna-second-brain template ships (HIMMEL-615). pre-commit has
+  This is what the luna-second-brain template ships. pre-commit has
   **no per-hook `env:` key**, so encoding can't be forced from the config itself.
 - **Machine env (defense-in-depth, for code repos where the fixers must run on
   arbitrary paths):** export `PYTHONUTF8=1` (or `PYTHONIOENCODING=utf-8`) in the
@@ -501,7 +500,7 @@ creation on a machine not yet proven, verify
 `(Get-ScheduledTaskInfo <name>).NextRunTime` is the intended datetime — never
 trust the creation SUCCESS message.
 
-`arm-resume.sh` is now structurally guarded against this (HIMMEL-938): its
+`arm-resume.sh` is now structurally guarded against this: its
 Windows path reads `HKCU\Control Panel\International\sShortDate` and renders
 `/sd` in the machine's own pattern (falling back to the old hardcoded
 `MM/dd/yyyy` on any registry-read failure), then runs the
@@ -535,7 +534,7 @@ any `git -C <dir>` / `cd <dir> && git …` walks UP, finds the primary repo's
 "Already up to date". Detect with `git rev-parse --show-toplevel` (must equal
 the worktree dir). Habit: before multi-step git surgery in a worktree, capture
 `git diff --cached > <scratchpad>/patch` first — if a concurrent prune hits,
-the patch is the only thing that survives. (HIMMEL-849 tracks a prune guard.)
+the patch is the only thing that survives. (A prune guard is a known gap.)
 
 ## git: a fixture `git config` run from the primary checkout poisons every worktree
 
@@ -619,7 +618,7 @@ A Read/Grep/Glob whose target resolves outside the session's cwd and
 `permissions.additionalDirectories` always prompts interactively — even in
 `auto` mode, since the classifier doesn't cover this tool-call class (public
 docs confirm: no `auto`-mode carve-out is documented for it). An armed/
-overnight session has nobody to answer that prompt (HIMMEL-2381: a leg hung
+overnight session has nobody to answer that prompt (a leg once hung
 on `Allow reads outside the working directories?` until the operator
 happened to be at the terminal). Fix: pre-list the known-safe outside paths
 (state repo, `~/.himmel`, the primary checkout, the interpreter's
@@ -917,14 +916,14 @@ A shell suite that sleeps for real cannot be told apart from a suite that is
 stuck: both just sit there. `scripts/test-check-ci.sh` pinned
 `CR_ESCALATE_POLL=0`, which `check-ci.sh` validates as invalid and replaces
 with its 120-second default — so a case with a wait budget above 120s slept two
-real minutes between re-reads, looking identical to a wedged run. One case did
-(HIMMEL-1953), and nothing stopped the next one from doing the same.
+real minutes between re-reads, looking identical to a wedged run. One case did,
+and nothing stopped the next one from doing the same.
 
 The fix is an injected sleep, not a smaller number. Every wall-clock wait in a
 script the suites drive goes through one command word the caller can replace:
 
 - `CHECK_CI_SLEEP_CMD` (`scripts/check-ci.sh`, default `sleep`) — covers the
-  grace-window probe and the `--settle` pause (the `--escalate` nap it once covered is retired, HIMMEL-3360), including
+  grace-window probe and the `--settle` pause (the `--escalate` nap it once covered is retired), including
   the validated 120s fallback.
 - `MERGE_ON_GREEN_SLEEP_CMD` (`scripts/handover/merge-on-green.sh`, default
   `sleep`) — the post-merge confirmation poll.
@@ -952,14 +951,14 @@ Bounds are the backstop for everything the seam does not cover:
   Git-Bash box whose `/tmp` had accumulated ~150k entries — enough to make
   every `mktemp` a fixture takes measurably slower. Check `ls /tmp | wc -l`
   before believing a suite "got slower".
-- `SUITE_TIMEOUT` (default 600s since HIMMEL-2233, plus a per-suite table for
+- `SUITE_TIMEOUT` (default 600s, plus a per-suite table for
   measured slow suites) and `SUITE_RUN_BUDGET` (default 7200s) in
   `scripts/ci/run-shell-tests.sh` already cap each suite and the whole run; an
   expired suite is reported `rc=124` and counted under `TIMED OUT`.
 - The whole-run budget does **not** fit a full corpus on this workstation, and
-  saying so is the point (HIMMEL-2243): 397 suites are discovered, 381 run, and
+  saying so is the point: 397 suites are discovered, 381 run, and
   the 2026-08-29 reference run spent all 7200s on real work while reaching 174
-  of them. A truncated run exits 1 rather than reporting green (HIMMEL-1128),
+  of them. A truncated run exits 1 rather than reporting green,
   and `SUITE_ROTATE` (default on) leaves a cursor so the NEXT run resumes at the
   suite the budget cut off and wraps — otherwise the sorted walk order drops the
   identical 207-suite tail every time. Set `SUITE_ROTATE=0` to always start at
@@ -974,7 +973,7 @@ disables the machine lock and `SUITE_ROTATE=0` disables rotation. The
 distinction is deliberate: a `0` duration would silently disable the guard it
 configures, whereas an explicit switch is the sanctioned way to turn one off.
 
-`SUITE_LOCK_WAIT` (HIMMEL-2215) is the one duration where `0` is honoured
+`SUITE_LOCK_WAIT` is the one duration where `0` is honoured
 verbatim, and it does not break that rule — it is a **budget**, not a guard.
 It says how long a run may queue for a held machine lock before refusing, so
 `0` means "do not queue", which is the historical behaviour and the default;
@@ -992,13 +991,13 @@ Hermes sessions (not Claude Code / Codex) scan `.agents/skills/` at gateway
 start and quarantine anything its threat-pattern scanner scores "dangerous";
 the skill is then unavailable via `/skill <name>` for that session. himmel
 skills have been hit this way (`source-command-claude-md-audit`; the vendored
-response-compression skill family that also tripped it was removed entirely in
-HIMMEL-2033, mooting that case) — the findings are pattern-level, so treat a
+response-compression skill family that also tripped it was removed entirely,
+mooting that case) — the findings are pattern-level, so treat a
 quarantine as a signal to inspect the skill's scripts/prose, then reword.
 **Hermes has no per-project allowlist for project skills** — rewording the
 flagged pattern is the only local lever; do not blanket-disable the scanner.
 
-Accepted policy (HIMMEL-2032, operator ruling 2026-08-22): the scanner stays
+Accepted policy (operator ruling 2026-08-22): the scanner stays
 ON; a quarantine is a signal to inspect, never a reason to disable the guard.
 False positives are tracked upstream: hermes-agent issue
 [#92021](https://github.com/NousResearch/hermes-agent/issues/92021) is the
@@ -1023,7 +1022,7 @@ nvm-windows) leaves that path stale: every Bash/Edit/Read tool call prints a
 **OPEN**. Fix: `bash scripts/himmel-doctor.sh --fix` (checks `C1-guardrail`,
 re-bakes via `setup-hooks --guardrail-mode global`), or re-run that command
 directly. `scripts/lib/resolve-node.sh` now probes nvm-windows' `NVM_SYMLINK`
-first (HIMMEL-2013).
+first.
 
 ## Linux: a stock Ubuntu user has TWO PATH layers, and non-interactive shells see only one
 
@@ -1051,11 +1050,10 @@ Consequences:
 - **A presence probe must state which shell layer it used.** A bare "MISSING"
   is not evidence a tool is absent; it is evidence that one PATH layer did not
   contain it. Two false negatives (`claude` and `bun`) came out of exactly this
-  during the HIMMEL-2432 clean-install run.
+  during a clean-install run.
 - **Installer verification that re-checks PATH in-process will fail** even
   though the install succeeded — `himmelctl deps ensure` reports bun as
-  "installed but still not found on PATH" for this reason
-  ([HIMMEL-2438](https://yotamleo.atlassian.net/browse/HIMMEL-2438)). Resolve a
+  "installed but still not found on PATH" for this reason. Resolve a
   freshly-installed tool by its known path, not by PATH lookup.
 - **Re-running an installer can duplicate its rc block.** bun's installer
   appended a second identical `BUN_INSTALL` block to `~/.bashrc` on re-run.
@@ -1065,8 +1063,7 @@ Consequences:
   commit driven by SSH, a script, CI or an agent does not. That is himmel's
   normal case, not the exotic one, and it blocked every commit on the guest
   until `scripts/hooks/check-lockfile-integrity.sh` learned to resolve bun by
-  `PATH` → `$BUN_INSTALL/bin` → `$HOME/.bun/bin`
-  ([HIMMEL-2439](https://yotamleo.atlassian.net/browse/HIMMEL-2439)). Any new
+  `PATH` → `$BUN_INSTALL/bin` → `$HOME/.bun/bin`. Any new
   gate that reaches for a third-party tool needs the same chokepoint; do not
   assume the operator's PATH.
 - **Offboarding degrades exactly the way onboarding does.**
@@ -1075,8 +1072,7 @@ Consequences:
   line when either failed, and still ended with `Uninstall complete.` at rc=0 —
   so an uninstall driven by `ssh host 'cmd'`, cron, CI or an agent left every
   plugin wired at user scope and every git gate still firing while the tool
-  reported success
-  ([HIMMEL-2458](https://yotamleo.atlassian.net/browse/HIMMEL-2458)). Both
+  reported success. Both
   scripts now resolve each tool by known path and, if a step that had to run
   could not, name it with the list of places searched and exit **2** without
   printing a completion line. An explicit `--skip-plugins` / `--skip-hooks` is
@@ -1117,16 +1113,14 @@ it — `C:/Users/<you>/.local/bin/graphify.EXE hook-guard search` in
 `.claude/settings.json`, and the same absolute-path shape re-added to
 `.codex/hooks.json`. Both files are tracked, so every adopter inherits a hook
 that cannot resolve off that one box, and the first also leaks the
-maintainer's username into the public mirror
-([HIMMEL-2156](https://yotamleo.atlassian.net/browse/HIMMEL-2156)).
+maintainer's username into the public mirror.
 
 This is not a one-off to clean up — the next `graphify install` (including the
 one inside `himmel-update`) puts it straight back. The tracked shape is now
 asymmetric: ONE entry in `.claude/settings.json` (matcher `Grep|Glob`,
 timeout 3) and NONE in `.codex/hooks.json` — the Codex hook was removed
 outright because it was spawning a hook process on every single call and
-starving the chain
-([HIMMEL-2480](https://yotamleo.atlassian.net/browse/HIMMEL-2480)). So the
+starving the chain. So the
 correct action after a `graphify install` is to restore that shape: re-apply
 the portable, fail-open command in `.claude/settings.json`, and DELETE the
 entry `graphify install` re-adds to `.codex/hooks.json` rather than rewriting
@@ -1139,7 +1133,7 @@ it to a portable form.
 
 With graphify present the hook runs exactly as before and a non-zero exit still
 blocks the call; with graphify absent the command exits 0 and the adopter is
-unaffected. The timeout is HIMMEL-2480's pricing and must survive the restore.
+unaffected. The timeout is a deliberate cost cap and must survive the restore.
 The thing that actually holds the line is the gate, not the memory:
 `settings-portability` (`scripts/hooks/check-settings-portability.sh`) refuses
 the commit that re-introduces the absolute form.
@@ -1152,8 +1146,7 @@ the commit that re-introduces the absolute form.
 install ran from `~/Documents/github/himmel-main` — the private RC — while the
 upgrade sourced its template from `~/Documents/github/himmel`, a stale PUBLIC
 mirror, and wrote 22 files into a real vault from it without ever saying which
-checkout they came from
-([HIMMEL-2460](https://yotamleo.atlassian.net/browse/HIMMEL-2460)).
+checkout they came from.
 
 Resolution order is now `--template-dir` → the invoking script's own checkout →
 `$HIMMEL_DIR` → `$HIMMEL_REPO` → the `$HOME` scan, and the resolved checkout and
@@ -1176,7 +1169,7 @@ per-call prefix does not reach the guard. Recovery once locked out: plain-copy
 the affected file(s) back to `HEAD`, relaunch with the bypass set, then
 re-apply the intended edit and commit it in the same step.
 
-**Scope (HIMMEL-3384).** The bypass is anchored to `CLAUDE_PROJECT_DIR`, never
+**Scope.** The bypass is anchored to `CLAUDE_PROJECT_DIR`, never
 to a directory discovered from cwd (`git rev-parse` follows the `.git` pointer
 *file* a worker can rewrite). The launcher honours it only when all of these
 hold, and otherwise the normal deny stands:
@@ -1198,8 +1191,8 @@ write. A hook chain runs the launcher once per member, so a tool call that
 overrides several tampered hooks writes one line per hook. A symlink or
 non-regular file in that spot, and any failed or short write, refuse the bypass.
 The two command-text fences in `block-glm-external-writes.sh` (the pin-dir fence
-and the anchor fence) apply the same predicate and write to the same audit file
-(HIMMEL-3396), re-stated in bash as `bypass_honoured`, with one difference: they
+and the anchor fence) apply the same predicate and write to the same audit file,
+re-stated in bash as `bypass_honoured`, with one difference: they
 append one line per tool call the bypass is consulted for, and a symlink or
 non-regular audit file refuses it by an lstat check before a plain append (not an
 `O_NOFOLLOW` open). Its git calls are bounded by `timeout` at the launcher's
@@ -1245,11 +1238,11 @@ instrument is measuring nothing.
 `.env` value, but ONLY when whitespace precedes the `#`. That whitespace is
 half the marker, so `URL=http://x/#frag` keeps
 its `#frag` — no space precedes that `#` — and a `#` inside quotes is left
-alone too; quotes themselves are NOT stripped (HIMMEL-1493 is the ticket for
-that). Before this, `.env.example`'s
+alone too; quotes themselves are NOT stripped (a known
+limitation). Before this, `.env.example`'s
 `JIRA_PROJECT_KEY=HIMMEL   # default project for jira ops` fed the commit-msg
 gate the impossible pattern `HIMMEL   # default project for jira ops-[0-9]+`
-the moment HIMMEL-2461 stopped pre-commit from starving `check-commit-msg.sh`
+the moment pre-commit stopped from starving `check-commit-msg.sh`
 of its message — every machine that had installed from that example `.env`
 rejected every commit, correct ones included.
 
@@ -1257,7 +1250,7 @@ rejected every commit, correct ones included.
 
 Two loaders read the primary checkout's `.env` — `scripts/lib/load-dotenv.sh`
 (shell) and `load_repo_env()` in `scripts/luna/fetch-health.py` (Python).
-HIMMEL-2549 brought the Python side into line, so ONE policy now describes
+The Python side was brought into line, so ONE policy now describes
 both:
 
 1. **First occurrence in the file wins.** The shell loader stops at the first
@@ -1272,10 +1265,10 @@ both:
    whatever the last line was.)
 2. **A set-but-EMPTY existing value counts as ABSENT** — the file fills it in.
    "Empty" means ZERO-LENGTH, exactly `[ -z "${KEY-}" ]` — the shell rule
-   since HIMMEL-1922 (every caller guards with it, so a zero-length value is
+   (every caller guards with it, so a zero-length value is
    not usable). A **whitespace-only** value (`KEY="   "`) makes `[ -z ]`
    false, so it counts as PRESENT and wins over the file in BOTH loaders
-   (HIMMEL-2549 CR round 5: `load_repo_env()` briefly used `.strip()` here,
+   (`load_repo_env()` briefly used `.strip()` here,
    which disagreed with the shell side on exactly this case and broke the
    parity this section documents). `load_repo_env()` also used to use a
    plain `setdefault`, under which an exported `KEY=` DID win: with
@@ -1311,7 +1304,7 @@ load_dotenv FIRECRAWL_API_KEY TWITTER_AUTH_TOKEN TWITTER_CT0
 documented place — was invisible to it. That is why `fetch-health.py` reads
 `.env` itself, once, in `build_probe_registry()`: the single boundary where the
 process environment and the resolved repo root meet, so no probe can be left
-behind again (before HIMMEL-2549 only `probe_bitbucket` called the loader, and
+behind again (previously only `probe_bitbucket` called the loader, and
 `firecrawl` + `x-twitter-cli` were red on every scheduled run).
 
 ## Two Bash-tool calls in one message race the persisted cwd
@@ -1324,13 +1317,13 @@ not necessarily the one you last `cd`'d in. A subshell that changes directory
 pointing somewhere unintended. The failure is silent and the output stays
 plausible: a suite run in the wrong checkout still passes or fails for real
 reasons, so nothing signals that the tree under test is not the tree you
-think (HIMMEL-2536).
+think.
 
 It is not only the parallel race, either: the tool persists cwd **by
 design**, so any deliberate `cd <other-checkout>` (to read another repo's
 `.git`, to run a script from its root) silently persists into every later
 call in the session — a subsequent `git commit` or a gate check then runs
-against the wrong repo (HIMMEL-2526/2528).
+against the wrong repo.
 
 **How to apply:** for anything where the checkout matters — suites, `git`,
 launching a detached runner — pass the path explicitly (`git -C <path>`,
@@ -1362,7 +1355,7 @@ appending, check for and remove an existing empty line for that key
 (`grep -nE '^KEY=$'`) rather than assuming append-only is safe; check
 duplicates by NAME only, never print values.
 
-## `claude-headless.sh`'s EXIT trap can kill the launching session (HIMMEL-2514, open)
+## `claude-headless.sh`'s EXIT trap can kill the launching session (open)
 
 Running a full headless test suite that shells out through
 `claude-headless.sh` **from inside an interactive Claude Code session** can
@@ -1393,7 +1386,7 @@ tip commit stays a reachable object, so `git branch <name> <tip-sha>`
 restores it; keep the tip SHA around before removing anything you might
 want back.
 
-## YouTube/Google cookie extraction needs `yt-dlp --cookies-from-browser`, not a cookie-export extension
+## YouTube/Google cookie extraction: run `youtube-state-from-chrome.py`, not a cookie-export extension
 
 A browser cookie-export extension's Netscape export of a Google-auth domain
 typically drops the **HttpOnly login cookie set** (session/login tokens),
@@ -1403,25 +1396,27 @@ the export "succeeded". Signing in through an automation-controlled browser
 doesn't help either: Google refuses sign-in on a browser it detects as
 automated.
 
-**What works:** read the real browser profile's cookie store with `yt-dlp`
-(it decrypts via the OS keyring):
+**What works:** `scripts/luna/youtube-state-from-chrome.py` (HIMMEL-4271). It
+reads the real browser profile's cookie store through `yt-dlp` (decrypted via
+the OS keyring), keeps only the `youtube.com` / `google.com` cookies, and
+writes the Playwright storage state to `~/.luna/playwright-state/youtube.json`:
 
 ```bash
-yt-dlp --cookies-from-browser 'chrome:<profile>' --cookies cookies.txt \
-       --skip-download --no-warnings --quiet 'https://www.youtube.com/watch?v=...'
+python3 scripts/luna/youtube-state-from-chrome.py [--profile <name>] [--from-cookies <path>]
 ```
 
-A non-zero exit code from that call is fine — the jar is written on exit.
-Pick the profile whose cookie-store file has a live/recent mtime. Then
-convert the Netscape-format cookies to whatever session format the consuming
-tool needs (e.g. Playwright's `storageState` JSON: `{"cookies":[{name,
-value, domain, path, expires, httpOnly, secure, sameSite}], "origins":[]}`),
-keeping only the relevant domains.
+`--profile` is the real profile DIRECTORY name (`Default`, `'Profile 1'`);
+pick the profile whose cookie-store file has a live/recent mtime.
+`--from-cookies PATH` converts a Netscape jar you exported yourself. A
+non-zero `yt-dlp` exit is fine — the script judges the jar, not the exit
+code. Full usage and verification:
+[`marketplace/plugins/obsidian-triage/README.md`](../../marketplace/plugins/obsidian-triage/README.md).
 
-**How to apply:** for any Google-authenticated service, go straight to
-`--cookies-from-browser`; don't spend time on an automated-browser login
-flow for it. The extension-export route is fine for services that only need
-non-HttpOnly cookies — Google's login cookies are the case that needs this.
+**How to apply:** for any Google-authenticated service, go straight to this
+route; don't spend time on an automated-browser login flow
+(`playwright-auth-save.mjs youtube` is usually blocked by Google). The
+extension-export route is fine for services that only need non-HttpOnly
+cookies — Google's login cookies are the case that needs this.
 
 ## The `obsidian-vault` MCP times out at a hardcoded 6s even when the server is healthy
 
@@ -1563,7 +1558,7 @@ trailing *newline*, so every value captured via `$(jq -r ...)` carries an
 invisible trailing `\r` — silently turning a `jq --arg k "$k" '.[$k]'` lookup
 into `null` (the key never matches) and poisoning any such value that ends up
 in a URL or path. Fix at the single chokepoint, not per-call-site: see the
-`jq()` shim in `scripts/upstreams/upstream-watch.sh` (HIMMEL-2407), which
+`jq()` shim in `scripts/upstreams/upstream-watch.sh`, which
 wraps every `jq` call in the script with `| tr -d '\r'` rather than patching
 each capture site individually.
 
@@ -1605,8 +1600,8 @@ CLI's deps into a new worktree. Every other node package a suite depends on
 (`scripts/bitbucket`, `scripts/ci-orchestrator`,
 `marketplace/plugins/obsidian-triage/tools`, vitest under `scripts/jira`)
 starts empty, so its suites SKIP, or FAIL with a verdict that looks
-pre-existing. It happened three times in one shift (HIMMEL-3553 tracks the
-structural fix).
+pre-existing. It happened three times in one shift (a structural fix is
+planned).
 
 **What to do:** before calling a SKIP or FAIL pre-existing, check that the
 suite's test runner is installed in the owning package (e.g.

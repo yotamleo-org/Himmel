@@ -161,6 +161,7 @@ PORTABLE_FILES=(
   scripts/hooks/block-read-secrets.sh
   scripts/hooks/lib/guard-unwrap.sh
   scripts/hooks/lib/shell-tokenize.sh
+  scripts/lib/guard-empty-expansion.sh
   scripts/hooks/check-commit-msg.sh
   scripts/lib/project-mode.sh
   scripts/hooks/check-worktree-isolation.sh

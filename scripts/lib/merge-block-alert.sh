@@ -25,6 +25,7 @@
 #   MERGE_BLOCK_ALERT_DIR   sentinel directory (default <git common dir>/himmel-merge-block-alert)
 #   MERGE_BLOCK_ALERT_CMD   replaces the sender; called as `$CMD <chat_id> <text>`
 #   TELEGRAM_ACCESS_PATH    access.json to read the operator id from (gate.ts's own override)
+#   MERGE_BLOCK_ALERT_TIMEOUT_SECS  bound on the sender or the bun send (default 30)
 #
 # Under HIMMEL_TEST_FIXTURE=1 the DEFAULT sender refuses unless BRIDGE_ROOT names
 # a sandbox — a suite that reaches this by accident must not DM the operator
@@ -47,17 +48,20 @@ _mba_operator_chat() {
 
 _mba_send() {
     local chat="$1" text="$2"
+    # One 30 s bound for the seam and the bun send alike (HIMMEL-4226); no GNU
+    # timeout (stock macOS) runs both unbounded.
+    local tmo=""
+    command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 ${MERGE_BLOCK_ALERT_TIMEOUT_SECS:-30}"
     if [ -n "${MERGE_BLOCK_ALERT_CMD:-}" ]; then
-        "$MERGE_BLOCK_ALERT_CMD" "$chat" "$text"
+        # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
+        $tmo "$MERGE_BLOCK_ALERT_CMD" "$chat" "$text"
         return
     fi
     if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ] && [ -z "${BRIDGE_ROOT:-}" ]; then
         return 0
     fi
     command -v bun >/dev/null 2>&1 || return 1
-    local tmo=""
-    command -v timeout >/dev/null 2>&1 && tmo="timeout 30"
-    # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout 30")
+    # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
     $tmo bun "$_MBA_LIB_DIR/../telegram/console-route.ts" reply "$chat" "$text" >/dev/null 2>&1
 }
 

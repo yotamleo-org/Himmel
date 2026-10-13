@@ -893,8 +893,17 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         args, _ = self.seen[0]
         helper = self.tmp / "marketplace/plugins/obsidian-triage/tools/x-scrapling-media.py"
         self.assertEqual(args[:2], [str(self.py), str(helper)])
-        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["x-media"], "--status-id", "1354143047324299264"])
+        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["x-media"], "--status-id", "266031293945503744"])
         self.assertNotIn("--cookies", args)
+
+    def test_x_probe_tweet_still_carries_media(self):
+        # HIMMEL-5407: the old pin (Twitter/1354143047324299264) lost its media, so
+        # the helper correctly said no_media and the probe alerted nightly. The
+        # fixture is the recorded api.fxtwitter.com response for the pinned tweet;
+        # re-record it when re-pinning DEFAULT_URLS["x-media"].
+        fx = json.loads((Path(__file__).with_name("fixtures") / "x-media-probe-fxtwitter.json").read_text())["tweet"]
+        self.assertEqual(fetch_health.DEFAULT_URLS["x-media"].rstrip("/").split("/")[-1], fx["id"])
+        self.assertTrue((fx.get("media") or {}).get("all"), "the pinned probe tweet must carry media")
 
     def test_x_login_wall_is_blocked(self):
         self.venv()

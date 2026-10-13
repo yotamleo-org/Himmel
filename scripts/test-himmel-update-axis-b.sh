@@ -134,6 +134,7 @@ make_mock_clone() {
     cp "$SRC_SCRIPTS/lib/cadence-format.sh"    "$clone/scripts/lib/cadence-format.sh"
     cp "$SRC_SCRIPTS/lib/resolve-hermes-py.sh" "$clone/scripts/lib/resolve-hermes-py.sh"
     cp "$SRC_SCRIPTS/lib/load-dotenv.sh"       "$clone/scripts/lib/load-dotenv.sh"
+    cp "$SRC_SCRIPTS/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$SRC_SCRIPTS/lib/vm-mode.sh"           "$clone/scripts/lib/vm-mode.sh"
     cp "$SRC_SCRIPTS/upstreams/update-marketplaces.sh" "$clone/scripts/upstreams/update-marketplaces.sh"
     git -C "$clone" add -A

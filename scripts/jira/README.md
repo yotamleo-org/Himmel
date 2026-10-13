@@ -23,7 +23,7 @@ auto-loads the repo-root `.env`.
 `edit`, `projects`, `project-create` (plus `move`, `link`). Run
 `node scripts/jira/dist/index.js --help` for the full option set.
 
-## MCP server (HIMMEL-159)
+## MCP server
 
 `jira mcp` boots a [Model Context Protocol](https://modelcontextprotocol.io)
 server on stdio that exposes the ten verbs above as MCP tools. Each tool's

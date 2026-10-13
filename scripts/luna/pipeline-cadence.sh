@@ -1820,7 +1820,13 @@ emit_runner() {
     printf 'fi\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    printf '    cd %s || exit 1\n' "$q_vault"
+    # HIMMEL-4226: a runner that dies here never reaches the alert below, so it
+    # alerts on this path itself.
+    if [ -n "$q_alert_lib" ]; then
+        printf '    cd %s || { echo "[%s cd-vault]"; %s fail %s cd-vault "$log" || true; exit 1; }\n' "$q_vault" "$LEG_FAILED_MARKER" "$q_alert_lib" "$q_flow"
+    else
+        printf '    cd %s || exit 1\n' "$q_vault"
+    fi
     # The POSIX twins of the two .bat gates. Both live INSIDE the `{ } >> $log`
     # group, so each helper's stderr diagnostics land in the leg log while its
     # single verdict token is captured. `exit` from a brace group (not a

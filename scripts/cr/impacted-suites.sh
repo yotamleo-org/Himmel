@@ -202,7 +202,7 @@ luna-correlate|bun-test|marketplace/plugins/luna-correlate && bun install
 telegram-himmel|bun-test|marketplace/plugins/telegram-himmel && bun install
 where-are-we|node-test|scripts/where-are-we/tests/*.test.mjs
 lessons|node-test|scripts/lessons/tests/*.test.mjs
-op-env-observability-mjs|node-test|op-env-parity.test.mjs
+op-env-observability-mjs|node-test|"scripts/observability/*.test.mjs"
 fleet-control-observability|bun-test|bun test scripts/fleet-control scripts/observability
 EOF
 }
@@ -916,7 +916,6 @@ scripts/*.js scripts/lanes/test-launch-site-profiles.sh
 scripts/*.ps1 scripts/lanes/test-launch-site-profiles.sh
 !test-* scripts/lanes/test-launch-site-profiles.sh
 !*.test.* scripts/lanes/test-launch-site-profiles.sh
-!check-no-headless-claude* scripts/lanes/test-launch-site-profiles.sh
 !*/node_modules/* scripts/lanes/test-launch-site-profiles.sh
 !*/dist/* scripts/lanes/test-launch-site-profiles.sh
 !*/fixtures/* scripts/lanes/test-launch-site-profiles.sh

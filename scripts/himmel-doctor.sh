@@ -1975,7 +1975,6 @@ check_c28_guardrail_consent() {
 # current user's own processes). Git Bash has an MSYS /proc and takes the proc
 # route; only a platform with neither procfs nor `ps -E` skips cleanly, never
 # a false WARN.
-# headless-claude-ok: prose naming the argv shape C29 skips, starts nothing
 # An orphaned `claude -p`/`--print` or `claude daemon run` root
 # is not an interactive session and is left alone.
 #

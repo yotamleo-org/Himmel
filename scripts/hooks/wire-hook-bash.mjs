@@ -180,6 +180,10 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // parse guard, appended after the trust ledger's own (foreign) entry in that
   // block, so the flattened OWNED order below still matches document order.
   'check-hook-file-parse.sh',
+  // PostToolUse `*` (HIMMEL-5412): pages the operator when a GitHub token
+  // shows up in any tool call or result. Detection twin of
+  // block-read-secrets.sh; bash-regex fast path, fails open.
+  'detect-token-in-output.sh',
   // PostToolUse `*` — LAST PostToolUse group (HIMMEL-2788): delivers any new
   // claudex console-inbox bullet as additionalContext. Fires on every tool
   // call in every session; see the script's own header for the fail-open

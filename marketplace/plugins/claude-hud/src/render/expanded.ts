@@ -50,6 +50,7 @@ function elementLine(f: Frame, element: HudElement, align: LabelAlign = {}): str
     case 'memory': return memoryLine(f, align);
     case 'environment': return environmentLine(f);
     case 'sessionTime': return sessionTimeLine(f);
+    case 'sessionTokens': return f.config?.display?.showSessionTokens ? sessionTokensSummary(f, t('label.tokens')) : null;
     default: return activityLine(f, element);
   }
 }
@@ -133,8 +134,9 @@ export function expandedLines(f: Frame): string[] {
   const lines = rows.map(({ line }) => line);
   const gitFiles = gitFilesLine(f);
   if (gitFiles) lines.push(gitFiles);
-  if (f.config?.display?.showSessionTokens) {
-    const tokens = sessionTokensSummary(f, t('label.tokens'));
+  // Until sessionTokens is placed in elementOrder, the summary keeps its own last line.
+  if (!order.includes('sessionTokens')) {
+    const tokens = elementLine(f, 'sessionTokens');
     if (tokens) lines.push(tokens);
   }
   const compactions = compactionsPart(f);

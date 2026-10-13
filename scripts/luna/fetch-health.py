@@ -55,7 +55,10 @@ DEFAULT_URLS = {
     "x-fxtwitter": "https://api.fxtwitter.com/jack/status/20",
     "instagram-embed": "https://www.instagram.com/p/CG0UU3ylXnv/embed/captioned/",
     "instagram-media": "https://www.instagram.com/p/CG0UU3ylXnv/",
-    "x-media": "https://x.com/Twitter/status/1354143047324299264",
+    # HIMMEL-5407: a 2012 photo tweet from a head-of-state account; the old pin
+    # (Twitter/1354143047324299264) lost its media. Re-record the fxtwitter fixture
+    # scripts/luna/fixtures/x-media-probe-fxtwitter.json when re-pinning.
+    "x-media": "https://x.com/BarackObama/status/266031293945503744",
     "youtube-playwright": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     "jina-reader": "https://example.com/",
 }

@@ -24,7 +24,7 @@ controls.)
 
 ## `.env` consumer boundaries
 
-Each loader names its keys explicitly (HIMMEL-4910). The shared shell
+Each loader names its keys explicitly. The shared shell
 `load_dotenv [--root DIR] KEY...` exports **nothing without a key list**;
 existing non-empty shell values still win. Jira/Bitbucket keep their existing
 nullish precedence (an exported empty string wins). Python credential readers
@@ -34,7 +34,7 @@ what a file adds, not credentials the launching shell already exported.
 **Bun limitation:** Bun can auto-load the working directory's `.env` before
 any explicit reader runs. These consumer allowlists cannot prevent that
 runtime-level import. Auditing Bun launch sites and passing `--no-env-file`
-is tracked separately in **HIMMEL-4915**, outside HIMMEL-4910. No Bun launch
+is tracked separately as a planned follow-up, outside this change. No Bun launch
 sites are changed here.
 
 | Consumer | Keys loaded from its file |
@@ -114,7 +114,7 @@ switch ([§5](#5-off-switches)).
 
 One piece of work travels: ticket → worktree → build → review loop → PR →
 merge → handover. himmel is a single repo (`origin`, public since the
-HIMMEL-2705 cutover) — there is no propagation tail.
+cutover) — there is no propagation tail.
 
 ```mermaid
 flowchart TD
@@ -142,7 +142,7 @@ Step-by-step, with the enforcing file:
 | Push | `git push` | pre-push stage: attestation trailers, npm audit, no-push-to-main, and `scripts/hooks/check-cr-before-push.sh` writes a **CR marker** recording that a review is owed |
 | Review | `/pr-check` | multi-agent panel (`.claude/commands/pr-check.md`); a clean result clears the marker |
 | Open PR | `gh pr create` | `scripts/hooks/check-cr-marker-on-pr-create.sh` blocks while the marker exists |
-| Merge | `gh pr merge`, or Telegram `/mergepub <pr> <sha12>` (`merge-public-on-green.sh`); armed auto-merge (`merge-on-green.sh`, `ARMAUTOMERGE=1`) admits a confirmed-private repo, or the ONE configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present (HIMMEL-2869) | `scripts/hooks/block-unresolved-cr-merge.sh` — CI green + zero unresolved review threads. Branch protection is also active on `main` (required status checks, squash-only + 1 approving review + code-owner review, `enforce_admins`, no force-push/deletion); this hook is one gate among several, not the whole gate |
+| Merge | `gh pr merge`, or Telegram `/mergepub <pr> <sha12>` (`merge-public-on-green.sh`); armed auto-merge (`merge-on-green.sh`, `ARMAUTOMERGE=1`) admits a confirmed-private repo, or the ONE configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present | `scripts/hooks/block-unresolved-cr-merge.sh` — CI green + zero unresolved review threads. Branch protection is also active on `main` (required status checks, squash-only + 1 approving review + code-owner review, `enforce_admins`, no force-push/deletion); this hook is one gate among several, not the whole gate |
 | Handover | `/handover` | state written to your handover store (`docs/internals/handover-system.md`) |
 
 ### 2.2 What happens on every tool call
@@ -251,7 +251,7 @@ flowchart TD
     CLX --> BACK
 ```
 
-**Dormancy (operator ruling 2026-08-19, HIMMEL-1967).** The diagram shows what
+**Dormancy (operator ruling 2026-08-19).** The diagram shows what
 each chokepoint *does*, not what is currently routed to it. Every external
 impl lane in the registry is marked `dormant`, and `lanes.json` deliberately
 carries no `defaultImplLane` — so an unqualified impl dispatch refuses toward
@@ -290,11 +290,11 @@ tries to close.
 |---|---|---|---|
 | `gitleaks` secret scan | pre-commit | HARD | remove/rotate the secret; inline `gitleaks:allow` on the same line |
 | `leak-classes` gate (home-path, mac, private-lan-ip, hostname, telegram token — `scripts/guardrails/leak-classes.sh`) | pre-commit (also runs in CI) | HARD | fix the finding; inline `# leak-allow: <class> <reason>` on the same line, or a path prefix in `.leak-classes-ignore` |
-| `git-env-scrub` gate — trust-path (`scripts/handover`, `scripts/lanes`, `scripts/hooks`, `scripts/cr`, `scripts/lib/go-gate.sh`) git calls must scrub `GIT_DIR`/`GIT_WORK_TREE`/`GIT_COMMON_DIR`/`GIT_INDEX_FILE` (`scripts/guardrails/check-git-env-scrub.sh`) | pre-commit (also runs in CI) | HARD, ratcheted (`scripts/guardrails/git-env-baseline.txt` grandfathers pre-existing hits) | scrub via `scripts/lib/git-clean.sh` / `scripts/lanes/git-clean.mjs`; exempt with a standalone own-line `# git-env-ok: <reason>` comment (shell, file-level) or an inline `// git-env-ok: <reason>` (JS, per-call) |
+| `git-env-scrub` gate — trust-path (`scripts/handover`, `scripts/lanes`, `scripts/hooks`, `scripts/cr`, `scripts/lib/go-gate.sh`) git calls must scrub `GIT_DIR`/`GIT_WORK_TREE`/`GIT_COMMON_DIR`/`GIT_INDEX_FILE` (`scripts/guardrails/check-git-env-scrub.sh`; the helpers scrub git's full `git rev-parse --local-env-vars` list, and the full scan fails on a stale baseline entry) | pre-commit (also runs in CI) | HARD, ratcheted (`scripts/guardrails/git-env-baseline.txt` grandfathers pre-existing hits) | scrub via `scripts/lib/git-clean.sh` / `scripts/lanes/git-clean.mjs`; exempt with a standalone own-line `# git-env-ok: <reason>` comment (shell, file-level) or an inline `// git-env-ok: <reason>` (JS, per-call) |
 | `shellcheck` | pre-commit | HARD | fix the script |
 | `worktree-isolation`, `merged-branch-check`, `hookspath-misconfig`, `lockfile-integrity`, `artifact-leakage`, `uv-lock-integrity`, `pip-hashes`, `mcp-plugin-refs` | pre-commit | HARD | fix the finding (`--no-verify` only) |
 | drift guards (`doc-guard`, `agents-md-fresh`, `lanes-inventory-guard`, `hud-drift`, `telegram-fork-drift`, `template-himmel-plugins`) | pre-commit (most carry no `stages:` pin, so today they fire at every installed stage, push included) | HARD | fix the finding |
-| `no-headless-claude` / `no-headless-gemini` (billing rule, HIMMEL-128) | pre-commit | HARD | `# headless-claude-ok: <reason>` marker on/above the line; docs paths exempt (`scripts/hooks/check-no-headless-claude.sh`) |
+| `no-headless-gemini` (billing rule) | pre-commit | HARD | `# headless-gemini-ok: <reason>` marker on/above the line; docs paths exempt (`scripts/hooks/check-no-headless-gemini.sh`) |
 | `conventional-commit-msg` — conventional shape + ticket traceability (ON by default; pattern = `TICKET_ID_PATTERN`, else `JIRA_PROJECT_KEY-N`, else `#N`) | commit-msg | HARD | fix the message; `TICKET_ID_REQUIRED=0` opts out of the ticket half; merge/revert and `TICKET_ID_EXEMPT_AUTHORS` exempt (fixup/squash skip shape only) |
 | `no-push-to-main` | pre-push | HARD | none — work through a PR |
 | `npm-audit` / `npm-licenses` / `npm-audit-signatures` | pre-push | HARD | fix the dependency |
@@ -333,7 +333,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-rogue-codex-exec` | raw native `codex exec` outside the dispatch chokepoint (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |
-| `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-cr-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | advisory (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook (HIMMEL-203) |
+| `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-cr-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | advisory (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
 | `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1` |
 | `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
 | `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
@@ -353,17 +353,16 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | Gate | Class | How it is satisfied |
 |---|---|---|
 | Session merge gate (`block-unresolved-cr-merge`) | auth-gated | CI green + zero unresolved review threads on the head SHA (`scripts/hooks/block-unresolved-cr-merge.sh`). Branch protection is also active on `main`: 10 required status checks (strict — branch must be up to date), `enforce_admins`, no force-push, no deletion, and — via the separate `protect-main` ruleset rather than classic branch protection — squash-only merges, 1 approving review, and code-owner review required. So this hook is one gate among several, not the whole gate. As a session hook it gates merges issued *inside a Claude session*; an operator merging from a bare terminal or the GitHub UI is outside its reach — by design, since the operator is the authority it protects. It also fails **open** on degraded evaluation (missing `jq`, unparseable hook input) — a guardrail layered on top of forge-side branch protection, not a replacement for it |
-| Armed auto-merge (`scripts/handover/merge-on-green.sh`) | auth-gated, opt-in | `ARMAUTOMERGE` truthy **and** all of: same repo, PR base == default branch, `check-ci.sh` exit 0, audit log writable, merge pinned to the certified head SHA (`--match-head-commit`), MERGED state confirmed by polling — **and** a repo test satisfied either way: the repo is verified PRIVATE, **or** it is the ONE configured public origin (`HIMMEL_PUBLIC_ORIGIN_NWO`, a fixed literal in the script) and a live read shows branch protection on the base branch with BOTH `enforce_admins` enabled and a non-empty required-status-checks list (HIMMEL-2869) — or, per `HIMMEL_PROTECTION_SOURCE` (also a fixed literal in the script: `classic`, `ruleset`, `either` default, `both`), an active ruleset with required checks and NO bypass actor (HIMMEL-3808). Any other public repo, and a protection read that is missing, empty or unreadable, refuse (exit 12). Base, privacy **and** protection are each re-verified fresh immediately pre-merge, never reused from the first pass. `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 (HIMMEL-2887) |
+| Armed auto-merge (`scripts/handover/merge-on-green.sh`) | auth-gated, opt-in | `ARMAUTOMERGE` truthy **and** all of: same repo, PR base == default branch, `check-ci.sh` exit 0, audit log writable, merge pinned to the certified head SHA (`--match-head-commit`), MERGED state confirmed by polling — **and** a repo test satisfied either way: the repo is verified PRIVATE, **or** it is the ONE configured public origin (`HIMMEL_PUBLIC_ORIGIN_NWO`, a fixed literal in the script) and a live read shows branch protection on the base branch with BOTH `enforce_admins` enabled and a non-empty required-status-checks list — or, per `HIMMEL_PROTECTION_SOURCE` (also a fixed literal in the script: `classic`, `ruleset`, `either` default, `both`), an active ruleset with required checks and NO bypass actor. Any other public repo, and a protection read that is missing, empty or unreadable, refuse (exit 12). Base, privacy **and** protection are each re-verified fresh immediately pre-merge, never reused from the first pass. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
 | Public merge (`scripts/merge-public-on-green.sh`, via Telegram `/mergepub`) | HARD human-authorization | operator-typed, non-forwarded `/mergepub <pr> <sha12>`; SHA must prefix-match the live head at read *and* fresh pre-merge re-verify; `check-ci.sh` exit 0 is the only pass; the script refuses outright if `CLAUDECODE` is set (i.e. if any agent tries to run it) |
-| `check-ci.sh` (the watcher those gates call) | mechanism, not a veto | exit 0 = green + threads resolved + no changes-requested; 1 = red; 2 = cannot evaluate; 64 = usage error, no gate ran (HIMMEL-3317); 3 = unresolved threads / changes requested; 5 = a required check (rulesets ∪ classic protection) never reported within `--grace`, or the required set is unreadable — fail-fast with one operator DM, never waited on (HIMMEL-3381); 4 = no longer emitted (the stale-CodeRabbit-anchor exit, retired by HIMMEL-3360: CodeRabbit is best effort and its absence prints a NOTE, never a failure) |
+| `check-ci.sh` (the watcher those gates call) | mechanism, not a veto | exit 0 = green + threads resolved + no changes-requested; 1 = red; 2 = cannot evaluate; 64 = usage error, no gate ran; 3 = unresolved threads / changes requested; 5 = a required check (rulesets ∪ classic protection) never reported within `--grace`, or the required set is unreadable — fail-fast with one operator DM, never waited on; 4 = no longer emitted (the stale-CodeRabbit-anchor exit, retired: CodeRabbit is best effort and its absence prints a NOTE, never a failure) |
 
-**`check-ci.sh` API cost (HIMMEL-3850).** Many legs waiting on CI drain one shared
+**`check-ci.sh` API cost.** Many legs waiting on CI drain one shared
 GitHub quota (5,000/h REST core, 5,000/h GraphQL — `gh pr checks` is GraphQL), so
 the wait is cheap by construction: the first waiter in a TTL window fetches a PR's
 checks and every other waiter reads that snapshot from a shared cache (a `cancel`
 bucket is neither red nor pending, as in gh; an unknown bucket is pending); the poll
-interval backs off while the rollup is unchanged. **PR polling is REST-first
-(HIMMEL-4857):** latest check runs and combined commit statuses are read by head
+interval backs off while the rollup is unchanged. **PR polling is REST-first:** latest check runs and combined commit statuses are read by head
 SHA with `If-None-Match`; ETags and validated payloads live beside the cached
 rows. Unchanged responses return `304` without spending primary rate quota.
 GraphQL supplies review/head/base metadata and the required-check producer gate,
@@ -394,7 +393,7 @@ prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH
 Never run your own `gh pr checks` poll loop in the background — that is the spend
 this replaces; call `scripts/check-ci.sh` in the foreground.
 
-**Workflow/job wait (HIMMEL-4856).** Run the same entrypoint in the foreground:
+**Workflow/job wait.** Run the same entrypoint in the foreground:
 
 ```bash
 bash scripts/check-ci.sh --run 123456 --max-wait 900
@@ -430,8 +429,8 @@ loop or use `run_in_background`.
 
 ### 4.1 `.env` — the file-based config
 
-[`.env.example`](../.env.example) is the complete, commented per-key map
-(HIMMEL-787) — copy it to `.env` (gitignored) and fill what you use. Its four
+[`.env.example`](../.env.example) is the complete, commented per-key map —
+copy it to `.env` (gitignored) and fill what you use. Its four
 groups describe **how each key reaches code**, which is the #1 trap:
 
 | Group | How it reaches code | Examples |
@@ -513,16 +512,16 @@ title.
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `CR_PROFILE` | unset (see Effect) | `.env` (bridged) | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + HIMMEL-1224 hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-cr-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
+| `CR_PROFILE` | unset (see Effect) | `.env` (bridged) | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-cr-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
 | `CR_CLAUDE_AGENTS` | OFF | `.env` (bridged) | opt-in Claude-agent reviewer fan-out inside `/pr-check` |
-| `CR_REQUIRE_CROSS_MODEL` | OFF | `.env` (bridged) | opt-in cross-model floor (HIMMEL-1237): require ≥1 non-Claude critic `avail … ok` at the SHA before the CR marker clears — makes the claude-only floor above insufficient. Bridged from `.env` by `scripts/cr/clear-cr-marker.sh` itself (gate 3b); a live-env value wins |
+| `CR_REQUIRE_CROSS_MODEL` | OFF | `.env` (bridged) | opt-in cross-model floor: require ≥1 non-Claude critic `avail … ok` at the SHA before the CR marker clears — makes the claude-only floor above insufficient. Bridged from `.env` by `scripts/cr/clear-cr-marker.sh` itself (gate 3b); a live-env value wins |
 | `CRITIC_TIMEOUT_SECS` / `CRITIC_PARALLEL` / `CRITIC_PANEL_TIERS` / `CR_TRIVIALITY_OVERRIDE` / `CR_USAGE_LOG` | 240s / sequential / `free` / heuristic / off | env | panel cost/scope tuning (`scripts/cr/critic-panel.sh`, `.claude/commands/pr-check.md`) |
 | `scripts/cr/critics.local.json` | — | file (gitignored) | per-machine critic overlay; `"drop": true` removes a base row |
-| `ARMAUTOMERGE` | OFF | env | arms `merge-on-green.sh` (full condition list in [§3.3](#33-merge--publish-gates)); admits a confirmed-private repo, or the configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present (HIMMEL-2869). `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 (HIMMEL-2887) |
+| `ARMAUTOMERGE` | OFF | env | arms `merge-on-green.sh` (full condition list in [§3.3](#33-merge--publish-gates)); admits a confirmed-private repo, or the configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
 | `MERGE_ON_GREEN_LOG` | `<gitdir>/merge-on-green.log` | env | auto-merge audit log path |
 
-**himmel's own review posture (HIMMEL-1299, operator decision 2026-07-28;
-CodeRabbit half superseded by HIMMEL-2704, 2026-09-07).**
+**himmel's own review posture (operator decision 2026-07-28;
+CodeRabbit half superseded 2026-09-07).**
 The knobs above are general; this is the setting this repo actually runs.
 **The codex critic panel is the steady-state pre-PR reviewer, every round, and
 CodeRabbit is the GitHub App ONLY** — there is no local CodeRabbit pass to
@@ -542,7 +541,7 @@ twelve rounds spending a CodeRabbit call on nearly every one. Measure a
 branch's panel cost with `scripts/cr/cr-scores.sh --by-branch <branch>`. That
 paragraph IS the rationale and stays here, in the public doc; the longer-form
 argument behind it, and the budget/termination legs deliberately NOT
-implemented yet, are in the HIMMEL-1299 design note in the state repo.
+implemented yet, are in the review-posture design note in the state repo.
 
 **Initiative & autonomy** — grammar first, since
 [getting-started.md](getting-started.md) intentionally covers only the
@@ -567,12 +566,12 @@ default subset:
   it through the CI-certified `merge-on-green.sh` chokepoint, which admits a
   repo confirmed PRIVATE, or the ONE configured public origin when a live read
   shows branch protection on the base branch with BOTH `enforce_admins` enabled
-  and a non-empty required-status-checks list (HIMMEL-2869). `origin` has been
-  that configured origin since the HIMMEL-2705
+  and a non-empty required-status-checks list. `origin` has been
+  that configured origin since the
   cutover, so the `1` branch merges here. Any other public repo, and a
   protection read that is missing, empty or unreadable, still refuse (exit 12).
   The `public` leg is retired
-  (HIMMEL-2705 cutover) — `origin` IS the public repo, so the `merge` leg above
+  (cutover) — `origin` IS the public repo, so the `merge` leg above
   already lands the public change; `public` is a documented no-op kept only so
   the token still resolves.
 
@@ -599,7 +598,7 @@ default subset:
 | `RESUME_SLOT_THRESHOLD` | 90% | env | **bank wall 2**: utilization at/above which `--time smart` treats a window as exhausted (`scripts/handover/resume-slot.sh`) — an explicit `--threshold` still wins; must be 0-100, and a non-numeric or out-of-range value falls back to 90 silently (a `970` typo would otherwise read every window as headroom) |
 | Recurring vault cadence | — | `scripts/luna/pipeline-cadence.sh arm` | daily harvest/synthesize + weekly health runs, per-leg cheap model pins, `HIMMEL-Pipeline-*` dedup |
 
-**The two bank walls are INDEPENDENT** (HIMMEL-1271). Both default to 90% and
+**The two bank walls are INDEPENDENT**. Both default to 90% and
 both must be raised to move the effective wall:
 
 - `AUTO_ARM_THRESHOLD` decides **when the watchdog trips** — the utilization at
@@ -629,7 +628,7 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
 | `GLM_MODEL` / `GLM_CONTEXT_WINDOW`, `ROUTED_MODEL` / `ROUTED_CONTEXT_WINDOW`, `OMNIROUTE_PORT` | `glm-5.2[1m]` / 1M / … | env | lane launcher tuning (`scripts/claude-glm`, `scripts/claude-routed`) |
 | `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-glm`, `~/.claude-routed`, `~/.claude-codex`) auto-reseeding from `~/.claude` |
-| `CLAUDEX_BANK_WARN_PCT` / `CLAUDEX_BANK_REFUSE_PCT` / `CLAUDEX_BANK_OK` | 80 / 90 / unset | env | claudex codex-weekly-bank preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins, HIMMEL-1700; other banks keep 99) |
+| `CLAUDEX_BANK_WARN_PCT` / `CLAUDEX_BANK_REFUSE_PCT` / `CLAUDEX_BANK_OK` | 80 / 90 / unset | env | claudex codex-weekly-bank preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; other banks keep 99) |
 | `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
 | `GLM_EXTERNAL_WRITES_OK` / `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the external-write fences on dispatched lane workers |
@@ -656,7 +655,7 @@ change; token and access config live *outside* the repo):
 | `BRIDGE_ROOT` | `~/.claude/handover/bridge` | env | bridge session-state root |
 | `CR_PUBLIC_REPO` | `yotamleo/Himmel` | env | the pinned public repo `/mergepub` may merge into |
 | `TELEGRAM_OWN_POLLER` / `HIMMEL_MCP_TELEGRAM` | OFF | shell | opt a Claude session into the vendored telegram plugin (poll-owner / send-only). Never run both the plugin poller and the bun bridge — one `getUpdates` consumer per token |
-| `TELEGRAM_CHAT_ID` / `TELEGRAM_GROUP_CHAT_ID` | unset (silent no-op) | `.env` (bridged) | targets for the opt-in jira-nudge and session-status relays. An explicitly EMPTY `TELEGRAM_GROUP_CHAT_ID` in the process env also suppresses the session-status hooks — it never falls back to `.env` (HIMMEL-1926) |
+| `TELEGRAM_CHAT_ID` / `TELEGRAM_GROUP_CHAT_ID` | unset (silent no-op) | `.env` (bridged) | targets for the opt-in jira-nudge and session-status relays. An explicitly EMPTY `TELEGRAM_GROUP_CHAT_ID` in the process env also suppresses the session-status hooks — it never falls back to `.env` |
 
 **Session nudges & ambient context** (all advisory, all default-OFF except
 the statusline segment):
@@ -734,7 +733,7 @@ opt-in except the cap watchdogs (rung 2), which ship enabled with the hooks:
    green, thread-resolved PR without a human click, on a private repo or on
    the one configured public origin under live-verified branch protection
    (full condition list in [§3.3](#33-merge--publish-gates)).
-   `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 (HIMMEL-2887).
+   `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09.
 5. **Overnight mode** (`/overnight-shift --limit N`) — dispatches scoped
    tickets as parallel agents that branch, build, self-review, and open PRs.
    Halt with `/stop` (marker file polled between dispatches).
@@ -776,14 +775,14 @@ knobs are in the [vault table of §4.1](#41-env--the-file-based-config);
 guides live under [luna/](luna/README.md), the egress rules in
 [internals/egress-matrix.md](internals/egress-matrix.md).
 
-### 4.7 Plugin profile — two tiers, one toggle (HIMMEL-2733)
+### 4.7 Plugin profile — two tiers, one toggle
 
 `enabledPlugins` in [`settings-template.json`](setup/settings-template.json)
 carries two live tiers plus one unchanged one: **ALWAYS** (`true` — installed
 and enabled on every machine), **ON-DEMAND** (a key of the template's
 `onDemandPlugins` object, `false` in `enabledPlugins` — installed but
 disabled, so it costs no session-start context until you ask for it), and
-**NOT INSTALLED** (a plain `false` entry, the pre-existing HIMMEL-816 lean
+**NOT INSTALLED** (a plain `false` entry, the pre-existing lean
 floor). `scripts/machine-setup/plugin-profile.sh` (`.ps1` twin; `/profile`
 wraps it) is the sole writer for an on-demand flip — `list` prints both
 tiers' live state, while `lean`/`full` bulk-disable/enable only installed
@@ -810,7 +809,7 @@ verbatim) — the escape hatch for "on permanently, on this machine" is a
 The next opt-in reconcile copies that value into `settings.json`; Claude Code
 does not read the user sibling as a runtime settings layer. The one exception is
 `scripts/luna/pipeline-cadence.sh`, which force-enables `obsidian-triage@himmel`
-per run via its own `--settings` fragment (HIMMEL-1036) rather than touching
+per run via its own `--settings` fragment rather than touching
 the machine's live profile.
 
 ## 5. Off-switches
@@ -828,7 +827,7 @@ tables; this is the layer level.)
 | An overnight run in flight | `/stop` (graceful, marker-based; `--hard` also stops subagents) | marker file |
 | Telegram bridge | never started unless you start it; stop: `bun --cwd scripts/telegram supervisor.ts --kill`; remove the optional logon task: `pwsh -File scripts/telegram/install-logon-task.ps1 -Remove` | process / scheduler |
 | Telegram privileged ops | default OFF — but there are now TWO sources, so "unset it" is not enough: clear/empty `TELEGRAM_AUTO_ACTIONS` in the bridge `.env` **and** unset any process override. For one run without editing the file, launch the bridge with `TELEGRAM_AUTO_ACTIONS=` (defined-but-empty beats the file). (`merge-public` needs explicit naming even when enabled) | bridge .env *or* process env (process wins) |
-| An on-demand plugin you enabled | `bash scripts/machine-setup/plugin-profile.sh lean` (all) or `disable <spec>` (one) — see [§4.7](#47-plugin-profile--two-tiers-one-toggle-himmel-2733) | user scope |
+| An on-demand plugin you enabled | `bash scripts/machine-setup/plugin-profile.sh lean` (all) or `disable <spec>` (one) — see [§4.7](#47-plugin-profile--two-tiers-one-toggle) | user scope |
 | An external lane | `node scripts/lanes/set-lane-override.mjs <lane> never`, or unset its API key / remove its CLI from PATH | machine |
 | Lane config auto-reseed | `CLAUDE_LANE_AUTO_RESEED=0` | launching shell |
 | External CR critics | `CR_PROFILE=none` (claude-only review, no external spend) | `.env` / shell |

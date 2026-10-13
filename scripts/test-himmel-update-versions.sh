@@ -103,6 +103,7 @@ make_mock_clone() {
     cp "$src_scripts/lib/cadence-format.sh"    "$clone/scripts/lib/cadence-format.sh"
     cp "$src_scripts/lib/resolve-hermes-py.sh" "$clone/scripts/lib/resolve-hermes-py.sh"
     cp "$src_scripts/lib/load-dotenv.sh"       "$clone/scripts/lib/load-dotenv.sh"
+    cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     CHECKOUT_DIR="$clone"
     UPSTREAM_BARE="$bare"
 }
@@ -303,9 +304,49 @@ printf '{"plugins":{"beta@himmel":[{"version":"1.0.0"}]}}\n' > "$TMP/installed-n
 rc=0
 out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-beta.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-nosv.json" \
     LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions) || rc=$?
-assert_eq "plugins: unreadable source version -> rc 3" "3" "$rc"
-assert_contains "plugins: unreadable source version -> unknown, not current" "^ *plugins  *unknown" "$out"
-assert_not_contains "plugins: unreadable source version -> never current" "^ *plugins  *current" "$out"
+assert_eq "plugins: unreadable source version -> rc 0 (installed is current)" "0" "$rc"
+assert_contains "plugins: unreadable source version -> installed reported current (HIMMEL-5485)" "^ *plugins  *current" "$out"
+assert_not_contains "plugins: unreadable source version -> not unknown" "^ *plugins  *unknown" "$out"
+
+# HIMMEL-5485: a local manifest that does not parse is an unread source -> unknown.
+mkdir -p "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin"
+printf '{ not json\n' > "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin/plugin.json"
+printf '{"name":"himmel","plugins":[{"name":"gamma","version":"1.0.0"}]}\n' > "$TMP/market-gamma.json"
+printf '{"plugins":{"gamma@himmel":[{"version":"1.0.0"}]}}\n' > "$TMP/installed-gamma.json"
+rc=0
+out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-gamma.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-gamma.json" \
+    LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions) || rc=$?
+assert_eq "plugins: malformed local manifest + marketplace version -> rc 3" "3" "$rc"
+assert_contains "plugins: malformed local manifest -> unknown, not current" "^ *plugins  *unknown" "$out"
+
+# HIMMEL-5485: an external plugin (git-subdir/url source) has no local dir, so
+# its source version comes from the marketplace entry, then the installed sha.
+ext_row() {   # <market-json> <installed-json> -> the --versions output, its rc
+    printf '%s\n' "$1" > "$TMP/market-ext.json"
+    printf '%s\n' "$2" > "$TMP/installed-ext.json"
+    HIMMEL_MARKETPLACE_JSON="$TMP/market-ext.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-ext.json" \
+        LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions
+}
+mk_ext='{"name":"himmel","plugins":[{"name":"ext","source":{"source":"url","url":"https://example.invalid/ext.git"},"version":"3.1.0"}]}'
+rc=0; out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.1.0"}]}}') || rc=$?
+assert_eq "ext: marketplace entry version = installed -> rc 0" "0" "$rc"
+assert_contains "ext: marketplace entry version = installed -> current" "^ *plugins  *current  *1/1 installed" "$out"
+rc=0; out=$(ext_row "$mk_ext" '{"plugins":{"ext@himmel":[{"version":"3.0.0"}]}}') || rc=$?
+assert_eq "ext: marketplace entry version differs -> rc 1" "1" "$rc"
+assert_contains "ext: marketplace entry version differs -> behind, names drift" "^ *plugins  *behind .*ext(3\\.0\\.0->3\\.1\\.0)" "$out"
+mk_sha='{"name":"himmel","plugins":[{"name":"ext","source":{"source":"url","url":"https://example.invalid/ext.git"}}]}'
+rc=0; out=$(ext_row "$mk_sha" '{"plugins":{"ext@himmel":[{"version":"13ac0ec","gitCommitSha":"13ac0ec1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"}]}}') || rc=$?
+assert_eq "ext: sha-only installed version -> rc 0" "0" "$rc"
+assert_contains "ext: sha-only installed version -> current" "^ *plugins  *current  *1/1 installed" "$out"
+rc=0; out=$(ext_row "$mk_sha" '{"plugins":{"ext@himmel":[{"gitCommitSha":"13ac0ec1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"}]}}') || rc=$?
+assert_eq "ext: empty installed version + commit sha -> rc 0" "0" "$rc"
+assert_contains "ext: empty installed version + commit sha -> current via sha" "^ *plugins  *current  *1/1 installed" "$out"
+rc=0; out=$(ext_row "$mk_sha" '{"plugins":{"ext@himmel":[{"version":"1.2.3"}]}}') || rc=$?
+assert_eq "ext: no declared source version -> rc 0" "0" "$rc"
+assert_contains "ext: no declared source version -> installed reported current" "^ *plugins  *current  *1/1 installed" "$out"
+rc=0; out=$(ext_row "$mk_sha" '{"plugins":{"ext@himmel":[{}]}}') || rc=$?
+assert_eq "ext: neither version nor sha -> rc 3" "3" "$rc"
+assert_contains "ext: neither version nor sha -> unknown" "^ *plugins  *unknown" "$out"
 
 # ─── 7: release channel — the himmel row follows the tag, not the upstream ────
 echo "Test 7: --versions with HIMMEL_UPDATE_CHANNEL follows release tags"

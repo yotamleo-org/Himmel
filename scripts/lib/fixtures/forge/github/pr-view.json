@@ -1,0 +1,1 @@
+{"baseRefName":"main","headRefOid":"59d4d28d3b892290672c5e923f3b4d3b25ca8cf4","number":2464,"state":"MERGED","title":"fix(lib): [HIMMEL-3571] git-clean scrub helpers clear the remaining repository-redirecting GIT_* variables"}

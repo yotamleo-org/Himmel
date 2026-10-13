@@ -256,8 +256,8 @@ contains 'a held-lock leg doc marks its ticket live with label, phase and PR (HI
 not_contains 'a WRAPPED leg is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
 not_contains 'a leg doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
 contains 'a marker-shaped brief bullet above Results sets neither phase nor PR (HIMMEL-3990)' "$html6" '"9":["N59","LIVE",null]'
-contains 'a wrapped leg counts toward what its ticket took; a gap over 3 h is idle (HIMMEL-3990)' "$html6" '"ACT":{"6":[2,40]'
-contains 'a timestamped line above ## Results is not counted as work (HIMMEL-4441)' "$html6" '"8":[1,10]'
+contains 'a wrapped leg counts toward what its ticket took: [legs, wall, active, dated]; a gap over 3 h is idle, not active (HIMMEL-5453)' "$html6" '"ACT":{"6":[2,280,40,2]'
+contains 'a timestamped line above ## Results is not counted as work (HIMMEL-4441)' "$html6" '"8":[1,10,10,1]'
 contains 'the actuals carry the newest wrapped-leg doc stamp (HIMMEL-4930)' "$html6" '"ATS":"20'
 contains 'the live leg counts its ticket in progress in the ledger (HIMMEL-3990)' "$stdout6" '1 of 4 done (25 %), 2 in progress, 1 to do.'
 if [ "$fp4" != "$fp5" ]; then pass 'a leg starting moves the fingerprint (HIMMEL-3990)'; else fail 'a leg starting left the fingerprint'; fi
@@ -501,6 +501,103 @@ kfp1="$(krender --emit-fp --jira-base-url "")"
 krender --jira-base-url 'https://jira.example.test/' >/dev/null
 kfp2="$(krender --emit-fp --jira-base-url "https://jira.example.test/")"
 if [[ "$kfp1" =~ ^[0-9a-f]{16}$ ]] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL or failed: '$kfp1' vs '$kfp2'"; fi
+
+# --- HIMMEL-5453: re-measured actuals, spawned bundles under their planned origin, the operator bundle, zone labels.
+# Own plan, mirror and handover tree. HIMMEL-100 is planned; 101 says it was deferred from 100, 102 is a follow-up of 101
+# (A to B to C), a leg of 101 filed 103, 108 relates to 100 by a Jira link. 104 carries the operator-directed label,
+# a console OPERATOR bullet filed 105, 106 follows up 105. 107 and 109 reach no anchor (109 is named only by a RULING).
+bplan="$W/bplan" bmir="$W/bmirror" bh="$W/bluna/handovers/tester/himmel"
+cp -r "$plan" "$bplan"
+mkdir -p "$bmir" "$bh"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+    v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 > "$bplan/stage3/versions.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason HIMMEL-100 v1.0.1 features 2.2 committed '' '' \
+    > "$bplan/stage3/placement.tsv"
+printf '%s\t%s\t%s\t%s\n' key readiness effort_low effort_high HIMMEL-100 3 M M > "$bplan/stage2/C01.tsv"
+# bmk <n> <statusCategory> <fixVersions json> <title> <labels json> <links relates json> [description line]
+bmk() {
+    {
+        printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0200"' "statusCategory: \"$2\"" \
+            "labels: $5" 'parent: null' "fixVersions: $3" 'type: "Task"' 'links:' '  blocks: []' '  blocked_by: []' \
+            "  relates: $6" '---' "# HIMMEL-$1: $4" '' '## Description' '' "${7:-}" '' '## Comments' '' '_(none)_'
+    } > "$bmir/HIMMEL-$1.md"
+}
+bmk 100 'Done' '["v1.0.1"]' 'planned origin' '[]' '[]'
+bmk 101 'Done' '[]' 'lint gap' '[]' '[]' 'Deferred from the /pr-check of HIMMEL-100.'
+bmk 102 'To Do' '[]' '[HIMMEL-101 follow-up] tighten the lint' '[]' '[]'
+bmk 103 'Done' '[]' 'filed by a leg' '[]' '[]'
+bmk 104 'To Do' '[]' 'operator label' '["operator-directed"]' '[]'
+bmk 105 'Done' '[]' 'operator ask' '[]' '[]'
+bmk 106 'To Do' '[]' 'operator follow-up' '[]' '[]' 'A follow-up from HIMMEL-105.'
+bmk 107 'To Do' '["v1.0.1"]' 'nobody claims me' '[]' '[]'
+bmk 108 'To Do' '[]' 'linked follow-up' '[]' '["HIMMEL-100"]'
+bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 which is newer, never an origin.'
+# A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
+printf '%s\n' '# leg' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
+    '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
+# A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the leg's.
+printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — filed HIMMEL-103 for the second gap' '- 10:45 WRAPPED — merged' \
+    '- 11:30 note after the wrap' '## Notes' '- 12:00 a later note: filed HIMMEL-107 elsewhere' > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
+printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:30 WRAPPED — merged' > "$bh/HIMMEL-102-N94-no-date.md"
+printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:20 WRAPPED — merged' > "$bh/HIMMEL-105-N93-operator-ask-2026-10-03.md"
+printf '%s\n' '# console' '## Results' '- 22:57 OPERATOR: do the thing. Filed HIMMEL-105; DISPATCH N93' \
+    '- 23:10 OPERATOR RULING: Filed HIMMEL-109 is not an ask' '- 23:15 **OPERATOR** RULING: Filed HIMMEL-109 again' > "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
+bout="$W/bench.html"
+brender() {
+    TZ=Europe/Berlin python3 "$HERE/tracker.py" --plan-dir "$bplan" --out "$bout" --luna-map "$W/luna-map-b.json" \
+        --mirror-dir "$bmir" --luna-root "$W/bluna" --handovers "$bh" "$@" 2>&1
+}
+bstdout="$(brender)"
+bhtml="$(cat "$bout" 2>/dev/null)"
+btsv="$bout.bench.tsv"
+contains 'the Jira stamp is converted to UTC and labelled (HIMMEL-5453)' "$bhtml" '"mir":"2026-09-30 08:00 UTC"'
+contains 'a multi-day leg counts its dated wall span and its active minutes apart (HIMMEL-5453)' "$bhtml" '"100":[1,1500,180,1]'
+contains 'a leg doc with no date in its name counts active minutes but no dated wall (HIMMEL-5453)' "$bhtml" '"102":[1,0,30,0]'
+contains 'the page names the source of each number (HIMMEL-5453)' "$bhtml" 'wall = first Results bullet to WRAPPED'
+contains 'the cost column is a named ponytail (HIMMEL-5453)' "$bhtml" 'cost: not measured'
+if [ -f "$btsv" ]; then pass 'the benchmark TSV is written beside the page (HIMMEL-5453)'; else fail 'no benchmark TSV beside the page'; fi
+bcol() { awk -F'\t' -v k="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next}$1==k{print $(h[c])}' "$btsv" 2>/dev/null; }
+contains 'A to B to C rolls up to the first planned ancestor; a leg-filed and a linked ticket join it (HIMMEL-5453)' \
+    "$(bcol HIMMEL-100 members)" 'HIMMEL-101,HIMMEL-102,HIMMEL-103,HIMMEL-108'
+contains 'the bundle counts open and done (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_n) $(bcol HIMMEL-100 bundle_open) $(bcol HIMMEL-100 bundle_done)" '4 2 2'
+contains 'the bundle folds into the item total (HIMMEL-5453)' "$(bcol HIMMEL-100 own_wall_min) $(bcol HIMMEL-100 bundle_wall_min) $(bcol HIMMEL-100 total_wall_min)" '1500 45 1545'
+contains 'the bundle coverage counts its dated legs (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated)" '2 1'
+contains 'a ratio over partly undated legs is left blank (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) [$(bcol HIMMEL-100 min_per_seq)] [$(bcol HIMMEL-100 ratio)]" '2.2 [] []'
+contains 'the dated span is printed in UTC (HIMMEL-5453)' "$(bcol HIMMEL-100 first_utc) $(bcol HIMMEL-100 end_utc)" '2026-10-01T20:00Z 2026-10-02T21:00Z'
+contains 'the operator bundle holds labelled, backfilled and their spawned tickets (HIMMEL-5453)' \
+    "$(bcol operator-directed members)" 'HIMMEL-104,HIMMEL-105,HIMMEL-106'
+contains 'the operator bundle carries its actuals (HIMMEL-5453)' "$(bcol operator-directed bundle_wall_min) $(bcol operator-directed bundle_open)" '20 2'
+contains 'unattributed unplanned train tickets are their own visible bundle; a RULING bullet is no ask (HIMMEL-5453)' \
+    "$(bcol unattributed members)" 'HIMMEL-107,HIMMEL-109'
+contains 'the page carries the bundles (HIMMEL-5453)' "$bhtml" '"BN":['
+contains 'stdout names the TSV (HIMMEL-5453)' "$bstdout" 'bench.tsv'
+bfp1="$(brender --emit-fp)"
+printf '%s\n' '- 23:20 OPERATOR: one more. Filed HIMMEL-107' >> "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
+bfp2="$(brender --emit-fp)"
+if [ -n "$bfp1" ] && [ "$bfp1" != "$bfp2" ]; then pass 'a new OPERATOR filing moves the fingerprint (HIMMEL-5453)'; else fail 'a new OPERATOR filing left the fingerprint'; fi
+mv "$bh/HIMMEL-102-N94-no-date.md" "$bh/HIMMEL-102-N94-now-dated-2026-10-02.md"
+brender >/dev/null
+contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5453)' \
+    "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
+
+# HIMMEL-5491: a Jira `theme-<slug>` label is the ticket's theme, ahead of the plan's stage1 / overlay theme.
+printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
+tl() {  # tl <n> <labels json>
+    printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' \
+        'fixVersions: []' 'type: "Bug"' "labels: $2" '---' "# HIMMEL-$1: label theme ticket $1" > "$mir/HIMMEL-$1.md"
+}
+tl 8 '["theme-tooling"]'
+tl 9 '["other", "theme-fresh-label"]'
+tl 10 '["theme-fresh-label"]'
+tl 11 '["theme-build-tools"]'
+tout="$W/theme.html"
+python3 "$HERE/tracker.py" --plan-dir "$plan" --out "$tout" --luna-map "$W/luna-map.json" \
+    --mirror-dir "$mir" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" >/dev/null 2>&1
+thtml="$(cat "$tout" 2>/dev/null)"
+contains 'a theme label with no plan theme becomes a theme (HIMMEL-5491)' "$thtml" '"fresh-label"'
+contains 'a theme label that names a plan theme shows the plan name (HIMMEL-5491)' "$thtml" '"Build Tools"'
+not_contains 'that label is not shown as a new theme of its own (HIMMEL-5491)' "$thtml" '"build-tools"'
+not_contains 'the Jira theme label wins over the stage1 theme (HIMMEL-5491)' "$thtml" '"legacy"'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

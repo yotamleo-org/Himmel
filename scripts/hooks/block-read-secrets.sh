@@ -37,7 +37,11 @@
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ.
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5412 adds
+# a python/node/bun/deno command that prints the whole environment or reads
+# /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
+# of a session transcript .jsonl (is_transcript_path) or a Grep over one or
+# over ~/.claude/projects (is_transcript_tree).
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
@@ -852,6 +856,7 @@ g4_scan() {
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
             cmd="${d##*/}"
             case "$cmd" in
+                python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
                 cp|scp|rsync|aws) cls=src ;;
                 gzip|bzip2|xz|zstd|lz4|lzma|pigz|brotli) cls=zip ;;
@@ -944,6 +949,84 @@ g4_scan() {
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
     esac
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
+    return 0
+}
+
+# interp_env_dump TEXT (HIMMEL-5412): does a python/node command print the
+# WHOLE environment, or read /proc/*/environ? TEXT is the raw command, so a
+# `-c`/`-e` body and a `python3 - <<'EOF'` heredoc body are both in it. Single
+# named keys are removed first (`os.environ.get(`, `os.environ[`,
+# `process.env.HOME`, `process.env[`); any `environ` / `process.env` left over is
+# the whole mapping (`dict(os.environ)`, `JSON.stringify(process.env)`).
+# Called only when a clause command is an interpreter (g4_interp), so a commit
+# message naming os.environ is not a dump.
+# Bun and Deno: `Bun.env` and `Deno.env.toObject()` are the whole mapping;
+# `Bun.env.HOME`, `Bun.env[`, `Deno.env.get(` / `Deno.env.has(` are single keys.
+# Python's bytes twin `os.environb` counts the same as `os.environ`.
+# ponytail: an accepted false positive on a membership test (`"CI" in
+# os.environ`) and on handing the mapping to a child (`env={**os.environ}`);
+# perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
+# real call of either shape. TEXT is the whole command, not the interpreter's
+# own clause, so a later clause naming os.environ (a commit message) also
+# denies; per-clause scanning that keeps the heredoc body is HIMMEL-5418.
+# Also HIMMEL-5418 (not matched here): an interpreter shell-out to `env`
+# (`os.system('env')`, `execSync('env')`), `process['env']` and a destructured
+# `const {env} = process`.
+interp_env_dump() {
+    local t="$1" k
+    if [[ $t =~ /proc/[^/[:space:]]+/environ ]]; then return 0; fi
+    for k in 'environ.get(' 'environ[' 'environb.get(' 'environb[' \
+        'process.env[' 'Bun.env[' 'Deno.env.get(' 'Deno.env.has('; do
+        t="${t//"$k"/}"
+    done
+    while [[ $t =~ process\.env\.[A-Za-z_] ]]; do
+        t="${t/process.env./}"
+    done
+    while [[ $t =~ Bun\.env\.[A-Za-z_] ]]; do
+        t="${t/Bun.env./}"
+    done
+    # Whole words only, so a script named check_environment.py is not a dump.
+    if [[ $t =~ (^|[^A-Za-z0-9_])(environb?|process\.env|Bun\.env|Deno\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
+    return 1
+}
+
+# is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
+# (`~/.claude/projects/<slug>/<session>.jsonl`, subagent ones below it). A
+# transcript holds every earlier tool result verbatim, so one that once printed
+# a token hands it to whoever Reads it.
+is_transcript_path() {
+    case "$1" in
+        */.claude/projects/*.jsonl|*\\.claude\\projects\\*.jsonl) return 0 ;;
+    esac
+    return 1
+}
+
+# is_transcript_tree PATH (HIMMEL-5412): a Grep path that reaches transcripts:
+# a transcript itself, `~/.claude/projects`, or anything below it. Only the
+# per-project `memory/` subtree stays allowed, and only with no `..` in the
+# path (`memory/..` is the project directory again). A slug can hold a dot
+# (`-home-u-repo.example`), so a basename is never taken as "a file".
+# ponytail: a Grep rooted ABOVE projects (`~/.claude`, `~`) still walks into
+# transcripts, and a Bash reader (`cat`/`grep -r`/`jq` on a transcript) is not
+# matched: both need a per-token path check across scan_clause's reader sites,
+# HIMMEL-5418.
+is_transcript_tree() {
+    local p="${1%/}"
+    is_transcript_path "$p" && return 0
+    p="${p//\\//}"
+    case "$p" in
+        */.claude/projects|*/.claude/projects/*) ;;
+        *) return 1 ;;
+    esac
+    case "/$p/" in */../*) return 0 ;; esac
+    # The exemption is exactly <projects>/<one slug>/memory: a glob `*` would
+    # span `/` and exempt a `memory` dir below a session directory.
+    local rel slug
+    rel="${p#*/.claude/projects/}"
+    slug="${rel%%/*}"
+    case "${rel#"$slug"}" in
+        /memory|/memory/*) [ -n "$slug" ] && [ "$slug" != . ] && return 1 ;;
+    esac
     return 0
 }
 
@@ -1270,6 +1353,13 @@ case "$tool" in
             bypass_hint
             exit 2
         fi
+        if is_transcript_path "$fp"; then
+            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
+            echo "⛔ block-read-secrets: refusing Read of a session transcript: $fp" >&2
+            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
+            bypass_hint
+            exit 2
+        fi
         ;;
 
     Grep)
@@ -1281,11 +1371,33 @@ case "$tool" in
             bypass_hint
             exit 2
         fi
+        if is_transcript_tree "$gpath"; then
+            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
+            echo "⛔ block-read-secrets: refusing Grep over session transcripts: $gpath" >&2
+            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
+            bypass_hint
+            exit 2
+        fi
         ;;
 
     Bash|PowerShell)
         cmd="$_rd_cmd"
         [ -z "$cmd" ] && exit 0
+
+        # HIMMEL-5331: re-read the command with its variable expansions
+        # removed, so a `${V:-}cat .env` is judged as the `cat .env` the shell
+        # runs when V is empty. A must-run dependency: if it cannot be
+        # sourced, deny.
+        case "${BASH_SOURCE[0]}" in
+            */*) _gee_lib=${BASH_SOURCE[0]%/*}/../lib/guard-empty-expansion.sh ;;
+            *) _gee_lib=../lib/guard-empty-expansion.sh ;;
+        esac
+        # shellcheck source=../lib/guard-empty-expansion.sh
+        if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
+            echo "block-read-secrets: cannot load $_gee_lib - failing closed" >&2
+            exit 2
+        fi
+        guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
 
         # HIMMEL-4438: re-read the forms the shell actually runs (quotes
         # removed, wrappers stripped, `bash -c`/`eval` bodies) through this
@@ -1333,6 +1445,7 @@ case "$tool" in
         # assignment persists.
         glued_tok=""
         g4_note=""
+        g4_interp=0
         # HIMMEL-5277: the exfil / env-dump verbs run on guard_unwrap's
         # quote-aware segments, so a quoted `env` in a commit message is not a
         # clause. A command the tokenizer would not read falls back to the raw
@@ -1347,6 +1460,9 @@ case "$tool" in
         done <<EOF
 $normalized
 EOF
+        if [ "$g4_interp" = 1 ] && interp_env_dump "$cmd"; then
+            block=1; g4_note="an interpreter prints the whole environment or reads /proc/*/environ"
+        fi
 
         if [ "$block" = "1" ]; then
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0

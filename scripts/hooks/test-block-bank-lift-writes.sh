@@ -1314,6 +1314,38 @@ row "5094 pnpm add tar (ctrl)"                 allow "pnpm add tar"
 row "5094 unar -o HOME"                        deny  "unar -o ~ /tmp/a.zip"
 row "5094 unar, cwd HOME"                      deny  "unar /tmp/a.zip" "$HOME"
 row "5094 unar safe dest (ctrl)"               allow "unar -o /var/out /tmp/a.zip"
+# HIMMEL-5438: option parsers matched only full long spellings, so a getopt_long
+# abbreviation of --output (or --dir, --output-directory) wrote the state dir.
+row "5438 ar x --output= ST (ctrl)"             deny  "ar x --output=$ST /tmp/a.a"
+row "5438 ar x --out= ST"                       deny  "ar x --out=$ST /tmp/a.a"
+row "5438 ar x --o= ST"                         deny  "ar x --o=$ST /tmp/a.a"
+row "5438 ar x --outp= ST"                      deny  "ar x --outp=$ST /tmp/a.a"
+row "5438 ar x --out ST (separate)"             deny  "ar x --out $ST /tmp/a.a"
+row "5438 ar x --o ST (separate)"               deny  "ar x --o $ST /tmp/a.a"
+row "5438 ar x --out= safe (ctrl)"              allow "ar x --out=/var/out /tmp/a.a"
+row "5438 ar x --out safe (ctrl)"               allow "ar x --out /var/out /tmp/a.a"
+row "5438 ar x unknown long option fails closed" deny "ar x --frobnicate /tmp/a.a"
+row "5438 ar x --plugin=P safe (ctrl)"          allow "ar x --plugin=/usr/lib/p.so /tmp/a.a"
+row "5438 ar t unknown long option (ctrl)"      allow "ar t --frobnicate /tmp/a.a"
+row "5438 jar --dir= ST"                        deny  "jar --extract --dir=$ST --file /tmp/a.jar"
+row "5438 jar --di= ST"                         deny  "jar --extract --di=$ST --file /tmp/a.jar"
+row "5438 jar --di ST (separate)"               deny  "jar --extract --di $ST --file /tmp/a.jar"
+row "5438 jar --dir= safe (ctrl)"               allow "jar --extract --dir=/var/out --file /tmp/a.jar"
+row "5438 unar --output-dir ST"                 deny  "unar --output-dir $ST /tmp/a.zip"
+row "5438 unar -out ST"                         deny  "unar -out $ST /tmp/a.zip"
+row "5438 unar -output-directory safe (ctrl)"   allow "unar -output-directory /var/out /tmp/a.zip"
+row "5438 generic --output-doc= LIFT"           deny  "frobnicate --output-doc=$LIFT x"
+row "5438 generic --out= LIFT"                  deny  "frobnicate --out=$LIFT x"
+row "5438 generic --out LIFT (separate)"        deny  "frobnicate --out $LIFT x"
+row "5438 generic --outf LIFT (separate)"       deny  "frobnicate --outf $LIFT x"
+row "5438 generic --out= safe (ctrl)"           allow "frobnicate --out=/var/out/f x"
+row "5438 generic --only-matching safe (ctrl)"  allow "frobnicate --only-matching /var/out/f"
+row "5438 grep --o is --only-matching (read verb, ctrl)" allow "grep --o $LIFT /tmp/input"
+row "5438 grep --output= LIFT still denied (ctrl)" deny  "grep --output=$LIFT x"
+row "5459 pax -r -- -w is not write mode"       deny  "pax -r -- -w /var/out"
+row "5459 pax -rw -- src dest (ctrl)"           allow "pax -rw -- /tmp/src /var/out"
+row "5459 pax -rw src dest (ctrl)"              allow "pax -rw /tmp/src /var/out"
+row "5459 pax -rw -- src ST"                    deny  "pax -rw -- /tmp/src $ST"
 row "5094 bsdcpio -id"                         deny  "bsdcpio -id < /tmp/a.cpio"
 row "5094 python -m tarfile -e HOME"           deny  "python3 -m tarfile -e /tmp/a.tar ~"
 row "5094 python -m zipfile -e HOME"           deny  "python3 -m zipfile -e /tmp/a.zip ~/.himmel"
@@ -1460,6 +1492,283 @@ row "5094 r6 F04 computed module"               deny  "M=tarfile; python3 -m \$M
 row "5094 r6 F05 computed module quoted"        deny  "M=zipfile; python3 -m \"\$M\" -e /tmp/a.zip ~"
 row "5094 r6 env -C literal tar (ctrl)"         allow "env -C /tmp/w tar tf /tmp/a.tar"
 row "5094 r6 computed module, no archive (ctrl)" allow "M=json.tool; python3 -m \$M /tmp/a.json"
+
+echo "== HIMMEL-5159: redirect / tee to an inherited env value naming the lift =="
+# The hook reads its own inherited environment: a bare $VAR / ${VAR} redirect
+# or tee target that resolves to the lift denies; a benign value stays allowed.
+# The variable is set in the HOOK's environment only, as a leg launcher would.
+env_row() {  # label expect "VAR=value VAR=value" command
+    # A space starts a new assignment only before NAME=, so a value holding a
+    # space or a glob character (a TMPDIR-derived HOME) stays one argument.
+    local rc got rest re='^(.*) ([A-Za-z_][A-Za-z0-9_]*=.*)$'
+    local -a asg=()
+    rest=$3
+    while [[ "$rest" =~ $re ]]; do
+        asg=("${BASH_REMATCH[2]}" ${asg[@]+"${asg[@]}"})
+        rest=${BASH_REMATCH[1]}
+    done
+    asg=("$rest" ${asg[@]+"${asg[@]}"})
+    printf '%s' "$(bash_json "$4")" | env "${asg[@]}" bash "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected $2 got $got"; fi
+}
+# shellcheck disable=SC2016  # the commands under test carry literal $VAR text
+rows_5159() {
+env_row "5159 redirect > quoted \$VAR (env=lift)"   deny  "LIFT_DEST=$LIFT" 'echo "{}" > "$LIFT_DEST"'
+env_row "5159 redirect >> bare \$VAR (env=lift)"    deny  "LIFT_DEST=$LIFT" 'echo "{}" >> $LIFT_DEST'
+env_row "5159 redirect > \${VAR} (env=lift)"        deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST}"'
+env_row "5159 tee quoted \$VAR (env=lift)"          deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "$LIFT_DEST"'
+env_row "5159 tee -a \${VAR} (env=lift)"            deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee -a ${LIFT_DEST}'
+env_row "5159 redirect > \${VAR:-} (env=lift)"      deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST:-}"'
+env_row "5159 redirect > \${VAR-} (env=lift)"       deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST-}"'
+env_row "5159 redirect > \${VAR%} (env=lift)"       deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST%}"'
+env_row "5159 redirect > \${VAR#} (env=lift)"       deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST#}"'
+env_row "5159 redirect > \$VAR\$Z, Z unset (env=lift)" deny "LIFT_DEST=$LIFT" 'echo "{}" > "$LIFT_DEST$Z"'
+env_row "5159 redirect > \${VAR}\${Z} (env=lift)"   deny  "LIFT_DEST=$LIFT" 'echo "{}" > "${LIFT_DEST}${Z}"'
+env_row "5159 redirect indirect \${!R} (env=lift)"  deny  "LIFT_DEST=$LIFT" 'R=LIFT_DEST; echo "{}" > "${!R}"'
+env_row "5159 redirect >| \$VAR (env=lift)"         deny  "LIFT_DEST=$LIFT" 'echo "{}" >| "$LIFT_DEST"'
+env_row "5159 redirect &> \$VAR (env=lift)"         deny  "LIFT_DEST=$LIFT" 'echo "{}" &> "$LIFT_DEST"'
+env_row "5159 redirect 2> \$VAR (env=lift)"         deny  "LIFT_DEST=$LIFT" 'echo "{}" 2> "$LIFT_DEST"'
+env_row "5159 tee \${VAR:-} (env=lift)"             deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "${LIFT_DEST:-}"'
+env_row "5159 tee \$VAR\$Z, Z unset (env=lift)"     deny  "LIFT_DEST=$LIFT" 'echo "{}" | tee "$LIFT_DEST$Z"'
+env_row "5159 tee indirect \${!R} (env=lift)"       deny  "LIFT_DEST=$LIFT" 'R=LIFT_DEST; echo "{}" | tee "${!R}"'
+env_row "5159 redirect > \$D/\$F split across vars"  deny  "D=$ST F=bank-lift.json" 'echo "{}" > "$D/$F"'
+env_row "5159 redirect > \${D}/\${F} split across vars" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${D}/${F}"'
+env_row "5159 tee \$D/\$F split across vars"         deny  "D=$ST F=bank-lift.json" 'echo "{}" | tee "$D/$F"'
+env_row "5159 redirect \${D:-}/\${F:-} split across vars" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${D:-}/${F:-}"'
+env_row "5159 redirect \${D%x}/\${F} split across vars" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${D%x}/${F}"'
+env_row "5159 redirect \${Z:-\$D}/\$F split across vars" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${Z:-$D}/$F"'
+env_row "5159 redirect \${D%/x}/\$F, suffix stripped to the lift" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "${D%/x}/$F"'
+env_row "5159 redirect \${D%%/x}/\$F, suffix stripped to the lift" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "${D%%/x}/$F"'
+env_row "5159 redirect \${D:-\$Z}/\$F, D set so default unused" deny "D=$ST Z=/tmp F=bank-lift.json" 'echo "{}" > "${D:-$Z}/$F"'
+env_row "5159 redirect \${D:+\$Z}/\$F, any operator denies (accepted over-deny)" deny "D=/tmp Z=/tmp F=out.txt" 'echo hi > "${D:+$Z}/$F"'
+env_row "5159 redirect \${D/a/b}/\$F, unmodelled operator (fail closed)" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${D/a/b}/$F"'
+env_row "5159 redirect \${#V} length (fail closed)" deny "V=abc" 'echo hi > "${#V}"'
+env_row "5159 redirect \${D%%\"*\"}/\$F, quoted pattern" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "${D%%"*"}/$F"'
+env_row "5159 redirect \${D%%\\*}/\$F, escaped pattern" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "${D%%\*}/$F"'
+env_row "5159 redirect \${D%%'*'}/\$F, single-quoted pattern" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "${D%%'\''*'\''}/$F"'
+env_row "5159 redirect \${Q:=\$D}\${Q:+/}\$F, := follow-on" deny "D=$ST F=bank-lift.json" 'echo "{}" > "${Q:=$D}${Q:+/}$F"'
+env_row "5159 redirect \$D:h/\$F, zsh modifier" deny "D=$ST/x F=bank-lift.json" 'echo "{}" > "$D:h/$F"'
+env_row "5159 redirect \$D[1,-3]/\$F, zsh subscript" deny "D=$ST/xy F=bank-lift.json" 'echo "{}" > "$D[1,-3]/$F"'
+env_row "5159 redirect \${LOG:-/tmp/l}, operator denies (accepted over-deny)" deny "LOG=/tmp/run.log" 'echo hi > "${LOG:-/tmp/l}"'
+env_row "5159 redirect \${Z:-/tmp}/out, operator denies (accepted over-deny)" deny "OTHER=1" 'echo hi > "${Z:-/tmp}/out"'
+env_row "5159 redirect \$D/\$F (env=benign, ctrl)"   allow "D=/tmp F=out.txt" 'echo hi > "$D/$F"'
+env_row "5159 redirect \${D}/\${F} (env=benign, ctrl)" allow "D=/tmp F=out.txt" 'echo hi > "${D}/${F}"'
+env_row "5159 redirect \$TMPDIR/f (env=benign, ctrl)" allow "TMPDIR=/tmp" 'echo hi > "$TMPDIR/f"'
+env_row "5159 tee \${LOG}\${Z} (env=benign, ctrl)"  allow "LOG=/tmp/run.log" 'echo hi | tee "${LOG}${Z}"'
+env_row "5159 redirect \$OUT (env=benign, ctrl)"    allow "OUT=/tmp/out.txt" 'echo hi > "$OUT"'
+env_row "5159 tee \$LOG (env=benign, ctrl)"         allow "LOG=/tmp/run.log" 'echo hi | tee "$LOG"'
+env_row "5159 redirect \$OUT (env=state dir, accepted over-deny)" deny "OUT=$ST" 'echo hi > "$OUT"'
+env_row "5159 redirect \$UNSET (not in env, ctrl)"  allow "OTHER=1" 'echo hi > "$UNSET_VAR"'
+# Judge j2413c: zsh flag forms work without braces, and `>!` / `>|` are zsh's
+# clobber operators; the tokenizer used to read `!` as the target word.
+env_row "5159 redirect > \$~D, zsh GLOB_SUBST flag"  deny "D=$LIFT" 'echo hi > $~D'
+env_row "5159 redirect > \$=D, zsh word-split flag"  deny "D=$LIFT" 'echo hi > $=D'
+env_row "5159 redirect > \$^D, zsh RC_EXPAND flag"   deny "D=$LIFT" 'echo hi > $^D'
+env_row "5159 redirect > \$=~D, stacked zsh flags"   deny "D=$LIFT" 'echo hi > $=~D'
+env_row "5159 redirect > \$#D, zsh length form"      deny "D=$LIFT" 'echo hi > $#D'
+env_row "5159 redirect > \$+D, zsh set-test form"    deny "D=$LIFT" 'echo hi > $+D'
+env_row "5159 tee \$~D, zsh GLOB_SUBST flag"         deny "D=$LIFT" 'echo hi | tee $~D'
+env_row "5159 redirect >! \"\$D\", zsh clobber"      deny "D=$LIFT" 'echo hi >! "$D"'
+env_row "5159 redirect >>! \"\$D\", zsh append clobber" deny "D=$LIFT" 'echo hi >>! "$D"'
+env_row "5159 redirect &>! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi &>! "$D"'
+env_row "5159 redirect >&! \"\$D\", zsh both clobber" deny "D=$LIFT" 'echo hi >&! "$D"'
+env_row "5159 redirect >! literal lift path"         deny "OTHER=1" "echo hi >! $LIFT"
+env_row "5159 redirect >! \$OUT (env=benign, ctrl)"  allow "OUT=/tmp/out.txt" 'echo hi >! "$OUT"'
+# CodeRabbit on PR 2479: in bash `>!` writes to a file named `!` and the next
+# word stays a command operand, so the word is both a target and an operand.
+row "5348 CR >! word stays an operand: cp src >! state dir"   deny 'cp /tmp/bank-l?ft.json >! ~/.himmel/state'
+row "5348 CR >>! word stays an operand: mv src >>! state dir"  deny 'mv /tmp/bank-l?ft.json >>! ~/.himmel/state'
+row "5348 CR &>! word stays an operand: cp src &>! state dir"  deny 'cp /tmp/bank-l?ft.json &>! ~/.himmel/state'
+row "5348 CR >&! word stays an operand: cp src >&! state dir"  deny 'cp /tmp/bank-l?ft.json >&! ~/.himmel/state'
+row "5348 CR &>>! word stays an operand: cp src &>>! state dir" deny 'cp /tmp/bank-l?ft.json &>>! ~/.himmel/state'
+row "5348 CR >! benign operand (ctrl)"                         allow 'cp /tmp/a >! /tmp/out'
+# Whole-command rule (judge j2413d): a writer word anywhere plus a reference
+# whose value names the state dir or the lift denies, whatever the operator.
+env_row "5159 whole-cmd &>| \"\$D\" clobber synonym"  deny "D=$LIFT" 'echo hi &>| "$D"'
+env_row "5159 whole-cmd >&| \"\$D\" clobber synonym"  deny "D=$LIFT" 'echo hi >&| "$D"'
+env_row "5159 whole-cmd >>&| \"\$D\" clobber synonym" deny "D=$LIFT" 'echo hi >>&| "$D"'
+env_row "5159 whole-cmd &>>| \"\$D\" clobber synonym" deny "D=$LIFT" 'echo hi &>>| "$D"'
+env_row "5159 whole-cmd \$D bare word after redirect" deny "D=$LIFT" 'echo hi > /tmp/o $D'
+env_row "5159 whole-cmd cp x \"\$D/bank-lift.json\""  deny "D=$ST" 'cp x "$D/bank-lift.json"'
+env_row "5159 whole-cmd mv x \"\$D\" (D=lift)"        deny "D=$LIFT" 'mv x "$D"'
+env_row "5159 whole-cmd tee \${D} braced (D=lift)"    deny "D=$LIFT" 'echo hi | tee "${D}"'
+env_row "5159 whole-cmd &>| \"\$A\$B\$C\" split values"  deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'echo hi &>| "$A$B$C"'
+env_row "5159 whole-cmd &>| \"\$A/state/bank-\$C\" split text" deny "A=$HOME/.himmel C=lift.json" 'echo hi &>| "$A/state/bank-$C"'
+env_row "5159 whole-cmd > \"\$OUT\$SUF\" benign split (ctrl)" allow "OUT=/tmp/o SUF=.txt" 'echo hi > "$OUT$SUF"'
+env_row "5159 judge-e &>| \"\${!R}\" indirect"          deny "R=D D=$LIFT" 'echo hi &>| "${!R}"'
+env_row "5159 judge-e > \"\${(P)R}\" zsh indirect"      deny "R=D D=$LIFT" 'echo hi > "${(P)R}"'
+env_row "5159 judge-e typeset -n nameref"              deny "D=$LIFT" 'typeset -n r=D; echo hi > "$r"'
+env_row "5159 judge-e declare -n nameref"              deny "D=$LIFT" 'declare -n r=D; echo hi > "$r"'
+env_row "5159 judge-e &>| ~/.himmel/state/bank-\$C"     deny "C=lift.json" 'echo hi &>| ~/.himmel/state/bank-$C'
+env_row "5159 judge-e > ~/.himmel/state/bank-\$C tilde" deny "C=lift.json" 'echo hi > ~/.himmel/state/bank-$C'
+env_row "5159 judge-e &>| \"\$S/bank-\$C\" dot segment" deny "S=$HOME/.himmel/./state C=lift.json" 'echo hi &>| "$S/bank-$C"'
+env_row "5159 judge-e > \"\$S/bank-\$C\" dot segment"   deny "S=$HOME/.himmel/./state C=lift.json" 'echo hi > "$S/bank-$C"'
+env_row "5159 judge-e > \"\$S/bank-\$C\" dotdot segment" deny "S=$HOME/.himmel/x/../state C=lift.json" 'echo hi > "$S/bank-$C"'
+env_row "5159 judge-e > \"\$S/bank-\$C\" double slash"  deny "S=$HOME/.himmel//state C=lift.json" 'echo hi > "$S/bank-$C"'
+env_row "5159 judge-e &>| /tmp/x any clobber denied"   deny "X=1" 'echo hi &>| /tmp/x'
+env_row "5159 judge-e > \"\$S/o\" dot segment benign (ctrl)" allow "S=/tmp/./o" 'echo hi > "$S/o"'
+env_row "5159 whole-cmd echo \"\$D\" no writer (ctrl)" allow "D=$LIFT" 'echo "$D"'
+env_row "5159 whole-cmd > /tmp/x with D set (ctrl)"   allow "D=$LIFT" 'echo hi > /tmp/x'
+env_row "5159 codex braced split cp \${A}\${B}\${C}"   deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'cp x "${A}${B}${C}"'
+env_row "5159 codex braced split > \${A}\${B}\${C}"    deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'echo hi > "${A}${B}${C}"'
+env_row "5159 codex braced split mixed \${A}\$B\${C}"  deny "A=$HOME/.himmel B=/state/bank- C=lift.json" 'cp x "${A}$B${C}"'
+env_row "5159 codex braced benign split (ctrl)"        allow "A=/tmp B=/o- C=x" 'cp y "${A}${B}${C}"'
+}
+rows_5159
+
+echo "== HIMMEL-5348: one destination resolver for every writer =="
+# Judge j2413f: a quote break ("$A""$B$C") split the env reference so the
+# copy-style writers, which had no per-destination env check, allowed it. Every
+# write destination now goes through one resolver: the dequoted word, its env
+# references expanded, ~ expanded, normalised, then is_lift.
+SPLIT="A=$HOME/.himmel B=/state/bank- C=lift.json"
+BENIGN="A=/tmp B=/o- C=x"
+# shellcheck disable=SC2016  # the commands under test carry literal $VAR text
+rows_5348() {
+env_row "5348 j2413f cp x \"\$A\"\"\$B\$C\""            deny  "$SPLIT" 'cp x "$A""$B$C"'
+env_row "5348 j2413f sort -o \"\$A\"\"\$B\$C\" y"       deny  "$SPLIT" 'sort -o "$A""$B$C" y'
+env_row "5348 j2413f cp x \"\$A\$B\$C\" (ctrl)"          deny  "$SPLIT" 'cp x "$A$B$C"'
+env_row "5348 j2413f tee \"\$A\"\"\$B\$C\" (ctrl)"       deny  "$SPLIT" 'echo x | tee "$A""$B$C"'
+env_row "5348 mv quote break"                         deny  "$SPLIT" 'mv x "$A""$B$C"'
+env_row "5348 install quote break"                    deny  "$SPLIT" 'install x "$A""$B$C"'
+env_row "5348 rsync quote break"                      deny  "$SPLIT" 'rsync x "$A""$B$C"'
+env_row "5348 ln -s quote break"                      deny  "$SPLIT" 'ln -s /tmp/x "$A""$B$C"'
+env_row "5348 cp -t quote-broken state dir, -T"       deny  "$SPLIT" 'cp -rT /tmp/d "$A"/state'
+env_row "5348 cp --parents into quote-broken HOME"    deny  "A=$HOME" 'cp --parents .himmel/state/bank-l?ft.json "$A"'
+env_row "5348 dd of= quote break"                     deny  "$SPLIT" 'dd if=/tmp/x of="$A""$B$C"'
+env_row "5348 sort --output= quote break"             deny  "$SPLIT" 'sort --output="$A""$B$C" y'
+env_row "5348 curl -o quote break"                    deny  "$SPLIT" 'curl -o "$A""$B$C" https://example.com'
+env_row "5348 truncate quote break"                   deny  "$SPLIT" 'truncate -s0 "$A""$B$C"'
+env_row "5348 touch quote break"                      deny  "$SPLIT" 'touch "$A""$B$C"'
+env_row "5348 sponge quote break"                     deny  "$SPLIT" 'echo x | sponge "$A""$B$C"'
+env_row "5348 sed -i quote break"                     deny  "$SPLIT" 'sed -i s/a/b/ "$A""$B$C"'
+env_row "5348 sed w command to env path"              deny  "$SPLIT" 'sed -n "w $A$B$C" /tmp/x'
+env_row "5348 perl -i quote break"                    deny  "$SPLIT" 'perl -i -pe 1 "$A""$B$C"'
+env_row "5348 find -fprint quote break"               deny  "$SPLIT" 'find /tmp -fprint "$A""$B$C"'
+env_row "5348 redirect quote break"                   deny  "$SPLIT" 'echo x > "$A""$B$C"'
+env_row "5348 cp text between quoted refs"            deny  "A=$HOME/.himmel C=lift.json" 'cp x "$A"/state/bank-"$C"'
+env_row "5348 cp backslash-escaped slash"             deny  "A=$HOME/.himmel C=lift.json" 'cp x "$A"\/state\/bank-"$C"'
+env_row "5348 sort -o text between quoted refs"       deny  "A=$HOME/.himmel C=lift.json" 'sort -o "$A"/state/bank-"$C" y'
+env_row "5348 cp tilde + quoted ref"                  deny  "C=lift.json" 'cp x ~/.himmel/state/bank-"$C"'
+env_row "5348 cp dotdot inside a value"               deny  "A=$HOME/.himmel/x/.. C=lift.json" 'cp x "$A"/state/bank-"$C"'
+env_row "5348 cp value naming the state dir"          deny  "S=$ST" 'cp /tmp/d/* "$S"'
+env_row "5348 cp operator form (fail closed)"         deny  "A=/tmp" 'cp x "${A:-/tmp}/o"'
+env_row "5348 sort -o operator form (fail closed)"    deny  "A=/tmp" 'sort -o "${A%/}/o" y'
+env_row "5348 cp benign split (ctrl)"                 allow "$BENIGN" 'cp /tmp/y "$A""$B$C"'
+env_row "5348 sort -o benign split (ctrl)"            allow "$BENIGN" 'sort -o "$A""$B$C" /tmp/y'
+env_row "5348 dd of= benign split (ctrl)"             allow "$BENIGN" 'dd if=/tmp/y of="$A""$B$C"'
+env_row "5348 sed -i benign split (ctrl)"             allow "$BENIGN" 'sed -i s/a/b/ "$A""$B$C"'
+env_row "5348 mv benign split (ctrl)"                 allow "$BENIGN" 'mv /tmp/y "$A""$B$C"'
+env_row "5348 cp unset var (ctrl)"                    allow "OTHER=1" 'cp /tmp/y "$UNSET_VAR"'
+# codex-1: an inherited name the hook also uses (a resolver local, a global)
+# is read at its INHERITED value, never the hook's own.
+env_row "5348 redirect to inherited \$n (resolver local)" deny "n=$LIFT" 'echo hi > "$n"'
+env_row "5348 cp to inherited \$v (resolver local)"    deny  "v=$LIFT" 'cp x "$v"'
+env_row "5348 cp to inherited \$rest (resolver local)" deny  "rest=$LIFT" 'cp x "$rest"'
+env_row "5348 cp to inherited \$CMD (hook global)"     deny  "CMD=$LIFT" 'cp x "$CMD"'
+env_row "5348 sort -o inherited \$REPLY"               deny  "REPLY=$LIFT" 'sort -o "$REPLY" y'
+env_row "5348 cp quote break via \$m \$pre"            deny  "m=$HOME/.himmel pre=/state/bank-lift.json" 'cp x "$m""$pre"'
+# Round-2 codex-1: a quote or backslash ends the name ("$A"n is A's value then
+# n), so dequoting to $An must not hide the reference to A.
+env_row "5348 redirect \"\$A\"n name boundary"           deny  "A=${LIFT%n}" 'echo hi > "$A"n'
+env_row "5348 cp \"\$A\"n name boundary"                 deny  "A=${LIFT%n}" 'cp x "$A"n'
+env_row "5348 cp \"\$A\"te prefix outside state dir"     deny  "A=$HOME/.himmel/sta" 'cp x "$A"te/bank-lift.json'
+env_row "5348 cp \$A\\te backslash boundary"              deny  "A=$HOME/.himmel/sta" 'cp x $A\te/bank-lift.json'
+env_row "5348 cp \"\$A\"n benign (ctrl)"                 allow "A=/tmp/o" 'cp /tmp/y "$A"n'
+# Round-3 codex-1: the boundary check holds for EVERY writer, not a list.
+env_row "5348 sort -o \"\$A\"n name boundary"            deny  "A=${LIFT%n}" 'sort -o "$A"n y'
+env_row "5348 touch \"\$A\"n name boundary"              deny  "A=${LIFT%n}" 'touch "$A"n'
+env_row "5348 truncate \"\$A\"n name boundary"           deny  "A=${LIFT%n}" 'truncate -s0 "$A"n'
+env_row "5348 sed -i \"\$A\"n name boundary"             deny  "A=${LIFT%n}" 'sed -i s/a/b/ "$A"n'
+env_row "5348 sort -o \"\$A\"''n name boundary"          deny  "A=${LIFT%n}" "sort -o \"\$A\"''n y"
+env_row "5348 sort -o \"\$A\"\$'n' name boundary"        deny  "A=${LIFT%n}" "sort -o \"\$A\"\$'n' y"
+env_row "5348 sort -o \"\$A\"n benign (ctrl)"            allow "A=/tmp/o" 'sort -o "$A"n /tmp/y'
+env_row "5348 cat \"\$A\"/x read (ctrl)"                 allow "A=$ST" 'cat "$A"/x'
+# j2479a B1: a sed SCRIPT is not a destination, so its ${...} text never
+# fails closed; only sed -i FILE operands and a w/W filename are resolved.
+env_row "5348 sed -i script \${X:-C} (ctrl)"            allow "OTHER=1" "sed -i 's/^LC_ALL=C PS4=/LC_ALL=\${PROF_LC:-C} PS4=/' /tmp/x.sh"
+env_row "5348 sed -i script \${#1} (ctrl)"              allow "OTHER=1" "sed -i 's/x/\${#1}/' /tmp/x"
+env_row "5348 sed -i script \${12} (ctrl)"              allow "OTHER=1" "sed -i 's/x/\${12}/' /tmp/x"
+env_row "5348 sed -i script \${c//a/b} (ctrl)"          allow "OTHER=1" "sed -i 's/x/\${c//a/b}/' /tmp/x"
+env_row "5348 sed -i script \${x:0:5} (ctrl)"           allow "OTHER=1" "sed -i 's/x/\${x:0:5}/' /tmp/x"
+env_row "5348 sed -i script JS template (ctrl)"        allow "OTHER=1" "sed -i 's/a/\`\${b}\`/' /tmp/x.js"
+env_row "5348 sed -i script \${{ matrix }} (ctrl)"      allow "OTHER=1" "sed -i 's/s/\${{ matrix.shard }}/' /tmp/ci.yml"
+env_row "5348 sed -i script last-line address (ctrl)"  allow "OTHER=1" "sed -i '\${s/,\$//}' /tmp/f"
+env_row "5348 sed -i -e script \${x:-y} (ctrl)"         allow "OTHER=1" "sed -i -e 's/x/\${x:-y}/' /tmp/x"
+env_row "5348 sed w in script text \${x:-y} (ctrl)"     allow "OTHER=1" "sed 's/w/\${x:-y}/' /tmp/x"
+env_row "5348 sed -i file still resolved, -e script"   deny  "$SPLIT" "sed -i -e 's/x/\${x:-y}/' \"\$A\"\"\$B\$C\""
+env_row "5348 sed w operator form naming the lift"     deny  "OTHER=1" "sed -n \"w \${X:-$HOME/.himmel/state/bank-lift.json}\" /tmp/x"
+# Delta-round codex-1: the operator form is evaluated with its names unset; a
+# set name (here the lift itself) or an indirection denies.
+env_row "5348 sed w \${V:-/tmp/out}, V = lift"          deny  "V=$LIFT" 'sed -n "w ${V:-/tmp/out}" /tmp/x'
+env_row "5348 sed w defaults spell the lift"           deny  "OTHER=1" "sed -n \"w \${q:-$HOME/.hi}mmel/state/bank-li\${q:-f}t.json\" /tmp/x"
+env_row "5348 sed w \${!R} indirection"                 deny  "R=V V=$LIFT" 'sed -n "w ${!R}" /tmp/x'
+env_row "5348 sed w \${V:-/tmp/out}, V unset (ctrl)"    allow "OTHER=1" 'sed -n "w ${V:-/tmp/out}" /tmp/x'
+# j2479b: a long option the sed parser does not know exactly (GNU accepts
+# unambiguous abbreviations) fails closed: every operand is a destination.
+env_row "5348 sed -i --expr= script, file \$V"           deny  "V=$LIFT" "sed -i --expr='s/a/b/' \"\$V\""
+env_row "5348 sed -i --e= script, file \$V"              deny  "V=$LIFT" "sed -i --e='s/a/b/' \"\$V\""
+env_row "5348 sed -i --fi= script file, file \$V"        deny  "V=$LIFT" 'sed -i --fi=s.sed "$V"'
+env_row "5348 sed --i abbreviated in-place, file \$V"    deny  "V=$LIFT" 'sed --i "s/a/b/" "$V"'
+env_row "5348 sed -n --expr='w lift'"                   deny  "OTHER=1" "sed -n --expr='w $LIFT' /tmp/x"
+env_row "5348 sed -i --expr= script \${x:-y} (ctrl)"     allow "OTHER=1" "sed -i --expr='s/x/\${x:-y}/' /tmp/x"
+# j2479b: special parameters after a w fail closed.
+env_row "5348 sed w \${#V}"                              deny  "OTHER=1" 'sed -n "w ${#V}" /tmp/x'
+env_row "5348 sed w \${?}"                               deny  "OTHER=1" 'sed -n "w ${?}" /tmp/x'
+env_row "5348 sed w \${#}"                               deny  "OTHER=1" 'sed -n "w ${#}" /tmp/x'
+env_row "5348 sed w \${\$}"                              deny  "OTHER=1" 'sed -n "w ${$}" /tmp/x'
+env_row "5348 sed w \${-}"                               deny  "OTHER=1" 'sed -n "w ${-}" /tmp/x'
+env_row "5348 sed w \${0}"                               deny  "OTHER=1" 'sed -n "w ${0}" /tmp/x'
+# j2479c: `--` ends sed's options, so every later word is an operand.
+env_row "5348 sed -i -- s/a/b/ -e \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -e "$V"'
+env_row "5348 sed -i -- s/a/b/ -f \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -f "$V"'
+env_row "5348 sed -i -- s/a/b/ -l \"\$V\""                deny  "V=$LIFT" 'sed -i -- s/a/b/ -l "$V"'
+env_row "5348 sed -i -- s/a/b/ /tmp/x (ctrl)"            allow "V=$LIFT" 'sed -i -- s/a/b/ /tmp/x'
+# j2479c: the --expr prefix branch with the lift only in the env (the
+# literal-path row above is caught by the mention gate whatever the parser).
+env_row "5348 sed -n --expr=\"w \$V\", V = lift"          deny  "V=$LIFT" 'sed -n --expr="w $V" /tmp/x'
+# j2479a B2 (HIMMEL-5326): sort -o attached, clustered and abbreviated, and
+# cp/mv/install --t= target directory.
+env_row "5348 sort -o\"\$V\" attached"                   deny  "V=$LIFT" 'sort -o"$V" /tmp/y'
+env_row "5348 sort -uo \"\$V\" cluster"                  deny  "V=$LIFT" 'sort -uo "$V" /tmp/y'
+env_row "5348 sort -uo\"\$V\" cluster attached"          deny  "V=$LIFT" 'sort -uo"$V" /tmp/y'
+env_row "5348 sort --out=\"\$V\" prefix"                 deny  "V=$LIFT" 'sort --out="$V" /tmp/y'
+env_row "5348 sort --o \"\$V\" prefix"                   deny  "V=$LIFT" 'sort --o "$V" /tmp/y'
+env_row "5348 sort -o literal lift attached"           deny  "OTHER=1" "sort -o$LIFT /tmp/y"
+env_row "5348 sort -uo /tmp/o (ctrl)"                  allow "OTHER=1" 'sort -uo /tmp/o /tmp/y'
+env_row "5348 sort -to separator is not -o (ctrl)"     allow "OTHER=1" 'sort -to /tmp/y'
+env_row "5348 cp --t= state dir"                       deny  "OTHER=1" 'cp /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 mv --t= state dir"                       deny  "OTHER=1" 'mv /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 install --t= state dir"                  deny  "OTHER=1" 'install /tmp/bank-l?ft.json --t=~/.himmel/state'
+env_row "5348 cp --t= quoted env state dir"            deny  "S=$ST" 'cp /tmp/bank-l?ft.json --t="$S"'
+env_row "5348 cp --t= /tmp (ctrl)"                     allow "OTHER=1" 'cp /tmp/bank-l?ft.json --t=/tmp/o'
+# j2479f (over-deny): an argument that is handed a path but is not a write
+# destination falls back to the word as written when its expansion is
+# unmodelled; it fails closed only when a referenced value names the lift.
+env_row "5348 j2479f curl \$HOST:\$PORT url"            allow "HOST=example.com PORT=8080" 'curl "http://$HOST:$PORT/x"'
+env_row "5348 j2479f curl -u \$U:\$P"                   allow "U=me P=pw" 'curl -u "$U:$P"'
+env_row "5348 j2479f scp \$H:/f"                        allow "H=host" 'scp "$H":/f .'
+env_row "5348 j2479f ssh remote \${x%/*}"               allow "OTHER=1" "ssh h 'echo \${x%/*}'"
+env_row "5348 j2479f perl -lane \$F[0]"                 allow "OTHER=1" "perl -lane 'print \$F[0]' f"
+env_row "5348 j2479f python3 \${A:-b}"                  allow "OTHER=1" 'python3 x.py "${A:-b}"'
+env_row "5348 j2479f curl \${V%/} names the lift"       deny  "V=$LIFT" 'curl "file://${V%/}"'
+env_row "5348 j2479f curl \$V:x names the lift"         deny  "V=$LIFT" 'curl "$V:x"'
+env_row "5348 j2479f ssh \${S%/} names the state dir"   deny  "S=$ST" 'ssh h "${S%/}"'
+env_row "5348 j2479f python3 \${!R} indirection to lift" deny "R=V V=$LIFT" 'python3 x.py "${!R}"'
+# Delta round 10 codex-1: values that are harmless one by one assemble the lift.
+env_row "5348 codex-1 python3 \${P%/}/\${S%/}/\${A%/}-\${B%/} assembles the lift" deny \
+    "P=$HOME/.himmel S=state A=bank B=lift.json" 'python3 x.py "${P%/}/${S%/}/${A%/}-${B%/}"'
+env_row "5348 codex-1 python3 \${A#x} prefix removal assembles the lift" deny \
+    "P=$HOME/.himmel S=state A=xbank" 'python3 x.py "$P/$S/${A#x}-lift.json"'
+env_row "5348 codex-1 zsh :h modifier on an unset name drops text" deny \
+    "P=$HOME/.himmel S=state" 'python3 x.py "$P/$S/bank-li$E:hft.json"'
+env_row "5348 codex-1 zsh subscript on an unset name drops text" deny \
+    "P=$HOME/.himmel S=state" 'python3 x.py "$P/$S/bank-li$E[x]ft.json"'
+env_row "5348 codex-1 python3 \${HOME%/}/notes (ctrl)" allow "OTHER=1" 'python3 x.py "${HOME%/}/notes"'
+}
+rows_5348
 
 echo "== generated write-verb axis (shared write-fence grammar) =="
 # The verb x spelling axis the main-checkout fence suite enumerates, rendered

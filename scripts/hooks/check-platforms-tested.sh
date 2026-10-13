@@ -127,8 +127,9 @@ if ! changed=$(git diff --name-only "${diff_base}...HEAD" 2>/dev/null); then
 fi
 [ -z "$changed" ] && exit 0
 
-# Filter sensitive paths.
-sensitive=$(printf '%s\n' "$changed" | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
+# Filter sensitive paths. Docs-only Markdown/text is never a script, even under
+# scripts/ (HIMMEL-5490; same pre-filter as ready-check.sh item 5, HIMMEL-5431).
+sensitive=$(printf '%s\n' "$changed" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
 if [ -z "$sensitive" ]; then
     exit 0
 fi

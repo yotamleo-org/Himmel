@@ -8,7 +8,7 @@ To provision a fresh Ubuntu VM run: `python scripts/machine-setup/ubuntu-vm-setu
 
 No local VM, or proving on a remote one? Set `vm.mode` — see [vm-mode.md](vm-mode.md).
 
-## Dependency split — test-harness vs user-runtime (HIMMEL-469)
+## Dependency split — test-harness vs user-runtime
 
 Two **different** dependency sets; do not conflate them:
 
@@ -27,12 +27,12 @@ and the R6 `ensure-tools` apt path run non-interactively — a password-prompted
 On Ubuntu the provisioner (`ubuntu-vm-setup.py`, step 7c) installs this
 automatically: a *command-scoped* drop-in `/etc/sudoers.d/90-<user>-nopasswd`
 (`apt-get`/`apt`/`dpkg`/`systemctl`/`tee` only — never a blanket `NOPASSWD:ALL`),
-`visudo -cf`-validated before install and written `0440 root:root` (HIMMEL-492).
+`visudo -cf`-validated before install and written `0440 root:root`.
 The host-driven validator `scripts/test-install-symmetry-vm.sh [user@host] [port]
 [identity]` GAP-skips the git-dependent suites when git is absent rather than
 failing, so it stays green on a not-yet-bootstrapped box.
 
-**Dependency-upgrade stage (HIMMEL-5267, opt-in).** `HIMMEL_VM_E2E_UPGRADE=1`
+**Dependency-upgrade stage (opt-in).** `HIMMEL_VM_E2E_UPGRADE=1`
 makes that validator run `scripts/vm/upgrade-path-e2e.sh` after a green symmetry
 pass (also runnable alone). It pins the tree's baseline versions in the guest,
 upgrades to the station targets, and asserts: `himmel-doctor` shows no new FAIL
@@ -49,7 +49,7 @@ canaries, which stay a host step after the station roll.
 `CLIPROXY_API_SHA256` (both required together) to install a non-pinned release.
 
 The upgrade-path counterpart `scripts/test-luna-upgrade-vm.sh [user@host] [port]
-[identity]` (HIMMEL-493 Linux, HIMMEL-522 Windows) stages the real
+[identity]` stages the real
 `templates/luna-second-brain/` to the VM and proves the `/luna-upgrade` ENGINE
 (`scripts/upgrade.sh`): it runs the shipped hermetic engine suite + a real
 scaffold→rollback→upgrade roundtrip (asserts owned files refresh, user content is
@@ -74,10 +74,10 @@ The engine's real deps are a **working python + git + sha256sum** — NOT `node`
 the Microsoft Store stub (on PATH but emits no stdout), so the engine and the
 harness resolve a working interpreter by probing stdout, not `command -v`, and
 fall back `python3 → python → py`. A bootstrap-floor Linux VM lacking python3
-gets a best-effort `sudo apt-get install python3` (scoped NOPASSWD, HIMMEL-492).
+gets a best-effort `sudo apt-get install python3` (scoped NOPASSWD).
 Both VM e2e scripts exit 3 (not 1) when the VM is unreachable.
 
-### Skill-pass VM e2e (HIMMEL-493)
+### Skill-pass VM e2e
 
 `python scripts/test-luna-upgrade-skill-vm.py` (`--help` for options) is the
 **dogfood path**: it drives the `/luna-upgrade` SKILL via an interactive
@@ -97,7 +97,7 @@ pre-commit / PR CI — LLM-in-the-loop, VM-dependent, and billing-consuming mean
 it must never block a merge. Requires the `ubuntu_new` VM up with an authenticated
 `claude`.
 
-### Security-posture audit (HIMMEL-495)
+### Security-posture audit
 
 `python scripts/lib/vm_posture.py <vm> [--json]` runs a fixed battery of
 **read-only forensic checks** over the `vmsdk.VM` SSH layer and prints a
@@ -112,7 +112,7 @@ posture* only — the *functional* smoke ("is claude installed, is the vault
 present" — the `vm-probe*.py` `$TEMP` scripts) is a separate, still-needed
 concern and is NOT replaced by this tool.
 
-### Install-provenance round trip (HIMMEL-3332)
+### Install-provenance round trip
 
 `bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 checks that an uninstall removes exactly what the install brought. It runs on
@@ -167,7 +167,7 @@ failure (exit `2`).
 Under `--profile all` the seed step also drops executable stubs at
 `~/.local/bin/qmd` and `~/.local/bin/graphify`. `suite-ready-v4` ships neither
 tool, and arming the qmd and graphmap cadences needs both on `PATH`; without
-them the install exits 1 before any crontab line exists (HIMMEL-3351). With
+them the install exits 1 before any crontab line exists. With
 the stubs both installs succeed, the harness captures `crontab -l` at
 inventory B, and `cadence-crontab-armed-at-B` (direction `precondition`)
 requires a `# HIMMEL-Pipeline`, `# HIMMEL-Qmd` and `# HIMMEL-GraphMap` line
@@ -183,7 +183,7 @@ is removed, and neither counts as himmel residue.
 
 **Limit:** the stubs prove that a cadence arms and disarms. They do not prove
 that a cadence run works, because the real qmd needs the fork build plus about
-2.1GB of models (HIMMEL-2531).
+2.1GB of models.
 
 The seed step also plants user state for the two `--purge-state` targets:
 `~/.claude/channels/telegram/{.env,access.json}` and
@@ -201,8 +201,7 @@ Exit codes:
 - `2` in either mode: a usage error, a failed guest step or a failed
   precondition.
 
-`VBOXMANAGE_PATH` (or `HIMMEL_VM_AR_LIVE=1`) must be set explicitly
-(HIMMEL-2623).
+`VBOXMANAGE_PATH` (or `HIMMEL_VM_AR_LIVE=1`) must be set explicitly.
 
 **STATION-ONLY**: it needs a real VM, so it never runs in CI. Its hermetic
 twin, `scripts/vm/test-provenance-roundtrip-dry.sh`, fakes `VBoxManage`,
@@ -346,6 +345,87 @@ pipes/quotes — feed bodies via stdin or `powershell -EncodedCommand`.
 ```bash
 ssh -p 2223 <windows_vm_user>@127.0.0.1
 ```
+
+---
+
+## Windows VM: `win11` (VBoxManage guestcontrol, HIMMEL-2860)
+
+A second Windows guest, driven from a **Linux** station with no SSH and no
+open port: `VBoxManage guestcontrol` through the Guest Additions (7.2.20).
+It is the adopter-baseline target for Windows smoke cells; the older
+`win11_base_himmel` above stays the SSH/vmsdk path.
+
+| Setting | Value |
+|---------|-------|
+| VM | `win11` (VirtualBox, NAT, no forwarded ports) |
+| Guest user | `overlord`, password in `~/VirtualBox VMs/win11/win11-password.txt` (0600) |
+| Snapshots | `clean-install` (bare Windows 11), `adopter-baseline` (tools below, restored per cell) |
+| Tools in `adopter-baseline` | git 2.55 (Git for Windows), PowerShell 7.6 (`pwsh`), Windows PowerShell 5.1, node 22 (user scope), jq, Python 3.12 (user scope), `claude` (npm -g), `pre-commit` |
+
+### Drive it: `scripts/vm/win-vm.sh`
+
+```bash
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh status
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh up                 # headless start, waits for the guest
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh run -- git --version   # cmd.exe /c in the guest
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh run --exe 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -- -NoProfile -File C:\x.ps1
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh put ./file.ps1 '%USERPROFILE%\inbox\'
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh snapshot NAME      # powered off only; refuses an existing name
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh restore NAME       # powers off first
+WIN_VM_LIVE=1 bash scripts/vm/win-vm.sh down
+```
+
+- **`WIN_VM_LIVE=1` rail.** Without it (or `VBOXMANAGE_PATH`, the test seam)
+  the tool refuses before any VBoxManage call, so a stray invocation cannot
+  touch the VM.
+- **Lock.** Lifecycle verbs take the same per-VM `vm-lock.sh` lock as the
+  Linux VMs (a second run waits; `WIN_VM_LOCK_HELD=1` is for a caller that
+  already holds it).
+- **Password.** Only ever `--passwordfile`; it is never on argv, in logs or in
+  a commit.
+- **Quoting.** `run` wraps the command in `cmd.exe /c`. Ship anything with
+  non-trivial quoting as a file with `put` and run the file.
+
+### Provisioning recipe (how `adopter-baseline` was built)
+
+1. Install Windows 11, Guest Additions, take `clean-install`.
+2. The guestcontrol token is a *filtered* (non-elevated) admin token, so
+   machine-scope installers hang waiting for UAC. Use `winget ... --scope user`
+   for node 22, jq and Python 3.12. Git for Windows has no user scope: run its
+   `winget install --id Git.Git` from the interactive desktop and accept UAC once.
+3. Run `scripts/vm/win-guest-prep.ps1` in the guest (user PATH only, idempotent):
+   adds `C:\Program Files\Git\bin` (so `bash` resolves) and creates
+   `python3.exe` next to `python.exe` (the stock `python3` is the Store stub).
+   Both are needed for himmelctl's preflight; see HIMMEL-5428.
+4. `npm -g install @anthropic-ai/claude-code`, `pip install --user pre-commit`
+   (uninstall calls `claude` and `pre_commit`).
+5. Power off, then `snapshot adopter-baseline`. To refresh a baseline, delete
+   the old snapshot first (`VBoxManage snapshot win11 delete adopter-baseline`),
+   then retake it; `win-vm.sh snapshot` refuses an existing name on purpose.
+
+### Smoke cell: `scripts/vm/win-smoke-cell.sh [<tag>]`
+
+```bash
+WIN_VM_LIVE=1 bash scripts/vm/win-smoke-cell.sh        # newest v* tag
+```
+
+Restores `adopter-baseline`, ships the tree as a **git bundle of the tag**
+(never `main`, never a bare archive: the hooks read `.git`), and runs
+`scripts/vm/win-smoke-guest.ps1` under Windows PowerShell 5.1:
+clone from the bundle, check out the tag, `git init` a project,
+`himmelctl install --scope project`, then `himmelctl uninstall --yes`. It
+always powers off and restores the baseline on the way out. Takes about ten
+minutes. Exit 0 = PASS, 1 = FAIL, 3 = the VM or guest was unreachable.
+
+Evidence is the Linux matrix's contract, one line per step
+(`CELL <name> | STEP <step> | CMD <command> | LAST <last 3 lines> | rc=<n>`),
+then `CHECK PASS|FAIL|XFAIL <name>` lines and one `VERDICT PASS|FAIL`.
+
+**Known Windows gaps** (reported as `XFAIL`, never hidden; filed under
+HIMMEL-4102, label `windows`): `uninstall.ps1` does not unwire the adopted
+project's `settings.json` (HIMMEL-5427); the adopter preflight cannot resolve
+`bash`/`python3` on a stock box (HIMMEL-5428). Arming a `claude` session in
+the guest is deferred (HIMMEL-5429).
 
 ---
 

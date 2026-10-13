@@ -407,5 +407,33 @@ assert_empty "every multi-member Codex chain carries at least a 60s timeout" "$(
 assert_empty "every Codex lifecycle hook is marked --lifecycle" "$(lc_field NOFLAG)"
 assert_empty "no permission-gate Codex hook is marked --lifecycle" "$(lc_field BADFLAG)"
 
+# HIMMEL-5422: four Claude shell-surface guards (git-stash, scheduler, quiet-run,
+# live-settings) were never mirrored, so Codex sessions skipped them. Each row
+# drives the REAL chain `.codex/hooks.json` wires for the tool through the real
+# adapter and asserts a deny - a guard missing from the chain fails its row.
+command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required"; exit 1; }
+for v in GIT_STASH_OK ROGUE_SCHEDULE_OK QUIET_RUN_BYPASS EDIT_LIVE_SETTINGS_OK; do unset "$v"; done
+chain_deny() { # chain_deny <label> <matcher> <tool_name> <command>
+  local label="$1" matcher="$2" tool="$3" cmd="$4" chain payload out
+  chain="$(jq -r --arg m "$matcher" '.hooks.PreToolUse[] | select(.matcher == $m) | .hooks[0].command' .codex/hooks.json \
+    | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
+  payload="$(jq -cn --arg t "$tool" --arg c "$cmd" --arg d "$PWD" \
+    '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:{command:$c},cwd:$d}')"
+  out="$(printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$PWD" bash .codex/codex-hook-adapter.sh "$chain" 2>&1 || true)"
+  case "$out" in
+    *'"permissionDecision":"deny"'*) echo "  ok   $label";;
+    *) echo "  FAIL $label: no deny ($out)"; fails=$((fails + 1));;
+  esac
+}
+chain_deny "Codex Bash chain denies git stash push (block-git-stash)" Bash Bash "git stash push -m x"
+chain_deny "Codex PowerShell chain denies git stash push (block-git-stash)" PowerShell PowerShell "git stash push -m x"
+# A crontab write, not schtasks: block-destructive-commands already denies the
+# schtasks shape, which would make this row green without the guard under test.
+chain_deny "Codex Bash chain denies a raw crontab claude arm (block-rogue-claude-schedule)" Bash Bash 'echo "0 4 * * * claude go" | crontab -'
+chain_deny "Codex PowerShell chain denies a raw crontab claude arm (block-rogue-claude-schedule)" PowerShell PowerShell 'echo "0 4 * * * claude go" | crontab -'
+chain_deny "Codex Bash chain denies a bare test suite run (require-quiet-run)" Bash Bash "bash scripts/hooks/test-block-git-stash.sh"
+chain_deny "Codex Bash chain denies a live settings write (block-edit-live-settings)" Bash Bash "echo x > $HOME/.claude/settings.json"
+chain_deny "Codex PowerShell chain denies a live settings write (block-edit-live-settings)" PowerShell PowerShell "echo x > $HOME/.claude/settings.json"
+
 if [ "$fails" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $fails case(s) failed"; exit 1

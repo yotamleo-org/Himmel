@@ -244,10 +244,10 @@ fi
 
 note "assert: graphify update + query"
 mkdir -p "$WORK/gsmoke"
-printf 'def a():\n    return b()\n\ndef b():\n    return 1\n' > "$WORK/gsmoke/m.py"
+printf 'def alpha():\n    return beta()\n\ndef beta():\n    return 1\n' > "$WORK/gsmoke/m.py"
 graphify update "$WORK/gsmoke" >"$WORK/graphify-update.log" 2>&1
 if [ -f "$WORK/gsmoke/graphify-out/graph.json" ]; then
-  Q="$(graphify query "what does a call" --graph "$WORK/gsmoke/graphify-out/graph.json" 2>"$WORK/graphify-query.err")"; qrc=$?
+  Q="$(graphify query "what does alpha call" --graph "$WORK/gsmoke/graphify-out/graph.json" 2>"$WORK/graphify-query.err")"; qrc=$?
   if [ "$qrc" -eq 0 ] && [ -n "$Q" ]; then pass "graphify update built a graph and query answered"; else fail "graphify query rc=$qrc or empty (see $WORK/graphify-query.err)"; fi
 else
   fail "graphify update built no graph.json (see $WORK/graphify-update.log)"

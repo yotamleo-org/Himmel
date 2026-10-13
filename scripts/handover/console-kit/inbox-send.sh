@@ -138,6 +138,23 @@ fi
 
 [ -n "$text" ] || usage
 
+# HIMMEL-5408: the inbox and the doc mirror are line-oriented — a newline in
+# the text would land later lines as bare text the leg's drain and the doc's
+# Console Rulings section ignore. Join non-blank lines into ONE bullet.
+case "$text" in
+    *"
+"*)
+        joined=""
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line%$'\r'}"
+            [ -n "${line//[[:space:]]/}" ] || continue
+            joined="${joined:+$joined / }$line"
+        done <<< "$text"
+        text="$joined"
+        [ -n "$text" ] || usage
+        ;;
+esac
+
 root="$(handover_root_ensure)" || { printf 'inbox-send: cannot resolve handover root\n' >&2; exit 2; }
 
 # --doc is validated BEFORE the inbox append below: appending first and then

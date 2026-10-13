@@ -109,7 +109,7 @@ case "$_ah_self" in
         # would believe it was ALREADY the anchor and skip the hand-off,
         # running its own (possibly branch) bytes under the anchor's name.
         # cwd is the only trusted signal for "where does this file live".
-        _ah_root="$(cd "$_ah_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR "$_ah_git" rev-parse --show-toplevel 2>/dev/null)"
+        _ah_root="$(cd "$_ah_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" rev-parse --show-toplevel 2>/dev/null)"
         _ah_prefix=""
         # Tracks whether $_ah_root came from a genuine git toplevel resolve
         # (below) rather than the non-git walk-up fallback further down -
@@ -125,7 +125,7 @@ case "$_ah_self" in
             # string-subtraction this replaced (HIMMEL-3437 F1: a symlinked
             # worktree path made that subtraction a no-op, leaving _ah_rel
             # absolute instead of relative and breaking the hand-off).
-            _ah_prefix="$(cd "$_ah_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR "$_ah_git" rev-parse --show-prefix 2>/dev/null)"
+            _ah_prefix="$(cd "$_ah_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" rev-parse --show-prefix 2>/dev/null)"
             # Belt-and-suspenders on top of the -u fix above: the resolved
             # root+prefix must actually reconstruct $_ah_dir. If some OTHER
             # env var this fix doesn't know about ever steers git the same
@@ -193,7 +193,7 @@ case "$_ah_self" in
         # in this file's header, not something this check can close.
         _ah_anchor_common=""
         if [ -d "$_ah_anchor" ]; then
-            _ah_anchor_common="$(cd "$_ah_anchor" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR "$_ah_git" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+            _ah_anchor_common="$(cd "$_ah_anchor" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
         fi
         if [ -n "$_ah_anchor_common" ] && ! [ "$_ah_anchor_common" -ef "$_ah_anchor/.git" ]; then
             echo "$_ah_name: HIMMEL_REPO ($_ah_anchor) is not the anchor's own checkout - its git-common-dir ($_ah_anchor_common) is not $_ah_anchor/.git, so it is a linked worktree, not the primary anchor - refusing" >&2
@@ -232,7 +232,7 @@ case "$_ah_self" in
                 # unset GIT_DIR made F4's rev-parse calls report the anchor
                 # as the toplevel - same fail-open class, this call just
                 # missed it.
-                "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE "$_ah_git" -C "$_ah_anchor" ls-files --error-unmatch -- "$_ah_rel" >/dev/null 2>&1 && _ah_is_anchor=1
+                "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" -C "$_ah_anchor" ls-files --error-unmatch -- "$_ah_rel" >/dev/null 2>&1 && _ah_is_anchor=1
             else
                 _ah_is_anchor=1
             fi
@@ -291,7 +291,7 @@ case "$_ah_self" in
             # a string-subtraction against $_ah_root then leaves this empty
             # and wrongly refuses hand-off through a symlinked path (T14).
             case "${BASH_SOURCE[0]}" in */*) _ah_self_dir="$(cd "${BASH_SOURCE[0]%/*}" && pwd)" ;; *) _ah_self_dir="$(pwd)" ;; esac
-            if _ah_self_prefix="$(cd "$_ah_self_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR "$_ah_git" rev-parse --show-prefix 2>/dev/null)"; then
+            if _ah_self_prefix="$(cd "$_ah_self_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" rev-parse --show-prefix 2>/dev/null)"; then
                 _ah_self_rel="${_ah_self_prefix}${BASH_SOURCE[0]##*/}"
             else
                 _ah_self_rel=""

@@ -32,7 +32,8 @@
 #       head nor main (a post-merge push that never landed)
 #   SWEEP-ERROR <branch> <cause>             this scan could not classify or
 #       check a branch (no merge base, git failure, PR listing unavailable...)
-# and exits 1 when any line was printed.
+# and exits 1 when any line was printed. Before scanning it fetches the merged PR
+# heads it lacks by sha (objects only, no ref written; #2453).
 #
 # Otherwise always exits 0 (advisory/read-only). Exit 2 only on a usage error.
 set -uo pipefail
@@ -57,7 +58,8 @@ Usage: unlanded-work.sh [--tsv] [--age-hours N] [--no-forge] [--class CLASS] [--
   --base REF       Compare against REF instead of origin/main.
   --health         Print only alarm lines (LOST-COMMITS / SWEEP-ERROR); empty =
                     healthy. Exit 1 when any alarm was printed. Excludes --tsv
-                    and --class.
+                    and --class. Fetches missing merged PR heads by sha first
+                    (objects only, no ref written).
   -h, --help       This message.
 
 Read-only and advisory: always exits 0 unless the command line itself is bad
@@ -413,6 +415,33 @@ EOF
     return 0
 }
 
+# #2453: the forge deletes a branch when its PR merges, and a fetch without
+# --prune keeps the remote-tracking ref at whatever tip was last fetched. The
+# merged head is then on no advertised ref, so it is never fetched, and lost_scan
+# read every such leftover as SWEEP-ERROR. Fetch the missing merged heads of the
+# branches scanned here by sha: one bounded call that adds objects and writes no
+# ref. On failure they stay missing and still report SWEEP-ERROR (fail-loud).
+prefetch_merged_heads() { # $1 remote
+    local remote="$1" names oid missing=()
+    names="$(git for-each-ref --format='%(refname:lstrip=2)' refs/heads/; git for-each-ref --format='%(refname:lstrip=3)' "refs/remotes/$remote/")"
+    while read -r oid; do
+        case "$oid" in ''|*[!0-9a-f]*) continue ;; esac   # a sha, never an option
+        git cat-file -e "${oid}^{commit}" 2>/dev/null || missing+=("$oid")
+    done < <(printf '%s' "$FORGE_CACHE" | jq -r --arg base "$BASE_BARE" --arg names "$names" '
+        ($names | split("\n")) as $n
+        | .[] | select(.state=="MERGED" and .baseRefName==$base and (.headRefOid // "") != "")
+        | select(.headRefName as $h | any($n[]; . == $h)) | .headRefOid' 2>/dev/null | sort -u)
+    [ "${#missing[@]}" -gt 0 ] || return 0
+    # ponytail: one sha the remote will not serve fails the whole batch, so every
+    # head stays SWEEP-ERROR; retry per sha if that shows up in the doctor's C42.
+    if [ -n "$tcmd" ]; then
+        GIT_TERMINAL_PROMPT=0 "$tcmd" "${UNLANDED_FETCH_TIMEOUT:-30}" git fetch --quiet --no-tags --no-write-fetch-head "$remote" "${missing[@]}" >/dev/null 2>&1
+    else
+        GIT_TERMINAL_PROMPT=0 git fetch --quiet --no-tags --no-write-fetch-head "$remote" "${missing[@]}" >/dev/null 2>&1
+    fi
+    return 0
+}
+
 if [ "$HEALTH" = 1 ]; then
     if [ "$FORGE_ON" = 1 ] && [ "$FORGE_OK" != 1 ]; then
         echo "SWEEP-ERROR (forge) PR listing unavailable (gh failed, timed out or jq missing) — LOST-COMMITS check skipped" >> "$health_file"
@@ -421,6 +450,7 @@ if [ "$HEALTH" = 1 ]; then
         if git rev-parse --verify -q "refs/remotes/${BASE}" >/dev/null 2>&1; then
             case "$BASE" in */*) REMOTE_NAME="${BASE%%/*}" ;; esac
         fi
+        prefetch_merged_heads "$REMOTE_NAME"
         while IFS=$'\t' read -r ref tip; do
             [ -n "$ref" ] || continue
             name="${ref#refs/heads/}"

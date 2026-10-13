@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# headless-claude-ok: HIMMEL-2179 probe the operator runs by hand; the comment below names the claude -p config it measures
 # launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
 # Probe 4 (HIMMEL-2179): combined wrapper shape — stdin prompt,
 # --append-system-prompt-file, --output-format json --json-schema. Verify by
@@ -12,7 +11,6 @@ SYSFILE="$OUT_DIR/04-system-prompt.txt"
 printf 'Always answer in exactly the JSON the schema demands. No prose outside the JSON.\n' > "$SYSFILE"
 SCHEMA='{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}'
 
-# headless-claude-ok: HIMMEL-2179 probe
 printf 'Say hello in one word.\n' | timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 \
   --permission-mode dontAsk --append-system-prompt-file "$SYSFILE" \
   --output-format json --json-schema "$SCHEMA" \
@@ -28,7 +26,6 @@ jq -c '{structured_output, result, is_error}' "$OUT_DIR/04.json" 2>/dev/null
 TERMINAL_REASON="$(jq -r '.terminal_reason // ""' "$OUT_DIR/04.json" 2>/dev/null)"
 if [ "$TERMINAL_REASON" = "max_turns" ]; then
   echo "04: max_turns exhausted at --max-turns 1 — retrying with --max-turns 2"
-  # headless-claude-ok: HIMMEL-2179 probe
   printf 'Say hello in one word.\n' | timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 2 \
     --permission-mode dontAsk --append-system-prompt-file "$SYSFILE" \
     --output-format json --json-schema "$SCHEMA" \

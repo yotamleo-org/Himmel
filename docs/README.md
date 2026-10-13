@@ -6,6 +6,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 - [why-himmel.md](why-himmel.md) — the case for the harness: the five failure modes it exists for, the evidence, and what it costs you.
 - [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
+- [system-design.md](system-design.md) — the narrative design document: goals, the parts, one ticket's flow from file to merge, the trust and safety model, and the trade-offs behind the key decisions.
 - [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/console model, the Jira seam, the observability chain.
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
 - [daily-loop.md](daily-loop.md) — one full loop (worktree → PR → merge → clean → handover), with every hook and gate explained where it fires.
@@ -52,7 +53,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
 
-## Orchestration & lanes (HIMMEL-654 workstream series)
+## Orchestration & lanes
 
 - [orchestration-patterns.md](orchestration-patterns.md) (+ [.notes.md](orchestration-patterns.notes.md) run log) — coordination doctrine for fan-outs, verify loops, and overnight shifts.
 - [internals/ci-orchestrator.md](internals/ci-orchestrator.md) — the queue/scheduling layer over himmel's scarce CI compute.

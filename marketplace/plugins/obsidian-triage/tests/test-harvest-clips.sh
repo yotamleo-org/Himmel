@@ -10,7 +10,6 @@
 #   2. Frontmatter declares the right allowed-tools (Skill MUST be present
 #      — without it, the dispatch table is unreachable).
 #   3. All 6 dispatch types from plan §2.1 are referenced.
-# headless-claude-ok: documenting HIMMEL-128 ban patterns the test searches FOR; not invoking
 #   4. HIMMEL-128 absorbed: no `claude -p`/`--print`/`--bg` strings; Skill
 #      tool is the only dispatch mechanism.
 #   5. G-1 (privacy URL gate), G-2 (lockfile + sync), G-3 (single-section
@@ -88,7 +87,6 @@ for type_word in "tweet" "youtube" "github URL" "non-github" "reddit" "newslette
 done
 
 echo "Test 4: HIMMEL-128 — NO headless claude references"
-# headless-claude-ok: detection pattern for the ban; this comment describes the search target, not an invocation
 # `claude -p`, `--print`, `--bg`, or `Bash: claude` in dispatch context.
 # The runbook can MENTION the ban (which it does) — but must not contain
 # an invocation pattern that would be parsed as a Bash command to claude.
@@ -108,7 +106,6 @@ while IFS= read -r pat; do
 done <<'EOPATTERNS'
 ^[^#>]*Bash:[[:space:]]*claude[[:space:]]+(-p|--print|--bg)
 EOPATTERNS
-# headless-claude-ok: assertion label, not an invocation
 assert "no Bash: claude --print invocation patterns (HIMMEL-128)" "0" "$violations"
 
 # All dispatch in the runbook uses Skill { ... } syntax.

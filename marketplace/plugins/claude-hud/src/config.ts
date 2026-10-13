@@ -43,6 +43,7 @@ const ELEMENTS = [
   'agents',
   'todos',
   'sessionTime',
+  'sessionTokens',
 ] as const;
 
 // Orderable segments of the first line, shared by the expanded and compact layouts.
@@ -93,7 +94,8 @@ export interface HudColorOverrides {
   barEmpty: string;
 }
 
-export const DEFAULT_ELEMENT_ORDER: HudElement[] = [...ELEMENTS];
+// sessionTokens is left out so the tokens summary keeps its place on the last line until it's placed.
+export const DEFAULT_ELEMENT_ORDER: HudElement[] = ELEMENTS.filter(element => element !== 'sessionTokens');
 export const DEFAULT_MERGE_GROUPS: HudElement[][] = [['context', 'usage']];
 // Empty keeps each renderer's native order until the user moves a segment.
 export const DEFAULT_PROJECT_LINE_ORDER: FirstLineSegment[] = [];
