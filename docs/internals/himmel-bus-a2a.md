@@ -21,9 +21,12 @@ and an A2A peer is, at best, an unauthenticated remote.
 
 1. **Inbound A2A text is always `c=0` data.** Whatever an A2A message says,
    including a `metadata.c` of its own, a bridge stamps `c=0`.
-2. **The RETASK nonce and EXPANSION/REDIRECT stay out of band.** They are
-   never a Message part, a metadata value or an AgentCard field. A2A cannot
-   widen a leg's scope.
+2. **The RETASK nonce and EXPANSION/REDIRECT stay out of band.** The renderer
+   never adds one as a Message part of its own, a metadata value or an
+   AgentCard field. A2A cannot widen a leg's scope. A token a sender wrote into
+   a body travels as body text (decision 4); that local rendering to its own
+   recipient is the one exception, and a future remote export must redact
+   token-shaped text from `b` before it leaves the host.
 3. **Outbound, `c` lives only under `metadata`.** The renderer emits no A2A
    field a consumer could read as authority (no task state, no `taskId`, no
    extension). A `c=1` message is byte-identical to its `c=0` twin outside
