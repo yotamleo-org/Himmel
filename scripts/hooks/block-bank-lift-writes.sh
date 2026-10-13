@@ -493,6 +493,10 @@ _soft_eval() {
             if [[ "$body" =~ $re_bn ]]; then
                 op="${BASH_REMATCH[2]}"; _env0_get "${BASH_REMATCH[1]}"; v=$REPLY
             fi
+            # ponytail: a set-but-empty name reads as unset here, so ${E-x}
+            # yields x where the shell yields ""; pre-existing on main (lift_ref
+            # reads NONE on a $ word), accepted by layer decision; structural
+            # fix is OS-layer protection of the lift, HIMMEL-5478.
             if [ -z "$v" ]; then
                 _unset_eval "\${$body}"
                 case $? in
