@@ -96,6 +96,12 @@ jobs:
       shards: ${{ steps.shards.outputs.shards }}
       absent_shards: ${{ steps.shards.outputs.absent_shards }}
     steps:
+      # Debounce. Every shell-unit shard needs this job, and a follow-up push
+      # within ~3 min of the last one cancels a run whose shards already took
+      # runners. A newer push cancels this run while it sleeps here, so no shard
+      # starts. Cost: 3 runner-minutes and 3 minutes of latency per push.
+      # test-ci-push-concurrency.sh holds the 120-240 s window.
+      - run: sleep 180
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
