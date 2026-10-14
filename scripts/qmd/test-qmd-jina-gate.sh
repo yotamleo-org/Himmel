@@ -88,6 +88,22 @@ run_gate "$work/i.yml"; rc=$?
 run_gate "$work/does-not-exist.yml"; rc=$?
 [ "$rc" -eq 2 ] || fail "(10) missing config: expected rc 2, got $rc"
 
+# (10a) flow-style models, which the line reader cannot attribute, fail closed.
+printf 'collections:\n  salus:\n    path: /x\nmodels: {embed: "openai:jina-embeddings-v3", openai_base_url: "https://api.jina.ai/v1"}\n' > "$work/j.yml"
+run_gate "$work/j.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10a) flow-style models with salus: expected rc 3, got $rc"
+
+# (10b) four-space indentation still lists salus (not silently empty).
+printf 'collections:\n    himmel:\n        path: /x\n    salus:\n        path: /y\nmodels:\n    embed: openai:jina-embeddings-v3\n    openai_base_url: https://api.jina.ai/v1\n' > "$work/k.yml"
+run_gate "$work/k.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10b) four-space indentation with salus: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(10b) the refusal must name salus"
+
+# (10c) flow-style collections with a remote model fail closed too.
+printf 'collections: {salus: {path: /x}}\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/l.yml"
+run_gate "$work/l.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10c) flow-style collections: expected rc 3, got $rc"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
@@ -151,4 +167,10 @@ cp "$work/a.yml" "$work/cfg/salus.yml"
 launch salus; rc=$?
 [ "$rc" -eq 1 ] || fail "(16) salus index with Jina: expected rc 1, got $rc"
 
-echo "PASS: test-qmd-jina-gate.sh (16 checks)"
+# (17) the launcher detects a flow-style remote model and the gate refuses it.
+cp "$work/j.yml" "$work/cfg/index.yml"
+launch index; rc=$?
+[ "$rc" -eq 1 ] || fail "(17) launcher on flow-style salus+Jina: expected rc 1, got $rc"
+[ ! -e "$work/started" ] || fail "(17) launcher STARTED qmd on a flow-style salus+Jina config"
+
+echo "PASS: test-qmd-jina-gate.sh (20 checks)"

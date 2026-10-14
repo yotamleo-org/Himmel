@@ -44,16 +44,26 @@ try {
 const unquote = (s) => s.replace(/\s+#.*$/, "").trim().replace(/^(['"])(.*)\1$/, "$2");
 const collections = [];
 const models = {};
+const unsupported = [];
 let section = "";
+let childIndent = 0;
 for (const line of text.split("\n")) {
+  if (/^\s*(#.*)?$/.test(line)) continue;
+  const inline = line.match(/^(collections|models):\s*([^#\s].*)$/);
+  if (inline) { unsupported.push(`"${inline[1]}:" uses a flow/inline value`); section = ""; continue; }
   const top = line.match(/^([A-Za-z_][\w-]*):\s*(#.*)?$/);
-  if (top) { section = top[1]; continue; }
+  if (top) { section = top[1]; childIndent = 0; continue; }
   if (/^\S/.test(line)) { section = ""; continue; }
+  const indent = line.length - line.trimStart().length;
+  if (section !== "collections" && section !== "models") continue;
+  if (!childIndent) childIndent = indent;
+  if (indent !== childIndent) continue; // deeper levels (collection fields) are not names
   if (section === "collections") {
-    const m = line.match(/^ {2}("[^"]+"|'[^']+'|[^\s:#]+):\s*(#.*)?$/);
+    const m = line.trim().match(/^("[^"]+"|'[^']+'|[^\s:#]+):\s*(#.*)?$/);
     if (m) collections.push(unquote(m[1]));
-  } else if (section === "models") {
-    const m = line.match(/^ {2}([A-Za-z_]+):\s*(.+)$/);
+    else unsupported.push(`unparsed collections entry: ${line.trim()}`);
+  } else {
+    const m = line.trim().match(/^([A-Za-z_]+):\s*(.+)$/);
     if (m) models[m[1]] = unquote(m[2]);
   }
 }
@@ -69,9 +79,11 @@ function providerOf() {
 }
 
 const refusals = [];
+let remoteRoles = 0;
 for (const [role, purpose] of Object.entries(PURPOSE)) {
   const uri = process.env[ENV_ROLE[role]] || models[role] || "";
   if (!uri.startsWith("openai:")) continue; // hf: / path = local GGUF
+  remoteRoles++;
   const provider = providerOf();
   if (provider === null) continue;
   for (const col of collections) {
@@ -89,6 +101,17 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
         refusals.push(`collection "${col}" (corpus ${corpus}) is ${verdict} for ${provider} ${purpose} (models.${role})`);
     }
   }
+}
+
+// Fail closed on a layout this reader does not understand: an `openai:` URI it
+// did not attribute to a role, an unreadable collections/models block, or a
+// remote role with no collection list to check.
+const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
+const fileRoleRemote = Object.keys(PURPOSE).filter((r) => (models[r] ?? "").startsWith("openai:")).length;
+if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
+if (remoteRoles > 0) {
+  for (const u of unsupported) refusals.push(`unsupported config layout: ${u}`);
+  if (collections.length === 0) refusals.push("a remote model is configured but no collections could be read to check");
 }
 
 if (refusals.length) {
