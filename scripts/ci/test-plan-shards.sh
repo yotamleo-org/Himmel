@@ -42,6 +42,7 @@ for a in $STUB_ANSWERS; do
   case "${a#*=}" in
     true|false) echo "has_work=${a#*=}" ;;
     fail) echo "boom" >&2; exit 3 ;;
+    falsefail) echo "has_work=false"; exit 3 ;;
     junk) echo "has_work=maybe" ;;
   esac
   exit 0
@@ -60,6 +61,7 @@ check "PS1 every shard has work" "1=true 2=true 3=true" 3 "[1,2,3]" ""
 check "PS2 docs-only: no shard has work" "1=false 2=false 3=false" 3 "[]" "1 2 3"
 check "PS3 some shards empty" "1=true 2=false 3=true 4=false" 4 "[1,3]" "2 4"
 check "PS4 a failing and a silent probe stay listed" "1=fail 2=false 3=" 3 "[1,3]" "2"
+check "PS4 a probe that prints has_work=false then fails stays listed" "1=falsefail 2=false" 2 "[1]" "2"
 check "PS5 a garbage probe answer stays listed" "1=junk 2=false" 2 "[1]" "2"
 
 if STUB_ANSWERS="" bash "$PS/plan-shards.sh" >/dev/null 2>&1; then rc=0; else rc=$?; fi

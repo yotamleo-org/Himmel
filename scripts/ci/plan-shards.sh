@@ -25,7 +25,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 k=1
 while [ "$k" -le "$n" ]; do
-  ( bash "$here/shard-has-work.sh" "$k/$n" "$root" > "$tmp/$k.out" 2>/dev/null ) &
+  ( bash "$here/shard-has-work.sh" "$k/$n" "$root" > "$tmp/$k.out" 2>/dev/null; echo $? > "$tmp/$k.rc" ) &
   k=$((k + 1))
 done
 wait
@@ -33,7 +33,7 @@ wait
 list="" absent=""
 k=1
 while [ "$k" -le "$n" ]; do
-  if [ "$(cat "$tmp/$k.out" 2>/dev/null)" = "has_work=false" ]; then
+  if [ "$(cat "$tmp/$k.rc" 2>/dev/null)" = "0" ] && [ "$(cat "$tmp/$k.out" 2>/dev/null)" = "has_work=false" ]; then
     absent="${absent:+$absent }$k"
   else
     list="${list:+$list,}$k"
