@@ -12,8 +12,8 @@ Never call `obsidian-second-brain:youtube` for this.
 
 ## Steps
 
-1. **Vault first (no network).** `node marketplace/plugins/obsidian-triage/tools/clip-lookup-cli.mjs "<url>"`
-   (from the himmel repo root). An `enriched: true` hit → read the clip at `path`
+1. **Vault first (no network).** `node <plugin>/tools/clip-lookup-cli.mjs "<url>"`
+   (`<plugin>` = the installed plugin root, as in `/read-link`). An `enriched: true` hit → read the clip at `path`
    and answer from it, STOP. `null`, an error, or a thin hit → step 2.
 2. **Fetch.** Resolve `<plugin>` as in `/read-link` (installed plugin root) and run
    `python3 <plugin>/tools/yt-watch.py --url "<url>"` (add `--visual` when asked

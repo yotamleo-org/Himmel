@@ -75,6 +75,12 @@ assert "scene filter used" yes "$(grep -q 'gt(scene' "$tmp/ffmpeg.argv" && echo 
 assert "yt-dlp capped at 720p" yes "$(grep -q 'height<=720' "$tmp/ytdlp.argv" && echo yes || echo no)"
 assert "yt-dlp is cookieless and config-free" yes "$(grep -q -- '--no-config' "$tmp/ytdlp.argv" && ! grep -q -- 'cookies' "$tmp/ytdlp.argv" && echo yes || echo no)"
 
+assert "no uncapped format fallback" no "$(grep -qE '(^|/)b( |$)' "$tmp/ytdlp.argv" && echo yes || echo no)"
+assert "ffmpeg overwrites (-y)" yes "$(grep -q -- ' -y ' "$tmp/ffmpeg.argv" && echo yes || echo no)"
+touch "$tmp/out/frames/frame_0099.jpg"
+watch --visual --out-dir "$tmp/out" >"$tmp/t2b.json"
+assert "stale frame from an earlier run is not reported" 2 "$(jq_py "$tmp/t2b.json" 'len(d["frames"])')"
+
 echo "Test 3: RED control - the old -vsync argv fails the stub like ffmpeg 9"
 ffmpeg -i x -vsync vfr y.jpg 2>"$tmp/vs.err"; assert "old arg list rejected" 8 "$?"
 assert "rejection text is ffmpeg's" "Unrecognized option 'vsync'." "$(head -1 "$tmp/vs.err")"

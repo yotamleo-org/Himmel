@@ -80,13 +80,13 @@ def helper_result(video_id, vault):
 
 def download_argv(ytdlp, video_id, out_template):
     return [ytdlp, "--no-config", "--no-playlist",
-            "-f", "bv*[height<=720]+ba/b[height<=720]/b",
+            "-f", "bv*[height<=720]+ba/b[height<=720]",
             "--merge-output-format", "mp4",
             "-o", out_template, "--", f"https://www.youtube.com/watch?v={video_id}"]
 
 
 def ffmpeg_argv(ffmpeg, video, frames_dir):
-    return [ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(video),
+    return [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(video),
             "-vf", f"select='gt(scene,{SCENE_THRESHOLD})'",
             "-fps_mode", "vfr", "-frames:v", str(MAX_FRAMES), "-q:v", "3",
             str(frames_dir / "frame_%04d.jpg")]
@@ -102,6 +102,8 @@ def extract_frames(video_id, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
     frames_dir = out_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
+    for stale in frames_dir.glob("frame_*.jpg"):
+        stale.unlink()
     with tempfile.TemporaryDirectory(prefix="yt-watch-", dir=out_dir) as d:
         try:
             dl = subprocess.run(download_argv(ytdlp, video_id, str(Path(d) / "%(id)s.%(ext)s")),
