@@ -111,6 +111,8 @@ assert_rc "echo bash -c 'git stash' is data"   0 "$(run_hook "echo bash -c 'git 
 assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 2 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
 assert_rc "sudo -R echo bash -c 'git stash'"   2 "$(run_hook "sudo -R echo bash -c 'git stash'")"
 assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 2 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
+assert_rc "echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_hook "echo() ( \"\$@\" ); echo bash -c 'git stash'")"
+assert_rc "alias echo=eval; echo bash -c 'git stash'" 2 "$(run_hook "alias echo=eval; echo bash -c 'git stash'")"
 assert_rc "find -exec sh -c 'git stash'"       2 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
 assert_rc "xargs bash -c 'git stash'"          2 "$(run_hook "printf a | xargs bash -c 'git stash'")"
 assert_rc "sudo -u u bash -c 'git stash'"      2 "$(run_hook "sudo -u u bash -c 'git stash'")"

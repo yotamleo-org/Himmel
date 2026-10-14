@@ -332,12 +332,15 @@ guard_unwrap() {
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1
-    # A function definition can shadow a builtin name (HIMMEL-4543), so any
-    # `name()` or `function` word disables the data-position skip.
+    # A function or alias can shadow a builtin name (HIMMEL-4543). The tokenizer
+    # splits on parentheses, so no word holds `()`: any `(` or `)` in the
+    # command text, or a word that defines or loads a name (`function`, `alias`,
+    # `shopt`, `eval`, `source`, `.`), disables the data-position skip.
     GU_FUNC=0
     [ "$noskip" != 1 ] || GU_FUNC=1
+    case "$cmd" in *'('*|*')'*) GU_FUNC=1 ;; esac
     for w in "${ST_W[@]+"${ST_W[@]}"}"; do
-        case "$w" in *'()'*|function) GU_FUNC=1; break ;; esac
+        case "$w" in function|alias|shopt|eval|source|.) GU_FUNC=1; break ;; esac
     done
 
     k=0

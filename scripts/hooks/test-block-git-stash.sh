@@ -233,6 +233,10 @@ assert_rc "4543 sudo -u u bash -c 'git stash'"          2 "$(run_case "$(j_bash 
 assert_rc "4543 env X=1 bash -c 'git stash'"            2 "$(run_case "$(j_bash "env X=1 bash -c 'git stash'")")"
 # The data-position skip trusts only a bare command word at position 0: a
 # wrapper option the tables miss, or a shadowing function, must still deny.
+assert_rc "4543 echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "echo() ( \"\$@\" ); echo bash -c 'git stash'")")"
+assert_rc "4543 alias echo=eval; echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "alias echo=eval
+echo bash -c 'git stash'")")"
+assert_rc "4543 shopt expand_aliases; alias; echo bash -c" 2 "$(run_case "$(j_bash "shopt -s expand_aliases; alias echo=eval; echo bash -c 'git stash'")")"
 assert_rc "4543 sudo -R echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "sudo -R echo bash -c 'git stash'")")"
 assert_rc "4543 sudo --chroot echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "sudo --chroot echo bash -c 'git stash'")")"
 assert_rc "4543 doas -a echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "doas -a echo bash -c 'git stash'")")"
