@@ -57,7 +57,11 @@ for (const line of text.split("\n")) {
   if (inline) { unsupported.push(`"${inline[1]}:" uses a flow/inline value`); section = ""; continue; }
   const top = line.match(/^([A-Za-z_][\w-]*):\s*(#.*)?$/);
   if (top) { section = top[1]; childIndent = 0; continue; }
-  if (/^\S/.test(line)) { section = ""; continue; }
+  if (/^\S/.test(line)) {
+    if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push(`quoted top-level key: ${line.trim()}`);
+    section = "";
+    continue;
+  }
   const indent = line.length - line.trimStart().length;
   if (section !== "collections" && section !== "models") continue;
   if (!childIndent) childIndent = indent;
@@ -114,6 +118,10 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
   remoteRoles++;
   const provider = providerOf();
   if (provider === null) continue;
+  if (provider.includes("-insecure-")) {
+    refusals.push(`${role} endpoint ${baseUrl} is not https and not loopback`);
+    continue;
+  }
   for (const col of collections) {
     const corpora = map[col];
     if (!corpora) {

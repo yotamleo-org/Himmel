@@ -129,6 +129,17 @@ printf 'collections:\n  luna:\n    path: /x\nmodels:\n  embed: openai:jina-embed
 run_gate "$work/q.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10h) http endpoint: expected rc 3, got $rc"
 
+# (10i) a quoted top-level "models" key hides the block from the line reader:
+# refuse it even with an escaped model URI that carries no literal openai:.
+printf 'collections:\n  salus:\n    path: /x\n"models":\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/qk.yml"
+run_gate "$work/qk.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10i) quoted top-level models key with salus: expected rc 3, got $rc"
+
+# (10j) a himmel-only index with a plain-http Jina endpoint is refused too.
+printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: http://api.jina.ai/v1\n' > "$work/qh.yml"
+run_gate "$work/qh.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10j) http endpoint on a himmel-only index: expected rc 3, got $rc"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
