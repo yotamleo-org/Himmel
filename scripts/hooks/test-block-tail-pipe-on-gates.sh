@@ -456,6 +456,32 @@ deny "unquoted heredoc line ending DELIM-backslash joins the next line" \
 # shellcheck disable=SC2016  # payload is literal command text
 deny "unterminated heredoc inside \$(...) fails closed" \
      $'x=$(cat <<E\nbody\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+# Trust re-judge j2534c: a heredoc is skipped only on a provable delimiter in a
+# redirection position. `a[1<<E]=x` is ONE assignment word (bash closes the
+# substitution at the first `)` and runs what follows), and `<<${E:-a b}` has
+# a delimiter that is not a plain word: both fail closed instead of skipping.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< in an array subscript is no heredoc (closing paren on the next line)" \
+     $'x=$(a[1<<E]=x\n)\n${V:-./scripts/check-ci.sh} | tail -1\nE]=x\n'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< in an array subscript is no heredoc (later lines before the paren)" \
+     $'x=$(a[1<<E]=x\nfoo\nE]=x\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "heredoc delimiter that is a parameter expansion fails closed" \
+     $'x=$(cat <<${E:-a b}\nbody\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+# The position check alone (plain word, `<<` after `[`): asserted on _stx_end,
+# since the word whitelist already fails every hook-level subscript shape.
+res=$(
+    # shellcheck source=lib/shell-tokenize.sh
+    . "$HERE/lib/shell-tokenize.sh" 2>/dev/null
+    _stx_end $'a[1<<E\nx\nE\n)' 0 P
+    echo "$?:$_SX_E"
+)
+if [ "$res" = "1:-1" ]; then
+    pass "<< after a subscript bracket fails closed (_stx_end)"
+else
+    fail "<< after a subscript bracket was skipped as a heredoc (_stx_end got $res)"
+fi
 # Cost bound: the character walk turns superlinear on very large inputs, and a
 # PreToolUse hook runs on every Bash call. Over the bound it withdraws.
 BIG=""
