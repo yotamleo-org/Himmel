@@ -217,6 +217,43 @@ out=$(cd "$NOTOOL" && PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
 assert_eq "bunx absent → sole fail-open case" "0" "$rc"
 assert_says "bunx absent → loud WARN" "WARN check-oxlint-hardening: bunx not found" "$out"
 
+# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED (HIMMEL-5526) ---------
+# The stub's findings envelope is the real `--format json` shape this gate's
+# jq check already pins ({diagnostics, number_of_files, number_of_rules}).
+FILESFX=$(make_fixture) || exit 1; track_cleanup "$FILESFX"
+mkdir -p "$FILESFX/docs" "$FILESFX/scripts/lanes/fixtures"
+printf '%s\n' '# notes' > "$FILESFX/docs/notes.md"
+printf '%s\n' 'x' > "$FILESFX/scripts/lanes/fixtures/skip.mjs"
+rc=0
+out=$(cd "$FILESFX" && PATH="$FILESFX/bin:$PATH" OXLINT_STUB_MODE=clean OXLINT_STUB_RECORD="$FILESFX/record.txt" \
+  "$BASH_ABS" "$GATE" --files docs/notes.md scripts/lanes/fixtures/skip.mjs scripts/lanes/gone.mjs 2>&1) || rc=$?
+assert_eq "--files with nothing in the surface → exit 0" "0" "$rc"
+assert_says "--files with nothing in the surface → says nothing to lint" "nothing to lint" "$out"
+if [ -e "$FILESFX/record.txt" ]; then
+    echo "FAIL --files with nothing in the surface → oxlint must not run"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS --files with nothing in the surface → oxlint not run"
+fi
+rc=0
+out=$(cd "$FILESFX" && PATH="$FILESFX/bin:$PATH" OXLINT_STUB_MODE=finding OXLINT_STUB_RECORD="$FILESFX/record.txt" \
+  "$BASH_ABS" "$GATE" --files docs/notes.md scripts/lanes/input.mjs 2>&1) || rc=$?
+assert_eq "--files with a finding in a changed surface file → exit 1" "1" "$rc"
+rec=$(cat "$FILESFX/record.txt" 2>/dev/null || true)
+assert_says "--files lints the changed surface file" "arg=scripts/lanes/input.mjs" "$rec"
+if grepq "$rec" -- "docs/notes.md" || grepq "$rec" -- "arg=scripts/jira/src"; then
+    echo "FAIL --files must lint only the changed surface files"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS --files lints only the changed surface files"
+fi
+rc=0
+out=$(cd "$FILESFX" && PATH="$FILESFX/bin:$PATH" "$BASH_ABS" "$GATE" scripts/lanes/input.mjs 2>&1) || rc=$?
+assert_eq "a bare path argument (no --files) → usage exit 2" "2" "$rc"
+rc=0
+out=$(cd "$FILESFX" && OXLINT_FAIL_CLOSED=1 PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" --files scripts/lanes/input.mjs 2>&1) || rc=$?
+assert_eq "OXLINT_FAIL_CLOSED=1 with no bunx → exit 1 (not fail-open)" "1" "$rc"
+
 # --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) --
 # PATH layout copied from the main station: ~/.bun/bin holds `bun` and nothing
 # else (`ls -la ~/.bun/bin` → one 755 `bun`). The runner stub is installed as

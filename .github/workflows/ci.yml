@@ -323,6 +323,50 @@ jobs:
       # HIMMEL-4254 P2: a bypass flag a hook reads but the config UI's display
       # registry lacks is a flag the UI silently cannot show.
       - run: node scripts/install/flag-registry-lint.mjs
+      # HIMMEL-5526: the skill/command size cap (skill-lint) and the oxlint
+      # complexity ratchet + bug-class hardening gates ran only on a committer's
+      # machine, so a commit with hooks skipped landed unchecked. A PR runs them
+      # on its CHANGED files only; each script exits 0 with "nothing to lint" when
+      # none of those files is in its scope, so a docs-only PR passes without
+      # fetching oxlint. Every other event (the crons, a dispatch) runs the full
+      # tree. Fail closed: a diff that cannot be computed, or a change to a gate,
+      # its config or this workflow, runs everything; OXLINT_FAIL_CLOSED=1 turns the
+      # gates' own missing-runner fail-open into a red job.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: skill size + oxlint complexity/hardening
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          OXLINT_FAIL_CLOSED: '1'
+        run: |
+          scope=all
+          if [ "$EVENT" = pull_request ]; then
+            changed="$RUNNER_TEMP/lint-changed.txt"
+            if git -c core.quotePath=false diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD > "$changed"; then
+              scope=files
+              if grep -qxE '\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/lint/skill-lint\.sh|scripts/lint/skill-size-allowlist\.txt|scripts/hooks/check-oxlint-(complexity|hardening)\.sh' "$changed"; then
+                scope=all
+              fi
+            fi
+          fi
+          echo "lint scope: $scope"
+          rc=0
+          if [ "$scope" = files ]; then
+            bash scripts/lint/skill-lint.sh --changed "$BASE_SHA..HEAD" || rc=1
+            set --
+            while IFS= read -r f; do
+              if [ -n "$f" ]; then set -- "$@" "$f"; fi
+            done < "$changed"
+            bash scripts/hooks/check-oxlint-complexity.sh --files "$@" || rc=1
+            bash scripts/hooks/check-oxlint-hardening.sh --files "$@" || rc=1
+          else
+            bash scripts/lint/skill-lint.sh || rc=1
+            bash scripts/hooks/check-oxlint-complexity.sh || rc=1
+            bash scripts/hooks/check-oxlint-hardening.sh || rc=1
+          fi
+          exit "$rc"
 
   node-suites:
     needs: plan

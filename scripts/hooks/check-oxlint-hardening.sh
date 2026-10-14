@@ -14,6 +14,30 @@ set -uo pipefail
 
 OXLINT_VERSION=1.88.0
 
+# ---- changed-files mode (HIMMEL-5526) ---------------------------------
+# `--files PATH...` lints only those repo-relative paths, narrowed to this
+# gate's surface and to JS/TS extensions (dist/, node_modules/ and fixtures
+# stay excluded), and exits 0 when none is left. No `--files` = the full
+# surface, unchanged. OXLINT_FAIL_CLOSED=1 (CI) turns the missing-runner
+# fail-open into exit 1.
+SURFACE_RE='^(scripts/(lanes|jira/src|telegram|luna-vitals|himmel-run)/|scripts/(hooks|observability)/[^/]+\.(mjs|js)$)'
+EXCLUDE_RE='(^|/)(dist|node_modules|fixtures|__fixtures__)/'
+files_mode=0
+only_files=""
+if [ "${1:-}" = "--files" ]; then
+    files_mode=1
+    shift
+    for f in "$@"; do
+        [[ "$f" =~ $SURFACE_RE ]] || continue
+        [[ "$f" =~ $EXCLUDE_RE ]] && continue
+        case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.mts|*.cts|*.tsx) ;; *) continue ;; esac
+        only_files="$only_files $f"
+    done
+elif [ $# -gt 0 ]; then
+    echo "usage: $(basename "$0") [--files PATH...]" >&2
+    exit 2
+fi
+
 # ---- rule set (HIMMEL-2163 audit) --------------------------------------
 # oxc/bad-bitwise-operator and eslint/no-throw-literal each had exactly one
 # hit in-scope, both VERIFIED FALSE POSITIVES (annotated with an
@@ -71,6 +95,7 @@ elif command -v bun >/dev/null 2>&1; then
     runner=(bun x)
 else
     echo "WARN check-oxlint-hardening: bunx not found on PATH — skipping hardening gate (fail-open)" >&2
+    [ "${OXLINT_FAIL_CLOSED:-}" = 1 ] && exit 1
     exit 0
 fi
 
@@ -80,6 +105,16 @@ hook_js=""
 for f in scripts/hooks/*.mjs scripts/hooks/*.js scripts/observability/*.mjs scripts/observability/*.js; do
     [ -e "$f" ] && hook_js="$hook_js $f"
 done
+if [ "$files_mode" = 1 ]; then
+    only_existing=""
+    for f in $only_files; do [ -e "$f" ] && only_existing="$only_existing $f"; done
+    if [ -z "$only_existing" ]; then
+        echo "check-oxlint-hardening: no changed file in this gate's surface — nothing to lint"
+        exit 0
+    fi
+    targets="$only_existing"
+    hook_js=""
+fi
 
 warn_flags=""
 for r in $RULES; do

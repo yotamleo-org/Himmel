@@ -128,6 +128,57 @@ out=$(cd "$BUN_ONLY" && OXLINT_STUB_REGRESSION=1 OXLINT_COMPLEXITY_MAX=22 PATH="
 assert_eq "bun without bunx → a regression still blocks (exit 1)" "1" "$rc"
 rm -rf "$BUN_ONLY" "$BUN_ONLY_BIN"
 
+# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED (HIMMEL-5526) ---
+# The stub's finding line is copied from a real run on this station:
+#   bun x oxlint@1.88.0 -A all -W complexity scripts/lanes/b.mjs  (25-branch function)
+#   -> scripts/lanes/b.mjs:1:8: warning eslint(complexity): function `b` has a complexity of 26. Maximum allowed is 20.
+# and real oxlint exits 0 on a warning-only run, which the stub copies.
+FILES_FX=$(fixture_mktemp_dir) || exit 1
+mkdir -p "$FILES_FX/scripts/lanes" "$FILES_FX/docs" "$FILES_FX/scripts/lanes/fixtures"
+printf '%s\n' 'export function add(a, b) { return a + b; }' > "$FILES_FX/scripts/lanes/clean.mjs"
+printf '%s\n' '# notes' > "$FILES_FX/docs/notes.md"
+printf '%s\n' 'x' > "$FILES_FX/scripts/lanes/fixtures/skip.mjs"
+FILES_BIN=$(fixture_mktemp_dir) || exit 1
+ln -s "$(command -v grep)" "$FILES_BIN/grep"
+cat > "$FILES_BIN/bun" <<EOF
+#!$BASH_ABS
+printf 'arg=%s\n' "\$@" > "$FILES_FX/record.txt"
+echo 'scripts/lanes/b.mjs:1:8: warning eslint(complexity): function \`b\` has a complexity of 26. Maximum allowed is 20.'
+exit 0
+EOF
+chmod +x "$FILES_BIN/bun"
+rc=0
+out=$(cd "$FILES_FX" && PATH="$FILES_BIN" "$BASH_ABS" "$GATE" --files docs/notes.md scripts/lanes/fixtures/skip.mjs scripts/lanes/gone.mjs 2>&1) || rc=$?
+assert_eq "--files with nothing in the surface → exit 0" "0" "$rc"
+assert_says "--files with nothing in the surface → says nothing to lint" "nothing to lint" "$out"
+if [ -e "$FILES_FX/record.txt" ]; then
+    echo "FAIL --files with nothing in the surface → oxlint must not run"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS --files with nothing in the surface → oxlint not run"
+fi
+rc=0
+out=$(cd "$FILES_FX" && PATH="$FILES_BIN" "$BASH_ABS" "$GATE" --files docs/notes.md scripts/lanes/clean.mjs 2>&1) || rc=$?
+rec=$(cat "$FILES_FX/record.txt" 2>/dev/null || true)
+assert_says "--files lints the surface file" "arg=scripts/lanes/clean.mjs" "$rec"
+if grepq "$rec" -- "docs/notes.md"; then
+    echo "FAIL --files must drop a path outside the surface"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS --files drops a path outside the surface"
+fi
+assert_eq "--files with a function below the default ratchet (81) → exit 0" "0" "$rc"
+rc=0
+out=$(cd "$FILES_FX" && OXLINT_COMPLEXITY_MAX=22 PATH="$FILES_BIN" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
+assert_eq "--files with a function above the ratchet → exit 1" "1" "$rc"
+rc=0
+out=$(cd "$FILES_FX" && PATH="$FILES_BIN" "$BASH_ABS" "$GATE" scripts/lanes/clean.mjs 2>&1) || rc=$?
+assert_eq "a bare path argument (no --files) → usage exit 2" "2" "$rc"
+rc=0
+out=$(cd "$FILES_FX" && OXLINT_FAIL_CLOSED=1 PATH="$(fixture_mktemp_dir)" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
+assert_eq "OXLINT_FAIL_CLOSED=1 with no bun → exit 1 (not fail-open)" "1" "$rc"
+rm -rf "$FILES_FX" "$FILES_BIN"
+
 if ! command -v bunx >/dev/null 2>&1; then
     if [ "$FAILED" -eq 0 ]; then
         echo "SKIP test-check-oxlint-complexity: bunx not on PATH — cannot exercise the pass/fail cases"
