@@ -714,6 +714,11 @@ SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
+# HIMMEL-5519: api-lane reservations (lane file = api) are counted apart from
+# the subscription FLEET and held to their own cap.
+fleet_api_reserved=0
+API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
+is_int "$API_CAP" || API_CAP=10
 _fleet_admitted=0
 _fleet_admit_iters=0
 while [ "$_fleet_admit_iters" -lt "${FLEET_ADMIT_RETRY_ITERS:-100}" ]; do
@@ -867,7 +872,11 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       if _fleet_reclaim_dead_reservation "$_fleet_resv" "$_fleet_resv_owner" "$_fleet_resv_expires" "$_fleet_resv_name" "$_fleet_resv_sname"; then
         continue
       fi
-      fleet_reserved=$((fleet_reserved + 1))
+      _fleet_resv_lane="$(cat "${_fleet_resv}lane" 2>/dev/null)" || _fleet_resv_lane=""
+      case "$_fleet_resv_lane" in
+        api) fleet_api_reserved=$((fleet_api_reserved + 1)) ;;
+        *) fleet_reserved=$((fleet_reserved + 1)) ;;
+      esac
     done
     fleet_n=$((fleet_n + fleet_reserved))
   fi
@@ -896,7 +905,17 @@ if [ "$_fleet_admitted" -eq 0 ]; then
   else
     echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
   fi
-elif [ "$fleet_n" -ge "$FLEET_CAP" ]; then
+elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
+  if [ "${FLEET_CAP_OK:-}" = "1" ]; then
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — FLEET_CAP_OK bypass in effect (launching shell only), proceeding" >&2
+  elif [ "$LAUNCH_INTENT" = "1" ]; then
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — skipping leg=$LEG (HIMMEL_API_MAX_CONCURRENT)" >&2
+    _fleet_release_admit "$SLOTS/.admit"
+    emit SKIPPED-FLEET
+  else
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — not a declared launch (CADENCE_BANK_LAUNCH unset), reporting only" >&2
+  fi
+elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   # codex-3 (CR review, 2nd panel round, Suggestion): the documented
   # contract is FLEET_CAP_OK=1 specifically; a bare `-n` (non-empty) test
   # would also treat FLEET_CAP_OK=0 or FLEET_CAP_OK=false as an enabled
@@ -943,7 +962,8 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     local dir="$1"   # failed (not a dup — e.g. ENAMETOOLONG), 2 duplicate,
     if mkdir "$dir" 2>/dev/null; then    # 3 metadata write failed
       if printf '%s\n' "$(( $(date +%s) + ${FLEET_RESERVE_TTL:-1800} ))" > "$dir/expires" 2>/dev/null &&
-         printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null; then
+         printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
+         printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
         # HIMMEL-3012: the raw leg name, for the consume check in the prune
         # pass — the directory name is a hash whenever $LEG cannot be one
         # directory component. HIMMEL-3216: one line, guaranteed by the
@@ -951,6 +971,9 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
+        # HIMMEL-5519: `lane` (written above, refusing admission on failure) keys the
+        # api-vs-fleet split, never the leg name: an inherited CADENCE_BANK_LEG could
+        # escape both caps, and a lost lane file would under-count the api cap.
         return 0
       fi
       rm -rf "$dir" 2>/dev/null
