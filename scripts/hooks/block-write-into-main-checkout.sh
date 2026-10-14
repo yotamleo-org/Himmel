@@ -3879,8 +3879,10 @@ _bwimc_dx_heredoc() {
 # "NAME=d " for a variable assigned earlier in the command from data (a
 # substitution that is not a listed generator) and "NAME=c " for one whose
 # text carries a -c word. ponytail: only plain NAME=value words are tracked
-# (not export/declare/read, nor a variable set by an earlier call), so a shell
-# fed by such a variable is not seen; upgrade path HIMMEL-4178.
+# (not export/declare/read, for/array assignments or F+=, nor a variable set by
+# an earlier call, nor positional $* / $1, nor a partly quoted word like ''$F),
+# so a shell fed by such a variable is
+# not seen; upgrade path HIMMEL-4178.
 # _bwimc_dx_vtaint WORD — 0 when WORD expands a variable marked d or c.
 _bwimc_dx_vtaint() {
     local t=$1 n
@@ -3911,6 +3913,23 @@ _bwimc_dx_vrec() {
         for k in $v; do
             if [[ $k =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$k" = --command ]; then _dx_vp="$_dx_vp$n=c "; break; fi
         done
+    done
+}
+
+# _bwimc_dx_slot START COUNT — the COUNT option-argument words from item START.
+# An unquoted expansion of a data or -c variable there word-splits into more
+# shell options (bash -o $F), so it is denied like an option word.
+_bwimc_dx_slot() {
+    local q=$1 end=$(($1 + $2)) e wi
+    while [ "$q" -lt "$end" ] && [ "$q" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$q]}
+        if [ "${e:0:1}" = w ]; then
+            wi=${e#w}
+            if [ "${ST_Q[$wi]}" = 0 ] && _bwimc_dx_vtaint "${ST_W[$wi]}"; then
+                _bwimc_dx_deny "(an unquoted variable assigned from data or carrying -c is a shell option argument: ${ST_W[$wi]})"
+            fi
+        fi
+        q=$((q + 1))
     done
 }
 
@@ -3951,10 +3970,10 @@ _bwimc_dx_shell() {
         if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; fi
         # -s: the script is standard input, every later word a positional
         [[ $w =~ ^-[A-Za-z]*s[A-Za-z]*$ ]] && sopt=1
-        if [[ $w =~ ^[-+][A-Za-z]*[oO][A-Za-z]*$ ]]; then n=${w//[!oO]/}; q=$((q + 1 + ${#n})); continue; fi
+        if [[ $w =~ ^[-+][A-Za-z]*[oO][A-Za-z]*$ ]]; then n=${w//[!oO]/}; _bwimc_dx_slot "$((q + 1))" "${#n}"; q=$((q + 1 + ${#n})); continue; fi
         case "$w" in
             --) q=$((q + 1)); [ "$q" -lt "$_dx_nit" ] && op=$q; break ;;
-            --rcfile|--init-file) q=$((q + 2)) ;;
+            --rcfile|--init-file) _bwimc_dx_slot "$((q + 1))" 1; q=$((q + 2)) ;;
             -*|+*) q=$((q + 1)) ;;
             /dev/stdin|/dev/fd/*|/proc/*/fd/*) [ "$hasc" = 1 ] && op=$q; break ;;
             *) op=$q; break ;;

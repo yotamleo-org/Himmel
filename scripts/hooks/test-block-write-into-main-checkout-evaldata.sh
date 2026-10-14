@@ -414,6 +414,9 @@ _r5098 "234k control: quoted data var is one word"      allow 'F=$(git log -1 --
 _r5098 "234l control: data var only echoed"             allow 'F=$(git log -1 --format=%s); echo $F'
 _r5098 "234m control: data var after the script"        allow 'F=$(git log -1 --format=%s); bash @W@/x.sh $F'
 _r5098 "234n control: unrelated data var"               allow 'F=$(git log -1 --format=%s); bash -x @W@/x.sh'
+_r5098 "234o -c literal var in the -o argument slot"    block "F='errexit -c touch\${IFS}@P@/x'; bash -o \$F"
+_r5098 "234r control: quoted data var as the -o name"   allow 'F=$(git log -1 --format=%s); bash -o "$F" @W@/x.sh'
+_r5098 "234s control: literal -o argument"              allow 'bash -o errexit @W@/x.sh'
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
