@@ -110,8 +110,10 @@ done < "$PFILE"
 
 # one task id = one owned work dir; a live run on the same id is refused, a finished one is started clean
 WORK="$ROOT/bulk-$TASK"
-mkdir -p "$ROOT" && chmod 700 "$ROOT" 2>/dev/null
+mkdir -p "$ROOT" 2>/dev/null
+# checked before the chmod, which would follow a planted symlink and change its target
 [ -d "$ROOT" ] && [ ! -L "$ROOT" ] && [ -O "$ROOT" ] || usage "$ROOT must be a real directory owned by this user"
+chmod 700 "$ROOT" || usage "cannot restrict $ROOT to this user"
 exec 9>"$ROOT/bulk-$TASK.lock" || usage "cannot open the task lock"
 flock -n 9 || usage "task $TASK is already running"
 rm -rf "$WORK"
@@ -185,6 +187,8 @@ node "$REPO/scripts/api-lane/bulk-result.mjs" artifact "$ART" "status=$STATUS" "
   "class=class-sweep" "model=$MODEL" "budget_usd=$BUDGET" "cost_usd=$COST" "job_id=$JOB" --sites "$SITES" ||
   usage "cannot write the artifact"
 rm -f "$WORK/pid"
+# the writer can downgrade OK to ERROR; the exit code follows the artifact, not the pre-write status
+STATUS="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status))' "$ART" 2>/dev/null)" || STATUS=ERROR
 printf '%s\n' "$ART"
 [ "$STATUS" = OK ] || exit 3
 exit 0
