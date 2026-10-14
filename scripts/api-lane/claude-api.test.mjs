@@ -598,7 +598,9 @@ test('HIMMEL-5570: the launcher moves per-machine prompt sections out of the cac
 
 test('HIMMEL-5570: the main-conversation cache TTL is 5m by default, 1h on request, and a caller CLAUDE_CODE_PROMPT_CACHE_TTL never wins', () => {
   const f = fixture();
-  assert.equal(f.run(f.good, { CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }).status, 0);
+  // A CLAUDE_CODE_* variable is a session marker, so the call runs under a `claude` argv0 as a real session does.
+  const first = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...f.env, CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }, encoding: 'utf8', argv0: SESSION_ARGV0 });
+  assert.equal(first.status, 0, first.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^cache_ttl=5m$/m);
   assert.equal(f.run(f.good, { HIMMEL_API_CACHE_TTL: '1h', HIMMEL_API_JOB_ID: 'job-2' }).status, 0);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^cache_ttl=1h$/m);
