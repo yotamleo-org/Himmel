@@ -134,7 +134,7 @@ check "5: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 fixture
 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 # the real close removes the leg from the manifest; the stub does not
-bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1
+bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
 : > "$WM_CALLS"
 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "6: re-run rc 0" "$rc" 0
