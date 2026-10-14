@@ -140,6 +140,12 @@ printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:jina-emb
 run_gate "$work/qh.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10j) http endpoint on a himmel-only index: expected rc 3, got $rc"
 
+# (10k) flow-style models with an escaped URI (no literal openai:) hide the
+# remote role from the line reader: refuse it for a salus index.
+printf 'collections:\n  salus:\n    path: /x\nmodels: {embed: "openai\\x3ajina-embeddings-v3", openai_base_url: "https://api.jina.ai/v1"}\n' > "$work/fe.yml"
+run_gate "$work/fe.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10k) flow-style models with an escaped URI and salus: expected rc 3, got $rc"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF

@@ -54,7 +54,13 @@ let childIndent = 0;
 for (const line of text.split("\n")) {
   if (/^\s*(#.*)?$/.test(line)) continue;
   const inline = line.match(/^(collections|models):\s*([^#\s].*)$/);
-  if (inline) { unsupported.push(`"${inline[1]}:" uses a flow/inline value`); section = ""; continue; }
+  if (inline) {
+    unsupported.push(`"${inline[1]}:" uses a flow/inline value`);
+    // an inline models value can name a remote role the line reader never sees, even through a YAML escape
+    if (inline[1] === "models") modelsUnreadable.push(`inline models value: ${line.trim()}`);
+    section = "";
+    continue;
+  }
   const top = line.match(/^([A-Za-z_][\w-]*):\s*(#.*)?$/);
   if (top) { section = top[1]; childIndent = 0; continue; }
   if (/^\S/.test(line)) {
