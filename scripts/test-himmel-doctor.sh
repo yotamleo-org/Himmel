@@ -6504,4 +6504,39 @@ out="$(c62_run "$c62_t/bun" "$c62_t/no-bun")"
 if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'via bunx'; then pass "C62 bunx -> OK"; else fail "C62 bunx -> $(printf '%s' "$out" | grep -A1 C62)"; fi
 rm -rf "$c62_t"
 
+# --- --only selector + bounded parallel heavy checks ---
+c68_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c68.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c68_t/home"
+printf '#!/bin/sh\nexit 0\n' > "$c68_t/bun"; chmod +x "$c68_t/bun"
+c68_env() { HIMMEL_DOCTOR_BUNX="$c68_t/no-bunx" HIMMEL_DOCTOR_BUN="$c68_t/bun" HIMMEL_DOCTOR_STATE_DIR="$c68_t/state" CLAUDE_DIR="$c68_t/home/claude" HOME="$c68_t/home" "$@"; }
+
+echo "== --only C62: prints just that check's real station row (fixture copied from a live OVERLORD8 run), exits 0 =="
+out="$(c68_env bash "$DOC" --no-color --only C62 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -F "OK   C62-oxlint-runner: oxlint gates run via 'bun x' (bunx not on PATH)" && ! grepq "$out" -E 'C(2|3|20|63)-'; then pass "--only C62 -> only the C62 row"; else fail "--only C62 -> rc=$rc: $out"; fi
+
+echo "== --only accepts a comma list, case-insensitive =="
+out="$(c68_env bash "$DOC" --no-color --only c62,C63 2>&1)"
+if grepq "$out" -F 'C62-oxlint-runner' && grepq "$out" -F 'C63-claude-cli' && ! grepq "$out" -F 'C61-'; then pass "--only c62,C63 -> both rows"; else fail "--only list -> $out"; fi
+
+echo "== --only is a subset run: it never publishes the statusline state =="
+c68_env bash "$DOC" --no-color --only C62 >/dev/null 2>&1
+if [ ! -e "$c68_t/state" ] || [ -z "$(ls -A "$c68_t/state" 2>/dev/null)" ]; then pass "--only publishes no state"; else fail "--only published state: $(ls "$c68_t/state")"; fi
+
+echo "== --only with no value -> exit 2 =="
+c68_env bash "$DOC" --no-color --only >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 2 ]; then pass "--only needs a value"; else fail "--only without a value -> rc=$rc"; fi
+
+echo "== a hung heavy check is bounded: TIMEOUT for itself, the rest of the sweep still reports =="
+printf '#!/bin/sh\nsleep 60\n' > "$c68_t/hung-sweep.sh"
+c68_start=$SECONDS
+out="$(c68_env env DOCTOR_SWEEP_HEALTH_SCRIPT="$c68_t/hung-sweep.sh" HIMMEL_DOCTOR_HEAVY_TIMEOUT=3 bash "$DOC" --no-color 2>&1)"
+c68_took=$((SECONDS - c68_start))
+if grepq "$out" -E 'INFO C42-sweep-health: TIMEOUT after 3s' && grepq "$out" -F 'C43-rtk-hook' && grepq "$out" -F 'Summary:' && [ "$c68_took" -lt 40 ]; then pass "hung C42 -> TIMEOUT row, sweep finished in ${c68_took}s"; else fail "hung C42 -> took ${c68_took}s: $(printf '%s' "$out" | grep -E 'C42|Summary')"; fi
+
+echo "== a heavy check's WARN survives the parallel replay into the Summary count =="
+printf '#!/bin/sh\necho "LOST-COMMITS feat/x 1 commit(s)"\nexit 1\n' > "$c68_t/lost-sweep.sh"
+out="$(c68_env env DOCTOR_SWEEP_HEALTH_SCRIPT="$c68_t/lost-sweep.sh" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" -E 'WARN C42-sweep-health: LOST-COMMITS feat/x' && grepq "$out" -E 'Summary: .*[1-9][0-9]* WARN'; then pass "heavy WARN replayed and counted"; else fail "heavy WARN replay -> $(printf '%s' "$out" | grep -E 'C42|Summary')"; fi
+rm -rf "$c68_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

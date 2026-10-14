@@ -48,6 +48,14 @@ check "a held lock with 'free' in its text is not treated as free" "1" "$(printf
 printf '#!/usr/bin/env bash\necho "doctor crashed"\nexit 4\n' > "$WORK/doctor-bad.sh"
 out4="$(ACTION_ZERO_DOCTOR="$WORK/doctor-bad.sh" bash "$AZ" --doc "$DOC" --root "$ROOT" 2>&1)"
 check "a failed doctor reads unavailable, not none" "1" "$(printf '%s\n' "$out4" | sed -n '/^== C29/,/^== LOAD/p' | grep -c '^unavailable')"
+# the C29 step asks the doctor for C29 only (a full sweep took
+# over 120 s on OVERLORD8 and printed TIMEOUT doctor). The real row is copied
+# from a live run.
+# shellcheck disable=SC2016 # the stub script body must keep its $ literal
+printf '#!/usr/bin/env bash\necho "$*" > "%s"\nif [ "$1" = "--only" ] && [ "$2" = "C29" ]; then echo "OK   C29-child-session: no claude child-session launchers missing persistence"; fi\n' "$WORK/doctor-args.txt" > "$WORK/doctor-argv.sh"
+out7="$(ACTION_ZERO_DOCTOR="$WORK/doctor-argv.sh" bash "$AZ" --doc "$DOC" --root "$ROOT" 2>&1)"
+check "the C29 step runs the doctor with --only C29" "--only C29" "$(cat "$WORK/doctor-args.txt" 2>/dev/null)"
+check "the C29 row reaches the summary" "1" "$(printf '%s\n' "$out7" | sed -n '/^== C29/,/^== LOAD/p' | grep -c 'OK   C29-child-session')"
 check "usage without --root exits 2" "2" "$(bash "$AZ" --doc "$DOC" >/dev/null 2>&1; echo $?)"
 
 # a hung probe is bounded, prints a stable TIMEOUT line, and the

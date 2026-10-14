@@ -4,12 +4,18 @@
 # consolidated GitHub issue. Read-only except `--fix` (heals C1-guardrail wiring).
 #
 #   bash himmel-doctor.sh [--fix] [--file-issue] [--repo owner/name] [--no-color] [--json] [--root <path>]
+#                         [--only C<n>[,C<n>...]]
 #
 # Exit 0 unless a FAIL finding is present (then 1) — so `--fix` re-checks are
 # scriptable. WARN/INFO never fail the exit. See the /himmel-doctor command md.
 # --json (HIMMEL-4254): stdout carries ONLY one {sev,id,msg,remedy} object per
 # finding (one per emit() call, OK rows included); every other line goes to
 # stderr. Same checks, same exit code. Needs jq.
+# --only: run just the named checks (C29, or c29,C40), in-process
+# and serially. A subset run never publishes the statusline counts. A full run
+# runs the slow delegating checks (HEAVY_IDS below) in parallel, each bounded by
+# HIMMEL_DOCTOR_HEAVY_TIMEOUT seconds (default 35) and reporting its own TIMEOUT
+# row; HIMMEL_DOCTOR_PARALLEL=0 runs them in-process, unbounded, as before.
 set -uo pipefail
 
 # HIMMEL-4382: the doctor judges the STATION (primary) checkout, resolved via
@@ -62,7 +68,7 @@ SETTINGS="$CLAUDE_DIR_R/settings.json"
 REGISTRY="$CLAUDE_DIR_R/handover/registry.json"
 
 # --- args ---
-DO_FIX=0; DO_FILE=0; DO_JSON=0; REPO_FLAG=""; USE_COLOR=1
+DO_FIX=0; DO_FILE=0; DO_JSON=0; REPO_FLAG=""; USE_COLOR=1; ONLY=""
 [ -t 1 ] || USE_COLOR=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -70,6 +76,8 @@ while [ $# -gt 0 ]; do
         --json) DO_JSON=1 ;;
         --file-issue) DO_FILE=1 ;;
         --repo) shift; REPO_FLAG="${1:-}" ;;
+        --only) [ -n "${2:-}" ] || { echo "himmel-doctor: --only needs a check id (C29 or C29,C40)" >&2; exit 2; }
+                ONLY=",$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]' | tr -d ' '),"; shift ;;
         --root) [ -n "${2:-}" ] || { echo "himmel-doctor: --root needs a path" >&2; exit 2; }
                 shift ;; # the value was read by the pre-scan above
         --no-color) USE_COLOR=0 ;;
@@ -4138,81 +4146,156 @@ $rows
 EOF_ROWS
 }
 
+# --- check dispatch: --only selector + bounded parallel heavy checks ---
+# Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
+# C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
+# git per branch/worktree; C7 asks the forge per worktree; C40 probes a daemon.
+# Those four run in the background as `himmel-doctor.sh --only <id> --json` under a
+# real `timeout`, and their rows are replayed through emit() at the end so the
+# FAIL/WARN/INFO counts, the issue body and the statusline keys stay exact.
+# ponytail: the heavy set is a fixed list and the bound one value for all, upgrade
+# when a fifth check crosses ~15 s (add it to its run_heavy line).
+doctor_wants() {
+    [ -z "$ONLY" ] && return 0
+    case "$ONLY" in *",$1,"*) return 0 ;; esac
+    return 1
+}
+HEAVY_T="${HIMMEL_DOCTOR_HEAVY_TIMEOUT:-35}"
+case "$HEAVY_T" in ''|*[!0-9]*) HEAVY_T=35 ;; esac
+HEAVY_T=$((10#$HEAVY_T)); [ "$HEAVY_T" -gt 0 ] || HEAVY_T=35
+HEAVY_DIR=""; HEAVY_JOBS=""; _TIMEOUT_BIN=""
+if [ -f "$REPO_ROOT/scripts/lib/timeout-bin.sh" ]; then
+    # shellcheck source=lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    { . "$REPO_ROOT/scripts/lib/timeout-bin.sh"; } 2>/dev/null || _TIMEOUT_BIN=""
+fi
+trap 'rm -f "$BODY" "$KEYS"; [ -z "$HEAVY_DIR" ] || rm -rf "$HEAVY_DIR"' EXIT
+
+# run_check <Cn> <fn>: the serial dispatch every check goes through.
+run_check() { doctor_wants "$1" || return 0; "$2"; }
+
+# run_heavy <Cn> <fn> <row-id>: launch <fn> as a bounded background doctor child
+# when parallelism is possible (no --only, a real timeout binary, jq to read the
+# child's rows back); otherwise just run it in-process like run_check.
+run_heavy() {
+    local id="$1" fn="$2" label="$3" rows
+    doctor_wants "$id" || return 0
+    if [ -n "$ONLY" ] || [ "${HIMMEL_DOCTOR_PARALLEL:-1}" = 0 ] || [ -z "$_TIMEOUT_BIN" ] \
+        || ! command -v jq >/dev/null 2>&1; then
+        "$fn"; return
+    fi
+    if [ -z "$HEAVY_DIR" ]; then
+        HEAVY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-heavy.XXXXXX")" || { "$fn"; return; }
+    fi
+    rows="$HEAVY_DIR/$id.rows"
+    "$_TIMEOUT_BIN" -k 2 "$HEAVY_T" bash "$SELF_DIR/$(basename "${BASH_SOURCE[0]:-$0}")" \
+        --only "$id" --json --no-color --root "$REPO_ROOT" >"$rows" 2>/dev/null </dev/null &
+    HEAVY_JOBS="$HEAVY_JOBS $!|$id|$label|$rows"
+}
+
+# heavy_join: wait for every launched child and replay its rows. A child past its
+# bound reports TIMEOUT for itself and the sweep carries on.
+heavy_join() {
+    local job pid id label rows rc row n
+    for job in $HEAVY_JOBS; do
+        IFS='|' read -r pid id label rows <<EOF_JOB
+$job
+EOF_JOB
+        wait "$pid"; rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
+                "bash scripts/himmel-doctor.sh --only $id   # run it alone; HIMMEL_DOCTOR_HEAVY_TIMEOUT=<secs> raises the bound"
+            continue
+        fi
+        n=0
+        while IFS= read -r row; do
+            [ -n "$row" ] || continue
+            n=$((n+1))
+            emit "$(jq -r '.sev' <<< "$row")" "$(jq -r '.id' <<< "$row")" "$(jq -r '.msg' <<< "$row")" "$(jq -r '.remedy' <<< "$row")"
+        done < "$rows"
+        if [ "$n" -eq 0 ]; then
+            emit INFO "$label" "check did not complete (child exit $rc, no rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
+        fi
+    done
+}
+
 # --- run ------------------------------------------------------------------------
 echo "himmel-doctor — $(uname -s 2>/dev/null || echo ?) — checkout: $REPO_ROOT"
 echo
-if [ "$DO_FIX" = 1 ]; then fix_c1_guardrail; else check_c1_guardrail; fi
-check_c2
-check_c3
-check_c4
-check_c5
-check_c6
-check_c7
-check_c8
-check_c9
-check_c10
-check_c11
-check_c12
-check_c13
-check_c14
-check_c15
-check_c16
-check_c17
-check_c19
-check_c20
-check_c21
-check_c22
-check_c23
-check_c24
-check_c25
-check_c26
-check_c27
-check_c28_guardrail_consent
-check_c29
-check_c30
-check_c31
-check_c32
-check_c33_graph_stale
-check_c34
-check_c35
-check_c36_stray_tmp_git
-check_c37_vendored_skill_dupes
-check_c38_uv
-check_c39_gtimeout_darwin
-check_c40_qmd_vec
-check_c41_mcp_argv_key
-check_c42_sweep_health
-check_c43_rtk_bare_hook
-check_c44_skill_index
-check_c45_qmd_daemon  # t13b-ok: doctor row that reads ps only, starts nothing
-check_c46_plugin_enabled_missing
-check_c47_runaway_procs  # t13b-ok: doctor row that reads ps only, kills nothing
-check_c48_tmp_usage
-check_c49_qmd_embed_model
-check_c56_qmd_orphans
-check_c50_qmd_fork_stamp
-check_c51_firecrawl_parked
-check_c52_graphify_ollama
-check_c53_vm_mode
-check_c54_hook_copy_reaper
-check_c55_project_mode
-check_c57_dotenv_allowlists
-check_c58_mcp_sdk_v1
-check_c59_codex_bank_cache
-check_c60_hermes_origin
-check_c61_codex_cli
-check_c62_oxlint_runner
-check_c63_claude_cli
-check_c64_vm_runner
+if ! doctor_wants C1; then :; elif [ "$DO_FIX" = 1 ]; then fix_c1_guardrail; else check_c1_guardrail; fi
+run_check C2 check_c2
+run_check C3 check_c3
+run_check C4 check_c4
+run_check C5 check_c5
+run_check C6 check_c6
+run_heavy C7 check_c7 C7-shipped
+run_check C8 check_c8
+run_check C9 check_c9
+run_check C10 check_c10
+run_check C11 check_c11
+run_check C12 check_c12
+run_check C13 check_c13
+run_check C14 check_c14
+run_check C15 check_c15
+run_check C16 check_c16
+run_check C17 check_c17
+run_check C19 check_c19
+run_check C20 check_c20
+run_check C21 check_c21
+run_check C22 check_c22
+run_heavy C23 check_c23 C23-unlanded
+run_check C24 check_c24
+run_check C25 check_c25
+run_check C26 check_c26
+run_check C27 check_c27
+run_check C28 check_c28_guardrail_consent
+run_check C29 check_c29
+run_check C30 check_c30
+run_check C31 check_c31
+run_check C32 check_c32
+run_check C33 check_c33_graph_stale
+run_check C34 check_c34
+run_check C35 check_c35
+run_check C36 check_c36_stray_tmp_git
+run_check C37 check_c37_vendored_skill_dupes
+run_check C38 check_c38_uv
+run_check C39 check_c39_gtimeout_darwin
+run_heavy C40 check_c40_qmd_vec C40-qmd-vec
+run_check C41 check_c41_mcp_argv_key
+run_heavy C42 check_c42_sweep_health C42-sweep-health
+run_check C43 check_c43_rtk_bare_hook
+run_check C44 check_c44_skill_index
+run_check C45 check_c45_qmd_daemon  # t13b-ok: doctor row that reads ps only, starts nothing
+run_check C46 check_c46_plugin_enabled_missing
+run_check C47 check_c47_runaway_procs  # t13b-ok: doctor row that reads ps only, kills nothing
+run_check C48 check_c48_tmp_usage
+run_check C49 check_c49_qmd_embed_model
+run_check C56 check_c56_qmd_orphans
+run_check C50 check_c50_qmd_fork_stamp
+run_check C51 check_c51_firecrawl_parked
+run_check C52 check_c52_graphify_ollama
+run_check C53 check_c53_vm_mode
+run_check C54 check_c54_hook_copy_reaper
+run_check C55 check_c55_project_mode
+run_check C57 check_c57_dotenv_allowlists
+run_check C58 check_c58_mcp_sdk_v1
+run_check C59 check_c59_codex_bank_cache
+run_check C60 check_c60_hermes_origin
+run_check C61 check_c61_codex_cli
+run_check C62 check_c62_oxlint_runner
+run_check C63 check_c63_claude_cli
+run_check C64 check_c64_vm_runner
+heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 
 # HIMMEL-4363: a full run refreshes the statusline counts. There is no subset
-# flag; the two *_SKIP seams skip checks, so a run with either set is a subset
-# and never writes (it would publish a falsely low count). HIMMEL-4382: a
+# flag but --only; it and the two *_SKIP seams skip checks, so a run
+# with any of them set is a subset and never writes (it would publish a falsely
+# low count). A
 # run judging a non-station root never writes either; counts and
 # last.tsv are published together by doctor_state_publish.
-if [ "$REPO_ROOT" = "$STATION_ROOT" ] && [ "${DOCTOR_OBSERVABILITY_SKIP:-0}" != 1 ] && [ "${DOCTOR_ORPHAN_SCAN_SKIP:-0}" != 1 ]; then
+if [ "$REPO_ROOT" = "$STATION_ROOT" ] && [ "${DOCTOR_OBSERVABILITY_SKIP:-0}" != 1 ] && [ "${DOCTOR_ORPHAN_SCAN_SKIP:-0}" != 1 ] && [ -z "$ONLY" ]; then
     # shellcheck source=doctor-counts.sh
     . "$SELF_DIR/doctor-counts.sh"
     doctor_state_publish "${HIMMEL_DOCTOR_STATE_DIR:-${HOME:-}/.himmel/state/doctor-cadence}" "$KEYS" "$n_fail" "$n_warn" || true

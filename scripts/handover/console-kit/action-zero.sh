@@ -10,7 +10,7 @@
 #   HEAD    primary head sha + remote
 #   BANK    bank-preflight.sh output
 #   PROCS   the leg processes (pgrep -af 'claude .*-n <prefix>-')
-#   C29     himmel-doctor.sh C29 lines (a session that inherited CHILD_SESSION=1)
+#   C29     himmel-doctor.sh --only C29 (a session that inherited CHILD_SESSION=1)
 #   LOAD    uptime
 #   LOCK    this document's lock state; with --acquire and state `free`, acquires
 #           it and prints the release token. `held` is never taken over.
@@ -86,7 +86,7 @@ if [ -n "$prefix" ]; then pgrep -af "claude .*-n ${prefix}-" 2>/dev/null || echo
 
 echo "== C29"
 doctor_cmd="${ACTION_ZERO_DOCTOR:-$repo/scripts/himmel-doctor.sh}"
-out="$(bounded doctor "$doctor_t" bash "$doctor_cmd")"; drc=$?
+out="$(bounded doctor "$doctor_t" bash "$doctor_cmd" --only C29)"; drc=$?
 dwarn="$(printf '%s\n' "$out" | grep '^WARN no timeout')"
 [ -z "$dwarn" ] || printf '%s\n' "$dwarn"
 c29="$(printf '%s\n' "$out" | grep -E 'C29|^TIMEOUT doctor')"
