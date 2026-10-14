@@ -54,6 +54,9 @@ if [ "$RC" = 0 ]; then pass "NVIDIA works, Vulkan lists only iGPU -> ok (not our
 run nv_fail vk_none
 if [ "$RC" = 0 ]; then pass "no NVIDIA and no Vulkan iGPU -> ok (CPU-only host, nothing to hang)"; else fail "no vulkan" "rc=$RC out=$OUT"; fi
 
+run nv_fail vk_4090
+if [ "$RC" = 0 ]; then pass "NVIDIA smi failing but a discrete GPU is listed -> ok (not iGPU only)"; else fail "discrete listed" "rc=$RC out=$OUT"; fi
+
 QMD_DEGRADED_NVIDIA_SMI="$TMP_ROOT/missing" QMD_DEGRADED_VULKANINFO="$TMP_ROOT/vk_igpu" bash "$SCRIPT" >/dev/null 2>&1 && RC=0 || RC=$?
 if [ "$RC" = 10 ]; then pass "nvidia-smi not installed + iGPU -> degraded"; else fail "missing nvidia-smi" "rc=$RC"; fi
 

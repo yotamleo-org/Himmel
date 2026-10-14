@@ -10,7 +10,7 @@
 # from a flag, so it reverts by itself when an NVIDIA GPU is back.
 #
 # DEGRADED = no working NVIDIA GPU (nvidia-smi absent or failing) AND Vulkan
-# lists an INTEGRATED_GPU. Anything else is ok, including a CPU-only host
+# lists an INTEGRATED_GPU and no DISCRETE_GPU. Each probe is bounded to 5 s. Anything else is ok, including a CPU-only host
 # (nothing to hang there).
 #
 # --write-flag also keeps ~/.himmel/state/qmd-degraded.flag in step: created
@@ -25,13 +25,14 @@ NVIDIA_SMI="${QMD_DEGRADED_NVIDIA_SMI:-nvidia-smi}"
 VULKANINFO="${QMD_DEGRADED_VULKANINFO:-vulkaninfo}"
 
 nvidia_ok=0
-if command -v "$NVIDIA_SMI" >/dev/null 2>&1 && "$NVIDIA_SMI" -L >/dev/null 2>&1; then
+if command -v "$NVIDIA_SMI" >/dev/null 2>&1 && timeout 5 "$NVIDIA_SMI" -L >/dev/null 2>&1; then
     nvidia_ok=1
 fi
 
 igpu=0
 if [ "$nvidia_ok" = 0 ] && command -v "$VULKANINFO" >/dev/null 2>&1; then
-    if "$VULKANINFO" --summary 2>/dev/null | grep -qF 'PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU'; then
+    vk="$(timeout 5 "$VULKANINFO" --summary 2>/dev/null)"
+    if grep -qF PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU <<<"$vk" && ! grep -qF PHYSICAL_DEVICE_TYPE_DISCRETE_GPU <<<"$vk"; then
         igpu=1
     fi
 fi
