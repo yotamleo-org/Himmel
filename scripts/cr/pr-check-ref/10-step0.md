@@ -58,6 +58,8 @@
    pr-check-context: anchor_lane=<himmel|adopter — NOT the same field as lane= above, which is the marker's own 3rd field and means something unrelated>
    pr-check-context: delegated=<yes|no — "yes" only on the run that IS the delegate, i.e. the branch copy the anchor handed off to>
    pr-check-context: cr_diff_files=<comma-joined, sorted, deduped set this run decided on (HIMMEL-3382) — the merge-base diff of committed history plus working-tree/untracked changes under the guarded paths (scripts/cr/, scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh, scripts/handover/resolve-active-item.sh and the rest of cr_guarded in pr-check-context.sh); empty when the diff proved clean or could not be computed>
+   pr-check-context: behind_base=<commits HEAD lacks from origin/<base> (HIMMEL-5601); informational on every profile, never gates; unknown when the ref is missing>
+   pr-check-context: main_ahead=<commits local <base> carries beyond origin/<base>; unknown when either ref is missing>
    ```
    `lane=` is read, not substituted into any later fence (HIMMEL-2226 round 2) —
    see step 2 (`20-step2-lanes.md`). `anchor_lane=` and `delegated=` are informational — read

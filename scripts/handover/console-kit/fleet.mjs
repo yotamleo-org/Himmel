@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// fleet.mjs — HIMMEL-3404. A local status UI for the console's legs, headed or
+// fleet.mjs — A local status UI for the console's legs, headed or
 // headless: one row per leg (runtime, process, lock, newest status bullet, PR + CI,
 // last session-log line) plus the fleet/bank header and a "needs the console"
 // strip. With legs moving to headless background sessions there is no window to
@@ -41,7 +41,7 @@ const run = promisify(execFile);
 const USAGE = 'usage: fleet.mjs --doc <console doc> (--serve [--port 7788] | --out <file.html> | --json) [--logs <dir>] [--handover-root <dir>] [--repo <dir>]';
 const args = process.argv.slice(2);
 
-// parseReadyLine <line> — HIMMEL-4762: the mirror of go-gate.sh's
+// parseReadyLine <line> — the mirror of go-gate.sh's
 // parse_ready_line (read its comment for the grammar); the shared fixture
 // scripts/lib/fixtures/ready-lines.tsv pins the two to the same answers.
 // Returns { kind, id, sha } (sha '' for MERGED) or null.
@@ -218,7 +218,7 @@ const idOf = (name) => identities.get(name) || { label: '', names: [] };
 
 // ---------------------------------------------------------------- leg docs
 const STATUS_RE = /^- (?:(\d{1,2}):(\d{2})\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE)(?![A-Za-z0-9_])(.*)$/;
-// HIMMEL-4762: READY and MERGED lines go through parseReadyLine (the mirror of
+// READY and MERGED lines go through parseReadyLine (the mirror of
 // go-gate.sh's parse_ready_line); PR_RE keeps only the LIVE "PR #n open" form.
 const PR_RE = /^- (?:\d{1,2}:\d{2}\s+)?LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b/;
 const readLegDoc = (file, now) => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ack-denial.sh — HIMMEL-3724 phase 2b. Acknowledge a paged classifier denial so
+# ack-denial.sh — Acknowledge a paged classifier denial so
 # the leg it parked can be re-dispatched.
 #
 # usage: ack-denial.sh <leg-label-or-handover-doc>

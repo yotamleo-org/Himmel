@@ -596,13 +596,85 @@ git commit -m "note: env -S 'bash scripts/handover/merge-on-green.sh\c'"
 bash scripts/other/x.sh "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 NESTEDOK
 
+# ---- HIMMEL-5356: a data reader's output piped into a shell is not data ----
+# `echo eval "env -S '<target>\c'" | bash` hands the reader's text to a shell
+# that re-reads it as a script, so the reader exemption must not apply to a
+# segment whose output feeds bash/sh/zsh/dash/ksh. Clean root: every row is
+# the 1813 deny.
+while IFS= read -r v; do
+    run "5356: [$v] clean root -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+    need_in_err "5356: [$v] deny names the unresolvable split string" "cannot be fully resolved"
+done <<'PIPETOSHELL'
+echo eval "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash
+echo eval "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
+echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'" | bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
+printf '%s\n' "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" | zsh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | dash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /bin/sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ksh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sort | grep x | sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" |& cat | zsh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u root bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sudo -u grep bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | env FOO=1 bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | xargs -0 sh -c
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (true; bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { true; bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (cd . && bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (set -e; bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (true || true; (true; bash))
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (cat | bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { { true; }; bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { (true); bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then bash; fi
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | while :; do bash; break; done
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | for i in 1; do sh; done
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then true | true; bash; fi
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { { true; }; true | true; bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | yash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | posh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash.exe
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /usr/bin/sh.exe
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | rbash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | BASH
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash.EXE
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | frobnicate
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | fish
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | rbash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { true; frobnicate; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep x; frobnicate
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sort --compress-program=sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | rg --pre=sh x
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ack --pager=sh x
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ag --pager=sh x
+PIPETOSHELL
+# Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
+while IFS= read -r v; do
+    run "5356 control: [$v] clean root -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done <<'PIPEOK'
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'"
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | wc -c
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep bash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | grep merge
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge; true
+(echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat; true) | grep merge
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then grep x; fi
+PIPEOK
+
 # ---- HIMMEL-4516: nested-body depth cap ------------------------------------
 # Each nested eval body is re-tokenized, so a 350-deep chain used to burn the
 # whole 15 s hook budget (a bare timeout). The guard now stops re-reading past
 # 32 nested bodies and denies with a message naming the cap; a chain AT the cap
 # is judged as before, and a deep chain must finish well inside the budget.
 nest_chain() { # nest_chain <depth> - <depth> `eval` words before a clean env grep
-    local n=$1 s="env LC_ALL=C grep -n 'pr-check\\|x' docs/a.md"
+    local n=$1 s="env LC_ALL=C grep -n 'pr-check' docs/a.md"
     while [ "$n" -gt 0 ]; do s="eval $s"; n=$((n - 1)); done
     printf '%s' "$s"
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2016: the case-12 stubs are written with literal $ for the stub to expand; SC2015: A && B || C is intentional in check()/the final line, as in test-append-results.sh
 # scripts/handover/console-kit/test-wrap-merged.sh - suite for wrap-merged.sh
-# (HIMMEL-5594), the one-call MERGED + WRAPPED for a leg. Hermetic: gh, git,
+# the one-call MERGED + WRAPPED for a leg. Hermetic: gh, git,
 # close-wrapped-leg.sh, board.mjs and the Jira CLI are stubs (the WM_* seams);
 # fleet-manifest.sh and append-results.sh are real, against temp files.
 #

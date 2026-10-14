@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-hook-copy-reaper.sh — HIMMEL-4183. Hermetic tests for
+# test-hook-copy-reaper.sh — Hermetic tests for
 # hook-copy-reaper.sh: the process table is a PATH `ps` stub over a fixture and
 # the kill is a logging stub (HOOK_REAPER_KILL), so no live process is read or
 # signalled.

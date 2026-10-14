@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-inbox-follow.sh — HIMMEL-3356. Exercises inbox-follow.sh, the gap-free
+# test-inbox-follow.sh — Exercises inbox-follow.sh, the gap-free
 # follower for a console's Telegram inbox: an unread tail is emitted from a
 # persisted byte-offset cursor before following live, a re-arm replays nothing,
 # a truncated/rotated inbox resets the cursor, a partial line waits for its
@@ -155,7 +155,7 @@ else
 fi
 
 # --- (l) a failing tail is a visible failure, not an empty --once drain -------
-# HIMMEL-3370: `tail | while read` reports the loop's status, so a tail that failed
+# `tail | while read` reports the loop's status, so a tail that failed
 # (inbox vanished, unreadable) delivered nothing and still exited 0.
 I="$WORK/l/consoles/c.md"
 mkdir -p "$WORK/l/consoles" "$WORK/l/bin"; : > "$I"
@@ -167,7 +167,7 @@ case "$out" in *"inbox-follow:"*) pass "(l) the tail failure is reported on stde
 check "(l) the unread line is still unread once tail works again" "unread" "$(arm "$I")"
 
 # --- (m) --peek: rc 0 only for a complete unread line, cursor untouched -------
-# HIMMEL-3509: console-wait.sh peeks, prints its WAKE header, then lets --once
+# console-wait.sh peeks, prints its WAKE header, then lets --once
 # stream the lines, so every line is emitted before its cursor moves.
 I="$WORK/m/consoles/c.md"
 mkdir -p "$WORK/m/consoles"; : > "$I"

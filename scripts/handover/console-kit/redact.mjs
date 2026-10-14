@@ -1,4 +1,4 @@
-// redact.mjs — HIMMEL-4834. The one redactor for text that leaves the console:
+// redact.mjs — The one redactor for text that leaves the console:
 // board.mjs (published page) and himmel-bus lib/agui.mjs (AG-UI fleet feed) both
 // import it, so there is a single copy to keep current. board.mjs is a CLI and
 // cannot be imported, which is why this lives in its own module.

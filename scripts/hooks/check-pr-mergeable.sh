@@ -23,6 +23,11 @@
 #   advanced base in and resolved cleanly, so the verdict (computed against the
 #   stale remote head) no longer reflects the push. The refusal message names
 #   the sanctioned recovery. See the CONFLICTING branch for the full rationale.
+# - HIMMEL-5650: WARNS (never blocks) when this branch's PR CI started under
+#   PUSH_WARN_MINUTES (default 15) ago and has checks IN PROGRESS — a re-push
+#   cancels them and loses their minutes. Queued-only runs do not warn: ci.yml's
+#   concurrency group replaces them for free. Batch a review round's fixes into
+#   ONE push. Fails open on any gh/date error.
 # - Falls back to exit 0 (best-effort) when gh CLI is missing or
 #   unauthenticated — a hard refuse would block pushes whenever the
 #   operator works offline.
@@ -78,6 +83,38 @@ if [ -z "$mergeable" ] || [ "$mergeable" = "null" ]; then
     # will create one on the next push.
     exit 0
 fi
+
+# HIMMEL-5650: warn-only re-push check. `<in-progress checks>|<latest startedAt>`
+# from the PR's check rollup; anything unparseable is silent (fail open). Only
+# IN_PROGRESS checks count: ci.yml's concurrency group (ci-pr-<n>,
+# cancel-in-progress) replaces a QUEUED run for free, so a re-push over queued
+# checks costs nothing, while it kills the minutes a running job has spent.
+# shellcheck disable=SC2016  # $r/$s are jq variables, not shell
+rollup=$(_gh pr view "$branch" --json statusCheckRollup --jq \
+    '[.statusCheckRollup[]? | select(.status == "IN_PROGRESS")] as $r
+     | ([$r[] | .startedAt // empty] | max // "") as $s
+     | "\($r | length)|\($s)"' 2>/dev/null || true)
+IFS='|' read -r unfinished started <<< "$rollup"
+warn_min="${PUSH_WARN_MINUTES:-15}"
+case "$warn_min" in ''|*[!0-9]*) warn_min=15 ;; esac
+case "${unfinished:-x}" in
+    ''|*[!0-9]*) ;;
+    *)
+        if [ "$unfinished" -gt 0 ] && [ -n "${started:-}" ]; then
+            started_ep=$(date -u -d "$started" +%s 2>/dev/null \
+                || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$started" +%s 2>/dev/null || true)
+            case "${started_ep:-x}" in
+                ''|*[!0-9]*) ;;
+                *)
+                    age=$(( $(date +%s) - started_ep ))
+                    if [ "$age" -lt $(( 10#$warn_min * 60 )) ]; then
+                        echo "WARN: pr-mergeable: '$branch' CI started $((age / 60))m ago and $unfinished check(s) are running. A push now cancels them and the minutes spent are lost — batch this round's fixes (and PR body/title edits) into ONE push. Warning only." >&2
+                    fi
+                    ;;
+            esac
+        fi
+        ;;
+esac
 
 case "$mergeable" in
     CONFLICTING)

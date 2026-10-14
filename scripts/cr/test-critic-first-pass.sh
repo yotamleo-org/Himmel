@@ -903,6 +903,14 @@ check "genuine review lacking headings -> malformed-output" "$(printf '%s' "$cls
 check "the three fixtures land in three different classes" "$(printf '%s\n' "$cls_up" "$cls_empty" "$cls_mal" | cut -d'|' -f2 | sort -u | wc -l | tr -d '[:space:]')" "3"
 cls_kw="$(cls_run 'Add a test for rate limiting and the throttle path before merging.')"
 check "short headingless review that merely mentions rate limiting/quota/429 -> malformed-output" "$(printf '%s' "$cls_kw" | cut -d'|' -f1,2)" "1|malformed-output"
+# HIMMEL-5103: prose that QUOTES an error keyword has no vendor-error shape
+# (no API/Error/HTTP prefix, no JSON error envelope) -> malformed-output.
+cls_prose="$(cls_run 'Handle service unavailable responses before retrying.')"
+check "prose quoting an error keyword (no vendor-error shape) -> malformed-output" "$(printf '%s' "$cls_prose" | cut -d'|' -f1,2)" "1|malformed-output"
+cls_json="$(cls_run '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}')"
+check "JSON error envelope -> upstream-error" "$(printf '%s' "$cls_json" | cut -d'|' -f1,2)" "1|upstream-error"
+cls_quoted="$(cls_run 'Handle {"error":"service unavailable"} responses before retrying.')"
+check "prose quoting a JSON error snippet mid-line -> malformed-output" "$(printf '%s' "$cls_quoted" | cut -d'|' -f1,2)" "1|malformed-output"
 cls_multi="$(cls_run "$(printf 'API call failed after 3 retries\nError code: 429 - too many requests')")"
 check "multiline vendor error with a later 429 line -> rate-limit (finer class wins)" "$(printf '%s' "$cls_multi" | cut -d'|' -f1,2)" "1|rate-limit"
 check "multiline vendor error: vendor first line stays the last stderr line" "$(printf '%s' "$cls_multi" | cut -d'|' -f3-)" "critic-first-pass.sh: raw tail: API call failed after 3 retries"

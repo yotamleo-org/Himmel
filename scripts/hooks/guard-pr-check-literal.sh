@@ -1919,14 +1919,84 @@ env_split_option() { # env_split_option <raw command> - false only when
     # re-read stops and the caller denies with a message naming the cap.
     # ponytail: 32 is a guess far above any real command, far below the
     # budget (350 deep = 11 s), upgrade path: a cheaper per-level re-scan.
-    local i j e w sk sg b depth=$ENV_SPLIT_DEPTH
-    local -a nm=() nb=()
+    # HIMMEL-5356: a segment piped (`|`, `|&`) into a shell is that shell's
+    # script, so its words are a body like an `eval`'s: `echo "env -S
+    # '<target>\c'" | bash` carries its env inside one quoted data word that
+    # no word scan sees. A reader piped into grep/wc stays data.
+    # The sink test is an allowlist, not a shell-name list (a name list leaked
+    # three times: rbash, BASH, bash.EXE): every command word after a pipe that
+    # is not a known reader/filter or shell-syntax word is a possible script
+    # reader (rbash, fish, python3 -c, `. /dev/stdin`, any interpreter).
+    # ponytail: a shell word after a list separator flags every earlier pipe
+    # writer in the command, so `git diff | head; bash x` over-denies when the
+    # diff text carries env -S; upgrade path: HIMMEL-5560 models compounds.
+    local i j e w sk sg b k x depth=$ENV_SPLIT_DEPTH
+    local -a nm=() nb=() pp=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
         return 0
     fi
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
+    # Pre-pass (HIMMEL-5356): fc[sg] is segment sg's command word (leading
+    # assignments and compound keywords skipped), wr[sg] marks a wrapper before
+    # it; fl[sg]=1 when sg is not a known reader; pp[sg]=1 when sg's output
+    # flows through a `|`/`|&` chain into such a segment, so
+    # `echo ... | cat | bash` is read as a body too.
+    i=0
+    while [ "$i" -lt "$ST_N" ]; do
+        j=$i
+        i=$((i + 1))
+        [ -z "${ST_RO[$j]}" ] || continue
+        sg=${ST_S[$j]}
+        w=${ST_W[$j]}
+        if [ -z "${fc[sg]-}" ]; then
+            case "$w" in
+                [A-Za-z_]*=*) ;;
+                if | then | else | elif | while | until | do | '{' | '!') ;;
+                -* | env | command | exec | nohup | sudo | time) wr[sg]=1 ;;
+                *) fc[sg]=$w ;;
+            esac
+        fi
+    done
+    sg=$((ST_NSEG - 1))
+    while [ "$sg" -gt 0 ]; do
+        if [ -n "${wr[sg]-}${fc[sg]-}" ]; then
+            # a wrapper before the command word (`sudo -u grep bash`) means the
+            # first non-option word is not necessarily the command: no exemption
+            case "${wr[sg]-}${fc[sg]-}" in
+                grep | egrep | fgrep | wc | which | type | echo | printf) ;;
+                cat | head | tail | cut | uniq | tr | nl | fold | column | rev | tac) ;;
+                true | false | : | test | '[' | cd | set | pwd | for | case | select | fi | done | 'esac' | '}') ;;
+                *) fl[sg]=1 ;;
+            esac
+        fi
+        if [ "${fl[sg]-}" = 1 ]; then
+            # a `(` group opener is the empty segment between the pipe and the
+            # grouped body (`| (bash)`): the flow passes through it
+            case "${ST_SEP[sg - 1]-}" in
+                '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;;
+                '(') fl[sg - 1]=1 ;;
+                ';' | '&' | '&&' | '||' | nl)
+                    # HIMMEL-5356: a shell behind a list separator may read a
+                    # pipe through any group or compound (`| { { true; }; bash; }`,
+                    # `| if true; then true | true; bash; fi`). Compound structure
+                    # is not modelled: flag the writer of every pipe before this
+                    # shell, back to a substitution boundary.
+                    k=$((sg - 1))
+                    while [ "$k" -ge 0 ]; do
+                        # shellcheck disable=SC2016
+                        case "${ST_SEP[k]-}" in
+                            '$(' | '`' | '<(' | '>(') break ;;
+                            '|' | '|&') pp[k]=1; fl[k]=1 ;;
+                        esac
+                        k=$((k - 1))
+                    done
+                    ;;
+            esac
+        fi
+        sg=$((sg - 1))
+    done
     i=0
     while [ "$i" -lt "$ST_N" ]; do
         e=$i
@@ -1934,12 +2004,14 @@ env_split_option() { # env_split_option <raw command> - false only when
         w=${ST_W[$e]}
         if [ -z "${ST_RO[$e]}" ]; then
             sg=${ST_S[$e]}
+            [ "${pp[sg]-}" != 1 ] || nm[sg]=1
             if [ "${nm[sg]-}" = 1 ]; then
                 nb[sg]="${nb[sg]-} $w"
             else
-                case "${w##*/}" in
+                x=${w##*/}
+                case "${x%.exe}" in
                     eval) nm[sg]=1 ;;
-                    bash|sh|zsh|dash|ksh|mksh) nm[sg]=0 ;;
+                    bash|sh|zsh|dash|ksh|mksh|ash|yash|posh) nm[sg]=0 ;;
                     --*) ;;
                     -*c*) [ "${nm[sg]-}" != 0 ] || nm[sg]=1 ;;
                 esac

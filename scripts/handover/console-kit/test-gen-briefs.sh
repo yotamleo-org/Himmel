@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-brief-lint.sh
-# test-gen-briefs.sh — HIMMEL-4959. Exercises gen-briefs.py on a fixture legs
+# test-gen-briefs.sh — Exercises gen-briefs.py on a fixture legs
 # JSON: the briefs it writes pass brief-lint.sh (the arming-time check
 # headed-arm-leg runs), the launcher carries the hook-integrity bypass export
 # only for hook=true, bad input is refused, nothing is overwritten. The worktree
@@ -51,7 +51,7 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
-# HIMMEL-4619: the arming gate lints every brief, so a generated brief must also
+# the arming gate lints every brief, so a generated brief must also
 # arm through the launcher itself (dry-run reaches the gate before it exits).
 # (a copy without resume_cwd: the worktree check is a later gate and the copy leaves D1 alone)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
@@ -70,7 +70,7 @@ has "a hook leg's brief says it is launched with the bypass" "$b2" "hook-integri
 lacks "a plain leg's brief does not" "$b1" "hook-integrity bypass flag"
 has "a judge leg's brief announces the opus judge" "$b2" "console runs an opus judge"
 has "the other leg's scope is listed under 'other live legs'" "$b1" "N902 (h.sh)"
-# HIMMEL-5117: a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
+# a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged leg's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
 lacks "an unflagged leg's brief does not" "$b1" "copied from the real environment"
 
@@ -82,7 +82,7 @@ has "the launcher passes the deadline and model" "$l1" "1791475000"
 has "the launcher is syntactically valid bash" "$(bash -n "$BUCKET/launch-N901.sh" 2>&1 && echo ok)" "ok"
 [ -x "$BUCKET/launch-N901.sh" ] && pass "launchers are executable" || fail "launcher not executable"
 has "it prints one manifest add per leg" "$out" "fleet-manifest.sh add $WORK/fleet.json $D2"
-# HIMMEL-5089: the printed add line carries --lane, so the manifest never stores lane unknown.
+# the printed add line carries --lane, so the manifest never stores lane unknown.
 has "the add line for a default leg carries --lane native" "$out" "fleet-manifest.sh add $WORK/fleet.json $D1 --lane native"
 has "and so does the second leg's" "$out" "fleet-manifest.sh add $WORK/fleet.json $D2 --lane native"
 # The printed lines, run as printed from the repo root, build a manifest relay-batch resolves.
@@ -100,7 +100,7 @@ rb="$(RELAY_BATCH_CENSUS="$WORK/census.sh" bash "$HERE/relay-batch.sh" "$WORK/co
 lacks "relay-batch on a gen-briefs-built manifest prints no UNRESOLVED-LANE" "$rb" "UNRESOLVED-LANE"
 has "relays the first leg" "$rb" "SENDMESSAGE to=HIMMEL-9001-N901-plain-fix-2026-10-08"
 has "and relays the second leg" "$rb" "SENDMESSAGE to=HIMMEL-9002-N902-hook-fix-2026-10-08"
-# HIMMEL-5047: the sidecar Telegram /launch-leg checks is written with the launcher.
+# the sidecar Telegram /launch-leg checks is written with the launcher.
 side="$(cat "$WORK/fleet.launchers.sha256" 2>/dev/null)"
 # hashlib, not sha256sum: macOS ships shasum only.
 sha_of() { python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
@@ -152,7 +152,7 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="na
 python3 "$SUT" "$WORK/lane-nl.json" --base 4ccb59d --console BZ --bucket "$WORK/b8" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-nl.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-nl.err" && [ ! -e "$WORK/b8/launch-N901.sh" ] && pass "a lane with a trailing newline is refused" || fail "newline lane rc=$rc"
 
-# HIMMEL-5193: an ab_arm key writes the brief ruling line, exports LEG_AUTOCOMPACT_AB in the launcher
+# an ab_arm key writes the brief ruling line, exports LEG_AUTOCOMPACT_AB in the launcher
 # and passes --arm on the printed manifest add line; a bad value is refused; no key changes nothing.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ab-ok.json"
 about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f9.json" 2>&1)"
@@ -168,7 +168,7 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="
 python3 "$SUT" "$WORK/ab-bad.json" --base 4ccb59d --console BZ --bucket "$WORK/b10" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/ab-bad.err" && [ ! -e "$WORK/b10/launch-N901.sh" ] && pass "an invalid ab_arm is refused before anything is written" || fail "bad ab_arm rc=$rc"
 
-# HIMMEL-5457: an opus (or fable) leg needs a tier {category, reason}; without it nothing is
+# an opus (or fable) leg needs a tier {category, reason}; without it nothing is
 # written (exit 1), with it the brief carries the Tier line headed-arm-leg.sh's own gate accepts.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/opus-no.json"
 python3 "$SUT" "$WORK/opus-no.json" --base 4ccb59d --console BZ --bucket "$WORK/b11" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-no.err"; rc=$?

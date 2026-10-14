@@ -1513,11 +1513,65 @@ case "$cmd_lc" in
         _gp_scan "$_gp_lc" 0
         ;;
 esac
-if contains '(^|[^[:alnum:]_.-])curl(\.exe)?[^|;&]*\|[[:space:]]*(ba)?sh(\.exe)?([^[:alnum:]_.-]|$)'; then
+# Remote exec (HIMMEL-5279): a download piped, substituted or saved-then-run
+# into an interpreter. The bare interpreters (python, node, perl, ...) are a
+# sink only when they read the script from stdin (no arg, or a lone `-`), so
+# `curl x | python3 -m json.tool` and `| node -p ...` stay allowed.
+_re_asg='[a-z_][a-z0-9_]*=[^[:space:]]*[[:space:]]+'
+_re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+((-[^[:space:]]+|'"$_re_asg"')[[:space:]]*)*)*('"$_re_asg"')*'
+_re_shell='(ba|z|da|k|c|tc)?sh(\.exe)?([^[:alnum:]_.-]|$)'
+_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<>]|[0-9]+>)'
+_re_sink="($_re_shell|$_re_bare)"
+_re_dl='(^|[^[:alnum:]_.-])(curl|wget)(\.exe)?'
+if contains "$_re_dl"'[^|;&]*'"$_re_pre$_re_sink" \
+   || contains "$_re_dl"'[^|;&]*\|[[:space:]]*tee[^|;&]*'"$_re_pre$_re_sink"; then
     deny "remote exec pipe"
 fi
-if contains '(^|[^[:alnum:]_.-])wget(\.exe)?[^|;&]*\|[[:space:]]*(ba)?sh(\.exe)?([^[:alnum:]_.-]|$)'; then
-    deny "remote exec pipe"
+# Process / command substitution of a download into an interpreter or source/eval.
+if contains '(^|[^[:alnum:]_.-])(source|\.|eval|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]][^;&|]*(<\(|\$\(|`)[[:space:]]*(curl|wget)(\.exe)?([^[:alnum:]_.-]|$)'; then
+    deny "remote exec substitution"
+fi
+# PowerShell download-and-evaluate.
+if contains '(^|[^[:alnum:]_.-])(iwr|irm|invoke-webrequest|invoke-restmethod|curl|wget)(\.exe)?[^|;&]*\|[[:space:]]*(iex|invoke-expression)([^[:alnum:]_.-]|$)' \
+   || contains '(^|[^[:alnum:]_.-])(iex|invoke-expression)[^;&|]*(iwr|irm|invoke-webrequest|invoke-restmethod)([^[:alnum:]_.-]|$)'; then
+    deny "remote exec iex"
+fi
+# Download-then-run in one command: `curl -o x URL; sh x`, `wget -O x URL && ./x`.
+_remote_dl_run() {
+    local s re run1 run2 x xr rest t i c q='["'"'"']?'
+    re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]*(["'"'"']([^"'"'"']+)["'"'"']|([[:alnum:]_./~-]+))'
+    for s in "$cmd_lc" "$cmd_lc_join"; do
+        # Every download in the command, not just the first: each saved file is
+        # checked against what runs after its own download.
+        while [[ $s =~ $re ]]; do
+            x=${BASH_REMATCH[7]:-${BASH_REMATCH[8]}}
+            # `-opayload`: the flag cluster and the name run together, so the
+            # regex may end the cluster at a later `o`; the name starts after the first.
+            t=${BASH_REMATCH[5]}
+            if [[ $t != --* && ${BASH_REMATCH[0]} == *"$t$x" ]]; then x=${t#*o}$x; fi
+            rest=${s#*"${BASH_REMATCH[0]}"}
+            # The saved name goes into a regex: bracket every metacharacter.
+            xr=
+            for ((i = 0; i < ${#x}; i++)); do
+                c=${x:i:1}
+                case $c in
+                [[:alnum:]_/~-]) xr+=$c ;;
+                ' ') xr+='[[:space:]]' ;;
+                '^') xr+='\^' ;;
+                \\) xr+=\\\\ ;;
+                *) xr+="[$c]" ;;
+                esac
+            done
+            run1='(^|[^[:alnum:]_.-])(source|\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
+            run2='(^|[;&|])[[:space:]]*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
+            if [[ $rest =~ $run1 ]] || [[ $rest =~ $run2 ]]; then return 0; fi
+            s=$rest
+        done
+    done
+    return 1
+}
+if _remote_dl_run; then
+    deny "remote exec download-then-run"
 fi
 
 exit 0

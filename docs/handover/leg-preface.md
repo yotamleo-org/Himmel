@@ -371,6 +371,14 @@ by design.
   manual — <what you checked>`. Never recover with a reactive
   `git commit --amend` — it is hard-blocked; the recovery is the stuck
   playbook.
+- **One push per review round.** Batch every fix of a round into ONE commit and
+  ONE push; never push a WIP commit to a PR branch. Make the PR title, body and
+  `## Ticket coverage` edits in the same step as that push, never as a separate
+  edit after CI is green: every push re-runs the whole CI, and a title/body edit
+  re-queues `pr-title-lint` and `codeowner-review-gate`. The fleet shares a
+  saturated job queue. The pre-push `pr-mergeable` hook warns (never blocks)
+  on a re-push within 15 minutes while CI checks are in progress (queued-only
+  runs are replaced for free by `ci.yml`'s concurrency group).
 - Push → PR → review → `/pr-check` (run at the exact head you will `READY`) →
   one `scripts/check-ci.sh <pr> --max-wait <sec>` call, whose exit code
   decides — not repeated `gh pr checks`/`gh run list|view` reads in model

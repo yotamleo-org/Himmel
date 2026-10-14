@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-compacted-check.sh
 # scripts/handover/console-kit/test-append-results.sh - suite for
-# append-results.sh (HIMMEL-3794), the helper that appends a leg's marker
+# append-results.sh, the helper that appends a leg's marker
 # bullet at a handover doc's true EOF so it can never land mid-doc (the
 # Edit-tool-anchors-on-an-old-bullet failure close-wrapped-leg.sh hit twice
 # in one shift):
@@ -12,7 +12,7 @@
 #   5. close-wrapped-leg.sh's WRAPPED gate (leg_tail_status, the shared
 #      parser) accepts a WRAPPED bullet the helper appended AFTER older
 #      out-of-order bullets, first try
-#   6. HIMMEL-3796: a `## Results-old` heading (grep -q's old prefix match)
+#   6. a `## Results-old` heading (grep -q's old prefix match)
 #      is rejected -> rc != 0, doc unchanged (word-boundary match only)
 #
 # Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
@@ -79,7 +79,7 @@ check "5: append succeeds rc 0" "$rc" 0
 marker="$(leg_tail_status "$d5")"
 check "5: leg_tail_status reads WRAPPED first try" "$marker" "WRAPPED"
 
-# --- 6. HIMMEL-3796: `## Results-old` is a prefix match, not the heading ---
+# --- 6. `## Results-old` is a prefix match, not the heading ---
 d6="$tmp/d6.md"
 printf '# leg\n\n## Results-old\n\nstale content\n' > "$d6"
 before_d6="$tmp/d6.before"
@@ -88,7 +88,7 @@ rc=0; bash "$SCRIPT" "$d6" "LIVE fixture" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 4 ] && echo "ok - 6: '## Results-old' heading rc == 4 (no-heading refusal, not a real Results heading)" || { echo "FAIL - 6: '## Results-old' heading rc == $rc, want 4"; fails=$((fails+1)); }
 cmp -s "$d6" "$before_d6" && echo "ok - 6: doc unchanged" || { echo "FAIL - 6: doc unchanged"; fails=$((fails+1)); }
 
-# --- 7. HIMMEL-4570: PARKED-BANK / RESUMED are vocabulary; a coined marker is refused ---
+# --- 7. PARKED-BANK / RESUMED are vocabulary; a coined marker is refused ---
 d7="$tmp/d7.md"
 printf '# leg\n\nYour RETASK token is X-1.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE working\n' > "$d7"
 rc=0; bash "$SCRIPT" "$d7" "PARKED-BANK committed and pushed, waiting for RESUME" >/dev/null 2>&1 || rc=$?
@@ -105,7 +105,7 @@ for ok in "CONSULT design :: q :: read: x" "SUCCESSION accepted: a replaces b" "
     check "7: non-status bullet '${ok%% *}' still appends" "$rc" 0
 done
 
-# --- 8. HIMMEL-4570: the refusal is leg-doc only; a console doc takes any bullet ---
+# --- 8. the refusal is leg-doc only; a console doc takes any bullet ---
 # A leg doc carries its brief's "RETASK token" line; a console doc (name ends
 # -console.md) and a doc with no leg brief accept the bullets console-template.md
 # tells the console to write with this script.
@@ -126,7 +126,7 @@ check "8: a leg doc still refuses a coined marker rc 6" "$rc" 6
 rc=0; bash "$SCRIPT" "$d8leg" "MERGED #12 → abc123" >/dev/null 2>&1 || rc=$?
 check "8: a leg doc refuses MERGED (not leg vocabulary) rc 6" "$rc" 6
 
-# --- 9. HIMMEL-4582: a short coined all-caps marker (WIP) is refused too; the real markers still append ---
+# --- 9. a short coined all-caps marker (WIP) is refused too; the real markers still append ---
 d9="$tmp/HIMMEL-9-N2-fixture-2026-10-06.md"
 printf '# leg\n\nYour RETASK token is X-1.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d9"
 before_d9="$tmp/d9.before"; cp "$d9" "$before_d9"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-console-kit-e2e.sh - HIMMEL-5229. The console kit's pieces are unit-tested
+# test-console-kit-e2e.sh - The console kit's pieces are unit-tested
 # one at a time (test-tick.sh, test-close-wrapped-leg.sh, test-board.sh,
 # test-wrap-subtree-check.sh) with the others stubbed; this suite runs the REAL
 # tick.sh, queue-lock.sh, append-results.sh, close-wrapped-leg.sh,

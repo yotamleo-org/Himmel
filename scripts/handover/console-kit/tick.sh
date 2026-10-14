@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tick.sh — one wake-up-budgeted console snapshot (HIMMEL-2767).
+# tick.sh — one wake-up-budgeted console snapshot.
 #
 # Default output is exactly one batched line. --verbose renders the same
 # snapshot as labelled human-readable lines. Configuration can come from env
@@ -14,7 +14,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../lib/handover-path.sh
@@ -231,7 +231,7 @@ done
 # --handover-dir (rather than an already-exported env var) supplied it.
 [ -z "${HANDOVER_DIR:-}" ] || export HANDOVER_DIR
 
-# HIMMEL-3748: the fleet manifest is re-read on every run. An unreadable one is
+# the fleet manifest is re-read on every run. An unreadable one is
 # a failed tick (before the heartbeat or any other side effect), never an empty
 # fleet that reads as every leg gone.
 from_docs=""
@@ -259,7 +259,7 @@ uniq_join() {
     printf '%s\n' "$2" | tr ',' '\n' | awk 'NF' | sort -u | tr '\n' "$1" | sed 's/.$//'
 }
 
-# HIMMEL-3277: a leg doc's label (N<k>) and the session names it may run under
+# a leg doc's label (N<k>) and the session names it may run under
 # come from ONE derivation, scripts/lib/leg-identity.sh (sourced above). The two
 # used to be separate local regexes -- leg_label() here, undated_stem() -- that
 # no test ever tried against a name the harness produced, so a doc filed per
@@ -273,7 +273,7 @@ csv_add() {
     fi
 }
 
-# HIMMEL-3635: leg_tail_status is shared with close-wrapped-leg.sh's WRAPPED
+# leg_tail_status is shared with close-wrapped-leg.sh's WRAPPED
 # gate, so the two readers can never accept different marker-bullet shapes.
 # shellcheck source=../../lib/leg-tail-status.sh
 . "$HERE/../../lib/leg-tail-status.sh"
@@ -291,13 +291,13 @@ if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
     fi
 fi
 
-# HIMMEL-3130: --legs accepts space- and/or comma-separated entries. `for leg
+# --legs accepts space- and/or comma-separated entries. `for leg
 # in $LEGS` word-splits on IFS whitespace only, so a comma-joined value was
 # silently one iteration over one nonexistent path. Normalize commas to
 # spaces once so both loops below (this one and the --burn loop) split
 # identically regardless of which separator was used.
 LEGS_SPLIT="${LEGS//,/ }"
-# HIMMEL-3748: --legs-from adds the fleet manifest's docs (read above, before
+# --legs-from adds the fleet manifest's docs (read above, before
 # any side effect). A doc named on both is judged once (first spelling wins),
 # compared by the path it resolves to, so a relative --legs entry matches its
 # absolute manifest entry.
@@ -313,7 +313,7 @@ if [ -n "$LEGS_FROM" ]; then
     LEGS_SPLIT="$legs_union"
 fi
 
-# HIMMEL-4234: a leg that never went LIVE (a backgrounded or forked launch that
+# a leg that never went LIVE (a backgrounded or forked launch that
 # lost its preface, so it never took its lock or wrote a bullet) holds the same
 # FREE a lost lock does, forever, so the waiter's key never moved and nothing
 # woke the console. NOLIVE is FREE plus a clock; FORKED is FREE plus a
@@ -322,7 +322,7 @@ fi
 nolive_min="${TICK_NOLIVE_MIN:-10}"
 case "$nolive_min" in ''|*[!0-9]*) nolive_min=10 ;; esac
 nolive_min=$((10#$nolive_min))
-# HIMMEL-4568: the leg preface's GO-hold is 30 minutes; a READY older than that
+# the leg preface's GO-hold is 30 minutes; a READY older than that
 # with no GO file reads READY!stale in tails=.
 go_stale_min="${TICK_GO_STALE_MIN:-30}"
 case "$go_stale_min" in ''|*[!0-9]*) go_stale_min=30 ;; esac
@@ -385,7 +385,7 @@ tails_summary=""
 leg_docmap=""
 # label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
 leg_candmap=""
-# HIMMEL-3145: the census names the -n session the console actually passed
+# the census names the -n session the console actually passed
 # to `claude`, which is the leg doc's stem minus a -RESUME suffix (the same
 # string the --burn loop below matches on) -- collect it here so procs=/
 # models= can count against what THIS console dispatched instead of
@@ -399,14 +399,14 @@ for leg in $LEGS_SPLIT; do
     for cand in ${leg_cands//,/ }; do
         leg_names="$(csv_add "$leg_names" "$cand")"
     done
-    # HIMMEL-3130: NOTFOUND (file does not resolve) is a distinct status from
+    # NOTFOUND (file does not resolve) is a distinct status from
     # MISSING. MISSING means "the lock is gone" -- exactly the signal a
     # console reads as "reclaim this leg's lock" -- and must never be used for
     # "I could not find the file", which is a warning, not a lock verdict.
     lock_status=NOTFOUND
     tail_status="?"
     if [ -f "$leg_doc" ]; then
-        # HIMMEL-5074: a lockless manifest row (an eval/pilot row that never takes a
+        # a lockless manifest row (an eval/pilot row that never takes a
         # queue lock) reads NOLOCK, not FREE, and is judged by its tail marker alone.
         row_lockless=0
         if [ -n "$LEGS_FROM" ] && [ -r "$LEGS_FROM" ] \
@@ -429,7 +429,7 @@ for leg in $LEGS_SPLIT; do
         fi
         tail_status="$(leg_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
-        # HIMMEL-4568: a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
+        # a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
         # absent after $go_stale_min minutes reads READY!stale. tails= is in the
         # console-wait action key, so the entry moving once wakes the console.
         # ponytail: READY age is the leg doc's mtime (a READY leg is idle, so the
@@ -449,7 +449,7 @@ for leg in $LEGS_SPLIT; do
                 esac
             fi
         fi
-        # HIMMEL-3293: FREE used to cover both "released cleanly at wrap" and "the
+        # FREE used to cover both "released cleanly at wrap" and "the
         # lock vanished while the leg worked", and only the second is a reason to
         # act. A released lock whose doc's LAST status bullet is WRAPPED is the
         # clean wrap: it reads WRAPPED (tails= already says so); FREE is left to
@@ -462,7 +462,7 @@ for leg in $LEGS_SPLIT; do
     else
         printf 'tick: no such leg doc: %s\n' "$leg_doc" >&2
     fi
-    # HIMMEL-4234: FREE with no marker bullet ever (tails ?) is a leg that never
+    # FREE with no marker bullet ever (tails ?) is a leg that never
     # went LIVE; that, or a transcript that ended in continued-in, shows in legs=
     # in place of FREE. A wrapped or marker-bearing leg is never relabelled.
     # ponytail: the clock is dispatch time, so a leg first listed after the
@@ -489,7 +489,7 @@ done
 # there.
 [ -n "$tails_summary" ] || tails_summary=none
 
-# HIMMEL-2973 S1: cross-reference the console doc's own `## Live state`
+# cross-reference the console doc's own `## Live state`
 # `legs:` line against the lock status just computed above (legs_summary),
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
@@ -510,7 +510,7 @@ list_has() {  # list_has <needle> <word> [word...]
 # canonical N<k>[letters], or the stem of a leg doc (which the derivation
 # reduces to its N<k>, so its label differs from the stem). A token that
 # derivation leaves alone and that is not N<k> (`legs`, `procs`, `bank`) is prose.
-# A file name is a cite, never a label (HIMMEL-3284): leg_label strips `.md` from
+# A file name is a cite, never a label: leg_label strips `.md` from
 # a doc path, so `stuck-playbook.md` "reduces" to `stuck-playbook` and a
 # `stuck-playbook.md:408` cite read as a label-shaped span with a colon -- a
 # MALFORMED leg that never existed. A label leg_label emits never ends in `.md`.
@@ -522,7 +522,7 @@ legs_label_shaped() {
 }
 
 # legs_line_spans <entries|malformed> <legs: line> -- classify every backtick
-# span on the line (HIMMEL-3280). `entries` prints each well-formed
+# span on the line. `entries` prints each well-formed
 # `<label>:<nonce>:<lock-token>:<pid>` span, one per line, backticks stripped
 # (exactly four non-empty fields, first one all LEG_LABEL_CLASS). `malformed`
 # prints the LABEL of each label-shaped span that has a colon but is not that
@@ -564,7 +564,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         f && /^## / { exit }
         f { print }
     ' "$console_doc")"
-    # The legs: BLOCK (HIMMEL-3281), not just the first `legs:` line: every
+    # The legs: BLOCK, not just the first `legs:` line: every
     # `legs:` line plus the lines wrapped directly under it, up to the first blank
     # line, the next `field:` line (`queue:`, `last GO:`, `acked:`) or a list-marker
     # / `>` / `#` line (a wrapped continuation is never one, and a detail bullet
@@ -586,8 +586,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         # colon inside the span. The label class is leg-identity.sh's own
         # (LEG_LABEL_CLASS, which includes "-" and "."): a narrower class here
         # rejected every hyphenated label, so a span naming a leg by anything
-        # but a bare N<k> never parsed and read as absent (HIMMEL-3277).
-        # Prose on the line is tolerated (HIMMEL-3280): a backticked token is
+        # but a bare N<k> never parsed and read as absent.
+        # Prose on the line is tolerated: a backticked token is
         # an entry only if it is four non-empty fields under a label
         # (legs_line_spans), so `legs:` in a note is not a leg. A span that
         # LOOKS like an entry (label-shaped first field, a colon) but is not
@@ -598,7 +598,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         live_legs="$(printf '%s\n' "$live_spans" | sed -E 's/:.*$//')"
         malformed_legs="$(legs_line_spans malformed "$legs_line")"
         held_legs="$(printf '%s\n' "$legs_summary" | tr ',' '\n' | awk -F: '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
-        # HIMMEL-3293: the leg set this tick watches is the --legs arm, and Live
+        # the leg set this tick watches is the --legs arm, and Live
         # state is the console's own record; the two are supplied separately and
         # can disagree. A leg Live state names that the arm does not is UNARMED --
         # this tick has no lock for it, so it can say nothing about its health --
@@ -654,7 +654,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
             livestate_summary="${livestate_summary:+$livestate_summary;}DRIFT:${drift_csv}"
         fi
         [ -n "$livestate_summary" ] || livestate_summary=ok
-        # HIMMEL-3254: a HELD leg whose Live-state nonce (`<LETTER>-<leg>-<hex>`)
+        # a HELD leg whose Live-state nonce (`<LETTER>-<leg>-<hex>`)
         # still carries a previous console's letter is NOT necessarily
         # stranded: a relay may keep the leg's token (leg-preface.md "Console
         # succession"), so an unrotated nonce is the common, valid state. The
@@ -696,7 +696,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
                     # The LATEST acceptance bullet's INCOMING session (the first
                     # name after the colon, not the one after `replaces`) must
                     # be exactly this console. Only the `## Results` section
-                    # is read (HIMMEL-3264): an acceptance-shaped line quoted
+                    # is read: an acceptance-shaped line quoted
                     # above it, or under a later `## ` heading, confirms
                     # nothing.
                     accepted="$(awk '/^## /{ r = ($0 ~ /^## Results([[:space:]]|$)/) } r' "$span_doc" 2>/dev/null | sed -n -E 's/^- .*SUCCESSION accepted:[^A-Za-z0-9]*([A-Za-z0-9_.-]+).*/\1/p' | tail -n 1)"
@@ -722,7 +722,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fi
 fi
 
-# HIMMEL-2999: name/model come from claude_sessions() (real
+# name/model come from claude_sessions() (real
 # /proc/<pid>/cmdline argv, NUL-delimited), never a flattened `pgrep -af`
 # line -- free-text argv (a -p/--append-system-prompt value containing the
 # literal substring "-n X") can no longer spoof procs=/models=.
@@ -737,14 +737,14 @@ fi
 . "$HERE/../../lanes/lib/claude-sessions.sh"
 sessions_out="$(claude_sessions)"
 sessions_rc=$?
-# HIMMEL-3002: rc=3 means the census itself succeeded but one or more live
+# rc=3 means the census itself succeeded but one or more live
 # sessions had an unreadable cmdline -- the readable rows above are still
 # trustworthy, so keep them (unlike a real scan failure, rc>1 and not 3,
 # where the whole table is suspect and gets discarded below). CAVEAT
 # (claude-sessions.sh, same ticket): pgrep's own fatal-error rc is ALSO 3,
 # forwarded with no output printed first -- ceiling-conformance.sh already
 # tells the two apart by whether sessions_out is empty at rc=3; mirror that
-# here so census_failed below (HIMMEL-3145) is not blind to it.
+# here so census_failed below is not blind to it.
 census_failed=0
 if [ "$sessions_rc" -gt 1 ] && { [ "$sessions_rc" -ne 3 ] || [ -z "$sessions_out" ]; }; then
     sessions_out=""
@@ -774,11 +774,11 @@ if [ "$sessions_rc" -eq 3 ]; then
     unreadable_n="$(printf '%s\n' "$sessions_out" | grep -c '^# unreadable ')"
 fi
 
-# HIMMEL-3145: count sessions the console actually dispatched (leg_names,
+# count sessions the console actually dispatched (leg_names,
 # built from --legs above) against the census name, not a "-leg" spelling
 # guess -- a filter that silently matches nothing must never render as 0.
 #
-# HIMMEL-3277: that guard only asked whether the filter EXISTS. A well-formed
+# that guard only asked whether the filter EXISTS. A well-formed
 # leg_names that cannot match anything (a doc named one way, a session named
 # another) still rendered a confident 0 beside two live, lock-holding legs. The
 # test is population-level, over the HELD legs (FRESH/STALE lock): a wrapped or
@@ -814,7 +814,7 @@ while IFS=$'\t' read -r m_label m_status m_cands; do
         unmatched_csv="$m_label"
     fi
 done <<< "$leg_candmap"
-# HIMMEL-3747 Ask 1: a WRAPPED leg (lock free, tail says WRAPPED) whose own
+# a WRAPPED leg (lock free, tail says WRAPPED) whose own
 # session process is STILL alive in this same census is CLOSABLE -- the
 # window sitting there finished but not yet closed is exactly what a console
 # should wake up and act on. Never claimed when the census itself could not
@@ -833,7 +833,7 @@ if [ "$census_failed" -eq 0 ]; then
     done <<< "$leg_candmap"
 fi
 leg_names_wrapped=",${leg_names},"
-# HIMMEL-3293: procs= counts only the sessions THIS arm names, so a live leg the
+# procs= counts only the sessions THIS arm names, so a live leg the
 # arm does not name (dispatched after it, or another console's) was dropped
 # without a word -- an unwatched leg is the state this instrument must never hide.
 # Every leg-shaped census row (a session whose name derives an N<k> label, which
@@ -883,7 +883,7 @@ NF < 4 { next }
     n++
 }
 END { print n+0 }')"
-    # HIMMEL-3002: a degraded scan (rc=3) still counted every readable row
+    # a degraded scan (rc=3) still counted every readable row
     # above -- append how many pids it could NOT read so the console sees
     # the table is incomplete rather than reading procs= as a clean, complete
     # count.
@@ -892,7 +892,7 @@ END { print n+0 }')"
     [ "$unreadable_n" -gt 0 ] && procs="${procs},unreadable=${unreadable_n}"
 fi
 
-# HIMMEL-2976: same session table and leg filter as procs= above, bucketed by
+# same session table and leg filter as procs= above, bucketed by
 # the tier its real --model argv names (opus/fable cost materially more per
 # turn than the sonnet default - CLAUDE.md "raise effort before tier"). Any
 # non-Claude id (e.g. a claudex gpt-* model) buckets under "other" rather than
@@ -900,7 +900,7 @@ fi
 # no --model token at all buckets under "unknown" (codex-2, HIMMEL-2976 round
 # 1 CR) rather than falling out of every bucket while still counted in
 # procs=.
-# HIMMEL-3145: same dispatched-name filter as procs= above, same
+# same dispatched-name filter as procs= above, same
 # unknown-vs-empty distinction on a real census failure or an empty
 # dispatch set (no --legs -- see procs= above).
 if [ "$filter_unusable" -eq 1 ]; then
@@ -931,14 +931,14 @@ END {
     print out
 }')"
     [ -n "$models_summary" ] || models_summary=none
-    # HIMMEL-2999: /proc absent (macOS, git-bash) degrades claude_sessions()
+    # /proc absent (macOS, git-bash) degrades claude_sessions()
     # to the old flattened-line parse -- flag it inline (no space, so the
     # tick line stays space-delimited) rather than silently reporting a scan
     # that could again be spoofed by free-text argv.
     [ "$sessions_lossy" -eq 0 ] || models_summary="${models_summary}(lossy)"
 fi
 
-# HIMMEL-2974: the same ps table, scanned for --autocompact drift against the
+# the same ps table, scanned for --autocompact drift against the
 # leg invariant headed-arm.sh:391 refuses to launch without. The script's own
 # last line is already "ceiling=ok" / "ceiling=DRIFT:<name,...>" so it drops
 # into the tick line unprefixed.
@@ -979,7 +979,7 @@ while IFS= read -r pr; do
 done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 
-# HIMMEL-3361: the board fingerprint -- what console-board.html shows that the
+# the board fingerprint -- what console-board.html shows that the
 # console authors or a tick already reads: leg locks, leg tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
 # Results bullet bumps that). board.mjs embeds this exact value via --emit-fp.
@@ -1013,7 +1013,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fi
 fi
 
-# HIMMEL-3933: the roadmap tracker's freshness. tracker.py --emit-fp is the one
+# the roadmap tracker's freshness. tracker.py --emit-fp is the one
 # derivation (the mirror's newest updated + the plan files), the same value it
 # writes to <page>.fp when it renders; a tracker that moved past its render reads
 # STALE, aged by the page's mtime. skip = no (or `none`) `tracker:` Live state line.
@@ -1048,7 +1048,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     esac
 fi
 
-# HIMMEL-5163: cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
+# cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
 # (cloud-sessions.tsv next to the console doc against ONE `gh pr list --state all` and one
 # `git ls-remote`); a missing node or helper, a missing tsv, or an unreadable forge reads
 # skip, never a failed tick. The 60 s bound sits inside the waiter's tick timeout.
@@ -1058,12 +1058,12 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -f "${console_doc%/*}/clo
     case "$cloud_summary" in ok|skip|STALL:*) ;; *) cloud_summary=skip ;; esac
 fi
 
-# HIMMEL-4911: the luna vault's commit health. vault-status.sh owns the derivation
+# the luna vault's commit health. vault-status.sh owns the derivation
 # (and is fail-soft); a missing or failing helper reads unknown, never a failed tick.
 vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.sh" 2>/dev/null)" || vault_summary=unknown
 [ -n "$vault_summary" ] || vault_summary=unknown
 
-# HIMMEL-4051: keep the roadmap-plan qmd index (HIMMEL-4000) fresh WITHOUT ever waiting
+# keep the roadmap-plan qmd index fresh WITHOUT ever waiting
 # on it: the tick runs under the waiter's 120 s timeout and a refresh runs qmd embed. Only
 # `plan-index.sh --check` (a fingerprint) runs inline; stale + due launches --refresh
 # DETACHED (plan-index.sh's own lock keeps it to one). ok = fresh; ok:pending = stale but
@@ -1138,7 +1138,7 @@ else
 fi
 bank="5h${fh}/wk${wk}/codex=${codex}"
 
-# HIMMEL-4421: spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
+# spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
 # at the reset (bank-monitor.sh --spare). Shown only when the spare is >=
 # TICK_SPARE_MIN percent (default 10) and the reset is <= TICK_SPARE_HOURS hours
 # away (default 24); otherwise the field is absent. Advisory only: console-wait's
@@ -1156,7 +1156,7 @@ if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
     spare_tail=" spare=$(awk -v p="$spare_pct" 'BEGIN { printf "%d", p }')@$(awk -v h="$spare_in" 'BEGIN { printf "%d", h }')h"
 fi
 
-# HIMMEL-4670 P4: fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
+# fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
 # leg-failures ledger rows (ts >= the console lock's `started`): <n> rows, <legs>
 # distinct legs, the class with the most distinct legs (then events, then name),
 # and !<recur> = distinct classes the failure router decided on this shift with a
@@ -1192,7 +1192,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
                    | sort_by(-.l, -.e, .c) | .[0]) as $top
                 | "\(length)/\($legs)@\($top.c | gsub("[[:space:][:cntrl:]]"; "_"))*\($top.l)"
               end' 2>/dev/null)" || fl_counts=""
-        # HIMMEL-4786: ~<k> = distinct docs whose wrap digest was skipped this
+        # ~<k> = distinct docs whose wrap digest was skipped this
         # shift (leg-digest-step.sh's skips.jsonl); unreadable reads ? too.
         fl_skips_log="${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}/skips.jsonl"
         fl_skips=""
@@ -1207,8 +1207,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fi
 fi
 
-# HIMMEL-5131: flakes=<rows>/<suites>@<top-suite>*<k> -- this repo's suite-flake
-# ledger rows (run-shell-tests.sh, HIMMEL-5116) since the console lock's `started`
+# flakes=<rows>/<suites>@<top-suite>*<k> -- this repo's suite-flake
+# ledger rows (run-shell-tests.sh) since the console lock's `started`
 # (the same shift boundary as fails=), read by scripts/observability/suite-flake-summary.sh
 # (bounded tail, repo-id filtered). ABSENT unless a row is new this shift (or `?`
 # when the ledger is unreadable), so a quiet shift changes no line. Advisory:
@@ -1244,7 +1244,7 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
 fi
 [ -n "$inbox_summary" ] || inbox_summary=none
 
-# fleet=<live>/<cap> + capacity= (HIMMEL-3167). The census is bank-preflight.sh's
+# fleet=<live>/<cap> + capacity=. The census is bank-preflight.sh's
 # own -- it counts native + claudex + reserved against HIMMEL_FLEET_CAP inline,
 # in a script that exits, so its `FLEET ... total=<n>/<cap>` line is the seam
 # (a second count here would be the drift this field exists to end). Run as a
@@ -1253,7 +1253,7 @@ fi
 # ponytail: bank-preflight still takes its fleet admission lock and prunes
 # expired/consumed reservations while it counts, exactly as any bank read does.
 fleet_out="$(CADENCE_BANK_LAUNCH='' CADENCE_BANK_LEDGER=/dev/null bash "$REPO/scripts/lib/bank-preflight.sh" 2>&1)" || fleet_out=""
-# HIMMEL-4081: bank= uses the selected lane's own preflight verdict. Keep
+# bank= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
 if [ "${CADENCE_BANK_LANE:-${LEG_LANE:-native}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
@@ -1283,7 +1283,7 @@ else
     capacity=unknown
 fi
 
-# HIMMEL-4076: reuse the fleet census, never read the metered account when
+# reuse the fleet census, never read the metered account when
 # no OpenRouter leg is live. This informational field is deliberately absent
 # from console-wait.sh's action key, so changing credit never wakes a waiter.
 openrouter='?'
@@ -1303,7 +1303,7 @@ case "$or_live" in
         ;;
 esac
 
-# orphans= (HIMMEL-2761): shell-tool wrappers older than TICK_ORPHAN_MIN minutes,
+# orphans=: shell-tool wrappers older than TICK_ORPHAN_MIN minutes,
 # joined to the owning session name -- a poll loop that outlives its wrapped
 # leg (TaskStop on an agent does not reap the shell it spawned) surfaces at the
 # next tick. Read-only; orphans=? when the process table cannot be read.
@@ -1311,10 +1311,10 @@ orphans_line="$(REPO="$REPO" bash "$HERE/orphan-loops.sh" 2>/dev/null | tail -n 
 orphans="${orphans_line#orphans=}"
 [ -n "$orphans" ] || orphans='?'
 
-# gql=<remaining>/<reset HH:MM> (HIMMEL-3197): the GitHub GraphQL budget, shared by
+# gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget, shared by
 # every leg on the box, so a console sees exhaustion coming instead of hitting it.
 # ghb_read is ONE real `gh api -i graphql` call -- `gh api rate_limit` reports the
-# REST core bucket and misreports this one (HIMMEL-3190) -- so a tick pays exactly
+# REST core bucket and misreports this one -- so a tick pays exactly
 # one extra request. gql=? when the headers are unreadable; never fails the tick.
 gql='?'
 if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
@@ -1330,7 +1330,7 @@ if [ -f "$HERE/../../lib/gh-graphql-budget.sh" ]; then
     fi
 fi
 
-# denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724 §4c): rows
+# denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]: rows
 # scripts/hooks/log-classifier-denial.sh appended to the jsonl within the
 # trailing window, grouped by the hook's own session_title (the worktree
 # slug it captured) -- NOT reconciled against this tick's --legs labels.
@@ -1346,8 +1346,8 @@ fi
 # cross-tick cursor), so "since the last tick" is approximated by a trailing
 # window rather than a real cursor -- console-wait's own key-diffing is what
 # actually triggers a wake on a class change, not this field's count.
-# ponytail: leg-label reconciliation and a same-session success/flip check
-# for REPEAT are Phase 2 (HIMMEL-3724 comment), not implemented here.
+# ponytail: HIMMEL-3724 - leg-label reconciliation and a same-session success/flip check
+# for REPEAT are Phase 2, not implemented here.
 denials_window_min="${TICK_DENIALS_WINDOW_MIN:-30}"
 case "$denials_window_min" in ''|*[!0-9]*) denials_window_min=30 ;; esac
 denials_log="${HIMMEL_CLASSIFIER_DENIALS_LOG:-$HOME/.himmel/state/classifier-denials.jsonl}"
@@ -1417,7 +1417,7 @@ elif command -v jq >/dev/null 2>&1 && [ ! -e "$denials_log" ]; then
 fi
 
 # ciq=<in_progress>/<cap>,mac=<n>/<cap>,q=<queued>,wait=<m>m[,SATURATED]
-# (HIMMEL-3840): one scripts/ci/queue-latency.sh probe per tick. SATURATED =
+# one scripts/ci/queue-latency.sh probe per tick. SATURATED =
 # jobs_in_progress at the cap on two consecutive probes; the previous probe's
 # "<in_progress>/<cap>" lives in $TICK_STATE_DIR/tick-ciq-last (default
 # ~/.himmel/state, like the denials log). ciq=unknown = the probe is missing,
@@ -1428,7 +1428,7 @@ fi
 # ponytail: with no timeout binary the probe runs unbounded (queue-latency.sh
 # still bounds each gh call to 15 s); one probe is up to ~42 REST calls, so on
 # console-wait's 180 s cadence that is ~840 calls/h -- cache or cut MAX_RUNS if
-# the shared token's rate limit bites again (HIMMEL-3850).
+# the shared token's rate limit bites again.
 ciq_summary=unknown
 ciq_probe="$REPO/scripts/ci/queue-latency.sh"
 if [ -f "$ciq_probe" ]; then
@@ -1453,7 +1453,23 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
-# tick=ARMED|MISSING|UNKNOWN (HIMMEL-3144 D2): whether the periodic Monitor
+# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK: the himmel-vm
+# self-hosted runner, one bounded `vm-runner.sh status --tick` call. DEAD = the
+# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s.
+# console-wait.sh wakes only on those two. unknown = the probe is missing,
+# failed or timed out.
+vmrun_summary=unknown
+vmrun_probe="${HIMMEL_VMRUN_PROBE:-$HERE/vm-runner.sh}"
+if [ -f "$vmrun_probe" ]; then
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+    vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
+    case "$vmrun_out" in
+        off|DEAD|STUCK|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+    esac
+fi
+
+# tick=ARMED|MISSING|UNKNOWN: whether the periodic Monitor
 # call that is SUPPOSED to invoke this script every 60 min (the console
 # template's `## Monitors` tick row, armed in ACTION ZERO step 10) is
 # actually armed. F never armed it and its absence was invisible to F, to
@@ -1471,7 +1487,7 @@ fi
 # silently assuming one of the other fields would have caught it.
 tick_status=UNKNOWN
 
-# --burn (HIMMEL-2830): what each leg is actually paying per API call. The
+# --burn: what each leg is actually paying per API call. The
 # session name is the leg doc's stem without the -RESUME suffix - the same
 # string headed-arm-leg.sh passes to `claude -n`, which is what leg-burn.sh
 # matches on. A leg with no transcript yet (armed, not started) reports "?"
@@ -1539,27 +1555,28 @@ if [ "$verbose" -eq 1 ]; then
     printf 'plan-index: %s\n' "$plan_index_summary"
     printf 'OpenRouter: %s\n' "$openrouter"
     printf 'worker-session failures: %s\n' "$fails_summary"
+    printf 'vm runner: %s\n' "$vmrun_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
-    # `tick=` is always appended (HIMMEL-3144); `burn=` stays APPENDED only
-    # under --burn, after it. `fleet=`/`capacity=` (HIMMEL-3167) are appended
+    # `tick=` is always appended; `burn=` stays APPENDED only
+    # under --burn, after it. `fleet=`/`capacity=` are appended
     # after everything else, so a consumer keyed on the existing fields and
-    # their order sees them only as a tail. `gql=` (HIMMEL-3197) follows them, and
-    # `orphans=` (HIMMEL-2761) follows, `nonces=` (HIMMEL-3254) follows it, and
-    # `legset=` (HIMMEL-3293) follows, `board=` (HIMMEL-3361) follows it, and
-    # `tracker=` (HIMMEL-3933) follows `board=`, `denials=` (HIMMEL-3724) follows,
-    # and `ciq=` (HIMMEL-3840) follows, `plan-index=` (HIMMEL-4051) and `or=`
-    # follow, and `fails=` (HIMMEL-4670) closes the line, before the optional `spare=`.
-    # `vault=` (HIMMEL-4911) sits between `tracker=` and `denials=`; `cloud=` (HIMMEL-5163) follows `vault=`.
+    # their order sees them only as a tail. `gql=` follows them, and
+    # `orphans=` follows, `nonces=` follows it, and
+    # `legset=` follows, `board=` follows it, and
+    # `tracker=` follows `board=`, `denials=` follows,
+    # and `ciq=` follows, `plan-index=` and `or=`
+    # follow, and `fails=` closes the line, before the optional `spare=`.
+    # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     else
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

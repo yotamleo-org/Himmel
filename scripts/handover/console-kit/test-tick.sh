@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-tick.sh — HIMMEL-2767. Hermetic public-CLI tests for the batched console
+# test-tick.sh — Hermetic public-CLI tests for the batched console
 # tick: exact one-line output, verbose human output, stale fill, and a missing
 # leg document. No live queue, process, scheduler, GitHub, or bank operations.
 #
-# HIMMEL-2999: the primary-path scenarios below drive claude_sessions() via a
+# the primary-path scenarios below drive claude_sessions() via a
 # fake /proc root (CLAUDE_SESSIONS_PROC) with real NUL-separated
 # <pid>/cmdline files, not a flattened `pgrep -af` line. The "lossy fallback"
 # scenario below is the dedicated regression test for the no-/proc degraded
@@ -67,7 +67,7 @@ cat > "$W/repo/scripts/handover/queue-lock.sh" <<'STUB'
 case "$1" in
   heartbeat) exit 0 ;;
   status)
-    # HIMMEL-4670 P4: a held console lock prints its owner.json (started = the shift start).
+    # a held console lock prints its owner.json (started = the shift start).
     case "$2" in *console-fails*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-07T03:00:00Z","heartbeat":"2026-10-07T03:10:00Z"}' 'status: FRESH'; exit 11 ;; esac
     case "$2" in *N61*|*-N1-*|*-N2-*|*-N191-*|*-leg192-*|*-legN194-*|*odd-name*|*-N301-*|*-N302-*|*-N303-*) printf '%s\n' 'status: FRESH'; exit 11 ;;
     *-N390-*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-01T00:00:00Z","heartbeat":"2026-10-01T00:00:00Z"}' 'status: STALE-DEAD (age 99999s >= ttl 21600s; owner pid gone, no live claude session names this doc)'; exit 12 ;;
@@ -80,7 +80,7 @@ cat > "$W/repo/scripts/context-fill.sh" <<'STUB'
 [ "${FILL_STALE:-0}" -eq 0 ] || exit 3
 printf '%s\n' 28
 STUB
-# HIMMEL-2830: --burn shells out to the real leg-burn.sh. Stub it so the suite
+# --burn shells out to the real leg-burn.sh. Stub it so the suite
 # never touches ~/.claude/projects: N61 has a transcript, N66 does not.
 cat > "$W/repo/scripts/lanes/leg-burn.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -99,7 +99,7 @@ STUB
 
 # Default primary-path table: pid 101 (a pinned sonnet leg, named in $LEGS
 # below), 102 (a pinned opus leg belonging to a DIFFERENT console's --legs --
-# HIMMEL-3145: procs=/models= now count only the sessions THIS console
+# procs=/models= now count only the sessions THIS console
 # dispatched, so 102 is live but must not appear in procs=/models=, only in
 # ceiling= which scans every session regardless of --legs), 103 (the console
 # -- no --autocompact, exempt from drift).
@@ -112,7 +112,7 @@ cat > "$W/bin/atq" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' '1 Tue job' '2 Wed job'
 STUB
-# HIMMEL-3197: `gh api -i graphql` is the gql= budget probe (ghb_read). The stub
+# `gh api -i graphql` is the gql= budget probe (ghb_read). The stub
 # logs each call to STUB_GH_API_LOG, and prints STUB_GQL_OUT (a printf %b string,
 # default = a healthy header set) then exits STUB_GQL_RC (default 0).
 cat > "$W/bin/gh" <<'STUB'
@@ -128,7 +128,7 @@ if [ "$PWD" != "${GH_STUB_CWD:-$REPO}" ]; then
 fi
 printf '%s\n' 2247 2250
 STUB
-# HIMMEL-2761: orphans= reads `ps -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
+# orphans= reads `ps -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
 # Answered from $PS_FIXTURE so the suite never reads the live process table;
 # any other ps argv falls through to the real ps.
 cat > "$W/bin/ps" <<'STUB'
@@ -144,15 +144,15 @@ cat > "$W/bin/bun" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' 'claudex funded measured 5h used=12% free=88%; weekly used=34% free=66%'
 STUB
-# HIMMEL-2974: the real ceiling-conformance.sh, not a re-implemented stub --
+# the real ceiling-conformance.sh, not a re-implemented stub --
 # it reads the same claude_sessions() table this suite already builds, so a
 # leg row here is one source of truth for procs=/models=/ceiling= alike.
 cp "$HERE/../../lanes/ceiling-conformance.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh"
-# HIMMEL-2999: the shared helper both ceiling-conformance.sh and tick.sh
+# the shared helper both ceiling-conformance.sh and tick.sh
 # source by $REPO-relative path.
 cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-sessions.sh"
 
-# HIMMEL-3167: fleet=/capacity= reuse bank-preflight.sh's FLEET line. This stub
+# fleet=/capacity= reuse bank-preflight.sh's FLEET line. This stub
 # prints the same stderr line shape (STUB_FLEET_LINE overrides it) and records
 # the env tick ran it under, so the suite can pin that tick never asks it for a
 # ledger row or a launch refusal.
@@ -183,27 +183,29 @@ export REPO="$W/repo"
 export TICK_TMPDIR="$W"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
-# HIMMEL-3840: ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
+# ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
-# HIMMEL-4670 P4: fails= reads these three ledgers; never the real ~/.himmel ones.
+# fails= reads these three ledgers; never the real ~/.himmel ones.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
-# HIMMEL-4786: fails= ~<k> reads the digest step's skips.jsonl under this dir.
+# fails= ~<k> reads the digest step's skips.jsonl under this dir.
 export LEG_DIGEST_STATE_DIR="$W/leg-digest"
+printf '#!/bin/sh\necho off\n' > "$W/vmrun-probe.sh"
+export HIMMEL_VMRUN_PROBE="$W/vmrun-probe.sh"
 mkdir -p "$LEG_DIGEST_STATE_DIR"
-# HIMMEL-5131: flakes= reads the suite-flake ledger for this repo id; never the real ~/.himmel one.
+# flakes= reads the suite-flake ledger for this repo id; never the real ~/.himmel one.
 export SUITE_FLAKE_LEDGER="$W/suite-flake.jsonl"
 export SUITE_FLAKE_REPO_ID=tick-test-repo
 export CLAUDE_SESSIONS_PROC="$W/proc"
-# HIMMEL-3167: launch logs live in <work-dir>/<chain>/<name>.launch.log.
+# launch logs live in <work-dir>/<chain>/<name>.launch.log.
 export TICK_LAUNCH_DIR="$W/console-work"
 mkdir -p "$W/console-work/chain"
 
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip'
+expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -239,7 +241,7 @@ printf '%s\n' '> The project this console is FOR is **`none — this console run
 proj_out="$(TOKEN='' bash "$SUT" --doc "$W/handover/console-himmel.md")"
 contains 'a himmel console (project line reads none) lists the REPO PRs' "$proj_out" ' prs=#2247,#2250 '
 
-# --- HIMMEL-3130: a comma-separated --legs is equivalent to space-separated -
+# --- a comma-separated --legs is equivalent to space-separated -
 # `for leg in $LEGS` word-splits on IFS whitespace only, so a comma-joined
 # value used to be one iteration over one nonexistent path -- the label was
 # derived from the tail of the whole blob, and every leg but the last vanished
@@ -270,7 +272,7 @@ else
     fail "legs= entry count mismatch (legs_field='$legs_field' count=$legs_count, expected 2)"
 fi
 
-# --- HIMMEL-3748: --legs-from <fleet manifest> ------------------------------
+# --- --legs-from <fleet manifest> ------------------------------
 # The console's leg set lives in one JSON file (fleet-manifest.sh writes it);
 # tick reads it on every run, so a dispatch or wrap edits the file and the
 # waiter needs no restart. RED control (tick.sh before this change): every
@@ -315,7 +317,7 @@ else
 fi
 rm -f "$fm"
 
-# --- HIMMEL-5074: a lockless (eval/pilot) manifest row reads NOLOCK, not FREE,
+# --- a lockless (eval/pilot) manifest row reads NOLOCK, not FREE,
 # and is judged by its tail marker alone. RED control (tick.sh before this
 # change): the lockless row below read legs=...P01:FREE, and an unstamped
 # `- WRAPPED —` bullet moved nothing in legs=. (The parser already read the
@@ -335,7 +337,7 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N90"
 contains 'a row without the lockless key is still judged by its lock (HIMMEL-5074)' "$(LEGS='' bash "$SUT" --legs-from "$fm")" ' legs=N61:FRESH,N90:WRAPPED '
 rm -f "$fm" "$lk_doc"
 
-# --- HIMMEL-2973 S1: livestate= drift field --------------------------------
+# --- livestate= drift field --------------------------------
 # legs=N61:FRESH,N65:FREE above -- only N61 is actually held (the stub
 # queue-lock only reports FRESH for a doc path containing "N61"). Each
 # sub-case below rewrites $W/handover/console.md's `## Live state` section
@@ -372,7 +374,7 @@ no_section_out="$(bash "$SUT")"; rc=$?
 if [ "$rc" -eq 0 ]; then pass 'livestate=unknown run exits 0'; else fail "livestate=unknown run exits 0 (rc=$rc)"; fi
 contains 'a doc with no Live state section reports unknown, not ok' "$no_section_out" 'livestate=unknown'
 
-# --- HIMMEL-3254: nonces=<ok|RELAYED|UNCONFIRMED> -----------------------------
+# --- nonces=<ok|RELAYED|UNCONFIRMED> -----------------------------
 # A HELD leg whose Live-state nonce still carries a PREVIOUS console's letter
 # prefix (nonce shape `<LETTER>-<leg>-<hex>`; the letter is the console doc's
 # own, parsed from `<prefix>-nextleg-<date><LETTER>-<name>.md`) is not rotated.
@@ -439,7 +441,7 @@ rm -f "$W/hand over"
 printf '%s\n' '# leg' '- LIVE — working' '## Results' \
     'note: SUCCESSION accepted: HIMMEL-nextleg-2026-09-20K-console replaces J (prose, not a bullet)' > "$n61doc"
 contains 'a non-bullet line mentioning SUCCESSION accepted confirms nothing' "$(DOC="$kdoc" bash "$SUT")" 'nonces=UNCONFIRMED:N61'
-# HIMMEL-3264: only the leg doc's `## Results` section is read. An
+# only the leg doc's `## Results` section is read. An
 # acceptance-shaped bullet quoted ABOVE Results (e.g. an example in a brief)
 # naming this console must not upgrade UNCONFIRMED to RELAYED, and neither
 # must one under a later `## ` section.
@@ -527,7 +529,7 @@ cp "$W/repo/scripts/handover/queue-lock.sh" "$W/foreign-repo/scripts/handover/qu
 cp "$W/repo/scripts/context-fill.sh" "$W/foreign-repo/scripts/context-fill.sh"
 cp "$W/repo/scripts/lanes/leg-burn.sh" "$W/foreign-repo/scripts/lanes/leg-burn.sh"
 cp "$W/repo/scripts/lib/bank-preflight.sh" "$W/foreign-repo/scripts/lib/bank-preflight.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# every chokepoint fails closed without its seam-guard lib.
 cp "$W/repo/scripts/lib/chokepoint-seam-guard.sh" "$W/foreign-repo/scripts/lib/chokepoint-seam-guard.sh"
 foreign_out="$(REPO="$W/foreign-repo" PATH="$W/bin:$PATH" bash "$SUT" --legs 'HIMMEL-111-legN61')"
 contains 'a foreign REPO (no scripts/lanes/lib/) still counts a live leg (#1335)' "$foreign_out" 'procs=1'
@@ -560,7 +562,7 @@ esac
 healthy_empty_out="$(bash "$SUT" --legs '')"
 contains 'a healthy, census-confirmed empty fleet still reads legs=none' "$healthy_empty_out" 'legs=none'
 
-# codex-2 (HIMMEL-2976 round 1 CR): a leg process matched by the leg filter
+# a leg process matched by the leg filter
 # but with no --model token at all must still show up (an "unknown" bucket),
 # never silently fall out of every bucket while still counted in procs=.
 mkcmdline 104 claude -n HIMMEL-444-legN70 work
@@ -568,7 +570,7 @@ mk_pgrep_x "$W/bin-nomodel" 101 104
 nomodel_out="$(PATH="$W/bin-nomodel:$PATH" bash "$SUT" --legs 'HIMMEL-111-legN61 HIMMEL-444-legN70')"
 contains 'a leg with no --model token buckets as unknown, not dropped' "$nomodel_out" 'models=sonnet:1,unknown:1'
 
-# HIMMEL-2998: a --profile leg's argv carries `--settings
+# a --profile leg's argv carries `--settings
 # /run/user/1000/himmel-console/<slug>/<name>.leg-settings.json` — the path
 # segment "himmel-console" contains the substring "-console", which the old
 # `!/-console/` exclusion matched against the WHOLE line rather than just the
@@ -583,7 +585,7 @@ profile_out="$(PATH="$W/bin-profile:$PATH" bash "$SUT" --legs 'HIMMEL-333-foo-le
 contains 'a --profile leg is counted in procs= (HIMMEL-2998)' "$profile_out" 'procs=1'
 contains 'a --profile leg is bucketed in models= (HIMMEL-2998)' "$profile_out" 'models=sonnet:1'
 
-# HIMMEL-2974: a leg whose --autocompact drifted from 200000 surfaces in
+# a leg whose --autocompact drifted from 200000 surfaces in
 # ceiling= without disturbing procs=/models=.
 mkcmdline 106 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-111-legN61 work
 mk_pgrep_x "$W/bin-drift" 106
@@ -609,7 +611,7 @@ spoof_out="$(PATH="$W/bin-spoof:$PATH" bash "$SUT" --legs 'HIMMEL-999-fake-legN1
 contains 'a spoofed -n inside free-text argv is not counted (HIMMEL-2999)' "$spoof_out" 'procs=0'
 contains 'a spoofed -n inside free-text argv does not bucket a model (HIMMEL-2999)' "$spoof_out" 'models=none'
 
-# HIMMEL-3002: a pid pgrep reports that has already vanished by the time
+# a pid pgrep reports that has already vanished by the time
 # claude_sessions() reads it (no /proc/<pid> dir at all) is "not a tracked
 # session" -- no row, no effect on procs=/ceiling= -- pinning the pre-fix
 # behaviour for a genuinely gone process.
@@ -621,7 +623,7 @@ case "$vanished_out" in
     *) pass 'a vanished pid does not report unreadable=' ;;
 esac
 
-# HIMMEL-3002: an alive pid whose /proc/<pid> dir exists but whose cmdline is
+# an alive pid whose /proc/<pid> dir exists but whose cmdline is
 # unreadable (a permission boundary, e.g. hidepid) must not be silently
 # treated as vanished -- tick.sh surfaces it as unreadable=<n> appended to
 # procs= so the console sees the scan is degraded, not a clean complete count.
@@ -648,7 +650,7 @@ if [ "$rc" -eq 0 ]; then
 else
     fail "missing leg document is tolerated (rc=$rc)"
 fi
-# HIMMEL-3130: an unresolvable --legs entry is NOTFOUND, never MISSING --
+# an unresolvable --legs entry is NOTFOUND, never MISSING --
 # MISSING is reserved for a lock that is genuinely gone, which a console
 # reads as "reclaim this leg's lock". RED control (pre-fix tick.sh, same
 # fixture): stdout printed 'legs=N61:FRESH,N66:MISSING' with an EMPTY stderr
@@ -662,7 +664,7 @@ case "$out" in *FILL_RC*) fail 'context-fill failure does not print FILL_RC chat
 missing_lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$missing_lines" = 1 ]; then pass 'degraded run still emits one line'; else fail "degraded run emitted $missing_lines lines"; fi
 
-# --- HIMMEL-2830: --burn is opt-in and additive --------------------------
+# --- --burn is opt-in and additive --------------------------
 # The whole point of the flag is that consoles which already parse the tick
 # line keep parsing it, so the no-flag case above is the real assertion and
 # these three only pin what --burn adds.
@@ -681,7 +683,7 @@ noburn_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61')"
 case "$noburn_out" in *burn=*) fail 'burn= appears without --burn' ;; *) pass 'burn= is absent without --burn' ;; esac
 contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --legs 'HIMMEL-111-legN61')" 'worker-session burn (first-turn/avg-ctx): N61:74.3k/128.1k'
 
-# --- HIMMEL-3145: current-convention leg names (<TICKET>-N<k>-<slug>, no
+# --- current-convention leg names (<TICKET>-N<k>-<slug>, no
 # "-leg" substring at all -- docs/handover/console-template.md:104 is the
 # contract every console since HIMMEL-2975 writes) must resolve/count/compare
 # identically to the legacy -legN<k> spelling. This fixture is the ticket's
@@ -714,7 +716,7 @@ esac
 legacy_out="$(bash "$SUT" --legs 'HIMMEL-3064-legN12-old-console-format' 2>/dev/null)"
 contains 'a legacy -legN<k>- doc still resolves to N<k> (HIMMEL-3145 regression)' "$legacy_out" 'legs=N12:NOTFOUND'
 
-# --- HIMMEL-3145 (ticket root cause 3 / acceptance): a field that cannot be
+# --- (ticket root cause 3 / acceptance): a field that cannot be
 # computed must say so. A fatal census scan (pgrep itself failing, rc>1 and
 # not the HIMMEL-3002 degraded-scan rc=3) discards the whole session table --
 # procs=/models= must report "unknown", never a clean "0"/"none" that reads
@@ -733,7 +735,7 @@ case "$census_fail_out" in
     *) pass 'a fatal census scan must not render procs=0' ;;
 esac
 
-# --- HIMMEL-3145 (console review, round 2): the same "cannot be computed
+# ---: the same "cannot be computed
 # must say so" rule applies to an EMPTY dispatch set, not just a broken
 # census scan. --legs is optional (usage block, :23) -- with it absent,
 # leg_names stays empty and leg_names_wrapped is ",,", so a matched-nothing
@@ -750,7 +752,7 @@ case "$no_legs_out" in
     *) pass 'no --legs must not render procs=0' ;;
 esac
 
-# --- HIMMEL-3167: fleet=<live>/<cap> + capacity= ------------------------------
+# --- fleet=<live>/<cap> + capacity= ------------------------------
 # fleet= is bank-preflight.sh's own census (its FLEET total=n/cap line), never a
 # second count. capacity=UNDERFILLED:<slack> fires when live < cap AND no leg has
 # launched for TICK_UNDERFILL_MIN (default 10) minutes, judged by the newest
@@ -802,7 +804,7 @@ case "$burn_cap" in
     *) fail "fleet=/capacity= not appended last under --burn (out='$burn_cap')" ;;
 esac
 
-# --- HIMMEL-3167 (3): procs=0 for a live headed leg. headed-arm-leg.sh names the
+# --- (3): procs=0 for a live headed leg. headed-arm-leg.sh names the
 # session <TICKET>-N<k>-<slug> with NO date, while the leg DOC is
 # <TICKET>-N<k>-<slug>-<YYYY-MM-DD>[-RESUME].md; the census filter matched the
 # doc stem verbatim, so a live leg read procs=0 (reproduced on N41 itself).
@@ -817,7 +819,7 @@ contains 'a date-suffixed -RESUME doc still counts its live session (HIMMEL-3167
 dated_burn_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --burn --legs 'HIMMEL-555-N41-thing-2026-09-18')"
 contains 'a date-suffixed leg doc still resolves its --burn transcript (HIMMEL-3167)' "$dated_burn_out" 'burn=N41:60.0k/90.0k'
 
-# --- HIMMEL-3197: gql=<remaining>/<reset HH:MM> ----------------------------------
+# --- gql=<remaining>/<reset HH:MM> ----------------------------------
 # The GitHub GraphQL budget is shared fleet-wide; a console needs to see exhaustion
 # coming. Read by gh-graphql-budget.sh's ghb_read -- ONE real `gh api -i graphql`
 # call (never `gh api rate_limit`, which reports the REST core bucket) -- and
@@ -853,7 +855,7 @@ case "$gql_burn" in
     *) fail "gql=/orphans= order under --burn (out='$gql_burn')" ;;
 esac
 
-# --- HIMMEL-2761: orphans=<owner>:<count>/<oldest>m ---------------------------
+# --- orphans=<owner>:<count>/<oldest>m ---------------------------
 # A wrapper shell older than the floor under a live session is surfaced at the
 # next tick, joined to that session's name (orphan-loops.sh; its own suite pins
 # the walk/threshold rules). Appended last, after gql=, so no field moves.
@@ -872,7 +874,7 @@ contains '--verbose labels the orphan inventory (HIMMEL-2761)' "$(PS_FIXTURE="$W
 : > "$W/ps-empty.txt"
 contains 'an unreadable process table reads orphans=? and never fails the tick (HIMMEL-2761)' "$(PS_FIXTURE="$W/ps-empty.txt" bash "$SUT")" ' orphans=?'
 
-# --- HIMMEL-3277: one leg identity, used by every tick consumer ---------------
+# --- one leg identity, used by every tick consumer ---------------
 # Names here are the ones the harness really produces, not ones invented to fit
 # the parser. Doc = docs/handover/leg-brief-template.md's stated pattern; session
 # = the <TICKET>-N<k>-<slug> the console passes headed-arm-leg.sh (this shift's
@@ -914,7 +916,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
 contains 'a hyphenated label span parses, trailing backticked prose and all (HIMMEL-3277)' "$(t3277 'HIMMEL-9-odd-name-2026-09-20-RESUME')" 'livestate=ok'
 
 # A genuinely stale Live state still fires: N192 is held but unnamed (DRIFT). N199
-# is named but the arm does not cover it, so it reads legset=unarmed (HIMMEL-3293),
+# is named but the arm does not cover it, so it reads legset=unarmed,
 # not DRIFT -- the tick has no lock for it. The fix must not make the check unable to fire.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
@@ -926,12 +928,12 @@ contains 'a Live-state leg the arm omits reads legset=unarmed, not DRIFT (HIMMEL
 printf '%s\n' '# console' '' '## Live state' '' \
     'legs: `HIMMEL-9-odd-name-2026-09-20-RESUME:n:t:1`, `HIMMEL-8-gone-2026-09-20-RESUME:n:t:2`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/console.md"
-# The stale leg is ARMED here (HIMMEL-3293: an unarmed one is legset=, not DRIFT): a
+# The stale leg is ARMED here: a
 # doc with no lock, so its lock is gone while Live state still names it.
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/HIMMEL-8-gone-2026-09-20-RESUME.md"
 contains 'a stale hyphenated label is still DRIFT, not silently dropped (HIMMEL-3277)' "$(t3277 'HIMMEL-9-odd-name-2026-09-20-RESUME HIMMEL-8-gone-2026-09-20-RESUME')" 'livestate=DRIFT:HIMMEL-8-gone-2026-09-20-RESUME'
 
-# --- HIMMEL-3280: the legs: line is read for ENTRIES, not for every backtick span.
+# --- the legs: line is read for ENTRIES, not for every backtick span.
 # The console's own explanatory parenthetical named the token `legs:` in
 # backticks; the span pattern only asked for "label chars, a colon, anything",
 # so it matched and read as a phantom leg named "legs" (RED control, pre-fix
@@ -1003,7 +1005,7 @@ printf '%s\n' '# console' '' '## Live state' '' \
     > "$W/handover/console.md"
 contains 'a malformed span and a stale leg both surface (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'livestate=MALFORMED:N191;DRIFT:N192 '
 
-# --- HIMMEL-3281: the legs: BLOCK is read, not just its first line ------------
+# --- the legs: BLOCK is read, not just its first line ------------
 # The block is the legs: line(s) plus lines wrapped directly under them, up to
 # the first blank line or the next `field:` line. RED control (pre-fix tick.sh,
 # first fixture below): both legs' locks held (legs=N191:FRESH,N192:FRESH, same
@@ -1067,7 +1069,7 @@ wrap_case 'prose bullets directly under legs: (no blank line) are not entries or
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' \
     '- **N192** BLOCKED — see `stuck-playbook.md:408`, `tick.sh:234`, worktree `.claude/worktrees/fix+himmel-3273-stop-queue-race`, head `798a4bda26487e04140d0b7aee715be51c7e7247`' \
     'queue: none' 'last GO: none' 'acked: none'
-# --- HIMMEL-3284: a `<name>.md:<line>` cite ON the legs: line is prose. RED
+# --- a `<name>.md:<line>` cite ON the legs: line is prose. RED
 # control (pre-fix tick.sh, first fixture below): both locks held
 # (legs=N191:FRESH,N192:FRESH, asserted by wrap_case) and
 # livestate=MALFORMED:stuck-playbook.md -- leg_label reduces the doc stem
@@ -1159,7 +1161,7 @@ contains 'a live session under an underivable name reads procs=unknown (HIMMEL-3
 # ...but a leg that is NOT held (wrapped) expects no process: 0 is a real count.
 contains 'a wrapped (FREE) leg with no session is a real procs=0 (HIMMEL-3277)' "$(PATH="$W/bin-3277-none:$PATH" bash "$SUT" --legs 'HIMMEL-7-N77-wrapped-2026-09-20-RESUME' 2>/dev/null)" 'procs=0'
 
-# --- HIMMEL-3287: the console template's own legs: placeholder must not parse.
+# --- the console template's own legs: placeholder must not parse.
 # The doc under test is the REAL docs/handover/console-template.md, not a fixture
 # copy of its line: the template shipped `legs: <none dispatched yet, or
 # `N1:<nonce>:<lock-token>:<pid>`, `N2:…`>`, whose two backtick spans are exactly
@@ -1210,7 +1212,7 @@ case "$next3287" in
     *) pass 'the /console next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
 esac
 
-# --- HIMMEL-3293: one leg set -- a stale --legs arm is an INPUT problem, never
+# --- one leg set -- a stale --legs arm is an INPUT problem, never
 # leg drift. The ticket's own fixture: a Live state naming THREE legs, a --legs
 # naming TWO, one of them wrapped. N301 is held and armed; N302 and N303 are held
 # and live but were dispatched after the arm (not in --legs); N300 is wrapped (its
@@ -1276,7 +1278,7 @@ contains 'an agreeing arm still surfaces the live legs outside it (HIMMEL-3293)'
 printf '%s\n' '# console' '' 'no Live state section in this doc at all' > "$W/handover/console.md"
 contains 'a console doc with no Live state section reads legset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'legset=unknown'
 
-# --- HIMMEL-3305: a resolved FINDING must read differently from an open one.
+# --- a resolved FINDING must read differently from an open one.
 # The ticket's case (leg N219, 2026-09-20): a leg raised a FINDING, the console
 # accepted it the same minute, and tails= kept reading FINDING for the 23 minutes
 # the leg spent doing the authorised work. The vocabulary had no word to retire a
@@ -1325,7 +1327,7 @@ done
 # shellcheck disable=SC2016  # backtick-quoted markers, literal doc text
 contains 'leg-preface.md says SHIPPED and MERGED are not markers (HIMMEL-3305)' "$(cat "$repo3305/docs/handover/leg-preface.md")" '`SHIPPED` and `MERGED` are deliberately not in the'
 
-# --- HIMMEL-3393: a bullet's status is its LEADING token, never a word in its text.
+# --- a bullet's status is its LEADING token, never a word in its text.
 # The ticket's case (leg N293, 2026-09-21): the newest bullet was
 # `- 23:47 LIVE — … Judgment call, not a FINDING: …`; the derivation took the
 # highest-precedence marker anywhere in the bullet, so tails= read FINDING and the
@@ -1351,7 +1353,7 @@ contains 'a bold leading marker reads as that marker (HIMMEL-3393)' "$(tail3393 
 contains 'a bullet leading with prose is invisible to the tick (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:48 Sent the FINDING to the console, will report READY once it rules')" 'N393:FINDING'
 contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDINGS pending, no marker here')" 'N393:LIVE'
 
-# --- HIMMEL-3290: a lock queue-lock can neither attribute to this doc nor rule
+# --- a lock queue-lock can neither attribute to this doc nor rule
 # out (status `held -- UNVERIFIED`, rc 11) reads UNVERIFIED -- never FREE, which
 # the console reads as "reclaim it", and never folded into WRAPPED by the leg's
 # own tail. RED control (pre-fix tick.sh): legs=N380:UNKNOWN.
@@ -1359,7 +1361,7 @@ u3290="HIMMEL-3380-N380-unverified-2026-09-22-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$u3290.md"
 contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --legs "$W/handover/$u3290.md" 2>/dev/null)" 'legs=N380:UNVERIFIED '
 
-# --- HIMMEL-5541: a past-TTL lock whose owner is provably dead (status
+# --- a past-TTL lock whose owner is provably dead (status
 # `STALE-DEAD`, rc 12) reads STALE-DEAD and is NOT a held leg: it must not
 # fold into the FRESH/STALE held set. RED control (pre-fix tick.sh):
 # legs=N390:STALE.
@@ -1369,7 +1371,7 @@ out5541="$(bash "$SUT" --legs "$W/handover/$d5541.md" 2>/dev/null)"
 contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'legs=N390:STALE-DEAD '
 not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'legs=N390:STALE '
 
-# --- HIMMEL-3361: board=<ok|STALE:<age>|MISSING|skip> -- the console's progress
+# --- board=<ok|STALE:<age>|MISSING|skip> -- the console's progress
 # board (console-board.html, written by board.mjs next to the console doc) must be
 # structurally checked, not remembered. RED control (pre-fix tick.sh): the line
 # carries no board= field at all, so a console that never rendered one, or whose
@@ -1434,7 +1436,7 @@ if command -v node >/dev/null 2>&1; then
     # A leg tail change (READY) is a phase change: republish.
     printf '%s\n' '- 12:30 READY 1023 abc GREEN' >> "$W/handover/$b3361.md"
     contains 'a leg phase change stales the board (HIMMEL-3361)' "$(t3361)" ' board=STALE:'
-    # --- HIMMEL-3366: one Live-state block, read by tick.sh and by board.mjs, names
+    # --- one Live-state block, read by tick.sh and by board.mjs, names
     # the same legs. RED control (pre-fix board.mjs): its own parser accepted a
     # three-field span (N4), an empty-field span (N5), a span in a `>` line (N8) and
     # a detail bullet (N6), and rejected a label with _ . - (N3_x.y-z). The tick
@@ -1462,7 +1464,7 @@ else
     printf 'SKIP - board round-trip (node not installed)\n'
 fi
 
-# --- HIMMEL-3747 Ask 1: a WRAPPED leg (lock free, tail says WRAPPED) whose own
+# --- a WRAPPED leg (lock free, tail says WRAPPED) whose own
 # session process is STILL alive in the census reads CLOSABLE, not WRAPPED --
 # the window is sitting there finished but not yet closed, and this is the
 # signal a console should wake on and go close it.
@@ -1495,7 +1497,7 @@ chmod +x "$W/bin-3747c/pgrep"
 o3747c="$(PATH="$W/bin-3747c:$PATH" bash "$SUT" --legs "$W/handover/$w3747c.md")"
 contains 'a fatal census must not promote a live-looking leg to CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747c" 'legs=N642:WRAPPED'
 
-# --- HIMMEL-3724: denials= (classifier-denial jsonl -> tick line, SHIP-STEP /
+# --- denials= (classifier-denial jsonl -> tick line, SHIP-STEP /
 # REPEAT / PAUSE-RISK / none / skip). mkdenial writes one row at an offset
 # (minutes before "now") so tests control window inclusion without a stale
 # fixture; row shape matches scripts/hooks/log-classifier-denial.sh's fields.
@@ -1580,7 +1582,7 @@ mksess "$d3724x" 4 repo dddddddd44444444 /home/u/repo 'cat x'
 o3724x="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724x" bash "$SUT" 2>/dev/null)"
 contains 'a denial rotated into <log>.1 still counts inside the window (HIMMEL-3724)' "$o3724x" 'denials=repo#dddddddd:2:REPEAT'
 
-# HARD RULE (HIMMEL-3724): input_head and reason_tag never leave the host --
+# HARD RULE: input_head and reason_tag never leave the host --
 # they classify locally and must not be echoed into the tick line.
 d3724r="$W/denials-3724r.jsonl"
 : > "$d3724r"
@@ -1609,7 +1611,7 @@ printf '%s\n' '{"ts":"2099-01-01T00:00:00Z","session_title":"leg-b","input_head"
 o3724i="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724i" bash "$SUT" 2>/dev/null)"
 contains 'a non-string input_head row is skipped, denials= stays populated (HIMMEL-3724)' "$o3724i" 'denials=leg-a:1:SHIP-STEP'
 
-# --- HIMMEL-3840: ciq= (queue-latency.sh -> compact field + SATURATED on two
+# --- ciq= (queue-latency.sh -> compact field + SATURATED on two
 # consecutive full ticks). The stub prints $STUB_CIQ_OUT verbatim, after
 # STUB_CIQ_SLEEP seconds, and appends one line per call to $STUB_CIQ_CALLS.
 mkdir -p "$W/repo/scripts/ci"
@@ -1676,7 +1678,7 @@ else
     skip 'probe timeout rows: no timeout binary'
 fi
 
-# --- HIMMEL-3933: tracker=<ok|STALE:<age>|MISSING|skip> -- the roadmap tracker page
+# --- tracker=<ok|STALE:<age>|MISSING|skip> -- the roadmap tracker page
 # (roadmap-tracker.html, rendered by tracker.py next to the console doc) is checked
 # against the Jira mirror's newest updated time plus the plan files, like board=.
 # RED control (pre-change tick.sh): no tracker= field, so a tracker that drifted from
@@ -1705,7 +1707,7 @@ if command -v python3 >/dev/null 2>&1; then
             ${1:+"tracker: $1"} "tracker-plan: $t3933_plan" '' \
             '## Results (newest at the bottom)' '- 12:00 DISPATCH N361' > "$W/handover/console.md"
     }
-    # TRACKER_HANDOVERS_DIR: tick's --emit-fp reads live legs from the same fake bucket the render did (HIMMEL-3990).
+    # TRACKER_HANDOVERS_DIR: tick's --emit-fp reads live legs from the same fake bucket the render did.
     t3933() { PATH="$W/bin-3361:$PATH" TICK_TRACKER_MIRROR_DIR="$t3933_mir" TRACKER_HANDOVERS_DIR="$W/tracker3933/luna/handovers/tester/himmel" bash "$SUT" --legs "$W/handover/$b3361.md" "$@"; }
     t3933_render() { python3 "$HERE/tracker.py" --plan-dir "$t3933_plan" --out "$t3933_out" --luna-map "$W/tracker3933/luna-map.json" --mirror-dir "$t3933_mir" --luna-root "$W/tracker3933/luna" --handovers "$W/tracker3933/luna/handovers/tester/himmel" >/dev/null; }
     rm -f "$t3933_out" "$t3933_out.fp"
@@ -1732,7 +1734,7 @@ else
     skip 'tracker= rows: no python3'
 fi
 
-# --- HIMMEL-4051: plan-index=<ok|ok:pending|REFRESHING|FAIL:<why>|skip> -- the tick keeps the
+# --- plan-index=<ok|ok:pending|REFRESHING|FAIL:<why>|skip> -- the tick keeps the
 # roadmap-plan qmd index fresh without ever waiting on it: only `plan-index.sh --check` (a
 # fingerprint) runs inline; a stale index launches --refresh DETACHED. A stub qmd only, an
 # --out under $W (never ~/.himmel/state). RED control (pre-change tick.sh): no plan-index= field.
@@ -1820,12 +1822,12 @@ STUB
     wait4051
 
     # an overlapping launch (OUT/.launch held) reads REFRESHING and a duplicate wrapper exits
-    # without touching the live refresh's bookkeeping (codex-1)
+    # without touching the live refresh's bookkeeping
     echo five >> "$p4051_mir/HIMMEL-111.md"
     mkdir "$p4051_out/.launch"; echo 77 > "$p4051_out/.last-run"
     n4051="$(wc -l < "$p4051_calls")"
     contains 'a held launch lock reads plan-index=REFRESHING (HIMMEL-4051)' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
-    # HIMMEL-4059: drive the PRODUCTION wrapper (not a hand copy); RED control: pre-change the
+    # drive the PRODUCTION wrapper (not a hand copy); RED control: pre-change the
     # wrapper was inline in tick.sh, so plan-index-launch.sh is absent and the first check fails
     wrap4059="$(dirname "$SUT")/plan-index-launch.sh"
     [ -f "$wrap4059" ] && pass 'the launch wrapper is its own script (HIMMEL-4059)' || fail 'plan-index-launch.sh is missing (HIMMEL-4059)'
@@ -1837,7 +1839,7 @@ STUB
     [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 5 ] && [ ! -d "$p4051_out/.launch" ] && pass 'the wrapper records rc and releases .launch (HIMMEL-4059)' || fail 'wrapper did not record rc / release .launch (HIMMEL-4059)'
     rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
 
-    # HIMMEL-4059 item 1: an --out path with a quote and a command substitution must neither run
+    # an --out path with a quote and a command substitution must neither run
     # text nor leave .launch behind (the old double-quoted trap re-parsed $o when it fired)
     p4051_out_save="$p4051_out"
     # shellcheck disable=SC2016  # the $( is a literal hostile path component
@@ -1846,7 +1848,7 @@ STUB
     [ ! -e "$p4051/PWNED" ] && [ -f "$p4051_out/.last-run" ] && [ ! -d "$p4051_out/.launch" ] && pass 'a hostile --out path is cleaned up without running text (HIMMEL-4059)' || fail 'hostile --out path left .launch or ran text (HIMMEL-4059)'
     p4051_out="$p4051_out_save"
 
-    # HIMMEL-4734: the wrapper writes .last-run BEFORE its EXIT trap removes .launch, so a wait
+    # the wrapper writes .last-run BEFORE its EXIT trap removes .launch, so a wait
     # on .last-run alone can assert inside that gap under load. RED control: a wrapper copy with
     # a sleep injected into the trap widens the gap; a .last-run-only wait4051 fails this check
     p4051_out="$p4051/o4734"; mkdir -p "$p4051_out"
@@ -1857,11 +1859,11 @@ STUB
     wait
     p4051_out="$p4051_out_save"
 
-    # HIMMEL-4059 item 3: a launcher that is not installed reads FAIL:no-launcher and writes .last-fail
+    # a launcher that is not installed reads FAIL:no-launcher and writes .last-fail
     p4051_out="$p4051/out-nolauncher"
     contains 'a missing launcher reads plan-index=FAIL:no-launcher (HIMMEL-4059)' "$(TICK_PLAN_INDEX_LAUNCHER=no-such-launcher-4059 t4051)" ' plan-index=FAIL:no-launcher'
     [ -s "$p4051_out/.last-fail" ] && pass 'a missing launcher writes .last-fail (HIMMEL-4059)' || fail 'no .last-fail for a missing launcher (HIMMEL-4059)'
-    # one installed word must not mask a missing one (codex-1: command -v passes if ANY operand exists)
+    # one installed word must not mask a missing one
     rm -rf "$p4051_out"
     contains 'a half-installed launcher reads plan-index=FAIL:no-launcher (HIMMEL-4059)' "$(TICK_PLAN_INDEX_LAUNCHER='env no-such-launcher-4059' t4051)" ' plan-index=FAIL:no-launcher'
     rm -rf "$p4051_out"
@@ -1871,7 +1873,7 @@ else
     skip 'plan-index= rows: no python3'
 fi
 
-# HIMMEL-4076: removing the fleet-based skip would read a metered account
+# removing the fleet-based skip would read a metered account
 # without a live OpenRouter leg; missing the field hides its effective floor.
 cat > "$W/repo/scripts/lanes/openrouter-cost.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -1897,7 +1899,7 @@ contains 'OpenRouter leg marker selects lane verdict' \
 contains 'OpenRouter funded verdict surfaces without changing raw balance' \
   "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' bank=openrouter:PROCEED '
 
-# --- HIMMEL-4421: spare=<pct>@<h>h ---------------------------------------------
+# --- spare=<pct>@<h>h ---------------------------------------------
 # tick reads bank-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
 # projection maths is test-bank-monitor.sh's), so only tick's gating is pinned.
 cat > "$W/repo/scripts/lib/bank-monitor.sh" <<'STUB'
@@ -1907,7 +1909,7 @@ printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
 STUB
 spare_has() { case "$2" in *' spare='*) fail "$1 (out='$2')" ;; *) pass "$1" ;; esac; }
 spare_out="$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT")"
-contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? spare=33@6h'
+contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? vmrun=off spare=33@6h'
 spare_has 'spare= is absent below the spare threshold (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")"
 spare_has 'spare= is absent when the reset is more than 24h out (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=24.5h unspent_at_reset=60.0' bash "$SUT")"
 spare_has 'spare= is absent when the monitor reads ? (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=? unspent_at_reset=?' bash "$SUT")"
@@ -1920,7 +1922,7 @@ contains 'verbose labels spare (HIMMEL-4421)' \
 rm -f "$W/repo/scripts/lib/bank-monitor.sh"
 spare_has 'a missing bank-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
 
-# --- HIMMEL-4568: a READY with no GO file for 30 minutes is a wake. tails= is in the
+# --- a READY with no GO file for 30 minutes is a wake. tails= is in the
 # console-wait action key, so the entry moving READY -> READY!stale wakes it once.
 # RED control (pre-fix tick.sh): the old READY leg reads tails=N568:READY.
 d4568="$W/handover/HIMMEL-4568-N568-stale-ready-2026-10-06.md"
@@ -1939,7 +1941,7 @@ printf '%s\n' '# leg' "- 10:40 READY 4568 $head4568 GREEN" '- 10:41 LIVE — fix
 touch -d '31 minutes ago' "$d4568"
 [ "$(tail4568)" = N568:LIVE ] && printf 'ok - an old LIVE tail is never marked stale (HIMMEL-4568)\n' || { fails=$((fails+1)); printf 'FAIL - old LIVE went stale\n'; }
 
-# --- HIMMEL-4670 P4: fails=<n>/<legs>[@<top-class>*<k>][!<recur>] -----------------
+# --- fails=<n>/<legs>[@<top-class>*<k>][!<recur>] -----------------
 # This shift = leg-failures rows with ts >= the console lock's `started`. The stub
 # queue-lock prints an owner.json for a *console-fails* doc (started 03:00Z) and
 # `free` for any other doc, so a console lock with no start reads fails=?.
@@ -1982,11 +1984,12 @@ frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= follows or= (HIMMEL-4670)' "$f4670" ' or=skip fails=1/1@error/Edit*1'
-case "$f4670" in *' fails='*' '*) fail "fails= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'fails= is the last field when spare= is absent (HIMMEL-4670)' ;; esac
+contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
+case "$f4670" in *' vmrun='*' '*) fail "vmrun= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'vmrun= is the last field when spare= is absent (HIMMEL-5037)' ;; esac
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'
-# HIMMEL-4786: ~<k> = legs whose wrap digest was skipped this shift (the step's
+# ~<k> = legs whose wrap digest was skipped this shift (the step's
 # skips.jsonl, distinct docs), so an undigested wrap is no longer silent.
 {
     printf '%s\n' '{"ts":"2026-10-07T03:10:00Z","doc":"A.md","reason":"no-chain"}'
@@ -2002,7 +2005,7 @@ same 'fails=? when the skips log is unreadable (HIMMEL-4786)' "$(fails_of "$d467
 rmdir "$LEG_DIGEST_STATE_DIR/skips.jsonl"
 rm -f "$HIMMEL_LEG_FAILURES_LEDGER" "$HIMMEL_EVAL_RUNS_LEDGER" "$HIMMEL_FAILURE_ROUTES_LOG"
 
-# --- HIMMEL-5131: flakes=<rows>/<suites>@<top-suite>*<k> ---------------------------
+# --- flakes=<rows>/<suites>@<top-suite>*<k> ---------------------------
 # This shift = suite-flake rows for this repo id with ts >= the console lock's
 # `started` (03:00Z). Absent unless a row is new; a quiet shift keeps the line as is.
 mkdir -p "$W/repo/scripts/observability"
@@ -2042,7 +2045,7 @@ fk_out="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 case "$fk_out" in *' flakes='*) fail "tick.sh guard let an NBSP-bearing reader line through (out='$fk_out')" ;; *) pass 'tick.sh drops a reader line carrying Unicode whitespace (HIMMEL-5131)' ;; esac
 cp "$HERE/../../observability/suite-flake-summary.sh" "$W/repo/scripts/observability/suite-flake-summary.sh"
 
-# --- HIMMEL-4911: vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> -- the luna
+# --- vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> -- the luna
 # vault's commit health, from vault-status.sh. RED control (pre-change tick.sh): the
 # line carries no vault= field, so a stalled vault commit is invisible to the console.
 v4911="$W/vault4911"
@@ -2065,10 +2068,10 @@ contains 'an unpushed commit past the threshold reads vault=PUSH-LAG:<age> (HIMM
 mkdir -p "$W/vault4911bad/.git"; echo garbage > "$W/vault4911bad/.git/HEAD"
 contains 'a corrupt vault reads vault=unknown and the tick still runs (HIMMEL-4911)' "$(t4911 "$W/vault4911bad")" ' vault=unknown'
 
-# --- HIMMEL-5163: cloud=<ok|STALL:<ticket>[,...]|skip> -- cloud-sessions.tsv against the
+# --- cloud=<ok|STALL:<ticket>[,...]|skip> -- cloud-sessions.tsv against the
 # forge. Fixtures are REAL: the tsv rows are the 2026-10-10 launch rows, the PR JSON is the
 # trimmed `gh pr list` output for PR 2314 (HIMMEL-5077: open, one commit, CLOUD-DONE, no
-# shepherd), PR 2306 (HIMMEL-4657: merged) and PR 1982. 4655 and 4686 produced no branch.
+# shepherd), PR 2306 and PR 1982. 4655 and 4686 produced no branch.
 # RED control (pre-change tick.sh): the line carries no cloud= field at all.
 c5163="$W/cloud5163"
 mkdir -p "$c5163"
@@ -2111,7 +2114,7 @@ printf '%s\t%s\t%s\t%s\n' '2026-10-10T15:56:20' HIMMEL-5077 session_012yMgxSaSsk
 GHSTUB5163=gh-silent
 contains 'an open PR with no CLOUD-DONE and no commit for an hour reads STALL (HIMMEL-5163)' "$(t5163 | cloud_of)" 'STALL:HIMMEL-5077'
 contains 'the same PR under a raised quiet threshold is working, not a stall (HIMMEL-5163)' "$(CLOUD_LIVENESS_PR_MIN=9999 t5163 | cloud_of)" 'ok'
-# Review round 1: a relaunch supersedes the earlier launch, so a PR made before it no longer
+# a relaunch supersedes the earlier launch, so a PR made before it no longer
 # speaks for the ticket; a full gh page that may have cut a live session's PR off is unknown.
 printf '%s\t%s\t%s\t%s\n' '2026-10-10T18:20:00' HIMMEL-5077 session_relaunch 'claude --teleport session_relaunch' > "$c5163/cloud-sessions.tsv"
 contains 'a PR from before the relaunch does not stall the new session (HIMMEL-5163)' "$(t5163 | cloud_of)" 'ok'

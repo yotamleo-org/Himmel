@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-vault-status.sh — HIMMEL-4911. vault-status.sh classifies the luna vault's
+# test-vault-status.sh — vault-status.sh classifies the luna vault's
 # commit health for the console tick (ok | STALL:<age>,<n> | PUSH-LAG:<age> |
 # skip | unknown); bucket-gitleaks.sh is the leg-side pre-check of a bucket
 # file. Fixture git repos under a scratch dir only: the real vault is never read.

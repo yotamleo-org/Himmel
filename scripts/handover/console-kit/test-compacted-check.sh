@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 # scripts/handover/console-kit/test-compacted-check.sh - suite for
-# compacted-check.sh (HIMMEL-2973 G11), the checker that proves a console's
+# compacted-check.sh, the checker that proves a console's
 # post-compaction COMPACTED bullet matches the PreCompact snapshot
 # (scripts/hooks/console-precompact-snapshot.sh) taken at the moment of
 # compaction:

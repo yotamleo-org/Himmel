@@ -1485,6 +1485,27 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertEqual(remotes[0], remotes[1])       # idempotent retry
         self.assertNotEqual(remotes[0], remotes[2])    # edit -> new path
 
+    def test_scheduled_edited_source_keeps_same_source_key(self):
+        """HIMMEL-841: an edited source gets a new guest path, but the
+        arm-resume dedup key (--source-key) must stay stable so the re-arm
+        hits arm-resume's dedup instead of queuing a second guest job."""
+        import hashlib
+        vm = self._vm()
+        cmds = []
+        def fake_run(cmd, **kw):
+            cmds.append(cmd)
+            return (0, "armed")
+        with mock.patch.object(vm, "push_file", side_effect=lambda l, r, **kw: f"/home/u/{r.lstrip('~/')}"), \
+             mock.patch.object(vm, "run", side_effect=fake_run):
+            vm.trigger_claude(str(self.local), when="22:30")
+            self.local.write_text("# handover EDITED\n")
+            vm.trigger_claude(str(self.local), when="22:30")
+        tag = hashlib.sha1(str(Path(self.local).resolve()).encode()).hexdigest()[:8]
+        self.assertEqual(len(cmds), 2)
+        for c in cmds:
+            self.assertIn(f"--source-key {tag}", c)
+        self.assertNotEqual(cmds[0].split("--handover")[1], cmds[1].split("--handover")[1])
+
     def test_immediate_passes_timeout_and_cwd(self):
         vm = self._vm()
         with mock.patch.object(vm, "push_file", return_value="/h/x.md"), \

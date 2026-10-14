@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-leg.sh
 # scripts/handover/console-kit/test-brief-lint.sh - suite for brief-lint.sh
-# (HIMMEL-4573): the arming-time check that a leg or judge brief carries a
+# the arming-time check that a leg or judge brief carries a
 # filled `> **Prior art:**` line, plus the headed-arm-leg.sh call site that
 # refuses an arming with a failing brief unless --no-prior-art-check is passed.
 #
@@ -14,9 +14,9 @@
 #   4. headed-arm-leg.sh refuses a template-shaped brief (carries a `> **Contract:**`
 #      or `> **Completion condition:**` line) that fails the lint, naming
 #      --no-prior-art-check; the flag lets it through; a filled brief passes;
-#      a relay or consult launch is not gated; HIMMEL-4619: a brief with neither
+#      a relay or consult launch is not gated; a brief with neither
 #      field is gated too (4e).
-#   5. HIMMEL-4749: a fresh brief with no front-matter `description:` (or the
+#   5. a fresh brief with no front-matter `description:` (or the
 #      template placeholder) FAILS, naming the field; a doc whose Results already
 #      holds a bullet (a resume) passes without one. headed-arm-leg.sh refuses a
 #      fresh template-shaped launch with no description, --no-prior-art-check
@@ -38,7 +38,7 @@ mk_raw() { # name lines...
     local f="$tmp/$1.md"; shift
     printf '%s\n' "$@" > "$f"
 }
-# A template brief opens with front matter carrying its description (HIMMEL-4749).
+# A template brief opens with front matter carrying its description.
 mk() { # name lines...
     local n="$1"; shift
     mk_raw "$n" '---' 'description: Check the lint on a test brief' '---' "$@"

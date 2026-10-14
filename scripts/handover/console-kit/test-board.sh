@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-board.sh — HIMMEL-3361. Hermetic tests for board.mjs, the generator of the
+# test-board.sh — Hermetic tests for board.mjs, the generator of the
 # console's progress board (console-board.html). tick.sh and gh are stubbed (a
 # BOARD_TICK override and a PATH stub), so the suite reads no queue, process,
 # scheduler or GitHub state. The board<->tick freshness round trip (board.mjs
@@ -34,9 +34,9 @@ same() {
 
 B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
-# HIMMEL-4670: the failures panel reads these ledgers; never the operator's own.
+# the failures panel reads these ledgers; never the operator's own.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
-# HIMMEL-4877: the bank lift row reads the lift's `show` output through this stub,
+# the bank lift row reads the lift's `show` output through this stub,
 # never the operator's lift file or account. BANK_LIFT_STUB_OUT is a fixture file
 # of `show` output; unset prints the no-lift output.
 cat > "$W/bin/bank-lift-stub" <<'STUB'
@@ -75,7 +75,7 @@ esac
 STUB
 chmod +x "$W/bin/gh"
 
-# Sessions stub (Ask 3, HIMMEL-3745): sourced, then claude_sessions() is called, same as
+# Sessions stub (Ask 3): sourced, then claude_sessions() is called, same as
 # board.mjs invokes the real claude-sessions.sh. Empty by default -- no window is ever
 # "still open" unless a test explicitly points BOARD_SESSIONS elsewhere. Never the real
 # process census.
@@ -131,7 +131,7 @@ mkleg HIMMEL-3350-N6-zeta '- 12:00 READY-TO-OPEN — /pr-check clean, not opened
 mkleg HIMMEL-3351-N7-eta '- 12:00 BLOCKED — the push was refused <script>alert(1)</script>'
 mkleg HIMMEL-3370-N8-theta '- 12:00 LIVE — PR 1700 open, watching CI'
 mkleg HIMMEL-3371-N9-iota '- 12:00 LIVE — PR 1701 open, watching CI'
-# HIMMEL-3374: a bullet that merely CITES a PR is not the leg's PR. N10 has no PR of
+# a bullet that merely CITES a PR is not the leg's PR. N10 has no PR of
 # its own, so it keeps its phase; a citation in any form (#n, PR #n, PR n merged, a
 # /pull/ URL) attributes nothing.
 mkleg HIMMEL-3377-N10-lambda '- 12:00 LIVE — working' '- 12:20 FINDING scope-shrunk — #1995 (HIMMEL-3348, in the base) already shipped; see PR #1995 merged, PR 1995 merged, https://github.com/o/r/pull/1995'
@@ -203,7 +203,7 @@ else
     fail "board path (rc=$rc out='$out' stderr=$(cat "$W/stderr.log" 2>/dev/null))"
 fi
 html="$(cat "$board" 2>/dev/null)"
-# HIMMEL-3369: a healthy lookup warns of nothing (the failure cases are pinned below).
+# a healthy lookup warns of nothing (the failure cases are pinned below).
 lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'leg labels unavailable'
 lacks 'a healthy label lookup renders no unavailable banner (HIMMEL-3369)' "$html" 'labels-unavailable'
 
@@ -240,7 +240,7 @@ contains 'a READY-TO-OPEN leg awaits the console' "$html" 'data-need="N6"'
 # tail === 'FINDING' before lostLock, so the lock text never rendered.
 contains 'a FINDING leg with a lost lock still shows the lock (issue #1336)' "$html" '<b>N12</b> FINDING — needs a ruling · lock STALE — lost or stale'
 contains 'the Live-state decisions: line renders as open operator decisions' "$html" 'widen the fleet cap to 20?'
-# HIMMEL-3944: a ';' inside parentheses does not split a decision.
+# a ';' inside parentheses does not split a decision.
 DOCD="$B/HIMMEL-nextleg-2026-09-21V-console-d.md"
 sed 's/^decisions: .*/decisions: A (x; y); B?/' "$DOC" > "$DOCD"  # gnu-ok: console kit is Linux-only
 PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-d.log" \
@@ -281,7 +281,7 @@ contains 'a failing tick still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'and says the tick was unavailable' "$(cat "$board")" 'tick unavailable'
 lacks 'and embeds no fingerprint that would read ok' "$(cat "$board")" 'name="console-board-fp" content="deadbeef'
 
-# --- HIMMEL-3366: the follow-ups deferred from the first board
+# --- the follow-ups deferred from the first board
 # Results parse is section-bounded: a later section's bullet is not the leg's Results.
 lacks "a later section's bullet is not the leg's last Results bullet" "$html" 'unrelated later-section'
 # Merged detection reads the PR itself, not the 24 h merged panel.
@@ -302,7 +302,7 @@ lacks 'a span with an empty field is not an entry' "$html" 'data-label="N17"'
 contains 'a doc stem in Live state resolves that exact doc' "$html" '<b>N18</b> <span class="tk">HIMMEL-3375</span>'
 contains 'a reused label resolves to the doc holding the entry nonce' "$html" '<b>N19</b> <span class="tk">HIMMEL-3376</span>'
 
-# --- HIMMEL-3369: a failed leg-label lookup is visible, not an empty fleet. The
+# --- a failed leg-label lookup is visible, not an empty fleet. The
 # BOARD_LEGID seam points at a helper that fails, or labels fewer names than asked.
 printf '%s\n' 'return 3' > "$W/legid-fail.sh"
 BOARD_LEGID="$W/legid-fail.sh" run --out "$W/fail-board.html" >/dev/null; rc=$?
@@ -329,7 +329,7 @@ contains 'a short label lookup renders the unavailable banner' "$shorthtml" 'dat
 contains 'a short label lookup keeps the legs it did label' "$shorthtml" 'data-label="N1"'
 lacks 'a short label lookup does not claim no legs' "$shorthtml" 'no worker sessions'
 
-# --- HIMMEL-3745 (Ask 3): a WRAPPED leg whose claude window is still alive is its
+# --- (Ask 3): a WRAPPED leg whose claude window is still alive is its
 # own needs-the-console state, derived from an independent process census -- never
 # from tick.sh's procs= (which only counts HELD legs). N5 is the fixture's one
 # WRAPPED leg (doc stem HIMMEL-3300-N5-eps-2026-09-21); leg_identity() derives its
@@ -360,7 +360,7 @@ contains 'an unavailable census still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'and leaves the WRAPPED leg as plain WRAPPED' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED"'
 lacks 'never flags "still open" on a census it could not read' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED, window still open"'
 
-# --- HIMMEL-3745 (Ask 1): --changed re-renders and reports whether the render moved,
+# --- (Ask 1): --changed re-renders and reports whether the render moved,
 # so a console can call ONE kit command after every Live-state mutation; the Artifact
 # publish stays a separate model step.
 rm -f "$W/changed-board.html"
@@ -372,7 +372,7 @@ same '--changed on an identical re-render reports UNCHANGED' "$out2" "UNCHANGED 
 out3="$(TICK_STUB_FAIL=1 run --out "$W/changed-board.html" --changed)"
 same '--changed after tick goes unavailable (fp now empty, prior fp was real) reports CHANGED' "$out3" "CHANGED $W/changed-board.html"
 
-# --- HIMMEL-3745 (Ask 3 x Ask 1): the WRAPPED-window census is read independently
+# --- (Ask 3 x Ask 1): the WRAPPED-window census is read independently
 # of tick's --emit-fp, so a window opening on an otherwise-unchanged tick
 # fingerprint must still flip --changed to CHANGED.
 rm -f "$W/changed-census-board.html"
@@ -384,7 +384,7 @@ same 'a WRAPPED leg gaining a live window flips CHANGED although tick-fp is unch
 out6="$(BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" run --out "$W/changed-census-board.html" --changed)"
 same 'the same still-open leg on a re-render reports UNCHANGED' "$out6" "UNCHANGED $W/changed-census-board.html"
 
-# --- HIMMEL-3768: tick keeps CI colour and fleet capacity out of board-fp on purpose,
+# --- tick keeps CI colour and fleet capacity out of board-fp on purpose,
 # but the page SHOWS them, so --changed folds a signature of those cells in separately.
 rm -f "$W/changed-cf.html"
 run --out "$W/changed-cf.html" --changed >/dev/null
@@ -395,7 +395,7 @@ same 'and the moved CI colour, re-rendered again, reads UNCHANGED' "$(BOARD_TEST
 same 'only fleet capacity moving flips --changed' "$(BOARD_TEST_GH_OPEN="$W/open-ci-moved.json" TICK_STUB_FLEET=10/15 run --out "$W/changed-cf.html" --changed)" "CHANGED $W/changed-cf.html"
 contains 'the tick fingerprint meta is still exactly tick'"'"'s' "$(cat "$W/changed-cf.html")" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
 
-# --- HIMMEL-3856: `versions: v1.0.0, v1.0.1` renders one Release panel per fixVersion,
+# --- `versions: v1.0.0, v1.0.1` renders one Release panel per fixVersion,
 # from ONE stubbed Jira CLI call per version (BOARD_JIRA seam, mirrors BOARD_TICK). The
 # stub answers from $JIRA_DIR/<version>.tsv in the CLI's `list --labels` row format
 # (key, type, status, title, labels; tab-separated) and never touches Jira.
@@ -449,7 +449,7 @@ contains 'a second open blocker is listed' "$vhtml" 'data-blocker="HIMMEL-9003"'
 lacks 'an open ticket without the v1-blocker label is not listed' "$vhtml" 'HIMMEL-9002'
 lacks 'a done v1-blocker ticket is not listed as a blocker' "$vhtml" 'HIMMEL-9004'
 lacks 'a lock token in a blocker title is redacted' "$vhtml" 'pid777777'
-# HIMMEL-4419: a per-status breakdown (To Do / In Progress / In Review / IN CI / Done) per panel.
+# a per-status breakdown (To Do / In Progress / In Review / IN CI / Done) per panel.
 contains 'v1.0.0 breakdown: In Progress count' "$vhtml" 'data-status="In Progress" data-count="1"'
 contains 'v1.0.0 breakdown: In Review count' "$vhtml" 'data-status="In Review" data-count="1"'
 contains 'v1.0.0 breakdown: IN CI count' "$vhtml" 'data-status="IN CI" data-count="1"'
@@ -512,7 +512,7 @@ printf 'HIMMEL-9008%sTask%sTo Do%sno labels column\n' "$T" "$T" "$T" >> "$JD/v1.
 runv --out "$W/v-nolabels.html" >/dev/null
 contains 'a row missing the labels column reads unavailable' "$(cat "$W/v-nolabels.html" 2>/dev/null)" 'data-release="v1.0.0" data-unavailable="1"'
 
-# --- HIMMEL-3988: with no --legs, the leg set is the console's fleet manifest
+# --- with no --legs, the leg set is the console's fleet manifest
 # (<console doc stem>.fleet.json, read through fleet-manifest.sh list -- the same
 # validation tick --legs-from uses); no manifest keeps the RESUME-doc scan; an
 # explicit --legs wins; a manifest change moves --changed (the tick stub's
@@ -547,7 +547,7 @@ mrun >/dev/null; rc=$?
 contains 'an invalid manifest falls back to the scan, rc 0' "rc=$rc" 'rc=0'
 contains 'an invalid manifest is reported on stderr, not silently ignored' "$(cat "$W/stderr.log")" 'fleet manifest'
 
-# --- cost today (HIMMEL-4217): one line from the leg cost ledger, never fatal
+# --- cost today: one line from the leg cost ledger, never fatal
 LC="$W/leg-cost.jsonl"
 lcrow() { printf '{"date":"%s","leg":"N1","ticket":"HIMMEL-1","class":"%s","cost_eq":%s}\n' "$1" "$2" "$3"; }
 TODAY="$(date +%F)"
@@ -579,7 +579,7 @@ printf 'not json\n' > "$LC"
 LEG_COST_LEDGER="$LC" mrun >/dev/null; rc=$?
 lacks 'cost line: a ledger with no usable row today renders nothing' "$(cat "$M/board.html")" 'data-cost-legs'
 
-# --- exploration cost (HIMMEL-5516): digest markers, median / worst 5 / flag, threshold by env
+# --- exploration cost: digest markers, median / worst 5 / flag, threshold by env
 XD="$W/leg-digest"
 mkdir -p "$XD"
 NOWMS="$(( $(date +%s) * 1000 ))"
@@ -609,7 +609,7 @@ LEG_DIGEST_STATE_DIR="$W/no-such-dir" mrun >/dev/null; rc=$?
 same 'exploration: absent state dir, rc 0' "$rc" "0"
 lacks 'exploration: absent state dir renders nothing' "$(cat "$M/board.html")" 'data-exploration'
 
-# --- failure classes this shift (HIMMEL-4670): the leg-failures ledger since the
+# --- failure classes this shift: the leg-failures ledger since the
 # console lock's start, the router log's latest decision per class, the memory
 # inbox count. Never fatal; not part of the fingerprint.
 mkdir -p "$W/repo/scripts/handover"
@@ -643,7 +643,7 @@ same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" da
 <tr data-class="denied/guard-a"><td>denied/guard-a</td><td>2</td><td>5</td><td>—</td><td>50 %</td><td>HIMMEL-4799 (filed 03:04)</td></tr>
 <tr data-class="suite/test-&lt;b&gt;x&lt;/b&gt;.sh"><td>suite/test-&lt;b&gt;x&lt;/b&gt;.sh</td><td>1</td><td>3</td><td>—</td><td>—</td><td>signal</td></tr>
 </table></div><p class="sub">memory inbox: 2 pending</p></section>'
-# HIMMEL-5374: the failures table spans the grid row and scrolls inside its own panel;
+# the failures table spans the grid row and scrolls inside its own panel;
 # the ladder is a vertical label-left count-right list (no wrapping chip row).
 # RED control (pre-change board.mjs): no class="wide" on data-failures, no .tscroll
 # wrapper, and .ladder is a flex-wrap chip row.
@@ -678,7 +678,7 @@ QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
 same 'failures panel: at most 10 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "10"
 : > "$FL"
 
-# --- HIMMEL-5131: the suite-flake panel reads the checkout's own reader script.
+# --- the suite-flake panel reads the checkout's own reader script.
 # RED control (pre-change board.mjs): no data-flakes section at all.
 mkdir -p "$W/repo/scripts/observability"
 cp "$HERE/../../observability/suite-flake-summary.sh" "$W/repo/scripts/observability/suite-flake-summary.sh"
@@ -737,7 +737,7 @@ GH_CWD_LOG="$W/gh-cwd.log" run --doc "$DOCP" --out "$W/p-board.html" >/dev/null
 same 'a recorded project that is gone never falls back to --repo' "$(cat "$W/gh-cwd.log")" ''
 contains 'and reads gh unavailable' "$(cat "$W/p-board.html")" 'gh unavailable'
 
-# --- bank lift (HIMMEL-4877): the lift's `show` output, read-only -- the same
+# --- bank lift: the lift's `show` output, read-only -- the same
 # reason source as the doctor's C34 row. Not part of the fingerprint; never fatal.
 BL="$W/bank-lift-show.txt"
 bl_html() { BANK_LIFT_STUB_OUT="$1" mrun >/dev/null; rc=$?; cat "$M/board.html"; }
@@ -763,7 +763,7 @@ contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL"
 html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
 
-# --- cloud sessions panel (HIMMEL-5163): each cloud-sessions.tsv row with the state
+# --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real
 # fixtures: the 2026-10-10 launch rows against the trimmed real `gh pr list` JSON for
 # PRs 2314 / 2306 / 1982 (fixtures/cloud-liveness-prs.json). RED control (pre-change

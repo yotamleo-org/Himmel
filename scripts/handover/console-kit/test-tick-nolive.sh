@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-tick-nolive.sh — HIMMEL-4234. tick.sh reads a leg that never went LIVE as
+# test-tick-nolive.sh — tick.sh reads a leg that never went LIVE as
 # `<N>:NOLIVE` and a leg whose session transcript ends in a `continued-in`
 # record as `<N>:FORKED`; console-wait.sh then wakes on the legs= change.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.

@@ -15,7 +15,7 @@ fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
 WS="$(mktemp -d "${TMPDIR:-/tmp}/test-semantic-update.XXXXXX")" || exit 1; trap 'rm -rf "$WS"' EXIT
 REPO="$WS/repo"
-mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$WS/bin" "$WS/tmp" "$WS/glm"
+mkdir -p "$REPO/scripts/graphify" "$REPO/scripts/lib" "$REPO/scripts/api-lane" "$WS/bin" "$WS/tmp" "$WS/glm"
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
@@ -33,6 +33,15 @@ cat > "$REPO/scripts/lib/bank-preflight.sh" <<EOF
 echo bank >> "$WS/calls.log"
 cat "$WS/bank" 2>/dev/null || echo PROCEED
 EOF
+# API-lane stub (HIMMEL-5544): records its argv, stdin, cwd and whether `claude`
+# still resolves to the semantic-update shim, then answers with a claude envelope.
+cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
+#!/usr/bin/env bash
+echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
+echo "lane \$* | stdin=\$(cat) | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+echo '{"result":"{}","usage":{"input_tokens":1,"output_tokens":1}}'
+EOF
+chmod +x "$REPO/scripts/api-lane/claude-api.sh"
 # graphify stub: `extract <scratch> ...` writes one semantic concept node per
 # copied .md (label = first line), plus an AST heading node, plus an edge to
 # the existing AST node "code_a". GRAPHIFY_STUB_RC fails it; GRAPHIFY_STUB_LEAK
@@ -46,6 +55,13 @@ echo "OLLAMA_API_KEY=\${OLLAMA_API_KEY-unset}" >> "$WS/env.log"
 echo "NO_AUTO_REFRESH=\${GRAPHIFY_NO_AUTO_REFRESH-unset}" >> "$WS/env.log"
 echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
 echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
+echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
+echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
+if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
+  claude --help > "$WS/claude-help.out" 2>&1
+  printf 'extract this' | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+    || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
+fi
 [ "\$1" = extract ] || exit 0
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 python3 - "\$2" <<'PY'
@@ -357,6 +373,70 @@ C31="$WS/c31"; new_corpus "$C31"; : > "$WS/env.log"
 out=$(unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t31 --corpus-root "$C31" --corpus-class himmel-code --backend ollama 2>&1); rc=$?
 [ "$rc" -eq 0 ] && grep -qx 'NO_AUTO_REFRESH=1' "$WS/env.log" && pass "T31 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
   || fail "T31 (rc=$rc): $(cat "$WS/env.log") $out"
+
+# --- HIMMEL-5544: --backend claude-api through the API lane -----------------
+LANE_ENV=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A)
+run_api() { env "${LANE_ENV[@]}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
+
+echo "T32: claude-api with the lane OFF fails closed: exit 2, nothing copied, no claude-cli fallback"
+C32="$WS/c32"; new_corpus "$C32"; : > "$WS/calls.log"
+out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t32 --corpus-root "$C32" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"API lane"* ]] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] \
+  && pass "T32 refused, nothing invoked" || fail "T32 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T33: lane on -> graphify runs the claude-cli path, native bank untouched, shim first on PATH"
+C33="$WS/c33"; new_corpus "$C33"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(run_api --name t33 --corpus-root "$C33" --corpus-class himmel-code --backend claude-api); rc=$?
+ext=$(grep '^graphify extract' "$WS/calls.log")
+[ "$rc" -eq 0 ] && pass "T33 exit 0" || fail "T33 exit 0 (got $rc): $out"
+case "$ext" in *"--backend claude-cli"*) pass "T33 extract uses --backend claude-cli" ;; *) fail "T33 extract args: $ext" ;; esac
+grep -qx bank "$WS/calls.log"; g33=$?
+case "$g33" in 1) pass "T33 native bank not consulted" ;; 0) fail "T33 native bank-preflight called" ;; *) fail "T33 calls.log unreadable (grep rc=$g33)" ;; esac
+echo "T33b: a zero per-call budget is refused before any work"
+C33B="$WS/c33b"; new_corpus "$C33B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=0.0 run_api --name t33b --corpus-root "$C33B" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"positive decimal"* ]] && pass "T33b zero budget refused" || fail "T33b (rc=$rc): $out"
+grep -q '^CLAUDE_BIN=.*graphify-semantic-t33-' "$WS/env.log" && pass "T33 graphify's claude is the scratch shim" || fail "T33 claude bin: $(grep CLAUDE_BIN "$WS/env.log")"
+[ -z "$(scratch)" ] && pass "T33 scratch (and shim) cleaned" || fail "T33 scratch left"
+
+echo "T34: a caller ANTHROPIC_API_KEY is refused (the lane's own key file is the only source)"
+C34="$WS/c34"; new_corpus "$C34"; : > "$WS/calls.log"
+out=$(ANTHROPIC_API_KEY=sk-ant-test-not-real run_api --name t34 --corpus-root "$C34" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/calls.log" ] && [[ "$out" != *sk-ant-test-not-real* ]] \
+  && pass "T34 refused, key not echoed" || fail "T34 (rc=$rc): $out"
+
+echo "T35: --max-files caps the claude-api batch (cap 2 of 3 -> batch 2, backlog 1)"
+C35="$WS/c35"; new_corpus "$C35"
+out=$(run_api --name t35 --corpus-root "$C35" --corpus-class himmel-code --backend claude-api --max-files 2); rc=$?
+[ "$rc" -eq 0 ] && [ "$(lastrun "$C35" batch)" = 2 ] && [ "$(lastrun "$C35" backlog)" = 1 ] \
+  && pass "T35 batch 2 backlog 1" || fail "T35 (rc=$rc): $out"
+
+echo "T36: --dry-run prints an estimate and makes no lane, graphify or bank call"
+C36="$WS/c36"; new_corpus "$C36"; : > "$WS/calls.log"
+out=$(run_api --name t36 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"estimate: files=3 "* ]] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] \
+  && pass "T36 estimate printed, nothing invoked" || fail "T36 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T37: the shim hands the lane an allowlisted argv, the prompt on stdin, a non-corpus cwd, no shim on PATH"
+C37="$WS/c37"; new_corpus "$C37"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37 --corpus-root "$C37" --corpus-class himmel-code --backend claude-api); rc=$?
+lane=$(grep '^lane ' "$WS/calls.log" | head -1)
+[ "$rc" -eq 0 ] && pass "T37 exit 0" || fail "T37 exit 0 (got $rc): $out"
+case "$lane" in
+  *"graphify-semantic-"*) fail "T37 lane still sees the shim on PATH: $lane" ;;
+  "lane -p --model sonnet --permission-mode default --max-budget-usd 0.25 --effort low | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
+  *) fail "T37 lane call: $lane" ;;
+esac
+grep -qx 'lane-tools=' "$WS/calls.log"; g37t=$?
+[ "$g37t" -eq 0 ] && pass "T37 lane called tool-free (HIMMEL_API_TOOLS set and empty)" || fail "T37 tool grant (rc=$g37t): $(grep lane-tools "$WS/calls.log")"
+grep -q -- 'primary\|shim' "$WS/claude-help.out" || fail "T37 shim --help output missing (positive control)"
+grep -q json-schema "$WS/claude-help.out"; h37=$?
+case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
+
+echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
+C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"
+out=$(run_api --name t38 --corpus-root "$C38" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] && pass "T38 salus refused" || fail "T38 (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

@@ -2705,4 +2705,21 @@ mkdir -p "$unrelated69"
 out69b="$(cd "$anchor13" && CDPATH="$unrelated69" HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
 check "$(get_kv "$out69b" anchor_lane)" "himmel" "T69b anchor_lane=himmel (CDPATH poisoned toward an unrelated dir must not break the legitimate himmel-lane match)"
 
+# T70 (HIMMEL-5601): step 0 prints the two base-skew numbers on every lane:
+# behind_base= (commits the branch lacks from the diff base) and main_ahead=
+# (commits local <base> carries beyond origin/<base>).
+origin70="$tmp/origin-70.git"
+work70="$tmp/work-70"
+git init -q --bare -b main "$origin70" || { echo "FAIL: T70 could not init origin"; fail=1; }
+git clone -q "$origin70" "$work70" 2>/dev/null || { echo "FAIL: T70 could not clone"; fail=1; }
+(cd "$work70" && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init && git push -q origin main && git checkout -q -b t70-skew && git commit -q --allow-empty -m branch-work) || { echo "FAIL: T70 could not seed branch"; fail=1; }
+(cd "$work70" && git checkout -q main && git commit -q --allow-empty -m m1 && git commit -q --allow-empty -m m2 && git push -q origin main && git checkout -q t70-skew) || { echo "FAIL: T70 could not advance origin/main"; fail=1; }
+out70a="$(cd "$work70" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
+check "$(get_kv "$out70a" behind_base)" "2" "T70a behind_base=2 (branch lacks two commits of origin/main)"
+check "$(get_kv "$out70a" main_ahead)" "0" "T70a main_ahead=0 (local main equals origin/main)"
+(cd "$work70" && git checkout -q main && git commit -q --allow-empty -m unpushed && git checkout -q t70-skew) || { echo "FAIL: T70 could not add unpushed main commit"; fail=1; }
+out70b="$(cd "$work70" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
+check "$(get_kv "$out70b" behind_base)" "2" "T70b behind_base stays 2 (diff base is origin/main, not local main)"
+check "$(get_kv "$out70b" main_ahead)" "1" "T70b main_ahead=1 (one unpushed local main commit)"
+
 [ "$fail" -eq 0 ] && echo "PASS test-pr-check-context" || exit 1

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/test-cut-tag.sh - suite for cut-tag.sh
-# (HIMMEL-3572 row 6). Hermetic: `gh` is stubbed via GH_BIN, `git` via a PATH
+# Hermetic: `gh` is stubbed via GH_BIN, `git` via a PATH
 # stub dir prepended ahead of the real git, both driven by env vars and both
 # logging every invocation to CALLS so a case can assert what was (and was
 # NOT) called - e.g. --dry-run must never call the ref-create endpoint.
@@ -102,7 +102,7 @@ case "$1 $2" in
 esac
 case "$1" in
   show)
-    # `git show <sha>:VERSION` (HIMMEL-4417): default = the version being cut, so
+    # `git show <sha>:VERSION`: default = the version being cut, so
     # every pre-existing case reads a matching VERSION; CT_SHA_VERSION overrides.
     [ "${CT_SHOW_FAIL:-0}" = "1" ] && exit 128
     printf '%s\n' "${CT_SHA_VERSION:-$CT_WANT_BASE}"
@@ -252,14 +252,14 @@ rc=0; out=$(CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" CT_STATUS_FAIL=1 run "$CLEA
 check "status-fail: rc 4" "$rc" "4"
 not_contains "status-fail: never writes the tag" "$(cat "$CALLS")" "git/refs -f"
 
-# --- 17. Pages-only check-runs, no CI workflow run (HIMMEL-3627 vacuous-pass bug) ---
+# --- 17. Pages-only check-runs, no CI workflow run ---
 reset_calls
 PAGES_ONLY_RUNS='{"total_count":3,"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"deploy","status":"completed","conclusion":"success"},{"name":"report-build-status","status":"completed","conclusion":"success"}]}'
 rc=0; out=$(CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" CT_RUNS_JSON="$PAGES_ONLY_RUNS" CT_CI_RUNS_JSON='{"workflow_runs":[]}' run "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
 check "pages-only: rc 4" "$rc" "4"
 contains "pages-only: names the missing CI run" "$out" "CI workflow run"
 not_contains "pages-only: never writes the tag" "$(cat "$CALLS")" "git/refs -f"
-# HIMMEL-5113: main has no per-merge CI run, so a missing run at the sha is the
+# main has no per-merge CI run, so a missing run at the sha is the
 # normal case and the refusal must say how to get one.
 contains "pages-only: names how to dispatch a run" "$out" "gh workflow run ci.yml --ref main"
 
@@ -301,7 +301,7 @@ rc=0; out=$(run "$CLEAN_VERSION" "$SHA" --version-override "" 2>&1) || rc=$?
 check "override-reason-empty: rc 2" "$rc" "2"
 check "override-reason-empty: nothing called" "$(cat "$CALLS")" ""
 
-# --- 22. bare release: no matching pre-release tag, no override -> rc 6 (HIMMEL-3701) ---
+# --- 22. bare release: no matching pre-release tag, no override -> rc 6 ---
 BARE_VERSION="v1.0.0"
 reset_calls
 rc=0; out=$(CT_SERIES_TAGS="" run "$BARE_VERSION" "$SHA" 2>&1) || rc=$?
@@ -324,7 +324,7 @@ check "bare-has-pre: rc 0" "$rc" "0"
 contains "bare-has-pre: created message" "$out" "created refs/tags/$BARE_VERSION"
 
 # --- 24b. bare release: an origin tag with an EMPTY -pre. suffix does not count
-# as a matching pre-release (HIMMEL-3701 codex-1 round 2) ---------------------
+# as a matching pre-release ---------------------
 reset_calls
 BARE_SERIES_TAGS_EMPTY="aaaa1111	refs/tags/v1.0.0-pre."
 rc=0; out=$(CT_SERIES_TAGS="$BARE_SERIES_TAGS_EMPTY" run "$BARE_VERSION" "$SHA" 2>&1) || rc=$?
@@ -362,7 +362,7 @@ reset_calls
 rc=0; out=$(CT_SERIES_TAGS="" run "v01.0.0" "$SHA" --version-override "leading zero" 2>&1) || rc=$?
 check "bare-leading-zero: mirrors pre path (not refused as usage)" "$( [ "$rc" != "2" ] && echo yes || echo no )" "yes"
 
-# --- 17. VERSION at <sha> must equal the tag's X.Y.Z (HIMMEL-4417) ----------
+# --- 17. VERSION at <sha> must equal the tag's X.Y.Z ----------
 reset_calls
 rc=0; out=$(CT_SERIES_TAGS="$CT_SERIES_TAGS_DEFAULT" CT_SHA_VERSION="0.2.0" run "$CLEAN_VERSION" "$SHA" 2>&1) || rc=$?
 check "version-file stale: rc 7" "$rc" "7"

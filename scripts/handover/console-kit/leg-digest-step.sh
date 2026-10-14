@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/leg-digest-step.sh - the wrap step of the
-# failure loop (HIMMEL-4670 P3, spec section 5.3): one leg session's P1 digest
+# failure loop: one leg session's P1 digest
 # (scripts/eval/leg-digest/leg-digest.ts) handed to the P2 ledger writer
 # (scripts/eval/leg-digest/leg_ledger.py record). Zero model calls.
 #
@@ -12,7 +12,7 @@
 #       stop changing (spec 1.2); if they never settle the row is `partial`.
 #   leg-digest-step.sh --doc <leg-doc> [--projects <dir>]
 #       For a leg not closed by close-wrapped-leg.sh. When the front matter
-#       carries `session_ids:` (headed-arm-leg.sh's record, HIMMEL-4786) each
+#       carries `session_ids:` (headed-arm-leg.sh's record) each
 #       id is digested directly, one line each prefixed with its id (an id
 #       with no journal reads `<id> digest=skipped:no-journal`). Then, for
 #       the sessions no id names (a leg launched before the ids existed),
@@ -33,7 +33,7 @@
 #                              back inconclusive (inconclusive)
 #   digest=skipped:<reason>    nothing digested; the only write is one row in
 #                              $LEG_DIGEST_STATE_DIR/skips.jsonl, which
-#                              tick.sh's fails= counts (HIMMEL-4786)
+#                              tick.sh's fails= counts
 # Always exits 0 (2 on a usage error): the caller's rc never depends on it.
 # Idempotence and write order belong to leg_ledger.py (per-session flock,
 # marker last), so a re-run or a racing backfill appends nothing new.
@@ -77,7 +77,7 @@ done
 if [ -z "$DOC" ] || [ ! -r "$DOC" ]; then usage; fi
 
 # skip <reason>: the skipped:* line, plus one row in $STATE_DIR/skips.jsonl so
-# tick.sh's fails= can count undigested wraps (HIMMEL-4786). Then exit 0.
+# tick.sh's fails= can count undigested wraps. Then exit 0.
 skip() {
     echo "digest=skipped:$1"
     mkdir -p "$STATE_DIR" 2>/dev/null
@@ -202,9 +202,9 @@ if [ "$SID_SET" = 1 ]; then
 fi
 
 # ---------- the launcher's record: session_ids: in the front matter ----------
-# HIMMEL-4786: headed-arm-leg.sh appends each launch's uuid, so a relaunched
+# headed-arm-leg.sh appends each launch's uuid, so a relaunched
 # leg or a doc with no resume_cwd is still found. Digested directly, any window.
-# HIMMEL-4795: the doc is writable by the leg it describes, so a leg can list
+# the doc is writable by the leg it describes, so a leg can list
 # another session's uuid here and that session is then digested under this leg.
 # Documented, not guarded: the digest is attribution only (no gate, merge or
 # permission reads it), and the same leg already writes its own Results
@@ -240,8 +240,8 @@ if [ -z "$day" ] || [ -z "$live" ] || [ -z "$wrapped" ]; then fb_skip no-window;
 # wall_after <epoch> <HH:MM>: the first instant at or after <epoch> whose local
 # clock reads HH:MM, on that day or the next. A wall time inside a DST fall-back
 # reads twice an hour apart, so a same-day decrease there is no midnight
-# (HIMMEL-4730); candidates are probed +/-2h so a 2h change (Antarctica/Troll)
-# is covered (HIMMEL-4757); a decrease no same-day instant explains is one (HIMMEL-4705).
+# candidates are probed +/-2h so a 2h change (Antarctica/Troll)
+# is covered; a decrease no same-day instant explains is one.
 wall_after() {
     local d e c best="" today
     today="$(date -d "@$1" +%F)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-ack-denial.sh — HIMMEL-3724. Exercises ack-denial.sh (the operator's ack
+# test-ack-denial.sh — Exercises ack-denial.sh (the operator's ack
 # of a paged classifier denial) and denial-ack-lib.sh (the shared record
 # helpers). Scratch ack dir only (HIMMEL_DENIAL_ACK_DIR): never the real
 # ~/.himmel/state. bash 3.2-safe.

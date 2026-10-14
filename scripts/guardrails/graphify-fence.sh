@@ -80,10 +80,11 @@
 #                      `openai` (falls to matrix default deny)
 #   glm | zai       -> zai-glm
 #   gemini | google -> google-gemini
-#   claude | claude-cli -> ENDPOINT-AWARE (HIMMEL-1049 + codex-adv-1): graphify's
+#   claude | claude-cli | claude-api -> ENDPOINT-AWARE (HIMMEL-1049 + codex-adv-1; claude-api
+#                      is HIMMEL-5544's API-lane backend, the claude-cli path): graphify's
 #                      claude backend honors ANTHROPIC_BASE_URL, so classify by
 #                      the effective endpoint, not the name -
-#                        claude-cli ONLY, any CLAUDE_CODE_USE_* reroute selector
+#                        claude-cli / claude-api ONLY, any CLAUDE_CODE_USE_* reroute selector
 #                          SET (HIMMEL-1070; see _CLAUDE_REROUTE_VARS) ->
 #                          anthropic-rerouted -> HARD DENY on every corpus. These
 #                          reroute the claude CLI to Bedrock/Vertex/Foundry/a
@@ -1221,7 +1222,10 @@ _map_anthropic_endpoint() {
     # applies to BOTH, because the `claude` backend genuinely does read
     # ANTHROPIC_BASE_URL. (graphify also has a separate first-class `bedrock`
     # backend, which maps to the literal `bedrock` -> undeclared -> default deny.)
-    if [ "$backend_name" = "claude-cli" ] && [ -n "$(_claude_reroute_var)" ]; then
+    # claude-api (HIMMEL-5544) is semantic-update.sh's API-credit lane backend: it
+    # runs graphify's claude-cli path through scripts/api-lane/claude-api.sh, so
+    # it shells the same CLI and takes the same reroute rule.
+    if { [ "$backend_name" = "claude-cli" ] || [ "$backend_name" = "claude-api" ]; } && [ -n "$(_claude_reroute_var)" ]; then
         echo anthropic-rerouted; return
     fi
     u="${ANTHROPIC_BASE_URL:-}"
@@ -1256,7 +1260,7 @@ map_provider() {
             ;;
         glm|zai)       echo zai-glm ;;
         gemini|google) echo google-gemini ;;
-        claude|claude-cli) _map_anthropic_endpoint "$b" ;;
+        claude|claude-cli|claude-api) _map_anthropic_endpoint "$b" ;;
         *)             echo "$b" ;;
     esac
 }

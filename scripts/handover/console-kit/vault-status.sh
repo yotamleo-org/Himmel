@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vault-status.sh — HIMMEL-4911. One-token health of the luna vault's commit
+# vault-status.sh — One-token health of the luna vault's commit
 # path, for tick.sh's vault= field and console-wait.sh's wake:
 #   ok               nothing staged/dirty past the threshold, nothing unpushed past it
 #   STALL:<age>,<n>  <n> staged/modified tracked files, the oldest <age> old (the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# console-wait.sh — HIMMEL-3509. The console's one event waiter.
+# console-wait.sh — The console's one event waiter.
 #
 #   console-wait.sh <inbox-file> [tick.sh args...]
 #
@@ -8,7 +8,7 @@
 # full-context console turn only to re-arm. This replaces both: the console
 # runs it ONCE with Bash `run_in_background` AND `timeout: 7200000` (both
 # required: the default background limit is also 30 min and killed a waiter
-# once, HIMMEL-3940); the harness re-invokes the session when the command
+# once); the harness re-invokes the session when the command
 # exits. It stays silent while nothing
 # happens and exits, printing one WAKE block, on the first real event:
 #
@@ -19,7 +19,7 @@
 #   WAKE tick changed=<f,...>   the tick's ACTION KEY changed and the change
 #     bank=<verdict>            held for two consecutive samples; bank= is the
 #   TICK ...                    bank-preflight verdict word the key carries.
-#   WAKE underfilled capacity=UNDERFILLED:<n>   (HIMMEL-4959) the tick's capacity
+#   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
 #                               ranked dispatchable list (CONSOLE_WAIT_DISPATCH
@@ -39,13 +39,16 @@
 # cloud= (HIMMEL-5163; class only, wakes ONLY on a move to STALL -- never on a
 # change of the ticket list, nor a move back to ok/skip; absent from an older
 # tick line, never a failure),
+# vmrun= (HIMMEL-5037; class only, wakes ONLY on a move to DEAD or STUCK -- never
+# on the busy count, nor a move back to ok/off; absent from an older tick line,
+# never a failure),
 # denials= (HIMMEL-3724 -- a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
 # none or lowering a count, is NOT a wake, so one denial wakes once) and the
 # bank-preflight verdict word.
 #
-# PAGE (HIMMEL-3724 phase 2b): when a wake's denials= change raised a leg's
+# PAGE: when a wake's denials= change raised a leg's
 # class to SHIP-STEP or PAUSE-RISK (a new leg, or a higher class; a count rising
 # inside one class wakes but does not page), the waiter sends ONE operator
 # Telegram message per rise through the kit's existing bridge path
@@ -65,7 +68,7 @@
 # tick) is not an event. The first sample with no saved
 # key, or with a saved key taken under different tick args (a re-arm after a
 # dispatch or wrap) -- or, with --legs-from, under a different manifest leg
-# set (HIMMEL-3748: a dispatch or wrap needs no re-arm) -- is a silent baseline. A tick.sh that exits non-zero or
+# set -- is a silent baseline. A tick.sh that exits non-zero or
 # prints no TICK line, or a bank read that fails or is not a verdict token, is
 # a failed sample: never a change, and only a streak of them wakes.
 #
@@ -91,7 +94,7 @@
 #                        Written atomically: temp file in the same dir, then
 #                        `mv`, so a kill mid-write never leaves it torn.
 #   <inbox>.wait.lock    the one-waiter flock (the file stays; the lock does not).
-#   <inbox>.handover     handover mode (HIMMEL-4902): while it is fresh (younger
+#   <inbox>.handover     handover mode: while it is fresh (younger
 #                        than CONSOLE_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
 #                        That mutes classifier-denial pages for up to that long;
@@ -115,7 +118,7 @@
 #
 # ponytail: an external SIGKILL of the waiter re-invokes the session (task
 # notification, measured HIMMEL-3509); the harness-internal "low memory" kill
-# of a background task (HIMMEL-3097) is unreproduced, so a waiter lost that way
+# of a background task is unreproduced, so a waiter lost that way
 # is visible only as a stale heartbeat, upgrade: HIMMEL-3510 (bridge-side
 # stale-heartbeat alert).
 #
@@ -131,7 +134,7 @@ if [ "$#" -lt 1 ] || [ -z "$1" ]; then
     exit 2
 fi
 inbox="$1"; shift
-# HIMMEL-3724: page/ack record helpers. A missing lib fails open: no records, the
+# page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
 hb_file="$inbox.wait"
@@ -167,7 +170,7 @@ trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
 
-# HIMMEL-3748: with --legs-from (or LEGS_FROM) the argv never changes when the
+# with --legs-from (or LEGS_FROM) the argv never changes when the
 # console dispatches or wraps, so the manifest's leg list is folded into the
 # args hash, re-read before every sample: a leg-set change made through the
 # manifest is a silent baseline, the same as a re-arm with a new --legs. An
@@ -225,16 +228,18 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud denials; do
+    for f in legs livestate prs tails legset board tracker vault cloud vmrun denials; do
         v="$(field "$f" "$tick_line")"
-        # HIMMEL-3933: tracker= is newer than the other fields; a tick line
+        # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
-        # vault= (HIMMEL-4911) is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ]; } && [ -z "$v" ]; then continue; fi
+        # vault= is newer still, the same way.
+        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = vmrun ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
-        case "$f" in board|tracker|vault|cloud) v="${v%%:*}" ;; esac
+        case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
+        # HIMMEL-5037: vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
+        [ "$f" = vmrun ] && v="${v%%,*}"
         key="$key$f=$v|"
     done
     key="${key}bank=$bank"
@@ -258,7 +263,8 @@ key_field() {
 # itself a wake (only a move to STALE/MISSING is); strip it from a changed=
 # list so a combined change still names its other real fields.
 drop_board_ok() {
-    local board_new tracker_new vault_new cloud_new
+    local board_new tracker_new vault_new cloud_new vmrun_new
+    vmrun_new="$(key_field vmrun "$2")"
     board_new="$(key_field board "$2")"
     tracker_new="$(key_field tracker "$2")"
     vault_new="$(key_field vault "$2")"
@@ -266,12 +272,16 @@ drop_board_ok() {
     printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
         [ "$f" = board ] && [ "$board_new" = ok ] && continue
         [ "$f" = tracker ] && [ "$tracker_new" = ok ] && continue
-        # HIMMEL-4911: vault= wakes only on a class move TO STALL / PUSH-LAG.
+        # vault= wakes only on a class move TO STALL / PUSH-LAG.
         if [ "$f" = vault ]; then
             case "$vault_new" in STALL|PUSH-LAG) ;; *) continue ;; esac
         fi
-        # HIMMEL-5163: cloud= wakes only on a class move TO STALL, never back to ok/skip.
+        # cloud= wakes only on a class move TO STALL, never back to ok/skip.
         [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
+        # HIMMEL-5037: vmrun= wakes only on a class move TO DEAD / STUCK.
+        if [ "$f" = vmrun ]; then
+            case "$vmrun_new" in DEAD|STUCK) ;; *) continue ;; esac
+        fi
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -370,7 +380,7 @@ page_denials() {
     done
 }
 
-# HIMMEL-4959: capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN
+# capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN
 # into it) wakes once per streak. The marker file outlives the waiter, so a
 # re-arm inside the same streak stays quiet; capacity=ok removes it.
 underfill_file="$inbox.wait.underfill"
@@ -423,7 +433,7 @@ while :; do
     elif [ "$rc" -ne 1 ]; then
         exit_reason='inbox-error'; exit 1
     fi
-    # HIMMEL-4902: <inbox>.handover (written by `console.sh next` once the
+    # <inbox>.handover (written by `console.sh next` once the
     # successor validated) puts this waiter in handover mode: no tick, bank or
     # page work (an outgoing console only waits for LIVE; a tick wake costs it
     # a full-context turn), while the Telegram check above still wakes it.
@@ -473,7 +483,7 @@ while :; do
                 else
                     page_denials "$saved" "$key"
                     printf 'WAKE tick changed=%s bank=%s\n%s\n' "$real_changed" "${key##*|bank=}" "$tick_line"
-                    # HIMMEL-4911: a vault wake names how to reproduce the stuck commit.
+                    # a vault wake names how to reproduce the stuck commit.
                     case ",$real_changed," in *,vault,*)
                         vault_dir="$(bash "$HERE/vault-status.sh" --path 2>/dev/null)" || vault_dir=""
                         printf 'vault: reproduce with git -C %s hook run pre-commit\n' "${vault_dir:-<vault>}" ;;

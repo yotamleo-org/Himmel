@@ -230,7 +230,15 @@ const LITERAL_FILE = /^(bash|bun|nohup bun) [A-Za-z0-9_./-]+\.(sh|ts|mjs|js):\*$
 // script (deliberately left out of EXACT_LITERALS above; see the RIDERS
 // comment). This list is ONLY for the structural check below, which scans
 // project-level ALLOW, not the leg-profile gateAllow the RIDERS check scans.
-const PROJECT_EXACT_LITERALS = ['bash scripts/cr/cr-scores.sh'];
+// HIMMEL-5037: the vm-runner console control, five exact literals (no `:*`).
+const PROJECT_EXACT_LITERALS = [
+  'bash scripts/cr/cr-scores.sh',
+  'bash scripts/handover/console-kit/vm-runner.sh on',
+  'bash scripts/handover/console-kit/vm-runner.sh on --vms 1',
+  'bash scripts/handover/console-kit/vm-runner.sh on --vms 2',
+  'bash scripts/handover/console-kit/vm-runner.sh off',
+  'bash scripts/handover/console-kit/vm-runner.sh status',
+];
 
 test('every path-naming Bash allow rule is a per-file literal, a step-0 literal or an enumerated quiet-run suite rule', () => {
   const pathRules = ALLOW.map((r) => /^Bash\(([\s\S]*)\)$/.exec(r)[1])
@@ -242,6 +250,15 @@ test('every path-naming Bash allow rule is a per-file literal, a step-0 literal 
     assert.ok(!body.includes('..') && !body.includes('//'), `path trick in rule: ${body}`);
     assert.ok(!TRUST_DIR.test(body), `trust-root prefix rule: ${body}`);
   }
+});
+
+test('vm-runner.sh is allowed by exactly its five literals and never a wildcard (HIMMEL-5037)', () => {
+  const vm = PROJECT_EXACT_LITERALS.filter((l) => l.includes('vm-runner.sh'));
+  assert.equal(vm.length, 5, 'anti-vacuity: five vm-runner literals');
+  for (const lit of vm) assert.ok(ALLOW.includes(`Bash(${lit})`), `missing allow rule: ${lit}`);
+  const rules = ALLOW.filter((r) => r.includes('vm-runner.sh'));
+  assert.deepEqual(rules.sort(), vm.map((l) => `Bash(${l})`).sort(), 'only the five literals may name vm-runner.sh');
+  for (const r of rules) assert.ok(!/[*:]/.test(r.replace(/^Bash\(/, '')), `wildcard in vm-runner rule: ${r}`);
 });
 
 test('the project list carries every gateAllow quiet-run suite rule, so a console runs suites as a leg does', () => {

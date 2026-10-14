@@ -71,6 +71,8 @@
 #                      --long-gap is what overrides.
 #   --dedup-any        Dedup against ANY HIMMEL-Resume job, not just this
 #                      handover's (HIMMEL-340 safety-arm semantics).
+#   --source-key <tag> Stable dedup identity for one SOURCE (HIMMEL-841); see
+#                      the --help text.
 #   --dry-run          Print what would be scheduled, touch nothing.
 #
 # Env:
@@ -325,6 +327,7 @@ CONTEXT_MODE=""
 AUTOCOMPACT=""
 TIER=""
 DEDUP_ANY=0
+SOURCE_KEY=""
 WORKTREE_BRANCH=""
 WSL_DISTRO=""
 AUTOMERGE=0
@@ -340,7 +343,7 @@ _epoch_hhmm() { py_armor_capture -c 'import sys,datetime; print(datetime.datetim
 
 usage() {
     cat <<'EOF'
-Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier leg] [--provisional-base-ok]
+Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier leg] [--provisional-base-ok]
 
 Arms the OS scheduler to relaunch claude at the given time with a
 resume prompt referencing the given handover file. Dedup-guarded
@@ -466,6 +469,10 @@ Optional:
                      a machine-wide cap can never queue duplicate relaunches.
                      Default (omitted) is per-handover dedup — N distinct
                      handovers each get their own slot (HIMMEL-340).
+  --source-key <tag> Stable dedup identity for one SOURCE (HIMMEL-841): a
+                     re-arm with the same tag matches the queued job (rc 3,
+                     or --force replaces it) even if the handover path
+                     differs. [A-Za-z0-9_-], 1-64 chars.
   --dry-run          Print what would be scheduled, touch nothing
   --list-temp-arms   Read-only sweep (HIMMEL-1365): report every armed
                      HIMMEL-Resume-* entry whose runner targets a temp/scratch
@@ -743,6 +750,13 @@ while [ $# -gt 0 ]; do
         --force)       FORCE=1; shift ;;
         --long-gap)    LONG_GAP=1; shift ;;
         --dedup-any)   DEDUP_ANY=1; shift ;;
+        --source-key)
+            if [ $# -lt 2 ] || ! [[ "$2" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
+                echo "ERR arm-resume: --source-key requires a 1-64 char value of [A-Za-z0-9_-]" >&2
+                exit 2
+            fi
+            SOURCE_KEY="$2"; shift 2
+            ;;
         --dry-run)     DRY_RUN=1; shift ;;
         --automerge)   AUTOMERGE=1; shift ;;
         --no-automerge) NO_AUTOMERGE=1; shift ;;
@@ -3082,6 +3096,19 @@ else
     TASK_NAME_LEGACY="HIMMEL-Resume-${_path_suffix_legacy}"
 fi
 [ "$TASK_NAME_LEGACY" = "$TASK_NAME" ] && TASK_NAME_LEGACY=""
+# HIMMEL-841: --source-key replaces the path-derived half of the identity with
+# a caller-stable tag, so a re-arm for the same SOURCE (whose delivered
+# handover path changed because its content did) matches the queued job and
+# hits the rc 3 dedup / --force replace instead of arming a second one. The
+# ticket stays in the name so the HIMMEL-1329 ticket-level listing still finds it.
+if [ -n "$SOURCE_KEY" ]; then
+    if [ -n "$_ho_ticket" ]; then
+        TASK_NAME="HIMMEL-Resume-${_ho_ticket}-src-${SOURCE_KEY}"
+    else
+        TASK_NAME="HIMMEL-Resume-src-${SOURCE_KEY}"
+    fi
+    TASK_NAME_LEGACY=""
+fi
 # The armed relaunch's `claude -n` session title (HIMMEL-702/716) - the same
 # composer renders both surfaces from one identity, so the scheduler row name
 # and the session/tab title can never disagree.

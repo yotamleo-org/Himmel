@@ -1152,4 +1152,17 @@ printf 'pr-check-context: delegated=%s\n' "$delegated"
 cr_diff_files_csv=$(printf '%s\n' "$cr_diff_files" | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
 printf 'pr-check-context: cr_diff_files=%s\n' "$cr_diff_files_csv"
 
+# HIMMEL-5601 - base skew, informational on every profile (CR_PROFILE=none
+# included): commits HEAD lacks from the diff base, and commits local <base>
+# carries beyond origin/<base>. Same two counts the pre-push guard warns on
+# (HIMMEL-1178); "unknown" when a ref is missing, never a number guessed.
+behind_base=$(gitd rev-list --count "HEAD..$base_ref" 2>/dev/null) || behind_base=unknown
+main_ahead=unknown
+if gitd rev-parse --verify -q "refs/remotes/origin/$base" >/dev/null 2>&1 \
+   && gitd rev-parse --verify -q "refs/heads/$base" >/dev/null 2>&1; then
+    main_ahead=$(gitd rev-list --count "refs/remotes/origin/$base..refs/heads/$base" 2>/dev/null) || main_ahead=unknown
+fi
+printf 'pr-check-context: behind_base=%s\n' "$behind_base"
+printf 'pr-check-context: main_ahead=%s\n' "$main_ahead"
+
 exit 0

@@ -12,11 +12,19 @@
 # every expansion removed. The caller's own scan of the original text still
 # runs, so the stripped form can only add a deny, never remove one.
 #
+# The command is re-read a second time with each `${name[:]-word}`,
+# `${name[:]=word}` and `${name[:]+word}` replaced by its word, because the word
+# is what runs when the variable is unset or empty (`${V:-git} stash drop`);
+# dropping the expansion alone never shows it (HIMMEL-5525). A plain `${V}` has
+# no word and is only dropped.
+#
 # ponytail: every `${…}` and `$name` is dropped, empty or not, so a hook can
 # over-deny a command whose expansion was a real, non-empty word that made the
 # protected program a mere argument (`$RUNNER git stash`) — the safe direction;
-# `$(…)` and `$'…'` are untouched. Upgrade path: track variable values across
-# the command (HIMMEL-4178).
+# `$(…)` and `$'…'` are untouched. A default word is read as if the variable
+# were unset, so the word of `${V:+x}` is taken even when V is empty (also the
+# safe direction). Upgrade path: track variable values across the command
+# (HIMMEL-4178).
 #
 # ponytail: a `${…}` body is an ALLOWLIST (letters, digits, `_`, `: - + = ? # % /
 # @ * ^ , . ~`, space, or a nested `${…}`); anything else in it (`$(`, a backtick,
@@ -46,12 +54,12 @@ _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # drops the rest of the line.
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
-  s = $0; out = ""; n = length(s); i = 1; hard = 0
+  s = $0; out = ""; n = length(s); i = 1; hard = 0; k = 0
   safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:+=?#%/@*^,.~ -}"
   while (i <= n) {
     c = substr(s, i, 1)
     if (c == "$" && substr(s, i + 1, 1) == "{") {
-      depth = 1; i += 2; q = ""; bt = 0; L = 0
+      depth = 1; i += 2; q = ""; bt = 0; L = 0; h0 = hard; hard = 0; bs = i
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
         if (!(c == "$" && substr(s, i + 1, 1) == "{") && index(safe, c) == 0) hard = 1
@@ -69,13 +77,19 @@ _GEE_AWK='{
         i++
       }
       if (depth > 0) hard = 1
+      else if (!hard && (mode == "dflt" || mode == "count" || mode == "all") && match(substr(s, bs, i - 1 - bs), /^[A-Za-z_][A-Za-z0-9_]*:?[-=+]/)) {
+        if (mode == "all" || (mode == "dflt" && int(mask / (2 ^ k)) % 2 == 1)) out = out substr(s, bs + RLENGTH, i - 1 - bs - RLENGTH)
+        k++; hard = h0; continue
+      }
+      if (h0) hard = 1
+      if (mode == "dflt" || mode == "all") out = out substr(s, bs - 2, i - bs + 2)
     } else { out = out c; i++ }
   }
-  if (mode == "hard") print hard + 0; else print out
+  if (mode == "hard") print hard + 0; else if (mode == "count") print k; else print out
 }'
 
 guard_expansion_recheck() {
-    local hook=$1 input=$2 cmd=$3 target=${4:-} hard stripped child err rc depth=${GUARD_EXPANSION_DEPTH:-0}
+    local hook=$1 input=$2 cmd=$3 target=${4:-} hard stripped dflt count full mask depth=${GUARD_EXPANSION_DEPTH:-0}
     case "$cmd" in *'$'*) ;; *) return 0 ;; esac
     case "$depth" in
         *[!0-9]*|'') depth=0 ;;
@@ -100,8 +114,52 @@ guard_expansion_recheck() {
         echo "guard-empty-expansion: cannot strip expansions - failing closed" >&2
         return 2
     fi
-    [ "$stripped" != "$cmd" ] || return 0
-    if ! child=$(jq -c --arg c "$stripped" '
+    # the command with each ${name[:]-word}, ${name[:]=word} and ${name[:]+word}
+    # replaced by its word: the protected program can ride in the default word
+    # (HIMMEL-5525), which removing the expansion never shows.
+    # Each default expansion is independently set or unset at run time, so every
+    # word-or-dropped combination is a form (`${A:-git} ${B:-x} stash drop` with
+    # B empty runs `git stash drop`); bit k of the mask picks the word of the
+    # k-th one.
+    # ponytail: past 5 default expansions only the all-words form is re-read (2^n
+    # forms), upgrade path a real shell parser (HIMMEL-4178).
+    if ! count=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C awk -v mode=count "$_GEE_AWK"); then
+        echo "guard-empty-expansion: cannot count default words - failing closed" >&2
+        return 2
+    fi
+    case "$count" in
+        ''|*[!0-9]*) echo "guard-empty-expansion: cannot count default words - failing closed" >&2; return 2 ;;
+    esac
+    _gee_rerun "$hook" "$input" "$cmd" "$stripped" "$depth" || return 2
+    [ "$count" -gt 0 ] || return 0
+    if [ "$count" -le 5 ]; then
+        mask=1; full=$(( (1 << count) - 1 ))
+    else
+        mask=0; full=0
+        if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
+            | LC_ALL=C awk -v mode=all "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
+            echo "guard-empty-expansion: cannot read default words - failing closed" >&2
+            return 2
+        fi
+        _gee_rerun "$hook" "$input" "$cmd" "$dflt" "$depth" || return 2
+    fi
+    while [ "$mask" -ge 1 ] && [ "$mask" -le "$full" ]; do
+        if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
+            | LC_ALL=C awk -v mode=dflt -v mask="$mask" "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
+            echo "guard-empty-expansion: cannot read default words - failing closed" >&2
+            return 2
+        fi
+        _gee_rerun "$hook" "$input" "$cmd" "$dflt" "$depth" || return 2
+        mask=$((mask + 1))
+    done
+    return 0
+}
+
+# _gee_rerun HOOK INPUT CMD FORM DEPTH — run the hook on FORM; 2 when it denies.
+_gee_rerun() {
+    local hook=$1 input=$2 cmd=$3 form=$4 depth=$5 child err rc
+    [ "$form" != "$cmd" ] || return 0
+    if ! child=$(jq -c --arg c "$form" '
         if (.tool_input | has("command")) and .tool_input.command != null
         then .tool_input.command = $c else .tool_input.cmd = $c end' <<<"$input" 2>/dev/null); then
         echo "guard-empty-expansion: cannot build the stripped call - failing closed" >&2
@@ -113,6 +171,6 @@ guard_expansion_recheck() {
         rc=$?
     fi
     [ -z "$err" ] || printf '%s\n' "$err" >&2
-    echo "    (denied with its variable expansions removed — a variable that expands to nothing leaves this command; rc=$rc)" >&2
+    echo "    (denied with its variable expansions removed or defaulted — a variable that expands to nothing, or to its default word, leaves this command; rc=$rc)" >&2
     return 2
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# denial-ack-lib.sh — HIMMEL-3724 phase 2b. Sourced by console-wait.sh (writes a
+# denial-ack-lib.sh — Sourced by console-wait.sh (writes a
 # page record when it pages a denial), ack-denial.sh (writes an ack record) and
 # headed-arm-leg.sh (refuses a re-dispatch while a page is un-acked). Never
 # executed directly. bash 3.2-safe.

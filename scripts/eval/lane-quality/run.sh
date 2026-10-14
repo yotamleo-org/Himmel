@@ -284,7 +284,9 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
       export HIMMEL_API_JOB_ID="lq-$RUN_ID-$stem"
       # HIMMEL-4986 lane-quality api agent run, launcher bank check and ledger reservation, explicit permission mode, budget-capped
       # launch-profile-ok: HIMMEL-4986 the eval measures the lane's own default config, not a leg profile
+      # HIMMEL-5625: the lane is tool-free unless named; the eval agent edits fixtures and runs their tests, so it opts in to the full set.
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
+        HIMMEL_API_TOOLS="Read,Edit,Write,Glob,Grep,Bash" \
         timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
       exit $?

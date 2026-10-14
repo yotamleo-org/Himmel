@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# consult-relay.sh <consult-doc> <asker> (HIMMEL-4014)
+# consult-relay.sh <consult-doc> <asker>
 #
 # Prints the text a console SendMessages to the asking leg once its consult is
 # done: a `CONSULT-ANSWER <asker> <doc>` header plus every `ANSWER` bullet the

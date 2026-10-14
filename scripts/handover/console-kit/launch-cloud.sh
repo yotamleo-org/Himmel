@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch-cloud.sh — HIMMEL-5450. The console's cloud launch: one `claude --cloud`
+# launch-cloud.sh — The console's cloud launch: one `claude --cloud`
 # session in its own konsole window. `claude --cloud` creates the session,
 # prints its URL and exits; script(1) keeps a TTY and captures that output.
 #

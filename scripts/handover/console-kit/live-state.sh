@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# live-state.sh — HIMMEL-3987. Renders a console doc's `## Live state` `legs:`
+# live-state.sh — Renders a console doc's `## Live state` `legs:`
 # entries from its fleet manifest (<console doc stem>.fleet.json,
 # fleet-manifest.sh) instead of the console hand-editing them on every dispatch
 # and wrap.
@@ -28,7 +28,7 @@
 # tick.sh is unchanged: livestate=DRIFT/MALFORMED and nonces= read the result as
 # they read a hand-written line.
 #
-# HIMMEL-5074: a manifest row marked lockless (an eval/pilot row) is not a leg that
+# a manifest row marked lockless (an eval/pilot row) is not a leg that
 # lost its lock: it is listed on its own `lockless: <label> (<lane>) <doc>; ...` line
 # right after the legs: line (replaced on every render), for succession to carry.
 #
@@ -88,7 +88,7 @@ missing=""
 lockless_rows=""
 while IFS=$'\t' read -r label ldoc llane llockless; do
     [ -n "$label" ] || continue
-    # HIMMEL-5074: a lockless row (eval/pilot) holds no lock by design: it is carried
+    # a lockless row (eval/pilot) holds no lock by design: it is carried
     # in its own `lockless:` line, never left out as a leg that lost its lock.
     if [ "$llockless" = true ]; then
         lockless_rows="$lockless_rows$label ($llane) $ldoc; "
@@ -136,7 +136,7 @@ if [ "$print_only" -eq 1 ]; then
     exit 0
 fi
 
-# HIMMEL-4795: rewrite under the lock every doc writer shares, so a console
+# rewrite under the lock every doc writer shares, so a console
 # bullet append-results.sh appends meanwhile waits for the mv instead of landing
 # on the replaced doc. The awk below re-reads the whole doc under the lock. No
 # flock (rc 3) or a lock that cannot be taken (rc 1) rewrites unlocked, as before.

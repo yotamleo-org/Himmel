@@ -24,6 +24,9 @@
 #   4. --check mode also prints the status table, mutates nothing — verified
 #      hermetically (fake HOME + Claude/hermes overrides) via a full HEAD +
 #      tracked/untracked working-tree snapshot, not HEAD alone.
+#   7. inside Claude (CLAUDECODE set), a pull that changes a hook-pinned path
+#      closes on a restart warning; an unpinned-only pull or a run outside
+#      Claude does not (#2591).
 #
 # Bash 3.2 compatible.
 
@@ -326,6 +329,66 @@ assert_eq "state dirs: second run kept himmel/bus at 0700" "700" "$(mode_of "$xd
 chmod 750 "$xdg_state_6/himmel"
 rc=0; out=$(update_6) || rc=$?
 assert_eq "state dirs: pre-existing himmel keeps its own mode" "750" "$(mode_of "$xdg_state_6/himmel" 750)"
+
+# ─── Test 7: in-session restart warning (#2591) ──────────────────────────────
+# A pull that changes a hook-pinned path leaves the calling Claude session
+# unable to run Bash/Edit (hook-integrity re-pin refused) when HEAD is off the
+# anchor tip (channel/detached tag), so an apply run with
+# CLAUDECODE set must close on a restart warning. A pull touching only
+# unpinned paths, or a run outside Claude, must not print it.
+echo "Test 7: pull changing a hook-pinned path inside Claude -> closing restart warning (#2591)"
+make_mock_clone
+claude_ok_7="$TMP/claude-ok-test7"; make_claude_stub "$claude_ok_7" 0
+fake_home_7="$TMP/fake-home-test7"; mkdir -p "$fake_home_7"
+defbranch7=$(git -C "$CHECKOUT_DIR" rev-parse --abbrev-ref HEAD)
+git -C "$CHECKOUT_DIR" push --quiet origin "HEAD:$defbranch7"
+pusher7="$TMP/pusher7"
+git clone --quiet "$(dirname "$CHECKOUT_DIR")/upstream.git" "$pusher7"
+git -C "$pusher7" config user.email "test@test.test"; git -C "$pusher7" config user.name "Test"
+push_change_7() {   # <repo-relative path>
+    mkdir -p "$pusher7/$(dirname "$1")"
+    printf '%s\n' "$RANDOM" >> "$pusher7/$1"
+    git -C "$pusher7" add "$1"
+    git -C "$pusher7" commit --quiet -m "change $1"
+    git -C "$pusher7" push --quiet origin "HEAD:$defbranch7"
+}
+update_7() {   # <CLAUDECODE value>
+    CLAUDECODE="$1" USERPROFILE='' HOME="$fake_home_7" HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_7" \
+      HERMES_HOME="$TMP/no-hermes" CLAUDE_USER_SETTINGS="$fake_home_7/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1
+}
+push_change_7 scripts/hooks/new-guard.sh
+rc=0; out=$(update_7 1) || rc=$?
+assert_eq "no restart warning: default-branch ff pull of a pinned .sh: rc 0" "0" "$rc"
+assert_contains "no restart warning: default-branch ff pull of a pinned .sh updated" "pull  *updated" "$out"
+assert_not_contains "no restart warning: default-branch ff pull lands on the anchor tip" "RESTART CLAUDE NOW" "$out"
+push_change_7 docs/unpinned.md
+rc=0; out=$(update_7 1) || rc=$?
+assert_contains "no restart warning: unpinned-only pull still updated" "pull  *updated" "$out"
+assert_not_contains "no restart warning: unpinned-only pull" "RESTART CLAUDE NOW" "$out"
+# A non-.sh file inside a pinned dir is not in the recorder's pin set.
+push_change_7 scripts/lib/data.json
+rc=0; out=$(update_7 1) || rc=$?
+assert_eq "no restart warning: non-.sh file in a pinned dir: rc 0" "0" "$rc"
+assert_contains "no restart warning: non-.sh file in a pinned dir still updated" "pull  *updated" "$out"
+assert_not_contains "no restart warning: non-.sh file in a pinned dir" "RESTART CLAUDE NOW" "$out"
+push_change_7 scripts/lib/new-lib.sh
+rc=0; out=$(update_7 '') || rc=$?
+assert_contains "no restart warning: outside Claude still updated" "pull  *updated" "$out"
+assert_not_contains "no restart warning: outside Claude (CLAUDECODE unset)" "RESTART CLAUDE NOW" "$out"
+
+# A channel (tag-following) update detaches HEAD off the anchor tip: a pinned
+# change reached that way must warn, even though the tag is newer than HEAD.
+push_change_7 scripts/hooks/channel-guard.sh
+git -C "$pusher7" tag v9.9.9
+git -C "$pusher7" push --quiet origin v9.9.9
+push_change_7 docs/after-tag.md
+rc=0; out=$(HIMMEL_UPDATE_CHANNEL=stable update_7 1) || rc=$?
+assert_eq "restart warning: channel pull of a pinned .sh: rc 0" "0" "$rc"
+assert_contains "restart warning: channel pull updated" "pull  *updated" "$out"
+assert_contains "restart warning: channel pull printed" "RESTART CLAUDE NOW" "$out"
+assert_contains "restart warning: names the changed pinned file" "(e.g. scripts/hooks/channel-guard.sh)" "$out"
+assert_eq "restart warning: is the closing line" "    (re-pin refused: not the anchor tip). Exit claude and start a new session." "$(printf '%s\n' "$out" | tail -n 1)"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

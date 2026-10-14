@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-append-results.sh
 # scripts/handover/console-kit/test-leg-doc-lock.sh - suite for leg-doc-lock.sh
-# (HIMMEL-4795): every writer of a handover doc shares one lock, so the
+# every writer of a handover doc shares one lock, so the
 # launcher's session_ids: front-matter rewrite never drops a concurrent
 # append-results.sh bullet.
 #   1. an append fired while a rewrite sits between its re-check and its mv

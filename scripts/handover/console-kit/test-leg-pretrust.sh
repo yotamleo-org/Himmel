@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2015: A && B || C is intentional in check(), as in test-headed-arm-leg.sh; SC2016: group 10 greps literal $VAR text
 # scripts/handover/console-kit/test-leg-pretrust.sh - suite for leg-pretrust.sh
-# (HIMMEL-5056): the launcher's folder/hooks-trust pre-accept.
+# the launcher's folder/hooks-trust pre-accept.
 #
 # Asserts:
 #   1. a fresh linked worktree has NO trust entry before and an accepted one
@@ -13,7 +13,7 @@
 #   4. each lane writes the config file its claude reads.
 #   5. concurrent writers lose no keys.
 #   6. an unparseable config is refused (exit 4) and left byte-identical.
-#   7. (HIMMEL-5068) the lock is claude's own <cfg>.lock dir (proper-lockfile: mkdir,
+#   7. the lock is claude's own <cfg>.lock dir (proper-lockfile: mkdir,
 #      stale after 10 s): a live claude's lock is waited on, a stale one is reclaimed
 #      unless OUR sidecar owner is still alive.
 #   8. a resolved path with a newline in its name is refused; non-object projects /
@@ -85,7 +85,7 @@ for pair in "claudex:.claude-codex" "openrouter:.claude-openrouter" "deepseek:.c
 done
 rc=0; bash "$SCRIPT" glm "$primary/.claude/worktrees/wt1" >/dev/null 2>&1 || rc=$?
 check "4 unknown lane: exit 2" "$rc" "2"
-# HIMMEL-5249: the deepseek lane's legs also park at "Allow external CLAUDE.md imports?",
+# the deepseek lane's legs also park at "Allow external CLAUDE.md imports?",
 # so its worktree key gets both approval flags; no other lane's config is touched.
 imports() { jq -r --arg k "$2" '.projects[$k] | "\(.hasClaudeMdExternalIncludesApproved // "absent")/\(.hasClaudeMdExternalIncludesWarningShown // "absent")"' "$1"; }
 check "4b deepseek: external-imports flags set" "$(imports "$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json" "$primary/.claude/worktrees/wt1")" "true/true"
@@ -114,7 +114,7 @@ check "6a unparseable config: exit 4" "$rc" "4"
 check "6b unparseable config: byte-identical" "$(cksum < "$cfg")" "$before"
 check "6c unparseable config: lock released" "$([ -e "$cfg.lock" ] && echo held || echo free)" "free"
 
-# 7. claude's own <cfg>.lock (HIMMEL-5068).
+# 7. claude's own <cfg>.lock.
 rm -f "$cfg"; printf '%s' '{"keep":"me"}' > "$cfg"
 mkdir "$cfg.lock"   # a live claude mid-save holds this (fresh mtime)
 bash "$SCRIPT" native "$primary/.claude/worktrees/wt1" >/dev/null 2>&1 & pid=$!
@@ -172,7 +172,7 @@ rm -f "$cfg"
 bash "$SCRIPT" native "$primary/.claude/worktrees/wt1" >/dev/null 2>&1
 check "8f new file is 0600" "$(stat -c %a "$cfg" 2>/dev/null || stat -f %Lp "$cfg")" "600"
 
-# 9. (HIMMEL-5068, pilot p20) a jailed row: claude sees the worktree at another path
+# 9. a jailed row: claude sees the worktree at another path
 # and a per-row copy of the lane config, so the flag goes to THAT file under THAT key.
 rm -f "$cfg" "$LEG_PRETRUST_HOME/.claude-deepseek/.claude.json"
 mkdir -p "$LEG_PRETRUST_HOME/.claude-deepseek" "$tmp/rowconf"
@@ -198,7 +198,7 @@ sb="$HERE/../../eval/lane-quality/pilot-4869/sandbox.sh"
 check "10a sandbox.sh launch seeds \$JWT into \$ROWCONF" "$(grep -c 'LEG_PRETRUST_CONFIG="$ROWCONF/.claude.json" LEG_PRETRUST_KEY="$JWT"' "$sb")" "1"
 check "10b only one pretrust call in sandbox.sh" "$(grep -c 'leg-pretrust.sh' "$sb")" "1"
 
-# 11. (HIMMEL-5068, judge j2228a B1) the jail can write the row's config dir, so in seam
+# 11. the jail can write the row's config dir, so in seam
 # mode a symlinked config, sidecar or lock is refused (exit 3) and nothing outside is touched.
 ewt="$LEG_PRETRUST_HOME/.himmel/eval/lane-quality/pilot/wt/lq-p20"
 jc="$tmp/jailconf"; vic="$tmp/victim"; rm -rf "$jc" "$vic"; mkdir -p "$jc" "$vic"
@@ -236,7 +236,7 @@ rc=0; bash "$SCRIPT" native "$primary/.claude/worktrees/wt1" >/dev/null 2>&1 || 
 check "11h native + symlinked sidecar: exit 0" "$rc" "0"
 check "11h victim untouched" "$(vsum)" "$want"
 rm -f "$cfg.leg-pretrust.owner"
-# 11i (judge j2228b) swap-after-check: a writer of the row dir waits for the owner sidecar (the
+# 11i swap-after-check: a writer of the row dir waits for the owner sidecar (the
 # bash checks have passed and the lock is held), then atomically swaps .claude.json for a symlink.
 # The node write must not follow it: victim byte-identical, every trial.
 swapped=0
@@ -256,7 +256,7 @@ for t in 1 2 3 4 5; do
   check "11i trial $t victim untouched" "$(vsum)" "$want"
 done
 check "11i the swap really happened in every trial" "$swapped" "5"
-# 11j (judge j2228c) continuous flip: the config flips between a file and a symlink the whole
+# 11j continuous flip: the config flips between a file and a symlink the whole
 # time after the sidecar appears, so a second lstat/realpath in the node write can land on the
 # link. A single swap (11i) cannot see that; the victim must stay byte-identical in every trial.
 flipper='const fs=require("fs"),[cfg,vic,sc,stop,cnt]=process.argv.slice(1),d=require("path").dirname(cfg),L=d+"/.swapL",R=d+"/.swapR",t0=Date.now();let n=0;
@@ -278,7 +278,7 @@ check "11j continuous flip: victim written in 0 of 800 trials" "$flipbad" "0"
 echo "flips: trials with a flip $(awk '$1 > 0' "$flipcnt" 2>/dev/null | wc -l), total flips $(awk '{s += $1} END {print s + 0}' "$flipcnt" 2>/dev/null)"
 check "11j the flipper flipped in at least 95 percent of trials" "$([ "$(awk '$1 > 0' "$flipcnt" 2>/dev/null | wc -l)" -ge 760 ] && echo yes || echo no)" "yes"
 
-# 11k (judge j2228e) short write: under RLIMIT_FSIZE the temp-file write is cut short. It must
+# 11k short write: under RLIMIT_FSIZE the temp-file write is cut short. It must
 # exit 4 and leave the native config byte-identical, never rename a truncated temp over it.
 if ! command -v prlimit >/dev/null 2>&1; then
   echo "SKIP 11k short write: prlimit (util-linux) not available"

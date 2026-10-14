@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/test-ready-check.sh — suite for ready-check.sh
-# (HIMMEL-3163). `gh` is a PATH stub (contract requirement — not GH_CMD, even
+# `gh` is a PATH stub (contract requirement — not GH_CMD, even
 # though the script also honors that override); `jq` and `git` are real.
 #
 # Covers: usage (arg count / bad PR / bad sha), one all-green PR, and one
@@ -219,7 +219,7 @@ rc=0; out="$(run)" || rc=$?
 check "empty-rollup: exit 1" "$rc" "1"
 contains "empty-rollup: check 2 fails" "$out" "[FAIL] 2. statusCheckRollup: no checks reported yet"
 
-# --- 2c. HIMMEL-3690: same check name CANCELLED earlier, SUCCESS later —
+# --- 2c. same check name CANCELLED earlier, SUCCESS later —
 # item 2 must PASS (judge the LATEST run per check identity, not any row) --
 reset_stubs
 STUB_ROLLUP='[{"name":"pr-title-lint","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-01-01T08:15:00Z","completedAt":"2026-01-01T08:19:58Z"},{"name":"pr-title-lint","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-01-01T08:24:00Z","completedAt":"2026-01-01T08:26:47Z"}]'
@@ -314,7 +314,7 @@ rc=0; out="$(run)" || rc=$?
 check "docs-only: exit 0" "$rc" "0"
 contains "docs-only: check 5 passes" "$out" "[PASS] 5."
 
-# --- 5c2. HIMMEL-5431: Markdown/text under scripts/ needs no Platforms ---
+# --- 5c2. Markdown/text under scripts/ needs no Platforms ---
 reset_stubs
 STUB_FILES="scripts/telegram/README.md"
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""}]'
@@ -345,7 +345,7 @@ rc=0; out="$(run)" || rc=$?
 check "files-unreadable: exit 1" "$rc" "1"
 contains "files-unreadable: check 5 fails" "$out" "[FAIL] 5. cannot read PR files"
 
-# --- 5e. check 5 reads ONLY the first commit (HIMMEL-4128) --------------
+# --- 5e. check 5 reads ONLY the first commit --------------
 # A docs-only first commit with the trailers on a LATER commit (what a PR-body
 # or follow-up-commit "recovery" amounts to) must still FAIL: the stuck-playbook
 # recovery is a recut, not a trailer added after the fact.
@@ -364,7 +364,7 @@ check "missing-ticket: exit 1" "$rc" "1"
 contains "missing-ticket: check 6 fails" "$out" "[FAIL] 6."
 contains "missing-ticket: names the offending subject" "$out" "tweak with no ticket"
 
-# --- 6b. HIMMEL-3586: a merge commit (>1 parent) is exempt from check 6,
+# --- 6b. a merge commit (>1 parent) is exempt from check 6,
 # even though its subject carries no ticket ID -------------------------
 reset_stubs
 MERGE_OID=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
@@ -389,7 +389,7 @@ check "merge-plus-unticketed: exit 1" "$rc" "1"
 contains "merge-plus-unticketed: check 6 fails" "$out" "[FAIL] 6."
 contains "merge-plus-unticketed: names the offending subject, not the merge" "$out" "tweak with no ticket"
 
-# --- 7. HIMMEL-4207: ticket coverage. The PR body needs a `## Ticket coverage`
+# --- 7. ticket coverage. The PR body needs a `## Ticket coverage`
 # section, one line per ask, each `done` or `deferred → <KEY>`; a deferred key
 # must exist and be open. A Jira error reads UNKNOWN, never PASS. ------------
 reset_stubs
@@ -442,7 +442,7 @@ STUB_BODY='## Ticket coverage\n'
 rc=0; out="$(run)" || rc=$?
 check "coverage empty section: exit 1" "$rc" "1"
 
-# codex-1: `done` must be the line's terminal disposition, not a substring
+# `done` must be the line's terminal disposition, not a substring
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: not done\n'
 rc=0; out="$(run)" || rc=$?
@@ -459,14 +459,14 @@ STUB_BODY='## Ticket coverage\n- ask one: done.\n- ask two: **done**\n'
 rc=0; out="$(run)" || rc=$?
 check "coverage 'done.' / bold done: exit 0" "$rc" "0"
 
-# codex-2: a successful jira get with a blank status is UNKNOWN, never open
+# a successful jira get with a blank status is UNKNOWN, never open
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-54\n'
 rc=0; out="$(run)" || rc=$?
 check "coverage blank jira status: exit 1" "$rc" "1"
 contains "coverage blank jira status: reads UNKNOWN" "$out" "UNKNOWN"
 
-# round 2: a deferral must also END the line, and a delimiter-free jira reply is not a status
+# a deferral must also END the line, and a delimiter-free jira reply is not a status
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50 pending verification\n'
 rc=0; out="$(run)" || rc=$?
@@ -483,7 +483,7 @@ rc=0; out="$(run)" || rc=$?
 check "coverage malformed jira reply: exit 1" "$rc" "1"
 contains "coverage malformed jira reply: reads UNKNOWN" "$out" "UNKNOWN"
 
-# --- 7b. HIMMEL-4300: `--only 7 <pr>` runs just the coverage check, so a leg
+# --- 7b. `--only 7 <pr>` runs just the coverage check, so a leg
 # lints its own PR body before READY with item 7's exact logic (no second copy).
 run7() {
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
@@ -527,7 +527,7 @@ contains "full run trailing text: prints the accepted shape" "$out" "- <ask>: do
 rc=0; out="$(cd "$REPO" && bash "$SCRIPT" --only 6 "$PR" 2>&1)" || rc=$?
 check "only 6 refused: exit 2" "$rc" "2"
 
-# --- 8. HIMMEL-3533: TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
+# --- 8. TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
 # ready-check.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors
 # test-bank-preflight-dotenv-root.sh: a scratch "own checkout" (this script +
 # scripts/lib/load-dotenv.sh, laid out at the same relative depth, plus a
@@ -554,7 +554,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
 check "own-checkout .env: exit 0" "$rc" "0"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
-# --- 9. HIMMEL-5469: the plugin version bump is re-checked against the CURRENT
+# --- 9. the plugin version bump is re-checked against the CURRENT
 # origin/main. Two PRs can each bump a plugin to the same version with different
 # content; mergeStateStatus stays CLEAN, so check 1 cannot see it. Fixture: a
 # bare origin; WORK builds history and pushes each PR head to refs/pull/77/head;
@@ -646,7 +646,7 @@ contains "plugin removed by the PR: check 9 passes" "$out" "[PASS] 9."
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."
 
-# --- 10. HIMMEL-5591: a PR that changes a GitHub Actions workflow needs a
+# --- 10. a PR that changes a GitHub Actions workflow needs a
 # completed, successful workflow_dispatch run AT ITS HEAD. ci.yml has no push
 # trigger, so the dispatch run is the only pre-merge test of the non-PR path.
 # Fixtures are copied from the real environment: the workflow bodies are this

@@ -37,7 +37,9 @@
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5412 adds
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5484 adds
+# shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
+# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`, HIMMEL-5609). HIMMEL-5412 adds
 # a python/node/bun/deno command that prints the whole environment or reads
 # /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
 # of a session transcript .jsonl (is_transcript_path) or a Grep over one or
@@ -822,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -830,6 +832,13 @@ g4_scan() {
     for ((i = 0; i < nw; i++)); do
         w="${g4w[i]}"
         d="${w//[\'\"\\]/}"
+        # HIMMEL-5484 (j2544g): any word naming the xtrace option, in any
+        # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
+        # ignores case and underscores in option names. Over-deny: HIMMEL-5609.
+        case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
+        # j2544h: brace expansion splits the word (`shopt -os x{,}trace`), so a
+        # word with an unquoted `{` matches xtrace as an in-order subsequence.
+        case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
         # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
@@ -844,6 +853,9 @@ g4_scan() {
         if [ -z "$cmd" ]; then
             if [ "$wrap_val" = 1 ]; then wrap_val=0; continue; fi
             case "$d" in
+                # HIMMEL-5484: an inherited trace switch (SHELLOPTS=xtrace,
+                # BASH_XTRACEFD) makes the next shell print its environment.
+                SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
                 [A-Za-z_]*=*) continue ;;
                 -*)
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
@@ -854,7 +866,7 @@ g4_scan() {
                     continue ;;
             esac
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
-            cmd="${d##*/}"
+            cmd="${d##*/}"; cmd="${cmd%.exe}"
             case "$cmd" in
                 python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
@@ -878,7 +890,45 @@ g4_scan() {
             -*) nflags=$((nflags + 1)) ;;
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
         esac
+        # HIMMEL-5484: setopt/unsetopt take option names AND flags in any order
+        # (`setopt extendedglob -x`): scan every word, not only the first.
+        case "$cmd:$d" in
+            setopt:-*x*|unsetopt:-*x*|unsetopt:+*x*) case "$d" in --*) ;; *) xt=1 ;; esac ;;
+        esac
         case "$cmd" in
+            # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
+            # flags before the first operand count (`bash s.sh -x` is the
+            # script's own flag); `-O`/`--rcfile` values are skipped.
+            bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh|set|setopt|unsetopt)
+                if [ "$xo" != 0 ]; then
+                    # The `-o` value is not an operand (`bash -o errexit -x s.sh`);
+                    # zsh matches option names case- and underscore-insensitively.
+                    # (`+o NAME` only consumes the value: `set +o xtrace` is off.)
+                    nargs=$((nargs - 1))
+                    if [ "$xo" = 1 ]; then
+                        case "$d" in [xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;; esac
+                    fi
+                    xo=0
+                elif [ "$xend" = 0 ] && [ "$nargs" = 1 ]; then
+                    # A `+e` / `+o X` / `+O X` flag was just counted as the
+                    # first operand: count it as a flag (bare `set` dumps the
+                    # environment, `set +x` does not) and keep scanning for -x.
+                    case "$d" in
+                        +O) nargs=0; nflags=$((nflags + 1)); skipv=1 ;;
+                        +o) nargs=0; nflags=$((nflags + 1)); xo=2 ;;
+                        +*x*) if [ "$cmd" = unsetopt ]; then xt=1; fi; nargs=0; nflags=$((nflags + 1)) ;;
+                        +*) nargs=0; nflags=$((nflags + 1)) ;;
+                    esac
+                elif [ "$xend" = 0 ] && [ "$nargs" = 0 ]; then
+                    case "$d" in
+                        --) xend=1 ;;     # `set -- -x`: the rest are positionals
+                        --rcfile|--init-file|-O) skipv=1 ;;
+                        --[xX]*[tT]*[rR]*[aA]*[cC]*[eE]) xt=1 ;;   # zsh --xtrace
+                        --*) ;;
+                        -*x*) xt=1 ;;
+                        -*o) xo=1 ;;
+                    esac
+                fi ;;
             printenv)
                 case "$d" in -*) ;; *) if g4_envish_name "$d"; then hit=1; note="printenv of a credential variable"; fi ;; esac ;;
             declare|typeset|export|readonly)
@@ -886,6 +936,7 @@ g4_scan() {
                     -*[fF]*) ;;     # HIMMEL-5292: function mode, not variables
                     -*[px]*) pflag=1 ;;
                     -*)   ;;
+                    SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1 ;;
                     *)    nnames=$((nnames + 1))
                           if [ "$pflag" = 1 ] && g4_envish_name "${d%%=*}"; then hit=1; note="$cmd -p of a credential variable"; fi ;;
                 esac ;;
@@ -948,6 +999,9 @@ g4_scan() {
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
     esac
+    if [ "$xt" = 1 ]; then
+        hit=1; note="shell tracing prints the inherited environment into the transcript (no env -i exemption: HIMMEL-5609)"
+    fi
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
     return 0
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// cloud-liveness.mjs — HIMMEL-5163. Is each claude.ai cloud session still alive?
+// cloud-liveness.mjs — Is each claude.ai cloud session still alive?
 //
 // A cloud session cannot message the console, so nothing told it that HIMMEL-5077's
 // session stopped after one commit or that HIMMEL-4686's never produced a branch

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/ready-check.sh — mechanize the console's READY
-# verification (HIMMEL-3163, fleet-v1-join design P3). Console A ran this same
+# verification. Console A ran this same
 # checklist by hand ~12 times on 2026-09-18 with zero variance; the fleet cap
 # doubling (4 -> 8) doubles the READYs per hour, so it is worth a script.
 #
-# Read-only except the shared PR snapshot cache (HIMMEL-4858). Prints one
+# Read-only except the shared PR snapshot cache. Prints one
 # line per check, then READY-CHECK PASS|FAIL. It does
 # NOT read the three-dot diff — that judgement call stays the console's own,
 # and the script says so on its last line.
 #
 # Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
-#   --only 7 runs ONLY check 7 (HIMMEL-4300) — a leg's own pre-READY lint of its
+#   --only 7 runs ONLY check 7 — a leg's own pre-READY lint of its
 #   PR body, the same code the console runs. Prints COVERAGE-LINT PASS|FAIL.
 #
 # Checks:
@@ -21,7 +21,7 @@
 #   2. statusCheckRollup: every check IDENTITY's LATEST run is COMPLETED with
 #      conclusion SUCCESS/SKIPPED/NEUTRAL (CheckRun), or state SUCCESS
 #      (StatusContext) — a superseded run (e.g. an earlier CANCELLED run
-#      before a later SUCCESS) is not judged (HIMMEL-3690). Identity =
+#      before a later SUCCESS) is not judged. Identity =
 #      CheckRun name + workflowName when present, else StatusContext
 #      context. Read via --json, never `gh pr checks` text (a green check
 #      whose name contains a space mislabels under naive text parsing).
@@ -49,19 +49,19 @@
 #      scripts/ci/check-commit-range.sh's `git rev-list --no-merges`. Parent
 #      count, not subject text, is the exemption signal.
 #
-#   7. Ticket coverage (HIMMEL-4207): the PR body carries a `## Ticket coverage`
+#   7. Ticket coverage: the PR body carries a `## Ticket coverage`
 #      section, one list line per ask, each `done` or `deferred → HIMMEL-<n>`
 #      (`->` accepted). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do. A Jira error reads UNKNOWN and fails — never a PASS.
-#   9. Plugin version bump vs CURRENT origin/main (HIMMEL-5469): every plugin
+#   9. Plugin version bump vs CURRENT origin/main: every plugin
 #      under marketplace/plugins/ the PR touches must be versioned strictly
 #      above origin/main's manifest (same rule as check-plugin-drift.sh
 #      --bump-required, but against main now, not the merge-base — two PRs
 #      bumping to the same version merge CLEAN). Fetches origin/main and the PR
 #      head (refs/pull/<n>/head) into the caller's repo; a PR touching no
 #      plugin never reaches git. Any fetch/read failure FAILs.
-#  10. Workflow dispatch (HIMMEL-5591): every .github/workflows/*.yml the PR
+#  10. Workflow dispatch: every .github/workflows/*.yml the PR
 #      changes needs a completed, successful workflow_dispatch run at the PR
 #      head sha (`gh run list --workflow <wf> --event workflow_dispatch
 #      --commit <head>`), since ci.yml has no push trigger and the mode main
@@ -300,7 +300,7 @@ else
         echo "[FAIL] 5. cannot read PR files (gh api .../pulls/$PR/files failed or returned nothing)"
         mark_fail
     else
-        # HIMMEL-5431: Markdown/text is never a script, even under scripts/
+        # Markdown/text is never a script, even under scripts/
         # (a docs-only README edit could otherwise never get a GO).
         sensitive=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
         non_docs=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)
@@ -329,7 +329,7 @@ else
     # shellcheck source=../../lib/load-dotenv.sh
     # shellcheck disable=SC1091
     if . "$RC_SCRIPT_DIR/../../lib/load-dotenv.sh" 2>/dev/null; then
-        # HIMMEL-3533: pin to this script's OWN checkout, never the caller's
+        # pin to this script's OWN checkout, never the caller's
         # CWD repo (load_dotenv with no --root resolves via the process CWD's
         # git repo — see HIMMEL-3532 / bank-preflight.sh for the failure mode).
         load_dotenv --root "$(_load_dotenv_primary_for "$RC_SCRIPT_DIR/../../..")" TICKET_ID_PATTERN JIRA_PROJECT_KEY || true
@@ -358,8 +358,8 @@ else
 fi
 fi  # ONLY7 == 0: checks 1-6
 
-# ── 7. ticket coverage (HIMMEL-4207) ────────────────────────────────────────
-# A PR can close its ticket Done with asks undone (HIMMEL-4202/4204/4196). The
+# ── 7. ticket coverage ────────────────────────────────────────
+# A PR can close its ticket Done with asks undone. The
 # body must carry a `## Ticket coverage` section, one list line per ask of each
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the console's diff read; this check
@@ -433,8 +433,8 @@ EOF
 fi
 
 if [ "$ONLY7" -eq 0 ]; then
-# ── 9. plugin version bump vs CURRENT origin/main (HIMMEL-5469) ─────────────
-# The --bump-required rule of scripts/check-plugin-drift.sh (HIMMEL-3551), run
+# ── 9. plugin version bump vs CURRENT origin/main ─────────────
+# The --bump-required rule of scripts/check-plugin-drift.sh, run
 # against main as it is NOW rather than the PR's merge-base: two PRs can bump
 # the same plugin to the same version with different content, which merges
 # cleanly (check 1 stays CLEAN) and leaves stale installs. Every plugin the PR
@@ -496,10 +496,10 @@ fi
 fi  # ONLY7 == 0: check 9
 
 if [ "$ONLY7" -eq 0 ]; then
-# ── 10. workflow PRs need a green workflow_dispatch run AT HEAD (HIMMEL-5591) ──
+# ── 10. workflow PRs need a green workflow_dispatch run AT HEAD ──
 # A PR is CI-tested only in pull_request mode; the mode main runs (cron,
 # dispatch) is never exercised before merge. ci.yml has no push trigger
-# (HIMMEL-5113), so a workflow_dispatch run on the branch is the only pre-merge
+# so a workflow_dispatch run on the branch is the only pre-merge
 # test of the non-PR path. Every .github/workflows/*.yml the PR changes needs a
 # completed, successful workflow_dispatch run whose headSha is this head — a run
 # at an older sha proves nothing about the change. A changed workflow with no

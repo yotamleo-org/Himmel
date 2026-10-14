@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# leg-doc-lock.sh - HIMMEL-4795. Sourced, never run. One lock shared by every
+# leg-doc-lock.sh - Sourced, never run. One lock shared by every
 # script that writes a handover doc, so a rewrite never drops a concurrent
 # append:
 #   append-results.sh   appends a bullet (>>)
-#   headed-arm-leg.sh   rewrites the front matter (session_ids:, HIMMEL-4786)
+#   headed-arm-leg.sh   rewrites the front matter (session_ids:)
 #   inbox-send.sh --doc rewrites the doc's "## Console Rulings" section
 #   live-state.sh       rewrites a console doc's `legs:` line
 # A rewrite reads the doc, writes a temp file and mv's it over the doc. An

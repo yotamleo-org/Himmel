@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/verdict-go.sh - HIMMEL-5593: one call from a
+# scripts/handover/console-kit/verdict-go.sh - one call from a
 # judge's verdict to the persisted verdict, the GO, the Results bullet and the
 # board. The console used to spend 8 to 9 full-context turns on that
-# bookkeeping per verdict (HIMMEL-5592 benchmark); this runs the same sanctioned
+# bookkeeping per verdict; this runs the same sanctioned
 # steps in order and prints the message to send the leg.
 #
 # Usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path>

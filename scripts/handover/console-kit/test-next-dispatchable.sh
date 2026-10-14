@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-brief-lint.sh
-# test-next-dispatchable.sh — HIMMEL-4959. Exercises next-dispatchable.sh on a
+# test-next-dispatchable.sh — Exercises next-dispatchable.sh on a
 # fixture Jira mirror, a fixture manifest + leg doc, and stubbed gh / cloud-route
 # (NEXT_DISPATCH_GH_CMD / NEXT_DISPATCH_CLASSIFY_CMD): no real mirror, Jira, gh
 # or worktree is touched. NEXT_DISPATCH overrides the script under test (the RED

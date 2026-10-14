@@ -101,6 +101,7 @@ examples:
 `ponytail: <ceiling>, <upgrade path>` marks a known, deliberate simplification
 (limitation AND the ticket or trigger to revisit it) →
 [`docs/internals/ponytail-convention.md`](docs/internals/ponytail-convention.md).
+Other code comments: keep list only, never ticket/review history (gate: `check-history-comments`, same doc).
 
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs

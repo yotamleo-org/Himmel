@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/shepherd.sh — one deterministic pass over a
-# CLOUD-DONE PR (HIMMEL-4942, lever 1). Ten native shepherd legs cost ~$2 each,
+# CLOUD-DONE PR. Ten native shepherd legs cost ~$2 each,
 # almost all cache reads, for mechanical work with a clean panel every time.
 # This runs the mechanical part in one foreground pass and prints ONE block, so
 # a model turn is spent only on a finding, a failed suite or a coverage gap.

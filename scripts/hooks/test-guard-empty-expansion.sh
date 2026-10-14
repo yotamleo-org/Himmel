@@ -90,6 +90,30 @@ check deny block-bare-qmd-query.sh 'qmd $V search hello'
 deny_shapes block-read-secrets.sh 'cat' '.env'
 check deny block-read-secrets.sh 'cat ${V:-} .env'
 
+# a default word is what the command runs when the variable is unset or empty:
+# the protected program can ride in it (HIMMEL-5525)
+for op in ':-' '-' ':=' '=' ':+' '+'; do
+  check deny block-git-stash.sh "\${V${op}git} stash drop"
+  check deny block-bare-qmd-query.sh "\${V${op}qmd} query hello"
+  check deny block-read-secrets.sh "\${V${op}cat} .env"
+done
+check deny block-git-stash.sh 'git ${V:-stash} drop'
+check deny block-git-stash.sh '${V:-${Z:-git}} stash drop'
+# each default expansion is set or unset on its own: A unset, B empty
+check deny block-git-stash.sh '${A:-git} ${B:-x} stash drop'
+check deny block-git-stash.sh '${A:-git} ${B:-x} ${C:-y} stash drop'
+check deny block-git-stash.sh '${B:-x} ${A:-git} stash drop'
+check allow block-git-stash.sh '${A:-git} ${B:-x} stash list'
+# past the combination cap only the all-words form is read; a huge count must
+# neither skip the check nor loop (63 and 64 expansions overflowed a bash shift)
+for n in 6 63 64 70; do
+  tail=$(i=0; while [ "$i" -lt "$n" ]; do printf ' ${Z:-}'; i=$((i+1)); done)
+  check deny block-git-stash.sh '${V:-git} stash drop'"$tail"
+done
+check allow block-git-stash.sh '${V} stash drop'
+check allow block-git-stash.sh '${V:-git} stash list'
+check allow block-git-stash.sh '${V:-echo} stash drop'
+
 # read-only look-alikes that name no protected target stay allowed
 check allow block-git-stash.sh 'echo ${V:-x}'
 # a command substitution inside an expansion stays allowed when no target is named

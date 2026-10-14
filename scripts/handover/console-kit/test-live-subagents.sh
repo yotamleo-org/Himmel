@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/test-live-subagents.sh - HIMMEL-5071 suite:
+# scripts/handover/console-kit/test-live-subagents.sh - suite:
 # live-subagents.sh (the detector) and the wrap gate it backs,
 # `console.sh wrap`. The close gate's cases live in test-close-wrapped-leg.sh
 # beside the rest of that script's cases.

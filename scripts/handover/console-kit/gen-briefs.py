@@ -63,7 +63,7 @@ def die(msg, rc=1):
 
 
 def tier_gate(model):
-    # Same MODEL-PREFIX match as headed-arm-leg.sh's Tier-line gate (HIMMEL-2976).
+    # Same MODEL-PREFIX match as headed-arm-leg.sh's Tier-line gate.
     m = re.match(r'^(?:anthropic/)?claude-(opus|fable)-', model or '')
     return m.group(1) if m else None
 
@@ -256,7 +256,7 @@ def main():
             f.write(render_launcher(l, ctx, doc))
         os.chmod(launcher, 0o755)
         if a.manifest:
-            # HIMMEL-5047: the Telegram /launch-leg op runs a launcher only when
+            # the Telegram /launch-leg op runs a launcher only when
             # its sha256 matches the one recorded here at write time.
             with open(launcher, 'rb') as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
@@ -269,7 +269,7 @@ def main():
         print('%s %s %s' % (l['label'], l['nonce'], doc))
     if a.manifest:
         for l in legs:
-            # HIMMEL-5089: a missing --lane is stored `unknown` and relay-batch refuses it; the
+            # a missing --lane is stored `unknown` and relay-batch refuses it; the
             # launchers written above are native headed-arm-leg launches unless the leg says otherwise.
             arm = (' --arm ' + l['ab_arm']) if l.get('ab_arm') else ''
             print('bash scripts/handover/console-kit/fleet-manifest.sh add %s %s --lane %s%s' % (shlex.quote(a.manifest), shlex.quote(os.path.join(a.bucket, l['stem'] + '.md')), shlex.quote(l.get('lane', 'native')), arm))

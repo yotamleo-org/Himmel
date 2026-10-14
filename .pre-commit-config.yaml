@@ -193,6 +193,13 @@ repos:
         files: ^(CLAUDE|AGENTS|GEMINI)\.md$
         pass_filenames: false
 
+      - id: no-history-comments
+        name: no new code comment narrates history (ticket, review round, judge qid; ponytail exempt) (himmel-dev only)
+        entry: bash scripts/lint/check-history-comments.sh --staged
+        language: system
+        files: \.(sh|bash|zsh|ps1|psm1|py|js|mjs|cjs|ts|tsx|mts|cts)$
+        pass_filenames: false
+
       - id: no-ticket-id-in-user-strings
         name: adopter-facing strings stay free of raw ticket IDs (himmel-dev only)
         # HIMMEL-2371

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/leg-transcripts.sh - sourced library: resolve a
-# leg's transcript by its session names (HIMMEL-3629, HIMMEL-3638; moved out of
-# close-wrapped-leg.sh by HIMMEL-4670 P3 so the close and the leg-digest-step
-# --doc fallback share one matcher).
+# leg's transcript by its session names, shared by close-wrapped-leg.sh and the
+# leg-digest-step --doc fallback so both use one matcher.
 #
 #   match_transcripts <files> <head-window> <candidates>
 #       Every file (newline list) whose `"customTitle":"<candidate>"` appears in
@@ -25,7 +24,7 @@ match_transcripts() {
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         if [ "$hw" -eq 0 ]; then
-            # codex-2: the all-time fallback scans whole-repo-age
+            # the all-time fallback scans whole-repo-age
             # transcripts, so grep the file directly per candidate
             # instead of slurping it into a shell variable first --
             # a multi-GB transcript otherwise loads entirely into memory
@@ -61,7 +60,7 @@ EOF
 
 resolve_leg_transcripts() {
     local dir="$1" candidates="$2" mtime_window="${3:-1}" head_window="${4:-40}" scan_files found
-    # HIMMEL-3638: a plain `grep -rlF ... "$dir"` reads every byte of every
+    # a plain `grep -rlF ... "$dir"` reads every byte of every
     # transcript ever written across the whole projects tree (5.6 GB) -
     # minutes per close. A wrapped leg's own transcript is always from TODAY,
     # and customTitle (when set) is near the top of the file, so bound both
@@ -74,7 +73,7 @@ resolve_leg_transcripts() {
         # transcripts fall inside it (an empty-scan_files check alone would
         # miss that case). Retry against the full tree whenever the SCOPED
         # search found no MATCH, not only when it found no files at all.
-        # codex-2 (round 4): the fallback must also drop the head-window
+        # the fallback must also drop the head-window
         # bound - a customTitle past line $head_window is unmatchable in
         # either pass otherwise. Pass 0 = unbounded (whole file).
         scan_files=$(find "$dir" -type f -name '*.jsonl' 2>/dev/null)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/cut-tag.sh - console-run pre-release tag cut
-# (HIMMEL-3572 row 6). A console's `git -C <primary> tag` is refused by
-# block-write-into-main-checkout's arm (g) (HIMMEL-3401) - this script never
+# A console's `git -C <primary> tag` is refused by
+# block-write-into-main-checkout's arm (g) - this script never
 # calls `git tag` at all: the tag is created through the GitHub API
 # (`gh api .../git/refs`), which the ref-write fence does not intercept
 # because it never touches the primary checkout's own refs, so the console
@@ -19,7 +19,6 @@
 #     v0.4.0-pre.1 needs no script change); or
 #   - a bare v<X>.<Y>.<Z> release, allowed only when at least one
 #     v<X>.<Y>.<Z>-pre.<N> tag already exists on origin for that same X.Y.Z
-#     (HIMMEL-3701) -
 # unless --version-override <reason> is given, which accepts any next
 # pre-release value, or a bare release with no pre-release history, and
 # records the reason in its stdout/PR-body trail.
@@ -66,7 +65,7 @@
 #      pre-release history (bare release), and no --version-override was
 #      given
 #   7  VERSION at <sha> does not read the tag's X.Y.Z (or is unreadable);
-#      NOT waived by --version-override (HIMMEL-4417)
+#      NOT waived by --version-override
 #
 # GH is overridable (GH_BIN) for hermetic PATH-stub tests, same seam shape as
 # go.sh's HERE-relative sourcing.
@@ -249,7 +248,7 @@ if ! git merge-base --is-ancestor "$SHA" origin/main 2>/dev/null; then
     exit 3
 fi
 
-# HIMMEL-4417: the tagged commit's VERSION file must already read the tag's
+# the tagged commit's VERSION file must already read the tag's
 # X.Y.Z, or himmelctl --version and the config feed's himmel.version
 # mis-attribute the build. Not waived by --version-override (that flag is about
 # tag sequence only); the bump lands by PR BEFORE the cut.
@@ -350,7 +349,7 @@ fi
 
 # check-runs above can pass vacuously on a commit whose CI workflow run has
 # not started yet - e.g. only the Pages check-runs (build/deploy/
-# report-build-status) exist and are green (HIMMEL-3627). The CI workflow
+# report-build-status) exist and are green. The CI workflow
 # run itself, read via the Actions API, is the authoritative signal.
 if ! ci_runs_json=$("$GH" api "repos/$NWO/actions/runs?head_sha=$SHA&per_page=100" 2>/dev/null); then
     echo "cut-tag: refusing - gh api actions/runs failed at $SHA" >&2
@@ -367,7 +366,7 @@ ci_run=$(printf '%s' "$ci_runs_json" | jq -r '
 case "$ci_run" in
     completed/success) : ;;
     missing/*)
-        # HIMMEL-5113: main runs CI on a cron, not per merge, so a sha with no
+        # main runs CI on a cron, not per merge, so a sha with no
         # run is expected; the cron run covers it only if it started after.
         echo "cut-tag: refusing - no CI workflow run found at $SHA" >&2
         echo "cut-tag: dispatch one on the tip, wait for green, retry: gh workflow run ci.yml --ref main" >&2

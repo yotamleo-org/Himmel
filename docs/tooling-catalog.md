@@ -672,6 +672,12 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 
 ---
 
+## /no-comments + comment-sicko (vendored, HIMMEL-5630)
+
+`.claude/skills/no-comments/` (`SKILL.md`, `LICENSE`) and `.claude/agents/comment-sicko.md`: the comment-prune tool. `/no-comments [scope]` spawns the `comment-sicko` reviewer, which deletes comments outside a short keep list (license headers, external-forced behaviour, public API docs, constraint links, `ponytail:` markers) and flags our-code surprises as `MUST KILL`. Vendored from `cursor/plugins` pstack at `1e5c90a4b6f249917bd21fe361b3a2a7deb741b8` (MIT, Lauren Tan); deviations are listed in each file's header. `disable-model-invocation`, so it runs only when typed.
+
+---
+
 <a id="claude-glm"></a>
 
 ## claude-glm (`scripts/claude-glm`, `.ps1` twin)

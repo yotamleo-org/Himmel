@@ -164,4 +164,35 @@ if [ "$vrc" -eq 1 ] && grepq "$vout" 'scripts/test-foo.sh never ran.*discovery l
   pass "RM6: a shard claiming notfound for a suite the runner lists is refused"
 else fail "RM6: verify rc=$vrc: $vout"; fi
 
+# --- RM7 ---------------------------------------------------------------------
+# HIMMEL-5648: ci.yml's PR shard probe asks `--list` with NO SUITE_MANIFEST, the
+# run step runs with the manifest inside the repo (untracked, not gitignored:
+# the fixture's `m/` is, which is why RM3 never saw this). That untracked file
+# defeated the docs-only lane in the run step alone, so the probe said "no
+# work" while the shard ran a suite the impacted selection had chosen. Under an
+# impacted selection the lane is inert, so both read the selector's answer.
+g checkout -q -B base7 "$BASE"
+printf '#!/usr/bin/env bash\n# reads docs/note.md\necho "doc" >> "$RM_LOG"\nexit 0\n' > "$SB/scripts/test-doc.sh"
+g add -A; g commit -q -m "chore: base7"
+BASE7=$(g rev-parse HEAD)
+g update-ref refs/remotes/origin/main "$BASE7"
+g checkout -q -B docs7 "$BASE7"
+printf '# edit\n' >> "$SB/docs/note.md"
+g commit -q -am "docs: edit note"
+: > "$RM_LOG"; rm -rf "$SB/shard-manifest"
+probe7=$(SUITE_TIER_MODE=fast SUITE_CHANGED_SINCE="$BASE7" SUITE_IMPACTED_FROM_BASE="$BASE7" \
+         bash "$RUN" --scan-repo-of-script --list --shard 1/1 . 2>&1)
+run7=$(SUITE_TIER_MODE=fast SUITE_CHANGED_SINCE="$BASE7" SUITE_IMPACTED_FROM_BASE="$BASE7" \
+       SUITE_MANIFEST=shard-manifest/manifest-shard1.txt \
+       bash "$RUN" --scan-repo-of-script --shard 1/1 . 2>&1); rc7=$?
+if grepq "$probe7" '\[RUN \] scripts/test-doc.sh' && [ "$rc7" -eq 0 ] && [ "$(cat "$RM_LOG")" = doc ]; then
+  pass "RM7: probe and run step (in-repo manifest) agree: the referencing suite is selected and runs"
+else fail "RM7: probe: $probe7 -- run rc=$rc7 ran: $(cat "$RM_LOG") out: $run7"; fi
+(cd "$SB" && bash scripts/ci/impacted-selection.sh "$BASE7" HEAD) > "$SB/sel.txt"
+bash "$RUN" --scan-repo-of-script --list . > "$SB/disc.txt" 2>&1
+vout=$(bash "$VERIFY" --dir "$SB/shard-manifest" --shards 1 --selection "$SB/sel.txt" \
+       --discovered "$SB/disc.txt" 2>&1); vrc=$?
+if [ "$vrc" -eq 0 ]; then pass "RM7: the aggregator verifies the docs-only shard"; else fail "RM7: verify rc=$vrc: $vout"; fi
+rm -rf "$SB/shard-manifest"
+
 rst_tally

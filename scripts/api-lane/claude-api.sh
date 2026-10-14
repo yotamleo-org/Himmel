@@ -10,6 +10,9 @@
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
+#        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
+#        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
+#        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
 # OFF by default. No subscription fallback: a refusal is final.
 set -u
 
@@ -72,6 +75,13 @@ case "$MODEL" in *[!A-Za-z0-9._:/@-]*) refuse "--model has characters outside [A
 [ -n "$BUDGET" ] || refuse "--max-budget-usd is required"
 case "$FORMAT" in ""|json) ;; *) refuse "--output-format must be json" ;; esac
 
+# HIMMEL-5570: the run kind labels the launch record (cache-report.mjs groups by it); the TTL is the main-conversation
+# cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
+KIND="${HIMMEL_API_KIND:-other}"
+case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
+CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
+case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
+
 # --- HIMMEL-5433: auto = the grant that expires first among accounts with room for the whole budget ---
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
@@ -127,7 +137,27 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC
 # denies Edit/Write/Bash unless declared here. The scrub is the bwrap sandbox, so it cannot be dropped; this
 # allowance is the fixture-work tool set, the sandbox bounds Bash, and callers cannot add to or replace it.
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
-ALLOWED_TOOLS="Read,Edit,Write,Glob,Grep,Bash"
+# HIMMEL-5625: the lane is tool-free by default. GRANT_CEILING is the most a caller can ever name; a caller opts in
+# with HIMMEL_API_TOOLS=<comma subset of the ceiling>, and an unset or empty variable is a tool-free call. Anything
+# outside the ceiling (a wildcard, Bash(*), an mcp__ tool), or a malformed list, is refused. Hooks are off on this
+# lane, so every tool a caller names is one no PreToolUse guardrail can stop: name the fewest.
+GRANT_CEILING="Read,Edit,Write,Glob,Grep,Bash"
+ALLOWED_TOOLS=""
+if [ -n "${HIMMEL_API_TOOLS:-}" ]; then
+  case "$HIMMEL_API_TOOLS" in ,*|*,|*,,*) refuse "HIMMEL_API_TOOLS has an empty entry" ;; esac
+  IFS=, read -ra WANT <<< "$HIMMEL_API_TOOLS"
+  for t in "${WANT[@]}"; do
+    case ",$GRANT_CEILING," in *",$t,"*) ;; *) refuse "HIMMEL_API_TOOLS may only name tools from the grant ceiling ($GRANT_CEILING)" ;; esac
+    ALLOWED_TOOLS="${ALLOWED_TOOLS:+$ALLOWED_TOOLS,}$t"
+  done
+fi
+TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
+# HIMMEL-5570: cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
+# so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
+# No caller can be granted an mcp__ tool, so no call loads an MCP server: with hooks off, an ambient-allowed MCP
+# tool would otherwise run.
+EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
+[ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
 
 # HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
@@ -165,10 +195,11 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
-  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
-  ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
+  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
+  ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
+  ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-  --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
+  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT"
 RC=$?
 
 # --- settle on verified cost, otherwise keep the reservation as unknown ---
@@ -186,11 +217,14 @@ else
 fi
 
 # --- secret-free launch record (no key, no prompt) ---
+# HIMMEL-5570: the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
+read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {
-  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s}\n' \
+  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB_ID" "$HIMMEL_API_ACCOUNT" "$ROSTER_ORG" "$ROSTER_KEY" \
-    "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC"
+    "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC" "$KIND" "$CACHE_TTL" \
+    "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
 
 cat "$OUT"

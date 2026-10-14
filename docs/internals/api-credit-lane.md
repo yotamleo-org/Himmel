@@ -135,6 +135,91 @@ ledger; pinning it is HIMMEL-5444.
   `HIMMEL_API_LOCK_WAIT_MS` (default 5000; unset or empty means the default)
   before `ledger-locked-or-unwritable`.
 
+## Prompt cache (HIMMEL-5570)
+
+A cache read costs 0.1x input, a 5m write 1.25x, a 1h write 2x
+([prompt-cache.md](prompt-cache.md) is the model of record). The prefix is tools,
+then system prompt, then messages, and the match is exact: a byte that differs
+anywhere re-writes everything after it. Measured 2026-10-14, claude 2.1.299,
+Haiku 5.5, tool-free, a one-word prompt, account B:
+
+| Arm | Runs | Input | Cache write | Cache read | Hit rate | Cost |
+|---|---|---|---|---|---|---|
+| before (no flag, cwd in the system prompt) | 3 | 6 | 12,430 | 7,820 | 38.6 % | $0.001709 |
+| after (`--exclude-dynamic-system-prompt-sections`) | 3 | 6 | 11,041 | 9,197 | 45.4 % | $0.001500 (-12 %) |
+
+Each arm ran dir X, dir Y, dir X again, inside 5 minutes. Runs 1 and 2 of an arm
+write whatever differs from the shared prefix; run 3 returns to dir X and reads its
+whole prefix (6,750 and 6,746 tokens) in both arms. Three runs per arm and a
+one-word prompt: the figures show direction, not a rate to quote. The record is
+`launches.jsonl`; `node scripts/api-lane/cache-report.mjs` prints the hit rate and
+TTL pick per kind, model and organization (only those share a cache) from it. Before this change the record held cost only, so no
+earlier run had a hit rate to read back.
+
+**Prefix rules (one run kind = one row of the same prefix):**
+
+1. The launcher fixes everything above the prompt: `--tools`, `--strict-mcp-config`
+   (on every call: no caller can be granted an `mcp__` tool, and hooks are off), the model and effort are the caller's and must be the same
+   for every run of a kind (each model has its own cache).
+2. `--exclude-dynamic-system-prompt-sections` is always passed: the working
+   directory, platform, memory paths and git status ride in the first user
+   message, so two runs from different directories still share the system prompt.
+   They do not share the first user message, which still names the directory:
+   **launch every run of a kind from the same directory**, an empty scratch one,
+   never a checkout (the sandbox leaves stubs there, see Deferred).
+3. Per-run content goes last, in the `-p` prompt. A timestamp, nonce, job id or path
+   in a fixed instruction text re-writes it, so keep them in the per-run tail.
+4. Name the kind: `HIMMEL_API_KIND=<label>` (`[A-Za-z0-9._-]`, default `other`) lands
+   in the launch record with the TTL and the usage split (`input_tokens`,
+   `cache_creation_tokens`, `cache_read_tokens`; `null` when the result had none).
+5. The launcher states the TTL itself through `CLAUDE_CODE_PROMPT_CACHE_TTL`
+   (`HIMMEL_API_CACHE_TTL=5m|1h`, default `5m`). A key-authenticated call gets 5m by
+   default; a caller's own `CLAUDE_CODE_PROMPT_CACHE_TTL` is dropped like every
+   `CLAUDE_CODE_*` variable. Confirm the tier a run really used from
+   `usage.cache_creation.ephemeral_1h_input_tokens` in its result.
+
+**TTL by run kind.** 1h pays 2x instead of 1.25x on every write and wins only when
+gaps between runs of a kind fall between 5 and 60 minutes. The 48 recorded runs
+(2026-10-12 to 2026-10-14) have 44 gaps of 300 s or less, 1 between 300 s and 1 h and
+2 above 1 h, so every kind stays on **5m**. Re-decide per kind with
+`cache-report.mjs` once a kind has runs with usage: it prices the observed gaps on
+both tiers and prints `recommended_ttl`. Set `HIMMEL_API_CACHE_TTL=1h` for that kind
+only when it says so; a burst finishing inside 5 minutes never earns the premium.
+
+## Judge-call bridge (HIMMEL-4987)
+
+`scripts/api-lane/judge-call.sh` sends ONE verdict-grade question to the lane instead of a
+native subagent and hands the parent a bounded artifact. It is a console-side caller of
+`claude-api.sh`; it adds no launch path of its own.
+
+```bash
+bash scripts/api-lane/judge-call.sh --qid <qid> --pr <n> --head <40-hex> --question-file <f> \
+  --model claude-opus-5-5 --max-budget-usd 0.50 [--effort high] [--timeout 600] [--judge <name>]
+```
+
+stdout is the artifact path; exit 0 only when the verdict was recorded.
+
+| Rule | Where |
+|---|---|
+| Read-only: `HIMMEL_API_TOOLS=Read,Glob,Grep`, `--permission-mode dontAsk`, `HIMMEL_API_KIND=judge`; a caller's own `HIMMEL_API_TOOLS` is overwritten | `judge-call.sh` |
+| Explicit judgment-tier model (`claude-opus-*` or `claude-sonnet-*`, never haiku or fable) and a budget above 0 and at most $2.00; a refusal happens before any call | `judge-call.sh` |
+| Fixed instruction first, head, PR and question last, run from an empty scratch cwd, so the prefix caches across judge calls; the question names every file by ABSOLUTE path, since a repo-relative name resolves nowhere in that cwd | `judge-call.sh` |
+| Verdict semantics are the in-process judge's: the first line is `**GO**` / `**NO-GO**` `for head <sha>`, evidence follows, and a valid verdict is recorded by `write-verdict.sh` (mac-signed, NO-GO needs its `class:` line) | `judge-result.mjs`, `write-verdict.sh` |
+| Status instead of a ruling: `STALE` (names another head), `MISSING` (no verdict first line, no head, or no evidence), `DENIED` (any `permission_denials`, whatever the rc), `ERROR` (error result, or evidence over 32 KiB, which is never recorded cut), `UNRECORDED` (the writer refused), `REFUSED` (the launcher refused), `TIMEOUT` | `judge-result.mjs`, `judge-call.sh` |
+| Bounded parent artifact (`<judge dir>/judge-call-<qid>.json`, mode 600): status, reason, verdict, heads, model, budget, cost, verdict path and an excerpt of the evidence cut at 8 KiB; the full evidence is in the verdict record | `judge-result.mjs` |
+| Deadline through `qmd_bounded` (process group killed); the bridge never touches the ledger, so a timed-out or errored call keeps its full reservation (`claude-api.sh` settles on a verified cost or keeps it unknown) | `judge-call.sh` |
+| No bank fallback: a refusal is final and the native subscription is never consulted | `claude-api.sh` |
+
+Run it from a console, not a leg: `write-verdict.sh` refuses a console-spawned leg (`HIMMEL_CONSOLE_LEG`), so
+a leg's call ends `UNRECORDED` with the ruling in the artifact excerpt.
+
+Measured cost of a real call (one 60-line file, `--effort low`): `claude-opus-5-5` spent $0.107 and hit a
+$0.10 cap before answering (status `ERROR`, cost kept in the artifact); `claude-sonnet-5-5` answered a GO
+with evidence for $0.078. Budget opus judge calls at $0.25 or more.
+
+Not converted: headed judge SESSIONS (`headed-arm-leg.sh --judge`) keep their own worktree and lifecycle.
+Routine routing of judge calls onto the lane waits on a measured quality and cost per ruling.
+
 ## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 
 > API credit lane: `scripts/api-lane/claude-api.sh` is the only API-key launch

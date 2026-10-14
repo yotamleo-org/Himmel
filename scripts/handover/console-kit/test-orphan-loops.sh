@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-orphan-loops.sh — HIMMEL-2761. Hermetic tests for orphan-loops.sh, the
+# test-orphan-loops.sh — Hermetic tests for orphan-loops.sh, the
 # read-only inventory of long-lived Claude Code shell-tool wrappers
 # (`<shell> -c source …/shell-snapshots/snapshot-<shell>-….sh …`) joined to the
 # owning session name. The process table is a PATH `ps` stub over a fixture and
@@ -47,7 +47,7 @@ chmod +x "$W/bin/pgrep" "$W/bin/ps"
 # default threshold); 204 parent 999 is not in the table -> unowned; 205 is
 # >1 day old; 207 sits under a nested shell 300 whose parent is the session;
 # 206 merely MENTIONS a snapshot path inside a bash -c string -> not a wrapper;
-# 208 is the console's own console-wait.sh waiter -> exempt (HIMMEL-3941);
+# 208 is the console's own console-wait.sh waiter -> exempt;
 # 209-213 only mention console-wait.sh (before a sleep, nested in a quoted
 # echo or eval, as console-wait.sh.bak, or as other-console-wait.sh) -> still
 # orphans.
@@ -115,7 +115,7 @@ eq 'a failing ps reads orphans=? and never fails the caller' 'orphans=?' "$out"
 eq 'a failing ps: rc 0' 0 "$rc"
 
 # A failed or empty session census cannot say who owns a wrapper: it must read
-# `orphans=?`, never label session-owned wrappers `orphan` (codex-2, round 3).
+# `orphans=?`, never label session-owned wrappers `orphan`.
 mkdir -p "$W/bin-empty" "$W/bin-broken"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin-empty/pgrep"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$W/bin-broken/pgrep"

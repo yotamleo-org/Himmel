@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/write-verdict.sh - HIMMEL-4689: the sanctioned
+# scripts/handover/console-kit/write-verdict.sh - the sanctioned
 # writer for a judge's verdict file. A console-judge CALL has no Write tool,
 # and the Bash text guards refuse the exact line go.sh --trust-reviewed needs
 # (`**GO** for head <sha>`), so before this a judge call could not record its
@@ -30,7 +30,7 @@
 #     <the evidence file, verbatim>
 #     mac: <64 hex>
 #
-# HIMMEL-4984: the last line signs everything above it with the GO key
+# the last line signs everything above it with the GO key
 # (go-gate.sh's go_verdict_mac, the himmel-verdict-v1 domain), bound to the
 # record's <user>/<bucket>, qid and name. review-round.sh's scope and NO-GO paths
 # and go.sh --trust-reviewed accept a record only when that mac verifies, so a
@@ -38,7 +38,7 @@
 # (exit 3 without one); a NO-GO without one is written unsigned: it still vetoes,
 # it buys no delta round.
 #
-# HIMMEL-4928: the `pr:` line sits at a fixed place, two lines after the verdict
+# the `pr:` line sits at a fixed place, two lines after the verdict
 # line, where go.sh --trust-reviewed reads it and refuses a verdict naming
 # another PR. review-round.sh reads only the first eight lines, so it is
 # unaffected. A verdict file with no `pr:` line (written before this field
@@ -63,22 +63,21 @@
 #     symlink, so the write cannot leave verdicts/<qid>/;
 #   - a GO when verdicts/<qid>/ already holds a NO-GO for the same head, or a
 #     verdict that does not parse (go.sh refuses on either anyway).
-# HIMMEL-4885: a new NO-GO evidence file must carry exactly one class: field,
+# a new NO-GO evidence file must carry exactly one class: field,
 # one value or a comma set from option-parsing, cwd-indirection, shell-parsing,
 # tool-defaults, reader-allowlist, other; missing or invalid classes exit 2.
-# A valid NO-GO is always written past those last two (HIMMEL-4714): go.sh treats
+# A valid NO-GO is always written past those last two: go.sh treats
 # any NO-GO as a veto, so it only narrows, and refusing it would leave a
 # forged or mistaken GO alone on disk. The same answer again, or a verdict
 # for another head, is written. When <name>.md holds a NO-GO for another
 # head, the new ruling is written to <name>-<head>.md instead, so that veto
-# survives the PR returning to its head (HIMMEL-4731). A name over 150 bytes is
-# shortened with a hash suffix so no redirect target can exceed 255 (HIMMEL-4753).
+# survives the PR returning to its head. A name over 150 bytes is
+# shortened with a hash suffix so no redirect target can exceed 255.
 # ponytail: same-uid ceiling - the symlink and conflict checks run before an
 # atomic rename, so a same-uid process racing the directory can still swap it
 # between check and rename; a separate-uid verdict store is the upgrade path
-# (HIMMEL-3578, the GO signer's twin).
 #
-# HIMMEL-5109: a judge often rules on a head that follows the last reviewed one
+# a judge often rules on a head that follows the last reviewed one
 # by a test-only or comment-only commit. `--bind-reviewed <sha>` (NO-GO only)
 # checks, with review-round.sh's own `trivial-descendant` verb run in the cwd's
 # repo, that <head> is a strict descendant of <sha> and the delta changes only
@@ -99,7 +98,7 @@
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+.
 set -u
-# HIMMEL-3437: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
@@ -136,7 +135,7 @@ if [ "$HEAD_OK" -ne 1 ] || [ "${#HEAD}" -ne 40 ]; then
     echo "write-verdict: head must be the full 40-char lowercase hex sha (got '$HEAD')" >&2
     exit 2
 fi
-# HIMMEL-5109: --bind-reviewed binds a NO-GO the judge ruled on a later head to
+# --bind-reviewed binds a NO-GO the judge ruled on a later head to
 # the last reviewed head; the delta check itself runs once the repo is known.
 if [ -n "$BIND" ]; then
     case "$BIND" in *[!0123456789abcdef]*) BIND_OK=0 ;; *) BIND_OK=1 ;; esac
@@ -154,7 +153,7 @@ if [ -n "$BIND" ]; then
     fi
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
-# HIMMEL-4928: the verdict names its PR, as go.sh's PR argument is spelled
+# the verdict names its PR, as go.sh's PR argument is spelled
 # (no leading zero), so two PRs on one head are told apart.
 case "$PR" in
     ''|0*|*[!0-9]*) echo "write-verdict: --pr <n> is required and must be a PR number without a leading zero (got '$PR')" >&2; exit 2 ;;
@@ -180,17 +179,17 @@ fi
 # can enter, nobody else can swap a path segment between these checks and the
 # cat, however a descendant is permissioned. The mode is read with stat
 # (GNU `-c %a`, else BSD `-f %Lp`), not `ls -ld`, whose macOS `@` suffix for
-# extended attributes refused every write (HIMMEL-4723). A `+` after the mode
+# extended attributes refused every write. A `+` after the mode
 # in `ls -ld` (an ACL that may grant others access) is still refused.
 # ponytail: macOS ls prints `@` in place of `+` when a directory has both
 # xattrs and an ACL, so an ACL behind xattrs passes there; the upgrade path is
-# an `ls -lde` ACL read on BSD (HIMMEL-4742).
+# an `ls -lde` ACL read on BSD.
 #
-# HIMMEL-4753: an `ls -ld` that fails or prints nothing cannot show the root
+# an `ls -ld` that fails or prints nothing cannot show the root
 # free of an ACL, so it refuses like the stat branch does.
 ev_mode=$(stat -c %a "$SCRATCH" 2>/dev/null) || ev_mode=$(stat -f %Lp "$SCRATCH" 2>/dev/null) || ev_mode=""
 ev_ls=$(ls -ld "$SCRATCH" 2>/dev/null) || ev_ls=""
-# HIMMEL-4962: an `ls` that exits 0 with a non-mode line (garbage, a space) is
+# an `ls` that exits 0 with a non-mode line (garbage, a space) is
 # no better, so the first field must be a directory mode string, `d` and nine
 # permission characters, optionally followed by `+`, `.` or `@`.
 ev_modestr=${ev_ls%%[[:space:]]*}
@@ -217,13 +216,13 @@ if [ ! -f "$EVIDENCE" ] || [ ! -r "$EVIDENCE" ] || [ ! -s "$EVIDENCE" ]; then
     echo "write-verdict: evidence file '$EVIDENCE' is missing, unreadable, not a regular file or empty" >&2
     exit 2
 fi
-# HIMMEL-4984: a record is text. A NUL or other control byte (tab, LF and CR
+# a record is text. A NUL or other control byte (tab, LF and CR
 # stay) would make every consumer's whole-file read refuse the record.
 if [ "$(wc -c < "$EVIDENCE")" != "$(LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' < "$EVIDENCE" | wc -c)" ]; then
     echo "write-verdict: evidence file '$EVIDENCE' holds a NUL or non-text control byte - refusing (HIMMEL-4984)" >&2
     exit 2
 fi
-# HIMMEL-4885: every new NO-GO names the finding class before it can buy
+# every new NO-GO names the finding class before it can buy
 # a delta round. GO evidence need not carry a class. Keep one unambiguous
 # field; unknown labels and empty members cannot become a fresh class.
 if [ "$ANSWER" = NO-GO ]; then
@@ -235,10 +234,10 @@ if [ "$ANSWER" = NO-GO ]; then
         exit 2
     fi
 fi
-# HIMMEL-5109: review-round.sh honours a layer-decision line only as
+# review-round.sh honours a layer-decision line only as
 # `layer-decision: text|os|classifier|accept <reason>`; one without the keyword
 # is silently dropped and the repeated-class stop stays. Warn at write time
-# (not refuse: a NO-GO only narrows, HIMMEL-4714) with the same two patterns.
+# (not refuse: a NO-GO only narrows) with the same two patterns.
 if awk '/^layer-decision:/ && (!/^layer-decision: (text|os|classifier|accept)[ \t]+[^ \t]/ || /\r$/) { bad = 1 } END { exit !bad }' "$EVIDENCE"; then
     echo "write-verdict: warning - a layer-decision line lacks a layer keyword; review-round.sh will not honour it. Write: layer-decision: text|os|classifier|accept <reason> (HIMMEL-5109)" >&2
 fi
@@ -272,7 +271,7 @@ ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the h
 SCOPE=$(go_verdict_scope "$ANCHOR") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
 
-# HIMMEL-5109: the judged head must be a strict descendant of the reviewed head
+# the judged head must be a strict descendant of the reviewed head
 # whose delta is test-path-only or comment-only - review-round.sh's own rule,
 # asked through its read-only verb so the writer and the gate cannot disagree.
 # It runs in the caller's cwd (the repo under review); the absolute script path
@@ -300,7 +299,7 @@ for seg in "${SCOPE%%/*}" "${SCOPE#*/}" verdicts "$QID"; do
         mkdir "$dir" 2>/dev/null || { echo "write-verdict: cannot create '$dir'" >&2; exit 5; }
     fi
 done
-# HIMMEL-4753: a redirect appends -<40-hex head> to the name, so a long --judge
+# a redirect appends -<40-hex head> to the name, so a long --judge
 # name could push <name>.md past the 255-byte filename limit and lose the
 # ruling. A name over 150 bytes is cut to 100 plus a hash of the full name, so
 # the result is deterministic and every redirect target stays well under 255.
@@ -341,7 +340,7 @@ done
 trap 'rm -f "$tmpf" "$lockd/owner"; rmdir "$lockd" 2>/dev/null' EXIT
 printf 'pid=%s at=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lockd/owner" 2>/dev/null || true
 
-# HIMMEL-4731: a NO-GO in <name>.md for another head is never replaced - the
+# a NO-GO in <name>.md for another head is never replaced - the
 # PR may return to that head, where another judge's GO would then stand alone.
 # The ruling goes to <name>-<head>.md beside it instead; its header names that
 # file, as review-round.sh's judge_nogo_record requires. The check repeats on
@@ -363,7 +362,7 @@ if [ -L "$TARGET" ] || { [ -e "$TARGET" ] && [ ! -f "$TARGET" ]; }; then
 fi
 
 # Before a GO, every verdict already here must parse and none may rule NO-GO
-# on HEAD. A NO-GO skips the scan: it only narrows (HIMMEL-4714).
+# on HEAD. A NO-GO skips the scan: it only narrows.
 # The parse is go_trust_verdict's, line for line.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 for f in "$dir"/*.md; do
@@ -395,19 +394,19 @@ if ! {
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
     cat "$EVIDENCE" &&
-    # HIMMEL-4984: the body ends in a newline, so the mac line is a line of its own.
+    # the body ends in a newline, so the mac line is a line of its own.
     { [ -z "$(tail -c 1 "$EVIDENCE")" ] || printf '\n'; }
 } > "$tmpf"; then
     echo "write-verdict: writing '$TARGET' failed" >&2
     exit 5
 fi
-# HIMMEL-4984: sign every byte above the mac line with the GO key, bound to this
+# sign every byte above the mac line with the GO key, bound to this
 # record's scope, qid and name; a record without a valid mac buys no round and
 # no merge trust, so a key that cannot sign refuses the write.
 if MAC=$(go_verdict_mac "$SCOPE" "$QID" "$NAME" < "$tmpf"); then
     SIGNED=1
 elif [ "$ANSWER" = NO-GO ]; then
-    # A NO-GO only narrows (HIMMEL-4714): written unsigned it still vetoes, it just buys no round.
+    # A NO-GO only narrows: written unsigned it still vetoes, it just buys no round.
     echo "write-verdict: warning - NO-GO written without a mac (no readable GO key); it vetoes but buys no delta round" >&2
     SIGNED=0
 else
@@ -420,9 +419,9 @@ else
     echo "write-verdict: writing '$TARGET' failed" >&2
     exit 5
 fi
-# HIMMEL-5165: the evidence sat in a judge dir (/tmp/claude-<uid>/j<PR>[a-z]/...): the verdict is
+# the evidence sat in a judge dir (/tmp/claude-<uid>/j<PR>[a-z]/...): the verdict is
 # written, so release that dir to tmp-reap.sh even while its holder (an in-process judge shares
-# the console's pid) lives. HIMMEL-5173: only the PR's own dir (j<PR> or j<PR><a-z>, the --pr value)
+# the console's pid) lives. only the PR's own dir (j<PR> or j<PR><a-z>, the --pr value)
 # is released; another PR's judge dir that held the evidence is left to its own verdict.
 # Best effort: the verdict is already on disk.
 jd_seg=${EVIDENCE#"$SCRATCH"/}; jd_seg=${jd_seg%%/*}

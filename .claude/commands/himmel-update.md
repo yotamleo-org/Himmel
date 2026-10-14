@@ -95,6 +95,18 @@ bump merges while the host still runs the old build.
   not do. The step prints the exact operator commands instead; it never kills
   anything.
 
+**Run it as the LAST step of a Claude session (#2591).** A plain update that
+fast-forwards the default branch is safe: HEAD lands on the anchor tip and
+hook-integrity re-pins cleanly. The risk is narrower: inside a Claude session,
+a pull that changes a hook-pinned path (`scripts/hooks`, `scripts/guardrails`,
+`scripts/lib`, `scripts/handover`, `marketplace/plugins/himmel-bus/lib`) AND
+leaves HEAD off the default branch's remote tip (an active release channel, or
+a detached-tag checkout) leaves THIS session unable to work: hook-integrity
+refuses to re-pin a checkout that is not the anchor tip, so every later Bash
+and Edit call is denied. In that case the script closes with a
+`RESTART CLAUDE NOW` line; finish and commit other work first. Only a new
+claude session recovers.
+
 This command can run from **any directory** (HIMMEL-459), so first resolve the
 himmel checkout using the same checkout-resolution order as
 `marketplace/plugins/himmel-ops/scripts/legs.sh` (here it fails closed with an

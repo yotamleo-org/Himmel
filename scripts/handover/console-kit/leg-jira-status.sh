@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-jira-status.sh - HIMMEL-4419: move a leg's
+# scripts/handover/console-kit/leg-jira-status.sh - move a leg's
 # ticket along its Jira status as the leg progresses (LIVE -> In Progress,
 # PR open -> In Review), so a version's progress reads in Jira and on the board.
 #

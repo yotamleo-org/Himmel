@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-fleet.sh — HIMMEL-3404. Hermetic tests for fleet.mjs, the local fleet status
+# test-fleet.sh — Hermetic tests for fleet.mjs, the local fleet status
 # UI (`--serve` page + `--json` / `--out` snapshot). Every external source is a
 # fixture or a stub: the console doc, leg docs and launch logs are files under a
 # temp handover root; /proc is a fixture tree (FLEET_PROC); queue-lock.sh,

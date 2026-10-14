@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# inbox-send.sh — console-side write for the claudex file inbox (HIMMEL-2788).
+# inbox-send.sh — console-side write for the claudex file inbox.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
 # (scripts/claude-codex, konsole + /proc/$CLAUDE_PID/cmdline session-name
@@ -32,14 +32,14 @@
 #     undelivered ruling stays visible instead of silently waiting on the
 #     leg's next tool call / resume.
 #
-# Exit 3 (HIMMEL-2975): --token refused — either the caller is a console
+# Exit 3: --token refused — either the caller is a console
 # relay (HIMMEL_CONSOLE_RELAY is set; only the console sends token-quoting
 # bullets) or the sending session name cannot be resolved (no CLAUDE_PID /
 # -n). Nothing is written in either case. A no-token bullet always carries
 # from=<sender session>, falling back to from=unknown, and is never refused
 # on this account.
 #
-# Exit 4 (HIMMEL-2980): the inbox append succeeded and the token bullet was
+# Exit 4: the inbox append succeeded and the token bullet was
 # delivered, but the console-side sent-record ledger write that follows it
 # failed (cannot secure/create the per-sender ledger directory, or cannot
 # write the ledger line). The message is delivered either way — this is not
@@ -53,7 +53,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../lib/handover-path.sh
@@ -138,7 +138,7 @@ fi
 
 [ -n "$text" ] || usage
 
-# HIMMEL-5408: the inbox and the doc mirror are line-oriented — a newline in
+# the inbox and the doc mirror are line-oriented — a newline in
 # the text would land later lines as bare text the leg's drain and the doc's
 # Console Rulings section ignore. Join non-blank lines into ONE bullet.
 case "$text" in
@@ -197,7 +197,7 @@ if [ -n "$doc" ]; then
         exit 2
     fi
     doc="$(realpath -- "$doc")" || exit 2
-    # HIMMEL-4795: the lock (directory, key, flock -x on fd 9) is leg-doc-lock.sh's,
+    # the lock (directory, key, flock -x on fd 9) is leg-doc-lock.sh's,
     # shared with append-results.sh, live-state.sh and the launcher's
     # session_ids: rewrite. Unlike those, a ruling is never mirrored unlocked:
     # no flock (rc 3) refuses, as before.
@@ -211,7 +211,7 @@ if [ -n "$doc" ]; then
     if grep -q '^## Console Rulings' "$doc"; then
         # Insert as the LAST line of the FIRST "## Console Rulings" section:
         # right before the next "## " heading, or at EOF if none follows.
-        # HIMMEL-4795: a mktemp name beside the doc, not a predictable
+        # a mktemp name beside the doc, not a predictable
         # $doc.tmp.$$; cp -p gives it the doc's mode (mktemp makes it 0600).
         tmp=""
         if ! tmp="$(mktemp "$doc.tmp.XXXXXX")" || ! cp -p "$doc" "$tmp"; then
@@ -258,7 +258,7 @@ fi
 
 printf '%s\n' "$bullet" >> "$inbox" || exit 2
 
-# HIMMEL-2980: record every token bullet in a per-sender sent-record ledger,
+# record every token bullet in a per-sender sent-record ledger,
 # so a per-shift audit (inbox-audit.sh) can name any token bullet in an
 # inbox that has no matching record — i.e. one this script never sent. Only
 # for token bullets: a no-token bullet carries no RETASK authority to forge,

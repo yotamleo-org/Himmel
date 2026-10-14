@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# next-dispatchable.sh — HIMMEL-4959. Ranked, collision-checked list of the next
+# next-dispatchable.sh — Ranked, collision-checked list of the next
 # tickets a console can dispatch. READ-ONLY: it prints, it never launches,
 # creates a worktree or writes the mirror. console-wait.sh prints it with the
 # `WAKE underfilled` block; a console can also run it by hand. It absorbs the

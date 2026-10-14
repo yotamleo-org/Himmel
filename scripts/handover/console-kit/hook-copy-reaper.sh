@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # hook-copy-reaper.sh — find (and, opt-in, kill) orphaned hook copies that are
-# spinning a core (HIMMEL-4183).
+# spinning a core.
 #
 # On 2026-10-03, eight copies of a guard hook ran at ~89 % CPU for 4–7 hours
 # and pushed load to 150. Judge harnesses had copied the hooks under
 # /tmp/claude-<uid>/… and then died. Each copy had been reparented to the
 # user subreaper (`systemd --user`), so no session owned it, and doctor C47
-# (HIMMEL-3959) missed it: that check matches `hook.sh`, not an arbitrarily
+# missed it: that check matches `hook.sh`, not an arbitrarily
 # named copy. This script counts a process when ALL of these hold:
 #   * it belongs to the current user, its comm is a shell (bash/sh/dash/zsh)
 #     and one of its words is a `.sh` path under /tmp/claude-*/;
@@ -26,10 +26,10 @@
 # reparented yet), then prints `killed=<pid,…>`. Only processes that pass
 # every test above, or that descend from one, are ever signalled.
 # Seam: HOOK_REAPER_KILL (the kill command; default `kill`).
-# ponytail: the pids come from one ps snapshot, so a descendant that exits
+# ponytail: HIMMEL-4195 - the pids come from one ps snapshot, so a descendant that exits
 # between the snapshot and the kill can have its pid reused by another
 # same-uid process; upgrade = signal through pidfds opened at selection
-# time (HIMMEL-4195).
+# time.
 # PLATFORM GUARD: no .ps1 twin, by design. procps or macOS ps (launchd is
 # pid 1 there, so a reparented copy has ppid 1). Bash 3.2-compatible.
 set -uo pipefail

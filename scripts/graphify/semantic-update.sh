@@ -24,9 +24,21 @@
 # files above the cap stay unstamped and roll to the next run (reported as
 # `backlog`).
 #
+# --backend claude-api (HIMMEL-5544) bills API credit, not the subscription bank:
+# graphify's claude-cli path runs through scripts/api-lane/claude-api.sh (per-
+# account key, roster, credit gate, reserve/settle ledger all stay in the lane;
+# this script never reads or handles a key). A scratch `claude` shim first on
+# PATH adapts graphify's call to the lane's flag allowlist. It needs
+# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell,
+# refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise: it
+# never falls back to the subscription claude-cli. Spend is bounded by
+# --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
+# 0.25) and the account cap the lane enforces; the plan's estimate line prints
+# before any call, and --dry-run stops right after it.
+#
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
-#       [--backend claude-cli|ollama] [--max-files 150] [--seed-manifest] [--dry-run]
+#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--seed-manifest] [--dry-run]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -71,6 +83,11 @@ if [ -n "${GRAPHIFY_OUT:-}" ] && [ "$GRAPHIFY_OUT" != "graphify-out" ]; then
   echo "semantic-update: GRAPHIFY_OUT overrides are not supported (got '$GRAPHIFY_OUT')" >&2; exit 1
 fi
 OUT_DIR="$CORPUS_ROOT/graphify-out"
+API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-0.25}"
+if [ "$BACKEND" = "claude-api" ]; then
+  case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+  case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
 # --backend ollama (HIMMEL-4185): local model, zero egress, no bank draw. This
@@ -171,7 +188,30 @@ plan_or_noop() {
   fi
 }
 plan_or_noop
+if [ "$BACKEND" = "claude-api" ]; then
+  # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
+  # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered (HIMMEL-5544).
+  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" <<'PY' >&2
+import json, os, sys
+plan, root, model, budget = sys.argv[1:5]
+files = json.load(open(plan))["batch"]
+size = sum(os.path.getsize(os.path.join(root, f)) for f in files)
+tin = size // 4 + 2000 * len(files)
+tout = tin // 4
+usd = (tin * 3 + tout * 15) / 1e6
+print("semantic-update: estimate: files=%d bytes=%d ~tokens_in=%d ~tokens_out=%d ~usd=%.2f model=%s per-call-budget-usd=%s"
+      % (len(files), size, tin, tout, usd, model, budget))
+PY
+fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
+if [ "$BACKEND" = "claude-api" ]; then
+  [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ] \
+    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- nothing copied, no claude-cli fallback" >&2; exit 2; }
+  [ -z "${ANTHROPIC_API_KEY:-}" ] \
+    || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
+  [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
+    || { echo "semantic-update: refusing claude-api: scripts/api-lane/claude-api.sh is missing -- nothing copied" >&2; exit 2; }
+fi
 acquire_promote_lock
 # Re-plan under the lock: another run may have promoted (or the corpus moved)
 # while we waited, and the pre-lock plan would re-extract a stale batch.
@@ -195,7 +235,7 @@ if [ "$N_BATCH" -gt 0 ]; then
         exit 3
       fi ;;
   esac
-  if [ "$BACKEND" = "claude-cli" ]; then
+  if [ "$BACKEND" = "claude-cli" ] || [ "$BACKEND" = "claude-api" ]; then
     # Same pins as refresh-graph-map.sh (HIMMEL-1748/1902): sonnet, low effort,
     # raised timeout, and a hook-free config dir.
     export GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}"
@@ -205,6 +245,44 @@ if [ "$N_BATCH" -gt 0 ]; then
     bash "$HERE/seed-claude-config.sh" \
       || { echo "semantic-update: failed to seed the hook-free Claude config dir; refusing claude-cli extraction" >&2; exit 2; }
     export CLAUDE_CONFIG_DIR="$GRAPHIFY_CLAUDE_CONFIG_DIR"
+  fi
+  GRAPHIFY_BACKEND="$BACKEND"
+  if [ "$BACKEND" = "claude-api" ]; then
+    # graphify only knows claude-cli, which execs `claude -p`. Put a shim first on PATH that drops the flags the
+    # lane's allowlist refuses (--output-format, --no-session-persistence, --json-schema), adds its required
+    # ones, and runs from the shim dir so the lane's sandbox stubs never land in a checkout. The shim removes
+    # its own dir from PATH, so the lane finds the real claude. The prompt stays on stdin.
+    GRAPHIFY_BACKEND="claude-cli"
+    mkdir -p "$WORK/bin"
+    cat > "$WORK/bin/claude" <<'SHIM'
+#!/usr/bin/env bash
+# HIMMEL-5544: graphify claude-cli -> API lane shim (written by semantic-update.sh)
+case "${1:-}" in
+  --help|-h) echo "claude (himmel API-lane shim): -p [--model M] [--output-format json]; the prompt is read from stdin"; exit 0 ;;
+esac
+model=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p|--no-session-persistence) shift ;;
+    --output-format|--json-schema) [ $# -ge 2 ] || exit 2; shift 2 ;;
+    --model) [ $# -ge 2 ] || exit 2; model="$2"; shift 2 ;;
+    *) echo "claude-api shim: refusing unexpected argument '$1'" >&2; exit 2 ;;
+  esac
+done
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+newpath=""
+IFS=: read -ra parts <<< "$PATH"
+for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
+export PATH="$newpath"
+cd "$here" || exit 2
+# Corpus text is untrusted prompt input, so the extraction runs tool-free (the lane's narrow-only override).
+export HIMMEL_API_TOOLS=""
+exec "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort low
+SHIM
+    chmod +x "$WORK/bin/claude"
+    export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET"
+    export PATH="$WORK/bin:$PATH"
   fi
   mkdir -p "$SCRATCH/graphify-out/cache"
   python3 - "$PLAN" "$CORPUS_ROOT" "$SCRATCH" <<'PY'
@@ -223,7 +301,7 @@ PY
   # GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514): no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e
-  graphify extract "$SCRATCH" --backend "$BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1
+  graphify extract "$SCRATCH" --backend "$GRAPHIFY_BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1
   rc=$?
   set -e
   cat "$WORK/extract.log" >&2

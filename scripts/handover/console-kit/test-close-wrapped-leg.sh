@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/test-close-wrapped-leg.sh - suite for
-# close-wrapped-leg.sh (HIMMEL-3572 row 7). Hermetic: a fake /proc root
+# close-wrapped-leg.sh. Hermetic: a fake /proc root
 # (CLAUDE_SESSIONS_PROC) with real NUL-separated <pid>/cmdline files drives
 # claude_sessions() (same pattern as scripts/lanes/test-ceiling-conformance.sh),
 # a PATH-stub `pgrep -x claude`, and PATH/env-var-injected `gh`/`kill`/
@@ -26,7 +26,7 @@
 #  12. clean.sh fails for another reason                    -> rc 1
 #  13. wrap-subtree-check.sh reports WITHHELD (a non-harness child process is
 #      still alive under the matched session)              -> rc 6, kill NOT
-#      called, clean.sh NOT called (HIMMEL-3747 Ask 3)
+#      called, clean.sh NOT called
 #  14. the TERM signal itself fails                          -> rc 1, no pruning attempted
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh).
@@ -38,7 +38,7 @@ QL="$HERE/../queue-lock.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/cwl-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
-# HIMMEL-4670 P3: the digest step writes ledgers - never the live ~/.himmel
+# the digest step writes ledgers - never the live ~/.himmel
 # ones, never the live ~/.claude/sessions, and never a 15 s settle wait.
 export HIMMEL_LEG_FAILURES_LEDGER="$W/never-leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/never-eval-runs.jsonl"
 export LEG_DIGEST_STATE_DIR="$W/never-digest-state" CLOSE_WRAPPED_LEG_SESSIONS_DIR="$W/sessions"
@@ -56,7 +56,7 @@ exact_count() { local n; n=$(grep -c -F -x -e "$3" <<< "$2"); if [ "$n" = "$4" ]
 # `-d 'N days ago'`; BSD/macOS touch does not, so fall back to BSD `date -v`
 # feeding `touch -t`. Fails loudly if the file did not actually age: a decoy
 # that silently stayed fresh made the scoped-search cases pass or fail for the
-# wrong reason (HIMMEL-3699).
+# wrong reason.
 age_file() {
     touch -d "$2 days ago" "$1" 2>/dev/null \
         || touch -t "$(date -v-"$2"d +%Y%m%d%H%M 2>/dev/null)" "$1" 2>/dev/null  # gnu-ok: console kit is Linux-only; BSD fallback
@@ -69,7 +69,7 @@ age_file() {
 mkdir -p "$W/proc" "$W/bin" "$W/wt" "$W/handover-root"
 CALLS="$W/calls.log"
 
-# no-leak baseline (HIMMEL-3667): record whether the real repo already had a
+# no-leak baseline: record whether the real repo already had a
 # handovers/ dir BEFORE any test below runs, so the end-of-suite assertion
 # catches this suite CREATING one, not an unrelated pre-existing one.
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT=""
@@ -167,7 +167,7 @@ exit 0
 STUB
 chmod +x "$CLEAN_STUB"
 
-# Stub wrap-subtree-check.sh (HIMMEL-3747 Ask 3): CLOSABLE by default so
+# Stub wrap-subtree-check.sh: CLOSABLE by default so
 # every pre-existing case is unaffected; CWL_SUBTREE_MODE=withheld models a
 # non-harness child process still alive under the matched session.
 SUBTREE_STUB="$W/bin/wrap-subtree-check.sh"
@@ -183,7 +183,7 @@ exit 0
 STUB
 chmod +x "$SUBTREE_STUB"
 
-# Stub tmp-reap.sh (HIMMEL-4235): logs its argv and succeeds, so the cases
+# Stub tmp-reap.sh: logs its argv and succeeds, so the cases
 # that do not opt in can never reap anything (least of all the real /tmp).
 REAP_STUB="$W/bin/tmp-reap-stub.sh"
 cat > "$REAP_STUB" <<'STUB'
@@ -193,7 +193,7 @@ exit "${CWL_REAP_STUB_RC:-0}"
 STUB
 chmod +x "$REAP_STUB"
 
-# Stub live-subagents.sh (HIMMEL-5071): "none running", and it logs nothing,
+# Stub live-subagents.sh: "none running", and it logs nothing,
 # so every case's CALLS count is unchanged; case 25b runs the real one.
 LSA_STUB="$W/bin/live-subagents-stub.sh"
 printf '#!/usr/bin/env bash\necho live-subagents=0\n' > "$LSA_STUB"
@@ -220,14 +220,14 @@ mkdoc() { # mkdoc <last-marker-line> <extra-results-lines...>
 run() { # run <doc> - runs the script under test with every stub wired
     # END_SESSION_WIKI_BIN/CLOSE_WRAPPED_LEG_PROJECTS_DIR default to a no-op
     # binary and a nonexistent dir, so cases 1-14 never exercise the
-    # pre-signal capture block (HIMMEL-3629) at all - only the cases below
+    # pre-signal capture block at all - only the cases below
     # that set CWL_ESW_BIN/CWL_PROJECTS_DIR opt into it.
     #
     # HANDOVER_DIR is pinned to a scratch dir under $W - close-wrapped-leg.sh
     # calls queue-lock.sh status, which resolves handover_root(); with
     # HANDOVER_DIR unset that falls through to the Mode A inline fallback
     # <repo-root>/handovers, creating REAL handovers/.locks/ state in
-    # whatever checkout this suite runs from (HIMMEL-3667).
+    # whatever checkout this suite runs from.
     CALLS_LOG="$CALLS" PATH="$W/bin:$PATH" CLAUDE_SESSIONS_PROC="$W/proc" \
         HANDOVER_DIR="${CWL_HANDOVER_DIR-$W/handover-root}" \
         GH_BIN="$GH_STUB" KILL_BIN="$KILL_STUB" CLEAN_SH_BIN="$CLEAN_STUB" \
@@ -304,7 +304,7 @@ exact_count "no-worktree: kill called exactly once with the matched pid" "$calls
 not_contains "no-worktree: clean.sh not called" "$calls6" "clean.sh"
 check "no-worktree: exactly two calls logged (subtree check + kill, no other pid signaled)" "$(wc -l < "$CALLS" | tr -d ' ')" "2"
 
-# HIMMEL-3748: removing the successful-close manifest update must fail this.
+# removing the successful-close manifest update must fail this.
 fleet_manifest="$W/fleet.json"
 bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC" "$W/HIMMEL-9-N2-other.md"
 rc=0; out=$(run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
@@ -370,7 +370,7 @@ contains "not-candidate: names the skip" "$out" "not pruned"
 
 # --- 9b. clean.sh's error text ALSO contains "not a prune candidate" when the
 # true cause was PARTIAL (branch-delete-after-worktree-removal failure) --
-# codex-2 (HIMMEL-3747 CR round 1): the substring match can't tell this apart
+# the substring match can't tell this apart
 # from case 9's benign skip, so it must NOT be treated as non-fatal. ------------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
@@ -400,7 +400,7 @@ check "clean-in-use: rc 0 (non-fatal)" "$rc" "0"
 contains "clean-in-use: names it" "$out" "in use"
 exact_count "clean-in-use: retried a bounded 3 times after the first pass (4 calls)" "$(cat "$CALLS")" "clean.sh --only $WT/.claude/worktrees/demo --only-allow-unmerged" "4"
 
-# --- 11b. in use at first, free on the retry (HIMMEL-4334) ----------------------
+# --- 11b. in use at first, free on the retry ----------------------
 reset_calls
 rc=0; out=$(CWL_CLEAN_MODE="in-use-once" run "$DOC" 2>&1) || rc=$?
 check "clean-in-use-once: rc 0" "$rc" "0"
@@ -412,7 +412,7 @@ reset_calls
 rc=0; out=$(CWL_CLEAN_MODE="fail" run "$DOC" 2>&1) || rc=$?
 check "clean-fail: rc 1" "$rc" "1"
 
-# --- 13. wrap-subtree-check.sh reports WITHHELD (HIMMEL-3747 Ask 3) -------------
+# --- 13. wrap-subtree-check.sh reports WITHHELD -------------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
 rc=0; out=$(CWL_SUBTREE_MODE="withheld" run "$DOC" 2>&1) || rc=$?
@@ -431,7 +431,7 @@ check "kill-fail: rc 1" "$rc" "1"
 not_contains "kill-fail: clean.sh not called" "$(cat "$CALLS")" "clean.sh"
 not_contains "kill-fail: never claims it sent TERM" "$out" "sent TERM"
 
-# --- 15: pre-signal session-note capture (HIMMEL-3629 direction 2) -----------
+# --- 15: pre-signal session-note capture -----------
 # Before signalling, the script must resolve the ONE matching leg's transcript
 # (via a customTitle grep over CLOSE_WRAPPED_LEG_PROJECTS_DIR, like leg-burn.sh's
 # session lookup) and feed it to the REAL end-session-wiki.sh hook, which then
@@ -464,7 +464,7 @@ note_count=$(find "$ESW_SB/vault/sessions" -type f -name '*.md' 2>/dev/null | wc
 check "pre-signal-capture: exactly one session note written before signalling" "$note_count" "1"
 
 # --- 16: ambiguous transcript match (0 candidates) skips the capture, never
-# guesses, and still closes normally (HIMMEL-3629 direction 2's "never guess").
+# guesses, and still closes normally.
 ESW_SB2="$W/esw-sb2"
 mkdir -p "$ESW_SB2/vault" "$ESW_SB2/proj" "$ESW_SB2/home"
 EMPTY_PROJDIR="$W/esw-projects-empty"
@@ -571,7 +571,7 @@ FRESH4="$PROJDIR4/sess-fresh.jsonl"
     yes '{"padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}' 2>/dev/null | head -c 1000000 || true
 } > "$FRESH4"
 # the `|| true` above only absorbs `yes`'s SIGPIPE; assert the fixtures were
-# genuinely generated, else this case passes without exercising scale (HIMMEL-3740).
+# genuinely generated, else this case passes without exercising scale.
 fixture_ok=yes
 [ "$(wc -c < "$FRESH4")" -ge 1000000 ] || fixture_ok=no
 for stale in "$PROJDIR4"/stale-*.jsonl; do
@@ -623,7 +623,7 @@ check "mtime-window-fallback: rc 0 (still closes)" "$rc" "0"
 note_count21=$(find "$ESW_SB5/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 check "mtime-window-fallback: exactly one note written (0 matches under the mtime window, found via all-time fallback)" "$note_count21" "1"
 
-# --- 22: codex-3 -- the mtime-scoped search is NON-empty (an unrelated, recent
+# --- 22: -- the mtime-scoped search is NON-empty (an unrelated, recent
 # decoy transcript exists) but contains 0 MATCHES for this leg; the actual
 # target transcript is older than the window. An empty-scan_files check alone
 # never retries here (scan_files has the decoy in it), so this must fall back
@@ -651,7 +651,7 @@ check "mtime-scoped-decoy-fallback: rc 0 (still closes)" "$rc" "0"
 note_count22=$(find "$ESW_SB6/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 check "mtime-scoped-decoy-fallback: exactly one note written (an unrelated recent decoy must not suppress the all-time retry)" "$note_count22" "1"
 
-# --- 23: codex-2 (round 4) -- the all-time FALLBACK pass must not apply the
+# --- 23: -- the all-time FALLBACK pass must not apply the
 # same per-file head-window truncation as the scoped pass. The transcript is
 # outside the mtime window (forces the fallback) AND its customTitle line
 # sits past a small test-configured head window, so a fallback that still
@@ -681,7 +681,7 @@ check "fallback-head-window: rc 0 (still closes)" "$rc" "0"
 note_count23=$(find "$ESW_SB7/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 check "fallback-head-window: exactly one note written (customTitle past the head window is still found by the unbounded all-time fallback)" "$note_count23" "1"
 
-# --- 25: leg cost ledger (HIMMEL-4217) ---------------------------------------
+# --- 25: leg cost ledger ---------------------------------------
 # A wrapped leg's transcript is metered by leg-burn.sh --raw and ONE JSONL row
 # lands in <handover root>/.ledger/leg-cost.jsonl before the TERM. A meter or
 # ledger failure only WARNs - the close still succeeds.
@@ -753,7 +753,7 @@ check "ledger-unwritable: close still rc 0" "$rc" "0"
 contains "ledger-unwritable: WARNs" "$out" "WARN"
 SESSION_NAME="$SESSION_SAVE"; DOC="$DOC_SAVE"
 
-# --- 26: ledger root follows the DOC, not the cwd (HIMMEL-4231) ---------------
+# --- 26: ledger root follows the DOC, not the cwd ---------------
 # HANDOVER_DIR unset and cwd a repo with its own handovers/ stub (a console
 # running from the himmel checkout): the row must land under the handover root
 # that holds the leg doc, never in the cwd repo's stub.
@@ -777,7 +777,7 @@ check "ledger-root: nothing in the cwd repo's stub" "$([ -e "$LR_STUB/handovers/
 pgrep_x_stub 210
 SESSION_NAME="$SESSION_SAVE"; DOC="$DOC_SAVE"
 
-# --- 27: the wrapped leg's own /tmp scratch is archived (HIMMEL-4235) --------
+# --- 27: the wrapped leg's own /tmp scratch is archived --------
 # A judge dir of THIS leg's PR (leg N1, READY PR 2 -> j2*) and the leg's session scratch dir are
 # archived then reaped after the TERM; the label-named j1a (another PR's judge), another
 # session's dir and a root fixture in the same tree are untouched. Real
@@ -840,7 +840,7 @@ check "reap-alive: close still rc 0" "$rc" "0"
 contains "reap-alive: says it skipped" "$out" "still running"
 check "reap-alive: tmp-reap never called" "$(wc -c < "$CALLS.reap" | tr -d ' ')" "0"
 
-# --- 30-35: the failure-loop digest step (HIMMEL-4670 P3) --------------------
+# --- 30-35: the failure-loop digest step --------------------
 # The real P1 digest (bun) and P2 writer over the P1 fixture journal, into
 # per-case scratch ledgers. The session id comes from the pid's sessions file.
 LD="$HERE/../../eval/leg-digest"
@@ -965,7 +965,7 @@ out_fb=$(bash "$STEP" --doc "$FB_DOC" --projects "$DG_PROJ" 2>&1)
 contains "digest-fallback: the member is digested" "$out_fb" "$DG_SID digest=ok"
 not_contains "digest-fallback: a journal from another cwd is not a member" "$out_fb" "$FB_OTHER"
 check "digest-fallback: one eval-runs row" "$(jq -r .run_id "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
-# codex-1: a member outside the resolver's recent-mtime pass must not be hidden
+# a member outside the resolver's recent-mtime pass must not be hidden
 # by a recent member that the bounded pass did find
 FB_OLD=4670c3a0-0000-4000-8000-0000000000bb
 sed "s/$DG_SID/$FB_OLD/g" "$DG_PROJ/$FB_SLUG/$DG_SID.jsonl" > "$DG_PROJ/$FB_SLUG/$FB_OLD.jsonl"
@@ -976,7 +976,7 @@ FB_LATE="$W/HIMMEL-9-N1-demo-2026-10-07.md"
 cp "$FB_DOC" "$FB_LATE"
 out_fb=$(bash "$STEP" --doc "$FB_LATE" --projects "$DG_PROJ" 2>&1)
 contains "digest-fallback: outside the doc's window nothing qualifies" "$out_fb" "digest=skipped:no-chain"
-# HIMMEL-4730: a DST fall-back inside the leg (Berlin, 2026-10-25 03:00 CEST ->
+# a DST fall-back inside the leg (Berlin, 2026-10-25 03:00 CEST ->
 # 02:00 CET) makes 02:50 -> 02:10 a repeated hour, not a midnight. LIVE 02:40 is
 # the first 02:40 (00:40Z), WRAPPED 02:10 the second 02:10 (01:10Z).
 FB_DST="$W/HIMMEL-9-N1-demo-2026-10-25.md"
@@ -995,7 +995,7 @@ FB_NEXT=4670c3a0-0000-4000-8000-0000000000ee
 sed -e "s/$DG_SID/$FB_NEXT/g" -e 's/2026-10-06T12:00:01/2026-10-25T23:05:00/' "$DG_PROJ/$FB_SLUG/$DG_SID.jsonl" > "$DG_PROJ/$FB_SLUG/$FB_NEXT.jsonl"
 out_fb=$(TZ=Europe/Berlin bash "$STEP" --doc "$FB_DST2" --projects "$DG_PROJ" 2>&1)
 contains "digest-fallback/dst: a midnight early on a 25h day still rolls to the next date" "$out_fb" "$FB_NEXT digest=ok"
-# HIMMEL-4757: a 2h fall-back (Antarctica/Troll, 2026-10-25 03:00 +02 -> 01:00
+# a 2h fall-back (Antarctica/Troll, 2026-10-25 03:00 +02 -> 01:00
 # +00) repeats 01:00-03:00 two hours apart. LIVE 02:40 is the first (00:40Z),
 # WRAPPED 01:10 the second (01:10Z) - same day, no midnight.
 mkdir -p "$W/troll"; FB_TROLL="$W/troll/HIMMEL-9-N1-demo-2026-10-25.md"
@@ -1003,7 +1003,7 @@ mkdir -p "$W/troll"; FB_TROLL="$W/troll/HIMMEL-9-N1-demo-2026-10-25.md"
 out_fb=$(TZ=Antarctica/Troll bash "$STEP" --doc "$FB_TROLL" --projects "$DG_PROJ" 2>&1)
 contains "digest-fallback/dst-2h: a session inside the leg is a member" "$out_fb" "$FB_IN digest=ok"
 not_contains "digest-fallback/dst-2h: a 2h fall-back is no midnight - a session after the wrap is not" "$out_fb" "$FB_AFTER"
-# HIMMEL-4786: session_ids: in the front matter (the launcher's record) are
+# session_ids: in the front matter (the launcher's record) are
 # digested directly - no resume_cwd and no name match needed (a relaunch).
 dg_ledgers ids
 ID_DOC="$W/HIMMEL-9-N1386-relaunch-2026-10-06.md"
@@ -1013,7 +1013,7 @@ contains "digest-ids: a recorded id is digested with no resume_cwd and no name m
 contains "digest-ids: a recorded id with no journal says so" "$out_id" "$DG_MISSING digest=skipped:no-journal"
 check "digest-ids: one eval-runs row, for the recorded id" "$(jq -r .run_id "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
 check "digest-ids: a digested leg logs no skip" "$(dg_rows "$LEG_DIGEST_STATE_DIR/skips.jsonl")" "0"
-# panel round 2 codex-1: a doc launched before the ids existed and relaunched
+# a doc launched before the ids existed and relaunched
 # after records only the relaunch - its earlier chain is still searched, and a
 # session both ways is digested once.
 dg_ledgers ids-mixed
@@ -1038,7 +1038,7 @@ check "digest-skips: each skip is logged with its doc and reason" "$(jq -r '"\(.
 check "digest-skips: rows carry a UTC ts" "$(jq -r .ts "$LEG_DIGEST_STATE_DIR/skips.jsonl" 2>/dev/null | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "2"
 check "digest: the step spawns no model CLI" "$(grep -cE '(^|[^-])\b(claude|codex|gemini) +(-p|--print|--bg|exec)' "$STEP")" "0"
 
-# --- 25. --console: close a wrapped PREDECESSOR console (HIMMEL-4968) --------
+# --- 25. --console: close a wrapped PREDECESSOR console --------
 # Same checks as a leg (free lock, WRAPPED tail, exactly one session); none of
 # the leg-only steps (no worktree prune, no digest, no /tmp reap, no cost row).
 CDOC="$W/HIMMEL-nextleg-2026-10-08BY-roadmap-console.md"
@@ -1093,7 +1093,7 @@ unset CWL_SUBTREE_MODE
 check "console: a live non-harness child -> rc 6" "$rc" "6"
 not_contains "console: withheld -> nothing signalled" "$(cat "$CALLS")" "kill"
 
-# --- 25b. live in-process subagents (HIMMEL-5071) ----------------------------
+# --- 25b. live in-process subagents ----------------------------
 # The REAL live-subagents.sh over a fake predecessor: its sessions/<pid>.json
 # names a session whose transcript launched one judge child with no completion
 # notice -> exit 7, nothing signalled, in both forms. The parent's enqueue of
@@ -1143,7 +1143,7 @@ check "subagents: leg child finished -> rc 0" "$rc" "0"
 exact_count "subagents: leg child finished -> TERM sent" "$(cat "$CALLS")" "kill -TERM 240" "1"
 rm -f "$W/sessions/230.json" "$W/sessions/240.json"
 
-# --- 25c. a claudex leg's config dir (HIMMEL-5182) ---------------------------
+# --- 25c. a claudex leg's config dir ---------------------------
 # A claudex leg runs with CLAUDE_CONFIG_DIR=<home>/.claude-codex, so its
 # sessions/<pid>.json and projects/ live there, not under the console's
 # ~/.claude. The close reads the pid's /proc/<pid>/environ for it. No override
@@ -1164,7 +1164,7 @@ exact_count "claudex: TERM sent" "$(cat "$CALLS")" "kill -TERM 240" "1"
 not_contains "claudex: no 'no usable session id'" "$out" "no usable session id"
 rm -rf "$W/proc/240/environ"
 
-# --- 24: no handovers/ leaked into the real repo (HIMMEL-3667) ----------------
+# --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent
 [ -n "$REPO_ROOT" ] && [ -e "$REPO_ROOT/handovers" ] && post_handovers=present
 check "no-leak: this suite left no handovers/ dir behind in the repo root" "$post_handovers" "$pre_handovers"
