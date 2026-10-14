@@ -194,7 +194,7 @@ if [ -n "$CHANGED" ] && { [ "$STAGED" -eq 1 ] || [ "$EXPLICIT" -eq 1 ]; }; then
 fi
 
 if [ -n "$CHANGED" ]; then
-    # ponytail: a non-ASCII path is C-quoted by core.quotePath and so skipped here (as under --staged), switch to `git diff -z` + `read -d ''` under HIMMEL-5526
+    # ponytail: a non-ASCII path is C-quoted by core.quotePath and so skipped here (as under --staged), switch to `git diff -z` + `read -d ''` under HIMMEL-5662
     if ! _changed="$(cd "$_root" && git diff --name-only --diff-filter=ACMR "$CHANGED" -- 2>/dev/null)"; then
         printf 'skill-lint: --changed: git diff failed for range: %s\n' "$CHANGED" >&2; exit 2
     fi

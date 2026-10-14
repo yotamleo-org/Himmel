@@ -177,6 +177,21 @@ assert_eq "a bare path argument (no --files) → usage exit 2" "2" "$rc"
 rc=0
 out=$(cd "$FILES_FX" && OXLINT_FAIL_CLOSED=1 PATH="$(fixture_mktemp_dir)" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
 assert_eq "OXLINT_FAIL_CLOSED=1 with no bun → exit 1 (not fail-open)" "1" "$rc"
+CRASH_BIN=$(fixture_mktemp_dir) || exit 1
+ln -s "$(command -v grep)" "$CRASH_BIN/grep"
+cat > "$CRASH_BIN/bun" <<EOF
+#!$BASH_ABS
+echo 'error: failed to fetch oxlint@1.88.0' >&2
+exit 1
+EOF
+chmod +x "$CRASH_BIN/bun"
+rc=0
+out=$(cd "$FILES_FX" && OXLINT_FAIL_CLOSED=1 PATH="$CRASH_BIN" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
+assert_eq "OXLINT_FAIL_CLOSED=1 with an oxlint crash (stderr, exit 1) → exit 1" "1" "$rc"
+rc=0
+out=$(cd "$FILES_FX" && PATH="$CRASH_BIN" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
+assert_eq "OXLINT_FAIL_CLOSED unset with an oxlint crash → exit 0 (fail-open)" "0" "$rc"
+rm -rf "$CRASH_BIN"
 printf '%s\n' 'export function add(a, b) { return a + b; }' > "$FILES_FX/scripts/lanes/my file.mjs"
 rm -f "$FILES_FX/record.txt"
 rc=0
