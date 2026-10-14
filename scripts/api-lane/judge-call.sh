@@ -51,7 +51,9 @@ case "$BUDGET" in ''|*[!0-9.]*|*.*.*|.*|*.) usage "--max-budget-usd must be a de
 awk -v b="$BUDGET" -v c="$BUDGET_CEILING" 'BEGIN { exit !(b + 0 > 0 && b + 0 <= c + 0) }' ||
   usage "--max-budget-usd must be above 0 and at most $BUDGET_CEILING"
 case "$EFFORT" in ''|*[!A-Za-z0-9._-]*|-*) [ -z "$EFFORT" ] || usage "--effort needs [A-Za-z0-9._-]" ;; esac
-case "$TIMEOUT" in ''|*[!0-9]*|0) usage "--timeout must be whole seconds above 0" ;; esac
+case "$TIMEOUT" in ''|*[!0-9]*) usage "--timeout must be whole seconds above 0" ;; esac
+TIMEOUT=$((10#$TIMEOUT))
+[ "$TIMEOUT" -gt 0 ] || usage "--timeout must be whole seconds above 0"
 [ "$TIMEOUT" -le 3600 ] || usage "--timeout is at most 3600 seconds"
 [ -f "$QFILE" ] && [ ! -L "$QFILE" ] && [ -r "$QFILE" ] || usage "--question-file must be a readable regular file, not a symlink"
 QSIZE="$(wc -c < "$QFILE")"
@@ -119,7 +121,10 @@ if [ "$RC" -eq 0 ] || { [ "$STATUS" = ERROR ] && [ -s "$RAW" ]; }; then
       case "$k" in reason) PREASON=$v ;; verdict) VERDICT=$v ;; verdict_head) VHEAD=$v ;; cost_usd) COST=$v ;; esac
     done
     if [ "$RC" -eq 0 ]; then STATUS=$PSTATUS REASON=$PREASON
-    else REASON="claude-api.sh exited $RC; $PREASON"; VERDICT="" VHEAD=""; fi
+    else
+      [ "$PSTATUS" != DENIED ] || STATUS=DENIED
+      REASON="claude-api.sh exited $RC; $PREASON"; VERDICT="" VHEAD=""
+    fi
   elif [ "$RC" -eq 0 ]; then STATUS=ERROR
   fi
   if [ "$STATUS" = VERDICT ]; then

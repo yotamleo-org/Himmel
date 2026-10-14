@@ -145,6 +145,14 @@ test('a denial is DENIED even when the same result is an error', () => {
   assert.equal(r.art.cost_usd, '0.031415');
 });
 
+test('a denial is DENIED on a non-zero exit too, and records nothing', () => {
+  const f = fixture();
+  const r = f.run(f.args, { STUB_RC: '1', STUB_OUT: result(go(), { permission_denials: [{ tool_name: 'Bash' }] }) });
+  assert.equal(r.status, 3);
+  assert.equal(r.art.status, 'DENIED');
+  assert.equal(r.art.verdict_path, null);
+});
+
 test('evidence over the cap is never recorded cut: ERROR, nothing written to the verdict dir', () => {
   const f = fixture();
   const r = f.run(f.args, { STUB_OUT: result(go(HEAD, 'x'.repeat(40000))) });
@@ -222,10 +230,10 @@ test('argument policy: model tier, budget ceiling, question file and head are re
   const cases = [
     ['--model', 'claude-haiku-5-5'], ['--model', 'claude-fable-5-1'], ['--max-budget-usd', '5.00'],
     ['--max-budget-usd', '0'], ['--max-budget-usd', 'abc'], ['--head', 'abc123'], ['--question-file', join(f.dir, 'nope.md')],
-    ['--pr', '07'], ['--qid', '../q'],
+    ['--pr', '07'], ['--qid', '../q'], ['--timeout', '00'], ['--timeout', '0'],
   ];
   for (const [flag, val] of cases) {
-    const r = f.run(swap(flag, val));
+    const r = f.run(f.args.includes(flag) ? swap(flag, val) : [...f.args, flag, val]);
     assert.equal(r.status, 2, `${flag} ${val}: ${r.stderr}`);
   }
   assert.equal(f.called(), false);
