@@ -126,7 +126,10 @@ if [ "$PWD" != "${GH_STUB_CWD:-$REPO}" ]; then
   printf 'gh stub: expected cwd=%s, got %s\n' "${GH_STUB_CWD:-$REPO}" "$PWD" >&2
   exit 9
 fi
-printf '%s\n' 2247 2250
+# gh pr list --json ... --jq emits one TSV row per PR: number, head branch, isDraft,
+# author login, isCrossRepository, updatedAt. STUB_PR_ROWS (a printf %b string) replaces
+# the default pair of drafts, which tick.sh lists in prs= but never flags as unowned.
+printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
 # orphans= reads `ps -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
 # Answered from $PS_FIXTURE so the suite never reads the live process table;
@@ -205,7 +208,7 @@ mkdir -p "$W/console-work/chain"
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
+expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none ext-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -240,6 +243,34 @@ printf '%s\n' '> The project this console is FOR is **`none — this console run
     > "$W/handover/console-himmel.md"
 proj_out="$(TOKEN='' bash "$SUT" --doc "$W/handover/console-himmel.md")"
 contains 'a himmel console (project line reads none) lists the REPO PRs' "$proj_out" ' prs=#2247,#2250 '
+
+# --- unowned-prs= / ext-prs=: an open PR whose head branch no held leg,
+# live manifest row or cloud session owns is flagged with its age; drafts, fork PRs
+# and PRs inside the grace period are not. Owner = the ticket key in the branch name
+# matching a leg doc the tick reads whose lock is held (FRESH/STALE) or lockless.
+iso_ago() { date -u -d "-$1 min" +%Y-%m-%dT%H:%M:%SZ; }
+rows_5542="$(printf '%s\t%s\t%s\t%s\t%s\t%s\\n' \
+    3001 feat/himmel-111-owned false me false "$(iso_ago 300)" \
+    3002 feat/himmel-999-orphan false me false "$(iso_ago 125)" \
+    3003 feat/himmel-998-draft true me false "$(iso_ago 300)" \
+    3004 feat/himmel-997-young false me false "$(iso_ago 3)" \
+    3005 fix/ext-thing false stranger true "$(iso_ago 300)" \
+    3006 feat/himmel-222-ready-leg false me false "$(iso_ago 300)")"
+own_out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT")"
+contains 'an open PR with no lock or leg appears in unowned-prs with its age' "$own_out" 'unowned-prs=#3002:125m'
+not_contains 'a PR owned by a held lock is not unowned' "$own_out" '#3001:'
+not_contains 'a draft PR is not unowned' "$own_out" '#3003:'
+not_contains 'a PR inside the grace period is not unowned' "$own_out" '#3004:'
+not_contains 'a fork PR is not unowned' "$own_out" '#3005:'
+contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
+contains 'a leg whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
+contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
+contains '--verbose names unowned PRs' "$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --verbose)" 'unowned-prs: #3002:125m'
+mkdir -p "$W/cloudbucket"
+printf '%s\n' '# console' > "$W/cloudbucket/console.md"
+printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
+cloud_own_out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/console.md")"
+not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud_own_out" '#3002:'
 
 # --- a comma-separated --legs is equivalent to space-separated -
 # `for leg in $LEGS` word-splits on IFS whitespace only, so a comma-joined

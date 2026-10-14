@@ -971,13 +971,54 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --json number --jq '.[].number' 2>/dev/null)" || pr_out=""
+pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --json number,headRefName,isDraft,author,isCrossRepository,updatedAt --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt] | @tsv' 2>/dev/null)" || pr_out=""
+
+# unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
+# no leg this tick reads holds (a held or lockless lock), and no recent cloud session
+# covers, has no one working it. Fork PRs are listed apart, drafts and PRs younger than
+# the grace period never. Built from the one gh read above: no per-PR call.
+# ponytail: ownership is the ticket key in the branch name, so a branch with no key reads
+# unowned (loud, not silent), and age is the PR's updatedAt, which a comment also moves;
+# upgrade = match the leg's own branch, or the last commit's date, if either bites.
+ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
+owner_keys=" "
+while IFS=$'\t' read -r o_label o_lock _; do
+    case "$o_lock" in FRESH|STALE|NOLOCK|UNVERIFIED) ;; *) continue ;; esac
+    o_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$o_label=//p" | head -n 1)"
+    o_key="$(ticket_key "${o_doc##*/}")"
+    [ -z "$o_key" ] || owner_keys="$owner_keys$o_key "
+done <<< "$leg_candmap"
+cloud_tsv=""
+[ -n "$console_doc" ] && cloud_tsv="${console_doc%/*}/cloud-sessions.tsv"
+if [ -n "$cloud_tsv" ] && [ -f "$cloud_tsv" ]; then
+    cloud_window_s=$(( ${CLOUD_LIVENESS_WINDOW_H:-48} * 3600 ))
+    while IFS=$'\t' read -r c_time c_key _; do
+        c_at="$(date -d "$c_time" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
+        [ $(( $(date +%s) - c_at )) -le "$cloud_window_s" ] && owner_keys="$owner_keys$c_key "
+    done < "$cloud_tsv"
+fi
+unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
-while IFS= read -r pr; do
+unowned_prs=""
+ext_prs=""
+while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
+    [ -n "$pr_branch" ] || continue
+    if [ "$pr_fork" = true ]; then ext_prs="$(csv_add "$ext_prs" "#$pr")"; continue; fi
+    [ "$pr_draft" = true ] && continue
+    pr_key="$(ticket_key "$pr_branch")"
+    if [ -n "$pr_key" ]; then
+        case "$owner_keys" in *" $pr_key "*) continue ;; esac
+    fi
+    pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
+    pr_age=$(( ($(date +%s) - pr_at) / 60 ))
+    [ "$pr_age" -ge "$unowned_grace_min" ] || continue
+    unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m")"
 done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
+[ -n "$unowned_prs" ] || unowned_prs=none
+[ -n "$ext_prs" ] || ext_prs=none
 
 # the board fingerprint -- what console-board.html shows that the
 # console authors or a tick already reads: leg locks, leg tails, open PRs, and
@@ -1531,6 +1572,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'scheduled jobs: %s\n' "$at_count"
     printf 'suite locks: %s\n' "$suites"
     printf 'open PRs: %s\n' "$prs"
+    printf 'unowned-prs: %s\n' "$unowned_prs"
+    printf 'ext-prs: %s\n' "$ext_prs"
     printf 'subscription usage budget: %s\n' "$bank"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
@@ -1572,11 +1615,11 @@ else
     # follow, and `fails=` closes the line, before the optional `spare=`.
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     else
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

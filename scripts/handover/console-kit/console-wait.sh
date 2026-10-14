@@ -39,6 +39,13 @@
 # cloud= (HIMMEL-5163; class only, wakes ONLY on a move to STALL -- never on a
 # change of the ticket list, nor a move back to ok/skip; absent from an older
 # tick line, never a failure),
+# unowned-prs= is NOT in the action key (its minutes grow every tick): a
+# non-empty list wakes on first sight (`WAKE unowned-prs <list>`), again at once when
+# a PR joins it, and again every CONSOLE_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
+# stays non-empty. The marker `<inbox>.wait.unowned` (its body the PR numbers last
+# woken for) outlives the waiter like the underfill one; it clears after two
+# consecutive samples reading none, so one failed gh read is not an all-clear. A tick
+# line without the field is skipped.
 # vmrun= (HIMMEL-5037; class only, wakes ONLY on a move to DEAD or STUCK -- never
 # on the busy count, nor a move back to ok/off; absent from an older tick line,
 # never a failure),
@@ -384,6 +391,8 @@ page_denials() {
 # into it) wakes once per streak. The marker file outlives the waiter, so a
 # re-arm inside the same streak stays quiet; capacity=ok removes it.
 underfill_file="$inbox.wait.underfill"
+unowned_file="$inbox.wait.unowned"
+unowned_none_streak=0
 dispatch_cmd="${CONSOLE_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
@@ -391,6 +400,26 @@ underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     local lf=()
     [ -z "$legs_from" ] || lf=(--legs-from "$legs_from")  # live legs' files must reach the collision check
     timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" ${lf[@]+"${lf[@]}"} </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
+}
+
+# unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is
+# new to the marker, holds a PR the marker lacks, or the marker is older than the re-wake
+# window.
+unowned_wake() {
+    local nums num wake=""
+    nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
+    if [ ! -e "$unowned_file" ]; then
+        wake=1
+    elif [ -z "$(find "$unowned_file" -mmin "-${CONSOLE_WAIT_UNOWNED_REWAKE_MIN:-60}" 2>/dev/null)" ]; then
+        wake=1
+    else
+        for num in $nums; do
+            grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { wake=1; break; }
+        done
+    fi
+    [ -n "$wake" ] || return 1
+    printf '%s\n' "$nums" > "$unowned_file" 2>/dev/null
+    return 0
 }
 
 saved=""
@@ -464,6 +493,19 @@ while :; do
                         exit_reason='wake-underfilled'; exit 0
                     fi ;;
                 ok) rm -f "$underfill_file" ;;
+            esac
+            unowned_val="$(field unowned-prs "$tick_line")"
+            case "$unowned_val" in
+                '') ;;
+                none)
+                    unowned_none_streak=$((unowned_none_streak + 1))
+                    [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" ;;
+                *)
+                    unowned_none_streak=0
+                    if unowned_wake "$unowned_val"; then
+                        printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
+                        exit_reason='wake-unowned-prs'; exit 0
+                    fi ;;
             esac
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then

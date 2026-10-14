@@ -276,6 +276,11 @@ handoff6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console-HANDOFF.md"
 
 out6a="$(console new --bucket nextrepo)"
 token6a="$(token_of "$out6a")"
+# a WRAPPED leg whose doc names a PR that is still open is carried into the HANDOFF
+# (the stub PR set above is just #5); a WRAPPED leg naming a closed PR is not.
+printf '%s\n' '# leg' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
+printf '%s\n' '# leg' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
+printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-console.fleet.json"
 console next --bucket nextrepo >/dev/null
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
 check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-console.md.meta.json" 2>/dev/null || true)" "1"
@@ -291,6 +296,9 @@ check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/d
 check "6 handoff pre-fills the bank line" "$(grep -c '^\*\*Bank at write:\*\* 5-hour 9.0 %, 7-day 91.0 %' "$handoff6A")" "1"
 check "6 handoff pre-fills the open PRs" "$(grep -c '^#5 \[DEMO-1\] stub pr' "$handoff6A")" "1"
 check "6 handoff keeps no sha/url placeholder" "$(grep -E '^\*\*(Head|Bank at write):\*\*' "$handoff6A" | grep -c '<sha>\|<origin url>\|<n> %')" "0"
+check "6 handoff carries a WRAPPED leg whose PR is still open (HIMMEL-5542)" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6A")" "1"
+check "6 handoff omits a WRAPPED leg whose PR is closed (HIMMEL-5542)" "$(grep -c '^- PR #77' "$handoff6A")" "0"
+check "6 handoff section tells the successor to disposition before dispatch (HIMMEL-5542)" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"
 check "6 handoff leaves one judgement-notes block" "$(grep -c '^## Rulings and judgement notes' "$handoff6A")" "1"
 check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
 

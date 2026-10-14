@@ -553,6 +553,10 @@ the console's `close-wrapped-leg.sh` ends the session, after it verifies the
 lock is free, the last marker is `WRAPPED` and `wrap-subtree-check.sh` reports
 `CLOSABLE`. A leg never idles: if you are gated on something
 outside your control, WRAP with a successor resume brief instead of waiting.
+A leg that wraps with its PR still open sends the console one more message
+first: `ORPHAN PR <n> <full head sha>, resume brief <absolute path>`. The tick's
+`unowned-prs=` flags the PR from then on and the HANDOFF carries it, so
+the message is what puts a name and a brief beside it.
 
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** (TaskStop on an agent

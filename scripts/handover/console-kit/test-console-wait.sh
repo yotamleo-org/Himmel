@@ -842,6 +842,55 @@ under_line "UNDERFILLED:7"
 wait_exit "$WPID"
 check "(u4959) the dispatch command receives --legs-from" "ARGS --legs-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
 
+# --- (u5542) unowned-prs=: the first sight of an open PR with no live
+# owner wakes the waiter once, a PR that joins the set wakes it, the same set wakes
+# again only after CONSOLE_WAIT_UNOWNED_REWAKE_MIN, and the marker clears once the
+# field has read none twice. The field is not in the action key, so its growing
+# age never wakes by itself. RED control (console-wait.sh before this change): none
+# of these woke ("running"). ------------------------------------------------------
+unowned_line() { sed -e "s/ unowned-prs=[^ ]*//" -e "s/ bank=/ unowned-prs=$1 bank=/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+unowned_line "#2575:120m"
+I="$(new_inbox y)"
+start "$I" "$WORK/y.out" --legs "N1.md"
+wait_exit "$WPID"
+check "(u5542) a PR with no live owner wakes on first sight" "0" "$rc"
+check "(u5542) the wake names the PR and its age" "WAKE unowned-prs #2575:120m" "$(head -n1 "$WORK/y.out")"
+
+start "$I" "$WORK/y2.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-2) no baseline heartbeat"
+unowned_line "#2575:121m"
+wait_exit "$WPID"
+check "(u5542-2) the same PR, older, does not wake again inside the re-wake window" "running" "$rc"
+touch -d '2 hours ago' "$I.wait.unowned"
+wait_exit "$WPID"
+check "(u5542-2) the same PR wakes again after the re-wake window" "0" "$rc"
+check "(u5542-2) the re-wake names the PR" "WAKE unowned-prs #2575:121m" "$(head -n1 "$WORK/y2.out")"
+
+start "$I" "$WORK/y3.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-3) no baseline heartbeat"
+unowned_line "#2575:130m,#2600:15m"
+wait_exit "$WPID"
+check "(u5542-3) a PR joining the unowned set wakes at once" "WAKE unowned-prs #2575:130m,#2600:15m" "$(head -n1 "$WORK/y3.out")"
+
+unowned_line "none"
+start "$I" "$WORK/y4.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-4) no baseline heartbeat"
+n=0
+while [ "$n" -lt 50 ] && [ -e "$I.wait.unowned" ]; do sleep 0.1; n=$((n + 1)); done
+check "(u5542-4) unowned-prs=none twice clears the marker" "" "$([ -e "$I.wait.unowned" ] && echo present)"
+unowned_line "#2575:140m"
+wait_exit "$WPID"
+check "(u5542-4) a PR that turns unowned again wakes at once" "WAKE unowned-prs #2575:140m" "$(head -n1 "$WORK/y4.out")"
+
+reset_stub
+I="$(new_inbox y5)"
+start "$I" "$WORK/y5.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-5) no baseline heartbeat"
+wait_exit "$WPID"
+check "(u5542-5) a tick line with no unowned-prs= field is still a valid sample" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # --- (k) usage ---------------------------------------------------------------
 bash "$WAIT" >/dev/null 2>&1; rc=$?
 check "(k) no inbox argument is a usage error (rc 2)" "2" "$rc"

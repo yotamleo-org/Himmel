@@ -52,6 +52,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/leg-tail-status.sh
+. "$HERE/../../lib/leg-tail-status.sh"
 
 # HIMMEL-3081: the launch line below is PASTED by an operator, and the terminal
 # they paste it into was itself spawned from a claude session -- so
@@ -365,6 +367,36 @@ judge_calls_now() {
         1) printf '%s\n' "$out" | sed -n 's/^LIVE-SUBAGENT /- /p' ;;
         *) echo "unavailable ($(printf '%s\n' "$out" | head -n 1))" ;;
     esac
+}
+
+# The HANDOFF's "Wrapped with open PR" section: every fleet-manifest leg
+# whose last marker is WRAPPED and whose doc still names a PR that is open, so
+# the successor cannot drop it when the carry-forward is hand-written prose.
+# ponytail: the PR is read off the leg doc's own text (READY/PR/# followed by a number),
+# so a wrap that never names its PR is invisible here; the tick's unowned-prs= still
+# catches it. Open set = handoff-facts.sh prs, so it shares that field's seam and limit.
+wrapped_open_prs_section() { # <predecessor doc>
+    local doc="$1" manifest="${1%.md}.fleet.json" facts="$HERE/../console-kit/handoff-facts.sh"
+    local open rows label ldoc n found=0 mtime
+    printf '## Wrapped with open PR\n\n'
+    printf 'The successor dispositions each entry below (relaunch, GO or close) BEFORE its first dispatch.\n\n'
+    open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')"
+    if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
+        while IFS="$(printf '\t')" read -r label ldoc; do
+            [ -f "$ldoc" ] || continue
+            [ "$(leg_tail_status "$ldoc")" = WRAPPED ] || continue
+            # shellcheck disable=SC2013 # the words are bare digits
+            for n in $(grep -oE '(READY|PR|#)[ #]*[0-9]+' "$ldoc" | grep -oE '[0-9]+$' | sort -u); do
+                printf '%s\n' "$open" | grep -qx "$n" || continue
+                mtime="$(date -r "$ldoc" '+%Y-%m-%d %H:%M' 2>/dev/null)" || mtime="unknown"
+                printf -- '- PR #%s (%s), orphan since %s: %s\n' "$n" "$label" "$mtime" "$ldoc"
+                found=1
+            done
+        done <<EOF_ROWS
+$rows
+EOF_ROWS
+    fi
+    [ "$found" -eq 1 ] || printf 'none — no WRAPPED leg in the fleet manifest names a PR that is still open.\n'
 }
 
 CMD="${1:-}"
@@ -1534,6 +1566,7 @@ cmd_next() {
             BUCKET "$bucket" \
             KIT "$kit" \
             LIVE_STATE "$predecessor_live_state"
+        wrapped_open_prs_section "$predecessor_doc" >> "$predecessor_handoff"
         echo "handoff: $predecessor_handoff"
     else
         set +C
