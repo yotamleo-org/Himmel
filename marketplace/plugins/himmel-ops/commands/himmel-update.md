@@ -89,7 +89,7 @@ bump merges while the host still runs the old build.
   brew/pacman installs print the needs-you command and are never run), then
   re-checked. Still below the floor fails the step loudly (`--check` stays
   read-only). The same floor makes every armed console/leg launch refuse with
-  `claude update` named; doctor check C62 WARNs below it.
+  `claude update` named; doctor check C63 WARNs below it.
 - **qmd daemon restart** — installing a new qmd build does NOT reload the
   running daemon on :8181, and stopping that process is termination an agent may
   not do. The step prints the exact operator commands instead; it never kills

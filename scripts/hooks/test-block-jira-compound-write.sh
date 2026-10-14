@@ -1021,6 +1021,26 @@ jq_rc=$?
 rm -rf "$JQ_SHADOW"
 rmdir "$EMPTY_PATH_DIR" 2>/dev/null || rm -rf "$EMPTY_PATH_DIR"
 
+# --- escape-class shapes (HIMMEL-5332): one fixture file per shape family. Each
+# deny-*.cmd is a compound create the splitter used to misread (line continuation,
+# ANSI-C quoting, escaped `#`, `echo <quoted operator> &&`, possibly-empty
+# expansions incl. zsh modifiers/subscripts); each allow-*.cmd is the near-miss
+# that must stay allowed (a conditional left operand, data-position text, a real
+# comment). Fixtures hold the raw command bytes so no payload rides this file.
+ESC_DIR="$SCRIPT_DIR/fixtures/jira-compound-write-escape"
+esc_n=0
+for esc_f in "$ESC_DIR"/deny-*.cmd "$ESC_DIR"/allow-*.cmd; do
+  [ -f "$esc_f" ] || continue
+  esc_n=$((esc_n + 1))
+  esc_cmd="$(cat "$esc_f")"
+  run_hook Bash "$esc_cmd"
+  case "$(basename "$esc_f")" in
+    deny-*)  [ "$RC" -eq 2 ] && pass "escape shape bounced: $(basename "$esc_f")" || fail "escape shape allowed: $(basename "$esc_f") (rc=$RC)" ;;
+    allow-*) [ "$RC" -eq 0 ] && pass "near-miss allowed: $(basename "$esc_f")" || fail "near-miss bounced: $(basename "$esc_f") (rc=$RC)" ;;
+  esac
+done
+[ "$esc_n" -ge 20 ] && pass "escape-shape fixtures found ($esc_n)" || fail "escape-shape fixtures missing (found $esc_n)"
+
 echo
 if [ "$fails" -gt 0 ]; then echo "$fails failure(s)" >&2; exit 1; fi
 echo "all tests passed"

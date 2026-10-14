@@ -217,6 +217,39 @@ out=$(cd "$NOTOOL" && PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
 assert_eq "bunx absent → sole fail-open case" "0" "$rc"
 assert_says "bunx absent → loud WARN" "WARN check-oxlint-hardening: bunx not found" "$out"
 
+# --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) --
+# PATH layout copied from the main station: ~/.bun/bin holds `bun` and nothing
+# else (`ls -la ~/.bun/bin` → one 755 `bun`). The runner stub is installed as
+# `bun` and records its args; jq is linked in because the gate needs it.
+BUNONLY=$(make_fixture) || exit 1; track_cleanup "$BUNONLY"
+mv "$BUNONLY/bin/bunx" "$BUNONLY/bin/bun"
+ln -s "$(command -v jq)" "$BUNONLY/bin/jq"
+ln -s "$(command -v grep)" "$BUNONLY/bin/grep"
+ln -s "$(command -v mktemp)" "$BUNONLY/bin/mktemp"
+ln -s "$(command -v rm)" "$BUNONLY/bin/rm"
+if PATH="$BUNONLY/bin" command -v bunx >/dev/null 2>&1 || ! PATH="$BUNONLY/bin" command -v bun >/dev/null 2>&1; then
+    echo "FAIL fixture control: bun-only PATH must resolve bun and not bunx"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS fixture control: bun-only PATH resolves bun and not bunx"
+fi
+rc=0
+out=$(cd "$BUNONLY" && PATH="$BUNONLY/bin" \
+  OXLINT_STUB_MODE=clean OXLINT_STUB_RECORD="$BUNONLY/record.txt" \
+  "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "bun without bunx → gate passes through bun x" "0" "$rc"
+rec=$(cat "$BUNONLY/record.txt" 2>/dev/null || true)
+assert_says "bun without bunx → invoked as bun x" "arg=x" "$rec"
+assert_says "bun without bunx → pinned package" "arg=oxlint@1.88.0" "$rec"
+rm -f "$BUNONLY/record.txt"
+rc=0
+out=$(cd "$BUNONLY" && PATH="$BUNONLY/bin" \
+  OXLINT_STUB_MODE=finding OXLINT_STUB_RECORD="$BUNONLY/record.txt" \
+  "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "bun without bunx → a finding still blocks" "1" "$rc"
+assert_says "bun without bunx → the block is the finding, not a tool error" \
+  "bug-class rule violation" "$out"
+
 NOJQ=$(make_fixture) || exit 1; track_cleanup "$NOJQ"
 rc=0
 out=$(cd "$NOJQ" && PATH="$NOJQ/bin" \

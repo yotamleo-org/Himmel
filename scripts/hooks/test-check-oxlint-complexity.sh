@@ -88,6 +88,46 @@ hardening_pin=$(grep -oE '^OXLINT_VERSION=.*$' "$HARDENING_GATE")
 assert_eq "complexity gate's OXLINT_VERSION matches the hardening gate's" \
   "$hardening_pin" "$complexity_pin"
 
+# --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) ---
+# PATH layout copied from the main station: ~/.bun/bin holds `bun` and NOTHING
+# else (`ls -la ~/.bun/bin` → one 755 `bun`), so `command -v bunx` is empty
+# while `bun x` works. The stub stands in for bun; only grep is linked in
+# because the gate pipes oxlint output through it. Runs before the bunx SKIP
+# below so a bunx-less box still exercises it.
+BUN_ONLY=$(fixture_mktemp_dir) || exit 1
+mkdir -p "$BUN_ONLY/scripts/lanes"
+printf '%s\n' 'export function add(a, b) { return a + b; }' > "$BUN_ONLY/scripts/lanes/clean.mjs"
+BUN_ONLY_BIN=$(fixture_mktemp_dir) || exit 1
+GREP_ABS=$(command -v grep)
+ln -s "$GREP_ABS" "$BUN_ONLY_BIN/grep"
+cat > "$BUN_ONLY_BIN/bun" <<EOF
+#!$BASH_ABS
+printf 'arg=%s\n' "\$@" > "$BUN_ONLY/record.txt"
+if [ "\${OXLINT_STUB_REGRESSION:-}" = 1 ]; then
+    echo 'eslint(complexity): Function has a complexity of 30. Maximum allowed is 20.'
+    exit 1
+fi
+exit 0
+EOF
+chmod +x "$BUN_ONLY_BIN/bun"
+if PATH="$BUN_ONLY_BIN" command -v bunx >/dev/null 2>&1 || ! PATH="$BUN_ONLY_BIN" command -v bun >/dev/null 2>&1; then
+    echo "FAIL fixture control: bun-only PATH must resolve bun and not bunx"
+    FAILED=$((FAILED + 1))
+else
+    echo "PASS fixture control: bun-only PATH resolves bun and not bunx"
+fi
+rc=0
+out=$(cd "$BUN_ONLY" && PATH="$BUN_ONLY_BIN" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "bun without bunx → gate passes (exit 0)" "0" "$rc"
+rec=$(cat "$BUN_ONLY/record.txt" 2>/dev/null || true)
+assert_says "bun without bunx → ran oxlint through bun x" "arg=x" "$rec"
+assert_says "bun without bunx → pinned package" "arg=oxlint@1.88.0" "$rec"
+rm -f "$BUN_ONLY/record.txt"
+rc=0
+out=$(cd "$BUN_ONLY" && OXLINT_STUB_REGRESSION=1 OXLINT_COMPLEXITY_MAX=22 PATH="$BUN_ONLY_BIN" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
+assert_eq "bun without bunx → a regression still blocks (exit 1)" "1" "$rc"
+rm -rf "$BUN_ONLY" "$BUN_ONLY_BIN"
+
 if ! command -v bunx >/dev/null 2>&1; then
     if [ "$FAILED" -eq 0 ]; then
         echo "SKIP test-check-oxlint-complexity: bunx not on PATH — cannot exercise the pass/fail cases"

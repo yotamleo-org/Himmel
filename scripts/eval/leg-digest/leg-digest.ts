@@ -203,6 +203,52 @@ const agentOf = (a: AgentInfo | undefined): Agent => ({
   model: a?.model && MODEL.test(a.model) ? a.model : null,
 });
 
+// HIMMEL-5516: what the session spent before its first edit. Usage rows are weighted input + cache_creation + output
+// at 1 and cache_read at 0.1 (the cost-reduction method), one row per message id (a streamed message repeats its
+// usage on every content-block line, the last one wins). The window ends at the main agent's first Edit, Write,
+// NotebookEdit or `git commit` tool call and includes the message that issued it. Subagent turns before the cut are
+// summed apart (sub_tokens), never into tokens. A compacted session is read whole: sessionFiles merges every segment
+// in order, so the window is the first edit of the session, not of the last segment. cut "none": no edit, no commit.
+const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
+const GIT_COMMIT = /(?:^|[\s;&|(])git\s+(?:-\S+\s+(?:\S+\s+)?)*commit\b/;
+const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch" || n === "WebFetch" || n.startsWith("mcp__qmd__");
+// A leg has no Grep/Glob tool and reads through Bash, so a Bash call whose first word is one of these counts too.
+// ponytail: first word only, `cd x && grep y` reads as neither; revisit if the baseline undershoots.
+const BASH_READ = /^(?:cat|head|tail|sed|less|bat)\b/;
+const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/leg-graph\.sh\b/;
+function exploration(lines: string[]) {
+  const w = (u: Record<string, unknown>) => ["input_tokens", "cache_creation_input_tokens", "output_tokens"]
+    .reduce((s, k) => s + (typeof u[k] === "number" ? u[k] as number : 0), 0)
+    + 0.1 * (typeof u.cache_read_input_tokens === "number" ? u.cache_read_input_tokens : 0);
+  const main = new Map<string, number>(), sub = new Map<string, number>(), calls = new Set<string>();
+  let cut: string | null = null, cutId = "", reads = 0, searches = 0;
+  for (const l of lines) {
+    let r: any;
+    try { r = JSON.parse(l); } catch { continue; }
+    if (r?.type !== "assistant" || !r.message || typeof r.message !== "object") continue;
+    const side = r.isSidechain === true, id = String(r.message.id ?? r.uuid ?? "");
+    if (cut !== null && (side || id !== cutId)) continue;
+    const u = r.message.usage;
+    if (u && typeof u === "object") (side ? sub : main).set(id, w(u));
+    if (side || cut !== null || !Array.isArray(r.message.content)) continue;
+    for (const c of r.message.content) {
+      if (c?.type !== "tool_use" || typeof c.name !== "string") continue;
+      const cmd = typeof c.input?.command === "string" ? c.input.command : "";
+      if (EDIT_TOOLS.has(c.name)) cut = "edit";
+      else if (c.name === "Bash" && GIT_COMMIT.test(cmd)) cut = "commit";
+      else if (!calls.has(c.id)) {
+        calls.add(c.id);
+        const bash = c.name === "Bash" ? cmd.trim() : "";
+        if (c.name === "Read" || BASH_READ.test(bash)) reads++;
+        else if (isSearch(c.name) || BASH_SEARCH.test(bash)) searches++;
+      }
+      if (cut !== null) { cutId = id; break; }
+    }
+  }
+  const sum = (m: Map<string, number>) => Math.round([...m.values()].reduce((s, n) => s + n, 0));
+  return { tokens: sum(main), sub_tokens: sum(sub), reads, searches, cut: cut ?? "none" };
+}
+
 function inconclusive(session: string, reason: string) {
   return { digest_v: DIGEST_SCHEMA, mapper_v: MAPPER_SCHEMA, trajectory_v: null, session, status: "inconclusive",
     reason, model: null, metrics: {}, agents: [], failures: [], stats: {} };
@@ -452,6 +498,7 @@ async function main() {
     metrics: { ...m, tool_calls_by_tool: callsByTool, tool_failures_by_tool: failuresByTool, red_before_green: bool(traj.red_before_green), denial_recovery: traj.denial_recovery ?? null,
       identical_denied_retries: traj.identical_denied_retries ?? null, verify_before_claim: bool(traj.verify_before_claim) },
     agents: [...agents.values()], failures, by_design: [...designed.values()], stats,
+    exploration: exploration(merged.lines),
   };
 }
 

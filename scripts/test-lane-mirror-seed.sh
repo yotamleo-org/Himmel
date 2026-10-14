@@ -4,8 +4,11 @@
 # nested content stranded by mtimes, live-lock theft, and dead-owner/PID reuse.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Own the clean-sandbox parent as well as its fixtures, including failure exits.
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/clean-sandbox.XXXXXX") || { echo 'FAIL: scratch mktemp failed' >&2; exit 1; }
+trap 'chmod -R u+rwX "$SCRATCH"; rm -rf "$SCRATCH"' EXIT
 # Optional scripts copy lets mutation checks leave the real helper untouched.
-bash "$HERE/lib/clean-sandbox.sh" -- node - "${1:-$HERE}" <<'NODE'
+bash "$HERE/lib/clean-sandbox.sh" --scratch "$SCRATCH" -- node - "${1:-$HERE}" <<'NODE'
 const fs=require('fs'), path=require('path'), cp=require('child_process'), assert=require('assert');
 const scripts=process.argv[2], roots=[];
 let passed=0, failed=0;
@@ -334,6 +337,6 @@ process.exit(args.some(a=>a.includes('.seed-lock'))?42:0);
   test(lane+': young dead-owner lock is not stolen',()=>{const f=setup(lane);lock(f,2147483647,'linux:1',false);run(f,4);assert(fs.existsSync(f.dir+'.seed-lock'));});
   test(lane+': auto-reseed opt-out preserves nested old content',()=>{const f=setup(lane);run(f);fs.writeFileSync(path.join(f.home,'.claude','hooks','sub','x.sh'),'new\n');f.env.CLAUDE_LANE_AUTO_RESEED='0';run(f);assert.strictEqual(fs.readFileSync(path.join(f.dir,'hooks','sub','x.sh'),'utf8'),'old\n');});
  }
-} finally { for(const root of roots)fs.rmSync(root,{recursive:true,force:true}); }
+} finally { for(const root of roots) { cp.execFileSync('chmod',['-R','u+rwX',root]);fs.rmSync(root,{recursive:true,force:true}); } }
 console.log(passed+' passed; '+failed+' failed');process.exit(failed?1:0);
 NODE

@@ -4080,16 +4080,34 @@ check_c61_codex_cli() {
     fi
 }
 
-# --- C62-claude-cli: claude below the console-launch floor (HIMMEL-5501) ------
+# --- C62-oxlint-runner: can the oxlint pre-commit gates run? (HIMMEL-5529) ------
+# check-oxlint-complexity.sh / check-oxlint-hardening.sh run oxlint through
+# `bunx`, falling back to `bun x`; with neither they fail OPEN with only a
+# scrolled-past WARN, so every commit silently skips both gates. bun installed
+# without a bunx symlink is fine (the gates use `bun x`); only no bun at all WARNs.
+# Test seams: HIMMEL_DOCTOR_BUNX / HIMMEL_DOCTOR_BUN (commands to probe).
+check_c62_oxlint_runner() {
+    local bunx_bin="${HIMMEL_DOCTOR_BUNX:-bunx}" bun_bin="${HIMMEL_DOCTOR_BUN:-bun}"
+    if command -v "$bunx_bin" >/dev/null 2>&1; then
+        emit OK C62-oxlint-runner "oxlint gates run via bunx"
+    elif command -v "$bun_bin" >/dev/null 2>&1; then
+        emit OK C62-oxlint-runner "oxlint gates run via 'bun x' (bunx not on PATH)"
+    else
+        emit WARN C62-oxlint-runner "neither bunx nor bun on PATH — the oxlint complexity and hardening commit gates fail open (skipped on every commit)" \
+            "install bun (curl -fsSL https://bun.sh/install | bash) and put ~/.bun/bin on PATH"
+    fi
+}
+
+# --- C63-claude-cli: claude below the console-launch floor (HIMMEL-5501) ------
 # The floor is the one constant in scripts/lib/claude-version.sh, shared with the
 # launch preflight and himmel update. Read-only; /himmel-update does the upgrade.
-check_c62_claude_cli() {
+check_c63_claude_cli() {
     local bin="${DOCTOR_CLAUDE_BIN:-claude}" rc=0
     claude_floor_check "$bin" || rc=$?
     case "$rc" in
-        0) emit OK C62-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the console-launch minimum $CLAUDE_MIN_VERSION" ;;
-        1) emit WARN C62-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that console and leg launches need" "claude update  (or /himmel-update)" ;;
-        *) emit INFO C62-claude-cli "claude CLI not found or its version unreadable — floor not checked" ;;
+        0) emit OK C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the console-launch minimum $CLAUDE_MIN_VERSION" ;;
+        1) emit WARN C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that console and leg launches need" "claude update  (or /himmel-update)" ;;
+        *) emit INFO C63-claude-cli "claude CLI not found or its version unreadable — floor not checked" ;;
     esac
 }
 
@@ -4156,7 +4174,8 @@ check_c58_mcp_sdk_v1
 check_c59_codex_bank_cache
 check_c60_hermes_origin
 check_c61_codex_cli
-check_c62_claude_cli
+check_c62_oxlint_runner
+check_c63_claude_cli
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 

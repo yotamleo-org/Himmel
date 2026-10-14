@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "jira": "HIMMEL-5282",
+  "doc": "scripts/hooks/block-infra-destroy.sh",
+  "semantics": {
+    "evaluation": "any matching rule denies. A rule matches one shell segment when the segment's command word (after env/sudo/timeout wrappers, and after a package runner such as npx) has a basename in `bins` AND every `argv_all` pattern matches some later word AND, when set, some `argv_any` pattern matches a later word. Patterns are POSIX ERE, matched against one word at a time, case-sensitive.",
+    "text_any": "case-insensitive ERE matched against the whole command text (heredoc bodies and quoted SQL included) once any segment's command word is in `bins`. Used for SQL and redis forms whose verb sits inside a quoted argument or a heredoc.",
+    "always": "true denies on the command word alone (dropdb)."
+  },
+  "runners": ["npx", "bunx", "pnpx", "pnpm", "yarn", "npm", "uvx", "pipx"],
+  "rules": [
+    { "id": "terraform-destroy", "bins": ["terraform", "tofu", "terragrunt"], "argv_any": ["^destroy$"], "note": "terraform, tofu or terragrunt destroy" },
+    { "id": "terraform-apply-destroy", "bins": ["terraform", "tofu", "terragrunt"], "argv_all": ["^apply$", "^-{1,2}destroy(=.*)?$"], "note": "terraform, tofu or terragrunt apply -destroy" },
+    { "id": "pulumi-destroy", "bins": ["pulumi"], "argv_any": ["^destroy$"], "note": "pulumi destroy" },
+    { "id": "kubectl-delete-drain", "bins": ["kubectl", "oc"], "argv_any": ["^(delete|drain)$"], "note": "kubectl delete or drain" },
+    { "id": "helm-uninstall", "bins": ["helm"], "argv_any": ["^(uninstall|delete)$"], "note": "helm uninstall" },
+    { "id": "aws-delete-terminate", "bins": ["aws"], "argv_any": ["^(delete|terminate)(-[a-z0-9-]+)?$"], "note": "aws delete-* or terminate-*" },
+    { "id": "gcloud-delete", "bins": ["gcloud"], "argv_any": ["^delete$"], "note": "gcloud ... delete" },
+    { "id": "az-delete", "bins": ["az"], "argv_any": ["^delete$"], "note": "az ... delete" },
+    { "id": "sql-destroy", "bins": ["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "duckdb", "clickhouse-client", "mongosh"], "text_any": ["(^|[^a-z_])drop([[:space:]]|/\\*[^*]*\\*/)+(table|database|schema|index|view|user|role|collection)([^a-z_]|$)", "(^|[^a-z_])truncate(([[:space:]]|/\\*[^*]*\\*/)+table)?([[:space:]]|/\\*[^*]*\\*/)+[a-z_\"`'\\[]", "(^|[^a-z_])delete([[:space:]]|/\\*[^*]*\\*/)+from([^a-z_]|$)", "\\.(drop(database|collection)?)[[:space:]]*\\("], "note": "SQL DROP, TRUNCATE or DELETE FROM through a SQL client" },
+    { "id": "redis-flush", "bins": ["redis-cli", "valkey-cli"], "text_any": ["(^|[^a-z_])flush(all|db)([^a-z_]|$)"], "note": "redis FLUSHALL or FLUSHDB" },
+    { "id": "dropdb", "bins": ["dropdb", "dropuser", "dropdb.exe"], "always": true, "note": "dropdb" },
+    { "id": "mysqladmin-drop", "bins": ["mysqladmin"], "argv_any": ["^drop$"], "note": "mysqladmin drop" },
+    { "id": "prisma-migrate-reset", "bins": ["prisma"], "argv_all": ["^migrate$", "^reset$"], "note": "prisma migrate reset" },
+    { "id": "docker-system-prune", "bins": ["docker", "podman"], "argv_all": ["^system$", "^prune$"], "note": "docker system prune" },
+    { "id": "docker-volume-destroy", "bins": ["docker", "podman"], "argv_all": ["^volume$", "^(rm|remove|prune)$"], "note": "docker volume rm or prune" },
+    { "id": "docker-compose-down-v", "bins": ["docker", "podman", "docker-compose", "podman-compose"], "argv_all": ["^down$", "^(-v|--volumes|-[a-zA-Z]*v[a-zA-Z]*)$"], "note": "docker compose down -v" }
+  ]
+}

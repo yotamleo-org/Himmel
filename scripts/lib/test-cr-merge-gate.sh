@@ -124,17 +124,17 @@ case "$1 $2" in
       # An impostor: right context + right login, WRONG creator.id. The whole
       # point of HIMMEL-1058's identity match — display names are spoofable,
       # the bot's user id is not.
-      cr-spoofed) echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":999999,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+      cr-spoofed) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":999999,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # Superseded pending: newest-first, so the success at the head wins.
-      cr-superseded) echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}},{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+      cr-superseded) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}},{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # A FULL page (100) of unrelated statuses and no CodeRabbit among them —
       # its verdict may be on page two, so this is indeterminate, NOT absent
       # (coderabbit-2). Must block rather than degrade (a degrade fails open).
       cr-paged) jq -nc '[range(100) | {context: "ci/ctx\(.)", state: "success", created_at: "2026-07-16T19:10:05Z", creator: {id: 1, login: "ci", type: "Bot"}}]' ;;
       # 100 unrelated statuses but CodeRabbit IS on the page: newest-first means
       # a match on page one is the newest by construction — no paging needed.
-      cr-paged-found) jq -nc '[{context: "CodeRabbit", state: "success", created_at: "2026-07-16T19:10:05Z", creator: {id: 136622811, login: "coderabbitai[bot]", type: "Bot"}}] + [range(99) | {context: "ci/ctx\(.)", state: "success", created_at: "2026-07-16T19:09:00Z", creator: {id: 1, login: "ci", type: "Bot"}}]' ;;
-      *) echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+      cr-paged-found) jq -nc '[{context: "CodeRabbit", state: "success", description: "Review completed", created_at: "2026-07-16T19:10:05Z", creator: {id: 136622811, login: "coderabbitai[bot]", type: "Bot"}}] + [range(99) | {context: "ci/ctx\(.)", state: "success", created_at: "2026-07-16T19:09:00Z", creator: {id: 1, login: "ci", type: "Bot"}}]' ;;
+      *) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
     esac ;;
   # CodeRabbit's review-BODY findings (HIMMEL-1126/1147) — a separate
   # endpoint from the commit status above. Default '[]' (no review posted

@@ -363,7 +363,7 @@ unconditional rather than drift-driven:
   installs print the needs-you command, never run), then re-checked; still
   below the floor fails the step. `--check` only reports. Below the floor,
   armed `console`/`headed-arm`/`arm-resume` launches refuse naming `claude
-  update` (print-only and `--dry-run` warn), and `himmel-doctor` check **C62**
+  update` (print-only and `--dry-run` warn), and `himmel-doctor` check **C63**
   WARNs.
 - **node/npm/bun toolchain** — reports node against the pinned
   `.nvmrc` at the pin's own granularity (major, major.minor or

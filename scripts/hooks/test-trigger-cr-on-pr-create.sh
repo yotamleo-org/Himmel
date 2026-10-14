@@ -59,6 +59,7 @@ TMP_ROOT=""
 
 # shellcheck disable=SC2329,SC2317  # invoked via trap; body reachable through it
 cleanup() {
+    if type git_test_env_cleanup >/dev/null 2>&1; then git_test_env_cleanup; fi
     if [ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ]; then
         rm -rf "$TMP_ROOT" 2>/dev/null || true
     fi

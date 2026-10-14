@@ -12,7 +12,7 @@ worktrees, 📋 Backlog, Done cross-ref) plus heuristic TL;DR + Suggested order.
 
 Pass `--llm` to enrich TL;DR, Suggested order, and Backlog theme-clustering via a
 bounded interactive Sonnet turn (degrades to the deterministic heuristic if
-`claude` is unavailable). It is a point-in-time snapshot — cross-day continuity
+`claude` is unavailable, and skipped with a notice under Codex). It is a point-in-time snapshot — cross-day continuity
 stays a session's job.
 
 Run:

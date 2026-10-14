@@ -212,6 +212,7 @@ echo "git_test_env_pin_perf pins init.templateDir to an existing empty dir:"
 (
   d="$tmpd/case7"; mkdir -p "$d" || exit 2
   . "$LIB"
+  trap git_test_env_cleanup EXIT
   git_test_env_pin_perf
   if tmpl=$(find_value_for_key init.templateDir); then
     if [ -d "$tmpl" ]; then ok "templateDir exists and is a directory"; else bad "templateDir exists and is a directory (got [$tmpl])"; fi
@@ -239,6 +240,7 @@ echo
 echo "git_test_env_pin_perf is idempotent:"
 (
   . "$LIB"
+  trap git_test_env_cleanup EXIT
   git_test_env_pin_perf
   first="$GIT_CONFIG_COUNT"
   git_test_env_pin_perf
@@ -262,6 +264,7 @@ echo "git_test_env_pin_perf's templateDir closes the fixed-shared-path finding:"
 
   # --- (1) the pinned templateDir is a real, empty directory ----------------
   . "$LIB"
+  trap git_test_env_cleanup EXIT
   git_test_env_pin_perf
   if tmpl=$(find_value_for_key init.templateDir); then
     if [ -d "$tmpl" ]; then ok "pinned templateDir exists and is a directory"; else bad "pinned templateDir exists and is a directory (got [$tmpl])"; fi
@@ -282,13 +285,13 @@ echo "git_test_env_pin_perf's templateDir closes the fixed-shared-path finding:"
               -u GIT_CONFIG_KEY_0 -u GIT_CONFIG_VALUE_0 \
               -u GIT_CONFIG_KEY_1 -u GIT_CONFIG_VALUE_1 \
               -u GIT_CONFIG_KEY_2 -u GIT_CONFIG_VALUE_2 \
-              bash -c '. "$1"; git_test_env_pin_perf; find_value_for_key init.templateDir' _ "$LIB")
+              bash -c '. "$1"; trap git_test_env_cleanup EXIT; git_test_env_pin_perf; find_value_for_key init.templateDir' _ "$LIB")
   # shellcheck disable=SC2016  # single-quoted deliberately -- expands in the CHILD bash -c, not here
   tmpl2=$(env -u HIMMEL_GIT_TEST_ENV_PERF -u GIT_CONFIG_COUNT \
               -u GIT_CONFIG_KEY_0 -u GIT_CONFIG_VALUE_0 \
               -u GIT_CONFIG_KEY_1 -u GIT_CONFIG_VALUE_1 \
               -u GIT_CONFIG_KEY_2 -u GIT_CONFIG_VALUE_2 \
-              bash -c '. "$1"; git_test_env_pin_perf; find_value_for_key init.templateDir' _ "$LIB")
+              bash -c '. "$1"; trap git_test_env_cleanup EXIT; git_test_env_pin_perf; find_value_for_key init.templateDir' _ "$LIB")
   if [ -n "$tmpl1" ] && [ -n "$tmpl2" ] && [ "$tmpl1" != "$tmpl2" ]; then
     ok "two independent pins produce different templateDir paths"
   else
@@ -386,6 +389,7 @@ echo "pin_perf re-pins when repair clears the marker on a malformed COUNT:"
   d="$tmpd/case11"; mkdir -p "$d" || exit 2
   export GIT_CONFIG_COUNT=abc HIMMEL_GIT_TEST_ENV_PERF=1
   . "$LIB"
+  trap git_test_env_cleanup EXIT
   git_test_env_pin_perf
   case "${GIT_CONFIG_COUNT:-}" in
     ''|*[!0-9]*) bad "pin_perf: GIT_CONFIG_COUNT is a valid integer after re-pin (got: ${GIT_CONFIG_COUNT:-<unset>})" ;;
@@ -402,6 +406,27 @@ echo "pin_perf re-pins when repair clears the marker on a malformed COUNT:"
     bad "git init succeeds after pin_perf re-pins over a malformed COUNT"
   fi
 ) || bad "case 11: aborted before completing (rc=$?)"
+
+# HIMMEL-4236: cleanup belongs to the allocator, not an inheriting child.
+echo
+echo "template cleanup survives child inheritance, re-pin and failure exits:"
+bash "$HERE/clean-sandbox.sh" --scratch "$tmpd/cleanup" -- bash -eu -c '
+  . "$1"
+  trap git_test_env_cleanup EXIT
+  git_test_env_pin_perf
+  first="$GIT_CONFIG_VALUE_2"
+  ( git_test_env_cleanup; test -d "$first" )
+  unset HIMMEL_GIT_TEST_ENV_PERF
+  git_test_env_pin_perf
+  mkdir -p "$first/locked"
+  printf fixture > "$first/locked/file"
+  chmod 500 "$first/locked"
+  exit 7
+' _ "$LIB" > "$tmpd/cleanup.log" 2>&1
+cleanup_rc=$?
+check "cleanup preserves failure exit" 7 "$cleanup_rc"
+left=$(find "$tmpd/cleanup/tmp" -type d -name 'himmel-git-empty-template.*' | wc -l | tr -d ' ')
+check "cleanup removes both owned templates, including read-only content" 0 "$left"
 
 echo
 pass=$(grep -c '^ok$'   "$results" || true)
