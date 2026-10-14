@@ -108,6 +108,13 @@ check "6: write-verdict exit 3 passes through" "$rc" 3
 contains "6: failing step named" "$out" "write-verdict.sh failed"
 lacks "6: go.sh never runs" "$log" "go ["
 
+# --- 6b. append-results refusal propagates -----------------------------------
+AR_RC=3 run q6b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+check "6b: append-results exit 3 passes through" "$rc" 3
+contains "6b: failing step named" "$out" "append-results.sh failed"
+lacks "6b: no board after a bullet failure" "$log" "board"
+lacks "6b: no leg message after a bullet failure" "$out" "merge-on-green.sh"
+
 # --- 7. usage ----------------------------------------------------------------
 run q7 MAYBE "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "7: bad answer rc 2" "$rc" 2

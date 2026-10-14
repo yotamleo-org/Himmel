@@ -94,6 +94,6 @@ if [ "$ANSWER" = "GO" ]; then
     [ -n "$ANCHOR" ] || ANCHOR="$(cd "$HERE/../../.." && pwd)"
     echo
     echo "--- leg message (send to ${LEG:-the leg}; add its token) ---"
-    echo "GO $PR $HEAD_SHA - merge with: bash $ANCHOR/scripts/handover/merge-on-green.sh --jira-transition"
+    printf 'GO %s %s - merge with: bash %q --jira-transition\n' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh"
 fi
 exit 0
