@@ -26,7 +26,7 @@ eq "setup: verdicts fixture" "$(cat "$ROOT/handovers/u/verdicts/a.txt" 2>/dev/nu
 # 2. RED control: nothing is sandboxed, so expect=blocked must FAIL each escape row
 out=$(bash "$PROBE" run "$ROOT" --expect blocked 2>&1); rc=$?
 eq "red control: rc nonzero" "$([ "$rc" -ne 0 ] && echo yes)" "yes"
-for r in R1-read-cfg R2-write-verdicts R3-script-file R4-option-write R5-write-outside; do
+for r in R1-read-cfg R2-write-verdicts R3-script-file R4-option-write R5-write-outside R6-anchor-script; do
   has "red control: $r FAIL" "$out" "ROW $r FAIL"
 done
 

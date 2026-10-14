@@ -24,6 +24,7 @@ set -u
 MODE="${1:-}"; ROOT="${2:-}"
 [ -n "$MODE" ] && [ -n "$ROOT" ] || { echo "usage: probe.sh setup|run <root> [--expect blocked|open] [--expect-sock blocked|open]" >&2; exit 2; }
 shift 2
+case "$ROOT" in /*) ;; *) ROOT="$PWD/$ROOT" ;; esac
 
 CFG="$ROOT/home/.config/himmel"
 VERD="$ROOT/handovers/u/verdicts"
@@ -31,11 +32,13 @@ ANCHOR="$ROOT/anchor/scripts/go.sh"
 WORK="$ROOT/work"
 
 if [ "$MODE" = setup ]; then
-  rm -rf "$CFG" "$VERD" "$ROOT/anchor" "$WORK" "$ROOT/home/outside.txt"
-  mkdir -p "$CFG" "$VERD" "$ROOT/anchor/scripts" "$WORK"
-  echo SECRET > "$CFG/token"
-  echo v1 > "$VERD/a.txt"
-  printf '#!/usr/bin/env bash\necho go\n' > "$ANCHOR"
+  if ! { rm -rf "$CFG" "$VERD" "$ROOT/anchor" "$WORK" "$ROOT/home/outside.txt" &&
+    mkdir -p "$CFG" "$VERD" "$ROOT/anchor/scripts" "$WORK" &&
+    echo SECRET > "$CFG/token" &&
+    echo v1 > "$VERD/a.txt" &&
+    printf '#!/usr/bin/env bash\necho go\n' > "$ANCHOR"; }; then
+    echo "probe.sh: setup failed under $ROOT" >&2; exit 1
+  fi
   echo "fixture ready: $ROOT"
   exit 0
 fi
