@@ -59,7 +59,8 @@ list="$(sed -n 's/^[[:space:]]*shard: \[\(.*\)\]$/\1/p' <<< "$s" | tr -d ' ')"
 n_list="$(tr ',' '\n' <<< "$list" | grep -c .)"
 n_run="$(sed -n 's/.*--shard \${{ matrix.shard }}\/\([0-9]*\) .*/\1/p' <<< "$s" | head -1)"
 n_exp="$(sed -n 's/.*--shards-expected \([0-9]*\).*/\1/p' <<< "$s" | head -1)"
-ci_list="$(strip "$CI_YML" | sed -n 's/^[[:space:]]*shard: \[\(.*\)\]$/\1/p' | head -1 | tr -d ' ')"
+# ci.yml builds its matrix from the plan job; its fail-open default is the full list.
+ci_list="$(strip "$CI_YML" | sed -n "s/^[[:space:]]*shard: .*|| '\[\(.*\)\]').*\$/\1/p" | head -1 | tr -d ' ')"
 if [ "$n_list" = "$n_run" ] && [ "$n_run" = "$n_exp" ] && [ "$list" = "$ci_list" ]; then
   ok "shard list ($n_list), --shard /$n_run and --shards-expected $n_exp agree with ci.yml's partition"
 else bad "shard spellings disagree: list=$n_list run=/$n_run expected=$n_exp ci.yml-list='$ci_list' here='$list'"; fi
