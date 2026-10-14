@@ -298,6 +298,21 @@ assert_rc "swap recovers a stale lock" 0 "$rc"
 if [ ! -e "$LOCK.reclaim" ]; then pass "the reclaim guard is released"; else fail "the reclaim guard is released"; fi
 if [ ! -e "$LOCK" ]; then pass "the recovered lock is released again"; else fail "the recovered lock is released again"; fi
 
+echo "== jina gate on config writes"
+new_home 6
+printf 'collections:\n  luna:\n    path: /x\n  salus:\n    path: /s\nmodels:\n  embed: %s\n  rerank: openai:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
+before=$(cat "$(CFG)")
+rc=0; out=$(run env FAKE_VRAM=24564 bash "$SCRIPT" set qwen --force 2>&1) || rc=$?
+assert_rc "set refuses a Jina index that holds salus" 2 "$rc"
+if [ "$(cat "$(CFG)")" = "$before" ]; then pass "the refused write leaves the config untouched"; else fail "the refused write leaves the config untouched"; fi
+if ls "$H"/.config/qmd/index.yml.tmp.* >/dev/null 2>&1; then fail "no temp file is left behind"; else pass "no temp file is left behind"; fi
+
+new_home 7
+printf 'collections:\n  luna:\n    path: /x\nmodels:\n  embed: %s\n  rerank: openai:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
+rc=0; out=$(run env FAKE_VRAM=24564 bash "$SCRIPT" set qwen --force 2>&1) || rc=$?
+assert_rc "set writes a Jina index with no salus collection" 0 "$rc"
+assert_contains "the new model is written" "embed: $QWEN" "$(cat "$(CFG)")"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
