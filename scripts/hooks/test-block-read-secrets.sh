@@ -1164,6 +1164,15 @@ assert_rc "5484 setopt x_trace"                 2 "$(run_case "$(j_bash 'setopt 
 assert_rc "5484 standalone env split-string bash -x" 2 "$(run_case "$(j_bash 'env -S "bash -x s.sh"')")"
 assert_rc "5484 standalone yash -c quoted -x"   2 "$(run_case "$(j_bash "yash -c \"bash '-x' s.sh\"")")"
 
+# Judge j2544h: brace expansion splits the word; setopt/unsetopt single-letter x.
+assert_rc "5484 shopt -os x{,}trace"            2 "$(run_case "$(j_bash 'shopt -os x{,}trace')")"
+assert_rc "5484 setopt x{,}trace"               2 "$(run_case "$(j_bash 'setopt x{,}trace')")"
+assert_rc "5484 setopt -x"                      2 "$(run_case "$(j_bash 'setopt -x')")"
+assert_rc "5484 unsetopt +x"                    2 "$(run_case "$(j_bash 'unsetopt +x')")"
+assert_rc "5484 ctl setopt extendedglob"        0 "$(run_case "$(j_bash 'setopt extendedglob')")"
+assert_rc "5484 ctl unsetopt -f"                0 "$(run_case "$(j_bash 'unsetopt -f')")"
+assert_rc "5484 ctl echo {a,b}"                 0 "$(run_case "$(j_bash 'echo {a,b}')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

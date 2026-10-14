@@ -836,6 +836,9 @@ g4_scan() {
         # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
         # ignores case and underscores in option names. Over-deny: HIMMEL-5609.
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
+        # j2544h: brace expansion splits the word (`shopt -os x{,}trace`), so a
+        # word with an unquoted `{` matches xtrace as an in-order subsequence.
+        case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
         # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
@@ -891,7 +894,7 @@ g4_scan() {
             # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
             # flags before the first operand count (`bash s.sh -x` is the
             # script's own flag); `-O`/`--rcfile` values are skipped.
-            bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh|set)
+            bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh|set|setopt|unsetopt)
                 if [ "$xo" != 0 ]; then
                     # The `-o` value is not an operand (`bash -o errexit -x s.sh`);
                     # zsh matches option names case- and underscore-insensitively.
@@ -908,6 +911,7 @@ g4_scan() {
                     case "$d" in
                         +O) nargs=0; nflags=$((nflags + 1)); skipv=1 ;;
                         +o) nargs=0; nflags=$((nflags + 1)); xo=2 ;;
+                        +*x*) if [ "$cmd" = unsetopt ]; then xt=1; fi; nargs=0; nflags=$((nflags + 1)) ;;
                         +*) nargs=0; nflags=$((nflags + 1)) ;;
                     esac
                 elif [ "$xend" = 0 ] && [ "$nargs" = 0 ]; then
