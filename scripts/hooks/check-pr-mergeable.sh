@@ -93,6 +93,8 @@ rollup=$(_gh pr view "$branch" --json statusCheckRollup,commits --jq \
      | ([$r[] | .startedAt // empty] | max // "") as $s
      | "\($p)|\($s)|\(.commits[-1].committedDate // "")"' 2>/dev/null || true)
 IFS='|' read -r unfinished started committed <<< "$rollup"
+# gh reports a queued check's startedAt as the zero time (0001-01-01...).
+case "${started:-}" in 0001-*) started="" ;; esac
 started="${started:-${committed:-}}"
 warn_min="${PUSH_WARN_MINUTES:-15}"
 case "$warn_min" in ''|*[!0-9]*) warn_min=15 ;; esac

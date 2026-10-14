@@ -365,6 +365,13 @@ out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="2||$T_RECENT"; run 2>&1) 
 assert_rc "no-startedAt rc=0" "0" "$rc"
 assert_contains "no-startedAt warns" "ONE push" "$out"
 
+echo "TEST: queued run with zero-time startedAt falls back to the last commit date -> WARN"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="2|0001-01-01T00:00:00Z|$T_RECENT"; run 2>&1) || rc=$?
+assert_rc "zero-time startedAt rc=0" "0" "$rc"
+assert_contains "zero-time startedAt warns" "ONE push" "$out"
+
 echo "TEST: PUSH_WARN_MINUTES=08 (octal-looking) and =abc do not crash -> WARN, rc=0"
 rc=0
 # shellcheck disable=SC2030,SC2031
