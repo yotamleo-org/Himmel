@@ -50,8 +50,10 @@ case "$marker" in
     *) escalate "marker-${marker:-none}" ;;
 esac
 
-label="$(printf '%s\n' "$body" | grep -oE -m1 'N[0-9]+')" || label=""
-[ -n "$label" ] || escalate "no-label"
+labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels=""
+[ -n "$labels" ] || escalate "no-label"
+[ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
+label="$labels"
 
 leg="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || leg=""
 [ -n "$leg" ] || escalate "not-in-manifest $label"

@@ -41,6 +41,12 @@ check "the Bash request is a wrap-close, the other think-only" 'grep -qE "^wrap-
 check "close-wrapped-leg.sh alone is a hand wrap" 'grep -q "hand wraps.*: 1$" "$TMP/out"'
 check "input-eq is input + creation + 0.1 x read (m1 = 202, m2 = 1)" 'python3 "$CLI" --projects "$P" --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if abs(sum(v[1] for v in d[\"by_trigger\"].values())-203)<1e-6 else 1)"'
 
+{
+    echo '{"type":"custom-title","customTitle":"Y-2026-10-14Z-roadmap-console"}'
+    echo '{"type":"assistant","message":{"id":"v1","usage":{"input_tokens":1},"content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/console-kit/verdict-go.sh q GO abc"}}]}}'
+} > "$P/verdict.jsonl"
+check "verdict-go.sh is not also counted as go.sh" 'python3 "$CLI" --projects "$P" --match "^Y-" --json | python3 -c "import json,sys; d=json.load(sys.stdin)[\"script_calls\"]; sys.exit(0 if d.get(\"verdict-go.sh\")==1 and not d.get(\"go.sh\") else 1)"'
+
 python3 "$CLI" --projects "$P" --match 'no-such-session' >/dev/null 2>"$TMP/err2"; rc=$?
 check "no matching session exits 2" '[ "$rc" = 2 ]'
 

@@ -71,6 +71,14 @@ check "6 rc" "$rc" 10
 contains "6 reason" "$out" "not-in-manifest"
 check "6 wrap not run" "$calls" ""
 
+run "WRAPPED N2078 after N2088 merged"
+check "6b two labels rc" "$rc" 10
+contains "6b reason" "$out" "ambiguous-label"
+check "6b wrap not run" "$calls" ""
+
+run "WRAPPED N2078 (N2078 again)"
+check "6c same label twice rc" "$rc" 0
+
 LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: PR #2566 is 'OPEN'" run "MERGED #2566 N2088"
 check "7 rc" "$rc" 10
 contains "7 escalate rc" "$out" "ESCALATE wrap-merged-failed rc=3"

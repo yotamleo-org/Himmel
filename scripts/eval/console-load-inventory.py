@@ -152,7 +152,7 @@ def parse(path):
                     cmd = x["input"].get("command", "")
                     r["cmds"].append(cmd)
                     for s in SCRIPTS:
-                        if s in cmd:
+                        if re.search(r"(?<![\w-])" + re.escape(s), cmd):
                             script_calls[s] += 1
                     if "close-wrapped-leg.sh" in cmd and "wrap-merged.sh" not in cmd:
                         hand_wraps += 1
