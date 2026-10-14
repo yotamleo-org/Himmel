@@ -86,12 +86,16 @@ fi
 # HIMMEL-5650: warn-only re-push check. `<unfinished checks> <latest startedAt>`
 # from the PR's check rollup; anything unparseable is silent (fail open).
 # shellcheck disable=SC2016  # $r/$p/$s are jq variables, not shell
-rollup=$(_gh pr view "$branch" --json statusCheckRollup --jq \
+# A queued run may carry no startedAt: fall back to the last commit's date.
+rollup=$(_gh pr view "$branch" --json statusCheckRollup,commits --jq \
     '[.statusCheckRollup[]?] as $r
      | ([$r[] | select((.status // "COMPLETED") != "COMPLETED" or (.state // "SUCCESS") == "PENDING")] | length) as $p
      | ([$r[] | .startedAt // empty] | max // "") as $s
-     | "\($p) \($s)"' 2>/dev/null || true)
-read -r unfinished started <<< "$rollup"
+     | "\($p)|\($s)|\(.commits[-1].committedDate // "")"' 2>/dev/null || true)
+IFS='|' read -r unfinished started committed <<< "$rollup"
+started="${started:-${committed:-}}"
+warn_min="${PUSH_WARN_MINUTES:-15}"
+case "$warn_min" in ''|*[!0-9]*) warn_min=15 ;; esac
 case "${unfinished:-x}" in
     ''|*[!0-9]*) ;;
     *)
@@ -102,7 +106,7 @@ case "${unfinished:-x}" in
                 ''|*[!0-9]*) ;;
                 *)
                     age=$(( $(date +%s) - started_ep ))
-                    if [ "$age" -lt $(( ${PUSH_WARN_MINUTES:-15} * 60 )) ]; then
+                    if [ "$age" -lt $(( 10#$warn_min * 60 )) ]; then
                         echo "WARN: pr-mergeable: '$branch' CI started $((age / 60))m ago and $unfinished check(s) are still queued or running. A push now re-queues the whole run — batch this round's fixes (and PR body/title edits) into ONE push. Warning only." >&2
                     fi
                     ;;

@@ -85,8 +85,8 @@ case "$1 $2" in
         #    `gh pr view <branch> --json baseRefName --jq ...` -> "<base>".
         for _f in "$@"; do
             case "$_f" in
-                statusCheckRollup)
-                    printf '%s\n' "${FAKE_GH_ROLLUP:-0 }"
+                statusCheckRollup,commits)
+                    printf '%s\n' "${FAKE_GH_ROLLUP:-0||}"
                     exit 0
                     ;;
                 baseRefName,headRefOid)
@@ -354,19 +354,38 @@ T_OLD=$(ts $((NOW - 2400)))
 echo "TEST: CI started 5m ago, 3 checks unfinished -> WARN, still rc=0"
 rc=0
 # shellcheck disable=SC2030,SC2031
-out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3 $T_RECENT"; run 2>&1) || rc=$?
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3|$T_RECENT|"; run 2>&1) || rc=$?
 assert_rc "recent+queued rc=0" "0" "$rc"
 assert_contains "recent+queued warns" "ONE push" "$out"
+
+echo "TEST: queued run with no startedAt falls back to the last commit date -> WARN"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="2||$T_RECENT"; run 2>&1) || rc=$?
+assert_rc "no-startedAt rc=0" "0" "$rc"
+assert_contains "no-startedAt warns" "ONE push" "$out"
+
+echo "TEST: PUSH_WARN_MINUTES=08 (octal-looking) and =abc do not crash -> WARN, rc=0"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3|$T_RECENT|" PUSH_WARN_MINUTES=08; run 2>&1) || rc=$?
+assert_rc "octal-minutes rc=0" "0" "$rc"
+assert_contains "octal-minutes warns" "ONE push" "$out"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3|$T_RECENT|" PUSH_WARN_MINUTES=abc; run 2>&1) || rc=$?
+assert_rc "junk-minutes rc=0" "0" "$rc"
+assert_contains "junk-minutes falls back to 15 and warns" "ONE push" "$out"
 
 echo "TEST: control — all finished, or CI started 40m ago -> silent"
 rc=0
 # shellcheck disable=SC2030,SC2031
-out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="0 $T_RECENT"; run 2>&1) || rc=$?
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="0|$T_RECENT|"; run 2>&1) || rc=$?
 assert_rc "finished rc=0" "0" "$rc"
 if grepq "$out" -F "ONE push"; then fail "finished stays silent" "$out"; else pass "finished stays silent"; fi
 rc=0
 # shellcheck disable=SC2030,SC2031
-out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3 $T_OLD"; run 2>&1) || rc=$?
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3|$T_OLD|"; run 2>&1) || rc=$?
 assert_rc "old rc=0" "0" "$rc"
 if grepq "$out" -F "ONE push"; then fail "old start stays silent" "$out"; else pass "old start stays silent"; fi
 
