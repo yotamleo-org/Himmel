@@ -50,10 +50,9 @@ AUTH_MARKER_COOKIES = (
     "__Secure-3PSIDTS",
     "LOGIN_INFO",
 )
-# yt-dlp's Chrome export
-# writes the Netscape expiry column as Chrome's own WebKit/Chromium
-# timestamp — microseconds since 1601-01-01 — NOT Unix seconds, even though
-# the Netscape format nominally calls for Unix seconds. Observed on the real
+# yt-dlp's Chrome export writes the Netscape expiry column as Chrome's own
+# WebKit/Chromium timestamp — microseconds since 1601-01-01 — NOT Unix seconds,
+# even though the Netscape format nominally calls for Unix seconds.
 WEBKIT_EPOCH_THRESHOLD = 1e12
 WEBKIT_TO_UNIX_EPOCH_OFFSET = 11644473600
 
@@ -200,13 +199,10 @@ def export_cookies_with_ytdlp(profile: str, tmp_dir: Path, env: dict[str, str]) 
     # .youtube.com + 18 .google.com cookies observed). The jar is the
     # deliverable, not the video extraction — so a non-zero exit is only a
     # real failure when the jar itself never landed (missing or empty).
-# yt-dlp's
-    # own YoutubeDLCookieJar.save() writes the file DIRECTLY (`with
-    # self.open(filename, write=True) as f: ...`) — no temp-file-and-rename —
-    # so a kill or a full disk mid-write genuinely leaves a partial file on
-    # disk with a nonzero size. `_really_save` writes one complete
-    # newline-terminated line per cookie (verified against the real jar: its
-    # last byte is 0x0a), so a mid-line kill is detectable by requiring the
+    # yt-dlp's cookie jar save() writes the file DIRECTLY, with no
+    # temp-file-and-rename, so a kill or a full disk mid-write leaves a partial
+    # file. It writes one complete newline-terminated line per cookie, so a
+    # mid-line kill is detectable by requiring the last byte to be a newline.
     jar_landed = cookie_file.is_file() and cookie_file.stat().st_size > 0
     if not jar_landed:
         print(f"youtube-state-from-chrome: yt-dlp cookie export failed: {completed.stderr.strip()}", file=sys.stderr)

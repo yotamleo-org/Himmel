@@ -2,13 +2,12 @@
 # WHY A SECOND `qmd embed` (the completeness assert): `qmd embed` has a session
 # cap (--timeout, default 30 minutes). A run that hits the cap exits having
 # embedded only PART of the pending set, leaving vectors lagging the lex index.
-#   - Checked first, as the ticket asked: qmd 2.6.3 offers NO machine-readable
-#     mode to prefer. `--format json` is a SEARCH option; `qmd status --format
-#     json` and `qmd collection list --json` are both silently IGNORED and print
-#     the same prose.
+# The assert reads `qmd embed` output because qmd 2.6.3 offers NO machine-readable
+# mode: `--format json` is a SEARCH option; `qmd status --format json` and
+# `qmd collection list --json` are both silently IGNORED and print the same prose.
 # COLLECTION SCOPE: all configured collections. Both `qmd update` and `qmd embed`
 # default to every collection and take `-c <name>` only to NARROW, so the bare
-# calls below are the "everything qmd knows about" scope by construction. That is
+# calls below are the "everything qmd knows about" scope by construction.
 set -euo pipefail
 
 QMD_BIN=""
@@ -17,6 +16,8 @@ DRY_RUN=0
 QMD_INDEX_PATH="${QMD_INDEX_PATH:-$HOME/.cache/qmd/index.sqlite}"
 QMD_REFRESH_STAMP="${QMD_REFRESH_STAMP:-$(dirname "$QMD_INDEX_PATH")/refresh-stamp}"
 
+# Completeness-assert sentinels, both recognised so a reworded qmd reports rc 6
+# instead of impersonating a stale index.
 # complete : the no-op pass. Matched as a fixed ASCII substring only — the real
 #            line is prefixed with a UTF-8 check mark, and this output is read
 #            under the OEM codepage when the cadence fires from cmd.exe.
@@ -62,7 +63,7 @@ run_qmd() {
     fi
 }
 
-# The upstream scan counts hashes, not pending chunks (HIMMEL-4897). Keep the
+# The upstream scan counts hashes, not pending chunks (HIMMEL-4897).
 relabel_hash_count() {
     sed 's/unique hashes need vectors/unique hashes in qmd scan (not a pending chunk count)/g'
 }

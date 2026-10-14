@@ -7,7 +7,7 @@
 # into the vault: the cadence crosses a cmd.exe -> bash boundary on Windows,
 # where a Windows-form path (C:\...) reaching a bash argument has its
 # backslashes eaten as escapes. `.` is the one spelling that is correct in both
-# shells. The stamp defaults inside the vault for the same reason -- no second
+# shells. The stamp defaults inside the vault for the same reason.
 set -u
 
 STAMP_MODE=0
