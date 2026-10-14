@@ -2548,8 +2548,12 @@ if [ "$CWD_UNPROVEN" = 0 ]; then
                 if (t == "." && lead) { print 1; exit }
                 if (t == "\002W" || t == "\002C" || t == "\002R") { i++; if (index($i, "\003")) { print 1; exit }; continue }
                 if (lead && t == "repeat") { i++; continue }
+                if (lead && (index(t, "$") || index(t, "`"))) {
+                    # a plain assignment word (`x=$y`) is data; anything else computed is the command word
+                    if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+                    print 1; exit
+                }
                 if (lead && (index(t, "=") || t ~ /^-/ || t ~ /^(command|builtin|exec|time|!|noglob|nocorrect|then|do|else|elif|if|while|until)$/)) continue
-                if (lead && (index(t, "$") || index(t, "`"))) { print 1; exit }
                 lead = 0
             }
         }'); then
