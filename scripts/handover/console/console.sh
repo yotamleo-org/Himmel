@@ -377,10 +377,10 @@ judge_calls_now() {
 # catches it. Open set = handoff-facts.sh prs, so it shares that field's seam and limit.
 wrapped_open_prs_section() { # <predecessor doc>
     local doc="$1" manifest="${1%.md}.fleet.json" facts="$HERE/../console-kit/handoff-facts.sh"
-    local open rows label ldoc n found=0 mtime
+    local open rows label ldoc n found=0 mtime lookup_failed=""
     printf '## Wrapped with open PR\n\n'
     printf 'The successor dispositions each entry below (relaunch, GO or close) BEFORE its first dispatch.\n\n'
-    open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')" || open=""
+    open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')" || { open=""; lookup_failed=1; }
     if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -f "$ldoc" ] || continue
@@ -396,7 +396,11 @@ wrapped_open_prs_section() { # <predecessor doc>
 $rows
 EOF_ROWS
     fi
-    [ "$found" -eq 1 ] || printf 'none — no WRAPPED leg in the fleet manifest names a PR that is still open.\n'
+    if [ -n "$lookup_failed" ]; then
+        printf 'unknown — the open-PR lookup failed, so check the open PRs against the WRAPPED legs by hand.\n'
+    elif [ "$found" -ne 1 ]; then
+        printf 'none — no WRAPPED leg in the fleet manifest names a PR that is still open.\n'
+    fi
 }
 
 CMD="${1:-}"
