@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const file = process.argv[2] ?? join(homedir(), '.himmel', 'state', 'api-credit', 'launches.jsonl');
-const kinds = {};
+const kinds = Object.create(null);
 for (const line of readFileSync(file, 'utf8').split('\n')) {
   let r;
   try { r = JSON.parse(line); } catch { continue; }
@@ -18,7 +18,7 @@ for (const line of readFileSync(file, 'utf8').split('\n')) {
   (kinds[r.kind ?? 'other'] ??= []).push({ ...r, t: Date.parse(r.ts) });
 }
 
-const out = {};
+const out = Object.create(null);
 for (const [kind, rows] of Object.entries(kinds)) {
   rows.sort((a, b) => a.t - b.t);
   let input = 0, create = 0, read = 0, cost5 = 0, cost1h = 0;
