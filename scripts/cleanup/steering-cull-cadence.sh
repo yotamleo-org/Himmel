@@ -100,7 +100,7 @@ cmd_run() {
     ( cd "$repo" && "$claude" -p "Run the vendored writing-for-agents skill (.claude/skills/writing-for-agents/SKILL.md) READ-ONLY to find ways to cull these steering files. Never edit anything. Files (use absolute paths exactly as listed; for the repo CLAUDE.md write the path as CLAUDE.md):
 ${files}
 Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines> — <why>. LOW = a line that is duplicated, derivable from the repo, or a stale pointer. MEDIUM = anything that changes behaviour or needs judgement." \
-        --model sonnet --output-format json --permission-mode plan --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
+        --model sonnet --output-format json --permission-mode plan --tools Read --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
     rc=$?
     iserr="$(json_field is_error < "$out" 2>/dev/null)"
     if [ "$rc" -ne 0 ] || [ "$iserr" != "false" ]; then

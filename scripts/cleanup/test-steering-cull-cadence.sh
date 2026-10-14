@@ -87,6 +87,7 @@ has "console inbox line carries the counts" "2 low, 2 escalated" "$INBOX"
 has "claude gets -p" "arg=-p" "$W/argv"
 has "claude gets json output" "arg=json" "$W/argv"
 has "claude gets plan permission mode" "arg=plan" "$W/argv"
+has "claude is restricted to the Read tool" "arg=--tools" "$W/argv"
 hasnt "claude never gets bypassPermissions" "bypassPermissions" "$W/argv"
 has "claude runs in the repo" "cwd=$P" "$W/argv"
 
