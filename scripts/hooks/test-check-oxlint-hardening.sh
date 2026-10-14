@@ -253,6 +253,15 @@ assert_eq "a bare path argument (no --files) → usage exit 2" "2" "$rc"
 rc=0
 out=$(cd "$FILESFX" && OXLINT_FAIL_CLOSED=1 PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" --files scripts/lanes/input.mjs 2>&1) || rc=$?
 assert_eq "OXLINT_FAIL_CLOSED=1 with no bunx → exit 1 (not fail-open)" "1" "$rc"
+rc=0
+out=$(cd "$FILESFX" && OXLINT_FAIL_CLOSED=1 PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" --files docs/notes.md 2>&1) || rc=$?
+assert_eq "OXLINT_FAIL_CLOSED=1, docs-only, no bunx → exit 0 (nothing to lint)" "0" "$rc"
+printf '%s\n' 'x' > "$FILESFX/scripts/lanes/my file.mjs"
+rc=0
+out=$(cd "$FILESFX" && PATH="$FILESFX/bin:$PATH" OXLINT_STUB_MODE=clean OXLINT_STUB_RECORD="$FILESFX/record.txt" \
+  "$BASH_ABS" "$GATE" --files "scripts/lanes/my file.mjs" 2>&1) || rc=$?
+rec=$(cat "$FILESFX/record.txt" 2>/dev/null || true)
+assert_says "--files keeps a path with a space whole and lints it" "arg=scripts/lanes/my file.mjs" "$rec"
 
 # --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) --
 # PATH layout copied from the main station: ~/.bun/bin holds `bun` and nothing

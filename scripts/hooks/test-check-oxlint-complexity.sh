@@ -177,6 +177,12 @@ assert_eq "a bare path argument (no --files) → usage exit 2" "2" "$rc"
 rc=0
 out=$(cd "$FILES_FX" && OXLINT_FAIL_CLOSED=1 PATH="$(fixture_mktemp_dir)" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
 assert_eq "OXLINT_FAIL_CLOSED=1 with no bun → exit 1 (not fail-open)" "1" "$rc"
+printf '%s\n' 'export function add(a, b) { return a + b; }' > "$FILES_FX/scripts/lanes/my file.mjs"
+rm -f "$FILES_FX/record.txt"
+rc=0
+out=$(cd "$FILES_FX" && PATH="$FILES_BIN" "$BASH_ABS" "$GATE" --files "scripts/lanes/my file.mjs" 2>&1) || rc=$?
+rec=$(cat "$FILES_FX/record.txt" 2>/dev/null || true)
+assert_says "--files keeps a path with a space whole and lints it" "arg=scripts/lanes/my file.mjs" "$rec"
 rm -rf "$FILES_FX" "$FILES_BIN"
 
 if ! command -v bunx >/dev/null 2>&1; then

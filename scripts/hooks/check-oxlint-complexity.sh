@@ -44,7 +44,7 @@ OXLINT_VERSION=1.88.0
 SURFACE_RE='^(scripts/(lanes|jira/src|telegram|luna-vitals|himmel-run)/|scripts/(hooks|observability)/[^/]+\.(mjs|js)$)'
 EXCLUDE_RE='(^|/)(dist|node_modules|fixtures|__fixtures__)/'
 files_mode=0
-only_files=""
+only_files=()
 if [ "${1:-}" = "--files" ]; then
     files_mode=1
     shift
@@ -52,7 +52,7 @@ if [ "${1:-}" = "--files" ]; then
         [[ "$f" =~ $SURFACE_RE ]] || continue
         [[ "$f" =~ $EXCLUDE_RE ]] && continue
         case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.mts|*.cts|*.tsx) ;; *) continue ;; esac
-        only_files="$only_files $f"
+        only_files+=("$f")
     done
 elif [ $# -gt 0 ]; then
     echo "usage: $(basename "$0") [--files PATH...]" >&2
@@ -63,9 +63,9 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root" || exit 1
 
 if [ "$files_mode" = 1 ]; then
-    only_existing=""
-    for f in $only_files; do [ -e "$f" ] && only_existing="$only_existing $f"; done
-    if [ -z "$only_existing" ]; then
+    only_existing=()
+    for f in ${only_files[@]+"${only_files[@]}"}; do [ -e "$f" ] && only_existing+=("$f"); done
+    if [ "${#only_existing[@]}" -eq 0 ]; then
         echo "check-oxlint-complexity: no changed file in this gate's surface — nothing to lint"
         exit 0
     fi
@@ -90,7 +90,7 @@ for f in scripts/hooks/*.mjs scripts/hooks/*.js scripts/observability/*.mjs scri
     [ -e "$f" ] && hook_js="$hook_js $f"
 done
 if [ "$files_mode" = 1 ]; then
-    targets="$only_existing"
+    targets=""
     hook_js=""
 fi
 
@@ -100,7 +100,7 @@ out=$("${runner[@]}" "oxlint@$OXLINT_VERSION" -A all -W complexity \
     --ignore-pattern 'node_modules/**' \
     --ignore-pattern '**/fixtures/**' \
     --ignore-pattern '**/__fixtures__/**' \
-    $targets $hook_js 2>&1)
+    $targets $hook_js ${only_existing[@]+"${only_existing[@]}"} 2>&1)
 rc=$?
 
 lint_lines=$(printf '%s' "$out" | grep -E 'complexity of' || true)

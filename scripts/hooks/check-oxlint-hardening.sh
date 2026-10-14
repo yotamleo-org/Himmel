@@ -23,7 +23,7 @@ OXLINT_VERSION=1.88.0
 SURFACE_RE='^(scripts/(lanes|jira/src|telegram|luna-vitals|himmel-run)/|scripts/(hooks|observability)/[^/]+\.(mjs|js)$)'
 EXCLUDE_RE='(^|/)(dist|node_modules|fixtures|__fixtures__)/'
 files_mode=0
-only_files=""
+only_files=()
 if [ "${1:-}" = "--files" ]; then
     files_mode=1
     shift
@@ -31,7 +31,7 @@ if [ "${1:-}" = "--files" ]; then
         [[ "$f" =~ $SURFACE_RE ]] || continue
         [[ "$f" =~ $EXCLUDE_RE ]] && continue
         case "$f" in *.js|*.mjs|*.cjs|*.jsx|*.ts|*.mts|*.cts|*.tsx) ;; *) continue ;; esac
-        only_files="$only_files $f"
+        only_files+=("$f")
     done
 elif [ $# -gt 0 ]; then
     echo "usage: $(basename "$0") [--files PATH...]" >&2
@@ -87,6 +87,15 @@ cd "$repo_root" || {
     exit 1
 }
 
+if [ "$files_mode" = 1 ]; then
+    only_existing=()
+    for f in ${only_files[@]+"${only_files[@]}"}; do [ -e "$f" ] && only_existing+=("$f"); done
+    if [ "${#only_existing[@]}" -eq 0 ]; then
+        echo "check-oxlint-hardening: no changed file in this gate's surface — nothing to lint"
+        exit 0
+    fi
+fi
+
 # bunx is bun's alias for `bun x`; some installs (e.g. ~/.bun/bin) ship only
 # `bun`, so fall back to it before failing open (HIMMEL-5529).
 if command -v bunx >/dev/null 2>&1; then
@@ -106,13 +115,7 @@ for f in scripts/hooks/*.mjs scripts/hooks/*.js scripts/observability/*.mjs scri
     [ -e "$f" ] && hook_js="$hook_js $f"
 done
 if [ "$files_mode" = 1 ]; then
-    only_existing=""
-    for f in $only_files; do [ -e "$f" ] && only_existing="$only_existing $f"; done
-    if [ -z "$only_existing" ]; then
-        echo "check-oxlint-hardening: no changed file in this gate's surface — nothing to lint"
-        exit 0
-    fi
-    targets="$only_existing"
+    targets=""
     hook_js=""
 fi
 
@@ -140,7 +143,7 @@ out=$("${runner[@]}" "oxlint@$OXLINT_VERSION" -A all $warn_flags --promise-plugi
     --ignore-pattern 'node_modules/**' \
     --ignore-pattern '**/fixtures/**' \
     --ignore-pattern '**/__fixtures__/**' \
-    $targets $hook_js 2>"$stderr_file")
+    $targets $hook_js ${only_existing[@]+"${only_existing[@]}"} 2>"$stderr_file")
 rc=$?
 if ! err=$(< "$stderr_file"); then
     rm -f -- "$stderr_file"
