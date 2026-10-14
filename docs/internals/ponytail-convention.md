@@ -88,11 +88,20 @@ current backlog, rather than trusting a stale ledger snapshot.
 
 ## Code comments
 
-A code comment states a why the code cannot show: an external quirk, a platform
-bug, a non-obvious invariant. History does not belong in code. Ticket IDs, review
-rounds, "CR fix" notes and judge qids live in git and Jira; a comment that explains
-a workaround is a signal to fix the code, or to file one ticket for the workaround.
-`ponytail:` is the one place a ticket key may appear in a comment.
+Comments that stay (the keep list is poteto's `comment-sicko`, MIT, cursor/plugins
+`pstack`):
+
+- license headers;
+- behaviour forced by an external dependency, platform or protocol we cannot reshape;
+- doc comments that define a public API contract;
+- issue or RFC links explaining a constraint the code cannot express;
+- lint suppressions, only when the rule is faulty or style-only;
+- `ponytail:` markers, the one place a ticket key may appear in a comment.
+
+Every other comment goes. A surprise in our own code is a refactor target, not a
+comment. History does not belong in code: ticket IDs, review rounds, "CR fix" notes
+and judge qids live in git and Jira. A comment that explains a workaround is a
+signal to fix the code, or to file one ticket for the workaround.
 
 `scripts/lint/check-history-comments.sh` enforces this on added comment lines only
 (pre-commit; `--range <base>` for a PR range). Existing comments are not touched.
