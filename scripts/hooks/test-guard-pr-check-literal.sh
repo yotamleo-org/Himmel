@@ -649,6 +649,10 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | fish
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | rbash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { true; frobnicate; }
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep x; frobnicate
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sort --compress-program=sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | rg --pre=sh x
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ack --pager=sh x
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ag --pager=sh x
 PIPETOSHELL
 # Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do

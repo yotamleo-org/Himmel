@@ -1965,8 +1965,8 @@ env_split_option() { # env_split_option <raw command> - false only when
             # a wrapper before the command word (`sudo -u grep bash`) means the
             # first non-option word is not necessarily the command: no exemption
             case "${wr[sg]-}${fc[sg]-}" in
-                grep | egrep | fgrep | rg | ag | ack | wc | which | type | echo | printf) ;;
-                cat | head | tail | cut | sort | uniq | tr | nl | fold | column | rev | tac) ;;
+                grep | egrep | fgrep | wc | which | type | echo | printf) ;;
+                cat | head | tail | cut | uniq | tr | nl | fold | column | rev | tac) ;;
                 true | false | : | test | '[' | cd | set | pwd | for | case | select | fi | done | 'esac' | '}') ;;
                 *) fl[sg]=1 ;;
             esac
