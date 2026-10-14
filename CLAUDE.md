@@ -148,7 +148,7 @@ never by editing docs. Scripts source
 
 ## ENFORCEMENT (runs automatically)
 
-PreToolUse/PostToolUse hooks plus **pre-commit/commit-msg/pre-push gates**. The live inventory is
+Enforced by PreToolUse/PostToolUse hooks plus **pre-commit/commit-msg/pre-push gates**. The live inventory is
 `.claude/settings.json` and `.pre-commit-config.yaml` — read those, not a list
 here (an enumeration drifts silently); the Codex lane re-wires the
 same guardrails in `.codex/hooks.json`. Per-hook behaviour + guardrail matrix:
