@@ -1346,7 +1346,7 @@ fi
 # cross-tick cursor), so "since the last tick" is approximated by a trailing
 # window rather than a real cursor -- console-wait's own key-diffing is what
 # actually triggers a wake on a class change, not this field's count.
-# ponytail: leg-label reconciliation and a same-session success/flip check
+# ponytail: HIMMEL-3724 - leg-label reconciliation and a same-session success/flip check
 # for REPEAT are Phase 2, not implemented here.
 denials_window_min="${TICK_DENIALS_WINDOW_MIN:-30}"
 case "$denials_window_min" in ''|*[!0-9]*) denials_window_min=30 ;; esac

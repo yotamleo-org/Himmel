@@ -2210,7 +2210,7 @@ fi
 # session's name does match that session's transcript, and its line (which
 # may carry a different profile) sits beside the original: the log is
 # append-only and carries no attempt id, so the reader must not assume one
-# line per session (it is not decided here - owns the reader).
+# line per session (it is not decided here; the reader's owner decides).
 # ponytail: with no HIMMELCTL_CACHE_DIR and no HOME nothing is written -
 # falling back to /tmp would leave a file uninstall cannot find (HIMMEL-3260's
 # accepted HOME-unset divergence, not repeated here).
