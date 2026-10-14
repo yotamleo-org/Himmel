@@ -1167,7 +1167,8 @@ set_rule() {
 # env/sudo with -C/-i, and a shell running a -c string.
 # HIMMEL-5190: `source` and `.` run a file in this shell (it may cd), and a
 # command word built by brace expansion (`{source,}`, `c{d,}`) can spell any of
-# the above; both count in COMMAND position only, so `cp a .` stays proven.
+# the above. This regex covers the common spellings; the token check at the
+# bottom (CWD_UNPROVEN, any word position) is the structural backstop.
 # The relative-write relief (logical `cd -L`, brace expansion before matching)
 # is not built: ponytail: 0 unproven-cwd denials in 14 days of session
 # transcripts (HIMMEL-5190 Phase 1), build at 5 false positives per 14 days.
@@ -2522,6 +2523,32 @@ _c_replace "$WTOK" $'\037' ' '
 WTOK_SP=$REPLY
 cwd_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$DIRWORD_RE")
 case "$cwd_hits" in ''|0) ;; *) CWD_UNPROVEN=1 ;; esac
+# HIMMEL-5190 (judge j2545c): source, ., cd-family and brace-built words are read
+# from the TOKENS of every clause, not an enumerated prefix set, so a leading
+# redirect, a quoted/escaped assignment value or a zsh `repeat N` cannot hide
+# them. source/cd/pushd/popd/eval or a brace-active word (\003 mark) count in ANY
+# word position; a bare `.` only while no operand has been seen, so `cp a .`
+# stays proven. Heredoc bodies (\002B) and substitution bodies (\002S) are data
+# here: $( ) is already unproven through the regex above.
+# ponytail: any-position over-deny (`echo source`, `cp a{,.bak} b` under a
+# relative destination), narrowing is HIMMEL-5561.
+if [ "$CWD_UNPROVEN" = 0 ]; then
+    tok_hit=$(printf '%s\n' "$WTOK" | LC_ALL=C awk '
+        BEGIN { FS = "\037" }
+        substr($0, 1, 2) == "\002B" || substr($0, 1, 2) == "\002S" { next }
+        {
+            lead = 1; prev = ""
+            for (i = 1; i <= NF; i++) {
+                t = $i
+                if (index(t, "\003") || t == "source" || t == "cd" || t == "pushd" || t == "popd" || t == "eval") { print 1; exit }
+                if (t == "." && lead) { print 1; exit }
+                if (t == "\002W" || t == "\002C" || t == "\002R") { i++; if (index($i, "\003")) { print 1; exit }; continue }
+                if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || t ~ /^-/ || t ~ /^(command|builtin|exec|time|!|noglob|nocorrect|then|do|else|elif|if|while|until|repeat)$/ || (prev == "repeat" && t ~ /^[0-9]+$/)) { prev = t; continue }
+                lead = 0; prev = t
+            }
+        }')
+    [ -z "$tok_hit" ] || CWD_UNPROVEN=1
+fi
 xenv_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$XENV_RE")
 case "$xenv_hits" in ''|0) ;; *) XENV_SET=1 ;; esac
 if names_lift "$CMD" || names_lift "$WTOK"; then whole_command_gate "$CMD" 0; fi

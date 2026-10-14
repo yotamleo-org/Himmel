@@ -565,7 +565,21 @@ row "5190 cp a ./file, dot slash (ctrl)"                 allow "cp $T/src/other.
 row "5190 cp a dot, no source word (ctrl)"               allow "cp $T/src/other.txt ." "$T/cwl"
 row "5190 git log --source (ctrl)"                       allow "git log --source; cp $T/src/other.txt nolink" "$T/cwl"
 row "5190 no source word, relative write (ctrl)"       allow "cp $T/src/other.txt nolink" "$T/cwl"
-row "5190 echo if source (arg, not command) (ctrl)"     allow "echo if source x; cp $T/src/other.txt nolink" "$T/cwl"
+# ponytail: any word position, not only command position: `echo if source x`
+# now over-denies a relative write; narrowing is HIMMEL-5561.
+row "5190 echo if source (arg word) over-deny"           deny  "echo if source x; cp $T/src/other.txt nolink" "$T/cwl"
+# Judge j2545c: a leading redirect or a quoted/escaped assignment value fell
+# outside the enumerated prefix set; the clause is now read token by token.
+row "5190 >/dev/null source then cp to plainlink"        deny  ">/dev/null source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 2>/dev/null . then cp to plainlink"            deny  "2>/dev/null . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 </dev/null source then cp to plainlink"        deny  "</dev/null source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 >/dev/null {source,} then cp to plainlink"     deny  ">/dev/null {source,} $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 >/dev/null c{d,} then cp to plainlink"         deny  ">/dev/null c{d,} $T/cwl; cp $T/src/other.txt plainlink" "$T"
+row "5190 X=\"a b\" source then cp to plainlink"          deny  "X=\"a b\" source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 X=a\\ b . then cp to plainlink"                 deny  "X=a\\ b . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 zsh repeat 1 source then cp to plainlink"      deny  "repeat 1 source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 zsh repeat 1 . then cp to plainlink"           deny  "repeat 1 . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 >/dev/null cp a . (redirect then arg dot) (ctrl)" allow ">/dev/null cp $T/src/other.txt .; cp $T/src/other.txt nolink" "$T/cwl"
 row "4545 rsync --log-file= link after \$( )"        deny  "n=\$(date +%H); rsync -a --log-file=plainlink $T/src/other.txt out.txt" "$T/cwl"
 # A source that is HOME or one of its ancestors, by any spelling, can alias or
 # relocate the lift's whole tree; a plain-name test alone would pass it.
