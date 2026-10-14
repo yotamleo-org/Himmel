@@ -28,8 +28,39 @@ assert_rc() {
     fi
 }
 
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/block-edit-live-settings.XXXXXX") || {
-    echo "FATAL: mktemp -d failed" >&2
+# The hook's read-only allowlist denies any word containing "tee" (any case:
+# the word is folded first), so a sandbox path whose random suffix spells it
+# (`.../block-edit-live-settings.eduTeE`) turns every read-only row that names
+# the fixture into a deny (HIMMEL-5612, main red). Redraw the name until it is
+# clear of it, and swap in a clean per-run TMPDIR when TMPDIR itself carries it.
+SANDBOX_BASE=${TMPDIR:-/tmp}
+case "$(printf '%s' "$SANDBOX_BASE" | tr '[:upper:]' '[:lower:]')" in
+    *tee*)
+        # Keep TMPDIR a real per-run directory (rows depend on it), not bare /tmp.
+        for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            SANDBOX_BASE=$(mktemp -d /tmp/himmel-suite.XXXXXX) || exit 1
+            case "$(printf '%s' "$SANDBOX_BASE" | tr '[:upper:]' '[:lower:]')" in
+                *tee*) rmdir "$SANDBOX_BASE"; SANDBOX_BASE='' ;;
+                *) break ;;
+            esac
+        done
+        [ -n "$SANDBOX_BASE" ] || { echo "FATAL: no TMPDIR clear of 'tee'" >&2; exit 1; }
+        export TMPDIR=$SANDBOX_BASE
+        ;;
+esac
+SANDBOX=''
+for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    SANDBOX=$(mktemp -d "$SANDBOX_BASE/block-edit-live-settings.XXXXXX") || {
+        echo "FATAL: mktemp -d failed" >&2
+        exit 1
+    }
+    case "$(printf '%s' "$SANDBOX" | tr '[:upper:]' '[:lower:]')" in
+        *tee*) rmdir "$SANDBOX"; SANDBOX='' ;;
+        *) break ;;
+    esac
+done
+[ -n "$SANDBOX" ] || {
+    echo "FATAL: no mktemp name clear of 'tee' in 20 draws" >&2
     exit 1
 }
 # ponytail: the fixtures are pinned to their physical path because the hook

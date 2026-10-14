@@ -247,7 +247,10 @@ const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // CONTRIBUTOR record only (state.js's itemMembership: answers.devOverlay).
 // Additive — never a substitute for `scopes`, and its entries obey the same
 // SCOPES_ENUM.
-const OPTIONAL_ITEM_KEYS = ['install', 'unwire', 'removable', 'offboard', 'contributorScopes', 'provenance'];
+// HIMMEL-4308: `noNetwork` declares that the item's OWN install primitive was
+// traced to local file writes only, so `himmelctl ensure --no-network` may run
+// it. Deny by default: absent means refused. Only `wire` installs qualify.
+const OPTIONAL_ITEM_KEYS = ['install', 'unwire', 'removable', 'offboard', 'contributorScopes', 'provenance', 'noNetwork'];
 const INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep', 'build', 'config', 'observability'];
 const UNWIRE_TYPES = ['wire'];
 const SCOPES_ENUM = ['project', 'user'];
@@ -886,6 +889,17 @@ function lint(manifest) {
     const removableIsPerItem = it.removable === 'per-item';
     if (removableIsPerItem !== hasUnwire) {
       errors.push(`${label}: removable === 'per-item' iff 'unwire' is present (removable=${JSON.stringify(it.removable)}, hasUnwire=${hasUnwire})`);
+    }
+
+    // (m) noNetwork — HIMMEL-4308. Shape { path: 'install' } and only on an
+    // item whose install descriptor is a `wire` (the one traced local type).
+    if (Object.prototype.hasOwnProperty.call(it, 'noNetwork')) {
+      const nn = it.noNetwork;
+      if (!nn || typeof nn !== 'object' || Array.isArray(nn) || Object.keys(nn).length !== 1 || nn.path !== 'install') {
+        errors.push(`${label}: noNetwork must be exactly { "path": "install" }`);
+      } else if (!it.install || it.install.type !== 'wire') {
+        errors.push(`${label}: noNetwork is only valid on an item whose install.type is 'wire' (the only traced local-only install type)`);
+      }
     }
 
     // (k) offboard, when present, is one of OFFBOARD_VALUES. Optional — no

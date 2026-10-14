@@ -67,10 +67,10 @@ contains 'preface Shipping tells a leg with no completes-ticket line to decide i
 wrap="$(section "$PREFACE" '^## Wrapping up')"
 contains 'preface Wrapping up: a ticket --jira-transition already closed is not closed twice' "$wrap" '--jira-transition'
 absent 'preface Wrapping up no longer tells every leg to close the ticket out unconditionally' "$wrap" 'close the ticket out with the PR number'
-# merge-on-green.sh skips an Epic/Story on purpose (skip=never-touch-type) and
+# merge-on-green.sh skips an Epic on purpose (skip=never-touch-type) and
 # when it cannot verify the type (skip=cannot-verify-type); a leg that treated
 # "result was not ok" as "transition it by hand" would override the standing
-# never-touch-Epic/Story invariant.
+# never-touch-Epic invariant (a Story transitions, HIMMEL-5540).
 contains 'preface Wrapping up: a skip=never-touch-type result is never closed by hand' "$wrap" 'skip=never-touch-type'
 contains 'preface Wrapping up: a skip=cannot-verify-type result is never closed by hand' "$wrap" 'skip=cannot-verify-type'
 contains 'preface Wrapping up: those deliberate skips go to the console' "$wrap" 'report it to the console'

@@ -280,6 +280,10 @@ PATH_NOCLAUDE="$GRAPHIFY_BIN_DIR_PATH:$PATH_NOCLAUDE"
 export HOME="$TMP_ROOT/home"
 export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability.json"
 mkdir -p "$HOME"
+# HIMMEL-4286: fired probe runners call cadence-alert + the flow ledger; keep
+# both sinks inside the scratch HOME and never reach Telegram.
+export CADENCE_ALERT_SEND_CMD=/bin/true
+export HIMMEL_FLOW_RUNS_LEDGER="$HOME/flow-runs.jsonl"
 
 VAULT="$TMP_ROOT/vault"
 mkdir -p "$VAULT"
@@ -616,6 +620,33 @@ done
 # free, no bank-preflight, no claude. --force now lives INSIDE ast-update.sh,
 # not on this cadence command line (see scripts/graphify/test-ast-update.sh
 # for the wrapper's own lock/skip/--force coverage).
+# HIMMEL-4286: every graphmap runner kind goes through the shared emitter.
+# Fire each generated runner against a stub payload + stub cadence-alert.sh:
+# a failed leg pages (`fail`), a good one `clear`s, and the leg's own benign
+# skip code (semantic rc 3 = bank skip, structural rc 4 = promote-lock busy)
+# does neither. The publish runner is NOT wired: graph-cadence.sh alerts itself.
+echo "TEST: graphmap runners alert on failure and clear on success (shared emitter)"
+. "$SCRIPT_DIR/../lib/cadence-runner-exec.sh"
+for kind in "luna:graphmap-luna:refresh-graph-map.sh:3" "himmel:graphmap-himmel:refresh-graph-map.sh:3" \
+            "ast-luna:graphmap-ast-luna:ast-update.sh:4" "ast-himmel:graphmap-ast-himmel:ast-update.sh:4"; do
+    k_file=${kind%%:*}; rest=${kind#*:}
+    k_flow=${rest%%:*}; rest=${rest#*:}
+    k_script=${rest%%:*}; k_skip=${rest#*:}
+    for want_rc in 1 0 "$k_skip"; do
+        scr="$TMP_ROOT/emit-$k_file-$want_rc"
+        mkdir -p "$scr"
+        sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/graphmap-$k_file.sh" > "$scr/runner-src.sh"
+        cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/$k_script" "$want_rc" "$scr" || true
+        alerts=$(cat "$scr/alerts" 2>/dev/null || true)
+        case "$want_rc" in
+            1)  assert_contains "$k_file rc 1 alerts fail for $k_flow" "fail $k_flow rc-1" "$alerts" ;;
+            0)  assert_contains "$k_file rc 0 clears $k_flow" "clear $k_flow" "$alerts"
+                assert_not_contains "$k_file rc 0 never alerts fail" "fail " "$alerts"
+                assert_contains "$k_file rc 0 writes a $k_flow flow-run row" "$k_flow" "$(cat "$scr/flow-runs.jsonl" 2>/dev/null || true)" ;;
+            *)  assert_not_contains "$k_file benign skip rc $want_rc does not page" "fail " "$alerts" ;;
+        esac
+    done
+done
 echo "TEST: AST runner .sh fires ast-update.sh by absolute path (free, no bank, no claude)"
 ast_luna_sh=$(cat "$CRON_DIR/graphmap-ast-luna.sh" 2>/dev/null || echo MISSING)
 ast_himmel_sh=$(cat "$CRON_DIR/graphmap-ast-himmel.sh" 2>/dev/null || echo MISSING)
@@ -649,7 +680,10 @@ for what in ast_luna ast_himmel; do
     # `fix/...-bank-preflight` branch, or any path under `.claude/`) would
     # fail an assertion the runner itself never violates.
     assert_not_contains "$what runner has no bank-preflight" "bank-preflight" "${body//$HIMMEL_ROOT_EXP/}"
-    assert_not_contains "$what runner never shells claude"   "claude" "${body//$HIMMEL_ROOT_EXP/}"
+    # The alert call also pins the arm-time PATH (HIMMEL-4286): data, and it may
+    # legitimately carry a .claude dir, so strip it before the "claude" check.
+    body_nopath=$(printf '%s' "$body" | sed -E 's/PATH=[^ ]+ //g')
+    assert_not_contains "$what runner never shells claude"   "claude" "${body_nopath//$HIMMEL_ROOT_EXP/}"
     assert_not_contains "$what runner has no --backend flag (LLM-free update)" "--backend" "$body"
     assert_not_contains "$what runner has no --settings (not a claude session)" "--settings" "$body"
 done
@@ -1212,6 +1246,10 @@ else
 fi
 publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
 assert_contains "publish runner fires graph-cadence.sh" "graph-cadence.sh" "$publish_sh"
+# HIMMEL-4286: graph-cadence.sh alerts and writes its own flow rows, so the
+# shared emitter block must NOT be added to this runner (it would double both).
+assert_not_contains "publish runner has no shared flow-run block" "--append-start" "$publish_sh"
+assert_not_contains "publish runner has no shared alert block" "cadence-alert.sh" "$publish_sh"
 # --corpus-root, not a bare positional (HIMMEL-2095: graph-cadence.sh takes
 # an explicit flag, unlike ast-update.sh's bare positional -- publish_bat_
 # payload/publish_cron_payload exist specifically because ast_bat_payload's

@@ -3415,6 +3415,19 @@ assert_audit_has "jira: Epic case records the never-touch skip" "jira-transition
 assert_jira_log_lacks "jira: Epic case makes no jira comment call" "comment"
 assert_jira_log_lacks "jira: Epic case makes no jira transition call" "transition"
 
+# A Story is NOT skipped (HIMMEL-5540): a merged PR that completes a Story must
+# close it, so it transitions like a Task when --jira-transition is passed.
+STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: Story ticket is transitioned on --jira-transition" -- --jira-transition
+assert_audit_has "jira: Story case records success" "jira-transition=ok key=HIMMEL-374 status=Done"
+assert_jira_log_has "jira: Story case comments" "comment HIMMEL-374"
+assert_jira_log_has "jira: Story case transitions" "transition HIMMEL-374 Done"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: Story without --jira-transition only reports would-transition"
+assert_audit_has "jira: Story bare merge records would-transition" "jira-transition=would-transition key=HIMMEL-374 status=Done"
+assert_jira_log_lacks "jira: Story bare merge makes no transition call" "transition"
+
 # A comment that fails to post leaves no evidence breadcrumb — skip the
 # transition rather than close the ticket silently. Requires opt-in to reach
 # the comment step at all.

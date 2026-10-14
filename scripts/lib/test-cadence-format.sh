@@ -156,10 +156,10 @@ echo "[test-cadence-format] runner format stamp"
 # literal here is the tripwire: a version bump is a deliberate act (it nudges
 # every armed operator to `arm --force`), so it should require touching this
 # line. Bump it in the same commit that bumps cadence-format.sh.
-if [ "$CADENCE_RUNNER_FORMAT_VERSION" = 21 ]; then
-  pass=$((pass + 1)); echo "  ok: CADENCE_RUNNER_FORMAT_VERSION is the expected 21"
+if [ "$CADENCE_RUNNER_FORMAT_VERSION" = 22 ]; then
+  pass=$((pass + 1)); echo "  ok: CADENCE_RUNNER_FORMAT_VERSION is the expected 22"
 else
-  fail=$((fail + 1)); echo "  FAIL: expected CADENCE_RUNNER_FORMAT_VERSION=21, got '$CADENCE_RUNNER_FORMAT_VERSION'"
+  fail=$((fail + 1)); echo "  FAIL: expected CADENCE_RUNNER_FORMAT_VERSION=22, got '$CADENCE_RUNNER_FORMAT_VERSION'"
 fi
 
 echo "[test-cadence-format] CADENCE_RUNNER_BASENAMES includes upstream-watch (HIMMEL-2367)"
@@ -317,6 +317,114 @@ else
   fail=$((fail + 1)); echo "  FAIL: cadence_prov_record did not record the read-back identity (rc=$_prc): $_prow2"
 fi
 rm -rf "$_prov_tmp2"
+
+# --- cadence_posix_leg_start / cadence_posix_leg_end (HIMMEL-4286) ---------
+# The shared POSIX emitter every generated cadence runner inherits: flow-run
+# start/end rows plus `cadence-alert.sh fail` on a failed leg and `clear` on a
+# completed one. Each row generates the snippet, wraps it in a throwaway script
+# around a stub flow lib and a stub alert lib, and runs it with a chosen _rc.
+echo "[test-cadence-format] cadence_posix_leg_* — alert + flow rows"
+_leg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-leg.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }
+cat > "$_leg_tmp/flow-lib.sh" <<'STUB'
+#!/bin/sh
+printf 'flow %s\n' "$*" >> "$LEG_CALLS"
+case "$1" in --append-start) echo RUN-1 ;; esac
+exit 0
+STUB
+cat > "$_leg_tmp/alert-lib.sh" <<'STUB'
+#!/bin/sh
+printf 'alert %s\n' "$*" >> "$LEG_CALLS"
+exit 0
+STUB
+chmod 755 "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-lib.sh"
+
+# run_leg <rc> <ok_rcs> <skip_rcs> -> runs the emitted snippet, prints calls
+# shellcheck disable=SC2016  # $_rc is emitted literally for the generated script
+run_leg() {
+  local rc="$1" ok="$2" skip="$3"
+  {
+    printf 'log=%s/leg.log\n_rc=%s\n' "$_leg_tmp" "$rc"
+    cadence_posix_leg_start "$_leg_tmp/flow-lib.sh" demo-flow HIMMEL-Demo
+    cadence_posix_leg_end "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-lib.sh" demo-flow "$ok" "$skip"
+    printf 'exit "$_rc"\n'
+  } > "$_leg_tmp/leg.sh"
+  : > "$_leg_tmp/calls"
+  LEG_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg.sh"
+  echo "$?" > "$_leg_tmp/rc"
+  cat "$_leg_tmp/calls"
+}
+
+_out=$(run_leg 3 "" "")
+case "$_out" in
+  *"flow --append-start demo-flow"*) pass=$((pass + 1)); echo "  ok: leg start writes a flow-run start row" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: no flow-run start row: $_out" ;;
+esac
+case "$_out" in
+  *"flow --append-end demo-flow RUN-1  3 error"*) pass=$((pass + 1)); echo "  ok: non-zero rc writes an error end row" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: no error end row for rc 3: $_out" ;;
+esac
+case "$_out" in
+  *"alert fail demo-flow rc-3 "*"leg.log"*) pass=$((pass + 1)); echo "  ok: non-zero rc calls cadence-alert fail" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: no alert fail for rc 3: $_out" ;;
+esac
+assert_eq "snippet preserves the leg's own rc" "$(cat "$_leg_tmp/rc")" "3"
+
+_out=$(run_leg 0 "" "")
+case "$_out" in
+  *"alert clear demo-flow"*) pass=$((pass + 1)); echo "  ok: rc 0 calls cadence-alert clear" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: no alert clear for rc 0: $_out" ;;
+esac
+case "$_out" in
+  *"alert fail"*) fail=$((fail + 1)); echo "  FAIL: rc 0 must not alert fail: $_out" ;;
+  *) pass=$((pass + 1)); echo "  ok: rc 0 never alerts fail" ;;
+esac
+
+# An expected non-zero exit (upstream-watch's rc 10 = delta handled) is a
+# success, not a page.
+_out=$(run_leg 10 "0 10" "")
+case "$_out" in
+  *"alert clear demo-flow"*) pass=$((pass + 1)); echo "  ok: an ok-listed rc clears, never fails" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: ok-listed rc 10 did not clear: $_out" ;;
+esac
+case "$_out" in
+  *"alert fail"*) fail=$((fail + 1)); echo "  FAIL: ok-listed rc 10 alerted: $_out" ;;
+  *) pass=$((pass + 1)); echo "  ok: an ok-listed rc never alerts fail" ;;
+esac
+
+# A benign skip (ast-update.sh rc 4 = promote lock held) neither alerts nor
+# clears an outstanding alert, and is recorded as skipped.
+_out=$(run_leg 4 "" "4")
+case "$_out" in
+  *"alert "*) fail=$((fail + 1)); echo "  FAIL: skip rc 4 touched the alert sink: $_out" ;;
+  *) pass=$((pass + 1)); echo "  ok: a skip-listed rc neither fails nor clears" ;;
+esac
+case "$_out" in
+  *" 4 skipped"*) pass=$((pass + 1)); echo "  ok: a skip-listed rc is recorded as skipped" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: skip rc 4 not recorded skipped: $_out" ;;
+esac
+# Under cron the runner's PATH is the minimal /usr/bin:/bin, but the alert
+# sender needs bun (~/.bun/bin): the alert call must carry the ARM-time PATH
+# snapshot (HIMMEL-2840 shape), never the fire-time one.
+mkdir -p "$_leg_tmp/bunbin"
+printf '#!/bin/sh\nexit 0\n' > "$_leg_tmp/bunbin/bun"
+chmod 755 "$_leg_tmp/bunbin/bun"
+cat > "$_leg_tmp/alert-path.sh" <<'STUB'
+#!/bin/sh
+printf 'bun=%s\n' "$(command -v bun)" >> "$LEG_CALLS"
+exit 0
+STUB
+chmod 755 "$_leg_tmp/alert-path.sh"
+{
+  printf 'log=%s/leg.log\n_rc=3\n' "$_leg_tmp"
+  PATH="$_leg_tmp/bunbin:$PATH" cadence_posix_leg_end "$_leg_tmp/flow-lib.sh" "$_leg_tmp/alert-path.sh" demo-flow
+} > "$_leg_tmp/leg-path.sh"
+: > "$_leg_tmp/calls"
+env -i PATH=/usr/bin:/bin LEG_CALLS="$_leg_tmp/calls" sh "$_leg_tmp/leg-path.sh"
+case "$(cat "$_leg_tmp/calls")" in
+  *"bun=$_leg_tmp/bunbin/bun"*) pass=$((pass + 1)); echo "  ok: the alert call resolves bun from the arm-time PATH under a minimal fire PATH" ;;
+  *) fail=$((fail + 1)); echo "  FAIL: alert call did not see the arm-time PATH: $(cat "$_leg_tmp/calls")" ;;
+esac
+rm -rf "$_leg_tmp"
 
 echo
 echo "[test-cadence-format] pass=$pass fail=$fail"

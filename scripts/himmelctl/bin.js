@@ -306,6 +306,10 @@ options:
   --prune                ensure: opt-in to the DISABLE phase (converge-only by
                           default; disabling enabled-but-no-longer-desired items
                           is a separate, higher-risk consent — HIMMEL-2349)
+  --no-network           ensure: run ONLY items whose manifest entry declares a
+                          no-network path (local file wiring); refuse, with a
+                          reason, every item that could fetch, build, install
+                          or reindex (HIMMEL-4308). Not valid with --prune
   --with-models          deps upgrade: pull qmd's embedding/rerank models
                           (~2.1 GB) non-interactively, without the prompt
   -h, --help             show this help`;
@@ -327,7 +331,7 @@ const ALLOWED_OPTIONS = {
   report: ['items', 'json'],
   // HIMMEL-4254 P3: the read-only config UI server.
   ui: ['port', 'allowAgentSession', 'agui'],
-  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune'],
+  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set) — parsed in parseArgs's scope cases, not as --flags.
   // --yes/--dry-run apply to `scope set` (get/status are pure reads that
@@ -365,6 +369,7 @@ const OPTION_FLAGS = {
   withModels: '--with-models',
   lanes: '--lanes', withCodex: '--with-codex', withHermes: '--with-hermes',
   prune: '--prune',
+  noNetwork: '--no-network',
   preset: '--preset',
   purgeState: '--purge-state',
   port: '--port',
@@ -410,6 +415,7 @@ function parseArgs(argv) {
     withCodex: false,  // install: --with-codex (opt-in lane)
     withHermes: false, // install: --with-hermes (opt-in lane)
     prune: false,      // ensure: --prune (opt-in — disable/unwire candidates require this; HIMMEL-2349)
+    noNetwork: false,  // ensure: --no-network (only manifest-declared local paths; HIMMEL-4308)
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it — HIMMEL-3058)
     port: null,        // ui: --port N (null = ephemeral, HIMMEL-4254)
@@ -700,6 +706,9 @@ function parseArgs(argv) {
         break;
       case '--prune':
         args.prune = true;
+        break;
+      case '--no-network':
+        args.noNetwork = true;
         break;
       case '--preset':
         args.preset = argv[++i];
@@ -5813,6 +5822,10 @@ function describeDisableCandidate(item, probe, ctx, recordedProfile, resolvedCat
 }
 
 async function cmdEnsure(args) {
+  if (args.noNetwork && args.prune) {
+    console.error('himmelctl: --prune is not valid with --no-network (a disable pass is not a local-only converge)');
+    return 2;
+  }
   const manifest = loadManifest();
 
   const profilePath = cachePath();
@@ -5972,7 +5985,7 @@ async function cmdEnsure(args) {
   // Gated on the same --items membership convention every other per-item
   // check in this function already uses: a filtered run that doesn't name
   // this item never touches it.
-  if (!args.items || args.items.indexOf('guardrail-block-global') !== -1) {
+  if (!args.noNetwork && (!args.items || args.items.indexOf('guardrail-block-global') !== -1)) {
     const guardrailItem = manifest.items.find((i) => i.id === 'guardrail-block-global');
     if (guardrailItem && guardrailItem.scopes.includes(scope) && guardrailItem.install
         && installEngineLib.RUNNABLE_INSTALL_TYPES.indexOf(guardrailItem.install.type) !== -1) {
@@ -6043,6 +6056,40 @@ async function cmdEnsure(args) {
     } else {
       hints.push(item.id);
     }
+  }
+
+  // HIMMEL-4308: --no-network is deny-by-default. Only an item whose manifest
+  // entry declares `noNetwork: { path: 'install' }` (its own install
+  // primitive was traced to local file writes) stays in the work list; every
+  // other runnable item is refused here, before any plan or spawn exists, so
+  // a refusal can never reach a fetch, build, install or reindex. A declared
+  // item that depends on a refused one is refused too (its prerequisite will
+  // not converge this run).
+  const refused = [];
+  if (args.noNetwork) {
+    const refusedIds = new Set();
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const item of towardEnabled) {
+        if (refusedIds.has(item.id)) continue;
+        let why = null;
+        if (!item.noNetwork || item.noNetwork.path !== 'install') {
+          why = `no no-network path declared in scripts/install/manifest.json (install.type '${item.install.type}' may fetch, build, install or reindex)`;
+        } else {
+          const blocker = (item.deps || []).find((d) => refusedIds.has(d));
+          if (blocker) why = `its prerequisite ${blocker} is refused under --no-network`;
+        }
+        if (why) {
+          refusedIds.add(item.id);
+          refused.push({ id: item.id, why });
+          changed = true;
+        }
+      }
+    }
+    for (let i = towardEnabled.length - 1; i >= 0; i--) {
+      if (refusedIds.has(towardEnabled[i].id)) towardEnabled.splice(i, 1);
+    }
+    for (const r of refused) console.log(`himmelctl: --no-network: refusing ${r.id} — ${r.why}`);
   }
 
   // Toward-disabled candidates: statusReport NEVER probes a desired:false
@@ -6468,6 +6515,7 @@ async function cmdEnsure(args) {
     // it's correct (and the one intentional exception to the deferred-save
     // rule below) to persist the derive/reconcile bookkeeping right here.
     if (stateChanged && !args.dryRun && !args.items) stateLib.save(state);
+    if (refused.length > 0) return 1;
     // CR fix: "already at the desired state" is FALSE when hints remain —
     // those items still need manual convergence. Say so instead.
     console.log(hints.length > 0
@@ -6701,7 +6749,7 @@ async function cmdEnsure(args) {
   // previewErrors (unrunnable plan entries, above) the same way.
   if (args.dryRun) {
     for (const e of disableErrors) console.log(`DRY: ${e}`);
-    return (disableErrors.length > 0 || previewErrors.length > 0 || pruneRejected) ? 1 : 0;
+    return (disableErrors.length > 0 || previewErrors.length > 0 || pruneRejected || refused.length > 0) ? 1 : 0;
   }
 
   // CR fix (CodeRabbit round 16, MAJOR — fail-closed): a real disable
@@ -6749,9 +6797,12 @@ async function cmdEnsure(args) {
     }
     failed = failed.filter((f) => stillIds.has(f.id));
   }
-  if (stillNotConverged.length > 0 || disableErrors.length > 0 || failed.length > 0 || pruneRejected) {
+  if (stillNotConverged.length > 0 || disableErrors.length > 0 || failed.length > 0 || pruneRejected || refused.length > 0) {
     if (stillNotConverged.length > 0) {
       console.error(`himmelctl: ${stillNotConverged.length} item(s) still not converged: ${stillNotConverged.map((r) => r.id).join(', ')}`);
+    }
+    if (refused.length > 0 && stillNotConverged.length === 0) {
+      console.error(`himmelctl: --no-network refused ${refused.length} item(s), see above.`);
     }
     if (failed.length > 0) {
       console.error(`himmelctl: ${failed.length} install(s) failed: ${failed.map((f) => `${f.id} (${f.reason})`).join(', ')}`);

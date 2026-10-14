@@ -1812,11 +1812,13 @@ jira_auto_transition_on_merge() {
     ' "$config_path" "$project" 2>/dev/null)
     [ -n "$target_status" ] || { JIRA_AUTO_TRANSITION_RESULT="skip=no-project-config key=$key project=$project"; return 0; }
 
-    # Never touch Epic/Story (standing project invariant — reconcile-lib.mjs's
+    # Never touch an Epic (standing project invariant — reconcile-lib.mjs's
     # own classifyTicket enforces this for the batch reconciler; this
     # merge-time hook has no classifyTicket call in its path, so it must
-    # check independently). Fails safe: an unreadable/undetermined type
-    # skips the transition rather than risking one on an Epic or Story.
+    # check independently). A Story IS transitioned (HIMMEL-5540): a merged PR
+    # that completes one must close it, and --jira-transition is already the
+    # operator's per-merge opt-in. Fails safe: an unreadable/undetermined type
+    # skips the transition rather than risking one on an Epic.
     local issue_type_json issue_type
     issue_type_json=$(cd "$repo_root" && node scripts/jira/dist/index.js get "$key" --json 2>/dev/null)
     issue_type=$(printf '%s' "$issue_type_json" | node -e '
@@ -1827,7 +1829,7 @@ jira_auto_transition_on_merge() {
         } catch {}
     ' 2>/dev/null)
     case "$issue_type" in
-        Epic|Story) JIRA_AUTO_TRANSITION_RESULT="skip=never-touch-type key=$key type=$issue_type"; return 0 ;;
+        Epic) JIRA_AUTO_TRANSITION_RESULT="skip=never-touch-type key=$key type=$issue_type"; return 0 ;;
         "") JIRA_AUTO_TRANSITION_RESULT="skip=cannot-verify-type key=$key"; return 0 ;;
     esac
 
