@@ -333,6 +333,14 @@ disc "$d" RUN scripts/test-a.sh
 manifest "$d" 1 2 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
 expect_absent "MV28: a non-numeric --absent-ok list is a usage error" 2 "$d" 2 "x" 'usage|absent-ok'
 
+d=$(case_dir mv31); header impacted > "$d/sel.txt"
+disc "$d" SKIP scripts/test-a.sh
+expect_absent "MV31: docs-only, every shard left out and no manifest at all" 0 "$d" 3 "1 2 3" '^OK'
+
+d=$(case_dir mv32); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh
+expect_absent "MV32: every shard left out but a suite is selected is refused" 1 "$d" 3 "1 2 3" 'scripts/test-a\.sh.*never ran'
+
 # --- MV29-30: manifests copied from a real PR run -----------------
 # scripts/ci/test-shard-manifest-verify-fixtures/ holds the 8 shell-unit shard
 # manifests of CI run 38607773672 (PR 2617), trimmed to the header, shard and
