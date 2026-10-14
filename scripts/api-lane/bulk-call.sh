@@ -119,7 +119,6 @@ flock -n 9 || usage "task $TASK is already running"
 rm -rf "$WORK"
 mkdir -p "$WORK/cwd" || usage "cannot create $WORK"
 chmod 700 "$WORK"
-echo "$$" > "$WORK/pid"
 RAW="$WORK/raw.json" ERR="$WORK/err.txt" PARSED="$WORK/parsed.json" SITES="$WORK/sites.json"
 ART="$WORK/bulk-$TASK.json"
 JOB="bulk-$TASK-$(date +%s)-$$"
@@ -154,6 +153,8 @@ RC=0
     --max-budget-usd "$BUDGET" --output-format json ${EFFORT_ARGS[@]+"${EFFORT_ARGS[@]}"} >"$RAW" 2>"$ERR"
 ) &
 CALL=$!
+# published only once the TERM trap is installed, so a cancel can never hit a bridge that has no handler yet
+echo "$$" > "$WORK/pid"
 wait "$CALL" || RC=$?
 # a trapped signal ends the first wait early; reap the killed call before reading its files
 [ "$CANCELLED" -eq 0 ] || wait "$CALL" 2>/dev/null

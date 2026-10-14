@@ -256,16 +256,17 @@ from `git grep` is 23 sites, with a comment mentioning `rm -rf` (`host-caps.sh:4
 
 | | Native Haiku child (Explore) | API process (`bulk-call.sh`) |
 |---|---|---|
-| Correctness | 23 of 23, 0 false positives, 0 misses | UNMEASURED |
-| Calls | 5 tool uses | UNMEASURED |
-| Context floor | 23,513 subagent tokens (Explore carries a broader tool set than `Read,Glob,Grep`) | UNMEASURED |
-| Cache band / TTL | subscription prompt cache, not controllable | 5m default, `cache-report.mjs` picks the TTL by gap |
-| Dollars | $0 marginal (subscription budget) | UNMEASURED |
+| Correctness | 23 of 23, 0 false positives, 0 misses | 23 of 23, 0 extra, in all 3 runs |
+| Calls | 5 tool uses | 3 runs, one `claude-api.sh` call each |
+| Context floor | 23,513 subagent tokens (Explore carries a broader tool set than `Read,Glob,Grep`) | about 27.1k tokens per run summed over cache_creation, cache_read and input (3 runs: 38,661 / 42,587 / 12) |
+| Cache band / TTL | subscription prompt cache, not controllable | 5m default, `cache-report.mjs` picks the TTL by gap: gaps 34 s and 36 s, hit rate 0.524, recommended 5m |
+| Dollars | $0 marginal (subscription budget) | $0.004421, $0.002791, $0.004102 (total $0.011314 on the API credit) |
 
-The API half needs paid calls and a fresh grant snapshot, which the leg station does not hold (no
-credit config, ledger or key; `api-credit-state.mjs` reports `BANK-UNKNOWN`). Until an operator run
-fills the column, this bridge is NOT claimed cheaper or equivalent; the STOP rule applies if that run
-shows it is not.
+The API half was measured by an operator run on the pilot key (3 paid calls, each at most $0.05, all
+`claude-haiku-5-5`, reconciled by the ledger). Result: equivalent on correctness, and each run moves about
+23.5k tokens of work off the subscription budget onto the API credit at under half a cent. "Cheaper"
+therefore means subscription budget freed, not dollars saved: the native child costs $0 marginal. The STOP
+rule is not triggered. One class and one file set were measured, so this is evidence for this class only.
 
 ## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 
