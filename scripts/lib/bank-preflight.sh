@@ -1207,7 +1207,8 @@ fi
 # codex state (missing, stale, failing, hung) can change a verdict or the rc.
 # Same source and spelling as tick.sh's `codex=` field: the cache-only claudex
 # row of scripts/lanes/bank-status.ts (it reads what codex-bank-probe.ts wrote
-# and never spawns the probe itself), as `5h<n>/wk<n>`, else `?`. Bounded by
+# and never spawns the probe itself), as `5h<n>/wk<n>` (`5hnone` when only the
+# weekly window is reported), else `?`. Bounded by
 # CADENCE_BANK_CODEX_TIMEOUT (default 5s) through the repo's `timeout` resolver;
 # with no timeout binary the read is SKIPPED rather than run unbounded.
 _codex_bank_figure() {
@@ -1227,6 +1228,9 @@ _codex_bank_figure() {
   _c5="$(printf '%s\n' "$_line" | sed -n 's/.*5h used=\([0-9][0-9.]*\)%.*/\1/p')"
   _cw="$(printf '%s\n' "$_line" | sed -n 's/.*weekly used=\([0-9][0-9.]*\)%.*/\1/p')"
   if [ -n "$_c5" ] || [ -n "$_cw" ]; then
+    # A measured row with a weekly window but no 5h window is an account with
+    # no 5h limit, so it reads `none`; `?` stays for a missing weekly.
+    if [ -z "$_c5" ] && [ -n "$_cw" ]; then _c5=none; fi
     printf '5h%s/wk%s' "${_c5:-?}" "${_cw:-?}"
   else
     printf '?'

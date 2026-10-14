@@ -570,9 +570,9 @@ if [ -n "$_TIMEOUT_BIN" ]; then
   check "bank line prints BOTH banks: Claude five_hour/seven_day AND codex=5h12/wk34" \
     "bank-preflight: leg=testleg five_hour=10 seven_day=20 extra_usage=n/a age=0s codex=5h12/wk34" "$(bank_line | sed 's/age=[0-9]*s/age=0s/')"
 
-  S_WK="$(stub_status codex-wk "printf '%s\n' 'claudex funded measured weekly used=14% free=86%'")"
+  S_WK="$(stub_status codex-wk "printf '%s\n' 'claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z'")"
   native_codex_run "$S_WK" >/dev/null
-  case "$(bank_line)" in *' codex=5h?/wk14') PASS=$((PASS+1)); echo "ok - weekly-only codex reading -> codex=5h?/wk14" ;;
+  case "$(bank_line)" in *' codex=5hnone/wk6') PASS=$((PASS+1)); echo "ok - weekly-only codex reading (real row, HIMMEL-5670) -> codex=5hnone/wk6" ;;
     *) FAIL=$((FAIL+1)); echo "FAIL - weekly-only codex reading: '$(bank_line)'" ;; esac
 else
   echo "skip - funded codex readings: no timeout binary on this host (codex=? asserted below)"
