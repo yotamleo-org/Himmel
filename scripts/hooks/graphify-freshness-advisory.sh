@@ -15,6 +15,26 @@
 # …`), re-printed below via `$out` — not hardcoded here.
 set -uo pipefail
 
+# HIMMEL-1591: warn-only watch for core.bare on the SHARED git config, placed
+# ahead of the lean-leg exit below because a leg is exactly who burns a run on
+# it. A shared core.bare=true is disguised (reads work, writes go absurd) and
+# its writer is unknown, so this can only detect. One `git config` call, silent
+# when the key is unset or false, never writes the config, never fails the hook.
+_cb_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
+if [ "$(git -C "$_cb_dir" config --local --type=bool --get core.bare 2>/dev/null)" = true ]; then
+    _cb_file="$(git -C "$_cb_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/config"
+    printf '<system-reminder>\n'
+    printf 'core.bare=true is set on the shared git config (%s). Reads still work but\n' "$_cb_file"
+    printf 'writes misbehave in every worktree, and a worktree created while it is set\n'
+    printf 'stages mass deletions on its first git add (git status --short then looks\n'
+    printf 'like the tree is being wiped). Fix: git config --local --unset core.bare\n'
+    printf '(leave extensions.worktreeConfig SET; it is unrelated and load-bearing).\n'
+    printf 'If a worktree already shows the bogus deletions, recover with\n'
+    printf 'a plain git reset and NEVER the hard form (it destroys real working-tree content).\n'
+    printf 'Tell the operator in your first reply (HIMMEL-1591).\n'
+    printf '</system-reminder>\n'
+fi
+
 # HIMMEL-2830 / HIMMEL-2928: a leg launched by headed-arm-leg.sh --profile
 # carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
 # the fixed context floor that is re-read on EVERY API call of that session

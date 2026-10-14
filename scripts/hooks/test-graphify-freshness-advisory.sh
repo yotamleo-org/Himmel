@@ -154,4 +154,36 @@ out=$(HIMMEL_LEAN_LEG=1 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$H
 out=$(HIMMEL_LEAN_LEG=0 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
 case "$out" in *"graphify graph is STALE"*) pass "T9b HIMMEL_LEAN_LEG=0 keeps today's banner (fail-open)";; *) fail "T9b lean guard is not fail-open: $out";; esac
 
+# T10 (HIMMEL-1591) core.bare on the shared git config -> loud warning, both
+# directions. Fixture: a scratch repo plus a linked worktree of it, so the
+# hook is proven to read the SHARED config from a worktree session. A fresh
+# graph keeps the graphify half silent, so any output here is the core.bare
+# watch alone.
+cb="$tmp/corebare"; mkdir -p "$cb"
+git -C "$cb" init -q . && git -C "$cb" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x
+git -C "$cb" worktree add -q "$cb-wt" -b wt 2>/dev/null
+out=$(CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T10a core.bare unset is silent rc0" || fail "T10a: rc=$rc out='$out'"
+git -C "$cb" config core.bare false
+out=$(CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T10b core.bare=false is silent rc0" || fail "T10b: rc=$rc out='$out'"
+git -C "$cb" config core.bare true
+sum_before="$(cksum < "$cb/.git/config")"
+out=$(CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
+[ "$rc" -eq 0 ] && pass "T10c core.bare=true still exits 0" || fail "T10c rc=$rc"
+case "$out" in *"core.bare"*) pass "T10c names the key";; *) fail "T10c key missing: $out";; esac
+case "$out" in *"$cb/.git/config"*) pass "T10c names the shared config file";; *) fail "T10c file missing: $out";; esac
+case "$out" in *"git config --local --unset core.bare"*) pass "T10c names the one-command fix";; *) fail "T10c fix missing: $out";; esac
+case "$out" in *"plain git reset"*"NEVER"*) pass "T10c names the bogus-index trap (plain reset, never the hard form)";; *) fail "T10c bogus-index trap missing: $out";; esac
+case "$out" in *"extensions.worktreeConfig"*) pass "T10c warns to leave extensions.worktreeConfig set";; *) fail "T10c worktreeConfig note missing: $out";; esac
+[ "$sum_before" = "$(cksum < "$cb/.git/config")" ] && pass "T10c never touches the config" || fail "T10c config was modified"
+# A lean leg is exactly who burns a leg on this, so it hears the warning too,
+# and ONLY that: the graphify half stays silent for it.
+out=$(HIMMEL_LEAN_LEG=1 CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
+case "$out" in *"core.bare"*) pass "T10d lean leg still hears core.bare";; *) fail "T10d lean leg silenced: $out";; esac
+case "$out" in *"graphify graph is"*) fail "T10d lean leg heard graphify too: $out";; *) pass "T10d lean leg hears no graphify banner";; esac
+# Outside any repo: silent, rc0.
+out=$(CLAUDE_PROJECT_DIR="$tmp/not-a-repo" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T10e non-repo project dir is silent rc0" || fail "T10e: rc=$rc out='$out'"
+
 echo "---"; echo "$PASS passed, $FAIL failed"; [ "$FAIL" -eq 0 ]
