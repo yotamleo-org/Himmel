@@ -94,13 +94,22 @@ WFLABEL="wf:$SLUG"
 MARK="<!-- ci-red-branch: $BRANCH -->"
 
 # --- the open issue for (workflow, branch); a failed lookup is never "no issue" ---
+# The branch marker is matched as data (grep -F over each issue body), never
+# interpolated into a jq filter: a git ref may carry a double quote.
 if ! gh issue list --label "$LABEL" --label "$WFLABEL" --state open --limit 100 \
-    --json number,body \
-    --jq ".[] | select(.body | contains(\"$MARK\")) | .number" > "$TMP/open" 2>/dev/null; then
+    --json number --jq '.[].number' > "$TMP/open" 2>/dev/null; then
   echo "workflow-red-issue: could not query existing issues (gh lookup failed) -- not creating/closing, to avoid a duplicate or a blind close." >&2
   exit 1
 fi
-num="$(head -n 1 "$TMP/open")"
+num=""
+while IFS= read -r cand; do
+  [ -n "$cand" ] || continue
+  if ! cbody="$(gh issue view "$cand" --json body --jq .body 2>/dev/null)"; then
+    echo "workflow-red-issue: could not read issue #$cand (gh failed) -- not creating/closing." >&2
+    exit 1
+  fi
+  if grep -Fxq -- "$MARK" <<< "$cbody"; then num="$cand"; break; fi
+done < "$TMP/open"
 
 # Ordering guard: an older run must not overwrite or close a newer verdict.
 body=""

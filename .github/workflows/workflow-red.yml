@@ -22,9 +22,11 @@ permissions:
   contents: read
   issues: write
 
-# One report at a time, in order; each report reads the run's own jobs and the live issue.
+# One report at a time per workflow and branch, in order. GitHub keeps ONE pending
+# run per group and replaces it, so the group must not span unrelated workflows or
+# branches or a pending report for one would be dropped by another's.
 concurrency:
-  group: workflow-red
+  group: workflow-red-${{ github.event.workflow_run.name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:

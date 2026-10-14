@@ -72,6 +72,7 @@ if has 'uses: actions/checkout@' && ! has 'ref:' && ! has 'head_sha'; then
 else
   bad "checkout must take no ref / head_sha"
 fi
+if has 'group: workflow-red-.*workflow_run\.name.*workflow_run\.head_branch'; then ok "concurrency group is per workflow and branch (no cross-drop of pending reports)"; else bad "concurrency group must include workflow_run.name and head_branch"; fi
 if has 'cancel-in-progress: false'; then ok "reports serialise without cancelling"; else bad "concurrency must not cancel in progress"; fi
 if has 'scripts/ci/workflow-red-issue\.sh "\$\{\{ github\.event\.workflow_run\.id \}\}"'; then ok "runs the script with the run id"; else bad "must run workflow-red-issue.sh with the run id"; fi
 

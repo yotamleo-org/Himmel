@@ -25,7 +25,7 @@ fails=0
 ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 has()   { if grepq "$2" -e "$1"; then ok "$3"; else bad "$3; log: $2"; fi; }
-hasnt() { if grepq "$2" -e "$1"; then bad "$3; log: $2"; else ok "$3"; fi; }
+hasnt() { grepq "$2" -e "$1"; local r=$?; if [ "$r" -eq 1 ]; then ok "$3"; else bad "$3 (grep rc=$r); log: $2"; fi; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/workflow-red.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
@@ -111,6 +111,14 @@ setrun 3 "feat/x"
 report
 has "gh issue create" "$log" "red on another branch opens its own issue"
 hasnt "gh issue edit 7" "$log" "another branch does not touch main's issue"
+
+# 3b. A branch carrying a double quote is matched as data (it once sat inside a jq string).
+newcase quote-branch
+printf '[{"number":9,"body":"x\\n<!-- ci-red-branch: a\\"b -->\\n<!-- ci-red-run: 800 -->\\n"}]\n' > "$STUB/issues.json"
+setrun 3 'a"b'
+report
+has "gh issue edit 9" "$log" "a branch with a double quote finds its own issue"
+hasnt "gh issue create" "$log" "a branch with a double quote opens no duplicate"
 
 # 4. Green run closes the open issue of that workflow + branch.
 newcase green-close
