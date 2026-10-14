@@ -5,6 +5,8 @@
 # when bubblewrap can make a user namespace here, the same escape rows under a
 # real bwrap bind layout (the kernel mechanism the Claude Code sandbox uses).
 set -u
+# CI's git has no template dir, so a fresh repo has no .git/hooks: keep that case covered
+export GIT_TEMPLATE_DIR=/nonexistent
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROBE="$HERE/probe.sh"

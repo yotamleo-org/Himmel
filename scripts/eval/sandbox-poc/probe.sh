@@ -101,6 +101,7 @@ if ! { git init -q -b main "$WORK/r" 2>/dev/null && cd "$WORK/r"; }; then
   GITOK=0
 else GITOK=1; fi
 if [ "$GITOK" -eq 1 ]; then
+mkdir -p .git/hooks 2>/dev/null
 printf '#!/bin/sh\ntouch .hook-fired\n' > .git/hooks/pre-commit 2>/dev/null; chmod +x .git/hooks/pre-commit 2>/dev/null
 out=$(git -c user.email=a@b -c user.name=a commit -q --allow-empty -m x 2>&1); rc=$?
 c1=1; if [ "$rc" -eq 0 ] && [ -f .hook-fired ]; then c1=0; fi
