@@ -641,6 +641,14 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | yash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | posh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash.exe
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /usr/bin/sh.exe
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | rbash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | BASH
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash.EXE
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | frobnicate
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | fish
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | rbash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { true; frobnicate; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep x; frobnicate
 PIPETOSHELL
 # Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do
@@ -662,7 +670,7 @@ PIPEOK
 # 32 nested bodies and denies with a message naming the cap; a chain AT the cap
 # is judged as before, and a deep chain must finish well inside the budget.
 nest_chain() { # nest_chain <depth> - <depth> `eval` words before a clean env grep
-    local n=$1 s="env LC_ALL=C grep -n 'pr-check\\|x' docs/a.md"
+    local n=$1 s="env LC_ALL=C grep -n 'pr-check' docs/a.md"
     while [ "$n" -gt 0 ]; do s="eval $s"; n=$((n - 1)); done
     printf '%s' "$s"
 }

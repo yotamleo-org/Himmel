@@ -1923,24 +1923,25 @@ env_split_option() { # env_split_option <raw command> - false only when
     # script, so its words are a body like an `eval`'s: `echo "env -S
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
-    # ponytail: the reader list is shells only - `source /dev/stdin`,
-    # `. /dev/stdin`, fish and python3 -c read a piped script too and are not
-    # flagged; upgrade path: HIMMEL-5560 adds them to the shell-word case.
+    # The sink test is an allowlist, not a shell-name list (a name list leaked
+    # three times: rbash, BASH, bash.EXE): every command word after a pipe that
+    # is not a known reader/filter or shell-syntax word is a possible script
+    # reader (rbash, fish, python3 -c, `. /dev/stdin`, any interpreter).
     # ponytail: a shell word after a list separator flags every earlier pipe
     # writer in the command, so `git diff | head; bash x` over-denies when the
     # diff text carries env -S; upgrade path: HIMMEL-5560 models compounds.
     local i j e w sk sg b k x depth=$ENV_SPLIT_DEPTH
-    local -a nm=() nb=() pp=() hs=() fc=() fl=() wr=()
+    local -a nm=() nb=() pp=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
         return 0
     fi
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
-    # Pre-pass (HIMMEL-5356): hs[sg]=1 when segment sg names a shell word
-    # anywhere (so `sudo -u root bash` and `env X=1 bash` count) unless its
-    # command word is a pattern reader (`| grep bash`); pp[sg]=1 when sg's
-    # output flows through a `|`/`|&` chain into such a segment, so
+    # Pre-pass (HIMMEL-5356): fc[sg] is segment sg's command word (leading
+    # assignments and compound keywords skipped), wr[sg] marks a wrapper before
+    # it; fl[sg]=1 when sg is not a known reader; pp[sg]=1 when sg's output
+    # flows through a `|`/`|&` chain into such a segment, so
     # `echo ... | cat | bash` is read as a body too.
     i=0
     while [ "$i" -lt "$ST_N" ]; do
@@ -1952,20 +1953,21 @@ env_split_option() { # env_split_option <raw command> - false only when
         if [ -z "${fc[sg]-}" ]; then
             case "$w" in
                 [A-Za-z_]*=*) ;;
+                if | then | else | elif | while | until | do | '{' | '!') ;;
                 -* | env | command | exec | nohup | sudo | time) wr[sg]=1 ;;
-                *) fc[sg]=${w##*/} ;;
+                *) fc[sg]=$w ;;
             esac
         fi
-        x=${w##*/}
-        case "${x%.exe}" in bash | sh | zsh | dash | ksh | mksh | ash | yash | posh) hs[sg]=1 ;; esac
     done
     sg=$((ST_NSEG - 1))
     while [ "$sg" -gt 0 ]; do
-        if [ "${hs[sg]-}" = 1 ]; then
+        if [ -n "${wr[sg]-}${fc[sg]-}" ]; then
             # a wrapper before the command word (`sudo -u grep bash`) means the
             # first non-option word is not necessarily the command: no exemption
             case "${wr[sg]-}${fc[sg]-}" in
-                grep | egrep | fgrep | rg | ag | ack | awk | sed | wc | which | type | echo | printf) ;;
+                grep | egrep | fgrep | rg | ag | ack | wc | which | type | echo | printf) ;;
+                cat | head | tail | cut | sort | uniq | tr | nl | fold | column | rev | tac) ;;
+                true | false | : | test | '[' | cd | set | pwd | for | case | select | fi | done | 'esac' | '}') ;;
                 *) fl[sg]=1 ;;
             esac
         fi
