@@ -242,9 +242,12 @@ when the plan succeeded and said `false`; a plan that failed, printed nothing
 or did not run (push, schedule, dispatch) runs everything. The plan is all-true
 on a trust-path diff, a path no group names, a base without the gates file or
 any selector error, or an invalid regex in the list. `secret-scan` is not
-gated (a secret can land in any file). Non-matrix required jobs (`lint`,
-`guardrail-matrices`, ...) skip at job level, which reports `skipped`. The
-matrix required jobs (`node-suites`, `bun-suites`) and `security-scan` always
+gated (a secret can land in any file). Only path-pure jobs are gated; a job
+whose suites glob or run files no gate group can enumerate (`lint`,
+`bun-suites`, `claude-startup`, `lanes-and-trust-suites`) is ungated and runs on
+every PR (trust judges j2543e, j2543g), pinned by test-pr-plan.sh A8. Gated
+non-matrix jobs (`guardrail-matrices`, ...) skip at job level, which reports
+`skipped`. The matrix required job `node-suites` and `security-scan` always
 start and skip their steps, so every required name still reports.
 
 In each `shell-unit-shard`, `scripts/ci/shard-has-work.sh` asks

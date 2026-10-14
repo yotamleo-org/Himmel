@@ -13,7 +13,7 @@
 #   P5  a base without pr-job-gates.txt    -> every gate true (fail closed)
 #   P6  an unresolvable head                -> every gate true
 #   P7  no base (push / schedule)           -> every gate true
-#   P8  a .sh edit                          -> lint true, node_suites false
+#   P8  a .sh edit                          -> bwk_gate true, node_suites false
 #   P9  every gate named in ci.yml's plan consumers exists in the plan output
 #   P10 an invalid regex in the list         -> every gate true (fail closed)
 #   A1-A11 gate audit: every file a gated job's suites execute (one hop) is in
@@ -106,7 +106,7 @@ else fail "P2 docs-only: $out"; fi
 # P3
 out=$(plan "$BASE" "$H_JIRA")
 if [ "$(val "$out" run_node_suites)" = true ] && [ "$(val "$out" run_jira_cli_smoke)" = true ] \
-   && [ "$(val "$out" run_bun_suites)" = false ] && [ "$(val "$out" run_guardrail_matrices)" = false ]; then
+   && [ "$(val "$out" run_bwk_gate)" = false ] && [ "$(val "$out" run_guardrail_matrices)" = false ]; then
   pass "P3 scripts/jira file: node_suites + jira_cli_smoke only"
 else fail "P3 scripts/jira file: $out"; fi
 
@@ -122,7 +122,7 @@ else fail "P4 unnamed path: $out"; fi
 # gate line can turn git_env_scrub on while docs-only stays all-false.
 out=$(plan "$BASE" "$H_BASE")
 if [ "$(val "$out" run_git_env_scrub)" = true ] && [ "$(val "$out" mode)" = impacted ] \
-   && [ "$(val "$out" run_bun_suites)" = false ]; then pass "P4b baseline-only diff runs git_env_scrub and nothing else is all-true"
+   && [ "$(val "$out" run_deps_audit)" = false ]; then pass "P4b baseline-only diff runs git_env_scrub and nothing else is all-true"
 else fail "P4b baseline-only diff: $out"; fi
 
 # P5: a base whose tree has no pr-job-gates.txt
@@ -157,8 +157,8 @@ else fail "P7 no base: $out"; fi
 
 # P8
 out=$(plan "$BASE" "$H_SH")
-if [ "$(val "$out" run_lint)" = true ] && [ "$(val "$out" run_node_suites)" = false ]; then
-  pass "P8 .sh edit: lint true, node_suites false"
+if [ "$(val "$out" run_bwk_gate)" = true ] && [ "$(val "$out" run_node_suites)" = false ]; then
+  pass "P8 .sh edit: bwk_gate true, node_suites false"
 else fail "P8 .sh edit: $out"; fi
 
 # P10: an invalid regex in the base's list is a broken gate list, not a miss
@@ -243,7 +243,7 @@ EF="$SB/entries.txt"
 printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh scripts/testing/test-claude-mock-turn.sh \
   scripts/testing/test-mock-consult-sandbox.sh scripts/testing/test-mock-hook-smoke.sh \
   scripts/testing/test-mock-hook-live-turn.sh > "$EF"
-audit_case A1 claude_startup "$EF"
+# A1 (claude_startup) is gone: the job is ungated (j2543g).
 printf '%s\n' scripts/hooks/check-guardrail-matrices.sh > "$EF"
 audit_case A2 guardrail_matrices "$EF"
 printf '%s\n' scripts/guardrails/check-git-env-scrub.sh > "$EF"
@@ -255,24 +255,37 @@ printf '%s\n' scripts/hooks/check-lockfile-integrity.sh scripts/hooks/check-uv-l
 audit_case A5 deps_audit "$EF"
 printf '%s\n' scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh > "$EF"
 audit_case A6 plugin_version_bump "$EF"
-printf '%s\n' scripts/install/flag-registry-lint.mjs > "$EF"
-audit_case A7 lint "$EF"
+# A7 (lint) is gone: the job is ungated (j2543g).
 # A8 (lanes_and_trust) is gone: the job is ungated (j2543e). The A8 test below
 # pins that no gate group or ci.yml output brings it back.
 tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus' > "$EF"
 audit_case A9 node_suites "$EF"
-tests_under 'scripts/luna-vitals|scripts/telegram|scripts/vault|scripts/config-ui|marketplace/plugins/luna-correlate|marketplace/plugins/telegram-himmel|scripts/fleet-control|scripts/observability' > "$EF"
-audit_case A10 bun_suites "$EF"
+# A10 (bun_suites) is gone: the job is ungated (j2543g).
 # A11 control: the audit sees the one-hop reference the judge found (a vacuous
 # closure would pass every A case above).
 printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh > "$EF"
 if audit_closure "$EF" | grep -qx 'scripts/lanes/plugin-profiles.mjs'; then
   pass "A11 audit closure reaches scripts/lanes/plugin-profiles.mjs from test-fakekey-claude-startup.sh"
 else fail "A11 audit closure missed a known reference (vacuous audit)"; fi
-# A8: lanes-and-trust-suites stays ungated (j2543e).
-if grep -qE '^lanes_and_trust[[:space:]]' "$INPUTS_SRC" || grep -q 'run_lanes_and_trust' "$CI_YML"; then
-  fail "A8 lanes_and_trust is gated again (gate line or ci.yml output present)"
-else pass "A8 lanes-and-trust-suites is ungated"; fi
+# A8: structural pin (j2543e, j2543g). Jobs whose suites glob or run files no
+# gate group can enumerate stay ungated: parse each job's block in ci.yml for a
+# plan dependency or an if: on the plan outputs, and require no gate group of
+# their old name and no run_<group> plan output.
+job_block() { # job_block <job> — the lines of one top-level job in ci.yml
+  awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { exit } on { print }' "$CI_YML"
+}
+plan_gated() { grep -qE 'needs:[[:space:]]*(\[[^]]*)?plan|needs\.plan'; }
+if printf '    needs: plan\n' | plan_gated && printf "    if: \${{ needs.plan.outputs.run_x == 'false' }}\n" | plan_gated; then
+  pass "A8 control: the matcher detects a plan dependency"
+else fail "A8 control: the matcher missed a plan dependency (vacuous pin)"; fi
+for pair in lanes-and-trust-suites:lanes_and_trust lint:lint claude-startup:claude_startup bun-suites:bun_suites; do
+  job=${pair%%:*}; grp=${pair##*:}
+  blk=$(job_block "$job")
+  if [ -z "$blk" ]; then fail "A8 job $job not found in ci.yml (vacuous pin)"
+  elif printf '%s\n' "$blk" | plan_gated; then fail "A8 job $job depends on plan or gates on its outputs again"
+  elif grep -qE "^${grp}[[:space:]]" "$INPUTS_SRC" || grep -q "run_${grp}" "$CI_YML"; then fail "A8 gate group $grp is back (gate line or ci.yml output)"
+  else pass "A8 job $job is ungated"; fi
+done
 
 # S1-S5: scripts/ci/shard-has-work.sh against a stub run-shell-tests.sh whose
 # --list output STUB_MODE picks (the real selector is covered by its own suite).

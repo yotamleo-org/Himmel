@@ -87,13 +87,10 @@ jobs:
     timeout-minutes: 10
     outputs:
       run_node_suites: ${{ steps.plan.outputs.run_node_suites }}
-      run_bun_suites: ${{ steps.plan.outputs.run_bun_suites }}
       run_jira_cli_smoke: ${{ steps.plan.outputs.run_jira_cli_smoke }}
-      run_claude_startup: ${{ steps.plan.outputs.run_claude_startup }}
       run_guardrail_matrices: ${{ steps.plan.outputs.run_guardrail_matrices }}
       run_git_env_scrub: ${{ steps.plan.outputs.run_git_env_scrub }}
       run_bwk_gate: ${{ steps.plan.outputs.run_bwk_gate }}
-      run_lint: ${{ steps.plan.outputs.run_lint }}
       run_plugin_version_bump: ${{ steps.plan.outputs.run_plugin_version_bump }}
       run_deps_audit: ${{ steps.plan.outputs.run_deps_audit }}
     steps:
@@ -279,8 +276,9 @@ jobs:
           bash "$checker/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/plugin-bump-base
 
   lint:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_lint == 'false') }}
+    # Ungated (trust judge j2543g): main's --all-files shellcheck sweep reaches
+    # executable files (scripts/eval/.../*.sh.ref) no gate line can enumerate, so it
+    # runs on every PR like main.
     runs-on: ubuntu-latest
     timeout-minutes: 25 # p95 736s (12m); 2x
     steps:
@@ -391,8 +389,8 @@ jobs:
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
   # have no claude CLI; this job is where it runs.
   claude-startup:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_claude_startup == 'false') }}
+    # Ungated (trust judge j2543g): the hook chain it starts executes scripts
+    # outside any gate group, so it runs on every PR like main.
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 86s; floor 10
     env:
@@ -560,8 +558,8 @@ jobs:
   # where fail-fast stays false so a red Windows leg still reports the Linux
   # result instead of cancelling it; a pull_request run stops at its first red leg.
   bun-suites:
-    needs: plan
-    if: ${{ !cancelled() }}
+    # Ungated (trust judge j2543g): `bun test scripts/telegram` globs suites that
+    # run extensionless scripts (scripts/claude-codex), so it runs on every PR like main.
     # issues:write (beyond the workflow-level contents:read) is needed only by
     # the windows-nightly-issue.sh steps above/below — scoped to this job
     # alone rather than raised workflow-wide.
@@ -604,12 +602,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
-        run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
+      - run: cd scripts/luna-vitals && bun install --frozen-lockfile && bun test
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own
       # directory fails every wired case (docs/internals/environment-gotchas.md,
@@ -618,8 +614,7 @@ jobs:
       # This is the largest bun test surface in the repo (971 tests) and had no
       # CI step at all until HIMMEL-2620. It runs on both matrix legs because
       # three of its cases are platform-sensitive by construction.
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
-        run: bun test scripts/telegram --dots
+      - run: bun test scripts/telegram --dots
       # HIMMEL-3215: the luna source-identity suites (source-identity +
       # backfill, 40 tests) had no CI step, so a regression in
       # scripts/vault/** could merge green. Runs from the repo root like the
@@ -631,7 +626,7 @@ jobs:
       # A step in this job (not a new job) rides the already-required
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
-        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bun test scripts/vault/tests --dots
       # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
@@ -639,25 +634,24 @@ jobs:
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics,
       # which the non-gating Windows nightly (parked) would only turn red.
       - name: Config UI tests (ubuntu only)
-        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bun test scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
       # lockfile is never regenerated (HIMMEL-553). HIMMEL-2620 wired the test
       # run for the suite that was always there under tests/.
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
-        run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bun test
+      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile && bun test
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
-        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bun test
       # HIMMEL-3827: fleet-control (9 files) and observability (bun files) had
       # no CI step. Repo-root cwd like the suites above; ubuntu only (POSIX
       # fixtures, spawned servers) so the non-gating Windows leg stays quiet.
       - name: fleet-control + observability tests (ubuntu only)
-        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.plan.result == 'success' && needs.plan.outputs.run_bun_suites == 'false') }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bun test scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
       # A red Windows nightly must not fail silently now that it is non-gating
       # (HIMMEL-3125): upsert one consolidated issue rather than opening a new

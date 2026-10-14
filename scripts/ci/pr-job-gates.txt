@@ -39,28 +39,33 @@ node_suites     ^plugins/(himmel-gh|himmel-jira)/
 node_suites     ^marketplace/plugins/himmel-bus/
 node_suites     (^|/)package(-lock)?\.json$
 
-# bun-suites matrix.
-bun_suites      ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
-bun_suites      ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-setup|trust)/
-bun_suites      ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
-bun_suites      ^marketplace/plugins/(luna-correlate|telegram-himmel)/
-bun_suites      ^\.bun-version$
-bun_suites      ^docs/setup/settings-template\.json$
-bun_suites      ^tests/fixtures/glm-cap/
-bun_suites      (^|/)bun\.lock$
-bun_suites      (^|/)package(-lock)?\.json$
+# bun-suites, claude-startup and lint are UNGATED too (trust judge j2543g, third
+# reader-allowlist NO-GO): `bun test scripts/telegram` runs extensionless
+# scripts/claude-codex, main's shellcheck sweep reaches executable .sh.ref
+# fixtures, and the claude-startup hook chain runs scripts outside any group. Their
+# former lines stay as `benign` so the paths still map to a group. Only path-pure
+# jobs remain gated (node_suites, jira_cli_smoke, guardrail_matrices,
+# git_env_scrub, bwk_gate, plugin_version_bump, deps_audit).
+
+# bun-suites matrix (now benign).
+benign          ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
+benign          ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-setup|trust)/
+benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
+benign          ^marketplace/plugins/(luna-correlate|telegram-himmel)/
+benign          ^\.bun-version$
+benign          ^docs/setup/settings-template\.json$
+benign          ^tests/fixtures/glm-cap/
+benign          (^|/)bun\.lock$
+benign          (^|/)package(-lock)?\.json$
 
 jira_cli_smoke  ^scripts/jira/
 jira_cli_smoke  (^|/)package(-lock)?\.json$
 
-claude_startup  ^scripts/(testing|hooks|lib)/
-# The five startup suites execute headed-arm*, plugin-profiles.mjs, codex/cr/git
-# helpers and clean-garden.sh; test-pr-plan.sh audits that every file they run
-# falls in this group (or is a trust path).
-claude_startup  ^scripts/(handover|lanes|codex|cr|git)/
-claude_startup  ^scripts/(clean-garden|quiet-run)\.sh$
-claude_startup  ^\.claude/
-claude_startup  ^\.bun-version$
+benign          ^scripts/(testing|hooks|lib)/
+benign          ^scripts/(handover|lanes|codex|cr|git)/
+benign          ^scripts/(clean-garden|quiet-run)\.sh$
+benign          ^\.claude/
+benign          ^\.bun-version$
 
 # lanes-and-trust-suites is UNGATED (trust judge j2543e, second reader-allowlist
 # NO-GO): check-hook-lib-suites.sh globs scripts/(hooks|lib)/*.test.mjs and those
@@ -87,13 +92,13 @@ bwk_gate        unchecked-mktemp
 bwk_gate        ^scripts/lib/
 bwk_gate        \.(sh|bash)$
 
-lint            \.(sh|bash)$
-lint            ^\.shellcheckrc$
-lint            ^\.pre-commit-config\.yaml$
-lint            ^scripts/(hooks|install|himmelctl)/
+benign          \.(sh|bash)$
+benign          ^\.shellcheckrc$
+benign          ^\.pre-commit-config\.yaml$
+benign          ^scripts/(hooks|install|himmelctl)/
 # extensionless shebang scripts (scripts/claude-glm, */bin/*, lean-skills task-*)
 # are shellchecked by file type, not by a .sh suffix.
-lint            (^|/)[^/.]+$
+benign          (^|/)[^/.]+$
 
 
 plugin_version_bump ^(marketplace/plugins|plugins)/
