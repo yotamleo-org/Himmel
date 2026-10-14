@@ -107,13 +107,23 @@ test('judge j2229c: the harness hand-off names (LQ_API_*) never reach claude', (
   assert.match(readFileSync(f.paths.env, 'utf8'), /^lq_api=0$/m);
 });
 
-test('HIMMEL-5073: the scrub forces default permission mode, so the launcher declares the tools the fixtures need', () => {
+test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);
   const seen = readFileSync(f.paths.env, 'utf8');
+  assert.doesNotMatch(seen, /allowedTools/);
+  assert.match(seen, /--tools  --max-budget-usd/);
+  assert.match(seen, /--strict-mcp-config/);
+  assert.match(seen, /--permission-mode plan/);
+});
+
+test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Edit,Write,Glob,Grep,Bash' }).status, 0);
+  const seen = readFileSync(f.paths.env, 'utf8');
   assert.match(seen, /--allowedTools Read,Edit,Write,Glob,Grep,Bash/);
   assert.match(seen, /--tools Read,Edit,Write,Glob,Grep,Bash/);
-  assert.match(seen, /--permission-mode plan/);
+  assert.doesNotMatch(seen, /--strict-mcp-config/);
 });
 
 test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
@@ -123,6 +133,7 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowe
   const seen = readFileSync(f.paths.env, 'utf8');
   assert.doesNotMatch(seen, /allowedTools/);
   assert.match(seen, /--tools  --max-budget-usd/);
+  assert.match(seen, /--strict-mcp-config/);
 });
 
 test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', () => {
@@ -135,7 +146,7 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', (
 });
 
 test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider or blank entry is refused before any launch', () => {
-  for (const v of ['Read,WebFetch', 'Bash,Task', 'mcp__x__y', 'Read,,Grep', ' Read', 'Read,']) {
+  for (const v of ['Read,WebFetch', 'Bash,Task', 'mcp__x__y', '*', 'Bash(*)', 'Read,*', 'Read,,Grep', ' Read', 'Read,']) {
     const f = fixture();
     const r = f.run(f.good, { HIMMEL_API_TOOLS: v });
     assert.equal(r.status, 2, `${JSON.stringify(v)}: ${r.stderr}`);
