@@ -99,6 +99,11 @@ for op in ':-' '-' ':=' '=' ':+' '+'; do
 done
 check deny block-git-stash.sh 'git ${V:-stash} drop'
 check deny block-git-stash.sh '${V:-${Z:-git}} stash drop'
+# each default expansion is set or unset on its own: A unset, B empty
+check deny block-git-stash.sh '${A:-git} ${B:-x} stash drop'
+check deny block-git-stash.sh '${A:-git} ${B:-x} ${C:-y} stash drop'
+check deny block-git-stash.sh '${B:-x} ${A:-git} stash drop'
+check allow block-git-stash.sh '${A:-git} ${B:-x} stash list'
 check allow block-git-stash.sh '${V} stash drop'
 check allow block-git-stash.sh '${V:-git} stash list'
 check allow block-git-stash.sh '${V:-echo} stash drop'

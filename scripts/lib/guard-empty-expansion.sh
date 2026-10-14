@@ -54,7 +54,7 @@ _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # drops the rest of the line.
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
-  s = $0; out = ""; n = length(s); i = 1; hard = 0
+  s = $0; out = ""; n = length(s); i = 1; hard = 0; k = 0
   safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:+=?#%/@*^,.~ -}"
   while (i <= n) {
     c = substr(s, i, 1)
@@ -77,18 +77,19 @@ _GEE_AWK='{
         i++
       }
       if (depth > 0) hard = 1
-      else if (!hard && mode == "dflt" && match(substr(s, bs, i - 1 - bs), /^[A-Za-z_][A-Za-z0-9_]*:?[-=+]/)) {
-        out = out substr(s, bs + RLENGTH, i - 1 - bs - RLENGTH); hard = h0; continue
+      else if (!hard && (mode == "dflt" || mode == "count") && match(substr(s, bs, i - 1 - bs), /^[A-Za-z_][A-Za-z0-9_]*:?[-=+]/)) {
+        if (mode == "dflt" && int(mask / (2 ^ k)) % 2 == 1) out = out substr(s, bs + RLENGTH, i - 1 - bs - RLENGTH)
+        k++; hard = h0; continue
       }
       if (h0) hard = 1
       if (mode == "dflt") out = out substr(s, bs - 2, i - bs + 2)
     } else { out = out c; i++ }
   }
-  if (mode == "hard") print hard + 0; else print out
+  if (mode == "hard") print hard + 0; else if (mode == "count") print k; else print out
 }'
 
 guard_expansion_recheck() {
-    local hook=$1 input=$2 cmd=$3 target=${4:-} hard stripped dflt depth=${GUARD_EXPANSION_DEPTH:-0}
+    local hook=$1 input=$2 cmd=$3 target=${4:-} hard stripped dflt count full mask depth=${GUARD_EXPANSION_DEPTH:-0}
     case "$cmd" in *'$'*) ;; *) return 0 ;; esac
     case "$depth" in
         *[!0-9]*|'') depth=0 ;;
@@ -116,13 +117,33 @@ guard_expansion_recheck() {
     # the command with each ${name[:]-word}, ${name[:]=word} and ${name[:]+word}
     # replaced by its word: the protected program can ride in the default word
     # (HIMMEL-5525), which removing the expansion never shows.
-    if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
-        | LC_ALL=C awk -v mode=dflt "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
-        echo "guard-empty-expansion: cannot read default words - failing closed" >&2
+    # Each default expansion is independently set or unset at run time, so every
+    # word-or-dropped combination is a form (`${A:-git} ${B:-x} stash drop` with
+    # B empty runs `git stash drop`); bit k of the mask picks the word of the
+    # k-th one.
+    # ponytail: past 5 default expansions only the all-words form is re-read (2^n
+    # forms), upgrade path a real shell parser (HIMMEL-4178).
+    if ! count=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C awk -v mode=count "$_GEE_AWK"); then
+        echo "guard-empty-expansion: cannot count default words - failing closed" >&2
         return 2
     fi
+    case "$count" in
+        ''|*[!0-9]*) echo "guard-empty-expansion: cannot count default words - failing closed" >&2; return 2 ;;
+    esac
     _gee_rerun "$hook" "$input" "$cmd" "$stripped" "$depth" || return 2
-    _gee_rerun "$hook" "$input" "$cmd" "$dflt" "$depth" || return 2
+    [ "$count" -gt 0 ] || return 0
+    full=$(( (1 << count) - 1 ))
+    mask=$full
+    [ "$count" -le 5 ] && mask=1
+    while [ "$mask" -le "$full" ]; do
+        if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
+            | LC_ALL=C awk -v mode=dflt -v mask="$mask" "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
+            echo "guard-empty-expansion: cannot read default words - failing closed" >&2
+            return 2
+        fi
+        _gee_rerun "$hook" "$input" "$cmd" "$dflt" "$depth" || return 2
+        mask=$((mask + 1))
+    done
     return 0
 }
 
