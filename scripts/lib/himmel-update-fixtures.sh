@@ -75,6 +75,7 @@ make_repo_channel() {
     cp "$src_scripts/lib/resolve-hermes-py.sh" "$clone/scripts/lib/resolve-hermes-py.sh"
     cp "$src_scripts/lib/load-dotenv.sh"       "$clone/scripts/lib/load-dotenv.sh"
     cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
+    cp "$src_scripts/lib/claude-version.sh"     "$clone/scripts/lib/claude-version.sh"
     # Overlaid, not committed — excluded from git status so is_dirty() (which
     # channel apply-mode's dirty-tree refusal relies on) never sees the test
     # harness's own script drop as a local edit.

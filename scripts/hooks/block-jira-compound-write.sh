@@ -59,7 +59,12 @@
 #     a group whose body spans separators (`false && { echo; node … create; }`), and
 #     group parens are blanked by then — so the two are indistinguishable here and the
 #     narrower rule would bounce a write bash never runs. Wrong block > miss in cost,
-#     so the whole tail goes.
+#     so the whole tail goes. One exception (HIMMEL-5332): an `&&` whose left
+#     operand is a bare `echo`/`true`/`:` (no pipe, redirect, group or substitution)
+#     always succeeds, so it is a `;` — `echo ';' && node … create` is NOT conditional.
+#     Masking also treats `\<newline>` as a continuation, `$'…'` as ANSI-C text and
+#     an unquoted `$NAME` (+ zsh `:x`/`[…]`) as possibly empty, so a word can no
+#     longer hide the CLI path from the scanner.
 #   * Function DEFINITIONS — a definition anywhere disables detection for the WHOLE
 #     command, so `f(){ :; }; node … create …` (an unconditional write after one) and
 #     `deploy() { node … create; }; deploy` (define-then-invoke, which really writes)
@@ -166,6 +171,7 @@ split_bytes() {
 
 quote_mask() {
     local s="$1" n i c nx st out top pv hd hd_set ln j hd_q hd_dash ad dq LC_ALL=C
+    local esc_end=-1 hx ev ch nx2 bl nul=0 cpv="" cpi=-1
     local -a SC
     local -a stk
     local sp=0
@@ -191,7 +197,9 @@ quote_mask() {
                 '{') ad=$((ad + 1)) ;;
                 '}') ad=$((ad - 1)); [ "$ad" -le 0 ] && st=0 ;;
             esac
-            out+=" "; i=$((i + 1)); continue
+            # HIMMEL-5332: emit nothing — the expansion may be empty, so `n${Z}ode`
+            # is the word `node`; a blank would split it into `n` and `ode`.
+            i=$((i + 1)); continue
         fi
         if [ "$st" = 5 ]; then
             # Inside ARITHMETIC — `$((…))` or the `((…))` command. Bash EVALUATES
@@ -310,13 +318,85 @@ quote_mask() {
             out+=" "; i=$((i + 1)); continue
         fi
         # --- st=0: code ---
-        if [ "$c" = "\\" ]; then out+="  "; i=$((i + 2)); continue; fi
+        if [ "$c" = "\\" ]; then
+            # HIMMEL-5332: a backslash-newline is a LINE CONTINUATION — bash deletes
+            # it, so `n\<NL>ode` is the one word `node`. Emit nothing, or the two
+            # halves read as two words. Any other escape is one literal character
+            # (blanked). esc_end marks the first byte after the escape: a `#` there
+            # follows a word character (`a\ #b`, `\;#b`), so it opens no comment.
+            # A `#` right after a continuation is a comment only if the byte BEFORE
+            # the continuation was a boundary: cpv carries that byte forward.
+            if [ "$nx" = $'\n' ]; then
+                # An escaped byte before the continuation (`a\ \<NL>#b`) is word
+                # text, never a boundary, whatever character it was.
+                if [ "$i" = "$cpi" ]; then :
+                elif [ "$i" = "$esc_end" ]; then cpv="x"
+                else cpv="$pv"; fi
+                i=$((i + 2)); cpi=$i; continue
+            fi
+            out+="  "; i=$((i + 2)); esc_end=$i; continue
+        fi
+        # HIMMEL-5332: `$'...'` is ANSI-C quoting. A backslash escapes a quote there
+        # (`$'it\'s'` is ONE string, not one closed at the `\'`), and bash DECODES
+        # it: `$'node'` and `$'\x6eode'` are the word `node`. Emit the decoded text,
+        # keeping only characters that cannot act as shell syntax; every other one (a
+        # space, `;`, `$`, a quote, ...) becomes `_`, so the span stays ONE inert word
+        # and cannot forge a separator. An unterminated span is a syntax error (nothing
+        # runs): unparseable, fail open like any unbalanced quote.
+        if [ "$c" = '$' ] && [ "$nx" = "'" ]; then
+            i=$((i + 2)); nul=0
+            while :; do
+                [ "$i" -lt "$n" ] || return 1
+                c="${SC[i]-}"
+                if [ "$c" = "'" ]; then i=$((i + 1)); break; fi
+                ch="$c"
+                if [ "$c" = "\\" ]; then
+                    ev="${SC[i + 1]-}"
+                    ch="_"; j=$((i + 2)); hx=""
+                    case "$ev" in
+                        x|u|U)
+                            case "$ev" in x) nx2=2 ;; u) nx2=4 ;; *) nx2=8 ;; esac
+                            while [ "${#hx}" -lt "$nx2" ]; do
+                                case "${SC[j]-}" in [0-9A-Fa-f]) hx+="${SC[j]}"; j=$((j + 1)) ;; *) break ;; esac
+                            done
+                            [ -n "$hx" ] && ch=$((16#$hx)) ;;
+                        [0-7])
+                            hx="$ev"
+                            while [ "${#hx}" -lt 3 ]; do
+                                case "${SC[j]-}" in [0-7]) hx+="${SC[j]}"; j=$((j + 1)) ;; *) break ;; esac
+                            done
+                            ch=$(( 8#$hx & 255 )) ;;   # bash keeps the low byte: \556 is \156
+                        c) j=$((i + 3))     # \cX is a control byte; X of @ or backtick is NUL
+                           case "${SC[i + 2]-}" in '@'|'`') ch=0 ;; esac ;;
+                        '') j=$((i + 1)) ;;
+                    esac
+                    # A NUL escape ends the string in bash (node followed by NUL is `node`).
+                    [ "$ch" = 0 ] && nul=1
+                    case "$ch" in
+                        *[!0-9]*|'') ch="_" ;;
+                        *) if [ "$ch" -gt 32 ] && [ "$ch" -lt 127 ]; then
+                               printf -v ch '%b' "\\0$(printf '%o' "$ch")"
+                           else ch="_"; fi ;;
+                    esac
+                    i=$j
+                else
+                    i=$((i + 1))
+                fi
+                [ "$nul" = 1 ] && continue
+                case "$ch" in
+                    [A-Za-z0-9/._:-]) out+="$ch" ;;
+                    *) out+="_" ;;
+                esac
+            done
+            continue
+        fi
         case "$c" in
             "'") st=1; out+=" "; i=$((i + 1)); continue ;;
             '"') st=2; out+=" "; i=$((i + 1)); continue ;;
         esac
         # A `#` starting a word begins a comment — data to end of line.
-        if [ "$c" = '#' ] && [ "$pv" != "$c" ]; then
+        if [ "$i" = "$cpi" ]; then pv="$cpv"; fi
+        if [ "$c" = '#' ] && [ "$pv" != "$c" ] && [ "$i" != "$esc_end" ]; then
             case "$pv" in
                 ''|' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')')
                     while [ "$i" -lt "$n" ] && [ "${SC[i]-}" != $'\n' ]; do
@@ -415,7 +495,7 @@ quote_mask() {
         # this, a `;` inside one (`echo ${x:-a; node …/index.js create --title y}`)
         # split off a bogus statement that read as a real write and got bounced.
         if [ "$c" = '$' ] && [ "$nx" = '{' ]; then
-            ad=1; st=6; out+="  "; i=$((i + 2)); continue
+            ad=1; st=6; i=$((i + 2)); continue
         fi
         # Arithmetic first: `$((` is arithmetic EXPANSION, not `$(` around a subshell,
         # and a bare `((` is the arithmetic COMMAND. Both evaluate, neither executes.
@@ -433,6 +513,45 @@ quote_mask() {
             SUBST_SEEN=1
             if [ "$pv" = '=' ]; then stk[sp]="0P"; else stk[sp]="0p"; fi
             sp=$((sp + 1)); out+=""$'\n'" "; i=$((i + 2)); continue
+        fi
+        # HIMMEL-5332: a bare `$NAME` / `$1` / `$@` may expand to NOTHING, so the word
+        # it prefixes or stands beside is still the command (`$V node ...`, `$V${Z}node
+        # ...` run node when V and Z are unset). Blank it like `${...}` above. The zsh
+        # modifiers (`$V:t`, `$V:r`) and subscript (`$V[1,-3]`) are cut with the name
+        # for the same reason: the station shell is zsh, where they can leave it empty.
+        # A name bound to the CLI path was rewritten to a token before this scan.
+        if [ "$c" = '$' ]; then
+            j=$((i + 1)); bl=0
+            case "${SC[j]-}" in
+                [A-Za-z_])
+                    while [ "$j" -lt "$n" ]; do
+                        case "${SC[j]-}" in [A-Za-z0-9_]) j=$((j + 1)) ;; *) break ;; esac
+                    done
+                    bl=1 ;;
+                [1-9@*]) j=$((j + 1)); bl=1 ;;
+            esac
+            if [ "$bl" = 1 ]; then
+                while :; do
+                    case "${SC[j]-}" in
+                        ':') case "${SC[j + 1]-}" in
+                                 [A-Za-z]) j=$((j + 2)); continue ;;
+                             esac ;;
+                        '[') nx2=$((j + 1))
+                             while [ "$nx2" -lt "$n" ]; do
+                                 case "${SC[nx2]-}" in
+                                     ']') break ;;
+                                     ' '|$'\t'|$'\n'|';'|'&'|'|'|'"'|"'"|'$'|'`') nx2=$n; break ;;
+                                 esac
+                                 nx2=$((nx2 + 1))
+                             done
+                             if [ "$nx2" -lt "$n" ]; then j=$((nx2 + 1)); continue; fi ;;
+                    esac
+                    break
+                done
+                # Emit nothing: the expansion may be empty, so `n$@ode` is the word `node`.
+                i=$j
+                continue
+            fi
         fi
         # `name=(` opens an ARRAY assignment: its words are DATA, not a command.
         if [ "$c" = '(' ] && [ "$pv" = '=' ]; then
@@ -703,7 +822,36 @@ has_jira_write() {
     # them. Undetected = the pre-HIMMEL-1077 status quo; wrong guidance = a real
     # unwanted mutation. The incident's own shape (`;`-chained, `$(…)`-interpolated)
     # is unconditional and stays fully in scope.
-    t="${1//&&/$'\001'}"
+    # HIMMEL-5332: an `&&` whose left operand is a provably-succeeding simple command
+    # (`echo ...`, `true`, `:`) does not condition the right side: `echo ';' && node
+    # ... create` runs the write whatever `echo` printed. It is UNCONDITIONAL, so it
+    # gets the `;` treatment. Left operand = the text since the last `;`/`&`/newline,
+    # with no pipe, redirect (a redirect target can fail), group or substitution in
+    # it. An earlier non-qualifying `&&` makes everything after it conditional too, so
+    # the first one that fails the test ends the rewrite and the truncation applies.
+    local rest="$1" head lseg lok
+    t=""
+    while :; do
+        case "$rest" in *'&&'*) ;; *) break ;; esac
+        head="${rest%%&&*}"; rest="${rest#*&&}"
+        lseg="${head##*[;&$'\n']}"
+        lseg="${lseg#"${lseg%%[![:space:]]*}"}"
+        lok=0
+        case "$lseg" in
+            echo|echo[[:space:]]*|true|true[[:space:]]*|:|:[[:space:]]*)
+                case "$lseg" in
+                    *['|<>(){}`']*|*$'\001'*) ;;
+                    *) lok=1 ;;
+                esac ;;
+        esac
+        if [ "$lok" = 1 ]; then
+            t="$t$head"$'\n'
+        else
+            t="$t$head&&$rest"; rest=""; break
+        fi
+    done
+    t="$t$rest"
+    t="${t//&&/$'\001'}"
     t="${t//||/$'\001'}"
     # Everything from the FIRST conditional operator onward is out of scope, whole
     # stop. A conditional RHS can be a GROUP whose body spans separators

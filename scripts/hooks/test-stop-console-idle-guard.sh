@@ -289,6 +289,27 @@ fi
 out="$(run_guard "$CONSOLE_PAYLOAD")"
 if is_block "$out"; then ok "(h) paired control: leg lock removed -> block again (same fixture, leg count is the only variable)"; else bad "(h) paired control: expected block once the leg lock is gone, got: $out"; fi
 
+# --- HIMMEL-5541: a leg lock past its TTL whose owner is PROVABLY dead is not a
+# held leg -- nothing will message this console from it -- so the stop blocks.
+# RED control (pre-fix hook): this fixture allowed. Paired: the same lock with
+# an owner pid that is ALIVE (this test shell) still allows, whatever its age.
+dead_pid_sh="$(sh -c 'echo $$')"   # the shell exits at once: a pid that is gone
+fixture_host="$(hostname 2>/dev/null)"
+if ! leg_lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" acquire "$LEG_DOC" 2>&1)"; then
+    echo "setup: could not acquire the dead-owner fixture lock: $leg_lock_out" >&2
+    exit 1
+fi
+rm -f "$LEG_LOCKDIR/liveness"
+printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    "$fixture_host" "$dead_pid_sh" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
+out="$(run_guard "$CONSOLE_PAYLOAD")"
+if is_block "$out"; then ok "(DEAD) past-TTL leg lock with a dead owner is not counted as held -> block"; else bad "(DEAD) dead-owner leg lock -> expected block, got: $out"; fi
+printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    "$fixture_host" "$$" "$fixture_host" "$LEG_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$LEG_LOCKDIR/owner.json"
+out="$(run_guard "$CONSOLE_PAYLOAD")"
+if is_block "$out"; then bad "(ALIVE) past-TTL leg lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL leg lock with a live owner pid is still held -> allow"; fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" >/dev/null 2>&1
+
 # --- HIMMEL-4567: no live console-wait.sh waiter blocks, whatever the legs --
 # console-wait.sh is the console's one wake source and exits after each WAKE,
 # so a console that ends its turn without re-arming it stays deaf even with

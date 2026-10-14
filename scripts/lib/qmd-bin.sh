@@ -72,9 +72,11 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # `fork` block keeps /fork-resync auditing the delta meanwhile.
 # The pin is the tip of origin/himmel/pin-http-auth (HIMMEL-5002: the former pin
 # 932839a, the tip of fix/launcher-forward-signals, plus the HTTP bearer-token
-# commit of fork PR #14), not fork main.
+# commit of fork PR #14), not fork main. HIMMEL-4324: the pin is now the merge
+# commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
+# HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-791fdf8ae5dfc93d442a586a5eb8dc29f51d8e90}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-b1858ca1c052a8e3249038c5ff63bf4388855b87}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

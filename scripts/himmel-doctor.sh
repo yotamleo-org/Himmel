@@ -47,6 +47,15 @@ REPO_ROOT="$STATION_ROOT"
 # shellcheck source=lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/handover-path.sh"
+# The station/--root checkout may predate this lib (a leg testing its own
+# branch, an older primary): fall back to the lib beside this script.
+# shellcheck source=lib/claude-version.sh
+# shellcheck disable=SC1091
+if [ -f "$REPO_ROOT/scripts/lib/claude-version.sh" ]; then
+    . "$REPO_ROOT/scripts/lib/claude-version.sh"
+else
+    . "$SELF_DIR/lib/claude-version.sh"
+fi
 
 CLAUDE_DIR_R="${CLAUDE_DIR:-${HOME:-}/.claude}"
 SETTINGS="$CLAUDE_DIR_R/settings.json"
@@ -4071,26 +4080,57 @@ check_c61_codex_cli() {
     fi
 }
 
-# --- C62-vm-runner (HIMMEL-5037) -----------------------------------------------
+# --- C62-oxlint-runner: can the oxlint pre-commit gates run? (HIMMEL-5529) ------
+# check-oxlint-complexity.sh / check-oxlint-hardening.sh run oxlint through
+# `bunx`, falling back to `bun x`; with neither they fail OPEN with only a
+# scrolled-past WARN, so every commit silently skips both gates. bun installed
+# without a bunx symlink is fine (the gates use `bun x`); only no bun at all WARNs.
+# Test seams: HIMMEL_DOCTOR_BUNX / HIMMEL_DOCTOR_BUN (commands to probe).
+check_c62_oxlint_runner() {
+    local bunx_bin="${HIMMEL_DOCTOR_BUNX:-bunx}" bun_bin="${HIMMEL_DOCTOR_BUN:-bun}"
+    if command -v "$bunx_bin" >/dev/null 2>&1; then
+        emit OK C62-oxlint-runner "oxlint gates run via bunx"
+    elif command -v "$bun_bin" >/dev/null 2>&1; then
+        emit OK C62-oxlint-runner "oxlint gates run via 'bun x' (bunx not on PATH)"
+    else
+        emit WARN C62-oxlint-runner "neither bunx nor bun on PATH — the oxlint complexity and hardening commit gates fail open (skipped on every commit)" \
+            "install bun (curl -fsSL https://bun.sh/install | bash) and put ~/.bun/bin on PATH"
+    fi
+}
+
+# --- C63-claude-cli: claude below the console-launch floor (HIMMEL-5501) ------
+# The floor is the one constant in scripts/lib/claude-version.sh, shared with the
+# launch preflight and himmel update. Read-only; /himmel-update does the upgrade.
+check_c63_claude_cli() {
+    local bin="${DOCTOR_CLAUDE_BIN:-claude}" rc=0
+    claude_floor_check "$bin" || rc=$?
+    case "$rc" in
+        0) emit OK C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the console-launch minimum $CLAUDE_MIN_VERSION" ;;
+        1) emit WARN C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that console and leg launches need" "claude update  (or /himmel-update)" ;;
+        *) emit INFO C63-claude-cli "claude CLI not found or its version unreadable — floor not checked" ;;
+    esac
+}
+
+# --- C64-vm-runner (HIMMEL-5037) -----------------------------------------------
 # The VM CI runner's health: snapshot present, NAT loopback off, fork-approval
 # policy still all_external_contributors, no DEAD/STUCK units. The probes live in
 # vm-runner.sh doctor (TSV: SEV, id, msg); skipped there when no VM exists.
-check_c62_vm_runner() {
+check_c64_vm_runner() {
     local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/console-kit/vm-runner.sh}" rows sev id msg
     if [ ! -f "$runner" ]; then
-        emit INFO C62-vm-runner "vm-runner.sh not found — not checked"
+        emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
         return
     fi
     rows="$(bash "$runner" doctor 2>/dev/null)" || true
     if [ -z "$rows" ]; then
-        emit INFO C62-vm-runner "vm-runner.sh doctor printed nothing — not checked"
+        emit INFO C64-vm-runner "vm-runner.sh doctor printed nothing — not checked"
         return
     fi
     while IFS="$(printf '\t')" read -r sev id msg; do
         case "$sev" in
-            OK|INFO) emit "$sev" C62-vm-runner "$msg" ;;
-            WARN) emit WARN C62-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh status" ;;
-            FAIL) emit FAIL C62-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh off, then fix and re-run on" ;;
+            OK|INFO) emit "$sev" C64-vm-runner "$msg" ;;
+            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh status" ;;
+            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh off, then fix and re-run on" ;;
         esac
     done <<EOF_ROWS
 $rows
@@ -4160,7 +4200,9 @@ check_c58_mcp_sdk_v1
 check_c59_codex_bank_cache
 check_c60_hermes_origin
 check_c61_codex_cli
-check_c62_vm_runner
+check_c62_oxlint_runner
+check_c63_claude_cli
+check_c64_vm_runner
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 

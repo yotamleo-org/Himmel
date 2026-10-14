@@ -173,5 +173,24 @@ check "a compound command stays an error unless every segment resolves: check-ci
 check "a refusal rc (merge-on-green 17) and an unlisted rc (check-ci 9) stay error/Bash" '[ "$(jq "[.failures[] | select(.class == \"error/Bash\")] | .[0].count" "$TMP/ec.json")" = 6 ]'
 check "no failure row exists for a result or retry rc, so the router never sees one" 'jq -e "[.failures[] | select(.failure == \"error\" or .failure == \"suite\")] | map(.count) | add == 7" "$TMP/ec.json" >/dev/null'
 
+echo "11. exploration cost: weighted tokens before the first edit (HIMMEL-5516)"
+# fixtures/exploration.jsonl: Read (2150) + Grep (2300, one message streamed over two lines) + the Edit's own message (3450)
+# = 7900 weighted (cache_read x0.1, cache_creation x1); a 500 subagent turn before the cut; a 99999 turn after it.
+S11=5516e0a1-0000-4000-8000-000000000001
+cp "$FX/exploration.jsonl" "$TMP/$S11.jsonl"
+digest "$TMP/$S11.jsonl" >"$TMP/ex.json" 2>"$TMP/ex.err" || bad "digest of exploration.jsonl exits 0: $(head -c 300 "$TMP/ex.err")"
+check "tokens are the weighted sum up to and including the first Edit's message" 'jq -e ".exploration.tokens == 7900" "$TMP/ex.json" >/dev/null'
+check "Read and Bash cat are 2 reads, Grep and Bash git grep are 2 searches, cut by an edit" 'jq -e ".exploration | .reads == 2 and .searches == 2 and .cut == \"edit\"" "$TMP/ex.json" >/dev/null'
+check "subagent turns before the cut are counted apart and never added to tokens" 'jq -e ".exploration.sub_tokens == 500" "$TMP/ex.json" >/dev/null'
+# A git commit cuts like an edit; a session with neither reports cut "none" and the whole-session sum.
+sed -e '/toolu_x3/d' -e 's/"name": "Read", "input": {"file_path": "\/b"}/"name": "Bash", "input": {"command": "git commit -m x"}/' "$TMP/$S11.jsonl" >"$TMP/$S11.c.jsonl"
+mkdir -p "$TMP/ex2" && mv "$TMP/$S11.c.jsonl" "$TMP/ex2/$S11.jsonl"
+digest "$TMP/ex2/$S11.jsonl" >"$TMP/ex2.json" 2>/dev/null || bad "the commit-cut digest exits 0"
+check "a git commit tool call is the cut when no edit came first" 'jq -e ".exploration | .cut == \"commit\" and .tokens == 4450 + 100000" "$TMP/ex2.json" >/dev/null'
+grep -v '"name": "Edit"' "$TMP/$S11.jsonl" | grep -v 'toolu_x4' | grep -v 'msg_x4' >"$TMP/ex3.jsonl"
+mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
+digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"
+check "no edit and no commit reports cut none" 'jq -e ".exploration.cut == \"none\"" "$TMP/ex3.json" >/dev/null'
+
 echo "test-leg-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

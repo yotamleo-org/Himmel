@@ -231,6 +231,7 @@ rc=0; out=$(run bash "$SCRIPT" swap --copy "$H/elsewhere/c.sqlite" 2>&1) || rc=$
 assert_rc "swap refuses a copy outside the live index's directory" 2 "$rc"
 rc=0; out=$(run bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?
 assert_rc "swap succeeds" 0 "$rc"
+assert_contains "swap tells the operator not to start qmd by hand" "do not start qmd by hand until the swap finishes" "$out"
 assert_contains "the live index now holds qwen" "$QWEN" "$(sqlite3 "$(IDX)" 'select distinct model from content_vectors')"
 assert_contains "swap flipped the config" "embed: $QWEN" "$(cat "$(CFG)")"
 if [ ! -e "$copy" ]; then pass "the copy was renamed into place"; else fail "the copy was renamed into place"; fi

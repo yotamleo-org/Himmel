@@ -16,7 +16,7 @@ set -uo pipefail
 # under --profile leg-impl, HIMMEL-2940) must not silently turn every
 # unmarked case into a lean-leg case. Only the two explicit lean cases below
 # set it themselves.
-unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG 2>/dev/null || true
+unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG CLAUDE_PROJECT_DIR 2>/dev/null || true
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -319,6 +319,55 @@ if [ "$rc5b" = 0 ] && grepq "$out5b" -F 'digest not loaded'; then
     pass "HIMMEL_LEAN_LEG=0 -> today's pointer still injected (fail-open)"
 else
     fail "lean guard is not fail-open: rc=$rc5b out='$out5b'"
+fi
+
+# --- Case 6 (HIMMEL-1030): branch comes from the SESSION worktree, not HIMMEL_REPO
+# HIMMEL_REPO is the canonical checkout (stays on main); the session runs in a
+# ticket worktree. The hook must resolve the branch from the session's dir:
+# CLAUDE_PROJECT_DIR, else the SessionStart payload's cwd. The "worktree" is a
+# throwaway git repo on a ticket branch; HERMETIC_ROOT is not a git repo (its
+# own branch resolves to empty -> digest), so a card proves the session dir won.
+WT="$TMP/ticket-wt"; mkdir -p "$WT"
+git -C "$WT" init -q 2>/dev/null
+git -C "$WT" symbolic-ref HEAD refs/heads/feat/himmel-9-wt
+state6="$TMP/s6"; seed_ledger "$state6"; touch "$state6/.refreshed-at"
+printf '{"hook_event_name":"SessionStart","cwd":"%s"}\n' "$WT" > "$TMP/payload6.json"
+out6="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6" \
+    HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" <"$TMP/payload6.json" 2>/dev/null)"; rc6=$?
+if [ "$rc6" = 0 ] && grepq "$out6" -F '# HIMMEL-9' && ! grepq "$out6" -F 'digest not loaded'; then
+    pass "payload cwd on a ticket worktree -> that ticket's card (not the canonical checkout's digest)"
+else
+    fail "payload cwd branch ignored: rc=$rc6 out='$out6'"
+fi
+if command -v jq >/dev/null 2>&1; then
+    WTQ="$TMP/ticket\"wt"; mkdir -p "$WTQ"
+    git -C "$WTQ" init -q 2>/dev/null
+    git -C "$WTQ" symbolic-ref HEAD refs/heads/feat/himmel-9-wt
+    state6q="$TMP/s6q"; seed_ledger "$state6q"; touch "$state6q/.refreshed-at"
+    printf '{"hook_event_name":"SessionStart","cwd":"%s"}\n' "${WTQ//\"/\\\"}" > "$TMP/payload6q.json"
+    out6q="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6q" \
+        HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" <"$TMP/payload6q.json" 2>/dev/null)"; rc6q=$?
+    if [ "$rc6q" = 0 ] && grepq "$out6q" -F '# HIMMEL-9' && ! grepq "$out6q" -F 'digest not loaded'; then
+        pass "payload cwd with an escaped quote is decoded -> that ticket's card"
+    else
+        fail "escaped-quote cwd not decoded: rc=$rc6q out='$out6q'"
+    fi
+fi
+state6b="$TMP/s6b"; seed_ledger "$state6b"; touch "$state6b/.refreshed-at"
+out6b="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6b" CLAUDE_PROJECT_DIR="$WT" \
+    HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" </dev/null 2>/dev/null)"; rc6b=$?
+if [ "$rc6b" = 0 ] && grepq "$out6b" -F '# HIMMEL-9' && ! grepq "$out6b" -F 'digest not loaded'; then
+    pass "CLAUDE_PROJECT_DIR on a ticket worktree -> that ticket's card"
+else
+    fail "CLAUDE_PROJECT_DIR branch ignored: rc=$rc6b out='$out6b'"
+fi
+state6c="$TMP/s6c"; seed_ledger "$state6c"; touch "$state6c/.refreshed-at"
+out6c="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6c" \
+    HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" </dev/null 2>/dev/null)"; rc6c=$?
+if [ "$rc6c" = 0 ] && grepq "$out6c" -F 'digest not loaded'; then
+    pass "no session dir at all -> falls back to HIMMEL_REPO (digest), exit 0"
+else
+    fail "no-session-dir fallback broke: rc=$rc6c out='$out6c'"
 fi
 
 echo "---"

@@ -47,6 +47,8 @@
 # sum reaches the cap, and each agent call gets the remainder as
 # --max-budget-usd. On a subscription lane that figure is the API-price
 # equivalent, not money spent; the bank reading is the subscription cost.
+# A sweep that stops because a task's cost is unknown exits 76 (the ledger row
+# is still written, status partial); a budget-cap stop exits 0.
 #
 # The api lane (HIMMEL-4986): the agent runs through scripts/api-lane/claude-api.sh
 # on the API credit of HIMMEL_API_ACCOUNT, never on subscription auth. It needs
@@ -88,7 +90,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
-usage() { sed -n '2,64p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '2,66p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; done; }
@@ -118,9 +120,16 @@ materialize() {
   git -C "$dir" rev-parse HEAD
 }
 
-# Redact every model and lane name before the judge sees a byte.
+# Redact every model and lane name before the judge sees a byte, and the literal
+# --model / --judge-model values first (a 1-2 character value would mangle the packet).
 redact() {
-  sed -E 's/(anthropic|claude|opus|sonnet|haiku|fable|gpt[-_.a-z0-9]*|codex|claudex|openai|deepseek|openrouter|gemini|glm|kimi|qwen|llama|mistral)/[redacted]/Ig; s/\bnative\b/[redacted]/Ig;s/\[redacted\]([-_.]*[0-9][-_.0-9]*)?/[redacted]/g'
+  local v esc="" x
+  for v in "${MODEL:-}" "${JUDGE_MODEL:-}"; do
+    [ "${#v}" -ge 3 ] || continue
+    x="$(printf '%s' "$v" | sed 's/[][\.*^$/|(){}+?&]/\\&/g')"
+    esc="${esc}s/$x/[redacted]/Ig;"
+  done
+  sed -E "${esc}"'s/(anthropic|claude|opus|sonnet|haiku|fable|gpt[-_.a-z0-9]*|codex|claudex|openai|deepseek|openrouter|gemini|glm|kimi|qwen|llama|mistral)/[redacted]/Ig; s/\bnative\b/[redacted]/Ig;s/\[redacted\]([-_.]*[0-9][-_.0-9]*)?/[redacted]/g'
 }
 
 bank_read() { # prints "<token> <five_hour>"
@@ -238,6 +247,7 @@ judge() { # $1 file stem, $2 task, $3 worktree, $4 fixture sha, $5 agent report 
     cat "$TASKS/$task/prompt.md"
     printf '\n## The diff it produced\n\n```diff\n'
     git -C "$wt" diff --cached "$fix" | head -c 60000
+    [ "$(git -C "$wt" diff --cached "$fix" | wc -c)" -le 60000 ] || printf '\n[truncated at 60000 bytes]'
     printf '\n```\n\n## Its final report\n\n'
     cat "$report"
   } | redact >"$packet"
@@ -291,7 +301,6 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     fi
   )>"$OUT/$stem.result.json" 2>"$OUT/$stem.stderr"
   end="$(date +%s)"
-  bank1="$(bank_read)"; bank1="${bank1#* }"; met1="$(metered_read)"
   res="$OUT/$stem.result.json"
   jq -e . "$res" >/dev/null 2>&1 || echo '{"is_error":true,"subtype":"harness-no-json"}' >"$res"
   jq -r '.result // ""' "$res" >"$OUT/$stem.report.md"
@@ -323,6 +332,8 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     fi
   fi
   [ -n "$jres" ] || jres=null
+  # read after the judge, so the balance counts its spend
+  bank1="$(bank_read)"; bank1="${bank1#* }"; met1="$(metered_read)"
   if [ "$KEEP" -eq 0 ]; then git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1; fi
   jq -nc --arg run "$RUN_ID" --arg lane "$LANE" --arg model "$MODEL" --arg effort "$EFFORT" --arg task "$task" --argjson rep "$rp" \
     --arg base "$BASE_SHA" --arg fix "$fix" --argjson wall "$((end - start))" --arg b0 "$bank0" --arg b1 "$bank1" --arg m0 "$met0" --arg m1 "$met1" --argjson ac "$acost" \
@@ -488,7 +499,8 @@ cmd_run() {
     TRANSCRIPTS="${LQ_TRANSCRIPTS:-$HOME/.claude-codex/projects}"
   fi
   [ -z "$CONFIG" ] || apply_config "$CONFIG"
-  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$LANE-$(printf '%s' "$MODEL" | tr -c 'A-Za-z0-9.-' '_')"
+  # the pid keeps two runs started within one second apart (same lane and model)
+  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$LANE-$(printf '%s' "$MODEL" | tr -c 'A-Za-z0-9.-' '_')"
   OUT="${OUT:-$HOME/.himmel/eval/lane-quality/$RUN_ID}"
   mkdir -p "$OUT" || die "cannot create $OUT"
   OUT="$(cd "$OUT" && pwd)" || die "cannot resolve $OUT"
@@ -500,7 +512,7 @@ cmd_run() {
     [ -f "$TASKS/$t/prompt.md" ] || die "unknown task '$t'"
   done
   if [ "$DRY_RUN" -eq 1 ]; then api_dry_run "$tasks"; return 0; fi
-  SPENT=0; STATUS=ok
+  SPENT=0; STATUS=ok; UNKNOWN_COST=0
   echo "lane-quality: run $RUN_ID → $OUT"
   # Repeat by repeat, so a sweep cut short still covers every task evenly.
   for r in $(seq 1 "$REPS"); do
@@ -523,7 +535,7 @@ cmd_run() {
     esac
     if [ "$cost" = unknown ]; then
       echo "lane-quality: task '$t' left its cost unknown (agent or judge killed?); stopping the sweep, spend so far is a lower bound" >&2
-      STATUS=partial; break 2
+      STATUS=partial; UNKNOWN_COST=1; break 2
     fi
     SPENT="$(awk -v s="$SPENT" -v c="${cost:-0}" 'BEGIN{printf "%.4f", s + c}')"
   done
@@ -536,25 +548,25 @@ cmd_run() {
       --judge-model "$( [ "$NO_JUDGE" -eq 1 ] && echo none || echo "$JUDGE_MODEL" )" \
       || echo "lane-quality: WARNING eval-runs row not written" >&2
   fi
+  # a sweep cut short on unknown cost has an unbounded spend: not a success
+  [ "$UNKNOWN_COST" -eq 0 ] || exit 76
 }
 
 cmd_table() {
   [ $# -ge 1 ] || die "table needs at least one run directory"
-  local d files=""
-  for d in "$@"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; files="$files $d/runs.jsonl"; done
+  local d files=()
+  for d in "$@"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; files+=("$d/runs.jsonl"); done
   echo '| lane | model | task | accept | judge C/S/T/H | wall s | tool calls | compactions | cost USD | 5h bank | metered USD | denials perm/hook | peeked |'
   echo '|---|---|---|---|---|---|---|---|---|---|---|---|---|'
-  # shellcheck disable=SC2086
   jq -r '
     def n: if . == null then "?" else tostring end;
     "| \(.lane) | \(.model) | \(.task) | \(.accept_passed)/\(.accept_total)\(if .accept_ok then "" else " ✗" end) | "
     + (if .judge == null then "–" else "\(.judge.correctness)/\(.judge.scope_discipline)/\(.judge.test_quality)/\(.judge.honesty)" end)
     + " | \(.wall_s) | \(.tool_calls | n) | \(.compactions | n) | \(.cost_usd | n) | \(.bank_5h_before)→\(.bank_5h_after) | "
     + (if .metered_before == null then "–" else "\(.metered_before)→\(.metered_after)" end) + " | "
-    + "\(.permission_denials)/\(.hook_denials | n) | \(.peeked | n) |"' $files
+    + "\(.permission_denials)/\(.hook_denials | n) | \(.peeked | n) |"' "${files[@]}"
   echo
-  # shellcheck disable=SC2086
-  python3 "$HERE/lq_stats.py" summary $files
+  python3 "$HERE/lq_stats.py" summary "${files[@]}"
 }
 
 # calibration <run-dir>... [--judge2-model M] [--judge2-effort E] [--max-usd U]

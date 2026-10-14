@@ -553,6 +553,44 @@ const costSection = (() => {
     } catch { return ''; }
 })();
 
+// Exploration cost (HIMMEL-5516): the weighted tokens each session spent before its first
+// edit or commit, read from the digest markers leg_ledger.py leaves in
+// LEG_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
+// field, not tick data. Sessions that started in the last BOARD_EXPLORATION_HOURS (24) and
+// were cut by an edit or commit: fleet median, worst 5, and a FLAG on any session over
+// LEG_EXPLORATION_FLAG_TOKENS (100000). No such session, or an unreadable dir, renders
+// nothing and never fails the render; not part of the fingerprint.
+const explorationSection = (() => {
+    try {
+        const dir = process.env.LEG_DIGEST_STATE_DIR || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
+        const hours = Number.parseInt(process.env.BOARD_EXPLORATION_HOURS || '', 10);
+        const since = Date.now() - (hours > 0 ? hours : 24) * 3600 * 1000;
+        const limit = Number.parseInt(process.env.LEG_EXPLORATION_FLAG_TOKENS || '', 10);
+        const flagAt = limit > 0 ? limit : 100000;
+        const rows = [];
+        for (const name of readdirSync(dir)) {
+            if (!name.endsWith('.json')) continue;
+            let r;
+            try {
+                if (statSync(join(dir, name)).mtimeMs < since) continue;
+                r = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+            } catch { continue; }
+            const x = r && r.exploration;
+            if (!x || (x.cut !== 'edit' && x.cut !== 'commit') || !Number.isFinite(x.tokens) || x.tokens < 0) continue;
+            if (!(r.started_ts >= since)) continue;
+            rows.push({ id: name.slice(0, 8), model: typeof r.model === 'string' ? r.model : '?', tokens: x.tokens, reads: x.reads, searches: x.searches });
+        }
+        if (!rows.length) return '';
+        rows.sort((a, b) => b.tokens - a.tokens);
+        const asc = rows.map((r) => r.tokens).reverse(), m = asc.length >> 1;
+        const median = asc.length % 2 ? asc[m] : (asc[m - 1] + asc[m]) / 2;
+        const fmt = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v)));
+        const over = rows.filter((r) => r.tokens > flagAt).length;
+        const tr = rows.slice(0, 5).map((r) => `<tr data-session="${safe(r.id, 8)}"><td>${safe(r.id, 8)}</td><td>${safe(r.model, 40)}</td><td>${fmt(r.tokens)}</td><td>${Number.isFinite(r.reads) ? r.reads : '-'}r ${Number.isFinite(r.searches) ? r.searches : '-'}s</td><td>${r.tokens > flagAt ? 'OVER' : ''}</td></tr>`).join('\n');
+        return `<section data-exploration="${rows.length}" data-exploration-over="${over}"><h2>Exploration cost</h2><p class="sub">${rows.length} session${rows.length === 1 ? '' : 's'} · median ${fmt(median)} tokens before first edit · ${over} over ${fmt(flagAt)}</p><div class="tscroll"><table><tr><th>session</th><th>model</th><th>tokens</th><th>reads/searches</th><th>flag</th></tr>\n${tr}</table></div></section>`;
+    } catch { return ''; }
+})();
+
 // Failure classes this shift (HIMMEL-4670 P4, spec section 5.2): the leg-failures
 // ledger (HIMMEL_LEG_FAILURES_LEDGER, the seam leg_ledger.py writes through) since
 // the console lock's `started`, grouped by class -- distinct legs, events (sum of
@@ -691,6 +729,7 @@ ${ladder}
 </ul>
 </section>
 ${costSection}
+${explorationSection}
 ${failuresSection}
 ${flakesSection}
 ${panel('Needs the supervisor session', needRows, 'nothing waiting on the supervisor session')}

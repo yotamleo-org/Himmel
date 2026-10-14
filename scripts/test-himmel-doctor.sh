@@ -206,9 +206,11 @@ export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
 export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
 unset DOCTOR_CODEX_LATEST
-# Same for C62-vm-runner (HIMMEL-5037): never run the real vm-runner.sh doctor
+# Same for C64-vm-runner (HIMMEL-5037): never run the real vm-runner.sh doctor
 # (it would probe the operator's VirtualBox and GitHub); absent seam = INFO skip.
 export DOCTOR_VM_RUNNER="$FAKEROOT/no-such-vm-runner.sh"
+# C63 (HIMMEL-5501): never run the operator's real claude; absent seam = INFO.
+export DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 
 # Keep unrelated cases from probing the operator's real qmd 'skills'
 # collection for C44 (HIMMEL-2222): most invocations below never override
@@ -6428,25 +6430,62 @@ if grepq "$out" -F 'OK   C61-codex-cli'; then pass "C61 newer -> OK"; else fail 
 echo "== C61-codex-cli: codex absent -> INFO =="
 out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+
+# --- C63-claude-cli (HIMMEL-5501): installed claude below the console-launch floor ---
+# Fixture shape copied from this station's real `claude --version` output.
+printf '#!/usr/bin/env bash\necho "2.1.296 (Claude Code)"\n' > "$c60_t/claude-new"; chmod +x "$c60_t/claude-new"
+printf '#!/usr/bin/env bash\necho "2.1.200 (Claude Code)"\n' > "$c60_t/claude-old"; chmod +x "$c60_t/claude-old"
+c62_run() { DOCTOR_CLAUDE_BIN="$1" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C63-claude-cli: below the floor -> WARN naming claude update (RED) =="
+out="$(c62_run "$c60_t/claude-old")"
+if grepq "$out" -F 'WARN C63-claude-cli' && grepq "$out" -F 'claude update'; then pass "C63 below -> WARN"; else fail "C63 below -> $(printf '%s' "$out" | grep -A1 C63)"; fi
+
+echo "== C63-claude-cli: at/above the floor -> OK =="
+out="$(c62_run "$c60_t/claude-new")"
+if grepq "$out" -F 'OK   C63-claude-cli'; then pass "C63 current -> OK"; else fail "C63 current -> $(printf '%s' "$out" | grep -A1 C63)"; fi
+
+echo "== C63-claude-cli: absent -> INFO, not a WARN =="
+out="$(c62_run "$c60_t/none")"
+if grepq "$out" -F 'INFO C63-claude-cli' && ! grepq "$out" -F 'WARN C63-claude-cli'; then pass "C63 absent -> INFO"; else fail "C63 absent -> $(printf '%s' "$out" | grep -A1 C63)"; fi
 rm -rf "$c60_t"
 
-# --- C62-vm-runner (HIMMEL-5037): rows come from vm-runner.sh doctor ---
-c62_t="$(mktemp -d)" || exit 1
-printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC62-vm-runner\tsnapshot ci-runner-v1 present\n"' 'printf "FAIL\tC62-vm-runner\trunner DEAD: variable on, no unit up\n"' > "$c62_t/runner-fail.sh"
-printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC62-vm-runner\tfork-approval policy all_external_contributors\n"' > "$c62_t/runner-ok.sh"
-c62_run() { DOCTOR_VM_RUNNER="$1" CLAUDE_DIR="$c62_t/claude" HOME="$c62_t/home" bash "$DOC" --no-color 2>&1; }
+# --- C64-vm-runner (HIMMEL-5037): rows come from vm-runner.sh doctor ---
+c64_t="$(mktemp -d)" || exit 1
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tsnapshot ci-runner-v1 present\n"' 'printf "FAIL\tC64-vm-runner\trunner DEAD: variable on, no unit up\n"' > "$c64_t/runner-fail.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tfork-approval policy all_external_contributors\n"' > "$c64_t/runner-ok.sh"
+c64_run() { DOCTOR_VM_RUNNER="$1" CLAUDE_DIR="$c64_t/claude" HOME="$c64_t/home" bash "$DOC" --no-color 2>&1; }
 
-echo "== C62-vm-runner: a FAIL row from vm-runner.sh doctor surfaces as FAIL =="
-out="$(c62_run "$c62_t/runner-fail.sh")"
-if grepq "$out" -F 'FAIL C62-vm-runner: runner DEAD' && grepq "$out" -F 'OK   C62-vm-runner: snapshot ci-runner-v1 present'; then pass "C62 FAIL row -> FAIL"; else fail "C62 FAIL row -> $(printf '%s' "$out" | grep C62)"; fi
+echo "== C64-vm-runner: a FAIL row from vm-runner.sh doctor surfaces as FAIL =="
+out="$(c64_run "$c64_t/runner-fail.sh")"
+if grepq "$out" -F 'FAIL C64-vm-runner: runner DEAD' && grepq "$out" -F 'OK   C64-vm-runner: snapshot ci-runner-v1 present'; then pass "C64 FAIL row -> FAIL"; else fail "C64 FAIL row -> $(printf '%s' "$out" | grep C64)"; fi
 
-echo "== C62-vm-runner: healthy rows -> OK, no FAIL =="
-out="$(c62_run "$c62_t/runner-ok.sh")"
-if grepq "$out" -F 'OK   C62-vm-runner: fork-approval' && ! grepq "$out" -F 'FAIL C62-vm-runner'; then pass "C62 ok -> OK"; else fail "C62 ok -> $(printf '%s' "$out" | grep C62)"; fi
+echo "== C64-vm-runner: healthy rows -> OK, no FAIL =="
+out="$(c64_run "$c64_t/runner-ok.sh")"
+if grepq "$out" -F 'OK   C64-vm-runner: fork-approval' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 ok -> OK"; else fail "C64 ok -> $(printf '%s' "$out" | grep C64)"; fi
 
-echo "== C62-vm-runner: runner script absent -> INFO =="
-out="$(c62_run "$c62_t/none.sh")"
-if grepq "$out" -F 'INFO C62-vm-runner' && ! grepq "$out" -F 'FAIL C62-vm-runner'; then pass "C62 absent -> INFO"; else fail "C62 absent -> $(printf '%s' "$out" | grep C62)"; fi
+echo "== C64-vm-runner: runner script absent -> INFO =="
+out="$(c64_run "$c64_t/none.sh")"
+if grepq "$out" -F 'INFO C64-vm-runner' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 absent -> INFO"; else fail "C64 absent -> $(printf '%s' "$out" | grep C64)"; fi
+rm -rf "$c64_t"
+
+# --- C62-oxlint-runner (HIMMEL-5529): can the oxlint commit gates run? ---
+c62_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c62.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c62_t/home"
+printf '#!/bin/sh\nexit 0\n' > "$c62_t/bun"; chmod +x "$c62_t/bun"
+c62_run() { HIMMEL_DOCTOR_BUNX="$1" HIMMEL_DOCTOR_BUN="$2" CLAUDE_DIR="$c62_t/home/claude" HOME="$c62_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C62-oxlint-runner: neither bunx nor bun -> WARN naming the fail-open + install remedy (RED) =="
+out="$(c62_run "$c62_t/no-bunx" "$c62_t/no-bun")"
+if grepq "$out" -F 'WARN C62-oxlint-runner' && grepq "$out" -F 'fail open' && grepq "$out" -F 'bun.sh/install'; then pass "C62 neither -> WARN"; else fail "C62 neither -> $(printf '%s' "$out" | grep -A1 C62)"; fi
+
+echo "== C62-oxlint-runner: bun without bunx -> OK via bun x (the station layout) =="
+out="$(c62_run "$c62_t/no-bunx" "$c62_t/bun")"
+if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'bun x'; then pass "C62 bun only -> OK"; else fail "C62 bun only -> $(printf '%s' "$out" | grep -A1 C62)"; fi
+
+echo "== C62-oxlint-runner: bunx present -> OK =="
+out="$(c62_run "$c62_t/bun" "$c62_t/no-bun")"
+if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'via bunx'; then pass "C62 bunx -> OK"; else fail "C62 bunx -> $(printf '%s' "$out" | grep -A1 C62)"; fi
 rm -rf "$c62_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

@@ -13,7 +13,7 @@
 #   vm-runner.sh status --tick   the one tick token (tick.sh's vmrun= field):
 #                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
-#                                for himmel-doctor's C62 check
+#                                for himmel-doctor's C64 check
 #
 # VM i is `himmel-ci-<i>`: VM 1 is the baked himmel-ci-1@ci-runner-v1
 # (`ci-runner.sh build`), every other VM a linked clone of that snapshot.
@@ -248,37 +248,37 @@ cmd_status() {
     done
 }
 
-# doctor — rows for himmel-doctor C62: runner health, snapshot, NAT, policy.
+# doctor — rows for himmel-doctor C64: runner health, snapshot, NAT, policy.
 cmd_doctor() {
     local vbm="${VBOXMANAGE_PATH:-/usr/bin/VBoxManage}" var tok policy i info
-    [ -x "$vbm" ] || command -v "$vbm" >/dev/null 2>&1 || { printf 'OK\tC62-vm-runner\tVirtualBox not installed (runner skipped)\n'; return; }
+    [ -x "$vbm" ] || command -v "$vbm" >/dev/null 2>&1 || { printf 'OK\tC64-vm-runner\tVirtualBox not installed (runner skipped)\n'; return; }
     if ! bounded "$vbm" showvminfo "$BASE_VM" --machinereadable >/dev/null 2>&1; then
-        printf 'OK\tC62-vm-runner\t%s not registered (VM runner not set up — skipped)\n' "$BASE_VM"
+        printf 'OK\tC64-vm-runner\t%s not registered (VM runner not set up — skipped)\n' "$BASE_VM"
         return
     fi
     if bounded "$vbm" snapshot "$BASE_VM" list --machinereadable 2>/dev/null | grep -q "^SnapshotName.*=\"$SNAPSHOT\""; then
-        printf 'OK\tC62-vm-runner\t%s@%s present\n' "$BASE_VM" "$SNAPSHOT"
+        printf 'OK\tC64-vm-runner\t%s@%s present\n' "$BASE_VM" "$SNAPSHOT"
     else
-        printf 'FAIL\tC62-vm-runner\t%s has no %s snapshot — bake it: bash scripts/vm/ci-runner.sh build\n' "$BASE_VM" "$SNAPSHOT"
+        printf 'FAIL\tC64-vm-runner\t%s has no %s snapshot — bake it: bash scripts/vm/ci-runner.sh build\n' "$BASE_VM" "$SNAPSHOT"
     fi
     i=1
     while [ "$i" -le "$MAX_VMS" ]; do
         info="$(bounded "$vbm" showvminfo "himmel-ci-$i" --machinereadable 2>/dev/null)" || { i=$((i + 1)); continue; }
         if printf '%s\n' "$info" | grep -qx 'VMState="running"' && ! printf '%s\n' "$info" | grep -qx 'localhostReachable="0"'; then
-            printf 'FAIL\tC62-vm-runner\thimmel-ci-%s is running with the station loopback reachable (NAT localhost-off lost)\n' "$i"
+            printf 'FAIL\tC64-vm-runner\thimmel-ci-%s is running with the station loopback reachable (NAT localhost-off lost)\n' "$i"
         fi
         i=$((i + 1))
     done
     policy="$(vmrun_policy)" || policy=""
     case "$policy" in
-        all_external_contributors) printf 'OK\tC62-vm-runner\tfork-PR approval policy is all_external_contributors\n' ;;
-        '') printf 'WARN\tC62-vm-runner\tfork-PR approval policy on %s unreadable (gh)\n' "$REPO" ;;
-        *) printf 'FAIL\tC62-vm-runner\tfork-PR approval policy on %s is %s, not all_external_contributors\n' "$REPO" "$policy" ;;
+        all_external_contributors) printf 'OK\tC64-vm-runner\tfork-PR approval policy is all_external_contributors\n' ;;
+        '') printf 'WARN\tC64-vm-runner\tfork-PR approval policy on %s unreadable (gh)\n' "$REPO" ;;
+        *) printf 'FAIL\tC64-vm-runner\tfork-PR approval policy on %s is %s, not all_external_contributors\n' "$REPO" "$policy" ;;
     esac
     tok="$(tick_token)"
     case "$tok" in
-        DEAD|STUCK) printf 'FAIL\tC62-vm-runner\trunner %s (variable on): bash scripts/handover/console-kit/vm-runner.sh status\n' "$tok" ;;
-        *) printf 'OK\tC62-vm-runner\trunner %s\n' "$tok" ;;
+        DEAD|STUCK) printf 'FAIL\tC64-vm-runner\trunner %s (variable on): bash scripts/handover/console-kit/vm-runner.sh status\n' "$tok" ;;
+        *) printf 'OK\tC64-vm-runner\trunner %s\n' "$tok" ;;
     esac
 }
 

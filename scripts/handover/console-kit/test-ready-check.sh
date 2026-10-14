@@ -71,6 +71,18 @@ case "$args" in
         printf '%s\n' "${STUB_MERGE_OIDS:-}" ;;
     *"api graphql"*)
         printf '%s %s %s\n' "${STUB_UNRESOLVED:-0}" "false" "null" ;;
+    *"api --paginate"*"/files"*'select(.status'*)
+        # run the script's own --jq filter over a files array, so the status filter is really exercised
+        printf '%s\n' "${STUB_FILE_STATUS:-}" | jq -R -n '[inputs | select(length > 0) | split(" ") | {status: .[0], filename: .[1]}]' \
+            | jq -r "${args#*--jq }" ;;
+    "api -H Accept: application/vnd.github.raw repos/"*"/contents/"*)
+        f="${args#*/contents/}"; f="${f%%\?ref=*}"
+        [ -f "${STUB_WF_DIR:-/nonexistent}/${f##*/}" ] || exit 1
+        cat "$STUB_WF_DIR/${f##*/}" ;;
+    "run list"*)
+        [ -z "${STUB_RUNS_FAIL:-}" ] || exit 1
+        w="${args#*--workflow }"; w="${w%% *}"
+        if [ -f "${STUB_RUNS_DIR:-/nonexistent}/$w.json" ]; then cat "$STUB_RUNS_DIR/$w.json"; else printf '[]'; fi ;;
     *"api --paginate"*"/files"*"filename"*)
         [ -n "${STUB_FILES_FAIL:-}" ] && exit 1
         printf '%s\n' "${STUB_FILES:-README.md}" ;;
@@ -129,6 +141,8 @@ run() {
         STUB_MERGE_OIDS="${STUB_MERGE_OIDS:-}" \
         STUB_FILES="${STUB_FILES:-$GREEN_FILES}" \
         STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" \
+        STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
+        STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
@@ -137,7 +151,7 @@ run() {
 }
 
 reset_stubs() {
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
     seed_ledger_ok
 }
 
@@ -631,6 +645,89 @@ contains "plugin removed by the PR: check 9 passes" "$out" "[PASS] 9."
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."
+
+# --- 10. HIMMEL-5591: a PR that changes a GitHub Actions workflow needs a
+# completed, successful workflow_dispatch run AT ITS HEAD. ci.yml has no push
+# trigger, so the dispatch run is the only pre-merge test of the non-PR path.
+# Fixtures are copied from the real environment: the workflow bodies are this
+# repo's own .github/workflows files at HEAD, the run row is the shape
+# `gh run list --workflow ci.yml --event workflow_dispatch --json
+# databaseId,status,conclusion,headSha,event,workflowName` printed.
+WF_REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
+WFDIR="$tmp/wf"; RUNDIR="$tmp/runs"
+mkdir -p "$WFDIR" "$RUNDIR"
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci.yml > "$WFDIR/ci.yml"
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/pr-title-lint.yml > "$WFDIR/pr-title-lint.yml"
+cp "$WFDIR/pr-title-lint.yml" "$WFDIR/new-thing.yml"
+real_run() {  # <status> <conclusion> <headSha>
+    printf '[{"conclusion":"%s","databaseId":38329960360,"event":"workflow_dispatch","headSha":"%s","status":"%s","workflowName":"CI"}]' "$2" "$3" "$1"
+}
+wf_run() {  # <files> [removed] -> rc/out
+    reset_stubs
+    STUB_FILES="$1"; STUB_FILE_STATUS="${2:-}"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"
+    rc=0; out="$(run)" || rc=$?
+}
+
+wf_run ".github/workflows/ci.yml"
+check "workflow PR, no dispatch run: exit 1" "$rc" "1"
+contains "workflow PR, no dispatch run: check 10 fails" "$out" "[FAIL] 10."
+contains "workflow PR, no dispatch run: prints the dispatch command" "$out" "gh workflow run ci.yml --ref"
+
+real_run completed success "$SHA" > "$RUNDIR/ci.yml.json"
+wf_run ".github/workflows/ci.yml"
+check "workflow PR, green dispatch at head: exit 0" "$rc" "0"
+contains "workflow PR, green dispatch at head: check 10 passes" "$out" "[PASS] 10."
+
+real_run completed success 915c81d1b19ee5df69793f327037e912a944957e > "$RUNDIR/ci.yml.json"
+wf_run ".github/workflows/ci.yml"
+check "workflow PR, dispatch at an OLDER sha: exit 1" "$rc" "1"
+contains "workflow PR, dispatch at an OLDER sha: check 10 fails" "$out" "[FAIL] 10."
+
+real_run completed failure "$SHA" > "$RUNDIR/ci.yml.json"
+wf_run ".github/workflows/ci.yml"
+check "workflow PR, failed dispatch at head: exit 1" "$rc" "1"
+contains "workflow PR, failed dispatch at head: check 10 fails" "$out" "[FAIL] 10."
+
+real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
+wf_run ".github/workflows/ci.yml"
+check "workflow PR, dispatch still running: exit 1" "$rc" "1"
+contains "workflow PR, dispatch still running: check 10 fails" "$out" "[FAIL] 10."
+
+real_run completed success "$SHA" > "$RUNDIR/ci.yml.json"
+reset_stubs; STUB_FILES=".github/workflows/ci.yml"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"; STUB_RUNS_FAIL=1
+rc=0; out="$(run)" || rc=$?
+check "workflow PR, run list errors: exit 1 (fail closed)" "$rc" "1"
+contains "workflow PR, run list errors: check 10 fails" "$out" "[FAIL] 10."
+
+: > "$GH_LOG"
+wf_run "scripts/handover/console-kit/ready-check.sh"
+check "non-workflow PR: exit 0" "$rc" "0"
+contains "non-workflow PR: check 10 not applicable" "$out" "[PASS] 10."
+notcontains "non-workflow PR: no run list issued" "$(cat "$GH_LOG")" "run list"
+
+wf_run ".github/workflows/new-thing.yml"
+check "workflow with no workflow_dispatch trigger: exit 1" "$rc" "1"
+contains "workflow with no workflow_dispatch trigger: check 10 fails" "$out" "[FAIL] 10."
+contains "workflow with no workflow_dispatch trigger: names the missing trigger" "$out" "no workflow_dispatch trigger"
+
+wf_run ".github/workflows/pr-title-lint.yml"
+check "exempted workflow without a trigger: exit 0" "$rc" "0"
+contains "exempted workflow without a trigger: check 10 passes" "$out" "[PASS] 10."
+
+wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
+contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
+
+# A workflow the PR ADDS (or renames to) is not on the default branch, and GitHub
+# only dispatches a workflow that exists there, so it cannot be dispatched yet.
+rm -f "$RUNDIR"/*.json
+cp "$WFDIR/ci.yml" "$WFDIR/brand-new.yml"
+wf_run ".github/workflows/brand-new.yml" "added .github/workflows/brand-new.yml"
+check "workflow added by the PR: exit 0" "$rc" "0"
+contains "workflow added by the PR: check 10 passes" "$out" "[PASS] 10."
+wf_run ".github/workflows/brand-new.yml" "renamed .github/workflows/brand-new.yml"
+contains "workflow renamed by the PR: check 10 passes" "$out" "[PASS] 10."
+wf_run ".github/workflows/brand-new.yml" "modified .github/workflows/brand-new.yml"
+check "workflow modified (not added) still needs a dispatch run: exit 1" "$rc" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

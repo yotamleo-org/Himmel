@@ -7,8 +7,8 @@
 # scripts/luna-vitals, scripts/himmel-run, and direct hook/observability JS.
 # dist/, node_modules/, and test fixtures are excluded.
 #
-# Zero tolerance applies to findings AND tool integrity: only a missing bunx is
-# fail-open. A runner error, missing findings JSON, or inconsistent root blocks
+# Zero tolerance applies to findings AND tool integrity: only a missing runner
+# (neither bunx nor `bun x`, HIMMEL-5529) is fail-open. A runner error, missing findings JSON, or inconsistent root blocks
 # the commit loudly rather than turning an unevaluated gate into a pass.
 set -uo pipefail
 
@@ -63,7 +63,13 @@ cd "$repo_root" || {
     exit 1
 }
 
-if ! command -v bunx >/dev/null 2>&1; then
+# bunx is bun's alias for `bun x`; some installs (e.g. ~/.bun/bin) ship only
+# `bun`, so fall back to it before failing open (HIMMEL-5529).
+if command -v bunx >/dev/null 2>&1; then
+    runner=(bunx)
+elif command -v bun >/dev/null 2>&1; then
+    runner=(bun x)
+else
     echo "WARN check-oxlint-hardening: bunx not found on PATH — skipping hardening gate (fail-open)" >&2
     exit 0
 fi
@@ -92,7 +98,7 @@ stderr_file=$(mktemp "${TMPDIR:-/tmp}/check-oxlint-hardening.XXXXXX") || {
 # Keep stdout isolated for strict JSON parsing. bunx may emit benign cache or
 # package-resolution diagnostics on stderr even when oxlint evaluated cleanly.
 # shellcheck disable=SC2086 # word-split on purpose: rule flags + directory/file list
-out=$(bunx "oxlint@$OXLINT_VERSION" -A all $warn_flags --promise-plugin \
+out=$("${runner[@]}" "oxlint@$OXLINT_VERSION" -A all $warn_flags --promise-plugin \
     --format json \
     --disable-nested-config \
     --ignore-pattern 'dist/**' \

@@ -80,14 +80,10 @@
 #   2  usage error / malformed verdict line / unresolvable or unsafe branch — NOTHING written
 #   3  not inside a git repo (cannot resolve --git-common-dir)
 #
-# Operator note: the standing allow-rule is a post-merge OPERATOR step (this
-# change does not touch .claude/settings.json). Permission-rule prefix
-# matching is LITERAL, and the runbook invokes this script by its ABSOLUTE
-# path (cwd may be an adopter repo, not this checkout) — so the relative rule
-# `Bash(bash scripts/cr/write-verdicts.sh:*)` never matches that invocation.
-# The operator needs BOTH rules: the relative form above, for any repo-root
-# invocation, AND the absolute form for their primary checkout —
-# `Bash(bash <primary-checkout>/scripts/cr/write-verdicts.sh:*)`.
+# Allow rule: permission-rule prefix matching is LITERAL. The himmel lane runs
+# the cwd-relative literal, which the shipped `gateAllow` rule
+# `Bash(bash scripts/cr/write-verdicts.sh:*)` matches (HIMMEL-4040, HIMMEL-3383,
+# HIMMEL-3495); no extra operator rule is needed (HIMMEL-2601).
 set -uo pipefail
 # HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac

@@ -377,6 +377,8 @@ fi
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/console-context.sh"
+# shellcheck source=../lib/claude-version.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/dedupe-path.sh"
 
@@ -476,6 +478,9 @@ if [ "$CONTEXT" = "1m" ]; then
         # Measured fact: the CLI silently strips [1m] for Fable-family
         # models -- never claim to have set 1m context on one.
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=$AUTOCOMPACT still is)"
+    elif ! console_context_model_takes_1m_suffix "$MODEL"; then
+        # HIMMEL-5501: native-1M and non-Anthropic ids launch bare.
+        CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=$AUTOCOMPACT still is)"
     else
         MODEL="${MODEL}[1m]"
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL"
@@ -617,6 +622,10 @@ if [ "$ROLE" = "console" ]; then
     esac
     CONSOLE_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")")
 fi
+# HIMMEL-5501: this argv carries --autocompact and an Opus 5.5 id, which a CLI
+# below the floor rejects at parse time -- refuse here, naming the version,
+# instead of arming a session that never starts.
+claude_floor_gate headed-arm.sh "$DRY_RUN" "$CLAUDE_CLI" || exit 2
 LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
 # HIMMEL-4013: a console arm runs under the `console` plugin profile (the
 # floor plus lean-skills; no review toolkit). A leg arm reaches here through

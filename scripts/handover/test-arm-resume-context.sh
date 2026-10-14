@@ -271,7 +271,7 @@ assert_contains_either "b: relaunch command carries --autocompact 200000" '--aut
 assert_not_contains "b: no [1m] suffix anywhere in output" '[1m]' "$out"
 
 # ---------------------------------------------------------------------------
-# (c) `1m` + --model opus: the emitted command carries opus[1m] and
+# (c) `1m` + --model claude-opus-4-6: the emitted command carries opus[1m] and
 #     --autocompact auto. The relaunch command itself renders the model
 #     through printf '%q' on this Linux station's POSIX `at` branch, which
 #     backslash-escapes the brackets (opus\[1m\]) -- verified against a real
@@ -279,12 +279,12 @@ assert_not_contains "b: no [1m] suffix anywhere in output" '[1m]' "$out"
 #     the unescaped, human-readable report; assert both.
 # ---------------------------------------------------------------------------
 HO_C=$(make_handover)
-out=$(run_arm --time "$(future_time)" --handover "$HO_C" --model opus --context 1m --dry-run 2>&1)
+out=$(run_arm --time "$(future_time)" --handover "$HO_C" --model claude-opus-4-6 --context 1m --dry-run 2>&1)
 rc=$?
-assert_rc "c: 1m + --model opus exits 0" 0 "$rc"
-assert_contains "c: guard line reports the suffixed model" 'context=1m (explicit); model=opus[1m]' "$out"
+assert_rc "c: 1m + --model claude-opus-4-6 exits 0" 0 "$rc"
+assert_contains "c: guard line reports the suffixed model" 'context=1m (explicit); model=claude-opus-4-6[1m]' "$out"
 assert_contains_either "c: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
-assert_contains_either "c: relaunch command carries the suffixed model (escaped)" 'opus\[1m\]' '"opus[1m]"' "$out"
+assert_contains_either "c: relaunch command carries the suffixed model (escaped)" 'claude-opus-4-6\[1m\]' '"claude-opus-4-6[1m]"' "$out"
 assert_not_contains "c: relaunch command carries no --autocompact 200000" '--autocompact 200000' "$out"
 
 # ---------------------------------------------------------------------------
@@ -556,6 +556,55 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
         echo "SKIP j: real non-dry arm needs the at/atq backend (OSTYPE=${OSTYPE:-$(uname -s 2>/dev/null)}); this harness stubs at/atq only"
         ;;
 esac
+
+# ---------------------------------------------------------------------------
+# (k) HIMMEL-5501: [1m] only on the 4.6 family; native-1M and non-Anthropic ids
+#     launch bare with --autocompact auto. RED before the suffix predicate:
+#     every non-Fable id got [1m].
+# ---------------------------------------------------------------------------
+for m in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5 gpt-5.6-sol glm-5.1 deepseek-v4 openrouter/foo-model; do
+    HO_K=$(make_handover)
+    out=$(run_arm --time "$(future_time)" --handover "$HO_K" --model "$m" --context 1m --dry-run 2>&1)
+    rc=$?
+    assert_rc "k: $m + 1m exits 0" 0 "$rc"
+    assert_not_contains "k: $m carries no [1m] suffix" "${m}[1m]" "$out"
+    assert_contains_either "k: $m relaunch carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
+done
+
+# ---------------------------------------------------------------------------
+# (l) HIMMEL-5501: a Claude Code below the version floor refuses an armed
+#     launch (rc=2, names the version and `claude update`); a dry run only
+#     warns. Stub binaries via HEADED_ARM_CLAUDE_CLI; version shape copied from
+#     the real `claude --version` (2.1.296 (Claude Code)).
+# ---------------------------------------------------------------------------
+cat > "$SCHED_STUB/claude-old" <<'EOF'
+#!/usr/bin/env bash
+echo "2.1.100 (Claude Code)"
+EOF
+cat > "$SCHED_STUB/claude-new" <<'EOF'
+#!/usr/bin/env bash
+echo "2.1.296 (Claude Code)"
+EOF
+chmod +x "$SCHED_STUB/claude-old" "$SCHED_STUB/claude-new"
+
+HO_L1=$(make_handover)
+out=$(HEADED_ARM_CLAUDE_CLI="$SCHED_STUB/claude-old" run_arm --time "$(future_time)" --handover "$HO_L1" 2>&1)
+rc=$?
+assert_rc "l1: armed launch below the floor refused" 2 "$rc"
+assert_contains "l1: message names the installed version" '2.1.100' "$out"
+assert_contains "l1: message names the fix" 'claude update' "$out"
+
+HO_L2=$(make_handover)
+out=$(HEADED_ARM_CLAUDE_CLI="$SCHED_STUB/claude-old" run_arm --time "$(future_time)" --handover "$HO_L2" --dry-run 2>&1)
+rc=$?
+assert_rc "l2: dry run below the floor only warns" 0 "$rc"
+assert_contains "l2: warning names the fix" 'claude update' "$out"
+
+HO_L3=$(make_handover)
+out=$(HEADED_ARM_CLAUDE_CLI="$SCHED_STUB/claude-new" run_arm --time "$(future_time)" --handover "$HO_L3" --dry-run 2>&1)
+rc=$?
+assert_rc "l3: dry run at or above the floor exits 0" 0 "$rc"
+assert_not_contains "l3: no floor message at or above the floor" 'below the minimum' "$out"
 
 echo "---"
 echo "Run scripts/handover/test-arm-resume-tier.sh separately for the --model/"

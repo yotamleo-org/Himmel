@@ -249,13 +249,21 @@ if [ "$cmd" = "api" ]; then
                 # built-in default is anchored so only an EXACT allow-listed
                 # description passes.
                 cr-substrmatch) echo '[{"context":"CodeRabbit","state":"success","description":"No review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                # HIMMEL-1356: a state=success whose description is MISSING, null
+                # or EMPTY. CodeRabbit has never been observed to emit these (24
+                # sampled real payloads all carried one), so the gate must not
+                # certify them on the strength of an absent field — they read
+                # as skipped, exactly like an unenumerated wording.
+                cr-nodesc)      echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                cr-nulldesc)    echo '[{"context":"CodeRabbit","state":"success","description":null,"created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                cr-emptydesc)   echo '[{"context":"CodeRabbit","state":"success","description":"","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
                 # A full page with no CodeRabbit on it: indeterminate, not
                 # absent — the verdict may be on page two (coderabbit-2).
                 cr-paged)       jq -nc '[range(100) | {context: "ci/ctx\(.)", state: "success", created_at: "2026-07-16T19:10:05Z", creator: {id: 1, login: "ci", type: "Bot"}}]' ;;
                 # body-* modes: CodeRabbit CONCLUDED success on this head
                 # (default case below already covers it); only the reviews
                 # fixture below differs per mode.
-                *)              echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                *)              echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
             esac
             exit 0 ;;
         # CodeRabbit's review-BODY findings (HIMMEL-1126/1147) — a separate
@@ -707,7 +715,7 @@ case "$GH_STUB_MODE" in
     watch-error)
         if [ "$is_watch" -eq 1 ]; then echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1; fi
         exit 8 ;;
-    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-unknownword|cr-substrmatch)
+    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
         # Checks are GREEN and threads are clean in every one of these — the
         # verdict must turn entirely on CodeRabbit's status (HIMMEL-1072).
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
@@ -1391,6 +1399,30 @@ assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e rate-limited
 # regardless of wording, enumerated or not.
 run cr-unknownword
 assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (HIMMEL-3360)"
+
+# 34j/k/l — HIMMEL-1356: a state=success with a MISSING / null / EMPTY
+# description is not an affirmative review. cr-signal.sh used to keep the
+# pre-HIMMEL-1354 reading (green) for these because the allow-list applied only
+# to a non-empty description; they now project to state=skipped and take the
+# same advisory NOTE as 34b/34e/34f. Positive control (34m): the SAME state
+# with the observed wording stays green — no NOTE.
+run cr-nodesc
+assert_rc 0 "34j missing-description success is advisory only (HIMMEL-1356)"
+assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34j missing description reads as skipped"
+run cr-nulldesc
+assert_rc 0 "34k null-description success is advisory only (HIMMEL-1356)"
+assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34k null description reads as skipped"
+run cr-emptydesc
+assert_rc 0 "34l empty-description success is advisory only (HIMMEL-1356)"
+assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34l empty description reads as skipped"
+run cr-completed
+assert_rc 0 "34m 'Review completed' success is green (HIMMEL-1356 control)"
+assert_err_lacks "34m affirmative wording prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
+# 34n — the outage release valve: CR_OK_DESC_RE widened to admit the empty
+# description (a CodeRabbit payload change that drops the field) reads green.
+CR_OK_DESC_RE='^(|review completed|no review changes requested)$' run cr-emptydesc
+assert_rc 0 "34n the outage override releases an empty description (HIMMEL-1356)"
+assert_err_lacks "34n released empty description prints no skipped NOTE" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
 
 # 3152-a/b/c/d (--escalate against a skip-classified/rate-limited status) and
 # 34g/34h/34i (the CR_OK_DESC_RE allow-list, its anchoring, and the adversarial
@@ -2908,5 +2940,5 @@ assert_grep_lacks "3473-g --threads-only makes no mergeStateStatus read" "found 
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 203 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 203"; exit 1; fi
+if [ "$COUNT" -ne 208 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 208"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

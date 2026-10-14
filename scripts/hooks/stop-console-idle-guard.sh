@@ -206,6 +206,9 @@ leg_names=""
 while IFS= read -r line; do
     case "$line" in
         slug=*-console\ *) continue ;;   # the console's own lock, not a leg
+        # HIMMEL-5541: past the TTL with a provably dead owner -- a lock nobody holds,
+        # not a leg that could wake this console. (IDLE-HELD? stays counted, below.)
+        slug=*status=STALE-DEAD*) continue ;;
         slug=*)
             leg_count=$((leg_count + 1))
             leg_slug="${line#slug=}"

@@ -170,6 +170,25 @@ git_test_env_append() {
   export GIT_CONFIG_COUNT=$(( _n + 1 ))
 }
 
+# git_test_env_cleanup -- call from the allocating caller's existing EXIT trap.
+# Children inherit pins, not ownership. Subshells can inherit shell variables,
+# so verify the allocator PID before deleting anything (bash 3.2 lacks BASHPID).
+git_test_env_cleanup() {
+  local _pid _dir
+  [ -n "${_GIT_TEST_ENV_TEMPLATE_PID:-}" ] || return 0
+  _pid=${BASHPID:-}
+  [ -n "$_pid" ] || _pid=$(exec sh -c 'printf "%s" "$PPID"')
+  [ "$_GIT_TEST_ENV_TEMPLATE_PID" = "$_pid" ] || return 0
+  for _dir in "${_GIT_TEST_ENV_TEMPLATE_DIRS[@]}"; do
+    # Do not chmod a symlink substituted for the owned directory.
+    if [ -d "$_dir" ] && [ ! -L "$_dir" ]; then
+      chmod -R u+rwX "$_dir" || true
+    fi
+    rm -rf "$_dir" || true
+  done
+  unset _GIT_TEST_ENV_TEMPLATE_PID _GIT_TEST_ENV_TEMPLATE_DIRS
+}
+
 # git_test_env_pin_perf
 # Appends the three settings that make throwaway test fixtures fast:
 #   core.fsync=none        -- skip fsync-per-object (the dominant cost on Windows)
@@ -209,12 +228,18 @@ git_test_env_pin_perf() {
   #
   # Lifetime: this directory intentionally OUTLIVES git_test_env_pin_perf --
   # it must still exist for every child process this runner spawns (they
-  # inherit the pinned path and run `git init` against it), so nothing here
-  # traps or deletes it. That leaks one empty directory per pinning process;
-  # accepted trade-off (the alternative is a templateDir that goes missing
-  # mid-run). scripts/ci/tmp-sweep.sh already collects leftovers like this.
-  local _tmpl_dir _tmpl_val
+  # inherit the pinned path and run `git init` against it). The allocating
+  # caller calls git_test_env_cleanup from its own EXIT trap after its children
+  # finish; this sourced library never installs or replaces a caller's trap.
+  local _tmpl_dir _tmpl_val _pid
   if _tmpl_dir=$(mktemp -d "${TMPDIR:-/tmp}/himmel-git-empty-template.XXXXXX" 2>/dev/null); then
+    _pid=${BASHPID:-}
+    [ -n "$_pid" ] || _pid=$(exec sh -c 'printf "%s" "$PPID"')
+    if [ "${_GIT_TEST_ENV_TEMPLATE_PID:-}" != "$_pid" ]; then
+      _GIT_TEST_ENV_TEMPLATE_PID=$_pid
+      _GIT_TEST_ENV_TEMPLATE_DIRS=()
+    fi
+    _GIT_TEST_ENV_TEMPLATE_DIRS+=("$_tmpl_dir")
     _tmpl_val="$_tmpl_dir"
     # Mixed form (C:/Users/...), same convention as
     # scripts/hooks/test-ci-doc-invariants.sh's `cygpath -m` -- git on
