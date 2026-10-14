@@ -341,9 +341,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "13b2da495697d3cb97247f3a1db4ce8e1cb28584"
+        "sha": "d97c5c7477e54cee17cfa6459190610da0643a05"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 13b2da495697 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha d97c5c7477e5 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
