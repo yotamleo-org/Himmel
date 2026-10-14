@@ -85,3 +85,14 @@ limitation and the upgrade path — not merely that a limitation exists.
 Run upstream's `/ponytail-debt` (or regenerate
 `docs/internals/ponytail-debt.md` the same way) whenever you want the
 current backlog, rather than trusting a stale ledger snapshot.
+
+## Code comments
+
+A code comment states a why the code cannot show: an external quirk, a platform
+bug, a non-obvious invariant. History does not belong in code. Ticket IDs, review
+rounds, "CR fix" notes and judge qids live in git and Jira; a comment that explains
+a workaround is a signal to fix the code, or to file one ticket for the workaround.
+`ponytail:` is the one place a ticket key may appear in a comment.
+
+`scripts/lint/check-history-comments.sh` enforces this on added comment lines only
+(pre-commit; `--range <base>` for a PR range). Existing comments are not touched.

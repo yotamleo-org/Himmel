@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bucket-gitleaks.sh — HIMMEL-4911. Leg-side pre-check of a handover-bucket file
+# bucket-gitleaks.sh — Leg-side pre-check of a handover-bucket file
 # BEFORE it is written/committed: the luna vault's pre-commit runs gitleaks, and
 # a generic-api-key false positive on prose stalls the vault's auto-commit for
 # every session until someone notices. Usage:

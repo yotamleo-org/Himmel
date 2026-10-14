@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# test-tracker.sh — HIMMEL-3954. Hermetic tests for tracker.py's outside-the-plan
+# test-tracker.sh — Hermetic tests for tracker.py's outside-the-plan
 # sections and the ledger's unplanned count: no "Closed by roadmap" section, park-ns
 # closures render in "Parked / unplaced", and only OPEN unplanned tickets are counted.
-# HIMMEL-3957: row fields, legend, ledger wording, plan-sourced caps, Done off-plan
+# row fields, legend, ledger wording, plan-sourced caps, Done off-plan
 # work counting in its version, and distinct load / layer palettes.
-# HIMMEL-3990: the redesign — rows lead with user impact, numbers drill down, a
+# the redesign — rows lead with user impact, numbers drill down, a
 # remaining-only switch, live legs; tracker-model-check.js runs the page's model.
 # Synthetic plan dir + mirror under a mktemp dir; no real plan data, no network.
 #
@@ -34,7 +34,7 @@ fi
 plan="$W/plan"
 mir="$W/mirror"
 mkdir -p "$plan/stage1" "$plan/stage2" "$plan/stage3" "$plan/tools/stage3" "$mir"
-# write_meta <ticket cap> <total cap> [extra json members] — synthetic placement-rule notes in the plan's shapes (HIMMEL-3957).
+# write_meta <ticket cap> <total cap> [extra json members] — synthetic placement-rule notes in the plan's shapes.
 write_meta() {
     printf '{"main_sha_at_build":"abcdef123456","notes":["effort S-eq: XS .44 S 1 M 2.2 L 5 XL 11.1; synthetic","load (bank) = committed: effort_mid x 0.009; plan-first: slice S-eq x 0.009","v2/v3 is deferred","first fit: earliest version whose ticket count < %s, layer load within cap and total load within %s"]%s}\n' \
         "$1" "$2" "${3:-}" > "$plan/stage3/meta.json"
@@ -60,7 +60,7 @@ printf '%s\t%s\n' key reason HIMMEL-4 'unplaced reason text' > "$plan/stage3/unp
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-1 tooling 4 > "$plan/stage1/C01.tsv"
 
 # mk <n> <statusCategory> <fixVersions json> <title> [status name]; writes into $mdir. A status name is the Jira status
-# (HIMMEL-3990); without one the frontmatter has no `status:` line and the page falls back to the category.
+# without one the frontmatter has no `status:` line and the page falls back to the category.
 mdir="$mir"
 mk() {
     {
@@ -76,7 +76,7 @@ mk 4 'To Do' '[]' 'unplaced ticket'
 mk 5 'Done' '["v1.0.1"]' 'done unplanned'
 mk 6 'To Do' '["v1.0.1"]' 'open unplanned'
 mk 7 'In Progress' '["v1.0.1"]' 'active unplanned'
-# HIMMEL-5226: HIMMEL-6 carries the plain block as the mirror renders ADF headings (bare lines); HIMMEL-1 keeps only its explain sidecar.
+# Ticket 6 carries the plain block as the mirror renders ADF headings (bare lines); ticket 1 keeps only its explain sidecar.
 printf '%s\n' '' '## Description' '' 'Impact' 'Operators see a blank page after the nightly restart.' 'It happens once a day.' \
     'What' 'We reload the page data on start.' 'Why' 'Blank pages read as an outage.' 'Agent detail' 'files: x.py' \
     '' '## Comments' '' '_(none)_' >> "$mir/HIMMEL-6.md"
@@ -99,7 +99,7 @@ render_rc=$?
 html="$(cat "$out" 2>/dev/null)"
 if [ "$render_rc" -eq 0 ]; then pass 'tracker.py exits 0'; else fail "tracker.py exited $render_rc"; fi
 
-# HIMMEL-4468: every file tracker.py writes ends in exactly one newline (luna's end-of-file-fixer rewrites it otherwise).
+# every file tracker.py writes ends in exactly one newline (luna's end-of-file-fixer rewrites it otherwise).
 for f in "$W/luna-map.json" "$out" "$out.fp"; do
     if [ -s "$f" ] && [ "$(tail -c 1 "$f" | od -An -tx1 | tr -d ' ')" = '0a' ] \
         && [ "$(tail -c 2 "$f" | od -An -tx1 | tr -d ' ')" != '0a0a' ]; then
@@ -118,12 +118,12 @@ contains 'summary counts 2 unplaced (1 unplaced + 1 parked)' "$stdout" '2 unplac
 # Done HIMMEL-5 is unplanned but not counted; open HIMMEL-6 and in-progress HIMMEL-7 are.
 contains 'summary counts only open unplanned tickets (HIMMEL-3954)' "$stdout" ', 2 unplanned,'
 contains 'the Done unplanned ticket still renders in its version tab data' "$html" '"done unplanned"'
-# HIMMEL-4930: unplanned is a flag (row field 7 = 2), never a theme; a ticket with no theme is counted and flagged.
+# unplanned is a flag (row field 7 = 2), never a theme; a ticket with no theme is counted and flagged.
 not_contains 'no "(unplanned)" theme in the page data (HIMMEL-4930)' "$html" '(unplanned)'
 contains 'summary counts the open tickets that have no theme (HIMMEL-4930)' "$stdout" ', 2 unthemed,'
 contains 'the ledger flags open tickets with no theme (HIMMEL-4930)' "$stdout" '2 open tickets have no theme'
 
-# --- HIMMEL-3957: design pass.
+# --- design pass.
 # Ask 1: a row carries user impact, the effort range, readiness, impact, issue_plain and its load (P columns).
 contains 'a row carries user impact, effort range, readiness, impact, plain issue, load (HIMMEL-3990)' "$html" \
     '"operators lose the synthetic widget on restart","M–L",3,4,"","plain text",0.009]'
@@ -176,7 +176,7 @@ html3="$(cat "$out" 2>/dev/null)"
 contains 'a cap the plan does not record says so (HIMMEL-3957)' "$html3" 'not recorded in the plan'
 write_meta 20 0.6
 write_caps 0.30
-# HIMMEL-3990: the page contract — tokens for both themes, phone layout, keyboard-reachable drill-downs.
+# the page contract — tokens for both themes, phone layout, keyboard-reachable drill-downs.
 contains 'light tokens follow the system (HIMMEL-3990)' "$html" '@media (prefers-color-scheme:light){:root:not([data-theme="dark"])'
 contains 'light tokens follow the toggle (HIMMEL-3990)' "$html" ':root[data-theme="light"]{'
 contains 'the phone layout has its own rules (HIMMEL-3990)' "$html" '@media (max-width:560px)'
@@ -193,7 +193,7 @@ contains 'the estimate-vs-actual fold shows each size against what finished work
 contains 'the plan decisions sit in a folded section (HIMMEL-3990)' "$html" '<details class="fold" id="pdec"><summary id="decs">'
 contains 'a lever words its console instruction (HIMMEL-3990)' "$html" 'lines.push("open trail "+toName)'
 contains 'a nested drill keeps the first opener (HIMMEL-3990)' "$html" '"drawer").hidden)opener=from;'
-# The new plan inputs move the freshness fingerprint; each render must itself succeed (HIMMEL-3979).
+# The new plan inputs move the freshness fingerprint; each render must itself succeed.
 # fp_ok <label> <var> [render args] -- render --emit-fp into <var>, failing the test when the render exits non-zero.
 fp_ok() {
     local o rc
@@ -211,7 +211,7 @@ printf '%s\t%s\t%s\n' key user_impact issue_plain HIMMEL-1 'changed impact' 'pla
 fp_ok 'explain edit' fp3
 if [ "$fp2" != "$fp3" ]; then pass 'an explain change moves the fingerprint (HIMMEL-3957)'; else fail "an explain change left the fingerprint at '$fp2'"; fi
 
-# --- HIMMEL-3979: neutral swatch for no-cap load, per-version caps from the plan's overrides.
+# --- neutral swatch for no-cap load, per-version caps from the plan's overrides.
 contains 'no-cap load has its own neutral token (HIMMEL-3979)' "$html" '--ldn:'
 contains 'the legend names the no-cap swatch (HIMMEL-3979)' "$html" '"no cap — deferred bucket"'
 printf '%s\n' "VERSION_CAP_OVERRIDES = {'v1.0.1': {'tickets': 30, 'bugs': 0.45}}" > "$plan/tools/stage3/common.py"
@@ -234,7 +234,7 @@ contains 'a multi-line override literal still sets the ticket cap (HIMMEL-3990)'
 write_caps 0.30
 printf '%s\n' "VERSION_CAP_OVERRIDES = {'v1.0.1': {'tickets': 30, 'bugs': 0.45}}" > "$plan/tools/stage3/common.py"
 
-# --- HIMMEL-3990 ask 5: a live leg marks its ticket in progress, with its label and phase.
+# --- ask 5: a live leg marks its ticket in progress, with its label and phase.
 hb="$W/luna/handovers"
 bk="$hb/tester/himmel"
 mkdir -p "$bk" "$hb/.locks/queue/live.lock" "$hb/.locks/queue/gone.lock" "$hb/.locks/queue/brief.lock"
@@ -270,7 +270,7 @@ rm -rf "$hb/.locks/queue/live.lock"
 render >/dev/null
 not_contains 'a released lock clears the live leg (HIMMEL-3990)' "$(cat "$out")" '"1":["N55"'
 
-# --- HIMMEL-3990 expansion: trail versions (<version>b, c, ...) and the effort model's P90 (cautious load).
+# --- expansion: trail versions (<version>b, c, ...) and the effort model's P90 (cautious load).
 # versions.tsv lists them out of order on purpose; the plan's order is v1.0.1 < v1.0.1b < v1.0.2 < v1.0.10.
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.2 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.10 0 0 0 0 0 0 0 v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 \
@@ -309,7 +309,7 @@ contains 'model B wording: the bank rate, overruns included (HIMMEL-3990)' "$htm
 contains 'model B wording: a row loads its mean effort (HIMMEL-3990)' "$html8" '"changed impact","M–L",4,4,"","plain",0.009]'
 write_meta 20 0.6
 
-# --- HIMMEL-3990: the page's model — drill-downs, budget by kind and ticket, summaries, remaining-only.
+# --- the page's model — drill-downs, budget by kind and ticket, summaries, remaining-only.
 if command -v node >/dev/null 2>&1; then
     mo="$(node "$HERE/tracker-model-check.js" "$W/legs.html" 2>&1)"
     printf '%s\n' "$mo" | grep -v 'failure(s)$'
@@ -317,7 +317,7 @@ if command -v node >/dev/null 2>&1; then
 else
     printf 'skip - node not available: model checks\n'
 fi
-# --- HIMMEL-4026: trail versions (v1.0.1a, v1.0.2b) stay in the train, in train order.
+# --- trail versions (v1.0.1a, v1.0.2b) stay in the train, in train order.
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.2b 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 12 'To Do' '["v1.0.1a"]' 'trail a ticket'
@@ -330,7 +330,7 @@ contains 'trail versions sit in train order (HIMMEL-4026)' "$thtml" '"v1.0.1","v
 contains 'the whole-train ledger counts trail tickets (HIMMEL-4026)' "$tstdout" 'Whole v1.0.x train: 1 of 8 done'
 contains 'the JS train test accepts a trail suffix (HIMMEL-4026)' "$thtml" '\d+[a-z]?$/.test(V[i])'
 
-# --- HIMMEL-4872: the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
+# --- the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
 cp "$plan/stage3/versions.tsv" "$W/versions.tsv.keep"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.3 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
@@ -342,7 +342,7 @@ contains 'v1.1.x sits between v1.0.2 and v1.0.3 (HIMMEL-4872)' "$thtml" '"v1.0.2
 contains 'the whole-train ledger counts v1.1.x (HIMMEL-4872)' "$tstdout" 'Whole v1.0.x train: 1 of 8 done'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-14.md"
 
-# --- HIMMEL-4873: the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
+# --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2b 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v1.7.0 0 0 0 0 0 0 0 v1.2.0 0 0 0 0 0 0 0 v1.2.0a 0 0 0 0 0 0 0 v1.2.1000000 0 0 0 0 0 0 0 v1.2.999999 0 0 0 0 0 0 0 v1.10.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 15 'To Do' '["v1.2.0"]' 'milestone minor ticket'
@@ -354,7 +354,7 @@ contains 'the whole-train ledger counts a minor (HIMMEL-4873)' "$tstdout" 'Whole
 contains 'the JS train test accepts every v1.N.x (HIMMEL-4873)' "$thtml" '/^v1\.\d+\.\d+[a-z]?$/'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-15.md"
 
-# --- HIMMEL-3990: version-first page. Versions and release state come from Jira (mirror fixVersions + a `jira versions`
+# --- version-first page. Versions and release state come from Jira (mirror fixVersions + a `jira versions`
 # snapshot in <mirror-dir>.versions.tsv); the main view answers "which version are we working on".
 # No versions file yet: no version counts as released and the page says so.
 contains 'a missing versions file means release state unknown (HIMMEL-3990)' "$html" '"RU":true'
@@ -403,7 +403,7 @@ printf 'v1.0.1\tfalse\t\nv1.0.2\ttrue\t2026-10-05\n' > "$W/alt.versions.tsv"
 render --mirror-dir "$jm" --versions-file "$W/alt.versions.tsv" >/dev/null
 althtml="$(cat "$out" 2>/dev/null)"
 contains '--versions-file names the snapshot (HIMMEL-3990)' "$althtml" '"JV":[{"n":"v1.0.1","rel":false,"date":""},{"n":"v1.0.2","rel":true,"date":"2026-10-05"}]'
-# an empty (truncated) versions file is no snapshot: it falls back like a missing one (HIMMEL-4441)
+# an empty (truncated) versions file is no snapshot: it falls back like a missing one
 : > "$W/empty.versions.tsv"
 render --mirror-dir "$jm" --versions-file "$W/empty.versions.tsv" >/dev/null
 emhtml="$(cat "$out" 2>/dev/null)"
@@ -424,7 +424,7 @@ if [ "$fpb" != "$fpd" ]; then pass 'a missing versions file differs from a prese
 fp_ok 'versions missing again' fpe --mirror-dir "$jm"
 if [ "$fpd" = "$fpe" ]; then pass 'the fingerprint is stable with the versions file missing (HIMMEL-3990)'; else fail 'the fingerprint moved with no input change'; fi
 
-# --- HIMMEL-4930: theme overlay, drift log + trend.
+# --- theme overlay, drift log + trend.
 dl="$W/drift.tsv"
 unthemed_of() { printf '%s' "$1" | sed -n 's/.*drift, \([0-9]*\) unthemed,.*/\1/p'; }
 base_unthemed="$(unthemed_of "$(render --drift-log "$dl")")"
@@ -455,7 +455,7 @@ contains 'stdout prints the drift trend (HIMMEL-4930)' "$trend" 'drift trend:'
 contains 'the page carries the drift trend (HIMMEL-4930)' "$(cat "$out" 2>/dev/null)" '"DT":[['
 rm -f "$plan/stage1/themes-overlay.tsv"
 
-# --- HIMMEL-5381: a per-release kanban, rendered as static HTML. A fixture release holds one ticket per status.
+# --- a per-release kanban, rendered as static HTML. A fixture release holds one ticket per status.
 kmir="$W/mirror-kanban"
 mkdir -p "$kmir"
 mdir="$kmir"
@@ -502,7 +502,7 @@ krender --jira-base-url 'https://jira.example.test/' >/dev/null
 kfp2="$(krender --emit-fp --jira-base-url "https://jira.example.test/")"
 if [[ "$kfp1" =~ ^[0-9a-f]{16}$ ]] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanban leaves the fingerprint semantics alone (HIMMEL-5381)'; else fail "fingerprint moved with the base URL or failed: '$kfp1' vs '$kfp2'"; fi
 
-# --- HIMMEL-5453: re-measured actuals, spawned bundles under their planned origin, the operator bundle, zone labels.
+# --- re-measured actuals, spawned bundles under their planned origin, the operator bundle, zone labels.
 # Own plan, mirror and handover tree. HIMMEL-100 is planned; 101 says it was deferred from 100, 102 is a follow-up of 101
 # (A to B to C), a leg of 101 filed 103, 108 relates to 100 by a Jira link. 104 carries the operator-directed label,
 # a console OPERATOR bullet filed 105, 106 follows up 105. 107 and 109 reach no anchor (109 is named only by a RULING).
@@ -580,7 +580,7 @@ brender >/dev/null
 contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5453)' \
     "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
-# HIMMEL-5491: a Jira `theme-<slug>` label is the ticket's theme, ahead of the plan's stage1 / overlay theme.
+# a Jira `theme-<slug>` label is the ticket's theme, ahead of the plan's stage1 / overlay theme.
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
 tl() {  # tl <n> <labels json>
     printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' \

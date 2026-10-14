@@ -3,7 +3,7 @@
 # shellcheck disable=SC2012  # ls over fixture dirs whose names the suite chose
 # shellcheck disable=SC2030,SC2031  # verdict_rc's subshell is deliberate: its export must not leak
 # scripts/handover/console-kit/test-write-verdict.sh - suite for
-# write-verdict.sh (HIMMEL-4689), the sanctioned writer a console-judge call
+# write-verdict.sh, the sanctioned writer a console-judge call
 # uses for its verdict file:
 #   1. a GO verdict it writes is accepted by go-gate.sh's own go_trust_verdict
 #      (the parser go.sh --trust-reviewed calls), read-only
@@ -11,7 +11,7 @@
 #   3. bad qid / short or uppercase head / bad answer / missing evidence are
 #      refused with nothing written
 #   4. a GO over a NO-GO for the same head is refused, the file unchanged;
-#      a NO-GO over a GO is written (HIMMEL-4714: a veto only narrows); the
+#      a NO-GO over a GO is written; the
 #      same answer again, or another head, is accepted
 #   5. a symlinked verdicts/<qid>/ or target file is refused
 #   6. a GO beside an unparsed verdict is refused (go.sh would refuse
@@ -27,14 +27,14 @@
 #      replaces is denied (the control)
 #  10. --evidence-file outside /tmp/claude-<uid>/, through a symlink, or
 #      with a .. segment is refused
-#  11. a scratch root other users can reach is refused (HIMMEL-4714)
+#  11. a scratch root other users can reach is refused
 #  12. the root's mode is read with stat, so macOS's xattr `@` passes and an
-#      ACL `+` is still refused (HIMMEL-4723)
+#      ACL `+` is still refused
 #  13. a NO-GO survives the same judge's ruling for another head, which lands
-#      in <name>-<head>.md (HIMMEL-4731)
-#  15. an ls -ld that fails or prints nothing refuses the scratch root (HIMMEL-4753)
-#  16. a long --judge name is bounded so no redirect target exceeds 255 bytes (HIMMEL-4753)
-#  17. an ls -ld that exits 0 with no mode string refuses the scratch root (HIMMEL-4962)
+#      in <name>-<head>.md
+#  15. an ls -ld that fails or prints nothing refuses the scratch root
+#  16. a long --judge name is bounded so no redirect target exceeds 255 bytes
+#  17. an ls -ld that exits 0 with no mode string refuses the scratch root
 #
 # Hermetic: temp dir only; the guard scripts are run, never edited.
 # Platform guard: POSIX bash 3.2+.
@@ -48,7 +48,7 @@ SHA_B=89abcdef0123456789abcdef0123456789abcdef
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/write-verdict-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The evidence must sit under the scratch root the writer accepts
-# (HIMMEL-4714), and an "outside" file must sit somewhere it refuses.
+# and an "outside" file must sit somewhere it refuses.
 scratch="/tmp/claude-$(id -u)"
 [ -d "$scratch" ] || mkdir -m 700 "$scratch" || { echo "FAIL: cannot create $scratch" >&2; exit 1; }
 evd="$(mktemp -d "$scratch/write-verdict-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed" >&2; rm -rf "$tmp"; exit 1; }
@@ -58,7 +58,7 @@ tmp="$(cd "$tmp" && pwd -P)"
 root="$tmp/root"
 mkdir -p "$root" || exit 1
 export USER_SLUG=tuser
-# HIMMEL-4984: the writer signs with the GO key under $HOME/.config/himmel; a
+# the writer signs with the GO key under $HOME/.config/himmel; a
 # scratch HOME with a fixed key keeps the run off the operator's real one.
 KEYHOME="$tmp/home"
 mkdir -p "$KEYHOME/.config/himmel" || exit 1
@@ -114,7 +114,7 @@ rc=0; verdict_rc q1 "$SHA_B" || rc=$?
 check "1: go_trust_verdict refuses another head" "$rc" 2
 contains "1: evidence carried verbatim" "$(cat "$f1")" "- the hook never runs unset"
 
-# HIMMEL-4885: a new NO-GO without a class must not reach disk.
+# a new NO-GO without a class must not reach disk.
 printf 'the finding has no class\n' > "$evd/classless.md"
 rc=0; out=$(wv classless NO-GO "$SHA_A" --evidence-file "$evd/classless.md" 2>&1) || rc=$?
 check "nogo-without-class-refused" "$rc" 2
@@ -165,7 +165,7 @@ rc=0; wv q1 NO-GO "$SHA_B" --evidence-file "$ev" --judge round2 >/dev/null 2>&1 
 check "4: another head is accepted" "$rc" 0
 rc=0; verdict_rc q1 "$SHA_A" || rc=$?
 check "4: the head-A GO still stands" "$rc" 0
-# HIMMEL-4714: a veto always reaches disk, even under another judge's GO.
+# a veto always reaches disk, even under another judge's GO.
 before=$(cat "$f1")
 rc=0; wv q1 NO-GO "$SHA_A" --evidence-file "$ev" --judge other-judge >/dev/null 2>&1 || rc=$?
 check "4: a second judge's NO-GO over a GO is written rc 0" "$rc" 0
@@ -248,7 +248,7 @@ guard_rc() {  # guard_rc <hook basename> <command text>; stdout lands in $tmp/gu
     jq -cn --arg c "$2" --arg d "$REPO" '{tool_name:"Bash",tool_input:{command:$c,cwd:$d},cwd:$d}' > "$tmp/payload.json"
     (cd "$REPO" && CLAUDE_PROJECT_DIR="$REPO" bash "$REPO/scripts/hooks/$1.sh" < "$tmp/payload.json" > "$tmp/guard.out" 2>/dev/null)
 }
-# Some guards deny through stdout JSON at rc 0 (HIMMEL-4714 item 5).
+# Some guards deny through stdout JSON at rc 0.
 denied_out() { grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' "$tmp/guard.out" && echo deny || echo none; }
 call="bash scripts/handover/console-kit/write-verdict.sh j1979-never-denies GO $SHA_A --pr 501 --evidence-file /tmp/claude-1000/j1979/evidence.md"
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
@@ -313,7 +313,7 @@ rc=0; PATH="$tmp/bin:$PATH" wv q14 NO-GO "$SHA_A" --evidence-file "$fake_scratch
 check "11: a scratch root others can traverse refused rc 2" "$rc" 2
 check "11: nothing written for q14" "$([ -e "$scope_dir/q14" ] && echo yes || echo no)" no
 
-# --- 12. HIMMEL-4723: the mode is read portably --------------------------
+# --- 12. the mode is read portably --------------------------
 # macOS `ls -ld` appends `@` to a directory with extended attributes; a stub
 # ls prints that shape, and a stub stat answers only BSD's `-f %Lp`.
 chmod 700 "$fake_scratch"
@@ -338,7 +338,7 @@ check "12: a 0750 root refused by the GNU stat read rc 2" "$rc" 2
 check "12: nothing written for q18" "$([ -e "$scope_dir/q18" ] && echo yes || echo no)" no
 chmod 700 "$fake_scratch"
 
-# --- 13. HIMMEL-4731: a NO-GO survives a same-judge ruling for another head
+# --- 13. a NO-GO survives a same-judge ruling for another head
 # Order from the ticket: judge NO-GO on A, the same judge rules on B, then a
 # second judge's GO on A. Before the fix the B ruling replaced judge.md.
 for ans in GO NO-GO; do
@@ -393,7 +393,7 @@ check "comma set from the full closed list accepted" "$rc" 0
 rc=0; wv classless GO "$SHA_A" --evidence-file "$evd/classless.md" >/dev/null 2>&1 || rc=$?
 check "GO needs no class" "$rc" 0
 
-# --- 14. HIMMEL-4928: the verdict names its PR ----------------------------
+# --- 14. the verdict names its PR ----------------------------
 rc=0; WV_NOPR="--judge nopr" wv q14a GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
 check "14: a missing --pr is refused rc 2" "$rc" 2
 check "14: a missing --pr writes nothing" "$([ -e "$scope_dir/q14a" ] && echo yes || echo no)" no
@@ -430,7 +430,7 @@ rc=0; verdict_rc q14e "$SHA_A" || rc=$?
 check "14: a pr: line in the evidence body does not count" "$rc" 2
 VPR=
 
-# --- 15. HIMMEL-4753: the ACL probe fails closed --------------------------
+# --- 15. the ACL probe fails closed --------------------------
 # A scratch root whose `ls -ld` fails or prints nothing cannot be shown free of
 # an ACL, so the writer refuses (before, the missing `+` let it through).
 mkdir -p "$tmp/failbin" "$tmp/emptybin"
@@ -446,7 +446,7 @@ check "15: nothing written for q21" "$([ -e "$scope_dir/q21" ] && echo yes || ec
 rc=0; PATH="$tmp/bin:$PATH" wv q21 NO-GO "$SHA_A" --evidence-file "$fake_scratch/evidence.md" >/dev/null 2>&1 || rc=$?
 check "15: control - the real ls -ld on a 0700 root is accepted" "$rc" 0
 
-# --- 16. HIMMEL-4753: a long --judge name never loses a NO-GO -------------
+# --- 16. a long --judge name never loses a NO-GO -------------
 long=$(printf 'j%.0s' $(seq 1 220))
 wv q22 NO-GO "$SHA_A" --evidence-file "$ev" --judge "$long" >/dev/null 2>&1
 rc=0; out=$(wv q22 NO-GO "$SHA_B" --evidence-file "$ev" --judge "$long" 2>&1) || rc=$?
@@ -465,7 +465,7 @@ rc=0; wv q22 NO-GO "$SHA_C" --evidence-file "$ev" --judge "$long" >/dev/null 2>&
 check "16: a third head's ruling is written rc 0 (the redirect repeats)" "$rc" 0
 check "16: still every filename under 255 bytes" "$(ls "$scope_dir/q22" | awk 'length($0) > 255' | wc -l | tr -d ' ')" 0
 
-# --- 17. HIMMEL-4962: the ACL probe matches a real mode line --------------
+# --- 17. the ACL probe matches a real mode line --------------
 # An `ls -ld` that exits 0 but prints no mode string (garbage, a space) cannot
 # show the root free of an ACL, so the writer refuses; real output with and
 # without `+` behaves as before.
@@ -482,7 +482,7 @@ check "17: nothing written for q23" "$([ -e "$scope_dir/q23" ] && echo yes || ec
 rc=0; PATH="$tmp/bin:$PATH" wv q23 NO-GO "$SHA_A" --evidence-file "$fake_scratch/evidence.md" >/dev/null 2>&1 || rc=$?
 check "17: control - the real ls -ld on a 0700 root is accepted" "$rc" 0
 
-# --- 18. HIMMEL-5109: --bind-reviewed binds a NO-GO to the reviewed head ----
+# --- 18. --bind-reviewed binds a NO-GO to the reviewed head ----
 # A judge often rules on a head that follows the last reviewed one by a test-
 # or comment-only commit. The writer verifies that delta with review-round.sh's
 # own classifier (the `trivial-descendant` verb) and writes the NO-GO against
@@ -539,7 +539,7 @@ rc=0; out=$(fxcd wv q33 NO-GO "$J_TEST" --evidence-file "$ev" --bind-reviewed ""
 check "18: an empty --bind-reviewed value is refused rc 2" "$rc" 2
 check "18: an empty --bind-reviewed value writes nothing" "$([ -e "$scope_dir/q33" ] && echo yes || echo no)" no
 
-# --- 19. HIMMEL-5109: a layer-decision line without its keyword is flagged ---
+# --- 19. a layer-decision line without its keyword is flagged ---
 printf 'class: option-parsing\nlayer-decision: this one has no keyword\n' > "$evd/ld-bad.md"
 printf 'class: option-parsing\nlayer-decision: classifier the reader already treats it as text\n' > "$evd/ld-ok.md"
 rc=0; out=$(wv q31 NO-GO "$SHA_A" --evidence-file "$evd/ld-bad.md" 2>&1) || rc=$?

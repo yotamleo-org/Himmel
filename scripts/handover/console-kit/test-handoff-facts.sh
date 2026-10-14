@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-handoff-facts.sh — HIMMEL-4902. Exercises handoff-facts.sh, the
+# test-handoff-facts.sh — Exercises handoff-facts.sh, the
 # mechanical half of the outgoing console's HANDOFF: every field `console.sh
 # next` pre-fills so the console writes only its judgement notes. bash 3.2-safe.
 #

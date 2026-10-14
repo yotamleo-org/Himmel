@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# succession-tracker.sh — HIMMEL-3746. The successor console's tally of its inherited legs'
+# succession-tracker.sh — The successor console's tally of its inherited legs'
 # quote-backs, so it reads one table instead of counting ~26 SendMessage replies by hand.
 #
 #   succession-tracker.sh <console doc> --successor <session> [--relayed <label>[,<label>...]]

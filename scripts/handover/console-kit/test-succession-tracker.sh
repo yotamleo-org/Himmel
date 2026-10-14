@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-gen-briefs.sh
-# test-succession-tracker.sh — HIMMEL-3746. Exercises succession-tracker.sh on fixture console
+# test-succession-tracker.sh — Exercises succession-tracker.sh on fixture console
 # and leg docs: the per-leg relayed / quoted-back / missing state, the strict
 # `SUCCESSION accepted:` parse (an ambiguous line is missing, never accepted), the printed
 # LIVE line once the set is complete, and that the script only ever reads. Every path is a

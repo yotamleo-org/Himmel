@@ -1,4 +1,4 @@
-// tracker-model-check.js <page.html> — HIMMEL-3990. Runs the pure model block of a rendered tracker page
+// tracker-model-check.js <page.html> — Runs the pure model block of a rendered tracker page
 // (between /*MODEL*/ and /*END MODEL*/) against a synthetic data set and against the page's own data.
 // Prints one "ok - " / "FAIL - " line per check, like test-tracker.sh, which calls it. No network, no DOM.
 'use strict';

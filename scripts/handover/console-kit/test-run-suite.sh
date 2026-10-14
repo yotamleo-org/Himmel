@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-run-suite.sh — HIMMEL-3084. Exercises run-suite.sh: one scan root per
+# test-run-suite.sh — Exercises run-suite.sh: one scan root per
 # call, so a leg's turn boundary between calls is an inbox checkpoint for a
 # console halt. The scan runner is stubbed (--runner); no real suite runs.
 # bash 3.2-safe.

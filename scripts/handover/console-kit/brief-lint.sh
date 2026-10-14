@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/brief-lint.sh <brief> - HIMMEL-4573 arming-time
+# scripts/handover/console-kit/brief-lint.sh <brief> - arming-time
 # check that a leg or judge brief carries a filled `> **Prior art:**` line.
 #
 # The console fills the field at dispatch from one qmd query (jira-himmel +
@@ -56,7 +56,7 @@ case "$bare" in
         ;;
 esac
 
-# HIMMEL-4749: a fresh brief carries a front-matter `description:` line, the
+# a fresh brief carries a front-matter `description:` line, the
 # plain-language line every surface shows next to the leg's label. A doc whose
 # Results section already holds a bullet has run, and was briefed before the
 # field existed, so it passes without one.

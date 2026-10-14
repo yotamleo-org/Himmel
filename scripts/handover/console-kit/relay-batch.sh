@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# relay-batch.sh — HIMMEL-4902. The outgoing console's succession relay to every
+# relay-batch.sh — The outgoing console's succession relay to every
 # inherited leg in ONE command instead of one hand-written message per leg.
 #
 #   relay-batch.sh <console doc> --successor <session> [--claudex <label>[,<label>...]]
@@ -69,11 +69,11 @@ entries="$(awk '
 ' "$doc" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`')"
 if [ -z "$entries" ]; then
     echo "relay-batch: no leg entries in $doc ## Live state" >&2
-    # HIMMEL-5074: a console watching only lockless rows still reports them below.
+    # a console watching only lockless rows still reports them below.
     if [ -f "$manifest" ] && jq -e '[.legs[] | select(.lockless == true)] | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
 fi
 
-# HIMMEL-5074: the claudex set comes from the manifest's per-leg lane. --claudex, when
+# the claudex set comes from the manifest's per-leg lane. --claudex, when
 # given, must name exactly the Live-state legs the manifest marks claudex (lockless
 # rows are listed below, never relayed), or the relay refuses before sending anything.
 if [ -n "$claudex" ]; then
@@ -169,7 +169,7 @@ if [ -f "$manifest" ]; then
     done <<EOF3
 $mrows
 EOF3
-    # HIMMEL-5074: lockless watched rows hold no queue lock and no token, so there is
+    # lockless watched rows hold no queue lock and no token, so there is
     # nothing to relay; they are listed so the successor watches them by mechanism.
     lrows="$(jq -r '.legs[] | select(.lockless == true) | "LOCKLESS \(.label) lane=\((.lane // "") | if . == "" then "unknown" else . end) doc=\(.doc)"' "$manifest" 2>/dev/null)"
     if [ -n "$lrows" ]; then

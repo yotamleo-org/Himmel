@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-gen-briefs.sh
-# test-gen-judge-brief.sh — HIMMEL-3746. Exercises gen-judge-brief.py on a fixture spec: the
+# test-gen-judge-brief.sh — Exercises gen-judge-brief.py on a fixture spec: the
 # brief it writes is the docs/handover/judge-brief-template.md fenced block with every
 # placeholder filled, passes brief-lint.sh and the launcher's Tier gate, is blind (a spec that
 # carries a conclusion is refused), and never overwrites. Every path is a fixture: no launch.

@@ -178,6 +178,8 @@ known, deliberate simplification in the shape `ponytail: <ceiling>, <upgrade
 path>` — the limitation AND the ticket or trigger that justifies revisiting
 it, not either alone. Documented-not-gated is deliberate: convention, shape,
 debt ledger → [`docs/internals/ponytail-convention.md`](docs/internals/ponytail-convention.md).
+Other code comments state a why the code cannot show, never history (ticket,
+review round, judge qid); `check-history-comments` gates added lines (same doc).
 
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check(); backtick spans are literal
 # scripts/handover/console-kit/test-live-state.sh - suite for live-state.sh
-# (HIMMEL-3987), which renders a console doc's `## Live state` `legs:` entries
+# which renders a console doc's `## Live state` `legs:` entries
 # from its fleet manifest + the held leg locks:
 #   1. a held manifest leg gets `<label>:<nonce>:<lock-token>:<pid>`, the lock
 #      token read from the lock, the nonce from --nonce (a new leg)
@@ -174,7 +174,7 @@ tick_out="$(TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="
 case "$tick_out" in *'livestate=ok'*) r=ok ;; *) r="[$tick_out]" ;; esac
 check '13. tick.sh reads the rendered Live state as livestate=ok' ok "$r"
 
-# 15. HIMMEL-5074: a lockless manifest row gets its own `lockless:` line, not a
+# 15. a lockless manifest row gets its own `lockless:` line, not a
 # "holds no lock" omission, and a rerun replaces the line instead of stacking it.
 lk="$HANDOVER_DIR/b/HIMMEL-nextleg-L-console.md"
 lkd="$HANDOVER_DIR/b/HIMMEL-4869-N90-pilot.md"

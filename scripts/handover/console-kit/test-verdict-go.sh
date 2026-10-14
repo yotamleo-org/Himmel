@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-append-results.sh
 # scripts/handover/console-kit/test-verdict-go.sh - suite for verdict-go.sh
-# (HIMMEL-5593), the one call from a judge verdict to the persisted verdict,
+# the one call from a judge verdict to the persisted verdict,
 # GO, Results bullet and board. Every sub-script is a stub that logs its argv,
 # so the suite pins ORDER, ARGUMENTS and EXIT-CODE PROPAGATION:
 #   1. GO happy path: write-verdict -> go -> append-results -> board, in that

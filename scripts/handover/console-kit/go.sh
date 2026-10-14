@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/go.sh - write the console's GO for one PR head
-# (HIMMEL-2919). The file IS the GO: merge-on-green.sh, run from a
+# The file IS the GO: merge-on-green.sh, run from a
 # console-spawned leg (HIMMEL_CONSOLE_LEG=1, exported by headed-arm-leg.sh),
 # refuses with exit 17 unless <handover_root>/.locks/go/<pr>.<head sha> exists
 # and carries head=<that sha> plus a mac= line: HMAC-SHA256 of
-# nwo|pr|sha (HIMMEL-3578: bound to the repo too) under
-# the key this script mints at ~/.config/himmel/go-hmac.key (HIMMEL-3543, see
+# nwo|pr|sha under
+# the key this script mints at ~/.config/himmel/go-hmac.key (see
 # scripts/lib/go-gate.sh). The console's SendMessage GO is only the
 # notification. A GO binds ONE head: a push after it needs a fresh GO.
 #
@@ -13,7 +13,7 @@
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
 # Prints the written path. Re-running overwrites (idempotent).
 #
-# --fix-main-red (HIMMEL-5134): writes a FIX-GO instead of a GO - the console's
+# --fix-main-red: writes a FIX-GO instead of a GO - the console's
 # way to let the PR that fixes a red main past merge-on-green.sh's main-red gate
 # (exit 22) without a forged `Fixes-main-red:` commit line. It is a separate
 # file, .locks/go/fix-main-red.<pr>.<head>.<run>, signed over the repo, PR,
@@ -22,17 +22,17 @@
 # is another one. It is not a merge GO: the ordinary GO is still needed.
 # Mutually exclusive with --trust-reviewed.
 #
-# --trust-reviewed (HIMMEL-3895): a PR touching a CI trust path
+# --trust-reviewed: a PR touching a CI trust path
 # (scripts/ci/ci-trust-paths.txt, read from the default branch) merges through
 # merge-on-green.sh only on a trust-reviewed GO. The id names the independent
 # review and is written as a trust-reviewed= line INSIDE the mac (a separate
 # domain tag, go-gate.sh's go_mac), so it cannot be added to, or edited in, a
-# GO after signing. HIMMEL-3832: the id is the judge's qid, which must match
+# GO after signing. the id is the judge's qid, which must match
 # [A-Za-z0-9][A-Za-z0-9._-]* (no colon), and go.sh refuses (exit 5) unless
 # <root>/<user>/<bucket>/verdicts/<qid>/*.md rules GO on that exact head
 # (go-gate.sh's go_trust_verdict holds the parse).
 #
-# HIMMEL-4565: every GO, trust-reviewed or not, first runs this directory's
+# every GO, trust-reviewed or not, first runs this directory's
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
 # it PASSes - head, CI, threads, the CR-ledger ok row at that head (check 4),
 # trailers, ticket ids, coverage. Run it from the checkout /pr-check wrote the
@@ -46,31 +46,31 @@
 #      is sensitive enough that a broken shared lib must never read as "not a leg")
 #   2  usage (arg count, non-digit PR, sha not exactly 40 lowercase hex, a
 #      malformed --trust-reviewed id); also
-#      a relative-entry copy handed off (anchor-handoff.sh, HIMMEL-3437) and
+#      a relative-entry copy handed off (anchor-handoff.sh) and
 #      refused - HIMMEL_REPO unset/empty, or the anchor carries no copy
 #   3  refused: run from a console-spawned leg (a judge included - HIMMEL-3133,
 #      "the judge is a leg") - a leg never writes its own GO
 #   3  refused: run from a console relay - only the console writes a GO
-#   4  refused: ready-check.sh did not PASS for <pr> at <head> (HIMMEL-4565)
-#   5  refused: --trust-reviewed <qid> has no GO verdict for <head> (HIMMEL-3832)
+#   4  refused: ready-check.sh did not PASS for <pr> at <head>
+#   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
-# copy before anything else runs (HIMMEL-3437) - same reasoning as
+# copy before anything else runs - same reasoning as
 # merge-on-green.sh's own entry-script hand-off: a leg-writable worktree copy
 # must never decide what its own GO writer does. An absolute entry (the
 # console's own invocation) is unaffected - see anchor-handoff.sh's header.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm-leg.sh.
 set -u
-# HIMMEL-3437: a relative-entry copy that is not the anchor's hands off to it
+# a relative-entry copy that is not the anchor's hands off to it
 # (the same one-hop, fail-closed pattern scripts/cr/anchor-handoff.sh uses).
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# refuse a chokepoint seam that differs from the session's launch env.
 _csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
@@ -140,7 +140,7 @@ fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# console_leg (HIMMEL-3149) is the same shared predicate merge-on-green.sh and
+# console_leg is the same shared predicate merge-on-green.sh and
 # block-unresolved-cr-merge.sh enforce with - go.sh is the writer those two
 # gate against, so it must use their exact rule, not a hand-rolled copy of it.
 # Fail closed: this write is sensitive enough that a broken/missing shared lib
@@ -178,7 +178,7 @@ if ! . "$HERE/../../lib/handover-path.sh"; then
     echo "go: cannot load scripts/lib/handover-path.sh" >&2
     exit 1
 fi
-# HIMMEL-3572 row 1: the root merge-on-green's gate reads, not whatever this
+# the root merge-on-green's gate reads, not whatever this
 # console's env happens to say - go_resolve_root skips an empty or stub
 # HANDOVER_DIR for the anchor's .env-configured root, and fails (never falls
 # back to the stub) when that configured root is gone.
@@ -192,15 +192,15 @@ if _go_in_harness "$ROOT" "$ANCHOR"; then
     echo "go: note - writing the GO under the harness repo's inline handovers/ ($ROOT): no external HANDOVER_DIR is configured, so this is Mode A" >&2
 fi
 
-# HIMMEL-3832: a trust-reviewed GO only on the named judge's GO verdict for
-# this exact head (go_trust_verdict parses it, failing closed). HIMMEL-4928: and
+# a trust-reviewed GO only on the named judge's GO verdict for
+# this exact head (go_trust_verdict parses it, failing closed). and
 # for this PR - a verdict that names another PR, or none, refuses.
 if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA" "$ANCHOR" "$PR"); then
     echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $REASON No GO written." >&2
     exit 5
 fi
 
-# HIMMEL-4565: no GO for a head ready-check does not pass. Its check 4 is the
+# no GO for a head ready-check does not pass. Its check 4 is the
 # CR-ledger ok row at this head (read from this cwd's git-common-dir, as when
 # the console runs it by hand), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
@@ -210,7 +210,7 @@ if ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1); then
     exit 4
 fi
 
-# HIMMEL-3578: the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO
+# the mac binds the repo (himmel-go-v2|<nwo>|<pr>|<sha>) - a GO
 # minted for one repo's PR #N at a sha must not validate another repo's PR #N
 # at the same sha. Resolve nwo from the HARNESS ANCHOR (not the PR's own
 # repo), the same way merge-on-green.sh's own cwd_nwo does, so a worktree
@@ -227,7 +227,7 @@ if [ -z "$NWO" ]; then
     exit 1
 fi
 
-# HIMMEL-3543: sign the GO. The key is minted here, on the console's first GO
+# sign the GO. The key is minted here, on the console's first GO
 # (umask 077 + noclobber: mode 0600, never overwrites an existing key);
 # go_gate verifies it and never mints one.
 if [ -z "${HOME:-}" ]; then
@@ -240,7 +240,7 @@ if [ ! -e "$KEY" ]; then
         echo "go: openssl is required to mint the GO key" >&2
         exit 1
     fi
-    # HIMMEL-3578: mint to a temp file in the same directory first and
+    # mint to a temp file in the same directory first and
     # validate it as 64 lowercase hex BEFORE moving it into place - a failed
     # `openssl rand` (disk full, killed mid-write) used to leave an
     # empty/partial file at $KEY itself, which is sticky: every later run sees
@@ -263,7 +263,7 @@ if [ -e "$KEY" ] && ! grep -qxE '[0-9a-f]{64}' "$KEY" 2>/dev/null; then
 fi
 MAC_OK=1
 if [ "$FIX_SET" -eq 1 ]; then
-    # HIMMEL-5134: the fix-GO signs the red run id too, under its own domain tag.
+    # the fix-GO signs the red run id too, under its own domain tag.
     MAC=$(go_msg_mac himmel-go-fixred-v1 "$NWO|$PR|$SHA|$FIXRUN") || MAC_OK=0
 else
     MAC=$(go_mac "$PR" "$SHA" "$NWO" "$TRUST") || MAC_OK=0

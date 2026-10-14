@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # orphan-loops.sh — read-only inventory of long-lived shell-tool wrappers
-# (HIMMEL-2761), joined to the owning claude session.
+# joined to the owning claude session.
 #
 # Claude Code runs every Bash-tool call as `<shell> -c source
 # ~/.claude/shell-snapshots/snapshot-<shell>-….sh … && eval '<command>'`.
@@ -99,9 +99,9 @@ BEGIN {
     # snapshot path (a grep for this very thing) is not counted. The console
     # own waiter (the whole eval is one bash .../console-wait.sh call, with
     # plain-word args, no shell operators, ending the command) is intentional, not an orphan
-    # (HIMMEL-3941); a command that merely mentions the name still is. The real
+    # a command that merely mentions the name still is. The real
     # shell-tool shape double-quotes the path and args and ends with
-    # `< /dev/null && pwd -P >| /tmp/claude-<id>-cwd` (HIMMEL-5380).
+    # `< /dev/null && pwd -P >| /tmp/claude-<id>-cwd`.
     if (a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/ && a !~ /&& eval [\047"]bash [\047"]?([^ ]*\/)?console-wait\.sh[\047"]?( [A-Za-z0-9_.\/=:" +-]*)?[\047"]?( < \/dev\/null)?( && pwd -P >[|] \/tmp\/claude-[A-Za-z0-9]+-cwd)?$/) wrap[++nw] = pid
 }
 END {

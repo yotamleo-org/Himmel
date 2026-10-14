@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-shepherd.sh — HIMMEL-4942. Drives shepherd.sh with a stub gh on PATH, stub
+# test-shepherd.sh — Drives shepherd.sh with a stub gh on PATH, stub
 # ready-check / check-ci / impacted-suites, and a real scratch git repo (a bare
 # origin carrying refs/pull/7/head), in a scratch HOME. bash 3.2-safe.
 #

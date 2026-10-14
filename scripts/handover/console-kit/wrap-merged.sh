@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/wrap-merged.sh - HIMMEL-5594: a leg's MERGED and
+# scripts/handover/console-kit/wrap-merged.sh - a leg's MERGED and
 # WRAPPED in one call. Replaces the console's separate turns: check the merge,
 # close the window, drop the leg from the fleet, pull the primary, log it,
 # re-render the board.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-suite.sh — HIMMEL-3084. Run ONE scan root of the shell-suite tree per
+# run-suite.sh — Run ONE scan root of the shell-suite tree per
 # call, then return. A leg blocked in one long foreground command cannot read
 # its inbox, so a console HALT queues until the command ends; calling this once
 # per root turns every root boundary into a turn boundary, where the inbox is

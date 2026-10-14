@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// board.mjs — HIMMEL-3361. Render the console's progress board: a self-contained
+// board.mjs — Render the console's progress board: a self-contained
 // HTML page (console-board.html, next to the console doc) that shows the fleet,
 // every leg's phase, what needs the console, epic progress and the operator's
 // open decisions. The console republishes it as an artifact (that call is the
@@ -7,7 +7,7 @@
 //
 //   node board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--changed]
 //
-// --changed (Ask 1, HIMMEL-3745): still renders and writes the file, but prints
+// --changed (Ask 1): still renders and writes the file, but prints
 // one line -- `CHANGED <path>` or `UNCHANGED <path>` -- instead of the bare
 // path, so a console can call this after every Live-state mutation (dispatch,
 // verdict, GO, MERGED, WRAPPED) and grep the answer instead of diffing the
@@ -15,7 +15,7 @@
 // what the file on disk carried before this render; the Artifact publish
 // itself stays a model step, never done here.
 //
-// Leg set (HIMMEL-3988): --legs wins; else the console's fleet manifest
+// Leg set: --legs wins; else the console's fleet manifest
 // (<console doc stem>.fleet.json, via fleet-manifest.sh list); else the Live-state scan.
 //
 // State comes from tick.sh (leg locks, tails, fleet, open PRs, and the board
@@ -31,7 +31,7 @@
 // Optional Live-state lines the console may keep (console-template.md):
 //   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
-//   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion (HIMMEL-3856)
+//   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
 // PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
@@ -59,7 +59,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--changed]';
 const rawArgs = process.argv.slice(2);
-// --changed (Ask 1, HIMMEL-3745) is the one console step that both re-renders
+// --changed (Ask 1) is the one console step that both re-renders
 // and says whether the render moved: a boolean flag, pulled out before the
 // --opt pairs below so it never consumes the next pair's value.
 const changedFlag = rawArgs.includes('--changed');
@@ -117,7 +117,7 @@ const liveField = (key) => {
     const l = live.find((x) => x.startsWith(`${key}:`));
     return l ? l.slice(key.length + 1).trim() : '';
 };
-// The legs: BLOCK, read by tick.sh's own grammar (HIMMEL-3366): every `legs:` line
+// The legs: BLOCK, read by tick.sh's own grammar: every `legs:` line
 // plus the lines wrapped under it, up to the first blank line, the next `word:`
 // field, or a list-marker / `>` / `#` line (a detail bullet may quote a span
 // freely). An entry is a backtick span of exactly four non-empty colon fields
@@ -148,7 +148,7 @@ const epicsDeclared = liveField('epics').split(/[,\s]+/).filter(Boolean).map((e)
 }).filter(Boolean);
 // A version name lands inside a JQL string: only a plain release token is accepted.
 const versionsDeclared = liveField('versions').split(/[,\s]+/).filter((v) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v));
-// Split on ';' only at parenthesis depth 0, so "A (x; y); B?" -> ["A (x; y)", "B?"] (HIMMEL-3944).
+// Split on ';' only at parenthesis depth 0, so "A (x; y); B?" -> ["A (x; y)", "B?"].
 const splitTopLevel = (s) => {
     const out = [];
     let depth = 0;
@@ -191,7 +191,7 @@ const primeLabels = (names) => {
 const labelOf = (name) => legLabel.get(name) || '';
 const ticketOf = (file) => (/^([A-Z][A-Z0-9]*-\d+)/.exec(basename(file)) || [])[1] || '';
 const newer = (a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b);
-// HIMMEL-3988: with no --legs, the console's fleet manifest (<console doc stem>.fleet.json,
+// with no --legs, the console's fleet manifest (<console doc stem>.fleet.json,
 // the file tick.sh --legs-from reads) IS the leg set. It is read through
 // fleet-manifest.sh list -- the one validation -- never a second parser here. No manifest
 // keeps the Live-state scan below; one that fails validation is reported and falls back.
@@ -321,7 +321,7 @@ const primaryRoot = () => {
     return resolve(HERE, '..', '..', '..');
 };
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length ? join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
-// HIMMEL-4419: the legs' Jira ladder, in the order a Release panel shows it.
+// the legs' Jira ladder, in the order a Release panel shows it.
 const LEG_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS =/^(done|closed|resolved)$/i;
 const releaseOf = (version) => {
@@ -373,7 +373,7 @@ const labels = [...new Set([...liveLabels, ...locks.keys(), ...tails.keys(), ...
     .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10) || a.localeCompare(b));
 const legs = labels.map((label) => {
     const info = legInfo.get(label) || { ticket: '', last: '', pr: null };
-    // HIMMEL-4568: tick marks a READY past the GO-hold `READY!stale`; the board's phase is READY either way.
+    // tick marks a READY past the GO-hold `READY!stale`; the board's phase is READY either way.
     const tail = (tails.get(label) || '').replace(/!stale$/, '');
     const lock = locks.get(label) || '';
     let phase;
@@ -391,7 +391,7 @@ const legs = labels.map((label) => {
 });
 
 // ------------------------------------------------- WRAPPED window still open
-// Ask 3 (HIMMEL-3745): tick.sh's procs= counts only HELD (FRESH/STALE) legs,
+// Ask 3: tick.sh's procs= counts only HELD (FRESH/STALE) legs,
 // so a leg whose lock/tail already reads WRAPPED (the normal end of a leg) can
 // still own a live claude window nobody is watching -- invisible to tick.sh.
 // This reads the SAME process census tick.sh's procs= builds from
@@ -431,7 +431,7 @@ if (censusNames && wrappedLegs.length) {
 // board-fp; --changed folds this signature in separately (below) rather than
 // asking tick.sh to account for a read it never performs.
 const censusSig = legs.filter((l) => l.phase === 'WRAPPED, window still open').map((l) => l.label).sort().join(',');
-// HIMMEL-3768: tick keeps CI colour and fleet capacity out of board-fp on purpose (they
+// tick keeps CI colour and fleet capacity out of board-fp on purpose (they
 // move without a console act), but the page shows them, so --changed must see them too.
 // board.mjs is the only reader that knows what it rendered; tick.sh stays untouched.
 const ciFleetSig = [fleetOk ? `${fleetLive}/${fleetCap}` : '', ...(openPrs || []).map((p) => `#${p.number}=${ciOf(p)}`), ...legs.filter((l) => l.ci).map((l) => `${l.label}=${l.ci}`)].join(',');
@@ -476,7 +476,7 @@ const mergedRows = (mergedPrs || []).map((p) => `<li><b>#${p.number}</b> ${safe(
 const logRows = consoleResults.map((l) => `<li>${safe(l.slice(2), 200)}</li>`).join('\n');
 const panel = (title, body, empty) => `<section><h2>${title}</h2>${body ? `<ul>${body}</ul>` : `<p class="none">${empty}</p>`}</section>`;
 
-// Cloud sessions (HIMMEL-5163): each session in the bucket's cloud-sessions.tsv with the
+// Cloud sessions: each session in the bucket's cloud-sessions.tsv with the
 // state cloud-liveness.mjs derives -- the same derivation as tick.sh's cloud= field. No
 // tsv, no panel. Display-only like the bank-lift line: not in the fingerprint, never fatal.
 const cloudPanel = (() => {
@@ -488,7 +488,7 @@ const cloudPanel = (() => {
     return panel('Cloud sessions', rows, 'no cloud session launched in the last 48 hours');
 })();
 
-// Bank lift (HIMMEL-4877): one read-only line from the lift's `show` output -- the
+// Bank lift: one read-only line from the lift's `show` output -- the
 // same reason source as the doctor's C34 row. BOARD_BANK_LIFT overrides the script
 // (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS). Never renders the account or any
 // field but until/standing; not part of the fingerprint; never fatal.
@@ -523,7 +523,7 @@ const bankLiftLine = (() => {
     } catch { return row('?', 'unavailable'); }
 })();
 
-// Cost today (HIMMEL-4217): one line from the leg cost ledger close-wrapped-leg.sh
+// Cost today: one line from the leg cost ledger close-wrapped-leg.sh
 // appends to (LEG_COST_LEDGER, else $HANDOVER_DIR/.ledger/leg-cost.jsonl). An absent
 // or unreadable ledger, or no usable row dated today, renders nothing and never fails
 // the render. Not part of the fingerprint: --changed does not move on a new ledger row.
@@ -553,7 +553,7 @@ const costSection = (() => {
     } catch { return ''; }
 })();
 
-// Exploration cost (HIMMEL-5516): the weighted tokens each session spent before its first
+// Exploration cost: the weighted tokens each session spent before its first
 // edit or commit, read from the digest markers leg_ledger.py leaves in
 // LEG_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
 // field, not tick data. Sessions that started in the last BOARD_EXPLORATION_HOURS (24) and
@@ -591,7 +591,7 @@ const explorationSection = (() => {
     } catch { return ''; }
 })();
 
-// Failure classes this shift (HIMMEL-4670 P4, spec section 5.2): the leg-failures
+// Failure classes this shift: the leg-failures
 // ledger (HIMMEL_LEG_FAILURES_LEDGER, the seam leg_ledger.py writes through) since
 // the console lock's `started`, grouped by class -- distinct legs, events (sum of
 // count), recovered share, and the failure router's latest decision for the class
@@ -652,7 +652,7 @@ const failuresSection = (() => {
     } catch { return unavailable; }
 })();
 
-// Suite flakes (HIMMEL-5131): this checkout's suite-flake ledger rows over the last
+// Suite flakes: this checkout's suite-flake ledger rows over the last
 // BOARD_FLAKE_DAYS (default 7) days, one row per suite, most-flaked first. The rows
 // come from the checkout's own scripts/observability/suite-flake-summary.sh (repo id
 // filtered, bounded tail); a checkout without it renders no panel. An unreadable
@@ -749,7 +749,7 @@ ${panel('Supervisor session log — newest last', logRows, 'no Results yet')}
 </html>
 `;
 
-// Ask 1 (HIMMEL-3745): --changed reads the PREVIOUS render's embedded
+// Ask 1: --changed reads the PREVIOUS render's embedded
 // fingerprint before overwriting it, so a console can call this after every
 // Live-state mutation and know from one line whether the render moved --
 // the Artifact publish itself stays a separate, deliberate model step.

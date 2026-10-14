@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# action-zero.sh — HIMMEL-4902. The incoming console's mechanical ACTION ZERO
+# action-zero.sh — The incoming console's mechanical ACTION ZERO
 # probes (console-template.md steps 2-6 and 8) in ONE command that prints one
 # summary, instead of six or seven Bash turns that each re-read the context.
 #
@@ -21,7 +21,7 @@
 # waiter (step 10). A section that fails prints `unavailable` and the rest run.
 #
 # Seams (tests): ACTION_ZERO_BANK, ACTION_ZERO_DOCTOR replace those commands.
-# HIMMEL-4919: BANK and C29 run under a timeout (ACTION_ZERO_BANK_TIMEOUT,
+# BANK and C29 run under a timeout (ACTION_ZERO_BANK_TIMEOUT,
 # default 60s; ACTION_ZERO_DOCTOR_TIMEOUT, default 120s). A hung probe prints
 # `TIMEOUT <bank|doctor> after <n>s` in its section and the summary carries on.
 # No timeout binary: the probes run unbounded, with a WARN line.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/append-results.sh - HIMMEL-3794: append a
+# scripts/handover/console-kit/append-results.sh - append a
 # leg's marker bullet at a handover doc's true EOF, so it can never land
 # mid-doc. Twice in one shift a leg's WRAPPED bullet, written with the Edit
 # tool anchored on an earlier bullet, landed ABOVE later bullets instead of
@@ -22,7 +22,7 @@
 # like `## Results-old` does not), somewhere in it (a doc with no Results
 # section has nowhere defined to append a Results bullet).
 #
-# HIMMEL-3796: <text> is read only from argv ($2), never stdin/a file/a
+# <text> is read only from argv ($2), never stdin/a file/a
 # heredoc, so it can never carry an embedded NUL byte - execve() argv
 # strings are NUL-terminated C strings at the kernel level, so no NUL can
 # ever cross into $2 in the first place. A NUL-refusal check here would be
@@ -35,7 +35,7 @@
 #   2  usage (wrong arg count)
 #   3  doc missing / unreadable / unwritable
 #   4  doc has no `## Results` heading - nothing written
-#   6  HIMMEL-4570: <text> leads with an all-caps word that is neither a status
+#   6  <text> leads with an all-caps word that is neither a status
 #      marker nor a documented non-status bullet - nothing written
 #   5  write failed (e.g. disk full) after the heading/newline checks passed
 #
@@ -59,10 +59,10 @@ if ! grep -Eq '^## Results([[:space:]]|$)' "$DOC"; then
     exit 4
 fi
 
-# HIMMEL-4570: a leading all-caps word that is not in the vocabulary is a coined
+# a leading all-caps word that is not in the vocabulary is a coined
 # marker (SHIPPED, MERGED): the tick would never read it, so refuse it instead of
 # letting it sit invisible. CONSULT / SUCCESSION / MAIN-RED are the preface's
-# documented non-status bullets and still append. HIMMEL-4582: the floor is 2
+# documented non-status bullets and still append. the floor is 2
 # chars (WIP, OK, PR are refused); every real marker is 4+ chars, and a 1-char
 # lead is prose.
 #
@@ -89,7 +89,7 @@ esac
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
 
-# HIMMEL-4795: append under the lock every doc writer shares (leg-doc-lock.sh),
+# append under the lock every doc writer shares (leg-doc-lock.sh),
 # so a rewrite in flight (the launcher's session_ids:, inbox-send.sh,
 # live-state.sh) finishes its mv first and this bullet lands on the new doc,
 # never on the replaced one. A lock that cannot be taken (rc 1) or no flock
@@ -112,7 +112,7 @@ fi
 [ "$locked" -eq 1 ] && doc_unlock
 echo "append-results: appended to $DOC"
 
-# HIMMEL-4419: a LIVE bullet moves the leg's ticket (the key in the doc name)
+# a LIVE bullet moves the leg's ticket (the key in the doc name)
 # to In Progress. Best-effort - leg-jira-status.sh warns and exits 0 on any
 # Jira failure, and LEG_JIRA_STATUS=0 opts out.
 case "$TEXT" in

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-launch-cloud.sh — HIMMEL-5450. Exercises launch-cloud.sh with konsole,
+# test-launch-cloud.sh — Exercises launch-cloud.sh with konsole,
 # script(1) and claude stubbed on PATH: no real cloud session is ever launched.
 # bash 3.2-safe.
 #

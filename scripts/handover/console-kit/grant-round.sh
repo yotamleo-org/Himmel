@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/grant-round.sh - HIMMEL-5058: the console grants
+# scripts/handover/console-kit/grant-round.sh - the console grants
 # ONE more /pr-check review round itself, on a persisted judge record, so the
 # operator no longer hand-pastes `printf '2\n' > .git/cr-review-rounds/<b>.round`.
 #
 # Usage: grant-round.sh <pr> <new-head> <qid>
 #
-# A PR parks at the round-3 cap (review-round.sh, HIMMEL-2780/4600). The cap
+# A PR parks at the round-3 cap (review-round.sh). The cap
 # exists so a leg cannot buy itself rounds; the console is not the author, and
 # an independent judge's record is a second non-author check (the go.sh
 # --trust-reviewed trust model). Granted only when every condition holds:
@@ -17,7 +17,7 @@
 #   (c) <new-head> is the PR's live head, re-read under the counter lock;
 #   (d) the qid is unconsumed: no *.verdicts file names it, so one record buys
 #       one round across every branch (the judge_nogo_record / judge_scope_record
-#       rule, HIMMEL-4720).
+#       rule).
 # The grant takes the review-counter lock review-round.sh start takes (the same
 # namespace as cr-reset.sh), backs up the old .round, records the qid as
 # `<head> <head> <qid>/<name>` in <branch>.verdicts (the consumption record the
@@ -29,7 +29,7 @@
 # (HIMMEL_CONSOLE_RELAY), as write-verdict.sh refuses them: a leg must not buy
 # its own review rounds. The console is not a leg, so it runs this itself.
 # ponytail: same-uid ceiling - the record mac key is readable by the same uid
-# (HIMMEL-3578), and the leg marker is an environment variable; the upgrade path
+# and the leg marker is an environment variable; the upgrade path
 # is a separate-uid verdict store. This does not cover HIMMEL-5109 (a NO-GO on a
 # test- or comment-only descendant): that needs review-round.sh itself.
 #
@@ -41,7 +41,7 @@
 # dir holds the state; default this script's own repo), GRANT_ROUND_LOCK_LIB.
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
-# HIMMEL-3437: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 

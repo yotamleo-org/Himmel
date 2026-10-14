@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-action-zero.sh — HIMMEL-4902. Exercises action-zero.sh: the incoming
+# test-action-zero.sh — Exercises action-zero.sh: the incoming
 # console's mechanical probes in one command. bank-preflight and himmel-doctor
 # are stubbed (ACTION_ZERO_BANK / ACTION_ZERO_DOCTOR). bash 3.2-safe.
 #
@@ -50,7 +50,7 @@ out4="$(ACTION_ZERO_DOCTOR="$WORK/doctor-bad.sh" bash "$AZ" --doc "$DOC" --root 
 check "a failed doctor reads unavailable, not none" "1" "$(printf '%s\n' "$out4" | sed -n '/^== C29/,/^== LOAD/p' | grep -c '^unavailable')"
 check "usage without --root exits 2" "2" "$(bash "$AZ" --doc "$DOC" >/dev/null 2>&1; echo $?)"
 
-# HIMMEL-4919: a hung probe is bounded, prints a stable TIMEOUT line, and the
+# a hung probe is bounded, prints a stable TIMEOUT line, and the
 # remaining sections still run. The stubs sleep as a grandchild (no exec), the
 # shape that holds a $(...) pipe open if only the parent is killed.
 # Resolved in a subshell: a source edge would pull check-ci-watch.sh into the lint set.

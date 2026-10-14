@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-inbox-audit.sh — HIMMEL-2980. Exercises inbox-audit.sh: a token
+# test-inbox-audit.sh — Exercises inbox-audit.sh: a token
 # bullet with a matching sent-record ledger line audits clean; an
 # unrecorded token bullet (forged, or lost to an inbox-send.sh exit-4
 # ledger-write failure) is named and fails the audit; non-token bullets are
@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SEND="$HERE/inbox-send.sh"
 AUDIT="$HERE/inbox-audit.sh"
 
-# HIMMEL-3182: inbox-send.sh takes a flock and secures its ledger/lock dirs with
+# inbox-send.sh takes a flock and secures its ledger/lock dirs with
 # `mkdir -m 700` + `chmod 700`; a host without flock, or where the mode does not
 # stick (Git Bash / NTFS), cannot run it at all, so every case below would fail
 # for that reason. Probed, so a Linux host still runs the whole suite.
@@ -87,7 +87,7 @@ else
     fail "missing sent-log dir is a usage error (rc=$rc out='$out')"
 fi
 
-# --- HIMMEL-2980 CR round 1 (codex-1/2/3): fail-closed on hash/read errors -
+# --- fail-closed on hash/read errors -
 # and a final line with no trailing newline is still audited -----------------
 
 # Case 6: a token bullet as the inbox's final line with NO trailing newline
@@ -130,7 +130,7 @@ else
     fail "a sha256sum failure aborts the audit (rc=$rc out='$out')"
 fi
 
-# --- HIMMEL-2980 CR round 2 (codex-1): fail-closed when the classifying grep
+# --- fail-closed when the classifying grep
 # itself errors, instead of silently treating the line as a non-token bullet
 # (which would let a forged token bullet pass as AUDIT ok) -------------------
 

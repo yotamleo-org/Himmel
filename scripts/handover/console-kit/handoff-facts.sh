@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# handoff-facts.sh — HIMMEL-4902. The mechanical half of a console HANDOFF.
+# handoff-facts.sh — The mechanical half of a console HANDOFF.
 #
 #   handoff-facts.sh <field> <console doc> [--repo <path>]
 #
 # `console.sh next` calls this once per field to pre-fill the predecessor's
 # HANDOFF, so the outgoing console writes only its judgement notes (one Edit)
-# instead of deriving each of these by hand over ~18 turns (measured, HIMMEL-4902).
+# instead of deriving each of these by hand over ~18 turns (measured).
 # Read-only: it never writes a file, takes a lock or contacts a leg.
 #
 # Fields:

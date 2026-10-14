@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# smoke-consult-sandbox.sh (HIMMEL-4066) - OPT-IN live check of the --consult Bash sandbox.
+# smoke-consult-sandbox.sh - OPT-IN live check of the --consult Bash sandbox.
 #
 # The suite (test-headed-arm-leg.sh) asserts the GENERATED settings JSON; it cannot
 # prove Claude Code honours the sandbox block. This runs headless `claude -p` from the
 # primary checkout (whose committed settings grant additionalDirectories on the luna
-# vault, HIMMEL-4069) through the REAL shim (leg-claude-launcher.sh) with the settings and
+# vault) through the REAL shim (leg-claude-launcher.sh) with the settings and
 # env headed-arm-leg.sh really generates, and checks the ARTIFACTS on disk:
 #   0. RED control: the same settings WITHOUT `--setting-sources ""` let a sandboxed
 #      write reach a SIBLING bucket file (else this smoke could not catch a leak: FAIL);
@@ -13,7 +13,6 @@
 #   3. a sandboxed write inside the repo does NOT land;
 #   4. a hook CARRIED from a user scope the consult no longer loads fires;
 #   5. a PLUGIN hook (himmel-ops, enabled only via the profile's enabledPlugins) fires
-#      (HIMMEL-4118 F3).
 # The user scope is a scratch home (CONSULT_SETTINGS_HOME) holding only that canary hook;
 # the project scope is the real one. It spends bank (headless claude draws the same bank
 # as interactive use: two runs), so it is SKIPPED unless CONSULT_SMOKE=1 and the bank
@@ -30,7 +29,7 @@ fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$HERE/../../lib"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$LIB/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck disable=SC1091
@@ -112,7 +111,7 @@ jq '.permissions.allow += ["Bash(python3 -c:*)"]' "$settings" > "$work/probe-set
 # project and local scopes load again and their write roots must let the sibling write land.
 ctl_prompt="Run exactly this one command as a single Bash call, do not retry or work around any failure, then reply with its exact stdout/stderr text:
 python3 -c \"open('$sibling','a').write('pwned')\""
-# opt-in live check of the consult Bash sandbox (HIMMEL-4069 RED control); bank preflight above, explicit --permission-mode, parsed --output-format json
+# opt-in live check of the consult Bash sandbox; bank preflight above, explicit --permission-mode, parsed --output-format json
 ( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES='' \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$ctl_prompt" ) > "$work/control.json" 2> "$work/control.err" || true
 if [ "$(cat "$sibling")" = "untouched" ]; then
@@ -130,7 +129,7 @@ prompt="Run exactly these three commands, each as its own separate Bash call, in
 # refuses redirect-shaped writes before the sandbox is ever reached - the control run showed it.)
 
 # The confined run: exactly what the shim builds for a consult (LEG_PROFILE_NO_SETTING_SOURCES=1).
-# opt-in live check of the consult Bash sandbox (HIMMEL-4066); bank preflight above, explicit --permission-mode, parsed --output-format json
+# opt-in live check of the consult Bash sandbox; bank preflight above, explicit --permission-mode, parsed --output-format json
 ( cd "$primary" && LEG_CLAUDE_BIN=claude LEG_PROFILE_SETTINGS="$work/probe-settings.json" LEG_PROFILE_NO_SETTING_SOURCES=1 \
     HIMMEL_HOOK_INTEGRITY_DIR="$work/plugin-canary" \
     bash "$SHIM" -p --model claude-sonnet-5-5 --permission-mode default --output-format json "$prompt" ) > "$work/claude.json" 2> "$work/claude.err" || true
@@ -140,7 +139,7 @@ if grep -q 'LIVE smoke-ok' "$doc"; then echo "ok - the append to the consult doc
 if [ "$(cat "$sibling")" = "untouched" ]; then echo "ok - the sibling file in the bucket is untouched"; else echo "FAIL - a sandboxed write reached a SIBLING file in the bucket"; fail=1; fi
 if [ ! -e "$probe" ]; then echo "ok - no file was written inside the repo"; else echo "FAIL - a sandboxed write reached the repo"; fail=1; fi
 if [ -e "$work/canary-fired" ]; then echo "ok - the carried user-scope PreToolUse hook fired"; else echo "FAIL - the carried user-scope PreToolUse hook did NOT fire"; fail=1; fi
-# Plugin-hook canary (HIMMEL-4118 F3): himmel-ops' SessionStart record-hook-integrity.sh is
+# Plugin-hook canary: himmel-ops' SessionStart record-hook-integrity.sh is
 # wired ONLY in the plugin's hooks.json (never in a settings scope, so it is not carried), and
 # writes its pin file under HIMMEL_HOOK_INTEGRITY_DIR. A pin file in that fresh dir proves the
 # plugin's hooks load under `--setting-sources ""`, via the profile's enabledPlugins alone.

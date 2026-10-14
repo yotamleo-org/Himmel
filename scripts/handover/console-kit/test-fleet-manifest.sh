@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-append-results.sh
 # scripts/handover/console-kit/test-fleet-manifest.sh - suite for
-# fleet-manifest.sh (HIMMEL-3748), the console's one writer for its fleet
+# fleet-manifest.sh, the console's one writer for its fleet
 # manifest (the JSON `tick.sh --legs-from` reads every sample):
 #   1. add to a missing manifest creates it (schema 1, doc + N-label entry)
 #   2. add is idempotent; a second leg appends in order; list prints docs
@@ -108,7 +108,7 @@ for p in $pids; do wait "$p"; done
 check '7. twelve concurrent adds keep all twelve legs' 12 "$(jq '.legs | length' "$c" 2>/dev/null)"
 check '7. no temp file is left behind' 0 "$(find "$tmp" -name 'race.fleet.json.*' ! -name '*.lock' | wc -l | tr -d ' ')"
 
-# 7b. HIMMEL-3981: two concatenated schema-1 objects are not one manifest
+# 7b. two concatenated schema-1 objects are not one manifest
 # (jq reads a stream, so a per-value check would pass it).
 s="$tmp/stream.fleet.json"
 printf '%s\n%s\n' "{\"schema\":1,\"legs\":[{\"doc\":\"$d1\"}]}" "{\"schema\":1,\"legs\":[{\"doc\":\"$d2\"}]}" > "$s"
@@ -122,7 +122,7 @@ printf '' > "$s"
 bash "$SCRIPT" list "$s" >/dev/null 2>&1; rc=$?
 check '7b. list refuses an empty file (rc 1)' 1 "$rc"
 
-# 7c. HIMMEL-5074: add stores --lane and --lockless; a missing lane is `unknown`.
+# 7c. add stores --lane and --lockless; a missing lane is `unknown`.
 m5="$tmp/lane.fleet.json"
 l1="$tmp/HIMMEL-5-N70-x.md"; l2="$tmp/HIMMEL-5-N71-y.md"; l3="$tmp/HIMMEL-5-P01-z.md"; l4="$tmp/HIMMEL-5-N72-w.md"
 bash "$SCRIPT" add "$m5" "$l1" >/dev/null 2>&1
@@ -167,7 +167,7 @@ bash "$SCRIPT" add "$m8" "$l1" >/dev/null 2>&1; rc=$?
 check '7d. re-adding with no flags stays a no-op (rc 0)' 0 "$rc"
 check '7d. still one row' 1 "$(jq '.legs | length' "$m8")"
 
-# HIMMEL-5193: an optional autocompact A/B arm is stored, validated and conflict-checked.
+# an optional autocompact A/B arm is stored, validated and conflict-checked.
 m9="$tmp/m9.json"
 bash "$SCRIPT" add "$m9" --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. add --arm 400k (rc 0)' 0 "$rc"

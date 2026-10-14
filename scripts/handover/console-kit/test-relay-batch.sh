@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-relay-batch.sh — HIMMEL-4902. Exercises relay-batch.sh: one command that
+# test-relay-batch.sh — Exercises relay-batch.sh: one command that
 # relays a console succession to every leg, never minting or rotating a token.
 # inbox-send.sh is stubbed (INBOX_SEND). bash 3.2-safe.
 #
@@ -78,7 +78,7 @@ queue: none
 
 ## Results
 EOF2
-# HIMMEL-5074: the lane lives in the manifest. mk_fm2 <lane> gives N10-N12 (and N.0) that
+# the lane lives in the manifest. mk_fm2 <lane> gives N10-N12 (and N.0) that
 # lane; N13/N14 stay native, since a claudex leg skips the census these two exercise.
 mk_fm2() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N10","lane":"%s"},{"doc":"%s","label":"N11","lane":"%s"},{"doc":"%s","label":"N12","lane":"%s"},{"doc":"%s","label":"N13","lane":"native"},{"doc":"%s","label":"N14","lane":"native"},{"doc":"%s","label":"N.0","lane":"%s"}]}\n' "$LEG3" "$1" "$LEG4" "$1" "$LEG5" "$1" "$LEG6" "$LEG7" "$LEG5" "$1" > "${DOC2%.md}.fleet.json"; }
 mk_fm2 claudex
@@ -105,7 +105,7 @@ census DEMO-1-N7-alpha DEMO-2-N8-beta
 printf '#!/usr/bin/env bash\nexit 3\n' > "$SEND"
 check "a failed claudex delivery exits 1" "1" "$(bash "$RB" "$DOC" --successor S --claudex N8 >/dev/null 2>&1; echo $?)"
 
-# --- HIMMEL-5074: the manifest records each leg's lane; --claudex is derived from it.
+# --- the manifest records each leg's lane; --claudex is derived from it.
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/send.log"\n' "$WORK" > "$SEND"
 LEGC="$WORK/DEMO-8-N20-codex-2026-10-09.md"; LEGN="$WORK/DEMO-9-N21-nat-2026-10-09.md"
 LEGU="$WORK/DEMO-10-N22-unk-2026-10-09.md"; LEGP="$WORK/DEMO-11-P01-pilot-2026-10-09.md"
@@ -164,7 +164,7 @@ out8="$(bash "$RB" "$DOC5" --successor S5 2>&1)"; rc8=$?
 check "lockless-only console still lists the lockless row" "1" "$(printf '%s\n' "$out8" | grep -c '^LOCKLESS P01 lane=deepseek')"
 check "lockless-only console exits 0" "0" "$rc8"
 
-# --- judge j2224a B1/B1b/N3: label collisions and the lockless predicate.
+# --- b/N3: label collisions and the lockless predicate.
 # a lockless row ahead of a locked leg with the same label never drops the leg silently
 DOC7="$WORK/DEMO-nextleg-2026-10-09D-console.md"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers

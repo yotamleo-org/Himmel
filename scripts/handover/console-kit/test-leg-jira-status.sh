@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-append-results.sh
-# scripts/handover/console-kit/test-leg-jira-status.sh - HIMMEL-4419. Hermetic
+# scripts/handover/console-kit/test-leg-jira-status.sh - Hermetic
 # tests for leg-jira-status.sh and its append-results.sh wiring: a stubbed Jira
 # CLI (LEG_JIRA_CLI) records every `transition`, so no real ticket is touched.
 #   1. LIVE bullet on a ticket-named doc   -> To Do ticket moves to In Progress

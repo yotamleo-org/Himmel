@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/console-kit/close-wrapped-leg.sh - console-run wrapped-leg
-# window close (HIMMEL-3572 row 7). A console's `kill <konsole pid>` is
+# window close. A console's `kill <konsole pid>` is
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
 # but ONLY after verifying the leg is actually done: the queue lock on its
@@ -8,7 +8,7 @@
 # kills a pid it cannot independently prove belongs to that leg.
 #
 # Usage: close-wrapped-leg.sh [--console | --fleet <manifest>] <leg-doc>
-# --console (HIMMEL-4968) closes a wrapped PREDECESSOR console's window: the
+# --console closes a wrapped PREDECESSOR console's window: the
 # same lock/WRAPPED/one-session checks and subtree check, then TERM - no cost
 # row, /tmp reap, digest or worktree prune. Run it right after your own LIVE.
 # --fleet removes the doc after a successful close, including benign prune skips.
@@ -29,9 +29,9 @@
 #
 # After the signal, the leg's own /tmp scratch (its judge dirs, and its session
 # scratch dir) is archived then reaped via tmp-reap.sh, scoped to this leg only
-# (HIMMEL-4235); a reap failure warns and never fails the close.
+# a reap failure warns and never fails the close.
 #
-# Then the failure-loop digest (HIMMEL-4670 P3): the session id is read from
+# Then the failure-loop digest: the session id is read from
 # ~/.claude/sessions/<pid>.json BEFORE the TERM, and after it
 # leg-digest-step.sh digests that session into the leg-failures and eval-runs
 # ledgers under a hard timeout (CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT, default 120).
@@ -42,7 +42,7 @@
 # Then, if the doc names exactly one worktree path (a
 # `.claude/worktrees/...` path appearing once), runs
 # `scripts/clean.sh --only <worktree> --only-allow-unmerged` and reports (not
-# fails) a "not pruned" skip. That flag (HIMMEL-3747) makes clean-garden.sh
+# fails) a "not pruned" skip. That flag makes clean-garden.sh
 # itself resolve the worktree's branch's PR by branch (via gh, independent of
 # whatever the doc's own Results bullets say) and prune when: the PR is
 # MERGED with a head match (the original, unwidened case -- also covers a doc
@@ -53,7 +53,7 @@
 # (gh/cache failure) are never pruned. Never guesses a worktree: 0 or >1
 # candidates in the doc skips the prune with a report.
 #
-# Before signalling (HIMMEL-3747), reuses scripts/handover/wrap-subtree-check.sh
+# Before signalling, reuses scripts/handover/wrap-subtree-check.sh
 # on the matched pid: a non-harness descendant still alive (a leg mid an
 # operator command, a tool call in flight) refuses the TERM rather than
 # killing it out from under that work - never guessed, never overridden.
@@ -71,7 +71,7 @@
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
 #   7  refused - the matched session still has a live in-process subagent (an
 #      Agent-tool child, e.g. a console's judge call), or live-subagents.sh
-#      could not prove it has none (HIMMEL-5071); retry once they finish
+#      could not prove it has none; retry once they finish
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # no .ps1 twin - konsole legs are Linux/KDE-only, same guard as
@@ -191,7 +191,7 @@ if [ "$match_count" -ne 1 ]; then
     exit 5
 fi
 
-# ---------- Pre-signal session-note capture (HIMMEL-3629) --------------------
+# ---------- Pre-signal session-note capture --------------------
 # A wrapped leg's SessionEnd hook never runs: Claude Code cancels it the
 # instant our TERM below lands, so no luna session note is written. Reproduce
 # the hook's input here, from what we already resolved above (the leg's
@@ -202,11 +202,11 @@ fi
 # "cwd" field), derive session_id from the transcript's own filename, and
 # feed end-session-wiki.sh the same SessionEnd JSON shape Claude Code would
 # have. 0 or >1 matching transcripts: say so on stderr and still close -
-# never guess which one. The hook itself dedups by session_id (HIMMEL-3629),
+# never guess which one. The hook itself dedups by session_id,
 # so it is harmless if the leg's own SessionEnd ALSO manages to fire.
 TRANSCRIPT=""
 END_SESSION_WIKI="${END_SESSION_WIKI_BIN:-$HERE/../../hooks/end-session-wiki.sh}"
-# HIMMEL-5182: a claudex leg runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
+# a claudex leg runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
 # sessions/<pid>.json and projects/ are NOT under the console's config dir. Read
 # the matched pid's own CLAUDE_CONFIG_DIR from /proc/<pid>/environ; failing that,
 # the fleet manifest's lane (claudex -> ~/.claude-codex); else the console's.
@@ -257,7 +257,7 @@ if [ "$subtree_rc" -ne 0 ]; then
     exit 6
 fi
 
-# ---------- Session id (HIMMEL-4670 P3, HIMMEL-5071) ---------------------------
+# ---------- Session id ---------------------------
 # Captured BEFORE the TERM, while the session's own record still exists: the
 # live pid's ~/.claude/sessions/<pid>.json names its sessionId. Unreadable or
 # not a UUID: the transcript resolved above supplies it. The subagent gate
@@ -270,7 +270,7 @@ case "$digest_sid" in
     *) digest_sid="$(transcript_sid "${TRANSCRIPT:-none}")" ;;
 esac
 
-# ---------- Live in-process subagents (HIMMEL-5071) ----------------------------
+# ---------- Live in-process subagents ----------------------------
 # An Agent-tool child is not a process, so the subtree check above cannot see
 # it: TERMing its parent kills it and loses its result (a console's judge
 # verdict). live-subagents.sh reads the session's subagent registry against its
@@ -288,7 +288,7 @@ if [ "$subagents_rc" -ne 0 ]; then
     exit 7
 fi
 
-# ---------- --console: a wrapped predecessor console (HIMMEL-4968) -------------
+# ---------- --console: a wrapped predecessor console -------------
 # Every check above ran unchanged. A console has no worktree, cost row, scratch
 # or failure digest of its own, so the leg-only steps below are skipped: TERM
 # the one proven pid and stop.
@@ -301,7 +301,7 @@ if [ "$CONSOLE_MODE" -eq 1 ]; then
     exit 0
 fi
 
-# ---------- Leg cost ledger (HIMMEL-4217) ----------------------------------------
+# ---------- Leg cost ledger ----------------------------------------
 # One JSONL row per wrapped leg, from the transcript resolved above. Never
 # fatal: a meter or ledger failure WARNs and the close proceeds. A retry of the
 # same transcript (a refused or failed close re-run) never writes a second row.
@@ -327,7 +327,7 @@ if ! "$KILL" -TERM "$matched"; then
 fi
 echo "close-wrapped-leg: sent TERM to pid $matched (leg $(leg_label "$DOC"))"
 
-# ---------- Wrapped leg's own /tmp scratch (HIMMEL-4235) ----------------------
+# ---------- Wrapped leg's own /tmp scratch ----------------------
 # Archive-then-reap THIS leg's judge dirs (j<N>, j<N>[a-z]) and its session
 # scratch dir, scoped through tmp-reap.sh --judge <pr>/--session: never a fleet-wide
 # sweep (other legs are live). Dry-run first; apply only after a clean dry-run.
@@ -368,7 +368,7 @@ reap_leg_scratch() {
 }
 reap_leg_scratch || echo "close-wrapped-leg: WARN /tmp reap errored - close continues" >&2
 
-# ---------- Failure-loop digest (HIMMEL-4670 P3, spec 5.3) --------------------
+# ---------- Failure-loop digest --------------------
 # One `digest=` line and nothing else: leg-digest-step.sh's stderr is dropped,
 # its rc is ignored, and a hard outer timeout bounds it, so a digest crash,
 # hang or missing journal changes no other output and never the close's rc.
@@ -386,7 +386,7 @@ if [ "$wt_count" -ne 1 ]; then
 fi
 WT="$worktrees"
 
-# HIMMEL-4334: the TERM'd session may still be inside the worktree when the
+# the TERM'd session may still be inside the worktree when the
 # first prune runs ("in use"). Retry quietly a bounded number of times (a few
 # seconds in all) so a leg that exits promptly is pruned now, not left for a
 # manual --only later. Only the "in use" skip retries; every other outcome is

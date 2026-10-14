@@ -3,7 +3,7 @@
 # shellcheck disable=SC2012  # ls over fixture dirs whose names the suite chose
 # shellcheck disable=SC2031  # root is set once in the main shell; the scope subshell only reads
 # scripts/handover/console-kit/test-grant-round.sh - suite for grant-round.sh
-# (HIMMEL-5058), the console's own one-round grant on a persisted judge record:
+# the console's own one-round grant on a persisted judge record:
 #   1. no record for the qid refuses; a record for another head refuses; a
 #      hand-written (unsigned) record refuses; a record naming another PR or
 #      branch refuses - each leaves the counter and the consumption file alone
@@ -207,7 +207,7 @@ for which in _grant-round-qid-scan "$BRANCH"; do
 done
 rm -f "$tmp/ownerless.flag"
 # A lock reclaimed by a waiter while the in-lock gh read stalled: the grant must
-# notice before its renames, refuse 5 and change nothing (HIMMEL-5126).
+# notice before its renames, refuse 5 and change nothing.
 for which in feat-x-grant _grant-round-qid-scan; do
     reset_state 3
     rm -f "$tmp/ghc"

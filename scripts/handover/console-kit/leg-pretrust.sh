@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-pretrust.sh <lane> <dir>  (HIMMEL-5056)
+# leg-pretrust.sh <lane> <dir>
 #
 # Pre-accept Claude Code's folder-trust state for a leg's working directory so a
 # headed leg does not park at the "Is this a project you trust?" prompt (the
@@ -70,7 +70,7 @@ case "$lane" in
     deepseek) cfg="$home/.claude-deepseek/.claude.json" ;;
     *) echo "leg-pretrust: unknown lane: $lane" >&2; exit 2 ;;
 esac
-# Jailed rows (HIMMEL-5068, pilot p20): claude runs inside a bwrap jail where the
+# Jailed rows: claude runs inside a bwrap jail where the
 # worktree is bound at another path and ~/.claude-<lane> is a per-row copy, so the
 # flag must land in THAT config under THAT path. LEG_PRETRUST_CONFIG names the
 # config file and LEG_PRETRUST_KEY the project key; the directory is still checked
@@ -187,7 +187,7 @@ for (let attempt = 0; attempt < 5; attempt++) {
     if (j.projects === undefined) j.projects = {};
     if (j.projects[key] !== undefined && !obj(j.projects[key])) { console.error("leg-pretrust: " + p + " has a non-object projects[" + key + "] - refusing to overwrite"); process.exit(4); }
     if (j.projects[key] === undefined) j.projects[key] = {};
-    // HIMMEL-5249: the deepseek lane (its own config dir, never approved) also stops at the
+    // the deepseek lane (its own config dir, never approved) also stops at the
     // "Allow external CLAUDE.md imports?" prompt, so its project key gets those two flags too.
     const imports = process.env.WT_IMPORTS === "1";
     const pk = j.projects[key];

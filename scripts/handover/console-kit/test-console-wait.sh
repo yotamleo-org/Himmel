@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-console-wait.sh — HIMMEL-3509. Exercises console-wait.sh, the console's
+# test-console-wait.sh — Exercises console-wait.sh, the console's
 # one event waiter: silent while nothing changes, exits with exactly one WAKE
 # block on a Telegram inbox line or a confirmed change of the tick's action
 # key. tick.sh and the bank verdict are stubbed (CONSOLE_WAIT_TICK /
@@ -52,7 +52,7 @@ export CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
 export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2
 # A failure streak wakes only in (f4); elsewhere a failed sample is just "not a change".
 export CONSOLE_WAIT_FAIL_WAKE=1000
-# HIMMEL-3724: a denials rise pages the operator. The suite owns the sender and
+# a denials rise pages the operator. The suite owns the sender and
 # the record dir (never a real Telegram send, never ~/.himmel/state): the stub
 # appends each page text to $STUB/pages. CONSOLE_WAIT_PAGE_TIMEOUT is kept short
 # so the hung-sender case (p6) finishes fast.
@@ -129,7 +129,7 @@ timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/b2.out" 2>/dev/null; rc=$?  
 check "(b) the re-arm after the wake does not wake again for the same change" "" "$(cat "$WORK/b2.out")"
 check "(b) the re-arm is still waiting when the window closes (rc 124)" "124" "$rc"
 
-# --- (hm) handover mode (HIMMEL-4902): <inbox>.handover stops tick wakes ---
+# --- (hm) handover mode: <inbox>.handover stops tick wakes ---
 # console.sh next writes the marker once the successor validated; the outgoing
 # console's waiter then takes no tick/bank/page work, but Telegram still wakes.
 reset_stub
@@ -160,7 +160,7 @@ sleep 3
 check "(hs) a stale handover marker does not suppress ticks" "yes" "$([ -e "$WORK/hs.ticked" ] && echo yes || echo no)"
 kill "$WPID" 2>/dev/null
 
-# --- (b3724) a denials= class change wakes, naming denials (HIMMEL-3724) ---
+# --- (b3724) a denials= class change wakes, naming denials ---
 reset_stub
 I="$(new_inbox b3724)"
 start "$I" "$WORK/b3724.out" --legs "N1.md"
@@ -242,7 +242,7 @@ check "(d) a change seen on one sample only does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (d2) a key that changes on every sample still wakes -------------------
-# Measured on the live repo (HIMMEL-3509): the open-PR set moved between every
+# Measured on the live repo: the open-PR set moved between every
 # 180 s sample, so "the same new key twice" never held and the waiter stayed
 # silent through real changes. Two consecutive samples off the saved key wake.
 reset_stub
@@ -446,7 +446,7 @@ check "(s) no in-place '> \"\$key_file\"' write remains (must go through .tmp + 
     "$(grep -cF '> "$key_file"' "$HERE/console-wait.sh")"
 
 # --- (t) a board class move to ok never wakes on its own; the saved key
-# still moves to board=ok, so a later move to STALE wakes again (HIMMEL-3521) -
+# still moves to board=ok, so a later move to STALE wakes again -
 reset_stub
 tick_line "N1:FRESH" "STALE:5m"
 I="$(new_inbox t)"
@@ -480,7 +480,7 @@ wait_exit "$WPID"
 check "(v) board-to-ok combined with a prs change still wakes" "0" "$rc"
 check "(v) the wake names only prs, not board" "WAKE tick changed=prs bank=PROCEED" "$(head -n1 "$WORK/v.out")"
 
-# --- (p) HIMMEL-3724: a denials rise to SHIP-STEP / PAUSE-RISK pages ---------
+# --- (p) a denials rise to SHIP-STEP / PAUSE-RISK pages ---------
 # One page per rise (a new leg or a higher class), never per tick. The page
 # text carries the leg label, count and class ONLY.
 denials_rise() { # <case> <from> <to>  -> runs the waiter to its wake (or 8 s)
@@ -570,7 +570,7 @@ HIMMEL_DENIAL_ACK_DIR="$WORK/ro/sub" denials_rise p6c none 'N1:1:SHIP-STEP'
 check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"
 chmod 700 "$WORK/ro"
 
-# --- (w) HIMMEL-3933: tracker= wakes on a class change exactly as board= does:
+# --- (w) tracker= wakes on a class change exactly as board= does:
 # ok to STALE wakes naming tracker, a move to ok alone does not, and a tick
 # line with no tracker= field (an older tick.sh) stays a valid sample ----------
 tracker_line() { sed "s/ denials=none/ tracker=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
@@ -606,7 +606,7 @@ wait_exit "$WPID"
 check "(w3) a tick line with no tracker= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (x) HIMMEL-4911: vault= wakes on a class change TO STALL or PUSH-LAG, never on
+# --- (x) vault= wakes on a class change TO STALL or PUSH-LAG, never on
 # age/count alone, never on a move back to ok/skip/unknown, and its absence
 # (an older tick.sh) is still a valid sample. The wake names the reproduce
 # command. RED control (console-wait.sh before this change): the STALL move
@@ -670,7 +670,7 @@ wait_exit "$WPID"
 check "(x5) a tick line with no vault= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (y) HIMMEL-5163: cloud= wakes on a class move TO STALL only -- never on a
+# --- (y) cloud= wakes on a class move TO STALL only -- never on a
 # change of the ticket list, never on a move back to ok/skip, and its absence (an
 # older tick.sh) is still a valid sample. RED control (console-wait.sh before this
 # change): the STALL move below never woke ("running"). -----------------------
@@ -723,7 +723,7 @@ check "(y4) a tick line with no cloud= field is still a valid sample" "running" 
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (m3748) a leg-set change made through --legs-from is a silent baseline --
-# HIMMEL-3748: with --legs-from the argv never changes, so the waiter folds the
+# with --legs-from the argv never changes, so the waiter folds the
 # manifest's leg list into its args hash each sample. A dispatch (manifest add)
 # that moves legs=/tails= is the console's own act -- a silent baseline, the
 # same as a restart with new --legs -- while a real change on the same leg set
@@ -758,7 +758,7 @@ check "(m3748) a real change on the new leg set still wakes (rc 0)" "0" "$rc"
 check "(m3748) naming legs" "WAKE tick changed=legs bank=PROCEED" "$(head -n1 "$WORK/m3748.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (l4568) HIMMEL-4568: a READY tail turning READY!stale (30 min, no GO file) is a wake
+# --- (l4568) a READY tail turning READY!stale (30 min, no GO file) is a wake
 reset_stub
 sed 's/ tails=N1:LIVE/ tails=N1:READY/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 I="$(new_inbox l4568)"
@@ -769,7 +769,7 @@ wait_exit "$WPID"
 check "(l4568) a READY going stale wakes the console (rc 0)" "0" "$rc"
 check "(l4568) the wake names tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n1 "$WORK/l4568.out")"
 
-# --- (u4959) HIMMEL-4959: a sustained capacity=UNDERFILLED wakes, once per streak
+# --- (u4959) a sustained capacity=UNDERFILLED wakes, once per streak
 # tick.sh already folds TICK_UNDERFILL_MIN into capacity=; the waiter wakes on the
 # first UNDERFILLED sample, prints the dispatchable list (stubbed here), and a
 # re-arm during the same streak stays quiet until capacity returns to ok.

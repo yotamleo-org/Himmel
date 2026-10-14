@@ -157,7 +157,7 @@ DATE_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
 IDLE_MIN = 180
 ACT_NEWEST = 0.0  # newest mtime among the wrapped-leg docs actuals() last read (HIMMEL-4930)
 # ponytail: no cost column (token spend per leg is not in the mirror or the leg doc); upgrade: mirror each PR's leg-burn
-# line (HIMMEL-2763 pricing) and add cost beside wall and active.
+# line and add cost beside wall and active.
 SOURCE = ('wall = first Results bullet to WRAPPED, dated from the leg doc\'s name (station clock, shown in UTC); '
           'active = the gaps between bullets of 3 h or less; dated = legs whose wall could be dated. '
           'cost: not measured (it needs the PR\'s leg-burn line in the mirror).')
@@ -224,7 +224,7 @@ def actuals():
     return out
 
 
-# HIMMEL-5453: who filed what. A leg doc's Results bullet saying "filed HIMMEL-m" spawned m from the leg's ticket; a
+# who filed what. A leg doc's Results bullet saying "filed HIMMEL-m" spawned m from the leg's ticket; a
 # console doc's OPERATOR bullet (not a RULING, IS AWAKE or ITEMS line) saying "Filed HIMMEL-m" makes m operator-directed.
 # Only the ticket key is read, never the bullet's clock time.
 FILED_RE = re.compile(r'(?i)\bfiled\s+((?:HIMMEL-\d+(?:\s*(?:,|\+|&|and)\s*)?)+)')
@@ -356,7 +356,7 @@ def plan_rules(meta):
 
     def emv(k):
         return em[k] if isinstance(em.get(k), (int, float)) else None
-    # Effort model B (HIMMEL-3992) words the caps "a version holds < N" / "total mean load within X" and carries
+    # Effort model B words the caps "a version holds < N" / "total mean load within X" and carries
     # the bank rate as effort_model.bank_per_seq; the older wording still parses.
     return dict(tickets=val(r'(?:ticket count|version holds)\s*<\s*(\d+)'), total=val(r'total (?:mean )?load within\s*([\d.]+)'),
                 per=emv('bank_per_seq') if emv('bank_per_seq') is not None else val(r'effort_mid\s*x\s*([\d.]+)'),
@@ -504,7 +504,7 @@ def num(key):
     return int(key.split('-')[1])
 
 
-# HIMMEL-3990: the Jira-first view. Buckets come from the status NAME (statusCategory only for a name not listed).
+# the Jira-first view. Buckets come from the status NAME (statusCategory only for a name not listed).
 BUCKETS = {'to do': 'todo', 'backlog': 'todo', 'in progress': 'prog', 'in review': 'rev', 'ci': 'ci', 'in ci': 'ci',
            'done': 'done', 'closed': 'done', 'in public': 'done', 'wont do': 'wont', 'wont fix': 'wont'}
 
@@ -942,12 +942,12 @@ def main():
             theme[r['key']] = r.get('theme', '') or '(no theme)'
             if (r.get('impact') or '').isdigit():
                 impact[r['key']] = int(r['impact'])
-    # HIMMEL-4930: the reconcile overlay themes tickets no stage1 file covers; it never overrides a stage1 theme.
+    # the reconcile overlay themes tickets no stage1 file covers; it never overrides a stage1 theme.
     ovp = os.path.join(ROOT, 'stage1', 'themes-overlay.tsv')
     for r in read_tsv(ovp)[1] if os.path.exists(ovp) else []:
         if r.get('theme') and theme.get(r['key'], '(no theme)') == '(no theme)':
             theme[r['key']] = r['theme']
-    # HIMMEL-5491: a Jira `theme-<slug>` label wins over the plan (the Kanban writes it); a slug matching a plan theme shows its name.
+    # a Jira `theme-<slug>` label wins over the plan (the Kanban writes it); a slug matching a plan theme shows its name.
     by_slug = {re.sub(r'[^a-z0-9]+', '-', t.lower()).strip('-'): t for t in set(theme.values())}
     for k, m in mir.items():
         lab = next((x for x in m.get('labels', []) if isinstance(x, str) and x.startswith('theme-') and len(x) > 6), '')
@@ -973,7 +973,7 @@ def main():
         # P[14] issue_plain; P[15] the ticket's load in bank: effort_mid x per, or only its slice when planning comes first.
         # Under an effort model the placer's effort_mid already is the slice's mean (overrun included), so it is used as is.
         ld = None if rules['per'] is None else round((seqm.get(sl, 0) if sl and not rules['model'] else mid) * rules['per'], 4)
-        # HIMMEL-5226: the ticket's own plain Impact block wins; the stage1 explain sidecar is the fallback.
+        # the ticket's own plain Impact block wins; the stage1 explain sidecar is the fallback.
         pi = clip((mir.get(k) or {}).get('impact', ''), 400)
         return [pi or uimp.get(k, ''), erange.get(k, ''), ready.get(k), impact.get(k), sl, plain.get(k, ''), ld]
     themes = sorted(set(theme.values()) | {'(no theme)'})
@@ -1019,7 +1019,7 @@ def main():
         m = mir.get(r['key'])
         unpl.append([num(r['key']), clip(m['title'] if m else '', 60), m['st'] if m else 0,
                      clip(r['reason'], 60)])
-    # HIMMEL-3954: parked closures stay visible (evidence = the reason); other closure flags are not shown.
+    # parked closures stay visible (evidence = the reason); other closure flags are not shown.
     for r in read_tsv(os.path.join(S, 'closures.tsv'))[1]:
         if r['close_flag'] != 'park-ns':
             continue
@@ -1376,7 +1376,7 @@ __KANBAN__</section>
 (function(){
 var D=JSON.parse(document.getElementById("data").textContent);
 /*MODEL*/
-// Pure model (HIMMEL-3990): every figure on the page and every drill-down list comes from here; test-tracker.sh runs it under node.
+// Pure model: every figure on the page and every drill-down list comes from here; test-tracker.sh runs it under node.
 function model(D){
  var V=D.V,P=D.P,T=D.T,LEG=D.LEG||{};
  var KIND=["bugs","improvements","features","other","audits"];
@@ -1596,7 +1596,7 @@ var WI={},ALL=false,BAND=["Stops now","Blocks release","Queue health"];
 function num(x){return x==null?"–":x===Math.round(x)?String(x):f2(x)}
 function bw(b){return b.what+" "+num(b.used)+" of "+num(b.cap)}
 function fmtMin(m){return m==null?"–":m<60?Math.round(m)+" min":(Math.round(m/6)/10)+" h"}
-// renderBench(h): the benchmark (HIMMEL-5453): each planned item with its own legs or a spawned bundle, then the
+// renderBench(h): the benchmark: each planned item with its own legs or a spawned bundle, then the
 // operator-directed and unattributed bundles; raw inputs sit beside the ratio. Row fields follow BENCH_COLS in tracker.py.
 function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN]:[]);if(!rows.length)return;
  var tb=el("table","ld"),hr=el("tr"),n=function(v){return v==null||v===""?"–":String(v)};
@@ -1698,7 +1698,7 @@ function renderPvj(){var a=M.inTrain(REM),dr=a.filter(function(p){return p[7]==1
  $("pvjs").textContent="Plan vs Jira: "+(dr.length+off.length?(dr.length+off.length)+" differ ›":"they agree");b.textContent="";
  if(dr.length){b.appendChild(el("p",null,pl(dr.length,"ticket is","tickets are")+" planned for one version while Jira names another."));M.order(dr).forEach(function(p){b.appendChild(ticket(p))})}
  if(off.length){b.appendChild(el("p",null,pl(off.length,"open ticket sits","open tickets sit")+" in a version in Jira but not in the plan."));M.order(off).forEach(function(p){b.appendChild(ticket(p))})}}
-// The version-first view (HIMMEL-3990): Jira's own versions and status names, built from D.JV / D.JT; the plan's views sit folded below.
+// The version-first view: Jira's own versions and status names, built from D.JV / D.JT; the plan's views sit folded below.
 var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]],
  RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JC>=0?D.JC:JV.length-1;
 var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==="1"}catch(e){}

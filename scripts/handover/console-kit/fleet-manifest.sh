@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet-manifest.sh — HIMMEL-3748. The one writer for a console's fleet
+# fleet-manifest.sh — The one writer for a console's fleet
 # manifest: the JSON file `tick.sh --legs-from` (and so console-wait.sh) reads
 # on every sample, so a dispatch or a wrap edits one file instead of the console
 # restarting its waiter with a new 10-15 path --legs argv.
@@ -14,12 +14,12 @@
 # Schema 1:
 #   {"schema": 1,
 #    "legs": [{"doc": "<absolute leg doc>", "label": "N<k>", "added": "<ISO-8601>"}]}
-# HIMMEL-5074: add also stores `lane` (native|claudex|deepseek|api|...; a missing
+# add also stores `lane` (native|claudex|deepseek|api|...; a missing
 # --lane is stored `unknown`, never guessed) and, with --lockless, `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
 # tail marker only). A manifest written before this carries neither key and reads
 # as lane `unknown`, not lockless. A doc already listed is left alone, flags and all.
-# HIMMEL-5193: add also stores an optional `arm` (200k|400k, the autocompact A/B
+# add also stores an optional `arm` (200k|400k, the autocompact A/B
 # arm the leg launched on); a leg added with no --arm carries no `arm` key.
 # Only `legs[].doc` drives tick; label (leg-identity.sh's N<k>) is what remove
 # matches and what a human reads. Any other key, top-level or per leg, is
@@ -59,7 +59,7 @@ USAGE
 # Every leg's doc is an absolute path with no whitespace or glob character:
 # tick word-splits its leg list, so anything else would silently shrink the
 # fleet it judges. Run with `jq -s`: the file must hold exactly one top-level
-# value (HIMMEL-3981) — jq reads a stream, so two concatenated objects would
+# value — jq reads a stream, so two concatenated objects would
 # otherwise pass per value and list/add would act on a multi-object file.
 VALID='length == 1 and (.[0] | type == "object" and .schema == 1 and (.legs | type == "array")
     and all(.legs[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'

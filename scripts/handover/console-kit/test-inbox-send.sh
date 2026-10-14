@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-inbox-send.sh — HIMMEL-2788. Exercises inbox-send.sh: append-only
+# test-inbox-send.sh — Exercises inbox-send.sh: append-only
 # writes, --doc mirroring into "## Console Rulings", traversal/whitespace
 # refusal, and --pending listing. bash 3.2-safe.
 #
@@ -13,7 +13,7 @@ SCRIPT="$HERE/inbox-send.sh"
 # shellcheck source=scripts/lib/sha256-bin.sh
 . "$HERE/../../lib/sha256-bin.sh"
 
-# HIMMEL-3182: inbox-send.sh takes a flock and secures its ledger/lock dirs with
+# inbox-send.sh takes a flock and secures its ledger/lock dirs with
 # `mkdir -m 700` + `chmod 700`; a host without flock, or where the mode does not
 # stick (Git Bash / NTFS), cannot run it at all, so every case below would fail
 # for that reason. Probed, so a Linux host still runs the whole suite.
@@ -38,7 +38,7 @@ export HANDOVER_DIR
 SESSION="HIMMEL-2788-test-leg"
 INBOX="$HANDOVER_DIR/inbox/$SESSION.md"
 
-# HIMMEL-2975: fixture cmdline for the SENDER's own session (current_session_name).
+# fixture cmdline for the SENDER's own session (current_session_name).
 CMDLINE_FIXTURE="$WORK/cmdline"
 printf 'claude\0-n\0HIMMEL-2788-sender\0' > "$CMDLINE_FIXTURE"
 
@@ -137,7 +137,7 @@ else
     pass "--pending does not list a fully-delivered session"
 fi
 
-# --- HIMMEL-2975: author line + relay --token refusal -----------------------
+# --- author line + relay --token refusal -----------------------
 SESSION23="HIMMEL-2975-relay-test"
 INBOX23="$HANDOVER_DIR/inbox/$SESSION23.md"
 CMDLINE_CONSOLE="$WORK/cmdline-console"
@@ -201,9 +201,9 @@ else
     fail "no token, no CLAUDE_PID -> from=unknown (rc=$rc last='$last' out='$out')"
 fi
 
-# HIMMEL-2795: force overlapping read-modify-write snapshots. Writer two
+# force overlapping read-modify-write snapshots. Writer two
 # signals before flock (fixed) or mv (baseline); writer one pauses at mv.
-# flock is a required prerequisite for this case (CodeRabbit, HIMMEL-2790):
+# flock is a required prerequisite for this case (CodeRabbit):
 # without it REAL_FLOCK is empty and the stub execs an empty command, so both
 # writers would fail before the race assertion ever runs.
 if ! REAL_FLOCK="$(command -v flock)"; then
@@ -275,7 +275,7 @@ else
     fail "pre-existing lock directory left at $lock_mode instead of 700"
 fi
 
-# --- HIMMEL-2980: console-side inbox sent-record -----------------------------
+# --- console-side inbox sent-record -----------------------------
 RUNDIR="$WORK/rundir"
 export HIMMEL_CONSOLE_RUNDIR="$RUNDIR"
 LEDGER="$RUNDIR/HIMMEL-sender-console/inbox-sent.log"
@@ -337,7 +337,7 @@ else
     fail "ledger directory is created at mode 700 (mode=$ledger_mode)"
 fi
 
-# Case 18 (HIMMEL-5408): a multi-line --file ruling is delivered whole — every
+# Case 18: a multi-line --file ruling is delivered whole — every
 # line's content lands in ONE inbox bullet and ONE doc bullet, never just line 1.
 ML_FILE="$WORK/multiline-ruling.txt"
 printf 'GO line one\nline two\n\nline three\nline four\nline five\n' > "$ML_FILE"

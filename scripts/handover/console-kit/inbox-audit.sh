@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# inbox-audit.sh — HIMMEL-2980. Per-shift audit for inbox-send.sh's
+# inbox-audit.sh — Per-shift audit for inbox-send.sh's
 # console-side sent-record: every token-quoting bullet in an inbox must have
 # a matching ledger line, or it is unaccounted for — either forged (a
 # console relay is barred from --token by HIMMEL-2975, so a token bullet

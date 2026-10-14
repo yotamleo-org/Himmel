@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-headed-arm-leg.sh
-# scripts/handover/console-kit/test-go.sh - suite for go.sh (HIMMEL-2919), the
+# scripts/handover/console-kit/test-go.sh - suite for go.sh, the
 # console's GO-evidence writer that merge-on-green.sh's console-GO gate reads.
 # test-merge-on-green.sh drives the reader end to end with GO files written by
 # THIS script; this suite pins the writer's own contract:
@@ -11,10 +11,10 @@
 #   5. HIMMEL_CONSOLE_LEG set -> exit 3, nothing written (a leg never writes its own GO;
 #      this covers a --judge leg too - HIMMEL-3133, same marker, no separate one).
 #   6. HIMMEL_CONSOLE_RELAY set -> exit 3, and its message names the console, never
-#      a judge, as the writer (HIMMEL-3133 fixed pre-existing stale wording here).
+#      a judge, as the writer.
 #   7. unresolvable handover root -> exit 1.
-#   13. --trust-reviewed <id> (HIMMEL-3895): id validated, signed into the mac.
-#   20. --fix-main-red <run-id> (HIMMEL-5134): the signed fix-GO for the red-main gate.
+#   13. --trust-reviewed <id>: id validated, signed into the mac.
+#   20. --fix-main-red <run-id>: the signed fix-GO for the red-main gate.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+.
 set -uo pipefail
@@ -29,11 +29,11 @@ tmp="$(cd "$tmp" && pwd)"
 # Sections 14-15 run after section 13 sources go-gate.sh, which assigns its
 # own `tmp`; name their dirs here so nothing below reads `$tmp` past that point.
 ROOT14="$tmp/root14"; ROOT15="$tmp/root15"; ROOT16="$tmp/root16"; ROOT18="$tmp/root18"
-# HIMMEL-3543: go.sh mints its GO key under $HOME/.config/himmel — keep it off
+# go.sh mints its GO key under $HOME/.config/himmel — keep it off
 # the operator's real key.
 export HOME="$tmp/home"; mkdir -p "$HOME"
 
-# HIMMEL-3578: go.sh now resolves this repo's nwo via `gh repo view` to bind
+# go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. A gh stub on PATH keeps every call below hermetic (no real
 # gh/network dependency); STUB_NWO controls what it returns.
 mkdir -p "$tmp/bin"
@@ -59,7 +59,7 @@ chmod +x "$tmp/bin/gh"
 export PATH="$tmp/bin:$PATH"
 export STUB_NWO="o/r"
 
-# HIMMEL-4565: go.sh runs ready-check.sh itself, so every write below runs from
+# go.sh runs ready-check.sh itself, so every write below runs from
 # a repo whose CR ledger has an ok row for the head, with a gh that answers
 # ready-check's queries green (testlib-ready-pass.sh). Section 14 breaks each.
 # shellcheck source=scripts/handover/console-kit/testlib-ready-pass.sh
@@ -83,7 +83,7 @@ verdict() {
   mkdir -p "$1/$VSCOPE/verdicts/$2"
   printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n%s' \
     "$2" "$3" "${VPR:-83}" "${VEXTRA:-}" > "$vf"
-  # HIMMEL-4984: a record counts only with write-verdict.sh's mac (VSIGN=0 models a hand-written one).
+  # a record counts only with write-verdict.sh's mac (VSIGN=0 models a hand-written one).
   [ "${VSIGN:-1}" = 1 ] || return 0
   vsign "$2" "$vf"
 }
@@ -96,7 +96,7 @@ vsign() {
   printf 'mac: %s\n' "$vmac" >> "$2"
 }
 
-# HIMMEL-4589: a trust verdict counts only under <user>/<bucket>, the user slug
+# a trust verdict counts only under <user>/<bucket>, the user slug
 # and the primary checkout's slugified basename (never a hardcoded bucket).
 export USER_SLUG=u
 VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
@@ -148,14 +148,14 @@ check "rewrite: no temp file left behind" "$leftover" "0"
 LEGROOT="$tmp/legroot"; mkdir -p "$LEGROOT"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker (any value): from an anchor checkout
 # with no claude ancestor (CI) and HANDOVER_DIR set, go.sh refuses 96
-# (HIMMEL-3914 I3). A leg always runs under its claude session, so these rows
+# A leg always runs under its claude session, so these rows
 # run under a fake one.
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 rc=0; out="$(HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check "leg marker: exit 3" "$rc" "3"
 contains "leg marker: names the reason" "$out" "console-spawned leg"
 check "leg marker: nothing written" "$(ls -A "$LEGROOT")" ""
-# HIMMEL-3543: a leg must not mint (or even create) the GO key either.
+# a leg must not mint (or even create) the GO key either.
 LEGHOME="$tmp/leghome"; mkdir -p "$LEGHOME"
 rc=0; HOME="$LEGHOME" HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "leg marker: exit 3 with a fresh HOME" "$rc" "3"
@@ -163,7 +163,7 @@ check "leg marker: no GO key minted" "$(find "$LEGHOME" -type f | wc -l | tr -d 
 rc=0; HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=0 _as_claude bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "leg marker: a falsy marker is no marker" "$rc" "0"
 
-# --- 6. HIMMEL_CONSOLE_RELAY refuses on its own (HIMMEL-2975), nothing written.
+# --- 6. HIMMEL_CONSOLE_RELAY refuses on its own, nothing written.
 ROOT6="$(mktemp -d)" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 rc=0; out="$(env -u HIMMEL_CONSOLE_LEG HANDOVER_DIR="$ROOT6" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check    "relay: exit 3" "$rc" "3"
@@ -171,7 +171,7 @@ contains "relay: names the relay" "$out" "console relay"
 check    "relay: no GO file written" "$(find "$ROOT6" -type f | wc -l | tr -d ' ')" "0"
 rm -rf "$ROOT6"
 
-# --- 7. HIMMEL-3133: "the judge is a leg" - go.sh's own gate is the leg
+# --- 7. "the judge is a leg" - go.sh's own gate is the leg
 # marker (HIMMEL_CONSOLE_JUDGE, HIMMEL-4564, only feeds guard-judge-writes.sh),
 # so nothing anywhere in go.sh's output should still claim
 # "only the judge writes a GO" (stale pre-3133 wording: only the CONSOLE does,
@@ -188,10 +188,10 @@ contains "relay: correctly names the console as the GO writer" "$out" "only the 
 rc=0; HANDOVER_DIR="$tmp/absent" bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "no root: exit 1" "$rc" "1"
 
-# --- 9. HIMMEL-3437: relative entry hands off to the $HIMMEL_REPO anchor -----
+# --- 9. relative entry hands off to the $HIMMEL_REPO anchor -----
 # The same mechanism scripts/cr/anchor-handoff.sh gives the scripts/cr/
-# writers (HIMMEL-3395), generalized to reach this depth-3 entry too
-# (HIMMEL-3437). Fixture trees carry the REAL generalized anchor-handoff.sh
+# writers, generalized to reach this depth-3 entry too
+# Fixture trees carry the REAL generalized anchor-handoff.sh
 # and must be real git repos (its root resolution is `git rev-parse
 # --show-toplevel`). A marker go.sh keeps everything up to and including the
 # real hand-off sourcing line verbatim, then `echo "RAN:<label>"` — a passing
@@ -225,7 +225,7 @@ check "3437: absolute entry runs local" "$out" "RAN:branch"
 rc=0; (cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/console-kit/go.sh >/dev/null 2>&1) || rc=$?
 check "3437: unset HIMMEL_REPO exits 2" "$rc" "2"
 
-# --- 10. HIMMEL-3572 row 1: go.sh writes where merge-on-green reads ---------
+# --- 10. go.sh writes where merge-on-green reads ---------
 # A console whose env has no HANDOVER_DIR (or has the harness repo's own
 # handovers/ stub) used to get rc=0 and a GO under <repo>/handovers, while the
 # gate reads the root the repo's .env configures. Fixture: a git tree carrying
@@ -262,7 +262,7 @@ rc=0; out=$(cd "$S10" && env -u HANDOVER_DIR -u HIMMEL_REPO bash "$S10/scripts/h
 [ "$rc" -ne 0 ] && echo "ok - 3572: configured root missing -> non-zero ($rc)" || { echo "FAIL - 3572: configured root missing -> rc=0 (GO written where the gate cannot see it)"; fails=$((fails+1)); }
 check "3572: configured root missing -> nothing under the repo stub" "$(find "$S10/handovers" -type f | wc -l | tr -d ' ')" "0"
 
-# --- 11. HIMMEL-3578: nwo unresolvable -> refuse, no GO written -------------
+# --- 11. nwo unresolvable -> refuse, no GO written -------------
 # The mac binds the repo; a `gh repo view` failure must never fall back to
 # writing an unbound GO.
 ROOT11="$tmp/root11"; mkdir -p "$ROOT11"
@@ -271,7 +271,7 @@ check "3578: gh repo view fails -> exit 1" "$rc" "1"
 contains "3578: names the cause" "$out" "gh repo view"
 check "3578: nothing written" "$(find "$ROOT11" -type f | wc -l | tr -d ' ')" "0"
 
-# --- 12. HIMMEL-3578: the mac binds the resolved nwo ------------------------
+# --- 12. the mac binds the resolved nwo ------------------------
 ROOT12="$tmp/root12"; mkdir -p "$ROOT12"
 rc=0; STUB_NWO="a/b" HANDOVER_DIR="$ROOT12" bash "$SCRIPT" 80 "$SHA" >/dev/null 2>&1 || rc=$?
 check "3578: write with nwo=a/b -> exit 0" "$rc" "0"
@@ -285,7 +285,7 @@ MAC_CD=$(sed -n 's/^mac=//p' "$ROOT12B/.locks/go/80.$SHA" 2>/dev/null)
   && echo "ok - 3578: different nwo -> different mac for the same pr/sha" \
   || { echo "FAIL - 3578: mac [$MAC_AB] does not vary with nwo (got [$MAC_CD] for c/d)"; fails=$((fails+1)); }
 
-# --- 13. HIMMEL-3895: --trust-reviewed signs the reviewer id -----------------
+# --- 13. --trust-reviewed signs the reviewer id -----------------
 ROOT13="$tmp/root13"; mkdir -p "$ROOT13"
 GO13="$ROOT13/.locks/go/81.$SHA"
 for bad in "" "a b" "x;y" "id|z" "$(printf '%0129d' 0)"; do
@@ -298,7 +298,7 @@ check "3895: nothing written on usage errors" "$(find "$ROOT13" -type f | wc -l 
 rc=0; HANDOVER_DIR="$ROOT13" bash "$SCRIPT" 81 "$SHA" >/dev/null 2>&1 || rc=$?
 MAC_PLAIN=$(sed -n 's/^mac=//p' "$GO13" 2>/dev/null)
 check "3895: an ordinary GO has no trust line" "$(grep -c '^trust-reviewed=' "$GO13" 2>/dev/null)" "0"
-# HIMMEL-3832: a trust-reviewed GO needs the judge's GO verdict for this head.
+# a trust-reviewed GO needs the judge's GO verdict for this head.
 VPR=81
 verdict "$ROOT13" judge-N9 "**GO** for head \`$SHA\`."
 verdict "$ROOT13" judge-N8 "**GO** for head \`$SHA\`."
@@ -342,7 +342,7 @@ unset -f sed
 check "3895: a GO swapped between reads never yields a trust id" "$rc" "2"
 rm -f "$GO13.forged"
 
-# --- 14. HIMMEL-4565: no GO for a head ready-check does not pass ------------
+# --- 14. no GO for a head ready-check does not pass ------------
 # The console ran ready-check by convention only; go.sh signed any head. It
 # now runs ready-check itself (check 4 is the CR-ledger ok row at the head)
 # and refuses, exit 4 and nothing written, on anything but PASS.
@@ -362,7 +362,7 @@ rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "
 check    "4565: reviewed head -> exit 0" "$rc" "0"
 check    "4565: reviewed head -> the GO path" "$out" "$ROOT14/.locks/go/82.$SHA14"
 
-# --- 15. HIMMEL-3832: --trust-reviewed <qid> needs that judge's GO verdict ---
+# --- 15. --trust-reviewed <qid> needs that judge's GO verdict ---
 # The verdict file is <root>/<user>/<bucket>/verdicts/<qid>/*.md; the first
 # non-blank line under `## Verdict` parses only as **GO**/**NO-GO** for head
 # `<sha>` (a trailing full stop allowed). An unparsed file, a NO-GO on this head,
@@ -413,7 +413,7 @@ vsign J13 "$ROOT15/$VSCOPE/verdicts/J13/HIMMEL-1-judge-J13.md"
 rc=0; HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J13 83 "$SHA" >/dev/null 2>&1 || rc=$?
 check    "3832: a CRLF verdict file -> exit 0" "$rc" "0"
 
-# --- 16. HIMMEL-4589: only this repo's own <user>/<bucket> verdicts count -----
+# --- 16. only this repo's own <user>/<bucket> verdicts count -----
 # A judge can write verdicts/<qid>/ in any bucket; the lookup must not read them.
 t16() {  # <label> <qid> - expect a refusal, nothing written
   local rc=0
@@ -445,7 +445,7 @@ rc=0; out="$(USER_SLUG='../x' HANDOVER_DIR="$ROOT16" bash "$SCRIPT" --trust-revi
 check "4589: an unresolvable user slug fails closed -> exit 5" "$rc" "5"
 contains "4589: and says the scope cannot resolve" "$out" "cannot resolve this repo's <user>/<bucket> verdict scope"
 
-# --- 17. HIMMEL-4928: a trust verdict counts only for the PR it names -------
+# --- 17. a trust verdict counts only for the PR it names -------
 # Two PRs can point at one head; the verdict's pr: line (two lines after the
 # verdict line) must equal go.sh's PR. A verdict with no pr: line fails closed:
 # it was written before the field existed and the judge rewrites it with
@@ -478,7 +478,7 @@ VPR=90; verdict "$ROOT17" L4 "**NO-GO** for head \`$SHA\`."
 t17 "a NO-GO naming another PR still vetoes" L4 91 "NO-GO for head"
 VPR=
 
-# --- 18. HIMMEL-4984: a record counts as merge trust only with its mac --------
+# --- 18. a record counts as merge trust only with its mac --------
 mkdir -p "$ROOT18"
 t18() {  # <label> <qid> - expect a refusal, nothing written
   local rc=0
@@ -500,7 +500,7 @@ rc=0; HANDOVER_DIR="$ROOT18" bash "$SCRIPT" --trust-reviewed M4 95 "$SHA" >/dev/
 check "4984: a signed GO still satisfies --trust-reviewed -> exit 0" "$rc" "0"
 VPR=
 
-# --- 19. HIMMEL-4984: a sibling record that cannot be read whole vetoes -------
+# --- 19. a sibling record that cannot be read whole vetoes -------
 # A signed GO beside a sibling that is NUL-bearing, empty or mode 000 must not be
 # admitted: the sibling may be a NO-GO that main would honour (fail closed).
 ROOT19="$tmp/root19"; mkdir -p "$ROOT19"
@@ -528,7 +528,7 @@ fi
 chmod 600 "$ROOT19/$VSCOPE/verdicts/N3/zz-locked.md"
 VPR=
 
-# --- 20. HIMMEL-5134: --fix-main-red <run-id> writes the fix-GO ----------------
+# --- 20. --fix-main-red <run-id> writes the fix-GO ----------------
 # A separate, signed file naming one red run; never an ordinary GO.
 ROOT20="$tmp/root20"; mkdir -p "$ROOT20"
 rc=0; out="$(HANDOVER_DIR="$ROOT20" bash "$SCRIPT" --fix-main-red 37964772913 97 "$SHA" 2>&1)" || rc=$?

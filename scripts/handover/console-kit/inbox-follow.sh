@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# inbox-follow.sh — HIMMEL-3356. Gap-free follow of a console's Telegram inbox.
+# inbox-follow.sh — Gap-free follow of a console's Telegram inbox.
 #
 #   inbox-follow.sh [--wake] [--once|--peek] <inbox-file>
 #
 # --wake emits a fixed JSON wake envelope per complete line, never inbox text
-# (HIMMEL-4089). On claudex, use only the leg's own inbox from handover_root()
+# On claudex, use only the leg's own inbox from handover_root()
 # plus its launch session name. This .md.cursor is independent of the hook's
 # .cursor/<session> delivery cursor: a wake is not authoritative delivery or
 # model acknowledgement. Monitor suppression may lose a wake; inspect pending
