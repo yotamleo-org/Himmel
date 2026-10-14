@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { formatIssue, formatIssueWithDescription, printJson } from '../output.js';
 import type { JiraIssue } from '../types.js';
+import { SECTOR_FIELD, sectorOf } from './sector.js';
 
 // Local widening: the get.ts fields query includes `labels` (HIMMEL-3610) and
 // `fixVersions` (HIMMEL-3713), but the shared JiraIssue type does not declare
@@ -41,7 +42,7 @@ export function registerGet(program: Command): void {
       try {
         issue = await request<IssueWithLabels>(
           'GET',
-          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,priority`,
+          `/issue/${key}?fields=summary,status,issuetype,parent,assignee,description,labels,fixVersions,priority,${SECTOR_FIELD}`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -72,6 +73,8 @@ export function registerGet(program: Command): void {
         if (issue.fields.priority) console.log(`Priority: ${issue.fields.priority.name}`);
         const fvl = fixVersionsLine(issue);
         if (fvl) console.log(fvl);
+        const sector = sectorOf(issue.fields as Record<string, unknown>);
+        if (sector) console.log(`Sector: ${sector}`);
       }
     });
 }

@@ -4,6 +4,7 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
+import { SECTOR_FIELD, resolveSector, sectorOf } from './sector.js';
 import { assertVersionExists, buildFixVersionBody, projectFromKey } from './versions.js';
 
 export interface EditOptions {
@@ -16,6 +17,7 @@ export interface EditOptions {
   addLabels?: string;
   fixVersion?: string;
   addFixVersion?: string;
+  sector?: string;
 }
 
 export function buildEditFields(opts: EditOptions): Record<string, unknown> {
@@ -65,6 +67,7 @@ export function buildEditFields(opts: EditOptions): Record<string, unknown> {
   // field the operator explicitly wants set. --add-fix-version (HIMMEL-3713)
   // appends via Jira's atomic `update` operation instead.
   if (opts.fixVersion !== undefined) fields['fixVersions'] = [{ name: opts.fixVersion }];
+  if (opts.sector !== undefined) fields[SECTOR_FIELD] = { value: resolveSector(opts.sector) };
   if (
     Object.keys(fields).length === 0 &&
     opts.addLabels === undefined &&
@@ -72,7 +75,7 @@ export function buildEditFields(opts: EditOptions): Record<string, unknown> {
   ) {
     throw new Error(
       'Edit requires at least one of --priority, --severity, --title, --desc, --parent, ' +
-        '--labels, --add-labels, --fix-version, or --add-fix-version',
+        '--labels, --add-labels, --fix-version, --add-fix-version, or --sector',
     );
   }
   return fields;
@@ -96,6 +99,7 @@ function readBackFieldNames(o: EditOptions): string[] {
   if (o.title !== undefined) names.push('summary');
   if (o.description !== undefined) names.push('description');
   if (o.parent) names.push('parent');
+  if (o.sector !== undefined) names.push(SECTOR_FIELD);
   if (o.labels !== undefined || o.addLabels !== undefined) names.push('labels');
   if (o.fixVersion !== undefined || o.addFixVersion !== undefined) names.push('fixVersions');
   return [...new Set(names)];
@@ -143,6 +147,11 @@ function verifyReadBack(
     const actual = (got[sev] as { value?: string } | null | undefined)?.value;
     if (!same(actual, o.severity)) bad('severity', o.severity, actual);
   }
+  if (o.sector !== undefined) {
+    const want = resolveSector(o.sector);
+    const actual = sectorOf(got);
+    if (actual !== want) bad('sector', want, actual);
+  }
   if (o.title !== undefined) {
     const actual = got['summary'] as string | undefined;
     if (actual?.trim() !== o.title.trim()) bad('title', o.title, actual);
@@ -185,6 +194,7 @@ export function registerEdit(program: Command): void {
     )
     .option('--priority <p>', 'Priority: Highest|High|Medium|Low|Lowest')
     .option('--severity <s>', 'Severity (custom field): free text')
+    .option('--sector <s>', 'Sector (single-select custom field; unknown option refused)')
     .option('--title <t>', 'New summary/title (plain text)')
     .option(
       '--desc <d>',
