@@ -258,6 +258,7 @@ check "$?" "0" "T20 rc (site committed)"
 # primary-anchored allow rule" note; the spelling rule is HIMMEL-4040 (preamble).
 for ref in 31-step3-adjudicate 40-step4-crosscheck; do
   f="$DIR/pr-check-ref/$ref.md"
+  [ -s "$f" ] || { echo "FAIL: T21 $ref is missing or empty, nothing scanned"; fail=1; continue; }
   ! grep -Eq 'Operator note|primary-checkout>/scripts/cr/write-verdicts' "$f" \
     || { echo "FAIL: T21 $ref still carries the stale operator note"; fail=1; }
 done
