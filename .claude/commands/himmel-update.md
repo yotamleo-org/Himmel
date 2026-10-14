@@ -82,6 +82,14 @@ bump merges while the host still runs the old build.
   marketplaces (`autoUpdate` off) that nothing else updates. `himmel` is
   excluded: it is chain item 2, where a failure must abort the update. Every row
   is attempted regardless of what the previous row did.
+- **claude CLI sync (HIMMEL-5501)** — `claude` is no longer report-only. In
+  apply mode a Claude Code below the launch floor (2.1.280: Opus 5.5 and
+  `--autocompact`) or behind the latest is updated by its owner's updater
+  (native: `claude update`; npm: `npm install -g @anthropic-ai/claude-code@latest`;
+  brew/pacman installs print the needs-you command and are never run), then
+  re-checked. Still below the floor fails the step loudly (`--check` stays
+  read-only). The same floor makes every armed console/leg launch refuse with
+  `claude update` named; doctor check C63 WARNs below it.
 - **qmd daemon restart** — installing a new qmd build does NOT reload the
   running daemon on :8181, and stopping that process is termination an agent may
   not do. The step prints the exact operator commands instead; it never kills

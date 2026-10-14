@@ -39,6 +39,7 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/load-dotenv.sh"       "$CLONE/scripts/lib/load-dotenv.sh" \
     && cp "$src_scripts/lib/resolve-bun.sh"        "$CLONE/scripts/lib/resolve-bun.sh" \
     && cp "$src_scripts/lib/vm-mode.sh"           "$CLONE/scripts/lib/vm-mode.sh" \
+    && cp "$src_scripts/lib/claude-version.sh"    "$CLONE/scripts/lib/claude-version.sh" \
     && git init --quiet "$CLONE"; }; then
     echo "FAIL: mock clone setup" >&2
     exit 1
@@ -61,9 +62,19 @@ cat > "$NPMROOT/codex.js" <<'EOF'
 printf 'codex-cli %s\n' "$(cat "$STUB_STATE/codex.ver")"
 EOF
 ln -s "$NPMROOT/codex.js" "$STUBS/codex"
+# Output shape copied from this station's real `claude --version`:
+# "2.1.296 (Claude Code)"; `update` is the native self-updater.
 cat > "$STUBS/claude" <<'EOF'
 #!/bin/sh
-printf '%s (Claude Code)\n' "$(cat "$STUB_STATE/claude.ver")"
+case "$1" in
+    update)
+        echo "claude update" >> "$STUB_STATE/claude.update.log"
+        [ -f "$STUB_STATE/claude.update.fail" ] && { echo "update failed: EACCES" >&2; exit 1; }
+        [ -f "$STUB_STATE/claude.update.partial" ] && { cat "$STUB_STATE/claude.update.partial" > "$STUB_STATE/claude.ver"; echo "update failed: half written" >&2; exit 1; }
+        if [ -f "$STUB_STATE/claude.update.stuck" ]; then cat "$STUB_STATE/claude.update.stuck" > "$STUB_STATE/claude.ver"
+        else cp "$STUB_STATE/claude.latest" "$STUB_STATE/claude.ver"; fi ;;
+    *) printf '%s (Claude Code)\n' "$(cat "$STUB_STATE/claude.ver")" ;;
+esac
 EOF
 cat > "$STUBS/npm" <<'EOF'
 #!/bin/sh
@@ -102,8 +113,8 @@ reset_state() {
     printf '0.100.0\n' > "$STATE/codex.ver"
     printf '0.200.0\n' > "$STATE/codex.latest"
     printf '2.1.100\n' > "$STATE/claude.ver"
-    printf '2.1.200\n' > "$STATE/claude.latest"
-    rm -f "$STATE/npm.log" "$STATE/npm.fail"
+    printf '2.1.296\n' > "$STATE/claude.latest"
+    rm -f "$STATE/npm.log" "$STATE/npm.fail" "$STATE/claude.update.log" "$STATE/claude.update.fail" "$STATE/claude.update.stuck" "$STATE/claude.update.partial"
 }
 
 echo "codex CLI: upgraded through its install method"
@@ -170,15 +181,133 @@ else
 fi
 rm -f "$STUBS/readlink"
 
-echo "claude CLI: reported, never updated"
+echo "claude CLI: held to the console-launch floor and brought current (HIMMEL-5501)"
 reset_state
 run_only clis
-if has '^    claude +skipped +2\.1\.100 -> 2\.1\.200' && has 'claude update' \
-    && ! grep -q 'claude' "$STATE/npm.log" 2>/dev/null; then
-    assert_pass "behind claude prints installed -> latest and the update command"
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.296' \
+    && [ -f "$STATE/claude.update.log" ] && [ "$(cat "$STATE/claude.ver")" = '2.1.296' ]; then
+    assert_pass "below-floor claude is updated through its own updater and the table says updated"
 else
-    assert_fail "behind claude → row + 'claude update', no npm install: $OUT"
+    assert_fail "below floor → claude update + 'updated' row (rc=$RC): $OUT"
 fi
+
+reset_state
+printf '2.1.296\n' > "$STATE/claude.ver"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +up-to-date' && [ ! -f "$STATE/claude.update.log" ]; then
+    assert_pass "current claude reads up-to-date and runs no updater"
+else
+    assert_fail "current claude → up-to-date, no update (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.290\n' > "$STATE/claude.ver"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.290 -> 2\.1\.296' && [ -f "$STATE/claude.update.log" ]; then
+    assert_pass "claude above the floor but behind latest is still brought current"
+else
+    assert_fail "above floor, behind latest → updated (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.300\n' > "$STATE/claude.ver"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +up-to-date' && [ ! -f "$STATE/claude.update.log" ]; then
+    assert_pass "claude newer than the registry latest is never downgraded"
+else
+    assert_fail "newer than latest → up-to-date, no update (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.200\n' > "$STATE/claude.update.stuck"
+run_only clis
+if [ "$RC" -ne 0 ] && has 'still below the floor' && has '^    claude +failed'; then
+    assert_pass "an update that leaves claude below the floor fails loudly (rc != 0)"
+else
+    assert_fail "stuck below floor → FAIL + failed row + rc 1 (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.285\n' > "$STATE/claude.update.stuck"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.285' && has 'latest is 2\.1\.296'; then
+    assert_pass "an update that lands above the floor but short of latest says so"
+else
+    assert_fail "above floor, short of latest → updated + latest note (rc=$RC): $OUT"
+fi
+
+reset_state
+printf 'unavailable\n' > "$STATE/claude.latest"
+printf '2.1.285\n' > "$STATE/claude.update.stuck"
+run_only clis
+if [ "$RC" -eq 0 ] && has '^    claude +updated +2\.1\.100 -> 2\.1\.285' && has 'cannot confirm current'; then
+    assert_pass "an upgrade with no readable registry latest is never labelled current"
+else
+    assert_fail "unknown latest → updated + cannot confirm current (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '2.1.290\n' > "$STATE/claude.update.partial"
+run_only clis
+if [ "$RC" -ne 0 ] && has '^    claude +failed' && has 'updater exited 1'; then
+    assert_pass "a failing updater is never reported as updated even if the version moved"
+else
+    assert_fail "updater rc 1 with moved version → failed row + rc 1 (rc=$RC): $OUT"
+fi
+
+reset_state
+touch "$STATE/claude.update.fail"
+run_only clis
+if [ "$RC" -ne 0 ] && has 'still below the floor' && has 'claude update'; then
+    assert_pass "a failing claude updater below the floor fails loudly and names the remedy"
+else
+    assert_fail "failing updater below floor → FAIL + remedy (rc=$RC): $OUT"
+fi
+
+reset_state
+RC=0
+# --check needs a reachable origin: a throwaway bare repo with the clone's HEAD pushed.
+git -C "$CLONE" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init >/dev/null 2>&1
+git init --quiet --bare "$TMP/origin.git" >/dev/null 2>&1
+git -C "$CLONE" remote add origin "$TMP/origin.git" >/dev/null 2>&1
+git -C "$CLONE" push --quiet -u origin HEAD >/dev/null 2>&1
+OUT="$(cd "$CLONE" && PATH="$STUBS:/usr/bin:/bin" bash scripts/himmel-update.sh --check 2>&1)" || RC=$?
+if has '^    claude +skipped .*2\.1\.100 -> 2\.1\.296' && [ ! -f "$STATE/claude.update.log" ] \
+    && [ "$(cat "$STATE/claude.ver")" = '2.1.100' ]; then
+    assert_pass "--check reports a below-floor claude and never updates it"
+else
+    assert_fail "--check → report only (rc=$RC): $OUT"
+fi
+
+reset_state
+printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+run_only clis
+if has 'HELD' && has '^    claude +skipped' && [ ! -f "$STATE/claude.update.log" ]; then
+    assert_pass "vm.mode=none holds the claude update (VM-first gate)"
+else
+    assert_fail "vm.mode=none → claude HELD, no update: $OUT"
+fi
+printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
+
+reset_state
+cat > "$STUBS/pacman" <<'EOF'
+#!/bin/sh
+case "$1" in
+    -Qo) [ "$2" = "$STUB_CLAUDE_PATH" ] && exit 0; exit 1 ;;
+    -Qoq) echo claude-code ;;
+    *) echo forbidden-package-upgrade >> "$STUB_STATE/pm.log"; exit 1 ;;
+esac
+EOF
+chmod +x "$STUBS/pacman"
+export STUB_CLAUDE_PATH="$STUBS/claude"
+run_only clis
+if has 'needs you.*sudo pacman -Syu claude-code' && [ ! -f "$STATE/pm.log" ] \
+    && [ ! -f "$STATE/claude.update.log" ] && [ "$RC" -ne 0 ]; then
+    assert_pass "package-manager claude prints the needs-you command, never updates, still fails below the floor"
+else
+    assert_fail "pacman claude → needs-you, no updater, rc != 0 (rc=$RC): $OUT"
+fi
+rm -f "$STUBS/pacman"
 
 echo "bun: a failed self-upgrade names the remedy"
 reset_state

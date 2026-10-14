@@ -169,8 +169,19 @@
 # v21 (HIMMEL-4226): the pipeline POSIX runners alert (`[PIPELINE-LEG-FAILED
 # cd-vault]`) when the cd into the vault fails. Re-arm with
 # `pipeline-cadence.sh arm --force`.
+# v22 (HIMMEL-4286): the graphmap (luna/himmel semantic + ast-luna/ast-himmel),
+# qmd-reindex and upstream-watch POSIX runners now write flow-run start/end rows
+# and call scripts/luna/cadence-alert.sh `fail` on a failed leg / `clear` on a
+# completed one, through cadence_posix_leg_start / cadence_posix_leg_end below.
+# An armed v21 runner of those kinds fails silently and leaves no ledger row.
+# The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
+# its own rows). The alert call pins the arm-time PATH so the sender finds bun
+# under cron. NOT covered: the codex-sweep runner and every graphmap/qmd/
+# upstream-watch .bat twin (HIMMEL-4197 tracks only the pipeline .bat twins;
+# these are HIMMEL-5576). Re-arm with
+# `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=21
+CADENCE_RUNNER_FORMAT_VERSION=22
 
 # Marker line stamped into each generated runner
 # (.bat: `rem <marker> N`; .sh: `# <marker> N`).
@@ -180,6 +191,43 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # foreign *.bat/*.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
 CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health codex-sweep graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence"
+
+# cadence_posix_leg_start <q_flow_lib> <flow> <task>
+# cadence_posix_leg_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
+# Print the shared flow-run + alert block of a generated POSIX runner (HIMMEL-4286),
+# each line indented four spaces to sit inside the runner's `{ ... } >> "$log"`
+# group. _start goes BEFORE the payload line, _end AFTER it; the runner must have
+# set `log` and captured the payload's status in `_rc`. <q_*_lib> are already
+# `%q`-quoted paths. ok_rcs / skip_rcs are space-separated exit codes: ok_rcs
+# (default `0`) are a completed leg (clear the alert), skip_rcs a benign skip
+# (record skipped, neither alert nor clear); every other rc is a failure. Check
+# the payload's own exit-code contract before passing either list, or an
+# expected non-zero exit pages the operator. Never changes the runner's own rc.
+# shellcheck disable=SC2016  # single-quoted $log/$_rc are emitted literally for the runner's own /bin/sh
+cadence_posix_leg_start() {
+    printf '    _flow_run_id=$(%s --append-start %s "" "" "" "" %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$1" "$2" "$3"
+}
+# shellcheck disable=SC2016  # as above
+cadence_posix_leg_end() {
+    local q_flow_lib="$1" q_alert_lib="$2" flow="$3" ok="${4:-0}" skip="${5:-}" rc pat q_path
+    pat=""
+    for rc in $ok; do pat="$pat${pat:+|}$rc"; done
+    printf '    case "$_rc" in\n'
+    printf '        %s) _flow_outcome=complete ;;\n' "${pat:-0}"
+    pat=""
+    for rc in $skip; do pat="$pat${pat:+|}$rc"; done
+    if [ -n "$pat" ]; then printf '        %s) _flow_outcome=skipped ;;\n' "$pat"; fi
+    printf '        *) _flow_outcome=error ;;\n'
+    printf '    esac\n'
+    printf '    test "$_flow_run_id" != "" && %s --append-end %s "$_flow_run_id" "" "$_rc" "$_flow_outcome" "" "" >/dev/null 2>&1 || true\n' "$q_flow_lib" "$flow"
+    printf '    case "$_flow_outcome" in\n'
+    # The alert sender needs bun, which lives off cron's minimal PATH: pin the
+    # ARM-time PATH (HIMMEL-2840) onto the alert calls only, never the payload's.
+    q_path=$(printf '%q' "$PATH")
+    printf '        complete) PATH=%s %s clear %s || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
+    printf '        error) PATH=%s %s fail %s "rc-$_rc" "$log" || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
+    printf '    esac\n'
+}
 
 # cadence_user_home
 # The runner homes the EMITTERS write under key off resolve_user_home

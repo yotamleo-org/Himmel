@@ -7,6 +7,7 @@ failed) when ubuntu_new is not up on 127.0.0.1:2222.
 """
 import json
 import os
+import re
 import shutil
 import socket
 import sys
@@ -142,6 +143,7 @@ class TestLifecycleExec(unittest.TestCase):
     def test_up_waits_for_ssh(self):
         vm = self._vm()
         with mock.patch.object(vmsdk.vbox, "ensure_running") as er, \
+             mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
              mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x") as w:
             self.assertEqual(vm.up(), "SSH-2.0-x")
             er.assert_called_once_with("ubuntu_new")
@@ -166,7 +168,8 @@ class TestLifecycleExec(unittest.TestCase):
     def test_down_invalidates_client(self):
         vm = self._vm()
         vm._client = mock.Mock()
-        with mock.patch.object(vmsdk.vbox, "power_off"):
+        with mock.patch.object(vmsdk.vbox, "power_off"), \
+             mock.patch.object(vmsdk, "_running_vms", return_value=[]):
             vm.down()
         self.assertIsNone(vm._client)
 
@@ -234,7 +237,8 @@ class TestSnapshots(unittest.TestCase):
     def test_restore_invalidates_client(self):
         vm = self._vm()
         vm._client = mock.Mock()
-        with mock.patch.object(vmsdk.vbox, "restore_snapshot"):
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="clean"):
             vm.restore("clean")
         self.assertIsNone(vm._client)
 
@@ -390,6 +394,146 @@ class TestProvisionE2E(unittest.TestCase):
         vm = self._windows()
         with self.assertRaises(NotImplementedError):
             vm.run_e2e()
+
+
+# Real VBoxManage output captured on this station 2026-10-14 (HIMMEL-2471).
+_SHOWVMINFO_SNAP = 'name="ubuntu_new"\nVMState="poweroff"\nCurrentSnapshotName="suite-ready-v4"\nCurrentSnapshotUUID="92a7e71a-6dbd-48a9-bda3-fc1ef1dadfc7"\n'
+_RUNNINGVMS_EMPTY = ""
+_RUNNINGVMS_UP = '"ubuntu_new" {1482f800-d810-43b9-80c9-29baa40b8c52}\n'
+
+
+class TestReadback(unittest.TestCase):
+    """HIMMEL-2471: every state-changing verb reads its own result back."""
+
+    def _vm(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                return vmsdk.VM("ubuntu_new")
+
+    def _run(self, out):
+        return mock.patch.object(vmsdk.vbox, "_run", return_value=(0, out))
+
+    def test_restore_readback_mismatch_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.restore("clean")
+        self.assertIn("suite-ready-v4", str(cm.exception))
+        self.assertIn("clean", str(cm.exception))
+
+    def test_restore_readback_match_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            vm.restore("suite-ready-v4")
+
+    def test_up_not_running_after_ensure_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "ensure_running"), \
+             mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x"), \
+             self._run(_RUNNINGVMS_EMPTY):
+            with self.assertRaises(vmsdk.VMError):
+                vm.up()
+
+    def test_up_running_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "ensure_running"), \
+             mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x"), \
+             self._run(_RUNNINGVMS_UP):
+            self.assertEqual(vm.up(), "SSH-2.0-x")
+
+    def test_down_still_running_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "power_off"), self._run(_RUNNINGVMS_UP):
+            with self.assertRaises(vmsdk.VMError):
+                vm.down()
+
+    def test_down_off_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "power_off"), self._run(_RUNNINGVMS_EMPTY):
+            vm.down()
+
+    def _run_rc(self, rc, out="VBoxSVC wedged"):
+        return mock.patch.object(vmsdk.vbox, "_run", return_value=(rc, out))
+
+    def test_up_runningvms_rc_nonzero_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "ensure_running"), \
+             mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x"), \
+             self._run_rc(1):
+            with self.assertRaises(vmsdk.VMError):
+                vm.up()
+
+    def test_down_runningvms_rc_nonzero_fails_loud(self):
+        # an unreadable runningvms must never read as "not running"
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "power_off"), self._run_rc(1):
+            with self.assertRaises(vmsdk.VMError):
+                vm.down()
+
+    def test_restore_showvminfo_rc_nonzero_raises_vmerror(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), self._run_rc(1):
+            with self.assertRaises(vmsdk.VMError):
+                vm.restore("clean")
+
+    def test_restore_missing_current_snapshot_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             self._run('name="ubuntu_new"\nVMState="poweroff"\n'):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.restore("clean")
+        self.assertIn("None", str(cm.exception))
+
+    def test_snapshot_readback_mismatch_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "take_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            with self.assertRaises(vmsdk.VMError):
+                vm.snapshot("clean", skip_secret_scan=True)
+
+    def test_snapshot_readback_match_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "take_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            vm.snapshot("suite-ready-v4", skip_secret_scan=True)
+
+    def test_snapshot_showvminfo_rc_nonzero_raises_vmerror(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "take_snapshot"), self._run_rc(1):
+            with self.assertRaises(vmsdk.VMError):
+                vm.snapshot("clean", skip_secret_scan=True)
+
+    def test_cli_restore_mismatch_exit_1(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False), \
+             mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             self._run(_SHOWVMINFO_SNAP):
+            self.assertEqual(vmsdk.main(["ubuntu_new", "restore", "clean"]), 1)
+
+
+class TestDeclaredDeps(unittest.TestCase):
+    """HIMMEL-2471: a clean checkout can act on the missing-dependency error."""
+
+    def test_missing_dotenv_names_the_uv_invocation(self):
+        with mock.patch.dict(sys.modules, {"dotenv": None}):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vmsdk._load_dotenv_into_env(["X"])
+        self.assertIn("uv run scripts/lib/vmsdk.py", str(cm.exception))
+
+    def test_missing_paramiko_names_the_uv_invocation(self):
+        vm = TestReadback._vm(self)
+        with mock.patch.dict(sys.modules, {"paramiko": None}):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.ssh()
+        self.assertIn("uv run scripts/lib/vmsdk.py", str(cm.exception))
+
+    def test_pep723_block_bounds_both_deps(self):
+        src = Path(vmsdk.__file__).read_text()
+        m = re.search(r"^# /// script\n((?:#.*\n)+?)# ///$", src, re.M)
+        self.assertIsNotNone(m, "vmsdk.py has no PEP 723 script block")
+        block = m.group(1)
+        self.assertRegex(block, r'"paramiko>=[\d.]+,<\d+"')
+        self.assertRegex(block, r'"python-dotenv>=[\d.]+,<\d+"')
 
 
 class TestCLI(unittest.TestCase):
@@ -595,6 +739,7 @@ class TestSecretBoundary(unittest.TestCase):
             return (0, "")
         with mock.patch.object(vmsdk.vbox, "is_running", return_value=True), \
              mock.patch.object(vm, "run", side_effect=fake_run), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="base"), \
              mock.patch.object(vmsdk.vbox, "take_snapshot") as snap:
             vm.snapshot("base")
         return cmds, snap
@@ -692,6 +837,7 @@ class TestSecretBoundary(unittest.TestCase):
         vm = self._vm()
         with mock.patch.object(vmsdk.vbox, "is_running", return_value=True), \
              mock.patch.object(vm, "run", return_value=(0, "")), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="base"), \
              mock.patch.object(vmsdk.vbox, "take_snapshot") as take:
             vm.snapshot("base")
         take.assert_called_once_with("ubuntu_new", "base")
@@ -709,6 +855,7 @@ class TestSecretBoundary(unittest.TestCase):
     def test_snapshot_skip_flag_is_explicit_and_loud(self):
         vm = self._vm()
         with mock.patch.object(vmsdk.vbox, "take_snapshot") as take, \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="base"), \
              mock.patch("sys.stderr") as err:
             vm.snapshot("base", skip_secret_scan=True)
         take.assert_called_once_with("ubuntu_new", "base")
@@ -1337,6 +1484,27 @@ class TestTriggerClaude(unittest.TestCase):
             vm.trigger_claude(str(self.local), when="23:30")   # edited content
         self.assertEqual(remotes[0], remotes[1])       # idempotent retry
         self.assertNotEqual(remotes[0], remotes[2])    # edit -> new path
+
+    def test_scheduled_edited_source_keeps_same_source_key(self):
+        """HIMMEL-841: an edited source gets a new guest path, but the
+        arm-resume dedup key (--source-key) must stay stable so the re-arm
+        hits arm-resume's dedup instead of queuing a second guest job."""
+        import hashlib
+        vm = self._vm()
+        cmds = []
+        def fake_run(cmd, **kw):
+            cmds.append(cmd)
+            return (0, "armed")
+        with mock.patch.object(vm, "push_file", side_effect=lambda l, r, **kw: f"/home/u/{r.lstrip('~/')}"), \
+             mock.patch.object(vm, "run", side_effect=fake_run):
+            vm.trigger_claude(str(self.local), when="22:30")
+            self.local.write_text("# handover EDITED\n")
+            vm.trigger_claude(str(self.local), when="22:30")
+        tag = hashlib.sha1(str(Path(self.local).resolve()).encode()).hexdigest()[:8]
+        self.assertEqual(len(cmds), 2)
+        for c in cmds:
+            self.assertIn(f"--source-key {tag}", c)
+        self.assertNotEqual(cmds[0].split("--handover")[1], cmds[1].split("--handover")[1])
 
     def test_immediate_passes_timeout_and_cwd(self):
         vm = self._vm()

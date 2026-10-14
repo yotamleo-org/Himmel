@@ -557,6 +557,13 @@ if STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMME
     assert_err_has "never auto-transitioning" "Epic case reports the never-touch skip on stderr"
 fi
 
+# A Story is transitioned like a Task on --jira-transition (HIMMEL-5540).
+if STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_case "handover/HIMMEL-374-jira-transition" 0 "jira: Story ticket is transitioned on --jira-transition" -- --jira-transition; then
+    assert_jira_log_has "comment" "Story case makes the jira comment call"
+    assert_jira_log_has "transition" "Story case makes the jira transition call"
+fi
+
 # A comment that fails to post leaves no evidence breadcrumb — skip the
 # transition rather than close the ticket silently. Requires opt-in to reach
 # the comment step at all.

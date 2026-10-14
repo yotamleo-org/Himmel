@@ -4,8 +4,8 @@
 // non-API children, lost source metadata, settling unverified cost.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,10 @@ echo called >> "$STUB_LOG"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
   echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=')"
+  echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
+  echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
+while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 `;
 
@@ -104,13 +107,52 @@ test('judge j2229c: the harness hand-off names (LQ_API_*) never reach claude', (
   assert.match(readFileSync(f.paths.env, 'utf8'), /^lq_api=0$/m);
 });
 
-test('HIMMEL-5073: the scrub forces default permission mode, so the launcher declares the tools the fixtures need', () => {
+test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
   const f = fixture();
   assert.equal(f.run().status, 0);
   const seen = readFileSync(f.paths.env, 'utf8');
+  assert.doesNotMatch(seen, /allowedTools/);
+  assert.match(seen, /--tools  --max-budget-usd/);
+  assert.match(seen, /--strict-mcp-config/);
+  assert.match(seen, /--permission-mode plan/);
+});
+
+test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Edit,Write,Glob,Grep,Bash' }).status, 0);
+  const seen = readFileSync(f.paths.env, 'utf8');
   assert.match(seen, /--allowedTools Read,Edit,Write,Glob,Grep,Bash/);
   assert.match(seen, /--tools Read,Edit,Write,Glob,Grep,Bash/);
-  assert.match(seen, /--permission-mode plan/);
+  assert.doesNotMatch(seen, /--strict-mcp-config/);
+});
+
+test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_TOOLS: '' });
+  assert.equal(r.status, 0, r.stderr);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.doesNotMatch(seen, /allowedTools/);
+  assert.match(seen, /--tools  --max-budget-usd/);
+  assert.match(seen, /--strict-mcp-config/);
+});
+
+test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Grep' });
+  assert.equal(r.status, 0, r.stderr);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.match(seen, /--allowedTools Read,Grep /);
+  assert.match(seen, /--tools Read,Grep /);
+});
+
+test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider or blank entry is refused before any launch', () => {
+  for (const v of ['Read,WebFetch', 'Bash,Task', 'mcp__x__y', '*', 'Bash(*)', 'Read,*', 'Read,,Grep', ' Read', 'Read,']) {
+    const f = fixture();
+    const r = f.run(f.good, { HIMMEL_API_TOOLS: v });
+    assert.equal(r.status, 2, `${JSON.stringify(v)}: ${r.stderr}`);
+    assert.match(r.stderr, /HIMMEL_API_TOOLS/);
+    assert.equal(f.called(), false, `${JSON.stringify(v)} must not launch`);
+  }
 });
 
 test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
@@ -494,6 +536,47 @@ test('HIMMEL-5433: a refresh takes the ledger lock before it reads the snapshot'
   writeFileSync(f.paths.snapshot, '{ not json');
   const r = spawnSync(process.execPath, [join(HERE, 'grant-snapshot.mjs'), 'A', '2.00'], { env: f.env, encoding: 'utf8' });
   assert.match(r.stdout, /ledger-locked-or-unwritable/);
+});
+
+test('HIMMEL-5519: the child never sees the Admin API org keys', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ANTHROPIC_ORG_A_KEY: 'admin-a-fixture', ANTHROPIC_ORG_B_KEY: 'admin-b-fixture' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^org_keys=0$/m);
+});
+
+test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api cap bounds real concurrency', async () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  const env = { ...f.env, HIMMEL_API_MAX_CONCURRENT: '1', STUB_HOLD: hold };
+  const first = spawn('bash', [LAUNCH, ...f.good], { env, stdio: 'ignore' });
+  const done = new Promise((resolve) => first.on('close', resolve));
+  // Whatever fails below, the held stub is released and the child reaped, never left looping.
+  const release = () => { rmSync(hold, { force: true }); first.kill(); };
+  let second;
+  try {
+    const until = Date.now() + 15000;
+    // The stub creates the env file before it writes ppid/resv_pid, so wait for both fields.
+    const complete = () => existsSync(f.paths.env) && /^resv_pid=\d+$/m.test(readFileSync(f.paths.env, 'utf8'));
+    while (!complete() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(complete(), true, 'first call never reached the stub');
+    // The reservation names the launcher shell that waits on claude, not a dead subshell.
+    const seen = readFileSync(f.paths.env, 'utf8');
+    const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
+    assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
+    // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
+    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_BANK_LEG: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
+  } finally { rmSync(hold, { force: true }); }
+  assert.equal(second.status, 2);
+  assert.match(second.stderr, /api bank gate said SKIPPED-FLEET/);
+  assert.match(second.stderr, /api lane at\/over its own cap \(1\/1\)/);
+  const timer = setTimeout(release, 20000);
+  assert.equal(await done, 0);
+  clearTimeout(timer);
+  // Released at call end: the slot dir holds no reservation and the next call is admitted.
+  assert.deepEqual(readdirSync(env.HIMMEL_FLEET_SLOTS).filter((n) => n.startsWith('claude-api:')), []);
+  const third = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...f.env, HIMMEL_API_MAX_CONCURRENT: '1', HIMMEL_API_JOB_ID: 'job-3' }, encoding: 'utf8' });
+  assert.equal(third.status, 0, third.stderr);
 });
 
 test('HIMMEL-5433: a grant date that does not exist on the calendar is refused, not rolled over', () => {

@@ -1702,3 +1702,14 @@ test('HIMMEL-4830: leg-bus enables no plugin beyond leg-impl (profile-manifest s
   const impl = resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins;
   assert.deepEqual(bus, impl);
 });
+
+test('HIMMEL-1071: --list and --validate reject trailing args; bare flags still exit 0', () => {
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  for (const flag of ['--list', '--validate']) {
+    const bad = run([flag, '--typo']);
+    assert.equal(bad.status, 2);
+    assert.match(bad.stderr, /plugin-profiles: unknown argument "--typo"/);
+    assert.equal(run([flag]).status, 0);
+  }
+});

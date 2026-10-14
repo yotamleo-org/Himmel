@@ -179,6 +179,17 @@ Defined in `scripts/lib/vms.json`. Known VMs:
 python scripts/lib/vmsdk.py <vm> <verb>
 ```
 
+`vmsdk.py` needs `python-dotenv` and `paramiko` (HIMMEL-2471). Its PEP 723 script
+block pins them (`python-dotenv>=1.0,<2`, `paramiko>=3.4,<6`), so on a clean checkout
+run it as `uv run scripts/lib/vmsdk.py <vm> <verb>` (or
+`pip install 'python-dotenv>=1.0,<2' 'paramiko>=3.4,<6'`). Without `python-dotenv` it
+exits 2 with `missing dependency` and **the verb never ran**; without `paramiko` it
+exits 1 with the same message, at the first SSH step (the verb may have partly run).
+A background caller must check the exit code. `up`, `down`, `snapshot` and `restore`
+read their own result back (`list runningvms`, `CurrentSnapshotName`) and exit 1 when
+the readback disagrees or cannot be read, so a restore that did not happen can never
+pass as a clean base run.
+
 Full usage line from the script:
 
 ```

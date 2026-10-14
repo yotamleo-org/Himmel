@@ -68,6 +68,59 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # HIMMEL-5524: which jobs can this PR's diff affect? A pull_request spends
+  # about 30 jobs and queues behind the account's runner cap, so a docs-only or
+  # single-script PR waited 45-60 min for jobs whose inputs it never touched.
+  # This job (pull_request only) runs the BASE commit's scripts/ci/pr-plan.sh
+  # (the base's pr-job-gates.txt, the base's impacted-selection.sh) and exposes
+  # one run_<group> output per gated job. Every gated job reads it FAIL-OPEN:
+  # `!cancelled()` plus "skip only when the plan succeeded and said false", so a
+  # plan that failed, was skipped (push, schedule, dispatch run everything) or
+  # printed nothing runs the job. A trust-path diff, an unknown path, a base
+  # that predates the planner or any selector error is all-true (see pr-plan.sh).
+  # A skipped non-matrix job reports `skipped`, which satisfies a required
+  # check; the matrix jobs (node-suites, bun-suites) stay started and skip their
+  # STEPS, because a skipped matrix job leaves its required names pending.
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run_node_suites: ${{ steps.plan.outputs.run_node_suites }}
+      run_jira_cli_smoke: ${{ steps.plan.outputs.run_jira_cli_smoke }}
+      run_guardrail_matrices: ${{ steps.plan.outputs.run_guardrail_matrices }}
+      run_git_env_scrub: ${{ steps.plan.outputs.run_git_env_scrub }}
+      run_bwk_gate: ${{ steps.plan.outputs.run_bwk_gate }}
+      run_plugin_version_bump: ${{ steps.plan.outputs.run_plugin_version_bump }}
+      run_deps_audit: ${{ steps.plan.outputs.run_deps_audit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        name: Plan which jobs the diff can affect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -o pipefail
+          tools="$RUNNER_TEMP/plan-tools"
+          mkdir -p "$tools"
+          base=""
+          [ "$BASE_REF" = "$DEFAULT_BRANCH" ] && base="$BASE_SHA"
+          # The planner, its input list and the selector come from the BASE, never
+          # the PR's own edited copy. Absent at base -> empty plan -> every job runs.
+          if git archive --format=tar "$BASE_SHA" -- scripts/ci/pr-plan.sh scripts/ci/pr-job-gates.txt scripts/ci/impacted-selection.sh | tar -x -C "$tools"; then
+            bash "$tools/scripts/ci/pr-plan.sh" "$base" HEAD > "$tools/plan.out" || : > "$tools/plan.out"
+          else
+            echo "plan: planner absent at base, every job runs" >&2
+            : > "$tools/plan.out"
+          fi
+          cat "$tools/plan.out"
+          grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
+
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 8s over 10 green PR runs; 2x, floor 10
@@ -85,6 +138,8 @@ jobs:
   # regression here previously reached main unnoticed. This job builds a pinned one-true-awk commit from source
   # (never a branch) and runs the gate's own suite under it, gating every PR.
   bwk-awk-mktemp-gate:
+    needs: plan
+    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_bwk_gate == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 18s; floor 10
     steps:
@@ -133,6 +188,8 @@ jobs:
   # otherwise steers which repo/worktree/index the call answers about
   # (HIMMEL-3570; already caught twice as real bugs, PR 1212 and PR 1217).
   git-env-scrub:
+    needs: plan
+    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_git_env_scrub == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 207s; 2x = 7m, floor 10
     steps:
@@ -194,7 +251,8 @@ jobs:
   # Check the PR head, not a merge ref that may include a sibling's bump.
   # Only pull_request runs have a PR's changes to gate.
   plugin-version-bump:
-    if: github.event_name == 'pull_request'
+    needs: plan
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && !(needs.plan.result == 'success' && needs.plan.outputs.run_plugin_version_bump == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 9s; floor 10
     steps:
@@ -218,6 +276,9 @@ jobs:
           bash "$checker/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/plugin-bump-base
 
   lint:
+    # Ungated (trust judge j2543g): main's --all-files shellcheck sweep reaches
+    # executable files (scripts/eval/.../*.sh.ref) no gate line can enumerate, so it
+    # runs on every PR like main.
     runs-on: ubuntu-latest
     timeout-minutes: 25 # p95 736s (12m); 2x
     steps:
@@ -264,6 +325,8 @@ jobs:
       - run: node scripts/install/flag-registry-lint.mjs
 
   node-suites:
+    needs: plan
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 51s (matrix); floor 10
     strategy:
@@ -282,20 +345,25 @@ jobs:
             node: '24'
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node || '22' }}
           cache: 'npm'
           cache-dependency-path: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}/package-lock.json
-      - run: npm ci
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: npm ci
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
-      - run: npm test
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
 
   # HIMMEL-3813: nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
   # green. Offline and secret-free (dummy JIRA_* values, a local mock server).
   jira-cli-smoke:
+    needs: plan
+    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_jira_cli_smoke == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 26s; floor 10
     steps:
@@ -321,6 +389,8 @@ jobs:
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
   # have no claude CLI; this job is where it runs.
   claude-startup:
+    # Ungated (trust judge j2543g): the hook chain it starts executes scripts
+    # outside any gate group, so it runs on every PR like main.
     runs-on: ubuntu-latest
     timeout-minutes: 10 # p95 86s; floor 10
     env:
@@ -370,6 +440,8 @@ jobs:
       - run: bash scripts/testing/test-mock-hook-live-turn.sh
 
   lanes-and-trust-suites:
+    # Ungated (trust judge j2543e): its suites glob-read files no gate group can
+    # enumerate, so it runs on every PR like main.
     # HIMMEL-689: scripts/lanes is a zero-dependency ESM test package — no
     # package.json (a committed one under scripts/ trips the npm-audit gates for a
     # package with nothing to install). Run its node:test suites directly.
@@ -443,6 +515,8 @@ jobs:
           fi
 
   guardrail-matrices:
+    needs: plan
+    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_guardrail_matrices == 'false') }}
     # HIMMEL-1522: the egress matrix decides whether a corpus may leave the
     # machine and the voice policy decides what a spoken request may do. Both
     # were standalone scripts that only ran when someone remembered to type
@@ -484,6 +558,8 @@ jobs:
   # where fail-fast stays false so a red Windows leg still reports the Linux
   # result instead of cancelling it; a pull_request run stops at its first red leg.
   bun-suites:
+    # Ungated (trust judge j2543g): `bun test scripts/telegram` globs suites that
+    # run extensionless scripts (scripts/claude-codex), so it runs on every PR like main.
     # issues:write (beyond the workflow-level contents:read) is needed only by
     # the windows-nightly-issue.sh steps above/below — scoped to this job
     # alone rather than raised workflow-wide.
@@ -550,7 +626,7 @@ jobs:
       # A step in this job (not a new job) rides the already-required
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bun test scripts/vault/tests --dots
       # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
@@ -558,7 +634,7 @@ jobs:
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics,
       # which the non-gating Windows nightly (parked) would only turn red.
       - name: Config UI tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bun test scripts/config-ui --dots
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
@@ -569,13 +645,13 @@ jobs:
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile && bun test
       # HIMMEL-3827: fleet-control (9 files) and observability (bun files) had
       # no CI step. Repo-root cwd like the suites above; ubuntu only (POSIX
       # fixtures, spawned servers) so the non-gating Windows leg stays quiet.
       - name: fleet-control + observability tests (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bun test scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
       # A red Windows nightly must not fail silently now that it is non-gating
       # (HIMMEL-3125): upsert one consolidated issue rather than opening a new
@@ -737,6 +813,8 @@ jobs:
   # needs a baseline #nosec triage of pre-existing VM/SSH tooling before it can
   # gate green) and better-npm-audit (redundant with the npm-audit gate below).
   security-scan:
+    needs: plan
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # This job does the most network I/O in the workflow (gitleaks download +
     # `npm ci` across ~9 packages); cap it so a hung download/install can't
@@ -744,12 +822,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
-      - uses: oven-sh/setup-bun@v2
+      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
@@ -774,22 +854,26 @@ jobs:
       # npm path is `npm ci --dry-run` (no install needed); bun path is
       # `bun install --frozen-lockfile --dry-run` (setup-bun above provides bun).
       - name: lockfile integrity (npm + bun)
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-lockfile-integrity.sh
 
       # uv lock integrity (python) — pre-commit `uv-lock-integrity`. No
       # pyproject.toml in the tree today, so this self-skips (kept for lockstep:
       # the day a python project lands, CI gates its uv.lock with no further edit).
       - name: uv lock integrity (python)
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-uv-lock.sh
 
       # npm audit (production, high+) — pre-push `npm-audit`. Self-installs prod
       # deps (`npm ci --omit=dev --ignore-scripts`) for every committed
       # package.json, leaving node_modules in place for the signatures step below.
       - name: npm audit (production, high+)
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit.sh
 
       # npm license allowlist — pre-push `npm-licenses`.
       - name: npm license allowlist
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-licenses.sh
 
       # HIMMEL-2573: this gate has a hard floor (npm >= 11) that the pinned
@@ -804,6 +888,7 @@ jobs:
       # Print the version so the next time this floor and this runtime drift
       # apart, it's one glance at the log instead of an investigation.
       - name: upgrade npm to meet the audit-signatures floor (>= 11)
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: |
           npm i -g npm@^11
           npm --version
@@ -813,6 +898,7 @@ jobs:
       # step above materialized for the scripts/{jira,bitbucket,himmel-run}
       # packages, so it MUST run after that step.
       - name: npm audit signatures (production)
+        if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit-signatures.sh
 
   # Multi-OS, gated to the nightly to stay free-tier-cheap: every non-schedule
@@ -880,6 +966,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # HIMMEL-5524: on a pull_request an impacted selection often leaves this
+      # shard with nothing to run. Ask run-shell-tests.sh (--list executes
+      # nothing) under the SAME selection env as the run step below, and skip
+      # the heavy setup when the shard is empty. The run step and the manifest
+      # upload below stay unconditional, so the aggregator still verifies every
+      # shard's manifest. Fail-closed: any doubt prints has_work=true.
+      - name: Does this shard have any suite to run?
+        id: probe
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # A pull_request is never the nightly: tier is always fast here.
+          export SUITE_TIER_MODE=fast GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA"
+          if [ "$PR_BASE_REF" = "$DEFAULT_BRANCH" ]; then export SUITE_IMPACTED_FROM_BASE="$PR_BASE_SHA"; fi
+          bash scripts/ci/shard-has-work.sh "${{ matrix.shard }}/8" . >> "$GITHUB_OUTPUT"
       # arm-resume's non-dry-run cases exercise the real `at` scheduler backend,
       # which the supported runtime provides (HIMMEL-594 `ubuntu.sh` installs +
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
@@ -898,16 +1002,16 @@ jobs:
       # jail checks drive) here too so Linux corpus/replay suites exercise the
       # real containment boundary rather than capability-skip.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (at/atd)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         # HIMMEL-3919: a hung dpkg/apt lock held this step ~1.5 h. HIMMEL-2872:
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
@@ -924,14 +1028,15 @@ jobs:
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
       - name: Allow unprivileged user namespaces (Linux — bwrap sandbox)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # HIMMEL-2742: same shape as HIMMEL-2587 (lanes-and-trust-suites) — a
       # suite in this corpus (test-wizard-luna-sections.sh) shells out to bun
       # and fails closed ("required test tool not found before PATH scrub:
       # bun") without it. Installing bun keeps that hermetic PATH-scrub case
       # under a runner check; a self-skip would exit 0 with nothing exercised.
-      - uses: oven-sh/setup-bun@v2
+      - if: steps.probe.outputs.has_work != 'false'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
       # HIMMEL-3193: the run step below now covers marketplace/ (root `.`), where
@@ -941,6 +1046,7 @@ jobs:
       # install fails THIS step loudly instead of surfacing as a dozen
       # unrelated suite reds. Pinned by test-run-shell-tests.sh Case 23f.
       - name: Install obsidian-triage tool deps (marketplace suites)
+        if: steps.probe.outputs.has_work != 'false'
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
       # HIMMEL-4802: test-x-media-hls-ffmpeg.sh runs a REAL ffmpeg over the
       # playlists x-media-fetch.py rewrites (every other suite stubs it). It
@@ -949,16 +1055,16 @@ jobs:
       # runner image that drops the 6.1 package fails this step loudly; re-pin
       # deliberately. Linux only: the nightly windows leg keeps the SKIP.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (ffmpeg)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-ffmpeg-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install pinned ffmpeg (Linux — obsidian-triage HLS suite)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         timeout-minutes: 13
         run: |
           bash .github/scripts/apt-install.sh 'ffmpeg=7:6.1.*'
@@ -973,7 +1079,7 @@ jobs:
       # the ledger assigns once run-shell-tests.sh can print it (HIMMEL-5120).
       # Keep ver/sha in lockstep with secret-scan.
       - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
         run: |
           ver=8.30.1
           sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -989,6 +1095,7 @@ jobs:
       # real fixer hooks. `shell: bash` matches the Windows install pattern
       # above: python -m pip works identically on every OS in this matrix.
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
+        if: steps.probe.outputs.has_work != 'false'
         shell: bash
         run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,

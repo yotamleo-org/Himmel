@@ -425,7 +425,7 @@ check "8 no leak in console-template.md" "$(leak_free "$REPO_REAL/docs/handover/
 check "8 no leak in console-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/console-handoff-template.md")" "yes"
 check "8 no leak in leg-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/leg-brief-template.md")" "yes"
 check "8 no leak in running-a-console.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-console.md")" "yes"
-check "8 no leak in .claude/commands/console.md" "$(leak_free "$REPO_REAL/.claude/commands/console.md")" "yes"
+check "8 no leak in .claude/commands/supervisor-session.md" "$(leak_free "$REPO_REAL/.claude/commands/supervisor-session.md")" "yes"
 
 # --- 9: unresolvable handover root exits 2, writes nothing -------------
 badroot="$tmp/does-not-exist"
@@ -1570,8 +1570,39 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 # reachable through an explicit --model / CONSOLE_MODEL.
 out61a="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
-check "61 dry-run --arm launch line defaults to claude-opus-5-5" \
-    "$(printf '%s\n' "$out61a" | grep -cF -- '--model claude-opus-5-5\[1m\] ')" "1"
+check "61 dry-run --arm launch line defaults to bare claude-opus-5-5 (native 1M, HIMMEL-5501)" \
+    "$(printf '%s\n' "$out61a" | grep -cF -- '--model claude-opus-5-5 ')" "1"
+check "61 dry-run --arm launch line carries no [1m] suffix on a native-1M model" \
+    "$(printf '%s\n' "$out61a" | grep -cF -- 'claude-opus-5-5\[1m\]')" "0"
+out61c="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-opus-4-6 ) )"
+check "61 a 4.6-family model keeps the [1m] suffix (HIMMEL-5501)" \
+    "$(printf '%s\n' "$out61c" | grep -cF -- '--model claude-opus-4-6\[1m\] ')" "1"
+out61d="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model gpt-5.6-sol ) )"
+check "61 a non-Anthropic model never gets [1m] (HIMMEL-5501)" \
+    "$(printf '%s\n' "$out61d" | grep -cF -- '--model gpt-5.6-sol ')" "1"
+
+# --- 61f: HIMMEL-5501 -- a Claude Code below the version floor refuses an
+# armed launch (rc=2, names the version and `claude update`); a dry run only
+# warns. Version shapes copied from the real `claude --version` output.
+cat > "$tmp/claude-old-61f" <<'OLD_STUB'
+#!/usr/bin/env bash
+echo "2.1.100 (Claude Code)"
+OLD_STUB
+chmod +x "$tmp/claude-old-61f"
+out61f="$( ( cd "$fixture_repo" && HEADED_ARM_CLAUDE_CLI="$tmp/claude-old-61f" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --arm 2>&1 ) )"
+rc61f=$?
+check "61f armed launch below the floor refused (rc=2)" "$rc61f" "2"
+check "61f message names the installed version and the fix" \
+    "$(printf '%s\n' "$out61f" | grep -c '2\.1\.100.*claude update\|claude update.*2\.1\.100')" "1"
+check "61f nothing was armed" "$(printf '%s\n' "$out61f" | grep -c '^armed: ')" "0"
+out61g="$( ( cd "$fixture_repo" && HEADED_ARM_CLAUDE_CLI="$tmp/claude-old-61f" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CONSOLE_WORK_DIR="$tmp/work" bash "$C" new --bucket floor61f --dry-run --arm 2>&1 ) )"
+rc61g=$?
+check "61f dry-run below the floor only warns (rc=0)" "$rc61g" "0"
+check "61f dry-run warning names the fix" "$(printf '%s\n' "$out61g" | grep -c 'claude update')" "1"
 check "61 dry-run --arm launch line carries no fable model" \
     "$(printf '%s\n' "$out61a" | grep -c 'claude-fable-5-1')" "0"
 out61b="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
@@ -1786,8 +1817,8 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     bash "$C" next --bucket cleanenv66 --arm --deadline-min 0 ) 2>&1 )"
 rc66b=$?
 check "66 next --arm from a leaked leg env still succeeds (rc=0)" "$rc66b" "0"
-check "66 CONSOLE_CONTEXT=1m survives the leaked required-autocompact pin, model carries [1m]" \
-    "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: context=1m .*model=claude-opus-5-5\[1m\] (autocompact=auto)$')" "1"
+check "66 CONSOLE_CONTEXT=1m survives the leaked required-autocompact pin, model stays bare (native 1M)" \
+    "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: context=1m .*model=claude-opus-5-5 runs 1M without a suffix .*(autocompact=auto)$')" "1"
 check "66 dry-run resolves the real launcher, not the leaked shim; recorder not inherited" \
     "$(printf '%s\n' "$out66b" | grep -c '^headed-arm: launcher=claude recorder=0 ')" "1"
 check "66 no leaked leg-profile value reaches the armed console's argv/env" \
@@ -1916,7 +1947,7 @@ check "68h the disambiguated doc uses the explicit --bucket" \
 # `next` with no --project must not silently record the successor as "the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
 # plugin console.md no longer derives --project for `next` (only for `new`,
-# see marketplace/plugins/himmel-ops/commands/console.md), so without this a
+# see marketplace/plugins/himmel-ops/commands/supervisor-session.md), so without this a
 # foreign-project chain's successor would fall back into himmel's own DEMO
 # bucket. RED against the pre-codex-1 console.sh (PROJECT_ARG never seeded
 # from the predecessor doc), GREEN after.
@@ -2095,7 +2126,7 @@ check "74 nothing falls back to himmel's bucket" "$(printf '%s\n' "$out74" | gre
 
 # 75 (#1410): the user slug resolves from console.sh's OWN checkout, never the
 # caller's cwd -- the same pinning HIMMEL-3533 gave load_dotenv. The plugin
-# /himmel-ops:console runs console.sh from any directory; from a non-git one
+# /himmel-ops:supervisor-session runs console.sh from any directory; from a non-git one
 # forge_detect found no origin, so the slug fell back to the cwd's slugified
 # git user.name and the chain forked into a second user dir.
 tmp75="$tmp/t75"

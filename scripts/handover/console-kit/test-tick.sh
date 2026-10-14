@@ -70,6 +70,7 @@ case "$1" in
     # HIMMEL-4670 P4: a held console lock prints its owner.json (started = the shift start).
     case "$2" in *console-fails*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-07T03:00:00Z","heartbeat":"2026-10-07T03:10:00Z"}' 'status: FRESH'; exit 11 ;; esac
     case "$2" in *N61*|*-N1-*|*-N2-*|*-N191-*|*-leg192-*|*-legN194-*|*odd-name*|*-N301-*|*-N302-*|*-N303-*) printf '%s\n' 'status: FRESH'; exit 11 ;;
+    *-N390-*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-01T00:00:00Z","heartbeat":"2026-10-01T00:00:00Z"}' 'status: STALE-DEAD (age 99999s >= ttl 21600s; owner pid gone, no live claude session names this doc)'; exit 12 ;;
     *-N380-*) printf '%s\n' 'held -- UNVERIFIED lock: /r/.locks/queue/x.lock is named for this doc but records /elsewhere/x.md, which does not resolve here'; exit 11 ;; *) printf '%s\n' free; exit 0 ;; esac ;;
 esac
 exit 2
@@ -190,6 +191,8 @@ export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
 # HIMMEL-4786: fails= ~<k> reads the digest step's skips.jsonl under this dir.
 export LEG_DIGEST_STATE_DIR="$W/leg-digest"
+printf '#!/bin/sh\necho off\n' > "$W/vmrun-probe.sh"
+export HIMMEL_VMRUN_PROBE="$W/vmrun-probe.sh"
 mkdir -p "$LEG_DIGEST_STATE_DIR"
 # HIMMEL-5131: flakes= reads the suite-flake ledger for this repo id; never the real ~/.himmel one.
 export SUITE_FLAKE_LEDGER="$W/suite-flake.jsonl"
@@ -202,7 +205,7 @@ mkdir -p "$W/console-work/chain"
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip'
+expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -1358,6 +1361,16 @@ u3290="HIMMEL-3380-N380-unverified-2026-09-22-RESUME"
 printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$u3290.md"
 contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --legs "$W/handover/$u3290.md" 2>/dev/null)" 'legs=N380:UNVERIFIED '
 
+# --- HIMMEL-5541: a past-TTL lock whose owner is provably dead (status
+# `STALE-DEAD`, rc 12) reads STALE-DEAD and is NOT a held leg: it must not
+# fold into the FRESH/STALE held set. RED control (pre-fix tick.sh):
+# legs=N390:STALE.
+d5541="HIMMEL-5541-N390-stale-dead-2026-10-01-RESUME"
+printf '%s\n' '# leg' '- 12:00 LIVE — working' > "$W/handover/$d5541.md"
+out5541="$(bash "$SUT" --legs "$W/handover/$d5541.md" 2>/dev/null)"
+contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'legs=N390:STALE-DEAD '
+not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'legs=N390:STALE '
+
 # --- HIMMEL-3361: board=<ok|STALE:<age>|MISSING|skip> -- the console's progress
 # board (console-board.html, written by board.mjs next to the console doc) must be
 # structurally checked, not remembered. RED control (pre-fix tick.sh): the line
@@ -1896,7 +1909,7 @@ printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
 STUB
 spare_has() { case "$2" in *' spare='*) fail "$1 (out='$2')" ;; *) pass "$1" ;; esac; }
 spare_out="$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT")"
-contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? spare=33@6h'
+contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' or=skip fails=? vmrun=off spare=33@6h'
 spare_has 'spare= is absent below the spare threshold (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")"
 spare_has 'spare= is absent when the reset is more than 24h out (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=24.5h unspent_at_reset=60.0' bash "$SUT")"
 spare_has 'spare= is absent when the monitor reads ? (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=? unspent_at_reset=?' bash "$SUT")"
@@ -1971,7 +1984,8 @@ frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_LEG_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= follows or= (HIMMEL-4670)' "$f4670" ' or=skip fails=1/1@error/Edit*1'
-case "$f4670" in *' fails='*' '*) fail "fails= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'fails= is the last field when spare= is absent (HIMMEL-4670)' ;; esac
+contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
+case "$f4670" in *' vmrun='*' '*) fail "vmrun= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'vmrun= is the last field when spare= is absent (HIMMEL-5037)' ;; esac
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

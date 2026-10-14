@@ -715,6 +715,22 @@ write_marker_for_branch() {
         return 2
     fi
 
+    # Base-skew guard (HIMMEL-1178), both directions, no network call:
+    #  - branch behind its diff base: a base far behind makes 2-dot diffs show
+    #    phantom deletions of landed work. Warn only, at any count: refusing
+    #    would enforce update-branch at push time, which kills fleet
+    #    parallelism (the hook diffs 3-dot, so the push itself is safe).
+    #  - local $db ahead of origin/$db: the review diff carries landed work as
+    #    noise. Warn only.
+    local skew_behind skew_ahead
+    if skew_behind=$(git rev-list --count "${local_sha}..${base_sha}" 2>/dev/null) && [ "$skew_behind" -gt 0 ]; then
+        echo "→ code-review: WARNING ${branch} is ${skew_behind} commits behind ${diff_base} — to catch up: git merge ${diff_base}" >&2
+    fi
+    if git rev-parse --verify --quiet "$db" >/dev/null && git rev-parse --verify --quiet "origin/$db" >/dev/null && \
+       skew_ahead=$(git rev-list --count "origin/${db}..${db}" 2>/dev/null) && [ "$skew_ahead" -gt 0 ]; then
+        echo "→ code-review: WARNING local ${db} is ${skew_ahead} commits ahead of origin/${db} — review diffs may carry landed work as noise (git fetch origin, or push ${db})" >&2
+    fi
+
     # Skip on docs-only / merge-only diffs to avoid pointless review gating.
     # Fail CLOSED if the diff can't be computed (HIMMEL-323) — the 3-dot range needs
     # a merge base, so an orphan/unrelated-history branch makes `git diff` exit

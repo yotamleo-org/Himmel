@@ -10,6 +10,7 @@
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
+#        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
 # OFF by default. No subscription fallback: a refusal is final.
 set -u
 
@@ -112,8 +113,13 @@ fi
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
-BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
-  CADENCE_BANK_LEG="${CADENCE_BANK_LEG:-claude-api:$JOB_ID}" \
+LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_BANK_LEG: it could escape the api cap
+# HIMMEL-5519: the reservation is owned by THIS shell, which waits on claude below, so it
+# lives exactly as long as the call and the cap bounds real concurrency. (The default
+# owner, bank-preflight's own $$ in a command substitution, dies at once.)
+BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
+  CADENCE_BANK_LANE=api CADENCE_BANK_LAUNCH=1 LEG_LANE=api \
+  CADENCE_BANK_LEG="$LEG_NAME" CADENCE_BANK_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
@@ -122,7 +128,27 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY CADENCE_BANK
 # denies Edit/Write/Bash unless declared here. The scrub is the bwrap sandbox, so it cannot be dropped; this
 # allowance is the fixture-work tool set, the sandbox bounds Bash, and callers cannot add to or replace it.
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
-ALLOWED_TOOLS="Read,Edit,Write,Glob,Grep,Bash"
+# HIMMEL-5625: the lane is tool-free by default. GRANT_CEILING is the most a caller can ever name; a caller opts in
+# with HIMMEL_API_TOOLS=<comma subset of the ceiling>, and an unset or empty variable is a tool-free call. Anything
+# outside the ceiling (a wildcard, Bash(*), an mcp__ tool), or a malformed list, is refused. Hooks are off on this
+# lane, so every tool a caller names is one no PreToolUse guardrail can stop: name the fewest.
+GRANT_CEILING="Read,Edit,Write,Glob,Grep,Bash"
+ALLOWED_TOOLS=""
+if [ -n "${HIMMEL_API_TOOLS:-}" ]; then
+  case "$HIMMEL_API_TOOLS" in ,*|*,|*,,*) refuse "HIMMEL_API_TOOLS has an empty entry" ;; esac
+  IFS=, read -ra WANT <<< "$HIMMEL_API_TOOLS"
+  for t in "${WANT[@]}"; do
+    case ",$GRANT_CEILING," in *",$t,"*) ;; *) refuse "HIMMEL_API_TOOLS may only name tools from the grant ceiling ($GRANT_CEILING)" ;; esac
+    ALLOWED_TOOLS="${ALLOWED_TOOLS:+$ALLOWED_TOOLS,}$t"
+  done
+fi
+TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
+EXTRA_ARGS=()
+if [ -z "$ALLOWED_TOOLS" ]; then
+  EXTRA_ARGS+=(--strict-mcp-config)   # tool-free also means no MCP server, structurally
+else
+  TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
+fi
 
 # HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
@@ -132,8 +158,22 @@ for v in $(compgen -e); do
   case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
 done
 
+# Release the fleet-slot reservation at call end, only when its pid file names this shell.
+# The trap is installed straight after admission so no later refusal can strand the slot.
+# shellcheck disable=SC2329 # invoked from the EXIT trap string below
+release_slot() {
+  # shellcheck source=scripts/lib/fleet-reservation-key.sh
+  . "$REPO/scripts/lib/fleet-reservation-key.sh" 2>/dev/null || return 0
+  local slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}" key dir
+  for key in "$(fleet_reservation_key "$LEG_NAME")" "$(fleet_hash_key "$LEG_NAME")"; do
+    dir="$slots/$key"
+    [ "$(cat "$dir/pid" 2>/dev/null)" = "$$" ] && rm -rf "$dir"
+  done
+  return 0
+}
+OUT=""
+trap 'rm -f "$OUT"; release_slot' EXIT
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
-trap 'rm -f "$OUT"' EXIT
 
 # --- reserve the full budget before spending; refusal here means no launch ---
 state() { node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
@@ -145,10 +185,11 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 # HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
+  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-  --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
+  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT"
 RC=$?
 
 # --- settle on verified cost, otherwise keep the reservation as unknown ---

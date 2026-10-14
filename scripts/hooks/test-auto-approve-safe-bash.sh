@@ -279,6 +279,51 @@ assert "sort -uo clustered write" PASS  "$(decide "$(j_bash 'sort -uo /tmp/pwned
 assert "sort plain"               ALLOW "$(decide "$(j_bash 'sort f')")"
 assert "sort -u plain"            ALLOW "$(decide "$(j_bash 'sort -u f')")"
 assert "sort -k2 plain"           ALLOW "$(decide "$(j_bash 'sort -k2 f')")"
+# HIMMEL-3655: after a literal `--` every word is positional, so a file named
+# -o... is read, not an output option. A real -o BEFORE `--` still falls through.
+assert "sort -- -o file ALLOW"    ALLOW "$(decide "$(j_bash 'sort -- -o file')")"
+assert "sort -u -- -ofile ALLOW"  ALLOW "$(decide "$(j_bash 'sort -u -- -ofile')")"
+assert "sort -o out -- f PASS"    PASS  "$(decide "$(j_bash 'sort -o /tmp/pwned -- f')")"
+assert "sort --output= -- PASS"   PASS  "$(decide "$(j_bash 'sort --output=/tmp/pwned -- f')")"
+# A `--` that is the VALUE of a value-taking option ends nothing (judge j2528a).
+assert "sort -T -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -T -- -o /tmp/pwned f')")"
+assert "sort -uT -- -o PASS"      PASS  "$(decide "$(j_bash 'sort -uT -- -o /tmp/pwned f')")"
+assert "sort --temporary-directory -- -o PASS" PASS "$(decide "$(j_bash 'sort --temporary-directory -- -o /tmp/pwned f')")"
+assert "sort --random-source -- -o PASS" PASS "$(decide "$(j_bash 'sort --random-source -- -o /tmp/pwned f')")"
+assert "sort -S -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -S -- -o /tmp/pwned f')")"
+assert "sort -T -- --compress-program PASS" PASS "$(decide "$(j_bash 'sort -T -- --compress-program=sh f')")"
+assert "sort -k 1 -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -k 1 -- -o f')")"
+assert "sort -T d -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -T d -- -o f')")"
+assert "sort --sort -- -o PASS"   PASS  "$(decide "$(j_bash 'sort --sort -- -o /tmp/pwned f')")"
+assert "sort -t -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -t -- -o /tmp/pwned f')")"
+assert "sort -k -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -k -- -o /tmp/pwned f')")"
+assert "sort -y -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -y -- -o /tmp/pwned f')")"
+# A redirect operator and its target are not sort arguments: a `--` target ends nothing (judge j2528b).
+assert "sort <<< -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<< -- -o /tmp/pwned f')")"
+assert "sort < -- -o PASS"        PASS  "$(decide "$(j_bash 'sort < -- -o /tmp/pwned f')")"
+assert "<<< -- sort -o PASS"      PASS  "$(decide "$(j_bash '<<< -- sort -o /tmp/pwned f')")"
+assert "sort <<< -- --compress PASS" PASS "$(decide "$(j_bash 'sort <<< -- --compress-program=sh f')")"
+assert "sort -T <in -- -o PASS"   PASS  "$(decide "$(j_bash 'sort -T <in -- -o /tmp/pwned f')")"
+assert "sort < in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort < in -- -o f')")"
+assert "sort -T</dev/null -- -o PASS"  PASS "$(decide "$(j_bash 'sort -T</dev/null -- -o /tmp/pwned f')")"
+assert "sort --temporary-directory</dev/null PASS" PASS "$(decide "$(j_bash 'sort --temporary-directory</dev/null -- -o /tmp/pwned f')")"
+assert "sort -S<x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -S<x -- -o /tmp/pwned f')")"
+assert "sort -k<x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -k<x -- -o /tmp/pwned f')")"
+assert "sort -T<<<x compress PASS" PASS "$(decide "$(j_bash 'sort -T<<<x -- --compress-program=sh f')")"
+assert "sort <<- -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<- -- -o /tmp/pwned f')")"
+assert "sort << -- -o PASS"       PASS  "$(decide "$(j_bash 'sort << -- -o /tmp/pwned f')")"
+assert "sort {fd}<<< -- -o PASS"  PASS  "$(decide "$(j_bash 'sort {fd}<<< -- -o /tmp/pwned f')")"
+assert "sort 3<in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort 3<in -- -o f')")"
+assert "sort -T>x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -T>x -- -o /tmp/pwned f')")"
+assert "sort -T''</dev/null PASS" PASS  "$(decide "$(j_bash "sort -T''</dev/null -- -o /tmp/pwned f")")"
+assert "rg --pre</dev/null PASS"  PASS  "$(decide "$(j_bash 'rg --pre</dev/null sh pat f')")"
+assert "rg --search-zip>x PASS"   PASS  "$(decide "$(j_bash 'rg --search-zip>x pat f')")"
+assert "rg pat 2>/dev/null ALLOW" ALLOW "$(decide "$(j_bash 'rg pat f 2>/dev/null')")"
+# An attached value ends the cluster scan: `-Tdirk` is -T with value `dirk`, not a
+# trailing -k that takes the next word (panel codex-1), so `--` still terminates.
+assert "sort -Tdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -Tdirk -- -o f')")"
+assert "sort -Tk -- -o f ALLOW"   ALLOW "$(decide "$(j_bash 'sort -Tk -- -o f')")"
+assert "sort -uTdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -uTdirk -- -o f')")"
 
 # --- Correctness-CR locks: false-negatives that should ALLOW ---
 assert "xxd file + redirect"      ALLOW "$(decide "$(j_bash 'xxd file 2>/dev/null')")"
@@ -1547,6 +1592,15 @@ assert "rg --pre glob falls through"          PASS  "$(decide "$(j_bash 'rg --pr
 assert "rg pattern ALLOW"                     ALLOW "$(decide "$(j_bash 'rg pattern')")"
 assert "rg -n pat dir ALLOW"                  ALLOW "$(decide "$(j_bash 'rg -n pat dir')")"
 assert "rg -i --hidden pat ALLOW"             ALLOW "$(decide "$(j_bash 'rg -i --hidden pat')")"
+# HIMMEL-3985: a short-option cluster stops at an argument-taking letter, the
+# rest of the word is its value (-e zebra), not a -z flag.
+assert "rg -ezebra file ALLOW"                ALLOW "$(decide "$(j_bash 'rg -ezebra file')")"
+assert "rg -nezebra file ALLOW"               ALLOW "$(decide "$(j_bash 'rg -nezebra file')")"
+assert "rg -zn pat falls through"             PASS  "$(decide "$(j_bash 'rg -zn pat dir')")"
+assert "rg -nz pat falls through"             PASS  "$(decide "$(j_bash 'rg -nz pat dir')")"
+assert "rg -ie pat -z falls through"          PASS  "$(decide "$(j_bash 'rg -ie pat -z dir')")"
+assert "ag -Gzebra pat ALLOW"                 ALLOW "$(decide "$(j_bash 'ag -Gzebra pat')")"
+assert "ag -nz pat falls through"             PASS  "$(decide "$(j_bash 'ag -nz pat')")"
 assert "grep -r x . ALLOW"                    ALLOW "$(decide "$(j_bash 'grep -r x .')")"
 assert "ag pat ALLOW"                         ALLOW "$(decide "$(j_bash 'ag pat')")"
 

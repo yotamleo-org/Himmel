@@ -192,6 +192,10 @@ mkdir -p "$HOME"
 # HIMMEL-3332 S8: arms record a provenance row; never into the operator's ledger.
 export HIMMEL_PROVENANCE_DIR="$HOME/.himmel"
 export USERPROFILE="$HOME"
+# HIMMEL-4286: fired probe runners now call cadence-alert + the flow ledger;
+# keep both sinks inside the scratch HOME and never reach Telegram.
+export CADENCE_ALERT_SEND_CMD=/bin/true
+export HIMMEL_FLOW_RUNS_LEDGER="$HOME/flow-runs.jsonl"
 # BUN_INSTALL too (HIMMEL-1283 CR): arm resolves qmd through
 # qmd_pinned_invocation, whose FIRST branch looks for the bun-served install at
 # $BUN_INSTALL/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js — before
@@ -522,6 +526,32 @@ for want_rc in 0 5; do
     got_rc=0
     "$REAL_BASH" "$probe_dir/runner-$want_rc.sh" >/dev/null 2>&1 || got_rc=$?
     assert_rc "runner exits $want_rc when the payload exits $want_rc" "$want_rc" "$got_rc"
+done
+
+# Test C6d: the runner alerts + writes flow rows through the shared emitter ----
+# HIMMEL-4286. Fire the generated runner against a stub payload and a stub
+# cadence-alert.sh: a failed reindex must page (`fail`), a good one must `clear`.
+echo "TEST: generated cron runner alerts on failure and clears on success"
+# shellcheck source=../lib/cadence-runner-exec.sh
+. "$SCRIPT_DIR/../lib/cadence-runner-exec.sh"
+_hroot="$(cd "$SCRIPT_DIR/../.." && pwd)"
+for want_rc in 5 0; do
+    scr="$TMP_ROOT/alert-probe-$want_rc"
+    got_rc=0
+    # the arm baked the hermetic bash STUB as the interpreter; run the payload stub with the real one
+    mkdir -p "$scr"
+    sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/qmd-reindex.sh" > "$scr/runner-src.sh"
+    cadence_exec_runner "$scr/runner-src.sh" "$_hroot/scripts/luna/qmd-reindex.sh" "$want_rc" "$scr" || got_rc=$?
+    assert_rc "alert probe: runner exits $want_rc" "$want_rc" "$got_rc"
+    alerts=$(cat "$scr/alerts")
+    if [ "$want_rc" = 0 ]; then
+        assert_contains "rc 0 clears the qmd-reindex alert" "clear qmd-reindex" "$alerts"
+        assert_not_contains "rc 0 never alerts fail" "fail " "$alerts"
+    else
+        assert_contains "rc $want_rc alerts fail for qmd-reindex" "fail qmd-reindex rc-$want_rc" "$alerts"
+    fi
+    rows=$(cat "$scr/flow-runs.jsonl" 2>/dev/null || true)
+    assert_contains "rc $want_rc writes a qmd-reindex flow-run row" "qmd-reindex" "$rows"
 done
 
 # Test C6c: the self-overlap lock actually SERIALIZES (HIMMEL-1286) ------------

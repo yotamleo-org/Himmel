@@ -6,7 +6,7 @@
 # Writable roots are always the leg worktree, its scratchpad and the handover
 # bucket. Extra domains (a console-approved request) are appended to the list.
 #
-#   render-settings.sh <impl|research> <worktree> <scratch> <handover> [extra-domain...]
+#   [SRT_SCRATCH_HOME=<dir>] render-settings.sh <impl|research> <worktree> <scratch> <handover> [extra-domain...]
 set -eu
 
 profile="$1" worktree="$2" scratch="$3" handover="$4"
@@ -21,7 +21,8 @@ case "$profile" in
 esac
 home="${HOME:?}"
 # the JSON is printf-built, so refuse any argument that would need escaping
-for v in "$worktree" "$scratch" "$handover" "$home" "$@"; do
+scratch_home="${SRT_SCRATCH_HOME:-}"
+for v in "$worktree" "$scratch" "$handover" "$home" "$scratch_home" "$@"; do
     case "$v" in
         *\"* | *\\* | *[[:cntrl:]]*) echo "render-settings: refusing a quote, backslash or control character in an argument" >&2; exit 2 ;;
     esac
@@ -32,4 +33,8 @@ done
 
 printf '{"network":{"allowedDomains":[%s],"deniedDomains":[]},' "$domains"
 printf '"filesystem":{"denyRead":["%s/.ssh","%s/.config/gh","%s/.git-credentials","%s/.netrc"],' "$home" "$home" "$home" "$home"
-printf '"allowWrite":["%s","%s","%s"],"denyWrite":[]}}\n' "$worktree" "$scratch" "$handover"
+printf '"allowWrite":["%s","%s","%s"' "$worktree" "$scratch" "$handover"
+# srt takes no globs in allowWrite on Linux (HIMMEL-5400): a launcher that needs
+# a writable HOME passes one scratch dir here, the only root beyond the three
+[ -z "$scratch_home" ] || printf ',"%s"' "$scratch_home"
+printf '],"denyWrite":[]}}\n'

@@ -502,6 +502,12 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 ---
 
+### writing-for-agents (`.claude/skills/writing-for-agents/`)
+
+**What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`, HIMMEL-5631) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling not wired (operator ruling pending).
+
+---
+
 ## Hooks
 
 Defined in `~/.claude/settings.json`. Run as shell commands at specific Claude Code lifecycle events.
@@ -663,6 +669,12 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 **Source fork:** `yotamleo/claude-statusline` — **ARCHIVED**; superseded as the renderer by the vendored claude-hud fork (see the claude-hud entry). The bar (`bin/statusline.sh`) is retained in-tree as the rollback fallback but is no longer wired or re-vendored, so the fork-sync path is closed.
 **Patch applied:** `docs/patches/2026-05-16-cache-statusline.md`
 **Upstream:** `nilbuild/claude-statusline` (fork now archived; no PR path)
+
+---
+
+## /no-comments + comment-sicko (vendored, HIMMEL-5630)
+
+`.claude/skills/no-comments/` (`SKILL.md`, `LICENSE`) and `.claude/agents/comment-sicko.md`: the comment-prune tool. `/no-comments [scope]` spawns the `comment-sicko` reviewer, which deletes comments outside a short keep list (license headers, external-forced behaviour, public API docs, constraint links, `ponytail:` markers) and flags our-code surprises as `MUST KILL`. Vendored from `cursor/plugins` pstack at `1e5c90a4b6f249917bd21fe361b3a2a7deb741b8` (MIT, Lauren Tan); deviations are listed in each file's header. `disable-model-invocation`, so it runs only when typed.
 
 ---
 

@@ -197,6 +197,17 @@ _gu_shell_bodies() {
     local -a idx
     read -r -a idx <<<"${GU_SW[s]}"
     n=${#idx[@]}
+    # A segment whose command word is a builtin that never executes its
+    # arguments (`echo bash -c 'git stash'`) holds shell words as data
+    # (HIMMEL-4543). Skipped only when GU_FUNC=0: a top-level call whose whole
+    # text is one plain segment (see guard_unwrap), with a literal allowlisted
+    # command word at position 0. Past a wrapper, a value the option tables
+    # missed (`sudo -R echo bash -c …`) can masquerade as the core word.
+    if [ "$n" -gt 0 ] && [ "${GU_CORE[s]:-0}" = 0 ] && [ "$GU_FUNC" = 0 ]; then
+        case "${ST_W[idx[0]]}" in
+            echo|printf|:|true|false|test|\[) return 0 ;;
+        esac
+    fi
     j=0
     while [ "$j" -lt "$n" ]; do
         b=${ST_W[idx[j]]##*/}
@@ -284,10 +295,10 @@ _gu_strip_heredocs() {
 # 2 (the denial already on stderr) when one is, or when a cap is reached.
 guard_unwrap() {
     local hook=$1 cmd=$2 depth=${GUARD_UNWRAP_DEPTH:-0} s k w e sep render='' seg child first
-    local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0
+    local trigger=0 nl=$'\n' err rc cwd_env xrender='' xseg vs='' xkept=${GUARD_UNWRAP_XKEPT:-0} ci=0 noskip
     local -a children=()
     GU_V=() GU_VS=() GU_SW=() GU_SR=() GU_CORE=() GU_LOOKUP=() GU_XA=()
-    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0
+    GU_SHIFT=0 GU_STRIP=0 GU_TOKENIZED=0 GU_FUNC=0
     GU_CWD_UNKNOWN=0
     [ "${GUARD_UNWRAP_CWD:-}" != unknown ] || GU_CWD_UNKNOWN=1
     case "$depth" in ''|*[!0-9]*) depth=$GU_MAX_DEPTH ;; esac
@@ -297,6 +308,11 @@ guard_unwrap() {
     # top call so a caller-set value cannot make every child skipped.
     unset GUARD_UNWRAP_XKEPT
     [ "$depth" -gt 0 ] || xkept=0
+    # A render that already dropped a wrapper no longer shows what the
+    # wrapper's options took, so its child never trusts the data-position
+    # skip (HIMMEL-4543). Only ever makes the guard stricter.
+    noskip=${GUARD_UNWRAP_NOSKIP:-0}
+    unset GUARD_UNWRAP_NOSKIP
 
     if ! st_tokenize "$cmd"; then
         _gu_flatten_params "$cmd"
@@ -315,6 +331,17 @@ guard_unwrap() {
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1
+    # The data-position skip (HIMMEL-4543) is an exact-shape allowlist, not a
+    # kill list: a function, alias or builtin toggle can shadow the name in
+    # ways no word scan sees. It holds only for a top-level call whose whole
+    # text is one plain command, with no expansion, separator or redirect.
+    GU_FUNC=1
+    if [ "$depth" = 0 ] && [ "$noskip" != 1 ]; then
+        case "$cmd" in
+            *[\$\`\(\)\;\&\|\<\>]*|*"$nl"*) ;;
+            *) GU_FUNC=0 ;;
+        esac
+    fi
 
     k=0
     while [ "$k" -lt "$ST_N" ]; do
@@ -403,7 +430,7 @@ guard_unwrap() {
         fi
         s=$((s + 1))
     done
-    [ "$GU_STRIP" = 0 ] || trigger=1
+    [ "$GU_STRIP" = 0 ] || { trigger=1; noskip=1; }
     # shellcheck disable=SC1003 # a literal backslash before the newline
     case "$cmd" in *'\'$'\n'*) trigger=1 ;; esac
 
@@ -448,7 +475,7 @@ guard_unwrap() {
             echo "guard-unwrap: cannot build the unwrapped call - failing closed" >&2
             return 2
         fi
-        if err=$(GUARD_UNWRAP_DEPTH=$((depth + 1)) GUARD_UNWRAP_CWD=$cwd_env GUARD_UNWRAP_XKEPT=$((ci > 1 ? 1 : 0)) "${BASH:-bash}" "$hook" <<<"$child" 2>&1 >/dev/null); then
+        if err=$(GUARD_UNWRAP_DEPTH=$((depth + 1)) GUARD_UNWRAP_CWD=$cwd_env GUARD_UNWRAP_XKEPT=$((ci > 1 ? 1 : 0)) GUARD_UNWRAP_NOSKIP=$noskip "${BASH:-bash}" "$hook" <<<"$child" 2>&1 >/dev/null); then
             continue
         else
             rc=$?

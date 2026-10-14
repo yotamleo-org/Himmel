@@ -33,8 +33,10 @@ set -euo pipefail
 # Always exit clean; never block session start.
 trap 'exit 0' ERR
 
-# Drain stdin so the hook contract doesn't break the runtime if it pipes a payload.
-if [ -t 0 ]; then :; else cat >/dev/null 2>&1 || true; fi
+# Read the SessionStart payload (also drains stdin so the runtime's pipe never
+# breaks). Its `cwd` is the session's own dir, used below to resolve the branch.
+_wa_payload=""
+if [ -t 0 ]; then :; else _wa_payload="$(cat 2>/dev/null || true)"; fi
 
 # HIMMEL-2830 / HIMMEL-2928: a leg launched by headed-arm-leg.sh --profile
 # carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
@@ -84,7 +86,22 @@ _wa_marker="$_wa_dir/.refreshed-at"
 _wa_flag="$_wa_dir/.stale-flag"
 mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
-_wa_branch="${WHERE_ARE_WE_BRANCH_OVERRIDE:-$(git -C "$_wa_root" branch --show-current 2>/dev/null || true)}"
+# HIMMEL-1030: the branch is the SESSION's, not the canonical checkout's.
+# $_wa_root (HIMMEL_REPO) stays on main under the worktree workflow and is kept
+# only for shared scripts and state; the session dir is CLAUDE_PROJECT_DIR, else
+# the payload's cwd, else (neither set) $_wa_root as before.
+_wa_sess="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$_wa_sess" ] && [ -n "$_wa_payload" ]; then
+    # jq decodes escapes in the path; the sed fallback covers a jq-less host
+    # for the plain-path case.
+    if command -v jq >/dev/null 2>&1; then
+        _wa_sess="$(printf '%s' "$_wa_payload" | jq -r '.cwd // empty' 2>/dev/null || true)"
+    else
+        _wa_sess="$(printf '%s' "$_wa_payload" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+    fi
+fi
+[ -d "$_wa_sess" ] || _wa_sess="$_wa_root"
+_wa_branch="${WHERE_ARE_WE_BRANCH_OVERRIDE:-$(git -C "$_wa_sess" branch --show-current 2>/dev/null || true)}"
 
 # --- Render synchronously (no network) --------------------------------------
 _wa_out="$("$_wa_node" "$_wa_root/scripts/where-are-we/dock.mjs" \

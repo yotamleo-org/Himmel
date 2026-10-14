@@ -419,6 +419,7 @@ for leg in $LEGS_SPLIT; do
             lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$leg_doc" 2>&1)" || true
             case "$lock_out" in
                 *'status: FRESH'*) lock_status=FRESH ;;
+                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;   # HIMMEL-5541: not held; held_legs / held_n skip it
                 *'status: STALE'*) lock_status=STALE ;;
                 *UNVERIFIED*) lock_status=UNVERIFIED ;;
                 free*) lock_status=FREE ;;
@@ -1452,6 +1453,22 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
+# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK (HIMMEL-5037): the himmel-vm
+# self-hosted runner, one bounded `vm-runner.sh status --tick` call. DEAD = the
+# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s.
+# console-wait.sh wakes only on those two. unknown = the probe is missing,
+# failed or timed out.
+vmrun_summary=unknown
+vmrun_probe="${HIMMEL_VMRUN_PROBE:-$HERE/vm-runner.sh}"
+if [ -f "$vmrun_probe" ]; then
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+    vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
+    case "$vmrun_out" in
+        off|DEAD|STUCK|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+    esac
+fi
+
 # tick=ARMED|MISSING|UNKNOWN (HIMMEL-3144 D2): whether the periodic Monitor
 # call that is SUPPOSED to invoke this script every 60 min (the console
 # template's `## Monitors` tick row, armed in ACTION ZERO step 10) is
@@ -1538,6 +1555,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'plan-index: %s\n' "$plan_index_summary"
     printf 'OpenRouter: %s\n' "$openrouter"
     printf 'worker-session failures: %s\n' "$fails_summary"
+    printf 'vm runner: %s\n' "$vmrun_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
@@ -1554,11 +1572,11 @@ else
     # follow, and `fails=` (HIMMEL-4670) closes the line, before the optional `spare=`.
     # `vault=` (HIMMEL-4911) sits between `tracker=` and `denials=`; `cloud=` (HIMMEL-5163) follows `vault=`.
     if [ "$burn" -eq 1 ]; then
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     else
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$flakes_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

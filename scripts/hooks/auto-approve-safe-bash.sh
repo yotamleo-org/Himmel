@@ -1211,18 +1211,53 @@ segment_is_safe() {
                                            # doesn't match a known long name
                                            # falls through to normal permission,
                                            # never a wider per-shape parse.
+                local sdd=0 sskip=0 ssv sln ssc srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
+                    # HIMMEL-3655: bash ends a word at an unquoted `<`/`>`, this tokenizer
+                    # does not, so a glued redirect (`-T</dev/null`) hides that the option
+                    # consumed the next word; a heredoc/herestring (`<<-`, `<<<`) makes
+                    # the next word a delimiter, not an argument. Neither is modelled: PASS.
+                    case "$k" in *'<<'*) return 1 ;; esac
+                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
+                    [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
+                    # A redirect operator and its target are not sort arguments: neither
+                    # may start or end `--` handling nor consume an option value. Both are
+                    # still checked for -o/--output (fail closed), only the state is kept.
+                    ssd0=$sdd ssk0=$sskip
+                    ssv=$sskip; sskip=0           # 1 = this word is the previous option's value
                     case "$SW_VALUE" in
+                        --) [ "$ssv" = 1 ] || sdd=1 ;;   # a value-consumed `--` ends nothing
                         -[!-]*)
-                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
+                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac
+                            # The first value-taking letter ends the cluster: the rest of
+                            # the word is its value; only a trailing one takes the next word.
+                            ssc=${SW_VALUE#-}
+                            while [ -n "$ssc" ]; do
+                                case "${ssc:0:1}" in
+                                    [kSTty]) [ "${#ssc}" = 1 ] && sskip=1; break ;;
+                                esac
+                                ssc=${ssc:1}
+                            done ;;
                         --*)
                             guard_is_long_abbrev "output" "$SW_VALUE" && return 1
-                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1 ;;
+                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1
+                            case "$SW_VALUE" in
+                                *=*) ;;
+                                *) for sln in temporary-directory random-source buffer-size key field-separator files0-from batch-size parallel sort; do
+                                       guard_is_long_abbrev "$sln" "$SW_VALUE" && sskip=1
+                                   done ;;
+                            esac ;;
                     esac
+                    if [ "$srt" = 1 ]; then
+                        sdd=$ssd0 sskip=$ssk0 srt=0   # this word was a redirect target
+                    elif is_redirect_word "$k" "$SW_VALUE"; then
+                        sdd=$ssd0 sskip=$ssk0
+                        [[ "$SW_VALUE" =~ $sre ]] && srt=1   # bare operator: the next word is its target
+                    fi
                 done ;;
-            xxd)                           # `xxd in out` / `xxd -r in out` writes
+            xxd)                          # `xxd in out` / `xxd -r in out` writes
                 local xops=0               # a 2nd positional = output file → write
                 for k in "${a[@]:$((i + 1))}"; do
                     shell_word_value "$k" || return 1
@@ -1266,16 +1301,28 @@ segment_is_safe() {
             rg|ripgrep|ag)                 # HIMMEL-3668: `--pre`/`--hostname-bin` run a
                                            # program per file, `-z` runs decompressors,
                                            # `ag --pager` runs a program. FAIL CLOSED.
+                local zc zi zv='gGpmW'     # ag letters that take a value
+                case "$bin" in rg|ripgrep) zv='efgtTmABCjdEMr' ;; esac
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into one of these
+                    # a glued redirect (`--pre</dev/null sh`) ends the word in bash only
+                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
                     case "$SW_VALUE" in
                         --*)
                             guard_is_long_abbrev "pre-glob" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "hostname-bin" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "search-zip" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "pager" "$SW_VALUE" && return 1 ;;
-                        -[!-]*) case "${SW_VALUE#-}" in *z*) return 1 ;; esac ;;
+                        -[!-]*)
+                            # HIMMEL-3985: the first value-taking letter ends the
+                            # cluster; the rest of the word is its value (-ezebra).
+                            zi=1
+                            while [ "$zi" -lt "${#SW_VALUE}" ]; do
+                                zc="${SW_VALUE:$zi:1}"; zi=$((zi + 1))
+                                [ "$zc" = z ] && return 1
+                                case "$zv" in *"$zc"*) break ;; esac
+                            done ;;
                     esac
                 done ;;
             tree)                          # `tree -o FILE` / `--output FILE` writes

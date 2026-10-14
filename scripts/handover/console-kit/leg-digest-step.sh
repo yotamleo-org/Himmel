@@ -147,7 +147,8 @@ summary() { # summary <digest> <word>
         def n: if type == "number" then tostring else "-" end;
         (.failures // []) as $f | (.metrics // {}) as $m |
         "digest=\($w) fails=\([$f[] | select(.failure != "traj") | .count] | add // 0) classes=\($f | length)" +
-        " traj=rbg:\($m.red_before_green | b),dr:\($m.denial_recovery | n),idr:\($m.identical_denied_retries | n),vbc:\($m.verify_before_claim | b)"
+        " traj=rbg:\($m.red_before_green | b),dr:\($m.denial_recovery | n),idr:\($m.identical_denied_retries | n),vbc:\($m.verify_before_claim | b)" +
+        (if (.exploration | type) == "object" then " explore=\(.exploration.tokens | n):\(.exploration.reads | n)r\(.exploration.searches | n)s:\(.exploration.cut // "-")" else "" end)
     ' "$1" 2>/dev/null
 }
 record() { # record <digest-file> [<digest-error>]

@@ -105,6 +105,23 @@ assert_rc "env xargs git stash"        2 "$(run_hook 'printf a | env X=1 xargs g
 assert_rc "xargs xargs git stash"      2 "$(run_hook 'printf a | xargs xargs git stash')"
 assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')"
 
+# --- HIMMEL-4543: a shell word in a non-executing builtin's data position is
+# not read, but every executing position still is ---
+assert_rc "echo bash -c 'git stash' is data"   0 "$(run_hook "echo bash -c 'git stash'")"
+assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 2 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
+assert_rc "sudo -R echo bash -c 'git stash'"   2 "$(run_hook "sudo -R echo bash -c 'git stash'")"
+assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 2 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
+assert_rc "echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_hook "echo() ( \"\$@\" ); echo bash -c 'git stash'")"
+assert_rc "alias echo=eval; echo bash -c 'git stash'" 2 "$(run_hook "alias echo=eval; echo bash -c 'git stash'")"
+assert_rc "exported function reaches a child shell" 2 "$(run_hook "echo() ( \"\$@\" ); export -f echo; bash -c \"echo bash -c 'git stash'\"")"
+assert_rc "enable -n echo; echo bash -c 'git stash'" 2 "$(run_hook "enable -n echo; echo bash -c 'git stash'")"
+assert_rc "find -exec sh -c 'git stash'"       2 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
+assert_rc "xargs bash -c 'git stash'"          2 "$(run_hook "printf a | xargs bash -c 'git stash'")"
+assert_rc "sudo -u u bash -c 'git stash'"      2 "$(run_hook "sudo -u u bash -c 'git stash'")"
+assert_rc "echo x; bash -c 'git stash'"        2 "$(run_hook "echo x; bash -c 'git stash'")"
+assert_rc "echo \$(bash -c 'git stash')"       2 "$(run_hook "echo \$(bash -c 'git stash')")"
+assert_rc "echo | bash -c 'git stash'"         2 "$(run_hook "echo | bash -c 'git stash'")"
+
 # --- render budget: linear in depth, not doubling per level ---
 # Each level costs the stripped render, the xargs-kept render (scanned once,
 # never unwrapped again) and its body: 3 per level plus the top call. Before

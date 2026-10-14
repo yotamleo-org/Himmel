@@ -28,8 +28,41 @@ assert_rc() {
     fi
 }
 
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/block-edit-live-settings.XXXXXX") || {
-    echo "FATAL: mktemp -d failed" >&2
+# The hook's read-only allowlist vetoes `tee` as a command word (any case: the
+# word is folded first), not as a substring (HIMMEL-5616). A sandbox path whose
+# random suffix is a standalone `tee` still turns every read-only row that names
+# the fixture into a deny (HIMMEL-5612, main red), and the PowerShell text path
+# treats any name-char boundary around `tee` as a word. Keep redrawing the name
+# until it is clear of the substring, and swap in a clean per-run TMPDIR when
+# TMPDIR itself carries it.
+SANDBOX_BASE=${TMPDIR:-/tmp}
+case "$(printf '%s' "$SANDBOX_BASE" | tr '[:upper:]' '[:lower:]')" in
+    *tee*)
+        # Keep TMPDIR a real per-run directory (rows depend on it), not bare /tmp.
+        for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            SANDBOX_BASE=$(mktemp -d /tmp/himmel-suite.XXXXXX) || exit 1
+            case "$(printf '%s' "$SANDBOX_BASE" | tr '[:upper:]' '[:lower:]')" in
+                *tee*) rmdir "$SANDBOX_BASE"; SANDBOX_BASE='' ;;
+                *) break ;;
+            esac
+        done
+        [ -n "$SANDBOX_BASE" ] || { echo "FATAL: no TMPDIR clear of 'tee'" >&2; exit 1; }
+        export TMPDIR=$SANDBOX_BASE
+        ;;
+esac
+SANDBOX=''
+for _try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    SANDBOX=$(mktemp -d "$SANDBOX_BASE/block-edit-live-settings.XXXXXX") || {
+        echo "FATAL: mktemp -d failed" >&2
+        exit 1
+    }
+    case "$(printf '%s' "$SANDBOX" | tr '[:upper:]' '[:lower:]')" in
+        *tee*) rmdir "$SANDBOX"; SANDBOX='' ;;
+        *) break ;;
+    esac
+done
+[ -n "$SANDBOX" ] || {
+    echo "FATAL: no mktemp name clear of 'tee' in 20 draws" >&2
     exit 1
 }
 # ponytail: the fixtures are pinned to their physical path because the hook
@@ -3358,6 +3391,37 @@ if command -v node >/dev/null 2>&1; then
 else
     echo "SKIP 679-683 (node not installed)"
 fi
+
+# 833-838 (HIMMEL-5616): tee is matched as a command word, not a substring —
+# a settings path or word that merely contains it (committee, steel) is a read.
+assert_rc "833 grep of a committee path piped to cut allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "grep -n x /tmp/committee/primary/.claude/settings.json | cut -c1-60")"
+assert_rc "834 cat of a steel path allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "cat /tmp/steel/.claude/settings.json")"
+assert_rc "835 piped tee into live settings still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat .claude/settings.json | tee .claude/settings.json")"
+assert_rc "836 absolute /usr/bin/tee still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "grep x .claude/settings.json | /usr/bin/tee /tmp/o")"
+assert_rc "837 env-wrapped tee still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat .claude/settings.json | env tee /tmp/o")"
+assert_rc "838 tee after a semicolon still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "grep x .claude/settings.json; tee /tmp/o")"
+
+# 839-846: the text-layer veto (Bash TOK=0 and PowerShell, which no tokenizer
+# judges). An extglob group (`@(a)`) sends a Bash command to TOK=0. Each deny
+# row fails if its own veto line is deleted.
+assert_rc "839 TOK=0 bash read of a committee path allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "cat @(a) /tmp/committee/.claude/settings.json")"
+assert_rc "840 TOK=0 bash tee word denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat @(a) .claude/settings.json tee")"
+assert_rc "841 powershell cat of a committee path allows" 0 \
+    "$(powershell_rc_of "$PRIMARY" "cat /tmp/committee/.claude/settings.json")"
+assert_rc "842 powershell Tee-Object in a group denies" 2 \
+    "$(powershell_rc_of "$PRIMARY" "cat (Tee-Object -FilePath .claude/settings.json -InputObject x)")"
+assert_rc "843 powershell array tee-object denies" 2 \
+    "$(powershell_rc_of "$PRIMARY" "cat @(tee-object -FilePath .claude/settings.json -InputObject x)")"
+assert_rc "844 powershell tee.exe in a group denies" 2 \
+    "$(powershell_rc_of "$PRIMARY" "cat (tee.exe .claude/settings.json)")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).

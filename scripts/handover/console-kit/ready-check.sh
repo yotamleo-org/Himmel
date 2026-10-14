@@ -61,6 +61,14 @@
 #      bumping to the same version merge CLEAN). Fetches origin/main and the PR
 #      head (refs/pull/<n>/head) into the caller's repo; a PR touching no
 #      plugin never reaches git. Any fetch/read failure FAILs.
+#  10. Workflow dispatch (HIMMEL-5591): every .github/workflows/*.yml the PR
+#      changes needs a completed, successful workflow_dispatch run at the PR
+#      head sha (`gh run list --workflow <wf> --event workflow_dispatch
+#      --commit <head>`), since ci.yml has no push trigger and the mode main
+#      runs is otherwise never tested pre-merge. The FAIL line prints the exact
+#      `gh workflow run` command. A changed workflow with no workflow_dispatch
+#      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
+#      PRs are unaffected.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
@@ -486,6 +494,74 @@ else
     fi
 fi
 fi  # ONLY7 == 0: check 9
+
+if [ "$ONLY7" -eq 0 ]; then
+# ── 10. workflow PRs need a green workflow_dispatch run AT HEAD (HIMMEL-5591) ──
+# A PR is CI-tested only in pull_request mode; the mode main runs (cron,
+# dispatch) is never exercised before merge. ci.yml has no push trigger
+# (HIMMEL-5113), so a workflow_dispatch run on the branch is the only pre-merge
+# test of the non-PR path. Every .github/workflows/*.yml the PR changes needs a
+# completed, successful workflow_dispatch run whose headSha is this head — a run
+# at an older sha proves nothing about the change. A changed workflow with no
+# workflow_dispatch trigger FAILs and names the missing trigger, unless it is
+# listed below: those cannot be dispatched (their trigger is pull_request_target,
+# workflow_run or a tag push), so the exemption is explicit and reviewed here.
+# A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
+# to is not on the default branch, which GitHub requires to dispatch a workflow,
+# so neither can be dispatched before merge and both are skipped. A PR touching no workflow
+# never reaches the run API; a read/list failure FAILs.
+WF_DISPATCH_EXEMPT="
+.github/workflows/codeowner-review-gate.yml
+.github/workflows/main-sweep-red.yml
+.github/workflows/pr-title-lint.yml
+.github/workflows/release.yml
+"
+wf_files=$(printf '%s\n' "$files_json" | grep -E '^\.github/workflows/[^/]+\.ya?ml$' || true)
+if [ -z "$files_json" ]; then
+    echo "[FAIL] 10. cannot read PR files — workflow_dispatch run not checked"
+    mark_fail
+elif [ -z "$wf_files" ]; then
+    echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
+else
+    wf_err=""
+    wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
+    wf_undispatchable_ok=1
+    wf_undispatchable=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed" or .status == "added" or .status == "renamed") | .filename' 2>/dev/null) || wf_undispatchable_ok=0
+    if [ "$wf_undispatchable_ok" -eq 0 ]; then
+        wf_err="cannot read which workflow files the PR removes"
+    else
+        while IFS= read -r wf; do
+            [ -n "$wf" ] || continue
+            printf '%s\n' "$wf_undispatchable" | grep -qxF "$wf" && continue
+            wf_base="${wf##*/}"
+            if ! wf_body=$("$GH" api -H "Accept: application/vnd.github.raw" "repos/$owner/$repo/contents/$wf?ref=$SHA" 2>/dev/null); then
+                wf_err="$wf_err; $wf cannot be read at $SHA"
+                continue
+            fi
+            if ! printf '%s\n' "$wf_body" | grep -qE '^[[:space:]]*workflow_dispatch[[:space:]]*:|^[[:space:]]*-[[:space:]]*workflow_dispatch[[:space:]]*(#.*)?$|^"?on"?[[:space:]]*:.*workflow_dispatch'; then
+                printf '%s' "$WF_DISPATCH_EXEMPT" | grep -qxF "$wf" && continue
+                wf_err="$wf_err; $wf has no workflow_dispatch trigger — add one, or list it in WF_DISPATCH_EXEMPT in ready-check.sh"
+                continue
+            fi
+            if ! wf_runs=$("$GH" run list --repo "$nwo" --workflow "$wf_base" --event workflow_dispatch --commit "$SHA" --json status,conclusion,headSha --limit 20 2>/dev/null); then
+                wf_err="$wf_err; $wf run list failed"
+                continue
+            fi
+            if ! printf '%s' "$wf_runs" | jq -e --arg h "$SHA" 'any(.[]; .headSha == $h and .status == "completed" and .conclusion == "success")' >/dev/null 2>&1; then
+                wf_err="$wf_err; $wf has no completed successful workflow_dispatch run at $SHA — run: gh workflow run $wf_base --ref ${wf_branch:-<branch>} --repo $nwo"
+            fi
+        done <<EOF
+$wf_files
+EOF
+    fi
+    if [ -z "$wf_err" ]; then
+        echo "[PASS] 10. every changed workflow has a successful workflow_dispatch run at head (or is exempt/removed)"
+    else
+        echo "[FAIL] 10. workflow dispatch:${wf_err#;}"
+        mark_fail
+    fi
+fi
+fi  # ONLY7 == 0: check 10
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

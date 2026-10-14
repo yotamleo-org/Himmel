@@ -1,0 +1,120 @@
+# scripts/ci/pr-job-gates.txt — HIMMEL-5524: which diff paths feed which
+# pull_request job. Read by scripts/ci/pr-plan.sh from the BASE commit, so a PR
+# cannot narrow its own gates except by editing this file, which is a trust path
+# (scripts/ci/) and so forces every gate true.
+#
+# Line format: <group><whitespace><ERE>, matched against each changed path.
+# A group is true when ANY changed path matches ANY of its lines. A changed path
+# that matches NO line (not even `benign`) is an unknown diff and makes every
+# gate true (fail closed). Over-listing a path is safe (the job just runs);
+# under-listing is the bug, so when a job starts reading a new directory, add it.
+#
+# Group names become the `run_<group>` outputs the `plan` job exposes. The
+# aggregator-less jobs gated on them report `skipped` (a pass) when false. The
+# matrix jobs (node_suites, bun_suites) stay started and skip their steps so
+# their required check names still report.
+#
+# Jobs with no group always run: leak-classes, secret-scan (a secret can land
+# in any file), commit-lint, doc-invariants, unchecked-mktemp-range and the
+# shell-unit shards (they select for themselves).
+
+benign          ^docs/
+benign          ^templates/
+benign          ^handovers/
+# Safe: no gated job executes or reads a .md file as an input (the audit in
+# test-pr-plan.sh follows only code and data extensions), and a docs-only PR
+# is the case this gate exists to make cheap. A .md that a suite reads would
+# have to be listed in its group above, which would then win over this line.
+benign          \.md$
+benign          ^LICENSE
+benign          ^\.gitignore$
+benign          ^\.gitattributes$
+benign          ^\.github/(CODEOWNERS|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE)
+
+# node-suites matrix (jira, bitbucket, himmel-run, ci-orchestrator, himmel-gh,
+# himmel-jira, himmel-bus): each package's own dir plus what it imports.
+node_suites     ^scripts/(jira|bitbucket|himmel-run|ci-orchestrator|telegram|guardrails|lanes)/
+node_suites     ^scripts/handover/console-kit/
+node_suites     ^plugins/(himmel-gh|himmel-jira)/
+node_suites     ^marketplace/plugins/himmel-bus/
+node_suites     (^|/)package(-lock)?\.json$
+
+# bun-suites, claude-startup and lint are UNGATED too (trust judge j2543g, third
+# reader-allowlist NO-GO): `bun test scripts/telegram` runs extensionless
+# scripts/claude-codex, main's shellcheck sweep reaches executable .sh.ref
+# fixtures, and the claude-startup hook chain runs scripts outside any group. Their
+# former lines stay as `benign` so the paths still map to a group. Only path-pure
+# jobs remain gated (node_suites, jira_cli_smoke, guardrail_matrices,
+# git_env_scrub, bwk_gate, plugin_version_bump, deps_audit).
+
+# bun-suites matrix (now benign).
+benign          ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
+benign          ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-setup|trust)/
+benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
+benign          ^marketplace/plugins/(luna-correlate|telegram-himmel)/
+benign          ^\.bun-version$
+benign          ^docs/setup/settings-template\.json$
+benign          ^tests/fixtures/glm-cap/
+benign          (^|/)bun\.lock$
+benign          (^|/)package(-lock)?\.json$
+
+jira_cli_smoke  ^scripts/jira/
+jira_cli_smoke  (^|/)package(-lock)?\.json$
+
+benign          ^scripts/(testing|hooks|lib)/
+benign          ^scripts/(handover|lanes|codex|cr|git)/
+benign          ^scripts/(clean-garden|quiet-run)\.sh$
+benign          ^\.claude/
+benign          ^\.bun-version$
+
+# lanes-and-trust-suites is UNGATED (trust judge j2543e, second reader-allowlist
+# NO-GO): check-hook-lib-suites.sh globs scripts/(hooks|lib)/*.test.mjs and those
+# suites read files (scripts/install/manifest.json, himmel-ops hooks.json) no
+# group enumerates. It runs on every PR, so these paths are harmless to the
+# gates (same reasoning as the benign block at the end of this file).
+benign          ^scripts/(lanes|trust|where-are-we|lessons|observability|hooks|lib)/
+benign          ^scripts/(op-env-parity|test-claude-codex)
+benign          ^scripts/(cr|eval|git|guardrails|handover|himmelctl|setup|telegram|upstreams)/
+benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
+benign          ^marketplace/plugins/obsidian-triage/tools/
+benign          ^marketplace/\.claude-plugin/marketplace\.json$
+benign          ^marketplace/plugins/qmd/\.mcp\.json$
+
+guardrail_matrices ^scripts/guardrails/
+guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
+guardrail_matrices voice
+
+git_env_scrub   ^scripts/(handover|lanes|hooks|cr|lib)/
+git_env_scrub   scrub
+git_env_scrub   ^scripts/guardrails/git-env-baseline\.txt$
+
+bwk_gate        unchecked-mktemp
+bwk_gate        ^scripts/lib/
+bwk_gate        \.(sh|bash)$
+
+benign          \.(sh|bash)$
+benign          ^\.shellcheckrc$
+benign          ^\.pre-commit-config\.yaml$
+benign          ^scripts/(hooks|install|himmelctl)/
+# extensionless shebang scripts (scripts/claude-glm, */bin/*, lean-skills task-*)
+# are shellchecked by file type, not by a .sh suffix.
+benign          (^|/)[^/.]+$
+
+
+plugin_version_bump ^(marketplace/plugins|plugins)/
+plugin_version_bump ^scripts/upstreams/
+plugin_version_bump ^marketplace/\.claude-plugin/marketplace\.json$
+plugin_version_bump ^scripts/(plugin-upstreams|upstreams)\.json$
+
+deps_audit      (^|/)package(-lock)?\.json$
+deps_audit      (^|/)bun\.lock$
+deps_audit      (^|/)uv\.lock$
+deps_audit      (^|/)pyproject\.toml$
+deps_audit      ^\.bun-version$
+deps_audit      ^scripts/hooks/check-(lockfile-integrity|uv-lock|npm-audit|npm-licenses|npm-audit-signatures)\.sh$
+
+# Paths that are neither benign nor a listed input but harmless to the gates
+# above ONLY because the job that reads them always runs (leak-classes,
+# doc-invariants, commit-lint): scripts that are not shell/ts and live in a
+# tree no gated job reads.
+benign          ^scripts/(statusline|luna|gemini|hermes|himmelctl|install)/.*\.(ps1|json|txt|yml|yaml)$

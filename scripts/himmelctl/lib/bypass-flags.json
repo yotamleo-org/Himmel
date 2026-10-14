@@ -236,6 +236,14 @@
       "remedy": "IMPL_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "INFRADESTROYOK",
+      "hooks": [
+        "scripts/hooks/block-infra-destroy.sh"
+      ],
+      "bypasses": "Skips the \"block infra destroy\" guard (scripts/hooks/block-infra-destroy.sh).",
+      "remedy": "INFRADESTROYOK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "INLINE_IMPL_OK",
       "hooks": [
         "scripts/hooks/orchestrator-inline-guard.sh"

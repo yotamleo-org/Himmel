@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 14,
+  PreToolUse: 15,
   SessionStart: 5,
   SessionEnd: 3,
   Notification: 1,
@@ -17,6 +17,8 @@ const EXPECTED_COUNTS = Object.freeze({
 const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'inject-minerva-critic.sh', source: 'plugin' },
   { event: 'PreToolUse', script: 'block-docker-privesc.sh' },
+  // HIMMEL-5282: infra, database and docker destroy verbs (audit gap G9).
+  { event: 'PreToolUse', script: 'block-infra-destroy.sh' },
   { event: 'PreToolUse', script: 'block-merged-pr-commit.sh' },
   { event: 'PreToolUse', script: 'block-unresolved-cr-merge.sh' },
   // HIMMEL-1649 [codex-adv-1]: fail CLOSED when this hook is missing AND the

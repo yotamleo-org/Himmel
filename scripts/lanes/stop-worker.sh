@@ -96,6 +96,7 @@ STOP_WORKER_BRIDGE_ROOT_OVERRIDE=<path> explicitly.
 exit: 0 stopped (or dry-run ok) | 1 usage/refused | 2 target not found
       3 target not running | 4 could not verify identity, nothing signalled
       5 checkpoint failed, nothing signalled | 6 signalled but survivors remain
+      7 worker already gone + checkpoint failed: session annotated already-exited
 EOF
 }
 
@@ -253,75 +254,6 @@ case "${PID:-}" in
         ;;
 esac
 
-# --- checkpoint BEFORE signalling (HIMMEL-1691) -----------------------------
-# A halt must not become a data-loss event. Plumbing only (write-tree /
-# commit-tree / update-ref run no hooks), a private index so the worker's own
-# index and working tree are untouched mid-edit, and the tree is seeded from
-# HEAD -- an unseeded index yields a tree whose diff vs HEAD deletes the rest
-# of the repo. Same shape clean-garden.sh uses for its refused-prune autosave.
-checkpoint_worker_worktree() {
-    local wt="$1" slug="$2" tmp_dir tmp_index head_oid head_tree tree oid
-    if [ -z "$wt" ] || [ ! -d "$wt" ]; then
-        echo "no worker worktree recorded"
-        return 1
-    fi
-    git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git worktree: $wt"; return 1; }
-    if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
-        echo "clean"
-        return 0
-    fi
-    head_oid=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head_oid=""
-    [ -n "$head_oid" ] || { echo "no HEAD"; return 1; }
-    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir=""
-    [ -n "$tmp_dir" ] || { echo "mktemp failed"; return 1; }
-    tmp_index="$tmp_dir/index"
-    if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" read-tree "$head_oid" >/dev/null 2>&1; then
-        rm -rf "$tmp_dir"; echo "read-tree failed"; return 1
-    fi
-    if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" add -A >/dev/null 2>&1; then
-        rm -rf "$tmp_dir"; echo "add failed"; return 1
-    fi
-    tree=$(GIT_INDEX_FILE="$tmp_index" git -C "$wt" write-tree 2>/dev/null) || tree=""
-    rm -rf "$tmp_dir"
-    [ -n "$tree" ] || { echo "write-tree failed"; return 1; }
-    head_tree=$(git -C "$wt" rev-parse --verify "${head_oid}^{tree}" 2>/dev/null) || head_tree=""
-    if [ "$tree" = "$head_tree" ]; then
-        echo "clean"
-        return 0
-    fi
-    oid=$(git -C "$wt" commit-tree "$tree" -p "$head_oid" -m "stop-worker halt checkpoint (HIMMEL-1693): $slug" 2>/dev/null) || oid=""
-    [ -n "$oid" ] || { echo "commit-tree failed"; return 1; }
-    # Create-or-update, both compare-and-swap: two concurrent halts must not
-    # clobber each other's snapshot.
-    local prev
-    prev=$(git -C "$wt" rev-parse --verify --quiet "refs/checkpoints/$slug" 2>/dev/null) || prev=""
-    if [ -n "$prev" ]; then
-        git -C "$wt" update-ref "refs/checkpoints/$slug" "$oid" "$prev" 2>/dev/null || { echo "update-ref raced"; return 1; }
-    else
-        git -C "$wt" update-ref "refs/checkpoints/$slug" "$oid" "" 2>/dev/null || { echo "update-ref raced"; return 1; }
-    fi
-    echo "refs/checkpoints/$slug"
-    return 0
-}
-
-CKPT_SLUG="$SESSION_ID-halt"
-CKPT_RESULT="$(checkpoint_worker_worktree "$WORKER_WT" "$CKPT_SLUG")"
-CKPT_RC=$?
-if [ "$CKPT_RC" -ne 0 ]; then
-    echo "stop-worker: REFUSING to stop $SESSION_ID -- its worktree could not be checkpointed ($CKPT_RESULT). A halt must not destroy unsaved work; fix the worktree or commit by hand, then retry." >&2
-    exit 5
-fi
-if [ "$CKPT_RESULT" = "clean" ]; then
-    echo "stop-worker: worker worktree is clean -- nothing to checkpoint"
-else
-    echo "stop-worker: checkpointed the worker's uncommitted work -> $CKPT_RESULT"
-fi
-
-if [ "$DRY_RUN" -eq 1 ]; then
-    echo "DRY stop-worker: would terminate pid/group $PID for $SESSION_ID (nothing signalled)"
-    exit 0
-fi
-
 # annotate_halt <meta.json> <checkpoint-result> <status> -- record status/
 # exit_code/pid/stopped_at/stop_checkpoint so a later reader (census,
 # reconciliation, the console) does not read a no-longer-running worker as
@@ -389,6 +321,95 @@ clear_push_poison() {
         echo "WARN stop-worker: could not clear remote.origin.pushurl=$POISON_SENTINEL on $wt -- that worktree cannot push until you run: git -C '$wtq' config --worktree --unset remote.origin.pushurl" >&2
     fi
 }
+
+# --- checkpoint BEFORE signalling (HIMMEL-1691) -----------------------------
+# A halt must not become a data-loss event. Plumbing only (write-tree /
+# commit-tree / update-ref run no hooks), a private index so the worker's own
+# index and working tree are untouched mid-edit, and the tree is seeded from
+# HEAD -- an unseeded index yields a tree whose diff vs HEAD deletes the rest
+# of the repo. Same shape clean-garden.sh uses for its refused-prune autosave.
+checkpoint_worker_worktree() {
+    local wt="$1" slug="$2" tmp_dir tmp_index head_oid head_tree tree oid
+    if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+        echo "no worker worktree recorded"
+        return 1
+    fi
+    git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git worktree: $wt"; return 1; }
+    if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+        echo "clean"
+        return 0
+    fi
+    head_oid=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head_oid=""
+    [ -n "$head_oid" ] || { echo "no HEAD"; return 1; }
+    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir=""
+    [ -n "$tmp_dir" ] || { echo "mktemp failed"; return 1; }
+    tmp_index="$tmp_dir/index"
+    if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" read-tree "$head_oid" >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"; echo "read-tree failed"; return 1
+    fi
+    if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" add -A >/dev/null 2>&1; then
+        rm -rf "$tmp_dir"; echo "add failed"; return 1
+    fi
+    tree=$(GIT_INDEX_FILE="$tmp_index" git -C "$wt" write-tree 2>/dev/null) || tree=""
+    rm -rf "$tmp_dir"
+    [ -n "$tree" ] || { echo "write-tree failed"; return 1; }
+    head_tree=$(git -C "$wt" rev-parse --verify "${head_oid}^{tree}" 2>/dev/null) || head_tree=""
+    if [ "$tree" = "$head_tree" ]; then
+        echo "clean"
+        return 0
+    fi
+    oid=$(git -C "$wt" commit-tree "$tree" -p "$head_oid" -m "stop-worker halt checkpoint (HIMMEL-1693): $slug" 2>/dev/null) || oid=""
+    [ -n "$oid" ] || { echo "commit-tree failed"; return 1; }
+    # Create-or-update, both compare-and-swap: two concurrent halts must not
+    # clobber each other's snapshot.
+    local prev
+    prev=$(git -C "$wt" rev-parse --verify --quiet "refs/checkpoints/$slug" 2>/dev/null) || prev=""
+    if [ -n "$prev" ]; then
+        git -C "$wt" update-ref "refs/checkpoints/$slug" "$oid" "$prev" 2>/dev/null || { echo "update-ref raced"; return 1; }
+    else
+        git -C "$wt" update-ref "refs/checkpoints/$slug" "$oid" "" 2>/dev/null || { echo "update-ref raced"; return 1; }
+    fi
+    echo "refs/checkpoints/$slug"
+    return 0
+}
+
+CKPT_SLUG="$SESSION_ID-halt"
+CKPT_RESULT="$(checkpoint_worker_worktree "$WORKER_WT" "$CKPT_SLUG")"
+CKPT_RC=$?
+if [ "$CKPT_RC" -ne 0 ]; then
+    # HIMMEL-1751: refusing protects nothing when the worker is already gone --
+    # there is no signal to send, and the refusal left a dead session reading
+    # "running" to every census. Only a CONFIRMED-absent pid (no identity AND
+    # the liveness probe answering "absent", rc 1) takes this path; alive or
+    # unknown still refuses below, so the live-worker case is unchanged.
+    if [ -z "$(proc_tree_process_identity "$PID" 2>/dev/null)" ]; then
+        CKPT_ALIVE_RC=0
+        proc_tree_process_alive "$PID" 2>/dev/null || CKPT_ALIVE_RC=$?
+        if [ "$CKPT_ALIVE_RC" -eq 1 ]; then
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "DRY stop-worker: pid $PID is already gone but $SESSION_ID's worktree could not be checkpointed ($CKPT_RESULT); a real run would annotate it already-exited and exit 7 (nothing annotated)" >&2
+                exit 7
+            fi
+            echo "stop-worker: pid $PID is already gone -- $SESSION_ID needs no signal, but its worktree could not be checkpointed ($CKPT_RESULT); annotating it already-exited anyway" >&2
+            annotate_halt "$MATCH_META" "checkpoint-failed: $CKPT_RESULT" "already-exited" \
+              || echo "WARN stop-worker: $SESSION_ID's pid was already gone but its meta.json could not be annotated" >&2
+            clear_push_poison "$WORKER_WT"
+            exit 7
+        fi
+    fi
+    echo "stop-worker: REFUSING to stop $SESSION_ID -- its worktree could not be checkpointed ($CKPT_RESULT). A halt must not destroy unsaved work; fix the worktree or commit by hand, then retry." >&2
+    exit 5
+fi
+if [ "$CKPT_RESULT" = "clean" ]; then
+    echo "stop-worker: worker worktree is clean -- nothing to checkpoint"
+else
+    echo "stop-worker: checkpointed the worker's uncommitted work -> $CKPT_RESULT"
+fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "DRY stop-worker: would terminate pid/group $PID for $SESSION_ID (nothing signalled)"
+    exit 0
+fi
 
 # --- terminate, identity-verified -------------------------------------------
 IDENTITY="$(proc_tree_process_identity "$PID" 2>/dev/null)" || IDENTITY=""

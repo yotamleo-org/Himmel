@@ -352,6 +352,27 @@ fi
 jobs=$(HIMMEL_PROVENANCE_DIR="$pstate/provenance" bash -c '. "$1/lib/provenance.sh" && . "$1/lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r ".unit + \" ours=\" + (.ours|tostring) + \" scheduler=\" + .fields.scheduler"' _ "$SCRIPT_DIR/..")
 assert_has "$jobs" "HIMMEL-UpstreamWatch ours=true scheduler=cron" "posix arm: recorded the cron job row (ours, cron)"
 
+# HIMMEL-4286: the runner goes through the shared emitter. Fire it against a
+# stub payload + stub cadence-alert.sh: rc 2 (watch failure) pages, rc 0 and
+# rc 10 (delta found, handled) clear, and rc 10 still exits 0 for cron.
+echo "== test: POSIX runner alerts on failure, clears on success (HIMMEL-4286) =="
+. "$SCRIPT_DIR/../lib/cadence-runner-exec.sh"
+for want in 2 0 10; do
+  escr="$pstate/exec-$want"
+  got=0
+  cadence_exec_runner "$pstate/bat/upstream-watch.sh" "$pstate/root/scripts/upstreams/upstream-watch.sh" "$want" "$escr" \
+    "$pstate/root/scripts/luna/cadence-alert.sh" || got=$?
+  alerts=$(cat "$escr/alerts" 2>/dev/null)
+  case "$want" in
+    2)  assert_has "$alerts" "fail upstream-watch rc-2" "posix runner: rc 2 alerts fail"
+        if [ "$got" -eq 2 ]; then pass "posix runner: rc 2 propagates"; else fail "posix runner: rc 2 expected exit 2 got $got"; fi ;;
+    0)  assert_has "$alerts" "clear upstream-watch" "posix runner: rc 0 clears"
+        if [ "$got" -eq 0 ]; then pass "posix runner: rc 0 exits 0"; else fail "posix runner: rc 0 expected exit 0 got $got"; fi ;;
+    10) assert_has "$alerts" "clear upstream-watch" "posix runner: rc 10 (delta handled) clears, never pages"
+        if [ "$got" -eq 0 ]; then pass "posix runner: rc 10 maps to exit 0"; else fail "posix runner: rc 10 expected exit 0 got $got"; fi ;;
+  esac
+done
+
 echo "== test: POSIX status (armed) + dedup =="
 out=$(run_cadence_posix "$pstate" status 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "posix status: rc=0"; else fail "posix status: expected rc=0 got rc=$rc"; fi

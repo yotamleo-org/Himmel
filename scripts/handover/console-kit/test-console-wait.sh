@@ -722,6 +722,35 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (v) HIMMEL-5037: vmrun= wakes only on a class move TO DEAD / STUCK; the
+# busy count moving, a move back to ok/off and an absent field never wake. ----
+vmrun_line() { sed "s#  *denials=none# vmrun=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+vmrun_line ok:2/2,busy=0
+I="$(new_inbox vm)"
+start "$I" "$WORK/vm.out" --legs "N1.md"
+wait_hb "$I" || fail "(vm) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+vmrun_line ok:2/2,busy=2
+wait_exit "$WPID"
+check "(vm) a busy-count move alone does not wake" "running" "$rc"
+tick_line "N1:FRESH" "ok"
+vmrun_line DEAD
+wait_exit "$WPID"
+check "(vm) a vmrun move to DEAD ends the wait" "0" "$rc"
+check "(vm) the wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm.out")"
+
+reset_stub
+vmrun_line DEAD
+I="$(new_inbox vm2)"
+start "$I" "$WORK/vm2.out" --legs "N1.md"
+wait_hb "$I" || fail "(vm2) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+vmrun_line ok:1/2,busy=0
+wait_exit "$WPID"
+check "(vm2) a vmrun move back to ok alone does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # --- (m3748) a leg-set change made through --legs-from is a silent baseline --
 # HIMMEL-3748: with --legs-from the argv never changes, so the waiter folds the
 # manifest's leg list into its args hash each sample. A dispatch (manifest add)

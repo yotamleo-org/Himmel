@@ -35,6 +35,8 @@ cd "$ROOT"
 . "$ROOT/scripts/lib/load-dotenv.sh"
 # shellcheck source=lib/resolve-bun.sh
 . "$ROOT/scripts/lib/resolve-bun.sh"
+# shellcheck source=scripts/lib/claude-version.sh
+. "$ROOT/scripts/lib/claude-version.sh"
 prefer_bun_on_path
 
 # is_dirty_tracked [DIR]
@@ -518,8 +520,9 @@ update_codex() {
 # said anything about claude. codex is upgraded through the method that owns it
 # (user-owned npm global or an advertised standalone self-updater; package
 # managers print a needs-you remedy and are never executed),
-# behind the VM-first gate. claude is report-only: installed vs latest and the
-# update command. Both land in the chain-status table via _probe_tool_row.
+# behind the VM-first gate. claude is held to the console-launch floor
+# (HIMMEL-5501) and brought current the same way. Both land in the chain-status
+# table via _probe_tool_row.
 #   sync_agent_clis check | apply
 
 # Resolve executable symlinks without GNU readlink flags (BSD/macOS too).
@@ -669,41 +672,131 @@ _sync_codex_cli() {
     return 0
 }
 
-_report_claude_cli() {
-    local bin inst latest rc=0
-    bin="$(command -v claude 2>/dev/null || true)"
-    if [ -z "$bin" ]; then
+# _sync_claude_cli <check|apply> — HIMMEL-5501. claude is held to the floor the
+# console launch needs (scripts/lib/claude-version.sh) and brought current with
+# npm latest. The updater is picked by owner: npm global -> npm install -g
+# @anthropic-ai/claude-code@latest; anything else the operator owns (the native
+# installer) -> `claude update`; brew/pacman print the needs-you command and are
+# never executed. Re-checked after the roll; still below the floor is a loud
+# failure (rc 1). `check` stays report-only.
+_sync_claude_cli() {
+    local mode="$1" bin inst latest path owner cmd rc=0 out after gate_rc floor_rc=0 below=0 behind=0
+    bin="${CLAUDE_BIN:-$(command -v claude 2>/dev/null || true)}"
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
         echo "    claude: not on PATH."
         _ver_row claude - - n/a "not on PATH"
         return 0
     fi
     inst="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
     latest="$(_npm_latest @anthropic-ai/claude-code)"
+    if [ -n "$inst" ]; then
+        claude_version_lt "$inst" "$CLAUDE_MIN_VERSION" || floor_rc=$?
+        [ "$floor_rc" -eq 0 ] && below=1
+    fi
     _cli_proxy_version_cmp "$inst" "$latest" || rc=$?
-    case "$rc" in
-        0)
-            echo "    claude $inst -> $latest available (report only, not auto-updated); run: claude update"
-            _probe_tool_row claude skipped "$inst -> $latest — run: claude update"
-            _ver_row claude "$inst" "$latest" behind "run: claude update" ;; # launch-profile-ok: version-table label, not a launch
-        1)
+    [ "$rc" -eq 0 ] && behind=1
+    if [ "$below" -eq 0 ] && [ "$behind" -eq 0 ]; then
+        if [ "$rc" -eq 1 ]; then
             echo "    claude $inst is current (latest $latest)."
             _probe_tool_row claude up-to-date "$inst"
-            _ver_row claude "$inst" "$latest" current ;; # launch-profile-ok: version-table label, not a launch
-        *)
+            _ver_row claude "$inst" "$latest" current # launch-profile-ok: version-table label, not a launch
+        else
             echo "    claude ${inst:-?} vs latest ${latest:-?} — cannot compare (report only)."
             _probe_tool_row claude skipped "cannot compare ${inst:-?} with ${latest:-?}"
-            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" ;; # launch-profile-ok: version-table label, not a launch
+            _ver_row claude "${inst:--}" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+        fi
+        return 0
+    fi
+    path="$(_cli_realpath "$bin" 2>/dev/null || echo "$bin")"
+    owner="$(_cli_owner "$path")"
+    case "$owner" in
+        npm)    cmd="npm install -g @anthropic-ai/claude-code@latest" ;;
+        brew)   cmd="brew upgrade claude-code" ;;
+        pacman) cmd="sudo pacman -Syu $(pacman -Qoq "$path" 2>/dev/null || echo claude-code)" ;;
+        *)      cmd="claude update" ;;
     esac
-    return 0
+    if [ "$below" -eq 1 ]; then
+        echo "    claude $inst is BELOW the console-launch floor $CLAUDE_MIN_VERSION (latest ${latest:-?}; installed via ${owner:-native}: $path)."
+    else
+        echo "    claude $inst -> $latest available (installed via ${owner:-native}: $path)."
+    fi
+    if [ "$mode" = "check" ]; then
+        _probe_tool_row claude skipped "$inst -> ${latest:-?} update available — run without --check"
+        _ver_row claude "$inst" "${latest:--}" behind "run /himmel-update to upgrade" # launch-profile-ok: version-table label, not a launch
+        return 0
+    fi
+    if [ "$owner" = "brew" ] || [ "$owner" = "pacman" ] || [ ! -O "$path" ] || [ ! -w "$path" ]; then
+        echo "    needs you: $cmd (not auto-upgrading $path)."
+        _probe_tool_row claude skipped "$inst -> ${latest:-?} — needs you: $cmd"
+        _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch
+        [ "$below" -eq 0 ] || echo "    FAIL: claude $inst stays below the floor $CLAUDE_MIN_VERSION — console launches refuse until: $cmd" >&2
+        [ "$below" -eq 0 ]
+        return
+    fi
+    gate_rc=0
+    _vm_proof_gate claude_cli || gate_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+        echo "    not upgrading: claude stays on $inst (latest ${latest:-?})." >&2
+        _probe_tool_row claude skipped "HELD by the VM-first gate — $inst -> ${latest:-?}, then: $cmd"
+        _ver_row claude "$inst" "${latest:--}" behind "held by the VM-first gate" # launch-profile-ok: version-table label, not a launch
+        [ "$below" -eq 0 ]
+        return
+    fi
+    rc=0
+    if [ "$owner" = "npm" ]; then
+        out="$(npm install -g @anthropic-ai/claude-code@latest 2>&1)" || rc=$?
+    else
+        out="$("$bin" update 2>&1)" || rc=$?
+    fi
+    after="$(_cli_bare_version "$("$bin" --version 2>/dev/null || true)")"
+    floor_rc=2
+    [ -z "$after" ] || { floor_rc=0; claude_version_lt "$after" "$CLAUDE_MIN_VERSION" || floor_rc=$?; }
+    if [ "$floor_rc" -eq 1 ]; then
+        # at or above the floor now
+        if [ "$rc" -ne 0 ]; then
+            echo "    claude updater exited $rc (now $after) — $(_last_line_trimmed "$out")" >&2
+            echo "    retry by hand: $cmd" >&2
+            _probe_tool_row claude failed "updater exit $rc ($inst -> $after); retry: $cmd"
+            _ver_row claude "$after" "${latest:--}" behind "updater failed" # launch-profile-ok: version-table label, not a launch
+            return 1
+        elif [ "$after" != "$inst" ]; then
+            local after_cmp=0
+            _cli_proxy_version_cmp "$after" "$latest" || after_cmp=$?
+            if [ "$after_cmp" -eq 0 ]; then
+                echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest is $latest)."
+                _probe_tool_row claude updated "$inst -> $after (latest $latest)"
+                _ver_row claude "$after" "${latest:--}" behind "latest is $latest" # launch-profile-ok: version-table label, not a launch
+            elif [ "$after_cmp" -eq 1 ]; then
+                echo "    claude $inst -> $after (upgraded via ${owner:-native})."
+                _probe_tool_row claude updated "$inst -> $after"
+                _ver_row claude "$after" "${latest:--}" current # launch-profile-ok: version-table label, not a launch
+            else
+                echo "    claude $inst -> $after (upgraded via ${owner:-native}; latest ${latest:-?} unknown, cannot confirm current)."
+                _probe_tool_row claude updated "$inst -> $after (latest ${latest:-?} unknown)"
+                _ver_row claude "$after" "${latest:--}" unknown "cannot compare" # launch-profile-ok: version-table label, not a launch
+            fi
+        else
+            echo "    claude upgrade did not change $after — $(_last_line_trimmed "$out")" >&2
+            echo "    retry by hand: $cmd" >&2
+            _probe_tool_row claude failed "$inst stays; retry: $cmd"
+            _ver_row claude "$inst" "${latest:--}" behind "upgrade failed" # launch-profile-ok: version-table label, not a launch
+        fi
+        return 0
+    fi
+    echo "    FAIL: claude is still below the floor $CLAUDE_MIN_VERSION after the update (now ${after:-unreadable}) — $(_last_line_trimmed "$out")" >&2
+    echo "    console launches will refuse until fixed; retry by hand: $cmd" >&2
+    _probe_tool_row claude failed "still below floor $CLAUDE_MIN_VERSION (${after:-?}); retry: $cmd"
+    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the console-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch
+    return 1
 }
 
 sync_agent_clis() {
-    local mode="$1"   # check | apply
+    local mode="$1" rc=0   # check | apply
     echo ""
     echo "==> codex / claude CLI (HIMMEL-5383)"
     _sync_codex_cli "$mode"
-    _report_claude_cli
-    return 0
+    _sync_claude_cli "$mode" || rc=1
+    return "$rc"
 }
 
 # ─── stale cadence runner nudge (HIMMEL-588/HIMMEL-969) ──────────────────────
@@ -741,6 +834,7 @@ pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/
 codex-sweep-cadence|${SWEEP_BAT_DIR:-$uh/.claude/codex-sweep-cadence}|bash scripts/cleanup/codex-sweep-cadence.sh arm --force
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
+upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
 EOF
     return 0
 }
@@ -3135,7 +3229,7 @@ if [ "${1:-}" = "--only" ]; then
         cli_proxy)     sync_cli_proxy || only_rc=1 ;;
         marketplaces)  sync_marketplaces ;;
         toolchain)     report_toolchain apply ;;
-        clis)          sync_agent_clis apply ;;
+        clis)          sync_agent_clis apply || only_rc=1 ;;
         plugins)       report_plugin_gap ;;
         tools)         sync_probe_tools apply || only_rc=1 ;;
         drift)         report_drift apply ;;

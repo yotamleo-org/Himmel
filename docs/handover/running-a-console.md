@@ -81,8 +81,15 @@ Finally it prints the launch line. Run it in a terminal of its own:
 ```text
 env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
     CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 \
-    claude --model '<model>[1m]' --autocompact auto -n <session-name> "load <doc> and continue"
+    claude --model '<model>' --autocompact auto -n <session-name> "load <doc> and continue"
 ```
+
+`[1m]` is appended to the model only for the 4.6 family (`claude-opus-4-6`,
+`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
+and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
+(HIMMEL-5501). `--autocompact` and the Opus 5.5 id need Claude Code 2.1.280 or
+newer: an armed launch on an older CLI refuses and names `claude update`
+(`/himmel-update` brings it current).
 
 Supervisor sessions default to 1m context with `--autocompact auto`
 (a supervisor session exemption). Both `console new` and `next`
@@ -546,6 +553,36 @@ so extra usage is never spent. Plain `set` replaces it with a one-window weekly 
 
 The Done-when for this change needs the operator to walk this once at a real
 switch and record the result (and the cache-probe verdict from step 1) in the PR.
+
+## Controlling the VM CI runner
+
+Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
+`ci-runner-v1` snapshot, 4096 MB and 4 CPU each) can run the 8 ubuntu
+shell-unit shards. The console drives them with one script, each form a bare
+relative literal pre-approved in `.claude/settings.json`:
+
+```
+bash scripts/handover/console-kit/vm-runner.sh on            # both VMs
+bash scripts/handover/console-kit/vm-runner.sh on --vms 1    # or --vms 2
+bash scripts/handover/console-kit/vm-runner.sh off           # kill switch
+bash scripts/handover/console-kit/vm-runner.sh status
+```
+
+- `on` refuses (rc 3) unless the repo's fork-PR approval policy is
+  `all_external_contributors`, clones VM 2 when missing, sets the
+  `HIMMEL_VM_RUNNER` repo variable to `on`, removes `~/.himmel/ci-runner.stop`
+  and starts one `himmel-ci-runner@<n>.service` user unit per VM. A unit that
+  will not start switches the runner `off` again.
+- `off` sets the variable `off` first (so GitHub stops routing to the VMs),
+  writes the stop file and stops the units; a job already running is not
+  re-queued but no new runner is minted.
+- `status` prints the variable, per-VM up/idle/busy state and the last error.
+- `tick.sh` carries `vmrun=<off | ok:<up>/<want>,busy=<n> | DEAD | STUCK>`.
+  `DEAD` is variable on with no unit up; `STUCK` is a job running past its
+  budget plus ten minutes. `console-wait.sh` wakes only on a move to `DEAD` or
+  `STUCK`; answer with `status`, then `off` and a note to the operator.
+- A classifier denial of one of these commands means the allow rule is missing
+  or mismatched; see the stuck playbook, never reshape the command.
 
 ## See also
 

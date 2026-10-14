@@ -296,7 +296,8 @@ contains "happy path: doc reaches the prompt"            "$rec1" "load some/hand
 # HIMMEL-3884: direct consoles default to 1m/auto with honest provenance.
 contains     "happy path: default context passes autocompact auto" "$rec1" "--autocompact auto"
 not_contains "happy path: default context has no autocompact 200000" "$rec1" "--autocompact 200000"
-contains "happy path: default model carries [1m] suffix" "$rec1" "[1m]"
+# HIMMEL-5501: Opus 5.5 is native-1M, so the suffix is NOT appended to it.
+not_contains "happy path: native-1M default model gets no [1m] suffix" "$rec1" "[1m]"
 log1="$(cat "$d1/log" 2>/dev/null || true)"
 contains "happy path: log records the default context (1m)" "$log1" "context=1m (default)"
 
@@ -327,6 +328,50 @@ outc1c=$(CONSOLE_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-le
 check "positional standard: exit 0" "$?" "0"
 wait_record "$d1c" || true
 contains "positional standard: argv opts down" "$(cat "$d1c/record" 2>/dev/null || true)" "--autocompact 200000"
+
+# --- 1d (HIMMEL-5501). the [1m] suffix only goes on the 4.6 family ---------
+# 4.6 ids need it to reach 1M; native-1M and non-Anthropic ids launch bare.
+sfx_run() { # <case dir> <model> -> the dry-run argv line
+  local d="$tmp/sfx-$1"; mk_stub "$d" 1 alive
+  KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+    bash "$SCRIPT" --dry-run "HIMMEL-sfx-$1" "doc.md" "$d/signal-never" "$PAST" "$d/log" "$2" 1m 2>&1
+}
+contains     "suffix: claude-opus-4-6 gets [1m]"                "$(sfx_run opus46 claude-opus-4-6)" "claude-opus-4-6[1m]"
+contains     "suffix: claude-sonnet-4-6 gets [1m]"              "$(sfx_run sonnet46 claude-sonnet-4-6)" "claude-sonnet-4-6[1m]"
+# A bare launch must prove the launcher ran (argv carries --autocompact auto),
+# else an early failure with no model argv would pass as "suffix omitted".
+bare_launch() { # <label> <case> <model>
+  local out; out="$(sfx_run "$2" "$3")"
+  contains     "suffix: $1 launches (argv present)" "$out" "--autocompact auto"
+  not_contains "suffix: $1 launches bare"            "$out" "$3[1m]"
+}
+bare_launch "claude-sonnet-5-5"            sonnet55 claude-sonnet-5-5
+bare_launch "claude-haiku-5-5"             haiku55  claude-haiku-5-5
+bare_launch "gpt-5.6-sol never [1m]"       gpt      gpt-5.6-sol
+bare_launch "glm-5.1 never [1m]"           glm      glm-5.1
+bare_launch "a slash id never [1m]"        slash    openrouter/deepseek-v4
+contains     "suffix: a native-1M id still passes --autocompact auto" "$(sfx_run sonnet55b claude-sonnet-5-5)" "--autocompact auto"
+
+# --- 1x (HIMMEL-5501). Claude Code version floor ----------------------------
+# Fixture shape copied from the real `claude --version`: "2.1.296 (Claude Code)".
+dfl="$tmp/cfl"; mk_stub "$dfl" 1 alive "HIMMEL-floor-leg"
+printf '#!/bin/sh\necho "2.1.200 (Claude Code)"\n' > "$dfl/claude-old"; chmod 755 "$dfl/claude-old"
+printf '#!/bin/sh\necho "2.1.296 (Claude Code)"\n' > "$dfl/claude-new"; chmod 755 "$dfl/claude-new"
+rcfl=0
+outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-old" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
+check "below the floor: armed launch exits 2" "$rcfl" "2"
+contains "below the floor: message names the installed version" "$outfl" "2.1.200"
+contains "below the floor: message names the remedy" "$outfl" "claude update"
+if [ -s "$dfl/record" ]; then echo "FAIL - below the floor: konsole must NOT be invoked"; fails=$((fails+1))
+else echo "ok - below the floor: konsole is never invoked"; fi
+rcfl=0
+outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-old" KONSOLE_CMD="$dfl/konsole" PGREP_CMD="$dfl/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dfl/locks" HEADED_ARM_PROC="$dfl/proc" \
+  bash "$SCRIPT" --dry-run "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" "$dfl/log" 2>&1) || rcfl=$?
+check "below the floor: --dry-run only warns (exit 0)" "$rcfl" "0"
+contains "below the floor: --dry-run still names the remedy" "$outfl" "claude update"
+rcfl=0
+outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-new" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
+check "at the floor: armed launch proceeds (exit 0)" "$rcfl" "0"
 
 # HIMMEL-4094/3884: ambient leg profiles cannot override a console opt-down.
 for ambient in profile resolver both stale; do
@@ -1578,7 +1623,7 @@ contains "resolved launcher: extra env tokens reach the konsole argv" "$rec36b" 
 contains "resolved launcher: wrapped in script(1) with the SAME log path, appending (-a)" "$rec36b" "script -q -a -f $d36b/log -c"
 contains "resolved launcher: the launcher path reaches the recorded argv" "$rec36b" "/some/repo/scripts/claude-codex"
 not_contains "resolved launcher: not force-wrapped in bash (execs via its own shebang)" "$rec36b" "bash /some/repo/scripts/claude-codex"
-contains "resolved launcher: still carries --model gpt-6-astra" "$rec36b" "--model gpt-6-astra"
+contains "resolved launcher: still carries --model gpt-6-astra, bare (HIMMEL-5501)" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
 # codex-2 (HIMMEL-2782 CR fix): `script -c` interprets $LAUNCH_CMD (bash %q
 # quoting) with the shell named by ITS OWN $SHELL, not necessarily bash -
@@ -1600,6 +1645,7 @@ mutant36="$mutant36dir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016 # single-quoted sed script; $RECORDER must stay literal
 sed 's/if \[ "\$RECORDER" = "1" \]; then/if true; then/' "$SCRIPT" > "$mutant36"
 cp "$HERE/../lib/console-context.sh" "$mutant36dir/scripts/lib/console-context.sh"
+cp "$HERE/../lib/claude-version.sh" "$mutant36dir/scripts/lib/claude-version.sh"
 # HIMMEL-5201: headed-arm.sh sources its argv check from its own directory.
 cp "$HERE/argv-has-n-name.sh" "$mutant36dir/scripts/handover/argv-has-n-name.sh"
 fixture_profiles "$mutant36dir/scripts"
@@ -1845,6 +1891,7 @@ cp "$SCRIPT" "$d43/bare/headed-arm.sh"
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/console-context.sh" "$d43/lib/console-context.sh"
+cp "$HERE/../lib/claude-version.sh" "$d43/lib/claude-version.sh"
 fixture_profiles "$d43"
 mk_stub "$d43" 1 alive
 out43=$(HEADED_ARM_UNAME=Darwin PGREP_CMD="$d43/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43/locks" \
@@ -1869,6 +1916,7 @@ cp "$SCRIPT" "$d43b/bare/headed-arm.sh"
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/console-context.sh" "$d43b/lib/console-context.sh"
+cp "$HERE/../lib/claude-version.sh" "$d43b/lib/claude-version.sh"
 fixture_profiles "$d43b"
 mk_stub "$d43b" 1 alive
 # HIMMEL-3484: pinning KONSOLE_CMD exercised the OVERRIDE, not the Linux
@@ -1898,6 +1946,7 @@ not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konso
 d43c="$tmp/c43c"; mkdir -p "$d43c/bare" "$d43c/lib"
 cp "$SCRIPT" "$d43c/bare/headed-arm.sh"
 cp "$HERE/../lib/console-context.sh" "$d43c/lib/console-context.sh"
+cp "$HERE/../lib/claude-version.sh" "$d43c/lib/claude-version.sh"
 fixture_profiles "$d43c"
 mk_stub "$d43c" 1 alive
 out43c=$(env -u KONSOLE_CMD -u HEADED_ARM_UNAME PATH="$d43c:$PATH" PGREP_CMD="$d43c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43c/locks" \
@@ -2147,6 +2196,7 @@ d42="$tmp/c42"; mkdir -p "$d42/bare" "$d42/lib"
 cp "$SCRIPT" "$d42/bare/headed-arm.sh"
 # HIMMEL-2975: the lone copy needs its ../lib sibling to get this far at all.
 cp "$HERE/../lib/console-context.sh" "$d42/lib/console-context.sh"
+cp "$HERE/../lib/claude-version.sh" "$d42/lib/claude-version.sh"
 fixture_profiles "$d42"
 mk_stub "$d42" 1 alive
 # A shim that WOULD record a launch, so "nothing was launched" is a real

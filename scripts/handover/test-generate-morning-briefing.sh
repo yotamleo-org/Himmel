@@ -25,6 +25,8 @@ SCRIPT="$SCRIPT_DIR/generate-morning-briefing.sh"
 # FORGE (would override the per-test remote-URL forge detection) can't leak in.
 export MORNING_REPORT_LLM=0
 unset FORGE 2>/dev/null || true
+# Hermetic: running the suite inside Codex would trip the --llm no-fork guard.
+unset CODEX_THREAD_ID 2>/dev/null || true
 
 PASS=0
 FAIL=0
@@ -404,6 +406,27 @@ file=$(cat "$OUT_PARTIAL")
 assert_contains "partial: llm tldr taken"    "ONLY TLDR FROM LLM"               "$file"
 assert_contains "partial: order fell back"   "Advance 1 In-Progress ticket(s)." "$file"
 assert_contains "partial: backlog fell back" "HIMMEL-801"                       "$file"
+
+# Test 16b: --llm under Codex never forks claude (HIMMEL-603) ----------
+
+echo "TEST: --llm under Codex (CODEX_THREAD_ID) never calls claude, falls back"
+CODEX_STUB_HIT="$TMP_ROOT/codex-stub-hit"
+CODEX_STUB="$TMP_ROOT/claude-codex-stub.sh"
+cat >"$CODEX_STUB" <<FAKE
+#!/usr/bin/env bash
+: >"$CODEX_STUB_HIT"
+exit 0
+FAKE
+chmod +x "$CODEX_STUB"
+OUT_CODEX="$TMP_ROOT/codex.md"
+rc=0
+err=$( cd "$REPO"; CODEX_THREAD_ID=thr-test GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$CODEX_STUB" \
+       FAKE_JIRA_INPROG=$'HIMMEL-901\tTask\tIn Progress\tThing' \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_CODEX" --llm 2>&1 >/dev/null ) || rc=$?
+if [ "$rc" -eq 0 ]; then pass "codex --llm did not abort"; else fail "codex --llm aborted rc=$rc"; fi
+if [ -e "$CODEX_STUB_HIT" ]; then fail "codex --llm forked claude"; else pass "codex --llm never called claude"; fi
+assert_contains "codex: notice"             "skipping --llm under Codex"        "$err"
+assert_contains "codex: heuristic fallback" "Advance 1 In-Progress ticket(s)." "$(cat "$OUT_CODEX")"
 
 # Test 17: gh unreachable → pr_map_ok=0 banner + stale "unavailable" --
 

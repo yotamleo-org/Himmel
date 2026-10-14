@@ -1,0 +1,27 @@
+kubectl-get	kubectl get pods -A
+kubectl-get-ns-flag	kubectl -n prod get deployment api
+kubectl-describe	kubectl describe node node-1
+tf-plan	terraform plan
+tf-apply	terraform apply -auto-approve
+tf-init	terraform init
+helm-list	helm list -A
+helm-upgrade	helm upgrade release chart
+aws-s3-ls	aws s3 ls
+aws-describe	aws ec2 describe-instances
+gcloud-list	gcloud compute instances list
+az-list	az group list
+docker-ps	docker ps -a
+docker-volume-ls	docker volume ls
+docker-system-df	docker system df
+compose-down-plain	docker compose down
+compose-up	docker compose up -d
+sql-select	psql -c "SELECT * FROM users"
+sql-insert	mysql -e "INSERT INTO t VALUES (1)"
+redis-get	redis-cli GET key
+prisma-dev	prisma migrate dev
+echo-data	echo terraform destroy
+printf-data	printf '%s' 'kubectl delete pod x'
+grep-sql	grep 'DROP TABLE' schema.sql
+git-commit-msg	git commit -m "document terraform destroy and DELETE FROM"
+cat-sql	cat drop-table.sql
+git-status	git status
