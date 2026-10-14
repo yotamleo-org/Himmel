@@ -51,7 +51,7 @@ PORT=8317
 # operator-set value in config.yaml is never overwritten.
 RETRY_COUNT=3
 RETRY_INTERVAL=30
-VERSION="8.0.28"
+VERSION="8.0.29"
 # Station-target override (HIMMEL-5267): the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
@@ -79,7 +79,7 @@ RELEASE_URL="${RELEASE_BASE}/${ASSET}"
 # release's own checksums.txt (HIMMEL-2778, re-pinned HIMMEL-2816/HIMMEL-3038/HIMMEL-3046/HIMMEL-3537/HIMMEL-4579). Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
-ASSET_SHA256="1644171946913c858842081053abb6f67234bb41ce2691602bf834361293c17f"
+ASSET_SHA256="78a277a5e74495103147a138d530c33d72c17b213d2538e474b1860eb3c4bc34"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"

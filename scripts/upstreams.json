@@ -176,7 +176,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.28",
+      "synced_base": "8.0.29",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.ps1", "template": "$Version    = '{version}'" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },

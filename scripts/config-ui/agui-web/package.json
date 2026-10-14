@@ -5,7 +5,7 @@
   "scripts": { "build": "bun build ./index.html --outdir dist --production && bun -e \"const fs = require('fs'); fs.writeFileSync('dist/.agui-sources', JSON.stringify(fs.readdirSync('src', { recursive: true }).filter((f) => fs.statSync('src/' + f).isFile())))\"" },
   "dependencies": {
     "@ag-ui/client": "1.0.2",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }
