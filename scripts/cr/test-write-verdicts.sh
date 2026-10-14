@@ -254,4 +254,12 @@ grep -q 'site-not-at-tip:c.sh' "$tmp/err20.txt" || { echo "FAIL: T20 refusal doe
 ( cd "$repo" && printf 'SWEEP [t19-1@%s] class=y :: sites=a.sh:1, c.sh:1\n' "${t19_head:0:12}" | bash "$SCRIPT" sweep --branch feat/t19 )
 check "$?" "0" "T20 rc (site committed)"
 
+# 21. HIMMEL-2601: the /pr-check runbook carries no stale "operator also needs a
+# primary-anchored allow rule" note; the spelling rule is HIMMEL-4040 (preamble).
+for ref in 31-step3-adjudicate 40-step4-crosscheck; do
+  f="$DIR/pr-check-ref/$ref.md"
+  ! grep -Eq 'Operator note|primary-checkout>/scripts/cr/write-verdicts' "$f" \
+    || { echo "FAIL: T21 $ref still carries the stale operator note"; fail=1; }
+done
+
 [ "$fail" -eq 0 ] && echo "PASS test-write-verdicts" || exit 1
