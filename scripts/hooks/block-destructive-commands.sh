@@ -941,7 +941,7 @@ _gp_re_clean="${_gp_w}clean${_gp_w}"
 _gp_re_cforce='[[:space:]]-[a-z0-9]*f|[[:space:]]--f|requireforce'
 _gp_re_push="${_gp_w}push${_gp_w}"
 _gp_re_pforce='--force|[[:space:]]-[a-z0-9]*f|[[:space:]:=]\+'
-_gp_re_text='(^|[^a-z0-9_.-])git(\.exe)?([^a-z0-9_-]|$)'
+_gp_re_text='(^|[^a-z0-9_.-])(git|gh)(\.exe)?([^a-z0-9_-]|$)'
 # shellcheck disable=SC2016 # a literal `$` in the ERE, not an expansion
 _gp_re_exp='\$(\{[^}]*\}|[a-z_][a-z0-9_]*|[0-9#?*@!$-])'
 _gp_prot=' main master '
@@ -963,6 +963,7 @@ _gp_unres() {
     if [[ $r =~ $_gp_re_reset ]] && [[ $r =~ $_gp_re_hard ]]; then deny "git reset --hard"; fi
     if [[ $r =~ $_gp_re_clean ]] && [[ $r =~ $_gp_re_cforce ]]; then deny "git clean -f"; fi
     if [[ $r =~ $_gp_re_push ]] && [[ $r =~ $_gp_re_pforce ]]; then deny "force push"; fi
+    _gh_unres "$1"
     return 0
 }
 
@@ -1141,6 +1142,191 @@ _gp_inv() {
     return 0
 }
 
+# HIMMEL-5275: destructive gh verbs. gh changes or deletes repository settings
+# (branch protection, rulesets, secrets, variables, workflows, the repo itself)
+# with the station's admin token, and Bash(gh *) auto-approves every one. The
+# walk below reads gh's argv from _gp_cmd, the same place git's is read, so a
+# path-qualified gh, `command gh`, an env prefix and global flags (-R/--repo)
+# before the verb all reach it. Reads and the merge paths other gates own
+# (block-unresolved-cr-merge, the himmel-gh wrapper) stay allowed.
+# ponytail: a graphql mutation (deleteBranchProtectionRule) and a gh whose
+# command word is computed ("$G" repo delete) are not modelled past the
+# unresolved text markers, upgrade path HIMMEL-5264 (the audit's G-series).
+_gh_re_unres='[^a-z0-9_-](secret|variable)[[:space:]]+(set|delete|remove)[^a-z0-9_-]|[^a-z0-9_-]workflow[[:space:]]+(disable|enable)[^a-z0-9_-]|[^a-z0-9_-]repo[[:space:]]+(delete|archive|unarchive|rename|transfer|edit)[^a-z0-9_-]|[^a-z0-9_-]release[[:space:]]+(delete|delete-asset)[^a-z0-9_-]|[^a-z0-9_-](ssh|gpg)-key[[:space:]]+(add|delete)[^a-z0-9_-]|[^a-z0-9_-]auth[[:space:]]+(logout|token)[^a-z0-9_-]|[^a-z0-9_-]pr[[:space:]]+merge[[:space:]].*--admin'
+_gh_re_unres_api_m='[^a-z0-9_-]api[[:space:]].*(-x[[:space:]]*|--method[[:space:]=]+)(delete|put|patch|post)'
+_gh_re_unres_api_p='protection|rulesets|secrets|variables|/disable|/enable|/hooks|/keys|/transfer|/environments|repos/[^[:space:]/]+/[^[:space:]/]+([[:space:]]|/?$)'
+
+# _gh_unres TEXT — the markers an unresolved gh invocation is held to.
+_gh_unres() {
+    local r=" $1 "
+    if [[ $r =~ $_gh_re_unres ]]; then deny "gh destructive verb"; fi
+    if [[ $r =~ $_gh_re_unres_api_m ]] && [[ $r =~ $_gh_re_unres_api_p ]]; then
+        deny "gh api write on a settings path"
+    fi
+    return 0
+}
+
+# _gh_ep_settings EP — true when a gh api endpoint (lowercased) is a settings
+# path whose DELETE, PUT, PATCH or POST changes the repository's protections.
+_gh_ep_settings() {
+    local ep=$1 r rest sub
+    ep=${ep#https://api.github.com}
+    ep=${ep#/}; ep=${ep%%\?*}; ep=${ep%/}
+    case "$ep" in
+        user/keys|user/keys/*|user/gpg_keys|user/gpg_keys/*|user/ssh_signing_keys|user/ssh_signing_keys/*) return 0 ;;
+        orgs/*/rulesets|orgs/*/rulesets/*|orgs/*/actions/secrets|orgs/*/actions/secrets/*) return 0 ;;
+        orgs/*/actions/variables|orgs/*/actions/variables/*|orgs/*/hooks|orgs/*/hooks/*) return 0 ;;
+        repos/*/*) ;;
+        *) return 1 ;;
+    esac
+    r=${ep#repos/}
+    rest=${r#*/}
+    case "$rest" in
+        */*) sub=${rest#*/} ;;
+        *) sub='' ;;
+    esac
+    case "$sub" in
+        ''|rulesets|rulesets/*|hooks|hooks/*|keys|keys/*|collaborators|collaborators/*) return 0 ;;
+        branches/*/protection|branches/*/protection/*) return 0 ;;
+        actions/secrets|actions/secrets/*|actions/variables|actions/variables/*) return 0 ;;
+        actions/workflows/*/disable|actions/workflows/*/enable|actions/permissions|actions/permissions/*) return 0 ;;
+        dependabot/secrets|dependabot/secrets/*|codespaces/secrets|codespaces/secrets/*) return 0 ;;
+        environments|environments/*|transfer|pages|pages/*|vulnerability-alerts|automated-security-fixes) return 0 ;;
+    esac
+    return 1
+}
+
+# _gh_api J — `gh api`'s argv from word J. The method is -X/--method, else POST
+# when a field or --input is given, else GET; a GET (or an explicit GET with
+# fields) is a read and passes.
+_gh_api() {
+    local j=$1 n=${#_gc_w[@]} m='' body=0 ep='' epk='' w k s o c=0
+    while [ "$j" -lt "$n" ]; do
+        w=${_gc_w[j]} k=${_gc_k[j]}
+        case "$w" in
+            -x|--method)
+                j=$((j + 1))
+                m=unres
+                if [ "$j" -lt "$n" ] && [ "${_gc_k[j]}" = W ]; then m=${_gc_w[j]}; fi ;;
+            --method=*) m=${w#--method=}; [ "$k" = W ] || m=unres ;;
+            -x?*) m=${w#-x}; [ "$k" = W ] || m=unres ;;
+            -f|--field|--raw-field|--input) body=1; j=$((j + 1)) ;;
+            --field=*|--raw-field=*|--input=*|-f?*) body=1 ;;
+            -h|--header|-q|--jq|-t|--template|--cache|--hostname|-p|--preview) j=$((j + 1)) ;;
+            -[a-z]?*)
+                # grouped short flags (-iXDELETE, -ifname=x): the first
+                # value-taking letter ends the group
+                s=${w#-}
+                while [ -n "$s" ]; do
+                    case "${s:0:1}" in
+                        x)
+                            o=${s:1}
+                            if [ -n "$o" ]; then
+                                m=$o; [ "$k" = W ] || m=unres
+                            else
+                                j=$((j + 1)); m=unres
+                                if [ "$j" -lt "$n" ] && [ "${_gc_k[j]}" = W ]; then m=${_gc_w[j]}; fi
+                            fi
+                            break ;;
+                        f) body=1; [ -n "${s:1}" ] || j=$((j + 1)); break ;;
+                        h|q|t|p) [ -n "${s:1}" ] || j=$((j + 1)); break ;;
+                    esac
+                    s=${s:1}
+                done ;;
+            -*) ;;
+            *) if [ -z "$ep" ]; then ep=$w; epk=$k; fi ;;
+        esac
+        j=$((j + 1))
+    done
+    if [ -z "$m" ]; then
+        if [ "$body" = 1 ]; then m=post; else m='get'; fi
+    fi
+    case "$m" in delete|put|patch|post|unres) ;; *) return 0 ;; esac
+    [ -n "$ep" ] || return 0
+    # a full URL endpoint (scheme://host/path) is checked on its path
+    s=${ep%%://*}
+    case "$s" in
+        "$ep"|*/*|'') ;;
+        *) ep=${ep#*://}; case "$ep" in */*) ep=/${ep#*/} ;; esac ;;
+    esac
+    ep=${ep#/api/v3}
+    if [ "$epk" != W ]; then
+        case "$ep" in
+            '$'*) deny "gh api $m on a computed endpoint" ;;
+        esac
+        [ "$epk" = G ] && deny "gh api $m on a globbed endpoint"
+        s=$ep
+        while [[ $s =~ $_gp_re_exp ]]; do
+            [ "$c" -lt 256 ] || deny "more than 256 expansions at command position"
+            s=${s/"${BASH_REMATCH[0]}"/x}
+            c=$((c + 1))
+        done
+        # an expansion past owner/repo can carry a whole settings suffix
+        # (repos/o/r/$T with T=rulesets/1), which the x substitution hides
+        if [ "$c" -gt 0 ]; then
+            o=${ep#/}; o=${o#repos/}
+            case "$o" in
+                */*/*)
+                    o=${o#*/}; o=${o#*/}
+                    case "${o%%/*}" in
+                        *'$'*|*'`'*) deny "gh api $m on a computed repository subpath" ;;
+                        actions|dependabot|codespaces|environments|branches|rulesets|hooks|keys)
+                            case "$o" in *'$'*|*'`'*) deny "gh api $m on a computed repository subpath" ;; esac ;;
+                    esac ;;
+            esac
+        fi
+        ep=$s
+    fi
+    if _gh_ep_settings "$ep"; then deny "gh api $m on a repository settings path"; fi
+    return 0
+}
+
+# _gh_inv J — one gh invocation whose first argument is word J.
+_gh_inv() {
+    local j=$1 n=${#_gc_w[@]} w p1='' p2='' np=0 ai=0 e
+    while [ "$j" -lt "$n" ]; do
+        w=${_gc_w[j]}
+        case "${_gc_k[j]}" in
+            P|X|G)
+                # a computed argument after `api` still reaches _gh_api, which
+                # holds a computed endpoint and a computed method
+                if [ "$p1" = api ]; then break; fi
+                _gp_join "$1"; _gh_unres "$REPLY"; return 0 ;;
+        esac
+        case "$w" in
+            -r|--repo|--hostname) j=$((j + 2)); continue ;;
+            -*) ;;
+            *)
+                if [ "$np" = 0 ]; then p1=$w; np=1; ai=$((j + 1))
+                else p2=$w; break; fi ;;
+        esac
+        j=$((j + 1))
+    done
+    case "$p1" in
+        api) _gh_api "$ai" ;;
+        secret|variable) case "$p2" in set|delete|remove) deny "gh $p1 $p2" ;; esac ;;
+        workflow) case "$p2" in disable|enable) deny "gh workflow $p2" ;; esac ;;
+        repo) case "$p2" in delete|archive|unarchive|rename|transfer|edit) deny "gh repo $p2" ;; esac ;;
+        release) case "$p2" in delete|delete-asset) deny "gh release $p2" ;; esac ;;
+        ssh-key|gpg-key) case "$p2" in add|delete) deny "gh $p1 $p2" ;; esac ;;
+        auth) case "$p2" in logout|token) deny "gh auth $p2" ;; esac ;;
+        # an alias body is data the hook cannot see, and a later `gh <alias>`
+        # (or a --shell body) runs it past every verb denied above
+        alias) case "$p2" in set|import) deny "gh alias $p2" ;; esac ;;
+        pr)
+            [ "$p2" = merge ] || return 0
+            e=$ai
+            while [ "$e" -lt "$n" ]; do
+                case "${_gc_w[e]}" in
+                    --admin|--admin=*) deny "gh pr merge --admin" ;;
+                esac
+                case "${_gc_k[e]}:${_gc_w[e]}" in [PXG]:*admin*) deny "gh pr merge --admin" ;; esac
+                e=$((e + 1))
+            done ;;
+    esac
+    return 0
+}
+
 # _gp_cmd ENTRIES — one logical command: ST_W indices, P for a substitution.
 # Word kinds: A assignment, X live $, G glob, P substitution, W plain.
 _gp_cmd() {
@@ -1174,12 +1360,16 @@ _gp_cmd() {
             case "$b" in
                 -) _gp_inv $((i + 1)) "$sa" 1 ;;
                 git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;;
+                gh|gh.exe) _gh_inv $((i + 1)) ;;
             esac
             if [ -n "$b" ]; then i=$((i + 1)); continue; fi
         fi
         if [ "${_gc_k[i]}" != P ]; then
             b=${w##*/}; b=${b##*\\}
-            case "$b" in git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;; esac
+            case "$b" in
+                git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;;
+                gh|gh.exe) _gh_inv $((i + 1)) ;;
+            esac
         fi
         i=$((i + 1))
     done
@@ -1314,7 +1504,7 @@ _gp_scan() {
 # walk. A `cd` anywhere still turns the lease carve-out off (HIMMEL-2054): the
 # default branch is read from the hook's cwd, not the one the push runs in.
 case "$cmd_lc" in
-    *git*|*reset*|*clean*|*push*|*filter-branch*)
+    *git*|*gh*|*reset*|*clean*|*push*|*filter-branch*)
         _gp_cd=0
         if contains '(^|[^[:alnum:]_.-])cd([^[:alnum:]_.-]|$)'; then _gp_cd=1; fi
         _gp_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]')

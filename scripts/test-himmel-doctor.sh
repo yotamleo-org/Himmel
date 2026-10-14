@@ -206,6 +206,8 @@ export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
 export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
 unset DOCTOR_CODEX_LATEST
+# C63 (HIMMEL-5501): never run the operator's real claude; absent seam = INFO.
+export DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 
 # Keep unrelated cases from probing the operator's real qmd 'skills'
 # collection for C44 (HIMMEL-2222): most invocations below never override
@@ -6425,6 +6427,24 @@ if grepq "$out" -F 'OK   C61-codex-cli'; then pass "C61 newer -> OK"; else fail 
 echo "== C61-codex-cli: codex absent -> INFO =="
 out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
+
+# --- C63-claude-cli (HIMMEL-5501): installed claude below the console-launch floor ---
+# Fixture shape copied from this station's real `claude --version` output.
+printf '#!/usr/bin/env bash\necho "2.1.296 (Claude Code)"\n' > "$c60_t/claude-new"; chmod +x "$c60_t/claude-new"
+printf '#!/usr/bin/env bash\necho "2.1.200 (Claude Code)"\n' > "$c60_t/claude-old"; chmod +x "$c60_t/claude-old"
+c62_run() { DOCTOR_CLAUDE_BIN="$1" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C63-claude-cli: below the floor -> WARN naming claude update (RED) =="
+out="$(c62_run "$c60_t/claude-old")"
+if grepq "$out" -F 'WARN C63-claude-cli' && grepq "$out" -F 'claude update'; then pass "C63 below -> WARN"; else fail "C63 below -> $(printf '%s' "$out" | grep -A1 C63)"; fi
+
+echo "== C63-claude-cli: at/above the floor -> OK =="
+out="$(c62_run "$c60_t/claude-new")"
+if grepq "$out" -F 'OK   C63-claude-cli'; then pass "C63 current -> OK"; else fail "C63 current -> $(printf '%s' "$out" | grep -A1 C63)"; fi
+
+echo "== C63-claude-cli: absent -> INFO, not a WARN =="
+out="$(c62_run "$c60_t/none")"
+if grepq "$out" -F 'INFO C63-claude-cli' && ! grepq "$out" -F 'WARN C63-claude-cli'; then pass "C63 absent -> INFO"; else fail "C63 absent -> $(printf '%s' "$out" | grep -A1 C63)"; fi
 rm -rf "$c60_t"
 
 # --- C62-oxlint-runner (HIMMEL-5529): can the oxlint commit gates run? ---

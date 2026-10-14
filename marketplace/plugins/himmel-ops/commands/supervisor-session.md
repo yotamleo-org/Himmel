@@ -89,10 +89,13 @@ esac
   `-HANDOFF.md` skeleton. Run it at 45 % context fill or after 90 k input
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
-  on a signal file plus a deadline; prints the arm log path. Launches with
-  1m context with `--autocompact auto` by default (HIMMEL-3884); `--context
-  standard` (or `CONSOLE_CONTEXT=standard` in the launching shell) opts down
-  to `--autocompact 200000`.
+  on a signal file plus a deadline; prints the arm log path. Supervisor
+  sessions launch with `--autocompact auto` (1m context) by default
+  (HIMMEL-3884); pass `--context standard` or set `CONSOLE_CONTEXT=standard`
+  in the launching shell to opt down to `--autocompact 200000`. The `[1m]`
+  model suffix is appended only to the 4.6 family (native-1M and
+  non-Anthropic ids launch bare), and a Claude Code below 2.1.280 refuses the
+  armed launch with `claude update` named (HIMMEL-5501).
 - `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.
 - `--bucket <slug>` / `--prefix <P>` — override the project-derived defaults
   (e.g. `/supervisor-session new --arm --bucket websites`); the resolved `--project`

@@ -39,10 +39,12 @@
    # step 4's cross-check and orphan-check.sh both read this file, and they
    # would count a placeholder as a real adjudication you never actually made;
    # feed the REAL verdicts, or nothing.
-   #   Operator note: this invokes the helper by ABSOLUTE path, so the
-   #   relative allow-rule `Bash(bash scripts/cr/write-verdicts.sh:*)` never
-   #   prefix-matches it (matching is literal) — the operator also needs
-   #   `Bash(bash <primary-checkout>/scripts/cr/write-verdicts.sh:*)`.
+   #   Spelling: the fence shows the canonical adopter-safe absolute form. On
+   #   the himmel lane run the cwd-relative literal `bash scripts/cr/write-verdicts.sh ...`
+   #   instead (HIMMEL-4040, preamble) — the shape the allow rule
+   #   `Bash(bash scripts/cr/write-verdicts.sh:*)` matches and
+   #   `guard-pr-check-literal.sh` accepts. No extra operator rule is needed
+   #   (HIMMEL-2601; the denial was fixed by HIMMEL-3383/3495).
    # `guard-pr-check-literal.sh` denies a pipe into this writer, and (as of
    # HIMMEL-3798 round 3, "CUT, do not patch") denies every heredoc and
    # `< <file>` redirect shape outright — three rounds of the same
