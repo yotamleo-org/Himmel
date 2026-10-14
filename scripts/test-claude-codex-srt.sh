@@ -35,6 +35,7 @@ printf '%s\n' "\$@" >"$TMP/argv"
 [ "\${1:-}" = --settings ] || { echo "srt: no --settings" >&2; exit 64; }
 [ -s "\$2" ] || { echo "srt: settings file is empty or does not exist" >&2; exit 65; }
 cp "\$2" "$TMP/settings.json"
+[ -f "\$5" ] && : >"$TMP/wrapper-existed"
 shift 2
 [ "\${1:-}" = -- ] && shift
 cmd=""
@@ -106,7 +107,7 @@ if run 0 - "${SRT_ENV[@]}" -- --model gpt-6.1-sol "two words"; then ok "launches
 
 # 3a. argv shape: srt --settings X -- bash <wrapper file> ..., never an inline bash -c
 if [ "$(sed -n 1p "$TMP/argv")" = --settings ] && [ "$(sed -n 3p "$TMP/argv")" = -- ] \
-    && [ "$(sed -n 4p "$TMP/argv")" = bash ] && [ -f "$(sed -n 5p "$TMP/argv")" ] \
+    && [ "$(sed -n 4p "$TMP/argv")" = bash ] && [ -f "$TMP/wrapper-existed" ] \
     && ! grep -qxe '-c' "$TMP/argv"; then
     ok "wrapper is a file run as 'srt --settings X -- bash <file>', no inline bash -c"
 else
@@ -172,19 +173,23 @@ if run 3 'HANDOVER_DIR' CLAUDE_CODEX_SRT_PROFILE=impl CLAUDE_CODEX_SRT_SCRATCH="
 
 # 8. the scratchpad is writable by the box, so nothing the launcher trusts lives there as a plain path
 VICTIM="$TMP/victim"; mkdir -p "$VICTIM"
-rm -rf "$SCRATCH/srt-home"; ln -s "$VICTIM" "$SCRATCH/srt-home"
-if run 3 'symlink' "${SRT_ENV[@]}" -- && [ ! -e "$TMP/child-env" ] && [ -z "$(ls -A "$VICTIM")" ]; then
-    ok "a symlinked srt-home is refused and nothing is written through it"
+# a planted scratchpad link is never the HOME: the HOME srt mounts is not under the scratchpad at all
+# (check-then-use race, j2583b): not under any writable root, and the settings' fourth writable root is it
+ln -s "$VICTIM" "$SCRATCH/srt-home"
+if run 0 - "${SRT_ENV[@]}" -- && h_path="$(sed -n 6p "$TMP/argv")" && [ -n "$h_path" ] \
+    && case "$h_path" in "$SCRATCH"/*|"$WT"/*|"$HANDOVER"/*) false ;; *) true ;; esac \
+    && grep -qF "\"$h_path\"" "$TMP/settings.json" && [ -z "$(ls -A "$VICTIM")" ]; then
+    ok "the scratch HOME srt mounts is outside every writable root and a planted srt-home link is ignored"
 else
-    bad "a symlinked srt-home is refused and nothing is written through it"
+    bad "the scratch HOME srt mounts is outside every writable root and a planted srt-home link is ignored ($(sed -n 6p "$TMP/argv"))"
 fi
-rm -f "$SCRATCH/srt-home"; mkdir -p "$SCRATCH/srt-home"; ln -s "$VICTIM" "$SCRATCH/srt-home/tmp"
-if run 3 'symlink' "${SRT_ENV[@]}" -- && [ ! -e "$TMP/child-env" ] && [ -z "$(ls -A "$VICTIM")" ]; then
-    ok "a symlinked srt-home/tmp is refused and nothing is written through it"
+rm -f "$SCRATCH/srt-home"
+# the private dir (settings, wrapper, HOME) is removed when the box exits
+if run 0 - "${SRT_ENV[@]}" -- && [ ! -e "$(sed -n 2p "$TMP/argv")" ] && [ ! -e "$(sed -n 6p "$TMP/argv")" ]; then
+    ok "the private settings/wrapper/HOME dir is removed after the box exits"
 else
-    bad "a symlinked srt-home/tmp is refused and nothing is written through it"
+    bad "the private settings/wrapper/HOME dir is removed after the box exits"
 fi
-rm -rf "$SCRATCH/srt-home"
 echo original >"$VICTIM/bashrc"; echo original >"$VICTIM/settings"
 rm -f "$SCRATCH/srt-wrapper.sh" "$SCRATCH/srt-settings.json"
 ln -s "$VICTIM/bashrc" "$SCRATCH/srt-wrapper.sh" && ln -s "$VICTIM/settings" "$SCRATCH/srt-settings.json" || bad "could not plant the links"
