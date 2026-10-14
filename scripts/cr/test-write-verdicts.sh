@@ -260,8 +260,8 @@ stale_re='Operator note|primary-checkout>/scripts/cr/write-verdicts'
 # Positive control: the matcher must fire on the stale wording, else the scan below is vacuous.
 printf '   #   Operator note: the operator also needs <primary-checkout>/scripts/cr/write-verdicts.sh\n' | grep -Eq "$stale_re" \
   || { echo "FAIL: T21 positive control — stale-note matcher did not fire"; fail=1; }
-for ref in 31-step3-adjudicate 40-step4-crosscheck; do
-  f="$DIR/pr-check-ref/$ref.md"
+for ref in pr-check-ref/31-step3-adjudicate.md pr-check-ref/40-step4-crosscheck.md write-verdicts.sh; do
+  f="$DIR/$ref"
   [ -s "$f" ] || { echo "FAIL: T21 $ref is missing or empty, nothing scanned"; fail=1; continue; }
   grep -Eq "$stale_re" "$f"; grc=$?
   # rc 1 = scanned, no match; rc 0 = stale note present; rc 2 = grep error (never a pass)
