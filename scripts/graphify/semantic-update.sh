@@ -275,6 +275,8 @@ IFS=: read -ra parts <<< "$PATH"
 for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
 export PATH="$newpath"
 cd "$here" || exit 2
+# Corpus text is untrusted prompt input, so the extraction runs tool-free (the lane's narrow-only override).
+export HIMMEL_API_TOOLS=""
 exec "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort low
 SHIM

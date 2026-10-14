@@ -37,6 +37,7 @@ EOF
 # still resolves to the semantic-update shim, then answers with a claude envelope.
 cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
+echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane \$* | stdin=\$(cat) | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
 echo '{"result":"{}","usage":{"input_tokens":1,"output_tokens":1}}'
 EOF
@@ -426,6 +427,8 @@ case "$lane" in
   "lane -p --model sonnet --permission-mode default --max-budget-usd 0.25 --effort low | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
   *) fail "T37 lane call: $lane" ;;
 esac
+grep -qx 'lane-tools=' "$WS/calls.log"; g37t=$?
+[ "$g37t" -eq 0 ] && pass "T37 lane called tool-free (HIMMEL_API_TOOLS set and empty)" || fail "T37 tool grant (rc=$g37t): $(grep lane-tools "$WS/calls.log")"
 grep -q -- 'primary\|shim' "$WS/claude-help.out" || fail "T37 shim --help output missing (positive control)"
 grep -q json-schema "$WS/claude-help.out"; h37=$?
 case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
