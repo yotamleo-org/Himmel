@@ -75,7 +75,7 @@ fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
-# Pinned sha256 of the linux_amd64 asset at v8.0.28, verified against the
+# Pinned sha256 of the linux_amd64 asset at v8.0.29, verified against the
 # release's own checksums.txt (HIMMEL-2778, re-pinned HIMMEL-2816/HIMMEL-3038/HIMMEL-3046/HIMMEL-3537/HIMMEL-4579). Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
