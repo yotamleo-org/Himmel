@@ -656,6 +656,16 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
     rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
     assert_rc "no salus rc 0" 0 "$rc"
     rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" 2>/dev/null || true
+
+    echo "TEST: with XDG_CACHE_HOME set the gate reads the database qmd really opens"
+    reset_state
+    mkdir -p "$HOME/.config/qmd" "$HOME/xdgcache/qmd"
+    sqlite3 "$HOME/xdgcache/qmd/index.sqlite" "CREATE TABLE content_vectors(hash TEXT, seq INT, model TEXT); CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+    printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$HOME/.config/qmd/index.yml"
+    rc=0; out=$(XDG_CACHE_HOME="$HOME/xdgcache" bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "salus in the XDG database rc 10" 10 "$rc"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+    rm -rf "$HOME/xdgcache" "$HOME/.config/qmd" 2>/dev/null || true
 else
     pass "egress gate check skipped: sqlite3 or node not installed"
 fi

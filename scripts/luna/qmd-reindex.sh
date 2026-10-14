@@ -129,7 +129,9 @@ QMD_JS=""
 DRY_RUN=0
 # HIMMEL-1307: a durable timestamp written ONLY on the verified-success path
 # below, next to the index data qmd-staleness.sh already reads.
-QMD_INDEX_PATH="${QMD_INDEX_PATH:-$HOME/.cache/qmd/index.sqlite}"
+QMD_INDEX_PATH="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
+# qmd opens INDEX_PATH, so the egress gate and qmd must read the same file.
+export INDEX_PATH="$QMD_INDEX_PATH"
 QMD_REFRESH_STAMP="${QMD_REFRESH_STAMP:-$(dirname "$QMD_INDEX_PATH")/refresh-stamp}"
 
 # --- completeness-assert sentinels (HIMMEL-1282) -----------------------------

@@ -76,12 +76,13 @@ for (const line of text.split("\n")) {
 // The index database counts too: qmd embeds every ACTIVE document in it, whatever
 // the config lists, so a collection removed from index.yml but still active in
 // the database would be sent to the remote model. A database that cannot be
-// read fails closed; a database that does not exist yet holds nothing.
+// read fails closed; a database that does not exist yet holds nothing, since
+// its collections can only come from the config checked above.
 const dbPath = process.argv[3];
 const dbProblems = [];
 if (dbPath && existsSync(dbPath)) {
   try {
-    const out = execFileSync("sqlite3", ["-readonly", dbPath, "SELECT DISTINCT collection FROM documents WHERE active = 1;"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const out = execFileSync("sqlite3", ["-init", "/dev/null", "-readonly", dbPath, "SELECT DISTINCT collection FROM documents WHERE active = 1;"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     for (const c of out.split("\n").map((x) => x.trim()).filter(Boolean)) if (!collections.includes(c)) collections.push(c);
   } catch {
     dbProblems.push(`cannot read the active collections of ${dbPath} (sqlite3 missing or unreadable database)`);

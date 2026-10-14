@@ -206,6 +206,9 @@ grep -q 'salus' "$work/err" || fail "(18) the refusal must name salus"
 cfg "$work/k.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel
 env QMD_OPENAI_BASE_URL=http://localhost:9/v1 node "$gate" "$work/k.yml" 2>"$work/err"; rc=$?
 [ "$rc" -eq 0 ] || fail "(18b) a clean Jina file must not be refused by an env base url: rc $rc"
+cfg "$work/k2.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 salus
+env QMD_OPENAI_BASE_URL=http://localhost:9/v1 node "$gate" "$work/k2.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(18c) a salus file naming Jina must not be rescued by a loopback env base url: expected rc 3, got $rc"
 
 # (19) the index database is checked too: an active salus document in the DB
 # refuses a Jina model even when the config no longer lists salus.
