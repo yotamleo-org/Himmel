@@ -276,6 +276,37 @@ test('--cancel never signals a reused pid: a stale pid file with a free lock is 
   assert.ok(alive, 'the unrelated process was signalled');
 });
 
+test('--cancel signals only the process that holds the task lock, not a pid the pid file merely names', async () => {
+  const f = fixture();
+  const bystander = spawn('sleep', ['30'], { stdio: 'ignore' });
+  const holder = spawn('flock', [join(SCRATCH, `bulk-${f.id}.lock`), 'sleep', '30'], { stdio: 'ignore' });
+  mkdirSync(join(SCRATCH, `bulk-${f.id}`), { recursive: true });
+  writeFileSync(join(SCRATCH, `bulk-${f.id}`, 'pid'), `${bystander.pid}\n`);
+  await new Promise((r) => setTimeout(r, 500));
+  const c = spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env, encoding: 'utf8' });
+  const alive = spawnSync('kill', ['-0', String(bystander.pid)]).status === 0;
+  bystander.kill('SIGKILL');
+  holder.kill('SIGKILL');
+  assert.equal(c.status, 3, c.stderr);
+  assert.match(c.stderr, /not the lock holder/);
+  assert.ok(alive, 'the pid named by the pid file was signalled');
+});
+
+test('trusted dispatch: a console leg or relay cannot cancel a running call either', async () => {
+  const f = fixture();
+  writeFileSync(f.p.hold, '');
+  const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env: { ...f.env, STUB_HOLD: f.p.hold }, stdio: 'ignore' });
+  for (let i = 0; i < 100 && !existsSync(f.p.log); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(existsSync(f.p.log), 'the call never started');
+  for (const v of ['HIMMEL_CONSOLE_LEG', 'HIMMEL_CONSOLE_RELAY']) {
+    const c = spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: { ...f.env, [v]: '1' }, encoding: 'utf8' });
+    assert.equal(c.status, 4, `${v}: ${c.stderr}`);
+  }
+  assert.equal(spawnSync('pgrep', ['-f', f.p.stub]).status, 0, 'the call was stopped by a refused cancel');
+  assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env }).status, 0);
+  await new Promise((res) => child.on('close', res));
+});
+
 test('a sites file that cannot be read back is ERROR, never an empty OK', () => {
   const f = fixture();
   const out = join(f.dir, 'art.json');

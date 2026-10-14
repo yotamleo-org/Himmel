@@ -50,6 +50,10 @@ kill_tree() {
   for p in $pids; do kill -KILL "$p" 2>/dev/null; done
 }
 
+# cancel is trusted dispatch too: a leg cannot stop a call its console launched
+[ -z "${HIMMEL_CONSOLE_LEG:-}" ] && [ -z "${HIMMEL_CONSOLE_RELAY:-}" ] ||
+  { echo "bulk-call: refusing - a console leg or relay does not launch or cancel API calls on its own authority; ask your console" >&2; exit 4; }
+
 if [ "${1:-}" = "--cancel" ]; then
   [ "$#" -eq 2 ] || usage "--cancel needs exactly one task id"
   seg_ok "$2" || usage "task id must be a path segment"
@@ -59,12 +63,12 @@ if [ "${1:-}" = "--cancel" ]; then
   if flock -n 9; then echo "bulk-call: no running task $2" >&2; exit 3; fi
   P="$(cat "$ROOT/bulk-$2/pid" 2>/dev/null)"
   case "$P" in ''|*[!0-9]*) echo "bulk-call: task $2 has no pid yet" >&2; exit 3 ;; esac
-  kill -TERM "$P" && echo "bulk-call: cancel sent to task $2"
+  # the pid file can lag a restart: only the process that really holds the lock (fd 9) is signalled
+  [ "$(readlink "/proc/$P/fd/9" 2>/dev/null)" = "$ROOT/bulk-$2.lock" ] || { echo "bulk-call: task $2 pid is not the lock holder" >&2; exit 3; }
+  kill -TERM "$P" || { echo "bulk-call: cannot signal task $2" >&2; exit 3; }
+  echo "bulk-call: cancel sent to task $2"
   exit 0
 fi
-
-[ -z "${HIMMEL_CONSOLE_LEG:-}" ] && [ -z "${HIMMEL_CONSOLE_RELAY:-}" ] ||
-  { echo "bulk-call: refusing - a console leg or relay does not launch API calls on its own authority; ask your console" >&2; exit 4; }
 
 TASK="" CFILE="" PFILE="" MODEL="" BUDGET="" EFFORT="" TIMEOUT=300
 while [ "$#" -gt 0 ]; do
@@ -107,6 +111,7 @@ done < "$PFILE"
 # one task id = one owned work dir; a live run on the same id is refused, a finished one is started clean
 WORK="$ROOT/bulk-$TASK"
 mkdir -p "$ROOT" && chmod 700 "$ROOT" 2>/dev/null
+[ -d "$ROOT" ] && [ ! -L "$ROOT" ] && [ -O "$ROOT" ] || usage "$ROOT must be a real directory owned by this user"
 exec 9>"$ROOT/bulk-$TASK.lock" || usage "cannot open the task lock"
 flock -n 9 || usage "task $TASK is already running"
 rm -rf "$WORK"
