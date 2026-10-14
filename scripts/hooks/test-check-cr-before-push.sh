@@ -2041,7 +2041,7 @@ for i in 1 2; do
     git -C "$SK_P" -c user.email=b@t -c user.name=b commit -q -m "local $i"
 done
 git -C "$SK_P" checkout -q feat/sk
-git -C "$SK_P" rebase -q main
+git -C "$SK_P" -c user.email=b@t -c user.name=b rebase -q main
 sk_tip=$(git -C "$SK_P" rev-parse HEAD)
 sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
 rc=0
