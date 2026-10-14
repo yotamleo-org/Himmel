@@ -9,8 +9,8 @@
 # it is. It PROPOSES; it never edits a live file (claude runs with
 # --permission-mode plan and only the Read tool).
 #
-#   steering-cull-cadence.sh run  --proposal-dir <dir> --console <session> [--repo <path>]
-#   steering-cull-cadence.sh arm  --proposal-dir <dir> --console <session>
+#   steering-cull-cadence.sh run  --proposal-dir <dir> [--console <session>] [--repo <path>]
+#   steering-cull-cadence.sh arm  --proposal-dir <dir> [--console <session>]
 #                                 [--day 0-6] [--time HH:MM] [--force] [--dry-run]
 #   steering-cull-cadence.sh status
 #   steering-cull-cadence.sh disarm [--dry-run]
@@ -20,7 +20,11 @@
 # said LOW and <path> is repo-relative (not a live ~/.claude or memory file);
 # every other cut is ESCALATED. The console inbox line
 # (`<bridge root>/consoles/<session>.md`, append-only, never created) carries
-# the proposal path and the two counts. A missing inbox alerts instead.
+# the proposal path and the two counts. --console is an OVERRIDE; without it
+# the run resolves the live console at RUN time (HIMMEL-5658): the newest held
+# `*-console` queue lock from `queue-lock.sh status --sweep`, since console
+# sessions are renamed on every succession and a general user has none. No live
+# console, or no inbox for it, alerts via cadence-alert.sh instead.
 #
 # ponytail: LOW repo cuts are listed in the proposal doc but not auto-opened as a PR, upgrade path: follow-up ticket for an apply pass in a worktree.
 # ponytail: a cut whose path the model mis-spells is escalated rather than counted low (fails safe), upgrade path: none needed unless the escalation volume grows.
@@ -32,7 +36,7 @@
 #
 # Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_PREFLIGHT_CMD,
 # STEERING_CULL_STATE_DIR, STEERING_CULL_DATE, STEERING_CULL_CRONTAB,
-# STEERING_CULL_RUNNER_DIR, BRIDGE_ROOT, plus cadence-alert.sh's CADENCE_ALERT_*.
+# STEERING_CULL_RUNNER_DIR, STEERING_CULL_SWEEP_CMD, BRIDGE_ROOT, plus cadence-alert.sh's CADENCE_ALERT_*.
 # Platform: cron (Linux/macOS). Windows development is parked (HIMMEL-4102).
 set -uo pipefail
 
@@ -48,6 +52,25 @@ resolve_primary() {
     common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
     [ -n "$common" ] || return 1
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
+}
+
+# live_console <repo>: print the session name of the newest held *-console queue
+# lock ("" if none). Lines look like `slug=<user>__<repo>__<session> ... age=<n>s
+# status=<TOKEN>`; a lock the sweep cannot vouch for is not live.
+live_console() {
+    local line slug age st best="" best_age=-1
+    while IFS= read -r line; do
+        case "$line" in slug=*) ;; *) continue ;; esac
+        slug="${line#slug=}"; slug="${slug%% *}"
+        age="${line#*age=}"; age="${age%%s *}"
+        st="${line##*status=}"
+        case "$slug" in *-console) ;; *) continue ;; esac
+        case "$st" in STALE-DEAD|CORRUPT|INDETERMINATE|UNKNOWN) continue ;; esac
+        [[ "$age" =~ ^[0-9]+$ ]] || continue
+        if [ "$best_age" -lt 0 ] || [ "$age" -lt "$best_age" ]; then best="${slug##*__}"; best_age="$age"; fi
+    done < <(if [ -n "${STEERING_CULL_SWEEP_CMD:-}" ]; then "$STEERING_CULL_SWEEP_CMD" 2>/dev/null
+             else bash "$1/scripts/handover/queue-lock.sh" status --sweep 2>/dev/null; fi)
+    printf '%s' "$best"
 }
 
 abs_dir() { (cd "$1" 2>/dev/null && pwd); }
@@ -74,9 +97,7 @@ cmd_run() {
         esac
     done
     [ -n "$repo" ] || repo="$(resolve_primary)" || { echo "ERR steering-cull: cannot resolve the repo" >&2; return 64; }
-    if [ -z "$pdir" ] || [ -z "$console" ]; then
-        echo "ERR steering-cull: --proposal-dir and --console are required" >&2; return 64
-    fi
+    [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 64; }
 
     # bank-preflight gate: anything but PROCEED is a quiet skip, not a failure.
     if [ -n "${STEERING_CULL_PREFLIGHT_CMD:-}" ]; then pf="$("$STEERING_CULL_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
@@ -136,6 +157,11 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         printf '%s\n' "$result"
     } > "$doc" || return 2
 
+    [ -n "$console" ] || console="$(live_console "$repo")"
+    if [ -z "$console" ]; then
+        bash "$ALERT" fail steering-cull no-console "$doc"
+        return 1
+    fi
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
     inbox="$root/consoles/$console.md"
     if [ -f "$inbox" ] && printf -- '- %s [steering-cull] proposal %s: %s low, %s escalated\n' "$(date +%H:%M)" "$doc" "$low" "$esc" >> "$inbox"; then
@@ -177,7 +203,6 @@ cmd_arm() {
             *) echo "ERR steering-cull: unknown arg: $1" >&2; return 1 ;;
         esac
     done
-    [ -n "$console" ] || { echo "ERR steering-cull: --console <supervisor session> is required" >&2; return 1; }
     [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 1; }
     case "$pdir" in /*) ;; *) pdir="$PWD/$pdir" ;; esac  # cron runs from another cwd
     [[ "$day" =~ ^[0-6]$ ]] || { echo "ERR steering-cull: --day must be 0-6, got: $day" >&2; return 1; }
@@ -205,8 +230,10 @@ cmd_arm() {
         printf 'PATH=%q\nexport PATH\n' "$PATH"
         printf 'log=%q\n' "$RUNNER_DIR/steering-cull-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
-        printf '%q %q run --repo %q --proposal-dir %q --console %q >> "$log" 2>&1\n' \
-            "$bash_bin" "$root/scripts/cleanup/steering-cull-cadence.sh" "$root" "$pdir" "$console"
+        printf '%q %q run --repo %q --proposal-dir %q' \
+            "$bash_bin" "$root/scripts/cleanup/steering-cull-cadence.sh" "$root" "$pdir"
+        [ -z "$console" ] || printf ' --console %q' "$console"
+        printf ' >> "$log" 2>&1\n'
     } > "$runner" || { echo "ERR steering-cull: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR steering-cull: cannot chmod the runner $runner" >&2; return 4; }
     { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \

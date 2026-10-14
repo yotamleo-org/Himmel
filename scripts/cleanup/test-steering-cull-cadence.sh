@@ -143,7 +143,8 @@ has "runner calls run with the console" "--console test-console" "$W/runner/stee
 bash "$CAD" arm --console test-console --proposal-dir "$PROP" >"$W/arm2.out" 2>&1
 check "double arm refused" 3 $?
 bash "$CAD" arm --proposal-dir "$PROP" --force >"$W/arm3.out" 2>&1
-check "arm without --console refused" 1 $?
+check "arm without --console is accepted (resolved at run time)" 0 $?
+hasnt "runner armed without --console bakes none" "--console" "$W/runner/steering-cull-cadence.sh"
 ( cd "$W" && bash "$CAD" arm --force --console test-console --proposal-dir rel/props ) >"$W/arm4.out" 2>&1
 has "arm resolves a relative --proposal-dir to an absolute path" "$W/rel/props" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" status >"$W/st.out" 2>&1
@@ -151,6 +152,43 @@ has "status reports ARMED" "ARMED" "$W/st.out"
 bash "$CAD" disarm >"$W/dis.out" 2>&1
 check "disarm exits 0" 0 $?
 hasnt "disarm removes the entry" "HIMMEL-SteeringCull" "$W/crontab.txt"
+
+# ---- 7. console resolved at RUN time (HIMMEL-5658) ---------------------------
+node -e 'console.log(JSON.stringify({type:"result",is_error:false,result:"- [LOW] CLAUDE.md:1 - x\n"}))' > "$W/claude.json"
+cat > "$W/sweep.sh" <<'SH'
+#!/usr/bin/env bash
+cat "$STUB_DIR/sweep.txt" 2>/dev/null
+exit 20
+SH
+chmod +x "$W/sweep.sh"
+export STEERING_CULL_SWEEP_CMD="$W/sweep.sh"
+INB_A="$INBOX_ROOT/consoles/old-console.md"; INB_B="$INBOX_ROOT/consoles/new-console.md"
+: > "$INB_A"; : > "$INB_B"
+cat > "$W/sweep.txt" <<'EOF'
+slug=u__himmel__HIMMEL-5000-leg-2026-10-14 session=s host=h age=5s status=OK
+slug=u__himmel__old-console session=s host=h age=9000s status=IDLE-HELD?
+slug=u__himmel__new-console session=s host=h age=40s status=OK
+slug=u__himmel__dead-console session=s host=h age=1s status=STALE-DEAD
+EOF
+: > "$W/alerts.log"
+bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run7.out" 2>&1
+check "run without --console exits 0" 0 $?
+has "newest held console (B) gets the line" "[steering-cull]" "$INB_B"
+hasnt "older console (A) gets nothing" "[steering-cull]" "$INB_A"
+hasnt "a dead console is never chosen" "no-inbox" "$W/alerts.log"
+
+: > "$INB_B"
+bash "$CAD" run --repo "$P" --proposal-dir "$PROP" --console old-console >"$W/run7b.out" 2>&1
+has "explicit --console wins over the live console" "[steering-cull]" "$INB_A"
+hasnt "override leaves the live console alone" "[steering-cull]" "$INB_B"
+
+: > "$INB_A"
+printf 'slug=u__himmel__HIMMEL-5000-leg-2026-10-14 session=s host=h age=5s status=OK\n' > "$W/sweep.txt"
+: > "$W/alerts.log"
+bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run7c.out" 2>&1
+check "no live console exits 1 (alert path)" 1 $?
+has "no live console delivers via the shared cadence alert" "no-console" "$W/alerts.log"
+has "no live console: the alert names the proposal doc" "$DOC" "$W/alerts.log"
 
 echo "steering-cull-cadence: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
