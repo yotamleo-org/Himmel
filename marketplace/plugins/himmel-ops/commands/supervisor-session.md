@@ -90,8 +90,9 @@ esac
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
   on a signal file plus a deadline; prints the arm log path. Launches with
-  `--autocompact 200000` by default (HIMMEL-2973); set `CONSOLE_CONTEXT=1m`
-  in the launching shell to opt into `--autocompact auto` instead.
+  1m context with `--autocompact auto` by default (HIMMEL-3884); `--context
+  standard` (or `CONSOLE_CONTEXT=standard` in the launching shell) opts down
+  to `--autocompact 200000`.
 - `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.
 - `--bucket <slug>` / `--prefix <P>` — override the project-derived defaults
   (e.g. `/supervisor-session new --arm --bucket websites`); the resolved `--project`
