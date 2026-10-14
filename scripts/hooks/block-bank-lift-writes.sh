@@ -309,7 +309,15 @@ _lift_ref1() {
     e=$(_expand "$w")
     # Symlinks (also dangling ones — a link to a lift that does not exist yet).
     case "$e" in
-        '?/'*) ;;
+        '?/'*)
+            # Unproven cwd: a relative word may still be a symlink to the lift from
+            # the hook's own cwd, so resolve it there too and take the stronger verdict.
+            w="${e#\?/}"
+            case "$w" in
+                /*|'$'*|'`'*|'~'*) ;;
+                *) [ "$(_lift_ref1 "$CWD/$w" $((depth+1)))" = LIFT ] && { echo LIFT; return; } ;;
+            esac
+            ;;
         *)
             if [ -e "$STATE_REAL/$LIFT_NAME" ] && [ -e "$e" ] && [ "$e" -ef "$STATE_REAL/$LIFT_NAME" ]; then
                 echo LIFT; return
