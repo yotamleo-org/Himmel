@@ -1538,7 +1538,7 @@ if contains '(^|[^[:alnum:]_.-])(iwr|irm|invoke-webrequest|invoke-restmethod|cur
 fi
 # Download-then-run in one command: `curl -o x URL; sh x`, `wget -O x URL && ./x`.
 _remote_dl_run() {
-    local s re run1 run2 x xr rest t q='["'"'"']?'
+    local s re run1 run2 x xr rest t i c q='["'"'"']?'
     re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]*(["'"'"']([^"'"'"']+)["'"'"']|([[:alnum:]_./~-]+))'
     for s in "$cmd_lc" "$cmd_lc_join"; do
         # Every download in the command, not just the first: each saved file is
@@ -1550,8 +1550,18 @@ _remote_dl_run() {
             t=${BASH_REMATCH[5]}
             if [[ $t != --* && ${BASH_REMATCH[0]} == *"$t$x" ]]; then x=${t#*o}$x; fi
             rest=${s#*"${BASH_REMATCH[0]}"}
-            xr=${x//./[.]}
-            xr=${xr// /[[:space:]]}
+            # The saved name goes into a regex: bracket every metacharacter.
+            xr=
+            for ((i = 0; i < ${#x}; i++)); do
+                c=${x:i:1}
+                case $c in
+                [[:alnum:]_/~-]) xr+=$c ;;
+                ' ') xr+='[[:space:]]' ;;
+                '^') xr+='\^' ;;
+                \\) xr+=\\\\ ;;
+                *) xr+="[$c]" ;;
+                esac
+            done
             run1='(^|[^[:alnum:]_.-])(source|\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
             run2='(^|[;&|])[[:space:]]*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
             if [[ $rest =~ $run1 ]] || [[ $rest =~ $run2 ]]; then return 0; fi
