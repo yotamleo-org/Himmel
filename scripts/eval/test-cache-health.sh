@@ -18,7 +18,7 @@ pass() { echo "PASS $1"; PASSED=$((PASSED + 1)); }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')"; fi; }
 has() { if grep -qF -- "$2" "$3" 2>/dev/null; then pass "$1"; else fail "$1 (no '$2' in $3)"; fi; }
-hasnt() { if grep -qF -- "$2" "$3" 2>/dev/null; then fail "$1 ('$2' present in $3)"; else pass "$1"; fi; }
+hasnt() { if [ ! -r "$3" ]; then fail "$1 (cannot read $3)"; elif grep -qF -- "$2" "$3"; then fail "$1 ('$2' present in $3)"; else pass "$1"; fi; }
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/cache-health.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
@@ -118,12 +118,18 @@ has "still active inside the margin" "role-drop:leg" "$STATE/alert-state.json"
 rm -rf "$STATE" "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 echo 1 > "$W/send.rc"
-run
+run; check "failed send exits non-zero" 3 $?
 check "failed send tried once" 1 "$(sends)"
 hasnt "failed send is not recorded as active" "role-drop:leg" "$STATE/alert-state.json"
 rm -f "$W/send.rc" "$W/sent"
 run
 check "retry after the failure delivers" 1 "$(sends)"
+
+# ---- 6b. a missing transcript root is an error, never "no data" --------------
+python3 -I "$PY" check --root "$W/no-such-root" --state-dir "$STATE" --now "$NOW" --notify-cmd "$SEND" >"$W/run.out" 2>&1
+check "missing root exits 2" 2 $?
+has "missing root names the path" "transcript root not found" "$W/run.out"
+has "missing root leaves the active alert alone" "role-drop:leg" "$STATE/alert-state.json"
 
 # ---- 7. session-low + compactions rules --------------------------------------
 rm -rf "$STATE" "$W/sent" "$R"
@@ -171,6 +177,14 @@ has "newest live console inbox got the alert line" "[cache-health] cache-health 
 [ ! -e "$BR/consoles/old-console.md" ] && pass "inbox is never created for another console" || fail "created a stray inbox"
 check "inbox got one line" 1 "$(wc -l < "$BR/consoles/live-console.md")"
 rm -f "$W/tg"
+# a dry run never touches the shared failure alert, even when the check fails
+CACHE_HEALTH_ROOT="$W/no-such-root" bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" --dry-run >"$W/cadd.out" 2>&1
+check "dry run with a failing check still exits non-zero" 2 $?
+[ ! -e "$W/alerts.log" ] && pass "dry run raises no failure alert" || fail "dry run wrote an alert"
+CACHE_HEALTH_ROOT="$W/no-such-root" bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cadf.out" 2>&1
+check "real run with a failing check exits 1" 1 $?
+has "real run raises the shared failure alert" "cache-health" "$W/alerts.log"
+rm -f "$W/alerts.log"
 bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cad2.out" 2>&1
 [ ! -e "$W/tg" ] && pass "second cadence run is silent" || fail "cadence repeated the alert"
 

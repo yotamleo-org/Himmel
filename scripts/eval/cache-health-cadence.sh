@@ -105,6 +105,7 @@ cmd_run() {
     [ "$dry" -eq 0 ] || args+=(--dry-run)
     python3 -I "$SCRIPT_DIR/cache-health.py" "${args[@]}"
     rc=$?
+    [ "$dry" -eq 0 ] || return "$rc"
     if [ "$rc" -ne 0 ]; then
         bash "$ALERT" fail cache-health "rc-$rc" "$STATE_DIR"
         return 1

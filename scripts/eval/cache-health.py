@@ -233,15 +233,19 @@ def cmd_check(a, metrics, offenders):
     recovered = [k for k in gone if not k.startswith("session-low:")]
     cmd = shlex_split(a.notify_cmd)
     next_active = {k: v for k, v in active.items() if k in cross or k in holding}
+    send_failed = False
     if new:
         lines = ["cache-health ALERT (%d new):" % len(new)] + ["- " + v for v in list(new.values())[:5]]
         if len(new) > 5:
             lines.append("- ...and %d more (see metrics.json)" % (len(new) - 5))
         if notify(cmd, "\n".join(lines), a.dry_run):
             next_active.update(new)
+        else:
+            send_failed = True
     if recovered:
         msg = "cache-health RECOVERED: " + ", ".join(k.split(":", 1)[0] + " " + k.split(":", 1)[1] for k in recovered)
         if not notify(cmd, msg, a.dry_run):
+            send_failed = True
             for k in recovered:  # retry the recovery message next run
                 next_active[k] = active[k]
     metrics["alerts"] = dict(active=sorted(next_active), new=sorted(new), recovered=sorted(recovered))
@@ -260,7 +264,7 @@ def cmd_check(a, metrics, offenders):
     hist.append(json.dumps(dict(ts=metrics["generated_at"], overall=metrics["overall"]["hit_pct"],
                                 roles={r: metrics["roles"][r]["hit_pct"] for r in ROLES})))
     write_atomic(hp, "\n".join(hist[-HISTORY_KEEP:]) + "\n")
-    return 0
+    return 3 if send_failed else 0  # state is saved above, so the next run retries
 
 
 def shlex_split(s):
@@ -304,6 +308,9 @@ def main():
     p.add_argument("--top", type=int, default=10)
     a = p.parse_args()
     now = a.now if a.now is not None else time.time()
+    if not os.path.isdir(a.root):  # an absent input is not "no data": never clear alerts on it
+        print("cache-health: transcript root not found: %s" % a.root, file=sys.stderr)
+        return 2
     metrics, offenders = compute(a.root, now, a.recent_hours, a.baseline_days, a.session_min_tokens, a.top)
     return cmd_check(a, metrics, offenders) if a.cmd == "check" else cmd_report(metrics)
 
