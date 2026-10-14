@@ -1132,7 +1132,7 @@ assert_rc "5484 ctl bash -o errexit s.sh"       0 "$(run_case "$(j_bash 'bash -o
 assert_rc "5484 bash +e -x s.sh"                2 "$(run_case "$(j_bash 'bash +e -x s.sh')")"
 assert_rc "5484 bash +o errexit -x s.sh"        2 "$(run_case "$(j_bash 'bash +o errexit -x s.sh')")"
 assert_rc "5484 zsh --xtrace s.sh"              2 "$(run_case "$(j_bash 'zsh --xtrace s.sh')")"
-assert_rc "5484 ctl set +o xtrace"              0 "$(run_case "$(j_bash 'set +o xtrace')")"
+assert_rc "5484 set +o xtrace (over-deny, HIMMEL-5609)" 2 "$(run_case "$(j_bash 'set +o xtrace')")"
 assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
 assert_rc "5484 ctl bash s.sh arg -x"           0 "$(run_case "$(j_bash 'bash s.sh arg -x')")"
 assert_rc "5484 ctl bash s.sh +e -x"            0 "$(run_case "$(j_bash 'bash s.sh +e -x')")"
@@ -1154,6 +1154,15 @@ assert_rc "5484 spoof yash -c quoted -x"        2 "$(run_case "$(j_bash "env -i 
 assert_rc "5484 yash -x"                        2 "$(run_case "$(j_bash 'yash -x s.sh')")"
 assert_rc "5484 posh -x"                        2 "$(run_case "$(j_bash 'posh -x s.sh')")"
 assert_rc "5484 bash.exe -x"                    2 "$(run_case "$(j_bash 'bash.exe -x s.sh')")"
+
+# Judge j2544g: any word naming xtrace denies; standalone unwrap-path rows.
+assert_rc "5484 shopt -os xtrace"               2 "$(run_case "$(j_bash 'shopt -os xtrace')")"
+assert_rc "5484 shopt -s -o xtrace"             2 "$(run_case "$(j_bash 'shopt -s -o xtrace')")"
+assert_rc "5484 setopt xtrace"                  2 "$(run_case "$(j_bash 'setopt xtrace')")"
+assert_rc "5484 setopt XTRACE"                  2 "$(run_case "$(j_bash 'setopt XTRACE')")"
+assert_rc "5484 setopt x_trace"                 2 "$(run_case "$(j_bash 'setopt x_trace')")"
+assert_rc "5484 standalone env split-string bash -x" 2 "$(run_case "$(j_bash 'env -S "bash -x s.sh"')")"
+assert_rc "5484 standalone yash -c quoted -x"   2 "$(run_case "$(j_bash "yash -c \"bash '-x' s.sh\"")")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

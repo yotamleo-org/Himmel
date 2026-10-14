@@ -832,6 +832,10 @@ g4_scan() {
     for ((i = 0; i < nw; i++)); do
         w="${g4w[i]}"
         d="${w//[\'\"\\]/}"
+        # HIMMEL-5484 (j2544g): any word naming the xtrace option, in any
+        # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
+        # ignores case and underscores in option names. Over-deny: HIMMEL-5609.
+        case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
         # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
