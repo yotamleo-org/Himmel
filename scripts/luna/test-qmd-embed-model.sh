@@ -327,6 +327,21 @@ if [ -f "$H/.cache/qmd/index.reembed-qwen.sqlite" ]; then pass "the refused swap
 assert_contains "the live index still holds gemma" "$GEMMA" "$(sqlite3 "$(IDX)" 'select distinct model from content_vectors')"
 if [ "$(cat "$(CFG)")" = "$before" ]; then pass "the refused swap leaves the config untouched"; else fail "the refused swap leaves the config untouched"; fi
 
+# staging the live config for the gate must not fail silently: a failed copy
+# would let the gate judge an incomplete config
+new_home 14
+make_index "$(IDX)" 768 "$GEMMA"
+make_index "$H/.cache/qmd/index.reembed-qwen.sqlite" 1024 "$QWEN"
+printf 'models:\n  embed: %s\n  rerank: openai:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
+REAL_CP="$(command -v cp)"
+mkdir -p "$TMP_ROOT/cpfail"
+printf '#!/bin/sh\ncase "$*" in *qmd-swap-gate*) exit 1 ;; esac\nexec %s "$@"\n' "$REAL_CP" >"$TMP_ROOT/cpfail/cp"
+chmod +x "$TMP_ROOT/cpfail/cp"
+rc=0; out=$(run env PATH="$TMP_ROOT/cpfail:$STUBS:$PATH" bash "$SCRIPT" swap --copy "$H/.cache/qmd/index.reembed-qwen.sqlite" 2>&1) || rc=$?
+assert_rc "swap aborts when the config cannot be staged for the gate" 5 "$rc"
+assert_contains "the abort names the staging failure" "could not stage the config" "$out"
+assert_contains "the live index still holds gemma after the abort" "$GEMMA" "$(sqlite3 "$(IDX)" 'select distinct model from content_vectors')"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

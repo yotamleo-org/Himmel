@@ -457,7 +457,7 @@ cmd_swap() {
     fi
     # the gate sees the config as the swap will leave it and the database that will go live
     gate_cfg="$(mktemp "${TMPDIR:-/tmp}/qmd-swap-gate.XXXXXX")" || die 5 "mktemp failed; cannot stage the egress check"
-    [ ! -f "$cfg" ] || cp "$cfg" "$gate_cfg"
+    [ ! -f "$cfg" ] || cp "$cfg" "$gate_cfg" || { rm -f "$gate_cfg"; die 5 "could not stage the config for the egress check; nothing was changed"; }
     write_yml_embed "$gate_cfg" "$uri" "$copy" || { rm -f "$gate_cfg"; die 2 "the egress gate refused the config and database the swap would leave live; nothing was changed"; }
     rm -f "$gate_cfg"
     mv -f "$copy" "$live" || die 5 "the rename failed; the live index is unchanged (backup at $backup)"
