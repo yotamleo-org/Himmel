@@ -104,6 +104,12 @@ check deny block-git-stash.sh '${A:-git} ${B:-x} stash drop'
 check deny block-git-stash.sh '${A:-git} ${B:-x} ${C:-y} stash drop'
 check deny block-git-stash.sh '${B:-x} ${A:-git} stash drop'
 check allow block-git-stash.sh '${A:-git} ${B:-x} stash list'
+# past the combination cap only the all-words form is read; a huge count must
+# neither skip the check nor loop (63 and 64 expansions overflowed a bash shift)
+for n in 6 63 64 70; do
+  tail=$(i=0; while [ "$i" -lt "$n" ]; do printf ' ${Z:-}'; i=$((i+1)); done)
+  check deny block-git-stash.sh '${V:-git} stash drop'"$tail"
+done
 check allow block-git-stash.sh '${V} stash drop'
 check allow block-git-stash.sh '${V:-git} stash list'
 check allow block-git-stash.sh '${V:-echo} stash drop'

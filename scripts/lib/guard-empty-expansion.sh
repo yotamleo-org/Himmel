@@ -77,12 +77,12 @@ _GEE_AWK='{
         i++
       }
       if (depth > 0) hard = 1
-      else if (!hard && (mode == "dflt" || mode == "count") && match(substr(s, bs, i - 1 - bs), /^[A-Za-z_][A-Za-z0-9_]*:?[-=+]/)) {
-        if (mode == "dflt" && int(mask / (2 ^ k)) % 2 == 1) out = out substr(s, bs + RLENGTH, i - 1 - bs - RLENGTH)
+      else if (!hard && (mode == "dflt" || mode == "count" || mode == "all") && match(substr(s, bs, i - 1 - bs), /^[A-Za-z_][A-Za-z0-9_]*:?[-=+]/)) {
+        if (mode == "all" || (mode == "dflt" && int(mask / (2 ^ k)) % 2 == 1)) out = out substr(s, bs + RLENGTH, i - 1 - bs - RLENGTH)
         k++; hard = h0; continue
       }
       if (h0) hard = 1
-      if (mode == "dflt") out = out substr(s, bs - 2, i - bs + 2)
+      if (mode == "dflt" || mode == "all") out = out substr(s, bs - 2, i - bs + 2)
     } else { out = out c; i++ }
   }
   if (mode == "hard") print hard + 0; else if (mode == "count") print k; else print out
@@ -132,10 +132,18 @@ guard_expansion_recheck() {
     esac
     _gee_rerun "$hook" "$input" "$cmd" "$stripped" "$depth" || return 2
     [ "$count" -gt 0 ] || return 0
-    full=$(( (1 << count) - 1 ))
-    mask=$full
-    [ "$count" -le 5 ] && mask=1
-    while [ "$mask" -le "$full" ]; do
+    if [ "$count" -le 5 ]; then
+        mask=1; full=$(( (1 << count) - 1 ))
+    else
+        mask=0; full=0
+        if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
+            | LC_ALL=C awk -v mode=all "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
+            echo "guard-empty-expansion: cannot read default words - failing closed" >&2
+            return 2
+        fi
+        _gee_rerun "$hook" "$input" "$cmd" "$dflt" "$depth" || return 2
+    fi
+    while [ "$mask" -ge 1 ] && [ "$mask" -le "$full" ]; do
         if ! dflt=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' \
             | LC_ALL=C awk -v mode=dflt -v mask="$mask" "$_GEE_AWK" | LC_ALL=C tr '\001' '\n'); then
             echo "guard-empty-expansion: cannot read default words - failing closed" >&2
