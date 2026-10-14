@@ -1518,7 +1518,7 @@ esac
 # sink only when they read the script from stdin (no arg, or a lone `-`), so
 # `curl x | python3 -m json.tool` and `| node -p ...` stay allowed.
 _re_asg='[a-z_][a-z0-9_]*=[^[:space:]]*[[:space:]]+'
-_re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+((-[^[:space:]]+|'"$_re_asg"')[[:space:]]*)*)?('"$_re_asg"')*'
+_re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+((-[^[:space:]]+|'"$_re_asg"')[[:space:]]*)*)*('"$_re_asg"')*'
 _re_shell='(ba|z|da|k|c|tc)?sh(\.exe)?([^[:alnum:]_.-]|$)'
 _re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<>]|[0-9]+>)'
 _re_sink="($_re_shell|$_re_bare)"
@@ -1538,15 +1538,20 @@ if contains '(^|[^[:alnum:]_.-])(iwr|irm|invoke-webrequest|invoke-restmethod|cur
 fi
 # Download-then-run in one command: `curl -o x URL; sh x`, `wget -O x URL && ./x`.
 _remote_dl_run() {
-    local s re run1 run2 x xr rest q='["'"'"']?'
-    re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]+["'"'"']?([[:alnum:]_./~-]+)'
+    local s re run1 run2 x xr rest t q='["'"'"']?'
+    re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]*(["'"'"']([^"'"'"']+)["'"'"']|([[:alnum:]_./~-]+))'
     for s in "$cmd_lc" "$cmd_lc_join"; do
         # Every download in the command, not just the first: each saved file is
         # checked against what runs after its own download.
         while [[ $s =~ $re ]]; do
-            x=${BASH_REMATCH[6]}
+            x=${BASH_REMATCH[7]:-${BASH_REMATCH[8]}}
+            # `-opayload`: the flag cluster and the name run together, so the
+            # regex may end the cluster at a later `o`; the name starts after the first.
+            t=${BASH_REMATCH[5]}
+            if [[ $t != --* && ${BASH_REMATCH[0]} == *"$t$x" ]]; then x=${t#*o}$x; fi
             rest=${s#*"${BASH_REMATCH[0]}"}
             xr=${x//./[.]}
+            xr=${xr// /[[:space:]]}
             run1='(^|[^[:alnum:]_.-])(source|\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
             run2='(^|[;&|])[[:space:]]*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
             if [[ $rest =~ $run1 ]] || [[ $rest =~ $run2 ]]; then return 0; fi
