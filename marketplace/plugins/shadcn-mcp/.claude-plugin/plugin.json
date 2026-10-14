@@ -1,6 +1,6 @@
 {
   "name": "shadcn-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "[himmel] shadcn/ui registry MCP server (browse, search and add components) plus a short motion-budget skill (Emil Kowalski durations). No API key. Runs `npx shadcn@4.21.0 mcp` on use; the version is pinned in .mcp.json.",
   "author": {
     "name": "yotamleo"

@@ -1,6 +1,6 @@
 ---
 name: motion-budget
-description: Use when adding or changing UI animation or transitions: duration table, under-300ms rule, frequency rule.
+description: "Use when adding or changing UI animation or transitions - duration table, under-300ms rule, frequency rule."
 ---
 
 # Motion budget
@@ -14,7 +14,7 @@ Durations:
 | Modals, drawers | 200-300ms |
 | Page transitions | 300-400ms |
 
-Keep UI animation under 300ms.
+Keep UI animation under 300ms; page transitions (300-400ms) are the only exception.
 
 Frequency: 100+ uses a day means no animation; occasional use gets standard animation; rare or first-time use may add delight.
 
