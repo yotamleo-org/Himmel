@@ -344,9 +344,9 @@ jobs:
           scope=all
           if [ "$EVENT" = pull_request ]; then
             changed="$RUNNER_TEMP/lint-changed.txt"
-            if git -c core.quotePath=false diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD > "$changed"; then
+            if git diff --name-only -z "$BASE_SHA" HEAD > "$changed"; then
               scope=files
-              if grep -qxE '\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/lint/skill-lint\.sh|scripts/lint/skill-size-allowlist\.txt|scripts/hooks/check-oxlint-(complexity|hardening)\.sh' "$changed"; then
+              if grep -qzxE '\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/lint/skill-lint\.sh|scripts/lint/skill-size-allowlist\.txt|scripts/hooks/check-oxlint-(complexity|hardening)\.sh' "$changed"; then
                 scope=all
               fi
             fi
@@ -356,7 +356,7 @@ jobs:
           if [ "$scope" = files ]; then
             bash scripts/lint/skill-lint.sh --changed "$BASE_SHA..HEAD" || rc=1
             set --
-            while IFS= read -r f; do
+            while IFS= read -r -d '' f; do
               if [ -n "$f" ]; then set -- "$@" "$f"; fi
             done < "$changed"
             bash scripts/hooks/check-oxlint-complexity.sh --files "$@" || rc=1
