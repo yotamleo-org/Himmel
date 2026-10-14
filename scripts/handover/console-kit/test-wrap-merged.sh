@@ -102,6 +102,7 @@ contains "2: gh asked about PR 777" "$calls" "pr view 777"
 contains "2: close called with --fleet and the leg doc" "$calls" "close --fleet $MANIFEST $LEG"
 contains "2: primary fast-forwarded" "$calls" "git -C $WM_PRIMARY pull --ff-only"
 contains "2: board re-rendered with --changed" "$calls" "board --doc $CONSOLE --changed"
+check "2: close, pull and board each ran exactly once" "$(grep -c -e '^close ' -e '^git ' -e '^board ' "$WM_CALLS")" 3
 bullet="$(tail -n 1 "$CONSOLE")"
 contains "2: bullet records mergeCommit.oid[0:8]" "$bullet" "MERGED #777 → abcdef01"
 lacks "2: bullet never carries the head oid" "$bullet" "11111111"
@@ -188,6 +189,9 @@ run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "11: rc 4" "$rc" 4
 lacks "11: no pull" "$calls" "pull"
 check "11: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+printf -- '- 10:40 WRAPPED_PENDING not yet\n' >> "$LEG"
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "11: WRAPPED_PENDING is not WRAPPED -> rc 4" "$rc" 4
 
 # --- 12. a checkout path with a space keeps the default commands intact ----
 fixture

@@ -16,9 +16,10 @@
 #                 propagated: 3 lock held, 4 not WRAPPED, 5 session count, 6
 #                 subtree alive, 7 subagent alive). <leg doc> is resolved to its
 #                 absolute physical path first (the manifest's form). Skipped
-#                 only when the leg is no longer in the manifest AND its last
-#                 Results marker is WRAPPED (a re-run after a later step
-#                 failed); otherwise rc 4, not proven closed.
+#                 only when the leg is no longer in the manifest AND the shared
+#                 parser (leg-tail-status.sh, the one close-wrapped-leg.sh uses)
+#                 reads WRAPPED (a re-run after a later step failed);
+#                 otherwise rc 4, not proven closed.
 #   3. pull       git -C <primary> pull --ff-only (rc 5).
 #   4. log        one console-doc bullet, skipped when `MERGED #<n> → <sha8>`
 #                 is already in the doc (rc 6):
@@ -38,6 +39,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
+# shellcheck source=scripts/lib/leg-tail-status.sh
+. "$HERE/../../lib/leg-tail-status.sh"
 GH="${WM_GH:-gh}"
 GIT="${WM_GIT:-git}"
 # arrays, so a checkout path with a space stays one word; a WM_* override is one executable
@@ -86,7 +89,7 @@ legs="$(bash "$HERE/fleet-manifest.sh" list "$FLEET" 2>&1)" || fail manifest "fl
 if printf '%s\n' "$legs" | grep -Fxq "$LEG"; then
     "${CLOSE[@]}" --fleet "$FLEET" "$LEG"; rc=$?
     [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
-elif grep -E '^- ' "$LEG" | tail -n 1 | grep -Eq '^- ([0-9]{2}:[0-9]{2} )?WRAPPED'; then
+elif [ "$(leg_tail_status "$LEG")" = WRAPPED ]; then
     echo "wrap-merged: $LEG is not in the fleet manifest and its last marker is WRAPPED - already closed, skipping close"
 else
     fail close-wrapped-leg "$LEG is not in the fleet manifest and its last marker is not WRAPPED - not proven closed" 4
