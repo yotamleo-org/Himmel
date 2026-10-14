@@ -1,0 +1,41 @@
+name: Workflow Red
+
+# HIMMEL-5595. After each COMPLETED non-pull_request run of a tracked workflow
+# (the names in scripts/ci/workflow-red-list.txt), open or refresh ONE `ci-red`
+# + `wf:<workflow>` issue per workflow and branch when the run is red, and close
+# it when a later run of the same workflow on the same branch is green
+# (scripts/ci/workflow-red-issue.sh). CI itself is NOT listed: main-sweep-red.yml
+# keeps owning `main-red`.
+#
+# Trust (same model as main-sweep-red.yml): workflow_run always runs the DEFAULT
+# branch's copy of this file and the checkout below is the default branch, not
+# the triggering sha -- no branch code runs with issues: write. The script reads
+# only the run's own API record, never the triggering commit's files.
+on:
+  workflow_run:
+    # Lockstep with scripts/ci/workflow-red-list.txt (test-workflow-red-workflow.sh).
+    workflows: ["CI (os:macos cadence)", os-verify, Pages, Release]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+# One report at a time, in order; each report reads the run's own jobs and the live issue.
+concurrency:
+  group: workflow-red
+  cancel-in-progress: false
+
+jobs:
+  workflow-red:
+    # Legs own PR CI; only non-PR runs are tracked.
+    if: github.event.workflow_run.event != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Open, refresh or close the ci-red issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/ci/workflow-red-issue.sh "${{ github.event.workflow_run.id }}"
