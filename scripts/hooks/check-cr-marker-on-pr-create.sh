@@ -110,14 +110,17 @@ fi
 # spans first (this block is BYTE-IDENTICAL in the PreToolUse/PostToolUse twin):
 #   - '…'  is inert in full, so the whole span goes;
 #   - "…"  goes too, unless it carries `$(` or a backtick: those run inside
-#     double quotes, so `echo "$(gh pr create)"` is a real invocation and the
-#     span stays for the regex;
+#     double quotes, so `echo "$(gh pr create)"` is a real invocation, and a
+#     quote inside the substitution would end this scan's span early. Such a
+#     command returns unchanged (the older, wider scan);
 #   - a backslash outside quotes escapes the next byte, so `\"` opens nothing;
 #   - an unterminated quote returns the command unchanged — the older, wider
 #     scan — because on the blocking twin the cheap direction is to over-match.
-# Each removed span becomes one space, so `create"x"` still ends the token.
-# ponytail: handles quoting only, not heredoc bodies or `#` comments, and a
-# `"…$(…"inner"…)…"` nest bails to the unchanged scan; HIMMEL-3546's tokenizer
+# Each removed span becomes one `_`, a word byte, because the shell glues a
+# quoted span to its neighbours: `gh'x' pr create` runs `ghx`, and `create"x"`
+# runs `createx`, so neither may match.
+# ponytail: handles quoting only, not heredoc bodies or `#` comments, and any
+# double-quoted substitution bails to the unchanged scan; HIMMEL-3546's tokenizer
 # (scripts/hooks/lib/shell-tokenize.sh, inlined per hook) is the upgrade path.
 # shellcheck disable=SC1003,SC2016  # literal \ and $( in case patterns
 strip_quoted_spans() {
@@ -133,15 +136,15 @@ strip_quoted_spans() {
                 *) out="$out$c" ;;
             esac
         elif [ "$q" = "'" ]; then
-            if [ "$c" = "'" ]; then q=""; out="$out "; fi
+            if [ "$c" = "'" ]; then q=""; out="${out}_"; fi
         else
             case "$c" in
                 '\') span="$span${s:$i:2}"; i=$((i + 2)); continue ;;
                 '"')
                     case "$span" in
-                        *'$('* | *'`'*) out="$out\"$span\"" ;;
-                        *) out="$out " ;;
+                        *'$('* | *'`'*) printf '%s' "$s"; return ;;
                     esac
+                    out="${out}_"
                     q=""
                     ;;
                 *) span="$span$c" ;;

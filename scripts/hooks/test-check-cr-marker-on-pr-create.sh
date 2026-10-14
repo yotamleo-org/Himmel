@@ -639,7 +639,7 @@ write_marker "feat/X"
 # match WOULD resolve the marked branch and block: a negative that stops at
 # the head token would pass vacuously on a mangled branch name.
 # shellcheck disable=SC2016  # literal $( in the command under test
-for q in 'echo \"; gh pr create --head feat/X --base main\"' "echo '; gh pr create --head feat/X --base main'" "echo '\$(gh pr create --head feat/X --base main)'" 'echo \"x | gh pr create --head feat/X --base main\"'; do
+for q in 'echo \"; gh pr create --head feat/X --base main\"' "echo '; gh pr create --head feat/X --base main'" "echo '\$(gh pr create --head feat/X --base main)'" 'echo \"x | gh pr create --head feat/X --base main\"' "gh'x' pr create --head feat/X --base main"; do
     echo "TEST: quoted separator ($q), marker present -> allow"
     run_hook "$q"
     if [ "$rc" -eq 0 ]; then
@@ -649,7 +649,7 @@ for q in 'echo \"; gh pr create --head feat/X --base main\"' "echo '; gh pr crea
     fi
 done
 # shellcheck disable=SC2016  # literal $( in the command under test
-for q in 'echo x; gh pr create --head feat/X --base main' 'echo \"$(gh pr create --head feat/X --base main)\"' "echo 'x' && gh pr create --head feat/X --base main" 'echo \"unterminated; gh pr create --head feat/X --base main'; do
+for q in 'echo x; gh pr create --head feat/X --base main' 'echo \"$(gh pr create --head feat/X --base main)\"' "echo 'x' && gh pr create --head feat/X --base main" 'echo \"unterminated; gh pr create --head feat/X --base main' 'echo \"$(printf \"%s\" x; gh pr create --head feat/X --base main)\"'; do
     echo "TEST: real invocation beside quotes ($q), marker present -> BLOCK"
     run_hook "$q"
     if [ "$rc" -eq 2 ]; then
