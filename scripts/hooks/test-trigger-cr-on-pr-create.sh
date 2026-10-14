@@ -378,6 +378,30 @@ else
     fail "expected rc=0 and 0 posts, got rc=$rc posted=$(posted_count)" "out: $out"
 fi
 
+# Test 5q: quoted separators are not command positions (HIMMEL-1373) ---------
+# shellcheck disable=SC2016  # literal $( in the command under test
+for q in 'echo "; gh pr create docs"' "echo '; gh pr create docs'" "echo '\$(gh pr create docs)'" 'echo "x | gh pr create"' 'echo "a && gh pr create"'; do
+    echo "TEST: quoted separator ($q) -> no post"
+    reset_state
+    run_hook "$q" "https://github.com/acme/widget/pull/7"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 0 ]; then
+        pass "did not post for a separator inside quotes: $q"
+    else
+        fail "expected rc=0 and 0 posts, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
+    fi
+done
+# shellcheck disable=SC2016  # literal $( in the command under test
+for q in 'echo "x"; gh pr create -t t' 'echo "$(gh pr create -t t)"' 'echo "`gh pr create -t t`"' "echo 'x' && gh pr create" 'echo "it'"'"'s"; gh pr create' 'echo \"; gh pr create' 'echo "unterminated; gh pr create'; do
+    echo "TEST: real invocation beside quotes ($q) -> POSTS"
+    reset_state
+    run_hook "$q" "https://github.com/acme/widget/pull/7"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
+        pass "posted for a real invocation: $q"
+    else
+        fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
+    fi
+done
+
 # Test 6: post-failure stays non-blocking ------------------------------------
 echo "TEST: comment post fails -> hook stays non-blocking (rc 0), records warning"
 reset_state

@@ -104,6 +104,54 @@ if [ -z "$cmd" ]; then
     exit 0
 fi
 
+# HIMMEL-1373 — quote-blind matcher fix. The anchored regex below reads `;` `&`
+# `|` backtick and `$(` as command separators, so `echo "; gh pr create"` put
+# `gh pr create` at a command position though nothing ran it. Blank out quoted
+# spans first (this block is BYTE-IDENTICAL in the PreToolUse/PostToolUse twin):
+#   - '…'  is inert in full, so the whole span goes;
+#   - "…"  goes too, unless it carries `$(` or a backtick: those run inside
+#     double quotes, so `echo "$(gh pr create)"` is a real invocation and the
+#     span stays for the regex;
+#   - a backslash outside quotes escapes the next byte, so `\"` opens nothing;
+#   - an unterminated quote returns the command unchanged — the older, wider
+#     scan — because on the blocking twin the cheap direction is to over-match.
+# Each removed span becomes one space, so `create"x"` still ends the token.
+# ponytail: handles quoting only, not heredoc bodies or `#` comments, and a
+# `"…$(…"inner"…)…"` nest bails to the unchanged scan; HIMMEL-3546's tokenizer
+# (scripts/hooks/lib/shell-tokenize.sh, inlined per hook) is the upgrade path.
+# shellcheck disable=SC1003,SC2016  # literal \ and $( in case patterns
+strip_quoted_spans() {
+    local s="$1" out="" span="" q="" c
+    local i=0 n=${#1}
+    while [ "$i" -lt "$n" ]; do
+        c="${s:$i:1}"
+        if [ -z "$q" ]; then
+            case "$c" in
+                '\') out="$out${s:$i:2}"; i=$((i + 2)); continue ;;
+                "'") q="'" ;;
+                '"') q='"'; span="" ;;
+                *) out="$out$c" ;;
+            esac
+        elif [ "$q" = "'" ]; then
+            if [ "$c" = "'" ]; then q=""; out="$out "; fi
+        else
+            case "$c" in
+                '\') span="$span${s:$i:2}"; i=$((i + 2)); continue ;;
+                '"')
+                    case "$span" in
+                        *'$('* | *'`'*) out="$out\"$span\"" ;;
+                        *) out="$out " ;;
+                    esac
+                    q=""
+                    ;;
+                *) span="$span$c" ;;
+            esac
+        fi
+        i=$((i + 1))
+    done
+    if [ -n "$q" ]; then printf '%s' "$s"; else printf '%s' "$out"; fi
+}
+
 # Only gate `gh pr create`. Anything else passes.
 # Anchored: matches `gh pr create` only at a command position — start-of-string
 # or after a command-separator: `;`, `&`, `|`, backtick (legacy substitution),
@@ -155,8 +203,9 @@ fi
 # three word-taking wrappers (e.g. `xargs grep 'gh pr create'`) matches. On this
 # BLOCKING gate that is a false block, so it is bounded to those three heads
 # only — the cheap direction is to over-block a wrapper line, never to un-gate.
+stripped=$(strip_quoted_spans "$cmd")
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
-if ! echo "$cmd" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh[[:space:]]+pr[[:space:]]+create([^[:alnum:]_-]|$)'; then
+if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh[[:space:]]+pr[[:space:]]+create([^[:alnum:]_-]|$)'; then
     exit 0
 fi
 

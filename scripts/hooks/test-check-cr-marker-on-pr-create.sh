@@ -633,6 +633,32 @@ else
     fail "expected exit 0 (no marker means nothing pending), got rc=$rc" "out: $out"
 fi
 
+# HIMMEL-1373: a separator inside a quoted string is not a command position ---
+write_marker "feat/X"
+# Every row carries `--head feat/X --base main` inside the quote so a missed
+# match WOULD resolve the marked branch and block: a negative that stops at
+# the head token would pass vacuously on a mangled branch name.
+# shellcheck disable=SC2016  # literal $( in the command under test
+for q in 'echo \"; gh pr create --head feat/X --base main\"' "echo '; gh pr create --head feat/X --base main'" "echo '\$(gh pr create --head feat/X --base main)'" 'echo \"x | gh pr create --head feat/X --base main\"'; do
+    echo "TEST: quoted separator ($q), marker present -> allow"
+    run_hook "$q"
+    if [ "$rc" -eq 0 ]; then
+        pass "not blocked for a separator inside quotes: $q"
+    else
+        fail "expected exit 0, got rc=$rc" "cmd: $q out: $out"
+    fi
+done
+# shellcheck disable=SC2016  # literal $( in the command under test
+for q in 'echo x; gh pr create --head feat/X --base main' 'echo \"$(gh pr create --head feat/X --base main)\"' "echo 'x' && gh pr create --head feat/X --base main" 'echo \"unterminated; gh pr create --head feat/X --base main'; do
+    echo "TEST: real invocation beside quotes ($q), marker present -> BLOCK"
+    run_hook "$q"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked for a real invocation: $q"
+    else
+        fail "expected exit 2, got rc=$rc" "cmd: $q out: $out"
+    fi
+done
+
 # Summary ------------------------------------------------------------
 echo
 echo "===================================="
