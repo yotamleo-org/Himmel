@@ -688,7 +688,7 @@ done
 # A quoted option or a tab separator must not hide the nested-shell signal.
 # Payload is interpolated raw into JSON: tab is `\t`, a double quote is `\"`.
 # shellcheck disable=SC2016  # literal quotes in the commands under test
-for q in "bash \\\"-c\\\" 'true; gh pr create --head feat/X --base main'" "bash\\t-c 'true; gh pr create --head feat/X --base main'" "eval\\t\\\"true; gh pr create --head feat/X --base main\\\""; do
+for q in "bash \\\"-c\\\" 'true; gh pr create --head feat/X --base main'" "bash\\t-c 'true; gh pr create --head feat/X --base main'" "eval\\t\\\"true; gh pr create --head feat/X --base main\\\"" 'bash -c\"cd x && gh pr create --head feat/X --base main\"' "sh -c'true; gh pr create --head feat/X --base main'"; do
     echo "TEST: disguised nested-shell body ($q), marker present -> BLOCK"
     run_hook "$q"
     if [ "$rc" -eq 2 ]; then
