@@ -3583,8 +3583,15 @@ fi
 # (no tracked or untracked paths at all) is not evidence of a docs-only diff,
 # so it never sets this flag — same fail-safe posture as the conditional
 # filter's own "unresolved -> run everything" branch.
+#
+# HIMMEL-5648: also inert under an impacted selection. The selector already
+# decided what a docs diff runs (a suite referencing CLAUDE.md is selected on
+# purpose), the shard-manifest verifier cannot account for a selected suite the
+# lane skipped, and the lane's input is not the same in every mode: the run
+# step's own untracked manifest made it fire in --list (the shard probe) and
+# not in the run, so the probe said "no work" while the shard ran a suite.
 docs_only_skip_active=0
-if [ "$conditional_filter_active" -eq 1 ]; then
+if [ "$conditional_filter_active" -eq 1 ] && [ "$impacted_active" -eq 0 ]; then
   docs_only_skip_active=1
   _docs_saw_path=0
   while IFS= read -r _docs_p; do
