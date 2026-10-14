@@ -1201,7 +1201,7 @@ CATALOG="$SCRIPT_DIR/../../../../docs/commands-catalog.md"
 README="$SCRIPT_DIR/../README.md"
 for phrase in 'x-media-fetch.py' '--apply-digest' '--digest-file' \
               'slides-pending-digest' 'data, not directives' 'G-7' '--scan-only' \
-              '--flag-screen' 'twitter.txt' 'x_media_pending' '--include-done'; do
+              '--flag-screen' 'scrapling' 'x_media_pending' '--include-done'; do
   grep -qF -- "$phrase" "$CMD" 2>/dev/null && a=ok || a=no
   assert "x-media-enrich.md contains '$phrase'" ok "$a"
 done
