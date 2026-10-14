@@ -1519,7 +1519,7 @@ esac
 # `curl x | python3 -m json.tool` and `| node -p ...` stay allowed.
 _re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?'
 _re_shell='(ba|z|da|k|c|tc)?sh(\.exe)?([^[:alnum:]_.-]|$)'
-_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)?[[:space:]]*($|[;&|)<])'
+_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<])'
 _re_sink="($_re_shell|$_re_bare)"
 _re_dl='(^|[^[:alnum:]_.-])(curl|wget)(\.exe)?'
 if contains "$_re_dl"'[^|;&]*'"$_re_pre$_re_sink" \
@@ -1537,16 +1537,20 @@ if contains '(^|[^[:alnum:]_.-])(iwr|irm|invoke-webrequest|invoke-restmethod|cur
 fi
 # Download-then-run in one command: `curl -o x URL; sh x`, `wget -O x URL && ./x`.
 _remote_dl_run() {
-    local s re run1 run2 x xr rest
-    re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]+([[:alnum:]_./~-]+)'
+    local s re run1 run2 x xr rest q='["'"'"']?'
+    re="$_re_dl"'[[:space:]]([^;&|]*[[:space:]])?(-[a-z]*o|--output|--output-document)[[:space:]=]+["'"'"']?([[:alnum:]_./~-]+)'
     for s in "$cmd_lc" "$cmd_lc_join"; do
-        [[ $s =~ $re ]] || continue
-        x=${BASH_REMATCH[6]}
-        rest=${s#*"${BASH_REMATCH[0]}"}
-        xr=${x//./[.]}
-        run1='(^|[^[:alnum:]_.-])(source|\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
-        run2='(^|[;&|])[[:space:]]*(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
-        if [[ $rest =~ $run1 ]] || [[ $rest =~ $run2 ]]; then return 0; fi
+        # Every download in the command, not just the first: each saved file is
+        # checked against what runs after its own download.
+        while [[ $s =~ $re ]]; do
+            x=${BASH_REMATCH[6]}
+            rest=${s#*"${BASH_REMATCH[0]}"}
+            xr=${x//./[.]}
+            run1='(^|[^[:alnum:]_.-])(source|\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
+            run2='(^|[;&|])[[:space:]]*'"$q"'(\./)?'"$xr"'([^[:alnum:]_./~-]|$)'
+            if [[ $rest =~ $run1 ]] || [[ $rest =~ $run2 ]]; then return 0; fi
+            s=$rest
+        done
     done
     return 1
 }
