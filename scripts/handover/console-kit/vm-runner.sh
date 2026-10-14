@@ -99,7 +99,7 @@ install_unit() {
     sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" -e "s#@JOB_MAX@#$JOB_MAX#g" \
         "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
         > "$UNIT_DIR/$UNIT_PREFIX@.service" || die "cannot write the unit template"
-    systemctl --user daemon-reload || die "systemctl --user daemon-reload failed"
+    systemctl --user daemon-reload || die "systemctl --user unit reload failed"
 }
 
 cmd_on() {
