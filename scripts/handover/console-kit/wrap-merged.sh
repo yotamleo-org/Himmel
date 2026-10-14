@@ -12,14 +12,15 @@
 #                 be found). <n> is --pr, else the newest `READY <n>` / `PR <n>`
 #                 in the leg doc. The sha recorded is mergeCommit.oid - never
 #                 the head a leg's own READY bullet names, which is the PR head.
-#   2. close      close-wrapped-leg.sh --fleet <manifest> <leg doc> (its rc is
-#                 propagated: 3 lock held, 4 not WRAPPED, 5 session count, 6
-#                 subtree alive, 7 subagent alive). <leg doc> is resolved to its
-#                 absolute physical path first (the manifest's form). Skipped
-#                 only when the leg is no longer in the manifest AND the shared
-#                 parser (leg-tail-status.sh, the one close-wrapped-leg.sh uses)
-#                 reads WRAPPED (a re-run after a later step failed);
-#                 otherwise rc 4, not proven closed.
+#   2. close      close-wrapped-leg.sh --fleet <manifest> <leg doc>, ALWAYS - the
+#                 manifest is never proof of a closed window. Its rc is
+#                 propagated: 1 plumbing/manifest, 3 lock held, 4 not WRAPPED,
+#                 5 session count, 6 subtree alive, 7 subagent alive. The one
+#                 exception is a re-run: rc 5 whose message says "0 live
+#                 session(s)" (lock free and tail WRAPPED already proven) means
+#                 the window is gone, so the entry is retired with
+#                 `fleet-manifest.sh remove` (rc 1 if that fails) and the run
+#                 goes on. <leg doc> is resolved to its absolute physical path.
 #   3. pull       git -C <primary> pull --ff-only (rc 5).
 #   4. log        one console-doc bullet, skipped when `MERGED #<n> → <sha8>`
 #                 is already in the doc (rc 6):
@@ -39,8 +40,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-# shellcheck source=scripts/lib/leg-tail-status.sh
-. "$HERE/../../lib/leg-tail-status.sh"
 GH="${WM_GH:-gh}"
 GIT="${WM_GIT:-git}"
 # arrays, so a checkout path with a space stays one word; a WM_* override is one executable
@@ -84,26 +83,34 @@ sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 [ "$state" = MERGED ] && [ -n "$sha" ] || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
 sha8="${sha:0:8}"
 
-# 2. close (only while the leg is still in the manifest)
-legs="$(bash "$HERE/fleet-manifest.sh" list "$FLEET" 2>&1)" || fail manifest "fleet-manifest.sh list $FLEET: $legs" 1
-if printf '%s\n' "$legs" | grep -Fxq "$LEG"; then
-    "${CLOSE[@]}" --fleet "$FLEET" "$LEG"; rc=$?
-    [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
-elif [ "$(leg_tail_status "$LEG")" = WRAPPED ]; then
-    echo "wrap-merged: $LEG is not in the fleet manifest and its last marker is WRAPPED - already closed, skipping close"
+base="${LEG##*/}"
+ticket=""; label=""
+[[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]] && ticket="${BASH_REMATCH[1]}"
+[[ $base =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+[ -n "$label" ] || label="${base%.md}"
+
+# 2. close - always. The manifest is never proof of a closed window (it stores the
+# doc as the dispatcher typed it, and every leg is WRAPPED before its close).
+errf="$(mktemp "${TMPDIR:-/tmp}/wrap-merged-close.XXXXXX")" || fail close-wrapped-leg "mktemp failed" 1
+"${CLOSE[@]}" --fleet "$FLEET" "$LEG" 2>"$errf"; rc=$?
+cat "$errf" >&2
+if [ "$rc" -eq 5 ] && grep -Fq 'refusing - 0 live session(s)' "$errf"; then
+    # close-wrapped-leg proved the lock free and the tail WRAPPED, then found no session:
+    # the window is already gone (a re-run). It stopped before its own manifest removal,
+    # so retire the entry here, by label as well as path (the manifest keeps the as-typed doc).
+    rm -f "$errf"
+    echo "wrap-merged: no live session for $LEG - window already closed"
+    bash "$HERE/fleet-manifest.sh" remove "$FLEET" "$LEG" "$label" >/dev/null \
+        || fail close-wrapped-leg "window already closed but fleet-manifest.sh remove failed - run: fleet-manifest.sh remove $FLEET $label" 1
 else
-    fail close-wrapped-leg "$LEG is not in the fleet manifest and its last marker is not WRAPPED - not proven closed" 4
+    rm -f "$errf"
+    [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
 fi
 
 # 3. pull
 "$GIT" -C "$PRIMARY" pull --ff-only || fail pull "git -C $PRIMARY pull --ff-only" 5
 
 # 4. log
-base="${LEG##*/}"
-ticket=""; label=""
-[[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]] && ticket="${BASH_REMATCH[1]}"
-[[ $base =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
-[ -n "$label" ] || label="${base%.md}"
 if grep -Fq "MERGED #$PR → $sha8" "$DOC"; then
     echo "wrap-merged: MERGED #$PR → $sha8 already logged"
 else

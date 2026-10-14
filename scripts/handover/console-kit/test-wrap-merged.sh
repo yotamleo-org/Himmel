@@ -13,13 +13,15 @@
 #   3. --pr overrides the doc's PR
 #   4. PR not MERGED                                       -> rc 3, nothing else ran
 #   5. close refusal (rc 4) propagates, names the step; no pull, no bullet
-#   6. re-run after success: no duplicate bullet, close not run again, rc 0
+#   6. re-run (close reports 0 sessions): close asked again, entry retired, no duplicate bullet, rc 0
 #   7. pull failure                                        -> rc 5, no bullet
 #   8. no PR in the doc and no --pr                        -> rc 2
-#   9. unreadable manifest                                 -> rc 1, no close, no bullet
+#   9. manifest failure (inside close, or retiring an entry) -> rc 1, no pull, no bullet
 #  10. relative / symlinked-dir leg path resolves to the manifest's absolute form
-#  11. leg not in the manifest and not WRAPPED             -> rc 4, no pull, no bullet
+#  11. WRAPPED, absent from the manifest, window alive     -> close still asked; its
+#      refusal (rc 6, or 2 sessions rc 5) propagates, no pull, no bullet
 #  12. checkout path with a space: default close/board commands still run
+#  13. board failure -> rc 7;  14. append failure -> rc 6, board not run
 #
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).
 set -uo pipefail
@@ -52,6 +54,7 @@ EOF
 cat > "$W/bin/close" <<'EOF'
 #!/usr/bin/env bash
 echo "close $*" >> "$WM_CALLS"
+[ -z "${WM_CLOSE_ERR:-}" ] || echo "$WM_CLOSE_ERR" >&2
 exit "${WM_CLOSE_RC:-0}"
 EOF
 cat > "$W/bin/git" <<'EOF'
@@ -62,6 +65,7 @@ EOF
 cat > "$W/bin/board" <<'EOF'
 #!/usr/bin/env bash
 echo "board $*" >> "$WM_CALLS"
+exit "${WM_BOARD_RC:-0}"
 EOF
 cat > "$W/bin/jira" <<'EOF'
 #!/usr/bin/env bash
@@ -84,8 +88,9 @@ fixture() {
     printf '# console\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE console\n' > "$CONSOLE"
     printf '# leg\nRETASK token x\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$LEG"
     bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$LEG" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
-    export WM_PR_STATE=MERGED WM_CLOSE_RC=0 WM_PULL_RC=0
+    export WM_PR_STATE=MERGED WM_CLOSE_RC=0 WM_PULL_RC=0 WM_BOARD_RC=0 WM_CLOSE_ERR=""
 }
+NO_SESSION='close-wrapped-leg: refusing - 0 live session(s) matched leg names [x] (need exactly 1)'
 run() { rc=0; out="$(bash "$SCRIPT" "$@" 2>&1)" || rc=$?; calls="$(cat "$WM_CALLS")"; }
 
 # --- 1. usage -------------------------------------------------------------
@@ -137,13 +142,13 @@ check "5: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 # --- 6. re-run is idempotent ---------------------------------------------
 fixture
 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-# the real close removes the leg from the manifest; the stub does not
-bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
 : > "$WM_CALLS"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+# second run: the window is gone, so close reports 0 sessions (the stub left the entry in the manifest)
+WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "6: re-run rc 0" "$rc" 0
 check "6: exactly one MERGED bullet" "$(grep -c 'MERGED #777' "$CONSOLE")" 1
-lacks "6: close not run again" "$calls" "close "
+contains "6: close asked again, never skipped" "$calls" "close --fleet $MANIFEST $LEG"
+check "6: the stale manifest entry is retired" "$(bash "$HERE/fleet-manifest.sh" list "$MANIFEST")" ""
 
 # --- 7. pull failure ------------------------------------------------------
 fixture
@@ -152,13 +157,20 @@ check "7: rc 5" "$rc" 5
 contains "7: names the step" "$out" "pull"
 check "7: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 
-# --- 9. unreadable manifest is a failure, not an absent leg ---------------
+# --- 9. a manifest failure inside close is a failure ----------------------
+fixture
+WM_CLOSE_RC=1 WM_CLOSE_ERR='close-wrapped-leg: session closed but fleet manifest update failed' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "9: rc 1" "$rc" 1
+contains "9: names the step" "$out" "close-wrapped-leg"
+lacks "9: no pull" "$calls" "pull"
+check "9: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+# 0 sessions but the manifest entry cannot be retired: rc 1, no pull, no bullet
 fixture
 printf 'not json' > "$MANIFEST"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-check "9: rc 1" "$rc" 1
-contains "9: names the step" "$out" "manifest"
-lacks "9: close not called" "$calls" "close "
+WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "9: manifest remove failure rc 1" "$rc" 1
+contains "9: names the manual step" "$out" "fleet-manifest.sh remove"
+lacks "9: no pull" "$calls" "pull"
 check "9: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 
 # --- 8. no PR anywhere ----------------------------------------------------
@@ -181,17 +193,22 @@ run --doc "$CONSOLE" --fleet "$MANIFEST" "$W/dirlink/${LEG##*/}"
 contains "10: symlinked dir resolves, close ran" "$calls" "close --fleet $MANIFEST $LEG"
 rm -f "$W/dirlink"
 
-# --- 11. not in the manifest and not WRAPPED is a refusal, not a skip ------
+# --- 11. WRAPPED but absent from the manifest with the window alive ---------
+# (a symlinked root, a // path or a leg added without --fleet): the manifest is
+# no proof, so close still runs, and its refusal stops the run.
 fixture
-printf '# leg\n\n## Results\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n' "$HEAD_OID" > "$LEG"
 bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-check "11: rc 4" "$rc" 4
+WM_CLOSE_RC=6 WM_CLOSE_ERR='close-wrapped-leg: refusing - subtree alive' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "11: rc 6 propagates" "$rc" 6
+contains "11: close was asked" "$calls" "close --fleet $MANIFEST $LEG"
 lacks "11: no pull" "$calls" "pull"
 check "11: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
-printf -- '- 10:40 WRAPPED_PENDING not yet\n' >> "$LEG"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-check "11: WRAPPED_PENDING is not WRAPPED -> rc 4" "$rc" 4
+lacks "11: never says window closed" "$out" "window already closed"
+# more than one session matched: also a refusal, not an already-closed
+WM_CLOSE_RC=5 WM_CLOSE_ERR='close-wrapped-leg: refusing - 2 live session(s) matched' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "11: 2 sessions rc 5" "$rc" 5
+lacks "11: 2 sessions: no pull" "$calls" "pull"
+check "11: 2 sessions: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 
 # --- 12. a checkout path with a space keeps the default commands intact ----
 fixture
@@ -206,5 +223,21 @@ calls="$(cat "$WM_CALLS")"
 check "12: space-path default commands rc 0" "$rc" 0
 contains "12: default close ran" "$calls" "close --fleet $MANIFEST $LEG"
 contains "12: default board ran" "$calls" "board --doc $CONSOLE --changed"
+
+# --- 13. board failure -> rc 7, the bullet is already written ---------------
+fixture
+WM_BOARD_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "13: rc 7" "$rc" 7
+contains "13: names the step" "$out" "board"
+contains "13: bullet was written first" "$(tail -n 1 "$CONSOLE")" "MERGED #777"
+
+# --- 14. append failure -> rc 6, board not run ------------------------------
+fixture
+chmod 444 "$CONSOLE"
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+chmod 644 "$CONSOLE"
+check "14: rc 6" "$rc" 6
+contains "14: names the step" "$out" "append-results"
+lacks "14: board not run" "$calls" "board "
 
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }
