@@ -299,7 +299,8 @@ Granting it is an operator call. Defense in depth around it:
   only, on `luna-personal`, `luna-clippings` and `himmel-code`, via explicit
   rows (HIMMEL-5673, operator ruling 2026-10-14; Jina legal 10.4: no training
   on customer request data). Every other purpose and corpus stays
-  default-deny, and `salus × jina` is refused by the hard salus wildcard (the
+  denied (default-deny, plus an explicit `himmel-code × jina × *` deny ahead
+  of the himmel-code wildcard allow), and `salus × jina` is refused by the hard salus wildcard (the
   test pins that it resolves through that row). This only permits: the live qmd
   use stays off until the fork backend is installed. `jina` is distinct from
   `jina-reader` (US, keyless URL scrape).

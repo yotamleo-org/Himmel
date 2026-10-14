@@ -131,12 +131,17 @@
     {
       "corpus": "himmel-code", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of himmel code and docs. Explicit row so the cell is legible; the himmel-code wildcard below would allow it anyway. Jina legal 10.4: no training on customer request data or uploaded content"
+      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of himmel code and docs. Explicit row, ahead of the jina deny below. Jina legal 10.4: no training on customer request data or uploaded content"
     },
     {
       "corpus": "himmel-code", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
       "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for rerank of himmel code and docs. Explicit row; same ruling as the embedding cell"
+    },
+    {
+      "corpus": "himmel-code", "provider": "jina", "purpose": "*",
+      "verdict": "deny",
+      "why": "HIMMEL-5673: the ruling covers embedding and rerank only. Placed after the two jina allows and ahead of the himmel-code wildcard allow below, so that wildcard cannot open inference, extraction or any other purpose on Jina. Not hard: a future operator decision may widen it"
     },
     {
       "corpus": "luna-personal", "provider": "jina", "purpose": "embedding",
