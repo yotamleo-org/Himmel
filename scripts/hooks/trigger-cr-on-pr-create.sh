@@ -160,7 +160,7 @@ strip_quoted_spans() {
     local i=0 n=${#1}
     case "$s" in
         *'#'* | *'<<'* | *'$'"'"*) printf '%s' "$s"; return ;;
-        *'eval '* | *' -c '* | *' -'[a-zA-Z]'c '*) printf '%s' "$s"; return ;;
+        *'eval '* | *' -c '* | *' -'[a-zA-Z]*'c '*) printf '%s' "$s"; return ;;
     esac
     while [ "$i" -lt "$n" ]; do
         c="${s:$i:1}"

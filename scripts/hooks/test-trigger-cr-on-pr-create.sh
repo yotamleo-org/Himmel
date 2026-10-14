@@ -425,7 +425,7 @@ done
 # Nested-shell bodies run their quoted text as code, so a masked span there
 # would ungate a real invocation: `bash -c`, `eval` and wrappers around them.
 # shellcheck disable=SC2016  # literal quotes in the commands under test
-for q in "bash -c 'cd x && gh pr create -t t'" 'eval "true; gh pr create -t t"' 'timeout 60 bash -c "true && gh pr create -t t"' "sh -c '(gh pr create -t t)'"; do
+for q in "bash -c 'cd x && gh pr create -t t'" 'eval "true; gh pr create -t t"' 'timeout 60 bash -c "true && gh pr create -t t"' "sh -c '(gh pr create -t t)'" "bash -euc 'true; gh pr create -t t'" 'sh -ec "cd x && gh pr create -t t"'; do
     echo "TEST: nested-shell body ($q) -> POSTS"
     reset_state
     run_hook "$q" "https://github.com/acme/widget/pull/7"
