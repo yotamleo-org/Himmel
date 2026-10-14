@@ -20,13 +20,13 @@ function parse(rawFile, head, evidenceOut) {
   const cost = r && typeof r.total_cost_usd === 'number' && Number.isFinite(r.total_cost_usd) && r.total_cost_usd >= 0
     ? r.total_cost_usd.toFixed(6) : null;
   if (!r || r.type !== 'result') return out('ERROR', 'the result is not a terminal result object', { cost_usd: cost });
-  if (r.is_error !== false) return out('ERROR', `the call reported an error (${String(r.subtype ?? 'unknown')})`, { cost_usd: cost });
-  // rc=0 with a refused tool means the judge ruled on less than it asked to read
+  // a refused tool means the judge ruled on less than it asked to read, whatever else the result says
   const denials = Array.isArray(r.permission_denials) ? r.permission_denials : [];
   if (denials.length > 0) {
     const names = [...new Set(denials.map((d) => String(d?.tool_name ?? 'unknown')))].join(',');
-    return out('DENIED', `tool use was denied (${names}) although the call returned success`, { cost_usd: cost });
+    return out('DENIED', `tool use was denied (${names})`, { cost_usd: cost });
   }
+  if (r.is_error !== false) return out('ERROR', `the call reported an error (${String(r.subtype ?? 'unknown')})`, { cost_usd: cost });
   const text = typeof r.result === 'string' ? r.result.replace(/^\s*\n/, '') : '';
   const nl = text.indexOf('\n');
   const first = (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, '');
@@ -36,8 +36,9 @@ function parse(rawFile, head, evidenceOut) {
   if (m[2] !== head) return out('STALE', `the verdict names head ${m[2]}, not the requested head`, { cost_usd: cost, verdict: m[1], verdict_head: m[2] });
   const evidence = nl < 0 ? '' : text.slice(nl + 1).trim();
   if (!evidence) return out('MISSING', 'a verdict with no evidence behind it', { cost_usd: cost, verdict: m[1], verdict_head: m[2] });
-  const body = Buffer.byteLength(evidence) > EVIDENCE_MAX ? `${cut(evidence, EVIDENCE_MAX)}\n\n[evidence cut at ${EVIDENCE_MAX} bytes by the judge-call bridge]` : evidence;
-  writeFileSync(evidenceOut, `${body}\n`, { mode: 0o600 });
+  // a cut could drop the NO-GO class line or the findings behind the ruling, so an oversize record is refused whole
+  if (Buffer.byteLength(evidence) > EVIDENCE_MAX) return out('ERROR', `the evidence is over ${EVIDENCE_MAX} bytes; not recorded cut`, { cost_usd: cost, verdict: m[1], verdict_head: m[2] });
+  writeFileSync(evidenceOut, `${evidence}\n`, { mode: 0o600 });
   return out('VERDICT', 'verdict parsed', { cost_usd: cost, verdict: m[1], verdict_head: m[2] });
 }
 

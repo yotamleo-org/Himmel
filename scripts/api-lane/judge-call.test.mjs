@@ -20,7 +20,7 @@ const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
 // each case gets its own PR number so the real judge-dir under /tmp/claude-<uid> never collides
-let nextPr = 987000 + (process.pid % 900) * 10;
+let nextPr = 100000000 + process.pid * 10;
 
 const STUB = `#!/bin/bash
 echo called >> "$STUB_LOG"
@@ -138,6 +138,22 @@ test('a tool denial is DENIED even though the call returned rc=0 with a well-for
   assert.equal(r.art.verdict_path, null);
 });
 
+test('a denial is DENIED even when the same result is an error', () => {
+  const f = fixture();
+  const r = f.run(f.args, { STUB_OUT: result('', { is_error: true, subtype: 'error_during_execution', permission_denials: [{ tool_name: 'Bash' }] }) });
+  assert.equal(r.art.status, 'DENIED');
+  assert.equal(r.art.cost_usd, '0.031415');
+});
+
+test('evidence over the cap is never recorded cut: ERROR, nothing written to the verdict dir', () => {
+  const f = fixture();
+  const r = f.run(f.args, { STUB_OUT: result(go(HEAD, 'x'.repeat(40000))) });
+  assert.equal(r.status, 3);
+  assert.equal(r.art.status, 'ERROR');
+  assert.match(r.art.reason, /evidence/);
+  assert.equal(r.art.verdict_path, null);
+});
+
 test('an error result is ERROR, and the cost still reaches the artifact', () => {
   const f = fixture();
   const r = f.run(f.args, { STUB_OUT: result('', { is_error: true, subtype: 'error_max_budget_usd' }) });
@@ -192,9 +208,9 @@ test('a timed-out call is TIMEOUT and its reservation stays held in the ledger',
   assert.notEqual(jobs[0].status, 'settled');
 });
 
-test('the parent artifact is bounded however long the judge writes', () => {
+test('the parent artifact excerpt is bounded however long the recorded evidence is', () => {
   const f = fixture();
-  const r = f.run(f.args, { STUB_OUT: result(go(HEAD, 'x'.repeat(100000))) });
+  const r = f.run(f.args, { STUB_OUT: result(go(HEAD, 'x'.repeat(30000))) });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.art.excerpt_truncated, true);
   assert.ok(statSync(r.artPath).size < 12000, `artifact is ${statSync(r.artPath).size} bytes`);
