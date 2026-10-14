@@ -422,6 +422,18 @@ EOF"; do
         fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
     fi
 done
+# A quoted option or a tab separator must not hide the nested-shell signal.
+# shellcheck disable=SC2016  # literal quotes in the commands under test
+for q in "bash \"-c\" 'true; gh pr create -t t'" "bash	-c 'true; gh pr create -t t'" "eval	\"true; gh pr create -t t\""; do
+    echo "TEST: disguised nested-shell body ($q) -> POSTS"
+    reset_state
+    run_hook "$q" "https://github.com/acme/widget/pull/7"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
+        pass "posted for a disguised nested-shell body: $q"
+    else
+        fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
+    fi
+done
 # Nested-shell bodies run their quoted text as code, so a masked span there
 # would ungate a real invocation: `bash -c`, `eval` and wrappers around them.
 # shellcheck disable=SC2016  # literal quotes in the commands under test
