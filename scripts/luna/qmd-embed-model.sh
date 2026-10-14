@@ -215,7 +215,9 @@ daemon_running() {
 # are inlined in marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh, which
 # cannot source this repo. A lock whose pid is dead is stale; one with no pid
 # file is stale once a minute old (the holder died between mkdir and the write).
-# ponytail: pid liveness is POSIX kill -0 only (Git Bash pids do not map), and the daemon start takes this same lock but a hand-typed `qmd mcp --http --daemon` does not, so the second daemon check just before the commit is the only guard against it; upgrade in HIMMEL-4314 follow-ups if either bites.
+# The qmd fork's own `mcp --http` start (src/cli/swap-lock.ts, HIMMEL-4324) honours
+# the same lock, so a hand-typed `qmd mcp --http --daemon` is refused too.
+# ponytail: pid liveness is POSIX kill -0 only (Git Bash pids do not map), and a qmd binary older than the HIMMEL-4324 fork pin does not check the lock, so the second daemon check just before the commit and the do-not-start-by-hand line are the guard against it; upgrade in HIMMEL-4314 follow-ups if either bites.
 swap_lock_dir() { printf '%s/qmd/embed-swap.lock\n' "${XDG_CACHE_HOME:-$HOME/.cache}"; }
 
 swap_lock_stale() {
@@ -266,6 +268,9 @@ swap_lock_acquire() {
     printf '%s\n' swap >"$d/role"
     printf '%s\n' "$$" >"$d/pid"
     trap swap_lock_release EXIT
+    # a hand-typed `qmd mcp --http --daemon` is refused by the fork's own start
+    # path, but an older qmd binary has no such check; ask the operator too
+    say "swap in progress: do not start qmd by hand until the swap finishes"
 }
 
 # --- subcommands -------------------------------------------------------------

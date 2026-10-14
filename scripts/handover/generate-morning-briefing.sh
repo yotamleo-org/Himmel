@@ -319,6 +319,13 @@ extract_block() {
     printf '%s\n' "$1" | sed -n "/<<<$2_BEGIN>>>/,/<<<$2_END>>>/p" | sed '1d;$d'
 }
 
+# HIMMEL-603: under Codex a claude fork is a nested harness; keep the heuristic
+# report. CODEX_THREAD_ID is set only inside a real codex runtime.
+if [ "$LLM" -eq 1 ] && [ -n "${CODEX_THREAD_ID:-}" ]; then
+    echo "NOTE: skipping --llm under Codex (no nested claude fork); using deterministic heuristics" >&2
+    LLM=0
+fi
+
 if [ "$LLM" -eq 1 ]; then
     llm_prompt="You are enriching a daily engineering Morning Report. Below is the
 deterministic report body. Produce ONLY three blocks, each wrapped EXACTLY in

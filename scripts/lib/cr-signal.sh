@@ -179,6 +179,14 @@ _CRS_SKIP_RE="${CR_SKIP_DESC_RE:-skipped|reviews? (are|is) disabled|review disab
 # MUST carry every default alternative it still wants honoured — an example that
 # lists only the renamed wording NARROWS the allow-list and regresses the very
 # test-34d `cr-nearmiss` case described above to RED.
+# NO DESCRIPTION IS NOT AN AFFIRMATIVE (HIMMEL-1356): a state=success whose
+# description is missing, null or empty is tested against the same allow-list as
+# any wording, and the default list does not match "" — so it reads as skipped.
+# (HIMMEL-1354 first scoped the list to a non-empty description; that left this
+# shape certified green.) The valve for the day CodeRabbit really emits an
+# empty description on a clean review is the same override, adding an empty
+# alternative alongside every default one still wanted:
+#   CR_OK_DESC_RE='^(|review completed|no review changes requested)$'
 # Both knobs stay live: CR_SKIP_DESC_RE still force-classifies a wording as a
 # skip even if it would otherwise pass the allow-list.
 #
@@ -293,18 +301,19 @@ cr_signal_probe() {
               # affirmatively matches the allow-list. The deny-list is kept as a
               # force-skip override (CR_SKIP_DESC_RE), so a wording can still be
               # condemned explicitly even if it would pass the allow-list.
-              # An ABSENT/empty description keeps the pre-HIMMEL-1354 reading
-              # (success). Scoping the allow-list to a NON-EMPTY description is
-              # what keeps the blast radius at the real hole: every decline
-              # wording CodeRabbit has ever posted is non-empty and says so, so
-              # requiring the allow-list only when it actually said something
-              # closes the incident class without turning "no description" into
-              # a repo-wide RED. Verified: the unscoped form failed 38 unrelated
-              # cases in this suite, whose payloads carry no description.
+              # HIMMEL-1356: a MISSING / null / EMPTY description is held to the
+              # same allow-list as any other wording, so it reads as skipped
+              # (fail closed). The HIMMEL-1354 form scoped the allow-list to a
+              # non-empty description and left this shape green. CodeRabbit has
+              # never been observed to emit it (24 sampled real payloads all
+              # carried a description), so the fail-closed reading costs
+              # nothing today; if the App ever drops the field, widen
+              # CR_OK_DESC_RE as the release valve (recipe in the file header).
+              # The test fixtures that model a real green carry the observed
+              # wording "Review completed" for the same reason.
               ( if (.state == "success")
                    and ( (((.description // "") | test($skip; "i")))
-                         or ( ((.description // "") != "")
-                              and ((((.description // "") | test($ok; "i"))) | not) ) )
+                         or ((((.description // "") | test($ok; "i"))) | not) )
                 then "skipped" else .state end ) as $s
               | "\($s) \(.created_at // "")"
             end' 2>/dev/null || true)

@@ -40,7 +40,7 @@ import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, 
 import { checkRoundGuard } from "./round-guard";
 // HIMMEL-1778: huge-diff lane guard — shared module (one predicate, both
 // lanes; never copy-pasted — see huge-diff-guard.ts for the incident).
-import { checkHugeDiff } from "./huge-diff-guard";
+import { checkHugeDiff, gitProbe, resolveDefaultBranch } from "./huge-diff-guard";
 // HIMMEL-1040 plugin profiles: same per-dispatch lean-profile injection as the
 // GLM lane. spawn-claudex dispatches through scripts/claude-codex, which already
 // screens + forwards --settings — so the resolved payload just rides its argv.
@@ -64,7 +64,7 @@ export function claudexSessionRoot(): string {
 // in v1 — it just skips and notes it in the final context.md summary via the
 // generic HARD RULES line below. A followup ticket ports the channel if the
 // codex lane needs the same graceful-degrade path GLM has.
-export function composeClaudexWorkerPrompt(task: string, sessionDir: string, branch: string, opts?: { shared?: boolean; model?: string }): string {
+export function composeClaudexWorkerPrompt(task: string, sessionDir: string, branch: string, opts?: { shared?: boolean; model?: string; base?: string }): string {
   const outbox = join(sessionDir, "outbox.jsonl");
   const context = join(sessionDir, "context.md");
   const rawModel = opts?.model ?? "gpt-5.6-sol";
@@ -87,8 +87,14 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   // reset/rebase/amend/force stay banned wholesale. Single-writer is
   // unaffected: the merge runs under the lock during runBody, exactly like
   // any other worker git op.
+  // HIMMEL-1357: the merge target is the PR base (resolved by the caller),
+  // not a literal `main` — a master- or release-based PR would otherwise be
+  // told to merge the wrong branch. Same slug-shape screen as the model: a
+  // base outside it (or none) degrades to `main`, so nothing newline-bearing
+  // lands in the prompt.
+  const base = opts?.base && /^[A-Za-z0-9._\/-]+$/.test(opts.base) ? opts.base : "main";
   const branchLine = opts?.shared
-    ? `Work ONLY inside your current directory (a dedicated git worktree). The branch ${branch} is a SHARED PR branch with EXISTING history, already checked out — do NOT create a new branch, do NOT reset/rebase/amend/force-anything. To make a change, ADD new commits on top only — never rewrite an existing commit to alter what it did. To bring this branch up to date with its PR base, run \`git merge main\` and resolve any conflicts — a merge commit ADDS to history without rewriting any existing SHA, so the session that publishes your branch needs only an ordinary fast-forward push; a rebase would rewrite the branch's published SHAs and force a force-push, and both stay banned (HIMMEL-1342). A lock serializes writers, so no other worker touches this branch while you run.`
+    ? `Work ONLY inside your current directory (a dedicated git worktree). The branch ${branch} is a SHARED PR branch with EXISTING history, already checked out — do NOT create a new branch, do NOT reset/rebase/amend/force-anything. To make a change, ADD new commits on top only — never rewrite an existing commit to alter what it did. To bring this branch up to date with its PR base, run \`git merge ${base}\` and resolve any conflicts — a merge commit ADDS to history without rewriting any existing SHA, so the session that publishes your branch needs only an ordinary fast-forward push; a rebase would rewrite the branch's published SHAs and force a force-push, and both stay banned (HIMMEL-1342). A lock serializes writers, so no other worker touches this branch while you run.`
     : `Work ONLY inside your current directory (a dedicated git worktree). Commit your work on the branch ${branch} which is already checked out.`;
   return [
     `You are an unattended claudex-lane worker session (himmel offload, codex weekly bank, HIMMEL-654/979/1003) — do the scoped chunk below and stop, do not expand scope.`,
@@ -1337,7 +1343,21 @@ async function main(): Promise<void> {
   // doubles the codex-bank spend for this dispatch.
   const CLAUDEX_WINDOW_TOKENS = 272_000;
   const sessionDir = join(claudexSessionRoot(), `claudex-${slug}-${Date.now()}`);
-  const briefText = composeClaudexWorkerPrompt(task, sessionDir, branch, { shared: sharedMode, model });
+  // HIMMEL-1357: resolve the repo's default branch (the shared PR's base) for
+  // the worker's merge instruction. Prefer the open PR's actual base (a PR may
+  // target release/x in a main-default repo), then the repo default branch;
+  // any probe failure falls back to main.
+  let baseBranch = "main";
+  if (sharedMode) {
+    let prBase = "";
+    try {
+      const pv = Bun.spawnSync(["gh", "pr", "view", branch, "--json", "baseRefName", "--jq", ".baseRefName"], { cwd: absCwd, stdout: "pipe", stderr: "pipe", timeout: 15_000 });
+      if (pv.exitCode === 0) prBase = pv.stdout.toString().trim();
+    } catch { /* no gh / no PR: fall through to the default branch */ }
+    if (prBase) baseBranch = prBase;
+    else { try { baseBranch = resolveDefaultBranch(gitProbe, absCwd); } catch { /* keep main */ } }
+  }
+  const briefText = composeClaudexWorkerPrompt(task, sessionDir, branch, { shared: sharedMode, model, base: baseBranch });
   const overheadChars = measureOverheadChars(absCwd, homedir());
   const pre = preflightWindowCheck({ briefChars: briefText.length, overheadChars, windowTokens: CLAUDEX_WINDOW_TOKENS });
   if (!pre.ok) { console.error(pre.reason); process.exit(2); }

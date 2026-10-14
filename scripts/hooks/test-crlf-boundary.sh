@@ -105,6 +105,7 @@ D_RESET="gi""t rese""t --hard"
 D_STASH="gi""t stas""h"
 D_ENV="ca""t .e""nv"
 D_DOCKER="dock""er run --privileged img sh"
+D_INFRA="terra""form destr""oy"
 D_SCHED="schta""sks /create /tn X /tr \"cla""ude load h\" /sc ONCE /st 04:30 /f"
 D_CODEX="cod""ex exec --sandbox workspace-write do-the-thing"
 D_WSL="ws""l -d Ubuntu -- bash -lc \"cod""ex exec -s workspace-write do-it\""
@@ -129,6 +130,8 @@ check block-read-secrets          Bash 2 "$D_ENV"    "deny dotenv read"
 check block-read-secrets          Bash 0 "$A_OK"     "allow git status"
 check block-docker-privesc        Bash 2 "$D_DOCKER" "deny privileged container"
 check block-docker-privesc        Bash 0 "dock""er ps" "allow a docker read"
+check block-infra-destroy         Bash 2 "$D_INFRA"  "deny an infra destroy verb"
+check block-infra-destroy         Bash 0 "terra""form plan" "allow an infra read"
 check block-rogue-claude-schedule Bash 2 "$D_SCHED"  "deny rogue scheduled agent"
 check block-rogue-claude-schedule Bash 0 "$A_OK"     "allow git status"
 check block-rogue-codex-exec      Bash 2 "$D_CODEX"  "deny raw codex exec"
@@ -168,6 +171,7 @@ for _pair in \
     "block-git-stash|$D_STASH" \
     "block-read-secrets|$D_ENV" \
     "block-docker-privesc|$D_DOCKER" \
+    "block-infra-destroy|$D_INFRA" \
     "block-rogue-claude-schedule|$D_SCHED" \
     "block-rogue-codex-exec|$D_CODEX" \
     "block-rogue-codex-wsl|$D_WSL" \
@@ -570,7 +574,7 @@ case "$1 $2" in
     esac ;;
   "api repos/o/r/commits/abc123/check-runs"*) echo '{"check_runs":[]}' ;;
   "api repos/o/r/commits/abc123/statuses"*)
-    echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+    echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
   *) echo '{}' ;;
 esac
 STUB
