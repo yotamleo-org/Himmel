@@ -256,11 +256,16 @@ check "$?" "0" "T20 rc (site committed)"
 
 # 21. HIMMEL-2601: the /pr-check runbook carries no stale "operator also needs a
 # primary-anchored allow rule" note; the spelling rule is HIMMEL-4040 (preamble).
+stale_re='Operator note|primary-checkout>/scripts/cr/write-verdicts'
+# Positive control: the matcher must fire on the stale wording, else the scan below is vacuous.
+printf '   #   Operator note: the operator also needs <primary-checkout>/scripts/cr/write-verdicts.sh\n' | grep -Eq "$stale_re" \
+  || { echo "FAIL: T21 positive control — stale-note matcher did not fire"; fail=1; }
 for ref in 31-step3-adjudicate 40-step4-crosscheck; do
   f="$DIR/pr-check-ref/$ref.md"
   [ -s "$f" ] || { echo "FAIL: T21 $ref is missing or empty, nothing scanned"; fail=1; continue; }
-  ! grep -Eq 'Operator note|primary-checkout>/scripts/cr/write-verdicts' "$f" \
-    || { echo "FAIL: T21 $ref still carries the stale operator note"; fail=1; }
+  grep -Eq "$stale_re" "$f"; grc=$?
+  # rc 1 = scanned, no match; rc 0 = stale note present; rc 2 = grep error (never a pass)
+  [ "$grc" -eq 1 ] || { echo "FAIL: T21 $ref stale-note scan rc=$grc (0 = stale note present, 2 = grep error)"; fail=1; }
 done
 
 [ "$fail" -eq 0 ] && echo "PASS test-write-verdicts" || exit 1
