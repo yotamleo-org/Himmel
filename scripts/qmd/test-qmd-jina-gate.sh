@@ -33,7 +33,7 @@ cfg() {
   } > "$f"
 }
 
-run_gate() { node "$gate" "$1" 2>"$work/err"; }
+run_gate() { env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL node "$gate" "$1" 2>"$work/err"; }
 
 # (1) salus + himmel in ONE index with a Jina embed model: refused, salus named.
 cfg "$work/a.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel luna salus
@@ -104,6 +104,11 @@ printf 'collections: {salus: {path: /x}}\nmodels:\n  embed: openai:jina-embeddin
 run_gate "$work/l.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10c) flow-style collections: expected rc 3, got $rc"
 
+# (10d) a YAML-escaped openai URI is not recognised as local, so salus is refused.
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/m.yml"
+run_gate "$work/m.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10d) escaped openai URI with salus: expected rc 3, got $rc"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
@@ -173,4 +178,4 @@ launch index; rc=$?
 [ "$rc" -eq 1 ] || fail "(17) launcher on flow-style salus+Jina: expected rc 1, got $rc"
 [ ! -e "$work/started" ] || fail "(17) launcher STARTED qmd on a flow-style salus+Jina config"
 
-echo "PASS: test-qmd-jina-gate.sh (20 checks)"
+echo "PASS: test-qmd-jina-gate.sh (21 checks)"

@@ -78,11 +78,17 @@ function providerOf() {
   return host;
 }
 
+// A role is local only when its value is plainly a local GGUF (hf: URI, a path,
+// or *.gguf) with no YAML escape; anything else, an escaped "openai\x3a..."
+// included, is treated as remote and checked.
+const isLocalModel = (u) =>
+  u === "" || (!u.includes("\\") && (/^hf:/.test(u) || /^(\/|~\/|\.\/)/.test(u) || /\.gguf$/i.test(u)));
+
 const refusals = [];
 let remoteRoles = 0;
 for (const [role, purpose] of Object.entries(PURPOSE)) {
   const uri = process.env[ENV_ROLE[role]] || models[role] || "";
-  if (!uri.startsWith("openai:")) continue; // hf: / path = local GGUF
+  if (isLocalModel(uri)) continue;
   remoteRoles++;
   const provider = providerOf();
   if (provider === null) continue;
@@ -107,7 +113,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
 // did not attribute to a role, an unreadable collections/models block, or a
 // remote role with no collection list to check.
 const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
-const fileRoleRemote = Object.keys(PURPOSE).filter((r) => (models[r] ?? "").startsWith("openai:")).length;
+const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
 if (remoteRoles > 0) {
   for (const u of unsupported) refusals.push(`unsupported config layout: ${u}`);

@@ -293,7 +293,7 @@ esac
 qmd_cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$QMD_INDEX_NAME.yml"
 remote_models=0
 case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote_models=1 ;; esac
-if [ "$remote_models" -eq 0 ] && grep -Eqs '^[^#]*openai:' "$qmd_cfg"; then
+if [ "$remote_models" -eq 0 ] && grep -Eqs '^[^#]*(openai:|\\)' "$qmd_cfg"; then
   remote_models=1
 fi
 if [ "$remote_models" -eq 1 ]; then
