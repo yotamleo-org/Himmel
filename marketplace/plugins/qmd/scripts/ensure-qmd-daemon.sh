@@ -277,6 +277,38 @@ if [ -n "$body" ]; then
   exit 1
 fi
 
+# ---- Remote-model egress gate -----------------------------------------------
+# qmd's models are per INDEX, so a denied corpus (salus) must live in its own
+# index (QMD_INDEX_NAME=salus -> qmd --index salus, <name>.yml) on local models.
+# When this index's config (or the QMD_*_MODEL env) names a remote `openai:`
+# model, scripts/qmd/qmd-jina-gate.mjs must allow every collection in it via the
+# egress matrix; a missing gate script or node fails closed. A local-only config
+# never needs the gate, so the plugin still works outside a himmel checkout.
+QMD_INDEX_NAME="${QMD_INDEX_NAME:-index}"
+case "$QMD_INDEX_NAME" in
+  *[!A-Za-z0-9._-]*|'')
+    echo "ensure-qmd-daemon: ERROR - QMD_INDEX_NAME must match [A-Za-z0-9._-]+, got '$QMD_INDEX_NAME'." >&2
+    exit 1 ;;
+esac
+qmd_cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$QMD_INDEX_NAME.yml"
+remote_models=0
+case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote_models=1 ;; esac
+if [ "$remote_models" -eq 0 ] && grep -Eqs '^[[:space:]]+(embed|rerank|generate):[[:space:]]*["'"'"']?openai:' "$qmd_cfg"; then
+  remote_models=1
+fi
+if [ "$remote_models" -eq 1 ]; then
+  qmd_gate="${QMD_JINA_GATE:-$(dirname -- "${BASH_SOURCE[0]}")/../../../../scripts/qmd/qmd-jina-gate.mjs}"
+  if [ ! -f "$qmd_gate" ] || ! command -v node >/dev/null 2>&1; then
+    echo "ensure-qmd-daemon: ERROR - $qmd_cfg names a remote model but the egress gate ($qmd_gate) or node is missing - NOT starting qmd." >&2
+    echo "  Run from a himmel checkout (scripts/qmd/qmd-jina-gate.mjs) or switch the models back to local hf: URIs." >&2
+    exit 1
+  fi
+  if ! node "$qmd_gate" "$qmd_cfg" >&2; then
+    echo "ensure-qmd-daemon: ERROR - the egress matrix refuses this index's remote model - NOT starting qmd." >&2
+    exit 1
+  fi
+fi
+
 # ---- Embed-model swap in progress: do NOT start (HIMMEL-4314) --------------
 # scripts/luna/qmd-embed-model.sh swap holds this mkdir lock (holder pid inside)
 # from its liveness check to its commit or rollback. A daemon started in that
@@ -405,10 +437,13 @@ done
 # caller's cwd.
 cd "$HOME" 2>/dev/null || cd / || exit 1
 start_rc=0
+# A named index starts its own daemon on the port in QMD_MCP_URL.
+idx_flag=""
+[ "$QMD_INDEX_NAME" = index ] || idx_flag="$QMD_INDEX_NAME"
 if command -v timeout >/dev/null 2>&1; then
-  start_out="$(timeout -k 5 "$QMD_START_TIMEOUT" "$QMD_BIN" ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} mcp --http --daemon 2>&1)" || start_rc=$?
+  start_out="$(timeout -k 5 "$QMD_START_TIMEOUT" "$QMD_BIN" ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} ${idx_flag:+--index "$idx_flag" --port "$port_num"} mcp --http --daemon 2>&1)" || start_rc=$?
 else
-  start_out="$("$QMD_BIN" ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} mcp --http --daemon 2>&1)" || start_rc=$?
+  start_out="$("$QMD_BIN" ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} ${idx_flag:+--index "$idx_flag" --port "$port_num"} mcp --http --daemon 2>&1)" || start_rc=$?
 fi
 if [ "$start_rc" -eq 124 ] || [ "$start_rc" -eq 137 ]; then
   echo "ensure-qmd-daemon: ERROR - 'qmd mcp --http --daemon' timed out after ${QMD_START_TIMEOUT}s (killed)." >&2

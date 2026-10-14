@@ -22,7 +22,11 @@
     "himmel-code": "himmel checkout(s), worktrees, and the public mirror (code + docs; public-propagated)",
     "voice-audio": "CAPTURED AUDIO: microphone recordings and any audio file derived from them (reference clips, TTS output). UNLIKE every other corpus this one is NOT path-keyed — speech has no file location, so it cannot be scoped by directory and the path-keyed salus deny cannot reach it (HIMMEL-1522). SCOPE NOTE: an utterance the operator DELIBERATELY addressed to the assistant (wake-word gated, or an explicit push-to-talk take) becomes an ordinary prompt once transcribed, governed by the same rules as typed input — it is not held here. The hazard this corpus exists for is AMBIENT audio: sound captured without the speaker addressing the system, which no path-keyed rule can protect. An earlier draft held transcripts here too, which forbade the product itself — a rule that outlaws its own use case is one that gets ignored, so the boundary is drawn at capture instead. Residual risk (unclosed, ticketed): a wake-gated utterance can still contain PHI, and nothing classifies it before it is sent",
     "leg-failure-metadata": "DERIVED leg-failure metadata (HIMMEL-4670 P5): class keys from closed vocabularies, counts, leg labels, ticket keys, PR numbers, hook or suite basenames and the fixed routing-table text that scripts/eval/leg-digest/failure_router.py builds from the leg-failures ledger. Never transcript content: no command, path, message or prompt (the ledger schema refuses those keys and the router's body alphabet check refuses anything else). NOT path-keyed: it exists only as the router-built Jira summary and body",
-    "mcp-tool-catalog": "PUBLISHED MCP tool-catalog metadata (HIMMEL-4938): the tool names, descriptions and JSON schemas an MCP server returns for tools/list. Vendor-published text, identical for every caller; no ticket, vault, handover or corpus content is part of it. The request carries only the operator's own Atlassian credential for auth"
+    "mcp-tool-catalog": "PUBLISHED MCP tool-catalog metadata (HIMMEL-4938): the tool names, descriptions and JSON schemas an MCP server returns for tools/list. Vendor-published text, identical for every caller; no ticket, vault, handover or corpus content is part of it. The request carries only the operator's own Atlassian credential for auth",
+    "operator-repos": "the operator's own private project repositories indexed by qmd as markdown collections: station-ops, ggs-local, ggs-bridge, agent-command-chain, nvidia-steam-shader-cache (HIMMEL-5683). Docs and notes of operator projects; no PHI, no vault journals. Mapped from qmd collection names by scripts/qmd/qmd-collection-corpus.json",
+    "jira-mirror": "the local Jira mirror markdown (~/.himmel/state/jira-mirror/<project>): ticket titles, descriptions and comments of the himmel Jira project, indexed by qmd as collection jira-himmel (HIMMEL-5683)",
+    "roadmap-plan": "the roadmap-plan docs (~/.himmel/state/roadmap-plan/docs): himmel planning notes indexed by qmd as collection roadmap-plan (HIMMEL-5683)",
+    "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills (HIMMEL-5683)"
   },
   "providers": {
     "local-ollama": { "region": "local", "note": "zero egress; includes qmd local GGUF embeddings" },
@@ -162,6 +166,46 @@
       "corpus": "luna-clippings", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
       "why": "HIMMEL-5673 operator ruling 2026-10-14: rerank of Clippings/ candidates on Jina AI (EU); same ruling as the embedding cell. Other purposes stay default-deny"
+    },
+    {
+      "corpus": "operator-repos", "provider": "jina", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "operator-repos", "provider": "jina", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "jira-mirror", "provider": "jina", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "jira-mirror", "provider": "jina", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "jina", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "jina", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "skill-index", "provider": "jina", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "skill-index", "provider": "jina", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",

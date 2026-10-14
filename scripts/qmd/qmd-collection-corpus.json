@@ -1,0 +1,18 @@
+{
+  "jira": "HIMMEL-5683",
+  "doc": "docs/internals/egress-matrix.md",
+  "note": "qmd collection name -> egress-matrix corpora. A collection absent from this map is UNMAPPED and denied for every remote model (fail closed). A collection that spans two corpora lists both; every listed corpus must allow.",
+  "collections": {
+    "himmel": ["himmel-code"],
+    "luna": ["luna-personal", "luna-clippings"],
+    "salus": ["salus"],
+    "ggs-local": ["operator-repos"],
+    "ggs-bridge": ["operator-repos"],
+    "agent-command-chain": ["operator-repos"],
+    "station-ops": ["operator-repos"],
+    "nvidia-steam-shader-cache": ["operator-repos"],
+    "jira-himmel": ["jira-mirror"],
+    "roadmap-plan": ["roadmap-plan"],
+    "skills": ["skill-index"]
+  }
+}

@@ -333,6 +333,30 @@ for (const u of purposes) {
     `salus x jina x ${u} must deny via the HARD salus wildcard (HIMMEL-5673), got ${effective}`);
 }
 
+// 6d. jina for the remaining qmd collections (operator ruling
+//     2026-10-14: the whole qmd index moves to Jina EXCEPT salus). Each
+//     non-salus qmd corpus gets its OWN embedding and rerank allow rows;
+//     every other purpose stays deny; salus stays hard-denied under EVERY purpose.
+const qmdJinaCorpora = ["operator-repos", "jira-mirror", "roadmap-plan", "skill-index"];
+for (const c of qmdJinaCorpora) {
+  assert(m.corpora[c], `corpus ${c} must be declared (qmd collection mapping, HIMMEL-5683)`);
+  for (const u of ["embedding", "rerank"]) {
+    const { effective, rule } = evaluate(c, "jina", u);
+    assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "jina" && rule.purpose === u &&
+      rule.hard === undefined && /HIMMEL-5683/.test(rule.why),
+      `${c} x jina x ${u} must be allow via its OWN row naming HIMMEL-5683, got ${effective}`);
+  }
+  for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
+    assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (embedding and rerank only)`);
+}
+for (const u of purposes)
+  assert(evaluate("salus", "jina", u).effective === "deny" && evaluate("salus", "jina", u).rule?.hard === true,
+    `salus x jina x ${u} must stay HARD deny after the HIMMEL-5683 rows`);
+// The salus hard wildcard must stay ahead of every jina allow row.
+const firstSalusHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*" && r.hard === true);
+const firstJinaAllow = m.rules.findIndex(r => r.provider === "jina" && r.verdict === "allow");
+assert(firstSalusHard >= 0 && firstSalusHard < firstJinaAllow, "the salus hard wildcard must precede every jina allow row");
+
 // 7. OpenRouter (HIMMEL-1774): declared as its OWN provider — content transits
 //    the aggregator, a different trust boundary from the vendor cells, so the
 //    anthropic allowances do NOT carry over. Operator ruling pinned per cell:

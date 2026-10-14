@@ -298,12 +298,26 @@ Granting it is an operator call. Defense in depth around it:
 - `jina` (EU, Berlin; Elastic-owned) is allowed for `embedding` and `rerank`
   only, on `luna-personal`, `luna-clippings` and `himmel-code`, via explicit
   rows (HIMMEL-5673, operator ruling 2026-10-14; Jina legal 10.4: no training
-  on customer request data). Every other purpose and corpus stays
+  on customer request data), and, since HIMMEL-5683, on every other qmd corpus
+  except salus: `operator-repos` (ggs-local, ggs-bridge, agent-command-chain,
+  station-ops, nvidia-steam-shader-cache), `jira-mirror`, `roadmap-plan` and
+  `skill-index`. Every other purpose and corpus stays
   denied (default-deny, plus an explicit `himmel-code × jina × *` deny ahead
   of the himmel-code wildcard allow), and `salus × jina` is refused by the hard salus wildcard (the
   test pins that it resolves through that row). This only permits: the live qmd
   use stays off until the fork backend is installed. `jina` is distinct from
   `jina-reader` (US, keyless URL scrape).
+- **qmd enforcement (HIMMEL-5683).** qmd's model config is per index, not per
+  collection, so salus lives in its own index (`qmd --index salus`, own
+  `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`
+  evaluates every remote model role (an `openai:` URI to a non-loopback
+  endpoint) against every collection in an index through
+  `egress-matrix-eval.mjs`, using `scripts/qmd/qmd-collection-corpus.json`
+  (collection to corpora). A collection with no mapping is denied. The qmd
+  plugin's `ensure-qmd-daemon.sh` runs the gate before it starts a daemon whose
+  config names a remote model and refuses (exit 1) on a denial, a missing gate
+  or a missing node. A new qmd collection must be added to the map, and to the
+  matrix if it needs a corpus, before it can join a Jina index.
 - Run: `node scripts/guardrails/test-egress-matrix.mjs`.
 
 ## Changing the matrix

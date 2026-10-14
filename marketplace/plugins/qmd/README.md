@@ -91,6 +91,20 @@ sessions recycle, and a stamp blocks another recycle for
 daemon's RSS and uptime and WARNs over the same ceiling. The PowerShell twin does
 not carry the ceiling yet (HIMMEL-3751).
 
+## Remote embed models and the salus index (HIMMEL-5683)
+
+qmd's `models:` block is per index, so a collection the egress matrix denies for
+a remote provider (salus first) must live in its own index on local models.
+`ensure-qmd-daemon.sh` honours `QMD_INDEX_NAME` (reads
+`~/.config/qmd/<name>.yml`, starts `qmd --index <name> --port <QMD_MCP_URL port>
+mcp --http --daemon`). When the index config or `QMD_*_MODEL` names an
+`openai:` model it first runs `scripts/qmd/qmd-jina-gate.mjs`, which checks each
+collection against the matrix (`scripts/qmd/qmd-collection-corpus.json`; unmapped
+means denied) and refuses to start on a denial, a missing gate or no `node`.
+Local-only configs skip the gate. The shipped `.mcp.json` keeps its single
+`qmd` entry; a second `qmd-salus` entry (port 8182) is added by the runbook, not
+shipped always-on. Design: `docs/internals/egress-matrix.md`.
+
 ## Turning the daemon off on purpose (HIMMEL-4494)
 
 The SessionStart hook relaunches the daemon in every new session, so killing it
