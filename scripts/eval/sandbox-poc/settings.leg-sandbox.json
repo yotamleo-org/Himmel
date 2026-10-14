@@ -1,0 +1,17 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [],
+    "filesystem": {
+      "denyRead": ["<POC_ROOT>/home/.config/himmel"],
+      "denyWrite": ["<POC_ROOT>/handovers/u/verdicts", "<POC_ROOT>/anchor"],
+      "allowWrite": ["<POC_ROOT>/work"]
+    },
+    "network": {
+      "allowedDomains": ["github.com", "api.github.com"]
+    }
+  }
+}
