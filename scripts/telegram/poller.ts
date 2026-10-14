@@ -154,6 +154,145 @@ type PendingMedia = {
   onMissing?: (rec: Omit<Inbound, "image_path" | "document_path">) => Promise<void>;
 };
 
+// One accepted Telegram message after the media-less / allow gates.
+type MsgCtx = {
+  u: any; m: any; chatId: number; fromId: number; senderChat: number | undefined;
+  photo: any; voice: any; doc: any; caption: string; forwarded: boolean;
+};
+
+// Gate one update: null = skip it (no message, automatic forward, no chat,
+// media-less, or gated out).
+function acceptMessage(u: any, allow: AllowFn): MsgCtx | null {
+  const m = u.message ?? u.channel_post;                 // channel posts arrive as channel_post (HIMMEL-238)
+  if (!m) return null;
+  if (m.is_automatic_forward === true) return null;      // drop linked-group duplicates (HIMMEL-244)
+  const chatId = m.chat?.id;
+  if (chatId == null) return null;
+  // photos arrive as an array of sizes, smallest→largest — take the largest
+  const photo = Array.isArray(m.photo) && m.photo.length ? m.photo[m.photo.length - 1] : null;
+  // voice notes (m.voice) and audio files (m.audio) both carry a file_id
+  const voice = m.voice ?? m.audio ?? null;
+  // document attachments — PDFs and other files. Mutually
+  // exclusive with photo/voice on a single Telegram message.
+  const doc = m.document ?? null;
+  const hasText = typeof m.text === "string" && m.text.trim() !== "";
+  // drop text-less, media-less updates (service messages, joins, stickers) —
+  // they would otherwise spawn a bounded run answering an empty prompt
+  if (!hasText && !photo && !voice && !doc) return null;
+  // channel posts have no `from` (anonymous) — fall back to sender_chat (the channel itself)
+  const fromId = m.from?.id ?? m.sender_chat?.id ?? 0;
+  // PRESERVED, not just used as the fromId fallback:
+  // for an on-behalf-of-chat message this is the chat Telegram says the post
+  // actually represents, and the anonymous-admin operator floor checks it
+  // against the destination chat. Undefined for an ordinary user post.
+  const senderChat = m.sender_chat?.id;
+  if (!allow(fromId, chatId)) {                          // gated out (offset still advances in the caller)
+    // log non-DM rejects so the operator can discover a new group/channel chat_id
+    if (chatId < 0) console.error(`[poller] gated out chat ${chatId} (add to groups in access.json to allow)`);
+    return null;
+  }
+  const caption = typeof m.caption === "string" ? m.caption.trim() : "";
+  // forwarded: any Telegram forward marker. forward_origin is the
+  // authoritative modern field; the rest are deprecated back-compat. (is_automatic_forward
+  // posts are already dropped above.) Presence => forwarded, the safe side.
+  const forwarded = !!(m.forward_origin ?? m.forward_date ?? m.forward_from ?? m.forward_from_chat ?? m.forward_sender_name);
+  return { u, m, chatId, fromId, senderChat, photo, voice, doc, caption, forwarded };
+}
+
+// Inbound record skeleton shared by every branch; `extra` lands between
+// update_id and forwarded (document_name), `tail` after sender_chat.
+function baseRecord(c: MsgCtx, text: string, caption: boolean, extra: object = {}, tail: object = {}): Inbound {
+  return { from: c.fromId, chat_id: c.chatId, text, ts: c.m.date ?? 0, update_id: c.u.update_id, ...extra, forwarded: c.forwarded, caption, ...(c.senderChat != null ? { sender_chat: c.senderChat } : {}), ...tail };
+}
+
+// Voice / audio: transcribe, then forward. null = drop the update.
+async function voiceRecord(c: MsgCtx, fetchVoice?: FetchVoiceFn): Promise<Inbound | null> {
+  // transcription not wired → drop like other unsupported media (stickers)
+  if (!fetchVoice) return null;
+  let transcript: string | null = null;
+  // defensive only: makeFetchVoice never throws (it owns the "couldn't
+  // transcribe" reply on every exit); a custom fetchVoice that does throw
+  // degrades to a logged skip
+  try { transcript = await fetchVoice(c.voice.file_id, c.u.update_id, c.chatId); }
+  catch (e) { console.error(`[poller] voice transcription failed for update ${c.u.update_id}: ${e}`); }
+  // null = failure; makeFetchVoice already replied "couldn't transcribe"
+  // to the chat (acceptance: explicit error, not a silent drop).
+  // Hardening: if there was a caption, forward it so the operator
+  // context is preserved even when the audio couldn't be transcribed.
+  // UX note: caption-with-failed-voice produces two outputs — the error notice
+  // (from makeFetchVoice) and then a claude run on the caption text. This is
+  // intentional: the caption carries independent context worth processing.
+  let text: string;
+  if (!transcript) {
+    if (!c.caption) return null;
+    text = c.caption + "\n[voice transcript unavailable]";
+  } else {
+    text = (c.caption ? c.caption + "\n" : "") + "[voice transcript] " + transcript;
+  }
+  // caption:true — a voice transcript is never a typed command (auto-ineligible).
+  return baseRecord(c, text, true);
+}
+
+// Document (e.g. PDF) — same concurrent, time-bounded download as photos.
+function documentMedia(c: MsgCtx, fetchDoc: FetchDocFn, notifyDocFail?: NotifyDocFailFn): PendingMedia {
+  const docName = typeof c.doc.file_name === "string" ? c.doc.file_name : "file";
+  const text = c.caption || `[document: ${docName}]`;
+  const downloadP = fetchDoc(c.doc.file_id, c.u.update_id, docName)
+    .catch((e: unknown) => { console.error(`[poller] document download failed for update ${c.u.update_id}: ${e}`); return null; });
+  return {
+    rec: baseRecord(c, text, true, { document_name: docName }),
+    p: downloadP,
+    pathField: "document_path",
+    // Failed download (null) degrades to caption-only forwarding — tell the
+    // operator so a dropped PDF isn't a silent no-op.
+    onMissing: notifyDocFail ? (rec) => notifyDocFail(rec.chat_id, rec.document_name ?? "file") : undefined,
+  };
+}
+
+function photoMedia(c: MsgCtx, fetchImage: FetchImageFn): PendingMedia {
+  // Start the download immediately (after allow gate) but do NOT await it here —
+  // downloads run concurrently across the batch; each one is
+  // already time-bounded by FILE_FETCH_TIMEOUT_MS in telegram-api.ts.
+  const text = c.caption || "[photo]";
+  const downloadP = fetchImage(c.photo.file_id, c.u.update_id)
+    .catch((e: unknown) => { console.error(`[poller] photo download failed for update ${c.u.update_id}: ${e}`); return null; });
+  return { rec: baseRecord(c, text, true), p: downloadP, pathField: "image_path" };
+}
+
+// Plain text, or photo/document with no fetch fn wired (forward caption text only).
+function plainRecord(c: MsgCtx): Inbound {
+  const { m, photo, doc } = c;
+  const text = photo ? (c.caption || "[photo]")
+             : doc ? (c.caption || `[document: ${typeof doc.file_name === "string" ? doc.file_name : "file"}]`)
+             : m.text;
+  // caption:true iff the text came from a media caption (photo/doc present), else it
+  // is a genuinely typed m.text (caption:false) — the only auto-command-eligible shape.
+  return baseRecord(c, text, !!(photo || doc), {}, {
+    ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}),
+    ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}),
+  });
+}
+
+// Await photo/document downloads concurrently, then write their inbox
+// entries. The resolved path is only set when the download actually
+// succeeded (consumer contract); a failed download degrades to caption-only
+// forwarding, with documents additionally notifying the operator
+// — best-effort: a notify failure is logged, never thrown (the
+// inbox append already happened).
+async function flushPendingMedia(root: string, pendingMedia: PendingMedia[]): Promise<void> {
+  if (pendingMedia.length === 0) return;
+  const results = await Promise.all(pendingMedia.map((pm) => pm.p));
+  for (let i = 0; i < pendingMedia.length; i++) {
+    const { rec, pathField, onMissing } = pendingMedia[i];
+    const path = results[i] ?? undefined;
+    await appendLine(join(root, "inbound.jsonl"), JSON.stringify({ ...rec, ...(path ? { [pathField]: path } : {}) }));
+    if (!path && onMissing) {
+      try { await onMissing(rec); }
+      catch (e) { console.error(`[poller] doc-fail notice could not be delivered for chat ${rec.chat_id}: ${e}`); }
+    }
+  }
+}
+
 export async function ingestUpdates(root: string, updates: any[], allow: AllowFn = () => true, fetchImage?: FetchImageFn, fetchVoice?: FetchVoiceFn, fetchDoc?: FetchDocFn, notifyDocFail?: NotifyDocFailFn): Promise<void> {
   await mkdir(root, { recursive: true });
   const offset = await loadOffset(root);
@@ -165,122 +304,20 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
   for (const u of updates) {
     if (typeof u.update_id !== "number" || u.update_id < offset) continue;   // dedup already-seen
     maxId = Math.max(maxId, u.update_id);
-    const m = u.message ?? u.channel_post;                 // channel posts arrive as channel_post (HIMMEL-238)
-    if (!m) continue;
-    if (m.is_automatic_forward === true) continue;         // drop linked-group duplicates (HIMMEL-244)
-    const chatId = m.chat?.id;
-    if (chatId == null) continue;
-    // photos arrive as an array of sizes, smallest→largest — take the largest (HIMMEL-250)
-    const photo = Array.isArray(m.photo) && m.photo.length ? m.photo[m.photo.length - 1] : null;
-    // voice notes (m.voice) and audio files (m.audio) both carry a file_id (HIMMEL-251)
-    const voice = m.voice ?? m.audio ?? null;
-    // document attachments — PDFs and other files (HIMMEL-321). Mutually
-    // exclusive with photo/voice on a single Telegram message.
-    const doc = m.document ?? null;
-    const hasText = typeof m.text === "string" && m.text.trim() !== "";
-    // drop text-less, media-less updates (service messages, joins, stickers) —
-    // they would otherwise spawn a bounded run answering an empty prompt
-    if (!hasText && !photo && !voice && !doc) continue;
-    // channel posts have no `from` (anonymous) — fall back to sender_chat (the channel itself)
-    const fromId = m.from?.id ?? m.sender_chat?.id ?? 0;
-    // PRESERVED, not just used as the fromId fallback (HIMMEL-1358, codex CR):
-    // for an on-behalf-of-chat message this is the chat Telegram says the post
-    // actually represents, and the anonymous-admin operator floor checks it
-    // against the destination chat. Undefined for an ordinary user post.
-    const senderChat = m.sender_chat?.id;
-    if (!allow(fromId, chatId)) {                          // gated out (offset still advances below)
-      // log non-DM rejects so the operator can discover a new group/channel chat_id
-      if (chatId < 0) console.error(`[poller] gated out chat ${chatId} (add to groups in access.json to allow)`);
-      continue;
-    }
-    const caption = typeof m.caption === "string" ? m.caption.trim() : "";
-    // forwarded (HIMMEL-424): any Telegram forward marker. forward_origin is the
-    // authoritative modern field; the rest are deprecated back-compat. (is_automatic_forward
-    // posts are already dropped at the top of the loop.) Presence => forwarded, the safe side.
-    const forwarded = !!(m.forward_origin ?? m.forward_date ?? m.forward_from ?? m.forward_from_chat ?? m.forward_sender_name);
-    let text: string;
-    if (voice) {
-      // transcription not wired → drop like other unsupported media (stickers)
-      if (!fetchVoice) continue;
-      let transcript: string | null = null;
-      // defensive only: makeFetchVoice never throws (it owns the "couldn't
-      // transcribe" reply on every exit); a custom fetchVoice that does throw
-      // degrades to a logged skip
-      try { transcript = await fetchVoice(voice.file_id, u.update_id, chatId); }
-      catch (e) { console.error(`[poller] voice transcription failed for update ${u.update_id}: ${e}`); }
-      // null = failure; makeFetchVoice already replied "couldn't transcribe"
-      // to the chat (HIMMEL-251 acceptance: explicit error, not a silent drop).
-      // HIMMEL-268 hardening: if there was a caption, forward it so the operator
-      // context is preserved even when the audio couldn't be transcribed.
-      // UX note: caption-with-failed-voice produces two outputs — the error notice
-      // (from makeFetchVoice) and then a claude run on the caption text. This is
-      // intentional: the caption carries independent context worth processing.
-      if (!transcript) {
-        if (!caption) continue;
-        text = caption + "\n[voice transcript unavailable]";
-      } else {
-        text = (caption ? caption + "\n" : "") + "[voice transcript] " + transcript;
-      }
-      // caption:true — a voice transcript is never a typed command (auto-ineligible).
-      ready.push({ from: fromId, chat_id: chatId, text, ts: m.date ?? 0, update_id: u.update_id, forwarded, caption: true, ...(senderChat != null ? { sender_chat: senderChat } : {}) });
-    } else if (doc && fetchDoc) {
-      // Document (e.g. PDF) — same concurrent, time-bounded download as photos (HIMMEL-321).
-      const docName = typeof doc.file_name === "string" ? doc.file_name : "file";
-      text = caption || `[document: ${docName}]`;
-      const downloadP = fetchDoc(doc.file_id, u.update_id, docName)
-        .catch((e: unknown) => { console.error(`[poller] document download failed for update ${u.update_id}: ${e}`); return null; });
-      pendingMedia.push({
-        rec: { from: fromId, chat_id: chatId, text, ts: m.date ?? 0, update_id: u.update_id, document_name: docName, forwarded, caption: true, ...(senderChat != null ? { sender_chat: senderChat } : {}) },
-        p: downloadP,
-        pathField: "document_path",
-        // Failed download (null) degrades to caption-only forwarding — tell the
-        // operator so a dropped PDF isn't a silent no-op (HIMMEL-321).
-        onMissing: notifyDocFail ? (rec) => notifyDocFail(rec.chat_id, rec.document_name ?? "file") : undefined,
-      });
-    } else if (photo && fetchImage) {
-      // Start the download immediately (after allow gate) but do NOT await it here —
-      // downloads run concurrently across the batch (HIMMEL-266); each one is
-      // already time-bounded by FILE_FETCH_TIMEOUT_MS in telegram-api.ts.
-      text = caption || "[photo]";
-      const downloadP = fetchImage(photo.file_id, u.update_id)
-        .catch((e: unknown) => { console.error(`[poller] photo download failed for update ${u.update_id}: ${e}`); return null; });
-      pendingMedia.push({
-        rec: { from: fromId, chat_id: chatId, text, ts: m.date ?? 0, update_id: u.update_id, forwarded, caption: true, ...(senderChat != null ? { sender_chat: senderChat } : {}) },
-        p: downloadP,
-        pathField: "image_path",
-      });
-    } else {
-      // plain text, or photo/document with no fetch fn wired (forward caption text only)
-      text = photo ? (caption || "[photo]")
-           : doc ? (caption || `[document: ${typeof doc.file_name === "string" ? doc.file_name : "file"}]`)
-           : m.text;
-      // caption:true iff the text came from a media caption (photo/doc present), else it
-      // is a genuinely typed m.text (caption:false) — the only auto-command-eligible shape.
-      ready.push({ from: fromId, chat_id: chatId, text, ts: m.date ?? 0, update_id: u.update_id, forwarded, caption: !!(photo || doc), ...(senderChat != null ? { sender_chat: senderChat } : {}), ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}), ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}) });
-    }
+    const c = acceptMessage(u, allow);
+    if (!c) continue;
+    if (c.voice) {
+      const rec = await voiceRecord(c, fetchVoice);
+      if (rec) ready.push(rec);
+    } else if (c.doc && fetchDoc) pendingMedia.push(documentMedia(c, fetchDoc, notifyDocFail));
+    else if (c.photo && fetchImage) pendingMedia.push(photoMedia(c, fetchImage));
+    else ready.push(plainRecord(c));
   }
   // Write all non-photo inbox entries.
   for (const rec of ready) {
     await appendLine(join(root, "inbound.jsonl"), JSON.stringify(rec));
   }
-  // Await photo/document downloads concurrently, then write their inbox
-  // entries. The resolved path is only set when the download actually
-  // succeeded (consumer contract); a failed download degrades to caption-only
-  // forwarding, with documents additionally notifying the operator
-  // (HIMMEL-321) — best-effort: a notify failure is logged, never thrown (the
-  // inbox append already happened).
-  if (pendingMedia.length > 0) {
-    const results = await Promise.all(pendingMedia.map((pm) => pm.p));
-    for (let i = 0; i < pendingMedia.length; i++) {
-      const { rec, pathField, onMissing } = pendingMedia[i];
-      const path = results[i] ?? undefined;
-      await appendLine(join(root, "inbound.jsonl"), JSON.stringify({ ...rec, ...(path ? { [pathField]: path } : {}) }));
-      if (!path && onMissing) {
-        try { await onMissing(rec); }
-        catch (e) { console.error(`[poller] doc-fail notice could not be delivered for chat ${rec.chat_id}: ${e}`); }
-      }
-    }
-  }
+  await flushPendingMedia(root, pendingMedia);
   // Append-then-confirm preserved: the offset advances only after every accepted
   // inbound is durably in the inbox (a crash mid-batch re-delivers, never loses).
   // Concurrency — not an early offset — is the HIMMEL-266 fix; each download is

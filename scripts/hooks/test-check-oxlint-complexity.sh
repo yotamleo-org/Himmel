@@ -167,7 +167,7 @@ if grepq "$rec" -- "docs/notes.md"; then
 else
     echo "PASS --files drops a path outside the surface"
 fi
-assert_eq "--files with a function below the default ratchet (81) → exit 0" "0" "$rc"
+assert_eq "--files with a function below the default ratchet (58) → exit 0" "0" "$rc"
 rc=0
 out=$(cd "$FILES_FX" && OXLINT_COMPLEXITY_MAX=22 PATH="$FILES_BIN" "$BASH_ABS" "$GATE" --files scripts/lanes/clean.mjs 2>&1) || rc=$?
 assert_eq "--files with a function above the ratchet → exit 1" "1" "$rc"

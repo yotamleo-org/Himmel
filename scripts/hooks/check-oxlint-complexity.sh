@@ -9,7 +9,7 @@
 # node_modules/ and test fixtures are excluded — they are generated or
 # deliberately-shaped inputs, not code this gate is meant to hold a line on.
 #
-# Ratchet rule: OXLINT_COMPLEXITY_MAX below starts at 81 — the audited
+# Ratchet rule: OXLINT_COMPLEXITY_MAX below is 58 — the audited
 # MAXIMUM function complexity across that surface as of HIMMEL-2154, so
 # everything that exists today passes. This only fires on a NEW function
 # regressing ABOVE that ceiling; it does not ask anyone to fix what's
@@ -29,7 +29,7 @@
 set -uo pipefail
 
 # ---- config -----------------------------------------------------------
-OXLINT_COMPLEXITY_MAX="${OXLINT_COMPLEXITY_MAX:-81}"
+OXLINT_COMPLEXITY_MAX="${OXLINT_COMPLEXITY_MAX:-58}"
 # Same literal as check-oxlint-hardening.sh's OXLINT_VERSION (HIMMEL-2802) —
 # keep the two pins in lockstep; test-check-oxlint-complexity.sh asserts
 # parity so a future bump of one without the other goes red.

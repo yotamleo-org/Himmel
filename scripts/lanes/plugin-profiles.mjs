@@ -278,6 +278,102 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   }
 }
 
+// base is OPTIONAL (absent -> treated as [] at resolve time, which fails in
+// the SAFE direction — fewer plugins on): a custom registry that predates
+// this field must not hard-fail on upgrade. When PRESENT it is fully
+// validated, same rigor as floor/catalog.
+function validateBase(errors, base, catalogSet) {
+  const baseOk = base === undefined || Array.isArray(base);
+  if (!baseOk) errors.push('base must be an array');
+  if (baseOk && base !== undefined) {
+    validateIdList(errors, base, catalogSet, 'base');
+    checkNoDuplicates(errors, base, 'base contains duplicate ids');
+  }
+}
+
+// One mcpCatalog entry's env/headers: every value must be a BARE $VAR reference.
+function validateMcpEnvHeaders(errors, id, entry) {
+  const VAR_RE = /^\$[A-Za-z_][A-Za-z0-9_]*$/;
+  for (const field of ['env', 'headers']) {
+    const map = entry[field];
+    if (map === undefined) continue;
+    if (map === null || typeof map !== 'object' || Array.isArray(map)) { errors.push(`mcpCatalog entry "${id}" ${field} must be an object`); continue; }
+    for (const [k, v] of Object.entries(map)) {
+      if (typeof v !== 'string' || !VAR_RE.test(v)) errors.push(`mcpCatalog entry "${id}" ${field}.${k} must be a $VAR reference (e.g. "$TOKEN"), never a literal`);
+    }
+  }
+}
+
+// One mcpCatalog entry's url/command/args: ordinary literals, minus credential shapes.
+function validateMcpLiterals(errors, id, entry) {
+  for (const field of ['url', 'command']) {
+    const v = entry[field];
+    if (v === undefined) continue;
+    if (typeof v !== 'string') { errors.push(`mcpCatalog entry "${id}" ${field} must be a string`); continue; }
+    const issue = credentialLiteralIssue(v);
+    if (issue) errors.push(`mcpCatalog entry "${id}" ${field} ${issue}`);
+  }
+  if (entry.args !== undefined) {
+    if (!Array.isArray(entry.args) || !entry.args.every((a) => typeof a === 'string')) {
+      errors.push(`mcpCatalog entry "${id}" args must be an array of strings`);
+    } else {
+      entry.args.forEach((a, i) => {
+        const issue = credentialLiteralIssue(a);
+        if (issue) errors.push(`mcpCatalog entry "${id}" args[${i}] ${issue}`);
+      });
+    }
+  }
+}
+
+// mcpCatalog is structure-only in this task (populating it is T3.1) and also
+// OPTIONAL (absent -> treated as {}, same upgrade-safety reasoning as base).
+// When present, validate the shape and the credential-literal guard: env/
+// headers values must be a BARE $VAR reference (never a literal — those two
+// fields exist solely to carry secrets); url/command/args are ordinary
+// literals (a plain URL or command is fine) but may not embed a malformed
+// $-interpolation or an obvious secret shape — the registry ships publicly.
+function validateMcpCatalog(errors, mcpCatalog) {
+  const mcpOk = mcpCatalog === undefined || (mcpCatalog !== null && typeof mcpCatalog === 'object' && !Array.isArray(mcpCatalog));
+  if (!mcpOk) errors.push('mcpCatalog must be a non-null object');
+  if (mcpOk && mcpCatalog !== undefined) {
+    for (const [id, entry] of Object.entries(mcpCatalog)) {
+      if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) { errors.push(`mcpCatalog entry "${id}" must be an object`); continue; }
+      validateMcpEnvHeaders(errors, id, entry);
+      validateMcpLiterals(errors, id, entry);
+    }
+  }
+}
+
+// mcpAllow maps a catalog server to the tool names resolveProfile allows for a
+// profile that lists it in mcpServers (both the standalone and the plugin-prefixed form).
+function validateMcpAllow(errors, mcpAllow, mcpCatalog) {
+  if (mcpAllow === undefined) return;
+  if (mcpAllow === null || typeof mcpAllow !== 'object' || Array.isArray(mcpAllow)) {
+    errors.push('mcpAllow must be a non-null object');
+    return;
+  }
+  for (const [id, tools] of Object.entries(mcpAllow)) {
+    if (!/^[A-Za-z0-9_-]+$/.test(id) || !Object.hasOwn(mcpCatalog ?? {}, id)) errors.push(`mcpAllow entry "${id}" must name an mcpCatalog server`);
+    if (!Array.isArray(tools) || tools.length === 0 || !tools.every((t) => typeof t === 'string' && /^[A-Za-z0-9_-]+$/.test(t))) errors.push(`mcpAllow entry "${id}" must be a non-empty array of tool names ([A-Za-z0-9_-])`);
+  }
+}
+
+function validateProfiles(errors, registry, profiles, catalogSet, floorSet) {
+  if (!Object.hasOwn(profiles, 'operator') || profiles.operator !== null) errors.push('profile "operator" must be present and null (the never-injected sentinel)');
+  // "bare" itself is OPTIONAL (glm-1): a registry without it simply doesn't
+  // offer that profile, and resolveProfile already fails closed on an
+  // unknown name — nothing is lost, and requiring it would hard-fail the
+  // exact pre-existing custom registries base/mcpCatalog were made optional
+  // for. What must not exist is a LYING bare — that invariant is enforced
+  // below, unconditionally, whenever "bare" IS present.
+  for (const [name, spec] of Object.entries(profiles)) {
+    validateProfileSpec(errors, name, spec, catalogSet, floorSet);
+    if (spec?.gateAllow === true && registry.gateAllow === undefined) {
+      errors.push(`profile "${name}" gateAllow requires the registry gateAllow list`);
+    }
+  }
+}
+
 // Registry-integrity check (design follow-up: a pre-commit floor-present guard).
 // Returns an array of human-readable problems ([] === valid). Kept separate from
 // resolveProfile so a resolve stays cheap and a validator can gate the JSON.
@@ -304,89 +400,10 @@ export function validateRegistry(registry) {
     checkNoDuplicates(errors, catalog, 'catalog contains duplicate ids');
   }
   const floorSet = new Set(floorOk ? floor : []);
-  const VAR_RE = /^\$[A-Za-z_][A-Za-z0-9_]*$/;
-
-  // base is OPTIONAL (absent -> treated as [] at resolve time, which fails in
-  // the SAFE direction — fewer plugins on): a custom registry that predates
-  // this field must not hard-fail on upgrade. When PRESENT it is fully
-  // validated, same rigor as floor/catalog.
-  const base = registry?.base;
-  const baseOk = base === undefined || Array.isArray(base);
-  if (!baseOk) errors.push('base must be an array');
-  if (baseOk && base !== undefined) {
-    validateIdList(errors, base, catalogSet, 'base');
-    checkNoDuplicates(errors, base, 'base contains duplicate ids');
-  }
-
-  // mcpCatalog is structure-only in this task (populating it is T3.1) and also
-  // OPTIONAL (absent -> treated as {}, same upgrade-safety reasoning as base).
-  // When present, validate the shape and the credential-literal guard: env/
-  // headers values must be a BARE $VAR reference (never a literal — those two
-  // fields exist solely to carry secrets); url/command/args are ordinary
-  // literals (a plain URL or command is fine) but may not embed a malformed
-  // $-interpolation or an obvious secret shape — the registry ships publicly.
-  const mcpCatalog = registry?.mcpCatalog;
-  const mcpOk = mcpCatalog === undefined || (mcpCatalog !== null && typeof mcpCatalog === 'object' && !Array.isArray(mcpCatalog));
-  if (!mcpOk) errors.push('mcpCatalog must be a non-null object');
-  if (mcpOk && mcpCatalog !== undefined) {
-    for (const [id, entry] of Object.entries(mcpCatalog)) {
-      if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) { errors.push(`mcpCatalog entry "${id}" must be an object`); continue; }
-      for (const field of ['env', 'headers']) {
-        const map = entry[field];
-        if (map === undefined) continue;
-        if (map === null || typeof map !== 'object' || Array.isArray(map)) { errors.push(`mcpCatalog entry "${id}" ${field} must be an object`); continue; }
-        for (const [k, v] of Object.entries(map)) {
-          if (typeof v !== 'string' || !VAR_RE.test(v)) errors.push(`mcpCatalog entry "${id}" ${field}.${k} must be a $VAR reference (e.g. "$TOKEN"), never a literal`);
-        }
-      }
-      for (const field of ['url', 'command']) {
-        const v = entry[field];
-        if (v === undefined) continue;
-        if (typeof v !== 'string') { errors.push(`mcpCatalog entry "${id}" ${field} must be a string`); continue; }
-        const issue = credentialLiteralIssue(v);
-        if (issue) errors.push(`mcpCatalog entry "${id}" ${field} ${issue}`);
-      }
-      if (entry.args !== undefined) {
-        if (!Array.isArray(entry.args) || !entry.args.every((a) => typeof a === 'string')) {
-          errors.push(`mcpCatalog entry "${id}" args must be an array of strings`);
-        } else {
-          entry.args.forEach((a, i) => {
-            const issue = credentialLiteralIssue(a);
-            if (issue) errors.push(`mcpCatalog entry "${id}" args[${i}] ${issue}`);
-          });
-        }
-      }
-    }
-  }
-
-  // HIMMEL-4830: mcpAllow maps a catalog server to the tool names resolveProfile allows for a
-  // profile that lists it in mcpServers (both the standalone and the plugin-prefixed form).
-  const mcpAllow = registry?.mcpAllow;
-  if (mcpAllow !== undefined) {
-    if (mcpAllow === null || typeof mcpAllow !== 'object' || Array.isArray(mcpAllow)) errors.push('mcpAllow must be a non-null object');
-    else {
-      for (const [id, tools] of Object.entries(mcpAllow)) {
-        if (!/^[A-Za-z0-9_-]+$/.test(id) || !Object.hasOwn(mcpCatalog ?? {}, id)) errors.push(`mcpAllow entry "${id}" must name an mcpCatalog server`);
-        if (!Array.isArray(tools) || tools.length === 0 || !tools.every((t) => typeof t === 'string' && /^[A-Za-z0-9_-]+$/.test(t))) errors.push(`mcpAllow entry "${id}" must be a non-empty array of tool names ([A-Za-z0-9_-])`);
-      }
-    }
-  }
-
-  if (profilesOk) {
-    if (!Object.hasOwn(profiles, 'operator') || profiles.operator !== null) errors.push('profile "operator" must be present and null (the never-injected sentinel)');
-    // "bare" itself is OPTIONAL (glm-1): a registry without it simply doesn't
-    // offer that profile, and resolveProfile already fails closed on an
-    // unknown name — nothing is lost, and requiring it would hard-fail the
-    // exact pre-existing custom registries base/mcpCatalog were made optional
-    // for. What must not exist is a LYING bare — that invariant is enforced
-    // below, unconditionally, whenever "bare" IS present.
-    for (const [name, spec] of Object.entries(profiles)) {
-      validateProfileSpec(errors, name, spec, catalogSet, floorSet);
-      if (spec?.gateAllow === true && registry.gateAllow === undefined) {
-        errors.push(`profile "${name}" gateAllow requires the registry gateAllow list`);
-      }
-    }
-  }
+  validateBase(errors, registry?.base, catalogSet);
+  validateMcpCatalog(errors, registry?.mcpCatalog);
+  validateMcpAllow(errors, registry?.mcpAllow, registry?.mcpCatalog);
+  if (profilesOk) validateProfiles(errors, registry, profiles, catalogSet, floorSet);
   return errors;
 }
 

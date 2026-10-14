@@ -560,13 +560,10 @@ function budgetConsumer(memberTimings, chainDeadline) {
   return consumer;
 }
 
-// Returns the exit code rather than calling process.exit(): on Windows a pipe
-// stdout is ASYNC, so exiting immediately after a write can truncate the very
-// JSON decision this exists to deliver. The caller sets process.exitCode and
-// lets node drain and exit on its own.
-function runChain(members, lifecycle = false) {
-  // Validate the WHOLE chain before running any of it: a typo'd or duplicated
-  // member must deny outright, never run a prefix of the chain.
+// Validate the WHOLE chain before running any of it: a typo'd or duplicated
+// member must deny outright, never run a prefix of the chain. Returns the exit
+// code to refuse with, or null when the chain is sound.
+function chainRefusal(members) {
   const seen = new Set();
   for (const member of members) {
     if (seen.has(member)) {
@@ -585,311 +582,324 @@ function runChain(members, lifecycle = false) {
       return 2;
     }
   }
+  return null;
+}
 
-  const bash = resolveBash();
-  if (!bash) {
-    process.stderr.write('run-hook-with-bash: no usable Bash interpreter found; refusing to run hook\n');
-    return 2;
+function spawnMember(bash, member, input, bound) {
+  return spawnSync(bash, [member], {
+    input,
+    env: process.env,
+    encoding: 'utf8',
+    timeout: bound,
+    killSignal: 'SIGKILL',
+    maxBuffer: MEMBER_MAX_BUFFER,
+    windowsHide: true,   // HIMMEL-2043: no console flash per hook call
+  });
+}
+
+// Advisory: a lifecycle member that hung, flooded, or failed to start is
+// dropped with a note and the chain continues — never a nonzero exit. No
+// must-run concept here: a --lifecycle chain is advisory BY DEFINITION
+// (always exits 0), so nothing on it can fail closed.
+function skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput) {
+  const basename = path.basename(member);
+  const elapsed = Date.now() - memberStart;
+  // only ETIMEDOUT/ENOBUFS are budget
+  // starvation — the thing this durable log is FOR. A launch failure
+  // (missing/unexecutable hook, e.g. ENOENT/EACCES) is a different
+  // problem and must not be counted alongside real skips, or the C22
+  // doctor advisory misreads a broken hook as budget pressure. Mirrors
+  // the ETIMEDOUT/ENOBUFS gate the non-lifecycle chain below already has.
+  if (result.error.code === 'ETIMEDOUT' || result.error.code === 'ENOBUFS') {
+    logChainSkip({
+      ts: new Date().toISOString(),
+      action: 'skip',
+      member: basename,
+      budget: bound,
+      elapsed,
+      reason: result.error.code,
+      sessionId,
+      toolCall: toolCallSummary(hookInput),
+    });
+    process.stderr.write(
+      `run-hook-with-bash: SKIP ${basename} (budget=${bound}ms elapsed=${elapsed}ms) — guard did not evaluate this call.\n`,
+    );
+  } else {
+    process.stderr.write(
+      `run-hook-with-bash: lifecycle member ${basename} skipped: ${result.error.message}\n`,
+    );
   }
+}
 
-  // Read once, fan the same payload to every member — each sees the full hook
-  // JSON exactly as it would as its own entry.
-  const input = readAllStdin();
-  // Parsed once for the skip/deny log rows below (HIMMEL-2060) — never for
-  // chain decisions, which stay per-member exactly as before.
-  const hookInput = parseJsonObject(input);
-  const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
-
-  // HIMMEL-2003. `--lifecycle` chains a SessionStart-class event, where hooks are
-  // ADVISORY: Claude injects a hook's plain stdout as context and there is no
-  // permission gate, so the PreToolUse rules below (one JSON object or nothing,
-  // deny short-circuits, plain stdout diverted to stderr) are all wrong here.
-  // Instead: concatenate every member's stdout, forward every member's stderr,
-  // and always exit 0 — one broken advisory must never silence the rest of the
-  // chain or colour the session's startup. Whole-chain validation above still
-  // fails closed, so a stale checkout is loud rather than silently degraded.
-  // No JSON merging: a member emitting a hookSpecificOutput envelope would be
-  // concatenated as text like any other body (none does today).
-  if (lifecycle) {
-    // Same per-member clamp and buffer ceiling the PreToolUse chain carries: an
-    // advisory that hangs would otherwise burn the ENTRY's timeout and have
-    // Claude Code kill the whole chain, silently losing every later notice.
-    const lifecycleDeadline = Date.now() + chainBudgetMs();
-    for (const member of members) {
-      // HIMMEL-1666: advisory-lane rewrite protection is symmetric with the
-      // must-run lane below — a tampered lifecycle member is skipped (not
-      // fatal, matching this loop's existing advisory contract) rather than
-      // silently run.
-      const integrity = verifyProjectHookIntegrity(member, sessionId);
-      if (!integrity.ok) {
-        denyIntegrityMismatch(member, integrity.relPath, integrity.reason);
-        continue;
-      }
-      const bound = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberTimeoutMs(), lifecycleDeadline - Date.now()));
-      const memberStart = Date.now();
-      const result = spawnSync(bash, [member], {
-        input,
-        env: process.env,
-        encoding: 'utf8',
-        timeout: bound,
-        killSignal: 'SIGKILL',
-        maxBuffer: MEMBER_MAX_BUFFER,
-        windowsHide: true,   // HIMMEL-2043: no console flash per hook call
-      });
-      if (result.error && !isRecoverableEpipe(result)) {
-        // Advisory: a member that hung, flooded, or failed to start is dropped
-        // with a note and the chain continues — never a nonzero exit. No
-        // must-run concept here: a --lifecycle chain is advisory BY DEFINITION
-        // (HIMMEL-2003, always exits 0), so nothing on it can fail closed.
-        const basename = path.basename(member);
-        const elapsed = Date.now() - memberStart;
-        // HIMMEL-2060 CR round 3 (codex-3): only ETIMEDOUT/ENOBUFS are budget
-        // starvation — the thing this durable log is FOR. A launch failure
-        // (missing/unexecutable hook, e.g. ENOENT/EACCES) is a different
-        // problem and must not be counted alongside real skips, or the C22
-        // doctor advisory misreads a broken hook as budget pressure. Mirrors
-        // the ETIMEDOUT/ENOBUFS gate the non-lifecycle chain below already has.
-        if (result.error.code === 'ETIMEDOUT' || result.error.code === 'ENOBUFS') {
-          logChainSkip({
-            ts: new Date().toISOString(),
-            action: 'skip',
-            member: basename,
-            budget: bound,
-            elapsed,
-            reason: result.error.code,
-            sessionId,
-            toolCall: toolCallSummary(hookInput),
-          });
-          process.stderr.write(
-            `run-hook-with-bash: SKIP ${basename} (budget=${bound}ms elapsed=${elapsed}ms) — guard did not evaluate this call.\n`,
-          );
-        } else {
-          process.stderr.write(
-            `run-hook-with-bash: lifecycle member ${basename} skipped: ${result.error.message}\n`,
-          );
-        }
-        continue;
-      }
-      if (result.stderr) process.stderr.write(result.stderr);
-      // Emit each body as it lands rather than joining at the end: byte-identical
-      // output, and whatever the chain already collected survives an outer
-      // SIGKILL. For an advisory lane partial context beats none.
-      // Drop ONE trailing newline so exactly one separator lands per body.
-      const body = String(result.stdout || '').replace(/\n$/, '');
-      if (body) process.stdout.write(`${body}\n`);
-    }
-    return 0;
-  }
-
-  const emitters = [];
-  // HIMMEL-5171: the first member the launcher could not vouch for. The
-  // once-per-session "this session ran UNVERIFIED" notice is taken only after
-  // the loop, on a non-deny return, so a deny never consumes the flag with no
-  // channel to show it (exit-0 stderr reaches nobody; a systemMessage does).
-  let unvouchedMember = null;
-  // Everything a non-denying member said, flushed to OUR stderr after the
-  // chain. Held rather than streamed so a later member's deny reaches the
-  // model on its own, verbatim.
-  const held = [];
-  let carriedStatus = 0;
-
-  const chainStartedAt = Date.now();
-  const chainDeadline = chainStartedAt + chainBudgetMs();
-  // HIMMEL-3080 (J1259O F1): the hard ceiling a must-run member's window is
-  // capped against, derived from the settings.json entry timeout so the whole
-  // chain always decides safely inside it, regardless of the shared budget.
-  const entryDeadline = chainStartedAt + entryTimeoutMs() - entrySafetyMarginMs();
-  // HIMMEL-3080: per-member elapsed times seen so far in THIS chain run, so a
-  // starvation-adjacent denial can name the member that ate the budget, not
-  // merely the one that was starved by it.
-  const memberTimings = [];
-
+// `--lifecycle` chains a SessionStart-class event, where hooks are
+// ADVISORY: Claude injects a hook's plain stdout as context and there is no
+// permission gate, so the PreToolUse rules (one JSON object or nothing,
+// deny short-circuits, plain stdout diverted to stderr) are all wrong here.
+// Instead: concatenate every member's stdout, forward every member's stderr,
+// and always exit 0 — one broken advisory must never silence the rest of the
+// chain or colour the session's startup. Whole-chain validation still fails
+// closed, so a stale checkout is loud rather than silently degraded.
+// No JSON merging: a member emitting a hookSpecificOutput envelope would be
+// concatenated as text like any other body (none does today).
+function runLifecycleChain(members, bash, input, sessionId, hookInput) {
+  // Same per-member clamp and buffer ceiling the PreToolUse chain carries: an
+  // advisory that hangs would otherwise burn the ENTRY's timeout and have
+  // Claude Code kill the whole chain, silently losing every later notice.
+  const lifecycleDeadline = Date.now() + chainBudgetMs();
   for (const member of members) {
-    // HIMMEL-1666: a tampered project-local member must not run at all — deny
-    // the whole chain the same way a must-run member's starvation does below,
-    // since a security-fence member reachable via --chain is exactly as
-    // rewrite-able as one reachable via --optional.
+    // advisory-lane rewrite protection is symmetric with the
+    // must-run lane — a tampered lifecycle member is skipped (not
+    // fatal, matching this loop's existing advisory contract) rather than
+    // silently run.
     const integrity = verifyProjectHookIntegrity(member, sessionId);
     if (!integrity.ok) {
       denyIntegrityMismatch(member, integrity.relPath, integrity.reason);
-      // HIMMEL-5172: on a non-gating event the failing member is skipped ALONE.
-      // Returning here would silence the intact members after it and drop what
-      // earlier members already collected, a Stop decision block included.
-      const notice = skipNotice(hookInput, member, integrity);
-      if (notice === null) return 2;
-      const output = { systemMessage: notice };
-      emitters.push({ source: 'hook-integrity', output, raw: `${JSON.stringify(output)}\n` });
       continue;
     }
-    if (integrity.unvouched && unvouchedMember === null) unvouchedMember = member;
-    const basename = path.basename(member);
-    const mustRun = MUST_RUN_CHAIN_MEMBERS.has(basename);
-    // Clamped to what is left of the chain budget, but never below the floor:
-    // a spent budget must not reduce the remaining guards to a 0ms execution
-    // slice — each still gets a real, if small, chance to decide.
-    const memberWindow = memberTimeoutMs(Buffer.byteLength(input));
-    const budgetBound = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberWindow, chainDeadline - Date.now()));
-    // HIMMEL-3620 (N2): that floor guards against a spent SHARED budget, but
-    // must never push an advisory member's window past the entry-safe
-    // deadline itself — several floored members in a row can otherwise add up
-    // to more time than is actually left before Claude Code's own entry
-    // `timeout` fires, and a killed entry fails the whole chain OPEN. Clamp
-    // down (never back up) by what is left before entryDeadline, floored at
-    // 1ms — never 0 or negative, which spawnSync's `timeout` treats as "no
-    // timeout at all" rather than "expire immediately".
-    const sharedBound = Math.max(1, Math.min(budgetBound, entryDeadline - Date.now()));
-    // HIMMEL-3080: a must-run SECURITY member gets its own window regardless
-    // of what the shared budget has left — a slow upstream neighbour must not
-    // deny a must-run guard that never got to run — but that window is ALSO
-    // capped by the entry-safe deadline (J1259O F1): the chain must always
-    // decide before Claude Code's own entry `timeout` kills it and fails the
-    // whole chain OPEN. `starved` records whether the shared clock alone
-    // would have clamped this member below its own full window, purely to
-    // drive the denial message's diagnostics below.
-    const starved = mustRun && sharedBound < memberWindow;
-    // HIMMEL-3620 (N1): floor the CONFIGURED member timeout at the same
-    // MIN_MEMBER_TIMEOUT_MS floor every other member gets before capping by
-    // the entry-safe deadline — otherwise a RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS
-    // override below the floor made mustRunWindow always land under it, so
-    // the pre-spawn deny check below fired for every must-run member
-    // regardless of how much of the real entry deadline was actually left.
-    // Capping by entryDeadline afterward is unchanged, so a genuinely
-    // exhausted entry deadline still denies exactly as before.
-    const mustRunWindow = Math.min(Math.max(memberWindow, MIN_MEMBER_TIMEOUT_MS), entryDeadline - Date.now());
-    const bound = mustRun ? mustRunWindow : sharedBound;
-    // HIMMEL-3080 (J1259O F1): even the floor cannot fit before the entry
-    // deadline — spawning anyway would either get killed mid-run (still a
-    // fail-open once Claude Code reaps the entry) or hand the guard a slice
-    // too small to mean anything. Deny WITHOUT spawning, naming whoever
-    // actually spent the budget, the same as the ETIMEDOUT path below does
-    // for a member that DID get to run.
-    if (mustRun && bound < MIN_MEMBER_TIMEOUT_MS) {
-      logChainSkip({
-        ts: new Date().toISOString(),
-        action: 'deny',
-        member: basename,
-        budget: bound,
-        elapsed: 0,
-        reason: 'ENTRY_DEADLINE',
-        sessionId,
-        toolCall: toolCallSummary(hookInput),
-        starved: true,
-      });
-      const consumer = budgetConsumer(memberTimings, chainDeadline);
-      const consumerNote = consumer
-        ? ` must-run guard was left no safe window before the entry deadline; the shared chain budget was mostly spent by ${consumer.basename} (${consumer.elapsedMs}ms); failing closed.`
-        : ` must-run guard was left no safe window before the entry deadline; failing closed.`;
-      process.stderr.write(`run-hook-with-bash: DENY ${basename} (entry deadline exhausted) —${consumerNote}\n`);
-      return 2;
-    }
+    const bound = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberTimeoutMs(), lifecycleDeadline - Date.now()));
     const memberStart = Date.now();
-    const result = spawnSync(bash, [member], {
-      input,
-      env: process.env,
-      encoding: 'utf8',
-      timeout: bound,
-      killSignal: 'SIGKILL',
-      maxBuffer: MEMBER_MAX_BUFFER,
-      windowsHide: true,   // HIMMEL-2043: no console flash per hook call
-    });
-    const elapsed = Date.now() - memberStart;
+    const result = spawnMember(bash, member, input, bound);
     if (result.error && !isRecoverableEpipe(result)) {
-      // A member that outran a LIMIT of ours is not a launcher failure. Two
-      // limits reach here: the per-member timeout, and the output buffer (a
-      // single hook keeps `stdio: 'inherit'` and has no buffer at all, so
-      // overflow is a hazard chaining introduced). HIMMEL-2060: what happens
-      // next now depends on whether this member is MUST_RUN_CHAIN_MEMBERS —
-      // an advisory member is skipped exactly as before (Claude Code killing
-      // the hung ENTRY would have skipped the sibling entries the same way);
-      // a must-run SECURITY member instead fails the whole chain CLOSED,
-      // because a guard that still doesn't decide inside its own window is a
-      // guard that never got to deny — HIMMEL-3080 only changes what window
-      // it got, not what happens when even that window runs out.
-      const overran = { ETIMEDOUT: true, ENOBUFS: true };
-      if (overran[result.error.code]) {
-        logChainSkip({
-          ts: new Date().toISOString(),
-          action: mustRun ? 'deny' : 'skip',
-          member: basename,
-          budget: bound,
-          elapsed,
-          reason: result.error.code,
-          sessionId,
-          toolCall: toolCallSummary(hookInput),
-          ...(mustRun && starved ? { starved: true } : {}),
-        });
-        if (mustRun) {
-          const consumer = starved ? budgetConsumer(memberTimings, chainDeadline) : null;
-          const consumerNote = consumer
-            ? ` must-run guard did not evaluate this call within its ${bound}ms window; the shared chain budget was mostly spent by ${consumer.basename} (${consumer.elapsedMs}ms); failing closed.`
-            : ` must-run guard did not evaluate this call; failing closed.`;
-          process.stderr.write(
-            `run-hook-with-bash: DENY ${basename} (budget=${bound}ms elapsed=${elapsed}ms) —${consumerNote}\n`,
-          );
-          return 2;
-        }
-        process.stderr.write(
-          `run-hook-with-bash: SKIP ${basename} (budget=${bound}ms elapsed=${elapsed}ms) — guard did not evaluate this call.\n`,
-        );
-        memberTimings.push({ basename, elapsedMs: elapsed, startedAt: memberStart });
-        if (carriedStatus === 0) carriedStatus = 1;
-        continue;
-      }
-      process.stderr.write(`run-hook-with-bash: failed to start ${bash}: ${result.error.message}\n`);
-      return 2;
+      skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput);
+      continue;
     }
-    memberTimings.push({ basename, elapsedMs: elapsed, startedAt: memberStart });
-    const stdout = result.stdout || '';
-    const stderr = result.stderr || '';
-    // HIMMEL-3601: a must-run member that CRASHES — any status other than 0
-    // or 2, or killed by a signal (null status) — is exactly as unevaluated
-    // as one that times out, so it denies the same way the ETIMEDOUT branch
-    // above does, instead of falling to the generic non-blocking error path
-    // below (which would let a later member decide in its place).
-    const rawStatus = result.status;
-    const crashed = rawStatus === null || (typeof rawStatus === 'number' && rawStatus !== 0 && rawStatus !== 2);
-    if (crashed && mustRun) {
-      const reason = rawStatus === null ? `signal ${result.signal}` : `rc=${rawStatus}`;
-      process.stderr.write(
-        `run-hook-with-bash: DENY ${basename} (${reason}) — must-run guard crashed instead of deciding; failing closed.\n`,
-      );
-      if (stderr.trim()) {
-        process.stderr.write(`run-hook-with-bash: ${basename} stderr: ${stderr.trim()}\n`);
-      }
-      return 2;
-    }
-    const status = typeof result.status === 'number' ? result.status : 2;
-    const output = parseJsonObject(stdout);
-
-    // exit 2 is the deny convention; a deny expressed as JSON on exit 0 is the
-    // same decision in the structured channel. Both end the chain here.
-    if (status === 2 || (status === 0 && isDeny(output))) {
-      // HIMMEL-5198: Claude Code ignores stdout JSON on exit 2 and reads stderr
-      // as the reason, so a JSON block must carry its own reason there — else
-      // stderr holds only an earlier member's unrelated notice. A member that
-      // wrote its own stderr already chose its reason, so that stays as is.
-      const blockReason = output && (output.decision === 'block' ? output.reason
-        : output.hookSpecificOutput && output.hookSpecificOutput.permissionDecisionReason);
-      if (typeof blockReason === 'string' && blockReason.trim() && !stderr.trim()) {
-        process.stderr.write(`${blockReason}\n`);
-      }
-      process.stdout.write(stdout);
-      process.stderr.write(stderr);
-      return 2;
-    }
-    if (status === 0 && output) {
-      emitters.push({ source: basename, output, raw: stdout });
-    } else if (stdout.trim()) {
-      // Plain stdout on exit 0 is transcript-only for a lone hook, but our
-      // stdout must stay one JSON object or empty — so it goes to stderr.
-      held.push(stdout.endsWith('\n') ? stdout : `${stdout}\n`);
-    }
-    if (stderr) held.push(stderr);
-    // Any other non-zero exit is a non-blocking error: report it, keep going,
-    // and carry the first rc so the chain still reports the failure.
-    if (status !== 0 && carriedStatus === 0) carriedStatus = status;
+    if (result.stderr) process.stderr.write(result.stderr);
+    // Emit each body as it lands rather than joining at the end: byte-identical
+    // output, and whatever the chain already collected survives an outer
+    // SIGKILL. For an advisory lane partial context beats none.
+    // Drop ONE trailing newline so exactly one separator lands per body.
+    const body = String(result.stdout || '').replace(/\n$/, '');
+    if (body) process.stdout.write(`${body}\n`);
   }
+  return 0;
+}
 
+// Returned by the per-member helpers below when the member is finished with
+// and the chain moves on to the next one (as opposed to a number = exit now,
+// or undefined = keep going inside this member).
+const NEXT_MEMBER = Symbol('next-member');
+
+// a tampered project-local member must not run at all — deny
+// the whole chain the same way a must-run member's starvation does,
+// since a security-fence member reachable via --chain is exactly as
+// rewrite-able as one reachable via --optional.
+function gateMemberIntegrity(member, ctx, st) {
+  const integrity = verifyProjectHookIntegrity(member, ctx.sessionId);
+  if (!integrity.ok) {
+    denyIntegrityMismatch(member, integrity.relPath, integrity.reason);
+    // on a non-gating event the failing member is skipped ALONE.
+    // Returning here would silence the intact members after it and drop what
+    // earlier members already collected, a Stop decision block included.
+    const notice = skipNotice(ctx.hookInput, member, integrity);
+    if (notice === null) return 2;
+    const output = { systemMessage: notice };
+    st.emitters.push({ source: 'hook-integrity', output, raw: `${JSON.stringify(output)}\n` });
+    return NEXT_MEMBER;
+  }
+  if (integrity.unvouched && st.unvouchedMember === null) st.unvouchedMember = member;
+  return undefined;
+}
+
+// The window one member gets: `bound` is what it actually runs under; `starved` whether the shared clock
+// alone clamped a must-run member below its own full window (diagnostics only).
+function memberTimeBounds(mustRun, input, ctx) {
+  // Clamped to what is left of the chain budget, but never below the floor:
+  // a spent budget must not reduce the remaining guards to a 0ms execution
+  // slice — each still gets a real, if small, chance to decide.
+  const memberWindow = memberTimeoutMs(Buffer.byteLength(input));
+  const budgetBound = Math.max(MIN_MEMBER_TIMEOUT_MS, Math.min(memberWindow, ctx.chainDeadline - Date.now()));
+  // that floor guards against a spent SHARED budget, but
+  // must never push an advisory member's window past the entry-safe
+  // deadline itself — several floored members in a row can otherwise add up
+  // to more time than is actually left before Claude Code's own entry
+  // `timeout` fires, and a killed entry fails the whole chain OPEN. Clamp
+  // down (never back up) by what is left before entryDeadline, floored at
+  // 1ms — never 0 or negative, which spawnSync's `timeout` treats as "no
+  // timeout at all" rather than "expire immediately".
+  const sharedBound = Math.max(1, Math.min(budgetBound, ctx.entryDeadline - Date.now()));
+  // a must-run SECURITY member gets its own window regardless
+  // of what the shared budget has left — a slow upstream neighbour must not
+  // deny a must-run guard that never got to run — but that window is ALSO
+  // capped by the entry-safe deadline: the chain must always
+  // decide before Claude Code's own entry `timeout` kills it and fails the
+  // whole chain OPEN. `starved` records whether the shared clock alone
+  // would have clamped this member below its own full window, purely to
+  // drive the denial message's diagnostics.
+  const starved = mustRun && sharedBound < memberWindow;
+  // floor the CONFIGURED member timeout at the same
+  // MIN_MEMBER_TIMEOUT_MS floor every other member gets before capping by
+  // the entry-safe deadline — otherwise a RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS
+  // override below the floor made mustRunWindow always land under it, so
+  // the pre-spawn deny check fired for every must-run member
+  // regardless of how much of the real entry deadline was actually left.
+  // Capping by entryDeadline afterward is unchanged, so a genuinely
+  // exhausted entry deadline still denies exactly as before.
+  const mustRunWindow = Math.min(Math.max(memberWindow, MIN_MEMBER_TIMEOUT_MS), ctx.entryDeadline - Date.now());
+  return { bound: mustRun ? mustRunWindow : sharedBound, starved };
+}
+
+// even the floor cannot fit before the entry
+// deadline — spawning anyway would either get killed mid-run (still a
+// fail-open once Claude Code reaps the entry) or hand the guard a slice
+// too small to mean anything. Deny WITHOUT spawning, naming whoever
+// actually spent the budget, the same as the ETIMEDOUT path does
+// for a member that DID get to run.
+function denyIfEntryExhausted(basename, bound, ctx, st) {
+  logChainSkip({
+    ts: new Date().toISOString(),
+    action: 'deny',
+    member: basename,
+    budget: bound,
+    elapsed: 0,
+    reason: 'ENTRY_DEADLINE',
+    sessionId: ctx.sessionId,
+    toolCall: toolCallSummary(ctx.hookInput),
+    starved: true,
+  });
+  const consumer = budgetConsumer(st.memberTimings, ctx.chainDeadline);
+  const consumerNote = consumer
+    ? ` must-run guard was left no safe window before the entry deadline; the shared chain budget was mostly spent by ${consumer.basename} (${consumer.elapsedMs}ms); failing closed.`
+    : ` must-run guard was left no safe window before the entry deadline; failing closed.`;
+  process.stderr.write(`run-hook-with-bash: DENY ${basename} (entry deadline exhausted) —${consumerNote}\n`);
+  return 2;
+}
+
+// A member that outran a LIMIT of ours is not a launcher failure. Two
+// limits reach here: the per-member timeout, and the output buffer (a
+// single hook keeps `stdio: 'inherit'` and has no buffer at all, so
+// overflow is a hazard chaining introduced). What happens
+// next now depends on whether this member is MUST_RUN_CHAIN_MEMBERS —
+// an advisory member is skipped exactly as before (Claude Code killing
+// the hung ENTRY would have skipped the sibling entries the same way);
+// a must-run SECURITY member instead fails the whole chain CLOSED,
+// because a guard that still doesn't decide inside its own window is a
+// guard that never got to deny — the window only changes what window
+// it got, not what happens when even that window runs out.
+function handleMemberRunError(result, basename, memberStart, elapsed, win, ctx, st) {
+  const { bound, starved, mustRun } = win;
+  const overran = { ETIMEDOUT: true, ENOBUFS: true };
+  if (!overran[result.error.code]) {
+    process.stderr.write(`run-hook-with-bash: failed to start ${ctx.bash}: ${result.error.message}\n`);
+    return 2;
+  }
+  logChainSkip({
+    ts: new Date().toISOString(),
+    action: mustRun ? 'deny' : 'skip',
+    member: basename,
+    budget: bound,
+    elapsed,
+    reason: result.error.code,
+    sessionId: ctx.sessionId,
+    toolCall: toolCallSummary(ctx.hookInput),
+    ...(mustRun && starved ? { starved: true } : {}),
+  });
+  if (mustRun) {
+    const consumer = starved ? budgetConsumer(st.memberTimings, ctx.chainDeadline) : null;
+    const consumerNote = consumer
+      ? ` must-run guard did not evaluate this call within its ${bound}ms window; the shared chain budget was mostly spent by ${consumer.basename} (${consumer.elapsedMs}ms); failing closed.`
+      : ` must-run guard did not evaluate this call; failing closed.`;
+    process.stderr.write(
+      `run-hook-with-bash: DENY ${basename} (budget=${bound}ms elapsed=${elapsed}ms) —${consumerNote}\n`,
+    );
+    return 2;
+  }
+  process.stderr.write(
+    `run-hook-with-bash: SKIP ${basename} (budget=${bound}ms elapsed=${elapsed}ms) — guard did not evaluate this call.\n`,
+  );
+  st.memberTimings.push({ basename, elapsedMs: elapsed, startedAt: memberStart });
+  if (st.carriedStatus === 0) st.carriedStatus = 1;
+  return NEXT_MEMBER;
+}
+
+// a must-run member that CRASHES — any status other than 0
+// or 2, or killed by a signal (null status) — is exactly as unevaluated
+// as one that times out, so it denies the same way the ETIMEDOUT branch
+// above does, instead of falling to the generic non-blocking error path
+// (which would let a later member decide in its place).
+function denyCrashedMustRun(result, basename, stderr) {
+  const rawStatus = result.status;
+  const crashed = rawStatus === null || (typeof rawStatus === 'number' && rawStatus !== 0 && rawStatus !== 2);
+  if (!crashed) return undefined;
+  const reason = rawStatus === null ? `signal ${result.signal}` : `rc=${rawStatus}`;
+  process.stderr.write(
+    `run-hook-with-bash: DENY ${basename} (${reason}) — must-run guard crashed instead of deciding; failing closed.\n`,
+  );
+  if (stderr.trim()) {
+    process.stderr.write(`run-hook-with-bash: ${basename} stderr: ${stderr.trim()}\n`);
+  }
+  return 2;
+}
+
+// Ends the chain: relays a deny (exit 2, or a JSON deny on exit 0) verbatim.
+function relayDeny(output, stdout, stderr) {
+  // Claude Code ignores stdout JSON on exit 2 and reads stderr
+  // as the reason, so a JSON block must carry its own reason there — else
+  // stderr holds only an earlier member's unrelated notice. A member that
+  // wrote its own stderr already chose its reason, so that stays as is.
+  const blockReason = output && (output.decision === 'block' ? output.reason
+    : output.hookSpecificOutput && output.hookSpecificOutput.permissionDecisionReason);
+  if (typeof blockReason === 'string' && blockReason.trim() && !stderr.trim()) {
+    process.stderr.write(`${blockReason}\n`);
+  }
+  process.stdout.write(stdout);
+  process.stderr.write(stderr);
+  return 2;
+}
+
+// File one finished, non-crashed member's output into the chain state.
+// Returns 2 when the member denied (ending the chain), else undefined.
+function collectMemberOutput(result, basename, stdout, stderr, st) {
+  const status = typeof result.status === 'number' ? result.status : 2;
+  const output = parseJsonObject(stdout);
+
+  // exit 2 is the deny convention; a deny expressed as JSON on exit 0 is the
+  // same decision in the structured channel. Both end the chain here.
+  if (status === 2 || (status === 0 && isDeny(output))) return relayDeny(output, stdout, stderr);
+  if (status === 0 && output) {
+    st.emitters.push({ source: basename, output, raw: stdout });
+  } else if (stdout.trim()) {
+    // Plain stdout on exit 0 is transcript-only for a lone hook, but our
+    // stdout must stay one JSON object or empty — so it goes to stderr.
+    st.held.push(stdout.endsWith('\n') ? stdout : `${stdout}\n`);
+  }
+  if (stderr) st.held.push(stderr);
+  // Any other non-zero exit is a non-blocking error: report it, keep going,
+  // and carry the first rc so the chain still reports the failure.
+  if (status !== 0 && st.carriedStatus === 0) st.carriedStatus = status;
+  return undefined;
+}
+
+// Runs one PreToolUse chain member. Returns a number to end the chain with
+// that exit code, or undefined to carry on with the next member.
+function runChainMember(member, ctx, st) {
+  const gated = gateMemberIntegrity(member, ctx, st);
+  if (gated !== undefined) return gated === NEXT_MEMBER ? undefined : gated;
+  const basename = path.basename(member);
+  const mustRun = MUST_RUN_CHAIN_MEMBERS.has(basename);
+  const { bound, starved } = memberTimeBounds(mustRun, ctx.input, ctx);
+  if (mustRun && bound < MIN_MEMBER_TIMEOUT_MS) return denyIfEntryExhausted(basename, bound, ctx, st);
+  const memberStart = Date.now();
+  const result = spawnMember(ctx.bash, member, ctx.input, bound);
+  const elapsed = Date.now() - memberStart;
+  if (result.error && !isRecoverableEpipe(result)) {
+    const handled = handleMemberRunError(result, basename, memberStart, elapsed, { bound, starved, mustRun }, ctx, st);
+    return handled === NEXT_MEMBER ? undefined : handled;
+  }
+  st.memberTimings.push({ basename, elapsedMs: elapsed, startedAt: memberStart });
+  const stdout = result.stdout || '';
+  const stderr = result.stderr || '';
+  if (mustRun) {
+    const crashed = denyCrashedMustRun(result, basename, stderr);
+    if (crashed !== undefined) return crashed;
+  }
+  return collectMemberOutput(result, basename, stdout, stderr, st);
+}
+
+// What the chain says once every member has run: held notices, the
+// once-per-session UNVERIFIED notice, then the merged JSON output (or the
+// lone member's, or just the carried status).
+function finishChain(st, sessionId) {
+  const { emitters, held, carriedStatus, unvouchedMember } = st;
   if (held.length) process.stderr.write(held.join(''));
 
   // JSON on a non-zero exit is ignored by Claude Code, so only take the
@@ -915,6 +925,67 @@ function runChain(members, lifecycle = false) {
   });
   process.stdout.write(`${JSON.stringify(merged)}\n`);
   return 0;
+}
+
+// Returns the exit code rather than calling process.exit(): on Windows a pipe
+// stdout is ASYNC, so exiting immediately after a write can truncate the very
+// JSON decision this exists to deliver. The caller sets process.exitCode and
+// lets node drain and exit on its own.
+function runChain(members, lifecycle = false) {
+  const refusal = chainRefusal(members);
+  if (refusal !== null) return refusal;
+
+  const bash = resolveBash();
+  if (!bash) {
+    process.stderr.write('run-hook-with-bash: no usable Bash interpreter found; refusing to run hook\n');
+    return 2;
+  }
+
+  // Read once, fan the same payload to every member — each sees the full hook
+  // JSON exactly as it would as its own entry.
+  const input = readAllStdin();
+  // Parsed once for the skip/deny log rows below — never for
+  // chain decisions, which stay per-member exactly as before.
+  const hookInput = parseJsonObject(input);
+  const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
+
+  if (lifecycle) return runLifecycleChain(members, bash, input, sessionId, hookInput);
+
+  const chainStartedAt = Date.now();
+  const ctx = {
+    bash,
+    input,
+    hookInput,
+    sessionId,
+    chainDeadline: chainStartedAt + chainBudgetMs(),
+    // the hard ceiling a must-run member's window is
+    // capped against, derived from the settings.json entry timeout so the whole
+    // chain always decides safely inside it, regardless of the shared budget.
+    entryDeadline: chainStartedAt + entryTimeoutMs() - entrySafetyMarginMs(),
+  };
+  const st = {
+    emitters: [],
+    // the first member the launcher could not vouch for. The
+    // once-per-session "this session ran UNVERIFIED" notice is taken only after
+    // the loop, on a non-deny return, so a deny never consumes the flag with no
+    // channel to show it (exit-0 stderr reaches nobody; a systemMessage does).
+    unvouchedMember: null,
+    // Everything a non-denying member said, flushed to OUR stderr after the
+    // chain. Held rather than streamed so a later member's deny reaches the
+    // model on its own, verbatim.
+    held: [],
+    carriedStatus: 0,
+    // per-member elapsed times seen so far in THIS chain run, so a
+    // starvation-adjacent denial can name the member that ate the budget, not
+    // merely the one that was starved by it.
+    memberTimings: [],
+  };
+
+  for (const member of members) {
+    const code = runChainMember(member, ctx, st);
+    if (code !== undefined) return code;
+  }
+  return finishChain(st, sessionId);
 }
 
 function main() {
