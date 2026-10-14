@@ -104,6 +104,7 @@ def _is_target_domain(domain: str) -> bool:
 
 
 def build_storage_state(cookie_file: Path) -> dict:
+    # Both ignore_* flags are required: http.cookiejar would judge expiry in the wrong unit for WebKit timestamps and drop session (0-expiry) rows.
     jar = http.cookiejar.MozillaCookieJar(str(cookie_file))
     jar.load(ignore_discard=True, ignore_expires=True)
     cookies = [_cookie_to_state_entry(cookie) for cookie in jar if _is_target_domain(cookie.domain)]
