@@ -78,7 +78,11 @@ while [ $# -gt 0 ]; do
         --repo) shift; REPO_FLAG="${1:-}" ;;
         --only) [ -n "${2:-}" ] || { echo "himmel-doctor: --only needs a check id (C29 or C29,C40)" >&2; exit 2; }
                 ONLY=",$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]' | tr -d ' '),"; shift
-                case "$ONLY" in *[!C0-9,]*|*,,*) echo "himmel-doctor: --only takes check ids like C29 or C29,C40, got '$ONLY'" >&2; exit 2 ;; esac ;;
+                for _id in $(printf '%s' "$ONLY" | tr ',' ' '); do
+                    grep -qE "(run_check|run_heavy|doctor_wants) $_id( |;)" "${BASH_SOURCE[0]}" \
+                        || { echo "himmel-doctor: --only takes known check ids like C29 or C29,C40, got '$_id'" >&2; exit 2; }
+                done
+                [ "$ONLY" != ",," ] || { echo "himmel-doctor: --only needs a check id" >&2; exit 2; } ;;
         --root) [ -n "${2:-}" ] || { echo "himmel-doctor: --root needs a path" >&2; exit 2; }
                 shift ;; # the value was read by the pre-scan above
         --no-color) USE_COLOR=0 ;;
@@ -4164,7 +4168,7 @@ doctor_wants() {
 HEAVY_T="${HIMMEL_DOCTOR_HEAVY_TIMEOUT:-35}"
 case "$HEAVY_T" in ''|*[!0-9]*) HEAVY_T=35 ;; esac
 HEAVY_T=$((10#$HEAVY_T)); [ "$HEAVY_T" -gt 0 ] || HEAVY_T=35
-HEAVY_DIR=""; HEAVY_JOBS=""; _TIMEOUT_BIN=""
+HEAVY_DIR=""; HEAVY_JOBS=""; _TIMEOUT_BIN=""; HEAVY_INCOMPLETE=0
 if [ -f "$REPO_ROOT/scripts/lib/timeout-bin.sh" ]; then
     # shellcheck source=lib/timeout-bin.sh
     # shellcheck disable=SC1091
@@ -4208,10 +4212,10 @@ heavy_join() {
             emit "$(jq -r '.sev' <<< "$row")" "$(jq -r '.id' <<< "$row")" "$(jq -r '.msg' <<< "$row")" "$(jq -r '.remedy' <<< "$row")"
         done < "$rows"
         if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-            emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
+            HEAVY_INCOMPLETE=1; emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
                 "bash scripts/himmel-doctor.sh --only $id   # run it alone; HIMMEL_DOCTOR_HEAVY_TIMEOUT=<secs> raises the bound"
         elif [ "$n" -eq 0 ]; then
-            emit INFO "$label" "check did not complete (child exit $rc, no rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
+            HEAVY_INCOMPLETE=1; emit INFO "$label" "check did not complete (child exit $rc, no rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
         fi
     done <<EOF_JOBS
 $HEAVY_JOBS
@@ -4289,12 +4293,12 @@ echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 
 # HIMMEL-4363: a full run refreshes the statusline counts. There is no subset
-# flag but --only; it and the two *_SKIP seams skip checks, so a run
-# with any of them set is a subset and never writes (it would publish a falsely
-# low count). A
+# flag but --only; it, a heavy check that timed out or died, and the two *_SKIP
+# seams skip checks, so a run with any of them set is a subset and never writes
+# (it would publish a falsely low count). A
 # run judging a non-station root never writes either; counts and
 # last.tsv are published together by doctor_state_publish.
-if [ "$REPO_ROOT" = "$STATION_ROOT" ] && [ "${DOCTOR_OBSERVABILITY_SKIP:-0}" != 1 ] && [ "${DOCTOR_ORPHAN_SCAN_SKIP:-0}" != 1 ] && [ -z "$ONLY" ]; then
+if [ "$REPO_ROOT" = "$STATION_ROOT" ] && [ "${DOCTOR_OBSERVABILITY_SKIP:-0}" != 1 ] && [ "${DOCTOR_ORPHAN_SCAN_SKIP:-0}" != 1 ] && [ -z "$ONLY" ] && [ "$HEAVY_INCOMPLETE" = 0 ]; then
     # shellcheck source=doctor-counts.sh
     . "$SELF_DIR/doctor-counts.sh"
     doctor_state_publish "${HIMMEL_DOCTOR_STATE_DIR:-${HOME:-}/.himmel/state/doctor-cadence}" "$KEYS" "$n_fail" "$n_warn" || true
