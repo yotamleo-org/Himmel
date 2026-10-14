@@ -145,7 +145,10 @@ def main(argv=None):
         out["frames"], out["frames_error"] = [], None
         if args.visual:
             out_dir = args.out_dir or Path(tempfile.mkdtemp(prefix=f"yt-watch-{vid}-"))
-            out["frames"], out["frames_error"] = extract_frames(vid, out_dir)
+            try:
+                out["frames"], out["frames_error"] = extract_frames(vid, out_dir)
+            except OSError as e:
+                out["frames"], out["frames_error"] = [], f"frames_io_error: {e.strerror or type(e).__name__}"
     print(json.dumps(out, ensure_ascii=False))
     return rc
 

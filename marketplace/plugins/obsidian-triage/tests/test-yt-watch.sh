@@ -94,6 +94,12 @@ watch --visual --out-dir "$tmp/out4" >"$tmp/t4.json"; assert "exit 0 (transcript
 assert "frames empty" 0 "$(jq_py "$tmp/t4.json" 'len(d["frames"])')"
 assert "frames_error set" yes "$(jq_py "$tmp/t4.json" '"yes" if d["frames_error"] else "no"')"
 
+echo "Test 4b: an unwritable out-dir becomes frames_error, transcript still printed"
+: >"$tmp/notadir"
+watch --visual --out-dir "$tmp/notadir/x" >"$tmp/t4b.json"; assert "exit 0" 0 "$?"
+assert "frames_error set" yes "$(jq_py "$tmp/t4b.json" '"yes" if d["frames_error"] else "no"')"
+assert "transcript kept" hello "$(jq_py "$tmp/t4b.json" 'd["transcript"][0]["tx"]')"
+
 echo "Test 5: video id is validated"
 "$PYBIN" "$WATCH" --video-id 'a b;rm' --meta-json "$tmp/meta-ok.json" >/dev/null 2>&1; assert "bad id rejected" 2 "$?"
 

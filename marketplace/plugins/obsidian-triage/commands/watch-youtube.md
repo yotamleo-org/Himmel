@@ -13,8 +13,9 @@ Never call `obsidian-second-brain:youtube` for this.
 ## Steps
 
 1. **Vault first (no network).** `node <plugin>/tools/clip-lookup-cli.mjs "<url>"`
-   (`<plugin>` = the installed plugin root, as in `/read-link`). An `enriched: true` hit → read the clip at `path`
-   and answer from it, STOP. `null`, an error, or a thin hit → step 2.
+   (`<plugin>` = the installed plugin root, as in `/read-link`). An `enriched: true` hit and no `--visual` → read the clip at `path`
+   and answer from it, STOP. With `--visual` (or a question about what is shown) a hit
+   is context only: go on to step 2. `null`, an error, or a thin hit → step 2.
 2. **Fetch.** Resolve `<plugin>` as in `/read-link` (installed plugin root) and run
    `python3 <plugin>/tools/yt-watch.py --url "<url>"` (add `--visual` when asked
    for frames / "what is shown"; add `--out-dir <scratch>` to choose where frames land).
