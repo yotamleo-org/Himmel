@@ -689,14 +689,18 @@ _stx_end() {
                                     while case ${s:j:1} in ' ' | $'\t') true ;; *) false ;; esac; do j=$((j + 1)); done
                                     _stx_hdword "$s" "$j"
                                     if [ -n "$_SX_W" ] || [ "$_SX_Q" = 1 ]; then
-                                        # skip a body only on a provable delimiter in a redirection position:
-                                        # `a[1<<E]=x` is one assignment word, `<<${E:-a b}` is no plain word
-                                        k=$i
-                                        while [ "$k" -gt 0 ] && case ${s:k-1:1} in [0-9]) true ;; *) false ;; esac; do k=$((k - 1)); done
-                                        m=0
-                                        if [ "$k" -gt 0 ]; then
-                                            case ${s:k-1:1} in ' ' | $'\t' | $'\n' | ';' | '&' | '|' | '(') ;; *) m=1 ;; esac
-                                        fi
+                                        # skip a body only when the clause text before `<<` is plain words:
+                                        # `a[1 <<E ]=x` is one assignment word, so any other byte fails closed;
+                                        # `<<${E:-a b}` is no plain delimiter word
+                                        k=$i; m=0
+                                        while [ "$k" -gt 0 ]; do
+                                            case ${s:k-1:1} in
+                                                $'\n') [ "$k" -gt 1 ] && [ "${s:k-2:1}" = '\' ] && m=1; break ;;
+                                                '(') { [ "$k" -gt 1 ] && [ "${s:k-2:1}" = '$' ]; } || m=1; break ;;
+                                                [A-Za-z0-9_./:+-] | ' ' | $'\t' | ';' | '&' | '|') k=$((k - 1)) ;;
+                                                *) m=1; break ;;
+                                            esac
+                                        done
                                         case $_SX_W in '' | *[!A-Za-z0-9_-]*) m=1 ;; esac
                                         if [ "$m" = 1 ]; then _SX_OVER=1; _SX_E=-1; return 1; fi
                                         hd_d[hd_n]=$_SX_W; hd_t[hd_n]=$b; hd_q[hd_n]=$_SX_Q; hd_l[hd_n]=${#st}; hd_n=$((hd_n + 1))

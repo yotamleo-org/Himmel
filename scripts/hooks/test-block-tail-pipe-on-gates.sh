@@ -469,7 +469,32 @@ deny "<< in an array subscript is no heredoc (later lines before the paren)" \
 # shellcheck disable=SC2016  # payload is literal command text
 deny "heredoc delimiter that is a parameter expansion fails closed" \
      $'x=$(cat <<${E:-a b}\nbody\n)\n${V:-./scripts/check-ci.sh} | tail -1'
-# The position check alone (plain word, `<<` after `[`): asserted on _stx_end,
+# Trust re-judge j2534d: bash keeps blanks inside a subscript, so `a[1 <<E ]=x`
+# is one word too. The clause text before `<<` must be plain words, else fail closed.
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< after a blank inside a subscript is no heredoc (paren on the next line)" \
+     $'x=$(a[1 <<E ]=x\n)\n${V:-./scripts/check-ci.sh} | tail -1\nE\n)\n'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "<< after a blank inside a subscript is no heredoc (later lines before the paren)" \
+     $'x=$(a[1 <<E ]=x\nfoo\nE\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "declare with a blank subscript is no heredoc (paren on the next line)" \
+     $'x=$(declare a[1 <<E ]=x\n)\n${V:-./scripts/check-ci.sh} | tail -1\nE\n)\n'
+# shellcheck disable=SC2016  # payload is literal command text
+deny "declare with a blank subscript is no heredoc (later lines before the paren)" \
+     $'x=$(declare a[1 <<E ]=x\nfoo\nE\n)\n${V:-./scripts/check-ci.sh} | tail -1'
+res=$(
+    # shellcheck source=lib/shell-tokenize.sh
+    . "$HERE/lib/shell-tokenize.sh" 2>/dev/null
+    _stx_end $'a[1 <<E ]=x\nx\nE\n)' 0 P
+    echo "$?:$_SX_E"
+)
+if [ "$res" = "1:-1" ]; then
+    pass "<< after a blank inside a subscript fails closed (_stx_end)"
+else
+    fail "<< after a blank inside a subscript was skipped as a heredoc (_stx_end got $res)"
+fi
+# The prefix check alone (plain word, `<<` after `[`): asserted on _stx_end,
 # since the word whitelist already fails every hook-level subscript shape.
 res=$(
     # shellcheck source=lib/shell-tokenize.sh
