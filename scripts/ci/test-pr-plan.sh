@@ -54,7 +54,8 @@ trap 'rm -rf "$SB" "$SUITE_LOCK_SANDBOX"' EXIT
 ) || exit 1
 g() { git -C "$SB" "$@"; }
 
-mkdir -p "$SB/scripts/ci" "$SB/scripts/cr" "$SB/scripts/jira" "$SB/scripts/tools" "$SB/docs" "$SB/odd"
+mkdir -p "$SB/scripts/ci" "$SB/scripts/cr" "$SB/scripts/jira" "$SB/scripts/tools" "$SB/scripts/guardrails" "$SB/docs" "$SB/odd"
+printf '# baseline\n' > "$SB/scripts/guardrails/git-env-baseline.txt"
 printf '# jira\n' > "$SB/scripts/jira/client.ts"
 printf '# tool\n' > "$SB/scripts/tools/foo.sh"
 printf '# doc\n' > "$SB/docs/note.md"
@@ -116,9 +117,13 @@ else fail "P4 unnamed path: $out"; fi
 
 # P4b: trust judge j2543c — the git-env baseline is the data input of
 # check-git-env-scrub.sh; a baseline-only diff must run the job, not skip it.
+# The baseline exists at BASE (j2543e: a missing file made this plan all-true
+# whatever the gates said), so the branch edits a tracked file and only the
+# gate line can turn git_env_scrub on while docs-only stays all-false.
 out=$(plan "$BASE" "$H_BASE")
-if [ "$(val "$out" run_git_env_scrub)" = true ]; then pass "P4b baseline-only diff runs git_env_scrub"
-else fail "P4b baseline-only diff skipped git_env_scrub: $out"; fi
+if [ "$(val "$out" run_git_env_scrub)" = true ] && [ "$(val "$out" mode)" = impacted ] \
+   && [ "$(val "$out" run_bun_suites)" = false ]; then pass "P4b baseline-only diff runs git_env_scrub and nothing else is all-true"
+else fail "P4b baseline-only diff: $out"; fi
 
 # P5: a base whose tree has no pr-job-gates.txt
 g checkout -q -B noinputs "$PRE"
@@ -252,9 +257,8 @@ printf '%s\n' scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh > "$EF"
 audit_case A6 plugin_version_bump "$EF"
 printf '%s\n' scripts/install/flag-registry-lint.mjs > "$EF"
 audit_case A7 lint "$EF"
-{ grep -E '^scripts/(lanes|trust|where-are-we|lessons|observability)/.*\.test\.mjs$' "$TRACKED" || true  # pipefail-ok: filtered listing
-  printf '%s\n' scripts/op-env-parity.test.mjs scripts/hooks/check-hook-lib-suites.sh; } > "$EF"
-audit_case A8 lanes_and_trust "$EF"
+# A8 (lanes_and_trust) is gone: the job is ungated (j2543e). The A8 test below
+# pins that no gate group or ci.yml output brings it back.
 tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus' > "$EF"
 audit_case A9 node_suites "$EF"
 tests_under 'scripts/luna-vitals|scripts/telegram|scripts/vault|scripts/config-ui|marketplace/plugins/luna-correlate|marketplace/plugins/telegram-himmel|scripts/fleet-control|scripts/observability' > "$EF"
@@ -265,6 +269,10 @@ printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh > "$EF"
 if audit_closure "$EF" | grep -qx 'scripts/lanes/plugin-profiles.mjs'; then
   pass "A11 audit closure reaches scripts/lanes/plugin-profiles.mjs from test-fakekey-claude-startup.sh"
 else fail "A11 audit closure missed a known reference (vacuous audit)"; fi
+# A8: lanes-and-trust-suites stays ungated (j2543e).
+if grep -qE '^lanes_and_trust[[:space:]]' "$INPUTS_SRC" || grep -q 'run_lanes_and_trust' "$CI_YML"; then
+  fail "A8 lanes_and_trust is gated again (gate line or ci.yml output present)"
+else pass "A8 lanes-and-trust-suites is ungated"; fi
 
 # S1-S5: scripts/ci/shard-has-work.sh against a stub run-shell-tests.sh whose
 # --list output STUB_MODE picks (the real selector is covered by its own suite).

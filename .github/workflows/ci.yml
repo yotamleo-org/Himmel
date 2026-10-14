@@ -90,7 +90,6 @@ jobs:
       run_bun_suites: ${{ steps.plan.outputs.run_bun_suites }}
       run_jira_cli_smoke: ${{ steps.plan.outputs.run_jira_cli_smoke }}
       run_claude_startup: ${{ steps.plan.outputs.run_claude_startup }}
-      run_lanes_and_trust: ${{ steps.plan.outputs.run_lanes_and_trust }}
       run_guardrail_matrices: ${{ steps.plan.outputs.run_guardrail_matrices }}
       run_git_env_scrub: ${{ steps.plan.outputs.run_git_env_scrub }}
       run_bwk_gate: ${{ steps.plan.outputs.run_bwk_gate }}
@@ -443,8 +442,8 @@ jobs:
       - run: bash scripts/testing/test-mock-hook-live-turn.sh
 
   lanes-and-trust-suites:
-    needs: plan
-    if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_lanes_and_trust == 'false') }}
+    # Ungated (trust judge j2543e): its suites glob-read files no gate group can
+    # enumerate, so it runs on every PR like main.
     # HIMMEL-689: scripts/lanes is a zero-dependency ESM test package — no
     # package.json (a committed one under scripts/ trips the npm-audit gates for a
     # package with nothing to install). Run its node:test suites directly.

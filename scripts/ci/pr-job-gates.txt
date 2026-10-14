@@ -62,13 +62,18 @@ claude_startup  ^scripts/(clean-garden|quiet-run)\.sh$
 claude_startup  ^\.claude/
 claude_startup  ^\.bun-version$
 
-lanes_and_trust ^scripts/(lanes|trust|where-are-we|lessons|observability|hooks|lib)/
-lanes_and_trust ^scripts/(op-env-parity|test-claude-codex)
-lanes_and_trust ^scripts/(cr|eval|git|guardrails|handover|himmelctl|setup|telegram|upstreams)/
-lanes_and_trust ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
-lanes_and_trust ^marketplace/plugins/obsidian-triage/tools/
-lanes_and_trust ^marketplace/\.claude-plugin/marketplace\.json$
-lanes_and_trust ^marketplace/plugins/qmd/\.mcp\.json$
+# lanes-and-trust-suites is UNGATED (trust judge j2543e, second reader-allowlist
+# NO-GO): check-hook-lib-suites.sh globs scripts/(hooks|lib)/*.test.mjs and those
+# suites read files (scripts/install/manifest.json, himmel-ops hooks.json) no
+# group enumerates. It runs on every PR, so these paths are harmless to the
+# gates (same reasoning as the benign block at the end of this file).
+benign          ^scripts/(lanes|trust|where-are-we|lessons|observability|hooks|lib)/
+benign          ^scripts/(op-env-parity|test-claude-codex)
+benign          ^scripts/(cr|eval|git|guardrails|handover|himmelctl|setup|telegram|upstreams)/
+benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
+benign          ^marketplace/plugins/obsidian-triage/tools/
+benign          ^marketplace/\.claude-plugin/marketplace\.json$
+benign          ^marketplace/plugins/qmd/\.mcp\.json$
 
 guardrail_matrices ^scripts/guardrails/
 guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
