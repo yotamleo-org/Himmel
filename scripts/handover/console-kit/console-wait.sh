@@ -505,7 +505,7 @@ while :; do
             unowned_val="$(field unowned-prs "$tick_line")"
             case "$unowned_val" in
                 '') unowned_none_streak=0 ;;
-                '?') ;;
+                '?') unowned_none_streak=0 ;;
                 none)
                     unowned_none_streak=$((unowned_none_streak + 1))
                     [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" ;;

@@ -380,7 +380,7 @@ wrapped_open_prs_section() { # <predecessor doc>
     local open rows label ldoc n found=0 mtime
     printf '## Wrapped with open PR\n\n'
     printf 'The successor dispositions each entry below (relaunch, GO or close) BEFORE its first dispatch.\n\n'
-    open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')"
+    open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')" || open=""
     if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -f "$ldoc" ] || continue
