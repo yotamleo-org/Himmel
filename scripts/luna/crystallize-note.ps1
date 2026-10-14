@@ -1,4 +1,13 @@
-﻿# Usage: pwsh -File crystallize-note.ps1 <note_path> <transcript_path>
+﻿# crystallize-note.ps1 — Windows twin of crystallize-note.sh (HIMMEL-576).
+# Upgrades a mechanical session note into an LLM synthesis: asks a bounded
+# `claude "<prompt>"` run (interactive, NOT headless -p -> HIMMEL-128-safe; Max
+# plan, no API key) to rewrite the four body sections and flip crystallized: true.
+#
+# Usage: pwsh -File crystallize-note.ps1 <note_path> <transcript_path>
+#
+# Best-effort + fail-open: no claude / over the concurrency cap / note-not-yet-on-
+# disk -> exit 0, leaving the mechanical note (crystallized: false); the reheal
+# sweep recovers it. Test seam: CRYSTALLIZE_CLAUDE_BIN overrides claude with a stub.
 param(
     [string]$NotePath,
     [string]$TranscriptPath,
@@ -8,12 +17,30 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 if (-not $NotePath) { exit 0 }
 
+# Optional operator rules/context file: 3rd positional arg, overridden by env
+# CRYSTALLIZE_RULES_FILE (env wins — same precedence as CRYSTALLIZE_MODEL).
 $rulesFile = if ($env:CRYSTALLIZE_RULES_FILE) { $env:CRYSTALLIZE_RULES_FILE } else { $RulesFile }
+# Refresh (re-consolidation) mode: re-run an already-synthesized note.
 $refresh = ($env:CRYSTALLIZE_REFRESH -eq '1')
 
+# Recursion guards: the throwaway claude subsession must not re-fire the session-
+# end hooks (end-session-wiki + HIMMEL-572 where-are-we refresh).
 $env:CLAUDE_END_SESSION_WIKI = '0'
 $env:HIMMEL_WHERE_ARE_WE = '0'
 
+# A lane config dir carries proxy routing but no native credentials. Defer this
+# best-effort synthesis to backfill rather than fire its Anthropic model pin into
+# the lane proxy (HIMMEL-1927); an unresolvable path is fail-open in the same way.
+#
+# HIMMEL-1927 CR finding: this predicate is deliberately conservative -- ANY
+# CLAUDE_CONFIG_DIR that differs from ~/.claude defers, even a legitimate
+# custom-but-native one. Do NOT narrow this to also require ANTHROPIC_BASE_URL:
+# a lane config dir (e.g. ~/.claude-codex) carries no .credentials.json, so
+# proceeding there produces a SILENT auth failure swallowed by this script's
+# stub-hidden output below -- same end state as the bug, minus the error log.
+# A false-defer here is recoverable via `backfill-sessions.sh --reheal`; a
+# credential-less proceed is not, because the failure is silent. Keep the
+# predicate as-is.
 if ($env:CLAUDE_CONFIG_DIR) {
     try {
         $configuredClaudeDir = (Resolve-Path -LiteralPath $env:CLAUDE_CONFIG_DIR -ErrorAction Stop).Path
@@ -25,10 +52,12 @@ if ($env:CLAUDE_CONFIG_DIR) {
     }
 }
 
+# Resolve claude (test override wins). No claude -> leave the mechanical note.
 $bin = $env:CRYSTALLIZE_CLAUDE_BIN
 if (-not $bin) { $bin = (Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
 if (-not $bin) { exit 0 }
 
+# Concurrency cap — never pile up N claude processes for N session-ends.
 $maxC = if ($env:CRYSTALLIZE_MAX_CONCURRENCY) { [int]$env:CRYSTALLIZE_MAX_CONCURRENCY } else { 2 }
 $pidDir = if ($env:CRYSTALLIZE_PID_DIR) { $env:CRYSTALLIZE_PID_DIR } else { Join-Path ([System.IO.Path]::GetTempPath()) 'himmel-crystallize' }
 New-Item -ItemType Directory -Path $pidDir -Force | Out-Null
@@ -41,6 +70,8 @@ Get-ChildItem -Path $pidDir -Filter '*.pid' -ErrorAction SilentlyContinue | ForE
 if ($live -ge $maxC) { exit 0 }
 $myPid = Join-Path $pidDir "$PID.pid"
 Set-Content -LiteralPath $myPid -Value $PID -ErrorAction SilentlyContinue
+# Declared before the try so the outer finally always cleans them up (parity with
+# the bash EXIT trap) even if a throw lands between their creation and the run.
 $settingsTmp = $null
 $snapTmp = $null
 try {
@@ -50,15 +81,23 @@ try {
     while (-not (Test-Path -LiteralPath $NotePath) -and $i -lt 3) { Start-Sleep -Seconds 1; $i++ }
     if (-not (Test-Path -LiteralPath $NotePath)) { exit 0 }
 
+    # Already crystallized -> nothing to do, UNLESS refresh mode re-runs it.
     if (-not $refresh -and (Select-String -LiteralPath $NotePath -Pattern '^crystallized: true$' -Quiet)) { exit 0 }
 
     if ($refresh) {
+        # Loss-proofing (refresh only): a refresh rewrites PREVIOUSLY-GOOD
+        # synthesis, so a partial/failed claude edit must never be accepted.
+        # Snapshot pre-run; the result is validated structurally below and
+        # restored from this snapshot if it fails. Can't snapshot -> can't
+        # roll back -> don't run (fail-open, note untouched).
         $snapTmp = "$NotePath.snap.$PID"
         try { Copy-Item -LiteralPath $NotePath -Destination $snapTmp -Force -ErrorAction Stop }
         catch { $snapTmp = $null; exit 0 }
     }
 
     if ($refresh) {
+        # Refresh (re-consolidation): CONSOLIDATE — update/extend the four
+        # sections, preserving prior synthesis content still correct.
         $prompt = @"
 You are re-consolidating an already-synthesized Claude Code session note for an Obsidian vault.
 Read the session transcript at: $TranscriptPath
@@ -114,8 +153,15 @@ validation pass (scripts/lessons/validate-lesson.mjs --capture), not at capture 
 "@
     }
 
+    # Operator rules/context injection: append a readable rules file's content as
+    # a clearly delimited block. Unreadable / missing / empty -> append nothing.
+    # Trim whitespace before the emptiness check to ensure parity with bash
+    # (bash `$(cat)` strips trailing newline, but PS Get-Content -Raw keeps it;
+    # both must skip on whitespace-only files).
     if ($rulesFile -and (Test-Path -LiteralPath $rulesFile)) {
         $rulesContent = (Get-Content -LiteralPath $rulesFile -Raw)
+        # Null-safe whitespace check: Get-Content -Raw returns $null on a
+        # zero-byte file, so .Trim() would throw and abort the run.
         if (-not [string]::IsNullOrWhiteSpace($rulesContent)) {
             $prompt = $prompt + @"
 
@@ -127,6 +173,13 @@ $rulesContent
         }
     }
 
+    # The note lives in the luna vault, OUTSIDE the himmel repo. Running claude in
+    # HIMMEL_ROOT left the out-of-workspace note edit waiting on a permission
+    # prompt that bounded stdin EOFed -> byte-unchanged note (HIMMEL-590 F1). Fix
+    # (HIMMEL-575 class): cwd = the note's directory, --add-dir the transcript
+    # dir, and inject auto-approve-safe-bash by absolute path via --settings. The
+    # LLM rewrites only the body; this script owns the crystallized flag from the
+    # body diff (T1d).
     $himmelRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $hookPath = ((Join-Path $himmelRoot 'scripts\hooks\auto-approve-safe-bash.sh') -replace '\\', '/')
     $settingsTmp = Join-Path ([System.IO.Path]::GetTempPath()) "crys-settings-$PID.json"
@@ -158,8 +211,10 @@ $rulesContent
     $env:CRYSTALLIZE_NOTE = $NotePath
     $env:CRYSTALLIZE_TRANSCRIPT = $TranscriptPath
 
+    # Pre-hash: the edit-confirmed flag-set keys off whether the body moved.
     $hashBefore = (Get-FileHash -LiteralPath $NotePath -Algorithm SHA256).Hash
 
+    # Ambient proxy exports must not redirect this Max-plan launch (HIMMEL-1867).
     try {
         . (Join-Path $himmelRoot 'scripts\lib\native-auth-pin.ps1')
         NativeAuthPinEnv
@@ -173,10 +228,22 @@ $rulesContent
         Pop-Location
     }
 
+    # Edit-confirmed flag-set (T1d): stamp crystallized:true only when the note
+    # body actually changed. A no-op leaves it byte-unchanged + crystallized:false;
+    # a real synthesis flips it with a deterministic UTC timestamp this script owns
+    # (CRYSTALLIZE_NOW overridable for hermetic tests). LF-preserving write.
     $hashAfter = (Get-FileHash -LiteralPath $NotePath -Algorithm SHA256).Hash
     if ($hashBefore -and $hashAfter -and ($hashBefore -ne $hashAfter)) {
+        # Refresh loss-proofing: a changed-but-structurally-broken result
+        # (truncated note, lost frontmatter/sections — the shape of a
+        # half-applied edit) is ROLLED BACK to the pre-run snapshot and NOT
+        # re-stamped, so a hash-based caller naturally counts a skip.
+        # Non-refresh runs never enter the rollback branch (no snapshot).
         $valid = $true
         if ($refresh) {
+            # Frontmatter intact (first line `---`, a second `---` exists),
+            # all four section headers, and the Raw Conversation callout the
+            # renderer emits (scripts/lib/session-note.sh) still present.
             $rl = @(Get-Content -LiteralPath $NotePath)
             if (-not $rl -or $rl[0] -ne '---') { $valid = $false }
             elseif (@($rl | Where-Object { $_ -eq '---' }).Count -lt 2) { $valid = $false }

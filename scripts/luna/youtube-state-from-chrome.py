@@ -32,11 +32,25 @@ from pathlib import Path
 # plain HTTP timeout; give it more room than fetch-health.py's probes need.
 YTDLP_TIMEOUT_SECONDS = 60
 YTDLP_PROBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+# Only the YouTube session and its Google auth cookies matter (HIMMEL-2549);
+# an unrelated domain in the exported jar is dropped rather than carried
+# forward into a credential file that only YouTube needs to consume.
 TARGET_DOMAINS = ("youtube.com", "www.youtube.com", "google.com")
-# Measured live authenticated-only names (a signed-out
+# CR round 1 codex-1 (HIMMEL-2549): a SIGNED-OUT Chrome profile still exports
+# visitor-only cookies for both youtube.com (VISITOR_INFO1_LIVE, YSC, PREF,
+# CONSENT) and google.com (NID, AEC), so a bare "count > 0" check does not
+# catch it — it would silently overwrite a good working storage state with a
+# session-less one. Measured live authenticated-only names (a signed-out
 # profile carries NONE of these): SID, HSID, SSID, APISID, SAPISID, SIDCC,
 # __Secure-1PSID, __Secure-3PSID, __Secure-1PSIDTS, __Secure-3PSIDTS,
 # LOGIN_INFO. Require at least one before writing.
+# CR round 6 codex-2: the constant above used to carry only 4 of those 11
+# measured names, so a valid export whose only marker was e.g. SAPISID or
+# SSID was wrongly rejected as signed out (fail-closed, never a clobber, but
+# still wrong). Widened to the FULL measured authenticated-only set. This is
+# safe because none of these appears in the measured signed-out set (repeated
+# here so nobody has to re-measure): youtube.com's VISITOR_INFO1_LIVE, YSC,
+# PREF, CONSENT, and google.com's NID, AEC. Do not add any of THOSE names.
 AUTH_MARKER_COOKIES = (
     "SID",
     "HSID",
@@ -50,15 +64,30 @@ AUTH_MARKER_COOKIES = (
     "__Secure-3PSIDTS",
     "LOGIN_INFO",
 )
-# yt-dlp's Chrome export writes the Netscape expiry column as Chrome's own
-# WebKit/Chromium timestamp — microseconds since 1601-01-01 — NOT Unix seconds,
-# even though the Netscape format nominally calls for Unix seconds.
+# CR round 2 codex-1 (HIMMEL-2549), measured live: yt-dlp's Chrome export
+# writes the Netscape expiry column as Chrome's own WebKit/Chromium
+# timestamp — microseconds since 1601-01-01 — NOT Unix seconds, even though
+# the Netscape format nominally calls for Unix seconds. Observed on the real
+# jar: .google.com SID expires=13467564657153552, .youtube.com LOGIN_INFO
+# expires=13467566150089572. Read as raw Unix seconds those land in the year
+# 2396 (effectively "never expires"), which is exactly why the original CR
+# finding ("an expired auth marker overwrites a good state") could not be
+# fixed as stated — the unit was wrong, so no real expiry could ever compare
+# less than "now". Converted properly (raw/1e6 - WEBKIT_TO_UNIX_EPOCH_OFFSET)
+# 13467564657153552 -> 1823091057.153552, a sane ~1-year-out SID expiry
+# (2027-10-09). WEBKIT_EPOCH_THRESHOLD (1e12, year 33658 if misread as Unix
+# seconds) is comfortably above any real Unix expiry and far below these
+# ~1.3e16 WebKit values, so it cleanly separates the two forms — anything
+# below it is already Unix seconds and passes through unchanged. Do not
+# "simplify" this away; both forms are observed in the wild.
 WEBKIT_EPOCH_THRESHOLD = 1e12
-WEBKIT_TO_UNIX_EPOCH_OFFSET = 11644473600
+WEBKIT_TO_UNIX_EPOCH_OFFSET = 11644473600  # seconds from 1601-01-01 to 1970-01-01
 
 
 def _normalize_expires(raw_expires: int | float | None) -> float:
     if not raw_expires:
+        # Session cookie (Netscape expiry 0, or no expiry at all). Playwright's
+        # own storageState uses -1 for that case too, so this is not lossy.
         return -1.0
     value = float(raw_expires)
     if value >= WEBKIT_EPOCH_THRESHOLD:
@@ -67,6 +96,8 @@ def _normalize_expires(raw_expires: int | float | None) -> float:
 
 
 def _current_unix_time() -> float:
+    # A patchable seam (HIMMEL-2549 CR round 2) — never call time.time()
+    # inline where a test asserting expiry logic cannot reach it.
     return time.time()
 
 
@@ -87,6 +118,13 @@ def _cookie_to_state_entry(cookie: http.cookiejar.Cookie) -> dict:
     # the parser's own casing is "HTTPOnly", not "HttpOnly").
     http_only = cookie.has_nonstandard_attr("HTTPOnly")
     expires = _normalize_expires(cookie.expires)
+    # CR round 6 codex-3: the Netscape source carries no SameSite column, so
+    # a hard-coded "Lax" would ASSERT a value the source never provided — and
+    # get it wrong for cookies like __Secure-3PSID, which is deliberately a
+    # THIRD-PARTY cookie needing SameSite=None to work cross-site; stamping
+    # it Lax declares the opposite of what it needs. Playwright's own
+    # storage-state sameSite field is optional, so omitting it when the
+    # source doesn't say is both legal and honest.
     return {
         "name": cookie.name,
         "value": cookie.value,
@@ -103,7 +141,13 @@ def _is_target_domain(domain: str) -> bool:
 
 
 def build_storage_state(cookie_file: Path) -> dict:
-    # Both ignore_* flags are required: http.cookiejar would judge expiry in the wrong unit for WebKit timestamps and drop session (0-expiry) rows.
+    # ignore_discard=True is required for the `0`-expiry (session) rows;
+    # ignore_expires=True (CR round 2) is what lets us SEE every cookie at
+    # all, expired-looking ones included — the judgement then moves into our
+    # own code (_normalize_expires + the auth-marker-expiry check in
+    # convert_and_write), which is the right place for it since http.cookiejar
+    # would judge expiry using the WRONG unit for these WebKit-timestamp
+    # values anyway. Do not "fix" this by dropping either ignore_* flag.
     jar = http.cookiejar.MozillaCookieJar(str(cookie_file))
     jar.load(ignore_discard=True, ignore_expires=True)
     cookies = [_cookie_to_state_entry(cookie) for cookie in jar if _is_target_domain(cookie.domain)]
@@ -111,6 +155,8 @@ def build_storage_state(cookie_file: Path) -> dict:
 
 
 def write_storage_state(path: Path, state: dict) -> None:
+    # The file is a live session credential (HIMMEL-2549): write atomically
+    # and mode 0600, mirroring fetch-health.py's write_state pattern.
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
@@ -134,12 +180,26 @@ def convert_and_write(cookie_file: Path, out_path: Path) -> int:
         return 1
     count = len(state["cookies"])
     if count == 0:
+        # Never write an empty state over a possibly-still-good one; a wrong
+        # or signed-out Chrome profile is the likely cause the operator needs.
         print(
             "youtube-state-from-chrome: export carried no YouTube cookies "
             "(wrong or signed-out Chrome profile?)",
             file=sys.stderr,
         )
         return 1
+    # CR round 1 codex-1 (HIMMEL-2549): a SIGNED-OUT profile still passes the
+    # count>0 check above (visitor cookies survive the domain filter), which
+    # would silently overwrite a good working storage state with a
+    # session-less one — the whole point of this guard. Distinguish "wrong
+    # profile" (zero cookies, handled above) from "signed-out profile" (some
+    # cookies, but none of them an auth marker) so the operator knows which.
+    # CR round 7 codex-1: a NAME match alone is not enough — a future-dated
+    # but EMPTY marker (e.g. `SID=`) satisfied this check and the expiry
+    # check below (expiry tests only "expires", not "value"), so an
+    # empty-valued marker could overwrite a good state. Same class as round
+    # 4's twitter setdefault-keeps-an-empty-value fix: an empty credential is
+    # not a credential. Require a non-empty value too.
     markers = [
         cookie for cookie in state["cookies"]
         if cookie["name"] in AUTH_MARKER_COOKIES and cookie["value"].strip()
@@ -153,6 +213,11 @@ def convert_and_write(cookie_file: Path, out_path: Path) -> int:
             file=sys.stderr,
         )
         return 1
+    # CR round 2 codex-1: a marker that IS present can still be expired — a
+    # session-cookie marker (expires -1, normalized above) counts as NOT
+    # expired, since it has no real expiry to compare. This is a THIRD,
+    # distinct diagnosis from both above: "signed out"/"wrong profile" (no
+    # marker at all) vs. "session expired" (marker present, past its expiry).
     now = _current_unix_time()
     if not any(marker["expires"] == -1.0 or marker["expires"] > now for marker in markers):
         expired_names = ", ".join(sorted({marker["name"] for marker in markers}))
@@ -163,6 +228,13 @@ def convert_and_write(cookie_file: Path, out_path: Path) -> int:
         )
         return 1
     write_storage_state(out_path, state)
+    # CR round 4 codex-2: success prints exactly one line ON STDOUT — no
+    # cookie value, ever. The count is the operator's health signal (~66
+    # cookies healthy; a handful means the wrong profile). stderr is NOT part
+    # of that one-line contract: a non-zero yt-dlp exit that still landed a
+    # good jar additionally prints its own advisory line to stderr (see
+    # export_cookies_with_ytdlp) — that is deliberate and does not contradict
+    # this stdout guarantee.
     print(f"wrote {count} cookies to {out_path}")
     return 0
 
@@ -199,10 +271,24 @@ def export_cookies_with_ytdlp(profile: str, tmp_dir: Path, env: dict[str, str]) 
     # .youtube.com + 18 .google.com cookies observed). The jar is the
     # deliverable, not the video extraction — so a non-zero exit is only a
     # real failure when the jar itself never landed (missing or empty).
-    # yt-dlp's cookie jar save() writes the file DIRECTLY, with no
-    # temp-file-and-rename, so a kill or a full disk mid-write leaves a partial
-    # file. It writes one complete newline-terminated line per cookie, so a
-    # mid-line kill is detectable by requiring the last byte to be a newline.
+    # Don't tighten this back to `returncode != 0` without re-measuring.
+    #
+    # CR round 3 codex-1: that alone still accepts a TRUNCATED jar. yt-dlp's
+    # own YoutubeDLCookieJar.save() writes the file DIRECTLY (`with
+    # self.open(filename, write=True) as f: ...`) — no temp-file-and-rename —
+    # so a kill or a full disk mid-write genuinely leaves a partial file on
+    # disk with a nonzero size. `_really_save` writes one complete
+    # newline-terminated line per cookie (verified against the real jar: its
+    # last byte is 0x0a), so a mid-line kill is detectable by requiring the
+    # jar's last byte to be a newline. This does NOT catch every truncation —
+    # a kill landing exactly on a line boundary produces a short but
+    # well-formed jar indistinguishable from a small legitimate export; no
+    # cheap check can tell those apart. Deliberately no cookie-count floor
+    # either: profile sizes legitimately vary, and the auth-marker + expiry
+    # checks in convert_and_write already cover "no usable session", which is
+    # the actual consequence that matters. `--from-cookies` is NOT put
+    # through this check — a jar the operator hands us directly is theirs to
+    # vouch for.
     jar_landed = cookie_file.is_file() and cookie_file.stat().st_size > 0
     if not jar_landed:
         print(f"youtube-state-from-chrome: yt-dlp cookie export failed: {completed.stderr.strip()}", file=sys.stderr)
