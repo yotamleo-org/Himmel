@@ -1982,6 +1982,76 @@ else
     fail "replace-ref: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$rr_marker" ] && echo yes || echo no) lane=$rr_lane out: $out"
 fi
 
+# HIMMEL-1178 -- base-skew guard (both directions). A branch whose merge-base is
+# far behind the diff base is refused (phantom 2-dot deletions); a local main
+# ahead of origin/main only warns (review-artifact noise from landed work).
+echo "TEST: HIMMEL-1178 -- base skew guard (behind-main refuse, origin-lag warn, bypass)"
+SK_ORIGIN="$TMP_ROOT/sk-origin.git"
+git init -q --bare -b main "$SK_ORIGIN"
+SK_SEED="$TMP_ROOT/sk-seed"
+git init -q -b main "$SK_SEED"
+echo base > "$SK_SEED/README.txt"
+git -C "$SK_SEED" add -A
+git -C "$SK_SEED" -c user.email=a@t -c user.name=a commit -q -m base
+git -C "$SK_SEED" push -q "$SK_ORIGIN" main
+SK_P="$TMP_ROOT/sk-pusher"
+git clone -q "$SK_ORIGIN" "$SK_P"
+git -C "$SK_P" checkout -qb feat/sk main
+mkdir -p "$SK_P/scripts"
+echo 'echo hi' > "$SK_P/scripts/x.sh"
+git -C "$SK_P" add -A
+git -C "$SK_P" -c user.email=b@t -c user.name=b commit -q -m "feat: x"
+sk_tip=$(git -C "$SK_P" rev-parse HEAD)
+sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
+# main moves 4 commits ahead; the branch stays on the old base.
+for i in 1 2 3 4; do
+    echo "$i" > "$SK_SEED/m$i.txt"
+    git -C "$SK_SEED" add -A
+    git -C "$SK_SEED" -c user.email=a@t -c user.name=a commit -q -m "main $i"
+done
+git -C "$SK_SEED" push -q "$SK_ORIGIN" main
+git -C "$SK_P" fetch -q origin
+git -C "$SK_P" branch -qf main origin/main
+rc=0
+out=$(cd "$SK_P" && CR_STALE_BASE_MAX=3 bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && [[ "$out" == *"4 commits behind"* ]] && [[ "$out" == *"CR_STALE_BASE_MAX"* ]]; then
+    pass "skew: a base 4 commits behind main with CR_STALE_BASE_MAX=3 is refused (rc=2, names the bypass)"
+else
+    fail "skew: expected rc=2 naming '4 commits behind' and CR_STALE_BASE_MAX" "rc=$rc out: $out"
+fi
+rc=0
+out=$(cd "$SK_P" && CR_STALE_BASE_MAX=999999 bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" == *"4 commits behind"* ]]; then
+    pass "skew: CR_STALE_BASE_MAX=999999 bypasses the refusal and still warns"
+else
+    fail "skew: expected rc=0 plus a behind warning under the bypass" "rc=$rc out: $out"
+fi
+rc=0
+out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+    pass "skew: 4 behind is under the default threshold (30) -> warn only"
+else
+    fail "skew: default threshold must not refuse 4 behind" "rc=$rc out: $out"
+fi
+# origin lag: local main 2 commits ahead of origin/main -> warn, never refuse.
+git -C "$SK_P" checkout -q main
+for i in 1 2; do
+    echo "$i" > "$SK_P/l$i.txt"
+    git -C "$SK_P" add -A
+    git -C "$SK_P" -c user.email=b@t -c user.name=b commit -q -m "local $i"
+done
+git -C "$SK_P" checkout -q feat/sk
+git -C "$SK_P" rebase -q main
+sk_tip=$(git -C "$SK_P" rev-parse HEAD)
+sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
+rc=0
+out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" == *"2 commits ahead of origin/main"* ]]; then
+    pass "skew: local main 2 ahead of origin/main warns (rc=0)"
+else
+    fail "skew: expected rc=0 and '2 commits ahead of origin/main'" "rc=$rc out: $out"
+fi
+
 # Summary ------------------------------------------------------------
 
 echo

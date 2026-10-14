@@ -715,6 +715,26 @@ write_marker_for_branch() {
         return 2
     fi
 
+    # Base-skew guard (HIMMEL-1178), both directions, no network call:
+    #  - branch behind its diff base: a base far behind makes 2-dot diffs show
+    #    phantom deletions of landed work. Refuse past CR_STALE_BASE_MAX
+    #    (default 30; CR_STALE_BASE_MAX=999999 bypasses), warn below it.
+    #  - local $db ahead of origin/$db: the review diff carries landed work as
+    #    noise. Warn only.
+    local skew_max="${CR_STALE_BASE_MAX:-30}" skew_behind skew_ahead
+    case "$skew_max" in ''|*[!0-9]*) skew_max=30 ;; esac
+    if skew_behind=$(git rev-list --count "${local_sha}..${base_sha}" 2>/dev/null) && [ "$skew_behind" -gt 0 ]; then
+        if [ "$skew_behind" -gt "$skew_max" ]; then
+            echo "→ code-review: ${branch} is ${skew_behind} commits behind ${diff_base} (limit ${skew_max}) — refusing the push (rebase or merge ${diff_base} first; bypass with CR_STALE_BASE_MAX=999999, SKIP_CR=1 or git push --no-verify)" >&2
+            return 2
+        fi
+        echo "→ code-review: WARNING ${branch} is ${skew_behind} commits behind ${diff_base}" >&2
+    fi
+    if git rev-parse --verify --quiet "$db" >/dev/null && git rev-parse --verify --quiet "origin/$db" >/dev/null && \
+       skew_ahead=$(git rev-list --count "origin/${db}..${db}" 2>/dev/null) && [ "$skew_ahead" -gt 0 ]; then
+        echo "→ code-review: WARNING local ${db} is ${skew_ahead} commits ahead of origin/${db} — review diffs may carry landed work as noise (git fetch origin, or push ${db})" >&2
+    fi
+
     # Skip on docs-only / merge-only diffs to avoid pointless review gating.
     # Fail CLOSED if the diff can't be computed (HIMMEL-323) — the 3-dot range needs
     # a merge base, so an orphan/unrelated-history branch makes `git diff` exit
