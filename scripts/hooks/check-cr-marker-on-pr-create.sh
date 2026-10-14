@@ -116,9 +116,11 @@ fi
 #   - a backslash outside quotes escapes the next byte, so `\"` opens nothing;
 #   - an unterminated quote returns the command unchanged — the older, wider
 #     scan — because on the blocking twin the cheap direction is to over-match.
-# Each removed span becomes one `_`, a word byte, because the shell glues a
-# quoted span to its neighbours: `gh'x' pr create` runs `ghx`, and `create"x"`
-# runs `createx`, so neither may match.
+# Only a span that carries a command-position byte (`;&|` backtick `$(` `{` `!`
+# or a newline) is masked, as one `_`; any other span keeps its text with the
+# quotes dropped, because the shell glues a quoted span to its neighbours:
+# `gh pr create""` and `gh pr "create"` run `gh pr create`, while `gh'x' pr
+# create` runs `ghx` and `create"x"` runs `createx`.
 # ponytail: handles quoting only, not heredoc bodies or `#` comments, and any
 # double-quoted substitution bails to the unchanged scan; HIMMEL-3546's tokenizer
 # (scripts/hooks/lib/shell-tokenize.sh, inlined per hook) is the upgrade path.
@@ -131,12 +133,20 @@ strip_quoted_spans() {
         if [ -z "$q" ]; then
             case "$c" in
                 '\') out="$out${s:$i:2}"; i=$((i + 2)); continue ;;
-                "'") q="'" ;;
+                "'") q="'"; span="" ;;
                 '"') q='"'; span="" ;;
                 *) out="$out$c" ;;
             esac
         elif [ "$q" = "'" ]; then
-            if [ "$c" = "'" ]; then q=""; out="${out}_"; fi
+            if [ "$c" = "'" ]; then
+                q=""
+                case "$span" in
+                    *[';&|`$({!']* | *$'\n'*) out="${out}_" ;;
+                    *) out="$out$span" ;;
+                esac
+            else
+                span="$span$c"
+            fi
         else
             case "$c" in
                 '\') span="$span${s:$i:2}"; i=$((i + 2)); continue ;;
@@ -144,7 +154,10 @@ strip_quoted_spans() {
                     case "$span" in
                         *'$('* | *'`'*) printf '%s' "$s"; return ;;
                     esac
-                    out="${out}_"
+                    case "$span" in
+                        *[';&|{!']* | *$'\n'*) out="${out}_" ;;
+                        *) out="$out$span" ;;
+                    esac
                     q=""
                     ;;
                 *) span="$span$c" ;;

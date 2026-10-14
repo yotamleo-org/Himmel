@@ -391,7 +391,7 @@ for q in 'echo "; gh pr create docs"' "echo '; gh pr create docs'" "echo '\$(gh 
     fi
 done
 # shellcheck disable=SC2016  # literal $( in the command under test
-for q in 'echo "x"; gh pr create -t t' 'echo "$(gh pr create -t t)"' 'echo "`gh pr create -t t`"' "echo 'x' && gh pr create" 'echo "it'"'"'s"; gh pr create' 'echo \"; gh pr create' 'echo "unterminated; gh pr create' 'echo "$(printf "%s" x; gh pr create)"'; do
+for q in 'echo "x"; gh pr create -t t' 'echo "$(gh pr create -t t)"' 'echo "`gh pr create -t t`"' "echo 'x' && gh pr create" 'echo "it'"'"'s"; gh pr create' 'echo \"; gh pr create' 'echo "unterminated; gh pr create' 'echo "$(printf "%s" x; gh pr create)"' 'gh pr create"" -t t' 'gh pr "create" -t t' "gh '' pr create -t t"; do
     echo "TEST: real invocation beside quotes ($q) -> POSTS"
     reset_state
     run_hook "$q" "https://github.com/acme/widget/pull/7"
