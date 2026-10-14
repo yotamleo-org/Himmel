@@ -153,7 +153,10 @@ template_version: 3
 >    section, an unmarked line, or a deferral to a nonexistent or Done/Closed
 >    ticket, so file the follow-up before you write the line. The marker is
 >    LAST with nothing after it; lint it yourself before READY with
->    `ready-check.sh --only 7 <pr>`. <Anything else unusual: a PR body that must carry other
+>    `ready-check.sh --only 7 <pr>`. **A PR that changes `.github/workflows/`
+>    needs a green `workflow_dispatch` run at its head before READY**
+>    (`gh workflow run <wf> --ref <branch>`; `ready-check.sh` item 10 FAILs
+>    without one, and prints the command). <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
