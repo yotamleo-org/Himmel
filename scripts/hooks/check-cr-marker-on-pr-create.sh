@@ -136,7 +136,7 @@ strip_quoted_spans() {
     # A nested shell body runs its quoted text as code; judge the signal on a
     # copy with quotes deleted and whitespace flattened so `"-c"` and a tab
     # cannot hide it.
-    local t="${s//[\"\']/}" re_c='(^| )-[a-zA-Z]*c' re_e='(^|[^[:alnum:]_])eval( |$)'
+    local t="${s//[\"\'\\]/}" re_c='(^| )-[a-zA-Z]*c' re_e='(^|[^[:alnum:]_])eval( |$)'
     t="${t//[[:space:]]/ }"
     if [[ $t =~ $re_c ]] || [[ $t =~ $re_e ]]; then printf '%s' "$s"; return; fi
     while [ "$i" -lt "$n" ]; do
