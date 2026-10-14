@@ -210,6 +210,13 @@ stdout is the artifact path; exit 0 only when the verdict was recorded.
 | Deadline through `qmd_bounded` (process group killed); the bridge never touches the ledger, so a timed-out or errored call keeps its full reservation (`claude-api.sh` settles on a verified cost or keeps it unknown) | `judge-call.sh` |
 | No bank fallback: a refusal is final and the native subscription is never consulted | `claude-api.sh` |
 
+Run it from a console, not a leg: `write-verdict.sh` refuses a console-spawned leg (`HIMMEL_CONSOLE_LEG`), so
+a leg's call ends `UNRECORDED` with the ruling in the artifact excerpt.
+
+Measured cost of a real call (one 60-line file, `--effort low`): `claude-opus-5-5` spent $0.107 and hit a
+$0.10 cap before answering (status `ERROR`, cost kept in the artifact); `claude-sonnet-5-5` answered a GO
+with evidence for $0.078. Budget opus judge calls at $0.25 or more.
+
 Not converted: headed judge SESSIONS (`headed-arm-leg.sh --judge`) keep their own worktree and lifecycle.
 Routine routing of judge calls onto the lane waits on a measured quality and cost per ruling.
 
