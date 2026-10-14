@@ -39,7 +39,7 @@
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
 # ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5484 adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
-# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; `env -i` scrubs it). HIMMEL-5412 adds
+# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`, HIMMEL-5609). HIMMEL-5412 adds
 # a python/node/bun/deno command that prints the whole environment or reads
 # /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
 # of a session transcript .jsonl (is_transcript_path) or a Grep over one or
@@ -824,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 scrub=0 cmd_i=0 nl=$'\n'
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -851,11 +851,6 @@ g4_scan() {
                 SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
                 [A-Za-z_]*=*) continue ;;
                 -*)
-                    # `env -i` / `--ignore-environment` / `-` hands the child a
-                    # scrubbed environment, so a trace has nothing to leak.
-                    if [ "$wrap" = env ]; then
-                        case "$d" in -i|--ignore-environment|-) scrub=1 ;; esac
-                    fi
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi
                     continue ;;
                 sudo|doas|env|xargs|time|nice|command|nohup|timeout|exec|if|while|until|then|else|elif|do|'{'|'!'|*/sudo|*/doas|*/env|*/xargs|*/nice|*/nohup|*/timeout)
@@ -864,7 +859,7 @@ g4_scan() {
                     continue ;;
             esac
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
-            cmd="${d##*/}"; cmd_i=$i
+            cmd="${d##*/}"; cmd="${cmd%.exe}"
             case "$cmd" in
                 python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
@@ -892,7 +887,7 @@ g4_scan() {
             # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
             # flags before the first operand count (`bash s.sh -x` is the
             # script's own flag); `-O`/`--rcfile` values are skipped.
-            bash|sh|zsh|dash|ksh|ash|mksh|rbash|set)
+            bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh|set)
                 if [ "$xo" != 0 ]; then
                     # The `-o` value is not an operand (`bash -o errexit -x s.sh`);
                     # zsh matches option names case- and underscore-insensitively.
@@ -991,12 +986,8 @@ g4_scan() {
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
     esac
-    if [ "$xt" = 1 ] && [ "$scrub" = 0 ] && [ -n "$cmd" ] && [ -n "${HIMMEL_BRS_XT_SCRUB:-}" ]; then
-        w="${g4w[*]:cmd_i}"
-        case "$nl$HIMMEL_BRS_XT_SCRUB$nl" in *"$nl${w//[\'\"\\]/}$nl"*) scrub=1 ;; esac
-    fi
-    if [ "$xt" = 1 ] && [ "$scrub" = 0 ]; then
-        hit=1; note="shell tracing prints the inherited environment into the transcript (run it under env -i HOME=... PATH=...)"
+    if [ "$xt" = 1 ]; then
+        hit=1; note="shell tracing prints the inherited environment into the transcript (no env -i exemption: HIMMEL-5609)"
     fi
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
     return 0
@@ -1038,85 +1029,6 @@ interp_env_dump() {
     # Whole words only, so a script named check_environment.py is not a dump.
     if [[ $t =~ (^|[^A-Za-z0-9_])(environb?|process\.env|Bun\.env|Deno\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
     return 1
-}
-
-# xt_scrub_segs TEXT (HIMMEL-5484): one line per tokenizer segment of the
-# command that runs under a scrubbed environment (`env -i`,
-# `--ignore-environment`, `-`): the dequoted non-redirect words after the env
-# options and NAME=VALUE words, single-spaced. g4_scan compares a clause against
-# these lines, because guard_unwrap re-reads the wrapper-stripped form and that
-# form no longer shows the `env -i`. The list is built from st_tokenize's
-# segments, the same reading g4_scan gets, never from a raw split: a comment, a
-# glued redirect or a `$'-x'` word is read one way by both sides. When the
-# tokenizer cannot read the command the list is empty, so a trace is denied.
-# ponytail: the same words elsewhere in the command under no `env -i` also
-# match (that segment is dropped, so the trace denies); a segment with a live
-# `$`, a glob or a newline in a word never counts as scrubbed. Revisit if
-# guard_unwrap hands a child its wrapper context (HIMMEL-5484 follow-up). Any
-# unscrubbed `sh -c`-style body or `eval` in the command empties the whole list,
-# so `env -i bash -x s; bash -c "bash '-x' s"` denies.
-xt_scrub_segs() {
-    local s k i n w seg conf scrub isb hasc bodyun=0 out="" un="" nl=$'\n'
-    local -a ws
-    st_tokenize "$1" || return 0
-    s=0
-    while [ "$s" -lt "$ST_NSEG" ]; do
-        ws=(); conf=0; k=0
-        while [ "$k" -lt "$ST_N" ]; do
-            if [ "${ST_S[k]}" = "$s" ] && [ -z "${ST_RO[k]}" ]; then
-                ws[${#ws[@]}]="${ST_W[k]}"
-                case "${ST_W[k]}" in *"$nl"*) conf=1 ;; esac
-                if [ "${ST_X[k]:-0}" = 1 ] || [ "${ST_G[k]:-0}" = 1 ]; then conf=1; fi
-            fi
-            k=$((k + 1))
-        done
-        s=$((s + 1))
-        n=${#ws[@]}; i=0; scrub=0
-        [ "$n" -gt 0 ] || continue
-        if [ "${ws[0]##*/}" = env ]; then
-            i=1
-            while [ "$i" -lt "$n" ]; do
-                w="${ws[i]}"
-                case "$w" in
-                    -i|--ignore-environment|-) scrub=1 ;;
-                    -u|-C|-S|--unset|--chdir|--split-string) i=$((i + 1)) ;;
-                    -*|[A-Za-z_]*=*) ;;
-                    *) break ;;
-                esac
-                i=$((i + 1))
-            done
-            [ "$scrub" = 1 ] || i=0
-        fi
-        [ "$i" -lt "$n" ] || continue
-        seg=""
-        while [ "$i" -lt "$n" ]; do
-            seg="$seg${seg:+ }${ws[i]}"
-            i=$((i + 1))
-        done
-        [ -n "$seg" ] || continue
-        if [ "$scrub" = 1 ] && [ "$conf" = 0 ]; then out="$out$seg$nl"; else
-            un="$un$seg$nl"
-            # An unscrubbed shell body (`bash -c`) or `eval` is re-read by
-            # guard_unwrap as its own command, which would then match a scrub
-            # line of ANOTHER segment (j2544c): no segment counts as scrubbed.
-            isb=0; hasc=0
-            for w in "${ws[@]}"; do
-                case "${w##*/}" in eval) bodyun=1 ;; bash|sh|zsh|dash|ksh|ash|mksh|rbash) isb=1 ;; esac
-                case "$w" in -c|-[A-Za-z]*c*) hasc=1 ;; esac
-            done
-            if [ "$isb" = 1 ] && [ "$hasc" = 1 ]; then bodyun=1; fi
-        fi
-    done
-    [ "$bodyun" = 0 ] || return 0
-    # A scrubbed segment whose words also sit inside an unscrubbed segment
-    # (`env -i bash -x s; bash -x s`) cannot be told apart in the child: drop it.
-    while IFS= read -r seg; do
-        [ -n "$seg" ] || continue
-        case "$nl$un" in *"$seg"*) continue ;; esac
-        printf '%s\n' "$seg"
-    done <<EOF
-$out
-EOF
 }
 
 # is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
@@ -1541,14 +1453,6 @@ case "$tool" in
             if ! { [ -r "$_gu_lib" ] && . "$_gu_lib"; } 2>/dev/null; then
                 echo "block-read-secrets: cannot load $_gu_lib - failing closed" >&2
                 exit 2
-            fi
-            # HIMMEL-5484: guard_unwrap re-runs this hook on the wrapper-
-            # stripped form, so a trace under `env -i` would deny there; the
-            # top level hands the children the scrubbed forms it saw. It always
-            # overwrites, so a value from the launching shell never counts.
-            if [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ]; then
-                HIMMEL_BRS_XT_SCRUB=$(xt_scrub_segs "$cmd")
-                export HIMMEL_BRS_XT_SCRUB
             fi
             GU_QUOTE_ARGS=1 guard_unwrap "${BASH_SOURCE[0]}" "$cmd" || exit 2
             if [ "$GU_CWD_UNKNOWN" = 1 ] && rs_shift_glob_secret "$cmd"; then

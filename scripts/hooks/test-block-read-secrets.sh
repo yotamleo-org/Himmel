@@ -1101,16 +1101,15 @@ assert_rc "5484 env -u X bash -x (not scrubbed)" 2 "$(run_case "$(j_bash 'env -u
 assert_rc "5484 time bash -x"                   2 "$(run_case "$(j_bash 'time bash -x s.sh')")"
 assert_rc "5484 bash -x after pipe"             2 "$(run_case "$(j_bash 'echo hi | bash -x s.sh')")"
 assert_rc "5484 bash -c body set -x"            2 "$(run_case "$(j_bash "bash -c 'set -x; ./run.sh'")")"
-assert_rc "5484 ctl env -i bash -x"             0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh')")"
-assert_rc "5484 ctl env --ignore-environment"   0 "$(run_case "$(j_bash 'env --ignore-environment HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh')")"
+assert_rc "5484 env -i bash -x"             2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh')")"
+assert_rc "5484 env --ignore-environment"   2 "$(run_case "$(j_bash 'env --ignore-environment HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh')")"
 assert_rc "5484 env -i elsewhere, bare trace"   2 "$(run_case "$(j_bash 'env -i true; bash -x script.sh')")"
 assert_rc "5484 same trace scrubbed then bare"  2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh; bash -x script.sh')")"
 assert_rc "5484 same trace bare then scrubbed"  2 "$(run_case "$(j_bash 'bash -x script.sh; env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh')")"
 assert_rc "5484 same trace scrubbed then timed" 2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h bash -x script.sh && time bash -x script.sh')")"
 assert_rc "5484 ctl set -- -x positional"       0 "$(run_case "$(j_bash 'set -- -x foo')")"
 assert_rc "5484 set -x -- still traces"         2 "$(run_case "$(j_bash 'set -x -- foo')")"
-assert_rc "5484 launching-shell scrub list ignored" 2 "$(run_case "$(j_bash 'bash -x script.sh')" 'HIMMEL_BRS_XT_SCRUB=bash -x script.sh')"
-assert_rc "5484 ctl env -i bash -x < payload"   0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh < payload.json')")"
+assert_rc "5484 env -i bash -x < payload"   2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x script.sh < payload.json')")"
 assert_rc "5484 ctl bash -n"                    0 "$(run_case "$(j_bash 'bash -n script.sh')")"
 assert_rc "5484 ctl plain bash script"          0 "$(run_case "$(j_bash 'bash script.sh')")"
 assert_rc "5484 ctl bash script -x arg"         0 "$(run_case "$(j_bash 'bash script.sh -x')")"
@@ -1137,17 +1136,24 @@ assert_rc "5484 ctl set +o xtrace"              0 "$(run_case "$(j_bash 'set +o 
 assert_rc "5484 ctl bash +e s.sh -x"            0 "$(run_case "$(j_bash 'bash +e s.sh -x')")"
 assert_rc "5484 ctl bash s.sh arg -x"           0 "$(run_case "$(j_bash 'bash s.sh arg -x')")"
 assert_rc "5484 ctl bash s.sh +e -x"            0 "$(run_case "$(j_bash 'bash s.sh +e -x')")"
-# Judge j2544b: the scrub list is read from the tokenizer, never a raw split.
+# Judges j2544b/c/e: env -i is NOT an exemption (HIMMEL-5609): every trace denies, scrubbed or not.
 assert_rc "5484 scrub text hidden in a comment" 2 "$(run_case "$(j_bash 'bash -x>/dev/null s.sh # ; env -i bash -x s.sh')")"
 assert_rc "5484 scrub then ansi-c -x word"      2 "$(run_case "$(j_bash $'env -i bash -x s.sh; bash $\'-x\' s.sh')")"
-assert_rc "5484 ctl scrubbed trace, glued redirect" 0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh 2>/dev/null')")"
-assert_rc "5484 ctl scrubbed trace, ansi-c word"    0 "$(run_case "$(j_bash $'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash $\'-x\' s.sh')")"
+assert_rc "5484 scrubbed trace, glued redirect" 2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh 2>/dev/null')")"
+assert_rc "5484 scrubbed trace, ansi-c word"    2 "$(run_case "$(j_bash $'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash $\'-x\' s.sh')")"
 # Judge j2544c: an unscrubbed segment that carries a shell body (-c) or an eval
 # is re-read by guard_unwrap, which must not match the scrub list of another segment.
 assert_rc "5484 scrub then bash -c quoted -x"   2 "$(run_case "$(j_bash "env -i bash -x s.sh; bash -c \"bash '-x' s.sh\"")")"
 assert_rc "5484 scrub then bash -c two spaces"  2 "$(run_case "$(j_bash 'env -i bash -x s.sh; bash -c "bash  -x s.sh"')")"
 assert_rc "5484 scrub then eval"                2 "$(run_case "$(j_bash 'env -i bash -x s.sh; eval "bash -x s.sh"')")"
-assert_rc "5484 ctl scrubbed trace, unrelated grep -c" 0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh; grep -c foo f')")"
+assert_rc "5484 scrubbed trace, unrelated grep -c" 2 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh; grep -c foo f')")"
+
+assert_rc "5484 spoof env split-string quoted -x" 2 "$(run_case "$(j_bash "env -i bash -x s.sh; env -S \"bash '-x' s.sh\"")")"
+assert_rc "5484 spoof env split-string two spaces" 2 "$(run_case "$(j_bash "env -i bash -x s.sh; env -S \"bash  '-x' s.sh\"")")"
+assert_rc "5484 spoof yash -c quoted -x"        2 "$(run_case "$(j_bash "env -i bash -x s.sh; yash -c \"bash '-x' s.sh\"")")"
+assert_rc "5484 yash -x"                        2 "$(run_case "$(j_bash 'yash -x s.sh')")"
+assert_rc "5484 posh -x"                        2 "$(run_case "$(j_bash 'posh -x s.sh')")"
+assert_rc "5484 bash.exe -x"                    2 "$(run_case "$(j_bash 'bash.exe -x s.sh')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
