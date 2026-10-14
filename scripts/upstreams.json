@@ -165,7 +165,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "Graphify-Labs/graphify",
-      "synced_base": "0.9.89",
+      "synced_base": "0.9.90",
       "latest_source": "release",
       "version_pin": { "file": "scripts/lib/graphify-bin.sh", "template": "GRAPHIFY_VERSION:-{version}" },
       "tier": "A",
@@ -176,7 +176,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.27",
+      "synced_base": "8.0.28",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.ps1", "template": "$Version    = '{version}'" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
