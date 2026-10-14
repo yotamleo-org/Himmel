@@ -43,11 +43,14 @@ export function registerEditBatch(program: Command): void {
       for (const raw of lines) {
         const line = raw.replace(/\r$/, '');
         if (line.trim() === '') continue;
-        const [keyRaw = '', sectorRaw = ''] = line.split('\t');
-        const key = keyRaw.trim();
-        const sectorArg = sectorRaw.trim();
-        if (key.toLowerCase() === 'key' && sectorArg.toLowerCase() === 'sector') continue;
-        const { sector, result } = await applyRow(key, sectorArg);
+        const cols = line.split('\t');
+        const key = (cols[0] ?? '').trim();
+        const sectorArg = (cols[1] ?? '').trim();
+        if (cols.length === 2 && key.toLowerCase() === 'key' && sectorArg.toLowerCase() === 'sector') continue;
+        const { sector, result } =
+          cols.length === 2
+            ? await applyRow(key, sectorArg)
+            : { sector: sectorArg, result: `failed\texpected 2 columns (key, sector), got ${cols.length}` };
         if (result.startsWith('failed')) failed++;
         console.log(`${key}\t${sector}\t${result}`);
       }

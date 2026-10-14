@@ -181,6 +181,14 @@ describe('Sector field (HIMMEL-5710)', () => {
       expect(process.exitCode).toBeUndefined();
     });
 
+    it('fails a row that does not have exactly two columns, without touching Jira', async () => {
+      jira({ 'HIMMEL-1': null, 'HIMMEL-2': null });
+      await run(tsv('HIMMEL-1\tShip loop\textra\nHIMMEL-2\n'));
+      expect(logs[0]).toMatch(/^HIMMEL-1\tShip loop\tfailed\texpected 2 columns/);
+      expect(logs[1]).toMatch(/^HIMMEL-2\t\tfailed\texpected 2 columns/);
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
     it('skips a header row, blank lines and CRLF endings', async () => {
       jira({ 'HIMMEL-1': null });
       await run(tsv('key\tsector\r\n\r\nHIMMEL-1\tShip loop\r\n'));
