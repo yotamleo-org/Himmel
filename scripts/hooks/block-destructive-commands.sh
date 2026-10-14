@@ -1517,9 +1517,10 @@ esac
 # into an interpreter. The bare interpreters (python, node, perl, ...) are a
 # sink only when they read the script from stdin (no arg, or a lone `-`), so
 # `curl x | python3 -m json.tool` and `| node -p ...` stay allowed.
-_re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?'
+_re_asg='[a-z_][a-z0-9_]*=[^[:space:]]*[[:space:]]+'
+_re_pre='\|[[:space:]]*((sudo|env)[[:space:]]+((-[^[:space:]]+|'"$_re_asg"')[[:space:]]*)*)?('"$_re_asg"')*'
 _re_shell='(ba|z|da|k|c|tc)?sh(\.exe)?([^[:alnum:]_.-]|$)'
-_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<])'
+_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<>]|[0-9]+>)'
 _re_sink="($_re_shell|$_re_bare)"
 _re_dl='(^|[^[:alnum:]_.-])(curl|wget)(\.exe)?'
 if contains "$_re_dl"'[^|;&]*'"$_re_pre$_re_sink" \
