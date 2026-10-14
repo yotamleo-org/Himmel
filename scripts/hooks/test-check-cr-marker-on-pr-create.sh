@@ -658,6 +658,19 @@ for q in 'echo x; gh pr create --head feat/X --base main' 'echo \"$(gh pr create
         fail "expected exit 2, got rc=$rc" "cmd: $q out: $out"
     fi
 done
+# Balanced-quote misparses: apostrophes in a comment, an ANSI-C `$'\''` and a
+# heredoc body pair across the real invocation, so the scan must fail closed.
+# Payload is interpolated raw into JSON: newline is `\n`, backslash is `\\`.
+# shellcheck disable=SC2016  # literal $' and quotes in the commands under test
+for q in "# don't skip this\ngh pr create --head feat/X --base main\n# that's all" "echo \$'\\\\'' ; gh pr create --head feat/X --base main ; echo \\\\'" "cat <<EOF\ndon't\nEOF\ngh pr create --head feat/X --base main\ncat <<EOF\nit's\nEOF"; do
+    echo "TEST: balanced-quote misparse ($q), marker present -> BLOCK"
+    run_hook "$q"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked despite a balanced quote misparse: $q"
+    else
+        fail "expected exit 2, got rc=$rc" "cmd: $q out: $out"
+    fi
+done
 
 # Summary ------------------------------------------------------------
 echo

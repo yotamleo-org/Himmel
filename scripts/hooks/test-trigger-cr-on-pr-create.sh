@@ -401,6 +401,27 @@ for q in 'echo "x"; gh pr create -t t' 'echo "$(gh pr create -t t)"' 'echo "`gh 
         fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
     fi
 done
+# Balanced-quote misparses: apostrophes in a comment, an ANSI-C `$'\''` and a
+# heredoc body pair across the real invocation, so the scan must fail closed.
+# shellcheck disable=SC2016  # literal $' and quotes in the commands under test
+for q in "# don't skip this
+gh pr create -t t
+# that's all" "echo \$'\\'' ; gh pr create -t t ; echo \\'" "cat <<EOF
+don't
+EOF
+gh pr create -t t
+cat <<EOF
+it's
+EOF"; do
+    echo "TEST: balanced-quote misparse ($q) -> POSTS"
+    reset_state
+    run_hook "$q" "https://github.com/acme/widget/pull/7"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
+        pass "posted despite a balanced quote misparse: $q"
+    else
+        fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
+    fi
+done
 
 # Test 6: post-failure stays non-blocking ------------------------------------
 echo "TEST: comment post fails -> hook stays non-blocking (rc 0), records warning"
