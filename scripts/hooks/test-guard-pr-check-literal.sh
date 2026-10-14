@@ -629,6 +629,11 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (cd . && bash)
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (set -e; bash)
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (true || true; (true; bash))
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | (cat | bash)
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { { true; }; bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { (true); bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then bash; fi
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | while :; do bash; break; done
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | for i in 1; do sh; done
 PIPETOSHELL
 # Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do
@@ -641,6 +646,8 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | grep merge
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge; true
 (echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat; true) | grep merge
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat; true; bash scripts/other/x.sh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then grep x; fi
 PIPEOK
 
 # ---- HIMMEL-4516: nested-body depth cap ------------------------------------

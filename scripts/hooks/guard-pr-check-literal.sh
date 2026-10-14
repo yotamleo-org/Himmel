@@ -1923,7 +1923,10 @@ env_split_option() { # env_split_option <raw command> - false only when
     # script, so its words are a body like an `eval`'s: `echo "env -S
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
-    local i j e w sk sg b gd k depth=$ENV_SPLIT_DEPTH
+    # ponytail: the reader list is shells only - `source /dev/stdin`,
+    # `. /dev/stdin`, fish and python3 -c read a piped script too and are not
+    # flagged; upgrade path: HIMMEL-5560 adds them to the shell-word case.
+    local i j e w sk sg b gd gf kw k depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=() pp=() hs=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
@@ -1973,23 +1976,49 @@ env_split_option() { # env_split_option <raw command> - false only when
                     # command in it, so the shell here reads the group's
                     # input. Walk back to the opening `(` or `{` and flag it.
                     gd=0
+                    gf=0
                     k=$((sg - 1))
                     while [ "$k" -ge 0 ]; do
                         # shellcheck disable=SC2016
                         case "${ST_SEP[k]-}" in
-                            '$(' | '`' | '<(' | '>(') break ;;
+                            '$(' | '`' | '<(' | '>(') gf=2; break ;;
                             ')') gd=$((gd + 1)) ;;
                         esac
                         [ "${fc[k]-}" != '}' ] || gd=$((gd + 1))
                         if [ "${ST_SEP[k]-}" = '(' ] || [ "${fc[k]-}" = '{' ]; then
                             if [ "$gd" -eq 0 ]; then
                                 fl[k]=1
+                                gf=1
                                 break
                             fi
                             gd=$((gd - 1))
                         fi
                         k=$((k - 1))
                     done
+                    # HIMMEL-5356: the depth above counts one `{` per segment, so
+                    # `| { { true; }; bash; }` or a compound the walk does not
+                    # model (`| if true; then bash; fi`, `| while :; do bash; done`)
+                    # can end with no opener flagged. Fail closed: when the walk
+                    # found none, flag the nearest pipe's writer if a group or
+                    # compound word sits between that pipe and this shell.
+                    if [ "$gf" -eq 0 ]; then
+                        kw=0
+                        k=$((sg - 1))
+                        while [ "$k" -ge 1 ]; do
+                            case "${fc[k]-}" in
+                                '{' | if | while | until | for | case | select | then | do) kw=1 ;;
+                            esac
+                            [ "${ST_SEP[k]-}" != '(' ] || kw=1
+                            # shellcheck disable=SC2016
+                            case "${ST_SEP[k - 1]-}" in
+                                '|' | '|&')
+                                    if [ "$kw" -eq 1 ]; then pp[k - 1]=1; fl[k - 1]=1; fi
+                                    break ;;
+                                '$(' | '`' | '<(' | '>(') break ;;
+                            esac
+                            k=$((k - 1))
+                        done
+                    fi
                     ;;
             esac
         fi
