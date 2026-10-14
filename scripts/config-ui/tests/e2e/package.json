@@ -3,5 +3,5 @@
   "private": true,
   "description": "HIMMEL-4400: Playwright e2e for the config UI. Browser provisioning is an opt-in VM/operator step; tests never download browsers.",
   "scripts": { "test": "playwright test" },
-  "devDependencies": { "@playwright/test": "1.64.0" }
+  "devDependencies": { "@playwright/test": "1.64.1" }
 }

@@ -53,7 +53,7 @@
     "standalone": true,
     "upstream_repo": "coderabbitai/skills",
     "track": "head",
-    "ref": "928c3b61f71b578b1bcfbacc289f1446244dd9dd"
+    "ref": "c22fe67a2c4e834d29bf2dbe46dea3e4ec7a1fd7"
   },
   "ponytail": {
     "standalone": true,
