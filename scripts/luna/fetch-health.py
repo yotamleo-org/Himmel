@@ -151,13 +151,15 @@ def _json(body: bytes):
 
 
 def probe_reddit(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    # Cookieless. Reddit has no cookie path any more; this checks that a
-    # plain unauthenticated request still gets the public thread JSON.
+    # Cookieless. The fetch path reaches Reddit through Scrapling, so a plain
+    # unauthenticated GET is walled by design: 403 is expected, not an outage.
     url = env.get("FETCH_HEALTH_REDDIT_URL", DEFAULT_URLS["reddit"]).rstrip("/") + ".json?raw_json=1"
     try:
         result = http(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
     except (OSError, urllib.error.URLError, TimeoutError):
         return ProbeResult("transport-fail", "reddit request failed")
+    if result.status == 403:
+        return ProbeResult("ok", "expected (walled, served via Scrapling)")
 
     def valid(body: bytes) -> bool:
         try:

@@ -114,10 +114,18 @@ class FetchHealthTests(unittest.TestCase):
             result = fetch_health.probe_reddit({"HOME": tmp}, lambda *a, **k: fetch_health.HttpResult(200, b"[]"))
         self.assertNotIn("cookie file", result.reason)
 
-    def test_reddit_block_and_wall_are_blocked_not_expired_cookie(self):
+    def test_reddit_plain_403_is_the_expected_wall_not_a_page(self):
+        # The fetch path reaches Reddit through Scrapling; a cookieless plain GET
+        # is walled by design, so a 403 must not read as an outage.
+        with tempfile.TemporaryDirectory() as tmp:
+            result = fetch_health.probe_reddit({"HOME": tmp}, lambda *a, **k: fetch_health.HttpResult(403, b""))
+        self.assertEqual(result.status, "ok")
+        self.assertIn("expected (walled, served via Scrapling)", result.reason)
+
+    def test_reddit_rate_limit_and_html_wall_still_alert(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"HOME": tmp}
-            self.assertEqual(fetch_health.probe_reddit(env, lambda *a, **k: fetch_health.HttpResult(403, b"")).status, "blocked-or-rate-limited")
+            self.assertEqual(fetch_health.probe_reddit(env, lambda *a, **k: fetch_health.HttpResult(429, b"")).status, "blocked-or-rate-limited")
             self.assertEqual(fetch_health.probe_reddit(env, lambda *a, **k: fetch_health.HttpResult(200, b"<html>login</html>")).status, "blocked-or-rate-limited")
 
     def test_auth_free_probes_validate_expected_response_shape(self):
