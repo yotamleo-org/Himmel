@@ -28,6 +28,7 @@ echo "args=$*" > "$STUB_ENV"
 echo "cwd=$PWD" >> "$STUB_ENV"
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
+exit "\${STUB_RC:-0}"
 `;
 
 const result = (text, extra = {}) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
@@ -143,6 +144,17 @@ test('an error result is ERROR, and the cost still reaches the artifact', () => 
   assert.equal(r.status, 3);
   assert.equal(r.art.status, 'ERROR');
   assert.equal(r.art.cost_usd, '0.031415');
+});
+
+test('a non-zero exit with a JSON error result keeps the cost and the reason, and never records a verdict', () => {
+  const f = fixture();
+  const r = f.run(f.args, { STUB_RC: '1', STUB_OUT: result(go(), { is_error: true, subtype: 'error_max_budget_usd' }) });
+  assert.equal(r.status, 3);
+  assert.equal(r.art.status, 'ERROR');
+  assert.equal(r.art.cost_usd, '0.031415');
+  assert.match(r.art.reason, /error_max_budget_usd/);
+  assert.equal(r.art.verdict_path, null);
+  assert.equal(r.art.excerpt, '');
 });
 
 test('a NO-GO without the class field is UNRECORDED; one with it is recorded', () => {

@@ -101,16 +101,26 @@ elif [ "$RC" -ne 0 ]; then
   REFUSAL="$(sed -n 's/^claude-api: refused: //p' "$ERR" | head -n 1)"
   if [ -n "$REFUSAL" ]; then STATUS=REFUSED REASON="$REFUSAL"
   else STATUS=ERROR REASON="claude-api.sh exited $RC; the reservation stays held as unknown"; fi
-else
-  node "$REPO/scripts/api-lane/judge-result.mjs" parse "$RAW" "$HEAD" "$EVID" >"$PARSED" ||
-    { STATUS=ERROR REASON="result parser failed"; }
-  if [ -z "$STATUS" ]; then
+fi
+
+# A non-zero exit still leaves a JSON result when claude stopped on its own budget: its cost and subtype go into
+# the artifact, but the status stays ERROR and the evidence goes nowhere (a verdict needs rc 0).
+if [ "$RC" -eq 0 ] || { [ "$STATUS" = ERROR ] && [ -s "$RAW" ]; }; then
+  EVOUT="$EVID"
+  [ "$RC" -eq 0 ] || EVOUT=/dev/null
+  PSTATUS=""
+  node "$REPO/scripts/api-lane/judge-result.mjs" parse "$RAW" "$HEAD" "$EVOUT" >"$PARSED" 2>/dev/null ||
+    { PSTATUS=ERROR; [ "$RC" -ne 0 ] || REASON="result parser failed"; }
+  if [ -z "$PSTATUS" ]; then
     # the parser's own fields, read back with node so no value is ever evaluated by the shell
-    STATUS="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status)' "$PARSED")"
+    PSTATUS="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status)' "$PARSED")"
     for k in reason verdict verdict_head cost_usd; do
       v="$(node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]];process.stdout.write(v==null?"":String(v))' "$PARSED" "$k")"
-      case "$k" in reason) REASON=$v ;; verdict) VERDICT=$v ;; verdict_head) VHEAD=$v ;; cost_usd) COST=$v ;; esac
+      case "$k" in reason) PREASON=$v ;; verdict) VERDICT=$v ;; verdict_head) VHEAD=$v ;; cost_usd) COST=$v ;; esac
     done
+    if [ "$RC" -eq 0 ]; then STATUS=$PSTATUS REASON=$PREASON
+    else REASON="claude-api.sh exited $RC; $PREASON"; VERDICT="" VHEAD=""; fi
+  elif [ "$RC" -eq 0 ]; then STATUS=ERROR
   fi
   if [ "$STATUS" = VERDICT ]; then
     if VPATH="$(bash "$REPO/scripts/handover/console-kit/write-verdict.sh" "$QID" "$VERDICT" "$HEAD" --pr "$PR" \
