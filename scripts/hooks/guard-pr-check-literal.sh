@@ -1926,7 +1926,10 @@ env_split_option() { # env_split_option <raw command> - false only when
     # ponytail: the reader list is shells only - `source /dev/stdin`,
     # `. /dev/stdin`, fish and python3 -c read a piped script too and are not
     # flagged; upgrade path: HIMMEL-5560 adds them to the shell-word case.
-    local i j e w sk sg b gd gf kw k depth=$ENV_SPLIT_DEPTH
+    # ponytail: a shell word after a list separator flags every earlier pipe
+    # writer in the command, so `git diff | head; bash x` over-denies when the
+    # diff text carries env -S; upgrade path: HIMMEL-5560 models compounds.
+    local i j e w sk sg b k x depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=() pp=() hs=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
         ENV_SPLIT_CAPPED=1
@@ -1953,7 +1956,8 @@ env_split_option() { # env_split_option <raw command> - false only when
                 *) fc[sg]=${w##*/} ;;
             esac
         fi
-        case "${w##*/}" in bash | sh | zsh | dash | ksh | mksh) hs[sg]=1 ;; esac
+        x=${w##*/}
+        case "${x%.exe}" in bash | sh | zsh | dash | ksh | mksh | ash | yash | posh) hs[sg]=1 ;; esac
     done
     sg=$((ST_NSEG - 1))
     while [ "$sg" -gt 0 ]; do
@@ -1972,53 +1976,20 @@ env_split_option() { # env_split_option <raw command> - false only when
                 '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;;
                 '(') fl[sg - 1]=1 ;;
                 ';' | '&' | '&&' | '||' | nl)
-                    # a list inside a group: the group's stdin reaches every
-                    # command in it, so the shell here reads the group's
-                    # input. Walk back to the opening `(` or `{` and flag it.
-                    gd=0
-                    gf=0
+                    # HIMMEL-5356: a shell behind a list separator may read a
+                    # pipe through any group or compound (`| { { true; }; bash; }`,
+                    # `| if true; then true | true; bash; fi`). Compound structure
+                    # is not modelled: flag the writer of every pipe before this
+                    # shell, back to a substitution boundary.
                     k=$((sg - 1))
                     while [ "$k" -ge 0 ]; do
                         # shellcheck disable=SC2016
                         case "${ST_SEP[k]-}" in
-                            '$(' | '`' | '<(' | '>(') gf=2; break ;;
-                            ')') gd=$((gd + 1)) ;;
+                            '$(' | '`' | '<(' | '>(') break ;;
+                            '|' | '|&') pp[k]=1; fl[k]=1 ;;
                         esac
-                        [ "${fc[k]-}" != '}' ] || gd=$((gd + 1))
-                        if [ "${ST_SEP[k]-}" = '(' ] || [ "${fc[k]-}" = '{' ]; then
-                            if [ "$gd" -eq 0 ]; then
-                                fl[k]=1
-                                gf=1
-                                break
-                            fi
-                            gd=$((gd - 1))
-                        fi
                         k=$((k - 1))
                     done
-                    # HIMMEL-5356: the depth above counts one `{` per segment, so
-                    # `| { { true; }; bash; }` or a compound the walk does not
-                    # model (`| if true; then bash; fi`, `| while :; do bash; done`)
-                    # can end with no opener flagged. Fail closed: when the walk
-                    # found none, flag the nearest pipe's writer if a group or
-                    # compound word sits between that pipe and this shell.
-                    if [ "$gf" -eq 0 ]; then
-                        kw=0
-                        k=$((sg - 1))
-                        while [ "$k" -ge 1 ]; do
-                            case "${fc[k]-}" in
-                                '{' | if | while | until | for | case | select | then | do) kw=1 ;;
-                            esac
-                            [ "${ST_SEP[k]-}" != '(' ] || kw=1
-                            # shellcheck disable=SC2016
-                            case "${ST_SEP[k - 1]-}" in
-                                '|' | '|&')
-                                    if [ "$kw" -eq 1 ]; then pp[k - 1]=1; fl[k - 1]=1; fi
-                                    break ;;
-                                '$(' | '`' | '<(' | '>(') break ;;
-                            esac
-                            k=$((k - 1))
-                        done
-                    fi
                     ;;
             esac
         fi
@@ -2035,9 +2006,10 @@ env_split_option() { # env_split_option <raw command> - false only when
             if [ "${nm[sg]-}" = 1 ]; then
                 nb[sg]="${nb[sg]-} $w"
             else
-                case "${w##*/}" in
+                x=${w##*/}
+                case "${x%.exe}" in
                     eval) nm[sg]=1 ;;
-                    bash|sh|zsh|dash|ksh|mksh) nm[sg]=0 ;;
+                    bash|sh|zsh|dash|ksh|mksh|ash|yash|posh) nm[sg]=0 ;;
                     --*) ;;
                     -*c*) [ "${nm[sg]-}" != 0 ] || nm[sg]=1 ;;
                 esac

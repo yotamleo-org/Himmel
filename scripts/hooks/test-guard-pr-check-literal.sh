@@ -634,6 +634,13 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { (true); bash; }
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then bash; fi
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | while :; do bash; break; done
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | for i in 1; do sh; done
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then true | true; bash; fi
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | { { true; }; true | true; bash; }
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | yash
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | posh
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash.exe
+echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /usr/bin/sh.exe
 PIPETOSHELL
 # Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do
@@ -646,7 +653,6 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat | grep merge
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge; true
 (echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat; true) | grep merge
-echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | cat; true; bash scripts/other/x.sh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then grep x; fi
 PIPEOK
 
