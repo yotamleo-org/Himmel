@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = [
+#     "paramiko>=3.4,<6",
+#     "python-dotenv>=1.0,<2",
+# ]
+# ///
 """
 VM SDK (HIMMEL-491) — an easy-to-use class over scripts/lib/vbox.py for driving
 the cross-OS test VMs: power, snapshots (so we don't re-provision), shallow
@@ -11,7 +18,8 @@ loopback port-forward + password env. Stations share the SSH-generic surface
 lifecycle; up/down/snapshot/provision/e2e raise StationLifecycleError.
 
 Stdlib + paramiko + python-dotenv (already deps of the *-vm-setup.py scripts;
-invoke via `uv run --with python-dotenv --with paramiko`, HIMMEL-2471). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
+invoke via `uv run scripts/lib/vmsdk.py`, which reads the bounded PEP 723
+block above, HIMMEL-2471). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
 checkout's .env (the gitignored .env is NOT copied into worktrees, so it is
 resolved via the parent of `git rev-parse --git-common-dir`, matching
 scripts/lib/load-dotenv.sh).
@@ -201,9 +209,9 @@ def _env_path():
 
 
 _DEPS_HINT = (
-    "run vmsdk.py as `uv run --with python-dotenv --with paramiko python "
-    "scripts/lib/vmsdk.py <vm> <verb>` or `pip install python-dotenv "
-    "paramiko` (HIMMEL-2471)")
+    "run vmsdk.py as `uv run scripts/lib/vmsdk.py <vm> <verb>` (the script "
+    "block pins python-dotenv>=1.0,<2 and paramiko>=3.4,<6) or `pip install "
+    "'python-dotenv>=1.0,<2' 'paramiko>=3.4,<6'` (HIMMEL-2471)")
 
 
 def _running_vms():
@@ -216,7 +224,11 @@ def _running_vms():
 
 def _current_snapshot(vm):
     """CurrentSnapshotName per `showvminfo`, or None when the VM has none."""
-    for ln in vbox._info(vm).splitlines():
+    try:
+        info = vbox._info(vm)
+    except vbox.VBoxError as e:
+        raise VMError(f"readback failed: {e}") from e
+    for ln in info.splitlines():
         if ln.startswith("CurrentSnapshotName="):
             return ln.split("=", 1)[1].strip().strip('"')
     return None
@@ -482,6 +494,12 @@ class VM:
                 if rc != 1:
                     self.assert_guest_clean(root, "full")
         vbox.take_snapshot(self.name, name)
+        current = _current_snapshot(self.name)
+        if current != name:
+            raise VMError(
+                f"snapshot readback: asked for snapshot {name!r} but "
+                f"CurrentSnapshotName of {self.name} is {current!r}; the "
+                "snapshot was NOT taken")
 
     def restore(self, name):
         self._require_vm("restore")
