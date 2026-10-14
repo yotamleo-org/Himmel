@@ -72,21 +72,19 @@ gets exit 96 by design. Point it at a scratch copy instead.
 
 `bash scripts/ci/run-shell-tests.sh` runs the full shell-test corpus. It is
 the same entrypoint CI's `shell-unit` job runs, matrixed over
-`ubuntu-latest` (the required, gating leg on every push/PR) plus
-`windows-latest` and `macos-latest` (advisory-only, `continue-on-error`,
-added on the nightly `schedule` **only** — the
-`force_all_os` dispatch input was removed, so no PR and no manual dispatch runs a Windows
-or macOS shard). Running the
+`ubuntu-latest` (the required, gating leg on every push/PR). Windows is
+dropped (HIMMEL-5729) and macOS runs on its own cadence workflow, so no PR, no
+nightly and no manual dispatch of `ci.yml` runs a Windows or macOS shard. Running the
 full corpus is slow and noisy — run it in a subagent rather than foregrounding
 it in an interactive session.
 
-To verify a branch on macOS or Windows on demand, dispatch `os-verify`:
+To verify a branch on macOS on demand, dispatch `os-verify`:
 it runs only the suites the branch impacts
 against `origin/main`, on one OS.
 
 ```bash
 gh workflow run os-verify.yml --ref <branch> -f os=macos -f suites=impacted
-# os: macos (default) | windows | both      suites: impacted (default) | all
+# os: macos (the only choice)      suites: impacted (default) | all
 ```
 
 It is dispatch-only, never required, and its job names carry an `os-verify / `
@@ -128,17 +126,13 @@ red/new counts, new suites) then `runs` and `new_breakages` per ISO week.
 
 Windows is verified by the nightly and macOS by the cadence above; nothing else
 runs them: there is no per-PR all-OS proof, and a PR is never blocked on an OS
-it did not run. When the nightly goes red on Windows, or the macOS cadence goes
+it did not run. When the nightly goes red, or the macOS cadence goes
 red:
 
 - **The nightly files it.** A red `shell-unit` aggregator runs
   `scripts/ci/shell-extended-nightly-issue.sh`, which opens or refreshes ONE
   consolidated issue (label `shell-extended-nightly-ci`) and closes it when the
-  nightly goes green. A red Windows `bun-suites` leg is filed the same way by
-  `scripts/ci/windows-nightly-issue.sh` (label `windows-alpha-ci`). A red
-  Windows *shell* shard is still masked by `continue-on-error`;
-  read the `shell-unit-shard (windows-latest, …)` jobs of the nightly run
-  directly. A red macOS cadence run files nothing: read the run's summary
+  nightly goes green. A red macOS cadence run files nothing: read the run's summary
   (new breakages) or `macos-breakage.sh report`.
 - **The supervisor session splits it.** The supervisor session turns each distinct failure cluster
   into its own ticket under the epic that owns the OS-portability work,

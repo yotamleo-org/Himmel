@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/shell-extended-nightly-issue.sh — maintain ONE consolidated issue
-# for a red `shell-unit` gate on the nightly-only extended tier
-# (HIMMEL-3132, same convention as scripts/ci/windows-nightly-issue.sh /
-# HIMMEL-3125).
+# for a red `shell-unit` gate on the nightly-only extended tier.
 #
 # run-shell-tests.sh's SUITE_TIER_DEFAULT `extended` suites (currently
 # test-check-ci.sh, test-arm-resume-identity.sh and
@@ -11,8 +9,7 @@
 # extended suite therefore only ever reddens the `shell-unit` aggregating job
 # on that nightly run — a run nobody is watching interactively — so
 # without this script the failure is silent even though the job itself goes
-# red. This script does not distinguish which suite failed (same limitation
-# as windows-nightly-issue.sh vs. which bun test failed); on a nightly
+# red. This script does not distinguish which suite failed; on a nightly
 # run every fast-tier suite is already expected green (they gate
 # every PR), so in practice a nightly-only red here points at the extended
 # tier. macOS is not on this nightly any more (HIMMEL-3902: it runs on

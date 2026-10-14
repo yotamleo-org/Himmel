@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# scripts/ci/test-ci-nightly-only-os.sh -- regression suite for HIMMEL-3853:
-# Windows is verified by the NIGHTLY cron only (macOS by its own cadence
-# workflow, macos-cadence.yml -- HIMMEL-3902). ci.yml has no
+# scripts/ci/test-ci-nightly-only-os.sh -- regression suite:
+# ci.yml runs ubuntu only (Windows support is dropped, macOS has its
+# own cadence workflow, macos-cadence.yml). ci.yml has no
 # `force_all_os` dispatch input, so no manually dispatched run can occupy the
 # paid Windows/macOS runner slots (2026-09-29: per-PR dispatches held 14 of the
 # account's 20 concurrent job slots and queued ~287 jobs behind them).
 #
 # Pure text + evaluated-expression assertions over the workflow file (comments
-# stripped, so a comment cannot satisfy a policy check). The matrix `os:`
-# expressions are EVALUATED per trigger event, so the nightly's 3-OS matrix and
-# the ubuntu-only pull_request / push / workflow_dispatch matrices are proven,
-# not grepped. No network, no PyYAML.
+# stripped, so a comment cannot satisfy a policy check). No network, no PyYAML.
 #
 # Usage: bash scripts/ci/test-ci-nightly-only-os.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
@@ -55,68 +52,22 @@ else
   ok "ci.yml reads no inputs.* context"
 fi
 
-# 3. Matrix by event: evaluate each job's `os:` expression per event.
+# 3. Windows is gone from ci.yml -- no leg, no repo-variable
+# switch, no nightly-issue step -- and the two matrix jobs run ubuntu only.
 job_block() { awk -v j="$1" '$0 == "  " j ":" {f=1; next} f && /^  [a-zA-Z_-]+:/ {f=0} f' <<< "$stripped"; }
 
-eval_matrix() {
-  # $1 = job id; prints "event=os,os,os" per event, or FAIL text on stderr + rc 1.
-  # shellcheck disable=SC2016 # the python body is single-quoted on purpose; nothing in it is a shell expansion
-  job_block "$1" | python3 -c '
-import json, re, sys
-from types import SimpleNamespace as NS
-text = sys.stdin.read()
-m = re.search(r"^\s+os:\s*(\$\{\{.*?\}\})", text, re.DOTALL | re.MULTILINE)
-if not m:
-    print("no `os: ${{ }}` matrix expression found", file=sys.stderr); sys.exit(1)
-inner = re.fullmatch(r"\$\{\{\s*(.*?)\s*\}\}", " ".join(m.group(1).split()), re.DOTALL).group(1)
-inner = re.sub(r"fromJSON\((\x27[^\x27]*\x27)\)", lambda x: "json.loads(" + x.group(1) + ")", inner)
-inner = inner.replace("&&", " and ").replace("||", " or ")
-NIGHTLY, MAINCRON = "17 7 * * *", "43 1,8,15,22 * * *"
-# (label, event_name, schedule, WINDOWS_NIGHTLY) -- HIMMEL-5441: an unset repo
-# variable reads as the empty string in an expression.
-CASES = (
-    ("pull_request", "pull_request", "", ""),
-    ("pull_request_on", "pull_request", "", "on"),
-    ("workflow_dispatch", "workflow_dispatch", "", ""),
-    ("workflow_dispatch_on", "workflow_dispatch", "", "on"),
-    ("schedule_main", "schedule", MAINCRON, ""),
-    ("schedule_main_on", "schedule", MAINCRON, "on"),
-    ("schedule", "schedule", NIGHTLY, ""),
-    ("schedule_off", "schedule", NIGHTLY, "off"),
-    ("schedule_on", "schedule", NIGHTLY, "on"),
-)
-for ev, name, sched, var in CASES:
-    try:
-        gh = NS(event_name=name, event=NS(schedule=sched))
-        val = eval(inner, {"__builtins__": {}, "json": json}, {"github": gh, "vars": NS(WINDOWS_NIGHTLY=var)})
-    except Exception as e:
-        print("expression does not evaluate for %s: %r" % (ev, e), file=sys.stderr); sys.exit(1)
-    print("%s=%s" % (ev, ",".join(val)))
-'
-}
-
-check_matrix() {
-  # $1 = job id, $2 = expected nightly OS list when WINDOWS_NIGHTLY=on (comma-joined)
-  local job="$1" want_sched="$2" out
-  if ! out="$(eval_matrix "$job" 2>&1)"; then
-    bad "$job: matrix expression not evaluable -- $out"
-    return
+if grep -qiE 'windows|WINDOWS_NIGHTLY' <<< "$stripped"; then
+  bad "ci.yml still runs or reads Windows: $(grep -iE -m1 'windows|WINDOWS_NIGHTLY' <<< "$stripped")"
+else
+  ok "no Windows leg, WINDOWS_NIGHTLY switch or windows-nightly-issue step in the executable part of ci.yml"
+fi
+for job in shell-unit-shard bun-suites; do
+  if grep -qE '^        os: \[ubuntu-latest\]$' <<< "$(job_block "$job")"; then
+    ok "$job: matrix os is ubuntu-latest only"
+  else
+    bad "$job: matrix os is not the single ubuntu-latest entry"
   fi
-  local ev got
-  # HIMMEL-5441: the windows leg is parked behind the WINDOWS_NIGHTLY repo
-  # variable, so every event but the nightly WITH the variable on is ubuntu only.
-  for ev in pull_request pull_request_on workflow_dispatch workflow_dispatch_on schedule_main schedule_main_on schedule schedule_off; do
-    got="$(sed -n "s/^$ev=//p" <<< "$out")"
-    if [ "$got" = "ubuntu-latest" ]; then ok "$job: $ev runs ubuntu-latest only"
-    else bad "$job: $ev matrix is '$got' (expected ubuntu-latest only)"; fi
-  done
-  got="$(sed -n 's/^schedule_on=//p' <<< "$out")"
-  if [ "$got" = "$want_sched" ]; then ok "$job: nightly with WINDOWS_NIGHTLY=on runs $want_sched"
-  else bad "$job: nightly with WINDOWS_NIGHTLY=on matrix is '$got' (expected $want_sched)"; fi
-}
-
-check_matrix shell-unit-shard "ubuntu-latest,windows-latest"
-check_matrix bun-suites "ubuntu-latest,windows-latest"
+done
 
 # 4. SUITE_TIER_MODE=all (the full corpus) only on the nightly.
 tier="$(job_block shell-unit-shard | sed -n 's/^[[:space:]]*SUITE_TIER_MODE:[[:space:]]*//p')"
@@ -140,33 +91,25 @@ else
   ok "no macOS job or macOS health step remains in the executable part of ci.yml"
 fi
 
-# 6. Non-ubuntu legs stay non-gating (advisory until HIMMEL-3699 / HIMMEL-3719 land).
+# 6. With one OS left there is nothing to make non-gating.
 for job in shell-unit-shard bun-suites; do
-  blk="$(job_block "$job")"
-  if grep -q "continue-on-error: \${{ matrix.os != 'ubuntu-latest' }}" <<< "$blk"; then
-    ok "$job: non-ubuntu legs stay continue-on-error"
+  if grep -q 'continue-on-error' <<< "$(job_block "$job")"; then
+    bad "$job: still carries continue-on-error"
   else
-    bad "$job: continue-on-error scoping to non-ubuntu legs changed (out of scope)"
+    ok "$job: no continue-on-error (ubuntu is the only leg)"
   fi
 done
 
 # 7. HIMMEL-3919: the shard job and its apt/at install step are bounded (a hung
 # apt lock once held a shard ~1.5 h; the 6 h default queued every later main run).
 blk="$(job_block shell-unit-shard)"
-# The cap must be OS-conditional: nightly windows shards run 79-128 min, so a
-# flat cap cancels them (a timed-out job is `cancelled`, which continue-on-error
-# does not absorb). Shape: `${{ matrix.os == 'windows-latest' && <win> || <other> }}`.
-tm_re="^    timeout-minutes: \\\$\{\{ matrix\.os == 'windows-latest' && ([0-9]+) \|\| ([0-9]+) \}\}\$"
+# Windows shards (79-128 min) are gone, so the cap is flat: 1.7x the slowest
+# nightly ubuntu shard (35-38 min).
 tm_line="$(grep -E '^    timeout-minutes:' <<< "$blk")"
-if [[ "$tm_line" =~ $tm_re ]]; then
-  win="${BASH_REMATCH[1]}"; other="${BASH_REMATCH[2]}"
-  if [ "$win" -ge 180 ] && [ "$other" -ge 1 ] && [ "$other" -lt "$win" ]; then
-    ok "shell-unit-shard: job-level timeout-minutes is OS-conditional (windows $win, other $other)"
-  else
-    bad "shell-unit-shard: OS-conditional timeout-minutes needs windows >= 180 and other < windows (got $win / $other)"
-  fi
+if [ "$tm_line" = "    timeout-minutes: 60" ]; then
+  ok "shell-unit-shard: job-level timeout-minutes is a flat 60"
 else
-  bad "shell-unit-shard: job-level timeout-minutes is not the OS-conditional windows-latest form (flat or missing): $tm_line"
+  bad "shell-unit-shard: job-level timeout-minutes is not a flat 60: $tm_line"
 fi
 # A timed-out shard is `cancelled`, so its failed-suite logs must upload then too.
 if grep -Eq "^        if: failure\(\) \|\| cancelled\(\)$" <<< "$(awk '/name: Upload failed-suite logs/ {f=1; next} f {print; exit}' <<< "$blk")"; then
@@ -235,6 +178,15 @@ else
   else
     bad "shell-unit-shard: helper does not log which path ran"
   fi
+fi
+
+# 8. The plan job now sits behind the 180 s PR debounce, so its cap
+# is 13 minutes (the p95 comment is kept on the raw file, comments stripped above).
+plan_tm="$(awk '$0 == "  plan:" {f=1; next} f && /^  [a-zA-Z_-]+:/ {f=0} f && /^    timeout-minutes:/ {print; exit}' "$CI_YML")"
+if [[ "$plan_tm" =~ ^"    timeout-minutes: 13 # p95 " ]]; then
+  ok "plan: timeout-minutes is 13 with a p95 comment"
+else
+  bad "plan: timeout-minutes is not '13 # p95 ...': $plan_tm"
 fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }

@@ -127,7 +127,6 @@ scripts/ci/test-suite-concurrency.sh	119
 scripts/ci/test-suite-lock-brand-gap.sh	70
 scripts/ci/test-suite-lock-orphan-reaper.sh	15
 scripts/ci/test-tmp-sweep.sh	1
-scripts/ci/test-windows-nightly-issue.sh	0
 scripts/cleanup/test-codex-sweep-cadence.sh	0
 scripts/codex/test-codex-arg-filter.sh	0
 scripts/codex/test-codex-hook-parity.sh	0

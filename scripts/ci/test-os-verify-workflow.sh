@@ -148,10 +148,11 @@ else bad "triggers are not workflow_dispatch alone: $(trigger_keys "$WF" | tr '\
 os_in="$(input_block "$WF" os)"
 suites_in="$(input_block "$WF" suites)"
 if grep -q 'type: choice' <<< "$os_in" && grep -q 'default: macos' <<< "$os_in" \
-   && grep -q -- '- macos' <<< "$os_in" && grep -q -- '- windows' <<< "$os_in" \
-   && grep -q -- '- both' <<< "$os_in"; then
-  ok "input os is a choice of macos|windows|both, default macos"
-else bad "input os is not a choice of macos|windows|both defaulting to macos"; fi
+   && grep -q -- '- macos' <<< "$os_in" && ! grep -qi 'windows\|- both' <<< "$os_in"; then
+  ok "input os is a choice of macos alone, default macos (Windows is dropped)"
+else bad "input os is not a macos-only choice defaulting to macos"; fi
+if grep -qi 'windows' <<< "$(strip_comments "$WF")"; then bad "os-verify.yml still names Windows outside comments"
+else ok "os-verify.yml names no Windows leg outside comments"; fi
 if grep -q 'type: choice' <<< "$suites_in" && grep -q 'default: impacted' <<< "$suites_in" \
    && grep -q -- '- impacted' <<< "$suites_in" && grep -q -- '- all' <<< "$suites_in"; then
   ok "input suites is a choice of impacted|all, default impacted"
@@ -170,7 +171,7 @@ collided=0
 resolved=0
 for id in $(job_ids "$WF"); do
   expr="$(job_block "$WF" "$id" | sed -n 's/^    name:[[:space:]]*//p')"
-  for os in macos-latest windows-latest; do
+  for os in $(sed -n 's/^.*os: \[\(.*\)\]$/\1/p' <<< "$(strip_comments "$WF")" | tr ',' ' '); do
     for sh in ${shards:-1}; do
       name="${expr//\$\{\{ matrix.os \}\}/$os}"
       name="${name//\$\{\{ matrix.shard \}\}/$sh}"

@@ -17,8 +17,7 @@
 # (nightly) leg of shell-unit-shard), same mechanism already proven by the sibling
 # extended suites test-arm-resume-identity.sh / test-arm-resume-queue-lock.sh.
 # A nightly-only red is covered by scripts/ci/shell-extended-nightly-issue.sh
-# (HIMMEL-3132's non-silence requirement, same upsert-one-issue shape as
-# scripts/ci/windows-nightly-issue.sh) -- it is not a silent gap.
+# (the non-silence requirement) -- it is not a silent gap.
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
 exec bash test-arm-resume.sh --only "1879"

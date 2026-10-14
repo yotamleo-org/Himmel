@@ -79,8 +79,8 @@ bare="$(grep -c "github.event_name == 'schedule'" <<< "$stripped")"
 if [ "$bare" -eq 0 ]; then ok "no bare event_name == 'schedule' gate remains"
 else bad "$bare bare event_name == 'schedule' gate(s) remain (the main cron would hit them)"; fi
 nightly="$(grep -c "github.event.schedule == '17 7 \* \* \*'" <<< "$stripped")"
-if [ "$nightly" -ge 7 ]; then ok "nightly gates keyed on the nightly cron ($nightly sites)"
-else bad "only $nightly nightly-cron gates (expected >= 7)"; fi
+if [ "$nightly" -ge 5 ]; then ok "nightly gates keyed on the nightly cron ($nightly sites)"
+else bad "only $nightly nightly-cron gates (expected >= 5)"; fi
 
 # Nothing may still be gated on a push event.
 if grep -q "github.event_name == 'push'" <<< "$stripped"; then bad "a gate still keys on event_name == 'push'"

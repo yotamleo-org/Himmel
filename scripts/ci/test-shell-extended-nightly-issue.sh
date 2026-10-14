@@ -2,7 +2,6 @@
 # Smoke test for scripts/ci/shell-extended-nightly-issue.sh (HIMMEL-3132).
 # Uses DRY_RUN=1 so no gh, no auth, no network — asserts the issue-state
 # decisions per shell-unit outcome from the emitted DRY: gh command lines.
-# Modeled on scripts/ci/test-windows-nightly-issue.sh.
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO

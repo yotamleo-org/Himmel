@@ -3,10 +3,9 @@ name: CI
 on:
   # PR gating (HIMMEL-594): the cheap ubuntu-only jobs run on every PR so a
   # non-conventional commit, a secret, a shellcheck warning, or a failing shell
-  # suite blocks merge. The EXPENSIVE multi-OS matrix is nightly-only — the
-  # shell-unit-shard matrix below expands to windows only on `schedule`
-  # (HIMMEL-3853: there is no dispatch input that widens it any more), so
-  # neither a PR nor a manual dispatch can occupy the paid legs. macOS is not in
+  # suite blocks merge. Every job here is ubuntu only: Windows support is
+  # dropped (HIMMEL-5729) and there is no dispatch input that widens a matrix
+  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a paid leg. macOS is not in
   # this file at all (HIMMEL-3902): it runs on its own twice-weekly workflow,
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
   # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
@@ -27,7 +26,7 @@ on:
   # concurrent job slots on 2026-09-29. It runs the ubuntu-only matrix.
   workflow_dispatch:
   schedule:
-    # Nightly, UTC: the only run with the windows legs, SUITE_TIER_MODE=all and
+    # Nightly, UTC: the only run with SUITE_TIER_MODE=all and
     # guard-corpus-full. Every nightly-only gate below keys on THIS string via
     # github.event.schedule, because the main-sweep cron is also a `schedule`
     # event and must stay ubuntu-only / fast-tier.
@@ -84,7 +83,7 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 13 # p95 ~190s (the 180 s debounce sleep + checkout + plan); 2x = 6.3m, kept 13 for sleep + slow-runner headroom
     outputs:
       run_node_suites: ${{ steps.plan.outputs.run_node_suites }}
       run_jira_cli_smoke: ${{ steps.plan.outputs.run_jira_cli_smoke }}
@@ -606,62 +605,30 @@ jobs:
           node-version: '22'
       - run: bash scripts/hooks/check-guardrail-matrices.sh
 
-  # Matrix, not ubuntu-only (HIMMEL-1109). This suite spawns the luna-vitals CLI
-  # and connectors/pull-cadence.sh as subprocesses, so it is exactly the kind of
-  # suite whose result depends on the host — and it sat red on Windows for
-  # months (12 tests when the ticket was filed, 3 by the time anyone looked
-  # again) because CI only ever saw Linux. macOS is deliberately
-  # left out: GitHub bills those runners 10x, and this suite has no macOS-only
-  # surface beyond the BSD-vs-GNU `date` fallback in pull-cadence.sh, which the
-  # tests bypass by pinning FROM/TO.
+  # Single-entry os matrix, not a bare job (HIMMEL-1109): the matrix is what
+  # names the required check-run context `bun-suites (ubuntu-latest)`. This
+  # suite spawns the luna-vitals CLI and connectors/pull-cadence.sh as
+  # subprocesses, so its result depends on the host. Windows is dropped
+  # (HIMMEL-5729) and macOS is left out: GitHub bills those runners 10x.
   #
-  # HIMMEL-3125: Windows is now the alpha tier — dropped off the per-PR path,
-  # same pattern as shell-unit-shard below. Every non-schedule event (a
-  # workflow_dispatch included) runs ubuntu only; `schedule` alone adds the
-  # windows-latest leg, paid once a night.
-  # continue-on-error scopes non-gating to that leg alone; ubuntu-latest stays
-  # the required check either way.
-  #
-  # `shell: bash` because the run lines below chain with `&&` — the default
-  # shell on windows-latest is pwsh. The windows leg exists only on `schedule`,
-  # where fail-fast stays false so a red Windows leg still reports the Linux
-  # result instead of cancelling it; a pull_request run stops at its first red leg.
+  # `shell: bash` because the run lines below chain with `&&`.
   bun-suites:
     # Ungated (trust judge j2543g): `bun test scripts/telegram` globs suites that
     # run extensionless scripts (scripts/claude-codex), so it runs on every PR like main.
-    # issues:write (beyond the workflow-level contents:read) is needed only by
-    # the windows-nightly-issue.sh steps above/below — scoped to this job
-    # alone rather than raised workflow-wide.
     permissions:
       contents: read
-      issues: write
-    # HIMMEL-3125: serializes the windows-nightly-issue.sh reconciliation.
-    # matrix.os keeps normal per-PR/per-ref ubuntu-latest runs from queuing on
-    # each other (each PR branch gets its own group, via github.ref). The
-    # windows-latest leg is the one that mutates the shared, repo-wide
-    # tracking issue, and the windows leg once ran on a dispatch from ANY
-    # branch -- not only main -- so that leg drops github.ref from its group
-    # and shares ONE group across every ref (CodeRabbit finding, PR #788;
-    # HIMMEL-3853 removed the dispatch path, the shared group is kept as
-    # cheap insurance). Queue
-    # (cancel-in-progress: false) rather than cancel, so neither run's
-    # list-then-create against the tracking issue overlaps the other's.
+    # matrix.os keeps per-PR/per-ref runs from queuing on each other (each PR
+    # branch gets its own group, via github.ref).
     concurrency:
-      group: bun-suites-${{ matrix.os }}-${{ matrix.os == 'windows-latest' && 'shared' || github.ref }}
+      group: bun-suites-${{ matrix.os }}-${{ github.ref }}
       cancel-in-progress: false
     strategy:
-      # HIMMEL-5036: PR-only fail-fast; the windows leg only exists on schedule,
-      # where this stays false so a red Windows leg still reports Linux.
+      # HIMMEL-5036: a PR stops at its first red leg.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        # HIMMEL-5441: the windows leg runs only while the WINDOWS_NIGHTLY repo
-        # variable is 'on' (unset = off) until the nightly is fixed on the win11 VM.
-        os: ${{ github.event.schedule == '17 7 * * *' && vars.WINDOWS_NIGHTLY == 'on'
-               && fromJSON('["ubuntu-latest","windows-latest"]')
-               || fromJSON('["ubuntu-latest"]') }}
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15 # p95 269s (4.5m, matrix incl. windows); 2x = 9m, kept 15 for the windows leg
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    timeout-minutes: 15 # p95 269s (4.5m); 2x = 9m, kept 15
     defaults:
       run:
         shell: bash
@@ -691,7 +658,6 @@ jobs:
       # preloaded fetch stub, no network, no live vault. Ubuntu only — the
       # backfill suite prepends a bash `gh` stub to PATH with a `:` separator
       # and calls execFileSync("gh"), which windows-latest cannot resolve, so
-      # the non-gating Windows nightly would go red and file a spurious issue.
       # A step in this job (not a new job) rides the already-required
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
@@ -700,8 +666,7 @@ jobs:
       # HIMMEL-4254 P3: the read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
       # above; hermetic (stub feed via CONFIG_UI_HIMMELCTL, loopback only).
-      # Ubuntu only: it spawns node/bun children with POSIX signal semantics,
-      # which the non-gating Windows nightly (parked) would only turn red.
+      # Ubuntu only: it spawns node/bun children with POSIX signal semantics.
       - name: Config UI tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: bun test scripts/config-ui --dots
@@ -722,26 +687,6 @@ jobs:
       - name: fleet-control + observability tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: ls scripts/fleet-control/tests/*.test.ts scripts/observability/*.test.ts && bun test scripts/fleet-control scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
-      # A red Windows nightly must not fail silently now that it is non-gating
-      # (HIMMEL-3125): upsert one consolidated issue rather than opening a new
-      # one per run (same convention as scripts/ci/fork-drift-issue.sh). Two
-      # steps rather than one because the Actions expression language has no
-      # `steps.*.outcome` wildcard to fold into a single rc — `success()` /
-      # `failure()` already summarize every prior step in this job. Both are
-      # scoped to the windows-latest leg only: the ubuntu-latest leg already
-      # gates the PR/push path and needs no issue.
-      - name: Windows-nightly issue — clear on green
-        if: success() && matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/windows-nightly-issue.sh 0 "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-      - name: Windows-nightly issue — file/refresh on red
-        if: failure() && matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/windows-nightly-issue.sh 1 "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   # CLAUDE.md-derived content invariants (HIMMEL-1305). The local pre-commit
   # copies of these gates judge the STAGED source, but they execute the repo's
@@ -970,16 +915,9 @@ jobs:
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit-signatures.sh
 
-  # Multi-OS, gated to the nightly to stay free-tier-cheap: every non-schedule
-  # event (a workflow_dispatch included) runs ubuntu only; `schedule` alone
-  # adds windows (2x), paid once a night (HIMMEL-3853: Windows is verified by
-  # the nightly only, never per PR). macOS (10x) is NOT here (HIMMEL-3902): it
-  # is the os:macos cadence, macos-cadence.yml. A red nightly OS leg becomes
-  # its own split slice — docs/internals/testing.md.
-  # windows is NON-GATING this phase (continue-on-error scoped to the
-  # non-ubuntu legs): its per-suite PASS/FAIL is advisory in the job log while
-  # ubuntu stays the required gate. Tightening the new OSes to
-  # gating-green is the data-driven follow-up (HIMMEL-494 phase 3).
+  # Ubuntu only (HIMMEL-5729 dropped the nightly Windows leg). macOS (10x) is
+  # NOT here (HIMMEL-3902): it is the os:macos cadence, macos-cadence.yml. A red
+  # nightly leg becomes its own split slice — docs/internals/testing.md.
   #
   # This is the working matrix — sharded per OS (HIMMEL-2872) so the ubuntu
   # legs finish in parallel instead of serially. The shard COUNT is spelled in
@@ -1001,10 +939,7 @@ jobs:
       # the nightly keep the full red set so a red stays attributable.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        # HIMMEL-5441: windows only while the WINDOWS_NIGHTLY repo variable is 'on'.
-        os: ${{ github.event.schedule == '17 7 * * *' && vars.WINDOWS_NIGHTLY == 'on'
-               && fromJSON('["ubuntu-latest","windows-latest"]')
-               || fromJSON('["ubuntu-latest"]') }}
+        os: [ubuntu-latest]
         # shard: [1..8] fans run-shell-tests.sh across 8 runners (HIMMEL-2872).
         # The `8` ids here, the `/8` in the run step below and the `8` in the
         # plan job's plan-shards.sh call are spellings of the same number — GitHub Actions has no way to derive one from the
@@ -1018,22 +953,17 @@ jobs:
         # the real fix (follow-up).
         shard: ${{ fromJSON(needs.plan.outputs.shards || '[1,2,3,4,5,6,7,8]') }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
     # non-cancelling concurrency group, so one hung shard queued every later
-    # main run). The cap is OS-dependent because the nightly SUITE_TIER_MODE=all
-    # legs are far slower than the fast-tier push/PR runs: ubuntu shard 8 took
-    # 35-38 min and windows shards 79-115 min (run 36579691044; 128 min in run
-    # 36443339522). suite-durations.tsv is the fast tier only (~18 min slowest
-    # shard). ubuntu 60 is ~1.7x the slowest nightly shard; windows 180 clears
-    # the 128 min max. A timed-out job is `cancelled`, which continue-on-error
-    # does not absorb, so a windows cap below its real duration would turn the
-    # aggregate red every night. There are no macos rows in this matrix
-    # (macos-cadence.yml / os-verify.yml carry their own 120).
+    # main run). The nightly SUITE_TIER_MODE=all legs are far slower than the
+    # fast-tier push/PR runs: ubuntu shard 8 took 35-38 min.
+    # suite-durations.tsv is the fast tier only (~18 min slowest
+    # shard). 60 is ~1.7x the slowest nightly shard. There are no macos rows in
+    # this matrix (macos-cadence.yml / os-verify.yml carry their own 120).
     # HIMMEL-5036: cap NOT lowered. PR shards run only impacted suites (p95 1676s,
     # 28m, over 10 green PR runs); the main sweep runs the full set per shard and
     # the p95 measured here does not cover it, so 60 stays until sweep data does.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 180 || 60 }}
+    timeout-minutes: 60
     steps:
       # fetch-depth: 0 (not the default shallow clone) so --changed-since below
       # can resolve a pull_request's base SHA, which a depth-1 checkout of the
@@ -1046,7 +976,7 @@ jobs:
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
       # to the crontab path and ~2 arm-resume cases diverged from a real install.
       # Install + enable it on Linux so CI mirrors the supported runtime
-      # (HIMMEL-619). Scoped to Linux: no-op on the nightly windows leg.
+      # (HIMMEL-619). Scoped to Linux.
       # HIMMEL-2871: the runner image preinstalls third-party apt sources
       # (Google Chrome, Microsoft, Azure CLI) we never use; when one of those
       # goes inconsistent upstream, `apt-get update` exits 100 and this step
@@ -1158,9 +1088,8 @@ jobs:
       # artifact below — the inline tail is bounded, so without this the
       # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).
       # SUITE_TIER_MODE (HIMMEL-2166): fast on every per-PR/post-merge leg
-      # (pull_request, the main cron, or a plain workflow_dispatch) — this job is
-      # ubuntu-only there. `all` stays the corpus on the nightly leg that
-      # expands to the paid windows matrix, matching the
+      # (pull_request, the main cron, or a plain workflow_dispatch). `all` stays
+      # the corpus on the nightly leg, matching the
       # cadence/full-scan intent this ticket must not touch.
       # SUITE_CHANGED_SINCE: only on pull_request, where a base SHA exists —
       # a docs-only PR then skips the whole corpus (run-shell-tests.sh's own
@@ -1263,9 +1192,8 @@ jobs:
   #    was sharded. Sharding the work must not rename the gate.
   # 2. `needs.shell-unit-shard.result` is the matrix ROLLUP, `success` only
   #    when every leg that CAN fail the matrix succeeded. A job-level
-  #    `continue-on-error` failure (the nightly windows leg) is NOT
-  #    counted against that rollup, so those legs stay advisory exactly as
-  #    they are today — this job never has to name any OS itself.
+  #    `continue-on-error` failure is NOT counted against that rollup — this
+  #    job never has to name any OS itself.
   # 3. `if: always()` plus the explicit `!= success` test below is the
   #    fail-CLOSED shape: `failure`, `cancelled` AND `skipped` all redden this
   #    job. A bare `needs:` without `always()` would SKIP this job whenever a
@@ -1277,12 +1205,11 @@ jobs:
   #    the 2026-09-18 nightly, so the alert never fired. A plain checkout
   #    rather than a sparse `scripts/ci` one: the script sources nothing today,
   #    but this leg only runs unwatched, so a future `source` of a sibling lib
-  #    would re-break it silently. Same shape as bun-suites' windows-nightly
-  #    steps.
+  #    would re-break it silently.
   #
   # 5. issues:write (beyond the workflow-level contents:read) is needed only
   #    by the shell-extended-nightly-issue.sh steps below — scoped to this
-  #    job alone, same pattern as bun-suites' windows-nightly-issue.sh.
+  #    job alone.
   #    HIMMEL-3132: SUITE_TIER_DEFAULT `extended` suites only run under
   #    SUITE_TIER_MODE=all (the schedule leg, set above at
   #    shell-unit-shard), so a red extended suite only ever reddens THIS
