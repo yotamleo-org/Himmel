@@ -309,7 +309,15 @@ _lift_ref1() {
     e=$(_expand "$w")
     # Symlinks (also dangling ones — a link to a lift that does not exist yet).
     case "$e" in
-        '?/'*) ;;
+        '?/'*)
+            # Unproven cwd: a relative word may still be a symlink to the lift from
+            # the hook's own cwd, so resolve it there too and take the stronger verdict.
+            w="${e#\?/}"
+            case "$w" in
+                /*|'$'*|'`'*|'~'*) ;;
+                *) [ "$(_lift_ref1 "$CWD/$w" $((depth+1)))" = LIFT ] && { echo LIFT; return; } ;;
+            esac
+            ;;
         *)
             if [ -e "$STATE_REAL/$LIFT_NAME" ] && [ -e "$e" ] && [ "$e" -ef "$STATE_REAL/$LIFT_NAME" ]; then
                 echo LIFT; return
@@ -1165,7 +1173,15 @@ set_rule() {
 # bottom): cd/pushd/popd, eval, su/runuser/chroot, CDPATH, any chdir/--chdir,
 # find -execdir, a `(` or backtick (subshell, $( ), <( )), a { } brace group,
 # env/sudo with -C/-i, and a shell running a -c string.
-DIRWORD_RE='(^|[^A-Za-z0-9_.-])(cd|pushd|popd|eval|su|runuser|chroot)([^A-Za-z0-9_.-]|$)|CDPATH|chdir|-execdir|[(`]|(^|[[:space:];&|])[{]([[:space:]]|$)|(^|[^A-Za-z0-9_.-])(env|sudo)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[Ci]|(^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh|mksh|ash|fish|busybox)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*c'
+# HIMMEL-5190: `source` and `.` run a file in this shell (it may cd), and a
+# command word built by brace expansion (`{source,}`, `c{d,}`) can spell any of
+# the above. This regex covers the common spellings; the token check at the
+# bottom (CWD_UNPROVEN, any word position) is the structural backstop.
+# The relative-write relief (logical `cd -L`, brace expansion before matching)
+# is not built: ponytail: 0 unproven-cwd denials in 14 days of session
+# transcripts (HIMMEL-5190 Phase 1), build at 5 false positives per 14 days.
+# shellcheck disable=SC2016  # the backtick is a literal regex character
+DIRWORD_RE='(^|[^A-Za-z0-9_.-])(cd|pushd|popd|eval|su|runuser|chroot)([^A-Za-z0-9_.-]|$)|CDPATH|chdir|-execdir|[(`]|(^|[[:space:];&|])[{]([[:space:]]|$)|(^|[^A-Za-z0-9_.-])(env|sudo)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[Ci]|(^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh|mksh|ash|fish|busybox)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*c|(^|[;&|()`])[[:space:]]*((then|do|else|elif|if|while|until|!|noglob|nocorrect|-|time([[:space:]]+-[^[:space:];&|]*)*)[[:space:]]+)*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*|(command|builtin|exec)([[:space:]]+-[^[:space:];&|]*)*)[[:space:]]+)*(source|[.])([[:space:]$]|$)|(^|[;&|()`])[[:space:]]*((then|do|else|elif|if|while|until|!|noglob|nocorrect|-|time([[:space:]]+-[^[:space:];&|]*)*)[[:space:]]+)*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*|(command|builtin|exec)([[:space:]]+-[^[:space:];&|]*)*)[[:space:]]+)*[^[:space:];&|(){}`]*[{][^[:space:];&|]*(,|[.][.])'
 # tar/unzip read options from these variables. A variable can be set in many
 # forms (prefix, export, env, declare/typeset/local, readonly, printf -v, read,
 # a nameref, +=, a nested body), so the BARE name anywhere in the raw text or
@@ -2515,6 +2531,44 @@ _c_replace "$WTOK" $'\037' ' '
 WTOK_SP=$REPLY
 cwd_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$DIRWORD_RE")
 case "$cwd_hits" in ''|0) ;; *) CWD_UNPROVEN=1 ;; esac
+# HIMMEL-5190 (judge j2545c): source, ., cd-family and brace-built words are read
+# from the TOKENS of every clause, not an enumerated prefix set, so a leading
+# redirect, a quoted/escaped assignment value or a zsh `repeat N` cannot hide
+# them. source/cd/pushd/popd/eval or a brace-active word (\003 mark) count in ANY
+# word position; a bare `.` only while no operand has been seen, so `cp a .`
+# stays proven. Heredoc bodies (\002B) and substitution bodies (\002S) are data
+# here: $( ) is already unproven through the regex above.
+# ponytail: any-position over-deny (`echo source`, `cp a{,.bak} b` under a
+# relative destination), narrowing is HIMMEL-5561.
+if [ "$CWD_UNPROVEN" = 0 ]; then
+    # Before the command word, any word containing `=` is an assignment (`+=`,
+    # `a[0]=`), `repeat` swallows its next word whatever it is, and a command
+    # word that is itself computed (`$` or a backtick: `$x f`, `${x}d /x`) is
+    # unknown. An awk failure fails closed.
+    if ! tok_hit=$(printf '%s\n' "$WTOK" | LC_ALL=C awk '
+        BEGIN { FS = "\037" }
+        substr($0, 1, 2) == "\002B" || substr($0, 1, 2) == "\002S" { next }
+        {
+            lead = 1
+            for (i = 1; i <= NF; i++) {
+                t = $i
+                if (index(t, "\003") || t == "source" || t == "cd" || t == "pushd" || t == "popd" || t == "eval") { print 1; exit }
+                if (t == "." && lead) { print 1; exit }
+                if (t == "\002W" || t == "\002C" || t == "\002R") { i++; if (index($i, "\003")) { print 1; exit }; continue }
+                if (lead && t == "repeat") { i++; continue }
+                if (lead && (index(t, "$") || index(t, "`"))) {
+                    # a plain assignment word (`x=$y`) is data; anything else computed is the command word
+                    if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+                    print 1; exit
+                }
+                if (lead && (index(t, "=") || t ~ /^-/ || t ~ /^(command|builtin|exec|time|!|noglob|nocorrect|then|do|else|elif|if|while|until)$/)) continue
+                lead = 0
+            }
+        }'); then
+        tok_hit=1
+    fi
+    [ -z "$tok_hit" ] || CWD_UNPROVEN=1
+fi
 xenv_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$XENV_RE")
 case "$xenv_hits" in ''|0) ;; *) XENV_SET=1 ;; esac
 if names_lift "$CMD" || names_lift "$WTOK"; then whole_command_gate "$CMD" 0; fi
