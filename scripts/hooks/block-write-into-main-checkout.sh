@@ -3875,6 +3875,45 @@ _bwimc_dx_heredoc() {
     _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
 }
 
+# Variable provenance (HIMMEL-5483). _dx_vp (in _bwimc_dx_text's scope) lists
+# "NAME=d " for a variable assigned earlier in the command from data (a
+# substitution that is not a listed generator) and "NAME=c " for one whose
+# text carries a -c word. ponytail: only plain NAME=value words are tracked
+# (not export/declare/read, nor a variable set by an earlier call), so a shell
+# fed by such a variable is not seen; upgrade path HIMMEL-4178.
+# _bwimc_dx_vtaint WORD — 0 when WORD expands a variable marked d or c.
+_bwimc_dx_vtaint() {
+    local t=$1 n
+    while [[ $t =~ \$\{?([A-Za-z_][A-Za-z0-9_]*) ]]; do
+        n=${BASH_REMATCH[1]}
+        case "$_dx_vp" in *" $n=d "*|*" $n=c "*) return 0 ;; esac
+        t=${t#*"${BASH_REMATCH[0]}"}
+    done
+    return 1
+}
+
+# _bwimc_dx_vrec — record the leading NAME=value words of the group in _dx_it.
+_bwimc_dx_vrec() {
+    local q=0 e wi w n v k
+    while [ "$q" -lt "$_dx_nit" ]; do
+        e=${_dx_it[$q]}
+        [ "${e:0:1}" = w ] || break
+        wi=${e#w}
+        [ "${ST_A[$wi]}" = 1 ] && [ -z "${ST_RO[$wi]}" ] || break
+        w=${ST_W[$wi]}; n=${w%%=*}; v=${w#*=}
+        q=$((q + 1))
+        if [ -z "$v" ] && [ "$q" -lt "$_dx_nit" ] && [ "${_dx_it[$q]:0:1}" = s ]; then
+            _bwimc_dx_gen "${_dx_it[$q]#s}" || _dx_vp="$_dx_vp$n=d "
+            q=$((q + 1))
+            continue
+        fi
+        [ "${ST_X[$wi]}" = 0 ] || ! _bwimc_dx_vtaint "$v" || _dx_vp="$_dx_vp$n=d "
+        for k in $v; do
+            if [[ $k =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$k" = --command ]; then _dx_vp="$_dx_vp$n=c "; break; fi
+        done
+    done
+}
+
 # _bwimc_dx_shell START PIPE CTX — a shell at the command position.
 _bwimc_dx_shell() {
     local p=$1 pipe=$2 ctx=$3 q e wi w n hasc=0 sopt=0 op=-1 hs=-1 hdw=-1 amb=0
@@ -3901,7 +3940,13 @@ _bwimc_dx_shell() {
         if [ "${e:0:1}" = s ]; then op=$q; break; fi
         wi=${e#w}
         if [ -n "${ST_RO[$wi]}" ]; then q=$((q + 1)); continue; fi
-        if [ "$hasc" = 0 ] && [ "${ST_X[$wi]}" = 1 ]; then amb=$((amb + 1)); q=$((q + 1)); continue; fi
+        if [ "$hasc" = 0 ] && [ "${ST_X[$wi]}" = 1 ]; then
+            # unquoted, it word-splits: a data or -c variable becomes the shell's own options and body
+            if [ "${ST_Q[$wi]}" = 0 ] && _bwimc_dx_vtaint "${ST_W[$wi]}"; then
+                _bwimc_dx_deny "(an unquoted variable assigned from data or carrying -c is a shell argument: ${ST_W[$wi]})"
+            fi
+            amb=$((amb + 1)); q=$((q + 1)); continue
+        fi
         w=${ST_W[$wi]}
         if [[ $w =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] || [ "$w" = --command ]; then hasc=1; fi
         # -s: the script is standard input, every later word a positional
@@ -4076,7 +4121,7 @@ _bwimc_dx_site() {
 _bwimc_dx_text() {
     local t="$1" t2 k IFS=$' \t\n'
     local -a _dx_gi _dx_gp _dx_gs _dx_ga _dx_sk _dx_sp _dx_sg _dx_stk _dx_it
-    local _dx_ng=0 _dx_cur=0 _dx_cursub=-1 _dx_nsub=0 _dx_nst=0 _dx_nit=0 _dx_text="$1"
+    local _dx_vp=' ' _dx_ng=0 _dx_cur=0 _dx_cursub=-1 _dx_nsub=0 _dx_nst=0 _dx_nit=0 _dx_text="$1"
     local s wi sep top lw li g e
     _bwimc_dx_pre "$t"
     if ! st_tokenize "$t"; then
@@ -4152,7 +4197,7 @@ _bwimc_dx_text() {
         if [ "${_dx_ga[$g]}" = 0 ]; then
             read -r -a _dx_it <<< "${_dx_gi[$g]}" || true
             _dx_nit=${#_dx_it[@]}
-            [ "$_dx_nit" = 0 ] || _bwimc_dx_site 0 "${_dx_gp[$g]}" ""
+            [ "$_dx_nit" = 0 ] || { _bwimc_dx_vrec; _bwimc_dx_site 0 "${_dx_gp[$g]}" ""; }
         fi
         g=$((g + 1))
     done

@@ -398,6 +398,22 @@ _r5098 "233m bash +O extglob -c git log"                block 'bash +O extglob -
 _r5098 "233n bash -Oextglob -c git log"                 block 'bash -Oextglob -c "$(git log -1 --format=%B)"'
 _r5098 "233o bash --rcfile f -c git log"                block 'bash --rcfile @W@/rc -c "$(git log -1 --format=%B)"'
 _r5098 "233p control: bash -O extglob -c literal"      allow "bash -O extglob -c 'ls'"
+# HIMMEL-5483: an unquoted variable in a shell's argv, assigned earlier in the
+# command from data (a non-generator substitution) or from text carrying -c
+_r5098 "234a data var as an option word"                block 'F=$(git log -1 --format=%B); bash -x $F'
+_r5098 "234b -c literal var as an option word"          block "F='-c touch @P@/x'; bash -x \$F"
+_r5098 "234c data var as the only word"                 block 'F=$(git log -1 --format=%B); bash $F'
+_r5098 "234d -c literal var, sh"                        block "F='-c touch @P@/x'; sh \$F"
+_r5098 "234e data var copied to another"                block 'G=$(cat @W@/msg); F=$G; bash $F'
+_r5098 "234f data var glued into a path word"           block 'D=$(cat @W@/msg); bash $D/x.sh'
+_r5098 "234g -c literal var, braces"                    block "F='-c touch @P@/x'; bash \${F}"
+_r5098 "234h data var on a later line"                  block "F=\$(git log -1 --format=%B)${NL}bash -x \$F"
+_r5098 "234i control: path literal var"                 allow 'F=@W@/x.sh; bash $F'
+_r5098 "234j control: toplevel var"                     allow 'F=$(git rev-parse --show-toplevel)/x.sh; bash $F'
+_r5098 "234k control: quoted data var is one word"      allow 'F=$(git log -1 --format=%s); bash "$F"'
+_r5098 "234l control: data var only echoed"             allow 'F=$(git log -1 --format=%s); echo $F'
+_r5098 "234m control: data var after the script"        allow 'F=$(git log -1 --format=%s); bash @W@/x.sh $F'
+_r5098 "234n control: unrelated data var"               allow 'F=$(git log -1 --format=%s); bash -x @W@/x.sh'
 # HIMMEL-5349 controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
