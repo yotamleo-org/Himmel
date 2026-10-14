@@ -162,6 +162,8 @@ case "$out" in *"graphify graph is STALE"*) pass "T9b HIMMEL_LEAN_LEG=0 keeps to
 cb="$tmp/corebare"; mkdir -p "$cb"
 git -C "$cb" init -q . && git -C "$cb" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x
 git -C "$cb" worktree add -q "$cb-wt" -b wt 2>/dev/null
+# `git init` writes core.bare=false; drop the key so T10a really covers absence.
+git -C "$cb" config --unset core.bare
 out=$(CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T10a core.bare unset is silent rc0" || fail "T10a: rc=$rc out='$out'"
 git -C "$cb" config core.bare false
