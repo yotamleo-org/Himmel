@@ -77,7 +77,8 @@ while [ $# -gt 0 ]; do
         --file-issue) DO_FILE=1 ;;
         --repo) shift; REPO_FLAG="${1:-}" ;;
         --only) [ -n "${2:-}" ] || { echo "himmel-doctor: --only needs a check id (C29 or C29,C40)" >&2; exit 2; }
-                ONLY=",$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]' | tr -d ' '),"; shift ;;
+                ONLY=",$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]' | tr -d ' '),"; shift
+                case "$ONLY" in *[!C0-9,]*|*,,*) echo "himmel-doctor: --only takes check ids like C29 or C29,C40, got '$ONLY'" >&2; exit 2 ;; esac ;;
         --root) [ -n "${2:-}" ] || { echo "himmel-doctor: --root needs a path" >&2; exit 2; }
                 shift ;; # the value was read by the pre-scan above
         --no-color) USE_COLOR=0 ;;
@@ -4190,33 +4191,31 @@ run_heavy() {
     rows="$HEAVY_DIR/$id.rows"
     "$_TIMEOUT_BIN" -k 2 "$HEAVY_T" bash "$SELF_DIR/$(basename "${BASH_SOURCE[0]:-$0}")" \
         --only "$id" --json --no-color --root "$REPO_ROOT" >"$rows" 2>/dev/null </dev/null &
-    HEAVY_JOBS="$HEAVY_JOBS $!|$id|$label|$rows"
+    HEAVY_JOBS="$HEAVY_JOBS$!|$id|$label|$rows"$'\n'
 }
 
 # heavy_join: wait for every launched child and replay its rows. A child past its
 # bound reports TIMEOUT for itself and the sweep carries on.
 heavy_join() {
-    local job pid id label rows rc row n
-    for job in $HEAVY_JOBS; do
-        IFS='|' read -r pid id label rows <<EOF_JOB
-$job
-EOF_JOB
+    local pid id label rows rc row n
+    while IFS='|' read -r pid id label rows; do
+        [ -n "$pid" ] || continue
         wait "$pid"; rc=$?
-        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-            emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
-                "bash scripts/himmel-doctor.sh --only $id   # run it alone; HIMMEL_DOCTOR_HEAVY_TIMEOUT=<secs> raises the bound"
-            continue
-        fi
         n=0
         while IFS= read -r row; do
             [ -n "$row" ] || continue
             n=$((n+1))
             emit "$(jq -r '.sev' <<< "$row")" "$(jq -r '.id' <<< "$row")" "$(jq -r '.msg' <<< "$row")" "$(jq -r '.remedy' <<< "$row")"
         done < "$rows"
-        if [ "$n" -eq 0 ]; then
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
+                "bash scripts/himmel-doctor.sh --only $id   # run it alone; HIMMEL_DOCTOR_HEAVY_TIMEOUT=<secs> raises the bound"
+        elif [ "$n" -eq 0 ]; then
             emit INFO "$label" "check did not complete (child exit $rc, no rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
         fi
-    done
+    done <<EOF_JOBS
+$HEAVY_JOBS
+EOF_JOBS
 }
 
 # --- run ------------------------------------------------------------------------
