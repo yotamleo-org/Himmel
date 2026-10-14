@@ -118,10 +118,12 @@ lacks "6b: no leg message after a bullet failure" "$out" "merge-on-green.sh"
 # --- 7. usage ----------------------------------------------------------------
 run q7 MAYBE "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "7: bad answer rc 2" "$rc" 2
+check "7: bad answer ran nothing" "$(cat "$LOG")" ""
 run q7 GO "$HEAD40" --evidence-file "$EV" --doc "$DOC"
 check "7: missing --pr rc 2" "$rc" 2
+check "7: missing --pr ran nothing" "$(cat "$LOG")" ""
 run q7 GO abc123 --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "7: short head rc 2" "$rc" 2
-check "7: nothing ran on a usage error" "$(cat "$LOG")" ""
+check "7: short head ran nothing" "$(cat "$LOG")" ""
 
 [ "$fails" -eq 0 ] && echo "all ok" || { echo "$fails failure(s)"; exit 1; }
