@@ -883,7 +883,7 @@ if [ "$rc" -ne 0 ]; then
     if [ "$(printf '%s' "$raw" | wc -c | tr -d '[:space:]')" -le 600 ] \
         && ! grep -qE '^[[:space:]]*(- \[|#{1,6} )' <<< "$raw" \
         && grep -qiE 'API call failed|overloaded|(rate[ -]?limit|quota)[^.]{0,20}(exceeded|reached|exhausted)|too many requests|unauthori[sz]ed|try again later|service unavailable|internal server error|bad gateway|(http|status|error|code)[^0-9]{0,12}(401|403|429|5[0-9][0-9])([^0-9]|$)' <<< "$raw" \
-        && grep -qiE '^[[:space:]]*(API call failed|((API|HTTP|upstream|provider|server)[[:space:]]+)?error([[:space:]]+(code|[0-9]{3}))?[[:space:]]*[(:-]|HTTP/?[0-9.]*[[:space:]]+[0-9]{3}([^0-9]|$))|"error"[[:space:]]*:|"type"[[:space:]]*:[[:space:]]*"[a-z_]*error"' <<< "$raw"; then
+        && grep -qiE '^[[:space:]]*(API call failed|((API|HTTP|upstream|provider|server)[[:space:]]+)?error([[:space:]]+(code|[0-9]{3}))?[[:space:]]*[(:-]|HTTP/?[0-9.]*[[:space:]]+[0-9]{3}([^0-9]|$)|\{?[[:space:]]*"error"[[:space:]]*:|\{?[[:space:]]*"type"[[:space:]]*:[[:space:]]*"[a-z_]*error")' <<< "$raw"; then
         _cfp_up=1
     fi
     # Raw-output log intentionally NOT cleaned up — it is the fail-open diagnostic artifact.
