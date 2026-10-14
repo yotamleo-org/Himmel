@@ -71,7 +71,7 @@ find_open_issue() {
 }
 
 # Parse the guard's report into the pieces the issue body is built from
-#: behind.tsv (name|kind|current|target|action), vendored.txt,
+# Writes behind.tsv (name|kind|current|target|action), vendored.txt,
 # other.txt (every remaining row, CURRENT included) and behind-names.txt
 # (sorted — the delta key). Reads only the guard's row shapes; the guard's
 # output and exit codes are unchanged.
