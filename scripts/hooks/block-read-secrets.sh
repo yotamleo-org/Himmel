@@ -890,6 +890,11 @@ g4_scan() {
             -*) nflags=$((nflags + 1)) ;;
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
         esac
+        # HIMMEL-5484: setopt/unsetopt take option names AND flags in any order
+        # (`setopt extendedglob -x`): scan every word, not only the first.
+        case "$cmd:$d" in
+            setopt:-*x*|unsetopt:-*x*|unsetopt:+*x*) case "$d" in --*) ;; *) xt=1 ;; esac ;;
+        esac
         case "$cmd" in
             # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
             # flags before the first operand count (`bash s.sh -x` is the

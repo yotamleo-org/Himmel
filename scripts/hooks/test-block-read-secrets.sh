@@ -1169,6 +1169,8 @@ assert_rc "5484 shopt -os x{,}trace"            2 "$(run_case "$(j_bash 'shopt -
 assert_rc "5484 setopt x{,}trace"               2 "$(run_case "$(j_bash 'setopt x{,}trace')")"
 assert_rc "5484 setopt -x"                      2 "$(run_case "$(j_bash 'setopt -x')")"
 assert_rc "5484 unsetopt +x"                    2 "$(run_case "$(j_bash 'unsetopt +x')")"
+assert_rc "5484 setopt extendedglob -x"         2 "$(run_case "$(j_bash 'setopt extendedglob -x')")"
+assert_rc "5484 unsetopt extendedglob +x"       2 "$(run_case "$(j_bash 'unsetopt extendedglob +x')")"
 assert_rc "5484 ctl setopt extendedglob"        0 "$(run_case "$(j_bash 'setopt extendedglob')")"
 assert_rc "5484 ctl unsetopt -f"                0 "$(run_case "$(j_bash 'unsetopt -f')")"
 assert_rc "5484 ctl echo {a,b}"                 0 "$(run_case "$(j_bash 'echo {a,b}')")"
