@@ -108,6 +108,13 @@ check "claude error exits 1" 1 $?
 has "claude error alerts" "steering-cull" "$W/alerts.log"
 [ ! -e "$DOC" ] && pass "claude error writes no doc" || fail "doc written on claude error"
 
+printf '{"type":"result","is_error":false}\n' > "$W/claude.json"
+: > "$W/alerts.log"
+bash "$CAD" run --repo "$P" --proposal-dir "$PROP" --console test-console >"$W/run4b.out" 2>&1
+check "success flag without a result exits 1" 1 $?
+has "missing result alerts" "empty-result" "$W/alerts.log"
+[ ! -e "$DOC" ] && pass "missing result writes no doc" || fail "doc written with no result"
+
 # ---- 5. missing console inbox: doc still written, alert raised ----------------
 node -e 'console.log(JSON.stringify({type:"result",is_error:false,result:"- [MEDIUM] CLAUDE.md:1 — x\n"}))' > "$W/claude.json"
 : > "$W/alerts.log"

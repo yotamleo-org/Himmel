@@ -108,6 +108,10 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         return 1
     fi
     result="$(json_field result < "$out" 2>/dev/null)"
+    if [ -z "$result" ]; then
+        bash "$ALERT" fail steering-cull "empty-result" "$out"
+        return 1
+    fi
 
     while IFS= read -r line; do
         case "$line" in
