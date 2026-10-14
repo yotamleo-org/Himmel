@@ -83,6 +83,7 @@ H_DOCS=$(branch docs docs/note.md '# edit')
 H_JIRA=$(branch jira scripts/jira/client.ts '// edit')
 H_ODD=$(branch odd odd/thing.dat 'y')
 H_SH=$(branch sh scripts/tools/foo.sh '# edit')
+H_BASE=$(branch baseline scripts/guardrails/git-env-baseline.txt '# edit')
 
 plan() { (cd "$SB" && bash "$SB/scripts/ci/pr-plan.sh" "$@" 2>/dev/null); }
 val() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
@@ -112,6 +113,12 @@ else fail "P3 scripts/jira file: $out"; fi
 out=$(plan "$BASE" "$H_ODD")
 if all_is "$out" true; then pass "P4 unnamed path: all gates true"
 else fail "P4 unnamed path: $out"; fi
+
+# P4b: trust judge j2543c — the git-env baseline is the data input of
+# check-git-env-scrub.sh; a baseline-only diff must run the job, not skip it.
+out=$(plan "$BASE" "$H_BASE")
+if [ "$(val "$out" run_git_env_scrub)" = true ]; then pass "P4b baseline-only diff runs git_env_scrub"
+else fail "P4b baseline-only diff skipped git_env_scrub: $out"; fi
 
 # P5: a base whose tree has no pr-job-gates.txt
 g checkout -q -B noinputs "$PRE"
@@ -189,7 +196,7 @@ BEGIN { while ((getline p < tracked) > 0) T[p] = 1 }
   while ((getline line < f) > 0) {
     t = line; sub(/^[ \t]+/, "", t)
     if (t ~ /^(#|\/\/|\*)/) continue
-    while (match(line, /[A-Za-z0-9_.@+\/-]+\.(sh|bash|mjs|cjs|js|ts|py|awk)/)) {
+    while (match(line, /[A-Za-z0-9_.@+\/-]+\.(sh|bash|mjs|cjs|json|js|ts|txt|yaml|yml|py|awk)/)) {
       tok = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
       n = split(tok, parts, "/")
       for (i = 1; i <= n; i++) {
@@ -215,7 +222,7 @@ audit_gap() { # audit_gap <group> <entries-file> — executed files outside the 
   local alt
   alt=$(grep -E "^$1[[:space:]]" "$INPUTS_SRC" | sed -E 's/^[^[:space:]]+[[:space:]]+//; s/.*/(&)/' | paste -sd'|' -)
   if [ -z "$alt" ]; then echo "<group $1 has no gate lines>"; return; fi
-  audit_closure "$2" | grep -E '\.(sh|bash|mjs|cjs|js|ts|py|awk)$' \
+  audit_closure "$2" | grep -E '\.(sh|bash|mjs|cjs|json|js|ts|txt|yaml|yml|py|awk)$' \
     | { grep -vE "$alt" || true; } | { grep -vE "$TRUST_ALT" || true; } | { grep -v '^\.github/' || true; }
 }
 audit_case() { # audit_case <label> <group> <entries-file>

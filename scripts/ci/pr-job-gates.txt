@@ -21,6 +21,10 @@
 benign          ^docs/
 benign          ^templates/
 benign          ^handovers/
+# Safe: no gated job executes or reads a .md file as an input (the audit in
+# test-pr-plan.sh follows only code and data extensions), and a docs-only PR
+# is the case this gate exists to make cheap. A .md that a suite reads would
+# have to be listed in its group above, which would then win over this line.
 benign          \.md$
 benign          ^LICENSE
 benign          ^\.gitignore$
@@ -41,6 +45,8 @@ bun_suites      ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-se
 bun_suites      ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
 bun_suites      ^marketplace/plugins/(luna-correlate|telegram-himmel)/
 bun_suites      ^\.bun-version$
+bun_suites      ^docs/setup/settings-template\.json$
+bun_suites      ^tests/fixtures/glm-cap/
 bun_suites      (^|/)bun\.lock$
 bun_suites      (^|/)package(-lock)?\.json$
 
@@ -61,6 +67,8 @@ lanes_and_trust ^scripts/(op-env-parity|test-claude-codex)
 lanes_and_trust ^scripts/(cr|eval|git|guardrails|handover|himmelctl|setup|telegram|upstreams)/
 lanes_and_trust ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
 lanes_and_trust ^marketplace/plugins/obsidian-triage/tools/
+lanes_and_trust ^marketplace/\.claude-plugin/marketplace\.json$
+lanes_and_trust ^marketplace/plugins/qmd/\.mcp\.json$
 
 guardrail_matrices ^scripts/guardrails/
 guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
@@ -68,6 +76,7 @@ guardrail_matrices voice
 
 git_env_scrub   ^scripts/(handover|lanes|hooks|cr|lib)/
 git_env_scrub   scrub
+git_env_scrub   ^scripts/guardrails/git-env-baseline\.txt$
 
 bwk_gate        unchecked-mktemp
 bwk_gate        ^scripts/lib/
@@ -84,6 +93,8 @@ lint            (^|/)[^/.]+$
 
 plugin_version_bump ^(marketplace/plugins|plugins)/
 plugin_version_bump ^scripts/upstreams/
+plugin_version_bump ^marketplace/\.claude-plugin/marketplace\.json$
+plugin_version_bump ^scripts/(plugin-upstreams|upstreams)\.json$
 
 deps_audit      (^|/)package(-lock)?\.json$
 deps_audit      (^|/)bun\.lock$
