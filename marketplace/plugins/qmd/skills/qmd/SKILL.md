@@ -122,7 +122,9 @@ Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`
    `lex`.
 4. **Leave rerank on (the default) and pass `intent`.** Once scoped, rerank is
    neutral to slightly positive (hit@5 0.92 vs 0.90) at about 1.5 s per query.
-   Unscoped, it lowered MRR.
+   Unscoped, it lowered MRR. **Exception:** while `~/.himmel/state/qmd-degraded.flag`
+   exists (no NVIDIA GPU, iGPU only) rerank hangs and kills the daemon, so pass
+   `rerank: false`.
 
 ## Other MCP Tools
 
