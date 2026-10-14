@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,9 @@ const BRIDGE = join(HERE, 'judge-call.sh');
 const T = mkdtempSync(join(tmpdir(), 'judge-call-'));
 const SCRATCH = `/tmp/claude-${process.getuid()}`;
 const made = [];
+// write-verdict.sh wants the judge scratch root private; a runner that made it with umask 022 would refuse every record
+mkdirSync(SCRATCH, { recursive: true, mode: 0o700 });
+chmodSync(SCRATCH, 0o700);
 process.on('exit', () => { rmSync(T, { recursive: true, force: true }); for (const d of made) rmSync(d, { recursive: true, force: true }); });
 const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const HEAD = 'a'.repeat(40);
