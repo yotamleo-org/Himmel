@@ -169,6 +169,8 @@ slug=u__himmel__HIMMEL-5000-leg-2026-10-14 session=s host=h age=5s status=OK
 slug=u__himmel__old-console session=s host=h age=9000s status=IDLE-HELD?
 slug=u__himmel__new-console session=s host=h age=40s status=OK
 slug=u__himmel__dead-console session=s host=h age=1s status=STALE-DEAD
+slug=u__himmel__nostatus-console session=s host=h age=2s
+slug=u__himmel__odd-console session=s host=h age=3s status=WEIRD
 EOF
 : > "$W/alerts.log"
 bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run7.out" 2>&1

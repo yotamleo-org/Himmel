@@ -65,7 +65,7 @@ live_console() {
         age="${line#*age=}"; age="${age%%s *}"
         st="${line##*status=}"
         case "$slug" in *-console) ;; *) continue ;; esac
-        case "$st" in STALE-DEAD|CORRUPT|INDETERMINATE|UNKNOWN) continue ;; esac
+        case "$st" in OK|'IDLE-HELD?') ;; *) continue ;; esac
         [[ "$age" =~ ^[0-9]+$ ]] || continue
         if [ "$best_age" -lt 0 ] || [ "$age" -lt "$best_age" ]; then best="${slug##*__}"; best_age="$age"; fi
     done < <(if [ -n "${STEERING_CULL_SWEEP_CMD:-}" ]; then "$STEERING_CULL_SWEEP_CMD" 2>/dev/null
