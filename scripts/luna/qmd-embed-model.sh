@@ -99,7 +99,8 @@ configured_model() {
 
 # Rewrite models.embed in a config file atomically, keeping every other line.
 write_yml_embed() {
-    local file="$1" uri="$2" tmp
+    local file="$1" uri="$2" db="${3:-}" tmp
+    [ -n "$db" ] || db="$(index_file)"
     mkdir -p "$(dirname "$file")"
     tmp="$file.tmp.$$"
     if [ -f "$file" ]; then
@@ -119,7 +120,7 @@ write_yml_embed() {
     else
         printf 'models:\n  embed: %s\n' "$uri" >"$tmp" || return 1
     fi
-    jina_gate_ok "$tmp" || { rm -f "$tmp"; return 2; }
+    jina_gate_ok "$tmp" "$db" || { rm -f "$tmp"; return 2; }
     mv -f "$tmp" "$file"
 }
 
@@ -129,7 +130,7 @@ jina_gate_ok() {
     grep -Eqs '^[^#]*(openai:|\\)' "$1" || return 0
     command -v node >/dev/null 2>&1 || { warn "node is missing; cannot check the egress gate for $1"; return 1; }
     [ -f "$HERE/../qmd/qmd-jina-gate.mjs" ] || { warn "qmd-jina-gate.mjs is missing; refusing to write a remote model"; return 1; }
-    node "$HERE/../qmd/qmd-jina-gate.mjs" "$1" >&2
+    node "$HERE/../qmd/qmd-jina-gate.mjs" "$1" "$2" >&2
 }
 
 # --- capability --------------------------------------------------------------
@@ -454,6 +455,11 @@ cmd_swap() {
     if daemon_running; then # t13b-ok: read-only liveness check, starts nothing
         die 2 "a qmd process started during the swap; the live index is unchanged. Stop it and re-run swap"
     fi
+    # the gate sees the config as the swap will leave it and the database that will go live
+    gate_cfg="$(mktemp "${TMPDIR:-/tmp}/qmd-swap-gate.XXXXXX")" || die 5 "mktemp failed; cannot stage the egress check"
+    [ ! -f "$cfg" ] || cp "$cfg" "$gate_cfg"
+    write_yml_embed "$gate_cfg" "$uri" "$copy" || { rm -f "$gate_cfg"; die 2 "the egress gate refused the config and database the swap would leave live; nothing was changed"; }
+    rm -f "$gate_cfg"
     mv -f "$copy" "$live" || die 5 "the rename failed; the live index is unchanged (backup at $backup)"
     rm -f "$copy-wal" "$copy-shm" "$live-shm"
     # test seam (test-qmd-embed-model.sh): stands in for a daemon relaunch mid-swap

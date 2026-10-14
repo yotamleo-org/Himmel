@@ -635,4 +635,29 @@ else
     pass "model precheck skipped: sqlite3 not installed"
 fi
 
+# A remote model must pass the egress gate against the DATABASE too: an active
+# salus document refuses the refresh before qmd update, even if the config no
+# longer lists salus.
+echo "TEST: a Jina index that still holds active salus documents exits 10 BEFORE qmd update"
+if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+    reset_state
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" 2>/dev/null || true
+    mkdir -p "$HOME/.cache/qmd" "$HOME/.config/qmd"
+    sqlite3 "$HOME/.cache/qmd/index.sqlite" "CREATE TABLE content_vectors(hash TEXT, seq INT, model TEXT); CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+    printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$HOME/.config/qmd/index.yml"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "salus in a Jina index rc 10" 10 "$rc"
+    assert_contains "names the denied collection" "salus" "$out"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+
+    echo "TEST: the same Jina index without salus passes the gate"
+    reset_state
+    sqlite3 "$HOME/.cache/qmd/index.sqlite" "DELETE FROM documents WHERE collection='salus';"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "no salus rc 0" 0 "$rc"
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" 2>/dev/null || true
+else
+    pass "egress gate check skipped: sqlite3 or node not installed"
+fi
+
 summary

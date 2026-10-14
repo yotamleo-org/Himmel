@@ -33,7 +33,7 @@ cfg() {
   } > "$f"
 }
 
-run_gate() { env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL node "$gate" "$1" 2>"$work/err"; }
+run_gate() { env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL node "$gate" "$@" 2>"$work/err"; }
 
 # (1) salus + himmel in ONE index with a Jina embed model: refused, salus named.
 cfg "$work/a.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel luna salus
@@ -198,4 +198,43 @@ launch index; rc=$?
 [ "$rc" -eq 1 ] || fail "(17) launcher on flow-style salus+Jina: expected rc 1, got $rc"
 [ ! -e "$work/started" ] || fail "(17) launcher STARTED qmd on a flow-style salus+Jina config"
 
-echo "PASS: test-qmd-jina-gate.sh (25 checks)"
+# (18) qmd reads the config first and the env only as a fallback: an env that
+# names a local model must not hide a Jina model written in the file.
+env -u QMD_OPENAI_BASE_URL QMD_EMBED_MODEL="$LOCAL_EMBED" QMD_RERANK_MODEL="$LOCAL_EMBED" node "$gate" "$work/a.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(18) local env over a salus+Jina file: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(18) the refusal must name salus"
+cfg "$work/k.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel
+env QMD_OPENAI_BASE_URL=http://localhost:9/v1 node "$gate" "$work/k.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 0 ] || fail "(18b) a clean Jina file must not be refused by an env base url: rc $rc"
+
+# (19) the index database is checked too: an active salus document in the DB
+# refuses a Jina model even when the config no longer lists salus.
+command -v sqlite3 >/dev/null 2>&1 || fail "(19) sqlite3 is required for this suite"
+sqlite3 "$work/db.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+run_gate "$work/k.yml" "$work/db.sqlite"; rc=$?
+[ "$rc" -eq 3 ] || fail "(19) active salus document in the DB: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(19) the refusal must name salus"
+sqlite3 "$work/db2.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',0);"
+run_gate "$work/k.yml" "$work/db2.sqlite"; rc=$?
+[ "$rc" -eq 0 ] || fail "(19b) inactive salus document must not refuse: rc $rc: $(cat "$work/err")"
+
+# (20) a database that cannot be read fails closed; a missing file means no documents.
+printf 'not a database' > "$work/bad.sqlite"
+run_gate "$work/k.yml" "$work/bad.sqlite"; rc=$?
+[ "$rc" -eq 3 ] || fail "(20) unreadable DB: expected rc 3, got $rc"
+run_gate "$work/k.yml" "$work/absent.sqlite"; rc=$?
+[ "$rc" -eq 0 ] || fail "(20b) absent DB: expected rc 0, got $rc"
+
+# (21) the launcher passes the index database to the gate: a Jina config that no
+# longer lists salus is still refused while the database holds active salus docs.
+mkdir -p "$work/cache/qmd"
+sqlite3 "$work/cache/qmd/index.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+cp "$work/c.yml" "$work/cfg/index.yml"
+rm -f "$work/started"
+launch index; rc=$?
+[ "$rc" -eq 1 ] || fail "(21) Jina config over a DB with active salus docs: expected rc 1, got $rc"
+[ ! -e "$work/started" ] || fail "(21) launcher STARTED qmd over a DB holding salus documents"
+grep -q 'salus' "$work/err" || fail "(21) the launcher refusal must name salus"
+rm -f "$work/cache/qmd/index.sqlite"
+
+echo "PASS: test-qmd-jina-gate.sh (32 checks)"

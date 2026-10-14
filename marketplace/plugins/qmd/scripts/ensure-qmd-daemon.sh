@@ -303,7 +303,8 @@ if [ "$remote_models" -eq 1 ]; then
     echo "  Run from a himmel checkout (scripts/qmd/qmd-jina-gate.mjs) or switch the models back to local hf: URIs." >&2
     exit 1
   fi
-  if ! node "$qmd_gate" "$qmd_cfg" >&2; then
+  qmd_db="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$QMD_INDEX_NAME.sqlite}"
+  if ! node "$qmd_gate" "$qmd_cfg" "$qmd_db" >&2; then
     echo "ensure-qmd-daemon: ERROR - the egress matrix refuses this index's remote model - NOT starting qmd." >&2
     exit 1
   fi

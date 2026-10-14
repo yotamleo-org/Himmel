@@ -313,6 +313,20 @@ rc=0; out=$(run env FAKE_VRAM=24564 bash "$SCRIPT" set qwen --force 2>&1) || rc=
 assert_rc "set writes a Jina index with no salus collection" 0 "$rc"
 assert_contains "the new model is written" "embed: $QWEN" "$(cat "$(CFG)")"
 
+# the index database counts: an active salus document refuses a remote model
+# even when the config lists no salus; swap refuses BEFORE the rename
+new_home 8
+make_index "$(IDX)" 768 "$GEMMA"
+make_index "$H/.cache/qmd/index.reembed-qwen.sqlite" 1024 "$QWEN"
+sqlite3 "$H/.cache/qmd/index.reembed-qwen.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+printf 'collections:\n  himmel:\n    path: /x\nmodels:\n  embed: %s\n  rerank: openai:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
+before=$(cat "$(CFG)")
+rc=0; out=$(run bash "$SCRIPT" swap --copy "$H/.cache/qmd/index.reembed-qwen.sqlite" 2>&1) || rc=$?
+assert_rc "swap refuses a copy holding active salus documents under a remote model" 2 "$rc"
+if [ -f "$H/.cache/qmd/index.reembed-qwen.sqlite" ]; then pass "the refused swap leaves the copy in place"; else fail "the refused swap leaves the copy in place"; fi
+assert_contains "the live index still holds gemma" "$GEMMA" "$(sqlite3 "$(IDX)" 'select distinct model from content_vectors')"
+if [ "$(cat "$(CFG)")" = "$before" ]; then pass "the refused swap leaves the config untouched"; else fail "the refused swap leaves the config untouched"; fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

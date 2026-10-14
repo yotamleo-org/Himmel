@@ -117,6 +117,9 @@
 #      than the configured one (HIMMEL-4232); nothing was run
 #   8  `qmd cleanup` failed (HIMMEL-4860) — vectors ARE complete and the
 #      refresh stamp is written; only the orphaned chunks remain
+#  10  EGRESS REFUSED — a remote (openai:) model is configured and the egress
+#      gate (scripts/qmd/qmd-jina-gate.mjs) denies a collection the config or
+#      the index database holds; nothing was run
 #   9  BUSY — another embed process holds the lock after one retry;
 #      completeness is not verified and no refresh stamp is written
 set -euo pipefail
@@ -405,6 +408,26 @@ case "$model_rc" in
        exit 7 ;;
     *) echo "WARN qmd-reindex: could not verify the index's embed model (rc $model_rc); continuing." >&2 ;;
 esac
+
+# --- 0b. egress gate ---------------------------------------------------------
+# A bare `qmd embed` embeds every ACTIVE document in the database with the
+# configured model. When that model is remote, every collection the config or
+# the database holds must pass the egress matrix, or nothing runs.
+QMD_CFG_FILE="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+remote_model=0
+case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote_model=1 ;; esac
+if [ "$remote_model" -eq 0 ] && grep -Eqs '^[^#]*(openai:|\\)' "$QMD_CFG_FILE"; then remote_model=1; fi
+if [ "$remote_model" -eq 1 ]; then
+    GATE_JS="$(dirname "${BASH_SOURCE[0]}")/../qmd/qmd-jina-gate.mjs"
+    if [ ! -f "$GATE_JS" ] || ! command -v node >/dev/null 2>&1; then
+        echo "ERR qmd-reindex: a remote model is configured but the egress gate or node is missing — index NOT refreshed." >&2
+        exit 10
+    fi
+    if ! node "$GATE_JS" "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then
+        echo "ERR qmd-reindex: EGRESS REFUSED — index NOT refreshed; see docs/internals/egress-matrix.md." >&2
+        exit 10
+    fi
+fi
 
 # --- 1. re-index changed files across every configured collection -----------
 echo "qmd-reindex: [1/3] qmd update"

@@ -100,7 +100,8 @@ a remote provider (salus first) must live in its own index on local models.
 mcp --http --daemon`). When the index config or `QMD_*_MODEL` names an
 `openai:` model it first runs `scripts/qmd/qmd-jina-gate.mjs`, which checks each
 collection against the matrix (`scripts/qmd/qmd-collection-corpus.json`; unmapped
-means denied) and refuses to start on a denial, a missing gate or no `node`.
+means denied), plus every active collection in the index database, and refuses
+to start on a denial, a missing gate or no `node`.
 Local-only configs skip the gate. The shipped `.mcp.json` keeps its single
 `qmd` entry; a second `qmd-salus` entry (port 8182) is added by the runbook, not
 shipped always-on. Design: `docs/internals/egress-matrix.md`.

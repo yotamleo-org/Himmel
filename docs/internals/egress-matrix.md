@@ -316,7 +316,17 @@ Granting it is an operator call. Defense in depth around it:
   (collection to corpora). A collection with no mapping is denied. The qmd
   plugin's `ensure-qmd-daemon.sh` runs the gate before it starts a daemon whose
   config names a remote model and refuses (exit 1) on a denial, a missing gate
-  or a missing node. A new qmd collection must be added to the map, and to the
+  or a missing node. The gate also reads the index database (`sqlite3`
+  read-only, active documents only): qmd embeds every active document whatever
+  the config lists, so a collection dropped from `index.yml` but still active in
+  the database counts, and an unreadable database fails closed. A role is
+  remote when the config OR the environment names a remote model. The config
+  writer (`scripts/luna/qmd-embed-model.sh`, before it writes or swaps) and the
+  reindex runner (`scripts/luna/qmd-reindex.sh`, exit 10, before `qmd update`;
+  the cadence runs it) call the same gate. Removing salus from a live index
+  means `qmd collection remove salus` and a zero count from
+  `SELECT count(*) FROM documents WHERE collection='salus' AND active=1` before
+  any model change. A new qmd collection must be added to the map, and to the
   matrix if it needs a corpus, before it can join a Jina index.
 - Run: `node scripts/guardrails/test-egress-matrix.mjs`.
 

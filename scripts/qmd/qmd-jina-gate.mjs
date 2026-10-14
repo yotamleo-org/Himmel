@@ -11,12 +11,15 @@
 // denied. The matrix is evaluated by the shared egress-matrix-eval.mjs, never
 // re-implemented here.
 //
-// Usage: node qmd-jina-gate.mjs <index.yml>
+// Usage: node qmd-jina-gate.mjs <index.yml> [<index.sqlite>]
 // Exit 0 allowed (also when no role is remote), 3 refused, 2 usage/unreadable.
-// Environment overrides qmd itself honours are applied the same way:
-// QMD_EMBED_MODEL, QMD_RERANK_MODEL, QMD_GENERATE_MODEL, QMD_OPENAI_BASE_URL.
+// qmd reads the config first and these environment variables only when the
+// config sets nothing: QMD_EMBED_MODEL, QMD_RERANK_MODEL, QMD_GENERATE_MODEL,
+// QMD_OPENAI_BASE_URL. The gate does not rely on that order for the models: a
+// role is remote when EITHER the config or the environment names a remote model.
+// The base URL is resolved config-first, as qmd does.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -70,7 +73,22 @@ for (const line of text.split("\n")) {
   }
 }
 
-const baseUrl = process.env.QMD_OPENAI_BASE_URL || models.openai_base_url || "";
+// The index database counts too: qmd embeds every ACTIVE document in it, whatever
+// the config lists, so a collection removed from index.yml but still active in
+// the database would be sent to the remote model. A database that cannot be
+// read fails closed; a database that does not exist yet holds nothing.
+const dbPath = process.argv[3];
+const dbProblems = [];
+if (dbPath && existsSync(dbPath)) {
+  try {
+    const out = execFileSync("sqlite3", ["-readonly", dbPath, "SELECT DISTINCT collection FROM documents WHERE active = 1;"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    for (const c of out.split("\n").map((x) => x.trim()).filter(Boolean)) if (!collections.includes(c)) collections.push(c);
+  } catch {
+    dbProblems.push(`cannot read the active collections of ${dbPath} (sqlite3 missing or unreadable database)`);
+  }
+}
+
+const baseUrl = models.openai_base_url || process.env.QMD_OPENAI_BASE_URL || "";
 function providerOf() {
   if (!baseUrl) return "openai-unconfigured"; // cannot be proven local
   let url;
@@ -91,8 +109,7 @@ const isLocalModel = (u) =>
 const refusals = [];
 let remoteRoles = 0;
 for (const [role, purpose] of Object.entries(PURPOSE)) {
-  const uri = process.env[ENV_ROLE[role]] || models[role] || "";
-  if (isLocalModel(uri)) continue;
+  if (isLocalModel(models[role] ?? "") && isLocalModel(process.env[ENV_ROLE[role]] ?? "")) continue;
   remoteRoles++;
   const provider = providerOf();
   if (provider === null) continue;
@@ -119,6 +136,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
 const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
 const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
+if (remoteRoles > 0) for (const p of dbProblems) refusals.push(p);
 for (const u of modelsUnreadable) refusals.push(`unsupported config layout: ${u}`);
 if (remoteRoles > 0) {
   for (const u of unsupported) refusals.push(`unsupported config layout: ${u}`);
