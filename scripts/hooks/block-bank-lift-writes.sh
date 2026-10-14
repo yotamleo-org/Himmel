@@ -2533,20 +2533,28 @@ case "$cwd_hits" in ''|0) ;; *) CWD_UNPROVEN=1 ;; esac
 # ponytail: any-position over-deny (`echo source`, `cp a{,.bak} b` under a
 # relative destination), narrowing is HIMMEL-5561.
 if [ "$CWD_UNPROVEN" = 0 ]; then
-    tok_hit=$(printf '%s\n' "$WTOK" | LC_ALL=C awk '
+    # Before the command word, any word containing `=` is an assignment (`+=`,
+    # `a[0]=`), `repeat` swallows its next word whatever it is, and a command
+    # word that is itself computed (`$` or a backtick: `$x f`, `${x}d /x`) is
+    # unknown. An awk failure fails closed.
+    if ! tok_hit=$(printf '%s\n' "$WTOK" | LC_ALL=C awk '
         BEGIN { FS = "\037" }
         substr($0, 1, 2) == "\002B" || substr($0, 1, 2) == "\002S" { next }
         {
-            lead = 1; prev = ""
+            lead = 1
             for (i = 1; i <= NF; i++) {
                 t = $i
                 if (index(t, "\003") || t == "source" || t == "cd" || t == "pushd" || t == "popd" || t == "eval") { print 1; exit }
                 if (t == "." && lead) { print 1; exit }
                 if (t == "\002W" || t == "\002C" || t == "\002R") { i++; if (index($i, "\003")) { print 1; exit }; continue }
-                if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || t ~ /^-/ || t ~ /^(command|builtin|exec|time|!|noglob|nocorrect|then|do|else|elif|if|while|until|repeat)$/ || (prev == "repeat" && t ~ /^[0-9]+$/)) { prev = t; continue }
-                lead = 0; prev = t
+                if (lead && t == "repeat") { i++; continue }
+                if (lead && (index(t, "=") || t ~ /^-/ || t ~ /^(command|builtin|exec|time|!|noglob|nocorrect|then|do|else|elif|if|while|until)$/)) continue
+                if (lead && (index(t, "$") || index(t, "`"))) { print 1; exit }
+                lead = 0
             }
-        }')
+        }'); then
+        tok_hit=1
+    fi
     [ -z "$tok_hit" ] || CWD_UNPROVEN=1
 fi
 xenv_hits=$(printf '%s\n%s' "$CMD" "$WTOK_SP" | grep -Ec "$XENV_RE")

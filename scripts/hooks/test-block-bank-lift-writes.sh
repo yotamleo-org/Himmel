@@ -579,6 +579,16 @@ row "5190 X=\"a b\" source then cp to plainlink"          deny  "X=\"a b\" sourc
 row "5190 X=a\\ b . then cp to plainlink"                 deny  "X=a\\ b . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
 row "5190 zsh repeat 1 source then cp to plainlink"      deny  "repeat 1 source $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
 row "5190 zsh repeat 1 . then cp to plainlink"           deny  "repeat 1 . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+# Judge j2545d: += and subscript assignments, zsh repeat with any count word,
+# and a computed command word.
+row "5190 FOO+=x . then cp to plainlink"                 deny  "FOO+=x . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 a[0]=x . then cp to plainlink"                 deny  "a[0]=x . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 zsh repeat n . then cp to plainlink"           deny  "repeat n . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 zsh repeat \$n . then cp to plainlink"          deny  "repeat \$n . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 zsh repeat 1+0 . then cp to plainlink"         deny  "repeat 1+0 . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 x=c; \${x}d abs then cp to plainlink"           deny  "x=c; \${x}d $T/cwl; cp $T/src/other.txt plainlink" "$T"
+row "5190 x=.; \$x file then cp to plainlink"             deny  "x=.; \$x $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
+row "5190 FOO+=x cp a . (assignment then arg dot) (ctrl)" allow "FOO+=x cp $T/src/other.txt .; cp $T/src/other.txt nolink" "$T/cwl"
 row "5190 >/dev/null cp a . (redirect then arg dot) (ctrl)" allow ">/dev/null cp $T/src/other.txt .; cp $T/src/other.txt nolink" "$T/cwl"
 row "4545 rsync --log-file= link after \$( )"        deny  "n=\$(date +%H); rsync -a --log-file=plainlink $T/src/other.txt out.txt" "$T/cwl"
 # A source that is HOME or one of its ancestors, by any spelling, can alias or
@@ -1336,7 +1346,8 @@ row "5094 command word in a variable"          deny  "c=tar; \$c -xf /tmp/a.tar 
 row "5094 quoted variable command word"        deny  "c=tar; \"\$c\" -xf /tmp/a.tar -C ~"
 row "5094 braced variable command word"        deny  "c=tar; \${c} -xf /tmp/a.tar -C ~"
 row "5094 var command, var dest"               deny  "c=tar; D=~; \$c -xf /tmp/a.tar -C \"\$D\""
-row "5094 var command, safe dest (ctrl)"       allow "c=tar; \$c -xf /tmp/a.tar -C /var/out"
+# ponytail: a computed command word marks the cwd unproven (judge j2545d rule c), so these data-path-variable rows over-deny; narrowing is HIMMEL-5561
+row "5094 var command, safe dest (accepted over-deny)" deny "c=tar; \$c -xf /tmp/a.tar -C /var/out"
 row "5094 var command on a file in HOME (ctrl)" allow "\$EDITOR ~/notes.txt"
 row "5094 7z x -o HOME"                        deny  "7z x /tmp/a.7z -o\$HOME"
 row "5094 7za x -o ~/.himmel"                  deny  "7za x /tmp/a.7z -o~/.himmel"
@@ -1446,7 +1457,7 @@ WTU=home   # a worktree lives under a user dir; spelled apart so the home-path l
 WT=/$WTU/dev/repos/proj/.claude/worktrees/w
 row "5094 j5 var cmd + worktree path + tar (accepted over-deny)" deny "\$PY \$ARG $WT/a.tar; tar -tf $WT/a.tar"
 row "5094 j5 var cmd + worktree path + ar (accepted over-deny)" deny "\"\$PY\" /tmp/s.py \"\$X\" $WT ar"
-row "5094 j5 var cmd + worktree extract"       allow "c=tar; \$c -xf $WT/a.tar -C $WT/out"
+row "5094 j5 var cmd + worktree extract (accepted over-deny)" deny "c=tar; \$c -xf $WT/a.tar -C $WT/out"
 row "5094 j5 print symlink + tar /tmp"         allow "python3 -c 'print(\"symlink\")'; tar -xf /tmp/a.tar -C /tmp/x"
 row "5094 j5 print ln -s word + tar /tmp"      allow "python3 -c 'print(\"ln -s\")'; tar -xf /tmp/a.tar -C /tmp/x"
 row "5094 j5 depth 5 worktree tar"             allow "$(_nest 5 "tar -xf $WT/a.tar -C $WT/out")"
@@ -1475,7 +1486,7 @@ row "5094 r4 cd \$(pwd)/..; \$T xf"              deny  "T=tar; cd \$(pwd)/..; \$
 row "5094 r4 bare cd newline \$T xf"            deny  "T=tar; cd
 \$T xf /tmp/a.tar"
 row "5094 r4 cd /tmp/w; \$T xf (accepted over-deny)" deny "T=tar; cd /tmp/w; \$T xf /tmp/a.tar"
-row "5094 r4 \$T tf, no cd (ctrl)"              allow "T=tar; \$T tf /tmp/a.tar"
+row "5094 r4 \$T tf, no cd (accepted over-deny)" deny "T=tar; \$T tf /tmp/a.tar"
 row "5094 r4 bare cd; echo (ctrl)"              allow "cd; echo hi"
 row "5094 r4 cd /tmp/w; \$T --version (ctrl)"   allow "T=git; cd /tmp/w; \$T status"
 # j2243b: python -m behind any CPython short flag (-b and the rest) in a cluster.
@@ -1511,7 +1522,7 @@ row "5094 r5 cd dq space brace HOME"            deny  "T=tar; cd \"/tmp/x y/../.
 row "5094 r5 cd subst with space"               deny  "T=tar; cd \"\$( printf %s ~ )\"; \$T xf /tmp/a.tar"
 row "5094 r5 popd; \$T xf"                      deny  "T=tar; pushd -n /tmp >/dev/null; popd; \$T xf /tmp/a.tar"
 row "5094 r5 cd \"/tmp/x y\" literal; \$T xf (accepted over-deny)" deny "T=tar; cd \"/tmp/x y\"; \$T xf /tmp/a.tar"
-row "5094 r5 \$T tf, no cd, no computed arg (ctrl)" allow "T=tar; \$T tf /tmp/a.tar"
+row "5094 r5 \$T tf, no cd, no computed arg (accepted over-deny)" deny "T=tar; \$T tf /tmp/a.tar"
 row "5094 r5 plain tar -C /tmp/out (ctrl)"      allow "tar xf /tmp/a.tar -C /tmp/out"
 row "5094 r5 cd \$WT && \$PY -m pytest (ctrl)"  allow "cd \"\$WT\" && \$PY -m pytest tests/test_tar.py"
 row "5094 r5 cd \$D && \$MAKE build (ctrl)"     allow "cd \"\$D\" && \$MAKE build"
