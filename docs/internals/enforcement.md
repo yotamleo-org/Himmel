@@ -3895,7 +3895,7 @@ Suite: `scripts/hooks/test-guard-leg-wakeup.sh`.
 
 PreToolUse, matcher `WebFetch`. A URL whose host (or a subdomain of it) is on the
 one line of `scripts/web/walled-hosts.conf` (x.com, twitter.com,
-mobile.twitter.com, instagram.com) is denied with the paste-ready, shell-quoted
+mobile.twitter.com, instagram.com, reddit.com, redd.it) is denied with the paste-ready, shell-quoted
 `bash scripts/web/fetch-url.sh '<url>'`; the Scrapling stealth fetcher returns
 the page where WebFetch gets HTTP 402. Any other host is allowed silently. A
 workflow convenience, not a fence: it fails open on missing `jq`/conf, malformed

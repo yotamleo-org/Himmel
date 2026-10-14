@@ -101,7 +101,7 @@ check("no thin-body flag", "harvest_flag" not in fm(p), text)
 check("Harvested content before Source", text.index("## Harvested content") < text.index("## Source"), text)
 args = (tmp / "v1.args").read_text()
 check("helper gets the video id + vault", "--video-id UzMNBN6xLLA" in args and f"--vault {tmp / 'v1'}" in args, args)
-check("no cookie handed to the helper", "cookie" not in args.lower(), args)
+check("no cookie handed to the helper", "--cookie" not in args.lower() and "storage" not in args.lower(), args)
 
 p, g, msg = run("v2", "notx.json")
 text = p.read_text(encoding="utf-8")

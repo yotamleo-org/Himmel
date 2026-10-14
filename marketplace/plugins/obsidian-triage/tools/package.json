@@ -10,9 +10,6 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "auth:x": "bun playwright-auth-save.mjs x",
-    "auth:youtube": "bun playwright-auth-save.mjs youtube",
-    "crawl:x": "bun playwright-crawl-x.mjs",
     "crawl:youtube": "bun playwright-crawl-youtube.mjs",
     "enrich:x": "bun fxtwitter-enrich.mjs",
     "dedup": "bun dedup-sweep.mjs",

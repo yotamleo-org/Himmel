@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the cookieless YouTube path (HIMMEL-4677): tools/yt-scrapling-meta.py
 # (metadata from a recorded watch page, transcript from a recorded yt-dlp json3)
-# and its wiring into playwright-crawl-youtube.mjs as the PRIMARY path, the
-# logged-in Playwright crawl the fallback only.
+# and its wiring into playwright-crawl-youtube.mjs as the only path.
 # Hermetic: NO network. The helper reads fixtures/yt-scrapling/; yt-dlp is a
 # stub on a sealed PATH; the crawler runs from a tmp copy with a stub
 # YT_SCRAPLING_PYTHON and a stub js-yaml, and HOME has no storage_state.
@@ -59,14 +58,14 @@ sed 's/"playabilityStatus": {"status": "OK"}/"playabilityStatus": {"status": "UN
 helper --from-html "$tmp/unplayable.html" >"$tmp/unplayable.json"
 assert "UNPLAYABLE (region/age/members) exit 6, retryable" 6 "$?"
 assert "UNPLAYABLE is an error, never removed" error "$(jq_py "$tmp/unplayable.json" 'd["status"]')"
-# HIMMEL-4704 codex-2: ERROR also covers a private video, which the logged-in
-# fallback may still read - a login wall, never "removed".
+# ERROR also covers a private video, which is retryable
+# - a login wall, never "removed".
 sed 's/"playabilityStatus": {"status": "OK"}/"playabilityStatus": {"status": "ERROR", "reason": "Private video", "messages": ["This is a private video. Please sign in to verify that you may see it."]}/' "$FIX/watch.html" >"$tmp/private.html"
 grep -q '"Private video"' "$tmp/private.html"
 assert "private control: the reason was planted" 0 "$?"
 helper --from-html "$tmp/private.html" >"$tmp/private.json"
 assert "private ERROR exit 4" 4 "$?"
-assert "private ERROR is a login wall (fallback runs), not removed" login_wall "$(jq_py "$tmp/private.json" 'd["status"]')"
+assert "private ERROR is a login wall (retryable), not removed" login_wall "$(jq_py "$tmp/private.json" 'd["status"]')"
 # HIMMEL-4704 codex-4: an unavailable video's player response omits
 # videoDetails; it must still classify, not fall through to a generic error.
 yt_page() { # $1 out file, $2 playabilityStatus JSON
@@ -239,18 +238,18 @@ STUB_JSON="$tmp/notx.json" crawl "$tmp/v8" >"$tmp/v8.out" 2>"$tmp/v8.err"
 grep -q '^crawl_status: partial$' "$tmp/v8/Clippings/clip.md" && a=ok || a=no; assert "no transcript -> partial" ok "$a"
 grep -q '^last_error: yt_dlp_missing$' "$tmp/v8/Clippings/clip.md" && a=ok || a=no; assert "transcript error recorded" ok "$a"
 
-# --- Test 9: neither path available -> exit 2 naming both -------------------
+# --- Test 9: no scrapling venv -> exit 2 -------------------------------------
 echo "Test 9: preflight"
 unset YT_SCRAPLING_PYTHON
 make_vault "$tmp/v9"
 crawl "$tmp/v9" >"$tmp/v9.out" 2>"$tmp/v9.err"
-assert "no venv, no storage_state -> exit 2" 2 "$?"
+assert "no venv -> exit 2" 2 "$?"
 grep -q 'scrapling-venv' "$tmp/v9.err" && a=ok || a=no; assert "message names the scrapling venv" ok "$a"
 
-# --- fallback rung: a stub playwright module + a storage_state ---------------
-# FAKE_PW_MODE=launch-throws: chromium.launch rejects (no browser binaries).
-# FAKE_PW_MODE=goto-throws: the fallback runs but the page never loads.
-# Every call is logged to $FAKE_PW_LOG so a test can prove the rung ran.
+# --- the removed storage_state fallback -----------------------
+# A stub playwright module + a storage_state + the old switch ON: since
+# the removal none of them is ever reached. Every stub call is logged to
+# $FAKE_PW_LOG so a test can prove the browser never launched.
 mkdir -p "$tmp/tools/node_modules/playwright" "$HOME/.luna/playwright-state"
 echo '{}' >"$HOME/.luna/playwright-state/youtube.json"
 echo '{"name":"playwright","version":"0.0.0","type":"module","main":"index.js"}' >"$tmp/tools/node_modules/playwright/package.json"
@@ -261,52 +260,43 @@ const page = { goto: async () => { log("goto"); throw new Error("stub nav failur
 export const chromium = {
   launch: async () => {
     log("launch");
-    if (process.env.FAKE_PW_MODE === "launch-throws") throw new Error("Executable doesn't exist");
     return { newContext: async () => ({ newPage: async () => page }), close: async () => {} };
   },
 };
 STUB
-export YT_SCRAPLING_PYTHON="$tmp/scrapling-python" FAKE_PW_LOG="$tmp/pw.log"
-# The storage_state fallback is a cookie path: on only behind HIMMEL_MEDIA_COOKIES=on
-# (HIMMEL-4708). Tests 10-11 pin it on; Test 12 proves the default never uses it.
-export HIMMEL_MEDIA_COOKIES=on
+export YT_SCRAPLING_PYTHON="$tmp/scrapling-python" FAKE_PW_LOG="$tmp/pw.log" HIMMEL_MEDIA_COOKIES=on
 
-# --- Test 10: fallback launch fails -> the scrapling primary still runs ------
-echo "Test 10: crawler, fallback browser cannot launch"
+# --- Test 10: a full scrapling crawl never touches the browser ---------------
+echo "Test 10: crawler, no browser fallback on success"
 make_vault "$tmp/v10"; : >"$FAKE_PW_LOG"
-FAKE_PW_MODE=launch-throws crawl "$tmp/v10" >"$tmp/v10.out" 2>"$tmp/v10.err"
+crawl "$tmp/v10" >"$tmp/v10.out" 2>"$tmp/v10.err"
 assert "crawl exit 0" 0 "$?"
-grep -q '^crawl_status: ok$' "$tmp/v10/Clippings/clip.md" && a=ok || a=no; assert "scrapling primary still crawled" ok "$a"
-grep -q '^launch$' "$FAKE_PW_LOG" && a=ok || a=no; assert "the fallback launch was attempted" ok "$a"
-
-# --- Test 11: metadata without a transcript -> the fallback is tried ---------
-echo "Test 11: crawler, partial primary tries the fallback"
-make_vault "$tmp/v11"; : >"$FAKE_PW_LOG"
-STUB_JSON="$tmp/notx.json" FAKE_PW_MODE=goto-throws crawl "$tmp/v11" >"$tmp/v11.out" 2>"$tmp/v11.err"
-assert "crawl exit 0" 0 "$?"
-grep -q '^goto$' "$FAKE_PW_LOG" && a=ok || a=no; assert "fallback tried for the missing transcript" ok "$a"
-grep -q '^crawl_status: partial$' "$tmp/v11/Clippings/clip.md" && a=ok || a=no; assert "failed fallback keeps the scrapling partial" ok "$a"
-grep -q '^crawl_skill: scrapling-youtube$' "$tmp/v11/Clippings/clip.md" && a=ok || a=no; assert "partial still credited to scrapling" ok "$a"
-
-# --- Test 12: switch off (the default) -> the storage_state fallback never runs
-echo "Test 12: crawler, HIMMEL_MEDIA_COOKIES unset"
-unset HIMMEL_MEDIA_COOKIES
-make_vault "$tmp/v12"; : >"$FAKE_PW_LOG"
-STUB_JSON="$tmp/notx.json" FAKE_PW_MODE=goto-throws crawl "$tmp/v12" >"$tmp/v12.out" 2>"$tmp/v12.err"
-assert "crawl exit 0" 0 "$?"
+grep -q '^crawl_status: ok$' "$tmp/v10/Clippings/clip.md" && a=ok || a=no; assert "scrapling crawled" ok "$a"
 assert "playwright never launched" "" "$(cat "$FAKE_PW_LOG")"
-grep -q '^crawl_status: partial$' "$tmp/v12/Clippings/clip.md" && a=ok || a=no; assert "scrapling partial recorded" ok "$a"
-grep -q '^crawl_skill: scrapling-youtube$' "$tmp/v12/Clippings/clip.md" && a=ok || a=no; assert "partial names the scrapling backend" ok "$a"
-make_vault "$tmp/v12b"; : >"$FAKE_PW_LOG"; before="$(cat "$tmp/v12b/Clippings/clip.md")"
-STUB_JSON="$tmp/wall.json" STUB_RC=4 crawl "$tmp/v12b" >"$tmp/v12b.out" 2>"$tmp/v12b.err"
+
+# --- Test 11: metadata without a transcript stays partial, no fallback -------
+echo "Test 11: crawler, partial primary stays partial"
+make_vault "$tmp/v11"; : >"$FAKE_PW_LOG"
+STUB_JSON="$tmp/notx.json" crawl "$tmp/v11" >"$tmp/v11.out" 2>"$tmp/v11.err"
+assert "crawl exit 0" 0 "$?"
+assert "playwright never launched for the missing transcript" "" "$(cat "$FAKE_PW_LOG")"
+grep -q '^crawl_status: partial$' "$tmp/v11/Clippings/clip.md" && a=ok || a=no; assert "scrapling partial recorded" ok "$a"
+grep -q '^crawl_skill: scrapling-youtube$' "$tmp/v11/Clippings/clip.md" && a=ok || a=no; assert "partial names the scrapling backend" ok "$a"
+
+# --- Test 12: login wall -> retryable, no fallback; no venv -> exit 2 --------
+echo "Test 12: crawler, login wall and missing venv"
+make_vault "$tmp/v12"; : >"$FAKE_PW_LOG"; before="$(cat "$tmp/v12/Clippings/clip.md")"
+STUB_JSON="$tmp/wall.json" STUB_RC=4 crawl "$tmp/v12" >"$tmp/v12.out" 2>"$tmp/v12.err"
 assert "login wall: playwright never launched" "" "$(cat "$FAKE_PW_LOG")"
-assert "login wall: clip left for a retry" "$before" "$(cat "$tmp/v12b/Clippings/clip.md")"
-grep -q 'retryable, not marked' "$tmp/v12b.err" && a=ok || a=no; assert "login wall: failure says retryable" ok "$a"
+assert "login wall: clip left for a retry" "$before" "$(cat "$tmp/v12/Clippings/clip.md")"
+grep -q 'retryable, not marked' "$tmp/v12.err" && a=ok || a=no; assert "login wall: failure says retryable" ok "$a"
 unset YT_SCRAPLING_PYTHON
 make_vault "$tmp/v12c"
 crawl "$tmp/v12c" >"$tmp/v12c.out" 2>"$tmp/v12c.err"
-assert "no venv + opted out -> exit 2 despite a storage_state" 2 "$?"
-grep -q 'HIMMEL_MEDIA_COOKIES=on' "$tmp/v12c.err" && a=ok || a=no; assert "message names the switch" ok "$a"
+assert "no venv -> exit 2 despite a storage_state and the old switch" 2 "$?"
+grep -q 'scrapling-venv' "$tmp/v12c.err" && a=ok || a=no; assert "message names the scrapling venv" ok "$a"
+grep -q 'HIMMEL_MEDIA_COOKIES' "$tmp/v12c.err" && a=named || a=absent; assert "message no longer names the removed switch" absent "$a"
+assert "playwright never launched" "" "$(cat "$FAKE_PW_LOG")"
 
 echo ""
 echo "yt-scrapling tests: $pass passed, $fail failed"

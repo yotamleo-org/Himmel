@@ -509,7 +509,7 @@ const summary = ap.buildSummary(answers, [], {
   dryRun: false,
   secretsWalkResults: [
     { name: 'BITBUCKET_API_TOKEN', status: 'unconfigured', detail: 'not actively probed by the wizard', obtain: 'id.atlassian.com -- create a token' },
-    { name: 'REDDIT_COOKIE_FILE', status: 'unconfigured', detail: 'reddit cookie file missing', obtain: 'export a cookie jar' },
+    { name: 'FIRECRAWL_BASE_URL', status: 'unconfigured', detail: 'firecrawl base url missing', obtain: 'set a base url' },
   ],
 });
 console.log(JSON.stringify(summary));
@@ -518,36 +518,9 @@ echo "$outV11f" | jq -e '.skipped | any(.[]; contains("BITBUCKET_API_TOKEN") and
   || fail "V11f [codex-1]: a paired credential's unconfigured wording should name the pair (got: $outV11f)"
 echo "$outV11f" | jq -e '.skipped | any(.[]; contains("BITBUCKET_API_TOKEN") and (contains("cannot tell them apart") or contains("either credential may be")))' >/dev/null \
   || fail "V11f [codex-1]: the paired wording should say the probe cannot distinguish which credential is missing (got: $outV11f)"
-echo "$outV11f" | jq -e '.skipped | map(select(contains("REDDIT_COOKIE_FILE"))) | any(.[]; contains("paired with"))' >/dev/null \
+echo "$outV11f" | jq -e '.skipped | map(select(contains("FIRECRAWL_BASE_URL"))) | any(.[]; contains("paired with"))' >/dev/null \
   && fail "V11f [codex-1] control: an UNPAIRED secret must NOT get the paired wording (got: $outV11f)"
 echo "ok: V11f [codex-1] a paired credential's unconfigured wording names the pair and admits the probe can't tell them apart; an unpaired secret keeps the plain wording"
-
-# ── V11-off (HIMMEL-4708) — a cookie secret whose every source is opted out by
-# HIMMEL_MEDIA_COOKIES reports 'off': never a manual fix, never "unconfigured",
-# and the line names the switch that turns it back on.
-outV11off=$("$node_bin" -e "
-const ap = require('$adopter_profile_lib_w');
-const answers = {
-  role: 'adopter', scope: 'project',
-  vault: { mode: 'none', path: '' },
-  handover: { mode: 'inline', path: '' },
-  pluginSet: 'lean',
-  secretsWalk: 'run',
-  bridge: { enabled: false },
-};
-const summary = ap.buildSummary(answers, [], {
-  dryRun: false,
-  secretsWalkResults: [
-    { name: 'INSTAGRAM_COOKIE_FILE', status: 'off', detail: 'instagram-media opted out', obtain: 'export a cookie jar' },
-  ],
-});
-console.log(JSON.stringify(summary));
-")
-echo "$outV11off" | jq -e '.skipped | any(.[]; contains("INSTAGRAM_COOKIE_FILE") and contains("off") and contains("HIMMEL_MEDIA_COOKIES=on") and (contains("unconfigured") | not))' >/dev/null \
-  || fail "V11-off: an opted-out cookie secret should read off and name the switch, never unconfigured (got: $outV11off)"
-echo "$outV11off" | jq -e '[.manual[]? | .what | select(contains("INSTAGRAM_COOKIE_FILE"))] | length == 0' >/dev/null \
-  || fail "V11-off: an opted-out cookie secret must not be a manual fix (got: $outV11off)"
-echo "ok: V11-off an opted-out cookie secret reads off, names HIMMEL_MEDIA_COOKIES=on, and asks for nothing"
 
 # ── V11g (RETASK stage1-build-6d2e round 11 [codex-2]) — the PHI checklist
 # text must describe what luna.phi.declared ACTUALLY records (the adopter's
@@ -899,13 +872,13 @@ grepq "$manualBlockArmRc3" -F -- 'arm exited rc=3' \
 echo "ok: caseArmRc3 cadence arm rc=3 (already armed) reads as skipped/converged; overall install rc stays 0"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# caseSecretsProbe (RETASK stage1-build-6d2e) — the three luna-sources secrets
+# caseSecretsProbe (RETASK stage1-build-6d2e) — the luna-sources secrets
 # walk verdicts, precisely: a configured+healthy source reports ok/configured;
 # a configured-but-broken source surfaces the PROBE'S OWN reason and is never
 # flattened to 'unconfigured'; a never-configured source reports
 # 'unconfigured'; and a failing source never aborts the install (rc stays 0).
 # Drives the REAL secrets-manifest.json (BITBUCKET_API_TOKEN -> bitbucket,
-# FIRECRAWL_API_KEY -> firecrawl, REDDIT_COOKIE_FILE -> reddit) against the
+# FIRECRAWL_API_KEY -> firecrawl) against the
 # hermetic `python` stub above — NO live network call, no real fetch-health.py
 # execution. HIMMEL-2642: this ONLY holds because make_python_stub is called
 # BEFORE build_path below — on non-win32 probeLunaSources resolves `pythonCmd`
@@ -934,7 +907,7 @@ configPathSecrets="$(winpath "$work/config-secrets.json")"
 # HIMMEL-2305: the secrets walk now scopes OUT a feature's secrets when it
 # was never selected — vault=none used to be irrelevant to this fixture (it
 # only exists to exercise the luna-sources verdict rendering below), but
-# BITBUCKET_API_TOKEN/FIRECRAWL_API_KEY/REDDIT_COOKIE_FILE are all tagged
+# BITBUCKET_API_TOKEN/FIRECRAWL_API_KEY are all tagged
 # feature:vault, so vault must actually be selected for them to be walked
 # at all. vaultPathSecrets is never created -- adopt.sh is a no-op stub here.
 vaultPathSecrets="$(winpath "$work/vaultSecrets")"
@@ -971,7 +944,6 @@ echo "ok: caseSecretsProbe a failing source does not abort the install (rc staye
 
 grepq "$outSecrets" -F -- 'installed:' || fail "caseSecretsProbe: expected an install summary (got: $outSecrets)"
 installedBlock=$(printf '%s' "$outSecrets" | sed -n '/^installed:$/,/^$/p')
-skippedBlock=$(printf '%s' "$outSecrets" | sed -n '/^skipped:$/,/^$/p')
 manualBlock=$(printf '%s' "$outSecrets" | sed -n '/^still manual/,$p')
 
 grepq "$installedBlock" -F -- 'BITBUCKET_API_TOKEN' \
@@ -988,16 +960,9 @@ grepq "$(printf '%s\n' "$manualBlock" | grep -F 'FIRECRAWL_API_KEY')" -F -- 'unc
   && fail "caseSecretsProbe: a configured-but-broken source must NEVER be reported as unconfigured (got: $manualBlock)"
 echo "ok: caseSecretsProbe a configured source whose probe fails (firecrawl=blocked-or-rate-limited) surfaces the probe's own reason, never flattened to unconfigured"
 
-grepq "$skippedBlock" -F -- 'REDDIT_COOKIE_FILE' \
-  || fail "caseSecretsProbe: a never-configured source (REDDIT_COOKIE_FILE -> reddit, stub replies auth-or-cookie-expired/...missing) should land under skipped (got skipped block: $skippedBlock)"
-grepq "$(printf '%s\n' "$skippedBlock" | grep -F 'REDDIT_COOKIE_FILE')" -F -- 'unconfigured' \
-  || fail "caseSecretsProbe: the skipped entry should say unconfigured (got: $skippedBlock)"
-echo "ok: caseSecretsProbe a skipped/never-configured source (reddit) reports unconfigured under skipped:"
-
 # ═══════════════════════════════════════════════════════════════════════════
 # caseSecretsProbeDedup (RETASK stage1-build-6d2e -- CR Suggestion) -- paired
-# credentials (BITBUCKET_API_TOKEN/BITBUCKET_EMAIL -> bitbucket,
-# TWITTER_AUTH_TOKEN/TWITTER_CT0 -> x-twitter-cli) both declare the SAME
+# credentials (BITBUCKET_API_TOKEN/BITBUCKET_EMAIL -> bitbucket) both declare the SAME
 # luna-sources id, so a naive per-entry walk fires the SAME external
 # fetch-health.py --probe <source> call twice per source per walk. Proves
 # runSecretsWalk's per-source memoization actually invokes the underlying
@@ -1022,8 +987,8 @@ configPathDedup="$(winpath "$work/config-dedup.json")"
 probeLogDedup="$work/probe-invocations-dedup.log"
 rm -f "$probeLogDedup"
 
-# HIMMEL-2305: BITBUCKET_API_TOKEN/BITBUCKET_EMAIL/TWITTER_AUTH_TOKEN/
-# TWITTER_CT0 are all tagged feature:vault -- vault must be selected for
+# BITBUCKET_API_TOKEN/BITBUCKET_EMAIL
+# are both tagged feature:vault -- vault must be selected for
 # this dedup test to still walk them. vaultPathDedup is never created --
 # adopt.sh is a no-op stub here.
 vaultPathDedup="$(winpath "$work/vaultDedup")"
@@ -1060,12 +1025,9 @@ set -e
 
 [ -f "$probeLogDedup" ] || fail "caseSecretsProbeDedup: expected the probe invocation log at $probeLogDedup (got run output: $outDedup)"
 bitbucketCallsDedup=$(grep -c -F -- 'bitbucket' "$probeLogDedup" || true)
-twitterCallsDedup=$(grep -c -F -- 'x-twitter-cli' "$probeLogDedup" || true)
 [ "$bitbucketCallsDedup" -eq 1 ] \
   || fail "caseSecretsProbeDedup: bitbucket should be probed EXACTLY ONCE across BITBUCKET_API_TOKEN + BITBUCKET_EMAIL, not once per credential (got $bitbucketCallsDedup calls; log: $(cat "$probeLogDedup"))"
-[ "$twitterCallsDedup" -eq 1 ] \
-  || fail "caseSecretsProbeDedup: x-twitter-cli should be probed EXACTLY ONCE across TWITTER_AUTH_TOKEN + TWITTER_CT0, not once per credential (got $twitterCallsDedup calls; log: $(cat "$probeLogDedup"))"
-echo "ok: caseSecretsProbeDedup a paired source (bitbucket, x-twitter-cli) is probed exactly once per walk, not once per credential naming it"
+echo "ok: caseSecretsProbeDedup a paired source (bitbucket) is probed exactly once per walk, not once per credential naming it"
 
 # Both members of a pair must still get their OWN printed line, and it must
 # be the SAME verdict the single shared probe actually returned -- dedup must
@@ -1085,15 +1047,6 @@ grepq "$bitbucketApiLineDedup" -F -- 'configured' \
 grepq "$bitbucketEmailLineDedup" -F -- 'configured' \
   || fail "caseSecretsProbeDedup: BITBUCKET_EMAIL's own line should still read configured -- the memoized reuse must carry the SAME verdict, not drop it (got: $bitbucketEmailLineDedup)"
 
-grepq "$outDedup" -F -- 'TWITTER_AUTH_TOKEN' \
-  || fail "caseSecretsProbeDedup: TWITTER_AUTH_TOKEN should still get its own printed line (got: $outDedup)"
-grepq "$outDedup" -F -- 'TWITTER_CT0' \
-  || fail "caseSecretsProbeDedup: TWITTER_CT0 should still get its own printed line (got: $outDedup)"
-skippedBlockDedup=$(printf '%s' "$outDedup" | sed -n '/^skipped:$/,/^$/p')
-grepq "$(printf '%s\n' "$skippedBlockDedup" | grep -F 'TWITTER_AUTH_TOKEN')" -F -- 'paired with TWITTER_CT0' \
-  || fail "caseSecretsProbeDedup: TWITTER_AUTH_TOKEN's unconfigured line should still name its sibling TWITTER_CT0 (got skipped block: $skippedBlockDedup)"
-grepq "$(printf '%s\n' "$skippedBlockDedup" | grep -F 'TWITTER_CT0')" -F -- 'paired with TWITTER_AUTH_TOKEN' \
-  || fail "caseSecretsProbeDedup: TWITTER_CT0's unconfigured line should still name its sibling TWITTER_AUTH_TOKEN (got skipped block: $skippedBlockDedup)"
 echo "ok: caseSecretsProbeDedup both members of a pair still print their own line with the identical, correct verdict -- dedup changes call count only, never wording"
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -292,8 +292,9 @@ check("local-headless: no cookie sent to a host the jar does not cover", not rec
 check("local-headless: missing cookie dir is no constraint",
       mod.LocalHeadlessClient(cookie_dir=SCRATCH / "nope").scrape("https://example.com/") != "")
 
-# HIMMEL-4708: the jar's media-host cookies (the IG / X / YouTube burner
-# accounts) are sent only while HIMMEL_MEDIA_COOKIES=on; other hosts keep theirs.
+# The jar's media-host cookies (the IG / X / YouTube / Reddit
+# burner accounts) are never sent, whatever HIMMEL_MEDIA_COOKIES says; other
+# hosts keep theirs.
 MEDIA_JAR = SCRATCH / "media-cookies"
 MEDIA_JAR.mkdir()
 (MEDIA_JAR / "media.txt").write_text(
@@ -301,27 +302,33 @@ MEDIA_JAR.mkdir()
     ".instagram.com\tTRUE\t/\tTRUE\t9999999999\tsessionid\tfixture\n"
     ".x.com\tTRUE\t/\tTRUE\t9999999999\tauth_token\tfixture\n"
     ".youtube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tfixture\n"
+    ".reddit.com\tTRUE\t/\tTRUE\t9999999999\treddit_session\tfixture\n"
     ".example.com\tTRUE\t/\tTRUE\t9999999999\tsess\tfixture\n",
     encoding="utf-8", newline="\n")
 saved_switch = os.environ.pop("HIMMEL_MEDIA_COOKIES", None)
 try:
-    for url in ("https://www.instagram.com/p/x/", "https://x.com/a/status/1", "https://www.youtube.com/watch?v=x"):
-        rec.calls.clear()
-        mod.LocalHeadlessClient(cookie_dir=MEDIA_JAR).scrape(url)
-        check(f"local-headless: switch off sends no media cookie to {url}", not rec.calls[0][1].get("cookies"))
+    for switch in (None, "on"):
+        if switch:
+            os.environ["HIMMEL_MEDIA_COOKIES"] = switch
+        for url in ("https://www.instagram.com/p/x/", "https://x.com/a/status/1",
+                    "https://www.youtube.com/watch?v=x", "https://www.reddit.com/r/a/comments/1/t/"):
+            rec.calls.clear()
+            mod.LocalHeadlessClient(cookie_dir=MEDIA_JAR).scrape(url)
+            check(f"local-headless: no media cookie sent to {url} (switch={switch})",
+                  not rec.calls[0][1].get("cookies"))
     rec.calls.clear()
     mod.LocalHeadlessClient(cookie_dir=MEDIA_JAR).scrape("https://example.com/")
-    check("local-headless: switch off keeps a non-media host's jar cookies",
+    check("local-headless: a non-media host keeps its jar cookies",
           [x["name"] for x in rec.calls[0][1].get("cookies") or []] == ["sess"])
-    os.environ["HIMMEL_MEDIA_COOKIES"] = "on"
-    rec.calls.clear()
-    mod.LocalHeadlessClient(cookie_dir=MEDIA_JAR).scrape("https://www.instagram.com/p/x/")
-    check("local-headless: switch on sends the media cookie as today",
-          [x["name"] for x in rec.calls[0][1].get("cookies") or []] == ["sessionid"])
 finally:
     os.environ.pop("HIMMEL_MEDIA_COOKIES", None)
     if saved_switch is not None:
         os.environ["HIMMEL_MEDIA_COOKIES"] = saved_switch
+
+check("reddit is eligible for the cookieless backend chain (HIMMEL-4709)",
+      mod.firecrawl_eligible("https://www.reddit.com/r/a/comments/1/t") and mod.firecrawl_eligible("https://redd.it/abc"))
+check("x / instagram / youtube stay with their own enrichers",
+      not any(mod.firecrawl_eligible(u) for u in ("https://x.com/a/status/1", "https://www.instagram.com/p/x/", "https://www.youtube.com/watch?v=x")))
 
 for label, r, expect in (("HTTP 403", FetchRecorder(page=FakePage(status=403)), "HTTP 403"),
                          ("empty markdown", FetchRecorder(page=FakePage(html="")), "empty markdown"),

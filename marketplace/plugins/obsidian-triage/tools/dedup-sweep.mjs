@@ -100,7 +100,7 @@ function findClips(vault) {
 
 /**
  * Parse frontmatter (CRLF-normalised, minimal YAML-ish top-level only).
- * Mirrors the parser in playwright-crawl-x.mjs / fxtwitter-enrich.mjs.
+ * Mirrors the parser in fxtwitter-enrich.mjs.
  */
 function parseFrontmatter(text) {
   const normalized = text.includes("\r\n") ? text.replace(/\r\n/g, "\n") : text;

@@ -4,7 +4,7 @@
 # Scope:
 #   - script parses (node --check)
 #   - package.json declares js-yaml
-#   - canonicalisation rules match playwright-crawl-x.mjs
+#   - canonicalisation rules
 #   - DraftJS→md unit converter: header-two + unstyled + unordered-list-item
 #     fixture renders to expected markdown
 #   - inline styles (BOLD, ITALIC, CODE) + LINK entity render correctly
@@ -53,27 +53,18 @@ pkg="$TOOLS_DIR/package.json"
 if grep -q '"js-yaml"' "$pkg"; then has_yaml=yes; else has_yaml=no; fi
 assert "package.json declares js-yaml" "yes" "$has_yaml"
 
-# -- Test 3: canonicalisation parity with playwright-crawl-x.mjs --------
-# Both scripts must use the same /[^/]+/status/\d+ regex + map twitter.com → x.com.
-echo "Test 3: canonicalisation rules match playwright-crawl-x.mjs"
-xrx='canonicalXUrl'
-if grep -q "$xrx" "$SCRIPT" && grep -q "$xrx" "$TOOLS_DIR/playwright-crawl-x.mjs"; then
-    has_fn=yes
+# -- Test 3: canonicalisation rules ------------------------------------
+# The script must use the /[^/]+/status/\d+ regex + map twitter.com -> x.com.
+echo "Test 3: canonicalisation rules"
+if grep -q 'canonicalXUrl' "$SCRIPT"; then has_fn=yes; else has_fn=no; fi
+assert "canonicalXUrl symbol present" "yes" "$has_fn"
+# Spot-check: strips mobile./www. and maps twitter->x (literal substring match).
+if grep -q 'mobile\\\.' "$SCRIPT" && grep -qE '\(\??:?x\|twitter\)' "$SCRIPT"; then
+    has_rx=yes
 else
-    has_fn=no
+    has_rx=no
 fi
-assert "canonicalXUrl symbol present in both" "yes" "$has_fn"
-# Spot-check: both scripts must strip mobile./www. and map twitter→x.
-# Literal substring match — the canonical regex appears in both files.
-# playwright-crawl-x.mjs uses (?:x|twitter); fxtwitter-enrich.mjs uses (x|twitter).
-for f in "$SCRIPT" "$TOOLS_DIR/playwright-crawl-x.mjs"; do
-    if grep -q 'mobile\\\.' "$f" && grep -qE '\(\??:?x\|twitter\)' "$f"; then
-        has_rx=yes
-    else
-        has_rx=no
-    fi
-    assert "$(basename "$f") strips mobile. + maps twitter→x" "yes" "$has_rx"
-done
+assert "$(basename "$SCRIPT") strips mobile. + maps twitter→x" "yes" "$has_rx"
 
 # -- Test 4: DraftJS→md fixture --------------------------------------
 echo "Test 4: DraftJS → markdown converter"

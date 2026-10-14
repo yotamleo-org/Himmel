@@ -74,20 +74,17 @@ FIRECRAWL_DEFAULT_BUDGET = 20  # max scrape calls per run (~1 credit each)
 FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes, anything above stops firecrawl for the run
 
 # Hosts firecrawl must NOT scrape — a cheaper/better path already owns them:
-#   x.com / twitter → twitter-cli-enrich (X anti-automation; firecrawl
+#   x.com / twitter → the X enrichers (X anti-automation; firecrawl
 #       can't auth a logged-in session)
 #   github.com → luna-ingest gh-api (the github-ingest path; never reaches
 #       the clip-body path here anyway, but listed for defence-in-depth)
 #   youtube → playwright-crawl-youtube (transcript path)
-#   reddit family -> reddit-enrich owns reddit (HIMMEL-769); firecrawl can't
-#       auth reddit (anonymous .json is 403-blocked; burner cookies required)
 #   instagram → ig-media-fetch owns it (HIMMEL-770 media rung; firecrawl
 #       can't pass the IG login wall or extract media anyway)
 FIRECRAWL_SKIP_HOSTS = {
     "x.com", "twitter.com", "mobile.twitter.com", "www.twitter.com", "www.x.com",
     "github.com", "www.github.com",
     "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be",
-    "reddit.com", "www.reddit.com", "old.reddit.com", "new.reddit.com", "np.reddit.com", "m.reddit.com", "redd.it",
     "instagram.com", "www.instagram.com", "m.instagram.com",
 }
 
@@ -238,8 +235,7 @@ def canonicalize(url: str):
 
     # reddit — host -> www.reddit.com, drop query/fragment, strip trailing slash,
     # lowercase the /r/<subreddit> segment. redd.it short links are left
-    # untouched (a network HEAD redirect is needed — the reddit-enrich rung
-    # resolves them first, then feeds the resolved full URL back through here).
+    # untouched (a network HEAD redirect would be needed).
     # Mirrors lib/url-canonical.mjs REDDIT_HOSTS exactly.
     if host in {"reddit.com", "www.reddit.com", "old.reddit.com", "new.reddit.com", "np.reddit.com", "m.reddit.com"}:
         parts = [seg for seg in path.split("/") if seg]
@@ -854,7 +850,7 @@ class JinaReaderClient:
 
 def load_jar_cookies(cookie_dir: Path, url: str, now=None) -> list:
     """Live cookies from the operator's per-site jar (Netscape *.txt files,
-    the same ones reddit-enrich and the x/ig enrichers read) whose domain
+    the same ones the other enrichers read) whose domain
     covers `url`'s host, as Playwright cookie dicts. Only the jar is read,
     never a browser store. A missing dir or unreadable file is no cookies."""
     import time
@@ -892,14 +888,10 @@ def load_jar_cookies(cookie_dir: Path, url: str, now=None) -> list:
     return out
 
 
-# HIMMEL-4708: the burner-account media hosts whose jar cookies are sent only
-# while HIMMEL_MEDIA_COOKIES=on (default off); every other host keeps its jar.
-MEDIA_COOKIE_DOMAINS = ("instagram.com", "x.com", "twitter.com", "youtube.com")
-
-
-def media_cookies_on(env=None) -> bool:
-    env = os.environ if env is None else env
-    return (env.get("HIMMEL_MEDIA_COOKIES") or "").strip().lower() == "on"
+# The burner-account media hosts whose jar cookies are never sent
+# (Scrapling fetches them cookieless); every other host keeps its jar.
+MEDIA_COOKIE_DOMAINS = ("instagram.com", "x.com", "twitter.com", "youtube.com",
+                        "reddit.com", "redd.it")
 
 
 def drop_media_cookies(cookies: list) -> list:
@@ -1012,9 +1004,7 @@ class LocalHeadlessClient:
         except ImportError:
             raise BackendNotImplemented("scrapling is not installed")
         state = {"armed": False}
-        cookies = load_jar_cookies(self.cookie_dir, url)
-        if not media_cookies_on():
-            cookies = drop_media_cookies(cookies)
+        cookies = drop_media_cookies(load_jar_cookies(self.cookie_dir, url))
         page = fetch(url, headless=True, timeout=self.TIMEOUT_MS,
                      cookies=cookies,
                      page_setup=lambda pg: _block_private_requests(pg, state),
@@ -1423,8 +1413,8 @@ def insert_markers(fm_raw: str, markers: dict) -> str:
     """Insert the harvest_* markers — the four core keys, plus the optional
     `harvest_flag` + `harvest_flag_detail` pair when the injection screen
     hit. A key already present in the frontmatter is REPLACED in place (the
-    runbook's "replace in place, do NOT duplicate" contract — the reddit-enrich
-    rung and luna-ingest both write harvest_url_canonical, so a re-harvest must
+    runbook's "replace in place, do NOT duplicate" contract — luna-ingest
+    writes harvest_url_canonical, so a re-harvest must
     not emit a duplicate YAML key); any key not yet present is appended after
     the last existing top-level key. New keys are zero-indent YAML."""
     pairs = [

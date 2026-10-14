@@ -9,11 +9,10 @@ an animated UI element, a caption-less visual) leaves nothing searchable behind.
 This rung captures it. For X clips whose body carries a video.twimg.com /
 pbs.twimg.com/media/ reference and which carry no media_enriched_at: marker:
 
-  - Download the tweet's media: Scrapling first, NO cookie (HIMMEL-4677:
+  - Download the tweet's media with Scrapling, NO cookie (HIMMEL-4677:
     x-scrapling-media.py reads the status page and its video.twimg.com
-    requests; curl / ffmpeg-HLS fetch the items), gallery-dl with the
-    burner-account cookies only as the fallback when it is configured AND
-    HIMMEL_MEDIA_COOKIES=on (HIMMEL-4708, default off).
+    requests; curl / ffmpeg-HLS fetch the items). The gallery-dl cookie
+    fallback was removed (HIMMEL-4709).
   - Video items (incl. GIF-like tweet_video): ffmpeg -> mono 16kHz WAV -> local
     faster-whisper transcript. A SOUNDLESS video (the common tweet_video GIF -
     e.g. an animated UI element) has no audio to transcribe, so its first frame
@@ -35,7 +34,7 @@ pbs.twimg.com/media/ reference and which carry no media_enriched_at: marker:
     pending marker). Scoped-G-3 (reconstruction check + fm_raw hash immutability)
     + revert-on-failure.
 
-Downloader NEVER prints cookie contents. Media/audio/transcripts never leave the
+Media/audio/transcripts never leave the
 machine. Run under `uv run --python 3.12` (Windows python3 is a flaky Store stub).
 
 HIMMEL-4107 - subtitles first, with provenance:
@@ -47,15 +46,14 @@ HIMMEL-4107 - subtitles first, with provenance:
   - For a video clip, yt-dlp --skip-download tries the platform's English
     subtitle track (manual first, then auto) into the cache; the VTT is cleaned and
     used when its coverage (last cue end / duration) reaches --min-sub-coverage.
-    That path needs NO cookies. Otherwise the gallery-dl -> ffmpeg -> whisper path
-    runs as before, and the cookie file is demanded only then.
+    That path needs NO cookies. Otherwise the Scrapling -> ffmpeg -> whisper path
+    runs, and the preflight is demanded only then.
   - media_transcript_source / media_video_duration_s / media_transcript_coverage
     and a `<!-- source: ... -->` line under ### Transcript record where the text
     came from and how much of the video it covers.
 
 Exit codes: 0 run completed (may include failed/partial clips), 1 bad usage,
-2 preflight (missing ffmpeg, or neither the scrapling venv nor
-gallery-dl + cookie file), 3 scoped-G-3 verify
+2 preflight (missing ffmpeg or the scrapling venv), 3 scoped-G-3 verify
 failed / reverted (used by --apply-digest and --flag-screen).
 """
 import argparse
@@ -325,17 +323,6 @@ def _home() -> Path:
     return Path(home) if home else Path.home()
 
 
-def cookie_file() -> Path:
-    return _home() / ".luna" / "cookies" / "twitter.txt"
-
-
-def media_cookies_on() -> bool:
-    """HIMMEL-4708: the one switch for every cookie-backed media path. Default
-    off - Scrapling is primary; HIMMEL_MEDIA_COOKIES=on restores the gallery-dl
-    cookie fallback exactly as before."""
-    return (os.environ.get("HIMMEL_MEDIA_COOKIES") or "").strip().lower() == "on"
-
-
 def cache_root() -> Path:
     return _home() / ".luna" / "x-media"
 
@@ -378,87 +365,27 @@ def scrapling_permitted(vault: Path, url: str) -> bool:
 
 
 def preflight(scrapling: bool):
-    """ffmpeg always; gallery-dl + the cookie only when Scrapling (the primary,
-    cookieless backend, HIMMEL-4677) is unavailable - then they are the
-    fallback. Returns the cookie path, or None when gallery-dl is not usable.
-    With the cookie switch off (HIMMEL-4708) gallery-dl is never used and
-    Scrapling is the only backend."""
-    if not media_cookies_on():
-        missing = [b for b in ("ffmpeg",) if shutil.which(b) is None]
-        if missing or not scrapling:
-            print(
-                "x-media-fetch: " +
-                ("missing required binaries: ffmpeg" if missing else
-                 "no cookieless backend, and the gallery-dl cookie fallback is "
-                 "opted out (HIMMEL_MEDIA_COOKIES=on turns it back on)") +
-                ("" if scrapling else SCRAPLING_HINT),
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        return None
-    missing = [b for b in ("gallery-dl", "ffmpeg")
-               if shutil.which(b) is None and (b == "ffmpeg" or not scrapling)]
-    if missing:
+    """ffmpeg and the Scrapling backend (the only backend, cookieless,
+    HIMMEL-4677)."""
+    missing = [b for b in ("ffmpeg",) if shutil.which(b) is None]
+    if missing or not scrapling:
         print(
-            "x-media-fetch: missing required binaries: " + ", ".join(missing) +
-            "\n  install: winget install yt-dlp.gallery-dl ; winget install "
-            "Gyan.FFmpeg   (or: uv tool install gallery-dl)" +
+            "x-media-fetch: " +
+            ("missing required binaries: ffmpeg" if missing else
+             "no cookieless Scrapling backend") +
             ("" if scrapling else SCRAPLING_HINT),
             file=sys.stderr,
         )
         sys.exit(2)
-    cf = cookie_file()
-    if scrapling:
-        return cf if shutil.which("gallery-dl") and cf.is_file() else None
-    if not cf.is_file():
-        print(
-            "x-media-fetch: cookie file missing: " + str(cf) +
-            "\n  Export x.com cookies (logged into your BURNER account) with the "
-            "Cookie-Editor extension in Netscape format, save to that path, then "
-            "chmod 600 it. (Cookie contents are never printed.)" + SCRAPLING_HINT,
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    return cf
 
 
 def _natural_key(p: Path):
     """Natural-sort key: split the filename into digit / non-digit runs and
-    compare digit runs numerically, so gallery-dl's UNPADDED media filenames
+    compare digit runs numerically, so UNPADDED media filenames
     order 1 < 2 < 10. A plain lexicographic sort puts 10.jpg before 2.jpg,
     corrupting media order AND the mixed-tweet video item indices."""
     return [int(t) if t.isdigit() else t.lower()
             for t in re.split(r"(\d+)", p.name)]
-
-
-def download_media(x: dict, cf: Path):
-    dest = cache_root() / x["shortcode"]
-    if dest.exists():
-        shutil.rmtree(dest)   # a prior partial run must not leave stale files
-    dest.mkdir(parents=True)  # fresh dir: classify sees ONLY this download
-    gallery_dl = shutil.which("gallery-dl")
-    if not gallery_dl:
-        return None, "gallery_dl_missing"
-    cmd = [gallery_dl, "--cookies", str(cf), "-D", str(dest), x["url"]]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=DOWNLOAD_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        return None, "download_timeout"
-    if proc.returncode != 0:
-        blob = (proc.stderr + proc.stdout).lower()
-        if "404" in blob or "not found" in blob or "removed" in blob:
-            return None, "removed"          # permanent
-        if "login" in blob or "challenge" in blob or "403" in blob:
-            return None, "login_wall"       # retryable
-        _emit_stderr_tail("gallery-dl", proc.stderr)
-        return None, "download_error"       # retryable
-    files = sorted((p for p in dest.iterdir()
-                    if p.is_file() and p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS),
-                   key=_natural_key)
-    if not files:
-        return None, "no_media"             # retryable
-    return files, None
 
 
 MEDIA_HOSTS = ("video.twimg.com", "pbs.twimg.com")
@@ -740,23 +667,13 @@ def download_media_scrapling(x: dict, py: str):
     return files, None
 
 
-def fetch_media(x: dict, cf, scrapling):
-    """Scrapling first (cookieless); gallery-dl (cookie) is the fallback for any
-    Scrapling miss when it is configured. With the cookie switch off
-    (HIMMEL-4708) a miss is returned as scrapling:<error>, never retried with
-    the cookie. Returns (files, error, backend)."""
-    if scrapling:
-        files, error = download_media_scrapling(x, scrapling)
-        if files:
-            return files, None, "scrapling"
-        if error != "removed" and not media_cookies_on():
-            return None, f"scrapling:{error}", "scrapling"
-        if error == "removed" or cf is None:
-            return None, error, "scrapling"
-    if cf is None:
-        return None, "gallery_dl_missing", "gallery-dl"
-    files, error = download_media(x, cf)
-    return files, error, "gallery-dl"
+def fetch_media(x: dict, scrapling):
+    """Scrapling, cookieless. A miss is returned as scrapling:<error> (deferred,
+    stays pending), except removed. Returns (files, error, backend)."""
+    files, error = download_media_scrapling(x, scrapling)
+    if files:
+        return files, None, "scrapling"
+    return None, (error if error == "removed" else f"scrapling:{error}"), "scrapling"
 
 
 def classify(files):
@@ -872,7 +789,7 @@ def fxt_probe(x: dict):
     except (AttributeError, TypeError, ValueError, OverflowError):
         return "error", None   # malformed payload: transient, probed again
     # A lone video is the subs-only case; photos or extra videos still need the
-    # gallery-dl media path, so they get their own result.
+    # media download path, so they get their own result.
     return ("video" if len(videos) == 1 and not photos else "video+media"), dur
 
 
@@ -947,7 +864,7 @@ def fetch_subs(x: dict, min_coverage: float, duration_hint):
     (no cookies, no media download). Manual track first, then auto. Returns
     {"index","text","source","lang","coverage","duration"} or None (no yt-dlp, no
     track, several videos, unknown duration, or coverage below `min_coverage`) -
-    the caller then takes the gallery-dl -> whisper path."""
+    the caller then takes the Scrapling -> whisper path."""
     yt = shutil.which("yt-dlp")
     if not yt:
         return None
@@ -1490,8 +1407,8 @@ def enrich_batch(args, selected, matched_total, remaining):
         try:
             if RATE_LIMIT_S > 0:
                 time.sleep(RATE_LIMIT_S)
-            # HIMMEL-4107: platform subtitles first (cookie-free); gallery-dl +
-            # whisper only when no usable track exists, and the cookie/binary
+            # Platform subtitles first; the Scrapling download +
+            # whisper only when no usable track exists, and the binary
             # preflight is demanded only then.
             text0, _crlf0 = read_clip(p)
             fm0, _raw0, body0, present0 = parse_frontmatter(text0)
@@ -1508,14 +1425,13 @@ def enrich_batch(args, selected, matched_total, remaining):
             if subs:
                 files, error, backend = [], None, "subs"
             else:
-                cf = preflight(bool(scrapling))
-                files, error, backend = fetch_media(x, cf, scrapling)
+                preflight(bool(scrapling))
+                files, error, backend = fetch_media(x, scrapling)
             if error:
                 text, has_crlf = read_clip(p)
                 fm, fm_raw, body, present = parse_frontmatter(text)
                 permanent = error == "removed"      # 404/removed is permanent
-                # HIMMEL-4708: a Scrapling miss with the cookie fallback opted
-                # out is deferred (stays pending), naming the backend.
+                # A Scrapling miss is deferred (stays pending), naming the backend.
                 status = "deferred" if error.startswith("scrapling:") else "failed"
                 if write_markers(p, text, fm_raw, body, has_crlf,
                                  status=status, error=error, permanent=permanent):
@@ -2000,7 +1916,7 @@ def main():
 
     if not selected:
         # No-op run: report the standard summary and exit 0 WITHOUT preflight - a
-        # run with nothing to do must not fail on missing gallery-dl/ffmpeg/cookies.
+        # run with nothing to do must not fail on missing ffmpeg/Scrapling.
         print(f"\nx-media-fetch: {len(selected)} selected, 0 enriched, "
               f"0 partial, 0 failed")
         sys.exit(0)

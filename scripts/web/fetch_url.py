@@ -2,7 +2,7 @@
 """fetch_url.py - body of scripts/web/fetch-url.sh (HIMMEL-4908).
 
 Fetch a pasted link as text. Hosts listed in walled-hosts.conf (x.com,
-instagram.com ... - login-walled, WebFetch gets HTTP 402) go through Scrapling's
+instagram.com, reddit.com ... - login-walled, WebFetch gets HTTP 402) go through Scrapling's
 stealth fetcher with NO cookies and never a Chrome profile; every other host is
 a plain HTTP GET rendered to text.
 
@@ -229,7 +229,14 @@ def html_to_text(page_html):
     return re.sub(r"\n\s*\n+", "\n\n", re.sub(r"[ \t]+", " ", "".join(t.parts))).strip()
 
 
-def render_walled(page_html):
+def is_reddit(url):
+    h = host_of(url)
+    return any(h == w or h.endswith("." + w) for w in ("reddit.com", "redd.it"))
+
+
+def render_walled(page_html, url=""):
+    if is_reddit(url):
+        return html_to_text(page_html)
     posts = [p for p in parse_x(page_html)
              if p["author"] or p["handle"] or p["date"] or p["media"] or any(t.strip() for t in p["text"])]
     if posts:
@@ -257,9 +264,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("url", nargs="?")
     ap.add_argument("--from-html", type=Path)
+    ap.add_argument("--page-url", default="", help="with --from-html: the page's URL, picks the renderer")
     args = ap.parse_args(argv)
     if args.from_html:
-        print(render_walled(args.from_html.read_text(encoding="utf-8")))
+        print(render_walled(args.from_html.read_text(encoding="utf-8"), args.page_url))
         return 0
     try:
         scheme = urlparse(args.url).scheme if args.url else ""
@@ -284,7 +292,7 @@ def main(argv=None):
         if status and status >= 400:
             print(f"fetch failed: HTTP {status}", file=sys.stderr)
             return 4
-        rendered = render_walled(page_html)
+        rendered = render_walled(page_html, final)
         if not rendered.strip():
             print("fetch failed: no usable content (empty or challenge page)", file=sys.stderr)
             return 4

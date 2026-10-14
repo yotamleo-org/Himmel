@@ -3,7 +3,6 @@
  *
  * Mirrors the per-domain rules in:
  *   - harvest-clip-body-batch.py (Phase 3 of /harvest-clips)
- *   - playwright-crawl-x.mjs (canonicalXUrl)
  *   - fxtwitter-enrich.mjs    (canonicalXUrl)
  *
  * Rules (LUNA-37, matching harvest-clips.md Phase 3 table):
@@ -136,8 +135,7 @@ export function canonicalize(rawUrl) {
 
   // reddit — host -> www.reddit.com, drop query/fragment, strip trailing slash,
   // lowercase the /r/<subreddit> segment. Full URLs only: redd.it short links
-  // are NOT expanded here (that needs a network redirect — reddit-enrich.mjs
-  // resolves them first, then feeds the resolved full URL back through here).
+  // are NOT expanded here (that needs a network redirect, which nothing performs now).
   if (REDDIT_HOSTS.has(host)) {
     const parts = u.pathname.split("/").filter(Boolean);
     if (parts.length >= 2 && parts[0].toLowerCase() === "r") {

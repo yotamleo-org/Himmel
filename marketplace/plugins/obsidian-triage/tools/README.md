@@ -23,26 +23,13 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   set `enrichment_status: failed` and are left for the LUNA-27 authenticated
   rung (`playwright-crawl-ig.mjs`, not yet implemented). Use this for
   Instagram clips; escalate to LUNA-27 for failed clips.
-- **twitter-cli X escalation** (`twitter-cli-enrich.mjs`) — **authenticated X
-  reply/thread rung** (LUNA-27). Consumes clips fxtwitter flagged
-  `needs_thread: true`; runs `twitter tweet <id> --json` (public-clis/twitter-cli,
-  cookie+HTTP) with **burner** credentials to capture the author self-thread +
-  first link-bearing reply that fxtwitter can't see. Burner account ONLY. The
-  tokens are cookies, so it exits 2 unless `HIMMEL_MEDIA_COOKIES=on`. See
-  "twitter-cli X thread/reply escalation" below.
-- **Playwright crawlers** (`playwright-*.mjs`) — authenticated batch enrich.
-  LUNA-27. `playwright-crawl-youtube.mjs` is the **default YouTube path**; since
-  HIMMEL-4677 it runs `yt-scrapling-meta.py` first with NO cookie (metadata +
+- **YouTube crawler** (`playwright-crawl-youtube.mjs`) — LUNA-27. Since
+  HIMMEL-4677 it runs `yt-scrapling-meta.py` with NO cookie (metadata +
   description via Scrapling in `~/.himmel/scrapling-venv`, transcript via
-  `yt-dlp` subtitles, `crawl_skill: scrapling-youtube`), and the logged-in
-  Playwright crawl is the fallback only when a storage state exists and
-  `HIMMEL_MEDIA_COOKIES=on`.
-  Every cookie-backed media path is off by default; the switch and the full
-  consumer table are in the plugin README ("Media cookie switch", HIMMEL-4708).
-  `playwright-crawl-x.mjs` is **DEPRECATED** (LUNA-35) and superseded for X
-  reply/thread capture by `twitter-cli-enrich.mjs`: X/Google anti-automation
-  blocks login on automation-controlled browsers, so a burner session can't be
-  captured via Playwright at all.
+  `yt-dlp` subtitles, `crawl_skill: scrapling-youtube`). HIMMEL-4709 removed
+  the logged-in Playwright fallback, `playwright-crawl-x.mjs`,
+  `playwright-auth-save.mjs` and `twitter-cli-enrich.mjs`: no tool here sends
+  a cookie.
 - **Dedup sweep** (`dedup-sweep.mjs`) — LUNA-37. URL-canonical +
   content-hash dupe detection across a luna-style vault. Mutates
   frontmatter only (G-3 body-identity). See "Dedup sweep" section below.
@@ -55,8 +42,7 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
 
 Shared URL canonicalisation lives in `lib/url-canonical.mjs` — single
 source of truth consumed by `dedup-sweep.mjs`. Mirrors the per-domain
-rules already inlined in `harvest-clip-body-batch.py` (Phase 3) and
-`playwright-crawl-x.mjs` (`canonicalXUrl`).
+rules already inlined in `harvest-clip-body-batch.py` (Phase 3).
 
 ## fxtwitter enricher (default X path)
 
@@ -156,7 +142,7 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
 
 - **No replies/comments** — fxtwitter doesn't expose them (it returns a reply
   *count* only). When you need the self-thread or the first reply, fxtwitter
-  sets `needs_thread: true`; the `twitter-cli-enrich.mjs` rung escalates those.
+  sets `needs_thread: true`; nothing escalates those since HIMMEL-4709.
 - **No video/STT/keyframes** — same as playwright path.
 - **Rate-limit is 1s per call** — fxtwitter is forgiving but be polite.
   145 clips ≈ 2-3 minutes wall-clock.
@@ -176,8 +162,7 @@ It selects already-enriched X clips lacking `needs_thread`, re-fetches the
 tweet, runs the pure `detectThreadSignal`, and writes **only** `needs_thread:
 true` when it fires — no body change, no other markers touched (body stays
 byte-identical under the no-section G-3 guard). Idempotent: a clip already
-flagged is skipped. Run this once after upgrading, then the `twitter-cli-enrich`
-escalation picks up the newly-flagged clips.
+flagged is skipped.
 
 ### Backfilling quote-tweet own-text (`--reenrich-quote-only`)
 
@@ -213,59 +198,9 @@ rather than re-fetching and rewriting it. Mutually exclusive with `--reflag`.
 
 - You need reply threads with conversation context, or the payload the author
   parked in their own first reply ("repo in comment"). fxtwitter flags these
-  `needs_thread: true`; run `twitter-cli-enrich.mjs` (below) to capture them.
+  `needs_thread: true`; no tool captures them since HIMMEL-4709.
 - You hit a tweet that 404s on fxtwitter but renders in a logged-in
   browser (rare; usually a sus-flagged or age-gated tweet).
-
-## twitter-cli X thread/reply escalation
-
-`twitter-cli-enrich.mjs` is the signal-gated escalation rung for the
-reply/thread content fxtwitter can't reach. For each clip fxtwitter marked
-`needs_thread: true` (and not already `crawled_at:`), it runs
-`twitter tweet <id> --json -n <N>` (the `public-clis/twitter-cli` tool,
-`uv tool install twitter-cli`) and folds a `## Crawled content` section
-(`### Main tweet` / `### Thread (N segments)` / `### Top reply` / `### Quoted
-tweet`) into the body. It maps the CLI's `data[]` — `data[0]` focal,
-contiguous same-author entries = self-thread, then the first other-author entry
-**preferring one that carries a url** (the parked-repo case) = top reply — and
-folds each segment's expanded `urls[]` into the text so a
-parked repo link survives. Body-fold honours the same G-3 invariant + YAML
-parse-validate as the other enrichers; idempotent via `crawled_at:`. A failed
-fetch is a **soft fail** (`crawl_status: failed`) that leaves the fxtwitter
-enrichment intact.
-
-### Burner account ONLY — auth via env
-
-twitter-cli reads `TWITTER_AUTH_TOKEN` + `TWITTER_CT0` from the environment.
-This rung **refuses to run** unless both are set, because without them
-twitter-cli falls back to extracting cookies from a local browser — the wrong
-(main) account, and broken on Windows anyway (Chrome App-Bound-Encryption
-v127+). Use a **dedicated burner X account** (never the main). The operator
-sources the gitignored `.env` (burner tokens) into the shell first; this tool
-only reads `process.env` and never the `.env` file.
-
-```bash
-# operator sources burner tokens first (NOT committed; .env is gitignored):
-set -a; . ./.env; set +a
-cd marketplace/plugins/obsidian-triage/tools
-node twitter-cli-enrich.mjs --vault ~/Documents/luna --limit 5 --dry-run
-# inspect selection, then run for real:
-node twitter-cli-enrich.mjs --vault ~/Documents/luna
-```
-
-Flags: `--vault <path>` (required), `--limit N` (cap processed clips),
-`--replies N` (max replies to fetch, default 20), `--dry-run` (list selection,
-no fetch — skips the token guard).
-
-### Burner-token refresh
-
-The burner `auth_token` / `ct0` cookies are long-lived but eventually expire or
-rotate. The symptom is `crawl_status: failed` with `last_error: not_authenticated`
-(or similar). To refresh: open your burner Chrome profile,
-DevTools → Application → Cookies → `x.com`, copy the current `auth_token` and
-`ct0` values into `.env`. App-Bound-Encryption means this is a manual copy, not
-auto-extraction. Then re-run; failed clips re-attempt because the soft-fail path
-leaves `crawled_at:` unset.
 
 ## Instagram embed enricher (no-login path)
 
@@ -356,54 +291,17 @@ happened (HIMMEL-1135): fast no-op if deps are present, installs them
 (without playwright's browser binaries) if not, non-zero + a remediation
 message if it can't.
 
-## Auth (per-service, ~quarterly refresh)
-
-X and YouTube both need an interactive login to capture cookies. Run once
-per service:
-
-```bash
-bun playwright-auth-save.mjs x
-# Browser opens. Log in normally. Script auto-detects success + saves state.
-```
-
-**YouTube: optional since HIMMEL-4677.** The crawler's primary path needs no
-cookie (Scrapling + yt-dlp); the storage state only feeds the Playwright
-fallback. If you want that fallback, use the Chrome converter (HIMMEL-4271): Google usually
-blocks the Playwright login, so from the himmel checkout run
-`python3 scripts/luna/youtube-state-from-chrome.py --profile Default` — it
-exports the signed-in Chrome profile's cookies into the same
-`~/.luna/playwright-state/youtube.json`. `bun playwright-auth-save.mjs youtube`
-remains as a fallback that Google usually blocks.
-
-Storage state lands at `~/.luna/playwright-state/<service>.json`
-(gitignored at the home-dir level — never under the repo).
-
-**X cookies expire** every few months. When the crawler starts mass-failing
-the tweet-detection selector, re-run `playwright-auth-save.mjs x`. Cron the
-refresh quarterly if you want zero-touch.
-
-### Login-detection selectors
-
-| Service  | Primary                                                 | Fallback                  |
-|----------|---------------------------------------------------------|---------------------------|
-| X        | `[data-testid="SideNav_AccountSwitcher_Button"]`        | `[data-testid="primaryColumn"]` |
-| YouTube  | `ytd-topbar-menu-button-renderer #avatar-btn`           | `#avatar-btn`             |
-
-Both vendors change DOM regularly — verify if `auth-save` times out post-login.
-
 ## Crawl (calibrate, then batch)
 
 Dry-run first (no writes; prints what would be crawled):
 
 ```bash
-bun playwright-crawl-x.mjs --vault ~/Documents/luna --limit 5 --dry-run
 bun playwright-crawl-youtube.mjs --vault ~/Documents/luna --limit 5 --dry-run
 ```
 
 When the output looks right, drop `--dry-run`:
 
 ```bash
-bun playwright-crawl-x.mjs --vault ~/Documents/luna --limit 10
 bun playwright-crawl-youtube.mjs --vault ~/Documents/luna
 ```
 
@@ -416,7 +314,7 @@ frontmatter markers:
 
 ```yaml
 crawled_at: <ISO timestamp>
-crawl_skill: playwright-x | scrapling-youtube | playwright-youtube
+crawl_skill: scrapling-youtube
 crawl_status: ok | partial | failed
 last_error: <short>   # only on partial/failed
 ```
@@ -435,23 +333,6 @@ context; sequential. No retry on tweet-not-rendered / transcript-unavailable
 — marked partial/failed + move on. (Operator can re-run on failed clips
 selectively by manually clearing the `crawled_at:` marker.)
 
-### Selector references (subject to vendor DOM churn)
-
-| Target                  | Selector |
-|-------------------------|----------|
-| Tweet container         | `[data-testid="tweet"]` |
-| Tweet body text         | `[data-testid="tweetText"]` |
-| Quote-tweet target      | `div[role="link"] [data-testid="tweetText"]` (nested in focal tweet) |
-| YouTube title           | `h1.ytd-watch-metadata` |
-| YouTube channel         | `ytd-channel-name #text a` |
-| YouTube duration        | `.ytp-time-duration` |
-| YouTube transcript btn  | `button[aria-label*="transcript" i]` (else: more-actions menu → "Show transcript") |
-| Transcript segment      | `ytd-transcript-segment-renderer` |
-| Comment threads         | `ytd-comment-thread-renderer` |
-
-If the crawler starts failing on a previously-working clip type, these are
-the first knobs to check.
-
 ## Known limitations
 
 - **YouTube transcript unavailable** on some videos (no auto-CC, age-gated,
@@ -460,15 +341,6 @@ the first knobs to check.
 - **No video download, no STT, no keyframe extraction.** Transcript-only MVP.
   Operator is evaluating better-than-Playwright video-analysis paths
   separately.
-- **Tweet thread depth = 5.** Top-5 replies in DOM order. Deeper threads
-  truncated. Not configurable in this MVP.
-- **Headless-with-headful-fallback for crawl** (LUNA-33 Tier-2). Auth-save is
-  headed (must be); crawls default to headless. X gates the React app on
-  headless, so on a headless-gate selector-miss (`tweet_not_rendered` / thin
-  `main_text_empty`) `playwright-crawl-x.mjs` auto-retries that clip's scrape in
-  a headful (real-window) browser — launched lazily, reused, recorded as
-  `crawl_skill: playwright-x-headful`. Pass `--headful` to force a real window
-  from the start. (`crawl-youtube` stays headless-only — YouTube does not gate.)
 - **No proxy / sleep-jitter randomization beyond 3-5s.** Aggressive bursts
   may trip rate limits. Run overnight, not synchronously.
 
@@ -477,7 +349,7 @@ the first knobs to check.
 - **v2: Obscura swap.** Playwright is the MVP; the operator is evaluating
   Obscura (or similar) as a tighter, harder-to-detect replacement. The
   scripts here are the architectural reference for what the swap must
-  preserve (G-3, idempotency, YAML parse-validate, storage-state pattern).
+  preserve (G-3, idempotency, YAML parse-validate).
 - **Video analysis path.** No STT / keyframe yet — operator researching
   alternatives. When that ships, a sister `playwright-video-*.mjs` (or
   whatever framework wins) will land in this dir.
@@ -717,8 +589,8 @@ bash ../tests/test-ensure-deps.sh   # HIMMEL-1135
 ```
 
 Verifies: scripts pass `node --check`, package.json declares the right
-deps, storage-state path is consistent, crawler scripts exit rc=2 with a
-clear message when storage state is missing.
+deps, the crawler carries no cookie or storage-state path, and it exits rc=2 with a
+clear message when the Scrapling venv is missing.
 
 The dedup-sweep tests build a 4-clip fixture vault and verify the URL +
 content cluster detection, idempotency, --dry-run / --report-only modes,

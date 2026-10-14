@@ -398,14 +398,8 @@ const PRESENCE_SOURCES = {
   BITBUCKET_EMAIL: { kind: 'repo-env' },
   FIRECRAWL_API_KEY: { kind: 'process-env' },
   FIRECRAWL_BASE_URL: { kind: 'process-env' },
-  INSTAGRAM_COOKIE_FILE: { kind: 'file', home: '.luna/cookies/instagram.txt' },
-  REDDIT_COOKIE_FILE: { kind: 'file', home: '.luna/cookies/reddit.txt', override: 'REDDIT_COOKIE_FILE' },
   TELEGRAM_BOT_TOKEN: { kind: 'bridge-env' },
-  TWITTER_AUTH_TOKEN: { kind: 'process-env' },
-  TWITTER_CT0: { kind: 'process-env' },
-  TWITTER_COOKIE_FILE: { kind: 'file', home: '.luna/cookies/twitter.txt' },
   WHISPER_MODEL: { kind: 'file', home: '.himmel/whisper/ggml-small.bin', override: 'WHISPER_MODEL', dirVar: 'WHISPER_DIR', name: 'ggml-small.bin' },
-  YOUTUBE_STORAGE_STATE: { kind: 'file', home: '.luna/playwright-state/youtube.json' },
 };
 
 // True when `KEY=` has a non-empty value in .env-shaped text. A line regex, so

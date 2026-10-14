@@ -2975,8 +2975,8 @@ function normalizePathForCompare(p) {
 // (via the bridge's own configured .env), cmd:whisper_ready (same env
 // precedence as runBridgeReadinessProbes above), and luna-sources (via each
 // entry's own `sources` field — the fetch-health.py source id(s) that
-// credential unlocks, e.g. TWITTER_COOKIE_FILE -> ['x-media'],
-// INSTAGRAM_COOKIE_FILE -> ['instagram-media']; see secrets-manifest.json).
+// credential unlocks, e.g. BITBUCKET_API_TOKEN -> ['bitbucket'];
+// see secrets-manifest.json).
 // RETASK stage1-build-6d2e: a skipped/never-configured source and a
 // configured-but-broken one are DIFFERENT facts and must read differently —
 // 'unconfigured' is reserved for the former (A15's skippable case); the
@@ -3038,12 +3038,6 @@ function probeOneSecret(entry, bridge) {
         { probe: { type: 'luna-sources', script: 'scripts/luna/fetch-health.py', sources: entry.sources } },
         { repoRoot: repoRoot(), targetPath: repoRoot(), scope: 'project', platform: process.platform, env: process.env },
       );
-      // HIMMEL-4708: every source this credential unlocks is opted out by
-      // HIMMEL_MEDIA_COOKIES — deliberately unused, so neither configured
-      // nor unconfigured.
-      if (Array.isArray(r.optedOut) && entry.sources.every((s) => r.optedOut.includes(s))) {
-        return { status: 'off', detail: r.detail };
-      }
       if (r.actual === 'present') return { status: 'configured', detail: r.detail };
       if (r.actual === 'absent') return { status: 'unconfigured', detail: r.detail };
       // 'degraded' — configured (or partially configured) but the probe
@@ -3096,7 +3090,7 @@ function runSecretsWalk(bridge, answers) {
   const line = scopedOutLine(skipped);
   if (line) console.log(line);
   // CR fix (RETASK stage1-build-6d2e): paired credentials (BITBUCKET_API_TOKEN/
-  // BITBUCKET_EMAIL, TWITTER_AUTH_TOKEN/TWITTER_CT0) both declare the SAME
+  // BITBUCKET_EMAIL) both declare the SAME
   // luna-sources `sources` id, so probing each independently fired the same
   // EXTERNAL health probe (fetch-health.py --probe <source>) twice per walk
   // for zero new information — wasteful against a quota-limited service

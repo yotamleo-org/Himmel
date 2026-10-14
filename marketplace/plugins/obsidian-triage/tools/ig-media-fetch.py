@@ -6,9 +6,8 @@ Escalation rung AFTER ig-embed-enrich.mjs. For IG clips whose caption rung
 failed OR whose body is still thin (no ### Transcript / ### Slides) and which
 carry no media_enriched_at: marker:
 
-  - Download reel/carousel media: Scrapling first, NO cookie (HIMMEL-4675);
-    gallery-dl with the burner-account cookies is the fallback only while
-    HIMMEL_MEDIA_COOKIES=on (HIMMEL-4708, default off).
+  - Download reel/carousel media with Scrapling, NO cookie (HIMMEL-4675). The
+    gallery-dl cookie fallback was removed (HIMMEL-4709).
   - Reels (video): ffmpeg -> mono 16kHz WAV -> local faster-whisper transcript.
   - Carousels (images): ffmpeg recompress <=1600px JPEG, copy into the vault at
     Clippings/_media/<clip-slug>/slide-NN.jpg, embed under ### Slides.
@@ -24,11 +23,11 @@ carry no media_enriched_at: marker:
     marker). Scoped-G-3 (reconstruction check + fm_raw hash immutability) +
     revert-on-failure.
 
-Downloader NEVER prints cookie contents. Media/audio/transcripts never leave the
+Media/audio/transcripts never leave the
 machine. Run under `uv run --python 3.12` (Windows python3 is a flaky Store stub).
 
 Exit codes: 0 run completed (may include failed/partial clips), 1 bad usage,
-2 preflight (missing gallery-dl/ffmpeg or cookie file), 3 scoped-G-3 verify
+2 preflight (missing ffmpeg or the Scrapling backend), 3 scoped-G-3 verify
 failed / reverted (used by --apply-digest and --flag-screen).
 """
 import argparse
@@ -257,8 +256,7 @@ def drop_ig_media_pending(fm_raw: str) -> str:
 # --- cache + preflight + download -----------------------------------------------
 def _emit_stderr_tail(label: str, stderr: str):
     """Emit a one-line, truncated (~200 char) tail of a failed subprocess'
-    stderr to sys.stderr so a silent tool failure (bad ffmpeg args, gallery-dl
-    error) is diagnosable instead of collapsing to a bare taxonomy token."""
+    stderr to sys.stderr so a silent tool failure (bad ffmpeg args) is diagnosable instead of collapsing to a bare taxonomy token."""
     tail = (stderr or "").strip().replace("\n", " ")
     if tail:
         print(f"{label}: {tail[-200:]}", file=sys.stderr)
@@ -268,17 +266,6 @@ def _home() -> Path:
     # Use HOME env var if set (for tests); fallback to Path.home()
     home = os.environ.get("HOME")
     return Path(home) if home else Path.home()
-
-
-def cookie_file() -> Path:
-    return _home() / ".luna" / "cookies" / "instagram.txt"
-
-
-def media_cookies_on() -> bool:
-    """HIMMEL-4708: the one switch for every cookie-backed media path. Default
-    off - Scrapling is primary; HIMMEL_MEDIA_COOKIES=on restores the gallery-dl
-    cookie fallback exactly as before."""
-    return (os.environ.get("HIMMEL_MEDIA_COOKIES") or "").strip().lower() == "on"
 
 
 def cache_root() -> Path:
@@ -323,103 +310,27 @@ def scrapling_permitted(vault: Path, url: str) -> bool:
 
 
 def preflight(scrapling: bool):
-    """ffmpeg always; gallery-dl + the cookie only when Scrapling (the primary,
-    cookieless backend) is unavailable - then they are the fallback. Returns
-    the cookie path, or None when gallery-dl is not usable. With the cookie
-    switch off (HIMMEL-4708) gallery-dl is never used and Scrapling is the only
-    backend."""
-    if not media_cookies_on():
-        missing = [b for b in ("ffmpeg",) if shutil.which(b) is None]
-        if missing or not scrapling:
-            print(
-                "ig-media-fetch: " +
-                ("missing required binaries: ffmpeg" if missing else
-                 "no cookieless backend, and the gallery-dl cookie fallback is "
-                 "opted out (HIMMEL_MEDIA_COOKIES=on turns it back on)") +
-                ("" if scrapling else SCRAPLING_HINT),
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        return None
-    missing = [b for b in ("gallery-dl", "ffmpeg")
-               if shutil.which(b) is None and (b == "ffmpeg" or not scrapling)]
-    if missing:
+    """ffmpeg and the Scrapling backend (the only backend, cookieless)."""
+    missing = [b for b in ("ffmpeg",) if shutil.which(b) is None]
+    if missing or not scrapling:
         print(
-            "ig-media-fetch: missing required binaries: " + ", ".join(missing) +
-            "\n  install: winget install yt-dlp.gallery-dl ; winget install "
-            "Gyan.FFmpeg   (or: uv tool install gallery-dl)" +
+            "ig-media-fetch: " +
+            ("missing required binaries: ffmpeg\n  install: winget install "
+             "Gyan.FFmpeg   (or: apt/brew install ffmpeg)" if missing else
+             "no cookieless Scrapling backend") +
             ("" if scrapling else SCRAPLING_HINT),
             file=sys.stderr,
         )
         sys.exit(2)
-    cf = cookie_file()
-    if scrapling:
-        return cf if shutil.which("gallery-dl") and cf.is_file() else None
-    if not cf.is_file():
-        print(
-            "ig-media-fetch: cookie file missing: " + str(cf) +
-            "\n  Export instagram.com cookies (logged into your BURNER account) "
-            "with the Cookie-Editor extension in Netscape format, save to that "
-            "path, then chmod 600 it. (Cookie contents are never printed.)" +
-            SCRAPLING_HINT,
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    return cf
 
 
 def _natural_key(p: Path):
     """Natural-sort key: split the filename into digit / non-digit runs and
-    compare digit runs numerically, so gallery-dl's UNPADDED carousel filenames
+    compare digit runs numerically, so UNPADDED carousel filenames
     order 1 < 2 < 10. A plain lexicographic sort puts 10.jpg before 2.jpg,
     corrupting slide order AND the mixed-carousel video item indices."""
     return [int(t) if t.isdigit() else t.lower()
             for t in re.split(r"(\d+)", p.name)]
-
-
-def download_media(ig: dict, cf: Path):
-    dest = cache_root() / ig["shortcode"]
-    if dest.exists():
-        shutil.rmtree(dest)   # a prior partial run must not leave stale files
-    dest.mkdir(parents=True)  # fresh dir: classify sees ONLY this download
-    url = f"https://www.instagram.com/{ig['kind']}/{ig['shortcode']}/"
-    # Find gallery-dl in PATH; on Windows, try .bat if available
-    gallery_dl = shutil.which("gallery-dl")
-    if not gallery_dl:
-        return None, "gallery_dl_missing"
-    cmd = [gallery_dl, "--cookies", str(cf), "-D", str(dest), url]
-    if not os.environ.get("IG_MEDIA_NO_SLEEP"):
-        # one throttle slot covers one run; space the run's own requests too
-        cmd[1:1] = ["--sleep-request", "4-9"]
-    slot = ig_throttle.acquire()
-    if not slot.ok:
-        return None, f"throttled:{slot.reason}"   # nothing sent; caller stops the batch
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=_t(DOWNLOAD_TIMEOUT))
-    except subprocess.TimeoutExpired:
-        ig_throttle.record(ok=False)
-        return None, "download_timeout"
-    blob = (proc.stderr + proc.stdout).lower()
-    if proc.returncode == 0:
-        ig_throttle.record(ok=True)
-    elif "404" in blob or "not found" in blob or "removed" in blob:
-        ig_throttle.record(ok=True)         # Instagram answered; the post is gone
-    else:
-        ig_throttle.record(ok=False, text=blob)   # a 429/challenge starts the cooldown
-    if proc.returncode != 0:
-        if "404" in blob or "not found" in blob or "removed" in blob:
-            return None, "removed"          # permanent
-        if "login" in blob or "challenge" in blob or "403" in blob:
-            return None, "login_wall"       # retryable
-        _emit_stderr_tail("gallery-dl", proc.stderr)
-        return None, "download_error"       # retryable
-    files = sorted((p for p in dest.iterdir()
-                    if p.is_file() and p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS),
-                   key=_natural_key)
-    if not files:
-        return None, "no_media"             # retryable
-    return files, None
 
 
 def download_media_scrapling(ig: dict, py: str):
@@ -482,27 +393,17 @@ def download_media_scrapling(ig: dict, py: str):
     return files, None, out.get("caption")
 
 
-def fetch_media(ig: dict, cf, scrapling):
-    """Scrapling first (cookieless); gallery-dl (cookie) is the fallback for
-    any Scrapling miss except a throttle stop, which ends the batch. With the
-    cookie switch off (HIMMEL-4708) a miss is returned as scrapling:<error>,
-    never retried with the cookie. Returns (files, error, caption, backend)."""
-    error = None
-    if scrapling:
-        files, error, caption = download_media_scrapling(ig, scrapling)
-        if files:
-            return files, None, caption, "scrapling"
-        if error.startswith("throttled:"):
-            return None, error, None, "scrapling"
-        if not media_cookies_on():
-            return (None, error if error == "removed" else f"scrapling:{error}",
-                    None, "scrapling")
-        if cf is None:
-            return None, error, None, "scrapling"
-    if cf is None:
-        return None, "gallery_dl_missing", None, "gallery-dl"
-    files, error = download_media(ig, cf)
-    return files, error, None, "gallery-dl"
+def fetch_media(ig: dict, scrapling):
+    """Scrapling, cookieless. A miss is returned as scrapling:<error> (deferred,
+    stays pending), except removed and a throttle stop, which end the clip or the
+    batch. Returns (files, error, caption, backend)."""
+    files, error, caption = download_media_scrapling(ig, scrapling)
+    if files:
+        return files, None, caption, "scrapling"
+    if error.startswith("throttled:"):
+        return None, error, None, "scrapling"
+    return (None, error if error == "removed" else f"scrapling:{error}",
+            None, "scrapling")
 
 
 def classify(files):
@@ -977,7 +878,7 @@ def enrich_batch(args, selected, matched_total, remaining):
     py = scrapling_python()
     scrapling = (py if py and scrapling_permitted(args.vault, "https://www.instagram.com/")
                  else None)
-    cf = preflight(bool(scrapling))
+    preflight(bool(scrapling))
     enriched = 0
     partial = 0
     failed = 0
@@ -994,7 +895,7 @@ def enrich_batch(args, selected, matched_total, remaining):
             if RATE_LIMIT_S > 0:
                 time.sleep(RATE_LIMIT_S)
             # Download media
-            files, error, caption, backend = fetch_media(ig, cf, scrapling)
+            files, error, caption, backend = fetch_media(ig, scrapling)
             if error and error.startswith("throttled:"):
                 # HIMMEL-4306: budget spent or cooldown - the clip is NOT failed,
                 # it stays pending for the next run once the throttle lifts.
@@ -1005,8 +906,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                 text, has_crlf = read_clip(p)
                 fm, fm_raw, body, present = parse_frontmatter(text)
                 permanent = error == "removed"      # 404/removed is permanent
-                # HIMMEL-4708: a Scrapling miss with the cookie fallback opted
-                # out is deferred (stays pending), naming the backend.
+                # A Scrapling miss is deferred (stays pending), naming the backend.
                 status = "deferred" if error.startswith("scrapling:") else "failed"
                 if write_markers(p, text, fm_raw, body, has_crlf,
                                  status=status, error=error, permanent=permanent,
@@ -1110,7 +1010,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                 failed += 1
                 continue
             # Caption: Scrapling's, unless the body already carries it (an
-            # ig-embed caption); gallery-dl metadata is not parsed (None).
+            # ig-embed caption); the caption comes from the Scrapling helper (or None).
             if caption and caption.strip()[:60] in body:
                 caption = None
             section = render_crawled(transcripts, slide_embeds, caption)
@@ -1317,7 +1217,7 @@ def main():
     if not selected:
         # No-op run (no Clippings/ dir, or zero selectable clips): report the
         # standard summary and exit 0 WITHOUT preflight - a run with nothing to
-        # do must not fail on missing gallery-dl/ffmpeg/cookies.
+        # do must not fail on missing ffmpeg/Scrapling.
         print(f"\nig-media-fetch: {len(selected)} selected, 0 enriched, "
               f"0 partial, 0 failed")
         sys.exit(0)

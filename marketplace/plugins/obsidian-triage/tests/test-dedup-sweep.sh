@@ -4,7 +4,7 @@
 # Scope:
 #   - script parses (node --check)
 #   - url-canonical.mjs lib parses + per-domain rules match
-#     harvest-clip-body-batch.py / playwright-crawl-x.mjs
+#     harvest-clip-body-batch.py
 #   - normaliseBodyForHash strips scaffold headers + collapses whitespace
 #   - 4-fixture vault: 2 URL-dupes + 2 content-dupes
 #       * --dry-run reports clusters, no writes

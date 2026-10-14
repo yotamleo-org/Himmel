@@ -89,59 +89,36 @@ class FetchHealthTests(unittest.TestCase):
             env = {"HOME": tmp, "PATH": ""}
             forbidden_http = lambda *args, **kwargs: self.fail("network should not run")
             forbidden_command = lambda *args, **kwargs: self.fail("command should not run")
-            self.assertEqual(fetch_health.probe_reddit(env, forbidden_http).status, "auth-or-cookie-expired")
-            self.assertEqual(fetch_health.probe_gallery_dl("instagram-media", "instagram.txt", "FETCH_HEALTH_INSTAGRAM_MEDIA_URL", env, forbidden_command).status, "auth-or-cookie-expired")
-            self.assertEqual(fetch_health.probe_gallery_dl("x-media", "twitter.txt", "FETCH_HEALTH_X_MEDIA_URL", env, forbidden_command).status, "auth-or-cookie-expired")
-            self.assertEqual(fetch_health.probe_twitter_cli(env, forbidden_command).status, "auth-or-cookie-expired")
-            self.assertEqual(fetch_health.probe_youtube(env, forbidden_http).status, "auth-or-cookie-expired")
-            self.assertIn("scrapling-venv", fetch_health.probe_youtube(env, forbidden_http).reason)
-            self.assertNotIn("youtube-state-from-chrome", fetch_health.probe_youtube(env, forbidden_http).reason)
             self.assertEqual(fetch_health.probe_bitbucket(env, forbidden_http).status, "auth-or-cookie-expired")
             self.assertEqual(fetch_health.probe_firecrawl(env, forbidden_http).status, "auth-or-cookie-expired")
 
-    def test_reddit_uses_netscape_cookie_and_validates_listing(self):
+    def test_reddit_is_probed_cookieless_and_validates_listing(self):
+        seen = {}
+
+        def http(url, **kwargs):
+            seen.update(kwargs)
+            body = json.dumps([{"data": {"children": [{"kind": "t3"}]}}, {"data": {"children": []}}]).encode()
+            return fetch_health.HttpResult(200, body)
+
         with tempfile.TemporaryDirectory() as tmp:
             cookie = Path(tmp) / ".luna" / "cookies" / "reddit.txt"
             cookie.parent.mkdir(parents=True)
             cookie.write_text("# Netscape HTTP Cookie File\n.reddit.com\tTRUE\t/\tTRUE\t2147483647\treddit_session\tsecret\n", encoding="utf-8")
-            seen = {}
+            result = fetch_health.probe_reddit({"HOME": tmp, "REDDIT_COOKIE_FILE": str(cookie)}, http)
+        self.assertEqual(result.status, "ok")
+        self.assertNotIn("Cookie", seen["headers"])
+        self.assertNotIn("allowed_auth_hosts", seen)
 
-            def http(url, **kwargs):
-                seen.update(kwargs)
-                body = json.dumps([{"data": {"children": [{"kind": "t3"}]}}, {"data": {"children": []}}]).encode()
-                return fetch_health.HttpResult(200, body)
-
-            result = fetch_health.probe_reddit({"HOME": tmp}, http)
-            self.assertEqual(result.status, "ok")
-            self.assertIn("reddit_session=secret", seen["headers"]["Cookie"])
-            self.assertEqual(seen["allowed_auth_hosts"], {"www.reddit.com", "reddit.com", "old.reddit.com"})
-
-    def test_reddit_html_login_wall_classifies_as_expired_cookie(self):
+    def test_reddit_without_any_cookie_file_is_probed_not_reported_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "reddit.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text("# Netscape HTTP Cookie File\n.reddit.com\tTRUE\t/\tTRUE\t2147483647\treddit_session\tsecret\n", encoding="utf-8")
-            result = fetch_health.probe_reddit({"HOME": tmp}, lambda *args, **kwargs: fetch_health.HttpResult(200, b"<html>login</html>"))
-            self.assertEqual(result.status, "auth-or-cookie-expired")
+            result = fetch_health.probe_reddit({"HOME": tmp}, lambda *a, **k: fetch_health.HttpResult(200, b"[]"))
+        self.assertNotIn("cookie file", result.reason)
 
-    def test_reddit_unreadable_cookie_file_classifies_expired_without_raising(self):
-        # Regression for HIMMEL-1470: a malformed (non-Netscape) cookie file is
-        # the precise case the except clause exists for — MozillaCookieJar.load()
-        # raises http.cookiejar.LoadError. The injected `http` callable parameter
-        # used to shadow the `http.cookiejar` module, so the handler evaluated
-        # `http.cookiejar.LoadError` at raise time, resolved `http` to the
-        # callable, and raised AttributeError instead of classifying. Importing
-        # LoadError by name removes the `http.` attribute access from the
-        # shadowed scope. probe_reddit is called DIRECTLY (not via run_probes)
-        # so the pre-fix AttributeError propagates instead of being masked.
+    def test_reddit_block_and_wall_are_blocked_not_expired_cookie(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "reddit.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text("this is not a netscape cookie file\n", encoding="utf-8")
-            forbidden_http = lambda *args, **kwargs: self.fail("network should not run")
-            result = fetch_health.probe_reddit({"HOME": tmp}, forbidden_http)
-            self.assertEqual(result.status, "auth-or-cookie-expired")
-            self.assertEqual(result.reason, "reddit cookie file unreadable")
+            env = {"HOME": tmp}
+            self.assertEqual(fetch_health.probe_reddit(env, lambda *a, **k: fetch_health.HttpResult(403, b"")).status, "blocked-or-rate-limited")
+            self.assertEqual(fetch_health.probe_reddit(env, lambda *a, **k: fetch_health.HttpResult(200, b"<html>login</html>")).status, "blocked-or-rate-limited")
 
     def test_auth_free_probes_validate_expected_response_shape(self):
         fxt = fetch_health.probe_fxtwitter({}, lambda *args, **kwargs: fetch_health.HttpResult(200, b'{"code":200,"tweet":{"id":"20"}}'))
@@ -150,77 +127,6 @@ class FetchHealthTests(unittest.TestCase):
         self.assertEqual(ig.status, "ok")
         blocked = fetch_health.probe_instagram_embed({}, lambda *args, **kwargs: fetch_health.HttpResult(200, b"login wall"))
         self.assertEqual(blocked.status, "blocked-or-rate-limited")
-
-    def test_gallery_dl_probe_is_simulation_with_real_cookie_path(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "instagram.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text("cookie", encoding="utf-8")
-            seen = []
-
-            def command(args, **kwargs):
-                seen.extend(args)
-                return subprocess.CompletedProcess(args, 0, "", "")
-
-            with patch.object(fetch_health.shutil, "which", return_value="/bin/gallery-dl"):
-                result = fetch_health.probe_gallery_dl("instagram-media", "instagram.txt", "FETCH_HEALTH_INSTAGRAM_MEDIA_URL", {"HOME": tmp, "PATH": "/bin"}, command)
-            self.assertEqual(result.status, "ok")
-            self.assertEqual(seen[:4], ["/bin/gallery-dl", "--simulate", "--cookies", str(cookie)])
-
-    def test_twitter_cli_uses_environment_credentials_without_reading_env_file(self):
-        seen = []
-
-        def command(args, **kwargs):
-            seen.extend(args)
-            return subprocess.CompletedProcess(args, 0, "{}", "")
-
-        env = {"TWITTER_AUTH_TOKEN": "token", "TWITTER_CT0": "ct0", "PATH": "/bin"}
-        with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
-            result = fetch_health.probe_twitter_cli(env, command)
-        self.assertEqual(result.status, "ok")
-        self.assertEqual(seen, ["/bin/twitter", "tweet", "20", "--json"])
-
-    def test_youtube_uses_playwright_storage_state_cookies(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = Path(tmp) / ".luna" / "playwright-state" / "youtube.json"
-            state.parent.mkdir(parents=True)
-            state.write_text(json.dumps({"cookies": [{"domain": ".youtube.com", "name": "SID", "value": "secret"}]}), encoding="utf-8")
-            seen = {}
-
-            def http(url, **kwargs):
-                seen.update(kwargs)
-                # Authenticated YouTube HTML carries the ytcfg LOGGED_IN:true
-                # marker; <title> alone is no longer enough (HIMMEL-1449 r2).
-                return fetch_health.HttpResult(200, b'<html><title>known video</title><script>ytcfg.set({"LOGGED_IN":true});</script></html>')
-
-            result = fetch_health.probe_youtube({"HOME": tmp}, http)
-            self.assertEqual(result.status, "ok")
-            self.assertEqual(seen["headers"]["Cookie"], "SID=secret")
-            self.assertEqual(seen["allowed_auth_hosts"], {"www.youtube.com", "youtube.com"})
-
-    def test_youtube_anonymous_html_without_auth_marker_classifies_as_expired(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = Path(tmp) / ".luna" / "playwright-state" / "youtube.json"
-            state.parent.mkdir(parents=True)
-            state.write_text(json.dumps({"cookies": [{"domain": ".youtube.com", "name": "SID", "value": "secret"}]}), encoding="utf-8")
-
-            def http_with(body):
-                return lambda *args, **kwargs: fetch_health.HttpResult(200, body)
-
-            # 200 anonymous public HTML: <title> present but no authenticated
-            # marker. The old <title>-only check classified this ok (false-green
-            # on an expired storage state); the LOGGED_IN:true requirement now
-            # routes both the marker-absent and LOGGED_IN:false bodies to
-            # auth-or-cookie-expired (HIMMEL-1449 r2).
-            no_marker = b"<html><title>known video</title></html>"
-            false_marker = b'<html><title>known video</title><script>ytcfg.set({"LOGGED_IN":false});</script></html>'
-            self.assertEqual(fetch_health.probe_youtube({"HOME": tmp}, http_with(no_marker)).status, "auth-or-cookie-expired")
-            self.assertEqual(fetch_health.probe_youtube({"HOME": tmp}, http_with(false_marker)).status, "auth-or-cookie-expired")
-            # HIMMEL-4677: the expired-state reason names the cookieless primary
-            # path (scrapling venv + yt-dlp), never a cookie-converter step.
-            reason = fetch_health.probe_youtube({"HOME": tmp}, http_with(no_marker)).reason
-            self.assertIn("scrapling-venv", reason)
-            self.assertNotIn("youtube-state-from-chrome", reason)
 
     def test_github_uses_gh_api(self):
         seen = []
@@ -236,7 +142,7 @@ class FetchHealthTests(unittest.TestCase):
 
     def test_run_command_scrubs_pythonhome_and_pythonpath_from_child_env(self):
         # HIMMEL-2149: a uv python stub injects its own PYTHONHOME into
-        # os.environ. Foreign CLIs (gallery-dl, twitter) embed a DIFFERENT
+        # os.environ. Foreign CLIs (gh) may embed a DIFFERENT
         # Python runtime, so inheriting it crashes them (SRE module mismatch).
         # run_command is the single chokepoint all command probes route
         # through — assert the env handed to subprocess.run lacks both keys.
@@ -246,13 +152,13 @@ class FetchHealthTests(unittest.TestCase):
             seen_env.update(env)
             return subprocess.CompletedProcess(args, 0, "", "")
 
-        outer_env = {"PATH": "/bin", "PYTHONHOME": "/uv/cpython", "PYTHONPATH": "/uv/lib", "TWITTER_AUTH_TOKEN": "tok"}
+        outer_env = {"PATH": "/bin", "PYTHONHOME": "/uv/cpython", "PYTHONPATH": "/uv/lib", "SOME_KEY": "tok"}
         with patch.object(fetch_health.subprocess, "run", fake_run):
             fetch_health.run_command(["some-cli"], env=outer_env)
         self.assertNotIn("PYTHONHOME", seen_env)
         self.assertNotIn("PYTHONPATH", seen_env)
         self.assertEqual(seen_env["PATH"], "/bin")
-        self.assertEqual(seen_env["TWITTER_AUTH_TOKEN"], "tok")
+        self.assertEqual(seen_env["SOME_KEY"], "tok")
         # The caller's own env dict (used for config lookups) is untouched.
         self.assertEqual(outer_env["PYTHONHOME"], "/uv/cpython")
         self.assertEqual(outer_env["PYTHONPATH"], "/uv/lib")
@@ -423,7 +329,7 @@ class FetchHealthTests(unittest.TestCase):
                 raise RuntimeError("stub failure")
 
             results = fetch_health.run_probes(env, http=broken_http, command=lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stub failure")), repo_root=Path(tmp))
-            self.assertEqual(set(results), {"reddit", "x-fxtwitter", "instagram-embed", "instagram-media", "instagram-scrapling", "x-media", "x-scrapling", "x-twitter-cli", "youtube-playwright", "youtube-scrapling", "github", "bitbucket", "firecrawl", "jina-reader"})
+            self.assertEqual(set(results), {"reddit", "x-fxtwitter", "instagram-embed", "instagram-scrapling", "x-scrapling", "youtube-scrapling", "github", "bitbucket", "firecrawl", "jina-reader"})
             self.assertTrue(all(result.status in fetch_health.STATUSES for result in results.values()))
 
     def test_probe_mode_matches_full_run_for_every_source(self):
@@ -477,24 +383,24 @@ class FetchHealthTests(unittest.TestCase):
                 with patch.dict(os.environ, env, clear=True):
                     stdout = io.StringIO()
                     with redirect_stdout(stdout):
-                        exit_code = fetch_health.main(["--probe", "reddit"])
+                        exit_code = fetch_health.main(["--probe", "github"])
             self.assertEqual(exit_code, 1)
             payload = json.loads(stdout.getvalue())
-            self.assertEqual(payload, {"status": "auth-or-cookie-expired", "reason": "reddit cookie file missing"})
+            self.assertEqual(payload, {"status": "transport-fail", "reason": "gh CLI missing"})
             self.assertFalse(state_file.exists())
 
     def test_probe_mode_exit_code_zero_when_status_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = {"HOME": tmp, "PATH": "/bin", "TWITTER_AUTH_TOKEN": "token", "TWITTER_CT0": "ct0", "HIMMEL_MEDIA_COOKIES": "on"}
-            completed = subprocess.CompletedProcess(["twitter"], 0, "{}", "")
+            env = {"HOME": tmp, "PATH": "/bin"}
+            completed = subprocess.CompletedProcess(["gh"], 0, "cli/cli\n", "")
             with patch.object(fetch_health, "primary_repo_root", return_value=root):
-                with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
+                with patch.object(fetch_health.shutil, "which", return_value="/bin/gh"):
                     with patch.object(fetch_health.subprocess, "run", return_value=completed):
                         with patch.dict(os.environ, env, clear=True):
                             stdout = io.StringIO()
                             with redirect_stdout(stdout):
-                                exit_code = fetch_health.main(["--probe", "x-twitter-cli"])
+                                exit_code = fetch_health.main(["--probe", "github"])
             self.assertEqual(exit_code, 0)
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload, {"status": "ok", "reason": "command probe succeeded"})
@@ -509,40 +415,35 @@ class FetchHealthTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".env").write_text(
-                "FIRECRAWL_API_KEY=fc-secret\n"
-                "TWITTER_AUTH_TOKEN=tok\n"
-                "TWITTER_CT0=ct0\n",
+                "FIRECRAWL_API_KEY=fc-secret\n",
                 encoding="utf-8",
             )
             firecrawl_body = b'{"success":true,"data":{"remainingCredits":109}}'
 
             def run_probe(source):
-                completed = subprocess.CompletedProcess(["twitter"], 0, "{}", "")
                 # main() reaches fetch_http through a DEFAULT ARGUMENT bound at
                 # def time, so patching the module attribute would not take and
                 # the probe would hit the real network. Stub the opener that
                 # fetch_http builds instead — that is the actual socket seam.
                 with patch.object(fetch_health, "primary_repo_root", return_value=root):
                     with patch.object(fetch_health.urllib.request, "build_opener", lambda *a, **k: _StubOpener(firecrawl_body)):
-                        with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
-                            with patch.object(fetch_health.subprocess, "run", return_value=completed):
-                                with patch.dict(os.environ, {"HOME": tmp, "PATH": "/bin", "HIMMEL_FIRECRAWL_LEDGER": str(root / "ledger.jsonl"), "HIMMEL_MEDIA_COOKIES": "on"}, clear=True):
-                                    stdout = io.StringIO()
-                                    with redirect_stdout(stdout):
-                                        code = fetch_health.main(["--probe", source])
+                        with patch.dict(os.environ, {"HOME": tmp, "PATH": "/bin", "HIMMEL_FIRECRAWL_LEDGER": str(root / "ledger.jsonl")}, clear=True):
+                            stdout = io.StringIO()
+                            with redirect_stdout(stdout):
+                                code = fetch_health.main(["--probe", source])
                 return code, json.loads(stdout.getvalue())
 
-            for source in ("firecrawl", "x-twitter-cli"):
+            for source in ("firecrawl",):
                 code, payload = run_probe(source)
                 self.assertNotIn("missing", payload["reason"], source)
                 self.assertEqual(payload["status"], "ok", source)
                 self.assertEqual(code, 0, source)
 
-            # Control: with the .env gone the same two probes must still report
+            # Control: with the .env gone the same probe must still report
             # the credential as missing — the fix must read the FILE, not
             # invent a default.
             (root / ".env").unlink()
-            for source, expected in (("firecrawl", "Firecrawl API key missing"), ("x-twitter-cli", "twitter CLI credentials missing")):
+            for source, expected in (("firecrawl", "Firecrawl API key missing"),):
                 code, payload = run_probe(source)
                 self.assertEqual(payload["status"], "auth-or-cookie-expired", source)
                 self.assertIn(expected, payload["reason"], source)
@@ -556,14 +457,14 @@ class FetchHealthTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".env").write_text(
-                "FIRECRAWL_API_KEY=first\nFIRECRAWL_API_KEY=second\nTWITTER_CT0=from-file\n",
+                "FIRECRAWL_API_KEY=first\nFIRECRAWL_API_KEY=second\nBITBUCKET_EMAIL=from-file\n",
                 encoding="utf-8",
             )
-            loaded = fetch_health.load_repo_env({"TWITTER_CT0": "", "TWITTER_AUTH_TOKEN": "live"}, root)
+            loaded = fetch_health.load_repo_env({"BITBUCKET_EMAIL": "", "BITBUCKET_API_TOKEN": "live"}, root)
             self.assertEqual(loaded["FIRECRAWL_API_KEY"], "first")
-            self.assertEqual(loaded["TWITTER_CT0"], "from-file")
+            self.assertEqual(loaded["BITBUCKET_EMAIL"], "from-file")
             # A live NON-empty process value still wins over the file.
-            self.assertEqual(loaded["TWITTER_AUTH_TOKEN"], "live")
+            self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "live")
 
     def test_load_repo_env_treats_a_whitespace_only_process_value_as_present(self):
         # HIMMEL-2549 CR round 5 codex-1: "empty" means ZERO-LENGTH, exactly
@@ -580,114 +481,17 @@ class FetchHealthTests(unittest.TestCase):
             loaded = fetch_health.load_repo_env({"FIRECRAWL_API_KEY": "   "}, root)
             self.assertEqual(loaded["FIRECRAWL_API_KEY"], "   ")
 
-    def test_twitter_cli_falls_back_to_the_luna_cookie_file(self):
-        # HIMMEL-2549: TWITTER_AUTH_TOKEN/TWITTER_CT0 ARE the auth_token/ct0
-        # cookies in ~/.luna/cookies/twitter.txt, the file the x-media probe
-        # already reads. Fall back to it rather than duplicating the secret.
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.x.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\tcookie-token\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tct0\tcookie-ct0\n",
-                encoding="utf-8",
-            )
-            seen = {}
-
-            def command(args, **kwargs):
-                seen["args"] = list(args)
-                seen["env"] = dict(kwargs["env"])
-                return subprocess.CompletedProcess(args, 0, "{}", "")
-
-            # env (lookup) vs. child_env (subprocess base) are now DISTINCT
-            # dicts (HIMMEL-2549 CR round 1 CRITIC-1) — child_env deliberately
-            # carries no HOME, so its absence in seen["env"] below proves the
-            # child got child_env, not the lookup dict.
-            env = {"HOME": tmp, "PATH": "/bin"}
-            child_env = {"PATH": "/bin"}
-            with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
-                result = fetch_health.probe_twitter_cli(env, command, child_env=child_env)
-            self.assertEqual(result.status, "ok")
-            self.assertEqual(seen["args"], ["/bin/twitter", "tweet", "20", "--json"])
-            # The CLI itself reads the pair from ITS environment, so the
-            # cookie-sourced values have to reach the child.
-            self.assertEqual(seen["env"]["TWITTER_AUTH_TOKEN"], "cookie-token")
-            self.assertEqual(seen["env"]["TWITTER_CT0"], "cookie-ct0")
-            self.assertNotIn("HOME", seen["env"])
-
-    def test_twitter_cli_env_pair_wins_over_the_cookie_file_per_key(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.x.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\tcookie-token\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tct0\tcookie-ct0\n",
-                encoding="utf-8",
-            )
-            seen = {}
-
-            def command(args, **kwargs):
-                seen["env"] = dict(kwargs["env"])
-                return subprocess.CompletedProcess(args, 0, "{}", "")
-
-            env = {"HOME": tmp, "PATH": "/bin", "TWITTER_AUTH_TOKEN": "env-token"}
-            child_env = {"PATH": "/bin"}
-            with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
-                result = fetch_health.probe_twitter_cli(env, command, child_env=child_env)
-            self.assertEqual(result.status, "ok")
-            self.assertEqual(seen["env"]["TWITTER_AUTH_TOKEN"], "env-token")
-            self.assertEqual(seen["env"]["TWITTER_CT0"], "cookie-ct0")
-            # The resolved TOKEN VALUE still comes from `env` (the lookup
-            # dict); the base it lands on is `child_env`, proven by HOME's
-            # absence — env and child_env are no longer the same dict.
-            self.assertNotIn("HOME", seen["env"])
-
-    def test_twitter_cli_missing_message_names_both_credential_sources(self):
-        # Control for the fallback: with NEITHER source present the probe must
-        # still classify, and the reason has to name the cookie file too or the
-        # operator only ever learns about half the fix.
-        with tempfile.TemporaryDirectory() as tmp:
-            forbidden_command = lambda *args, **kwargs: self.fail("command should not run")
-            result = fetch_health.probe_twitter_cli({"HOME": tmp, "PATH": ""}, forbidden_command)
-            self.assertEqual(result.status, "auth-or-cookie-expired")
-            self.assertIn("TWITTER_AUTH_TOKEN", result.reason)
-            self.assertIn("twitter.txt", result.reason)
-
-    def test_twitter_cli_ignores_a_cookie_file_missing_one_of_the_pair(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.x.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\tcookie-token\n",
-                encoding="utf-8",
-            )
-            forbidden_command = lambda *args, **kwargs: self.fail("command should not run")
-            result = fetch_health.probe_twitter_cli({"HOME": tmp, "PATH": ""}, forbidden_command)
-            self.assertEqual(result.status, "auth-or-cookie-expired")
-
     def test_child_process_probes_never_see_the_merged_dotenv_secrets(self):
         # CR round 1 CRITIC-1: build_probe_registry's merged .env dict
         # (`effective`) is for CONFIG LOOKUP only. A probe that shells out to
-        # a third-party binary (gallery-dl, gh) or a CLI reading its own
-        # environment (twitter) must receive the PRE-MERGE process env as its
-        # child environment, never `effective` — the checkout's real .env
-        # carries ~120 keys (ROUTER_PASS, WIFI_5_PASS, JIRA_API_TOKEN,
-        # CODEX_GITHUB_PERSONAL_ACCESS_TOKEN, several VM passwords...) that
-        # none of those children have any business seeing. ROUTER_PASS here
-        # stands in for that whole class of unrelated repo secret.
+        # a third-party binary (gh) must receive the PRE-MERGE process env as
+        # its child environment, never `effective` -- the checkout's real .env
+        # carries ~120 keys (ROUTER_PASS, WIFI_5_PASS, JIRA_API_TOKEN, ...)
+        # that no child has any business seeing. ROUTER_PASS stands in for that
+        # whole class of unrelated repo secret.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / ".env").write_text(
-                "TWITTER_AUTH_TOKEN=tok-from-env\nTWITTER_CT0=ct0-from-env\nROUTER_PASS=should-not-leak\n",
-                encoding="utf-8",
-            )
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text("placeholder", encoding="utf-8")
-
+            (root / ".env").write_text("FIRECRAWL_API_KEY=fc\nROUTER_PASS=should-not-leak\n", encoding="utf-8")
             seen_envs: dict[str, dict[str, str]] = {}
 
             def command(args, **kwargs):
@@ -697,91 +501,14 @@ class FetchHealthTests(unittest.TestCase):
             def which_stub(binary, path=None):
                 return f"/bin/{binary}"
 
-            base_env = {"HOME": tmp, "PATH": "/bin", "HIMMEL_MEDIA_COOKIES": "on"}
+            base_env = {"HOME": tmp, "PATH": "/bin"}
             with patch.object(fetch_health.shutil, "which", which_stub):
                 registry = fetch_health.build_probe_registry(
                     base_env, lambda *a, **k: fetch_health.HttpResult(200, b""), command, root
                 )
-                self.assertEqual(registry["x-media"]().status, "ok")
                 self.assertEqual(registry["github"]().status, "ok")
-                self.assertEqual(registry["x-twitter-cli"]().status, "ok")
 
-            self.assertNotIn("ROUTER_PASS", seen_envs["/bin/gallery-dl"])
             self.assertNotIn("ROUTER_PASS", seen_envs["/bin/gh"])
-            self.assertNotIn("ROUTER_PASS", seen_envs["/bin/twitter"])
-            # The twitter child still gets the resolved credential pair —
-            # that injection is load-bearing, only its base dict changed.
-            self.assertEqual(seen_envs["/bin/twitter"]["TWITTER_AUTH_TOKEN"], "tok-from-env")
-            self.assertEqual(seen_envs["/bin/twitter"]["TWITTER_CT0"], "ct0-from-env")
-
-    def test_twitter_cookie_credentials_survive_an_unreadable_cookie_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text("this is not a netscape cookie file\n", encoding="utf-8")
-            self.assertEqual(fetch_health.twitter_cookie_credentials({"HOME": tmp}), ("", ""))
-
-    def test_twitter_cookie_credentials_skips_an_empty_value_for_a_real_one_on_the_other_domain(self):
-        # CR round 4 codex-1: setdefault() kept the FIRST auth_token match
-        # even when its value was empty/stale, so a real credential for the
-        # OTHER supported domain (x.com vs twitter.com) later in the same jar
-        # was ignored — the probe reported "missing" with a usable pair
-        # sitting right there. First NON-EMPTY match per name must win.
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.twitter.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\t\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\treal-token\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tct0\treal-ct0\n",
-                encoding="utf-8",
-            )
-            self.assertEqual(fetch_health.twitter_cookie_credentials({"HOME": tmp}), ("real-token", "real-ct0"))
-
-    def test_twitter_cli_resolves_the_real_pair_when_the_first_domain_is_empty(self):
-        # End-to-end: the probe actually runs with the real pair rather than
-        # reporting credentials missing.
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.twitter.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\t\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\treal-token\n"
-                ".x.com\tTRUE\t/\tTRUE\t2147483647\tct0\treal-ct0\n",
-                encoding="utf-8",
-            )
-            seen = {}
-
-            def command(args, **kwargs):
-                seen["env"] = dict(kwargs["env"])
-                return subprocess.CompletedProcess(args, 0, "{}", "")
-
-            with patch.object(fetch_health.shutil, "which", return_value="/bin/twitter"):
-                result = fetch_health.probe_twitter_cli({"HOME": tmp, "PATH": "/bin"}, command)
-            self.assertEqual(result.status, "ok")
-            self.assertEqual(seen["env"]["TWITTER_AUTH_TOKEN"], "real-token")
-            self.assertEqual(seen["env"]["TWITTER_CT0"], "real-ct0")
-
-    def test_twitter_cookie_credentials_reports_missing_when_the_only_auth_token_is_empty(self):
-        # Negative control for the above: if the ONLY auth_token in the jar
-        # is empty, that must still resolve to missing — the fix is "skip
-        # empty candidates", not "invent a value from nowhere".
-        with tempfile.TemporaryDirectory() as tmp:
-            cookie = Path(tmp) / ".luna" / "cookies" / "twitter.txt"
-            cookie.parent.mkdir(parents=True)
-            cookie.write_text(
-                "# Netscape HTTP Cookie File\n"
-                "#HttpOnly_.twitter.com\tTRUE\t/\tTRUE\t2147483647\tauth_token\t\n"
-                ".twitter.com\tTRUE\t/\tTRUE\t2147483647\tct0\treal-ct0\n",
-                encoding="utf-8",
-            )
-            self.assertEqual(fetch_health.twitter_cookie_credentials({"HOME": tmp}), ("", "real-ct0"))
-            forbidden_command = lambda *args, **kwargs: self.fail("command should not run")
-            result = fetch_health.probe_twitter_cli({"HOME": tmp, "PATH": ""}, forbidden_command)
-            self.assertEqual(result.status, "auth-or-cookie-expired")
-            self.assertIn("TWITTER_AUTH_TOKEN", result.reason)
 
 
 class InstagramScraplingProbeTests(unittest.TestCase):
@@ -828,7 +555,7 @@ class InstagramScraplingProbeTests(unittest.TestCase):
         args, kwargs = self.seen[0]
         helper = self.tmp / "marketplace/plugins/obsidian-triage/tools/ig-scrapling-media.py"
         self.assertEqual(args[:2], [str(self.py), str(helper)])
-        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["instagram-media"], "--shortcode", "CG0UU3ylXnv"])
+        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["instagram"], "--shortcode", "CG0UU3ylXnv"])
         self.assertNotIn("--cookies", args)
 
     def test_login_wall_is_blocked(self):
@@ -845,8 +572,7 @@ class InstagramScraplingProbeTests(unittest.TestCase):
 
 
 class XYouTubeScraplingProbeTests(unittest.TestCase):
-    """HIMMEL-4677: the cookieless Scrapling paths X and YouTube try first, and
-    the cookie probes they demote to fallbacks."""
+    """HIMMEL-4677: the cookieless Scrapling paths X and YouTube use."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -855,8 +581,7 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         self.py = self.tmp / ".himmel" / "scrapling-venv" / "bin" / "python"
         self.bin = self.tmp / "bin"
         self.bin.mkdir()
-        # HIMMEL-4708: these pin the cookie fallback rungs on (today's behaviour).
-        self.env = {"HOME": str(self.tmp), "PATH": str(self.bin), "HIMMEL_MEDIA_COOKIES": "on"}
+        self.env = {"HOME": str(self.tmp), "PATH": str(self.bin)}
         self.seen = []
 
     def venv(self):
@@ -893,16 +618,16 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         args, _ = self.seen[0]
         helper = self.tmp / "marketplace/plugins/obsidian-triage/tools/x-scrapling-media.py"
         self.assertEqual(args[:2], [str(self.py), str(helper)])
-        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["x-media"], "--status-id", "266031293945503744"])
+        self.assertEqual(args[2:], ["--url", fetch_health.DEFAULT_URLS["x"], "--status-id", "266031293945503744"])
         self.assertNotIn("--cookies", args)
 
     def test_x_probe_tweet_still_carries_media(self):
         # HIMMEL-5407: the old pin (Twitter/1354143047324299264) lost its media, so
         # the helper correctly said no_media and the probe alerted nightly. The
         # fixture is the recorded api.fxtwitter.com response for the pinned tweet;
-        # re-record it when re-pinning DEFAULT_URLS["x-media"].
+        # re-record it when re-pinning DEFAULT_URLS["x"].
         fx = json.loads((Path(__file__).with_name("fixtures") / "x-media-probe-fxtwitter.json").read_text())["tweet"]
-        self.assertEqual(fetch_health.DEFAULT_URLS["x-media"].rstrip("/").split("/")[-1], fx["id"])
+        self.assertEqual(fetch_health.DEFAULT_URLS["x"].rstrip("/").split("/")[-1], fx["id"])
         self.assertTrue((fx.get("media") or {}).get("all"), "the pinned probe tweet must carry media")
 
     def test_x_login_wall_is_blocked(self):
@@ -938,33 +663,6 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         self.assertEqual(r.status, "transport-fail")
         self.assertIn("yt_dlp_error", r.reason)
 
-    def test_expired_youtube_state_is_not_red_when_the_scrapling_path_is_present(self):
-        self.venv()
-        self.ytdlp()
-        r = fetch_health.probe_youtube(self.env, lambda *a, **k: self.fail("no http"))
-        self.assertEqual(r.status, "ok")
-        self.assertIn("fallback", r.reason)
-        self.assertIn("storage state missing", r.reason)
-
-    def test_expired_youtube_state_stays_red_without_ytdlp(self):
-        self.venv()
-        r = fetch_health.probe_youtube(self.env, lambda *a, **k: self.fail("no http"))
-        self.assertEqual(r.status, "auth-or-cookie-expired")
-
-    def test_missing_x_cookie_is_not_red_when_the_scrapling_path_is_present(self):
-        self.venv()
-        r = self.probe("x-media", lambda *a, **k: self.fail("command should not run"))
-        self.assertEqual(r.status, "ok")
-        self.assertIn("fallback", r.reason)
-        self.assertIn("cookie file missing", r.reason)
-
-    def test_instagram_media_cookie_is_not_demoted(self):
-        self.venv()
-        r = fetch_health.probe_gallery_dl("instagram-media", "instagram.txt", "FETCH_HEALTH_INSTAGRAM_MEDIA_URL",
-                                          self.env, lambda *a, **k: self.fail("command should not run"))
-        self.assertEqual(r.status, "auth-or-cookie-expired")
-
-
 class InstagramGuardTests(unittest.TestCase):
     """HIMMEL-4306: the Instagram probes share the throttle and cache their
     verdict, so status/doctor runs stop hitting the operator's account."""
@@ -973,19 +671,9 @@ class InstagramGuardTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.tmp = Path(self._tmp.name)
-        cookie = self.tmp / ".luna" / "cookies" / "instagram.txt"
-        cookie.parent.mkdir(parents=True)
-        cookie.write_text("cookie", encoding="utf-8")
-        os.utime(cookie, (1, 1))  # old: a re-login (newer cookie) is tested separately
-        self.cookie = cookie
-        binary = self.tmp / "bin" / "gallery-dl"
-        binary.parent.mkdir()
-        binary.write_text("#!/bin/sh\n", encoding="utf-8")
-        binary.chmod(0o755)
         self.env = {
             "HOME": str(self.tmp),
-            "PATH": str(binary.parent),
-            "HIMMEL_MEDIA_COOKIES": "on",  # HIMMEL-4708: the gallery-dl rung is a cookie path
+            "PATH": "",
             "HIMMEL_IG_THROTTLE_STATE": str(self.tmp / "throttle.json"),
             "HIMMEL_IG_PROBE_CACHE": str(self.tmp / "probe-cache.json"),
             "HIMMEL_IG_MIN_GAP_S": "0",
@@ -1018,9 +706,9 @@ class InstagramGuardTests(unittest.TestCase):
     def test_cooldown_is_a_status(self):
         self.assertIn("cooldown", fetch_health.STATUSES)
 
-    def test_second_media_probe_is_served_from_the_cache(self):
-        first = self.probe("instagram-media")
-        second = self.probe("instagram-media")
+    def test_second_embed_probe_is_served_from_the_cache(self):
+        first = self.probe("instagram-embed")
+        second = self.probe("instagram-embed")
         self.assertEqual(first.status, "ok")
         self.assertEqual(second.status, "ok")
         self.assertEqual(self.calls, 1)
@@ -1032,48 +720,36 @@ class InstagramGuardTests(unittest.TestCase):
         self.assertEqual(self.calls, 1)
 
     def test_an_ok_verdict_expires_after_24h(self):
-        self.probe("instagram-media")
-        self.age_cache("instagram-media", 24 * 3600 + 60)
-        self.probe("instagram-media")
+        self.probe("instagram-embed")
+        self.age_cache("instagram-embed", 24 * 3600 + 60)
+        self.probe("instagram-embed")
         self.assertEqual(self.calls, 2)
 
     def test_a_failed_verdict_is_only_cached_for_an_hour(self):
         self.env["HIMMEL_IG_BACKOFF_BASE_S"] = "0"  # isolate the cache TTL from the throttle backoff
-        bad = self.command(returncode=1, stderr="connection reset")
-        self.assertEqual(self.probe("instagram-media", command=bad).status, "transport-fail")
-        self.probe("instagram-media", command=bad)
+        bad = self.http(503, b"")
+        self.assertEqual(self.probe("instagram-embed", http=bad).status, "transport-fail")
+        self.probe("instagram-embed", http=bad)
         self.assertEqual(self.calls, 1)
-        self.age_cache("instagram-media", 3600 + 60)
-        self.probe("instagram-media", command=bad)
-        self.assertEqual(self.calls, 2)
-
-    def test_a_cookie_newer_than_the_cache_forces_a_fresh_probe(self):
-        self.probe("instagram-media")
-        os.utime(self.cookie, None)  # re-login: the cookie file is now newer
-        self.age_cache("instagram-media", 10)
-        self.probe("instagram-media")
+        self.age_cache("instagram-embed", 3600 + 60)
+        self.probe("instagram-embed", http=bad)
         self.assertEqual(self.calls, 2)
 
     def test_429_starts_a_cooldown_and_later_probes_send_nothing(self):
         r = self.probe("instagram-embed", http=self.http(429, b""))
         self.assertEqual(r.status, "blocked-or-rate-limited")
         self.calls = 0
-        media = self.probe("instagram-media")
+        media = self.probe("instagram-scrapling")
         self.assertEqual(media.status, "cooldown")
         self.assertIn("cooldown", media.reason)
         embed = self.probe("instagram-embed")
         self.assertEqual(embed.status, "cooldown")
         self.assertEqual(self.calls, 0)
 
-    def test_a_gallery_dl_challenge_starts_a_cooldown(self):
-        r = self.probe("instagram-media", command=self.command(1, "challenge_required"))
-        self.assertEqual(r.status, "blocked-or-rate-limited")
-        self.assertEqual(self.probe("instagram-embed").status, "cooldown")
-
     def test_a_probe_never_waits_for_a_slot_it_reports_cooldown(self):
         self.env["HIMMEL_IG_MIN_GAP_S"] = "600"
         self.probe("instagram-embed")  # takes the slot
-        r = self.probe("instagram-media")
+        r = self.probe("instagram-scrapling")
         self.assertEqual(r.status, "cooldown")
         self.assertEqual(self.calls, 1)
 
@@ -1083,206 +759,15 @@ class InstagramGuardTests(unittest.TestCase):
         with patch.dict(os.environ, self.env, clear=False), patch.object(fetch_health, "primary_repo_root", return_value=self.tmp):
             buf = io.StringIO()
             with redirect_stdout(buf), redirect_stderr(io.StringIO()):
-                rc = fetch_health.main(["--probe", "instagram-media"])
+                rc = fetch_health.main(["--probe", "instagram-embed"])
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(buf.getvalue())["status"], "cooldown")
-
-    def test_a_failed_probe_surfaces_rc_and_a_stderr_tail(self):
-        # HIMMEL-4374: "command probe failed" hid the real error behind the cache.
-        r = self.probe("instagram-media", command=self.command(3, "[instagram][error] HttpError: '560 Server Error' for url: https://www.instagram.com/p/x/"))
-        self.assertEqual(r.status, "transport-fail")
-        self.assertIn("rc=3", r.reason)
-        self.assertIn("560 Server Error", r.reason)
-        cached = self.probe("instagram-media")
-        self.assertIn("560 Server Error", cached.reason)
-
-    def test_the_stderr_tail_never_carries_a_cookie_value(self):
-        secrets = ("SECRETSESSION0123456789abcdef", "csrfSECRET9876543210", "tok_AbCdEf0123456789XYZ")  # gitleaks:allow
-        stderr = (
-            f"error: Cookie: sessionid={secrets[0]}; csrftoken={secrets[1]}\n"
-            f"Authorization: Bearer {secrets[2]}\nsessionid: {secrets[0]} connection reset"
-        )
-        r = self.probe("instagram-media", command=self.command(1, stderr))
-        self.assertEqual(r.status, "auth-or-cookie-expired")
-        self.assertIn("rc=1; no error line", r.reason)
-        blobs =[r.reason, Path(self.env["HIMMEL_IG_PROBE_CACHE"]).read_text(encoding="utf-8"),
-                 Path(self.env["HIMMEL_IG_THROTTLE_STATE"]).read_text(encoding="utf-8")]
-        with patch.dict(os.environ, self.env, clear=False), patch.object(fetch_health, "primary_repo_root", return_value=self.tmp):
-            buf = io.StringIO()
-            with redirect_stdout(buf), redirect_stderr(io.StringIO()):
-                fetch_health.main(["--probe", "instagram-media"])
-        blobs.append(buf.getvalue())
-        for blob in blobs:
-            for secret in secrets:
-                self.assertNotIn(secret, blob)
-
-    def test_a_login_redirect_is_a_rejected_session_with_a_remedy(self):
-        r = self.probe("instagram-media", command=self.command(4, "[instagram][error] HTTP redirect to home page (https://www.instagram.com/)"))
-        self.assertEqual(r.status, "auth-or-cookie-expired")
-        self.assertIn("rc=4", r.reason)
-        self.assertIn("redirect to home page", r.reason)
-        self.assertIn("Cookie-Editor", r.reason)
-        self.assertIn("~/.luna/cookies/instagram.txt", r.reason)
-
-    def test_only_a_gallery_dl_error_line_is_surfaced_never_other_stderr(self):
-        # Allowlist, not a redactor: a secret in any non-error line cannot reach the reason.
-        err = (  # gitleaks:allow
-            "bad password=\"short secret\" token='abc'\n"
-            "Cookie: a=one; sid=secret\nSet-Cookie: x=y; k=v\n"
-            "{'sessionid': 'short-secret', \"csrftoken\": \"tiny\"}\n"
-            "Authorization: Basic dXNlcjpwYXNz\n"
-        )
-        r = self.probe("instagram-media", command=self.command(1, err))
-        self.assertIn("rc=1; no error line", r.reason)
-        for leaked in ("short", "abc", "one", "secret", "k=v", "x=y", "tiny", "dXNlcjpwYXNz", "Basic"):
-            self.assertNotIn(leaked, r.reason)
-
-    def test_an_error_line_never_carries_a_url_part(self):
-        err = ("[instagram][error] HttpError: '401' for url: https://user:SECRETUSERINFO@x/y?sessionid=SECRETQUERY&a=b#SECRETFRAG"  # gitleaks:allow
-               " and http://z/p")
-        r = self.probe("instagram-media", command=self.command(1, err))
-        self.assertIn("HttpError: '401'", r.reason)
-        for leaked in ("SECRETUSERINFO", "SECRETQUERY", "SECRETFRAG", "http"):
-            self.assertNotIn(leaked, r.reason)
-
-    def test_an_unrecognised_error_message_is_withheld(self):
-        # Only known-safe message shapes are surfaced; free text could carry a credential.
-        err = "[instagram][error] login failed sessionid=SECRETSESSION0123 password hunter2 csrf SECRETCSRF"  # gitleaks:allow
-        r = self.probe("instagram-media", command=self.command(1, err))
-        self.assertIn("rc=1; error message withheld", r.reason)
-        for leaked in ("SECRETSESSION0123", "hunter2", "SECRETCSRF", "login failed"):
-            self.assertNotIn(leaked, r.reason)
-
-    def test_the_error_line_is_bounded(self):
-        r = self.probe("instagram-media", command=self.command(1, "[instagram][error] " + "x" * 5000))
-        self.assertLess(len(r.reason), 400)
 
     def test_other_sources_are_not_throttled_or_cached(self):
         for _ in range(2):
             fetch_health.run_single_probe("x-fxtwitter", self.env, http=self.http(200, b'{"code":200,"tweet":{"id":"20"}}'),
                                           command=self.command(), repo_root=self.tmp)
         self.assertEqual(self.calls, 2)
-
-
-class ErrorLineAllSourcesTests(unittest.TestCase):
-    """HIMMEL-4392: classify_command is shared, so every command probe's reason
-    carries the error line; pin the redaction for each, not only instagram."""
-
-    SECRET = "SECRETVALUE0123"  # gitleaks:allow
-
-    def run_probe(self, source, stderr, returncode=1):
-        with tempfile.TemporaryDirectory() as tmp:
-            cookies = Path(tmp) / ".luna" / "cookies"
-            cookies.mkdir(parents=True)
-            (cookies / "twitter.txt").write_text("cookie", encoding="utf-8")
-            env = {"HOME": tmp, "PATH": "/bin", "TWITTER_AUTH_TOKEN": "t", "TWITTER_CT0": "c"}
-
-            def command(args, **kwargs):
-                return subprocess.CompletedProcess(args, returncode, "", stderr)
-
-            with patch.object(fetch_health.shutil, "which", return_value="/bin/tool"):
-                if source == "x-media":
-                    return fetch_health.probe_gallery_dl("x-media", "twitter.txt", "FETCH_HEALTH_X_MEDIA_URL", env, command)
-                if source == "x-twitter-cli":
-                    return fetch_health.probe_twitter_cli(env, command)
-                return fetch_health.probe_github(env, command)
-
-    def test_each_command_probe_surfaces_a_safe_error_line_without_url_parts(self):
-        err = f"[twitter][error] HttpError: '401' for url: https://u:{self.SECRET}@x/y?sessionid={self.SECRET}"
-        for source in ("x-media", "x-twitter-cli", "github"):
-            with self.subTest(source=source):
-                r = self.run_probe(source, err)
-                self.assertIn("HttpError: '401'", r.reason)
-                self.assertNotIn(self.SECRET, r.reason)
-
-    def test_each_command_probe_withholds_a_credential_bearing_message(self):
-        for line in (
-            f"[twitter][error] sessionid={self.SECRET}",
-            f"[twitter][error] token={self.SECRET} cookie={self.SECRET}",
-            f"[twitter][error] HttpError: '401' for url: https://h/?a=b and sessionid={self.SECRET}",
-        ):
-            for source in ("x-media", "x-twitter-cli", "github"):
-                with self.subTest(source=source, line=line):
-                    r = self.run_probe(source, line)
-                    self.assertIn("error message withheld", r.reason)
-                    self.assertNotIn(self.SECRET, r.reason)
-
-    def test_non_scheme_url_forms_are_never_surfaced(self):
-        for url in (
-            f"//user:{self.SECRET}@host/p",
-            f"host.example/p?a={self.SECRET}",
-            f"/api/v1/x/?a={self.SECRET}",
-            f"https%3A%2F%2Fh%2F%3Fs%3D{self.SECRET}",
-        ):
-            for source in ("x-media", "x-twitter-cli", "github"):
-                with self.subTest(source=source, url=url):
-                    r = self.run_probe(source, f"[twitter][error] HttpError: '401' for url: {url}")
-                    self.assertNotIn(self.SECRET, r.reason)
-                    self.assertNotIn("/api/v1", r.reason)
-
-
-class MediaCookieOptOutTests(unittest.TestCase):
-    """HIMMEL-4708: with HIMMEL_MEDIA_COOKIES not "on" (the default) the
-    cookie-backed probes report "off" without touching a cookie, a binary or
-    the network; reddit has no cookieless path and stays probed."""
-
-    COOKIE_SOURCES = ("instagram-media", "x-media", "x-twitter-cli", "youtube-playwright")
-
-    def _registry(self, tmp: str, extra: dict[str, str]):
-        home = Path(tmp)
-        for name in ("instagram.txt", "twitter.txt"):
-            cookie = home / ".luna" / "cookies" / name
-            cookie.parent.mkdir(parents=True, exist_ok=True)
-            cookie.write_text("# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t1\tsessionid\texpired\n", encoding="utf-8")
-        state = home / ".luna" / "playwright-state" / "youtube.json"
-        state.parent.mkdir(parents=True, exist_ok=True)
-        state.write_text('{"cookies": []}', encoding="utf-8")
-        calls: list[str] = []
-
-        def command(args, **kwargs):
-            calls.append(args[0])
-            return subprocess.CompletedProcess(args, 1, "", "[instagram][error] HttpError: '401 Unauthorized'")
-
-        def http(url, **kwargs):
-            calls.append(url)
-            return fetch_health.HttpResult(401, b"")
-
-        env = {"HOME": tmp, "PATH": "/bin", "TWITTER_AUTH_TOKEN": "t", "TWITTER_CT0": "c",
-               "HIMMEL_IG_THROTTLE_STATE": str(home / "t.json"), "HIMMEL_IG_PROBE_CACHE": str(home / "c.json"), **extra}
-        with patch.object(fetch_health.shutil, "which", lambda b, path=None: f"/bin/{b}"):
-            registry = fetch_health.build_probe_registry(env, http, command, home)
-            results = {s: registry[s]() for s in self.COOKIE_SOURCES}
-        return results, calls
-
-    def test_opted_out_cookie_sources_report_off_without_any_call(self):
-        for extra in ({}, {"HIMMEL_MEDIA_COOKIES": "off"}):
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(extra=extra):
-                results, calls = self._registry(tmp, extra)
-                self.assertEqual(calls, [])
-                for source, result in results.items():
-                    self.assertEqual(result.status, "off", source)
-                    self.assertIn("HIMMEL_MEDIA_COOKIES", result.reason, source)
-
-    def test_switch_on_keeps_todays_probes(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            results, calls = self._registry(tmp, {"HIMMEL_MEDIA_COOKIES": "on"})
-            self.assertTrue(calls)
-            for source, result in results.items():
-                self.assertNotEqual(result.status, "off", source)
-
-    def test_probe_mode_exits_zero_for_off_and_reddit_stays_on(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(fetch_health, "primary_repo_root", return_value=Path(tmp)):
-                with patch.dict(os.environ, {"HOME": tmp, "PATH": ""}, clear=True):
-                    stdout = io.StringIO()
-                    with redirect_stdout(stdout):
-                        code = fetch_health.main(["--probe", "instagram-media"])
-                    self.assertEqual(code, 0)
-                    self.assertEqual(json.loads(stdout.getvalue())["status"], "off")
-                    stdout = io.StringIO()
-                    with redirect_stdout(stdout):
-                        fetch_health.main(["--probe", "reddit"])
-                    self.assertEqual(json.loads(stdout.getvalue())["status"], "auth-or-cookie-expired")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Tests for x-media-fetch.py (HIMMEL-1226). Hermetic: NO live network, NO
-# gallery-dl/ffmpeg/whisper. The tool runs under `uv run --python 3.12 python`
+# ffmpeg/whisper. The only fetch backend is cookieless
+# Scrapling + curl: an adapter stands in for the Scrapling helper and a stub curl
+# serves the files, and the "gallery-dl" stubs are kept only as the fixture
+# producers behind that adapter (the real gallery-dl is never called). The tool runs under `uv run --python 3.12 python`
 # (Windows bare python3 is a flaky Store stub); the harness prepends a "$tmp/bin"
 # dir carrying stubs for uv / gallery-dl / ffmpeg (bash + Windows .bat twins,
 # because win32 python's subprocess/shutil.which resolves .bat via PATHEXT but
@@ -72,7 +75,7 @@ exit /b 9
 STUB
 
 export PATH="$tmp/bin:$PATH"
-# HIMMEL-4708: this suite exercises the gallery-dl cookie path - pin the switch on.
+# The old cookie switch is exported ON to prove it reaches nothing.
 export HIMMEL_MEDIA_COOKIES=on
 
 run_tool() { PYTHONUTF8=1 uv run --python 3.12 python "$TOOL" "$@"; }
@@ -143,6 +146,61 @@ STUB
 chmod +x "$tmp/bin/fxt-stub"
 export X_MEDIA_FXT_CMD="$tmp/bin/fxt-stub"
 export X_TEST_VTT="$SCRIPT_DIR/fixtures/x-subs/sample.en.vtt"
+
+# --- Scrapling adapter + stub curl -----------------------------
+# x-adapter replaces the Scrapling helper: it runs the current "gallery-dl"
+# fixture stub into a stage dir and reports the media it produced as items with
+# CDN URLs; the stub curl copies each from the stage. A stub failure maps to the
+# helper's statuses (404 -> removed, login -> login_wall, else error).
+export ADAPTER_STAGE="$tmp/stage"; mkdir -p "$ADAPTER_STAGE"
+cat > "$tmp/x-adapter.py" <<'PY'
+import json, os, re, sys
+stage, sid = sys.argv[1], sys.argv[2]
+key = lambda n: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", n)]
+items = []
+for n in sorted(os.listdir(stage), key=key):
+    ext = os.path.splitext(n)[1].lower()
+    if ext in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".webm"):
+        kind = "video" if ext in (".mp4", ".webm") else "image"
+        host = "video.twimg.com" if kind == "video" else "pbs.twimg.com"
+        items.append({"kind": kind, "url": f"https://{host}/v/{sid}/{n}"})
+if items:
+    print(json.dumps({"status": "ok", "items": items}))
+else:
+    print(json.dumps({"status": "no_media", "detail": "stub"}))
+    sys.exit(4)
+PY
+cat > "$tmp/x-adapter" <<'STUB'
+#!/usr/bin/env bash
+shift
+url=""; sid=""
+while [ $# -gt 0 ]; do case "$1" in --url) shift; url="$1" ;; --status-id) shift; sid="$1" ;; esac; shift; done
+stage="$ADAPTER_STAGE/$sid"; rm -rf "$stage"; mkdir -p "$stage"
+err="$(gallery-dl -D "$stage" "$url" 2>&1 >/dev/null)"; rc=$?
+if [ $rc -ne 0 ]; then
+  case "$err" in
+    *404*) echo '{"status": "removed", "detail": "stub"}'; exit 5 ;;
+    *login*) echo '{"status": "login_wall", "detail": "stub"}'; exit 4 ;;
+    *) echo '{"status": "error", "detail": "stub"}'; exit 1 ;;
+  esac
+fi
+exec python3 "$ADAPTER_PY" "$stage" "$sid"
+STUB
+chmod +x "$tmp/x-adapter"
+export ADAPTER_PY="$tmp/x-adapter.py" X_SCRAPLING_PYTHON="$tmp/x-adapter"
+cat > "$tmp/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+    https://*) cp "$ADAPTER_STAGE/${1#*/v/}" "$out" ;;
+  esac
+  shift
+done
+exit 0
+STUB
+chmod +x "$tmp/bin/curl"
 
 # gallery-dl stub factory: emits the named files into -D dest (bash + .bat).
 # shellcheck disable=SC2016
@@ -301,18 +359,15 @@ done
 # --- HOME + cookies for Tests 3+ -------------------------------------------
 HOME="$tmp/home"; mkdir -p "$HOME/.luna/cookies"; export HOME
 
-# --- Test 3: missing cookie file -> exit 2 with twitter.txt + Cookie-Editor -
-echo "Test 3: missing cookie file"
+# --- Test 3: no Scrapling backend -> exit 2 naming the venv install --------
+echo "Test 3: no Scrapling backend"
 emit_gallery_dl 1.jpg
-run_tool "$V" >"$tmp/no-cookie.out" 2>"$tmp/no-cookie.err"
-assert "missing cookie exit 2" 2 "$?"
-grep -q "twitter.txt" "$tmp/no-cookie.err" && a=ok || a=no
-assert "stderr mentions twitter.txt" ok "$a"
-grep -q "Cookie-Editor" "$tmp/no-cookie.err" && a=ok || a=no
-assert "stderr mentions Cookie-Editor" ok "$a"
-
-echo "DUMMY_COOKIES" > "$HOME/.luna/cookies/twitter.txt"
-chmod 600 "$HOME/.luna/cookies/twitter.txt"
+X_SCRAPLING_PYTHON="" HOME="$tmp/no-venv-home" run_tool "$V" >"$tmp/no-scrapling.out" 2>"$tmp/no-scrapling.err"
+assert "no scrapling backend exit 2" 2 "$?"
+grep -q "scrapling-venv" "$tmp/no-scrapling.err" && a=ok || a=no
+assert "stderr names the scrapling venv install" ok "$a"
+grep -q "twitter.txt\|Cookie-Editor" "$tmp/no-scrapling.err" && a=named || a=absent
+assert "stderr no longer asks for a cookie file" absent "$a"
 
 # --- Test 4: image download -> slide write + outcome + pending-digest -------
 echo "Test 4: image download -> vault slides"
@@ -398,8 +453,8 @@ VL="$tmp/vault-login"; make_x_vault "$VL" 888 "$VIDEO_MEDIA"
 fail_gallery_dl "login required"
 run_tool "$VL" >"$tmp/login.out" 2>"$tmp/login.err"
 assert "login run exit 0" 0 "$?"
-grep -q '^media_last_error: login_wall$' "$VL/Clippings/clip.md" && a=ok || a=no
-assert "login last_error login_wall (retryable)" ok "$a"
+grep -q '^media_last_error: scrapling:login_wall$' "$VL/Clippings/clip.md" && a=ok || a=no
+assert "login last_error scrapling:login_wall (retryable)" ok "$a"
 grep -q '^media_enriched_at:' "$VL/Clippings/clip.md" && a=present || a=absent
 assert "login enriched_at NOT set (retryable)" absent "$a"
 grep -q '^x_media_pending: true$' "$VL/Clippings/clip.md" && a=ok || a=no

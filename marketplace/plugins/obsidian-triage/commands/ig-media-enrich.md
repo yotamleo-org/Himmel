@@ -17,7 +17,7 @@ these clips with `ig_media_pending: true`; this rung is what drains them.
 This command is **lean-invoke (HIMMEL-177)** - run it manually or by the
 harvest cadence, like the `playwright-crawl-*` rungs. It is deliberately NOT
 auto-fired from `/harvest-clips` (the download + local-whisper path is
-expensive and needs burner-account cookies). Default: process the first 10
+expensive). Default: process the first 10
 selected clips (`--limit 10`; IG rate-limits aggressively). Pass `--limit 0` to
 process every selected clip (e.g. the one-time backfill). When the `--limit`
 cap leaves clips unprocessed, the tool prints an
@@ -69,17 +69,14 @@ All paths are quoted; forward-slash paths throughout.
 ### Step 1 - Preflight + dry-run gate
 
 Confirm `<vault>/Clippings/` exists (else exit 0, nothing to enrich). The fetch
-tool owns its own binary/cookie preflight: it exits 2 if `ffmpeg` is missing,
-or if neither media backend is usable. The primary backend (HIMMEL-4675) is the
+tool owns its own binary preflight: it exits 2 if `ffmpeg` is missing,
+or if the media backend is unusable. The only backend (HIMMEL-4675) is the
 cookieless Scrapling helper `tools/ig-scrapling-media.py`, run with the
 `~/.himmel/scrapling-venv` python (or `IG_SCRAPLING_PYTHON`); it is the
 `local-headless` backend under the HIMMEL-4361 routing, so `HARVEST_SCRAPE_DENY`
-and `.harvest-backends` can switch it off. The fallback is `gallery-dl` with the
-burner-account cookie file (`~/.luna/cookies/instagram.txt`), which is needed
-only when Scrapling is unavailable or fails for a clip, and only while
-`HIMMEL_MEDIA_COOKIES=on` (HIMMEL-4708; default off: a Scrapling miss is
-recorded as deferred, and with no Scrapling venv preflight exits 2 naming the
-switch). Surface that exit-2 message to the
+and `.harvest-backends` can switch it off. A Scrapling miss is recorded as
+deferred, and with no Scrapling venv preflight exits 2 naming `scrapling-venv`
+(the cookie fallback was removed, HIMMEL-4709). Surface that exit-2 message to the
 operator verbatim and stop - do NOT attempt any per-clip work when preflight
 fails. Under `--dry-run`, run the fetch tool with `--dry-run` only (Step 2's
 dry-run form); take no other action.
@@ -88,13 +85,12 @@ dry-run form); take no other action.
 
 Run the fetch tool over the batch via `Bash`. It selects the
 `ig_media_pending:` / failed / thin IG clips, downloads each reel/carousel via
-Scrapling (no cookie; media fetched from the IG CDN with curl), falling back to
-`gallery-dl` (cookies never printed), transcribes reels locally, recompresses
+Scrapling (no cookie; media fetched from the IG CDN with curl), transcribes reels locally, recompresses
 carousel slides into `Clippings/_media/<clip-slug>/slide-NN.jpg`, and writes ONE
 `## Crawled content` section per clip under the DISTINCT `media_*` marker
 namespace (`media_enriched_at` / `media_enrichment_status` / `media_last_error`
 - never ig-embed's `enriched_at` / `enrichment_status`), plus
-`ig_media_backend: scrapling|gallery-dl` naming the backend that fetched the
+`ig_media_backend: scrapling` naming the backend that fetched the
 media (HIMMEL-4684; written on every ok or partial write, kept on a failed
 retry). On a verified
 enrichment success the tool clears `ig_media_pending` on the same frontmatter

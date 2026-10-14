@@ -45,12 +45,6 @@ const SECRET_TO_LUNA_SOURCE = {
   BITBUCKET_EMAIL: 'bitbucket',
   FIRECRAWL_API_KEY: 'firecrawl',
   FIRECRAWL_BASE_URL: 'firecrawl',
-  INSTAGRAM_COOKIE_FILE: 'instagram-media',
-  REDDIT_COOKIE_FILE: 'reddit',
-  TWITTER_AUTH_TOKEN: 'x-twitter-cli',
-  TWITTER_CT0: 'x-twitter-cli',
-  TWITTER_COOKIE_FILE: 'x-media',
-  YOUTUBE_STORAGE_STATE: 'youtube-playwright',
 };
 
 // mktemp-style templated temp dir per CLAUDE.md's own known-findings rule:
@@ -149,8 +143,8 @@ test('an unknown probe id fails LOUDLY, not silently (the whole point of carryin
 // PROBES" check above is satisfied by every luna-sources secret regardless
 // of whether that secret's own fetch-health.py source is actually in the
 // luna-sources item's `sources` list -- BITBUCKET_EMAIL/BITBUCKET_API_TOKEN
-// and TWITTER_AUTH_TOKEN/TWITTER_CT0 named probe "luna-sources" while their
-// sources (bitbucket, x-twitter-cli) were absent from that list, so the
+// named probe "luna-sources" while their
+// sources (bitbucket) were absent from that list, so the
 // manifest promised validation that never ran. Assert the second link too.
 test('every luna-sources secret\'s fetch-health.py source is actually in install-manifest.json\'s luna-sources.sources list', () => {
   const secrets = loadRealSecrets();

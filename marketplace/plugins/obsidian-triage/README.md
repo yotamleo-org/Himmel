@@ -17,34 +17,19 @@ Autonomous triage + synthesis for Obsidian Web Clipper output.
 
 Together: harvest → **enrich** (X body-fill via `tools/fxtwitter-enrich.mjs` — see `tools/README.md`) → tag → link → action-item → promote-suggest → mark processed → synthesize patterns → graduate to `_done/` → over time, propose structure → roadmap. `Clippings/` acts as an inbox that drains as clips complete the chain. The vault learns from accumulated clips.
 
-The **enrich** stage runs `fxtwitter-enrich.mjs` (X), `ig-embed-enrich.mjs` (Instagram) and `reddit-enrich.mjs` (Reddit — cookie-authenticated `.json`, burner-account cookies at `~/.luna/cookies/reddit.txt`) between harvest and triage. For X it fills a thin telegram bare-URL stub's `## The Idea` from the tweet text and de-anonymizes `author`/`title` (the `x.com/i/status/<id>` forwards), so triage tags a rich body on its first pass. The same enrich also fires **inline** at `telegram-clip` filing time (best-effort) so group links are usually born rich. Authenticated long tail (protected tweets, login-walled IG) defers to the `playwright-crawl-*` rung. Reddit's anonymous `.json` is 403-blocked (verified 2026-07-08); the rung uses exported burner cookies. If cookies prove brittle, the escalation path is a free official OAuth script app (100 QPM, app registration) — documented here, not built; `--firecrawl-thin` treating reddit as article-like is the noisy, credit-metered last resort.
+The **enrich** stage runs `fxtwitter-enrich.mjs` (X) and `ig-embed-enrich.mjs` (Instagram) between harvest and triage. For X it fills a thin telegram bare-URL stub's `## The Idea` from the tweet text and de-anonymizes `author`/`title` (the `x.com/i/status/<id>` forwards), so triage tags a rich body on its first pass. The same enrich also fires **inline** at `telegram-clip` filing time (best-effort) so group links are usually born rich. Reddit has no dedicated enrich rung: its thin bodies take the Scrapling `local-headless` ladder in `harvest-clip-body-batch.py` (cookieless, HIMMEL-4709), and `scripts/web/fetch-url.sh` routes reddit hosts through the stealth fetch.
 
-### Media cookie switch: `HIMMEL_MEDIA_COOKIES` (HIMMEL-4708)
+### Cookie-backed media paths removed (HIMMEL-4709)
 
-Every cookie-backed media path is **off by default**. Set
-`HIMMEL_MEDIA_COOKIES=on` (environment variable; trimmed, case-insensitive) to
-turn them back on, which restores the earlier fallback behaviour exactly. Nothing is
-deleted while it is off: cookie files and storage state stay where they are,
-and none of their cookies is sent.
-
-| Consumer | While off |
-|---|---|
-| `tools/ig-media-fetch.py`, `tools/x-media-fetch.py` | Scrapling only, never the `gallery-dl --cookies` fallback; a Scrapling miss is recorded as deferred with the error `scrapling:<reason>`; with no Scrapling venv the preflight exits 2 naming the switch |
-| `tools/playwright-crawl-youtube.mjs` | Scrapling + yt-dlp only, never the logged-in Playwright fallback; a miss is recorded as partial (or left retryable on a login wall); with no Scrapling venv it exits 2 naming the switch |
-| `tools/twitter-cli-enrich.mjs` | Exits 2: its burner `auth_token`/`ct0` are cookies. `fxtwitter-enrich.mjs` is the cookieless path |
-| `tools/harvest-clip-body-batch.py` (`local-headless`) | Sends no jar cookie for `instagram.com`, `x.com`, `twitter.com` or `youtube.com`; other hosts keep their jar cookies |
-| `scripts/luna/fetch-health.py` | `instagram-media`, `x-media`, `x-twitter-cli`, `youtube-playwright` report `off` (not probed, exit 0, not red); doctor C16 and the `himmelctl` secrets walk say off, with no WARN |
-
-These stay on whatever the switch says:
-
-- `tools/reddit-enrich.mjs` has no cookieless path, because Reddit's anonymous
-  `.json` is 403-blocked. Its cookie is the only way the rung works, and the
-  `reddit` health probe stays live.
-- `tools/lib/cookie-jar.mjs` only parses a jar. Each caller decides whether
-  to read one.
-- `tools/lib/follow-web.mjs` sends no cookies.
-- `tools/playwright-auth-save.mjs` and `scripts/luna/youtube-state-from-chrome.py`
-  are operator-run savers that write the state. They are not a fetch path.
+The Instagram, X, YouTube and Reddit cookie paths are gone, along with the
+`HIMMEL_MEDIA_COOKIES` switch (HIMMEL-4708) that gated them: `gallery-dl --cookies`,
+`twitter-cli-enrich.mjs`, `reddit-enrich.mjs`, `playwright-auth-save.mjs`,
+`playwright-crawl-x.mjs`, the logged-in YouTube Playwright fallback,
+`youtube-state-from-chrome.py` and `lib/cookie-jar.mjs`. Every media fetch is
+Scrapling (plus yt-dlp subtitles) and no cookie is sent anywhere. A Scrapling miss is
+recorded as deferred with the error `scrapling:<reason>`; with no Scrapling venv
+the preflight exits 2 naming `scrapling-venv`. Cookie and storage-state files
+from earlier setups are no longer read; delete them by hand if present.
 
 ### Daily fetch health (HIMMEL-1449)
 
@@ -56,15 +41,12 @@ The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
 
 | Source integration | Real authentication artifact | Daily probe |
 |---|---|---|
-| Reddit enrichment | Netscape cookies at `~/.luna/cookies/reddit.txt` (`REDDIT_COOKIE_FILE` override) | Known public thread `.json?raw_json=1`, validated as a Reddit listing |
+| Reddit thread fetch | None | Known public thread `.json?raw_json=1`, validated as a Reddit listing (a 403 reads `blocked-or-rate-limited`) |
 | X thin-clip enrichment | None | FxTwitter API response for a known tweet |
 | Instagram caption enrichment | None | Instagram `embed/captioned` response for a known post |
-| Instagram media enrichment | Netscape cookies at `~/.luna/cookies/instagram.txt` | `gallery-dl --simulate --cookies ...` against a known post |
-| X media enrichment, primary (`x-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` (HIMMEL-4677) | `tools/x-scrapling-media.py` against a known tweet |
-| X media enrichment, fallback (`x-media`) | Netscape cookies at `~/.luna/cookies/twitter.txt` | `gallery-dl --simulate --cookies ...` against a known tweet; a missing or expired cookie reports `ok` ("fallback only") while the scrapling venv is installed |
-| X CLI enrichment | `TWITTER_AUTH_TOKEN` + `TWITTER_CT0` (process env or the primary checkout's `.env`), falling back per key to `auth_token`/`ct0` in `~/.luna/cookies/twitter.txt` | `twitter tweet 20 --json` |
-| YouTube enrichment, primary (`youtube-scrapling`) | None: the scrapling venv plus `yt-dlp` on PATH (HIMMEL-4677) | `tools/yt-scrapling-meta.py` for a known video: metadata via Scrapling, transcript via yt-dlp subtitles |
-| YouTube enrichment, fallback (`youtube-playwright`) | `~/.luna/playwright-state/youtube.json` storage state | YouTube request carrying the matching storage-state cookies; an expired state reports `ok` ("fallback only") while the primary path is installed |
+| Instagram media enrichment (`instagram-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` | `tools/ig-scrapling-media.py` against a known post |
+| X media enrichment (`x-scrapling`) | None: the scrapling venv `~/.himmel/scrapling-venv` (HIMMEL-4677) | `tools/x-scrapling-media.py` against a known tweet |
+| YouTube enrichment (`youtube-scrapling`) | None: the scrapling venv plus `yt-dlp` on PATH (HIMMEL-4677) | `tools/yt-scrapling-meta.py` for a known video: metadata via Scrapling, transcript via yt-dlp subtitles |
 | GitHub harvest / ingest | Authenticated `gh` CLI | `gh api repos/cli/cli` |
 | Bitbucket ingest | `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` (process env or the primary checkout's `.env`) | Authenticated `GET /2.0/user` |
 | Firecrawl article enrichment | `FIRECRAWL_API_KEY` (process env or the primary checkout's `.env`; `FIRECRAWL_BASE_URL` optional) | `POST /v2/scrape` for `https://example.com/` |
@@ -77,62 +59,13 @@ duplicate-key and empty-placeholder rules are in
 [`docs/internals/environment-gotchas.md`](../../../docs/internals/environment-gotchas.md).
 
 Every result is classified as exactly `ok`, `auth-or-cookie-expired`,
-`blocked-or-rate-limited`, or `transport-fail`, or `off` for a cookie source
-opted out by `HIMMEL_MEDIA_COOKIES` (see above). Missing credentials, cookie
-files, storage state, or required CLIs become classified health failures rather
+`blocked-or-rate-limited`, or `transport-fail`. Missing credentials or
+required CLIs become classified health failures rather
 than crashes. Current status and the preserved last-success epoch are written
 atomically to `~/.himmel/fetch-health.json` (override:
 `HIMMEL_FETCH_HEALTH_STATE`) and exported by the existing passive flow exporter
 at `http://127.0.0.1:9877/metrics` as `clip_fetch_source_status` and
 `clip_fetch_source_last_success_timestamp`.
-
-### Rebuilding the YouTube storage state (HIMMEL-2549)
-
-Not needed for transcripts since HIMMEL-4677: the crawler's primary path is
-cookieless (Scrapling metadata + yt-dlp subtitles). The storage state only feeds
-the logged-in Playwright fallback, so rebuild it only if you want that fallback.
-
-`playwright-auth-save.mjs youtube` opens a real browser and asks you to log in.
-Google usually blocks that sign-in as automated, so it is no longer the
-first thing to try. A cookie-exporter browser extension was tried too, but its
-export was missing the `HttpOnly` login cookies (an extension only sees those
-if it was granted the `cookies` permission and reads them via `chrome.cookies`
-rather than page JavaScript) — which is why the yt-dlp route below is the
-documented one. Export from the Chrome profile that is already signed in
-instead:
-
-```bash
-python3 scripts/luna/youtube-state-from-chrome.py --profile Default
-```
-
-That runs `yt-dlp --cookies-from-browser 'chrome:<profile>'` to get a Netscape
-cookie jar, keeps only the `youtube.com` / `google.com` cookies (the export
-carries every site you are signed in to), converts them to the Playwright
-storage-state shape, and writes `~/.luna/playwright-state/youtube.json`
-atomically at mode `0600`. It prints one line — the path and the cookie COUNT,
-never a value. A healthy export is on the order of 40-70 cookies; a handful
-means the wrong or a signed-out profile.
-
-Give the real profile DIRECTORY name, not its display name (`Default`,
-`'Profile 1'` — quote it if it has a space). `--from-cookies PATH` converts a
-jar you exported yourself, and `--out PATH` writes somewhere other than the
-canonical location.
-
-Expect yt-dlp to print extraction warnings ("Signature solving failed", "The
-page needs to be reloaded") and exit non-zero while still writing a perfectly
-good jar — the cookies are the deliverable, not the video, so the script judges
-the jar rather than yt-dlp's exit code.
-
-Verify before trusting it:
-
-```bash
-python3 scripts/luna/fetch-health.py --probe youtube-playwright
-```
-
-`ok` means the state carries a live session — the probe requires the
-authenticated `"LOGGED_IN":true` marker, so an expired jar cannot read green.
-Both the `storage state missing` and `storage state unreadable` reasons name
-this route.
 
 ### Instagram media rung: `/ig-media-enrich` (HIMMEL-770)
 
@@ -142,13 +75,11 @@ harvest layer marks the clip `ig_media_pending: true` and **holds it in the
 inbox** (triage Phase-8 step-0 and the migrate engine both skip a pending clip);
 nothing else drains it. The download rung is **lean-invoke** (`/ig-media-enrich`,
 run manually or by the harvest cadence - never auto-fired from `/harvest-clips`,
-because the download + local-whisper path is expensive and needs burner cookies).
+because the download + local-whisper path is expensive).
 `tools/ig-media-fetch.py` downloads the reel/carousel media cookieless via
-Scrapling first (`tools/ig-scrapling-media.py` in `~/.himmel/scrapling-venv`,
+Scrapling (`tools/ig-scrapling-media.py` in `~/.himmel/scrapling-venv`,
 HIMMEL-4675; routed as `local-headless`, so `HARVEST_SCRAPE_DENY` /
-`.harvest-backends` apply), falling back to `gallery-dl`
-(burner-account cookies at `~/.luna/cookies/instagram.txt`, contents never
-printed), transcribes reels locally (`ffmpeg` -> mono-16k WAV -> faster-whisper,
+`.harvest-backends` apply), transcribes reels locally (`ffmpeg` -> mono-16k WAV -> faster-whisper,
 the pair pinned in `tools/requirements-whisper.txt` and checked by `tools/whisper-probe.py`),
 and recompresses carousel slides into `Clippings/_media/<slug>/slide-NN.jpg`
 embedded under `### Slides`. An agent then reads the slide images and the
@@ -169,37 +100,25 @@ withholds `media_enriched_at`, so the clip stays selectable and is retried -
 partial media loss is never stamped a full success. Command runbook:
 `commands/ig-media-enrich.md`.
 
-#### One-time setup (burner account + cookies + whisper model)
+#### One-time setup (whisper model)
 
-The download rung needs a logged-in Instagram session and two local binaries.
-Do this ONCE per machine before the first `/ig-media-enrich` run.
+The download rung needs `ffmpeg` and the Scrapling venv, and no login. Do this
+ONCE per machine before the first `/ig-media-enrich` run.
 
-1. **Create burner Facebook + Instagram accounts.** Instagram gates reel /
-   carousel media behind a login; use a throwaway account you are willing to
-   have rate-limited or challenged, never your personal login. (An Instagram
-   account is created through Facebook; make both.)
-2. **Export the `instagram.com` cookies.** Log the burner account into
-   `instagram.com` in a browser, then use the **Cookie-Editor** extension to
-   **Export -> Netscape** format and save the file to
-   `~/.luna/cookies/instagram.txt`. Lock it down: `chmod 600
-   ~/.luna/cookies/instagram.txt`. The tool reads this file but **never prints
-   its contents**; do not paste or echo the cookie text anywhere.
-3. **Install `gallery-dl` + `ffmpeg`** (the same line the preflight prints when
-   they are missing):
+1. **Install `ffmpeg`** (the same line the preflight prints when it is missing):
 
    ```
-   winget install yt-dlp.gallery-dl ; winget install Gyan.FFmpeg
-   # or: uv tool install gallery-dl   (ffmpeg still needed separately)
+   winget install Gyan.FFmpeg
    ```
 
-4. **Pre-download the whisper model** so reel transcription runs fully offline
+2. **Pre-download the whisper model** so reel transcription runs fully offline
    (first use otherwise blocks on a ~140MB one-time fetch):
 
    ```
    uv run --python 3.12 --with-requirements tools/requirements-whisper.txt python -c "from faster_whisper import WhisperModel; WhisperModel('base')"
    ```
 
-5. **Run the one-shot historical backfill.** `--include-evidence` extends the
+3. **Run the one-shot historical backfill.** `--include-evidence` extends the
    scan into `Clippings/_evidence/` (still skipping `_evidence/_rejected/`) so
    already-parked IG clips get enriched too:
 
@@ -233,9 +152,8 @@ selectable regardless) and clears it on a verified success.
 
 The rung is **lean-invoke** (`/x-media-enrich`, run manually or by the harvest
 cadence - never auto-fired from `/harvest-clips`, because the download +
-local-whisper path is expensive and needs burner cookies). It downloads the
-tweet's media via `gallery-dl` (burner-account cookies at
-`~/.luna/cookies/twitter.txt`, contents never printed), transcribes videos
+local-whisper path is expensive). It downloads the
+tweet's media cookieless via Scrapling (`tools/x-scrapling-media.py`), transcribes videos
 locally (`ffmpeg` -> mono-16k WAV -> faster-whisper), and recompresses images
 into `Clippings/_media/<slug>/slide-NN.jpg` embedded under `### Slides`. A
 **soundless GIF-like video** (a `tweet_video` with no audio - the animated-UI
@@ -258,8 +176,8 @@ the platform's English subtitles with `yt-dlp` (manual track preferred over auto
 **no cookies needed**), cleans the VTT (tags/timestamps stripped, adjacent
 rolling duplicates collapsed, no global dedupe, sentence paragraphs) and uses it
 when coverage is at least `--min-sub-coverage` (default 90 percent of the video
-duration). No track or low coverage falls back to the gallery-dl -> ffmpeg ->
-whisper path, which is the only one that needs `~/.luna/cookies/twitter.txt`. A
+duration). No track or low coverage falls back to the Scrapling download -> ffmpeg ->
+whisper path. A
 clip with no twimg ref (e.g. filed from Telegram) is probed once via fxtwitter
 (`tweet.media.videos[].duration`); no video stamps `media_probe_at` +
 `media_probe_result: no-video` and is never re-probed. Provenance lands in the
@@ -270,9 +188,7 @@ and as a `<!-- source: platform-subs (en), coverage 100%, 38:02 -->` line in the
 `X_TRANSCRIBE_META_FILE` side channel (last segment end) so whisper coverage is
 measurable; its stdout is unchanged.
 
-One-time setup mirrors the IG rung (burner X account, Cookie-Editor export to
-`~/.luna/cookies/twitter.txt` `chmod 600`, `gallery-dl` + `ffmpeg`, pre-fetched
-whisper model). `--include-evidence` and `--include-done` are **orthogonal pool
+One-time setup mirrors the IG rung (`ffmpeg`, pre-fetched whisper model). `--include-evidence` and `--include-done` are **orthogonal pool
 switches** (each opens exactly one gated pool; neither implies the other): the
 steady-state run scans only the inbox, `--include-evidence` adds the
 reviewed-evidence pool (never `_evidence/_rejected/`), and `--include-done` adds

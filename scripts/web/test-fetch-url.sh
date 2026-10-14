@@ -62,6 +62,18 @@ second" "$out" "closing block tag keeps a word boundary"
 printf "<meta property='og:title' content='single quoted'>" >"$tmp/sq.html"
 has "og:title: single quoted" "$(python3 -I "$PY" --from-html "$tmp/sq.html")" "single-quoted og tag"
 
+echo "== reddit (walled host, no cookies) =="
+walled() { python3 -I -c 'import sys; sys.path.insert(0,sys.argv[1]); import fetch_url; print(fetch_url.is_walled(sys.argv[2]))' "$(dirname "$PY")" "$1"; }
+for u in https://reddit.com/r/a/comments/1/t https://www.reddit.com/r/a/comments/1/t https://old.reddit.com/r/a/comments/1/t https://redd.it/abc; do
+    [ "$(walled "$u")" = True ] && ok "walled: $u" || bad "not walled: $u"
+done
+[ "$(walled 'https://notreddit.com/a')" = False ] && ok "lookalike host is not walled" || bad "lookalike host walled"
+out="$(python3 -I "$PY" --page-url https://www.reddit.com/r/a/comments/1/t --from-html "$FIX/reddit-thread.html")"
+has "The full post body has real content." "$out" "reddit post body rendered"
+has "first comment here" "$out" "reddit comment rendered"
+has "second comment here" "$out" "second reddit comment rendered"
+hasnt "SCRIPT BODY" "$out" "reddit script body dropped"
+
 echo "== exit codes =="
 python3 -I "$PY" >/dev/null 2>&1; [ $? = 2 ] && ok "no url -> 2" || bad "no url exit"
 python3 -I "$PY" 'https://[' >/dev/null 2>&1; [ $? = 2 ] && ok "malformed url -> 2" || bad "malformed url exit"

@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import http.cookiejar
-from http.cookiejar import LoadError
 import json
 import os
 import re
@@ -37,15 +35,9 @@ STATUSES = (
     "transport-fail",
     # HIMMEL-4306: the Instagram throttle is holding requests back. Not a fault.
     "cooldown",
-    # HIMMEL-4708: a cookie-backed source while HIMMEL_MEDIA_COOKIES is not "on".
-    # Deliberately unused, so not a fault and never probed.
-    "off",
 )
 TIMEOUT_SECONDS = 30
 USER_AGENT = "himmel-fetch-health/1.0"
-# x.com cookies are still served under both hosts; the exported Netscape
-# file carries whichever the browser session used (HIMMEL-2549).
-TWITTER_COOKIE_DOMAINS = ("x.com", "twitter.com")
 
 # Fixed known-good URLs send no Luna corpus content. The egress matrix governs
 # corpus-to-provider content, so no matrix row or ledger applies; response bodies
@@ -54,12 +46,12 @@ DEFAULT_URLS = {
     "reddit": "https://www.reddit.com/r/reddit.com/comments/87/the_downing_street_memo/",
     "x-fxtwitter": "https://api.fxtwitter.com/jack/status/20",
     "instagram-embed": "https://www.instagram.com/p/CG0UU3ylXnv/embed/captioned/",
-    "instagram-media": "https://www.instagram.com/p/CG0UU3ylXnv/",
+    "instagram": "https://www.instagram.com/p/CG0UU3ylXnv/",
     # HIMMEL-5407: a 2012 photo tweet from a head-of-state account; the old pin
     # (Twitter/1354143047324299264) lost its media. Re-record the fxtwitter fixture
     # scripts/luna/fixtures/x-media-probe-fxtwitter.json when re-pinning.
-    "x-media": "https://x.com/BarackObama/status/266031293945503744",
-    "youtube-playwright": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "x": "https://x.com/BarackObama/status/266031293945503744",
+    "youtube": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     "jina-reader": "https://example.com/",
 }
 
@@ -154,36 +146,16 @@ def classify_http(
     return ProbeResult(status, "unexpected response shape")
 
 
-def cookie_header(cookie_file: Path, url: str) -> str:
-    jar = http.cookiejar.MozillaCookieJar(str(cookie_file))
-    jar.load(ignore_discard=True, ignore_expires=True)
-    request = urllib.request.Request(url)
-    jar.add_cookie_header(request)
-    return request.get_header("Cookie") or ""
-
-
 def _json(body: bytes):
     return json.loads(body.decode("utf-8"))
 
 
 def probe_reddit(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    home = resolve_home(env)
-    cookie_file = Path(env.get("REDDIT_COOKIE_FILE", "").strip() or home / ".luna" / "cookies" / "reddit.txt")
-    if not cookie_file.is_file():
-        return ProbeResult("auth-or-cookie-expired", "reddit cookie file missing")
+    # Cookieless. Reddit has no cookie path any more; this checks that a
+    # plain unauthenticated request still gets the public thread JSON.
     url = env.get("FETCH_HEALTH_REDDIT_URL", DEFAULT_URLS["reddit"]).rstrip("/") + ".json?raw_json=1"
     try:
-        cookies = cookie_header(cookie_file, url)
-    except (OSError, LoadError):
-        return ProbeResult("auth-or-cookie-expired", "reddit cookie file unreadable")
-    if not cookies:
-        return ProbeResult("auth-or-cookie-expired", "reddit cookie file has no matching cookies")
-    try:
-        result = http(
-            url,
-            headers={"Accept": "application/json", "Cookie": cookies, "User-Agent": USER_AGENT},
-            allowed_auth_hosts={"www.reddit.com", "reddit.com", "old.reddit.com"},
-        )
+        result = http(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
     except (OSError, urllib.error.URLError, TimeoutError):
         return ProbeResult("transport-fail", "reddit request failed")
 
@@ -194,7 +166,7 @@ def probe_reddit(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeR
         except (ValueError, KeyError, IndexError, AttributeError):
             return False
 
-    return classify_http(result, auth_required=True, valid_body=valid)
+    return classify_http(result, auth_required=False, valid_body=valid)
 
 
 def probe_fxtwitter(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
@@ -223,47 +195,11 @@ def probe_instagram_embed(env: dict[str, str], http: Callable[..., HttpResult]) 
     return classify_http(result, auth_required=False, valid_body=lambda body: b"Caption" in body)
 
 
-IG_SESSION_REJECTED_REMEDY = (
-    "instagram rejected the session (redirect to home page): log the burner account into instagram.com "
-    "(clear any challenge), Cookie-Editor Export Netscape over ~/.luna/cookies/instagram.txt, chmod 600 it, "
-    "then re-run: python3 scripts/luna/fetch-health.py --probe instagram-media"
-)
-STDERR_LINE_CHARS = 200
-# Allowlist, not a redactor (HIMMEL-4374): only gallery-dl `[module][error]` lines are
-# surfaced; their text is gallery-dl's own message, with scheme URLs replaced.
-_ERROR_LINE = re.compile(r"^\[[A-Za-z0-9_.-]+\]\[error\] (.+)$")
-# A whole URL (userinfo, query and fragment included) is replaced, never trimmed.
-_URL = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://\S*")
-
-
-# Only these message shapes are surfaced; free text could carry a credential (HIMMEL-4374).
-_SAFE_MESSAGE = re.compile(
-    r"^(?:HTTP redirect to home page|HttpError: '\d{3}(?: [A-Za-z ]{1,40})?'|Login required)"
-    r"(?: (?:for|and)(?: url:)? <url>| \(<url>\))*$"
-)
-ERROR_WITHHELD = "error message withheld"
-
-
-def error_line(stderr: str) -> str:
-    """The last `[module][error] message` line if its message is a known-safe shape, else withheld."""
-    for line in reversed((stderr or "").splitlines()):
-        m = _ERROR_LINE.match(line.strip())
-        if m:
-            msg = _URL.sub("<url>", m.group(1))[:STDERR_LINE_CHARS]
-            return msg if _SAFE_MESSAGE.match(msg) else ERROR_WITHHELD
-    return ""
-
-
-def _detail(returncode: int, stderr: str) -> str:
-    line = error_line(stderr)
-    return f"{returncode}; {line}" if line else f"{returncode}; no error line"
-
-
 def classify_command(returncode: int, stderr: str) -> ProbeResult:
     if returncode == 0:
         return ProbeResult("ok", "command probe succeeded")
     text = stderr.lower()
-    detail = f" (rc={_detail(returncode, stderr)})"
+    detail = f" (rc={returncode})"
     if re.search(r"429|rate.?limit|too many requests|temporarily blocked|challenge", text):
         return ProbeResult("blocked-or-rate-limited", "command reported block or rate limit" + detail)
     if re.search(r"401|403|auth|login|cookie|credential|unauthorized|forbidden", text):
@@ -272,183 +208,15 @@ def classify_command(returncode: int, stderr: str) -> ProbeResult:
 
 
 def run_command(args: list[str], *, env: dict[str, str], timeout: int = TIMEOUT_SECONDS) -> subprocess.CompletedProcess[str]:
-    # Foreign CLIs (gallery-dl, twitter) embed their own Python runtime. A
+    # Foreign CLIs (gh) may embed their own Python runtime. A
     # PYTHONHOME/PYTHONPATH inherited from the invoking interpreter (e.g. a uv
     # python stub that injects its own PYTHONHOME) points that runtime at the
     # WRONG stdlib and crashes it (SRE module mismatch class); PYTHONPATH is
     # stripped alongside it defensively (no observed repro, same failure class).
     # Scrub only what reaches subprocess.run — the caller's `env` dict (used for
-    # config lookups like TWITTER_AUTH_TOKEN) is left untouched.
+    # config lookups) is left untouched.
     child_env = {k: v for k, v in env.items() if k not in ("PYTHONHOME", "PYTHONPATH")}
     return subprocess.run(args, capture_output=True, text=True, env=child_env, timeout=timeout, check=False)
-
-
-def probe_gallery_dl(
-    source: str,
-    cookie_name: str,
-    url_key: str,
-    env: dict[str, str],
-    command: Callable[..., subprocess.CompletedProcess[str]],
-    *,
-    child_env: dict[str, str] | None = None,
-) -> ProbeResult:
-    cookie_file = resolve_home(env) / ".luna" / "cookies" / cookie_name
-    if not cookie_file.is_file():
-        return ProbeResult("auth-or-cookie-expired", f"{source} cookie file missing")
-    binary = shutil.which("gallery-dl", path=env.get("PATH"))
-    if not binary:
-        return ProbeResult("transport-fail", "gallery-dl missing")
-    url = env.get(url_key, DEFAULT_URLS[source])
-    try:
-        # HIMMEL-2549 CR round 1 CRITIC-1: gallery-dl needs no .env key at
-        # all (the cookie path is a file, not a credential in this dict), so
-        # it gets child_env (the pre-merge process env) unchanged — never
-        # `env`, which the registry populates with the whole checkout .env.
-        completed = command(
-            [binary, "--simulate", "--cookies", str(cookie_file), url],
-            env=child_env if child_env is not None else env,
-            timeout=TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ProbeResult("transport-fail", "gallery-dl invocation failed")
-    result = classify_command(completed.returncode, completed.stderr)
-    if source == "instagram-media" and completed.returncode != 0 and "redirect to home page" in (completed.stderr or "").lower():
-        # HIMMEL-4374: Instagram bounced a live public post to the home page, so it
-        # is not honouring the exported session. Not a rate limit, not ours to fix.
-        return ProbeResult("auth-or-cookie-expired", f"{IG_SESSION_REJECTED_REMEDY} [{result.reason}]")
-    return result
-
-
-def twitter_cookie_credentials(env: dict[str, str]) -> tuple[str, str]:
-    # HIMMEL-2549: TWITTER_AUTH_TOKEN / TWITTER_CT0 ARE the auth_token / ct0
-    # cookies in the Netscape file the x-media probe already reads, so read the
-    # pair from there rather than making the operator duplicate the secret into
-    # .env. Same reader as cookie_header (MozillaCookieJar), which also parses
-    # the `#HttpOnly_` line prefix that auth_token is written under.
-    cookie_file = resolve_home(env) / ".luna" / "cookies" / "twitter.txt"
-    if not cookie_file.is_file():
-        return "", ""
-    jar = http.cookiejar.MozillaCookieJar(str(cookie_file))
-    try:
-        # ignore_expires=True is deliberate here and must NOT be "fixed" into
-        # expiry filtering (CR round 4 codex-1, declined with reason). This is
-        # a HEALTH PROBE: its job is to attempt the call with whatever
-        # credentials exist and report what actually happened. An expired
-        # auth_token makes the twitter CLI fail auth, which classify_command
-        # turns into `auth-or-cookie-expired` — the correct, useful diagnosis.
-        # Filtering expired cookies out first would downgrade that to
-        # "credentials missing", hiding a real expiry behind a wrong reason.
-        # The youtube converter DOES check expiry, because there an expired
-        # marker would overwrite a good file; nothing destructive happens here.
-        jar.load(ignore_discard=True, ignore_expires=True)
-    except (OSError, LoadError):
-        return "", ""
-    found: dict[str, str] = {}
-    for cookie in jar:
-        domain = (cookie.domain or "").lstrip(".").lower()
-        if domain in TWITTER_COOKIE_DOMAINS and cookie.name in ("auth_token", "ct0"):
-            value = (cookie.value or "").strip()
-            # CR round 4 codex-1: setdefault alone kept the FIRST match even
-            # when its value is empty/stale, so a real credential for the
-            # OTHER supported domain (x.com vs twitter.com) later in the same
-            # jar was ignored. Skip empty candidates so the first NON-EMPTY
-            # match per name wins — still first-wins, not last-wins.
-            if value and cookie.name not in found:
-                found[cookie.name] = value
-    return found.get("auth_token", ""), found.get("ct0", "")
-
-
-def probe_twitter_cli(
-    env: dict[str, str],
-    command: Callable[..., subprocess.CompletedProcess[str]],
-    *,
-    child_env: dict[str, str] | None = None,
-) -> ProbeResult:
-    token = env.get("TWITTER_AUTH_TOKEN", "").strip()
-    ct0 = env.get("TWITTER_CT0", "").strip()
-    if not token or not ct0:
-        # Per-key fallback: an explicitly provided value still wins for ITS key.
-        cookie_token, cookie_ct0 = twitter_cookie_credentials(env)
-        token = token or cookie_token
-        ct0 = ct0 or cookie_ct0
-    if not token or not ct0:
-        return ProbeResult(
-            "auth-or-cookie-expired",
-            "twitter CLI credentials missing (TWITTER_AUTH_TOKEN/TWITTER_CT0, or auth_token/ct0 in ~/.luna/cookies/twitter.txt)",
-        )
-    binary = shutil.which("twitter", path=env.get("PATH"))
-    if not binary:
-        return ProbeResult("transport-fail", "twitter CLI missing")
-    tweet_id = env.get("FETCH_HEALTH_TWITTER_TWEET_ID", "20")
-    # The CLI reads the pair from ITS OWN environment, so the resolved
-    # (cookie-sourced or .env-sourced) value has to reach the child — but
-    # HIMMEL-2549 CR round 1 CRITIC-1: onto the CHILD env BASE (the pre-merge
-    # process env), never onto `env`, which the registry populates with the
-    # whole checkout .env (~120 keys, most of them unrelated credentials).
-    # This injection is still load-bearing; only its base dict changed.
-    # run_command still scrubs PYTHONHOME/PYTHONPATH out of whatever results.
-    base = dict(child_env) if child_env is not None else dict(env)
-    base["TWITTER_AUTH_TOKEN"] = token
-    base["TWITTER_CT0"] = ct0
-    try:
-        completed = command([binary, "tweet", tweet_id, "--json"], env=base, timeout=TIMEOUT_SECONDS)
-    except (OSError, subprocess.TimeoutExpired):
-        return ProbeResult("transport-fail", "twitter CLI invocation failed")
-    return classify_command(completed.returncode, completed.stderr)
-
-
-# HIMMEL-4677: the logged-in storage state is a FALLBACK. The primary YouTube
-# path is cookieless (Scrapling for metadata, yt-dlp for the transcript), so an
-# expired state names that path, never a cookie-converter step.
-YOUTUBE_REMEDY = ("primary path is cookieless: create ~/.himmel/scrapling-venv from "
-                  "requirements-scrapling.txt and put yt-dlp on PATH")
-
-
-def probe_youtube(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    result = _probe_youtube(env, http)
-    if result.status == "auth-or-cookie-expired":
-        if scrapling_path_present(env, "youtube"):
-            return demoted_fallback(result)
-        return ProbeResult(result.status, f"{result.reason} ({YOUTUBE_REMEDY})")
-    return result
-
-
-def _probe_youtube(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    state_file = resolve_home(env) / ".luna" / "playwright-state" / "youtube.json"
-    if not state_file.is_file():
-        return ProbeResult("auth-or-cookie-expired", "youtube Playwright storage state missing")
-    try:
-        state = json.loads(state_file.read_text(encoding="utf-8"))
-        cookies = []
-        target_host = "www.youtube.com"
-        for item in state.get("cookies", []):
-            domain = str(item.get("domain", "")).lstrip(".").lower()
-            if target_host == domain or target_host.endswith("." + domain):
-                cookies.append(f"{item['name']}={item['value']}")
-        if not cookies:
-            return ProbeResult("auth-or-cookie-expired", "youtube storage state has no matching cookies")
-    except (OSError, ValueError, KeyError, TypeError):
-        return ProbeResult("auth-or-cookie-expired", "youtube Playwright storage state unreadable")
-    url = env.get("FETCH_HEALTH_YOUTUBE_URL", DEFAULT_URLS["youtube-playwright"])
-    try:
-        result = http(
-            url,
-            headers={"Accept": "text/html", "Cookie": "; ".join(cookies), "User-Agent": USER_AGENT},
-            allowed_auth_hosts={"www.youtube.com", "youtube.com"},
-        )
-    except (OSError, urllib.error.URLError, TimeoutError):
-        return ProbeResult("transport-fail", "youtube request failed")
-    # YouTube serves anonymous public HTML (with a <title>) regardless of cookie
-    # validity, so <title> alone was a false-green on an expired storage state.
-    # The ytcfg block embeds "LOGGED_IN":true only for authenticated sessions
-    # ("LOGGED_IN":false for anonymous), so require it — a 2xx without it flows
-    # to auth-or-cookie-expired via classify_http, mirroring reddit's login-wall.
-    # Keep the consent.youtube.com redirect guard (HIMMEL-1449 r2).
-    return classify_http(
-        result,
-        auth_required=True,
-        valid_body=lambda body: b'"LOGGED_IN":true' in body and b"consent.youtube.com" not in body,
-    )
 
 
 def probe_github(
@@ -519,10 +287,9 @@ def _clean_dotenv_value(raw: str) -> str:
 
 DOTENV_KEYS = frozenset({
     "BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN", "FIRECRAWL_API_KEY", "FIRECRAWL_BASE_URL",
-    "TWITTER_AUTH_TOKEN", "TWITTER_CT0", "REDDIT_COOKIE_FILE", "HIMMEL_MEDIA_COOKIES",
     "HIMMEL_FETCH_HEALTH_STATE", "HIMMEL_FIRECRAWL_LEDGER", "HIMMEL_IG_PROBE_CACHE", "HIMMEL_IG_PROBE_TTL_S",
     "FETCH_HEALTH_REDDIT_URL", "FETCH_HEALTH_FXTWITTER_URL", "FETCH_HEALTH_INSTAGRAM_EMBED_URL",
-    "FETCH_HEALTH_INSTAGRAM_MEDIA_URL", "FETCH_HEALTH_X_MEDIA_URL", "FETCH_HEALTH_TWITTER_TWEET_ID",
+    "FETCH_HEALTH_INSTAGRAM_MEDIA_URL", "FETCH_HEALTH_X_MEDIA_URL",
     "FETCH_HEALTH_YOUTUBE_URL", "FETCH_HEALTH_JINA_URL", "IG_SCRAPLING_PYTHON", "X_SCRAPLING_PYTHON", "YT_SCRAPLING_PYTHON",
 })
 
@@ -690,7 +457,7 @@ def probe_instagram_scrapling(
     if not py.is_file():
         return ProbeResult("transport-fail", f"scrapling python missing ({py}); create ~/.himmel/scrapling-venv "
                                              "from requirements-scrapling.txt")
-    url = env.get("FETCH_HEALTH_INSTAGRAM_MEDIA_URL", DEFAULT_URLS["instagram-media"])
+    url = env.get("FETCH_HEALTH_INSTAGRAM_MEDIA_URL", DEFAULT_URLS["instagram"])
     parts = [p for p in urllib.parse.urlparse(url).path.split("/") if p]
     shortcode = parts[1] if len(parts) >= 2 and parts[0] in ("p", "reel", "reels", "tv") else ""
     if not shortcode:
@@ -731,20 +498,6 @@ def scrapling_python(env: dict[str, str], source: str) -> Path:
     return Path(override) if override else resolve_home(env) / ".himmel" / "scrapling-venv" / "bin" / "python"
 
 
-def scrapling_path_present(env: dict[str, str], source: str) -> bool:
-    """Whether the cookieless primary path is installed (HIMMEL-4677): the venv,
-    plus yt-dlp for the YouTube transcript."""
-    if not scrapling_python(env, source).is_file():
-        return False
-    return source != "youtube" or bool(shutil.which("yt-dlp", path=env.get("PATH")))
-
-
-def demoted_fallback(result: ProbeResult) -> ProbeResult:
-    """An expired cookie on a fallback rung is not an outage while the
-    cookieless path is installed; its own probe reports whether that works."""
-    return ProbeResult("ok", f"fallback only, not needed while the cookieless scrapling path is installed: {result.reason}")
-
-
 def _scrapling_helper(
     py: Path, args: list[str], env: dict[str, str], command: Callable[..., subprocess.CompletedProcess[str]], timeout: int
 ) -> tuple[subprocess.CompletedProcess[str] | None, dict]:
@@ -781,7 +534,7 @@ def probe_x_scrapling(
     if not py.is_file():
         return ProbeResult("transport-fail", f"scrapling python missing ({py}); create ~/.himmel/scrapling-venv "
                                              "from requirements-scrapling.txt")
-    url = env.get("FETCH_HEALTH_X_MEDIA_URL", DEFAULT_URLS["x-media"])
+    url = env.get("FETCH_HEALTH_X_MEDIA_URL", DEFAULT_URLS["x"])
     parts = [p for p in urllib.parse.urlparse(url).path.split("/") if p]
     status_id = parts[2] if len(parts) >= 3 and parts[1] == "status" and parts[2].isdigit() else ""
     if not status_id:
@@ -810,7 +563,7 @@ def probe_youtube_scrapling(
                                              "from requirements-scrapling.txt")
     if not shutil.which("yt-dlp", path=env.get("PATH")):
         return ProbeResult("transport-fail", "yt-dlp missing from PATH (the transcript source)")
-    url = env.get("FETCH_HEALTH_YOUTUBE_URL", DEFAULT_URLS["youtube-playwright"])
+    url = env.get("FETCH_HEALTH_YOUTUBE_URL", DEFAULT_URLS["youtube"])
     video_id = (urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("v") or [""])[0]
     if not video_id:
         return ProbeResult("transport-fail", "youtube probe URL has no video id")
@@ -826,7 +579,7 @@ def probe_youtube_scrapling(
     return _scrapling_failure(completed, out, "youtube")
 
 
-IG_PROBE_SOURCES = ("instagram-embed", "instagram-media", "instagram-scrapling")
+IG_PROBE_SOURCES = ("instagram-embed", "instagram-scrapling")
 IG_OK_TTL_S = 24 * 3600
 IG_BAD_TTL_S = 3600
 
@@ -876,11 +629,7 @@ def guarded_instagram_probe(
                 ttl = float(env.get("HIMMEL_IG_PROBE_TTL_S", IG_OK_TTL_S))
             except ValueError:
                 ttl = IG_OK_TTL_S
-        try:
-            relogin = (resolve_home(env) / ".luna" / "cookies" / "instagram.txt").stat().st_mtime > entry["checked_epoch"]
-        except OSError:
-            relogin = False
-        if 0 <= age < ttl and not relogin and entry.get("status") in STATUSES:
+        if 0 <= age < ttl and entry.get("status") in STATUSES:
             return ProbeResult(entry["status"], f"{entry.get('reason', '')} (cached {int(age // 3600)}h ago)")
 
     decision = ig_throttle.acquire(env, now=lambda: t, wait=False)
@@ -904,28 +653,6 @@ def guarded_instagram_probe(
     return result
 
 
-def probe_x_media(
-    env: dict[str, str],
-    command: Callable[..., subprocess.CompletedProcess[str]],
-    *,
-    child_env: dict[str, str] | None = None,
-) -> ProbeResult:
-    """The gallery-dl cookie rung, a fallback behind x-scrapling (HIMMEL-4677)."""
-    result = probe_gallery_dl("x-media", "twitter.txt", "FETCH_HEALTH_X_MEDIA_URL", env, command, child_env=child_env)
-    if result.status == "auth-or-cookie-expired" and scrapling_path_present(env, "x"):
-        return demoted_fallback(result)
-    return result
-
-
-# HIMMEL-4708: the cookie-backed sources behind the HIMMEL_MEDIA_COOKIES switch.
-# reddit stays probed: it has no cookieless path, so its cookie is not opted out.
-MEDIA_COOKIE_SOURCES = ("instagram-media", "x-media", "x-twitter-cli", "youtube-playwright")
-
-
-def media_cookies_on(env: dict[str, str]) -> bool:
-    return (env.get("HIMMEL_MEDIA_COOKIES") or "").strip().lower() == "on"
-
-
 def build_probe_registry(
     env: dict[str, str],
     http: Callable[..., HttpResult],
@@ -934,7 +661,7 @@ def build_probe_registry(
 ) -> dict[str, Callable[[], ProbeResult]]:
     # HIMMEL-2549: merge the primary checkout's .env HERE — the one boundary
     # where the process env and the resolved repo root meet — so every probe,
-    # the FETCH_HEALTH_* URL overrides and REDDIT_COOKIE_FILE included, sees the
+    # the FETCH_HEALTH_* URL overrides included, sees the
     # same effective config on both the `--probe` and the scheduled path. The
     # cron wrapper sources nothing, so before this only probe_bitbucket (which
     # called load_repo_env itself) could read a key that lives only in .env.
@@ -942,24 +669,18 @@ def build_probe_registry(
     # CR round 1 CRITIC-1: that merge is for CONFIG LOOKUP only. The checkout's
     # .env carries ~120 keys (router/wifi/sudo passwords, Jira/Confluence/Codex
     # tokens, Grafana/VM credentials, a dozen vendor API keys...) that a
-    # third-party child process (gallery-dl, gh) or a CLI reading its own
-    # environment (twitter) has no business seeing. `effective` is the merged
+    # third-party child process (gh) has no business seeing. `effective` is the merged
     # lookup dict every probe reads config from; `child_env` is the ORIGINAL,
     # pre-merge process env — the only thing a command probe's subprocess is
-    # ever handed, plus (for twitter only) the one resolved credential pair it
-    # actually needs, injected by probe_twitter_cli itself.
+    # ever handed.
     effective = load_repo_env(env, repo_root)
     child_env = env
     registry = {
         "reddit": lambda: probe_reddit(effective, http),
         "x-fxtwitter": lambda: probe_fxtwitter(effective, http),
         "instagram-embed": lambda: probe_instagram_embed(effective, http),
-        "instagram-media": lambda: probe_gallery_dl("instagram-media", "instagram.txt", "FETCH_HEALTH_INSTAGRAM_MEDIA_URL", effective, command, child_env=child_env),
         "instagram-scrapling": lambda: probe_instagram_scrapling(effective, command, repo_root, child_env=child_env),
-        "x-media": lambda: probe_x_media(effective, command, child_env=child_env),
         "x-scrapling": lambda: probe_x_scrapling(effective, command, repo_root, child_env=child_env),
-        "x-twitter-cli": lambda: probe_twitter_cli(effective, command, child_env=child_env),
-        "youtube-playwright": lambda: probe_youtube(effective, http),
         "youtube-scrapling": lambda: probe_youtube_scrapling(effective, command, repo_root, child_env=child_env),
         "github": lambda: probe_github(effective, command, child_env=child_env),
         "bitbucket": lambda: probe_bitbucket(effective, http),
@@ -968,9 +689,6 @@ def build_probe_registry(
     }
     for source in IG_PROBE_SOURCES:
         registry[source] = (lambda s, p: lambda: guarded_instagram_probe(s, effective, p))(source, registry[source])
-    if not media_cookies_on(effective):
-        for source in MEDIA_COOKIE_SOURCES:
-            registry[source] = lambda: ProbeResult("off", "cookie path opted out (HIMMEL_MEDIA_COOKIES=on turns it back on); not probed")
     return registry
 
 
@@ -1064,14 +782,14 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as error:
             parser.error(str(error))
         print(json.dumps({"status": result.status, "reason": result.reason}))
-        return 0 if result.status in ("ok", "cooldown", "off") else 1
+        return 0 if result.status in ("ok", "cooldown") else 1
 
     path = Path(args.state) if args.state else state_path(env)
     results = run_probes(env)
     write_state(path, results, utc_now())
     for source, result in sorted(results.items()):
         print(f"{source}: {result.status} ({result.reason})")
-    return 0 if all(result.status in ("ok", "cooldown", "off") for result in results.values()) else 1
+    return 0 if all(result.status in ("ok", "cooldown") for result in results.values()) else 1
 
 
 if __name__ == "__main__":

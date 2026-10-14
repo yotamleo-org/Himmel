@@ -590,10 +590,10 @@ REPORT-ONLY Windows evidence collector for the agent-runtime RAM + MCP lifecycle
 
 `bash scripts/web/fetch-url.sh '<url>'` fetches a pasted link as text. Hosts in
 `scripts/web/walled-hosts.conf` (x.com, twitter.com, mobile.twitter.com,
-instagram.com — the file's one line) go through Scrapling's stealth fetcher
+instagram.com, reddit.com, redd.it — the file's one line) go through Scrapling's stealth fetcher
 (`~/.himmel/scrapling-venv`, no cookies, never a Chrome profile): X prints
 author, handle, date, each post's text in order and media URLs; Instagram prints
-the `og:` tags. Any other host is a plain GET rendered to text. Exit: 0 ok, 2
+the `og:` tags; Reddit prints the thread's rendered text (HIMMEL-4709, cookieless). Any other host is a plain GET rendered to text. Exit: 0 ok, 2
 usage, 3 scrapling missing (install hint on stderr), 4 fetch failed (status on
 stderr). Companion PreToolUse hook `scripts/hooks/redirect-webfetch-walled-hosts.sh`
 (matcher `WebFetch`) denies WebFetch on a walled host and prints that exact
@@ -1572,11 +1572,11 @@ on demand; nothing here runs automatically.
   (`GRAPHIFY_LEDGER`); `deepseek`/`codex` use OpenAI chat/completions, `glm` (via z.ai anthropic-compat)/`claude` use the Anthropic Messages API. DeepSeek off-peak advisory. `--dry-run` first.
 - `scripts/luna/fetch-health.py` — Daily no-LLM health probes for luna
   clip-source fetch integrations. The registry (`build_probe_registry`) carries
-  **fourteen** source ids, several per platform: `reddit`, `x-fxtwitter`, `x-media`,
-  `x-scrapling`, `x-twitter-cli`, `instagram-embed`, `instagram-media`, `instagram-scrapling` (the cookieless Scrapling path, run with the scrapling venv), `youtube-playwright`,
-  `youtube-scrapling` (cookieless, metadata via Scrapling and the transcript via yt-dlp
-  subtitles; while the scrapling venv (plus yt-dlp for YouTube) is installed, an expired cookie on the `x-media` /
-  `youtube-playwright` fallback rungs reports `ok` with a "fallback only" reason instead of red),
+  **ten** source ids, several per platform, none cookie-backed (HIMMEL-4709): `reddit`
+  (plain `.json` GET), `x-fxtwitter`, `x-scrapling`, `instagram-embed`,
+  `instagram-scrapling` (the Scrapling path, run with the scrapling venv),
+  `youtube-scrapling` (metadata via Scrapling and the transcript via yt-dlp
+  subtitles),
   `github`, `bitbucket`, `firecrawl` (probes the free
   `/v2/team/credit-usage`, spends no credit, and ledgers credits 0 to
   `firecrawl-ledger.jsonl`), `jina-reader` (keyless). The full run (armed by `pipeline-cadence.sh`'s

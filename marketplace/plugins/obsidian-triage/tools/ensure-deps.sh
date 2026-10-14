@@ -7,9 +7,8 @@
 # most critically the Claude plugin CACHE copy
 # (~/.claude/plugins/cache/himmel/obsidian-triage/<v>/tools/), which is
 # populated from git and can thus structurally never have node_modules.
-# Eight tools import js-yaml (component-scan.mjs, dedup-sweep.mjs,
-# fxtwitter-enrich.mjs, ig-embed-enrich.mjs, playwright-crawl-x.mjs,
-# playwright-crawl-youtube.mjs, reddit-enrich.mjs, twitter-cli-enrich.mjs).
+# Several tools import js-yaml (component-scan.mjs, dedup-sweep.mjs,
+# fxtwitter-enrich.mjs, ig-embed-enrich.mjs, playwright-crawl-youtube.mjs).
 # Without this preflight, a runbook that shells out to one of them from the
 # cache path throws `Cannot find package 'js-yaml'`, the tool reverts its
 # write — and (a SEPARATE bug, HIMMEL-1136, NOT fixed here) still exits 0,
@@ -70,8 +69,8 @@ fi
 if [ -f "$MARKER" ]; then exit 0; fi
 
 # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1: package.json also depends on
-# playwright (used by the playwright-crawl-*.mjs / playwright-auth-save.mjs
-# tools), whose postinstall otherwise fetches hundreds of MB of browser
+# playwright (used by the playwright-crawl-youtube.mjs
+# tool), whose postinstall otherwise fetches hundreds of MB of browser
 # binaries. The js-yaml-importing tools this preflight exists for
 # (fxtwitter-enrich.mjs etc.) are explicitly browser-free.
 if ! ( cd "$TOOLS_DIR" && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund ); then

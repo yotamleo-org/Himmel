@@ -40,8 +40,8 @@
  *   3 — run completed but at least one clip failed (HIMMEL-1136: distinct
  *       from 0 so a caller gating on exit code sees a 100%-failure run)
  *
- * LUNA-33. Sister script: playwright-crawl-x.mjs (deprecated for default
- * use post-LUNA-33 — anti-bot rendering issues on x.com).
+ * LUNA-33. Default X enrich path (the Playwright X crawler was removed,
+ * HIMMEL-4709).
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, relative, sep, dirname } from "node:path";
@@ -135,7 +135,7 @@ function sha256(s) {
 }
 
 /**
- * Glob Clippings/*.md + one-level subfolders. Mirrors playwright-crawl-x.mjs.
+ * Glob Clippings/*.md + one-level subfolders. Same layout as the other enrichers.
  */
 function findClips(vault) {
   const root = join(vault, "Clippings");
@@ -162,7 +162,7 @@ function findClips(vault) {
 }
 
 /**
- * Parse top-level frontmatter. Mirrors playwright-crawl-x.mjs — minimal
+ * Parse top-level frontmatter. Minimal
  * YAML-ish, top-level key: value only, CRLF normalized on read.
  */
 function parseFrontmatter(text) {
@@ -256,7 +256,7 @@ function isXSource(sourceVal) {
 }
 
 /**
- * Mirrors playwright-crawl-x.mjs canonicalisation: strip mobile./www.,
+ * Canonicalisation: strip mobile./www.,
  * map twitter.com → x.com, drop query/fragment, keep just /user/status/id.
  */
 function canonicalXUrl(sourceVal) {
@@ -607,7 +607,7 @@ function formatYamlValue(v) {
 /**
  * Insert/replace whitelisted frontmatter keys (FM_KEYS). In-place replace
  * when key already exists; append after last non-empty line otherwise.
- * Mirrors playwright-crawl-x.mjs.upsertCrawlMarkers contract.
+ * Crawl-marker upsert contract shared with the crawlers.
  */
 function upsertEnrichMarkers(fmRaw, markers) {
   let lines = fmRaw.split("\n");
@@ -645,7 +645,7 @@ function upsertEnrichMarkers(fmRaw, markers) {
 
 /**
  * Insert "## Crawled content" BEFORE "## Source" (or "## Comments"). Mirrors
- * playwright-crawl-x.mjs placement contract.
+ * crawler placement contract.
  */
 function insertCrawledSection(body, sectionMarkdown) {
   const sourceMatch = body.match(/^## Source\b/m);

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Tests for ig-media-fetch.py (HIMMEL-770). Hermetic: NO live network, NO
-# gallery-dl/ffmpeg/whisper. The tool runs under `uv run --python 3.12 python`
+# ffmpeg/whisper. The only fetch backend is cookieless
+# Scrapling + curl: an adapter stands in for the Scrapling helper and a stub curl
+# serves the files, and the per-test "gallery-dl" stubs are kept only as the
+# fixture producers behind that adapter (the real gallery-dl is never called). The tool runs under `uv run --python 3.12 python`
 # (Windows bare python3 is a flaky Store stub); the harness prepends a "$tmp/bin"
 # dir carrying ONE uv stub for the whole suite (Tasks 1-8) - the stub branches on
 # *transcribe.py* (fixed whisper transcript, from Task 3) and otherwise strips the
@@ -42,7 +45,7 @@ esac
 STUB
 chmod +x "$tmp/bin/uv"
 export PATH="$tmp/bin:$PATH"
-# HIMMEL-4708: this suite exercises the gallery-dl cookie path - pin the switch on.
+# The old cookie switch is exported ON to prove it reaches nothing.
 export HIMMEL_MEDIA_COOKIES=on
 
 run_tool() { # $@ = tool args -> runs under the uv stub
@@ -148,7 +151,6 @@ done
 HOME="$tmp/home"
 mkdir -p "$HOME/.luna/cookies"
 export HOME
-unset IG_SCRAPLING_PYTHON   # HIMMEL-4675: these tests pin the gallery-dl path
 
 # Add gallery-dl stub with .bat wrapper for Windows
 # Create .bat wrapper (for Windows) and bash wrapper (for MSYS)
@@ -213,6 +215,54 @@ exit 0
 STUB
 chmod +x "$tmp/bin/ffmpeg"
 
+# --- Scrapling adapter + stub curl -----------------------------
+# ig-adapter replaces the Scrapling helper: it runs the current "gallery-dl"
+# fixture stub into a stage dir and reports the media it produced as items with
+# CDN URLs; the stub curl copies each from the stage. A stub failure maps to the
+# helper's statuses (404 -> removed, login -> login_wall, else error).
+export ADAPTER_STAGE="$tmp/stage"; mkdir -p "$ADAPTER_STAGE"
+cat > "$tmp/ig-adapter.py" <<'PY'
+import json, os, re, sys
+stage, sc = sys.argv[1], sys.argv[2]
+key = lambda n: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", n)]
+items = []
+for n in sorted(os.listdir(stage), key=key):
+    ext = os.path.splitext(n)[1].lower()
+    if ext in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".webm"):
+        kind = "video" if ext in (".mp4", ".webm") else "image"
+        items.append({"kind": kind, "url": f"https://scontent-stub.cdninstagram.com/v/{sc}/{n}"})
+if items:
+    print(json.dumps({"status": "ok", "caption": None, "items": items}))
+else:
+    print(json.dumps({"status": "no_media", "detail": "stub"}))
+    sys.exit(4)
+PY
+cat > "$tmp/ig-adapter" <<'STUB'
+#!/usr/bin/env bash
+shift
+url=""; sc=""
+while [ $# -gt 0 ]; do case "$1" in --url) shift; url="$1" ;; --shortcode) shift; sc="$1" ;; esac; shift; done
+stage="$ADAPTER_STAGE/$sc"; rm -rf "$stage"; mkdir -p "$stage"
+err="$(gallery-dl -D "$stage" "$url" 2>&1 >/dev/null)"; rc=$?
+if [ $rc -ne 0 ]; then
+  case "$err" in
+    *404*) echo '{"status": "removed", "detail": "stub"}'; exit 5 ;;
+    *login*) echo '{"status": "login_wall", "detail": "stub"}'; exit 4 ;;
+    *) echo '{"status": "error", "detail": "stub"}'; exit 1 ;;
+  esac
+fi
+exec python3 "$ADAPTER_PY" "$stage" "$sc"
+STUB
+chmod +x "$tmp/ig-adapter"
+export ADAPTER_PY="$tmp/ig-adapter.py" IG_SCRAPLING_PYTHON="$tmp/ig-adapter"
+cat > "$tmp/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""; url=""
+while [ $# -gt 0 ]; do case "$1" in -o) shift; out="$1" ;; https://*) url="$1" ;; esac; shift; done
+[ -n "$out" ] && cp "$ADAPTER_STAGE/${url#*/v/}" "$out"
+STUB
+chmod +x "$tmp/bin/curl"
+
 # make_ig_vault DIR SHORTCODE: fresh single-clip vault so each run is isolated
 # (a permanent media_enriched_at marker in one must not de-select the next).
 make_ig_vault() {
@@ -232,22 +282,18 @@ enrichment_status: failed
 EOF
 }
 
-# --- Test 3: missing cookie file -> exit 2 with instagram.txt + Cookie-Editor
-echo "Test 3: missing cookie file"
-run_tool "$V" >"$tmp/no-cookie.out" 2>"$tmp/no-cookie.err"
+# --- Test 3: no Scrapling backend -> exit 2 naming the venv install ---------
+echo "Test 3: no Scrapling backend"
+IG_SCRAPLING_PYTHON="" HOME="$tmp/no-venv-home" run_tool "$V" >"$tmp/no-scrapling.out" 2>"$tmp/no-scrapling.err"
 rc=$?
-assert "missing cookie exit 2" 2 "$rc"
-grep -q "instagram.txt" "$tmp/no-cookie.err" && a=ok || a=no
-assert "stderr mentions instagram.txt" ok "$a"
-grep -q "Cookie-Editor" "$tmp/no-cookie.err" && a=ok || a=no
-assert "stderr mentions Cookie-Editor" ok "$a"
+assert "no scrapling backend exit 2" 2 "$rc"
+grep -q "scrapling-venv" "$tmp/no-scrapling.err" && a=ok || a=no
+assert "stderr names the scrapling venv install" ok "$a"
+grep -q "instagram.txt\|Cookie-Editor" "$tmp/no-scrapling.err" && a=named || a=absent
+assert "stderr no longer asks for a cookie file" absent "$a"
 
 # --- Test 4: preflight with stubs -> download + recompress slides + outcome line
 echo "Test 4: download + slide write + outcome line"
-
-# Create cookie file (contents never printed)
-echo "DUMMY_COOKIES" > "$HOME/.luna/cookies/instagram.txt"
-chmod 600 "$HOME/.luna/cookies/instagram.txt"
 
 # Set IG_MEDIA_NO_SLEEP to skip rate limit in test
 export IG_MEDIA_NO_SLEEP=1
@@ -394,10 +440,10 @@ fail_gallery_dl "login required"
 run_tool "$VL" >"$tmp/login.out" 2>"$tmp/login.err"
 rc=$?
 assert "login run exit 0" 0 "$rc"
-grep -q '^media_enrichment_status: failed$' "$VL/Clippings/clip.md" && a=ok || a=no
-assert "login status failed" ok "$a"
-grep -q '^media_last_error: login_wall$' "$VL/Clippings/clip.md" && a=ok || a=no
-assert "login last_error login_wall (retryable)" ok "$a"
+grep -q '^media_enrichment_status: deferred$' "$VL/Clippings/clip.md" && a=ok || a=no
+assert "login status deferred" ok "$a"
+grep -q '^media_last_error: scrapling:login_wall$' "$VL/Clippings/clip.md" && a=ok || a=no
+assert "login last_error scrapling:login_wall (retryable)" ok "$a"
 grep -q '^media_enriched_at:' "$VL/Clippings/clip.md" && a=present || a=absent
 assert "login enriched_at NOT set (retryable)" absent "$a"
 
@@ -894,8 +940,8 @@ ig_media_pending: true
 EOF
 run_tool "$VPF" >"$tmp/pending-fail.out" 2>"$tmp/pending-fail.err"
 assert "pending-fail run exit 0" 0 "$?"
-grep -q '^media_enrichment_status: failed$' "$VPF/Clippings/clip.md" && a=ok || a=no
-assert "failed enrichment wrote media_enrichment_status: failed" ok "$a"
+grep -q '^media_enrichment_status: deferred$' "$VPF/Clippings/clip.md" && a=ok || a=no
+assert "deferred enrichment wrote media_enrichment_status: deferred" ok "$a"
 grep -q '^ig_media_pending: true$' "$VPF/Clippings/clip.md" && a=ok || a=no
 assert "ig_media_pending kept on failed enrichment" ok "$a"
 
@@ -1303,7 +1349,7 @@ ig_media_pending: true
 EOF
 run_tool "$VNM" >"$tmp/nomedia.out" 2>"$tmp/nomedia.err"
 assert "no_media run exit 0" 0 "$?"
-grep -q '^media_last_error: no_media$' "$VNM/Clippings/clip.md" && a=ok || a=no
+grep -q '^media_last_error: scrapling:no_media$' "$VNM/Clippings/clip.md" && a=ok || a=no
 assert "no_media last_error written" ok "$a"
 grep -q '^media_enriched_at:' "$VNM/Clippings/clip.md" && a=present || a=absent
 assert "no_media has NO media_enriched_at (retryable)" absent "$a"
@@ -1406,7 +1452,7 @@ assert "mobile dry-run exit 0" 0 "$?"
 grep -q '^PLAN Clippings/mob.md -- would fetch reel/MOBIL32 \[dry-run\]$' "$tmp/mobile.out" && a=ok || a=no
 assert "m.instagram.com clip IS selected (shortcode/kind extracted)" ok "$a"
 
-# real run: gallery-dl is invoked with the canonical www URL. The stub records the
+# real run: the fetch stub is invoked with the canonical www URL. The stub records the
 # URL it received into its -D dest (a native path arg), which we read back.
 cat > "$tmp/bin/gallery-dl" <<'STUB'
 #!/usr/bin/env bash
@@ -1473,8 +1519,8 @@ enrichment_status: failed
 EOF
 run_tool "$VMOB2" >"$tmp/mobile-run.out" 2>"$tmp/mobile-run.err"
 assert "mobile real run exit 0" 0 "$?"
-grep -qF 'https://www.instagram.com/reel/MOBRN32/' "$HOME/.luna/ig-media/MOBRN32/url.txt" && a=ok || a=no
-assert "gallery-dl URL rebuilt to canonical www for m. host" ok "$a"
+grep -qF 'https://www.instagram.com/reel/MOBRN32/' "$ADAPTER_STAGE/MOBRN32/url.txt" && a=ok || a=no
+assert "fetch URL rebuilt to canonical www for m. host" ok "$a"
 
 # --- Test 33: smuggled pending-marker in untrusted digest text -> neutralized --
 # Attacker-controlled slide text transcribed verbatim into the digest file can

@@ -28,7 +28,7 @@ assert "reddit strips trailing slash" \
 assert "reddit lowercases subreddit segment only" \
   "https://www.reddit.com/r/askscience/comments/9/Title_Case_Kept" \
   "$(canon 'https://reddit.com/r/AskScience/comments/9/Title_Case_Kept')"
-# redd.it is NOT handled here (generic passthrough) — reddit-enrich resolves it.
+# redd.it is NOT handled here (generic passthrough).
 assert "redd.it not expanded (generic passthrough)" \
   "https://redd.it/abc123" \
   "$(canon 'https://redd.it/abc123')"

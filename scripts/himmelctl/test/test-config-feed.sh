@@ -262,19 +262,17 @@ pass "f2 lint fails on an unregistered flag and on a ghost entry"
 # HIMMEL-4327 (spec A7). The repo-root .env carries a same-named TELEGRAM_BOT_TOKEN
 # (the nudge relay's DIFFERENT bot) and a FIRECRAWL_API_KEY the tools never read.
 printf 'TELEGRAM_BOT_TOKEN=repo-root-other-bot-aaaa\nFIRECRAWL_API_KEY=repo-env-firecrawl-bbbb\nBITBUCKET_API_TOKEN=bb-fixture-token-cccc\n' >> "$fixtureRepo/.env"
-mkdir -p "$homeDir/.claude/channels/telegram" "$homeDir/.luna/cookies"
+mkdir -p "$homeDir/.claude/channels/telegram"
 sec() { jq -r --arg n "secret:$1" '.rows[]|select(.id==$n)|.installed.state' "$2"; }
-WHISPER_MODEL='' WHISPER_DIR='' FIRECRAWL_API_KEY='' TELEGRAM_ENV='' run_report --items secret:TELEGRAM_BOT_TOKEN,secret:FIRECRAWL_API_KEY,secret:BITBUCKET_API_TOKEN,secret:INSTAGRAM_COOKIE_FILE,secret:WHISPER_MODEL > "$work/g1.json" 2>/dev/null || fail "g report exited non-zero"
+WHISPER_MODEL='' WHISPER_DIR='' FIRECRAWL_API_KEY='' TELEGRAM_ENV='' run_report --items secret:TELEGRAM_BOT_TOKEN,secret:FIRECRAWL_API_KEY,secret:BITBUCKET_API_TOKEN,secret:WHISPER_MODEL > "$work/g1.json" 2>/dev/null || fail "g report exited non-zero"
 [ "$(sec TELEGRAM_BOT_TOKEN "$work/g1.json")" = absent ] || fail "g1 TELEGRAM_BOT_TOKEN read as present from the repo-root .env (bridge file absent)"
 [ "$(sec FIRECRAWL_API_KEY "$work/g1.json")" = absent ] || fail "g1 FIRECRAWL_API_KEY (process-env only) read as present from the repo-root .env"
 [ "$(sec BITBUCKET_API_TOKEN "$work/g1.json")" = present ] || fail "g1 BITBUCKET_API_TOKEN (repo .env is its source) not present"
-[ "$(sec INSTAGRAM_COOKIE_FILE "$work/g1.json")" = absent ] || fail "g1 INSTAGRAM_COOKIE_FILE present with no cookie file"
 [ "$(sec WHISPER_MODEL "$work/g1.json")" = absent ] || fail "g1 WHISPER_MODEL present with no model file"
 printf 'TELEGRAM_BOT_TOKEN=bridge-own-token-dddd\n' > "$homeDir/.claude/channels/telegram/.env"
-printf '# Netscape\n.instagram.com\tTRUE\t/\tTRUE\t0\tsessionid\tx\n' > "$homeDir/.luna/cookies/instagram.txt"
 mkdir -p "$homeDir/.himmel/whisper"; printf 'model' > "$homeDir/.himmel/whisper/ggml-small.bin"
-WHISPER_MODEL='' WHISPER_DIR='' FIRECRAWL_API_KEY=process-env-key-eeee TELEGRAM_ENV='' run_report --items secret:TELEGRAM_BOT_TOKEN,secret:FIRECRAWL_API_KEY,secret:INSTAGRAM_COOKIE_FILE,secret:WHISPER_MODEL > "$work/g2.json" 2>/dev/null || fail "g2 report exited non-zero"
-for n in TELEGRAM_BOT_TOKEN FIRECRAWL_API_KEY INSTAGRAM_COOKIE_FILE WHISPER_MODEL; do
+WHISPER_MODEL='' WHISPER_DIR='' FIRECRAWL_API_KEY=process-env-key-eeee TELEGRAM_ENV='' run_report --items secret:TELEGRAM_BOT_TOKEN,secret:FIRECRAWL_API_KEY,secret:WHISPER_MODEL > "$work/g2.json" 2>/dev/null || fail "g2 report exited non-zero"
+for n in TELEGRAM_BOT_TOKEN FIRECRAWL_API_KEY WHISPER_MODEL; do
   [ "$(sec "$n" "$work/g2.json")" = present ] || fail "g2 $n not present from its own source"
 done
 for v in bridge-own-token-dddd process-env-key-eeee repo-root-other-bot-aaaa; do

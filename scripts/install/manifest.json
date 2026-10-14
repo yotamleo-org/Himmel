@@ -464,7 +464,7 @@
       "scopes": ["user"],
       "profiles": ["luna", "all"],
       "deps": ["luna-vault-scaffold"],
-      "probe": { "type": "luna-sources", "script": "scripts/luna/fetch-health.py", "sources": ["reddit", "x-fxtwitter", "instagram-embed", "instagram-media", "x-media", "x-twitter-cli", "youtube-playwright", "firecrawl", "bitbucket"] },
+      "probe": { "type": "luna-sources", "script": "scripts/luna/fetch-health.py", "sources": ["reddit", "x-fxtwitter", "instagram-embed", "firecrawl", "bitbucket"] },
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

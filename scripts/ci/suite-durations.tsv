@@ -45,7 +45,6 @@ marketplace/plugins/obsidian-triage/tests/test-archive-clips.sh	0
 marketplace/plugins/obsidian-triage/tests/test-archive-deload.sh	0
 marketplace/plugins/obsidian-triage/tests/test-clip-lookup.sh	1
 marketplace/plugins/obsidian-triage/tests/test-component-scan.sh	1
-marketplace/plugins/obsidian-triage/tests/test-cookie-jar.sh	0
 marketplace/plugins/obsidian-triage/tests/test-daily-timeline.sh	0
 marketplace/plugins/obsidian-triage/tests/test-dedup-sweep.sh	1
 marketplace/plugins/obsidian-triage/tests/test-deepen-fanout.sh	0
@@ -74,8 +73,6 @@ marketplace/plugins/obsidian-triage/tests/test-luna-ingest-skill.sh	0
 marketplace/plugins/obsidian-triage/tests/test-luna-upgrade-skill.sh	0
 marketplace/plugins/obsidian-triage/tests/test-migrate-clip-lifecycle.sh	1
 marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	0
-marketplace/plugins/obsidian-triage/tests/test-playwright-headful-fallback.sh	0
-marketplace/plugins/obsidian-triage/tests/test-reddit-enrich.sh	126
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	2
 marketplace/plugins/obsidian-triage/tests/test-synthesize-densify.sh	0
 marketplace/plugins/obsidian-triage/tests/test-synthesize-edge.sh	1
@@ -89,7 +86,6 @@ marketplace/plugins/obsidian-triage/tests/test-telegram-clip.sh	2
 marketplace/plugins/obsidian-triage/tests/test-telegram-digest.sh	0
 marketplace/plugins/obsidian-triage/tests/test-triage-evidence-move.sh	0
 marketplace/plugins/obsidian-triage/tests/test-triage-invariants.sh	0
-marketplace/plugins/obsidian-triage/tests/test-twitter-cli-enrich.sh	0
 marketplace/plugins/obsidian-triage/tests/test-url-canonical.sh	0
 marketplace/plugins/obsidian-triage/tests/test-vault-lint-drift.sh	0
 marketplace/plugins/obsidian-triage/tests/test-x-media-enrich.sh	2
@@ -603,7 +599,6 @@ scripts/luna/test-ship-index.sh	49
 scripts/luna/test-sweep.sh	0
 scripts/luna/test-synth-input-check.sh	6
 scripts/luna/test-vault-stall-alert.sh	0
-scripts/luna/test-youtube-state-from-chrome.sh	0
 scripts/machine-setup/test-bootstrap.sh	0
 scripts/machine-setup/test-install-plugins-autoupdate.sh	3
 scripts/machine-setup/test-install-plugins-diagnostics.sh	6

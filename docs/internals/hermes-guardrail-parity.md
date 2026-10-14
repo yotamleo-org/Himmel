@@ -57,7 +57,7 @@ Result, default env: **MATCH 26, GAP 12, OVER-DENY 5**
 | 7 | `destr-git-stash`, `destr-git-stash-pop` | block-git-stash | destructive | Low | The stash stack is shared across worktrees; a hermes `git stash pop` can drop another session's work. |
 | 8 | `tail-pipe-gate` | block-tail-pipe-on-gates | gate-misuse | Low | `gate … \| tail` loses the gate's exit code. Correctness hazard, not a safety one. |
 | 9 | `jira-compound-write` | block-jira-compound-write | jira | Low | Exists to dodge the *auto-mode classifier*; hermes has no classifier, so there is nothing to bounce. Not a real gap. |
-| 10 | `webfetch-walled` | redirect-webfetch-walled-hosts | network | Low | x.com / instagram.com walled hosts; a usability redirect, not a safety fence. |
+| 10 | `webfetch-walled` | redirect-webfetch-walled-hosts | network | Low | x.com / instagram.com / reddit.com walled hosts; a usability redirect, not a safety fence. |
 
 ## OVER-DENYs — hermes denies, Claude Code allows
 

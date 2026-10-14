@@ -1295,7 +1295,7 @@ defect when it is a call-shape defect. Name the keys:
 
 ```bash
 . scripts/lib/load-dotenv.sh
-load_dotenv FIRECRAWL_API_KEY TWITTER_AUTH_TOKEN TWITTER_CT0
+load_dotenv FIRECRAWL_API_KEY BITBUCKET_API_TOKEN
 ```
 
 **And some callers source nothing at all.** The cadence wrapper
@@ -1385,38 +1385,6 @@ counting on to stop an unwanted delete. Recovery is cheap regardless — the
 tip commit stays a reachable object, so `git branch <name> <tip-sha>`
 restores it; keep the tip SHA around before removing anything you might
 want back.
-
-## YouTube/Google cookie extraction: run `youtube-state-from-chrome.py`, not a cookie-export extension
-
-A browser cookie-export extension's Netscape export of a Google-auth domain
-typically drops the **HttpOnly login cookie set** (session/login tokens),
-returning only the non-HttpOnly analytics/consent cookies — so a probe that
-checks for a logged-in session reads "unexpected response shape" even though
-the export "succeeded". Signing in through an automation-controlled browser
-doesn't help either: Google refuses sign-in on a browser it detects as
-automated.
-
-**What works:** `scripts/luna/youtube-state-from-chrome.py` (HIMMEL-4271). It
-reads the real browser profile's cookie store through `yt-dlp` (decrypted via
-the OS keyring), keeps only the `youtube.com` / `google.com` cookies, and
-writes the Playwright storage state to `~/.luna/playwright-state/youtube.json`:
-
-```bash
-python3 scripts/luna/youtube-state-from-chrome.py [--profile <name>] [--from-cookies <path>]
-```
-
-`--profile` is the real profile DIRECTORY name (`Default`, `'Profile 1'`);
-pick the profile whose cookie-store file has a live/recent mtime.
-`--from-cookies PATH` converts a Netscape jar you exported yourself. A
-non-zero `yt-dlp` exit is fine — the script judges the jar, not the exit
-code. Full usage and verification:
-[`marketplace/plugins/obsidian-triage/README.md`](../../marketplace/plugins/obsidian-triage/README.md).
-
-**How to apply:** for any Google-authenticated service, go straight to this
-route; don't spend time on an automated-browser login flow
-(`playwright-auth-save.mjs youtube` is usually blocked by Google). The
-extension-export route is fine for services that only need non-HttpOnly
-cookies — Google's login cookies are the case that needs this.
 
 ## The `obsidian-vault` MCP times out at a hardcoded 6s even when the server is healthy
 

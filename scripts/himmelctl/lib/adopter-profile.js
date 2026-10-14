@@ -1540,10 +1540,6 @@ function buildSummary(answers, laneRows, opts) {
         ));
       } else if (r.status === 'degraded') {
         manual.push({ what: `secret ${r.name} — configured but the probe flagged a problem (${r.detail})`, how: r.obtain, note: '' });
-      } else if (r.status === 'off') {
-        // HIMMEL-4708: a cookie credential whose sources are all opted out
-        // by HIMMEL_MEDIA_COOKIES — deliberately unused, nothing to fix.
-        skipped.push(`secret ${r.name} — off: cookie path opted out (HIMMEL_MEDIA_COOKIES=on turns it back on)`);
       } else if (r.status === 'error') {
         // RETASK stage1-build-6d2e round 6 [codex-3]: the probe itself threw
         // (our code, not the credential) — a DIFFERENT fact from "configured
@@ -1559,8 +1555,7 @@ function buildSummary(answers, laneRows, opts) {
         // way this is a normal skip, never an error (design A15).
         //
         // RETASK stage1-build-6d2e round 10 [codex-1]: a paired credential
-        // (BITBUCKET_EMAIL/BITBUCKET_API_TOKEN, TWITTER_AUTH_TOKEN/
-        // TWITTER_CT0) shares ONE aggregate luna-sources probe with its
+        // (BITBUCKET_EMAIL/BITBUCKET_API_TOKEN) shares ONE aggregate luna-sources probe with its
         // sibling — the probe can only speak for the source as a whole, so
         // 'unconfigured' here does NOT mean THIS credential specifically is
         // the one missing; it could just as easily be the sibling. Naming

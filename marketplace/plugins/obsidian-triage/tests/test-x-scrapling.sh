@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the cookieless Scrapling X backend (HIMMEL-4677):
 # tools/x-scrapling-media.py (extraction from recorded status HTML) and its
-# wiring into x-media-fetch.py as the PRIMARY backend, gallery-dl the fallback.
+# wiring into x-media-fetch.py as the only backend.
 # Hermetic: NO network. Extraction runs on fixtures/x-scrapling/*.html (+ a
 # recorded video.twimg.com URL log); the fetch path runs a stub
 # X_SCRAPLING_PYTHON that prints canned helper JSON, and stub curl / gallery-dl /
@@ -24,8 +24,8 @@ assert() {
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/x-scrapling.XXXXXX")" || exit 1; [ -n "${KEEP_TMP:-}" ] || trap 'rm -rf "$tmp"' EXIT; echo "tmp=$tmp"
 HOME="$tmp/home"; mkdir -p "$HOME/.luna/cookies"; export HOME
 export X_MEDIA_NO_SLEEP=1
-# HIMMEL-4708: Tests 5-13 pin the cookie switch ON - today's gallery-dl
-# fallback, unchanged. Test 14 runs with it off (the default).
+# The cookie-backed gallery-dl fallback is gone. The switch is
+# still exported ON in Tests 8-13 to prove it no longer reaches anything.
 export HIMMEL_MEDIA_COOKIES=on
 unset X_SCRAPLING_PYTHON HARVEST_SCRAPE_DENY
 
@@ -310,8 +310,8 @@ assert "segment fetches stop once the aggregate budget is spent" 3 \
   "$(grep '^curl-get ' "$tmp/calls" | grep -vc '\.m3u8')"
 grep -q '^ffmpeg ' "$tmp/calls" && a=ran || a=skipped
 assert "over-budget HLS never reaches ffmpeg" skipped "$a"
-grep -q '^media_last_error: download_error$' "$tmp/v6c/Clippings/clip.md" && a=ok || a=no
-assert "the over-budget clip is a retryable download_error" ok "$a"
+grep -q '^media_last_error: scrapling:download_error$' "$tmp/v6c/Clippings/clip.md" && a=ok || a=no
+assert "the over-budget clip is a deferred scrapling:download_error" ok "$a"
 assert "no HLS workdir is left behind" 0 \
   "$(python3 -c 'import sys, pathlib; print(len(list(pathlib.Path(sys.argv[1]).rglob("*.hls"))))' "$tmp/v6c")"
 
@@ -340,8 +340,8 @@ hls_case() { # $1 name, $2 file to edit, $3 sed expression, $4 planted-host patt
   assert "$1: the planted host is never fetched" refused "$a"
   grep -q '^ffmpeg ' "$tmp/calls" && a=ran || a=skipped
   assert "$1: ffmpeg never runs" skipped "$a"
-  grep -q '^media_last_error: download_error$' "$tmp/v7-$1/Clippings/clip.md" && a=ok || a=no
-  assert "$1: the download is refused (download_error, retryable)" ok "$a"
+  grep -q '^media_last_error: scrapling:download_error$' "$tmp/v7-$1/Clippings/clip.md" && a=ok || a=no
+  assert "$1: the download is refused (scrapling:download_error, deferred)" ok "$a"
 }
 hls_case private-segment V2.m3u8 's#^/amplify_video/9/vid/avc1/720x720/s2.m4s$#https://10.0.0.1/s2.m4s#' '10\.0\.0\.1' # leak-allow: private-lan-ip SSRF test fixture, never fetched
 hls_case metadata-variant M.m3u8 's#^/amplify_video/9/pl/avc1/720x720/V2.m3u8$#https://169.254.169.254/V2.m3u8#' '169\.254\.169\.254'
@@ -361,100 +361,74 @@ hls_case dup-uri-map V2.m3u8 's#^\(\#EXT-X-MAP:.*\)$#\1,URI="/etc/passwd"#' '/et
 hls_case dup-uri-audio M.m3u8 's#^\(\#EXT-X-MEDIA:.*\)$#\1,URI="/etc/hostname"#' '/etc/hostname'
 hls_case unquoted-uri-tag V2.m3u8 's#^\#EXT-X-MAP#\#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="g",URI=/etc/passwd\n\#EXT-X-MAP#' 'URI=/etc/passwd'
 
-# --- Test 8: Scrapling login wall -> gallery-dl fallback -------------------
-echo "Test 8: gallery-dl fallback"
+# --- Test 8: Scrapling login wall -> deferred, never gallery-dl --------------
+# gallery-dl and the cookie file are both present (HIMMEL_MEDIA_COOKIES=on too);
+# a Scrapling miss never reaches them - the clip is deferred,
+# naming scrapling.
+echo "Test 8: scrapling login wall defers, no cookie fallback"
 : >"$tmp/calls"; export STUB_JSON="$tmp/wall.json" STUB_RC=4
 cp "$tmp/gallery-dl" "$tmp/bin/gallery-dl"; echo DUMMY >"$HOME/.luna/cookies/twitter.txt"
 make_vault "$tmp/v8" 8008
 run_tool "$tmp/v8" >"$tmp/v8.out" 2>"$tmp/v8.err"
-assert "fallback run exit 0" 0 "$?"
-grep -qF "1 slides + 0 transcript [gallery-dl]" "$tmp/v8.out" && a=ok || a=no
-assert "outcome line names the gallery-dl fallback" ok "$a"
-grep -q '^gdl$' "$tmp/calls" && a=ok || a=no
-assert "gallery-dl ran after scrapling" ok "$a"
+assert "login-wall run exit 0" 0 "$?"
+grep -q -- '--status-id' "$tmp/calls" && a=ok || a=no
+assert "scrapling tried" ok "$a"
+grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
+assert "gallery-dl never called, even with the old switch on" skipped "$a"
+grep -q '^media_enrichment_status: deferred$' "$tmp/v8/Clippings/clip.md" && a=ok || a=no
+assert "clip recorded deferred" ok "$a"
+grep -q '^media_last_error: scrapling:login_wall$' "$tmp/v8/Clippings/clip.md" && a=ok || a=no
+assert "error names the scrapling backend" ok "$a"
+grep -q '^x_media_pending: true$' "$tmp/v8/Clippings/clip.md" && a=ok || a=no
+assert "deferred clip stays pending" ok "$a"
 
-# --- Test 9: unlaunchable scrapling interpreter -> gallery-dl fallback -----
+# --- Test 9: unlaunchable scrapling interpreter -> still no gallery-dl ------
 echo "Test 9: scrapling interpreter missing"
+: >"$tmp/calls"
 make_vault "$tmp/v9" 9009
 X_SCRAPLING_PYTHON="$tmp/no-such-python" run_tool "$tmp/v9" >"$tmp/v9.out" 2>"$tmp/v9.err"
 assert "missing-interpreter run exit 0" 0 "$?"
-grep -qF "[gallery-dl]" "$tmp/v9.out" && a=ok || a=no
-assert "gallery-dl served it" ok "$a"
-
-# --- Test 10: Scrapling login wall, no fallback -> retryable failure -------
-echo "Test 10: no fallback available"
-rm -f "$tmp/bin/gallery-dl" "$HOME/.luna/cookies/twitter.txt"
-make_vault "$tmp/v10" 1010
-run_tool "$tmp/v10" >"$tmp/v10.out" 2>"$tmp/v10.err"
-assert "no-fallback run exit 0" 0 "$?"
-grep -q '^x_media_pending: true$' "$tmp/v10/Clippings/clip.md" && a=ok || a=no
+grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
+assert "gallery-dl never called" skipped "$a"
+grep -q '^x_media_pending: true$' "$tmp/v9/Clippings/clip.md" && a=ok || a=no
 assert "clip stays pending (retryable)" ok "$a"
-grep -q '^media_last_error: login_wall$' "$tmp/v10/Clippings/clip.md" && a=ok || a=no
-assert "login_wall recorded" ok "$a"
 
-# --- Test 11: kill switch skips scrapling ----------------------------------
+# --- Test 11: kill switch skips scrapling -> preflight stop ------------------
 echo "Test 11: HARVEST_SCRAPE_DENY kill switch"
 : >"$tmp/calls"; export STUB_JSON="$tmp/ok.json" STUB_RC=0
-cp "$tmp/gallery-dl" "$tmp/bin/gallery-dl"; echo DUMMY >"$HOME/.luna/cookies/twitter.txt"
 make_vault "$tmp/v11" 1111
 HARVEST_SCRAPE_DENY=local-headless run_tool "$tmp/v11" >"$tmp/v11.out" 2>"$tmp/v11.err"
-assert "kill-switch run exit 0" 0 "$?"
+assert "kill-switch run exit 2 (no backend left)" 2 "$?"
 grep -q -- '--status-id' "$tmp/calls" && a=called || a=skipped
 assert "scrapling not called under the kill switch" skipped "$a"
-grep -qF "[gallery-dl]" "$tmp/v11.out" && a=ok || a=no
-assert "gallery-dl served it" ok "$a"
+grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
+assert "gallery-dl not called on the preflight stop" skipped "$a"
 
-# --- Test 12: .harvest-backends skip=local-headless skips scrapling --------
+# --- Test 12: .harvest-backends skip=local-headless skips scrapling ---------
 echo "Test 12: .harvest-backends route"
 : >"$tmp/calls"
 make_vault "$tmp/v12" 1212
 echo "x.com skip=local-headless" >"$tmp/v12/.harvest-backends"
 run_tool "$tmp/v12" >"$tmp/v12.out" 2>"$tmp/v12.err"
-assert "route-skip run exit 0" 0 "$?"
+assert "route-skip run exit 2 (no backend left)" 2 "$?"
 grep -q -- '--status-id' "$tmp/calls" && a=called || a=skipped
 assert "scrapling not called when the route skips it" skipped "$a"
-grep -qF "[gallery-dl]" "$tmp/v12.out" && a=ok || a=no
-assert "gallery-dl served it" ok "$a"
-
-# --- Test 13: preflight: neither backend usable -> exit 2 ------------------
-echo "Test 13: preflight"
-rm -f "$tmp/bin/gallery-dl" "$HOME/.luna/cookies/twitter.txt"
-make_vault "$tmp/v13" 1313
-unset X_SCRAPLING_PYTHON
-run_tool "$tmp/v13" >"$tmp/v13.out" 2>"$tmp/v13.err"
-assert "no scrapling venv, no gallery-dl -> exit 2" 2 "$?"
-grep -q "scrapling-venv" "$tmp/v13.err" && a=ok || a=no
-assert "preflight names the scrapling venv install" ok "$a"
-
-# --- Test 14: cookie switch off (HIMMEL-4708 default) -----------------------
-# gallery-dl and the cookie file are both present; with the switch off a
-# Scrapling miss must never reach them - the clip is deferred, naming scrapling.
-echo "Test 14: cookie switch off"
-unset HIMMEL_MEDIA_COOKIES
-: >"$tmp/calls"; export X_SCRAPLING_PYTHON="$tmp/scrapling-python" STUB_JSON="$tmp/wall.json" STUB_RC=4
-cp "$tmp/gallery-dl" "$tmp/bin/gallery-dl"; echo DUMMY >"$HOME/.luna/cookies/twitter.txt"
-make_vault "$tmp/v14" 1414
-run_tool "$tmp/v14" >"$tmp/v14.out" 2>"$tmp/v14.err"
-assert "switch-off run exit 0" 0 "$?"
-grep -q -- '--status-id' "$tmp/calls" && a=ok || a=no
-assert "scrapling still tried first" ok "$a"
-grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
-assert "gallery-dl (cookie) never called with the switch off" skipped "$a"
-grep -q '^media_enrichment_status: deferred$' "$tmp/v14/Clippings/clip.md" && a=ok || a=no
-assert "clip recorded deferred" ok "$a"
-grep -q '^media_last_error: scrapling:login_wall$' "$tmp/v14/Clippings/clip.md" && a=ok || a=no
-assert "error names the scrapling backend" ok "$a"
-grep -q '^x_media_pending: true$' "$tmp/v14/Clippings/clip.md" && a=ok || a=no
-assert "deferred clip stays pending" ok "$a"
-# Scrapling unavailable and cookies off: preflight refuses, never touches gallery-dl.
-: >"$tmp/calls"
-make_vault "$tmp/v14b" 1415
-HARVEST_SCRAPE_DENY=all run_tool "$tmp/v14b" >"$tmp/v14b.out" 2>"$tmp/v14b.err"
-assert "no scrapling + switch off -> exit 2" 2 "$?"
 grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
 assert "gallery-dl not called on the preflight stop" skipped "$a"
-grep -q "HIMMEL_MEDIA_COOKIES=on" "$tmp/v14b.err" && a=ok || a=no
-assert "preflight names the switch" ok "$a"
+
+# --- Test 13: preflight: no scrapling venv -> exit 2 -------------------------
+echo "Test 13: preflight"
+make_vault "$tmp/v13" 1313
+unset X_SCRAPLING_PYTHON
+: >"$tmp/calls"
+run_tool "$tmp/v13" >"$tmp/v13.out" 2>"$tmp/v13.err"
+assert "no scrapling venv -> exit 2 (gallery-dl present is no help)" 2 "$?"
+grep -q "scrapling-venv" "$tmp/v13.err" && a=ok || a=no
+assert "preflight names the scrapling venv install" ok "$a"
+grep -q '^gdl$' "$tmp/calls" && a=called || a=skipped
+assert "gallery-dl not called on the preflight stop" skipped "$a"
+grep -q "HIMMEL_MEDIA_COOKIES" "$tmp/v13.err" && a=named || a=absent
+assert "preflight no longer names the removed switch" absent "$a"
 
 echo ""
 echo "x-scrapling tests: $pass passed, $fail failed"
