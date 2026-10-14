@@ -170,5 +170,58 @@ if run 2 'PROFILE' CLAUDE_CODEX_SRT_PROFILE=bogus CLAUDE_CODEX_SRT_SCRATCH="$SCR
 if run 3 'CLAUDE_CODEX_SRT_SCRATCH' CLAUDE_CODEX_SRT_PROFILE=impl HANDOVER_DIR="$HANDOVER" -- ; then ok "missing scratchpad refused"; else bad "missing scratchpad refused"; fi
 if run 3 'HANDOVER_DIR' CLAUDE_CODEX_SRT_PROFILE=impl CLAUDE_CODEX_SRT_SCRATCH="$SCRATCH" HANDOVER_DIR="$TMP/no-such" -- ; then ok "missing handover bucket refused"; else bad "missing handover bucket refused"; fi
 
+# 8. the scratchpad is writable by the box, so nothing the launcher trusts lives there as a plain path
+VICTIM="$TMP/victim"; mkdir -p "$VICTIM"
+rm -rf "$SCRATCH/srt-home"; ln -s "$VICTIM" "$SCRATCH/srt-home"
+if run 3 'symlink' "${SRT_ENV[@]}" -- && [ ! -e "$TMP/child-env" ] && [ -z "$(ls -A "$VICTIM")" ]; then
+    ok "a symlinked srt-home is refused and nothing is written through it"
+else
+    bad "a symlinked srt-home is refused and nothing is written through it"
+fi
+rm -f "$SCRATCH/srt-home"; mkdir -p "$SCRATCH/srt-home"; ln -s "$VICTIM" "$SCRATCH/srt-home/tmp"
+if run 3 'symlink' "${SRT_ENV[@]}" -- && [ ! -e "$TMP/child-env" ] && [ -z "$(ls -A "$VICTIM")" ]; then
+    ok "a symlinked srt-home/tmp is refused and nothing is written through it"
+else
+    bad "a symlinked srt-home/tmp is refused and nothing is written through it"
+fi
+rm -rf "$SCRATCH/srt-home"
+echo original >"$VICTIM/bashrc"; echo original >"$VICTIM/settings"
+rm -f "$SCRATCH/srt-wrapper.sh" "$SCRATCH/srt-settings.json"
+ln -s "$VICTIM/bashrc" "$SCRATCH/srt-wrapper.sh" && ln -s "$VICTIM/settings" "$SCRATCH/srt-settings.json" || bad "could not plant the links"
+if run 0 - "${SRT_ENV[@]}" -- && [ "$(cat "$VICTIM/bashrc")" = original ] && [ "$(cat "$VICTIM/settings")" = original ]; then
+    ok "planted srt-wrapper.sh / srt-settings.json links are never written through"
+else
+    bad "planted srt-wrapper.sh / srt-settings.json links are never written through"
+fi
+rm -f "$SCRATCH/srt-wrapper.sh" "$SCRATCH/srt-settings.json"
+# the settings file and the wrapper that srt is handed live outside every writable root
+if run 0 - "${SRT_ENV[@]}" -- && s_path="$(sed -n 2p "$TMP/argv")" && w_path="$(sed -n 5p "$TMP/argv")" \
+    && case "$s_path" in "$SCRATCH"/*|"$WT"/*|"$HANDOVER"/*) false ;; *) true ;; esac \
+    && case "$w_path" in "$SCRATCH"/*|"$WT"/*|"$HANDOVER"/*) false ;; *) true ;; esac; then
+    ok "settings and wrapper are written outside every writable root"
+else
+    bad "settings and wrapper are written outside every writable root ($(sed -n '2p;5p' "$TMP/argv" | tr '\n' ' '))"
+fi
+
+# 9. in-box mode is not inferred from the environment: the profile + SANDBOX_RUNTIME pair alone
+# behaves like main (here: it tries to wrap, srt is absent, so it refuses; it never runs the model)
+if run 3 'srt' "${SRT_ENV[@]}" SANDBOX_RUNTIME=1 HTTPS_PROXY=http://elsewhere:1 CLAUDE_CODEX_SRT_BIN="$TMP/no-such-srt" -- && [ ! -e "$TMP/child-env" ]; then
+    ok "profile + SANDBOX_RUNTIME alone is not in-box mode"
+else
+    bad "profile + SANDBOX_RUNTIME alone is not in-box mode"
+fi
+# the in-box marker without a profile changes nothing either
+if run 3 'not loopback' SANDBOX_RUNTIME=1 CLAUDE_CODEX_SRT_INBOX=1 CODEX_PROXY_BASE_URL=http://$GW_HOST:8317 -- ; then
+    ok "in-box marker without a profile does not relax the loopback rule"
+else
+    bad "in-box marker without a profile does not relax the loopback rule"
+fi
+# the wrapper opts in to the remote gateway explicitly
+if run 0 - "${SRT_ENV[@]}" -- && grep -qxF 'CLAUDE_CODEX_REMOTE_PROXY_OK=1' "$TMP/child-env"; then
+    ok "the wrapper sets CLAUDE_CODEX_REMOTE_PROXY_OK=1 explicitly"
+else
+    bad "the wrapper sets CLAUDE_CODEX_REMOTE_PROXY_OK=1 explicitly"
+fi
+
 if [ "$fails" -ne 0 ]; then echo "$fails test(s) failed"; exit 1; fi
 echo "all claude-codex srt tests passed"
