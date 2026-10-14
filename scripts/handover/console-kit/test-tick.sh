@@ -142,7 +142,7 @@ STUB
 printf '%s\n' '    1     0 40-00:00:01 /sbin/init' > "$W/ps-none.txt"
 cat > "$W/bin/bun" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' 'claudex funded measured 5h used=12% free=88%; weekly used=34% free=66%'
+printf '%s\n' "${STUB_BANK_ROW-claudex funded measured 5h used=12% free=88%; weekly used=34% free=66%}"
 STUB
 # the real ceiling-conformance.sh, not a re-implemented stub --
 # it reads the same claude_sessions() table this suite already builds, so a
@@ -212,6 +212,12 @@ if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
 else
     fail "default run exact line (rc=$rc lines=$lines out='$out')"
 fi
+
+weekly_only="$(STUB_BANK_ROW='claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z' HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"
+case "$weekly_only" in
+    *' bank=5h30/wk28/codex=5hnone/wk6 '*) pass 'a weekly-only codex row reads as no 5h limit' ;;
+    *) fail "weekly-only codex row (out='$weekly_only')" ;;
+esac
 
 verbose="$(bash "$SUT" --verbose)"; rc=$?
 verbose_lines="$(printf '%s\n' "$verbose" | wc -l | tr -d '[:space:]')"

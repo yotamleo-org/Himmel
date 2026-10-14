@@ -242,6 +242,8 @@ printf '%s %s\n' "$state" "$below" > "$state_tmp" 2>/dev/null && mv -f "$state_t
 
 codex='?'
 if [ -n "$codex_five" ] || [ -n "$codex_seven" ]; then
+    # a weekly-only row means the 5h window is absent, i.e. no limit
+    if [ -z "$codex_five" ] && [ -n "$codex_seven" ]; then codex_five=none; fi
     [ -n "$codex_five" ] || codex_five='?'
     [ -n "$codex_seven" ] || codex_seven='?'
     codex="5h${codex_five}/wk${codex_seven}"

@@ -95,6 +95,12 @@ printf '%s\n' 'claudex spent measured 5h used=40% free=60%; weekly used=90% free
 out="$(run_at 4000 12:50)"; rc=$?
 case "$out" in *'state=WEEKLY-CEILING'*'codex=5h40/wk90'*) pass 'claudex weekly ceiling participates in state' ;; *) fail "claudex weekly ceiling participates in state (out='$out')" ;; esac
 
+printf '%s\n' 'claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z' > "$W/codex-row"
+export BANK_STATE_FILE="$W/weekly-only-state"
+sample 10 20
+out="$(run_at 1000 12:00)"
+case "$out" in *'codex=5hnone/wk6'*) pass 'a weekly-only codex row reads as no 5h limit' ;; *) fail "weekly-only codex row (out='$out')" ;; esac
+
 # Unchanged cache polls must preserve the measured rate, even past ring expiry.
 printf '%s\n' 'claudex funded measured 5h used=10% free=90%; weekly used=20% free=80%' > "$W/codex-row"
 export BANK_STATE_FILE="$W/stale-state"

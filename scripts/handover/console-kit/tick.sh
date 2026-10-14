@@ -1124,6 +1124,8 @@ bank_status="$(bun "$REPO/scripts/lanes/bank-status.ts" 2>/dev/null | grep '^cla
 codex_fh="$(printf '%s\n' "$bank_status" | sed -n 's/.*5h used=\([0-9][0-9.]*\)%.*/\1/p')"
 codex_wk="$(printf '%s\n' "$bank_status" | sed -n 's/.*weekly used=\([0-9][0-9.]*\)%.*/\1/p')"
 if [ -n "$codex_fh" ] || [ -n "$codex_wk" ]; then
+    # a weekly-only row means the 5h window is absent, i.e. no limit
+    if [ -z "$codex_fh" ] && [ -n "$codex_wk" ]; then codex_fh=none; fi
     [ -n "$codex_fh" ] || codex_fh='?'
     [ -n "$codex_wk" ] || codex_wk='?'
     codex="5h${codex_fh}/wk${codex_wk}"
