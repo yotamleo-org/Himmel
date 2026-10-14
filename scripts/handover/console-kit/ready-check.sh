@@ -506,7 +506,9 @@ if [ "$ONLY7" -eq 0 ]; then
 # workflow_dispatch trigger FAILs and names the missing trigger, unless it is
 # listed below: those cannot be dispatched (their trigger is pull_request_target,
 # workflow_run or a tag push), so the exemption is explicit and reviewed here.
-# A workflow the PR deletes has nothing to dispatch. A PR touching no workflow
+# A workflow the PR deletes has nothing to dispatch, and one it ADDS or renames
+# to is not on the default branch, which GitHub requires to dispatch a workflow,
+# so neither can be dispatched before merge and both are skipped. A PR touching no workflow
 # never reaches the run API; a read/list failure FAILs.
 WF_DISPATCH_EXEMPT="
 .github/workflows/codeowner-review-gate.yml
@@ -523,14 +525,14 @@ elif [ -z "$wf_files" ]; then
 else
     wf_err=""
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
-    wf_removed_ok=1
-    wf_removed=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed") | .filename' 2>/dev/null) || wf_removed_ok=0
-    if [ "$wf_removed_ok" -eq 0 ]; then
+    wf_undispatchable_ok=1
+    wf_undispatchable=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "removed" or .status == "added" or .status == "renamed") | .filename' 2>/dev/null) || wf_undispatchable_ok=0
+    if [ "$wf_undispatchable_ok" -eq 0 ]; then
         wf_err="cannot read which workflow files the PR removes"
     else
         while IFS= read -r wf; do
             [ -n "$wf" ] || continue
-            printf '%s\n' "$wf_removed" | grep -qxF "$wf" && continue
+            printf '%s\n' "$wf_undispatchable" | grep -qxF "$wf" && continue
             wf_base="${wf##*/}"
             if ! wf_body=$("$GH" api -H "Accept: application/vnd.github.raw" "repos/$owner/$repo/contents/$wf?ref=$SHA" 2>/dev/null); then
                 wf_err="$wf_err; $wf cannot be read at $SHA"

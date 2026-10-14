@@ -72,7 +72,9 @@ case "$args" in
     *"api graphql"*)
         printf '%s %s %s\n' "${STUB_UNRESOLVED:-0}" "false" "null" ;;
     *"api --paginate"*"/files"*'select(.status'*)
-        [ -z "${STUB_FILES_REMOVED:-}" ] || printf '%s\n' "$STUB_FILES_REMOVED" ;;
+        # run the script's own --jq filter over a files array, so the status filter is really exercised
+        printf '%s\n' "${STUB_FILE_STATUS:-}" | jq -R -n '[inputs | select(length > 0) | split(" ") | {status: .[0], filename: .[1]}]' \
+            | jq -r "${args#*--jq }" ;;
     "api -H Accept: application/vnd.github.raw repos/"*"/contents/"*)
         f="${args#*/contents/}"; f="${f%%\?ref=*}"
         [ -f "${STUB_WF_DIR:-/nonexistent}/${f##*/}" ] || exit 1
@@ -139,7 +141,7 @@ run() {
         STUB_MERGE_OIDS="${STUB_MERGE_OIDS:-}" \
         STUB_FILES="${STUB_FILES:-$GREEN_FILES}" \
         STUB_FILES_FAIL="${STUB_FILES_FAIL:-}" \
-        STUB_FILES_REMOVED="${STUB_FILES_REMOVED:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
+        STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" \
@@ -149,7 +151,7 @@ run() {
 }
 
 reset_stubs() {
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILES_REMOVED STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_RUNS_DIR STUB_RUNS_FAIL
     seed_ledger_ok
 }
 
@@ -662,7 +664,7 @@ real_run() {  # <status> <conclusion> <headSha>
 }
 wf_run() {  # <files> [removed] -> rc/out
     reset_stubs
-    STUB_FILES="$1"; STUB_FILES_REMOVED="${2:-}"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"
+    STUB_FILES="$1"; STUB_FILE_STATUS="${2:-}"; STUB_WF_DIR="$WFDIR"; STUB_RUNS_DIR="$RUNDIR"
     rc=0; out="$(run)" || rc=$?
 }
 
@@ -712,8 +714,20 @@ wf_run ".github/workflows/pr-title-lint.yml"
 check "exempted workflow without a trigger: exit 0" "$rc" "0"
 contains "exempted workflow without a trigger: check 10 passes" "$out" "[PASS] 10."
 
-wf_run ".github/workflows/ci.yml" ".github/workflows/ci.yml"
+wf_run ".github/workflows/ci.yml" "removed .github/workflows/ci.yml"
 contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
+
+# A workflow the PR ADDS (or renames to) is not on the default branch, and GitHub
+# only dispatches a workflow that exists there, so it cannot be dispatched yet.
+rm -f "$RUNDIR"/*.json
+cp "$WFDIR/ci.yml" "$WFDIR/brand-new.yml"
+wf_run ".github/workflows/brand-new.yml" "added .github/workflows/brand-new.yml"
+check "workflow added by the PR: exit 0" "$rc" "0"
+contains "workflow added by the PR: check 10 passes" "$out" "[PASS] 10."
+wf_run ".github/workflows/brand-new.yml" "renamed .github/workflows/brand-new.yml"
+contains "workflow renamed by the PR: check 10 passes" "$out" "[PASS] 10."
+wf_run ".github/workflows/brand-new.yml" "modified .github/workflows/brand-new.yml"
+check "workflow modified (not added) still needs a dispatch run: exit 1" "$rc" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
