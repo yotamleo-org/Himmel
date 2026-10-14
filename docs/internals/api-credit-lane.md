@@ -135,6 +135,57 @@ ledger; pinning it is HIMMEL-5444.
   `HIMMEL_API_LOCK_WAIT_MS` (default 5000; unset or empty means the default)
   before `ledger-locked-or-unwritable`.
 
+## Prompt cache (HIMMEL-5570)
+
+A cache read costs 0.1x input, a 5m write 1.25x, a 1h write 2x
+([prompt-cache.md](prompt-cache.md) is the model of record). The prefix is tools,
+then system prompt, then messages, and the match is exact: a byte that differs
+anywhere re-writes everything after it. Measured 2026-10-14, claude 2.1.299,
+Haiku 5.5, tool-free, a one-word prompt, account B:
+
+| Arm | Runs | Input | Cache write | Cache read | Hit rate | Cost |
+|---|---|---|---|---|---|---|
+| before (no flag, cwd in the system prompt) | 3 | 6 | 12,430 | 7,820 | 38.6 % | $0.001709 |
+| after (`--exclude-dynamic-system-prompt-sections`) | 3 | 6 | 11,041 | 9,197 | 45.4 % | $0.001500 (-12 %) |
+
+Each arm ran dir X, dir Y, dir X again, inside 5 minutes. Runs 1 and 2 of an arm
+write whatever differs from the shared prefix; run 3 returns to dir X and reads its
+whole prefix (6,750 and 6,746 tokens) in both arms. Three runs per arm and a
+one-word prompt: the figures show direction, not a rate to quote. The record is
+`launches.jsonl`; `node scripts/api-lane/cache-report.mjs` prints the per-kind
+hit rate and TTL pick from it. Before this change the record held cost only, so no
+earlier run had a hit rate to read back.
+
+**Prefix rules (one run kind = one row of the same prefix):**
+
+1. The launcher fixes everything above the prompt: `--tools`, `--strict-mcp-config`
+   on a tool-free call, the model and effort are the caller's and must be the same
+   for every run of a kind (each model has its own cache).
+2. `--exclude-dynamic-system-prompt-sections` is always passed: the working
+   directory, platform, memory paths and git status ride in the first user
+   message, so two runs from different directories still share the system prompt.
+   They do not share the first user message, which still names the directory:
+   **launch every run of a kind from the same directory**, an empty scratch one,
+   never a checkout (the sandbox leaves stubs there, see Deferred).
+3. Per-run content goes last, in the `-p` prompt. A timestamp, nonce, job id or path
+   in a fixed instruction text re-writes it, so keep them in the per-run tail.
+4. Name the kind: `HIMMEL_API_KIND=<label>` (`[A-Za-z0-9._-]`, default `other`) lands
+   in the launch record with the TTL and the usage split (`input_tokens`,
+   `cache_creation_tokens`, `cache_read_tokens`; `null` when the result had none).
+5. The launcher states the TTL itself through `CLAUDE_CODE_PROMPT_CACHE_TTL`
+   (`HIMMEL_API_CACHE_TTL=5m|1h`, default `5m`). A key-authenticated call gets 5m by
+   default; a caller's own `CLAUDE_CODE_PROMPT_CACHE_TTL` is dropped like every
+   `CLAUDE_CODE_*` variable. Confirm the tier a run really used from
+   `usage.cache_creation.ephemeral_1h_input_tokens` in its result.
+
+**TTL by run kind.** 1h pays 2x instead of 1.25x on every write and wins only when
+gaps between runs of a kind fall between 5 and 60 minutes. The 48 recorded runs
+(2026-10-12 to 2026-10-14) have 44 gaps of 300 s or less, 1 between 300 s and 1 h and
+2 above 1 h, so every kind stays on **5m**. Re-decide per kind with
+`cache-report.mjs` once a kind has runs with usage: it prices the observed gaps on
+both tiers and prints `recommended_ttl`. Set `HIMMEL_API_CACHE_TTL=1h` for that kind
+only when it says so; a burst finishing inside 5 minutes never earns the premium.
+
 ## Proposed CLAUDE.md line (for the operator or supervisor session to apply)
 
 > API credit lane: `scripts/api-lane/claude-api.sh` is the only API-key launch

@@ -25,8 +25,8 @@ echo called >> "$STUB_LOG"
   echo "base_url=\${ANTHROPIC_BASE_URL:-}"; echo "oauth=\${CLAUDE_CODE_OAUTH_TOKEN:-}"
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
-  echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"
-  echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=')"
+  echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"; echo "cache_ttl=\${CLAUDE_CODE_PROMPT_CACHE_TTL:-}"
+  echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
@@ -585,4 +585,73 @@ test('HIMMEL-5433: a grant date that does not exist on the calendar is refused, 
     { env: f.env, encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /invalid-date/);
+});
+
+const USAGE_OUT = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.004, result: 'ok',
+  usage: { input_tokens: 12, cache_creation_input_tokens: 3000, cache_read_input_tokens: 9000 } });
+
+test('HIMMEL-5570: the launcher moves per-machine prompt sections out of the cached system prompt', () => {
+  const f = fixture();
+  assert.equal(f.run().status, 0);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /--exclude-dynamic-system-prompt-sections/);
+});
+
+test('HIMMEL-5570: the main-conversation cache TTL is 5m by default, 1h on request, and a caller CLAUDE_CODE_PROMPT_CACHE_TTL never wins', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }).status, 0);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^cache_ttl=5m$/m);
+  assert.equal(f.run(f.good, { HIMMEL_API_CACHE_TTL: '1h', HIMMEL_API_JOB_ID: 'job-2' }).status, 0);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^cache_ttl=1h$/m);
+});
+
+test('HIMMEL-5570: a cache TTL or run kind outside the allowlist refuses before any spawn', () => {
+  const f = fixture();
+  for (const bad of [{ HIMMEL_API_CACHE_TTL: '2h' }, { HIMMEL_API_KIND: 'a b' }, { HIMMEL_API_KIND: '"x' }]) {
+    const r = f.run(f.good, bad);
+    assert.equal(r.status, 2, JSON.stringify(bad));
+    assert.match(r.stderr, /refused/);
+  }
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-5570: the launch record carries kind, TTL and the usage split so a hit rate can be read back', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { STUB_OUT: USAGE_OUT, HIMMEL_API_KIND: 'eval', HIMMEL_API_CACHE_TTL: '1h' }).status, 0);
+  const row = JSON.parse(f.record().trim().split('\n').pop());
+  assert.equal(row.kind, 'eval');
+  assert.equal(row.cache_ttl, '1h');
+  assert.equal(row.input_tokens, 12);
+  assert.equal(row.cache_creation_tokens, 3000);
+  assert.equal(row.cache_read_tokens, 9000);
+});
+
+test('HIMMEL-5570: a result without a usage object records null token counts, never zeros', () => {
+  const f = fixture();
+  assert.equal(f.run().status, 0);
+  const row = JSON.parse(f.record().trim().split('\n').pop());
+  assert.equal(row.kind, 'other');
+  assert.equal(row.cache_read_tokens, null);
+});
+
+const REPORT = join(HERE, 'cache-report.mjs');
+const usageRow = (ts, kind, ttl, i, c, r) => JSON.stringify({ ts, kind, cache_ttl: ttl, input_tokens: i, cache_creation_tokens: c, cache_read_tokens: r });
+
+test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL from the measured gaps', () => {
+  const f = fixture();
+  const log = join(f.dir, 'launches.jsonl');
+  writeFileSync(log, [
+    usageRow('2026-10-14T10:00:00Z', 'eval', '5m', 10, 4000, 0),
+    usageRow('2026-10-14T10:02:00Z', 'eval', '5m', 10, 100, 4000),
+    usageRow('2026-10-14T10:20:00Z', 'bulk', '5m', 10, 4000, 0),
+    usageRow('2026-10-14T10:50:00Z', 'bulk', '5m', 10, 4000, 0),
+    usageRow('2026-10-14T11:20:00Z', 'bulk', '5m', 10, 4000, 0),
+    '{"ts":"2026-10-14T09:00:00Z","kind":"eval","cache_read_tokens":null}',
+  ].join('\n') + '\n');
+  const r = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.eval.runs, 2);
+  assert.equal(out.eval.hit_rate, 4000 / (4010 + 4110));
+  assert.equal(out.eval.recommended_ttl, '5m');
+  assert.equal(out.bulk.recommended_ttl, '1h');
 });

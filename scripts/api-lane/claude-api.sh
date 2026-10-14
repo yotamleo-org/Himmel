@@ -11,6 +11,8 @@
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
+#        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
+#        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
 # OFF by default. No subscription fallback: a refusal is final.
 set -u
 
@@ -72,6 +74,13 @@ done
 case "$MODEL" in *[!A-Za-z0-9._:/@-]*) refuse "--model has characters outside [A-Za-z0-9._:/@-]" ;; esac
 [ -n "$BUDGET" ] || refuse "--max-budget-usd is required"
 case "$FORMAT" in ""|json) ;; *) refuse "--output-format must be json" ;; esac
+
+# HIMMEL-5570: the run kind labels the launch record (cache-report.mjs groups by it); the TTL is the main-conversation
+# cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
+KIND="${HIMMEL_API_KIND:-other}"
+case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
+CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
+case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
 # --- HIMMEL-5433: auto = the grant that expires first among accounts with room for the whole budget ---
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
@@ -143,7 +152,9 @@ if [ -n "${HIMMEL_API_TOOLS:-}" ]; then
   done
 fi
 TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
-EXTRA_ARGS=()
+# HIMMEL-5570: cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
+# so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
+EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections)
 if [ -z "$ALLOWED_TOOLS" ]; then
   EXTRA_ARGS+=(--strict-mcp-config)   # tool-free also means no MCP server, structurally
 else
@@ -186,8 +197,9 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
-  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
-  ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
+  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
+  ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
+  ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
   "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT"
 RC=$?
@@ -207,11 +219,14 @@ else
 fi
 
 # --- secret-free launch record (no key, no prompt) ---
+# HIMMEL-5570: the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
+read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {
-  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s}\n' \
+  printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB_ID" "$HIMMEL_API_ACCOUNT" "$ROSTER_ORG" "$ROSTER_KEY" \
-    "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC"
+    "$ROSTER_CYCLE" "$MODEL" "$BUDGET" "$SOURCE" "$OUTCOME" "$COST" "$RC" "$KIND" "$CACHE_TTL" \
+    "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
 
 cat "$OUT"
