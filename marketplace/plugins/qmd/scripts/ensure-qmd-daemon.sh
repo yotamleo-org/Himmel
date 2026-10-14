@@ -74,15 +74,6 @@ if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
   exit 0
 fi
 
-# ---- Degraded-backend notice ---------------------------------------------------
-# No NVIDIA GPU + Vulkan iGPU only: rerank hangs there. Keep the state flag in
-# step with the hardware (auto-reverts) and tell the session. Never fails start.
-_degraded="$(dirname -- "${BASH_SOURCE[0]}")/qmd-degraded.sh"
-if [ -f "$_degraded" ]; then
-  _deg_out="$(bash "$_degraded" --write-flag)" && _deg_rc=0 || _deg_rc=$?
-  [ "$_deg_rc" = 10 ] && echo "$_deg_out"
-fi
-
 PROBE_TIMEOUT=2
 WAIT_TRIES=5
 PORT_WAIT_TRIES=15
