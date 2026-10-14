@@ -113,6 +113,8 @@ assert_rc "sudo -R echo bash -c 'git stash'"   2 "$(run_hook "sudo -R echo bash 
 assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 2 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
 assert_rc "echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_hook "echo() ( \"\$@\" ); echo bash -c 'git stash'")"
 assert_rc "alias echo=eval; echo bash -c 'git stash'" 2 "$(run_hook "alias echo=eval; echo bash -c 'git stash'")"
+assert_rc "exported function reaches a child shell" 2 "$(run_hook "echo() ( \"\$@\" ); export -f echo; bash -c \"echo bash -c 'git stash'\"")"
+assert_rc "enable -n echo; echo bash -c 'git stash'" 2 "$(run_hook "enable -n echo; echo bash -c 'git stash'")"
 assert_rc "find -exec sh -c 'git stash'"       2 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
 assert_rc "xargs bash -c 'git stash'"          2 "$(run_hook "printf a | xargs bash -c 'git stash'")"
 assert_rc "sudo -u u bash -c 'git stash'"      2 "$(run_hook "sudo -u u bash -c 'git stash'")"

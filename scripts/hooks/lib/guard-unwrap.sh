@@ -199,14 +199,13 @@ _gu_shell_bodies() {
     n=${#idx[@]}
     # A segment whose command word is a builtin that never executes its
     # arguments (`echo bash -c 'git stash'`) holds shell words as data
-    # (HIMMEL-4543). A `$(…)` or backtick inside it is its own segment, so it
-    # is still read; `;`, `|` and `&&` start a new segment with its own word.
-    # Only a bare command word at position 0 counts: past a wrapper, a value
-    # the option tables missed (`sudo -R echo bash -c …`) can masquerade as
-    # the core word, and a function definition anywhere can shadow the name.
+    # (HIMMEL-4543). Skipped only when GU_FUNC=0: a top-level call whose whole
+    # text is one plain segment (see guard_unwrap), with a literal allowlisted
+    # command word at position 0. Past a wrapper, a value the option tables
+    # missed (`sudo -R echo bash -c …`) can masquerade as the core word.
     if [ "$n" -gt 0 ] && [ "${GU_CORE[s]:-0}" = 0 ] && [ "$GU_FUNC" = 0 ]; then
         case "${ST_W[idx[0]]}" in
-            echo|printf|:|true|false) return 0 ;;
+            echo|printf|:|true|false|test|\[) return 0 ;;
         esac
     fi
     j=0
@@ -332,16 +331,17 @@ guard_unwrap() {
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1
-    # A function or alias can shadow a builtin name (HIMMEL-4543). The tokenizer
-    # splits on parentheses, so no word holds `()`: any `(` or `)` in the
-    # command text, or a word that defines or loads a name (`function`, `alias`,
-    # `shopt`, `eval`, `source`, `.`), disables the data-position skip.
-    GU_FUNC=0
-    [ "$noskip" != 1 ] || GU_FUNC=1
-    case "$cmd" in *'('*|*')'*) GU_FUNC=1 ;; esac
-    for w in "${ST_W[@]+"${ST_W[@]}"}"; do
-        case "$w" in function|alias|shopt|eval|source|.) GU_FUNC=1; break ;; esac
-    done
+    # The data-position skip (HIMMEL-4543) is an exact-shape allowlist, not a
+    # kill list: a function, alias or builtin toggle can shadow the name in
+    # ways no word scan sees. It holds only for a top-level call whose whole
+    # text is one plain command, with no expansion, separator or redirect.
+    GU_FUNC=1
+    if [ "$depth" = 0 ] && [ "$noskip" != 1 ]; then
+        case "$cmd" in
+            *[\$\`\(\)\;\&\|\<\>]*|*"$nl"*) ;;
+            *) GU_FUNC=0 ;;
+        esac
+    fi
 
     k=0
     while [ "$k" -lt "$ST_N" ]; do

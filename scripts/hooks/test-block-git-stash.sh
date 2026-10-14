@@ -237,6 +237,12 @@ assert_rc "4543 echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_case "$(j
 assert_rc "4543 alias echo=eval; echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "alias echo=eval
 echo bash -c 'git stash'")")"
 assert_rc "4543 shopt expand_aliases; alias; echo bash -c" 2 "$(run_case "$(j_bash "shopt -s expand_aliases; alias echo=eval; echo bash -c 'git stash'")")"
+assert_rc "4543 exported function reaches a child shell" 2 "$(run_case "$(j_bash "echo() ( \"\$@\" ); export -f echo; bash -c \"echo bash -c 'git stash'\"")")"
+assert_rc "4543 s=shopt indirection then echo" 2 "$(run_case "$(j_bash "s=shopt; \$s -s expand_aliases; a=alias; \$a echo=eval
+echo bash -c 'git stash'")")"
+assert_rc "4543 d=source indirection" 2 "$(run_case "$(j_bash "d=source; \$d ./f; echo bash -c 'git stash'")")"
+assert_rc "4543 enable -n echo" 2 "$(run_case "$(j_bash "enable -n echo; echo bash -c 'git stash'")")"
+assert_rc "4543 two segments echo && echo bash -c" 2 "$(run_case "$(j_bash "echo a && echo bash -c 'git stash'")")"
 assert_rc "4543 sudo -R echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "sudo -R echo bash -c 'git stash'")")"
 assert_rc "4543 sudo --chroot echo bash -c 'git stash'" 2 "$(run_case "$(j_bash "sudo --chroot echo bash -c 'git stash'")")"
 assert_rc "4543 doas -a echo bash -c 'git stash'"       2 "$(run_case "$(j_bash "doas -a echo bash -c 'git stash'")")"
