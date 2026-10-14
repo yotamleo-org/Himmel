@@ -222,8 +222,10 @@ case "$RC" in
     fi
     if [ -n "$num" ]; then
       echo "fork-drift: refreshing existing issue #$num"
+      # Read the previous body (its marker) before the edit overwrites it.
+      comment="$(delta_comment "$num" "$wd")"
       run gh issue edit "$num" --body-file "$body_file" || mut=1
-      run gh issue comment "$num" --body "$(delta_comment "$num" "$wd")" || mut=1
+      run gh issue comment "$num" --body "$comment" || mut=1
     else
       echo "fork-drift: opening new consolidated drift issue"
       run gh issue create --title "$TITLE" --label "$LABEL" --body-file "$body_file" || mut=1

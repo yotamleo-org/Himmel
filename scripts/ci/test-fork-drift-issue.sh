@@ -136,6 +136,25 @@ out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="<!-- fork-drift-behin
 has 'Still drifting: 3 items (no change since last run)' "$out" "comment: unchanged set"
 rm -f "$mixed" "$only" "$ven"
 
+# 9f. The previous body is read BEFORE the issue is edited: after the edit the
+#     marker is the new one, so a late read would always report "no change".
+fakebin="$(mktemp -d)" || exit 1
+glog="$fakebin/calls.log"
+cat >"$fakebin/gh" <<'GH'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_CALL_LOG"
+case "$1 $2" in
+  "issue list") echo 42 ;;
+  "issue view") echo '<!-- fork-drift-behind: old-item -->' ;;
+esac
+exit 0
+GH
+chmod +x "$fakebin/gh"
+GH_CALL_LOG="$glog" PATH="$fakebin:$PATH" bash "$SCRIPT" 2 "$REP" >/dev/null 2>&1
+view_n="$(grep -n '^issue view' "$glog" | head -1 | cut -d: -f1)"; edit_n="$(grep -n '^issue edit' "$glog" | head -1 | cut -d: -f1)"
+if [ -n "$view_n" ] && [ -n "$edit_n" ] && [ "$view_n" -lt "$edit_n" ]; then ok "previous body read before the edit"; else bad "issue view ($view_n) must precede issue edit ($edit_n)"; fi
+rm -rf "$fakebin"
+
 rm -f "$REP"
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
