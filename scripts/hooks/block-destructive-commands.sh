@@ -1310,6 +1310,9 @@ _gh_inv() {
         release) case "$p2" in delete|delete-asset) deny "gh release $p2" ;; esac ;;
         ssh-key|gpg-key) case "$p2" in add|delete) deny "gh $p1 $p2" ;; esac ;;
         auth) case "$p2" in logout|token) deny "gh auth $p2" ;; esac ;;
+        # an alias body is data the hook cannot see, and a later `gh <alias>`
+        # (or a --shell body) runs it past every verb denied above
+        alias) case "$p2" in set|import) deny "gh alias $p2" ;; esac ;;
         pr)
             [ "$p2" = merge ] || return 0
             e=$ai

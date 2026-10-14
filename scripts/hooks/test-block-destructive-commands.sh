@@ -1521,6 +1521,11 @@ for c in \
     'true; gh repo delete o/r' \
     'ls | gh repo delete o/r' \
     'bash -c "gh repo delete o/r"' \
+    'gh alias set rd "repo delete"' \
+    'gh alias set --shell x "gh secret delete K"' \
+    'gh alias set -s x "gh secret delete K"' \
+    'gh alias import aliases.yml' \
+    'gh -R o/r alias set rd "repo delete"' \
     'gh pr merge 1 --squash && gh secret set A'; do
     assert_rc "5275 deny: $c" 2 "$(run_case "$(j_bash "$c")")"
 done
@@ -1551,6 +1556,8 @@ for c in \
     'gh auth status' \
     'gh auth setup-git' \
     'gh secret list' \
+    'gh alias list' \
+    'gh alias delete rd' \
     'gh variable list' \
     'gh workflow run ci.yml --ref main' \
     'gh workflow list' \
