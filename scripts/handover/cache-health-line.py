@@ -23,7 +23,7 @@ Trend flag      a series is flagged when each of the last 3 calendar days (today
 
 Usage: cache-health-line.py [--state-dir D] [--now EPOCH]
 """
-import argparse, json, os, statistics, sys, time
+import argparse, json, math, os, statistics, sys, time
 from collections import defaultdict
 
 STALE_S = 26 * 3600
@@ -48,7 +48,7 @@ def load_history(path):
                     r = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(r, dict) and isinstance(r.get("ts"), (int, float)):
+                if isinstance(r, dict) and num(r.get("ts")) is not None:
                     rows.append(r)
     except OSError:
         pass
@@ -56,7 +56,8 @@ def load_history(path):
 
 
 def num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    return v if ok else None
 
 
 def series_values(r):
@@ -76,6 +77,8 @@ def build(rows, now):
     recent = defaultdict(list)
     days = defaultdict(lambda: defaultdict(list))
     for r in rows:
+        if r["ts"] > now:
+            continue  # future-dated row: outside every window
         for s, v in series_values(r).items():
             if r["ts"] > now - 7 * DAY:
                 recent[s].append(v)

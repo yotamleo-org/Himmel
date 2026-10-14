@@ -16,7 +16,13 @@ assert_contains() {
     if grep -qF -- "$2" <<< "$3"; then pass "$1"; else fail "$1" "missing: $2 in: $3"; fi
 }
 assert_not_contains() {
-    if grep -qF -- "$2" <<< "$3"; then fail "$1" "unexpected: $2 in: $3"; else pass "$1"; fi
+    local rc=0
+    grep -qF -- "$2" <<< "$3" || rc=$?
+    case "$rc" in
+        0) fail "$1" "unexpected: $2 in: $3" ;;
+        1) pass "$1" ;;
+        *) fail "$1" "grep error rc=$rc" ;;
+    esac
 }
 
 NOW=1760000000
@@ -48,6 +54,18 @@ echo "TEST: unreadable metrics.json"
 mkdir -p "$TMP_ROOT/bad"; echo '{not json' > "$TMP_ROOT/bad/metrics.json"
 OUT=$(run_line "$TMP_ROOT/bad")
 assert_contains "invalid: explicit unmonitored" "cache: unmonitored (metrics invalid)" "$OUT"
+
+echo "TEST: NaN generated_at is not a fresh pass"
+mkdir -p "$TMP_ROOT/nan"; echo '{"schema":1,"generated_at":NaN,"overall":{"hit_pct":96.0}}' > "$TMP_ROOT/nan/metrics.json"
+OUT=$(run_line "$TMP_ROOT/nan")
+assert_contains "nan: explicit unmonitored" "cache: unmonitored (metrics invalid)" "$OUT"
+
+echo "TEST: future-dated history rows are ignored"
+mk_state "$TMP_ROOT/future" $((NOW - 3600))
+add_day "$TMP_ROOT/future" 0 98.0 99.0 97.0 90.0
+add_day "$TMP_ROOT/future" -3 10.0 10.0 10.0 10.0
+OUT=$(run_line "$TMP_ROOT/future")
+assert_contains "future: only past row counted" "cache: 7d read ratio 98.0%" "$OUT"
 
 echo "TEST: present, no baseline yet"
 mk_state "$TMP_ROOT/fresh" $((NOW - 3600))
