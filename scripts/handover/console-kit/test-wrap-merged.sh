@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in check()/the final line, as in test-append-results.sh
+# shellcheck disable=SC2015,SC2016  # SC2016: the case-12 stubs are written with literal $ for the stub to expand; SC2015: A && B || C is intentional in check()/the final line, as in test-append-results.sh
 # scripts/handover/console-kit/test-wrap-merged.sh - suite for wrap-merged.sh
 # (HIMMEL-5594), the one-call MERGED + WRAPPED for a leg. Hermetic: gh, git,
 # close-wrapped-leg.sh, board.mjs and the Jira CLI are stubs (the WM_* seams);
@@ -17,6 +17,9 @@
 #   7. pull failure                                        -> rc 5, no bullet
 #   8. no PR in the doc and no --pr                        -> rc 2
 #   9. unreadable manifest                                 -> rc 1, no close, no bullet
+#  10. relative / symlinked-dir leg path resolves to the manifest's absolute form
+#  11. leg not in the manifest and not WRAPPED             -> rc 4, no pull, no bullet
+#  12. checkout path with a space: default close/board commands still run
 #
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).
 set -uo pipefail
@@ -163,5 +166,41 @@ printf '# leg\n\n## Results\n\n- 10:00 LIVE x\n' > "$LEG"
 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "8: rc 2" "$rc" 2
 contains "8: says no PR" "$out" "no PR"
+
+# --- 10. relative / symlinked-dir leg path still matches the manifest -----
+fixture
+cd "$W" || exit 1
+run --doc "$CONSOLE" --fleet "$MANIFEST" "${LEG##*/}"
+cd "$HERE" || exit 1
+check "10: relative leg path rc 0" "$rc" 0
+contains "10: close ran for the absolute path" "$calls" "close --fleet $MANIFEST $LEG"
+fixture
+ln -s "$W" "$W/dirlink"
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$W/dirlink/${LEG##*/}"
+contains "10: symlinked dir resolves, close ran" "$calls" "close --fleet $MANIFEST $LEG"
+rm -f "$W/dirlink"
+
+# --- 11. not in the manifest and not WRAPPED is a refusal, not a skip ------
+fixture
+printf '# leg\n\n## Results\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n' "$HEAD_OID" > "$LEG"
+bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "11: rc 4" "$rc" 4
+lacks "11: no pull" "$calls" "pull"
+check "11: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+
+# --- 12. a checkout path with a space keeps the default commands intact ----
+fixture
+SP="$W/sp ace"
+mkdir -p "$SP/scripts/handover" "$SP/scripts/lib"
+cp -R "$HERE" "$SP/scripts/handover/console-kit"
+cp -R "$HERE/../../lib/." "$SP/scripts/lib/"
+printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/console-kit/close-wrapped-leg.sh"
+printf 'import { appendFileSync } from "node:fs"\nappendFileSync(process.env.WM_CALLS, "board " + process.argv.slice(2).join(" ") + "\\n")\n' > "$SP/scripts/handover/console-kit/board.mjs"
+rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/console-kit/wrap-merged.sh" --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" 2>&1)" || rc=$?
+calls="$(cat "$WM_CALLS")"
+check "12: space-path default commands rc 0" "$rc" 0
+contains "12: default close ran" "$calls" "close --fleet $MANIFEST $LEG"
+contains "12: default board ran" "$calls" "board --doc $CONSOLE --changed"
 
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }

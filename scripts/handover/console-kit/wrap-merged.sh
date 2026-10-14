@@ -14,8 +14,11 @@
 #                 the head a leg's own READY bullet names, which is the PR head.
 #   2. close      close-wrapped-leg.sh --fleet <manifest> <leg doc> (its rc is
 #                 propagated: 3 lock held, 4 not WRAPPED, 5 session count, 6
-#                 subtree alive, 7 subagent alive). Skipped when the leg is no
-#                 longer in the manifest - a re-run after a later step failed.
+#                 subtree alive, 7 subagent alive). <leg doc> is resolved to its
+#                 absolute physical path first (the manifest's form). Skipped
+#                 only when the leg is no longer in the manifest AND its last
+#                 Results marker is WRAPPED (a re-run after a later step
+#                 failed); otherwise rc 4, not proven closed.
 #   3. pull       git -C <primary> pull --ff-only (rc 5).
 #   4. log        one console-doc bullet, skipped when `MERGED #<n> → <sha8>`
 #                 is already in the doc (rc 6):
@@ -36,9 +39,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
 GH="${WM_GH:-gh}"
-CLOSE="${WM_CLOSE:-bash $HERE/close-wrapped-leg.sh}"
 GIT="${WM_GIT:-git}"
-BOARD="${WM_BOARD:-node $HERE/board.mjs}"
+# arrays, so a checkout path with a space stays one word; a WM_* override is one executable
+if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi
+if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/board.mjs"); fi
 
 usage() { echo "usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]" >&2; exit 2; }
 fail()  { echo "wrap-merged: step $1 failed: $2" >&2; exit "$3"; }
@@ -55,6 +59,8 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$LEG" ] || usage
 [ -f "$DOC" ] && [ -f "$LEG" ] || { echo "wrap-merged: console doc or leg doc is not a file" >&2; exit 2; }
+# the manifest holds absolute physical paths: match on the same form (rel path, symlink, .., // all collapse)
+LEG="$(cd "$(dirname "$LEG")" && pwd -P)/${LEG##*/}"
 
 if [ -z "$PR" ]; then
     PR="$(grep -E '^- .*(READY|PR) #?[0-9]+' "$LEG" | tail -n 1 | grep -oE '(READY|PR) #?[0-9]+' | tail -n 1 | grep -oE '[0-9]+')" || PR=""
@@ -69,7 +75,7 @@ fi
 [ -n "$PRIMARY" ] || fail primary "cannot resolve the primary checkout" 5
 
 # 1. pr-state (run from the primary so gh resolves THIS repo, not the caller's)
-view="$(cd "$PRIMARY" && $GH pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
+view="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
 state="$(printf '%s' "$view" | jq -r '.state // empty' 2>/dev/null)"
 sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 [ "$state" = MERGED ] && [ -n "$sha" ] || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
@@ -78,14 +84,16 @@ sha8="${sha:0:8}"
 # 2. close (only while the leg is still in the manifest)
 legs="$(bash "$HERE/fleet-manifest.sh" list "$FLEET" 2>&1)" || fail manifest "fleet-manifest.sh list $FLEET: $legs" 1
 if printf '%s\n' "$legs" | grep -Fxq "$LEG"; then
-    $CLOSE --fleet "$FLEET" "$LEG"; rc=$?
+    "${CLOSE[@]}" --fleet "$FLEET" "$LEG"; rc=$?
     [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
+elif grep -E '^- ' "$LEG" | tail -n 1 | grep -Eq '^- ([0-9]{2}:[0-9]{2} )?WRAPPED'; then
+    echo "wrap-merged: $LEG is not in the fleet manifest and its last marker is WRAPPED - already closed, skipping close"
 else
-    echo "wrap-merged: $LEG is not in the fleet manifest - window already closed, skipping close"
+    fail close-wrapped-leg "$LEG is not in the fleet manifest and its last marker is not WRAPPED - not proven closed" 4
 fi
 
 # 3. pull
-$GIT -C "$PRIMARY" pull --ff-only || fail pull "git -C $PRIMARY pull --ff-only" 5
+"$GIT" -C "$PRIMARY" pull --ff-only || fail pull "git -C $PRIMARY pull --ff-only" 5
 
 # 4. log
 base="${LEG##*/}"
@@ -98,12 +106,12 @@ if grep -Fq "MERGED #$PR → $sha8" "$DOC"; then
 else
     status="?"
     if [ -n "$ticket" ]; then
-        jira="${WM_JIRA:-node $(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")/scripts/jira/dist/index.js}"
-        got="$(JIRA_PROJECT_KEY="${ticket%%-*}" $jira get "$ticket" 2>/dev/null | head -n 1 | cut -f3)" && [ -n "$got" ] && status="$got"
+        if [ -n "${WM_JIRA:-}" ]; then jira=("$WM_JIRA"); else jira=(node "$PRIMARY/scripts/jira/dist/index.js"); fi
+        got="$(JIRA_PROJECT_KEY="${ticket%%-*}" "${jira[@]}" get "$ticket" 2>/dev/null | head -n 1 | cut -f3)" && [ -n "$got" ] && status="$got"
     fi
     text="MERGED #$PR → $sha8 ($label, ${ticket:-no-ticket} $status). $label WRAPPED, window closed."
     bash "$HERE/append-results.sh" "$DOC" "$text" || fail log "append-results.sh" 6
 fi
 
 # 5. board
-$BOARD --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7
+"${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7
