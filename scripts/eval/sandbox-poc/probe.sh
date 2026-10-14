@@ -72,6 +72,9 @@ cd "$WORK" || { echo "probe.sh: cannot cd $WORK" >&2; exit 2; }
 # R1 hidden config: the read must fail (denyRead hides the path)
 out=$(cat "$CFG/token" 2>&1); escape R1-read-cfg "$EXPECT" "$([ "$out" = SECRET ] && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
 
+rm -f "$VERD/b.txt" "$VERD/c.txt" "$VERD/d.txt" "$ROOT/home/outside.txt" 2>/dev/null
+anchor_before=$(cat "$ANCHOR" 2>/dev/null)
+
 # R2 verdicts written directly
 out=$( { echo x > "$VERD/b.txt"; } 2>&1 ); escape R2-write-verdicts "$EXPECT" "$([ -f "$VERD/b.txt" ] && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
 
@@ -88,10 +91,16 @@ out=$( { echo z > "$ROOT/home/outside.txt"; } 2>&1 ); escape R5-write-outside "$
 
 # R6 the leg cannot rewrite an anchored writer (the excludedCommands hazard:
 # an excluded command runs unsandboxed, so its script must not be leg-writable)
-out=$( { echo '# tampered' >> "$ANCHOR"; } 2>&1 ); escape R6-anchor-script "$EXPECT" "$(grep -q tampered "$ANCHOR" && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
+out=$( { echo '# tampered' >> "$ANCHOR"; } 2>&1 ); escape R6-anchor-script "$EXPECT" "$([ "$(cat "$ANCHOR" 2>/dev/null)" != "$anchor_before" ] && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
 
 # C1 git worktree flow: init, commit, with a hook that must fire
-git init -q -b main "$WORK/r" 2>/dev/null && cd "$WORK/r" || true
+if ! { git init -q -b main "$WORK/r" 2>/dev/null && cd "$WORK/r"; }; then
+  cd "$WORK" || exit 2
+  row C1-git-commit FAIL "git init or cd into the fixture repo failed"
+  row C2-git-worktree-push FAIL "git init or cd into the fixture repo failed"
+  GITOK=0
+else GITOK=1; fi
+if [ "$GITOK" -eq 1 ]; then
 printf '#!/bin/sh\ntouch .hook-fired\n' > .git/hooks/pre-commit 2>/dev/null; chmod +x .git/hooks/pre-commit 2>/dev/null
 out=$(git -c user.email=a@b -c user.name=a commit -q --allow-empty -m x 2>&1); rc=$?
 c1=1; if [ "$rc" -eq 0 ] && [ -f .hook-fired ]; then c1=0; fi
@@ -104,11 +113,15 @@ printf '#!/bin/sh\ntouch %s/.prepush-fired\nexit 0\n' "$WORK" > .git/hooks/pre-p
 out=$(git worktree add -q -b feat/x "$WORK/wt" 2>&1 && git push -q origin feat/x 2>&1); rc=$?
 c2=1; if [ "$rc" -eq 0 ] && [ -f "$WORK/.prepush-fired" ]; then c2=0; fi
 works C2-git-worktree-push "$c2" "rc=$rc prepush=$([ -f "$WORK/.prepush-fired" ] && echo fired || echo no) $(printf '%s' "$out" | head -c 50)"
-cd "$WORK" || true
+cd "$WORK" || exit 2
+fi
 
 # C3 gh reaches the API (a dummy token: "Bad credentials" proves the network path)
 if command -v gh >/dev/null 2>&1; then
-  out=$(GH_TOKEN=dummy gh api rate_limit 2>&1); case "$out" in *"Bad credentials"*|*'"resources"'*) works C3-gh-reach 0 "reached api.github.com";; *) works C3-gh-reach 1 "$(printf '%s' "$out" | head -c 70)";; esac
+  out=$(GH_TOKEN=dummy gh api rate_limit 2>&1); case "$out" in
+    *"Bad credentials"*|*'"resources"'*) works C3-gh-reach 0 "reached api.github.com";;
+    *"error connecting"*|*"no such host"*|*"Could not resolve"*) if [ "$EXPECT" = open ]; then row C3-gh-reach SKIP "no network on this host"; else works C3-gh-reach 1 "$(printf '%s' "$out" | head -c 70)"; fi;;
+    *) works C3-gh-reach 1 "$(printf '%s' "$out" | head -c 70)";; esac
 else row C3-gh-reach SKIP "gh not installed"; fi
 
 # C4 / C5 runtimes
