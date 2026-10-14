@@ -156,7 +156,9 @@ template_version: 3
 >    `ready-check.sh --only 7 <pr>`. **A PR that changes `.github/workflows/`
 >    needs a green `workflow_dispatch` run at its head before READY**
 >    (`gh workflow run <wf> --ref <branch>`; `ready-check.sh` item 10 FAILs
->    without one, and prints the command). <Anything else unusual: a PR body that must carry other
+>    without one, and prints the command; a deleted, added or renamed
+>    workflow and the `WF_DISPATCH_EXEMPT` workflows need no run, so do not
+>    try to dispatch them). <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
