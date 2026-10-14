@@ -124,8 +124,8 @@ red/new counts, new suites) then `runs` and `new_breakages` per ISO week.
 
 ### A nightly OS red is a split slice, never a hold
 
-Windows is verified by the nightly and macOS by the cadence above; nothing else
-runs them: there is no per-PR all-OS proof, and a PR is never blocked on an OS
+macOS is verified by the cadence above (Windows is dropped); nothing else
+runs it: there is no per-PR all-OS proof, and a PR is never blocked on an OS
 it did not run. When the nightly goes red, or the macOS cadence goes
 red:
 
