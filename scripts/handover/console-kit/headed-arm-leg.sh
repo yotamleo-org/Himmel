@@ -2137,7 +2137,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         # before any bank check) — release it now since this attempt is not
         # going to launch after all, rather than leaving it to expire by TTL.
         _arm_fleet_slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
-        # (this round): the same admission-lock-failure bypass that
+        # The same admission-lock-failure bypass that
         # can reach here without ever creating OUR reservation (see the
         # comment above SKIPPED-FLEET) means a reservation already present
         # for $NAME may belong to an unrelated concurrent arm attempt —
