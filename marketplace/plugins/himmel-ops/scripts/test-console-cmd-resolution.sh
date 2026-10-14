@@ -15,7 +15,7 @@
 set -u
 unset HIMMEL_REPO 2>/dev/null || true
 here="$(cd "$(dirname "$0")" && pwd)"
-cmd="$here/../commands/console.md"
+cmd="$here/../commands/supervisor-session.md"
 [ -f "$cmd" ] || { echo "FATAL: $cmd not found"; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "FATAL: git required for the git-toplevel case"; exit 2; }
 fails=0
