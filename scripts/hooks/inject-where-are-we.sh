@@ -92,7 +92,13 @@ mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 # the payload's cwd, else (neither set) $_wa_root as before.
 _wa_sess="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$_wa_sess" ] && [ -n "$_wa_payload" ]; then
-    _wa_sess="$(printf '%s' "$_wa_payload" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+    # jq decodes escapes in the path; the sed fallback covers a jq-less host
+    # for the plain-path case.
+    if command -v jq >/dev/null 2>&1; then
+        _wa_sess="$(printf '%s' "$_wa_payload" | jq -r '.cwd // empty' 2>/dev/null || true)"
+    else
+        _wa_sess="$(printf '%s' "$_wa_payload" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+    fi
 fi
 [ -d "$_wa_sess" ] || _wa_sess="$_wa_root"
 _wa_branch="${WHERE_ARE_WE_BRANCH_OVERRIDE:-$(git -C "$_wa_sess" branch --show-current 2>/dev/null || true)}"

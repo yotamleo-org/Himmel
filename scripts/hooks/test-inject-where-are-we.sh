@@ -339,6 +339,20 @@ if [ "$rc6" = 0 ] && grepq "$out6" -F '# HIMMEL-9' && ! grepq "$out6" -F 'digest
 else
     fail "payload cwd branch ignored: rc=$rc6 out='$out6'"
 fi
+if command -v jq >/dev/null 2>&1; then
+    WTQ="$TMP/ticket\"wt"; mkdir -p "$WTQ"
+    git -C "$WTQ" init -q 2>/dev/null
+    git -C "$WTQ" symbolic-ref HEAD refs/heads/feat/himmel-9-wt
+    state6q="$TMP/s6q"; seed_ledger "$state6q"; touch "$state6q/.refreshed-at"
+    printf '{"hook_event_name":"SessionStart","cwd":"%s"}\n' "${WTQ//\"/\\\"}" > "$TMP/payload6q.json"
+    out6q="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6q" \
+        HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" <"$TMP/payload6q.json" 2>/dev/null)"; rc6q=$?
+    if [ "$rc6q" = 0 ] && grepq "$out6q" -F '# HIMMEL-9' && ! grepq "$out6q" -F 'digest not loaded'; then
+        pass "payload cwd with an escaped quote is decoded -> that ticket's card"
+    else
+        fail "escaped-quote cwd not decoded: rc=$rc6q out='$out6q'"
+    fi
+fi
 state6b="$TMP/s6b"; seed_ledger "$state6b"; touch "$state6b/.refreshed-at"
 out6b="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state6b" CLAUDE_PROJECT_DIR="$WT" \
     HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" </dev/null 2>/dev/null)"; rc6b=$?
