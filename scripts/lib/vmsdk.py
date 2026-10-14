@@ -893,7 +893,10 @@ class VM:
         # VMError below, operator decides).
         arm = (f"cd {locate_cwd} && bash scripts/handover/arm-resume.sh"
                f" --time {shlex.quote(when)}"
-               f" --handover {shlex.quote(guest_handover)}")
+               f" --handover {shlex.quote(guest_handover)}"
+               # HIMMEL-841: the digest in guest_handover changes when the
+               # source is edited, so key the dedup on the host-path tag.
+               f" --source-key {tag}")
         if cwd is not None:
             arm += f" --cwd {cwd}"
         if long_gap:
