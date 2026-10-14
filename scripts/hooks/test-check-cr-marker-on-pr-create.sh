@@ -672,6 +672,19 @@ for q in "# don't skip this\ngh pr create --head feat/X --base main\n# that's al
     fi
 done
 
+# Nested-shell bodies run their quoted text as code, so a masked span there
+# would ungate a real invocation: `bash -c`, `eval` and wrappers around them.
+# shellcheck disable=SC2016  # literal quotes in the commands under test
+for q in "bash -c 'cd x && gh pr create --head feat/X --base main'" 'eval \"true; gh pr create --head feat/X --base main\"' 'timeout 60 bash -c \"true && gh pr create --head feat/X --base main\"' "sh -c '(gh pr create --head feat/X --base main)'"; do
+    echo "TEST: nested-shell body ($q), marker present -> BLOCK"
+    run_hook "$q"
+    if [ "$rc" -eq 2 ]; then
+        pass "blocked for a nested-shell body: $q"
+    else
+        fail "expected exit 2, got rc=$rc" "cmd: $q out: $out"
+    fi
+done
+
 # Summary ------------------------------------------------------------
 echo
 echo "===================================="

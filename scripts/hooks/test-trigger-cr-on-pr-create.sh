@@ -422,6 +422,19 @@ EOF"; do
         fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
     fi
 done
+# Nested-shell bodies run their quoted text as code, so a masked span there
+# would ungate a real invocation: `bash -c`, `eval` and wrappers around them.
+# shellcheck disable=SC2016  # literal quotes in the commands under test
+for q in "bash -c 'cd x && gh pr create -t t'" 'eval "true; gh pr create -t t"' 'timeout 60 bash -c "true && gh pr create -t t"' "sh -c '(gh pr create -t t)'"; do
+    echo "TEST: nested-shell body ($q) -> POSTS"
+    reset_state
+    run_hook "$q" "https://github.com/acme/widget/pull/7"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
+        pass "posted for a nested-shell body: $q"
+    else
+        fail "expected rc=0 and 1 post, got rc=$rc posted=$(posted_count)" "cmd: $q out: $out"
+    fi
+done
 
 # Test 6: post-failure stays non-blocking ------------------------------------
 echo "TEST: comment post fails -> hook stays non-blocking (rc 0), records warning"
