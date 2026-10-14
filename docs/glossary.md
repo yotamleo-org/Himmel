@@ -12,44 +12,46 @@ layers enforce each invariant. Per-hook behaviour lives in
 
 ## The lexicon
 
+Each headword is the plain name people read in the docs and UI. The repo's own
+name, the one that ids, env vars, file names, flags and command names use, is
+the alias in brackets. Keep repo identifiers in code spans (`/console`,
+`HIMMEL_CONSOLE_LEG`, `headed-arm-leg.sh`, `go.sh`); they are never renamed.
+In prose, say the plain name, and the old name once in brackets the first time.
+
 | Term | Meaning |
 |---|---|
-| **CR** | Code review — the pre-PR review gate and everything named for it: the CR marker, the CR ledger, the critic panel, `/pr-check` (operator ruling, 2026-09-24). CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
-| **Console** | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the nonce mint. It dispatches legs, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/console new` starts one. |
-| **Judge** | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the console acts.** Several may run in parallel on one question with different scopes. Two shapes — see [Judge: call and session](#judge-call-and-session). |
-| **Consolidator** | Combines several judges' outputs into one reconciled answer, so the console does not absorb N judgments. A lexicon term only: nothing in the repo implements it yet. |
-| **Relay** | Transport. Receives and moves messages and owns the machine wakes. Also called the *communicator* in the design spec; the code name is `relay`. It is launched as a leg of the console (`headed-arm-leg.sh --relay`), never as a console. |
-| **Leg** | A working item: one ticket, one worktree, one brief, one PR. A leg has *kinds*: a work leg (implements and ships), a relay leg, and a judge leg. `HIMMEL_CONSOLE_LEG` marks every console-spawned session of any kind. |
-| **Chain** | A set of work: an ordered sequence of legs that belong together. |
-| **Wave** | A bulk of legs dispatched together — the unit that collision-checking, single-writer and `HIMMEL_FLEET_CAP` apply to. |
+| **Automated review** [CR, code review] | The pre-PR review gate and everything named for it: the review-owed marker (CR marker), the CR ledger, the critic panel, `/pr-check` (operator ruling, 2026-09-24). A human read of the PR is "human review". CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
+| **Supervisor session** [console] | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the nonce mint. It dispatches worker sessions, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/console new` starts one. Never a bare "supervisor": `scripts/telegram/supervisor.ts` is a process keeper. |
+| **Judge session** / **judge subagent** [judge, judge call] | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the supervisor session acts.** Several may run in parallel on one question with different scopes. A judge session is a worker session of the judge kind; a judge subagent is an in-process child. See [Judge: call and session](#judge-call-and-session). A judge verdict stays "judge verdict". |
+| **Consolidator** | Combines several judges' outputs into one reconciled answer, so the supervisor session does not absorb N judgments. A lexicon term only: nothing in the repo implements it yet. |
+| **Relay** [communicator] | Transport. Receives and moves messages and owns the machine wakes. Also called the *communicator* in the design spec; the code name is `relay`. It is launched as a worker session of the supervisor session (`headed-arm-leg.sh --relay`), never as a supervisor session. |
+| **Worker session** [leg] | A working item: one ticket, one worktree, one brief, one PR. A worker session has *kinds*: a work session (implements and ships), a relay session, and a judge session. `HIMMEL_CONSOLE_LEG` marks every supervisor-spawned session of any kind. Fleet sense only: a lane worker or a dispatched subagent worker is a different thing. |
+| **Ticket sequence** [chain] | A set of work: an ordered sequence of worker sessions that belong together. Fleet sense only; the hook chain and the RETASK chain keep "chain". |
+| **Batch** [wave] | A bulk of worker sessions dispatched together: the unit that collision-checking, single-writer and `HIMMEL_FLEET_CAP` apply to. `batch mode` in a cadence script and a ledger batch row are other senses. |
 | **Arming** | Launching a headed or headless session on a schedule (`arm-resume.sh`, `headed-arm.sh`, `/console new --arm`). |
-| **Manual override** | An ad-hoc operator-side session — a whiteboard. It passes work to the console as a ticket and a brief, never as a relayed ruling. |
-| **Succession** | One console handing over to the next: the outgoing console arms its successor and writes a HANDOFF (`/console next`). Not a chain — a chain is legs. |
-| **himmel-bus** | The local, hash-chained message bus between a console and its legs (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered console (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
+| **Side session** [manual override] | An ad-hoc operator-side session: a whiteboard. It passes work to the supervisor session as a ticket and a brief, never as a relayed ruling. |
+| **Succession** | One supervisor session handing over to the next: the outgoing one arms its successor and writes a HANDOFF (`/console next`). Not a ticket sequence: a ticket sequence is worker sessions. |
+| **himmel-bus** | The local, hash-chained message bus between a supervisor session and its worker sessions (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered supervisor session (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
 top-tier parent must not implement inline), not a session role; the word also
 names a script (`scripts/clean-garden.sh`) and CI components. *Conductor* is
 the cross-project layer, not a role in this fleet.
 
-## Plain names
+## Plain names for harness terms
 
-The headwords in this glossary keep the repo's own names, because ids, env
-vars, file names, flags and command names use them (`/console`,
-`HIMMEL_CONSOLE_LEG`, `go.sh`). In prose for people, use the plain name. The old
-name is the alias: say it once, the first time, in brackets.
+The terms above are defined once, in the lexicon. This is an alias index for
+the harness terms, which are defined in the
+[harness wiring lexicon](#harness-wiring-lexicon) under their repo names:
+ids, env vars, file names, flags and command names keep those names
+(`PARKED-BANK`, `CADENCE_BANK_*`, `/overnight-shift`). In prose for people, use
+the plain name, and say the old name once, the first time, in brackets.
 
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
-| **supervisor session** | console | Never a bare "supervisor": `scripts/telegram/supervisor.ts` is a process keeper. |
-| **worker session** | leg | Fleet sense only. A lane worker or a dispatched subagent worker is a different thing. |
 | **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
-| **judge subagent** | judge call | A judge session stays "judge session". |
-| **ticket sequence** | chain (fleet sense) | The hook chain and the RETASK chain keep "chain". |
-| **batch** | wave | `batch mode` in a cadence script and a ledger batch row are other senses. |
 | **subscription usage budget** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables keep their names. |
 | **weekly budget override** | bank lift | |
-| **automated review** | CR, code review | The pre-PR critic panel. A human read of the PR is "human review". |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
 | **sibling sweep** | class sweep | |
@@ -58,8 +60,7 @@ name is the alias: say it once, the first time, in brackets.
 | **off switch** | bypass flag | Never "bypass" alone: `bypassPermissions` is a different thing. |
 | **sanctioned script** | chokepoint | Docs only. |
 | **warn-only** | advisory | |
-| **worker system prompt** | preface | There are five prefaces (leg, leg claudex, leg openrouter, judge, consult). |
-| **side session** | manual override | |
+| **worker system prompt** | preface | There are five prefaces (worker, worker claudex, worker openrouter, judge, consult). |
 | **usage-cap auto-relaunch** | watchdog | Only where the README, getting-started and why-himmel mean the auto-arm hooks. A wall-clock killer is a "run timeout". |
 | **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` keep their names. |
 | **soft block (speed bump)** | speed bump | Stops only the accidental form. |
