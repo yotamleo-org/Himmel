@@ -1142,6 +1142,12 @@ assert_rc "5484 scrub text hidden in a comment" 2 "$(run_case "$(j_bash 'bash -x
 assert_rc "5484 scrub then ansi-c -x word"      2 "$(run_case "$(j_bash $'env -i bash -x s.sh; bash $\'-x\' s.sh')")"
 assert_rc "5484 ctl scrubbed trace, glued redirect" 0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh 2>/dev/null')")"
 assert_rc "5484 ctl scrubbed trace, ansi-c word"    0 "$(run_case "$(j_bash $'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash $\'-x\' s.sh')")"
+# Judge j2544c: an unscrubbed segment that carries a shell body (-c) or an eval
+# is re-read by guard_unwrap, which must not match the scrub list of another segment.
+assert_rc "5484 scrub then bash -c quoted -x"   2 "$(run_case "$(j_bash "env -i bash -x s.sh; bash -c \"bash '-x' s.sh\"")")"
+assert_rc "5484 scrub then bash -c two spaces"  2 "$(run_case "$(j_bash 'env -i bash -x s.sh; bash -c "bash  -x s.sh"')")"
+assert_rc "5484 scrub then eval"                2 "$(run_case "$(j_bash 'env -i bash -x s.sh; eval "bash -x s.sh"')")"
+assert_rc "5484 ctl scrubbed trace, unrelated grep -c" 0 "$(run_case "$(j_bash 'env -i HOME=/tmp/h PATH=/usr/bin:/bin bash -x s.sh; grep -c foo f')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

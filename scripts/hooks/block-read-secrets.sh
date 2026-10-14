@@ -1052,9 +1052,11 @@ interp_env_dump() {
 # ponytail: the same words elsewhere in the command under no `env -i` also
 # match (that segment is dropped, so the trace denies); a segment with a live
 # `$`, a glob or a newline in a word never counts as scrubbed. Revisit if
-# guard_unwrap hands a child its wrapper context (HIMMEL-5484 follow-up).
+# guard_unwrap hands a child its wrapper context (HIMMEL-5484 follow-up). Any
+# unscrubbed `sh -c`-style body or `eval` in the command empties the whole list,
+# so `env -i bash -x s; bash -c "bash '-x' s"` denies.
 xt_scrub_segs() {
-    local s k i n w seg conf scrub out="" un="" nl=$'\n'
+    local s k i n w seg conf scrub isb hasc bodyun=0 out="" un="" nl=$'\n'
     local -a ws
     st_tokenize "$1" || return 0
     s=0
@@ -1092,8 +1094,20 @@ xt_scrub_segs() {
             i=$((i + 1))
         done
         [ -n "$seg" ] || continue
-        if [ "$scrub" = 1 ] && [ "$conf" = 0 ]; then out="$out$seg$nl"; else un="$un$seg$nl"; fi
+        if [ "$scrub" = 1 ] && [ "$conf" = 0 ]; then out="$out$seg$nl"; else
+            un="$un$seg$nl"
+            # An unscrubbed shell body (`bash -c`) or `eval` is re-read by
+            # guard_unwrap as its own command, which would then match a scrub
+            # line of ANOTHER segment (j2544c): no segment counts as scrubbed.
+            isb=0; hasc=0
+            for w in "${ws[@]}"; do
+                case "${w##*/}" in eval) bodyun=1 ;; bash|sh|zsh|dash|ksh|ash|mksh|rbash) isb=1 ;; esac
+                case "$w" in -c|-[A-Za-z]*c*) hasc=1 ;; esac
+            done
+            if [ "$isb" = 1 ] && [ "$hasc" = 1 ]; then bodyun=1; fi
+        fi
     done
+    [ "$bodyun" = 0 ] || return 0
     # A scrubbed segment whose words also sit inside an unscrubbed segment
     # (`env -i bash -x s; bash -x s`) cannot be told apart in the child: drop it.
     while IFS= read -r seg; do
