@@ -2010,19 +2010,22 @@ SHEOF
         # ("mkfifo: cannot make fifo '.../ready.<pid>.<n>.idle': File exists").
         RANDOM=5599
         stale_ready="$SUITE_HOLDER_DIR/ready.$$.$RANDOM"
-        mkfifo "$stale_ready.idle"
-        RANDOM=5599
-        if start_suite_holder "$SUITE_HOLDER_DIR" "$SUITE_HOLDER_DIR/sleeper.sh"; then
-            pass
+        if ! mkfifo "$stale_ready.idle"; then
+            fail "11k0: could not create the stale fixture $stale_ready.idle"
         else
-            fail "11k0: start_suite_holder failed on a stale $stale_ready.idle left by an earlier holder"
-        fi
-        stop_suite_holder
-        if [ -e "$stale_ready.idle" ]; then
-            fail "11k0: stop_suite_holder left $stale_ready.idle behind"
-            rm -f "$stale_ready.idle"
-        else
-            pass
+            RANDOM=5599
+            if start_suite_holder "$SUITE_HOLDER_DIR" "$SUITE_HOLDER_DIR/sleeper.sh"; then
+                pass
+            else
+                fail "11k0: start_suite_holder failed on a stale $stale_ready.idle left by an earlier holder"
+            fi
+            stop_suite_holder
+            if [ -e "$stale_ready.idle" ]; then
+                fail "11k0: stop_suite_holder left $stale_ready.idle behind"
+                rm -f "$stale_ready.idle"
+            else
+                pass
+            fi
         fi
 
         # run_mog_as_descendant <ancestor_cwd> <mog_cwd> <mog_script> [argv...]
