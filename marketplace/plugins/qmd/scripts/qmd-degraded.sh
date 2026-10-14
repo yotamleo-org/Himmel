@@ -31,7 +31,7 @@ fi
 
 igpu=0
 if [ "$nvidia_ok" = 0 ] && command -v "$VULKANINFO" >/dev/null 2>&1; then
-    vk="$(timeout 5 "$VULKANINFO" --summary 2>/dev/null)"
+    vk="$(timeout 5 "$VULKANINFO" --summary 2>/dev/null)" || vk=""
     if grep -qF PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU <<<"$vk" && ! grep -qF PHYSICAL_DEVICE_TYPE_DISCRETE_GPU <<<"$vk"; then
         igpu=1
     fi
