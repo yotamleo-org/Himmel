@@ -483,6 +483,17 @@ itself, not hardcoded to any one release line, so `v0.3.0-pre.9` and a future
 
 ## Wrapping a leg
 
+**Default path: one call per leg message.** Write the leg's `MERGED` or
+`WRAPPED` message to a file and run
+`bash scripts/handover/console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
+It finds the leg doc by the message's `N<k>` label and runs
+`console-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
+means done; `ESCALATE <reason>` means do the steps below by hand. You can run
+`wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]`
+directly when you already hold the leg doc. The hand sequence below is the
+fallback, not the default: a measured console spent 7 to 9 full-context turns
+per MERGED/WRAPPED on it (HIMMEL-5592).
+
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
 leg's window with `bash scripts/handover/console-kit/close-wrapped-leg.sh
 <leg-doc>` — it verifies the lock is free and the doc's last
@@ -561,6 +572,10 @@ never act on them.
   `bash scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head>
   --pr <n> --evidence-file <path>` writes `verdicts/<qid>/`. A verdict that
   lives only in your context dies with it; the file is what a successor reads.
+  Prefer `bash scripts/handover/console-kit/verdict-go.sh <qid> <GO|NO-GO> <head>
+  --pr <n> --evidence-file <path> --doc <console doc>`: it runs `write-verdict.sh`,
+  `go.sh`, the Results bullet and the board in one call and prints the message to
+  send the leg. The hand steps are for a verdict it refuses.
 - **Dispatch a judge call as `console-judge-ro`, not the built-in Explore**: same read-only tool list, passes the ruling-20 console
   dispatch fence, and its body carries the judge contract. A judge reads and
   reasons; it never runs suites or polls CI (the leg's scripts do that), so it

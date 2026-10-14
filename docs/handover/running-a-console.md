@@ -268,6 +268,13 @@ never update the manifest. An update failure returns nonzero and reports that
 the launch/close already happened; it does not undo it. Nonces remain supervisor-session-only
 inputs to `live-state.sh --nonce`, never sourced from the manifest.
 
+A leg's `MERGED` or `WRAPPED` message is one call, not a turn sequence:
+`console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`
+routes it to `console-kit/wrap-merged.sh` and prints `HANDLED` or `ESCALATE
+<reason>`; a judge verdict is one `console-kit/verdict-go.sh` call. Consoles that
+ran the hand sequences spent most of their input tokens on them
+(HIMMEL-5592 inventory: `scripts/eval/console-load-inventory.py`).
+
 **Lane canary**: `scripts/lanes/lane-canary.sh [--lanes a,b]
 [--timeout <sec>] [--out <report.json>] [--dry-run]` launches one no-op worker session per
 lane through the real launcher and reports PASS, FAIL or SKIP with the time to
