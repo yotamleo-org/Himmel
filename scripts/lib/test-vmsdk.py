@@ -142,6 +142,7 @@ class TestLifecycleExec(unittest.TestCase):
     def test_up_waits_for_ssh(self):
         vm = self._vm()
         with mock.patch.object(vmsdk.vbox, "ensure_running") as er, \
+             mock.patch.object(vmsdk, "_running_vms", return_value=["ubuntu_new"]), \
              mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x") as w:
             self.assertEqual(vm.up(), "SSH-2.0-x")
             er.assert_called_once_with("ubuntu_new")
@@ -166,7 +167,8 @@ class TestLifecycleExec(unittest.TestCase):
     def test_down_invalidates_client(self):
         vm = self._vm()
         vm._client = mock.Mock()
-        with mock.patch.object(vmsdk.vbox, "power_off"):
+        with mock.patch.object(vmsdk.vbox, "power_off"), \
+             mock.patch.object(vmsdk, "_running_vms", return_value=[]):
             vm.down()
         self.assertIsNone(vm._client)
 
@@ -234,7 +236,8 @@ class TestSnapshots(unittest.TestCase):
     def test_restore_invalidates_client(self):
         vm = self._vm()
         vm._client = mock.Mock()
-        with mock.patch.object(vmsdk.vbox, "restore_snapshot"):
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             mock.patch.object(vmsdk, "_current_snapshot", return_value="clean"):
             vm.restore("clean")
         self.assertIsNone(vm._client)
 
@@ -390,6 +393,89 @@ class TestProvisionE2E(unittest.TestCase):
         vm = self._windows()
         with self.assertRaises(NotImplementedError):
             vm.run_e2e()
+
+
+# Real VBoxManage output captured on this station 2026-10-14 (HIMMEL-2471).
+_SHOWVMINFO_SNAP = 'name="ubuntu_new"\nVMState="poweroff"\nCurrentSnapshotName="suite-ready-v4"\nCurrentSnapshotUUID="92a7e71a-6dbd-48a9-bda3-fc1ef1dadfc7"\n'
+_RUNNINGVMS_EMPTY = ""
+_RUNNINGVMS_UP = '"ubuntu_new" {1482f800-d810-43b9-80c9-29baa40b8c52}\n'
+
+
+class TestReadback(unittest.TestCase):
+    """HIMMEL-2471: every state-changing verb reads its own result back."""
+
+    def _vm(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "osboxes", "ubuntu_vm_pass": "pw"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                return vmsdk.VM("ubuntu_new")
+
+    def _run(self, out):
+        return mock.patch.object(vmsdk.vbox, "_run", return_value=(0, out))
+
+    def test_restore_readback_mismatch_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.restore("clean")
+        self.assertIn("suite-ready-v4", str(cm.exception))
+        self.assertIn("clean", str(cm.exception))
+
+    def test_restore_readback_match_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "restore_snapshot"), self._run(_SHOWVMINFO_SNAP):
+            vm.restore("suite-ready-v4")
+
+    def test_up_not_running_after_ensure_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "ensure_running"), \
+             mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x"), \
+             self._run(_RUNNINGVMS_EMPTY):
+            with self.assertRaises(vmsdk.VMError):
+                vm.up()
+
+    def test_up_running_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "ensure_running"), \
+             mock.patch.object(vmsdk.vbox, "wait_for_ssh", return_value="SSH-2.0-x"), \
+             self._run(_RUNNINGVMS_UP):
+            self.assertEqual(vm.up(), "SSH-2.0-x")
+
+    def test_down_still_running_fails_loud(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "power_off"), self._run(_RUNNINGVMS_UP):
+            with self.assertRaises(vmsdk.VMError):
+                vm.down()
+
+    def test_down_off_passes(self):
+        vm = self._vm()
+        with mock.patch.object(vmsdk.vbox, "power_off"), self._run(_RUNNINGVMS_EMPTY):
+            vm.down()
+
+    def test_cli_restore_mismatch_exit_1(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False), \
+             mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
+             self._run(_SHOWVMINFO_SNAP):
+            self.assertEqual(vmsdk.main(["ubuntu_new", "restore", "clean"]), 1)
+
+
+class TestDeclaredDeps(unittest.TestCase):
+    """HIMMEL-2471: a clean checkout can act on the missing-dependency error."""
+
+    def test_missing_dotenv_names_the_uv_invocation(self):
+        with mock.patch.dict(sys.modules, {"dotenv": None}):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vmsdk._load_dotenv_into_env(["X"])
+        self.assertIn("uv run --with python-dotenv --with paramiko", str(cm.exception))
+
+    def test_missing_paramiko_names_the_uv_invocation(self):
+        vm = TestReadback._vm(self)
+        with mock.patch.dict(sys.modules, {"paramiko": None}):
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.ssh()
+        self.assertIn("uv run --with python-dotenv --with paramiko", str(cm.exception))
 
 
 class TestCLI(unittest.TestCase):

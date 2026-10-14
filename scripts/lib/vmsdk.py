@@ -11,7 +11,7 @@ loopback port-forward + password env. Stations share the SSH-generic surface
 lifecycle; up/down/snapshot/provision/e2e raise StationLifecycleError.
 
 Stdlib + paramiko + python-dotenv (already deps of the *-vm-setup.py scripts;
-no new deps). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
+invoke via `uv run --with python-dotenv --with paramiko`, HIMMEL-2471). Loopback-only for VM entries. Reads SSH creds from the PRIMARY
 checkout's .env (the gitignored .env is NOT copied into worktrees, so it is
 resolved via the parent of `git rev-parse --git-common-dir`, matching
 scripts/lib/load-dotenv.sh).
@@ -200,12 +200,34 @@ def _env_path():
     return here.parents[1] / ".env"
 
 
+_DEPS_HINT = (
+    "run vmsdk.py as `uv run --with python-dotenv --with paramiko python "
+    "scripts/lib/vmsdk.py <vm> <verb>` or `pip install python-dotenv "
+    "paramiko` (HIMMEL-2471)")
+
+
+def _running_vms():
+    """Names of the VMs VirtualBox reports as running (`list runningvms`)."""
+    rc, out = vbox._run("list", "runningvms")
+    if rc != 0:
+        raise VMError(f"readback failed: `list runningvms` rc {rc}: {out.strip()[-200:]}")
+    return [ln.split('"')[1] for ln in out.splitlines() if ln.startswith('"')]
+
+
+def _current_snapshot(vm):
+    """CurrentSnapshotName per `showvminfo`, or None when the VM has none."""
+    for ln in vbox._info(vm).splitlines():
+        if ln.startswith("CurrentSnapshotName="):
+            return ln.split("=", 1)[1].strip().strip('"')
+    return None
+
+
 def _load_dotenv_into_env(keys):
     """Load only this VM's credential keys, without overriding live values."""
     try:
         from dotenv import dotenv_values
     except ImportError:
-        raise VMError("missing dependency: pip install python-dotenv")
+        raise VMError("missing dependency python-dotenv: " + _DEPS_HINT)
     values = dotenv_values(_env_path(), interpolate=False)
     for key in keys:
         if values.get(key) is not None:
@@ -296,7 +318,10 @@ class VM:
     def up(self):
         self._require_vm("up")
         vbox.ensure_running(self.name)
-        return vbox.wait_for_ssh(self.host, self.port)
+        banner = vbox.wait_for_ssh(self.host, self.port)
+        if self.name not in _running_vms():
+            raise VMError(f"up readback: {self.name} is not in `list runningvms`")
+        return banner
 
     def ensure_up(self):
         self._require_vm("ensure_up")
@@ -310,6 +335,8 @@ class VM:
         self._require_vm("down")
         vbox.power_off(self.name, graceful=graceful)
         self._invalidate()
+        if self.name in _running_vms():
+            raise VMError(f"down readback: {self.name} is still in `list runningvms`")
 
     # --- ssh / exec ---
     def _invalidate(self):
@@ -323,7 +350,10 @@ class VM:
     def ssh(self):
         if self._client is not None:
             return self._client
-        import paramiko
+        try:
+            import paramiko
+        except ImportError:
+            raise VMError("missing dependency paramiko: " + _DEPS_HINT) from None
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         if self.kind == "station":
@@ -457,6 +487,12 @@ class VM:
         self._require_vm("restore")
         vbox.restore_snapshot(self.name, name)
         self._invalidate()
+        current = _current_snapshot(self.name)
+        if current != name:
+            raise VMError(
+                f"restore readback: asked for snapshot {name!r} but "
+                f"CurrentSnapshotName of {self.name} is {current!r}; the VM "
+                "was NOT restored, do not trust its state")
 
     def baseline(self, snap="clean"):
         self._require_vm("baseline")
