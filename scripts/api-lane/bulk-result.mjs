@@ -54,7 +54,9 @@ function artifact(outFile, rest) {
     if (eq > 0) fields[rest[i].slice(0, eq)] = rest[i].slice(eq + 1);
   }
   let sites = [];
-  if (sitesFile && fields.status === 'OK') { try { sites = JSON.parse(readFileSync(sitesFile, 'utf8')); } catch { /* none */ } }
+  if (sitesFile && fields.status === 'OK') {
+    try { sites = JSON.parse(readFileSync(sitesFile, 'utf8')); } catch { fields.status = 'ERROR'; fields.reason = 'the validated sites could not be read back'; }
+  }
   const orNull = (k) => (fields[k] === undefined || fields[k] === '' ? null : cut(fields[k], 512));
   const art = {
     status: orNull('status'), reason: fields.reason ? cut(fields.reason, REASON_MAX) : null,

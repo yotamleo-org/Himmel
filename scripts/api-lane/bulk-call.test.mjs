@@ -23,6 +23,7 @@ const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 let nextId = process.pid * 10;
 
 const STUB = `#!/bin/bash
+[ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 echo called >> "$STUB_LOG"
 echo "args=$*" > "$STUB_ENV"
 echo "cwd=$PWD" >> "$STUB_ENV"
@@ -72,7 +73,7 @@ function fixture() {
   writeFileSync(env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--task-id', id, '--class-file', p.cls, '--paths-file', p.paths,
     '--model', 'claude-haiku-5-5', '--max-budget-usd', '0.05'];
-  made.push(join(SCRATCH, `bulk-${id}`));
+  made.push(join(SCRATCH, `bulk-${id}`), join(SCRATCH, `bulk-${id}.lock`));
   const read = (out) => (out && existsSync(out) ? JSON.parse(readFileSync(out, 'utf8')) : null);
   const run = (over = args, extra = {}) => {
     const r = spawnSync('bash', [BRIDGE, ...over], { env: { ...env, ...extra }, encoding: 'utf8' });
@@ -249,4 +250,38 @@ test('the same task id cannot run twice at once', async () => {
   assert.match(second.stderr, /already running/);
   spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env });
   await new Promise((res) => child.on('close', res));
+});
+
+test('--cancel reaches a claude that ignores TERM (KILL after the grace)', async () => {
+  const f = fixture();
+  writeFileSync(f.p.hold, '');
+  const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env: { ...f.env, STUB_HOLD: f.p.hold, STUB_IGNORE_TERM: '1' }, stdio: 'ignore' });
+  for (let i = 0; i < 100 && !existsSync(f.p.log); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(existsSync(f.p.log), 'the call never started');
+  assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env }).status, 0);
+  await new Promise((res) => child.on('close', res));
+  assert.notEqual(spawnSync('pgrep', ['-f', f.p.stub]).status, 0, 'the TERM-ignoring stub survived the cancel');
+});
+
+test('--cancel never signals a reused pid: a stale pid file with a free lock is no running task', () => {
+  const f = fixture();
+  const bystander = spawn('sleep', ['30'], { stdio: 'ignore' });
+  mkdirSync(join(SCRATCH, `bulk-${f.id}`), { recursive: true });
+  writeFileSync(join(SCRATCH, `bulk-${f.id}`, 'pid'), `${bystander.pid}\n`);
+  writeFileSync(join(SCRATCH, `bulk-${f.id}.lock`), '');
+  const c = spawnSync('bash', [BRIDGE, '--cancel', f.id], { env: f.env, encoding: 'utf8' });
+  const alive = spawnSync('kill', ['-0', String(bystander.pid)]).status === 0;
+  bystander.kill('SIGKILL');
+  assert.equal(c.status, 3);
+  assert.ok(alive, 'the unrelated process was signalled');
+});
+
+test('a sites file that cannot be read back is ERROR, never an empty OK', () => {
+  const f = fixture();
+  const out = join(f.dir, 'art.json');
+  const r = spawnSync('node', [join(HERE, 'bulk-result.mjs'), 'artifact', out, 'status=OK', 'task_id=x', '--sites', join(f.dir, 'missing.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const a = JSON.parse(readFileSync(out, 'utf8'));
+  assert.equal(a.status, 'ERROR');
+  assert.equal(a.site_count, 0);
 });

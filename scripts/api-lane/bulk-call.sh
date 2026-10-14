@@ -32,20 +32,33 @@ CLASS_MAX=8192
 PATHS_MAX=40
 ROOT="/tmp/claude-$(id -u)"
 
-# every descendant of a pid, deepest first, so a cancel reaches claude and anything it left running
+# a pid and every descendant of it, deepest first, so a cancel reaches claude and anything it left running
+# shellcheck disable=SC2329 # called from kill_tree
+tree_pids() {
+  local kid
+  for kid in $(pgrep -P "$1" 2>/dev/null); do tree_pids "$kid"; done
+  echo "$1"
+}
+
+# TERM the whole tree, then KILL whatever ignored it after a short grace
 # shellcheck disable=SC2329 # invoked from the TERM trap string below
 kill_tree() {
-  local kid
-  for kid in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$kid"; done
-  kill -TERM "$1" 2>/dev/null
+  local pids p
+  pids="$(tree_pids "$1")"
+  for p in $pids; do kill -TERM "$p" 2>/dev/null; done
+  sleep 2
+  for p in $pids; do kill -KILL "$p" 2>/dev/null; done
 }
 
 if [ "${1:-}" = "--cancel" ]; then
   [ "$#" -eq 2 ] || usage "--cancel needs exactly one task id"
   seg_ok "$2" || usage "task id must be a path segment"
+  # the running bridge holds this lock for its whole life, so a free lock means no run and the pid file is stale
+  # (a reused pid is never signalled)
+  if [ ! -f "$ROOT/bulk-$2.lock" ] || ! exec 9<"$ROOT/bulk-$2.lock"; then echo "bulk-call: no running task $2" >&2; exit 3; fi
+  if flock -n 9; then echo "bulk-call: no running task $2" >&2; exit 3; fi
   P="$(cat "$ROOT/bulk-$2/pid" 2>/dev/null)"
-  case "$P" in ''|*[!0-9]*) echo "bulk-call: no running task $2" >&2; exit 3 ;; esac
-  kill -0 "$P" 2>/dev/null || { echo "bulk-call: no running task $2" >&2; exit 3; }
+  case "$P" in ''|*[!0-9]*) echo "bulk-call: task $2 has no pid yet" >&2; exit 3 ;; esac
   kill -TERM "$P" && echo "bulk-call: cancel sent to task $2"
   exit 0
 fi
@@ -94,8 +107,8 @@ done < "$PFILE"
 # one task id = one owned work dir; a live run on the same id is refused, a finished one is started clean
 WORK="$ROOT/bulk-$TASK"
 mkdir -p "$ROOT" && chmod 700 "$ROOT" 2>/dev/null
-OLDPID="$(cat "$WORK/pid" 2>/dev/null)"
-case "$OLDPID" in ''|*[!0-9]*) ;; *) ! kill -0 "$OLDPID" 2>/dev/null || usage "task $TASK is already running (pid $OLDPID)" ;; esac
+exec 9>"$ROOT/bulk-$TASK.lock" || usage "cannot open the task lock"
+flock -n 9 || usage "task $TASK is already running"
 rm -rf "$WORK"
 mkdir -p "$WORK/cwd" || usage "cannot create $WORK"
 chmod 700 "$WORK"
