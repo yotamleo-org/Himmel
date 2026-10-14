@@ -130,6 +130,42 @@ A **lane** is a dispatch backend a leg or subagent runs on (`--lane
 native|claudex`, the Codex lane, the critic and bulk lanes); `/lanes` prints
 the set available on this machine. It is not a role, and not a wave.
 
+## Planning model
+
+How work is grouped, sized and shipped. The layers, widest first:
+
+| Term | Meaning |
+|---|---|
+| **Sector** | An abstract, cross-version area of the system, wider than any one feature (example: an "identity" sector holds RBAC and users). It is neither a Jira epic nor a Jira Component (a Component is one concrete part, such as the frontend or one module). A sector matures as its epics' features become usable. In Jira: a single-select **Sector** field for the primary sector, and `sector2-<name>` labels for secondary ones. Sectors are optional for adopters; each project may define its own list. |
+| **Epic** | One capability inside a sector, built in phases across versions. Every epic has one primary sector, plus secondary sectors only when the match is strong. |
+| **Ticket** | A Story, Task or Bug: one phase or increment of an epic. One ticket = one worker session = one worktree = one PR. |
+| **Subtask** | A step that shares its ticket's PR. |
+| **Version** | A focus bucket: a mix of phases from several sectors, with a soft cap of about 40 tickets. Every goal in it is near, real and backed by a proof of concept. A ticket carries a fixVersion only once a version pulls it; the rest wait in their sector's backlog. A version ships on a P80 target date (from `effort-assess`) **and** scope: on the date, what is Done ships, and the rest rolls to the next version unless a must-have is still open. Each release records planned versus delivered. |
+| **Intake** | How work enters a version once it is planned. Urgent work enters with a same-size swap. Derived work enters only if it blocks the version's done-condition, otherwise it goes to its epic's backlog. New ideas wait in an intake queue for the next planning. A bump always names its reason: blocked, swapped, over-estimate, superseded or proof failed. Work may also enter by using up the planning buffer; when the buffer is gone, the version is cut and the next one opens. |
+
+**Maturity ladder.** A feature, and through its features a sector, climbs:
+Idea → POC → Usable → Proven (end-to-end or on a VM) → Hardened (monitored
+and wired into the checks that keep it working).
+
+**Ticket lifecycle.** Jira statuses follow the dev loop: dispatch → live
+worker session → PR → review → CI → waiting for GO → merged → wrapped. The
+dependency graph is not a status: it is checked before a ticket is pulled or
+dispatched, and feeds its priority and availability.
+
+**The sectors.**
+
+| Sector | Covers |
+|---|---|
+| Fleet orchestration | Supervisor and worker sessions, lanes and model routing, delegation and briefs, the message bus. |
+| Ship loop | From commit to merge: review, CI, GO, merge, and the attestation gates. |
+| Safety & enforcement | Guards, the structural permission layer, hook and settings wiring. |
+| Cost & efficiency | Usage banks, token cost, budget planning. |
+| Visibility | Observability and failure feedback, the fleet UI, the Telegram side of remote ops. |
+| Quality & proof | CI and test infrastructure, station and VM ops, tool evals and dependency bumps. |
+| Deployment | Install, setup, update, uninstall, and the config UI and CLI. |
+| Knowledge & steering | Retrieval (qmd, graphify), the luna vault and knowledge capture, steering docs and skills. |
+| Planning & tracking | Jira and roadmap tooling, the version model, the ticket standard. |
+
 ## Industry terms
 
 Where a himmel word maps onto a term in the
