@@ -883,6 +883,29 @@ unowned_line "#2575:140m"
 wait_exit "$WPID"
 check "(u5542-4) a PR that turns unowned again wakes at once" "WAKE unowned-prs #2575:140m" "$(head -n1 "$WORK/y4.out")"
 
+unowned_line "#2575:150m,#2600:25m"
+start "$I" "$WORK/y6.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-6) no baseline heartbeat"
+wait_exit "$WPID"
+unowned_line "#2575:151m"
+start "$I" "$WORK/y6b.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-6) no second baseline heartbeat"
+sleep 1
+unowned_line "#2575:152m,#2600:26m"
+wait_exit "$WPID"
+check "(u5542-6) a PR that leaves and rejoins a non-empty set wakes at once" "WAKE unowned-prs #2575:152m,#2600:26m" "$(head -n1 "$WORK/y6b.out")"
+
+unowned_line "#2575:160m"
+start "$I" "$WORK/y7.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-7) no baseline heartbeat"
+wait_exit "$WPID"
+unowned_line "?"
+start "$I" "$WORK/y7b.out" --legs "N1.md"
+wait_hb "$I" || fail "(u5542-7) no second baseline heartbeat"
+sleep 1
+check "(u5542-7) unowned-prs=? neither clears the marker nor wakes" "present" "$([ -e "$I.wait.unowned" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 reset_stub
 I="$(new_inbox y5)"
 start "$I" "$WORK/y5.out" --legs "N1.md"

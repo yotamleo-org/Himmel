@@ -417,7 +417,15 @@ unowned_wake() {
             grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { wake=1; break; }
         done
     fi
-    [ -n "$wake" ] || return 1
+    if [ -z "$wake" ]; then
+        # Shrink the marker to the current set, keeping its mtime (the re-wake clock), so a PR
+        # that leaves and rejoins is new to the marker and wakes at once.
+        touch -r "$unowned_file" "$unowned_file.ref" 2>/dev/null &&
+            printf '%s\n' "$nums" > "$unowned_file" 2>/dev/null &&
+            touch -r "$unowned_file.ref" "$unowned_file" 2>/dev/null
+        rm -f "$unowned_file.ref"
+        return 1
+    fi
     printf '%s\n' "$nums" > "$unowned_file" 2>/dev/null
     return 0
 }
@@ -496,7 +504,8 @@ while :; do
             esac
             unowned_val="$(field unowned-prs "$tick_line")"
             case "$unowned_val" in
-                '') ;;
+                '') unowned_none_streak=0 ;;
+                '?') ;;
                 none)
                     unowned_none_streak=$((unowned_none_streak + 1))
                     [ "$unowned_none_streak" -lt 2 ] || rm -f "$unowned_file" ;;

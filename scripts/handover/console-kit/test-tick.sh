@@ -129,6 +129,7 @@ fi
 # gh pr list --json ... --jq emits one TSV row per PR: number, head branch, isDraft,
 # author login, isCrossRepository, updatedAt. STUB_PR_ROWS (a printf %b string) replaces
 # the default pair of drafts, which tick.sh lists in prs= but never flags as unowned.
+[ -z "${STUB_PR_FAIL:-}" ] || exit 1
 printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
 # orphans= reads `ps -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
@@ -265,6 +266,7 @@ not_contains 'a fork PR is not unowned' "$own_out" '#3005:'
 contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
 contains 'a leg whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
+contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
 contains '--verbose names unowned PRs' "$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --verbose)" 'unowned-prs: #3002:125m'
 mkdir -p "$W/cloudbucket"
 printf '%s\n' '# console' > "$W/cloudbucket/console.md"

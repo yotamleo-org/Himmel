@@ -971,7 +971,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --json number,headRefName,isDraft,author,isCrossRepository,updatedAt --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt] | @tsv' 2>/dev/null)" || pr_out=""
+pr_out="$(cd "$pr_repo" 2>/dev/null && gh pr list --json number,headRefName,isDraft,author,isCrossRepository,updatedAt --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no leg this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1019,6 +1019,8 @@ done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 [ -n "$unowned_prs" ] || unowned_prs=none
 [ -n "$ext_prs" ] || ext_prs=none
+# A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
+[ -z "${pr_read_failed:-}" ] || { unowned_prs='?'; ext_prs='?'; }
 
 # the board fingerprint -- what console-board.html shows that the
 # console authors or a tick already reads: leg locks, leg tails, open PRs, and
