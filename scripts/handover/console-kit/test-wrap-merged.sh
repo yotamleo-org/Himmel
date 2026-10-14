@@ -16,6 +16,7 @@
 #   6. re-run after success: no duplicate bullet, close not run again, rc 0
 #   7. pull failure                                        -> rc 5, no bullet
 #   8. no PR in the doc and no --pr                        -> rc 2
+#   9. unreadable manifest                                 -> rc 1, no close, no bullet
 #
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).
 set -uo pipefail
@@ -79,7 +80,7 @@ fixture() {
     rm -f "$MANIFEST" "$MANIFEST.lock"
     printf '# console\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE console\n' > "$CONSOLE"
     printf '# leg\nRETASK token x\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$LEG"
-    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$LEG" >/dev/null 2>&1
+    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$LEG" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
     export WM_PR_STATE=MERGED WM_CLOSE_RC=0 WM_PULL_RC=0
 }
 run() { rc=0; out="$(bash "$SCRIPT" "$@" 2>&1)" || rc=$?; calls="$(cat "$WM_CALLS")"; }
@@ -146,6 +147,15 @@ WM_PULL_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
 check "7: rc 5" "$rc" 5
 contains "7: names the step" "$out" "pull"
 check "7: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+
+# --- 9. unreadable manifest is a failure, not an absent leg ---------------
+fixture
+printf 'not json' > "$MANIFEST"
+run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "9: rc 1" "$rc" 1
+contains "9: names the step" "$out" "manifest"
+lacks "9: close not called" "$calls" "close "
+check "9: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
 
 # --- 8. no PR anywhere ----------------------------------------------------
 fixture

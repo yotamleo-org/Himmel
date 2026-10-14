@@ -61,15 +61,23 @@ if [ -z "$PR" ]; then
 fi
 case "$PR" in ''|*[!0-9]*) echo "wrap-merged: no PR in $LEG and no --pr given" >&2; exit 2 ;; esac
 
-# 1. pr-state
-view="$($GH pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
+PRIMARY="${WM_PRIMARY:-}"
+if [ -z "$PRIMARY" ]; then
+    common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+    [ -n "$common" ] && PRIMARY="$(dirname "$common")"
+fi
+[ -n "$PRIMARY" ] || fail primary "cannot resolve the primary checkout" 5
+
+# 1. pr-state (run from the primary so gh resolves THIS repo, not the caller's)
+view="$(cd "$PRIMARY" && $GH pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
 state="$(printf '%s' "$view" | jq -r '.state // empty' 2>/dev/null)"
 sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 [ "$state" = MERGED ] && [ -n "$sha" ] || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3
 sha8="${sha:0:8}"
 
 # 2. close (only while the leg is still in the manifest)
-if bash "$HERE/fleet-manifest.sh" list "$FLEET" 2>/dev/null | grep -Fxq "$LEG"; then
+legs="$(bash "$HERE/fleet-manifest.sh" list "$FLEET" 2>&1)" || fail manifest "fleet-manifest.sh list $FLEET: $legs" 1
+if printf '%s\n' "$legs" | grep -Fxq "$LEG"; then
     $CLOSE --fleet "$FLEET" "$LEG"; rc=$?
     [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
 else
@@ -77,12 +85,6 @@ else
 fi
 
 # 3. pull
-PRIMARY="${WM_PRIMARY:-}"
-if [ -z "$PRIMARY" ]; then
-    common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
-    [ -n "$common" ] && PRIMARY="$(dirname "$common")"
-fi
-[ -n "$PRIMARY" ] || fail pull "cannot resolve the primary checkout" 5
 $GIT -C "$PRIMARY" pull --ff-only || fail pull "git -C $PRIMARY pull --ff-only" 5
 
 # 4. log
