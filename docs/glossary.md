@@ -136,7 +136,7 @@ How work is grouped, sized and shipped. The layers, widest first:
 
 | Term | Meaning |
 |---|---|
-| **Sector** | An abstract, cross-version area of the system, wider than any one feature (example: an "identity" sector holds RBAC and users). It is neither a Jira epic nor a Jira Component (a Component is one concrete part, such as the frontend or one module). A sector matures as its epics' features become usable. In Jira: a single-select **Sector** field for the primary sector, and `sector2-<name>` labels for secondary ones. Sectors are optional for adopters; each project may define its own list. |
+| **Sector** | An abstract, cross-version area of the system, wider than any one feature (example: an "identity" sector holds RBAC and users). It is neither a Jira epic nor a Jira Component (a Component is one concrete part, such as the frontend or one module). A sector matures as its epics' features become usable. In Jira (being rolled out): a single-select **Sector** field for the primary sector, and `sector2-<name>` labels for secondary ones. Sectors are optional for adopters; each project may define its own list. |
 | **Epic** | One capability inside a sector, built in phases across versions. Every epic has one primary sector, plus secondary sectors only when the match is strong. |
 | **Ticket** | A Story, Task or Bug: one phase or increment of an epic. One ticket = one worker session = one worktree = one PR. |
 | **Subtask** | A step that shares its ticket's PR. |
@@ -147,7 +147,7 @@ How work is grouped, sized and shipped. The layers, widest first:
 Idea → POC → Usable → Proven (end-to-end or on a VM) → Hardened (monitored
 and wired into the checks that keep it working).
 
-**Ticket lifecycle.** Jira statuses follow the dev loop: dispatch → live
+**Ticket lifecycle.** Jira statuses are moving to follow the dev loop: dispatch → live
 worker session → PR → review → CI → waiting for GO → merged → wrapped. The
 dependency graph is not a status: it is checked before a ticket is pulled or
 dispatched, and feeds its priority and availability.
