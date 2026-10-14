@@ -120,7 +120,14 @@ echo "T6 the tick token"
 reset
 [ "$(run status --tick)" = off ] && ok "off with no unit installed (no gh call)" || bad "no unit -> $(run status --tick)"
 : > "$TMP/units/himmel-ci-runner@.service"
-[ "$(run status --tick)" = off ] && ok "off when the variable is off or unset" || bad "unset -> $(run status --tick)"
+echo off > "$TMP/stub/var"
+[ "$(run status --tick)" = off ] && ok "off when the variable is explicitly off" || bad "off var -> $(run status --tick)"
+rm -f "$TMP/stub/var"
+[ "$(run status --tick)" = DEAD ] && ok "DEAD: variable unreadable, no unit up, no stop file (operator turned it on)" || bad "unreadable+no stop -> $(run status --tick)"
+: > "$TMP/stop"
+[ "$(run status --tick)" = unknown ] && ok "unknown: variable unreadable, no unit up, stop file present" || bad "unreadable+stop -> $(run status --tick)"
+rm -f "$TMP/stop"
+rm -f "$TMP/state/tick-vmrun-cache"
 echo on > "$TMP/stub/var"
 [ "$(run status --tick)" = DEAD ] && ok "DEAD: variable on, no unit up" || bad "dead -> $(run status --tick)"
 : > "$TMP/stub/active-1"; printf '2\n' > "$TMP/state/vm-runner.vms"
@@ -185,6 +192,21 @@ reset
 case "$(run status --tick)" in ok:*) ok "unreadable variable with a unit up is not reported off" ;; *) bad "unreadable variable -> $(run status --tick)" ;; esac
 echo off > "$TMP/stub/var"
 [ "$(run status --tick)" = off ] && ok "variable off with a unit still up stays off (shutdown in progress)" || bad "off+unit -> $(run status --tick)"
+
+echo "T13 an unreadable variable with no unit up is never off, and C64 does not say OK (round 6)"
+reset
+: > "$TMP/units/himmel-ci-runner@.service"
+case "$(run status --tick)" in off) bad "gh failing, no unit, no stop file reported off" ;; DEAD) ok "gh failing, no unit, no stop file -> DEAD" ;; *) bad "gh failing -> $(run status --tick)" ;; esac
+if run doctor 2>/dev/null | grep -q '^FAIL.*runner DEAD'; then ok "doctor FAILs the runner when it is DEAD"; else bad "doctor DEAD -> $(run doctor 2>&1 | grep runner)"; fi
+: > "$TMP/stop"
+run doctor 2>/dev/null | grep -q '^WARN.*runner state unknown' && ok "doctor WARNs on unknown" || bad "doctor unknown -> $(run doctor 2>&1 | grep runner)"
+rm -f "$TMP/stop"
+
+echo "T14 the vm-lock is released when the clone ensure fails (round 6)"
+reset
+STUB_CLONE_FAIL=1 run on >"$TMP/out" 2>&1; rc=$?
+rel="$(grep -c '^release himmel-ci-2' "$TMP/stub/vm.calls" 2>/dev/null)"
+if [ "$rc" -ne 0 ] && [ "$rel" -ge 1 ]; then ok "clone failure releases the lock (rc=$rc, releases=$rel)"; else bad "clone failure: rc=$rc releases=$rel"; fi
 
 echo "T12 review fixes (HIMMEL-5037 round 3)"
 reset

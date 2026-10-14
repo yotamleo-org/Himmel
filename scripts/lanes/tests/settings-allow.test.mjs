@@ -252,6 +252,15 @@ test('every path-naming Bash allow rule is a per-file literal, a step-0 literal 
   }
 });
 
+test('vm-runner.sh is allowed by exactly its five literals and never a wildcard (HIMMEL-5037)', () => {
+  const vm = PROJECT_EXACT_LITERALS.filter((l) => l.includes('vm-runner.sh'));
+  assert.equal(vm.length, 5, 'anti-vacuity: five vm-runner literals');
+  for (const lit of vm) assert.ok(ALLOW.includes(`Bash(${lit})`), `missing allow rule: ${lit}`);
+  const rules = ALLOW.filter((r) => r.includes('vm-runner.sh'));
+  assert.deepEqual(rules.sort(), vm.map((l) => `Bash(${l})`).sort(), 'only the five literals may name vm-runner.sh');
+  for (const r of rules) assert.ok(!/[*:]/.test(r.replace(/^Bash\(/, '')), `wildcard in vm-runner rule: ${r}`);
+});
+
 test('the project list carries every gateAllow quiet-run suite rule, so a console runs suites as a leg does', () => {
   for (const rule of REG.gateAllow.filter((r) => r.includes('quiet-run.sh suite'))) {
     assert.ok(ALLOW.includes(rule), `missing from .claude/settings.json: ${rule}`);

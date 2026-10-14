@@ -191,6 +191,8 @@ export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
 # HIMMEL-4786: fails= ~<k> reads the digest step's skips.jsonl under this dir.
 export LEG_DIGEST_STATE_DIR="$W/leg-digest"
+printf '#!/bin/sh\necho off\n' > "$W/vmrun-probe.sh"
+export HIMMEL_VMRUN_PROBE="$W/vmrun-probe.sh"
 mkdir -p "$LEG_DIGEST_STATE_DIR"
 # HIMMEL-5131: flakes= reads the suite-flake ledger for this repo id; never the real ~/.himmel one.
 export SUITE_FLAKE_LEDGER="$W/suite-flake.jsonl"

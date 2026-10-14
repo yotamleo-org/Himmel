@@ -82,10 +82,14 @@ ensure_clone() {
     fail() { die "$1"; }
     vm_env_init
     vm_lock_acquire_waiting "$name" || die "could not take the vm-lock on $name"
+    # Any exit while the lock is held (vm_clone_ensure failing, die, a signal)
+    # releases it; the trap clears before the normal release.
+    # shellcheck disable=SC2064
+    trap "vm_lock_release '$name'" EXIT
     if ! vm_clone_ensure "$SNAPSHOT"; then
-        vm_lock_release "$name"
         die "could not ensure the clone $name from $BASE_VM@$SNAPSHOT"
     fi
+    trap - EXIT
     vm_lock_release "$name"
 }
 
@@ -219,7 +223,14 @@ tick_token() {
     done
     # An unreadable variable (gh down, auth) with a unit up is judged as on, so
     # DEAD/STUCK stay visible; an explicit off with a unit up is a shutdown.
-    if [ "$var" != on ] && { [ -n "$var" ] || [ "$up" -eq 0 ]; }; then echo off; return; fi
+    # Unreadable with no unit up: the variable may still be on (a gh outage also
+    # stops the loops), so never say off. No stop file means the operator turned
+    # it on: DEAD. A stop file means it was turned off: unknown.
+    if [ "$var" != on ] && [ -n "$var" ]; then echo off; return; fi
+    if [ -z "$var" ] && [ "$up" -eq 0 ]; then
+        if [ -e "$STOP_FILE" ]; then echo unknown; else echo DEAD; fi
+        return
+    fi
     if [ "$up" -eq 0 ]; then echo DEAD; return; fi
     if [ "$stuck" -eq 1 ]; then echo STUCK; return; fi
     echo "ok:$up/$want,busy=$(runners_busy)"
@@ -278,6 +289,7 @@ cmd_doctor() {
     tok="$(tick_token)"
     case "$tok" in
         DEAD|STUCK) printf 'FAIL\tC64-vm-runner\trunner %s (variable on): bash scripts/handover/console-kit/vm-runner.sh status\n' "$tok" ;;
+        unknown) printf 'WARN\tC64-vm-runner\trunner state unknown: the %s variable is unreadable (gh) and no unit is up\n' "$VAR" ;;
         *) printf 'OK\tC64-vm-runner\trunner %s\n' "$tok" ;;
     esac
 }

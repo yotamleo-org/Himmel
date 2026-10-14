@@ -1459,7 +1459,7 @@ fi
 # console-wait.sh wakes only on those two. unknown = the probe is missing,
 # failed or timed out.
 vmrun_summary=unknown
-vmrun_probe="$HERE/vm-runner.sh"
+vmrun_probe="${HIMMEL_VMRUN_PROBE:-$HERE/vm-runner.sh}"
 if [ -f "$vmrun_probe" ]; then
     # shellcheck source=../../lib/timeout-bin.sh
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
