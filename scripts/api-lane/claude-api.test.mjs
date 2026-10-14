@@ -634,7 +634,7 @@ test('HIMMEL-5570: a result without a usage object records null token counts, ne
 });
 
 const REPORT = join(HERE, 'cache-report.mjs');
-const usageRow = (ts, kind, ttl, i, c, r) => JSON.stringify({ ts, kind, cache_ttl: ttl, input_tokens: i, cache_creation_tokens: c, cache_read_tokens: r });
+const usageRow = (ts, kind, ttl, i, c, r, model = 'm', org = 'o') => JSON.stringify({ ts, kind, model, organization_id: org, cache_ttl: ttl, input_tokens: i, cache_creation_tokens: c, cache_read_tokens: r });
 
 test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL from the measured gaps', () => {
   const f = fixture();
@@ -645,13 +645,17 @@ test('HIMMEL-5570: cache-report prints a per-kind hit rate and picks the TTL fro
     usageRow('2026-10-14T10:20:00Z', 'bulk', '5m', 10, 4000, 0),
     usageRow('2026-10-14T10:50:00Z', 'bulk', '5m', 10, 4000, 0),
     usageRow('2026-10-14T11:20:00Z', 'bulk', '5m', 10, 4000, 0),
+    usageRow('2026-10-14T10:01:00Z', 'eval', '5m', 10, 4000, 0, 'm', 'other-org'),
+    usageRow('2026-10-14T10:03:00Z', '__proto__', '5m', 10, 4000, 0),
     '{"ts":"2026-10-14T09:00:00Z","kind":"eval","cache_read_tokens":null}',
   ].join('\n') + '\n');
   const r = spawnSync(process.execPath, [REPORT, log], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout);
-  assert.equal(out.eval.runs, 2);
-  assert.equal(out.eval.hit_rate, 4000 / (4010 + 4110));
-  assert.equal(out.eval.recommended_ttl, '5m');
-  assert.equal(out.bulk.recommended_ttl, '1h');
+  assert.equal(out['eval | m | o'].runs, 2);
+  assert.equal(out['eval | m | o'].hit_rate, 4000 / (4010 + 4110));
+  assert.equal(out['eval | m | o'].recommended_ttl, '5m');
+  assert.equal(out['bulk | m | o'].recommended_ttl, '1h');
+  assert.equal(out['eval | m | other-org'].runs, 1, 'a run in another organization is its own group');
+  assert.equal(out['__proto__ | m | o'].runs, 1, 'a kind named like an Object property still groups');
 });

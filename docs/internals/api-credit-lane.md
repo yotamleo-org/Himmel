@@ -152,8 +152,8 @@ Each arm ran dir X, dir Y, dir X again, inside 5 minutes. Runs 1 and 2 of an arm
 write whatever differs from the shared prefix; run 3 returns to dir X and reads its
 whole prefix (6,750 and 6,746 tokens) in both arms. Three runs per arm and a
 one-word prompt: the figures show direction, not a rate to quote. The record is
-`launches.jsonl`; `node scripts/api-lane/cache-report.mjs` prints the per-kind
-hit rate and TTL pick from it. Before this change the record held cost only, so no
+`launches.jsonl`; `node scripts/api-lane/cache-report.mjs` prints the hit rate and
+TTL pick per kind, model and organization (only those share a cache) from it. Before this change the record held cost only, so no
 earlier run had a hit rate to read back.
 
 **Prefix rules (one run kind = one row of the same prefix):**

@@ -1,5 +1,7 @@
 // HIMMEL-5570: per-kind cache hit rate and TTL pick from launches.jsonl.
 // Usage: node cache-report.mjs [<launches.jsonl>]   (default: the account-home state dir's launches.jsonl)
+// Groups are "<kind> | <model> | <organization_id>": each model has its own cache and a cache never crosses organizations.
+// Gaps are between launch records (completion time), so a long call can make an expired prefix look reusable.
 // Hit rate = cache_read / (input + cache_creation + cache_read), the same share docs/internals/prompt-cache.md uses.
 // TTL pick, in base-input-token equivalents (write 5m 1.25x, write 1h 2x, read 0.1x): a run whose gap since the previous run
 // of its kind is within the TTL reads its prefix P (cache_creation + cache_read) at 0.1x, otherwise it writes it again.
@@ -15,7 +17,8 @@ for (const line of readFileSync(file, 'utf8').split('\n')) {
   let r;
   try { r = JSON.parse(line); } catch { continue; }
   if (![r.input_tokens, r.cache_creation_tokens, r.cache_read_tokens].every(Number.isInteger)) continue;
-  (kinds[r.kind ?? 'other'] ??= []).push({ ...r, t: Date.parse(r.ts) });
+  // Only runs of one kind on one model in one organization can read each other's prefix.
+  (kinds[`${r.kind ?? 'other'} | ${r.model ?? '?'} | ${r.organization_id ?? '?'}`] ??= []).push({ ...r, t: Date.parse(r.ts) });
 }
 
 const out = Object.create(null);
