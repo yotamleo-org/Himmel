@@ -8,7 +8,10 @@ state into the curated schema and writing it to the handover root
 (`$HANDOVER_DIR`, Mode B) or `<repo>/handovers/` (Mode A) as
 `morning-report-<local-date>.md`. The default run costs ~no Claude tokens — it
 emits deterministic sections (✅ Completed PRs, 🔴 In-flight WIP, 🧹 Stale
-worktrees, 📋 Backlog, Done cross-ref) plus heuristic TL;DR + Suggested order.
+worktrees, 📋 Backlog, Done cross-ref, 🗄️ Prompt cache) plus heuristic TL;DR + Suggested order.
+The cache line reads the cache-health metrics: 7-day read ratio per role, a
+trailing 14-day-median baseline and a 3-day below-baseline flag; stale or missing
+metrics print `cache: unmonitored`.
 
 Pass `--llm` to enrich TL;DR, Suggested order, and Backlog theme-clustering via a
 bounded interactive Sonnet turn (degrades to the deterministic heuristic if

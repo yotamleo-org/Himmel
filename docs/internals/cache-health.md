@@ -31,9 +31,12 @@ console's bridge inbox; either channel counts as delivered.
 ## `~/.himmel/state/cache-health/` files
 
 - `metrics.json` — rewritten every run (schema below). Read by the morning-report
-  cache line (HIMMEL-668) and the board.
+  cache line (HIMMEL-668, `scripts/handover/cache-health-line.py`: freshness gate,
+  older than 26h prints `unmonitored`) and the board.
 - `history.jsonl` — one `{"ts","overall","roles":{role: hit_pct}}` row per run,
-  last 720 kept.
+  last 720 kept. The morning-report line derives its 7-day ratio (unweighted mean
+  of the runs' 24h hit_pct) and 14-day-median baseline from it. The baseline is
+  our own history; the 76.5% / 40% figures quoted online are NOT a baseline.
 - `alert-state.json` — `{"active": {key: text}}`, the hysteresis state.
 
 ## `metrics.json` schema (`schema: 1`)

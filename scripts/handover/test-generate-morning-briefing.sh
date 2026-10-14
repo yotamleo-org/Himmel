@@ -465,6 +465,23 @@ assert_contains "failure review: demoted"       "#### Top classes"              
 if grepq "$file" -x '## Failure review'; then fail "failure review: inner heading not dropped"; else pass "failure review: inner heading dropped"; fi
 rm -rf "$HIMMEL_FAILURE_REVIEW_DIR"
 
+# The prompt-cache line is never silently absent.
+echo "TEST: prompt cache section reports unmonitored without metrics, else the ratio"
+export CACHE_HEALTH_STATE_DIR="$TMP_ROOT/cache-health"
+OUT_CH0="$TMP_ROOT/ch0.md"
+run_script --since "$MARKER" --out "$OUT_CH0" >/dev/null
+file=$(cat "$OUT_CH0")
+assert_contains "cache line: section"   "Prompt cache"                              "$file"
+assert_contains "cache line: missing"   "cache: unmonitored (metrics missing)"      "$file"
+mkdir -p "$CACHE_HEALTH_STATE_DIR"
+printf '{"schema":1,"generated_at":%s,"overall":{"hit_pct":97.5},"roles":{}}\n' "$(date +%s)" > "$CACHE_HEALTH_STATE_DIR/metrics.json"
+printf '{"ts":%s,"overall":97.5,"roles":{"console":98.0,"leg":96.0}}\n' "$(date +%s)" > "$CACHE_HEALTH_STATE_DIR/history.jsonl"
+OUT_CH1="$TMP_ROOT/ch1.md"
+run_script --since "$MARKER" --out "$OUT_CH1" >/dev/null
+file=$(cat "$OUT_CH1")
+assert_contains "cache line: ratio"     "cache: 7d read ratio 97.5%"                "$file"
+unset CACHE_HEALTH_STATE_DIR
+
 # Summary --------------------------------------------------------------
 
 echo

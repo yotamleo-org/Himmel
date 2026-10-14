@@ -488,6 +488,14 @@ EOF_WIP
         printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
     fi
 
+    # Prompt cache ------------------------------------------------------------
+    # One zero-token line from the cache-health metrics (scripts/eval/cache-health.py).
+    printf '\n## 🗄️ Prompt cache\n\n'
+    if ! python3 -I "$SCRIPT_DIR/cache-health-line.py" \
+        ${CACHE_HEALTH_STATE_DIR:+--state-dir "$CACHE_HEALTH_STATE_DIR"} 2>/dev/null; then
+        printf 'cache: unmonitored (reader failed)\n'
+    fi
+
     # Suggested order ---------------------------------------------------------
     printf '\n## Suggested order\n\n%s\n' "$order_final"
 )
