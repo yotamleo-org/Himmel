@@ -588,7 +588,7 @@ row "5190 zsh repeat \$n . then cp to plainlink"          deny  "repeat \$n . $T
 row "5190 zsh repeat 1+0 . then cp to plainlink"         deny  "repeat 1+0 . $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
 row "5190 x=c; \${x}d abs then cp to plainlink"           deny  "x=c; \${x}d $T/cwl; cp $T/src/other.txt plainlink" "$T"
 row "5190 x=.; \$x file then cp to plainlink"             deny  "x=.; \$x $T/src/other.txt; cp $T/src/other.txt plainlink" "$T"
-row "5190 ${x:=cd} /path then cp to plainlink"          deny  "${x:=cd} /tmp; cp $T/src/other.txt plainlink" "$T"
+row "5190 \${x:=cd} /path then cp to plainlink"         deny  "\${x:=cd} /tmp; cp $T/src/other.txt plainlink" "$T"
 row "5190 FOO+=x cp a . (assignment then arg dot) (ctrl)" allow "FOO+=x cp $T/src/other.txt .; cp $T/src/other.txt nolink" "$T/cwl"
 row "5190 >/dev/null cp a . (redirect then arg dot) (ctrl)" allow ">/dev/null cp $T/src/other.txt .; cp $T/src/other.txt nolink" "$T/cwl"
 row "4545 rsync --log-file= link after \$( )"        deny  "n=\$(date +%H); rsync -a --log-file=plainlink $T/src/other.txt out.txt" "$T/cwl"
