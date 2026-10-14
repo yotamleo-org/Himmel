@@ -45,6 +45,7 @@ const unquote = (s) => s.replace(/\s+#.*$/, "").trim().replace(/^(['"])(.*)\1$/,
 const collections = [];
 const models = {};
 const unsupported = [];
+const modelsUnreadable = []; // a models line we cannot attribute may hide a remote role: refuse always
 let section = "";
 let childIndent = 0;
 for (const line of text.split("\n")) {
@@ -63,17 +64,20 @@ for (const line of text.split("\n")) {
     if (m) collections.push(unquote(m[1]));
     else unsupported.push(`unparsed collections entry: ${line.trim()}`);
   } else {
-    const m = line.trim().match(/^([A-Za-z_]+):\s*(.+)$/);
-    if (m) models[m[1]] = unquote(m[2]);
+    const m = line.trim().match(/^(["']?)([A-Za-z_]+)\1:\s*(.+)$/);
+    if (m) models[m[2]] = unquote(m[3]);
+    else modelsUnreadable.push(`unparsed models entry: ${line.trim()}`);
   }
 }
 
 const baseUrl = process.env.QMD_OPENAI_BASE_URL || models.openai_base_url || "";
 function providerOf() {
   if (!baseUrl) return "openai-unconfigured"; // cannot be proven local
-  let host;
-  try { host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, ""); } catch { return "openai-unparseable"; }
+  let url;
+  try { url = new URL(baseUrl); } catch { return "openai-unparseable"; }
+  const host = url.hostname.replace(/^\[|\]$/g, "");
   if (["localhost", "127.0.0.1", "::1"].includes(host)) return null; // on-machine server
+  if (url.protocol !== "https:") return `${host}-insecure-${url.protocol.replace(":", "")}`; // never matches an allow row
   if (host === "jina.ai" || host.endsWith(".jina.ai")) return "jina";
   return host;
 }
@@ -82,7 +86,7 @@ function providerOf() {
 // or *.gguf) with no YAML escape; anything else, an escaped "openai\x3a..."
 // included, is treated as remote and checked.
 const isLocalModel = (u) =>
-  u === "" || (!u.includes("\\") && (/^hf:/.test(u) || /^(\/|~\/|\.\/)/.test(u) || /\.gguf$/i.test(u)));
+  u === "" || (!u.includes("\\") && (/^hf:/.test(u) || /^(\/|~\/|\.\/)/.test(u) || (/\.gguf$/i.test(u) && !/^[A-Za-z][\w+.-]*:/.test(u))));
 
 const refusals = [];
 let remoteRoles = 0;
@@ -115,6 +119,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
 const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
 const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
+for (const u of modelsUnreadable) refusals.push(`unsupported config layout: ${u}`);
 if (remoteRoles > 0) {
   for (const u of unsupported) refusals.push(`unsupported config layout: ${u}`);
   if (collections.length === 0) refusals.push("a remote model is configured but no collections could be read to check");

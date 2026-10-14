@@ -109,6 +109,26 @@ printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: "openai\\x3ajina
 run_gate "$work/m.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10d) escaped openai URI with salus: expected rc 3, got $rc"
 
+# (10e) a quoted role key with an escaped URI is still read as a remote role, so salus is refused.
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  "embed": "openai\\x3ajina-embeddings-v3"\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/n.yml"
+run_gate "$work/n.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10e) quoted role key with escaped URI: expected rc 3, got $rc"
+
+# (10f) an unparseable models entry is refused unconditionally.
+printf 'collections:\n  luna:\n    path: /x\nmodels:\n  - embed: openai:jina-embeddings-v3\n' > "$work/o.yml"
+run_gate "$work/o.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10f) unparsed models entry: expected rc 3, got $rc"
+
+# (10g) a scheme-prefixed value ending in .gguf is not local.
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  openai_base_url: https://api.jina.ai/v1\n' > "$work/p.yml"
+QMD_EMBED_MODEL=openai:remote-model.gguf node "$gate" "$work/p.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10g) openai:...gguf with salus: expected rc 3, got $rc"
+
+# (10h) a non-https endpoint is never approved as the Jina provider.
+printf 'collections:\n  luna:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: http://api.jina.ai/v1\n' > "$work/q.yml"
+run_gate "$work/q.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(10h) http endpoint: expected rc 3, got $rc"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
@@ -178,4 +198,4 @@ launch index; rc=$?
 [ "$rc" -eq 1 ] || fail "(17) launcher on flow-style salus+Jina: expected rc 1, got $rc"
 [ ! -e "$work/started" ] || fail "(17) launcher STARTED qmd on a flow-style salus+Jina config"
 
-echo "PASS: test-qmd-jina-gate.sh (21 checks)"
+echo "PASS: test-qmd-jina-gate.sh (25 checks)"
