@@ -2028,10 +2028,10 @@ else
 fi
 rc=0
 out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ]; then
+if [ "$rc" -eq 0 ] && [[ "$out" == *"4 commits behind"* ]]; then
     pass "skew: 4 behind is under the default threshold (30) -> warn only"
 else
-    fail "skew: default threshold must not refuse 4 behind" "rc=$rc out: $out"
+    fail "skew: default threshold must warn about 4 behind without refusing" "rc=$rc out: $out"
 fi
 # origin lag: local main 2 commits ahead of origin/main -> warn, never refuse.
 git -C "$SK_P" checkout -q main
