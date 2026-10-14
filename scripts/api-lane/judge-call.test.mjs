@@ -104,6 +104,7 @@ test('a recorded GO: artifact names the verdict file, the cost and a bounded exc
   const seen = readFileSync(f.p.env, 'utf8');
   assert.match(seen, /--tools Read,Glob,Grep /);
   assert.match(seen, /--allowedTools Read,Glob,Grep /);
+  assert.match(seen, /--strict-mcp-config/);
   assert.doesNotMatch(seen, /Bash|Write|Edit/);
   assert.match(seen, /--permission-mode dontAsk/);
   assert.match(seen, /--model claude-opus-5-5/);

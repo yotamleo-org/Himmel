@@ -159,7 +159,7 @@ earlier run had a hit rate to read back.
 **Prefix rules (one run kind = one row of the same prefix):**
 
 1. The launcher fixes everything above the prompt: `--tools`, `--strict-mcp-config`
-   on a tool-free call, the model and effort are the caller's and must be the same
+   (on every call: no caller can be granted an `mcp__` tool, and hooks are off), the model and effort are the caller's and must be the same
    for every run of a kind (each model has its own cache).
 2. `--exclude-dynamic-system-prompt-sections` is always passed: the working
    directory, platform, memory paths and git status ride in the first user

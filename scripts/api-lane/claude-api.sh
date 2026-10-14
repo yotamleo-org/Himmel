@@ -154,12 +154,10 @@ fi
 TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
 # HIMMEL-5570: cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
 # so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
-EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections)
-if [ -z "$ALLOWED_TOOLS" ]; then
-  EXTRA_ARGS+=(--strict-mcp-config)   # tool-free also means no MCP server, structurally
-else
-  TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
-fi
+# No caller can be granted an mcp__ tool, so no call loads an MCP server: with hooks off, an ambient-allowed MCP
+# tool would otherwise run.
+EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
+[ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
 
 # HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session

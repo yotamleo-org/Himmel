@@ -123,7 +123,7 @@ test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set i
   const seen = readFileSync(f.paths.env, 'utf8');
   assert.match(seen, /--allowedTools Read,Edit,Write,Glob,Grep,Bash/);
   assert.match(seen, /--tools Read,Edit,Write,Glob,Grep,Bash/);
-  assert.doesNotMatch(seen, /--strict-mcp-config/);
+  assert.match(seen, /--strict-mcp-config/);
 });
 
 test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
