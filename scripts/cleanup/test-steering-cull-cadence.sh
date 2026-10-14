@@ -71,7 +71,7 @@ TODAY="2026-10-14"
 export STEERING_CULL_DATE="$TODAY"
 
 # ---- 1. completed run: doc written, escalation line names it -----------------
-RESULT=$'## Proposal\n- [LOW] CLAUDE.md:10-12 — duplicate of a rule in docs\n- [LOW] CLAUDE.md:20 — stale pointer\n- [MEDIUM] CLAUDE.md:30-40 — behavioural rule, needs a judgement call\n- [LOW] /home/x/.claude/CLAUDE.md:5 — live file, always escalates\n'
+RESULT=$'## Proposal\n- [LOW] CLAUDE.md:10-12 — duplicate of a rule in docs\n- [LOW] CLAUDE.md:20 — stale pointer\n- [MEDIUM] CLAUDE.md:30-40 — behavioural rule, needs a judgement call\n- [LOW] /home/x/.claude/CLAUDE.md:5 — live file, always escalates\n- [LOW] ../outside/CLAUDE.md:1 — traversal, escalates\n- [LOW] misspelt.md:1 — not a repo file, escalates\n'
 node -e 'console.log(JSON.stringify({type:"result",is_error:false,result:process.argv[1]}))' "$RESULT" > "$W/claude.json"
 bash "$CAD" run --repo "$P" --proposal-dir "$PROP" --console test-console >"$W/run1.out" 2>&1
 check "run exits 0" 0 $?
@@ -79,9 +79,9 @@ DOC="$PROP/steering-cull-$TODAY.md"
 [ -f "$DOC" ] && pass "proposal doc written at the dated path" || fail "no proposal doc at $DOC"
 has "doc carries the model output" "stale pointer" "$DOC"
 has "doc counts 2 low repo cuts" "low: 2" "$DOC"
-has "doc counts 2 escalated (1 medium + 1 live)" "escalated: 2" "$DOC"
+has "doc counts 4 escalated (medium, live, traversal, unknown path)" "escalated: 4" "$DOC"
 has "console inbox line names the doc" "$DOC" "$INBOX"
-has "console inbox line carries the counts" "2 low, 2 escalated" "$INBOX"
+has "console inbox line carries the counts" "2 low, 4 escalated" "$INBOX"
 
 # ---- 2. claude is invoked read-only, headless, JSON ---------------------------
 has "claude gets -p" "arg=-p" "$W/argv"
@@ -137,6 +137,8 @@ bash "$CAD" arm --console test-console --proposal-dir "$PROP" >"$W/arm2.out" 2>&
 check "double arm refused" 3 $?
 bash "$CAD" arm --proposal-dir "$PROP" --force >"$W/arm3.out" 2>&1
 check "arm without --console refused" 1 $?
+( cd "$W" && bash "$CAD" arm --force --console test-console --proposal-dir rel/props ) >"$W/arm4.out" 2>&1
+has "arm resolves a relative --proposal-dir to an absolute path" "$W/rel/props" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" status >"$W/st.out" 2>&1
 has "status reports ARMED" "ARMED" "$W/st.out"
 bash "$CAD" disarm >"$W/dis.out" 2>&1

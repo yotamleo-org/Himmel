@@ -117,8 +117,8 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         risk="${line#- \[}"; risk="${risk%%\]*}"
         cut="${line#*\] }"; path="${cut%%:*}"
         case "$path" in
-            /*|~*|.claude/*|*MEMORY.md|*RTK.md) esc=$((esc + 1)) ;;
-            *) if [ "$risk" = "LOW" ]; then low=$((low + 1)); else esc=$((esc + 1)); fi ;;
+            /*|~*|.claude/*|*MEMORY.md|*RTK.md|*..*) esc=$((esc + 1)) ;;
+            *) if [ "$risk" = "LOW" ] && [ -f "$repo/$path" ]; then low=$((low + 1)); else esc=$((esc + 1)); fi ;;
         esac
     done <<< "$result"
 
@@ -175,6 +175,7 @@ cmd_arm() {
     done
     [ -n "$console" ] || { echo "ERR steering-cull: --console <supervisor session> is required" >&2; return 1; }
     [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 1; }
+    case "$pdir" in /*) ;; *) pdir="$PWD/$pdir" ;; esac  # cron runs from another cwd
     [[ "$day" =~ ^[0-6]$ ]] || { echo "ERR steering-cull: --day must be 0-6, got: $day" >&2; return 1; }
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR steering-cull: --time must be HH:MM, got: $time" >&2; return 1; }
     case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR steering-cull: cron only; Windows is parked (HIMMEL-4102)" >&2; return 2 ;; esac
