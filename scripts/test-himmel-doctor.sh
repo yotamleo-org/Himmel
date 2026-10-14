@@ -6544,8 +6544,8 @@ if grepq "$out" -E 'WARN C42-sweep-health: LOST-COMMITS feat/x'; then pass "spac
 
 echo "== --only rejects a following option or a non-id value -> exit 2 =="
 c68_env bash "$DOC" --no-color --only --json >/dev/null 2>&1; rc1=$?
-c68_env bash "$DOC" --no-color --only C999 >/dev/null 2>&1; rc2=$?
-if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ]; then pass "--only validates its value"; else fail "--only validation -> rc=$rc1/$rc2"; fi
+c68_env bash "$DOC" --no-color --only C999 >/dev/null 2>&1; rc2=$?; c68_env bash "$DOC" --no-color --only "C.*" >/dev/null 2>&1; rc3=$?
+if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ]; then pass "--only validates its value"; else fail "--only validation -> rc=$rc1/$rc2/$rc3"; fi
 rm -rf "$c68_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

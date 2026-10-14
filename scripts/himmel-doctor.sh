@@ -78,6 +78,7 @@ while [ $# -gt 0 ]; do
         --repo) shift; REPO_FLAG="${1:-}" ;;
         --only) [ -n "${2:-}" ] || { echo "himmel-doctor: --only needs a check id (C29 or C29,C40)" >&2; exit 2; }
                 ONLY=",$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]' | tr -d ' '),"; shift
+                case "$ONLY" in *[!C0-9,]*|*,,*) echo "himmel-doctor: --only takes check ids like C29 or C29,C40, got '$ONLY'" >&2; exit 2 ;; esac
                 for _id in $(printf '%s' "$ONLY" | tr ',' ' '); do
                     grep -qE "(run_check|run_heavy|doctor_wants) $_id( |;)" "${BASH_SOURCE[0]}" \
                         || { echo "himmel-doctor: --only takes known check ids like C29 or C29,C40, got '$_id'" >&2; exit 2; }
@@ -4214,8 +4215,8 @@ heavy_join() {
         if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
             HEAVY_INCOMPLETE=1; emit INFO "$label" "TIMEOUT after ${HEAVY_T}s -- check skipped, not judged healthy" \
                 "bash scripts/himmel-doctor.sh --only $id   # run it alone; HIMMEL_DOCTOR_HEAVY_TIMEOUT=<secs> raises the bound"
-        elif [ "$n" -eq 0 ]; then
-            HEAVY_INCOMPLETE=1; emit INFO "$label" "check did not complete (child exit $rc, no rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
+        elif [ "$n" -eq 0 ] || [ "$rc" -gt 1 ]; then
+            HEAVY_INCOMPLETE=1; emit INFO "$label" "check did not complete (child exit $rc, $n rows) -- not judged healthy" "bash scripts/himmel-doctor.sh --only $id   # run it alone"
         fi
     done <<EOF_JOBS
 $HEAVY_JOBS
