@@ -359,6 +359,8 @@ default machine is marked `harvest_status: partial` + `harvest_flag: thin-body`
 rather than `ok` with an empty body. No vault / no clip degrades silently to
 live fetch (adopter-safe).
 
+**YouTube (HIMMEL-5715).** A YouTube URL, or any "watch / summarize this video" ask, goes to `/watch-youtube <url> [--visual]` (`tools/yt-watch.py`): Scrapling metadata + yt-dlp transcript from `yt-scrapling-meta.py`, plus with `--visual` a ≤720p yt-dlp download and ffmpeg scene frames (`-fps_mode vfr`; ffmpeg 9 rejects `-vsync`). No cookie and no Gemini/Grok/XAI key: Claude reads the transcript and frames itself. Do not use the vault plugin's `/youtube` for this (HIMMEL-5714 tracks its upstream `-vsync` fix).
+
 `/read-link`'s UX is inspired by
 [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)'s
 `/x-read`; this is a clean-room himmel-native reimplementation that skips Grok —

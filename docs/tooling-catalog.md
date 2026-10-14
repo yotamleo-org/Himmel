@@ -394,7 +394,7 @@ a subscription lands.
 | `/x-read` | Analyze X posts | Research |
 | `/x-pulse` | X trend analysis | Research |
 | `/notebooklm` | Source-grounded vault research (Gemini) | Research |
-| `/youtube` | Extract and summarize YouTube videos | Research |
+| `/youtube` | Extract and summarize YouTube videos — **not for ad-hoc use here** (needs a Gemini/Grok key, breaks on ffmpeg 9); use obsidian-triage `/watch-youtube` | Research |
 | `/create-command` | Interview flow to create new vault command | Meta |
 
 ---

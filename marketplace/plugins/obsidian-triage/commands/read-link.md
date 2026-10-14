@@ -28,6 +28,7 @@ Read a link vault-first. NEVER call Grok / x.ai / x_search.
 4. **Miss → live fetch (last resort).**
    - X url → run `bash <plugin>/tools/ensure-deps.sh` first (as in step 3, `<plugin>` = installed plugin root — only before the `fxtwitter-enrich.mjs` option, not the WebFetch fallback). **If it exits non-zero, report the remediation and skip the enricher — fall through to the WebFetch option** (which needs no `js-yaml`). Otherwise run `node <plugin>/tools/fxtwitter-enrich.mjs` against a freshly-filed clip, OR WebFetch `https://api.fxtwitter.com/<handle>/status/<id>`.
    - article → WebFetch the URL (firecrawl only if enabled+gated).
+   - YouTube url → run `/obsidian-triage:watch-youtube <url>` (cookieless transcript + optional `--visual` frames; never the vault plugin's `/youtube`, which needs a Gemini/Grok key).
    - repo url (github/bitbucket) → dispatch `obsidian-triage:luna-ingest`.
    - NEVER Grok. Present the result; optionally offer to file it as a clip so next time is vault-first.
 
