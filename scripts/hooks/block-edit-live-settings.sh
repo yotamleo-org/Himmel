@@ -1052,8 +1052,12 @@ is_readonly_allowlisted() {
     local c="$1" first second
     # shellcheck disable=SC2016 # literal metacharacter text, not expansion
     case "$c" in
-        *';'*|*'&'*|*'|'*|*'`'*|*'$('*|*'<('*|*'>'*|*tee*) return 1 ;;
+        *';'*|*'&'*|*'|'*|*'`'*|*'$('*|*'<('*|*'>'*) return 1 ;;
     esac
+    # tee as a word (HIMMEL-5616): `committee`/`steel` in a path are reads.
+    # Preceded by anything but a name char, `.` or `-`; followed by one too,
+    # or `/` (a directory named tee is not the command).
+    [[ $c =~ (^|[^a-z0-9_.-])tee($|[^a-z0-9_./-]) ]] && return 1
     first=$(printf '%s' "$c" | awk '{print $1}')
     case "$first" in
         cat|head|tail|grep|rg|diff|wc) return 0 ;;
@@ -1696,7 +1700,7 @@ _tok_sensitive_name() {
 # Allows only when EVERY segment is either an assignment-only segment or one
 # allowlisted read-only program, joined by `;`, `&&`, `||`, `|` or a newline.
 # Denies on: any substitution, subshell or background `&`; any word
-# containing "tee"; an output redirect other than to /dev/null or an fd dup
+# equal to `tee` or ending `/tee`; an output redirect other than to /dev/null or an fd dup
 # (`2>&1`); `<>`; an assignment to an exported or sensitive name
 # (_tok_sensitive_name); a command word carrying a live `$` or a glob; and,
 # for less/git/rg/sed, any word carrying a live `$` or a glob — each can
@@ -1723,7 +1727,7 @@ _tok_readonly_ok() {
         fi
         w=${ST_W[k]}
         lw=${ST_LW[k]}
-        case "$lw" in *tee*) return 1 ;; esac
+        case "$lw" in tee|*/tee) return 1 ;; esac
         if [ -n "${ST_RO[k]}" ]; then
             case "${ST_RO[k]}" in
                 *'<>'*) return 1 ;;

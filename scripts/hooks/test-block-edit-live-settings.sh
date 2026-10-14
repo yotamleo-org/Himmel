@@ -3390,6 +3390,21 @@ else
     echo "SKIP 679-683 (node not installed)"
 fi
 
+# 833-838 (HIMMEL-5616): tee is matched as a command word, not a substring —
+# a settings path or word that merely contains it (committee, steel) is a read.
+assert_rc "833 grep of a committee path piped to cut allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "grep -n x /tmp/committee/primary/.claude/settings.json | cut -c1-60")"
+assert_rc "834 cat of a steel path allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "cat /tmp/steel/.claude/settings.json")"
+assert_rc "835 piped tee into live settings still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat .claude/settings.json | tee .claude/settings.json")"
+assert_rc "836 absolute /usr/bin/tee still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "grep x .claude/settings.json | /usr/bin/tee /tmp/o")"
+assert_rc "837 env-wrapped tee still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "cat .claude/settings.json | env tee /tmp/o")"
+assert_rc "838 tee after a semicolon still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "grep x .claude/settings.json; tee /tmp/o")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
