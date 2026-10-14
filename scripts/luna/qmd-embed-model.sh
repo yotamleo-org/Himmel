@@ -76,8 +76,6 @@ model_uri() {
     esac
 }
 
-# models.embed from a qmd config file (empty when unset). A two-level YAML read:
-# the `embed:` key directly under a top-level `models:` block.
 yml_embed() {
     [ -f "$1" ] || return 0
     awk '
@@ -97,7 +95,6 @@ configured_model() {
     else printf '%s\n' "$GEMMA_URI"; fi
 }
 
-# Rewrite models.embed in a config file atomically, keeping every other line.
 write_yml_embed() {
     local file="$1" uri="$2" tmp
     mkdir -p "$(dirname "$file")"
@@ -122,10 +119,7 @@ write_yml_embed() {
     mv -f "$tmp" "$file"
 }
 
-# --- capability --------------------------------------------------------------
 CAP_REASON="" CAP_CLASS=""
-# Sets CAP_CLASS (build|query|none) and CAP_REASON. Not run in $(...): the
-# reason would be lost in the subshell.
 capability() {
     local vram="" mem_kib="" os arch
     os="$(uname -s 2>/dev/null || echo unknown)"
@@ -157,7 +151,6 @@ capability() {
     fi
 }
 
-# --- index inspection --------------------------------------------------------
 need_sqlite() { command -v sqlite3 >/dev/null 2>&1 || die 4 "sqlite3 not on PATH; cannot read the index to verify its embed model"; }
 index_models() {
     sqlite3 -readonly "$1" "SELECT DISTINCT model FROM content_vectors ORDER BY model;" 2>/dev/null
@@ -167,7 +160,6 @@ index_dims() {
         | sed -n 's/.*float\[\([0-9]*\)\].*/\1/p'
 }
 
-# Compare a configured model with an index. rc 0 match/empty, 3 mismatch, 4 cannot read.
 compare_index() {
     local idx="$1" want="$2" models rc=0 m bad=""
     if [ ! -f "$idx" ]; then say "no index at $idx yet; nothing to compare"; return 0; fi
@@ -198,25 +190,10 @@ compare_index() {
     return 0
 }
 
-# A qmd process that holds or writes the live index: the MCP daemon, or an
-# update/embed run (the scheduled reindex).
 daemon_running() {
     pgrep -f 'qmd(\.js)? (mcp|update|embed)' >/dev/null 2>&1
 }
 
-# --- swap lock (HIMMEL-4314) -------------------------------------------------
-# A daemon relaunched mid-swap (the SessionStart hook ensure-qmd-daemon.sh does
-# it for any new Claude session) served the OLD model's query embeddings against
-# the NEW vectors. `swap` holds this lock from its liveness check to its commit
-# or rollback, and the daemon start path refuses while it is held. A mkdir lock
-# (atomic) in qmd's cache dir, holder pid and role (swap or ensure) inside. A
-# swap refuses on ANY live holder, a running daemon start included; the start
-# refuses only on role=swap and defers quietly to another start. The same path and stale rule
-# are inlined in marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh, which
-# cannot source this repo. A lock whose pid is dead is stale; one with no pid
-# file is stale once a minute old (the holder died between mkdir and the write).
-# The qmd fork's own `mcp --http` start (src/cli/swap-lock.ts, HIMMEL-4324) honours
-# the same lock, so a hand-typed `qmd mcp --http --daemon` is refused too.
 # ponytail: pid liveness is POSIX kill -0 only (Git Bash pids do not map), and a qmd binary older than the HIMMEL-4324 fork pin does not check the lock, so the second daemon check just before the commit and the do-not-start-by-hand line are the guard against it; upgrade in HIMMEL-4314 follow-ups if either bites.
 swap_lock_dir() { printf '%s/qmd/embed-swap.lock\n' "${XDG_CACHE_HOME:-$HOME/.cache}"; }
 
@@ -229,10 +206,6 @@ swap_lock_stale() {
     esac
 }
 
-# Clearing a stale lock is itself serialized (a second mkdir lock, "<lock>.reclaim"),
-# and staleness is re-checked inside it: two contenders that both saw a dead holder
-# must not let the slower one delete the faster one's freshly taken lock. A guard
-# a minute old belongs to a reclaimer that died and is cleared.
 swap_lock_reclaim() {
     local d="$1"
     if [ -n "$(find "$d.reclaim" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
@@ -268,12 +241,9 @@ swap_lock_acquire() {
     printf '%s\n' swap >"$d/role"
     printf '%s\n' "$$" >"$d/pid"
     trap swap_lock_release EXIT
-    # a hand-typed `qmd mcp --http --daemon` is refused by the fork's own start
-    # path, but an older qmd binary has no such check; ask the operator too
     say "swap in progress: do not start qmd by hand until the swap finishes"
 }
 
-# --- subcommands -------------------------------------------------------------
 cmd_capability() {
     capability
     say "$CAP_CLASS ($CAP_REASON)"
@@ -439,13 +409,11 @@ cmd_swap() {
         ln "$live" "$backup" 2>/dev/null || cp -p "$live" "$backup" || die 5 "could not keep a backup of the live index"
     fi
     if [ -f "$cfg" ]; then cp -p "$cfg" "$cfg.pre-swap-$ts"; fi
-    # a daemon that slipped in before the lock was visible to its start path
     if daemon_running; then # t13b-ok: read-only liveness check, starts nothing
         die 2 "a qmd process started during the swap; the live index is unchanged. Stop it and re-run swap"
     fi
     mv -f "$copy" "$live" || die 5 "the rename failed; the live index is unchanged (backup at $backup)"
     rm -f "$copy-wal" "$copy-shm" "$live-shm"
-    # test seam (test-qmd-embed-model.sh): stands in for a daemon relaunch mid-swap
     if [ -n "${QMD_EMBED_SWAP_MID_HOOK:-}" ]; then bash -c "$QMD_EMBED_SWAP_MID_HOOK" || true; fi
     write_yml_embed "$cfg" "$uri" \
         || die 5 "the index was swapped but the config write failed. Roll back: mv -f '$backup' '$live' && cp -p '$cfg.pre-swap-$ts' '$cfg'"

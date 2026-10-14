@@ -1,22 +1,10 @@
 #!/usr/bin/env bash
-# One-shot batch-create of 18 LUNA tickets for the clipper pipeline plan.
-# Source: <state-repo>/handovers/<USER_SLUG>/cross/clipper-pipeline-plan-2026-05-26.md.
-#
-# PROVENANCE RECORD — DO NOT RE-RUN.
-# This script ALREADY ran on 2026-05-26 and created the LUNA-3 clipper-pipeline
-# tickets (LUNA-8/10/11/21/... — see the plan + the summary it printed). It is
-# kept in the tree as the record of HOW those tickets were generated, not as a
-# maintained tool. It is NOT idempotent: re-running creates a fresh DUPLICATE of
-# every ticket. If you need to (re)generate tickets, make a new dated script or
-# add a skip-if-exists guard first.
 set -e
 
 cd "$(dirname "$0")/../.."
 
 mkfile=$(mktemp)
 
-# Invoke the jira CLI as node + path (the global `jira` shim points at an
-# unrelated package). Wrapped in a function so word-splitting is correct.
 JIRA_run() {
   node scripts/jira/dist/index.js "$@"
 }

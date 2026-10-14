@@ -1,56 +1,25 @@
 #!/usr/bin/env bash
-# sweep-himmel.sh — LUNA-5 Wedge A.
-#
-# Walks recent himmel merged PRs + handover-state-repo commits in a time
-# window and emits a single PARA-compliant Obsidian markdown file listing
-# them as "candidate" entries. Default mode is --dry-run (prints to stdout).
-# With --pr, clones the luna-brain repo, writes the candidate file into
-# 00-Inbox/, pushes a branch, and opens a PR.
-#
-# Why this exists: the operator runs a himmel monorepo + a separate
-# handover state repo. Architectural decisions, plugin additions, and learnings
-# accumulate in PR bodies and handover notes. Periodically, those should
-# graduate into the luna second-brain so future-Claude can surface them
-# during retrieval. This script does the periodic walk; promotion to
-# 10-Projects / 30-Resources is a separate manual triage step performed
-# in the luna vault directly.
-#
-# Output format matches luna-brain/_CLAUDE.md:
-#   - frontmatter: type, date, tags, ai-first: true, source
-#   - "For future Claude" preamble (2-3 sentences)
-#   - per-PR + per-commit sections with source URLs and dates
-#
-# This is Wedge A of LUNA-5. Wedge B (/luna-ingest <x.com-url>) ships
-# separately.
 
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Pull HANDOVER_DIR from the primary checkout's .env (if not already in the
-# env) so the handover-state-repo path can be derived without hardcoding it.
 # shellcheck source=../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/load-dotenv.sh"
 load_dotenv HANDOVER_DIR
 
-# Default values
 DAYS=7
 SINCE=""
 DAYS_EXPLICIT=0
 SINCE_EXPLICIT=0
-MODE="dry-run"   # dry-run (default) | pr | out
+MODE="dry-run"
 OUT_PATH=""
 HIMMEL_REPO_FULL="yotamleo/himmel"
 LUNA_BRAIN_REPO_FULL="yotamleo/Himmel/tree/main/templates/luna-second-brain" # leak-allow: hostname this project's own public GitHub org/repo name
-# Handover state repo checkout (for the handover-commit walk). Override with
-# --state-repo or $STATE_REPO_PATH; otherwise derived from the parent of
-# $HANDOVER_DIR (the repo that hosts handovers/). If neither resolves, the
-# handover walk is skipped (see the .git check below).
 STATE_REPO_PATH="${STATE_REPO_PATH:-${HANDOVER_DIR:+$(dirname "$HANDOVER_DIR")}}"
 
-# Distinct exit codes
 EXIT_NO_CHANGES=3
 
 usage() {
@@ -94,7 +63,6 @@ log() {
     echo "$SCRIPT_NAME: $*" >&2
 }
 
-# ---- arg parsing -----------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -143,7 +111,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ---- prereq checks ---------------------------------------------------
 
 command -v gh  >/dev/null 2>&1 || die "gh CLI not installed or not on PATH"
 command -v jq  >/dev/null 2>&1 || die "jq not installed or not on PATH"
@@ -155,7 +122,6 @@ if ! gh_auth_err=$(gh auth status --hostname github.com 2>&1); then
     die "gh not authenticated for github.com — run \`gh auth login\` first. Details: $gh_auth_err"
 fi
 
-# Resolve SINCE if --days was used
 if [[ -z "$SINCE" ]]; then
     # GNU date and BSD date diverge; try GNU first, fall back to BSD
     if SINCE=$(date -u -d "${DAYS} days ago" +%Y-%m-%d 2>/dev/null); then
@@ -170,13 +136,9 @@ fi
 TODAY=$(date -u +%Y-%m-%d)
 log "sweep window: $SINCE to $TODAY (mode: $MODE)"
 
-# ---- gather PRs ------------------------------------------------------
 
 log "querying merged PRs in $HIMMEL_REPO_FULL since $SINCE …"
 
-# `--state merged` restricts state; `merged:>=DATE` bounds the window
-# (gh sends both to the GitHub search API). Limit 100 = sane upper bound
-# for a weekly sweep; bump if the operator's velocity exceeds it.
 PR_JSON=$(gh pr list \
     --repo "$HIMMEL_REPO_FULL" \
     --state merged \
@@ -188,7 +150,6 @@ PR_JSON=$(gh pr list \
 PR_COUNT=$(echo "$PR_JSON" | jq 'length')
 log "found $PR_COUNT merged PRs in window"
 
-# ---- gather handover commits ----------------------------------------
 
 HANDOVER_COMMITS=""
 HANDOVER_COUNT=0
@@ -202,9 +163,6 @@ if [[ -n "$STATE_REPO_PATH" && -d "$STATE_REPO_PATH/.git" ]]; then
     # gh's UTC interpretation of the PR `merged:>=DATE` qualifier above.
     # Without this, `git log --since="YYYY-MM-DD"` resolves to LOCAL midnight,
     # which silently shifts the handover window by up to ±24h vs the PR window.
-    # Walk the whole handovers/ tree (not a hardcoded per-user bucket): the
-    # state repo is single-operator, so handovers/ ⊇ any user bucket, and this
-    # keeps an operator slug out of the pathspec.
     if HANDOVER_COMMITS=$(git -C "$STATE_REPO_PATH" log \
         --since="${SINCE} 00:00:00 +0000" \
         --pretty=format:$'%H\x1f%ai\x1f%s' \
@@ -225,7 +183,6 @@ else
     log "WARN: handover state repo not found at '$STATE_REPO_PATH' — skipping handover walk"
 fi
 
-# ---- emit candidate markdown ----------------------------------------
 
 emit_candidate_md() {
     cat <<EOF
@@ -274,9 +231,7 @@ EOF
             pr_author=$(echo "$pr_line" | jq -r '.author.login // "unknown"')
             # head -c 600 = first 600 BYTES (not chars) of the PR body. A
             # multibyte trailing character (emoji / CJK) can be sliced
-            # mid-codepoint and render as mojibake in the candidate file;
-            # acceptable for an excerpt the operator triages, and avoids a
-            # GNU-vs-BSD-specific char count fallback.
+            # mid-codepoint and render as mojibake in the candidate file.
             pr_body_excerpt=$(echo "$pr_line" | jq -r '.body // ""' | head -c 600 | tr '\r\n' '  ' | sed 's/  */ /g')
             pr_labels=$(echo "$pr_line" | jq -r '[.labels[]?.name] | join(", ")')
 
@@ -302,7 +257,6 @@ EOF
         echo "_No handover commits in this window._"
         echo ""
     else
-        # Format: SHA<US>ISO_DATE<US>SUBJECT (US = 0x1f, see git log call).
         while IFS=$'\x1f' read -r sha iso_date subject; do
             [[ -z "$sha" ]] && continue
             short_sha="${sha:0:8}"
@@ -331,7 +285,6 @@ EOF
 
 CANDIDATE_MD=$(emit_candidate_md)
 
-# ---- dispatch by mode -----------------------------------------------
 
 case "$MODE" in
     dry-run)
@@ -351,16 +304,11 @@ case "$MODE" in
         clone_err=$(gh repo clone "$LUNA_BRAIN_REPO_FULL" "$TMPDIR/luna-brain" -- --depth 1 2>&1) \
             || die "gh repo clone failed: $clone_err"
 
-        # Branch name includes UTC HHMMSS so same-day re-runs don't collide.
-        # luna-brain branch protection only covers `main`; feature branches
-        # are unrestricted, but a colliding push to an existing branch
-        # would still fail (or, worse, fast-forward over a pending PR).
         BRANCH="luna/sweep-himmel-${TODAY}-$(date -u +%H%M%S)"
         OUT_FILE="$TMPDIR/luna-brain/00-Inbox/sweep-${TODAY}-from-himmel.md"
 
         cd "$TMPDIR/luna-brain" || die "could not cd into clone at $TMPDIR/luna-brain"
 
-        # Last-ditch collision guard.
         if git ls-remote --exit-code origin "$BRANCH" >/dev/null 2>&1; then
             die "branch $BRANCH already exists on origin — unexpected; aborting to avoid clobber"
         fi
@@ -376,8 +324,7 @@ case "$MODE" in
 
         # Explicit identity + gpgsign override: the ephemeral clone inherits
         # no git config and may not have a signing key reachable under the
-        # scheduled-task user; this commit is auto-generated and attributed to
-        # the running user's global git identity (with a neutral fallback).
+        # scheduled-task user.
         sweep_name=$(git config --global user.name 2>/dev/null || echo "himmel-sweep")
         sweep_email=$(git config --global user.email 2>/dev/null || echo "himmel-sweep@users.noreply.github.com")
         commit_err=$(git \
@@ -404,8 +351,6 @@ Auto-generated sweep of recent himmel + handover-repo activity. Lands in \`00-In
 Generated by \`scripts/luna/sweep-himmel.sh\` (LUNA-5 Wedge A) in the himmel repo.
 PRBODY
 )" 2>&1); then
-            # Rollback: delete the orphaned remote branch so a retry can
-            # re-push cleanly without operator intervention.
             log "ERROR: gh pr create failed; rolling back remote branch $BRANCH"
             git push origin --delete "$BRANCH" >/dev/null 2>&1 || \
                 log "WARN: rollback of remote branch $BRANCH failed — operator may need to clean it up manually"
