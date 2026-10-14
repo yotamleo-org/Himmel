@@ -1056,8 +1056,14 @@ is_readonly_allowlisted() {
     esac
     # tee as a word (HIMMEL-5616): `committee`/`steel` in a path are reads.
     # Preceded by anything but a name char, `.` or `-`; followed by one too,
-    # or `/` (a directory named tee is not the command).
-    [[ $c =~ (^|[^a-z0-9_.-])tee($|[^a-z0-9_./-]) ]] && return 1
+    # or `/` (a directory named tee is not the command). PowerShell spells it
+    # `Tee-Object` or `tee.exe`, which that rule would pass, so there any
+    # name-char boundary counts.
+    if [ "$tool_name" = Bash ]; then
+        [[ $c =~ (^|[^a-z0-9_.-])tee($|[^a-z0-9_./-]) ]] && return 1
+    else
+        [[ $c =~ (^|[^a-z0-9_])tee($|[^a-z0-9_]) ]] && return 1
+    fi
     first=$(printf '%s' "$c" | awk '{print $1}')
     case "$first" in
         cat|head|tail|grep|rg|diff|wc) return 0 ;;
