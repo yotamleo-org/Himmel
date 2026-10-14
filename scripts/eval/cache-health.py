@@ -25,7 +25,7 @@ session leaves the window.
 The notify command is called with ONE argument (the message); exit 0 = delivered.
 State is committed only for delivered messages, so a failed send retries next run.
 """
-import argparse, glob, json, os, re, subprocess, sys, time
+import argparse, fcntl, glob, json, os, re, subprocess, sys, time
 from collections import defaultdict
 from datetime import datetime
 
@@ -98,8 +98,8 @@ def parse_session(path):
                     c5 = u.get("cache_creation_input_tokens", 0) or 0
                 turns.append((ts(d.get("timestamp", "")), u.get("input_tokens", 0) or 0,
                               u.get("cache_read_input_tokens", 0) or 0, c5, c1))
-    except OSError:
-        return None
+    except FileNotFoundError:
+        return None  # pruned between the glob and the read
     return title, classify(path, title, first), turns, comps
 
 
@@ -223,7 +223,17 @@ def write_atomic(path, text):
 
 def cmd_check(a, metrics, offenders):
     sd = a.state_dir
-    os.makedirs(sd, exist_ok=True)
+    if not a.dry_run:
+        if not a.notify_cmd:
+            print("cache-health: check needs --notify-cmd (or --dry-run)", file=sys.stderr)
+            return 2
+        os.makedirs(sd, exist_ok=True)
+        lock = open(os.path.join(sd, "lock"), "w")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print("cache-health: another check holds the lock, skipping", file=sys.stderr)
+            return 0
     st_path = os.path.join(sd, "alert-state.json")
     active = load_json(st_path, {}).get("active", {})  # key -> text at crossing
     cross, holding = evaluate(metrics, offenders, a)
@@ -311,7 +321,11 @@ def main():
     if not os.path.isdir(a.root):  # an absent input is not "no data": never clear alerts on it
         print("cache-health: transcript root not found: %s" % a.root, file=sys.stderr)
         return 2
-    metrics, offenders = compute(a.root, now, a.recent_hours, a.baseline_days, a.session_min_tokens, a.top)
+    try:
+        metrics, offenders = compute(a.root, now, a.recent_hours, a.baseline_days, a.session_min_tokens, a.top)
+    except OSError as e:  # unreadable input is incomplete data: fail rather than clear alerts on it
+        print("cache-health: cannot read transcripts: %s" % e, file=sys.stderr)
+        return 2
     return cmd_check(a, metrics, offenders) if a.cmd == "check" else cmd_report(metrics)
 
 

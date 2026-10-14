@@ -9,7 +9,7 @@
 #
 #   cache-health-cadence.sh run     [--repo <path>] [--console <session>] [--dry-run]
 #   cache-health-cadence.sh notify  <message>      (what cache-health.py calls)
-#   cache-health-cadence.sh arm     [--minute 0-59] [--every-hours 1-23] [--force] [--dry-run]
+#   cache-health-cadence.sh arm     [--minute 0-59] [--every-hours 1|2|3|4|6|8|12] [--force] [--dry-run]
 #   cache-health-cadence.sh status
 #   cache-health-cadence.sh disarm  [--dry-run]
 #
@@ -141,7 +141,7 @@ cmd_arm() {
         esac
     done
     [[ "$minute" =~ ^([0-9]|[1-5][0-9])$ ]] || { echo "ERR cache-health: --minute must be 0-59, got: $minute" >&2; return 1; }
-    [[ "$every" =~ ^([1-9]|1[0-9]|2[0-3])$ ]] || { echo "ERR cache-health: --every-hours must be 1-23, got: $every" >&2; return 1; }
+    [[ "$every" =~ ^(1|2|3|4|6|8|12)$ ]] || { echo "ERR cache-health: --every-hours must divide 24 (1 2 3 4 6 8 12), got: $every" >&2; return 1; }
     case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR cache-health: cron only; Windows is parked (HIMMEL-4102)" >&2; return 2 ;; esac
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR cache-health: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="$(resolve_primary)" || { echo "ERR cache-health: cannot resolve the primary checkout" >&2; return 2; }

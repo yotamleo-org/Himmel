@@ -131,6 +131,23 @@ check "missing root exits 2" 2 $?
 has "missing root names the path" "transcript root not found" "$W/run.out"
 has "missing root leaves the active alert alone" "role-drop:leg" "$STATE/alert-state.json"
 
+# ---- 6c. input and invocation guards ------------------------------------------
+python3 -I "$PY" check --root "$R" --state-dir "$STATE" --now "$NOW" >"$W/run.out" 2>&1
+check "check without --notify-cmd exits 2" 2 $?
+has "check without --notify-cmd says why" "needs --notify-cmd" "$W/run.out"
+chmod 000 "$R/l1.jsonl"
+python3 -I "$PY" check --root "$R" --state-dir "$STATE" --now "$NOW" --notify-cmd "$SEND" >"$W/run.out" 2>&1
+rc=$?; chmod 644 "$R/l1.jsonl"
+if [ "$(id -u)" = 0 ]; then pass "unreadable transcript (skipped as root)"; else check "unreadable transcript exits 2" 2 "$rc"; fi
+python3 -I -c '
+import fcntl, subprocess, sys
+f = open(sys.argv[1] + "/lock", "w"); fcntl.flock(f, fcntl.LOCK_EX)
+r = subprocess.run(["python3", "-I", sys.argv[2], "check", "--root", sys.argv[3], "--state-dir", sys.argv[1], "--now", sys.argv[4], "--notify-cmd", sys.argv[5]], capture_output=True, text=True)
+sys.exit(0 if r.returncode == 0 and "holds the lock" in r.stderr else 1)' "$STATE" "$PY" "$R" "$NOW" "$SEND" && pass "a held lock skips the run" || fail "lock not honoured"
+rm -rf "$W/dry-state"
+python3 -I "$PY" check --root "$R" --state-dir "$W/dry-state" --now "$NOW" --dry-run >"$W/run.out" 2>&1
+[ ! -e "$W/dry-state" ] && pass "dry run creates no state directory" || fail "dry run created the state directory"
+
 # ---- 7. session-low + compactions rules --------------------------------------
 rm -rf "$STATE" "$W/sent" "$R"
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000 lowsession
@@ -199,6 +216,8 @@ export CACHE_HEALTH_CRONTAB="$W/crontab" CACHE_HEALTH_RUNNER_DIR="$W/runner"
 bash "$CAD" arm --dry-run >"$W/arm0.out" 2>&1
 has "arm --dry-run shows the hourly entry" "7 * * * *" "$W/arm0.out"
 [ ! -e "$W/crontab.txt" ] && pass "dry-run installs nothing" || fail "dry-run wrote a crontab"
+bash "$CAD" arm --every-hours 5 --dry-run >"$W/arm5.out" 2>&1
+check "arm refuses an interval that does not divide 24" 1 $?
 bash "$CAD" arm >"$W/arm1.out" 2>&1
 check "arm exits 0" 0 $?
 has "crontab carries the task tag" "# HIMMEL-CacheHealth" "$W/crontab.txt"
