@@ -1982,6 +1982,81 @@ else
     fail "replace-ref: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$rr_marker" ] && echo yes || echo no) lane=$rr_lane out: $out"
 fi
 
+# HIMMEL-1178 -- base-skew guard (both directions). A branch whose merge-base is
+# far behind the diff base only warns (never refuses: refusing enforces
+# update-branch at push time), naming the recovery command; a local main ahead
+# of origin/main also only warns (review-artifact noise from landed work).
+echo "TEST: HIMMEL-1178 -- base skew guard (behind-main warn-only, merge-forward clears, origin-lag warn)"
+SK_ORIGIN="$TMP_ROOT/sk-origin.git"
+git init -q --bare -b main "$SK_ORIGIN"
+SK_SEED="$TMP_ROOT/sk-seed"
+git init -q -b main "$SK_SEED"
+echo base > "$SK_SEED/README.txt"
+git -C "$SK_SEED" add -A
+git -C "$SK_SEED" -c user.email=a@t -c user.name=a commit -q -m base
+git -C "$SK_SEED" push -q "$SK_ORIGIN" main
+SK_P="$TMP_ROOT/sk-pusher"
+git clone -q "$SK_ORIGIN" "$SK_P"
+git -C "$SK_P" checkout -qb feat/sk main
+mkdir -p "$SK_P/scripts"
+echo 'echo hi' > "$SK_P/scripts/x.sh"
+git -C "$SK_P" add -A
+git -C "$SK_P" -c user.email=b@t -c user.name=b commit -q -m "feat: x"
+sk_tip=$(git -C "$SK_P" rev-parse HEAD)
+sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
+# main moves 31 commits ahead (past the old refusal limit of 30); the branch stays on the old base.
+for i in $(seq 1 31); do
+    echo "$i" > "$SK_SEED/m$i.txt"
+    git -C "$SK_SEED" add -A
+    git -C "$SK_SEED" -c user.email=a@t -c user.name=a commit -q -m "main $i"
+done
+git -C "$SK_SEED" push -q "$SK_ORIGIN" main
+git -C "$SK_P" fetch -q origin
+git -C "$SK_P" branch -qf main origin/main
+rc=0
+out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" == *"31 commits behind"* ]] && [[ "$out" == *"git merge "* ]]; then
+    pass "skew: a base 31 commits behind main (past the old limit) warns, rc=0, names the git merge recovery"
+else
+    fail "skew: expected rc=0, '31 commits behind' and a 'git merge' command" "rc=$rc out: $out"
+fi
+rc=0
+out=$(cd "$SK_P" && CR_STALE_BASE_MAX=3 bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" == *"31 commits behind"* ]]; then
+    pass "skew: the retired CR_STALE_BASE_MAX knob no longer refuses (rc=0)"
+else
+    fail "skew: CR_STALE_BASE_MAX must not refuse any more" "rc=$rc out: $out"
+fi
+# merge-forward pass: after merging main in, the behind warning is gone.
+git -C "$SK_P" -c user.email=b@t -c user.name=b merge -q --no-edit main
+sk_tip=$(git -C "$SK_P" rev-parse HEAD)
+sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
+rc=0
+out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" != *"commits behind"* ]]; then
+    pass "skew: after merging main forward there is no behind warning"
+else
+    fail "skew: expected rc=0 and no 'commits behind' after a merge-forward" "rc=$rc out: $out"
+fi
+# origin lag: local main 2 commits ahead of origin/main -> warn, never refuse.
+git -C "$SK_P" checkout -q main
+for i in 1 2; do
+    echo "$i" > "$SK_P/l$i.txt"
+    git -C "$SK_P" add -A
+    git -C "$SK_P" -c user.email=b@t -c user.name=b commit -q -m "local $i"
+done
+git -C "$SK_P" checkout -q feat/sk
+git -C "$SK_P" -c user.email=b@t -c user.name=b rebase -q main
+sk_tip=$(git -C "$SK_P" rev-parse HEAD)
+sk_line="refs/heads/feat/sk $sk_tip refs/heads/feat/sk $Z40"
+rc=0
+out=$(cd "$SK_P" && bash "$HOOK" origin "$SK_ORIGIN" <<< "$sk_line" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [[ "$out" == *"2 commits ahead of origin/main"* ]]; then
+    pass "skew: local main 2 ahead of origin/main warns (rc=0)"
+else
+    fail "skew: expected rc=0 and '2 commits ahead of origin/main'" "rc=$rc out: $out"
+fi
+
 # Summary ------------------------------------------------------------
 
 echo

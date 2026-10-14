@@ -206,6 +206,9 @@ export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
 export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
 unset DOCTOR_CODEX_LATEST
+# Same for C64-vm-runner (HIMMEL-5037): never run the real vm-runner.sh doctor
+# (it would probe the operator's VirtualBox and GitHub); absent seam = INFO skip.
+export DOCTOR_VM_RUNNER="$FAKEROOT/no-such-vm-runner.sh"
 # C63 (HIMMEL-5501): never run the operator's real claude; absent seam = INFO.
 export DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 
@@ -6462,6 +6465,25 @@ echo "== C63-claude-cli: absent -> INFO, not a WARN =="
 out="$(c62_run "$c60_t/none")"
 if grepq "$out" -F 'INFO C63-claude-cli' && ! grepq "$out" -F 'WARN C63-claude-cli'; then pass "C63 absent -> INFO"; else fail "C63 absent -> $(printf '%s' "$out" | grep -A1 C63)"; fi
 rm -rf "$c60_t"
+
+# --- C64-vm-runner (HIMMEL-5037): rows come from vm-runner.sh doctor ---
+c64_t="$(mktemp -d)" || exit 1
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tsnapshot ci-runner-v1 present\n"' 'printf "FAIL\tC64-vm-runner\trunner DEAD: variable on, no unit up\n"' > "$c64_t/runner-fail.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tfork-approval policy all_external_contributors\n"' > "$c64_t/runner-ok.sh"
+c64_run() { DOCTOR_VM_RUNNER="$1" CLAUDE_DIR="$c64_t/claude" HOME="$c64_t/home" bash "$DOC" --no-color 2>&1; }
+
+echo "== C64-vm-runner: a FAIL row from vm-runner.sh doctor surfaces as FAIL =="
+out="$(c64_run "$c64_t/runner-fail.sh")"
+if grepq "$out" -F 'FAIL C64-vm-runner: runner DEAD' && grepq "$out" -F 'OK   C64-vm-runner: snapshot ci-runner-v1 present'; then pass "C64 FAIL row -> FAIL"; else fail "C64 FAIL row -> $(printf '%s' "$out" | grep C64)"; fi
+
+echo "== C64-vm-runner: healthy rows -> OK, no FAIL =="
+out="$(c64_run "$c64_t/runner-ok.sh")"
+if grepq "$out" -F 'OK   C64-vm-runner: fork-approval' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 ok -> OK"; else fail "C64 ok -> $(printf '%s' "$out" | grep C64)"; fi
+
+echo "== C64-vm-runner: runner script absent -> INFO =="
+out="$(c64_run "$c64_t/none.sh")"
+if grepq "$out" -F 'INFO C64-vm-runner' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 absent -> INFO"; else fail "C64 absent -> $(printf '%s' "$out" | grep C64)"; fi
+rm -rf "$c64_t"
 
 # --- C62-oxlint-runner (HIMMEL-5529): can the oxlint commit gates run? ---
 c62_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c62.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }

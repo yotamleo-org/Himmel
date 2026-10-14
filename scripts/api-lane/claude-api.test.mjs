@@ -116,6 +116,34 @@ test('HIMMEL-5073: the scrub forces default permission mode, so the launcher dec
   assert.match(seen, /--permission-mode plan/);
 });
 
+test('HIMMEL-5544: HIMMEL_API_TOOLS=<empty> runs the call tool-free (no --allowedTools, empty --tools)', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_TOOLS: '' });
+  assert.equal(r.status, 0, r.stderr);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.doesNotMatch(seen, /allowedTools/);
+  assert.match(seen, /--tools  --max-budget-usd/);
+});
+
+test('HIMMEL-5544: HIMMEL_API_TOOLS narrows to a subset of the default grant', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Grep' });
+  assert.equal(r.status, 0, r.stderr);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.match(seen, /--allowedTools Read,Grep /);
+  assert.match(seen, /--tools Read,Grep /);
+});
+
+test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider or blank entry is refused before any launch', () => {
+  for (const v of ['Read,WebFetch', 'Bash,Task', 'mcp__x__y', 'Read,,Grep', ' Read', 'Read,']) {
+    const f = fixture();
+    const r = f.run(f.good, { HIMMEL_API_TOOLS: v });
+    assert.equal(r.status, 2, `${JSON.stringify(v)}: ${r.stderr}`);
+    assert.match(r.stderr, /HIMMEL_API_TOOLS/);
+    assert.equal(f.called(), false, `${JSON.stringify(v)} must not launch`);
+  }
+});
+
 test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
   const f = fixture();
   const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',

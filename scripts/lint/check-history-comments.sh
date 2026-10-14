@@ -32,7 +32,8 @@ DIFF="$(mktemp "${TMPDIR:-/tmp}/check-history-comments.XXXXXX")" || { echo "chec
 trap 'rm -f "$DIFF" "$DIFF.out"' EXIT
 
 case "$1" in
-    --staged) git diff --cached -U0 --no-color --no-ext-diff --no-renames --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
+    --staged) git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && { echo "check-history-comments: merge in progress, lines from the merged branch are not new"; exit 0; }
+              git diff --cached -U0 --no-color --no-ext-diff --no-renames --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     --range)  [ $# -eq 2 ] || usage
               git diff -U0 --no-color --no-ext-diff --no-renames --diff-filter=ACMR "$2" HEAD > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     --diff)   [ $# -eq 2 ] && [ -f "$2" ] || usage

@@ -4112,6 +4112,32 @@ check_c63_claude_cli() {
     esac
 }
 
+# --- C64-vm-runner (HIMMEL-5037) -----------------------------------------------
+# The VM CI runner's health: snapshot present, NAT loopback off, fork-approval
+# policy still all_external_contributors, no DEAD/STUCK units. The probes live in
+# vm-runner.sh doctor (TSV: SEV, id, msg); skipped there when no VM exists.
+check_c64_vm_runner() {
+    local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/console-kit/vm-runner.sh}" rows sev id msg
+    if [ ! -f "$runner" ]; then
+        emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
+        return
+    fi
+    rows="$(bash "$runner" doctor 2>/dev/null)" || true
+    if [ -z "$rows" ]; then
+        emit INFO C64-vm-runner "vm-runner.sh doctor printed nothing — not checked"
+        return
+    fi
+    while IFS="$(printf '\t')" read -r sev id msg; do
+        case "$sev" in
+            OK|INFO) emit "$sev" C64-vm-runner "$msg" ;;
+            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh status" ;;
+            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh off, then fix and re-run on" ;;
+        esac
+    done <<EOF_ROWS
+$rows
+EOF_ROWS
+}
+
 # --- run ------------------------------------------------------------------------
 echo "himmel-doctor — $(uname -s 2>/dev/null || echo ?) — checkout: $REPO_ROOT"
 echo
@@ -4177,6 +4203,7 @@ check_c60_hermes_origin
 check_c61_codex_cli
 check_c62_oxlint_runner
 check_c63_claude_cli
+check_c64_vm_runner
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 

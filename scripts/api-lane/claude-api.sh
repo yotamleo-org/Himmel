@@ -10,6 +10,7 @@
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
+#        [HIMMEL_API_TOOLS=<comma list>]  narrow-only tool grant; empty = tool-free; never wider than the default
 # OFF by default. No subscription fallback: a refusal is final.
 set -u
 
@@ -128,6 +129,23 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC
 # allowance is the fixture-work tool set, the sandbox bounds Bash, and callers cannot add to or replace it.
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
 ALLOWED_TOOLS="Read,Edit,Write,Glob,Grep,Bash"
+# HIMMEL-5544: NARROW-ONLY override. A caller whose prompt carries untrusted text (graphify's corpus) sets
+# HIMMEL_API_TOOLS to a subset of the grant above, or to the empty string for a tool-free call. Anything outside
+# the grant, or a malformed list, is refused: the override can only remove tools, never add one.
+if [ "${HIMMEL_API_TOOLS+set}" = set ]; then
+  case "$HIMMEL_API_TOOLS" in ,*|*,|*,,*) refuse "HIMMEL_API_TOOLS has an empty entry" ;; esac
+  NARROWED=""
+  if [ -n "$HIMMEL_API_TOOLS" ]; then
+    IFS=, read -ra WANT <<< "$HIMMEL_API_TOOLS"
+    for t in "${WANT[@]}"; do
+      case ",$ALLOWED_TOOLS," in *",$t,"*) ;; *) refuse "HIMMEL_API_TOOLS may only narrow the default grant ($ALLOWED_TOOLS)" ;; esac
+      NARROWED="${NARROWED:+$NARROWED,}$t"
+    done
+  fi
+  ALLOWED_TOOLS="$NARROWED"
+fi
+TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
+[ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
 
 # HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
@@ -168,7 +186,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-  --tools "$ALLOWED_TOOLS" --allowedTools "$ALLOWED_TOOLS" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
+  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json >"$OUT"
 RC=$?
 
 # --- settle on verified cost, otherwise keep the reservation as unknown ---

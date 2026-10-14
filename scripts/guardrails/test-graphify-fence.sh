@@ -223,6 +223,22 @@ run_fence allow no "$HIMMEL" "himmel-code x claude -> allow (warn-not-block)" \
 run_fence allow no "$HIMMEL" "himmel-code x claude-cli -> allow (alias)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude-cli"
 
+# claude-api (HIMMEL-5544: semantic-update.sh's API-credit lane backend, which
+# shells the same CLI as claude-cli) classifies as anthropic and carries the same
+# reroute and endpoint rules; salus stays a hard deny.
+run_fence allow no "$HIMMEL" "himmel-code x claude-api -> allow (anthropic)" \
+    "graphify update $HIMMEL/scripts/thing.sh --backend claude-api"
+run_fence allow no "$HIMMEL" "luna-personal x claude-api -> allow (anthropic)" \
+    "graphify update $LUNA/journal-2026.md --backend claude-api"
+run_fence deny no "$HIMMEL" "salus x claude-api -> hard deny (PHI invariant)" \
+    "graphify update $SALUS/notes/patient.md --backend claude-api"
+run_fence deny no "$HIMMEL" "denylist-root x claude-api -> salus hard deny" \
+    "graphify update $DENYROOT/x/leak.md --backend claude-api"
+run_fence deny no "$HIMMEL" "luna x claude-api(bedrock) -> hard deny (shells the CLI like claude-cli)" \
+    "graphify update $LUNA/journal-2026.md --backend claude-api" CLAUDE_CODE_USE_BEDROCK=1
+run_fence deny no "$HIMMEL" "luna x claude-api(z.ai base-url) -> zai-glm, not anthropic" \
+    "graphify update $LUNA/journal-2026.md --backend claude-api" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+
 # luna-personal x claude -> allow (anthropic = operating substrate, no ledger)
 run_fence allow no "$HIMMEL" "luna-personal x claude -> allow (warn-not-block)" \
     "graphify update $LUNA/journal-2026.md --backend claude"

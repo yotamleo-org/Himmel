@@ -103,6 +103,11 @@ printf '# %s-1 old history\necho a\n# CR fix: added\n' "$H" > "$R/scripts/a.sh"
 git -C "$R" add -A; git -C "$R" commit -q -m two
 OUT="$(cd "$R" && bash "$GATE" --range "$base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "--range names scripts/a.sh:3"; else fail "--range -> rc=$RC: $OUT"; fi
+printf '%s\n' "$base" > "$R/.git/MERGE_HEAD"
+printf '# %s-1 old history\necho a\n# CR fix: added\n# %s-9 from the merged branch\n' "$H" "$H" > "$R/scripts/a.sh"
+git -C "$R" add -A
+OUT="$(cd "$R" && bash "$GATE" --staged 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ]; then pass "--staged during a merge -> 0"; else fail "--staged during a merge -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

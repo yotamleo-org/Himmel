@@ -425,7 +425,7 @@ check "8 no leak in console-template.md" "$(leak_free "$REPO_REAL/docs/handover/
 check "8 no leak in console-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/console-handoff-template.md")" "yes"
 check "8 no leak in leg-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/leg-brief-template.md")" "yes"
 check "8 no leak in running-a-console.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-console.md")" "yes"
-check "8 no leak in .claude/commands/console.md" "$(leak_free "$REPO_REAL/.claude/commands/console.md")" "yes"
+check "8 no leak in .claude/commands/supervisor-session.md" "$(leak_free "$REPO_REAL/.claude/commands/supervisor-session.md")" "yes"
 
 # --- 9: unresolvable handover root exits 2, writes nothing -------------
 badroot="$tmp/does-not-exist"
@@ -1947,7 +1947,7 @@ check "68h the disambiguated doc uses the explicit --bucket" \
 # `next` with no --project must not silently record the successor as "the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
 # plugin console.md no longer derives --project for `next` (only for `new`,
-# see marketplace/plugins/himmel-ops/commands/console.md), so without this a
+# see marketplace/plugins/himmel-ops/commands/supervisor-session.md), so without this a
 # foreign-project chain's successor would fall back into himmel's own DEMO
 # bucket. RED against the pre-codex-1 console.sh (PROJECT_ARG never seeded
 # from the predecessor doc), GREEN after.
@@ -2126,7 +2126,7 @@ check "74 nothing falls back to himmel's bucket" "$(printf '%s\n' "$out74" | gre
 
 # 75 (#1410): the user slug resolves from console.sh's OWN checkout, never the
 # caller's cwd -- the same pinning HIMMEL-3533 gave load_dotenv. The plugin
-# /himmel-ops:console runs console.sh from any directory; from a non-git one
+# /himmel-ops:supervisor-session runs console.sh from any directory; from a non-git one
 # forge_detect found no origin, so the slug fell back to the cwd's slugified
 # git user.name and the chain forked into a second user dir.
 tmp75="$tmp/t75"
