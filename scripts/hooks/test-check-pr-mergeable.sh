@@ -18,6 +18,8 @@
 #  11. CONFLICTING + base IS an ancestor, tree has NO markers, but the
 #      conflict-marker `git diff` itself FAILS -> exit 1 (a failed diff is
 #      inconclusive evidence, not a clean tree — must not silently allow).
+#  13-14. HIMMEL-5650 warn-only re-push check: recent CI start + unfinished
+#      checks warns (rc=0); finished checks, or an old start, stay silent.
 #  12. CONFLICTING + base WOULD be an ancestor but refreshing `origin/<base>`
 #      (the pre-ancestor-check `git fetch`) FAILS -> exit 1 (a stale cached
 #      remote-tracking ref is inconclusive evidence, not proof of staleness).
@@ -83,6 +85,10 @@ case "$1 $2" in
         #    `gh pr view <branch> --json baseRefName --jq ...` -> "<base>".
         for _f in "$@"; do
             case "$_f" in
+                statusCheckRollup)
+                    printf '%s\n' "${FAKE_GH_ROLLUP:-0 }"
+                    exit 0
+                    ;;
                 baseRefName,headRefOid)
                     printf '%s %s\n' "${FAKE_GH_BASE:-main}" "${FAKE_GH_HEAD:?FAKE_GH_HEAD unset}"
                     exit 0
@@ -339,6 +345,30 @@ assert_contains "stderr names sanctioned recovery" "Sanctioned recovery" "$out"
     cd "$REPO" || exit 99
     git checkout -q feat/test
 )
+
+# Tests 13-14 (HIMMEL-5650): warn-only re-push check -----------------------
+ts() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+NOW=$(date +%s)
+T_RECENT=$(ts $((NOW - 300)))
+T_OLD=$(ts $((NOW - 2400)))
+echo "TEST: CI started 5m ago, 3 checks unfinished -> WARN, still rc=0"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3 $T_RECENT"; run 2>&1) || rc=$?
+assert_rc "recent+queued rc=0" "0" "$rc"
+assert_contains "recent+queued warns" "ONE push" "$out"
+
+echo "TEST: control — all finished, or CI started 40m ago -> silent"
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="0 $T_RECENT"; run 2>&1) || rc=$?
+assert_rc "finished rc=0" "0" "$rc"
+if grepq "$out" -F "ONE push"; then fail "finished stays silent" "$out"; else pass "finished stays silent"; fi
+rc=0
+# shellcheck disable=SC2030,SC2031
+out=$(export FAKE_GH_HEAD="$CLEAN_OID" FAKE_GH_ROLLUP="3 $T_OLD"; run 2>&1) || rc=$?
+assert_rc "old rc=0" "0" "$rc"
+if grepq "$out" -F "ONE push"; then fail "old start stays silent" "$out"; else pass "old start stays silent"; fi
 
 echo
 echo "===================================="

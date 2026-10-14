@@ -23,6 +23,10 @@
 #   advanced base in and resolved cleanly, so the verdict (computed against the
 #   stale remote head) no longer reflects the push. The refusal message names
 #   the sanctioned recovery. See the CONFLICTING branch for the full rationale.
+# - HIMMEL-5650: WARNS (never blocks) when this branch's PR CI started under
+#   PUSH_WARN_MINUTES (default 15) ago and is still queued or in progress — a
+#   re-push re-queues the whole CI run on a saturated fleet. Batch a review
+#   round's fixes into ONE push. Fails open on any gh/date error.
 # - Falls back to exit 0 (best-effort) when gh CLI is missing or
 #   unauthenticated — a hard refuse would block pushes whenever the
 #   operator works offline.
@@ -78,6 +82,34 @@ if [ -z "$mergeable" ] || [ "$mergeable" = "null" ]; then
     # will create one on the next push.
     exit 0
 fi
+
+# HIMMEL-5650: warn-only re-push check. `<unfinished checks> <latest startedAt>`
+# from the PR's check rollup; anything unparseable is silent (fail open).
+# shellcheck disable=SC2016  # $r/$p/$s are jq variables, not shell
+rollup=$(_gh pr view "$branch" --json statusCheckRollup --jq \
+    '[.statusCheckRollup[]?] as $r
+     | ([$r[] | select((.status // "COMPLETED") != "COMPLETED" or (.state // "SUCCESS") == "PENDING")] | length) as $p
+     | ([$r[] | .startedAt // empty] | max // "") as $s
+     | "\($p) \($s)"' 2>/dev/null || true)
+read -r unfinished started <<< "$rollup"
+case "${unfinished:-x}" in
+    ''|*[!0-9]*) ;;
+    *)
+        if [ "$unfinished" -gt 0 ] && [ -n "${started:-}" ]; then
+            started_ep=$(date -u -d "$started" +%s 2>/dev/null \
+                || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$started" +%s 2>/dev/null || true)
+            case "${started_ep:-x}" in
+                ''|*[!0-9]*) ;;
+                *)
+                    age=$(( $(date +%s) - started_ep ))
+                    if [ "$age" -lt $(( ${PUSH_WARN_MINUTES:-15} * 60 )) ]; then
+                        echo "WARN: pr-mergeable: '$branch' CI started $((age / 60))m ago and $unfinished check(s) are still queued or running. A push now re-queues the whole run — batch this round's fixes (and PR body/title edits) into ONE push. Warning only." >&2
+                    fi
+                    ;;
+            esac
+        fi
+        ;;
+esac
 
 case "$mergeable" in
     CONFLICTING)
