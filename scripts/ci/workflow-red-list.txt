@@ -1,0 +1,14 @@
+# workflow-red-list.txt -- HIMMEL-5595. The workflows (by their `name:`) whose
+# non-pull_request runs workflow-red.yml tracks: one `ci-red` + `wf:<slug>` issue
+# per workflow and branch, opened on a red run, closed by a later green run.
+# One name per line; blank lines and # comments are ignored. The same names sit in
+# workflow-red.yml's `workflows:` trigger (test-workflow-red-workflow.sh pins the
+# lockstep).
+#
+# Not listed: CI (main-sweep-red.yml owns main-red), fork-drift (opens its own
+# issue), codeowner-review-gate and PR Title Lint (pull_request only: no
+# non-PR run exists to track).
+CI (os:macos cadence)
+os-verify
+Pages
+Release

@@ -49,8 +49,7 @@
    # so there is nothing to reconcile (fail-open). Do NOT feed placeholder
    # `VERDICT [<id>] = <v>` lines; feed the REAL verdicts you emitted, or
    # nothing.
-   #   Operator note: same absolute-path caveat as phase A above — the
-   #   relative allow-rule does not cover this invocation; both rules needed.
+   #   Same spelling rule as phase A above (HIMMEL-4040, HIMMEL-2601).
    # `guard-pr-check-literal.sh` denies a pipe into this writer, and (as of
    # HIMMEL-3798 round 3, "CUT, do not patch") denies every heredoc and
    # `< <file>` redirect shape outright — same cut as phase A above. The

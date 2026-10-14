@@ -355,6 +355,16 @@ unconditional rather than drift-driven:
   reload the daemon already resident on :8181, and stopping that process is
   termination an agent may not perform. The step prints the operator commands;
   it never kills anything.
+- **claude CLI sync (HIMMEL-5501)** — `claude` is held to a launch floor
+  (2.1.280, the first release with Opus 5.5 and `--autocompact`; one constant in
+  `scripts/lib/claude-version.sh`). In apply mode a Claude Code below the floor
+  or behind the latest is updated by its owner's updater (native `claude
+  update`; npm `npm install -g @anthropic-ai/claude-code@latest`; brew/pacman
+  installs print the needs-you command, never run), then re-checked; still
+  below the floor fails the step. `--check` only reports. Below the floor,
+  armed `console`/`headed-arm`/`arm-resume` launches refuse naming `claude
+  update` (print-only and `--dry-run` warn), and `himmel-doctor` check **C63**
+  WARNs.
 - **node/npm/bun toolchain** — reports node against the pinned
   `.nvmrc` at the pin's own granularity (major, major.minor or
   major.minor.patch) as match / behind pin / ahead of pin, and a non-numeric

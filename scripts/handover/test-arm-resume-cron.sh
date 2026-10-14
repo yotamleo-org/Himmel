@@ -211,6 +211,8 @@ CRONEOF
 # execution, not by string-matching.
 cat > "$MACBIN/claude" <<CLAUDEEOF
 #!/bin/sh
+# version probe (arm-time claude_floor_gate): not a launch, no marker
+if [ "\$1" = "--version" ]; then echo "2.1.296 (Claude Code)"; exit 0; fi
 printf 'STUB-CLAUDE-INVOKED argv=%s\\n' "\$*" >> "$TMP/claude-invoked"
 if [ -t 0 ]; then echo "STUB-CLAUDE stdin=tty"; else echo "STUB-CLAUDE stdin=notty"; fi
 echo "STUB-CLAUDE stdin-bytes=\$(cat | wc -c | tr -d ' ')"

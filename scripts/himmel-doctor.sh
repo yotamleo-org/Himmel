@@ -47,6 +47,15 @@ REPO_ROOT="$STATION_ROOT"
 # shellcheck source=lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/handover-path.sh"
+# The station/--root checkout may predate this lib (a leg testing its own
+# branch, an older primary): fall back to the lib beside this script.
+# shellcheck source=lib/claude-version.sh
+# shellcheck disable=SC1091
+if [ -f "$REPO_ROOT/scripts/lib/claude-version.sh" ]; then
+    . "$REPO_ROOT/scripts/lib/claude-version.sh"
+else
+    . "$SELF_DIR/lib/claude-version.sh"
+fi
 
 CLAUDE_DIR_R="${CLAUDE_DIR:-${HOME:-}/.claude}"
 SETTINGS="$CLAUDE_DIR_R/settings.json"
@@ -4089,6 +4098,19 @@ check_c62_oxlint_runner() {
     fi
 }
 
+# --- C63-claude-cli: claude below the console-launch floor (HIMMEL-5501) ------
+# The floor is the one constant in scripts/lib/claude-version.sh, shared with the
+# launch preflight and himmel update. Read-only; /himmel-update does the upgrade.
+check_c63_claude_cli() {
+    local bin="${DOCTOR_CLAUDE_BIN:-claude}" rc=0
+    claude_floor_check "$bin" || rc=$?
+    case "$rc" in
+        0) emit OK C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the console-launch minimum $CLAUDE_MIN_VERSION" ;;
+        1) emit WARN C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that console and leg launches need" "claude update  (or /himmel-update)" ;;
+        *) emit INFO C63-claude-cli "claude CLI not found or its version unreadable — floor not checked" ;;
+    esac
+}
+
 # --- run ------------------------------------------------------------------------
 echo "himmel-doctor — $(uname -s 2>/dev/null || echo ?) — checkout: $REPO_ROOT"
 echo
@@ -4153,6 +4175,7 @@ check_c59_codex_bank_cache
 check_c60_hermes_origin
 check_c61_codex_cli
 check_c62_oxlint_runner
+check_c63_claude_cli
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 
