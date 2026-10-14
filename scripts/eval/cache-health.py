@@ -25,7 +25,7 @@ session leaves the window.
 The notify command is called with ONE argument (the message); exit 0 = delivered.
 State is committed only for delivered messages, so a failed send retries next run.
 """
-import argparse, fcntl, glob, json, os, re, subprocess, sys, time
+import argparse, fcntl, json, os, re, subprocess, sys, time
 from collections import defaultdict
 from datetime import datetime
 
@@ -74,7 +74,8 @@ def parse_session(path):
                 if not first and '"type":"user"' in line[:300] and '"role":"user"' in line:
                     try:
                         c = json.loads(line).get("message", {}).get("content", "")
-                        first = c if isinstance(c, str) else json.dumps(c)[:200]
+                        first = c if isinstance(c, str) else "".join(
+                            b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
                     except Exception:
                         pass
                 if '"usage"' not in line or '"role":"assistant"' not in line:
@@ -120,8 +121,18 @@ def agg(rows):
 def compute(root, now, recent_h, baseline_d, offender_min, top_n):
     r0 = now - recent_h * 3600
     b0 = r0 - baseline_d * 86400
-    files = [p for p in glob.glob(root + "/**/*.jsonl", recursive=True)
-             if os.path.getmtime(p) >= b0]
+    def walk_err(e):
+        raise e
+    files = []
+    for dp, _, fns in os.walk(root, onerror=walk_err):
+        for fn in fns:
+            if fn.endswith(".jsonl"):
+                p = os.path.join(dp, fn)
+                try:
+                    if os.path.getmtime(p) >= b0:
+                        files.append(p)
+                except FileNotFoundError:
+                    pass  # pruned between the walk and the stat
     rec = defaultdict(list)    # role -> turn tuples in the recent window
     base = defaultdict(list)   # role -> turn tuples in the baseline window
     sess_n = defaultdict(set)
@@ -177,7 +188,10 @@ def evaluate(metrics, offenders, a):
     cross, holding = {}, {}
     for role, r in metrics["roles"].items():
         d = r["delta_pts"]
-        if role not in a.alert_roles.split(",") or d is None or r["tokens"] < a.role_min_tokens or r["baseline_tokens"] < a.role_min_tokens:
+        if role not in a.alert_roles.split(","):
+            continue
+        if d is None or r["tokens"] < a.role_min_tokens or r["baseline_tokens"] < a.role_min_tokens:
+            holding["role-drop:" + role] = True  # too little data to judge: keep an active alert, raise none
             continue
         if d < -a.drop_pts:
             cross["role-drop:" + role] = "%s hit rate %.1f%% is %.1f pts below its %.1f%% baseline" % (

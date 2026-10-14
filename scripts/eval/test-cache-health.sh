@@ -18,7 +18,7 @@ pass() { echo "PASS $1"; PASSED=$((PASSED + 1)); }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')"; fi; }
 has() { if grep -qF -- "$2" "$3" 2>/dev/null; then pass "$1"; else fail "$1 (no '$2' in $3)"; fi; }
-hasnt() { if [ ! -r "$3" ]; then fail "$1 (cannot read $3)"; elif grep -qF -- "$2" "$3"; then fail "$1 ('$2' present in $3)"; else pass "$1"; fi; }
+hasnt() { [ -r "$3" ] || { fail "$1 (cannot read $3)"; return; }; grep -qF -- "$2" "$3"; case $? in 0) fail "$1 ('$2' present in $3)";; 1) pass "$1";; *) fail "$1 (grep error on $3)";; esac; }
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/cache-health.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
@@ -52,7 +52,7 @@ def session(name, title, turns, comps=()):
 H = 3600
 base = [(now - 48 * H - k * H, 980000, 20000) for k in range(6)]
 steady = [(now - 2 * H - k * H, 980000, 20000) for k in range(6)]
-recent_leg = [(now - 2 * H - k * H, rd, cr) for k in range(6)]
+recent_leg = [] if extra == "legsilent" else [(now - 2 * H - k * H, rd, cr) for k in range(6)]
 session("c1", "HIMMEL-nextleg-console", base + steady)
 session("l1", "HIMMEL-5-foo-N12", base + recent_leg, comps=[now - H] * (9 if extra == "compactions" else 1))
 if extra == "lowsession":
@@ -147,6 +147,31 @@ sys.exit(0 if r.returncode == 0 and "holds the lock" in r.stderr else 1)' "$STAT
 rm -rf "$W/dry-state"
 python3 -I "$PY" check --root "$R" --state-dir "$W/dry-state" --now "$NOW" --dry-run >"$W/run.out" 2>&1
 [ ! -e "$W/dry-state" ] && pass "dry run creates no state directory" || fail "dry run created the state directory"
+
+# ---- 6d. too little data keeps an active alert, never recovers it ------------
+rm -f "$W/sent"
+python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000 legsilent
+run
+check "thin data sends no recovery" 0 "$(sends)"
+has "thin data keeps the active alert" "role-drop:leg" "$STATE/alert-state.json"
+
+# ---- 6e. an unreadable directory is incomplete data: exit 2 ------------------
+mkdir -p "$R/locked"; cp "$R/c1.jsonl" "$R/locked/x.jsonl"; chmod 000 "$R/locked"
+python3 -I "$PY" check --root "$R" --state-dir "$STATE" --now "$NOW" --notify-cmd "$SEND" >"$W/run.out" 2>&1
+rc=$?; chmod 755 "$R/locked"
+if [ "$(id -u)" = 0 ]; then pass "unreadable directory (skipped as root)"; else check "unreadable directory exits 2" 2 "$rc"; fi
+rm -rf "$R/locked"
+
+# ---- 6f. a bridge greeting inside an array content block classifies as bridge -
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"You are Telegram bridge session x"}]}}' > "$W/br.jsonl"
+cat > "$W/role.py" <<'PY'
+import importlib.util, sys
+sp = importlib.util.spec_from_file_location("ch", sys.argv[1])
+m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+print(m.parse_session(sys.argv[2])[1])
+PY
+role="$(python3 -I "$W/role.py" "$PY" "$W/br.jsonl")"
+check "array-form bridge greeting classifies as bridge" bridge "$role"
 
 # ---- 7. session-low + compactions rules --------------------------------------
 rm -rf "$STATE" "$W/sent" "$R"
