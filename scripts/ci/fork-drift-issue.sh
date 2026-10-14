@@ -70,25 +70,130 @@ find_open_issue() {
   printf '%s' "$out"
 }
 
+# Parse the guard's report into the pieces the issue body is built from
+#: behind.tsv (name|kind|current|target|action), vendored.txt,
+# other.txt (every remaining row, CURRENT included) and behind-names.txt
+# (sorted — the delta key). Reads only the guard's row shapes; the guard's
+# output and exit codes are unchanged.
+parse_report() {
+  local wd="$1" line sec="" name rest detail cur tgt kind action files
+  local re_arrow='([^ ]+) -> ([^ )]+)'
+  local re_tag='latest tag ([^;]+); (fork synced to|installed) ([^ ]+)'
+  local re_latest='latest ([^ )]+)'
+  : > "$wd/behind.tsv"; : > "$wd/vendored.txt"; : > "$wd/other.txt"
+  while IFS= read -r line; do
+    case "$line" in
+      "== pinned remotes"*) sec=remote; continue ;;
+      "== vendored forks"*) sec=vendored; continue ;;
+      "== carried upstreams"*) sec=carried; continue ;;
+      "== pinned tools"*) sec=pins; continue ;;
+      "=="*) sec=""; continue ;;
+      "  "*) ;;
+      *) continue ;;
+    esac
+    rest="${line#  }"
+    if [[ "$rest" == *": VENDORED"* ]]; then
+      printf -- '- %s\n' "$rest" >> "$wd/vendored.txt"
+    elif [[ "$rest" == *": BEHIND"* ]]; then
+      detail="${rest#*: BEHIND}"
+      cur="?"; tgt="?"
+      if [[ "$detail" =~ $re_arrow ]]; then
+        cur="${BASH_REMATCH[1]}"; tgt="${BASH_REMATCH[2]}"
+      elif [[ "$detail" =~ $re_tag ]]; then
+        tgt="${BASH_REMATCH[1]}"; cur="${BASH_REMATCH[3]}"
+      elif [[ "$detail" =~ $re_latest ]]; then
+        tgt="${BASH_REMATCH[1]}"
+      fi
+      if [ "$sec" = pins ]; then
+        name="${rest%% *}"
+        rest="${rest#"$name" }"
+        cur="${rest%% *}"
+        files="${rest#*\(}"; files="${files%%)*}"
+        case "$name" in
+          gh:*) case "$files" in *.pre-commit-config.yaml*) kind="pre-commit rev" ;; *) kind="action" ;; esac ;;
+          pypi:*) kind="pypi package" ;;
+          *) kind="npm package" ;;
+        esac
+        action="bump $files to $tgt plus synced_base in scripts/upstreams.json"
+      else
+        name="${rest%%: *}"
+        case "$sec" in
+          remote) kind="skill fork"; action="/fork-resync $name" ;;
+          vendored) kind="vendored fork"; action="/fork-resync $name" ;;
+          *) kind="carried tool"
+             case "$detail" in
+               *"re-sync fork"*) action="/fork-resync $name" ;;
+               *) action="station tool: VM-first upgrade" ;;
+             esac ;;
+        esac
+      fi
+      printf '%s|%s|%s|%s|%s\n' "$name" "$kind" "$cur" "$tgt" "$action" >> "$wd/behind.tsv"
+    else
+      printf '%s\n' "$line" >> "$wd/other.txt"
+    fi
+  done < "$REPORT"
+  cut -d'|' -f1 "$wd/behind.tsv" | LC_ALL=C sort > "$wd/behind-names.txt"
+}
+
 build_body() {
-  local body_file="$1"
+  local body_file="$1" wd="$2" n m names
+  n="$(wc -l < "$wd/behind.tsv" | tr -d ' ')"
+  m="$(wc -l < "$wd/other.txt" | tr -d ' ')"
+  names="$(paste -sd, "$wd/behind-names.txt")"
   {
-    echo "**Automated upstream-drift report** — maintained in place by the nightly"
-    echo "\`fork-drift\` workflow (HIMMEL-1046). Do not open duplicates; this issue is"
-    echo "refreshed each run and auto-closed when drift clears."
+    echo "### Needs update ($n)"
     echo ""
-    echo "_Last drift detected: $(now)._"
+    if [ "$n" -gt 0 ]; then
+      echo "| Name | Kind | Current pin | Target | Action |"
+      echo "|---|---|---|---|---|"
+      while IFS='|' read -r a b c d e; do
+        echo "| $a | $b | $c | $d | $e |"
+      done < "$wd/behind.tsv"
+    else
+      echo "Nothing is BEHIND upstream in this run."
+    fi
     echo ""
-    echo "Guard output:"
-    echo ''
+    if [ -s "$wd/vendored.txt" ]; then
+      echo "### Vendored (upstream-owned pins) — no action unless upstream advances"
+      echo ""
+      cat "$wd/vendored.txt"
+      echo ""
+    fi
+    echo "<details>"
+    echo "<summary>Current and other rows ($m)</summary>"
+    echo ""
     echo '```'
-    cat "$REPORT"
+    cat "$wd/other.txt"
     echo '```'
     echo ""
-    echo "To resolve: re-sync the named fork onto its newer upstream, bump the pin"
-    echo "(and \`synced_base\` in \`scripts/upstreams.json\`), then this issue closes"
-    echo "on the next nightly run."
+    echo "</details>"
+    echo ""
+    echo "_Maintained in place by the nightly \`fork-drift\` workflow (HIMMEL-1046); auto-closed when drift clears. Last drift detected: $(now)._"
+    echo ""
+    echo "To resolve: run the action in each row, then this issue closes on the next nightly run."
+    echo ""
+    echo "<!-- fork-drift-behind: $names -->"
   } > "$body_file"
+}
+
+# Previous run's BEHIND names, read from the marker in the open issue's body.
+old_body() {
+  if [ "${DRY_RUN:-0}" = "1" ]; then printf '%s' "${DRY_RUN_OLD_BODY:-}"; return 0; fi
+  gh issue view "$1" --json body --jq .body 2>/dev/null || true
+}
+
+# One-line per-run comment: count plus what changed since the last run.
+delta_comment() {
+  local num="$1" wd="$2" n added cleared d
+  n="$(wc -l < "$wd/behind.tsv" | tr -d ' ')"
+  old_body "$num" | sed -n 's/.*<!-- fork-drift-behind: \(.*\) -->.*/\1/p' | head -1 | tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort > "$wd/old-names.txt"
+  added="$(LC_ALL=C comm -13 "$wd/old-names.txt" "$wd/behind-names.txt" | paste -sd, - | sed 's/,/, /g')"
+  cleared="$(LC_ALL=C comm -23 "$wd/old-names.txt" "$wd/behind-names.txt" | paste -sd, - | sed 's/,/, /g')"
+  if [ -z "$added" ] && [ -z "$cleared" ]; then d="no change"
+  elif [ -n "$added" ] && [ -n "$cleared" ]; then d="+$added; -$cleared"
+  elif [ -n "$added" ]; then d="+$added"
+  else d="-$cleared"; fi
+  printf 'Still drifting: %s items (%s since last run)' "$n" "$d"
 }
 
 case "$RC" in
@@ -109,17 +214,21 @@ case "$RC" in
     # label rather than erroring, so a re-run never fails here.
     run gh label create "$LABEL" --color B60205 \
         --description "Nightly upstream fork-drift tracking (HIMMEL-1046)" --force || mut=1
-    body_file="$(mktemp)"
-    build_body "$body_file"
+    body_file="$(mktemp)" || exit 1; wd="$(mktemp -d)" || exit 1
+    parse_report "$wd"
+    build_body "$body_file" "$wd"
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+      echo "DRY-BODY-BEGIN"; cat "$body_file"; echo "DRY-BODY-END"
+    fi
     if [ -n "$num" ]; then
       echo "fork-drift: refreshing existing issue #$num"
       run gh issue edit "$num" --body-file "$body_file" || mut=1
-      run gh issue comment "$num" --body "Still drifting as of $(now)." || mut=1
+      run gh issue comment "$num" --body "$(delta_comment "$num" "$wd")" || mut=1
     else
       echo "fork-drift: opening new consolidated drift issue"
       run gh issue create --title "$TITLE" --label "$LABEL" --body-file "$body_file" || mut=1
     fi
-    rm -f "$body_file"
+    rm -rf "$body_file" "$wd"
     if [ "$mut" -ne 0 ]; then
       echo "fork-drift: an issue mutation failed (see above) — failing so the drift is not silently green." >&2
       exit 1

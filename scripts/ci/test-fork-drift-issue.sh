@@ -77,6 +77,65 @@ out="$(DRY_RUN=1 DRY_RUN_LOOKUP_FAIL=1 bash "$SCRIPT" 0 "$REP" 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ]; then ok "rc0 + lookup-failure -> exit 1 (propagate)"; else bad "rc0 + lookup-failure exit=$rc (expected 1)"; fi
 hasnt 'DRY: gh issue close' "$out" "rc0 + lookup-failure never closes blindly"
 
+# 9. Report clarity: the issue body leads with a Needs-update
+#    table (one row per BEHIND item, exact action), VENDORED rows in their own
+#    group, CURRENT rows collapsed, and the per-run comment is a one-line delta.
+body_of() { sed -n '/^DRY-BODY-BEGIN$/,/^DRY-BODY-END$/p' <<< "$1"; }
+mixed="$(mktemp)" || exit 1
+cat >"$mixed" <<'RPT'
+== pinned remotes (SHA-pin vs HEAD; fork → true-upstream release) ==
+  claude-obsidian: CURRENT  (fork tracks AgriciDaniel/claude-obsidian @ v2.2.0; pin v2.2.0)
+  taste-skill-core: BEHIND   (Leonxlnx/taste-skill upstream is 2 commit(s) ahead — pin a60a36d -> f624f37)
+
+== carried upstreams (registry + installed marketplaces; HIMMEL-869) ==
+  mkt:ui-ux-pro-max-skill: BEHIND   (nextlevelbuilder/ui-ux-pro-max-skill upstream is 1 commit(s) ahead — 7246805 -> 6166631)  [mkt-manual]
+  mkt:openai-codex: CURRENT  (openai/codex-plugin-cc @ db52e28)  [mkt-auto]
+
+== pinned tools and packages (npm/bun deps, pre-commit revs, actions, oxlint) ==
+  npm:@types/node 26.6.4 (marketplace/plugins/claude-hud): VENDORED (upstream-owned pin; follows upstream — bump via /fork-resync, upstream advance watched by upstreams.json)
+  gh:gitleaks/gitleaks v8.30.1 (.github/workflows/ci.yml, .pre-commit-config.yaml): CURRENT  (latest v8.30.1)
+  npm:react 19.3.0 (scripts/config-ui/agui-web): BEHIND   (latest 19.3.1 — bump)
+
+DRIFT DETECTED — one or more plugins are behind upstream (see above).
+RPT
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$mixed" 2>&1)"
+b="$(body_of "$out")"
+has '^### Needs update (3)' "$b" "mixed: body has 'Needs update (3)'"
+has '^| taste-skill-core | skill fork | a60a36d | f624f37 | /fork-resync taste-skill-core |' "$b" "mixed: skill-fork row (kind, pin, target, action)"
+has '^| mkt:ui-ux-pro-max-skill | carried tool | 7246805 | 6166631 | station tool: VM-first upgrade |' "$b" "mixed: carried-tool row"
+has '^| npm:react | npm package | 19.3.0 | 19.3.1 | bump scripts/config-ui/agui-web to 19.3.1 plus synced_base in scripts/upstreams.json |' "$b" "mixed: npm row with exact action"
+has 'no action unless upstream advances' "$b" "mixed: VENDORED group labelled"
+has '^- npm:@types/node 26.6.4' "$b" "mixed: VENDORED row listed in its group"
+has '<details>' "$b" "mixed: CURRENT rows collapsed in <details>"
+has 'claude-obsidian: CURRENT' "$b" "mixed: CURRENT row kept inside the details block"
+first="$(grep -n 'Needs update' <<<"$b" | head -1 | cut -d: -f1)"; det="$(grep -n '<details>' <<<"$b" | head -1 | cut -d: -f1)"
+if [ -n "$first" ] && [ -n "$det" ] && [ "$first" -lt "$det" ]; then ok "mixed: table precedes the details block"; else bad "mixed: table must precede details ($first / $det)"; fi
+has 'fork-drift-behind: mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core' "$b" "mixed: machine marker lists BEHIND names (sorted)"
+
+# 9b. BEHIND only (no VENDORED) -> no VENDORED group.
+only="$(mktemp)" || exit 1; printf '== x ==\n  graphify: BEHIND   (a/b upstream is 1 commit(s) ahead — pin aaaaaaa -> bbbbbbb)\n\nDRIFT DETECTED\n' >"$only"
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$only" 2>&1)")"
+has '^### Needs update (1)' "$b" "behind-only: 'Needs update (1)'"
+hasnt 'no action unless upstream advances' "$b" "behind-only: no VENDORED group"
+
+# 9c. VENDORED only -> 'Needs update (0)', VENDORED group present.
+ven="$(mktemp)" || exit 1; printf '== x ==\n  npm:c8 11.0.0 (marketplace/plugins/claude-hud): VENDORED (upstream-owned pin; follows upstream)\n' >"$ven"
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$ven" 2>&1)")"
+has '^### Needs update (0)' "$b" "vendored-only: 'Needs update (0)'"
+has 'no action unless upstream advances' "$b" "vendored-only: VENDORED group present"
+
+# 9d. Nothing behind (rc 0) -> the issue closes.
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" bash "$SCRIPT" 0 "$ven" 2>&1)"
+has 'DRY: gh issue close 42' "$out" "nothing-behind: issue closes"
+
+# 9e. Per-run comment is a one-line delta against the previous body's marker.
+old='<!-- fork-drift-behind: npm:react,old-item -->'
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="$old" bash "$SCRIPT" 2 "$mixed" 2>&1)"
+has 'Still drifting: 3 items (+mkt:ui-ux-pro-max-skill, taste-skill-core; -old-item since last run)' "$out" "comment: count + added/cleared delta"
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="<!-- fork-drift-behind: mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core -->" bash "$SCRIPT" 2 "$mixed" 2>&1)"
+has 'Still drifting: 3 items (no change since last run)' "$out" "comment: unchanged set"
+rm -f "$mixed" "$only" "$ven"
+
 rm -f "$REP"
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
