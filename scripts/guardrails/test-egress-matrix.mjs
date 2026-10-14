@@ -308,6 +308,31 @@ for (const c of ["luna-personal", "luna-clippings", "salus"]) {
     assert(evaluate(c, p, "inference").effective === "deny", `${c} x ${p} x inference must stay deny (only codex was ruled in)`);
 }
 
+// 6c. jina (EU): qmd embedding and rerank of luna and himmel code, via
+//     explicit rows; every other purpose, every other corpus and salus stay
+//     denied. Declared apart from jina-reader (US, keyless URL scrape).
+assert(m.providers.jina && m.providers.jina.region.startsWith("EU"),
+  "jina must be declared as a provider with an EU region (HIMMEL-5673)");
+for (const c of ["luna-personal", "luna-clippings", "himmel-code"]) {
+  for (const u of ["embedding", "rerank"]) {
+    const { effective, rule } = evaluate(c, "jina", u);
+    assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "jina" && rule.purpose === u &&
+      rule.hard === undefined && /HIMMEL-5673/.test(rule.why),
+      `${c} x jina x ${u} must be allow via its OWN row naming HIMMEL-5673, got ${effective}`);
+  }
+}
+for (const c of ["luna-personal", "luna-clippings"])
+  for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
+    assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (embedding and rerank only)`);
+for (const c of ["handover-state", "voice-audio", "leg-failure-metadata", "mcp-tool-catalog"])
+  for (const u of ["embedding", "rerank"])
+    assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (not ruled in)`);
+for (const u of purposes) {
+  const { effective, rule } = evaluate("salus", "jina", u);
+  assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "*" && rule.hard === true,
+    `salus x jina x ${u} must deny via the HARD salus wildcard (HIMMEL-5673), got ${effective}`);
+}
+
 // 7. OpenRouter (HIMMEL-1774): declared as its OWN provider — content transits
 //    the aggregator, a different trust boundary from the vendor cells, so the
 //    anthropic allowances do NOT carry over. Operator ruling pinned per cell:

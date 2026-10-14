@@ -295,6 +295,14 @@ Granting it is an operator call. Defense in depth around it:
   Alibaba embedding/rerank cells were demoted to explicit `deny`); **DeepSeek +
   Alibaba are de-listed** for vault/handover egress (explicit `deny`), and stay
   `allow` on `himmel-code` only; no bulk pipelines over handover-state.
+- `jina` (EU, Berlin; Elastic-owned) is allowed for `embedding` and `rerank`
+  only, on `luna-personal`, `luna-clippings` and `himmel-code`, via explicit
+  rows (HIMMEL-5673, operator ruling 2026-10-14; Jina legal 10.4: no training
+  on customer request data). Every other purpose and corpus stays
+  default-deny, and `salus × jina` is refused by the hard salus wildcard (the
+  test pins that it resolves through that row). This only permits: the live qmd
+  use stays off until the fork backend is installed. `jina` is distinct from
+  `jina-reader` (US, keyless URL scrape).
 - Run: `node scripts/guardrails/test-egress-matrix.mjs`.
 
 ## Changing the matrix
