@@ -11,7 +11,7 @@
 #   notfound <path>   selected, but the runner never discovered it
 #
 # Usage: shard-manifest-verify.sh --dir <d> --shards <n> --selection <file>
-#                                 --discovered <list>
+#                                 --discovered <list> [--absent-ok "<k> ..."]
 #   <file> is impacted-selection.sh's output, computed by the aggregator itself.
 #   <list> is the aggregator's own `run-shell-tests.sh --list .` output at the
 #   same head, under the shards' tier and changed-since env but WITHOUT the
@@ -30,6 +30,11 @@
 # filtering it or by claiming it never saw it. Prints OK and exits 0 otherwise;
 # rc 2 on usage errors, including a missing, unreadable or empty <list>.
 #
+# --absent-ok "<k> ...": shards the plan job left out because they had no suite
+# Only THEIR missing manifests are excused (one that exists is
+# still verified). Nothing else is relaxed: the accounting below still demands
+# every selected suite ran exactly once, so a shard wrongly left out is red.
+#
 # ponytail: <list> is taken on the aggregator's runner, so a capability skip
 # (a tool present on the shards but absent here) reads as SKIP and a shard's
 # matching skip stays a NOTE; the shards and the aggregator share one image
@@ -38,20 +43,24 @@
 # Platform guard: bash 3.2+ and POSIX awk; the aggregator runs on Linux.
 set -uo pipefail
 
-dir="" shards="" selection="" discovered=""
+dir="" shards="" selection="" discovered="" absent_ok=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dir) dir="${2:-}"; shift 2 || break ;;
     --shards) shards="${2:-}"; shift 2 || break ;;
     --selection) selection="${2:-}"; shift 2 || break ;;
     --discovered) discovered="${2:-}"; shift 2 || break ;;
+    --absent-ok) absent_ok="${2:-}"; shift 2 || break ;;
     *) echo "shard-manifest-verify: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 if [ -z "$dir" ] || [ -z "$selection" ] || [ -z "$discovered" ] || ! [[ "$shards" =~ ^[1-9][0-9]*$ ]]; then
-  echo "usage: shard-manifest-verify.sh --dir <d> --shards <n> --selection <file> --discovered <list>" >&2
+  echo "usage: shard-manifest-verify.sh --dir <d> --shards <n> --selection <file> --discovered <list> [--absent-ok \"<k> ...\"]" >&2
   exit 2
 fi
+for _a in $absent_ok; do
+  case "$_a" in ''|*[!0-9]*) echo "shard-manifest-verify: --absent-ok wants shard numbers, got '$_a'" >&2; exit 2 ;; esac
+done
 if [ ! -r "$selection" ] || ! grep -qE '^mode (full|impacted)$' "$selection"; then
   echo "shard-manifest-verify: selection '$selection' is unreadable or has no mode line" >&2
   exit 2
@@ -107,6 +116,7 @@ k=1
 while [ "$k" -le "$shards" ]; do
   m="$dir/manifest-shard$k.txt"
   if [ ! -r "$m" ]; then
+    case " $absent_ok " in *" $k "*) k=$((k + 1)); continue ;; esac
     echo "FAIL: missing manifest for shard$k: $m"
     bad=1; k=$((k + 1)); continue
   fi

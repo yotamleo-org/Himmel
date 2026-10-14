@@ -28,6 +28,12 @@
 #   MV20  full: a suite listed RUN that no shard ran            -> rc 1
 #   MV21  impacted: a shard `skip`s a selected suite not listed -> rc 1
 #   MV22  the accounting awk fails                              -> rc 1
+#   MV25  --absent-ok shard with no manifest, nothing assigned  -> rc 0
+#   MV26  --absent-ok shard that was really assigned a suite    -> rc 1
+#   MV27  --absent-ok does not excuse a different missing shard -> rc 1
+#   MV28  --absent-ok with a non-numeric list                   -> rc 2
+#   MV29  REAL manifests (PR 2617 run 38607773672), all 8       -> rc 0
+#   MV30  the same, shards 2 and 3 dropped and called absent   -> rc 1
 #
 # Platform guard: bash-only, no .ps1 twin; the aggregator runs on Linux.
 #
@@ -296,5 +302,48 @@ d=$(case_dir mv24r); header impacted scripts/test-a.sh > "$d/sel.txt"
 disc "$d" RUN scripts/test-a.sh
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test a.sh'
 expect "MV24: a ran entry with whitespace in the path is refused" 1 "$d" 1 'shard1.*whitespace.*scripts/test a\.sh'
+
+# --- MV25-28 -----------------------------------------------------
+# The plan job starts only the shards that have work; the aggregator is told
+# which shards were left out (--absent-ok) and still accounts every selected suite.
+verify_absent() { bash "$VERIFY" --dir "$1/m" --shards "$2" --selection "$1/sel.txt" --discovered "$1/disc.txt" --absent-ok "$3" 2>&1; }
+expect_absent() { # expect_absent <label> <want-rc> <dir> <n> <list> [<ERE>]
+  local out rc
+  out=$(verify_absent "$3" "$4" "$5"); rc=$?
+  if [ "$rc" -eq "$2" ] && { [ -z "${6:-}" ] || grepq "$out" -E "$6"; }; then pass "$1 (rc $rc)"; else fail "$1: want rc $2${6:+ matching /$6/}, got rc $rc: $out"; fi
+}
+
+d=$(case_dir mv25); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh
+manifest "$d" 1 3 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
+expect_absent "MV25: shards 2 and 3 left out, every selected suite still ran" 0 "$d" 3 "2 3" '^OK'
+
+d=$(case_dir mv26); header impacted scripts/test-a.sh scripts/test-b.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh RUN scripts/test-b.sh
+manifest "$d" 1 2 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
+expect_absent "MV26: a left-out shard that held a selected suite is refused" 1 "$d" 2 "2" 'scripts/test-b\.sh.*never ran'
+
+d=$(case_dir mv27); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh
+manifest "$d" 1 3 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
+expect_absent "MV27: --absent-ok 3 does not excuse missing shard 2" 1 "$d" 3 "3" 'missing manifest.*shard2'
+
+d=$(case_dir mv28); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh
+manifest "$d" 1 2 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
+expect_absent "MV28: a non-numeric --absent-ok list is a usage error" 2 "$d" 2 "x" 'usage|absent-ok'
+
+# --- MV29-30: manifests copied from a real PR run -----------------
+# scripts/ci/test-shard-manifest-verify-fixtures/ holds the 8 shell-unit shard
+# manifests of CI run 38607773672 (PR 2617), trimmed to the header, shard and
+# `ran` lines. Every one of those shards held suites, so a plan that left any of
+# them out would be wrong, and the accounting has to say so.
+FIXDIR="$(cd "$(dirname "$0")" && pwd)/test-shard-manifest-verify-fixtures"
+d=$(case_dir mv29); cp "$FIXDIR"/manifest-shard*.txt "$d/m/"
+grep -E '^(mode|reason|base|head|selector|changed|suite) ' "$d/m/manifest-shard1.txt" > "$d/sel.txt"
+sed -n 's/^ran [0-9]* \(.*\)$/[RUN ] \1/p' "$d"/m/manifest-shard*.txt > "$d/disc.txt"
+expect "MV29: real manifests of a green PR run verify" 0 "$d" 8 '^OK'
+rm -f "$d/m/manifest-shard2.txt" "$d/m/manifest-shard3.txt"
+expect_absent "MV30: real shards 2 and 3 called absent, their suites never ran" 1 "$d" 8 "2 3" 'never ran'
 
 rst_tally

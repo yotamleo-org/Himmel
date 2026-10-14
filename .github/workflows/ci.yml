@@ -93,6 +93,8 @@ jobs:
       run_bwk_gate: ${{ steps.plan.outputs.run_bwk_gate }}
       run_plugin_version_bump: ${{ steps.plan.outputs.run_plugin_version_bump }}
       run_deps_audit: ${{ steps.plan.outputs.run_deps_audit }}
+      shards: ${{ steps.shards.outputs.shards }}
+      absent_shards: ${{ steps.shards.outputs.absent_shards }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -120,6 +122,23 @@ jobs:
           fi
           cat "$tools/plan.out"
           grep -E '^(mode|run_[a-z_]+)=[a-z]+$' "$tools/plan.out" >> "$GITHUB_OUTPUT" || true
+      # HIMMEL-5649: which shell-unit shards have a suite to run? Asked once, here,
+      # under the SAME selection env the shards' run step gets, so a shard with
+      # nothing to run never takes a runner. An empty output (this step failed)
+      # means every shard starts, see shell-unit-shard.
+      - id: shards
+        name: Which shell-unit shards have work?
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # A pull_request is never the nightly: tier is always fast here.
+          export SUITE_TIER_MODE=fast GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA"
+          if [ "$PR_BASE_REF" = "$DEFAULT_BRANCH" ]; then export SUITE_IMPACTED_FROM_BASE="$PR_BASE_SHA"; fi
+          bash scripts/ci/plan-shards.sh 8 . > "$RUNNER_TEMP/shards.out" || : > "$RUNNER_TEMP/shards.out"
+          cat "$RUNNER_TEMP/shards.out"
+          cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -964,6 +983,12 @@ jobs:
   # the aggregating gate that rolls this matrix up into the one required
   # check-run context branch protection names.
   shell-unit-shard:
+    # HIMMEL-5649: the plan job (pull_request only) lists the shards that have a
+    # suite; an empty list skips the whole job, so a docs-only PR starts no shard.
+    # Fail-open like every gated job: a plan that failed, was skipped (cron,
+    # dispatch) or printed no list starts all 8.
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.shards != '[]' }}
     strategy:
       # HIMMEL-5036: a PR stops at its first red shard (siblings are cancelled and
       # the shell-unit aggregator reads the rollup as failure); push-to-main and
@@ -975,17 +1000,17 @@ jobs:
                && fromJSON('["ubuntu-latest","windows-latest"]')
                || fromJSON('["ubuntu-latest"]') }}
         # shard: [1..8] fans run-shell-tests.sh across 8 runners (HIMMEL-2872).
-        # The `8` here and the `/8` in the run step below are two spellings of
-        # the same number — GitHub Actions has no way to derive one from the
+        # The `8` ids here, the `/8` in the run step below and the `8` in the
+        # plan job's plan-shards.sh call are spellings of the same number — GitHub Actions has no way to derive one from the
         # other (strategy.job-total counts os×shard, not shard alone), so a
-        # change to the shard count must edit both or the split silently stops
+        # change to the shard count must edit all three or the split silently stops
         # being a partition. Went from 6 to 8 because 6 measured an 18m23s
         # slowest shard (3m18s fastest) — round-robin, not the count, dumped
         # the corpus's two heaviest suites onto one shard (719s of its 1065s);
         # replaying measured durations predicts 9.9m at 8 but 10.7m at 12, so
         # more shards isn't monotonically better — a duration-aware split is
         # the real fix (follow-up).
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: ${{ fromJSON(needs.plan.outputs.shards || '[1,2,3,4,5,6,7,8]') }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
@@ -1010,24 +1035,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # HIMMEL-5524: on a pull_request an impacted selection often leaves this
-      # shard with nothing to run. Ask run-shell-tests.sh (--list executes
-      # nothing) under the SAME selection env as the run step below, and skip
-      # the heavy setup when the shard is empty. The run step and the manifest
-      # upload below stay unconditional, so the aggregator still verifies every
-      # shard's manifest. Fail-closed: any doubt prints has_work=true.
-      - name: Does this shard have any suite to run?
-        id: probe
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          # A pull_request is never the nightly: tier is always fast here.
-          export SUITE_TIER_MODE=fast GUARD_CORPUS_TIER=fast SUITE_CHANGED_SINCE="$PR_BASE_SHA"
-          if [ "$PR_BASE_REF" = "$DEFAULT_BRANCH" ]; then export SUITE_IMPACTED_FROM_BASE="$PR_BASE_SHA"; fi
-          bash scripts/ci/shard-has-work.sh "${{ matrix.shard }}/8" . >> "$GITHUB_OUTPUT"
       # arm-resume's non-dry-run cases exercise the real `at` scheduler backend,
       # which the supported runtime provides (HIMMEL-594 `ubuntu.sh` installs +
       # enables at/atd). GitHub's ubuntu image ships without `at`, so CI fell back
@@ -1046,16 +1053,16 @@ jobs:
       # jail checks drive) here too so Linux corpus/replay suites exercise the
       # real containment boundary rather than capability-skip.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (at/atd)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-at-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install + enable at/atd (Linux — arm-resume scheduler backend)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         # HIMMEL-3919: a hung dpkg/apt lock held this step ~1.5 h. HIMMEL-2872:
         # apt-install.sh bounds every apt call with a `timeout` and a dpkg-lock
         # wait, and tries cached debs, then the runner's mirror, then an
@@ -1072,15 +1079,14 @@ jobs:
       # (AppArmor), so bwrap fails with `RTM_NEWADDR: Operation not permitted` and
       # the sandboxed suites fail or hit their caps. Same step as claude-startup.
       - name: Allow unprivileged user namespaces (Linux — bwrap sandbox)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # HIMMEL-2742: same shape as HIMMEL-2587 (lanes-and-trust-suites) — a
       # suite in this corpus (test-wizard-luna-sections.sh) shells out to bun
       # and fails closed ("required test tool not found before PATH scrub:
       # bun") without it. Installing bun keeps that hermetic PATH-scrub case
       # under a runner check; a self-skip would exit 0 with nothing exercised.
-      - if: steps.probe.outputs.has_work != 'false'
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
       # HIMMEL-3193: the run step below now covers marketplace/ (root `.`), where
@@ -1090,7 +1096,6 @@ jobs:
       # install fails THIS step loudly instead of surfacing as a dozen
       # unrelated suite reds. Pinned by test-run-shell-tests.sh Case 23f.
       - name: Install obsidian-triage tool deps (marketplace suites)
-        if: steps.probe.outputs.has_work != 'false'
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
       # HIMMEL-4802: test-x-media-hls-ffmpeg.sh runs a REAL ffmpeg over the
       # playlists x-media-fetch.py rewrites (every other suite stubs it). It
@@ -1099,16 +1104,16 @@ jobs:
       # runner image that drops the 6.1 package fails this step loudly; re-pin
       # deliberately. Linux only: the nightly windows leg keeps the SKIP.
       - name: Record runner image (apt cache key)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
       - name: Cache apt debs (ffmpeg)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
           key: apt-${{ runner.os }}-${{ env.APT_IMAGE }}-ffmpeg-${{ hashFiles('.github/scripts/apt-install.sh') }}
       - name: Install pinned ffmpeg (Linux — obsidian-triage HLS suite)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         timeout-minutes: 13
         run: |
           bash .github/scripts/apt-install.sh 'ffmpeg=7:6.1.*'
@@ -1123,7 +1128,7 @@ jobs:
       # the ledger assigns once run-shell-tests.sh can print it (HIMMEL-5120).
       # Keep ver/sha in lockstep with secret-scan.
       - name: Put pinned gitleaks on PATH (Linux — retired-org suite)
-        if: runner.os == 'Linux' && steps.probe.outputs.has_work != 'false'
+        if: runner.os == 'Linux'
         run: |
           ver=8.30.1
           sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -1139,7 +1144,6 @@ jobs:
       # real fixer hooks. `shell: bash` matches the Windows install pattern
       # above: python -m pip works identically on every OS in this matrix.
       - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
-        if: steps.probe.outputs.has_work != 'false'
         shell: bash
         run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
       # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,
@@ -1279,7 +1283,7 @@ jobs:
   #    job on that leg — a run nobody watches interactively. Without these
   #    steps that failure is silent even though the job itself goes red.
   shell-unit:
-    needs: shell-unit-shard
+    needs: [shell-unit-shard, plan]
     if: always()
     # HIMMEL-3788: a manual dispatch on an arbitrary branch/PR head must not
     # post a check-run literally named "shell-unit (ubuntu-latest)" --
@@ -1308,8 +1312,16 @@ jobs:
       - name: Every gating shell-unit shard must have passed
         env:
           SHARDS_RESULT: ${{ needs.shell-unit-shard.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
         run: |
           echo "shell-unit-shard matrix rollup: $SHARDS_RESULT"
+          # HIMMEL-5649: no shard has a suite -> the shard job was skipped by its
+          # `if`. That is a pass ONLY when the plan itself succeeded and said so;
+          # the accounting step below still proves nothing was selected.
+          if [ "$SHARDS_RESULT" = "skipped" ] && [ "$PLAN_RESULT" = "success" ] && [ "$PLAN_SHARDS" = "[]" ]; then
+            SHARDS_RESULT=success
+          fi
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error::shell-unit shards did not all pass (matrix rollup: $SHARDS_RESULT) — see the shell-unit-shard jobs on this run."
             exit 1
@@ -1317,6 +1329,10 @@ jobs:
           echo "OK: every gating shell-unit shard passed."
       - name: Download shard manifests
         if: ${{ !cancelled() }}
+        # HIMMEL-5649: a PR whose shards all had no work uploads no manifest. A
+        # failed download is not forgiven: every shard not named in --absent-ok
+        # below must still have its manifest, so the verify step goes red.
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: shell-unit-manifest-ubuntu-latest-shard*
@@ -1338,11 +1354,14 @@ jobs:
           IMPACTED_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.base.sha || '' }}
           SUITE_TIER_MODE: ${{ github.event.schedule == '17 7 * * *' && 'all' || 'fast' }}
           SUITE_CHANGED_SINCE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          # HIMMEL-5649: shards the plan left out because they had no suite. Empty
+          # off a pull_request (every shard runs), where the plan job is skipped.
+          ABSENT_SHARDS: ${{ needs.plan.result == 'success' && needs.plan.outputs.absent_shards || '' }}
         run: |
           bash scripts/ci/impacted-selection.sh "$IMPACTED_BASE" HEAD > shard-selection.txt
           head -n 2 shard-selection.txt
           bash scripts/ci/run-shell-tests.sh --list . > shard-discovered.txt
-          bash scripts/ci/shard-manifest-verify.sh --dir shard-manifest --shards 8 --selection shard-selection.txt --discovered shard-discovered.txt
+          bash scripts/ci/shard-manifest-verify.sh --dir shard-manifest --shards 8 --selection shard-selection.txt --discovered shard-discovered.txt --absent-ok "$ABSENT_SHARDS"
       # HIMMEL-3897 / HIMMEL-3896: the post-merge full sweep is where a
       # selector miss shows up — a suite red on main that the merged PR's
       # impacted selection did not list. Recorded, never blocking: the red
