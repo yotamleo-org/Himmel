@@ -70,6 +70,8 @@ done
 WORK="$JD/work-$QID"
 mkdir -p "$WORK/cwd" || usage "cannot create $WORK"
 RAW="$WORK/raw.json" ERR="$WORK/err.txt" EVID="$WORK/evidence.md" PARSED="$WORK/parsed.json"
+# a retry on the same qid starts clean, so no earlier call's evidence or result can reach this artifact
+rm -f "$RAW" "$ERR" "$EVID" "$PARSED" "$WORK/wv.err"
 ART="$JD/judge-call-$QID.json"
 JOB="judge-$QID-$(date +%s)-$$"
 case "$JOB" in *[!A-Za-z0-9._:-]*) JOB="judge-$(date +%s)-$$" ;; esac

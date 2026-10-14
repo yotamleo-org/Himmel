@@ -121,12 +121,23 @@ test('a verdict naming another head is STALE: nothing is written to the verdict 
 
 test('a reply with no verdict first line is MISSING; so is a verdict with no evidence', () => {
   const f = fixture();
-  for (const text of ['I think this is fine.\n**GO** for head `' + HEAD + '`.', `**GO** for head \`${HEAD}\`.\n`, `**GO**\nsound`, '']) {
+  for (const text of ['I think this is fine.\n**GO** for head `' + HEAD + '`.', `**GO** for head \`${HEAD}\`.\n`, `**GO**\nsound`, '',
+    `\n**GO** for head \`${HEAD}\`.\nevidence`]) {
     const r = f.run(f.args, { STUB_OUT: result(text) });
     assert.equal(r.status, 3, text);
     assert.equal(r.art.status, 'MISSING', text);
     assert.equal(r.art.verdict_path, null);
   }
+});
+
+test('a retry on the same qid never shows the previous call\'s evidence', () => {
+  const f = fixture();
+  const first = f.run(f.args, { STUB_OUT: result(`**NO-GO** for head \`${HEAD}\`.\n\nthe parser drops an option`) });
+  assert.equal(first.art.status, 'UNRECORDED');
+  assert.notEqual(first.art.excerpt, '');
+  const retry = f.run(f.args, { STUB_OUT: result('no verdict here') });
+  assert.equal(retry.art.status, 'MISSING');
+  assert.equal(retry.art.excerpt, '');
 });
 
 test('a tool denial is DENIED even though the call returned rc=0 with a well-formed GO', () => {

@@ -27,7 +27,7 @@ function parse(rawFile, head, evidenceOut) {
     return out('DENIED', `tool use was denied (${names})`, { cost_usd: cost });
   }
   if (r.is_error !== false) return out('ERROR', `the call reported an error (${String(r.subtype ?? 'unknown')})`, { cost_usd: cost });
-  const text = typeof r.result === 'string' ? r.result.replace(/^\s*\n/, '') : '';
+  const text = typeof r.result === 'string' ? r.result : '';
   const nl = text.indexOf('\n');
   const first = (nl < 0 ? text : text.slice(0, nl)).replace(/\r$/, '');
   const m = VERDICT_LINE.exec(first);

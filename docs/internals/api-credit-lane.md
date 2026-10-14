@@ -203,7 +203,7 @@ stdout is the artifact path; exit 0 only when the verdict was recorded.
 |---|---|
 | Read-only: `HIMMEL_API_TOOLS=Read,Glob,Grep`, `--permission-mode dontAsk`, `HIMMEL_API_KIND=judge`; a caller's own `HIMMEL_API_TOOLS` is overwritten | `judge-call.sh` |
 | Explicit judgment-tier model (`claude-opus-*` or `claude-sonnet-*`, never haiku or fable) and a budget above 0 and at most $2.00; a refusal happens before any call | `judge-call.sh` |
-| Fixed instruction first, head, PR and question last, run from an empty scratch cwd, so the prefix caches across judge calls | `judge-call.sh` |
+| Fixed instruction first, head, PR and question last, run from an empty scratch cwd, so the prefix caches across judge calls; the question names every file by ABSOLUTE path, since a repo-relative name resolves nowhere in that cwd | `judge-call.sh` |
 | Verdict semantics are the in-process judge's: the first line is `**GO**` / `**NO-GO**` `for head <sha>`, evidence follows, and a valid verdict is recorded by `write-verdict.sh` (mac-signed, NO-GO needs its `class:` line) | `judge-result.mjs`, `write-verdict.sh` |
 | Status instead of a ruling: `STALE` (names another head), `MISSING` (no verdict first line, no head, or no evidence), `DENIED` (any `permission_denials`, whatever the rc), `ERROR` (error result, or evidence over 32 KiB, which is never recorded cut), `UNRECORDED` (the writer refused), `REFUSED` (the launcher refused), `TIMEOUT` | `judge-result.mjs`, `judge-call.sh` |
 | Bounded parent artifact (`<judge dir>/judge-call-<qid>.json`, mode 600): status, reason, verdict, heads, model, budget, cost, verdict path and an excerpt of the evidence cut at 8 KiB; the full evidence is in the verdict record | `judge-result.mjs` |
