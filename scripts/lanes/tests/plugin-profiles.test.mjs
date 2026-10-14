@@ -1713,3 +1713,21 @@ test('HIMMEL-1071: --list and --validate reject trailing args; bare flags still 
     assert.equal(run([flag]).status, 0);
   }
 });
+
+// The himmel-owned design-core member (shadcn-mcp) carries a short
+// motion-budget skill so a plain `--profile design` leg sees the duration and
+// frequency rules without the design-motion add-on.
+test('design core carries the motion-budget note', () => {
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const plugin = join(REPO_ROOT, 'marketplace', 'plugins', 'shadcn-mcp');
+  assert.ok(REG.profiles.design.enable.includes('shadcn-mcp@himmel'), 'shadcn-mcp carries the note and must stay in the design core');
+  assert.ok(!REG.profiles.design.enable.includes('emilkowalski-skills@himmel'), 'the full emilkowalski skills stay in design-motion');
+  const note = readFileSync(join(plugin, 'skills', 'motion-budget', 'SKILL.md'), 'utf8');
+  for (const needle of ['100-150ms', '150-250ms', '200-300ms', '300-400ms', 'under 300ms', '100+',
+    'https://x.com/emilkowalski/status/2110429909160264027', '--profile design,design-motion']) {
+    assert.ok(note.includes(needle), `motion-budget note must mention ${needle}`);
+  }
+  assert.match(note, /^---\nname: motion-budget\ndescription: .+\n---\n/, 'skill frontmatter');
+  const ver = JSON.parse(readFileSync(join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  assert.notEqual(ver, '0.1.0', 'plugin version bumped for the new skill');
+});

@@ -42,6 +42,11 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > "stop adhd mode". See
 > [marketplace/plugins/i-have-adhd/README.md](../marketplace/plugins/i-have-adhd/README.md).
 
+> **Not itemized: `marketplace/plugins/shadcn-mcp/skills/`**.
+> One himmel-owned skill, `motion-budget`: the design core's short animation
+> duration and frequency note, model-invoked (no slash command). See
+> [marketplace/plugins/shadcn-mcp/README.md](../marketplace/plugins/shadcn-mcp/README.md).
+
 > **Keep this current.** When a ticket adds, renames, removes, or re-describes
 > a command under `.claude/commands/`, the Description column is regenerated
 > for you — run `node scripts/lib/gen-commands-catalog.mjs write` and commit

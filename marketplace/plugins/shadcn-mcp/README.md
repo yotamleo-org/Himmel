@@ -10,3 +10,12 @@ repo https://github.com/shadcn-ui/ui, MIT).
 - `npx` downloads the package from npm on first use.
 - The version pin lives in `.mcp.json` (`shadcn@4.21.0`); bump it by hand in a
   PR (no drift row: the npm tag shape is not tracked by `check-plugin-drift.sh`).
+
+## motion-budget skill (HIMMEL-5708)
+
+`skills/motion-budget` is the design core's short animation note: the duration
+table, the under-300ms rule and the frequency principle, credited to Emil
+Kowalski (https://x.com/emilkowalski/status/2110429909160264027). It follows
+that tweet, so modals read 200-300ms and page transitions 300-400ms; the full
+`emilkowalski-skills` (`--profile design,design-motion`) say modals 200-500ms
+and have no page-transitions row.
