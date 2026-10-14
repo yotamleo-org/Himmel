@@ -179,14 +179,18 @@ build_body() {
 # Previous run's BEHIND names, read from the marker in the open issue's body.
 old_body() {
   if [ "${DRY_RUN:-0}" = "1" ]; then printf '%s' "${DRY_RUN_OLD_BODY:-}"; return 0; fi
-  gh issue view "$1" --json body --jq .body 2>/dev/null || true
+  gh issue view "$1" --json body --jq .body 2>/dev/null
 }
 
 # One-line per-run comment: count plus what changed since the last run.
 delta_comment() {
-  local num="$1" wd="$2" n added cleared d
+  local num="$1" wd="$2" n added cleared d prev
   n="$(wc -l < "$wd/behind.tsv" | tr -d ' ')"
-  old_body "$num" | sed -n 's/.*<!-- fork-drift-behind: \(.*\) -->.*/\1/p' | head -1 | tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort > "$wd/old-names.txt"
+  if ! prev="$(old_body "$num")"; then
+    printf 'Still drifting: %s items (change since last run unavailable)' "$n"
+    return 0
+  fi
+  printf '%s\n' "$prev" | sed -n 's/.*<!-- fork-drift-behind: \(.*\) -->.*/\1/p' | head -1 | tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort > "$wd/old-names.txt"
   added="$(LC_ALL=C comm -13 "$wd/old-names.txt" "$wd/behind-names.txt" | paste -sd, - | sed 's/,/, /g')"
   cleared="$(LC_ALL=C comm -23 "$wd/old-names.txt" "$wd/behind-names.txt" | paste -sd, - | sed 's/,/, /g')"
   if [ -z "$added" ] && [ -z "$cleared" ]; then d="no change"

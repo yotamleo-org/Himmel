@@ -155,6 +155,24 @@ view_n="$(grep -n '^issue view' "$glog" | head -1 | cut -d: -f1)"; edit_n="$(gre
 if [ -n "$view_n" ] && [ -n "$edit_n" ] && [ "$view_n" -lt "$edit_n" ]; then ok "previous body read before the edit"; else bad "issue view ($view_n) must precede issue edit ($edit_n)"; fi
 rm -rf "$fakebin"
 
+# 9g. A failed read of the previous body is reported as unavailable history,
+#     never as an empty marker that lists every item as newly added.
+fakebin="$(mktemp -d)" || exit 1
+glog="$fakebin/calls.log"
+cat >"$fakebin/gh" <<'GH'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_CALL_LOG"
+case "$1 $2" in
+  "issue list") echo 42 ;;
+  "issue view") exit 1 ;;
+esac
+exit 0
+GH
+chmod +x "$fakebin/gh"
+GH_CALL_LOG="$glog" PATH="$fakebin:$PATH" bash "$SCRIPT" 2 "$REP" >/dev/null 2>&1
+if grep '^issue comment' "$glog" | grep -q 'change since last run unavailable'; then ok "failed body read reports unavailable history"; else bad "failed body read must say history unavailable: $(grep '^issue comment' "$glog")"; fi
+rm -rf "$fakebin"
+
 rm -f "$REP"
 echo ""
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed."; exit 1; fi
