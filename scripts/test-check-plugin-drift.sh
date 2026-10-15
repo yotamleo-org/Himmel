@@ -61,8 +61,9 @@ if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should 
 # mirror feeds, even though the production parser (check-plugin-drift.sh)
 # already accepts `ref or sha`.
 if grepq "$pins" -x "plannotator-effective-html"; then ok "parser finds plannotator-effective-html SHA-only pin"; else bad "parser missing plannotator-effective-html (SHA-only pin)"; fi
-# obsidian-second-brain must pin a commit that carries upstream #338 (-fps_mode
-# for ffmpeg 9); the v0.17.0 commit 87fe5437 still emits the removed -vsync.
+# Exact-pin consistency: obsidian-second-brain is pinned to d0581201, the first
+# commit carrying upstream #338 (-fps_mode for ffmpeg 9); v0.17.0 (87fe5437)
+# still emits the removed -vsync. Update this row when re-pinning.
 osb_sha="$(python3 - "$MJSON" <<'PY' | tr -d '\r'
 import json, sys
 for p in json.load(open(sys.argv[1])).get("plugins", []):
@@ -70,7 +71,7 @@ for p in json.load(open(sys.argv[1])).get("plugins", []):
         print(p["source"].get("sha", ""))
 PY
 )"
-if [ "$osb_sha" = "d0581201a468622c71ef4dedb20650c733e1d328" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, not a commit containing upstream #338 (ffmpeg 9 -fps_mode)"; fi
+if [ "$osb_sha" = "d0581201a468622c71ef4dedb20650c733e1d328" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, expected d0581201a468622c71ef4dedb20650c733e1d328 (carries upstream #338, ffmpeg 9 -fps_mode); update this row if re-pinned"; fi
 
 # 3. Every fork UPSTREAM_PIN carries the generic fields the checker reads.
 for pin in "$ROOT"/marketplace/plugins/*/UPSTREAM_PIN; do
