@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # detect-hook-dup.sh -- ADVISORY warning when a himmel UNIVERSAL hook is wired at
-# BOTH user scope AND a project's settings.json, so it fires twice (R4,
-# HIMMEL-460). The double-fire is benign + idempotent (SC11: two auto-approve
+# BOTH user scope AND a project's settings.json, so it fires twice (R4).
+# The double-fire is benign + idempotent (SC11: two auto-approve
 # passes = same allow; two block passes = same block), so this is advisory (always
 # rc 0), never an error.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/macos-app-resolve.sh - HIMMEL-3474: shared macOS terminal-app
+# scripts/lib/macos-app-resolve.sh: shared macOS terminal-app
 # resolution, factored out of konsole-macos.sh and arm-resume.sh's headed
 # crontab launch, which carried byte-identical copies of this logic.
 #

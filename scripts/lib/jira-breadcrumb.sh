@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # jira-breadcrumb.sh — shared resolver for the jira-mutation breadcrumb path
-# (HIMMEL-618). bash 3.2-safe; source this file, then call the functions.
+# bash 3.2-safe; source this file, then call the functions.
 #
 # The jira CLI WRITER (scripts/jira/src/breadcrumb.ts) and the SessionEnd hook
 # READER (scripts/hooks/jira-nudge-on-end.sh) MUST agree byte-for-byte on the

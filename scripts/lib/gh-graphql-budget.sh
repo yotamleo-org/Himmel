@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gh-graphql-budget.sh — shared GitHub GraphQL budget preflight (HIMMEL-3190).
+# gh-graphql-budget.sh — shared GitHub GraphQL budget preflight.
 #
 # Sourced, never executed. bash 3.2-safe.
 #

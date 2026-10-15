@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# project-mode.sh — the one owner of "which tracker, which forge" (HIMMEL-4758,
-# HIMMEL-4748 spec section 1). Source it, then call a project_mode_* function.
+# project-mode.sh — the one owner of "which tracker, which forge" (spec section 1). Source it, then call a project_mode_* function.
 # Each prints its answer on stdout; an invalid or contradictory setting prints
 # one line on stderr and returns 2. scripts/lib/project-mode.mjs is the JS twin;
 # both are pinned to fixtures/project-modes.tsv and fixtures/forge-origins.tsv.

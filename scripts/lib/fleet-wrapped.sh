@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/fleet-wrapped.sh — HIMMEL-3095. Sourced by
+# scripts/lib/fleet-wrapped.sh. Sourced by
 # scripts/lib/bank-preflight.sh's fleet census: a leg that has WRAPPED
 # (queue lock released, its handover doc's last status bullet reads
 # WRAPPED) but whose process is still alive should not hold a FLEET_CAP
@@ -115,9 +115,9 @@ fleet_lock_slug_for_root() {
 #
 # ponytail: HIMMEL-3095, this covers only the two-root case queue-lock.sh's
 # own _ql_roots_all resolves without a registry read (HANDOVER_DIR +
-# handover_root — the common HIMMEL-2861 cross-root pair). It does not
+# handover_root — the common cross-root pair). It does not
 # reimplement the full registry-scanned candidate-root list, nor the
-# pre-HIMMEL-3290 legacy-mis-keyed-lock / namesake scan queue-lock.sh falls
+# older legacy-mis-keyed-lock / namesake scan queue-lock.sh falls
 # back to when the canonical dir is absent. A doc locked only under a
 # registry root, or only under a legacy-keyed dir, reads as a missing lock
 # dir here and this function returns 1 (ambiguous), which the caller below

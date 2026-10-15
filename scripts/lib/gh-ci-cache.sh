@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gh-ci-cache.sh — shared per-PR CI status cache + API-budget wait (HIMMEL-3850).
+# gh-ci-cache.sh — shared per-PR CI status cache + API-budget wait.
 #
 # Sourced, never executed. bash 3.2-safe.
 #
@@ -38,7 +38,7 @@
 #
 # ponytail: conditional REST snapshots cover at most 100 latest check runs and
 # statuses each; larger sets fall back to gh's GraphQL rollup. Upgrade when
-# pagination dominates actual PR snapshots (HIMMEL-4857).
+# pagination dominates actual PR snapshots.
 # ponytail: the fetch lock is an atomic mkdir, not flock — flock is absent on
 # Git Bash / macOS; a lock older than 60 s is broken, and a waiter that times out
 # fetches directly (cost, never correctness, degrades).

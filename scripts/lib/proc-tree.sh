@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/proc-tree.sh -- terminate a background job AND everything it
-# spawned, on POSIX and on Git Bash / MSYS (HIMMEL-1338).
+# spawned, on POSIX and on Git Bash / MSYS.
 #
 # WHY: signalling a bare pid reaches the wrapper and nothing else. A shell
 # suite that leaves a wedged descendant behind is exactly how OVERLORD8
@@ -13,12 +13,11 @@
 # same thing by default; its --foreground flag is documented as the opt-out
 # ("in this mode, children of COMMAND will not be timed out").
 #
-# MEASURED, not assumed (HIMMEL-1338 probe, Git Bash 2.x / Windows 11 26200):
+# MEASURED, not assumed (Git Bash 2.x / Windows 11 26200 probe):
 # a three-deep chain bash -> bash -> sleep spawned under `set -m` was fully
 # reaped by ONE `kill -TERM -<pgid>`; `ps` confirmed all three shared the
 # leader's PGID. The concern carried into this ticket -- that on Git Bash the
-# group signal returns 0 while killing nothing (the open Major CR finding on
-# HIMMEL-1286 / PR #1428) -- did NOT reproduce for a job spawned this way. It
+# group signal returns 0 while killing nothing (an earlier review finding) -- did NOT reproduce for a job spawned this way. It
 # is still not TRUSTED: this helper VERIFIES the outcome instead of believing
 # the return code, and falls back to Windows `taskkill` for anything that
 # survived. An rc of 0 is not evidence; an empty group is.
@@ -33,7 +32,7 @@
 # 1 when something survived every verified escalation, 2 when a supplied
 # expected identity is empty or the probe cannot confirm it either way before
 # the next signal, and 3 when the probe CONFIRMS the leader already
-# exited/was recycled before any signal was sent (HIMMEL-1501).
+# exited/was recycled before any signal was sent.
 # proc_tree_group_terminate is the leader-exited variant: it signals only
 # identity-verified observed member pids, never an unowned numeric group id.
 #
@@ -89,7 +88,7 @@ proc_tree_process_identity() {
     # identity string is the same whoever/wherever it is read: lstart is
     # printed in the caller's TZ, and command is cut to the caller's COLUMNS
     # otherwise, which made a live holder look "dead" to a contender running
-    # under a different TZ/COLUMNS (HIMMEL-3791 judge finding). -ww is
+    # under a different TZ/COLUMNS. -ww is
     # accepted by both GNU procps and BSD/macOS ps.
     value=$(unset COLUMNS; TZ=UTC LC_ALL=C ps -ww -p "$pid" -o lstart= -o command= 2>/dev/null) || value=""
     [ -n "$value" ] || return 1
@@ -168,7 +167,7 @@ proc_tree_process_identity_matches() {
 # proc_tree_process_alive when <expected-identity> is empty, instead of the 2
 # ("unavailable") that an empty expected always forces on that function. An
 # owner record with no identity is not automatically stale or automatically
-# live -- it means the identity probe failed at RECORD time (HIMMEL-3778: e.g.
+# live -- it means the identity probe failed at RECORD time (e.g.
 # `ps` unavailable at acquire), not that the pid itself is unprobeable NOW. A
 # caller who cannot distinguish those two failures loses the confirmed-death
 # signal for exactly the owners that most need it -- a crashed holder whose
@@ -245,7 +244,7 @@ proc_tree_group_alive() {
 # whose current identity can be captured and immediately revalidated. The
 # initial guard splits a CONFIRMED exit/recycle (rc 3, no signal sent) from a
 # probe that could not confirm anything either way (rc 2) -- callers must not
-# treat them the same (HIMMEL-1501).
+# treat them the same.
 proc_tree_terminate() {
     local pid="$1" grace="${2:-3}" expected_identity="${3:-}" survivor survivor_identity w guarded=0 identity_unverified=0
     local member member_identity i leader_identity_rc survivor_verified=0 identity_rc=0
@@ -259,7 +258,7 @@ proc_tree_terminate() {
         if [ "$identity_rc" -ne 0 ]; then
             # rc 1 = identity_matches CONFIRMED the leader already
             # exited/was recycled; rc 2 = the probe itself was unavailable.
-            # These demand opposite handling downstream (HIMMEL-1501).
+            # These demand opposite handling downstream.
             [ "$identity_rc" -eq 1 ] && return 3
             return 2
         fi
@@ -350,7 +349,7 @@ proc_tree_terminate() {
 }
 
 # proc_tree_group_terminate <pgid> [grace-seconds] -- clean descendants after
-# their leader exits. HIMMEL-1474 r4/r12: snapshot each observed member with
+# their leader exits. snapshot each observed member with
 # its identity, then revalidate that member immediately before every PID signal.
 # Never signal the unowned numeric group id or use a blind Windows tree-kill.
 proc_tree_group_terminate() {

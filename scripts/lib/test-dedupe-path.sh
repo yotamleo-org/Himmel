@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/dedupe-path.sh (HIMMEL-3640).
+# Tests for scripts/lib/dedupe-path.sh.
 set -uo pipefail
 
 LIB="$(cd "$(dirname "$0")" && pwd)/dedupe-path.sh"
@@ -47,7 +47,7 @@ once=$(dedupe_path "/plugin/bin:/usr/bin:/plugin/bin")
 twice=$(dedupe_path "$once")
 assert_eq "T7 idempotent" "$once" "$twice"
 
-# T8 (RED for HIMMEL-3640): simulated N-hop nesting. Each hop mimics Claude
+# T8: simulated N-hop nesting. Each hop mimics Claude
 # Code's own one-time-per-start plugin-bin injection — unconditionally
 # prepending the plugin bins onto whatever PATH it inherited, with no check
 # for an existing copy. WITHOUT the fix, each himmel-driven hop hands the
@@ -99,7 +99,7 @@ assert_eq "T9 trailing empty entry preserved" "/usr/bin:" "$got"
 got=$(dedupe_path ":/usr/bin")
 assert_eq "T10 leading empty entry preserved" ":/usr/bin" "$got"
 
-# T11 (RED for HIMMEL-3643): a consecutive run of empty entries ("::")
+# T11: a consecutive run of empty entries ("::")
 # collapses to a single empty entry, same as a plain duplicate — control to
 # pin existing behavior while the newline fix goes in.
 got=$(dedupe_path "::")
@@ -108,13 +108,13 @@ assert_eq "T11 consecutive empty entries collapse to one" "" "$got"
 NL=$'\n'
 ENTRY_NL="/opt/weird${NL}dir"
 
-# T12 (RED for HIMMEL-3643): an entry containing a literal embedded newline
+# T12: an entry containing a literal embedded newline
 # must round-trip byte-identical. awk's default RS is newline, so it tears
 # this single PATH entry into two records instead of treating it as one field.
 got=$(dedupe_path "/a:${ENTRY_NL}:/b")
 assert_eq "T12 newline-embedded entry round-trips, no dupes" "/a:${ENTRY_NL}:/b" "$got"
 
-# T13 (RED for HIMMEL-3643): same newline-embedded entry, plus a duplicate
+# T13: same newline-embedded entry, plus a duplicate
 # elsewhere in the PATH — first occurrence's position kept, newline entry
 # still intact.
 got=$(dedupe_path "/plugin/bin:${ENTRY_NL}:/plugin/bin")

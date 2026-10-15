@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/override-env.sh -- the ONE list of guard-override environment
-# variables, and the scrub that unsets them inside a test process (HIMMEL-3092).
+# variables, and the scrub that unsets them inside a test process.
 #
 # SOURCED, never executed. bash 3.2-safe (no mapfile, no associative arrays).
 # Platform guard (gitbash-only): pure bash builtins + grep/sed/sort; sourced by

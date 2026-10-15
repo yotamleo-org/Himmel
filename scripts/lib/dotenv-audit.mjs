@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Read-only .env allowlist diagnostics (HIMMEL-4910). Never return file values.
+// Read-only .env allowlist diagnostics. Never return file values.
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';

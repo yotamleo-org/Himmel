@@ -4,7 +4,7 @@
 # the spawned `bash -c` subshell, not at definition time.)
 #
 # scripts/lib/test-py-armor.sh — smoke test for the python3 hang armor
-# (HIMMEL-249, scripts/lib/py-armor.sh).
+# (scripts/lib/py-armor.sh).
 #
 # Validates:
 #   1. py_armor dispatches to python3 with args + exit code intact.

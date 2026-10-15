@@ -24,7 +24,6 @@ fixture_mktemp_dir() {
     # or a location already inside a .git directory: --show-toplevel fails
     # (rc!=0) in both of those, which would let them slip through as
     # "not a git context" and reach callers that `git init` on top of them
-    # (HIMMEL-1673 CR round 5).
     if (cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1); then
         # Deliberately do NOT rm -rf "$dir" here: a broken or PATH-shadowed
         # mktemp (the exact threat model this guard defends against) could

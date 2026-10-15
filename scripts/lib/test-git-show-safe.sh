@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/lib/git-show-safe.sh (HIMMEL-2320). Exit 0 if all pass.
+# Unit test for scripts/lib/git-show-safe.sh. Exit 0 if all pass.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -56,7 +56,7 @@ else
     fail "rc propagation" "git_show_safe rc=$rc plain git rc=$plain_rc"
 fi
 
-# Positive control (HIMMEL-2320's own discipline: prove the instrument on a
+# Positive control (prove the instrument on a
 # known-match pattern before trusting a zero): on real MSYS Git Bash, a
 # ref:path WITHOUT MSYS_NO_PATHCONV can be argv-mangled by MSYS's path
 # conversion. Only meaningful under MINGW/MSYS; a no-op elsewhere.

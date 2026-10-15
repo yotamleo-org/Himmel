@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # permission-test.sh — effective directory-write control for shell suites
-# (HIMMEL-2893). Source after creating the fixture and removing write bits.
+# Source after creating the fixture and removing write bits.
 # Platform guard (gitbash-only): POSIX shell-test helper; no .ps1 twin.
 
 # test_dir_unwritable <directory> <case label>

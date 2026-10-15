@@ -1,4 +1,4 @@
-// scripts/lib/is-main.mjs — HIMMEL-3810. The one "am I the entry script?" check
+// scripts/lib/is-main.mjs. The one "am I the entry script?" check
 // for .mjs CLIs: `if (isMain(import.meta.url)) main();`
 //
 // WHY realpath BOTH sides: Node resolves import.meta.url through symlinks to the

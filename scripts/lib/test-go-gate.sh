@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lib/test-go-gate.sh -- fixture test for scripts/lib/go-gate.sh's
-# console_leg() predicate (HIMMEL-3149).
+# console_leg() predicate.
 #
-# Before HIMMEL-3149 the HIMMEL_CONSOLE_LEG truthiness test was hand-copied at
+# Before go-gate.sh the HIMMEL_CONSOLE_LEG truthiness test was hand-copied at
 # three sites (merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
 # gate 3, console-kit/go.sh's inline check) with no shared source of truth --
 # nothing stopped one copy drifting from the other two. This suite is a single
@@ -12,7 +12,7 @@
 # It also asserts structurally that none of the three sites still hand-rolls
 # its own case statement -- each must call console_leg instead.
 #
-# RED-control instructions for reviewers (HIMMEL-3149 contract step 3):
+# RED-control instructions for reviewers:
 #   BEFORE the fix: `git stash` the go-gate.sh/merge-on-green.sh/
 #   block-unresolved-cr-merge.sh/go.sh changes (keep this test file) and rerun
 #   -- FAIL, because scripts/lib/go-gate.sh has no console_leg() to source.
@@ -37,7 +37,7 @@ fail() { echo "FAIL: $1" >&2; FAIL=1; }
 # --- 1. Table-driven: console_leg() directly ------------------------------
 # One spellings list, each row (value, expected rc). Falsy: empty, 0, false,
 # off, no -- case-insensitive, whitespace-stripped, same five every call site
-# used before HIMMEL-3149. Everything else is truthy.
+# used before go-gate.sh. Everything else is truthy.
 SPELLINGS='
 ""|0
 "0"|0
@@ -116,13 +116,13 @@ done
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-go-gate.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$ROOT"' EXIT
 ROOT="$(cd "$ROOT" && pwd)"
-# HIMMEL-3543: go.sh mints its GO key under $HOME/.config/himmel — a scratch
+# go.sh mints its GO key under $HOME/.config/himmel — a scratch
 # HOME keeps every run below off the operator's real key.
 export HOME="$ROOT/home"
 mkdir -p "$HOME"
 SHA="$(printf '%040d' 7)"
 
-# HIMMEL-3578: go.sh now resolves this repo's nwo via `gh repo view` to bind
+# go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. A gh stub on PATH keeps every go.sh call below hermetic (no
 # real gh/network dependency) and lets tests fix the nwo it returns via
 # STUB_NWO.
@@ -148,7 +148,7 @@ STUB
 chmod +x "$ROOT/bin/gh"
 export PATH="$ROOT/bin:$PATH"
 export STUB_NWO="o/r"
-# HIMMEL-4565: go.sh refuses unless ready-check.sh passes, so it runs from a
+# go.sh refuses unless ready-check.sh passes, so it runs from a
 # repo whose CR ledger has an ok row for $SHA, under a gh answering ready-check
 # green (every other call falls through to the stub above).
 # shellcheck source=../handover/console-kit/testlib-ready-pass.sh
@@ -161,7 +161,7 @@ cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
 
 # HIMMEL_CONSOLE_LEG is a Claude Code marker (any value): run from an anchor
 # checkout with no claude ancestor (CI) and HANDOVER_DIR set, go.sh refuses 96
-# (HIMMEL-3914 I3). A console always runs under its claude session, so run
+# A console always runs under its claude session, so run
 # under a fake one.
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 
@@ -190,7 +190,7 @@ for row in $SPELLINGS; do
 done
 IFS="$old_ifs"
 
-# --- 4. HIMMEL-3543: a GO is authenticated, not merely present -----------
+# --- 4. a GO is authenticated, not merely present -----------
 # A leg that can write the handover root must not be able to forge its own
 # GO. go.sh signs pr|sha with a key only it mints; go_gate verifies the mac.
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY 2>/dev/null || true
@@ -229,7 +229,7 @@ rc=0; gate 93 "$SHA" >/dev/null || rc=$?
 [ "$rc" -eq 2 ] || fail "4d: a GO re-bound to another PR was accepted (rc=$rc)"
 
 # 4e. The mac is a real HMAC-SHA256 over himmel-go-v2|<nwo>|<pr>|<sha>
-# (HIMMEL-3578: bound to the repo, resolved above via the gh stub as o/r).
+# (bound to the repo, resolved above via the gh stub as o/r).
 if [ -f "$KEY" ]; then
     want=$(printf 'himmel-go-v2|o/r|92|%s' "$SHA" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(cat "$KEY")" | awk '{print $NF}')
     got=$(sed -n 's/^mac=//p' "$GROOT/.locks/go/92.$SHA")
@@ -243,7 +243,7 @@ rc=0; HOME="$ROOT/nokey" gate 92 "$SHA" >/dev/null || rc=$?
 [ "$rc" -eq 2 ] || fail "4f: go_gate accepted a GO with no key to verify against (rc=$rc)"
 [ ! -e "$ROOT/nokey/.config/himmel/go-hmac.key" ] || fail "4f: the verifier minted a key (only go.sh may)"
 
-# --- 5. HIMMEL-3570: _go_in_harness must not trust an inherited GIT_* env ---
+# --- 5. _go_in_harness must not trust an inherited GIT_* env ---
 # An exported GIT_DIR pointing at a DIFFERENT repo would, without a scrub,
 # override `-C` and steer `git rev-parse` to answer about that other repo
 # instead of the path _go_in_harness was actually asked about.
@@ -263,7 +263,7 @@ rc=0; GIT_DIR="$DECOY_GIT_DIR" bash -c 'unset -f _go_in_harness 2>/dev/null || t
     _ "$GO_GATE_SRC" "$REAL_A" "$REAL_B" || rc=$?
 [ "$rc" -ne 0 ] || fail "5b: an exported GIT_DIR (decoy repo) flipped _go_in_harness(A, B) to true (rc=0) -- HIMMEL-3570"
 
-# 5c. HIMMEL-3572 round 2: GIT_CEILING_DIRECTORIES joins the scrub too. A
+# 5c. GIT_CEILING_DIRECTORIES joins the scrub too. A
 # nested "split-root" shape (e.g. a handovers/ dir under the anchor, no .git
 # of its own) resolves via upward .git discovery from the nested path -- an
 # exported GIT_CEILING_DIRECTORIES naming the anchor's own top blocks that
@@ -282,7 +282,7 @@ rc=0; GIT_CEILING_DIRECTORIES="$REAL_A" bash -c 'unset -f _go_in_harness 2>/dev/
     _ "$GO_GATE_SRC" "$REAL_A_SUB" "$REAL_A" || rc=$?
 [ "$rc" -eq 0 ] || fail "5c: an exported GIT_CEILING_DIRECTORIES (anchor top) flipped _go_in_harness(REAL_A/handovers, REAL_A) to false (rc=$rc) -- HIMMEL-3572 round 2"
 
-# --- 6. HIMMEL-4984: go_msg_mac signs verdict records; go_mac is unchanged ---
+# --- 6. go_msg_mac signs verdict records; go_mac is unchanged ---
 PINHOME="$ROOT/pinhome"; mkdir -p "$PINHOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PINHOME/.config/himmel/go-hmac.key"
 PINSHA=$(printf '1%.0s' $(seq 1 40))
@@ -322,7 +322,7 @@ rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE
 rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE_SRC" "$SREC" >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 0 ] || fail "6f: the clean record stopped verifying"
 rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE_SRC" "$SREC" >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 0 ] || fail "6e: go_verdict_mac_ok disagrees with the snapshot check"
 
-# --- 7. HIMMEL-5134: go_fixred_gate - the console-written fix-GO for the red-main gate
+# --- 7. go_fixred_gate - the console-written fix-GO for the red-main gate
 # A fix-GO names ONE red run: file fix-main-red.<pr>.<sha>.<run>, signed over
 # himmel-go-fixred-v1|<nwo>|<pr>|<sha>|<run>, so it never verifies as an ordinary
 # GO, a trust GO or a verdict, and binds the repo, PR, head and run id.
@@ -369,7 +369,7 @@ OTHERSHA=$(printf '%s' "$PINSHA" | tr '0-9a-f' '1-9a-f0')
 rc=0; fx_gate 92 "$OTHERSHA" o/r "$FXRUN" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] || fail "7j: a fix-GO for head $PINSHA passed for a moved head (rc=$rc)"
 
-# --- 8. go_verdict_scope user slug sources (HIMMEL-4622) --------------------
+# --- 8. go_verdict_scope user slug sources --------------------
 # USER_SLUG absent from env: the slug comes from the PRIMARY's .env when the
 # anchor is a linked worktree (which has no .env), and the forge/git fallback
 # runs with the ANCHOR as cwd, never the caller's.
@@ -392,7 +392,7 @@ got=$(sc_scope "$SCW" "$SCC")
 got=$(sc_scope "$SCN" "$SCC")
 [ "$got" = "anchor-name/scopenoenv" ] || fail "8b: the user-slug fallback ran in the caller's cwd, not the anchor's (got '$got')"
 
-# --- 9. HIMMEL-4762: change ids, the br-* mac domain, local-git trust paths --
+# --- 9. change ids, the br-* mac domain, local-git trust paths --
 G9="$ROOT/g9"; mkdir -p "$G9/.locks/go"
 g9_gate() {  # <fn> <id> <sha> <nwo> -> rc of go_gate/go_trust_gate under PINHOME, reason on stdout
     HOME="$PINHOME" bash -c 'unset -f go_gate go_trust_gate _go_gate_verify go_mac 2>/dev/null || true; . "$1"; "$2" "$3" "$4" "$5" "$6"' _ "$GO_GATE_SRC" "$1" "$2" "$3" "$G9" "$4"
@@ -422,7 +422,7 @@ for bad in "" "br-" "br-X" "../7" "7x" "br-a/b" "-7"; do
     rc=0; out=$(g9_gate go_gate "$bad" "$PINSHA" o/r) || rc=$?
     case "$rc:$out" in "2:change id '$bad' is neither"*) ;; *) fail "9c: id '$bad' was not refused as an id (rc=$rc): $out" ;; esac
 done
-# 9d. A numeric refusal is byte-identical to before HIMMEL-4762.
+# 9d. A numeric refusal is byte-identical to the pre-forge-mode behaviour.
 rc=0; out=$(g9_gate go_gate 8 "$PINSHA" o/r) || rc=$?
 [ "$rc:$out" = "2:PR #8 at $PINSHA has no console GO ($G9/.locks/go/8.$PINSHA) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it." ] \
     || fail "9d: the numeric no-GO refusal changed: $out"

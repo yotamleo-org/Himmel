@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # test-native-auth-pin-pwsh.sh — run the PowerShell suite for
-# native-auth-pin.ps1 from the bash suite runner (HIMMEL-1867).
+# native-auth-pin.ps1 from the bash suite runner.
 #
 # Same reachability contract as scripts/test-claude-openrouter-pwsh.sh
-# (HIMMEL-1792): the .ps1 twin is invisible to every automated check unless a
+# the .ps1 twin is invisible to every automated check unless a
 # bash wrapper executes it. pwsh is a RUNTIME capability this suite needs the
 # way the launcher suites need node; where it is absent the wrapper SKIPs —
-# loudly and attributed (HIMMEL-1788: an unattended run must never exit-0
+# loudly and attributed (an unattended run must never exit-0
 # silently) — never as a quiet pass. In the runner it is registered in
 # SUITE_REQUIRE_TOOL (capability-conditional): it RUNS wherever pwsh is on
 # PATH and the runner's own [SKIP] line covers it where pwsh is absent; this

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a
 # test-fixture helper needs no .ps1 twin (WS5 T15 convention).
-# Sourced by shell-test fixtures (HIMMEL-3182): capability probes for what a
+# Sourced by shell-test fixtures: capability probes for what a
 # fixture is about to ASSERT, so a host that cannot express the case SKIPs it
 # loudly instead of failing it (or, worse, passing it vacuously).
 #
@@ -27,7 +27,7 @@
 #   host_isolated_bash_boots  a bash linked (else copied) into an otherwise EMPTY
 #                             dir starts (MSYS: a copied bash.exe cannot load
 #                             msys-2.0.dll from there -- rc 127)
-#   host_skip <reason...>     print the one stdout line `SKIP <reason> (HIMMEL-3182)`
+#   host_skip <reason...>     print the one stdout line `SKIP <reason>`
 #
 # This file sets no shell options and leaves no globals, so it is safe to source
 # under `set -u` / `set -e`. A probe that cannot even make its scratch dir

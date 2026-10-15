@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flow-run ledger path resolver (HIMMEL-921).
+# Flow-run ledger path resolver.
 # Source this file and call `flow_run_ledger_path`. PURE - no fs mutation
 # (the parent dir is created on append in flow-run-ledger.sh, not on
 # resolve), so read-only callers cannot trigger filesystem mutation as a

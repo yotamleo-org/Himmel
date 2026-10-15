@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): bash + jq + (sha256sum|shasum).
-# test-provenance.sh -- tests for scripts/lib/provenance.sh (HIMMEL-3332 S1).
+# test-provenance.sh -- tests for scripts/lib/provenance.sh.
 # Everything runs under a scratch HOME / HIMMEL_PROVENANCE_DIR; the real
 # ~/.himmel is never read or written. The node twin and the bash<->node
 # byte-identity cross-check live in scripts/himmelctl/test/test-provenance-js.sh.
@@ -353,7 +353,6 @@ if ! command -v shasum >/dev/null 2>&1; then echo "SKIP - no shasum to exercise 
     check "prov_record without sha256sum records the right sha" "$(last | jq -r .post.sha)" "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 fi
 
-# ── HIMMEL-3347 ───────────────────────────────────────────────────────────
 # (1) a row longer than a stdio buffer must still land in ONE write(2): the row goes through
 # `dd bs=<row bytes>` (one read, one write to the O_APPEND descriptor), not the printf builtin's
 # 4 KiB chunks. A dd spy pins the mechanism; the concurrent-writer run pins the behaviour.
@@ -392,7 +391,6 @@ check "the opener's prov_end wrote exactly one install-end" "$(grep -c '"op":"in
 check "the opener's prov_end closed the session" "${HIMMEL_PROVENANCE_IID:-unset}" "unset"
 ( prov_begin --writer own --iid SUB2; prov_end ok ); check "a subshell that opens its own session closes it" "$(grep -c '"iid":"SUB2","op":"install-end"' "$ledger")" "1"
 
-# ── HIMMEL-3556 ───────────────────────────────────────────────────────────
 # prov_ledger_registered_ours: a register row counts as ours only after the
 # most recent uninstall-begin boundary (or from the ledger's start, if none).
 rm -f "$ledger"
@@ -411,7 +409,7 @@ _prov_append '{"op":"register","kind":"marketplace","unit":"himmel","preexisted"
 check "registered_ours: preexisted=true after the boundary is NOT ours" \
     "$(prov_ledger_registered_ours marketplace himmel >/dev/null 2>&1 && echo yes || echo no)" "no"
 
-# ── HIMMEL-3787 S2c: ours snapshots (`snap` / `snap_skip`, design §2) ──────
+# ── ours snapshots (`snap` / `snap_skip`, design §2) ──────
 rm -f "$ledger"; rm -rf "$HIMMEL_PROVENANCE_DIR/provenance-backups"
 printf 'old-bytes\n' > "$w/s.txt"; cp -p "$w/s.txt" "$w/s.pre"
 printf 'ours-bytes\n' > "$w/s.txt"

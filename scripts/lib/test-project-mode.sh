@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Tests for scripts/lib/project-mode.sh, the tracker/forge mode resolver
-# (HIMMEL-4758, HIMMEL-4748 spec section 1).
 #
 # Walks every row of fixtures/project-modes.tsv and every origin of
 # fixtures/forge-origins.tsv. scripts/lib/project-mode.test.mjs walks the same

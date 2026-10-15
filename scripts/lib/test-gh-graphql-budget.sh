@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/lib/gh-graphql-budget.sh and its check-ci.sh wiring
-# (HIMMEL-3190 — CI watchers exhausted the GitHub GraphQL budget fleet-wide).
+# (CI watchers exhausted the GitHub GraphQL budget fleet-wide).
 #
 # Hermetic: `gh` is a PATH stub that records every call (fake-clock stamp +
 # GraphQL points it would cost) and fakes the X-Ratelimit-* headers of a real
@@ -33,7 +33,7 @@
 #       range, jitter clamped to the bound, no waits when budget is healthy)
 set -uo pipefail
 
-# HIMMEL-3850 — these cases pin the HIMMEL-3190 budget behaviour of gh's own
+# These cases pin the budget behaviour of gh's own
 # --watch path; the shared status cache (CHECK_CI_CACHE, default on) has its own
 # suite, test-check-ci-cache.sh.
 export CHECK_CI_CACHE=0
@@ -88,7 +88,7 @@ if [ "$cmd" = "api" ]; then
                 echo "HTTP 403: API rate limit exceeded" >&2; exit 1
             fi
             echo "0 false null"; exit 0 ;;
-        # HIMMEL-3381: the required-set reads (--jq is ignored by this stub, so emit
+        # The required-set reads (--jq is ignored by this stub, so emit
         # the post-jq shape: no required contexts).
         *rules/branches*|*protection/required_status_checks*) log 0 "$@"; exit 0 ;;
         *) log 0 "$@"; echo '[]'; exit 0 ;;

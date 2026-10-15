@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/fix-qmd-stub.sh — neutralize the broken qmd plugin-cache stub
-# at source (HIMMEL-163).
+# at source.
 #
 # The qmd Claude plugin ships a path stub at
 # ~/.claude/plugins/cache/qmd/qmd/<v>/bin/qmd that hard-codes the plugin's
@@ -24,7 +24,7 @@
 # (scripts/setup.sh, scripts/setup.ps1, scripts/machine-setup/ubuntu.sh all
 # invoke this) or standalone.
 #
-# Intended semantics for ambiguous states (HIMMEL-163 CR round 1):
+# Intended semantics for ambiguous states:
 #   - A marker-less stub without dist/ is ALWAYS rewritten — including an
 #     upstream stub that was itself fixed to dispatch elsewhere WITHOUT
 #     shipping dist/. That is by design: the original is preserved as
@@ -49,12 +49,11 @@ CACHE_ROOT="$HOME/.claude/plugins/cache"
 DRY_RUN=0
 
 # _fixqmdstub_prov_record <stub> <pre-content-file> -- records a `file
-# replace` provenance row for a stub this run just patched (HIMMEL-3332
-# slice 3), so a ledger-mode uninstall knows himmel wrote it -- it is never
+# replace` provenance row for a stub this run just patched, so a ledger-mode uninstall knows himmel wrote it -- it is never
 # reverted (that would restore the broken vendor stub), but the ledger row
 # lets uninstall print an honest kept line instead of staying silent.
-# Best-effort, mirrors cadence_prov_record (HIMMEL-3332 S8,
-# scripts/lib/cadence-format.sh): this script runs standalone (`bash
+# Best-effort, mirrors cadence_prov_record
+# (scripts/lib/cadence-format.sh): this script runs standalone (`bash
 # fix-qmd-stub.sh`, never sourced), so it sources provenance.sh itself,
 # lazily, in a subshell.
 _fixqmdstub_prov_record() {
@@ -107,7 +106,7 @@ write_patched_stub() {
   if ! cat > "$tmp" <<'STUB'
 #!/bin/sh
 # himmel-qmd-stub-patch: v1 — written by himmel scripts/lib/fix-qmd-stub.sh
-# (HIMMEL-163). The upstream stub hard-codes "$DIR/dist/cli/qmd.js", which is
+# The upstream stub hard-codes "$DIR/dist/cli/qmd.js", which is
 # never built in the Claude plugin cache (qmd is installed via bun), yet
 # Claude Code's Bash tool puts this bin/ first on PATH — so the broken stub
 # shadowed the working install. This stub locates any installed qmd instead.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4236 / HIMMEL-3520: real fixture callers leave no owned directories,
+# Real fixture callers leave no owned directories,
 # and the merge-on-green holder never forks after announcing readiness.
 # Platform guard: bash + Node; the child-process observation is Linux-only.
 set -eu

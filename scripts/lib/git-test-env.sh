@@ -13,7 +13,7 @@
 # unaffected by these env pins, which is exactly the separation a hermetic suite
 # wants.
 #
-# WHY (HIMMEL-1589): himmel's shell suites build throwaway git repos
+# WHY: himmel's shell suites build throwaway git repos
 # (init/commit/clone) by the dozen, and git's fsync-per-object dominates their
 # runtime. Measured on Windows over 15 init+commit+clone cycles: default 84.8s
 # -> core.fsync=none + core.fsyncMethod=batch 32.9s -> plus empty
@@ -41,7 +41,7 @@
 # `$(( 08 ))` dies as an invalid octal, both of which would make a fixture fail
 # for a reason unrelated to what it tests. `10#` forces base 10 on the good path.
 # git_test_env_repair
-# Fail-safe self-repair for the GIT_CONFIG_* block. HIMMEL-2231: the originally
+# Fail-safe self-repair for the GIT_CONFIG_* block. The originally
 # reported failure -- `fatal: unable to parse command-line config` /
 # `missing config value GIT_CONFIG_VALUE_n` -- has exactly ONE producer:
 # GIT_CONFIG_COUNT names N entries but some index < N is missing its KEY or
@@ -205,7 +205,7 @@ git_test_env_pin_perf() {
   [ "${HIMMEL_GIT_TEST_ENV_PERF:-0}" = "1" ] && return 0
   git_test_env_append core.fsync none
   git_test_env_append core.fsyncMethod batch
-  # HIMMEL-2231: init.templateDir used to be pinned to '' -- the ONLY entry in
+  # init.templateDir used to be pinned to '' -- the ONLY entry in
   # this block with an EMPTY value, and an empty-valued entry is the fragile
   # member of a count-indexed contract (git_test_env_repair above exists
   # because SOME actor, never identified, drops or normalises an entry). A

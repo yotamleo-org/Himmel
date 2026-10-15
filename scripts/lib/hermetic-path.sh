@@ -7,18 +7,18 @@
 # without depending on (or being confused by) the real dev machine's
 # toolchain.
 #
-# HIMMEL-874 / HIMMEL-880: on stock Ubuntu, npm (and other scrubbed tools)
+# On stock Ubuntu, npm (and other scrubbed tools)
 # lives in /usr/bin alongside bash and coreutils. Dropping every PATH dir
 # that carries a scrubbed tool therefore drops /usr/bin wholesale, which
 # takes bash itself down with it -- every subsequent
 # `PATH="$scrubbed" bash "$target" ...` invocation then fails to resolve
-# `bash` before running a single line of the target script. HIMMEL-874 fixed
-# this for scripts/test-adopt.sh by pre-linking bash + the essential tools
+# `bash` before running a single line of the target script. The fix for
+# scripts/test-adopt.sh is pre-linking bash + the essential tools
 # the target script needs into a hermetic stub dir BEFORE computing the
 # scrub, then prepending that stub dir to the scrubbed PATH so those tools
-# stay resolvable no matter which real dirs get dropped. HIMMEL-880 extracts
-# that fix here so scripts/test-preflight-adopter.sh (which had the identical
-# bug, added in the same HIMMEL-842 commit) can share it instead of
+# stay resolvable no matter which real dirs get dropped. This helper holds
+# that fix so scripts/test-preflight-adopter.sh (which had the identical
+# bug) can share it instead of
 # re-diverging.
 #
 # FUNCTIONS ONLY -- sourcing this file has no side effects. Callers:
@@ -51,9 +51,9 @@
 # stub dir BEFORE calling scrub_path, then prepend that stub dir ahead of the
 # scrubbed PATH on every hermetic invocation.
 #
-# USE build_hermetic_bin FOR THAT (HIMMEL-2535) -- it is the MUST above in one
+# USE build_hermetic_bin FOR THAT -- it is the MUST above in one
 # call. The rule was stated here and broken anyway, three times in one week
-# (HIMMEL-2470 node, HIMMEL-2520 bun, HIMMEL-2530 uv/graphify), because a stub
+# (node, bun, uv/graphify), because a stub
 # dir holding only the FAKED tool looks correct and is not. Per the
 # enforcement-strength convention, that is the point where prose stops being
 # the right layer:
@@ -66,9 +66,9 @@
 # And note the inverse mistake, which an allowlist does NOT protect you from on
 # its own: never build the allowlist from a DIRECTORY. `dirname $(command -v
 # sort)` is /usr/bin on Arch, which also ships bun/uv/node -- adopting it
-# re-admits the very tool you are hiding (HIMMEL-2524). Name tools individually.
+# re-admits the very tool you are hiding. Name tools individually.
 
-# Executable suffix for stub files (HIMMEL-1686). On Windows an EXTENSIONLESS
+# Executable suffix for stub files. On Windows an EXTENSIONLESS
 # file named `bash` in scope makes ShellExecute return SE_ERR_NOASSOC, which
 # pops the "Select an app to open 'bash'" picker — a modal that blocks the box
 # and, in an unattended cadence run, hangs it with nobody to dismiss it.
@@ -79,7 +79,7 @@ case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
   msys*|cygwin*|win32*|MINGW*|MSYS*|CYGWIN*) HERMETIC_EXE_SUFFIX='.exe' ;;
 esac
 
-# Default `fail` for callers that do not define one (HIMMEL-2535).
+# Default `fail` for callers that do not define one.
 #
 # link_hermetic_tool and build_hermetic_bin below call the SOURCING script's
 # `fail`, which several suites do not define -- test-graphify-bin.sh had none at
@@ -96,7 +96,7 @@ fi
 link_hermetic_tool() {
   local _tool="$1" _dest="${2:-$work/bin}" _src _dest_name
   _dest_name="${_tool}${HERMETIC_EXE_SUFFIX}"
-  # Idempotent on the COMPUTED name (HIMMEL-1686). Callers that re-link one stub
+  # Idempotent on the COMPUTED name. Callers that re-link one stub
   # dir guard with their own `[ -e "$stub/$tool" ]` check keyed on the
   # UNSUFFIXED name (e.g. test-wizard-contributor-profile.sh's already_linked,
   # whose caseC runs the same stub dir through build_path twice). Once this
@@ -105,13 +105,13 @@ link_hermetic_tool() {
   # and where `ln -s` SUCCEEDED on the first pass (Windows with symlinks
   # enabled, or POSIX), the wrapper write then redirects THROUGH the existing
   # symlink into the real binary, corrupting a writable user-installed tool or
-  # aborting the suite on a protected one. That is the latent HIMMEL-1469 hazard
+  # aborting the suite on a protected one. That is the latent hazard
   # the suffix change made reachable. Guarding on $_dest_name here fixes it for
   # every caller at once, and short-circuits before any ln/write can fire.
   if [ -e "$_dest/$_dest_name" ] || [ -L "$_dest/$_dest_name" ]; then
     return 0
   fi
-  # Every `fail` call below is followed by `return 1` (HIMMEL-2535). `fail` is
+  # Every `fail` call below is followed by `return 1`. `fail` is
   # the SOURCING script's, and it is not required to exit -- a suite that counts
   # failures rather than aborting returns from it. Without the explicit return,
   # execution fell through with $_src EMPTY: `ln -s "" "$dest/$tool"` fails, the
@@ -153,26 +153,26 @@ path_dir_has_scrubbed_tool() {
 build_hermetic_bin() {
   # build_hermetic_bin <dest_dir> <tool>...
   #
-  # THE SAFE SHAPE, in one call (HIMMEL-2535). Creates dest_dir and links
+  # THE SAFE SHAPE, in one call. Creates dest_dir and links
   # `bash` plus each named tool into it, so the caller can prepend dest_dir
   # ahead of a scrubbed PATH and satisfy the MUST in this file's header
   # without remembering it. `bash` is ALWAYS linked: it is the interpreter
   # every hermetic `bash -c` needs, and forgetting it is the failure that made
-  # HIMMEL-2470/2520/2530 red.
+  # the node, bun and uv/graphify suites red.
   #
   # Name the tools your TARGET actually reaches for, derived empirically rather
-  # than guessed -- the load-bearing step in all three of those tickets. The
+  # than guessed -- the load-bearing step in all three of those cases. The
   # recipe: build a dir where each candidate logs its own name then execs the
   # real binary, point the fixture at it, run once, read the log.
   #
   # Never name a tool you are scrubbing: this builds the allowlist, and a
   # scrubbed tool listed here is re-admitted through the front door (the
-  # HIMMEL-2524 mistake, in its explicit form).
+  # explicit form of that mistake).
   local _dest="$1"; shift
   [ -n "$_dest" ] || { fail "build_hermetic_bin: empty destination dir"; return 1; }
   mkdir -p "$_dest" || { fail "build_hermetic_bin: could not create $_dest"; return 1; }
   # RETAIN a failure rather than letting the last iteration decide the rc
-  # (HIMMEL-2535). `fail` belongs to the sourcing script and need not exit, so
+  # `fail` belongs to the sourcing script and need not exit, so
   # with a counting `fail` a missing NON-FINAL tool was masked by a later
   # successful link and this returned 0 with an incomplete floor -- the exact
   # fail-open shape this helper exists to prevent. Every tool is still attempted
@@ -190,12 +190,12 @@ hermetic_path_excludes() {
   #
   # rc 0 when NONE of the named tools resolve anywhere on <path>; rc 1 as soon
   # as one does. The assertion that turns "I built an allowlist" into evidence:
-  # HIMMEL-2524's fixture believed it had excluded bun and had not, and nothing
+  # A fixture once believed it had excluded bun and had not, and nothing
   # checked. Call it right after composing the PATH a case will run under.
   local _path="$1"; shift
   local _t _d _save_ifs3 _norm _had_noglob
   # Disable pathname expansion for the unquoted `for _d in $_norm` split below
-  # (HIMMEL-2538) -- with IFS=':' the split itself is correct, but the
+  #  -- with IFS=':' the split itself is correct, but the
   # resulting words then undergo glob expansion, so a PATH segment
   # containing *, ?, or [ is silently replaced by whatever it matches on disk. A
   # false "excluded" in THIS direction is the one that matters (the function
@@ -205,7 +205,7 @@ hermetic_path_excludes() {
   # must see that unchanged afterward.
   case "$-" in *f*) _had_noglob=1 ;; *) _had_noglob=0 ;; esac
   set -f
-  # NORMALISE every empty segment to "." before splitting (HIMMEL-2535).
+  # NORMALISE every empty segment to "." before splitting.
   # Word splitting alone cannot see them all, and each one it misses is a false
   # "excluded" about a PATH the shell WOULD resolve the tool on:
   #   ""        -> 0 fields   (an entirely empty PATH still runs ./tool -- measured)
@@ -245,7 +245,7 @@ hermetic_path_excludes() {
 scrub_path() {
   local _in="$1"; shift
   local _out="" _d _save_ifs2 _had_noglob
-  # Same glob-expansion exposure as hermetic_path_excludes above (HIMMEL-2538)
+  # Same glob-expansion exposure as hermetic_path_excludes above
   # -- disable pathname expansion around the unquoted split, restore the
   # caller's own `-f` state on every exit path (there is only one here).
   case "$-" in *f*) _had_noglob=1 ;; *) _had_noglob=0 ;; esac

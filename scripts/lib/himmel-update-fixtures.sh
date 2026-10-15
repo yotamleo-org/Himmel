@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/himmel-update-fixtures.sh — shared mock-repo fixtures for
 # scripts/test-himmel-update-check.sh (hermetic) and scripts/test-himmel-update.sh
-# (the one residual non-hermetic case), split by HIMMEL-3450 so the two
+# (the one residual non-hermetic case), split so the two
 # suites don't copy-paste the channel-tag fixture machinery between them.
 #
 # Sourced, never executed directly. The caller must already have `TMP` (its
@@ -16,7 +16,7 @@
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 pass=0
@@ -40,7 +40,7 @@ assert_eq() {
     fi
 }
 
-# ─── channel-seam fixtures (HIMMEL-2705) ─────────────────────────────────────
+# ─── channel-seam fixtures ─────────────────────────────────────
 # Same shape as make_repo_behind (each caller's own — not shared here), but
 # the caller drives commits/tags itself via channel_commit/channel_tag_here —
 # channel resolution is tag-based, not a fixed N-commits-behind count. Shares
@@ -79,7 +79,7 @@ make_repo_channel() {
     # Overlaid, not committed — excluded from git status so is_dirty() (which
     # channel apply-mode's dirty-tree refusal relies on) never sees the test
     # harness's own script drop as a local edit.
-    # HIMMEL-3450: run-shell-tests.sh pins init.templateDir to an empty
+    # run-shell-tests.sh pins init.templateDir to an empty
     # directory (scripts/lib/git-test-env.sh, perf) — under that pin this
     # box's git (2.55.0) does not create .git/info/ at all, only under an
     # unpinned/default template. mkdir -p makes the append hermetic to that
@@ -89,7 +89,7 @@ make_repo_channel() {
     mkdir -p "$clone/.git/info"
     printf 'scripts/\n' >> "$clone/.git/info/exclude"
     CHECKOUT_DIR="$clone"
-    # HIMMEL-2705 codex-3: git init's local default branch name depends on
+    # Git init's local default branch name depends on
     # the machine's init.defaultBranch config, not a fixed literal — capture
     # the real name so callers assert against it instead of a hardcoded guess.
     # shellcheck disable=SC2034 # used by scripts/test-himmel-update-check.sh, not this file
@@ -101,7 +101,7 @@ channel_tag_here() {
     git -C "$CHECKOUT_DIR" push --quiet origin "$1" 2>/dev/null
 }
 
-# An ANNOTATED tag (CR round 6, codex-2) — its ref points at a tag OBJECT,
+# An ANNOTATED tag — its ref points at a tag OBJECT,
 # not the commit directly, which is what exposed the peeled-`^{}` gap a
 # lightweight channel_tag_here() tag can never exercise.
 channel_annotated_tag_here() {

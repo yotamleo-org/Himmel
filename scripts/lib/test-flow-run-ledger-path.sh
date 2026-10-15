@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/flow-run-ledger-path.sh (HIMMEL-2130).
+# Smoke test for scripts/lib/flow-run-ledger-path.sh.
 # Usage: bash scripts/lib/test-flow-run-ledger-path.sh
 # Exit 0 if all cases pass, 1 otherwise. Hermetic — HOME is redirected to a
 # scratch dir for every case, so the real ~/.himmel/flow-runs.jsonl is never

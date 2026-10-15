@@ -1,5 +1,5 @@
 // scripts/lib/kill-tree.mjs -- the ONE process-tree kill for the JS/TS side of
-// the harness (HIMMEL-1956, consolidating HIMMEL-1835).
+// the harness.
 //
 // WHY THIS FILE EXISTS: two copies of a killTree lived here (telegram/run.ts
 // for the worker timeout paths, lanes/codex-bank-probe.ts for the codex
@@ -55,7 +55,7 @@ export const SPAWN_OWN_GROUP = process.platform === "win32" ? {} : { detached: t
 //
 // Returns { ok, detail } rather than swallowing everything: a tree kill that
 // silently failed is indistinguishable from one that worked, which is the
-// third hole HIMMEL-1835 filed. Callers that verify the outcome another way
+// third hole this helper closes. Callers that verify the outcome another way
 // (awaiting p.exited) may ignore it; callers that cannot should log detail
 // when ok is false. detail can also be set WITH ok:true -- a deliberate skip
 // is worth saying, but it is not a failure and must not be warned about.
@@ -93,7 +93,7 @@ export function killTree(pid, kill, opts = {}) {
     }
   } else {
     // Signal the GROUP. This stays correct after the direct child has exited,
-    // which is what closes HIMMEL-1835's second hole -- a child that died on
+    // which is what closes the second hole -- a child that died on
     // its own while its descendants are still up is exactly when reaping
     // matters. The kernel keeps a pgid reserved while the group still has
     // members, so as long as there is anything here to reap, this pid still

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-git-clean.sh — HIMMEL-3571: the shell and JS git-clean twins
+# scripts/lib/test-git-clean.sh: the shell and JS git-clean twins
 # (scripts/lib/git-clean.sh, scripts/lanes/git-clean.mjs) must scrub every
 # repository-redirecting GIT_* variable, identically.
 #
@@ -53,9 +53,9 @@ for v in $VARS; do
         pass "sh git_clean scrubs $v"
     fi
 done
-# HIMMEL-5393 (a): GIT_NO_REPLACE_OBJECTS is KEPT on purpose (git lists it as
+# GIT_NO_REPLACE_OBJECTS is KEPT on purpose (git lists it as
 # a local var but it redirects nothing — it hardens: clear-cr-marker.sh sets it
-# itself, HIMMEL-3666). A helper that "completed" the set by scrubbing it would
+# itself). A helper that "completed" the set by scrubbing it would
 # silently drop that hardening for every caller.
 if grep -q '^GIT_NO_REPLACE_OBJECTS=1$' "$STUB_DIR/sh-clean.out"; then
     pass "sh git_clean keeps GIT_NO_REPLACE_OBJECTS"

@@ -1,5 +1,5 @@
 # test-native-auth-pin.ps1 -- committed PS test for native-auth-pin.ps1
-# (HIMMEL-1867). Mirrors test-native-auth-pin.sh: neutralisation asserted on a
+# Mirrors test-native-auth-pin.sh: neutralisation asserted on a
 # CHILD pwsh process's environment (the environment a headless claude launch
 # would inherit, never the parent's table), CLAUDE_CODE_OAUTH_TOKEN preserved,
 # and the --settings screen refusing (exit 3 in script mode) on any-case

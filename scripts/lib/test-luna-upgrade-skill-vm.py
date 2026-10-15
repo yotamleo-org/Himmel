@@ -405,7 +405,7 @@ class TestScaffoldIdempotency(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# vm.mode guard (HIMMEL-4583) — the driver reads vm.mode, never hardcodes the
+# vm.mode guard — the driver reads vm.mode, never hardcodes the
 # local VM; a temp HOME carries the config, nothing reaches a VM.
 # ---------------------------------------------------------------------------
 
@@ -438,7 +438,7 @@ class TestVmModeGuard(unittest.TestCase):
         self.assertIsNotNone(r)
         self.assertIn("SKIP: vm.mode=remote", r)
 
-    # HIMMEL-4597 (J1932 T2): a resolver error is a loud config error, never a
+    # A resolver error is a loud config error, never a
     # SKIP that reads as "no VM by choice".
     def test_config_error_is_not_a_skip(self):
         for cfg in ('{"vm":{"mode":"Local"}}', '{"vm":', '{"vm":{"mode":"remote"}}'):

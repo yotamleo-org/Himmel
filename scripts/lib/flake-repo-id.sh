@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/flake-repo-id.sh — the suite-flake ledger's repo id, ONE definition
-# (HIMMEL-5145, HIMMEL-5147). Sourced by scripts/ci/run-shell-tests.sh (the
+# Sourced by scripts/ci/run-shell-tests.sh (the
 # writer) and scripts/observability/suite-flake-summary.sh (the reader); a copy
 # in either place is how the two drifted before. Sourcing defines functions only.
 
@@ -44,24 +44,24 @@ _flake_urldecode() {
 # http 80) dropped, and a trailing .git dropped. A plain local path (no scheme,
 # no scp colon) is none of those: it stays case-exact and keeps its .git, since
 # Repo and repo, or r and r.git, are different directories. A file:// URL is that
-# local path, so file:///srv/r.git is /srv/r.git and never /srv/r (HIMMEL-5156);
-# its scheme is case-insensitive and its path is percent-decoded (HIMMEL-5157).
+# local path, so file:///srv/r.git is /srv/r.git and never /srv/r;
+# its scheme is case-insensitive and its path is percent-decoded.
 # file://host/path drops the host like git does (git reads the path and ignores
-# the host), so file://host/srv/r is /srv/r (HIMMEL-5169); a bracketed host is
-# skipped through its ] as git does, so file://[a/b]/p is /p (HIMMEL-5184).
+# the host), so file://host/srv/r is /srv/r; a bracketed host is
+# skipped through its ] as git does, so file://[a/b]/p is /p.
 # A relative local path is resolved against <base> when one is given, so
-# ../r.git from two different parents is two ids (HIMMEL-5156); an absolute one
+# ../r.git from two different parents is two ids; an absolute one
 # has its . and .. and doubled slashes collapsed, so /srv/x/../r.git is
-# /srv/r.git (HIMMEL-5157).
+# /srv/r.git.
 _flake_norm_url() {
   local _u="$1" _b="${2:-}" _s="" _h _r _p _d="" _net=0
   case "$_u" in
     [Ff][Ii][Ll][Ee]://*)
       # a sentinel x rides every substitution so a decoded trailing newline
-      # is part of the path (HIMMEL-5161)
+      # is part of the path
       _u=$(_flake_urldecode "${_u#???????}"; printf x); _u=${_u%x}
       # git's host_end: the first @[ (else a leading [) opens a bracketed host,
-      # skipped through its ]; the path is what follows (HIMMEL-5184). An @[
+      # skipped through its ]; the path is what follows. An @[
       # with no ] after it opens nothing, and once an @[ exists git never falls
       # back to a leading [. A path-less origin is rejected by git and shares
       # the root id.
@@ -106,7 +106,7 @@ _flake_norm_url() {
 # parent), not <dir>, so a linked worktree keeps its checkout's id.
 _flake_repo_id() {
   local _url _common _base
-  # a sentinel x keeps a literal trailing newline of the origin (HIMMEL-5169);
+  # a sentinel x keeps a literal trailing newline of the origin;
   # config --get ends the value with one newline of its own
   _url=$(git -C "$1" config --get remote.origin.url 2>/dev/null; printf x)
   _url=${_url%x}; _url=${_url%$'\n'}
@@ -118,9 +118,9 @@ _flake_repo_id() {
       *)
         # a separate git dir: the main checkout is this top-level, but only when
         # <dir> is that checkout; a linked worktree of such a repo cannot name it
-        # (ponytail: a relative origin resolves against the git dir there, not
-        # the main checkout, HIMMEL-5191 revisits if a fleet repo uses
-        # --separate-git-dir with linked worktrees)
+        # ponytail: HIMMEL-5191 revisits if a fleet repo uses --separate-git-dir with
+        # linked worktrees; a relative origin resolves against the git dir there, not
+        # the main checkout.
         if [ "$(git -C "$1" rev-parse --path-format=absolute --git-dir 2>/dev/null)" = "$_common" ]; then
           _base=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
         fi

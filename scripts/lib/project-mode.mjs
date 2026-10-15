@@ -1,5 +1,4 @@
-// project-mode.mjs — JS twin of scripts/lib/project-mode.sh (HIMMEL-4758,
-// HIMMEL-4748 spec section 1). Same precedence, same answers: both are pinned
+// project-mode.mjs — JS twin of scripts/lib/project-mode.sh (spec section 1). Same precedence, same answers: both are pinned
 // to fixtures/project-modes.tsv and fixtures/forge-origins.tsv by
 // project-mode.test.mjs and test-project-mode.sh. Each function takes
 // { cwd, env } (defaults: process.cwd(), process.env) and throws an Error with

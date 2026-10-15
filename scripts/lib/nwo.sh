@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# nwo.sh — repo "name-with-owner" canonicalization + comparison (HIMMEL-2034).
+# nwo.sh — repo "name-with-owner" canonicalization + comparison.
 #
 # MOVED VERBATIM out of scripts/lib/cr-merge-gate.sh, which grew these helpers
-# for the HIMMEL-936 merge gate. They are now shared: the CodeRabbit TRIGGER
+# for the merge gate. They are now shared: the CodeRabbit TRIGGER
 # path (scripts/lib/cr-trigger-ledger.sh) has to answer the same question the
 # merge gate does — "is this PR's repo OUR repo?" — and re-deriving origin-URL
 # parsing there would be a second implementation of the ssh/https/userinfo/port

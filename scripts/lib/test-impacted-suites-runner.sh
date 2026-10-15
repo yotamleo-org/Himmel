@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/cr/impacted-suites.sh --runner / --runner-check
-# (HIMMEL-3436): the CI-equivalent runner command for a JS/TS suite path, read
+# the CI-equivalent runner command for a JS/TS suite path, read
 # off .github/workflows/ci.yml rather than guessed. Lives here rather than
 # alongside scripts/cr/test-impacted-suites.sh because scripts/cr is off
 # limits to this change beyond impacted-suites.sh itself (a concurrent leg is

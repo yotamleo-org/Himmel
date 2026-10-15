@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # macos-fda-warning.sh — Full Disk Access arm-time warning for macOS cron
-# cadences (HIMMEL-3075, himmel#771).
+# cadences.
 #
 # WHY: on modern macOS, /usr/sbin/cron itself needs Full Disk Access (TCC)
 # before ANY cron-fired job can read inside a protected folder (~/Documents,
@@ -14,7 +14,7 @@
 # shell — no API answers "does cron have FDA" without a live disk read, and
 # the adopter already established that. So this is a warning at arm time, not
 # a check: `himmel-doctor` is the reader-side half, probing a leg's first-fire
-# log for "Operation not permitted" (HIMMEL-3075).
+# log for "Operation not permitted".
 #
 # Callers gate this ENTIRELY on their own PLATFORM var (set by each script's
 # own platform-detect block) so the non-Darwin path never even calls in here —

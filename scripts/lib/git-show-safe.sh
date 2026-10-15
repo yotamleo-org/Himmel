@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lib/git-show-safe.sh — MSYS-safe `git show <ref>:<path>` (HIMMEL-2320).
+# scripts/lib/git-show-safe.sh — MSYS-safe `git show <ref>:<path>`.
 #
 # On Git Bash, `ref:path` gets MSYS path-converted into `ref;path` (or a
 # mangled Windows path) unless MSYS_NO_PATHCONV=1 is set — git then fails
 # with an unrelated "fatal: Path ... does not exist" on stderr, and a
 # downstream `grep -c` on the resulting empty stdout silently counts 0,
-# indistinguishable from a genuine miss (the HIMMEL-2320 judge/console
+# indistinguishable from a genuine miss (the judge/console
 # incident). Sourced, not run.
 #
 # git_show_safe <ref> <path> — prints the blob to stdout on success. On

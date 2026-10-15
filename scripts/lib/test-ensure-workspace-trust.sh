@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/ensure-workspace-trust.sh (HIMMEL-386).
+# Tests for scripts/lib/ensure-workspace-trust.sh.
 # The helper is invoked as a subprocess (it shells out to node), so each
 # case runs `bash "$HELPER" <dir>` against a throwaway $WORKSPACE_TRUST_CONFIG.
 set -uo pipefail
@@ -94,7 +94,7 @@ assert_eq "T6 missing-dir rc" "2" "$rc"
 WORKSPACE_TRUST_CONFIG="$TMP/x.json" bash "$HELPER" 2>/dev/null; rc=$?
 assert_eq "T7 no-arg rc" "2" "$rc"
 
-# --- HIMMEL-418: atomic-write hardening + launch-race jitter ---
+# --- atomic-write hardening + launch-race jitter ---
 
 # T8: a successful write leaves NO temp file behind (renamed away, not orphaned).
 CFG="$TMP/notmp.json"

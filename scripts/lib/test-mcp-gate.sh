@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test for the opt-in MCP launch gate (marketplace/plugins/*/mcp-gate.sh,
-# HIMMEL-591). Mirrors scripts/lib/test-run-bun.sh. Runs every assertion against
+# Smoke test for the opt-in MCP launch gate (marketplace/plugins/*/mcp-gate.sh).
+# Mirrors scripts/lib/test-run-bun.sh. Runs every assertion against
 # BOTH shipped copies so the two stay byte-identical and neither regresses.
 # Usage: bash scripts/lib/test-mcp-gate.sh
 set -uo pipefail

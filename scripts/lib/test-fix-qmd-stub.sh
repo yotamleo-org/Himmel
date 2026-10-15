@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-fix-qmd-stub.sh — smoke test for fix-qmd-stub.sh (HIMMEL-163).
+# scripts/lib/test-fix-qmd-stub.sh — smoke test for fix-qmd-stub.sh.
 #
 # Validates:
 #   1. --dry-run reports the broken stub but touches nothing.
@@ -50,7 +50,7 @@ assert() {
 # override PATH for the command, and `PATH=... timeout` looks `timeout` up in that
 # NEW PATH. GNU `timeout` is absent on a stock macOS (coreutils installs
 # `gtimeout`); without either, run unbounded -- the bound only turns a guard
-# regression into a failure instead of a hang (HIMMEL-3177).
+# regression into a failure instead of a hang.
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$SCRIPT_DIR/timeout-bin.sh"
 
@@ -411,14 +411,14 @@ echo "[test-fix-qmd-stub] consumer integration — setup scripts invoke the fixe
 repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
 assert "setup.sh calls fix-qmd-stub.sh" grep -q 'lib/fix-qmd-stub.sh' "$repo_root/scripts/setup.sh"
 assert "setup.ps1 calls fix-qmd-stub.sh" grep -q 'lib/fix-qmd-stub.sh' "$repo_root/scripts/setup.ps1"
-# HIMMEL-887: ubuntu.sh delegates himmel/luna wiring to `himmelctl bootstrap`
+# ubuntu.sh delegates himmel/luna wiring to `himmelctl bootstrap`
 # (the NOTICE at ubuntu.sh) -- it no longer sources lib/fix-qmd-stub.sh directly.
 # Assert the delegation instead of the removed direct call.
 # shellcheck disable=SC2016
 assert "ubuntu.sh does NOT reference lib/fix-qmd-stub.sh (wiring delegated, HIMMEL-887)" \
   bash -c '! grep -qF -- "lib/fix-qmd-stub.sh" "$1"' _ "$repo_root/scripts/machine-setup/ubuntu.sh"
 # The NOTICE alone is not the contract: assert the executable delegation
-# statement too (codex-adv finding, HIMMEL-934 CR round).
+# statement too.
 # shellcheck disable=SC2016
 assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real, HIMMEL-887)" \
   grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$repo_root/scripts/machine-setup/ubuntu.sh"

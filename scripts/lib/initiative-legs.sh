@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/initiative-legs.sh — pure leg resolver (HIMMEL-443).
+# scripts/lib/initiative-legs.sh — pure leg resolver.
 #
 # Single source of truth for the harness-autonomy "leg grammar". Maps the
 # relevant env values (passed as NAMED ARGUMENTS, never ambient reads, so the

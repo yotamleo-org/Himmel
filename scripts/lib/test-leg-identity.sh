@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-leg-identity.sh -- table test for leg-identity.sh (HIMMEL-3277).
+# scripts/lib/test-leg-identity.sh -- table test for leg-identity.sh.
 #
 # Every row uses a name the harness really produces: docs filed per
 # docs/handover/leg-brief-template.md, sessions as console.sh / headed-arm-leg.sh
@@ -50,7 +50,7 @@ expect 'HIMMEL-9-odd-name-2026-09-20-RESUME.md' \
     'HIMMEL-9-odd-name-2026-09-20-RESUME' 'HIMMEL-9-odd-name-2026-09-20,HIMMEL-9-odd-name'
 expect 'weird stem!' 'weird_stem_' 'weird stem!'
 
-# HIMMEL-3278: a successor (`b`, `c`, ...) is a DIFFERENT session from its base leg,
+# A successor (`b`, `c`, ...) is a DIFFERENT session from its base leg,
 # so the letters stay in the label -- N38b is not N38. Every row below is a name
 # the live handover bucket carries.
 expect 'HIMMEL-2733-lean-profile-v2-legN38b-2026-09-07-RESUME.md' \
@@ -121,7 +121,7 @@ for stem in 'HIMMEL-3269-N191-scorecard-discovery-2026-09-20-RESUME.md' \
     fi
 done
 
-# HIMMEL-4749: leg_description_field reads the doc's `description:` front-matter
+# leg_description_field reads the doc's `description:` front-matter
 # line; leg_description falls back to the H1 scope, then the stem, never empty;
 # leg_doc_has_run tells a launched doc (a Results bullet) from a fresh brief.
 dtmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-identity.XXXXXX")" || exit 1

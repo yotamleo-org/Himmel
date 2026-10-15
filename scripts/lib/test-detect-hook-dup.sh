@@ -14,7 +14,7 @@ fails=0
 skips=0
 check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 # A skip is neither pass nor fail: it prints SKIP (not ok) and never touches the
-# fails counter, so a missing-fixture case is reported distinctly (HIMMEL-1590).
+# fails counter, so a missing-fixture case is reported distinctly.
 skip(){ echo "SKIP - $1"; skips=$((skips+1)); }
 td="$(mktemp -d)"
 
@@ -31,7 +31,7 @@ grep -q "unwire-pretooluse-hooks.sh --scope project --target $td/proj" <<<"$out"
 
 # ── SC5b: in-repo (project == himmel's own settings) → SILENT ───────────────
 # This case exercises the REAL project settings.json. That file is in
-# PRIVATE_PATHS and is redacted on the public mirror (HIMMEL-1590), so on an
+# PRIVATE_PATHS and is redacted on the public mirror, so on an
 # adopter checkout of the public copy it is absent — and detect-hook-dup.sh
 # then exits rc=0 and prints nothing (its in-repo suppression is a path-string
 # compare, so it fires whether or not the file exists). The SILENT assertion
@@ -57,7 +57,7 @@ printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"ba
 out=$(bash "$det" "$user" "$td/proj3/.claude/settings.json" "/opt/himmel" 2>&1)
 grep -q "inject-initiative" <<<"$out" && check "SC5 detects SessionStart dup" yes yes || check "SC5 detects SessionStart dup" no yes
 
-# ── SC5e: HIMMEL-3574 new wired-command shape (missing-script guard) is
+# ── SC5e: new wired-command shape (missing-script guard) is
 # still recognised as the same himmel hook, not just the old bare `bash "..."` ─
 mkdir -p "$td/proj4/.claude"
 printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"if [ -f \"/proj4/scripts/hooks/auto-approve-safe-bash.sh\" ]; then bash \"/proj4/scripts/hooks/auto-approve-safe-bash.sh\"; else echo \"himmel: hook script missing (/proj4/scripts/hooks/auto-approve-safe-bash.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi"}]}]}}' > "$td/proj4/.claude/settings.json"

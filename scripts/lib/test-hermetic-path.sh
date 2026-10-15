@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/lib/test-hermetic-path.sh — unit tests for the shared hermetic-PATH
-# helpers (HIMMEL-2535).
+# helpers.
 #
 # The library had NO direct test: every assertion about it was indirect, through
 # whichever suite happened to source it. That is how the same defect class shipped
-# three times in one week (HIMMEL-2470 node, HIMMEL-2520 bun, HIMMEL-2530
-# uv/graphify) plus its inverse (HIMMEL-2524, an allowlist built from a
+# three times in one week (node, bun,
+# uv/graphify) plus its inverse (an allowlist built from a
 # directory). These cases pin the CONTRACT itself, so the next regression is
 # caught here rather than in a downstream fixture's confusing red.
 #
@@ -71,7 +71,7 @@ echo "[test-hermetic-path] the built dir actually RESOLVES its tools"
 # named `command` and fail for a reason that has nothing to do with the library.
 # Starting the shell as `bash` also proves the dir can bootstrap an interpreter,
 # which is the property the whole floor exists for.
-# HIMMEL-3182: the library falls back to COPYING bash where `ln -s` is refused
+# The library falls back to COPYING bash where `ln -s` is refused
 # (MSYS without the symlink privilege). A copied bash.exe cannot load msys-2.0.dll
 # from a dir that does not hold it, so no shell can start under $d1 alone and
 # every case below fails for that reason, not for the one it names. Probe the
@@ -101,7 +101,7 @@ echo "[test-hermetic-path] a missing tool is REPORTED, not masked (fail-open gua
 # This suite's fail() returns rather than exits, which is exactly the caller
 # shape that made the bug reachable: link_hermetic_tool returned non-zero, the
 # loop carried on, and the LAST iteration's success became the helper's rc — so
-# an incomplete floor reported success. Panel round 2 [codex-1].
+# an incomplete floor reported success.
 d4="$tmpdir/d4"
 check_not "a missing NON-FINAL tool makes build_hermetic_bin fail" \
   build_hermetic_bin "$d4" definitely-not-a-real-tool-2535 sed
@@ -142,14 +142,14 @@ check "empty PATH segments do not crash it" \
 # An empty segment IS the cwd to a shell. Skipping it made this function answer
 # "excluded" about a PATH the shell resolves the tool on — a false negative in
 # the one direction that matters, since callers use it to PROVE unreachability.
-# Panel round 1 [codex-1]; reproduced before fixing, and this case is what pins it.
+# reproduced before fixing, and this case is what pins it.
 # cd rather than a subshell: check_not must run in THIS shell to see the function.
 _prev_cwd="$PWD"
 cd "$withbun" || bad "could not cd into the fixture dir"
 check_not "an empty segment is read as the cwd, not skipped" \
   hermetic_path_excludes ":/nonexistent:" bun
 # Word splitting cannot see every empty segment, and each one missed is a false
-# "excluded" about a PATH the shell WOULD resolve on. Panel round 3 [codex-1]
+# "excluded" about a PATH the shell WOULD resolve on.
 # named the wholly-empty case; measuring it showed a TRAILING empty segment is
 # silently dropped too. All four degenerate shapes are pinned here.
 check_not "an entirely empty PATH is the cwd (0 fields, not 'nothing')" \

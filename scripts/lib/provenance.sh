@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows, jq +
 # sha256sum|shasum + dd only. Twin: scripts/himmelctl/lib/provenance.js (node) writes
-# byte-identical rows (the PowerShell dialect is tracked in HIMMEL-3346).
+# byte-identical rows (the PowerShell dialect is tracked separately).
 #
-# provenance.sh -- the install-provenance ledger writer (HIMMEL-3332 S1).
+# provenance.sh -- the install-provenance ledger writer.
 # SOURCE it (it sets no shell options, defines only prov_* / _prov_* names):
 #
 #   . "$(dirname "$0")/lib/provenance.sh"
@@ -14,7 +14,7 @@
 #   prov_end ok
 #
 # Format, kinds, write points and rationale: docs/internals/install-provenance.md
-# (format reference) and the HIMMEL-3332 design spec (§2). The contract, in short:
+# (format reference) and the design spec (§2). The contract, in short:
 #   * one JSON object per line, append-only, at
 #     ${HIMMEL_PROVENANCE_DIR:-$HOME/.himmel}/provenance.jsonl
 #   * call prov_record AFTER the writer's own write succeeded and BEFORE it
@@ -69,8 +69,8 @@ prov_ledger_path() {
     printf '%s/provenance.jsonl' "$d"
 }
 
-# BUNDLE_MARKER -- the exact string the standalone-bundle writer (HIMMEL-3312
-# S13) stamps into bundle.json's "marker" field, and the one uninstall.sh
+# BUNDLE_MARKER -- the exact string the standalone-bundle writer
+# stamps into bundle.json's "marker" field, and the one uninstall.sh
 # checks before it will treat a directory as its own bundle: never touched,
 # never trusted, without this literal match.
 # shellcheck disable=SC2034  # read by uninstall.sh, which sources this file
@@ -103,7 +103,7 @@ prov_last_himmel_root() {
 # independent (a marketplace: one shared known_marketplaces.json / marketplaces
 # dir regardless of --scope), a same-round second-scope pre-existence check
 # can't otherwise tell "we just registered this at the other scope" from "the
-# operator already had it" (HIMMEL-3556).
+# operator already had it".
 #
 # The uninstall-begin boundary (not uninstall-end) is deliberate: a halted
 # uninstall still retires every register row before it, so at worst a
@@ -397,7 +397,7 @@ _prov_backup() {
     printf '%s' "$dest"
 }
 
-# _prov_snapshot <iid> <unit-path> <src-type file|text> <src-val> -- HIMMEL-3787 S2c:
+# _prov_snapshot <iid> <unit-path> <src-type file|text> <src-val>:
 # copy himmel's OWN post-state (ours) to provenance-backups/<iid>/<seq>-<basename>.ours
 # (0600, the same <seq>- naming as _prov_backup). Call it WITHOUT a command
 # substitution: it reports through globals, which a subshell would drop. rc 0 sets
@@ -449,7 +449,7 @@ _PROV_RESERVED=" t iid op kind path unit scope class pre post snap snap_skip wri
 #   --backup (copy the pre-state into the backups dir)   --dry-run
 # <path> "-" means no path (registrations). Row key order:
 #   t iid op kind path unit scope class <--field keys in call order> pre post [snap [snap_skip]] writer manifest_row
-# snap/snap_skip (HIMMEL-3787 S2c) only on class-code create|replace|insert of file|shim|block
+# snap/snap_skip only on class-code create|replace|insert of file|shim|block
 # with a --post-file/--post-text: the path of the .ours snapshot, or null + a skip reason.
 prov_record() {
     [ $# -ge 3 ] || { _prov_err "prov_record: usage: prov_record <op> <kind> <path|-> [flags]"; return 2; }
@@ -519,7 +519,7 @@ prov_record() {
         pre=$(jq -nc --argjson b "$body" --argjson bk "$bk" '{state:"present"} + $b + {backup:$bk}') || return 1
     fi
     if [ -n "$post_t" ]; then post=$(_prov_body post "$kind" "$post_t" "$post_v") || return 1; fi
-    # HIMMEL-3787 S2c: ours bytes for whole-file/block code units (design §2). A row
+    # Ours bytes for whole-file/block code units (design §2). A row
     # is v2 iff it carries the snap key; a snapshot problem is snap:null + a reason.
     case " $kind " in
         " file "|" shim "|" block ") case "$class:$op:$post_t" in

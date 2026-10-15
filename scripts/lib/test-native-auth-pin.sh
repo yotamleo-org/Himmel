@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC1090,SC2030,SC2031,SC2016,SC2317,SC2329
-# test-native-auth-pin.sh -- hermetic tests for native-auth-pin.sh (HIMMEL-1867).
+# test-native-auth-pin.sh -- hermetic tests for native-auth-pin.sh.
 #
 # Every neutralisation case is asserted on a CHILD process's environment, never
 # on the parent shell's table: the observers are separate `bash` processes that
@@ -103,7 +103,7 @@ check "T7 bystander variable preserved in child after pin" "$?" "0"
 )
 check "T8 full canonical set cleared, native credential + bystander kept" "$?" "0"
 
-# --- fail closed under a shadowed tool / broken strip (HIMMEL-4459) -----------
+# --- fail closed under a shadowed tool / broken strip -----------
 # shadow_run <setup> -- run <setup> (shadows) in a subshell BEFORE sourcing the
 # pin, pin an evil-routed environment, then report "<pin rc> <child verdict>"
 # where the child verdict is whether the routing variables are absent in a CHILD.
@@ -141,7 +141,7 @@ r=$( (
 ) 2>/dev/null)
 check "T14 no-op unset: surviving mixed-case name -> pin refuses" "$(nz "$r")" "refused"
 
-# Seam (HIMMEL-4411) keeping BOTH mock names must return 0, not trip the
+# Seam keeping BOTH mock names must return 0, not trip the
 # verification on the separator between them. Needs a loopback-only netns.
 r=$(unshare -rn bash -c '
   export NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK=1 ANTHROPIC_BASE_URL=http://127.0.0.1:9 ANTHROPIC_API_KEY=k ANTHROPIC_MODEL=m
@@ -156,7 +156,7 @@ r=$( (
 ) 2>/dev/null)
 check "T13 readonly target survives -> pin refuses (rc non-zero)" "$(nz "$r")" "refused"
 
-# HIMMEL-4461 item 1: `unset` no-op AND `builtin` replaced by a function that
+# `unset` no-op AND `builtin` replaced by a function that
 # emits only PATH blinds both compgen passes; a mixed-case name the exact-case
 # expansions do not cover must still make the pin refuse. `return` shadowed too:
 # the verdict may not ride on a shadowable builtin.
@@ -211,7 +211,7 @@ r=$( (
 check "T18 control: shadowed local alone still strips (rc 0, var gone)" "$r" "0
 gone"
 
-# Substring removal (HIMMEL-4461 follow-up): with the seam on, a name built from
+# Substring removal: with the seam on, a name built from
 # the two kept names must not vanish from the verification.
 r=$(unshare -rn bash -c '
   export NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK=1 ANTHROPIC_BASE_URL=http://127.0.0.1:9 ANTHROPIC_API_KEY=k ANTHROPIC_BASE_URLANTHROPIC_API_KEY=x
@@ -219,7 +219,7 @@ r=$(unshare -rn bash -c '
   . "$1"; native_auth_pin_env; echo $?' _ "$lib" 2>/dev/null) || r=skip
 if [ "$r" = skip ]; then echo "  SKIP  T17 (no unshare -rn)"; else check "T17 seam: concatenated kept names do not vanish -> pin refuses" "$(nz "$r")" "refused"; fi
 
-# HIMMEL-4461 item 2: the seam keeps the mock only after a read of
+# The seam keeps the mock only after a read of
 # /proc/net/dev that OBSERVED `lo` and nothing else. A fake /proc is bind-mounted
 # in a private mount+user namespace; prints "kept" or "stripped".
 netdev_run() { # <net/dev content file>
@@ -242,7 +242,7 @@ if [ "$r" = skip ]; then echo "  SKIP  N1-N4 (no unshare -rmn bind of /proc)"; e
   check "N4 lo plus a non-lo interface -> mock stripped" "$(netdev_run "$td/nd-eth")" "stripped"
 fi
 
-# --- caller-level: the keyword-only LAUNCH GATE (HIMMEL-4459) ------------------
+# --- caller-level: the keyword-only LAUNCH GATE ------------------
 # With `unset` AND `return` shadowed the pin itself falls through rc 0 with the
 # proxy variables set; the gate each caller carries (header of the pin) must still
 # refuse. gate_caller.sh is the short gate verbatim; `launched` = the gate passed.

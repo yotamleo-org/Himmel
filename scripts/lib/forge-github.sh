@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# forge-github.sh — GitHub backend for the forge seam (HIMMEL-326).
+# forge-github.sh — GitHub backend for the forge seam.
 #
 # Today's `gh` logic, MOVED not rewritten (the lift-and-shift regression guard,
 # spec §7). Every verb shells out to `${GH_CMD:-gh}` so the existing GH_CMD test
@@ -7,7 +7,7 @@
 
 _gh() { "${GH_CMD:-gh}" "$@"; }
 
-# ── CodeRabbit trigger at the seam (HIMMEL-1924) ─────────────────────────────
+# ── CodeRabbit trigger at the seam ─────────────────────────────
 _FORGE_GH_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/cr-trigger-ledger.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
@@ -26,9 +26,9 @@ fi
 # _gh_trigger_cr <pr-ref> — post `@coderabbitai review` at most once per head
 # SHA for a PR this process just opened or advanced.
 #
-# WHY HERE (HIMMEL-1924): CodeRabbit's `auto_review` is OFF (.coderabbit.yaml,
-# HIMMEL-1252), so the App reviews only on an explicit trigger comment.
-# HIMMEL-1906 posts that comment from two PostToolUse hooks matched against the
+# WHY HERE: CodeRabbit's `auto_review` is OFF (.coderabbit.yaml),
+# so the App reviews only on an explicit trigger comment.
+# Two PostToolUse hooks post that comment, matched against the
 # BASH COMMAND STRING the agent ran (`gh pr create`, `git push`). A PR opened or
 # advanced from INSIDE a script (graph-publish.sh, pr-open.sh, anything on this
 # seam) matches neither pattern, so no trigger was posted and the PR sat on
@@ -77,7 +77,7 @@ _gh_trigger_cr() {
     # scan_existing=0: the ledger's per-head key already owns the dedup, and the
     # per-PR comment scan is repo-wide — it cannot tell which head an old comment
     # targeted, so it would suppress a legitimate new-head trigger (the exact
-    # HIMMEL-1906 bug; see scripts/lib/cr-trigger-ledger.sh).
+    # bug the ledger prevents; see scripts/lib/cr-trigger-ledger.sh).
     cr_trigger_post_review "$sha" "$num" "$repo" 0
     return 0
 }
@@ -108,9 +108,9 @@ gh_forge_pr_find_open() {
 gh_forge_pr_create() {
     local title="$1" body="$2" base="$3" head="$4"
     _gh pr create --title "$title" --body "$body" --base "$base" --head "$head" || return $?
-    # HIMMEL-1924: the PR exists now — trigger CodeRabbit here, so a PR opened
+    # The PR exists now — trigger CodeRabbit here, so a PR opened
     # from inside a script gets a review without the agent having typed
-    # `gh pr create` (which is all the HIMMEL-1906 hooks can see).
+    # `gh pr create` (which is all the hooks can see).
     _gh_trigger_cr "$head"
 }
 
@@ -120,7 +120,7 @@ gh_forge_pr_create() {
 gh_forge_pr_set_body() {
     local number="$1" body="$3"
     _gh pr edit "$number" --body "$body" || return $?
-    # HIMMEL-1924: this is the seam's "advance an EXISTING PR" arm — every
+    # This is the seam's "advance an EXISTING PR" arm — every
     # script that pushes then refreshes the body (graph-publish.sh,
     # pr-open.sh) lands here with a head the ledger has not seen. A body
     # refresh at an ALREADY-triggered head is a ledger no-op, so keying the
@@ -131,9 +131,9 @@ gh_forge_pr_set_body() {
 # echo MERGEABLE | CONFLICTING | UNKNOWN, or empty when no PR exists. args: REF
 # (a branch name or PR number — whatever `gh pr view` accepts).
 #
-# HIMMEL-1232: computes the merge conflict LOCALLY with `git merge-tree
+# Computes the merge conflict LOCALLY with `git merge-tree
 # --write-tree` (Git 2.38+) instead of reading GitHub's async `mergeable` field,
-# which is flaky/slow and returns UNKNOWN right after a push (HIMMEL-136/179).
+# which is flaky/slow and returns UNKNOWN right after a push.
 # Only the PR's base+head refs are read from GitHub, via a SYNCHRONOUS `gh pr
 # view` (baseRefName/headRefOid are stored fields, not async-computed); the merge
 # itself is then computed offline:
@@ -193,7 +193,7 @@ gh_forge_pr_has_merged() {
 }
 
 # file a CR deferred-issue; echo the issue URL. args: REPO TITLE BODY LABEL.
-# This reproduces today's exact `gh issue create` shape (HIMMEL-30) so the
+# This reproduces today's exact `gh issue create` shape so the
 # GitHub deferred-filer path is unchanged behind the seam.
 gh_forge_issue_create() {
     local repo="$1" title="$2" body="$3" label="$4"
@@ -206,11 +206,11 @@ _gh_is_cosmetic_branch_delete() {
 }
 
 # squash-merge + delete source branch; plain first, --admin only when
-# GH_ADMIN_MERGE_OK=1 (HIMMEL-224). args: NUMBER VETTED_HEAD_SHA.
+# GH_ADMIN_MERGE_OK=1. args: NUMBER VETTED_HEAD_SHA.
 # rc 0 = merged (incl. cosmetic branch-delete fail); rc 4 = real failure
 # (incl. a missing vetted head — refused below, never merged unbound).
 #
-# VETTED_HEAD_SHA closes the HIMMEL-1058 TOCTOU window: the gates certify
+# VETTED_HEAD_SHA closes the TOCTOU window: the gates certify
 # headRefOid at check time, but a push landing between that capture and this
 # merge would slip an UNVETTED commit into main. `--match-head-commit` makes
 # GitHub reject the merge unless the head still is the SHA we vetted, so the
@@ -243,7 +243,7 @@ gh_forge_pr_merge() {
     echo "forge(github): plain merge failed; GH_ADMIN_MERGE_OK=1 — retrying with --admin" >&2
     # --admin bypasses branch protection, NOT the head binding: the retry stays
     # pinned to the vetted SHA (an admin merge of an unvetted head is exactly the
-    # HIMMEL-1058 risk).
+    # TOCTOU risk).
     if out=$(_gh pr merge "$number" --squash --admin --delete-branch "${match[@]+"${match[@]}"}" 2>&1); then
         echo "forge(github): merged PR #$number (--admin fallback${head:+, bound to vetted head $head})"
         return 0
@@ -257,7 +257,7 @@ gh_forge_pr_merge() {
     return 4
 }
 
-# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# ── change-id verbs ───────────────────────────
 # On github a change id IS the PR number, so these are thin projections of the
 # reads above; no existing verb changes.
 

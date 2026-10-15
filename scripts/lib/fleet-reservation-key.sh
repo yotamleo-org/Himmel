@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/fleet-reservation-key.sh — HIMMEL-3014 + HIMMEL-3017. Sourced by
+# scripts/lib/fleet-reservation-key.sh. Sourced by
 # scripts/lib/bank-preflight.sh (which RESERVES a fleet slot) and
 # scripts/handover/arm-resume.sh (which RELEASES it on exit): the ONE place a
 # leg name becomes the on-disk key of its reservation directory, so the

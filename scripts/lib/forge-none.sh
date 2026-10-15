@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# forge-none.sh — the `none` forge backend (HIMMEL-4762, HIMMEL-4748 spec
+# forge-none.sh — the `none` forge backend (spec
 # section 3). A repo with no forge has no PRs, no checks and no merges to drive,
 # so every verb refuses with rc 4, the "unsupported here" exit every backend
 # uses. Each verb is spelled out so a reader (and the contract suite) sees the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/fleet-slots-shield.sh — HIMMEL-3103. Sourced by the arm-resume
+# scripts/lib/fleet-slots-shield.sh. Sourced by the arm-resume
 # test suites (scripts/handover/test-arm-resume*.sh, test-worker-lifecycle.sh).
 #
 # Every non-dry-run arm-resume.sh calls bank-preflight.sh, which reserves a

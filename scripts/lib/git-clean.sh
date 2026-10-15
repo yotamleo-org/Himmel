@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # scripts/lib/git-clean.sh — shared env-scrub helper for trust-path git calls
-# (HIMMEL-3570).
 #
 # WHY: a git subprocess on a trust path inherits the CALLER's repository-
 # redirecting GIT_* variables. An attacker-set value for any of them steers
 # which repo/worktree/index/object store the call actually answers about
-# (HIMMEL-3571 widened the set from four to the full list below) — PR 1212 (anchor-handoff.sh, `ls-files --error-unmatch` under a
+# (the full list below) — PR 1212 (anchor-handoff.sh, `ls-files --error-unmatch` under a
 # poisoned GIT_DIR) and PR 1217 (plugin-profiles.mjs `primaryCheckout`, the
 # same class via `git rev-parse --git-common-dir`) are both this bug.
 #
@@ -16,7 +15,7 @@
 # GIT_GRAFT_FILE, GIT_REPLACE_REF_BASE, GIT_SHALLOW_FILE, GIT_CONFIG,
 # GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT. Deliberately NOT scrubbed:
 # GIT_NO_REPLACE_OBJECTS, which is in that list but redirects nothing — it is
-# a hardening switch callers set on purpose (clear-cr-marker.sh, HIMMEL-3666),
+# a hardening switch callers set on purpose (clear-cr-marker.sh),
 # and clearing it would re-enable replace refs. scripts/lanes/git-clean.mjs
 # carries the identical set.
 #
@@ -30,7 +29,6 @@
 # GIT_INDEX_FILE file-wide — either scrub only around the specific
 # non-index trust-path call (`git_clean -C ... rev-parse ...`, never a bare
 # `git_env_scrub`), or scrub the other three and leave GIT_INDEX_FILE alone
-# (console adversarial review, HIMMEL-3570, 2026-09-24).
 #
 # Source this file and use either form on any trust-path script
 # (scripts/handover/**, scripts/lanes/**, scripts/hooks/**, scripts/cr/**,

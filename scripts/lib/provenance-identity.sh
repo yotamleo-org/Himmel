@@ -2,7 +2,7 @@
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows, jq only.
 #
 # provenance-identity.sh -- the live-identity reader for register-kind
-# provenance units (HIMMEL-3525 S16, design HIMMEL-3525-register-identity.md
+# provenance units (register-identity design
 # §2-§3). One function answers "what is registered under this name right now":
 #
 #   prov_identity_live <kind> <unit-json>

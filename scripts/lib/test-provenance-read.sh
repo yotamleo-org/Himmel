@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): bash + jq only.
-# test-provenance-read.sh -- tests for scripts/lib/provenance-read.sh (HIMMEL-3332 S6).
+# test-provenance-read.sh -- tests for scripts/lib/provenance-read.sh.
 # Everything runs under a scratch HOME / HIMMEL_PROVENANCE_DIR; the real
 # ~/.himmel is never read or written, and uninstall.sh is never run.
 set -u
@@ -166,9 +166,8 @@ u=$(u_for --path "$w/abs.txt")
 check "already-absent verdict" "$(prov_read_verdict "$u")" "keep already-absent"
 prov_read_cleanup
 
-# ── HIMMEL-3787 S2a: L == B -> keep already-base, and it is a RESOLVED unit
+# ── L == B -> keep already-base, and it is a RESOLVED unit
 #    (backup releasable), unlike keep user-modified which HOLDS its backup
-#    (J1390A Finding 4) ───────────────────────────────────────────────────
 
 reset
 prov_begin --iid AB1 --writer t
@@ -201,7 +200,7 @@ check "keep user-modified: unit NOT resolved (backup held)" "$(prov_read_unit_re
 prov_read_cleanup
 rm -f "$snapUM"
 
-# ── HIMMEL-3787 S2a: container-children -- an /env container with a
+# ── container-children -- an /env container with a
 #    user-added key and every governed child removed resolves surgical
 #    container-children; a kept child makes the container keep user-modified
 #    too (reports the child, not the container) ────────────────────────────
@@ -215,7 +214,7 @@ prov_record create json-key "$CE1" --unit /env/HANDOVER_DIR --pre-absent --post-
 prov_end ok
 # HANDOVER_DIR is genuinely gone from the live file (actually reverted, not
 # merely a forward-looking "remove" verdict on a still-live value --
-# HIMMEL-3787 codex-1: _provread_container_child_clean must see the child's
+# _provread_container_child_clean must see the child's
 # CURRENT state already reflect the revert, never accept the verdict string
 # alone as proof the action ran).
 printf '%s' '{"env":{"USER_ADDED":"x"}}' > "$CE1"
@@ -225,7 +224,7 @@ check "container-children: all governed children clean -> surgical container-chi
     "$(prov_read_verdict "$ucontainer1")" "surgical container-children"
 prov_read_cleanup
 
-# codex-1 (HIMMEL-3787): same fixture as CE1, but HANDOVER_DIR is still LIVE
+# codex-1: same fixture as CE1, but HANDOVER_DIR is still LIVE
 # at its post-install value -- its own verdict is "remove ours", a
 # forward-looking recommendation the purge scan has not yet executed (e.g.
 # uninstall.sh --skip-settings). A clean child must reflect an ACTUAL revert,
@@ -280,7 +279,7 @@ u=$(u_for --path "$w/nopre.txt")
 check "noop-only, no preexisted flag: verdict" "$(prov_read_verdict "$u")" "heuristic heuristic"
 prov_read_cleanup
 
-# ── HIMMEL-3363: create then later noop(preexisted=true) -- still ours ─────
+# ── create then later noop(preexisted=true) -- still ours ─────
 
 reset
 prov_begin --iid H1 --writer t
@@ -294,7 +293,7 @@ check "HIMMEL-3363: still governed by the create" "$(field "$u" .governed)" "tru
 check "HIMMEL-3363: verdict is remove ours, not kept" "$(prov_read_verdict "$u")" "remove ours"
 prov_read_cleanup
 
-# ── HIMMEL-3363: re-adopt -- the second install's noop(preexisted=true) json-key
+# ── re-adopt -- the second install's noop(preexisted=true) json-key
 #    row (adopt.sh wire_handover_dir_luna) must not override the first install's create ──
 
 reset
@@ -345,7 +344,7 @@ prov_read_apply "$u" remove
 check "json-key ~1 escaping: key removed" "$(jq -c . "$S1")" '{"env":{}}'
 prov_read_cleanup
 
-# ── HIMMEL-3541: json-key remove + parent_created drops the now-empty parent
+# ── json-key remove + parent_created drops the now-empty parent
 # (the workspace-trust key: install created projects[<dir>] for it) ─────────
 reset
 C1="$w/claude1.json"
@@ -433,7 +432,7 @@ prov_read_cleanup
 # level under a stanza's .hooks[], not at the top level of the unit's own
 # array -- e.g. wire-pretooluse-hooks.sh's --sessionstart writer records
 # elem_sha of the hook OBJECT while --unit /hooks/SessionStart points at the
-# stanza ARRAY. HIMMEL-3332 S6: prov_read_current/apply used to scan ONLY the
+# stanza ARRAY. prov_read_current/apply used to scan ONLY the
 # top-level array, so a nested element always read ABSENT, its unit always
 # verdicted `keep already-absent`, and uninstall.sh's per-unit loop then
 # wrongly PROTECTED it (and, coarse-masked, skipped the whole hooks helper
@@ -454,7 +453,7 @@ u=$(u_for --path "$S4")
 check "json-elem nested: current finds the nested hook object" "$(prov_read_current "$u")" "$sssha"
 check "json-elem nested: verdict" "$(prov_read_verdict "$u")" "remove ours"
 prov_read_apply "$u" remove
-# HIMMEL-3541: container_created=true -> the now-empty SessionStart array is
+# container_created=true -> the now-empty SessionStart array is
 # dropped too, exactly like the flat branch (the VM round trip left
 # `"SessionStart": []` behind in user settings).
 check "json-elem nested: removed + empty wrapper stanza pruned + created container dropped" "$(jq -c . "$S4")" '{"hooks":{}}'
@@ -499,7 +498,7 @@ check "prov_read_owned: marketplace row" "$(grep -c "$(printf 'marketplace\thimm
 check "prov_read_owned: preexisted plugin excluded" "$(grep -c 'someone-elses@shop' "$ownedfile")" "0"
 prov_read_cleanup
 
-# ── HIMMEL-3525 S17: plugin/marketplace live-identity verdict + prov_read_owned ──
+# ── plugin/marketplace live-identity verdict + prov_read_owned ──
 # The install-time read-back (install-plugins.sh's prov_register) recorded the
 # marketplace's LIVE identity at the moment of install: {source:directory,
 # path:/clone}. A user who later re-points the SAME marketplace name at a
@@ -551,7 +550,7 @@ check "S17 prov_read_owned: control plugin included" "$(grep -c "$(printf 'plugi
 prov_read_cleanup
 rm -f "$mktfile" "$pfile"
 
-# ── HIMMEL-3541: dual-scope register rows fold SEPARATELY, not collapsed ────
+# ── dual-scope register rows fold SEPARATELY, not collapsed ────
 # install-plugins.sh runs project-scope then user-scope in the same round; each
 # writes its OWN register row for the same plugin id. Before the fix, group_key
 # ignored scope, so both rows folded into ONE unit whose .path came from the
@@ -822,7 +821,7 @@ check "R2-codex3: json-key restore with corrupted (wrong-value) backup returns n
 check "R2-codex3: json-key target byte-identical after the refused restore" "$(cat "$S8")" "$BEFORE_JK"
 prov_read_cleanup
 
-# ── HIMMEL-3386 (1): the json-elem restore hashes the backup against
+# ── the json-elem restore hashes the backup against
 #    eff_pre.sha (prov_sha_json, the writer's element hasher) BEFORE the splice,
 #    exactly like the file and json-key halves above. A valid-JSON backup with
 #    the wrong element must leave the target byte-identical; an untouched
@@ -857,7 +856,7 @@ check "HIMMEL-3386 (1) control: json-elem target holds the pre-element after the
 prov_read_cleanup
 rm -f "$td/je1.bk.orig"
 
-# ── HIMMEL-3386 (3): the json-elem fold ORs container_created across the
+# ── the json-elem fold ORs container_created across the
 #    chain. The insert created the container; a later replace row that does
 #    not repeat the flag must not make the removal forget it. ────────────────
 
@@ -899,7 +898,7 @@ prov_read_apply "$u" remove
 check "HIMMEL-3386 (3) control: remove leaves the empty container" "$(jq -c . "$S11")" '{"hooks":{"PreToolUse":[]}}'
 prov_read_cleanup
 
-# ── HIMMEL-3386 (4): prune_backups matches WHOLE newline-delimited entries.
+# ── prune_backups matches WHOLE newline-delimited entries.
 #    A finished backup `foo.bak.extra` must not authorise deleting `foo.bak`
 #    (its name is only a prefix of the finished one). ─────────────────────────
 
@@ -968,7 +967,7 @@ check "F2: eff_pre is null, not an absent object" "$(field "$u" '.eff_pre')" "nu
 check "F2: verdict is keep no-backup, not remove" "$(prov_read_verdict "$u")" "keep no-backup"
 prov_read_cleanup
 
-# ── HIMMEL-3525 S16: register verdicts check live identity ──────────────────
+# ── register verdicts check live identity ──────────────────
 #    A stub `qmd` first on PATH answers `collection show <name>` with
 #    QMD_STUB_PATH (or exits QMD_STUB_RC, or says "Collection not found" when
 #    QMD_STUB_ABSENT is set); BUN_INSTALL has no qmd.js, so
@@ -1131,7 +1130,7 @@ prov_read_cleanup
 check "S16: prov_read_cleanup removes the identity cache" "$([ -e "$_s16_fold.identity.d" ] && echo yes || echo no)" "no"
 export PATH="$_s16_path_save"
 
-# ── HIMMEL-3787 S2c: the fold carries eff_snap; prune deletes a resolved
+# ── the fold carries eff_snap; prune deletes a resolved
 #    unit's .ours snapshot with its backup. A snap is a top-level row key, so
 #    it must not leak into .fields. ─────────────────────────────────────────
 
@@ -1185,7 +1184,7 @@ check "S2c fold: eff_snap follows the LAST row that produced eff_post" \
 prov_read_cleanup
 rm -f "$snap8"
 
-# HIMMEL-3787 S3: a legitimate row can carry a non-object eff_pre (`false`); a bare
+# A legitimate row can carry a non-object eff_pre (`false`); a bare
 # `.eff_pre.backup` is a jq type error there, which used to drop the kept unit
 # from the reconcile report's counts and its NEEDS YOU list.
 reset
@@ -1203,7 +1202,7 @@ check "S3: a kept unit with eff_pre:false still reaches the report's NEEDS YOU" 
 check "S3: ... and its entry names the path and reason" "$(printf '%s\n' "$rep_ef" | grep -c -F "$w/ef.txt  file  changed since install")" "1"
 prov_read_cleanup
 
-# HIMMEL-3787 S3 (CodeRabbit): a recorded backup that is gone must not get a diff/cp
+# A recorded backup that is gone must not get a diff/cp
 # recovery command that cannot work; the report says it is unavailable instead.
 reset
 prov_begin --iid EPM --writer t
@@ -1228,7 +1227,7 @@ check "S3: ... and the report says the backup is unavailable" "$(printf '%s\n' "
 prov_read_cleanup
 rm -f "$mb_snap"
 
-# ── HIMMEL-3787 S2d: kind block -- current / verdict / apply ────────────────
+# ── kind block -- current / verdict / apply ────────────────
 # The block is installed by the REAL writer, so the fold sees exactly the row an
 # install records. blk_setup <file> [<pre-text>] leaves one loaded block unit in $ub.
 tpl="$here/../../docs/setup/user-scope-claude-md-template.md"
