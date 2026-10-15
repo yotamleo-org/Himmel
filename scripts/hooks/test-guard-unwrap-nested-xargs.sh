@@ -15,7 +15,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$HERE/block-git-stash.sh"
+REAL_HOOK="$HERE/block-git-stash.sh"
 LIB="$HERE/lib/guard-unwrap.sh"
 
 SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/guard-unwrap-nested-xargs.XXXXXX") || exit 1
@@ -57,6 +57,24 @@ nest() {
     printf 'printf a | %s' "$body"
 }
 
+# A stand-in for a lib consumer: denies a command-position `git stash` by text
+# scan, then unwraps through the lib. block-git-stash.sh no longer unwraps, so
+# the lib's deny properties are driven through this instead.
+HOOK="$SCRATCH/stash-hook.sh"
+cat >"$HOOK" <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+cmd=\$(jq -r '.tool_input.command // empty') || exit 3
+[ -n "\$cmd" ] || exit 3
+if printf '%s' "\$cmd" | grep -Eq '(^|[|;&(\`])[[:space:]]*git[[:space:]]+stash'; then
+    echo "stand-in: git stash" >&2
+    exit 2
+fi
+. "$LIB" || exit 2
+guard_unwrap "\${BASH_SOURCE[0]}" "\$cmd" || exit 2
+exit 0
+EOF
+
 j_bash() { jq -cn --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 
 run_hook() {
@@ -90,40 +108,46 @@ count_renders() {
     wc -l <"$RENDER_LOG" | tr -d ' '
 }
 
+# block-git-stash itself no longer unwraps: a wrapped stash is an accepted miss
+run_real() {
+    j_bash "$1" >"$SCRATCH/real.json"
+    bash "$REAL_HOOK" <"$SCRATCH/real.json" >/dev/null 2>&1
+    echo "$?"
+}
+assert_rc "block-git-stash: direct git stash" 2 "$(run_real 'git stash')"
+assert_rc "block-git-stash: 2-deep xargs sh -c 'git stash' (accepted miss)" 0 "$(run_real "$(nest 2 'git stash')")"
+
 # --- benign nested xargs: must stay rc 0 at every depth the cap allows ---
 for d in 1 2 3 4; do
     assert_rc "benign ${d}-deep xargs sh -c" 0 "$(run_hook "$(nest "$d" 'echo hi')")"
 done
 
-# --- the deny ladder: block-git-stash no longer unwraps, so a wrapped stash is
-# an accepted miss (rc 0). The lib stays covered by the
-# count hook below and by block-read-secrets, block-destructive-commands and
-# block-tail-pipe-on-gates, which still call guard_unwrap. ---
+# --- the deny ladder: a stash at any depth is still denied by a lib consumer ---
 for d in 1 2 3 4; do
-    assert_rc "${d}-deep xargs sh -c 'git stash'" 0 "$(run_hook "$(nest "$d" 'git stash')")"
+    assert_rc "${d}-deep xargs sh -c 'git stash'" 2 "$(run_hook "$(nest "$d" 'git stash')")"
 done
-assert_rc "xargs git stash"            0 "$(run_hook 'printf a | xargs git stash')"
-assert_rc "xargs -n1 git stash push"   0 "$(run_hook 'printf a | xargs -n1 git stash push')"
-assert_rc "env xargs git stash"        0 "$(run_hook 'printf a | env X=1 xargs git stash')"
-assert_rc "xargs xargs git stash"      0 "$(run_hook 'printf a | xargs xargs git stash')"
+assert_rc "xargs git stash"            2 "$(run_hook 'printf a | xargs git stash')"
+assert_rc "xargs -n1 git stash push"   2 "$(run_hook 'printf a | xargs -n1 git stash push')"
+assert_rc "env xargs git stash"        2 "$(run_hook 'printf a | env X=1 xargs git stash')"
+assert_rc "xargs xargs git stash"      2 "$(run_hook 'printf a | xargs xargs git stash')"
 assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')"
 
 # --- HIMMEL-4543: a shell word in a non-executing builtin's data position is
 # not read, but every executing position still is ---
 assert_rc "echo bash -c 'git stash' is data"   0 "$(run_hook "echo bash -c 'git stash'")"
-assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 0 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
-assert_rc "sudo -R echo bash -c 'git stash'"   0 "$(run_hook "sudo -R echo bash -c 'git stash'")"
-assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 0 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
-assert_rc "echo() ( \"\$@\" ); echo bash -c 'git stash'" 0 "$(run_hook "echo() ( \"\$@\" ); echo bash -c 'git stash'")"
-assert_rc "alias echo=eval; echo bash -c 'git stash'" 0 "$(run_hook "alias echo=eval; echo bash -c 'git stash'")"
-assert_rc "exported function reaches a child shell" 0 "$(run_hook "echo() ( \"\$@\" ); export -f echo; bash -c \"echo bash -c 'git stash'\"")"
-assert_rc "enable -n echo; echo bash -c 'git stash'" 0 "$(run_hook "enable -n echo; echo bash -c 'git stash'")"
-assert_rc "find -exec sh -c 'git stash'"       0 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
-assert_rc "xargs bash -c 'git stash'"          0 "$(run_hook "printf a | xargs bash -c 'git stash'")"
-assert_rc "sudo -u u bash -c 'git stash'"      0 "$(run_hook "sudo -u u bash -c 'git stash'")"
-assert_rc "echo x; bash -c 'git stash'"        0 "$(run_hook "echo x; bash -c 'git stash'")"
-assert_rc "echo \$(bash -c 'git stash')"       0 "$(run_hook "echo \$(bash -c 'git stash')")"
-assert_rc "echo | bash -c 'git stash'"         0 "$(run_hook "echo | bash -c 'git stash'")"
+assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 2 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"
+assert_rc "sudo -R echo bash -c 'git stash'"   2 "$(run_hook "sudo -R echo bash -c 'git stash'")"
+assert_rc "echo(){ ...; }; echo bash -c 'git stash'" 2 "$(run_hook "echo(){ \"\$@\"; }; echo bash -c 'git stash'")"
+assert_rc "echo() ( \"\$@\" ); echo bash -c 'git stash'" 2 "$(run_hook "echo() ( \"\$@\" ); echo bash -c 'git stash'")"
+assert_rc "alias echo=eval; echo bash -c 'git stash'" 2 "$(run_hook "alias echo=eval; echo bash -c 'git stash'")"
+assert_rc "exported function reaches a child shell" 2 "$(run_hook "echo() ( \"\$@\" ); export -f echo; bash -c \"echo bash -c 'git stash'\"")"
+assert_rc "enable -n echo; echo bash -c 'git stash'" 2 "$(run_hook "enable -n echo; echo bash -c 'git stash'")"
+assert_rc "find -exec sh -c 'git stash'"       2 "$(run_hook "find . -exec sh -c 'git stash' \\;")"
+assert_rc "xargs bash -c 'git stash'"          2 "$(run_hook "printf a | xargs bash -c 'git stash'")"
+assert_rc "sudo -u u bash -c 'git stash'"      2 "$(run_hook "sudo -u u bash -c 'git stash'")"
+assert_rc "echo x; bash -c 'git stash'"        2 "$(run_hook "echo x; bash -c 'git stash'")"
+assert_rc "echo \$(bash -c 'git stash')"       2 "$(run_hook "echo \$(bash -c 'git stash')")"
+assert_rc "echo | bash -c 'git stash'"         2 "$(run_hook "echo | bash -c 'git stash'")"
 
 # --- render budget: linear in depth, not doubling per level ---
 # Each level costs the stripped render, the xargs-kept render (scanned once,
@@ -149,9 +173,9 @@ run_hook_env() {
     echo "$?"
 }
 
-assert_rc "XKEPT=1 at depth 0 still denies a nested stash" 0 \
+assert_rc "XKEPT=1 at depth 0 still denies a nested stash" 2 \
     "$(run_hook_env 'sh -c "git stash"' GUARD_UNWRAP_XKEPT=1)"
-assert_rc "XKEPT=1 at depth 0 still denies a nested xargs stash" 0 \
+assert_rc "XKEPT=1 at depth 0 still denies a nested xargs stash" 2 \
     "$(run_hook_env "$(nest 2 'git stash')" GUARD_UNWRAP_XKEPT=1)"
 assert_rc "xargs-kept child still runs the hook's own text scan" 2 \
     "$(run_hook_env 'git stash' GUARD_UNWRAP_DEPTH=1 GUARD_UNWRAP_XKEPT=1)"
