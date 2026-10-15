@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cleanup/codex-sweep-cadence.sh (HIMMEL-892).
+# Smoke test for scripts/cleanup/codex-sweep-cadence.sh.
 #
 # Single daily task (HIMMEL-CodexOrphanSweep) fires a runner .bat that runs
 # scripts/cleanup/sweep-codex-orphans.ps1 -Kill then scripts/codex/
@@ -17,7 +17,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,7 +133,7 @@ mkdir -p "$STATE/tasks"
 # $STATE/fail-query is present (simulates the query tool itself erroring,
 # regardless of tn); if $STATE/localized-not-found is present, a missing-task
 # /query emits a non-English not-found message instead of the English one
-# (FIX 2 / codex-7 — exercises the locale-independent probe fallback).
+# (exercises the locale-independent probe fallback).
 FAKE_SCHTASKS="$TMP_ROOT/schtasks-fake.sh"
 cat >"$FAKE_SCHTASKS" <<FAKE
 #!$REAL_BASH
@@ -161,10 +161,10 @@ case "$mode" in
         if [ -n "$xmlpath" ]; then
             xml_posix=$(cygpath -u "$xmlpath" 2>/dev/null || echo "$xmlpath")
             cat "$xml_posix" > "$STATE/tasks/$tn"
-            # Immediate-fire regression probe (round-3 CR fix, HIMMEL-892):
+            # Immediate-fire regression probe:
             # read the referenced .vbs shim and the .bat it launches at their
             # FINAL paths. Both must be fully published BEFORE the task can
-            # possibly exist to fire them. HIMMEL-1753: <Arguments> is now
+            # possibly exist to fire them. <Arguments> is
             # `//B "<shim>.vbs"`; the shim's Run call carries the .bat path.
             args_elem=$(grep -o '<Arguments>[^<]*</Arguments>' "$xml_posix" | sed -e 's/<Arguments>//' -e 's#</Arguments>##')
             args_unescaped=$(printf '%s' "$args_elem" | sed -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g')
@@ -216,9 +216,9 @@ BAT_DIR="$TMP_ROOT/bats"
 # Fake pwsh — a real executable script. It serves three roles: (1) a path
 # cygpath -w can convert for the runner .bat (the .bat itself is only ever
 # inspected as text, never fired); (2) the post-arm NextRunTime verify probe
-# (HIMMEL-892 review fix, invokes Get-ScheduledTaskInfo) DOES execute this
-# directly; (3) query_task's locale-independent existence probe (FIX 2 /
-# codex-7, invokes Get-ScheduledTask) ALSO executes this directly. Both (2)
+# DOES execute this
+# directly; (3) query_task's locale-independent existence probe (invokes
+# Get-ScheduledTask) ALSO executes this directly. Both (2)
 # and (3) must behave like real scripts, not inert stubs, so this dispatches
 # on which probe's -Command text it was invoked with (Get-ScheduledTaskInfo
 # is checked FIRST since Get-ScheduledTask is a substring of it). Outcome is
@@ -303,7 +303,7 @@ reset_state() {
     rm -f "$HIMMEL_OBSERVABILITY_CONFIG"
 }
 
-# Self-contained payload root (HIMMEL-1309). The default run_sc used to arm
+# Self-contained payload root. The default run_sc used to arm
 # against the caller's REAL primary checkout, so the whole arm suite silently
 # depended on that checkout already carrying every payload script — which a
 # feature worktree adding a NEW payload never does until it merges. Stub roots
@@ -344,7 +344,7 @@ assert_registry "arm registers the scheduled task as expected" 'any(.expected_ta
 
 bat=$(cat "$BAT_DIR/codex-sweep.bat" 2>/dev/null || echo MISSING)
 vbs=$(cat "$BAT_DIR/codex-sweep.vbs" 2>/dev/null || echo MISSING)
-# The expected version is SOURCED, never retyped (HIMMEL-2044): a hardcoded
+# The expected version is SOURCED, never retyped: a hardcoded
 # literal here bounces this suite on every format bump for no coverage gain --
 # the assertion that matters is "the runner stamps the CURRENT format".
 # shellcheck source=../lib/cadence-format.sh
@@ -359,7 +359,7 @@ assert_contains "bat fires sweep-codex-orphans.ps1 -Kill" "sweep-codex-orphans.p
 assert_contains "bat fires reap-mcp-fleet.ps1 -Kill" "reap-mcp-fleet.ps1" "$bat"
 assert_contains "bat fires reap-superseded-fleets.ps1 -Kill (HIMMEL-1309 third leg)" "reap-superseded-fleets.ps1" "$bat"
 assert_contains "bat passes -Kill to the sweep payload" "sweep-codex-orphans.ps1" "$bat"
-# HIMMEL-1389 (the #1454 fix, carried to the sibling emitters): a payload that
+# A payload that
 # resolves to a .cmd/.bat shim is TRANSFERRED to, not called — the rc capture,
 # the two later legs and the PAYLOAD_FAILED exit would silently never run.
 if grepq "$bat" -E 'call "[^"]*" -NoProfile -ExecutionPolicy Bypass -File "[^"]*sweep-codex-orphans\.ps1"'; then
@@ -403,7 +403,7 @@ if [ "$_bat_last" = 'exit /b %PAYLOAD_FAILED%' ]; then
 else
     fail "bat does not return aggregate payload result as its final action" "last=$_bat_last"
 fi
-# Leg ORDER is load-bearing (HIMMEL-1309): the superseded-fleet check runs LAST,
+# Leg ORDER is load-bearing: the superseded-fleet check runs LAST,
 # after both orphan sweeps have removed everything whose supervisor is already
 # gone, so it only ever adjudicates fleets under a still-LIVE app-server.
 _leg_order=$(printf '%s' "$bat" | grep -oE '(sweep-codex-orphans|reap-mcp-fleet|reap-superseded-fleets)\.ps1' | tr '\n' ' ')
@@ -415,7 +415,7 @@ assert_contains "bat carries the resolved pwsh path" "$fake_pwsh_win" "$bat"
 for what in --settings "< NUL" "< /dev/null"; do
     assert_not_contains "bat has no claude-session marker ($what)" "$what" "$bat"
 done
-# Folded in from former FIX 1c/1d blocks (HIMMEL-1324): both exercised this
+# Folded in from former FIX 1c/1d blocks: both exercised this
 # exact same successful-default-arm scenario (reset_state; run_sc arm) with
 # no state divergence from T1 above, so they are the same code path -- merged
 # into T1's single arm call instead of re-arming twice more.
@@ -448,7 +448,7 @@ assert_contains "XML RunLevel LeastPrivilege" "<RunLevel>LeastPrivilege</RunLeve
 assert_contains "XML StartWhenAvailable" "<StartWhenAvailable>true</StartWhenAvailable>" "$xml"
 assert_contains "XML default time 09:00" "T09:00:00" "$xml"
 assert_contains "XML Actions Context=Author" '<Actions Context="Author">' "$xml"
-# HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+# Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
 # The hidden-powershell shape still allocated consoles; wscript allocates zero.
 # (codex-sweep previously threaded the resolved pwsh path as <Command> -- that
 # is gone; the resolved pwsh still drives the .bat's payload legs.) Element-
@@ -464,7 +464,7 @@ assert_not_contains "XML Exec no longer uses hidden powershell" "-WindowStyle Hi
 assert_contains "XML repeats every 4h by default (HIMMEL-1309)" "<Interval>PT4H</Interval>" "$xml"
 assert_contains "XML repetition spans the day" "<Duration>P1D</Duration>" "$xml"
 assert_contains "XML never cuts an in-flight sweep short" "<StopAtDurationEnd>false</StopAtDurationEnd>" "$xml"
-# Element ORDER, not just presence (glm-1 CR finding, HIMMEL-1309). Round-tripping
+# Element ORDER, not just presence. Round-tripping
 # through TaskDefinition.XmlText — the COM layer `schtasks /create /xml` parses
 # with — shows it canonicalizes every trigger to
 # `Repetition > StartBoundary > Enabled > ScheduleByDay`. A stricter parser build
@@ -474,7 +474,7 @@ _trigger_order=$(printf '%s' "$xml" | grep -oE '<(Repetition|StartBoundary|Enabl
 assert_contains "Repetition is the FIRST child of CalendarTrigger (canonical order)" \
     "Repetition StartBoundary Enabled ScheduleByDay" "$_trigger_order"
 
-# TEST: --repeat-hours (HIMMEL-1309 gap 6)
+# TEST: --repeat-hours
 #
 # Deliberately spawn-frugal. The runner caps each suite at SUITE_TIMEOUT (180s,
 # scripts/ci/run-shell-tests.sh) and every case here costs a full subprocess —
@@ -485,7 +485,7 @@ assert_contains "Repetition is the FIRST child of CalendarTrigger (canonical ord
 #     the equals-form parse; the space form is covered by the reject case below)
 #   * 0, the only value that changes the emitted SHAPE (no <Repetition>)
 #   * the default (4) is already asserted in T1b, so it is not re-armed here
-#   * one reject (HIMMEL-1324): codex-sweep-cadence.sh validates --repeat-hours
+#   * one reject: codex-sweep-cadence.sh validates --repeat-hours
 #     with a SINGLE regex line (`^([0-9]|1[0-9]|2[0-3])$`), so an out-of-range,
 #     a non-numeric, and an empty value all fail the exact same branch with the
 #     exact same message -- three inputs, one code path. Kept the out-of-range
@@ -522,7 +522,7 @@ assert_rc "--repeat-hours is arm-only -> rc 1 on status" 1 "$rc"
 assert_contains "status names --repeat-hours as arm-only" "--repeat-hours is arm-only" "$out"
 
 # Test FIX-A: HIMMEL_ROOT resolves to the PRIMARY checkout, not this script's
-# own dirname (codex-adv-1, HIMMEL-892) --------------------------------------
+# own dirname --------------------------------------
 
 echo "TEST: emitted .bat payload paths resolve to the PRIMARY checkout via git-common-dir, not this script's own dirname (FIX A / codex-adv-1)"
 reset_state
@@ -621,13 +621,13 @@ rm -f "$STATE/verify-epoch"
 
 echo "TEST: post-arm verify NEXTRUN-NONE answer rolls back, rc 4 (T3)"
 reset_state
-# Sentinel pre-existing .bat folded in from former FIX 1b (HIMMEL-1324): same
+# Sentinel pre-existing .bat folded in from former FIX 1b: same
 # NEXTRUN-NONE rollback scenario, so the sentinel-replacement check is added
 # to this arm call instead of re-arming from scratch a second time.
 mkdir -p "$BAT_DIR"
 printf 'SENTINEL-PRE-EXISTING-BAT\r\n' > "$BAT_DIR/codex-sweep.bat"
 touch "$STATE/verify-nextrun-none"
-# HIMMEL-1879: the self-delete must leave a POSITIVE trace. HOME is already
+# the self-delete must leave a POSITIVE trace. HOME is already
 # redirected under $TMP_ROOT, so the default ledger path is sandboxed.
 rm -f "$HOME/.himmel/flow-runs.jsonl"
 rc=0; out=$(run_sc arm 2>&1) || rc=$?
@@ -675,9 +675,7 @@ assert_contains "WARN present when verify probe fails" "WARN" "$out"
 assert_contains "WARN names the unverified-arm reason" "post-arm NextRunTime verify could not run" "$out"
 rm -f "$STATE/verify-probe-fail"
 
-# Test FIX 1: atomic runner publication (codex-adv + qwenor-4/6, HIMMEL-892;
-# reordered to publish BEFORE /create + verify in round-3, codex-adv round 3
-# Important) -----------------------------------------------------------------
+# Test FIX 1: atomic runner publication (published BEFORE /create + verify) ---
 
 echo "TEST: atomic runner publication -- /create failure still leaves the published COMPLETE new .bat (not the old sentinel, not partial), no temp left (FIX 1a, round-3 reorder)"
 reset_state
@@ -700,10 +698,10 @@ fi
 rm -f "$STATE/fail-create"
 
 # FIX 1b (NEXTRUN-NONE rollback sentinel-replacement check) folded into T3
-# above -- same rollback scenario, same arm call (HIMMEL-1324).
+# above -- same rollback scenario, same arm call.
 # FIX 1c (success-path publish) and FIX 1d (immediate-fire create-time probe)
 # used to re-arm from a clean state here to check exactly what T1's own
-# successful default arm already produces -- folded into T1 above (HIMMEL-1324).
+# successful default arm already produces -- folded into T1 above.
 
 # Test T6: --dry-run touches nothing ------------------------------------------
 
@@ -732,7 +730,7 @@ EVIL_DIR="$TMP_ROOT/cr%on rnr&x^y"
 out=$(env SWEEP_SCHTASKS="$FAKE_SCHTASKS" SWEEP_BAT_DIR="$EVIL_DIR" SWEEP_PWSH="$FAKE_PWSH" \
     SWEEP_HIMMEL_ROOT="$FIXTURE_ROOT" HOME="$HOME" "$REAL_BASH" "$SCRIPT" arm)
 evil_bat=$(cat "$EVIL_DIR/codex-sweep.bat" 2>/dev/null || echo MISSING)
-# HIMMEL-1281: only % -> %% ; & and ^ arrive verbatim because every value sits
+# only % -> %% ; & and ^ arrive verbatim because every value sits
 # inside double quotes. The `set LOG=` line was the one bare-context emitter
 # line and is now `set "LOG=..."`, which is what makes that contract hold.
 # Assert the WHOLE `set "LOG=<path>"` assignment as ONE contiguous string.
@@ -749,7 +747,7 @@ assert_not_contains "no caret-escaped ampersand" '^&' "$evil_bat"
 assert_not_contains "no doubled caret" '^^' "$evil_bat"
 
 # Test T7-quote: a literal ' and & in BAT_DIR round-trip through the wscript
-# Arguments XML layer and the generated VBScript Run path (HIMMEL-1753).
+# Arguments XML layer and the generated VBScript Run path.
 echo "TEST: BAT_DIR with a literal ' and & round-trips through the wscript shim (T7-quote)"
 reset_state
 QUOTE_DIR="$TMP_ROOT/qt'dir&x"
@@ -848,7 +846,7 @@ assert_contains "dedup message names the task" "HIMMEL-CodexOrphanSweep" "$out"
 creates_after=$(grep -c '^/create ' "$STATE/calls.log" 2>/dev/null || true)
 assert_rc "no new /create call recorded" "$creates_before" "$creates_after"
 deletes_after=$(grep -c '^/delete ' "$STATE/calls.log" 2>/dev/null || true)
-# T11b (HIMMEL-1324 CR round): this /delete check was T11b's ONE unique
+# T11b: this /delete check was T11b's ONE unique
 # assertion -- a regression where the dedup path deletes the armed task
 # before returning rc=3 would pass every other T10 check while silently
 # disarming the cadence. Restored here (same arm call, no extra spawn)
@@ -870,7 +868,7 @@ else
     fail "arm --force /create call missing /f" "$(cat "$STATE/calls.log")"
 fi
 
-# T11b (HIMMEL-1324): dropped. It re-ran the identical dedup-reject-then-force-
+# T11b: dropped. It re-ran the identical dedup-reject-then-force-
 # succeed sequence from a second fresh arm, asserting the same two outcomes
 # T10 (dedup rejects, no /create) and T11 (--force proceeds, no /delete, one
 # /create) already assert on the SAME code paths -- three full arm/query/force
@@ -878,7 +876,7 @@ fi
 
 # Test T12 / T12b: disarm --dry-run, then real disarm + idempotency -----------
 #
-# One arm shared across both (HIMMEL-1324): T12b's dry-run-while-armed
+# One arm shared across both: T12b's dry-run-while-armed
 # assertions don't mutate anything (that's the point of the test), so they run
 # FIRST against the still-armed state, then T12's real disarm + idempotent
 # second disarm consume the same arm without re-arming from scratch.
@@ -937,7 +935,7 @@ rc=0; out=$(run_sc disarm 2>&1) || rc=$?
 assert_rc "disarm with unrelated query error -> rc 2 (fail closed)" 2 "$rc"
 rm -f "$STATE/fail-query"
 
-# Test FIX 2: locale-independent task-existence classification (codex-7) -----
+# Test FIX 2: locale-independent task-existence classification -----
 
 echo "TEST: locale-independent classification -- localized not-found stderr + probe ObjectNotFound -> treated as not-armed (FIX 2a)"
 reset_state

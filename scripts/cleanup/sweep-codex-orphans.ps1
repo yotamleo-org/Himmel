@@ -18,7 +18,7 @@
 #   An unattributed outside-tree adversarial render defers the whole -Kill pass.
 #
 #   Two signals are DELIBERATELY NOT used, because they are documented false
-#   signals on this fleet (HIMMEL-718):
+#   signals on this fleet:
 #     * Dead-parent is NOT sufficient. The broker + its codex.exe app-server
 #       routinely have a DEAD parent process while remaining LIVE and in use
 #       (claude.exe spawns them through a chain that has already exited). Killing
@@ -59,10 +59,10 @@
 #   Allow set (name-verified kill): node, cmd, bash, codex, conhost, pwsh,
 #   python, bun, uv, uvx, node_repl, mcp-obsidian, qmd, tokensave.
 #
-# RENDER-LEASE REGISTRY (HIMMEL-1509 - replaces the retired :00 launch-window
-# rule with dynamic coordination): before ANY kill, the sweep takes the
+# RENDER-LEASE REGISTRY (dynamic coordination in place of a fixed
+# launch-window rule): before ANY kill, the sweep takes the
 # registry lock and reads the per-branch render leases that
-# the (removed, HIMMEL-3818) run-codex-adversarial.sh acquired (see scripts/lib/render-lease.sh). A LIVE
+# the run-codex-adversarial.sh acquired (see scripts/lib/render-lease.sh). A LIVE
 # lease (fresh heartbeat, or a leader pid whose snapshot creation time matches
 # the recorded win:<pid>:<startticks> identity) makes every broker tree in its
 # worktree - and every token its heartbeat recorded - UNTOUCHABLE regardless
@@ -71,8 +71,8 @@
 # candidates, still subject to every name/token/identity gate below. An
 # unreadable registry or unavailable lock refuses the kill pass outright.
 #
-# KILL-LEDGER (HIMMEL-1509): verified orphan pids the -Kill pass could NOT
-# stop (e.g. Stop-Process refusals such as the HIMMEL-1508 Session-0 gap) are
+# KILL-LEDGER: verified orphan pids the -Kill pass could NOT
+# stop (e.g. Stop-Process refusals such as the Session-0 gap) are
 # appended to an append-only JSONL ledger next to the registry. Later sweep
 # runs consume resolved entries; `-FromLedger` is the sanctioned orchestrator
 # consume path - it kills ONLY entries whose live process still matches the
@@ -94,12 +94,12 @@
 # Non-Windows: exits 0 with a message (the broker leak is a Windows-observed
 # pattern; the pure functions still dot-source-load for cross-platform tests).
 
-# PositionalBinding=$false (HIMMEL-1509): the string params below must never
+# PositionalBinding=$false: the string params below must never
 # swallow a stray positional argument - malformed argv keeps failing fast.
 [CmdletBinding(PositionalBinding = $false)]
 param(
   [switch]$Kill,
-  # HIMMEL-1509 orchestrator consume path: act on the kill-ledger instead of
+  # orchestrator consume path: act on the kill-ledger instead of
   # classifying; -Kill upgrades it from listing to identity-verified stopping.
   [switch]$FromLedger,
   [string]$RegistryPath,
@@ -151,7 +151,7 @@ function Test-IsCodexAppServerBroker {
 
 # Plausible outside-client IMAGE for the degraded-visibility fail-safe. This is
 # deliberately broader than the original desktop-only set because detached
-# codex-companion renders are node.exe clients (HIMMEL-1467). It is NOT the
+# codex-companion renders are node.exe clients. It is NOT the
 # liveness classifier: every visible outside-tree process is searched by token.
 function Test-IsPlausibleCodexAppServerClient {
   param([Parameter(Mandatory)]$Proc)
@@ -161,7 +161,7 @@ function Test-IsPlausibleCodexAppServerClient {
 
 # Render shape visible even when the companion argv does not carry its cxc token.
 # Any such process outside every broker tree is fail-safe evidence that attribution
-# may be incomplete, so -Kill defers the whole pass (Layer A, HIMMEL-1474).
+# may be incomplete, so -Kill defers the whole pass.
 function Test-IsCodexAdversarialRender {
   param([Parameter(Mandatory)]$Proc)
   if (-not $Proc.Name -or $Proc.Name -ine 'node.exe') { return $false }
@@ -336,8 +336,8 @@ function Get-LiveClientLeaseTokens {
 
 # A render lease suppresses Layer A only when it covers EVERY broker in the
 # leased cwd. The writer scans once per heartbeat, so a broker born after that
-# scan is deliberately still ambiguous and must defer -Kill (HIMMEL-1474 r2).
-# HIMMEL-1474 r3: a broker without a resolvable explicit cwd is equally
+# scan is deliberately still ambiguous and must defer -Kill.
+# A broker without a resolvable explicit cwd is equally
 # ambiguous; no path signal proves it belongs outside the active render.
 function Get-UnattributedCodexAdversarialRenderPids {
   param(
@@ -442,7 +442,7 @@ function Get-ProcessTreeIndex {
 # by following ParentProcessId links DOWNWARD (children, grandchildren, ...).
 # $RootPid itself is NOT included (the caller adds it). BFS over a child map
 # built once; pid-reuse cycle guard + depth cap mirror reap-mcp-fleet.ps1.
-# PPID-reuse filter (codex CR round 4): Windows never updates a process's
+# PPID-reuse filter: Windows never updates a process's
 # recorded PPID when its real parent dies, so an UNRELATED process can carry
 # a stale PPID that a broker-tree pid has since RECYCLED into - the walk
 # would sweep it in. The canonical filter is creation-time ordering: a real
@@ -468,7 +468,7 @@ function Get-DescendantPids {
   $result = New-Object System.Collections.ArrayList
   $queue = New-Object System.Collections.Generic.Queue[int]
   $queue.Enqueue($RootPid)
-  # seen = enqueued-or-root, checked at CHILD-ADD time (CR round 2): the old
+  # seen = enqueued-or-root, checked at CHILD-ADD time: the old
   # dequeue-time visited check terminated PPID cycles but still ADDED the
   # already-seen pid to the result first, so a cycle through the root put
   # $RootPid into its own descendant list (contract violation + duplicate
@@ -484,7 +484,7 @@ function Get-DescendantPids {
     foreach ($child in $byParent[$curKey]) {
       $childKey = [string]$child
       if ($seen.ContainsKey($childKey)) { continue }   # pid-reuse cycle guard
-      # Creation-time ordering (codex round 4): a claimed child measurably
+      # Creation-time ordering: a claimed child measurably
       # OLDER than its claimed parent is a stale-PPID lookalike, not kin.
       $hasChildCreated = $created.ContainsKey($childKey)
       $hasParentCreated = $created.ContainsKey($curKey)
@@ -494,7 +494,7 @@ function Get-DescendantPids {
         # never older than its parent at all - the 2s tolerance exists for the
         # CROSS-read comparisons (Test-ProcessStartMatches, snapshot vs live).
         # The verified walk therefore rejects ANY older-than-parent child
-        # (codex-adv r2: a stale PPID recycled within the 2s window would
+        # (a stale PPID recycled within the 2s window would
         # otherwise read as verified kin and suppress client evidence); the
         # kill-tree walk keeps the lenient cross-read-shaped tolerance.
         $gap = ($created[$curKey] - $created[$childKey]).TotalSeconds
@@ -560,7 +560,7 @@ function Get-CodexOrphanTrees {
 # case-insensitive) must be in the set. Keep in sync with the header allow set.
 function Test-ProcessNameAllowed {
   param([Parameter(Mandatory)][AllowEmptyString()][string]$Name)
-  # `tokensave` added HIMMEL-1309: it is a plugin MCP server the codex app-server
+  # `tokensave` is allow-listed: it is a plugin MCP server the codex app-server
   # spawns like any other fleet member (six superseded `tokensave|serve` roots on
   # the 2026-07-27 live table), so omitting it made every classified tokensave
   # orphan report as name-skipped and survive the sweep forever. This gate only
@@ -571,7 +571,7 @@ function Test-ProcessNameAllowed {
   return ($allow -contains $base)
 }
 
-# Identity check for the kill loop (codex-1 round 2): a pid recycled into
+# Identity check for the kill loop: a pid recycled into
 # ANOTHER allow-listed image (e.g. a fresh node.exe) passes the name gate.
 # The process CREATION TIME is the identity anchor - the enumeration
 # snapshot's CIM CreationDate must match the live process's StartTime
@@ -590,7 +590,7 @@ function Test-ProcessStartMatches {
   } catch { return $true }
 }
 
-# Path-safety gate for tokens that reach the FILESYSTEM (codex CR round 3):
+# Path-safety gate for tokens that reach the FILESYSTEM:
 # the token is captured by a \S+? regex from a process COMMAND LINE - argv is
 # attacker-writable and \S matches path separators and dots, so a crafted
 # "cxc-..\..\x-codex-app-server" token would traverse out of $env:TEMP\cxc-<t>
@@ -674,7 +674,7 @@ function Get-BlindClientPids {
       # this file (e.g. the kill loop at the -Kill sites): there, "treat an
       # exception as gone" SKIPS a kill and is therefore fail-SAFE. Here it
       # REMOVES a blocker, so the identical shape would be fail-OPEN. Same code,
-      # opposite safety direction (HIMMEL-1706 CR).
+      # opposite safety direction.
       $absenceProven = ([string]$_.FullyQualifiedErrorId) -like 'NoProcessFoundForGivenId*'
       $liveNow = $null
     }
@@ -683,9 +683,8 @@ function Get-BlindClientPids {
   return , ($out.ToArray())
 }
 
-# Platform guard (HIMMEL-1321, following the [codex-1]/[glm-3] fix already
-# ported to scripts/codex/reap-superseded-fleets.ps1 for the identical bug in
-# HIMMEL-1309). `$IsWindows` is a PowerShell 6+ AUTOMATIC VARIABLE — under
+# Platform guard (same as scripts/codex/reap-superseded-fleets.ps1).
+# `$IsWindows` is a PowerShell 6+ AUTOMATIC VARIABLE — under
 # Windows PowerShell 5.1 it is simply UNDEFINED ($null), so the obvious
 # `if (-not $IsWindows)` evaluates TRUE and the script exits 0 announcing
 # "non-Windows" on the exact platform it exists for.
@@ -704,10 +703,10 @@ function Test-OnWindows {
   return [bool]$IsWindowsValue
 }
 
-# --- HIMMEL-1509: render-lease registry + kill-ledger helpers -----------------
+# --- render-lease registry + kill-ledger helpers -----------------
 
 # Branch -> lease-dir slug, mirroring render-lease.sh's render_lease_slug
-# EXACTLY (HIMMEL-1509 r6, codex-2): [A-Za-z0-9._-] passes through; every
+# EXACTLY: [A-Za-z0-9._-] passes through; every
 # other UTF-8 BYTE becomes '+HH' (two uppercase hex; '/' -> +2F, '+' itself
 # -> +2B). '+' only ever starts a fixed-width escape, so the map is
 # injective - distinct branches can never share a lease dir. The sweep does
@@ -754,7 +753,7 @@ function ConvertFrom-RenderLeaseRecord {
   return $map
 }
 
-# TTL parity with the bash launcher (HIMMEL-1509 r3, glm-4): render-lease.sh
+# TTL parity with the bash launcher: render-lease.sh
 # honors RENDER_LEASE_TTL_SECS (default 600s), so the sweep resolves the SAME
 # env knob - raising the launcher TTL must never make a launcher-live lease
 # look sweep-stale. Non-numeric/non-positive values fall back to the default;
@@ -771,7 +770,7 @@ function Get-RenderLeaseTtlMinutes {
   return [int][math]::Ceiling($secs / 60.0)
 }
 
-# Lock stale-break parity (HIMMEL-1509 r5, glm-2): the bash twin honors
+# Lock stale-break parity: the bash twin honors
 # RENDER_LEASE_LOCK_STALE_SECS (default 600s, render-lease.sh), so the sweep
 # resolves the SAME knob for Lock-RenderLeaseRegistry's age break - a raised
 # env must never let the sweep age-break cross-space locks earlier than the
@@ -809,7 +808,7 @@ function Test-RenderLeaseHeartbeatFresh {
 #                  the record itself is still fresh - a lease bound AFTER this
 #                  snapshot has a leader the snapshot cannot contain, so
 #                  absence only proves death against a snapshot newer than the
-#                  launch (HIMMEL-1509 r6, codex-1);
+#                  launch;
 #   stale        = leader confirmed gone (absent from the snapshot or recycled
 #                  into a different creation time) AND the record is past the
 #                  TTL;
@@ -840,7 +839,7 @@ function Get-RenderLeaseDisposition {
     if ([int]$p.ProcessId -eq $parts.WinPid) { $leader = $p; break }
   }
   if ($null -eq $leader) {
-    # r6 codex-1: a leader bound after the snapshot cannot appear in it. A
+    # a leader bound after the snapshot cannot appear in it. A
     # fresh record (started_at inside the TTL; a fresh heartbeat already
     # returned live above) keeps the lease LIVE; only absent + stale-record
     # falls through to stale.
@@ -881,7 +880,7 @@ function Get-RenderLeaseDispositions {
 #              broker --cwd equals the lease worktree) -> untouchable;
 #   deferred = an UNVERIFIABLE lease might claim it (cwd match, worktree-less
 #              unverifiable lease, or the tree's own cwd is unresolvable while
-#              any live/unverifiable lease exists - HIMMEL-1474 r3 ambiguity
+#              any live/unverifiable lease exists - ambiguity
 #              posture) -> not killed this pass;
 #   kill     = no lease claims it -> proceeds to the existing name + identity
 #              verified stop.
@@ -941,7 +940,7 @@ function Select-RenderLeaseKillActions {
   return $out.ToArray()
 }
 
-# Replay-guard parity with the main pass (HIMMEL-1509 r2, codex-1): a lease
+# Replay-guard parity with the main pass: a lease
 # can protect a render by WORKTREE alone (its tokens file may not exist yet),
 # so -FromLedger must not kill just because the recorded token set is empty.
 # Protection = recorded tokens of live/unverifiable leases, PLUS the token of
@@ -1094,7 +1093,7 @@ function Get-RenderLeaseRecords {
 }
 
 # Registry mutex: mkdir of .registry.lock, mirroring render-lease.sh. Owner is
-# tagged `win:<pid>` here. Stale-break disposition (HIMMEL-1509 r4, matching
+# tagged `win:<pid>` here. Stale-break disposition (matching
 # the bash twin): a same-space owner probed ALIVE is NEVER broken - not even
 # by age (a long kill pass or mid-claim launcher legitimately holds it;
 # contenders wait out their retries and the caller refuses); a same-space
@@ -1147,7 +1146,7 @@ function Lock-RenderLeaseRegistry {
   return $null
 }
 
-# Owner-verified release (HIMMEL-1509 r7, codex-1; mirrors
+# Owner-verified release (mirrors
 # render_lease_lock_release): remove the lock ONLY when its owner record
 # names this process - a former holder whose lock was broken must never
 # delete a successor's newly acquired lock. A mismatched or unreadable owner
@@ -1184,15 +1183,15 @@ if (-not (Test-OnWindows -IsWindowsValue $IsWindows -OsEnv $env:OS)) {
 
 $ErrorActionPreference = 'Stop'
 
-# HIMMEL-1509: resolve the render-lease registry + kill-ledger locations once.
+# resolve the render-lease registry + kill-ledger locations once.
 $renderLeaseRegistry = $RegistryPath
 if (-not $renderLeaseRegistry) { $renderLeaseRegistry = [string]$env:RENDER_LEASE_DIR }
 if (-not $renderLeaseRegistry) { $renderLeaseRegistry = Join-Path ([string]$env:USERPROFILE) '.claude\handover\bridge\render-leases' }
 $killLedgerPath = $LedgerPath
 if (-not $killLedgerPath) { $killLedgerPath = Join-Path $renderLeaseRegistry 'kill-ledger.jsonl' }
-# Launcher TTL parity (r3 glm-4): one resolution, passed to every disposition.
+# Launcher TTL parity: one resolution, passed to every disposition.
 $renderLeaseTtl = Get-RenderLeaseTtlMinutes -EnvValue ([string]$env:RENDER_LEASE_TTL_SECS)
-# Launcher lock-stale parity (r5 glm-2): same, for the registry-lock age break.
+# Launcher lock-stale parity: same, for the registry-lock age break.
 $renderLeaseLockStale = Get-RenderLeaseLockStaleMinutes -EnvValue ([string]$env:RENDER_LEASE_LOCK_STALE_SECS)
 
 try {
@@ -1214,7 +1213,7 @@ try {
   exit 1
 }
 
-# --- HIMMEL-1509: -FromLedger, the sanctioned orchestrator consume path ------
+# --- -FromLedger, the sanctioned orchestrator consume path ------
 # Kills ONLY identity-verified unconsumed ledger entries: live process present,
 # creation time matching the recorded identity, name allow-listed, and not
 # protected by a live/unverifiable render lease. Without -Kill it only lists.
@@ -1225,7 +1224,7 @@ if ($FromLedger) {
   }
   $leaseLock = $null
   if ($Kill) {
-    # HIMMEL-1509 r3 (codex-1): unconditional create+lock before any replay
+    # Unconditional create+lock before any replay
     # kill, same as the main kill path - a missing registry never skips the
     # lock (a first concurrent render can create it mid-replay).
     try { [void](New-Item -ItemType Directory -Force -Path $renderLeaseRegistry -ErrorAction Stop) } catch {
@@ -1238,7 +1237,7 @@ if ($FromLedger) {
       exit 1
     }
   }
-  # try/finally holds the lock release (HIMMEL-1509 r2, glm-4 parity): an
+  # try/finally holds the lock release: an
   # exception mid-replay must not strand the lock into the 10-min stale
   # reclaim. PowerShell runs finally on `exit` too.
   try {
@@ -1265,7 +1264,7 @@ if ($FromLedger) {
     if ($entryPid -le 0) { $ledgerSkipped++; continue }
     $entryToken = ''
     if ($entry.PSObject.Properties['token'] -and $null -ne $entry.token) { $entryToken = [string]$entry.token }
-    # Lease protection has main-pass parity (r2 codex-1): recorded or
+    # Lease protection has main-pass parity: recorded or
     # cwd-derived protected tokens, a protect-everything lease, or an entry
     # with no token at all while any live/unverifiable lease exists.
     if ($replayGuard.ProtectAll -or
@@ -1277,7 +1276,7 @@ if ($FromLedger) {
     }
     $live = $null
     try { $live = Get-Process -Id $entryPid -ErrorAction Stop } catch { $live = $null }
-    # Dry-run honesty (r3 codex-2): without -Kill nothing is appended, so the
+    # Dry-run honesty: without -Kill nothing is appended, so the
     # per-entry label and the summary both say "would-consume"/"would-kill".
     $consumeLabel = 'consumed'
     if (-not $Kill) { $consumeLabel = 'would-consume' }
@@ -1378,7 +1377,7 @@ Write-Host ("[sweep-codex-orphans] flat PID list ({0}): {1}" -f $flatPids.Count,
 # CommandLine WMI hides may hold a pipe we cannot see, so every ORPHAN verdict
 # above is suspect. Warn always; refuse -Kill (report stays useful, nothing is
 # stopped). The broker-tree union excludes hidden descendants from this gate.
-# NB: NO @() wrap on the call (HIMMEL-930) - Get-BlindClientPids returns via
+# NB: NO @() wrap on the call - Get-BlindClientPids returns via
 # unary comma so the array survives raw assignment (wrapping it in @() would
 # re-box an EMPTY result into a 1-element wrapper, permanently tripping this
 # gate: Count=1 even with zero blind clients).
@@ -1391,7 +1390,7 @@ if (Test-ShouldDeferCodexKill -OutsideRenderPids $outsideRenderPids) {
 }
 
 if (-not $Kill) {
-  # HIMMEL-1509 report-only lease view (unlocked read; the -Kill pass re-reads
+  # Report-only lease view (unlocked read; the -Kill pass re-reads
   # authoritatively under the registry lock).
   $renderLeases = @()
   if (Test-Path -LiteralPath $renderLeaseRegistry) {
@@ -1409,7 +1408,7 @@ if (-not $Kill) {
     if ($a.Action -eq 'kill') { [void]$wouldKillTrees.Add($a.Tree) }
     else { Write-Host ('[sweep-codex-orphans] render-lease: token={0} broker={1} action={2} reason={3}' -f $a.Tree.Token, $a.Tree.BrokerPid, $a.Action, $a.Reason) }
   }
-  # Report the KILLABLE subset distinctly (r3 glm-3): the candidate totals
+  # Report the KILLABLE subset distinctly: the candidate totals
   # above include lease-spared/deferred trees a -Kill run would not touch.
   $wouldKillPids = @($wouldKillTrees | ForEach-Object { $_.TreePids } | Sort-Object -Unique)
   $wouldKillMB = 0
@@ -1429,13 +1428,13 @@ if ($blindClients.Count -gt 0) {
   exit 1
 }
 
-# HIMMEL-1509: authoritative render-lease read UNDER THE REGISTRY LOCK before
+# authoritative render-lease read UNDER THE REGISTRY LOCK before
 # any kill. Live-lease trees are untouchable regardless of command-line
 # visibility; unverifiable leases defer their trees; an unavailable lock or
 # unreadable registry refuses the whole pass (fail-closed).
 $leaseLock = $null
 $renderLeases = @()
-# HIMMEL-1509 r3 (codex-1): the registry lock is UNCONDITIONAL before any
+# The registry lock is UNCONDITIONAL before any
 # kill. "Registry absent" must never mean "skip the lock" - the first
 # concurrent render CREATES the registry and its lease after an existence
 # check would have passed, leaving the sweep killing with no authoritative
@@ -1450,7 +1449,7 @@ if (-not $leaseLock) {
   Write-Host "[sweep-codex-orphans] render-lease: outcome=refused reason=lock-unavailable - no process was stopped."
   exit 1
 }
-# try/finally holds the lock release (HIMMEL-1509 r2, glm-4): an exception
+# try/finally holds the lock release: an exception
 # anywhere in the kill/ledger section must not strand the lock into the 10-min
 # stale reclaim. PowerShell runs finally on `exit` too. Body indentation is
 # left flat to keep the guarded region diffable.
@@ -1483,7 +1482,7 @@ $ledgerFailed = New-Object System.Collections.ArrayList
 # ProcessName is in the allow set AND (b) its live StartTime matches the
 # enumeration snapshot's CreationDate - (a) defends against reuse into an
 # unrelated image, (b) against reuse into ANOTHER allow-listed image
-# (codex-1 round 2). A mismatch on either is reported and skipped (never
+# A mismatch on either is reported and skipped (never
 # killed).
 $killed = 0
 $skippedName = 0
@@ -1499,7 +1498,7 @@ foreach ($procId in $killFlatPids) {
   try { $liveNow = Get-Process -Id $procId -ErrorAction Stop } catch { $liveNow = $null }
   if ($null -eq $liveNow) { $skippedGone++; continue }   # already gone
   $curName = [string]$liveNow.ProcessName
-  # Only the LIVE current name decides ([codex-1] CR fix): falling back to the
+  # Only the LIVE current name decides: falling back to the
   # snapshot name would kill a pid recycled into a disallowed image whenever
   # the ORIGINAL image was allow-listed - the exact reuse window this guard
   # exists for. Test-ProcessNameAllowed strips .exe, so the extension
@@ -1528,8 +1527,8 @@ foreach ($procId in $killFlatPids) {
     if ($brokerPidSet.Contains([int]$procId)) { [void]$killedBrokerPids.Add([int]$procId) }
   } catch {
     Write-Warning "[sweep-codex-orphans] could not stop pid $procId ('$curName'): $_"
-    # HIMMEL-1509: this pid passed every classification + name + identity gate
-    # and only the stop itself was refused (e.g. the HIMMEL-1508 Session-0
+    # this pid passed every classification + name + identity gate
+    # and only the stop itself was refused (e.g. the Session-0
     # elevation gap) - exactly the evidence the kill-ledger exists to carry.
     $snapCreationIso = $null
     if ($rec -and $rec.PSObject.Properties['CreationDate'] -and $null -ne $rec.CreationDate) {
@@ -1541,7 +1540,7 @@ foreach ($procId in $killFlatPids) {
   }
 }
 
-# HIMMEL-1509: append the verified-but-unstoppable pids to the kill-ledger and
+# append the verified-but-unstoppable pids to the kill-ledger and
 # retire (`consumed`) entries whose recorded process is confirmed gone.
 if ($ledgerFailed.Count -gt 0) {
   try {
@@ -1590,7 +1589,7 @@ $sweptTokens = @($trees | Where-Object { $killedBrokerPids.Contains([int]$_.Brok
 $pidFilesRemoved = 0
 if ($tempRoot -and $sweptTokens.Count -gt 0 -and (Test-Path -LiteralPath $tempRoot)) {
   foreach ($tok in $sweptTokens) {
-    # Charset gate before the path join (codex CR round 3): a token from a
+    # Charset gate before the path join: a token from a
     # crafted command line could carry ..\ traversal - never join it.
     if (-not (Test-CxcTokenPathSafe -Token $tok)) {
       Write-Warning "[sweep-codex-orphans] token '$tok' contains non-path-safe characters - skipping its broker.pid cleanup."
@@ -1605,8 +1604,8 @@ if ($tempRoot -and $sweptTokens.Count -gt 0 -and (Test-Path -LiteralPath $tempRo
   }
 }
 
-# Reclaimed MB from pids ACTUALLY stopped, not the candidate total (codex CR
-# round 5): skipped / failed stops must not inflate the success report. The
+# Reclaimed MB from pids ACTUALLY stopped, not the candidate total:
+# skipped / failed stops must not inflate the success report. The
 # candidate total stays as context so partial sweeps are visible at a glance.
 $reclaimedMB = 0
 if ($killedPids.Count -gt 0) { $reclaimedMB = Get-TreeWSMB -Pids ([int[]]$killedPids.ToArray()) }

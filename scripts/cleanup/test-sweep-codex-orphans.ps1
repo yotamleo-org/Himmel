@@ -88,7 +88,7 @@ Check 'missing --wait is not render shape' (-not (Test-IsCodexAdversarialRender 
 #   (b) orphan = no outside process holds token  -> orphan
 #   (c) dead-parent is a FALSE signal            -> outside holder wins, NOT orphan
 #   (d) broker/descendant token refs are FALSE   -> still orphan
-#   (e) detached companion node holds token      -> NOT orphan (HIMMEL-1467 repro)
+#   (e) detached companion node holds token      -> NOT orphan
 Write-Host "Test 3: live/orphan classification (outside-tree pipe test; self/descendant guards)"
 $tClass = Get-Date '2026-07-11 01:00:00'
 $procs = @(
@@ -112,7 +112,7 @@ $procs = @(
   (RecT 401 400 'codex.exe'  (ClientRef 'ddd444')  ($tClass.AddSeconds(1))) # in-tree token ref -> ignored
   (RecT 402 401 'node.exe'   'node mcp.js'         ($tClass.AddSeconds(2))) # grandchild
 
-  # (e) HIMMEL-1467 exact repro: detached codex-companion node.exe is outside
+  # (e) exact repro: detached codex-companion node.exe is outside
   #     the broker tree and holds eee555 -> broker MUST be LIVE.
   (Rec 600 1   'node.exe'   (BrokerLine 'eee555'))
   (Rec 610 1   'node.exe'   ("node codex-companion.mjs adversarial-review " + (ClientRef 'eee555')))
@@ -151,7 +151,7 @@ $staleClientProcs = @(
 $staleClientOrphans = @((Get-CodexOrphanBrokers -Procs $staleClientProcs) | ForEach-Object { $_.BrokerPid })
 Check 'undated stale-PPID outside token-holder keeps broker live' (-not ($staleClientOrphans -contains 670)) "got=$($staleClientOrphans -join ',')"
 
-# codex-adv r2: a stale PPID recycled into a broker created within the OLD 2s
+# a stale PPID recycled into a broker created within the OLD 2s
 # tolerance window must not read as verified kin. The client (681) is 1 second
 # OLDER than the broker (680) its stale PPID points at - strict same-snapshot
 # ordering drops the edge, so its token still proves the broker LIVE.
@@ -182,7 +182,7 @@ $leaseTreePids = Get-CodexBrokerTreePids -Procs $leaseProcs
 $unattributedFreshRenders = Get-UnattributedCodexAdversarialRenderPids -Procs $leaseProcs -BrokerTreePids $leaseTreePids -ClientLeases @($freshLease) -NowUtc $leaseNow
 Check 'fresh attributed render restores kill availability for other-cwd trees' (-not (Test-ShouldDeferCodexKill -OutsideRenderPids $unattributedFreshRenders))
 
-# HIMMEL-1474 r2 startup race: the writer leased an older same-cwd broker, then
+# Startup race: the writer leased an older same-cwd broker, then
 # a sibling broker appeared before the next heartbeat scan. The sibling remains
 # an orphan candidate, but Layer A must defer -Kill until its lease catches up.
 $raceProcs = @(
@@ -200,7 +200,7 @@ $raceOutsideRenders = Get-UnattributedCodexAdversarialRenderPids -Procs $racePro
 Check 'new same-cwd broker remains unleased candidate' ($raceOrphans -contains 3001) "got=$($raceOrphans -join ',')"
 Check 'unleased same-cwd broker keeps Layer A deferral active' (Test-ShouldDeferCodexKill -OutsideRenderPids $raceOutsideRenders) "got=$($raceOutsideRenders -join ',')"
 
-# HIMMEL-1474 r3: an older explicitly-bound broker can be leased while a
+# An older explicitly-bound broker can be leased while a
 # sibling with no explicit cwd under the same render remains unattributable.
 # Unknown means unresolved, so Layer A must preserve the global safety defer.
 $unknownCwdProcs = @(
@@ -304,7 +304,7 @@ $leafDesc = @(Get-DescendantPids -Procs $walkProcs -RootPid 703)
 Check 'leaf root -> 0 descendants'     ($leafDesc.Count -eq 0)
 # PPID cycle THROUGH the root (pid-reuse artifact): the walk must terminate,
 # the root must NOT appear in its own descendant list, and the cycle peer must
-# appear exactly once (CR round 2 - the old dequeue-time guard re-added the
+# appear exactly once (the old dequeue-time guard re-added the
 # root before the visited check fired).
 $cycProcs = @(
   (Rec 710 720 'node.exe' 'cycle-a')
@@ -313,7 +313,7 @@ $cycProcs = @(
 $cycDesc = @(Get-DescendantPids -Procs $cycProcs -RootPid 710)
 Check 'cycle: root NOT in own descendants' (-not ($cycDesc -contains 710)) "got=$($cycDesc -join ',')"
 Check 'cycle: peer listed exactly once'    ((@($cycDesc | Where-Object { $_ -eq 720 })).Count -eq 1) "got=$($cycDesc -join ',')"
-# Stale-PPID lookalike (codex CR round 4): an unrelated process whose recorded
+# Stale-PPID lookalike: an unrelated process whose recorded
 # PPID was recycled into a tree pid is OLDER than its claimed parent - the
 # creation-time ordering filter must drop it, keep real (younger) children,
 # and fail open when a CreationDate is missing for the kill-tree walk.
@@ -348,7 +348,7 @@ Check 'empty name NOT allowed'         (-not (Test-ProcessNameAllowed -Name ''))
 # future case-sensitive comparer swap must fail here, not in production.
 Check 'NODE.EXE allowed (case-insensitive)' (Test-ProcessNameAllowed -Name 'NODE.EXE')
 
-# --- Test 6b: start-time identity check (codex-1 round 2) --------------------
+# --- Test 6b: start-time identity check --------------------
 Write-Host "Test 6b: Test-ProcessStartMatches (recycled-pid identity gate)"
 $t0 = Get-Date '2026-07-11 03:00:00'
 Check 'equal times match'              (Test-ProcessStartMatches -SnapshotCreation $t0 -LiveStart $t0)
@@ -358,7 +358,7 @@ Check '5s apart (negative) does NOT match' (-not (Test-ProcessStartMatches -Snap
 Check 'null snapshot -> match (name gate only)' (Test-ProcessStartMatches -SnapshotCreation $null -LiveStart $t0)
 Check 'null live -> match (name gate only)'     (Test-ProcessStartMatches -SnapshotCreation $t0 -LiveStart $null)
 
-# --- Test 6b2: token path-safety gate (codex CR round 3) ---------------------
+# --- Test 6b2: token path-safety gate ---------------------
 Write-Host "Test 6b2: Test-CxcTokenPathSafe (broker.pid path-join gate)"
 Check 'plain token safe'               (Test-CxcTokenPathSafe -Token 'aaa111')
 Check 'dashed token safe'              (Test-CxcTokenPathSafe -Token 'a1-b2_c3')
@@ -411,7 +411,7 @@ Check 'exited unreadable client does NOT block the pass' ($exitedBlind.Count -eq
 $liveBlind = Get-BlindClientPids -Procs @( (Rec 931 1 'bun.exe' $null) ) -ProcessLookup $allTestPidsLive
 Check 'live unreadable client STILL blocks the pass' (($liveBlind -join ',') -eq '931') "got=$($liveBlind -join ',')"
 
-# HIMMEL-1706 CR: a lookup that FAILS for any reason other than proven absence
+# A lookup that FAILS for any reason other than proven absence
 # leaves liveness unknown, and unknown must keep blocking. Treating these as
 # "gone" would be fail-OPEN — the sweep would proceed against a client it could
 # not verify, which is the hole this whole function exists to close.
@@ -426,7 +426,7 @@ $oddBlind = Get-BlindClientPids -Procs @( (Rec 933 1 'bun.exe' '') ) -ProcessLoo
 }
 Check 'unexpected lookup error STILL blocks (fail-closed)' (($oddBlind -join ',') -eq '933') "got=$($oddBlind -join ',')"
 
-# --- Test 6d: caller-path @() wrap regression (HIMMEL-930) -------------------
+# --- Test 6d: caller-path @() wrap regression -------------------
 # Get-BlindClientPids is array-guaranteed by its own unary-comma return (Test
 # 6c). That guarantee is worthless if the CALLER re-wraps the result in @():
 # @() re-boxes an EMPTY inner array into a ONE-element wrapper, so the
@@ -449,7 +449,7 @@ Check 'production source: blindClients assignment is NOT @()-wrapped' `
   ($callerSrc -match '\$blindClients\s*=\s*Get-BlindClientPids' -and $callerSrc -notmatch '\$blindClients\s*=\s*@\(\s*Get-BlindClientPids') `
   'caller line regressed to the @() wrap'
 
-# --- Test 6e: the lease writer exists (HIMMEL-3818: the adversarial runner that launched it is removed) ---
+# --- Test 6e: the lease writer exists ---
 Write-Host "Test 6e: lease writer presence (HIMMEL-1474 Layer B)"
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
 $LeaseWriter = Join-Path $RepoRoot 'scripts\cr\codex-render-client-lease.ps1'
@@ -458,7 +458,7 @@ Check 'PowerShell lease writer exists' (Test-Path -LiteralPath $LeaseWriter)
 # --- Test 6f: execute the real writer and observe two heartbeats ---------------
 # Source-grep coverage missed the read-only `$PID` binder collision. This starts
 # a real node broker plus the real writer, then requires a write AND refresh so
-# the Layer B heartbeat path executes past identity binding (HIMMEL-1474 r2).
+# the Layer B heartbeat path executes past identity binding.
 Write-Host "Test 6f: lease writer executes and refreshes (HIMMEL-1474 r2)"
 $writerIsWindows = Test-OnWindows -IsWindowsValue (Get-Variable -Name IsWindows -ValueOnly -ErrorAction SilentlyContinue) -OsEnv $env:OS
 if (-not $writerIsWindows) {
@@ -467,7 +467,7 @@ if (-not $writerIsWindows) {
   $leaseToken = 'writer-r2-test'
   $leaseTestDir = Join-Path ([string]$env:TEMP) "cxc-$leaseToken"
   $brokerScript = Join-Path $leaseTestDir 'app-server-broker.mjs'
-  # HIMMEL-1509 r2 regression (glm-2 critical): -LeaseDir must survive the
+  # Regression: -LeaseDir must survive the
   # broker foreach. A local named $leaseDir case-insensitively CLOBBERED the
   # param after the first token iteration, so the SECOND registry heartbeat
   # landed in the cxc token dir and the registry lease starved past TTL.
@@ -506,7 +506,7 @@ if (-not $writerIsWindows) {
     }
     Check 'writer refreshes the heartbeat' ($firstHeartbeat -and $refreshedHeartbeat -ne $firstHeartbeat) "first=$firstHeartbeat refreshed=$refreshedHeartbeat"
 
-    # HIMMEL-1509 r2: BOTH iterations above wrote a cxc lease for the broker
+    # BOTH iterations above wrote a cxc lease for the broker
     # token, so with the $leaseDir collision the registry heartbeat would have
     # stopped advancing after the first write. Require it to advance too.
     $registryHbFile = Join-Path $registryLeaseDir 'heartbeat'
@@ -533,7 +533,7 @@ if (-not $writerIsWindows) {
     # collision's failure mode wrote `heartbeat`/`tokens` files there).
     Check 'no registry files leak into the cxc token dir' `
       (-not (Test-Path -LiteralPath (Join-Path $leaseTestDir 'heartbeat')) -and -not (Test-Path -LiteralPath (Join-Path $leaseTestDir 'tokens')))
-    # r9 codex-2: token protection ages out with reality - once the broker
+    # token protection ages out with reality - once the broker
     # dies, the next EMPTY observation removes the tokens file instead of
     # letting a stale token set keep protecting unrelated trees.
     if ($brokerProc -and -not $brokerProc.HasExited) { Stop-Process -Id $brokerProc.Id -Force -ErrorAction SilentlyContinue }
@@ -580,7 +580,7 @@ function Test-FailsFast([string[]]$ExtraArgs, [string]$Name) {
 Test-FailsFast @('-NonexistentFlag') 'unknown parameter fails fast (no hang)'
 Test-FailsFast @('bogus-positional') 'stray positional fails fast (no hang)'
 
-# --- Test 8: platform guard survives Windows PowerShell 5.1 (HIMMEL-1321) ----
+# --- Test 8: platform guard survives Windows PowerShell 5.1 ----
 Write-Host "Test 8: platform guard survives Windows PowerShell 5.1 (HIMMEL-1321)"
 # $IsWindows is a PS6+ automatic variable. Under 5.1 it is UNDEFINED ($null), so a
 # bare `-not $IsWindows` is TRUE and the sweep exits 0 as "non-Windows" on the
@@ -596,7 +596,7 @@ Check 'undefined $IsWindows with a non-Windows OS env -> NOT Windows' `
 Check 'undefined $IsWindows with an EMPTY OS env -> NOT Windows (no blind assume)' `
   (-not (Test-OnWindows -IsWindowsValue $null -OsEnv ''))
 
-# --- Test 9: render-lease registry + kill-ledger (HIMMEL-1509) ---------------
+# --- Test 9: render-lease registry + kill-ledger ---------------
 Write-Host "Test 9: render-lease dispositions, kill filtering, kill-ledger (HIMMEL-1509)"
 
 function LeaseRec($name, $worktree, $identity, $started, $heartbeat, $tokens, $unreadable) {
@@ -613,7 +613,7 @@ $staleHb = '2026-08-03T10:00:00Z'
 $leaderStart = [datetime]::SpecifyKind([datetime]'2026-08-03T11:00:00', [System.DateTimeKind]::Utc)
 $leaderIdentity = "win:900:$($leaderStart.Ticks)"
 
-# Slug parity with render-lease.sh (r6 codex-2): identical +HH byte encoding,
+# Slug parity with render-lease.sh: identical +HH byte encoding,
 # same expected literals as test-render-lease.sh, so the twins can never
 # drift apart silently; the map is injective (aliasing branches diverge).
 Check 'slug: slash encodes to +2F'       ((Get-RenderLeaseSlug -Branch 'feat/himmel-1509-x') -ceq 'feat+2Fhimmel-1509-x')
@@ -663,7 +663,7 @@ Check 'leaderless record + fresh started_at -> live' `
   ((Get-RenderLeaseDisposition -Lease (LeaseRec 'l7' 'C:\repo\wtA' '' $freshHb $null @() $false) -Procs $leaseProcs -NowUtc $nowUtc) -eq 'live')
 Check 'leaderless record + stale started_at -> unverifiable' `
   ((Get-RenderLeaseDisposition -Lease (LeaseRec 'l8' 'C:\repo\wtA' '' $staleHb $null @() $false) -Procs $leaseProcs -NowUtc $nowUtc) -eq 'unverifiable')
-# r6 codex-1: a lease BOUND AFTER the snapshot has a leader the snapshot
+# a lease BOUND AFTER the snapshot has a leader the snapshot
 # cannot contain - absence (or a pre-launch recycled pid) plus a FRESH record
 # is live, not stale.
 Check 'post-snapshot leader (absent) + fresh started_at -> live' `
@@ -745,7 +745,7 @@ $noCreation = [pscustomobject]@{ type = 'kill-failed'; pid = 102; name = 'node' 
 Check 'entry without creation -> unverifiable' `
   ((Get-KillLedgerEntryLiveState -Entry $noCreation -LiveName 'node' -LiveStart $entryCreationUtc) -eq 'unverifiable')
 
-# Replay guard (r2 codex-1): -FromLedger protection must match the main pass,
+# Replay guard: -FromLedger protection must match the main pass,
 # not just recorded tokens - a TOKENLESS live lease still protects its
 # worktree's brokers, and ambiguity fails closed.
 $guardNone = Get-RenderLeaseReplayGuard -Dispositions @() -Procs $killProcs
@@ -770,7 +770,7 @@ $dispNoWorktree = @(Get-RenderLeaseDispositions -Leases @((LeaseRec 'feat+g' $nu
 $guardNoWorktree = Get-RenderLeaseReplayGuard -Dispositions $dispNoWorktree -Procs $killProcs
 Check 'replay guard: worktree-less unverifiable lease protects everything' ($guardNoWorktree.ProtectAll)
 
-# TTL parity with the launcher (r3 glm-4): RENDER_LEASE_TTL_SECS resolves to
+# TTL parity with the launcher: RENDER_LEASE_TTL_SECS resolves to
 # the sweep's freshness window; a heartbeat past the 10-min default but
 # inside a raised env TTL must stay LIVE.
 Check 'ttl resolver: unset -> 10min default'    ((Get-RenderLeaseTtlMinutes -EnvValue '') -eq 10)
@@ -785,7 +785,7 @@ Check 'aged heartbeat under default TTL falls through (leader gone -> stale)' `
 Check 'aged heartbeat inside a raised env TTL stays live' `
   ((Get-RenderLeaseDisposition -Lease $agedLease -Procs $killProcs -NowUtc $nowUtc -TtlMinutes (Get-RenderLeaseTtlMinutes -EnvValue '1800')) -eq 'live')
 
-# Unconditional lock (r3 codex-1): a registry ABSENT at sweep start is
+# Unconditional lock: a registry ABSENT at sweep start is
 # created + locked, and a lease landing mid-pass is seen by the locked
 # re-read and spares its tree - "missing registry" never skips the lock.
 $lateReg = Join-Path ([System.IO.Path]::GetTempPath()) ("himmel-1509-late-" + [System.IO.Path]::GetRandomFileName())
@@ -806,7 +806,7 @@ try {
 } finally {
   Remove-Item -LiteralPath $lateReg -Recurse -Force -ErrorAction SilentlyContinue
 }
-# Registry-lock stale-break disposition (r4 codex-1): a verified-live
+# Registry-lock stale-break disposition: a verified-live
 # same-space owner is NEVER broken (age included); a confirmed-dead owner
 # breaks immediately; cross-space keeps the age break.
 $lockReg = Join-Path ([System.IO.Path]::GetTempPath()) ("himmel-1509-lock-" + [System.IO.Path]::GetRandomFileName())
@@ -831,7 +831,7 @@ try {
   (Get-Item -LiteralPath $lockDir -Force).CreationTimeUtc = [datetime]'2020-01-01'
   $lockTry = Lock-RenderLeaseRegistry -RegistryPath $lockReg -Attempts 2 -DelayMs 10
   Check 'aged cross-space owner is age-broken' ($null -ne $lockTry)
-  # Lock-stale env parity (r5 glm-2): RENDER_LEASE_LOCK_STALE_SECS resolves
+  # Lock-stale env parity: RENDER_LEASE_LOCK_STALE_SECS resolves
   # through the same conversion as the TTL knob, and a cross-space lock aged
   # past the 10-min default but inside a raised env threshold is NOT broken.
   Check 'lock-stale resolver: unset -> 10min default' ((Get-RenderLeaseLockStaleMinutes -EnvValue '') -eq 10)
@@ -845,7 +845,7 @@ try {
   Check 'raised-threshold contention leaves the lock intact' (Test-Path -LiteralPath $lockDir)
   $lockTry = Lock-RenderLeaseRegistry -RegistryPath $lockReg -Attempts 2 -DelayMs 10 -StaleMinutes (Get-RenderLeaseLockStaleMinutes -EnvValue '')
   Check '20min-aged cross-space lock breaks under the default threshold' ($null -ne $lockTry)
-  # r7 codex-1: owner-verified release - a broken-then-superseded holder must
+  # owner-verified release - a broken-then-superseded holder must
   # never delete a successor's lock.
   Remove-Item -LiteralPath $lockDir -Recurse -Force -ErrorAction SilentlyContinue
   [void](New-Item -ItemType Directory -Force -Path $lockDir)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-steering-cull-cadence.sh - steering-cull-cadence.sh (HIMMEL-5634): the
+# test-steering-cull-cadence.sh - steering-cull-cadence.sh: the
 # weekly read-only steering-file cull run, its proposal doc, the console
 # escalation line and the cron arm/disarm.
 # Hermetic: HOME, state, crontab, runner dir, inbox, preflight and claude are
@@ -153,7 +153,7 @@ bash "$CAD" disarm >"$W/dis.out" 2>&1
 check "disarm exits 0" 0 $?
 hasnt "disarm removes the entry" "HIMMEL-SteeringCull" "$W/crontab.txt"
 
-# ---- 7. console resolved at RUN time (HIMMEL-5658) ---------------------------
+# ---- 7. console resolved at RUN time ---------------------------
 node -e 'console.log(JSON.stringify({type:"result",is_error:false,result:"- [LOW] CLAUDE.md:1 - x\n"}))' > "$W/claude.json"
 cat > "$W/sweep.sh" <<'SH'
 #!/usr/bin/env bash

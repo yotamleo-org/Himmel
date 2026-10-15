@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# steering-cull-cadence.sh — weekly read-only steering-file cull run (HIMMEL-5634).
+# steering-cull-cadence.sh — weekly read-only steering-file cull run.
 #
 # WHY: steering files grow with every agent mistake and nobody deletes lines;
-# without a recurring pass the HIMMEL-5631 savings erode within weeks. This runs
-# the vendored /writing-for-agents skill (HIMMEL-5631) over himmel CLAUDE.md,
+# without a recurring pass the savings erode within weeks. This runs
+# the vendored /writing-for-agents skill over himmel CLAUDE.md,
 # ~/.claude/CLAUDE.md, ~/.claude/RTK.md and the auto-memory MEMORY.md index,
 # writes a dated PROPOSAL doc, and tells the supervisor session (console) where
 # it is. It PROPOSES; it never edits a live file (claude runs with
@@ -21,7 +21,7 @@
 # every other cut is ESCALATED. The console inbox line
 # (`<bridge root>/consoles/<session>.md`, append-only, never created) carries
 # the proposal path and the two counts. --console is an OVERRIDE; without it
-# the run resolves the live console at RUN time (HIMMEL-5658): the newest held
+# the run resolves the live console at RUN time: the newest held
 # `*-console` queue lock from `queue-lock.sh status --sweep`, since console
 # sessions are renamed on every succession and a general user has none. No live
 # console, or no inbox for it, alerts via cadence-alert.sh instead.
@@ -37,7 +37,7 @@
 # Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_PREFLIGHT_CMD,
 # STEERING_CULL_STATE_DIR, STEERING_CULL_DATE, STEERING_CULL_CRONTAB,
 # STEERING_CULL_RUNNER_DIR, STEERING_CULL_SWEEP_CMD, BRIDGE_ROOT, plus cadence-alert.sh's CADENCE_ALERT_*.
-# Platform: cron (Linux/macOS). Windows development is parked (HIMMEL-4102).
+# Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-SteeringCull"

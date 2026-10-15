@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # codex-sweep-cadence.sh — arm/status/disarm the recurring codex broker-orphan
-# sweep cadence (HIMMEL-892).
+# sweep cadence.
 #
 # WHY: the codex broker's own teardown paths (broker/shutdown RPC + the
 # SessionEnd session-lifecycle-hook.mjs) structurally miss a class of orphan:
@@ -12,7 +12,7 @@
 # live-validated manually; what's missing is the scheduler/arm layer. This
 # is that layer: ONE task that fires all THREE payloads with -Kill.
 #
-# THIRD LEG + INTRA-DAY REPEAT (HIMMEL-1309): both original payloads skip
+# THIRD LEG + INTRA-DAY REPEAT: both original payloads skip
 # anything under a LIVE app-server, so duplicate MCP fleets accumulating INSIDE
 # one live broker were swept by neither — 45 luna-correlate pairs under a single
 # app-server on 2026-07-27. scripts/codex/reap-superseded-fleets.ps1 is that
@@ -69,11 +69,11 @@
 #      the post-arm verify query failed / reported no live next-run time
 #      (rolled back: the just-armed task is deleted before exiting 4). That
 #      self-deletion also writes a `codex-sweep-cadence` / outcome=self-deleted
-#      row to the flow-run ledger (HIMMEL-1879) — absence of a scheduled task
+#      row to the flow-run ledger — absence of a scheduled task
 #      is otherwise indistinguishable from "not due yet".
 #
 # Known limitations:
-#   - query_task's locale-independent existence probe (codex-7) needs a
+#   - query_task's locale-independent existence probe needs a
 #     resolvable pwsh/PowerShell; if none is on PATH, or the probe itself
 #     errors/returns CommandNotFoundException, a localized "task not found"
 #     schtasks stderr still classifies as a hard query error (rc 2,
@@ -90,7 +90,7 @@ TASK_NAME="HIMMEL-CodexOrphanSweep"
 SCHTASKS_BIN="${SWEEP_SCHTASKS:-schtasks}"
 
 # Cross-platform user-home resolution (mirrors graphmap-cadence's
-# resolve_user_home, HIMMEL-645): prefer USERPROFILE via cygpath on Windows
+# resolve_user_home): prefer USERPROFILE via cygpath on Windows
 # Git-Bash (MSYS $HOME can differ from where ~/.claude actually lives).
 resolve_user_home() {
     if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
@@ -107,7 +107,7 @@ BAT_DIR="${SWEEP_BAT_DIR:-$(resolve_user_home)/.claude/codex-sweep-cadence}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve the himmel root to the PRIMARY checkout, not this script's own
-# location (codex-adv-1, HIMMEL-892): arming from a feature worktree would
+# location: arming from a feature worktree would
 # otherwise embed absolute payload paths under THAT worktree in the
 # persistent .bat runner; post-merge worktree pruning then deletes those
 # paths and every scheduled fire fails thereafter — the cadence whose job is
@@ -149,7 +149,7 @@ SWEEP_SCRIPT="$HIMMEL_ROOT/scripts/cleanup/sweep-codex-orphans.ps1"
 REAP_SCRIPT="$HIMMEL_ROOT/scripts/codex/reap-mcp-fleet.ps1"
 SUPERSEDE_SCRIPT="$HIMMEL_ROOT/scripts/codex/reap-superseded-fleets.ps1"
 
-# Runner-format version stamp (HIMMEL-588): shared with the other cadences so
+# Runner-format version stamp: shared with the other cadences so
 # a stale-format armed runner is detectable via the same marker convention.
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
@@ -216,7 +216,7 @@ REPEAT_SET=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --time)
-            # Guard the value slot (coderabbit-1, HIMMEL-892): `arm --time`
+            # Guard the value slot: `arm --time`
             # with nothing after it has $#=1 here, so a bare `shift 2` dies
             # on a raw bash "shift count out of range" error under set -e.
             # Report it as a normal usage error instead.
@@ -301,16 +301,16 @@ run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
 # (move /y to .prev on each fire), stamp the fire time, then run all three
 # payloads with each rc captured to the log. Any non-zero leg is remembered and
 # returned AFTER the later legs run, so Task Scheduler cannot report success
-# merely because the final payload succeeded (HIMMEL-1706).
+# merely because the final payload succeeded.
 emit_bat() {
     local bat_dir_esc="$1" pwsh_esc="$2" sweep_esc="$3" reap_esc="$4" supersede_esc="$5"
     printf '@echo off\r\n'
     printf 'rem codex-sweep-cadence runner (HIMMEL-892)\r\n'
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
-    # Quoted `set "LOG=..."`, not bare `set LOG=...` (HIMMEL-1281). This was
+    # Quoted `set "LOG=..."`, not bare `set LOG=...`. This was
     # the ONE emitter line interpolating an escaped value OUTSIDE quotes —
     # where & < > | really are live metacharacters and the old caret escapes
     # were load-bearing. cadence_cmd_escape's contract is quoted-context only,
@@ -321,9 +321,8 @@ emit_bat() {
     printf 'set "PAYLOAD_FAILED=0"\r\n'
     printf 'if exist "%%LOG%%" move /y "%%LOG%%" "%%LOG%%.prev" >nul\r\n'
     printf 'echo [fired %%date%% %%time%%] > "%%LOG%%"\r\n'
-    # `call` on every payload leg (HIMMEL-1389, mirroring #1454's fix in
-    # drift-fix-cadence.sh): if the resolved pwsh/powershell path is ever a
-    # .cmd/.bat shim, a bare invocation makes cmd.exe transfer control into it
+    # `call` on every payload leg (as drift-fix-cadence.sh does): if the
+    # resolved pwsh/powershell path is ever a .cmd/.bat shim, a bare invocation makes cmd.exe transfer control into it
     # and never return — the rc capture, the two later legs and the
     # PAYLOAD_FAILED exit would all silently never run, and Task Scheduler
     # would see the shim's rc instead of the sweep's.
@@ -346,8 +345,8 @@ emit_bat() {
 #
 # schtasks /create has no flag for StartWhenAvailable, so a daily 09:00 run
 # is SILENTLY SKIPPED if the machine was off/asleep at 09:00. The only CLI
-# route is `schtasks /create /xml` (same approach as graphmap-cadence,
-# HIMMEL-362). This XML additionally carries the InteractiveToken/
+# route is `schtasks /create /xml` (same approach as graphmap-cadence).
+# This XML additionally carries the InteractiveToken/
 # LeastPrivilege Principal delta (see header WHY).
 
 # Escape the three XML-significant characters for element-body text.
@@ -359,12 +358,12 @@ schedule_daily_xml() {
     printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
 }
 
-# Intra-day repetition fragment (HIMMEL-1309). Emits nothing when --repeat-hours
+# Intra-day repetition fragment. Emits nothing when --repeat-hours
 # is 0 (daily-only, the pre-1309 behaviour). Duration P1D with Interval PTnH
 # re-fires the trigger every n hours until the next day's StartBoundary takes
 # over; StopAtDurationEnd=false so an in-flight sweep is never cut short.
-# Emitted as the FIRST child of <CalendarTrigger>, before <StartBoundary>
-# (glm-1 CR finding, HIMMEL-1309). Verified rather than assumed: round-tripping
+# Emitted as the FIRST child of <CalendarTrigger>, before <StartBoundary>.
+# Verified rather than assumed: round-tripping
 # both orderings through TaskDefinition.XmlText — the same COM layer
 # `schtasks /create /xml` parses with — shows it canonicalizes every trigger to
 # `Repetition > StartBoundary > Enabled > ScheduleByDay`, so Repetition-first IS
@@ -392,7 +391,7 @@ repetition_xml() {
 emit_task_xml() {
     local bat_win="$1" start_time="$2" schedule_xml="$3" repeat_hours="${4:-0}"
     local repetition vbs_win vbs_args
-    # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
     # still allocate visible consoles; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
@@ -403,7 +402,7 @@ emit_task_xml() {
     # SAME helper cmd_arm writes the file with — so referenced path and written
     # file can never disagree. //B is the WSH batch-mode flag (no error/prompt
     # UI); the path is quoted for spaces, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves HIMMEL-1706 exit-code fidelity (rc=42
+    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
     # re-arm survives — proven in test-cadence-format.sh).
     repetition=$(repetition_xml "$repeat_hours")
     vbs_win=$(cadence_vbs_path "$bat_win")
@@ -465,9 +464,8 @@ schtasks_create_xml() {
 
 # Resolve the payload/probe shell: SWEEP_PWSH override, else pwsh, else
 # Windows PowerShell. Echoes the resolved path and returns 0, or returns 1
-# with nothing echoed if none is resolvable. Factored out (codex-7,
-# HIMMEL-892) so query_task's locale-independent existence probe below can
-# share the exact same resolution cmd_arm already used for the post-arm
+# with nothing echoed if none is resolvable. Factored out so query_task's
+# locale-independent existence probe below can share the exact same resolution cmd_arm already used for the post-arm
 # verify probe, instead of only cmd_arm being able to find pwsh. Callers
 # decide whether a missing shell is fatal (cmd_arm: yes, exit 2) or a soft
 # probe-unavailable fallback (query_task: no — keep the existing fail-closed
@@ -485,7 +483,7 @@ resolve_pwsh() {
         fi
     done
     if p=$(command -v powershell 2>/dev/null); then
-        # HIMMEL-2126: pwsh is unavailable — loud, named 5.1 fallback, never silent.
+        # pwsh is unavailable — loud, named 5.1 fallback, never silent.
         echo "WARN resolve_pwsh: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell) -- HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
         printf '%s' "$p"
         return 0
@@ -504,7 +502,7 @@ NOT_FOUND_RE='The system cannot find the file specified|The specified task name 
 # TASK_NAME (no prefix-listing needed), so this single-name query IS the
 # dedup/status/disarm classifier.
 #
-# Locale-independent fallback (codex-7, HIMMEL-892): NOT_FOUND_RE only
+# Locale-independent fallback: NOT_FOUND_RE only
 # matches ENGLISH schtasks stderr. On a localized Windows the not-found
 # message never matches, so every missing-task query would otherwise
 # classify as a hard query error (fail-closed rc 2) — arm/status/disarm
@@ -534,8 +532,8 @@ query_task() {
         local probe_err probe_out probe_rc
         probe_err=$(mktemp -t codex-sweep-cadence.probe-err.XXXXXX)
         probe_rc=0
-        # errexit-safe capture (same idiom as cmd_arm's post-arm verify,
-        # HIMMEL-938): `|| probe_rc=$?`, not a bare trailing assignment.
+        # errexit-safe capture (same idiom as cmd_arm's post-arm verify):
+        # `|| probe_rc=$?`, not a bare trailing assignment.
         probe_out=$("$pwsh_probe" -NoProfile -NonInteractive -Command "
             try {
                 Get-ScheduledTask -TaskPath '\' -TaskName '$name' -ErrorAction Stop | Out-Null
@@ -596,7 +594,7 @@ delete_task() {
 # last line IS the meaningful stamp. Here the runner ALWAYS ends with the
 # reap stamp (see emit_bat), so a tail-1 port would make a sweep failure
 # invisible (including the sweep's visibility-refusal rc 1 — exactly the
-# failure class HIMMEL-892 exists to catch). So this scans the WHOLE log for
+# failure class this cadence exists to catch). So this scans the WHOLE log for
 # both `[sweep exit rc=` and `[reap exit rc=` stamps and WARNs if either is
 # non-zero.
 status_log() {
@@ -662,7 +660,7 @@ cmd_arm() {
     fi
 
     # Payload-shell resolve at arm time (shared with query_task's existence
-    # probe via resolve_pwsh, codex-7 HIMMEL-892): SWEEP_PWSH override, else
+    # probe via resolve_pwsh): SWEEP_PWSH override, else
     # pwsh, else Windows PowerShell.
     local pwsh_posix
     if ! pwsh_posix=$(resolve_pwsh); then
@@ -681,7 +679,7 @@ cmd_arm() {
     case "$dedup_rc" in
         0)
             if [ "$FORCE" -eq 1 ]; then
-                # NOTE: no /delete here (codex-adv-2, HIMMEL-892) — deleting
+                # NOTE: no /delete here — deleting
                 # the existing task at THIS dedup stage, before runner
                 # emission/XML generation/creation, left NO cadence at all if
                 # any later step failed. `schtasks /create /xml <file> /f`
@@ -755,8 +753,7 @@ cmd_arm() {
         return 0
     fi
 
-    # Atomic runner publication BEFORE task registration (round-3 CR fix,
-    # codex-adv round 3 Important, HIMMEL-892): emit to a temp file BESIDE
+    # Atomic runner publication BEFORE task registration: emit to a temp file BESIDE
     # the target (same dir -> same filesystem -> `mv` is an atomic rename,
     # not a copy; mirrors sanitize-plugin-hooks.sh's
     # `mktemp "$(dirname "$f")/.hooks.json.XXXXXX"` rationale), then publish
@@ -814,7 +811,7 @@ cmd_arm() {
     # expected so scheduled_task_exists pages on that vanished registration.
     observability_register_cadence codex-sweep 14400 "$TASK_NAME"
 
-    # Post-arm verify (HIMMEL-938 lesson, ported from scripts/handover/
+    # Post-arm verify (ported from scripts/handover/
     # arm-resume.sh Part B): a successful schtasks /create rc=0 is not proof
     # the task will fire -- a misregistered /sd, or any other silent
     # misparse, still returns rc=0 and the task just sits Ready, never
@@ -839,7 +836,7 @@ cmd_arm() {
     # `|| _ps_rc=$?` (not a bare trailing `_ps_rc=$?`): under this file's
     # `set -e`, a failing command substitution assigned straight to a
     # variable aborts the script right there -- same errexit-safe capture
-    # idiom arm-resume.sh uses (HIMMEL-938).
+    # idiom arm-resume.sh uses.
     _ps_out=$("$pwsh_posix" -NoProfile -NonInteractive -Command "
         try {
             \$t = Get-ScheduledTaskInfo -TaskPath '\' -TaskName '$TASK_NAME' -ErrorAction Stop
@@ -849,7 +846,7 @@ cmd_arm() {
             # CommandNotFoundException (ScheduledTasks module absent) ALSO
             # carries the ObjectNotFound category -- it must stay a probe
             # failure, not a task-not-found answer (arm-resume.sh
-            # coderabbit-1 lesson).
+            # does the same).
             if (\$_.Exception -is [System.Management.Automation.CommandNotFoundException]) { Write-Error \$_; exit 1 }
             elseif (\$_.CategoryInfo.Category -eq 'ObjectNotFound') { 'NEXTRUN-NONE' }
             else { Write-Error \$_; exit 1 }
@@ -867,7 +864,7 @@ cmd_arm() {
         if [ "$_ps_out" = "NEXTRUN-NONE" ]; then
             echo "ERR codex-sweep-cadence: post-arm verify found NO NextRunTime for '$TASK_NAME' -- the task registered but will never fire. Deleting the bad task -- this is the HIMMEL-938 silent-misarm class." >&2
             run_schtasks /delete /tn "$TASK_NAME" /f >/dev/null 2>&1 || true
-            # HIMMEL-1879 part 2: ABSENCE IS A REAL STATE, and a run-watcher
+            # ABSENCE IS A REAL STATE, and a run-watcher
             # cannot see it. On 2026-08-09 this cadence ran clean at 12:00 and
             # 13:00, then self-deleted and was gone ~13h before anyone noticed:
             # nothing was WRONG in the ledger, there simply were no more rows,
@@ -878,7 +875,7 @@ cmd_arm() {
             # a ledger write must never change the arm's outcome.
             _csd_ledger="$SCRIPT_DIR/../lib/flow-run-ledger.sh"
             _csd_path="${HIMMEL_FLOW_RUNS_LEDGER:-$HOME/.himmel/flow-runs.jsonl}"
-            # Tracked, not assumed (codex-2): the ledger write is best-effort, so
+            # Tracked, not assumed: the ledger write is best-effort, so
             # the banner below must not promise a row that a missing helper or a
             # failed write never produced -- an operator who goes looking for it
             # and finds nothing learns to distrust the banner.
@@ -991,7 +988,7 @@ cmd_disarm() {
     fi
 }
 
-# Runtime preflight on the ARM path only (HIMMEL-1991) — same reasoning as
+# Runtime preflight on the ARM path only — same reasoning as
 # graphmap-cadence: arming hands this runtime to an unattended schedule, so the
 # drift is named while a human is still watching. Advisory by default;
 # HIMMEL_RUNTIME_PREFLIGHT=strict refuses, =0 silences.
