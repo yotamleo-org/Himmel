@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/ci/test-workflow-red-issue.sh -- suite for scripts/ci/workflow-red-issue.sh
-# (HIMMEL-5595).
 #
 # A stub `gh` on PATH serves canned answers from a per-case stub dir and logs
 # every invocation, so each case asserts the issue mutations the script chose:

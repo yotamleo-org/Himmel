@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/ci/codeowner-review-gate.mjs — decision logic for the required
-// `codeowner-review-gate` status check (HIMMEL-3372).
+// `codeowner-review-gate` status check.
 //
 // Intent: code-owner review is mandatory for OUTSIDE pull requests only. The
 // repository owner's own PRs (every console leg PR) keep merging through
@@ -32,7 +32,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Main-module guard, realpath on both sides (HIMMEL-3810). Deliberately inlined
+// Main-module guard, realpath on both sides. Deliberately inlined
 // rather than importing ../lib/is-main.mjs: the workflow fetches only this one
 // file from the base sha (no checkout), so any relative import is a
 // ERR_MODULE_NOT_FOUND on every later PR. test-codeowner-review-gate.sh part 4

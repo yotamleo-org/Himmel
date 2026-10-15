@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-suite-concurrency.sh -- HIMMEL-1338 regression suite for the
+# scripts/ci/test-suite-concurrency.sh -- regression suite for the
 # run-shell-tests.sh harness guards: the machine-wide concurrency lock, the
 # per-suite cap that must reap descendants, the whole-run budget, and stdin
 # isolation.
@@ -34,7 +34,7 @@ unset SUITE_LOCK_WAIT
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 CI_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -70,8 +70,8 @@ new_sandbox() {
 }
 
 # ticket_list <queue-dir> -- the ticket directory names directly under a FIFO
-# queue dir (HIMMEL-2623), one per line, unsorted. Each name is its owner's
-# pid (round 3: no allocated sequence numbers), so `sort -n` on the output
+# queue dir, one per line, unsorted. Each name is its owner's
+# pid (no allocated sequence numbers), so `sort -n` on the output
 # sorts by PID VALUE, not by arrival order -- callers that need arrival order
 # read `started` from each ticket's own owner file instead (see Case W11).
 # Empty output (and rc 0) when the dir does not exist yet or holds none --
@@ -125,7 +125,7 @@ if grepq "$out1" -F "pid=$$"; then
 else
   fail "refusal message does not name the holding pid; output: $out1"
 fi
-# The refusal must say WHICH case it is in (HIMMEL-1805): this holder's pid
+# The refusal must say WHICH case it is in: this holder's pid
 # answered the probe, so the message carries the PRESENT verdict — not the
 # unverifiable one whose advice would counsel waiting on a guess.
 if grepq "$out1" -F 'PID PRESENT'; then
@@ -134,8 +134,8 @@ else
   fail "refusal message missing the PID PRESENT verdict for a probed holder; output: $out1"
 fi
 # kill -0 proves the pid EXISTS, not that it is still the original holder
-# (pids recycle), so the verdict must not overclaim aliveness (HIMMEL-1805
-# round 3). Grepped in caps: the honest wording may say "not proof of life",
+# (pids recycle), so the verdict must not overclaim aliveness.
+# Grepped in caps: the honest wording may say "not proof of life",
 # which a case-sensitive -F for the verdict token must not trip on.
 if grepq "$out1" -F 'ALIVE'; then
   fail "refusal overclaims ALIVE for a merely-present pid; output: $out1"
@@ -221,7 +221,7 @@ else
   fail "scoped run queued behind an unrelated scan root: expected rc 0 got $rc1b2; output: $out1b2"
 fi
 
-# HIMMEL-3193: root `.` is the whole-repo run (scripts + templates + marketplace + packaging)
+# Root `.` is the whole-repo run (scripts + templates + marketplace + packaging)
 # and must take the SAME lock as a `scripts` run — a third key would let a
 # whole-repo run overlap a scripts run over the same trees. The runner cds to
 # ITS repo root, so drive a copy inside a throwaway root holding one trivial
@@ -409,11 +409,11 @@ if [ "$rc2d2" -eq 2 ]; then
 else
   fail "foreign owner-file dir -> expected rc 2 got $rc2d2; output: $out2d2"
 fi
-# HIMMEL-1838: _suite_lock_reclaim's delete now goes through _suite_lock_drop,
+# _suite_lock_reclaim's delete now goes through _suite_lock_drop,
 # the same shape-check the ordinary release path already relies on -- it wins
 # the .reclaim guard (the CAS still matches: nothing touched the decoy in the
 # interim) but refuses to delete a directory holding anything besides `owner`,
-# so _suite_lock_reclaim returns 2 having deleted nothing (codex-1, round 1: an
+# so _suite_lock_reclaim returns 2 having deleted nothing (an
 # earlier version of this case folded this into an ordinary lost race, so a
 # caller retrying on the "re-run in a moment" advice would never converge --
 # nothing about a foreign directory changes on its own). The caller now tells
@@ -441,7 +441,7 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2d2b -- the foreign-lock refusal above is PERMANENT: SUITE_LOCK_WAIT
-# must not spend its budget retrying it (HIMMEL-1838 round 2, codex-2). The
+# must not spend its budget retrying it. The
 # round-1 fix that gave the foreign-directory case its own verdict (Case 2d2
 # above) never told the SUITE_LOCK_WAIT retry loop that the refusal is a
 # safety refusal, not a held lock -- so a caller that waits would burn the
@@ -487,7 +487,7 @@ fi
 # --------------------------------------------------------------------------
 # Case 2e -- a takeover is EXCLUSIVE: a live reclaim guard blocks it.
 #
-# HIMMEL-1838: the old two-step protocol (a `.claim` sibling, branded and
+# The old two-step protocol (a `.claim` sibling, branded and
 # raced against separately from the lock itself) is gone. The exclusivity
 # guarantee now lives entirely in _suite_lock_reclaim's own `.reclaim` mkdir
 # mutex -- the same shape suite-semaphore.sh's _suite_sem_reclaim already
@@ -550,7 +550,7 @@ pass "a stranded reclaim guard's eventual clearing mirrors suite-semaphore.sh's 
 # --------------------------------------------------------------------------
 # Case 2e2 -- the reclaim guard's own mkdir fails for a reason OTHER than
 # another reclaimer holding it (permission denied, a missing parent, ...):
-# a permanent failure, not contention (HIMMEL-1838 round 5, codex-1). Before
+# a permanent failure, not contention. Before
 # this fix, _suite_lock_reclaim treated ANY failed guard mkdir as "someone
 # else is reclaiming" (Case 2e's ordinary-contention verdict) even when the
 # guard directory was never created at all -- so a genuinely broken
@@ -669,14 +669,14 @@ else
 fi
 
 # Case 2g (an unbranded TAKEOVER CLAIM must not wedge reclaim forever) is
-# removed under HIMMEL-1838: the separate `.claim` takeover-claim directory it
+# removed: the separate `.claim` takeover-claim directory it
 # exercised no longer exists as a distinct object with its own unbranded-husk
 # state. The lock directory's own unbranded-husk case is Case 2c, unaffected
 # by this change and still covering the equivalent shape for the one object
 # that remains.
 
 # --------------------------------------------------------------------------
-# Case 2h -- a FOREIGN-host holder is refused until the TTL (HIMMEL-1805).
+# Case 2h -- a FOREIGN-host holder is refused until the TTL.
 #
 # A pid from another machine says nothing about liveness here, so the probe
 # is skipped by design and the lock is honoured until its TTL expires -- even
@@ -744,7 +744,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 2i -- a host differing only in CASE is still this host (HIMMEL-1805).
+# Case 2i -- a host differing only in CASE is still this host.
 #
 # _suite_lock_host's sources disagree in case on Windows (bash's own
 # HOSTNAME=overlord8 vs the COMPUTERNAME=OVERLORD8 fallback), and an
@@ -816,7 +816,6 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2j -- a LIVE holder the probe may not signal is NOT reclaimed
-# (HIMMEL-1805 round 4).
 #
 # POSIX kill -0 fails for ESRCH (no such process) AND for EPERM (the caller
 # may not signal it): a live holder running under another account fails the
@@ -824,7 +823,7 @@ fi
 # reclaims a live holder's lock out from under it -- a fail-OPEN, the opposite
 # direction of every other defect in this arc, all of which merely withheld a
 # warning. A refusal the probe cannot explain must fall through to the TTL
-# instead (the HIMMEL-1776 convention: unknown never takes the permissive
+# instead (the convention: unknown never takes the permissive
 # path).
 #
 # The holder is THIS TEST'S pid: genuinely alive on this host. An exported
@@ -892,8 +891,7 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2j2 -- the UNDATED sibling of 2j: a same-host holder whose probe was
-# refused AND whose owner file carries no "started" line at all (HIMMEL-1805
-# round 6).
+# refused AND whose owner file carries no "started" line at all.
 #
 # age starts at -1 and only becomes a duration when the owner's started field
 # parses, so this shape -- a pid, this host, a probe refused for a reason that
@@ -980,17 +978,17 @@ fi
 
 # --------------------------------------------------------------------------
 # Cases 2l/2m -- a failed re-mkdir of the LOCK ITSELF answered by a LIVE
-# WINNER is contention, not an operational failure (HIMMEL-1805 round 5).
+# WINNER is contention, not an operational failure.
 #
-# HIMMEL-1838 removed the separate `.claim` sibling and its own mkdir step
+# The lock no longer has a separate `.claim` sibling and its own mkdir step
 # (the former Case 2k raced exactly that step and is removed with it -- its
 # scenario is now identical in shape to 2m, since there is only ever one
 # mkdir of the lock itself to race). What remains: the noclobber brand can
 # lose to the uutils co-winner of the LOCK's own mkdir this code explicitly
-# anticipates (2l, HIMMEL-966); and after the stale lock is dropped, a normal
+# anticipates (2l); and after the stale lock is dropped, a normal
 # acquirer can win the re-acquire before _suite_lock_claim does (2m). Both
 # used to print RECLAIM FAILED with advice to remove the lock by hand --
-# while a live runner may own it, the exact starvation HIMMEL-1338 exists to
+# while a live runner may own it, the exact starvation the lock exists to
 # prevent, then actively recommended by the refusal.
 #
 # Each race is injected deterministically by shadowing mkdir ON PATH for the
@@ -1075,7 +1073,7 @@ printf 'pid=%s\nhost=%s\nstarted=%s\nscan=crashed\n' \
 # Hit #1 on the LOCK path is the runner's initial claim, which fails on its
 # own (the stale lock dir already exists); hit #2 is the re-mkdir inside
 # _suite_lock_claim's retry after the reclaim drops it. uutils coreutils
-# resolves two concurrent mkdirs of the same path to BOTH rc=0 (HIMMEL-966),
+# resolves two concurrent mkdirs of the same path to BOTH rc=0,
 # so the shim returns SUCCESS on that retry -- having branded the co-winner's
 # owner first, which is what makes the runner's own noclobber brand lose.
 out2l=$(PATH="$RACE_SHIM_DIR:$PATH" RACE_TARGET="$lock2l" RACE_HIT_NO=2 \
@@ -1150,8 +1148,8 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2m2 -- the re-claim after a successful reclaim fails to WRITE its own
-# owner file (an IO/permission error), and NO ONE ELSE branded the dir either
-# (HIMMEL-1838 round 2, codex-2). _suite_lock_claim distinguishes this from an
+# owner file (an IO/permission error), and NO ONE ELSE branded the dir either.
+# _suite_lock_claim distinguishes this from an
 # ordinary lost race (Case 2m above, where a co-winner's brand IS on the dir):
 # before this fix both were folded into the same "someone else won" verdict,
 # so a caller retrying on that advice would spin forever on a write path that
@@ -1163,7 +1161,7 @@ fi
 # from the SECOND call onward targeting the lock path (the re-claim after the
 # reclaim dropped the stale dir, AND the one further re-attempt
 # suite_lock_acquire_waiting makes after breaking out of its wait loop on
-# suite_lock_permanent -- HIMMEL-1838 round 2), it mkdirs for real but then
+# suite_lock_permanent), it mkdirs for real but then
 # strips write permission from the fresh, empty directory before the runner's
 # own owner-file write gets a chance to run -- so the write fails every time,
 # and nothing brands the dir. A one-shot fault (only the second call) is NOT
@@ -1250,8 +1248,8 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2m3 -- the re-claim's mkdir call ITSELF fails, not just its later
-# owner-file write (HIMMEL-1838 round 5, codex-2 extends round 2's codex-2
-# fix to the mkdir itself). Before this fix, _suite_lock_claim treated any
+# owner-file write.
+# Before the mkdir failure was handled, _suite_lock_claim treated any
 # failed mkdir as "another racer won" (Case 2m's ordinary-lost-race verdict)
 # even when nothing branded the directory at all -- so a genuinely broken
 # filesystem (mkdir itself denied, not merely the write that follows it)
@@ -1328,8 +1326,8 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 2n -- the reclaim guard is held across BOTH the drop and the re-claim
-# (HIMMEL-1838 round 6, F1). Before this fix, the guard was released right
+# Case 2n -- the reclaim guard is held across BOTH the drop and the re-claim.
+# Before this fix, the guard was released right
 # after the stale lock was dropped, and the re-claim happened as a separate
 # step the CALLER took only once the guard was already gone -- reopening the
 # exact takeover window the guard exists to close. A PATH-shimmed mkdir pins
@@ -1384,8 +1382,8 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 2n2 -- the reclaim guard's mkdir is not a reliable mutex on its own
-# (HIMMEL-1838 round 6, F2/codex-1): uutils coreutils 0.8.0 can resolve two
+# Case 2n2 -- the reclaim guard's mkdir is not a reliable mutex on its own:
+# uutils coreutils 0.8.0 can resolve two
 # concurrent `mkdir` of the SAME directory to both rc=0. A PATH-shimmed mkdir
 # forces exactly that co-win deterministically -- reporting success on the
 # guard path even though it already exists and is already owned by another
@@ -1448,8 +1446,8 @@ fi
 # --------------------------------------------------------------------------
 # Case 3 -- the lock is RE-ENTRANT for nested runs.
 #
-# The scripts/ci/test-run-shell-tests*.sh family — six suites since
-# HIMMEL-2895 split the original file — invokes the runner roughly twenty
+# The scripts/ci/test-run-shell-tests*.sh family, six suites,
+# invokes the runner roughly twenty
 # times between them and is itself part of the full suite. If the holder's own
 # descendants could not pass through, the lock would deadlock the suites it
 # exists to protect.
@@ -1546,7 +1544,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 4b2 -- HIMMEL-1501: the initial guard must not collapse a CONFIRMED
+# Case 4b2 -- the initial guard must not collapse a CONFIRMED
 # exit/recycle (identity_matches rc 1) and a merely unavailable probe
 # (identity_matches rc 2) into the same outcome. Confirmed-gone gets its own
 # rc 3; unavailable keeps rc 2. Neither sends a signal.
@@ -2190,7 +2188,7 @@ fi
 # --------------------------------------------------------------------------
 # Case W1 -- SUITE_LOCK_WAIT unset: the new knob is genuinely opt-in. A held
 # lock must still refuse ON SIGHT with the historical single-shot BEHAVIOUR —
-# same decision, same rc 2, nothing waited (HIMMEL-2215).
+# same decision, same rc 2, nothing waited.
 #
 # Behaviour, deliberately not byte-identical TEXT: the refusal gained three
 # lines naming SUITE_LOCK_WAIT as the way to queue instead. So this case
@@ -2261,7 +2259,7 @@ fi
 # minute; SUITE_LOCK_WAIT_INTERVAL=1 keeps the heartbeat cadence tight too.
 outw2z=$(SUITE_LOCK_DIR="$lockw2" SUITE_LOCK_WAIT=0003 SUITE_LOCK_WAIT_INTERVAL=1 bash "$RUNNER" "$sbw2" 2>&1)
 rcw2z=$?
-# rc 5 (HIMMEL-2623), not rc 2: this sub-case genuinely SPENT its budget
+# rc 5, not rc 2: this sub-case genuinely SPENT its budget
 # against a still-held lock, the EXPIRED class -- rc 2 stays reserved for the
 # instant/permanent refusals that never waited at all.
 if [ "$rcw2z" -eq 5 ]; then
@@ -2283,7 +2281,7 @@ fi
 # --------------------------------------------------------------------------
 # Case W3 -- LIVE TWO-PROCESS PROBE: a genuine race between a real holder and
 # a real waiter, not a simulation. This is the done-criterion evidence for
-# HIMMEL-2215 -- the waiter must queue, heartbeat repeatedly naming the
+# The waiter must queue, heartbeat repeatedly naming the
 # holder, and eventually acquire once the holder exits, all without ever
 # touching the lock while the holder still has it.
 # --------------------------------------------------------------------------
@@ -2420,7 +2418,7 @@ outw4=$(SUITE_LOCK_DIR="$lockw4" SUITE_LOCK_WAIT=3 SUITE_LOCK_WAIT_INTERVAL=1 ba
 rcw4=$?
 elapsed4=$(( $(date +%s) - start4 ))
 
-# rc 5 (HIMMEL-2623): a budget that actually ran out against a still-held
+# rc 5: a budget that actually ran out against a still-held
 # lock is the EXPIRED class, distinct from the instant-refusal rc 2.
 if [ "$rcw4" -eq 5 ]; then
   pass "budget exhausted -> rc 5"
@@ -2539,8 +2537,8 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W7 -- a permanent safety refusal does NOT queue (HIMMEL-2215 round 2,
-# codex-1). SUITE_LOCK_DIR pointed at a directory that exists, has no owner
+# Case W7 -- a permanent safety refusal does NOT queue.
+# SUITE_LOCK_DIR pointed at a directory that exists, has no owner
 # file, and is not empty is a safety refusal, not "someone else holds it" --
 # waiting can never clear it. Before this fix the wait loop could not tell the
 # two apart and would spend the whole SUITE_LOCK_WAIT budget printing
@@ -2587,7 +2585,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W8 -- the wait budget has a ceiling (HIMMEL-2215 round 2, codex-2). A
+# Case W8 -- the wait budget has a ceiling. A
 # near-intmax SUITE_LOCK_WAIT round-trips the existing validation (it IS
 # intmax), but `start + SUITE_LOCK_WAIT` then overflows into a NEGATIVE
 # deadline and the run refuses instantly instead of waiting -- so the ceiling
@@ -2661,8 +2659,8 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W9 -- a huge SUITE_LOCK_WAIT_INTERVAL cannot outlive the wait budget
-# (HIMMEL-2215 round 3, codex/gpt-5.6-sol). SUITE_LOCK_WAIT_INTERVAL only
+# Case W9 -- a huge SUITE_LOCK_WAIT_INTERVAL cannot outlive the wait budget.
+# SUITE_LOCK_WAIT_INTERVAL only
 # validates as a positive integer, with no upper bound. The clamp used to be
 # written as `now + nap > deadline`; with a near-intmax interval that SUM
 # wraps negative, so it is never greater than the deadline, the clamp is
@@ -2708,7 +2706,7 @@ if [ "$w9_ran" -eq 1 ]; then
   if [ "$rcw9" -eq 124 ]; then
     fail "the interval clamp was skipped; sleep outlived the budget (timed out after ${elapsedw9}s)"
   else
-    # rc 5 (HIMMEL-2623): this genuinely waited out its budget against a
+    # rc 5: this genuinely waited out its budget against a
     # still-held lock -- the EXPIRED class, not the instant-refusal rc 2.
     if [ "$rcw9" -eq 5 ]; then
       pass "huge SUITE_LOCK_WAIT_INTERVAL -> rc 5 (budget spent, refused)"
@@ -2734,14 +2732,14 @@ if [ "$w9_ran" -eq 1 ]; then
 fi
 
 # --------------------------------------------------------------------------
-# Case W10 -- RED CONTROL (HIMMEL-2623): an older ticket is never jumped, even
+# Case W10 -- RED CONTROL: an older ticket is never jumped, even
 # when the lock is completely FREE. Deterministic, no race window: the
 # planted ticket is what blocks the new waiter, not lock contention. This is
 # the done-criterion evidence for the FIFO fix -- before it existed, the
 # runner had no notion of a ticket at all and acquired a free lock instantly
 # regardless of who else was "waiting."
 #
-# Ticket dir is named for the helper's OWN pid (HIMMEL-2623 round 3) -- the
+# Ticket dir is named for the helper's OWN pid -- the
 # shipped scheme has no allocated sequence numbers, a ticket IS its owner's
 # pid -- and `started` is stamped a few seconds in the PAST, unambiguously
 # earlier than whatever second the real waiter joins in.
@@ -2785,7 +2783,7 @@ if [ -e "$sbw10/ran" ]; then
 else
   pass "W10c: the suite never ran -- the older ticket was never jumped"
 fi
-# W10d/e (HIMMEL-2623 round 2, Defect 2): the lock here is FREE -- the block
+# W10d/e: the lock here is FREE -- the block
 # is entirely a queue-position matter -- so the GAVE UP wording must say so,
 # not claim a holder that does not exist.
 if grepq "$outw10" -F 'still behind an older waiter in the queue'; then
@@ -2848,7 +2846,7 @@ fi
 # Case W11 -- two REAL waiters, the OLDER wins. Live two-process(-pair) race,
 # not a simulation: this is the done-criterion evidence that the queue
 # actually orders concurrent contenders, not just a single planted ticket.
-# Ticket dirs are pid-named (HIMMEL-2623 round 3), so "ticket_a"/"ticket_b"
+# Ticket dirs are pid-named, so "ticket_a"/"ticket_b"
 # below are the two waiters' OS pids, not a 1/2 sequence -- ordering is
 # asserted on `started`, the actual invariant, never on pid magnitude.
 # --------------------------------------------------------------------------
@@ -2897,7 +2895,7 @@ else
     _spin=$((_spin + 1))
   done
   # Select ticket B by IDENTITY -- "whichever ticket is not ticket_a" --
-  # never by pid magnitude (HIMMEL-2623 round 5, codex-1). Pids wrap and are
+  # never by pid magnitude. Pids wrap and are
   # not monotonic, so "the larger pid" can silently RE-SELECT A when B
   # happens to land on a lower pid than A -- a spurious, load- and
   # wraparound-dependent red reported as "waiter B never took a distinct
@@ -2919,7 +2917,7 @@ else
     wait "$w11b_pid" 2>/dev/null
   else
     ticket_b="$ticket_b_candidates"
-    # NOT a ticket-NUMBER comparison (HIMMEL-2623 round 3): tickets are now
+    # NOT a ticket-NUMBER comparison: tickets are now
     # named for their owner's pid, which carries no ordering guarantee
     # relative to another process's pid. Order comes from `started` in each
     # ticket's own owner file -- assert THAT instead, which is the actual
@@ -3018,7 +3016,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W13 -- coexistence with the OLD (pre-HIMMEL-2623) lock layout: a held
+# Case W13 -- coexistence with the OLD (pre-queue) lock layout: a held
 # lock with no .q sibling at all, exactly what a not-yet-upgraded holder
 # leaves behind. A new waiter must still wait, never acquire early, and never
 # add anything to the holder's own directory.
@@ -3072,7 +3070,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W14 -- RE-ENTRANCY beats the queue (HIMMEL-2623 round 2, Defect 1: a
+# Case W14 -- RE-ENTRANCY beats the queue (a
 # DEADLOCK the queue introduced into exactly the after-report path it exists
 # to fix). HIMMEL_SUITE_LOCK_HELD is EXPORTED by _suite_lock_claim, and
 # SUITE_LOCK_WAIT is inherited by every child suite process -- this file's own
@@ -3122,7 +3120,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W15 -- SUITE_LOCK=0 beats the queue (HIMMEL-2623 round 2, Defect 1):
+# Case W15 -- SUITE_LOCK=0 beats the queue:
 # the documented escape hatch (Case 4) must never be gated by a queue a
 # lock-disabled run does not participate in.
 # --------------------------------------------------------------------------
@@ -3159,7 +3157,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W16 (HIMMEL-2623 round 3, CR finding codex-1): scan-then-mkdir was NOT
+# Case W16: scan-then-mkdir was NOT
 # an atomic FIFO allocation -- a stalled contender's delayed mkdir could land
 # on a ticket number freed out from under it, jumping a genuinely older,
 # still-queued waiter. The fix drops the scan entirely: a ticket's identity
@@ -3212,7 +3210,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W17 (HIMMEL-2623 round 4, CR finding codex-1): a NO-WAIT run yields to
+# Case W17: a NO-WAIT run yields to
 # a queued waiter even though the lock is completely FREE. Before this fix, a
 # no-wait run made one direct attempt regardless of who was queued -- so the
 # starvation this whole file exists to remove would have survived even a
@@ -3313,7 +3311,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W19 (HIMMEL-2623 round 6, CR finding codex-1): a waiter whose own
+# Case W19: a waiter whose own
 # ticket is deleted out from under it -- another runner's SUITE_QUEUE_TTL
 # prune in production, simulated here by just removing the directory, so the
 # case is deterministic and fast rather than waiting out a real multi-hour
@@ -3346,7 +3344,7 @@ SUITE_LOCK_DIR="$lockw19" SUITE_LOCK_WAIT=8 SUITE_LOCK_WAIT_INTERVAL=1 \
   bash "$RUNNER" "$sbw19" >"$sbw19/waiter.log" 2>&1 &
 w19_pid=$!
 
-# Wait for the BRANDED owner file, not the directory (HIMMEL-3953): the join
+# Wait for the BRANDED owner file, not the directory: the join
 # is mkdir then a temp-write + mv brand, and deleting the ticket inside that
 # window makes the brand fail, so the waiter gives up its ticket ("proceeding
 # without one") and jumps the queue -- the setup racing the waiter, not the
@@ -3372,7 +3370,7 @@ else
   # (run-shell-tests.sh: mkdir -p, then _suite_lock_queue_brand's temp-write
   # + mv) opens a window where the directory exists and owner does not --
   # polling the directory alone reads a false-empty started= inside that
-  # window (HIMMEL-2921). Same 5s budget as before.
+  # window. Same 5s budget as before.
   _spin=0
   while ! grep -q '^started=.' "$lockw19.q/$w19_pid/owner" 2>/dev/null && [ "$_spin" -lt 50 ]; do
     sleep 0.1
@@ -3411,7 +3409,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W19e (HIMMEL-2921, RED control): replays the exact mkdir->mv window
+# Case W19e: replays the exact mkdir->mv window
 # the restore path opens -- a PATH shim delays a _suite_lock_queue_brand
 # `mv` by 0.5s, but ONLY once armed by a trigger file this case creates
 # right after deleting the ticket (never sooner), so it is always the
@@ -3513,20 +3511,20 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case W20 (HIMMEL-2623 round 7, CR finding codex-1; strengthened round 9,
-# codex-2): a ticket whose owner keeps REFRESHING its heartbeat (`seen`)
+# Case W20:
+# a ticket whose owner keeps REFRESHING its heartbeat (`seen`)
 # survives real pruning attempts well past a tiny SUITE_QUEUE_TTL, no matter
 # how long the total wait. The waiter is a REAL runner process, kept blocked
 # (and therefore still actively polling every SUITE_LOCK_WAIT_INTERVAL) by a
 # lock this case holds and controls directly.
 #
-# STRENGTHENED, round 9: the original version of this case launched no peer
+# STRENGTHENED: an earlier version of this case launched no peer
 # to actually judge the ticket -- suite_lock_queue_prune always skips the
 # CALLER's own ticket, so nothing here ever evaluated it for staleness, and
-# the case passed for the wrong reason (codex-2). It now fires real,
+# the case passed for the wrong reason. It now fires real,
 # cheap no-wait probes against the SAME lock during the wait window; each one
 # runs suite_lock_queue_prune as a side effect (via suite_lock_queue_live_count,
-# HIMMEL-2623 round 4's no-wait yield check) before refusing, so the
+# the no-wait yield check) before refusing, so the
 # refreshing ticket is genuinely re-judged on every probe, not merely left
 # alone.
 #
@@ -3534,11 +3532,11 @@ fi
 # the HEARTBEAT-REFRESH MECHANISM ITSELF (a future bug that silently breaks
 # `_suite_lock_queue_brand`'s refresh, or reverts staleness to judging
 # `started` again, would still be caught here) -- it is NOT, and cannot be, a
-# round-4-vs-round-5 discriminator. Checked directly against the pre-round-5
-# commit (0fd3f8f8): round 4's "confirmed-alive pid exempts from TTL
+# old-vs-new-rule discriminator. Checked directly against the old
+# commit (0fd3f8f8): the "confirmed-alive pid exempts from TTL
 # unconditionally" rule ALSO protects a real, continuously-alive,
 # same-host process regardless of whether anything ever refreshes it, so this
-# exact scenario passes under BOTH implementations -- round 4 was never wrong
+# exact scenario passes under BOTH implementations -- the old rule was never wrong
 # about protecting a genuinely healthy waiter; it was wrong about the
 # CONVERSE (failing to reclaim a stopped-but-resident one), which is Case
 # W21's job below, and which DOES fail against that same pre-round-5 commit
@@ -3612,10 +3610,10 @@ SHEOF
 fi
 
 # --------------------------------------------------------------------------
-# Case W21 (HIMMEL-2623 round 7, CR finding codex-1): a ticket whose owner
+# Case W21: a ticket whose owner
 # is CONFIRMED ALIVE but has STOPPED refreshing (stopped, wedged, hung) is
 # reclaimed past a tiny SUITE_QUEUE_TTL -- restoring the wedge backstop
-# round 4's alive-exempts-forever rule cost. Deterministic: a live helper
+# the old alive-exempts-forever rule cost. Deterministic: a live helper
 # pid the case owns, with `seen` planted stale, never a real hang.
 # --------------------------------------------------------------------------
 echo "== Case W21: a confirmed-alive but non-refreshing ticket IS pruned past TTL =="
@@ -3658,7 +3656,7 @@ kill "$w21_helper_pid" 2>/dev/null
 wait "$w21_helper_pid" 2>/dev/null
 
 # --------------------------------------------------------------------------
-# Case W22 (HIMMEL-2623 round 7, codex-1's sanity check): SUITE_QUEUE_STALE_AFTER
+# Case W22: SUITE_QUEUE_STALE_AFTER
 # clamps the effective staleness window to comfortably more than one
 # SUITE_LOCK_WAIT_INTERVAL, so a waiter configured with an interval LONGER
 # than SUITE_QUEUE_TTL cannot have its own heartbeat judged stale between
@@ -3707,11 +3705,11 @@ kill "$w22_helper_pid" 2>/dev/null
 wait "$w22_helper_pid" 2>/dev/null
 
 # --------------------------------------------------------------------------
-# Case W23 (HIMMEL-2623 round 8, CR finding codex-1): the expiry window
+# Case W23: the expiry window
 # belongs to the TICKET, not to whoever is reading it. A ticket branded with
 # a LONG `stale_after` must not be pruned by a reader whose OWN window
 # (computed from its own short SUITE_QUEUE_TTL/SUITE_LOCK_WAIT_INTERVAL)
-# would otherwise be far shorter -- round 7's clamp protected a process only
+# would otherwise be far shorter -- the clamp protected a process only
 # from ITSELF; this protects a slow-polling owner's ticket from a
 # fast-polling reader that would otherwise judge it by the wrong yardstick.
 # --------------------------------------------------------------------------
@@ -3804,7 +3802,7 @@ kill "$w24_helper_pid" 2>/dev/null
 wait "$w24_helper_pid" 2>/dev/null
 
 # --------------------------------------------------------------------------
-# Case W25 (HIMMEL-2623 round 9, CR finding codex-1): the round-8 cap must be
+# Case W25: the round-8 cap must be
 # an ABSOLUTE, reader-independent ceiling, not a multiple of the READER's own
 # SUITE_QUEUE_STALE_AFTER. A reader configured with a tiny TTL/interval has a
 # tiny window of its own (here: 3s); under the round-8 cap (100x that = 300),

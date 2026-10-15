@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/workflow-red-issue.sh -- maintain ONE `ci-red` issue per workflow
 # and branch for the non-pull_request runs of the workflows listed in
-# workflow-red-list.txt (HIMMEL-5595). Sibling of main-sweep-red-issue.sh, which
+# workflow-red-list.txt. Sibling of main-sweep-red-issue.sh, which
 # keeps owning the `main-red` issue for CI itself; this script never touches CI.
 #
 # workflow-red.yml runs it once per completed run with the run id:

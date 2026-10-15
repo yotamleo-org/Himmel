@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/macos-breakage.sh -- HIMMEL-3902: the os:macos cadence breakage
+# scripts/ci/macos-breakage.sh -- the os:macos cadence breakage
 # metric. macOS shell-unit runs on its own lower-frequency workflow
 # (.github/workflows/macos-cadence.yml); this records, per run, which suites are
 # red NOW that were green on the previous completed cadence run, so the
@@ -39,7 +39,7 @@ die() { echo "macos-breakage: $*" >&2; exit 2; }
 
 cmd_suites_from_logs() {
   local dir="${1:?suites-from-logs <dir>}"
-  # HIMMEL-3906: run-shell-tests writes .run-complete only when its suite loop ran
+  # Run-shell-tests writes .run-complete only when its suite loop ran
   # to the end. Without it the logs are a killed shard's partial set: emit no
   # report (rc 3) so `summary` flags the shard infra_suspect instead of reading
   # the suites it never ran as green.

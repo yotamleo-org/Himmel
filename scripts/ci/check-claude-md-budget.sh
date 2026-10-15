@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Pre-commit gate: the root CLAUDE.md stays under its always-on byte budget
-# (HIMMEL-2038).
 #
 # Why a gate and not a rule: CLAUDE.md is the only preload block paid on all
 # three harnesses (Claude Code loads it directly; Codex and Hermes load the
@@ -15,7 +14,7 @@
 # every install/upgrade (graphifyy install.py: claude_install ->
 # _replace_or_append_section — replace the section in place when a line is
 # exactly `## graphify`, else append at EOF). himmel does not edit that text,
-# except ONE carve-out (HIMMEL-5303): the clause recommending `graphify path`,
+# except ONE carve-out: the clause recommending `graphify path`,
 # which CLAUDE.md bans. scripts/lint/check-graphify-path-advice.sh gates its
 # re-appearance and defines the strip (--strip); the test suite's Case H
 # compares the installer's output through that strip, so any other drift fails.
@@ -80,7 +79,7 @@ else
         echo "→ claude-md-budget: cannot inspect staged paths — fail-closed" >&2; exit 2
     fi
     # here-string, not a pipe: `| grep -q` under pipefail can SIGPIPE the
-    # producer and invert the guard (HIMMEL-1430); the staged list is tiny.
+    # producer and invert the guard; the staged list is tiny.
     grep -qx 'CLAUDE.md' <<< "$staged" || exit 0
 
     # The STAGED blob, byte-exact — no `$(…)` capture (it strips trailing

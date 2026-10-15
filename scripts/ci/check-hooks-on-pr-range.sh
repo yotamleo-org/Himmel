@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-hooks-on-pr-range.sh — re-run a pre-push hook over a PR's range in CI,
-# so a commit made with --no-verify cannot skip it (HIMMEL-5423).
+# so a commit made with --no-verify cannot skip it.
 #
 # The hooks (check-platforms-tested.sh, check-security-reviewed.sh,
 # check-doc-guard.sh --pre-push) are branch-relative: they diff
@@ -19,7 +19,7 @@
 # <base>..HEAD with --base, or $COMMIT_RANGE_BASE. No base (a cron / dispatch
 # run) -> nothing to check, exit 0 — but under GITHUB_EVENT_NAME=pull_request an
 # unresolved or empty range, or a shallow checkout, is exit 2: a dropped
-# fetch-depth: 0 must fail the gate, never pass it vacuously (HIMMEL-5468).
+# fetch-depth: 0 must fail the gate, never pass it vacuously.
 #
 # --first-commit: the attestation trailers must be in the PR's FIRST commit
 # (CLAUDE.md; ready-check.sh item 5), and the hooks accept a trailer from ANY

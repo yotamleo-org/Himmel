@@ -12,7 +12,7 @@
 # red. This script does not distinguish which suite failed; on a nightly
 # run every fast-tier suite is already expected green (they gate
 # every PR), so in practice a nightly-only red here points at the extended
-# tier. macOS is not on this nightly any more (HIMMEL-3902: it runs on
+# tier. macOS is not on this nightly any more (it runs on
 # macos-cadence.yml, so a macOS red never reddens this run). A Windows shell
 # shard stays masked by continue-on-error and is not filed here; see
 # docs/internals/testing.md "A nightly OS red".

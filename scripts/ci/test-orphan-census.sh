@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/ci/orphan-census.sh (HIMMEL-1978).
+# Suite for scripts/ci/orphan-census.sh.
 #
 # Drives the CLASSIFIER against a canned process table via the
 # ORPHAN_CENSUS_INPUT seam — no process is spawned, nothing is signalled. The
@@ -25,7 +25,7 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 FIX="$WORK/procs.txt"
 
-# The classifier anchors on THIS checkout's root (HIMMEL-1995), so the fixture
+# The classifier anchors on THIS checkout's root, so the fixture
 # command lines have to name it. Derived here from the script under test — NOT
 # by re-implementing the script's own `.claude/worktrees` strip: this is the
 # path as the suite sees it, which is the primary root when the suite runs

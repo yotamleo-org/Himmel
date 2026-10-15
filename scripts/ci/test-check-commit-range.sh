@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for scripts/ci/check-commit-range.sh (HIMMEL-594). Builds throw-
+# Hermetic test for scripts/ci/check-commit-range.sh. Builds throw-
 # away git repos with known-good/bad commits and asserts the gate's verdict.
 set -uo pipefail
 
@@ -9,7 +9,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -60,7 +60,7 @@ out="$(run_cr "$t")"; rc=$?
 if [ "$rc" -eq 0 ]; then pass "clean range -> rc0"; else fail "expected rc0, got $rc: $out"; fi
 rm -rf "$t"
 
-# --- a REAL merge commit in the range is skipped (HIMMEL-1483 CR1) ---
+# --- a REAL merge commit in the range is skipped ---
 # The hook's merge exemption is live-MERGE_HEAD only, so the range gate must
 # skip historical merges structurally (--no-merges; parent count >= 2).
 t="$(fixture_mktemp_dir)" || exit 1
@@ -137,7 +137,7 @@ if [ "$rc" -eq 0 ]; then pass "empty range -> rc0"; else fail "expected rc0, got
 if grepq "$out" -i 'nothing to lint'; then pass "empty range reports nothing to lint"; else fail "no nothing-to-lint msg: $out"; fi
 rm -rf "$t"
 
-# --- --merge-ref (HIMMEL-3413): CI checks out refs/pull/N/merge, a merge of the
+# --- --merge-ref: CI checks out refs/pull/N/merge, a merge of the
 # CURRENT base tip and the PR head, but pull_request.base.sha is the tip when
 # the PR was OPENED. Linting <stale base>..merge-ref lints every commit main
 # gained since (a bot's ticketless bump). --merge-ref lints from the merge
@@ -207,7 +207,7 @@ out="$(run_cr_mr "$t")"; rc=$?
 if [ "$rc" -eq 1 ]; then pass "merge-ref on a non-merge HEAD falls back to the given base -> rc1"; else fail "expected rc1, got $rc: $out"; fi
 rm -rf "$t"
 
-# --- HIMMEL-3806: the ticket-ID requirement binds internal committers only ---
+# --- The ticket-ID requirement binds internal committers only ---
 # The PR author login (TICKET_ID_TRUSTED_AUTHOR) picks the side. Empty/unknown
 # data must REQUIRE the ID (fail-safe); the conventional shape always applies.
 t="$(fixture_mktemp_dir)" || exit 1

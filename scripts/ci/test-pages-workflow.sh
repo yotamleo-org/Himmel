@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-pages-workflow.sh -- static suite for HIMMEL-5075: the Pages
+# scripts/ci/test-pages-workflow.sh -- static suite for Pages
 # source is build_type=workflow, so pages.yml must deploy ONLY when docs/**
 # changes (the legacy branch build redeployed the site on every push to main,
 # ~30 deployments in 12 h). Properties asserted over the workflow text:

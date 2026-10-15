@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-push-concurrency.sh -- regression suite for the top-level
-# `concurrency:` block of .github/workflows/ci.yml (HIMMEL-3217 push-to-main,
-# HIMMEL-3226 per-PR).
+# `concurrency:` block of .github/workflows/ci.yml.
 #
 # Two run classes get two DISJOINT groups: a newer push to a PR cancels that
 # PR's superseded run (one group per PR number, so two PRs never touch each
-# other, HIMMEL-3226); every cron / dispatch run keeps a unique per-run group and
-# is never cancelled. HIMMEL-5113 removed the push trigger and with it the shared
-# push-to-main group (HIMMEL-3841 slice E): no run is grouped on github.ref.
+# other); every cron / dispatch run keeps a unique per-run group and
+# is never cancelled. The push trigger is gone, and with it the shared
+# push-to-main group: no run is grouped on github.ref.
 # Pure text assertions over
 # the workflow file (trailing YAML comments stripped, so a comment cannot satisfy
 # a policy check); the group expression is then EVALUATED for sample events to
@@ -41,7 +40,7 @@ case "$group" in
     ok "pull_request runs are grouped per PR number" ;;
   *) bad "pull_request runs are not grouped per PR number; group='$group'" ;;
 esac
-# ...no run is grouped on a push event or a ref any more (HIMMEL-5113)...
+# ...no run is grouped on a push event or a ref any more...
 case "$group" in
   *"'push'"*|*"github.ref"*) bad "group still keys on push / github.ref; group='$group'" ;;
   *) ok "group no longer keys on push or github.ref" ;;
@@ -61,7 +60,7 @@ else
 fi
 
 # A re-added push trigger would run unique-group (uncancelled, unserialised)
-# sweeps on every merge again -- the cost HIMMEL-5113 removed.
+# sweeps on every merge again -- the cost the push trigger removal avoids.
 push_trigger="$(awk '/^on:/ {f=1; next} f && /^[^ #]/ {f=0} f' "$CI_YML" | grep '^  push:')"
 if [ -n "$push_trigger" ]; then
   bad "ci.yml has a push: trigger again (HIMMEL-5113 removed it; main runs on cron)"

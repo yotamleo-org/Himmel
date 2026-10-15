@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-suite-lock-orphan-reaper.sh -- HIMMEL-3923 regression suite.
+# scripts/ci/test-suite-lock-orphan-reaper.sh -- regression suite.
 #
 # A cap-killed lane worker left a run-shell-tests.sh holding the suite lock for
 # 17 minutes with its PARENT dead: the owner was alive, so nothing reclaimed it.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
 # scripts/ci/test-run-shell-tests-manifest.sh — run-shell-tests.sh under
-# SUITE_IMPACTED_FROM_BASE + SUITE_MANIFEST (HIMMEL-3897), end to end with
+# SUITE_IMPACTED_FROM_BASE + SUITE_MANIFEST, end to end with
 # scripts/ci/shard-manifest-verify.sh: what a PR's fixed shards and the
 # shell-unit aggregator do on CI.
 #
@@ -42,7 +42,7 @@ trap 'rm -rf "$SB" "$SUITE_LOCK_SANDBOX"' EXIT
 ) || exit 1
 g() { git -C "$SB" "$@"; }
 
-# Scan root `.` walks these four trees (HIMMEL-3193); find fails on a missing one.
+# Scan root `.` walks these four trees; find fails on a missing one.
 mkdir -p "$SB/scripts/ci" "$SB/scripts/lib" "$SB/scripts/cr" "$SB/scripts/tools" "$SB/docs" \
          "$SB/templates" "$SB/marketplace" "$SB/packaging"
 cp "$RUNNER" "$SB/scripts/ci/run-shell-tests.sh"
@@ -165,7 +165,7 @@ if [ "$vrc" -eq 1 ] && grepq "$vout" 'scripts/test-foo.sh never ran.*discovery l
 else fail "RM6: verify rc=$vrc: $vout"; fi
 
 # --- RM7 ---------------------------------------------------------------------
-# HIMMEL-5648: ci.yml's PR shard probe asks `--list` with NO SUITE_MANIFEST, the
+# Ci.yml's PR shard probe asks `--list` with NO SUITE_MANIFEST, the
 # run step runs with the manifest inside the repo (untracked, not gitignored:
 # the fixture's `m/` is, which is why RM3 never saw this). That untracked file
 # defeated the docs-only lane in the run step alone, so the probe said "no

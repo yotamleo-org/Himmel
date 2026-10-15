@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/check-macos-nightly-health.sh (HIMMEL-3699).
+# Smoke test for scripts/ci/check-macos-nightly-health.sh.
 # Stubs `gh api ... --jq <expr>` with a fake gh that runs the SAME jq
 # expression against a canned jobs-API fixture, so this exercises the real
 # filter logic, not just the branch logic around it. No network, no auth.
@@ -66,7 +66,7 @@ if [ "$rc_red" -eq 1 ]; then ok "red fixture (one macOS job failed) -> exit 1"; 
 if grep -q "macOS nightly job(s) failed" <<< "$out_red"; then ok "red -> error banner"; else bad "red missing error banner: $out_red"; fi
 if grep -q "shell-unit-shard (macos-latest, 3)" <<< "$out_red"; then ok "red -> names the failing job"; else bad "red does not name the failing job: $out_red"; fi
 
-# HIMMEL-3699 (CR round 1, codex-1): a failed `gh api` call must fail loudly,
+# A failed `gh api` call must fail loudly,
 # not read as an empty (all-clear) job list.
 cat > "$TMP/gh-fail" <<'EOF'
 #!/usr/bin/env bash
@@ -84,7 +84,7 @@ if [ "$rc_apifail" -eq 1 ]; then ok "gh api failure -> exit 1 (not silent OK)"; 
 if grep -q "gh api call failed" <<< "$out_apifail"; then ok "gh api failure -> error banner"; else bad "gh api failure missing error banner: $out_apifail"; fi
 if grep -q "OK: no failing macOS job" <<< "$out_apifail"; then bad "gh api failure wrongly reported OK: $out_apifail"; else ok "gh api failure -> no false OK"; fi
 
-# HIMMEL-3699 (CR round 1, codex-2): an empty jobs response, or one with no
+# An empty jobs response, or one with no
 # macOS jobs at all, must not read as an all-clear OK.
 cat > "$TMP/jobs-none.json" <<'JSON'
 {"jobs":[
@@ -98,7 +98,7 @@ if [ "$rc_none" -eq 1 ]; then ok "no-macOS-jobs fixture -> exit 1 (not silent OK
 if grep -q "no macOS job actually passed" <<< "$out_none"; then ok "no-macOS-jobs -> error banner"; else bad "no-macOS-jobs missing error banner: $out_none"; fi
 if grep -q "OK: no failing macOS job" <<< "$out_none"; then bad "no-macOS-jobs wrongly reported OK: $out_none"; else ok "no-macOS-jobs -> no false OK"; fi
 
-# HIMMEL-3699 (CR round 2, codex-1): every macOS job SKIPPED (none passed, none
+# Every macOS job SKIPPED (none passed, none
 # failed) must not read as an all-clear OK either — nothing was actually tested.
 cat > "$TMP/jobs-all-skipped.json" <<'JSON'
 {"jobs":[

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/cancel-superseded-runs.sh — HIMMEL-3811
+# scripts/ci/cancel-superseded-runs.sh
 #
 # Under runner backlog, superseded PR runs sit in workflow-level `queued` and
 # the concurrency group does not cancel them; codeowner-review-gate (queue: max)
@@ -7,7 +7,7 @@
 # of the account's 20-job cap. This cancels every live CI / codeowner-review-gate
 # run on an open PR's branch whose headSha is not that PR's current headRefOid.
 #
-# Never touched: a run at the current head (HIMMEL-3588: a CANCELLED context on
+# Never touched: a run at the current head (a CANCELLED context on
 # the current head blocks the rollup), a run on a branch with no open PR (main,
 # schedule, anything whose PR head cannot be read or is ambiguous, e.g. a fork
 # PR sharing the branch name), a completed run.
@@ -61,7 +61,7 @@ PICK='
   | [$r.databaseId, $r.workflowName, $r.event, $r.headBranch, $r.headSha[0:8], $pr.number, $pr.headRefOid[0:8]]
   | @tsv'
 
-# Order matters (HIMMEL-3588): the run lists are read FIRST and the PR list LAST.
+# Order matters: the run lists are read FIRST and the PR list LAST.
 # A run seen here means its push already happened, so the later PR read returns
 # that head or a newer one; reading the PRs first would let a push in between
 # leave the only run at the PR's real head compared against a stale head.

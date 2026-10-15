@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-macos-cadence-workflow.sh -- HIMMEL-3902: pins the shape of
+# scripts/ci/test-macos-cadence-workflow.sh -- pins the shape of
 # .github/workflows/macos-cadence.yml, the lower-frequency os:macos workflow.
 # Text assertions over the workflow with comments stripped (a comment cannot
 # satisfy a policy check). No network, no PyYAML.
@@ -88,7 +88,7 @@ else bad "the record step has no 'shell: bash': a die in record is masked by | t
 if step_of "Upload breakage record" | grep -q 'if-no-files-found: error'; then ok "a missing record.json fails the upload"
 else bad "the record upload does not use if-no-files-found: error"; fi
 
-# 10. HIMMEL-3906: a shard without the completion sentinel (suites-from-logs rc 3)
+# 10. a shard without the completion sentinel (suites-from-logs rc 3)
 # uploads NO failed.txt, so `summary` sees a missing report (infra_suspect).
 lst="$(step_of "List failed suites")"
 # shellcheck disable=SC2016 # literal workflow text, not an expansion

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for scripts/ci/check-hooks-on-pr-range.sh (HIMMEL-5423). Builds
+# Hermetic test for scripts/ci/check-hooks-on-pr-range.sh. Builds
 # throw-away repos shaped like a CI PR checkout (a detached merge commit whose
 # first parent is the base tip and second parent the PR head) and asserts the
 # verdict of the real hooks run through the wrapper.
@@ -52,7 +52,7 @@ mkpr() {
   ) || { echo "FAIL: fixture setup for $d"; exit 1; }
 }
 # GITHUB_EVENT_NAME is scrubbed: the Actions runner exports pull_request, which
-# turns an unresolved range into rc2 (HIMMEL-5468). Rows that want the PR-event
+# turns an unresolved range into rc2. Rows that want the PR-event
 # behaviour set it themselves.
 run() { ( cd "$1" && shift && env -u GITHUB_EVENT_NAME bash "$W" "$@" 2>&1 ); }
 mk() { local t; t="$(fixture_mktemp_dir)" || exit 1; echo "$t"; }
@@ -193,7 +193,7 @@ out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "unattested first merge, attested later commit -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
-# --- HIMMEL-5468: a pull_request run that cannot resolve its range fails closed ---
+# --- A pull_request run that cannot resolve its range fails closed ---
 # A shallow (depth-1) clone of the merge ref is what actions/checkout makes when
 # fetch-depth: 0 is dropped: HEAD^2 is cut off, so there is no range to read.
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
@@ -214,7 +214,7 @@ out="$( cd "$t" && env -u GITHUB_EVENT_NAME bash "$W" --first-commit --base HEAD
 expect "push (no PR event), empty range -> still rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- HIMMEL-5468: a backdated commit cannot become the "first" commit ---
+# --- A backdated commit cannot become the "first" commit ---
 # pr: A (unattested, real first) and a side branch C (attested, committer date
 # 2000) merged by M. Default rev-list order is by commit date, so --reverse
 # yields C first; --topo-order yields A.
@@ -246,7 +246,7 @@ out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
 expect "backdated attested commit is not first -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
-# --- HIMMEL-5468: ci.yml keeps full history on the jobs that walk the range ---
+# --- Ci.yml keeps full history on the jobs that walk the range ---
 # job_has_full_fetch <workflow> <job>: the job's block carries an uncommented
 # `fetch-depth: 0`.
 job_has_full_fetch() {

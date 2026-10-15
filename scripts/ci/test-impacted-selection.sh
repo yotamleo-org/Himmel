@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/ci/test-impacted-selection.sh — scripts/ci/impacted-selection.sh
-# (HIMMEL-3897): the BASE-sourced full-vs-impacted verdict every PR shell-unit
+# scripts/ci/test-impacted-selection.sh — scripts/ci/impacted-selection.sh:
+# the BASE-sourced full-vs-impacted verdict every PR shell-unit
 # shard and the aggregator print as their manifest header.
 #
 # Each case runs a COPY of the script inside a throwaway git repo whose
@@ -18,7 +18,7 @@
 #        (outside this fixture's trust list) still gets the base's selection
 #   IS9  an unresolvable head is rc 2, never a verdict
 #   IS11 a PR that only ADDS an unreferenced file selects the `# selector:
-#        tree-scan` suite (HIMMEL-5114); an unmarked suite is not selected
+#        tree-scan` suite; an unmarked suite is not selected
 #   IS12 a PR that deletes a file selects it
 #   IS13 a PR that renames a file selects it
 #   IS14 a PR that only modifies an existing file does not select it
@@ -26,9 +26,8 @@
 #   IS18 an allowlisted suite's narrow-regex walk still fails; wide-only is exempt
 #   IS19 a missing / unflagged / marked / reasonless allowlist entry fails
 #   IS20 a lowercase or quote-split uninstall caller selects the callers suite
-#   IS21 a template root file edit selects test-vault-git.sh (HIMMEL-5132)
+#   IS21 a template root file edit selects test-vault-git.sh
 #   IS22 a suite naming a changed script by its stem, without .sh, is selected
-#        (HIMMEL-5160)
 #   IS15b a planted unmarked tree-walking suite is flagged by the real walk list
 #
 # Platform guard: bash-only, no .ps1 twin; git + tar, Linux CI is the caller.
@@ -111,7 +110,7 @@ g checkout -q -B onoff "$OFF"
 printf '# edit\n' >> "$SB/scripts/tools/foo.sh"
 g commit -q -am "code on off"
 H_ONOFF=$(g rev-parse HEAD)
-# HIMMEL-5114: a diff that adds / deletes / renames a file no suite names.
+# A diff that adds / deletes / renames a file no suite names.
 g checkout -q -B added "$BASE"
 printf '# new\n' > "$SB/scripts/tools/brand-new.sh"
 g add -A; g commit -q -m "add an unreferenced file"
@@ -124,7 +123,7 @@ g checkout -q -B renamed "$BASE"
 g mv "$SB/scripts/tools/foo.sh" "$SB/scripts/tools/foo2.sh"
 g commit -q -m "rename a file"
 H_REN=$(g rev-parse HEAD)
-# HIMMEL-5122: a typechange (regular file -> symlink) and a template-script edit.
+# A typechange (regular file -> symlink) and a template-script edit.
 g checkout -q -B typed "$BASE"
 rm -f "$SB/scripts/tools/foo.sh"
 ln -s ../test-bar.sh "$SB/scripts/tools/foo.sh"
@@ -134,7 +133,7 @@ g checkout -q -B tpl "$BASE"
 printf '# edit\n' >> "$SB/templates/luna-second-brain/scripts/setup.sh"
 g commit -q -am "edit a template script"
 H_TPL=$(g rev-parse HEAD)
-# HIMMEL-5132: uninstall callers the case-sensitive, quote-blind rule missed,
+# Uninstall callers the case-sensitive, quote-blind rule missed,
 # and template root files test-vault-git.sh copies.
 g checkout -q -B lcps "$BASE"
 # The fence variable is assembled from parts so this file's own text never
@@ -223,7 +222,7 @@ if [ "$rc" -eq 2 ] && ! grepq "$out" '^mode '; then
 else fail "IS9: rc=$rc out: $out"; fi
 
 # --- IS10 -------------------------------------------------------------------
-# HIMMEL-4997: git C-quotes a name holding a double quote, backslash or tab, so
+# Git C-quotes a name holding a double quote, backslash or tab, so
 # the anchored trust match missed it and the PR stayed on the impacted path.
 n=0
 for name in 'scripts/ci/we"ird.sh' 'scripts/ci/back\slash.sh' $'scripts/ci/ta\tb.sh'; do
@@ -240,7 +239,7 @@ done
 g checkout -q "$BASE" 2>/dev/null
 
 # --- IS10b ------------------------------------------------------------------
-# HIMMEL-5174 (judge j2330a item 4): the trust-path grep's output file that cannot
+# The trust-path grep's output file that cannot
 # open is rc 1, which read as "no trust path" and let a trust-path PR go impacted.
 # A mktemp shim makes the work dir with a directory already at hits.z.
 SHIM_MK="$(fixture_mktemp_dir)" || exit 1
@@ -312,7 +311,7 @@ for pair in ".gitignore:$H_TPLGI" "README.md:$H_TPLRM"; do
   else fail "IS21: ${pair%%:*}: rc=$rc out: $out"; fi
 done
 
-# --- IS22 (HIMMEL-5160) -----------------------------------------------------
+# --- IS22 -----------------------------------------------------
 # A suite that names a changed script by its stem, without .sh, is selected.
 out=$(sel "$BASE" "$H_STEM"); rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" -x 'suite scripts/test-guard-stem.sh'; then
@@ -326,7 +325,7 @@ else fail "IS22: rc=$rc out: $out"; fi
 # parser: it reads uncommented walk lines naming a *repo* / *root* variable or
 # `repo,`.
 #
-# HIMMEL-5122: the widened regex also reaches suites that walk a FIXTURE root,
+# The widened regex also reaches suites that walk a FIXTURE root,
 # so an allowlist table (`<suite>|<reason>`) exempts a suite -- but ONLY for hits
 # the widened regex adds beyond main's narrow regex ($REPO / $REPO_ROOT /
 # $SRC_ROOT). A narrow hit in an allowlisted suite still fails (IS18), and an
@@ -433,7 +432,7 @@ case "$o" in
     pass "IS19: a missing, unflagged or reasonless allowlist entry fails" ;;
   *) fail "IS19: stale allowlist entries not all caught: [$o]" ;;
 esac
-# IS19: a MARKED entry is stale (M8 from j2279b: the stale:marked check dropped).
+# IS19: a MARKED entry is stale.
 # shellcheck disable=SC2016
 printf '%s\n' '#!/usr/bin/env bash' '# selector: tree-scan' 'find "$root" -name x' > "$S15/scripts/test-marked.sh"
 o=$(is15_scan "$S15" 'scripts/test-marked.sh|marked but allowlisted' <<< 'scripts/test-marked.sh')

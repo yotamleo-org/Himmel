@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-workflow-red-workflow.sh -- shape guard for
-# .github/workflows/workflow-red.yml (HIMMEL-5595): the reporter that runs
+# .github/workflows/workflow-red.yml: the reporter that runs
 # scripts/ci/workflow-red-issue.sh after each completed run of a tracked
 # workflow. Text assertions over the workflow with comments stripped; no network.
 #

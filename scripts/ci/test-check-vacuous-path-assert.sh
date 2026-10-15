@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 #
-# Smoke test for scripts/ci/check-vacuous-path-assert.sh (HIMMEL-2957).
+# Smoke test for scripts/ci/check-vacuous-path-assert.sh.
 #
 # RED-first note: before this detector existed, a deliberately naive first
 # cut ("flag every PATH= line followed anywhere later by an emptiness
@@ -46,7 +46,7 @@ git init -q "$dev_repo"
 cd "$dev_repo" || exit 2
 
 # Case A: ambient `PATH=$(scrub_path …)` then an emptiness assertion in the
-# same (persisted) shell scope -> the real HIMMEL-2812 shape, 1 finding.
+# same (persisted) shell scope -> the real-world shape, 1 finding.
 echo "== Case A: ambient scrub_path scope -> 1 finding =="
 cat > "$tmp/case-a.sh" <<'FIXTURE'
 #!/usr/bin/env bash
@@ -92,7 +92,7 @@ bash "$GUARD" "$tmp/case-d.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-d -> exit 0"; else fail "case-d -> expected 0 got $rc"; fi
 
 # Case E: a same-line `# vacuous-path-ok:` marker suppresses the finding.
-# CR round 1 (codex-3): the scrub must be a NON-preserving one -- a
+# The scrub must be a NON-preserving one -- a
 # preserving prepend like case G2's is already exempt by pattern A itself,
 # so a marker-less version has to independently produce a finding for this
 # case to actually prove marker suppression (not just re-prove G2).
@@ -137,7 +137,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-g.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-g -> exit 0"; else fail "case-g -> expected 0 got $rc"; fi
 
-# Case G2 (HIMMEL-2957 tree-run false positive): a pure additive prepend that
+# Case G2: a pure additive prepend that
 # verbatim retains $PATH can only ADD entries, never remove one, so no later
 # assertion can be made vacuous by it -> 0 findings. This is the real shape
 # the whole-tree run found across 4 suites (export PATH="$stub:$PATH").
@@ -150,7 +150,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-g2.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-g2 -> exit 0"; else fail "case-g2 -> expected 0 got $rc"; fi
 
-# Case G3 (HIMMEL-2957 self-scan false positive): the vacuous shape appearing
+# Case G3: the vacuous shape appearing
 # inside a quoted heredoc BODY is data the enclosing shell writes out, not a
 # statement it runs -> 0 findings. This is the real shape this detector's own
 # test suite hits when pre-commit scans it (fixtures like case A/F above).
@@ -165,7 +165,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-g3.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-g3 -> exit 0"; else fail "case-g3 -> expected 0 got $rc"; fi
 
-# Case K (CR round 1, codex-1): a quoted command substitution
+# Case K: a quoted command substitution
 # (`PATH="$(scrub_path "$PATH" tool)"`) must still be detected -- the plain
 # quoted-string matcher stops at the FIRST embedded quote (the one around
 # the inner "$PATH" argument), which used to leave a non-empty remainder
@@ -179,7 +179,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-k.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-k -> exit 1"; else fail "case-k -> expected 1 got $rc"; fi
 
-# Case L (CR round 1, codex-2): the preservation check must require an
+# Case L: the preservation check must require an
 # EXACT $PATH / ${PATH} reference, not merely the substring "PATH" preceded
 # by `$`/`${` -- `$PATH_STUB` and `${PATH%:*}` both used to match the old
 # unanchored regex and be wrongly treated as preserving, even though
@@ -201,7 +201,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-l2.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-l2 -> exit 1"; else fail "case-l2 -> expected 1 got $rc"; fi
 
-# Case M (CR round 2, codex-2): a COMMENTED mention of a heredoc redirect
+# Case M: a COMMENTED mention of a heredoc redirect
 # must not open heredoc state -- before the fix, the unanchored regex
 # matched "<<EOF" inside the comment text, silently skipping every real
 # line after it (including the ambient scrub + assertion below), so the
@@ -216,9 +216,9 @@ FIXTURE
 bash "$GUARD" "$tmp/case-m.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-m -> exit 1"; else fail "case-m -> expected 1 got $rc"; fi
 
-# Case N (CR round 3, codex-1): a TRAILING comment mentioning a heredoc
+# Case N: a TRAILING comment mentioning a heredoc
 # redirect must not open heredoc state either -- only a whole-line comment
-# was excluded after round 2; `echo ready # example: cat <<EOF` still
+# was excluded originally; `echo ready # example: cat <<EOF` still
 # matched the unanchored regex and silently skipped the real scrub +
 # assertion below.
 echo "== Case N: trailing-comment heredoc mention does not suppress detection -> 1 finding =="
@@ -231,7 +231,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-n.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-n -> exit 1"; else fail "case-n -> expected 1 got $rc"; fi
 
-# Case O (CR round 3, codex-2): a $PATH reference retained WITHOUT a colon
+# Case O: a $PATH reference retained WITHOUT a colon
 # boundary merges a bogus segment onto the first real entry instead of
 # adding a new one -- `PATH="/nonexistent$PATH"` is NOT preserving and
 # must still be flagged.
@@ -244,7 +244,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-o.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-o -> exit 1"; else fail "case-o -> expected 1 got $rc"; fi
 
-# Case P (CR round 4, codex-1): a here-string (`cat <<<EOF`) is a single
+# Case P: a here-string (`cat <<<EOF`) is a single
 # self-contained expression, not a multi-line heredoc redirect -- its
 # third `<` must not let the heredoc-open check match starting one
 # character in and wrongly open heredoc-skip state with no closing
@@ -259,7 +259,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-p.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-p -> exit 1"; else fail "case-p -> expected 1 got $rc"; fi
 
-# Case Q (HIMMEL-3015): an UNQUOTED bare assignment followed directly by a
+# Case Q: an UNQUOTED bare assignment followed directly by a
 # `;` command separator (`PATH=/stub; hash -r`) is still an ambient scrub --
 # the unquoted-word value used to swallow the `;` into itself and leave
 # `hash -r` as a trailing command word, so the line looked like a per-command
@@ -273,7 +273,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-q.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-q -> exit 1"; else fail "case-q -> expected 1 got $rc"; fi
 
-# Case R (HIMMEL-3015): a multi-operand `export` (`export PATH=/stub OTHER=1`)
+# Case R: a multi-operand `export` (`export PATH=/stub OTHER=1`)
 # still exports the scrubbed PATH into the calling shell; the trailing
 # `OTHER=1` is another export operand, not a command word that scopes it.
 echo "== Case R: multi-operand export with PATH first is ambient -> 1 finding =="
@@ -285,7 +285,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-r.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-r -> exit 1"; else fail "case-r -> expected 1 got $rc"; fi
 
-# Case R2 (HIMMEL-3015): the same class with PATH NOT the first operand.
+# Case R2: the same class with PATH NOT the first operand.
 echo "== Case R2: multi-operand export with PATH last is ambient -> 1 finding =="
 cat > "$tmp/case-r2.sh" <<'FIXTURE'
 #!/usr/bin/env bash
@@ -295,7 +295,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-r2.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 1 ]; then pass "case-r2 -> exit 1"; else fail "case-r2 -> expected 1 got $rc"; fi
 
-# Case S (HIMMEL-3015 control): a per-command prefix followed by a `;` chain is
+# Case S: a per-command prefix followed by a `;` chain is
 # still scoped to its one command -> 0 findings.
 echo "== Case S: per-command prefix then ; chain stays scoped -> 0 findings =="
 cat > "$tmp/case-s.sh" <<'FIXTURE'
@@ -306,7 +306,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-s.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-s -> exit 0"; else fail "case-s -> expected 0 got $rc"; fi
 
-# Case T (HIMMEL-3015 control): a multi-operand export that does NOT assign
+# Case T: a multi-operand export that does NOT assign
 # PATH itself (`PATH_X` is a different variable) -> 0 findings.
 echo "== Case T: multi-operand export of PATH_X (not PATH) -> 0 findings =="
 cat > "$tmp/case-t.sh" <<'FIXTURE'
@@ -317,7 +317,7 @@ FIXTURE
 bash "$GUARD" "$tmp/case-t.sh" >/dev/null; rc=$?
 if [ "$rc" -eq 0 ]; then pass "case-t -> exit 0"; else fail "case-t -> expected 0 got $rc"; fi
 
-# Case U (HIMMEL-3015 control): an unquoted preserving prepend followed by a
+# Case U: an unquoted preserving prepend followed by a
 # `;` chain (`PATH=/stub:$PATH; hash -r`) can only ADD entries -> 0 findings.
 echo "== Case U: unquoted preserving prepend then ; chain -> 0 findings =="
 cat > "$tmp/case-u.sh" <<'FIXTURE'

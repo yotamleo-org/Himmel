@@ -7,26 +7,26 @@
 # SKIP_LIST is the ledger of "what we can't test here"; everything else is
 # "what we can".
 #
-# Finer-grained tables refine that binary. SUITE_CONDITIONAL (HIMMEL-1589)
+# Finer-grained tables refine that binary. SUITE_CONDITIONAL
 # holds a suite back only under --changed-since when nothing it guards changed,
-# SUITE_REQUIRE_TOOL (HIMMEL-1792) is capability-conditional: a suite there
+# SUITE_REQUIRE_TOOL is capability-conditional: a suite there
 # RUNS on every host that has the tool and is [SKIP]ped loudly with its reason
 # where the tool is absent — never dead weight in SKIP_LIST on hosts that DO
 # have the capability, the exact blind spot that let a PowerShell-only
-# regression ship green (HIMMEL-1774) — and SUITE_TIER (HIMMEL-2120) is a
+# regression ship green — and SUITE_TIER is a
 # declarative corpus-reduction table gated by env SUITE_TIER_MODE
 # (fast|extended|all; unset = all = byte-identical to no filter).
 #
-# Docs-only fast lane (HIMMEL-2166): an extension of the --changed-since
+# Docs-only fast lane: an extension of the --changed-since
 # trigger, not a new flag. When the filter is active and EVERY changed path
 # (tracked + untracked) is a *.md file or lives under docs/, no suite here can
 # exercise it — the whole corpus is [SKIP]ped, not just the leak-barrier
 # suites SUITE_CONDITIONAL guards — and a zero-suites-ran run is reported as a
-# genuine pass instead of the HIMMEL-1128 false-green refusal. A MIXED diff
+# genuine pass instead of the false-green refusal. A MIXED diff
 # (any non-docs path) does not qualify and falls through to the ordinary
 # SKIP_LIST/tier/conditional/capability filtering unchanged.
 #
-# Phased-CI intent (HIMMEL-494): the first runs are a discovery instrument. A
+# Phased-CI intent: the first runs are a discovery instrument. A
 # suite that fails only because of a missing runner capability gets moved into
 # SKIP_LIST (with a reason) until the job is green; a suite that fails for a
 # real bug stays red. Keep SKIP_LIST minimal and justified.
@@ -40,16 +40,16 @@
 #                                                        # whose scope is unchanged since <ref>
 #   scripts/ci/run-shell-tests.sh --pr <N>               # ALSO post the SUMMARY block as a
 #                                                        # comment on PR <N> (opt-in, or env
-#                                                        # SUITE_REPORT_PR=N; HIMMEL-2383) —
+#                                                        # SUITE_REPORT_PR=N) —
 #                                                        # never default-on, never posted
 #                                                        # without one of these set
 #   --scan-repo-of-script  allow a caller whose cwd is in a DIFFERENT git work tree
 #                                                        # than this script's: without it that call
-#                                                        # is refused rc 2 (HIMMEL-2504), because
+#                                                        # is refused rc 2, because
 #                                                        # the runner scans ITS OWN repo
 #   --shard <i>/<n>      run only slice <i> of <n> of the final run list
 #   --impacted <base>..<head>   run ONLY the suites that reference a file the
-#                                                        # range changed (HIMMEL-2821): the
+#                                                        # range changed: the
 #                                                        # one-shot runner for the list
 #                                                        # scripts/cr/impacted-suites.sh
 #                                                        # prints. A range that does not
@@ -72,31 +72,31 @@
 #   run. Not a git repo / unresolvable ref / failing diff -> fail-open: run all.
 #
 # Exit codes: 0 — one or more suites ran and all passed, OR zero ran because
-#             --changed-since proved the diff docs-only (HIMMEL-2166); 1 — at
+#             --changed-since proved the diff docs-only; 1 — at
 #             least one suite failed, OR zero suites ran for any OTHER reason
 #             (a resolved-to-nothing scan root is a misconfiguration, not a
-#             pass — HIMMEL-1128), OR the run budget expired with suites still
+#             pass), OR the run budget expired with suites still
 #             unrun; 6 — REFUSED, the caller sits in another git work tree
 #             than the script's, or the scan root lies inside one, so the run
-#             would scan a tree the caller did not mean (HIMMEL-2504,
-#             HIMMEL-5104; own code so a lock-held 2 is not mistaken for it);
+#             would scan a tree the caller did not mean
+#             (its own code, so a lock-held 2 is not mistaken for it);
 #             2 — REFUSED, either another full-suite run already holds
-#             the machine lock (HIMMEL-1338), SUITE_TIER_MODE was set to
-#             something other than fast/extended/all (HIMMEL-2120), or --shard
-#             was given a malformed <i>/<n> value (HIMMEL-2872);
+#             the machine lock, SUITE_TIER_MODE was set to
+#             something other than fast/extended/all, or --shard
+#             was given a malformed <i>/<n> value;
 #             3 — ABORTED, the scan root vanished or was replaced under the
-#             live run (HIMMEL-2517); 4 — ABORTED, an rc=127 storm means
-#             almost nothing here could execute (HIMMEL-2517); 5 — EXPIRED,
+#             live run; 4 — ABORTED, an rc=127 storm means
+#             almost nothing here could execute; 5 — EXPIRED,
 #             a SUITE_LOCK_WAIT budget ran out with the lock still held (or
-#             this run still behind an older live waiter in the FIFO queue,
-#             HIMMEL-2623) — distinct from the instant refusal above because
+#             this run still behind an older live waiter in the FIFO queue) —
+#             distinct from the instant refusal above because
 #             it means "waited, then gave up," not "declined to wait." 3, 4
 #             and 5 are NOT test verdicts: no tally is a result and no
 #             after-report is posted, so a caller must not read any of them
 #             as "some suites failed" — 1 remains the only code that means
 #             that.
 #
-# CONCURRENCY (HIMMEL-1338): on 2026-07-28 five sessions had this runner going
+# CONCURRENCY: on 2026-07-28 five sessions had this runner going
 # at once on one workstation; the oldest had been at it for 150 minutes. The
 # runs were not deadlocked — they were starving each other. Every concurrent
 # run multiplies the process churn (~1000 processes / 200 live bash at the
@@ -120,7 +120,7 @@
 #                      sight (default 0 = refuse immediately, the historical
 #                      behaviour). While waiting the runner prints a repeating
 #                      WAITING: line naming the current holder — see
-#                      VISIBILITY below. Waiters queue FIFO (HIMMEL-2623): a
+#                      VISIBILITY below. Waiters queue FIFO: a
 #                      ticket under SUITE_LOCK_DIR.q orders waiters by arrival,
 #                      so an older waiter is never jumped by a newer one — see
 #                      QUEUE FAIRNESS below. A budget that runs out still
@@ -130,13 +130,13 @@
 #                      (this knob unset or 0) also refuses (rc 2) when the
 #                      queue is non-empty, even if the lock itself is free —
 #                      an ad-hoc run must yield to whoever already queued
-#                      rather than cut in front of them (round 4); it never
+#                      rather than cut in front of them; it never
 #                      takes a ticket of its own, so this never queues it
 
 #   SUITE_LOCK_WAIT_INTERVAL
 #                      seconds between those WAITING: lines (default 60)
 #   SUITE_QUEUE_TTL    seconds since a queued waiter's ticket was last SEEN
-#                      (refreshed on every poll, HIMMEL-2623 round 7) before it
+#                      (refreshed on every poll) before it
 #                      is presumed abandoned — NOT since it first arrived, and
 #                      NOT overridden by a confirmed-alive pid: a waiter that
 #                      is alive but has stopped refreshing (stopped, wedged,
@@ -155,13 +155,13 @@
 #   SUITE_ROTATE       1 (default): a budget-truncated run records the first
 #                      suite it did not reach, so the NEXT run over the same
 #                      scan root starts there and wraps to the top. The fixed
-#                      sort order otherwise drops the SAME tail forever
-#                      (HIMMEL-2243). 0 always starts at the top.
+#                      sort order otherwise drops the SAME tail forever.
+# 0 always starts at the top.
 #   SUITE_ROTATE_STATE override the cursor path (the self-test uses its own
 #                      sandbox); default
 #                      $HOME/.himmel/himmel-shell-suite-<scan-slug>.cursor
 #
-# COVERAGE (HIMMEL-2243): the run budget above bounds an ORDINARY full run on
+# COVERAGE: the run budget above bounds an ORDINARY full run on
 # this hardware, not just a runaway one — 397 suites are discovered, 381 run
 # after SKIP_LIST, and the 2026-08-29 reference run spent its whole 7200s on
 # real work while reaching only 174 of them. Because discovery is sorted, the
@@ -174,9 +174,9 @@
 #
 # bash 3.2-safe (macOS ships 3.2): no mapfile, no associative arrays.
 set -uo pipefail
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# Refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
@@ -192,36 +192,36 @@ chokepoint_seam_guard scripts/ci/run-shell-tests.sh || exit 96
 # CDPATH is dropped first: with it set, `cd <relative>` searches CDPATH before
 # the cwd, so every relative cd below (this one, the scan-root guard, the
 # scan_resolved resolution) can land in a different tree than it names, and
-# prints the directory to stdout (HIMMEL-5111).
+# prints the directory to stdout.
 unset CDPATH
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 # The caller's git work tree, captured BEFORE the cd below throws the caller's
-# cwd away (HIMMEL-2504): the scan-root guard after arg parsing compares it with
+# cwd away: the scan-root guard after arg parsing compares it with
 # REPO_ROOT. Empty when the caller is not inside a work tree. Physical (-P) form
 # on both sides so a symlinked spelling of the same tree is not a mismatch.
 # An exported GIT_DIR / GIT_WORK_TREE / GIT_COMMON_DIR would redirect every git
 # call below (the caller's tree, REPORT_HEAD, the scanning line) and the suites
-# inherit it too; the runner always means the repo of its own cwd, so drop them
-# (HIMMEL-5104). GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY go with them: the suites
+# inherit it too; the runner always means the repo of its own cwd, so drop them.
+# GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY go with them: the suites
 # build throwaway repos and an inherited index or object store points those at
-# the caller's (HIMMEL-5111). GIT_ALTERNATE_OBJECT_DIRECTORIES adds an object
+# the caller's. GIT_ALTERNATE_OBJECT_DIRECTORIES adds an object
 # store the same way, and GIT_CEILING_DIRECTORIES stops the work-tree walk-up the
-# suites' own fixtures rely on (HIMMEL-5120). GIT_CONFIG_* is deliberately left:
+# suites' own fixtures rely on. GIT_CONFIG_* is deliberately left:
 # git_test_env_pin_perf below sets the pins suites depend on through it.
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CEILING_DIRECTORIES
 # An empty answer is "no tree known" (a git that prints nothing would otherwise
 # be cd'd into IN PLACE and name the caller's cwd as a toplevel), so only a
-# printed path counts (HIMMEL-5111, the same shape as the scan-root guard below).
+# printed path counts.
 caller_top=$(git rev-parse --show-toplevel 2>/dev/null) || caller_top=""
 [ -n "$caller_top" ] && { caller_top=$(cd "$caller_top" 2>/dev/null && pwd -P) || caller_top=""; }
 cd "$REPO_ROOT" || exit 1
 
 # Captured HERE, before the (potentially hours-long) suite run below, not
-# after it (HIMMEL-2383 CR finding codex-2, round 9): resolving it only at
+# after it: resolving it only at
 # report-post time meant a worktree pruned out from under a still-running
-# suite (merge-on-green.sh's HIMMEL-1970 prune, guarded by its own
-# HIMMEL-2227 in-use check but not airtight against every timing) could
+# suite (merge-on-green.sh's prune, guarded by its own
+# in-use check but not airtight against every timing) could
 # turn "the head that was tested" into "unknown" — and the SHA this
 # process actually ran the suites against never changes mid-run regardless.
 REPORT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
@@ -238,7 +238,7 @@ REPORT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/git-test-env.sh"
 
-# HIMMEL-3092: the guard-override list + scrub_override_env. A console leg's
+# The guard-override list + scrub_override_env. A console leg's
 # shell exports INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
 # and friends; without the scrub below they reach every suite and turn "override
 # UNSET, guard must fire" cases red (or vacuously green). Sourced only — the
@@ -297,7 +297,7 @@ case "${SUITE_TIMEOUT:-}" in
   ''|*[!0-9]*) ;;                                        # unset, empty, or non-numeric
   *) [ "$SUITE_TIMEOUT" -ge 1 ] && SUITE_TIMEOUT_EXPLICIT=x ;;
 esac
-# HIMMEL-2233: 180s sat inside the noise band of real suites -- measured idle
+# 180s sat inside the noise band of real suites -- measured idle
 # on 2026-08-29: scripts/cr/test-install-cr-gate.sh 112s,
 # scripts/hooks/test-block-mcp-when-plugin-exists.sh 78s, and the suite that
 # triggered the ticket is 152-165s idle. That left under 20% headroom, and any
@@ -306,9 +306,9 @@ esac
 # per-suite table below already takes for two suites with the SAME idle
 # profile -- test-graphify-fence.sh (157s idle) and test-lesson-write-fence.sh
 # (143-172s idle) are both given 600s -- so the default now agrees with its
-# own table instead of contradicting it. This is NOT the HIMMEL-2091
+# own table instead of contradicting it. This is NOT the
 # load-aware approach: load-aware sizing was considered and rejected, because
-# HIMMEL-2091's load-aware hook-chain budget was itself closed as SUPERSEDED
+# a load-aware hook-chain budget was itself closed as SUPERSEDED
 # in favour of static numbers (docs/internals/script-runtime-practices.md,
 # "Chain budgets") -- a measured static default is the in-repo precedent, not
 # a load multiplier. The runaway backstop is unchanged: SUITE_RUN_BUDGET
@@ -323,7 +323,7 @@ _suite_timeout_for() {
 
   case "${1#./}" in
     scripts/eval/guard-corpus/test-guard-corpus.sh|*/scripts/eval/guard-corpus/test-guard-corpus.sh)
-      # HIMMEL-4912: runtime IPC masking scans before every fresh hook sandbox.
+      # Runtime IPC masking scans before every fresh hook sandbox.
       # Full replay: 1407s local sequential, 1437s timed (2026-10-08); PR CI
       # killed it at 3000s with the replay unfinished (run 37840193447, shard
       # 6), so the CI figure is ~6x local (~8600s). Fast tier (PR CI) runs the
@@ -331,12 +331,12 @@ _suite_timeout_for() {
       # slowest) kills a regression so a hung subset cannot hold a shard. Do not cache scans or drop
       # masks to fit the generic 600s cap.
       # ponytail: the full-tier cap is the CI estimate x1.25 and unmeasured on
-      # CI, upgrade path: shard the full replay and re-measure (HIMMEL-5055).
+      # CI, upgrade path: shard the full replay and re-measure.
       # The nightly shards run tier all with GUARD_CORPUS_TIER=fast: the full
       # replay runs in the scheduled-only guard-corpus-full job, not a 60-min shard.
       if [ "${SUITE_TIER_MODE:-all}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then printf '1800'; else printf '10800'; fi ;;
     scripts/hooks/test-block-destructive-commands.sh|*/scripts/hooks/test-block-destructive-commands.sh)
-      # HIMMEL-4912: every fixture now starts a fresh bwrap sandbox. Linux with
+      # Every fixture now starts a fresh bwrap sandbox. Linux with
       # bwrap working measured 263s alone (2026-10-08). On the CI runner (bwrap
       # working after the ci.yml userns sysctl) the suite was killed at the
       # 1200s cap with ~80% of its fixtures done (PR 2177 shard 1, run
@@ -344,7 +344,7 @@ _suite_timeout_for() {
       # same as the guard-corpus arm above).
       printf '3000' ;;
     scripts/handover/test-arm-resume-identity.sh|*/scripts/handover/test-arm-resume-identity.sh)
-      # HIMMEL-2120 Task-6 fresh-boot idle benchmark (2026-08-27): new idle
+      # Fresh-boot idle benchmark (2026-08-27): new idle
       # 814s, rc=0 (reproduced at 802s, rc=0, same day). The prior 08-26 idle
       # row (636s) was an rc=1 failing run -- invalid as a timing baseline.
       # Ratio-preserved: 814 * (1800/636) = 2304, rounded up to 2350. Also
@@ -352,43 +352,43 @@ _suite_timeout_for() {
       # load) with headroom.
       printf '2350' ;;
     scripts/test-uninstall.sh|*/scripts/test-uninstall.sh)
-      # HIMMEL-3699. os-verify run 36628311643 (macOS): every assertion passed
+      # Os-verify run 36628311643 (macOS): every assertion passed
       # but the runner's watchdog killed it at 604s against the 600s default
       # (CAP EXCEEDED); it takes ~211s on Linux. 1200s is ~2x the macOS figure;
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '1200' ;;
     scripts/test-uninstall-provenance.sh|*/scripts/test-uninstall-provenance.sh)
-      # HIMMEL-3699. os-verify run 36631325846 (macOS): killed at 603s against
+      # Os-verify run 36631325846 (macOS): killed at 603s against
       # the 600s default (CAP EXCEEDED) with its assertions passing; ~212s on
       # Linux. Same 1200s as test-uninstall.sh; SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
     scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
-      # HIMMEL-5257. PR 2400 shard 6: every assertion passing, killed at 603s
+      # PR 2400 shard 6: every assertion passing, killed at 603s
       # against the 600s default (CAP EXCEEDED); 373s idle on Linux locally
       # after the CI-red unlock rows landed. 603s is a truncation floor, so
       # 1200s is that x2 (the loaded-budget rule); SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
     scripts/test-adopt.sh|*/scripts/test-adopt.sh)
-      # HIMMEL-5375: last 10 main CI runs (2026-10-10 to 2026-10-12) took
+      # Last 10 main CI runs (2026-10-10 to 2026-10-12) took
       # 408-568s, including a 539s passing retry; PR 2444 run 38246023775
       # shard 4 was killed at 603s against the 600s default (a truncation
       # floor). 1200s is about 2x the worst measured CI time; the global
       # default and SUITE_RUN_BUDGET runaway backstop stay unchanged.
       printf '1200' ;;
     scripts/test-check-ci.sh|*/scripts/test-check-ci.sh)
-      # HIMMEL-1978. ~110 cases, each spawning dozens of gh-stub processes, so
+      # ~110 cases, each spawning dozens of gh-stub processes, so
       # it is the most load-sensitive suite here: measured 1009s on a swept box
-      # under six concurrent workers, and HIMMEL-1953 clocked it at ~51 min
+      # under six concurrent workers, and it was once clocked at ~51 min
       # (3060s) on the same box before the /tmp sweep. It was in neither this
       # table nor SKIP_LIST, so the 180s default killed it rc=124 in every full
       # pass. 3600s covers the worst figure ever observed with headroom;
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '3600' ;;
-    # NO ARM for scripts/ci/test-run-shell-tests*.sh (HIMMEL-2895). It used to
-    # carry a 1200s arm (HIMMEL-2267: 712s measured standalone by the
-    # HIMMEL-2260 leg on 2026-08-30, x ~1.5). HIMMEL-2895 split that one
+    # NO ARM for scripts/ci/test-run-shell-tests*.sh. It used to
+    # carry a 1200s arm (712s measured standalone on
+    # 2026-08-30, x ~1.5). Splitting that one
     # 3086-line file into six suites and measured each standalone on linux
     # (idle, 2026-09-10): core 10s, -timing 41s, -discovery 4s, -rotation
     # 111s, -rotation-guards 114s, -rotation-cursor 102s -- 382s total, same
@@ -400,30 +400,30 @@ _suite_timeout_for() {
     # Case 2267 in test-run-shell-tests.sh pins all six at the default, so
     # re-adding an arm is a deliberate act with a measurement behind it.
     scripts/ci/test-suite-concurrency.sh|*/scripts/ci/test-suite-concurrency.sh)
-      # HIMMEL-2267. New today (landed via #2038). It had been seen only as
+      # New today (landed via #2038). It had been seen only as
       # "CAP EXCEEDED at 604s" in a scoped run -- a truncation floor, never a
-      # completed measurement. Measured standalone TO COMPLETION by the
-      # HIMMEL-2260 leg on 2026-08-30, 19:20:28-19:35:52: 924s, rc=0, 158
+      # completed measurement. Measured standalone TO COMPLETION
+      # on 2026-08-30, 19:20:28-19:35:52: 924s, rc=0, 158
       # PASS, summary line "OK: all cases passed". That window overlapped
       # another suite run on this box (a long-suite
       # measurement), so 924s is a possibly-loaded / worst-observed figure,
       # not an idle benchmark. 1500s is ~62% headroom over 924s.
       printf '1500' ;;
     scripts/cr/test-clear-cr-marker.sh|*/scripts/cr/test-clear-cr-marker.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): worst observed loaded
+      # Loaded re-benchmark (2026-09-02): worst observed loaded
       # 854s (854s cited in the ticket, 844s reproduced here), against the
       # stale 850 cap derived from a 2026-08-27 idle benchmark whose headroom
       # the suite has since outgrown. Rule: loaded x2 -- 854 * 2 = 1708,
       # rounded up to 1750.
       printf '1750' ;;
     scripts/guardrails/test-graphify-fence.sh|*/scripts/guardrails/test-graphify-fence.sh)
-      # HIMMEL-2120 Task-6 fresh-boot idle benchmark (2026-08-27): idle 157s.
+      # Fresh-boot idle benchmark (2026-08-27): idle 157s.
       # Ratio-preserved: 157 * (600/161) = 586, rounded up to 600 -- unchanged.
       # Floor >= 344s (worst loaded run observed).
       printf '600' ;;
     scripts/guardrails/test-lesson-write-fence.sh|*/scripts/guardrails/test-lesson-write-fence.sh)
-      # HIMMEL-2120 Task-6 fresh-boot idle benchmark (2026-08-27): idle
-      # 143-172s. A fresh 2026-08-27 re-measure (HIMMEL-2169) agrees - idle
+      # Fresh-boot idle benchmark (2026-08-27): idle
+      # 143-172s. A fresh 2026-08-27 re-measure agrees - idle
       # stays well under the SUITE_TIER_DEFAULT ">300s idle => extended" rule
       # below, so this suite correctly stays off that list (fast tier). The
       # old "measured 304s" comment here was a LOADED-box figure, not idle -
@@ -432,15 +432,15 @@ _suite_timeout_for() {
       # posture as the neighboring entries' timeout values.
       printf '600' ;;
     scripts/cr/test-critic-panel.sh|*/scripts/cr/test-critic-panel.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): worst observed loaded
-      # 846s (HIMMEL-2401 reported 454/454/455s on a lighter box; reproduced
+      # Loaded re-benchmark (2026-09-02): worst observed loaded
+      # 846s (454/454/455s reported on a lighter box; reproduced
       # at 846s here under 8 concurrent sessions), against the stale 450 cap
       # derived from a 2026-08-27 idle benchmark whose headroom the suite has
       # since outgrown (86 panel invocations today, up from the benchmark's
       # count). Rule: loaded x2 -- 846 * 2 = 1692, rounded up to 1700.
       printf '1700' ;;
     scripts/cr/test-critic-first-pass.sh|*/scripts/cr/test-critic-first-pass.sh)
-      # HIMMEL-2069. ~50 CFP invocations, ~31 of them through the real
+      # ~50 CFP invocations, ~31 of them through the real
       # scripts/hermes/invoke.sh chokepoint (mktemp x4, a `set -m` watchdog
       # subshell, a `>(tee)` process substitution, an exec'd python3 stub) --
       # each one costs several seconds of pure MSYS process-spawn overhead, no
@@ -455,23 +455,23 @@ _suite_timeout_for() {
       # 3600s gives ~3x headroom over the worst completion actually observed.
       printf '3600' ;;
     scripts/handover/test-pr-merge.sh|*/scripts/handover/test-pr-merge.sh)
-      # HIMMEL-2401/HIMMEL-2418 loaded re-benchmark (2026-09-02): the suite is
+      # Loaded re-benchmark (2026-09-02): the suite is
       # healthy (PASSES 49/0 every time) but was capped below its real
       # runtime by a stale 2026-08-27 idle benchmark. Worst observed loaded
-      # 1071s (HIMMEL-2418, standalone under heavier load; 959s reproduced
+      # 1071s (standalone under heavier load; 959s reproduced
       # here). Rule: loaded x2 -- 1071 * 2 = 2142, rounded up to 2150.
       printf '2150' ;;
     scripts/handover/test-auto-commit.sh|*/scripts/handover/test-auto-commit.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): no dedicated entry
+      # Loaded re-benchmark (2026-09-02): no dedicated entry
       # existed -- the generic 600s SUITE_TIMEOUT default was tripped
-      # (CAP EXCEEDED after 606s, cap 600s, HIMMEL-2401 comment). Worst
+      # (CAP EXCEEDED after 606s, cap 600s). Worst
       # observed loaded 606s (398s reproduced here on a lighter moment of the
       # same box). Rule: loaded x2 -- 606 * 2 = 1212, rounded up to 1250.
       printf '1250' ;;
     scripts/himmelctl/test/test-wizard-probes.sh|*/scripts/himmelctl/test/test-wizard-probes.sh)
-      # HIMMEL-2358. Ticket-cited pristine standalone figure: 799s, rc=0,
-      # genuine PASS (measured on overlord8, Windows/Git-Bash, per
-      # HIMMEL-2350's own diagnosis of that box). A fresh scratch-HOME
+      # Ticket-cited pristine standalone figure: 799s, rc=0,
+      # genuine PASS (measured on overlord8, Windows/Git-Bash).
+      # A fresh scratch-HOME
       # re-measurement here (Linux CachyOS, 2026-09-26, via
       # scripts/lib/clean-sandbox.sh) completed in ~27s, rc=0, PASS -- the
       # ~30x gap is Windows/Git-Bash node-spawn overhead on this heavily
@@ -482,7 +482,7 @@ _suite_timeout_for() {
       # test-suite-concurrency.sh). 799 * 1.5 = 1198.5, rounded up to 1200.
       printf '1200' ;;
     scripts/hooks/test-check-security-reviewed.sh|*/scripts/hooks/test-check-security-reviewed.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): worst observed loaded
+      # Loaded re-benchmark (2026-09-02): worst observed loaded
       # 743s, against the stale 500 cap derived from a 2026-08-27 idle
       # benchmark (238s). Rule: loaded x2 -- 743 * 2 = 1486, rounded up to
       # 1500.
@@ -490,32 +490,30 @@ _suite_timeout_for() {
     scripts/graphify/test-refresh-graph-map.sh|*/scripts/graphify/test-refresh-graph-map.sh)
       printf '550' ;;  # measured 251s idle 2026-08-27 (rc=1 unrelated, HIMMEL-2160)
     scripts/hooks/test-guard-implementor-dispatch.sh|*/scripts/hooks/test-guard-implementor-dispatch.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): worst observed loaded
+      # Loaded re-benchmark (2026-09-02): worst observed loaded
       # 344s (155/0 passing, alone under 8 concurrent sessions), against the
       # stale 450 cap derived from a 2026-08-27 idle benchmark (204s). Rule:
       # loaded x2 -- 344 * 2 = 688, rounded up to 700.
       printf '700' ;;
     scripts/hooks/test-block-glm-external-writes.sh|*/scripts/hooks/test-block-glm-external-writes.sh)
-      # HIMMEL-2401 loaded re-benchmark (2026-09-02): no dedicated entry
+      # Loaded re-benchmark (2026-09-02): no dedicated entry
       # existed -- the generic 600s SUITE_TIMEOUT default was tripped
-      # (CAP EXCEEDED after 606s, cap 600s, HIMMEL-2401 comment). Worst
+      # (CAP EXCEEDED after 606s, cap 600s). Worst
       # observed loaded 1192s here. Rule: loaded x2 -- 1192 * 2 = 2384,
       # rounded up to 2400.
       printf '2400' ;;
     scripts/handover/test-arm-resume-1879.sh|*/scripts/handover/test-arm-resume-1879.sh)
-      # HIMMEL-3175 (nightly #843, run 35375554792): no dedicated entry existed
+      # Nightly #843 (run 35375554792): no dedicated entry existed
       # -- the generic 600s default killed it CAP EXCEEDED on ubuntu (603s),
-      # macOS (604s) and Windows (603s). Measured 843s idle (HIMMEL-3132, tier
+      # macOS (604s) and Windows (603s). Measured 843s idle (tier
       # table below). Rule: loaded x2 -- 843 * 2 = 1686, rounded up to 1700;
       # the CI runners' own completion time is unmeasured (every run was
       # killed at the cap), so the wider figure is the safe one.
       printf '1700' ;;
     scripts/handover/test-arm-resume-queue-lock.sh|*/scripts/handover/test-arm-resume-queue-lock.sh)
-      printf '650' ;;  # measured 307s idle 2026-08-27 (rc=1 was the HIMMEL-1329 ticket-mutex
-      # false-positive fixed by HIMMEL-2165, not HIMMEL-1796 -- that ticket is about two
-      # unrelated hook suites and never mentions queue-lock; the earlier citation here was wrong)
+      printf '650' ;;  # measured 307s idle 2026-08-27 (rc=1 was a ticket-mutex false positive, since fixed)
     scripts/hooks/test-block-write-into-main-checkout.sh|*/scripts/hooks/test-block-write-into-main-checkout.sh)
-      # HIMMEL-3648 (#1307): CAP EXCEEDED on ubuntu CI (603s, cap 600s,
+      # CAP EXCEEDED on ubuntu CI (603s, cap 600s,
       # assertions passing). Measured locally 2026-09-27: origin/main 6ac09bf9
       # 276s, head 5b19a0b7 337s (+22% from the PR's new rows). CI completion
       # is unmeasured (killed at the cap). Rule: loaded x2 -- 603 * 2 = 1206,
@@ -534,7 +532,7 @@ _suite_timeout_for() {
 # tight default would turn a merely slow CI leg red. Lower it per-run when you
 # want a tighter leash.
 #
-# HIMMEL-2243 corrects what this comment used to claim. "Two hours is
+# The claim that "Two hours is
 # implausible for a healthy run on any platform" was FALSE by the time it was
 # written: the corpus is 397 discovered suites (381 runnable after SKIP_LIST)
 # and a healthy full pass on the dev workstation needs roughly 15000s -- the
@@ -547,7 +545,7 @@ _suite_timeout_for() {
 # the truncated tail resume rather than repeat.
 SUITE_RUN_BUDGET=$(_suite_num SUITE_RUN_BUDGET "${SUITE_RUN_BUDGET:-7200}" 7200)
 
-# Resume rotation (HIMMEL-2243). The walk order is `sort`ed, hence FIXED, so a
+# Resume rotation. The walk order is `sort`ed, hence FIXED, so a
 # budget-truncated run drops the SAME tail every time: on the reference run
 # that was 207 of 381 runnable suites -- everything from
 # scripts/hooks/test-check-no-headless-gemini.sh onward, i.e. the whole of
@@ -559,10 +557,10 @@ SUITE_RUN_BUDGET=$(_suite_num SUITE_RUN_BUDGET "${SUITE_RUN_BUDGET:-7200}" 7200)
 # over the same scan root starts THERE and wraps around to the top. The set of
 # suites a single run would execute is untouched -- this reorders, it never
 # filters -- so nothing is narrowed to make the run "fit", which is the failure
-# mode HIMMEL-2243 explicitly rated worse than the loud truncation. Successive
+# mode explicitly rated worse than the loud truncation. Successive
 # runs therefore cover the whole ring (~3 budget windows here) instead of
-# re-running the same front half forever, and a truncated run STILL exits 1
-# (HIMMEL-1128): this makes the blind spot temporary, it does not make a
+# re-running the same front half forever, and a truncated run STILL exits 1:
+# this makes the blind spot temporary, it does not make a
 # partial run a pass.
 #
 # Inert until a run actually truncates: with no cursor on disk the order is
@@ -593,7 +591,7 @@ SUITE_LOCK_TTL=$(_suite_num SUITE_LOCK_TTL "${SUITE_LOCK_TTL:-14400}" 14400)
 # honoured verbatim, which is how the tests get their own sandboxed lock.
 SUITE_LOCK_DIR="${SUITE_LOCK_DIR:-}"
 
-# Staleness TTL for a FIFO queue ticket (HIMMEL-2623), mirroring SUITE_LOCK_TTL
+# Staleness TTL for a FIFO queue ticket, mirroring SUITE_LOCK_TTL
 # for the same reason: a dead waiter's ticket must not wedge every waiter that
 # arrived LATER behind it in the queue forever. Defaults to SUITE_LOCK_TTL
 # itself (not a second hardcoded 14400) so a site that already tuned the
@@ -603,8 +601,8 @@ SUITE_LOCK_DIR="${SUITE_LOCK_DIR:-}"
 # dead-waiter reclaim.
 SUITE_QUEUE_TTL=$(_suite_num SUITE_QUEUE_TTL "${SUITE_QUEUE_TTL:-$SUITE_LOCK_TTL}" "$SUITE_LOCK_TTL")
 
-# Nanosecond-resolution capability, probed ONCE here (HIMMEL-2623 round 6,
-# codex-2) — never inside _suite_lock_now_ns itself. That function is always
+# Nanosecond-resolution capability, probed ONCE here,
+# never inside _suite_lock_now_ns itself. That function is always
 # invoked as $(_suite_lock_now_ns): a lazy probe-and-cache INSIDE it would run
 # in the command-substitution SUBSHELL and be discarded the instant that
 # subshell exits, so every single call would re-probe forever — two forks per
@@ -617,7 +615,7 @@ case "$(date +%N 2>/dev/null)" in
   *) _suite_lock_ts_ns_ok=1 ;;
 esac
 
-# Optional wait budget over a HELD lock (HIMMEL-2215). Default 0 keeps the
+# Optional wait budget over a HELD lock. Default 0 keeps the
 # historical BEHAVIOUR: a held lock refuses on sight, same decision and same
 # exit 2. Not byte-identical OUTPUT, though — the refusal gained three lines
 # naming this knob as the way to queue instead, so a caller asserting on the
@@ -678,8 +676,8 @@ esac
 SUITE_LOCK_WAIT_INTERVAL=$(_suite_num SUITE_LOCK_WAIT_INTERVAL "${SUITE_LOCK_WAIT_INTERVAL:-60}" 60)
 
 # SUITE_QUEUE_STALE_AFTER — the EFFECTIVE window judged against a ticket's
-# heartbeat (HIMMEL-2623 round 7, codex-1's sanity check on the interaction
-# between these two knobs). SUITE_LOCK_WAIT_INTERVAL has no upper bound, so a
+# heartbeat, given the interaction
+# between these two knobs. SUITE_LOCK_WAIT_INTERVAL has no upper bound, so a
 # waiter configured with an interval longer than SUITE_QUEUE_TTL would go
 # stale BETWEEN ITS OWN POLLS — pruned by a peer, restored on its very next
 # poll (the round-4 restore path still catches this), but visibly ABSENT
@@ -689,7 +687,7 @@ SUITE_LOCK_WAIT_INTERVAL=$(_suite_num SUITE_LOCK_WAIT_INTERVAL "${SUITE_LOCK_WAI
 # waiter needs to refresh; only ever WIDENS SUITE_QUEUE_TTL, never narrows
 # it, so an ordinary (interval well under TTL) configuration is unaffected.
 #
-# THIS process's own value ONLY (round 8, codex-1): a ticket is branded with
+# THIS process's own value ONLY: a ticket is branded with
 # the value computed here at join time and carries it in its own owner file
 # from then on, because the expiry window belongs to the ticket's OWNER
 # (who knows its own interval), not to whichever OTHER process happens to
@@ -700,8 +698,8 @@ SUITE_LOCK_WAIT_INTERVAL=$(_suite_num SUITE_LOCK_WAIT_INTERVAL "${SUITE_LOCK_WAI
 SUITE_QUEUE_STALE_AFTER=$(( SUITE_LOCK_WAIT_INTERVAL * 3 ))
 
 # SUITE_QUEUE_STALE_AFTER_CEILING — the ABSOLUTE, READER-INDEPENDENT ceiling
-# on a ticket's own declared `stale_after` (HIMMEL-2623 round 9, codex-1).
-# This must NEVER be computed from the READER's own configuration — round 8
+# on a ticket's own declared `stale_after`.
+# This must NEVER be computed from the READER's own configuration — an earlier version
 # tried exactly that (100x the reader's own SUITE_QUEUE_STALE_AFTER) and it
 # reintroduced the very bug this mechanism exists to prevent: a reader with
 # a tiny SUITE_QUEUE_TTL/SUITE_LOCK_WAIT_INTERVAL computes a tiny window for
@@ -724,7 +722,7 @@ SUITE_QUEUE_STALE_AFTER_CEILING=259200  # 3 days
 # Suites that cannot run on a bare runner. One SCAN-ROOT-RELATIVE path per
 # entry. Each: "<relpath>   # <reason>". Keep the reason — it documents the gap.
 #
-# CI policy (HIMMEL-594): CI runs UNIT tests only — no API keys, no secrets, no
+# CI policy: CI runs UNIT tests only — no API keys, no secrets, no
 # 3rd-party/network (claude / hermes / codex-OAuth / Jira-API). Suites needing
 # those are INTEGRATION tests and belong on the VM e2e (host .env keys copied in,
 # codex via OAuth), not here. The VM-e2e-with-keys harness + per-skill/plugin
@@ -733,7 +731,7 @@ SUITE_QUEUE_STALE_AFTER_CEILING=259200  # 3 days
 # Entries are REPO-ROOT-relative ("scripts/handover/test-arm-resume.sh"), the
 # same spelling SUITE_TIER_DEFAULT already uses, and are matched on a "/"
 # boundary against each suite's FULL discovered path. Two properties follow,
-# and both are asserted by Case 18 of the self-test (HIMMEL-2260):
+# and both are asserted by Case 18 of the self-test:
 #
 #   Root-invariance — an entry holds its suite back identically in a full
 #   `scripts` run, in a scoped `scripts/handover` run, and under any nested or
@@ -769,12 +767,12 @@ scripts/testing/test-mock-hook-live-turn.sh  # HIMMEL-5228: needs the pinned cla
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
 "
 
-# Off-Linux skips (HIMMEL-3203): same format as SKIP_LIST, but appended to it
+# Off-Linux skips: same format as SKIP_LIST, but appended to it
 # only when `uname -s` is not Linux (macOS "Darwin", Git-Bash "MINGW*"), so a
 # suite that is fine on the Linux CI runner is not blanket-quarantined
 # everywhere. test-adopt.sh measured ~61-62s on Linux (twice, 2026-09-19)
 # against the 600s per-suite cap; while it sat in SKIP_LIST CI never ran it,
-# which is how the HIMMEL-3201 fixture drift (rc=123) went unnoticed. The
+# which is how a fixture drift (rc=123) went unnoticed. The
 # non-Linux reason is unchanged from its SKIP_LIST days.
 SKIP_LIST_NON_LINUX="
 scripts/test-adopt.sh                # HIMMEL-3203: skipped off-Linux only — timing-heavy full adoption matrix exceeds the hermetic runner's per-suite cap on Windows (600s default since HIMMEL-2233; the exceedance was last measured against the older 180s cap and STILL has not been re-measured, HIMMEL-3580 — do not reinstate on Windows without one); runs on Linux CI (~62s uncontended, 2026-09-19; re-verified PASS at 197s under concurrent multi-lane load, 2026-09-24 — still well inside the 600s cap either way); runnable individually, no VM e2e coverage
@@ -792,7 +790,7 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
 $SKIP_LIST_NON_LINUX" ;;
 esac
 
-# Conditional suites (HIMMEL-1589). Unlike SKIP_LIST (always skipped), a
+# Conditional suites. Unlike SKIP_LIST (always skipped), a
 # conditional suite runs by default and is only held back when --changed-since
 # is active AND no changed path matches its ERE. One entry per line:
 #   <repo-root-relative suite path>  <ERE over repo-relative changed paths>  # <reason>
@@ -805,7 +803,7 @@ esac
 SUITE_CONDITIONAL_DEFAULT=""
 SUITE_CONDITIONAL="${SUITE_CONDITIONAL:-$SUITE_CONDITIONAL_DEFAULT}"
 
-# Tier suites (HIMMEL-2120). A declarative corpus-reduction table, distinct
+# Tier suites. A declarative corpus-reduction table, distinct
 # from SKIP_LIST (never runs here) and SUITE_CONDITIONAL (change-scoped): a
 # suite listed here as "extended" is heavier/slower work that belongs in a
 # nightly or pre-release pass, not every per-PR/agent invocation. One entry
@@ -817,7 +815,7 @@ SUITE_CONDITIONAL="${SUITE_CONDITIONAL:-$SUITE_CONDITIONAL_DEFAULT}"
 # extended-listed suites; "extended" runs ONLY the listed suites, loud-
 # skipping everything else. Any other value is a loud misconfiguration, not a
 # silent fallback to "all" — exit 2 immediately.
-# Entries assigned by HIMMEL-2120 Task 6 from the 2026-08-27 fresh-boot serial
+# Entries assigned from the 2026-08-27 fresh-boot serial
 # idle benchmark (rule: new post-reduction idle > 300s => extended).
 # Env-overridable (SUITE_TIER), same seam as SUITE_REQUIRE_TOOL below, so the
 # self-test can drive fast/extended deterministically without touching the
@@ -838,7 +836,7 @@ case "$SUITE_TIER_MODE" in
     ;;
 esac
 
-# Capability-conditional suites (HIMMEL-1792). Neither table above can say
+# Capability-conditional suites. Neither table above can say
 # "runs exactly where the host has the tool": SKIP_LIST is a NEVER, which made
 # the pwsh smoke suite dead weight on every host that HAS pwsh — reproducing
 # the never-executed blind spot the suite exists to close — and SUITE_CONDITIONAL
@@ -848,7 +846,7 @@ esac
 # [SKIP]s it loudly with this reason — a runner-level [SKIP] line is the only
 # skip surface visible in a green full run, because a PASSED suite's own stdout
 # is captured to a log and discarded. The suite's own runtime guard stays as
-# the second layer for direct invocation (belt and braces, HIMMEL-1788).
+# the second layer for direct invocation (belt and braces).
 # Env-overridable (SUITE_REQUIRE_TOOL) so the self-test can drive the skip
 # branch deterministically on hosts that DO have the tool.
 _sandbox_tool=bwrap
@@ -885,7 +883,7 @@ extra_skips=""
 # --------------------------------------------------------------------------
 # suite_entry_matches <table-entry> <suite-path>
 #
-# The one path-matching predicate every suite table shares (HIMMEL-2260).
+# The one path-matching predicate every suite table shares.
 # Returns 0 when the entry designates that suite.
 #
 # Table entries are written repo-root-relative
@@ -944,7 +942,7 @@ suite_entry_matches() {
 # Returns 0 (true = skip) and prints the reason; returns 1 (false = run).
 #
 # TWO arguments because the two skip sources are anchored differently, and
-# collapsing them is a silent widening (HIMMEL-2260):
+# collapsing them is a silent widening:
 #
 #   SKIP_LIST   is a repo-wide ledger whose entries must mean the same thing
 #               under every scan root, so it matches <suite-key> -- the suite
@@ -988,7 +986,7 @@ EOF2
 }
 
 # --------------------------------------------------------------------------
-# Conditional-suite helpers (HIMMEL-1589). See SUITE_CONDITIONAL above. These
+# Conditional-suite helpers. See SUITE_CONDITIONAL above. These
 # are inert unless --changed-since resolved a changed set (conditional_filter_active=1).
 # --------------------------------------------------------------------------
 
@@ -1030,7 +1028,7 @@ EOF
 }
 
 # --------------------------------------------------------------------------
-# Tier helpers (HIMMEL-2120). See SUITE_TIER above.
+# Tier helpers. See SUITE_TIER above.
 # --------------------------------------------------------------------------
 
 # tier_lookup <suite-path> — returns 0 when the suite is listed in SUITE_TIER
@@ -1042,7 +1040,7 @@ EOF
 # table entry, not a suite to silently run as extended — same fail-loud
 # convention as the SUITE_TIER_MODE case above: exit 2 immediately.
 #
-# Matching is suite_entry_matches, like every other table (HIMMEL-2260). This
+# Matching is suite_entry_matches, like every other table. This
 # lookup used to hand-roll a bidirectional version of it against the scan-root-
 # relative path, because the production table's entries are repo-root-relative
 # ("scripts/handover/...") while the old caller passed a path missing that
@@ -1078,7 +1076,7 @@ EOF
 }
 
 # --------------------------------------------------------------------------
-# Capability-conditional helpers (HIMMEL-1792). See SUITE_REQUIRE_TOOL above.
+# Capability-conditional helpers. See SUITE_REQUIRE_TOOL above.
 # --------------------------------------------------------------------------
 
 # capability_lookup <suite-path> — sets _cap_tool/_cap_reason when the suite is
@@ -1113,13 +1111,13 @@ EOF
 }
 
 # --------------------------------------------------------------------------
-# Machine-wide lock over full-suite runs (HIMMEL-1338).
+# Machine-wide lock over full-suite runs.
 #
 # Only the EXECUTION path takes it: `--list` reads the tree and runs nothing,
 # so making it queue behind a live run would be friction with no payoff.
 #
-# RE-ENTRANCY is not optional. The scripts/ci/test-run-shell-tests*.sh family
-# — six suites since HIMMEL-2895 split the original file — invokes this runner
+# RE-ENTRANCY is not optional. The scripts/ci/test-run-shell-tests*.sh family,
+# six suites, invokes this runner
 # roughly twenty times between them, and the full suite runs those tests, so a
 # lock that did not recognise its own descendants would deadlock the very
 # suites it protects.
@@ -1162,8 +1160,8 @@ _suite_lock_host() {
 # Windows: bash's own HOSTNAME=overlord8 vs the COMPUTERNAME=OVERLORD8
 # fallback. An inherited or differently-cased HOSTNAME (it survives into
 # child bash) made the strict compare silently skip the liveness probe for a
-# same-MACHINE holder, which then refused its provably-dead pid until the TTL
-# (HIMMEL-1805). Folding case does not reach a foreign host: a different name
+# same-MACHINE holder, which then refused its provably-dead pid until the TTL.
+# Folding case does not reach a foreign host: a different name
 # still mismatches, and the pid probe stays skipped for it by design. The
 # this-host string is a PARAMETER, not a fresh resolution: the caller captured
 # it once for everything downstream, and a second resolution here could
@@ -1181,10 +1179,10 @@ _suite_lock_same_host() {
 # one — a LIVE holder this account may not signal (run under another user or
 # a service account) — and a probe whose failure has more than one possible
 # cause distinguishes nothing, so the caller must treat the holder as UNKNOWN
-# and let it fall through to the TTL rather than reclaim it (HIMMEL-1805
-# round 4: reading every failure as ESRCH took a live foreign-account
+# and let it fall through to the TTL rather than reclaim it:
+# reading every failure as ESRCH took a live foreign-account
 # holder's lock — a fail-OPEN, where every other defect in this arc merely
-# withheld a warning). bash cannot read errno; ESRCH is recognised by the
+# withheld a warning. bash cannot read errno; ESRCH is recognised by the
 # shell's own error text, and any other wording — including a localized one —
 # lands in UNKNOWN, the safe direction.
 _suite_lock_probe_pid() {
@@ -1253,10 +1251,10 @@ _suite_lock_owner_raw() {
 # _suite_lock_wait_brand <dir> — 0 when an owner file exists in <dir>, giving
 # a racer that just won a mkdir the same brand window the first-arrival path
 # already grants before judging it. The mkdir is not a reliable mutex
-# everywhere (uutils resolves two concurrent mkdirs to BOTH rc=0, HIMMEL-966),
+# everywhere (uutils resolves two concurrent mkdirs to BOTH rc=0),
 # so "mkdir failed / brand failed" is not a verdict until the winner has had
 # its moment to brand: classifying before the window closes reads a live
-# winner as an operational failure (HIMMEL-1805 round 5).
+# winner as an operational failure.
 _suite_lock_wait_brand() {
   local _s=0
   while [ ! -f "$1/owner" ] && [ "$_s" -lt 20 ]; do
@@ -1267,12 +1265,12 @@ _suite_lock_wait_brand() {
 }
 
 # _suite_lock_reclaim <expected-owner-raw> — best-effort takeover of a lock
-# judged abandoned (HIMMEL-1838).
+# judged abandoned.
 #
 # This used to run its own multi-step claim/CAS/stranded-claim-clearing
 # protocol (mkdir a .claim sibling, brand it, wait for a co-winner's brand,
 # clear a stranded claim by age, CAS-verify, drop, re-claim — five distinct
-# failure surfaces, each with its own HIMMEL-1805 history). That machinery is
+# failure surfaces). That machinery is
 # deleted rather than re-implemented: this now runs the SAME guarded-reclaim
 # shape _suite_sem_reclaim uses in scripts/lib/suite-semaphore.sh, the
 # canonical liveness owner — one mkdir guard sibling gives exactly one
@@ -1289,8 +1287,8 @@ _suite_lock_wait_brand() {
 # racer — nothing to diagnose, a re-run resolves it. Returns 2 when the CAS
 # matched but the delete itself was refused — see below. Returns 3 when the
 # guard mkdir (or its brand write) failed for a reason other than contention —
-# a permission or IO failure, not a race a re-run will resolve (HIMMEL-1838
-# round 5, codex-1). Returns 4 when the drop succeeded (or was skipped on a
+# a permission or IO failure, not a race a re-run will resolve.
+# Returns 4 when the drop succeeded (or was skipped on a
 # CAS mismatch) but the re-claim itself hit an operational failure — distinct
 # from 2 so a caller can still tell "will never clear on its own" from "the
 # claim write itself is broken."
@@ -1300,14 +1298,14 @@ _suite_lock_wait_brand() {
 # report success to two concurrent callers on the same path under uutils
 # coreutils 0.8.0 (measured; GNU coreutils and uutils 0.12.0 are unaffected),
 # so the owner-file `set -C` write, not the mkdir, is the real arbiter of who
-# holds the guard (HIMMEL-1838 round 6, codex-1 / J1396C finding 2).
+# holds the guard.
 #
 # The guard stays held across the drop AND the re-claim — the claim happens
 # UNDER this call, not as a separate step the caller takes after the guard is
 # released. Releasing the guard in between let a second reclaimer win the
 # freed guard and CAS-match the same gap this process was about to fill, so
-# both believed they held the freshly re-acquired lock (HIMMEL-1838 round 6,
-# J1396C finding 1). The CAS itself also now requires SUITE_LOCK_DIR to
+# both believed they held the freshly re-acquired lock.
+# The CAS itself also now requires SUITE_LOCK_DIR to
 # EXIST (even for an empty-string `expected`, the "unbranded husk" case): an
 # absent directory is not a match, only an existing empty one is, so a
 # takeover attempt against a slot nothing occupies does not fabricate a
@@ -1334,11 +1332,11 @@ _suite_lock_reclaim() {
     fi
     # The guard not existing at all means mkdir failed for a reason OTHER
     # than another reclaimer already holding it (permission denied, a
-    # missing parent, ...): a permanent failure, not contention (HIMMEL-1838
-    # round 5, codex-1). The holder may also have RELEASED the guard between
+    # missing parent, ...): a permanent failure, not contention.
+    # The holder may also have RELEASED the guard between
     # our failed mkdir and that test, which looks identical to a permanent
     # failure: retry the mkdir once, and only a second failure with the
-    # guard still absent is permanent (HIMMEL-3791, J1396D finding 5). The
+    # guard still absent is permanent. The
     # canonical twin _suite_sem_reclaim keeps this same shape.
     if ! mkdir "$guard" 2>/dev/null; then
       [ -d "$guard" ] && return 1
@@ -1384,11 +1382,11 @@ _suite_lock_owner_field() {
 }
 
 # --------------------------------------------------------------------------
-# FIFO waiter queue (HIMMEL-2623).
+# FIFO waiter queue.
 #
 # suite_lock_acquire_waiting used to poll suite_lock_acquire on a plain
 # interval: whoever's poll happened to land the instant the lock freed won,
-# with no memory of who had been waiting longest. A HIMMEL-2583 runner queued
+# with no memory of who had been waiting longest. A runner queued
 # 1h49m and was jumped by three newer runners in a row, then expired unrun —
 # starved by its own younger siblings, not by the holder. The fix orders
 # waiters: each takes a TICKET on arrival, and only the ticket with the
@@ -1407,13 +1405,13 @@ _suite_lock_owner_field() {
 # they read a lock, with no second parser to keep in sync, PLUS two ticket-only
 # fields the lock does not have: `started` (ORDER, below) and `seen`
 # (LIVENESS, below) — deliberately two separate fields, because they answer
-# two separate questions and conflating them is exactly the bug HIMMEL-2623
-# round 7 fixed (see LIVENESS). The UNIT of both is the highest resolution
+# two separate questions and conflating them is exactly the bug
+# (see LIVENESS). The UNIT of both is the highest resolution
 # this host's `date` can give — never the lock's whole-seconds `started` unit;
 # the two are never compared against each other, only ticket-against-ticket,
 # so the differing unit is safe.
 #
-# ALLOCATION (HIMMEL-2623 round 3, codex-1): an earlier version of this scheme
+# ALLOCATION: an earlier version of this scheme
 # derived the ticket name from a SCAN — read every existing number, mkdir
 # max+1 — and its own comment claimed "a fresh mkdir always sorts strictly
 # after every ticket that existed at scan time." That claim is false the
@@ -1439,8 +1437,8 @@ _suite_lock_owner_field() {
 # hiccup here).
 #
 # ORDER comes from `started` in the owner file — written ONCE, at join time,
-# and never touched again. The GUARANTEE, stated precisely (HIMMEL-2623 round
-# 4, codex-2): exact FIFO at the branded resolution — nanoseconds since epoch
+# and never touched again. The GUARANTEE, stated precisely:
+# exact FIFO at the branded resolution — nanoseconds since epoch
 # where the platform's `date` supports it, whole seconds otherwise — with
 # ties AT THAT RESOLUTION broken deterministically by pid. Two arrivals
 # landing in the same branded tick are not asserted to be "simultaneous" in
@@ -1464,12 +1462,12 @@ _suite_lock_owner_field() {
 #
 # LIVENESS is `seen` — refreshed by the ticket's OWNER on every poll
 # (_suite_lock_queue_brand, called from suite_lock_queue_is_our_turn), not
-# `started`. HIMMEL-2623 round 4 tried to answer "is this ticket still worth
+# `started`. An earlier version tried to answer "is this ticket still worth
 # honouring" by exempting any ticket whose pid the probe confirmed alive from
 # the TTL, full stop — which fixed a real fairness bug (a long-waiting but
 # healthy runner getting pruned on age alone) by introducing a wedge (a
 # STOPPED or hung-but-still-resident process's ticket then survived FOREVER,
-# since a confirmed-alive pid never ages out). Round 7 (codex-1) separates
+# since a confirmed-alive pid never ages out). The current rule separates
 # the two questions instead: `started` answers "when did this arrival
 # happen" and never changes; `seen` answers "is the owner actively still
 # here" and changes every poll. The TTL backstop judges `seen`, so a healthy
@@ -1502,7 +1500,7 @@ _suite_lock_owner_field() {
 # dead or wedged waiter is cleared inline by the very next live waiter to
 # look — no cron, no operator.
 #
-# COEXISTENCE with the OLD (pre-HIMMEL-2623) code, which is still running
+# COEXISTENCE with the OLD (pre-queue) code, which is still running
 # elsewhere on this machine mid-rollout, holds by construction:
 #   (i)   A NEW waiter behind an OLD holder still takes the only ticket in an
 #         empty queue (the OLD holder never creates one), is first and only
@@ -1533,7 +1531,7 @@ _suite_lock_owner_field() {
 suite_lock_ticket_dir=""
 
 # suite_lock_ticket_started — the EXACT `started` value branded into our own
-# ticket at join time, cached here (HIMMEL-2623 round 6, codex-1). Another
+# ticket at join time, cached here. Another
 # runner's suite_lock_queue_prune can delete our ticket out from under us
 # once SUITE_QUEUE_TTL passes (a real config: this suite's own header queues
 # an after-report with SUITE_LOCK_WAIT=21600, well past the 4h default TTL).
@@ -1551,12 +1549,12 @@ suite_lock_ticket_started=""
 # ticket ahead of ours when it says "not yet" (1). suite_lock_acquire_waiting
 # reads these right after its most recent turn-check to decide whether a
 # refusal was the LOCK's doing or the QUEUE's — see the GAVE UP / WAITING:
-# wording split there (HIMMEL-2623 round 2).
+# wording split there.
 suite_lock_queue_blocker_pid=""
 suite_lock_queue_blocker_host=""
 
 # _suite_lock_now_ns — nanoseconds since epoch, on stdout, as a plain decimal
-# string (HIMMEL-2623 round 4, codex-2). Prefers GNU `date +%s%N`; falls back
+# string. Prefers GNU `date +%s%N`; falls back
 # to whole seconds scaled to the SAME unit (`*10^9`, done by string
 # concatenation, never multiplication, so there is no arithmetic overflow to
 # reason about) when the platform's `date` does not support %N.
@@ -1570,7 +1568,7 @@ suite_lock_queue_blocker_host=""
 # always called as $(_suite_lock_now_ns), and a probe-and-cache done INSIDE
 # it (an earlier round of this fix) runs in that command substitution's
 # SUBSHELL, so the cached value is discarded the instant the subshell exits —
-# every call would re-probe forever (HIMMEL-2623 round 6, codex-2). Reading a
+# every call would re-probe forever. Reading a
 # value resolved in THIS shell, never writing one here, is what makes the
 # cache actually persist for the life of the process.
 _suite_lock_now_ns() {
@@ -1610,7 +1608,7 @@ _suite_lock_ts_ns() {
 }
 
 # _suite_lock_queue_resolve_stale_after <raw> — validate a `stale_after`
-# value read from a ticket's own owner file (HIMMEL-2623 round 8, codex-1):
+# value read from a ticket's own owner file:
 # the expiry window belongs to the TICKET (its owner knows its own
 # SUITE_LOCK_WAIT_INTERVAL; a pruner judging it does not), not to whoever
 # happens to be reading it — a fast-polling reader computing SUITE_QUEUE_STALE_AFTER
@@ -1619,9 +1617,9 @@ _suite_lock_ts_ns() {
 # carries its OWNER's own window, and this validates it before anyone
 # trusts it: a positive integer, capped at the ABSOLUTE, reader-INDEPENDENT
 # SUITE_QUEUE_STALE_AFTER_CEILING — see that constant's own comment for why
-# it must never be computed from the reader's own configuration (round 9,
-# codex-1: a reader-relative cap rejected a healthy DEFAULT-config ticket's
-# real stale_after and pruned it). Even a capped value is not immortal,
+# it must never be computed from the reader's own configuration:
+# a reader-relative cap rejected a healthy DEFAULT-config ticket's
+# real stale_after and pruned it. Even a capped value is not immortal,
 # since a real ticket's `seen` still has to keep advancing to survive it.
 # Anything else — absent, non-numeric, non-positive, or over the ceiling —
 # falls back to the READER's own SUITE_QUEUE_STALE_AFTER, the same
@@ -1646,8 +1644,8 @@ _suite_lock_queue_resolve_stale_after() {
 # `started` (verbatim — the caller decides whether that is a fresh stamp or
 # a cached original, see ORDER/LIVENESS above), the given `stale_after`
 # (verbatim — never recomputed here; see
-# _suite_lock_queue_resolve_stale_after), and a FRESH `seen` (HIMMEL-2623
-# round 7). <ticket-dir> must already exist. Returns 0 on success.
+# _suite_lock_queue_resolve_stale_after), and a FRESH `seen`.
+# <ticket-dir> must already exist. Returns 0 on success.
 #
 # Atomic: written to a temp file NEXT TO, never INSIDE, <ticket-dir> — a
 # dotfile directly under the QUEUE dir, invisible to a bare `*` glob and,
@@ -1718,7 +1716,7 @@ suite_lock_queue_join() {
   # position (see suite_lock_queue_is_our_turn). `stale_after` is simply
   # THIS process's own SUITE_QUEUE_STALE_AFTER — at join time the joiner IS
   # the ticket's owner, so branding its own window onto its own ticket is
-  # exactly "the ticket carries its owner's window" (HIMMEL-2623 round 8).
+  # exactly "the ticket carries its owner's window".
   _stamp=$(_suite_lock_now_ns)
   if ! _suite_lock_queue_brand "$tdir" "$_stamp" "$SUITE_QUEUE_STALE_AFTER"; then
     # Branding failed — an I/O error, not a race: this directory is ours by
@@ -1751,13 +1749,13 @@ suite_lock_queue_leave() {
 # not care whether <ticket-dir>'s name is a pid (current scheme) or a sequence
 # number (the scheme this replaced) — it only ever reads the owner file inside.
 #
-# Judges `seen`, NEVER `started` (HIMMEL-2623 round 7, codex-1) — see
+# Judges `seen`, NEVER `started` — see
 # LIVENESS above. Falls back to `started` when `seen` is absent, which only
 # happens for a ticket branded by a pre-round-7 build mid-rollout: it is
 # judged by the same rule that always applied to it, not exempted for
 # lacking a field it never wrote. The THRESHOLD it is judged against is the
 # TICKET's own recorded `stale_after`, not this reader's — see
-# _suite_lock_queue_resolve_stale_after (HIMMEL-2623 round 8, codex-1).
+# _suite_lock_queue_resolve_stale_after.
 _suite_lock_queue_ticket_dead() {
   local dir="$1" o_pid o_host o_started o_seen o_ts o_stale_after now_ns age=-1 dated=0 same_host=0 probe_rc=0
   # A just-mkdir'd ticket gets the same brand-window grace the lock and its
@@ -1773,7 +1771,7 @@ _suite_lock_queue_ticket_dead() {
   case "$o_ts" in ''|*[!0-9]*) o_ts="$o_started" ;; esac
   o_stale_after=$(_suite_lock_queue_resolve_stale_after "$(_suite_lock_owner_field "$dir/owner" stale_after)")
   # `age` is in SECONDS (o_stale_after is a seconds knob), computed from
-  # nanosecond-normalised values (HIMMEL-2623 round 4) so a whole-seconds
+  # nanosecond-normalised values so a whole-seconds
   # timestamp (an old process mid-rollout) and a nanosecond one compare
   # correctly instead of one looking astronomically newer than the other.
   now_ns=$(_suite_lock_now_ns)
@@ -1789,12 +1787,12 @@ _suite_lock_queue_ticket_dead() {
     [ "$probe_rc" -eq 1 ] && return 0
   fi
   # The TTL is a backstop against a STALE HEARTBEAT, unconditionally — no
-  # "unless the pid is confirmed alive" exemption. HIMMEL-2623 round 4 added
+  # "unless the pid is confirmed alive" exemption. An earlier version added
   # exactly that exemption (judging `started`, the arrival time, which never
   # changes) to stop a long-waiting but healthy runner from being pruned on
   # raw age — and it worked, but only by trading it for a wedge: a STOPPED
   # or hung-but-still-resident process's ticket then survived FOREVER, since
-  # a confirmed-alive pid never aged out. Round 7 (codex-1) fixes both at
+  # a confirmed-alive pid never aged out. The current rule fixes both at
   # once by judging `seen` instead: a healthy waiter refreshes it every
   # SUITE_LOCK_WAIT_INTERVAL, always comfortably under SUITE_QUEUE_STALE_AFTER
   # (see its clamp), so `age` here never approaches the threshold no matter
@@ -1804,7 +1802,7 @@ _suite_lock_queue_ticket_dead() {
   # HOLDER — the two TTLs are aligned again, not deliberately different: a
   # ticket holding no resource still must not be allowed to sit forever once
   # its owner has gone quiet, the same as a lock. Judged against o_stale_after
-  # — the TICKET's own recorded window (HIMMEL-2623 round 8), not this
+  # — the TICKET's own recorded window, not this
   # reader's SUITE_QUEUE_STALE_AFTER: a fast-polling reader applying its OWN
   # short window to a slow-polling owner's ticket would prune a perfectly
   # healthy waiter and take its position, the exact bug this field exists to
@@ -1843,8 +1841,8 @@ suite_lock_queue_prune() {
 # queue dir does not exist or holds none). Prunes first, same as every other
 # queue read here — a dead ticket must not count. READ-ONLY otherwise: this
 # never takes a ticket of its own and never creates the queue directory if it
-# does not already exist — used by a no-wait run (HIMMEL-2623 round 4,
-# codex-1), which never waits and so must never appear IN the queue itself.
+# does not already exist — used by a no-wait run,
+# which never waits and so must never appear IN the queue itself.
 suite_lock_queue_live_count() {
   local qdir="${SUITE_LOCK_DIR}.q" _f _n=0
   if [ -d "$qdir" ]; then
@@ -1867,7 +1865,7 @@ suite_lock_queue_live_count() {
 # cleanup — see PRUNING above.
 #
 # "Earlier arrival" is `started` in each ticket's own owner file, NORMALISED
-# through _suite_lock_ts_ns before every comparison (HIMMEL-2623 round 4) —
+# through _suite_lock_ts_ns before every comparison —
 # never compared as raw integers, which would let a whole-seconds value from
 # an old process mid-rollout look astronomically OLDER than a nanosecond one
 # regardless of which actually branded first — tie-broken by pid at that
@@ -1903,7 +1901,7 @@ suite_lock_queue_is_our_turn() {
       # the 4h default TTL), or removed some other way. This must NEVER be
       # read as "our turn": that would fail OPEN into the exact failure this
       # mechanism exists to prevent — the longest-waiting runner jumping
-      # every older ticket still queued (HIMMEL-2623 round 6, codex-1).
+      # every older ticket still queued.
       # RE-CREATE it (mkdir -p first: the directory itself may be gone too)
       # at the cached ORIGINAL suite_lock_ticket_started, never a fresh
       # stamp, so we keep the queue position we have been waiting for
@@ -1929,9 +1927,9 @@ suite_lock_queue_is_our_turn() {
       esac
       ;;
     *)
-      # Ticket present: refresh the LIVENESS heartbeat (HIMMEL-2623 round 7)
+      # Ticket present: refresh the LIVENESS heartbeat
       # on every poll, preserving `started` AND `stale_after` byte-identically
-      # (round 8) — this must never perturb ORDER or silently swap in a
+      # — this must never perturb ORDER or silently swap in a
       # different window, only prove we are still here. `stale_after` is
       # read back and passed through rather than recomputed, exactly as
       # `started` already is: for our own ticket it is always this same
@@ -1995,17 +1993,15 @@ suite_lock_queue_is_our_turn() {
 # racer won (ordinary — ITS brand is on the dir, or the initial mkdir lost
 # to one); 2 when NO ONE branded it — an IO/permission failure on the mkdir
 # itself (the directory still does not exist) or on the owner-file write, not
-# contention, so a caller must not treat it as a race a re-run will resolve
-# (HIMMEL-1838 round 2, codex-2; round 5, codex-2 extends this to the mkdir
-# itself).
+# contention, so a caller must not treat it as a race a re-run will resolve.
 _suite_lock_claim() {
-  # HIMMEL-3799: the WHOLE brand, identity probe included, is computed BEFORE
+  # The WHOLE brand, identity probe included, is computed BEFORE
   # the mkdir. proc_tree_process_identity forks (pwsh on Windows, slow), and a
   # fork between the mkdir and the owner write left the live lock unbranded
   # long enough for a second run to read it as a crash husk and reclaim it —
   # two holders. Now nothing between the mkdir and the write forks.
   local _brand
-  # ppid (HIMMEL-3923): the owner's parent, so a waiter can tell an orphan
+  # ppid: the owner's parent, so a waiter can tell an orphan
   # (parent dead, owner re-parented) from a run that simply has a long parent.
   _brand=$(printf 'pid=%s\nhost=%s\nstarted=%s\nscan=%s\nppid=%s\nidentity=%s\n' \
     "$$" "$(_suite_lock_host)" "$(date +%s)" "$scan" "$PPID" \
@@ -2016,15 +2012,15 @@ _suite_lock_claim() {
     return 2
   fi
   # mkdir is not a reliable mutex everywhere: uutils coreutils 0.8.0 resolves
-  # two concurrent mkdir of the same path to BOTH rc=0 (HIMMEL-966). So the
+  # two concurrent mkdir of the same path to BOTH rc=0. So the
   # owner-file create is the real arbiter — `set -C` makes it a single
   # open(O_CREAT|O_EXCL) performed by bash itself, atomic on every POSIX fs.
-  # identity (HIMMEL-1838): the same proc-tree.sh start-time identity the
+  # identity: the same proc-tree.sh start-time identity the
   # canonical semaphore records, so this lock's staleness judgement below can
   # use the one shared liveness primitive instead of a bespoke kill-0-only
   # probe. Empty when the probe itself failed (e.g. ps unavailable) — never
   # fatal to the acquire; proc_tree_liveness_matches falls back to
-  # identity-free liveness for that case, same as suite-semaphore.sh (HIMMEL-3778).
+  # identity-free liveness for that case, same as suite-semaphore.sh.
   if ! ( set -C; printf '%s' "$_brand" > "$SUITE_LOCK_DIR/owner" ) 2>/dev/null; then
     # A brand on the dir means a racer won ordinarily; rmdir (never rm -rf)
     # is race-safe there — it refuses a dir a racer has since branded — so a
@@ -2043,7 +2039,7 @@ _suite_lock_claim() {
 }
 
 # _suite_lock_orphan_reap <pid> <identity> <recorded-ppid> <owner-raw> — 0 when
-# <pid> was proven an ORPHANED owner, TERMed, and is gone (HIMMEL-3923: a
+# <pid> was proven an ORPHANED owner, TERMed, and is gone (a
 # cap-killed worker left a live owner holding the lock 17 minutes with its
 # parent dead; only a dead PID was reclaimable, so nothing noticed). 1 leaves
 # the lock alone. Every condition must hold before anything is signalled:
@@ -2172,7 +2168,6 @@ suite_lock_acquire() {
     # _suite_lock_reclaim fails if anyone branded it while we spun above, and
     # the re-claim itself now happens INSIDE _suite_lock_reclaim, under the
     # same guard, so a winner from the gap cannot straddle the two steps
-    # (HIMMEL-1838 round 6, J1396C finding 1).
     if _suite_lock_reclaim ""; then
       printf 'NOTE: cleared an unbranded suite lock (no owner file) at %s\n' \
         "$SUITE_LOCK_DIR" >&2
@@ -2192,7 +2187,7 @@ suite_lock_acquire() {
   o_host=$(_suite_lock_owner_field "$SUITE_LOCK_DIR/owner" host)
   o_started=$(_suite_lock_owner_field "$SUITE_LOCK_DIR/owner" started)
   # Absent on a lock branded before this field existed, or when the probe
-  # failed at acquire time (HIMMEL-3778) — proc_tree_liveness_matches treats
+  # failed at acquire time — proc_tree_liveness_matches treats
   # that the same way suite-semaphore.sh does: fall back to identity-free
   # liveness rather than refuse to judge it at all.
   o_identity=$(_suite_lock_owner_field "$SUITE_LOCK_DIR/owner" identity)
@@ -2203,7 +2198,7 @@ suite_lock_acquire() {
   esac
   # An undated owner has age=-1, which is a sentinel, not a duration. Print it
   # as "unknown" rather than "-1s" — a negative age reads as a measurement and
-  # invites TTL arithmetic that can never come true (HIMMEL-1805 round 6).
+  # invites TTL arithmetic that can never come true.
   local age_disp="unknown"
   [ "$dated" -eq 1 ] && age_disp="${age}s"
 
@@ -2219,7 +2214,7 @@ suite_lock_acquire() {
   # proves the pid EXISTS, never that it is the original holder — so the
   # refusal below can say exactly that instead of guessing: the original one
   # blanket message counselled "wait for it" at a holder that was provably
-  # dead (HIMMEL-1805), and the first verdict shipped for it overclaimed in
+  # dead, and the first verdict shipped for it overclaimed in
   # the other direction ("ALIVE") on a probe that cannot show identity.
   # pid_unknown is the third outcome: the probe was refused for a reason
   # other than "no such process", which proves nothing either way.
@@ -2228,12 +2223,12 @@ suite_lock_acquire() {
   if _suite_lock_same_host "$o_host" "$this_host"; then same_host=1; fi
   if [ -n "$o_pid" ] && [ "$same_host" -eq 1 ]; then
     probe_rc=0
-    # HIMMEL-1838: the canonical proc-tree.sh liveness primitive — the same
+    # The canonical proc-tree.sh liveness primitive — the same
     # one the semaphore is built from — replaces the bespoke kill-0-only
     # _suite_lock_probe_pid here (still used, unchanged, by the FIFO waiter
     # queue below, a separate concern: ordering LIVE waiters, not reclaiming
     # a dead holder). identity-aware when o_identity is recorded, and the
-    # same identity-free liveness fallback as suite-semaphore.sh (HIMMEL-3778)
+    # same identity-free liveness fallback as suite-semaphore.sh
     # otherwise.
     proc_tree_liveness_matches "$o_pid" "$o_identity" || probe_rc=$?
     case "$probe_rc" in
@@ -2241,7 +2236,7 @@ suite_lock_acquire() {
       1) stale=1 ;;
       *) pid_unknown=1 ;;
     esac
-    # HIMMEL-3923: alive but orphaned (see _suite_lock_orphan_reap).
+    # Alive but orphaned (see _suite_lock_orphan_reap).
     if [ "$pid_present" -eq 1 ] && \
        _suite_lock_orphan_reap "$o_pid" "$o_identity" \
          "$(_suite_lock_owner_field "$SUITE_LOCK_DIR/owner" ppid)" "$o_raw"; then
@@ -2267,7 +2262,7 @@ suite_lock_acquire() {
   if [ "$stale" -eq 1 ]; then
     # _suite_lock_reclaim now does the whole takeover itself — winning the
     # guard, re-verifying the CAS, dropping the dead owner and re-claiming —
-    # all under one guard hold (HIMMEL-1838 round 6, J1396C finding 1), so a
+    # all under one guard hold, so a
     # single return code drives every branch below.
     _suite_lock_reclaim "$o_raw"
     reclaim_rc=$?
@@ -2281,9 +2276,7 @@ suite_lock_acquire() {
       # refused: SUITE_LOCK_DIR holds something besides `owner` (Case 2d2). This
       # is not contention — no amount of re-running clears foreign content — so
       # it gets its own message rather than folding into lost_race below, and
-      # SUITE_LOCK_WAIT must not spend its budget waiting for it (HIMMEL-1838
-      # round 2, codex-2 — the same gap this round's other finding closes for
-      # the claim-failure case just below).
+      # SUITE_LOCK_WAIT must not spend its budget waiting for it.
       foreign_lock=1
       suite_lock_permanent=1
     elif [ "$reclaim_rc" -eq 3 ]; then
@@ -2291,7 +2284,7 @@ suite_lock_acquire() {
       # a reason other than another reclaimer holding it (permission denied, a
       # missing parent, ...): a permanent failure, not contention — the same
       # "do not spend the wait budget on it" treatment as the other
-      # operational cases here (HIMMEL-1838 round 5, codex-1).
+      # operational cases here.
       guard_failed=1
       suite_lock_permanent=1
     elif [ "$reclaim_rc" -eq 4 ]; then
@@ -2307,7 +2300,7 @@ suite_lock_acquire() {
     else
       # A lost race means the generation read above — and every field derived
       # from it — is KNOWN stale: the CAS exists precisely to catch a lock
-      # changing hands under a judgement, and it just did (HIMMEL-1805). The
+      # changing hands under a judgement, and it just did. The
       # refusal must not present that snapshot as the current holder, nor
       # counsel TTL arithmetic out of an age that no longer describes anything.
       lost_race=1
@@ -2360,7 +2353,7 @@ suite_lock_acquire() {
         "$scan" "${o_pid:-unknown}" "${o_host:-unknown}" "$age_disp"
       printf '  lock: %s\n' "$SUITE_LOCK_DIR"
       printf '  Concurrent runs test the same tree and starve each other (HIMMEL-1338).\n'
-      # Say WHICH case this is (HIMMEL-1805). One message used to cover a live
+      # Say WHICH case this is. One message used to cover a live
       # holder and an unverifiable one, so its "wait for it" advice was wrong
       # half the time — counselling up to four hours of waiting for a corpse,
       # with nothing in the output to tell the two apart (a nightly cadence saw
@@ -2426,7 +2419,7 @@ _suite_lock_dur() {
 # _suite_lock_report_wait <waited-seconds> — ONE line, repeated every interval,
 # naming the CURRENT reason this run has not proceeded, RIGHT NOW.
 #
-# Two distinct reasons exist since HIMMEL-2623's FIFO queue, and reporting the
+# Two distinct reasons exist since the FIFO queue, and reporting the
 # wrong one is worse than reporting nothing: telling an operator the LOCK is
 # held when the lock is actually FREE and this run is simply behind an older
 # ticket sends them looking at the wrong process (or a holder that does not
@@ -2471,7 +2464,7 @@ _suite_lock_report_wait() {
 }
 
 # suite_lock_acquire_waiting — suite_lock_acquire, plus the optional
-# SUITE_LOCK_WAIT budget (HIMMEL-2215) and FIFO queue ordering (HIMMEL-2623).
+# SUITE_LOCK_WAIT budget and FIFO queue ordering.
 # Returns 0 to proceed. On refusal, returns the runner's OWN exit code rather
 # than a bare 1 — the call site just does `exit "$?"` — so the two refusal
 # shapes stay distinguishable: 2 for an instant refusal or a permanent safety
@@ -2483,7 +2476,7 @@ _suite_lock_report_wait() {
 # non-waiting run — this adds a retry cadence, a queue ticket, and a
 # heartbeat, never a second way to obtain the lock. With no budget it is a
 # straight pass-through (no ticket, no queue dir touched at all), which is why
-# the default costs existing callers nothing and why an OLD, pre-HIMMEL-2623
+# the default costs existing callers nothing and why an OLD, pre-queue
 # runner racing this one for the SAME lock never even sees a queue exists (see
 # COEXISTENCE above the queue helpers).
 #
@@ -2493,7 +2486,7 @@ _suite_lock_report_wait() {
 # taken against the lock as it is when the budget runs out.
 #
 # The NO-WAIT path (SUITE_LOCK_WAIT unset or 0) also yields to a non-empty
-# queue now, not just to a held lock (HIMMEL-2623 round 4, codex-1): an
+# queue now, not just to a held lock: an
 # earlier version of this fix let an ad-hoc no-wait run make one direct
 # attempt regardless of who was queued, on the reasoning that this was a
 # deliberate, documented limit of the design. It was not compatible with what
@@ -2508,7 +2501,7 @@ suite_lock_acquire_waiting() {
     # SUITE_LOCK=0 and the re-entrancy guard bypass EVERYTHING here too,
     # including the queue-yield check just below, checked in this exact
     # order for the exact reason the identical short-circuit ahead of the
-    # waiting path exists (HIMMEL-2623 round 2): a nested run is not a queue
+    # waiting path exists: a nested run is not a queue
     # jumper, and putting the yield check ahead of THESE two would
     # reintroduce that same deadlock on the no-wait path instead.
     if [ "$SUITE_LOCK" = "0" ] || [ "${HIMMEL_SUITE_LOCK_HELD:-}" = "$SUITE_LOCK_DIR" ]; then
@@ -2548,8 +2541,8 @@ suite_lock_acquire_waiting() {
   # them below. The reason is the queue gate itself: every attempt in this
   # function is `suite_lock_queue_is_our_turn && suite_lock_acquire`, and when
   # the turn-check says "not yet" suite_lock_acquire is NEVER CALLED — so its
-  # short-circuits never get a chance to fire (HIMMEL-2623 round 2, the
-  # deadlock finding). Both conditions are reachable in production, not
+  # short-circuits never get a chance to fire.
+  # Both conditions are reachable in production, not
   # theoretical:
   #   - HIMMEL_SUITE_LOCK_HELD is EXPORTED (set by _suite_lock_claim), and
   #     SUITE_LOCK_WAIT is inherited by every child suite process —
@@ -2690,7 +2683,7 @@ suite_lock_acquire_waiting() {
 # Invoked from the EXIT trap, which shellcheck cannot see as a call site.
 # SC2329 is the newer spelling of the same false positive (never-invoked
 # function); both are needed or a shellcheck upgrade re-breaks the push gate on
-# any change to this file (HIMMEL-1805).
+# any change to this file.
 # shellcheck disable=SC2317,SC2329
 suite_lock_release() {
   [ "$suite_lock_owned" -eq 1 ] || return 0
@@ -2711,27 +2704,27 @@ suite_lock_release() {
 #   --list               set list-mode
 #   --skip-extra <val>   append to extra_skips
 #   --changed-since <ref> enable the conditional-suite filter against <ref>
-#   --pr <N>             post the SUMMARY block as a PR comment (HIMMEL-2383)
+#   --pr <N>             post the SUMMARY block as a PR comment
 #   first non-flag       scan-root (default: scripts)
 # --------------------------------------------------------------------------
 list_only=0
 scan_repo_of_script=0
 scan=""
-# Shard selection (HIMMEL-2872). Flag-only, no env default: the CI workflow is
+# Shard selection. Flag-only, no env default: the CI workflow is
 # the only caller and an ambient SUITE_SHARD would be one more way for a stray
 # export to silently narrow an unrelated run's plan.
 shard_spec=""
 shard_given=0
-# Impacted-suites selection (HIMMEL-2821). Flag-only, like --shard: an ambient
+# Impacted-suites selection. Flag-only, like --shard: an ambient
 # env var must not silently narrow an unrelated run.
 impacted_range=""
 # --only-list <file>: run ONLY the suites the file names (one repo-relative
 # path per line, # comments and blanks ignored). Flag-only; it composes with
 # --impacted (the intersection) and --shard.
 only_list_file=""
-# OPT-IN conditional filter (HIMMEL-1589). Env is the default; the flag overrides.
+# OPT-IN conditional filter. Env is the default; the flag overrides.
 changed_since="${SUITE_CHANGED_SINCE:-}"
-# PR shard selection + manifest (HIMMEL-3897). CI-only env, read once and
+# PR shard selection + manifest. CI-only env, read once and
 # unset at once so no nested suite (the runner's own self-tests included)
 # inherits a selection or a manifest path meant for THIS run:
 #   SUITE_IMPACTED_FROM_BASE=<pr base sha>  run only the suites the BASE-sourced
@@ -2741,7 +2734,7 @@ changed_since="${SUITE_CHANGED_SINCE:-}"
 impacted_from_base="${SUITE_IMPACTED_FROM_BASE:-}"
 manifest_path="${SUITE_MANIFEST:-}"
 unset SUITE_IMPACTED_FROM_BASE SUITE_MANIFEST
-# OPT-IN after-report PR comment (HIMMEL-2383). Env is the default; the flag
+# OPT-IN after-report PR comment. Env is the default; the flag
 # overrides. Never default-on and never posted without one of these set.
 report_pr="${SUITE_REPORT_PR:-}"
 
@@ -2769,14 +2762,14 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --pr)
-      # Reject an option-looking or non-numeric value (HIMMEL-2383 CR
-      # finding codex-2, round 6) — without this, `--pr --list` silently
+      # Reject an option-looking or non-numeric value.
+      # Without this, `--pr --list` silently
       # CONSUMES --list as the PR number (never applying it) and later
       # passes the literal string "--list" to `gh pr comment`.
       case "${2:-}" in
         ''|0|-*|*[!0-9]*)
-          # '0' is explicitly rejected too (HIMMEL-2383 CR finding
-          # codex-3, round 9) — GitHub PR numbers start at 1.
+          # '0' is explicitly rejected too —
+          # GitHub PR numbers start at 1.
           echo "run-shell-tests.sh: --pr requires a PR number argument, got '${2:-<missing>}'" >&2
           exit 1
           ;;
@@ -2833,11 +2826,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Scan-root guard (HIMMEL-2504). The cd to REPO_ROOT above means a runner called
+# Scan-root guard. The cd to REPO_ROOT above means a runner called
 # by absolute path from another checkout (a worktree invoking the primary's
 # copy) silently runs THAT repo's suites, and with --pr posts a green SUMMARY
-# for code the caller's tree does not contain. Refuse (rc 6, its own code
-# since HIMMEL-5104) when the caller sits in a git work tree that is not the
+# for code the caller's tree does not contain. Refuse (rc 6, its own code)
+# when the caller sits in a git work tree that is not the
 # script's own, unless --scan-repo-of-script says that is intended. A caller
 # outside any work tree (caller_top empty) is not a mismatch, so CI and the
 # normal invocation from the repo root are unaffected.
@@ -2852,11 +2845,11 @@ fi
 
 # An absolute (or ../-escaping) scan root can point into ANOTHER work tree while
 # the cd above left the scanning line naming REPO_ROOT. --scan-repo-of-script
-# does not excuse that: it says "the script's repo", not "this other one"
-# (HIMMEL-5104). A root outside every work tree is unaffected.
+# does not excuse that: it says "the script's repo", not "this other one".
+# A root outside every work tree is unaffected.
 #
-# Fail-closed when the scan root names a work tree and this run does not
-# (HIMMEL-5111): a runner outside any tree (a tarball install) pointed at a
+# Fail-closed when the scan root names a work tree and this run does not:
+# a runner outside any tree (a tarball install) pointed at a
 # checkout elsewhere would name root=REPO_ROOT sha=unknown for suites that live
 # in a different tree, which is the mismatch this guard exists to refuse. Both
 # sides empty stays allowed (CI containers, dubious ownership hit both alike).
@@ -2864,11 +2857,10 @@ fi
 # ownership of just that tree, GIT_CEILING_DIRECTORIES above it) the guard fails
 # open, because "no tree known" is indistinguishable from "not a tree";
 # upgrade path: a `git rev-parse --git-dir` probe that tells the two apart
-# (HIMMEL-5120).
 #
 # The scripts default is applied HERE, before the guard, so the default root is
-# checked like an explicit one and the guard never `cd ""`s in place
-# (HIMMEL-5111). Trailing slash stripped so the relpath prefix-strip works.
+# checked like an explicit one and the guard never `cd ""`s in place.
+# Trailing slash stripped so the relpath prefix-strip works.
 scan="${scan%/}"
 scan="${scan:-scripts}"
 _scan_dir=$(cd "$scan" 2>/dev/null && pwd -P) || _scan_dir=""
@@ -2887,12 +2879,12 @@ if [ -n "$_scan_dir" ]; then
 fi
 
 # Name the tree this run scans, once, in the plan header and (below) the --pr
-# SUMMARY, so a report that scanned the wrong tree says so itself (HIMMEL-2504).
+# SUMMARY, so a report that scanned the wrong tree says so itself.
 scanning_line="scanning: root=$(pwd -P) branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown) sha=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "$scanning_line"
 
-# Validate report_pr uniformly, regardless of source (HIMMEL-2383 CR
-# finding codex-2, round 7): the --pr FLAG path validates its value inline,
+# Validate report_pr uniformly, regardless of source:
+# the --pr FLAG path validates its value inline,
 # but SUITE_REPORT_PR sets report_pr's default before that loop even
 # starts and never passes through it, so a malformed/option-looking env
 # value would reach `gh pr comment` unvalidated. One check, both sources.
@@ -2905,7 +2897,7 @@ case "$report_pr" in
     ;;
 esac
 
-# Resolve --shard (HIMMEL-2872). <i>/<n> selects one slice of the FINAL run
+# Resolve --shard. <i>/<n> selects one slice of the FINAL run
 # list so CI can fan this job across n runners behind one aggregating check.
 #
 # REFUSED (rc 2, this runner's bad-configuration-value code — the same one an
@@ -2956,7 +2948,7 @@ fi
 # The default scan root (and the trailing-slash strip) is applied before the
 # scan-root guard above, after arg parsing so a leading --list doesn't collide.
 
-# Physical (symlink-resolved) form of the scan root, resolved ONCE (HIMMEL-2260).
+# Physical (symlink-resolved) form of the scan root, resolved ONCE.
 # Suite tables are matched against a path built from this, not from the spelling
 # the caller typed, so the verdict cannot depend on HOW the same directory was
 # named. Without it a scan root reached through a symlink or junction -- e.g. a
@@ -2969,14 +2961,14 @@ fi
 scan_resolved=$(cd "$scan" 2>/dev/null && pwd -P) || scan_resolved=""
 [ -n "$scan_resolved" ] || scan_resolved="$scan"
 
-# Resolve --impacted (HIMMEL-2821) BEFORE the machine lock and discovery: the
+# Resolve --impacted BEFORE the machine lock and discovery: the
 # answer needs only git, and an empty/refused one must not queue behind a
 # full-tree run for nothing. The set is impacted-suites.sh's `--shell` output —
 # repo-relative paths — held newline-bracketed so suite_filter_reason matches
 # a whole line with one `case` glob.
 #
 # A range that does not resolve is REFUSED (rc 2), never treated as an empty
-# set: "nothing impacted" would exit 0 having run nothing, the HIMMEL-1128
+# set: "nothing impacted" would exit 0 having run nothing, the
 # false green reached through a typo'd ref. A genuinely empty set (a docs-only
 # diff) is a clean exit 0 that says so.
 only_list_active=0
@@ -3046,7 +3038,7 @@ $_impacted_out
 EOF
 fi
 
-# HIMMEL-3897 — the PR shards' selection, decided by the BASE commit's copy of
+# The PR shards' selection, decided by the BASE commit's copy of
 # scripts/ci/impacted-selection.sh (a PR cannot narrow its own run: every file
 # that decides is a trust path, which that script turns into `full`). An
 # explicit --impacted wins. A selector that fails to answer means the FULL
@@ -3091,14 +3083,14 @@ if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ -z "$_sel_list" ]
   exit 0
 fi
 
-# HIMMEL-2517 — the scan root can be DELETED while this run is live, and the
+# The scan root can be DELETED while this run is live, and the
 # loop below does not notice: every `bash "$suite"` against a vanished path
 # exits 127, is counted as an ordinary failure, and the run renders a full FAIL
 # tally that looks exactly like a catastrophic regression. Measured twice on
 # 2026-09-05 (PRs #2133, #2134): `merge-on-green.sh` pruned the worktree these
 # runs were executing inside, giving PASS 6 / SKIP 19 / FAIL 422 with 421 of the
-# 422 failures at rc=127. Because --pr posts the SUMMARY from THIS process
-# (HIMMEL-2383), the only thing that kept that artifact off the PR was `gh`
+# 422 failures at rc=127. Because --pr posts the SUMMARY from THIS process,
+# the only thing that kept that artifact off the PR was `gh`
 # failing too — for the same reason.
 #
 # So the run re-stats its own root at the two moments where a stale answer
@@ -3127,7 +3119,7 @@ fi
 # The residual, stated rather than glossed: within ONE filesystem an inode number
 # is reusable, so a delete-and-recreate that happens to be handed the same inode
 # still compares equal. Closing THAT needs a content fence over the tree, which is
-# HIMMEL-2448's hash-fence and not this ticket. What matters here is the
+# a hash-fence, out of scope here. What matters here is the
 # direction of the imperfection — this check only ever ADDS aborts to the plain
 # existence test it replaced, and never removes one.
 #
@@ -3158,7 +3150,7 @@ scan_root_abort_if_vanished() {
 }
 
 # Slug of the scan root, shared by the lock path and the rotation cursor
-# (HIMMEL-2243) so both key on the same tree.
+# so both key on the same tree.
 # "./scripts" and "scripts" are the same tree, so normalise the leading "./"
 # before slugging or they would take two different locks and neither would
 # serialise against the other.
@@ -3174,7 +3166,7 @@ _scan_key="${scan#./}"
 # tolerance is lock-specific: the rotation cursor below cannot accept the
 # same collision and derives its own, different key (see there).
 _scan_key=$(printf '%s' "$_scan_key" | sed 's#/#__#g' | tr -c 'A-Za-z0-9_-' '-')
-# HIMMEL-3193: the whole-repo root `.` covers everything a `scripts` run does, so
+# The whole-repo root `.` covers everything a `scripts` run does, so
 # it takes that run's lock (never a third key) — the two refuse to overlap.
 [ "$scan" = "." ] && _scan_key="scripts"
 
@@ -3184,7 +3176,7 @@ if [ -z "$SUITE_LOCK_DIR" ]; then
   SUITE_LOCK_DIR="${TMPDIR:-/tmp}/himmel-shell-suite-${_scan_key}.lock"
 fi
 
-# Rotation cursor path (HIMMEL-2243). Scan-keyed like the lock, for the same
+# Rotation cursor path. Scan-keyed like the lock, for the same
 # reason: the runs that must share it come from DIFFERENT worktrees over the
 # same tree. It lives under $HOME/.himmel — where the other cross-session
 # ledgers live — and deliberately NOT in TMPDIR, which scripts/ci/tmp-sweep.sh
@@ -3260,12 +3252,12 @@ trap 'rm -f "$suites_file" "$suites_raw"; suite_lock_release; suite_lock_queue_l
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
-# never finished — the same false-green class HIMMEL-1128 closes). The two
+# never finished — the same false-green class this guard closes). The two
 # stages are `find` and `sort`; the earlier `grep -v /node_modules/` was
 # redundant (find's `-path '*/node_modules' -prune` already excludes those
 # subtrees) so it is dropped rather than status-checked.
 #
-# `-H` dereferences the COMMAND-LINE argument only (HIMMEL-2508 B). Without
+# `-H` dereferences the COMMAND-LINE argument only. Without
 # it, GNU find handed a scan root that is itself a symlink to a directory
 # reports the link and stops — it never descends — so discovery comes back
 # empty and the run dies at the "no test suites discovered" guard below. MSYS
@@ -3273,9 +3265,9 @@ trap 'rm -f "$suites_file" "$suites_raw"; suite_lock_release; suite_lock_queue_l
 # moved to a Linux station. `-H` is the narrow form deliberately: symlinks
 # INSIDE the tree stay unfollowed exactly as before, so no scan root other
 # than a symlinked one changes what it discovers. (The symlinked root's
-# table-matching half is already handled by $scan_resolved, HIMMEL-2260.)
+# table-matching half is already handled by $scan_resolved.)
 #
-# HIMMEL-3193: scan root `.` is the WHOLE-REPO run — the trees that hold suites,
+# Scan root `.` is the WHOLE-REPO run — the trees that hold suites,
 # not a blind walk of the checkout (a local run would otherwise also pick up
 # .claude/worktrees/* copies of every suite). Paths come out repo-root-relative
 # with no "./" prefix ("scripts/...", "templates/..."), which is the key form
@@ -3304,7 +3296,7 @@ fi
 # Zero DISCOVERED suites = a resolved-to-nothing scan root (typo, empty dir, a
 # file-valued root). Fail BEFORE the mode split so --list is guarded too: a
 # --list of a bad root printing an empty plan and exiting 0 is the same
-# false-green footgun as the execution path (HIMMEL-1128). (--list of a root
+# false-green footgun as the execution path. (--list of a root
 # whose suites are all SKIPPED is NOT failed here — listing a skip plan is the
 # mode's purpose; only the execution path enforces run>0, at the ran==0 guard.)
 # Test the completed discovery file directly with the `-s` builtin (non-empty)
@@ -3315,7 +3307,7 @@ if [ ! -s "$suites_file" ]; then
   exit 1
 fi
 
-# Apply the resume rotation (HIMMEL-2243). See SUITE_ROTATE above. Execution
+# Apply the resume rotation. See SUITE_ROTATE above. Execution
 # only — `--list` prints the canonical sorted plan, and a cursor must not
 # reorder a plan that nothing is about to execute.
 rotate_start=""     # scan-root-relative suite this run actually started at
@@ -3328,7 +3320,7 @@ if [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE_S
   # symlinks, so checking it FIRST would happily read straight through one to
   # whatever regular file it points at — never get there. Refuse, don't
   # delete or replace: touching it at all is the thing this guard exists to
-  # avoid (HIMMEL-2243).
+  # avoid.
   printf 'WARN: %s is a symlink — the rotation cursor must be a real file.\n' "$SUITE_ROTATE_STATE" >&2
   printf '  Refusing to use it: what would be checked and what would be written are different files. Rotation is disabled for this run — fix or remove the symlink.\n' >&2
 elif [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE_STATE" ] && [ -f "$SUITE_ROTATE_STATE" ]; then
@@ -3336,7 +3328,7 @@ elif [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE
   IFS= read -r _rot_want < "$SUITE_ROTATE_STATE" || true
   # Strip a trailing CR: a cursor written (or hand-edited) on Windows can carry
   # one, and left in place it makes _rot_want compare unequal to every
-  # discovered path — a cursor that silently never matches (HIMMEL-2243).
+  # discovered path — a cursor that silently never matches.
   _rot_want="${_rot_want%$'\r'}"
   if [ -n "$_rot_want" ]; then
     # The cursor stores a SCAN-ROOT-RELATIVE path, so a run spelled "./scripts"
@@ -3366,7 +3358,7 @@ elif [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE
   fi
 fi
 
-# Runtime preflight (HIMMEL-1991): say out loud, ONCE, what these suites are
+# Runtime preflight: say out loud, ONCE, what these suites are
 # about to run on. A whole-suite pass on an unpinned Node major is not the
 # evidence it looks like. Advisory by default; HIMMEL_RUNTIME_PREFLIGHT=strict
 # turns it into a refusal, =0 silences it (CI images, adopters). Skipped in list
@@ -3390,7 +3382,7 @@ if [ "$list_only" -eq 0 ]; then
   # "Exit codes:" block at the top of this file. Propagate it verbatim rather
   # than collapsing both refusal shapes back into one hardcoded exit 2.
   [ "$lock_rc" -eq 0 ] || exit "$lock_rc"
-  # HIMMEL-1818 — then one slot of the machine-wide suite budget for the whole
+  # Then one slot of the machine-wide suite budget for the whole
   # sweep (the scan lock above only serialises sweeps of THIS tree). Busy = 75;
   # a runner under quiet-run's slot is its descendant and re-enters.
   # shellcheck source=../lib/suite-semaphore.sh
@@ -3399,13 +3391,13 @@ if [ "$list_only" -eq 0 ]; then
   sem_rc=0
   suite_sem_acquire run-shell-tests "bash scripts/ci/run-shell-tests.sh <same arguments>" || sem_rc=$?
   [ "$sem_rc" -eq 0 ] || exit "$sem_rc"
-  # HIMMEL-2517 — first re-stat. A queued run can sit in the wait loop for
+  # First re-stat. A queued run can sit in the wait loop for
   # hours before this line; the tree it is about to walk may not have survived.
   scan_root_abort_if_vanished
 fi
 
 pass=0 fail=0 skip=0 ran=0
-# HIMMEL-3194: PASSING suites whose output holds a SKIP line. `skip` above is
+# PASSING suites whose output holds a SKIP line. `skip` above is
 # the runner's own filter (SKIP_LIST, --skip-extra, tiers); this is a suite that
 # RAN, exited 0, and told us it skipped something — counted in `pass`, so the
 # two are otherwise indistinguishable. Suite-level, not case-level: a suite
@@ -3421,20 +3413,19 @@ _log_has_skip_line() {
 }
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
-# (HIMMEL-2872).
 run_index=0
 shard_assigned=0   # suites this shard claimed; 0 = an empty shard, a pass (HIMMEL-3699)
-# HIMMEL-2517 — how many failures were rc=127 (command or path not found).
+# How many failures were rc=127 (command or path not found).
 rc127=0
 failed_suites=""
-# HIMMEL-5116 — a suite that fails is re-run ONCE, alone. Passing on the retry
+# A suite that fails is re-run ONCE, alone. Passing on the retry
 # is a FLAKE: neither PASS nor FAIL, counted and listed in the summary, and
 # appended to a jsonl ledger (suite, case lines, sha, run id, ts). The ledger
 # lands in FAIL_LOG_DIR, which CI uploads only when a job fails, so on GitHub
 # Actions a flake is also a ::warning and a step-summary section. No tick or
 # board reader consumes the ledger yet. A second flake of one
 # suite inside SUITE_FLAKE_WINDOW_DAYS prints a loud "file a ticket" line (no
-# Jira call from CI). The repeat check matches the suite AND a repo id (HIMMEL-5121):
+# Jira call from CI). The repeat check matches the suite AND a repo id:
 # the default ledger is shared by every repo on the machine, so a row from
 # another repo, or an old row with no repo field, never counts. A suite that
 # fails BOTH attempts keeps both logs under FAIL_LOG_DIR. A suite whose header carries `# no-retry` is never
@@ -3459,17 +3450,17 @@ if [ -z "${SUITE_FLAKE_LEDGER:-}" ]; then
   fi
 fi
 
-# Repo id carried by every ledger row and matched by the repeat check
-# (HIMMEL-5121, HIMMEL-5144): SUITE_FLAKE_REPO_ID, else a cksum of the NORMALISED
+# Repo id carried by every ledger row and matched by the repeat check:
+# SUITE_FLAKE_REPO_ID, else a cksum of the NORMALISED
 # origin URL (never the URL itself, which may embed a credential), else a cksum
 # of the git common dir, so every worktree of one repo shares an id. A row written
 # before this field existed has no "repo" key, so it matches no repo; rows written
 # under the earlier id schemes (raw URL, checkout path) stop matching too.
 
 # _flake_norm_url / _flake_repo_id live in scripts/lib/flake-repo-id.sh, which the
-# reader (scripts/observability/suite-flake-summary.sh) sources too (HIMMEL-5147).
+# reader (scripts/observability/suite-flake-summary.sh) sources too.
 # A lib that cannot be read leaves the id empty and _flake_record then writes no
-# row (HIMMEL-5156): an empty "repo" would merge every repo's history.
+# row: an empty "repo" would merge every repo's history.
 if [ -z "${SUITE_FLAKE_REPO_ID:-}" ]; then
   # shellcheck source=scripts/lib/flake-repo-id.sh
   if [ -r "$REPO_ROOT/scripts/lib/flake-repo-id.sh" ] && . "$REPO_ROOT/scripts/lib/flake-repo-id.sh"; then
@@ -3537,7 +3528,7 @@ _flake_record() {
 }
 # A flake-only shard exits 0 and CI uploads FAIL_LOG_DIR only on failure, so on
 # GitHub Actions the flake would otherwise be invisible: surface it as a
-# workflow warning annotation and a step-summary section (HIMMEL-5116, j2276a).
+# workflow warning annotation and a step-summary section.
 _flake_announce() {
   local _p="$1" _rc="$2" _esc
   if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -3566,10 +3557,10 @@ run_start=$SECONDS
 # Pin git fsync/template settings for the throwaway repos the suites build.
 # Called once here so the exports flow to every suite subprocess the loop below
 # spawns; idempotent via its marker, so a suite that re-sources the lib inherits
-# without appending a duplicate. (HIMMEL-1589.)
+# without appending a duplicate.
 git_test_env_pin_perf
 
-# Resolve the conditional-suite filter (HIMMEL-1589). FAIL-OPEN: if this is not
+# Resolve the conditional-suite filter. FAIL-OPEN: if this is not
 # a git repo, the ref does not resolve, or either git command fails, run EVERY
 # suite and say why. Silently filtering on a broken diff would be the same
 # false-green class the discovery guards above close one level up.
@@ -3584,7 +3575,7 @@ if [ -n "$changed_since" ]; then
   # every conditional suite — a false green, the exact inverse of the fail-open
   # contract this else-branch exists to enforce. --end-of-options makes git treat
   # the value as a ref literal; ^{commit} forces a commit-ish. Anything that does
-  # not resolve still falls through to fail-open below, unchanged. (HIMMEL-1589.)
+  # not resolve still falls through to fail-open below, unchanged.
   if resolved=$(git rev-parse --verify --quiet --end-of-options "${changed_since}^{commit}" 2>/dev/null) && \
      changed_tracked=$(git diff --name-only "$resolved" 2>/dev/null) && \
      changed_untracked=$(git ls-files --others --exclude-standard 2>/dev/null); then
@@ -3597,13 +3588,13 @@ ${changed_untracked}"
   fi
 fi
 
-# Docs-only fast lane (HIMMEL-2166). See the header comment. Inert unless the
+# Docs-only fast lane. See the header comment. Inert unless the
 # conditional filter above resolved a real changed_set; an EMPTY changed_set
 # (no tracked or untracked paths at all) is not evidence of a docs-only diff,
 # so it never sets this flag — same fail-safe posture as the conditional
 # filter's own "unresolved -> run everything" branch.
 #
-# HIMMEL-5648: also inert under an impacted selection. The selector already
+# Also inert under an impacted selection. The selector already
 # decided what a docs diff runs (a suite referencing CLAUDE.md is selected on
 # purpose), the shard-manifest verifier cannot account for a selected suite the
 # lane skipped, and the lane's input is not the same in every mode: the run
@@ -3626,7 +3617,7 @@ EOF
   [ "$_docs_saw_path" -eq 1 ] || docs_only_skip_active=0
 fi
 
-# plan_narrowed (HIMMEL-2243 FIX 8): true when THIS run's plan is a proper
+# plan_narrowed: true when THIS run's plan is a proper
 # subset of the full scan-root plan, for a reason a DIFFERENT run over the
 # same scan root would not share. "Reached the end without truncating" is NOT
 # "covered the ring" -- a run narrowed by --skip-extra, --changed-since,
@@ -3674,8 +3665,8 @@ fi
 plan_narrowed_why="${plan_narrowed_why%, }"
 
 
-# suite_filter_reason <relpath> <suite-key> — the skip chain, in ONE place
-# (HIMMEL-2894). Sets $_filter_reason and returns 0 when the suite is filtered
+# suite_filter_reason <relpath> <suite-key> — the skip chain, in ONE place.
+# Sets $_filter_reason and returns 0 when the suite is filtered
 # OUT of the run list; returns 1, $_filter_reason empty, when it is eligible.
 # Precedence is unchanged: SKIP_LIST -> docs-only -> tier -> conditional ->
 # capability, and every message is byte-identical to the inline chain it
@@ -3687,7 +3678,7 @@ plan_narrowed_why="${plan_narrowed_why%, }"
 # filter chain would let the two passes disagree the first time a filter was
 # added to only one of them — and a suite the loop considers eligible but the
 # pre-pass never saw is assigned to NO shard, silently dropping off the gate
-# while all n shards report green. That is HIMMEL-1128's false-green class,
+# while all n shards report green. That is the false-green class,
 # so the two passes share one implementation by construction.
 suite_filter_reason() {
   local _relpath="$1" _key="$2" _reason _ere
@@ -3706,7 +3697,7 @@ ${_key#"$only_list_repo_root"/}
     esac
   fi
 
-  # --impacted (HIMMEL-2821): FIRST, so every suite the range does not touch
+  # --impacted: FIRST, so every suite the range does not touch
   # reads as "not impacted" rather than as whichever standing skip it also
   # carries; an impacted suite falls through to the ordinary chain unchanged
   # (a SKIP_LIST'd impacted suite is still [SKIP]ped, with its own reason).
@@ -3727,7 +3718,7 @@ ${_key#"$impacted_repo_root"/}
     return 0
   fi
 
-  # Docs-only fast lane (HIMMEL-2166): the whole corpus is irrelevant to a
+  # Docs-only fast lane: the whole corpus is irrelevant to a
   # docs-only diff, so this outranks tier/conditional/capability — checked
   # right after SKIP_LIST (a suite's SKIP_LIST reason is more informative than
   # "docs-only" and still wins).
@@ -3736,7 +3727,7 @@ ${_key#"$impacted_repo_root"/}
     return 0
   fi
 
-  # Tier suites (HIMMEL-2120): SUITE_TIER_MODE gates which tier runs. Checked
+  # Tier suites: SUITE_TIER_MODE gates which tier runs. Checked
   # right after SKIP_LIST and before SUITE_CONDITIONAL/SUITE_REQUIRE_TOOL —
   # the stated precedence — so a suite both extended-listed and SKIP_LISTed
   # never runs (SKIP_LIST already took it above), and an extended-listed
@@ -3754,7 +3745,7 @@ ${_key#"$impacted_repo_root"/}
     return 0
   fi
 
-  # Conditional suites (HIMMEL-1589): when --changed-since is active, a suite in
+  # Conditional suites: when --changed-since is active, a suite in
   # SUITE_CONDITIONAL runs only if a changed path matches its ERE. Inert without
   # the flag (conditional_filter_active=0), so a full run behaves exactly as
   # before. Runs through --list too, so the skip plan reflects the filter.
@@ -3765,7 +3756,7 @@ ${_key#"$impacted_repo_root"/}
     fi
   fi
 
-  # Capability-conditional suites (HIMMEL-1792): RUNS where the tool is on
+  # Capability-conditional suites: RUNS where the tool is on
   # PATH, [SKIP]s loudly and attributed where it is not — never a silent
   # never-run. Checked in --list too, so the plan shows the real per-host
   # disposition.
@@ -3778,11 +3769,11 @@ ${_key#"$impacted_repo_root"/}
 }
 
 # --------------------------------------------------------------------------
-# Shard assignment (HIMMEL-2894) — a greedy longest-first bin-pack over a
+# Shard assignment — a greedy longest-first bin-pack over a
 # committed duration ledger, computed HERE so the loop below only has to ask
 # "is this suite mine?".
 #
-# HIMMEL-2872's v1 was `i % n` on the run-list index, which balances by
+# The first version was `i % n` on the run-list index, which balances by
 # construction only while suites cost about the same. They do not. The
 # measured run (34408076490, n=6) put the corpus's two heaviest suites — 389s
 # and 330s — on the same shard by modulo luck, so the slowest shard ran 18m23s
@@ -3808,7 +3799,7 @@ ${_key#"$impacted_repo_root"/}
 #     on stderr. A run must never fail over an absent optimisation.
 #   - a suite the ledger has never heard of -> the median of the rows it does
 #     have, and assigned like any other. Dropping an unknown suite would be
-#     HIMMEL-1128's false green reached through a lookup miss.
+#     the false green reached through a lookup miss.
 #
 # Durations are floored at 1s. 172 of the measured ledger's 466 rows are 0s —
 # a suite that finishes inside the sampling resolution still costs a process
@@ -3831,7 +3822,7 @@ if [ "$shard_total" -gt 0 ]; then
   # EVERY shard takes it: one shard recovering from something its siblings
   # never saw puts two partitions in force across one matrix, and a suite then
   # runs twice or lands on no shard at all while every shard exits 0 — the
-  # HIMMEL-1128 false-green class. Hence exactly TWO decision points:
+  # false-green class. Hence exactly TWO decision points:
   #
   #   1. Is the ledger THERE? Shell builtins, no tool, off a committed file,
   #      so every shard answers identically. Absent: fall back to round-robin
@@ -4020,7 +4011,7 @@ fi
 # remaining suite paths — the runner then reported OK over a list it had
 # silently eaten. Suites now get /dev/null (below), which also means an
 # unattended run can never block on a prompt.
-# HIMMEL-3906: FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
+# FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
 # or fail); a killed run never writes it, so a consumer can tell a partial log
 # set from a complete one. Cleared first so a stale one cannot vouch for this run.
 # Only the runner that first sees a given FAIL_LOG_DIR owns its sentinel: a nested
@@ -4035,7 +4026,7 @@ fi
 while IFS= read -r suite <&3; do
   [ -n "$suite" ] || continue
 
-  # Two derived paths, for two different jobs (HIMMEL-2260):
+  # Two derived paths, for two different jobs:
   #   relpath    — scan-root-relative, the CURSOR's spelling (see the budget
   #                block below). Keeps the caller's spelling on purpose.
   #   suite_key  — the same suite under the RESOLVED scan root. This is what
@@ -4051,7 +4042,7 @@ while IFS= read -r suite <&3; do
 "
   fi
 
-  # Every skip filter, in one call (HIMMEL-2894). SKIP_LIST -> docs-only ->
+  # Every skip filter, in one call. SKIP_LIST -> docs-only ->
   # tier -> conditional -> capability, in that precedence, with the reason the
   # chain chose. The --shard pre-pass above walks the same function, so the
   # run list the loop produces and the run list the bin-pack partitioned are
@@ -4063,7 +4054,7 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
-  # Shard filter (HIMMEL-2872, reassigned HIMMEL-2894) — LAST, after every
+  # Shard filter — LAST, after every
   # filter above, so the split is over the FINAL run list. Splitting raw
   # discovery instead would let a host's SKIP_LIST/tier/capability skips fall
   # unevenly across shards, so one runner carries the corpus while five idle.
@@ -4073,7 +4064,7 @@ while IFS= read -r suite <&3; do
   # and the v1 round-robin still applies. Both are an EXACT partition — their
   # union is the unsharded run list and they are pairwise disjoint. Anything
   # weaker drops suites off the gate while all n shards report green, the
-  # HIMMEL-1128 false-green class reached through the parallelism instead of
+  # false-green class reached through the parallelism instead of
   # through discovery.
   #
   # $run_index counts run-ELIGIBLE suites and advances for EVERY one of them,
@@ -4111,7 +4102,7 @@ while IFS= read -r suite <&3; do
     if [ "$budget_expired" -eq 0 ]; then
       budget_expired=1
       # The first suite the budget kept from running: the next run resumes
-      # HERE (HIMMEL-2243). Scan-root-relative so the spelling of the scan
+      # HERE. Scan-root-relative so the spelling of the scan
       # root cannot invalidate the cursor.
       rotate_next="$relpath"
     fi
@@ -4121,7 +4112,7 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
-  # HIMMEL-5116: attempt 1 is the normal run; a failed attempt 1 jumps back here
+  # Attempt 1 is the normal run; a failed attempt 1 jumps back here
   # once, for attempt 2. The body is not re-indented, to keep this diff reviewable.
   _attempt=1
   first_rc=""
@@ -4148,7 +4139,7 @@ while IFS= read -r suite <&3; do
   # and stands down, so that race resolves in favour of the real result.
   : > "$rcfile"
   suite_timeout=$(_suite_timeout_for "$suite")
-  # Give the suite its OWN temp root under one sweepable name (HIMMEL-1978).
+  # Give the suite its OWN temp root under one sweepable name.
   # A suite the watchdog terminates never runs its own cleanup traps, so every
   # mktemp it made survived — /tmp on the dev box reached ~149,600 top-level
   # entries that way, and a reboot does not clear %TEMP% on Windows. With the
@@ -4160,7 +4151,7 @@ while IFS= read -r suite <&3; do
   # not be skipped because a hygiene nicety could not be set up — but never
   # SILENTLY: a run that quietly lost its isolation is a run whose leftovers
   # nobody expects.
-  # HIMMEL-3699: anchor at literal /tmp, never ${TMPDIR:-/tmp} — on macOS,
+  # Anchor at literal /tmp, never ${TMPDIR:-/tmp} — on macOS,
   # TMPDIR defaults to a per-process dir under /private/var/folders, and
   # uninstall.sh's protected_path() hard-refuses anything under /var. A suite
   # temp root that ended up there made every suite exercising protected_path
@@ -4172,11 +4163,11 @@ while IFS= read -r suite <&3; do
   fi
   set -m
   { if [ -n "$suite_tmp" ]; then export TMPDIR="$suite_tmp" TMP="$suite_tmp" TEMP="$suite_tmp"; fi
-    # HIMMEL-2551: marks every suite as a test fixture, so a tool that can
+    # Marks every suite as a test fixture, so a tool that can
     # reach real operator state (restart-bridge.sh) REFUSES when the suite
     # forgot to sandbox its root, instead of trusting it.
     export HIMMEL_TEST_FIXTURE=1
-    # HIMMEL-3092: no ambient guard override reaches a suite; a case that needs
+    # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
@@ -4235,7 +4226,7 @@ while IFS= read -r suite <&3; do
   dur=$(( SECONDS - start ))
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
-  # suite stays FAIL with the first attempt's status (HIMMEL-5116, j2276a).
+  # suite stays FAIL with the first attempt's status.
   if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_skip_line "$log"; then
     printf '[RETRY-SKIP] %s retry exited 0 only through a SKIP line; keeping the first failure (rc=%s)\n' "$suite" "$first_rc"
     rc=$first_rc
@@ -4260,7 +4251,7 @@ while IFS= read -r suite <&3; do
     _log_has_skip_line "$log" && skipped_ran=$((skipped_ran + 1))
   else
     fail=$((fail + 1))
-    # HIMMEL-2233: a suite the watchdog killed for exceeding its cap has NO
+    # A suite the watchdog killed for exceeding its cap has NO
     # OBSERVED EXIT STATUS — it may have been merely slow, or it may have
     # failed an assertion and then hung during teardown, with the watchdog
     # killing it before that exit status was ever written. Rendering it
@@ -4270,7 +4261,7 @@ while IFS= read -r suite <&3; do
     # NOT `[ "$rc" -eq 124 ]` — a suite is free to exit 124 on its own, and
     # that IS a real exit status that must keep rendering as a plain failure.
     if [ "$capped" -eq 1 ]; then
-      # HIMMEL-2401: a suite the watchdog kills at its cap with every OBSERVED
+      # A suite the watchdog kills at its cap with every OBSERVED
       # assertion passing (only "ok" lines, no "not ok") is LIKELY a
       # cap-sizing problem rather than a test problem -- today it renders
       # identically to a genuine failure (FAIL: 1), which is what costs a leg
@@ -4279,7 +4270,7 @@ while IFS= read -r suite <&3; do
       # the TAP-ish "ok"/"not ok" line convention some suites use. A suite on
       # a different convention still renders as plain CAP EXCEEDED even when
       # it was, in fact, healthy (a false negative). The reverse can also
-      # happen (HIMMEL-2401 codex-1, round 2): a suite that emits an "ok"
+      # happen: a suite that emits an "ok"
       # token for reasons unrelated to TAP assertions (plain narration, e.g.
       # "ok - moving on") and then fails through a DIFFERENT, non-TAP
       # mechanism reads as clean here even though it is not -- there is no
@@ -4288,7 +4279,7 @@ while IFS= read -r suite <&3; do
       # disposition HINT, not a guarantee: re-size first, but a suite that
       # keeps failing after its cap is raised still needs a look.
       #
-      # HIMMEL-2401 codex-1: anchor on a whole "ok"/"not ok" TOKEN, not a bare
+      # Anchor on a whole "ok"/"not ok" TOKEN, not a bare
       # line prefix -- `^ok` alone also matches "okay ..." (a false positive:
       # a suite that never used TAP wording still gets called clean), and
       # `^not ok` alone misses TAP's own indented subtest lines (a false
@@ -4316,7 +4307,7 @@ while IFS= read -r suite <&3; do
       fi
       echo '----- last 100 lines (output at termination) -----'
     else
-      # HIMMEL-2517: rc=127 is "command or path not found" — one is a suite bug,
+      # Rc=127 is "command or path not found" — one is a suite bug,
       # a whole run of them is the tree having been deleted underneath us. Only
       # counted on this branch: a CAP EXCEEDED suite has NO observed exit
       # status (see above), so its synthetic 124 says nothing either way.
@@ -4329,7 +4320,7 @@ while IFS= read -r suite <&3; do
     tail -n 100 "$log" | sed 's/^/    /'
     echo '--------------------------'
     # Preserve the FULL failed-suite log when FAIL_LOG_DIR is set (CI uploads
-    # it as an artifact — HIMMEL-963: tail-only + rm made the failing
+    # it as an artifact — tail-only + rm made the failing
     # assertion unrecoverable from Actions logs). Injective escape (_ -> _u,
     # / -> _s) so distinct relpaths like a/b and a_b can't collide.
     if [ -n "${FAIL_LOG_DIR:-}" ]; then
@@ -4337,7 +4328,7 @@ while IFS= read -r suite <&3; do
       safe_relpath=$(printf '%s' "$relpath" | sed 's/_/_u/g; s#/#_s#g')
       cp "$log" "$FAIL_LOG_DIR/$safe_relpath.log"
       # Failed both attempts: the first attempt's log is the other half of the
-      # evidence and is deleted below (HIMMEL-5121).
+      # evidence and is deleted below.
       [ "$_attempt" -eq 2 ] && [ -n "$first_log" ] && \
         cp "$first_log" "$FAIL_LOG_DIR/$safe_relpath.first.log" 2>/dev/null
     fi
@@ -4363,7 +4354,7 @@ $_sel_list
 EOF
 fi
 
-# HIMMEL-2517 — second re-stat, before even the Summary HEADER is written. This
+# Second re-stat, before even the Summary HEADER is written. This
 # is the one that keeps the artifact off the PR: the --pr post below happens in
 # THIS process, so a root that vanished mid-run must stop here rather than be
 # rendered as a report and then published. Skipped under --list, which executed
@@ -4386,7 +4377,7 @@ if [ "$timed_out" -gt 0 ]; then
   printf ' TIMED OUT: %s (counted in FAIL)\n' "$timed_out"
 fi
 if [ "$cap_exceeded_clean" -gt 0 ]; then
-  # HIMMEL-2401: a subset of TIMED OUT (never a separate FAIL count) -- LIKELY
+  # A subset of TIMED OUT (never a separate FAIL count) -- LIKELY
   # a cap problem rather than a test problem. Disposition: re-size the entry
   # in _suite_timeout_for first, but this is a heuristic over one line
   # convention, not proof of health (see the detector's own comment above).
@@ -4397,7 +4388,7 @@ if [ "$budget_expired" -eq 1 ]; then
     "$SUITE_RUN_BUDGET" "$unrun_suites" >&2
 fi
 
-# HIMMEL-2517 — the SECOND, independent signature of a run that measured its own
+# The SECOND, independent signature of a run that measured its own
 # environment rather than the tests. The scan-root re-stat above catches the
 # deletion this ticket was filed for, but only while the root itself is gone; it
 # does not catch a root that was replaced, a PATH or mount that collapsed
@@ -4409,7 +4400,7 @@ fi
 # round-1 CR finding (codex-1). Measured against FAILURES, the rule condemns a
 # real regression: delete a shared helper ten suites call and 10-of-10 failures
 # are rc=127, so a genuine, diff-caused red run would be refused and its
-# after-report withheld from the PR — the exact loss HIMMEL-2383 exists to
+# after-report withheld from the PR — the exact loss the report exists to
 # prevent. rc=127 alone proves only that a command was not found; it does not
 # distinguish "this diff removed a dependency" from "nothing here can execute".
 # What DOES distinguish them is scale relative to the whole run: in the filed
@@ -4438,22 +4429,22 @@ if [ "$rc127" -ge "$SUITE_RC127_FLOOR" ] && [ $((rc127 * 100)) -ge $((ran * 90))
   exit 4
 fi
 
-# HIMMEL-2383 — post the after-report SUMMARY as a PR comment from the
+# Post the after-report SUMMARY as a PR comment from the
 # RUNNER PROCESS itself, opt-in via --pr/SUITE_REPORT_PR (never default-on,
 # never posted without one of these set): a closed parent session must not
-# lose the report (HIMMEL-2215 lineage — the incident this exists to close
+# lose the report (the incident this exists to close
 # is a leg's after-report vanishing along with the session that would have
 # posted it). Placed here, before every exit path below, so it runs whether
 # this turns out to be a pass, a failure, or a budget-truncated run — the
 # report is exactly as needed in each case. Best-effort: a post failure
 # WARNs but never changes this run's own exit code.
 if [ -n "$report_pr" ]; then
-  # 'head: <sha>' binds the report to the exact commit tested (HIMMEL-2383
-  # CR finding codex-3) — without it, a stale summary from an earlier
+  # 'head: <sha>' binds the report to the exact commit tested.
+  # Without it, a stale summary from an earlier
   # revision of the PR would satisfy a check against a LATER, unreviewed
   # head. base-status.sh requires this line to match the PR's headRefOid
   # exactly before treating the comment as covering that head. $REPORT_HEAD
-  # was captured at startup, not re-resolved here (round 9, see its own
+  # was captured at startup, not re-resolved here (see its own
   # comment) — this process ran the suites against that sha regardless of
   # what happens to the worktree afterward.
   #
@@ -4467,7 +4458,7 @@ if [ -n "$report_pr" ]; then
   # certifying before treating the SUMMARY as covering it.
   summary_block=$(printf '== Summary ==\n head: %s\n %s\n scope: %s\n PASS: %s\n SKIP: %s\n FAIL: %s\n skipped=%s (suites counted in PASS that printed a SKIP line)' "$REPORT_HEAD" "$scanning_line" "$scan" "$pass" "$skip" "$fail" "$skipped_ran")
   # $(...) strips the trailing newline each printf above would otherwise
-  # end with (HIMMEL-2383 CR finding codex-3, round 4) — without the
+  # end with — without the
   # explicit newline below, an optional TIMED OUT/TRUNCATED line lands
   # glued onto the end of the FAIL line instead of on its own line. Purely
   # cosmetic (base-status.sh's FAIL:/TRUNCATED: matching is glob-based and
@@ -4485,7 +4476,7 @@ $(printf ' TIMED OUT: %s (counted in FAIL)' "$timed_out")"
 $(printf ' CAP EXCEEDED (assertions passing): %s' "$cap_exceeded_clean")"
   fi
   # A budget-truncated run is not evidence of clean, however green the
-  # suites that DID run were (HIMMEL-2383 CR finding codex-4) — some
+  # suites that DID run were — some
   # suites never ran. base-status.sh reads this marker as PENDING
   # regardless of the FAIL count above.
   if [ "$budget_expired" -eq 1 ]; then
@@ -4503,7 +4494,7 @@ $(printf ' CHANGED-SINCE: %s (suites were conditionally filtered — not full sc
   fi
   if command -v "${GH_CMD:-gh}" >/dev/null 2>&1; then
     # Bounded so a GitHub network stall can't hang the run after every suite
-    # already finished (CodeRabbit round on PR #2099); skipped when `timeout`
+    # already finished; skipped when `timeout`
     # isn't on PATH rather than failing the post outright.
     _gh_report_cmd=("${GH_CMD:-gh}" pr comment "$report_pr" --body "$summary_block")
     if command -v timeout >/dev/null 2>&1; then
@@ -4519,12 +4510,12 @@ $(printf ' CHANGED-SINCE: %s (suites were conditionally filtered — not full sc
   fi
 fi
 
-# Persist or clear the rotation cursor (HIMMEL-2243). Placed above the fail>0
+# Persist or clear the rotation cursor. Placed above the fail>0
 # branch on purpose: that branch exits, and a run that truncated AND had real
 # failures must still record where to resume.
 #
 # CLEARED only when a run reached the end, actually executed suites, AND ran
-# the UNNARROWED plan (HIMMEL-2243 FIX 8). "Reached the end and executed
+# the UNNARROWED plan. "Reached the end and executed
 # suites" used to be treated as sufficient, which is exactly the too-weak rule
 # that let a --skip-extra / --changed-since / SUITE_TIER_MODE-narrowed run
 # clear (or write) a scan-root-wide cursor on the strength of ITS plan, not
@@ -4548,7 +4539,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
       # Same posture as the read/rotate block above and SUITE_LOCK_DIR: a
       # redirect FOLLOWS symlinks, so writing here without this check would
       # overwrite whatever the link points at, not the cursor. Refuse, don't
-      # delete or replace it (HIMMEL-2243).
+      # delete or replace it.
       printf 'WARN: %s is a symlink — refusing to write the rotation cursor there.\n' "$SUITE_ROTATE_STATE" >&2
       printf '  What would be checked and what would be written are different files; this truncated run leaves no resume point. Fix or remove the symlink.\n' >&2
     else
@@ -4567,7 +4558,7 @@ if [ "$SUITE_ROTATE" != "0" ]; then
     # this stays consistent with it rather than relying on rm's leniency.
     if [ -L "$SUITE_ROTATE_STATE" ]; then
       # Refusing to touch it is the whole point — no `rm -f` on a symlink
-      # either, matching the write branch's posture exactly (HIMMEL-2243).
+      # either, matching the write branch's posture exactly.
       printf 'WARN: %s is a symlink — refusing to touch it while clearing the rotation cursor.\n' "$SUITE_ROTATE_STATE" >&2
       printf '  What would be checked and what would be deleted are different files; leaving it in place. Fix or remove the symlink.\n' >&2
     else
@@ -4582,7 +4573,7 @@ fi
 
 if [ "$fail" -gt 0 ]; then
   printf 'Failed suites:\n%s' "$failed_suites"
-  # HIMMEL-2231: a red suite's most likely cause, cheapest-to-rule-out first —
+  # A red suite's most likely cause, cheapest-to-rule-out first —
   # printed only on a real failure so a green run stays quiet.
   printf 'Disposition order for a red suite (HIMMEL-2231):\n'
   printf '  1. CAP EXCEEDED  -> the runner'"'"'s watchdog killed it; re-run that suite alone\n'
@@ -4598,9 +4589,9 @@ if [ "$budget_expired" -eq 1 ]; then
 fi
 # Suites were discovered (the discovered==0 guard above already passed) but
 # every one was skipped, so nothing actually ran — not a pass. Reporting it
-# green is a false green on a process-integrity gate (HIMMEL-1128).
+# green is a false green on a process-integrity gate.
 #
-# EXCEPT the docs-only fast lane (HIMMEL-2166): there every suite was skipped
+# EXCEPT the docs-only fast lane: there every suite was skipped
 # for the SAME evidence-based reason (the diff cannot touch any shell suite),
 # not a misconfiguration — a genuine pass, unlike an accidental empty scan
 # root or an over-broad --skip-extra.
@@ -4611,12 +4602,12 @@ if [ "$ran" -eq 0 ]; then
   fi
   # A base-sourced impacted run whose every selected suite was filtered (tier,
   # platform, conditional): the manifest names each skip, and the aggregator's
-  # shard-manifest-verify.sh accounts for every selected suite (HIMMEL-3897).
+  # shard-manifest-verify.sh accounts for every selected suite.
   if [ "$impacted_active" -eq 1 ] && [ -n "$manifest_hdr" ] && [ "$shard_assigned" -eq 0 ]; then
     echo "OK: ${impacted_range}: 0 selected suites eligible on this shard ($skip skipped)"
     exit 0
   fi
-  # A shard assigned ZERO suites is a pass (HIMMEL-3699): os-verify splits a
+  # A shard assigned ZERO suites is a pass: os-verify splits a
   # short impacted list across a fixed shard count, so the surplus cells are
   # legitimately empty (an EMPTY run list is not: nothing was eligible). A shard
   # that WAS assigned suites and ran none is still

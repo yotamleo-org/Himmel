@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-range lint -- the PR-path lint for CI's lint job (HIMMEL-4319).
+# pr-range lint -- the PR-path lint for CI's lint job.
 #
 # `pre-commit run shellcheck --all-files` is one serial ~9 min shellcheck (the
 # hook is require_serial) and cannot be sharded: shellcheck resolves `source`

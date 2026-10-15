@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/check-cr-terminology.sh (HIMMEL-3561).
+# Smoke test for scripts/ci/check-cr-terminology.sh.
 #
 # Usage: bash scripts/ci/test-check-cr-terminology.sh
 #

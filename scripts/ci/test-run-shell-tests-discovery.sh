@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-discovery.sh — the run-shell-tests.sh cases
 # about the SCAN ROOT and the environment the run measured, rather than about
-# the suites themselves (HIMMEL-2895, split out of test-run-shell-tests.sh).
+# the suites themselves.
 #
-#   18. SKIP_LIST scan-root invariance (HIMMEL-2260): a directory-qualified
+#   18. SKIP_LIST scan-root invariance: a directory-qualified
 #       entry skips its suite identically under a full scan, a scoped scan of
 #       its own directory, a trailing-slash spelling of that root and --list --
 #       byte-identical [SKIP] lines -- with controls proving the skip stays
@@ -16,7 +16,7 @@
 #       SCAN-ROOT-relative rather than suffix-matched. 18j does the same
 #       collision check for SUITE_REQUIRE_TOOL; Case 12c (in
 #       test-run-shell-tests.sh) covers SUITE_CONDITIONAL. 18k/18l target the
-#       sibling HIMMEL-2508 discovery bug on that same symlinked root:
+#       sibling discovery bug on that same symlinked root:
 #       pre-fix, `find` never descends into a symlinked scan root at all, so
 #       discovery returns EMPTY and the runner exits 1 before 18h's verdict
 #       comparison is ever reached; 18k asserts the suites under the link
@@ -27,11 +27,11 @@
 #       (follow every symlink `find` walks past), by planting a symlink one
 #       level below a physical, non-linked scan root and asserting the suite
 #       behind it is NOT discovered, alongside a real sibling suite that IS.
-#       18m-R (HIMMEL-2544) is that pin's RED control: it runs the same
+#       18m-R is that pin's RED control: it runs the same
 #       fixture against a scratch `-L` mutant of the runner through the
 #       RED-control contract, so the `-H` vs `-L` distinction 18m claims is
 #       EXECUTED, not just asserted in prose.
-#   21. A run that measured its own ENVIRONMENT, not the tests (HIMMEL-2517):
+#   21. A run that measured its own ENVIRONMENT, not the tests:
 #       a scan root deleted or replaced mid-run aborts, and a run whose
 #       failures are overwhelmingly rc=127 reports CONTAMINATED rather than
 #       posting a fabricated tally.
@@ -60,13 +60,13 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Case 18 (HIMMEL-2260) — SKIP_LIST verdicts are invariant under the scan root
+# Case 18 — SKIP_LIST verdicts are invariant under the scan root
 #
 # SKIP_LIST entries used to be matched against the SCAN-ROOT-RELATIVE path, so
 # every directory-qualified entry went inert the moment the scan root moved
 # into its own directory: a scoped `scripts/handover` run discovered the suite
 # as "test-arm-resume.sh", matched nothing, and RAN a suite the ledger says can
-# never run here. Measured live on 2026-08-30 (HIMMEL-2254): that scoped run
+# never run here. Measured live on 2026-08-30: that scoped run
 # hit CAP EXCEEDED at 604s and red-washed the leg's scoped evidence, while the
 # full-scan ledger claimed the suite never runs. Both observations were true —
 # which is the bug.
@@ -267,7 +267,7 @@ else
   echo "  SKIP  2260/18h: cannot create a real symlink on this host — the spelling under test is unreachable here, so this assertion did NOT run"
 fi
 
-# 18k — HIMMEL-2508: the symlinked root must be DISCOVERED in the first
+# 18k — the symlinked root must be DISCOVERED in the first
 # place, which is a strictly earlier failure than the [SKIP]-verdict parity
 # 18h checks. GNU `find "$scan" ... -print` reports a symlinked scan root as
 # the link itself and does NOT descend into it (unlike `find -H`/`-L`), so
@@ -301,7 +301,7 @@ else
   echo "  SKIP  2508/18k: cannot create a real symlink on this host — the spelling under test is unreachable here, so this assertion did NOT run"
 fi
 
-# 18l — HIMMEL-2508: --list must plan the symlinked root the same way it
+# 18l — --list must plan the symlinked root the same way it
 # plans the physical one. --list runs the identical discovery `find` a real
 # run does, so pre-fix it fails the same way (empty plan, exit 1) — a
 # coordinator that plans with --list and then executes would see two
@@ -334,7 +334,7 @@ else
   echo "  SKIP  2508/18l: cannot create a real symlink on this host — the spelling under test is unreachable here, so this assertion did NOT run"
 fi
 
-# 18m — HIMMEL-2508 negative pin: `-H` dereferences the scan-root ARGUMENT
+# 18m — negative pin: `-H` dereferences the scan-root ARGUMENT
 # only; a symlink encountered further down the tree during the walk must
 # still NOT be followed. Without this row, nothing here distinguishes the
 # narrow `-H` this fix shipped from a `-L`, which would also fix the reported
@@ -351,7 +351,7 @@ fi
 # the full-scan half requires rc=0 AND the positive control to have executed
 # before its negative assertion counts, and the --list half requires rc=0 AND
 # the plan to name the positive control before the absence of the linked suite
-# counts. What NEITHER of them did until HIMMEL-2544 was EXECUTE the `-H` vs
+# counts. What NEITHER of them did was EXECUTE the `-H` vs
 # `-L` claim this comment makes: nothing here ever ran a `-L` runner, so the
 # comment was the only evidence that the pin can tell the two apart. 18m-R
 # below closes that: it builds a scratch `-L` mutant of the runner and asserts,
@@ -408,10 +408,10 @@ if [ -L "$sb18/scripts/inner/linked-suite" ]; then
     fail "2508/18m: --list named the interior-symlinked suite; output: $out18m_list"
   fi
 
-  # 18m-R (HIMMEL-2544) — the RED control that makes 18m's `-H` vs `-L` claim
+  # 18m-R — the RED control that makes 18m's `-H` vs `-L` claim
   # EXECUTABLE. 18m asserts the interior-symlinked suite is not discovered;
   # only this row shows that assertion can tell `-H` from `-L` at all. Build a
-  # scratch copy of the runner with `-H` swapped for `-L` (HIMMEL-2503: the
+  # scratch copy of the runner with `-H` swapped for `-L` (the
   # mutant NEVER lives in the real tree, and no trap here consumes a repointed
   # path — the scratch root is pinned once and removed explicitly below), run
   # the SAME fixture through it, and require the predicted wrong value.
@@ -497,7 +497,7 @@ else
   fail "2260/18g: the namesake suite was skipped by the scripts/test-adopt.sh entry; output: $out18"
 fi
 
-# 18i — --skip-extra keeps its SCAN-ROOT-RELATIVE semantics (CR round 3). The
+# 18i — --skip-extra keeps its SCAN-ROOT-RELATIVE semantics. The
 # table matcher is suffix-tolerant on purpose; --skip-extra must NOT be, or a
 # caller who scoped a run precisely silently loses unrelated nested suites.
 # Under the full sandbox root the control's relpath is
@@ -522,7 +522,7 @@ else
   fail "2260/18i: --skip-extra failed to skip its own scan-root-relative entry; output: $out18i2"
 fi
 
-# 18j — the capability table matches whole paths too (HIMMEL-2260, CR). Uses
+# 18j — the capability table matches whole paths too. Uses
 # the SUITE_REQUIRE_TOOL env seam with a guaranteed-absent tool so the skip
 # branch is deterministic on EVERY host — the production entry's tool (pwsh)
 # exists on some hosts and not others, which would make this vacuous where it
@@ -559,9 +559,9 @@ rm -f "$sb18/scripts/test-cap-collide.sh" "$sb18/scripts/nested/test-cap-collide
 #
 # This must go through SUITE_TIER, not --skip-extra. --skip-extra is compared
 # with a literal `[ "$_path" = "$relneedle" ]` and does not touch the predicate
-# at all (CR round 3), so asserting glob-safety through it would pass no matter
+# at all, so asserting glob-safety through it would pass no matter
 # how the predicate behaved — vacuous with respect to the property named. That
-# was this case's own bug, caught in CR round 4. SUITE_TIER is env-overridable
+# was this case's own bug in an earlier version. SUITE_TIER is env-overridable
 # AND routes through suite_entry_matches, so it is a real probe: under
 # SUITE_TIER_MODE=fast a tier-listed suite is skipped, so if '*' expanded,
 # EVERY suite would be skipped and the all-skipped root would fail the run.
@@ -596,8 +596,8 @@ fi   # end: Case 18 sandbox guard
 
 
 # --------------------------------------------------------------------------
-# Case 21 — a run that measured its own environment, not the tests
-# (HIMMEL-2517). Two independent signatures, each with its own control:
+# Case 21 — a run that measured its own environment, not the tests.
+# Two independent signatures, each with its own control:
 #
 #   21a  the scan root is DELETED mid-run  -> ABORTED, exit 3, no Summary at
 #        all and no --pr post. This is the filed incident: merge-on-green
@@ -660,7 +660,7 @@ mk_gh21 "$gh21a" "$gh21a_log"
 rm -f "$gh21a_log"
 
 # Sorted first, so it runs before the suites it strands. It pins the SHAPE of
-# the path it is about to delete before deleting anything (HIMMEL-2518: a
+# the path it is about to delete before deleting anything (a
 # control must never aim a recursive delete at a variable it merely trusts),
 # and steps out of the tree first so its own cwd is not the thing it removes.
 cat > "$sb21a/test-01-nuke.sh" <<NUKEEOF
@@ -945,7 +945,7 @@ rm -f "$gh21e" "$gh21e_log"
 # suites call, and 12 of 12 FAILURES are rc=127 while the rest of the run is
 # fine. Measured against failures that reads as contamination and the report is
 # withheld from the PR — silencing a real, diff-caused regression, the exact
-# loss HIMMEL-2383 exists to prevent. Measured against the whole run (12 of 42,
+# loss the report exists to prevent. Measured against the whole run (12 of 42,
 # 28%) it is what it is: an ordinary red run that must still be posted.
 # A failed mktemp leaves the variable EMPTY, and every path below is built
 # on it — the fixtures would then be written to, and deleted from, the
@@ -1003,7 +1003,7 @@ fi
 rm -rf "$sb21f"
 
 # --------------------------------------------------------------------------
-# Case 26 — FAIL_LOG_DIR/.run-complete completion sentinel (HIMMEL-3906).
+# Case 26 — FAIL_LOG_DIR/.run-complete completion sentinel.
 # Written when the suite loop runs to its end (pass or fail), never when the
 # runner is killed mid-loop, so a partial log set is distinguishable from a
 # complete one.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/ci/cancel-superseded-runs.sh (HIMMEL-3811).
+# Test for scripts/ci/cancel-superseded-runs.sh.
 # A fake gh serves canned `pr list` / `run list` JSON and records every
 # `run cancel`; the script's own jq filtering runs for real. No real run is
 # ever cancelled.
@@ -151,7 +151,7 @@ is "branch with two open PRs at different heads kept" "9" "$(cancelled)"
 
 # the PR list is read AFTER both run lists: a run seen at read time means its
 # push already happened, so a push between the reads can never leave the only
-# run at the PR's real head compared against a stale head (HIMMEL-3588).
+# run at the PR's real head compared against a stale head.
 reset
 echo "[$(r 1 queued pull_request feat/a OLD10)]" > "$TMP/fx/runs-ci.json"
 run >/dev/null

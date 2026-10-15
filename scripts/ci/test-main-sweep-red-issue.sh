@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-main-sweep-red-issue.sh -- suite for
-# scripts/ci/main-sweep-red-issue.sh (HIMMEL-3841 slice E / spec T3).
+# scripts/ci/main-sweep-red-issue.sh.
 #
 # A stub `gh` on PATH serves canned answers from a per-case stub dir and logs
 # every invocation, so each case asserts the issue mutations the script chose:
@@ -255,13 +255,13 @@ printf 'The job running on runner X has exceeded the maximum execution time of 2
 sweep
 if [ "$rc" -eq 0 ]; then ok "timed-out cancelled run exits 0"; else bad "timed-out cancelled run exits $rc: $out"; fi
 has "gh issue create" "$log" "a cancelled run with a timed-out job and failed aggregator opens the issue"
-# HIMMEL-5143: the only shard here is cancelled with no timeout note, so the
+# The only shard here is cancelled with no timeout note, so the
 # aggregate's failure is its cancellation, not a verdict (was asserted reported).
 hasnt "failed: shell-unit" "$out" "an aggregate failed only by a cancelled shard is not reported"
 has "failed: lint" "$out" "a timed-out non-shard job is reported failed"
 hasnt "failed: doc-invariants" "$out" "a plain cancelled job (no timeout note) is not reported failed"
 
-# 14. HIMMEL-5113: main has no push runs, so the range anchor is the newest earlier
+# 14. main has no push runs, so the range anchor is the newest earlier
 # green non-PR run on main, and a pull_request run whose head branch is named
 # `main` (a fork) is never the anchor.
 if command -v jq >/dev/null 2>&1; then
@@ -283,7 +283,7 @@ sweep
 if [ "$rc" -eq 0 ]; then ok "nightly-only reds exit 0"; else bad "nightly-only reds exit=$rc; out: $out"; fi
 hasnt "gh issue create" "$log" "a red windows leg / guard-corpus-full opens no main-red issue"
 
-# 16. HIMMEL-5113 judge R1: the nightly (any `(windows-latest` job, or a
+# 16. The nightly (any `(windows-latest` job, or a
 # non-skipped guard-corpus-full) runs the tier=all shell-unit, whose extended-only
 # reds are not main's fast-sweep health and go to shell-extended-nightly-issue.sh.
 # A red nightly opens nothing; a green nightly never closes an open main-red.
@@ -317,7 +317,7 @@ sweep
 has "gh issue create" "$log" "a red sweep with a skipped guard-corpus-full still opens the issue"
 has "main-red-run: 900" "$out" "the report records the run id marker"
 
-# 17. HIMMEL-5113 judge R1b: an older run finishing late never closes or
+# 17. An older run finishing late never closes or
 # refreshes a newer red (marker run id compared numerically).
 newcase order-older-green
 printf 'success%slint\n' "$tab" > "$STUB/jobs.tsv"
@@ -343,7 +343,7 @@ printf 'old body\n<!-- main-red-run: 800 -->\n<!-- main-red-failed: lint -->\n' 
 sweep
 has "gh issue close 7" "$log" "a newer green run closes the older red"
 
-# 18. HIMMEL-5129: a newer green sweep CLOSED the issue before an older red
+# 18. a newer green sweep CLOSED the issue before an older red
 # sweep finished. The close stamps its run id; the older red run must find that
 # marker on the newest closed issue and open nothing.
 newcase closed-newer-green
@@ -438,7 +438,7 @@ printf 'old body\n<!-- main-red-run: 800 -->\n<!-- main-red-failed: lint -->\n\n
 sweep
 hasnt "gh issue edit" "$log" "an older red run does not overwrite an open issue stamped by a newer green close"
 
-# 19. HIMMEL-5129: a re-run of the SAME run id (ordering guard is strict -gt)
+# 19. a re-run of the SAME run id (ordering guard is strict -gt)
 # must refresh the open issue, not be ignored as older.
 newcase order-equal-red
 printf 'failure%slint\n' "$tab" > "$STUB/jobs.tsv"
@@ -455,7 +455,7 @@ printf 'old body\n<!-- main-red-run: 900 -->\n<!-- main-red-failed: lint -->\n' 
 sweep
 has "gh issue close 7" "$log" "a green re-run of the same run id still closes"
 
-# 20. HIMMEL-5141 (judge j2292a mutants): run ids of different widths. A lexical
+# 20. Run ids of different widths. A lexical
 # compare or a sort without -n reads "1000" as older than "900"/"99".
 newcase wide-open-newer
 printf 'failure%slint\n' "$tab" > "$STUB/jobs.tsv"
@@ -543,7 +543,7 @@ edit_ln="$(grep -n '^gh issue edit 7' "$STUB/gh.log" | head -n 1 | cut -d: -f1)"
 close_ln="$(grep -n '^gh issue close 7' "$STUB/gh.log" | head -n 1 | cut -d: -f1)"
 if [ -n "$edit_ln" ] && [ -n "$close_ln" ] && [ "$edit_ln" -lt "$close_ln" ]; then ok "the closing-run stamp edit precedes the close"; else bad "edit line '$edit_ln' not before close line '$close_ln'"; fi
 
-# 21. HIMMEL-5143. Job lists below are copied from the real Himmel runs
+# 21. Job lists below are copied from the real Himmel runs
 # 38014176513 (push, every shard cancelled, aggregate "failure") and 38031316100
 # (workflow_dispatch, all green, aggregate named "(dispatch verify)").
 FIX="$ROOT/scripts/ci/test-main-sweep-red-fixtures"
@@ -606,7 +606,7 @@ sweep
 has "failed: shell-unit (ubuntu-latest)" "$out" "a dispatch aggregate failure is recorded under the event-independent name"
 hasnt "dispatch verify" "$out" "the report never names the event-dependent aggregate"
 
-# HIMMEL-5146 (j2302a). A finished GREEN shard keeps the aggregate red even when
+# A finished GREEN shard keeps the aggregate red even when
 # every other shard was cancelled: pins the shard_ok=0 clause of the
 # cancelled-shard rule (without it this row is wrongly dropped as not red).
 newcase one-green-shard-aggregate-red
