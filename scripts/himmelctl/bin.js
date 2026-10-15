@@ -7176,9 +7176,9 @@ async function cmdScopeSet(args) {
   // re-derives the target-scope state entry on the next run. The reverse order
   // would leave the cache pointing at the OLD scope with the old state key
   // already deleted, which the CWD guard above then refuses to retry (stuck).
-  // A fully transactional commit (journal/recovery marker) is deferred to
-  // the hard invariant (no item wired in BOTH scopes) already
-  // holds here — the wiring converged on disk above, before either write.
+  // The hard invariant (no item wired in BOTH scopes) already holds here —
+  // the wiring converged on disk above, before either write.
+  // ponytail: no journal/recovery marker, the two writes are not transactional, tracked in HIMMEL-1174.
   // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
   delete state.targets[oldTargetKey];

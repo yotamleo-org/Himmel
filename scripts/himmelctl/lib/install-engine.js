@@ -239,8 +239,9 @@ function buildEntry(item, ctx, diagnosticState) {
       // Register-LogonTask per exporter) is Phase A's ONLY
       // installer. scripts/observability/install-stack.sh is an 11-line
       // loud placeholder that `exit 2`s — cross-platform packaging is
-      // tracked as its own gap, not something this ticket
-      // builds. Mirrors the WINGET_IDS posix-gap posture above: never a
+      // a known gap, not built here.
+      // ponytail: no cross-platform observability packaging, tracked in HIMMEL-2333.
+      // Mirrors the WINGET_IDS posix-gap posture above: never a
       // doomed spawn of the placeholder.
       //
       // posix now runs install-stack.sh (the exporter
