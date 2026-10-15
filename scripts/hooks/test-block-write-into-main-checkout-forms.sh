@@ -617,7 +617,7 @@ _el_c20=$_T_EL
 # costs ~4x it, a quadratic one ~16x, and runner load scales both alike
 _t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
 _el_b5=$_T_EL
-_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $((_el_b5 * 6 + 3))
+_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $(( (_el_b5 > 0 ? _el_b5 : 1) * 6 + 3 ))
 _el_k20=$_T_EL
 # the 2 s slack absorbs whole-second timer granularity
 if [ "$_el_c20" -le $((_el_k20 * 3 + 2)) ]; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
