@@ -31,17 +31,64 @@ describe('link / links / unlink', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('link --type blocks: validates the type, POSTs inward/outward, prints the stored reading', async () => {
+  it('link A --blocks B: POSTs B as inward (B is blocked by A) and prints the stored reading', async () => {
     mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
-    await run(['link', 'A-1', 'B-2', '--type', 'blocks']);
+    await run(['link', 'A-1', '--blocks', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/issueLinkType');
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
+      type: { name: 'Blocks' },
+      inwardIssue: { key: 'B-2' },
+      outwardIssue: { key: 'A-1' },
+    });
+    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('B-2');
+    expect(console.log).toHaveBeenCalledWith('Linked: B-2 is blocked by A-1');
+  });
+
+  it('link A --blocked-by B: POSTs A as inward (A is blocked by B)', async () => {
+    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    await run(['link', 'A-1', '--blocked-by', 'B-2']);
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
       type: { name: 'Blocks' },
       inwardIssue: { key: 'A-1' },
       outwardIssue: { key: 'B-2' },
     });
-    expect(writeJiraBreadcrumb).toHaveBeenCalledWith('A-1');
     expect(console.log).toHaveBeenCalledWith('Linked: A-1 is blocked by B-2');
+  });
+
+  it('bare link A B --type Blocks is refused naming the explicit forms, never POSTs', async () => {
+    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(run(['link', 'A-1', 'B-2', '--type', 'blocks'])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    const msg = (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
+    expect(msg).toContain('--blocks');
+    expect(msg).toContain('--blocked-by');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+    exit.mockRestore();
+  });
+
+  it('--blocks with a second positional, both flags, or a non-Blocks --type is refused', async () => {
+    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    for (const args of [
+      ['link', 'A-1', 'B-2', '--blocks', 'C-3'],
+      ['link', 'A-1', '--blocks', 'B-2', '--blocked-by', 'C-3'],
+      ['link', 'A-1', '--blocks', 'B-2', '--type', 'Relates'],
+    ]) {
+      await expect(run(args)).rejects.toThrow('exit');
+    }
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+    exit.mockRestore();
+  });
+
+  it('link A B with no --type (Relates) still works bare', async () => {
+    mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
+    await run(['link', 'A-1', 'B-2', '--type', 'Relates']);
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
+      type: { name: 'Relates' },
+      inwardIssue: { key: 'A-1' },
+      outwardIssue: { key: 'B-2' },
+    });
   });
 
   it('link defaults to Relates', async () => {
