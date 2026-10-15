@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-skill-lint.sh — Tests for scripts/lint/skill-lint.sh (HIMMEL-3609).
+# test-skill-lint.sh — Tests for scripts/lint/skill-lint.sh.
 #
 # Usage: bash scripts/lint/test-skill-lint.sh
 #
@@ -403,7 +403,7 @@ assert_contains "finding names the real tab-holding path" "$TABDIR/tab-bad-skill
 assert_contains "[no-name] reported for the tab-path file" "no-name" "$OUT15B"
 
 # ---------------------------------------------------------------------------
-# Case 16: body size cap (HIMMEL-5513)
+# Case 16: body size cap
 # ---------------------------------------------------------------------------
 printf '\nCase 16: [size-warn] / [size-fail] / allowlist / command bodies\n'
 

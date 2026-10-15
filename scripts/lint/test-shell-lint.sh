@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-shell-lint.sh — Tests for scripts/lint/shell-lint.sh (HIMMEL-478, C4).
+# test-shell-lint.sh — Tests for scripts/lint/shell-lint.sh.
 #
 # Usage: bash scripts/lint/test-shell-lint.sh
 #
@@ -13,22 +13,21 @@
 #   6. errexit variants   : set -eu / set -euo / set -o errexit all flagged;
 #                          set -uo pipefail / set -o pipefail NOT flagged
 # 7-10. heredoc-body set -e, --staged-from-subdir, missing-file exit 2, set -Ee.
-# 11-17. CR-learnings advisory checks (HIMMEL-1315, 2026-07-28): regex-class,
+# 11-17. CR-learnings advisory checks: regex-class,
 #        mktemp template, bash32 constructs, echo-e, gnu-flag (+BSD-fallback
 #        exclusion + gnu-ok exemption), BOM policy split by file type (.ps1:
 #        BOM clean / non-ASCII no-BOM = trap), --staged admits .ps1.
-# 16d-f. CR r3 (HIMMEL-1432, [codex-adv-r2-1]): UTF-16LE/BE BOM'd .ps1 clean;
+# 16d-f. UTF-16LE/BE BOM'd .ps1 clean;
 #        non-UTF-8 no-BOM .ps1 = [PS1-ENCODING] (never an automated BOM add).
-# 16g. CR r4 (HIMMEL-1432, [codex-r3p-1]): a UTF-16LE-BOM'd SHELL script is a
-#        [BOM] error (breaks the shebang) — r3 over-broadly blessed UTF-16/32.
-#  19. [parse] + [quote-break] (HIMMEL-2230): an apostrophe in prose inside a
+# 16g. a UTF-16LE-BOM'd SHELL script is a [BOM] error (breaks the shebang);
+#        UTF-16/32 is not blessed on every file type.
+#  19. [parse] + [quote-break]: an apostrophe in prose inside a
 #      single-quoted awk program; includes the parses-but-truncated shape
 #      that `bash -n` cannot see, a clean negative control, and a sweep of
-#      the real scripts/hooks/ corpus. 19i-19k (HIMMEL-2362, private #2017 /
-#      #2018): a valid `sed '...'file` concatenation must NOT fire, and a
+#      the real scripts/hooks/ corpus. 19i-19k: a valid `sed '...'file` concatenation must NOT fire, and a
 #      truncated program past an earlier complete invocation on the same
 #      line MUST fire.
-#  18. self-check (HIMMEL-1355): shell-lint reports no findings against this
+#  18. self-check: shell-lint reports no findings against this
 #      suite's own file (its fixtures/assertions are exempted from advisory
 #      checks the same way shell-lint.sh exempts its own source).
 #
@@ -42,7 +41,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,7 +74,7 @@ assert_not_contains() {
 
 HAVE_SHELLCHECK=0
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1
-# iconv backs the [PS1-NO-BOM] vs [PS1-ENCODING] split (HIMMEL-1432 CR r3). The
+# iconv backs the [PS1-NO-BOM] vs [PS1-ENCODING] split. The
 # [PS1-NO-BOM] assertion (valid UTF-8 + no BOM) is iconv-dependent: without
 # iconv the linter fails SAFE to [PS1-ENCODING] unverified, so guard it.
 HAVE_ICONV=0
@@ -263,7 +262,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Cases 11-17: CR-learnings advisory portability checks (HIMMEL-1315, 2026-07-28).
+# Cases 11-17: CR-learnings advisory portability checks.
 # ---------------------------------------------------------------------------
 
 # Case 11: [regex-class] — \s/\d/\w in a grep -E pattern is flagged; a POSIX
@@ -356,7 +355,7 @@ EOF
 OUT15c="$(bash "$LINT" "$GF_OK" 2>&1)"
 if grepq "$OUT15c" -F '[gnu-flag]'; then fail "gnu-ok marker did not exempt grep -P" "$OUT15c"; else pass "gnu-ok marker exempts grep -P"; fi
 
-# Case 16: BOM policy is split by file type (HIMMEL-1432). A BOM is CORRECT for
+# Case 16: BOM policy is split by file type. A BOM is CORRECT for
 # *.ps1 (PS5.1 needs it to decode UTF-8) -> [BOM] is never reported on a .ps1.
 # Instead a .ps1 with non-ASCII bytes (>0x7F) but NO BOM is the trap itself
 # ([PS1-NO-BOM]); a pure-ASCII .ps1 without a BOM is fine. Fixtures use printf
@@ -373,15 +372,15 @@ OUT16="$(bash "$LINT" "$PS1B" 2>&1)"; EC16=$?
 if [ "$EC16" -eq 0 ]; then pass "16a: non-ASCII .ps1 + BOM exits 0 (BOM is correct)"; else fail "16a: expected exit 0, got $EC16" "$OUT16"; fi
 assert_not_contains "16a: no [BOM] on a .ps1" "[BOM]" "$OUT16"
 assert_not_contains "16a: no [PS1-NO-BOM] when BOM present" "[PS1-NO-BOM]" "$OUT16"
-# grepq, not printf|grep -qE (HIMMEL-1430 merge resolution: this suite runs
-# under pipefail and the sweep converts single-producer grep -q pipelines).
+# grepq, not printf|grep -qE: this suite runs under pipefail and the sweep
+# converts single-producer grep -q pipelines.
 if grepq "$OUT16" -E '\[(errexit|shellcheck|regex-class|mktemp|bash32|gnu-flag|echo-e)\]'; then
     fail "16a: .ps1 ran a shell-specific check" "$OUT16"
 else
     pass "16a: .ps1 runs no shell-specific check"
 fi
 
-# 16b: non-ASCII .ps1 WITHOUT a BOM -> [PS1-NO-BOM] (the HIMMEL-1432 trap).
+# 16b: non-ASCII .ps1 WITHOUT a BOM -> [PS1-NO-BOM] (the trap).
 PS1N="$TMP_ROOT/nobom.ps1"
 printf 'Write-Output "caf\303\251"\n' > "$PS1N"
 OUT16b="$(bash "$LINT" "$PS1N" 2>&1)"; EC16b=$?
@@ -393,7 +392,7 @@ else
 fi
 assert_not_contains "16b: no [BOM] reported (BOM absent, not the issue)" "[BOM]" "$OUT16b"
 
-# 16b-big (HIMMEL-1432 r6, ledger codex-adv-r5-2): the non-ASCII detector in
+# 16b-big: the non-ASCII detector in
 # shell-lint.sh reads the WHOLE file (`tr -d '\000-\177' | wc -c`, not `grep -q`).
 # A `grep -q` detector exits on the first non-ASCII byte, SIGPIPEs `tr` under
 # pipefail, and the `if PIPELINE; then flag` wrapper then reads that PIPE failure
@@ -426,9 +425,9 @@ OUT16c="$(bash "$LINT" "$PS1A" 2>&1)"; EC16c=$?
 if [ "$EC16c" -eq 0 ]; then pass "16c: pure-ASCII no-BOM .ps1 exits 0"; else fail "16c: expected exit 0, got $EC16c" "$OUT16c"; fi
 assert_not_contains "16c: no [PS1-NO-BOM] on ASCII-only .ps1" "[PS1-NO-BOM]" "$OUT16c"
 
-# 16d-16f (HIMMEL-1432 CR r3, [codex-adv-r2-1]): r2 recognized only EF BB BF,
-# so a UTF-16/UTF-32 .ps1 fell into the no-BOM branch and was told to "add a
-# UTF-8 BOM" — corrupting a valid script. These lock the fix: a UTF-16/32 BOM'd
+# 16d-16f: recognizing only EF BB BF would send a UTF-16/UTF-32 .ps1 down the
+# no-BOM branch to be told to "add a UTF-8 BOM" — corrupting a valid script.
+# These lock that in: a UTF-16/32 BOM'd
 # .ps1 is CLEAN, and a non-UTF-8 no-BOM .ps1 gets [PS1-ENCODING] (manual),
 # never an automated BOM add. Fixtures use printf byte escapes (not iconv) so
 # they build everywhere; NUL bytes go straight to the file via redirection.
@@ -463,8 +462,8 @@ if [ "$EC16f" -eq 1 ]; then pass "16f: non-UTF-8 no-BOM .ps1 exits 1"; else fail
 assert_contains "16f: [PS1-ENCODING] on invalid-UTF-8 no-BOM .ps1" "[PS1-ENCODING]" "$OUT16f"
 assert_not_contains "16f: no [PS1-NO-BOM] (must not prescribe a BOM add on non-UTF-8)" "[PS1-NO-BOM]" "$OUT16f"
 
-# 16g (HIMMEL-1432 CR r4, [codex-r3p-1]): r3 blessed UTF-16/32 on EVERY file
-# type, so a UTF-16LE-BOM'd SHELL script passed clean. A shell script's first
+# 16g: blessing UTF-16/32 on EVERY file type would let a UTF-16LE-BOM'd SHELL
+# script pass clean. A shell script's first
 # two bytes must be `#!`; ANY byte-order mark breaks the shebang, so the very
 # same UTF-16LE bytes that are CLEAN on a .ps1 (16d) must be a [BOM] ERROR on a
 # .sh. Fixture mirrors 16d (printf byte escapes — no iconv, builds everywhere).
@@ -492,7 +491,7 @@ mkdir -p "$REPO2"
 )
 OUT17="$(cd "$REPO2" && bash "$LINT" --staged 2>&1)"
 if [ "$HAVE_ICONV" -eq 1 ]; then
-    # grepq, not printf|grep -qF (HIMMEL-1430 merge resolution).
+    # grepq, not printf|grep -qF.
     if grepq "$OUT17" -F 'staged.ps1' && grepq "$OUT17" -F '[PS1-NO-BOM]'; then
         pass "--staged flags [PS1-NO-BOM] on a staged non-ASCII no-BOM .ps1"
     else
@@ -503,7 +502,7 @@ else
 fi
 
 # Case 18: shell-lint reports no findings against its own test file
-# (HIMMEL-1355) — this suite's fixtures/assertions embed the same
+# — this suite's fixtures/assertions embed the same
 # patterns/tags/hints as DATA (e.g. Case 12's `mktemp -d`, Case 16's grep
 # alternation naming every advisory tag), so shell-lint exempts
 # scripts/lint/test-shell-lint.sh from advisory checks alongside its own
@@ -520,7 +519,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Case 19 (HIMMEL-2230): [parse] + [quote-break] — an apostrophe in prose inside
+# Case 19: [parse] + [quote-break] — an apostrophe in prose inside
 # a single-quoted awk program ends the shell string early. The motivating
 # incident broke a live hook in the WORKTREE (it then denied every command
 # fleet-wide) and never reached a commit, so no commit-time gate ever saw it;
@@ -618,7 +617,7 @@ else
     printf '  SKIP: scripts/hooks not found — Case 19d skipped\n'
 fi
 
-# 19e (HIMMEL-2230 panel round 1, codex-3) — the false-NEGATIVE regression: a
+# 19e — the false-NEGATIVE regression: a
 # completely ordinary `awk -v` invocation. The old opener only traversed
 # `-flag` tokens between the command and the program, so the `n=1` ASSIGNMENT
 # broke the chain and the whole line was skipped — a miss on an entirely
@@ -644,7 +643,7 @@ OUT19E="$(bash "$LINT" "$FN19E" 2>&1)"
 assert_contains     "19e [quote-break] fires past an awk -v flag/assignment" "[quote-break]" "$OUT19E"
 assert_not_contains "19e [parse] stays silent (the file parses)"            "[parse]"       "$OUT19E"
 
-# 19f (HIMMEL-2230 panel round 1, codex-2) — the false-POSITIVE regression: a
+# 19f — the false-POSITIVE regression: a
 # shell comment that merely MENTIONS an awk program with an apostrophe is
 # inert prose, not a program opener, and must not fire. The scanner only
 # skips a `#`-led line when it is not already mid-program (19a/19b's own
@@ -667,7 +666,7 @@ assert_not_contains "19f no [quote-break] on a comment merely mentioning awk" "[
 
 CHECKER19="$SCRIPT_DIR/hook-parse-check.sh"
 
-# 19g (HIMMEL-2230 panel round 2, codex-2) — the LINE-CONTINUATION false-
+# 19g — the LINE-CONTINUATION false-
 # NEGATIVE regression: the command ends its physical line with a `\`, and the
 # quoted program opens on the NEXT one. The walk used to give up the instant
 # it ran off the end of the first physical line without finding the opener.
@@ -697,7 +696,7 @@ OUT19G="$(bash "$LINT" "$CONT19G" 2>&1)"
 assert_contains     "19g [quote-break] fires across a line continuation" "[quote-break]" "$OUT19G"
 assert_not_contains "19g [parse] stays silent (the file parses)"        "[parse]"       "$OUT19G"
 
-# 19h (HIMMEL-2230 panel round 2, codex-1) — a non-shell file handed DIRECTLY
+# 19h — a non-shell file handed DIRECTLY
 # to hook-parse-check.sh (not through shell-lint.sh's own _is_shell_file gate)
 # must be skipped outright: no output, exit 0. Both current callers already
 # gate by file type, but the checker is a standalone tool with two consumers
@@ -718,7 +717,7 @@ OUT19H="$(bash "$CHECKER19" "$PS19H" 2>&1)"; EC19H=$?
 if [ "$EC19H" -eq 0 ]; then pass "19h .ps1 direct call exits 0"; else fail "19h expected exit 0, got $EC19H" "$OUT19H"; fi
 if [ -z "$OUT19H" ]; then pass "19h .ps1 direct call prints nothing"; else fail "19h expected no output" "$OUT19H"; fi
 
-# 19i (HIMMEL-2362, private-repo #2018) — FALSE POSITIVE regression:
+# 19i — FALSE POSITIVE regression:
 # `sed 's/x/y/'file` is ordinary, correct shell — the single-quoted program
 # is complete and `file` is concatenated onto the same shell word as the
 # operand. The old next-char test alone (closing quote immediately followed
@@ -744,7 +743,7 @@ OUT19I="$(bash "$CHECKER19" "$FALSEPOS19I" 2>&1)"; EC19I=$?
 if [ "$EC19I" -eq 0 ]; then pass "19i exits 0 on ordinary sed-then-concatenated-word"; else fail "19i expected exit 0, got $EC19I" "$OUT19I"; fi
 assert_not_contains "19i no [quote-break] on ordinary sed-then-concatenated-word (#2018)" "[quote-break]" "$OUT19I"
 
-# 19j (HIMMEL-2362, private-repo #2017) — NEGATIVE CONTROL for the false-
+# 19j — NEGATIVE CONTROL for the false-
 # NEGATIVE regression below: the SAME truncated awk program, but FIRST on its
 # physical line (same shape as 19b/19e/19g). This must already fire —
 # without this control, 19k passing would not prove anything: a test that
@@ -767,7 +766,7 @@ fi
 OUT19J="$(bash "$CHECKER19" "$TRUNCFIRST19J" 2>&1)"
 assert_contains "19j [quote-break] fires when the truncated program is FIRST on the line (negative control)" "[quote-break]" "$OUT19J"
 
-# 19k (HIMMEL-2362, private-repo #2017) — the FALSE NEGATIVE itself: the
+# 19k — the FALSE NEGATIVE itself: the
 # identical truncated awk program from 19j, now preceded on the SAME physical
 # line by a complete, unrelated `sed '...' foo;` invocation. The old rule
 # found the closing quote of the awk program's opener, set inprog = 0, and
@@ -793,7 +792,7 @@ fi
 OUT19K="$(bash "$CHECKER19" "$MISSED19K" 2>&1)"
 assert_contains "19k [quote-break] fires past a complete sed invocation earlier on the same line (#2017)" "[quote-break]" "$OUT19K"
 
-# 19l (HIMMEL-2362, CR round 1 codex-1 finding on this PR) — a single-line
+# 19l — a single-line
 # truncation whose trailing prose is more than one word, but carries NO
 # further apostrophe anywhere else on that physical line. A discriminator
 # keyed only on "does another apostrophe reopen later on the line" (an
@@ -821,7 +820,7 @@ fi
 OUT19L="$(bash "$CHECKER19" "$TRUNCWORDS19L" 2>&1)"
 assert_contains "19l [quote-break] fires on a multi-word single-line truncation with no further apostrophe on that line" "[quote-break]" "$OUT19L"
 
-# 19m (HIMMEL-2362, CR round 1 codex-2 finding on this PR) — the MULTI-LINE
+# 19m — the MULTI-LINE
 # mirror of #2018: a program opened on an earlier line and closed on ITS OWN
 # line as `'file` (the closing quote immediately followed by a concatenated
 # bareword, nothing else on that line) is ordinary shell concatenation
@@ -844,7 +843,7 @@ OUT19M="$(bash "$CHECKER19" "$CONCATMULTILINE19M" 2>&1)"; EC19M=$?
 if [ "$EC19M" -eq 0 ]; then pass "19m exits 0 on a multi-line program closed as 'file"; else fail "19m expected exit 0, got $EC19M" "$OUT19M"; fi
 assert_not_contains "19m no [quote-break] on multi-line concatenation" "[quote-break]" "$OUT19M"
 
-# 19n (HIMMEL-2362, CR round 2 codex-1 finding on this PR) — the word-count
+# 19n — the word-count
 # discriminator (19i) fixed a BARE concatenated operand (`sed '...'file`
 # alone on the line) but a later variant regressed the moment ordinary shell
 # syntax followed the operand: redirection or a semicolon-chained command
@@ -888,7 +887,7 @@ OUT19N_SEMI="$(bash "$CHECKER19" "$FALSEPOS19N_SEMI" 2>&1)"; EC19N_SEMI=$?
 if [ "$EC19N_SEMI" -eq 0 ]; then pass "19n(semi) exits 0 on concatenated-operand + semicolon chaining"; else fail "19n(semi) expected exit 0, got $EC19N_SEMI" "$OUT19N_SEMI"; fi
 assert_not_contains "19n(semi) no [quote-break] past a concatenated operand + semicolon chaining (codex-1)" "[quote-break]" "$OUT19N_SEMI"
 
-# 19o (HIMMEL-2362, CR round 2 codex-2 finding on this PR) — the multi-word
+# 19o — the multi-word
 # test (19l) catches a truncation whose trailing prose is SEVERAL words, but
 # a truncation whose trailing fragment is exactly ONE word (e.g. a
 # contraction split by the closing quote into two pieces, like the second
@@ -917,7 +916,7 @@ fi
 OUT19O="$(bash "$CHECKER19" "$TRUNCONEWORD19O" 2>&1)"
 assert_contains "19o [quote-break] fires on a single-trailing-word truncation past an in-body comment marker (codex-2)" "[quote-break]" "$OUT19O"
 
-# 19p (HIMMEL-2362, CR round 3 codex-1 finding on this PR) — the peel-one-
+# 19p — the peel-one-
 # operand-then-check-for-a-shell-metacharacter discriminator (19n) fixed
 # redirection/chaining after a concatenated operand, but a SECOND,
 # space-separated bareword operand (an entirely ordinary multi-file
@@ -944,7 +943,7 @@ OUT19P="$(bash "$CHECKER19" "$FALSEPOS19P" 2>&1)"; EC19P=$?
 if [ "$EC19P" -eq 0 ]; then pass "19p exits 0 on concatenated-operand + a second space-separated operand"; else fail "19p expected exit 0, got $EC19P" "$OUT19P"; fi
 assert_not_contains "19p no [quote-break] past a concatenated operand + a second operand (codex-1 round 3)" "[quote-break]" "$OUT19P"
 
-# 19q (HIMMEL-2362, CR round 3 codex-2 finding on this PR) — the comment-
+# 19q — the comment-
 # marker discriminator (19o) required a space or start-of-program before the
 # `#`, so a comment with NO gap before it (program syntax ending directly
 # against the `#`, e.g. a closing brace) was not recognized as a comment at
@@ -968,7 +967,7 @@ fi
 OUT19Q="$(bash "$CHECKER19" "$TRUNCNOGAP19Q" 2>&1)"
 assert_contains "19q [quote-break] fires on a truncation past a comment marker with no preceding whitespace (codex-2 round 3)" "[quote-break]" "$OUT19Q"
 
-# 19r (HIMMEL-2362, CR round 3 codex-3 finding on this PR) — the comment-
+# 19r — the comment-
 # marker discriminator (19o) treated ANY `#` preceded by whitespace as a
 # comment opener, but a `#` can also be ordinary PROGRAM syntax (a sed
 # pattern character, here literally " #" inside a regex) with no comment

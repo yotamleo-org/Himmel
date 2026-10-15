@@ -1,4 +1,4 @@
-# skill-lint size-check allowlist (HIMMEL-5513).
+# skill-lint size-check allowlist.
 # One `<repo-relative path><TAB><reason>` per line; `#` starts a comment.
 # An entry exempts the body from [size-warn] and [size-fail]. Add one only for
 # an upstream-owned body (trimming it just drifts from upstream) or a body

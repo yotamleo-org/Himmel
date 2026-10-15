@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shell-lint.sh — Pre-emptive advisory shell lint (HIMMEL-478, C4).
+# shell-lint.sh — Pre-emptive advisory shell lint.
 #
 # Runs shellcheck plus advisory byte/regex portability checks (BOM split by
 # file type, errexit leak, POSIX-ERE classes, mktemp template, bash-3.2 constructs, GNU-only
@@ -18,7 +18,7 @@
 #   [BOM]          UTF-8 BOM (EF BB BF) at file start on a SHELL file (breaks
 #                  the shebang; SC1082). Never reported on *.ps1 — a BOM is
 #                  CORRECT there (Windows PowerShell 5.1 needs it to decode
-#                  UTF-8; HIMMEL-1432). A UTF-16/UTF-32 BOM is also valid on a
+#                  UTF-8). A UTF-16/UTF-32 BOM is also valid on a
 #                  .ps1 (PS5.1 decodes those natively) and never reported.
 #   [PS1-NO-BOM]   a *.ps1 carrying non-ASCII bytes (>0x7F), NO recognized BOM,
 #                  whose bytes VALIDATE as UTF-8 (iconv) — PS5.1 mojibake-decodes
@@ -28,20 +28,20 @@
 #                  bytes do NOT validate as UTF-8 (or iconv is absent so it
 #                  cannot be verified) — unsupported/unknown encoding. Inspect
 #                  manually; do NOT prepend a UTF-8 BOM (that corrupts a
-#                  non-UTF-8 payload such as UTF-16). (HIMMEL-1432 CR r3.)
+#                  non-UTF-8 payload such as UTF-16).
 #   [parse]       the file does not parse (`bash -n`). A hook file is LIVE the
 #                 instant it is written, so a parse error denies EVERY command
 #                 fleet-wide before any commit gate can run. The commonest cause
 #                 is an apostrophe in prose inside a single-quoted awk/sed/perl
 #                 program (`# it's the entry point`) — it ends the shell string
-#                 early. (HIMMEL-2230.)
+#                 early.
 #   [quote-break] an apostrophe that TERMINATED a single-quoted awk/sed/perl
 #                 program body: the closing quote is immediately followed by a
 #                 word character, the signature of prose (`it's`, `don't`)
 #                 rather than an intended end-of-program. Catches the same class
 #                 as [parse] in the case where the file still happens to parse
 #                 (the stray quote re-balanced) but awk receives a TRUNCATED
-#                 program. (HIMMEL-2230.)
+#                 program.
 #   [errexit]     `set -e` / `-eu` / `-euo` / `-o errexit` — errexit leaks into a
 #                 sourcing shell; himmel convention is `set -uo pipefail`.
 #   [shellcheck]  the same linter the pre-commit gate runs (when installed).
@@ -60,7 +60,7 @@
 
 set -uo pipefail
 
-# statusline is vendored byte-for-byte (HIMMEL-331); mirror the gate's exclude.
+# statusline is vendored byte-for-byte; mirror the gate's exclude.
 EXCLUDE_SUBSTR='scripts/statusline/'
 
 # Resolve sibling helpers (hook-parse-check.sh) relative to this script, not cwd.
@@ -84,7 +84,7 @@ _is_shell_file() {
 }
 
 # Like _is_shell_file but also admits *.ps1 (the BOM policy covers PowerShell: a
-# BOM is correct there, and a non-ASCII no-BOM .ps1 is the HIMMEL-1432 trap). The
+# BOM is correct there, and a non-ASCII no-BOM .ps1 is the trap). The
 # shell-specific checks below still gate on _is_shell_file, so a .ps1 only ever
 # reaches the BOM policy ([BOM] never fires on .ps1; [PS1-NO-BOM] may).
 _is_lint_target() {
@@ -100,10 +100,10 @@ _is_lint_target() {
 # its first two bytes (FF FE) with UTF-16LE, so a 2-byte-first check would
 # mis-tag a UTF-32LE file. od -An -tx1 is byte-accurate and locale-independent;
 # head -c4 on a <4-byte file yields fewer bytes, so the prefix globs still match.
-# (HIMMEL-1432 CR r3: PowerShell 5.1 decodes BOM'd UTF-16/UTF-32 natively, so a
-# .ps1 carrying any of these is a VALID script — never a defect to mutate. The
-# r2 code only recognized EF BB BF, so a UTF-16LE .ps1 (FF FE ...) fell into the
-# no-BOM branch and was told to "add a UTF-8 BOM", corrupting it. [codex-adv-r2-1].)
+# PowerShell 5.1 decodes BOM'd UTF-16/UTF-32 natively, so a .ps1 carrying any of
+# these is a VALID script — never a defect to mutate. Recognizing only EF BB BF
+# would send a UTF-16LE .ps1 (FF FE ...) down the no-BOM branch to be told to
+# "add a UTF-8 BOM", corrupting it.
 _bom_kind() {
     local h4
     h4="$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')"
@@ -153,7 +153,7 @@ _has_gnu_ok() {
     return 1
 }
 
-# ── Advisory portability patterns (CR-learnings tuning, HIMMEL-1315, 2026-07-28)
+# ── Advisory portability patterns (CR-learnings tuning)
 # POSIX ERE throughout (no \s/\d/\w, no PCRE); bash 3.2-safe. Lines are scanned
 # as-is (full-line comments excluded by _grep_hits); a construct inside a heredoc
 # body or quoted string may still match — these checks are advisory, never a gate.
@@ -220,7 +220,7 @@ fi
 command -v shellcheck >/dev/null 2>&1 && HAVE_SHELLCHECK=1 || HAVE_SHELLCHECK=0
 [ "$HAVE_SHELLCHECK" -eq 1 ] || printf 'shell-lint: shellcheck not installed — running BOM + errexit checks only\n' >&2
 # iconv validates a no-BOM .ps1's bytes as UTF-8 before prescribing a BOM add
-# (HIMMEL-1432 CR r3). Ships with Git Bash; when absent the .ps1 policy fails
+# Ships with Git Bash; when absent the .ps1 policy fails
 # SAFE (never prescribes an automated UTF-8-BOM add on unverified bytes).
 command -v iconv >/dev/null 2>&1 && HAVE_ICONV=1 || HAVE_ICONV=0
 
@@ -243,7 +243,7 @@ while IFS= read -r f; do
     file_issues=0
     file_report=""
 
-    # BOM policy is split by file type (HIMMEL-1432):
+    # BOM policy is split by file type:
     #   shell (.sh / sh shebang) — a UTF-8 BOM is an ERROR: it breaks the
     #     shebang (shellcheck SC1082). Report it ([BOM]).
     #   *.ps1 — a UTF-8 BOM is CORRECT and REQUIRED for non-ASCII content:
@@ -256,9 +256,9 @@ while IFS= read -r f; do
     #     UTF-8; otherwise the payload is some other encoding and prepending
     #     EF BB BF would corrupt it ([PS1-ENCODING], manual triage). A pure-ASCII
     #     .ps1 without a BOM is fine (the BOM is optional there).
-    # CR r3 (HIMMEL-1432): r2 recognized only EF BB BF, so a UTF-16LE .ps1
-    # (FF FE ...) fell into the no-BOM branch, read as non-ASCII, and was told
-    # to "add a UTF-8 BOM" — corrupting a valid script. [codex-adv-r2-1].
+    # Recognizing only EF BB BF would send a UTF-16LE .ps1 (FF FE ...) into the
+    # no-BOM branch, read as non-ASCII, and tell it to "add a UTF-8 BOM" —
+    # corrupting a valid script.
     # No 2>/dev/null on od/head: a genuine failure should surface, not be
     # absorbed into a false "no BOM".
     bom="$(_bom_kind "$f")"
@@ -276,7 +276,7 @@ while IFS= read -r f; do
                 # Split by file type exactly like the utf8 arm above:
                 #   *.ps1 — PowerShell 5.1 decodes BOM'd UTF-16/UTF-32 natively,
                 #     so a .ps1 carrying one is a VALID script, never a defect to
-                #     mutate (HIMMEL-1432 CR r3 [codex-adv-r2-1]).
+                #     mutate.
                 #   everything else (shell) — the first two bytes MUST be the `#!`
                 #     shebang; ANY byte-order mark (UTF-16LE/BE or UTF-32LE/BE)
                 #     pushes `#!` off byte 0 and the kernel won't exec the file.
@@ -284,9 +284,9 @@ while IFS= read -r f; do
                 #     script, so reuse the [BOM] tag. You cannot just strip the
                 #     mark: the whole payload is UTF-16/32, not only the signature,
                 #     so the file must be re-saved as UTF-8 WITHOUT a BOM.
-                #     (HIMMEL-1432 CR r4 [codex-r3p-1]: r3 over-broadly blessed
-                #     UTF-16/32 on EVERY file type, so a UTF-16-BOM'd .sh passed
-                #     the linter with an explicit clean bill of health.)
+                #     (Blessing UTF-16/32 on EVERY file type would let a
+                #     UTF-16-BOM'd .sh pass the linter with an explicit clean
+                #     bill of health.)
                 case "$f" in
                     *.ps1) : ;;
                     *)
@@ -314,10 +314,10 @@ while IFS= read -r f; do
                 # coated too. Otherwise, in a UTF-8 locale, '.' does not match a
                 # lone invalid-UTF-8 byte (0xA0/0xFF) and the non-ASCII check
                 # silently misses it — [PS1-ENCODING] never fired, reopening the
-                # very corruption path this policy exists to gate. (HIMMEL-1432
-                # CR r5; without this test 16f goes red on a UTF-8 machine.)
-                # Full-consuming probe (CR r5, codex-adv): `tr | grep -q` under
-                # this script's own pipefail is the HIMMEL-1430 SIGPIPE class —
+                # very corruption path this policy exists to gate (without this
+                # test 16f goes red on a UTF-8 machine).
+                # Full-consuming probe: `tr | grep -q` under
+                # this script's own pipefail is the SIGPIPE class —
                 # grep -q exits on the first non-ASCII byte, tr takes SIGPIPE on
                 # a file larger than a pipe buffer, the pipeline reads nonzero,
                 # and a heavily non-ASCII .ps1 silently SKIPS the encoding
@@ -336,7 +336,7 @@ while IFS= read -r f; do
                         # BEFORE the generic lint match. (Avoiding the bare token
                         # "BOM" does NOT route here — it only dodged _RE_ENCODING;
                         # the report's "shell-lint" summary token still matched
-                        # _RE_LINT and dispatched a fix. HIMMEL-1432 CR r5.)
+                        # _RE_LINT and dispatched a fix.)
                         if [ "$HAVE_ICONV" -eq 1 ]; then
                             file_report="$file_report  [PS1-ENCODING] non-ASCII bytes, no recognized byte-order signature, and the bytes are not valid UTF-8 — unsupported/unknown encoding; inspect manually. Do NOT prepend the EF BB BF UTF-8 signature (it corrupts a non-UTF-8 payload such as UTF-16). (HIMMEL-1432)"$'\n'
                         else
@@ -367,7 +367,7 @@ EOF
         file_issues=$((file_issues + 1))
     fi
 
-    # [parse] + [quote-break] — HIMMEL-2230, delegated to the shared checker so
+    # [parse] + [quote-break] — delegated to the shared checker so
     # there is exactly ONE implementation: scripts/hooks/check-hook-file-parse.sh
     # runs the same script at WRITE time, which is the only moment that helps a
     # live hook file. Findings already carry their own path and tag.

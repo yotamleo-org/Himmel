@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # hook-parse-check.sh — the two shell-quoting checks that matter for a LIVE hook
-# file (HIMMEL-2230). It lives in its own file because it has two consumers and
+# file. It lives in its own file because it has two consumers and
 # one implementation is the point:
 #
 #   * scripts/lint/shell-lint.sh              — folds these findings into its report.
@@ -23,18 +23,13 @@
 #                  common English contraction (t/s/re/ll/d/ve/m — "can't",
 #                  "it's", "we're", "I'll", "I'd", "I've", "I'm") — the
 #                  signature of prose rather than an intended end-of-program
-#                  (HIMMEL-2362, private #2018: a bare next-word-char test
-#                  alone also fires on an apostrophe-quoted sed program
-#                  concatenated onto a following bareword operand, which is
-#                  ordinary shell concatenation — the program is complete and
-#                  the operand is just the next word glued onto the same
-#                  shell word, so THAT shape is NOT flagged; two earlier
-#                  discriminators here — "a `#` comment had opened on this
-#                  line" and "more than one word remains on the rest of the
-#                  line" — were each found independently unreliable across
-#                  two CR rounds and replaced by the contraction test; see
-#                  the discriminator's own comment below for the specific
-#                  false-positive/false-negative shapes that ruled them out).
+#                  (a bare next-word-char test alone also fires on an
+#                  apostrophe-quoted sed program concatenated onto a following
+#                  bareword operand, which is ordinary shell concatenation —
+#                  the program is complete and the operand is just the next
+#                  word glued onto the same shell word, so THAT shape is NOT
+#                  flagged; see the discriminator's own comment below for the
+#                  alternatives that were ruled out).
 #                  Inside a single-quoted shell string ANY apostrophe closes it
 #                  (there is no escape), so once the word-char signature is
 #                  present the only remaining question is whether the
@@ -44,9 +39,8 @@
 #                  silent: that shape is the one bash -n genuinely cannot see.
 #                  After a program's closing quote is resolved, the scan
 #                  continues over the REST of the physical line rather than
-#                  stopping (HIMMEL-2362, private #2017: a truncated program
-#                  past an earlier, complete awk/sed/perl invocation on the
-#                  same line used to go unscanned entirely).
+#                  stopping, so a truncated program past an earlier, complete
+#                  awk/sed/perl invocation on the same line is still scanned.
 #
 # Usage:  bash scripts/lint/hook-parse-check.sh FILE [FILE...]
 # Output: one "  [tag] ..." line per finding (shell-lint report format).
@@ -63,9 +57,8 @@ for f in "$@"; do
     [ -f "$f" ] || continue
 
     # Mirrors shell-lint.sh's _is_shell_file EXACTLY (same two tests, same
-    # order) so the two cannot drift apart — HIMMEL-2230 panel round 2,
-    # codex-1: both current callers already gate on file type before ever
-    # reaching this script (shell-lint.sh via _is_shell_file, the write-time
+    # order) so the two cannot drift apart: both current callers already
+    # gate on file type before ever reaching this script (shell-lint.sh via _is_shell_file, the write-time
     # guard via its own scripts/hooks/*.sh scope check), but this is a
     # standalone tool with two consumers already; the guard belongs HERE so
     # a future THIRD caller cannot hand it a .ps1/.py/whatever and get a
@@ -88,12 +81,12 @@ for f in "$@"; do
     # The apostrophe is built with sprintf(37+2) rather than written literally,
     # so this scanner never flags its own source.
     #
-    # A PROCEDURAL WALK, not a wider regex (HIMMEL-2230 panel round 1,
-    # codex-2/codex-3): the old opener only traversed `-flag` tokens between
-    # the command and the program, so a plain assignment or operand in
-    # between (`awk -v n=1 'BEGIN ...`) broke the chain and the whole line
-    # was skipped — a false NEGATIVE on an entirely ordinary invocation, and
-    # the false-negative direction is the one that matters here. Widening the
+    # A PROCEDURAL WALK, not a wider regex: an opener that only traverses
+    # `-flag` tokens between the command and the program would let a plain
+    # assignment or operand in between (`awk -v n=1 'BEGIN ...`) break the
+    # chain and skip the whole line — a false NEGATIVE on an entirely
+    # ordinary invocation, and the false-negative direction is the one that
+    # matters here. Widening the
     # flag group into a greedy `([[:space:]]+[^[:space:]]+)*` looks tempting
     # but is worse, not better: awk's match() is leftmost-LONGEST, so that
     # group would swallow the quoted program token itself. So: find the
@@ -107,15 +100,12 @@ for f in "$@"; do
         {
             line = $0
 
-            # HIMMEL-2362 (private #2017): the old rule handled AT MOST one
-            # awk/sed/perl invocation per physical line — it found the
-            # program opener, then on the closing quote set inprog = 0 and
-            # fell off the end of the rule, so anything AFTER that close on
-            # the same line was never scanned. A `sed ...; awk ...` line hid
-            # a truncated second program behind a complete first one. This is
-            # now a loop: after each closing quote is resolved, `line` is
-            # reset to the remainder of the physical line and the scan for
-            # another invocation continues, rather than the rule ending.
+            # Handle MORE than one awk/sed/perl invocation per physical line:
+            # a `sed ...; awk ...` line must not hide a truncated second
+            # program behind a complete first one. After each closing quote
+            # is resolved, `line` is reset to the remainder of the physical
+            # line and the scan for another invocation continues, rather than
+            # the rule ending.
             # `length(line) > 0` keeps the loop going while there is text
             # left to scan; `|| inprog == 1` also enters it when a program
             # opened but never closed on THIS line (the multi-line-program
@@ -138,12 +128,12 @@ for f in "$@"; do
                     if (!match(line, /(^|[^[:alnum:]_-])(awk|sed|perl)([[:space:]]|$)/)) break
                     rest = substr(line, RSTART + RLENGTH)
 
-                    # HIMMEL-2230 panel round 2, codex-2: a backslash line
-                    # continuation between the command and its program (the
-                    # command name ends a line, the quoted program opens on
-                    # the NEXT one) is an entirely ordinary shape, and the
-                    # walk used to give up the instant it ran off the end of
-                    # the PHYSICAL line without finding the opener. A lone
+                    # A backslash line continuation between the command and
+                    # its program (the command name ends a line, the quoted
+                    # program opens on the NEXT one) is an entirely ordinary
+                    # shape, so the walk must not give up the instant it runs
+                    # off the end of the PHYSICAL line without finding the
+                    # opener. A lone
                     # trailing backslash (nothing else left to traverse) pulls
                     # in the next physical line via getline and keeps walking
                     # there instead -- NR/dollar-zero advance with it, so a
@@ -177,16 +167,13 @@ for f in "$@"; do
                 if (pos == 0) break  # no closer on this line; inprog stays 1, next record continues it
                 nxt = substr(line, pos + 1, 1)
                 if (nxt ~ /[A-Za-z0-9_]/) {
-                    # HIMMEL-2362 (private #2018, replaced again against CR
-                    # round 3 codex-1/codex-2/codex-3 on this same PR): a
-                    # word character right after the close is necessary but
+                    # A word character right after the close is necessary but
                     # not sufficient — that shape is ALSO what ordinary
                     # shell concatenation looks like (program complete, a
                     # bareword operand glued onto the same shell word), and
                     # neither "did a `#` comment open earlier on this line"
                     # nor "does more than one word remain on the rest of the
-                    # line" turned out to be a reliable enough signal for
-                    # that (both tried and replaced here — see below).
+                    # line" is a reliable enough signal for that (see below).
                     #
                     # What actually and ONLY distinguishes prose is that in
                     # English, a mid-word apostrophe is (with vanishingly
@@ -202,14 +189,13 @@ for f in "$@"; do
                     # longer, unrelated word and does not match) and flag
                     # only when it is EXACTLY one of those suffixes.
                     #
-                    # This replaces two earlier discriminators, both found
-                    # to be independently unreliable by the panel:
+                    # Two other discriminators are unreliable and not used:
                     #   - "a `#` had opened on this line before the close":
-                    #     both false-negative (codex-2 round 2: a comment
-                    #     with NO space before `#`, e.g. a program body of
-                    #     `}# can not` with no gap before the truncating
-                    #     apostrophe, was not recognized as a comment at all)
-                    #     and false-positive (codex-3 round 2: a `#` that is
+                    #     both false-negative (a comment with NO space before
+                    #     `#`, e.g. a program body of `}# can not` with no gap
+                    #     before the truncating apostrophe, is not
+                    #     recognized as a comment at all)
+                    #     and false-positive (a `#` that is
                     #     part of the program body syntax itself, e.g. a sed
                     #     pattern using `#` mid-regex, is not a comment
                     #     marker either — text
@@ -218,10 +204,9 @@ for f in "$@"; do
                     #     delimiter, without actually parsing that language).
                     #   - "more than one word remains after peeling off the
                     #     first bareword operand": false-positive on ANY
-                    #     valid multi-operand invocation (codex-1 round 1:
-                    #     redirection/chaining after one concatenated
-                    #     operand; codex-1 round 2: a second, space-separated
-                    #     file operand concatenated onto a closed sed
+                    #     valid multi-operand invocation (redirection/chaining
+                    #     after one concatenated operand; a second,
+                    #     space-separated file operand concatenated onto a closed sed
                     #     program) — ordinary shell puts no upper bound on
                     #     how many further bareword arguments can legally
                     #     follow.

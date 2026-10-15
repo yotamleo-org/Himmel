@@ -2,7 +2,7 @@
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 #
 # check-mcp-sdk-v1.sh — refuse NEW dependencies on, or imports of, the v1
-# monolith `@modelcontextprotocol/sdk` (HIMMEL-4866, follow-up to HIMMEL-4819).
+# monolith `@modelcontextprotocol/sdk`.
 # Every first-party MCP server is on the split v2 packages
 # (`@modelcontextprotocol/server` 2.3.1); this gate keeps it that way.
 #

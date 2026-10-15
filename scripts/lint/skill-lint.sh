@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# skill-lint.sh — in-tree SKILL.md frontmatter hygiene gate (HIMMEL-3609, v1).
+# skill-lint.sh — in-tree SKILL.md frontmatter hygiene gate.
 #
 # A v1 regression guard, not a platform: four mechanically-checkable rules
 # over the repo-owned SKILL.md corpus (frontmatter presence, name==dirname,
@@ -13,7 +13,7 @@
 #   .claude/skills/*/SKILL.md
 #   plugins/himmel-gh/skills/*/SKILL.md
 #   plugins/himmel-jira/skills/*/SKILL.md
-# Slash-command bodies are in scope for the SIZE check only (HIMMEL-5513):
+# Slash-command bodies are in scope for the SIZE check only:
 #   marketplace/plugins/*/commands/*.md
 #   .claude/commands/*.md
 # Deliberately out of scope: .agents/skills/** (generated Codex-compat
@@ -95,7 +95,7 @@ _fm_name() {
 # empty; a trailing ` # comment` after real content is stripped, not kept.
 # The comment is only stripped OUTSIDE quotes: a ` #` inside a quoted scalar is
 # content (`description: " # TODO"` is non-empty), and anything after the
-# closing quote is discarded (HIMMEL-3949). Double quotes skip a backslash-
+# closing quote is discarded. Double quotes skip a backslash-
 # escaped char; single quotes treat a doubled quote as escaped. An unterminated
 # quote keeps the rest of the line.
 _fm_description() {
@@ -146,7 +146,7 @@ CHANGED=""
 # path on one line, its content path on the next. display-path is what gets
 # printed; content-path is what gets linted. They differ only under --staged,
 # where content-path is a temp copy of the file's INDEX content, not the
-# working-tree file. Not TAB-delimited pairs: a path can hold a TAB (HIMMEL-3949).
+# working-tree file. Not TAB-delimited pairs: a path can hold a TAB.
 # ponytail: a path containing a NEWLINE still mis-splits (bash 3.2 strings cannot hold NUL), upgrade to NUL-delimited `read -d ''` streams if such a path ever needs linting
 FILES=""
 STAGE_TMP=""

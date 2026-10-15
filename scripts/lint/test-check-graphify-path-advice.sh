@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-check-graphify-path-advice.sh — tests for scripts/lint/check-graphify-path-advice.sh (HIMMEL-5303).
+# test-check-graphify-path-advice.sh — tests for scripts/lint/check-graphify-path-advice.sh.
 #
 # Cases (each fixture is a throwaway git repo; the gate reads tracked files):
 #   1. ban prose only ("never `graphify path`")                   -> exit 0

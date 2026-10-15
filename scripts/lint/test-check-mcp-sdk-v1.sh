@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-check-mcp-sdk-v1.sh — tests for scripts/lint/check-mcp-sdk-v1.sh (HIMMEL-4866).
+# test-check-mcp-sdk-v1.sh — tests for scripts/lint/check-mcp-sdk-v1.sh.
 #
 # Cases (each fixture is a throwaway git repo; the gate reads `git ls-files`):
 #   1. clean tree (v2 manifest + v2 import + v2 lock)            -> exit 0

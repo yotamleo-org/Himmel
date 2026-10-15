@@ -2,7 +2,7 @@
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 #
 # check-graphify-path-advice.sh — refuse the graphify installer's `graphify path`
-# advice in the agent instruction files (HIMMEL-5303).
+# advice in the agent instruction files.
 #
 # CLAUDE.md "Retrieval routing" bans `graphify path` (node IDs are file-scoped,
 # so cross-file traversal is structurally broken). But `graphify install` /
