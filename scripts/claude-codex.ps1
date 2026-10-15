@@ -463,9 +463,10 @@ function Get-CodexStanzaModel {
 
 Import-Module (Join-Path $PSScriptRoot 'lane-mirror-seed.psm1') -Force
 $stanzaModel = Get-CodexStanzaModel
+$identityHeading = '## Claudex lane model identity (HIMMEL-1927)'
 $identityStanza = @"
 
-## Claudex lane model identity
+$identityHeading
 
 Your backend model is $stanzaModel (OpenAI, via the local CLIProxyAPI codex proxy). Claude Code does not recognize that slug, so it asserts 'You are powered by the model named Opus 4.8' in your system prompt — that is a slug-recognition artifact, not your identity. You are NOT an Anthropic model and NOT an orchestrator tier; do not reason about your own capabilities or delegation tier from that line.
 "@
