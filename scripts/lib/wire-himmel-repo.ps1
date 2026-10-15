@@ -1,5 +1,5 @@
 # wire-himmel-repo.ps1 -- PowerShell counterpart of wire-himmel-repo.sh
-# (HIMMEL-453). Sets .env.HIMMEL_REPO in a Claude Code settings.json to the
+#. Sets .env.HIMMEL_REPO in a Claude Code settings.json to the
 # himmel clone path. Sibling of wire-statusline.ps1 -- same shape, but it MERGES
 # into the existing .env object (preserving HIMMEL_INITIATIVE and any other env
 # keys) instead of replacing a single top-level object.
@@ -24,7 +24,7 @@ function Set-HimmelRepo {
     )
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -33,7 +33,7 @@ function Set-HimmelRepo {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #

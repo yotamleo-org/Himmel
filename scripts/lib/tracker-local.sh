@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tracker-local.sh — file-backed backend for the tracker seam (HIMMEL-4759).
+# tracker-local.sh — file-backed backend for the tracker seam.
 # Sourced by tracker.sh; not run directly.
 #
 # Store: $TRACKER_STORE, else <handover root>/<user>/<bucket>/tracker/ (never a

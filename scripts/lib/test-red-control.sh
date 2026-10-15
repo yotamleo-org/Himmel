@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-red-control.sh -- unit tests for the RED-control contract
-# helper (HIMMEL-2518).
+# helper.
 #
 # The helper's whole job is to REFUSE evidence that a control is entitled to
 # treat as proof, so the cases that matter are the negative ones: one per
@@ -12,7 +12,7 @@
 # T14 below is the load-bearing one: it runs the SAME five broken mutants
 # through the naive `[ "$observed" != "$correct" ]` shape this helper replaces,
 # and pins that FOUR of the five are ACCEPTED by it -- every one whose value is
-# empty or merely different. That is the defect class HIMMEL-2518 exists for,
+# empty or merely different. That is the defect class this helper exists for,
 # asserted rather than asserted-about.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
@@ -63,7 +63,7 @@ export RED_CONTROL_TMPDIR
 # --- fixtures ---------------------------------------------------------------
 # A "script under test" that prints value=correct, and five mutants of it, one
 # per outcome a real mutation can have. Nothing here touches a real path: these
-# are the mktemp scratch copies HIMMEL-2503 requires.
+# are the mktemp scratch copies the caller discipline requires.
 mut="$tmpdir/mutants"
 mkdir -p "$mut"
 mk() { printf '%s\n' '#!/usr/bin/env bash' "$2" > "$mut/$1"; }
@@ -236,7 +236,7 @@ eq  "T14a the naive shape accepts every broken mutant except the inert one" \
 eq  "T14b the contract accepts none of them" "$contract_accepted" "0"
 
 echo "[test-red-control] T15 a run that FAILS SETUP invalidates the previous run"
-# CR round 1 [codex-1]: red_control_run used to leave RED_CONTROL_RAN=1 from an
+# red_control_run used to leave RED_CONTROL_RAN=1 from an
 # earlier run when it returned early, so a caller that does not check its exit
 # status would assert against the PREVIOUS mutant's stdout and pass on stale
 # evidence -- the exact class this library refuses. T29 in
@@ -251,7 +251,7 @@ eq  "T15b the failed setup invalidated the earlier run, so the assert is broken"
     "$arc" "$RED_CONTROL_RC_BROKEN"
 
 echo "[test-red-control] T16 a value-taking option with no value RETURNS, never hangs"
-# CR round 1 [codex-2]: `shift 2` with one argument left FAILS and leaves "$@"
+# `shift 2` with one argument left FAILS and leaves "$@"
 # untouched, so the `while [ $# -gt 0 ]` loop spins on the same token forever.
 # Bounded with `timeout` on purpose: a regression here hangs the suite, and an
 # unbounded assertion could not distinguish "returned broken" from "still
@@ -273,7 +273,7 @@ else
 fi
 
 echo "[test-red-control] T17 even the unknown-option path consumes the run"
-# CR round 1 [codex-3]: the unknown-option arm returned BEFORE the run was
+# the unknown-option arm returned BEFORE the run was
 # consumed, so a caller error could hand its run to the NEXT assert -- which
 # contradicted this library's own documented "consume on every path" claim.
 run_case good.sh

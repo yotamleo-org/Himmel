@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tracker.sh — the tracker-dispatch seam (HIMMEL-4759, HIMMEL-4748 spec section 2).
+# tracker.sh — the tracker-dispatch seam.
 #
 # Source it, then call a tracker_* verb; each routes to the backend the resolver
 # picks (scripts/lib/project-mode.sh, project_mode_tracker): jira | local | none.

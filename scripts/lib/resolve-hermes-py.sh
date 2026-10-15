@@ -4,7 +4,7 @@
 # WHY: himmel persists NO absolute hermes python — consumers resolve it on every
 # call so a moved/rebuilt venv (or a stale HERMES_PY left over from an old
 # install) re-resolves instead of breaking. Same upgrade-moves-the-path class
-# already fixed for `node` (resolve-node.sh) — HIMMEL-613. The sharp edge this
+# already fixed for `node` (resolve-node.sh) — The sharp edge this
 # centralises: HERMES_PY must be honoured ONLY when it still points at an
 # executable; a stale value (venv relocated/rebuilt) must NOT shadow a fresh
 # probe of the venv. Two consumers got this wrong inline (scripts/himmel-update.sh
@@ -14,9 +14,9 @@
 #   py="$(resolve_hermes_py "$src")" || { echo "no hermes py"; exit 1; }
 # CHECKOUT_DIR is the hermes-agent checkout that owns venv/ (optional). When
 # omitted it is derived from HERMES_HOME, else %LOCALAPPDATA%/hermes on Windows
-# and $HOME/.hermes on POSIX (HIMMEL-2582), tolerating HERMES_HOME pointing
-# straight at the checkout (venv/ or .hermes/bin/ at the root). Since HIMMEL-4307
-# a PM-managed install (.hermes/bin/hermes, Python 3.14 dependency generations)
+# and $HOME/.hermes on POSIX, tolerating HERMES_HOME pointing
+# straight at the checkout (venv/ or .hermes/bin/ at the root). A
+# PM-managed install (.hermes/bin/hermes, Python 3.14 dependency generations)
 # resolves through the launcher's `--print-runtime-command`; the legacy venv is
 # the fallback. Prints the absolute path on stdout + returns 0 on success; returns
 # 1 + empty stdout when no executable interpreter is found. bash 3.2-safe.
@@ -24,7 +24,7 @@
 resolve_hermes_py() {
     # 1) HERMES_PY — but only if it STILL resolves to an executable. A stale
     #    value (venv moved/rebuilt) falls through to the probe below instead of
-    #    shadowing it. This is the move/rebuild-safe property (HIMMEL-613).
+    #    shadowing it. This is the move/rebuild-safe property.
     if [ -n "${HERMES_PY:-}" ] && [ -x "${HERMES_PY}" ]; then
         printf '%s\n' "$HERMES_PY"
         return 0
@@ -34,7 +34,7 @@ resolve_hermes_py() {
     local src
     src="$(_hermes_src_dir "${1:-}")"
 
-    # 3) PM-managed layout (HIMMEL-4307): upstream's launcher prints the exact
+    # 3) PM-managed layout: upstream's launcher prints the exact
     #    runtime argv; argv[0] is the interpreter that can load the dependency
     #    generation (Python 3.14 under ~/.hermes/tools). The legacy venv python
     #    cannot, so this beats the venv probe — which stays as the fallback for
@@ -61,7 +61,7 @@ resolve_hermes_py() {
 
 # hermes_pm_launcher [CHECKOUT_DIR] — print the upstream launcher path and return
 # 0 when this install is the PM-managed layout; return 1 + empty stdout for a
-# legacy venv-only install (HIMMEL-4307). Callers use it to know that pip-managing
+# legacy venv-only install. Callers use it to know that pip-managing
 # the interpreter would fight hermes' own dependency manager.
 hermes_pm_launcher() {
     local src
@@ -76,7 +76,7 @@ _hermes_src_dir() {
     local src="${1:-}"
     if [ -z "$src" ]; then
         local root="${HERMES_HOME:-}"
-        # Default root, per-platform (HIMMEL-2582). This used to be
+        # Default root, per-platform. This used to be
         # ${LOCALAPPDATA:-$HOME/AppData/Local}/hermes unconditionally — a
         # WINDOWS path on every host — so on any POSIX box that had not
         # exported HERMES_HOME the resolver looked under ~/AppData/Local,

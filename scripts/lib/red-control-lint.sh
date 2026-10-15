@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/red-control-lint.sh -- advisory lint for vacuous mutation
-# controls (HIMMEL-2544, item 2; contract from HIMMEL-2518).
+# controls (item 2; contract).
 #
 # WHAT IT DETECTS
 # A mutation control proves a test assertion is non-vacuous. The silent failure
@@ -23,7 +23,7 @@
 # read the hits; decide. Its hit list is empty on main by construction, so any
 # line it prints is new -- but that is an invariant maintained at REVIEW time,
 # deliberately not enforced by any suite or CI job. Its own smoke test scans the
-# real tree and REPORTS; it does not fail on hits (CR round 1 [codex-3]).
+# real tree and REPORTS; it does not fail on hits.
 #
 # KNOWN LIMITS -- real gaps, stated rather than papered over:
 #   * It anchors on the literal convention string "RED confirmed". A mutation
@@ -71,7 +71,7 @@ set -uo pipefail
 # The only two files this tool writes: a capture of find's / awk's stderr, and
 # the directory listing itself. Both exist so a FAILED step can be REPORTED
 # rather than silently read as clean. Pinned ONCE here, before the trap that
-# consumes them, and never repointed (HIMMEL-2503). If the stderr capture cannot
+# consumes them, and never repointed. If the stderr capture cannot
 # be created the scan still runs -- the exit-status checks below are what detect
 # a failure; the capture only supplies the detail.
 ERRF="$(mktemp "${TMPDIR:-/tmp}/red-control-lint.XXXXXX" 2>/dev/null)" || ERRF=""
@@ -136,7 +136,7 @@ BEGIN {
     CMP = "(-eq|-ne|-gt|-lt|-ge|-le|==|!=|[^!<>=]=[ \t])"
     # RCCMP -- an rc-ish VARIABLE actually standing next to a comparison
     # operator, on either side: `[ "$rc" -eq 0 ]`, `[ $rc != 0 ]`,
-    # `[ "$_rc" = 14 ]`, `[ 0 -ne "$rc" ]`. CR round 4 [codex-1]: the old rule
+    # `[ "$_rc" = 14 ]`, `[ 0 -ne "$rc" ]`. the old rule
     # asked only that an rc-ish variable AND some comparison token appear on the
     # same line, which a DIAGNOSTIC MESSAGE satisfies --
     # `echo "R4 RED confirmed: got != want (rc=$rc)"` bought a full exemption
@@ -148,8 +148,8 @@ BEGIN {
 }
 # ev_text -- the part of a line that is allowed to establish exit-status
 # evidence: every command segment EXCEPT the ones whose command word is `echo`
-# or `printf`. CR round 5 [codex-1]: rounds 1 and 4 each patched one SPELLING of
-# the same defect -- a control's own human-readable message satisfying an
+# or `printf`. patching one SPELLING at a time left
+# the same defect open -- a control's own human-readable message satisfying an
 # exit-status rule (`(rc=$rc)`, then `$rc != 0` inside quotes). Chasing prose
 # with regexes is an arms race, so the class is closed instead: a diagnostic IS
 # an echo/printf, while a real check is `[ ... ]`, `test ...` or `--expect-rc`,
@@ -199,7 +199,7 @@ END {
 
         # (2) the seed's own control: the nearest ENCLOSING conditional -- the
         # one still OPEN where the seed sits, not merely the nearest preceding
-        # `if` LINE. CR round 2 [codex-1]: without nesting an inner conditional
+        # `if` LINE. without nesting an inner conditional
         # that had already CLOSED above the seed was taken as the guard, and the
         # real vacuous one was never examined at all. Walking upward, every `fi`
         # raises a pending-close count and every `if` either settles one (so it
@@ -237,7 +237,7 @@ END {
         # always precedes its arguments), not from a filename allowlist.
         #
         # Scoped to the seed's OWN control -- from its conditional down to the
-        # seed -- and comment lines do not count. CR round 1 [codex-1] measured
+        # seed -- and comment lines do not count. measured
         # the flat-window version letting a SEPARATE, already-completed
         # compliant control 40 lines above suppress a genuinely vacuous one
         # after it, and a bare comment naming either helper doing the same. The
@@ -290,13 +290,13 @@ END {
             # any spelling.
             s = ev_text(s)
             # A bare `$?` counts ONLY on the conditional line itself (j == c),
-            # and only with a real comparison operator on it. Three rounds of
-            # narrowing built this one line:
-            #   round 1 [codex-2] -- a diagnostic `echo "... (status $?)"` with
+            # and only with a real comparison operator on it. Each clause of
+            # this line closes one hole:
+            #   (a) a diagnostic `echo "... (status $?)"` with
             #     no comparison silenced the whole control;
-            #   round 2 [codex-2] -- `[ "$?" ]` is a nonempty-STRING test, true
+            #   (b) `[ "$?" ]` is a nonempty-STRING test, true
             #     for every exit status, so it compares nothing;
-            #   round 3 [codex-2] -- and INSIDE the then-branch, `$?` is the
+            #   (c) and INSIDE the then-branch, `$?` is the
             #     CONDITIONAL's status, which is 0 precisely because the branch
             #     was taken. It can never be the mutant's, so a `$?` comparison
             #     there is evidence of nothing at all.
@@ -327,7 +327,7 @@ for r in "${roots[@]}"; do
     if [ -f "$r" ]; then
         files+=("$r")
     elif [ -d "$r" ]; then
-        # CR round 3 [codex-1]: this is round 2's awk hole ONE LAYER UP. The
+        # this is the awk hole ONE LAYER UP. The
         # listing used to be read through `$(find ... | sort)` inside a heredoc,
         # which discards find's exit status entirely -- so a find that cannot
         # traverse a subtree (permissions, a vanished directory, a broken mount)
@@ -356,7 +356,7 @@ for r in "${roots[@]}"; do
             [ -n "$f" ] && files+=("$f")
         done < "$FINDF"
     else
-        # CR round 5 [codex-2]: same incomplete-scan family as the awk, find and
+        # same incomplete-scan family as the awk, find and
         # enumeration holes. A mistyped or vanished root used to print a notice
         # and still reach the CLEAN-scan summary -- "0 suspect controls" for a
         # root that was never looked at.
@@ -383,11 +383,11 @@ for f in ${files[@]+"${files[@]}"}; do
         continue
     fi
     [ "$grc" -eq 0 ] || continue
-    # CR round 2 [codex-3]: awk's exit status and stderr used to be discarded,
+    # awk's exit status and stderr used to be discarded,
     # so a broken, missing or failing awk produced empty output for every file
     # and the run printed a summary byte-identical to a genuinely clean scan --
     # a vacuous green inside the vacuous-green detector, which is precisely the
-    # shape HIMMEL-2518 exists to refuse. Both are now captured, and a run with
+    # shape this detector exists to refuse. Both are now captured, and a run with
     # any failed scan can no longer report a bare "0 suspect controls".
     if [ -n "$ERRF" ]; then
         out=$(awk -v F="$f" -v WINDOW="$WINDOW" "$AWK_PROG" "$f" 2>"$ERRF")
@@ -410,7 +410,7 @@ done
 
 # A run with any failed scan must never be able to print the clean-scan line:
 # "0 suspect controls" would then mean "found nothing" and "looked at nothing"
-# indistinguishably (CR round 2 [codex-3]). The exit status stays 0 either way --
+# indistinguishably. The exit status stays 0 either way --
 # the fix is to stop the summary lying, not to start gating.
 if [ "$failed" -gt 0 ]; then
     printf 'red-control-lint: %s suspect control(s) in %s files scanned (%s file(s) FAILED to scan - the result is incomplete; advisory, exit status is always 0)\n' \

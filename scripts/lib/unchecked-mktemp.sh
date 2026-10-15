@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/unchecked-mktemp.sh -- shared predicate for the unchecked-mktemp
-# gate (HIMMEL-2709), used by scripts/hooks/check-unchecked-mktemp.sh and its
+# gate, used by scripts/hooks/check-unchecked-mktemp.sh and its
 # suite so the gate and its tests cannot drift.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
@@ -141,8 +141,7 @@
 # the hazard, not the cure -- an empty $T makes the trap itself the destructive
 # operation.
 #
-# HIMMEL-3428 (N333) fixes three more gaps the CR ledger recorded on the
-# landing PR (all deferred there under the last-round rule):
+# Three known gaps, deliberately left open:
 #   1. A commented-out guard is not a guard. A next-line
 #      `# [ -d "$T" ] || exit 1` used to satisfy rules (c)/(d) because the
 #      window scan matched the test-construct pattern inside the comment
@@ -164,9 +163,8 @@
 #      positive). A token boundary (non-identifier char, or end of string)
 #      is now required immediately after "mktemp".
 #
-# HIMMEL-3428 (N339, slice 2) fixes three more gaps an independent
-# adversarial review of the N333 landing found (plus a pre-existing
-# Suggestion), all against the merged head:
+# Three more gaps an independent adversarial review found (plus a pre-existing
+# Suggestion):
 #   1. Rule (c) window regression: the N333 comment-skip fix let the window
 #      scan reach PAST a comment to a real code line that merely MENTIONS
 #      the variable inside `[ ... ]` without actually testing it -- e.g.
@@ -208,7 +206,7 @@
 #      concatenation means `mktemp'-d'` lexes as the single word `mktemp-d`
 #      (the quotes are removed, nothing separates them), a distinct command
 #      name, not `mktemp` followed by a `-d` argument -- so it must not
-#      flag (HIMMEL-3428, reversing an earlier ruling on this branch that
+#      flag (reversing an earlier ruling on this branch that
 #      four straight critic-panel rounds disputed). A quote preceded by
 #      whitespace is unaffected: the whitespace itself is already outside
 #      `[A-Za-z0-9_./-]`, so `mktemp '-d'` (a real, separate, quoted
@@ -223,7 +221,7 @@
 #      alternative to `;`, and loops (strips repeatedly) so a CHAIN of
 #      declarations is fully peeled before the assignment is scanned.
 #
-# HIMMEL-3457 + HIMMEL-3460 close the gaps deferred from that slice:
+# Further gaps, deferred from that slice and now closed:
 #   1. Rule (c) counts the var as tested only when it is a WHOLE operand --
 #      its own shell word, `"$T"` / `"${T...}"` or a bare `$T` -- never when
 #      it is glued into a larger compared string (`"$T-suffix"`,
@@ -253,7 +251,7 @@ unchecked_mktemp_scan() {
                                  # its caller).
     }
     {
-        # HIMMEL-3428 item 3: strip a trailing CR once, here, so every later
+        # Strip a trailing CR once, here, so every later
         # check (heredoc terminator match, boundary match, variable match)
         # sees the same text a plain LF file would produce.
         l = $0
@@ -308,18 +306,18 @@ unchecked_mktemp_scan() {
         if (depth != 0) return ""
         return substr(s, i)
     }
-    # strip_comment(s) -- HIMMEL-3428 item 2: return s with a trailing
+    # strip_comment(s) -- return s with a trailing
     # `#...` shell comment removed. A `#` starts a comment only when it is
     # OUTSIDE any quote and is not the parameter-expansion sigil of `$#`
     # (positional-parameter count) or `${#name}` (length-of-parameter) --
     # both are left alone, as ordinary code, never a comment start. A `#`
-    # inside single or double quotes is also left alone. HIMMEL-3489: a
+    # inside single or double quotes is also left alone. A
     # backslash-escaped `\"` (or a backslash-escaped single quote) inside
     # a double-quoted string does
     # NOT close it -- the backslash escapes the next character, same as
     # real shell lexing -- and outside any quote, a backslash-escaped
     # quote is a literal character, never a string opener.
-    # HIMMEL-3460 item 3: `)` ends a word only when it closes a subshell or
+    # `)` ends a word only when it closes a subshell or
     # group -- the `)` of a `$(...)` command substitution does not, since
     # `$(...)#tag` is ONE shell word. A string of 1/0 flags (1 = the open
     # paren was `$(`) tracks which kind each unquoted `)` closes; a string,
@@ -335,15 +333,14 @@ unchecked_mktemp_scan() {
                 continue
             }
             if (indq) {
-                # HIMMEL-3489: inside double quotes, a backslash escapes
+                # inside double quotes, a backslash escapes
                 # the next character -- an escaped `"` does not close it.
                 if (c == "\\" && i < n) { i++; continue }
                 if (c == "\"") indq = 0
                 continue
             }
-            # HIMMEL-3489: outside any quote, a backslash escapes the next
-            # character unconditionally (codex-1, /pr-check round 1 on this
-            # branch) -- special-casing only a following quote char left a
+            # outside any quote, a backslash escapes the next
+            # character unconditionally -- special-casing only a following quote char left a
             # DOUBLE backslash (`\\"`) mis-scanned: the first backslash went
             # unconsumed, so the second backslash was then read fresh and
             # wrongly swallowed the real, unescaped `"` that follows as if
@@ -369,11 +366,11 @@ unchecked_mktemp_scan() {
                 prev2 = (i > 2) ? substr(s, i - 2, 1) : ""
                 if (prev == "$") continue                    # $# -- positional count
                 if (prev == "{" && prev2 == "$") continue     # ${#name} -- length
-                # codex-2 (/pr-check round 1 on this branch): a `#` is only
+                # a `#` is only
                 # a comment START at the beginning of a shell word -- i.e.
                 # at the start of the line, right after whitespace, or right
                 # after a shell operator that ends the previous word (`;`,
-                # `&`, `|`, `(`, `)` -- round 2: these END a word rather than
+                # `&`, `|`, `(`, `)` -- these END a word rather than
                 # extending it, so `T=$(mktemp);# || exit 1` is a genuine
                 # commented-out guard, unlike a `#` glued to ordinary text
                 # such as a mktemp template argument (`mktemp
@@ -390,7 +387,7 @@ unchecked_mktemp_scan() {
     # a single-quoted string is a literal (no reference at all), and a
     # double-quoted string survives only when its whole content matches
     # ref (e.g. "$T" or "${T:-}"). "prefix $T suffix" becomes "".
-    # HIMMEL-3489: inside double quotes, a backslash escapes the next
+    # inside double quotes, a backslash escapes the next
     # character, so an escaped `"` does not close the string; outside any
     # quote, a backslash-escaped quote is a literal character, never a
     # string opener (single quotes have no escaping at all in real shell
@@ -400,7 +397,7 @@ unchecked_mktemp_scan() {
         out = ""
         for (i = 1; i <= n; i++) {
             c = substr(s, i, 1)
-            # HIMMEL-3489: outside any quote, a backslash escapes the next
+            # outside any quote, a backslash escapes the next
             # character unconditionally (codex-1, same bug class as
             # strip_comment above) -- a double backslash (`\\"`) must not
             # leave the following `"` treated as if IT were escaped.
@@ -480,7 +477,7 @@ unchecked_mktemp_scan() {
             # declaration builtin of its OWN, so is_decl below correctly
             # comes out false for it: its exit status is that of the mktemp
             # command substitution, unmasked.
-            # HIMMEL-3428 item 4: one-or-more space-separated names
+            # one-or-more space-separated names
             # (`local T U;`), a bare `--` end-of-options token as well as
             # `-x`-style options (`local -- T;`), `&&` as an alternative to
             # `;` (`local T && T=...`), and a LOOP so a chain of
@@ -499,7 +496,7 @@ unchecked_mktemp_scan() {
             # N333 item 3: a token boundary is required right after
             # "mktemp", so a command that merely starts with those letters
             # (mktemp_metadata, mktemp_wrapper) is not mistaken for the real
-            # command. codex-1 (round 1 /pr-check on this branch): a
+            # command. A
             # non-identifier boundary is not enough -- "-" and "." are
             # non-identifier but still valid command-name characters, so
             # `mktemp-wrapper` / `mktemp.sh` slipped past it too. The
@@ -507,8 +504,8 @@ unchecked_mktemp_scan() {
             # a closing paren (bare `$(mktemp)`), a double quote, a
             # backtick, or a command separator -- never a character a
             # command name can itself contain.
-            # HIMMEL-3428 item 3: rather than keep growing that allow-list
-            # (round 1 of N333 already had to add `-`/`.` handling), the
+            # rather than keep growing that allow-list
+            # (`-`/`.` handling already had to be added), the
             # boundary is the COMPLEMENT of the characters a command
             # name can itself contain (`[A-Za-z0-9_./-]`) or end-of-string --
             # which covers `<`/`>` (redirects), a line-continuing `\`, and
@@ -523,7 +520,7 @@ unchecked_mktemp_scan() {
             # followed by whitespace then a quoted -d (a real, separate
             # argument) is unaffected -- the whitespace character itself is
             # already outside the allowed set and matches first.
-            # HIMMEL-3460 item 4: the same holds for a double quote and a
+            # the same holds for a double quote and a
             # backslash escape, so both are kept out of the boundary class
             # too -- except a backslash at END of line, which is a line
             # continuation (the next line starts a new word) and so is a
@@ -533,7 +530,7 @@ unchecked_mktemp_scan() {
             # regex below by accident -- this whole awk program is itself
             # single-quoted by its caller, so the one quote the regex needs
             # is spelled with the close/escaped-quote/reopen idiom instead.)
-            # HIMMEL-3624: the `/` in this negated class is escaped as `\/`.
+            # the `/` in this negated class is escaped as `\/`.
             # macOS /usr/bin/awk (one-true-awk) does not track bracket
             # nesting while scanning for a regex literal closing `/` --
             # a bare `/` inside `[...]` ends the literal early, so the class
@@ -556,7 +553,7 @@ unchecked_mktemp_scan() {
             # not the exit status of the builtin.)
             is_decl = (scan_s ~ /^[ \t]*(local|export|typeset|declare|readonly)([ \t]+(-[a-zA-Z]+|--))*[ \t]+/)
 
-            # HIMMEL-3428 item 2: rules (a)/(c)/(d) must not see a guard
+            # rules (a)/(c)/(d) must not see a guard
             # written into a trailing comment. Rule (b) is exempt -- its
             # escape lives in a comment on purpose -- so it keeps scanning
             # the raw scan_s below, unstripped.
@@ -580,7 +577,7 @@ unchecked_mktemp_scan() {
             guarded = 0
 
             # The rule (c) pattern: a test construct in which the var is a
-            # WHOLE operand. HIMMEL-3457: the reference must be its own
+            # WHOLE operand. The reference must be its own
             # shell word -- preceded by whitespace or `(`, and either
             # wrapped in a matching pair of double quotes or bare, then
             # followed by whitespace, a command separator, `)` or
@@ -589,7 +586,7 @@ unchecked_mktemp_scan() {
             # `[ "$out" = "a $T b" ]` all mention $T only
             # as a FRAGMENT of the operand actually compared ($out is the
             # thing under test), so none of them match. The braced form
-            # keeps both HIMMEL-3428 alternatives: an immediate close, or a
+            # keeps both alternatives: an immediate close, or a
             # modifier (`${T:-}`) that starts with a non-identifier char
             # (so `${T_other}` is not `${T}`) and ends at a real `}`.
             ref_re = "(\\$\\{" var "(\\}|[^A-Za-z0-9_][^{}]*\\})|\\$" var ")"
@@ -604,7 +601,7 @@ unchecked_mktemp_scan() {
             # (round-4 fix).
             rem = remainder_after_capture(code_line)
             if (rem != "") {
-                # codex-1 (/pr-check round 1 on this branch): `\}?` was
+                # `\}?` was
                 # independently optional, so for a braced mention like
                 # `${tmp}/bin/node` the engine could skip matching the
                 # literal `}` and let the following negated boundary class
@@ -617,7 +614,7 @@ unchecked_mktemp_scan() {
                 # as it is followed by an ACTUAL closing brace -- `[^{}]*`
                 # cannot itself consume `{`/`}`, so the brace can no longer
                 # be skipped the way the old optional form allowed.
-                # codex-1 (/pr-check round 2 on this branch): `[^{}]*` alone
+                # `[^{}]*` alone
                 # let identifier characters immediately continue the var
                 # name with no boundary, so `${tmp_other}` counted as a
                 # guard for `tmp`. A real modifier never starts with an
@@ -642,7 +639,7 @@ unchecked_mktemp_scan() {
                     if (t ~ /^[ \t]*$/) continue
                     if (t ~ /^[ \t]*#/) continue
                     seen++
-                    # HIMMEL-3428 item 2: a real code line can still carry a
+                    # a real code line can still carry a
                     # trailing comment that only LOOKS like a guard --
                     # strip it before matching, same as the same-line
                     # remainder above.

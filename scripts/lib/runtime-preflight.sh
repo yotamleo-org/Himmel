@@ -1,8 +1,7 @@
 # shellcheck shell=bash
 # runtime-preflight.sh — the ONE place himmel states its runtime policy, and the
 # check every supported production/test entry point runs before it commits to a
-# long or unattended piece of work (HIMMEL-1991, RAM program P1-5; extends
-# HIMMEL-1986 from "file it" to "gate it").
+# long or unattended piece of work (RAM program P1-5).
 #
 # WHY: measured on OVERLORD8 2026-08-20/21 — .nvmrc pins Node 24 while the live
 # shell runs 26.7.0, no nvm anywhere on PATH (C:\Program Files\nodejs is a plain
@@ -20,7 +19,7 @@
 #          what any lockfile or CI run was validated against.
 #   bash — must NOT resolve, in WINDOWS PATH order, to the WSL launcher or a
 #          WindowsApps 0-byte alias. Same known-bad set as
-#          scripts/hooks/run-hook-with-bash.js (HIMMEL-1992); this file never
+#          scripts/hooks/run-hook-with-bash.js; this file never
 #          SPAWNS a bare bash, it only asks what one would resolve to.
 #
 # SEVERITY (deliberate, and the reason this is not a hard gate on day one):
@@ -173,7 +172,7 @@ runtime_preflight_scan() {
     # own inherited Windows PATH. A scheduler-launched .bat starts from the
     # machine PATH, where the order can differ; that path is already covered
     # structurally by run-hook-with-bash.js, which RESOLVES a concrete bash
-    # instead of trusting order (HIMMEL-1992). This check is the belt to that
+    # instead of trusting order. This check is the belt to that
     # brace, not a replacement for it.
     case "${RUNTIME_PREFLIGHT_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
         MINGW*|MSYS*|CYGWIN*|Windows*)

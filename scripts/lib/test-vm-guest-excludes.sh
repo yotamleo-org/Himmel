@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): POSIX bash 3.2+ suite; no .ps1 twin.
 # test-vm-guest-excludes.sh — hermetic coverage for scripts/lib/vm-guest-excludes.sh
-# (HIMMEL-2540): the host->guest copy must never carry the gitignored-but-present
+#: the host->guest copy must never carry the gitignored-but-present
 # secret set (.env, .env.*, *.local.json incl. .claude/settings.local.json), and
 # the guest must be ASSERTED clean. No VM, no network, no live .env: every case
 # runs on a throwaway fixture tree holding STUB secrets, with ssh/rsync stubbed
@@ -123,7 +123,7 @@ else
   fail_case "T4c a symlinked scan root passed as clean (secret hidden behind the link)"
 fi
 
-# --- TL0..TLn HIMMEL-3252: himmelctl's own lane-profile file must not fail a full scan,
+# --- TL0..TLn: himmelctl's own lane-profile file must not fail a full scan,
 # and the exemption must stay an allowlist of an inert shape (a fix that merely stopped
 # scanning *.local.json would pass TL1 and fail every control below).
 STUB_PROFILE='{"lanes": [], "profileAllowlist": [], "profileAllowlistScope": ["codex-exec","hermes-oneshot"]}'
@@ -175,7 +175,7 @@ must_trip "h an id outside the closed vocabulary in a lane entry" \
   "$(lane_fixture badentry '{"lanes": [{"id": "haiku", "probe": {"kind": "never"}}]}')"
 # i: each fixture differs from the accepted base (p4: id codex-exec, kind "always", no extra
 # field) by EXACTLY ONE thing — a fixture carrying two invalid properties would keep tripping
-# on the other one if the scanner were loosened on the property under test (HIMMEL-3259).
+# on the other one if the scanner were loosened on the property under test.
 must_trip "i1 an invalid probe kind alone (\"env\", no extra field)" \
   "$(lane_fixture badkind '{"lanes": [{"id": "codex-exec", "probe": {"kind": "env"}}]}')"
 must_trip "i2 a VALID probe kind (\"always\") plus an extra field" \
@@ -223,7 +223,7 @@ if vm_guest_scan "$(lane_fixture envprof '{"lanes": [], "token": "STUB"}')" env 
 
 # shellcheck disable=SC2317,SC2329  # invoked indirectly by vm_guest_assert_clean
 local_runner_early() { bash -c "$1"; }
-# --- T4d a root containing a SPACE is quoted, scanned, and still flags a leak (HIMMEL-3228)
+# --- T4d a root containing a SPACE is quoted, scanned, and still flags a leak
 SPD="$WORK/sp ace/tree"; mkdir -p "$SPD/sub"; echo x > "$SPD/sub/.env"
 SPC="$WORK/sp ace/clean"; mkdir -p "$SPC"; echo keep > "$SPC/keep.txt"
 if ! vm_guest_scan "$SPD" env >/dev/null 2>&1 && vm_guest_scan "$SPC" env >/dev/null 2>&1; then
@@ -234,7 +234,7 @@ if vm_guest_assert_clean local_runner_early "$SPC" full >/dev/null 2>&1 \
   pass "T4d2 assert_clean works through a runner on a spaced root"
 else fail_case "T4d2 assert_clean on a spaced root wrong"; fi
 
-# --- T4e nested DIRECTORY symlinks are followed (HIMMEL-3236). NB: the fixtures live
+# --- T4e nested DIRECTORY symlinks are followed. NB: the fixtures live
 # under $WORK, so a TMPDIR inside a skipped system tree (/var, /usr, ...) would
 # legitimately be bounded out and fail here.
 NST_T="$WORK/nest-target"; mkdir -p "$NST_T/proj"; echo x > "$NST_T/proj/.env"
@@ -324,7 +324,7 @@ if vm_guest_assert_clean local_runner_early "$FL" env >/dev/null 2>&1; then
   pass "T4k5 assert_clean is not refused by skip notes alone"
 else fail_case "T4k5 assert_clean refused a tree with only skipped links"; fi
 
-# --- T4l (HIMMEL-3238) a link whose target sits behind an UNSEARCHABLE ancestor cannot be
+# --- T4l a link whose target sits behind an UNSEARCHABLE ancestor cannot be
 # inspected: it is reported `scan-unscanned:` and the scan REFUSES (fail closed), while a
 # plain dangling link beside the same fixture still does not refuse (T4l2, the control)
 if [ "$(id -u)" -ne 0 ]; then
@@ -345,7 +345,7 @@ if [ "$(id -u)" -ne 0 ]; then
   else fail_case "T4l2 a plain dangling link refused or went unreported (rc=$ud_rc): $ud_raw"; fi
 else echo "SKIP T4l running as root (chmod 000 does not deny)"; fi
 
-# --- T4o (HIMMEL-3719, judge NO-GO on 03aa2ca9) the walk must not lose what the kernel would
+# --- T4o (judge NO-GO on 03aa2ca9) the walk must not lose what the kernel would
 # refuse: a trailing-newline target, a resolved path at PATH_MAX, a trailing slash on a file, a
 # dangling link as a MIDDLE component, a chained hop, and a hop loop. Every link sits alone in
 # its own scanned root; the locked dir and the intermediate links live OUTSIDE it.
@@ -388,7 +388,7 @@ if [ "$(id -u)" -ne 0 ]; then
   chmod 755 "$N4/out/locked"
 else echo "SKIP T4o running as root (chmod 000 does not deny)"; fi
 
-# --- T4m (HIMMEL-3239) an inherited CDPATH must not redirect a RELATIVE root: cd would
+# --- T4m an inherited CDPATH must not redirect a RELATIVE root: cd would
 # resolve 'a b' through CDPATH and print the dir, so d became two lines (or the wrong dir)
 CDB="$WORK/cdpath/base"; CDO="$WORK/cdpath/other"; mkdir -p "$CDB/a b" "$CDO/a b" "$CDB/c d" "$CDO/c d"
 : > "$CDB/a b/.env"; : > "$CDO/c d/.env"
@@ -398,7 +398,7 @@ if [ "$cd_hrc" -eq 0 ] && [ "$cd_hit" = "$(cd -P "$CDB/a b" && pwd -P)/.env" ] &
   pass "T4m a relative root is resolved against the cwd, never through CDPATH"
 else fail_case "T4m CDPATH redirected a relative root: hit(rc=$cd_hrc)=[$cd_hit] clean(rc=$cd_crc)=[$cd_cln]"; fi
 
-# --- T4n (HIMMEL-3239) shared link targets are scanned ONCE: layers k=1..10, each holding
+# --- T4n shared link targets are scanned ONCE: layers k=1..10, each holding
 # two directory links to the next, scanned the innermost layer 2^10 times (a hang)
 LAY="$WORK/layers"; mkdir -p "$LAY/L10"; : > "$LAY/L10/keep.txt"
 for k in 9 8 7 6 5 4 3 2 1 0; do
@@ -512,7 +512,7 @@ if [ "$rc" -eq 0 ] && ! grep -q '^SCP .* -r ' "$WORK/stub.log" && grep -qE '^SSH
 else
   fail_case "T7f no-rsync fallback failed or still unfiltered (rc=$rc): $(grep -E '^(SCP|SSH .*tar)' "$WORK/stub.log")"
 fi
-# T7n (HIMMEL-3261) BOTH staging paths carry the repo-root inputs scripts/test-uninstall.sh
+# T7n BOTH staging paths carry the repo-root inputs scripts/test-uninstall.sh
 # reads, not just scripts/ -- without them SC6 failed 80 assertions on a clean guest.
 # The tar listing is what the host's real tar piped to the (stub) guest; the rsync
 # check reads the sources it was handed. The secret excludes must stay in force on both.

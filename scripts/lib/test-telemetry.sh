@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/telemetry.sh (HIMMEL-236).
+# Smoke test for scripts/lib/telemetry.sh.
 set -uo pipefail
 
 LIB="$(cd "$(dirname "$0")" && pwd)/telemetry.sh"
@@ -148,7 +148,7 @@ case "$line" in
 esac
 assert_json "T11 record parses as JSON" "$line"
 
-# T12: kill switch treats any non-empty value as disable (HIMMEL-375) —
+# T12: kill switch treats any non-empty value as disable —
 # "true" and "yes" are common env values that the old "= 1" check silently
 # ignored. rc must still be 0 (fail-open) and no line appended.
 before=$(wc -l < "$LOG" | tr -d ' ')
@@ -164,7 +164,7 @@ assert_eq "T12 disable=yes appends nothing" "$before" "$(wc -l < "$LOG" | tr -d 
 # T13: caller-supplied key=value pairs whose key collides with a reserved
 # field (v, ts, session_id, repo, skill, event) are silently skipped —
 # they must not produce duplicate JSON keys that break the JSONL sink
-# (HIMMEL-374). The non-colliding pair must still land.
+#. The non-colliding pair must still land.
 telemetry_emit test-skill no-collision v=99 ts=bad session_id=injected repo=fake skill=override event=override extra=kept
 line=$(tail -1 "$LOG")
 assert_contains "T13 non-colliding pair kept" '"extra":"kept"' "$line"

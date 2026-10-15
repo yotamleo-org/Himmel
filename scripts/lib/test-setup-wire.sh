@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 # test-setup-wire.sh -- hermetic test for the wiring sequence setup.sh's [9/10]
-# performs (R3, HIMMEL-460): statusline + HIMMEL_REPO + the UNIVERSAL hooks
+# performs (R3): statusline + HIMMEL_REPO + the UNIVERSAL hooks
 # (PreToolUse trio + SessionStart inject-initiative) at user scope.
 #   SC1: after wiring, the user settings.json has the UNIVERSAL hooks at abs path
 #        AND a pre-existing rtk-hook-guard entry is preserved.
@@ -33,7 +33,7 @@ wire_all() {
 }
 
 td="$(mktemp -d)"
-# HIMMEL-3332: the wires write provenance rows; keep them out of the real ~/.himmel.
+# the wires write provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 s="$td/settings.json"
 # Pre-existing rtk-hook-guard in the Bash stanza + a custom SessionStart sibling.

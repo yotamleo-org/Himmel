@@ -3,7 +3,7 @@
 # the sub-shell's OWN positional args (via `-c '...' _ "$LIBF" ...`), not
 # this script's — double-quoting would expand the wrong scope's variables.
 # scripts/lib/test-sha256-bin.sh — tests for scripts/lib/sha256-bin.sh
-# (HIMMEL-3177). Hermetic: every PATH is a stub dir.
+#. Hermetic: every PATH is a stub dir.
 #
 #   T1  sha256sum present -> resolved, sha256_hex hashes a file AND stdin
 #   T2  only shasum (the stock-macOS shape) -> "shasum -a 256" resolved,

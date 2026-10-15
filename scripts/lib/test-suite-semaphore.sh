@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/lib/suite-semaphore.sh, the machine-wide suite concurrency
-# budget (HIMMEL-1818), through its two chokepoints: scripts/quiet-run.sh
+# budget, through its two chokepoints: scripts/quiet-run.sh
 # (label `suite`) and scripts/ci/run-shell-tests.sh.
 #
 # Pinned:
@@ -326,7 +326,7 @@ else
     fail "HIMMEL_SUITE_SLOTS=00 -- expected rc 0 (default budget), got rc=$RC: $OUT"
 fi
 
-# --- 16 (HIMMEL-3778): a dead holder with an EMPTY identity (its ps probe
+# --- 16: a dead holder with an EMPTY identity (its ps probe
 # failed at acquire time) is reclaimed promptly -- WITHOUT waiting for
 # HIMMEL_SUITE_SLOT_TTL. Before proc_tree_liveness_matches, an empty SO_ID
 # made proc_tree_process_identity_matches answer "unavailable" (2) even for a
@@ -349,12 +349,12 @@ else
     fail "HIMMEL-3778: dead holder with empty identity -- expected rc 0 + reclaimed note within seconds, got rc=$RC after ${ELAPSED}s: $ERR"
 fi
 
-# --- 17 (HIMMEL-3778): while a LIVE holder's identity is empty (fault-injected
+# --- 17: while a LIVE holder's identity is empty (fault-injected
 # ps), its own child (a nested quiet-run) is NOT refused -- re-entrancy must
 # survive the same empty-identity condition that case 16 reclaims once the
 # holder is dead. This is NOT the same as case 7: case 7's holder has a
 # normal, non-empty identity, so it never exercises _suite_sem_held_ok's
-# HIMMEL-3778 fallback at suite-semaphore.sh:197-200. Like case 7 (and unlike
+# fallback at suite-semaphore.sh:197-200. Like case 7 (and unlike
 # case 16), this must be ONE synchronous qr call whose payload runs the nested
 # quiet-run itself -- a separately started background holder plus a second,
 # sibling qr call are NOT ancestor/descendant, so _suite_sem_is_ancestor would
@@ -387,10 +387,10 @@ else
     fail "HIMMEL-3778: nested quiet-run under an empty-identity live holder -- expected rc 0, got rc=$RC: $OUT"
 fi
 
-# --- 18 (deferred from PR #1382 round 7): the scan-root lock (run-shell-tests.sh)
+# --- 18: the scan-root lock (run-shell-tests.sh)
 # and this machine-wide semaphore are independent locks with INDEPENDENT TTL
-# clocks -- HIMMEL-1838 demoted the scan lock to a pure duplicate-sweep
-# refusal and made this semaphore the one LIVENESS owner (dead/live judgment
+# clocks -- the scan lock is a pure duplicate-sweep
+# refusal and this semaphore is the one LIVENESS owner (dead/live judgment
 # via proc_tree_liveness_matches), but it did NOT unify their two TTL
 # backstops into one clock. Each still defaults to 14400s and each is still
 # independently overridable (this semaphore via HIMMEL_SUITE_SLOT_TTL, the

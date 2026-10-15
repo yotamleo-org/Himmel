@@ -1,7 +1,7 @@
-# Hermetic test for wire-statusline.ps1 (HIMMEL-359 / HIMMEL-718). Temp dir only,
+# Hermetic test for wire-statusline.ps1. Temp dir only,
 # no network. Mirrors test-wire-statusline.sh so the bash/PowerShell twins stay in
-# parity -- HIMMEL-718 Task 4.1 switched the command to the hud renderer (node),
-# added the .env extra-cmd gate, and drops the hud config. Case 5 pins the
+# parity -- the command uses the hud renderer (node),
+# with the .env extra-cmd gate, and drops the hud config. Case 5 pins the
 # invalid-JSON exit code (the bug the CR caught: Write-Error+return exited 0,
 # masking the refusal from -File callers).
 $ErrorActionPreference = 'Stop'
@@ -14,7 +14,7 @@ $script:fail = 0
 function Check([bool]$cond, [string]$msg) {
     if ($cond) { Write-Host "ok $msg" } else { Write-Host "FAIL $msg"; $script:fail = 1 }
 }
-# HIMMEL-2892: the hud config now lands under ${CLAUDE_CONFIG_DIR:-~/.claude},
+# the hud config now lands under ${CLAUDE_CONFIG_DIR:-~/.claude},
 # never beside the settings file -- so this suite pins CLAUDE_CONFIG_DIR at a
 # throwaway dir for the WHOLE run. Without the pin it would write into the
 # RUNNER'S real config dir. Restored on exit.
@@ -76,7 +76,7 @@ if (Test-Path $dropped) {
     Check ($dj.display.showPromptCache -eq $true) "6e dropped config has showPromptCache: true"
 }
 
-# 7 HIMMEL-2892: a PROJECT settings path leaves NOTHING under the project dir.
+# 7 A PROJECT settings path leaves NOTHING under the project dir.
 # The 2026-09-09 dogfood incident: a project-scope install dropped an untracked
 # .claude/claude-hud.json inside the repo.
 $proj7 = Join-Path $tmp 'proj7'
@@ -88,9 +88,9 @@ Check (-not (Test-Path (Join-Path $proj7 '.claude/plugins'))) "7a nothing droppe
 Check (Test-Path (Join-Path $cfg7 'claude-hud.json')) "7b hud config landed under CLAUDE_CONFIG_DIR"
 $env:CLAUDE_CONFIG_DIR = $cfgDir
 
-# 8 HIMMEL-3065: the hud's RUNTIME cache state is dropped when the wiring
-# CHANGES, and only then -- parity with bash cases 16-20. HIMMEL-3334 moved the
-# config this script owns to a sibling path (claude-hud.json in the config dir
+# 8 The hud's RUNTIME cache state is dropped when the wiring
+# CHANGES, and only then -- parity with bash cases 16-20. The
+# config this script owns lives at a sibling path (claude-hud.json in the config dir
 # root), never inside $hud8; everything still under $hud8 is per-session
 # snapshot state that must not survive a migration onto a different install.
 function Seed-HudCache([string]$dir) {
@@ -150,7 +150,7 @@ Wire $s11 'C:\new\path\himmel' | Out-Null
 Check (-not (Test-Path (Join-Path $hud11 'transcript-cache'))) "11 a moved clone drops the hud cache state"
 $env:CLAUDE_CONFIG_DIR = $cfgDir
 
-# 12 CR round 1 [codex-1]: `"statusLine": null` is valid JSON — the property
+# 12 `"statusLine": null` is valid JSON — the property
 # EXISTS while its value is $null, so reading the previous command must not
 # dereference it. The wire must still succeed and replace the null.
 $proj12 = Join-Path $tmp 'proj12'
@@ -163,7 +163,7 @@ $c12 = Get-Content $s12 -Raw | ConvertFrom-Json
 Check ($c12.statusLine.type -eq 'command') "12b null statusLine replaced"
 Check ($c12.theme -eq 'dark') "12c other keys preserved"
 
-# 13 CR round 1 [codex-2]: the hud config is per-USER but the settings file may
+# 13 the hud config is per-USER but the settings file may
 # be a PROJECT one, so wiring a machine's SECOND project on the same install is
 # not a migration and must not purge the other projects' live snapshots.
 $cfg13 = Join-Path $tmp 'cfg13'
@@ -179,7 +179,7 @@ Wire (Join-Path $proj13b '.claude/settings.json') $repoRoot | Out-Null
 Check (Test-Path (Join-Path $hud13 'transcript-cache/deadbeef.json')) "13 a second project on the same install keeps the cache state"
 $env:CLAUDE_CONFIG_DIR = $cfgDir
 
-# 14 HIMMEL-3157: an operator-set HIMMEL_STATUSLINE_ECON=<val> prefix on the
+# 14 An operator-set HIMMEL_STATUSLINE_ECON=<val> prefix on the
 # previous hud config's .display.customLineCommand must be carried forward
 # across a rewire, parity with bash cases 29-31 -- dropping it lets the
 # suppressed HUD economics rows come back on every run.
@@ -222,7 +222,7 @@ Wire $s14d $repoRoot | Out-Null
 $c14d = Get-Content (Join-Path $cfg14d 'claude-hud.json') -Raw | ConvertFrom-Json
 Check ($c14d.display.customLineCommand -eq "bash `"$repoRoot/scripts/statusline/hud-custom-lines.sh`"") "14d a foreign FOO=1 prefix is not carried"
 
-# 15 HIMMEL-3334 codex-1 (suggestion): starting from ONLY a legacy-path hud
+# 15 Starting from ONLY a legacy-path hud
 # config (no new-path file at all -- the pre-migration state), a rewire must
 # publish the new-path config carrying the previous config's
 # HIMMEL_STATUSLINE_ECON prefix forward, and remove the legacy file since its

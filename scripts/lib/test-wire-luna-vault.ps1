@@ -1,5 +1,5 @@
 # test-wire-luna-vault.ps1 -- committed PS test for wire-luna-vault.ps1
-# (HIMMEL-458). The .env merge is genuinely new logic vs the statusline twin's
+#. The .env merge is genuinely new logic vs the statusline twin's
 # single-object set, and clobbering a sibling key (e.g. HIMMEL_REPO) is the
 # highest-risk failure on the operator's primary platform -- so it gets a real
 # assertion, not parity-by-inspection. The final block is the F1-SC4 CROSS-TWIN
@@ -70,7 +70,7 @@ $s7 = Join-Path $td 's7.json'
 $c7 = Get-Content $s7 -Raw | ConvertFrom-Json
 Check 'whitespace file -> created' $c7.env.LUNA_VAULT_PATH 'C:/Documents/luna'
 
-# 8. SEAM (HIMMEL-1269): what wire-luna-vault writes into settings.json .env is
+# 8. SEAM: what wire-luna-vault writes into settings.json .env is
 #    exactly what the end-session-wiki resolver consumes at step 3. Claude Code
 #    applies a settings.json "env" block to the process env at session start;
 #    this test makes that hop explicitly (read the key back, set it in the

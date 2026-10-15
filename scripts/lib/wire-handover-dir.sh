@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # wire-handover-dir.sh -- set env.HANDOVER_DIR in a Claude Code settings.json
-# to the handover state root (HIMMEL-839). handover_root()
+# to the handover state root. handover_root()
 # (scripts/lib/handover-path.sh) reads HANDOVER_DIR straight from the process
 # env, so wiring it into settings.json's env stanza makes Mode B (external
 # state repo) resolve correctly for every session under this scope, without a
 # manual .env edit or shell export. adopt.sh calls this after scaffolding the
 # luna vault (--profile luna|all) so a fresh adopter's handover state lands in
 # the vault instead of silently defaulting to the inline <repo-root>/handovers/
-# stub (observed on a fresh ubuntu_new install with no prior state, HIMMEL-839
+# stub (observed on a fresh ubuntu_new install with no prior state
 # defect 2). Sibling of wire-luna-vault.sh -- same shape, different key.
 #
 # Usage:
@@ -23,7 +23,7 @@
 # (the BASH_SOURCE guard below supports both).
 set -euo pipefail
 
-# HIMMEL-3332: record the settings write in the install-provenance ledger
+# record the settings write in the install-provenance ledger
 # (docs/internals/install-provenance.md). Runs after the mv with the PRE-write
 # JSON in $2: a new key is `create`, the same value is `noop`, a different one
 # is `replace` with the prior value backed up. A wire that had to create `.env`
@@ -50,7 +50,7 @@ _wire_handover_dir_record() {
   scope="$(_wire_handover_dir_scope "$settings")" || return 1
   new="$(jq -nc --arg v "$val" '$v')"
   # `.env` absent -> create; an explicit `"env": null` -> replace with the null
-  # kept as the pre-state (HIMMEL-3352); an existing object -> no /env row.
+  # kept as the pre-state; an existing object -> no /env row.
   env_pre="$(printf '%s' "$base" | jq -c 'select(type == "object" and has("env")) | .env')"
   old="$(printf '%s' "$base" | jq -c --arg k "$key" 'select((.env | type == "object") and (.env | has($k))) | .env[$k]')"
   if [ -z "$old" ]; then op=create; pre=(--pre-absent)

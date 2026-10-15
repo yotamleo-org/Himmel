@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Contract suite for the tracker seam (HIMMEL-4759, HIMMEL-4748 spec section 2,
+# Contract suite for the tracker seam (spec section 2,
 # invariants I5 and I6): ONE case list run against three backends.
 #   jira   replayed from scripts/lib/fixtures/tracker/jira/ through JIRA_CMD
 #   local  a real temp store (TRACKER_STORE)
@@ -32,8 +32,8 @@ has() { # has <label> <needle> <haystack>
 [ -f "$LIB" ] || { bad "tracker.sh does not exist at $LIB"; echo "tracker contract: $PASS passed, $FAIL failed"; exit 1; }
 
 # The JIRA_CMD stub: logs argv, replays the recorded read fixtures. A ticket's
-# status lives in $STUB_STATE/status.<KEY> (default "To Do"); HIMMEL-9002 is the
-# epic child, HIMMEL-404 does not exist.
+# status lives in $STUB_STATE/status.<KEY> (default "To Do") is the
+# epic child does not exist.
 STUB="$T/jira-stub.sh"
 cat > "$STUB" <<'STUB_EOF'
 #!/usr/bin/env bash
@@ -261,7 +261,7 @@ eq "I5 live-pid lock blocks rc" 1 "$rc"
 has "I5 live-pid lock message names the owner" "$livepid" "$(cat "$R/blocked.err")"
 [ ! -e "$TRACKER_STORE/LOCAL-1.md" ] && ok || bad "I5 a mint went through a live lock"
 
-# ---- review fixes (panel round 1) -------------------------------------------
+# ---- review fixes -------------------------------------------
 # a failed next-id advance must fail the mint, drop the item and free the lock
 fresh_env local
 mkdir -p "$TRACKER_STORE/next-id.tmp"

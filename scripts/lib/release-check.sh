@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # release-check.sh — release-tag lookup + version compare for a himmel install
-# that is NOT a git checkout (HIMMEL-3247; prerequisite P1 of HIMMEL-3059).
+# that is NOT a git checkout (prerequisite P1).
 #
 # WHY this exists: himmel updates by `git pull` of its own checkout
 # (scripts/himmel-update.sh). A tarball or native-package install has no .git, so
@@ -13,9 +13,9 @@
 #   bash scripts/lib/release-check.sh --refresh <cache-file>
 #       # executed: one lookup, cache written ATOMICALLY and only on a definite
 #       # answer. This is what the SessionStart hook runs DETACHED, so the
-#       # network never sits on the session-start path (HIMMEL-1844).
+#       # network never sits on the session-start path.
 #
-# Integrity position (HIMMEL-3059 ADR): the ONLY thing fetched is one tag name.
+# Integrity position: the ONLY thing fetched is one tag name.
 # The URL below is a constant, deliberately NOT overridable from the environment
 # — a hostile .env or settings file must not be able to steer the check at a
 # non-release endpoint. https is pinned (including across redirects), and the
@@ -104,7 +104,7 @@ release_fetch_latest() {
         [0-9][0-9][0-9]) RELEASE_FAIL_REASON="http-$code"; return 1 ;;
         *) RELEASE_FAIL_REASON="bad-response"; return 1 ;;
     esac
-    # HIMMEL-3258: with jq, read the reply's OWN top-level tag_name (a string; a
+    # with jq, read the reply's OWN top-level tag_name (a string; a
     # null draft/odd reply yields nothing). The sed below matches the first/last
     # line-local look-alike, so a nested object carrying its own tag_name wins over
     # the real one. jq is optional — a fresh packaged install may not have it, and

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/lib/vbox.py's VBoxManage path resolution
-# (HIMMEL-2512): PATH-first on Linux, explicit VBOXMANAGE_PATH always wins,
+#: PATH-first on Linux, explicit VBOXMANAGE_PATH always wins,
 # and the Windows default is a last-resort fallback when `which` finds
 # nothing. Hermetic — never invokes a real VBoxManage.
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a test
@@ -15,7 +15,7 @@ LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAILED=0
 TMP_RAW=$(mktemp -d "${TMPDIR:-/tmp}/vbox-path.XXXXXX") || { echo "FAIL could not create temp dir"; exit 1; }
 trap 'rm -rf "$TMP_RAW"' EXIT
-# HIMMEL-3179: python is a NATIVE process. Under Git Bash it needs C:/... (not
+# python is a NATIVE process. Under Git Bash it needs C:/... (not
 # the MSYS /c/... or /tmp/... spelling) to import from LIB_DIR and to report a
 # path comparable with the fixture's own; canon_path_native is that one spelling
 # (the physical path on Linux/macOS).
@@ -77,7 +77,7 @@ got=$(unset VBOXMANAGE_PATH; PATH="$EMPTY_BIN_DIR" resolve)
 assert_eq "T3 falls back to Windows default when PATH has nothing" \
     'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe' "$got"
 
-# T4 (HIMMEL-4334): VBoxManage runs with cwd $HOME, not the caller's cwd, so
+# T4: VBoxManage runs with cwd $HOME, not the caller's cwd, so
 # the VBoxSVC it may spawn cannot pin a worktree. The fake prints its cwd.
 T4_HOME="$TMP/t4-home"; T4_CALLER="$TMP/t4-caller"; mkdir -p "$T4_HOME" "$T4_CALLER"
 T4_FAKE="$TMP/t4-fake-vboxmanage"
@@ -86,7 +86,7 @@ got=$(cd "$T4_CALLER" && HOME="$T4_HOME" VBOXMANAGE_PATH="$T4_FAKE" "$PYTHON3" -
     "import sys; sys.path.insert(0, sys.argv[1]); import vbox; print(vbox._run('list')[1].strip())" "$LIB_DIR_NATIVE")
 assert_eq "T4 VBoxManage runs with cwd HOME, not the caller's cwd" "$(cd "$T4_HOME" && pwd -P)" "$got"
 
-# T5 (HIMMEL-4334 panel): a RELATIVE VBOXMANAGE_PATH is resolved against the
+# T5: a RELATIVE VBOXMANAGE_PATH is resolved against the
 # caller's cwd at import, so it still runs after the cwd=$HOME change.
 printf '#!/bin/sh\necho relative-ok\n' > "$T4_CALLER/rel-vbm"; chmod +x "$T4_CALLER/rel-vbm"
 got=$(cd "$T4_CALLER" && HOME="$T4_HOME" VBOXMANAGE_PATH="./rel-vbm" "$PYTHON3" -c \

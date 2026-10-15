@@ -42,7 +42,7 @@ test('runs the section and releases the lock', async () => {
   }
 });
 
-// HIMMEL-1552: the reason the lock exists. Writer A is blocked mid-transform
+// the reason the lock exists. Writer A is blocked mid-transform
 // (holds the lock, has read, not yet written); writer B starts and commits.
 // Without coordination B reads A's PRE-commit state and one write is lost. With
 // the lock, B blocks until A commits, then reads A's result — both applied.
@@ -118,7 +118,7 @@ test('times out with a clear message when the lock is held by a live process', a
   }
 });
 
-// HIMMEL-1552 (glm-1, CR round 1). tryCreate() creates the lockfile and writes
+// tryCreate() creates the lockfile and writes
 // the holder pid as two steps. If the write fails after the create succeeds
 // (ENOSPC/EIO), an EMPTY lockfile is orphaned — and parseInt('') is NaN, which
 // used to skip the stale-holder check entirely, so nothing could ever reclaim
@@ -152,7 +152,7 @@ test('a throwing section still releases the lock', async () => {
   }
 });
 
-// HIMMEL-1552 REGRESSION GUARD. A lock that only ONE of the two sanctioned
+// REGRESSION GUARD. A lock that only ONE of the two sanctioned
 // writers takes provides no mutual exclusion at all, and that is not a
 // hypothetical: the first cut of this module was imported into
 // wire-trust-hooks.mjs and never called, so the writer carrying the actual

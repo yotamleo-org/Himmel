@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # qmd-bounded.sh — run qmd under a deadline that kills its WHOLE process tree
-# (HIMMEL-3956).
 #
 # Run it:   bash qmd-bounded.sh <qmd verb> [args...]
 #   runs qmd (resolved as qmd-bin.sh's qmd_cmd does) under a deadline of
@@ -28,10 +27,10 @@
 # the deadline if the caller itself is killed. When the direct child ends
 # first, anything it left in the group is reaped the same way before return.
 #
-# ponytail: bounds the orphan, not the upstream launcher's missing signal
-# forwarding — HIMMEL-3958 (tobi/qmd issue) removes the cause. Only callers
+# ponytail: bounds the orphan, not the cause (upstream launcher's missing signal forwarding), HIMMEL-3958
+# (tobi/qmd issue) removes that. Only callers
 # that go through this are bounded: ad-hoc agent Bash reaching the `qmd` on
-# PATH is not; block-bare-qmd-query.sh (HIMMEL-3960) refuses the bare search
+# PATH is not; block-bare-qmd-query.sh refuses the bare search
 # verbs and names this script as the replacement.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+; on Git Bash a native

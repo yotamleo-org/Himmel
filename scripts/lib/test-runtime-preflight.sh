@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verdict-table suite for scripts/lib/runtime-preflight.sh (HIMMEL-1991).
+# Verdict-table suite for scripts/lib/runtime-preflight.sh.
 #
 # One canned runtime tuple per case, assembled as a stub PATH: node/npm/bun and
 # the Windows PATH-order probe are all stubs, so every verdict is decided by the

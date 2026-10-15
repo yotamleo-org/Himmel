@@ -16,7 +16,7 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
 # A realistic "node not on PATH" still needs coreutils — but on apt-node
-# systems node LIVES in the coreutils dir (/usr/bin, HIMMEL-966), so use
+# systems node LIVES in the coreutils dir (/usr/bin), so use
 # a curated symlink dir carrying only the tools these cases need.
 UTILS_ROOT="$(mktemp -d)"
 trap 'rm -rf "$UTILS_ROOT"' EXIT
@@ -31,7 +31,7 @@ done
 if ! PATH="$UTILS_DIR" sort </dev/null >/dev/null 2>&1; then
     UTILS_DIR="$(dirname "$(command -v sort)")"
     # Self-diagnose the one bad combination (fallback dir DOES carry node —
-    # the HIMMEL-966 apt-node class): the PATH-cleared cases below will fail;
+    # the apt-node class): the PATH-cleared cases below will fail;
     # say why up front instead of leaving a puzzling red run.
     if [ -x "$UTILS_DIR/node" ] || [ -x "$UTILS_DIR/node.exe" ]; then
         echo "WARN: curated utils dir unusable AND fallback $UTILS_DIR carries node — PATH-cleared cases will fail (HIMMEL-966)" >&2
@@ -56,8 +56,8 @@ else
     pass "PATH node -> (skipped: no node on PATH here)"
 fi
 
-# NVM_SYMLINK="" and RESOLVE_NODE_NVM4W_DIR="" below (codex CR round 2,
-# HIMMEL-2077): step 1 (nvm-windows) is now independent of RESOLVE_NODE_PROBE_DIRS
+# NVM_SYMLINK="" and RESOLVE_NODE_NVM4W_DIR="" below:
+# step 1 (nvm-windows) is now independent of RESOLVE_NODE_PROBE_DIRS
 # — it used to be silently disabled by that seam, which incidentally made
 # these step-3/nvm/fnm cases hermetic on a machine with a REAL nvm-windows
 # install (this dev box has one at /c/nvm4w/nodejs). Without an explicit
@@ -101,7 +101,7 @@ fi
 echo "== resolve_node: NVM_SYMLINK backslash separators rewritten to slashes, no cygpath needed (HIMMEL-2741) =="
 # Portable version of the drive-letter test above: exercises the actual
 # backslash->slash conversion (dropped the bash-only \${var//\\//} for POSIX
-# builtins under HIMMEL-2741) without depending on cygpath, so it runs on
+# builtins) without depending on cygpath, so it runs on
 # every host including this one. \$tmp itself is a plain Linux path with no
 # backslashes, so substituting / -> \\ and back is exact.
 if tmp="$(mktemp -d)"; then
@@ -119,7 +119,7 @@ else
 fi
 
 echo "== resolve_node: NVM_SYMLINK beats a stale node already on PATH (HIMMEL-2077) =="
-# HIMMEL-2013 chose NVM_SYMLINK as the operator's version specifically to beat
+# NVM_SYMLINK is the operator's version specifically to beat
 # a stale winget/MSI install — but a PATH probe run BEFORE that list re-broke
 # it whenever the stale install was ALSO reachable via PATH (the ordering bug
 # this case pins). A "stale" node lives on a PATH dir; a different "chosen"
@@ -136,7 +136,7 @@ fi
 rm -rf "$tmp"
 
 echo "== resolve_node: a generic OTHER absolute location does NOT beat a chosen PATH node (codex CR round on HIMMEL-2077) =="
-# The HIMMEL-2077 fix above scopes ONLY nvm-windows (NVM_SYMLINK / /c/nvm4w/nodejs)
+# The fix above scopes ONLY nvm-windows (NVM_SYMLINK / /c/nvm4w/nodejs)
 # ahead of PATH. RESOLVE_NODE_PROBE_DIRS stands in for the OTHER well-known
 # locations (/usr/bin, homebrew, ...) — those must stay a PATH FALLBACK, or a
 # generic system node would override an operator's deliberately-chosen PATH

@@ -2,7 +2,7 @@
 # scripts/lib/user-claude-md.sh
 #
 # wire_user_claude_md — append himmel's "working principles" block to a
-# user-scope rule file (HIMMEL-2038). Those four defaults (think before coding
+# user-scope rule file. Those four defaults (think before coding
 # / simplicity first / surgical changes / goal-driven execution) used to live
 # in himmel's always-on project CLAUDE.md; they are general engineering
 # defaults, not himmel invariants, so adopters get them once at user scope
@@ -26,7 +26,7 @@
 #     payload), never truncate/overwrite.
 #   - target absent -> create it with just the payload.
 #
-# Provenance (HIMMEL-3787 S2d): when scripts/lib/provenance.sh is sourced, a
+# Provenance: when scripts/lib/provenance.sh is sourced, a
 # real append/create records a `block` unit (see _ucm_record_block) so uninstall
 # can strip exactly himmel's block. A skip or a dry run records nothing; a
 # recording failure only warns -- it never fails the install.
@@ -46,8 +46,8 @@ _HIMMEL_USER_CLAUDE_MD_MARKER="HIMMEL:working-principles"
 # deletes the duplicate block) is lower than the cost of a stricter matcher.
 _HIMMEL_USER_CLAUDE_MD_HEURISTIC="simplicity first"
 
-# _ucm_record_block <target> <payload> <file_created true|false> -- HIMMEL-3787
-# S2d: one provenance `block` row for the block just written, so uninstall can
+# _ucm_record_block <target> <payload> <file_created true|false>
+# One provenance `block` row for the block just written, so uninstall can
 # tell himmel's block from the operator's own text (its sha is the BEGIN..END
 # text, the .ours snapshot holds the same bytes). Best-effort like adopt.sh's
 # other recorders: the block is in place whether or not the row lands, and a

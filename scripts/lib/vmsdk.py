@@ -53,7 +53,7 @@ PAT_ENV = "himmel_github_token_vm"
 GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 _REGISTRY = Path(__file__).resolve().parent / "vms.json"
 
-# HIMMEL-2540: basename globs that must never cross host->guest (the
+# basename globs that must never cross host->guest (the
 # gitignored-but-present secret set). One boundary with two spellings — keep in
 # step with VM_GUEST_SECRET_GLOBS in scripts/lib/vm-guest-excludes.sh (the
 # parity test in test-vmsdk.py pins them together).
@@ -74,7 +74,7 @@ _SCAN_PROFILES = {
 }
 
 
-# HIMMEL-3236: the scan follows nested DIRECTORY symlinks (a checkout linked into
+# the scan follows nested DIRECTORY symlinks (a checkout linked into
 # the home dir from outside the scanned roots), bounded — see the ponytail note in
 # vm-guest-excludes.sh. One POSIX-sh function; the two spellings must stay
 # byte-identical (test_scan_command_parity_with_the_bash_helper).
@@ -167,7 +167,7 @@ def secret_scan_cmd(root, profile="full"):
         raise VMError(f"unknown secret-scan profile {profile!r} (full|env)")
     names = " -o ".join(f"-name '{g}'" for g in _SCAN_PROFILES[profile])
     if profile == "full":
-        # The one content exemption to the *.local.json name (HIMMEL-3252).
+        # The one content exemption to the *.local.json name.
         names = names.replace(
             "-name '*.local.json'",
             f"\\( -name '*.local.json' ! \\( {_inert_lanes_test()} \\) \\)")
@@ -284,7 +284,7 @@ class VM:
         self.auth = spec.get("auth", "key" if self.kind == "station" else "password")
         self._client = None
         if self.kind == "station":
-            # Physical SSH host (HIMMEL-870): reached by alias + key auth via
+            # Physical SSH host: reached by alias + key auth via
             # ~/.ssh/config. No VirtualBox lifecycle, no loopback port-forward,
             # no password env. host/port/identity are resolved at connect time.
             if "host" not in spec:
@@ -300,7 +300,7 @@ class VM:
             self.host = HOST
             _load_dotenv_into_env([spec["pass_env"]] + ([] if spec.get("user") else [spec["user_env"]]))
             # A literal 'user' in the registry entry wins over 'user_env'
-            # (HIMMEL-2623): before this fix a VM-kind spec's 'user' key was
+            #: before this fix a VM-kind spec's 'user' key was
             # never even read here (only the station branch above consulted
             # it), so a stale .env value could never be overridden short of
             # editing .env itself. Surfaced when ubuntu_new's real guest user
@@ -371,7 +371,7 @@ class VM:
         if self.kind == "station":
             # Key-auth via the SSH alias: paramiko does not read ssh_config on
             # connect, so the alias's real HostName/Port/User/IdentityFile are
-            # resolved here (the single ssh_config read seam, HIMMEL-870).
+            # resolved here (the single ssh_config read seam).
             cfg = paramiko.SSHConfig()
             cfg.parse(io.StringIO(_read_ssh_config_text()))
             resolved = cfg.lookup(self.host)
@@ -596,7 +596,7 @@ class VM:
         exclude_flags = " ".join(shlex.quote(f"--exclude={e}") for e in excludes)
         if self.kind == "station":
             # Alias-only: hostname/port/identity come from ~/.ssh/config, same
-            # as ssh()'s resolution (HIMMEL-870) — no password, no -p/-i. When
+            # as ssh()'s resolution — no password, no -p/-i. When
             # the registry supplies a user, pin it explicitly so this path
             # can't silently auth as a different user than ssh()'s resolved
             # user (registry user vs. ssh_config User could otherwise diverge).
@@ -608,7 +608,7 @@ class VM:
             ssh_target = (f"-p {self.port} -i {key} "
                           f"-o BatchMode=yes -o StrictHostKeyChecking=accept-new "
                           f"{self.user}@127.0.0.1")
-        # HIMMEL-3228: refuse a dest the post-copy scan could not check BEFORE
+        # refuse a dest the post-copy scan could not check BEFORE
         # any file crosses, and quote it (a spaced dest) for the guest shell.
         try:
             secret_scan_cmd(dest, "full")
@@ -626,7 +626,7 @@ class VM:
             stderr = r.stderr.decode(errors="replace") if isinstance(r.stderr, bytes) else str(r.stderr)
             raise EnvironmentError(
                 f"sync_repo failed (rc {r.returncode}): {stderr.strip()[-200:]}")
-        # Belt and braces (HIMMEL-2540): whatever `excludes` was passed, the
+        # Belt and braces: whatever `excludes` was passed, the
         # staged tree must hold no secret-bearing file.
         try:
             self.assert_guest_clean(dest, "full")
@@ -702,7 +702,7 @@ class VM:
         self.run(f"bash ~/github/himmel/scripts/lib/ensure-workspace-trust.sh {abscwd}")
 
         # Step 4: build and run the drive command.
-        # --dangerously-skip-permissions policy (HIMMEL-575): this is the VM
+        # --dangerously-skip-permissions policy: this is the VM
         # driver, and a VM is throwaway + isolated + carries no operator data, so
         # a non-interactive drive (`< /dev/null`, no human to answer a tool-use
         # prompt) skips permissions wholesale — the blast radius is the disposable
@@ -845,7 +845,7 @@ class VM:
         """
         locate_cwd = cwd if cwd is not None else "~/Documents/github/himmel"  # leak-allow: hostname default guest working dir for the private repo checkout
         # long_gap only modifies a SCHEDULED arm (when is set): it forwards
-        # arm-resume.sh's --long-gap past the HIMMEL-1475 long-gap guard. It is
+        # arm-resume.sh's --long-gap past the long-gap guard. It is
         # meaningless for an immediate drive (when=None -> drive_claude), so
         # reject the combination loudly instead of silently no-op'ing a flag the
         # caller thinks is in effect.
@@ -894,7 +894,7 @@ class VM:
         arm = (f"cd {locate_cwd} && bash scripts/handover/arm-resume.sh"
                f" --time {shlex.quote(when)}"
                f" --handover {shlex.quote(guest_handover)}"
-               # HIMMEL-841: the digest in guest_handover changes when the
+               # the digest in guest_handover changes when the
                # source is edited, so key the dedup on the host-path tag.
                f" --source-key {tag}")
         if cwd is not None:

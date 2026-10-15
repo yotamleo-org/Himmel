@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage-cache-identity.sh — HIMMEL-1712 shared account-identity helper.
+# usage-cache-identity.sh — shared account-identity helper.
 #
 # Single source for the sha256-hashed account identity stamped onto and
 # compared against scripts/statusline/usage-cache-producer.sh's cache. Never
@@ -29,13 +29,13 @@ _usage_cache_sha256() {
 
 # shellcheck disable=SC2120 # optional $1 override; every in-repo caller wants the default
 current_account_hash() {
-  # HIMMEL-1712 CR (panel round 9, codex-1): a bare $HOME here would be an
+  # A bare $HOME here would be an
   # unbound-variable error under a set -u caller with HOME unset, instead of
   # falling through to the "undeterminable identity" empty-return path.
   local config="${1:-${CLAUDE_ACCOUNT_CONFIG:-${HOME:-}/.claude.json}}" uuid hash
   command -v jq >/dev/null 2>&1 || return 0
   [ -r "$config" ] || return 0
-  # HIMMEL-1712 CR (panel round 3, codex-3): a non-string accountUuid (number,
+  # A non-string accountUuid (number,
   # object, bool) must not be silently hashed as if it were a real identity.
   uuid=$(jq -r 'if (.oauthAccount.accountUuid | type) == "string" then .oauthAccount.accountUuid else empty end' "$config" 2>/dev/null)
   [ -n "$uuid" ] || return 0
@@ -46,7 +46,7 @@ current_account_hash() {
 usage_cache_account_mismatch() {
   local cache="$1" cached current
   command -v jq >/dev/null 2>&1 || return 0
-  # codex-1 (panel round 7): a non-string account field must not be
+  # A non-string account field must not be
   # silently stringified into something that could collide with a hash.
   cached=$(jq -r 'if (.account | type) == "string" then .account else empty end' "$cache" 2>/dev/null)
   [ -n "$cached" ] || return 0

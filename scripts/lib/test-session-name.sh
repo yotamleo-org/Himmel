@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-session-name.sh — HIMMEL-2788. current_session_name resolves the `-n`
+# test-session-name.sh — current_session_name resolves the `-n`
 # session name from a fabricated NUL-delimited cmdline fixture (via the
 # SESSION_NAME_CMDLINE_FILE test seam — see session-name.sh's header for why
 # a real pid's /proc/<pid>/cmdline can't be fabricated in a test).
@@ -85,7 +85,7 @@ fi
 # --- Case 5b: glob metacharacters refused (find -name treats them as
 # wildcards, not literal characters, so an unsanitized name can cross-match
 # another session's console doc under resolve_console_doc's find -name
-# "${name}.md" — HIMMEL-2973 Finding 2) -----------------------------------
+# "${name}.md") -----------------------------------
 fake_cmdline claude -n "*-console" load doc.md
 out="$(current_session_name)"; rc=$?
 if [ "$rc" -ne 0 ] && [ -z "$out" ]; then

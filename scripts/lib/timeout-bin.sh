@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/lib/timeout-bin.sh — SOURCED. Resolve a GNU-semantics `timeout` ONCE.
-# HIMMEL-2589.
 #
 # `timeout` is a GNU coreutil: stock macOS ships neither it nor `gtimeout`
 # (brew's coreutils installs the latter). Sourcing this sets:

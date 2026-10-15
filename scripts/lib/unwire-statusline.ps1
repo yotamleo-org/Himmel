@@ -1,7 +1,7 @@
 ﻿# unwire-statusline.ps1 -- PowerShell counterpart of unwire-statusline.sh.
 # Rolls back .statusLine in a Claude Code settings.json ONLY when it points at a
-# himmel statusLine -- the hud renderer (marketplace/plugins/claude-hud/dist/index.js;
-# HIMMEL-718), the where-are-we wrapper (HIMMEL-538), or the older vendored bar.
+# himmel statusLine -- the hud renderer (marketplace/plugins/claude-hud/dist/index.js),
+# the where-are-we wrapper, or the older vendored bar.
 # A user's own statusLine is left untouched. Shells out to jq for byte-parity
 # with the bash twin.
 #
@@ -9,7 +9,7 @@
 # Direct:  pwsh -File unwire-statusline.ps1 -SettingsPath <path> [-HimmelPath <path>]
 #
 # With -HimmelPath -> REPOINT .statusLine.command to the bash-bar fallback
-#   (HIMMEL-718 migration rollback; the .env.CLAUDE_HUD_ALLOW_EXTRA_CMD gate is
+#   (migration rollback; the .env.CLAUDE_HUD_ALLOW_EXTRA_CMD gate is
 #   deliberately left in place, harmless when the bash bar renders — same as the
 #   bash twin). Without it -> REMOVE .statusLine (uninstall); the gate is still
 #   never removed here -- uninstall.sh removes it via its provenance ledger unit.
@@ -28,7 +28,7 @@ function Remove-Statusline {
     if ([string]::IsNullOrWhiteSpace($raw)) { return }
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -37,7 +37,7 @@ function Remove-Statusline {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #
@@ -63,7 +63,7 @@ function Remove-Statusline {
         }
         if ($LASTEXITCODE -ne 0) { throw "unwire-statusline: jq transform failed" }
         $tmp = "$SettingsPath.unwiresl.tmp"
-        # UTF-8 without BOM (HIMMEL-365/408): Set-Content -Encoding utf8 BOMs on PS 5.1.
+        # UTF-8 without BOM: Set-Content -Encoding utf8 BOMs on PS 5.1.
         [System.IO.File]::WriteAllText($tmp, ($out -join "`n") + "`n")
         Move-Item -Path $tmp -Destination $SettingsPath -Force
         if ($HimmelPath) {

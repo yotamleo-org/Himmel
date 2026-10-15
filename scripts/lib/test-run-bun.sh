@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for the per-plugin MCP bun launchers (marketplace/plugins/*/run-bun.sh,
-# HIMMEL-639). Mirrors scripts/lib/test-run-node.sh. Runs every assertion against
+# Smoke test for the per-plugin MCP bun launchers (marketplace/plugins/*/run-bun.sh). Mirrors scripts/lib/test-run-node.sh. Runs every assertion against
 # BOTH shipped copies so the two stay byte-identical and neither regresses.
 # Usage: bash scripts/lib/test-run-bun.sh
 set -uo pipefail
@@ -13,7 +12,7 @@ failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
-# Minimal utils PATH for the hermetic cases (HIMMEL-2524).
+# Minimal utils PATH for the hermetic cases.
 #
 # This used to be `dirname "$(command -v sort)"` — adopting a whole system
 # directory as the allowlist. On Arch/CachyOS that resolves to /usr/bin, which
@@ -25,7 +24,7 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 #
 # Build the allowlist PER TOOL instead, resolved individually from the live
 # PATH, so it cannot re-admit bun no matter which directory a distro ships it
-# in. Same family as HIMMEL-2470 (node) and HIMMEL-2520 (bun via PATH scrub);
+# in. Same family as the node and bun PATH-scrub mistakes;
 # the inverse mistake to those, and the reason "build an allowlist" is not
 # sufficient advice on its own — the allowlist must never be a directory.
 #
@@ -108,7 +107,7 @@ for RUN in "$W1" "$W2"; do
     fi
     rm -rf "$tmp"
 
-    # POSITIVE CONTROL (HIMMEL-2524): prove the bun that ran is the FAKE one from
+    # POSITIVE CONTROL: prove the bun that ran is the FAKE one from
     # RESOLVE_BUN_PROBE_DIRS, not a real bun reached through the utils PATH. The
     # cases above assert on behaviour a real bun would merely FAIL differently at,
     # so a utils dir that re-admits a real bun made them red without ever saying
