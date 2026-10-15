@@ -1,5 +1,5 @@
-// HIMMEL-4808: console pages and session drill-ins use the same fleet snapshot and run links.
-// HIMMEL-4925: the menu is one collapsible block, closed by default at phone width so the fleet is the first screen.
+// console pages and session drill-ins use the same fleet snapshot and run links.
+// the menu is one collapsible block, closed by default at phone width so the fleet is the first screen.
 // Its filters (lane, state, text, finished inline) narrow every section of the fleet page and are kept per viewer;
 // each live console shows its running / waiting / attention / orphan counts, and finished consoles fold under them.
 import { consoleGroups, EMPTY_FILTERS, filtering, orphanReason, roleLabel, rowHref, useFilters, useOpen, visibleRows, type FleetState, type Row, type ViewFilters } from "./Fleet";

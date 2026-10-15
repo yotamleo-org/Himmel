@@ -1,4 +1,4 @@
-// HIMMEL-4711: the config console's rail around the fleet and run pages, so / and /agui/ read as one app. The page
+// the config console's rail around the fleet and run pages, so / and /agui/ read as one app. The page
 // list and its links come from public/nav.js, the same module the console draws its rail from.
 import type { ReactNode } from "react";
 // @ts-expect-error: plain ES module shared with the console (no types).

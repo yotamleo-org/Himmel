@@ -1,4 +1,4 @@
-// HIMMEL-4254 P3/P4: thin DOM glue. All markup comes from render.js.
+// thin DOM glue. All markup comes from render.js.
 import { render, renderNav, renderHeader, renderProbe } from "/render.js";
 import { renderHealth } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
@@ -8,16 +8,16 @@ import { fleetDot, navLinks, parseLanding } from "/nav.js";
 const $ = (s) => document.querySelector(s);
 const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null };
 let feed = null;
-let lastProbe = null; // HIMMEL-4807: the newest 202 body ({ elapsedMs, progress }) while the first report runs
+let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 let current = "triage";
 
 // The token rides the URL fragment (never sent in a request line); keep it in
-// memory only and clear it from the address bar. HIMMEL-4711: the AG-UI rail
+// memory only and clear it from the address bar. The AG-UI rail
 // links here as #t=<token>&page=<id>, landing on that page.
 const landing = parseLanding(location.hash);
 const token = landing ? landing.token : "";
 if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page);
-// HIMMEL-4711: the Fleet link's status dot, read on load and on each page change (never polled: an open
+// the Fleet link's status dot, read on load and on each page change (never polled: an open
 // console must still let the server idle out).
 let fleet = { data: null, error: null };
 
@@ -29,8 +29,8 @@ let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls l
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let toolHealth = null, toolHealthGen = 0;
 const toolFilters = new URLSearchParams();
-let roadmap = null, roadmapGen = 0; // HIMMEL-4943: declared before route() runs, as healthGen is
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // HIMMEL-5491: writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
+let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
 const PAGES = [
   { id: "config", label: "Config", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); } },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
@@ -53,7 +53,7 @@ function route() {
   if (currentPage.onVisit) currentPage.onVisit();
   if (feed || currentPage.needsFeed === false) paint();
   else { $("#main").innerHTML = lastProbe ? renderProbe(lastProbe) : `<p class="sub" id="status">loading…</p>`; $("#nav").innerHTML = ""; } // no stale page under this tab
-  // HIMMEL-4807: back on Config, pick up a newer report the server loaded in the background.
+  // back on Config, pick up a newer report the server loaded in the background.
   if (feed && currentPage.needsFeed !== false) refreshFeed();
 }
 addEventListener("hashchange", route);
@@ -108,7 +108,7 @@ async function post(path, body) {
 
 // The server answers 202 while its one background report runs (it can take
 // minutes); keep asking, with the token each time, until a terminal answer.
-// HIMMEL-4807: a 202 answers as soon as the probe step changes; onWait gets its body ({ elapsedMs, progress }).
+// a 202 answers as soon as the probe step changes; onWait gets its body ({ elapsedMs, progress }).
 async function fetchFeed(onWait) {
   for (;;) {
     const r = await fetch("/api/feed", { headers: { "X-Himmel-Token": token } });
@@ -135,7 +135,7 @@ async function loadFeed() {
   } catch (_) { if (gen === feedGen) toast("re-probe failed: server unreachable"); }
 }
 
-// HIMMEL-4807: one quiet look for a newer report (the server refreshes it in the background). Only a 200 with a
+// one quiet look for a newer report (the server refreshes it in the background). Only a 200 with a
 // new generatedAt repaints, and never over a loadFeed started since; a 202 or an error says nothing. Called on
 // arriving at Config and when the tab becomes visible, never on a timer: an open console must still idle out.
 async function refreshFeed() {
@@ -150,7 +150,7 @@ async function refreshFeed() {
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFeed(); });
 
-// HIMMEL-4620: the vm.mode / vm.remote form. The draft is what the operator is typing; a saved or loaded answer resets it.
+// the vm.mode / vm.remote form. The draft is what the operator is typing; a saved or loaded answer resets it.
 const vmDraft = (d) => ({ mode: d.mode, ssh: (d.remote && d.remote.ssh) || "", port: d.remote && d.remote.port !== undefined ? String(d.remote.port) : "", identity: (d.remote && d.remote.identity) || "" });
 async function loadVm() {
   const gen = ++vmLoadGen;
@@ -186,7 +186,7 @@ async function loadHealth() {
   try {
     const [r, qr] = await Promise.all([
       fetch("/api/health", { headers: { "X-Himmel-Token": token } }),
-      fetch("/api/bank", { headers: { "X-Himmel-Token": token } }).catch(() => null), // HIMMEL-5486: the panel degrades alone
+      fetch("/api/bank", { headers: { "X-Himmel-Token": token } }).catch(() => null), // the panel degrades alone
     ]);
     j = r.ok ? await r.json() : null;
     if (!j) toast(`health sources failed (${r.status})`);
@@ -209,7 +209,7 @@ async function loadToolHealth() {
   toolHealth = data;
   if (currentPage.id === "toolhealth") paint();
 }
-// HIMMEL-4943: read live on every load; only the newest call may paint.
+// read live on every load; only the newest call may paint.
 async function loadRoadmap() {
   const gen = ++roadmapGen;
   let data;
@@ -221,7 +221,7 @@ async function loadRoadmap() {
   roadmap = data;
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
-// HIMMEL-5491: a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
+// a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
 // on a refusal nothing local changed, so the card is back where it was and the reason is shown above the board.
 let rmWriting = false;
 async function writeRoadmap(body) {
@@ -369,7 +369,7 @@ document.addEventListener("keydown", (e) => {
 
 (async () => {
   try {
-    // HIMMEL-4807: the probe status (step, n of N, a progress bar) replaces #status on a page that waits for the feed.
+    // the probe status (step, n of N, a progress bar) replaces #status on a page that waits for the feed.
     const r = await fetchFeed((j) => { const el = $("#status"); if (el && currentPage.needsFeed !== false) el.outerHTML = renderProbe(j); });
     if (r.status === 401) { setStatus("Not authorised: open the URL printed by `himmelctl ui` (it carries the session token)."); return; }
     if (!r.ok) {

@@ -1,4 +1,4 @@
-// HIMMEL-4405 PR-b: the Health page. Pure rendering, no DOM: renderHealth(feed, health) → HTML.
+// the Health page. Pure rendering, no DOM: renderHealth(feed, health) → HTML.
 // feed = the doctor feed (null until it lands); health = GET /api/health ({bank, legs, monitoring, mode}),
 // null while loading. Every value shown comes from its owner (I1): the feed's rows, the bank ledger
 // row, legs.sh, Prometheus. The one verdict lives here (I6) and only counts what those sources say.
@@ -89,7 +89,7 @@ function bankHtml(health) {
   return `<div class="card" id="bank"><h3>Last subscription usage budget preflight</h3>${body}</div>`;
 }
 
-// HIMMEL-5486: the Claude and Codex bank windows from GET /api/bank. Unknown shows "unknown (why)" and its age, never 0 %.
+// the Claude and Codex bank windows from GET /api/bank. Unknown shows "unknown (why)" and its age, never 0 %.
 const ageText = (s) => (s == null ? "" : s < 90 ? `${s} s old` : s < 5400 ? `${Math.round(s / 60)} min old` : `${Math.round(s / 3600)} h old`);
 function quotaRow(bank, label, w) {
   const age = ageText(w.age_s);

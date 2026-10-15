@@ -1,6 +1,6 @@
-/* The AG-UI run view. The palette, the Plex pair and the rail are config-ui's (public/theme.css, HIMMEL-4711), but prose is set
+/* The AG-UI run view. The palette, the Plex pair and the rail are config-ui's (public/theme.css), but prose is set
    in Plex Sans and only machine text (tool names, args, paths) in Plex Mono. The one bold element is the run
-   strip: parallel tool calls as lanes over time, one band per agent (HIMMEL-4669). Each agent carries one of six
+   strip: parallel tool calls as lanes over time, one band per agent. Each agent carries one of six
    colours (--ag0..5, none of them the status green or red) on its band, its row in the agent list and the rail
    beside its work; failures alone are red (errors, failed suites) or amber (denials, BLOCKED reports).
    Motion is limited to bars growing and the text caret. */
@@ -112,7 +112,7 @@ button{font:inherit;color:inherit}
 .agent-name{grid-row:1;grid-column:2;font:600 12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agent-count{grid-row:1;grid-column:3;font:11.5px var(--mono);color:var(--dim);font-variant-numeric:tabular-nums}
 .agent-meta{grid-row:2;grid-column:2;font:11.5px var(--mono);color:var(--dim)}
-/* HIMMEL-4711: running / done / failed, in the status colours; the call a running agent is in, or when it last acted. */
+/* running / done / failed, in the status colours; the call a running agent is in, or when it last acted. */
 .agent-state{grid-row:2;grid-column:3;font:500 11.5px var(--mono);color:var(--dim)}
 .agent-state.running{color:var(--ok)}.agent-state.failed{color:var(--fail)}
 .agent-now{grid-row:4;grid-column:2/4;font:11.5px var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -134,10 +134,10 @@ button{font:inherit;color:inherit}
 .verdict.open{color:var(--warn)}.verdict.agreed,.verdict.fixed{color:var(--ok)}.verdict.deferred{color:var(--accent)}
 .verdict.disproved{color:var(--off);border-color:var(--line)}.verdict.conflict,.verdict.unaddressed{color:var(--fail)}
 
-/* HIMMEL-4712: the fleet landing */
+/* the fleet landing */
 .fleet{max-width:1100px;margin:0 auto;padding:20px 24px}
 .fleet-rows{list-style:none;margin:0;padding:0}
-/* HIMMEL-4925: sections, and a card whose status (left) and lineage (right) never interleave. */
+/* sections, and a card whose status (left) and lineage (right) never interleave. */
 .fleet-sec{margin:0 0 18px}
 .fleet-sec>summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);
   font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
@@ -151,7 +151,7 @@ button{font:inherit;color:inherit}
 .fleet-attn .fleet-head{display:inline}
 .fleet-why{color:var(--warn);font-weight:600}.fleet-why.fail{color:var(--fail)}
 .fleet-attn .fleet-meter{display:block;max-width:220px}
-/* HIMMEL-4925: orphans — sessions no live console watches, then tick's stale shell-tool wrappers. */
+/* orphans — sessions no live console watches, then tick's stale shell-tool wrappers. */
 .fleet-orphans>summary{color:var(--fail)}
 .fleet-orphan-list{list-style:none;margin:6px 0;padding:0;font:12.5px var(--mono)}
 .fleet-orphan{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--line)}
@@ -222,7 +222,7 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
 .fleet-activity{font-size:13.5px;overflow-wrap:anywhere}
 .fleet-activity b{font:600 12.5px var(--mono);margin-right:4px}
 .fleet-fails{color:var(--fail)}
-/* HIMMEL-4751: the fleet as a tree under the operator, and each row's graph, subagents and token usage */
+/* the fleet as a tree under the operator, and each row's graph, subagents and token usage */
 .fleet-root{margin:0;color:var(--dim);font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.06em}
 .fleet-node{list-style:none}
 .fleet-kids{margin-left:14px;padding-left:14px;border-left:2px solid var(--line)}
@@ -264,10 +264,10 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
   .bar,.band{transition:none}
   .caret{animation:none}
 }
-/* HIMMEL-4711: the page column beside the shared rail, and a fleet row's link to the console. */
+/* the page column beside the shared rail, and a fleet row's link to the console. */
 .pane{min-width:0}
 .fleet-link{justify-self:start;color:var(--accent);font:12px var(--mono)}
-/* HIMMEL-4808: console sections and their fleet rail. */
+/* console sections and their fleet rail. */
 .fleet-console{margin:14px 0 6px}
 .fleet-console>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
 .fleet-console>summary::-webkit-details-marker{display:none}

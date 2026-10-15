@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fleetDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
-// HIMMEL-4711: the config console and the AG-UI pages are one app with one rail. These pin the page list, the
+// the config console and the AG-UI pages are one app with one rail. These pin the page list, the
 // token-in-fragment rule, the landing switch and the status dot.
 const TOKEN = "a".repeat(64);
 const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";

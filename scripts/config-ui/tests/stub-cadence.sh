@@ -13,7 +13,7 @@ if [ "${2:-}" != "--dry-run" ]; then
     sleep 30
   fi
   [ -n "${STUB_SLOW:-}" ] && sleep 1
-  # STUB_RUN_SLEEP (seconds): a real run that outlasts Bun's 10 s idle default (HIMMEL-4369).
+  # STUB_RUN_SLEEP (seconds): a real run that outlasts Bun's 10 s idle default.
   [ -n "${STUB_RUN_SLEEP:-}" ] && sleep "$STUB_RUN_SLEEP"
   case "$1" in
     arm) : > "$STUB_STATE/$name" ;;

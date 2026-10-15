@@ -11,7 +11,7 @@ export type Row = {
   cloud: { url: string | null; phase: "working" | "done" | "blocked" | "merged" | "closed" | "unknown" } | null;
   runtime?: { startedAt: number; endedAt: number | null; elapsedMs: number } | null;
   console?: string | null; live?: boolean; lock?: "held" | "released" | "unknown"; lane?: string;
-  // HIMMEL-4925: read when the server sends them (the leg doc's last marker, the doc's last write, the PR's URL).
+  // read when the server sends them (the leg doc's last marker, the doc's last write, the PR's URL).
   marker?: string | null; lastSeenAt?: number | null; prUrl?: string | null;
 };
 
@@ -29,7 +29,7 @@ export function fleetToken(hash: string): string | null {
 export const consoleName = (r: Row) => r.console === undefined ? r.parent : r.console;
 export const isLive = (r: Row) => r.live !== false && r.state !== "wrapped" && r.lock !== "released";
 export const rowHref = (token: string, r: Row) => r.run ? runHash(token, r.run) : r.cloud?.url ?? null;
-// HIMMEL-4925: a cloud session is a lane, not an orphan (the operator does not keep a shepherd on every one), and an
+// a cloud session is a lane, not an orphan (the operator does not keep a shepherd on every one), and an
 // interactive session is the operator's own; neither is ever one.
 export function orphanReason(r: Row, rows: Row[]): string | null {
   if (r.role === "console" || r.role === "cloud" || r.role === "interactive" || r.state === "wrapped") return null;
@@ -49,7 +49,7 @@ export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
     .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && consoleName(r) === c.name && !orphanReason(r, rows)) }));
 }
 
-// HIMMEL-4925: the page's sections. Needs attention = one line per session that wants a console action, by severity;
+// the page's sections. Needs attention = one line per session that wants a console action, by severity;
 // Orphans = live sessions no live console watches, plus the stale shell-tool wrappers tick also reports; Running = the
 // rest of the live sessions, grouped under their live console (siblings by state, then newest activity); Finished =
 // everything that ended, plus a cloud session whose console has, with a leg's or a console's chain folded into one entry.
@@ -76,7 +76,7 @@ export type FleetSections = {
   counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; live: number; total: number };
 };
 
-// HIMMEL-4925: cloud is a lane like native and claudex.
+// cloud is a lane like native and claudex.
 export const laneOf = (r: Row) => (r.role === "cloud" || r.lane === "cloud" ? "cloud" : r.lane === "claudex" ? "claudex" : "native");
 // A leg's hops share a ticket and a leg number: N1494, N1494b and their -RESUME docs are one chain.
 export function chainKey(name: string): string | null {
@@ -180,13 +180,13 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
 }
 
 // A filter chip's badge: how many live sessions (and, for "orphaned", wrappers) that filter alone shows, by the same
-// predicate. Finished sessions fold under Finished, not the live list, so they are not in the badge (HIMMEL-5380).
+// predicate. Finished sessions fold under Finished, not the live list, so they are not in the badge.
 export function filterCount(rows: Row[], f: Filters, procs: ProcessOrphan[] = []): number {
   const s = fleetSections(rows, null, f, procs);
   return s.counts.live + (f.states.includes("orphaned") ? s.processOrphans.length : 0);
 }
 
-// A session name without its ticket and date: `HIMMEL-4912-N1497-sandbox-runner-2026-10-08` is `N1497 sandbox-runner`,
+// A session name without its ticket and date: `HIMMEL-NNNN-N1497-sandbox-runner-2026-10-08` is `N1497 sandbox-runner`,
 // a console `HIMMEL-nextleg-2026-10-08BU-roadmap-console` is `BU-roadmap-console`; anything else is kept whole.
 export function shortName(name: string): string {
   const c = /-\d{4}-\d{2}-\d{2}([A-Z]+-.*-console)$/.exec(name);

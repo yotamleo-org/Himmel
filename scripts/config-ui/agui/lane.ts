@@ -1,4 +1,4 @@
-// lane.ts — a session's lane, what it is priced against, and how it scored (HIMMEL-4817).
+// lane.ts — a session's lane, what it is priced against, and how it scored.
 //
 // The lane comes from the launch record (LEG_LANE, the launcher's HIMMEL_SESSION_LANE, the config dir, the leg doc),
 // never guessed from the model string. A claudex session is priced from the codex weekly bank (the used% delta across

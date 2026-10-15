@@ -1,4 +1,4 @@
-// HIMMEL-4943: the Roadmap page. GET /api/roadmap reads the Jira mirror, the plan dir and the legs live (no static
+// the Roadmap page. GET /api/roadmap reads the Jira mirror, the plan dir and the legs live (no static
 // render, no republish); the page draws the kanban by version and theme, the release panels and the drift trend, the
 // leg -> Jira sync plan the console kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
@@ -144,7 +144,7 @@ test("the page renders every section and escapes ticket text", () => {
   r.tickets[0].t = "<script>x</script>";
   const html = renderRoadmap(r, { version: null, theme: null });
   for (const id of ["rm-releases", "rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
-  // HIMMEL-5488: the long inline board is gone from the overview; each version links to its own drill-in page
+  // the long inline board is gone from the overview; each version links to its own drill-in page
   expect(html).not.toContain('id="rm-kanban"');
   expect(html).not.toContain("rm-board");
   expect(html).toContain('href="#/roadmap/v1.1.2"');

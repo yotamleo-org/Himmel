@@ -6,7 +6,7 @@ import { makeStamper, turnEnded } from "./reducer";
 
 // The one place the endpoint shape lives (PR2 serves it from the config-ui server, token-gated).
 export const AGUI_URL = (run: string) => `/api/agui/${encodeURIComponent(run)}`;
-// HIMMEL-4712: the fleet landing's census, and the fragment a fleet row opens.
+// the fleet landing's census, and the fragment a fleet row opens.
 export const FLEET_URL = "/api/agui/fleet";
 export { runHash, consoleHash, consoleFromHash, fleetToken } from "./fleet-model";
 

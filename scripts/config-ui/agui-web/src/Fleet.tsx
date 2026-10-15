@@ -1,11 +1,11 @@
-// HIMMEL-4751: the live rows render as a tree under the operator (a leg under its console, a console beside the one
+// the live rows render as a tree under the operator (a leg under its console, a console beside the one
 // it succeeded), each with its subagents, context fill and token usage; a parent or successor name jumps to its row.
-// HIMMEL-4791: a cloud session (no local process) is a row of role "cloud" under its console, with its local
+// a cloud session (no local process) is a row of role "cloud" under its console, with its local
 // shepherd leg under it: its PR, its CLOUD-DONE phase and session link, and tokens said to be not measured.
-// HIMMEL-4712: the fleet landing — /agui/ with a token and no run. Every live session (consoles, legs, judges,
-// interactive sessions) from GET /api/agui/fleet, polled; a row opens that session's run stream. HIMMEL-4711: a
+// the fleet landing — /agui/ with a token and no run. Every live session (consoles, legs, judges,
+// interactive sessions) from GET /api/agui/fleet, polled; a row opens that session's run stream. A
 // leg's row also links to the console's Health page, whose legs card reads the same handover docs.
-// HIMMEL-4925: sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live console, and
+// sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live console, and
 // Finished (closed by default) — narrowed by the rail's filters. A card is one line: its name opens the session's run
 // page, its chevron expands it in place to the status (left) and lineage (right) columns.
 import { useEffect, useState, type ReactNode } from "react";
@@ -16,7 +16,7 @@ import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shor
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
 
-// HIMMEL-4751: the live rows as a tree under the operator: a row whose parent is a live row sits under it, the
+// the live rows as a tree under the operator: a row whose parent is a live row sits under it, the
 // rest are roots. A parent link that loops (two docs naming each other) still places every row exactly once.
 function forest(rows: Row[]): Node[] {
   const live = new Set(rows.map((r) => r.name));
@@ -47,7 +47,7 @@ const mins = (m: number) => (m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60
 
 export type FleetState = { fleet: Fleet | null; error: string | null };
 
-// HIMMEL-4711: polled once for the page (the rail's Fleet dot reads it on every page, the fleet list on this one).
+// polled once for the page (the rail's Fleet dot reads it on every page, the fleet list on this one).
 export function useFleet(token: string | null): FleetState {
   const [st, setSt] = useState<FleetState>({ fleet: null, error: null });
   useEffect(() => {
@@ -68,7 +68,7 @@ export function useFleet(token: string | null): FleetState {
   return st;
 }
 
-// HIMMEL-4925: a section's open state survives the 5 s poll and, per viewer, a reload. Storage can throw (private
+// a section's open state survives the 5 s poll and, per viewer, a reload. Storage can throw (private
 // window, blocked site data): the page then just uses the default.
 export function useOpen(key: string, initial: boolean): [boolean, (open: boolean) => void] {
   const [open, setOpen] = useState(() => {
@@ -77,7 +77,7 @@ export function useOpen(key: string, initial: boolean): [boolean, (open: boolean
   return [open, (o) => { setOpen(o); try { localStorage.setItem(`fleet-open:${key}`, o ? "1" : "0"); } catch { /* not kept */ } }];
 }
 
-// HIMMEL-4925: the rail's filters, kept per viewer and shared with the page through one window event, so the rail and
+// the rail's filters, kept per viewer and shared with the page through one window event, so the rail and
 // the list never disagree. `finished` shows the Finished section open.
 export type ViewFilters = Filters & { finished: boolean };
 export const EMPTY_FILTERS: ViewFilters = { ...NO_FILTERS, finished: false };
@@ -103,7 +103,7 @@ export function useFilters(): [ViewFilters, (f: ViewFilters) => void] {
   }];
 }
 export const filtering = (f: Filters) => f.lanes.length > 0 || f.states.length > 0 || f.text.trim() !== "";
-// HIMMEL-5504: display name for a session role; the role value itself (console, leg) is a parsed key and stays.
+// display name for a session role; the role value itself (console, leg) is a parsed key and stays.
 export const roleLabel = (role: string) => role === "console" ? "supervisor session" : role === "leg" ? "worker session" : role;
 
 function Section({ id, title, count, initial, force = false, className, children }: { id: string; title: string; count: number; initial: boolean; force?: boolean; className?: string; children: ReactNode }) {
@@ -239,7 +239,7 @@ function Attention({ items, token, now }: { items: ReturnType<typeof fleetSectio
   </ul>;
 }
 
-// HIMMEL-4925: live sessions no live console watches, then tick's stale shell-tool wrappers. The page never signals a
+// live sessions no live console watches, then tick's stale shell-tool wrappers. The page never signals a
 // process: each row says what closes it.
 function Orphans({ sessions, procs, unread, token, now }: { sessions: ReturnType<typeof fleetSections>["orphans"]; procs: ProcessOrphan[]; unread: boolean; token: string; now: number }) {
   return <>
@@ -313,7 +313,7 @@ function Rel({ name, live }: { name: string; live: Row[] }) {
   );
 }
 
-// HIMMEL-4925: where a row hangs, root first: operator › console › … › this row. A parent loop stops at a repeat.
+// where a row hangs, root first: operator › console › … › this row. A parent loop stops at a repeat.
 function Lineage({ row, live }: { row: Row; live: Row[] }) {
   const up: string[] = [];
   for (let p = row.parent; p && !up.includes(p) && p !== row.name && up.length < 8; p = live.find((x) => x.name === p)?.parent ?? null) up.unshift(p);
@@ -329,13 +329,13 @@ function Meter({ fill }: { fill: number }) {
   return <span className={`fleet-meter ${fill >= 90 ? "fail" : fill >= 75 ? "warn" : "ok"}`} aria-hidden="true"><i style={{ width: `${Math.min(100, fill)}%` }} /></span>;
 }
 
-// HIMMEL-4751: context fill against the session's ceiling, then the cumulative tokens and their cost-eq.
+// context fill against the session's ceiling, then the cumulative tokens and their cost-eq.
 function usageText(u: NonNullable<Row["usage"]>): string {
   const fill = u.fill === null ? "context not measured" : `context ${u.fill}% of ${k(u.ceiling)} (${u.ceilingFrom === "autocompact" ? "autocompact" : "model window"})`;
   return `${fill} · ${u.calls} call${u.calls === 1 ? "" : "s"} · in ${k(u.input)} · out ${k(u.output)} · cache read ${k(u.cacheRead)} · cache write ${k(u.cacheCreate)} · cost-eq ${k(u.costEq)}`;
 }
 
-// HIMMEL-4791: what the cloud session last reported on its PR (the brief's CLOUD-DONE / CLOUD-BLOCKED comment).
+// what the cloud session last reported on its PR (the brief's CLOUD-DONE / CLOUD-BLOCKED comment).
 const PHASE: Record<NonNullable<Row["cloud"]>["phase"], string> = {
   working: "no CLOUD-DONE yet", done: "CLOUD-DONE, shepherd's turn", blocked: "CLOUD-BLOCKED: a question on the PR",
   merged: "PR merged", closed: "PR closed", unknown: "GitHub status unknown (read failed or throttled)",

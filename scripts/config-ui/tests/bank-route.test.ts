@@ -1,4 +1,4 @@
-// HIMMEL-5486: GET /api/bank — Claude and Codex bank windows from the caches bank-preflight reads.
+// GET /api/bank — Claude and Codex bank windows from the caches bank-preflight reads.
 import { test, expect, afterEach } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

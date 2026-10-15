@@ -1,4 +1,4 @@
-// HIMMEL-4254 P4: the closed action table (spec §5.2). Every argv is built
+// the closed action table (spec §5.2). Every argv is built
 // from constants here plus a target validated against a frozen list and, for
 // config.*, a value from {on, off}. No feed text ever reaches an argv.
 import { execFileSync } from "node:child_process";

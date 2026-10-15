@@ -1,4 +1,4 @@
-// HIMMEL-4400: fixture feeds + the server harness. The bundle order and titles
+// fixture feeds + the server harness. The bundle order and titles
 // come from the real scripts/himmelctl/lib/feed-bundles.json, so the suite
 // checks the UI renders the CURRENT table order (a reorder there is followed,
 // not flagged); the rows are synthetic and deterministic.
@@ -62,7 +62,7 @@ export function buildFeed(v: Variant = {}) {
 }
 
 export type Alert = { labels: Record<string, string>; annotations: Record<string, string> };
-// HIMMEL-4405 PR-b seams. ledger: rows written to $HOME/.himmel/cadence-ledger.jsonl. handover: a temp root
+// Seams. ledger: rows written to $HOME/.himmel/cadence-ledger.jsonl. handover: a temp root
 // with one fleet manifest + one leg doc ending in the given bullet. prom: a loopback stub of /api/v1/alerts
 // (absent: an unused port, so Prometheus is refused). feedDelayMs: the feed stub sleeps before answering.
 export type BootOpts = { ledger?: object[]; handover?: { bullet: string }; prom?: { alerts: Alert[] }; feedDelayMs?: number };
@@ -74,7 +74,7 @@ export type Harness = {
 const writeRows = (file: string, rows: object[]) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, rows.map((r) => JSON.stringify(r) + "\n").join("")); };
 
 // Starts the REAL `himmelctl ui --port 0`. The Claude session markers are
-// dropped from the child env so the HIMMEL-4350 refusal is not tripped; the
+// dropped from the child env so the refusal is not tripped; the
 // refusal itself is untouched (no --allow-agent-session anywhere).
 export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "cfgui-e2e-"));
@@ -121,7 +121,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     child.stderr!.on("data", (d) => (err += d));
     child.stdout!.on("data", (d) => {
       buf += d;
-      // HIMMEL-4711: the one printed URL may land on the fleet (/agui/); these tests open the console.
+      // the one printed URL may land on the fleet (/agui/); these tests open the console.
       const m = /(http:\/\/127\.0\.0\.1:\d+)\/(?:agui\/)?(#t=[0-9a-f]{64})/.exec(buf);
       if (m) ok(`${m[1]}/${m[2]}`);
     });

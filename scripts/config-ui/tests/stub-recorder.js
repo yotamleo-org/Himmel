@@ -13,7 +13,7 @@ if (args[0] !== "report") {
   process.stdout.write(`did ${args.join(" ")}${leak}\n`);
   process.exit(0);
 }
-// HIMMEL-4807: a full report (no --items) carries seq = its line number in $STUB_ARGV, so a test can tell
+// a full report (no --items) carries seq = its line number in $STUB_ARGV, so a test can tell
 // a report started before an action from one started after; $STUB_STATE/feed-sleep (ms) holds it back.
 const full = !args.includes("--items");
 const seq = full ? readFileSync(process.env.STUB_ARGV, "utf8").split("\n").filter(Boolean).length : undefined;

@@ -1,4 +1,4 @@
-// HIMMEL-4817: a session's lane comes from its launch record, never its model string; a claudex leg is priced
+// a session's lane comes from its launch record, never its model string; a claudex leg is priced
 // from the codex bank, never at Claude weights; and every leg gets a quality row with a lane dimension.
 import { test, expect } from "bun:test";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, laneOfJournal, readCodexBank } from "../agui/lane";

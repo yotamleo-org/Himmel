@@ -1,4 +1,4 @@
-// HIMMEL-5491: a stubbed Jira CLI for the write-route tests. Records each argv as one JSON line in $STUB_JIRA_LOG;
+// a stubbed Jira CLI for the write-route tests. Records each argv as one JSON line in $STUB_JIRA_LOG;
 // `get --json` answers with the labels in $STUB_JIRA_LABELS (comma separated) and a description from $STUB_JIRA_DESC;
 // $STUB_JIRA_GET_RAW replaces the whole `get` output; $STUB_JIRA_FAIL=<verb> makes that verb exit 1. Never live Jira.
 const { appendFileSync } = require("node:fs");

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# HIMMEL-4480 PR4: regenerate scripts/config-ui/docs/agui-live-run.gif.
+# regenerate scripts/config-ui/docs/agui-live-run.gif.
 # Records the AG-UI page streaming a fixture journal that is appended to while the page is open (a live
 # stream over the real SSE path), then encodes the frames with the station ffmpeg.
-# HIMMEL-4669: the recorder writes lossless screenshot frames (8 fps, from the first event on) instead of a
+# the recorder writes lossless screenshot frames (8 fps, from the first event on) instead of a
 # video: unchanged pixels stay unchanged, so the GIF stays small. One palette for the whole run, no dither.
 # Needs: bun, ffmpeg, Playwright's Chromium (build 1243), agui-web/dist built. Run it from your own terminal.
 set -euo pipefail

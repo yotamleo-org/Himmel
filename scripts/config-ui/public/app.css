@@ -1,4 +1,4 @@
-/* Theme tokens and the rail: theme.css (HIMMEL-4711). Layout: sticky left rail (three regions + live counts) beside one scrolling column of fixed-grid monospace rows. Dark-first. */
+/* Theme tokens and the rail: theme.css. Layout: sticky left rail (three regions + live counts) beside one scrolling column of fixed-grid monospace rows. Dark-first. */
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:13px/1.5 var(--mono);margin:0}
 .top{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:10px 24px;border-bottom:1px solid var(--line);font-size:12px;overflow-wrap:anywhere}
@@ -55,7 +55,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .chip[aria-pressed="true"]{color:var(--fg);border-color:var(--accent)}
 #q{background:var(--panel);color:var(--fg);border:1px solid var(--line);font:12px var(--mono);padding:4px 8px;width:min(240px,100%)}
 .empty{color:var(--dim);padding:8px 4px}
-/* HIMMEL-4807: the probe status while the first report runs; a native <progress> in the theme colours. */
+/* the probe status while the first report runs; a native <progress> in the theme colours. */
 .probe{display:flex;flex-direction:column;gap:6px;max-width:520px;font-variant-numeric:tabular-nums}
 .probe .sub{margin:0}
 .probe progress{appearance:none;-webkit-appearance:none;width:100%;height:6px;border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--accent);accent-color:var(--accent)}
@@ -73,7 +73,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
   .body{padding-left:4px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-/* HIMMEL-4405 PR-b: Health page. Existing tokens only. */
+/* Health page. Existing tokens only. */
 .vhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .vhead .word{font-size:20px;font-weight:600}
 .vhead .inputs{color:var(--dim)}
@@ -84,7 +84,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .card h3{margin:0 0 6px;font-size:13px}
 .leg{display:flex;gap:12px;padding:3px 0;overflow-wrap:anywhere}.leg .mk{min-width:76px;font-weight:600}
 .nodata{color:var(--dim);font-style:italic;padding:4px 0}
-/* HIMMEL-4943: Roadmap page. Existing tokens only. */
+/* Roadmap page. Existing tokens only. */
 .rm-bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:8px 0}
 .rm-filters{display:flex;flex-wrap:wrap;gap:8px 16px}
 .rm-ver{margin:16px 0 4px}

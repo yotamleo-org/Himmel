@@ -1,4 +1,4 @@
-// roadmap.ts — the read-side behind GET /api/roadmap (HIMMEL-4943). The Jira mirror, the plan dir, the drift log and the
+// roadmap.ts — the read-side behind GET /api/roadmap. The Jira mirror, the plan dir, the drift log and the
 // legs are read LIVE on every request; nothing here writes or executes anything. Semantics are a port of
 // scripts/handover/console-kit/tracker.py (read_mirror, read_versions, bucket, jira_view, drift_log), which stays the
 // CLI/offline renderer and the drift log's only writer. legSync only PLANS Jira CLI argv: the console kit is the one writer.
@@ -11,7 +11,7 @@ const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
 const TAIL_BYTES = 64 * 1024;
 const TREND_ROWS = 30;
 const NO_THEME = "(no theme)";
-const THEME_PREFIX = "theme-"; // HIMMEL-5491: the Jira label `theme-<slug>`, read before the plan overlay
+const THEME_PREFIX = "theme-"; // the Jira label `theme-<slug>`, read before the plan overlay
 const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK"]);
 const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
@@ -153,7 +153,7 @@ export function readRoadmap(o: Opts): Roadmap {
     else planReason = `no stage3/placement.tsv in ${o.planDir}`;
   }
   const themeOf = o.planDir ? readTheme(o.planDir) : new Map<number, string>();
-  // HIMMEL-5491: a ticket's Jira theme label wins; a slug that matches a plan theme shows that theme's name.
+  // a ticket's Jira theme label wins; a slug that matches a plan theme shows that theme's name.
   const planNames = new Map([...themeOf.values()].map((n) => [slugOf(n), n] as [string, string]));
   for (const m of mir) {
     const lab = m.labels.find((l) => l.startsWith(THEME_PREFIX) && l.length > THEME_PREFIX.length);

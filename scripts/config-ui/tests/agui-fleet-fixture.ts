@@ -1,4 +1,4 @@
-// HIMMEL-4712: a fixture fleet — three live sessions (a console, a leg with a running subagent and one failure, an
+// a fixture fleet — three live sessions (a console, a leg with a running subagent and one failure, an
 // idle interactive session) and one wrapped leg — laid out exactly where the real fleet census reads it: a stub
 // pgrep and a fake /proc (claude-sessions.sh's own CLAUDE_SESSIONS_PGREP / CLAUDE_SESSIONS_PROC seams), the
 // harness's ~/.claude/sessions/<pid>.json, the session journals under ~/.claude/projects, and leg docs under
@@ -6,7 +6,7 @@
 import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-// HIMMEL-4751: head = the doc's title tail and brief lines above Results (the graph link); autocompact = the
+// head = the doc's title tail and brief lines above Results (the graph link); autocompact = the
 // --autocompact argv. The console succeeded a console that is no longer live; the leg's brief names the console.
 type Member = { pid: number; name: string; run: string; model: string; status: "busy" | "idle"; doc?: string[]; head?: string[]; autocompact?: string };
 export const PRIOR_CONSOLE = "HIMMEL-nextleg-2026-10-07ZY-roadmap-console";
@@ -25,7 +25,7 @@ let seq = 0;
 const rec = (m: Member, o: Record<string, unknown>) =>
   JSON.stringify({ isSidechain: false, sessionId: m.run, timestamp: new Date(Date.now() - 60_000 + seq * 10).toISOString(), uuid: `u-${++seq}`, ...o }) + "\n";
 const prompt = (m: Member, text: string, side = {}) => rec(m, { type: "user", parentUuid: null, ...side, message: { role: "user", content: text } });
-// HIMMEL-4751: every call carries the usage record a real transcript writes on it.
+// every call carries the usage record a real transcript writes on it.
 export const USAGE = { input_tokens: 10, output_tokens: 100, cache_read_input_tokens: 40000, cache_creation_input_tokens: 0 };
 const call = (m: Member, id: string, name: string, input: Record<string, unknown>, side = {}) =>
   rec(m, { type: "assistant", ...side, message: { id: `m-${id}`, role: "assistant", stop_reason: "tool_use", model: "claude-opus-5-5", usage: USAGE, content: [{ type: "tool_use", id, name, input }] } });
@@ -54,11 +54,11 @@ export type FleetFixture = {
   gh: { calls: string; reply: string; rc: string };
 };
 
-// HIMMEL-4791: the cloud lane, opt-in ({ cloud: true }). The console's bucket carries cloud-route.jsonl (what
+// the cloud lane, opt-in ({ cloud: true }). The console's bucket carries cloud-route.jsonl (what
 // cloud-route.mjs appends) and the briefs it wrote; GitHub is a stub gh (CONFIG_UI_GH) that logs each call's argv
-// and answers the batched search with gh-reply.json. HIMMEL-905 reported CLOUD-DONE on open PR 1905 and has a live
-// local shepherd leg; HIMMEL-906 has no PR yet; HIMMEL-907 merged. HIMMEL-908 was routed LOCAL-NATIVE, HIMMEL-909
-// went CLOUD-OK too long ago, and HIMMEL-910's newest routing is BLOCKED: none of the three is a cloud session.
+// and answers the batched search with gh-reply.json. Ticket 905 reported CLOUD-DONE on open PR 1905 and has a live
+// local shepherd leg; 906 has no PR yet; 907 merged. 908 was routed LOCAL-NATIVE, 909
+// went CLOUD-OK too long ago, and 910's newest routing is BLOCKED: none of the three is a cloud session.
 export const CLOUD = {
   shepherd: { pid: 4105, name: "HIMMEL-905-N9005-cloud-shepherd-2026-10-07", run: "1a000000-0000-4000-8000-000000000005", model: "sonnet", status: "busy",
     head: ["", "> **You are N9005.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-console`**."], doc: ["- 10:00 LIVE — shepherding PR 1905"] } satisfies Member,
@@ -103,7 +103,7 @@ export function fleetFixture(dir: string, opts: { cloud?: boolean } = {}): Fleet
   chmodSync(join(dir, "gh"), 0o755);
   writeFileSync(gh.reply, JSON.stringify(GH_REPLY));
   writeFileSync(gh.rc, "0");
-  // HIMMEL-4925: the process-orphan inventory, silent by default so no suite reads the real process table.
+  // the process-orphan inventory, silent by default so no suite reads the real process table.
   const orphans = join(dir, "orphan-loops.sh");
   writeFileSync(orphans, "#!/bin/sh\nexit 0\n");
   chmodSync(orphans, 0o755);

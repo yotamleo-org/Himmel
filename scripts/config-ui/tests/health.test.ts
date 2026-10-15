@@ -1,4 +1,4 @@
-// HIMMEL-4405 PR-b: the one Health verdict (I6) and the page's escaping, as pure functions.
+// the one Health verdict (I6) and the page's escaping, as pure functions.
 import { test, expect } from "bun:test";
 // @ts-ignore plain browser ES module, no types
 import { verdict, renderHealth } from "../public/health.js";
@@ -50,7 +50,7 @@ test("renderHealth with no feed and no health still renders all five sections", 
   expect(html).toContain("No data");
 });
 
-// HIMMEL-4443: a responding exporter makes monitoring.state "ok", which must not hide a failing Prometheus.
+// a responding exporter makes monitoring.state "ok", which must not hide a failing Prometheus.
 test("each monitoring source's failure is rendered on its own, even when the other is ok", () => {
   const gone = { state: "absent" };
   const mon = (prometheus: object, exporter: object) => ({ bank: gone, legs: gone, monitoring: { state: "ok", prometheus, exporter } });
@@ -64,7 +64,7 @@ test("each monitoring source's failure is rendered on its own, even when the oth
   expect(bothOk).not.toContain("unreachable");
 });
 
-// HIMMEL-4767 (HIMMEL-4748 WP8): the resolver's tracker/forge answer is shown as one row.
+// the resolver's tracker/forge answer is shown as one row.
 test("renderHealth shows the project mode row from the resolver", () => {
   const gone = { state: "absent" };
   const mode = { state: "ok", tracker: "local", forge: "local-git", idRequired: "1" };

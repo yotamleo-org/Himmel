@@ -1,4 +1,4 @@
-// HIMMEL-5491: the Kanban's write path. A drop moves a ticket to another status column and a theme select sets its
+// the Kanban's write path. A drop moves a ticket to another status column and a theme select sets its
 // single `theme-<slug>` label, both through the Jira CLI (never the REST API, never credentials in this process).
 // Validation is here and runs before any child; the route in server.ts adds the token gate, the write lock and the audit.
 import { readFileSync } from "node:fs";

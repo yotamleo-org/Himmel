@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# legs.sh — read-only legs view for the config UI's Health page (HIMMEL-4405).
+# legs.sh — read-only legs view for the config UI's Health page.
 # Composes the existing owners and parses nothing itself: the handover root from
 # `load_dotenv HANDOVER_DIR` + `handover_root`, the legs from `fleet-manifest.sh
 # list`, each leg's status from `leg_tail_status`. Prints one JSON object:
@@ -7,7 +7,7 @@
 #   {"manifest": null, "legs": []}     no *.fleet.json under the root
 # Exit 3 when there is no handover root. `himmelctl ui` is launched without
 # HANDOVER_DIR, and a bare handover_root would fall back to a worktree's
-# handovers/ stub (HIMMEL-4403), so resolve from the station anchor: the
+# handovers/ stub, so resolve from the station anchor: the
 # primary checkout, the parent of git's common dir.
 # ponytail: two callers (probes.js and this script) spell the anchor+dotenv
 # prelude, upgrade path: a handover_root_station helper in handover-path.sh when a third caller appears.

@@ -1,4 +1,4 @@
-// HIMMEL-4816: three seeded digests exercise the real ledger writer and server rate math.
+// three seeded digests exercise the real ledger writer and server rate math.
 import { test, expect, afterEach } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

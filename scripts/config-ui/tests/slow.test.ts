@@ -1,4 +1,4 @@
-// HIMMEL-4369: Bun.serve cuts any request slower than 10 s by default, and every
+// Bun.serve cuts any request slower than 10 s by default, and every
 // other config-ui test answers instantly. These rows use a stub that is slower.
 import { test, expect, afterEach } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -116,11 +116,11 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (f: { id?: string } | null) => { if (f) painted.push(f.id ?? "?"); return ""; }, renderNav: () => "", renderHeader: () => "",
-    // HIMMEL-4711: the rail (nav.js) and its fleet read are not under test here.
+    // the rail (nav.js) and its fleet read are not under test here.
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // HIMMEL-4620: nor is the vm form's read (Config's onVisit): it must not take the feed's fetch slot.
+    // nor is the vm form's read (Config's onVisit): it must not take the feed's fetch slot.
     fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);

@@ -14,7 +14,7 @@ async function launch() {
   const reader = p.stdout.getReader();
   const line = new TextDecoder().decode((await reader.read()).value);
   const url = line.trim();
-  // HIMMEL-4711: the one URL lands on the fleet (/agui/) when its page is built, else on the console.
+  // the one URL lands on the fleet (/agui/) when its page is built, else on the console.
   expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/(?:agui\/)?#t=[0-9a-f]{64}$/);
   const [base, frag] = url.split(/\/(?:agui\/)?#t=/);
   return { p, base, token: frag, started: Date.now() };
@@ -29,7 +29,7 @@ test("no requests: the process exits soon after the idle window", async () => {
   } finally { p.kill(); }
 });
 
-// Requests that must NOT keep the server alive: a foreign Host, and (HIMMEL-4350)
+// Requests that must NOT keep the server alive: a foreign Host, and
 // anything without the token, static pages included.
 for (const [name, path, headers] of [
   ["a foreign Host", "/", { host: "evil.example" }],

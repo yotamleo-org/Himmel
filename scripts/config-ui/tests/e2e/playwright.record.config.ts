@@ -1,4 +1,4 @@
-// HIMMEL-4480 PR4: the recorder's own config; record-agui-gif.sh runs it. The e2e suite never does.
+// the recorder's own config; record-agui-gif.sh runs it. The e2e suite never does.
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({

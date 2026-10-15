@@ -1,4 +1,4 @@
-// fleet.ts — every live session on one page (HIMMEL-4712), for GET /api/agui/fleet.
+// fleet.ts — every live session on one page, for GET /api/agui/fleet.
 //
 // The census is fleet.sh's (claude_sessions + each session's leg doc and its leg_tail_status); this joins each
 // census pid to the harness's ~/.claude/sessions/<pid>.json (its sessionId and busy/idle status), finds the
@@ -7,14 +7,14 @@
 // A session whose journal has not been written for RECENT_MS is not live and is left out; one with no journal
 // yet is listed bare. Read-only: nothing here writes.
 //
-// HIMMEL-4751: a row also carries its place in the agent graph (graphOf: the parent console its own handover doc
+// a row also carries its place in the agent graph (graphOf: the parent console its own handover doc
 // names, and a console's predecessor) with its in-process subagents, and its token usage (usageOf: the journal's
 // API usage records, per call, priced with the leg-burn weights and filled against its --autocompact ceiling).
 //
-// HIMMEL-4791: cloud sessions join as rows of role "cloud" (fleet-cloud.ts: the console bucket's cloud-route.jsonl
+// cloud sessions join as rows of role "cloud" (fleet-cloud.ts: the console bucket's cloud-route.jsonl
 // plus one cached GitHub read), each under the console its brief names, with its local shepherd leg under it.
 //
-// HIMMEL-4817: a row carries its lane and how it was found (laneOf: the launch record, never the model string), the
+// a row carries its lane and how it was found (laneOf: the launch record, never the model string), the
 // backend model, a cost row (a claudex leg priced from the codex weekly bank delta, never at Claude weights) and an
 // eval row (the per-lane quality measure); the fleet carries the one codex bank reading they were priced against.
 //
@@ -46,7 +46,7 @@ export type FleetRow = {
   runtime: { startedAt: number; endedAt: number | null; elapsedMs: number } | null;
   console: string | null; live: boolean; lock: "held" | "released" | "unknown";
   lane: Lane; laneFrom: LaneFrom | null; backendModel: string | null; cost: CostRow | null; eval: EvalRow | null;
-  // HIMMEL-4925: the doc's last Results marker (leg_tail_status), the doc's last write, and the PR's URL.
+  // the doc's last Results marker (leg_tail_status), the doc's last write, and the PR's URL.
   marker: string | null; lastSeenAt: number | null; prUrl: string | null;
 };
 export type ProcessOrphan = { pid: number; owner: string; ageMin: number };
@@ -54,7 +54,7 @@ export type Usage = {
   calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
   resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
 };
-// processOrphans (HIMMEL-4925): tick's stale shell-tool wrappers; null when the inventory could not be read.
+// processOrphans: tick's stale shell-tool wrappers; null when the inventory could not be read.
 export type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: FleetRow[]; processOrphans: ProcessOrphan[] | null; banks: { codex: CodexBank | null } };
 type CensusRow = { pid: string; name: string; model: string; doc: string; status: string; autocompact?: string; startedAt?: number | null };
 type Census = { census: Fleet["census"]; sessions: CensusRow[]; cloudRoutes?: string[]; manifests?: string[]; consoleDocs?: string[] };
@@ -100,7 +100,7 @@ function tallyOf(lines: string[]): Tally | null {
   return t.calls ? t : null;
 }
 
-// The ceiling is the window the launch declared (HIMMEL-4925: claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS, which a
+// The ceiling is the window the launch declared (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS, which a
 // claudex session honours over --autocompact); else the session's numeric --autocompact; else a Claude model's window.
 // A non-Claude model nobody declared a window for, or a fill past 100 % (so the ceiling is wrong), is not measured.
 const num = (s: string | undefined) => (s && /^\d+$/.test(s) ? Number(s) : 0);
@@ -127,7 +127,7 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
   });
 }
 
-// HIMMEL-4925: the shell-tool wrappers tick reports as orphans, from the console kit's own inventory (`--list`: one
+// the shell-tool wrappers tick reports as orphans, from the console kit's own inventory (`--list`: one
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
 async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }): Promise<ProcessOrphan[] | null> {
   const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/console-kit/orphan-loops.sh");
@@ -143,7 +143,7 @@ async function processOrphansOf(opts: { script: string; env: Record<string, stri
   });
 }
 
-// HIMMEL-4925: the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
+// the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
 // origin. ponytail: every leg's PR is linked into this checkout's repo; a leg working another repo's PR gets a wrong
 // link, upgrade path: resolve the repo per handover bucket from the registry once legs routinely ship elsewhere.
 const slugs = new Map<string, string | null>();
@@ -239,7 +239,7 @@ async function fold(journal: string): Promise<Folded> {
   const { lines } = await mergeJournalFiles(paths);
   const mapper = createJournalMapper();
   let view = initialView();
-  const rounds: number[] = []; // HIMMEL-4817: the findings count of every critic-panel report, in order
+  const rounds: number[] = []; // the findings count of every critic-panel report, in order
   for (const l of lines) for (const e of mapper.pushLine(l)) {
     const review = e.type === "STATE_SNAPSHOT" ? (e.snapshot as { review?: { findings?: unknown[] } } | undefined)?.review : undefined;
     if (review) rounds.push(review.findings?.length ?? 0);
@@ -252,7 +252,7 @@ async function fold(journal: string): Promise<Folded> {
 
 export async function readFleet(opts: { script: string; env: Record<string, string | undefined>; home: string; now: number; redact: (s: string) => string }): Promise<Fleet> {
   const census = await runScript(opts.script, opts.env);
-  // HIMMEL-4817: the codex probe's cache, read once per request; unreadable, stale or reset is null.
+  // the codex probe's cache, read once per request; unreadable, stale or reset is null.
   const ttl = Number(opts.env.CODEX_BANK_CACHE_TTL_SECONDS);
   let codex: CodexBank | null = null;
   try {

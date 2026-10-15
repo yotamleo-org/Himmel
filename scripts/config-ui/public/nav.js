@@ -1,4 +1,4 @@
-// HIMMEL-4711: the one page list of the config console (/) and the AG-UI pages (/agui/), so both documents draw
+// the one page list of the config console (/) and the AG-UI pages (/agui/), so both documents draw
 // the same rail. app.js imports it as /nav.js; agui-web bundles it. The session token rides only the URL
 // fragment (#t=<token>), never a path or query, so it never reaches a request line.
 export const PAGES = [
@@ -6,8 +6,8 @@ export const PAGES = [
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
   { id: "fleet", label: "Fleet" },
-  { id: "roadmap", label: "Roadmap" }, // HIMMEL-4943
-  { id: "kanban", label: "Kanban" }, // HIMMEL-5488
+  { id: "roadmap", label: "Roadmap" },
+  { id: "kanban", label: "Kanban" },
 ];
 const CONSOLE = ["config", "health", "toolhealth", "roadmap", "kanban"];
 

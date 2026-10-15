@@ -1,4 +1,4 @@
-// HIMMEL-4807: every opt-in / opt-out toggle the console offers, end to end through the REAL himmelctl and the
+// every opt-in / opt-out toggle the console offers, end to end through the REAL himmelctl and the
 // real server routes: preview -> run -> (1) the setting is written, (2) its owner reads it back, (3) a reload
 // (the run's `after` re-probe AND a fresh GET /api/feed) shows the new state; then the opposite flip, checked
 // the same way. The toggles are the feed's `control.class: "toggle"` rows: cadence.arm/disarm, plugin.enable/
@@ -204,7 +204,7 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
   }, 60_000);
 
   // The registered lanes.
-  // KNOWN GAP (HIMMEL-4807, config-feed.js laneRows): on writes probe.kind=always and off writes
+  // KNOWN GAP: on writes probe.kind=always and off writes
   // probe.kind=never, but the row reads installed "present", health "info", detail "local override in
   // lanes.local.json" for BOTH, so after a reload the console cannot tell on from off (render.js offers both
   // buttons for that reason). The write and its read-back work; the row only shows that an override exists.

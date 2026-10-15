@@ -29,7 +29,7 @@ const out = () => process.stdout.write(JSON.stringify({
 }) + "\n");
 // STUB_FEED_SLEEP (ms): answer late, like the real report (~2 min on the station).
 const wait = Number(process.env.STUB_FEED_SLEEP || 0);
-// HIMMEL-4807: STUB_FEED_STEPS (n): n probe-progress lines on stderr, spread over the sleep, as
+// STUB_FEED_STEPS (n): n probe-progress lines on stderr, spread over the sleep, as
 // probe-progress.cjs writes them; STUB_FEED_JUNK=1 puts malformed ones before each.
 const steps = Number(process.env.STUB_FEED_STEPS || 0);
 const line = (o) => process.stderr.write(`himmel-probe ${typeof o === "string" ? o : JSON.stringify(o)}\n`);

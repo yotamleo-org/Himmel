@@ -1,4 +1,4 @@
-// review-panel.ts — reads /pr-check review output out of tool-call text (HIMMEL-4480).
+// review-panel.ts — reads /pr-check review output out of tool-call text.
 //
 // Pure readers, all tolerant (no match gives null or [], never a throw):
 //   parsePanelReport(text) — the critic panel's merged report, as printed by

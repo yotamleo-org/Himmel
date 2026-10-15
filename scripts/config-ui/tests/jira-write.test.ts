@@ -1,4 +1,4 @@
-// HIMMEL-5491: POST /api/roadmap/write — a Kanban drop transitions the ticket in Jira, a theme select sets one theme-<slug>
+// POST /api/roadmap/write — a Kanban drop transitions the ticket in Jira, a theme select sets one theme-<slug>
 // label. The Jira CLI is a stub (stub-jira.js) that records argv; nothing here reaches live Jira.
 import { test, expect, afterEach } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

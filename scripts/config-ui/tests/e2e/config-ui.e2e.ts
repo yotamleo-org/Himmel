@@ -1,4 +1,4 @@
-// HIMMEL-4400: the manual checklist for the config UI (PR 1841, bundles), automated.
+// the manual checklist for the config UI (PR 1841, bundles), automated.
 // Items 1-7 are the checklist; the last test is the safety contract.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, BUNDLES, HIMMEL_ID, type BootOpts, type Harness, type Variant } from "./fixtures";
@@ -118,7 +118,7 @@ test("safety: a toggle shows only a dry-run plan; nothing runs without the typed
   expect(h.stateFiles()).toEqual([]);
 });
 
-// HIMMEL-4405 PR-a: the shared header and the page links.
+// the shared header and the page links.
 test("header shows describe, the 12-char commit, checkout and feed time", async ({ page }) => {
   await open(page);
   const top = page.locator("header.top");
@@ -147,7 +147,7 @@ test("at 390 px the page does not scroll horizontally", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-// HIMMEL-4405 PR-b: the Health page.
+// the Health page.
 const LEDGER = [
   { ts: "2026-10-05T01:00:00Z", leg: "old", verdict: "SKIPPED-BANK", five_hour: "91.0", seven_day: "77.0", age: "3", degraded: false },
   { ts: "2026-10-05T02:00:00Z", leg: "l", verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false },
@@ -258,12 +258,12 @@ test("health: returning to Config before the feed lands shows loading, not Healt
   await page.locator("nav.pages a", { hasText: "Config" }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
   await expect(page.locator("main #verdict")).toHaveCount(0);
-  // HIMMEL-4807: the pending state is the probe status (or plain loading before its first step).
+  // the pending state is the probe status (or plain loading before its first step).
   await expect(page.locator("#status")).toHaveText(/^(loading…|probing .*)/);
   await expect(page.locator("#inventory .bhead").first()).toBeVisible({ timeout: 20_000 }); // the feed lands and Config paints
 });
 
-// HIMMEL-4807: the probe progress bar, and the feed loading in the background.
+// the probe progress bar, and the feed loading in the background.
 test("probe progress bar: while the report runs, Config names the step, n of N, over a progress bar", async ({ page }) => {
   h = await boot({}, { feedDelayMs: 6000 });
   await page.goto(h.url);

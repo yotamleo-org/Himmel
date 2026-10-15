@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet.sh — read-only session census for the AG-UI fleet page (HIMMEL-4712).
+# fleet.sh — read-only session census for the AG-UI fleet page.
 # Composes the existing owners and parses nothing itself, like legs.sh: the live
 # claude processes from claude-sessions.sh's claude_sessions() (the census
 # tick.sh's procs= and board.mjs read), the handover root from
@@ -10,7 +10,7 @@
 #    "name": "<-n value>", "model": "<--model value>", "doc": "<path>"|"",
 #    "status": "<marker>"|"", "autocompact": "<--autocompact value>"|""}],
 #    "cloudRoutes": ["<bucket>/cloud-route.jsonl", ...]}
-# cloudRoutes (HIMMEL-4791) = every console bucket's cloud-route.jsonl under the
+# cloudRoutes = every console bucket's cloud-route.jsonl under the
 # handover root, the routing log fleet-cloud.ts reads the cloud sessions from.
 # census: degraded = some live pid's argv was unreadable (claude_sessions rc 3),
 # unavailable = the scan itself failed. No handover root is not an error: the

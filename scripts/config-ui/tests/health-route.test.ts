@@ -1,4 +1,4 @@
-// HIMMEL-4405 PR-b: GET /api/health — bank / legs / monitoring, each degrading alone.
+// GET /api/health — bank / legs / monitoring, each degrading alone.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -158,7 +158,7 @@ test("hanging sources answer within the slowest budget, not the sum (parallel)",
   expect(took).toBeLessThan(4500); // sequential would be 2 + 2 + 2.5 s
 }, 15_000);
 
-// HIMMEL-4767 (HIMMEL-4748 WP8): the mode row is the resolver's answer (scripts/lib/project-mode.mjs), never re-derived.
+// the mode row is the resolver's answer (scripts/lib/project-mode.mjs), never re-derived.
 test("mode: the resolver's tracker and forge, and its refusal as an error section", async () => {
   const s = boot({ TRACKER: "local", FORGE: "none" });
   expect((await body(s.port)).mode).toEqual({ state: "ok", tracker: "local", forge: "none", idRequired: "1" });

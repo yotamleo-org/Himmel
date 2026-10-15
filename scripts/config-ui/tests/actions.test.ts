@@ -321,7 +321,6 @@ test("each run appends one audit line with an exact key set, table argv and no o
   expect(a).toMatchObject({ action: "cadence.arm", target: "graphmap", value: null, rc: 0, before: { "graphmap-cadence": "off" }, after: { "graphmap-cadence": "ok" } });
 });
 
-// ── HIMMEL-4354 ──────────────────────────────────────────────────────────
 // A read-only dir only blocks writes where permissions are enforced (not root, not Windows).
 const enforcesModes = process.platform !== "win32" && process.getuid?.() !== 0;
 (enforcesModes ? test : test.skip)("a run whose runChild rejects (onSpawn cannot write the lock) is still audited as an error with the real argv, and answers 500", async () => {
@@ -353,7 +352,7 @@ test("the idle window does not shut the server down mid-action; it re-arms when 
   expect(idled).toBe(true);
 });
 
-// ── HIMMEL-4350 item 3: security headers on every response ────────────────
+// Security headers on every response.
 test("every response carries CSP default-src 'self' and X-Frame-Options DENY", async () => {
   const port = boot();
   const rs = [

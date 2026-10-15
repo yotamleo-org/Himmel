@@ -1,4 +1,4 @@
-// HIMMEL-4808: actual fleet grouping and router functions over a two-console fixture.
+// actual fleet grouping and router functions over a two-console fixture.
 import { expect, test } from "bun:test";
 import * as page from "../agui-web/src/fleet-model";
 import * as stream from "../agui-web/src/fleet-model";
@@ -28,7 +28,7 @@ test("two console groups retain native, claudex and judge children; recent conso
   const groups = (page as any).consoleGroups?.(rows);
   expect(groups?.map((g: any) => g.console.name)).toEqual(["project-console", "roadmap-console", "wrapped-console"]);
   expect(groups?.[0].rows.map((r: any) => r.name)).toEqual(["claudex-leg", "judge"]);
-  // HIMMEL-4925: a cloud session is a lane under its console, never an orphan for want of a shepherd.
+  // a cloud session is a lane under its console, never an orphan for want of a shepherd.
   expect(groups?.[1].rows.map((r: any) => r.name)).toEqual(["native-leg", "cloud-unattended", "wrapped-leg"]);
 });
 

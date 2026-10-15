@@ -1,4 +1,4 @@
-/* HIMMEL-4711: the one theme and rail of config-ui. The config console links it before app.css; the AG-UI page
+/* the one theme and rail of config-ui. The config console links it before app.css; the AG-UI page
    (agui-web) bundles it before styles.css. Dark-first; light by preference or data-theme. */
 :root{
   --bg:#121416; --panel:#191c1f; --line:#2a2f34; --fg:#e8e2d6; --dim:#8e959c;

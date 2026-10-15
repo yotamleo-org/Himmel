@@ -1,6 +1,6 @@
-// HIMMEL-4480: harness for the AG-UI page e2e and the README GIF recorder.
+// harness for the AG-UI page e2e and the README GIF recorder.
 // Boots the REAL `himmelctl ui --port 0 --agui <run>` (the same spawn as fixtures.ts, so the
-// HIMMEL-4350 in-session refusal stays untouched) with a temp HOME whose ~/.claude/projects holds a
+// in-session refusal stays untouched) with a temp HOME whose ~/.claude/projects holds a
 // session journal the test APPENDS to while the page is open: a live stream over the real SSE path.
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ const SESSION = "e2e-session";
 let seq = 0;
 const ts = () => new Date().toISOString();
 const line = (o: object) => JSON.stringify({ isSidechain: false, sessionId: SESSION, timestamp: ts(), uuid: `u-${++seq}`, ...o }) + "\n";
-// HIMMEL-4669: `sub` writes the record as a subagent's (isSidechain + agentId, as in subagents/agent-<id>.jsonl);
+// `sub` writes the record as a subagent's (isSidechain + agentId, as in subagents/agent-<id>.jsonl);
 // `model` names the assistant's model; `error` marks a failed tool result; `use` is its toolUseResult.
 type Opt = { sub?: string; model?: string; error?: boolean; use?: Record<string, unknown> };
 const side = (o?: Opt) => (o?.sub ? { isSidechain: true, agentId: o.sub } : {});
@@ -44,9 +44,9 @@ export type AguiHarness = {
   stop: () => Promise<void>;
 };
 
-// HIMMEL-4712: `fleet` boots `himmelctl ui --agui` with no session id over the fixture fleet (agui-fleet-fixture.ts:
+// `fleet` boots `himmelctl ui --agui` with no session id over the fixture fleet (agui-fleet-fixture.ts:
 // its stub census, sessions and journals under this HOME), and waits for the fleet URL (the token, no run).
-// HIMMEL-4791: `cloud` adds the fixture's cloud lane (routing log, briefs, stub gh, the shepherd leg).
+// `cloud` adds the fixture's cloud lane (routing log, briefs, stub gh, the shepherd leg).
 export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: boolean } = {}): Promise<AguiHarness> {
   const dir = mkdtempSync(join(tmpdir(), "agui-e2e-"));
   const fleet = opts.fleet ? fleetFixture(dir, { cloud: opts.cloud }) : null;
@@ -101,7 +101,7 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
   };
 }
 
-// HIMMEL-4669: a leg's /pr-check round: the critic panel reports three findings (the Review panel fills), a
+// a leg's /pr-check round: the critic panel reports three findings (the Review panel fills), a
 // correctness critic subagent checks the critical one while the suite runs, verdicts are recorded, and four
 // kinds of failure land (a red suite, a guardrail denial, a BLOCKED report by message and by text). Records
 // are built when played, so each carries the time it was appended; `pause` is the recorder's wait after a step

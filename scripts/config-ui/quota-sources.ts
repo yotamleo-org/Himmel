@@ -1,4 +1,4 @@
-// quota-sources.ts — the read-only source behind GET /api/bank (HIMMEL-5486).
+// quota-sources.ts — the read-only source behind GET /api/bank.
 // Reads the two cache files bank-preflight reads: the Claude usage cache the statusline producer writes and the Codex
 // bank cache codex-bank-probe writes. It never spawns a probe or producer, and never opens a credential file.
 // A number that cannot be established is null with a reason (state unknown), never 0.

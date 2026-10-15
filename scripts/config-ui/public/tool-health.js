@@ -1,4 +1,4 @@
-// HIMMEL-4816: rendering only. Counts, rates, trend geometry and lane deltas are server-owned.
+// rendering only. Counts, rates, trend geometry and lane deltas are server-owned.
 import { esc } from "./render.js";
 const pct = (v) => typeof v === "number" ? `${(v * 100).toFixed(1)} %` : "—";
 const count = (v) => typeof v === "number" ? String(v) : "—";

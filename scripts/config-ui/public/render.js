@@ -1,4 +1,4 @@
-// HIMMEL-4254 P3/P4: pure rendering, no DOM. render(feed, state) → HTML string.
+// pure rendering, no DOM. render(feed, state) → HTML string.
 // state: { open: Set<string>, bundles: { "<region>|<bundle>": { open, rank } }, filt: { health, kind, q, problems }, plans: { [k]: plan } }.
 // A toggle in Controls opens a plan: preview (dry-run) → consent → run →
 // before/after. Confirm stays disabled until a typed consent matches.
@@ -83,7 +83,7 @@ function rowHtml(r, where, state) {
   return h + `</div>`;
 }
 
-// HIMMEL-4379: bundles. Rank is worse-is-higher: fail > warn > ok > off > info
+// bundles. Rank is worse-is-higher: fail > warn > ok > off > info
 // (ok outranks off: an opt-in left off must not make a working bundle read off).
 const ORDER = ["fail", "warn", "ok", "off", "info"];
 const RANK = { fail: 4, warn: 3, ok: 2, off: 1, info: 0 };
@@ -139,7 +139,7 @@ const sets = (feed) => {
   return { rows, triage, controls: rows.filter((r) => r.control.class === "toggle") };
 };
 
-// The one shared header, from the feed envelope only (feed.himmel, feed.generatedAt). A feed from before HIMMEL-4403 has no himmel.
+// The one shared header, from the feed envelope only (feed.himmel, feed.generatedAt). An older feed has no himmel.
 export function renderHeader(feed) {
   const h = feed && feed.himmel;
   const t = feed && feed.generatedAt ? `<span><span class="k">feed</span> ${esc(String(feed.generatedAt).replace("T", " ").slice(0, 16))}</span>` : "";
@@ -150,7 +150,7 @@ export function renderHeader(feed) {
     ${h.checkout ? `<span><span class="k">serving</span> ${esc(h.checkout)}</span>` : ""}${t}`;
 }
 
-// HIMMEL-4807: the status while the report runs. j is the feed's 202 body ({ elapsedMs, progress }); progress
+// the status while the report runs. j is the feed's 202 body ({ elapsedMs, progress }); progress
 // ({ i, n, source }, from probe-progress.cjs) is null before the first step. A native <progress>: the CSP
 // (default-src 'self') refuses inline styles.
 export function renderProbe(j) {
@@ -168,7 +168,7 @@ export function renderNav(feed, current) {
     .map(([id, label, n, key]) => `<button data-go="${id}" aria-current="${id === current}"><span>${label} ${n}</span><kbd>${key}</kbd></button>`).join("");
 }
 
-// HIMMEL-4620: the vm.mode / vm.remote form. vm = { data: GET /api/vm, error, draft: { mode, ssh, port, identity }, msg }.
+// the vm.mode / vm.remote form. vm = { data: GET /api/vm, error, draft: { mode, ssh, port, identity }, msg }.
 // The server validates; this only shows its answer.
 export function renderVm(vm) {
   const head = `<h2 id="h-vm">VM mode</h2><p class="sub">Whether VM proof runs on the local test VM, a remote one, or not at all (vm.mode in the himmel config).</p>`;

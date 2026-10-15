@@ -133,7 +133,7 @@ test("nav counts: Triage 2 · Controls 1 · Inventory 7", () => {
   expect(n).toContain("Inventory 7");
 });
 
-// HIMMEL-4379: bundles. A feed with `bundles` + per-row `bundle`; the fixture above has neither.
+// bundles. A feed with `bundles` + per-row `bundle`; the fixture above has neither.
 const B = (id: string, health: string, bundle: string, source = "item", control: Record<string, unknown> = { class: "display-only" }) =>
   row(id, health, source, control, { bundle });
 const bfeed = {
@@ -342,7 +342,7 @@ test("bundle titles from the feed are escaped", () => {
   expect(bhtml({}, {}, f)).not.toContain("<img");
 });
 
-// HIMMEL-4405: the shared header.
+// the shared header.
 const ident = { version: "0.9.9", describe: "v0.9.9-3-gabc", commit: "0123456789abcdef0123456789abcdef01234567", checkout: "/srv/himmel-wt" };
 test("renderHeader shows describe, the 12-char commit, checkout and feed time", () => {
   const h = renderHeader({ ...feed, himmel: ident });
@@ -363,7 +363,7 @@ test("renderHeader escapes every identity field", () => {
   expect(h).not.toContain("<img");
 });
 
-// HIMMEL-4807: the probe status while the first report runs.
+// the probe status while the first report runs.
 test("renderProbe names the step, n of N, with a determinate native progress bar", () => {
   const h = renderProbe({ elapsedMs: 12_400, progress: { i: 3, n: 8, source: "pipeline cadence" } });
   expect(h).toMatch(/^<div class="probe" id="status" role="status" aria-live="polite">/);

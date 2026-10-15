@@ -1,4 +1,4 @@
-// HIMMEL-4807: the feed's probe progress, background loading and stale-while-revalidate, over the real server
+// the feed's probe progress, background loading and stale-while-revalidate, over the real server
 // with the stub reports (stub-himmelctl.js for the feed, stub-recorder.js + stub-cadence.sh for an action).
 import { test, expect, afterEach } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";

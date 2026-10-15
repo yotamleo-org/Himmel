@@ -1,4 +1,4 @@
-// HIMMEL-4712: GET /api/agui/fleet — every live session on one page. Drives the REAL fleet.sh (claude_sessions,
+// GET /api/agui/fleet — every live session on one page. Drives the REAL fleet.sh (claude_sessions,
 // leg_tail_status) through claude-sessions.sh's own seams: a stub pgrep and a fake /proc whose cmdlines carry -n.
 import { test, expect, afterEach } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
@@ -52,7 +52,7 @@ test("3 live sessions and 1 wrapped: roles, tickets, PR, state, activity, subage
   expect(by[FLEET.wrapped.name]).toMatchObject({ role: "leg", state: "wrapped", ticket: "HIMMEL-903" });
 });
 
-// HIMMEL-4925: a row carries its doc's last marker, the doc's last write and its PR's URL; the fleet carries the
+// a row carries its doc's last marker, the doc's last write and its PR's URL; the fleet carries the
 // shell-tool wrappers tick reports as orphans (orphan-loops.sh --list), and null when that inventory failed.
 test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", async () => {
   const { port, dir } = boot();
@@ -199,7 +199,7 @@ test("a custom launch config directory wins over an unrelated default PID record
   expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid).run).toBe(FLEET.leg.run);
 });
 
-// HIMMEL-4751: each row's place in the graph and its token usage, from the census's own sources.
+// each row's place in the graph and its token usage, from the census's own sources.
 test("graph: the leg hangs under its console, the console names its predecessor, the rest sit under the operator", async () => {
   const { port } = boot();
   const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
@@ -225,7 +225,7 @@ test("usage: summed per API call across the journal and its subagents, filled ag
   expect(by[FLEET.idle.name].usage).toBeNull();
 });
 
-// HIMMEL-4791: a cloud session has no local process, so its node comes from the console bucket's cloud-route.jsonl
+// a cloud session has no local process, so its node comes from the console bucket's cloud-route.jsonl
 // plus the CLOUD-DONE comment on its PR (one batched, cached GitHub read through the stub gh), and its local
 // shepherd leg hangs under it. Its tokens are not measured, never zero.
 test("cloud: each recent CLOUD-OK route is a node under its console, from its PR and CLOUD-DONE comment; its shepherd hangs under it", async () => {

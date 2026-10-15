@@ -1,4 +1,4 @@
-// HIMMEL-4254 P4 (spec A13): one write at a time, machine-wide for UI servers.
+// one write at a time, machine-wide for UI servers.
 // A lock file holding "<owner pid> <token> [<child pgid>]" (Bun has no flock,
 // macOS no flock(1)), created by link(2) from a temp file that already holds
 // it, so it is never visible empty. The lock is live while the owner pid OR

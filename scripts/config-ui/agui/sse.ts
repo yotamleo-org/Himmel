@@ -1,4 +1,4 @@
-// sse.ts — stream a Claude Code session journal as AG-UI events over SSE (HIMMEL-4480 PR2).
+// sse.ts — stream a Claude Code session journal as AG-UI events over SSE.
 //
 // resolveJournal(home, run): <run> must be a lowercase session UUID; it names
 // exactly one ~/.claude/projects/<slug>/<run>.jsonl whose realpath stays under
@@ -9,7 +9,7 @@
 //
 // journalStream(path, ...): reads the file from the start through the journal
 // mapper, then polls for appends every pollMs. It also follows the session's
-// subagent transcripts (<session>/subagents/agent-<id>.jsonl, HIMMEL-4669),
+// subagent transcripts (<session>/subagents/agent-<id>.jsonl),
 // merging their lines with the journal's in timestamp order, so the page can
 // show which agent did what. It ends when the client cancels, when no run is
 // open and no file has grown for idleMs, or at maxMs. A comment line every HEARTBEAT_MS keeps Bun's idleTimeout from
@@ -80,10 +80,10 @@ export function redactPayload(e: AguiEvent, redact: (value: unknown) => unknown)
 }
 
 // One followed file: the session journal, or one of its subagents' transcripts. The subagent discovery
-// and the line order are journal-merge.ts's, shared with the leg digest (HIMMEL-4670).
+// and the line order are journal-merge.ts's, shared with the leg digest.
 type Source = { path: string; fh?: FileHandle; offset: number; size: number; tail: string; utf8: TextDecoder; last: { ts: number }; backwards?: true };
 
-// Opens a validated realpath, then checks that the fd is still that file (HIMMEL-4657): the containment check in
+// Opens a validated realpath, then checks that the fd is still that file: the containment check in
 // resolveJournal/subagentFiles and this open are separate steps, so a swap in between must not be served.
 // O_NOFOLLOW refuses a final-component symlink everywhere; procfs also catches a swapped parent directory.
 // ponytail: no procfs (macOS) leaves only O_NOFOLLOW, so a parent-directory swap there is unchecked; upgrade to an fstat dev/ino match against the validated stat if config-ui ever serves off Linux/WSL.
@@ -97,7 +97,7 @@ async function openVerified(path: string): Promise<FileHandle> {
 }
 
 export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8Array> {
-  const mapper = createJournalMapper({ threadId: o.threadId, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // HIMMEL-4817: a non-native stream carries its lane (native is the unmarked default)
+  const mapper = createJournalMapper({ threadId: o.threadId, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // a non-native stream carries its lane (native is the unmarked default)
   const enc = new TextEncoder();
   const started = Date.now();
   const src = (p: string): Source => ({ path: p, offset: 0, size: 0, tail: "", utf8: new TextDecoder(), last: { ts: -Infinity } });

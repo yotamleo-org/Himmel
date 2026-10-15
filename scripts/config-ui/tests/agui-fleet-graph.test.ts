@@ -1,4 +1,4 @@
-// HIMMEL-4751: the fleet row's place in the agent graph (graphOf, from the session's own handover doc) and its
+// the fleet row's place in the agent graph (graphOf, from the session's own handover doc) and its
 // token usage (usageOf, from the session JSONL usage records). Pure functions over fixture text; the route suite
 // (agui-fleet.test.ts) drives the same fields end to end.
 import { test, expect } from "bun:test";
@@ -69,7 +69,7 @@ test("the ceiling: a numeric --autocompact; else the model's window (1m for a [1
   expect(usageOf(lines, { autocompact: "", model: "sonnet" })).toMatchObject({ ceiling: 200000, ceilingFrom: "window", fill: 50 });
 });
 
-// HIMMEL-4925: a claudex leg declares its window in its launch env (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS),
+// a claudex leg declares its window in its launch env (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS),
 // which wins over the --autocompact it ignores; a window nobody declared for a non-Claude model, or a fill past
 // 100 % (the ceiling is wrong), reads as not measured rather than a bogus percentage.
 test("the ceiling: a declared window wins; an unknown model or a fill past 100 % is not a percentage", () => {
@@ -84,7 +84,7 @@ test("a journal with no usage records is not measured, never zero", () => {
   expect(usageOf([rec({ type: "user", message: { role: "user", content: "hi" } })], { autocompact: "", model: "" })).toBeNull();
 });
 
-// HIMMEL-4791: the cloud lane's routing log and its GitHub read, as pure functions plus the read's TTL cache.
+// the cloud lane's routing log and its GitHub read, as pure functions plus the read's TTL cache.
 const H = 60 * 60 * 1000, NOW = Date.parse("2026-10-07T12:00:00Z");
 const route = (ticket: string, cls: string, ago: number) => rec({ ticket, class: cls, reason: "x", brief: null, time: new Date(NOW - ago).toISOString() });
 

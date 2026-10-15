@@ -4,7 +4,7 @@ import { mapFile } from "../agui/journal-mapper.ts";
 import { initialView, reduce, reduceAll, applyPatch, makeStamper, settledCount, runClock, agentState, currentCall, runningCount, liveness, turnEnded, type View } from "../agui-web/src/reducer";
 import fixture from "../agui-web/src/fixture.json";
 
-// HIMMEL-4480 PR3: the page is a pure fold of AG-UI events into view state; these cases pin it on the
+// the page is a pure fold of AG-UI events into view state; these cases pin it on the
 // hand-written review-panel stream (src/fixture.json), which follows the state contract agreed with the mapper.
 const events = fixture as Array<Record<string, any>>;
 const upTo = (pred: (e: Record<string, any>) => boolean) => reduceAll(events.slice(0, events.findIndex(pred) + 1));
@@ -141,7 +141,7 @@ test("a fresh view is idle and empty", () => {
   expect(initialView()).toMatchObject({ status: "idle", entries: [], eventCount: 0, lanes: 0 });
 });
 
-// HIMMEL-4646: three /pr-check Suggestions deferred from #1961.
+// three /pr-check Suggestions deferred from #1961.
 test("RUN_FINISHED and RUN_ERROR close a text message that never got TEXT_MESSAGE_END", () => {
   const open = [{ type: "RUN_STARTED", runId: "r", timestamp: 0 }, { type: "TEXT_MESSAGE_START", messageId: "m", timestamp: 10 },
     { type: "TEXT_MESSAGE_CONTENT", messageId: "m", delta: "half", timestamp: 20 }];
@@ -167,7 +167,7 @@ test("the run clock keeps moving between turns while a background agent still ru
   expect(runClock(a, { elapsed: 800, status: "finished" }, 10500, true).now).toBe(2300);
 });
 
-// HIMMEL-4717: the live stream closes while a background call is still open, so ticking stops.
+// the live stream closes while a background call is still open, so ticking stops.
 test("the run clock holds its last value when ticking stops, instead of jumping back to elapsed", () => {
   const a = runClock(undefined, { elapsed: 800, status: "finished" }, 9000, true).anchor;
   const ticked = runClock(a, { elapsed: 800, status: "finished" }, 10500, true);
@@ -185,7 +185,7 @@ test("applyPatch rejects inherited member names instead of traversing or replaci
   expect(applyPatch({ a: 1 }, [{ op: "add", path: "/constructor", value: 2 }])).toHaveProperty("constructor", 2);
 });
 
-// HIMMEL-4669: which agent did what, and where it failed. Driven by the mapper's own output for the
+// which agent did what, and where it failed. Driven by the mapper's own output for the
 // agents.jsonl journal, so the reducer is pinned to the fields the mapper emits.
 describe("agents and failures", () => {
   const { events: mapped } = mapFile(join(import.meta.dir, "fixtures", "agui", "agents.jsonl"));
@@ -287,7 +287,7 @@ describe("agents and failures", () => {
   });
 });
 
-// HIMMEL-4711: what is running now. An agent's state is derived: running while it has a call open or its
+// what is running now. An agent's state is derived: running while it has a call open or its
 // parent Agent call is open (the session agent: while its turn is open); otherwise done, or failed if its
 // parent call failed or the run errored.
 describe("agent live state", () => {
@@ -327,7 +327,7 @@ describe("agent live state", () => {
     expect(runningCount(errored)).toBe(0);
   });
 
-  // HIMMEL-4718: a run end names no agent, yet it is when the calls it closes ended.
+  // a run end names no agent, yet it is when the calls it closes ended.
   test("a run end that closes an agent's call marks that agent's last activity", () => {
     const ended = reduceAll([{ type: "RUN_FINISHED", timestamp: 1800 }], opened);
     expect([ended.agents.main.last, ended.agents.q.last]).toEqual([800, 300]); // q's Read stays open, untouched
@@ -335,7 +335,7 @@ describe("agent live state", () => {
     expect([errored.agents.main.last, errored.agents.q.last]).toEqual([900, 900]);
   });
 
-  // HIMMEL-4756: closing a call never moves its agent's last activity backward.
+  // closing a call never moves its agent's last activity backward.
   test("a run end that closes a call earlier than the agent's last activity leaves last where it was", () => {
     const later = { ...opened, agents: { ...opened.agents, main: { ...opened.agents.main, last: 5000 } } };
     const ended = reduceAll([{ type: "RUN_FINISHED", timestamp: 1800 }], later);
@@ -371,7 +371,7 @@ describe("agent live state", () => {
   });
 });
 
-// HIMMEL-4711: the live stream's close is clean only if the CURRENT turn ended, not an earlier one.
+// the live stream's close is clean only if the CURRENT turn ended, not an earlier one.
 test("turnEnded resets when a new run starts", () => {
   const seq = (types: string[]) => types.reduce((e, t) => turnEnded(e, t), false);
   expect(seq(["RUN_STARTED", "RUN_FINISHED"])).toBe(true);

@@ -1,4 +1,4 @@
-// fleet-cloud.ts — cloud sessions as fleet nodes (HIMMEL-4791), for fleet.ts's readFleet.
+// fleet-cloud.ts — cloud sessions as fleet nodes, for fleet.ts's readFleet.
 //
 // A cloud session (`claude --cloud`) has no local process, ~/.claude/sessions entry or journal, so the census never
 // sees it. Its node comes from two reads: the console bucket's cloud-route.jsonl (cloud-route.mjs appends one

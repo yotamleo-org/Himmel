@@ -1,4 +1,4 @@
-// HIMMEL-4254 P4 (spec A14): one line per run in actions.jsonl. No output
+// one line per run in actions.jsonl. No output
 // bodies: argv is table constants plus the validated target and value.
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";

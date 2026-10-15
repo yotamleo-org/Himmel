@@ -6,7 +6,7 @@ import { aguiStaleWarning, startServer } from "../server";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// HIMMEL-4480: GET /agui/ serves the built AG-UI page (agui-web/dist), and
+// GET /agui/ serves the built AG-UI page (agui-web/dist), and
 // `himmelctl ui --agui` prints its live URL.
 // seams: aguiDist (a temp dist), env.HOME (a temp ~/.claude/projects), CONFIG_UI_HIMMELCTL (stub, never shelled here).
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -103,7 +103,7 @@ function uiEnv(h: string) {
   for (const k of Object.keys(e)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete e[k];
   return e;
 }
-// HIMMEL-4711: `himmelctl ui` prints ONE URL; read the first line, then make sure no second one follows.
+// `himmelctl ui` prints ONE URL; read the first line, then make sure no second one follows.
 async function oneLine(args: string[], h: string): Promise<string[]> {
   const p = Bun.spawn(["node", BIN, "ui", "--port", "0", ...args], { env: uiEnv(h), stdout: "pipe", stderr: "pipe" });
   try {
@@ -123,7 +123,7 @@ async function oneLine(args: string[], h: string): Promise<string[]> {
   }
 }
 
-// HIMMEL-4712: --agui with no session id prints the fleet landing (the token, no run).
+// --agui with no session id prints the fleet landing (the token, no run).
 test("himmelctl ui --agui with no session id prints one URL: the AG-UI fleet", async () => {
   const lines = await oneLine(["--agui"], home());
   expect(lines).toHaveLength(1);
@@ -150,7 +150,7 @@ test("--agui is refused on a verb other than ui", async () => {
   expect(await p.exited).toBe(2);
 });
 
-// HIMMEL-4711: a dist older than the page's source is served with a banner saying so, and the launcher says so on
+// a dist older than the page's source is served with a banner saying so, and the launcher says so on
 // stderr. Detect and say, never rebuild: a rebuild on start would run bun install/build under the operator's server.
 function web(distAge: number, srcAge: number): { dir: string; web: string } {
   const { dir } = dist();
@@ -189,7 +189,7 @@ test("a dist newer than its source has no banner and no warning; assets never ge
   expect(await (await fetch(`${bootWeb(old.dir, old.web)}/agui/index-abc.js`)).text()).toBe("console.log(1)");
 });
 
-// HIMMEL-4711: the page bundles the console's rail and theme from public/, so a newer one of those is a newer source.
+// the page bundles the console's rail and theme from public/, so a newer one of those is a newer source.
 test("a dist older than public/nav.js or public/theme.css is stale", () => {
   for (const f of ["nav.js", "theme.css"]) {
     const { dir, web: w } = web(3600, 7200);
@@ -200,7 +200,7 @@ test("a dist older than public/nav.js or public/theme.css is stale", () => {
   }
 });
 
-// HIMMEL-4716: a source file deleted (or renamed) after the build leaves no newer mtime behind, so the build records
+// a source file deleted (or renamed) after the build leaves no newer mtime behind, so the build records
 // its source list in dist/.agui-sources and a listed file that is gone marks the page stale. A directory mtime alone
 // is no evidence: an editor's swap file added and removed moves it with no source change.
 function manifest(dir: string, files: string[], age: number) {
@@ -228,7 +228,7 @@ test("a directory touched by a temp file but with every built source present is 
   expect(aguiStaleWarning(dir, w)).toBeNull();
 });
 
-// HIMMEL-4747: the manifest is checked before src is listed, so a whole src directory deleted after the build still
+// the manifest is checked before src is listed, so a whole src directory deleted after the build still
 // marks the page stale (listing a missing src throws, which once read as no evidence).
 test("the whole src directory deleted after the build marks the page stale", async () => {
   const { dir, web: w } = web(60, 3600);

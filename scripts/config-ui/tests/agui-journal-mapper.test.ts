@@ -140,7 +140,7 @@ describe("incremental use", () => {
   });
 });
 
-// HIMMEL-4669: who did what, and what failed. START events carry `agent` (the session's own agent, or the
+// who did what, and what failed. START events carry `agent` (the session's own agent, or the
 // subagent a sidechain record names); TOOL_CALL_RESULT and a BLOCKED text carry `failure`.
 describe("agents and failures", () => {
   const { events, stats } = mapFile(fixture("agents.jsonl"));
@@ -213,7 +213,7 @@ describe("agents and failures", () => {
   });
 });
 
-// HIMMEL-4670: the auto-mode classifier's refusal is a denial, as the trajectory reader counts it.
+// the auto-mode classifier's refusal is a denial, as the trajectory reader counts it.
 test("an auto-mode classifier refusal is classified denied", () => {
   const evs = mapJournal([
     '{"type":"assistant","uuid":"c1","sessionId":"s","message":{"id":"m","role":"assistant","content":[{"type":"tool_use","id":"toolu_c","name":"Bash","input":{"command":"bash x.sh"}}]}}',
@@ -222,7 +222,7 @@ test("an auto-mode classifier refusal is classified denied", () => {
   expect(evs.find((e) => e.type === "TOOL_CALL_RESULT")).toMatchObject({ failure: "denied" });
 });
 
-// HIMMEL-4835: a bus delivery is the delivery hook's isMeta additionalContext record.
+// a bus delivery is the delivery hook's isMeta additionalContext record.
 describe("bus delivery", () => {
   const at = "2026-10-09T10:00:05.000Z";
   const ms = Date.parse(at);

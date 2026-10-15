@@ -1,4 +1,4 @@
-// HIMMEL-4925: the fleet page's sections (needs attention, orphans, running per live console, finished), their order,
+// the fleet page's sections (needs attention, orphans, running per live console, finished), their order,
 // leg and console chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
@@ -162,7 +162,7 @@ test("a filter chip's badge counts exactly what that filter shows: idle consoles
   expect(filterCount(rows, { lanes: [], states: ["orphaned"], text: "" }, [{ pid: 7, owner: "orphan", ageMin: 45 }])).toBe(2);
 });
 
-// HIMMEL-5380: 4 finished cloud sessions and none running — the cloud chip read 4 while the Running list was empty.
+// 4 finished cloud sessions and none running — the cloud chip read 4 while the Running list was empty.
 test("a lane chip counts the live sessions it shows, never the finished ones folded under Finished", () => {
   const done = [BT, BS].flatMap((c) => [1, 2].map((i) => row(`cloud-${c}-${i}`, "cloud", c, cloud("done", { state: "idle" }))));
   const only = [row(BT, "console", BT, { state: "wrapped", live: false, lock: "released" }), row(BS, "console", BS, { state: "wrapped", live: false, lock: "released" }), ...done];

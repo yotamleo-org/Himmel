@@ -1,4 +1,4 @@
-// journal-mapper.ts — Claude Code session journal (JSONL) → AG-UI events (HIMMEL-4480).
+// journal-mapper.ts — Claude Code session journal (JSONL) → AG-UI events.
 //
 // Source: the transcript Claude Code writes per session at
 // ~/.claude/projects/<cwd-slug>/<session-id>.jsonl, one JSON record per line.
@@ -25,16 +25,16 @@
 //   API error record           → RUN_ERROR
 //   a prompt while a run is open → RUN_FINISHED (no outcome) for the old run first
 //   critic-panel report result → STATE_SNAPSHOT { review }
-//   a bus delivery (isMeta)    → STATE_DELTA add /bus/msgs/<n>/delivered (HIMMEL-4835; <n> is the recipient's
+//   a bus delivery (isMeta)    → STATE_DELTA add /bus/msgs/<n>/delivered (<n> is the recipient's
 //     sequence number, the one id the delivery text carries); mcp__himmel-bus__send and its plugin-prefixed
 //     form both appear as mcp__himmel-bus__send
 //   a verdict-recording Bash   → STATE_DELTA, once its result comes back without error:
 //     write-verdicts.sh (its --from-file is the text an earlier successful
 //     Write left at that path, as later successful Edits changed it) or
-//     ledger-append.sh finding/amend rows its output confirms (HIMMEL-4655)
+//     ledger-append.sh finding/amend rows its output confirms
 // A tool call's parentMessageId is the first text its API message streamed;
 // a call whose message streamed no text has none.
-// Agents (HIMMEL-4669): every TEXT_MESSAGE_START and TOOL_CALL_START carries
+// Agents: every TEXT_MESSAGE_START and TOOL_CALL_START carries
 // `agent`. The session's own agent is id "main", named by the latest
 // agent-name record (role from that name: -console, a leg's -N<digits>-, judge),
 // its model the latest assistant message.model. A sidechain record
@@ -76,7 +76,7 @@ export type MapperStats = {
   malformed: number; // unparseable lines, non-objects, or known types of the wrong shape
 };
 
-// HIMMEL-4817: `lane` stamps every RUN_STARTED with metadata { lane } (the journal's config dir says which lane wrote it).
+// `lane` stamps every RUN_STARTED with metadata { lane } (the journal's config dir says which lane wrote it).
 export type MapperOptions = { threadId?: string; lane?: string };
 
 export type JournalMapper = {
@@ -95,20 +95,20 @@ const SILENT_TYPES = new Set([
   "artifact-autoreact-ledger", "artifact-comment-monitor",
 ]);
 const INTERRUPT = /^\[Request interrupted by user/;
-// Bumped when a failure's classification changes, so an eval-runs series never mixes two meanings (HIMMEL-4670).
+// Bumped when a failure's classification changes, so an eval-runs series never mixes two meanings.
 export const MAPPER_SCHEMA = 1;
 // A refusal by a PreToolUse/permission hook, by the operator's permission prompt, or by the auto-mode classifier.
 const DENIED = /^(PreToolUse|PermissionRequest):\w+ hook error|permission to use .* has been denied|doesn't want to proceed|tool use was rejected|was denied by the Claude Code auto mode classifier/i;
 export const SUITE =/quiet-run\.sh suite|\bbun test\b|run-shell-tests\.sh|\btest-[\w.-]+\.sh\b|\bplaywright test\b|\bpytest\b|\bnpm (run )?test\b/;
 // A status line that leads with BLOCKED: a message, or a Results bullet ("- 12:00 BLOCKED ...").
 const BLOCKED = /^\s*(?:-\s+(?:\d\d:\d\d\s+)?)?BLOCKED\b/m;
-// HIMMEL-4835: the bus delivery hook's header lines (every body line is `| `-prefixed, so none can forge one) and
+// the bus delivery hook's header lines (every body line is `| `-prefixed, so none can forge one) and
 // the two names the send tool goes by (bare, and the plugin-prefixed form).
 const BUS_HEADER = /^bus #(\d+) (?:data )?from /gm;
 const BUS_SEND = /^mcp__(?:plugin_himmel-bus_)?himmel-bus__send$/;
 const busDeliveries = (text: string) => [...text.matchAll(BUS_HEADER)].map((m) => Number(m[1]));
 
-// HIMMEL-4655, HIMMEL-5155: ledger-append.sh prints one line per row it wrote: `amended <id>` for the amend verb,
+// ledger-append.sh prints one line per row it wrote: `amended <id>` for the amend verb,
 // `appended finding <id>` for a fresh finding row, `appended verdict amend for <id>` for a finding whose verdict
 // went onto an existing row. A row with no line of its own was not written.
 const LEDGER_CONFIRMED = /^ledger-append\.sh: (amended|appended finding|appended verdict amend for) (\S+) at ([0-9a-f]+)(?: -> (\{.*\}))?/gm;

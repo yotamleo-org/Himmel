@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-legs.sh — HIMMEL-4405. scripts/config-ui/legs.sh composes the existing
+# test-legs.sh — scripts/config-ui/legs.sh composes the existing
 # owners (handover_root, fleet-manifest.sh list, leg_tail_status) and parses
 # nothing itself: the newest manifest wins, each leg's status IS
 # leg_tail_status, an empty root prints no manifest, no root exits 3, and a root

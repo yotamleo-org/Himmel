@@ -3,7 +3,7 @@
 // No runtime imports, so the CI suite runs without `bun install`.
 import type { BaseEvent } from "@ag-ui/core";
 
-// HIMMEL-4669: every text and call belongs to an agent (the mapper's `agent` on START events; a stream without
+// every text and call belongs to an agent (the mapper's `agent` on START events; a stream without
 // it is all one agent, "main"), and a failure is a call or text the mapper classified (`failure`), or a call a
 // run error cut off.
 export type Failure = "denied" | "suite" | "blocked" | "error";
@@ -11,7 +11,7 @@ export type Role = "console" | "leg" | "judge" | "critic" | "subagent" | "agent"
 export type Agent = {
   id: string; name: string; role: Role; model?: string; kind?: string; parentToolCallId?: string;
   calls: number; failures: number; lanes: number; // lanes: its rows in the run strip
-  last: number; // HIMMEL-4711: elapsed ms of the last event that touched it
+  last: number; // elapsed ms of the last event that touched it
 };
 export type Text = { id: string; text: string; open: boolean; agent: string; role?: "user" | "assistant"; failure?: Failure };
 export type ToolStatus = "running" | "done" | "error";
@@ -77,7 +77,7 @@ function freeLane(ends: (number | null)[], at: number): number {
   return i === -1 ? ends.length : i;
 }
 
-// HIMMEL-4718: a call's end is its agent's activity too, so a run end (which names no agent) that closes it counts.
+// a call's end is its agent's activity too, so a run end (which names no agent) that closes it counts.
 function finish(v: View, id: string, at: number, patch: Partial<Tool>): View {
   const t = v.tools[id];
   const ends = (v.laneEnds[t.agent] ?? []).slice();
@@ -206,7 +206,7 @@ function fold(prev: View, e: Ev): View {
   }
 }
 
-// HIMMEL-4711: what is running now. An agent runs while it has a call open, or while the Agent call that spawned
+// what is running now. An agent runs while it has a call open, or while the Agent call that spawned
 // it is open (a background subagent's Agent call returns at launch, so its own open calls still count); the
 // session agent ("main") also while its turn is open. An agent whose parent call failed is failed, whatever it
 // left open, and so is one whose open call the run error killed (a background subagent's parent returned at

@@ -1,4 +1,4 @@
-// health-sources.ts — the read-only sources behind GET /api/health (HIMMEL-4405; mode, HIMMEL-4767).
+// health-sources.ts — the read-only sources behind GET /api/health.
 // Each section is {state: ok|absent|error, reason?, ...data} and degrades alone (I3).
 // Nothing here computes a verdict or runs a probe: the bank row is read from the
 // ledger bank-preflight already wrote (I2), the legs from legs.sh, monitoring over loopback (I7).
@@ -7,7 +7,7 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 export { readToolHealth } from "../eval/leg-digest/tool-health.mjs";
-// The one owner of tracker/forge (HIMMEL-4758); read here, never re-derived.
+// The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";
 

@@ -101,7 +101,7 @@ describe("a /pr-check run", () => {
     expect(deltas[2]).toMatchObject({ delta: [{ op: "add", path: "/review/findings/1/verdict", value: "fixed" }] });
   });
 
-  // HIMMEL-4655 (codex-3): a command's success is not each ledger call's success.
+  // a command's success is not each ledger call's success.
   test("an amend applies only when its confirmation line is in the result", () => {
     const deltas = withExtra([
       ...bash(1, `bash scripts/cr/ledger-append.sh amend --head ${HEAD} --id codex-1 --set verdict=fixed --reason r || true`, "ledger-append.sh: amend found NO finding codex-1 at head 01234567 - nothing amended."),
@@ -112,7 +112,7 @@ describe("a /pr-check run", () => {
     expect(deltas[2]).toMatchObject({ delta: [{ op: "add", path: "/review/findings/0/verdict", value: "fixed" }] });
   });
 
-  // HIMMEL-5155: every finding row needs its own confirmation line; silence is no longer success.
+  // every finding row needs its own confirmation line; silence is no longer success.
   const finding = (id: string, verdict: string) => `bash scripts/cr/ledger-append.sh finding --head ${HEAD} --id ${id} --verdict ${verdict} --reason r`;
   const appended = (id: string) => `ledger-append.sh: appended finding ${id} at ${HEAD.slice(0, 8)}`;
 
@@ -168,7 +168,7 @@ describe("a /pr-check run", () => {
     expect(deltas).toHaveLength(3);
   });
 
-  // HIMMEL-4655 (codex-4): an Edit of a staged verdict file is followed, never shown stale.
+  // an Edit of a staged verdict file is followed, never shown stale.
   test("an Edit of a staged verdict file updates what write-verdicts --from-file applies", () => {
     const run = "bash scripts/cr/write-verdicts.sh aggregate --from-file /tmp/scratch/v2.txt";
     const deltas = withExtra([

@@ -1,4 +1,4 @@
-// HIMMEL-4480 PR4: the AG-UI page against the real server, driven by a journal that is APPENDED to
+// the AG-UI page against the real server, driven by a journal that is APPENDED to
 // while the page is open (a live stream over the real SSE path). Needs agui-web/dist
 // (`cd scripts/config-ui/agui-web && bun install && bun run build`); skipped, loudly, when absent.
 import { test, expect } from "@playwright/test";
@@ -7,12 +7,12 @@ import { aguiBuilt, bootAgui, J, play, type AguiHarness } from "./agui-fixtures"
 import { shortName } from "../../agui-web/src/fleet-model";
 import type { Page } from "@playwright/test";
 
-// HIMMEL-4925: a card shows a session's short name (the full one is its title), so rows are found by their id.
+// a card shows a session's short name (the full one is its title), so rows are found by their id.
 const card = (page: Page, name: string) => page.locator(`[id="fleet-${name}"]`);
 // A card is one line until its chevron opens the status and lineage detail (the name itself links to the run page).
 const expand = (page: Page, name: string) => card(page, name).locator("> .fleet-line .fleet-chev").click();
 
-// HIMMEL-4711: a live page keeps tailing after a turn ends, so it reads idle (never "finished") until the stream closes.
+// a live page keeps tailing after a turn ends, so it reads idle (never "finished") until the stream closes.
 const IDLE = /^idle · last event \d+s ago$/;
 
 let h: AguiHarness;
@@ -72,7 +72,7 @@ for (const [name, scheme, size] of [
   });
 }
 
-// HIMMEL-4669: the leg's /pr-check round with a critic subagent (SCENE), its transcript in a separate file.
+// the leg's /pr-check round with a critic subagent (SCENE), its transcript in a separate file.
 // Steps are a few ms apart so the server's timestamp merge interleaves the two files as they were written.
 const spaced = (h: AguiHarness) => play(h, undefined, () => new Promise((r) => setTimeout(r, 15)));
 
@@ -181,7 +181,7 @@ test("8. a running subagent shows running with its current call, then flips to d
   await expect(page.getByRole("status")).toHaveText(IDLE);
 });
 
-// HIMMEL-4712: `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +
+// `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +
 // 1 wrapped); the wrapped leg sits in the closed section, never in the live list; a row opens its run's stream.
 test("archived and released consoles show zero live sessions", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
@@ -198,7 +198,7 @@ test("archived and released consoles show zero live sessions", async ({ page }) 
   await page.goto(h.url);
   await expect(page.locator(".top .meta")).toContainText("0 running");
   await expect(page.getByText(/^No running sessions\. 2 finished below\.$/)).toBeVisible();
-  // HIMMEL-4925: both consoles sit in the Finished section, closed by default.
+  // both consoles sit in the Finished section, closed by default.
   const finished = page.locator("details.fleet-closed");
   await expect(finished).not.toHaveAttribute("open", "");
   await expect(finished.locator(".fleet-finished .fleet-row")).toHaveCount(2);
@@ -230,20 +230,20 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(live.nth(0)).toContainText("console");
   const leg = card(page, FLEET.leg.name);
   await expect(leg.locator(".fleet-chip")).toHaveText("HIMMEL-901");
-  // HIMMEL-4925: a card is one line; its chevron, not its name, opens the detail, and the detail names the run page.
+  // a card is one line; its chevron, not its name, opens the detail, and the detail names the run page.
   await expect(leg.locator(".fleet-detail")).toHaveCount(0);
   await expand(page, FLEET.leg.name);
   await expect(leg.locator(".fleet-chev")).toHaveAttribute("aria-expanded", "true");
   await expect(leg.locator("a.fleet-runlink")).toHaveAttribute("href", new RegExp(`&run=${FLEET.leg.run}$`));
   await expand(page, FLEET.console.name);
   await expand(page, FLEET.idle.name);
-  // HIMMEL-4925: the status column (activity, then facts) and the lineage column are separate blocks.
+  // the status column (activity, then facts) and the lineage column are separate blocks.
   await expect(leg.locator(".fleet-status .fleet-meta")).toContainText("PR 1901 · 1 of 1 subagents running · 1 tool error");
   await expect(leg.locator(".fleet-status .fleet-fails")).toHaveCount(0);
   await expect(leg.locator(".state")).toHaveText("running");
   await expect(card(page, FLEET.idle.name).locator(".state")).toHaveText("idle");
   await expect(live.filter({ has: page.locator(`[title="${FLEET.wrapped.name}"]`) })).toHaveCount(0);
-  // HIMMEL-4751: the leg sits in its console's subtree; each row says where it hangs and what it has spent.
+  // the leg sits in its console's subtree; each row says where it hangs and what it has spent.
   await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator(".fleet-row")).toHaveText([new RegExp(shortName(FLEET.leg.name))]);
   await expect(leg.locator(".fleet-lineage .fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(FLEET.leg.name)}`);
   await expect(live.nth(0).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)}`);
@@ -269,7 +269,7 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
 });
 
-// HIMMEL-4711: one app across two documents. The console's rail reaches the fleet, a fleet row reaches its run view,
+// one app across two documents. The console's rail reaches the fleet, a fleet row reaches its run view,
 // the rail there reaches back to Config and Health, and the token never rides a request line.
 test("10. console to Fleet to a run view and back: one rail, the token in the fragment only", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
@@ -313,7 +313,7 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
   for (const u of lines) expect(new URL(u).pathname + new URL(u).search).not.toContain(tok);
 });
 
-// HIMMEL-4925: a lineage link reveals its target even when the target's console group is collapsed.
+// a lineage link reveals its target even when the target's console group is collapsed.
 test("a succession link opens the collapsed console group it points into", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-console";
@@ -334,7 +334,7 @@ test("a succession link opens the collapsed console group it points into", async
   await expect(card(page, next)).toBeFocused();
 });
 
-// HIMMEL-4925: orphans have their own section above Running (a session with its reason and action, a stale wrapper
+// orphans have their own section above Running (a session with its reason and action, a stale wrapper
 // with its pid, owner and age), and the rail's filters narrow the page and survive a reload.
 test("orphans section, and a lane filter that narrows the page and is kept", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
@@ -397,7 +397,7 @@ test("12. two-console side menu, deep-linked page, and identical menu/row drill-
   await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.console.run}`);
 });
 
-// HIMMEL-4791: a cloud session is a node under its console with its shepherd leg under it; it links its session,
+// a cloud session is a node under its console with its shepherd leg under it; it links its session,
 // says its phase, and says its tokens are not measured (never a zero). A merged one sits with the wrapped.
 test("11. cloud sessions: a node under the console, its shepherd under it, tokens not measured", async ({ page }) => {
   h = await bootAgui("", { fleet: true, cloud: true });
@@ -405,7 +405,7 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   const live = page.locator(".fleet .fleet-row:not(.finished)");
   const done = card(page, "cloud-HIMMEL-905");
   await expect(done.locator(".fleet-chip")).toHaveText("HIMMEL-905");
-  // HIMMEL-4925: cloud is a lane with its own phases; a shepherded CLOUD-DONE PR is nobody's alarm.
+  // cloud is a lane with its own phases; a shepherded CLOUD-DONE PR is nobody's alarm.
   await expect(done.locator("> .fleet-line .state")).toHaveText("shepherded");
   await expect(card(page, "cloud-HIMMEL-906").locator("> .fleet-line .state")).toHaveText("working");
   await expect(done.locator("> .fleet-line a.fleet-head")).toHaveAttribute("href", CLOUD.url);
@@ -419,7 +419,7 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await expect(done.locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › cloud-HIMMEL-905`);
   await expect(page.getByRole("list", { name: "Under cloud-HIMMEL-905" }).locator(".fleet-row")).toHaveText([new RegExp(shortName(CLOUD.shepherd.name))]);
   await expect(card(page, "cloud-HIMMEL-906").locator(".fleet-cloud-phase")).toHaveText("no CLOUD-DONE yet");
-  // HIMMEL-4925: a cloud session still working without a shepherd is normal: no attention line, no orphan.
+  // a cloud session still working without a shepherd is normal: no attention line, no orphan.
   await expect(page.locator("#fleet-sec-attention")).toHaveCount(0);
   await expect(page.locator("#fleet-sec-orphans")).toHaveCount(0);
   await expect(live.filter({ has: page.locator('[title="cloud-HIMMEL-907"]') })).toHaveCount(0);

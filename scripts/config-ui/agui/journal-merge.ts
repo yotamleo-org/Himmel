@@ -1,5 +1,5 @@
 // journal-merge.ts — a session's journal plus its subagent transcripts, as one stream of lines in time
-// order (HIMMEL-4670 P1). The order rule is defined here once: journalStream (sse.ts) applies it to the
+// order. The order rule is defined here once: journalStream (sse.ts) applies it to the
 // lines it has read so far, and mergeJournalFiles applies it to whole files for a batch reader (the leg
 // digest), so the page and the digest interleave subagent lines the same way.
 //
@@ -17,7 +17,7 @@ export type Line = { text: string; ts: number; order: number };
 const TS = /"timestamp"\s*:\s*"([^"]+)"/;
 
 // Stamps one file's complete lines with their time; `last` is that file's carried timestamp, updated. A line
-// older than the file's last one (the transcript's own clock going backwards, HIMMEL-4674) keeps the carried
+// older than the file's last one (the transcript's own clock going backwards) keeps the carried
 // time, so it stays in file order instead of sorting ahead of lines already released; `onRegress` is called
 // once per such line.
 export function stampLines(texts: string[], last: { ts: number }, next: () => number, onRegress?: () => void): Line[] {

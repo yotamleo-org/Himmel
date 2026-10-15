@@ -1,4 +1,4 @@
-// HIMMEL-4807: probe-progress.cjs, the `node --require` preload that turns the report's spawns into
+// probe-progress.cjs, the `node --require` preload that turns the report's spawns into
 // `himmel-probe {"i","n","source"}` stderr lines. Driven by a fake report (no real config-feed, doctor or cadence).
 import { test, expect, afterAll } from "bun:test";
 import { spawnSync } from "node:child_process";

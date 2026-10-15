@@ -1,4 +1,4 @@
-// events.ts — the AG-UI events the journal mapper emits (HIMMEL-4480).
+// events.ts — the AG-UI events the journal mapper emits.
 //
 // Plain object types, pinned by hand to the @ag-ui/core 1.0.2 schemas
 // (dist/schemas.mjs, PROTOCOL_VERSION "1.0"): the type names, the required
@@ -11,7 +11,7 @@ export const AGUI_PROTOCOL_VERSION = "1.0";
 
 type Base = { timestamp?: number; metadata?: Record<string, unknown> };
 
-// Extra fields (the schemas are loose), HIMMEL-4669. `agent` rides every START event and names who acted:
+// Extra fields (the schemas are loose). `agent` rides every START event and names who acted:
 // the session's own agent (id "main") or a subagent (its journal agentId). `failure` classifies what went
 // wrong: a guardrail or permission refusal, a failing suite, a BLOCKED report, or any other error.
 export type AgentRole = "console" | "leg" | "judge" | "critic" | "subagent" | "agent";

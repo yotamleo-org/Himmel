@@ -1,6 +1,6 @@
-// HIMMEL-4943: the Roadmap page. Pure rendering, no DOM: renderRoadmap(data, ui) → HTML.
+// the Roadmap page. Pure rendering, no DOM: renderRoadmap(data, ui) → HTML.
 // data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes or null.
-// Everything shown is the server's live read. HIMMEL-5491: with ui.writes the Kanban cards are draggable and carry a theme
+// Everything shown is the server's live read. With ui.writes the Kanban cards are draggable and carry a theme
 // select, and app.js posts the drop or the select to /api/roadmap/write. The rest of the page proposes only.
 import { esc } from "./render.js";
 
@@ -26,7 +26,7 @@ function filters(d, ui) {
   return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Theme", d.themes, ui.theme)}</div>`;
 }
 
-// HIMMEL-5491: one select per card; the option value is the theme's label slug ("" clears it). A slug over the write
+// one select per card; the option value is the theme's label slug ("" clears it). A slug over the write
 // route's 40-char cap is shown but disabled, so it is never offered as a write the server would refuse.
 const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Theme of HIMMEL-${t.k}">${d.themes.map((x, i) => {
   const slug = (d.themeSlugs || [])[i] ?? "";
@@ -57,7 +57,7 @@ const themeSel = (d, ui) => `<label>Theme <select data-rm-filter="theme"><option
 const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st fail">refused</span> ${esc(ui.writeError)}</div>` : "");
 const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme === ui.theme);
 
-// HIMMEL-5488: #/roadmap/<version>, one version's board.
+// #/roadmap/<version>, one version's board.
 function versionHtml(d, ui) {
   const back = `<p><a href="#/roadmap">← Roadmap</a></p>`;
   const v = d.versions.findIndex((x) => x.n === ui.ver);
@@ -68,7 +68,7 @@ function versionHtml(d, ui) {
     head + (shown.length ? boardHtml(d, shown, false, ui.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
-// HIMMEL-5488: #/kanban, every version on one board with no version filter. Done can be hidden.
+// #/kanban, every version on one board with no version filter. Done can be hidden.
 export function renderKanban(data, ui) {
   if (!data) return `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;

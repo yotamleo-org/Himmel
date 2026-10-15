@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { createJournalMapper, mapFile } from "../agui/journal-mapper.ts";
 import { MAX_SUBAGENTS, mergeJournalFiles, sessionFiles } from "../agui/journal-merge.ts";
 
-// HIMMEL-4670 P1: the journal + subagent merge that journalStream follows live, as one batch function
+// the journal + subagent merge that journalStream follows live, as one batch function
 // the leg digest calls, so both order a session's lines the same way.
 const FIX = join(import.meta.dir, "fixtures", "agui");
 const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";

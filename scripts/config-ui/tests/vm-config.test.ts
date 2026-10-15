@@ -1,4 +1,4 @@
-// HIMMEL-4620: GET/POST /api/vm — the config UI edits vm.mode and vm.remote through luna-config.js
+// GET/POST /api/vm — the config UI edits vm.mode and vm.remote through luna-config.js
 // (validateVm before write, atomic save). Every test points the config path and HOME at a temp dir.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

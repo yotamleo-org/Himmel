@@ -47,7 +47,7 @@ test("--help documents ui as operator-only", async () => {
   expect(out).toMatch(/ui \[--port N\][\s\S]*agents must not/);
 });
 
-// HIMMEL-4350: `ui` is operator-only, so a Claude session env refuses it unless the operator overrides.
+// `ui` is operator-only, so a Claude session env refuses it unless the operator overrides.
 for (const marker of ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]) {
   test(`himmelctl ui refuses under ${marker} with rc 2 and names the override`, async () => {
     const p = Bun.spawn(["node", BIN, "ui", "--port", "0"], { env: { ...cleanEnv(), [marker]: "1" }, stdout: "pipe", stderr: "pipe" });

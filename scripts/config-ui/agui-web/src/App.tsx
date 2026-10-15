@@ -9,7 +9,7 @@ const step = (v: View, a: Action): View =>
   : a.kind === "fail" ? reduce(v, { type: "RUN_ERROR", message: a.message } as any) // no timestamp: ends at the run's last time
   : reduce(v, a.e);
 
-// HIMMEL-4669: each agent gets a colour by order of appearance (six, then they repeat), carried as --ag on
+// each agent gets a colour by order of appearance (six, then they repeat), carried as --ag on
 // everything it did: its band in the strip, its row in the agent list, the rail beside its texts and calls.
 const agentStyle = (v: View, id: string): CSSProperties => ({ ["--ag" as string]: `var(--ag${Math.max(v.agentOrder.indexOf(id), 0) % 6})` });
 
@@ -19,7 +19,7 @@ export function App({ source }: { source: Source }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [only, setOnly] = useState<string | null>(null); // the one agent shown, or everyone
   const [at, setAt] = useState(-1); // the failure last jumped to
-  const [closed, setClosed] = useState(false); // HIMMEL-4711: the live stream ended (the server stopped tailing)
+  const [closed, setClosed] = useState(false); // the live stream ended (the server stopped tailing)
   // A live page between turns keeps ticking too, so "last event Ns ago" stays true.
   const now = useRunClock(view, view.status === "running" || (source.live && !closed && view.status === "finished"));
 
@@ -157,7 +157,7 @@ const ROLE: Record<Agent["role"], string> = { console: "supervisor session", leg
 const model = (m?: string) => m?.replace(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?$/, "$1 $2.$3");
 
 // The agent list doubles as the legend and the filter: click one to show only what it did.
-// HIMMEL-4711: each agent's state; a running one shows the call it is in and for how long, a finished one when it last acted.
+// each agent's state; a running one shows the call it is in and for how long, a finished one when it last acted.
 function Agents({ view, now, only, onOnly }: { view: View; now: number; only: string | null; onOnly: (id: string | null) => void }) {
   if (view.agentOrder.length === 0) return null;
   const depth = (a: Agent) => (a.parentToolCallId ? 1 : 0);

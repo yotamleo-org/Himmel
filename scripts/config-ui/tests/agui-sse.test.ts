@@ -6,7 +6,7 @@ import { startServer } from "../server";
 import { mapFile } from "../agui/journal-mapper.ts";
 import { journalStream, resolveJournal } from "../agui/sse.ts";
 
-// HIMMEL-4480 PR2: GET /api/agui/<run> streams a session journal as AG-UI over SSE.
+// GET /api/agui/<run> streams a session journal as AG-UI over SSE.
 // seams: env.HOME (a temp HOME whose ~/.claude/projects holds the fixture journals),
 // CONFIG_UI_HIMMELCTL (stub, never shelled here), the agui* timing options.
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -127,7 +127,7 @@ test("a project directory symlinked out of ~/.claude/projects is not served", as
   expect((await get(port, RUN)).status).toBe(404);
 });
 
-// HIMMEL-4657: the containment check and the open are separate steps; a swap in between must not be served.
+// the containment check and the open are separate steps; a swap in between must not be served.
 const direct = { threadId: RUN, pollMs: 20, idleMs: 200, maxMs: 5000, redact: (v: unknown) => v, onClose: () => {} };
 async function resolved(h: string): Promise<string> {
   const found = await resolveJournal(h, RUN);
@@ -248,7 +248,7 @@ test("secret-shaped strings in the journal are redacted before they leave the se
   expect(text).not.toContain(canary);
 });
 
-// HIMMEL-4669: a subagent writes its own transcript beside the journal; the stream follows it too.
+// a subagent writes its own transcript beside the journal; the stream follows it too.
 function splitAgents(): { mainBody: string; subBody: string } {
   const lines = readFileSync(join(FIX, "agents.jsonl"), "utf8").split("\n").filter(Boolean);
   const side = (l: string) => JSON.parse(l).isSidechain === true;
@@ -323,7 +323,7 @@ test("a subagent transcript longer than one read chunk still lands before the jo
   expect(lastFiller).toBeLessThan(agentResult);
 });
 
-// HIMMEL-4674: a timestamp that goes backwards inside one transcript is released in place, not re-sorted.
+// a timestamp that goes backwards inside one transcript is released in place, not re-sorted.
 test("a backwards timestamp within one transcript is emitted once, in file order, with one warning", async () => {
   const h = home();
   const rec = (text: string, ts: string) => JSON.stringify({

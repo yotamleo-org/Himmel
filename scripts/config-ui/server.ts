@@ -1,4 +1,4 @@
-// HIMMEL-4254 P3/P4: `himmelctl ui` — config UI server.
+// `himmelctl ui` — config UI server.
 // Loopback only (hostname hard-coded), per-launch token on /api/*, Host check,
 // feed shelled from `himmelctl report --json` (execFile, no shell) and redacted.
 // P4 adds the two-step writes (spec A12-A14b): POST /api/preview runs an
@@ -26,7 +26,7 @@ import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
 
 const LOOPBACK = "127.0.0.1";
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
-// HIMMEL-4369: Bun cuts any request idle past 10 s. The feed runs in the
+// Bun cuts any request idle past 10 s. The feed runs in the
 // background (FEED_TIMEOUT_MS, the station took 124 s) and a request waits at
 // most FEED_WAIT_MS (under 10 s) before answering 202 for the page to poll.
 // The routes that really hold a request: /api/run = re-probe + action + re-probe
@@ -36,7 +36,7 @@ const DEFAULT_IDLE_MS = 30 * 60 * 1000;
 const FEED_TIMEOUT_MS = 300_000;
 const FEED_WAIT_MS = 8_000;
 const FEED_CACHE_MS = 30_000;
-// HIMMEL-4807: with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
+// with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
 // while the console is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
 // The progress line probe-progress.cjs writes; anything else on the report's stderr is ignored.
@@ -48,7 +48,7 @@ const IDLE_MARGIN_S = 10;
 const PREVIEW_TTL_MS = 5 * 60 * 1000;
 export const REPROBE_BUDGET_MS = 60_000;
 const MAX_BODY = 16 * 1024;
-// GET /api/agui/<run> (HIMMEL-4480): poll the journal for appends every 500 ms;
+// GET /api/agui/<run>: poll the journal for appends every 500 ms;
 // end 2 min after a finished run's file stops growing, and after 4 h regardless.
 const AGUI_POLL_MS = 500;
 const AGUI_IDLE_MS = 2 * 60 * 1000;
@@ -63,11 +63,11 @@ const STATIC: Record<string, [string, string]> = {
   "/tool-health.js": ["tool-health.js", "application/javascript; charset=utf-8"],
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/app.css": ["app.css", "text/css; charset=utf-8"],
-  // HIMMEL-4711: the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
+  // the rail and theme the AG-UI pages share (agui-web bundles its own copy at build time).
   "/nav.js": ["nav.js", "application/javascript; charset=utf-8"],
   "/theme.css": ["theme.css", "text/css; charset=utf-8"],
 };
-// GET /agui/ (HIMMEL-4480): the built AG-UI page, agui-web/dist (bun build, untracked).
+// GET /agui/: the built AG-UI page, agui-web/dist (bun build, untracked).
 // Not token-gated: the page is static and the token rides the URL fragment; /api/agui/<run> stays gated.
 const AGUI_WEB = join(import.meta.dir, "agui-web");
 const AGUI_DIST = join(AGUI_WEB, "dist");
@@ -83,7 +83,7 @@ bun install
 bun run build</pre>
 `;
 
-// HIMMEL-4711: dist is untracked and nothing rebuilds it, so a page built before the source last changed is served
+// dist is untracked and nothing rebuilds it, so a page built before the source last changed is served
 // as is, but says so: on the launcher's stderr and in a banner the server puts into index.html (the stale bundle
 // cannot know it is stale). Detect and say, never rebuild: a rebuild on start would run bun under the operator's server.
 const BUILD_STEP = "cd scripts/config-ui/agui-web && bun run build";
@@ -95,15 +95,15 @@ function aguiSourceGone(dist: string, web: string): boolean {
 function aguiStale(dist: string, web: string): { built: Date; changed: Date } | null {
   let built: Date;
   try { built = statSync(join(dist, "index.html")).mtime; } catch { return null; } // no dist is AGUI_MISSING's case
-  // HIMMEL-4747: the manifest is read before src is listed, so a deleted src directory still reads as stale.
+  // the manifest is read before src is listed, so a deleted src directory still reads as stale.
   const gone = aguiSourceGone(dist, web);
   try {
     const src = readdirSync(join(web, "src"), { recursive: true }).map((f) => join(web, "src", String(f)));
-    // HIMMEL-4711: the page also bundles the console's rail and theme from public/.
+    // the page also bundles the console's rail and theme from public/.
     const shared = ["nav.js", "theme.css"].map((f) => join(web, "..", "public", f)).filter((f) => existsSync(f));
     const stats = [join(web, "index.html"), ...src, ...shared].map((f) => statSync(f));
     const newest = (sts: typeof stats) => sts.map((st) => st.mtime).reduce((a, b) => (b > a ? b : a));
-    // HIMMEL-4716: a deleted or renamed source leaves no newer mtime, so the build lists its sources in
+    // a deleted or renamed source leaves no newer mtime, so the build lists its sources in
     // dist/.agui-sources and a listed file that is gone is stale; then the newest directory mtime dates the delete.
     if (gone) return { built, changed: newest(stats) > built ? newest(stats) : new Date() };
     const changed = newest(stats.filter((st) => st.isFile())); // a directory's mtime moves on any add, not an edit
@@ -168,7 +168,7 @@ function sameToken(a: string | null, b: string): boolean {
   return d === 0;
 }
 
-// Operator override CONFIG_UI_HIMMELCTL (HIMMEL-4354): replaces the himmelctl
+// Operator override CONFIG_UI_HIMMELCTL: replaces the himmelctl
 // entry the server shells for the feed, the re-probe and every himmelctl action.
 // Deliberately read from the production env, not gated: ci.yml and the
 // subprocess tests (ui-verb, idle) launch the real server and can only pass env.
@@ -176,7 +176,7 @@ function himmelctlBin(env: Env): string {
   return env.CONFIG_UI_HIMMELCTL ?? resolve(import.meta.dir, "../himmelctl/bin.js");
 }
 
-// HIMMEL-5491: the Jira CLI the Kanban writes shell to, by absolute path. CONFIG_UI_JIRA_CLI replaces it (the tests' stub);
+// the Jira CLI the Kanban writes shell to, by absolute path. CONFIG_UI_JIRA_CLI replaces it (the tests' stub);
 // a worktree has no untracked dist/, so a checkout without one falls back to HIMMEL_REPO, then to the primary of a
 // checkout under .claude/worktrees/.
 export function jiraBin(env: Env, checkout: string = CHECKOUT): string {
@@ -189,7 +189,7 @@ export function jiraBin(env: Env, checkout: string = CHECKOUT): string {
 }
 
 export type Progress = { i: number; n: number; source: string };
-// HIMMEL-4807: one `himmel-probe {"i","n","source"}` line, validated; null for anything else.
+// one `himmel-probe {"i","n","source"}` line, validated; null for anything else.
 export function parseProbeLine(line: string): Progress | null {
   if (!line.startsWith(PROBE_LINE)) return null;
   let o: unknown;
@@ -201,7 +201,7 @@ export function parseProbeLine(line: string): Progress | null {
   return { i: i as number, n: n as number, source };
 }
 
-// HIMMEL-4807: the report runs under probe-progress.cjs, whose stderr steps reach onProgress.
+// the report runs under probe-progress.cjs, whose stderr steps reach onProgress.
 function runFeed(env: Env, timeoutMs: number, onProgress: (p: Progress) => void): Promise<string> {
   return new Promise((ok, fail) => {
     const argv = ["--require", join(import.meta.dir, "probe-progress.cjs"), himmelctlBin(env), "report", "--json"];
@@ -234,7 +234,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const lockPath = join(stateDir, "write.lock");
   const auditPath = join(stateDir, "actions.jsonl");
   const reprobeMs = opts.reprobeBudgetMs ?? REPROBE_BUDGET_MS;
-  // Operator override HIMMEL_REPORT_CADENCE_ROOT (HIMMEL-4354; shared with
+  // Operator override HIMMEL_REPORT_CADENCE_ROOT (shared with
   // `report`, so the feed and the actions agree): the tree the cadence scripts
   // run from, the checkout by default. Read from the production env, not gated:
   // the action tests and ci.yml rely on it (a stub tree).
@@ -312,7 +312,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: p.argv.join(" "), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
-  // HIMMEL-5491: a Kanban drop or theme select, written to Jira by the CLI under the same write lock and audit as an action.
+  // a Kanban drop or theme select, written to Jira by the CLI under the same write lock and audit as an action.
   async function roadmapWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
@@ -335,7 +335,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   }
 
   let idle: ReturnType<typeof setTimeout> | undefined;
-  // HIMMEL-4354: the idle window never shuts the server down mid-request; the
+  // the idle window never shuts the server down mid-request; the
   // timer re-arms once the last in-flight request ends.
   let active = 0, deferred = false;
   const bump = () => {
@@ -348,7 +348,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
 
   // The feed: ONE background report shared by every request, cached briefly.
   // A failure is terminal for that run and never cached, so the next request retries.
-  // HIMMEL-4807: feedLast is the newest good report, answered at once even while a newer one runs
+  // feedLast is the newest good report, answered at once even while a newer one runs
   // (stale-while-revalidate). An action clears it and bumps feedEpoch: a run started before that never becomes it.
   type FeedRun = {
     startedAt: number; done: boolean; body?: string; error?: string; at: number; promise: Promise<void>;
@@ -376,7 +376,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const run = feedStart(); // an expired cache starts a refresh here
     if (last) return feedBody(last.body);
     if (!run) return json({ state: "error", reason: "no report" }, 502); // unreachable: no cached report always starts a run
-    // HIMMEL-4807: answer as soon as the report lands, the step changes, or the wait runs out.
+    // answer as soon as the report lands, the step changes, or the wait runs out.
     let t: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([run.promise, new Promise<void>((r) => { run.waiters.push(r); }), new Promise((r) => { t = setTimeout(r, opts.feedWaitMs ?? FEED_WAIT_MS); })]);
     clearTimeout(t);
@@ -384,7 +384,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (run.body !== undefined) return feedBody(run.body);
     return json({ state: "error", reason: run.error }, 502);
   }
-  // HIMMEL-4807: background loading (backgroundFeed): refresh on each tick while the console is in use.
+  // background loading (backgroundFeed): refresh on each tick while the console is in use.
   let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
@@ -394,8 +394,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const path = new URL(req.url).pathname;
     if (path.startsWith("/api/")) {
       if (!sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
-      bump(); // HIMMEL-4350: only an authenticated request keeps the server alive
-      lastSeen = now(); // HIMMEL-4807: and only one keeps the background refresh going
+      bump(); // only an authenticated request keeps the server alive
+      lastSeen = now(); // and only one keeps the background refresh going
       if (req.method === "GET" && path === "/api/feed") {
         return feedRoute();
       }
@@ -412,12 +412,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         ]);
         return json(redactOut({ bank, legs, monitoring, mode: readMode(root, env) }));
       }
-      // HIMMEL-5486: the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
+      // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readQuota(env, now())));
       }
-      // HIMMEL-4943: the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request.
+      // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request.
       // Read-only: the sync list is a plan the console kit executes, never run here.
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -427,7 +427,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, legs });
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
       }
-      // HIMMEL-4712: every live session, for the fleet landing at /agui/ with no run. Read-only.
+      // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         let raw = "";
@@ -455,7 +455,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         });
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
       }
-      // HIMMEL-4620: the vm section of the himmel config, validated and saved through luna-config.js.
+      // the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
       if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/roadmap/write") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -496,11 +496,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     },
   });
   bump();
-  if (opts.backgroundFeed) feedStart(true); // HIMMEL-4807: prewarm, so the report is there when the console opens
+  if (opts.backgroundFeed) feedStart(true); // prewarm, so the report is there when the console opens
   return { server, port: server.port, token, stop: () => { clearTimeout(idle); clearInterval(refresher); server.stop(true); } };
 }
 
-// HIMMEL-4711: `himmelctl ui` prints ONE URL. LANDING is the operator's switch: "fleet" lands on the fleet
+// `himmelctl ui` prints ONE URL. LANDING is the operator's switch: "fleet" lands on the fleet
 // (Config and Health one click away in the rail), "config" on the config page. The fleet is the landing only
 // when agui-web/dist is built; else the console, whose Fleet link answers with the build steps.
 export const LANDING: "fleet" | "config" = "fleet";
@@ -512,10 +512,10 @@ export function launchUrl(base: string, token: string, o: { landing: "fleet" | "
 if (import.meta.main) {
   const i = process.argv.indexOf("--port");
   const a = process.argv.indexOf("--agui");
-  // HIMMEL-4807: the operator lands on Fleet (another page); the config report loads meanwhile.
+  // the operator lands on Fleet (another page); the config report loads meanwhile.
   const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true });
   // himmelctl ui --agui [<run>]: the launcher has already resolved and validated the run id; with none, the
-  // fleet landing (HIMMEL-4712).
+  // fleet landing.
   const run = a > 0 ? process.argv[a + 1] : undefined;
   const agui = a > 0 ? (run && !run.startsWith("--") ? run : "fleet") : undefined;
   const url = launchUrl(`http://${LOOPBACK}:${port}`, token, { landing: LANDING, built: existsSync(join(AGUI_DIST, "index.html")), agui });

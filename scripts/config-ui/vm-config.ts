@@ -1,4 +1,4 @@
-// HIMMEL-4620: the config UI's read and write of the `vm` section of ~/.himmel/config.json.
+// the config UI's read and write of the `vm` section of ~/.himmel/config.json.
 // Everything goes through luna-config.js: validateVm (the mirror of scripts/lib/vm-mode.sh) runs before
 // the write, save() is atomic, and no other section is built here: the rest of the document is whatever
 // inspect() loaded.
