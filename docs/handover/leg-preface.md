@@ -149,7 +149,7 @@ commands are VM-only): `docs/handover/leg-sections/shell-and-tests.md`.
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition`.
-  - **`completes-ticket: no`** → omit the flag; never default it on (a sliced
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059: a sliced
     ticket closed on its first slice).
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand. Either way, re-read the ticket after merge and report its state.
