@@ -29,8 +29,8 @@ ledger="${HIMMEL_TRUST_LEDGER_DIR:-$HOME/.claude/himmel/trust}/ledger.jsonl"
 docs=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --min) min="${2:-}"; shift 2 ;;
-        --ledger) ledger="${2:-}"; shift 2 ;;
+        --min) min="${2:-}"; shift; [ "$#" -gt 0 ] && shift ;;
+        --ledger) ledger="${2:-}"; shift; [ "$#" -gt 0 ] && shift ;;
         -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) docs+=("$1"); shift ;;
     esac

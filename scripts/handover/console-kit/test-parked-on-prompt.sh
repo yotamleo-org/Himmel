@@ -74,5 +74,11 @@ eq 'a doc without session_ids is skipped' 'parked=none' "$(run --min 5 "$W/bare.
 # the floor comes from TICK_PARKED_MIN when --min is absent
 eq 'TICK_PARKED_MIN sets the floor' 'parked=none' "$(TICK_PARKED_MIN=20 run "$D1")"
 
+# a trailing option with no value terminates instead of looping
+out="$(timeout 5 bash "$SUT" --ledger "$W/ledger.jsonl" "$D1" --min 2>/dev/null)"; rc=$?
+eq 'a trailing --min terminates' '0:parked=legA:12m' "$rc:$out"
+out="$(timeout 5 bash "$SUT" "$D1" --ledger 2>/dev/null)"; rc=$?
+eq 'a trailing --ledger terminates' '0:parked=none' "$rc:$out"
+
 [ "$fails" -eq 0 ] || { printf '%s failure(s)\n' "$fails"; exit 1; }
 printf 'all passed\n'
