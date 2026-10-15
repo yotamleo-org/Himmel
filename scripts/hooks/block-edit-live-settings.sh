@@ -1069,7 +1069,10 @@ is_readonly_allowlisted() {
         rg)
             # --pre / --pre-glob run a program over each file; quotes and
             # backslashes are dropped first so '--pre' and --p\re still match
+            # A `$`, `*`, `?` or `[` could build the option name, so it is no
+            # read (the tokenized allowlist refuses the same words).
             local _rg=${c//[\'\"\\]/}
+            case "$c" in *'$'*|*'*'*|*'?'*|*'['*) return 1 ;; esac
             [[ $_rg =~ [[:space:]]--pre(-glob)?($|[[:space:]=]) ]] && return 1
             return 0
             ;;
