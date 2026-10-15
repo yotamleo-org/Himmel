@@ -2673,7 +2673,7 @@ _ql_doc_worktree_changes() {
     base=$(git_clean -C "$cwd" merge-base HEAD origin/main 2>/dev/null || git_clean -C "$cwd" merge-base HEAD main 2>/dev/null) || base=""
     {
         [ -n "$base" ] && git_clean -C "$cwd" diff --name-only "$base" HEAD 2>/dev/null
-        git_clean -C "$cwd" status --porcelain 2>/dev/null | sed 's/^...//'
+        git_clean -C "$cwd" status --porcelain -uall 2>/dev/null | sed 's/^...//'
     } | sort -u
 }
 

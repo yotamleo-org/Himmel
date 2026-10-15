@@ -3071,6 +3071,13 @@ if [ "$rc" -eq 0 ] && ! grepq "$out" "COLLISION"; then
 else
     fail "T104b: preflight no-overlap (rc=$rc out=$out)"
 fi
+mkdir -p "$P_REPO/newdir"; echo n > "$P_REPO/newdir/fresh.sh"   # untracked file inside an untracked directory
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE" newdir/fresh.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 20 ] && grepq "$out" "COLLISION file=newdir/fresh.sh "; then
+    pass "T104d: preflight sees a file inside an untracked directory"
+else
+    fail "T104d: preflight untracked dir (rc=$rc out=$out)"
+fi
 out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_OTHER" shared.sh 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "T104c: preflight never collides a session with its own lock"
