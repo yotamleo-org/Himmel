@@ -200,4 +200,29 @@ fi
 out=$(bash "$IMPRUN" --scan-repo-of-script --only-list 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "24l: --only-list with no value -> rc 2"; else fail "24l: rc=$rc output: $out"; fi
 
+# 24m: a grep that ERRORS (rc 2) in the --only-list intersection is a refusal, never "0 impacted suites".
+REAL_GREP=$(command -v grep)
+mkdir -p "$SB/fakebin"
+printf '#!/bin/sh\ncase "$*" in *-Fxf*) exit 2;; esac\nexec %s "$@"\n' "$REAL_GREP" > "$SB/fakebin/grep"
+chmod +x "$SB/fakebin/grep"
+: > "$IMP_LOG"
+out=$(PATH="$SB/fakebin:$PATH" bash "$IMPRUN" --scan-repo-of-script --only-list "$SB/only-both.txt" --impacted "$CODE_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 2 ] && [ -z "$ran" ] && ! grepq "$out" '0 impacted suites in --only-list'; then
+  pass "24m: a failing grep in the intersection -> rc 2, not a vacuous green"
+else
+  fail "24m: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24n: a CRLF list names the same suites as an LF one.
+printf 'scripts/test-uninstall.sh\r\nscripts/test-unrelated.sh\r\n' > "$SB/only-crlf.txt"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --only-list "$SB/only-crlf.txt" --impacted "$CODE_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24n: a CRLF --only-list selects the same suite as an LF one"
+else
+  fail "24n: rc=$rc ran='$ran' output: $out"
+fi
+
 rst_tally

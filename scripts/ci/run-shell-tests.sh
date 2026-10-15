@@ -3013,7 +3013,7 @@ if [ -n "$only_list_file" ]; then
     echo "run-shell-tests.sh: --only-list '${only_list_file}' is not a file — refusing to guess a suite list" >&2
     exit 2
   fi
-  _only_list_body=$(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$only_list_file")
+  _only_list_body=$(tr -d '\r' < "$only_list_file" | sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d')
   if [ -z "$_only_list_body" ]; then
     echo "run-shell-tests.sh: --only-list '${only_list_file}' names no suites — refusing to run nothing" >&2
     exit 2
@@ -3033,7 +3033,12 @@ if [ -n "$impacted_range" ]; then
     exit 2
   fi
   if [ "$only_list_active" -eq 1 ] && [ -n "$_impacted_out" ]; then
-    _impacted_out=$(printf '%s\n' "$_impacted_out" | grep -Fxf - <(printf '%s\n' "$_only_list_body") || true)
+    _only_list_grep_rc=0
+    _impacted_out=$(printf '%s\n' "$_impacted_out" | grep -Fxf - <(printf '%s\n' "$_only_list_body")) || _only_list_grep_rc=$?
+    if [ "$_only_list_grep_rc" -gt 1 ]; then
+      echo "run-shell-tests.sh: --only-list '${only_list_file}': grep failed (rc ${_only_list_grep_rc}) intersecting with --impacted — refusing to read it as 0 impacted suites" >&2
+      exit 2
+    fi
     if [ -z "$_impacted_out" ]; then
       echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted suites in --only-list ${only_list_file} — nothing to run"
       exit 0
