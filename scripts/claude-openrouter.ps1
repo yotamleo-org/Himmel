@@ -230,8 +230,7 @@ const PROVIDER="openrouter";
 // This launcher performs INFERENCE (it runs Claude Code). A matrix rule
 // authorizes the lane only when its purpose is "*" (any) or exactly the
 // launcher purpose — a cell the operator scoped to a different purpose
-// (embedding, extraction, ...) must NOT silently authorize an inference lane
-// .
+// (embedding, extraction, ...) must NOT silently authorize an inference lane.
 const PURPOSE="inference";
 // 1. The provider itself must be DECLARED. A wildcard provider:"*" allow does
 //    not authorize a new third-party routing layer in front of model vendors.

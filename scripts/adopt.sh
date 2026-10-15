@@ -40,13 +40,12 @@
 #                       existing foreign install — see scripts/lib/graphify-bin.sh).
 #   --skip-hooks        Opt out of placing the git gate hooks (pre-commit,
 #                       commit-msg, pre-push) in --target. On by default
-#  so a fresh adopt is gated from its first
+#                       so a fresh adopt is gated from its first
 #                       commit; mirrors uninstall.sh's own --skip-hooks. A
 #                       target with its own .pre-commit-config.yaml gets the
 #                       pre-commit framework hooks (config untouched); one
 #                       without gets himmel's native gates directly, since the
-#                       framework's hooks would skip without a config
-# .
+#                       framework's hooks would skip without a config.
 #   --only-hooks        Place the git gate hooks and nothing else:
 #                       no settings wiring, plugins, marketplaces, CLAUDE.md,
 #                       statusline or bundle. What `himmelctl ensure --items

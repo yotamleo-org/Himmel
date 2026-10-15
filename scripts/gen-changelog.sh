@@ -29,8 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `rm -f ""` is a silent no-op, so an unset slot costs nothing. The `--`
 # terminator matters: a relative TMPDIR beginning with `-` would otherwise
 # make `rm` parse the generated path as an option and leak both files --
-# a cleanup that silently fails to clean is the defect this ticket fixes
-# .
+# a cleanup that silently fails to clean is the defect the traps prevent.
 #
 # Bash also DEFERS a trapped signal while it waits on a synchronous child, so a
 # wedged `git` kept the script alive and the temp files leaked despite the traps

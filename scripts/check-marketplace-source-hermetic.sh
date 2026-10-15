@@ -23,8 +23,7 @@
 # github/ssh/anything-else fail) is applied to every plugin entry there,
 # transitively — a plugin entry that is itself a "directory" source recurses
 # into ITS marketplace.json up to DEPTH_CAP levels, with a per-branch
-# ancestor set so a self-referential directory fails loud instead of looping
-# .
+# ancestor set so a self-referential directory fails loud instead of looping.
 #
 # Fail-closed on detected drift; skips (exit 0) only when jq is unavailable
 # or the template is MISSING (fresh clone / CI without it — a legitimate
@@ -135,8 +134,7 @@ check_marketplace_dir() {
   # so jq's own exit status is checked: a `while read < <(cmd)` loop never
   # sees cmd's exit code, so a jq error mid-stream (e.g. a non-object
   # plugins[] entry, or an entry whose .source is neither an object nor a
-  # string) used to leave $bad untouched and PASS a malformed marketplace
-  # .
+  # string) would leave $bad untouched and PASS a malformed marketplace.
   mp_extract="$(mktemp)" || { bad="$bad  $label (mktemp failed while extracting marketplace.json plugins)
 "; return; }
   mp_err="$(mktemp)" || { rm -f "$mp_extract"; bad="$bad  $label (mktemp failed while extracting marketplace.json plugins)
