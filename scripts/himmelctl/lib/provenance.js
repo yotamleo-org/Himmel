@@ -1,7 +1,7 @@
 'use strict';
 // provenance.js -- the install-provenance ledger writer, node dialect
-// (HIMMEL-3332 S1). Twin: scripts/lib/provenance.sh writes BYTE-IDENTICAL rows
-// (the PowerShell dialect is tracked in HIMMEL-3346);
+// Twin: scripts/lib/provenance.sh writes BYTE-IDENTICAL rows
+// (the PowerShell dialect is tracked in);
 // scripts/himmelctl/test/test-provenance-js.sh cross-checks this file against
 // the bash one on the same input. Format, kinds, write points:
 // docs/internals/install-provenance.md.
@@ -29,7 +29,7 @@ const KINDS = ['file', 'tree', 'json-key', 'json-elem', 'block', 'line', 'plugin
 const SCOPES = ['user', 'project', 'clone', 'machine'];
 const CLASSES = ['code', 'state', 'keep'];
 const RESERVED = ['t', 'iid', 'op', 'kind', 'path', 'unit', 'scope', 'class', 'pre', 'post', 'snap', 'snap_skip', 'writer', 'manifest_row'];
-// HIMMEL-3787 S2c: ours snapshots (twin of _prov_snapshot in provenance.sh)
+// ours snapshots (twin of _prov_snapshot in provenance.sh)
 const SNAP_KINDS = ['file', 'shim', 'block'];
 const SNAP_OPS = ['create', 'replace', 'insert'];
 // ponytail: 1 MiB cap, raise it on a real >1 MiB unit (design §2)

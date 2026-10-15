@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): bash + node + jq.
-# test-luna-config-migration.sh -- HIMMEL-3349: `himmelctl install` must not fail
+# test-luna-config-migration.sh -- `himmelctl install` must not fail
 # on a ~/.himmel/config.json that carries an unknown key, and must migrate a
 # pre-schema config (a required v1 field missing) instead of refusing it.
 #
@@ -178,7 +178,7 @@ check "d invalid JSON: names the file" "$([ "$(printf '%s\n' "$outD" | grep -c "
 check "d invalid JSON: a hand-fix command with the backup path" \
     "$(printf '%s\n' "$outD" | grep -c "hand-fix: cp .*config.json.hand-fix.bak")" "1"
 
-# HIMMEL-3371: the printed hand-fix line is a shell command; EDITOR carries
+# the printed hand-fix line is a shell command; EDITOR carries
 # arguments in the wild (`code --wait`), so it must word-split. Run the printed
 # command with an EDITOR that echoes what it was given: the argument must arrive
 # as its own word, ahead of the (still quoted) path.
@@ -190,7 +190,7 @@ check "d2 invalid JSON: EDITOR with arguments splits into words" \
 check "d2 invalid JSON: the editor default is left to the shell" \
     "$(printf '%s\n' "$hand_fix" | grep -cF '${EDITOR:-vi} "')" "1"
 
-# ── (g) HIMMEL-3371: a wizard answer that equals the default is still the
+# ── (g) a wizard answer that equals the default is still the
 # wizard's answer -- the label tracks who supplied the field, not the value.
 hG=$(new_home g); mk "$hG" '{"version":1,"luna":{"vaultPath":"/u/vault"}}'
 profG="$work/profG.json"

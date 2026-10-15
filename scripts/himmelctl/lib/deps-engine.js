@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/deps-engine.js — the engine behind `himmelctl deps
-// status|ensure|upgrade` (HIMMEL-759, sub-ticket C of epic HIMMEL-755).
+// status|ensure|upgrade`.
 //
 // deps.json (scripts/install/deps.json) is a SEPARATE, flat, version-aware
 // toolchain declaration -- NOT the manifest's presence-only kind:"dep"
@@ -37,12 +37,12 @@ const { which } = require('./helpers.js');
 const { resolveSudoPassword } = require('./install-engine.js');
 // Never spawn a bare 'bash': on Windows PATH resolves it to the System32 WSL
 // stub, which cannot read a C:/ path, so every probe below would report the
-// dep MISSING instead of running (HIMMEL-1992, same class as HIMMEL-1279).
+// dep MISSING instead of running.
 // Reuses the hook launcher's resolver -- the one place this rule is tested.
 const { resolveBash } = require('../../hooks/run-hook-with-bash.js');
 
 // Read scripts/install/deps.json under repoRoot and return its deps array.
-// CR fix: a MISSING deps.json (fs ENOENT) is distinguished from a MALFORMED
+// a MISSING deps.json (fs ENOENT) is distinguished from a MALFORMED
 // one — only ENOENT is caught, converted to a clear "deps.json not found"
 // Error (surfaced via main()'s top-level catch, same as loadProfile's own
 // "missing/unreadable file -> throw -> exit 1" convention in bin.js). A
@@ -60,7 +60,7 @@ function loadDeps(repoRoot) {
     throw e;
   }
   const parsed = JSON.parse(raw);
-  // CR fix: validate the top-level shape — a deps.json whose `deps` is
+  // validate the top-level shape — a deps.json whose `deps` is
   // missing or not an array is a corrupt declaration, not an empty one.
   // Returning [] (the old fallback) would silently make `deps status` report
   // a healthy empty toolchain and `deps ensure` converge nothing, masking the
@@ -107,7 +107,7 @@ function osKey(platform) {
 // resolves (mirrors probes.js's cmd:has_qmd probe type, for the SAME
 // reason) — so its presence check sources the resolver and calls has_qmd
 // instead of which(cmd). Every other dep is a plain `which()` PATH check.
-// CR fix (MAJOR, codex panel + CodeRabbit): resolverPath used to be
+// resolverPath used to be
 // interpolated straight into the -c script text (`` `. "${resolverPath}" &&
 // has_qmd` ``) — breaks on a repoRoot containing spaces (e.g. a Windows
 // "C:\Users\My Name\...", the common case) and, were repoRoot ever to carry // leak-allow: home-path doc example
@@ -116,7 +116,7 @@ function osKey(platform) {
 // && has_qmd && qmd_cmd pull` shape and install-engine.js's buildEntry()
 // winget/brew/apt-dep cases — no value is ever interpolated into the -c
 // string.
-// isExecutableFile(p) -> bool. CR fix (CodeRabbit MAJOR): a PATH entry which()
+// isExecutableFile(p) -> bool. (CodeRabbit MAJOR): a PATH entry which
 // resolved must be a regular file the caller can actually EXECUTE before it
 // counts as present — a DIRECTORY named like the tool, or a present-but-non-
 // executable file (POSIX mode 0644), used to read as present (probePresence
@@ -148,7 +148,7 @@ function probePresence(dep, ctx) {
     const bash = resolveBash({ env: ctx.env || process.env });
     // No usable bash => the probe cannot run. Falling back to a bare 'bash'
     // would hand the probe the very WSL stub this resolution exists to avoid
-    // (CR round 1, codex-2); an unrunnable probe is "not present", the same
+    // an unrunnable probe is "not present", the same
     // answer the failed spawn produced before.
     if (!bash) return false;
     const resolverPath = path.join(ctx.repoRoot, dep.resolver);
@@ -175,7 +175,7 @@ function probePresence(dep, ctx) {
 // shebang-script tool at all (CreateProcess requires bash's own
 // interpreter-aware exec for those), whereas bash's PATH search resolves
 // the right one regardless of extension.
-// CR fix (MAJOR, codex panel + CodeRabbit): resolverPath/dep.cmd/versionArgs
+// resolverPath/dep.cmd/versionArgs
 // used to be string-interpolated into the -c line (same class of bug as
 // probePresence above — breaks on a spacey repoRoot, unhardened against
 // metacharacters). Every value is now a POSITIONAL arg; the script
@@ -185,7 +185,7 @@ function probeVersion(dep, ctx) {
   const versionArgs = (dep.versionProbe && dep.versionProbe.args) || ['--version'];
   const bash = resolveBash({ env: ctx.env || process.env });
   // Same refusal as probePresence: no usable bash => no version, never the
-  // bare-'bash' fallback that lands on the WSL stub (CR round 1, codex-2).
+  // bare-'bash' fallback that lands on the WSL stub.
   if (!bash) return null;
   let r;
   if (dep.resolver) {
@@ -251,7 +251,7 @@ function depStatus(dep, ctx) {
 // "ensure present" primitive, not an upgrade one), upgrading git/jq/python3
 // needs to re-run the package manager's install command even when the tool
 // is already there.
-// CR fix (SECURITY, MAJOR): `sudo` used to be invoked bare here, ignoring
+// `sudo` used to be invoked bare here, ignoring
 // the configured HIMMELCTL_SUDO_PASSWORD entirely — a non-interactive
 // `deps upgrade --yes` on linux would either prompt (hanging with no tty
 // until sudo's own timeout) or just fail, instead of using the SAME
@@ -269,7 +269,7 @@ function depStatus(dep, ctx) {
 const UPGRADE_APT_DNF_BREW_SUDO_PASSWORD_SNIPPET = 'if command -v apt-get >/dev/null 2>&1; then '
   + 'sudo -S -p \'\' sh -c \'apt-get update >/dev/null 2>&1 || true; apt-get install -y "$1"\' himmel-dep "$1"; '
   + 'elif command -v dnf >/dev/null 2>&1; then sudo -S -p \'\' dnf install -y "$1"; '
-  // CR fix (SECURITY, MAJOR — CR #1191): brew needs no sudo, so redirect its
+  // brew needs no sudo, so redirect its
   // stdin from /dev/null. runHardenedSpawn pipes the sudo password to this
   // bash's stdin for the apt/dnf `sudo -S` branches, but the branch is chosen
   // at runtime by `command -v`; without this redirect the brew branch (and any
@@ -305,7 +305,7 @@ function buildDepEntry(dep, ctx, opts) {
       // upgrade path re-runs the bespoke installer directly, since
       // ensure_tools() itself SKIPS an already-present tool and can't
       // upgrade one. uv is bootstrapped via its official installer
-      // (HIMMEL-2521, option 2: no system pip on stock Ubuntu/Debian —
+      // (option 2: no system pip on stock Ubuntu/Debian
       // PEP 668 — so the pip manager below is never routed to on linux for
       // uv or pre-commit); pre-commit is then `uv tool install pre-commit`,
       // which needs no pip either.
@@ -317,7 +317,7 @@ function buildDepEntry(dep, ctx, opts) {
       if (!upgrade) {
         return { id: dep.id, type: 'dep', cmd: 'bash', args: ['-c', '. "$1" && ensure_tools "$2"', 'himmel-dep', ensureToolsPath, dep.cmd] };
       }
-      // CR fix (SECURITY, MAJOR): route through the SAME hardened sudo
+      // route through the SAME hardened sudo
       // credential path install-engine.js's own linux 'dep' buildEntry()
       // case uses — see the snippet constants' own header above.
       if (resolveSudoPassword(ctx.repoRoot)) {

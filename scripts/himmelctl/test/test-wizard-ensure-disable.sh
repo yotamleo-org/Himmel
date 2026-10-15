@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-ensure-disable.sh — hermetic tests for `ensure`'s
-# toward-disabled branch (HIMMEL-755 A5b): an enabled item the operator no
+# toward-disabled branch (A5b): an enabled item the operator no
 # longer wants (desired:false after a --profile reconcile, but still
 # actually present) converges by `removable`: a `per-item` item runs its
 # `unwire` primitive; a `full-offboard-only` item ERRORS naming itself +
@@ -20,20 +20,20 @@
 #   b. a full-offboard-only item toward-disabled ERRORS naming the item +
 #      pointing at `himmelctl uninstall`, and its marker is left UNTOUCHED
 #      (zero mutation for that item specifically).
-#   c. (CR fix) a DEGRADED (not fully present, not absent) removable item is
+#   c. a DEGRADED (not fully present, not absent) removable item is
 #      STILL queued for disable — not just a fully 'present' one — and, when
 #      its unwire primitive "succeeds" (exit 0) but the resource is STILL
 #      not absent on re-probe (still degraded), ensure treats that as a
 #      failure rather than trusting the primitive's exit code alone.
-#   d. (CR fix) --dry-run surfaces a full-offboard-only blocker as a DRY
+#   d. --dry-run surfaces a full-offboard-only blocker as a DRY
 #      line and fails its own exit code, instead of silently returning 0.
-#   e. (CR fix) reverse-dependency unwire ordering: two removable items
+#   e. reverse-dependency unwire ordering: two removable items
 #      where B deps on A — the toward-disabled dispatch unwires B BEFORE A
 #      (tear-down in reverse build order), not manifest declaration order.
-#   f. (CR fix) --dry-run over a removable:per-item item whose unwire
+#   f. --dry-run over a removable:per-item item whose unwire
 #      descriptor is unrunnable surfaces the blocker (not a silent "DRY:
 #      unwire <id>" success) and fails its own exit code.
-#   g. (CR fix) --items must not break dependency closure on the
+#   g. --items must not break dependency closure on the
 #      toward-DISABLED side either: item-y deps on item-x (removable:
 #      per-item). Reconciling item-x toward disabled via `--items item-x`
 #      while item-y (still desired under every profile this fixture can
@@ -42,7 +42,7 @@
 #      (zero mutation, unwire never runs — and the PERSISTED state.json/
 #      install-profile cache are asserted byte-identical before vs. after,
 #      not just the marker + spy log, proving the reject happens BEFORE any
-#      save point). (CR fix, codex round 4, Suggestion) also asserts the
+#      save point). also asserts the
 #      rejection does NOT advise merely adding item-y to --items (that
 #      advice doesn't work — case k proves membership alone never disables
 #      a still-desired dependent) and instead names the two remediations
@@ -55,37 +55,37 @@
 #      genuinely coherent completion (both items becoming undesired
 #      together, unwound in reverse-dependency order) is case e's own
 #      coverage.
-#   h. (CR fix, SECURITY — secret leak) the unwire spawn now goes through
+#   h. (SECURITY — secret leak) the unwire spawn now goes through
 #      the SAME hardened path (installEngineLib.runUnwire ->
 #      runHardenedSpawn) as every install — a real (non-mocked) unwire
-#      primitive that targeted-probes its own environment (CR fix,
-#      CodeRabbit round 16: NOT a full `env` dump — that would leak the
+#      primitive that targeted-probes its own environment
+#      16: NOT a full `env` dump — that would leak the
 #      operator's own real ambient secrets into test/CI output) proves
 #      HIMMELCTL_SUDO_PASSWORD is ABSENT from it (an unrelated marker var survives,
 #      proving this isn't "wipe everything"), mirroring the install-path
 #      case r in test-wizard-install-engine.sh. A cross-model review caught
 #      that this call site had drifted from runInstall's own hardening —
 #      this proves the drift is closed.
-#   i. (CR fix, HANG) a wedged unwire primitive that backgrounds a
+#   i. (HANG) a wedged unwire primitive that backgrounds a
 #      grandchild (re-parenting it) is timed out by the SAME
 #      INSTALL_TIMEOUT_SECS mechanism installs use — lands in disableErrors
 #      naming a "timed out after Ns" reason, and the grandchild is verified
 #      GENUINELY DEAD afterward (polled, not a fixed sleep — same bar as
 #      the install-path case s), not merely orphaned/still running in the
 #      background.
-#   j. (CR fix) the final "N converged" completion count includes
+#   j. the final "N converged" completion count includes
 #      successful UNWIRES, not just installs: ONE ensure call that both
 #      disables item-x (unwire) and installs item-y reads "2 converged",
 #      not 1 (the shipped-then-buggy shape derived the count from
 #      ran.length alone).
-#   k. (CR fix, cross-model: codex + CodeRabbit both found this) being
+#   k. (cross-model: codex + CodeRabbit both found this) being
 #      INCLUDED in --items is not proof a dependent is actually being
 #      unwired: `--items item-x,item-y` where item-x is toward-disabled but
 #      item-y (its dependent) stays desired is REJECTED — exit 2, names
 #      both items, zero mutation (item-x's unwire never runs, its marker
 #      survives). Only an excluded dependent was checked before; an
 #      included-but-still-desired one slipped through.
-#   l. (CR fix, CodeRabbit round 16, MAJOR — fail-closed) a REAL disable
+#   l. (MAJOR — fail-closed) a REAL disable
 #      failure stops the ensure immediately: item-y (dependent) unwires
 #      first (reverse-dependency order) and is rigged to fail — item-x's
 #      unwire (the prerequisite, second in order) is proven to NEVER run,
@@ -93,17 +93,17 @@
 #      NEVER be dispatched either (the abort skips Step 5 entirely, not
 #      just the rest of the disable loop). --dry-run's own enumerate-
 #      everything behavior (case d) is unaffected by this fix.
-#   p. (CR fix, HIMMEL-1100 round 6, CodeRabbit App PR #1500 thread #4) a
+#   p. a
 #      full-offboard-only item that probes DEGRADED (not 'present', not
 #      'absent') logs an advisory and lets the run PROCEED (exit 0) instead
 #      of permanently blocking every ensure the way a 'present' item still
 #      does — the removal gate used to push ANY non-absent probe as an
 #      unconditional blocker, wedging a probe that can structurally never
-#      confirm 'present' (e.g. guardrail-block-global, before its HIMMEL-1418
+#      confirm 'present' (e.g. guardrail-block-global, before its
 #      `status --json` verb) forever, with no unwire descriptor to ever
 #      converge it. Asserted across TWO consecutive runs (not a one-shot
 #      fluke).
-#   q. (codex-2 review finding, HIMMEL-2349) pins the chosen asymmetric
+#   q. pins the chosen asymmetric
 #      behaviour of the split-consent decline: a run with towardEnabled AND
 #      (via --prune) towardDisabled items, declined interactively at the
 #      FIRST (converge) prompt, aborts the ENTIRE run — the second
@@ -112,12 +112,12 @@
 #      so explicitly, and that NEITHER item is mutated (converge-item stays
 #      uninstalled, prune-item stays installed with its unwire spy log
 #      empty).
-#   r. (codex-4 review finding, HIMMEL-2349) describeDisableCommand()'s
+#   r. describeDisableCommand's
 #      evidence line ("disabling would run: ...") quotes an argument
 #      containing a space (a target path under "target with space") —
 #      this string is consent evidence the operator reads before allowing
 #      a disable, so an unquoted, ambiguous rendering is an honesty defect.
-#   t. (CR fix, codex-1 round 6, HIMMEL-2349) the under-recorded EVIDENCE
+#   t. the under-recorded EVIDENCE
 #      count must not count an item carrying a deliberate per-item override
 #      (target.items[id].overrides non-empty) — an override IS recorded
 #      operator intent, the opposite of an under-recorded record. PRIMARY:
@@ -137,7 +137,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -166,7 +166,7 @@ fi
 
 # snapshot_file <path> — a sha256 hash line, or the literal "ABSENT" when
 # the file doesn't exist — so a before/after comparison is meaningful
-# whether or not the file existed at snapshot time (CR fix: case g's
+# whether or not the file existed at snapshot time (case g's
 # zero-mutation claim needs to cover the PERSISTED state, not just the
 # primitive marker + spy log).
 snapshot_file() {
@@ -263,7 +263,7 @@ echo "ok: setup — both items converged (installed) under profile luna"
 
 # ── step 2a: reconcile to profile core -> BOTH items flip desired:false
 # while still physically present, but THIS run is scoped via --items to
-# JUST wiring-statusline. CR fix (CodeRabbit round 16, MAJOR — fail-fast):
+# JUST wiring-statusline. (MAJOR — fail-fast):
 # a single combined `--profile core` run used to dispatch BOTH toward-
 # disabled items and rely on neither one's outcome depending on the
 # other's — that assumption broke once a real disable failure aborts the
@@ -276,7 +276,7 @@ echo "ok: setup — both items converged (installed) under profile luna"
 # runs keeps cases a/b independently meaningful regardless of processing
 # order — case l (below) is where the fail-fast ordering ITSELF gets
 # tested directly. ──────────────────────────────────────────────────────
-# ── case a (part 0, HIMMEL-2349 split consent): the SAME reconcile WITHOUT
+# ── case a (part 0, split consent): the SAME reconcile WITHOUT
 # --prune must converge-only — the item flips desired:false (the reconcile
 # itself is unconditional) but stays PHYSICALLY WIRED, and its unwire
 # primitive never runs. This is the split-consent guarantee itself (default
@@ -292,7 +292,7 @@ if grep -qF 'unwire-statusline' "$logDisable"; then
 fi
 echo "ok: case a (part 0) — split consent: the SAME reconcile WITHOUT --prune leaves the item wired (unwire never runs)"
 
-# ── case a (part 1, HIMMEL-2349): --prune opts in — NOW the per-item unwire
+# ── case a: --prune opts in — NOW the per-item unwire
 # actually runs and the marker is removed. ─────────────────────────────────
 set +e
 out2a=$(runEnsure --profile core --yes --prune --items wiring-statusline 2>&1); rc2a=$?
@@ -311,7 +311,7 @@ echo "ok: case a (part 1) — --prune opted in: the per-item item's unwire primi
 # proving the underlying resource is actually gone, not just undesired.
 # Reconciled DIRECTLY via state.js (bypassing ensure, which would otherwise
 # auto-reinstall it) so this is a pure read-back, not a re-convergence.
-# CR fix: paths passed via the ENVIRONMENT (STATE_LIB_PATH/MANIFEST_PATH/
+# paths passed via the ENVIRONMENT (STATE_LIB_PATH/MANIFEST_PATH/
 # ANSWERS_PATH), never embedded in the node -e source string — a checkout
 # path containing an apostrophe would otherwise break the inline JS. ───────
 ( cd "$targetDir" && HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheDir")" \
@@ -353,7 +353,7 @@ grepq "$out2b" -F 'full-offboard-item' || fail "case b: the error should name 'f
 grepq "$out2b" -F 'himmelctl uninstall' || fail "case b: the error should point at 'himmelctl uninstall' (got: $out2b)"
 echo "ok: case b — the full-offboard-only item errors naming itself + pointing at 'himmelctl uninstall'; its marker is untouched"
 
-# ── case b2 (CR round 8, codex-1, HIMMEL-2349): the per-item disable
+# ── case b2: the per-item disable
 # EVIDENCE line (describeDisableCandidate(), printed above the Step 4
 # dispatch that produced case b's error) must not promise a run that never
 # happens. full-offboard-item is 'present' here (same run as case b, same
@@ -367,7 +367,7 @@ grepq "$out2b" -F 'the run will STOP and ask you to run '"'"'himmelctl uninstall
   || fail "case b2: the evidence line must say the run stops and the operator must run 'himmelctl uninstall' themselves (got: $out2b)"
 echo "ok: case b2 — the full-offboard-only disable-evidence line does not claim a run that never happens; it says the run stops and names the manual command"
 
-# ── case c (CR fix): a DEGRADED (not fully present) removable item is
+# ── case c: a DEGRADED (not fully present) removable item is
 # STILL queued for disable, and a "successful" unwire (exit 0) that leaves
 # the resource still non-absent on re-probe is treated as a failure. Fresh
 # repo/target/cache — isolated from cases a/b. ─────────────────────────────
@@ -424,7 +424,7 @@ grepq "$outDeg" -i 'degraded' || fail "case c: the failure should mention the re
 grep -qF 'auto-approve-safe-bash' "$targetDeg/.claude/settings.json" || fail "case c: settings.json should still carry its one marker (stub never touched it)"
 echo "ok: case c — a degraded (not fully present) removable item is still queued for disable; a successful-exit unwire that leaves it non-absent is treated as a failure"
 
-# ── case d (CR fix round 3, HIMMEL-755): --dry-run must SURFACE a
+# ── case d: --dry-run must SURFACE a
 # full-offboard-only blocker (as a DRY line) and fail its own exit code,
 # not silently return 0. Fresh, isolated target/cache (case a/b's shared
 # target ends this suite reconciled back to profile luna by case a part 2's
@@ -462,7 +462,7 @@ grepq "$outDry" -F 'himmelctl uninstall' || fail "case d: the DRY output should 
 [ -f "$targetD/offboard.marker" ] || fail "case d: --dry-run must make zero mutations (offboard.marker should still exist)"
 echo "ok: case d — --dry-run surfaces a full-offboard-only blocker as a DRY line and fails its own exit code"
 
-# ── case e (CR fix): reverse-dependency unwire ordering — item-b deps on
+# ── case e: reverse-dependency unwire ordering — item-b deps on
 # item-a; toward-disabled must unwire item-b BEFORE item-a. Fresh, isolated
 # repo/target/cache. ────────────────────────────────────────────────────────
 repoE="$work/repoE"; mkdir -p "$repoE/scripts/install" "$repoE/scripts/lib"
@@ -547,7 +547,7 @@ secondLineE=$(sed -n '2p' "$orderLogE")
 [ ! -f "$targetE/item-b.marker" ] || fail "case e: item-b.marker should be removed"
 echo "ok: case e — reverse-dependency unwire ordering: item-b (dependent) unwires before item-a (prerequisite)"
 
-# ── case f (CR fix): --dry-run over a removable:per-item item with an
+# ── case f: --dry-run over a removable:per-item item with an
 # UNRUNNABLE unwire descriptor (unwire.type isn't 'wire' — install-engine.js's
 # unwireCommand() only knows 'wire') surfaces the blocker instead of a
 # silent "DRY: unwire <id>" success. No stub primitives needed — the item's
@@ -587,7 +587,7 @@ grepq "$outF" -F 'DRY:' || fail "case f: expected at least one DRY: line (got: $
 [ -f "$targetF/item.marker" ] || fail "case f: --dry-run must make zero mutations (item.marker should still exist)"
 echo "ok: case f — --dry-run over a removable:per-item item with an unrunnable unwire descriptor surfaces the blocker and fails"
 
-# ── case g (CR fix, HIMMEL-755): --items must not break dependency closure
+# ── case g: --items must not break dependency closure
 # on the toward-DISABLED side. item-y deps on item-x; item-x is profiled
 # luna-only (drops out under core), item-y is profiled core+luna+all (STAYS
 # desired under core) — so reconciling to core makes item-x toward-disabled
@@ -653,7 +653,7 @@ set -e
 # case g (part 1): --profile core --items item-x — item-x goes
 # toward-disabled while item-y (still desired under core, depends on
 # item-x) is excluded from --items -> REJECTED, zero mutation.
-# CR fix (rigor): the zero-mutation claim must cover the PERSISTED state
+# the zero-mutation claim must cover the PERSISTED state
 # too, not just the primitive marker + spy log — a premature profile/state
 # save would go completely undetected otherwise. Snapshot state.json (state
 # already exists here: the setup converge above legitimately persisted it)
@@ -668,7 +668,7 @@ set -e
 [ "$rcG1" -eq 2 ] || fail "case g: --items item-x (dependent item-y excluded) should exit 2 (got rc=$rcG1): $outG1"
 grepq "$outG1" -F 'item-y' || fail "case g: the rejection should name the excluded dependent item-y (got: $outG1)"
 grepq "$outG1" -F 'item-x' || fail "case g: the rejection should name item-x (got: $outG1)"
-# CR fix (codex round 4, Suggestion): the OLD message told the operator to
+# the OLD message told the operator to
 # "add it: --items item-x,item-y" -- advice that doesn't work, since
 # item-y is still DESIRED and merely naming it in --items was proven this
 # round to never disable anything on its own (that's case k's whole bug).
@@ -689,7 +689,7 @@ profileSnapAfter=$(snapshot_file "$cacheG/install-profile.json")
 [ "$stateSnapBefore" = "$stateSnapAfter" ] || fail "case g: state.json must be byte-identical across the rejected run (the closure check must run BEFORE any save) — before: $stateSnapBefore; after: $stateSnapAfter"
 [ "$profileSnapBefore" = "$profileSnapAfter" ] || fail "case g: install-profile.json must be untouched by the rejected run — before: $profileSnapBefore; after: $profileSnapAfter"
 echo "ok: case g — --items excluding a still-desired dependent is REJECTED on the toward-disabled side (zero mutation, including the persisted state)"
-# CR fix: this case deliberately stops here — it does NOT go on to prove a
+# this case deliberately stops here — it does NOT go on to prove a
 # "corrected" completion by adding item-y to --items. item-y stays desired
 # under EVERY profile this fixture can reconcile to (profiles:["core",
 # "luna","all"]), so any --items list that satisfies the closure check
@@ -705,7 +705,7 @@ echo "ok: case g — --items excluding a still-desired dependent is REJECTED on 
 # add no coverage. Case g's own job is narrowly this: prove the closure
 # check makes the incoherent state unreachable in the first place.
 
-# ── case h (CR fix, SECURITY — secret leak): the unwire spawn now goes
+# ── case h (SECURITY — secret leak): the unwire spawn now goes
 # through installEngineLib.runUnwire() -> the SAME runHardenedSpawn() every
 # install already uses. A real (non-mocked) unwire primitive dumps its own
 # environment to prove HIMMELCTL_SUDO_PASSWORD is ABSENT from it (an
@@ -737,7 +737,7 @@ exit 0
 SH
 cat > "$repoH/scripts/lib/unwire-statusline.sh" <<'SH'
 #!/usr/bin/env bash
-# CR fix (CodeRabbit round 16, MAJOR -- secret exposure in OUR test): a full
+# a full
 # `env` dump here would print the OPERATOR'S REAL, ambient secrets (whatever
 # happens to be in the shell that launched scripts/test-adopt.sh) straight
 # into test/CI output. This stub exists only to prove HIMMELCTL_SUDO_
@@ -791,7 +791,7 @@ if grepq "$outH1" -F 'h-env-secret'; then
 fi
 echo "ok: case h — the unwire primitive's environment has HIMMELCTL_SUDO_PASSWORD stripped (an unrelated var survives)"
 
-# ── case i (CR fix, HANG): a wedged unwire primitive that backgrounds a
+# ── case i (HANG): a wedged unwire primitive that backgrounds a
 # grandchild (re-parenting it) is timed out via the SAME INSTALL_TIMEOUT_SECS
 # mechanism runInstall's own installs use — lands in disableErrors with a
 # "timed out after Ns" reason, and the grandchild is verified GENUINELY DEAD
@@ -819,7 +819,7 @@ cat > "$repoI/scripts/lib/wire-statusline.sh" <<'SH'
 exit 0
 SH
 # Backgrounds a grandchild (recording its pid via an env-var-passed path —
-# CR fix convention: never interpolate a path into a fixture script) and
+# convention: never interpolate a path into a fixture script) and
 # blocks past any reasonable timeout, standing in for a real-world hung
 # unwire primitive.
 cat > "$repoI/scripts/lib/unwire-statusline.sh" <<'SH'
@@ -854,9 +854,9 @@ grepq "$outI1" -F 'timed out after' || fail "case i: the failure reason should m
 
 [ -f "$grandchildPidFileI" ] || fail "case i: the grandchild's pid file was never written — it never even started before the timeout fired"
 grandchildPidI=$(cat "$grandchildPidFileI")
-# CR fix (flake, same lesson as install-engine's own case s): poll instead
+# poll instead
 # of a fixed sleep — a busy host can take longer than a beat to reap the
-# process. The assertion itself stays strict. CR fix (portability): a bash
+# process. The assertion itself stays strict. (portability): a bash
 # arithmetic loop instead of `seq` (same fix as install-engine's own cases
 # s/v) — `seq` is an external binary, not guaranteed present on every
 # POSIX host this suite might run on.
@@ -871,7 +871,7 @@ done
 [ "$grandchildDeadI" -eq 1 ] || fail "case i: the grandchild (pid $grandchildPidI) must be dead after the unwire timeout kills the whole process tree, but it is still running (waited 5s)"
 echo "ok: case i — a wedged unwire primitive is timed out (disableErrors names the reason); its backgrounded grandchild is verified genuinely dead, not merely orphaned"
 
-# ── case j (CR fix, HIMMEL-755): the final "N converged" completion count
+# ── case j: the final "N converged" completion count
 # must include successful UNWIRES, not just installs. item-x (profiles
 # luna+all, removable:per-item) is already installed; item-y (profiles
 # core+all) is not. Reconciling to core in ONE ensure call disables item-x
@@ -944,7 +944,7 @@ grepq "$outJ1" -F 'ensure complete (2 converged)' \
   || fail "case j: the completion count should be 2 (1 install + 1 unwire), not just ran.length (got: $outJ1)"
 echo "ok: case j — the completion count includes successful unwires, not just installs (1 install + 1 unwire = 2 converged)"
 
-# ── case k (CR fix, cross-model: codex + CodeRabbit both found this): being
+# ── case k (cross-model: codex + CodeRabbit both found this): being
 # INCLUDED in --items does NOT mean a dependent is being disabled — it only
 # means it's in scope. `--items item-x,item-y` (item-x the prerequisite
 # going toward-disabled, item-y the STILL-DESIRED dependent, BOTH named)
@@ -981,7 +981,7 @@ grepq "$outK1" -F 'item-x' || fail "case k: the rejection should name item-x (go
 [ -f "$targetK/x.marker" ] || fail "case k: x.marker must still exist (zero mutation — item-x was never unwired)"
 echo "ok: case k — --items INCLUDING a still-desired dependent is REJECTED too (membership alone was never sufficient), zero mutation"
 
-# ── case l (CR fix, CodeRabbit round 16, MAJOR — fail-closed): a REAL
+# ── case l (MAJOR — fail-closed): a REAL
 # disable failure must stop the WHOLE ensure right there — the failing
 # item's unwire must prevent BOTH the next toward-disabled item's unwire
 # AND any toward-enabled install from ever being attempted in the SAME
@@ -1102,7 +1102,7 @@ fi
 [ ! -f "$targetL/z.marker" ] || fail "case l: z.marker must NOT exist — item-z's install must never be dispatched"
 echo "ok: case l — a real disable failure stops the ensure immediately: the second toward-disabled item is never attempted, and no install is dispatched"
 
-# ── case m (CR fix, CodeRabbit round 19): the toward-disabled closure check
+# ── case m: the toward-disabled closure check
 # is UNGATED — an UNFILTERED ensure (no --items) must ALSO reject when
 # unwiring a prerequisite would break a still-desired dependent. Pre-fix the
 # check lived inside `if (args.items)`, so a plain `ensure --profile core
@@ -1139,11 +1139,11 @@ set -e
 [ "$rcM1" -eq 2 ] || fail "case m: an UNFILTERED ensure must REJECT (exit 2) when unwiring item-x would break the still-desired item-y (got rc=$rcM1): $outM1"
 grepq "$outM1" -F 'item-y' || fail "case m: the rejection should name the still-desired dependent item-y (got: $outM1)"
 grepq "$outM1" -F 'item-x' || fail "case m: the rejection should name item-x (got: $outM1)"
-# CR fix (round 19): the message must no longer claim --items on an unfiltered run.
+# the message must no longer claim --items on an unfiltered run.
 # `-e` is REQUIRED, not decoration: without it grep parses the leading `--` of
 # the pattern as its own flag ("grep: unknown option -- items would disable",
 # rc=2), the `if` never fires, and this assertion silently cannot fail — it was
-# dead from the round-19 commit that introduced it until round 23 caught it.
+# dead from the round-19 commit that introduced it caught it.
 # A negative assertion that cannot fire is worse than no assertion: it reads as
 # coverage. Verified: `grep -qF '--items…'` => rc=2; `grep -qF -e '--items…'` => rc=0.
 if grepq "$outM1" -F -e '--items would disable'; then
@@ -1156,7 +1156,7 @@ stateSnapAfterM=$(snapshot_file "$cacheM/state.json")
 [ "$stateSnapBeforeM" = "$stateSnapAfterM" ] || fail "case m: state.json must be byte-identical across the rejected run (the closure check must run BEFORE any save) — before: $stateSnapBeforeM; after: $stateSnapAfterM"
 echo "ok: case m — an UNFILTERED ensure rejects unwiring a prerequisite a still-desired dependent needs (zero mutation, incl. persisted state); message does not claim --items"
 
-# ── case n (CR fix, CodeRabbit round 23, MAJOR — toward-DISABLED TRANSITIVE
+# ── case n (MAJOR — toward-DISABLED TRANSITIVE
 # reverse closure): the reverse-closure walk must be TRANSITIVE, not
 # direct-edges-only. Topology desired C -> undesired-present B -> disabled A:
 # unwiring A must be REJECTED naming C, even though no item DIRECTLY
@@ -1240,7 +1240,7 @@ set -e
 # item-c (core+luna+all) STAYS desired. The TRANSITIVE reverse walk must
 # reach item-c through the undesired-present item-b and REJECT before any
 # unwire — naming item-c (and the chain), zero mutation. UNFILTERED run
-# (the check is ungated — round 19).
+# (the check is ungated.
 stateSnapBeforeN=$(snapshot_file "$cacheN/state.json")
 set +e
 outN1=$(runEnsureN --profile core --yes --prune 2>&1); rcN1=$?
@@ -1256,7 +1256,7 @@ stateSnapAfterN=$(snapshot_file "$cacheN/state.json")
 [ "$stateSnapBeforeN" = "$stateSnapAfterN" ] || fail "case n: state.json must be byte-identical across the rejected run (the closure check must run BEFORE any save) — before: $stateSnapBeforeN; after: $stateSnapAfterN"
 echo "ok: case n — a still-desired dependent hidden behind an UNDESIRED-present middle node is still caught by the TRANSITIVE reverse walk (exit 2, names item-c + the chain), zero mutation"
 
-# ── case o (CR fix, CodeRabbit round 23 FOLLOW-ON, MAJOR — stop the reverse
+# ── case o (23 FOLLOW-ON, MAJOR — stop the reverse
 # walk at an ABSENT undesired intermediate): the mirror of case n. Topology
 # desired C -> undesired-ABSENT B -> disabled A. Because B is physically
 # ABSENT, the chain C -> B -> A is ALREADY broken at B, so unwiring A cannot
@@ -1353,13 +1353,13 @@ fi
 grep -qF 'unwire-item-a' "$logO" || fail "case o: item-a's unwire must have RUN (the false rejection would have skipped it) — spy log: $(cat "$logO")"
 echo "ok: case o — the TRANSITIVE reverse walk STOPS at an absent undesired intermediate: unwiring item-a proceeds (exit 0, marker removed) instead of a false rejection on the unreachable item-c"
 
-# ── case p (CR fix, HIMMEL-1100 round 6, CodeRabbit App PR #1500 thread #4):
+# ── case p
 # a full-offboard-only item that probes DEGRADED (not fully 'present', not
 # 'absent') must NOT block/abort an `ensure` run the way a 'present' one
 # does — the toward-disabled removal gate used to push ANY non-absent probe
 # as an unconditional blocker, so a probe that structurally can never
 # confirm 'present' from status output alone (e.g. guardrail-block-global,
-# before its HIMMEL-1418 `status --json` verb) wedged EVERY run permanently,
+# before its `status --json` verb) wedged EVERY run permanently,
 # with no unwire descriptor to ever converge it. The fix probes the item
 # first: 'present' still blocks (case b, above,
 # unchanged); 'degraded' logs an ADVISORY line instead and the run PROCEEDS
@@ -1427,7 +1427,7 @@ set -e
 [ "$rcP2" -eq 0 ] || fail "case p: a SECOND ensure run must also exit 0 -- a permanently degraded full-offboard-only item must never wedge (got rc=$rcP2): $outP2"
 echo "ok: case p — a DEGRADED (not 'present') full-offboard-only item logs an advisory and lets the run proceed (exit 0), instead of permanently blocking every ensure"
 
-# ── case q (codex-2 review finding, HIMMEL-2349): declining the FIRST
+# ── case q: declining the FIRST
 # (converge) confirm, when --prune is ALSO passed and there's a real
 # towardDisabled item, must abort the WHOLE run — the disable confirm is
 # never reached, so the item --prune would have removed stays untouched.
@@ -1518,7 +1518,7 @@ fi
 [ ! -s "$unwireLogQ" ] || fail "case q: unwire-pretooluse-hooks.sh must NEVER have been invoked (spy log: $(cat "$unwireLogQ"))"
 echo "ok: case q — declining the converge confirm when --prune is ALSO passed aborts the whole run; the disable confirm is never reached and prune-item is left untouched"
 
-# ── case r (codex-4 review finding, HIMMEL-2349): describeDisableCommand()'s
+# ── case r: describeDisableCommand's
 # evidence line ("disabling would run: ...") is what the operator reads to
 # decide whether to consent to a disable — an unquoted arg containing a
 # space renders ambiguously and isn't copy-pasteable, and on Windows a
@@ -1565,7 +1565,7 @@ grepq "$outR" -E "'[^']*target with space[^']*settings\.json'" \
   || fail "case r: the disable evidence line must quote an arg containing a space so it's unambiguous/copy-pasteable (got: $outR)"
 echo "ok: case r — the disable-command evidence line quotes an argument containing a space (consent evidence stays unambiguous)"
 
-# ── case s (HIMMEL-2349 v2, console ruling 77): a hazardous --prune disable
+# ── case s (v2, console ruling 77): a hazardous --prune disable
 # pass must NOT veto an UNRELATED, safe converge in the same run. item-s-a
 # (profiles luna/all) is a prerequisite of item-s-c (profiles core/luna/all,
 # stays desired under core) -- unwiring item-s-a would break item-s-c, same
@@ -1747,7 +1747,7 @@ set -e
 echo "ok: case s (negative control) — the pre-v2 return-2 behavior genuinely blocks the unrelated converge (item-s-d never installed), proving the primary case's assertions discriminate"
 
 # ═══════════════════════════════════════════════════════════════════════
-# case t (CR fix, codex-1 round 6, HIMMEL-2349): the under-recorded
+# case t: the under-recorded
 # EVIDENCE count must exclude items carrying a DELIBERATE per-item override
 # — recorded operator intent is the opposite of an under-recorded record.
 # state.json is hand-written directly (the only way to pre-seed a per-item

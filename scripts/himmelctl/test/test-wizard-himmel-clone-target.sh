@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-himmel-clone-target.sh — HIMMEL-2892: the himmel checkout is not
+# test-wizard-himmel-clone-target.sh — the himmel checkout is not
 # a project TARGET, and the project-scope items a CONTRIBUTOR station really
 # carries stop reading n/a.
 #
@@ -36,7 +36,7 @@
 #      change would be a blanket turn-everything-on.
 #   a4. platform control — the remedy assertion in a/a2 follows uname, so Git
 #      Bash asserts the pwsh rendering the diagnostic actually prints there
-#      instead of reddening on correct behaviour (HIMMEL-2905).
+#      instead of reddening on correct behaviour.
 
 set -euo pipefail
 
@@ -61,7 +61,7 @@ node_bin=$(command -v node)
 work_raw=$(mktemp -d "${TMPDIR:-/tmp}/wizard-himmel-clone-target.XXXXXX") || exit 1
 cleanup() { chmod -R u+w "$work_raw" 2>/dev/null || true; command rm -rf -- "$work_raw"; }
 trap cleanup EXIT
-# HIMMEL-3179: bin.js names the checkout by the path node sees for its cwd — the
+# bin.js names the checkout by the path node sees for its cwd — the
 # PHYSICAL, native spelling (macOS /private/var/..., Git Bash C:/Users/...) —
 # and macOS TMPDIR ("/var/folders/../T/") is a symlink with a trailing slash.
 # Build every fixture path from that one spelling, not the raw mktemp one.
@@ -88,7 +88,7 @@ PLUGINS
 
 # run_install <cwd> <home> <repo_root_fixture> [args...] — bin.js install
 # --dry-run under a fake HOME + redirected cache/config seams. Every write
-# seam is redirected (HIMMEL-2350): nothing on the real machine is touched.
+# seam is redirected: nothing on the real machine is touched.
 run_install() {
   local _cwd="$1" _home="$2" _fixture="$3"; shift 3
   ( cd "$_cwd" && HOME="$_home" USERPROFILE="$(winpath "$_home")" \
@@ -101,10 +101,10 @@ run_install() {
 # overlay_remedy_ok <output> <posix_literal> <win_regex> — does <output> name the
 # contributor primitive the diagnostic renders on THIS platform?
 #
-# HIMMEL-2905: bin.js prints displayCommand(deriveOverlayCommand()), which is
+# bin.js prints displayCommand(deriveOverlayCommand), which is
 # `bash <clone>/scripts/setup.sh` on POSIX but
 # `<pwsh> -ExecutionPolicy Bypass -File <clone>\scripts\setup.ps1` on win32 —
-# CodeRabbit round 1 on #605, because `bash …setup.ps1` is unrunnable there.
+# 1 on #605, because `bash …setup.ps1` is unrunnable there.
 # Asserting the POSIX rendering unconditionally therefore REJECTS correct
 # behaviour under Git Bash and reddens this suite (and its parent
 # scripts/test-adopt.sh) on a platform CI does not run. The Windows arm matches
@@ -131,7 +131,7 @@ set -e
 grepq "$outA" 'not valid inside the himmel checkout' \
   || fail "case a: the refusal must say project scope is not valid inside the himmel checkout: $outA"
 # EVERY fixture path compared against bin.js output goes through winpath first
-# (CR round 4, [codex-1] — and rounds 1/2/3 were all this same class). bin.js
+# bin.js
 # prints paths via displayPath(): node's own path.resolve(), forward-slashed,
 # which under Git Bash on Windows is `C:/Users/...` while the raw shell
 # variable is the POSIX `/tmp/...`. winpath() is the suite-wide `cygpath -m`
@@ -145,12 +145,12 @@ grepq "$outA" -F "$cloneA_w" \
 # The contributor primitive is NOT hardcoded in bin.js — it is rendered from
 # deriveOverlayCommand(), the same derivation that would actually spawn it, so
 # the line carries `bash <clone>/scripts/setup.sh` on POSIX and pwsh +
-# -ExecutionPolicy Bypass -File setup.ps1 on Windows (CodeRabbit round 1).
+# -ExecutionPolicy Bypass -File setup.ps1 on Windows.
 # Assert whichever this platform actually renders — see overlay_remedy_ok()
-# (HIMMEL-2905). Case a3 below is the platform-independent control.
+# Case a3 below is the platform-independent control.
 overlay_remedy_ok "$outA" "bash $cloneA_w/scripts/setup.sh" '-ExecutionPolicy Bypass -File .*setup[.]ps1' \
   || fail "case a: the remedy must name the checkout's own scripts/setup.sh (the contributor primitive) in this platform's rendering: $outA"
-# The node command must be ABSOLUTE (CR round 3): the refusal fires from
+# The node command must be ABSOLUTE: the refusal fires from
 # whatever subdirectory the operator ran it in — which is where they paste it
 # back — and a relative `node scripts/himmelctl/bin.js` only resolves from the
 # checkout root.
@@ -161,7 +161,7 @@ grepq "$outA" -F "node $cloneA_w/scripts/himmelctl/bin.js install --scope user" 
 echo "ok: case a — --scope project inside the himmel clone is refused with the remedy, and writes no cache"
 
 # ── case a3: the remedy's contributor command is DERIVED, not hardcoded ────
-# Platform-independent control for the CodeRabbit round-1 finding: the Windows
+# Platform-independent control for the 1 finding: the Windows
 # branch cannot be exercised here (no pwsh, and process.platform is not
 # stubbable from a shell suite), so assert the SOURCE property that makes the
 # Windows rendering correct — the refusal renders deriveOverlayCommand() (which
@@ -198,7 +198,7 @@ grepq "$outB" 'not valid inside the himmel checkout' \
 echo "ok: case b — a himmel-VENDORING adopter repo is not caught by the refusal (the detector is identity, not content)"
 
 # ── case a2: a checkout path containing a SPACE stays pasteable ────────────
-# CR round 3 [codex-1]: the remedy is `bash <path>` / `node <path>`, so an
+# the remedy is `bash <path>` / `node <path>`, so an
 # unquoted path with a space produces a line that runs the wrong thing. Both
 # are shell-quoted; this is the control that proves it, and it is why the
 # fixture directory is deliberately named with a space in it.
@@ -217,11 +217,11 @@ grepq "$outA2" -F "node '$cloneA2_w/scripts/himmelctl/bin.js'" \
 echo "ok: case a2 — a checkout path with a space is refused and both remedy commands stay shell-quoted"
 
 # ── case a4: platform control for a/a2 — the assertion arm follows uname ──
-# The bug HIMMEL-2905 closes is a FALSE red on a platform CI does not run (the
+# The bug closes is a FALSE red on a platform CI does not run (the
 # shell suites are ubuntu-only), so it cannot be reproduced by running this
 # suite here. Exercise overlay_remedy_ok() itself instead, against synthetic
 # renderings under a STUBBED uname — BOTH arms stubbed, never the host's own
-# (CR round 1, [codex-1]): asserting the POSIX arm against the real `uname`
+# asserting the POSIX arm against the real `uname`
 # would itself fail under Git Bash, where the Windows arm is selected — the
 # very platform this case exists to protect. The LAST check is the RED control:
 # before the fix the POSIX literal was asserted unconditionally, so a POSIX
@@ -268,7 +268,7 @@ grepq "$outC" 'not valid inside the himmel checkout' \
 echo "ok: case c — the refusal is project-scope only (--scope user inside the clone still installs)"
 
 # ── case c2: a SIBLING worktree of the clone is caught too ─────────────────
-# CR round 1 [codex-3]: himmel keeps its own worktrees under .claude/worktrees/,
+# himmel keeps its own worktrees.claude/worktrees/,
 # so the path tests cover them — but `git worktree add ../sibling` puts one
 # OUTSIDE repoRoot() while its .claude/settings.json is the very same tracked
 # file. The git-common-dir test is what closes that; this case is its control.

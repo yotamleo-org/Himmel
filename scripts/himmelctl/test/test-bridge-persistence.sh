@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-bridge-persistence.sh — hermetic coverage for
-# scripts/himmelctl/lib/bridge-persistence.js (HIMMEL-2176 Task 9).
+# scripts/himmelctl/lib/bridge-persistence.js.
 # Stubs systemctl/loginctl via a PATH shim directory — NEVER invokes the real
 # ones, never touches a real ~/.config/systemd/user.
 #
@@ -21,7 +21,7 @@
 # exact same stub is a real, executable script and the full parsing
 # assertions run for real, with no SKIP.
 #
-# Also covers (CR round 1): the codex-5 fix — uninstallSystemdUnit() must
+# Also covers: the fix — uninstallSystemdUnit must
 # refuse to remove the unit file when `disable --now` fails, never report
 # ok:true regardless. That case needs no SKIP anywhere: a stub-forced
 # non-zero exit (Linux) and a genuinely unspawnable stub (Windows, status
@@ -33,7 +33,7 @@
 # Windows dev host, where it would genuinely spawn pwsh and register a real
 # scheduled task (SKIP there instead, honestly named).
 #
-# CR round 5: codex-1 — an absent unit file alone is never proof of
+# an absent unit file alone is never proof of
 # uninstall; is-enabled/is-active must ALSO give a CONFIRMED negative (never
 # an inconclusive spawn error) before the no-op shortcut fires. The
 # "shortcut did not fire" assertion runs unconditionally on both platforms
@@ -45,7 +45,7 @@
 # the unit stuck enabled reports that partial state (+ remediation) rather
 # than a flat failure.
 #
-# CR round 10: codex-1 — generalizes round 5's partial-state honesty to
+# generalizes the earlier partial-state honesty to
 # EVERY install failure after the first durable side effect (file written
 # -> reload -> enable -> start), not just the enable/start split: a
 # daemon-reload failure, and an outright (not just stuck-enabled) enable
@@ -57,15 +57,15 @@
 # spawned — closing the "unverified on the primary platform" gap without
 # registering a real scheduled task.
 #
-# CR round 11: codex-1 — closes the sibling gap round 10 named but didn't
+# closes the sibling gap an earlier fix named but didn't
 # fix: uninstallSystemdUnit() now carries the SAME `partial:true` contract
 # as install, shared via one `partialFail()` helper. Its durable-side-effect
 # boundary is `disable --now` succeeding (not the file write) — a genuine
 # disable failure stays a flat ok:false (nothing of ours landed yet); a
 # later remove/reload failure after disable succeeds is partial:true.
 #
-# CR round 12: codex-1, third pass on the same absent-file shortcut — round
-# 3 introduced it, round 5 required a confirmed negative from is-enabled/
+# third pass on the same absent-file shortcut — round
+# 3 introduced it required a confirmed negative from is-enabled/
 # is-active, and this closes the gap THAT confirmation still had: both
 # probes exit non-zero identically for "systemd never heard of this" and
 # "systemd knows it fine, it's merely disabled/stopped" — so a stale LOADED
@@ -75,7 +75,7 @@
 # distinguishes not-found from loaded/masked; the round-5
 # inconclusive-is-not-negative rule carries over unchanged.
 #
-# CR round 13: codex-1 — repoRoot is now escaped before rendering into the
+# repoRoot is now escaped before rendering into the
 # systemd unit: `%` doubled (systemd's specifier-prefix escape, verified
 # live against systemd 255 to otherwise crash the unit at start), and every
 # Environment=/ExecStart=/ExecStop= occurrence quote-escaped and wrapped in
@@ -87,7 +87,7 @@
 # control characters and systemd's own unit-file line-length limits — a
 # checkout path is operator-chosen, not attacker input.
 #
-# CR round 14: codex-1 — a repoRoot carrying CR/LF is now REFUSED outright
+# a repoRoot carrying CR/LF is now REFUSED outright
 # (ok:false, no write, before dryRun even), never escaped: unlike `%`/space/
 # quote/backslash, a newline has no correct in-directive rendering — it
 # creates an ADDITIONAL unit directive, not a corrupted string. NUL is
@@ -287,7 +287,7 @@ if (process.platform !== 'win32') {
 }
 
 // ── Windows logon-task primitives: argv verification via an injected
-// spawnFn (codex-2, round 10) — the REAL win32 branch, minus the actual
+// spawnFn — the REAL win32 branch, minus the actual
 // spawn. Node's process.platform reports 'win32' for THIS repo's own Git
 // Bash dev host too (native Windows node, not an MSYS thing), so this
 // genuinely exercises PowerShell invocation/argument construction — the
@@ -381,7 +381,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
 
   let content = '';
   try { content = fs.readFileSync(unitPath, 'utf8'); } catch (e) { /* not written */ }
-  // codex-1 CR fix (round 13): the substitution is now LINE-AWARE (only
+  // the substitution is now LINE-AWARE (only
   // WorkingDirectory=/Environment=/ExecStart=/ExecStop= lines), not a
   // blanket template.split().join() over the whole file — so the
   // template's own header COMMENT, which mentions "@HIMMEL_REPO@" as PROSE
@@ -397,7 +397,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
     fail('install (stub present): unit file written with @HIMMEL_REPO@ substituted for repoRoot', `content=${JSON.stringify(content)}`);
   }
 
-  // HIMMEL-2582: the unit inherits a BARE environment when systemd-logind
+  // the unit inherits a BARE environment when systemd-logind
   // starts it under linger — PATH=/usr/local/bin:/usr/bin, read live from
   // /proc/<poller>/environ on 2026-09-05 — so the poller could not find
   // `claude` (~/.local/bin) and its bounded run died. The fix puts the tool
@@ -420,7 +420,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   check('install: unit declares no Environment=PATH= (the tool dirs are the launcher\'s job, not the template\'s)',
     false, /^Environment=PATH=/m.test(content));
 
-  // codex-1 CR fix (round 13): a repoRoot containing systemd specifier `%`
+  // a repoRoot containing systemd specifier `%`
   // (and, since we're in here, a space/`"`/`\`) must render LITERALLY, never
   // expanded (%h -> home) or corrupted (an unescaped `%` was verified live
   // to make the whole unit fail to start; an unquoted space was verified to
@@ -438,7 +438,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   check('install (repoRoot has %/space/"/\\): Environment/ExecStart carry the quoted, fully-escaped value', true, trickyContent.indexOf(expectedQuoted) !== -1);
   check('install (repoRoot has %/space/"/\\): no unescaped single "%h" specifier survives', false, /(^|[^%])%h/.test(trickyContent));
 
-  // codex-1 CR fix (round 14): a repoRoot containing CR/LF must be REFUSED
+  // a repoRoot containing CR/LF must be REFUSED
   // outright, not escaped — there is no correct rendering of a newline
   // inside a unit directive; the %/quote/backslash escaping above turns a
   // dangerous character into a safe STRING, but a newline would create an
@@ -477,9 +477,9 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
     skip('install (stub present): full happy-path enable/daemon-reload exercise', 'no evidence in the stub log that the spawn actually ran on this host (see file header)');
   }
 
-  // codex-1 CR fix (round 10): a `daemon-reload` failure AFTER the unit file
+  // a `daemon-reload` failure AFTER the unit file
   // is already durably written must report partial:true, never a flat
-  // failure — round 5's codex-2 covered enable-succeeded/start-failed;
+  // failure — the earlier covered enable-succeeded/start-failed;
   // this covers the branch immediately after the FIRST durable side
   // effect (the write itself).
   fs.writeFileSync(path.join(STUB_STATE, 'reload-fail'), '');
@@ -499,7 +499,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
   fs.unlinkSync(path.join(STUB_STATE, 'reload-fail'));
 
-  // codex-1 CR fix (round 10), continued: `enable --now` failing OUTRIGHT
+  // continued: `enable --now` failing OUTRIGHT
   // (genuinely not enabled, not just a stuck-enabled start failure) must
   // ALSO report partial:true — the write and the reload both already
   // landed durably regardless of whether enable itself took.
@@ -519,12 +519,12 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
   fs.unlinkSync(path.join(STUB_STATE, 'enable-now-fail'));
 
-  // codex-2 CR fix (round 5): `enable --now` failing to START must not
+  // `enable --now` failing to START must not
   // report a flat failure when the ENABLE half already stuck (systemd runs
   // enable then start as one combined call — a start failure doesn't undo
   // it). Forces `enable --now` to fail while `is-enabled` reports the unit
   // enabled anyway, and asserts the detail names the partial state +
-  // remediation, never a plain "failed" — round 10 additionally asserts
+  // remediation, never a plain "failed" — an earlier fix additionally asserts
   // partial:true itself, not just the wording.
   fs.writeFileSync(path.join(STUB_STATE, 'enable-now-fail'), '');
   fs.writeFileSync(path.join(STUB_STATE, 'enabled'), '');
@@ -565,7 +565,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
     skip('lingerEnabled: Linger=yes/no stdout-parsing branches', 'no evidence in the stub log that the spawn actually ran on this host (see file header)');
   }
 
-  // codex-5 CR fix: a failed `disable --now` must never report ok:true, and
+  // a failed `disable --now` must never report ok:true, and
   // the unit file must NOT be removed while the unit may still be running.
   // No SKIP needed on EITHER platform: the stub is forced to exit non-zero
   // on Linux (disable-fail marker) and genuinely fails to spawn at all on
@@ -582,7 +582,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
   fs.unlinkSync(path.join(STUB_STATE, 'disable-fail'));
 
-  // codex-4 CR fix: uninstall must also reload the systemd user daemon after
+  // uninstall must also reload the systemd user daemon after
   // removing the file (installSystemdUnit()'s own mirror step) — captured
   // before/after so this counts UNINSTALL's own reload call specifically,
   // not the one install already logged earlier in this same run.
@@ -599,10 +599,10 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
     fs.unlinkSync(unitPath); // manual cleanup — production code correctly refused to
   }
 
-  // codex-1 CR fix (round 11): consistency — a `daemon-reload` failure AFTER
+  // consistency — a `daemon-reload` failure AFTER
   // disable+remove already durably succeeded must ALSO report partial:true,
   // mirroring installSystemdUnit()'s own write-then-reload-fails branch
-  // (round 10). Explicitly (re)writes the unit file first — the block above
+  // Explicitly (re)writes the unit file first — the block above
   // always leaves it absent by design, so this can't rely on ambient state
   // from an earlier case; it sets up its own precondition.
   fs.writeFileSync(unitPath, 'stub-unit-file-for-reload-fail-test');
@@ -624,7 +624,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
   fs.unlinkSync(path.join(STUB_STATE, 'reload-fail'));
 
-  // codex-1 CR fix (round 12): is-enabled/is-active are non-zero for BOTH
+  // is-enabled/is-active are non-zero for BOTH
   // "systemd never heard of this" and "systemd knows it, disabled/stopped"
   // — the round-5 confirmed-negative check couldn't tell those apart, so a
   // unit systemd still had LOADED (just off) took the no-op shortcut,
@@ -658,11 +658,11 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
   fs.unlinkSync(path.join(STUB_STATE, 'loadstate-loaded')); // must NOT leak into the genuine no-op case below
 
-  // codex-2 CR fix (round 3): uninstalling an already-uninstalled bridge
+  // uninstalling an already-uninstalled bridge
   // (unit file already absent) must be a clean idempotent no-op success,
   // never a false failure from `disable --now` on a unit that's already
-  // gone. codex-1 tightened the shortcut twice since: round 5 required a
-  // confirmed negative rather than a bare absent file; round 12 replaced
+  // gone. tightened the shortcut twice since; the later fix required a
+  // confirmed negative rather than a bare absent file; an earlier fix replaced
   // that confirmed-negative source with LoadState (is-enabled/is-active
   // couldn't distinguish "never heard of it" from "knows it, it's off") —
   // the no-op only fires on a genuinely-executed LoadState=not-found. On
@@ -685,7 +685,7 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   }
 }
 
-// ── HIMMEL-3332 S5: installSystemdUnit records its unit file + registration ─
+// ── installSystemdUnit records its unit file + registration ─
 // The suite pins HIMMEL_PROVENANCE_DIR to scratch (it does not source
 // _hermetic-home.sh), so these rows never reach the operator's real ledger.
 {

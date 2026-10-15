@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): bash + node + jq + (sha256sum|shasum).
-# test-provenance-js.sh -- scripts/himmelctl/lib/provenance.js (HIMMEL-3332 S1),
+# test-provenance-js.sh -- scripts/himmelctl/lib/provenance.js,
 # and the bash<->node BYTE-IDENTITY cross-check: the same scenario is run
 # through scripts/lib/provenance.sh and through provenance.js into two scratch
 # ledgers, and the ledger rows and the backup trees must match byte for byte.
@@ -72,7 +72,7 @@ scenario() { # <begin-fn> <rec-fn> <end-fn>
     "$2" create file "$w/unicode ✓" --unit "$(printf 'a\177b\303\251\342\200\250"\\')" --post-file "$w/f1"
     "$2" create file relative.txt --post-file "$w/f1"
     "$2" replace file "$w/f2" --pre-file "$w/f2.snap" --backup --post-file "$w/f2"
-    # HIMMEL-3787 S2c: a >1 MiB file (snap:null,snap_skip) and a code block (post-text snap)
+    # a >1 MiB file (snap:null,snap_skip) and a code block (post-text snap)
     "$2" create file "$w/big.bin" --pre-absent --post-file "$w/big.bin" --scope user --class code
     "$2" insert block "$w/rc" --unit user-claude-md --pre-absent --post-text $'BEGIN\nx\nEND' --scope user --class code
     "$3" failed step-9
@@ -301,7 +301,7 @@ HIMMEL_PROVENANCE_IID=$iid "$node_bin" "$jsw" record replace file "$w/pre.txt" -
 check "node: symlink provenance-backups parent → rc 1" "$rc" "1"
 check "node: nothing was copied through the symlink parent" "$(find "$w/bkvictim" -mindepth 1 | wc -l | tr -d ' ')" "0"
 
-# HIMMEL-3347 (3): only "jq is absent" (ENOENT) selects the fallback canonicaliser. Any other spawn
+# only "jq is absent" (ENOENT) selects the fallback canonicaliser. Any other spawn
 # error (a jq that is not executable) fails loudly and is retried on the next call -- never a
 # permanent silent switch to a canonicaliser that hashes 1.0 / 1E+2 differently from jq.
 mkdir -p "$tmp/badjq"; printf 'junk\n' > "$tmp/badjq/jq"; chmod 644 "$tmp/badjq/jq"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # test-wizard-questions.sh — hermetic tests for the himmelctl install wizard's
-# question engine (HIMMEL-887 T2) + answer schema/cache (T3). Mirrors
+# question engine + answer schema/cache (T3). Mirrors
 # test-wizard-preflight.sh conventions: a stub PATH built via
 # scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute path so
 # the wizard's tool detection sees ONLY the stub dir.
 #
-# HIMMEL-2308: the old role fork (adopter|contributor, detected from a git
+# the old role fork (adopter|contributor, detected from a git
 # origin + .himmel-dev marker) is GONE. Every install now walks the SAME
 # question set, first asking `profile` (starter|luna|operator|custom, a
 # numbered menu with per-option help text) instead of `role`. A profile only
@@ -17,7 +17,7 @@
 #
 # Covers (T2):
 #   1. starter-profile stdin sequence -> 7 main questions (profile+scope+
-#      vault+handover+pluginSet, then the HIMMEL-862 adopter-profile pair
+#      vault+handover+pluginSet, then the adopter-profile pair
 #      lanes+alwaysOn) + the answer summary with profile=starter,
 #      devOverlay=false, and no luna/secretsWalk/bridge keys (vault=none
 #      never unlocks them).
@@ -69,7 +69,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-2892: run from a THROWAWAY directory, never the himmel checkout this
+# run from a THROWAWAY directory, never the himmel checkout this
 # suite lives in. `install` resolves a project-scope target to $PWD, so a case
 # answering scope=project from the checkout root aimed the installer at the
 # repo itself -- which bin.js's himmel-clone guard now refuses outright. The cd
@@ -77,7 +77,7 @@ trap cleanup EXIT
 # project install here spawned adopt.sh against the live checkout.
 questions_cwd="$work/suite-cwd"; mkdir -p "$questions_cwd"; cd "$questions_cwd"
 
-# HIMMEL-1446 r3: a non-dry-run install (case5 --from-profile) reaches
+# a non-dry-run install (case5 --from-profile) reaches
 # applyHimmelctlPathShim(), whose default binDir is the operator's REAL
 # ~/.local/bin (win32 ignores HOME entirely). Isolate binDir for the WHOLE
 # suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
@@ -141,9 +141,9 @@ rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "case1: starter-profile run should succeed (got rc=$rc)"
 qs=$(count_questions "$out")
-# HIMMEL-3068: vault=none + no codex lane no longer means zero cadence rows
+# vault=none + no codex lane no longer means zero cadence rows
 # qualify — drift-fix/upstream-watch are requires:'none' and always offered
-# (repo-sync is requires:'platform:windows', HIMMEL-3086), so the cadences
+# (repo-sync is requires:'platform:windows'), so the cadences
 # question is now asked (+1), and closed stdin
 # declines all three, which triggers the disarm-consent follow-up (+1) —
 # 7 main questions + those 2 = 9. See test-wizard-cadence-per-unit.sh case e
@@ -164,9 +164,9 @@ grepq "$out" '"luna"' \
   && fail "case1: vault=none must not unlock/fabricate a luna section (got: $out)"
 grepq "$out" '"bridge"' \
   && fail "case1: vault=none must not unlock/fabricate a bridge section (got: $out)"
-# HIMMEL-2303: the CR-floor disclosure prints AT the lanes decision point —
+# the CR-floor disclosure prints AT the lanes decision point
 # before the lanes prompt, every run, regardless of the eventual answer
-# (case1 accepts the (empty, HIMMEL-2352) lanes default, still no codex/hermes
+# (case1 accepts the (empty) lanes default, still no codex/hermes
 # opt-in).
 grepq "$out" 'CR_REQUIRE_CROSS_MODEL cannot be satisfied' \
   || fail "case1: the lanes question should disclose the CR-floor consequence (got: $out)"
@@ -215,7 +215,7 @@ grepq "$outOp" -F '(default: yes)' \
   || fail "case2(operator): should seed alwaysOn default=yes (got: $outOp)"
 grepq "$outOp" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,repo-sync,vault-stall|none] (default: pipeline,qmd,graphmap)' \
   || fail "case2(operator): should seed cadences default=pipeline,qmd,graphmap, offering the HIMMEL-3068 requires:'none' rows too (got: $outOp)"
-# HIMMEL-3086: the run above pins HIMMELCTL_CADENCE_PLATFORM=win32 because
+# the run above pins HIMMELCTL_CADENCE_PLATFORM=win32 because
 # repo-sync is requires:'platform:windows'. The non-Windows twin: same
 # preset, linux host -> the same menu MINUS repo-sync, defaults unchanged.
 stub2c="$work/case2c"; mkdir -p "$stub2c"
@@ -230,8 +230,8 @@ grepq "$outOpLinux" -F '? cadences — recurring scheduled jobs to arm now [pipe
   || fail "case2(operator, linux): the operator preset on a linux host must offer the cadences menu WITHOUT repo-sync (got: $outOpLinux)"
 grepq "$outOp" -F '? configure the telegram bridge (voice/text ingestion)? [off|on] (default: on)' \
   || fail "case2(operator): should seed bridge default=on (got: $outOp)"
-# HIMMEL-2346: the operator preset seeds whisperModel=ggml-large-v3-turbo.bin
-# (HIMMEL-2307 capture: that's what the maintainer machine actually runs) —
+# the operator preset seeds whisperModel=ggml-large-v3-turbo.bin
+# (capture: that's what the maintainer machine actually runs)
 # PROFILE_PRESETS carried NO whisper field at all before this fix, so the
 # question fell through to the schema default 'small' regardless of profile.
 grepq "$outOp" -F '? whisper model [tiny|base|small|medium|large-v3|large-v3-turbo|custom] (default: large-v3-turbo)' \
@@ -262,7 +262,7 @@ _needles=('? vault path' '? handover path' '? pluginSet' '? lanes' \
           'walk through luna secrets' \
           'configure the telegram bridge' '? bridge .env path' \
           '? whisper CLI path' '? whisper model [')
-# HIMMEL-2346: '? whisper model filename' (the old free-text prompt) is now
+# '? whisper model filename' (the old free-text prompt) is now
 # CONDITIONAL — only reached if the operator picks the 'custom' menu entry,
 # which closed-stdin default-acceptance never does (the seeded default here
 # is large-v3-turbo, an enum pick, not custom) — so it is deliberately absent
@@ -368,7 +368,7 @@ grepq "$cache_body" '"profile": "starter"' \
   || fail "case5: cache should record profile=starter (got: $cache_body)"
 grepq "$cache_body" '"devOverlay": false' \
   || fail "case5: cache should record devOverlay=false (got: $cache_body)"
-# HIMMEL-2348: `tier` was a write-only placeholder no reader ever consumed.
+# `tier` was a write-only placeholder no reader ever consumed.
 # Assert its ABSENCE so a future edit cannot silently reintroduce an unread
 # field into every profile this wizard writes.
 if grepq "$cache_body" '"tier"'; then
@@ -378,7 +378,7 @@ grepq "$cache_body" '"lanes": \[\]' \
   || fail "case5: cache should record the answered empty lane set (got: $cache_body)"
 grepq "$cache_body" '"alwaysOn": false' \
   || fail "case5: cache should record the answered alwaysOn=no (got: $cache_body)"
-# HIMMEL-2705: a fresh (no prior profile) interactive install defaults channel
+# a fresh (no prior profile) interactive install defaults channel
 # to stable.
 grepq "$cache_body" '"channel": "stable"' \
   || fail "case5: a new adopter's cache should default channel=stable (got: $cache_body)"
@@ -413,7 +413,7 @@ got:      <$json_b>
 expected: <$cache_body>"
 echo "ok: case5 interactive writes v2 cache; --from-profile round-trips byte-stable, zero prompts"
 
-# ── Case 5b (HIMMEL-2705): an existing profile's explicit channel survives ──
+# ── Case 5b: an existing profile's explicit channel survives ──
 # a --from-profile replay untouched (never coerced to the stable default).
 stub5b="$work/case5b"; mkdir -p "$stub5b"
 c5bpath=$(build_path "$stub5b" bash jq python3 npm -- )
@@ -439,7 +439,7 @@ grepq "$cache_body_5b" '"channel": "pre"' \
   || fail "case5b: an existing channel:pre must survive the replay unchanged (got: $cache_body_5b)"
 echo "ok: case5b --from-profile with an existing channel value never coerces it to the stable default"
 
-# ── Case 5c (HIMMEL-2705 codex-2): an EXISTING station's channel-less ────────
+# ── Case 5c: an EXISTING station's channel-less ────────
 # re-install must not be defaulted to stable — "new adopter" means this
 # station never having a prior cache, checked via fs.existsSync(cachePath()),
 # not merely answers.channel === undefined (which is also true for every
@@ -452,7 +452,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture5c/scripts/adopt.sh"
 chmod +x "$fixture5c/scripts/adopt.sh"
 cachedir5c="$h5c.himmelctl-cache"; mkdir -p "$cachedir5c"
 # Pre-seed a prior cache with NO channel key, simulating an existing station
-# that installed before HIMMEL-2705 (or on a channel-less profile already).
+# that installed before (or on a channel-less profile already).
 cat > "$cachedir5c/install-profile.json" <<JSON
 {"schemaVersion":2,"profile":"starter","devOverlay":false,"scope":"project","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
 JSON
@@ -474,7 +474,7 @@ if grepq "$cache_body_5c" '"channel"'; then
 fi
 echo "ok: case5c an existing station's channel-less --from-profile re-install is never coerced to the stable default"
 
-# ── Case 5d (HIMMEL-2705 codex-1, round 2): a channel-less re-install ────────
+# ── Case 5d: a channel-less re-install ────────
 # carries an EXISTING station's cached channel forward instead of dropping it
 # — writeCache replaces the whole file, so doing nothing here would silently
 # revert a stable/pre station to unset (branch-tip pull) on any reinstall
@@ -544,7 +544,7 @@ grepq "$outVer" -i "field 'schemaVersion'" \
   || fail "case6b: should name the bad schemaVersion field (got: $outVer)"
 echo "ok: case6b --from-profile with an unknown schemaVersion -> non-zero + message naming the field"
 
-# HIMMEL-2308/HIMMEL-2304: a v2 profile with pluginSet=full must fail loud
+# a v2 profile with pluginSet=full must fail loud
 # (exit 2, naming the field) rather than validate and silently no-op the
 # plugin step. Only the LEGACY (no-schemaVersion) branch keeps accepting
 # 'full', as the migration path for a pre-2304 cache.
@@ -574,7 +574,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture6d/scripts/adopt.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture6d/scripts/cleanup/codex-sweep-cadence.sh"
 chmod +x "$fixture6d/scripts/adopt.sh" "$fixture6d/scripts/cleanup/codex-sweep-cadence.sh"
 
-# HIMMEL-2302 CR round 1 Fix 1: a `requires:'vault'` cadence (pipeline/qmd/
+# a `requires:'vault'` cadence (pipeline/qmd/
 # graphmap) armed while vault.mode='none' validates the two fields
 # independently, then breaks/no-ops at arm time -- the validates-then-breaks
 # class this wizard forbids. loadProfile must now cross-validate and fail
@@ -597,7 +597,7 @@ grepq "$outVaultCadence" -i "vault" \
   || fail "case6d: should name the unmet vault requirement (got: $outVaultCadence)"
 echo "ok: case6d --from-profile with a requires:vault cadence armed while vault.mode=none -> exit 2 naming the cadence and vault"
 
-# HIMMEL-2302 CR round 1 Fix 1 (documented asymmetry, pinned so it is never
+# an earlier fix Fix 1 (documented asymmetry, pinned so it is never
 # "fixed" into symmetry): a `requires:'lane:codex'` cadence (codex-sweep) is
 # NOT gated on whether 'codex' is actually in `lanes` -- naming it armed in a
 # hand-reviewed profile IS the consent, same principle as the existing lanes
@@ -618,7 +618,7 @@ set -e
   || fail "case6d-asymmetry: vault=none + cadences.codex-sweep=armed with no codex lane should VALIDATE (exit 0) — requires:lane:codex is a consent surface, not enforced (got $rcCodexCadence): $outCodexCadence"
 echo "ok: case6d-asymmetry --from-profile with a requires:lane:codex cadence armed and codex absent from lanes VALIDATES (documented consent asymmetry, not a bug)"
 
-# HIMMEL-2302 CR round 1 Fix 3: the wizard never writes an empty top-level
+# the wizard never writes an empty top-level
 # `cadences: {}` -- resolveCadenceDispositions() treats ANY present
 # `cadences` section as authoritative, so a hand-authored `{}` would silently
 # suppress a legacy `luna.cadenceEnabled` answer with nothing actually named.
@@ -638,7 +638,7 @@ grepq "$outEmptyCadences" -F -- "field 'cadences'" \
   || fail "case6e: should name the 'cadences' field (got: $outEmptyCadences)"
 echo "ok: case6e --from-profile with an empty cadences:{} -> exit 2 naming the field"
 
-# ── Case 7 (HIMMEL-2308): --contribute sets devOverlay without a question ───
+# ── Case 7: --contribute sets devOverlay without a question ───
 stub7="$work/case7"; mkdir -p "$stub7"
 c7path=$(build_path "$stub7" bash jq python3 npm -- )
 h7="$work/h7"; mkdir -p "$h7"
@@ -658,9 +658,9 @@ rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "case7: --contribute run should succeed (got rc=$rc): $out"
 qs=$(count_questions "$out")
-# HIMMEL-3068: same +2 (cadences + disarm-consent) as case1 above — this
+# same +2 (cadences + disarm-consent) as case1 above — this
 # scenario is vault=none + no codex lane too, so the baseline case7 must
-# compare against is 9, not the pre-HIMMEL-3068 7 (the point of this
+# compare against is 9, not the 7 (the point of this
 # assertion — "--contribute does not change the count" — still holds; only
 # the number itself moved, for an unrelated reason).
 [ "$qs" -eq 9 ] \
@@ -696,7 +696,7 @@ grepq "$out" -E 'derived:.*adopt\.sh --profile core --scope user$' \
   || fail "case8: accepted hint should derive the normal user-scope plan (got: $out)"
 echo "ok: case8 --default-scope user -> confirmable scope default=user + normal derived plan"
 
-# ── Case 9 (HIMMEL-2288): numbered option selection ────────────────────────
+# ── Case 9: numbered option selection ────────────────────────
 # Every enum question prints a numbered 1..n menu with the recommended default
 # marked; the operator may answer with either the number OR the literal
 # option word. To actually PROVE numeric input is parsed (rather than every
@@ -737,7 +737,7 @@ grepq "$out" -F '  2) luna —' \
   || fail "case9: the profile prompt must list every option by number with help text (got: $out)"
 echo "ok: case9 numbered option selection parses digits (proven via non-default picks) and prints the help menu"
 
-# ── Case 10 (HIMMEL-2288): consent/PHI prompts keep explicit wording ───────
+# ── Case 10: consent/PHI prompts keep explicit wording ───────
 # The PHI declaration and the two "consented, --dry-run shows it" mutation
 # consent prompts (disarm cadence, bridge persistence install) must NEVER
 # become a numbered menu — a source-level check rather than a live fixture,
@@ -746,7 +746,7 @@ echo "ok: case9 numbered option selection parses digits (proven via non-default 
 wizard_src=$(cat "$wizard")
 grepq "$wizard_src" -F -- '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)\n> ' \
   || fail "case10: the PHI declaration prompt must keep its exact explicit yes/no wording, never a numbered menu"
-# HIMMEL-2347: the two new personal/medical-vault prompts (yes/no declaration
+# the two new personal/medical-vault prompts (yes/no declaration
 # + the .salus-marker consent) are the SAME consent-grade class as the PHI
 # declaration above — both must be askEnum() calls with explicit wording, not
 # askNumberedEnum().
@@ -754,7 +754,7 @@ grepq "$wizard_src" -F -- "? do you keep a personal/medical vault this machine's
   || fail "case10: the personal/medical vault declaration prompt must keep its exact explicit yes/no wording, never a numbered menu"
 grepq "$wizard_src" -F -- 'now (marks this vault PHI to every local guard that checks it; consented, --dry-run shows it) [yes|no] (default: no)\n> ' \
   || fail "case10: the .salus-marker consent prompt must keep its exact explicit yes/no wording, never a numbered menu"
-# HIMMEL-2302: the prompt now names the declined units dynamically
+# the prompt now names the declined units dynamically
 # (`${declinedIds.join(', ')}`), so the exact-string check becomes two
 # substring checks bracketing the interpolation — still proving the SAME
 # explicit yes/no wording, never a numbered menu. Deliberately
@@ -770,7 +770,7 @@ grepq "$wizard_src" -F -- "(each unit's own disarm subcommand; consented, --dry-
 # shellcheck disable=SC2016
 grepq "$wizard_src" -F -- 'install bridge persistence now (${persistArtifact}; consented, --dry-run shows it) [yes|no] (default: no)\n> ' \
   || fail "case10: the bridge-persistence consent prompt must keep its exact explicit yes/no wording, never a numbered menu"
-# CR round 1 [codex-1]: numeric-index acceptance used to live in askEnum()
+# numeric-index acceptance used to live in askEnum
 # itself, shared by every caller — including the three consent/PHI prompts
 # above, so a bare "1"/"2" silently satisfied a PHI declaration or a
 # machine-mutation consent that was supposed to require typed yes/no. Prove
@@ -785,7 +785,7 @@ grepq "$ask_enum_body" '\[0-9\]' \
   && fail "case10: askEnum() must NOT accept a bare numeric index — that would let a digit silently satisfy a consent/PHI prompt (got: $ask_enum_body)"
 echo "ok: case10 PHI/consent prompts are untouched by the numbered-menu conversion, and askEnum() itself accepts no bare digit"
 
-# ── Case 11 (HIMMEL-2304): pluginSet=full is DROPPED from the wizard ───────
+# ── Case 11: pluginSet=full is DROPPED from the wizard ───────
 # The pluginSet question stays (so every existing stdin sequence answering
 # 'lean' keeps working — case1 above proves that), but 'full' is no longer a
 # valid answer: typing it re-prompts exactly like any other invalid enum
@@ -820,7 +820,7 @@ grepq "$out" -F '  2) full' \
   && fail "case11: the pluginSet menu must never list full as option 2 (got: $out)"
 echo "ok: case11 pluginSet=full is rejected (re-prompts) and never offered in the menu; lean is the only path"
 
-# ── Case 12 (HIMMEL-2346): whisper model numbered enum + custom escape hatch ──
+# ── Case 12: whisper model numbered enum + custom escape hatch ──
 # The whisper-model question used to be free text with a default nobody could
 # evaluate without asking someone "what is the big one?" (the operator
 # complaint this ticket fixes). Now a numbered menu of the standard
@@ -831,7 +831,7 @@ echo "ok: case11 pluginSet=full is rejected (re-prompts) and never offered in th
 #
 # Every sub-case walks profile=custom through the full bridge=on chain (the
 # shortest path that reaches the whisper-model question): scope/vault/
-# handover/pluginSet/lanes/alwaysOn/cadences/disarm-consent/PHI/HIMMEL-2347's
+# handover/pluginSet/lanes/alwaysOn/cadences/disarm-consent/PHI/
 # personal-vault question/secretsWalk all take their printed default (blank
 # line), lanes/cadences answer 'none' explicitly (both accept it), bridge
 # answers 'on', envPath/whisperCli take their defaults, then the whisper-model
@@ -839,7 +839,7 @@ echo "ok: case11 pluginSet=full is rejected (re-prompts) and never offered in th
 # bridge-persistence consent takes its default.
 whisper_case_input() {
   # $1 = whisper-model answer, $2 = optional custom-filename sub-answer
-  # HIMMEL-2347: one extra blank line vs. before — the new personal/medical
+  # one extra blank line vs. before — the new personal/medical
   # vault question sits between PHI and secretsWalk, defaults 'no' on blank,
   # so no follow-up path/marker sub-answers are ever reached here.
   printf 'custom\n\ndefault-template\n\n\n\nnone\n\n\nnone\n\n\n\n\non\n\n\n%s\n' "$1"

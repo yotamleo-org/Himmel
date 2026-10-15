@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-wizard-install-engine.sh — hermetic tests for
 # scripts/himmelctl/lib/install-engine.js's planInstall()/runInstall()
-# (HIMMEL-755 A4): the install-descriptor engine `ensure` drives to converge
+# the install-descriptor engine `ensure` drives to converge
 # red/degraded manifest items via EXISTING shell primitives (never
 # reimplemented wiring). Invokes the library directly via `node -e` +
 # require — no bin.js/manifest.json involvement (planInstall/runInstall take
 # plain item objects, not full manifest items, so a minimal fixture is
 # enough). Mirrors sibling test-wizard-*.sh conventions: node launched by
-# absolute path, winpath for node.exe's MSYS-path blindness. CR fix: every
+# absolute path, winpath for node.exe's MSYS-path blindness. every
 # fixture path used inside a node -e script is passed via the ENVIRONMENT
 # (exported once, read via process.env inside the script) rather than
 # interpolated into the JS source string — a checkout path containing an
@@ -40,11 +40,11 @@
 #      monkey-patch injects the exact shape cross-platform) lands in
 #      failed[] with a reason naming the signal — NOT in ran[] (the bug: it
 #      previously fell through both the r.error and r.status!==0 checks).
-#   i. (CR fix) runInstall skip-after-prereq-failure: a 2-entry plan where
+#   i. runInstall skip-after-prereq-failure: a 2-entry plan where
 #      the second entry depends on the first, and the first fails — the
 #      second is SKIPPED (never spawned; a spy marker proves it), landing
 #      in failed[] naming the failed prerequisite, not silently run anyway.
-#   j. (CR fix) coalesce merges deps (union, not first-occurrence-only):
+#   j. coalesce merges deps (union, not first-occurrence-only):
 #      adopt-a and adopt-b BOTH depend on dep-x (a third, non-coalescing
 #      item) — dep-x must be ordered BEFORE the single coalesced adopt
 #      entry, proving the coalesced node's graph position accounts for
@@ -64,7 +64,7 @@
 #   m. runInstall()'s spawnSync call for an `input`-bearing entry, proven
 #      via a child_process.spawnSync monkey-patch (a real-process stub is
 #      unreliable on Windows — see the case's own comment). On THIS suite's
-#      real host platform (win32), routes through job-run.ps1 (CR fix, Job
+#      real host platform (win32), routes through job-run.ps1 (Job
 #      Object round): cmd is 'powershell', entry.cmd/entry.args travel via
 #      -Command/-CommandArgsB64, and opts.input still carries the password
 #      / opts.stdio is still ['pipe','inherit','inherit'] (Node pipes it
@@ -80,21 +80,21 @@
 #      entries still use the sudo -n fail-fast form.
 #   p. (addendum) HIMMELCTL_SUDO_PASSWORD set -> the diagnostic never
 #      prints, and no secret material appears in any output stream.
-#   q. (CR fix) spawnSync timeout: INSTALL_TIMEOUT_SECS forced to 1s against
+#   q. spawnSync timeout: INSTALL_TIMEOUT_SECS forced to 1s against
 #      a stub primitive that sleeps 3s — the REAL Node spawnSync timeout (not
 #      a monkey-patch) kills it, landing in failed[] with a "timed out after
 #      1s" reason, never ran[], and the primitive is proven never to finish
 #      (its own completion marker is absent).
-#   r. (CR fix, SECURITY — secret leak) the child's ENVIRONMENT never
+#   r. (SECURITY — secret leak) the child's ENVIRONMENT never
 #      carries HIMMELCTL_SUDO_PASSWORD: a real (non-monkey-patched) entry
-#      whose primitive targeted-probes its own environment (CR fix,
-#      CodeRabbit round 16: NOT a full `env` dump, which would leak the
+#      whose primitive targeted-probes its own environment
+#      16: NOT a full `env` dump, which would leak the
 #      operator's own real ambient secrets into test/CI output) + echoes
 #      stdin back proves the var is ABSENT (a different, unrelated env var
 #      survives, proving this isn't just "the whole env is stripped"),
 #      while the password STILL arrives via stdin (the sudo/stdin transport
 #      from cases k/m is unaffected by the fix).
-#   s. (CR fix) timeout kills the WHOLE process tree, not just the direct
+#   s. timeout kills the WHOLE process tree, not just the direct
 #      child: a wedged primitive that backgrounds a grandchild (and records
 #      its pid) is timed out at 1s — the grandchild is verified GENUINELY
 #      DEAD afterward (kill -0), not merely orphaned/still running in the
@@ -106,14 +106,14 @@
 #      Windows host — see cases t/u for a portable, deterministic proof of
 #      BOTH mechanisms' exact shape via a spawnSync/process.kill
 #      monkey-patch, the same technique case h/m already established).
-#   t. (CR fix) process-group-kill mechanism, POSIX branch (process.platform
+#   t. process-group-kill mechanism, POSIX branch (process.platform
 #      monkey-patched to 'linux'): on a monkey-patched ETIMEDOUT, runInstall
 #      calls process.kill(-pid, 'SIGKILL') (the NEGATIVE pid — the whole
 #      group, not just the direct child) — and the spawnOpts captured by the
 #      monkey-patched spawnSync carried detached:true (required so that
 #      negative-pid kill can never reach OUR OWN process group) and an env
 #      with HIMMELCTL_SUDO_PASSWORD already stripped.
-#   u. (CR fix, Job Object round) win32 dispatch mechanism (process.platform
+#   u. (Job Object round) win32 dispatch mechanism (process.platform
 #      monkey-patched to 'win32'): runInstall issues exactly ONE spawnSync
 #      call — cmd:'powershell', routed through job-run.ps1, entry.cmd/
 #      entry.args carried via -Command/-CommandArgsB64, NO `detached` flag —
@@ -122,7 +122,7 @@
 #      shape case t proves for POSIX. Supersedes this case's PRE-Job-Object
 #      shape (a second spawnSync('taskkill', ...) call), which no longer
 #      exists — win32 cleanup now lives entirely inside job-run.ps1.
-#   v. (CR fix, Job Object round — THE discriminating test) a genuinely
+#   v. (Job Object round — THE discriminating test) a genuinely
 #      RE-PARENTED grandchild (backgrounded inside a `(...)` subshell that
 #      exits WITHOUT waiting, so its recorded parent is already dead by the
 #      time the timeout fires — exactly how a real installer's postinst/
@@ -133,7 +133,6 @@
 #      descendant joins the SAME job at creation, independent of whether its
 #      immediate parent is still alive at kill time) — see the case's own
 #      comment and job-run.ps1's header for the full account.
-#   w. (CR fix, codex critic round 3, IMPORTANT — the SUCCESS-path mirror
 #      of case v) a primitive that exits 0 after legitimately backgrounding
 #      a descendant that KEEPS RUNNING (a real Windows installer starting a
 #      service/daemon/helper) must NOT have that descendant killed just
@@ -154,7 +153,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -170,7 +169,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 node_bin=$(command -v node)
 
 work=$(mktemp -d)
-# CR fix (CodeRabbit round 16, item 8): case w (below) deliberately leaves a
+# case w (below) deliberately leaves a
 # backgrounded survivor process ALIVE past its own assertions — that's the
 # whole point of the test (proving kill-on-close does NOT fire on the
 # success path). SURVIVOR_PID is set once that pid is known; cleanup() kills
@@ -188,7 +187,7 @@ cleanup() {
 trap cleanup EXIT
 . "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 
-# CR fix: exported ONCE, read via process.env inside every node -e script
+# exported ONCE, read via process.env inside every node -e script
 # below instead of being interpolated into the JS source string.
 INSTALL_ENGINE_LIB="$(winpath "$install_engine_lib")"
 export INSTALL_ENGINE_LIB
@@ -204,13 +203,13 @@ const items = [
   { id: 'dep-a', deps: ['qmd-a'], install: { type: 'dep' }, probe: { type: 'dep', cmd: 'somebin' } },
   { id: 'build-a', deps: ['dep-a'], install: { type: 'build', target: 'jira-cli' } },
 ];
-// CR fix (CodeRabbit round 17, item 3): platform PINNED, and it matters for
+// platform PINNED, and it matters for
 // more than determinism. Unpinned, ctx.platform fell through to
 // process.platform -- so on a Linux runner the dep item took buildEntry's
 // linux branch, which calls resolveSudoPassword() and embeds the REAL
 // HIMMELCTL_SUDO_PASSWORD (ambient env, or the primary checkout's .env) as
 // entry.input... which this very test then JSON.stringify's to stdout. Same
-// credential-exposure class as round 16's env-dump fixture fix. 'darwin' is
+// credential-exposure class as the earlier env-dump fixture fix. 'darwin' is
 // the right seam here (not 'win32'): it yields a normal brew-install entry,
 // preserving the entry shape these ordering assertions read, whereas win32
 // would hit an unmapped WINGET_IDS lookup and return an {unrunnable} entry
@@ -328,7 +327,7 @@ else
     bash "$install_plugins_sh" --scope project --template "$templateF" 2>&1)
   rcF=$?
   set -e
-  # CR fix: a nonzero install-plugins.sh exit here is a genuine test
+  # a nonzero install-plugins.sh exit here is a genuine test
   # failure (the stub claude/jq preflight is fully satisfied above), not
   # something to swallow — assert success explicitly instead of `|| true`.
   [ "$rcF" -eq 0 ] || fail "case f: install-plugins.sh --scope project with HIMMEL_RECONCILE_PLUGINS=1 should exit 0 (got rc=$rcF): $outF"
@@ -392,7 +391,7 @@ echo "$outI" | jq -e '.failed[1].id == "dependent" and (.failed[1].reason | test
 echo "ok: case i — a dependent entry is skipped (never spawned) after its prerequisite fails, naming it in failed[]"
 
 # ── case j: coalesce merges deps as a UNION, not first-occurrence-only ─────
-# CR fix: ONLY adopt-b depends on dep-x (adopt-a — the FIRST-seen member,
+# ONLY adopt-b depends on dep-x (adopt-a — the FIRST-seen member,
 # whose own deps a "first-occurrence-only" implementation would use for the
 # coalesced node's graph position — carries NO deps at all). This is the
 # precise, discriminating case: the old shipped-then-buggy code would have
@@ -406,7 +405,7 @@ const items = [
   { id: 'adopt-b', deps: ['dep-x'], install: { type: 'adopt' } },
   { id: 'dep-x', deps: [], install: { type: 'dep' }, probe: { type: 'dep', cmd: 'sometool' } },
 ];
-// CR fix (CodeRabbit round 17, item 3): platform pinned to 'darwin' so the
+// platform pinned to 'darwin' so the
 // dep-x item cannot consume HIMMELCTL_SUDO_PASSWORD into the serialized
 // plan this test prints -- see case a's own comment for the full rationale.
 const ctx = { repoRoot: '/fake/repo', scope: 'project', profile: 'core', targetPath: '/fake/target', platform: 'darwin' };
@@ -425,7 +424,7 @@ echo "ok: case j — coalescing merges deps as a union across all members; a sha
 # exercised deterministically on Windows Git Bash. ──────────────────────────
 
 # ── case k: password SET -> sudo -S -p '' env ... form; the plan carries
-# ONLY a non-secret marker, NEVER the credential (HIMMEL-1119 item 1).
+# ONLY a non-secret marker, NEVER the credential.
 # ctx.platform pinned to 'linux' (see case a's comment) — kept. ─────────────
 outK=$(HIMMELCTL_SUDO_PASSWORD='s3cr3t-pw' "$node_bin" -e "
 const { planInstall } = require(process.env.INSTALL_ENGINE_LIB);
@@ -438,7 +437,7 @@ console.log(JSON.stringify(planInstall(items, ctx)));
 echo "$outK" | jq -e '.[0].cmd == "sudo"' >/dev/null || fail "case k: cmd should be 'sudo' (got: $outK)"
 echo "$outK" | jq -e '.[0].args == ["-S","-p","","env","DEBIAN_FRONTEND=noninteractive","apt-get","install","-y","sometool"]' >/dev/null \
   || fail "case k: unexpected args shape (got: $outK)"
-# HIMMEL-1119 item 1: the plan no longer carries the live credential. It
+# the plan no longer carries the live credential. It
 # carries a NON-SECRET marker (needsSudoPassword) + repoRoot (so the exec
 # path resolves the real password immediately before the spawn) — and NO
 # `input` field at all (the old shape embedded the password here).
@@ -449,7 +448,7 @@ echo "$outK" | jq -e '.[0].repoRoot == "/fake/repo-nonexistent-k"' >/dev/null \
 if echo "$outK" | jq -e '.[0] | has("input")' >/dev/null 2>&1; then
   fail "case k: the plan must NOT carry an 'input' field — the credential is resolved at exec time, never embedded in the plan (got: $outK)"
 fi
-# The WHOLE POINT of HIMMEL-1119 item 1: the ENTIRE returned plan object,
+# The WHOLE POINT of the ENTIRE returned plan object,
 # JSON-serialized, contains the secret NOWHERE — not in cmd, args, input
 # (gone), repoRoot, or any other field. A plan that can be freely logged /
 # serialized / printed without leaking the credential. Verified to BITE: see
@@ -470,7 +469,6 @@ const ctx = { repoRoot: '/fake/repo-nonexistent-l', scope: 'project', profile: '
 console.log(JSON.stringify(planInstall(items, ctx)));
 ") 2>/dev/null )
 echo "$outL" | jq -e '.[0].cmd == "bash"' >/dev/null || fail "case l: cmd should be 'bash' (got: $outL)"
-# CR fix (CodeRabbit round 16 — Fable, injection-hardening consistency):
 # 'sometool' is now passed as a bash POSITIONAL arg ($1), not interpolated
 # into the -c script text (same class of fix already applied to the
 # 'qmd'/'build' cases) — the array now carries a trailing
@@ -486,11 +484,11 @@ echo "ok: case l — HIMMELCTL_SUDO_PASSWORD unset: the fail-fast 'sudo -n' form
 # ── case m: runInstall()'s spawnOpts for an `input`-bearing entry with
 # process.platform FORCED to 'win32' — proven via a child_process.spawnSync
 # MONKEY-PATCH (same technique as the existing case h signal test above),
-# not a real child process. CR fix (codex critic): the platform is now
+# not a real child process.: the platform is now
 # EXPLICITLY forced (same technique case u already uses) rather than relying
 # on the suite's real host happening to be Windows — the earlier shape only
 # captured the powershell dispatch when run on a Windows host, silently
-# testing NOTHING on macOS/Linux CI. CR fix (Job Object round): win32 now
+# testing NOTHING on macOS/Linux CI. (Job Object round): win32 now
 # routes EVERY spawn through job-run.ps1 (installEngineLib's
 # runHardenedSpawnWin32) instead of spawning entry.cmd directly, so the
 # captured call's cmd is 'powershell', not 'sudo'. The credential transport
@@ -503,14 +501,14 @@ echo "ok: case l — HIMMELCTL_SUDO_PASSWORD unset: the fail-fast 'sudo -n' form
 # -Command/-CommandArgsB64 in the captured powershell argv, decoded here and
 # asserted against case k's real buildEntry shape — while the password
 # appears NOWHERE in that argv, under ANY encoding. ────────────────────────
-# HIMMELCTL_POWERSHELL pins the resolved interpreter (HIMMEL-2126's
+# HIMMELCTL_POWERSHELL pins the resolved interpreter ('s
 # resolvePowershell(), same seam class as HIMMELCTL_BASH) so this case's
 # `cmd:'powershell'` assertion is deterministic regardless of whether THIS
 # host happens to have pwsh on PATH — case v below covers the pwsh-preferred
 # branch directly.
 outM=$(HIMMELCTL_SUDO_PASSWORD='m-secret-pw' HIMMELCTL_POWERSHELL='powershell' "$node_bin" -e "
 const cp = require('child_process');
-// CR fix (codex critic): FORCE the win32 dispatch path — same
+// FORCE the win32 dispatch path — same
 // process.platform monkey-patch technique case u already uses (this is
 // the SAME portability convention as ctx.platform in cases k/l, applied
 // here since runInstall has no ctx param of its own). Without this, case
@@ -527,7 +525,7 @@ cp.spawnSync = function (cmd, args, opts) {
   return { status: 0, signal: null, error: null };
 };
 const { runInstall } = require(process.env.INSTALL_ENGINE_LIB);
-// HIMMEL-1119 item 1: the entry now carries ONLY the non-secret marker
+// the entry now carries ONLY the non-secret marker
 // (needsSudoPassword + repoRoot) — NO 'input' field. runHardenedSpawn
 // resolves the real credential from HIMMELCTL_SUDO_PASSWORD (set in this
 // process's env, above) immediately before the spawn and feeds it to the
@@ -553,7 +551,7 @@ echo "$outM" | jq -e '.result.ran | length == 1 and .[0].id == "dep-x"' >/dev/nu
 echo "$outM" | jq -e '.captured.cmd == "powershell"' >/dev/null || fail "case m: spawnSync should route win32 through cmd:'powershell' (job-run.ps1) (got: $outM)"
 echo "$outM" | jq -e '.captured.args | any(.[]; contains("job-run.ps1"))' >/dev/null \
   || fail "case m: the powershell argv should reference job-run.ps1 via -File (got: $outM)"
-# CR fix (codex critic): without -ExecutionPolicy Bypass, a machine at the
+# without -ExecutionPolicy Bypass, a machine at the
 # DEFAULT Windows policy (client: Restricted; server: RemoteSigned) refuses
 # to load job-run.ps1 at all — EVERY win32 install/unwire would fail before
 # the wrapper even started. This dev box's LocalMachine=Unrestricted policy
@@ -581,7 +579,7 @@ fi
 if echo "$outM" | jq -e '.captured.cmd | contains("m-secret-pw")' >/dev/null 2>&1; then
   fail "case m: the password must NEVER appear in the captured cmd (got: $outM)"
 fi
-# HIMMEL-1119 item 2: the two assertions above reject only the PLAINTEXT
+# the two assertions above reject only the PLAINTEXT
 # secret, yet this case's whole claim is "nowhere in that argv, under ANY
 # encoding" — and job-run.ps1's argv interface is base64+JSON. A revived
 # -InputTextB64 (the EARLIER design reverted for being ps-visible — see
@@ -641,7 +639,7 @@ echo "ok: case o — no HIMMELCTL_SUDO_PASSWORD + 2 linux dep items: the diagnos
 # real `ensure` run would surface to the operator/logs) — the resulting
 # plan is written to a FILE for structural inspection instead of
 # console.log'd, so this test never confuses its own data transport with a
-# genuine product-code leak channel. HIMMEL-1119 item 1: the plan no longer
+# genuine product-code leak channel. the plan no longer
 # carries the credential at all (only the non-secret marker), so this case
 # now ALSO asserts the secret appears NOWHERE in the serialized plan file —
 # the same guarantee case k proves on the in-memory plan, here on the
@@ -661,7 +659,7 @@ require('fs').writeFileSync(process.env.PLAN_OUT_P, JSON.stringify(plan));
 [ ! -s "$stderrLogP" ] || fail "case p: no diagnostic (or any stderr output) expected when the password IS configured (got: $(cat "$stderrLogP"))"
 [ ! -s "$stdoutLogP" ] || fail "case p: no stdout output expected — the plan is written to a file, never console.log'd (got: $(cat "$stdoutLogP"))"
 outP=$(cat "$planOutP")
-# HIMMEL-1119 item 1: the written plan carries ONLY the non-secret marker —
+# the written plan carries ONLY the non-secret marker
 # not the credential. Assert the marker shape, that NO `input` field exists,
 # AND that the secret appears nowhere in the serialized plan file.
 echo "$outP" | jq -e '.[0].cmd == "sudo" and .[0].needsSudoPassword == true' >/dev/null \
@@ -696,7 +694,7 @@ echo "$outQ" | jq -e '.failed[0].reason | test("timed out after 1s")' >/dev/null
 [ ! -f "$timeoutWork/WEDGED_FINISHED.marker" ] || fail "case q: the wedged primitive must have been killed before completing (marker exists)"
 echo "ok: case q — a spawnSync call exceeding INSTALL_TIMEOUT_SECS lands in failed[] with a 'timed out after Ns' reason, never ran[], and is actually killed before finishing"
 
-# ── case r (CR fix, SECURITY — secret leak): HIMMELCTL_SUDO_PASSWORD never
+# ── case r (SECURITY — secret leak): HIMMELCTL_SUDO_PASSWORD never
 # reaches the child's ENVIRONMENT — only stdin. A real (non-monkey-patched)
 # entry whose primitive proves: the var is ABSENT from the child's own
 # environment, a DIFFERENT unrelated env var survives (proves this isn't
@@ -705,7 +703,7 @@ echo "ok: case q — a spawnSync call exceeding INSTALL_TIMEOUT_SECS lands in fa
 # marker strings are used for the env-var value vs. the stdin payload so a
 # leak via either channel is unambiguous about which one failed.
 #
-# CR fix (CodeRabbit round 16, MAJOR — secret exposure in OUR test): the
+# the
 # primitive used to `env` (a FULL dump of its own environment) then `cat`
 # stdin — on a real operator's machine, "its own environment" is whatever
 # ambient secrets happen to be in the shell that launched
@@ -744,7 +742,7 @@ echo "$jsonR" | jq -e '.ran | length == 1 and .[0].id == "env-dump"' >/dev/null 
   || fail "case r: the env-dump primitive should have run successfully (got: $jsonR)"
 echo "ok: case r — HIMMELCTL_SUDO_PASSWORD is absent from the child's environment (an unrelated var survives) while still arriving via stdin"
 
-# ── case s (CR fix): a timeout kills the WHOLE process tree, not just the
+# ── case s: a timeout kills the WHOLE process tree, not just the
 # direct child. A wedged primitive backgrounds a grandchild and records its
 # pid to a file; after the 1s timeout fires, the grandchild is verified
 # GENUINELY DEAD (kill -0), not merely orphaned/still running. This exercises
@@ -776,14 +774,14 @@ echo "$outS" | jq -e '.failed | length == 1 and .[0].id == "wedged-tree"' >/dev/
 grandchildPidFile="$treeWork/grandchild.pid"
 [ -f "$grandchildPidFile" ] || fail "case s: the grandchild's pid file was never written — it never even started before the timeout fired"
 grandchildPid=$(cat "$grandchildPidFile")
-# CR fix (flake): poll instead of a fixed `sleep 1` — signal delivery/
+# poll instead of a fixed `sleep 1` — signal delivery/
 # process teardown is async, and a busy host can take longer than 1s to
 # actually reap the process, which would false-fail a fixed-sleep check.
 # Re-checks liveness every 100ms for up to 5s; the assertion itself stays
 # STRICT (genuinely dead, not merely unchecked/assumed) — this only avoids
 # racing the OS's own reaper, never loosens what's being proven.
 grandchildDead=0
-# CR fix (portability): a bash arithmetic loop instead of `seq` — same 50
+# a bash arithmetic loop instead of `seq` — same 50
 # iterations, same kill -0 check, same break/sleep timing; `seq` is an
 # external binary not guaranteed present on every POSIX host this suite
 # might run on, where a C-style for-loop is a bash builtin.
@@ -797,7 +795,7 @@ done
 [ "$grandchildDead" -eq 1 ] || fail "case s: the grandchild (pid $grandchildPid) must be dead after a timeout kills the whole process tree, but it is still running (waited 5s)"
 echo "ok: case s — a timeout kills the WHOLE process tree on this host's real platform; a backgrounded grandchild is verified dead, not merely orphaned"
 
-# ── case t (CR fix): process-group-kill mechanism, POSIX branch —
+# ── case t: process-group-kill mechanism, POSIX branch
 # process.platform monkey-patched to 'linux' (same portability technique as
 # ctx.platform in cases k/l, applied here since runInstall has no ctx param
 # of its own) + a child_process.spawnSync monkey-patch (same technique as
@@ -806,7 +804,7 @@ echo "ok: case s — a timeout kills the WHOLE process tree on this host's real 
 # direct child) + 'SIGKILL', the spawnOpts captured detached:true (required
 # so the negative-pid kill can never reach OUR OWN process group), and the
 # captured env already had HIMMELCTL_SUDO_PASSWORD stripped. ─────────────
-# HIMMEL-2289: HIMMELCTL_BASH pins the resolved bash, exactly as
+# HIMMELCTL_BASH pins the resolved bash, exactly as
 # HIMMELCTL_POWERSHELL pins the interpreter in case m/u. runHardenedSpawn now
 # resolves a `cmd:'bash'` entry to a CONCRETE Git Bash (never the bare name —
 # on Windows PATH resolves that to the System32 WSL launcher) and refuses to
@@ -846,8 +844,8 @@ echo "$outT" | jq -e '.killCalls | length == 1 and .[0].pid == -4242 and .[0].si
   || fail "case t: expected process.kill(-4242, 'SIGKILL') — the NEGATIVE pid (whole process group) (got: $outT)"
 echo "ok: case t — POSIX (simulated) timeout-cleanup: process.kill(-pid,'SIGKILL') on a detached:true child, password stripped from env"
 
-# ── case u (CR fix, Job Object round): win32 dispatch mechanism —
-# process.platform monkey-patched to 'win32'. CR fix: the PREVIOUS win32
+# ── case u (Job Object round): win32 dispatch mechanism
+# process.platform monkey-patched to 'win32'. the PREVIOUS win32
 # mechanism (direct spawnSync + a SECOND spawnSync('taskkill', ...) call on
 # ETIMEDOUT) is GONE — win32 now issues exactly ONE spawnSync call, routing
 # through job-run.ps1 (a Windows Job Object owns the whole spawn+timeout+
@@ -911,7 +909,7 @@ echo "$outU" | jq -e '.result.failed | length == 1 and .[0].id == "wedged-win" a
   || fail "case u: job-run.ps1's own TIMEOUT_EXIT_CODE (4217) should classify as a timeout failure (got: $outU)"
 echo "ok: case u — win32 routes through a SINGLE job-run.ps1 call (Job Object owns tree-kill internally); its own timeout exit code classifies as a timeout, password stripped from env, no detached flag"
 
-# ── case v2 (HIMMEL-2126): win32 prefers pwsh over powershell.exe when both
+# ── case v2: win32 prefers pwsh over powershell.exe when both
 # are resolvable — exercises resolvePowershell()'s REAL PATH-based
 # resolution (no HIMMELCTL_POWERSHELL override, unlike cases m/u above)
 # against a hermetic PATH carrying only a fake pwsh + a fake powershell.exe,
@@ -923,7 +921,7 @@ printf '#!/bin/sh\necho fake powershell\n' > "$fixtureV2/powershell.exe"; chmod 
 # NOTE: PATH is passed in its POSIX form (not winpath-converted) so MSYS's
 # own PATH auto-translation produces a single, correct Windows-form entry for
 # node.exe — pre-converting it ourselves makes MSYS re-split the drive-letter
-# colon and mangle it (HIMMEL-2126 repro during authoring).
+# colon and mangle it (repro during authoring).
 outV2=$(env -u HIMMELCTL_POWERSHELL PATH="$fixtureV2" HIMMELCTL_BASH='bash' "$node_bin" -e "
 const cp = require('child_process');
 Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
@@ -941,7 +939,7 @@ echo "$outV2" | jq -e '.cmd | test("pwsh$")' >/dev/null \
   || fail "case v2: win32 should prefer pwsh over powershell.exe when pwsh resolves on PATH (got: $outV2)"
 echo "ok: case v2 — win32 prefers pwsh over powershell.exe when both are resolvable (HIMMEL-2126)"
 
-# ── case v (CR fix, Job Object round — THE discriminating test): a
+# ── case v (Job Object round — THE discriminating test): a
 # RE-PARENTING grandchild is verified genuinely dead after a timeout. Case
 # s's own wedged-tree.sh backgrounds a grandchild and then `wait`s in the
 # SAME script — the direct child (bash) stays ALIVE the whole time, so
@@ -989,7 +987,7 @@ echo "$outV" | jq -e '.failed | length == 1 and .[0].id == "wedged-reparent" and
 grandchildReparentPidFile="$reparentWork/grandchild-reparent.pid"
 [ -f "$grandchildReparentPidFile" ] || fail "case v: the grandchild's pid file was never written — it never even started before the timeout fired"
 grandchildReparentPid=$(cat "$grandchildReparentPidFile")
-# Poll, not a fixed sleep — same reasoning as case s. CR fix (portability):
+# Poll, not a fixed sleep — same reasoning as case s. (portability):
 # a bash arithmetic loop instead of `seq`, same as case s's own fix.
 grandchildReparentDead=0
 for ((_i = 0; _i < 50; _i++)); do
@@ -1002,7 +1000,7 @@ done
 [ "$grandchildReparentDead" -eq 1 ] || fail "case v: the RE-PARENTED grandchild (pid $grandchildReparentPid) must be dead after the timeout kills the whole tree, but it is still running (waited 5s) — this is the exact scenario the old taskkill /T /F mechanism was verified to miss"
 echo "ok: case v — a RE-PARENTED grandchild (its own parent already exited before the timeout fired) is verified genuinely dead — the discriminating scenario that defeats a plain process-tree-walk but not a Job Object"
 
-# ── case w (CR fix, codex critic round 3, IMPORTANT — the SUCCESS-path
+# ── case w
 # mirror of case v): a primitive that exits 0 after LEGITIMATELY
 # backgrounding a descendant that KEEPS RUNNING (a stand-in for a real
 # Windows installer starting a service/daemon/background helper, a
@@ -1044,7 +1042,7 @@ echo $! > "$d/survivor.pid"
 exit 0
 SH
 SURVIVOR_SH="$survivorSh"
-# CR fix (flake, discovered empirically): the result is written to a FILE
+# the result is written to a FILE
 # (fs.writeFileSync), NOT console.log'd + captured via `$(...)` — mirrors
 # case p's own established convention (test-wizard-install-engine.sh,
 # HIMMELCTL_SUDO_PASSWORD round) of avoiding a Node-owned pipe whenever a
@@ -1060,7 +1058,7 @@ SURVIVOR_SH="$survivorSh"
 # DIRECT powershell.exe invocation with plain stdio:'inherit', bypassing
 # this capture entirely, resolves the pid reliably every time). Writing the
 # result to a file sidesteps the extra pipe entirely.
-# HIMMEL-1119 item 3: winpath'd because node.exe (not bash) resolves this one
+# winpath'd because node.exe (not bash) resolves this one
 # — fs.writeFileSync consumes it, and node.exe is blind to MSYS /tmp-style
 # paths, the same reason INSTALL_ENGINE_LIB/FIXTURE_REPO/… above are converted.
 # SURVIVOR_SH is deliberately NOT converted: bash consumes that one, so its
@@ -1082,7 +1080,7 @@ echo "$outW" | jq -e '.ran | length == 1 and .[0].id == "survives"' >/dev/null \
 survivorPidFile="$survivorWork/survivor.pid"
 [ -f "$survivorPidFile" ] || fail "case w: the survivor's pid file was never written"
 survivorPid=$(cat "$survivorPidFile")
-# CR fix (CodeRabbit round 16, item 8): record the pid for cleanup() (see
+# record the pid for cleanup (see
 # the top of this file) BEFORE the liveness assertion below — if that
 # assertion itself calls fail() (exit 1), the trap still fires and reaps
 # the survivor; a leaked process must not depend on this case reaching its
@@ -1105,7 +1103,7 @@ fi
 kill "$survivorPid" >/dev/null 2>&1 || true
 echo "ok: case w — a legitimate background descendant of a SUCCESSFUL install survives (kill-on-close is cleared before the job handle is released on any non-timeout path)"
 
-# ── case x (CR fix, codex round 17): the FAILURE complement of case w. Case
+# ── case x: the FAILURE complement of case w. Case
 # w proves a survivor lives when clearing KILL_ON_JOB_CLOSE succeeds; this
 # proves what happens when that clear FAILS. job-run.ps1 then signals
 # $CLEANUP_FAILED_EXIT_CODE (4220): the wrapped command itself succeeded,
@@ -1113,7 +1111,7 @@ echo "ok: case w — a legitimate background descendant of a SUCCESSFUL install 
 # launched. The bug being locked down: the old success branch exited with
 # the CHILD's success code, so ensure reported green right after
 # potentially breaking the service it just installed — a fail-OPEN of the
-# same class as round 16's WaitForExit find. install-engine.js classifies
+# same class as the earlier WaitForExit find. install-engine.js classifies
 # this spawn by exit code ALONE (job-run's stderr warning is never read),
 # so the sentinel is the only channel that can carry it. Asserts it lands
 # in failed[] (never ran[]) with a reason that names the actual hazard.
@@ -1136,7 +1134,7 @@ echo "$outX" | jq -e '.failed[0].reason | test("KILL_ON_JOB_CLOSE")' >/dev/null 
   || fail "case x: the 4220 failure reason should name the actual hazard (failed to clear KILL_ON_JOB_CLOSE), not a bare 'exited 4220' (got: $outX)"
 echo "ok: case x — job-run.ps1's CLEANUP_FAILED_EXIT_CODE (4220) fails closed: a succeeded-but-uncleanable spawn is reported as a failure naming the hazard, never as a false green"
 
-# ── case y (HIMMEL-2289): runHardenedSpawn REFUSES a cmd:'bash' entry when no
+# ── case y: runHardenedSpawn REFUSES a cmd:'bash' entry when no
 # usable bash resolves, instead of spawning the bare name. buildEntry() emits
 # the literal cmd:'bash' for every shell primitive; spawning that bare name
 # resolves through PATH — on Windows to C:\WINDOWS\system32\bash.exe, the WSL
@@ -1148,7 +1146,7 @@ echo "ok: case x — job-run.ps1's CLEANUP_FAILED_EXIT_CODE (4220) fails closed:
 # Un-resolving bash PORTABLY is the whole difficulty: neither an empty PATH
 # nor a scrubbed env does it — resolveBash() probes hardcoded
 # Git-for-Windows locations on win32 and /bin/bash, /usr/bin/bash on posix,
-# none of them PATH-gated (the HIMMEL-2176 trap list), and HIMMELCTL_BASH can
+# none of them PATH-gated (the trap list), and HIMMELCTL_BASH can
 # only PIN a bash, never remove one. So stub the resolver at the module
 # boundary: require run-hook-with-bash.js FIRST, overwrite its exported
 # resolveBash on the cached module, and only THEN require install-engine —

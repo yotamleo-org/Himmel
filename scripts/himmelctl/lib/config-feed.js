@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/config-feed.js — HIMMEL-4254 P2: the feed behind
+// scripts/himmelctl/lib/config-feed.js — the feed behind
 // `himmelctl report --json`, the config UI's one data source (spec §4).
 //
 // Read-only: composes the existing status engine (status-report.js, in-process),
@@ -53,7 +53,7 @@ const CADENCES = [
 function checkoutRoot() {
   return process.env.HIMMELCTL_REPO_ROOT || path.resolve(__dirname, '..', '..', '..');
 }
-// The STATION anchor (HIMMEL-4373): the primary checkout behind a worktree
+// The STATION anchor: the primary checkout behind a worktree
 // (git-common-dir), else the checkout itself. The report answers "how is this
 // station", so checkout-relative probes judge the anchor, never whichever
 // worktree's bin.js happens to be running. Idempotent: the anchor of an anchor
@@ -99,7 +99,7 @@ function readJson(p) {
 }
 // The repo-root .env as text. envStatus records whether it could be read: 'ok',
 // 'absent' (no such file, normal) or 'unreadable' (exists but cannot be read, so
-// the redactor has no .env values to match; the envelope says so, HIMMEL-4327).
+// the redactor has no.env values to match; the envelope says so).
 let envStatus = 'ok';
 function readDotEnv() {
   try {
@@ -115,7 +115,7 @@ function mtimeIso(p) {
   try { return fs.statSync(p).mtime.toISOString(); } catch { return null; }
 }
 
-// A FAIL/WARN row always tells the operator what to run next (HIMMEL-4373).
+// A FAIL/WARN row always tells the operator what to run next.
 // Used only when the row's own source (detail text, doctor remedy, secrets
 // `obtain`) supplied nothing.
 function fallbackRemedy(o) {
@@ -481,7 +481,7 @@ function buildFeed(args) {
   }
 }
 
-// ── one owner per finding (HIMMEL-4373) ──────────────────────────────────
+// ── one owner per finding ──────────────────────────────────
 // A doctor check that restates a fact the status engine owns is dropped from
 // the feed (plain doctor CLI output is unchanged). owner null = the whole
 // status report (C16 summarises every status finding). When the doctor's
@@ -554,7 +554,7 @@ function composeFeed({ manifest, scope, targetPath, answers, items, served }) {
       || (r.id.startsWith('probe-disagree:') && wanted.includes(shown(`doctor:${r.id.slice('probe-disagree:'.length)}`))));
   }
 
-  // HIMMEL-4379: bundle on the RAW ids (redaction can rewrite an id), after the
+  // bundle on the RAW ids (redaction can rewrite an id), after the
   // fold and the --items filter, so Unsorted appears only for a surviving row.
   const table = bundlesLib.loadBundles();
   const bundleIds = rows.map((r) => bundlesLib.bundleOf(r.id, table));

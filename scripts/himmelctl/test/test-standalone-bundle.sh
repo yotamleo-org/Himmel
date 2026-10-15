@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-standalone-bundle.sh — hermetic coverage for HIMMEL-3312 S13's bundle
+# test-standalone-bundle.sh — hermetic coverage for S13's bundle
 # writer, launcher fallback and standalone.js (plan
-# HIMMEL-3332-install-provenance-plan.md S13, design
-# HIMMEL-3312-standalone-undo.md §3, §6, §7). Drives the REAL bin.js through
+# install-provenance-plan.md S13, design
+# standalone-undo.md §3, §6, §7). Drives the REAL bin.js through
 # `install --from-profile` (only scripts/adopt.sh + scripts/setup.sh are
 # stubbed) against a fixture tree built from `git archive HEAD`, so
 # writeStandaloneBundle() copies real files from a real closure. Covers the

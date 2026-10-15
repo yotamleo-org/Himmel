@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/contributor-profile.js — contributor-dev reporting for
-// `himmelctl install` (HIMMEL-1423). setup.sh/setup.ps1 remains the one
+// `himmelctl install`. setup.sh/setup.ps1 remains the one
 // idempotent mutation primitive; this module only reads actual state after (or
 // before, for --dry-run) that primitive. It composes the existing manifest
 // probe engine, version-aware deps engine, and adopter profile's canonical
@@ -168,7 +168,7 @@ function reportLines(report, opts) {
     const guidance = laneGuidance(row);
     if (guidance) lines.push(guidance);
   }
-  // HIMMEL-2308: alwaysOn is asked universally now (the dev overlay is an
+  // alwaysOn is asked universally now (the dev overlay is an
   // orthogonal layer on top of a profile install, not its own flow) — the
   // universal epilogue (bin.js's printAdopterEpilogue, printed alongside this
   // report on every run) already reports the honest hardening state, so this

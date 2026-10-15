@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/feed-bundles.js — HIMMEL-4379: row id -> user-facing
+// scripts/himmelctl/lib/feed-bundles.js — row id -> user-facing
 // bundle, from the ONE table feed-bundles.json. Side-effect free (no I/O at
 // require time) so the feed and bundle-registry-lint share one matcher.
 

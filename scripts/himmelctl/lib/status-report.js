@@ -1,7 +1,7 @@
 'use strict';
 // scripts/himmelctl/lib/status-report.js — the parameterized statusReport()
-// library (HIMMEL-755 A2), extracted from bin.js's cmdStatus results loop
-// (bin.js:1087-1125 pre-extraction, HIMMEL-756 T1.5/T1.6). PURE READ: no
+// library, extracted from bin.js's cmdStatus results loop
+// PURE READ: no
 // prompts, no state.json WRITE of any kind. Desired flags come from the
 // target's PERSISTED state.json entry when one exists for {scope,
 // targetPath} (state.js's own targetKeyForScope formula, replicated here so
@@ -16,7 +16,7 @@
 // path; the caller decides, and a target with no persisted entry still
 // reads a coherent (freshly-derived, unsaved) result.
 //
-// HIMMEL-2349: on top of the persisted flag, `desired` also gets an
+// on top of the persisted flag, `desired` also gets an
 // ADDITIVE-ONLY overlay from the CURRENTLY recorded install-profile
 // (stateLib.recordedDesired() — the pure membership rule, never
 // target.profile, which is derived once and never revisited) — never a
@@ -25,7 +25,7 @@
 // stateLib.load() already happening, no mutation, no save().
 //
 
-// HIMMEL-2463: `status` never writes state.json, not even the target's
+// `status` never writes state.json, not even the target's
 // first derive — this library only ever calls stateLib.load() (read) and
 // stateLib.deriveTarget() (pure, no fs I/O), never stateLib.save() or
 // stateLib.ensureTarget(). Persisting a derived or migrated target entry
@@ -64,13 +64,13 @@ function repoRoot() {
 
 // Expand a leading `~` to an absolute home path — mirrors bin.js's own
 // expandHome(). Honors $HOME first (tests fake it), else os.homedir().
-// CodeRabbit App finding (HIMMEL-2176 retask stage1-build-6d2e): `~\` (the
+// CodeRabbit App finding: `~\` (the
 // separator Windows-style config values actually use, e.g. `~\Documents\luna`)
 // was falling through to the bare `return p` below, same as the already-fixed
 // `~/` gap. Only the exact `~/` / `~\` two-char prefix expands — a bare
 // `~something` (POSIX home-of-another-user, or a filename that merely starts
 // with a tilde) still falls through unexpanded, same as before.
-// HIMMEL-2642: `path.join` doesn't split the remainder on `\` when run on
+// `path.join` doesn't split the remainder on `\` when run on
 // POSIX, so a `~\`-prefixed path expanded on a POSIX host used to keep its
 // literal backslashes as one odd path segment — not just an unusual name but
 // a genuinely WRONG path for any fs check (existsSync et al. never find the
@@ -89,7 +89,7 @@ function expandHome(p) {
   return p;
 }
 
-// HIMMEL-4758: the target's tracker and forge come from the one resolver,
+// the target's tracker and forge come from the one resolver,
 // scripts/lib/project-mode.mjs (the twin of project-mode.sh). It is ESM and
 // this file is CommonJS on a Node 18 floor (no require(esm)), so it runs as a
 // child: `node project-mode.mjs <fn>` in the target dir. Not memoized: each
@@ -109,10 +109,10 @@ function projectMode(targetPath, fn, env) {
   return r.status === 0 ? String(r.stdout || '').trim() : null;
 }
 
-// HIMMEL-3307: bitbucket-cli-build is opt-in ONLY for a target that does not
+// bitbucket-cli-build is opt-in ONLY for a target that does not
 // use Bitbucket Cloud: the resolved forge is bitbucket (FORGE, git config
 // himmel.forge, else an `origin` whose HOST is that domain or a subdomain of
-// it, HIMMEL-3325). test-wizard-statusreport.sh case m3c walks
+// it). test-wizard-statusreport.sh case m3c walks
 // scripts/lib/fixtures/forge-origins.tsv to hold this to forge_detect.
 function targetUsesBitbucket(targetPath) {
   return projectMode(targetPath, 'forge') === 'bitbucket';
@@ -139,7 +139,7 @@ function ctxForItem(item, answers, targetPath, scope) {
   return { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env };
 }
 
-// HIMMEL-2176 Task 7a: for a small, named set of items, desired-state can
+// for a small, named set of items, desired-state can
 // ALSO come from the adopter's live ~/.himmel/config.json — a SECONDARY
 // source layered ON TOP of (never instead of) the state.json-derived signal
 // above, since config.json can be toggled by the adopter (or future
@@ -156,15 +156,14 @@ function ctxForItem(item, answers, targetPath, scope) {
 // lunaConfig.load() themselves (bridge-health since the CR-6 fix that made
 // its cleanAbsence flag consult bridge.enabled, the same way cadence-armed's
 // cleanAbsence already consulted luna.cadence.enabled, and bridge-persistence
-// since HIMMEL-2176 Stage-1 PR-C's S6) — but only if the probe actually
+// since PR-C's S6) — but only if the probe actually
 // got to run, which it doesn't when configDesiredOverride silently returns
 // false here and state.json hadn't independently enabled the item
-// (HIMMEL-2176 CR fix, codex-4).
 function configDesiredOverride(itemId, configDoc) {
   if (!configDoc) return false;
   if (itemId === 'cadence-armed') return Boolean(configDoc.luna && configDoc.luna.cadence && configDoc.luna.cadence.enabled);
   if (itemId === 'bridge-health') return Boolean(configDoc.bridge && configDoc.bridge.enabled);
-  // HIMMEL-2176 Stage-1 PR-C, status item S6: bridge-persistence's own probe
+  // C, status item S6: bridge-persistence's own probe
   // ALSO gates entirely on bridge.enabled (see probes.js) — an operator
   // whose profile membership alone would read bridge-persistence
   // desired:false (e.g. a luna-only profile) but who explicitly opted the
@@ -197,7 +196,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
   // is the literal "user" key); otherwise fall back to an in-memory-only
   // deriveTarget() computation (never persisted — see module header).
   //
-  // CR fix: deriveTarget() reads `cachedAnswers.scope` itself (for the
+  // deriveTarget reads `cachedAnswers.scope` itself (for the
   // item.scopes.includes(scope) membership check) — the uncached fallback
   // must honor the EXPLICIT `scope` this function was called with, not
   // whatever scope happens to be baked into `answers` (an explicit scope
@@ -218,7 +217,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     configLoadError = e;
   }
 
-  // HIMMEL-2305: telegram-bridge/hermes-lanes/codex-cli carry no
+  // telegram-bridge/hermes-lanes/codex-cli carry no
   // ~/.himmel/config.json flag of their own (unlike bridge-health/
   // bridge-persistence/cadence-armed above) — the only record of whether the
   // adopter ever selected these features lives in the recorded wizard
@@ -235,13 +234,13 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
 
   const results = [];
   for (const item of items) {
-    // HIMMEL-2176 CR fix (codex-4): a malformed ~/.himmel/config.json used to
+    // a malformed ~/.himmel/config.json used to
     // vanish silently here — configDoc stayed null, configDesiredOverride()
     // returned false, and if state.json's persisted entry hadn't
     // independently enabled cadence-armed/bridge-health, each was pushed as
     // an ordinary "not enabled" n/a row below and its probe never ran at
     // all, so the corrupt config was invisible in `himmelctl status`
-    // entirely (HIMMEL-1128's loud-degradation rule: a check that can't
+    // entirely ('s loud-degradation rule: a check that can't
     // evaluate something must say so at severity, never go quiet). Surfaced
     // HERE, once, for both affected items, rather than trusting either
     // item's own probe to catch it (see configDesiredOverride's comment for
@@ -258,7 +257,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     const entry = target.items[item.id];
     const persistedDesired = Boolean(entry && entry.enabled);
     const cfgDesired = configDesiredOverride(item.id, configDoc);
-    // HIMMEL-2349: additive-only overlay — the CURRENTLY recorded
+    // additive-only overlay — the CURRENTLY recorded
     // install-profile (never target.profile, which is derived once and
     // never revisited — see state.js's own module header) can ALSO make an
     // item desired, on top of (never instead of) the persisted flag above.
@@ -267,7 +266,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     // comment) — resolving this additively IN MEMORY is what lets `status`
     // report it without ever writing state.json.
     //
-    // GATED on `!passedState` (CR fix, HIMMEL-2349 retask 01S-A-2349-b73d):
+    // GATED on `!passedState` (retask 01S-A-2349-b73d):
     // every bin.js caller that supplies its OWN `state` (cmdEnsure's pre/
     // post-check + its --items fullById map, cmdScopeSet's pre/post-check)
     // does so ONLY after already computing that state's authoritative
@@ -290,7 +289,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     //
     // `!passedState` alone only protects THIS invocation's own reconcile —
     // a `status` call always has passedState=false, so it needs a SEPARATE
-    // guard against a PRIOR run's explicit reconcile (HIMMEL-2349, codex-1,
+    // guard against a PRIOR run's explicit reconcile
     // Critical): recordedDesired() itself checks `target.profileSource`
     // (stamped by state.js's reconcileTarget()) and refuses to re-enable
     // anything on a target the operator has explicitly reconciled, however
@@ -321,7 +320,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       severity = 'degraded';
     } else {
       severity = 'red';
-      // CR follow-up (HIMMEL-1017, HIMMEL-1012 review): graphify-mcp carries
+      // CR follow-up: graphify-mcp carries
       // profiles:["luna","all"] like any other luna-profile item, so every
       // luna/all target reads it desired:true — but registering the
       // graphify MCP server is a genuinely OPT-IN, manual step (adopt.sh's
@@ -336,7 +335,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // so an operator who DOES register the MCP server still sees it flip
       // green — this only silences the alarm for the "never opted in" case.
       //
-      // CR fix (HIMMEL-1017 CR round): only for a CLEAN absence —
+      // only for a CLEAN absence
       // probeMcpRegistered's 'absent' also covers an unreadable/unparseable
       // or malformed-shape config (probe.configError:true), which is NOT
       // "never opted in", it's a broken config that may well have LOST a
@@ -351,7 +350,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (adopt.sh --with-graphify / claude mcp add graphify)`;
       }
-      // HIMMEL-1093: doc-guard-map's deepened probe (cmd:is_himmel_dev) reads
+      // doc-guard-map's deepened probe (cmd:is_himmel_dev) reads
       // 'absent' for the ordinary, expected case — any checkout that isn't a
       // himmel CONTRIBUTOR checkout (the .himmel-dev marker is an opt-in
       // dropped by contributor setup; adopters/most engineers never have it,
@@ -365,7 +364,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (himmel contributor setup only; adopted/non-contributor checkouts intentionally have the gate off)`;
       }
-      // HIMMEL-1100: the three cadence runners are armed via an explicit,
+      // the three cadence runners are armed via an explicit,
       // one-time `arm` operator action — never part of setup.sh/adopt.sh's
       // automatic install path (unlike codex-cli/hermes-checkout, which DO
       // have a dedicated installer script the operator is expected to have
@@ -387,18 +386,18 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/luna/graphmap-cadence.sh arm)`;
       }
-      // HIMMEL-4285: doctor-cadence is opt-in too (and doctor-cadence.sh
+      // doctor-cadence is opt-in too (and doctor-cadence.sh
       // refuses to arm on Windows, so a red there could never be cleared).
       if (item.id === 'doctor-cadence') {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/doctor-cadence.sh arm)`;
       }
-      // HIMMEL-1100: the user-scope guardrail block is armed via an explicit
+      // the user-scope guardrail block is armed via an explicit
       // `setup-hooks.sh --guardrail-mode global` opt-in — never the default
       // (project mode). 'degraded' (armed but the baked node path rotted —
       // exactly what report_guardrail_block's own drift check exists to
       // catch) is a DIFFERENT probe.actual and never reaches here.
-      // HIMMEL-2176: this item now carries a REAL install descriptor (see
+      // this item now carries a REAL install descriptor (see
       // install-engine.js's 'guardrail-block-global' wire target), but it
       // still writes the OPERATOR'S GLOBAL ~/.claude/settings.json — the
       // round-3 ruling forbids ever letting that happen on the strength of
@@ -414,8 +413,8 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/setup-hooks.sh --guardrail-mode global --yes, or run 'himmelctl ensure' interactively to consent + auto-wire)`;
       }
-      // HIMMEL-1100/4127: obsidian-second-brain is an opt-in url-sourced
-      // plugin in the himmel marketplace (HIMMEL-4018) — no himmel script
+      // obsidian-second-brain is an opt-in url-sourced
+      // plugin in the himmel marketplace — no himmel script
       // installs it, the same "no automated path exists" shape as
       // graphify-mcp/doc-guard-map above. The operator installs it with
       // `claude plugin install`; himmel-update keeps it current.
@@ -423,18 +422,18 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (claude plugin install obsidian-second-brain@himmel; update: claude plugin update obsidian-second-brain@himmel)`;
       }
-      // HIMMEL-1100 round 5 (glm-3): gemini-cli is an optional second-opinion
+      // gemini-cli is an optional second-opinion
       // lane (gemini-subagent, /x-read family), not core tooling every
       // operator needs — unlike codex-cli/hermes-checkout, which stay
       // red-if-absent because they ARE core lanes here. profiles:["core",
       // "all"] makes this desired:true broadly, so a non-Gemini operator
       // would otherwise carry a permanent false red — exactly the noise
-      // HIMMEL-1093/1100 exist to kill.
+      // exist to kill.
       if (item.id === 'gemini-cli') {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (npm install -g @google/gemini-cli)`;
       }
-      // HIMMEL-3307: three items a clean STARTER install left red although
+      // three items a clean STARTER install left red although
       // nothing was wrong. Each is downgraded ONLY on a probe-flagged clean
       // absence (or, for bitbucket-cli-build, a plain absence: its probe is a
       // file-exists check with nothing finer to flag) — a half-filled .env, a
@@ -465,7 +464,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — not initialized yet (inline handover: the repo-local handovers/ dir is created on the first handover write; nothing to wire; turns green once it exists)`;
       }
-      // HIMMEL-2176 Task 7: cadence-armed's/engine-allowlist's/bridge-health's
+      // cadence-armed's/engine-allowlist's/bridge-health's
       // OWN probes (probes.js) each mark the ordinary "never turned on"
       // absence with an additive `cleanAbsence` field (cadence-armed:
       // luna.cadence.enabled=false with nothing armed; engine-allowlist: no
@@ -490,7 +489,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (configure .claude/channels/telegram/.env + access.json, or set bridge.enabled in ~/.himmel/config.json, to enable the bridge)`;
       }
-      // HIMMEL-2176 Stage-1 PR-C, status item S6: bridge-persistence's OWN
+      // C, status item S6: bridge-persistence's OWN
       // probe (probes.js) marks the ordinary "bridge never opted in" absence
       // with the SAME additive `cleanAbsence` field as bridge-health above
       // (bridge.enabled is not true in ~/.himmel/config.json) — a fresh
@@ -505,7 +504,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set bridge.enabled in ~/.himmel/config.json to enable the bridge)`;
       }
-      // HIMMEL-2326 / HIMMEL-4341: on posix observability-stack is opt-in
+      // / on posix observability-stack is opt-in
       // (observability.enabled in ~/.himmel/config.json). profiles:["core","all"]
       // makes it desired:true for every target, so the probe marks the
       // not-opted-in absence `cleanAbsence` and it reads n/a here — never a
@@ -516,13 +515,13 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set "observability": {"enabled": true} in ~/.himmel/config.json, then run himmelctl ensure, to run the flow exporter as a user service)`;
       }
-      // HIMMEL-4289: observability-grafana is opt-in the same way
+      // observability-grafana is opt-in the same way
       // (observability.grafana, Linux only); a clean absence is n/a, never a nag.
       if (item.id === 'observability-grafana' && probe.cleanAbsence) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set "observability": {"grafana": true} in ~/.himmel/config.json, then run himmelctl ensure, to run Prometheus + Grafana as user services)`;
       }
-      // HIMMEL-2305: a cadence-off, bridge-off (or lane-not-selected) adopter
+      // a cadence-off, bridge-off (or lane-not-selected) adopter
       // must not be nagged about credentials for a feature they never opted
       // into — see resolveActiveFeatures()'s own header for the shared
       // mapping and its fail-open contract.
@@ -539,8 +538,8 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         detail = `${probe.detail} — opt-in (codex lane not selected; re-run himmelctl install --with-codex)`;
       }
     }
-    // HIMMEL-2176 Task 7 (status item S2, design §3.5): luna-sources' own
-    // probe (Task 6, refined by CR fixes — codex-3, and CR round 3 retask
+    // luna-sources' own
+    // probe (Task 6, refined, and an earlier fix retask
     // stage1-build-6d2e — that also fold an individually-UNCONFIGURED source,
     // e.g. no reddit cookie file yet, into 'absent' rather than 'degraded',
     // and land an ALL-unrecognized profile on 'degraded' rather than
@@ -565,7 +564,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       if (severity === 'degraded') severity = 'red';
       else if (severity === 'red') severity = 'degraded';
     }
-    // HIMMEL-2349: surface WHY this item is desired when the persisted
+    // surface WHY this item is desired when the persisted
     // state.json entry alone would have said "not enabled for this
     // target" — an operator must be able to SEE that their recorded
     // profile changed the answer, not merely observe the answer change.

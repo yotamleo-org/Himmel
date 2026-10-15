@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-wizard-contributor-profile.sh — hermetic coverage for the HIMMEL-1423
-# contributor-dev overlay, now HIMMEL-2308's `devOverlay` (the old
+# test-wizard-contributor-profile.sh — hermetic coverage for the
+# contributor-dev overlay, now `devOverlay` (the old
 # adopter|contributor role fork is gone — devOverlay is an orthogonal layer
 # on top of a profile install, set only via --contribute, never a question;
 # see bin.js's deriveOverlayCommand()/printContributorProfile()). The overlay
@@ -15,8 +15,8 @@
 #      tools, Codex/Hermes and handover guidance without running setup.sh —
 #      and the universal epilogue (lanes/hardening/summary) prints alongside it.
 #   A2. a LEGACY v1 role='contributor' cache still migrates to devOverlay=true
-#      and keeps its own pre-HIMMEL-862 lanes:[] exemption.
-#   A3. HIMMEL-2308 CR round 2 fix: the SAME legacy cache, APPLIED, must never
+#      and keeps its own lanes:[] exemption.
+#   A3. 2 fix: the SAME legacy cache, APPLIED, must never
 #      persist an authoritative empty lane allowlist for a lanes question it
 #      was never asked — no lanes.local.json write, honest skip message only.
 #   B. applied setup is invoked once; hook/Jira artifacts created by the stub
@@ -25,10 +25,10 @@
 #   C. repeated dry-runs produce byte-identical contributor reports.
 #   D. Codex/Hermes guidance is platform-correct and hardening remains a
 #      printed pointer, never an executed machine-hardening step.
-#   E. a manifest-less checkout still installs rc=0 + WARN (HIMMEL-1466
+#   E. a manifest-less checkout still installs rc=0 + WARN
 #      defect 1 — a reporting failure must never abort a succeeded install).
 #   F. applied install is hermetic: PATH launchers land only in the fixture
-#      HIMMELCTL_BIN_DIR, never the real user bin (HIMMEL-1466 defect 2).
+#      HIMMELCTL_BIN_DIR, never the real user bin.
 
 set -euo pipefail
 
@@ -56,7 +56,7 @@ trap cleanup EXIT
 # the defect-2 leak target. On win32 that is USERPROFILE (os.homedir() ignores
 # the HOME override run_contributor passes); on POSIX HOME is honored so the
 # override already redirects writes there. Used to assert an applied install
-# leaves no new/overwritten launcher in the real user bin (HIMMEL-1466).
+# leaves no new/overwritten launcher in the real user bin.
 real_user_bin() {
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) [ -n "${USERPROFILE:-}" ] && printf '%s/.local/bin' "$USERPROFILE" || printf '' ;;
@@ -81,7 +81,7 @@ snapshot_real_bin() {
 }
 
 # Coreutils this suite and its targets shell out to, which must survive the
-# scrub (HIMMEL-1469). scrub_path drops a PATH dir WHOLESALE when it carries any
+# scrub. scrub_path drops a PATH dir WHOLESALE when it carries any
 # scrubbed tool, and this suite's scrub list includes shellcheck / pre-commit /
 # gh — all of which live in /usr/bin on stock Ubuntu, so the scrub takes
 # /usr/bin (and every coreutil in it) with them. Windows hid this: node and the
@@ -104,7 +104,7 @@ HERMETIC_COREUTILS=(uname dirname basename mkdir chmod cat cp rm ls sed grep
 # real binary (`/usr/bin/uname: Permission denied`). Windows never hit this —
 # `ln -s` fails there, so the first pass leaves a plain wrapper file that the
 # second pass simply truncates. The same latent hazard exists in the shared
-# link_hermetic_tool for any suite that re-links one stub dir (HIMMEL-1469).
+# link_hermetic_tool for any suite that re-links one stub dir.
 already_linked() { [ -e "$1/$2" ] || [ -L "$1/$2" ]; }
 
 build_path() {
@@ -158,7 +158,7 @@ make_fixture() {
   cp "$repo_root/scripts/lanes/resolve.mjs" "$_d/scripts/lanes/resolve.mjs"
   cp "$repo_root/scripts/lanes/profile-managed.cjs" "$_d/scripts/lanes/profile-managed.cjs"
   cp "$repo_root/scripts/guardrails/lib.sh" "$_d/scripts/guardrails/lib.sh"
-  # HIMMEL-2308: ONE execution engine now — deriveCommand() always targets
+  # ONE execution engine now — deriveCommand always targets
   # adopt.sh (the dev overlay's setup.sh/setup.ps1 is an ADDITIONAL command
   # layered on top, never a substitute for it), so every fixture needs a
   # no-op adopt.sh even for a devOverlay-only run.
@@ -178,7 +178,7 @@ exit $LASTEXITCODE
 STUB
 }
 
-# HIMMEL-2308: a v2 (schemaVersion:2) devOverlay=true cache — the dev overlay
+# a v2 (schemaVersion:2) devOverlay=true cache — the dev overlay
 # is now an orthogonal layer on top of a profile install (never its own
 # role), so a fresh v2 fixture is the natural default here. caseA2 below
 # separately keeps a LEGACY v1 role=contributor fixture, to pin the
@@ -207,7 +207,7 @@ run_contributor() {
   local _p
   _p=$(build_path "$_stub" bash jq python3 npm -- node bun codex hermes shellcheck gitleaks pre-commit gh)
   make_git_stub "$_stub" "$_fixture"
-  # HIMMELCTL_BIN_DIR must be pinned under the fixture home (HIMMEL-1466
+  # HIMMELCTL_BIN_DIR must be pinned under the fixture home
   # defect 2): himmelctlBinDir() on win32 falls back to os.homedir() = USERPROFILE,
   # which IGNORES the HOME override below — so without this seam every applied
   # case would write its PATH launchers into the REAL ~/.local/bin (stray
@@ -259,7 +259,7 @@ grepq "$report" 'gh' || fail "caseA: shell-test report must include gh: $report"
 grepq "$report" -E '!! +codex' || fail "caseA: Codex must be a first-class probed item: $report"
 grepq "$report" -E '!! +hermes' || fail "caseA: Hermes must be a first-class probed item: $report"
 grepq "$report" '/handover-setup' || fail "caseA: unwired handover must print interactive completion guidance: $report"
-# HIMMEL-2308: alwaysOn is asked UNIVERSALLY now — this fixture answers no,
+# alwaysOn is asked UNIVERSALLY now — this fixture answers no,
 # so the (now-universal) epilogue must honestly report the real answer, never
 # the old contributor-only "not asked" pointer (that only applies to a
 # legacy/hand-edited profile that genuinely carries no alwaysOn answer).
@@ -269,7 +269,7 @@ grepq "$report" 'always-on hardening: not asked' \
   && fail "caseA: alwaysOn was genuinely asked+answered here — must not claim 'not asked' (got: $report)"
 grepq "$report" 'would run the idempotent contributor setup primitive' \
   || fail "caseA: dry-run must describe setup as planned, not completed: $report"
-# HIMMEL-2308: the universal epilogue (bin.js's printAdopterEpilogue) now
+# the universal epilogue (bin.js's printAdopterEpilogue) now
 # prints ALONGSIDE the overlay's own contributor-dev report on every run,
 # never instead of it — proves the "universal epilogue" design is real, not
 # just that the overlay report alone still works.
@@ -282,12 +282,12 @@ grepq "$report" 'install summary' \
 echo "ok: caseA dry-run reports the overlay profile AND the universal epilogue, mutates nothing"
 
 # ── Case A2: LEGACY v1 contributor profile (lanes:[] w/o lanesMeaningful) ───
-# HIMMEL-1470 (pre-HIMMEL-2308, v1-only): lanes was adopter-only (buildAnswers
+# lanes was adopter-only (buildAnswers
 # gave a contributor lanes:[]; applyLaneProfileStep short-circuited non-
-# adopter), so a pre-HIMMEL-862 contributor cache — lanes:[] with NO
+# adopter), so a contributor cache — lanes:[] with NO
 # lanesMeaningful — must NOT be refused over the empty placeholder. This case
 # pins that v1 exemption survives loadProfile()'s role->devOverlay migration
-# (HIMMEL-2308): a legacy role='contributor' cache still loads without the
+# a legacy role='contributor' cache still loads without the
 # lanes-placeholder refusal a v2 cache would now hit unconditionally (lanes
 # is asked universally in v2 — see test-wizard-adopter-profile.sh caseD2 for
 # that refusal, unaffected by this migration exemption).
@@ -316,14 +316,14 @@ if grep -q 'legacy profile has lanes:\[\]' <<<"$out"; then
 fi
 echo "ok: caseA2 legacy contributor lanes:[] profile is accepted (lanes is adopter-only)"
 
-# ── Case A3 (HIMMEL-2308 CR round 2 fix): the SAME legacy cache, APPLIED ────
+# ── Case A3: the SAME legacy cache, APPLIED ────
 # (non-dry-run), must never persist an authoritative EMPTY lane allowlist.
 # Pre-2308 the role guard skipped applyLaneProfileStep for a non-adopter
-# entirely; HIMMEL-2308 made the step universal, so without this fix a
+# entirely; made the step universal, so without this fix a
 # migrated legacy contributor cache's never-asked lanes:[] would now reach
 # persistProfileLaneAllowlist([]) and suppress every optional lane from a
 # question this cache was never asked (the consent-fabrication class
-# HIMMEL-2300 exists to prevent). Contrast caseB below: a v2/devOverlay
+# exists to prevent). Contrast caseB below: a v2/devOverlay
 # profile's lanes:[] WITH lanesMeaningful:true is an explicit answer and DOES
 # persist — this case's lanes:[] has no lanesMeaningful at all.
 sA3="$work/a3-stub"; mkdir -p "$sA3"
@@ -396,7 +396,7 @@ grepq "$report" -E 'ok +Jira CLI dist +ready' \
   || fail "caseB: post-install probe must attest the built Jira artifact: $report"
 grepq "$report" 'setup primitive completed; post-install probes above are authoritative' \
   || fail "caseB: applied summary should defer to probes rather than claiming blanket success: $report"
-# HIMMEL-2308: lanes is asked UNIVERSALLY now (applyLaneProfileStep no longer
+# lanes is asked UNIVERSALLY now (applyLaneProfileStep no longer
 # short-circuits on role), so an APPLIED install with a genuinely-answered
 # lanes:[] (lanesMeaningful:true) DOES persist the (empty) allowlist — the
 # opposite of the old contributor-only exemption, which existed only because
@@ -446,7 +446,7 @@ pD=$(build_path "$sA" bash jq python3 npm -- node bun codex hermes shellcheck gi
   || fail "caseD: contributor guidance is not platform-correct"
 echo "ok: caseD contributor lane guidance is platform-correct; hardening stays a pointer"
 
-# ── Case E: a manifest-less checkout still installs rc=0 + WARN (HIMMEL-1466
+# ── Case E: a manifest-less checkout still installs rc=0 + WARN
 # defect 1). printContributorProfile runs AFTER the core install succeeds, so a
 # missing scripts/install/manifest.json must never abort it (the #1530
 # regression: loadManifest()'s throw escaped and turned a green install into
@@ -467,7 +467,7 @@ grepq "$out" 'manifest.json' \
 echo "ok: caseE manifest-less checkout installs rc=0 and WARNs the skipped profile"
 
 # ── Case F: applied install is hermetic — launchers land ONLY in HIMMELCTL_BIN_DIR
-# (HIMMEL-1466 defect 2). On win32 himmelctlBinDir() falls back to os.homedir()
+# On win32 himmelctlBinDir falls back to os.homedir
 # (USERPROFILE) and ignores the HOME override, so without the HIMMELCTL_BIN_DIR
 # export run_contributor now sets, every applied install leaked PATH launchers
 # into the REAL ~/.local/bin. Assert the launchers land in the fixture bin and
@@ -494,7 +494,7 @@ real_bin_after="$(snapshot_real_bin)"
   || fail "caseF: applied install leaked/overwrote launchers in the real user bin (before=<$real_bin_before> after=<$real_bin_after>)"
 echo "ok: caseF applied install writes launchers only into the fixture HIMMELCTL_BIN_DIR (no real-home leak)"
 
-# ── Case G (HIMMEL-2308 fix): --from-profile devOverlay:true outside a
+# ── Case G: --from-profile devOverlay:true outside a
 # himmel checkout must fail BEFORE adopt.sh runs. Previously cmdInstall only
 # gated on the --contribute FLAG pre-runPlan; a replayed v2 profile with
 # devOverlay:true (parseArgs already refuses --contribute + --from-profile
@@ -524,7 +524,7 @@ grepq "$out" -F -- '--contribute requires a himmel checkout' \
   || fail "caseG: adopt.sh must NOT run before the devOverlay checkout gate fires (got: $out)"
 echo "ok: caseG a devOverlay:true --from-profile outside a himmel checkout fails BEFORE adopt.sh runs"
 
-# ── Case H (HIMMEL-2308 CR round 3): an interactive `--contribute` outside a
+# ── Case H: an interactive `--contribute` outside a
 # himmel checkout must fail at cmdInstall's step-0.5 gate, BEFORE the question
 # engine ever starts — not just before adopt.sh (caseG's --from-profile gate
 # fires post-answers; this one is a flag-ergonomics pre-check so an invalid

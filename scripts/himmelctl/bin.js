@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// scripts/himmelctl/bin.js — himmelctl: thin install wizard (HIMMEL-887).
+// scripts/himmelctl/bin.js — himmelctl: thin install wizard.
 //
 // A deliberately thin entry point that walks an adopter through installing
 // himmel: arg parsing + usage banner (T0), a preflight-first gate (T1), the
@@ -40,7 +40,7 @@ const stateLib = require('./lib/state.js');
 const statusReportLib = require('./lib/status-report.js');
 // Expand a leading `~` to an absolute home path (adopt.sh/set-handover-dir.sh
 // receive an already-expanded path — a literal `~` would never expand inside
-// a quoted spawn arg). Reused from status-report.js's copy (HIMMEL-2646)
+// a quoted spawn arg). Reused from status-report.js's copy
 // rather than kept as a second implementation to drift out of sync with.
 const { expandHome } = statusReportLib;
 const installEngineLib = require('./lib/install-engine.js');
@@ -48,7 +48,7 @@ const probesLib = require('./lib/probes.js');
 const depsEngineLib = require('./lib/deps-engine.js');
 const adopterProfileLib = require('./lib/adopter-profile.js');
 const contributorProfileLib = require('./lib/contributor-profile.js');
-// HIMMEL-2176 Stage-1 PR-C Task 8: luna cadence / secrets walk / bridge
+// C Task 8: luna cadence / secrets walk / bridge
 // sections. bridge-persistence.js ships primitives only (never called at
 // require-time); luna-config.js owns the adopter's shared config document;
 // cadence-emit.js is the pure config->CLI-flag mapping for pipeline-cadence.sh.
@@ -56,12 +56,12 @@ const lunaConfigLib = require('./lib/luna-config.js');
 const bridgePersistenceLib = require('./lib/bridge-persistence.js');
 const cadenceEmitLib = require('./lib/cadence-emit.js');
 const SECRETS_MANIFEST = require('./lib/secrets-manifest.json');
-// HIMMEL-2302: per-cadence wizard registry (pipeline/qmd/graphmap/codex-sweep
+// per-cadence wizard registry (pipeline/qmd/graphmap/codex-sweep
 // — see the file's own $comment for why ggs-cadence.sh is excluded). The
 // wizard enumerates cadence UNITS from here, never a hardcoded list.
 const CADENCE_REGISTRY = require('./lib/cadence-registry.json').cadences;
 
-// HIMMEL-3332 S5: install provenance (lib/provenance.js; contract in
+// install provenance (lib/provenance.js; contract in
 // docs/internals/install-provenance.md). Recording is best-effort — a ledger
 // failure warns on stderr and never fails the install or the command.
 // ponytail: provStep names only the plan step in flight, so install-end's
@@ -79,7 +79,7 @@ function provWarn(e) {
 function provOpen(args) {
   try {
     // The ledger records the real version dir, never the `current` link
-    // himmelRoot() answers for a versioned release tree (HIMMEL-3059 S4).
+    // himmelRoot answers for a versioned release tree.
     provLib.provBegin(['--writer', 'himmelctl', '--target', process.cwd(), '--root', process.env.HIMMELCTL_REPO_ROOT || himmelRealRoot(),
       ...(args && args.dryRun ? ['--dry-run'] : []), '--', ...process.argv.slice(2)]);
   } catch (e) { provWarn(e); }
@@ -326,10 +326,10 @@ const ALLOWED_OPTIONS = {
   uninstall: ['dryRun', 'yes', 'purgeState'],
   update: ['dryRun'],
   status: ['items', 'json'],
-  // HIMMEL-4254 P2: the config UI's feed (himmel-config-feed/1). Its own verb,
+  // the config UI's feed (himmel-config-feed/1). Its own verb,
   // never a `status` mode — status --json is a golden-tested contract.
   report: ['items', 'json'],
-  // HIMMEL-4254 P3: the read-only config UI server.
+  // the read-only config UI server.
   ui: ['port', 'allowAgentSession', 'agui'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
@@ -338,13 +338,13 @@ const ALLOWED_OPTIONS = {
   // ignore them); the option-validation pass keys on the subcommand only, so
   // both are admitted here and cmdScope ignores them on the read verbs.
   scope: ['yes', 'dryRun'],
-  // HIMMEL-2348 deliverable 2: gaps owns its OWN grammar (--from-profile
+  // gaps owns its OWN grammar (from-profile
   // reused generically, --preset new, --json reused generically) — a fresh
   // subcommand, never a `status` mode (see the function's own header
   // comment for why: status's flags are a shipped, golden-tested contract).
   gaps: ['fromProfile', 'preset', 'json'],
   // 'deps' itself is validated per-VERB, not from this table — see
-  // DEPS_VERB_ALLOWED_OPTIONS below (CR fix: CodeRabbit wanted `deps status
+  // DEPS_VERB_ALLOWED_OPTIONS below (CodeRabbit wanted `deps status
   // --with-models`/`deps ensure --json`/etc rejected, not silently accepted
   // the way a single shared set would). No entry needed here; the
   // validation pass below branches on args.subcommand === 'deps' before
@@ -422,7 +422,7 @@ function parseArgs(argv) {
     allowAgentSession: false, // ui: --allow-agent-session (operator override of the agent-session refusal, HIMMEL-4350)
     agui: null,        // ui: --agui [<session-id>|latest] (also print the AG-UI page URL, HIMMEL-4480; 'fleet' = no id, HIMMEL-4712)
   };
-  // CR fix (CodeRabbit round 17, item 4): the last process.exit(2) sites in
+  // the last process.exit(2) sites in
   // this parser, converted to the process.exitCode + return pattern the
   // --profile/unknown-arg paths below already document (process.exit()
   // terminates synchronously and can truncate a still-buffered
@@ -466,7 +466,7 @@ function parseArgs(argv) {
           args.scopeVerb = 'status';
           break;
         }
-        // Same shape under `trust` (HIMMEL-1551): a positional verb, not the
+        // Same shape under `trust`: a positional verb, not the
         // read-only `status` subcommand.
         if (args.subcommand === 'trust') {
           if (args.trustVerb !== null) {
@@ -502,9 +502,9 @@ function parseArgs(argv) {
         args.port = Number(raw);
         break;
       }
-      // HIMMEL-4480: --agui [<session-id>|latest]; the value is optional, so only
+      // --agui [<session-id>|latest]; the value is optional, so only
       // 'latest' or a session UUID is consumed. With neither, the URL is the fleet
-      // landing (HIMMEL-4712).
+      // landing.
       case '--agui': {
         const next = argv[i + 1];
         args.agui = next !== undefined && (next === 'latest' || AGUI_RUN_ID.test(next)) ? argv[++i] : 'fleet';
@@ -513,7 +513,7 @@ function parseArgs(argv) {
       case 'scope':
         if (!setSubcommand('scope')) return args;
         break;
-      // HIMMEL-1551: the trust ledger's hook wiring. It exists as a command
+      // the trust ledger's hook wiring. It exists as a command
       // because the recorder previously shipped behind a manual paste of six
       // JSON blocks, and three consecutive chain legs measured zero rows as a
       // result. A capability behind a manual paste is a capability that does
@@ -632,7 +632,7 @@ function parseArgs(argv) {
           return args;
         }
         break;
-      // HIMMEL-2752: --scope selects a non-interactive install (no wizard,
+      // --scope selects a non-interactive install (no wizard,
       // no confirmation) of the shipped docs/setup/profiles/adopter-<scope>
       // profile — unlike --default-scope, which only presets a WIZARD
       // answer and still prompts. Combined with --from-profile it overrides
@@ -648,7 +648,7 @@ function parseArgs(argv) {
       case '--contribute':
         args.contribute = true;
         break;
-      // HIMMEL-862: the v1 adopter lane subset. Validated HERE (not at use
+      // the v1 adopter lane subset. Validated HERE (not at use
       // time) so a typo'd lane id is rejected before the preflight ever runs
       // a package-manager install — same posture as --default-scope above.
       case '--lanes': {
@@ -684,7 +684,7 @@ function parseArgs(argv) {
         args.profile = argv[++i];
         if (args.profile === undefined) {
           console.error('himmelctl: --profile requires a value (core|luna|all)');
-          // CR fix: process.exitCode (not process.exit()) — the latter
+          // process.exitCode (not process.exit) — the latter
           // terminates synchronously and can truncate a console.error()
           // write that's still buffered (stdout/stderr piped rather than a
           // TTY, e.g. every hermetic test's `$(...)` capture, is
@@ -721,7 +721,7 @@ function parseArgs(argv) {
       default:
         console.error(`himmelctl: unknown argument: ${a}`);
         console.error("Run 'himmelctl --help' for usage.");
-        // CR fix: process.exitCode (not process.exit()) — same flush hazard
+        // process.exitCode (not process.exit) — same flush hazard
         // already fixed for --profile validation above: process.exit()
         // terminates synchronously and can truncate a still-buffered
         // console.error() write (piped stdout/stderr, e.g. every hermetic
@@ -732,7 +732,7 @@ function parseArgs(argv) {
         return args;
     }
   }
-  // CR fix: per-subcommand option validation. Every flag above is parsed
+  // per-subcommand option validation. Every flag above is parsed
   // GLOBALLY (order-independent — a flag can appear before or after its
   // subcommand token), but each subcommand only READS a specific subset of
   // them (see cmdInstall/cmdUninstall/cmdStatus/cmdEnsure's own args.*
@@ -764,12 +764,12 @@ function parseArgs(argv) {
         return args;
       }
     }
-    // HIMMEL-862: a saved profile already CARRIES its lane selection, and
+    // a saved profile already CARRIES its lane selection, and
     // --from-profile is explicit unattended-execution consent to replay that
     // file verbatim. Silently letting a lane flag override one field of it
     // would make the replayed install differ from the profile it names, so
     // the combination is refused outright rather than resolved by precedence.
-    // HIMMEL-2838: bare --scope loads the same kind of shipped profile
+    // bare --scope loads the same kind of shipped profile
     // (cmdInstall step 0) and hits the identical silent-drop hazard, so it
     // gets the same refusal, not just --from-profile.
     if (args.subcommand === 'install' && (args.fromProfile !== null || args.scope !== null)) {
@@ -782,7 +782,7 @@ function parseArgs(argv) {
           return args;
         }
       }
-      // HIMMEL-2308: a saved profile already carries its own devOverlay
+      // a saved profile already carries its own devOverlay
       // (schemaVersion 2) or migrated role (legacy) — same refusal-not-
       // precedence posture as the lane flags above.
       if (args.contribute !== OPTION_DEFAULTS.contribute) {
@@ -799,7 +799,7 @@ function parseArgs(argv) {
 
 // Absolute himmel repo root (this file lives at scripts/himmelctl/bin.js).
 // Node realpaths a main module's __dirname, so for a release tree in the
-// versioned layout (<base>/<version>/ + <base>/current, HIMMEL-3059 S4) that
+// versioned layout (<base>/<version>/ + <base>/current) that
 // is the VERSIONED dir — and every path wired from it (adopt.sh's HIMMEL_ROOT
 // -> env.HIMMEL_REPO and the hook commands, the PATH launcher's target) would
 // be stranded by the next `current` swap. Such a tree answers its stable
@@ -830,7 +830,7 @@ function repoRoot() {
   return process.env.HIMMELCTL_REPO_ROOT || himmelRoot();
 }
 
-// which()/cacheDir()/profileForVault() live in lib/helpers.js (HIMMEL-756
+// which/cacheDir/profileForVault live in lib/helpers.js
 // T1.2a extraction) — required above.
 
 // Return the missing hard-gate tools: any of bash/git/jq/python3 absent, plus
@@ -850,7 +850,7 @@ function hardGateCheck() {
 // missing-handler below reports bash).
 function runPreflight(answers) {
   const script = path.join(__dirname, '..', 'preflight-adopter.sh');
-  // HIMMEL-4435: uv/pipx exist for the luna vault's pre-commit install; skip
+  // uv/pipx exist for the luna vault's pre-commit install; skip
   // the warning once the profile says vault=none and no contributor overlay
   // (which also uses the framework); unknown answers keep it.
   const noVault = Boolean(answers && answers.vault && answers.vault.mode === 'none' && !answers.devOverlay);
@@ -865,7 +865,7 @@ function printRemediation() {
 }
 
 // Interactive iff stdin is a TTY and --dry-run was not passed. --scope is a
-// discoverable non-interactive door (HIMMEL-2752): it loads a shipped
+// discoverable non-interactive door: it loads a shipped
 // profile instead of walking the wizard, so a confirm prompt here would
 // contradict its own "non-interactive install (no wizard)" framing when run
 // from a real TTY. The HIMMELCTL_INTERACTIVE env var (1/0) forces a side for
@@ -975,7 +975,7 @@ async function handleMissing(missing, args) {
 // ── T2: question engine ──────────────────────────────────────────────────────
 //
 // After the preflight gate passes we walk the operator through the profile
-// model (HIMMEL-2308): the OLD role fork (adopter|contributor, detected from
+// model: the OLD role fork (adopter|contributor, detected from
 // the git origin + a .himmel-dev marker) is gone entirely — every install now
 // answers the SAME question set. Two orthogonal axes replace it:
 //   - profile     starter|luna|operator|custom (default starter) — SEEDS the
@@ -990,13 +990,13 @@ async function handleMissing(missing, args) {
 //   2. scope       project|user
 //   3. vault       none|default-template|existing (+path for the last two)
 //   4. handover    inline|external (+path for external)
-//   5. pluginSet   lean (HIMMEL-2304: 'full' dropped, see askQuestions() below)
-//   6. lanes       the HIMMEL-862 delegation-lane subset
+//   5. pluginSet lean ('full' dropped, see askQuestions below)
+//   6. lanes the delegation-lane subset
 //   7. alwaysOn    unattended/scheduled-run hardening
 // 8-11 (luna cadence, PHI, secrets walk, bridge) are gated on vault!=none —
 // unchanged from before, just no longer role-gated on top of that.
 
-// Preset seeding (HIMMEL-2308): a profile answer only changes the DEFAULT
+// Preset seeding: a profile answer only changes the DEFAULT
 // value offered at each question below — it never skips a question. 'custom'
 // keeps today's plain defaults (vault=none, handover=inline, alwaysOn=no,
 // cadence=off, bridge=off); 'luna' seeds a vault so the second-brain
@@ -1005,19 +1005,19 @@ async function handleMissing(missing, args) {
 // vault, external handover, always-on hardening, cadence + bridge on) without
 // skipping a single has-it-or-not question — the operator still confirms (or
 // declines) every one of them.
-// HIMMEL-2302: `cadence: 'off'|'on'` (the old binary question's seed) is
+// `cadence: 'off'|'on'` (the old binary question's seed) is
 // replaced by `cadenceIds` — the set of cadence-registry ids PRE-SELECTED
 // when the per-cadence question's menu first prints (Enter accepts exactly
 // this set). Only 'operator' seeds anything (pipeline+qmd+graphmap, matching
 // the richest-defaults posture the other preset fields already carry);
 // starter/luna/custom seed none, same as today's cadence:'off' default for
 // every profile but operator. codex-sweep is never preset-seeded — it needs
-// the codex lane too, and decision text (HIMMEL-2302) explicitly holds it out
+// the codex lane too, and decision text explicitly holds it out
 // of even the operator seed.
-// HIMMEL-2346: `whisperModel` seeds the whisper-model question below (bare
+// `whisperModel` seeds the whisper-model question below (bare
 // filename, per the BARE FILENAME contract documented at whisperDirPath()'s
 // neighbor comment ~L1930). Only `operator` diverges from the schema default
-// ('ggml-small.bin', same as lunaConfigLib's defaultConfig()) — the HIMMEL-2307
+// ('ggml-small.bin', same as lunaConfigLib's defaultConfig) — the
 // capture proved the maintainer machine actually runs large-v3-turbo, so the
 // operator preset seeds that instead of silently falling through to small.
 const PROFILE_PRESETS = {
@@ -1028,8 +1028,8 @@ const PROFILE_PRESETS = {
 };
 
 // Per-option help text for every numbered-enum question in the wizard
-// (HIMMEL-2308 P3: generalized from the profile-only PROFILE_HELP that
-// shipped in HIMMEL-2308 part A — see askNumberedEnum's helpMap param). One
+// (generalized from the profile-only PROFILE_HELP that
+// shipped in part A — see askNumberedEnum's helpMap param). One
 // factual line per option, verified against what the code right below
 // actually does — never a claim the implementation doesn't back.
 const PROFILE_HELP = {
@@ -1074,7 +1074,7 @@ const BRIDGE_HELP = {
   on: 'configure telegram voice/text ingestion (.env path, whisper CLI/model, optional persistence)',
 };
 
-// HIMMEL-2346: the whisper-model question used to be free text with a default
+// the whisper-model question used to be free text with a default
 // nobody could evaluate without asking someone "what is the big one?" — this
 // maps the standard whisper.cpp ggml model names (askNumberedEnum's opts) to
 // the bare filename actually stored (whisperDirPath()'s BARE FILENAME
@@ -1122,8 +1122,8 @@ function serialize(answers) {
   return JSON.stringify(answers, null, 2);
 }
 
-// Build the Draft-A v2 answer object (HIMMEL-2308).
-// HIMMEL-2348: `tier` is GONE. It was written here as the constant
+// Build the Draft-A v2 answer object.
+// `tier` is GONE. It was written here as the constant
 // 'standard' and read by nothing — not loadProfile (which validates a named
 // allowlist and never looked at it), not status/ensure, not the capture
 // script, not the status report — and the committed exemplar
@@ -1140,7 +1140,7 @@ function serialize(answers) {
 // `role` DIES in v2 writes — `profile`/`devOverlay` replace it as
 // the two orthogonal axes (see the T2 comment above); loadProfile() migrates
 // an old v1 `role` field on READ, but nothing ever writes it again.
-// `lanes`/`alwaysOn` are asked UNIVERSALLY now (HIMMEL-2308 killed the old
+// `lanes`/`alwaysOn` are asked UNIVERSALLY now (killed the old
 // adopter-only gating), so in practice they are always defined for a fresh
 // v2 write; the `undefined`-passthrough below stays only so a caller that
 // legitimately never asks them (there is none left in askQuestions()/
@@ -1149,14 +1149,14 @@ function serialize(answers) {
 // Key ORDER is load-bearing: serialize() is the cache format AND the printed
 // summary, and both must round-trip byte-for-byte through --from-profile.
 //
-// RETASK stage1-build-6d2e round 8 [codex-1] CRITICAL, ROOT CAUSE: `luna`/
-// `secretsWalk`/`bridge` (HIMMEL-2176 Task 8) used to fall back to an "off"
+// `luna`/
+// `secretsWalk`/`bridge` used to fall back to an "off"
 // DEFAULT OBJECT here whenever the caller passed undefined — which made
 // "the operator was never asked" indistinguishable from "the operator
 // answered off", because BOTH produced a real, present, answer-shaped key
 // in the serialized profile. `lunaSectionSupplied()`/`bridgeSectionSupplied()`
 // (applyLunaSectionsStep's own "was this section actually supplied" gate,
-// added in round 1 for the --from-profile legacy-cache case) then read that
+// added for the --from-profile legacy-cache case) then read that
 // manufactured key as genuine consent and overwrote an existing config with
 // cadence off / PHI cleared / bridge disabled — for EVERY caller that
 // legitimately never asks (vaultMode=='none' in askQuestions,
@@ -1180,13 +1180,13 @@ function buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handover
     handover: { mode: handoverMode, path: handoverPath },
     pluginSet: pluginSet,
     lanes: lanes || [],
-    // HIMMEL-2300: meaningful only when the lanes question actually ran —
+    // meaningful only when the lanes question actually ran
     // `lanes` stays undefined (never []) for a flow that never asks it, so
     // this mirrors that instead of hardcoding true. JSON.stringify drops an
     // undefined-valued key, matching the round-8 luna/secretsWalk/bridge
     // not-asked shape.
     lanesMeaningful: lanes !== undefined ? true : undefined,
-    // HIMMEL-2300: pass the raw value through — never Boolean()-coerce — so a
+    // pass the raw value through — never Boolean-coerce — so a
     // flow that never asks alwaysOn round-trips as genuinely absent instead
     // of a fabricated `false`. Same fix class as buildAnswers()'s existing
     // luna/secretsWalk/bridge comment above.
@@ -1194,12 +1194,12 @@ function buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handover
     luna: luna,
     secretsWalk: secretsWalk,
     bridge: bridge,
-    // HIMMEL-2302: `cadences` is a TOP-LEVEL optional section, same pattern
+    // `cadences` is a TOP-LEVEL optional section, same pattern
     // as luna/secretsWalk/bridge (not nested under `luna`) — a flow that
     // never asks it (vault=none) round-trips as genuinely absent, never a
     // fabricated {}.
     cadences: cadences,
-    // HIMMEL-4597: `vm` ({mode, remote?}) is a TOP-LEVEL optional answer too —
+    // `vm` ({mode, remote?}) is a TOP-LEVEL optional answer too
     // genuinely absent unless the vm.mode question was asked.
     vm: vm,
   };
@@ -1207,7 +1207,7 @@ function buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handover
 
 // Canonical "off" bridge-section default — used when the bridge question WAS
 // asked (vaultMode!=='none') and the operator declined it, and as the
-// prompt-default template for the bridge sub-questions. (round 8: the luna-
+// prompt-default template for the bridge sub-questions. (the luna-
 // section twin of this, defaultLunaSectionAnswer(), was deleted — it had no
 // callers left once buildAnswers()/askQuestions() stopped manufacturing an
 // "off" answer for a section nobody was asked about; see buildAnswers()'s
@@ -1226,7 +1226,7 @@ function defaultBridgeSectionAnswer() {
 }
 
 // Should we prompt the user with the question engine? --from-profile and
-// --scope (HIMMEL-2752: the shipped-profile non-interactive door) both skip
+// --scope (the shipped-profile non-interactive door) both skip
 // it (answers come from a file either way — T3); HIMMELCTL_INTERACTIVE forces
 // a side for CI / hermetic tests that cannot allocate a real PTY; otherwise
 // stdin being a TTY decides.
@@ -1293,13 +1293,13 @@ async function askEnum(ask, prompt, opts, defaultVal) {
   }
 }
 
-// HIMMEL-2288: ask a NUMBERED enum question — options printed 1..n, the
+// ask a NUMBERED enum question — options printed 1..n, the
 // recommended default clearly marked, Enter accepts it; the operator may
 // answer with the number OR the literal option word. Scoped to the install
 // wizard's own enum questions (profile, scope, vault, handover, pluginSet,
 // luna cadence, secrets walk, bridge on/off, always-on).
 //
-// CR round 1 [codex-1]: this numeric acceptance used to live in askEnum()
+// this numeric acceptance used to live in askEnum
 // itself (shared with every caller), which meant it ALSO covered the
 // CONSENT/PHI prompts below — a bare "1"/"2" silently satisfied a
 // PHI-declaration or machine-mutation consent that was explicitly supposed
@@ -1309,7 +1309,7 @@ async function askEnum(ask, prompt, opts, defaultVal) {
 // literal-only again, so the three consent/PHI call sites (which still call
 // askEnum() directly, unchanged) can never be satisfied by a digit.
 //
-// `helpMap` (HIMMEL-2308 P3): optional { option: 'one-line help' } — when
+// `helpMap`: optional { option: 'one-line help' } — when
 // given, every menu line gets an " — <help>" suffix, same convention
 // askProfile() pioneered (PROFILE_HELP) and now generalized here so every
 // enum question in the wizard can carry per-option help without a
@@ -1337,17 +1337,17 @@ async function askPath(ask, prompt, defaultVal) {
   return t === '' ? defaultVal : t;
 }
 
-// HIMMEL-2347 CR fix 1: the ONE predicate for "is this a usable
+// the ONE predicate for "is this a usable
 // luna.phiVaultPath" — non-blank and absolute (or '~'-prefixed; expandHome()
 // resolves '~' later). A previous round enforced this ONLY inside
 // loadProfile()'s validator (the --from-profile path); the interactive
 // askPath() call in askQuestions() below had no such check, so an operator
 // typing a relative path interactively reproduced the exact bug that round
 // fixed — a relative phi-roots entry never matches the guards' absolute-path
-// comparison (silently inert, the HIMMEL-1773 class) and path.join() places
+// comparison (silently inert, the class) and path.join places
 // .salus relative to the installer's cwd. Factored out so the interactive
 // site and loadProfile() share one rule and can never drift apart again.
-// HIMMEL-2424: name the first byte in `v` that would corrupt phi-roots'
+// name the first byte in `v` that would corrupt phi-roots'
 // line-delimited storage, or null if none. mergePhiRoot() writes one path
 // per LINE, but the two things that later read phi-roots back disagree
 // about what a mid-line CR does to that: the PHI guards (graph-refresh.sh's
@@ -1368,7 +1368,7 @@ async function askPath(ask, prompt, defaultVal) {
 // itself so callers can build a message without echoing a raw control
 // character into the terminal.
 //
-// HIMMEL-2424 CR: the REASON travels with the name, per byte, because the
+// the REASON travels with the name, per byte, because the
 // three bytes above do not share one true clause. LF genuinely does split
 // phi-roots' line-delimited storage immediately -- that clause stays LF's
 // own. CR does NOT: per the mechanism above it corrupts the stored path now
@@ -1379,7 +1379,7 @@ async function askPath(ask, prompt, defaultVal) {
 // exists to correct, so each reason lives here next to the byte that earns
 // it rather than at the call sites, where copies would drift.
 //
-// HIMMEL-2424 CR round 4: the CHECK ORDER below is LF, then CR, then NUL --
+// the CHECK ORDER below is LF, then CR, then NUL --
 // and that order is load-bearing, not incidental. A value can contain more
 // than one of these bytes (a path pasted with mixed line endings, say), and
 // whichever check runs first decides which {name, reason} the operator
@@ -1410,12 +1410,12 @@ function isValidPhiVaultPathAnswer(v) {
   return typeof v === 'string' && v.trim() !== '' && phiVaultPathBadByte(v) === null && (v.charAt(0) === '~' || path.isAbsolute(v));
 }
 
-// HIMMEL-862/2308/2352: ask the lane subset. Free-form CSV (not askEnum — the
+// ask the lane subset. Free-form CSV (not askEnum — the
 // answer is a SET, not one value), re-prompting on an invalid id the same way
 // askEnum re-emits its header. Empty accepts the default; 'none' selects
 // nothing.
 //
-// HIMMEL-2352 (ruling 34): ALL_LANE_IDS is codex/hermes ONLY in v1 — ollama
+// ALL_LANE_IDS is codex/hermes ONLY in v1 — ollama
 // and copilot were dropped from V1_LANES entirely (they never appear in this
 // menu, and the wizard never probes them; see adopter-profile.js's own
 // comment on that table). The menu therefore reads exactly "codex | hermes |
@@ -1429,7 +1429,7 @@ function isValidPhiVaultPathAnswer(v) {
 async function askLanes(ask, defaultLanes) {
   const ids = adopterProfileLib.ALL_LANE_IDS;
   const opts = ids.join(',');
-  // HIMMEL-2288: numbered menu — same visual convention as askNumberedEnum()
+  // numbered menu — same visual convention as askNumberedEnum
   // (options 1..n, recommended default marked), extended for a multi-select:
   // "none" and a comma-separated list of names both still work (unchanged
   // CLI/hermetic-test surface); a comma-separated list of the printed numbers
@@ -1438,7 +1438,7 @@ async function askLanes(ask, defaultLanes) {
   // names/'none' only, never bare digits).
   const menu = ids.map((id, i) => `  ${i + 1}) ${id}${defaultLanes.indexOf(id) !== -1 ? ' (recommended)' : ''} — ${adopterProfileLib.LANE_HELP[id]}`).join('\n');
   const prompt = `? lanes [${opts}|none] (default: ${defaultLanes.join(',') || 'none'})\n${menu}\n  (Enter accepts the recommended default; comma-separate multiple numbers)\n> `;
-  // HIMMEL-2303: disclose the CR-floor consequence AT this decision point,
+  // disclose the CR-floor consequence AT this decision point,
   // once, before the (possibly re-prompted) question — never inside the loop
   // below, so a retry on invalid input doesn't repeat it.
   for (const line of adopterProfileLib.laneCrossModelDisclosureLines()) console.log(line);
@@ -1446,7 +1446,7 @@ async function askLanes(ask, defaultLanes) {
     const ans = await ask(prompt);
     const t = (ans || '').trim();
     if (t === '') return defaultLanes.slice();
-    // CR round 3 [codex-2]: require plain decimal digits before coercing —
+    // require plain decimal digits before coercing
     // bare Number(s) also accepts '1e0'/'1.0'/'0x1' as integer 1, silently
     // selecting a lane from an undocumented numeric form. Same guard
     // askNumberedEnum() already uses.
@@ -1457,7 +1457,7 @@ async function askLanes(ask, defaultLanes) {
     }).join(',');
     const parsed = adopterProfileLib.parseLaneList(translated, { allowOptIn: true });
     if (parsed.ok) return parsed.lanes;
-    // CR round 1 [glm-2]: say WHY before re-prompting. parseLaneList already
+    // say WHY before re-prompting. parseLaneList already
     // distinguishes "unknown lane" from "that one is opt-in, use --with-<id>";
     // discarding that left a bare re-prompt that looks like the input was
     // ignored rather than rejected. The reason goes to stderr so it can never
@@ -1467,11 +1467,11 @@ async function askLanes(ask, defaultLanes) {
 }
 
 // Cadence-registry rows this run can actually offer: PER-ROW filtering, not
-// whole-question vault gating (the HIMMEL-2302 spec deviation this fix
+// whole-question vault gating (the spec deviation this fix
 // closes — codex-sweep, `requires:'lane:codex'`, must be offerable on a
 // vault-less codex-lane machine). A 'requires:vault' row is offered only when
 // vaultMode!=='none'; a 'requires:lane:codex' row only when 'codex' is in the
-// FINAL lanes selection; a 'requires:env:<KEY>' row (HIMMEL-3068 — e.g.
+// FINAL lanes selection; a 'requires:env:<KEY>' row (e.g.
 // pull-cadence's GOOGLE_HEALTH_REFRESH_TOKEN) only when <KEY> is non-empty in
 // the primary checkout's .env FILE (readEnvVarFile — never process.env; a
 // connector's persisted config is a distinct question from a launching
@@ -1480,7 +1480,7 @@ async function askLanes(ask, defaultLanes) {
 // source config get/set already read from. None of these is ever asked
 // otherwise — the answer stays genuinely undefined, the same round-8 "not
 // asked ≠ answered off" discipline every other section in this file follows.
-// A 'requires:platform:<windows|macos|linux>' row (HIMMEL-3086 — repo-sync is
+// A 'requires:platform:<windows|macos|linux>' row (repo-sync is
 // schtasks-only) is offered only when the host matches; the host is
 // cadencePlatform(), a hermetic-test seam over process.platform. An
 // unrecognised `requires` string is still offered (the pre-existing
@@ -1508,7 +1508,7 @@ function offeredCadenceRows(lanes, vaultMode, platform, registry) {
   });
 }
 
-// HIMMEL-2302: per-cadence multi-select, replacing the old binary luna-
+// per-cadence multi-select, replacing the old binary luna-
 // cadence question at the same position. Same numbered-menu conventions as
 // askLanes() above: numbers or names, comma-separated, 'none' = explicit
 // none, Enter accepts `defaultIds` (the profile-preset-seeded set — see
@@ -1518,7 +1518,7 @@ function offeredCadenceRows(lanes, vaultMode, platform, registry) {
 // from the returned object, exactly like a never-asked question elsewhere in
 // this file.
 //
-// HIMMEL-4597: a row flagged `vm_proof` (cadence-registry.json) is still
+// a row flagged `vm_proof` (cadence-registry.json) is still
 // offered, but only pre-selected when the vm.mode route is a VM. The resolver
 // decides (vmProofRoute()), on the config as the wizard will leave it: `doc`
 // with the wizard's own vm answer applied, or the file itself when the answer
@@ -1604,7 +1604,7 @@ async function askCadences(ask, lanes, vaultMode, defaultIds, vmAnswer, doc) {
   }
 }
 
-// HIMMEL-4597: where "VM proof first" steps run — the adopter's setting, read
+// where "VM proof first" steps run — the adopter's setting, read
 // by scripts/lib/vm-mode.sh. local = the local test VM (the default), remote =
 // a VM reached over ssh, none = no VM (a VM-proof step then needs an operator
 // ack + rollback point). `existing` ({mode, remote?} from ~/.himmel/config.json)
@@ -1640,20 +1640,20 @@ async function askVm(ask, existing) {
 // `laneOpts` = { lanes, withCodex, withHermes } from the CLI flags: a given
 // --lanes SKIPS the lanes question entirely (the operator already answered
 // it), while --with-codex/--with-hermes append to whatever the base selection
-// turns out to be. HIMMEL-2308 Part B: the interactive lanes menu now offers
+// turns out to be. the interactive lanes menu now offers
 // codex/hermes too (askLanes() calls parseLaneList with { allowOptIn: true })
 // — selecting one AT THE PROMPT is itself the explicit consent, same
 // principle as a --from-profile file naming them. The --lanes CSV flag stays
 // restricted (no allowOptIn) — naming codex/hermes there must still be
 // refused, so --lanes never becomes a second, quieter door around
-// --with-codex/--with-hermes. `devOverlay` (HIMMEL-2308) is never a
+// --with-codex/--with-hermes. `devOverlay` is never a
 // question — it is set only by the --contribute CLI flag, threaded straight
 // into buildAnswers() below.
 async function askQuestions(defaultScope, laneOpts, devOverlay) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
   const ask = makeAsk(rl);
 
-  // 1. profile (HIMMEL-2308) — replaces the old role question. Seeds the
+  // 1. profile — replaces the old role question. Seeds the
   // per-question defaults below; every question is still asked regardless of
   // which preset is picked (see PROFILE_PRESETS' own comment).
   const profile = await askNumberedEnum(ask, 'profile', ['starter', 'luna', 'operator', 'custom'], 'starter', PROFILE_HELP);
@@ -1679,16 +1679,16 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     handoverPath = await askPath(ask, `? handover path (default: ${hd})\n> `, hd);
   }
 
-  // 5. pluginSet. HIMMEL-2304: 'full' is DROPPED — the full-plugin-enable.json
+  // 5. pluginSet. 'full' is DROPPED — the full-plugin-enable.json
   // set does not reflect what himmel actually runs (the reconciler whitelist
-  // is the truth; see HIMMEL-2292), so offering it installed a batteries-
+  // is the truth; see), so offering it installed a batteries-
   // included set nobody operates. 'lean' is the only remaining path; the
   // question stays (rather than being removed outright) so every existing
   // --from-profile cache / hermetic-test stdin sequence that already answers
   // 'lean' here keeps working unchanged — only the 'full' CHOICE is gone.
   const pluginSet = await askNumberedEnum(ask, 'pluginSet', ['lean'], 'lean', PLUGIN_SET_HELP);
 
-  // 6/7 (HIMMEL-862, universal since HIMMEL-2308).
+  // 6/7 (universal since).
   const opts = laneOpts || {};
   // 6. lanes. --lanes already answered it; otherwise prompt.
   const base = opts.lanes !== null && opts.lanes !== undefined
@@ -1700,7 +1700,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   const ao = await askNumberedEnum(ask, 'always-on machine (unattended/scheduled runs)', ['yes', 'no'], preset.alwaysOn, ALWAYS_ON_HELP);
   const alwaysOn = ao === 'yes';
 
-  // 8 (installer v1 fix, HIMMEL-2302 spec deviation): cadences is PER-ROW
+  // 8 (installer v1 fix, spec deviation): cadences is PER-ROW
   // gated, not whole-question vault gated — offeredCadenceRows() above
   // already filters each row by its own `requires` (vault vs lane:codex), so
   // the question itself must sit outside the vaultMode!=='none' gate too, or
@@ -1717,7 +1717,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   let existingDoc;
   const offeredRows = offeredCadenceRows(lanes, vaultMode);
   if (offeredRows.length > 0) {
-    // HIMMEL-4597: the vm.mode question sits right before the cadences it
+    // the vm.mode question sits right before the cadences it
     // gates — asked only when a vm_proof row is offered, so a flow with none
     // keeps its question sequence.
     if (offeredRows.some((r) => r.vm_proof)) {
@@ -1725,7 +1725,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
       vm = await askVm(ask, existingDoc && existingDoc.vm);
     }
     cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc);
-    // RETASK stage1-build-6d2e round 4 [codex-1] (extended HIMMEL-2302 to
+    // RETASK stage1-build-6d2e an earlier fix (extended to
     // every declined UNIT, not just pipeline): declining a unit writes its
     // disposition as 'off' but does NOT, by itself, disarm anything already
     // armed on the machine (deliberate — disarming is machine-state
@@ -1734,13 +1734,13 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     // unit by name, ONLY when at least one was actually declined; a decline
     // still gets an explicit still-manual line per unit (buildSummary), so
     // the operator is never left assuming "off" already took effect. Per
-    // decision #5 (HIMMEL-2302): ONE consent question for every declined
+    // decision #5: ONE consent question for every declined
     // unit — no per-unit disarm consent. Stays with cadences (moved out of
     // the vault gate together) since a vault=none + declined codex-sweep run
     // can equally have an existing armed job to clean up.
     const declinedIds = Object.keys(cadences).filter((id) => cadences[id] === 'off');
     if (declinedIds.length > 0) {
-      // HIMMEL-2288: this is a CONSENT prompt for a machine-state mutation
+      // this is a CONSENT prompt for a machine-state mutation
       // (same as installPersistence below) — deliberately NOT
       // askNumberedEnum(); it keeps its full explicit yes/no wording, no
       // bare number-only accept.
@@ -1749,7 +1749,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
     }
   }
 
-  // 9-11 (HIMMEL-2176 Task 8): PHI declaration, secrets walk, telegram
+  // 9-11: PHI declaration, secrets walk, telegram
   // bridge. Still gated on vault!=none — same conditional-question shape as
   // vault path/handover path above, and for the same reason: an operator who
   // answered vault=none should not see a wall of unrelated prompts. This
@@ -1761,20 +1761,20 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   let bridge;
   if (vaultMode !== 'none') {
     for (const line of adopterProfileLib.phiChecklistLines()) console.log(line);
-    // HIMMEL-2288: PHI declaration — deliberately NOT askNumberedEnum();
+    // PHI declaration — deliberately NOT askNumberedEnum;
     // a trust/consent declaration keeps its explicit yes/no wording.
     const phiAns = await askEnum(ask, '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)\n> ', ['yes', 'no'], 'no');
 
-    // HIMMEL-2347: a SEPARATE declaration — the vault being installed above
+    // a SEPARATE declaration — the vault being installed above
     // may itself carry no PHI, but the operator can still keep an unrelated
     // personal/medical vault elsewhere on the same machine that every local
     // agent/cloud-backend guard must steer around. This is the wizard half of
-    // closing HIMMEL-1773/1767's inertness class: the guards (graph-
+    // closing inertness class: the guards (graph-
     // refresh.sh, refresh-graph-map.sh, graphify-fence.sh) already key off a
     // `.salus` marker + ~/.config/claude-glm/phi-roots, but nothing in the
     // installer ever created either, so every one of those guards has been
     // silently inert on a freshly-adopted machine. Consent-grade — askEnum()
-    // literal-only (HIMMEL-2288), NOT askNumberedEnum(): a bare digit must
+    // literal-only, NOT askNumberedEnum: a bare digit must
     // not silently answer this either. Optional: 'no' (the default) or a
     // blank path leaves phiVaultPath genuinely absent — "not asked" and
     // "asked but declined" both collapse to undefined here, and buildAnswers'
@@ -1789,12 +1789,12 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
       for (;;) {
         p = await askPath(ask, '? personal/medical vault path\n> ', '');
         if (p.trim() === '' || isValidPhiVaultPathAnswer(p)) break;
-        // HIMMEL-2347 CR fix 1: re-prompt with a reason rather than abort —
+        // re-prompt with a reason rather than abort
         // same retry-loop convention askLanes() already uses above (loop +
         // console.error(' ! reason') + re-emit the same prompt header), not
         // a new pattern. Blank still means "decline" (breaks the loop via
         // the check above); only a non-blank, non-absolute (or line-storage-
-        // breaking, HIMMEL-2424) answer loops.
+        // breaking) answer loops.
         const badByte = phiVaultPathBadByte(p);
         if (badByte) {
           // Name the byte, never print `p` — it's the one that contains it.
@@ -1808,7 +1808,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
         // Offer, not an automatic write — creating `.salus` mutates a file
         // INSIDE the operator's own vault, so it gets its own explicit
         // consent, same class as the disarm-cadence/bridge-persistence
-        // prompts above/below (HIMMEL-2288 consent wording, literal-only).
+        // prompts above/below (consent wording, literal-only).
         // The phi-roots refresh below is NOT gated on this — it lands in
         // himmelctl's OWN config dir, not the vault, so recording the
         // declaration there needs no separate consent (same posture as
@@ -1817,7 +1817,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
         createSalusMarker = salusAns === 'yes';
       }
     }
-    // luna.cadenceEnabled mirrors the pipeline row (HIMMEL-2302 legacy
+    // luna.cadenceEnabled mirrors the pipeline row (legacy
     // interplay: kept so an older reader/test that only ever knew this
     // boolean — status-report.js, cadence-emit.js, every pre-2302 fixture —
     // keeps validating/working on a freshly-written v2 profile). `cadences`
@@ -1833,7 +1833,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
       const bd = defaultBridgeSectionAnswer();
       const envPath = await askPath(ask, `? bridge .env path (default: ${bd.envPath})\n> `, bd.envPath);
       const whisperCli = await askPath(ask, `? whisper CLI path (blank = autodetect) (default: ${bd.whisperCli || '(autodetect)'})\n> `, bd.whisperCli);
-      // HIMMEL-2308/HIMMEL-2346: whisperModel used to be free text with a
+      // whisperModel used to be free text with a
       // default the operator had no way to evaluate ("what is the big one?"
       // — the exact complaint this ticket fixes). Numbered enum of the
       // standard ggml models (preset.whisperModel — always defined,
@@ -1856,7 +1856,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
       const persistArtifact = adopterProfileLib.bridgePersistenceArtifact();
       let installPersistence = false;
       if (persistArtifact) {
-        // HIMMEL-2288: CONSENT prompt for a machine-state mutation —
+        // CONSENT prompt for a machine-state mutation
         // deliberately NOT askNumberedEnum(); keeps explicit wording.
         const persistAns = await askEnum(ask, `? install bridge persistence now (${persistArtifact}; consented, --dry-run shows it) [yes|no] (default: no)\n> `, ['yes', 'no'], 'no');
         installPersistence = persistAns === 'yes';
@@ -1954,7 +1954,7 @@ function loadProfile(p) {
       profileError(p, `field '${field}' must be one of ${allowed.join('|')} (got ${JSON.stringify(value)})`);
     }
   };
-  // HIMMEL-2308: schemaVersion 2 replaces `role` (adopter|contributor) with
+  // schemaVersion 2 replaces `role` (adopter|contributor) with
   // the orthogonal profile/devOverlay axes (see the T2 comment above
   // askQuestions()). Absent schemaVersion means an implicit v1 (legacy)
   // cache — validated against the OLD role-based shape below, then migrated
@@ -1974,7 +1974,7 @@ function loadProfile(p) {
     checkEnum('role', obj.role, ['adopter', 'contributor']);
   }
   checkEnum('scope', obj.scope, ['project', 'user']);
-  // HIMMEL-2308/HIMMEL-2304: 'full' was retired from the interactive wizard
+  // 'full' was retired from the interactive wizard
   // (applyPluginStep keeps it only as a legacy courtesy via
   // offerRetiredPluginRemoval). A v2 profile is authored fresh under the
   // post-2304 model, so 'full' there must fail loud rather than validate and
@@ -1995,7 +1995,7 @@ function loadProfile(p) {
   if (obj.handover.mode === 'external' && (typeof obj.handover.path !== 'string' || obj.handover.path === '')) {
     profileError(p, "field 'handover.path' is required when handover.mode=external");
   }
-  // HIMMEL-862: lanes/alwaysOn join the strictly-validated set for the same
+  // lanes/alwaysOn join the strictly-validated set for the same
   // reason every other field is in it — --from-profile is unattended-execution
   // consent, so a skewed field must fail loud BEFORE any side effect rather
   // than be silently reinterpreted. Note the OPT-IN lanes ARE accepted here: a
@@ -2005,7 +2005,7 @@ function loadProfile(p) {
   if (!Array.isArray(obj.lanes)) {
     profileError(p, `field 'lanes' must be an array (got ${JSON.stringify(obj.lanes)})`);
   }
-  // HIMMEL-2352 backward compatibility: a lane this ticket made DORMANT
+  // backward compatibility: a lane this ticket made DORMANT
   // (ollama, copilot) must NOT hard-fail an existing profile. Those two were
   // the DEFAULT selection before this change, so every adopter who ran the
   // wizard already has them in ~/.claude/himmel/install-profile.json — and
@@ -2035,15 +2035,15 @@ function loadProfile(p) {
       console.log(`himmelctl: profile names lane '${l}', which is dormant in v1 — dropped from this run. It is not installed or probed; opt in directly with ${env}=1 (scripts/lanes/lanes.json) if you still want it.`);
     }
   }
-  // Pre-HIMMEL-862 caches carried lanes:[] only as a schema placeholder. A new
+  // Older caches carried lanes:[] only as a schema placeholder. A new
   // profile marks the field meaningful so [] can safely mean explicit none;
   // legacy profiles that name lanes explicitly remain unambiguous and valid.
   if (obj.lanesMeaningful !== undefined && obj.lanesMeaningful !== true) {
     profileError(p, `field 'lanesMeaningful' must be true when present (got ${JSON.stringify(obj.lanesMeaningful)}) — the only accepted spelling of "no lanes" is "lanes": [] with "lanesMeaningful": true ('--lanes none' is a CLI flag, not a profile value)`);
   }
-  // HIMMEL-2308: lanes is asked UNIVERSALLY now, so a v2 profile's lanes:[]
+  // lanes is asked UNIVERSALLY now, so a v2 profile's lanes:[]
   // must always carry lanesMeaningful=true — there is no role left to exempt.
-  // HIMMEL-1470 (pre-existing, v1 only): the OLD lanes question was
+  // the OLD lanes question was
   // adopter-only — buildAnswers gave a contributor lanes:[] and
   // applyLaneProfileStep short-circuited non-adopter — so the
   // legacy-placeholder refusal must still NOT fire for a legacy contributor
@@ -2053,16 +2053,16 @@ function loadProfile(p) {
   // -- an originally non-empty lanes list that the dormant-lane filter above
   // emptied out is not "an explicit empty allowlist" the profile author
   // never marked meaningful; it is a real selection that aged out. Without
-  // this guard, exactly the profile the HIMMEL-2352 carve-out above exists to
+  // this guard, exactly the profile the carve-out above exists to
   // save (all-dormant lanes, no lanesMeaningful field) still dies here with a
-  // different error message than the one HIMMEL-2352 fixed.
+  // different error message than the one fixed.
   if (isV2 && obj.lanes.length === 0 && obj.lanesMeaningful !== true && droppedDormantLanes.length === 0) {
     profileError(p, "v2 profile has lanes:[] without lanesMeaningful=true; the accepted spelling of an explicit empty allowlist is \"lanes\": [] with \"lanesMeaningful\": true ('--lanes none' is the CLI flag for this, not a profile value) — or re-run the installer and reconfirm lane selection");
   }
   if (!isV2 && obj.role === 'adopter' && obj.lanes.length === 0 && obj.lanesMeaningful !== true && droppedDormantLanes.length === 0) {
     profileError(p, "legacy profile has lanes:[] without lanesMeaningful=true; the accepted spelling of an explicit empty allowlist is \"lanes\": [] with \"lanesMeaningful\": true ('--lanes none' is the CLI flag for this, not a profile value) — or re-run the installer and reconfirm lane selection");
   }
-  // HIMMEL-2300: optional, like the luna/secretsWalk/bridge sections just
+  // optional, like the luna/secretsWalk/bridge sections just
   // below — a contributor cache (askQuestions() never asks alwaysOn for that
   // role, so buildAnswers() now leaves the key genuinely absent) must keep
   // validating rather than being exit-2'd over a field its role never
@@ -2071,7 +2071,7 @@ function loadProfile(p) {
   if (obj.alwaysOn !== undefined && typeof obj.alwaysOn !== 'boolean') {
     profileError(p, `field 'alwaysOn' must be a boolean when present (got ${JSON.stringify(obj.alwaysOn)})`);
   }
-  // HIMMEL-2176 Task 8: luna/secretsWalk/bridge are OPTIONAL WHOLE SECTIONS
+  // luna/secretsWalk/bridge are OPTIONAL WHOLE SECTIONS
   // (unlike every other field above) — a pre-Task-8 cached profile carries
   // none of them, and that must keep validating so this task never breaks
   // an existing --from-profile fixture elsewhere in the suite. When a
@@ -2082,7 +2082,7 @@ function loadProfile(p) {
     if (!obj.luna || typeof obj.luna !== 'object' || Array.isArray(obj.luna)) {
       profileError(p, "field 'luna' must be an object when present");
     }
-    // HIMMEL-2302 fix: cadenceEnabled/phiDeclared are each individually
+    // fix: cadenceEnabled/phiDeclared are each individually
     // optional WITHIN the (already-optional) luna section — a vault=none
     // interactive run can now reach the disarm-consent question (a declined
     // lane:codex cadence row) without vault/PHI ever being asked, producing
@@ -2095,14 +2095,14 @@ function loadProfile(p) {
     if (obj.luna.phiDeclared !== undefined && typeof obj.luna.phiDeclared !== 'boolean') {
       profileError(p, `field 'luna.phiDeclared' must be a boolean (got ${JSON.stringify(obj.luna.phiDeclared)})`);
     }
-    // disarmCadence (RETASK stage1-build-6d2e round 4 [codex-1]) is itself
+    // disarmCadence is itself
     // optional WITHIN the (already-optional) luna section — a profile saved
     // before this field existed still validates; absent means "not
     // answered", handled the same as an explicit decline downstream.
     if (obj.luna.disarmCadence !== undefined && typeof obj.luna.disarmCadence !== 'boolean') {
       profileError(p, `field 'luna.disarmCadence' must be a boolean (got ${JSON.stringify(obj.luna.disarmCadence)})`);
     }
-    // HIMMEL-2347: phiVaultPath/createSalusMarker are each individually
+    // phiVaultPath/createSalusMarker are each individually
     // optional WITHIN the (already-optional) luna section, same treatment as
     // cadenceEnabled/phiDeclared/disarmCadence just above — absent means
     // "never declared" (or declared with no marker consent), never coerced.
@@ -2110,17 +2110,17 @@ function loadProfile(p) {
       if (typeof obj.luna.phiVaultPath !== 'string') {
         profileError(p, `field 'luna.phiVaultPath' must be a string (got ${JSON.stringify(obj.luna.phiVaultPath)})`);
       }
-      // HIMMEL-2347 CR: a blank/whitespace-only or RELATIVE value was
+      // a blank/whitespace-only or RELATIVE value was
       // silently accepted — path.join(phiVaultAbs, '.salus') on a relative
       // path resolves against the installer's cwd (marker lands somewhere
       // arbitrary), and a relative entry in phi-roots never matches the
       // guards' absolute-path comparison, so the guard goes silently inert
-      // (the HIMMEL-1773 class this ticket exists to fix structurally).
+      // (the class this ticket exists to fix structurally).
       // Require non-blank + absolute (or '~'-prefixed; expandHome() resolves
       // it later) — isValidPhiVaultPathAnswer() is the SAME predicate the
       // interactive askPath() site above now enforces, so the two paths can
-      // never drift apart again (CR fix 1).
-      // HIMMEL-2424: CR/LF/NUL are rejected too (phiVaultPathBadByte()
+      // never drift apart again.
+      // CR/LF/NUL are rejected too (phiVaultPathBadByte
       // inside isValidPhiVaultPathAnswer()) — a profile is arbitrary JSON, so
       // "who would type a newline into a path" doesn't apply; profiles are
       // generated and copied between machines. Give that case its own
@@ -2137,7 +2137,7 @@ function loadProfile(p) {
     if (obj.luna.createSalusMarker !== undefined && typeof obj.luna.createSalusMarker !== 'boolean') {
       profileError(p, `field 'luna.createSalusMarker' must be a boolean (got ${JSON.stringify(obj.luna.createSalusMarker)})`);
     }
-    // HIMMEL-2347 CR fix 4: createSalusMarker:true with no phiVaultPath is a
+    // createSalusMarker:true with no phiVaultPath is a
     // marker request that can never be applied (applyLunaSectionsStep only
     // reaches the marker block when luna.phiVaultPath is truthy) — reject it
     // loudly here rather than silently accepting a request that will
@@ -2150,7 +2150,7 @@ function loadProfile(p) {
   if (obj.secretsWalk !== undefined) {
     checkEnum('secretsWalk', obj.secretsWalk, ['run', 'skip']);
   }
-  // HIMMEL-2705: `channel` picks the release channel scripts/himmel-update.sh
+  // `channel` picks the release channel scripts/himmel-update.sh
   // follows — optional (absent means "unset", today's plain git-pull
   // behavior, unchanged); when present it is closed/strict like every other
   // field here.
@@ -2164,7 +2164,7 @@ function loadProfile(p) {
     if (typeof obj.bridge.enabled !== 'boolean') {
       profileError(p, `field 'bridge.enabled' must be a boolean (got ${JSON.stringify(obj.bridge.enabled)})`);
     }
-    // HIMMEL-2752: envPath/whisperCli/whisperModel/installPersistence are the
+    // envPath/whisperCli/whisperModel/installPersistence are the
     // bridge's OWN config — meaningless (and previously required anyway) when
     // bridge.enabled is false. Absent is now accepted (treated as empty) in
     // that case; present-but-wrong still fails loud, same as every other
@@ -2198,9 +2198,9 @@ function loadProfile(p) {
       }
     }
   }
-  // HIMMEL-2302: `cadences` is an OPTIONAL WHOLE SECTION, same pattern as
+  // `cadences` is an OPTIONAL WHOLE SECTION, same pattern as
   // luna/secretsWalk/bridge just above — absent means never asked (a
-  // pre-HIMMEL-2302 cache, or a vault=none flow that never unlocks the
+  // older cache, or a vault=none flow that never unlocks the
   // question). When present, ids must be known CADENCE_REGISTRY ids and
   // values strictly 'armed'|'off' — a malformed/stale id must fail loud
   // before any side effect, exactly like every other field here.
@@ -2208,14 +2208,14 @@ function loadProfile(p) {
     if (!obj.cadences || typeof obj.cadences !== 'object' || Array.isArray(obj.cadences)) {
       profileError(p, "field 'cadences' must be an object when present");
     }
-    // CR round 1 [HIMMEL-2302 Fix 3]: the wizard never writes `{}` (an
+    // the wizard never writes `{}` (an
     // unasked question leaves the whole section absent, per the comment
     // above) — an empty object here can only be hand-authored, and
     // resolveCadenceDispositions() treats ANY present `cadences` section as
     // authoritative, silently suppressing a legacy `luna.cadenceEnabled`
     // answer with no cadence actually named. Fail loud rather than let that
     // silent-suppression class through --from-profile.
-    // CR round 1 [HIMMEL-2302 Fix 3]: the wizard never writes `{}` (an
+    // the wizard never writes `{}` (an
     // unasked question leaves the whole section absent, per the comment
     // above) — an empty object here can only be hand-authored, and
     // resolveCadenceDispositions() treats ANY present `cadences` section as
@@ -2234,7 +2234,7 @@ function loadProfile(p) {
         profileError(p, `field 'cadences.${id}' must be 'armed' or 'off' (got ${JSON.stringify(obj.cadences[id])})`);
       }
     }
-    // CR round 1 [HIMMEL-2302 Fix 1]: cross-field validation. A
+    // cross-field validation. A
     // `requires:'vault'` cadence (pipeline/qmd/graphmap) armed while
     // vault.mode='none' validates the two fields independently above, then
     // breaks/no-ops at arm time — the validates-then-breaks class this
@@ -2255,14 +2255,14 @@ function loadProfile(p) {
       }
     }
   }
-  // HIMMEL-4597: `vm` is an OPTIONAL whole section (absent = never asked, the
+  // `vm` is an OPTIONAL whole section (absent = never asked, the
   // resolver then reads ~/.himmel/config.json). When present it gets the
   // resolver's own rules (lunaConfigLib.validateVm) — a bad one fails loud.
   if (obj.vm !== undefined) {
     const vmErrors = lunaConfigLib.validateVm(obj.vm);
     if (vmErrors.length > 0) profileError(p, `field 'vm' is invalid: ${vmErrors.join('; ')}`);
   }
-  // HIMMEL-2308: migrate a validated legacy v1 (role-based) profile to the
+  // migrate a validated legacy v1 (role-based) profile to the
   // v2 profile/devOverlay shape IN MEMORY — every downstream reader
   // (deriveCommand, runPlan, buildSummary, ...) speaks profile/devOverlay
   // only now. role='contributor' -> devOverlay=true (the dev overlay is
@@ -2285,7 +2285,7 @@ function loadProfile(p) {
   return obj;
 }
 
-// ── HIMMEL-2348: save-your-profile — offer to persist the answered profile
+// ── save-your-profile — offer to persist the answered profile
 // as a NAMED, reusable file `--from-profile` can replay on another machine,
 // at the end of a SUCCESSFUL, non-dry-run install/ensure. Landing dir mirrors
 // cacheDir()'s own seam (lib/helpers.js) and the WHISPER_DIR pattern
@@ -2340,7 +2340,7 @@ function askLineSafe(prompt) {
 // exact byte sequence writeCache() writes, so a saved profile round-trips
 // through --from-profile identically to the cache.
 async function offerSaveProfile(answers) {
-  // HIMMEL-2348 cleanup: do NOT pre-trim here — isValidProfileName() below
+  // cleanup: do NOT pre-trim here — isValidProfileName below
   // does its own trim check (trimmed !== name rejects leading/trailing
   // whitespace) and is a trust-boundary validator other callers (e.g.
   // `gaps --preset`) also rely on; pre-trimming at this one call site made
@@ -2437,7 +2437,7 @@ async function offerSaveProfile(answers) {
 
 // ── T4/T5a/T4.5: derivation, vault profile, handover/pluginSet, shell-out ────
 //
-// HIMMEL-2308: ONE execution engine now — every install derives
+// ONE execution engine now — every install derives
 //   bash scripts/adopt.sh --profile <core|all> --scope <project|user>
 //     [--luna-target <path>]
 // (profile from the T5a vault mapping below; adopt.sh is bash-native and
@@ -2499,7 +2499,7 @@ function settingsPathForScope(scope) {
 // cannot be written. Existing files are checked directly; for a not-yet-created
 // file, check the nearest existing parent that would need to create it.
 function settingsTargetsWritable(answers) {
-  // HIMMEL-2304: pluginSet=full's extra user-scope target is gone along with
+  // pluginSet=full's extra user-scope target is gone along with
   // its enable step — nothing writes there anymore, so nothing preflights it.
   const targets = [settingsPathForScope(answers.scope)];
   for (const target of targets.filter((p, i, all) => all.indexOf(p) === i)) {
@@ -2541,7 +2541,7 @@ function deriveExistingVaultPlan(answers) {
 
 
 // Derive { argv } for the answer object. argv[0] is the launcher, the rest
-// are its args, sized for spawnSync. HIMMEL-2308: ONE engine — always
+// are its args, sized for spawnSync. ONE engine — always
 // adopt.sh, regardless of profile/devOverlay (see deriveOverlayCommand()
 // below for the dev-overlay's ADDITIONAL command).
 function deriveCommand(answers) {
@@ -2551,7 +2551,7 @@ function deriveCommand(answers) {
   argv.push('--profile', profile, '--scope', answers.scope || 'project');
   if (profile === 'all' && answers.vault && answers.vault.path) {
     argv.push('--luna-target', toBashPath(expandHome(answers.vault.path)));
-    // HIMMEL-2466: adopt.sh's do_luna() only runs here (a vault is actually
+    // adopt.sh's do_luna only runs here (a vault is actually
     // being scaffolded) — thread handover.mode through so its own
     // wire_handover_dir_luna gate agrees with the JS-side no-op T4.5
     // (applyHandoverStep) already applies for handover.mode=inline.
@@ -2560,7 +2560,7 @@ function deriveCommand(answers) {
   return { argv };
 }
 
-// Derive { argv } for the dev-overlay's own command (HIMMEL-2308): the same
+// Derive { argv } for the dev-overlay's own command: the same
 // setup.sh/setup.ps1 primitive the OLD contributor role exclusively derived,
 // now layered on TOP of deriveCommand()'s adopt.sh run instead of replacing
 // it. Only reached when answers.devOverlay is true (the --contribute flag).
@@ -2579,7 +2579,7 @@ function contributeOverlayFilename() {
   return process.platform === 'win32' ? 'setup.ps1' : 'setup.sh';
 }
 
-// HIMMEL-2308: is the resolved repo root an actual himmel checkout the dev
+// is the resolved repo root an actual himmel checkout the dev
 // overlay can run setup.sh/setup.ps1 against? A pure fs read — the same
 // primitive deriveOverlayCommand() would target — rather than a second
 // heuristic (e.g. the old .himmel-dev marker sniff, which detectRole() used
@@ -2590,7 +2590,7 @@ function contributeCheckoutOk() {
   return fs.existsSync(path.join(scriptsDir, contributeOverlayFilename()));
 }
 
-// HIMMEL-2892: the project-scope target himmelctl hands adopt.sh — adopt.sh's
+// the project-scope target himmelctl hands adopt.sh — adopt.sh's
 // own `--target` default is $PWD, so this is that same resolution, and the
 // same one settingsPathForScope('project') mirrors.
 function projectTargetDir() {
@@ -2619,7 +2619,7 @@ function gitCommonDir(dir) {
   return realpathOrSelf(path.resolve(dir, out));
 }
 
-// HIMMEL-2892: is the project-scope target this himmel clone, or a worktree of
+// is the project-scope target this himmel clone, or a worktree of
 // it? The identity marker is the clone THIS himmelctl runs from (repoRoot(),
 // honoring HIMMELCTL_REPO_ROOT), not a content heuristic: an adopter repo that
 // merely VENDORS himmel's portable core carries copies of scripts/hooks/* and
@@ -2631,7 +2631,7 @@ function gitCommonDir(dir) {
 // directory beneath it — which is where himmel keeps its own worktrees
 // (.claude/worktrees/). The git-common-dir test covers a worktree created
 // ELSEWHERE (`git worktree add ../sibling`): it is not under repoRoot() but its
-// .claude/settings.json is the very same tracked file (CR round 1, [codex-3]).
+// .claude/settings.json is the very same tracked file.
 // It is the LAST test and requires BOTH sides to resolve: a stubbed or absent
 // git yields null for both, and two nulls must never compare equal into a false
 // refusal.
@@ -2655,7 +2655,7 @@ function displayCommand(cmd) {
 // after a declined confirm or a failed shell-out (both return before this
 // is reached).
 //
-// HIMMEL-3327: the path is this running bin.js, absolute and quoted — the
+// the path is this running bin.js, absolute and quoted — the
 // operator pastes the line from whatever project the install summary was
 // printed for, where a clone-relative `scripts/himmelctl/bin.js` is not found.
 function printUninstallFooter() {
@@ -2677,7 +2677,7 @@ function printUninstallFooter() {
 // code. A launch failure (e.g. the launcher missing) warns and returns 1
 // rather than throwing. `opts.env`, when given, replaces the child's
 // environment (callers pass `{ ...process.env, ... }` to extend rather than
-// replace it) — used by cmdUninstall's confirmed WET spawn only (HIMMEL-2505).
+// replace it) — used by cmdUninstall's confirmed WET spawn only.
 function runSpawn(cmd, opts = {}) {
   const spawnOpts = { stdio: 'inherit' };
   if (opts.env) spawnOpts.env = opts.env;
@@ -2725,7 +2725,7 @@ function writeHandoverDir(p) {
 }
 
 // Load the documented full-plugin-enable table from data, rather than keeping
-// a second inline copy that can drift. HIMMEL-2304: the wizard no longer
+// a second inline copy that can drift. the wizard no longer
 // offers pluginSet=full (its enable step is gone — applyPluginStep() is now
 // unconditionally a no-op), but this table's plugin NAMES are still the
 // canonical vocabulary the `config set hooks.plugin.<name>` toggle validates
@@ -2751,7 +2751,7 @@ function fullPluginEnable() {
 //     question — that is not the same signal as an explicit blank-Enter, so
 //     it resolves 'n' (decline) rather than silently treating a dropped
 //     session as consent to run an installer. A caller may pass its own EOF
-//     value to distinguish stdin running out from a human typing n (HIMMEL-2755).
+//     value to distinguish stdin running out from a human typing n.
 //   - a fresh stdin with a real "y"/"n" line queued (the T4 hermetic tests
 //     that exercise the confirm via --from-profile + a piped answer): the
 //     first 'line' event resolves normally.
@@ -2773,7 +2773,7 @@ function askConfirmSafe(prompt, eofValue = 'n') {
 // T4.5 helper: --dry-run DRY-line preview for handover.mode=external. Shared
 // by the main adopter/contributor dry-run preview and the T5b existing-vault
 // dry-run preview (FIX 5) so both branches honor the answer identically
-// instead of only the main path previewing it. HIMMEL-2304: this used to also
+// instead of only the main path previewing it. this used to also
 // preview pluginSet=full's enable commands — that whole step (and 'full'
 // itself) is gone, so the name stays (still shared with the caller's other
 // dry-run bookkeeping) but there is nothing left to preview for plugins.
@@ -2784,7 +2784,7 @@ function previewHandoverAndPlugins(answers) {
   }
 }
 
-// ── HIMMEL-2176 Stage-1 PR-C Task 8: luna cadence / secrets walk / bridge ───
+// ── luna cadence / secrets walk / bridge ───
 //
 // Shared plumbing for the three new adopter-wizard sections (design §3.4,
 // A9/A10/A14/A15/A17). Config persistence goes through lib/luna-config.js
@@ -2822,7 +2822,7 @@ function previewHandoverAndPlugins(answers) {
 // ponytail: the `./` prefix can collide back to a bare basename only if the
 // env file sits at a filesystem root (dirname(dir)===dir) — not a real-world
 // bridge .env location; not defended against.
-// RETASK stage1-build-6d2e round 4 [codex-2]: TELEGRAM_ENV is the SAME
+// TELEGRAM_ENV is the SAME
 // process-env override poller.ts/session-status.ts already read
 // (`process.env.TELEGRAM_ENV ?? join(homedir(), ".claude/channels/telegram/
 // .env")`) and probes.js's own resolveBridgeEnvFilePath() (used by
@@ -2837,7 +2837,7 @@ function previewHandoverAndPlugins(answers) {
 // harmless no-op agreement — probes.js's own TELEGRAM_ENV check already
 // wins there regardless of what `file` says).
 //
-// CR fix (HIMMEL-2176): `(bridge && bridge.envPath) || ''` skipped straight
+// `(bridge && bridge.envPath) || ''` skipped straight
 // to the EMPTY string when the profile legitimately omits the optional
 // bridge section — `path.dirname('')` is `.`, so the probe silently looked
 // in the CWD instead of the documented default and read 'unconfigured' even
@@ -2866,7 +2866,7 @@ function envOverrideOrConfigured(envKey, configuredValue) {
   return configuredValue || undefined;
 }
 
-// RETASK stage1-build-6d2e round 7 [codex-1] ROOT CAUSE: probes.js's
+// probes.js's
 // probeWhisperReady() reads WHISPER_CLI/WHISPER_MODEL as COMPLETE PATHS once
 // set (`env.WHISPER_CLI || configuredCli || ...`, `env.WHISPER_MODEL ||
 // configuredModel || ...`) — but the two config fields have DIFFERENT
@@ -2892,7 +2892,7 @@ function whisperDirPath() {
   const home = process.env.HOME || os.homedir();
   return process.env.WHISPER_DIR || path.join(home, '.himmel', 'whisper');
 }
-// RETASK stage1-build-6d2e CR round 15 [codex-1]: both of this function's
+// both of this function's
 // current callers already guard with `answers.bridge || {}` before calling
 // in, so `bridge` is never actually undefined on the live path today — but
 // this was the one place in the bridge-optional family that didn't defend
@@ -2987,7 +2987,7 @@ function normalizePathForCompare(p) {
 // reports as 'degraded') is caught, never aborting the walk (A15/A17: a
 // failing source blocks nothing else).
 //
-// RETASK stage1-build-6d2e round 6 [codex-3]: a THROWN exception used to be
+// a THROWN exception used to be
 // folded into 'unconfigured' too — but 'unconfigured' means "the adopter
 // has not set this up", and telling someone their probe threw an exception
 // by saying "go configure this" (when it may already BE configured — we
@@ -3009,7 +3009,7 @@ function probeOneSecret(entry, bridge) {
       return { status: 'unconfigured', detail: r.detail };
     }
     if (entry.probe === 'cmd:whisper_ready') {
-      // [codex-1 round 7] same shared helper as runBridgeReadinessProbes —
+      //  same shared helper as runBridgeReadinessProbes
       // model is a bare filename and must be joined with the whisper dir
       // before it can stand in for WHISPER_MODEL (a complete-path env var).
       const whisperEnv = Object.assign({}, process.env, resolveWhisperEnvOverrides(bridge));
@@ -3050,7 +3050,7 @@ function probeOneSecret(entry, bridge) {
   return { status: 'unconfigured', detail: 'not actively probed by the wizard — see the obtain instructions above' };
 }
 
-// HIMMEL-2305: split SECRETS_MANIFEST.secrets into what this recorded
+// split SECRETS_MANIFEST.secrets into what this recorded
 // profile's selections actually cover vs. what a never-selected feature
 // scopes out — shared by the --dry-run preview and the real walk so the two
 // can never disagree on the count. `answers` drives
@@ -3081,7 +3081,7 @@ function scopedOutLine(skipped) {
 // Print the per-secret instruction card (obtain + storage — A15: the wizard
 // NEVER harvests the credential itself) then immediately probe it. Returns
 // the per-secret result rows buildSummary folds into skipped/manual.
-// HIMMEL-2305: walks only the secrets whose feature the recorded selections
+// walks only the secrets whose feature the recorded selections
 // (vault/cadences/bridge/lanes) actually cover — an unselected feature's
 // secrets are skipped, with one honest line naming how many and why.
 function runSecretsWalk(bridge, answers) {
@@ -3089,7 +3089,7 @@ function runSecretsWalk(bridge, answers) {
   const { scoped, skipped } = scopeSecretsByFeature(answers);
   const line = scopedOutLine(skipped);
   if (line) console.log(line);
-  // CR fix (RETASK stage1-build-6d2e): paired credentials (BITBUCKET_API_TOKEN/
+  // paired credentials (BITBUCKET_API_TOKEN/
   // BITBUCKET_EMAIL) both declare the SAME
   // luna-sources `sources` id, so probing each independently fired the same
   // EXTERNAL health probe (fetch-health.py --probe <source>) twice per walk
@@ -3134,7 +3134,7 @@ function runSecretsWalk(bridge, answers) {
 // working cadence/PHI declaration/bridge on every replay. Both helpers below
 // are shared by the dry-run preview and the real apply step so the two can
 // never drift on what "supplied" means.
-// HIMMEL-2302 fix: keyed on `phiDeclared` specifically (not mere presence of
+// fix: keyed on `phiDeclared` specifically (not mere presence of
 // `luna`) — the cadences question now moves off the vault gate, so a
 // vault=none run that still asks cadences (a lane:codex row) can build a
 // partial `luna = { disarmCadence }` with NO phiDeclared field (PHI was never
@@ -3150,16 +3150,16 @@ function bridgeSectionSupplied(answers) {
   return answers.bridge !== undefined && answers.bridge !== null;
 }
 
-// HIMMEL-2302: resolveCadenceDispositions() itself lives in adopter-profile.js
+// resolveCadenceDispositions itself lives in adopter-profile.js
 // (adopterProfileLib), not here — buildSummary needs the SAME resolution
 // logic and lives in that module, so it's the one shared place both this
 // file and buildSummary read from (never drift). See its own comment there.
 
-// HIMMEL-2302: per-unit arm-argv builder. pipeline keeps cadence-emit.js's
+// per-unit arm-argv builder. pipeline keeps cadence-emit.js's
 // existing persisted config->flag mapping (~/.himmel/config.json's
 // luna.cadence.* — untouched by this ticket, see luna-config.js SCHEMA).
 // qmd/graphmap/codex-sweep have NO persisted per-adopter schedule surface
-// (explicitly NOT IN SCOPE for HIMMEL-2302) — arm them with the script's own
+// (explicitly NOT IN SCOPE for) — arm them with the script's own
 // all-default invocation: verified in-tree against each script's own
 // usage()/cmd_arm() that every flag is genuinely optional with a sane
 // script-side default (qmd-cadence.sh: --time/--hourly/--ship-to all
@@ -3174,7 +3174,7 @@ function cadenceArmFlags(id, { doc, vaultPath }) {
   return [];
 }
 
-// HIMMEL-4597: set `doc.vm` from a wizard/profile vm answer ({mode, remote?}),
+// set `doc.vm` from a wizard/profile vm answer ({mode, remote?}),
 // returning whether it changed anything. "Changed" compares the resolver's
 // view (mode; for remote, ssh/port/identity with their defaults), so an
 // answer equal to what is already configured — or `local` over an absent vm —
@@ -3201,7 +3201,7 @@ function applyVmAnswer(doc, vm) {
   return true;
 }
 
-// HIMMEL-4597: armed `vm_proof` rows this run must NOT arm — { <id>: message }.
+// armed `vm_proof` rows this run must NOT arm — { <id>: message }.
 // The route is the resolver's, on the saved config (apply: no doc) or on `doc`
 // with the vm answer applied (dry run). A row the operator explicitly selected
 // under vm.mode=none in the wizard (vmProofAcked) is their ack and passes;
@@ -3227,7 +3227,7 @@ function cadenceScriptPath(id) {
   return path.join(repoRoot(), row.script);
 }
 
-// HIMMEL-2176 CR: the ONE WARN wording for "~/.himmel/config.json could not
+// the ONE WARN wording for "~/.himmel/config.json could not
 // be read" — shared by applyLunaSectionsStep and previewLunaSections so the
 // two can never drift on how this refusal is named. A malformed config is a
 // FATAL, section-wide refusal on the apply side (see applyLunaSectionsStep's
@@ -3238,15 +3238,15 @@ function lunaConfigLoadFailureWarning(e) {
   return `himmelctl: WARN: could not read ~/.himmel/config.json (${e.message}) — luna cadence/secrets/bridge sections skipped`;
 }
 
-// HIMMEL-3349: the ONE wording for keys in ~/.himmel/config.json that
+// the ONE wording for keys in ~/.himmel/config.json that
 // himmelctl does not manage — a warning, never a failure.
 function lunaConfigUnknownKeysWarning(unknown) {
   return `himmelctl: WARN: ~/.himmel/config.json carries key(s) himmelctl does not manage: ${unknown.join(', ')} — kept untouched`;
 }
 
-// HIMMEL-3349: one line per field a pre-schema config gained. `filled` is what
+// one line per field a pre-schema config gained. `filled` is what
 // luna-config.js added from the defaults; a value the wizard then set from this
-// run's own answer says so instead of claiming the default. HIMMEL-3371:
+// run's own answer says so instead of claiming the default.
 // `supplied` is the set of dotted paths the wizard wrote — whether it answered
 // is tracked, not inferred from the value (an answer equal to the default is
 // still an answer).
@@ -3258,7 +3258,7 @@ function lunaConfigMigrationLines(filled, doc, supplied) {
   });
 }
 
-// HIMMEL-2347: phi-roots location, mirroring graph-refresh.sh:75/refresh-
+// phi-roots location, mirroring graph-refresh.sh:75/refresh-
 // graph-map.sh's own $HOME/.config/claude-glm — CLAUDE_GLM_CONFIG_DIR
 // overrides (graph-refresh.sh honors it; refresh-graph-map.sh hardcodes
 // $HOME instead, a PRE-EXISTING quirk of that consumer, not something this
@@ -3271,7 +3271,7 @@ function phiRootsPath() {
 }
 
 // Merge `root` (an absolute path) into the phi-roots list file: append-if-
-// absent, LF-only (HIMMEL-1680 class — graph-refresh.sh/refresh-graph-
+// absent, LF-only (class — graph-refresh.sh/refresh-graph-
 // map.sh's own consumers read this line-wise, including on this Windows
 // host). MERGE RULE: never truncate/rewrite entries an operator or another
 // tool put there — an existing file is read first and every line preserved,
@@ -3285,15 +3285,15 @@ function phiRootsPath() {
 // be symmetric.
 function mergePhiRoot(root) {
   const file = phiRootsPath();
-  // HIMMEL-2347 CR fix 8 (round 4): a trailing path separator is not
+  // a trailing path separator is not
   // semantically significant ("/vault/" and "/vault" name the same
   // directory) so it is stripped on BOTH the incoming `root` and each
-  // stored line before comparing — round 3 stripped it on the stored side
+  // stored line before comparing — an earlier fix stripped it on the stored side
   // only, which meant a root declared with a trailing separator matched
   // nothing already stored and got appended again on every run
   // (unbounded growth). Whitespace, by contrast, IS significant in a POSIX
   // path ("/vault " and "/vault" are different directories) so it is never
-  // trimmed on either side — round 3's `.trim()` on the stored side alone
+  // trimmed on either side — the earlier `.trim` on the stored side alone
   // let a stored "/vault " falsely swallow a genuinely distinct incoming
   // "/vault", the opposite failure. The one whitespace-shaped exception is
   // a trailing \r, but that is a CRLF storage artifact, not part of the
@@ -3311,7 +3311,7 @@ function mergePhiRoot(root) {
     lines = fs.readFileSync(file, 'utf8').split(/\r\n|\r|\n/);
     if (lines.length && lines[lines.length - 1] === '') lines.pop();
   } catch (e) {
-    // HIMMEL-2347 CR: only ENOENT means "no file yet, start empty" — any
+    // only ENOENT means "no file yet, start empty" — any
     // other read failure (EACCES/EISDIR/EIO/a transient lock) must NOT fall
     // through to the rewrite below, which would treat "couldn't read it" as
     // "it's empty" and discard every already-recorded PHI root. Throw so the
@@ -3323,7 +3323,7 @@ function mergePhiRoot(root) {
   }
   const already = lines.some((l) => normPath(l) === normPath(root));
   if (already) {
-    // HIMMEL-2347 CR fix 9 (round 4): nothing to add means the file's
+    // nothing to add means the file's
     // content would come out byte-identical, so return before any write —
     // a tmp+rename for a no-op replay was pointless I/O, needlessly bumped
     // the file's metadata, and could fail outright against an otherwise
@@ -3333,7 +3333,7 @@ function mergePhiRoot(root) {
   }
   lines.push(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  // HIMMEL-2347 CR fix 7: an in-place synchronous write (what fix 3 below
+  // an in-place synchronous write (what fix 3 below
   // replaced with a tmp+rename) preserves the target's existing mode; a
   // freshly-created tmp file does not, so without this the rename would
   // silently WIDEN phi-roots to the default mode — a real weakening, since
@@ -3350,7 +3350,7 @@ function mergePhiRoot(root) {
   } catch (e) {
     mode = null;
   }
-  // HIMMEL-2347 CR fix 3: write to a sibling tmp file, then rename() it over
+  // write to a sibling tmp file, then rename it over
   // `file` — rename within a directory is atomic on both POSIX and Windows,
   // so an interruption mid-write can never leave phi-roots truncated or
   // partial. Same tmp+rename+cleanup-on-failure shape as
@@ -3360,9 +3360,9 @@ function mergePhiRoot(root) {
   // race: two processes can still both read the same stale list and the
   // last rename() still wins, so a root added by a concurrent process can
   // still be lost. That half is deliberately OUT of scope here and tracked
-  // separately as HIMMEL-2416 — do not read this atomic write as closing it.
+  // separately as do not read this atomic write as closing it.
   //
-  // HIMMEL-2347 CR fix 10 (round 4): create tmp owner-only (mode 0o600) from
+  // create tmp owner-only (mode 0o600) from
   // the very first write, not via a chmod afterward — a default-mode create
   // followed by a later chmod leaves the sensitive list briefly
   // world/group-readable under a permissive umask. When `file` already
@@ -3431,7 +3431,7 @@ function attemptBridgePersistence({ dryRun }) {
     if (linger.ok) {
       return { ok: true, actions: unit.actions.concat(linger.actions), detail: `${unit.detail}; ${linger.detail}` };
     }
-    // RETASK stage1-build-6d2e round 6 [codex-4]: unit.ok is true here — the
+    // unit.ok is true here — the
     // unit IS installed and running (enable --now already happened inside
     // installSystemdUnit) — only linger failed. Do NOT attempt an automatic
     // rollback (unwinding machine state on a partial failure is its own
@@ -3450,7 +3450,7 @@ function attemptBridgePersistence({ dryRun }) {
   return { ok: false, actions: [], detail: `bridge persistence has no installer for platform '${process.platform}' — install/enable it manually (see docs/setup)` };
 }
 
-// HIMMEL-2308: universal now (the old role==='adopter' gate died with role —
+// universal now (the old role==='adopter' gate died with role
 // luna/secretsWalk/bridge are gated by whether the sections were actually
 // SUPPLIED, via lunaSectionSupplied()/bridgeSectionSupplied() below, which
 // already covers "never asked" correctly for every profile/flow).
@@ -3467,7 +3467,7 @@ function previewLunaSections(answers) {
       cfg = lunaConfigLib.inspect();
       doc = cfg.doc;
     } catch (e) {
-      // CR fix: applyLunaSectionsStep refuses ALL cadence/secrets/bridge
+      // applyLunaSectionsStep refuses ALL cadence/secrets/bridge
       // work on a load failure (see its own early return) — manufacturing a
       // default document here to keep planning against previewed actions
       // the apply step will never perform, so the preview must report the
@@ -3475,7 +3475,7 @@ function previewLunaSections(answers) {
       console.error(lunaConfigLoadFailureWarning(e));
       return { configLoadFailed: true };
     }
-    // HIMMEL-3349: what the apply step would do to a pre-schema / extended file.
+    // what the apply step would do to a pre-schema / extended file.
     if (cfg.unknown.length > 0) console.log(`DRY: ${lunaConfigUnknownKeysWarning(cfg.unknown)}`);
     if (cfg.filled.length > 0) {
       console.log(`DRY: ~/.himmel/config.json would be migrated (backed up first): ${cfg.filled.length} missing field(s) filled — ${cfg.filled.map((f) => f.path).join(', ')}`);
@@ -3488,7 +3488,7 @@ function previewLunaSections(answers) {
     }
     if (lunaSupplied) {
       console.log(`DRY: luna.phi.declared -> ${Boolean(luna.phiDeclared)} (~/.himmel/config.json)`);
-      // HIMMEL-2347: materializing the guard inputs is its own preview line,
+      // materializing the guard inputs is its own preview line,
       // independent of phi.declared's own true/false — the phi-roots entry
       // and the .salus offer only exist when a vault path was actually
       // declared (phiVaultAns==='yes' + a non-blank path in askQuestions()).
@@ -3502,7 +3502,7 @@ function previewLunaSections(answers) {
     } else {
       console.log('DRY: profile carries no luna section — luna.phi.declared would be left untouched on disk');
     }
-    // HIMMEL-2302: per-cadence dispositions replace the old single
+    // per-cadence dispositions replace the old single
     // lunaSupplied+cadenceEnabled gate — resolveCadenceDispositions() covers
     // both a fresh `cadences` section (authoritative) and a legacy profile
     // that only ever carried `luna.cadenceEnabled` (derives pipeline only).
@@ -3578,7 +3578,7 @@ function applyLunaSectionsStep(answers) {
   } catch (e) {
     console.error(lunaConfigLoadFailureWarning(e));
     result.rc = 1;
-    // CR fix: this early return means `result.configSaveOk` is never set at
+    // this early return means `result.configSaveOk` is never set at
     // all (the save step below never runs) — buildSummary's own comment
     // treats undefined configSaveOk as "not gated" (true), which used to let
     // the bridge-config claim in `installed:` survive a load failure it
@@ -3588,7 +3588,7 @@ function applyLunaSectionsStep(answers) {
     result.configLoadFailed = true;
     return result;
   }
-  // RETASK stage1-build-6d2e round 6 [codex-1]: snapshot BEFORE any field
+  // snapshot BEFORE any field
   // writes below, so a legacy/no-op replay (nothing supplied, nothing
   // changed) can skip save() entirely rather than rewriting — or CREATING —
   // ~/.himmel/config.json for a run that touched nothing. `doc`'s key order
@@ -3596,9 +3596,9 @@ function applyLunaSectionsStep(answers) {
   // removed), so a plain JSON.stringify comparison is exact — no need for a
   // deep-equal dependency for a shape this controlled.
   const originalDocJson = JSON.stringify(doc);
-  // HIMMEL-3371: the dotted config paths this run's wizard answers wrote.
+  // the dotted config paths this run's wizard answers wrote.
   const supplied = new Set();
-  // HIMMEL-3349: a key the user added is theirs — kept untouched (a save below
+  // a key the user added is theirs — kept untouched (a save below
   // re-serializes it as loaded), named once here, never a failure.
   if (cfg.unknown.length > 0) console.error(lunaConfigUnknownKeysWarning(cfg.unknown));
 
@@ -3612,7 +3612,7 @@ function applyLunaSectionsStep(answers) {
   if (lunaSupplied) {
     doc.luna.phi.declared = Boolean(luna.phiDeclared);
     supplied.add('luna.phi.declared');
-    // HIMMEL-2347: materialize the guard inputs a declared personal/medical
+    // materialize the guard inputs a declared personal/medical
     // vault path implies. Independent of phi.declared above (a SEPARATE
     // vault from the one being installed) and of configSaveOk below (these
     // two files are not tracked inside ~/.himmel/config.json at all, so a
@@ -3627,7 +3627,7 @@ function applyLunaSectionsStep(answers) {
       try {
         merged = mergePhiRoot(phiVaultAbs);
       } catch (e) {
-        // HIMMEL-2347 CR: mergePhiRoot() now throws instead of silently
+        // mergePhiRoot now throws instead of silently
         // treating a genuine read failure (EACCES/EISDIR/a lock) as "empty
         // file" — a fall-through there would have rewritten phi-roots and
         // discarded every already-recorded root. Surface it loudly (rc=1,
@@ -3643,7 +3643,7 @@ function applyLunaSectionsStep(answers) {
         if (luna.createSalusMarker) {
           if (fs.existsSync(phiVaultAbs)) {
             const markerPath = path.join(phiVaultAbs, '.salus');
-            // HIMMEL-2347 CR: 'wx' is exclusive-create — never touches an
+            // 'wx' is exclusive-create — never touches an
             // existing marker's contents (an unconditional writeFileSync
             // truncated a marker that already carried an operator note or
             // another tool's metadata). The guards only check existence
@@ -3658,7 +3658,7 @@ function applyLunaSectionsStep(answers) {
                 // all the guards check for ([ -e "$d/.salus" ]).
                 console.log(`himmelctl: .salus marker already present at ${markerPath} — left untouched`);
               } else {
-                // HIMMEL-2347 CR fix 2: a genuine creation failure
+                // a genuine creation failure
                 // (permissions, read-only mount, etc.) after the operator
                 // explicitly CONSENTED to the marker must not exit 0 — same
                 // treatment as the phi-roots write failure above
@@ -3671,11 +3671,11 @@ function applyLunaSectionsStep(answers) {
               }
             }
           } else {
-            // Design constraint (HIMMEL-2347 brief): a not-yet-created vault is
+            // Design constraint: a not-yet-created vault is
             // not a reason to drop the declaration — phi-roots above is
             // written regardless; only the marker (which requires the
             // directory to exist) is deferred, reported honestly rather than
-            // silently skipped. CR fix 2: this stays rc=0 deliberately — it
+            // silently skipped. 2: this stays rc=0 deliberately — it
             // is NOT a failure to create something that was never attempted
             // (existing PV5 test pins rc=0 here); only a genuine creation
             // error in the branch above sets result.rc = 1.
@@ -3687,7 +3687,7 @@ function applyLunaSectionsStep(answers) {
   } else {
     console.log('himmelctl: profile carries no luna section — luna.phi.declared left untouched on disk');
   }
-  // HIMMEL-2302: luna.cadence.enabled mirrors pipeline's resolved
+  // luna.cadence.enabled mirrors pipeline's resolved
   // disposition — decoupled from lunaSupplied (unlike phi.declared just
   // above) because a `cadences`-only profile with NO `luna` section at all
   // (the operator-capture shape — docs/setup/profiles/operator.install-
@@ -3715,13 +3715,13 @@ function applyLunaSectionsStep(answers) {
   } else {
     console.log('himmelctl: profile carries no bridge section — bridge.* left untouched on disk');
   }
-  // HIMMEL-4597: the vm answer is written only when it changes what the
+  // the vm answer is written only when it changes what the
   // resolver would read — a declined/unchanged answer (and local over an
   // absent vm) leaves the file as it is.
   const vmChanged = answers.vm !== undefined && applyVmAnswer(doc, answers.vm);
   if (vmChanged) supplied.add('vm.mode');
 
-  // RETASK stage1-build-6d2e round 4 [codex-3]: a save() failure must stop
+  // a save failure must stop
   // every SUBSEQUENT machine-state mutation (cadence arm/disarm, bridge
   // persistence install) — otherwise the machine ends up in a state the
   // config document never recorded, the exact drift S1/S6 exist to detect.
@@ -3729,7 +3729,7 @@ function applyLunaSectionsStep(answers) {
   // neither mutates anything, and the operator still deserves the read-only
   // information even when the write failed.
   //
-  // RETASK stage1-build-6d2e round 6 [codex-1]: `docChanged` gates the write
+  // `docChanged` gates the write
   // itself — a legacy profile (nothing supplied) or an unchanged replay
   // leaves the file untouched (no rewrite, no mtime bump, and critically no
   // CREATE when it didn't already exist), matching the "left untouched on
@@ -3737,7 +3737,7 @@ function applyLunaSectionsStep(answers) {
   // because-unchanged write: nothing failed, there is simply nothing to
   // record that the on-disk document doesn't already say — downstream steps
   // proceed exactly as if the (unnecessary) save had succeeded.
-  // HIMMEL-3349: a file that lacked a required field is rewritten (backed up
+  // a file that lacked a required field is rewritten (backed up
   // first, by save()) even when this run supplied nothing; once written it is
   // complete, so the next run finds nothing to migrate and writes nothing.
   const migrating = cfg.filled.length > 0;
@@ -3763,7 +3763,7 @@ function applyLunaSectionsStep(answers) {
   }
   result.configSaveOk = configSaveOk;
 
-  // HIMMEL-2302: arm/disarm EVERY unit with an actual disposition this run —
+  // arm/disarm EVERY unit with an actual disposition this run
   // pipeline keeps the exact single-unit behavior above (same gating, same
   // spawn), generalized to qmd/graphmap/codex-sweep via the registry.
   // disarm stays gated on `luna.disarmCadence` (decision #5: ONE consent
@@ -3785,7 +3785,7 @@ function applyLunaSectionsStep(answers) {
           const cmd = { argv: argv };
           const armRc = runSpawn(cmd);
           result.cadenceResults = result.cadenceResults || {};
-          // HIMMEL-2885: rc 3 is the script's own dedup refusal — the unit is
+          // rc 3 is the script's own dedup refusal — the unit is
           // ALREADY armed, which is the converged state install wanted. Never
           // pass --force here (that would re-arm/re-time the operator's
           // existing crontab); read rc 3 as already-converged, not a failure.
@@ -3835,7 +3835,7 @@ function applyLunaSectionsStep(answers) {
       // abort the overall install (A17), it just means persistence isn't
       // installed yet; reported honestly below.
       //
-      // RETASK stage1-build-6d2e round 3: rc stays 0 for the DELIBERATE skip
+      // rc stays 0 for the DELIBERATE skip
       // — refusing to arm an unready bridge is the designed, correct
       // behaviour (codex-2's own ask), not a failure, and the coordinator's
       // ruling draws the same line A15 already draws for an unconfigured
@@ -3854,7 +3854,7 @@ function applyLunaSectionsStep(answers) {
           detail: 'skipped — the config save above failed; refusing to install persistence for a bridge config that was never recorded (fix the save error, then re-run install)',
         };
       } else if (bridgeProbesHealthy(result.bridgeProbes)) {
-        // RETASK stage1-build-6d2e round 6: attemptBridgePersistence's own
+        // attemptBridgePersistence's own
         // primitives are contracted to return {ok,actions,detail} rather
         // than throw, but this is a machine-state MUTATION, not a read —
         // an unexpected throw here must never crash the rest of the apply
@@ -3880,35 +3880,35 @@ function applyLunaSectionsStep(answers) {
   return result;
 }
 
-// HIMMEL-862: the epilogue — lane probe report, the always-on hardening
+// the epilogue — lane probe report, the always-on hardening
 // CHECKLIST, and the final honest summary. Printed at the END of EVERY run
-// now (HIMMEL-2308 killed the old role==='adopter' gate — see
+// now (killed the old role==='adopter' gate — see
 // printAdopterEpilogue below), dry-run included: every part of it is a READ —
 // it mutates nothing — so it is equally truthful before and after the install
 // shell-out, and a --dry-run preview is worth exactly as much. (Corrected in
-// CR round 5: this used to claim "probeLane never spawns", which is false —
+// this used to claim "probeLane never spawns", which is false
 // buildCtx shells out to `git`, and the manifest-backed readiness probes may
 // run a tool to check it. Probing under --dry-run is fine; documenting a
 // guarantee we do not provide is not.)
 //
 // `dryRun` is threaded in (not re-derived from args) so the summary's
 // installed-vs-planned bucket can never drift from what the caller actually
-// did — CR round 1 [codex-1]: the summary used to claim `installed:` under
+// did — the summary used to claim `installed:` under
 // --dry-run, when nothing had run at all.
 // `pluginResult` is the {rc, failed, total} applyPluginStep returned, or null
 // when the step never ran (dry-run, lean plugin set, or the T5b branch's own
-// ordering) — CR round 1 [codex-adv-2]: without it the summary claimed the
+// ordering) — without it the summary would claim the
 // full plugin set was enabled even when its commands had failed.
 //
 // async because the lane probe now loads the CANONICAL ESM resolver rather
 // than re-implementing its semantics; every call site is already inside the
 // async runPlan.
-// HIMMEL-2308: the dev-overlay's own report — printed only when
+// the dev-overlay's own report — printed only when
 // answers.devOverlay is true (the --contribute flag), IN ADDITION to the
 // universal epilogue below (printAdopterEpilogue), not instead of it.
 async function printContributorProfile(answers, derived, dryRun) {
   if (!answers.devOverlay) return;
-  // HIMMEL-1466: the contributor profile runs AFTER the core install already
+  // the contributor profile runs AFTER the core install already
   // succeeded (dry-run path ~1474; applied path ~1550, right after runSpawn and
   // the PATH-launcher write). It is reporting, not gating, so a failure in the
   // report build — a missing/malformed scripts/install/manifest.json (the
@@ -3925,11 +3925,11 @@ async function printContributorProfile(answers, derived, dryRun) {
       platform: process.platform,
     });
   } catch (e) {
-    // HIMMEL-1466 made this non-gating; HIMMEL-1468 hardens the catch itself:
+    // made this non-gating; hardens the catch itself:
     // buildReport() is third-party-shaped and could reject with null/undefined
     // (a non-Error rejection), in which case reading e.message would itself
     // throw and re-escape as exit 1 — the exact abort the guard exists to prevent.
-    // HIMMEL-1476: stringifying the rejection is the last throw site — coercing
+    // stringifying the rejection is the last throw site — coercing
     // a {message: Symbol()} or Object.create(null) (no toString) rejection would
     // throw, re-escaping as exit 1. Build the detail via a template inside its
     // own try/catch (a template always yields a string when it doesn't throw, so
@@ -3948,14 +3948,14 @@ async function printContributorProfile(answers, derived, dryRun) {
   }
 }
 
-// HIMMEL-2536: what the git gate hooks ACTUALLY look like on disk after
+// what the git gate hooks ACTUALLY look like on disk after
 // adopt.sh (and, for a dev overlay, setup.sh) has run against $PWD — adopt.sh's
 // own --target default, the same resolution settingsPathForScope() mirrors.
 //
 // WHY a filesystem probe rather than reading adopt.sh's output: adopt.sh runs
 // with stdio inherited, so its `WARNING: git hooks: ... — skipping.` line is
 // never available to this process. It is also the wrong source of truth. The
-// measured HIMMEL-2536 failure was the summary claiming `still manual:
+// measured failure was the summary claiming `still manual:
 // (nothing)` in the same run whose scrollback carried that warning, and the
 // ticket's own principle is that still-manual must be derived from what
 // actually ran. Hooks on disk are what actually ran.
@@ -3966,7 +3966,7 @@ async function printContributorProfile(answers, derived, dryRun) {
 // and would report every worktree install as ungated. That resolution is also
 // exactly what pre-commit itself installs into.
 //
-// CR round 1 [codex-2]: a git probe that FAILS is not the same fact as a
+// a git probe that FAILS is not the same fact as a
 // non-repo target, so the two no longer collapse to one return shape. An
 // unverifiable state is reported as unverifiable — silently suppressing the
 // warning is the failure mode this whole function exists to remove.
@@ -3987,11 +3987,11 @@ function gitGateHooksState() {
   return { applicable: true, verified: true, placed: missing.length === 0, missing: missing };
 }
 
-// CR round 1 [codex-1]: "the path exists" is not "git will run it". A
+// "the path exists" is not "git will run it". A
 // directory, a dangling entry, or a non-executable leftover at
 // .git/hooks/commit-msg all satisfy an existence check while git runs
 // nothing — which would let this summary certify a repo as gated when it is
-// not, the exact false-clean HIMMEL-2536 is about. Require what git itself
+// not, the exact false-clean is about. Require what git itself
 // requires: a regular file, and on POSIX the executable bit (git-for-windows
 // runs hooks through sh and ignores the mode, so demanding it there would
 // report every Windows install ungated).
@@ -4007,12 +4007,12 @@ function gitWouldRunHook(hookPath) {
   return (st.mode & 0o111) !== 0;
 }
 
-// HIMMEL-2537: did the dev overlay's setup.sh step [0.5/9] leave USER_SLUG
+// did the dev overlay's setup.sh step [0.5/9] leave USER_SLUG
 // unresolved? That step used to `exit 1`, which aborted runPlan before this
 // epilogue ever ran — the summary could not have been wrong because there was
 // no summary. Now that it is advisory, the silence becomes possible, and a
 // summary that reports nothing left undone while the slug is unset is the
-// HIMMEL-2536 defect on a different step.
+// defect on a different step.
 //
 // A REPLAY of the same check rather than a parse of setup.sh's output, for
 // 2536's reason: the overlay runs with stdio inherited, so its lines never
@@ -4020,7 +4020,7 @@ function gitWouldRunHook(hookPath) {
 // ran it — the forge source resolves against the checkout's own origin, so a
 // probe from the adopter's target dir could disagree with the step it reports on.
 //
-// --dotenv-root repoRoot() (CR round 2 [codex-1]): without it, this replay
+// --dotenv-root repoRoot: without it, this replay
 // ignores a USER_SLUG a step [5/9] --fill-env prompt just wrote to .env, and
 // disagrees with setup.sh's own footer re-probe (which passes the same flag)
 // — the two summaries are supposed to agree on the same fact.
@@ -4044,11 +4044,11 @@ function userSlugState() {
   return { applicable: true, verified: true, resolved: r.status === 0 };
 }
 
-// HIMMEL-2693: himmelctl wires permissions.allow / permissions.additionalDirectories
+// himmelctl wires permissions.allow / permissions.additionalDirectories
 // into .claude/settings.json, but Claude Code ignores both until the workspace
 // is trusted (projects[<dir>].hasTrustDialogAccepted in ~/.claude.json) — a
 // human has to run `claude` interactively there once and accept the trust
-// dialog first. scripts/lib/ensure-workspace-trust.sh (HIMMEL-386) already owns
+// dialog first. scripts/lib/ensure-workspace-trust.sh already owns
 // that exact read-modify-write and is called by arm-resume.sh and the luna
 // cadence; this delegates to it for the install target rather than
 // re-implementing the ~/.claude.json write in JS — same shell-out convention
@@ -4073,13 +4073,13 @@ function applyWorkspaceTrust() {
   if (!fs.existsSync(script)) {
     return { applied: false, dir: dir, reason: 'scripts/lib/ensure-workspace-trust.sh not found' };
   }
-  // HIMMEL-3332 S5: learn BEFORE the helper runs whether the key was already
+  // learn BEFORE the helper runs whether the key was already
   // true — afterwards the two cases are indistinguishable. The helper's own
   // config path: $WORKSPACE_TRUST_CONFIG, else $HOME/.claude.json.
   const trustCfg = process.env.WORKSPACE_TRUST_CONFIG || path.join(process.env.HOME || process.env.USERPROFILE || os.homedir(), '.claude.json');
   let preexisted = false;
   let preKnown = true;
-  // HIMMEL-3541: whether projects[<dir>] itself existed -- when it did not,
+  // whether projects[<dir>] itself existed -- when it did not,
   // uninstall drops the entry again once removing the key leaves it empty.
   let parentCreated = true;
   try {
@@ -4106,7 +4106,7 @@ function applyWorkspaceTrust() {
   return { applied: true, dir: dir };
 }
 
-// HIMMEL-2308: universal now — printed for every run regardless of
+// universal now — printed for every run regardless of
 // profile/devOverlay (the old role==='adopter' gate died with role).
 async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaultScaffolded, lunaResult) {
   const laneProbe = await adopterProfileLib.loadLaneProbe(repoRoot(), process.env);
@@ -4123,7 +4123,7 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
       console.log(`  ok ${row.id.padEnd(9)} ready — ${row.detail}; ${row.setupDetail}`);
     } else if (row.state === 'present') {
       // Deliberately NOT "available": the probe saw a binary, not a working
-      // lane (CR round 4 [codex-adv-r3-2]). The remaining step is named in
+      // lane. The remaining step is named in
       // the summary's `still manual` section.
       const why = row.setupState === 'incomplete' ? `setup INCOMPLETE — ${row.setupDetail}` : 'setup not verified';
       console.log(`  ~  ${row.id.padEnd(9)} binary present — ${row.detail}; ${why}`);
@@ -4138,7 +4138,7 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
     }
   }
 
-  // HIMMEL-2300: an adopter run always asks alwaysOn (askQuestions()), so this
+  // an adopter run always asks alwaysOn (askQuestions), so this
   // branch only matters for a hand-edited/legacy --from-profile that omits
   // the now-optional field — never claim "you answered no" for a question
   // this profile carries no answer to.
@@ -4159,36 +4159,36 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
     pluginTotal: pluginResult ? pluginResult.total : 0,
     vaultPath: answers.vault && answers.vault.path ? expandHome(answers.vault.path) : '',
     handoverPath: answers.handover && answers.handover.path ? expandHome(answers.handover.path) : '',
-    // HIMMEL-2176 Task 8: luna cadence / secrets walk / bridge results —
+    // luna cadence / secrets walk / bridge results
     // undefined under --dry-run (nothing was actually run) or when the
     // section is off, both handled by buildSummary's own dryRun/`did()`
     // tense branching.
-    // HIMMEL-2302: per-cadence-unit results ({<id>: {ran,rc,argvDisplay}}) —
+    // per-cadence-unit results ({<id>: {ran,rc,argvDisplay}})
     // replaces the pipeline-only cadenceArm/cadenceDisarm singular fields.
     cadenceResults: lr.cadenceResults,
     cadenceDisarmResults: lr.cadenceDisarmResults,
     secretsWalkResults: lr.secretsWalkResults,
     bridgeProbes: lr.bridgeProbes,
     bridgePersistence: lr.bridgePersistence,
-    // RETASK stage1-build-6d2e round 6 [codex-2]: undefined under --dry-run
+    // undefined under --dry-run
     // (save() never runs there at all) — buildSummary treats undefined the
     // same as true (only an explicit `false` gates a claim), so a dry-run
     // preview is unaffected.
     configSaveOk: lr.configSaveOk,
-    // CR fix: previewLunaSections() sets this on a --dry-run whose
+    // previewLunaSections sets this on a --dry-run whose
     // ~/.himmel/config.json failed to load — buildSummary must not then
     // claim cadence/secrets/bridge as `planned` for a load that never
     // succeeded (applyLunaSectionsStep performs none of that work either).
     configLoadFailed: lr.configLoadFailed,
-    // HIMMEL-2536: null under --dry-run — this epilogue also renders the
+    // null under --dry-run — this epilogue also renders the
     // PREVIEW, which runs before adopt.sh has been spawned at all, so a probe
     // there would report the hooks the machine happened to already have.
     gitHooks: dryRun ? null : gitGateHooksState(),
-    // HIMMEL-2537: null when nothing resolved a slug — a --dry-run (the
+    // null when nothing resolved a slug — a --dry-run (the
     // preview renders through this same epilogue, before anything is spawned)
     // or an install with no dev overlay, whose adopt.sh never runs the check.
     userSlug: (dryRun || !answers.devOverlay) ? null : userSlugState(),
-    // HIMMEL-2693: null under --dry-run — a preview must never write to
+    // null under --dry-run — a preview must never write to
     // ~/.claude.json (this epilogue also renders the PREVIEW, before adopt.sh
     // has been spawned at all, same reasoning as gitHooks/userSlug above).
     workspaceTrust: dryRun ? null : applyWorkspaceTrust(),
@@ -4207,7 +4207,7 @@ function applyHandoverStep(answers) {
   return true;
 }
 
-// HIMMEL-2308/HIMMEL-2300/HIMMEL-1470: lanes:[] is ambiguous on its own — it
+// lanes:[] is ambiguous on its own — it
 // means either an explicit "no optional lanes" (lanesMeaningful=true) or "the
 // lanes question was never asked" (a migrated legacy contributor cache, whose
 // old v1 role-gated lanes question never ran — see loadProfile's own !isV2
@@ -4221,7 +4221,7 @@ function lanesAnswerNeverAsked(answers) {
 
 // Validate predictable profile-persistence failures before any installer,
 // handover or vault mutation. The post-install write stays authoritative and
-// repeats these checks to catch changes during the core install. HIMMEL-2308:
+// repeats these checks to catch changes during the core install.
 // universal now — lanes is asked to every profile, so this always runs...
 // except when lanesAnswerNeverAsked (see above) — nothing will be persisted,
 // so there is nothing here to preflight.
@@ -4236,15 +4236,15 @@ async function preflightLaneProfileStep(answers) {
   }
 }
 
-// HIMMEL-1428: persist an APPLIED install's selected optional lanes as the
+// persist an APPLIED install's selected optional lanes as the
 // resolver's narrowing profile allowlist. This runs only after the core
 // install succeeds; dry-run never writes it. Failure is fatal because
 // silently leaving every detected backend routable would violate the consent
-// boundary the profile selection now represents. HIMMEL-2308: universal now —
-// lanes is asked to every profile. HIMMEL-2300/1470: EXCEPT when
+// boundary the profile selection now represents. universal now
+// lanes is asked to every profile. EXCEPT when
 // lanesAnswerNeverAsked — persisting an authoritative empty allowlist for a
 // question nobody was asked would silently suppress every optional lane
-// (the consent-fabrication class HIMMEL-2300 exists to prevent), so skip
+// (the consent-fabrication class exists to prevent), so skip
 // with an honest message instead of writing anything.
 async function applyLaneProfileStep(answers) {
   if (lanesAnswerNeverAsked(answers)) {
@@ -4252,7 +4252,7 @@ async function applyLaneProfileStep(answers) {
     return true;
   }
   try {
-    // HIMMEL-3059 S3: the write may land under the himmelctl cache dir instead
+    // the write may land under the himmelctl cache dir instead
     // of in-tree when the install prefix is not writable — the ledger must
     // snapshot the file that is ACTUALLY written, with the matching scope, or
     // `himmelctl uninstall` reverses the wrong path.
@@ -4269,7 +4269,7 @@ async function applyLaneProfileStep(answers) {
   }
 }
 
-// HIMMEL-2033's retired-plugin-removal offer: best-effort, advisory only,
+// retired-plugin-removal offer: best-effort, advisory only,
 // never fails the install. `remove-retired-plugin.sh` owns the actual
 // contract (silent when absent; prompt with DEFAULT=remove on a TTY).
 function offerRetiredPluginRemoval() {
@@ -4278,13 +4278,13 @@ function offerRetiredPluginRemoval() {
   spawnSync(resolveBash(), [toBashPath(script)], { stdio: 'inherit' });
 }
 
-// T4.5 helper: pluginSet=full's ENABLE step used to live here. HIMMEL-2304
+// T4.5 helper: pluginSet=full's ENABLE step used to live here.
 // drops the 'full' option entirely — the full-plugin-enable.json set does
-// not reflect what himmel actually runs; the reconciler whitelist (see
-// HIMMEL-2292) is the truth — so the enable step is unconditionally a no-op
+// not reflect what himmel actually runs; the reconciler whitelist
+// is the truth — so the enable step is unconditionally a no-op
 // for every role/answer now.
 //
-// CR round 3 [codex-1]: the HIMMEL-2033 retired-plugin-removal offer is NOT
+// the retired-plugin-removal offer is NOT
 // tied to the enable step's success/failure — it exists because a machine
 // PREVIOUSLY provisioned with pluginSet=full may still carry the retired
 // plugin, and a legacy 'full' --from-profile cache (still accepted for
@@ -4306,7 +4306,7 @@ function applyPluginStep(answers) {
 
 // T4/T4.5/T5a/T5b plan: derivation, vault gate, handover/pluginSet, shell-out.
 //
-// HIMMEL-2460 (de-fork): vault.mode=existing used to be a parallel
+// vault.mode=existing used to be a parallel
 // re-implementation of the whole install sequence below — its own confirm,
 // handover write, lane preflight, plugin step, luna sections, path shim and
 // epilogue — and it RETURNED before ever reaching deriveCommand()/adopt.sh,
@@ -4315,13 +4315,13 @@ function applyPluginStep(answers) {
 // refusal, and the additional wire/apply plan for a stamped vault); the
 // install sequence itself is the SAME one every other vault mode runs below,
 // with wire/apply layered on top of adopt.sh exactly like the dev overlay is
-// (HIMMEL-2308's own comment on that pattern, a few lines down).
+// ('s own comment on that pattern, a few lines down).
 async function runPlan(answers, args) {
   const vaultExisting = Boolean(answers.vault && answers.vault.mode === 'existing');
   let existingVaultPlan = null;
 
   // T5b (locked O1): vault.mode=existing, STAMPED vaults only — non-luna→luna
-  // conversion stays deferred. HIMMEL-2308: vault is universal now (the old
+  // conversion stays deferred. vault is universal now (the old
   // role==='adopter' gate died with role), so this branch is scoped purely on
   // vault.mode.
   if (vaultExisting) {
@@ -4340,7 +4340,7 @@ async function runPlan(answers, args) {
     existingVaultPlan = deriveExistingVaultPlan(answers);
   }
 
-  // CR round 8 [codex-adv-r7-3]: vault.mode=default-template hands adopt.sh a
+  // vault.mode=default-template hands adopt.sh a
   // --luna-target, and adopt.sh's do_luna() SKIPS the template copy whenever
   // the destination already EXISTS (`[[ -e "$dest" ]]`), printing a notice and
   // continuing with rc 0. So pointing default-template at an occupied,
@@ -4375,14 +4375,14 @@ async function runPlan(answers, args) {
   // stamp check — never print it twice.
   if (!vaultExisting) process.stdout.write(serialize(answers) + '\n');
   console.log(`derived: ${displayCommand(cmd)}`);
-  // HIMMEL-2460: the T5b wire/apply plan is an ADDITIONAL pair of commands
+  // the T5b wire/apply plan is an ADDITIONAL pair of commands
   // layered on top of adopt.sh above, never a substitute for it — same
   // posture as the dev overlay just below.
   if (existingVaultPlan) {
     console.log(`derived: ${displayCommand(existingVaultPlan.wire)}`);
     console.log(`derived: ${displayCommand(existingVaultPlan.apply)}`);
   }
-  // HIMMEL-2308: the dev overlay is an ADDITIONAL command layered on top of
+  // the dev overlay is an ADDITIONAL command layered on top of
   // adopt.sh above, never a substitute for it.
   const overlayCmd = answers.devOverlay ? deriveOverlayCommand() : null;
   if (overlayCmd) console.log(`derived (dev overlay): ${displayCommand(overlayCmd)}`);
@@ -4390,7 +4390,7 @@ async function runPlan(answers, args) {
   // --dry-run prints the plan (+ T4.5 side effects) and exits WITHOUT
   // executing or mutating anything.
   if (args.dryRun) {
-    // HIMMEL-3308: pass --dry-run through to adopt.sh itself and surface its
+    // pass --dry-run through to adopt.sh itself and surface its
     // per-file plan, rather than stopping at the "derived: ..." line above,
     // which only restates the command instead of previewing its effect.
     const dryRunRc = runSpawn({ argv: [...cmd.argv, '--dry-run'] });
@@ -4434,7 +4434,7 @@ async function runPlan(answers, args) {
   provStep = 'handover';
   if (!applyHandoverStep(answers)) return 1;
 
-  // CR round 11 [codex-adv-r10-2], NARROWED. The occupied-vault gate above
+  // NARROWED. The occupied-vault gate above
   // runs before the plan print, the confirm and the handover write, so minutes
   // can pass before adopt.sh actually looks at the destination — long enough
   // for a cloud-sync client to create it. Re-evaluate here, at the last
@@ -4474,18 +4474,18 @@ async function runPlan(answers, args) {
   // post-install enable step if the core install itself failed).
   provStep = 'adopt';
   const rc = runSpawn(cmd);
-  // HIMMEL-2836: write the PATH shim BEFORE checking adopt.sh's rc — a failed
-  // core install (e.g. a plugin SSH-clone failure, same shape as HIMMEL-549)
+  // write the PATH shim BEFORE checking adopt.sh's rc — a failed
+  // core install (e.g. a plugin SSH-clone failure, same shape as)
   // must not leave the adopter with no `himmelctl` on PATH to run
   // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
-  // git-hook placement (HIMMEL-2818): never blocks on or masks adopt.sh's rc.
+  // git-hook placement: never blocks on or masks adopt.sh's rc.
   const shimOk = applyHimmelctlPathShim(args);
   ensureBusStateDirs();
   if (rc !== 0) {
     if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
     return rc;
   }
-  // HIMMEL-2460: the T5b wire/apply plan runs AFTER adopt.sh succeeds, as an
+  // the T5b wire/apply plan runs AFTER adopt.sh succeeds, as an
   // additional step — never instead of it.
   if (existingVaultPlan) {
     provStep = 'wire';
@@ -4495,7 +4495,7 @@ async function runPlan(answers, args) {
     const applyRc = runSpawn(existingVaultPlan.apply);
     if (applyRc !== 0) return applyRc;
   }
-  // HIMMEL-2308: the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
+  // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
   // succeeds, as an additional idempotent mutation step — never instead of it.
   if (overlayCmd) {
     provStep = 'overlay';
@@ -4506,7 +4506,7 @@ async function runPlan(answers, args) {
   if (!await applyLaneProfileStep(answers)) return 1;
 
   // T4.5: pluginSet=full → the documented per-plugin enable step. lean → no-op
-  // (adopt.sh's/setup.sh's settings-template default, HIMMEL-816).
+  // (adopt.sh's/setup.sh's settings-template default).
   const pluginResult = applyPluginStep(answers);
   const lunaResult = applyLunaSectionsStep(answers);
   await printContributorProfile(answers, overlayCmd ? displayCommand(overlayCmd) : undefined, args.dryRun);
@@ -4530,12 +4530,12 @@ async function cmdInstall(args) {
   let profileAnswers = null;
   if (args.fromProfile) {
     profileAnswers = loadProfile(args.fromProfile);
-    // HIMMEL-2752: --scope + --from-profile overrides the profile's own
+    // --scope + --from-profile overrides the profile's own
     // scope rather than being ignored — the profile stays the single
     // authority for everything else, same posture as the lane flags above.
     if (args.scope) profileAnswers.scope = args.scope;
   } else if (args.scope) {
-    // HIMMEL-2752: --scope alone is a discoverable non-interactive door —
+    // --scope alone is a discoverable non-interactive door
     // it loads the shipped, placeholder-free adopter-<scope> profile
     // instead of walking the wizard. Resolved from this script's own
     // location (not repoRoot()/HIMMELCTL_REPO_ROOT, which points hermetic
@@ -4544,7 +4544,7 @@ async function cmdInstall(args) {
     profileAnswers = loadProfile(path.join(__dirname, '..', '..', 'docs', 'setup', 'profiles', `adopter-${args.scope}.install-profile.json`));
   }
 
-  // 0.5 (HIMMEL-2308 CR round 3): --contribute outside a himmel checkout is
+  // 0.5: --contribute outside a himmel checkout is
   // refused HERE, before any preflight/question side effect, so an invalid
   // flag is cheap to fail on — no wizard walk, no cache write. This does NOT
   // duplicate the step-5.5 gate below: that one is the sole AUTHORITATIVE
@@ -4577,7 +4577,7 @@ async function cmdInstall(args) {
   //    (and caches the result); --dry-run previews all defaults.
   //    Non-interactive with no profile refuses cleanly — it NEVER blocks on
   //    stdin.
-  //    HIMMEL-862: the lane flags shape the interactive + dry-run paths only.
+  //    the lane flags shape the interactive + dry-run paths only.
   //    The --from-profile branch never sees them — parseArgs already refused
   //    that combination, so the profile stays the single authority there.
   const laneOpts = { lanes: args.lanes, withCodex: args.withCodex, withHermes: args.withHermes };
@@ -4593,7 +4593,7 @@ async function cmdInstall(args) {
     console.error('  (or set HIMMELCTL_INTERACTIVE=1 to answer prompts interactively)');
     return 1;
   }
-  // 5.2 (HIMMEL-2892): the himmel checkout is not a project TARGET. Its
+  // 5.2: the himmel checkout is not a project TARGET. Its
   // .claude/settings.json is the SOURCE this installer generates the hook
   // block from (CLAUDE.md: "the live inventory is .claude/settings.json") —
   // hand-curated across many tickets, not a generated artifact — and its
@@ -4614,13 +4614,13 @@ async function cmdInstall(args) {
     console.error('  its .claude/settings.json is the SOURCE this installer generates from, never a target.');
     // The contributor primitive is rendered from deriveOverlayCommand() — the
     // SAME derivation that actually spawns it — rather than assumed to be
-    // `bash <script>` (CodeRabbit round 1). On Windows the primitive is
+    // `bash <script>`. On Windows the primitive is
     // setup.ps1, and `bash setup.ps1` is not a runnable command; the derived
     // form carries pwsh + -ExecutionPolicy Bypass -File there, and bash on
     // POSIX. Deriving it also means the printed line can never drift from the
     // command himmelctl would really run.
     //
-    // Both paths are shell-quoted and ABSOLUTE (CR round 3, [codex-1]): a
+    // Both paths are shell-quoted and ABSOLUTE: a
     // checkout path containing a space breaks an unquoted path operand, and
     // the relative `node scripts/himmelctl/bin.js` only resolves from the
     // checkout root — while the refusal fires from whatever subdirectory the
@@ -4631,13 +4631,13 @@ async function cmdInstall(args) {
     return 1;
   }
 
-  // HIMMEL-2436: cache the resolved answers regardless of source — replaying a
+  // cache the resolved answers regardless of source — replaying a
   // profile (--from-profile) is still an install, and the resulting machine
   // should be as introspectable via `status`/`ensure` as an interactively-
   // installed one. Gated on !dryRun (one guard, one source of truth for every
   // branch above): a dry run — from ANY of the three answer-producing
   // branches, interactive included — must make zero persistent changes.
-  // HIMMEL-2705: new adopters default to the stable release channel
+  // new adopters default to the stable release channel
   // (scripts/himmel-update.sh's channel seam). "New" is this STATION never
   // having a cache before — checked BEFORE writeCache below, since install
   // always fully replaces the cache with the resolved answers (no merge with
@@ -4645,14 +4645,14 @@ async function cmdInstall(args) {
   // re-install too (interactive re-run, or --from-profile against a
   // channel-less profile) and cannot by itself distinguish "brand new
   // station" from "existing station whose incoming answers happen to omit
-  // channel" (CR round 1, codex-2: the field-only check opted every such
+  // channel"
   // re-install into stable, contradicting "unset stays unset").
   //
   // A re-install (isNewAdopter=false) with channel-less incoming answers
   // must carry the STATION's existing channel forward rather than dropping
   // it — writeCache below replaces the whole file, so doing nothing here
   // would silently erase a stable/pre station's setting on every reinstall
-  // that doesn't happen to restate it (CR round 2, codex-1). Read the prior
+  // that doesn't happen to restate it. Read the prior
   // cache's channel best-effort; an unreadable/malformed prior cache just
   // means there is nothing to carry forward, not an install failure.
   if (!args.dryRun) {
@@ -4672,14 +4672,14 @@ async function cmdInstall(args) {
         }
       }
     }
-    // HIMMEL-3332 S5: the session opens here, before the first mutation (the
+    // the session opens here, before the first mutation (the
     // cache write), so the cache row and the saved-profile row join the same
     // session as runPlan's rows; runPlan's own provOpen is then a no-op.
     provOpen(args);
     writeCache(answers);
   }
 
-  // 5.5 (HIMMEL-2308): devOverlay is only valid inside a himmel checkout —
+  // 5.5: devOverlay is only valid inside a himmel checkout
   // it layers the contributor-dev setup.sh/setup.ps1 primitive on top of the
   // install (see deriveOverlayCommand()), and that primitive does not exist
   // anywhere else. This is the ONE authoritative gate: it fires on the
@@ -4696,13 +4696,13 @@ async function cmdInstall(args) {
 
   // T4/T4.5/T5a: derivation, vault gate, handover/pluginSet, shell-out.
   const rc = await runPlan(answers, args);
-  // HIMMEL-2348: offer to save the answered profile ONLY after a genuinely
+  // offer to save the answered profile ONLY after a genuinely
   // successful, non-dry-run, interactive install — never on a failed run
   // (rc !== 0 must reach the caller untouched, no prompt), never on
   // --dry-run (zero mutations), never non-interactively (--from-profile
   // must not block on stdin). This is a NEW call site alongside the
   // existing writeCache(answers) above — that cache write's own ordering is
-  // untouched (HIMMEL-2456).
+  // untouched.
   if (rc === 0 && !args.dryRun && shouldPrompt(args)) {
     await offerSaveProfile(answers);
   }
@@ -4711,7 +4711,7 @@ async function cmdInstall(args) {
 
 // ── uninstall (§5.5 locked decision, operator 2026-07-11) ───────────────────
 //
-// A THIN wrapper: summary + one confirm (default-No, HIMMEL-3328: only y/yes
+// A THIN wrapper: summary + one confirm (default-No, only y/yes
 // consents; runPlan's `Proceed?` is default-Yes), then exec the platform uninstall script verbatim
 // (win32: uninstall.ps1 via the same interpreter selection T4 uses for
 // setup.ps1). Passes through NOTHING speculative from the cached install
@@ -4725,16 +4725,16 @@ async function cmdInstall(args) {
 // Derive { argv } for the uninstall command, honoring the same
 // HIMMELCTL_REPO_ROOT seam as deriveCommand.
 //
-// HIMMEL-3058: --dry-run runs the executor's OWN dry-run (never with --yes, so
+// --dry-run runs the executor's OWN dry-run (never with --yes, so
 // it can never be mistaken for a wet run) — the executor is what knows every
 // path/hook/settings key, and reading it from one place keeps the preview and
 // the teardown from drifting. --purge-state is the code-vs-state switch; the
 // default (absent) keeps operator state.
-// deriveUninstallCommand lives in lib/uninstall-wrapper.js now (HIMMEL-3312
+// deriveUninstallCommand lives in lib/uninstall-wrapper.js now
 // S13 item 2), parameterized on repoRoot/bashPath instead of calling
 // repoRoot()/resolveBash() itself.
 
-// HIMMEL-755 sub-ticket E (uninstall-completeness, operator LOCKED
+// sub-ticket E (uninstall-completeness, operator LOCKED
 // 2026-07-17): uninstall.sh/.ps1 already tears down himmel's OWN wiring
 // symmetrically — that stays untouched (§ header above: "Keep uninstall.sh
 // as the executor"). What was missing is that cmdUninstall was manifest-
@@ -4777,11 +4777,11 @@ function partitionOffboard(manifest) {
 // clone itself") — those that live in the himmel clone go away when the clone
 // itself is deleted, not because uninstall.sh removed them one by one. That is
 // NOT true of what a project-scope adopt copied into the ADOPTER's repo
-// (scripts/) or of Claude's workspace-trust entry (HIMMEL-3251): deleting a
+// (scripts/) or of Claude's workspace-trust entry: deleting a
 // clone never touches those, and uninstall.sh names them as kept in its own
 // footer. The header below must not claim otherwise; it states what
 // uninstall.sh's machine-level steps do and where the rest stays.
-// HIMMEL-3589: the ids manifest.json prints for qmd (qmd-binary, qmd-index)
+// the ids manifest.json prints for qmd (qmd-binary, qmd-index)
 // carry no path of their own — the resolved on-disk location only lives in
 // scripts/install/uninstall-manifest.tsv's one 'qmd'-surface row (qmd-fork:
 // the checkout + bun-global symlink + index collection both ids point at).
@@ -4874,7 +4874,7 @@ function printOffboardPlan(unwireItems, adviseItems, keepItems) {
 // ctx.scope='project' with ctx.targetPath=repoRoot() (matching
 // settingsPath()'s project-scope convention in install-engine.js).
 //
-// HIMMEL-2459: an earlier version of this comment claimed "uninstall.sh
+// an earlier version of this comment claimed "uninstall.sh
 // reverses the wiring at whichever settings.json it wired, and for a machine
 // offboard that's this himmel checkout's OWN project-scope .claude/
 // settings.json as well as the operator's user-scope one" — that premise is
@@ -4895,7 +4895,7 @@ function printOffboardPlan(unwireItems, adviseItems, keepItems) {
 // uninstall.sh could actually leave behind. Do NOT re-widen this to
 // "probe project unconditionally" — that was tried once already (the
 // sentence this replaces) and reintroduces the exact false positive
-// HIMMEL-2459 fixes; do NOT narrow it to "probe project only when the
+// fixes; do NOT narrow it to "probe project only when the
 // settings.json isn't git-tracked" either — an adopter who commits their
 // own .claude/settings.json would then be silently exempted from real
 // leftover-wiring detection.
@@ -4906,7 +4906,7 @@ function checkUninstallCompleteness(unwireItems) {
   const convergeable = unwireItems.filter((item) => item.unwire);
   const root = repoRoot();
   // True iff `root` (the project-scope probe target) IS himmel's own
-  // canonical checkout, not a separate adopter project — see the HIMMEL-2459
+  // canonical checkout, not a separate adopter project — see the
   // comment above. Compared by identity (git-common-dir, then dev+ino), not
   // by string equality, so a trailing separator, a linked worktree, a
   // symlinked path segment, POSIX-vs-Windows slash style, or Windows
@@ -4916,7 +4916,7 @@ function checkUninstallCompleteness(unwireItems) {
   // per item/scope): cheap relative to the probes themselves, and every
   // convergeable item shares the same answer.
   const isHimmelOwnCheckout = sameFsEntry(primaryCheckoutRoot(root), primaryCheckoutRoot(himmelRoot()));
-  // CR fix (codex-1): the "never changes cmdUninstall's exit code" guarantee
+  // the "never changes cmdUninstall's exit code" guarantee
   // above must be STRUCTURAL, not merely incidental to today's probes. This
   // runs between the teardown's `const rc = runSpawn(cmd)` and `return rc`, so
   // any throw here would propagate and mask the real rc. The current two
@@ -4927,7 +4927,7 @@ function checkUninstallCompleteness(unwireItems) {
   for (const item of convergeable) {
     const scopes = item.scopes && item.scopes.length > 0 ? item.scopes : ['user'];
     for (const scope of scopes) {
-      // HIMMEL-2459: skip the project-scope probe when `root` IS himmel's
+      // skip the project-scope probe when `root` IS himmel's
       // own checkout — uninstall.sh never had a project-scope target to
       // reverse there (see the comment above), so probing it only ever
       // reads himmel's own tracked repo source. 'user' is never skipped.
@@ -4946,7 +4946,7 @@ function checkUninstallCompleteness(unwireItems) {
   }
 }
 
-// HIMMEL-3244: class of each named uninstall-manifest row, read the way
+// class of each named uninstall-manifest row, read the way
 // uninstall.sh reads it (HIMMEL_UNINSTALL_MANIFEST override, else
 // scripts/install/uninstall-manifest.tsv; TAB columns id, class, ...). Returns
 // { id: class } for the requested ids, or null when the file is unreadable or
@@ -4993,7 +4993,7 @@ function operatorStateBanner(purgeState) {
 }
 
 // A thin bin.js-side wrapper around lib/uninstall-wrapper.js's
-// runUninstallWrapper (HIMMEL-3312 S13 item 2): builds the header/afterRun
+// runUninstallWrapper: builds the header/afterRun
 // closures bin.js owns (the manifest-driven offboard plan + the post-teardown
 // completeness check — both clone-dependent, so standalone.js's own call
 // skips them) and passes resolveBash()/repoRoot(). The TTY/--yes/spawn/
@@ -5026,9 +5026,9 @@ async function cmdUninstall(args) {
   return uninstallWrapperLib.runUninstallWrapper(args, { bashPath: resolveBash(), repoRoot: repoRoot(), header, afterRun });
 }
 
-// ── PATH launcher (HIMMEL-1446) ──────────────────────────────────────────
+// ── PATH launcher ──────────────────────────────────────────
 //
-// himmelctlBinDir lives in lib/launcher.js now (HIMMEL-3312 S13 item 1).
+// himmelctlBinDir lives in lib/launcher.js now.
 // HIMMELCTL_SHIM_PLATFORM is a hermetic-test seam; normal runs always use the
 // real process platform.
 function himmelctlShimPlatform() {
@@ -5051,7 +5051,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
   if (pathContainsDir(binDir, platform)) return;
   if (platform === 'win32') {
     const quoted = binDir.replace(/'/g, "''");
-    // Idempotent (HIMMEL-1446 r4 glm-3): the printed snippet prepends binDir
+    // Idempotent: the printed snippet prepends binDir
     // only when it is not already an element of the persisted User PATH, so
     // re-running `himmelctl update` before opening a new shell — and pasting the
     // line a second time — cannot duplicate the entry. pathContainsDir above
@@ -5069,7 +5069,6 @@ function printHimmelctlPathInstruction(binDir, platform) {
 // directory, so paths with spaces stay quoted. Re-running install/update
 // rewrites only the loader's absolute target, which re-points a moved checkout.
 //
-// HIMMEL-1446 r2 (codex adversarial review, 3 agreed blockers):
 //  • The loader target is the PRIMARY checkout, not repoRoot() — a launcher
 //    written from a linked feature worktree must not bind to the disposable
 //    worktree (see primaryCheckoutRoot).
@@ -5084,7 +5083,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
 //    Letting PowerShell resolve the .cmd avoids that. A stale marked .ps1 from a
 //    prior install is removed (removeMarkedLauncher).
 // SHIM_MARKER, fileCarriesMarker, writeMarkedLauncher, removeMarkedLauncher and
-// removeHimmelctlLaunchers now live in lib/launcher.js (HIMMEL-3312 S13 item 1).
+// removeHimmelctlLaunchers now live in lib/launcher.js.
 
 // Resolve the PRIMARY checkout root — the parent of `git rev-parse
 // --git-common-dir` — so a launcher written from a linked feature worktree
@@ -5101,7 +5100,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
 // hands node a path in the form it expects.
 //
 // <dir> defaults to repoRoot() (all pre-existing call sites); an explicit
-// <dir> (HIMMEL-2459's checkUninstallCompleteness) resolves a DIFFERENT
+// <dir> ('s checkUninstallCompleteness) resolves a DIFFERENT
 // directory's primary checkout the same way, so two directories' identity
 // can be compared regardless of which linked worktree either one is.
 function primaryCheckoutRoot(dir) {
@@ -5115,7 +5114,7 @@ function primaryCheckoutRoot(dir) {
 }
 
 // True iff <a> and <b> are the SAME filesystem entry — dev+ino identity, the
-// Node equivalent of shell `test -ef` (HIMMEL-2459). Verified on win32/
+// Node equivalent of shell `test -ef`. Verified on win32/
 // Node 24 to be trailing-separator-, slash-style-, and drive-letter-casing-
 // insensitive (fs.statSync resolves the real on-disk file, unlike a bare
 // fs.realpathSync string compare, which on this platform/Node combo
@@ -5125,12 +5124,12 @@ function primaryCheckoutRoot(dir) {
 // false, never throws, when either path can't be stat'd.
 function sameFsEntry(a, b) {
   try {
-    // HIMMEL-2507: 64-bit inodes above 2^53 lose precision as JS Numbers, so
+    // 64-bit inodes above 2^53 lose precision as JS Numbers, so
     // two distinct entries could compare equal. Ask for BigInts; BigInt()
     // also normalizes a stat result that ignored the option.
     const sa = fs.statSync(a, { bigint: true });
     const sb = fs.statSync(b, { bigint: true });
-    // HIMMEL-2501: a filesystem that does not report inode numbers can
+    // a filesystem that does not report inode numbers can
     // return ino===0 (and dev===0) for every entry, which would otherwise
     // make this compare equal for ANY two paths. Reject that degenerate
     // case explicitly rather than letting a false identity match through.
@@ -5141,9 +5140,9 @@ function sameFsEntry(a, b) {
   }
 }
 
-// HIMMEL-5225: create $XDG_STATE_HOME/himmel and himmel/bus at 0700 so a fresh
+// create $XDG_STATE_HOME/himmel and himmel/bus at 0700 so a fresh
 // station has the private bus directories before any bus use (himmel-bus's
-// store.busRoot() self-heals on first use, HIMMEL-5221). Idempotent: only a
+// store.busRoot self-heals on first use). Idempotent: only a
 // directory created here is chmod'd; an existing one is left exactly as it is.
 // Best-effort, never fails the install.
 function ensureBusStateDirs() {
@@ -5185,9 +5184,9 @@ function applyHimmelctlPathShim(args) {
 
   try {
     fs.mkdirSync(binDir, { recursive: true });
-    // HIMMEL-2883: re-exec bin.js as a child process rather than require()ing
+    // re-exec bin.js as a child process rather than requireing
     // it — a require() runs with require.main === himmelctl.js, so bin.js's
-    // own `if (require.main === module)` guard (HIMMEL-2438) never fires and
+    // own `if (require.main === module)` guard never fires and
     // main() silently never runs (rc 0, no output). A child process always
     // has its own require.main === itself, so the guard passes as intended.
     //
@@ -5205,7 +5204,7 @@ function applyHimmelctlPathShim(args) {
       // is removed; an unmarked/symlinked one is left untouched. Removal is a
       // best-effort cleanup of a LEGACY artifact, not part of writing the PATH
       // launcher, so its I/O errors WARN here with an accurate message and never
-      // fail the shim write (HIMMEL-1446 r4 glm-4: previously caught by the
+      // fail the shim write (otherwise caught by the
       // surrounding try/catch and misreported as "failed to write PATH launcher").
       try {
         launcherLib.removeMarkedLauncher(path.join(binDir, 'himmelctl.ps1'));
@@ -5216,7 +5215,7 @@ function applyHimmelctlPathShim(args) {
       const launcher = path.join(binDir, 'himmelctl');
       const shBody = `#!/usr/bin/env sh\n# ${launcherLib.SHIM_MARKER}\nexec node "$(dirname "$0")/himmelctl.js" "$@"\n`;
       if (!launcherLib.writeMarkedLauncher(launcher, shBody, 0o755)) return false;
-      // HIMMEL-4380: a `himmel` alias beside himmelctl, so `himmel update` works
+      // a `himmel` alias beside himmelctl, so `himmel update` works
       // in any shell (fish included) without shell config. Best-effort: a
       // third-party `himmel` is refused by writeMarkedLauncher (with its own
       // message) and must not fail the himmelctl launcher.
@@ -5232,9 +5231,9 @@ function applyHimmelctlPathShim(args) {
   return true;
 }
 
-// removeHimmelctlLaunchers lives in lib/launcher.js now (HIMMEL-3312 S13 item 1).
+// removeHimmelctlLaunchers lives in lib/launcher.js now.
 
-// ── update (HIMMEL-893) ──────────────────────────────────────────────────
+// ── update ──────────────────────────────────────────────────
 //
 // A THIN wrapper, same shape as cmdUninstall above: derive the command and
 // runSpawn it verbatim. The full dependency-chain check/update (git pull,
@@ -5248,7 +5247,7 @@ function applyHimmelctlPathShim(args) {
 // install/uninstall's own --dry-run.
 
 function deriveUpdateCommand() {
-  // HIMMEL-1192 (two-part Windows fix, BOTH parts required):
+  // (two-part Windows fix, BOTH parts required):
   //  1. resolveBash() picks a Windows-native Git Bash — bare `bash` from a
   //     PowerShell PATH is System32\bash.exe (WSL), which cannot run a
   //     Windows-path script AT ALL (backslashes eaten; C:/... absent from the
@@ -5274,7 +5273,7 @@ async function cmdUpdate(args) {
   const rc = runSpawn(cmd);
   if (rc !== 0) return rc;
   // The PATH launcher is a best-effort rider on a successful update
-  // (HIMMEL-1446 r4 glm-5): applyHimmelctlPathShim has already printed the
+  // applyHimmelctlPathShim has already printed the
   // specific refusal/error. A failed launcher write must NOT mask the update's
   // success in this exit code (automation keys off rc 0/!=0), so surface a LOUD
   // warning and keep rc 0 — the launcher is best-effort, never a hard dependency.
@@ -5284,7 +5283,7 @@ async function cmdUpdate(args) {
   return 0;
 }
 
-// A release tree in the versioned layout (HIMMEL-3059 S4) has no upstream to
+// A release tree in the versioned layout has no upstream to
 // pull, so himmel-update.sh would refuse it. Its update is download -> verify
 // -> extract into a new version dir -> atomic `current` swap
 // (lib/tarball-update.js); the launcher rider is the git route's.
@@ -5309,7 +5308,7 @@ async function cmdUpdateVersioned(args, layout) {
   return 0;
 }
 
-// ── profile (HIMMEL-2733) ─────────────────────────────────────────────────
+// ── profile ─────────────────────────────────────────────────
 //
 // A THIN passthrough, same shell-out shape as deriveUpdateCommand/cmdUpdate
 // (resolveBash() + toBashPath() for the Windows Git-Bash path fix): forward
@@ -5322,12 +5321,12 @@ function cmdProfile(argvRest) {
   return runSpawn({ argv: [resolveBash(), script, ...argvRest] });
 }
 
-// ── status (HIMMEL-756 T1.5/T1.6) ────────────────────────────────────────
+// ── status ────────────────────────────────────────
 //
 // A read-only severity diff: desired = the target's manifest-derived
 // `enabled` flags (lib/state.js), actual = a fresh probe run (lib/probes.js)
 // for every desired-enabled item. NEVER prompts (no readline anywhere in
-// this section) and NEVER mutates, ever (HIMMEL-2463) — a target with no
+// this section) and NEVER mutates, ever — a target with no
 // state.json entry yet, or one whose entry predates a manifest update, is
 // derived/migrated in memory only (statusReportLib's own stateLib.load()/
 // deriveTarget() fallback, never ensureTarget()/save()). Persisting that
@@ -5346,11 +5345,11 @@ function loadManifest() {
   return JSON.parse(fs.readFileSync(path.join(repoRoot(), 'scripts', 'install', 'manifest.json'), 'utf8'));
 }
 
-// cmdStatus is now a thin caller (HIMMEL-755 A2): it resolves scope/target
+// cmdStatus is now a thin caller: it resolves scope/target
 // and delegates the desired-vs-actual results loop, including any
 // derive-or-migrate comparison, to the parameterized
 // statusReportLib.statusReport() (lib/status-report.js) — which does its own
-// state.json READ and never writes it (HIMMEL-2463) — then only
+// state.json READ and never writes it — then only
 // renders/emits its output.
 async function cmdStatus(args) {
   const manifest = loadManifest();
@@ -5375,7 +5374,7 @@ async function cmdStatus(args) {
   const scope = cachedAnswers.scope;
   const baseTargetPath = scope === 'user' ? repoRoot() : path.resolve(process.cwd());
 
-  // HIMMEL-2463: status is documented read-only and must stay that way — the
+  // status is documented read-only and must stay that way — the
   // derive-or-migrate comparison lives entirely in statusReportLib's own
   // in-memory stateLib.load()/deriveTarget() fallback (its module header),
   // which never calls stateLib.save()/ensureTarget(). Persisting a
@@ -5396,7 +5395,7 @@ async function cmdStatus(args) {
     return byGroup !== 0 ? byGroup : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   });
   for (const r of printed) console.log(`${r.severity}  ${r.id}  ${r.detail}`);
-  // HIMMEL-3307: an n/a row is either "not wanted here" (desired:false) or a
+  // an n/a row is either "not wanted here" (desired:false) or a
   // wanted item downgraded from red because it is optional/not initialized yet
   // (desired:true). "0 red" alone hides that second kind, so name it. Text
   // only — the --json summary shape above is byte-stable.
@@ -5406,7 +5405,7 @@ async function cmdStatus(args) {
   return 0;
 }
 
-// HIMMEL-4254 P2: `report --json`. Read-only; composes the existing engines
+// `report --json`. Read-only; composes the existing engines
 // (lib/config-feed.js). Row ids are free-form (doctor:C24-x, flag:NAME), so
 // --items is NOT validated against the manifest here — an unknown id yields no
 // row. No install profile is not an error: the feed says profileCache:false.
@@ -5426,7 +5425,7 @@ function cmdReport(args) {
   return 0;
 }
 
-// HIMMEL-4480: the newest ~/.claude/projects/<slug>/<session-id>.jsonl by mtime, or null.
+// the newest ~/.claude/projects/<slug>/<session-id>.jsonl by mtime, or null.
 function latestSessionId(projects) {
   let best = null, bestMs = -1;
   let slugs = [];
@@ -5445,7 +5444,7 @@ function latestSessionId(projects) {
   return best;
 }
 
-// HIMMEL-4254 P3: `ui` runs scripts/config-ui/server.ts under bun in the
+// `ui` runs scripts/config-ui/server.ts under bun in the
 // foreground. The server prints the tokened URL itself; this verb only locates
 // it, refuses a missing bun, and forwards the exit code.
 function cmdUi(args) {
@@ -5481,7 +5480,7 @@ function cmdUi(args) {
   });
 }
 
-// HIMMEL-3312 S13 item 7 ("himmelctl doctor"): the health-check surface for
+// the health-check surface for
 // a machine that already deleted its clone is `himmelctl status` — there is
 // no separate `doctor` verb in this CLI. A bundle whose ledger-recorded
 // himmel_root is gone is not itself a fault (that IS the standalone path's
@@ -5497,7 +5496,7 @@ function printOrphanedBundleInfo() {
   } catch (_e) { /* no bundle, or not ours */ }
 }
 
-// ── gaps (HIMMEL-2348 deliverable 2) ─────────────────────────────────────
+// ── gaps ─────────────────────────────────────
 //
 // "What does starter not get from operator?" A NEW subcommand, not a
 // `status` mode — deliberately: ALLOWED_OPTIONS is a per-subcommand
@@ -5672,7 +5671,7 @@ async function cmdGaps(args) {
   const reference = loadProfile(referencePath);
 
   const { choices, unverified, notRecorded } = diffProfiles(thisProfile, reference);
-  // HIMMEL-2348 CR finding 3: TBD_DELTA (tbd-delta.json / docs/setup/
+  // TBD_DELTA (tbd-delta.json / docs/setup/
   // operator-profile-tbd-delta.md) is a delta capture from ONE specific
   // machine — the operator's, see the doc's opening paragraphs — not a
   // property of "the reference profile" in general. Rendering it against a
@@ -5727,7 +5726,7 @@ async function cmdGaps(args) {
   return 0;
 }
 
-// ── ensure (HIMMEL-755 A5/A5b) ───────────────────────────────────────────
+// ── ensure (A5/A5b) ───────────────────────────────────────────
 //
 // Converge this target toward its desired manifest state: pre-check via
 // statusReport, build a work list from red/degraded desired-true items that
@@ -5750,16 +5749,16 @@ async function cmdGaps(args) {
 // own independent stateLib.load() would otherwise read the STALE on-disk
 // entry for an EXISTING target reconciled-but-not-yet-saved (its no-entry
 // fallback only happens to agree for the FIRST-derive case, not a reconcile
-// of an already-persisted entry — this bit ensure once, HIMMEL-755 CR fix).
+// of an already-persisted entry — this bit ensure once).
 
-// HIMMEL-2349: what running the disable actually DOES, for the per-item
+// what running the disable actually DOES, for the per-item
 // evidence line below — a per-item removable item names its real unwire
 // command (installEngineLib.unwireCommand()); a full-offboard-only item has
 // no unwire descriptor by definition, so the honest answer is the manual
 // `himmelctl uninstall` path (same wording cmdEnsure's own Step 4 already
 // uses for that case).
 //
-// HIMMEL-2349 (CR round 8, codex-1): returns the WHOLE clause (verb
+// returns the WHOLE clause (verb
 // included), not just a command string the caller prefixes with a fixed
 // "disabling would run: " — the verb differs by case. A full-offboard-only
 // item is NEVER run here: cmdEnsure's Step 4 disable dispatch takes the
@@ -5775,7 +5774,7 @@ function describeDisableAction(item, ctx) {
   if (item.removable === 'per-item' && item.unwire) {
     const spec = installEngineLib.unwireCommand(item, ctx);
     if (spec.unrunnable) return `disabling has no automated unwire path (${spec.unrunnable}) — manual`;
-    // HIMMEL-2349 (codex-4): this line is consent evidence the operator reads
+    // this line is consent evidence the operator reads
     // before allowing a disable — an unquoted arg containing a space (the
     // common case on Windows, not the edge case) renders ambiguously, so
     // reuse the same display-only shellQuote() displayCommand() already
@@ -5787,13 +5786,13 @@ function describeDisableAction(item, ctx) {
     + "the run will STOP and ask you to run 'himmelctl uninstall' yourself";
 }
 
-// HIMMEL-2349 (Fix B2 — "explain each disable"): one evidence line per
+// one evidence line per
 // disable candidate. "not enabled for this target (profile/scope)" is not
 // something an operator can meaningfully consent to — this names what the
 // recorded profile actually says, what's live right now, and exactly what
 // disabling would run.
 //
-// HIMMEL-2349 (codex-3, re-raise): `recordedProfile` MUST be
+// `recordedProfile` MUST be
 // cachedAnswers.profile (the schema-v2 field actually written into
 // install-profile.json) — the call site used to pass `target.profile`
 // instead, which is the RESOLVED manifest membership category persisted in
@@ -5828,7 +5827,7 @@ async function cmdEnsure(args) {
     return 2;
   }
   const cachedAnswers = loadProfile(profilePath);
-  // HIMMEL-2349: install-profile.json carries no "recorded at" field of its
+  // install-profile.json carries no "recorded at" field of its
   // own (writeCache() just serializes the answers) — the file's own mtime is
   // the best available "when" for the per-item disable-evidence lines below.
   let profileMtime;
@@ -5860,7 +5859,7 @@ async function cmdEnsure(args) {
   // the SAME desired flags an unsaved derive/reconcile here would have
   // produced, for every case this verb is exercised against.
   //
-  // CR fix (Critical, round 2): the save itself is DEFERRED past the
+  // the save itself is DEFERRED past the
   // consent gate below (`stateChanged` tracks whether ensureTarget/
   // reconcileTarget actually mutated `state`) — an operator who declines
   // the confirm, or a non-interactive run refused for lacking --yes, must
@@ -5872,13 +5871,13 @@ async function cmdEnsure(args) {
   const existedBefore = Boolean(state.targets[targetKey]);
   const itemCountBefore = existedBefore ? Object.keys(state.targets[targetKey].items).length : 0;
   let target = stateLib.ensureTarget(state, manifest, cachedAnswers);
-  // HIMMEL-1017: ensureTarget() can now also MIGRATE an existing target (add
+  // ensureTarget can now also MIGRATE an existing target (add
   // manifest items it was missing) — count that as a state change too, same
   // as a brand-new derive, so the migrated items get persisted rather than
   // silently staying in-memory-only for this one run.
   let stateChanged = !existedBefore || Object.keys(target.items).length !== itemCountBefore;
 
-  // HIMMEL-2349 root-cause fix: the recorded install-profile (cachedAnswers)
+  // root-cause fix: the recorded install-profile (cachedAnswers)
   // is loaded above for every `ensure` run, but until now nothing ever fed
   // it back into this target's persisted `enabled` flags UNLESS the operator
   // passed an explicit --profile (Step 0 below) — a target derived once
@@ -5891,7 +5890,7 @@ async function cmdEnsure(args) {
   // CURRENTLY recorded profile would enable, that this target doesn't
   // already have enabled, gets turned on right here.
   //
-  // HIMMEL-2349 (codex-1/codex-2, Critical + Suggestion, same root): SKIPPED
+  // SKIPPED
   // ENTIRELY when args.profile is supplied THIS run — Step 0's reconcile
   // moments later is authoritative and would discard whatever this overlay
   // just did anyway (turning items on here only for Step 0 to immediately
@@ -5901,7 +5900,7 @@ async function cmdEnsure(args) {
   // noise. This is also what makes reconcileTarget()'s profileSource stamp
   // meaningful ACROSS runs: the one run that sets it never fights it.
   //
-  // HIMMEL-4267: ALSO skipped under --items. A scoped run converges only the
+  // ALSO skipped under --items. A scoped run converges only the
   // named items; turning other items on (and persisting them) is a profile
   // decision that belongs to bare `ensure` / `install` / `update`, not to a
   // one-item repair like himmel-update's `ensure --items pre-commit-hooks`.
@@ -5926,7 +5925,7 @@ async function cmdEnsure(args) {
   }
 
   // Step 0: reconcile FIRST whenever --profile is explicitly supplied —
-  // CR fix: NOT only when it differs from the target's stored profile. A
+  // NOT only when it differs from the target's stored profile. A
   // target's PER-ITEM `enabled` flags can go stale even when the profile
   // NAME itself is unchanged (a hand-edited state.json, or a manifest that
   // gained new items for the same profile since the target was last
@@ -5936,7 +5935,7 @@ async function cmdEnsure(args) {
   // this, the pre-check work list would be computed against a possibly-
   // stale target and ensure would false-no-op on exactly the items the
   // operator asked to reconcile.
-  // CR fix (CodeRabbit round 18): pass the AUTHORITATIVE invocation `scope`
+  // pass the AUTHORITATIVE invocation `scope`
   // (cachedAnswers.scope, the same value targetKey/baseTargetPath and the
   // statusReport call below are computed from), NOT `target.scope`.
   //
@@ -5960,7 +5959,7 @@ async function cmdEnsure(args) {
     stateChanged = true;
   }
 
-  // HIMMEL-2176 (round-3 ruling, ask-first gate): guardrail-block-global
+  // guardrail-block-global
   // writes the OPERATOR'S GLOBAL ~/.claude/settings.json — machine state
   // outside this repo, and outside the blast radius the general per-run
   // --yes consent (Step 3, below) is scoped to reason about. It must never
@@ -6001,7 +6000,7 @@ async function cmdEnsure(args) {
           itemState.overrides.consent = decided;
           stateChanged = true;
           if (args.items) {
-            // HIMMEL-4267: a scoped run saves no derive/reconcile bookkeeping,
+            // a scoped run saves no derive/reconcile bookkeeping,
             // but the operator's own answer about the requested item is
             // theirs to keep — write that one field into a fresh state.
             const fresh = stateLib.load();
@@ -6052,7 +6051,7 @@ async function cmdEnsure(args) {
     }
   }
 
-  // HIMMEL-4308: --no-network is deny-by-default. Only an item whose manifest
+  // --no-network is deny-by-default. Only an item whose manifest
   // entry declares `noNetwork: { path: 'install' }` (its own install
   // primitive was traced to local file writes) stays in the work list; every
   // other runnable item is refused here, before any plan or spawn exists, so
@@ -6096,13 +6095,13 @@ async function cmdEnsure(args) {
   // ctxForItem (minus the luna-vault-scaffold special case; not relevant to
   // any removable item authored so far).
   const towardDisabled = [];
-  // HIMMEL-2349: probe evidence per disable candidate, id -> probe, so the
+  // probe evidence per disable candidate, id -> probe, so the
   // consent offer below can explain EACH one ("recorded profile says X;
   // live state says Y; disabling would run Z") instead of a bare id list.
   const towardDisabledProbes = new Map();
   const desiredIds = new Set(pre.items.filter((r) => r.desired).map((r) => r.id));
   for (const item of manifest.items) {
-    // CR fix: also require item.scopes.includes(scope) — without it, a
+    // also require item.scopes.includes(scope) — without it, a
     // project-scope run processed user-only removable items and vice versa
     // (scope bleed). Mirrors the SAME membership check deriveTarget()/
     // reconcileTarget() apply for the toward-ENABLED side.
@@ -6110,7 +6109,7 @@ async function cmdEnsure(args) {
     if (args.items && args.items.indexOf(item.id) === -1) continue;
     const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
     const probe = probesLib.runProbe(item, ctx);
-    // CR fix: a degraded (not just fully present) removable item is STILL
+    // a degraded (not just fully present) removable item is STILL
     // physically there and still needs converging toward disabled — only a
     // clean 'absent' probe means there's genuinely nothing to remove.
     if (probe.actual !== 'absent') {
@@ -6119,7 +6118,7 @@ async function cmdEnsure(args) {
     }
   }
 
-  // CR fix (MAJOR): --items breaks dependency closure. planInstall's DFS
+  // --items breaks dependency closure. planInstall's DFS
   // (and reverseDependencyOrder, its toward-disabled counterpart)
   // deliberately treats a dep OUTSIDE the given item set as
   // already-satisfied — valid for a FULL run (anything excluded from the
@@ -6146,7 +6145,7 @@ async function cmdEnsure(args) {
 
   if (args.items) {
     // WHY THIS LOOP IS GATED ON --items — not an oversight (re-confirmed
-    // CodeRabbit round 22, re-raised as a duplicate; adjudicated "by design").
+    // re-raised as a duplicate; adjudicated "by design").
     // Unfiltered, the only deps that are desired + red/degraded AND absent
     // from towardEnabled are the HINT-ONLY ones (config-type/MCP items with
     // no runnable install descriptor): a runnable desired+red dep converges
@@ -6157,11 +6156,11 @@ async function cmdEnsure(args) {
     // spec. KNOWN, ACCEPTED downside: a runnable dependent CAN install atop a
     // still-red hint-only prereq — ensure surfaces the hint instead of
     // blocking. That is the spec's trade, not a bug; narrowing it is a SPEC
-    // change (sub-ticket D), not a CR fix. Re-open only with a concrete case
+    // change (sub-ticket D), not a. Re-open only with a concrete case
     // where hinting — not blocking — a hint-only prereq is the wrong call,
     // not the theoretical "a dependent installed anyway".
 
-    // CR fix (codex round 4, Suggestion): the `itemsSet` --items-membership
+    // the `itemsSet` --items-membership
     // Set that used to live here is gone — the closure checks route their
     // messages purely on what actually converges (runnability /
     // desired-ness), never on whether an id happens to be NAMED in --items,
@@ -6178,7 +6177,7 @@ async function cmdEnsure(args) {
     // that's exactly the case the "excluded == already satisfied"
     // assumption covers correctly, so it must NOT be rejected.
     //
-    // CR fix (MAJOR): `itemsSet.has(depId)` is NOT sufficient to skip —
+    // `itemsSet.has(depId)` is NOT sufficient to skip
     // being NAMED in --items doesn't mean the dep will actually be
     // installed this run. The only thing that proves it WILL converge is
     // membership in towardEnabled itself (the same filtered set
@@ -6190,7 +6189,7 @@ async function cmdEnsure(args) {
     // `--items` membership is never sufficient on either side (enabled or
     // disabled) — only ACTUAL convergence this run is.
     const towardEnabledIds = new Set(towardEnabled.map((i) => i.id));
-    // CR fix (CodeRabbit round 23, MAJOR): this is now a TRANSITIVE
+    // this is now a TRANSITIVE
     // prerequisite walk, not a direct-edge scan. The prior loop inspected
     // only item.deps[], so a red/desired ANCESTOR hidden behind a GREEN
     // middle node (A red <- B green <- C) was never reached: B is green so
@@ -6228,7 +6227,7 @@ async function cmdEnsure(args) {
       }
       if (missingDepId === null) continue;
       const depStatus = fullById.get(missingDepId);
-      // CR fix (codex round 4, Suggestion): route the remediation message on
+      // route the remediation message on
       // RUNNABILITY (the SAME predicate the towardEnabled/hints split above
       // uses), never on --items membership — being NAMED in --items is no
       // proof a dep will converge (a hint-only dep never lands in
@@ -6251,7 +6250,7 @@ async function cmdEnsure(args) {
     }
   }
 
-  // Toward-disabled direction (CR fix, CodeRabbit round 19 — UNGATED: runs
+  // Toward-disabled direction (19 — UNGATED: runs
   // on EVERY ensure, filtered or not): the inverse hazard — unwiring an
   // item while a still-desired DEPENDENT would leave that dependent broken.
   // Checked against every in-scope manifest item (a dependent need not
@@ -6267,7 +6266,7 @@ async function cmdEnsure(args) {
   // moment A unwires. Drifted persisted entries are real here — the stale-
   // scope defect fixed in 7222492 on this same PR was exactly that.
   //
-  // CR fix (MAJOR, cross-model convergence — codex + CodeRabbit
+  // (cross-model convergence: codex + CodeRabbit
   // independently found the SAME bug): the previous `itemsSet.has(item.id)`
   // skip was backwards — being INCLUDED in --items does not mean the
   // dependent is being disabled; it only means it's in scope. `--items
@@ -6279,7 +6278,7 @@ async function cmdEnsure(args) {
   // already unwinds it BEFORE the prerequisite). So: reject whenever the
   // dependent is still desired, regardless of --items membership.
   //
-  // CR fix (codex round 4, Suggestion): the message used to branch on
+  // the message used to branch on
   // --items membership and, for the EXCLUDED case, advise "add it:
   // --items prereq,dependent" — advice that doesn't work: merely NAMING
   // dependent in --items was just proven above to be insufficient on its
@@ -6292,7 +6291,6 @@ async function cmdEnsure(args) {
   // check now being ungated, the message no longer claims --items on an
   // unfiltered run either.
 
-  // HIMMEL-2349 (Fix B1/B3 — split consent + under-recorded guard): a
   // disable is a DIFFERENT, higher risk than a converge (converge only ever
   // ADDS wiring; disable REMOVES it) and must never share one Y/n with it —
   // see the incident this ticket fixes: an operator was offered "converge 1;
@@ -6303,12 +6301,12 @@ async function cmdEnsure(args) {
   // as the record itself looking stale/thin rather than a genuine bulk
   // decommission — same detection Fix A's additive overlay already
   // recognizes (a recorded profile that simply doesn't declare items this
-  // target visibly has running); see HIMMEL-2350 for one concrete way a
+  // target visibly has running); see for one concrete way a
   // record goes stale (a non-hermetic test suite run overwriting real
   // state). ponytail: a flat constant, not a percentage/config knob — raise
   // it if it proves too eager in practice.
   //
-  // HIMMEL-2349 (codex-2, re-raise): this guard used to have NO escape
+  // this guard used to have NO escape
   // hatch — an operator doing a genuine, deliberate downgrade (`ensure
   // --profile core` on a target previously converged richer) could never
   // carry it out, and worse, it could WEDGE: an explicit --profile reconcile
@@ -6326,7 +6324,7 @@ async function cmdEnsure(args) {
   // guard's protection is kept for the DEFAULT path (no --profile), which
   // is the actual incident this was written for — an ambient/stale record.
   const UNDER_RECORDED_LIVE_THRESHOLD = 3;
-  // HIMMEL-2349 (codex-1, round 6): an item carrying a deliberate per-item
+  // an item carrying a deliberate per-item
   // override (target.items[id].overrides non-empty — stateLib.hasDeliberateOverride)
   // is recorded OPERATOR INTENT, the strongest possible evidence the record is
   // NOT under-recorded — yet it's still 'removable' + not-desired + physically
@@ -6346,7 +6344,7 @@ async function cmdEnsure(args) {
   // prune while the converge phase still proceeds — `doPrune` itself stays
   // the ORIGINAL pre-confirm intent (used below to derive disabledIds for
   // the hazard walk).
-  // HIMMEL-2349 (v2): the reverse-dependency hazard walk below evaluates
+  // the reverse-dependency hazard walk below evaluates
   // against this INTENDED prune set (disabledIds, derived from doPrune), but
   // it may only reject the PRUNE pass itself (pruneConfirmed=false,
   // pruneRejected=true) — it must never abort the whole run/veto the
@@ -6374,7 +6372,7 @@ async function cmdEnsure(args) {
   }
 
   const disabledIds = new Set(doPrune ? towardDisabled.map((i) => i.id) : []);
-  // CR fix (CodeRabbit round 23, MAJOR): this is now a TRANSITIVE reverse
+  // this is now a TRANSITIVE reverse
   // closure, not a direct-edge scan. The prior loop checked each item's OWN
   // deps[] for a disabled id, so a still-desired DEPENDENT hidden behind an
   // UNDESIRED-but-present middle node (desired C -> undesired-present B ->
@@ -6387,7 +6385,7 @@ async function cmdEnsure(args) {
   // still-desired dependent reached that is not itself being disabled. A
   // dependent in towardDisabled is legitimately fine
   // (reverseDependencyOrder unwinds it BEFORE the prerequisite); `visited`
-  // guards cycles. (This check stays UNGATED — round 19 — so it fires on an
+  // guards cycles. (This check stays UNGATED — an earlier fix — so it fires on an
   // unfiltered run too; the message therefore never claims --items.)
   const dependentsOf = new Map();
   for (const item of manifest.items) {
@@ -6397,7 +6395,7 @@ async function cmdEnsure(args) {
       dependentsOf.get(depId).push(item.id);
     }
   }
-  // CR fix (CodeRabbit round 23 follow-on, MAJOR): descend THROUGH an
+  // descend THROUGH an
   // undesired intermediate ONLY when it is actually PRESENT. statusReport
   // deliberately leaves an undesired item's actual state UNPROBED
   // (fullById.get(B).actual === null for a desired:false B — status-report.js
@@ -6424,7 +6422,7 @@ async function cmdEnsure(args) {
     presenceCache.set(id, present);
     return present;
   };
-  // HIMMEL-2349 (v2): collected, not printed/aborted immediately — a hazard
+  // collected, not printed/aborted immediately — a hazard
   // here may only reject the PRUNE pass (see the pruneConfirmed comment
   // above), never the whole run, so this loop no longer `return`s.
   const pruneHazards = [];
@@ -6467,7 +6465,7 @@ async function cmdEnsure(args) {
       }
     }
   }
-  // HIMMEL-2349 (v2): print every collected hazard once, on stderr, BEFORE
+  // print every collected hazard once, on stderr, BEFORE
   // any prompt — then narrow the rejection to the PRUNE pass only. The
   // converge phase (towardEnabled) is untouched by this: doPrune stays as
   // computed, but pruneConfirmed (which now gates the disable dispatch and
@@ -6491,7 +6489,7 @@ async function cmdEnsure(args) {
     if (towardEnabled.length === 0) return 2;
   }
 
-  // CR fix: hints must be surfaced on EVERY path, not only the "nothing to
+  // hints must be surfaced on EVERY path, not only the "nothing to
   // converge" early return below — a run that ALSO does real work was
   // dropping them silently. Printed once, unconditionally, right after
   // they're known.
@@ -6499,7 +6497,7 @@ async function cmdEnsure(args) {
     console.log(`himmelctl: ${hints.length} item(s) need manual convergence (no automated install path yet): ${hints.join(', ')}`);
   }
 
-  // HIMMEL-2349: "nothing to converge" is now judged on towardEnabled +
+  // "nothing to converge" is now judged on towardEnabled +
   // whether a --prune disable pass is actually going to run (pruneConfirmed,
   // which the hazard walk above may have already forced false) — NOT on the
   // mere existence of disable candidates, which by default are
@@ -6510,7 +6508,7 @@ async function cmdEnsure(args) {
     // rule below) to persist the derive/reconcile bookkeeping right here.
     if (stateChanged && !args.dryRun && !args.items) stateLib.save(state);
     if (refused.length > 0) return 1;
-    // CR fix: "already at the desired state" is FALSE when hints remain —
+    // "already at the desired state" is FALSE when hints remain
     // those items still need manual convergence. Say so instead.
     console.log(hints.length > 0
       ? 'himmelctl: nothing can be converged automatically — manual convergence is still required.'
@@ -6518,7 +6516,7 @@ async function cmdEnsure(args) {
     return 0;
   }
 
-  // CR fix (Critical): a NON-interactive run (piped/automation — exactly how
+  // a NON-interactive run (piped/automation — exactly how
   // himmelctl runs outside a Claude session) with neither --yes nor
   // --dry-run must NOT silently proceed with no consent. Checked AFTER the
   // no-work early return (nothing to consent to there) and BEFORE the offer/
@@ -6529,7 +6527,7 @@ async function cmdEnsure(args) {
     return 2;
   }
 
-  // Step 3: SPLIT consent (HIMMEL-2349, Fix B1) — converge and disable are
+  // Step 3: SPLIT consent (Fix B1) — converge and disable are
   // different risk classes (converge only ever ADDS wiring; disable REMOVES
   // it), so disables NEVER ride the converge Y/n: they require their own
   // explicit opt-in (--prune) plus their own separate confirmation below —
@@ -6571,23 +6569,23 @@ async function cmdEnsure(args) {
   // behind !args.dryRun (dry-run's zero-mutation guarantee is unconditional).
   provOpen(args); // HIMMEL-3332 S5: past every no-op/refusal return, before the first mutation
   provStep = 'ensure';
-  // HIMMEL-4267: a scoped (--items) run never persists derive/migrate
+  // a scoped (items) run never persists derive/migrate
   // bookkeeping — the recorded target stays byte-identical (the requested
   // item's own consent answer is written separately where it is asked).
   if (stateChanged && !args.dryRun && !args.items) stateLib.save(state);
 
   // Step 4: toward-disabled dispatch (A5b) — per-item `removable` check.
-  // CR fix: dispatched in REVERSE dependency order (a dependent, B deps on
+  // dispatched in REVERSE dependency order (a dependent, B deps on
   // A, unwires BEFORE its prerequisite A) — the inverse of install-time
   // ordering, not manifest declaration order.
   const disableErrors = [];
-  // CR fix: tracks successful unwires (unwire ran AND the re-probe
+  // tracks successful unwires (unwire ran AND the re-probe
   // confirmed 'absent') — the final "N converged" summary must include
   // these alongside the toward-enabled installs (towardEnabled.length), so a
   // run that ALSO successfully disabled items doesn't silently under-report
   // its own result.
   const disabled = [];
-  // CR fix (CodeRabbit round 16, MAJOR — fail-closed): a REAL (non-dry-run)
+  // a REAL (non-dry-run)
   // disable failure used to just record the error and keep going, unwiring
   // every remaining item regardless — compounding a broken state (e.g.
   // unwiring a prerequisite right after its dependent's OWN unwire already
@@ -6598,13 +6596,13 @@ async function cmdEnsure(args) {
   // a real run, and only for a failure the operator couldn't have
   // dry-run-previewed away.
   let disableAborted = false;
-  // HIMMEL-2349: the whole disable phase is gated on pruneConfirmed — an
+  // the whole disable phase is gated on pruneConfirmed — an
   // empty list here means Step 4 below is a complete no-op (disabled stays
   // [], disableAborted stays false), exactly "ensure offers zero disables"
   // by default.
   for (const item of installEngineLib.reverseDependencyOrder(pruneConfirmed ? towardDisabled : [])) {
     if (item.removable === 'per-item' && item.unwire) {
-      // CR fix: build the spec and check spec.unrunnable BEFORE the
+      // build the spec and check spec.unrunnable BEFORE the
       // dry-run branch — under the shipped-then-buggy order, a dry-run
       // printed "DRY: unwire <id>" and returned success for an item whose
       // unwire descriptor is genuinely unrunnable, since unwireCommand()
@@ -6622,18 +6620,18 @@ async function cmdEnsure(args) {
         console.log(`DRY: unwire ${item.id}`);
         continue;
       }
-      // CR fix: routed through installEngineLib.runUnwire() — the SAME
+      // routed through installEngineLib.runUnwire — the SAME
       // hardened spawn path runInstall's own installs already use
       // (env-scrubbed HIMMELCTL_SUDO_PASSWORD, INSTALL_TIMEOUT_SECS timeout
       // + tree-kill on timeout, signal/ETIMEDOUT classification). A raw
       // spawnSync(spec.cmd, spec.args, {stdio:'inherit'}) here — the
       // shipped-then-buggy shape — got NEITHER hardening even after both
       // landed on the install path: a cross-model review caught this drift
-      // after ~10 CodeRabbit rounds. See runHardenedSpawn()'s own header
+      // after ~10. See runHardenedSpawn's own header
       // for the full rationale.
       const result = installEngineLib.runUnwire(spec);
       if (!result.ok) {
-        // CR fix: the reason (e.g. "timed out after Ns") is now appended —
+        // the reason (e.g. "timed out after Ns") is now appended
         // a NEW failure mode (timeout) the unwire path never had before
         // routing through the shared hardened spawn, so there's no prior
         // message shape to preserve for it; every OTHER disableErrors
@@ -6643,7 +6641,7 @@ async function cmdEnsure(args) {
         disableAborted = true;
         break;
       }
-      // CR fix: the unwire primitive exiting 0 doesn't itself prove the
+      // the unwire primitive exiting 0 doesn't itself prove the
       // resource is gone — re-probe and treat ANY result other than
       // 'absent' (still 'present', or now merely 'degraded') as a failure.
       const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
@@ -6655,12 +6653,11 @@ async function cmdEnsure(args) {
       }
       disabled.push({ id: item.id });
     } else {
-      // CR fix (HIMMEL-1100 round 6, CodeRabbit App PR #1500 thread #4):
       // this branch used to push the blocker UNCONDITIONALLY, without ever
       // probing the item's actual state — so a full-offboard-only item that
       // is PERMANENTLY degraded (e.g. guardrail-block-global, which through
       // this ticket's own round-3 fix could never reach 'present' from
-      // status output alone — HIMMEL-1418 later gave it a `status --json`
+      // status output alone — later gave it a `status --json`
       // verb rich enough to confirm a genuine full install, so it is no
       // longer an example of a permanently-degraded item, but the general
       // shape still applies to any probe that structurally can't confirm
@@ -6691,7 +6688,7 @@ async function cmdEnsure(args) {
     }
   }
 
-  // Step 5: plan + run the toward-enabled work. CR fix (CodeRabbit round
+  // Step 5: plan + run the toward-enabled work.
   // 16, MAJOR — fail-closed): skipped entirely when a real disable failure
   // already aborted above (`disableAborted`) — do NOT proceed to installs
   // on top of a disable phase that didn't finish cleanly. `disableAborted`
@@ -6702,11 +6699,11 @@ async function cmdEnsure(args) {
   if (towardEnabled.length > 0 && !disableAborted) {
     const plan = installEngineLib.planInstall(towardEnabled, {
       repoRoot: repoRoot(), scope, profile: target.profile, targetPath: baseTargetPath, env: process.env,
-      // CR fix (CodeRabbit round 19): the qmd install flow registers the
+      // the qmd install flow registers the
       // luna collection at the vault path; expandHome mirrors every other
       // vault-path consumer in this file (adopt's --luna-target, the
       // luna-vault-scaffold wire). Undefined/empty when vault.mode=none.
-      // CR fix (CodeRabbit round 20): empty here is NOT "harmless — the qmd
+      // empty here is NOT "harmless — the qmd
       // items are never desired without a vault" (the round-19 reasoning this
       // line used to carry): under an EXPLICIT --profile luna/all the qmd
       // items (profiles:["luna","all"]) ARE desired+red even with no vault,
@@ -6717,7 +6714,7 @@ async function cmdEnsure(args) {
     });
     if (args.dryRun) {
       for (const p of plan) {
-        // CR fix: a plan entry can be {unrunnable: "..."} (buildEntry's own
+        // a plan entry can be {unrunnable: "..."} (buildEntry's own
         // failure case, e.g. an unmapped win32 dep) with no .cmd/.args at
         // all — printing `DRY: ${p.cmd} ${p.args.join(' ')}` against that
         // shape crashed into `DRY: undefined undefined` and (since nothing
@@ -6736,7 +6733,7 @@ async function cmdEnsure(args) {
     }
   }
 
-  // CR fix: a --dry-run full-offboard-only blocker (pushed into
+  // a --dry-run full-offboard-only blocker (pushed into
   // disableErrors above regardless of --dry-run) must NOT be silently
   // dropped — surface it as a DRY line and fail the dry-run's own exit
   // code, matching what the real (non-dry-run) run would report. Folds in
@@ -6746,7 +6743,7 @@ async function cmdEnsure(args) {
     return (disableErrors.length > 0 || previewErrors.length > 0 || pruneRejected || refused.length > 0) ? 1 : 0;
   }
 
-  // CR fix (CodeRabbit round 16, MAJOR — fail-closed): a real disable
+  // a real disable
   // failure aborted the loop above BEFORE any install was ever attempted
   // (Step 5, above, already skipped on `disableAborted`) — report it now
   // and stop, never reaching the post-check below. `disableErrors` holds
@@ -6772,14 +6769,14 @@ async function cmdEnsure(args) {
     return Boolean(item.install) && installEngineLib.RUNNABLE_INSTALL_TYPES.indexOf(item.install.type) !== -1;
   });
 
-  // CR fix: `failed` (runInstall's own report) was computed but never
+  // `failed` (runInstall's own report) was computed but never
   // consulted here — a primitive that genuinely failed (nonzero exit,
   // signal, or an unrunnable descriptor) whose target item's post-check
   // probe HAPPENED to pass anyway (e.g. a partially-applied change, or an
   // unrelated pre-existing green) read as a false success. A failed/nonzero
   // install must never yield a successful ensure, independent of what the
   // probe says afterward.
-  // HIMMEL-4267: under --items the requested item is judged by its OWN
+  // under --items the requested item is judged by its OWN
   // post-check. A failed primitive whose item probes green (a coalesced
   // installer's unrelated step failing after the item was placed) is a
   // warning, not a failure of the item asked for.
@@ -6807,7 +6804,7 @@ async function cmdEnsure(args) {
     }
     return 1;
   }
-  // CR fix (CodeRabbit round 19): count MANIFEST ITEMS converged, not plan
+  // count MANIFEST ITEMS converged, not plan
   // ENTRIES executed. runInstall's per-entry report under-counts when
   // COALESCE_TYPES collapse the work: two adopt items coalesce into ONE
   // adopt.sh invocation, so the old `ran.length` reported "1 converged" for
@@ -6818,7 +6815,7 @@ async function cmdEnsure(args) {
   // disabled unwires (already per-item, never coalesced).
   const convergedCount = towardEnabled.length + disabled.length;
   console.log(`himmelctl: ensure complete (${convergedCount} converged).`);
-  // HIMMEL-2348: same offer as cmdInstall, after a genuinely successful
+  // same offer as cmdInstall, after a genuinely successful
   // converge. By this point args.dryRun is already known false (the dry-run
   // branch returned above) and the earlier non-interactive-without---yes
   // gate means only two shapes can reach here: args.yes (skip — no
@@ -6829,7 +6826,7 @@ async function cmdEnsure(args) {
   return 0;
 }
 
-// ── scope (HIMMEL-757 C — scope-switch MVP) ───────────────────────────────
+// ── scope (scope-switch MVP) ───────────────────────────────
 //
 // `scope get` / `scope status` print the current install scope (a natural
 // read off the install-profile cache). `scope set <project|user>` re-projects
@@ -6934,7 +6931,7 @@ async function cmdScopeSet(args) {
     console.error(`himmelctl: cannot switch scope '${oldScope}' -> '${newScope}': the following item(s) are wired in the old scope '${oldScope}' and have no mechanical unwire path, so switching would leave them wired in BOTH scopes:`);
     for (const id of failClosed) console.error(`  - ${id}`);
     console.error("Handle each manually (or via 'himmelctl uninstall'), or wait for the per-item unwire extension (HIMMEL-1172).");
-    // HIMMEL-2464: refused, ZERO mutation (this check runs before any spawn
+    // refused, ZERO mutation (this check runs before any spawn
     // or write) — a distinct exit code from a real mid-switch error (1) so an
     // unattended caller can tell "refused" from "failed" without parsing
     // prose.
@@ -7074,7 +7071,7 @@ async function cmdScopeSet(args) {
   if (wirePlanErrors.length > 0) {
     for (const p of wirePlanErrors) console.error(`himmelctl: ${p.id}: ${p.unrunnable}`);
     console.error(`himmelctl: scope switch aborted — the target scope '${newScope}' has ${wirePlanErrors.length} unrunnable item(s); old scope '${oldScope}' was NOT touched.`);
-    // HIMMEL-2464: refused before any mutation (old scope untouched) — same
+    // refused before any mutation (old scope untouched) — same
     // distinct exit code as the pre-flight fail-closed check above.
     return 3;
   }
@@ -7179,7 +7176,7 @@ async function cmdScopeSet(args) {
   // would leave the cache pointing at the OLD scope with the old state key
   // already deleted, which the CWD guard above then refuses to retry (stuck).
   // A fully transactional commit (journal/recovery marker) is deferred to
-  // HIMMEL-1174; the hard invariant (no item wired in BOTH scopes) already
+  // the hard invariant (no item wired in BOTH scopes) already
   // holds here — the wiring converged on disk above, before either write.
   // Gated behind !dryRun (dry-run returned above).
   writeCache(Object.assign({}, cachedAnswers, { scope: newScope }));
@@ -7213,11 +7210,11 @@ async function cmdScope(args) {
   return provSession(() => cmdScopeSet(args));
 }
 
-// ── trust ledger wiring (HIMMEL-1551) ───────────────────────────────────────
+// ── trust ledger wiring ───────────────────────────────────────
 //
-// `himmelctl trust on|off|status` — install, remove, or report the HIMMEL-1529
+// `himmelctl trust on|off|status` — install, remove, or report the
 // shadow ledger's hook entries in the project's .claude/settings.json. The
-// count lives in the wiring script's ENTRIES table, not here — HIMMEL-1547
+// count lives in the wiring script's ENTRIES table, not here
 // made it seven, and a number repeated in a comment is a number that drifts.
 //
 // Why this is a command at all: the recorder shipped behind a MANUAL PASTE of
@@ -7287,7 +7284,7 @@ async function cmdTrust(args) {
   const flags = [...{ on: [], off: ['--off'], status: ['--check'] }[args.trustVerb], settingsPath];
   // `node` directly, not via bash: the wiring script is a .mjs and this avoids
   // the Windows bare-`bash` resolution failure the hook commands themselves are
-  // written to dodge (HIMMEL-1516/1526).
+  // written to dodge.
   const r = spawnSync(process.execPath, [script, ...flags], { stdio: 'inherit' });
   if (r.error) {
     console.error(`himmelctl: could not run the trust wiring script: ${r.error.message}`);
@@ -7296,7 +7293,7 @@ async function cmdTrust(args) {
   return typeof r.status === 'number' ? r.status : 1;
 }
 
-// ── config (HIMMEL-758, epic HIMMEL-755 sub-ticket D) ───────────────────────
+// ── config ───────────────────────
 //
 // `himmelctl config` — an interactive TUI (reuses the T2 question engine's
 // own makeAsk()/askEnum()/askPath() readline primitives) plus a
@@ -7318,7 +7315,7 @@ async function cmdTrust(args) {
 //                                  overlay (never scripts/lanes/lanes.json —
 //                                  the shared registry is read-only from here).
 //   hooks.improveOnSubmit on|off  -> ADVISORY ONLY. IMPROVE_ON_SUBMIT is
-//                                  documented launching-shell-only (HIMMEL-127)
+//                                  documented launching-shell-only
 //                                  — nothing sources it from the repo .env —
 //                                  so writing it to a file would be a silent
 //                                  no-op. Printing the correct manual
@@ -7327,7 +7324,7 @@ async function cmdTrust(args) {
 //                                  (same bash-c dispatch pattern as the rest
 //                                  of this file), for the documented plugin
 //                                  names in full-plugin-enable.json
-//                                  (HIMMEL-2304: that table's own wizard
+//                                  (that table's own wizard
 //                                  enable step is gone; hookPluginNames()
 //                                  still reads its plugin NAMES here).
 // Deliberately NOT exposed here: the built-in safety PreToolUse hooks
@@ -7354,7 +7351,7 @@ function envFilePath() {
   return path.join(repoRoot(), '.env');
 }
 
-// The bash executable EVERY himmelctl bash spawn must use (HIMMEL-1192).
+// The bash executable EVERY himmelctl bash spawn must use.
 // `bash` bare is resolved by the OS PATH, and on the operator's Windows
 // PowerShell PATH that resolves to C:\Windows\System32\bash.exe — the WSL
 // launcher — because Git Bash is LAST on PATH. WSL cannot run a Windows-path
@@ -7373,7 +7370,7 @@ function envFilePath() {
 // ProgramFiles at a fixture) — on real posix those vars are unset, so the loop
 // finds nothing and falls through. If the standard locations miss, a win32
 // fallback scans PATH for a Git Bash installed elsewhere (scoop / portable /
-// choco-to-custom-dir) but NOT a WSL launcher (CR [codex-1] — HIMMEL-1192).
+// choco-to-custom-dir) but NOT a WSL launcher.
 // Only then does it fall back to bare 'bash' (posix always; win32 only if the
 // sole bash on PATH is WSL — then HIMMELCTL_BASH is the escape hatch; himmel
 // hard-gates bash, so an adopter has one). HIMMELCTL_BASH overrides everything
@@ -7435,7 +7432,7 @@ function firstNonWslBashOnPath() {
 // uses at the node/bash boundary. No-op on posix (no backslashes). Applied to
 // every SCRIPT-PATH arg handed to resolveBash() (writeEnvVar, writeHandoverDir,
 // runPreflight, deriveCommand, deriveExistingVaultPlan, deriveUpdateCommand)
-// and to the --env-file target by writeEnvVar/writeHandoverDir (HIMMEL-758/1192).
+// and to the --env-file target by writeEnvVar/writeHandoverDir.
 function toBashPath(p) {
   return p.replace(/\\/g, '/');
 }
@@ -7572,7 +7569,7 @@ function laneProfileState(base, local, laneId) {
   if (!lane) return 'unknown (lane absent from base registry)';
   if (lane.class === 'claude-tier') return 'not constrained (Claude tier)';
   const scope = Array.isArray(local.profileAllowlistScope) ? local.profileAllowlistScope : null;
-  // Shared predicate with resolve.mjs (HIMMEL-1448): a registry-marked lane
+  // Shared predicate with resolve.mjs: a registry-marked lane
   // is constrained even when outside the persisted scope snapshot.
   const { isProfileManaged } = require('../lanes/profile-managed.cjs');
   const managed = isProfileManaged(lane);
@@ -7865,7 +7862,7 @@ async function cmdConfig(argv) {
   return 2;
 }
 
-// ── deps (HIMMEL-759, sub-ticket C of epic HIMMEL-755) ───────────────────
+// ── deps ───────────────────
 //
 // `himmelctl deps status|ensure|upgrade` — a version-aware toolchain
 // manager over scripts/install/deps.json, SEPARATE from the manifest's
@@ -7909,7 +7906,7 @@ async function cmdDepsStatus(args) {
 }
 
 // augmentPathForRun(homeDir, originalPath) -> {path, dirsToAdd} — the pure
-// computation behind cmdDepsEnsure's PATH re-resolution (HIMMEL-2438):
+// computation behind cmdDepsEnsure's PATH re-resolution:
 // $HOME/.bun/bin and $HOME/.local/bin, prepended ahead of originalPath,
 // skipping any already present there. `path` === originalPath and
 // `dirsToAdd` === [] when both are already on it. Extracted as a pure
@@ -7941,8 +7938,8 @@ async function cmdDepsEnsure(args) {
   const deps = loadDeps();
   const ctx = { repoRoot: repoRoot(), platform: process.platform };
 
-  // HIMMEL-2438: re-resolve PATH for THIS run BEFORE the status pass below
-  // (CR round 1, codex-1) — not right before building the plan. A dep a
+  // re-resolve PATH for THIS run BEFORE the status pass below
+  // not right before building the plan. A dep a
   // PRIOR run already installed into $HOME/.bun/bin or $HOME/.local/bin
   // must read PRESENT in `missing`'s own computation, or it stays stuck in
   // the plan forever (re-attempted, re-reported "about to install") even
@@ -8000,7 +7997,7 @@ async function cmdDepsEnsure(args) {
 
   const { ran, failed } = installEngineLib.runInstall(plan, { dryRun: false });
 
-  // CR fix (CodeRabbit, MAJOR): an entry runInstall reports as "installed" is
+  // an entry runInstall reports as "installed" is
   // NOT verified to actually be present afterward — a recipe can exit 0 yet
   // leave the tool off PATH (a no-op stub, a partial install, a recipe that
   // succeeds for an unrelated reason). Re-probe every reported-installed entry
@@ -8010,7 +8007,7 @@ async function cmdDepsEnsure(args) {
   // install that didn't actually land. A present-but-degraded entry DID land
   // (the binary is there; only its version probe failed), so it stays in the
   // installed count; only a genuinely-still-absent entry fails out.
-  // Honest counter (HIMMEL-2438): a dep that only resolves via the
+  // Honest counter: a dep that only resolves via the
   // PATH-augmented ctx above (never on the caller's OWN original PATH) DID
   // genuinely land — the recheck stays in the installed count, never the
   // "installed but still not found on PATH" failure that used to fire for
@@ -8163,7 +8160,7 @@ async function main() {
   // the same reason -h/--help is: parseArgs below only understands the shared
   // flag grammar, and this must answer before any subcommand dispatch.
   //
-  // HIMMEL-1599: himmel had no version, so no measurement we take — gate
+  // himmel had no version, so no measurement we take — gate
   // false-positive rates, dispatch-completion rates, suite timings — could be
   // attributed to a build. Reads VERSION rather than embedding a constant, so
   // there is exactly one place to bump.
@@ -8172,7 +8169,7 @@ async function main() {
   // still exits 0. `--version` failing loudly would make a diagnostic command
   // the thing that breaks the diagnosis.
   //
-  // HIMMEL-3400: also prints the git describe string (`v0.3.0-pre.6` on a tag,
+  // also prints the git describe string (`v0.3.0-pre.6` on a tag,
   // `v0.3.0-pre.6-N-g<sha>` past it) and the full commit — VERSION alone cannot
   // tell an operator whether the checkout is the release or something after it.
   // `--version --all` then runs the read-only ecosystem report
@@ -8180,7 +8177,7 @@ async function main() {
   // its rc: 1 when any component is behind, 3 when none is but one is unknown.
   if (argv.indexOf('--version') !== -1) {
     const root = repoRoot();
-    // Shared with the config feed's feed.himmel (HIMMEL-4403): VERSION is the
+    // Shared with the config feed's feed.himmel: VERSION is the
     // declared release line; describe/commit are the checkout's own state and
     // may read ahead of it between a release cut and the next VERSION bump.
     const { version, describe, commit } = himmelIdentity(root);
@@ -8211,7 +8208,7 @@ async function main() {
   if (argv[ci] === 'config') {
     return await cmdConfig(argv.slice(0, ci).concat(argv.slice(ci + 1)));
   }
-  // `profile` is a THIN PASSTHROUGH to plugin-profile.sh (HIMMEL-2733) with
+  // `profile` is a THIN PASSTHROUGH to plugin-profile.sh with
   // its OWN verb/flag grammar (list/lean/full/enable/disable, --json,
   // --dry-run, --template PATH, a bare-or-full <spec>) — same reason `config`
   // is special-cased above, before parseArgs/ALLOWED_OPTIONS (flags-only) can
@@ -8222,7 +8219,7 @@ async function main() {
     return cmdProfile(argv.slice(1));
   }
   const args = parseArgs(argv);
-  // CR fix: parseArgs signals a fatal validation error (e.g. a bad
+  // parseArgs signals a fatal validation error (e.g. a bad
   // --profile value) by setting process.exitCode itself and returning
   // early, rather than calling process.exit() synchronously. Returning
   // undefined here (a non-number) tells the top-level .then() below to
@@ -8272,7 +8269,7 @@ async function main() {
   return 2;
 }
 
-// HIMMEL-2438: guard the CLI's own auto-run so a test can `require()` this
+// guard the CLI's own auto-run so a test can `require` this
 // file to reach a pure helper (augmentPathForRun) without triggering the
 // whole install-wizard flow (argv parsing against the TEST's own argv,
 // process.exit, etc.) — `node scripts/himmelctl/bin.js ...` still runs
@@ -8280,7 +8277,7 @@ async function main() {
 // `require()` from another module skips straight to the export.
 if (require.main === module) {
   main()
-    // CR fix: ASSIGN process.exitCode rather than calling process.exit(code) —
+    // ASSIGN process.exitCode rather than calling process.exit(code)
     // process.exit() can truncate buffered stdout (notably a piped `--json`
     // payload) before it flushes. Setting exitCode and letting the process
     // terminate naturally once the event loop drains preserves the exit code

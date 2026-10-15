@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-gaps.sh — hermetic tests for the himmelctl `gaps` subcommand
-# (HIMMEL-2348 deliverable 2): "what does starter not get from operator?"
+# "what does starter not get from operator?"
 # gaps diffs THIS setup's saved install profile against a reference profile
 # (default docs/setup/profiles/operator.install-profile.json, or
 # --preset <name>/--from-profile <path>) and prints four DISTINCT groups:
@@ -39,7 +39,7 @@
 #      SAME primary ticket, and vice versa (STRUCTURAL, not instructional —
 #      this test fails the moment a row is dropped from either side, even
 #      when its path/ticket happen to still appear via a different row —
-#      HIMMEL-2348 CR: a path-keyed or ticket-set check is structurally
+#      a path-keyed or ticket-set check is structurally
 #      blind to exactly that kind of drift).
 #   g. an identical-to-reference profile -> group (a) empty, group (c)
 #      populated (present but unverified).
@@ -47,18 +47,18 @@
 #   i. --preset rejects a traversal name (reuses isValidProfileName —
 #      Part A's fix made the whitespace/trim half of that guard live).
 #   j. `gaps` is listed in the USAGE banner (bare --help and gaps --help).
-#   k. HIMMEL-2348 CR finding 2: a field genuinely MISSING from this
+#   k. 2: a field genuinely MISSING from this
 #      profile (not "off", not even the key present) is reported as
 #      "not recorded" — never as a choice the operator never made.
-#   l. HIMMEL-2348 CR finding 3: a non-operator --preset omits the
+#   l. 3: a non-operator --preset omits the
 #      operator-machine TBD-delta rows (group b) instead of presenting
 #      them as gaps against that preset.
-#   m. HIMMEL-2348 CR round 2 finding 4: a cadence id that's ARMED in the
+#   m. 2 finding 4: a cadence id that's ARMED in the
 #      reference but genuinely ABSENT (not "off") from this profile's own
 #      `cadences` object is reported as "not recorded", never as a choice —
 #      the same collapse case k already closed for GAPS_FIELDS, in the
-#      cadence loop that was scoped out of round 1.
-#   n. HIMMEL-2348 CR round 3 finding: a legacy v1 non-adopter (contributor)
+#      cadence loop that was scoped out.
+#   n. 3 finding: a legacy v1 non-adopter (contributor)
 #      profile — lanes:[] with no lanesMeaningful, the shape loadProfile's
 #      own !isV2 role==='adopter' exemption lets validate — never answered
 #      the lanes question at all. A reference lane absent from it must be
@@ -86,7 +86,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline (see sibling suites' identical helper for why: under `set -o
 # pipefail`, printf/echo into `grep -q` can report a SUCCESSFUL early match
-# as a failed pipeline — HIMMEL-1430).
+# as a failed pipeline —).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 node_bin=$(command -v node)
@@ -128,7 +128,7 @@ write_cache_match() {
 
 # write_cache_missing_alwaysOn <cache_dir> — same as write_cache_off, EXCEPT
 # the `alwaysOn` key is entirely ABSENT (not present-and-false) — an older
-# profile written before this question existed. Used by case k (HIMMEL-2348
+# profile written before this question existed. Used by case k
 # CR finding 2) to prove a missing field is reported as "not recorded",
 # never as an off-by-choice gap.
 write_cache_missing_alwaysOn() {
@@ -152,7 +152,7 @@ JSON
 # PRESENT but omits the "pipeline" id entirely (armed in the operator
 # reference) while explicitly answering "qmd" off — the round-2 twin of
 # write_cache_missing_alwaysOn, for the cadence loop in diffProfiles. Used by
-# case m (HIMMEL-2348 CR round 2 finding 4).
+# case m.
 write_cache_missing_cadence() {
   mkdir -p "$1"
   cat > "$1/install-profile.json" <<'JSON'
@@ -177,7 +177,7 @@ JSON
 # all — the OLD lanes question was adopter-only, so a contributor cache never
 # answered it; loadProfile's !isV2 role==='adopter' gate (bin.js ~1645)
 # exempts exactly this shape from the "lanes:[] needs lanesMeaningful" refusal
-# that would otherwise fire. Used by case n (HIMMEL-2348 CR round 3) to prove
+# that would otherwise fire. Used by case n to prove
 # the lane loop treats this as never-asked, not as an empty choice.
 write_cache_legacy_contributor() {
   mkdir -p "$1"
@@ -240,7 +240,7 @@ echo "ok: case e — a missing install profile exits non-zero with the standard 
 # (# column) must appear as a key in the map's `entries`, with the SAME
 # primary ticket, and vice versa. A path- or ticket-SET check (the prior
 # version of this test) is structurally blind to a dropped row whose
-# path/ticket happen to still appear via a sibling row — HIMMEL-2348 CR:
+# path/ticket happen to still appear via a sibling row — CR:
 # rows 2 and 4 both cite delta.cadences.extraArmedTasks, so a path-keyed map
 # silently swallowed row 4 and the old set-based check still passed. This
 # version fails the moment a row is missing from either side. It also keeps
@@ -255,12 +255,12 @@ echo "ok: case e — a missing install profile exits non-zero with the standard 
 # Extraction is scoped to actual table DATA rows (`^\|\s*\d+\s*\|`) and, for
 # tickets, to the Classification cell specifically (not the whole row) — a
 # naive whole-row scan false-positives on incidental ticket mentions inside
-# the "Wizard coverage today" prose column (e.g. row 11 cites HIMMEL-2304 as
+# the "Wizard coverage today" prose column (e.g. row 11 cites as
 # unrelated background, not its own classification); the PRIMARY ticket is
 # the first HIMMEL-NNNN in that cell (always the one right after
 # "ticketed:" — a row's classification prose may parenthetically mention a
 # second, unrelated ticket, as row 2 does).
-# HIMMEL-2348 CR finding 4: the row-level check above still had two blind
+# the row-level check above still had two blind
 # spots — a stale `label` in the map was never compared against the doc's
 # Item cell at all, and a path check only ran doc->map (an EXTRA path in a
 # map entry the doc never cites went unnoticed). Both extended below:
@@ -382,7 +382,7 @@ outHelp=$(HIMMELCTL_CACHE_DIR="$(winpath "$work/help-cache")" HIMMEL_LUNA_CONFIG
 grepq "$outHelp" 'gaps' || fail "case j: bare --help should list the gaps subcommand (got: $outHelp)"
 echo "ok: case j — gaps is listed in the USAGE banner"
 
-# ── case k: HIMMEL-2348 CR finding 2 — a field MISSING from this profile
+# ── case k: 2 — a field MISSING from this profile
 # (not merely off) is reported as "not recorded", never as a choice ────────
 cacheK="$work/cache-k"; write_cache_missing_alwaysOn "$cacheK"
 outKjson=$(run_gaps "$cacheK" --json)
@@ -398,7 +398,7 @@ outKtext=$(run_gaps "$cacheK")
 grepq "$outKtext" -i 'not recorded' || fail "case k: expected a not-recorded section in console output (got: $outKtext)"
 echo "ok: case k — a profile missing a field entirely is reported as not recorded, never as a choice"
 
-# ── case l: HIMMEL-2348 CR finding 3 — a non-operator --preset omits the
+# ── case l: 3 — a non-operator --preset omits the
 # operator-machine TBD-delta rows (group b) rather than presenting them as
 # gaps against that preset ──────────────────────────────────────────────────
 repoStubL="$work/repo-stub-l"
@@ -418,7 +418,7 @@ grepq "$outLtext" 'HIMMEL-2302' && fail "case l: a non-operator preset must not 
 grepq "$outLtext" -i 'omitted' || fail "case l: expected an omission note explaining why group (b) is empty (got: $outLtext)"
 echo "ok: case l — a non-operator --preset omits the operator-machine TBD rows instead of presenting them as its own"
 
-# ── case m: HIMMEL-2348 CR round 2 finding 4 — a cadence id armed in the
+# ── case m: 2 finding 4 — a cadence id armed in the
 # reference but genuinely ABSENT from this profile's own `cadences` object
 # is reported as notRecorded, never as a choice ─────────────────────────────
 cacheM="$work/cache-m"; write_cache_missing_cadence "$cacheM"
@@ -435,7 +435,7 @@ node -e '
 ' <<< "$outMjson" || fail "case m: --json missing-cadence assertions failed (got: $outMjson)"
 echo "ok: case m — a cadence armed in the reference but absent from this profile is reported as not recorded, never as a choice"
 
-# ── case n: HIMMEL-2348 CR round 3 — a legacy v1 contributor profile
+# ── case n: 3 — a legacy v1 contributor profile
 # (lanes:[], no lanesMeaningful) never answered the lanes question; a
 # reference lane absent from it is reported as notRecorded, never a choice ──
 cacheN="$work/cache-n"; write_cache_legacy_contributor "$cacheN"

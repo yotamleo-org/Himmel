@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-deps-lint.sh — hermetic tests for scripts/install/deps-lint.mjs
-# (HIMMEL-759). Mirrors test-wizard-manifest-v2.sh's conventions (needs no
+# Mirrors test-wizard-manifest-v2.sh's conventions (needs no
 # node process beyond the lint script itself — pure fs-read validator).
 #
 # Covers:
@@ -28,7 +28,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)

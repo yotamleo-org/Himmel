@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-resolve-powershell.sh — hermetic tests for
-# scripts/himmelctl/lib/helpers.js's resolvePowershell() (HIMMEL-2126:
+# scripts/himmelctl/lib/helpers.js's resolvePowershell
 # ALWAYS prefer pwsh; Windows PowerShell 5.1 is a loud, named fallback only,
 # never silent). Calls the function directly against a crafted `env` object —
 # no real PATH/spawn involved, no MSYS PATH mangling to work around.
 #
 # Covers:
 #   a. pwsh present (alongside powershell) -> pwsh wins, no stderr warning.
-#   b. only powershell present -> falls back, warns HIMMEL-2126 on stderr.
+#   b. only powershell present -> falls back, warns on stderr.
 #   c. neither present -> bare 'powershell' fallback, still warns.
 #   d. HIMMELCTL_POWERSHELL override -> returned verbatim, no warning, wins
 #      even when pwsh is also present.

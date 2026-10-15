@@ -1,5 +1,5 @@
 ﻿# scripts/himmelctl/bootstrap.ps1 — node-less bootstrap shim for himmelctl
-# (HIMMEL-887 T7). For a genuinely node-less clean Windows machine: detect
+# For a genuinely node-less clean Windows machine: detect
 # node absent, install ONLY node via winget (bun has no reliable winget
 # query-by-bare-name match — `winget install node bun` resolves as a single
 # bad query — so bun stays an optional post-bootstrap step), then hand off to
@@ -10,7 +10,7 @@
 # Usage (-ExecutionPolicy Bypass: a clean machine's default policy is
 # Restricted, which refuses -File outright):
 #   powershell -ExecutionPolicy Bypass -File scripts/himmelctl/bootstrap.ps1 [-DryRun] [-DefaultScope project|user]
-# ps51-ok: HIMMEL-2126 — this is the NODE-LESS bootstrap for a genuinely clean
+# ps51-ok: this is the NODE-LESS bootstrap for a genuinely clean
 # Windows machine, which may not have pwsh (a separate download) installed
 # yet; `powershell` (5.1) ships on every stock Windows box, so it is the one
 # interpreter this script can assume. Everything AFTER hand-off to
@@ -75,7 +75,7 @@ if (Test-NodePresent) {
 }
 
 # winget genuinely failed AND node is still absent: NOT the PATH-refresh trap
-# (HIMMEL-935 / CR #1126). Fail closed with the actual install failure instead
+# Fail closed with the actual install failure instead
 # of the re-run line, which implies success and would loop forever re-running a
 # known-failing winget install. ($ErrorActionPreference='Stop' makes Write-Error
 # terminating, so this exits non-zero either way.)

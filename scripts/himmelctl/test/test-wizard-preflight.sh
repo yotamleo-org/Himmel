@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-preflight.sh — hermetic tests for the himmelctl install wizard's
-# preflight-first gate (HIMMEL-887 T1). Mirrors scripts/test-adopt.sh
+# preflight-first gate. Mirrors scripts/test-adopt.sh
 # conventions: a stub PATH built via scripts/lib/hermetic-path.sh, a fake HOME,
 # node launched by absolute path so the wizard's tool detection sees ONLY the
 # stub dir. Nothing on the real machine is read or written.
@@ -31,7 +31,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -57,7 +57,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-2892: run from a THROWAWAY directory, never the himmel checkout this
+# run from a THROWAWAY directory, never the himmel checkout this
 # suite lives in. `install` resolves a project-scope target to $PWD, so a case
 # answering scope=project from the checkout root aimed the installer at the
 # repo itself -- which bin.js's himmel-clone guard now refuses outright. The cd

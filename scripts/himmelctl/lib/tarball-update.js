@@ -1,6 +1,6 @@
 'use strict';
 // tarball-update.js — the release tarball's versioned layout and its update
-// (HIMMEL-3059 S4; design HIMMEL-3059-linux-packaging.md §1.4).
+// (design -linux-packaging.md §1.4).
 //
 // Layout: every release is extracted into <base>/<version>/ and
 // <base>/current is a relative symlink to the live one. Wiring (env.HIMMEL_REPO,

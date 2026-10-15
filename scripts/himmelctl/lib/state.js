@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/state.js — target-keyed install state (HIMMEL-756
+// scripts/himmelctl/lib/state.js — target-keyed install state
 // T1.3). Reads/writes <cacheDir()>/state.json, himmelctl's OWN record of
 // "what does this target look like right now" — a SEPARATE artifact from the
 // wizard's install-profile.json cache (the ANSWERS that drove an install),
@@ -13,7 +13,7 @@
 //         profileSource?: "explicit"
 //       }
 //   } }
-// `profileSource` (HIMMEL-2349): PROVENANCE for `profile`/the `enabled`
+// `profileSource`: PROVENANCE for `profile`/the `enabled`
 // flags, not a value — absent means derived (ensureTarget's first-run
 // derive, or migrateTargetItems' backfill); "explicit" means an operator
 // ran reconcileTarget() (an explicit --profile, or a scope switch). See
@@ -26,7 +26,7 @@
 // item.scopes.includes(scope) — with exactly ONE exception: `handover-wiring`
 // tracks cachedAnswers.handover.mode !== 'none' directly (membership alone
 // can't see whether handover was actually wired). No role/pluginSet
-// branching here — explicitly Phase 2 (a later HIMMEL-756 follow-on).
+// branching here — explicitly Phase 2 (a later follow-on).
 //
 // HIMMELCTL_CACHE_DIR overrides the cache dir (see lib/helpers.js) — the same
 // seam hermetic tests use to redirect ~/.claude/himmel/ under Git Bash, where
@@ -80,7 +80,7 @@ function targetKeyForScope(scope) {
   return scope === 'user' ? 'user' : path.resolve(process.cwd());
 }
 
-// Pure membership predicate (HIMMEL-2349): does `item` belong to
+// Pure membership predicate: does `item` belong to
 // `profile`+`scope`, per the manifest's own declared membership — with the
 // ONE handover-wiring exception (membership alone can't see whether
 // handover was actually wired, so that one item tracks
@@ -88,12 +88,12 @@ function targetKeyForScope(scope) {
 // deriveTarget/migrateTargetItems/reconcileTarget, which used to each carry
 // their own copy of this exact formula — this is the ONE place it lives now;
 // every caller below (and status-report.js's read-only additive overlay,
-// HIMMEL-2349) calls this instead of re-inlining it.
+// ) calls this instead of re-inlining it.
 function itemMembership(item, profile, scope, cachedAnswers) {
   if (item.id === 'handover-wiring') {
     return Boolean(cachedAnswers.handover) && cachedAnswers.handover.mode !== 'none';
   }
-  // HIMMEL-4435: the pre-commit framework is only wanted when something uses
+  // the pre-commit framework is only wanted when something uses
   // it — a luna vault (its setup installs pre-commit) or the contributor
   // overlay. A starter install with vault=none places himmel's NATIVE gates
   // (no framework), so listing it would report a red item whose remedy
@@ -101,7 +101,7 @@ function itemMembership(item, profile, scope, cachedAnswers) {
   if (item.id === 'pre-commit') {
     const vault = cachedAnswers.vault;
     const usesFramework = Boolean(cachedAnswers.devOverlay) || Boolean(vault && vault.mode && vault.mode !== 'none');
-    // HIMMEL-4440: a project target that ships its OWN .pre-commit-config.yaml
+    // a project target that ships its OWN.pre-commit-config.yaml
     // still needs the framework with vault=none (adopt.sh agrees). Probed at
     // the cwd — the same target key targetKeyForScope uses — so membership
     // keeps its signature; user scope has no target dir and stays n/a.
@@ -111,7 +111,7 @@ function itemMembership(item, profile, scope, cachedAnswers) {
   }
   if (!item.profiles.includes(profile)) return false;
   if (item.scopes.includes(scope)) return true;
-  // HIMMEL-2892: a CONTRIBUTOR's station has no project-scope record — the
+  // a CONTRIBUTOR's station has no project-scope record — the
   // himmel checkout is not an adopt target (bin.js's cmdInstall refuses
   // `--scope project` there) — yet the five scopes:["project"] items that
   // scripts/setup.sh, the contributor primitive, installs (pre-commit gates,
@@ -156,7 +156,7 @@ function hasDeliberateOverride(entry) {
 }
 
 // Backfill any manifest item IDs an existing target entry doesn't yet carry
-// (HIMMEL-1017): ensureTarget's derive-if-missing path only ever runs ONCE,
+// ensureTarget's derive-if-missing path only ever runs ONCE,
 // on a target's first-ever encounter — a manifest item added to
 // scripts/install/manifest.json AFTER that point never gets an `items` entry
 // on an already-existing target, so it reads `entry === undefined` in
@@ -170,7 +170,7 @@ function hasDeliberateOverride(entry) {
 // `target.items` in place; returns true if anything was added, so a caller
 // can decide whether the mutation needs persisting.
 //
-// CR fix (HIMMEL-1017 CR round): scope membership is checked against
+// scope membership is checked against
 // cachedAnswers.scope — the AUTHORITATIVE invocation scope (the exact value
 // ensureTarget() used to compute the target's own key) — never
 // `target.scope`. `target.scope` is a persisted, independently-editable
@@ -228,7 +228,7 @@ function ensureTarget(state, manifest, cachedAnswers) {
 // only ever touches `enabled`, never overrides. Mutates `state` in place;
 // the caller is responsible for state.save(). Returns the reconciled entry.
 //
-// HIMMEL-2349 (codex-1, Critical): stamps `profileSource: 'explicit'` on the
+// stamps `profileSource: 'explicit'` on the
 // entry — PROVENANCE, not value. Both call sites (bin.js's cmdEnsure Step 0,
 // only reached when --profile was explicitly supplied; cmdScopeSet) are
 // genuine operator decisions, unlike deriveTarget()/migrateTargetItems(),
@@ -249,12 +249,12 @@ function reconcileTarget(state, manifest, cachedAnswers, { profile, scope }) {
   for (const item of manifest.items) {
     const enabled = itemMembership(item, profile, scope, cachedAnswers);
     const existingItem = existing && existing.items && existing.items[item.id];
-    // CR fix (CodeRabbit round 17, item 1): `|| {}` only catches FALSY
+    // `|| {}` only catches FALSY
     // overrides — a malformed state file carrying a truthy non-object
     // (a string, an array, a number) passed straight through and got
     // persisted back into the rebuilt entry, violating the schema's
     // `overrides` object contract. Exactly the `lastEnsured` bug class
-    // fixed below (round 15/16), applied unevenly: normalize to a genuine
+    // fixed below, applied unevenly: normalize to a genuine
     // plain object, preserving any valid override mapping untouched.
     const rawOverrides = existingItem && existingItem.overrides;
     const overrides = (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides))
@@ -262,14 +262,14 @@ function reconcileTarget(state, manifest, cachedAnswers, { profile, scope }) {
       : {};
     items[item.id] = { enabled, overrides };
   }
-  // CR fix (CodeRabbit round 15, item 4): `existing.lastEnsured` can itself
+  // `existing.lastEnsured` can itself
   // be `undefined` (an existing entry predating this field, or a malformed
   // state file) — carrying that through verbatim serializes as a MISSING
   // key, violating the schema's `lastEnsured` contract. Normalize to `null`
   // whenever it isn't a genuine stored value, while still preserving any
   // valid stored value untouched.
   //
-  // CR fix (CodeRabbit round 16, item 7 — tighten): "genuine stored value"
+  // "genuine stored value"
   // is narrowed from "anything non-null" to "a string" specifically — the
   // schema's `lastEnsured` field is a timestamp string (or null), so a
   // malformed state file carrying a number/object/boolean through would
@@ -281,7 +281,7 @@ function reconcileTarget(state, manifest, cachedAnswers, { profile, scope }) {
   return entry;
 }
 
-// HIMMEL-2349 — additive-only desired-state overlay. Whether the CURRENTLY
+// additive-only desired-state overlay. Whether the CURRENTLY
 // recorded install-profile (cachedAnswers, loaded fresh every status/ensure
 // run — see helpers.js's cacheDir()/bin.js's loadProfile()) would enable
 // `item` under a fresh membership check, for use ONLY as an OR on top of an
@@ -295,7 +295,7 @@ function reconcileTarget(state, manifest, cachedAnswers, { profile, scope }) {
 // Skips any item carrying a deliberate override (hasDeliberateOverride
 // above) — an explicit recorded decision must never be silently
 // second-guessed by additive re-derivation. Pure: no fs I/O, no mutation.
-// HIMMEL-2349 (retask 01S-A-2349-b73d): the manifest CATEGORY (core|luna|
+// the manifest CATEGORY (core|luna|
 // all) the additive overlay checks membership against — resolved from the
 // RECORDED schema-v2 `profile` field (starter|luna|operator|custom), not
 // from profileForVault(vault.mode). profileForVault only ever returns
@@ -313,7 +313,7 @@ function reconcileTarget(state, manifest, cachedAnswers, { profile, scope }) {
 // luna-surface profile ('luna' alone would drop the 34 core-only items).
 //   starter  -> core (the lean, no-luna-surface default)
 //   luna     -> all  (this operator DOES run the luna surface)
-//   operator -> all  (ditto — richest defaults, HIMMEL-2308's ROLE_PRESETS)
+//   operator -> all (ditto — richest defaults, ROLE_PRESETS)
 //   custom, missing, or unrecognised -> profileForVault(cachedAnswers)
 //     (current, unchanged behaviour — a v1 record with no `profile` field
 //     included, or a value this mapping doesn't yet know, falls back rather
@@ -331,7 +331,7 @@ function recordedProfileCategory(cachedAnswers) {
   return profileForVault(cachedAnswers);
 }
 
-// HIMMEL-2349 (codex-1): does `target` carry an explicit reconcile stamp
+// does `target` carry an explicit reconcile stamp
 // (reconcileTarget()'s own comment)? One level up from
 // hasDeliberateOverride() above — that one is a per-ITEM deliberate
 // decision; this is the same posture for the whole TARGET. A target the
@@ -357,7 +357,7 @@ function recordedDesired(target, entry, item, cachedAnswers) {
 // returns { changed, added } so the caller can decide whether to persist and
 // what to tell the operator (Fix A's "surface the reconcile in output"
 // requirement — an operator must be able to SEE their recorded profile
-// changed the answer, not merely observe the answer change). HIMMEL-2349
+// changed the answer, not merely observe the answer change).
 // (codex-1, Critical): a no-op entirely on a target carrying
 // profileSource:'explicit' — recordedDesired() enforces this per item, so
 // this is stated for the whole function's benefit, not a separate check.

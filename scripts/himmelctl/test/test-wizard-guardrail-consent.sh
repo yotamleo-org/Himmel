@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-guardrail-consent.sh — hermetic tests for the HIMMEL-2176
+# test-wizard-guardrail-consent.sh — hermetic tests for the
 # ask-first gate: `himmelctl ensure` can now actually WIRE
 # guardrail-block-global (install-engine.js's 'guardrail-block-global' wire
 # target, dispatching to guardrail-block.mjs's own `install` verb), but the

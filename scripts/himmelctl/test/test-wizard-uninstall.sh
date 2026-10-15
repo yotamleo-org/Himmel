@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-uninstall.sh — hermetic tests for the himmelctl `uninstall`
-# subcommand (HIMMEL-887, §5.5 locked decision). Mirrors
+# subcommand (§5.5 locked decision). Mirrors
 # test-wizard-derive.sh conventions: a stub PATH via scripts/lib/hermetic-path.sh,
 # a fake HOME, node launched by absolute path, HIMMELCTL_REPO_ROOT pointed at a
 # throwaway fixture carrying no-op uninstall.sh/uninstall.ps1 stubs so a real
@@ -16,7 +16,7 @@
 #   B. --dry-run -> prints the derived plan (the platform-appropriate
 #      launcher + --yes/-Yes) without asking or executing anything.
 #   C. piped "n" without --yes -> the uninstall script is NOT invoked,
-#      rc=2, non-interactive fail-closed refusal (HIMMEL-2755).
+#      rc=2, non-interactive fail-closed refusal.
 #   D. explicit --yes with closed stdin -> the uninstall script IS invoked
 #      with --yes/-Yes; this tests forwarding, not the interactive prompt.
 #   E. non-interactive, closed stdin without --yes -> rc=2 fail-closed
@@ -30,7 +30,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -51,7 +51,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wiz-uninst.XXXXXX") || exit 1
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-1446 r2 (glm-1): cmdUninstall now removes PATH launchers from binDir.
+# cmdUninstall now removes PATH launchers from binDir.
 # Isolate binDir for the WHOLE suite so an accept-case never touches the
 # operator's real ~/.local/bin (on win32 himmelctlBinDir() ignores HOME and
 # would otherwise resolve to the real home). A per-case inline HIMMELCTL_BIN_DIR
@@ -90,7 +90,7 @@ is_win32() {
 # build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
 # uninstall.sh/uninstall.ps1 stubs, each logging its argv to
 # <dir>/uninstall-calls.log, PLUS a minimal scripts/install/manifest.json
-# (HIMMEL-755 sub-ticket E: cmdUninstall now loadManifest()s + partitions by
+# (cmdUninstall now loadManifests + partitions by
 # `offboard` before asking/executing — without this file that load throws
 # and every case below would fail closed on an unrelated ENOENT).
 build_fixture() {
@@ -133,7 +133,7 @@ grepq "$ps1_usage" -F -- '-Yes' \
 echo "ok: caseA flag-assertion guard -- uninstall.sh/uninstall.ps1 usage surfaces carry the --yes/-Yes flag the wizard always derives"
 
 # ── Case B: --dry-run -> prints the plan, asks/executes nothing ────────────
-# HIMMEL-2126: win32 launches uninstall.ps1 through resolvePowershell(), which
+# win32 launches uninstall.ps1 through resolvePowershell, which
 # now PREFERS pwsh over PowerShell 5.1 — so pwsh is scrubbed from PATH here
 # (this box's own pwsh must not leak in) to pin the loud-fallback branch;
 # caseB2 below covers the pwsh-preferred branch with pwsh injected instead.
@@ -163,7 +163,7 @@ else
 fi
 grepq "$out" 'Proceed?' \
   && fail "caseB: --dry-run must NOT show the confirm prompt (got: $out)"
-# HIMMEL-3058: --dry-run RUNS the executor in its own dry-run mode (the plan it
+# --dry-run RUNS the executor in its own dry-run mode (the plan it
 # prints is the script's, not a second copy) — never with --yes/-Yes, and
 # never with HIMMEL_UNINSTALL_REAL_HOME (the wet-run fence's only opt-in).
 [ -f "$fixtureB/uninstall-calls.log" ] \
@@ -180,7 +180,7 @@ else
 fi
 echo "ok: caseB --dry-run -> derived plan printed, executor run with --dry-run only, nothing asked, HIMMEL_UNINSTALL_REAL_HOME never set"
 
-# ── Case B2 (HIMMEL-2126): --dry-run on win32 prefers pwsh when it is
+# ── Case B2: --dry-run on win32 prefers pwsh when it is
 # resolvable — a stub pwsh is injected onto PATH (posix is a no-op: caseB
 # already covers it, and there is no pwsh/powershell branch there).
 if is_win32; then
@@ -248,7 +248,7 @@ if is_win32; then
 else
   grep -q -- '--yes' "$fixtureD/uninstall-calls.log" \
     || fail "caseD(posix): expected uninstall.sh to be called with --yes (got: $(cat "$fixtureD/uninstall-calls.log"))"
-  # HIMMEL-2505: this confirmed WET spawn must pass HIMMEL_UNINSTALL_REAL_HOME=1
+  # this confirmed WET spawn must pass HIMMEL_UNINSTALL_REAL_HOME=1
   # so uninstall.sh's own live-operator-HOME fence doesn't refuse the machine
   # the operator just confirmed offboarding.
   grep -q 'HIMMEL_UNINSTALL_REAL_HOME=1' "$fixtureD/uninstall-calls.log" \
@@ -277,7 +277,7 @@ grepq "$out" -F 'declined; nothing run' \
 echo "ok: caseE closed stdin (no answer) -> refuses with rc=2, uninstall never runs unattended"
 
 # ── Case F: uninstall removes marked PATH launchers, leaves unmarked files ──
-# HIMMEL-1446 r2 (glm-1): cmdUninstall now removes the PATH launchers that
+# cmdUninstall now removes the PATH launchers that
 # install/update wrote into binDir, but ONLY those carrying the ownership
 # marker — an unmarked third-party file at a known launcher name is left
 # byte-untouched. Inline HIMMELCTL_BIN_DIR points at a planted bin (overrides
@@ -316,7 +316,7 @@ set -e
 [ "$(cat "$binF/himmelctl.cmd")" = 'third-party' ] || fail "caseF: unmarked himmelctl.cmd was mutated"
 echo "ok: caseF uninstall removes marked PATH launchers, leaves unmarked files untouched"
 
-# ── Case G: a FAILED teardown preserves the launchers (HIMMEL-1446 r4, Fix 1) ──
+# ── Case G: a FAILED teardown preserves the launchers ──
 # removeHimmelctlLaunchers() now runs ONLY when rc===0, so a failed teardown
 # (stub exits nonzero) must leave the marked launchers in place for the retry
 # and print a retry warning naming the failure. Regression for the converged
@@ -369,7 +369,7 @@ set -e
 grepq "$out" 'launchers left in place' || fail "caseG: expected a retry warning preserving the launchers (got: $out)"
 echo "ok: caseG failed teardown preserves marked PATH launchers + warns (no stranded machine)"
 
-# ── Case H (HIMMEL-3244): the banner's operator-state claim is DERIVED from the
+# ── Case H: the banner's operator-state claim is DERIVED from the
 # manifest classes, the same per-row way uninstall.sh's step-2 plan is. A
 # hand-edited manifest that re-classes a telegram row keep must not be
 # described as "--purge-state removes it". posix only: uninstall.ps1 keeps its
@@ -432,7 +432,7 @@ else
   echo "ok: caseH -> (skipped: uninstall.ps1 does not read the manifest; win32 keeps the shipped banner)"
 fi
 
-# ── Case I (HIMMEL-3589): qmd ids in the dry-run advisory plan carry a
+# ── Case I: qmd ids in the dry-run advisory plan carry a
 # resolved path + on-disk size. manifest.json's real qmd-binary defaults to
 # offboard 'advise' and qmd-index to the 'unwire' default (no offboard field)
 # — both land in printOffboardPlan's output, so the fixture mirrors that split
@@ -463,7 +463,7 @@ JSON
 
 # Same fixture as build_fixture_qmd, but the tsv row's {HOME} token resolves
 # through a backslash separator ({HOME}\.himmel\qmd-fork) — the Windows-shaped
-# vault-path convention HIMMEL-2646 brings bin.js's expandHome() in line with
+# vault-path convention brings bin.js's expandHome in line with
 # (case I5 below).
 build_fixture_qmd_backslash() {
   local _d="$1"
@@ -532,7 +532,7 @@ echo "ok: caseI2 dry-run advisory plan prints 'absent' when the qmd-fork path do
 # unknown', never 'absent' — a permission error is not a missing path.
 # chmod 000 is a POSIX-only way to force that error: on Windows (MSYS/MINGW)
 # it does not restrict access the same way, so this case would false-red a
-# platform quirk rather than test the code (codex-1 round 2).
+# platform quirk rather than test the code.
 if is_win32; then
   echo "ok: caseI3 -> (skipped: chmod 000 does not deny access on win32, covered by caseI1/I2's non-error paths)"
 elif [ "$(id -u)" = 0 ]; then
@@ -558,7 +558,6 @@ fi
 
 # I4: qmd-fork dir holds more entries than the walk's entry bound -> 'size
 # unknown', never a real byte count and never a hang on a huge tree
-# (codex-1 round 4).
 hI4="$work/hI4"; mkdir -p "$hI4/.himmel/qmd-fork"
 i=0
 while [ "$i" -le 5000 ]; do
@@ -576,7 +575,7 @@ grepq "$outI4" -E -- "qmd-binary \\(${hI4}[/\\\\]\\.himmel[/\\\\]qmd-fork, size 
   || fail "caseI4: expected qmd-binary to print 'size unknown' once the walk exceeds its entry bound (got: $outI4)"
 echo "ok: caseI4 dry-run advisory plan prints 'size unknown' (not a byte count) once the qmd-fork tree exceeds the walk's entry bound"
 
-# I5 (HIMMEL-2646): a manifest row whose {HOME} token resolves through a
+# I5: a manifest row whose {HOME} token resolves through a
 # backslash separator ({HOME}\.himmel\qmd-fork) must land on the real nested
 # qmd-fork dir, same as the forward-slash row in caseI1 — not the mangled
 # single-segment literal a pre-fix expandHome() leaves unexpanded (which then

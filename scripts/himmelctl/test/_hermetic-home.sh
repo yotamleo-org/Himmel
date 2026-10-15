@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # _hermetic-home.sh — sourced by every scripts/himmelctl/test/*.sh suite
-# (HIMMEL-2350, Console Ruling 38).
 #
 # ROOT CAUSE: os.homedir() on win32 reads USERPROFILE, not HOME. Proven:
 #   USERPROFILE='C:\Temp\sandbox' node -e "console.log(require('os').homedir())"
@@ -9,7 +8,7 @@
 # suite spawns — the child still resolves the operator's REAL homedir. Every
 # per-seam patch (HIMMELCTL_CACHE_DIR, HIMMEL_LUNA_CONFIG_PATH) only closes
 # the ONE env-var override each library happens to check; it does nothing
-# for a code path neither of us has enumerated. HIMMEL-2350's own live
+# for a code path neither of us has enumerated. own live
 # incident proved this: the operator's real install-profile.json was
 # overwritten by a writeCache() call during a run where every suite already
 # set HIMMELCTL_CACHE_DIR on every "$node_bin" "$wizard" invocation the
@@ -29,7 +28,7 @@
 # copies happens to be missing or broken next.
 #
 # WHY winpath ITSELF ASSERTS NON-EMPTY: the console's own read of the
-# HIMMEL-2350 incident is the reason this function does not just transform
+# incident is the reason this function does not just transform
 # and trust — cacheDir()/configPath() are BOTH `process.env.X || <real
 # homedir path>`, and an EMPTY STRING IS FALSY in JS. "Set but empty" is
 # therefore INDISTINGUISHABLE from "never set" at the seam this whole ticket
@@ -56,7 +55,7 @@
 # `PATH=` (bash applies earlier assignments to later expansions), and scrub_path
 # drops whole directories -- on macOS uname lives in /usr/bin beside jq, so a
 # scrubbed stub PATH has no uname and every winpath died "uname: command not
-# found" (HIMMEL-3177). The host OS cannot change mid-suite; a fixture that
+# found". The host OS cannot change mid-suite; a fixture that
 # fakes `uname` for the code under test never reaches this variable.
 _HERMETIC_UNAME="$(uname -s)"
 
@@ -72,7 +71,7 @@ winpath() {
   local _out
   case "$_HERMETIC_UNAME" in
     MINGW*|MSYS*|CYGWIN*)
-      # codex-panel round 4: `cygpath -m "$1" 2>/dev/null || printf '%s' "$1"`
+      # `cygpath -m "$1" 2>/dev/null || printf '%s' "$1"`
       # used to fall back to the RAW MSYS path (e.g. /c/Users/...) whenever
       # cygpath failed or was missing -- non-empty, so the empty-check below
       # passed it straight through, handing a native node.exe/pwsh.exe child

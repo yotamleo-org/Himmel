@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-himmelctl-path-shim.sh — hermetic coverage for the HIMMEL-1446
+# test-himmelctl-path-shim.sh — hermetic coverage for the
 # himmelctl launcher written by both `install` and `update`.
 #
 # Covers: checkout-targeted creation, idempotent rewrite, moved-checkout
@@ -69,7 +69,7 @@ SHIM_CALL_LOG="$(winpath "$work/shim-calls.log")" SHIM_LABEL=A \
   || fail "caseA: generated launcher did not dispatch to this checkout's bin.js"
 echo "ok: caseA update creates a working checkout-targeted POSIX launcher"
 
-# HIMMEL-4380: a `himmel` alias launcher sits beside himmelctl, so `himmel update`
+# a `himmel` alias launcher sits beside himmelctl, so `himmel update`
 # works in any shell (fish included) with no shell config.
 [ -x "$binA/himmel" ] || fail "caseA2: executable himmel alias launcher missing"
 SHIM_CALL_LOG="$(winpath "$work/shim-calls.log")" SHIM_LABEL=A2 \
@@ -120,7 +120,7 @@ echo "ok: caseC PATH-missing prints manual guidance and mutates neither PATH nor
 # ── C2 (win32): the missing-PATH PowerShell instruction is idempotent ────────
 # Pasting the printed line twice (e.g. a second `himmelctl update` before a new
 # shell) must NOT duplicate the User PATH entry. The snippet prepends binDir
-# only when it is not already an element of the persisted User PATH (HIMMEL-1446
+# only when it is not already an element of the persisted User PATH
 # r4 glm-3). Asserted by SHAPE (grep) — actually mutating the User PATH needs
 # machine-state change the suite cannot do hermetically; the idempotence guard
 # and its "safe to repeat" marker are the lockable surface.
@@ -205,7 +205,7 @@ cat > "$fixtureF/scripts/himmelctl/bin.js" <<'STUB'
 const fs = require('fs');
 fs.appendFileSync(process.env.SHIM_CALL_LOG, `install:${process.argv.slice(2).join('|')}\n`);
 STUB
-# HIMMEL-2308: ONE execution engine now — deriveCommand() always targets
+# ONE execution engine now — deriveCommand always targets
 # adopt.sh, with the dev overlay's setup.sh/setup.ps1 as an ADDITIONAL step
 # on top. A silent no-op (never touching INSTALL_CALL_LOG) so the assertion
 # below still sees exactly the overlay's own 'setup' line.
@@ -261,7 +261,7 @@ SHIM_CALL_LOG="$(winpath "$work/install-shim-calls.log")" \
   || fail "caseF: install-applied launcher does not target this checkout"
 echo "ok: caseF successful install self-applies the same launcher"
 
-# ── F2: install creates the himmel XDG state home + bus at 0700 (HIMMEL-5225) ─
+# ── F2: install creates the himmel XDG state home + bus at 0700 ─
 # Its own XDG_STATE_HOME (caseF-state), never the real one; the fake HOME must
 # stay free of .local/state. POSIX modes only — skipped on Windows Git-Bash.
 case "$(uname -s)" in
@@ -281,13 +281,13 @@ esac
 # These cases deliberately exercise FAILURE paths (refusals) and assert the rc
 # explicitly with `[ ] || fail`, so run them under errexit OFF — caseF above
 # leaves `set -e` on, under which an expected non-zero `out=$(run_update …)`
-# would abort silently before the assertion (HIMMEL-1446 r2).
+# would abort silently before the assertion.
 set +e
 
 # G1: an unmarked third-party himmelctl.js is refused and left byte-untouched;
 # no wrapper is written (the shim aborts on the first refusal). The update
 # engine itself succeeded, so cmdUpdate keeps rc 0 and WARNS that the launcher
-# is missing — the launcher is a best-effort rider (HIMMEL-1446 r4 glm-5).
+# is missing — the launcher is a best-effort rider.
 fixG1="$work/caseG1-checkout"; binG1="$work/caseG1-bin"; mkdir -p "$binG1"
 build_update_fixture "$fixG1"
 printf 'third-party\n' > "$binG1/himmelctl.js"
@@ -303,7 +303,7 @@ echo "ok: caseG1 unmarked third-party file refused (untouched); shim aborts; upd
 # G2: a symlink to an EXISTING target (a valid symlink) is refused — lstat,
 # never followed/clobbered. This path already worked; it stays covered so a
 # regression to an existsSync-follows-links guard is caught. The update engine
-# succeeded, so rc stays 0 + WARN (HIMMEL-1446 r4 glm-5).
+# succeeded, so rc stays 0 + WARN.
 fixG2="$work/caseG2-checkout"; binG2="$work/caseG2-bin"; mkdir -p "$binG2"
 build_update_fixture "$fixG2"
 printf 'valid-target\n' > "$work/caseG2-target"
@@ -321,7 +321,7 @@ fi
 # G2b: a BROKEN (dangling) symlink — target absent — is refused too. fs.existsSync
 # FOLLOWS symlinks and returns false for a dangling link, so the pre-fix guard
 # skipped the symlink check and renameSync clobbered the link — violating the
-# never-clobber-a-symlink contract. The lstat-based guard (HIMMEL-1446 r4 glm-2)
+# never-clobber-a-symlink contract. The lstat-based guard
 # refuses ANY symlink, broken included. rc stays 0 + WARN (the update engine
 # succeeded; glm-5). Hosts that cannot create a real symlink (MSYS without
 # winsymlinks:nativestrict) skip — this runs on Linux CI.
@@ -368,7 +368,7 @@ echo "ok: caseG4a successful write leaves no orphaned tmp"
 # POSIX-native only: 'chmod a-w' reliably denies node's file creation on
 # Linux/macOS; on MSYS/Cygwin chmod is a no-op against NTFS ACLs, so the failure
 # can't be injected there — skip with a note. The update engine succeeded, so a
-# failed launcher write keeps rc 0 + WARN (HIMMEL-1446 r4 glm-5); the dest-
+# failed launcher write keeps rc 0 + WARN; the dest-
 # untouched guarantee is the part this case actually locks.
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
@@ -409,7 +409,7 @@ run_update "$fixG5u" "$binG5u" win32 "$(winpath "$binG5u"):$PATH" >/dev/null
 echo "ok: caseG5 stale marked .ps1 removed; unmarked .ps1 left untouched"
 
 # G6: a stale-.ps1 REMOVAL error does not fail the shim write or misattribute
-# (HIMMEL-1446 r4 glm-4). removeMarkedLauncher('himmelctl.ps1') runs inside the
+# removeMarkedLauncher('himmelctl.ps1') runs inside the
 # shim's write step; pre-fix its I/O errors were caught by the surrounding
 # try/catch and reported as "failed to write PATH launcher" + a failed rc, even
 # though the .js/.cmd launchers HAD already been written. A directory named
@@ -463,10 +463,10 @@ grepq "$(cat "$binH2/himmelctl.js")" 'caseH2-repo' \
   || fail "caseH2: non-worktree install must target repoRoot (primary == self)"
 echo "ok: caseH2 non-worktree primary install targets repoRoot unchanged"
 
-# ── I: HIMMEL-2836 — a failed adopt.sh must not skip the PATH shim ──────────
+# ── I: a failed adopt.sh must not skip the PATH shim ──────────
 # RED control (pre-fix order): applyHimmelctlPathShim ran AFTER the
 # `if (rc !== 0) return rc` early return, so a failing adopt.sh (e.g. the
-# HIMMEL-2837 plugin SSH-clone class) left no himmelctl launcher on PATH and
+# plugin SSH-clone class) left no himmelctl launcher on PATH and
 # the adopter had no way to run `himmelctl ensure` to resume.
 fixtureI="$work/caseI-checkout"
 binI="$work/caseI-bin"
@@ -513,8 +513,8 @@ SHIM_CALL_LOG="$(winpath "$work/caseI-shim-calls.log")" \
   || fail "caseI: shim written after a failed adopt.sh must still target this checkout"
 echo "ok: caseI failed adopt.sh still applies the PATH shim and points the adopter at himmelctl ensure"
 
-# ── J: HIMMEL-2883 — the generated launcher RE-EXECS bin.js, so bin.js's own
-# `require.main === module` guard (HIMMEL-2438) still fires. Pre-fix the
+# ── J: the generated launcher RE-EXECS bin.js, so bin.js's own
+# `require.main === module` guard still fires. Pre-fix the
 # generated himmelctl.js did `require(target)`, which runs with
 # require.main === himmelctl.js (the launcher), not the target — so a
 # guarded main() never ran: silent no-op, empty stdout, rc 0. The other
@@ -539,7 +539,7 @@ outJ=$("$binJ/himmelctl" --help 2>&1); rcJ=$?
 grepq "$outJ" 'guarded main ran' || fail "caseJ: generated launcher did not run the guarded main() (got: $outJ)"
 echo "ok: caseJ generated launcher re-execs bin.js so the require.main===module guard (HIMMEL-2438) still fires"
 
-# ── K: HIMMEL-3332 S5 — update opens a provenance session and the launcher
+# ── K: update opens a provenance session and the launcher
 # writer records its shim rows into it (class code): create on a fresh bin dir,
 # replace (with a backup of the prior marked launcher) on the re-run. A private
 # ledger dir per case, so nothing here can reach the operator's real ledger.

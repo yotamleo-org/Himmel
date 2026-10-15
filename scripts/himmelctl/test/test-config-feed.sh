@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-config-feed.sh — HIMMEL-4254 P2: `himmelctl report --json`, the config
+# test-config-feed.sh — `himmelctl report --json`, the config
 # UI's one data feed (scripts/himmelctl/lib/config-feed.js), plus redact.js and
 # the flag-registry lint.
 #
@@ -259,7 +259,7 @@ grep -q GHOST_OK "$work/lint3.err" || fail "lint failure does not name GHOST_OK"
 pass "f2 lint fails on an unregistered flag and on a ghost entry"
 
 # ── g. secret presence comes from each secret's own source, never the repo .env
-# HIMMEL-4327 (spec A7). The repo-root .env carries a same-named TELEGRAM_BOT_TOKEN
+# (spec A7). The repo-root.env carries a same-named TELEGRAM_BOT_TOKEN
 # (the nudge relay's DIFFERENT bot) and a FIRECRAWL_API_KEY the tools never read.
 printf 'TELEGRAM_BOT_TOKEN=repo-root-other-bot-aaaa\nFIRECRAWL_API_KEY=repo-env-firecrawl-bbbb\nBITBUCKET_API_TOKEN=bb-fixture-token-cccc\n' >> "$fixtureRepo/.env"
 mkdir -p "$homeDir/.claude/channels/telegram"
@@ -283,7 +283,7 @@ node_missing=$("$node_bin" -e 'const f=require(process.argv[1]);const m=require(
 [ -z "$node_missing" ] || fail "g4 manifest secrets with no presence source: $node_missing"
 pass "g secret presence per consumer source, no values emitted, manifest fully covered"
 
-# ── h. redactor hardening (HIMMEL-4327) ─────────────────────────────────────
+# ── h. redactor hardening ─────────────────────────────────────
 redact_js="$repo_root/scripts/himmelctl/lib/redact.js"
 probes_js="$repo_root/scripts/himmelctl/lib/probes.js"
 rj() { "$node_bin" -e "const r=require(process.argv[1]);const p=require(process.argv[2]);$1" "$redact_js" "$probes_js"; }
@@ -345,7 +345,7 @@ if "$node_bin" "$lint" --root "$emptyRoot" >/dev/null 2>"$work/lint4.err"; then 
 grep -q 'scripts/hooks' "$work/lint4.err" || fail "h5 lint failure does not name scripts/hooks"
 pass "h5 flag-registry-lint fails on a missing hooks dir (node pin deferred to HIMMEL-4332)"
 
-# ── i. HIMMEL-4373: one owner per finding, a remedy on every fail/warn row ──
+# ── i. one owner per finding, a remedy on every fail/warn row ──
 foldDoctor="$work/stub-doctor-fold.sh"
 cat > "$foldDoctor" <<'STUB'
 #!/usr/bin/env bash
@@ -420,7 +420,7 @@ leak=$( cd "$target" && HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" "$node_b
 [ "$leak" = "$(winpath "$fixtureRepo")" ] || fail "i4 HIMMELCTL_REPO_ROOT leaked/changed after a throwing buildFeed: $leak"
 pass "i4 HIMMELCTL_REPO_ROOT restored after buildFeed throws"
 
-# ── j. HIMMEL-4379: every row carries a bundle; the bundle-registry lint ────
+# ── j. every row carries a bundle; the bundle-registry lint ────
 bundle_lint="$repo_root/scripts/install/bundle-registry-lint.mjs"
 table="$repo_root/scripts/himmelctl/lib/feed-bundles.json"
 # j1: every row of the hermetic report has a bundle named in envelope.bundles; the
@@ -473,7 +473,7 @@ jq -e '.rows[]|select(.id=="doctor:C3-luna")|.bundle=="vault"' "$work/j5.json" >
 jq -e '[.bundles[]|select(.id=="vault")]|length==1 and .[0].title=="Vault & capture"' "$work/j5.json" >/dev/null || fail "j5 the envelope's vault bundle was redacted"
 pass "j5 a .env value equal to a bundle id does not rewrite bundle fields (title is still redacted)"
 
-# ── k. HIMMEL-4379: bundle-registry-lint ────────────────────────────────────
+# ── k. bundle-registry-lint ────────────────────────────────────
 "$node_bin" "$bundle_lint" --root "$repo_root" >"$work/bl.out" 2>"$work/bl.err" || { cat "$work/bl.err" >&2; fail "k1 bundle lint fails on the real tree"; }
 grep -q 'bundle-registry-lint: ok' "$work/bl.out" || fail "k1 bundle lint did not print ok"
 pass "k1 bundle lint passes on the real tree"

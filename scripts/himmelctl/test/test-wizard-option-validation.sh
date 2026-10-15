@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-option-validation.sh — hermetic tests for himmelctl bin.js's
-# per-subcommand option validation (CR fix): every CLI flag is parsed
+# per-subcommand option validation: every CLI flag is parsed
 # GLOBALLY by parseArgs (order-independent — a flag can appear before or
 # after its subcommand token), but each subcommand only READS a specific
 # subset of them (see cmdInstall/cmdUninstall/cmdStatus/cmdEnsure's own
@@ -28,22 +28,22 @@
 #      validation and reach their subcommand handler (proven by getting the
 #      SAME "no himmelctl install profile found" error the handler itself
 #      raises for a missing cache — not the option-validation error).
-#   h. (CR fix) an entirely unrecognized flag (`--bogus-flag`, not just a
+#   h. an entirely unrecognized flag (`--bogus-flag`, not just a
 #      valid-flag-wrong-subcommand) now reports via process.exitCode + return
 #      (not process.exit()) — same flush hazard already fixed for --profile
 #      validation and the top-level .then() handler. Piped output (this
 #      whole suite captures via `$(...)`, exactly the exposed case) must
 #      show BOTH diagnostic lines, never a truncated single line.
-#   i. (CR fix) a flag placed BEFORE the subcommand token (`--json status`,
+#   i. a flag placed BEFORE the subcommand token (`--json status`,
 #      valid for status) passes validation and reaches cmdStatus, same as
 #      the post-subcommand form — flags are parsed order-independently.
-#   j. (CR fix) an invalid flag placed BEFORE the subcommand token
+#   j. an invalid flag placed BEFORE the subcommand token
 #      (`--profile core status`, --profile is ensure-only) is rejected with
 #      the SAME exit 2 + message as its post-subcommand form (case a) —
 #      position never bypasses the per-subcommand whitelist.
-#   k. (HIMMEL-2308) `status --contribute` -> exit 2, message names
+#   k. `status --contribute` -> exit 2, message names
 #      --contribute + 'status' (--contribute is install-only).
-#   l. (HIMMEL-2308) `install --advanced` -> exit 2, the "unknown argument"
+#   l. `install --advanced` -> exit 2, the "unknown argument"
 #      message — --advanced was parsed-but-inert (reserved, never honored) and
 #      is now DELETED outright: the honest contract is rejection, not a
 #      silently accepted no-op flag.
@@ -56,7 +56,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -73,7 +73,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# CR fix (hermeticity): every rejected-combo case (a-f, h, j) depends on
+# every rejected-combo case (a-f, h, j) depends on
 # parseArgs's own no-I/O invariant — the validation runs and exits BEFORE
 # any cache/state file is ever touched, so today NEITHER HIMMELCTL_CACHE_DIR
 # nor HOME actually matters to the outcome. That's exactly the risk: if that
@@ -141,7 +141,7 @@ grepq "$outF" -F -- "--items is not valid with 'uninstall'" \
   || fail "case f: expected a message naming --items + 'uninstall' (got: $outF)"
 echo "ok: case f — 'uninstall --items' is rejected with exit 2"
 
-# ── case k (HIMMEL-2308): status --contribute -> rejected ──────────────────
+# ── case k: status --contribute -> rejected ──────────────────
 # --contribute is install-only (it sets devOverlay — see bin.js's parseArgs).
 set +e
 outK=$(HIMMELCTL_CACHE_DIR="$noopCacheW" HIMMEL_LUNA_CONFIG_PATH="$noopCacheW-luna-config.json" HOME="$noopHome" USERPROFILE="$(winpath "$noopHome")" "$node_bin" "$wizard" status --contribute </dev/null 2>&1); rcK=$?
@@ -158,7 +158,7 @@ echo "ok: case k — 'status --contribute' is rejected with exit 2"
 # step. Seeing THAT message (not the option-validation error) proves every
 # flag in the combo passed validation and control reached the handler.
 cacheG="$work/cache-g"; mkdir -p "$cacheG"
-# CR fix (CodeRabbit round 20, hermeticity): set an empty scratch HOME (matching
+# set an empty scratch HOME (matching
 # case i's `homeI` idiom below) — case g used to inherit the CALLER's HOME, so a
 # HOME-derived fallback path in cmdStatus/cmdEnsure could touch real user state.
 homeG="$work/home-g"; mkdir -p "$homeG"
@@ -185,7 +185,7 @@ if grepq "$outG2" -F 'is not valid with'; then
 fi
 echo "ok: case g — 'status --items --json' and every ensure flag together both pass validation and reach their handler"
 
-# ── case h (CR fix): an entirely unrecognized flag reports via
+# ── case h: an entirely unrecognized flag reports via
 # process.exitCode + return (not process.exit()), so BOTH diagnostic lines
 # flush before exit under piped output — never a truncated single line. ────
 set +e
@@ -198,7 +198,7 @@ grepq "$outH" -F "Run 'himmelctl --help' for usage." \
   || fail "case h: expected the usage-pointer line too — BOTH must flush, not just the first (got: $outH)"
 echo "ok: case h — an unrecognized flag exits 2 with BOTH diagnostic lines flushed (no truncation under piped output)"
 
-# ── case i (CR fix): VALID flags placed BEFORE the subcommand token
+# ── case i: VALID flags placed BEFORE the subcommand token
 # (`--items x --json status`) pass validation and reach cmdStatus — same
 # outcome as the post-subcommand form (`status --items x --json`), proving
 # flags are parsed order-independently, not just tolerated when they happen
@@ -220,7 +220,7 @@ if grepq "$outI" -F 'is not valid with'; then
 fi
 echo "ok: case i — valid flags placed BEFORE the subcommand ('--items x --json status') pass validation and reach cmdStatus"
 
-# ── case j (CR fix): an INVALID flag placed BEFORE the subcommand token
+# ── case j: an INVALID flag placed BEFORE the subcommand token
 # (`--profile core status` — --profile is ensure-only) is rejected with the
 # SAME exit 2 + message as its post-subcommand form (case a) — position
 # never bypasses the per-subcommand whitelist. ─────────────────────────────
@@ -232,7 +232,7 @@ grepq "$outJ" -F -- "--profile is not valid with 'status'" \
   || fail "case j: expected the same rejection message as the post-subcommand form (got: $outJ)"
 echo "ok: case j — an invalid flag placed BEFORE the subcommand ('--profile core status') is rejected exactly like its post-subcommand form"
 
-# ── case l (HIMMEL-2308): --advanced is DELETED — now an unknown argument ──
+# ── case l: --advanced is DELETED — now an unknown argument ──
 set +e
 outL=$(HIMMELCTL_CACHE_DIR="$noopCacheW" HIMMEL_LUNA_CONFIG_PATH="$noopCacheW-luna-config.json" HOME="$noopHome" USERPROFILE="$(winpath "$noopHome")" "$node_bin" "$wizard" install --advanced </dev/null 2>&1); rcL=$?
 set -e

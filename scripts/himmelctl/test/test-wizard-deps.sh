@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-deps.sh — hermetic tests for `himmelctl deps status|ensure|
-# upgrade` (HIMMEL-759, sub-ticket C of epic HIMMEL-755): the version-aware
+# upgrade`: the version-aware
 # toolchain manager over scripts/install/deps.json, kept SEPARATE from the
 # manifest's presence-only kind:"dep" items (see deps.json's own header /
 # scripts/himmelctl/lib/deps-engine.js for the locked design rationale).
@@ -55,7 +55,7 @@
 #   o. `deps ensure` non-interactive, no --yes -> exit 2, requires --yes;
 #      the stub install script never runs.
 #   p. `deps ensure --yes`: both missing deps' manager:"script" installs run
-#      (log file written); the post-install re-probe (CR fix) KEEP the one
+#      (log file written); the post-install re-probe KEEP the one
 #      that converged (qmd — creates its presence marker) and FAIL-CLOSE the
 #      one that didn't land (redtool — still off PATH) -> exit 1,
 #      "1 installed, 1 failed", redtool reported "installed but still not
@@ -79,7 +79,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -159,7 +159,7 @@ grepq "$(echo "$outB2" | jq -er '.args[1]')" -F '_ensure_install_bun' \
   || fail "case b (upgrade): expected '_ensure_install_bun' (got: $outB2)"
 echo "ok: case b — bun ensure-tools: install -> ensure_tools bun, upgrade -> _ensure_install_bun"
 
-# ── case b2 (HIMMEL-2521): manager:"ensure-tools" for uv/pre-commit ────────
+# ── case b2: manager:"ensure-tools" for uv/pre-commit ────────
 # uv and pre-commit have no apt/dnf package on stock Ubuntu/Debian, and
 # python3 -m pip is unreliable there (PEP 668 + often no pip at all) -- both
 # route through the SAME bespoke-installer dispatch bun already uses, never
@@ -186,7 +186,7 @@ console.log(JSON.stringify(buildDepEntry(dep, ctx, { upgrade: true })));
 done
 echo "ok: case b2 — uv/pre-commit ensure-tools: install -> ensure_tools <id>, upgrade -> the bespoke installer, never manager:pip on linux"
 
-# ── case b3 (HIMMEL-2521): ensure-tools.sh installs uv/pre-commit without
+# ── case b3: ensure-tools.sh installs uv/pre-commit without
 # ever invoking python3 -m pip, and names the cause when uv cannot be
 # bootstrapped ────────────────────────────────────────────────────────────
 b3dir="$work/b3"; mkdir -p "$b3dir/bin" "$b3dir/home"
@@ -245,7 +245,7 @@ grepq "$(cat "$uv_calls_log" 2>/dev/null)" -F 'tool install pre-commit' \
   || fail "case b3: expected the fake uv to have been invoked with 'tool install pre-commit' (got: $(cat "$uv_calls_log" 2>/dev/null))"
 echo "ok: case b3 — ensure-tools.sh installs uv (stubbed official installer) then pre-commit (stubbed uv tool install pre-commit, verified by call log), without ever calling python3 -m pip"
 
-# ── case b4 (HIMMEL-2521): a genuinely unavailable uv names the cause ──────
+# ── case b4: a genuinely unavailable uv names the cause ──────
 b4dir="$work/b4"; mkdir -p "$b4dir/bin" "$b4dir/home"
 # No curl on PATH at all -- uv cannot be bootstrapped; the message must name
 # the cause (curl missing) and the fix (the manual install URL).
@@ -263,7 +263,7 @@ grepq "$pc_out" -F 'needs uv, and uv could not be installed' \
   || fail "case b4 (pre-commit): expected the message to name uv as the cause (got: $pc_out)"
 echo "ok: case b4 — a genuinely unavailable uv (no curl) makes ensure-tools.sh name the cause and the fix, for both uv and pre-commit"
 
-# ── case b5 (HIMMEL-2521 CR follow-up): "upgrade" mode actually upgrades an
+# ── case b5: "upgrade" mode actually upgrades an
 # already-present uv/pre-commit, instead of the idempotency early-return
 # (ensure-mode's) silently no-op'ing -- the old manager:pip route supported
 # `--upgrade`; the bespoke-installer route must not regress that. ──────────
@@ -341,7 +341,7 @@ grepq "$(cat "$b6_uv_calls_log")" -F 'tool install --force pre-commit' \
   || fail "case b6: expected a fall-through to 'uv tool install --force pre-commit' when pre-commit is on PATH but not uv-managed (calls: $(cat "$b6_uv_calls_log"))"
 echo "ok: case b6 — upgrade mode falls through to 'uv tool install pre-commit' when the on-PATH pre-commit is not uv-managed, instead of calling 'uv tool upgrade' on an install uv cannot upgrade"
 
-# ── case b7 (pr-check round 3 finding): upgrade mode must call 'uv tool
+# ── case b7 (an earlier fix finding): upgrade mode must call 'uv tool
 # upgrade pre-commit' when uv manages pre-commit (per `uv tool list`) even
 # though its shim is NOT on PATH -- gating the upgrade verb on `command -v
 # pre-commit` (PATH) as well as `uv tool list` made this fall through to
@@ -411,7 +411,7 @@ grepq "$(cat "$b8_uv_calls_log")" -F 'tool install --force pre-commit' \
   || fail "case b8: expected a retry as 'uv tool install --force pre-commit' after the unforced install refused to overwrite the existing pip/pipx shim (calls: $(cat "$b8_uv_calls_log"))"
 echo "ok: case b8 — upgrade mode's fall-through install retries with --force when uv refuses to overwrite an existing unmanaged pre-commit shim"
 
-# ── case b9 (HIMMEL-3628): a FAILING `uv tool list` (uv present but broken)
+# ── case b9: a FAILING `uv tool list` (uv present but broken)
 # must not be read the same as an EMPTY one -- the function reports the uv
 # failure and returns non-zero WITHOUT attempting an install/upgrade. ──────
 b9dir="$work/b9"; mkdir -p "$b9dir/bin" "$b9dir/home/.local/bin"
@@ -440,7 +440,7 @@ grepq "$(cat "$b9_uv_calls_log")" -F 'tool upgrade' \
   && fail "case b9: a failing 'uv tool list' must NOT be treated as 'absent' -- no 'uv tool upgrade' call should follow (calls: $(cat "$b9_uv_calls_log"))"
 echo "ok: case b9 — a failing 'uv tool list' reports the uv failure and returns non-zero without attempting an install"
 
-# ── case b10 (HIMMEL-3628): an EMPTY-but-successful `uv tool list` is still
+# ── case b10: an EMPTY-but-successful `uv tool list` is still
 # treated as 'pre-commit absent' (install proceeds), and _ensure_install_
 # precommit's locals (uv_tool_list, pc_installed, ...) must not leak into
 # the caller's scope of the same name. ──────────────────────────────────────
@@ -790,7 +790,7 @@ grepq "$errO" -F 'requires --yes' || fail "case o: error should name the --yes r
 echo "ok: case o — ensure non-interactive without --yes exits 2, nothing executed"
 
 # ── case p: ensure --yes — recipes run; re-probe fail-closes the one that
-# didn't land, keeps the one that did. CR fix (CodeRabbit MAJOR): an install
+# didn't land, keeps the one that did. (CodeRabbit MAJOR): an install
 # that exits 0 but leaves the tool off PATH must now be re-probed and reported
 # FAILED, not silently counted as installed. redtool's stub writes its log
 # line but never puts 'redtool-does-not-exist' on PATH -> re-probe red ->
@@ -906,10 +906,10 @@ grepq "$outT" -F 'prompt to pull qmd embedding/rerank models' || fail "case t: e
 [ -f "$modelsLog" ] && fail "case t: --dry-run must NOT execute the model pull"
 echo "ok: case t — upgrade --dry-run prints DRY lines naming every planned dep + recipe + the model-pull prompt, executes nothing"
 
-# ═══════════════ HIMMEL-2438: `deps ensure` on stock Ubuntu ════════════════
+# ═══════════════ `deps ensure` on stock Ubuntu ════════════════
 #
 # himmelctl deps ensure --yes installed 0/4 declared deps on a stock Ubuntu
-# box (HIMMEL-2438): apt-get ran unprivileged with no explanation, gitleaks
+# box: apt-get ran unprivileged with no explanation, gitleaks
 # had no apt recipe at all, bun's freshly-installed binary was invisible to
 # the same run's later deps (qmd) and to the post-install re-probe, and a
 # converged-but-off-PATH install was double-counted as both "installed" and
@@ -931,7 +931,7 @@ echo "$outU" | jq -e '. == ["bun","qmd"]' >/dev/null \
 echo "ok: case u — deps.json declares bun before qmd; the order-preserving plan construction keeps it that way"
 
 # ── case bb: deps.json — gitleaks installs via the package manager on linux
-# (HIMMEL-2438 defect 2: it used to be manager:"hint" with no apt recipe at
+# (it used to be manager:"hint" with no apt recipe at
 # all, despite shellcheck already using the same apt-get path), keeping its
 # macos brew / win32 winget recipes untouched. ─────────────────────────────
 gitleaksLinuxManager=$(jq -r '.deps[] | select(.id=="gitleaks") | .install.linux.manager' "$repo_root/scripts/install/deps.json")
@@ -987,7 +987,7 @@ mk_ensure_tools_path() {
 # ── case v: privilege probe — non-root, sudo present but NOT passwordless
 # (`sudo -n true` fails, e.g. a password is required) -> the adopter is told
 # the EXACT privileged command to run themselves, and apt-get is NEVER
-# invoked (HIMMEL-2438 defect 1: apt-get used to run unprivileged and fail
+# invoked (apt-get used to run unprivileged and fail
 # with a mystery "install manually" message that never named the real
 # cause). ────────────────────────────────────────────────────────────────
 vdir="$work/case-v-bin"
@@ -1052,7 +1052,7 @@ echo "ok: case w — passwordless sudo: the real install call is routed through 
 # ── case x: apt-get install FAILS (package genuinely missing on this distro)
 # -> the failure message surfaces apt-get's own last non-empty stderr line
 # instead of swallowing it, and — for a tool with no fallback hint — still
-# ends with the honest "install manually" (HIMMEL-2438 defect 1: stderr used
+# ends with the honest "install manually" (stderr used
 # to be redirected straight to /dev/null, so the adopter never learned WHY
 # the install failed). ─────────────────────────────────────────────────────
 xdir="$work/case-x-bin"
@@ -1082,7 +1082,7 @@ grepq "$outX" -F "install 'shellcheck' manually" || fail "case x: shellcheck has
 echo "ok: case x — apt-get install failure surfaces its own stderr tail instead of swallowing it"
 
 # ── case y: gitleaks — installable via the SAME apt-get path shellcheck
-# uses (HIMMEL-2438 defect 2), and its failure message (older distro, no
+# uses, and its failure message (older distro, no
 # package) carries the old 'hint' manager's tarball guidance as a per-tool
 # fallback, not a bare "install manually". ─────────────────────────────────
 ydir="$work/case-y-bin"
@@ -1115,7 +1115,7 @@ grepq "$outY" -F 'install gitleaks from its official release tarball, then re-ru
 echo "ok: case y — gitleaks: apt-get install attempted, failure carries the tarball fallback hint"
 
 # ── case z: bun already installed at ~/.bun/bin -> idempotent, no re-run of
-# the official installer (HIMMEL-2438: a re-run used to append a SECOND
+# the official installer (a re-run used to append a SECOND
 # identical PATH block to ~/.bashrc every time). curl must never be invoked.
 zdir="$work/case-z-bin"; mkdir -p "$zdir"
 zcurlLog="$work/case-z-curl.log"
@@ -1137,7 +1137,7 @@ grepq "$outZ" -F 'export PATH="$HOME/.bun/bin:$PATH"' \
   || fail "case z: expected the shell-rc hint with the export line (got: $outZ)"
 echo "ok: case z — bun already installed: idempotent, no reinstall, PATH hint printed"
 
-# ── case aa: cmdDepsEnsure re-resolves PATH for THIS run (HIMMEL-2438 defect
+# ── case aa: cmdDepsEnsure re-resolves PATH for THIS run
 # 3) and the honest counter (defect 5 in bin.js's own report): a dep whose
 # install recipe lands its binary in $HOME/.bun/bin (mirrors bun's own
 # official installer) is invisible to the caller's PATH, but the
@@ -1201,7 +1201,7 @@ grepq "$outAA" -F 'not on your PATH; add' || fail "case aa: expected the shell-r
 echo "ok: case aa — cmdDepsEnsure re-resolves PATH mid-run; a dep landing in ~/.bun/bin is verified + honestly reported, not falsely failed"
 
 # ── case cc: a dep a PRIOR run already installed into $HOME/.bun/bin (CR
-# round 1, codex-1) — present via the augmented PATH from the START of the
+# present via the augmented PATH from the START of the
 # run, never on the caller's own PATH — must NOT appear in the `--dry-run`
 # plan or the "about to install" list; `ensure --yes` (it's the only
 # declared dep) reports "nothing to converge" and NEVER invokes the install
@@ -1270,7 +1270,7 @@ echo "ok: case cc — a dep a PRIOR run already installed into ~/.bun/bin reads 
 
 # ── case dd: augmentPathForRun (the extracted pure PATH-augmentation
 # helper) — an EMPTY originalPath must not leave a trailing path.delimiter
-# or an empty PATH segment (CR round 1, codex-2: the old
+# or an empty PATH segment
 # `dirsToAdd.join(delim) + delim + originalPath` formula did exactly that
 # whenever originalPath was ""; a trailing/empty segment means an implicit-
 # cwd PATH lookup). Unit-tested directly via require() — bin.js's own CLI
@@ -1305,7 +1305,7 @@ echo "$outDD" | jq -e '. as $o | $o.nonEmpty.path == (($o.dirs | join($o.sep)) +
   || fail "case dd: a non-empty originalPath should be appended after the added dirs, unchanged (got: $outDD)"
 echo "ok: case dd — augmentPathForRun: an empty originalPath never leaves a trailing delimiter or an empty PATH segment"
 
-# ══════ HIMMEL-2438 wet-run findings (ubuntu_new clean-tools guest) ═════
+# ══════ wet-run findings (ubuntu_new clean-tools guest) ═════
 #
 # The shellcheck and gitleaks deps now install via `sudo -n apt-get` (proven above), but
 # bun's official installer failed on stock Ubuntu 24.04 with "error: unzip is

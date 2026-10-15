@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-manifest-v2.sh — hermetic tests for scripts/install/manifest-lint.mjs's
-# schema-v2 extension (HIMMEL-755 A1): optional install/unwire/removable item
+# schema-v2 extension: optional install/unwire/removable item
 # keys, INSTALL_TYPES closed vocab + shape checks, the removable<=>unwire
 # biconditional, scopes/profiles value-enums, and a deps[] DAG check (dep-cycle
 # detector). Mirrors sibling test-wizard-*.sh conventions but needs no node
@@ -20,27 +20,27 @@
 #   h. a non-string deps[] entry (a number) -> exit 1 with a clear per-item
 #      message (not a crash/stack trace) — the DFS cycle detector must
 #      reject it before building the graph, not choke on it.
-#   i. (CR fix) install.type:"config" with BOTH 'key' and 'keys' -> exit 1
+#   i. install.type:"config" with BOTH 'key' and 'keys' -> exit 1
 #      (the same key XOR keys shape probe type settings-key already
 #      enforces); install.type:"config" with a valid 'keys' array (no
 #      'key') -> accepted (case f's real-manifest check already covers
 #      jira-env-keys using this exact shape, but this fixture pins the
 #      shape check itself, independent of the real manifest's content).
-#   j. (CR fix) install.type:"config" cross-checked against the SAME item's
+#   j. install.type:"config" cross-checked against the SAME item's
 #      probe: a probe with 4 keys + a singular install.key -> exit 1.
-#   k. (CR fix) a probe with 4 keys + install.keys missing one of them ->
+#   k. a probe with 4 keys + install.keys missing one of them ->
 #      exit 1 (install must cover the probe's COMPLETE key set).
-#   l. (CR fix) install.keys == the probe's key set exactly -> accepted
+#   l. install.keys == the probe's key set exactly -> accepted
 #      (the real jira-env-keys shape).
-#   m. (CR fix) install:{type:"wire",target:"statusline"} + unwire:
+#   m. install:{type:"wire",target:"statusline"} + unwire:
 #      {type:"wire",target:"pretooluse-hooks"} (mismatched targets) -> exit
 #      1, naming both targets — the two independent shape checks alone
 #      would each pass this incoherent pairing.
-#   n. (CR fix) install/unwire both target:"statusline" (matching) ->
+#   n. install/unwire both target:"statusline" (matching) ->
 #      accepted — the real wiring-statusline/wiring-pretooluse items use
 #      this exact shape (case f's real-manifest check already covers them
 #      by content; this fixture pins the cross-check itself).
-#   o. (CR fix) the REVERSE half of the removable<=>unwire biconditional
+#   o. the REVERSE half of the removable<=>unwire biconditional
 #      case b pins: `unwire` present but `removable` missing (or not
 #      'per-item') -> exit 1, message identifying the invalid relationship.
 #      Case b alone (removable-without-unwire) never catches an unwire
@@ -54,7 +54,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -117,7 +117,7 @@ run_lint() {
 }
 
 # mutate_base <out-path> <js-mutation-expr-on-m> — load the base fixture,
-# apply a JS mutation to `m`, write it to <out-path>. CR fix: the base/out
+# apply a JS mutation to `m`, write it to <out-path>. the base/out
 # paths are passed as process.argv args (node -e "script" argv1 argv2),
 # never interpolated into the JS source string — a checkout path carrying
 # an apostrophe or space would otherwise break the quoting.
@@ -214,7 +214,7 @@ if grepq "$errH" -i 'TypeError\|stack\|at Object'; then
 fi
 echo "ok: case h — a non-string deps[] entry exits 1 with a clear message, no crash"
 
-# ── case i (CR fix): install.type:"config" key XOR keys shape ──────────────
+# ── case i: install.type:"config" key XOR keys shape ──────────────
 caseI_both="$work/case-i-both.json"
 mutate_base "$caseI_both" "m.items[0].install = { type: 'config', key: 'FOO', keys: ['FOO', 'BAR'] };"
 set +e
@@ -232,7 +232,7 @@ set -e
 [ "$rcI2" -eq 0 ] || fail "case i: install.type:config with a valid 'keys' array (no 'key') should lint clean (got rc=$rcI2): $errI2"
 echo "ok: case i (part 2) — install.type:config with a valid 'keys' array (no 'key') is accepted"
 
-# ── case j (CR fix): probe has 4 keys + install has a singular 'key' -> exit 1
+# ── case j: probe has 4 keys + install has a singular 'key' -> exit 1
 caseJ="$work/case-j.json"
 mutate_base "$caseJ" "
 m.items[0].probe = { type: 'settings-key', file: '.env', keys: ['A', 'B', 'C', 'D'] };
@@ -245,7 +245,7 @@ set -e
 grepq "$errJ" -F 'singular' || fail "case j: error should call out the singular key vs multi-key probe mismatch (got: $errJ)"
 echo "ok: case j — install.type:config with a singular 'key' against a probe checking multiple keys exits 1"
 
-# ── case k (CR fix): probe has 4 keys + install.keys missing one -> exit 1 ─
+# ── case k: probe has 4 keys + install.keys missing one -> exit 1 ─
 caseK="$work/case-k.json"
 mutate_base "$caseK" "
 m.items[0].probe = { type: 'settings-key', file: '.env', keys: ['A', 'B', 'C', 'D'] };
@@ -258,7 +258,7 @@ set -e
 grepq "$errK" -F 'missing=[D]' || fail "case k: error should name the missing key 'D' (got: $errK)"
 echo "ok: case k — install.keys missing one of the probe's keys exits 1, naming the missing key"
 
-# ── case l (CR fix): install.keys == the probe's key set exactly -> accepted
+# ── case l: install.keys == the probe's key set exactly -> accepted
 # (the real jira-env-keys shape) ────────────────────────────────────────────
 caseL="$work/case-l.json"
 mutate_base "$caseL" "
@@ -271,7 +271,7 @@ set -e
 [ "$rcL" -eq 0 ] || fail "case l: install.keys matching the probe's key set exactly should lint clean (got rc=$rcL): $errL"
 echo "ok: case l — install.keys covering exactly the probe's key set is accepted"
 
-# ── case m (CR fix): install/unwire both type:"wire" but MISMATCHED targets
+# ── case m: install/unwire both type:"wire" but MISMATCHED targets
 # -> exit 1, naming both. removable:'per-item' set alongside so the
 # biconditional check (h) doesn't ALSO fire and confuse the assertion. ─────
 caseM="$work/case-m.json"
@@ -288,7 +288,7 @@ grepq "$errM" -F "install.target 'statusline'" || fail "case m: error should nam
 grepq "$errM" -F "unwire.target 'pretooluse-hooks'" || fail "case m: error should name unwire.target 'pretooluse-hooks' (got: $errM)"
 echo "ok: case m — mismatched install/unwire wire targets exit 1, naming both"
 
-# ── case n (CR fix): install/unwire both type:"wire" with MATCHING targets
+# ── case n: install/unwire both type:"wire" with MATCHING targets
 # -> accepted (the real wiring-statusline/wiring-pretooluse shape). ────────
 caseN="$work/case-n.json"
 mutate_base "$caseN" "
@@ -302,7 +302,7 @@ set -e
 [ "$rcN" -eq 0 ] || fail "case n: matching install/unwire wire targets should lint clean (got rc=$rcN): $errN"
 echo "ok: case n — matching install/unwire wire targets are accepted"
 
-# ── case o (CR fix, CodeRabbit round 22): the REVERSE half of the
+# ── case o: the REVERSE half of the
 # removable<=>unwire biconditional case b pins. Case b only asserts
 # removable:'per-item' WITHOUT unwire exits 1 — a one-directional check
 # never catches the converse: an `unwire` someone added and forgot to mark
@@ -340,7 +340,7 @@ grepq "$errO2" -F "removable === 'per-item' iff 'unwire' is present" \
   || fail "case o: error should identify the removable<=>unwire relationship (got: $errO2)"
 echo "ok: case o (part 2) — unwire present with removable not 'per-item' exits 1, naming the biconditional"
 
-# ── case p (HIMMEL-755 sub-ticket E): offboard value outside the closed
+# ── case p: offboard value outside the closed
 # vocabulary -> exit 1, naming the bad value. Mirrors case c's enum-mutation
 # shape (scopes entry not in its enum) for the newer offboard field. ────────
 caseP="$work/case-p.json"
@@ -363,7 +363,7 @@ set -e
 [ "$rcP2" -eq 0 ] || fail "case p: offboard:'advise' (a valid value) should lint clean (got rc=$rcP2): $errP2"
 echo "ok: case p (part 2) — offboard:'advise' (a valid closed-vocabulary value) is accepted"
 
-# ── case q (HIMMEL-2292): probe type 'settings-key' field 'expect' — a
+# ── case q: probe type 'settings-key' field 'expect' — a
 # non-boolean value exits 1, 'expect' paired with 'keys' (not 'key') exits 1,
 # and a valid boolean 'expect' paired with 'key' lints clean. ─────────────
 caseQ_type="$work/case-q-type.json"
@@ -394,7 +394,7 @@ set -e
 [ "$rcQ3" -eq 0 ] || fail "case q: a valid boolean probe.expect paired with singular 'key' should lint clean (got rc=$rcQ3): $errQ3"
 echo "ok: case q (part 3) — probe.expect:true paired with singular 'key' is accepted"
 
-# ── cases r-w: provenance.kinds (HIMMEL-3332 S11) ──────────────────────────
+# ── cases r-w: provenance.kinds ──────────────────────────
 # Every item uninstall would tear down (offboard 'unwire', the default when the
 # field is absent) must name the ledger kinds its writers record, so the ledger
 # reader has a manifest row to hold the writers to. advise/keep items write
@@ -463,7 +463,7 @@ set -e
 [ "$rcW" -eq 1 ] || fail "case w: a malformed provenance on an advise item should still exit 1 (got rc=$rcW): $errW"
 echo "ok: case w — provenance is shape-checked wherever it appears"
 
-# ── case x (HIMMEL-3334): probe type 'settings-key' field 'verifyHudConfig'
+# ── case x: probe type 'settings-key' field 'verifyHudConfig'
 # shape — non-boolean -> exit 1; paired with 'keys' -> exit 1 (same key XOR
 # keys constraint as verifyPluginSet/verifyScript) ─────────────────────────
 caseX_bool="$work/case-x-bool.json"

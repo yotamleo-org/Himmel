@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/helpers.js — shared helpers extracted out of bin.js
-// (HIMMEL-756 T1.2a). Pure refactor: same implementations, same call sites,
+// Pure refactor: same implementations, same call sites,
 // same seam env vars (HIMMELCTL_CACHE_DIR) — bin.js now `require`s these
 // instead of defining them inline.
 
@@ -13,7 +13,7 @@ const path = require('path');
 // Uses path.delimiter, which is the separator Node actually sees in
 // process.env.PATH (';' on win32, ':' on posix).
 //
-// CR fix (HIMMEL-1093 round 2, codex-2): optional `env` param, defaulting to
+// optional `env` param, defaulting to
 // process.env when omitted — preserves probeDep's documented exception
 // (probes.js: which() reads process.env.PATH directly by design, a hermetic
 // test controls it via the OUTER shell PATH, not ctx.env), while letting a
@@ -23,7 +23,7 @@ const path = require('path');
 // resolve.mjs's pathHasFactory() — a manually-constructed env object built by
 // spreading process.env can carry either casing on Windows.
 //
-// CR fix (HIMMEL-1093 round 5, codex-1): pick the first KEY PRESENT, not the
+// pick the first KEY PRESENT, not the
 // first TRUTHY value. `e.PATH || e.Path || ''` treated a deliberately
 // scrubbed `PATH: ''` as falsy and fell through to `e.Path` — so a hermetic
 // caller that explicitly empties PATH (to prove "nothing resolves") silently
@@ -66,7 +66,7 @@ function profileForVault(answers) {
   return mode === 'default-template' ? 'all' : 'core';
 }
 
-// resolvePowershell(env) -> preferred PowerShell executable (HIMMEL-2126).
+// resolvePowershell(env) -> preferred PowerShell executable.
 //
 // WHY: Windows PowerShell 5.1 (powershell.exe/bare 'powershell') has a trap
 // class pwsh (PowerShell 7) does not — it reads a BOM-less UTF-8 script as
@@ -80,14 +80,14 @@ function profileForVault(answers) {
 // hermetic test pinning a specific interpreter) — same seam class as
 // HIMMELCTL_BASH; no warning is printed for an explicit override. Otherwise
 // prefers `pwsh` on PATH; falling back to `powershell` prints ONE warning to
-// stderr naming the trap class + HIMMEL-2126 so the fallback is never
+// stderr naming the trap class + so the fallback is never
 // silent. Returns a bare command name (`pwsh`/`powershell`) when `which`
 // finds nothing, so a caller relying on PATH resolution at spawn time still
 // gets a sane default and an honest ENOENT if truly absent.
 function resolvePowershell(env) {
   const e = env || process.env;
   if (e.HIMMELCTL_POWERSHELL) return e.HIMMELCTL_POWERSHELL;
-  // Probe pwsh.exe explicitly too (panel round-3, HIMMEL-2126): which()'s
+  // Probe pwsh.exe explicitly too: which's
   // executable-extension walk is win32-only, so a pwsh.exe-only PATH entry
   // (WSL interop, POSIX test fixtures) needs the explicit second name —
   // mirrors scripts/lib/resolve-powershell.sh.
@@ -104,7 +104,7 @@ function resolvePowershell(env) {
 }
 
 // Forward-slash a path for DISPLAY in a diagnostic that tells the operator to
-// run something (HIMMEL-2892 CR round 2, [codex-1]). path.join/resolve emit
+// run something. path.join/resolve emit
 // native separators, so on Windows the printed `bash C:\\...\\scripts\\setup.sh`
 // is not pasteable into the Git Bash shell the same line names — the shell eats
 // `\s` — and it is the same collapse wire-pretooluse-hooks.sh forward-slashes
@@ -119,7 +119,7 @@ function shellQuote(a) {
   return /\s/.test(a) ? `'${String(a).replace(/'/g, "'\\''")}'` : a;
 }
 
-// HIMMEL-3327: `node <script>` for a printed hint. Every printed
+// `node <script>` for a printed hint. Every printed
 // "run this" line must work from ANY cwd — the operator pastes it from the
 // project the summary was printed for, not from the himmel clone — so the
 // script path is absolute (callers pass __filename or a path joined onto the
@@ -133,7 +133,7 @@ function nodeScriptCmd(scriptPath) {
   return `node ${SHELL_SAFE_PATH.test(p) ? p : `'${p.replace(/'/g, "'\\''")}'`}`;
 }
 
-// himmelIdentity(root) — the ONE answer to "which himmel is this" (HIMMEL-4403),
+// himmelIdentity(root) — the ONE answer to "which himmel is this",
 // shared by `--version` and the config feed. `version` is the VERSION file (the
 // declared release line, bumped at release cut); `describe` and `commit` are the
 // checkout's own git state and are the truth about what is running, so they can

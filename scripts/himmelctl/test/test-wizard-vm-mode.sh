@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-vm-mode.sh — hermetic tests for HIMMEL-4597 (vm.mode in himmelctl):
+# test-wizard-vm-mode.sh — hermetic tests for (vm.mode in himmelctl):
 #
 #   a. luna-config.js: `vm` is an OPTIONAL managed section; validateVm()
 #      verdicts equal the resolver's (scripts/lib/vm-mode.sh mode: rc 0 vs 2)
@@ -319,7 +319,7 @@ printf '{"vm":{"mode":"local"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 printf '%s\n' "$float_cfg" > "$HIMMEL_LUNA_CONFIG_PATH"
 got=$(askcad_doc '{"mode":"remote","remote":{"ssh":"u@h","port":22,"identity":"~/.ssh/id_ed25519"}}')
 [ "$got" = '{"n":2,"vs":"off"}' ] || fail "e: interactive float port — vault-stall must be refused as a config error: $got"
-# (the interior-\x1c ssh row left this section in HIMMEL-4636: the JS validator
+# (the interior-\x1c ssh row left this section in the JS validator
 # now rejects it too, so the wizard cannot read such a config at all — table a)
 # control: the same answer over an integer port arms
 printf '{"vm":{"mode":"remote","remote":{"ssh":"u@h","port":22}}}\n' > "$HIMMEL_LUNA_CONFIG_PATH"

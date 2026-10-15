@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-wizard-qmd-daemon.sh — hermetic tests for the himmelctl `qmd-daemon`
-# status item (HIMMEL-4432): the qmd daemon's initialize round-trip, judged in
-# himmelctl status (one owner per fact, HIMMEL-755) instead of doctor C40.
+# status item: the qmd daemon's initialize round-trip, judged in
+# himmelctl status (one owner per fact) instead of doctor C40.
 # The probe runs against a stubbed curl through the doctor's own seams
 # (HIMMEL_DOCTOR_QMD_CURL / _URL / _INIT_TIMEOUT), read from ctx.env.
 #
@@ -34,7 +34,7 @@ case "${QD_MODE:-ok}" in
   hang) finish 000 28 ;;
   foreign) printf 'event: message\ndata: %s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"other-server"}}}'; finish 200 ;;
   slow) sleep 4 ;;
-  # HIMMEL-5227: the real HIMMEL-5002 daemon (reply copied from the live :8181
+  # the real daemon (reply copied from the live:8181
   # listener, 2026-10-11): 401 + {"error":"Unauthorized"} without the bearer
   # token, which arrives as a curl config on stdin (-K -), never argv.
   auth) case "$cfg" in *"Authorization: Bearer "*) ;; *) printf '{"error":"Unauthorized"}'; finish 401 ;; esac ;;
@@ -62,7 +62,7 @@ out=$(probe foreign); echo "$out" | jq -e '.actual == "degraded" and (.detail | 
 out=$(probe down);    echo "$out" | jq -e '.actual == "absent"' >/dev/null || fail "refused (rc 7) -> absent (got: $out)"
 echo "ok: qmd-daemon present / slow / wedged / foreign / not-running"
 
-# HIMMEL-5227: a daemon that requires the bearer token (HIMMEL-5002) must not
+# a daemon that requires the bearer token must not
 # read as "NOT qmd". With the token file the probe authenticates (present);
 # without it the 401 is named as a missing token, not a foreign listener.
 printf 'tok-for-the-test-only\n' > "$work/http-token"; chmod 600 "$work/http-token"

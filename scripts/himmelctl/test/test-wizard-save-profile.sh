@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-save-profile.sh — hermetic tests for HIMMEL-2348 deliverable 1
+# test-wizard-save-profile.sh — hermetic tests for deliverable 1
 # ("save-your-profile"): at the end of a SUCCESSFUL, non-dry-run install or
 # ensure converge, offer to save the answered profile as a NAMED, reusable
 # file under HIMMELCTL_PROFILES_DIR that `--from-profile` can replay on
@@ -41,18 +41,18 @@
 #      target is asserted absent.
 #   7. `ensure` after a real (non-dry-run) converge -> the same offer fires;
 #      --yes and --dry-run both suppress it (no prompt, no file).
-#   8. HIMMEL-2348 CR finding 1: an existing REGULAR file at the destination,
+#   8. 1: an existing REGULAR file at the destination,
 #      overwrite confirmed -> it gets overwritten (the 'wx'-then-EEXIST-then-
 #      'w' fallback path this finding rewrote wasn't exercised by any case
 #      above — case 1 always writes into an empty profiles dir).
-#   9. HIMMEL-2348 CR finding 1: a SYMLINK at the destination, overwrite
+#   9. 1: a SYMLINK at the destination, overwrite
 #      confirmed -> refused (never written through), the symlink's target is
 #      left untouched. Probed and SKIPPED with a clear message if this box
 #      can't create filesystem symlinks (observed on at least one dev box:
 #      Git Bash's own `ln -s` silently copies instead of linking, and Node's
 #      fs.symlinkSync fails EPERM without elevated privilege/Developer
 #      Mode) — never faked against a same-named regular file instead.
-#  10. HIMMEL-2348 CR round 2 findings 1/2/3: the save now writes via a
+#  10. 2 findings 1/2/3: the save now writes via a
 #      temp-file-in-the-same-dir + renameSync, so a failure DURING that
 #      write must leave a pre-existing destination file completely
 #      unchanged (the whole point of not truncating `dest` in place). A
@@ -162,10 +162,10 @@ stage() {
 # The 9 base wizard answers (profile/scope/vault/handover/pluginSet/lanes/
 # alwaysOn/cadences/disarm-consent) that produce a starter/project/vault=none/
 # inline/lean/no-lanes/no-alwaysOn profile — verbatim the same sequence
-# test-wizard-questions.sh's case5 uses. HIMMEL-3068: this vault=none +
+# test-wizard-questions.sh's case5 uses. this vault=none +
 # no-codex-lane shape now ALSO reaches the cadences question (drift-fix/
 # upstream-watch are requires:'none', always offered; repo-sync is Windows-
-# only, HIMMEL-3086) followed by
+# only) followed by
 # the disarm-consent question (since declining all three counts as a
 # decline) — 7 became 9; see that file's case1/case7 for the exact count
 # assertion this mirrors.
@@ -203,7 +203,7 @@ cache: <$(cat "$cachefile1")>
 saved: <$(cat "$savedfile1")>"
 grepq "$out1" "saved profile to" || fail "case1: expected a confirmation line naming the saved path (got: $out1)"
 echo "ok: case1 interactive install + accepted save writes a byte-identical named profile"
-# HIMMEL-3332 S5: the accepted save is recorded as a keep-class file create, in
+# the accepted save is recorded as a keep-class file create, in
 # the SAME session as the install (so it is inside begin..end, not a stray
 # implicit session of its own).
 ledger1="$work/prov1/provenance.jsonl"
@@ -612,7 +612,7 @@ else
   echo "ok: case9 a symlink at the save destination is refused, never written through; its target is untouched"
 fi
 
-# ── Case 10: HIMMEL-2348 CR round 2 findings 1/2/3 — a write failure during
+# ── Case 10: 2 findings 1/2/3 — a write failure during
 # the temp-file-then-rename save leaves the pre-existing destination file
 # completely unchanged ───────────────────────────────────────────────────────
 c10="$work/case10"; mkdir -p "$c10"
@@ -681,7 +681,7 @@ shopt -u nullglob dotglob
 [ "${#leftover10[@]}" -eq 0 ] || fail "case10: a failed save must not litter the profiles dir with a temp file (found: ${leftover10[*]})"
 echo "ok: case10 a write failure during the temp-file-then-rename save leaves the pre-existing destination file byte-unchanged, warns, and does not touch the install's exit code"
 
-# ── Case 11: HIMMEL-2348 CR round 2 finding — a RENAME failure (temp write
+# ── Case 11: 2 finding — a RENAME failure (temp write
 # succeeds, renameSync throws) must still clean up the leftover temp file.
 # This is the only path that exercises offerSaveProfile's
 # `finally { if (tmpCreated) unlinkSync(tmpDest) }` cleanup: case 10's write

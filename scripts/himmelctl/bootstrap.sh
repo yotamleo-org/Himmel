@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/himmelctl/bootstrap.sh — node-less bootstrap shim for himmelctl
-# (HIMMEL-887 T7). For a genuinely node-less clean machine: detect node
+# For a genuinely node-less clean machine: detect node
 # absent, install node (+ bun on darwin — apt has no bun package, so linux
 # gets node+npm and bun stays an optional post-bootstrap step) via the
 # platform package manager (darwin: brew, linux: apt), then hand off to
@@ -61,7 +61,7 @@ run_install() {
       # Non-Darwin assumes apt (the only posix plan this shim carries). Do NOT
       # add distro-specific package managers (yum/dnf/pacman/zypper) — fail
       # closed with a manual-install pointer naming the detected platform so a
-      # non-apt host never silently mis-runs `sudo apt-get` (HIMMEL-935 / CR #1126).
+      # non-apt host never silently mis-runs `sudo apt-get`.
       if ! command -v apt-get >/dev/null 2>&1; then
         echo "bootstrap: no apt-get on this host ($(uname -s) $(uname -r)) -- install Node.js >=18 manually (see https://nodejs.org), put it on PATH, then re-run bootstrap" >&2
         return 1

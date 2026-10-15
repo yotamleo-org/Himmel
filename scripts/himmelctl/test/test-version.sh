@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-version.sh — himmel carries a version, and himmelctl reports it.
 #
-# WHY (HIMMEL-1599): himmel had NO version of its own. The `template-version`
+# WHY: himmel had NO version of its own. The `template-version`
 # gate versions the luna TEMPLATE, not the harness, so every measurement we
 # take — gate false-positive rates, dispatch-completion rates, suite timings —
 # was unattributable: "this run was slower" with nothing to attribute it to.
@@ -39,7 +39,7 @@ rc=$?
 grep -q 'usage' <<<"$help_out" \
   || { echo "FAIL - --help no longer prints usage"; exit 1; }
 
-# ── HIMMEL-3400: --version also reports the git describe string + the commit ─
+# ── --version also reports the git describe string + the commit ─
 # A fixture checkout: one tag, then one commit on top, so describe is the
 # `<tag>-1-g<sha>` shape the operator sees between releases.
 work=$(mktemp -d "${TMPDIR:-/tmp}/test-version.XXXXXX") || { echo "FAIL - mktemp"; exit 1; }

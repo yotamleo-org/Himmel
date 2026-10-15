@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-config-feed-worktree-parity.sh — HIMMEL-4403: the config feed
+# test-config-feed-worktree-parity.sh — the config feed
 # (`himmelctl report --json`) answers the same rows from the primary checkout
 # and from a linked worktree of it. Rows whose answer must not depend on which
 # checkout served them are the whole feed minus the envelope fields that name
 # the checkout (generatedAt, probedAt, target.path, himmel.checkout).
 #
 # Also pins feed.himmel = {version, describe, commit, checkout}: the data the
-# config UI header shows (HIMMEL-4405), with `checkout` naming the SERVED tree.
+# config UI header shows, with `checkout` naming the SERVED tree.
 #
 # Hermetic: fixture primary + `git worktree add`, fake HOME/cache, doctor and
 # cadence seams stubbed (the test-config-feed.sh shape). HANDOVER_DIR is set

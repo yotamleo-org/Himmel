@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-uninstall-converge.sh — hermetic tests for the manifest-driven
-# uninstall advisory + completeness check (HIMMEL-755 sub-ticket E,
+# uninstall advisory + completeness check
 # uninstall-completeness). Companion to test-wizard-uninstall.sh (which
 # covers the pre-existing thin-wrapper confirm/dry-run/flag behavior
 # unchanged by this sub-ticket) — this suite covers the NEW manifest-aware
@@ -52,7 +52,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -67,7 +67,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 node_bin=$(command -v node)
 
-# HIMMEL-2635: a bare `git worktree add` dying under `set -e` (git's fatal exit
+# a bare `git worktree add` dying under `set -e` (git's fatal exit
 # is 128) ended the suite with rc=128 and no message after the earlier cases had
 # printed ok. Name the case, git's rc and its stderr instead. No retry: a retry
 # would hide the very fault this exists to show.
@@ -82,7 +82,7 @@ wt_add() {
 . "$repo_root/scripts/lib/hermetic-path.sh"
 
 work=$(mktemp -d)
-# HIMMEL-2459 cases G/H add REAL git worktrees of this repo under $work
+# cases G/H add REAL git worktrees of this repo under $work
 # (git-common-dir identity, not a throwaway fixture) — `git worktree remove`
 # them BEFORE the plain rm -rf, then prune, so a bare rm -rf never leaves
 # stale `.git/worktrees/<name>` admin entries behind in the real repo.
@@ -94,7 +94,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# HIMMEL-1446 r2 (glm-1): cmdUninstall now removes PATH launchers from binDir.
+# cmdUninstall now removes PATH launchers from binDir.
 # Isolate binDir for the WHOLE suite so an accept-case never touches the
 # operator's real ~/.local/bin (on win32 himmelctlBinDir() ignores HOME and
 # would otherwise resolve to the real home). winpath'd so win32 node resolves it
@@ -219,7 +219,7 @@ set -e
 [ "$rc" -eq 0 ] || fail "caseA: dry-run should exit 0 (got rc=$rc): $out"
 grepq "$out" -F 'himmel-owned wiring & repo-local artifacts' \
   || fail "caseA: expected the owned/unwire plan header (got: $out)"
-# HIMMEL-3251: the header must not tell a project-scope adopter that repo-local
+# the header must not tell a project-scope adopter that repo-local
 # artifacts vanish with the clone — adopt copies scripts/ into THEIR repo, and
 # deleting the himmel clone never touches that.
 grepq "$out" -F "what adopt copied into a project-scope adopter's own repo (scripts/)" \
@@ -236,7 +236,7 @@ grepq "$out" -F 'left untouched (your data): fixture-keep' \
   || fail "caseA: expected fixture-keep reported as left-untouched (got: $out)"
 grepq "$out" 'Proceed?' \
   && fail "caseA: --dry-run must NOT show the confirm prompt (got: $out)"
-# HIMMEL-3058: --dry-run RUNS the executor in its own dry-run mode (never
+# --dry-run RUNS the executor in its own dry-run mode (never
 # --yes/-Yes) so its plan is the one printed; nothing is asked.
 [ -f "$fixtureA/uninstall-calls.log" ] \
   || fail "caseA: --dry-run must run the executor in dry-run mode (no call log)"
@@ -365,15 +365,15 @@ grepq "$out" -E 'WARN.*fixture-owned \(present, project\)' \
   && fail "caseF: nothing should have written the fake HOME's settings.json (got a file at $hF/.claude/settings.json)"
 echo "ok: caseF project-scope residue (fixture-owned pre-wired only at <fixture>/.claude/settings.json, HOME clean) -> completeness WARN names it 'project', not silently missed"
 
-# ── Case G (HIMMEL-2459, red->green): the repo under test IS himmel's own
+# ── Case G (red->green): the repo under test IS himmel's own
 # checkout. HIMMELCTL_REPO_ROOT points at a REAL `git worktree add` of THIS
 # SAME repo (not a throwaway non-git fixture like A-F) -- its git-common-dir
 # identity-matches himmelRoot()'s (bin.js's own __dirname-derived location),
-# the exact discriminator checkUninstallCompleteness's HIMMEL-2459 fix
+# the exact discriminator checkUninstallCompleteness's fix
 # applies. The worktree's own project-scope settings.json carries
 # fixture-owned's residue key (build_fixture's manifest + a hand-written
 # statusLine key) -- under the OLD unconditional per-scope probe this WARNs
-# (identical shape to case F), which is HIMMEL-2459's false positive: himmel's
+# (identical shape to case F), which is false positive: himmel's
 # own git-tracked settings.json is repo SOURCE, not uninstall residue. The
 # fake $HOME (user scope) stays clean throughout. Post-fix this must be
 # SILENT.
@@ -400,12 +400,12 @@ grepq "$out" -i 'WARN' \
   && fail "caseG (HIMMEL-2459): running from himmel's OWN checkout must NOT WARN on its own git-tracked project-scope settings.json (got: $out)"
 echo "ok: caseG self-checkout project-scope residue -> no false WARN (HIMMEL-2459)"
 
-# ── Case H (HIMMEL-2459, REQUIRED control 3): even from himmel's own
+# ── Case H (REQUIRED control 3): even from himmel's own
 # checkout (same git-worktree-identity trick as case G), a genuine
 # USER-scope leftover -- the only kind uninstall.sh (user-scope only; see
 # checkUninstallCompleteness's own comment) could actually leave behind --
 # must still WARN. Without this the fix could silently degrade into "never
-# warn when run from himmel", trading HIMMEL-2459's false positive for a
+# warn when run from himmel", trading false positive for a
 # worse false negative. Project scope here is clean (build_fixture's plain
 # manifest, no hand-written settings.json in the worktree); only the fake
 # $HOME carries the residue key.
@@ -429,7 +429,7 @@ grepq "$out" -E 'WARN.*fixture-owned \(present, user\)' \
   || fail "caseH (HIMMEL-2459 control 3): a genuine user-scope leftover must still WARN even when run from himmel's own checkout (got: $out)"
 echo "ok: caseH self-checkout + genuine user-scope residue -> still WARNs (HIMMEL-2459 control 3)"
 
-# ── Case I (HIMMEL-2501): sameFsEntry() must reject a degenerate ino=0
+# ── Case I: sameFsEntry must reject a degenerate ino=0
 # comparison rather than reading it as a match. This cannot be driven from
 # a real filesystem on any platform CI runs on (POSIX filesystems always
 # report real inodes) -- stub fs.statSync directly and call sameFsEntry()

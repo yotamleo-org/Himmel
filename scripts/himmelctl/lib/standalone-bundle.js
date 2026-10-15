@@ -1,7 +1,7 @@
 'use strict';
 // scripts/himmelctl/lib/standalone-bundle.js — writes the standalone
-// uninstall bundle beside the provenance ledger (HIMMEL-3312 S13 item 3,
-// design HIMMEL-3312-standalone-undo.md §3). himmelctl copies the uninstall
+// uninstall bundle beside the provenance ledger (3,
+// design -standalone-undo.md §3). himmelctl copies the uninstall
 // closure into ${HIMMEL_PROVENANCE_DIR:-~/.himmel}/uninstall/ wherever it
 // writes the PATH launcher, so the launcher can fall back to it once the
 // clone is gone. BUNDLE_MARKER matches the bash constant in
@@ -16,7 +16,7 @@ const provLib = require('./provenance.js');
 const BUNDLE_MARKER = 'himmel-standalone-uninstaller/1';
 
 // design §3.2's closure (15 files, ~347 KB) plus provenance-identity.sh
-// (HIMMEL-3525 S16, sourced by provenance-read.sh) and the S13 node entry.
+// (sourced by provenance-read.sh) and the S13 node entry.
 const BUNDLE_FILES_POSIX = [
   'scripts/uninstall.sh',
   'scripts/install/uninstall-manifest.tsv',
@@ -25,7 +25,7 @@ const BUNDLE_FILES_POSIX = [
   'scripts/lib/provenance.sh',
   'scripts/lib/canon-path.sh',
   'scripts/lib/qmd-bin.sh',
-  // HIMMEL-3956: qmd-bin.sh sources it (qmd_cmd runs under qmd_bounded).
+  // qmd-bin.sh sources it (qmd_cmd runs under qmd_bounded).
   'scripts/lib/qmd-bounded.sh',
   'scripts/lib/unwire-statusline.sh',
   'scripts/lib/unwire-himmel-repo.sh',
@@ -36,7 +36,7 @@ const BUNDLE_FILES_POSIX = [
   'scripts/lib/unwire-user-claude-md.sh',
   'scripts/machine-setup/uninstall-plugins.sh',
   'docs/setup/settings-template.json',
-  // HIMMEL-3787 S2d: uninstall.sh compares an unrecorded block to this template (Q5).
+  // uninstall.sh compares an unrecorded block to this template (Q5).
   'docs/setup/user-scope-claude-md-template.md',
   'scripts/himmelctl/standalone.js',
   'scripts/himmelctl/lib/uninstall-wrapper.js',
@@ -169,9 +169,9 @@ function sweepStaleSiblings(parent, ownPid) {
 // fails install or update").
 function writeStandaloneBundle(repoRoot) {
   const platform = shimPlatform();
-  // Q2 (HIMMEL-3312 S13 defaults): POSIX only. BUNDLE_FILES_WIN32 is
+  // Q2: POSIX only. BUNDLE_FILES_WIN32 is
   // exported so the win32 closure list has one home ahead of S14
-  // (HIMMEL-3527), but that closure is unverified -- writing an incomplete
+  // but that closure is unverified -- writing an incomplete
   // win32 bundle would route a post-checkout-deletion `uninstall` at an
   // uninstall.ps1 that has never been proven to run from a bundle dir the
   // way S12 proved for uninstall.sh. No-op here until S14 does that work.

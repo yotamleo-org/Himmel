@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-trust-clean-checkout.sh — `himmelctl trust on|status|off` succeed in a
-# clean himmel checkout (HIMMEL-2465).
+# clean himmel checkout.
 #
 # WHY: wire-trust-hooks.mjs fails closed on two preconditions — (1) no entry
 # may MIX a shadow-ledger command with other hooks, (2) the settings file must
 # round-trip byte-for-byte through its fixed 2-space serializer, or `--off`
 # could not restore it. Both guards are correct; the bug was that the TRACKED
 # .claude/settings.json tripped both, so a documented top-level verb returned
-# rc=1 out of the box (found by the HIMMEL-2457 v1 Linux matrix). This suite
+# rc=1 out of the box (found by the v1 Linux matrix). This suite
 # pins the shipped file to both preconditions, then proves the round trip on a
 # scratch copy: off; on->off round-trips the unwired baseline byte-for-byte.
 set -uo pipefail
@@ -31,7 +31,7 @@ fail=0
 # public repo this file is genuinely absent, not broken. Every case below
 # pins preconditions of, or round-trips, that one tracked file. "Missing from
 # the working tree" and "not tracked" are DIFFERENT claims (CR panel finding,
-# codex-2, round 3): a private checkout where the file was simply deleted or
+# a private checkout where the file was simply deleted or
 # moved hits the same `[ ! -f ]` branch as the genuine public-mirror omission,
 # and a broken hook inventory would silently read as an intentional skip
 # instead of failing. Skip only when the file is genuinely untracked (the
@@ -40,13 +40,13 @@ fail=0
 #
 # is_settings_tracked <repo-dir> <path> — prints tracked|untracked|unknown.
 # NOTE: this function's body is intentionally duplicated verbatim in
-# scripts/codex/test-codex-hook-parity.sh (same defect, same fix, CR round 3
+# scripts/codex/test-codex-hook-parity.sh (same defect, same fix
 # codex-1/codex-2) rather than shared from a lib — the brief fixing this
 # restricted edits to those two files only, so extracting a shared
 # scripts/lib/*.sh would itself be a scope violation. Keep the two bodies
 # byte-identical if either ever needs to change.
 #
-# `git ls-files --error-unmatch` alone reads the INDEX, not HEAD (CR round 3,
+# `git ls-files --error-unmatch` alone reads the INDEX, not HEAD
 # codex-1): a STAGED deletion (`git rm --cached`) removes the index entry
 # while HEAD still carries it, so an index-only probe misreports a genuinely
 # tracked, merely-mid-deletion file as untracked — the exact hole this probe
@@ -68,7 +68,7 @@ fail=0
 # "unknown" instead, and the caller (below) treats unknown the same as tracked
 # (fail-closed toward FAIL, never toward SKIP).
 #
-# CR round 3, second pass (codex, Suggestion but correct): every probe above
+# second pass: every probe above
 # was written as `if git ...; then yes; else no; fi`, which collapsed "git
 # ran and confirmed absence" and "git failed to run at all" into the same
 # `no`/`unborn` branch — a corrupted index or an unreadable ref would then
@@ -274,7 +274,7 @@ if ! cmp -s "$settings" "$work/original.json"; then
   fail=1
 fi
 
-# HIMMEL-2756: adopters cannot enable a recorder the portable core does not
+# adopters cannot enable a recorder the portable core does not
 # ship. Both verbs must explain that limit without changing their exit codes
 # or writing settings; removing dead wiring remains supported.
 adopted="$work/adopted"

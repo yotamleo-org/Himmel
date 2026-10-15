@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-wizard-status-upgrade.sh — hermetic tests for HIMMEL-1017 (CR
-# follow-up from HIMMEL-1012): himmelctl `status` must reconcile new
+# test-wizard-status-upgrade.sh — hermetic tests for (CR
+# follow-up from): himmelctl `status` must reconcile new
 # manifest items into an EXISTING state.json, and stop false-redding
 # opt-in tools. Mirrors sibling test-wizard-status-*.sh conventions: a fake
 # HOME + HIMMELCTL_CACHE_DIR + HIMMELCTL_REPO_ROOT fixture, node launched by
@@ -13,7 +13,7 @@
 #      (full) manifest — simulating that update — must surface the
 #      previously-invisible item in the report instead of silently omitting
 #      it, with its genuinely-derived desired/severity (not a stale
-#      n/a-forever) — computed in memory only (HIMMEL-2463: `status` never
+#      n/a-forever) — computed in memory only (`status` never
 #      writes state.json, so the migration is NOT persisted; every
 #      already-tracked item's on-disk state stays byte-for-byte untouched).
 #   b. OPT-IN: graphify-mcp carries profiles:["luna","all"] like any other
@@ -87,7 +87,7 @@ fs.writeFileSync('$fixtureRepoA_w/scripts/install/manifest.json', JSON.stringify
 " || fail "case a setup: failed to write the OLD (item-short) fixture manifest"
 
 # ── seed: derive + save a target entry against the OLD (item-short) manifest
-# that never carries pre-commit-hooks at all. HIMMEL-2463 made `status`
+# that never carries pre-commit-hooks at all. made `status`
 # genuinely read-only (it never calls stateLib.save()/ensureTarget() any
 # more), so this calls state.js directly instead of riding a `status`
 # invocation.
@@ -142,7 +142,7 @@ echo "$outA" | jq -e '.items[] | select(.id=="pre-commit-hooks") | .severity == 
   || fail "case a: pre-commit-hooks should be ACTIVELY PROBED (severity red — no .pre-commit-config.yaml here), not silently n/a (got: $outA)"
 echo "ok: case a — a manifest item gained after the target's last derive is surfaced (probed, not silently n/a) on the very next status run"
 
-# HIMMEL-2463: `status` never writes state.json, so the migration this
+# `status` never writes state.json, so the migration this
 # report surfaced stays IN MEMORY for this one run only — the on-disk entry
 # must still lack pre-commit-hooks, exactly as the seed left it. Persisting a
 # migration is `install`'s and `ensure`'s job now, not `status`'s.
@@ -168,11 +168,11 @@ echo "ok: case a — a second run against an already-migrated target is a zero-w
 
 # ══════════════════════════════════════════════════════════════════════════
 # case (b): OPT-IN — graphify-mcp reads n/a (not red) when CLEANLY never
-# registered, still reads green once it IS registered, and — CR fix
-# (HIMMEL-1017 round) — stays red (not silently swallowed to n/a) when its
+# registered, still reads green once it IS registered, and
+# stays red (not silently swallowed to n/a) when its
 # config is genuinely broken rather than just never-opted-in. This target is
 # scope 'project', so graphify-mcp's registration lives in <targetB>/
-# .mcp.json (CR fix: probeMcpRegistered is now scope-aware — see
+# .mcp.json (probeMcpRegistered is now scope-aware — see
 # probes.js's mcpConfigPath()); the original version of this test wrote to
 # ~/.claude.json instead, which happened to pass only because the probe used
 # to ignore scope entirely.
@@ -209,7 +209,7 @@ echo "$outB1" | jq -e '.items[0].severity == "n/a"' >/dev/null \
   || fail "case b: graphify-mcp absent should read severity n/a (informational, opt-in), not red (got: $outB1)"
 echo "$outB1" | jq -e '.items[0].detail | test("opt-in"; "i")' >/dev/null \
   || fail "case b: graphify-mcp's n/a detail should name it as opt-in (got: $outB1)"
-# CR fix (HIMMEL-1017 round): the n/a row must PRESERVE the underlying probe
+# the n/a row must PRESERVE the underlying probe
 # diagnostic (which file/condition was actually checked), not just the
 # friendly opt-in framing — proves the fix doesn't discard information.
 echo "$outB1" | jq -e '.items[0].detail | test("does not exist")' >/dev/null \
@@ -218,7 +218,7 @@ echo "$outB1" | jq -e '.summary.red == 0' >/dev/null \
   || fail "case b: graphify-mcp absent must not count toward summary.red (got: $outB1)"
 echo "ok: case b — graphify-mcp cleanly absent (never opted in) reads n/a, not a false red, and keeps its diagnostic detail"
 
-# ── malformed config (CR fix, HIMMEL-1017 round): .mcp.json EXISTS but is
+# ── malformed config:.mcp.json EXISTS but is
 # unparseable — a lost/corrupted registration, NOT "never opted in". Must
 # stay on the standard red path with the RAW probe diagnostic, never the
 # friendly opt-in message (which would hide a genuine regression).
@@ -237,7 +237,7 @@ echo "ok: case b — a malformed graphify-mcp config stays red with its raw diag
 # ── present: register it in <targetB>/.mcp.json -> severity green, same as
 # any other present item — the fix must not stop tracking it once it IS
 # there, and project scope must resolve .mcp.json (not ~/.claude.json).
-# HIMMEL-1093 round 3: graphify-mcp's `bin` descriptor field was DROPPED
+# graphify-mcp's `bin` descriptor field was DROPPED
 # (redundant/wrong — see manifest.json's comment); the registered entry's
 # OWN `command` ("graphify-mcp", a bare name here) is now what must resolve,
 # unconditionally. The stub is named to match that EXACT registered command

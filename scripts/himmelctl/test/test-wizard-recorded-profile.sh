@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-recorded-profile.sh — hermetic tests for HIMMEL-2349: the
+# test-wizard-recorded-profile.sh — hermetic tests for the
 # recorded install-profile.json must reach desired-state computation
 # (additive-only), and `ensure`'s disable/prune consent must be split from
 # its converge consent with per-item evidence and an under-recorded guard.
@@ -43,7 +43,7 @@
 #   f. the under-recorded guard: when the record simply doesn't declare a
 #      HANDFUL of live items (a thin/legacy vault.mode='none' record, not
 #      an override), `ensure` — with OR without --prune — refuses to touch
-#      any of them, names HIMMEL-2350, and points at the fix (now also
+#      any of them, names, and points at the fix (now also
 #      naming the --profile escape hatch), instead of offering a mass
 #      disable. The converge-only phase still proceeds independently.
 #   f2. (codex-2, re-raise) the guard has an escape hatch and does not
@@ -64,7 +64,7 @@ set -euo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline (a piped `... | grep -q` false-negatives under `set -o pipefail`
-# whenever the match lands early — HIMMEL-1430). Matches every sibling
+# whenever the match lands early —). Matches every sibling
 # test-wizard-*.sh suite's own helper verbatim.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -84,7 +84,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-recorded-profile.XXXXXX") || fail "mkte
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# ── HERMETICITY (HIMMEL-2349 brief, load-bearing): USERPROFILE, not just
+# ── HERMETICITY (load-bearing): USERPROFILE, not just
 # HOME, redirected — os.homedir() reads USERPROFILE first on Windows, so HOME
 # alone is a no-op for node.exe children under Git Bash. HIMMELCTL_CACHE_DIR
 # and HIMMEL_LUNA_CONFIG_PATH are ALSO redirected (statusReport() calls
@@ -702,7 +702,7 @@ echo "ok: case i — a v1 record (no profile field) falls back to profileForVaul
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 4 — HIMMEL-2349 (codex-1, Critical): an explicit downgrade must
+# Phase 4 —: an explicit downgrade must
 # survive the NEXT ordinary ensure. The additive overlay is additive-only
 # by VALUE, but a target's `profile` value alone can't tell "derived once,
 # never revisited" (the incident this whole ticket exists to fix) apart

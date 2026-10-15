@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/launcher.js — PATH launcher marker/write/remove
-// primitives extracted out of bin.js (HIMMEL-3312 S13 item 1). Pure refactor:
+// primitives extracted out of bin.js. Pure refactor:
 // same implementations, same call sites (bin.js's applyHimmelctlPathShim and
 // removeHimmelctlLaunchers), same seam env vars (HIMMELCTL_BIN_DIR) — bin.js
 // now `require`s these instead of defining them inline. Also required by the
@@ -49,7 +49,6 @@ function himmelctlBinDir() {
   return path.join(process.platform === 'win32' ? os.homedir() : (process.env.HOME || os.homedir()), '.local', 'bin');
 }
 
-// HIMMEL-1446 r2 (codex adversarial review, 3 agreed blockers):
 //  • The loader target is the PRIMARY checkout, not repoRoot() — a launcher
 //    written from a linked feature worktree must not bind to the disposable
 //    worktree.
@@ -86,7 +85,7 @@ function fileCarriesMarker(filePath) {
 // partial launcher at dest (the orphaned tmp is a hidden dotfile). Returns true
 // on success, false on a refused collision. Throws on I/O error. (codex-adv-3.)
 function writeMarkedLauncher(dest, contents, mode) {
-  // Existence is probed with lstatSync, NOT fs.existsSync (HIMMEL-1446 r4 glm-2):
+  // Existence is probed with lstatSync, NOT fs.existsSync:
   // existsSync FOLLOWS symlinks, so a BROKEN (dangling) symlink at dest returns
   // false, skipping the symlink/ownership check and letting renameSync clobber
   // the link — violating the never-clobber-a-symlink contract. lstatSync never
@@ -138,7 +137,7 @@ function removeMarkedLauncher(filePath) {
   fs.unlinkSync(filePath);
 }
 
-// HIMMEL-1446 r2 (glm-1): uninstall.sh/.ps1 tears down himmel's machine wiring
+// uninstall.sh/.ps1 tears down himmel's machine wiring
 // but does not know about the PATH launchers install/update wrote into binDir
 // (~/.local/bin), so they'd go stale (dangling once the clone is deleted).
 // Remove each known launcher name that carries our ownership marker; never

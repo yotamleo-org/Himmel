@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-luna-config.sh — hermetic tests for
-# scripts/himmelctl/lib/luna-config.js (HIMMEL-2176 externalization Stage 1
+# scripts/himmelctl/lib/luna-config.js (externalization Stage 1
 # PR-B): the adopter's shared config document at ~/.himmel/config.json.
 # Mirrors sibling test-wizard-*.sh suites: node launched by absolute path,
 # winpath for node.exe's MSYS-path blindness, HIMMEL_LUNA_CONFIG_PATH
@@ -12,13 +12,13 @@
 #   B. atomic-write interruption — a deterministic fs.renameSync failure
 #      (monkey-patched, NOT a real signal) between the temp write and the
 #      rename leaves the ORIGINAL file byte-identical, exactly ONE .bak
-#      present, and (HIMMEL-2176 CR fix, codex-5) NO leftover .tmp-* file.
+#      present, and NO leftover.tmp-* file.
 #   B2. atomic-write interruption, the WRITE itself — a deterministic
-#      fs.writeFileSync failure (HIMMEL-2176 CR round 3, retask
+#      fs.writeFileSync failure (3, retask
 #      stage1-build-6d2e: the write sat outside the cleanup handling B
 #      landed) proves the same three properties for a failed write, not just
 #      a failed rename.
-#   B3. PARTIAL write interruption (HIMMEL-2176 CR round 9, retask
+#   B3. PARTIAL write interruption (9, retask
 #      stage1-build-6d2e): writeFileSync actually CREATES the tmp file (a
 #      real O_CREAT|O_EXCL success) and only then throws — distinct from B2,
 #      whose stub throws before anything lands on disk. The old cleanup
@@ -30,19 +30,19 @@
 #      path.
 #   E. validator: a valid fixture passes (zero errors); a deliberately
 #      invalid fixture is rejected with a message naming the offending field.
-#   F. symlink guard (HIMMEL-2176 CR round 5, retask stage1-build-6d2e): a
+#   F. symlink guard: a
 #      pre-existing symlink at the predictable `.tmp-<pid>` path must NOT be
 #      followed — save() refuses, the original config and the symlink's
 #      target both stay untouched. SKIPS with an explicit message (never a
 #      silent pass) if this host can't create filesystem symlinks (observed:
 #      EPERM on this Windows checkout without Developer Mode / the
 #      SeCreateSymbolicLinkPrivilege).
-#   G. stale temp file recovery (HIMMEL-2176 CR round 5, retask
+#   G. stale temp file recovery (5, retask
 #      stage1-build-6d2e): a plain leftover regular file already sitting at
 #      the tmp path (simulating a previous crashed save() run, e.g. a reused
 #      pid) must NOT permanently wedge save() with EEXIST — it is cleared and
 #      the write retried once.
-#   H. backup-before-prune (HIMMEL-2176 CR round 7, retask stage1-build-6d2e):
+#   H. backup-before-prune:
 #      a deterministic fs.copyFileSync failure while backupExisting() is
 #      taking the fresh backup must leave the PREVIOUS .bak intact and the
 #      original config untouched — backupExisting() now creates the new .bak
@@ -53,18 +53,18 @@
 #   J. non-object parsed JSON (null, an array, a bare scalar) — all valid
 #      JSON, none a valid config document — must produce this module's named,
 #      file-identifying schema error from migrate(), not a raw TypeError.
-#   K. backup-path symlink guard (HIMMEL-2176 CR round 11, retask
+#   K. backup-path symlink guard (11, retask
 #      stage1-build-6d2e): a pre-existing symlink at the predictable backup
 #      path (freshPath in backupExisting()) must NOT be followed — mirrors
 #      case F, but for the backup path rather than the temp path. SKIPS with
 #      an explicit message if this host can't create filesystem symlinks.
-#   L. same-timestamp backup collision (HIMMEL-2176 CR round 11, retask
+#   L. same-timestamp backup collision (11, retask
 #      stage1-build-6d2e): two saves whose backup stamp collides against a
 #      PLAIN regular file (not a symlink) must refresh that backup to the
 #      pre-collision snapshot rather than erroring or silently keeping the
 #      stale one — and must never leave zero (or more than one) .bak file.
-#   M. same-timestamp collision whose REPLACEMENT copy fails (HIMMEL-2176 CR
-#      round 12, retask stage1-build-6d2e): round 11's collision handling
+#   M. same-timestamp collision whose REPLACEMENT copy fails
+# retask stage1-build-6d2e): the earlier collision handling
 #      unlinked the stale backup before retrying the copy at the same name —
 #      if that retry failed, the adopter was left with ZERO backups. Proves
 #      the round-12 fix (stage-then-rename) never reaches that state: the
@@ -81,7 +81,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 node_bin=$(command -v node)
 
-# Templated mktemp with failure capture (HIMMEL-2176 brief / known-findings
+# Templated mktemp with failure capture (/ known-findings
 # gate): a bare `mktemp -d` that fails leaves an empty var, and a later
 # `rm -rf "$empty/..."` then targets the filesystem root.
 work=$(mktemp -d "${TMPDIR:-/tmp}/luna-config-test.XXXXXX") || fail "mktemp -d failed"
@@ -114,7 +114,7 @@ echo "ok: caseA save()->load() round-trips an equivalent document"
 # luna-config.js itself uses) to throw BEFORE it ever runs — deterministic,
 # no reliance on real signal timing. Proves: (1) the ORIGINAL file survives
 # byte-identical, (2) EXACTLY ONE .bak of the pre-interruption content is
-# present, (3) (HIMMEL-2176 CR fix, codex-5) no PID-named .tmp-* file is left
+# present, (3) no PID-named.tmp-* file is left
 # behind — renameSync used to sit OUTSIDE the cleanup handling, so a failed
 # rename leaked the temp file.
 caseB_dir="$work/caseB"; mkdir -p "$caseB_dir"
@@ -164,7 +164,7 @@ grep -q '"hasTmp":false' <<<"$outB" || fail "caseB (HIMMEL-2176 CR fix, codex-5)
 echo "ok: caseB interrupted save() leaves the original intact with a .bak present"
 
 # ── Case B2: atomic-write interruption — deterministic writeFileSync failure ─
-# CR round 3 fix (HIMMEL-2176, retask stage1-build-6d2e): round 1 wrapped the
+# an earlier fix wrapped the
 # RENAME in cleanup handling (case B above) but left the temp-file WRITE
 # itself outside it — a failure mid-write (ENOSPC, permission-denied) still
 # left a partial .tmp-<pid> file behind, contradicting save()'s own "cleaned
@@ -217,7 +217,7 @@ grep -q '"hasTmp":false' <<<"$outB2" || fail "caseB2 (HIMMEL-2176 CR round 3 fix
 echo "ok: caseB2 interrupted (write-failure) save() leaves the original intact with a .bak present, no leftover .tmp-*"
 
 # ── Case B3: PARTIAL write interruption — writeFileSync creates the tmp file
-# then throws (HIMMEL-2176 CR round 9, retask stage1-build-6d2e). Distinct
+# then throws. Distinct
 # from B2: B2's stub throws BEFORE anything is created (e.g. EACCES on the
 # directory); this stub calls through to the REAL writeFileSync first (so the
 # temp file genuinely exists on disk, mirroring O_CREAT|O_EXCL succeeding)
@@ -345,7 +345,7 @@ grep -q '"namesField":true' <<<"$outE" || fail "caseE: the invalid-fixture error
 echo "ok: caseE validator passes a valid fixture and names the offending field on an invalid one"
 
 # ── Case F: symlink guard — a pre-existing symlink at the tmp path must NOT
-# be followed (HIMMEL-2176 CR round 5, retask stage1-build-6d2e). Skips
+# be followed. Skips
 # loudly (not a silent pass) if this host can't create symlinks at all.
 caseF_dir="$work/caseF"; mkdir -p "$caseF_dir"
 cfgF="$caseF_dir/config.json"
@@ -408,7 +408,7 @@ fi
 
 # ── Case G: stale temp file recovery — a plain leftover regular file at the
 # tmp path (simulating a previous crashed save() run) must not permanently
-# wedge save() (HIMMEL-2176 CR round 5, retask stage1-build-6d2e). ─────────
+# wedge save. ─────────
 caseG_dir="$work/caseG"; mkdir -p "$caseG_dir"
 cfgG="$caseG_dir/config.json"
 cfgG_w="$(winpath "$cfgG")"
@@ -449,7 +449,7 @@ echo "ok: caseG a stale regular leftover at the tmp path is cleared and retried,
 
 # ── Case H: backup-before-prune — a failed fs.copyFileSync during
 # backupExisting() must leave the PREVIOUS .bak intact and the original
-# config untouched (HIMMEL-2176 CR round 7, retask stage1-build-6d2e). ─────
+# config untouched. ─────
 caseH_dir="$work/caseH"; mkdir -p "$caseH_dir"
 cfgH="$caseH_dir/config.json"
 cfgH_w="$(winpath "$cfgH")"
@@ -534,8 +534,8 @@ grep -q '"bakCount":1' <<<"$outI" || fail "caseI: exactly ONE .bak should remain
 echo "ok: caseI exactly one .bak survives repeated successful saves"
 
 # ── Case J: non-object parsed JSON — null, an array, a bare scalar — must
-# raise this module's named schema error, not a raw TypeError (HIMMEL-2176
-# CR round 7, retask stage1-build-6d2e). ────────────────────────────────────
+# raise this module's named schema error, not a raw TypeError
+# retask stage1-build-6d2e). ────────────────────────────────────
 for shape in null array scalar; do
   caseJ_dir="$work/caseJ-$shape"; mkdir -p "$caseJ_dir"
   cfgJ="$caseJ_dir/config.json"
@@ -566,7 +566,7 @@ done
 echo "ok: caseJ null/array/scalar JSON documents raise the module's named schema error, not a TypeError"
 
 # ── Case K: backup-path symlink guard — a pre-existing symlink at the
-# predictable backup path must NOT be followed (HIMMEL-2176 CR round 11,
+# predictable backup path must NOT be followed (11,
 # retask stage1-build-6d2e). Mirrors case F, but for backupExisting()'s
 # freshPath rather than save()'s tmp path. The clock is frozen so the test
 # knows the exact freshPath backupExisting() will compute, ahead of calling
@@ -646,7 +646,7 @@ else
 fi
 
 # ── Case L: same-timestamp backup collision — two saves whose backup stamp
-# collides against a PLAIN regular file, not a symlink (HIMMEL-2176 CR round
+# collides against a PLAIN regular file, not a symlink
 # 11, retask stage1-build-6d2e). Now that backupExisting() refuses to
 # overwrite via COPYFILE_EXCL, this collision must still resolve: the stale
 # file at that name is removed and the copy retried, so the single surviving
@@ -712,7 +712,7 @@ grep -q '"refreshedToSecond":true' <<<"$outL" || fail "caseL: a same-timestamp c
 echo "ok: caseL a same-timestamp backup collision refreshes the single .bak rather than erroring or leaving zero backups"
 
 # ── Case M: same-timestamp collision whose REPLACEMENT copy fails —
-# HIMMEL-2176 CR round 12, retask stage1-build-6d2e. Round 11's collision
+# retask stage1-build-6d2e. the earlier collision
 # handling unlinked the stale backup at freshPath BEFORE retrying the copy at
 # that same name; if the retry then failed (ENOSPC, permissions, a transient
 # I/O error), the adopter was left with ZERO backups — the exact defect round
@@ -801,7 +801,7 @@ grep -q '"previousBakSurvived":true' <<<"$outM" || fail "caseM: the pre-collisio
 echo "ok: caseM a same-timestamp collision whose replacement copy fails leaves the pre-collision backup intact, never zero"
 
 # ── Case N: staged-rename failure — deterministic renameSync failure during
-# the collision-handling staged rename (HIMMEL-2176, retask stage1-build-6d2e).
+# the collision-handling staged rename.
 # After the staged copy succeeds, backupExisting() renames the stage file to
 # freshPath. If that rename fails (locked destination, permissions, transient
 # I/O), the staging file must be cleaned up — never left behind — while the

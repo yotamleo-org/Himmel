@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-scope-switch.sh — hermetic tests for the himmelctl `scope`
-# subcommand (HIMMEL-757 C — scope-switch MVP): `scope get` / `scope status`
+# subcommand (scope-switch MVP): `scope get` / `scope status`
 # read the current scope; `scope set <project|user>` re-projects the install
 # to the target scope (wires the target scope, UNWIRES the old scope, refuses
 # to leave any item wired in BOTH scopes). Drives bin.js end-to-end via a
@@ -21,7 +21,7 @@
 #      'user' and `scope get` returns 'user'.
 #   c. FAIL-CLOSED: a full-offboard-only item that exists in BOTH scopes with
 #      NO runnable unwire descriptor, present in the old scope, REFUSES the
-#      whole switch (exit 3, zero mutation — HIMMEL-2464, distinct from a real
+#      whole switch (exit 3, zero mutation — distinct from a real
 #      mid-switch error) and is named; the UNWIREABLE wire item is NOT named
 #      (correctly excluded).
 #   c2. the fail-closed pre-flight runs BEFORE the --dry-run check, so
@@ -39,7 +39,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -255,7 +255,7 @@ set +e
 outC=$( cd "$targetC" && HIMMELCTL_REPO_ROOT="$(winpath "$repoC")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheC")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheC")-luna-config.json" HOME="$homeC" USERPROFILE="$(winpath "$homeC")" \
   "$node_bin" "$wizard" scope set user --yes 2>&1 </dev/null ); rcC=$?
 set -e
-# HIMMEL-2464: a fail-closed refusal (zero mutation) exits 3, distinct from a
+# a fail-closed refusal (zero mutation) exits 3, distinct from a
 # real mid-switch error (1) — this fixture never mutates, so it always hits
 # the refusal path added by that fix.
 [ "$rcC" -eq 3 ] || fail "case c: fail-closed refusal should exit 3 (got rc=$rcC): $outC"
@@ -281,7 +281,7 @@ snapCAfter=$(snapshot_dir "$work")
 echo "ok: case c — fail-closed names the unhandleable item, excludes the unwireable one, zero mutation"
 
 # ── case c2: the fail-closed pre-flight refuses BEFORE the --dry-run check
-# (HIMMEL-2464), so `--dry-run` predicting THIS refusal still exits 3, not 0 —
+# so `--dry-run` predicting THIS refusal still exits 3, not 0
 # reuses case c's repoC manifest + stuck-item fixture, adding --dry-run. ───────
 targetC2="$work/targetC2"; mkdir -p "$targetC2/.claude"
 cacheC2="$work/cacheC2"; mkdir -p "$cacheC2"

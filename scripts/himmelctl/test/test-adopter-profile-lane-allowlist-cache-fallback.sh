@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-adopter-profile-lane-allowlist-cache-fallback.sh — HIMMEL-3059 S3:
+# test-adopter-profile-lane-allowlist-cache-fallback.sh — S3:
 # when the install prefix's scripts/lanes/ is NOT writable (a packaged,
 # root-owned tree), persistProfileLaneAllowlist must not throw — it falls
 # back to $HIMMELCTL_CACHE_DIR/lanes.local.json instead of the in-tree file.

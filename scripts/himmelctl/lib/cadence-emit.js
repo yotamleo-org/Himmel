@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/cadence-emit.js — HIMMEL-2176 Stage-1 PR-C Task 8b.
+// scripts/himmelctl/lib/cadence-emit.js —.
 //
 // Pure mapping: a luna-config-shaped `cadence` object ({enabled, schedules,
 // models} — see luna-config.js's SCHEMA) -> the CLI flags for
@@ -16,7 +16,7 @@
 //   synthesize  -> --synth-time, --synth-model     (NOT --synthesize-*)
 //   health      -> --health-time, --health-model, --health-day
 // `--health-day` is the ONLY day-accepting flag in the script — `--synth-day`
-// was deliberately removed (HIMMEL-506) and the script hard-errors naming the
+// was deliberately removed and the script hard-errors naming the
 // removal; there is no `--harvest-day` or `--fetch-health-day` at all. A
 // `day` present on any OTHER schedule is therefore a loud validation error
 // here (thrown, never silently dropped) — the silent-04:00-stall class this

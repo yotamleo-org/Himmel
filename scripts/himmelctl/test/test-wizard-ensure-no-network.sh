@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-wizard-ensure-no-network.sh — `himmelctl ensure --no-network` runs only
-# the manifest-declared local path and refuses everything else (HIMMEL-4308,
-# HIMMEL-4254 A17). Deny by default: an item with no `noNetwork` declaration
+# the manifest-declared local path and refuses everything else
+# A17). Deny by default: an item with no `noNetwork` declaration
 # refuses, with a reason, and none of bun, npm, git, qmd or adopt.sh is called.
 #
 # Sandboxed HOME, cache dir, repo root and target only; PATH stubs for bun, npm,

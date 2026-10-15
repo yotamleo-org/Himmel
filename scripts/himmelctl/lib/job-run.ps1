@@ -20,7 +20,7 @@
 # there is no re-parenting escape and no snapshot-timing race --
 # terminating the job kills every member, unconditionally, in one call.
 #
-# CR fix (codex critic round 3, IMPORTANT): that same kill-on-close
+# that same kill-on-close
 # guarantee is wrong on the SUCCESS path. The job is created with
 # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE set so that if job-run.ps1 itself is
 # forcibly killed from OUTSIDE (install-engine.js's own Node-level backstop
@@ -117,7 +117,7 @@ param(
 # never Write-Error (which would throw once real errors DO need to
 # propagate elsewhere in this file).
 #
-# CR fix (CodeRabbit round 15, item 2 -- FAIL CLOSED, not silent degrade):
+# (FAIL CLOSED, not silent degrade):
 # setup failure used to degrade to $jobObjectAvailable=$false and proceed
 # with only .NET's best-effort direct-child Kill() on timeout -- "no worse
 # than before Job Objects existed," but silently reintroducing the exact
@@ -133,7 +133,7 @@ param(
 # silently running it unprotected).
 $TIMEOUT_EXIT_CODE = 4217
 $JOB_SETUP_FAILED_EXIT_CODE = 4218
-# CR fix (CodeRabbit round 16, item 3 — confirmed independently by a
+# (confirmed independently by a
 # senior/Fable review, worse than first framed): a WaitForExit() exception
 # used to be treated as "not a timeout," which routed into the SUCCESS
 # branch below — clearing kill-on-close and releasing the job while the
@@ -144,7 +144,7 @@ $JOB_SETUP_FAILED_EXIT_CODE = 4218
 # the fix; this sentinel lets install-engine.js tell a genuine timeout
 # apart from "we couldn't confirm completion and killed defensively."
 $WAIT_FAILED_EXIT_CODE = 4219
-# CR fix (codex round 17): the wrapped command SUCCEEDED but clearing
+# the wrapped command SUCCEEDED but clearing
 # KILL_ON_JOB_CLOSE failed, so releasing the handle may have killed a
 # legitimate background descendant the install deliberately launched. Same
 # fail-OPEN class as $WAIT_FAILED_EXIT_CODE above: the old code exited with
@@ -298,7 +298,7 @@ function Set-JobLimitFlags {
   }
 }
 
-# CR fix: fail closed (see above) -- job setup failure exits NOW, before
+# fail closed (see above) -- job setup failure exits NOW, before
 # the wrapped command ever starts, rather than degrading to a weaker
 # best-effort mode.
 $hJob = [HimmelCtl.JobNative]::CreateJobObjectW([IntPtr]::Zero, $null)
@@ -355,7 +355,7 @@ $proc.Start() | Out-Null
 # creates from this point on automatically joins the SAME job (nested-job
 # support).
 #
-# CR correction (CodeRabbit round 16, item 4 — a THIRD, independent senior
+# CR correction (item 4 — a THIRD, independent senior
 # review): CREATE_SUSPENDED was proposed (create the child suspended,
 # AssignProcessToJobObject before it can execute or spawn anything, THEN
 # ResumeThread) to close this window entirely — REJECTED after a genuine
@@ -387,13 +387,13 @@ $proc.Start() | Out-Null
 # demonstrated exploit — not a theoretical one — against the CURRENT
 # fail-closed behavior.
 #
-# CR fix: fail closed (see above) -- unlike the pre-Start() setup failures,
+# fail closed (see above) -- unlike the pre-Start setup failures,
 # the process is ALREADY RUNNING here, so failing closed means killing it
 # immediately rather than letting it continue unprotected.
 $assigned = [HimmelCtl.JobNative]::AssignProcessToJobObject($hJob, $proc.Handle)
 if (-not $assigned) {
   [Console]::Error.WriteLine("job-run: AssignProcessToJobObject failed (GetLastError=$([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())) -- killing the already-started process; refusing to continue without job-based tree-kill (fail-closed)")
-  # CR fix (CodeRabbit round 19): $proc.Kill() alone (the previous sole
+  # $proc.Kill alone (the previous sole
   # measure) terminates ONLY the direct child -- .NET's Process.Kill() is
   # NOT a tree operation -- so a descendant the child spawned in the
   # Start()->Assign() window would SURVIVE it (the overclaim corrected
@@ -434,7 +434,7 @@ if ($HasInput) {
   $proc.StandardInput.Close()
 }
 
-# CR fix (codex critic, IMPORTANT): KILL_ON_JOB_CLOSE terminates every job
+# KILL_ON_JOB_CLOSE terminates every job
 # member the instant the LAST handle to the job closes -- and this script
 # only ever holds one handle, so CloseHandle() alone was enough to trigger
 # it. That guarantee is exactly right on the TIMEOUT path (below) and
@@ -454,12 +454,12 @@ function Clear-JobKillOnClose {
   if (-not $cleared) {
     [Console]::Error.WriteLine("job-run: failed to clear KILL_ON_JOB_CLOSE before releasing the job (GetLastError=$([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())) -- closing the handle anyway; a surviving descendant may be killed as a result")
   }
-  # CR fix (codex round 17): the caller MUST know this failed -- see the
+  # the caller MUST know this failed -- see the
   # success branch's own comment for why a warning alone was not enough.
   return $cleared
 }
 
-# CR fix (CodeRabbit round 16, item 3 — Fable-confirmed FAIL-OPEN, the
+# (FAIL-OPEN, the
 # highest-value item this round): the PREVIOUS version of this catch block
 # forced `$exited = $true` on ANY WaitForExit exception, reasoning
 # (wrongly) that this was "fail-safe toward releasing the tree." It is the
@@ -511,7 +511,7 @@ if ($timedOut -or $waitFailed) {
   # flag set at job-creation time is left AS-IS here (still carrying
   # KILL_ON_JOB_CLOSE) -- TerminateJobObject already kills everyone
   # directly, and CloseHandle() right after is a no-op cleanup either way.
-  # CR fix: the job is unconditionally available past this point -- setup
+  # the job is unconditionally available past this point -- setup
   # failure now exits earlier (fail-closed, see above) instead of leaving a
   # $jobObjectAvailable=$false path to guard against here.
   [HimmelCtl.JobNative]::TerminateJobObject($hJob, 1) | Out-Null
@@ -519,7 +519,7 @@ if ($timedOut -or $waitFailed) {
   # Belt-and-suspenders direct-child kill too (a no-op if TerminateJobObject
   # already took it down).
   try { $proc.Kill() } catch {}
-  # CR fix (CodeRabbit round 16, item 3): a WaitForExit failure and a
+  # a WaitForExit failure and a
   # genuine timeout get the SAME tree-kill treatment above, but a DISTINCT
   # exit code -- $waitFailed means "couldn't confirm completion, killed
   # defensively," not "genuinely ran past -TimeoutSeconds."
@@ -529,7 +529,7 @@ if ($timedOut -or $waitFailed) {
   $code = 1
   try { $code = $proc.ExitCode } catch { $code = 1 }
   if ($code -ne 0) {
-    # CR fix (MAJOR): a nonzero $code used to hit the SAME clear-and-release
+    # a nonzero $code used to hit the SAME clear-and-release
     # path as success below -- KILL_ON_JOB_CLOSE got stripped even though the
     # wrapped command FAILED, so any descendant it left running (a partial
     # install's background helper, a daemon spawned before the failure) was
@@ -552,7 +552,7 @@ if ($timedOut -or $waitFailed) {
     try { $proc.Kill() } catch {}
     exit $code
   }
-  # CR fix (codex round 17 -- FAIL-OPEN, same class as round 16's
+  # (FAIL-OPEN, same class as the earlier
   # WaitForExit find): clearing KILL_ON_JOB_CLOSE is what lets a legitimate
   # background descendant (a service/daemon an install deliberately
   # launched) SURVIVE the CloseHandle below. When the clear FAILS the flag
@@ -570,7 +570,7 @@ if ($timedOut -or $waitFailed) {
   # path in this file. A successful wrapped command whose tree we may have
   # just killed is NOT a success. This clear-and-release path is reached
   # ONLY for a genuinely SUCCESSFUL wrapped command ($code -eq 0) -- see the
-  # CR fix above for why a FAILED command takes the opposite branch instead.
+  # above for why a FAILED command takes the opposite branch instead.
   $cleared = Clear-JobKillOnClose -HJob $hJob
   [HimmelCtl.JobNative]::CloseHandle($hJob) | Out-Null
   if (-not $cleared) { exit $CLEANUP_FAILED_EXIT_CODE }

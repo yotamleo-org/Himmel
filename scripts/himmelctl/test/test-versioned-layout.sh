@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-versioned-layout.sh — HIMMEL-3059 S4: the release tarball's versioned
+# test-versioned-layout.sh — the release tarball's versioned
 # layout (~/.local/share/himmel/<version>/ + a `current` symlink) and the
-# non-git branch of `himmelctl update` (design HIMMEL-3059-linux-packaging.md
+# non-git branch of `himmelctl update` (design -linux-packaging.md
 # §1.4 / §8 row S4).
 #
 # Drives the REAL bin.js from a fixture tree laid out exactly as the README

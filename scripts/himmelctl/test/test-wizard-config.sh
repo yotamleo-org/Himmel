@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-config.sh — hermetic tests for the himmelctl `config` subcommand
-# (HIMMEL-758, epic HIMMEL-755 sub-ticket D). Mirrors test-wizard-uninstall.sh/
+# Mirrors test-wizard-uninstall.sh/
 # test-wizard-derive.sh conventions: node launched by absolute path, a fake
 # HOME, HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying real copies
 # of the primitive scripts config shells out to (set-env-var.sh,
@@ -37,11 +37,11 @@
 #      into loadRegistry()): base lanes.json + a local override -> the
 #      overridden lane is force-on/off in the RESOLVED set, every other lane
 #      unaffected, and the base lanes.json fixture file is byte-unchanged.
-#   K. Windows robustness (HIMMEL-758): a native BACKSLASH HIMMELCTL_REPO_ROOT
+#   K. Windows robustness: a native BACKSLASH HIMMELCTL_REPO_ROOT
 #      (cygpath -w) still resolves the initiative set write to the INTENDED
 #      fixture .env, not a misresolved sibling. Git-Bash/MSYS/Cygwin only —
 #      self-skips on posix (no backslash separator).
-#   P. (HIMMEL-2733) `himmelctl profile` is a SEPARATE argv[0] special-case
+#   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
 #      dispatches to plugin-profile.sh — proves it parses to subcommand
 #      `profile` (exact args forwarded, exact exit code propagated) and does
@@ -57,7 +57,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -393,7 +393,7 @@ lanes_after=$(cat "$fxJ/lanes.json")
 echo "ok: caseJ lanes.local.json overlay (base + local, local wins) actually suppresses the overridden lane in resolve.mjs; base lanes.json unchanged"
 
 # ── Case K: native BACKSLASH HIMMELCTL_REPO_ROOT still hits the intended .env ─
-# Regression guard for HIMMEL-758: writeEnvVar passes its --env-file target to
+# Regression guard for writeEnvVar passes its --env-file target to
 # bash in forward-slice form (toBashPath) because Git-Bash can misresolve a
 # backslashed/drive-letter path to the wrong file. Force a NATIVE Windows path
 # (cygpath -w — the form path.join also emits on Windows node) as
@@ -462,7 +462,7 @@ run_cfg "$fxO" get lanes.haiku
   || fail "caseO: invalid-JSON lanes overlay must abort, not be silently empty (got rc=$CFG_RC): $CFG_OUT"
 echo "ok: caseO a malformed lanes overlay (bad JSON or wrong shape) aborts instead of reporting empty/crashing"
 
-# ── Case P (HIMMEL-2733): `profile` parses to its own subcommand, no collision
+# ── Case P: `profile` parses to its own subcommand, no collision
 # with config/scope/trust ────────────────────────────────────────────────────
 # `himmelctl profile` is dispatched by a SEPARATE `if (argv[0] === 'profile')`
 # check in main() (added right after the `config` special-case, before

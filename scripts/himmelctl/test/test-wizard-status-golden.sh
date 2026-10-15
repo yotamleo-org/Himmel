@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-status-golden.sh — the #276-class golden fixture (HIMMEL-756
+# test-wizard-status-golden.sh — the #276-class golden fixture
 # T1.7): a single project-scope target whose himmelctl state.json marks
 # EXACTLY six items desired-enabled — qmd-binary, qmd-index,
 # wiring-statusline, wiring-pretooluse, jira-cli-dist-build,
@@ -19,7 +19,7 @@
 # 'luna' + scope 'project' would ALSO enable claude-plugins-pluginSet).
 # state.json is himmelctl's OWN artifact (lib/state.js's module header: a
 # SEPARATE artifact from install-profile.json, read/written by a stable
-# public schema) — so the fixture calls state.js directly (HIMMEL-2463:
+# public schema) — so the fixture calls state.js directly
 # `status` itself never writes state.json any more) to derive-and-save the
 # target entry under its real key (however path.resolve(cwd) stringifies on
 # this platform — avoids reproducing that string by hand), then patches the
@@ -33,7 +33,7 @@
 #      severity=="red", summary.red==6 (and, as a bonus over the literal
 #      --items-scoped requirement: a --items-less run root-to-tip proves
 #      the STATE itself, not just the query, carries the six golden reds
-#      PLUS (HIMMEL-2349) the additive overlay's own recorded-install-profile
+#      PLUS the additive overlay's own recorded-install-profile
 #      coverage of 8 more manifest items: summary is
 #      {red:10,degraded:1,green:0,na:manifestCount-11} (pre-commit is
 #      actively scrubbed from PATH, so this holds regardless of whether the
@@ -122,10 +122,10 @@ fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib" "$fixtureRepo/scripts/jira/dist"
 cp "$manifest_path" "$fixtureRepo/scripts/install/manifest.json"
 cp "$qmd_bin_lib" "$fixtureRepo/scripts/lib/qmd-bin.sh"
-# qmd-bin.sh sources its sibling qmd-bounded.sh (HIMMEL-3956).
+# qmd-bin.sh sources its sibling qmd-bounded.sh.
 cp "$repo_root/scripts/lib/qmd-bounded.sh" "$fixtureRepo/scripts/lib/qmd-bounded.sh"
 cp "$handover_path_lib" "$fixtureRepo/scripts/lib/handover-path.sh"
-# HIMMEL-3322: wiring-statusline's verifyScript resolution target for flip 3
+# wiring-statusline's verifyScript resolution target for flip 3
 # below — created once up front (same convention as the qmd stubs) so the
 # case-d purity sweep never sees it as a mutation introduced mid-run.
 printf '// fixture stub\n' > "$fixtureRepo/scripts/lib/statusline-stub.js"
@@ -153,11 +153,11 @@ write_cache "$cacheDir/install-profile.json" adopter project none "" inline "" l
 # pre-commit in particular must be scrubbed: the case (a) bonus check below
 # reads the "pre-commit" manifest item's probe, and letting that read
 # whatever this host happens to have on PATH would make the golden's
-# expected counts machine-dependent (HIMMEL-2349, codex-3). ────────────────
+# expected counts machine-dependent. ────────────────
 baseStub="$work/stub-base"; mkdir -p "$baseStub"
 link_hermetic_tool bash "$baseStub"
 link_hermetic_tool git "$baseStub"
-# HIMMEL-3322: wiring-statusline's verifyScript resolves the `node` interpreter
+# wiring-statusline's verifyScript resolves the `node` interpreter
 # via which() — scrub_path drops a WHOLE dir that carries any scrubbed tool, and
 # node commonly shares a toolchain-manager bin dir with bun/qmd, so without this
 # link the flip-3 control below reads degraded on hosts where that's true.
@@ -224,7 +224,7 @@ assert_items_severity() {
   done
 }
 
-# ── seed state.json: HIMMEL-2463 made `status` genuinely read-only (it never
+# ── seed state.json: made `status` genuinely read-only (it never
 # calls stateLib.save()/ensureTarget() any more), so this fixture can no
 # longer ride a `status` invocation to derive-and-persist the target entry —
 # it calls state.js directly instead (same out-of-band-seed idiom
@@ -286,7 +286,7 @@ echo "ok: case a — status --json --items <the-six> reports exactly those six, 
 # six reds against the FULL manifest.
 manifestCount=$(jq '.items | length' "$manifest_path")
 outAFull=$(run_status_full)
-# HIMMEL-2349 (retask 01S-A-2349-b73d): the additive overlay (status-report.js)
+# the additive overlay (status-report.js)
 # now ALSO marks desired:true any of the remaining 42 items the recorded
 # install-profile (v1/legacy here -> profileForVault(cachedAnswers) ->
 # category 'core', scope 'project') covers by manifest membership, on top of
@@ -305,10 +305,10 @@ outAFull=$(run_status_full)
 # this sandbox -> degraded (a REAL probe failure, not the opt-in/absent n/a
 # downgrade - that downgrade only applies to a 'red' probe.actual, and
 # 'degraded' is a different actual entirely, so it never re-suppresses back
-# to n/a here). HIMMEL-3307: two of those 7 reds (bitbucket-cli-build,
+# to n/a here). two of those 7 reds (bitbucket-cli-build,
 # jira-env-keys) are optional integrations a clean starter never set up and now
 # read n/a (opt-in) instead of red. Net: red 6->11, degraded 0->1, green 0->0,
-# na 42->34 (8 moved out of n/a, 2 moved back in); HIMMEL-4435: this fixture
+# na 42->34 (8 moved out of n/a, 2 moved back in); this fixture
 # is vault=none, so the pre-commit framework item is no longer wanted at all
 # (n/a), taking red 11->10 and na 34->35 - items
 # moving FROM n/a TO a real severity is exactly the additive overlay's
@@ -318,7 +318,7 @@ outAFull=$(run_status_full)
 # recorded install-profile), so this is not a fixture regression. Scrubbing
 # pre-commit (rather than letting it read whatever this host's PATH
 # happens to carry) is what makes these counts host-independent -
-# HIMMEL-2349 codex-3: previously this assertion held green==1 ONLY because
+# previously this assertion held green==1 ONLY because
 # the machine running the suite happened to have pre-commit.exe on PATH.
 echo "$outAFull" | jq -e --argjson n "$manifestCount" \
   '(.items | length) == $n and .summary.red == 10 and .summary.degraded == 1 and .summary.green == 0 and .summary.na == ($n - 11)' >/dev/null \
@@ -347,7 +347,7 @@ assert_items_severity "$out2" "flip qmd-index" \
 echo "ok: flip 2/6 — qmd-index leaves the red set (qmd-binary necessarily follows: documented has_qmd precondition); the other four stay red"
 
 # flip 3 — wiring-statusline: add statusLine.command, leave hooks untouched.
-# HIMMEL-3322: verifyScript now resolves the interpreter (on PATH) and the
+# verifyScript now resolves the interpreter (on PATH) and the
 # script path (readable file) — a real, non-empty script is required for the
 # green case; wire-statusline.sh always writes this exact `node "<path>"` shape.
 statuslineStub="$fixtureRepo/scripts/lib/statusline-stub.js"

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // scripts/himmelctl/standalone.js — the node entry point the PATH launcher
-// falls back to once the himmel clone is gone (HIMMEL-3312 S13 item 4,
-// design HIMMEL-3312-standalone-undo.md §7). This file itself ships inside
+// falls back to once the himmel clone is gone (4,
+// design -standalone-undo.md §7). This file itself ships inside
 // the bundle at ${HIMMEL_PROVENANCE_DIR:-~/.himmel}/uninstall/standalone.js,
 // with the tree mirroring scripts/himmelctl/ so its own `./lib/*` requires
 // resolve unchanged inside the bundle.

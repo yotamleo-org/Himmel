@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-derive.sh — hermetic tests for the himmelctl install wizard's
-# derivation + shell-out (HIMMEL-887 T4), vault-profile mapping (T5a), and
+# derivation + shell-out, vault-profile mapping (T5a), and
 # handover/pluginSet consumption (T4.5). Mirrors test-wizard-preflight.sh /
 # test-wizard-questions.sh conventions: a stub PATH via
 # scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute path.
@@ -47,11 +47,11 @@
 #   Q. CR r1 FIX 5: STAMPED existing-vault honors handover.mode=external
 #      exactly like the main path (dry-run DRY-line preview + real handover
 #      write on accept) — previously dropped. A legacy pluginSet=full profile
-#      no-ops on this branch too (HIMMEL-2304).
+#      no-ops on this branch too.
 # Covers (T4.5):
-#   I. HIMMEL-2304: pluginSet=full is a legacy-accepted --from-profile value
+#   I. pluginSet=full is a legacy-accepted --from-profile value
 #      whose documented per-plugin ENABLE step no-ops exactly like lean now.
-#      RP (CR round 3 [codex-1]): the HIMMEL-2033 retired-plugin-removal
+#      RP: the retired-plugin-removal
 #      offer is NOT tied to that enable step and still fires for a legacy
 #      full profile, decoupled from it — a machine previously provisioned
 #      with full is exactly the population most likely to still carry the
@@ -63,7 +63,7 @@
 #      write, no plugin DRY line — only the HANDOVER_DIR preview line.
 #   R. CR r1 FIX 3: a FAILED handover write aborts fail-closed BEFORE the
 #      core install shell-out (adopt.sh never invoked).
-#   S. HIMMEL-2304: there is no plugin-enable step left to fail — a legacy
+#   S. there is no plugin-enable step left to fail — a legacy
 #      pluginSet=full profile against a `claude` stub that always exits 1
 #      still succeeds (rc=0), because `claude` is never invoked at all.
 #   T. CR r5: --from-profile validates the FULL schema before ANY side
@@ -80,13 +80,13 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
 . "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"  # HIMMEL-2350: shared winpath() -- dies loud on empty input/output instead of silently falling through to the operator's real home
 wizard="$repo_root/scripts/himmelctl/bin.js"
-# HIMMEL-3327: the printed hint single-quotes any path outside a plain charset
+# the printed hint single-quotes any path outside a plain charset
 # (a checkout under a spaced directory included), so the expectation is built the
 # same way instead of assuming an unquoted path.
 nodehint() {
@@ -110,7 +110,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-2892: run from a THROWAWAY directory, never the himmel checkout this
+# run from a THROWAWAY directory, never the himmel checkout this
 # suite lives in. `install` resolves a project-scope target to $PWD, so a case
 # answering scope=project from the checkout root aimed the installer at the
 # repo itself -- which bin.js's himmel-clone guard now refuses outright. The cd
@@ -118,7 +118,7 @@ trap cleanup EXIT
 # project install here spawned adopt.sh against the live checkout.
 derive_cwd="$work/suite-cwd"; mkdir -p "$derive_cwd"; cd "$derive_cwd"
 
-# HIMMEL-1446 r3: a non-dry-run install (the stamped accept cases, e.g. caseM)
+# a non-dry-run install (the stamped accept cases, e.g. caseM)
 # reaches applyHimmelctlPathShim(), whose default binDir is the operator's REAL
 # ~/.local/bin (win32 ignores HOME entirely). Isolate binDir for the WHOLE
 # suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
@@ -254,7 +254,7 @@ grepq "$out" -E 'derived:.*adopt\.sh --profile core --scope project$' \
   || fail "caseB: expected 'adopt.sh --profile core --scope project' (got: $out)"
 grepq "$out" -- '--luna-target' \
   && fail "caseB: vault=none must not derive --luna-target (got: $out)"
-# HIMMEL-3308: --dry-run now shells out to adopt.sh itself with --dry-run.
+# --dry-run now shells out to adopt.sh itself with --dry-run.
 grep -q -- '--profile core --scope project --dry-run' "$fixtureB/adopt-calls.log" \
   || fail "caseB (HIMMEL-3308): adopt.sh should have been called with --profile core --scope project --dry-run (got: $(cat "$fixtureB/adopt-calls.log" 2>&1))"
 echo "ok: caseB adopter + vault=none -> --profile core --scope project, no --luna-target"
@@ -282,19 +282,19 @@ grepq "$out" -i 'luna-upgrade-all\.sh' \
   && fail "caseC: default-template must NOT call luna-upgrade-all.sh (got: $out)"
 grepq "$out" -i 'wire-luna-vault\.sh' \
   && fail "caseC: default-template must NOT call wire-luna-vault.sh (got: $out)"
-# HIMMEL-3308: --dry-run now shells out to adopt.sh itself with --dry-run.
+# --dry-run now shells out to adopt.sh itself with --dry-run.
 grep -q -- '--profile all --scope project --luna-target' "$fixtureC/adopt-calls.log" \
   || fail "caseC (HIMMEL-3308): adopt.sh should have been called with --profile all --scope project --luna-target ... (got: $(cat "$fixtureC/adopt-calls.log" 2>&1))"
 grep -q -- '--dry-run' "$fixtureC/adopt-calls.log" \
   || fail "caseC (HIMMEL-3308): adopt.sh should have been called with --dry-run (got: $(cat "$fixtureC/adopt-calls.log" 2>&1))"
-# HIMMEL-2466: deriveCommand must thread answers.handover.mode through to
+# deriveCommand must thread answers.handover.mode through to
 # adopt.sh so wire_handover_dir_luna's own gate agrees with the JS-side
 # no-op the SKIPPED summary already claims for handover.mode=inline.
 grep -q -- '--handover-mode inline' "$fixtureC/adopt-calls.log" \
   || fail "caseC (HIMMEL-2466): adopt.sh should have been called with --handover-mode inline (got: $(cat "$fixtureC/adopt-calls.log" 2>&1))"
 echo "ok: caseC adopter + vault=default-template -> --profile all --luna-target, no luna-upgrade-all/wire-luna-vault"
 
-# ── Case C2 (HIMMEL-2466): vault=default-template + handover=external -> adopt.sh gets --handover-mode external ──
+# ── Case C2: vault=default-template + handover=external -> adopt.sh gets --handover-mode external ──
 stubC2="$work/caseC2"; mkdir -p "$stubC2"
 cC2=$(build_path "$stubC2" bash git jq python3 npm -- )
 hC2="$work/hC2"; mkdir -p "$hC2"
@@ -359,7 +359,7 @@ out=$(PATH="$cL" HOME="$hL" USERPROFILE="$(winpath "$hL")" HIMMELCTL_CACHE_DIR="
       </dev/null 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseL: stamped dry-run should exit 0 (got rc=$rc): $out"
-# HIMMEL-2460: vault.mode=existing was a parallel re-implementation of the
+# vault.mode=existing was a parallel re-implementation of the
 # main install path that never reached deriveCommand()/adopt.sh at all — the
 # derived plan carried ONLY the wire/apply pair. adopt.sh must now derive
 # exactly like every other vault mode (profile=core: existing never implies
@@ -384,14 +384,14 @@ grepq "$out" -- '--force-unstamped' \
   && fail "caseL: --dry-run must NOT execute wire-luna-vault.sh (got: $(cat "$fixtureL/wire-luna-vault-calls.log"))"
 [ -f "$fixtureL/luna-upgrade-all-calls.log" ] \
   && fail "caseL: --dry-run must NOT execute luna-upgrade-all.sh (got: $(cat "$fixtureL/luna-upgrade-all-calls.log"))"
-# HIMMEL-3308: --dry-run now shells out to adopt.sh itself (with --dry-run
+# --dry-run now shells out to adopt.sh itself (with --dry-run
 # appended) so the plan reflects adopt.sh's own per-file preview, rather than
 # stopping at the "derived:" line above.
 [ -f "$fixtureL/adopt-calls.log" ] \
   || fail "caseL (HIMMEL-3308): --dry-run should invoke adopt.sh --dry-run (no adopt-calls.log; out: $out)"
 grep -q -- '--profile core --scope user --dry-run' "$fixtureL/adopt-calls.log" \
   || fail "caseL (HIMMEL-3308): adopt.sh should have been called with --profile core --scope user --dry-run (got: $(cat "$fixtureL/adopt-calls.log"))"
-# HIMMEL-2460: the epilogue must name the command that actually installs
+# the epilogue must name the command that actually installs
 # himmel (adopt.sh) — not luna-upgrade-all.sh's apply command, which only
 # upgrades the vault.
 grepq "$out" -E -- '— would run .*adopt\.sh --profile core --scope user' \
@@ -415,7 +415,7 @@ out=$(PATH="$cM" HOME="$hM" USERPROFILE="$(winpath "$hM")" HIMMELCTL_CACHE_DIR="
       <<<"" 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseM: stamped accept should exit 0 (got rc=$rc): $out"
-# HIMMEL-2460: adopt.sh must actually run for vault.mode=existing (the bug:
+# adopt.sh must actually run for vault.mode=existing (the bug:
 # it was structurally unreachable — this branch returned before
 # deriveCommand()/adopt.sh's shell-out ever ran).
 [ -f "$fixtureM/adopt-calls.log" ] \
@@ -436,14 +436,14 @@ grepq "$out" -F 'BACKUP' \
   || fail "caseM: expected the apply BACKUP line to be surfaced verbatim (got: $out)"
 grepq "$out" -F "To uninstall later: $(nodehint "$(winpath "$wizard")") uninstall" \
   || fail "caseM: expected the uninstall footer after a successful stamped install (got: $out)"
-# HIMMEL-2460 (second defect): the epilogue must name the command that
+# the epilogue must name the command that
 # actually installed himmel (adopt.sh), not luna-upgrade-all.sh's apply
 # command (which only upgrades the vault, layered on top).
 grepq "$out" -E -- 'via .*adopt\.sh --profile core --scope user' \
   || fail "caseM (HIMMEL-2460): epilogue must credit adopt.sh as the command that installed himmel (got: $out)"
 grepq "$out" -E -- 'via .*luna-upgrade-all\.sh' \
   && fail "caseM (HIMMEL-2460): epilogue must NOT credit luna-upgrade-all.sh as the install command (got: $out)"
-# HIMMEL-2507: the three stubs append to ONE shared trace, so the real call
+# the three stubs append to ONE shared trace, so the real call
 # ORDER is asserted (the per-script logs above prove only that each ran).
 [ "$(cat "$fixtureM/order-trace.log")" = "$(printf 'adopt.sh\nwire-luna-vault.sh\nluna-upgrade-all.sh')" ] \
   || fail "caseM (HIMMEL-2507): execution order must be adopt.sh, wire-luna-vault.sh, luna-upgrade-all.sh (got: $(tr '\n' ' ' < "$fixtureM/order-trace.log"))"
@@ -477,7 +477,7 @@ grepq "$out" -F 'To uninstall later' \
 echo "ok: caseN stamped existing-vault decline -> no script invoked (adopt.sh included), no footer, rc=0"
 
 # ── Case Q: T5b STAMPED honors handover parity with the main path; a legacy ─
-# pluginSet=full profile no-ops there too (HIMMEL-2304).
+# pluginSet=full profile no-ops there too.
 # (CR r1 FIX 5: this branch previously returned after wire+apply without ever
 # running writeHandoverDir(), and its dry-run preview never emitted a DRY
 # line for the handover answer.)
@@ -531,11 +531,11 @@ grepq "$out" -F 'To uninstall later' \
   || fail "caseQ: expected the uninstall footer after a successful T5b install"
 echo "ok: caseQ T5b existing-vault STAMPED honors handover.mode=external (dry-run DRY preview + real write on accept); a legacy pluginSet=full no-ops there too"
 
-# ── Case E (HIMMEL-2308): a legacy contributor cache migrates to devOverlay ─
+# ── Case E: a legacy contributor cache migrates to devOverlay ─
 # =true — deriveCommand ALWAYS derives adopt.sh now (ONE execution engine);
 # the old contributor role's setup.sh/setup.ps1 is layered on TOP as the dev
 # overlay's OWN additional command, never a substitute for adopt.sh.
-# HIMMEL-2126: win32 launches the overlay's setup.ps1 through
+# win32 launches the overlay's setup.ps1 through
 # resolvePowershell(), which PREFERS pwsh over PowerShell 5.1 — so pwsh is
 # scrubbed from PATH here (this box's own pwsh must not leak in) to pin the
 # loud-fallback branch; caseE2 below covers the pwsh-preferred branch with
@@ -569,12 +569,12 @@ case "$(uname -s)" in
       || fail "caseE(posix): expected an overlay 'bash .../setup.sh' line (got: $out)"
     ;;
 esac
-# HIMMEL-3308: --dry-run now shells out to adopt.sh itself with --dry-run.
+# --dry-run now shells out to adopt.sh itself with --dry-run.
 grep -q -- '--profile core --scope user --dry-run' "$fixtureE/adopt-calls.log" \
   || fail "caseE (HIMMEL-3308): adopt.sh should have been called with --profile core --scope user --dry-run (got: $(cat "$fixtureE/adopt-calls.log" 2>&1))"
 echo "ok: caseE a migrated legacy contributor cache (devOverlay=true) derives adopt.sh AS the primary command plus the setup.sh/ps1 overlay"
 
-# ── Case E2 (HIMMEL-2126): the dev overlay on win32 prefers pwsh when
+# ── Case E2: the dev overlay on win32 prefers pwsh when
 # it is resolvable — a stub pwsh is injected onto PATH (posix is a no-op:
 # caseE already covers it, and there is no pwsh/powershell branch there).
 case "$(uname -s)" in
@@ -651,7 +651,7 @@ grepq "$out" -F "To uninstall later: $(nodehint "$(winpath "$wizard")") uninstal
   || fail "caseG: expected the uninstall footer after a successful install (got: $out)"
 echo "ok: caseG interactive confirm accept (blank Enter) -> adopt.sh invoked with the exact derived argv, footer printed"
 
-# ── Case G2 (HIMMEL-3327): the footer's path is absolute AND quoted ─────────
+# ── Case G2: the footer's path is absolute AND quoted ─────────
 # A clone under a directory with a space: the printed command must still run
 # from an unrelated cwd. The hint is executed, not just string-matched.
 spaced="$work/sp ace clone"; mkdir -p "$spaced/scripts"
@@ -684,7 +684,7 @@ grep -q 'himmelctl: this will offboard' <<< "$hintOut" \
   || fail "caseG2 (HIMMEL-3327): the printed uninstall command does not resolve from another cwd / a spaced path (footer: $hint; rc=$hintRc; got: $hintOut)"
 echo "ok: caseG2 the printed uninstall command resolves from an unrelated cwd, with a space in the clone path"
 
-# ── Case G3 (HIMMEL-3327): the printed command is inert for a hostile path ──
+# ── Case G3: the printed command is inert for a hostile path ──
 # A `$`, `;`, `&` or apostrophe in the install path must not be re-parsed when
 # the operator pastes the hint: the path is single-quoted (apostrophe -> '\'').
 # shellcheck disable=SC2016  # the JS source is deliberately single-quoted, nothing for the shell to expand
@@ -767,8 +767,8 @@ grepq "$out" 'declined; nothing run' \
   && fail "caseO: a closed stdin at the confirm must NOT invoke adopt.sh (got: $(cat "$fixtureO/adopt-calls.log"))"
 echo "ok: caseO closed stdin at 'Proceed? [Y/n]' -> declines safely, adopt.sh never invoked"
 
-# ── Case I (HIMMEL-2304): pluginSet=full's ENABLE step is a legacy-accepted ─
-# NO-OP now; lean triggers no plugin step either. Before HIMMEL-2304, a
+# ── Case I: pluginSet=full's ENABLE step is a legacy-accepted ─
+# NO-OP now; lean triggers no plugin step either. Before, a
 # `full` profile ran the documented 13-plugin/1-marketplace enable step —
 # that "wiring" is what the ticket dropped along with the wizard's 'full'
 # choice. 'full' stays a VALID --from-profile value (loadProfile's checkEnum
@@ -776,7 +776,7 @@ echo "ok: caseO closed stdin at 'Proceed? [Y/n]' -> declines safely, adopt.sh ne
 # applyPluginStep()'s enable step is now unconditionally a no-op, so a legacy
 # 'full' cache's ENABLE behavior replays exactly like 'lean': this fixture
 # carries no remove-retired-plugin.sh (build_fixture doesn't copy it), so
-# the HIMMEL-2033 offer restored in CR round 3 [codex-1] below also no-ops
+# the offer restored below also no-ops
 # here (see caseRP for the case where the script IS present) — net zero
 # `claude` invocations either way.
 stubI="$work/caseI"; mkdir -p "$stubI"
@@ -802,8 +802,8 @@ set -e
   && fail "caseI(full): a legacy pluginSet=full profile must NOT trigger any claude call (got: $(cat "$stubI/claude-calls.log"))"
 echo "ok: caseI(full) a legacy pluginSet=full profile validates and no-ops — no plugin-enable step"
 
-# -- Case RP (restored, CR round 3 [codex-1]): pluginSet=full still offers ---
-# the SHARED HIMMEL-2033 retired-plugin helper, decoupled from the (removed)
+# -- Case RP (restored): pluginSet=full still offers ---
+# the SHARED retired-plugin helper, decoupled from the (removed)
 # enable step. A legacy full profile is exactly the population most likely
 # to still carry the retired plugin, so applyPluginStep() keeps calling
 # offerRetiredPluginRemoval() for that answer alone even though it no longer
@@ -862,7 +862,7 @@ set -e
   && fail "caseI(lean): pluginSet=lean must NOT invoke claude (got: $(cat "$stubI2/claude-calls.log"))"
 echo "ok: caseI(lean) pluginSet=lean -> no plugin-enable step"
 
-# ── Case S (HIMMEL-2304): applyPluginStep() never runs a command, so it can
+# ── Case S: applyPluginStep never runs a command, so it can
 # never fail either — a `claude` stub that always exits 1 must have zero
 # effect on a legacy pluginSet=full install (rc=0, no WARN line, no plugin
 # calls at all). Pre-2304 this asserted the OPPOSITE (a failed plugin-enable
@@ -1017,7 +1017,7 @@ grepq "$outT" "field 'handover.path'" \
 echo "ok: caseT malformed --from-profile replays (missing scope / bogus vault.mode / external without path) -> rc=2 naming the field, zero shell-outs"
 
 # ── Case K: --dry-run never mutates (combined legacy-full/external/ ─────────
-# default-template) — HIMMEL-2304: no DRY plugin-enable line for pluginSet=
+# default-template) — no DRY plugin-enable line for pluginSet=
 # full anymore, since the step it would have previewed no longer exists.
 stubK="$work/caseK"; mkdir -p "$stubK"
 cK=$(build_path "$stubK" bash git jq python3 npm -- )
@@ -1040,7 +1040,7 @@ out=$(PATH="$cK" HOME="$hK" USERPROFILE="$(winpath "$hK")" HIMMELCTL_CACHE_DIR="
       </dev/null 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseK: dry-run should exit 0 (got rc=$rc): $out"
-# HIMMEL-3308: --dry-run now shells out to adopt.sh itself (with --dry-run
+# --dry-run now shells out to adopt.sh itself (with --dry-run
 # appended) so the plan reflects adopt.sh's own per-file preview.
 [ -f "$fixtureK/adopt-calls.log" ] \
   || fail "caseK (HIMMEL-3308): --dry-run should invoke adopt.sh --dry-run (no adopt-calls.log; out: $out)"
@@ -1102,7 +1102,7 @@ grepq "$out" 'EACCES' \
   && fail "caseU: EACCES pre-check must abort before luna-upgrade-all.sh"
 echo "ok: caseU simulated settings EACCES -> friendly fail before wire/plugin steps"
 
-# ── Case V (HIMMEL-2308): a v2 devOverlay=true cache runs BOTH commands ──────
+# ── Case V: a v2 devOverlay=true cache runs BOTH commands ──────
 # on an APPLIED (non-dry-run) install: adopt.sh first, then the overlay's
 # setup.sh, in that order — and if adopt.sh fails the overlay must never run.
 stubV="$work/caseV"; mkdir -p "$stubV"
@@ -1160,7 +1160,7 @@ grepq "$out2" -F 'setup.ps1 stub' \
   && fail "caseV2: a failed adopt.sh must abort BEFORE the dev overlay (setup.ps1) runs (got: $out2)"
 echo "ok: caseV2 a failed adopt.sh aborts before the dev overlay ever runs"
 
-# ── Case W (HIMMEL-2308): --contribute outside a himmel checkout -> clear ────
+# ── Case W: --contribute outside a himmel checkout -> clear ────
 # error, nothing shells out. HIMMELCTL_REPO_ROOT points at a fixture that
 # carries NEITHER setup.sh nor setup.ps1 — the exact signal contributeCheckoutOk()
 # reads — so this is a targeted unit of the "clear error elsewhere" spec line,
@@ -1183,7 +1183,7 @@ grepq "$outW" -E '^\? ' \
   && fail "caseW: the checkout-validity refusal must happen before any question is asked (got: $outW)"
 echo "ok: caseW --contribute outside a himmel checkout -> clear error, nothing runs"
 
-# ── Case X (HIMMEL-3308): install --dry-run's adopt.sh plan agrees line for
+# ── Case X: install --dry-run's adopt.sh plan agrees line for
 # line with a direct `adopt.sh --dry-run` invocation. Deliberately the one
 # other case (besides caseA's --help reads) that exercises the REAL
 # scripts/adopt.sh instead of a fixture stub -- the ticket's own acceptance
@@ -1207,7 +1207,7 @@ diff <(printf '%s\n' "$directX") <(printf '%s\n' "$wizardAdoptBlockX") \
   || fail "caseX (HIMMEL-3308): install --dry-run's adopt.sh plan must agree LINE FOR LINE with a direct adopt.sh --dry-run invocation"
 echo "ok: caseX install --dry-run's adopt.sh plan agrees line for line with a direct adopt.sh --dry-run invocation"
 
-# ── Case Y (HIMMEL-3308 CR r2): a FAILING adopt.sh --dry-run must abort the
+# ── Case Y: a FAILING adopt.sh --dry-run must abort the
 # preview and propagate its rc, not print the rest of the plan as if the real
 # install would succeed.
 stubY="$work/caseY"; mkdir -p "$stubY"
@@ -1235,11 +1235,11 @@ grepq "$outY" -F 'would install (--dry-run' \
   && fail "caseY (HIMMEL-3308): a failed adopt.sh --dry-run must abort before the rest of the preview prints (got: $outY)"
 echo "ok: caseY a failing adopt.sh --dry-run aborts the preview and propagates its rc"
 
-# ── Case Z (HIMMEL-2507): sameFsEntry() compares dev/ino as BigInt ─────────
+# ── Case Z: sameFsEntry compares dev/ino as BigInt ─────────
 # Two distinct 64-bit inodes above 2^53 collapse to the SAME JS Number, so a
 # Number compare calls two different checkouts identical. The stub serves
 # BigInts only when asked ({bigint:true}) and the lossy Number form otherwise;
-# the ino===0 degenerate guard (HIMMEL-2501) must still reject, and a genuinely
+# the ino===0 degenerate guard must still reject, and a genuinely
 # equal pair must still match.
 zCase=$(cat <<'NODEEOF'
 const bin = require(process.argv[2]);

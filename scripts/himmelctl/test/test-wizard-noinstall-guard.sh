@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-noinstall-guard.sh — the "no new install logic" guard
-# (HIMMEL-887 T6, Draft-A R1). Statically asserts bin.js's ONLY side effects
+# Statically asserts bin.js's ONLY side effects
 # are: (a) read answers, (b) write the profile cache, (c) exec the ENUMERATED
 # existing scripts — never a NEW script, and never a reimplementation of
 # plugin-install / hook-wire / settings-merge logic of its own.
@@ -26,7 +26,7 @@ repo_root=$(git rev-parse --show-toplevel)
 wizard="$repo_root/scripts/himmelctl/bin.js"
 [ -f "$wizard" ] || { echo "FAIL: $wizard not found" >&2; exit 1; }
 
-# HIMMEL-3312 S13 items 1-2 extracted the PATH-launcher shim and the
+# 2 extracted the PATH-launcher shim and the
 # `uninstall` verb's script-exec (cmdUninstall -> uninstall.sh) out of bin.js
 # into these two lib files -- the script-exec surface (cases A/B below) has
 # to scan them too, or a name dropped from the allow-set stops constraining
@@ -53,60 +53,60 @@ trap cleanup EXIT
 # carry a .sh/.ps1/.mjs literal, so extract_script_targets() below can't
 # confuse them with a NEW script reference.
 #
-# HIMMEL-758: set-env-var.sh (the `config` HIMMEL_INITIATIVE writer) and
+# set-env-var.sh (the `config` HIMMEL_INITIATIVE writer) and
 # set-lane-override.mjs (the `config` lanes.local.json writer) added — both
 # are existing-primitive shell-outs, same class as set-handover-dir.sh above,
 # not a reimplementation of the write logic inline in bin.js.
 #
-# HIMMEL-893/1192: himmel-update.sh — the existing dependency-chain update
+# himmel-update.sh — the existing dependency-chain update
 # engine `himmelctl update` (deriveUpdateCommand) delegates to. Same class:
 # an enumerated existing-script shell-out, not new inline logic. It was
 # omitted when `update` landed (#1279), leaving this guard red; added here.
 #
-# HIMMEL-1446: himmelctl.ps1 — NOT a script bin.js shells out to; it is the
+# himmelctl.ps1 — NOT a script bin.js shells out to; it is the
 # PATH-launcher FILENAME the shim (writeMarkedLauncher/removeMarkedLauncher)
 # writes/removes in the user's binDir. Listed here only because
 # extract_script_targets()'s conservative quoted-*.ps1 scan catches the
 # literal — the trip-wire still fires on any genuinely-new shell-out script.
 #
-# HIMMEL-1551: wire-trust-hooks.mjs — the `trust on|off|status` verb's
+# wire-trust-hooks.mjs — the `trust on|off|status` verb's
 # existing-primitive shell-out (cmdTrust -> scripts/trust/wire-trust-hooks.mjs
 # via spawnSync), same class as set-lane-override.mjs above, not a
 # reimplementation of the trust-wiring logic inline in bin.js.
 #
-# HIMMEL-2033's remove-retired-plugin.sh shell-out (offerRetiredPluginRemoval)
+# remove-retired-plugin.sh shell-out (offerRetiredPluginRemoval)
 # was briefly dropped when pluginSet=full's ENABLE step was retired
-# (HIMMEL-2304), then restored decoupled from that step (CR round 3
+# then restored decoupled from that step
 # [codex-1]): a legacy pluginSet=full --from-profile cache is exactly the
 # population most likely to still carry the retired plugin, so
 # applyPluginStep() still offers its removal for that answer alone, even
 # though the enable step itself stays an unconditional no-op.
 #
-# HIMMEL-2537: check-user-slug.sh — the USER_SLUG step setup.sh's [0.5/9]
+# check-user-slug.sh — the USER_SLUG step setup.sh's [0.5/9]
 # runs, REPLAYED by userSlugState() so the install summary can name the step
 # when it was left undone. Same class as the shell-outs above: bin.js invokes
 # the existing primitive and reads its exit status; the resolution logic stays
 # in scripts/lib/user-slug.sh, none of it reimplemented here.
 #
-# HIMMEL-2733: plugin-profile.sh — the `profile` subcommand's shell-out
+# plugin-profile.sh — the `profile` subcommand's shell-out
 # (cmdProfile). A THIN passthrough: bin.js forwards argv verbatim and
 # propagates the exit code, same class as the shell-outs above — every bit of
 # the two-tier toggle/resolution logic stays in the script.
 #
-# HIMMEL-2693: ensure-workspace-trust.sh — applyWorkspaceTrust() calls the
-# existing HIMMEL-386 helper for the install target so the
+# ensure-workspace-trust.sh — applyWorkspaceTrust calls the
+# existing helper for the install target so the
 # permissions.allow/additionalDirectories entries the install just wrote are
 # not left silently ignored. Same class as the shell-outs above: bin.js
 # invokes the existing primitive and reads its exit status; the
 # ~/.claude.json read-modify-write logic stays in scripts/lib/, none of it
 # reimplemented here.
 #
-# HIMMEL-3059 S4: release-check.sh — `himmelctl update` on a versioned
+# release-check.sh — `himmelctl update` on a versioned
 # release-tarball install sources the existing release-lookup primitive (the
 # same fixed URL, tag grammar and version compare the session nudge and
 # himmel-update.sh --check use) instead of reimplementing the lookup in JS.
 #
-# HIMMEL-4597: vm-mode.sh — the `vm_proof` cadence rows ask the vm.mode
+# vm-mode.sh — the `vm_proof` cadence rows ask the vm.mode
 # resolver (`vm-mode.sh route`) whether a VM can prove the step, and read its
 # rc. Same class as the shell-outs above: bin.js invokes the existing
 # primitive; the config parse and validation stay in scripts/lib/vm-mode.sh.
@@ -137,7 +137,7 @@ NAMES
 # extract_script_targets — every 'name.sh' / "name.sh" / 'name.ps1' /
 # 'name.mjs' quoted literal referenced anywhere in bin.js (source text, so a
 # rogue reference even inside a comment still trips the guard — a
-# conservative trip-wire). .mjs joined HIMMEL-758 (set-lane-override.mjs).
+# conservative trip-wire)..mjs joined (set-lane-override.mjs).
 extract_script_targets() {
   grep -ohE "['\"][A-Za-z0-9_.-]+\.(sh|ps1|mjs)['\"]" "${script_exec_files[@]}" | tr -d "'\"" | sort -u
 }
@@ -184,18 +184,18 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 
 # ── Case C: the only DIRECT file writes are the documented ones ────────────
 # The profile cache (writeCache -> cachePath()); the named install-profile
-# save (offerSaveProfile -> tmpDest); since HIMMEL-1446, the PATH-launcher
-# shim's atomic tmp write (writeMarkedLauncher); and since HIMMEL-2347, the
+# save (offerSaveProfile -> tmpDest);, the PATH-launcher
+# shim's atomic tmp write (writeMarkedLauncher); and, the
 # two PHI guard-INPUT writes. No other file write — keeps the wizard from
 # reimplementing plugin-install/hook-wire/settings-merge logic inline. Every
 # site is pinned below so a SIXTH, undocumented write still trips the guard
 # (count + site match).
 #
-# Why the two HIMMEL-2347 writes belong in this allow-set rather than being a
+# Why the two writes belong in this allow-set rather than being a
 # reason to fail: they are not install/wiring logic reimplemented inline, they
 # are the guard inputs themselves. The PHI guards key on
 # ~/.config/claude-glm/phi-roots and a `.salus` marker, and NOTHING created
-# either — so every launcher PHI guard was silently inert (HIMMEL-1773/1767).
+# either — so every launcher PHI guard was silently inert.
 # Materializing those two files IS that ticket's structural fix; there is no
 # other component to delegate them to. Both are narrow by construction: the
 # phi-roots write is append-if-absent and never truncates (a non-ENOENT read
@@ -216,7 +216,7 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 writes=$(grep -c 'fs\.writeFileSync' "$wizard")
 [ "$writes" -eq 5 ] \
   || fail "caseC: expected exactly 5 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1), got $writes"
-# HIMMEL-4597 (J1947 B1): vmProofRoute() writes the doc-with-answer to a
+# vmProofRoute writes the doc-with-answer to a
 # mkdtemp dir under os.tmpdir() so scripts/lib/vm-mode.sh can resolve it,
 # and removes the dir in finally -- a probe, never an install write.
 grep -q 'fs.writeFileSync(cfg, JSON.stringify(probe))' "$wizard" \
@@ -230,14 +230,14 @@ grep -q 'fs.writeFileSync(cachePath()' "$wizard" \
 # named `tmpDest`.
 grep -q "fs.writeFileSync(tmpDest, bytes, { flag: 'wx' })" "$wizard" \
   || fail "caseC: missing the install-profile save write (offerSaveProfile tmpDest, HIMMEL-2483), or its call shape changed"
-# HIMMEL-3312 S13 item 1: writeMarkedLauncher() (and its tmp+rename PATH-
+# writeMarkedLauncher (and its tmp+rename PATH-
 # launcher shim write) was extracted out of bin.js into lib/launcher.js —
 # checked here, not against $wizard, since bin.js's own text no longer
 # contains it.
 grep -q "fs.writeFileSync(tmp, contents, 'utf8')" "$repo_root/scripts/himmelctl/lib/launcher.js" \
   || fail "caseC: missing the PATH-launcher shim write (writeMarkedLauncher tmp, HIMMEL-1446) in lib/launcher.js"
 # Pinned on the FULL call shape, not the bare `fs.writeFileSync(tmp,` prefix:
-# since HIMMEL-2347 fix 3, mergePhiRoot() also writes to a variable named
+# since fix 3, mergePhiRoot also writes to a variable named
 # `tmp`, so the short prefix matched EITHER site and this pin silently stopped
 # being site-specific. The count check alone would not cover that — it only
 # catches a write disappearing, not two pins collapsing onto one site.

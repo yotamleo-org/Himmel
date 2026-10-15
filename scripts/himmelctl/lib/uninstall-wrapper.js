@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/uninstall-wrapper.js — the uninstall confirm/spawn
-// wrapper extracted out of bin.js's cmdUninstall (HIMMEL-3312 S13 item 2).
+// wrapper extracted out of bin.js's cmdUninstall.
 // Pure refactor: same TTY/`--yes` fail-closed rule (rc 2), same default-No
 // confirm (rc 3), same wet spawn with HIMMEL_UNINSTALL_REAL_HOME=1, same
 // launcher removal on rc 0 — bin.js now delegates to runUninstallWrapper()
@@ -89,16 +89,16 @@ async function runUninstallWrapper(args, { bashPath, repoRoot, header, afterRun 
 
   // --dry-run asks nothing and removes nothing: it runs the executor in its
   // own --dry-run, which prints every path/plugin/hook/settings key it WOULD
-  // touch (HIMMEL-3058). No HIMMEL_UNINSTALL_REAL_HOME here — the wet-run
+  // touch. No HIMMEL_UNINSTALL_REAL_HOME here — the wet-run
   // fence is for wet runs; a dry run is never fenced. No launcher removal or
   // afterRun either: nothing was torn down.
   if (args.dryRun) return runSpawn(cmd);
 
-  // HIMMEL-2755: EOF and an explicit "n" are DIFFERENT facts. A closed/non-tty
+  // EOF and an explicit "n" are DIFFERENT facts. A closed/non-tty
   // stdin without --yes is a REFUSAL (rc=2, fail-closed, same code and same
   // remedy as uninstall.sh's own non-interactive abort), not a decline.
   if (!args.yes) {
-    // WHY (HIMMEL-2755): a pipe cannot consent AND must not be able to stall
+    // WHY: a pipe cannot consent AND must not be able to stall
     // a teardown; uninstall.sh:676's [ -t 0 ] && [ -t 1 ] is the twin.
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       console.error('himmelctl: ERROR: non-interactive run without --yes — aborting (fail-closed).');
@@ -112,18 +112,18 @@ async function runUninstallWrapper(args, { bashPath, repoRoot, header, afterRun 
       console.error('  Re-run with --yes to confirm, or --dry-run to preview.');
       return 2;
     }
-    // Default-No (HIMMEL-3328): a bare Enter or anything but y/yes declines.
+    // Default-No: a bare Enter or anything but y/yes declines.
     if (!/^\s*(y|yes)\s*$/i.test(ans)) {
       console.log('himmelctl: declined; nothing run.');
       return 3;
     }
   }
-  // HIMMEL-2505: this is the ONE spawn that runs uninstall.sh/.ps1 WET, after
+  // this is the ONE spawn that runs uninstall.sh/.ps1 WET, after
   // the human's own confirm above — tell it so its own live-operator-HOME
   // fence doesn't refuse the very machine the operator just confirmed
   // offboarding. The dry-run/plan path above never reaches here.
   const rc = runSpawn(cmd, { env: { ...process.env, HIMMEL_UNINSTALL_REAL_HOME: '1' } });
-  // HIMMEL-1446 r4 (codex-1/codex-adv converged blocker): strip the managed
+  // strip the managed
   // PATH launchers ONLY when the teardown succeeded. A failed teardown
   // (rc!=0) leaves the machine in a partial state and the user will likely
   // retry, so removing the launchers now would strand the machine with no

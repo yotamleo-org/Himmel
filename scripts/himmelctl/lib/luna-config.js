@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/luna-config.js — engine module owning the adopter's
-// shared config document at ~/.himmel/config.json (HIMMEL-2176 externalization
+// shared config document at ~/.himmel/config.json (externalization
 // Stage 1 PR-B, design §3.3 / assumption A13). This is NOT himmelctl's own
 // private state cache (that's lib/state.js's <cacheDir()>/state.json, under
 // ~/.claude/himmel/) — this document belongs to the adopter's luna+bridge
@@ -80,7 +80,7 @@ function defaultConfig() {
 //
 // checkNode() walks `value` against a declarative SCHEMA tree, pushing one
 // message per violation into `errors`. An extra key not named in an 'object'
-// node's `fields` is NOT an error (HIMMEL-3349: it is the user's own key —
+// node's `fields` is NOT an error (it is the user's own key
 // kept untouched and reported through `unknown`). Every named field is
 // required unless `optional: true` (the only optional field
 // in the whole v1 document is a schedule's `day` — daily-vs-weekly, A9).
@@ -98,14 +98,14 @@ function scheduleFieldSpec() {
   };
 }
 
-// HIMMEL-4597: `vm` is the one OPTIONAL himmelctl-managed section — absent
+// `vm` is the one OPTIONAL himmelctl-managed section — absent
 // means vm.mode=local, so fillDefaults()/migrate() never inject it into a
 // config that lacks it. validateVm() mirrors scripts/lib/vm-mode.sh's
 // resolver (fail closed): whatever it rejects is a resolver error there, and
 // a wizard answer that fails it is never written.
 const VM_MODES = ['local', 'remote', 'none'];
 
-// HIMMEL-4636: the ONE character rule for vm.remote.ssh / vm.remote.identity,
+// the ONE character rule for vm.remote.ssh / vm.remote.identity,
 // the same literal class as scripts/lib/vm-mode.sh (neither language's
 // whitespace notion: \s and str.isspace() disagree on \x1c-\x1f, \x85, U+FEFF).
 // Forbidden: C0 controls + space, DEL, C1 controls, NBSP, U+1680, U+2000-200F,
@@ -144,7 +144,7 @@ function validateVm(vm) {
   const port = Object.prototype.hasOwnProperty.call(r, 'port') ? r.port : 22;
   const portOk = typeof port === 'number' ? Number.isInteger(port) : (typeof port === 'string' && /^[0-9]+$/.test(port));
   if (!portOk || Number(port) < 1 || Number(port) > 65535) errors.push(`vm.remote.port: must be an integer 1..65535 (got ${JSON.stringify(port)})`);
-  // only an absent or null identity takes the default (HIMMEL-4601)
+  // only an absent or null identity takes the default
   const ident = r.identity === undefined || r.identity === null ? '~/.ssh/id_ed25519' : r.identity;
   if (typeof ident !== 'string' || ident === '') {
     errors.push(`vm.remote.identity: must be a non-empty string (got ${JSON.stringify(ident)})`);
@@ -218,7 +218,7 @@ function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-// HIMMEL-3349: a key the schema does not name is the USER'S own, not an error —
+// a key the schema does not name is the USER'S own, not an error
 // it is collected into `unknown` (a dotted path per key, no `$.` prefix) so a
 // caller can warn about it, and it is never dropped or rewritten.
 function checkNode(value, spec, label, errors, unknown) {
@@ -286,7 +286,7 @@ function unknownKeys(doc) {
   return unknown;
 }
 
-// ── Pre-schema fill (HIMMEL-3349) ────────────────────────────────────────
+// ── Pre-schema fill ────────────────────────────────────────
 //
 // A config that predates a required v1 field (hand-edited, or written by an
 // older build) is completed IN MEMORY from defaultConfig(): an absent field
@@ -341,7 +341,7 @@ const MIGRATIONS = {
 // guessing at a shape it doesn't understand. Callers (load()) must not
 // persist anything when this throws.
 function migrate(doc, filePath) {
-  // CR round 7 fix (HIMMEL-2176, retask stage1-build-6d2e): a parsed document
+  // a parsed document
   // that is valid JSON but not an object (null, an array, a bare number or
   // string all parse fine) used to reach `current.version` below and throw an
   // unhelpful TypeError instead of this module's named, file-identifying
@@ -381,7 +381,7 @@ function migrate(doc, filePath) {
 // corrupt copy should be investigated, not discarded (mirrors lib/state.js's
 // load() policy for state.json). Never writes.
 //
-// HIMMEL-3349: a required field absent from the file is filled from its
+// a required field absent from the file is filled from its
 // documented default IN MEMORY and an unknown key is kept as-is; inspect()
 // reports both so the one caller that persists (the install step) can back up,
 // migrate and warn. Nothing here writes.
@@ -426,7 +426,7 @@ function backupExisting(p) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const freshName = `${base}.bak-${stamp}`;
   const freshPath = path.join(dir, freshName);
-  // CR round 7 fix (HIMMEL-2176, retask stage1-build-6d2e): the fresh backup
+  // the fresh backup
   // used to be created AFTER pruning every existing `.bak-*` — if
   // copyFileSync then failed (ENOSPC, permissions, a locked file) the
   // adopter was left with no backup at all, in exactly the failure scenarios
@@ -434,7 +434,7 @@ function backupExisting(p) {
   // copyFileSync failure here still leaves whatever backup already existed
   // untouched, and propagates uncaught so save() aborts as it does today.
   //
-  // CR round 11 fix (HIMMEL-2176, retask stage1-build-6d2e): `freshPath` is
+  // `freshPath` is
   // JUST as predictable ahead of time as save()'s pid-named tmp path is —
   // timestamp-based rather than pid-based, but a plain copyFileSync still
   // followed whatever already sat there, symlink or not. `COPYFILE_EXCL`
@@ -449,12 +449,12 @@ function backupExisting(p) {
   // earlier save at this exact timestamp string, not a copy of today's `p`,
   // and refreshing it to today's content is correct.
   //
-  // CR round 12 fix (HIMMEL-2176, retask stage1-build-6d2e): round 11
+  // an earlier fix
   // resolved that plain-file collision with unlink-then-copy — remove the
   // stale file at freshPath, then retry the copy at that SAME name. If the
   // retry then failed (ENOSPC, permissions, a transient I/O error), the
   // adopter was left with ZERO backups: the stale one already destroyed, no
-  // replacement ever written. That's the exact defect round 7 above closed
+  // replacement ever written. That's the exact defect an earlier fix above closed
   // one layer up, reintroduced inside this EEXIST branch. The fix: never
   // destroy freshPath before its replacement exists. The replacement is
   // copied to a staging path that cannot collide with freshPath — pid-suffixed,
@@ -494,7 +494,7 @@ function backupExisting(p) {
       if (!stageRemovalRefused) removeTempBestEffort(stagePath);
       throw new Error(`luna-config: refusing to refresh the backup at ${freshPath} — staging copy to ${stagePath} failed: ${stageFailure.message} (HIMMEL-2176)`);
     }
-    // CR fix (HIMMEL-2176, retask stage1-build-6d2e): renameSync used to sit
+    // renameSync used to sit
     // OUTSIDE the cleanup handling — a failed rename (locked/permission-denied
     // destination) left the PID-named staging file behind, contradicting
     // backupExisting()'s own contract that staging failures clean up after
@@ -534,7 +534,7 @@ function removeTempBestEffort(tmp) {
   }
 }
 
-// HIMMEL-3332 S5: one json-key row per top-level section the save created or
+// one json-key row per top-level section the save created or
 // changed (an unchanged section records nothing), class state, so uninstall can
 // excise exactly those sections. `prior` is the parsed pre-save document, or
 // null when the file was absent. Non-fatal by design: a ledger fault must never
@@ -590,7 +590,7 @@ function save(doc) {
   }
 
   const tmp = `${p}.tmp-${process.pid}`;
-  // CR round 3 fix (HIMMEL-2176, retask stage1-build-6d2e): the write itself
+  // the write itself
   // used to sit OUTSIDE the cleanup handling below — a failure mid-write
   // (ENOSPC, permission-denied) could still leave a partial tmp file behind,
   // the same "cleaned up on any failure" contract gap codex-5's rename fix
@@ -598,7 +598,7 @@ function save(doc) {
   // existsSync guard covers a write that fails before the file is ever
   // created at all, same as it covers every other cleanup call site below.
   //
-  // CR round 5 fix (HIMMEL-2176, retask stage1-build-6d2e): `tmp` is a
+  // `tmp` is a
   // PREDICTABLE path (pid-based), and a plain writeFileSync follows whatever
   // already sits there — including a symlink an attacker pre-planted, which
   // would redirect this write into an arbitrary target. `{ flag: 'wx' }`
@@ -613,7 +613,7 @@ function save(doc) {
   // and the write retried exactly once, so a crash doesn't wedge every
   // future save() with a permanent EEXIST.
   //
-  // CR round 9 fix (HIMMEL-2176, retask stage1-build-6d2e): a `tmpIsOurs`
+  // a `tmpIsOurs`
   // flag used to gate cleanup and was only set true AFTER writeFileSync
   // RETURNED — a partial write (ENOSPC, an I/O error mid-flush) has O_EXCL
   // succeed in CREATING the file before the write/flush portion throws, so
@@ -656,7 +656,7 @@ function save(doc) {
     throw new Error(`luna-config: refusing to save ${p} — schema violation(s) (HIMMEL-2176):\n  - ${errors.join('\n  - ')}`);
   }
 
-  // CR fix (HIMMEL-2176, codex-5): renameSync used to sit OUTSIDE the
+  // renameSync used to sit OUTSIDE the
   // cleanup handling — a failed rename (locked/permission-denied
   // destination) left the PID-named temp file behind, contradicting this
   // function's own "temp file is cleaned up on any failure" contract above.

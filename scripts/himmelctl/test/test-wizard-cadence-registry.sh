@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-wizard-cadence-registry.sh — CI staleness lint for
-# scripts/himmelctl/lib/cadence-registry.json (HIMMEL-2302), mirroring the
-# test-wizard-profile-lint.sh case a/b pattern (HIMMEL-2320): a positive
+# scripts/himmelctl/lib/cadence-registry.json, mirroring the
+# test-wizard-profile-lint.sh case a/b pattern: a positive
 # control proving the real registry lints clean, and a NEGATIVE control
 # (a deliberately broken fixture) proving the lint actually discriminates —
 # a suite that only ever saw a pass would be just as "green" if the check
@@ -10,7 +10,7 @@
 # What "lints clean" means here: every row's `script` (repo-root-relative)
 # exists on disk AND contains cmd_arm()/cmd_status()/cmd_disarm() function
 # definitions — the same three subcommands bin.js's arm/disarm plumbing
-# assumes every registry row's script implements (HIMMEL-2302's
+# assumes every registry row's script implements ('s
 # cadenceArmFlags()/cadenceScriptPath()). A row naming a renamed/deleted
 # script, or one missing a subcommand, must fail loud in CI rather than
 # surface as a silent runtime spawn failure at install time.
@@ -18,10 +18,10 @@
 # Covers:
 #   a. POSITIVE CONTROL: the real cadence-registry.json lints clean — every
 #      row's script exists and defines all three cmd_*().
-#   b. NEGATIVE CONTROL (HIMMEL-2320, mandatory): a synthetic registry naming
+#   b. NEGATIVE CONTROL (mandatory): a synthetic registry naming
 #      a script missing cmd_disarm() -> the SAME lint logic fails, naming the
 #      row and the missing function.
-#   d/e (HIMMEL-3086): platform eligibility — a `requires:'platform:<name>'`
+#   d/e: platform eligibility — a `requires:'platform:<name>'`
 #      row is offered only on its own host (repo-sync = windows only); every
 #      other row's offered-ness is platform-invariant; the tag vocabulary is
 #      pinned on a fixture registry (unknown tag still offered; unknown
@@ -91,7 +91,7 @@ set -e
 grepq "$outA" '^PASS$' || fail "case a: expected a PASS line (got: $outA)"
 echo "ok: case a — the real cadence-registry.json lints clean (every row's script exists and defines cmd_arm/cmd_status/cmd_disarm)"
 
-# ── case b (NEGATIVE CONTROL, HIMMEL-2320): a broken fixture fails loud ────
+# ── case b (NEGATIVE CONTROL): a broken fixture fails loud ────
 # A stub script missing cmd_disarm() entirely (arm/status only).
 brokenScript="$work/broken-cadence.sh"
 cat > "$brokenScript" <<'SH'
@@ -125,7 +125,7 @@ console.log(dups.join(','));
 [ -z "$dupCheck" ] || fail "case c: duplicate cadence registry id(s): $dupCheck"
 echo "ok: case c — every cadence-registry.json id is unique"
 
-# ── case d (HIMMEL-3086): platform eligibility filters the OFFERED set ─────
+# ── case d: platform eligibility filters the OFFERED set ─────
 # offeredCadenceRows(lanes, vaultMode, platform, registry) is bin.js's pure
 # per-row filter. Every real row is exercised on all three hosts (the env:
 # row is dropped — it reads the operator's real .env, not a platform fact).
@@ -153,7 +153,7 @@ if (problems.length) { console.error(problems.join('; ')); process.exit(1); }
 " "$offeredD" || fail "case d: platform eligibility of the real registry is wrong (offered sets: $offeredD)"
 echo "ok: case d — repo-sync (platform:windows) is offered on win32 only; every other real row's offered-ness is identical on linux/darwin/win32"
 
-# ── case e (HIMMEL-3086): tag vocabulary controls on a fixture registry ────
+# ── case e: tag vocabulary controls on a fixture registry ────
 # An unknown requires tag still falls through to 'offered' (unchanged
 # behavior); a platform tag naming an UNKNOWN platform matches no host.
 offeredE=$("$node_bin" -e "

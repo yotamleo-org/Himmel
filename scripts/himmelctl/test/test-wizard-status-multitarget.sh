@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-status-multitarget.sh — himmelctl `status` against a state.json
-# carrying TWO coexisting targets (HIMMEL-756 T1.8): one project-scope temp
+# carrying TWO coexisting targets: one project-scope temp
 # repo target (keyed by path.resolve(cwd), lib/state.js's targetKeyForScope)
 # and one "user" target (the literal "user" key). Mirrors sibling
 # test-wizard-status-cmd.sh / test-wizard-status-golden.sh conventions: a
@@ -41,7 +41,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -76,7 +76,7 @@ JSON
 fixtureRepo="$work/repo"
 mkdir -p "$fixtureRepo/scripts/install" "$fixtureRepo/scripts/lib"
 cp "$manifest_path" "$fixtureRepo/scripts/install/manifest.json"
-# HIMMEL-3322: wiring-statusline's verifyScript resolution target for the two
+# wiring-statusline's verifyScript resolution target for the two
 # flips below — a real, non-empty, readable file (never executed).
 printf '// fixture stub\n' > "$fixtureRepo/scripts/lib/statusline-stub.js"
 statuslineStub_w="$(winpath "$fixtureRepo/scripts/lib/statusline-stub.js")"
@@ -117,7 +117,7 @@ runB() {
 # himmelctl's own documented-schema artifact (lib/state.js), authored here
 # independent of the manifest's scopes:["project"] gate (which governs
 # deriveTarget()'s natural derivation, not this hand-authored read).
-# HIMMEL-2463 made `status` genuinely read-only (it never calls
+# made `status` genuinely read-only (it never calls
 # stateLib.save()/ensureTarget() any more), so the seed calls state.js
 # directly instead of riding a `status` invocation. ────────────────────────
 state_lib="$repo_root/scripts/himmelctl/lib/state.js"

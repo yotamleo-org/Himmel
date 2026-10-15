@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard: drives cross-platform bin.js from bash, including Git Bash
 # on Windows via _hermetic-home.sh winpath; a .ps1 twin duplicates this coverage.
-# WHY (HIMMEL-2755): non-interactive input is refusal; a decline is a TTY
+# WHY: non-interactive input is refusal; a decline is a TTY
 # answer. --yes keeps uninstall's option whitelist narrow. Never use real HOME.
 set -uo pipefail
 
@@ -21,7 +21,7 @@ HIMMELCTL_BIN_DIR="$(winpath "$tmp/bin")"
 HIMMEL_LUNA_CONFIG_PATH="$(winpath "$tmp/home/luna-config.json")"
 export USERPROFILE HIMMELCTL_CACHE_DIR HIMMELCTL_REPO_ROOT HIMMELCTL_BIN_DIR HIMMEL_LUNA_CONFIG_PATH
 # Existing repo-root seam resolves only these harmless teardown scripts.
-# HIMMEL-3058: --dry-run now RUNS the executor's own --dry-run (the plan it
+# --dry-run now RUNS the executor's own --dry-run (the plan it
 # prints is the script's, not a second copy) — the stub answers it distinctly.
 printf '#!/usr/bin/env bash\ncase " $* " in *" --dry-run "*) echo fixture-dry-run; exit 0 ;; esac\necho fixture-teardown\nexit 7\n' > "$tmp/repo/scripts/uninstall.sh"
 # shellcheck disable=SC2016 # PowerShell $-variables must reach the file literally
@@ -73,7 +73,7 @@ if [ "$rc" -eq 0 ]; then echo 'FAIL - C5 unrelated option accepted'; exit 1; fi
 check_not_has 'fixture-teardown' "$tmp/out" C5
 echo 'ok - C5 unrelated option still rejected'
 
-# WHY (HIMMEL-2755): neither an affirmative nor an empty pipe may consent.
+# WHY: neither an affirmative nor an empty pipe may consent.
 # Isolate fail-fast assertions so both RED controls report before exiting.
 confirm_failed=0
 for confirm_case in C6 C7; do
@@ -90,9 +90,9 @@ for confirm_case in C6 C7; do
     fi
 done
 
-# C8 — WHY (HIMMEL-2755): an open, silent pipe must not stall teardown.
+# C8 — WHY: an open, silent pipe must not stall teardown.
 if [ -n "$_TIMEOUT_BIN" ]; then
-    # WHY (HIMMEL-2755): an open pipe that never sends a byte and never closes.
+    # WHY: an open pipe that never sends a byte and never closes.
     # No PID capture: $! is not set by a process substitution before bash 5.1,
     # so the producer cannot be reaped portably — instead it is given a short
     # lifetime and its stderr, the only fd it inherits, is discarded, so a
@@ -147,7 +147,7 @@ if [ "$(uname -s)" = "Linux" ] && command -v script >/dev/null 2>&1; then
     else
         confirm_failed=$((confirm_failed + 1))
     fi
-    # C13-C18 — HIMMEL-3328 (operator ruling a): the prompt is default-No,
+    # C13-C18 — (operator ruling a): the prompt is default-No,
     # `Proceed? [y/N]`. Only y/yes (any case) consents; a bare Enter or any
     # other answer declines with rc=3. Each runs under the scratch HOME above.
     printf '\n' | script -qec "node \"$root/scripts/himmelctl/bin.js\" uninstall" /dev/null >"$tmp/out" 2>"$tmp/err"; rc=$? # gnu-ok: util-linux script(1), and the block is uname-gated to Linux
@@ -191,7 +191,7 @@ else
     echo 'skip - C9-C15 pty coverage needs Linux script(1)'
 fi
 
-# WHY (HIMMEL-2755): --yes must actually bypass the prompt and propagate the
+# WHY: --yes must actually bypass the prompt and propagate the
 # child's rc; the existing override makes that test harmless on both platforms.
 node "$root/scripts/himmelctl/bin.js" uninstall --yes </dev/null >"$tmp/out" 2>"$tmp/err"; rc=$?
 check_rc 7 "$rc" 'yes spawn'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-reconcile.sh — hermetic tests for
-# scripts/himmelctl/lib/state.js's reconcileTarget() (HIMMEL-755 A3): the
+# scripts/himmelctl/lib/state.js's reconcileTarget: the
 # state re-derivation path ensureTarget() deliberately lacks (it never
 # re-derives an existing entry). Mirrors sibling test-wizard-state.sh
 # conventions: a fake HOME + HIMMELCTL_CACHE_DIR fixture, node launched by
@@ -19,14 +19,14 @@
 #   d. reconcileTarget mutates state in place (no explicit save() call
 #      needed to see the change in the same in-memory object) and the
 #      result round-trips through save()/load().
-#   e. (CR fix, CodeRabbit round 15/16) lastEnsured normalizes a missing/
+#   e. lastEnsured normalizes a missing/
 #      undefined/non-string existing value to null (present in serialized
 #      JSON, not dropped) while preserving any genuinely-stored STRING
 #      value unchanged.
-#   f. (CR fix, CodeRabbit round 22) a malformed `overrides` on an existing
+#   f. a malformed `overrides` on an existing
 #      item — a truthy NON-object (a string, an array) — normalizes to {} on
 #      rebuild instead of persisting through (the SAME bug class as e's
-#      lastEnsured; state.js round 17, item 1). Valid-override preservation
+#      lastEnsured; state.js, item 1). Valid-override preservation
 #      stays case b's concern; this case covers ONLY the malformed shapes.
 
 set -euo pipefail
@@ -48,7 +48,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# CR fix: paths passed via the ENVIRONMENT (STATE_LIB_PATH/MANIFEST_PATH),
+# paths passed via the ENVIRONMENT (STATE_LIB_PATH/MANIFEST_PATH),
 # never interpolated into the node -e source string — a checkout path
 # containing an apostrophe or backslash would otherwise break the inline JS
 # on Windows Git Bash, macOS, or Linux alike.
@@ -89,7 +89,7 @@ state.save(s);
 const before = JSON.parse(JSON.stringify(s));
 
 const reconciled = state.reconcileTarget(s, manifest, answers, { profile: 'luna', scope: 'project' });
-// CR fix: persist THIS reconcile immediately — case d's round-trip
+// persist THIS reconcile immediately — case d's round-trip
 // assertions below now read back exactly this result, instead of a second,
 // redundant reconcile+save performed later in a separate node invocation.
 state.save(s);
@@ -119,7 +119,7 @@ echo "$out" | jq -e '.reconciled.items["handover-wiring"].enabled == true' >/dev
 echo "ok: case c — handover-wiring keeps tracking cachedAnswers.handover.mode across the reconcile"
 
 # ── case d: mutate-in-place + round-trip through save()/load() ─────────────
-# CR fix: reads back the SAME reconcile already persisted above (inside the
+# reads back the SAME reconcile already persisted above (inside the
 # first node invocation, right after reconcileTarget()) — no second,
 # redundant reconcile+save.
 echo "$out" | jq -e '.after.targets | to_entries[0].value.profile == "luna"' >/dev/null \
@@ -137,7 +137,7 @@ echo "$loaded" | jq -e '.targets | to_entries[0].value.items["pre-commit-hooks"]
   || fail "case d: the preserved override should round-trip through save()/load() (got: $loaded)"
 echo "ok: case d — reconcile mutates state in place and round-trips through save()/load()"
 
-# ── case e (CR fix, CodeRabbit round 15, item 4): lastEnsured normalizes to
+# ── case e: lastEnsured normalizes to
 # null when missing, but is preserved when a real value is stored. The bug:
 # `existing ? existing.lastEnsured : null` only guards the "no existing
 # entry at all" case — an existing entry that itself lacks the field (a
@@ -167,7 +167,7 @@ const key = Object.keys(s.targets)[0];
 // carry undefined through.
 delete s.targets[key].lastEnsured;
 const r1 = state.reconcileTarget(s, manifest, answers, { profile: 'core', scope: 'project' });
-// CR fix (test bug caught during development): reconcileTarget assigns
+// reconcileTarget assigns
 // state.targets[key] = entry AND returns that SAME entry object -- so
 // r1 and s.targets[key] are aliases of one another. Snapshotting
 // r1.lastEnsured into a primitive HERE, before the e2 mutation below
@@ -185,7 +185,7 @@ const r2 = state.reconcileTarget(s, manifest, answers, { profile: 'luna', scope:
 // touches s.targets[key] (== r2) directly.
 const r2lastEnsured = r2.lastEnsured;
 
-// sub-case e3 (CR fix, CodeRabbit round 16, item 7 -- tighten): a
+// sub-case e3 (item 7 -- tighten): a
 // MALFORMED state file could carry a non-string lastEnsured (a number, a
 // stray object, a boolean) -- the old '!= null' check treated any of
 // those as a 'genuine stored value' and passed it straight through,
@@ -206,10 +206,10 @@ echo "$outE" | jq -e '.r3lastEnsured == null' >/dev/null \
   || fail "case e: a non-string stored lastEnsured (e.g. a number) must normalize to null, not pass through (got: $outE)"
 echo "ok: case e — lastEnsured normalizes missing/undefined/non-string to null (present in serialized JSON) while preserving any real stored string value"
 
-# ── case f (CR fix, CodeRabbit round 22): a malformed `overrides` on an
+# ── case f: a malformed `overrides` on an
 # existing item — a truthy NON-object (a string, an array) — must normalize
 # to a genuine plain object {} on rebuild, not persist through. This is the
-# SAME bug class as case e's lastEnsured normalization: state.js round 17,
+# SAME bug class as case e's lastEnsured normalization: state.js,
 # item 1 narrowed `|| {}` (which only caught FALSY overrides) to a real
 # typeof-object && !Array.isArray check, because a malformed truthy
 # non-object used to pass straight through reconcileTarget into the rebuilt

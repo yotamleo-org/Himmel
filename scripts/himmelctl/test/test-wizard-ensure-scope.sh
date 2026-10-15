@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-ensure-scope.sh — `himmelctl ensure --items <id>` runs ONLY that
-# item (HIMMEL-4267). himmel-update calls `ensure --items pre-commit-hooks
+# item. himmel-update calls `ensure --items pre-commit-hooks
 # --yes`; that used to run a full adopt, persist every other recorded-profile
 # item into the target's state, and fail on an unrelated step.
 #

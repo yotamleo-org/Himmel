@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-cadence-per-unit.sh — hermetic tests for HIMMEL-2302 (per-
+# test-wizard-cadence-per-unit.sh — hermetic tests for (per-
 # cadence wizard selection). Covers the NEW behavior that sits on top of
 # test-wizard-luna-sections.sh's existing pipeline-only cadence coverage
 # (which continues to prove the legacy `luna.cadenceEnabled` fallback, byte-
@@ -31,7 +31,7 @@
 #      qualifies, no 'lane:codex' row qualifies) -> the question is NEVER
 #      asked and `cadences` is absent from the answers entirely (round-8:
 #      not-asked stays undefined, never a fabricated {}).
-#   f. HIMMEL-2302 CR round 1 Fix 1 (documented consent asymmetry, end-to-
+#   f. 1 Fix 1 (documented consent asymmetry, end-to-
 #      end): --from-profile with vault=none + cadences.codex-sweep='armed'
 #      and codex ABSENT from lanes validates cleanly (naming codex-sweep in a
 #      hand-reviewed profile IS the consent — loadProfile does not gate
@@ -64,7 +64,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wizard-cadence-per-unit.XXXXXX")
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-2892: run from a THROWAWAY directory, never the himmel checkout this
+# run from a THROWAWAY directory, never the himmel checkout this
 # suite lives in. `install` resolves a project-scope target to $PWD, so a case
 # answering scope=project from the checkout root aimed the installer at the
 # repo itself -- which bin.js's himmel-clone guard now refuses outright. The cd
@@ -305,7 +305,7 @@ echo "ok: case c — codex-sweep is offered in the cadences menu only when the c
 # case d (interactive, installer v1 spec-deviation fix): vault=none + the
 # codex lane selected -> the cadences question is STILL asked (per-row
 # gating, not whole-question vault gating), offering codex-sweep (requires
-# lane:codex) PLUS the three `requires:'none'` rows added by HIMMEL-3068
+# lane:codex) PLUS the three `requires:'none'` rows added by
 # (drift-fix/upstream-watch/repo-sync — never vault- or lane-gated); arming
 # codex-sweep records `cadences: {"codex-sweep":"armed", "drift-fix":"off",
 # "upstream-watch":"off", "repo-sync":"off"}` with pipeline/qmd/graphmap
@@ -353,7 +353,7 @@ grepq "$outD" -F -- '"pull-cadence":' \
   && fail "case d: pull-cadence must stay genuinely absent from cadences (requires env:GOOGLE_HEALTH_REFRESH_TOKEN, unset here) (got: $outD)"
 echo "ok: case d — vault=none + codex lane still asks cadences, offering codex-sweep + the three requires:'none' rows; arming codex-sweep records the rest off, with the vault- and env-requiring rows genuinely absent"
 
-# case d2 (HIMMEL-3086): the non-Windows twin of case d above, which pins
+# case d2: the non-Windows twin of case d above, which pins
 # HIMMELCTL_CADENCE_PLATFORM=win32 (repo-sync is requires:'platform:windows').
 # Same vault=none + codex run on a linux host: repo-sync is genuinely absent.
 stubD2="$work/stubD2"; mkdir -p "$stubD2"
@@ -386,7 +386,7 @@ echo "ok: case d2 — the linux twin of case d: repo-sync is genuinely absent, t
 
 # ═══════════════════════════════════════════════════════════════════════════
 # case e (interactive, installer v1 spec-deviation fix -- narrowed by
-# HIMMEL-3068): vault=none + NO codex lane -> the vault- and lane:codex-
+# vault=none + NO codex lane -> the vault- and lane:codex-
 # gated rows (pipeline/qmd/graphmap/codex-sweep) still don't qualify, but the
 # three `requires:'none'` rows this ticket added (drift-fix/upstream-watch/
 # repo-sync) qualify UNCONDITIONALLY -- so the cadences question IS now
@@ -434,7 +434,7 @@ grepq "$outE" -F -- '"pull-cadence":' \
 echo "ok: case e — vault=none without the codex lane still asks cadences (the three requires:'none' rows always qualify); declining them all records every offered row off, with the vault-/lane-/env-gated rows genuinely absent"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# case e2 (HIMMEL-3086; also the linux twin of case e, which pins win32): platform eligibility. repo-sync carries
+# case e2 (also the linux twin of case e, which pins win32): platform eligibility. repo-sync carries
 # requires:'platform:windows' (schtasks only, no crontab arm path), so the
 # vault=none + no-codex menu of case e must offer it ONLY on a Windows host.
 # The host is a seam (HIMMELCTL_CADENCE_PLATFORM, process.platform vocabulary),
@@ -483,7 +483,7 @@ done
 echo "ok: case e2 — repo-sync (requires:'platform:windows') is offered on a win32 host and genuinely absent on linux/darwin; the requires:'none' rows are offered on all three"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# case f (HIMMEL-2302 CR round 1 Fix 1, documented consent asymmetry): a
+# case f (1 Fix 1, documented consent asymmetry): a
 # --from-profile with vault=none + cadences.codex-sweep='armed' and codex
 # ABSENT from lanes must VALIDATE (not exit 2 — that's for requires:'vault'
 # rows only) and actually arm codex-sweep via its own script.

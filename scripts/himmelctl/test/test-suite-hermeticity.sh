@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-suite-hermeticity.sh — HIMMEL-2350 structural guard (Console Ruling 38).
+# test-suite-hermeticity.sh — structural guard
 #
 # WHY: os.homedir() reads USERPROFILE, not HOME, for node.exe children under
 # Git Bash on Windows (proven: `HOME=/tmp/fakehome node -e "console.log(require('os').homedir())"`
@@ -12,13 +12,13 @@
 # on Windows: the child still writes the OPERATOR'S real ~/.claude/himmel/ and
 # ~/.himmel/ files.
 #
-# THIS GUARD WENT GREEN OVER A LIVE LEAK ONCE ALREADY (HIMMEL-2350's own
+# THIS GUARD WENT GREEN OVER A LIVE LEAK ONCE ALREADY ('s own
 # incident): every suite already set HIMMELCTL_CACHE_DIR on every
 # "$node_bin" "$wizard" invocation the static check_dir() below could see,
 # and the operator's real ~/.claude/himmel/install-profile.json still got
 # overwritten by a writeCache() call reached through askQuestions() with an
 # all-defaulted answer set (profile=starter, lanes=DEFAULT_LANE_IDS=
-# [ollama,copilot] at the time — DEFAULT_LANE_IDS is empty as of HIMMEL-2352's
+# [ollama,copilot] at the time — DEFAULT_LANE_IDS is empty as of
 # v1 lane rescope, but the leak mechanism is unchanged; any all-defaulted
 # answer set still reaches writeCache()) via a closed/unredirected
 # stdin path the static idiom-matcher never enumerated. A pattern check can
@@ -33,7 +33,7 @@
 #      sees — but text presence is not a runtime value; see GUARD LIMITS.
 #   2. check_sources_helper() + check_no_local_winpath() — every suite must
 #      source _hermetic-home.sh (the SINGLE shared winpath() definition,
-#      HIMMEL-2350 item 1: 34 hand-copied local definitions is itself the bug
+#      34 hand-copied local definitions is itself the bug
 #      shape — one missing copy is exactly what happened to
 #      test-wizard-preflight.sh), and no suite may still carry its own local
 #      copy (proving that consolidation actually held, not just that it
@@ -74,7 +74,7 @@
 # command substitution in assignment-prefix position does not make bash's
 # `set -e` treat the enclosing simple command as failed -- the trailing
 # command still runs, with that one var resolved to "". This does NOT reopen
-# the HIMMEL-2350 leak, because USERPROFILE is the keystone seam by design
+# the leak, because USERPROFILE is the keystone seam by design
 # (_hermetic-home.sh's whole premise): an explicitly EMPTY USERPROFILE makes
 # node's os.homedir() THROW (uv_os_homedir ENOENT) rather than silently
 # falling back to the real profile -- also verified directly on this stack --
@@ -105,7 +105,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline (same helper every sibling suite in this directory defines,
-# HIMMEL-1430): `<producer> | grep -q` under `set -o pipefail` inverts on a
+# `<producer> | grep -q` under `set -o pipefail` inverts on a
 # large match, since grep -q exits on first match and the producer takes
 # SIGPIPE writing the remainder, which the pipeline then reports as failed.
 # A guard whose own matcher can invert under load is exactly the false-green
@@ -182,7 +182,7 @@ canary_run() {
 
 # real_home_dir — the operator's REAL home as a node child would resolve it.
 #
-# codex-panel round 6. `os.homedir()` on win32 reads USERPROFILE; $HOME is a
+# `os.homedir` on win32 reads USERPROFILE; $HOME is a
 # git-bash convenience that can legitimately point elsewhere (git-bash honours
 # an inherited HOME before falling back to USERPROFILE). check_real_canary()'s
 # operator-file tripwire must therefore watch the USERPROFILE-derived home,
@@ -253,10 +253,10 @@ real_home_dir() {
 # The real operator files are only ever READ -- once to seed the sandbox
 # faithfully (so a suite that behaves differently depending on whether
 # config.json/state.json already exist, or what shape they're in, still sees
-# realistic content), and repeatedly (codex-panel round 5, below) as a
+# realistic content), and repeatedly (below) as a
 # read-only tripwire -- never written, and the sandbox is deleted after.
 #
-# codex-panel round 5 (IMPORTANT): the sandbox is the EXECUTION environment
+# the sandbox is the EXECUTION environment
 # (every suite still runs pointed at it, per codex-1/codex-2 above), but it
 # is blind to a suite that ignores its env overrides entirely -- one that
 # explicitly resets USERPROFILE back to the real profile, or hardcodes an
@@ -268,7 +268,7 @@ real_home_dir() {
 # the three real paths before/after each suite is a read-only ADDITION, a
 # tripwire that only ever notices a write that already happened via some
 # OTHER path, never a mechanism that could itself cause or prevent one. It
-# never writes to them, so it carries none of the destructive risk round 1
+# never writes to them, so it carries none of the destructive risk an earlier fix
 # objected to (running suites' state changes directly against the live
 # files) -- it only reads and hashes, exactly like the once-off seed copy
 # already did.
@@ -286,7 +286,7 @@ real_home_dir() {
 # crashed suite (that stays run-shell-tests.sh's job), but it DOES capture
 # each suite's rc, counts how many exited non-zero, and names them in a
 # REAL-CANARY VACUITY line so a pass over a corpus where most suites crashed
-# cannot present as a clean bill of health. codex-panel round 3: a PARTIAL
+# cannot present as a clean bill of health. a PARTIAL
 # crash rate stays a warning-only VACUITY line (rc unaffected) -- but if
 # EVERY suite in the corpus crashed, this run produced ZERO hermeticity
 # evidence, and rc was previously only ever set by a DRIFT, so an
@@ -309,22 +309,22 @@ check_real_canary() {
   local p1="$sandbox/.himmel/config.json"
   local p2="$sandbox/.claude/himmel/state.json"
   local p3="$sandbox/.claude/himmel/install-profile.json"
-  # codex-panel round 5: the REAL paths, watched read-only as a tripwire
+  # the REAL paths, watched read-only as a tripwire
   # alongside the sandbox trio above -- see the function header for why this
   # is additive, not a reversion to the pre-codex-1 live-file design.
-  # codex-panel round 6: resolved via real_home_dir(), NOT $HOME. Deriving
+  # resolved via real_home_dir, NOT $HOME. Deriving
   # them from $HOME reproduced defect #4 one level up, inside the detector:
   # a node child writes wherever USERPROFILE points, so under a guard shell
   # where the two diverge the tripwire watched paths nothing writes and
   # reported clean through an actual escape.
-  # codex-panel round 7: the SEED just above (not only these r1..r3
-  # tripwire paths) also resolves through real_home_dir() now. Round 6 fixed
+  # the SEED just above (not only these r1..r3
+  # tripwire paths) also resolves through real_home_dir now. an earlier fix fixed
   # only the tripwire and missed the seed, which still read from $HOME: under
   # the identical HOME/USERPROFILE divergence, the seed copied from a path
   # nothing writes, so the sandbox got seeded empty or from unrelated
   # content and the canary stopped exercising any content-dependent leak
   # path -- the same $HOME-vs-USERPROFILE mistake, in the same function,
-  # missed once already because round 6 only looked at the tripwire.
+  # missed once already because an earlier fix only looked at the tripwire.
   local r1="$real_home/.himmel/config.json"
   local r2="$real_home/.claude/himmel/state.json"
   local r3="$real_home/.claude/himmel/install-profile.json"
@@ -360,7 +360,7 @@ check_real_canary() {
   done
   if [ "$crashed" -gt 0 ]; then
     echo "REAL-CANARY VACUITY: $crashed/$total suite(s) exited non-zero inside the sandbox and never reached whatever code would have written -- a suite that crashes early yields NO hermeticity evidence for the code it never ran, the same 'stayed clean' shape as a suite that genuinely never writes. Not counted as a failure here (suite PASS/FAIL is run-shell-tests.sh's job), but a canary PASS over this corpus does not vouch for these: ${crashed_names[*]}"
-    # codex-panel round 3: a partial crash rate stays a warning (this canary
+    # a partial crash rate stays a warning (this canary
     # does not exist to police unrelated suite failures), but if EVERY suite
     # crashed, this run produced ZERO hermeticity evidence -- rc was only
     # ever set by a DRIFT, so an all-crashed corpus would return 0 (SUCCESS)
@@ -411,7 +411,7 @@ check_real_canary() {
 # read a widened pattern here as completeness -- this function localises
 # faults for the idioms it recognises; the canary is the actual gate.
 #
-# codex-panel round 3: the old second grep (`grep -q '_hermetic-home\.sh'`) is
+# the old second grep (`grep -q '_hermetic-home\.sh'`) is
 # a bare substring search over the WHOLE FILE -- a suite that fakes HOME and
 # merely MENTIONS the helper (an explanatory comment, a heredoc, an error
 # string) passes without ever sourcing it. Not adversarial: writing "# see
@@ -439,7 +439,7 @@ check_sources_helper() {
 
 # check_no_local_winpath <dir> — every *.sh in <dir> (except this guard and
 # the shared helper) must NOT define its own winpath() function any more. A
-# surviving local copy means the HIMMEL-2350 item-1 consolidation (34
+# surviving local copy means the item-1 consolidation (34
 # hand-copied definitions -> one, in _hermetic-home.sh) did not fully hold —
 # this is the STRICT positive proof of that, distinct from check_dir()'s
 # permissive text-presence check below (which accepts either a source line or
@@ -509,7 +509,7 @@ for path in sorted(glob.glob(os.path.join(target, '*.sh'))):
     # _hermetic-home.sh). One cheap, sound thing IS checkable here without
     # executing anything: every value in this directory's convention is
     # `$(winpath "...")`, and winpath must be a defined shell FUNCTION for
-    # that to ever produce a non-empty result. Post-HIMMEL-2350-consolidation
+    # that to ever produce a non-empty result. Post-consolidation
     # (item 1), every real suite gets winpath by SOURCING _hermetic-home.sh
     # (the single shared definition) rather than carrying its own local copy
     # -- 34 hand-copied definitions was itself the bug shape, since one file
@@ -523,8 +523,8 @@ for path in sorted(glob.glob(os.path.join(target, '*.sh'))):
     # suite still carries its own copy at all -- this check stays permissive,
     # accepting either shape, because it also has to judge synthetic fixtures
     # written in the old, pre-consolidation style.)
-    # codex-panel round 5: same mention-vs-source bug fixed in
-    # check_sources_helper() (round 3) survived here as a SECOND, still-bare
+    # same mention-vs-source bug fixed in
+    # check_sources_helper survived here as a SECOND, still-bare
     # substring check -- a comment or heredoc merely mentioning
     # _hermetic-home.sh satisfied it without an actual source line. Anchored
     # the same way: a `.`/`source` statement at the start of a line, not a
@@ -689,7 +689,7 @@ echo "ok: case b — negative control: a fully-isolated bin.js invocation is NOT
 # ── case b2 (negative control, the CURRENT real-world shape): a suite that
 # gets winpath by SOURCING _hermetic-home.sh (no local copy of its own) must
 # also PASS check_dir() -- this is what every real suite looks like after the
-# HIMMEL-2350 item-1 consolidation.
+# 1 consolidation.
 mkdir -p "$work/good2"
 cat > "$work/good2/test-fake-iso-sourced.sh" << 'EOF'
 #!/usr/bin/env bash
@@ -758,7 +758,7 @@ $realOut"
 echo "ok: case d — every scripts/himmelctl/test/*.sh bin.js invocation sets both HIMMELCTL_CACHE_DIR and HIMMEL_LUNA_CONFIG_PATH"
 
 # ── case e (POSITIVE CONTROL, the canary): it must catch a write check_dir()
-# is blind to. Simulates the actual HIMMEL-2350 incident shape -- a script
+# is blind to. Simulates the actual incident shape -- a script
 # that writes the "real" file directly (no bin.js, no HOME=, nothing
 # check_dir()'s idiom-matcher could ever see) -- against SYNTHETIC stand-in
 # paths (never the operator's real files) so the canary logic itself is
@@ -833,7 +833,7 @@ grepq "$dupOut" -F 'test-fake-dupwinpath.sh' \
   || fail "case g2: expected the offending file named: $dupOut"
 echo "ok: case g2 — positive control: a suite that still defines its own winpath() (consolidation incomplete) is flagged"
 
-# ── case g3 (POSITIVE CONTROL, codex-panel round 3): a suite that fakes HOME
+# ── case g3 (POSITIVE CONTROL): a suite that fakes HOME
 # and only MENTIONS _hermetic-home.sh -- in a comment, never in an actual
 # source statement -- must still FAIL. The old check was a bare substring
 # search over the whole file, so a comment like "# see _hermetic-home.sh"
@@ -913,7 +913,7 @@ grepq "$divergentOut" -F 'test-fake-crashes.sh' \
   || fail "case h: expected the crashed suite named in the vacuity line: $divergentOut"
 echo "ok: case h — positive control: check_real_canary()'s sandbox still fires when HOME and USERPROFILE diverge (the exact os.homedir()-follows-USERPROFILE condition this ticket exists to catch), the real operator files were never WRITTEN to prove it (watched read-only as a tripwire, per round 5, but this fixture never touches them), and a sibling suite that crashed before writing anything is called out by name as vacuous evidence rather than silently read as clean"
 
-# ── case h2 (POSITIVE CONTROL, codex-panel round 3): when EVERY suite in the
+# ── case h2 (POSITIVE CONTROL): when EVERY suite in the
 # corpus crashes -- zero hermeticity evidence produced -- check_real_canary()
 # must FAIL rather than return the previous rc=0 (rc was only ever set by a
 # DRIFT, so an all-crashed run used to report clean having certified
@@ -937,7 +937,7 @@ grepq "$allcrashOut" -iF 'no evidence' \
   || fail "case h2: expected a NO-EVIDENCE / refuse-to-certify line (got: $allcrashOut)"
 echo "ok: case h2 — positive control: check_real_canary() refuses to certify PASS when every suite in the corpus crashed and produced zero hermeticity evidence"
 
-# ── case h3 (POSITIVE CONTROL, codex-panel round 6): real_home_dir() must
+# ── case h3 (POSITIVE CONTROL): real_home_dir must
 # follow USERPROFILE, not $HOME, when they diverge -- the exact defect this
 # round found in check_real_canary()'s operator-file tripwire (it used to
 # derive its watched paths from $HOME directly). This is the control that
@@ -980,7 +980,7 @@ case "$(uname -s)" in
     ;;
 esac
 
-# ── case i (POSITIVE CONTROL, codex-panel round 4 -- the one exception to
+# ── case i (POSITIVE CONTROL -- the one exception to
 # the "only this guard file" fence, and only for this control): winpath()
 # itself (sourced from _hermetic-home.sh at the top of THIS file, line
 # ~125, for this guard's own use) used to fall back to the untranslated
@@ -991,7 +991,6 @@ esac
 # other case in this file, then call the REAL winpath() (not a fixture
 # copy) and assert it dies loud instead of returning the bad path.
 #
-# codex-panel round 5 (CRITICAL, a regression THIS control introduced):
 # winpath()'s platform switch is `case "$(uname -s)"` -- on Linux/macOS it
 # takes the `*)` branch, echoes its input unchanged, and exits 0 regardless
 # of the cygpath shadow (cygpath is never even consulted there). The
@@ -1026,7 +1025,7 @@ case "$(uname -s)" in
     ;;
 esac
 
-# ── case i2 (POSITIVE CONTROL, HIMMEL-2366 known residual): this ticket ships
+# ── case i2 (POSITIVE CONTROL, known residual): this ticket ships
 # one KNOWN fail-open, documented in the guard's own header comment above
 # canary_run() -- winpath()'s `exit 1` does NOT abort the calling suite when
 # winpath is used the way almost every suite here actually uses it: as a

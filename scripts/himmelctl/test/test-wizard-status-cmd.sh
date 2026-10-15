@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-status-cmd.sh — hermetic tests for the himmelctl `status`
-# subcommand (HIMMEL-756 T1.5/T1.6): the severity-grouped diff between
+# subcommand: the severity-grouped diff between
 # desired (state.js-derived) and actual (probes.js) per manifest item, plus
 # its stable --json mode. Mirrors sibling test-wizard-*.sh conventions: a
 # fake HOME + HIMMELCTL_CACHE_DIR + HIMMELCTL_REPO_ROOT fixture, node
@@ -26,7 +26,7 @@
 #      by id.
 #   f. no-prompt guard: stdin closed (</dev/null) does not hang or error.
 #   g. purity: status NEVER writes state.json, not even a first derive
-#      (HIMMEL-2463) — a run against a target with no prior state.json entry
+# a run against a target with no prior state.json entry
 #      leaves it absent, and a second run leaves the whole fixture tree (repo
 #      fixture, target, cache) byte-identical.
 
@@ -38,7 +38,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -134,7 +134,7 @@ echo "$outB" | jq -e '.items[] | select(.id=="pre-commit-hooks") | .detail | con
   || fail "case b: pre-commit-hooks detail should plainly name all missing hook types (got: $outB)"
 echo "ok: case b — known-missing enabled item (pre-commit-hooks) reads red, exit 0, names all hook types"
 
-# HIMMEL-2463: status is documented read-only. targetBE/cacheBE had NO prior
+# status is documented read-only. targetBE/cacheBE had NO prior
 # state.json entry before this run (a fresh target — the derive/migrate
 # comparison must happen purely in memory), so state.json must still be
 # ABSENT after a full status run with a valid install-profile cache — not

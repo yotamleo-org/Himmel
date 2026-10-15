@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/bridge-persistence.js — installer PRIMITIVES for the
-// Telegram bridge's Linux systemd-user persistence (HIMMEL-2176 Task 9, A12).
+// Telegram bridge's Linux systemd-user persistence.
 // POSIX twin of install-logon-task.ps1's HimmelTelegramBridge scheduled task.
 //
 // This module ships the primitives ONLY — it never calls them, never
@@ -46,7 +46,7 @@ function haveSystemctl() { return Boolean(which('systemctl')); }
 function haveLoginctl() { return Boolean(which('loginctl')); }
 
 // partialFail — shared by installSystemdUnit AND uninstallSystemdUnit
-// (codex-1 round 10, generalized to uninstall round 11 for consumer
+// (generalized to uninstall an earlier fix for consumer
 // consistency: `partial` is a CONTRACT a caller branches on, not prose in
 // `detail` — a caller reading `{ok, partial, actions, detail}` should not
 // have to know which function produced it). Once a durable side effect has
@@ -57,7 +57,7 @@ function partialFail(actionsSoFar, detail) {
   return { ok: false, partial: true, actions: actionsSoFar, detail };
 }
 
-// codex-1 CR fix (round 13): systemd unit files treat `%` as a specifier
+// systemd unit files treat `%` as a specifier
 // prefix (%h -> home, %i -> instance, ...) in EVERY directive, so a checkout
 // path containing a literal `%` — legal on every filesystem — got silently
 // mis-expanded or, worse, rejected outright: verified live against systemd
@@ -114,7 +114,7 @@ function hasUnitFileNewline(s) {
   return /[\r\n]/.test(s);
 }
 
-// HIMMEL-3332 S5: one provenance row, never fatal — a ledger fault must not
+// one provenance row, never fatal — a ledger fault must not
 // fail the unit install (residue over breakage), it only warns.
 function provRow(recArgs) {
   try {
@@ -148,7 +148,7 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
   // same as before) — only this rendering step got smarter.
   //
   // The ExecStop= arm is deliberately kept even though the current template
-  // carries none: HIMMEL-2551 moved the unit to Type=simple with the bun
+  // carries none: moved the unit to Type=simple with the bun
   // supervisor as MAINPID, so systemd's default KillMode=control-group stops
   // it (and its poller child) without an explicit ExecStop. The arm is the
   // per-directive escaping RULE, not a claim about today's template — nothing
@@ -179,7 +179,7 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
     return { ok: false, actions: [], detail: `'systemctl' not found on PATH — not a systemd/Linux host; ${SYSTEMD_UNIT_NAME} was NOT installed` };
   }
 
-  // HIMMEL-3332 S5: read the pre-state BEFORE the write — whether the unit file
+  // read the pre-state BEFORE the write — whether the unit file
   // existed (a replace backs the prior bytes up) and whether linger was already
   // on for this user (null = not determinable, recorded as such).
   let unitPre = ['create', '--pre-absent'];
@@ -204,13 +204,13 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
   }
   if (unitPre) provRow([unitPre[0], 'file', UNIT_PATH,...unitPre.slice(1), '--post-file', UNIT_PATH, '--scope', 'user', '--class', 'code']);
 
-  // codex-1 CR fix (round 10): everything below this point runs AFTER the
+  // everything below this point runs AFTER the
   // first durable side effect (the unit file is now really on disk at
   // UNIT_PATH) — a failure here must never read as a flat "not installed".
   // `partial:true` + a detail naming exactly what landed lets a summary
   // consumer tell "nothing happened" from "there is a file (and maybe a
   // reload, maybe an enablement) sitting on the adopter's disk that needs
-  // cleanup or a retry" — the same partial-state honesty round 5's codex-2
+  // cleanup or a retry" — the same partial-state honesty the earlier
   // applied to the enable/start split, generalized to every step after the
   // write instead of just that one branch. No auto-rollback here either,
   // same reasoning as uninstallSystemdUnit's refuse-before-removing.
@@ -242,7 +242,7 @@ function installSystemdUnit({ repoRoot, dryRun } = {}) {
 }
 
 function uninstallSystemdUnit({ dryRun } = {}) {
-  // codex-4 CR fix: installSystemdUnit() reloads the systemd user daemon
+  // installSystemdUnit reloads the systemd user daemon
   // after writing the unit file — uninstall must mirror that after REMOVING
   // it, or systemd keeps its cached definition loaded (still "known") even
   // though the file and the reported ok:true both say gone. Listed in
@@ -261,7 +261,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
     return { ok: false, actions: [], detail: `'systemctl' not found on PATH — not a systemd/Linux host; nothing to uninstall` };
   }
 
-  // codex-2 CR fix: `systemctl --user disable --now` on a unit that is
+  // `systemctl --user disable --now` on a unit that is
   // already gone exits non-zero — checking disable.status (below) BEFORE
   // checking whether the file even exists made re-running uninstall on an
   // already-uninstalled bridge report a false ok:false failure. Uninstall
@@ -271,7 +271,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
   // refuse-before-removing behavior below for a GENUINE disable failure
   // (unit still present) is unchanged.
   //
-  // codex-1 CR fix (this was MY round-3 ruling's own regression, not an
+  //  (a regression of the earlier ruling, not an
   // implementation bug — recorded here so it doesn't slip past on the
   // grounds that it was asked for): an absent unit FILE is not proof the
   // service is uninstalled. systemd can still have the unit loaded,
@@ -284,7 +284,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
   // `fs.existsSync(UNIT_PATH)` inside that path already handles "remove a
   // file that isn't there" as a no-op, so nothing else needs to change.
   if (!fs.existsSync(UNIT_PATH)) {
-    // codex-1 CR fix (round 12): is-enabled/is-active exit non-zero for BOTH
+    // is-enabled/is-active exit non-zero for BOTH
     // "systemd has never heard of this unit" AND "systemd knows it fine and
     // it's merely disabled/stopped" — the same non-zero either way, so the
     // round-5 confirmed-negative check took the no-op shortcut on a unit
@@ -293,7 +293,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
     // the fact this shortcut actually needs: `not-found` means genuinely
     // unknown; `loaded`/`masked`/anything else means systemd still knows it
     // — go through the real path. A spawn error (status===null) stays
-    // INCONCLUSIVE, never a confirmed negative, same rule round 5 established.
+    // INCONCLUSIVE, never a confirmed negative, same rule an earlier fix established.
     const show = spawnSync('systemctl', ['--user', 'show', SYSTEMD_UNIT_NAME, '--property=LoadState'], { encoding: 'utf8' });
     const loadState = show.status === 0 ? (/^LoadState=(.*)$/m.exec(show.stdout || '') || [])[1] : null;
     if (loadState === 'not-found') {
@@ -304,7 +304,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
   }
 
   const disable = spawnSync('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT_NAME], { encoding: 'utf8' });
-  // codex-5 CR fix: a failed (or unspawnable — status is `null` on a spawn
+  // a failed (or unspawnable — status is `null` on a spawn
   // error) `disable` means the unit may still be loaded/running. Removing
   // the file out from under a still-running unit is WORSE than leaving it —
   // systemd would keep the service running with no file left to reload or
@@ -320,7 +320,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
     };
   }
 
-  // codex-1 CR fix (round 11): `disable --now` succeeding above IS a
+  // `disable --now` succeeding above IS a
   // durable side effect (the unit is now genuinely disabled/stopped on this
   // machine) — everything below that can still fail must say so via
   // partial:true, mirroring installSystemdUnit()'s own write-is-durable
@@ -339,7 +339,7 @@ function uninstallSystemdUnit({ dryRun } = {}) {
     );
   }
 
-  // codex-4 CR fix: mirrors installSystemdUnit()'s reload-after-write — a
+  // mirrors installSystemdUnit's reload-after-write — a
   // reload that fails is folded into the result honestly (ok:false), never
   // reported as a fully clean uninstall, even though the file is already
   // gone at this point (removal is not undone; systemd's stale cached
@@ -418,7 +418,7 @@ function systemdUnitInstalled() {
 // non-Windows host is EXPECTED (per the systemd pair's own contract) and
 // must return a clear result, never attempt the spawn at all.
 //
-// codex-2 CR fix (round 10): `spawnFn` (defaults to the real spawnSync) is
+// `spawnFn` (defaults to the real spawnSync) is
 // injectable — same DI shape as onboard.ts's process-check injection — so a
 // test can capture the exact argv this module would hand to pwsh (the
 // script path, -NoProfile, -File, -Repo/-Remove) WITHOUT ever spawning

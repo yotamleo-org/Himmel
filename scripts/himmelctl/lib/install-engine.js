@@ -1,11 +1,11 @@
 'use strict';
 // scripts/himmelctl/lib/install-engine.js — planInstall()/runInstall()
-// (HIMMEL-755 A4): the install-descriptor engine `ensure` (A5) drives to
+// the install-descriptor engine `ensure` (A5) drives to
 // converge red/degraded manifest items. This engine NEVER re-implements
 // wiring/plugin-install/settings-merge logic — every dispatch shells out to
 // an EXISTING primitive script (adopt.sh, setup.sh, the wire-*.sh/
 // unwire-*.sh libs, install-plugins.sh, qmd-bin.sh's qmd_install,
-// guardrail-block.mjs's own `install` verb — HIMMEL-2176), mirroring
+// guardrail-block.mjs's own `install` verb —), mirroring
 // the doctrine test-wizard-noinstall-guard.sh already enforces on bin.js
 // itself. Keeping this dispatch table in its OWN file (not bin.js) keeps
 // that guard's bin.js-only script-literal scan meaningful — ensure's actual
@@ -29,7 +29,7 @@ const { spawnSync } = require('child_process');
 const { parseDotEnv, scopeConfigPathToCtx } = require('./probes.js');
 const lunaConfig = require('./luna-config.js');
 const { resolvePowershell } = require('./helpers.js');
-// HIMMEL-2176: the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
+// the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // own launcher uses to pick a real, usable Git Bash on Windows (never bare
 // 'bash', which can silently resolve to the WSL launcher or a 0-byte
 // WindowsApps alias there) — reused here (mirrors deps-engine.js's own
@@ -40,9 +40,9 @@ const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash
 // deliberately absent — config-type items are hint-only pre-sub-ticket-D; the
 // caller (ensure, A5) must exclude them from the item list handed to
 // planInstall in the first place, never rely on this engine to skip them.
-// HIMMEL-2326: 'observability' added — its own switch case in buildEntry()
+// 'observability' added — its own switch case in buildEntry
 // dispatches to install-stack.ps1 (win32-only in Phase A; posix returns an
-// `unrunnable` entry naming the gap, HIMMEL-2333 — never a doomed spawn of
+// `unrunnable` entry naming the gap, never a doomed spawn of
 // install-stack.sh's loud placeholder).
 const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep', 'build', 'observability'];
 
@@ -56,7 +56,7 @@ const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep
 // every non-'jira-cli' build target to bitbucket. Keep in lockstep with those
 // branches — a value authored here without a matching dispatch site (or vice
 // versa) is a bug.
-// HIMMEL-2326: 'observability'/'stack' added — buildEntry()'s own
+// 'observability'/'stack' added — buildEntry's own
 // 'observability' case (below) is its ONLY dispatch site; 'wire'/'build'
 // above are untouched.
 const INSTALL_TARGETS = {
@@ -69,7 +69,7 @@ const INSTALL_TARGETS = {
 // core bundle in one shot (adopt.sh/setup.sh are monolithic installers), so
 // planning two adopt-type items still yields exactly one `adopt.sh` entry.
 const COALESCE_TYPES = new Set(['adopt', 'setup']);
-// HIMMEL-4267: adopt-type items whose whole job is covered by `adopt.sh
+// adopt-type items whose whole job is covered by `adopt.sh
 // --only-hooks`. A plan whose adopt group holds ONLY these runs the hooks-only
 // mode instead of the monolithic adopt (settings wiring, plugins,
 // marketplaces) — a hooks repair must not re-adopt the user scope.
@@ -141,7 +141,7 @@ function buildEntry(item, ctx, diagnosticState) {
         return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'wire-statusline.sh'), settings, ctx.repoRoot] };
       }
       if (install.target === 'guardrail-block-global') {
-        // HIMMEL-2176: guardrail-block.mjs is ITSELF the primitive here — a
+        // guardrail-block.mjs is ITSELF the primitive here — a
         // Node CLI with its own `install --node <ABS> --bash <ABS>` verb
         // (see its own run()/installData()) that writes the OPERATOR'S
         // GLOBAL ~/.claude/settings.json directly (settingsPath() there,
@@ -178,16 +178,16 @@ function buildEntry(item, ctx, diagnosticState) {
     }
     case 'plugins':
       // install-plugins.sh stays the tested, parameterized orchestrator
-      // (--scope/--template/HIMMEL-1032 lean-floor reconcile) — this engine
+      // (scope/--template/lean-floor reconcile) — this engine
       // never re-implements or collapses it.
       return { cmd: 'bash', args: [path.join(scriptsDir, 'machine-setup', 'install-plugins.sh'), '--scope', ctx.scope] };
     case 'qmd': {
-      // CR fix: the resolver path is passed as a bash POSITIONAL arg ($1),
+      // the resolver path is passed as a bash POSITIONAL arg ($1),
       // never interpolated into the -c script text — a checkout path
       // carrying a space or apostrophe (e.g. "C:/Users/John O'Brien/...") // leak-allow: home-path doc example
       // would otherwise break the quoting. spawnSync's argv is never
       // shell-re-parsed, so a positional arg is safe regardless of content.
-      // CR fix (CodeRabbit round 19): qmd_install only installs the BINARY.
+      // qmd_install only installs the BINARY.
       // The qmd-index probe stays RED until BOTH the himmel and luna
       // collections are registered, so this same flow invokes the existing
       // qmd_register_collection() (scripts/lib/qmd-bin.sh — $1 = path, $2 =
@@ -201,7 +201,7 @@ function buildEntry(item, ctx, diagnosticState) {
       const resolverPath = path.join(scriptsDir, 'lib', 'qmd-bin.sh');
       const himmelPath = ctx.repoRoot;
       const lunaPath = ctx.vaultPath || '';
-      // CR fix (CodeRabbit round 20): a no-vault adopter has ctx.vaultPath
+      // a no-vault adopter has ctx.vaultPath
       // === '' (bin.js's vaultPath stays '' when vault.mode='none', and
       // expandHome('') === '' — so ctx.vaultPath is legitimately EMPTY). The
       // qmd-index probe (manifest.json) requires BOTH the himmel AND luna
@@ -224,7 +224,7 @@ function buildEntry(item, ctx, diagnosticState) {
     }
     case 'build': {
       // Same positional-arg fix as 'qmd' above, for the build dir.
-      // CR fix: an explicit if/else, NOT `bun … || (npm …)` — the `||` form
+      // an explicit if/else, NOT `bun … || (npm …)` — the `||` form
       // masks a bun install/build FAILURE by falling through to npm. With the
       // branch, a failing bun path propagates its failure; npm runs only when
       // bun is genuinely absent.
@@ -235,21 +235,21 @@ function buildEntry(item, ctx, diagnosticState) {
       };
     }
     case 'observability': {
-      // HIMMEL-2326: install-stack.ps1 (winget/scoop packages +
-      // Register-LogonTask per exporter) is Phase A's (HIMMEL-922) ONLY
+      // install-stack.ps1 (winget/scoop packages +
+      // Register-LogonTask per exporter) is Phase A's ONLY
       // installer. scripts/observability/install-stack.sh is an 11-line
       // loud placeholder that `exit 2`s — cross-platform packaging is
-      // tracked as its own gap (HIMMEL-2333), not something this ticket
+      // tracked as its own gap, not something this ticket
       // builds. Mirrors the WINGET_IDS posix-gap posture above: never a
       // doomed spawn of the placeholder.
       //
-      // HIMMEL-4341: posix now runs install-stack.sh (HIMMEL-4288: the exporter
+      // posix now runs install-stack.sh (the exporter
       // only, as a systemd user unit / launchd agent), but ONLY when the
       // operator opted in (observability.enabled in ~/.himmel/config.json) —
       // every profile desires this item, and `ensure` must never enable a
       // service unasked.
       if (install.target === 'grafana') {
-        // HIMMEL-4289: Prometheus + Grafana as systemd user units (Linux only so
+        // Prometheus + Grafana as systemd user units (Linux only so
         // far), opt-in via observability.grafana — `ensure` never downloads and
         // starts servers unasked.
         if (platform !== 'linux') {
@@ -287,12 +287,11 @@ function buildEntry(item, ctx, diagnosticState) {
       if (platform === 'win32') {
         const id = WINGET_IDS[tool];
         if (!id) return { unrunnable: `no winget id known for '${tool}' — install it manually` };
-        // CR fix: --silent + --disable-interactivity + the two --accept-*
+        // --silent + --disable-interactivity + the two --accept-*
         // flags — without them winget PROMPTS (source/package agreements),
         // which hangs an unattended `ensure` (the whole point is running
         // outside a Claude session, non-interactively).
         //
-        // CR fix (CodeRabbit round 16 — Fable, injection-hardening
         // consistency): `id` used to be interpolated straight into the -c
         // string (`` `winget install --id ${id} ...` ``) — the SAME class
         // of shell-injection surface the 'qmd'/'build' cases above were
@@ -304,7 +303,6 @@ function buildEntry(item, ctx, diagnosticState) {
       }
       const pkg = platform === 'darwin' && tool === 'npm' ? 'node' : tool;
       if (platform === 'darwin') {
-        // CR fix (CodeRabbit round 16 — Fable, injection-hardening
         // consistency): same fix as the winget branch above — `pkg` as a
         // positional arg, not interpolated into the -c string.
         return { cmd: 'bash', args: ['-c', 'brew install "$1"', 'himmel-dep', pkg] };
@@ -318,7 +316,7 @@ function buildEntry(item, ctx, diagnosticState) {
       // sudo would treat as PART of the command line rather than the
       // command's environment) keeps apt/debconf from prompting even once
       // authenticated.
-      // CR fix (HIMMEL-1119 item 1 — secret-in-plan shape): the credential is
+      // the credential is
       // resolved at EXEC time (runHardenedSpawn, the single spawnSync site),
       // NOT here at plan time. This returned entry must NEVER hold the live
       // secret — any present or future code that logs, serializes, returns, or
@@ -356,7 +354,6 @@ function buildEntry(item, ctx, diagnosticState) {
           + "Set it in the primary checkout's .env for unattended apt installs.",
         );
       }
-      // CR fix (CodeRabbit round 16 — Fable, injection-hardening
       // consistency): `pkg` as a positional arg, not interpolated into the
       // -c string — same fix as the winget/brew branches above.
       return { cmd: 'bash', args: ['-c', 'sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y "$1"', 'himmel-dep', pkg] };
@@ -391,7 +388,7 @@ function settingsPath(scope, targetPath, env) {
 // manifest-lint.mjs's own DFS cycle detector already rejects a cyclic
 // manifest, so this should never fire against a lint-clean manifest).
 //
-// CR fix: coalescing (adopt/setup collapse to ONE invocation) now happens
+// coalescing (adopt/setup collapse to ONE invocation) now happens
 // BEFORE topological ordering, not after — items sharing a COALESCE_TYPE are
 // grouped into ONE graph node up front, and that node's dep edges are the
 // UNION of every member item's deps (minus any dep that points at another
@@ -495,7 +492,7 @@ function planInstall(items, ctx) {
 // reverseDependencyOrder(items) -> items reordered so a DEPENDENT item (one
 // whose deps[] includes another item in the SAME set) is unwound BEFORE the
 // item it depends on — the inverse of planInstall's install-time
-// topological order. CR fix (toward-disabled dispatch, ensure A5b): tearing
+// topological order. (toward-disabled dispatch, ensure A5b): tearing
 // down must happen in reverse build order — if B was wired ON TOP OF A (B
 // deps on A), B must be unwired first, or the unwind can leave a dangling
 // reference / undo things in an order the original wiring never assumed.
@@ -533,7 +530,7 @@ function reverseDependencyOrder(items) {
   return ordered.reverse();
 }
 
-// CR fix: installs legitimately take minutes (npm/bun install+build,
+// installs legitimately take minutes (npm/bun install+build,
 // apt-get, winget, ...) — a MUCH larger default than probes.js's
 // spawnProbeSync's own 10s probe timeout, but a wedged installer must
 // still not hang an unattended `ensure` forever. Read fresh on every call
@@ -565,12 +562,12 @@ function installTimeoutMs() {
 // r.status!==0 nonzero-exit branch, which would silently classify a signal
 // kill as success) all count as failed (fail-closed, never silent).
 //
-// CR fix: an entry carrying `input` (the linux sudo-with-password dep form)
+// an entry carrying `input` (the linux sudo-with-password dep form)
 // has that string piped to the child's stdin — see the spawnOpts branch
 // below. SECURITY: `entry.input` (when present) holds a raw credential —
 // never returned to the caller, never logged.
 //
-// CR fix: every spawnSync call carries a timeout (installTimeoutMs(),
+// every spawnSync call carries a timeout (installTimeoutMs,
 // default 900s, overridable via INSTALL_TIMEOUT_SECS — see its own header)
 // + killSignal:'SIGKILL', so a wedged primitive (install OR unwire) can't
 // hang an unattended `ensure` forever. A timed-out entry fails with a
@@ -578,7 +575,7 @@ function installTimeoutMs() {
 // the WHOLE process tree is killed, not just the direct child — see
 // childEnv/isWin/the ETIMEDOUT branch's own comments for how.
 //
-// CR fix (SECURITY, secret leak): every spawned child gets an EXPLICIT env
+// every spawned child gets an EXPLICIT env
 // — process.env with HIMMELCTL_SUDO_PASSWORD deleted — never the default
 // (spawnSync inherits process.env verbatim when `env` is omitted). Putting
 // the password on stdin (above) is necessary but NOT sufficient: an
@@ -595,7 +592,7 @@ function installTimeoutMs() {
 // headers), so this dispatches to one or the other rather than cramming
 // both into a single spawnSync call shape.
 function runHardenedSpawn(entry) {
-  // CR fix (HIMMEL-1119 item 1): resolve the sudo credential HERE, at the
+  // resolve the sudo credential HERE, at the
   // single hardened spawnSync site — immediately before the spawn — never at
   // plan time (see buildEntry's 'dep' case, which emits only the NON-SECRET
   // marker `needsSudoPassword` + `repoRoot`). The live credential lives ONLY
@@ -612,7 +609,7 @@ function runHardenedSpawn(entry) {
     const password = resolveSudoPassword(entry.repoRoot);
     entry = Object.assign({}, entry, { input: `${password}\n` });
   }
-  // HIMMEL-2289 (sibling sweep): buildEntry() emits the literal `cmd: 'bash'`
+  // buildEntry emits the literal `cmd: 'bash'`
   // for every shell primitive (adopt/setup/wire/plugins/qmd/dep). Spawning
   // that bare name resolves through PATH — on Windows to
   // C:\WINDOWS\system32\bash.exe, the WSL launcher, which cannot read the
@@ -632,7 +629,7 @@ function runHardenedSpawn(entry) {
   }
   const timeoutMs = installTimeoutMs();
   const childEnv = Object.assign({}, process.env);
-  // CR fix (SECURITY, MAJOR): Windows env var names are case-insensitive —
+  // Windows env var names are case-insensitive
   // an exact-case `delete childEnv.HIMMELCTL_SUDO_PASSWORD` only removes a
   // key spelled EXACTLY that way. Object.assign copies process.env's own
   // keys with whatever casing the underlying environment block actually
@@ -650,7 +647,7 @@ function runHardenedSpawn(entry) {
 }
 
 // runHardenedSpawnPosix(entry, timeoutMs, childEnv) -> {ok:true} | {ok:false, reason}
-// CR fix: an entry carrying `input` (the linux sudo-with-password dep form
+// an entry carrying `input` (the linux sudo-with-password dep form
 // — see buildEntry's 'dep' case) needs its stdin PIPED so the password can
 // be written to it, instead of 'inherit' (which connects the child
 // directly to the parent's own stdin/terminal and provides no way to feed
@@ -670,13 +667,13 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
     { timeout: timeoutMs, killSignal: 'SIGKILL', env: childEnv, detached: true },
   );
   const r = spawnSync(entry.cmd, entry.args, spawnOpts);
-  // CR fix: a timed-out spawnSync sets r.error.code==='ETIMEDOUT' (Node also
+  // a timed-out spawnSync sets r.error.code==='ETIMEDOUT' (Node also
   // SIGKILLs the child, so r.signal is typically ALSO set) — checked FIRST,
   // before the generic r.error branch, so a wedged primitive fails with a
   // CLEAR "timed out after Ns" reason instead of a raw "spawnSync <cmd>
   // ETIMEDOUT" error message.
   if (r.error && r.error.code === 'ETIMEDOUT') {
-    // CR fix: spawnSync's OWN timeout kill only reaches entry.cmd itself
+    // spawnSync's OWN timeout kill only reaches entry.cmd itself
     // (e.g. bash) — a grandchild it spawned (apt-get, a postinst hook, ...)
     // can survive and keep running/hung in the background. detached:true
     // (above) made entry.cmd the leader of its OWN process group (pgid ===
@@ -686,7 +683,7 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
     // the child DID start), and the target may already be gone (ESRCH) —
     // either way, swallow and still report the timeout below.
     //
-    // CR fix (CodeRabbit round 17, item 2) — the LIMIT of this mechanism,
+    // the LIMIT of this mechanism,
     // stated explicitly: a process-group kill is NOT escape-proof. It
     // reaches exactly the processes still in THIS group, so any descendant
     // that deliberately left it — setsid()/setpgid() into a new session or
@@ -725,7 +722,7 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
 const JOB_RUN_TIMEOUT_EXIT_CODE = 4217;
 
 // The exit code job-run.ps1 uses to signal "Job Object setup failed and I
-// refused to run/continue without tree-kill protection" (CodeRabbit round
+// refused to run/continue without tree-kill protection"
 // 15, item 2 — fail-closed, not a silent degrade to weaker best-effort
 // cleanup). MUST match that script's own $JOB_SETUP_FAILED_EXIT_CODE
 // constant exactly.
@@ -733,7 +730,7 @@ const JOB_RUN_SETUP_FAILED_EXIT_CODE = 4218;
 
 // The exit code job-run.ps1 uses to signal "WaitForExit threw and I
 // couldn't confirm the wrapped command actually completed, so I killed
-// the tree defensively" (CodeRabbit round 16, item 3 — Fable-confirmed
+// the tree defensively" (item 3
 // fail-open: the old catch treated a wait exception as "not a timeout,"
 // which released the job while the tree kept running unbounded). Distinct
 // from JOB_RUN_TIMEOUT_EXIT_CODE — this did NOT genuinely run past
@@ -745,7 +742,7 @@ const JOB_RUN_WAIT_FAILED_EXIT_CODE = 4219;
 // The exit code job-run.ps1 uses to signal "the wrapped command succeeded,
 // but I could not clear KILL_ON_JOB_CLOSE before releasing the job, so
 // closing the handle may have killed a legitimate background descendant it
-// launched" (codex round 17 — the same fail-OPEN class as round 16's
+// launched" (the same fail-OPEN class as the earlier
 // WaitForExit find: the old success branch exited with the wrapped
 // command's OWN success code, so ensure reported green immediately after
 // potentially breaking the service it just installed). This spawn is
@@ -755,7 +752,7 @@ const JOB_RUN_WAIT_FAILED_EXIT_CODE = 4219;
 const JOB_RUN_CLEANUP_FAILED_EXIT_CODE = 4220;
 
 // runHardenedSpawnWin32(entry, timeoutMs, childEnv) -> {ok:true} | {ok:false, reason}
-// CR fix (win32 tree-kill, HIMMEL-755): `taskkill /PID <pid> /T /F` (the
+// `taskkill /PID <pid> /T /F` (the
 // PREVIOUS win32 cleanup) walks the CURRENT process snapshot's
 // ParentProcessID chain starting from the root pid, AT KILL TIME — a
 // descendant that has already re-parented (exactly what installers and
@@ -798,7 +795,7 @@ const JOB_RUN_CLEANUP_FAILED_EXIT_CODE = 4220;
 function runHardenedSpawnWin32(entry, timeoutMs, childEnv) {
   const jobRunScript = path.join(__dirname, 'job-run.ps1');
   const psArgs = [
-    // CR fix: without -ExecutionPolicy Bypass, a machine at the DEFAULT
+    // without -ExecutionPolicy Bypass, a machine at the DEFAULT
     // Windows client policy (Restricted) or Server default (RemoteSigned)
     // refuses to load job-run.ps1 at all ("running scripts is disabled on
     // this system") — EVERY win32 install/unwire would fail before the
@@ -812,7 +809,7 @@ function runHardenedSpawnWin32(entry, timeoutMs, childEnv) {
     '-CommandArgsB64', Buffer.from(JSON.stringify(entry.args), 'utf8').toString('base64'),
     '-TimeoutSeconds', String(Math.round(timeoutMs / 1000)),
   ];
-  // NOTE (CodeRabbit round 16 — Fable, dead-parity-surface flag): this
+  // NOTE: this
   // branch is not exercised by any PRODUCTION buildEntry() case today —
   // every credential-bearing entry (the sudo-password dep install) is
   // Linux-only, so entry.input is currently always undefined on the win32
@@ -863,7 +860,7 @@ function runHardenedSpawnWin32(entry, timeoutMs, childEnv) {
 // raw credential, when present — both arrays only ever hold {id,
 // type[, reason]}), never logged.
 //
-// CR fix: an entry whose `deps` (set by planInstall, see its own header)
+// an entry whose `deps` (set by planInstall, see its own header)
 // include an id that's ALREADY in failed[] (this run, so far) is SKIPPED
 // rather than run — a dependent must not execute after its prerequisite
 // failed. The skip itself lands in failed[] too (with a reason naming the
@@ -913,11 +910,11 @@ function unwireCommand(item, ctx) {
 }
 
 // runUnwire(spec) -> {ok:true} | {ok:false, reason}
-// The toward-disabled counterpart to runInstall() — CR fix: bin.js's
+// The toward-disabled counterpart to runInstall — bin.js's
 // toward-disabled dispatch used to call spawnSync directly with a bare
 // {stdio:'inherit'}, getting NEITHER the env-scrub NOR the timeout that
 // runInstall's own spawns already had (a cross-model review caught this
-// drift after ~10 CodeRabbit rounds). Now routes through the SAME
+// drift after ~10). Now routes through the SAME
 // runHardenedSpawn() as every install, so the two paths can never diverge
 // again. Takes a single unwireCommand() spec (the toward-disabled dispatch
 // in bin.js calls this once per item inside its own reverse-dependency-order

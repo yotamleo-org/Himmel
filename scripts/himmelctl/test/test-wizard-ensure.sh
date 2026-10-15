@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-ensure.sh — hermetic tests for the himmelctl `ensure` subcommand
-# (HIMMEL-755 A5): converges a target toward its desired manifest state via
+# converges a target toward its desired manifest state via
 # statusReport (pre-check) -> installEngineLib.planInstall/runInstall ->
 # statusReport (post-check), fail-closed on anything still not converged that
 # HAD a runnable install descriptor. Tests drive bin.js end-to-end (not the
@@ -32,7 +32,7 @@
 #   h. a red config-type item (install:{type:"config"}) AND a red
 #      no-install (MCP-shaped) item are hint-only: NOT dispatched (no log
 #      entry), and do NOT make ensure fail-close (exit 0).
-#   p/q/r. (CR fix) --items must not break dependency closure: item-b deps
+#   p/q/r. --items must not break dependency closure: item-b deps
 #      on item-a. p: `--items item-b` (item-a, its red prereq, excluded) is
 #      REJECTED — exit 2, names the excluded prereq, zero mutation (no
 #      primitive invoked, state.json never written). q: `--items
@@ -41,26 +41,26 @@
 #      step) and excluded from a follow-up `--items item-b` — no false
 #      rejection, since an already-satisfied dep is exactly what the
 #      "excluded == already satisfied" assumption legitimately covers.
-#   s. (HIMMEL-2441 update, was the HIMMEL-755 manifest-authoring-bug
+#   s. (update, was the manifest-authoring-bug
 #      regression test) pre-commit-hooks now carries `install:{type:"adopt"}`
 #      in the real manifest (reproduced here) — adopt.sh's own
 #      install_precommit_hooks() genuinely wires the git-hooks probe's target
 #      (pre-commit/commit-msg/pre-push under .git/hooks), so dispatching
-#      adopt.sh for a red pre-commit-hooks item is no longer the HIMMEL-755
+#      adopt.sh for a red pre-commit-hooks item is no longer the
 #      fail-forever bug (a real adopt.sh converges it; test-adopt.sh proves
 #      that end-to-end). This spy-only fixture proves DISPATCH — adopt.sh IS
 #      invoked for a red pre-commit-hooks item — mirroring case f's
 #      dispatch-only style; the spy stub never touches .git/hooks, so
 #      convergence itself is intentionally out of scope here (case f's own
 #      rationale) and the exit code is not asserted.
-#   t. (CR fix, CodeRabbit round 15, MAJOR — the toward-ENABLED mirror of
+#   t. (MAJOR — the toward-ENABLED mirror of
 #      case k's bug in test-wizard-ensure-disable.sh) `--items
 #      dependent-item,hint-prereq`, where hint-prereq is desired+red but
 #      hint-only (no runnable install descriptor, so it can never actually
 #      converge) — `itemsSet.has(depId)` membership alone is NOT proof a
 #      dep will really be installed this run. REJECTED — exit 2, names
 #      both items, zero mutation (dependent.marker never created).
-#   u. (CR fix, codex round 4, Suggestion) the same hint-only prerequisite,
+#   u. the same hint-only prerequisite,
 #      this time EXCLUDED from --items entirely (`--items dependent-item`
 #      alone) — must give the SAME "converge it manually" guidance as case
 #      t, never the "add it: --items ..." advice (which would resolve
@@ -74,7 +74,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -119,7 +119,7 @@ JSON
 }
 
 # snapshot_dir <dir> — sorted lines, one per file/dir/symlink, byte-identity
-# check. CR fix: the original file-only version was blind to an empty
+# check. the original file-only version was blind to an empty
 # directory create/remove or a symlink change — neither shows up as a
 # "file", so a mutation limited to either would slip through every
 # zero-mutation assertion undetected. Now every filesystem-object TYPE is
@@ -310,7 +310,7 @@ offerCount2=$(echo "$outG2" | grep -c 'about to ' || true)
 [ "$offerCount2" -eq 0 ] || fail "case g: --yes should suppress the consolidated offer entirely (got $offerCount2 lines): $outG2"
 echo "ok: case g — the consolidated offer prints exactly once without --yes; --yes suppresses it; neither hangs"
 
-# ── case j (CR fix, HIMMEL-755): a NON-interactive ensure without --yes
+# ── case j: a NON-interactive ensure without --yes
 # must NOT proceed to convergence — exit 2, zero mutation, BEFORE any
 # install/unwire. Reuses repoD's manifest/stub (one runnable red item). ────
 targetJ="$work/targetJ"; mkdir -p "$targetJ"
@@ -331,7 +331,7 @@ snapJAfter=$(snapshot_dir "$work")
 [ "$snapJBefore" = "$snapJAfter" ] || fail "case j: a non-interactive ensure without --yes should make ZERO mutations"
 echo "ok: case j — non-interactive ensure without --yes exits 2 before any install/unwire; zero mutation"
 
-# ── case k (CR fix, HIMMEL-755): an interactive decline leaves state.json
+# ── case k: an interactive decline leaves state.json
 # unwritten (the save is deferred past the consent gate). ──────────────────
 targetK="$work/targetK"; mkdir -p "$targetK"
 cacheK="$work/cacheK"; mkdir -p "$cacheK"
@@ -376,7 +376,7 @@ cat > "$repoC/scripts/lib/qmd-bin.sh" <<'SH'
 qmd_install() {
   : > luna.marker
 }
-# CR fix (CodeRabbit round 19): stub mirrors the real qmd-bin.sh contract —
+# stub mirrors the real qmd-bin.sh contract
 # qmd_register_collection <path> <name>. Records each registered NAME ($2; the
 # path is $1 and irrelevant to the spy) so the assertions below prove the qmd
 # install flow wires BOTH the himmel and luna collections, not just the binary
@@ -385,7 +385,7 @@ qmd_register_collection() {
   [ -n "${QMD_REG_LOG_C:-}" ] && echo "$2" >> "$QMD_REG_LOG_C"
 }
 SH
-# HIMMEL-4302: the qmd install flow also runs scripts/skill-index/ensure-skill-index.sh
+# the qmd install flow also runs scripts/skill-index/ensure-skill-index.sh
 # (registers the 'skills' collection); this stub spies that it ran.
 mkdir -p "$repoC/scripts/skill-index"
 cat > "$repoC/scripts/skill-index/ensure-skill-index.sh" <<'SH'
@@ -395,7 +395,7 @@ exit 0
 SH
 targetC="$work/targetC"; mkdir -p "$targetC"
 cacheC="$work/cacheC"; mkdir -p "$cacheC"
-# CR fix (CodeRabbit round 20): vault.mode=existing + a REAL vault path so
+# vault.mode=existing + a REAL vault path so
 # ctx.vaultPath is non-empty and the qmd install flow actually exercises the
 # luna-collection registration it is meant to (a no-vault profile now hits the
 # empty-path guard in install-engine.js instead — see case x). profileForVault
@@ -418,7 +418,7 @@ outC1=$(runEnsureC --profile luna --yes); rcC1=$?
 set -e
 [ "$rcC1" -eq 0 ] || fail "case c: ensure --profile luna should converge + exit 0 (got rc=$rcC1): $outC1"
 [ -f "$targetC/luna.marker" ] || fail "case c: --profile luna should have run the stub qmd_install primitive (luna.marker missing)"
-# CR fix (CodeRabbit round 19): the qmd install flow must register BOTH the
+# the qmd install flow must register BOTH the
 # himmel and luna collections (qmd_install alone leaves the qmd-index probe
 # red). The stub spy recorded each qmd_register_collection NAME.
 grep -qxF 'himmel' "$qmdRegLogC" || fail "case c: qmd install should register the himmel collection (spy log: $(cat "$qmdRegLogC"))"
@@ -431,13 +431,13 @@ echo "$outC2" | jq -e '.items[] | select(.id=="luna-item") | .severity == "green
   || fail "case c: post-reconcile status should read luna-item green (got: $outC2)"
 echo "ok: case c — ensure --profile luna reconciles then converges the luna work list; post-check green"
 
-# ── case i (CR fix, HIMMEL-755): --profile + --dry-run TOGETHER — the
+# ── case i: --profile + --dry-run TOGETHER — the
 # preview must reflect the in-memory reconcile, not the stale on-disk entry.
 # Reuses repoC's manifest/stub (read-only) with a FRESH target/cache so it
 # doesn't interact with case c's own (already-converged) state. ───────────
 targetI="$work/targetI"; mkdir -p "$targetI"
 cacheI="$work/cacheI"; mkdir -p "$cacheI"
-# CR fix (CodeRabbit round 20): REAL vault path (same reason as case c) — case i
+# REAL vault path (same reason as case c) — case i
 # previews --profile luna, which desires luna-item (a qmd install); without a
 # vault path buildEntry's empty-path guard turns that preview into an
 # unrunnable hint instead of the DRY plan line this case asserts.
@@ -465,7 +465,7 @@ snapIAfter=$(snapshot_dir "$work")
 [ "$snapIBefore" = "$snapIAfter" ] || fail "case i: ensure --profile luna --dry-run should make ZERO mutations (no state.json write either)"
 echo "ok: case i — ensure --profile X --dry-run previews the reconciled profile's work list (not the stale on-disk profile); zero mutation"
 
-# ── case x (CR fix, CodeRabbit round 20): a no-vault adopter running
+# ── case x: a no-vault adopter running
 # --profile luna must NOT reach qmd_register_collection with an empty path.
 # vault.mode=none -> ctx.vaultPath='' (bin.js: vaultPath stays '' when
 # vault.mode='none'); qmd-binary/qmd-index are profiles:["luna","all"], so
@@ -485,7 +485,7 @@ set +e
 outX=$( cd "$targetX" && HIMMELCTL_REPO_ROOT="$(winpath "$repoC")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheX")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheX")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" QMD_REG_LOG_C="$(winpath "$qmdRegLogX")" \
     "$node_bin" "$wizard" ensure --profile luna --yes 2>&1 </dev/null ); rcX=$?
 set -e
-# CR fix (CodeRabbit round 22, MAJOR — a REAL false green): assert the run
+# assert the run
 # FAILED CLOSED (rcX nonzero). rcX was captured but never checked, so a
 # regression that printed the hint below AND returned 0 would sail past every
 # text-only assertion in this case — the exact false-green class this whole
@@ -509,7 +509,7 @@ grepq "$outX" -F 'no luna vault path configured' \
 echo "ok: case x — a no-vault --profile luna run surfaces the hint and never invokes qmd_register_collection with an empty path (rc=$rcX)"
 
 # ── case e: a 6-red fixture pinned to PER-ITEM install types drives EXACTLY
-# 6 primitive invocations in deps[] order. CR fix: the item DECLARATIONS
+# 6 primitive invocations in deps[] order. the item DECLARATIONS
 # below are in scrambled/reverse order (build-a first, wire-a last) while
 # every `deps` relationship (and the expected wire-a..build-a invocation
 # sequence below) is UNCHANGED — a planner that just iterated declaration
@@ -575,19 +575,19 @@ cat > "$repoE/scripts/lib/qmd-bin.sh" <<'SH'
 qmd_install() {
   [ -n "${ENSURE_LOG:-}" ] && echo "qmd-a" >> "$ENSURE_LOG"
 }
-# CR fix (CodeRabbit round 19): the qmd install flow now also calls
+# the qmd install flow now also calls
 # qmd_register_collection (the real qmd-bin.sh contract). This spy-only stub
 # defines it as a no-op so the qmd command stays exit-0; the invocation-ORDER
 # assertion (qmd_install logging "qmd-a" 4th of 6) is what this case proves.
 qmd_register_collection() { :; }
 SH
-# HIMMEL-4302: the qmd flow also runs ensure-skill-index.sh; a silent no-op here.
+# the qmd flow also runs ensure-skill-index.sh; a silent no-op here.
 mkdir -p "$repoE/scripts/skill-index"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$repoE/scripts/skill-index/ensure-skill-index.sh"
 
 targetE="$work/targetE"; mkdir -p "$targetE"
 cacheE="$work/cacheE"; mkdir -p "$cacheE"
-# CR fix (CodeRabbit round 20): REAL vault path — this fixture includes qmd-a (a
+# REAL vault path — this fixture includes qmd-a (a
 # qmd install item) to exercise the qmd dispatch in the 6-invocation order; a
 # no-vault profile now hits the empty-path guard instead, so qmd-a would never
 # dispatch and the 6-count assertion below would break. profileForVault
@@ -604,7 +604,7 @@ outE=$( cd "$targetE" && HIMMELCTL_REPO_ROOT="$(winpath "$repoE")" HIMMELCTL_CAC
     "$node_bin" "$wizard" ensure --yes </dev/null ) || true
 lineCountE=$(wc -l < "$logE" | tr -d ' ')
 [ "$lineCountE" -eq 6 ] || fail "case e: expected EXACTLY 6 primitive invocations (got $lineCountE); log: $(cat "$logE"); ensure output: $outE"
-# CR fix: mapfile is bash 4+ (macOS ships bash 3.2) — a portable
+# mapfile is bash 4+ (macOS ships bash 3.2) — a portable
 # read-append loop instead.
 logLinesE=()
 while IFS= read -r _l; do logLinesE+=("$_l"); done < "$logE"
@@ -690,7 +690,7 @@ grepq "$outH" -F 'config-item' || fail "case h: the hint message should name con
 grepq "$outH" -F 'mcp-item' || fail "case h: the hint message should name mcp-item (got: $outH)"
 echo "ok: case h — a red config-type item and a red no-install item are hint-only: not dispatched, do not fail-close ensure"
 
-# ── case l (CR fix round 3, HIMMEL-755): a genuinely FAILED install must
+# ── case l: a genuinely FAILED install must
 # fail ensure even when the post-check probe coincidentally reads green
 # (the stub touches its marker THEN exits 1 — a realistic "partially
 # applied, then crashed" primitive). Previously runInstall's own failed[]
@@ -727,7 +727,7 @@ set -e
 grepq "$outL" -F 'coincidence-item' || fail "case l: the failure should name coincidence-item (got: $outL)"
 echo "ok: case l — a failed install fails ensure even when the post-check probe coincidentally passes"
 
-# ── case m (CR fix round 3, HIMMEL-755): the toward-disabled loop must
+# ── case m: the toward-disabled loop must
 # respect item.scopes — a project-scope run must NEVER process a
 # user-only removable item (scope bleed), even though it reads present
 # and is not desired. ──────────────────────────────────────────────────────
@@ -771,7 +771,7 @@ grepq "$outM" -F 'already at the desired state' || fail "case m: a project-scope
 [ -f "$targetM/user-only.marker" ] || fail "case m: user-only-item's marker must be left untouched (scope bleed would have removed it)"
 echo "ok: case m — the toward-disabled loop respects item.scopes; a project-scope run never touches a user-only removable item"
 
-# ── case n (CR fix round 3, HIMMEL-755): hints must be surfaced on EVERY
+# ── case n: hints must be surfaced on EVERY
 # path, not only the early "nothing to converge" return — a run that ALSO
 # does real convergence work must still print the hint-only items. ───────
 repoN="$work/repoN"; mkdir -p "$repoN/scripts/install" "$repoN/scripts/lib"
@@ -811,7 +811,7 @@ set -e
 grepq "$outN" -F 'hint-item' || fail "case n: hint-item should STILL be surfaced even though real convergence work also happened (got: $outN)"
 echo "ok: case n — hints are surfaced even on a run that also does real convergence work"
 
-# ── case o (CR fix round 6, HIMMEL-755): reconcile must run whenever
+# ── case o: reconcile must run whenever
 # --profile is EXPLICITLY supplied, even when it matches the target's
 # already-stored profile — a target's per-item enables can go stale (a
 # hand-edited state.json here stands in for that; the same code path also
@@ -886,7 +886,7 @@ set -e
 [ -f "$targetO/stale.marker" ] || fail "case o: --profile core should have reconciled stale-item back to enabled:true and converged it (stale.marker missing)"
 echo "ok: case o — an explicit --profile matching the target's stored profile still reconciles and picks up a stale item"
 
-# ── cases p/q/r (CR fix, HIMMEL-755): --items must not break dependency
+# ── cases p/q/r: --items must not break dependency
 # closure. planInstall's DFS treats a dep OUTSIDE the given item set as
 # already-satisfied — valid for a full run, false under --items when a red
 # prerequisite is excluded by the filter alone. item-b deps on item-a; both
@@ -995,11 +995,11 @@ while IFS= read -r _l; do logLinesR+=("$_l"); done < "$logR"
 [ "${logLinesR[1]}" = "item-b" ] || fail "case r: the second invocation should be item-b (got: ${logLinesR[1]})"
 echo "ok: case r — an already-GREEN excluded dep does not trigger a false closure rejection"
 
-# ── case s (HIMMEL-2441 update, was HIMMEL-755's manifest-authoring-bug
+# ── case s (update, was manifest-authoring-bug
 # regression test): pre-commit-hooks now carries install:{type:"adopt"} in
 # the real manifest — install_precommit_hooks() in the real adopt.sh
 # genuinely wires the git-hooks probe's target, so dispatching adopt.sh for
-# a red pre-commit-hooks item is no longer the fail-forever bug HIMMEL-755
+# a red pre-commit-hooks item is no longer the fail-forever bug
 # fixed by stripping the install key. Reproduces the item's exact real shape
 # (id/kind/scopes/profiles/probe/install/removable) with an adopt.sh SPY
 # stub that proves DISPATCH — adopt.sh IS invoked for a red pre-commit-hooks
@@ -1042,7 +1042,7 @@ grepq "$(cat "$logS")" 'adopt.sh-INVOKED' || fail "case s: spy log missing the a
 grepq "$outS" -F 'pre-commit-hooks' || fail "case s: ensure output should name pre-commit-hooks (got: $outS)"
 echo "ok: case s — pre-commit-hooks (install:{type:\"adopt\"}) dispatches adopt.sh for a red item (HIMMEL-2441)"
 
-# ── case t (CR fix, MAJOR — the toward-ENABLED mirror of case k's bug):
+# ── case t (MAJOR — the toward-ENABLED mirror of case k's bug):
 # being NAMED in --items does NOT mean a dependency will actually be
 # installed this run — a hint-only prerequisite (no runnable install
 # descriptor, e.g. a config-type item) NEVER lands in towardEnabled no
@@ -1090,7 +1090,7 @@ grepq "$outT" -F 'hint-prereq' || fail "case t: the rejection should name hint-p
 [ ! -f "$targetT/dependent.marker" ] || fail "case t: dependent.marker must NOT exist (zero mutation — dependent-item was never installed)"
 echo "ok: case t — --items naming a hint-only prerequisite is REJECTED too (membership alone was never sufficient on the enabled side either), zero mutation"
 
-# ── case u (CR fix, codex round 4, Suggestion — audit of the toward-enabled
+# ── case u (Suggestion — audit of the toward-enabled
 # sibling message): a hint-only prerequisite EXCLUDED from --items entirely
 # (never named at all) must give the SAME useful "converge it manually"
 # guidance as case t's included-but-hint-only variant, not the "add it:
@@ -1113,7 +1113,7 @@ grepq "$outU" -F 'hint-only' || fail "case u: the rejection should say hint-prer
 [ ! -f "$targetT/dependent.marker" ] || fail "case u: dependent.marker must NOT exist (zero mutation)"
 echo "ok: case u — a hint-only prerequisite excluded from --items entirely gets the same 'converge manually' guidance as being named-but-hint-only, never the useless 'add it' advice"
 
-# ── case v (CR fix, CodeRabbit round 18, HIMMEL-755): --profile reconcile must
+# ── case v: --profile reconcile must
 # key off the AUTHORITATIVE invocation scope (cachedAnswers.scope), not the
 # target entry's PERSISTED scope field — which can drift from the key it lives
 # under (a hand-edited state.json, or an entry predating a schema change).
@@ -1213,7 +1213,7 @@ set -e
   || fail "case v: state.json should carry EXACTLY one target entry (got $(jq '.targets | length' "$cacheV/state.json"))"
 echo "ok: case v — --profile reconcile keys off the authoritative scope; the project entry is reconciled and no spurious 'user' entry is created"
 
-# ── case w (CR fix, CodeRabbit round 19): the "N converged" count reports
+# ── case w: the "N converged" count reports
 # MANIFEST ITEMS, not plan ENTRIES. Two COALESCE_TYPES (adopt) items collapse
 # to ONE adopt.sh invocation (case f proves the invocation count is 1), yet
 # BOTH items converged — so the summary must read "2 converged". The pre-fix
@@ -1263,7 +1263,7 @@ grepq "$outW" -F 'ensure complete (2 converged)' \
   || fail "case w: 2 coalesced adopt items must report '2 converged' (manifest items), not '1 converged' (the single plan entry / ran.length) (got: $outW)"
 echo "ok: case w — coalesced adopt items report the manifest-item count (2 converged), not the plan-entry count"
 
-# ── case y (CR fix, CodeRabbit round 23, MAJOR — toward-ENABLED TRANSITIVE
+# ── case y (MAJOR — toward-ENABLED TRANSITIVE
 # closure): the prerequisite walk must be TRANSITIVE, not direct-edges-only.
 # Topology A(red,desired) <- B(green) <- C(red,desired): converging C alone
 # via `--items C` must be REJECTED naming A, even though C's DIRECT dep B is

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-update.sh — hermetic tests for the himmelctl `update` subcommand
-# (HIMMEL-893). Mirrors test-wizard-uninstall.sh's conventions: a stub PATH
+# Mirrors test-wizard-uninstall.sh's conventions: a stub PATH
 # via scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute
 # path, HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying a no-op
 # himmel-update.sh stub so a real update (git pull, marketplace re-sync,
@@ -20,10 +20,10 @@
 #      same validation posture as every other subcommand.
 #   E. deriveUpdateCommand forward-slashes the script path (toBashPath) so the
 #      resolved Git Bash doesn't MSYS-mangle a backslash Windows path (part 2
-#      of the HIMMEL-1192 Windows fix).
+#      of the Windows fix).
 #   F. resolveBash() picks a Windows-native Git Bash DETERMINISTICALLY from
 #      %ProgramFiles% instead of trusting PATH order — part 1, the REOPENED
-#      HIMMEL-1192 root cause: bare `bash` on the operator's PowerShell PATH is
+#  root cause: bare `bash` on the operator's PowerShell PATH is
 #      C:\Windows\System32\bash.exe (WSL), which cannot run a Windows-path
 #      script AT ALL. The s2 fix (toBashPath only) targeted the wrong bash.
 #
@@ -40,7 +40,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -61,7 +61,7 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# HIMMEL-1446 r3: every `update` case reaches applyHimmelctlPathShim() (dry-run
+# every `update` case reaches applyHimmelctlPathShim (dry-run
 # prints the resolved binDir; the accept cases B/C write the launcher into it).
 # Without a pin, himmelctlBinDir() resolves to the operator's REAL ~/.local/bin
 # (on win32 it ignores HOME entirely and uses os.homedir()), so caseB has been
@@ -188,7 +188,7 @@ grepq "$out" -- '--items is not valid' \
   && fail "caseD: --items rejection must NOT invoke himmel-update.sh (got: $(cat "$fixtureD/update-args.log"))"
 echo "ok: caseD update rejects options outside its whitelist (--items), stub never invoked"
 
-# ── Case E (HIMMEL-1192): a backslash repo root is forward-slashed for bash ──
+# ── Case E: a backslash repo root is forward-slashed for bash ──
 # deriveUpdateCommand must run the script path through toBashPath so Git Bash
 # does not eat the backslashes ('\U'->'U', '\D'->'D' ...) and collapse
 # C:\Users\...\himmel-update.sh into a nonexistent C:Users...himmel-update.sh.
@@ -219,7 +219,7 @@ grepq "$derived_line" -E 'bash C:/Users/test/himmel/scripts/himmel-update\.sh' \
   || fail "caseE: expected forward-slashed script path in derived command (got: $derived_line)"
 echo "ok: caseE backslash repo root -> derived command forward-slashed (toBashPath applied)"
 
-# ── Case F (HIMMEL-1192 REOPENED): resolveBash picks a deterministic Git Bash ─
+# ── Case F (REOPENED): resolveBash picks a deterministic Git Bash ─
 # The real, reopened root cause: bare `bash` on the operator's PowerShell PATH
 # resolves to C:\Windows\System32\bash.exe (WSL) because Git Bash is LAST on
 # PATH — and WSL cannot run a Windows-path script in ANY form. resolveBash()
@@ -268,7 +268,7 @@ esac
   && fail "caseF: --dry-run must NOT execute himmel-update.sh (got: $(cat "$fixtureF/update-calls.log"))"
 echo "ok: caseF resolveBash -> deterministic Git Bash on win32 / bare 'bash' fallback on posix (never WSL)"
 
-# ── Case G (HIMMEL-1446 r4 glm-5): a launcher write failure does not mask a ──
+# ── Case G: a launcher write failure does not mask a ──
 # ── successful update — rc stays 0 with a LOUD warning. ──────────────────────
 # The PATH launcher is a best-effort rider on `update`: when the update engine
 # (himmel-update.sh) succeeds but applyHimmelctlPathShim() refuses/fails (here:

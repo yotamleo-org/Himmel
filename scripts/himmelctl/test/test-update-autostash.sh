@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-update-autostash.sh — HIMMEL_UPDATE_AUTOSTASH opt-in for himmel-update.sh
-# (HIMMEL-1197).
 #
 # himmel-update.sh resolves its own repo root via BASH_SOURCE/.. and cd's there,
 # so we test it by COPYING it (+ the libs it sources) into throwaway mock clones
@@ -12,7 +11,7 @@
 #
 # Covers:
 #   T0  default (env unset) + UNTRACKED-only dirt → pulls clean, no refusal
-#       (HIMMEL-3078: the gate only needs to know about tracked changes —
+#       (the gate only needs to know about tracked changes
 #       `--ff-only` never touches untracked files and refuses on its own if an
 #       incoming path would overwrite one).
 #   T1  default (env unset) + TRACKED dirty tree → refuses (exit 1) before the
@@ -35,7 +34,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/himmel-update.sh"
@@ -49,14 +48,14 @@ SRC_SCRIPTS="$(dirname "$SCRIPT")"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2902: scope the profile lookup to this suite's own tmp dir and clear
+# scope the profile lookup to this suite's own tmp dir and clear
 # any inherited channel so a station's real install profile (e.g. channel:
 # stable) cannot steer these plain-pull scenarios.
 export HIMMELCTL_CACHE_DIR="$TMP/himmelctl-cache"
 mkdir -p "$HIMMELCTL_CACHE_DIR"
 unset HIMMEL_UPDATE_CHANNEL
 
-# HIMMEL-4008: T0/T1/T1b run the FULL himmel-update.sh chain in the copied
+# T0/T1/T1b run the FULL himmel-update.sh chain in the copied
 # clone, so steps 2-6 reach whatever station state the ambient env names. A
 # real `claude plugin marketplace update himmel` (or a real hermes checkout /
 # luna vault) failing under concurrent station load flipped chain_rc and made
@@ -211,7 +210,7 @@ printf '#!/bin/sh\nexit 1\n' > "$FAIL_CLAUDE"; chmod +x "$FAIL_CLAUDE"
 chain="$(HIMMEL_UPDATE_CLAUDE_BIN="$FAIL_CLAUDE" bash "$0" --selftest-chain)"
 assert_eq "suite is hermetic to a failing station claude CLI" "rc=0" "$chain"
 
-# ─── T0: untracked-only dirt → pulls clean, no refusal (HIMMEL-3078) ─────────
+# ─── T0: untracked-only dirt → pulls clean, no refusal ─────────
 echo "T0: untracked-only stray, env unset → pulls clean, no refusal"
 build_scenario f.txt
 printf 'stray\n' > "$CLONE/untracked-stray.txt"

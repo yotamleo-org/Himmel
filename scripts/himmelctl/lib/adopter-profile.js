@@ -1,5 +1,5 @@
 'use strict';
-// scripts/himmelctl/lib/adopter-profile.js — HIMMEL-862 v1 adopter-user
+// scripts/himmelctl/lib/adopter-profile.js — v1 adopter-user
 // profile: the lane SUBSET selection + honest probe, and the always-on
 // machine-hardening CHECKLIST.
 //
@@ -28,11 +28,11 @@
 //      operator runs by hand.
 //
 // Lane probing and hardening remain non-mutating. The one deliberate write is
-// HIMMEL-1428's applied-install persistence of the selected lane ids into the
+// applied-install persistence of the selected lane ids into the
 // gitignored lanes.local.json profile allowlist; dry-runs still write nothing.
 //
 // It is NOT spawn-free, and this comment used to claim it was (corrected in CR
-// round 5). Inspecting a machine sometimes means running something: the
+// Inspecting a machine sometimes means running something: the
 // resolver's buildCtx shells out to `git` to locate the main checkout, and the
 // manifest-backed readiness probes reached through probesLib may execute a
 // tool to ask its version or health. Those are reads. The distinction that
@@ -46,7 +46,7 @@ const { pathToFileURL } = require('url');
 const probesLib = require('./probes.js');
 const { nodeScriptCmd, cacheDir } = require('./helpers.js');
 
-// HIMMEL-3327: the printed `config set lanes.<id> on|off` remediations run from
+// the printed `config set lanes.<id> on|off` remediations run from
 // the ADOPTER's project, not the clone, so they name this install's bin.js by
 // absolute path (lib/ sits one level under bin.js) — never the clone-relative
 // `node scripts/himmelctl/bin.js`. One definition for all three call sites.
@@ -54,12 +54,12 @@ const HIMMELCTL_BIN = path.join(__dirname, '..', 'bin.js');
 function laneConfigSetCmd(registryId, state) {
   return `${nodeScriptCmd(HIMMELCTL_BIN)} config set lanes.${registryId} ${state}`;
 }
-// RETASK stage1-build-6d2e round 10 [codex-1]: a pure-data read (not
+// a pure-data read (not
 // bin.js's logic) so buildSummary can look up whether an 'unconfigured'
 // secret shares its aggregate luna-sources probe with a sibling credential —
 // see the secrets-walk loop below for why that matters.
 const SECRETS_MANIFEST = require('./secrets-manifest.json');
-// HIMMEL-2302: per-cadence wizard registry — see the file's own $comment.
+// per-cadence wizard registry — see the file's own $comment.
 // resolveCadenceDispositions() below lives HERE (not bin.js) so bin.js's
 // preview/apply steps AND this file's own buildSummary can never drift on
 // what "disposition" means — the exact reason SECRETS_MANIFEST already
@@ -76,7 +76,7 @@ const CADENCE_REGISTRY = require('./cadence-registry.json').cadences;
 // via their explicit flag (or naming them at the interactive prompt, which
 // IS that same explicit consent — see askLanes()'s own comment in bin.js).
 //
-// HIMMEL-2352 (operator ruling 34, 2026-09-01): v1 ships Claude tiers as the
+// v1 ships Claude tiers as the
 // ONLY implementation lanes; codex and hermes are offered here ONLY as
 // cross-model CR (code-review) lanes for /pr-check. ollama-local and
 // copilot-cli — previously the two non-opt-in default lanes — are DROPPED
@@ -88,7 +88,7 @@ const CADENCE_REGISTRY = require('./cadence-registry.json').cadences;
 // for the --lanes/interactive refusal wording that points at that door.
 //
 // BOTH `install` and `note` are per-platform maps resolved through
-// pickByPlatform. CR round 7 [codex-adv-r6-2]: `note` used to be a bare string
+// pickByPlatform. `note` used to be a bare string
 // while `install` was already platform-aware, so a Linux adopter got a correct
 // install command followed by completion guidance naming a .ps1 script and a
 // Windows-only runbook — able to install the binary, unable to finish. Every
@@ -102,7 +102,7 @@ const V1_LANES = [
     // The one v1 lane with a RICHER readiness probe than "the binary exists":
     // the manifest's cmd:codex_provisioned also requires the provisioning
     // cache, so codex can actually be confirmed ready rather than merely
-    // installed (CR round 4 [codex-adv-r3-2]).
+    // installed.
     manifestItem: 'codex-cli',
     install: {
       win32: 'winget install OpenAI.Codex',
@@ -138,20 +138,20 @@ const OPT_IN_LANE_IDS = V1_LANES.filter((l) => l.optIn).map((l) => l.id);
 //
 // This is the SAME set as the defaults today — every non-opt-in lane is both
 // offered and selected by default — so it is an alias rather than a second
-// copy of the expression (CR round 11 [glm-r10-2]: two identical filters would
+// copy of the expression (two identical filters would
 // drift the moment one of them gained a condition). The names stay distinct
 // because the CONCEPTS are: "what you may type" and "what you get if you type
 // nothing" only happen to coincide.
 const SELECTABLE_LANE_IDS = DEFAULT_LANE_IDS;
 
-// HIMMEL-2352 (ruling 34): the wizard's own lane subset is now codex/hermes
+// the wizard's own lane subset is now codex/hermes
 // ONLY, and both are opt-in — DEFAULT_LANE_IDS/SELECTABLE_LANE_IDS are
 // therefore empty in v1. That is not a bug in the alias above: an empty
 // "what you may type via --lanes" is exactly the "one door, not two" the
 // ticket asks for (--lanes accepts only 'none'; codex/hermes stay reachable
 // solely via --with-codex/--with-hermes or the interactive prompt below).
 //
-// HIMMEL-2308 (pre-2352 history): the INTERACTIVE lanes question offers
+// the INTERACTIVE lanes question offers
 // ALL_LANE_IDS — every v1 lane, opt-in or not — while the --lanes CSV flag
 // stays restricted to SELECTABLE_LANE_IDS (parseLaneList's default, below):
 // naming codex/hermes THERE must still be refused, so --lanes never becomes a
@@ -161,7 +161,7 @@ const SELECTABLE_LANE_IDS = DEFAULT_LANE_IDS;
 // codex/hermes in a profile IS the consent" comment — so askLanes() (bin.js)
 // calls parseLaneList(..., { allowOptIn: true }) for that one call site only.
 //
-// HIMMEL-2303: disclosure of the CONSEQUENCE of skipping both opt-ins stays
+// disclosure of the CONSEQUENCE of skipping both opt-ins stays
 // unchanged in spirit — a default or lanes=none install, with neither codex
 // nor hermes taken, leaves NO non-Claude critic available, so /pr-check's
 // CR_REQUIRE_CROSS_MODEL floor (docs/configuration.md) cannot be satisfied —
@@ -174,7 +174,7 @@ function laneCrossModelDisclosureLines() {
   // disclosure prints BEFORE the lanes prompt) and
   // "CR_REQUIRE_CROSS_MODEL cannot be satisfied" (the consequence itself).
   // Both must stay on ONE line -- rewrapping so the phrase spans two is what
-  // broke this case under HIMMEL-2352, and a consequence a reader has to
+  // broke this case, and a consequence a reader has to
   // reassemble across a line break is worse copy anyway.
   return [
     'note: codex and hermes add cross-model review to /pr-check — Claude tiers',
@@ -185,7 +185,7 @@ function laneCrossModelDisclosureLines() {
   ];
 }
 
-// HIMMEL-2308: one-line "what this lane needs" help text for the interactive
+// one-line "what this lane needs" help text for the interactive
 // lanes menu (askLanes, bin.js) — the per-option help apparatus askProfile
 // pioneered (PROFILE_HELP), generalized to this question too. Kept HERE
 // (not bin.js) because this module already owns every other lane fact
@@ -196,7 +196,7 @@ const LANE_HELP = {
   hermes: 'gateway lane; own opt-in, own install profile, own credentials',
 };
 
-// HIMMEL-2352 (ruling 34): ollama-local and copilot-cli are no longer part of
+// ollama-local and copilot-cli are no longer part of
 // V1_LANES at all — the wizard neither offers nor probes them — but a typo'd
 // or muscle-memory `--lanes ollama` / the interactive prompt's `ollama` still
 // deserves a more useful refusal than a bare "unknown lane": this table exists
@@ -242,14 +242,14 @@ function setupNote(lane, platform) {
 // empty selection (an empty string is NOT — that means "accept the default",
 // which the caller resolves before ever getting here).
 //
-// `opts.allowOptIn` (HIMMEL-2308): the --lanes CLI flag calls this with no
+// `opts.allowOptIn`: the --lanes CLI flag calls this with no
 // options, so OPT_IN_LANE_IDS still hit the "select it with --with-<id>"
 // refusal below — --lanes must never become a quieter door around that
 // explicit consent. bin.js's askLanes() (the INTERACTIVE menu only) passes
 // { allowOptIn: true }, because choosing codex/hermes AT THE PROMPT is itself
 // the explicit consent, same principle as a profile file naming them.
 //
-// HIMMEL-2352 (ruling 34): a third refusal shape, checked BEFORE the opt-in
+// a third refusal shape, checked BEFORE the opt-in
 // one and regardless of `allowOptIn` — ollama/copilot are not merely opt-in,
 // they are dormant-in-v1 (DORMANT_LANE_HINTS above): no flag or prompt answer
 // in himmelctl can select them at all, so the error must say WHERE that door
@@ -314,7 +314,7 @@ function isWritableDir(dir) {
   }
 }
 
-// HIMMEL-3059 S3: a packaged/root-owned install prefix can't take the in-tree
+// a packaged/root-owned install prefix can't take the in-tree
 // overlay write, so the writer defaults to the himmelctl cache dir instead of
 // throwing — mirroring critic-panel.sh's CRITICS_LOCAL_JSON and
 // load-dotenv.sh's cache-dir-first fallback. A writable git clone is
@@ -365,7 +365,7 @@ async function persistProfileLaneAllowlist(selected, repoRoot) {
 //   { status: 'absent' }                 — the file simply isn't there
 //   { status: 'invalid', detail }        — present but unreadable/not JSON/wrong shape
 //
-// CR round 4 [codex-adv-r3-3]: these last two used to collapse into a single
+// these last two used to collapse into a single
 // `null`. For the OVERLAY that conflation is a semantics divergence, not
 // cosmetics: a corrupt lanes.local.json made himmelctl silently fall back to
 // the base registry and certify lanes, while the canonical resolver die(2)s on
@@ -394,7 +394,7 @@ function readRegistryFile(file) {
 // Read BOTH registries: the shared base and the machine-local overlay
 // `himmelctl config set lanes.<id> on|off` writes.
 //
-// CR round 2 [codex-adv-r2-1]: this used to read the base alone, so a lane the
+// this used to read the base alone, so a lane the
 // operator had locally DISABLED still reported "available" here while `/lanes`
 // correctly excluded it — the installer's epilogue contradicted the runtime
 // surface it was describing. The overlay is not decoration: it is the documented
@@ -408,7 +408,7 @@ function readRegistryFile(file) {
 function readLaneRegistries(repoRoot) {
   const lanesDir = path.join(repoRoot, 'scripts', 'lanes');
 
-  // CR round 11 [codex-adv-r10-3]: LANES_REGISTRY is the resolver's documented
+  // LANES_REGISTRY is the resolver's documented
   // test/CI override, and it replaces the registry WHOLESALE — resolve.mjs
   // returns that file's contents and skips lanes.local.json entirely. Reading
   // the checkout default plus the overlay under that override made the
@@ -430,7 +430,7 @@ function readLaneRegistries(repoRoot) {
 
   const base = readRegistryFile(path.join(lanesDir, 'lanes.json'));
   if (base.status !== 'ok') return null;
-  // HIMMEL-3059 S3: mirrors resolveLaneAllowlistFile's cache-dir-first read —
+  // mirrors resolveLaneAllowlistFile's cache-dir-first read
   // the writer may have landed the overlay under the himmelctl cache dir
   // (read-only install prefix), so the reader checks there before the in-tree
   // default. An existing writable clone's in-tree overlay is unaffected.
@@ -448,7 +448,7 @@ function readLaneRegistries(repoRoot) {
 // real machine state (scripts/lanes/resolve.mjs `buildCtx` — merged repo
 // .env, a PATHEXT-aware PATH scan, and the hermes install probe).
 //
-// CR round 1 [codex-adv-3]: this used to be a hand-rolled switch that read
+// this used to be a hand-rolled switch that read
 // the registry's `installed` kind as a bare PATH lookup. That is NOT what
 // `installed` means — the canonical hermes probe honors $HERMES_PY and finds
 // venvs under $HERMES_HOME / %LOCALAPPDATA%, none of which put `hermes` on
@@ -479,7 +479,7 @@ async function loadLaneProbe(repoRoot, env) {
       mergeLocalOverlay: resolveMod.mergeLocalOverlay,
     };
   } catch (e) {
-    // CR round 11 [glm-r10-4]: a bare catch here turned every lane UNKNOWN
+    // a bare catch here turned every lane UNKNOWN
     // with no way to find out why. The reason goes to stderr so the cause is
     // visible without changing the (correct) fail-to-unknown behaviour.
     console.error(`himmelctl: could not load the lane resolver — lanes will report UNKNOWN: ${e && e.message ? e.message : e}`);
@@ -500,7 +500,7 @@ function probeDetail(probe, ok, platform) {
     case 'path': return ok ? `${probe.cli} found on PATH` : `${probe.cli} not on PATH`;
     case 'installed': {
       if (ok) return `${probe.tool} installation detected`;
-      // CR round 2 [glm-r2-2]: %LOCALAPPDATA% is meaningless off Windows, and
+      // %LOCALAPPDATA% is meaningless off Windows, and
       // naming a location the operator cannot have is worse than naming none.
       const where = p === 'win32'
         ? '$HERMES_PY, or a venv under $HERMES_HOME / %LOCALAPPDATA%\\hermes'
@@ -519,7 +519,7 @@ function probeDetail(probe, ok, platform) {
 //
 //   present  — physically there AND enabled: the delegation machinery can use it
 //   disabled — physically there but turned OFF by the local overlay. Reported
-//              distinctly (CR round 2 [codex-adv-r2-1]) because "install it"
+//              distinctly because "install it"
 //              and "re-enable it" are different next steps, and collapsing
 //              either into the other misdescribes the machine.
 //   absent   — not physically there
@@ -529,7 +529,7 @@ function probeDetail(probe, ok, platform) {
 // registry, a lane the registry does not declare, a probe kind the canonical
 // evaluator does not decide, and an unloadable resolver are all cases where
 // claiming any of the other three would be a guess. An installer that guesses
-// is exactly what the probe-truth spine (HIMMEL-1093) exists to prevent.
+// is exactly what the probe-truth spine exists to prevent.
 function probeLane(lane, ctx) {
   const platform = ctx && ctx.platform;
   const regs = readLaneRegistries((ctx && ctx.repoRoot) || process.cwd());
@@ -555,10 +555,10 @@ function probeLane(lane, ctx) {
   const baseEntry = pick(regs.base);
   const mergedEntry = pick(merged) || baseEntry;
 
-  // ORDER IS LOAD-BEARING (CR round 5 [codex-adv-r5-1]). The BASE probe — and
+  // ORDER IS LOAD-BEARING. The BASE probe — and
   // only the base probe — answers "is this thing physically installed?". The
   // merged/overlay probe answers a DIFFERENT question: "is this lane switched
-  // on?". Round 2 evaluated the merged probe first and returned `present` on
+  // on?". an earlier fix evaluated the merged probe first and returned `present` on
   // any truthy result, which re-opened the exact trap this module was built to
   // avoid: `himmelctl config set lanes.<id> on` writes probe.kind=always, so a
   // machine with no binary at all reported "binary present" and lost its
@@ -577,7 +577,7 @@ function probeLane(lane, ctx) {
   // Enabled state comes from the merged probe, and must FAIL CLOSED exactly
   // where the canonical evaluator does.
   //
-  // CR round 9 [codex-adv-r8-1]: this used to fall back to the base probe for a
+  // this used to fall back to the base probe for a
   // null/absent merged probe, and to `enabled = true` for a kind it could not
   // decide. evalProbe returns FALSE for all of those (null, non-object, empty
   // or unknown kind — verified against probe.mjs), so a hand-edited
@@ -616,7 +616,7 @@ function probeLane(lane, ctx) {
     };
   }
   // Not installed. Two sub-cases carry an EXTRA blocker beyond the missing
-  // binary, and CR round 11 [codex-r10-1] is the second of them: installing
+  // binary, and an earlier fix is the second of them: installing
   // the CLI does not make the lane usable while the overlay still turns it
   // off, so /lanes keeps excluding it and the adopter has followed our
   // instructions and got nothing. `overlayFix` names the second step; the
@@ -652,7 +652,7 @@ function probeLane(lane, ctx) {
 
 // Is a PRESENT lane actually ready to use, or merely installed?
 //
-// CR round 4 [codex-adv-r3-2]: the registry probes establish that an
+// the registry probes establish that an
 // executable exists — nothing more. ollama still needs its model pulled,
 // copilot needs an interactive device-flow login, codex needs provisioning.
 // Reporting such a lane as "ready" and dropping its setup note told the
@@ -693,7 +693,7 @@ function laneSetupState(lane, ctx) {
 // Non-selected lanes are still reported (as skipped) so the summary can say
 // WHY a lane the operator might expect is missing.
 //
-// HIMMEL-1428 persists the selected registry ids as the resolver's narrowing
+// persists the selected registry ids as the resolver's narrowing
 // profile allowlist after an applied install. These rows still probe only the
 // selected v1 lanes for the install summary; `/lanes` separately reports any
 // physically-available non-selected lane in this wizard-owned subset as
@@ -753,7 +753,7 @@ const HARDENING_CHECKLIST = [
       'powercfg /S SCHEME_CURRENT',
     ],
   },
-  // CR round 8 [codex-adv-r7-2]: this used to be ONE step that installed the
+  // this used to be ONE step that installed the
   // capability and started the service in two lines. Installing Windows
   // OpenSSH opens an inbound port-22 firewall rule and the default config
   // accepts PASSWORD auth — so that ordering stood up a password-reachable
@@ -876,8 +876,8 @@ function hardeningPointerLines() {
   ];
 }
 
-// HIMMEL-2300: the honest counterpart to hardeningPointerLines() for a run
-// that never asked the always-on question at all. HIMMEL-2308 made alwaysOn
+// the honest counterpart to hardeningPointerLines for a run
+// that never asked the always-on question at all. made alwaysOn
 // universal (askQuestions() asks every profile), so this now matters only for
 // a legacy/hand-edited --from-profile that carries no alwaysOn answer.
 // hardeningPointerLines()'s "you answered alwaysOn=no" is a fabricated
@@ -895,7 +895,7 @@ function hardeningNotAskedLines() {
 
 // ── PHI + trust-class checklist (PRINTED, never executed) ──────────────────
 //
-// HIMMEL-2176 Task 8, design A10: the wizard records ONLY `luna.phi.declared`
+// design A10: the wizard records ONLY `luna.phi.declared`
 // — the adopter's yes/no ANSWER to "does this vault handle PHI?" (design A10:
 // an explicit declaration, not a "checklist shown" receipt — every adopter
 // with a vault sees this checklist regardless of their answer, so "shown"
@@ -908,7 +908,7 @@ function hardeningNotAskedLines() {
 // `~/.config/claude-glm/phi-roots`) and docs/internals/egress-matrix.md
 // (`~/.config/claude-glm/egress-denylist`).
 //
-// RETASK stage1-build-6d2e round 11 [codex-2]: the printed text below (and
+// the printed text below (and
 // buildSummary's own manual-entry wording for phiDeclared, a few hundred
 // lines down) used to say "himmelctl records only that you saw this
 // checklist" — describing the OLD, wrong "shown" semantics rather than what
@@ -939,7 +939,7 @@ function phiChecklistLines() {
 // else), and THREE user-facing sites need to agree on which: bin.js's
 // interactive consent prompt, bin.js's --dry-run preview (via
 // attemptBridgePersistence itself, already correct), and this module's own
-// buildSummary() --dry-run wording below. Round 4 fixed the preview, round 9
+// buildSummary --dry-run wording below. an earlier fix fixed the preview
 // fixed the summary — the consent prompt was missed BOTH times, and an
 // explicit sweep for platform assumptions in the dry-run text still missed
 // it, because each site independently re-decided the same platform branch
@@ -954,7 +954,7 @@ function bridgePersistenceArtifact(platform) {
   return null;
 }
 
-// HIMMEL-2302 legacy interplay: resolve `{ <id>: 'armed'|'off' }` for every
+// legacy interplay: resolve `{ <id>: 'armed'|'off' }` for every
 // cadence unit this run has an ACTUAL answer for — an id absent from the
 // result means "never asked" (never a fabricated 'off'), same "not asked ≠
 // answered off" discipline every other section already follows. `cadences`
@@ -962,7 +962,7 @@ function bridgePersistenceArtifact(platform) {
 // pattern as luna/secretsWalk/bridge, NOT nested inside `luna`); when
 // present it is AUTHORITATIVE — `luna.cadenceEnabled` is validated
 // (loadProfile) but never consulted for arming. When ABSENT (every
-// pre-HIMMEL-2302 profile/fixture), pipeline's disposition is derived from
+// older profile/fixture), pipeline's disposition is derived from
 // the legacy `luna.cadenceEnabled` boolean and every OTHER unit stays
 // never-asked. Shared by bin.js's previewLunaSections/applyLunaSectionsStep
 // and this module's own buildSummary below, so the three can never drift.
@@ -975,14 +975,14 @@ function resolveCadenceDispositions(answers) {
   return {};
 }
 
-// HIMMEL-2305: the closed set of "feature areas" the installed configuration
+// the closed set of "feature areas" the installed configuration
 // surface can be scoped by. Mirrored (not shared — different module system,
 // see that file's own comment) by scripts/lib/gen-secrets-doc.mjs's
 // FEATURE_IDS, which validates secrets-manifest.json's `feature` field
 // against the same list.
 const FEATURE_IDS = ['core', 'vault', 'cadence', 'bridge', 'whisper', 'lane:codex', 'lane:hermes'];
 
-// HIMMEL-2305: the ONE place that turns a recorded install profile's answers
+// the ONE place that turns a recorded install profile's answers
 // into the set of feature areas it actually opted into — consumed by BOTH
 // bin.js's secrets walk (filtering secrets-manifest.json entries by their
 // `feature` tag) and status-report.js (downgrading telegram-bridge/
@@ -1024,7 +1024,7 @@ function resolveActiveFeatures(answers) {
 //   skipped   — what it deliberately did not do, each with a reason
 //   manual    — what the operator must still do themselves
 //
-// CR round 1 [codex-1]: `installed` and `planned` are separate keys and
+// `installed` and `planned` are separate keys and
 // exactly ONE is ever populated, rather than one list plus a mode flag the
 // caller has to remember to consult. Under --dry-run nothing is executed, so
 // a reader (or a test) that looks at `installed` must get an EMPTY list — not
@@ -1042,24 +1042,24 @@ function buildSummary(answers, laneRows, opts) {
   const skipped = [];
   const manual = [];
 
-  // CR round 8 [glm-r7-2]: the planned bucket must read as PLANNED throughout.
+  // the planned bucket must read as PLANNED throughout.
   // The plugin row already said "would be enabled" while the vault/handover
   // rows stayed in the past tense ("scaffolded", "upgraded"), so one preview
   // mixed both tenses and half of it read like completed work.
   const did = (past, future) => (dryRun ? future : past);
 
-  // HIMMEL-2308: role died — profile/devOverlay are the two orthogonal axes
+  // role died — profile/devOverlay are the two orthogonal axes
   // now (see bin.js's T2 comment above askQuestions()).
   const overlaySuffix = answers.devOverlay ? '+dev' : '';
   actions.push(dryRun
     ? `himmel (profile=${answers.profile}${overlaySuffix}, scope=${answers.scope}) — would run ${o.derived || 'the derived installer'}`
     : `himmel (profile=${answers.profile}${overlaySuffix}, scope=${answers.scope}) via ${o.derived || 'the derived installer'}`);
 
-  // HIMMEL-2536: the git gate hooks, reported from what is actually on disk
+  // the git gate hooks, reported from what is actually on disk
   // after the installer ran (`o.gitHooks`, probed by bin.js's
   // gitGateHooksState()). adopt.sh WARNs and continues when it cannot install
   // pre-commit -- neither uv nor pipx present is the common stock-Linux case
-  // (HIMMEL-2521) -- and that warning scrolls away, so the measured 2457 cell
+  // and that warning scrolls away, so the measured 2457 cell
   // ended with NO commit-msg hook, a garbage commit message landing at rc=0,
   // and this section printing `(nothing)`. An ungated repo whose installer
   // reports nothing was left undone is the worse of the two failures; this row
@@ -1068,7 +1068,7 @@ function buildSummary(answers, laneRows, opts) {
   // `null` (a --dry-run, where nothing ran) and `applicable:false` (the target
   // is not a git repo, which adopt.sh skips by design, not by failure) both
   // produce no row -- a preview must never claim a probe it did not perform.
-  // CR round 1 [codex-2]: an UNVERIFIABLE hook state gets its own row rather
+  // an UNVERIFIABLE hook state gets its own row rather
   // than being folded into either "placed" or "not a git repo". Saying nothing
   // because the probe failed is the same silence this section exists to end.
   if (o.gitHooks && o.gitHooks.applicable && o.gitHooks.verified === false) {
@@ -1085,7 +1085,7 @@ function buildSummary(answers, laneRows, opts) {
     });
   }
 
-  // HIMMEL-2537: the dev overlay's setup.sh step [0.5/9] is advisory now — it
+  // the dev overlay's setup.sh step [0.5/9] is advisory now — it
   // WARNs and continues on an unresolved USER_SLUG instead of aborting the
   // install. That abort was what used to make this row unnecessary: runPlan
   // returned on the overlay's rc=1 and no summary was printed at all. With the
@@ -1110,7 +1110,7 @@ function buildSummary(answers, laneRows, opts) {
     });
   }
 
-  // HIMMEL-2693: bin.js's applyWorkspaceTrust() already RAN
+  // bin.js's applyWorkspaceTrust already RAN
   // ensure-workspace-trust.sh for the install target. A trust-seed failure is
   // reported here, not thrown: the helper's own contract is that this step is
   // never fatal to the install, so the entries it just wired into
@@ -1137,7 +1137,7 @@ function buildSummary(answers, laneRows, opts) {
     actions.push('workspace trust — would run ensure-workspace-trust.sh for the install target');
   }
 
-  // HIMMEL-2757: docs/setup/settings-template.json ships no `permissions`
+  // docs/setup/settings-template.json ships no `permissions`
   // block, so the install writes no permissions.allow at either scope — by
   // design: himmel's own ~93 entries are its contributor config (paths on the
   // operator's machine), and an adopter's Bash pre-approvals come from the
@@ -1151,7 +1151,7 @@ function buildSummary(answers, laneRows, opts) {
   const vaultMode = answers.vault && answers.vault.mode;
   const vaultPath = o.vaultPath || (answers.vault && answers.vault.path);
   if (vaultMode === 'default-template') {
-    // CR round 8 [codex-adv-r7-3]: adopt.sh's do_luna() SKIPS the template copy
+    // adopt.sh's do_luna SKIPS the template copy
     // when the destination already exists, so "scaffolded" was asserted for
     // runs where nothing was copied. The row is now built from whether
     // scaffolding actually ran (`o.vaultScaffolded`); an occupied destination
@@ -1184,7 +1184,7 @@ function buildSummary(answers, laneRows, opts) {
     skipped.push('external handover state — you answered handover=inline (the repo-local default applies)');
   }
 
-  // HIMMEL-2304: 'full' is a legacy-accepted --from-profile value (loadProfile
+  // 'full' is a legacy-accepted --from-profile value (loadProfile
   // still validates it, for an old cache's backward compat) but its enable
   // step is GONE — applyPluginStep() is now unconditionally a no-op — so
   // there is nothing left to report as installed/failed for either answer.
@@ -1214,7 +1214,7 @@ function buildSummary(answers, laneRows, opts) {
       skipped.push(`lane ${row.id} — binary already present (${row.detail}), nothing to install`);
       // ...but "the binary exists" is not "the lane works". Anything the
       // probe did not establish stays visible as a remaining step, phrased
-      // as verify/complete rather than install (CR round 4 [codex-adv-r3-2]).
+      // as verify/complete rather than install.
       if (row.setupState === 'incomplete') {
         manual.push({
           what: `lane ${row.id} — installed but setup INCOMPLETE (${row.setupDetail})`,
@@ -1233,8 +1233,8 @@ function buildSummary(answers, laneRows, opts) {
     } else if (row.state === 'misconfigured') {
       // Install command RETAINED: the lane genuinely is not installed, and the
       // bogus override must not cost the adopter the one line that fixes that.
-      // CR round 9 [codex-adv-r8-2]: the SETUP note is retained too, ordered
-      // after the remediation. Round 7 guaranteed the platform-specific setup
+      // the SETUP note is retained too, ordered
+      // after the remediation. an earlier fix guaranteed the platform-specific setup
       // step survives; the overlay branches were dropping it, so a forced-on
       // absent ollama got install + override repair and never heard about the
       // model pull. Remediation first, then what to do once it is installed.
@@ -1251,16 +1251,16 @@ function buildSummary(answers, laneRows, opts) {
       manual.push({
         what: `lane ${row.id} — ${row.detail}`,
         how: laneConfigSetCmd(row.registryId, 'on'),
-        // CR round 9 [codex-adv-r8-2]: re-enabling is only half the story — a
+        // re-enabling is only half the story — a
         // disabled copilot still needs its device-flow login once it is back
-        // on. Remediation first, then the setup step round 7 promised to keep.
+        // on. Remediation first, then the setup step an earlier fix promised to keep.
         note: ['nothing to install — the CLI is present, the local overlay turns the lane off']
           .concat(row.note ? [`once re-enabled, confirm setup: ${row.note.replace(/^then /, '')}`] : []),
       });
     } else if (row.state === 'absent') {
       // Ordered follow-ups: the install command is `how`; an overlay blocker
-      // (CR round 11 [codex-r10-1]) comes next because the lane stays
-      // unusable until it is cleared; the setup step last (round 7/9).
+      //  comes next because the lane stays
+      // unusable until it is cleared; the setup step last.
       manual.push({
         what: `lane ${row.id} — ${row.detail}`,
         how: row.hint,
@@ -1272,13 +1272,13 @@ function buildSummary(answers, laneRows, opts) {
     }
   }
 
-  // HIMMEL-2303: disclose the RESULTING cross-model CR floor from the final
+  // disclose the RESULTING cross-model CR floor from the final
   // lane selection — regardless of how it was set (interactive prompt,
   // --lanes flag, --with-codex/--with-hermes, or a replayed --from-profile).
   // A fact, not an action: lands in `skipped`, equally true before/after the
   // install, same as the other "you answered X" entries in this bucket.
   //
-  // CR round 1 [codex-2]: opting in is not the same as the lane actually
+  // opting in is not the same as the lane actually
   // being usable — `selected` only means the operator asked for it; a lane
   // whose probe found it absent/misconfigured/disabled can't run a review
   // either, so claiming "satisfied" off `selected` alone would falsely
@@ -1286,7 +1286,7 @@ function buildSummary(answers, laneRows, opts) {
   // `state === 'present'` (the same bar the rest of this summary treats as
   // "the binary is actually there") before calling the floor satisfied.
   //
-  // CR round 2 [codex-1]: checking only the FIRST opted-in lane meant that
+  // checking only the FIRST opted-in lane meant that
   // with BOTH codex and hermes opted in, an absent codex (V1_LANES order
   // puts it first) reported the floor unsatisfied even when hermes was
   // present and would have satisfied it. Check every opted-in lane for one
@@ -1305,14 +1305,14 @@ function buildSummary(answers, laneRows, opts) {
     manual.push({ what: 'always-on machine hardening', how: 'run the checklist printed above (himmelctl executed none of it)', note: '' });
   }
 
-  // ── HIMMEL-2176 Task 8: luna cadence / PHI / secrets walk / bridge ────────
+  // ── luna cadence / PHI / secrets walk / bridge ────────
   // `answers.luna`/`answers.secretsWalk`/`answers.bridge` are undefined on a
   // pre-Task-8 legacy --from-profile cache (loadProfile treats the whole
   // section as optional for backward compat) — default to the same "off"
   // shape bin.js's own buildAnswers() falls back to, so this never throws on
   // an old profile.
   //
-  // RETASK stage1-build-6d2e round 3 [coordinator ruling on codex-1]: an
+  // an
   // untouched section (no luna key at all — bin.js's applyLunaSectionsStep
   // deliberately left the on-disk value alone) is a DIFFERENT fact from "the
   // operator answered off", and this summary's whole purpose is to never say
@@ -1322,14 +1322,14 @@ function buildSummary(answers, laneRows, opts) {
   // untouched-specific wording, distinct from the explicit-off skip text —
   // both still land in `skipped` (never `installed`), which was already the
   // safety-relevant half; this is the honesty half.
-  // CR fix (HIMMEL-2176): a --dry-run whose ~/.himmel/config.json could not
+  // a --dry-run whose ~/.himmel/config.json could not
   // be read (bin.js's previewLunaSections sets this) is the SAME refusal
   // applyLunaSectionsStep performs for real on a load failure — it returns
   // before touching cadence/PHI/secrets/bridge at all, so this summary must
   // not claim any of that as `planned` either, regardless of what the
   // profile answered.
   const configLoadFailed = Boolean(o.configLoadFailed);
-  // HIMMEL-2302 fix: keyed on `phiDeclared` specifically, mirroring bin.js's
+  // fix: keyed on `phiDeclared` specifically, mirroring bin.js's
   // own lunaSectionSupplied() — see its comment for why bare `luna !==
   // undefined` is no longer sufficient once a vault=none run can build a
   // partial `luna = { disarmCadence }` with no PHI answer in it.
@@ -1338,7 +1338,7 @@ function buildSummary(answers, laneRows, opts) {
   if (configLoadFailed) {
     skipped.push('luna cadence — ~/.himmel/config.json could not be read (see the WARN line above); left untouched');
     skipped.push('PHI checklist — ~/.himmel/config.json could not be read (see the WARN line above); left untouched');
-    // CR round 1 [HIMMEL-2302 Fix 2]: this branch used to return here,
+    // this branch used to return here,
     // reporting only the two legacy lines above and never reaching the
     // per-unit loop in the `else` branch below — a profile that requested
     // qmd/graphmap/codex-sweep arming lost those rows entirely on a
@@ -1355,7 +1355,7 @@ function buildSummary(answers, laneRows, opts) {
       }
     }
   } else {
-    // HIMMEL-2302: per-cadence dispositions replace the old single
+    // per-cadence dispositions replace the old single
     // luna.cadenceEnabled boolean — resolveCadenceDispositions() (shared
     // with bin.js, see its own comment above) covers both a fresh top-level
     // `cadences` section (authoritative) and a legacy profile that only
@@ -1388,7 +1388,7 @@ function buildSummary(answers, laneRows, opts) {
                 `${label} — would arm: ${arm.argvDisplay}`,
               ));
             } else if (arm.alreadyArmed) {
-              // HIMMEL-2885: rc 3 is the script's own dedup refusal — already
+              // rc 3 is the script's own dedup refusal — already
               // converged, not a failure. Reads as skipped, never manual —
               // "re-run to retry" would loop forever against a healthy machine.
               skipped.push(`${label} — already armed (rc 3)`);
@@ -1400,7 +1400,7 @@ function buildSummary(answers, laneRows, opts) {
               });
             }
           } else if (arm) {
-            // RETASK stage1-build-6d2e round 6 [codex-1 enumeration]: `arm`
+            // `arm`
             // IS present but `arm.ran` is false — bin.js sets exactly this
             // shape when building the flags/spawning the command THREW
             // mid-step (arm.argvDisplay carries the thrown message in that
@@ -1415,7 +1415,7 @@ function buildSummary(answers, laneRows, opts) {
           } else if (dryRun) {
             actions.push(`${label} — would arm via ${scriptBase}`);
           } else {
-            // RETASK stage1-build-6d2e round 5 [codex-1]: the arm step
+            // the arm step
             // never reporting a result under an APPLIED run (a config save
             // failure upstream skipped it, or any other reason) is NOT
             // "installed" — `actions` renders under `installed:`, the one
@@ -1430,7 +1430,7 @@ function buildSummary(answers, laneRows, opts) {
           }
         } else {
           skipped.push(isPipeline ? 'luna cadence — you answered cadence=off' : `${label} — you answered off`);
-          // RETASK stage1-build-6d2e round 4 [codex-1] (extended HIMMEL-2302
+          // RETASK stage1-build-6d2e an earlier fix (extended
           // to every unit): answering off writes the disposition but does
           // NOT by itself touch the scheduler — spec §3.5 S1 explicitly
           // anticipates enabled:false + tasks-still-present as a WARN
@@ -1456,7 +1456,7 @@ function buildSummary(answers, laneRows, opts) {
               });
             }
           } else if (luna.disarmCadence && disarm) {
-            // RETASK stage1-build-6d2e round 6 [codex-1 enumeration]:
+            // RETASK stage1-build-6d2e
             // `disarm` present but `disarm.ran` false — the disarm attempt
             // THREW mid-step (same shape/distinction as the arm branch
             // above), not "never reached". Still manual either way (never
@@ -1467,7 +1467,6 @@ function buildSummary(answers, laneRows, opts) {
               note: '',
             });
           } else if (luna.disarmCadence && dryRun) {
-            // RETASK stage1-build-6d2e round 6 [codex-1 enumeration]: a
             // --dry-run "would disarm" is a PLANNED action, same bucket as
             // the arm branch's own dry-run case a few lines up and
             // bridge-persistence's dry-run case below — it belongs in
@@ -1496,7 +1495,7 @@ function buildSummary(answers, laneRows, opts) {
     if (!lunaSupplied) {
       skipped.push('PHI checklist — left as-is (the profile carries no luna section)');
     } else if (luna.phiDeclared) {
-      // RETASK stage1-build-6d2e round 6 [codex-2 enumeration]: this "himmelctl
+      // this "himmelctl
       // records..." claim is a config-document write, same as bridge config
       // below — false under an APPLIED run whose save() failed (o.configSaveOk
       // === false is the only "failed" signal; undefined, e.g. under --dry-run
@@ -1515,9 +1514,9 @@ function buildSummary(answers, laneRows, opts) {
     }
   }
 
-  // RETASK stage1-build-6d2e round 9 [codex-1 follow-up]: same "left as-is"
+  // same "left as-is"
   // vs "you answered X=skip" distinction as luna/bridge above, now that
-  // round 8's fix makes `answers.secretsWalk` genuinely undefined (not a
+  // the earlier fix makes `answers.secretsWalk` genuinely undefined (not a
   // manufactured 'skip') when the question was never asked (vaultMode=='none'
   // or contributor role) — before that fix this branch was unreachable
   // (secretsWalk was always at least the string 'skip'), which is why it was
@@ -1541,7 +1540,7 @@ function buildSummary(answers, laneRows, opts) {
       } else if (r.status === 'degraded') {
         manual.push({ what: `secret ${r.name} — configured but the probe flagged a problem (${r.detail})`, how: r.obtain, note: '' });
       } else if (r.status === 'error') {
-        // RETASK stage1-build-6d2e round 6 [codex-3]: the probe itself threw
+        // the probe itself threw
         // (our code, not the credential) — a DIFFERENT fact from "configured
         // but unhealthy" (that phrasing presumes we know it's configured) AND
         // from 'unconfigured' (which tells the adopter to go set up something
@@ -1554,7 +1553,7 @@ function buildSummary(answers, laneRows, opts) {
         // descriptor to actively probe — see the apply-step comment). Either
         // way this is a normal skip, never an error (design A15).
         //
-        // RETASK stage1-build-6d2e round 10 [codex-1]: a paired credential
+        // a paired credential
         // (BITBUCKET_EMAIL/BITBUCKET_API_TOKEN) shares ONE aggregate luna-sources probe with its
         // sibling — the probe can only speak for the source as a whole, so
         // 'unconfigured' here does NOT mean THIS credential specifically is
@@ -1571,7 +1570,7 @@ function buildSummary(answers, laneRows, opts) {
       }
     }
     if (results.length === 0) {
-      // RETASK stage1-build-6d2e round 5 [codex-1]: same "declared but never
+      // same "declared but never
       // ran" shape as cadence-arm/bridge-persistence above — SECRETS_MANIFEST
       // always has entries, so this is unreachable in a normal apply run
       // today, but "never actually happens yet" is not a reason to let an
@@ -1593,7 +1592,7 @@ function buildSummary(answers, laneRows, opts) {
   } else if (!bridgeSupplied) {
     skipped.push('telegram bridge — left as-is (the profile carries no bridge section)');
   } else if (bridge.enabled) {
-    // RETASK stage1-build-6d2e round 6 [codex-2]: this claimed a config-
+    // this claimed a config-
     // document write (bridge.envPath/whisper.*) UNCONDITIONALLY under
     // installed:, even when the save() that was supposed to persist it had
     // already failed (o.configSaveOk === false) — the exact same "declared
@@ -1632,19 +1631,19 @@ function buildSummary(answers, laneRows, opts) {
             `bridge persistence — would install: ${(p.actions || []).join('; ')}`,
           ));
         } else if (p.skipped) {
-          // RETASK stage1-build-6d2e round 3 [coordinator ruling on
+          // RETASK stage1-build-6d2e an earlier fix [coordinator ruling on
           // codex-2]: a deliberate skip (readiness probes not green) is the
           // DESIGNED behaviour, not a failure — rc stays 0 for this case
           // (bin.js) and the wording here must say so plainly, distinct from
           // an installer that actually ran and failed.
-          // RETASK stage1-build-6d2e round 4: `p.skipped` now covers TWO
+          // `p.skipped` now covers TWO
           // distinct deliberate-skip reasons (probes not ready [codex-2] AND
           // a config save failure upstream [codex-3]) — the wording stays
           // generic and lets `p.detail` (bin.js's own, reason-specific text)
           // say which, rather than hardcoding one reason into both.
           manual.push({ what: `bridge persistence — SKIPPED: ${p.detail}`, how: 're-run install once the issue above is resolved', note: '' });
         } else if (p.partial) {
-          // RETASK stage1-build-6d2e round 6 [codex-4]: Linux unit
+          // Linux unit
           // install+start succeeded but linger did not — a DIFFERENT fact
           // from "nothing was installed" (the else branch below), and
           // "NOT installed" would be false for the half that worked. No
@@ -1657,7 +1656,7 @@ function buildSummary(answers, laneRows, opts) {
           manual.push({ what: `bridge persistence NOT installed — ${p.detail}`, how: (p.actions || []).join('; ') || 'see docs/setup', note: '' });
         }
       } else if (dryRun) {
-        // RETASK stage1-build-6d2e round 10 [codex-2] / later CR finding:
+        // RETASK stage1-build-6d2e an earlier fix / later CR finding:
         // platform-branch the wording via the ONE shared decision
         // (bridgePersistenceArtifact() above), the same source bin.js's
         // consent prompt now reads too — --dry-run is the one surface whose
@@ -1675,7 +1674,7 @@ function buildSummary(answers, laneRows, opts) {
           });
         }
       } else {
-        // RETASK stage1-build-6d2e round 5 [codex-1]: same "declared but
+        // same "declared but
         // never ran" shape as the cadence-arm fix above — an APPLIED run
         // where the step reported nothing is not "installed"; belongs under
         // still-manual, never actions/installed.
@@ -1728,7 +1727,7 @@ function summaryLines(summary) {
     lines.push(`  ! ${m.what}`);
     if (m.how) lines.push(`      ${m.how}`);
     // `note` is one line or an ORDERED list of them (remediation, then the
-    // setup step it unblocks) — CR round 9 [codex-adv-r8-2].
+    // setup step it unblocks) —.
     for (const n of (Array.isArray(m.note) ? m.note : [m.note])) {
       if (n) lines.push(`      ${n}`);
     }
@@ -1750,7 +1749,7 @@ module.exports = {
   installHint,
   setupNote,
   loadLaneProbe,
-  // Exported for the drift test only (CR round 11 [glm-r10-3]): this constant
+  // Exported for the drift test only: this constant
   // hand-tracks evalProbe's switch in scripts/lanes/probe.mjs, which exports
   // no equivalent set, so the suite compares the two and fails if probe.mjs
   // grows or loses a kind.

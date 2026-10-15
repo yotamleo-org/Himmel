@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # test-wizard-profile-lint.sh — CI staleness/validation check for CHECKED-IN
-# install-profile fixtures (HIMMEL-2308 part B item 4; mirrors the
-# secrets-manifest CI-staleness precedent, HIMMEL-2176, and the
+# install-profile fixtures (part B item 4; mirrors the
+# secrets-manifest CI-staleness precedent, and the
 # test-wizard-manifest-v2.sh sibling-suite pattern in this same directory).
 #
 # docs/setup/profiles/*.install-profile.json is the agreed canonical location
 # for hand-authored install-profile fixtures an operator can point
-# --from-profile at (HIMMEL-2307 landed the operator profile there). This
+# --from-profile at (landed the operator profile there). This
 # suite proves every file that ends up there actually validates against the
 # REAL v2 schema bin.js's own loadProfile() enforces — never a hand-rolled
 # duplicate of that schema that could silently drift from it.
@@ -24,7 +24,7 @@
 # can never drift from the real validator because it *is* the real validator.
 #
 # Covers:
-#   a. POSITIVE CONTROL (HIMMEL-2320, mandatory): a hand-built valid v2
+#   a. POSITIVE CONTROL (mandatory): a hand-built valid v2
 #      profile fixture -> rc=0.
 #   b. POSITIVE CONTROL: a hand-built v2 profile with one bad enum field
 #      -> rc=2, message naming the bad field. Cases a+b together prove the
@@ -32,7 +32,7 @@
 #      a suite that only ever saw rc=0 would pass just as "green" if the
 #      invocation were silently a no-op.
 #   c. every real docs/setup/profiles/*.install-profile.json in this checkout
-#      (today: operator.install-profile.json, landed by HIMMEL-2307) lints
+#      (today: operator.install-profile.json, landed by) lints
 #      clean via the SAME invocation as cases a/b. The empty-glob vacuous-pass
 #      path stays in the harness BY DESIGN — case a/b already prove the
 #      invocation isn't vacuous in general, and an empty directory should
@@ -109,7 +109,7 @@ make_fixture() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$_d/scripts/adopt.sh"
   chmod +x "$_d/scripts/adopt.sh"
   cp "$repo_root/scripts/lanes/lanes.json" "$_d/scripts/lanes/lanes.json"
-  # HIMMEL-2308: a checked-in profile may carry devOverlay:true (the operator
+  # a checked-in profile may carry devOverlay:true (the operator
   # profile does) — bin.js's step-5.5 gate then requires the dev-overlay
   # primitive to exist, so the fixture must look like a real himmel checkout
   # on either platform (same setup.sh/setup.ps1 stub pair as the sibling
@@ -133,7 +133,7 @@ lint_profile() {
 }
 
 # run_install <install-args...> — same hermetic harness as lint_profile, but
-# takes arbitrary `install` args (HIMMEL-2752: needed to exercise --scope,
+# takes arbitrary `install` args (needed to exercise --scope,
 # which does not always pair with --from-profile). Echoes combined output,
 # returns rc.
 run_install() {
@@ -198,7 +198,7 @@ echo "ok: case b — a broken v2 install-profile fixture (bad enum) exits 2 nami
 
 # ── case c: every REAL checked-in fixture under docs/setup/profiles/ lints
 # clean. Globs docs/setup/profiles/*.install-profile.json — the directory may
-# not exist yet (HIMMEL-2307 lands the first real fixture there), in which
+# not exist yet (lands the first real fixture there), in which
 # case this loop simply runs zero times. Cases a/b above already prove that
 # emptiness here is a vacuous pass BY DESIGN, not a broken harness. ─────────
 shopt -s nullglob
@@ -216,7 +216,7 @@ else
   echo "ok: case c — every checked-in docs/setup/profiles/*.install-profile.json lints clean (${#profileFiles[@]} file(s))"
 fi
 
-# ── HIMMEL-2752: honest bridge validation ───────────────────────────────────
+# ── honest bridge validation ───────────────────────────────────
 # d. bridge.enabled:false with NO envPath/whisperCli/whisperModel/
 #    installPersistence — a disabled section's members are now optional
 #    (absent = empty), so this must lint clean where it used to be refused.
@@ -295,7 +295,7 @@ grepq "$outF" -i "envPath" \
   || fail "case f: error should name 'envPath' (got: $outF)"
 echo "ok: case f — RED control: bridge.enabled:true still requires envPath (rc=2, unchanged behavior)"
 
-# ── HIMMEL-2752: lanes refusal messages name the accepted spelling ─────────
+# ── lanes refusal messages name the accepted spelling ─────────
 # g. lanesMeaningful present but not true — message must state the exact
 #    accepted spelling and disambiguate the CLI flag from the profile value.
 lanesBadMeaningful="$work/lanes-bad-meaningful.install-profile.json"
@@ -347,7 +347,7 @@ grepq "$outH" -F '"lanes": [] with "lanesMeaningful": true' \
   || fail "case h: error should name the accepted spelling verbatim (got: $outH)"
 echo "ok: case h — legacy lanes:[] refusal names the accepted spelling verbatim (HIMMEL-2752)"
 
-# ── HIMMEL-2752: --scope as a real non-interactive selector ────────────────
+# ── --scope as a real non-interactive selector ────────────────
 # i. --scope project alone (no --from-profile, no wizard) loads the SHIPPED
 #    adopter-project profile and derives a plan for it.
 set +e

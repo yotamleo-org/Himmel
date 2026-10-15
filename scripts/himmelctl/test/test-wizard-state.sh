@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-state.sh — hermetic tests for scripts/himmelctl/lib/state.js
-# (HIMMEL-756 T1.3): target-keyed install state derived from the manifest +
+# target-keyed install state derived from the manifest +
 # the wizard's cached install-profile answers. Mirrors sibling test-wizard-*
 # suites: a fake HOME + HIMMELCTL_CACHE_DIR so nothing touches the real
 # ~/.claude/himmel/, node launched by absolute path, winpath for node.exe's
@@ -134,7 +134,7 @@ cmp -s "$work/state-save1.json" "$statePathC" \
   || fail "caseC: state.json should round-trip byte-identically across two saves"
 echo "ok: caseC write->read round-trips byte-stably across two saves"
 
-# ── Case D (HIMMEL-1017): ensureTarget() migrates a PRE-CHANGE existing
+# ── Case D: ensureTarget migrates a PRE-CHANGE existing
 # target — it backfills manifest items the target's persisted `items` map
 # doesn't yet carry (simulating a manifest that gained items after this
 # target was first derived, e.g. an install predating this repo's most
@@ -211,7 +211,7 @@ echo "$outD" | jq -e '.after.targets | to_entries[0].value.items["qmd-binary"].e
   || fail "caseD: the migration should round-trip through save() (got: $outD)"
 echo "ok: caseD — migration round-trips through save()/load()"
 
-# ── Case E (HIMMEL-1017 CR round): migration membership must key off the
+# ── Case E: migration membership must key off the
 # AUTHORITATIVE invocation scope (cachedAnswers.scope — the same value that
 # picked which target entry we're even operating on), NEVER the target's own
 # PERSISTED `.scope` field, which can independently drift (a hand-edit, a
@@ -265,7 +265,7 @@ echo "$outE" | jq -e '.migrated.items["pre-commit-hooks"].enabled == true' >/dev
   || fail "caseE: a project-only item backfilled under a target with a STALE persisted scope:'user' must still key off the AUTHORITATIVE invocation scope 'project' (got: $outE)"
 echo "ok: caseE — migration membership uses the authoritative invocation scope, never a stale persisted target.scope"
 
-# ── caseF (HIMMEL-4435): the pre-commit framework item is wanted only when a
+# ── caseF: the pre-commit framework item is wanted only when a
 # luna vault is selected or the contributor overlay is on; a vault=none
 # starter install places native gates and must not list it. ─────────────────
 mkdir -p "$work/tgtF-without"
@@ -285,7 +285,7 @@ echo "$outF" | jq -e '.none == false and .vault == true and .contrib == true' >/
   || fail "caseF: pre-commit must be unwanted for vault=none, wanted with a vault or devOverlay (got: $outF)"
 echo "ok: caseF — pre-commit framework item is not wanted for a vault=none starter install"
 
-# HIMMEL-4440: a core target with vault=none that ships its OWN
+# a core target with vault=none that ships its OWN
 # .pre-commit-config.yaml still needs the framework (adopt.sh keeps the
 # uv/pipx check for it) — himmelctl must agree. Project scope only; the
 # target is the cwd, the same key state.js's targetKeyForScope uses.

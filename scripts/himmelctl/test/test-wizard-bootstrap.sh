@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-wizard-bootstrap.sh — hermetic tests for the himmelctl bootstrap
-# shims (HIMMEL-887 T7): scripts/himmelctl/bootstrap.sh (posix: darwin
+# shims: scripts/himmelctl/bootstrap.sh (posix: darwin
 # brew / linux apt) and scripts/himmelctl/bootstrap.ps1 (win32: winget).
 # Both are independent standalone entry points (unlike uninstall.sh/.ps1,
 # which bin.js alternately invokes based on runtime platform), so this
@@ -27,7 +27,7 @@
 #      `winget install node bun` resolves as a single bad query) — apt gets
 #      `nodejs npm` only, winget gets `--id OpenJS.NodeJS.LTS -e`; a
 #      bun-is-optional note is printed instead.
-#   G. CR r1 FIX 1/2 (HIMMEL-935 for ps1): the platform installer itself EXITS
+#   G. CR r1 FIX 1/2: the platform installer itself EXITS
 #      NONZERO (a genuine apt/winget failure, not just a not-yet-refreshed-PATH)
 #      -> bootstrap.sh prints "node install failed" and aborts immediately (no
 #      re-run line); bootstrap.ps1 prints a Write-Warning with the exit code,
@@ -51,7 +51,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -134,7 +134,7 @@ STUB
 # build_brew_stub <dir> <restore_node:0|1> <rc> — bootstrap.sh's Darwin branch
 # runs `brew install node bun`, not `sudo apt-get`; on a macOS host the sudo stub
 # is never reached, so the install-calls.log contract needs a `brew` twin (same
-# log file, same node-restore switch, same exit code). Inert on Linux (HIMMEL-3177).
+# log file, same node-restore switch, same exit code). Inert on Linux.
 build_brew_stub() {
   local _dir="$1" _restore="$2" _rc="$3"
   cat > "$_dir/brew" <<STUB
@@ -152,7 +152,7 @@ STUB
 }
 
 # build_aptget_stub <dir> — a no-op `apt-get` so bootstrap.sh's non-Darwin
-# `command -v apt-get` presence guard (HIMMEL-935) passes on hosts that lack
+# `command -v apt-get` presence guard passes on hosts that lack
 # apt-get (macOS/MINGW), letting the sudo stub intercept `sudo apt-get install`
 # as before. It is never actually invoked — sudo receives apt-get as an arg.
 build_aptget_stub() {
@@ -294,7 +294,7 @@ grepq "$out" 're-run' \
 echo "ok: caseG(sh) a genuinely failed apt/brew install -> 'node install failed' printed, aborts immediately, no chain"
 
 # ── bootstrap.sh — Case H: non-Darwin host WITHOUT apt-get fails closed ─────
-# HIMMEL-935 / CR #1126: the non-Darwin branch assumes apt. A host that is
+# / CR #1126: the non-Darwin branch assumes apt. A host that is
 # neither Darwin nor apt-based must fail closed with a manual-install pointer
 # naming the detected platform, not silently mis-run `sudo apt-get`. A fake
 # `uname` (reporting Linux) forces the non-Darwin branch even on a Darwin/macOS
@@ -325,12 +325,12 @@ echo "ok: caseH(sh) non-Darwin host without apt-get -> fail-closed manual-instal
 
 # ── bootstrap.ps1 cases (skipped if pwsh isn't on this host, or when the
 # host isn't Windows — the winget.cmd/node.exe stubs are Windows-only) ─────
-# ps51-ok: HIMMEL-2126 — this picks the interpreter that runs THESE test
+# ps51-ok: this picks the interpreter that runs THESE test
 # fixtures, mirroring bootstrap.ps1's own real-world constraint (a stock,
 # node-less Windows box may not have pwsh installed yet): prefer Windows
 # PowerShell 5.1 (powershell.exe, always present on stock Windows) over pwsh
 # (PowerShell 7, a separate install) so the .ps1 cases run on a stock Windows
-# host; fall back to pwsh (HIMMEL-935 / CR #1126). The variable keeps the
+# host; fall back to pwsh. The variable keeps the
 # pwsh_bin name for minimal churn; it holds whichever interpreter was chosen.
 pwsh_bin=""
 if command -v powershell >/dev/null 2>&1; then
@@ -432,7 +432,7 @@ STUB
     && fail "caseF(ps1): the winget plan/dry-run preview must NOT mention bun (got: $out)"
   echo "ok: caseF(ps1) winget plan targets --id OpenJS.NodeJS.LTS -e, no bare 'node bun' query"
 
-  # ── bootstrap.ps1 — Case G: FIX 2/HIMMEL-935 -- winget nonzero exit fail-closes ─
+  # ── bootstrap.ps1 — Case G: FIX 2/-- winget nonzero exit fail-closes ─
   stubG2="$work/psG"; mkdir -p "$stubG2"
   cat > "$stubG2/winget.cmd" <<'STUB'
 @echo off
