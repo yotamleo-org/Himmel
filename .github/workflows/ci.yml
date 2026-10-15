@@ -399,7 +399,7 @@ jobs:
           # (the other guardrails files stay the PR's: the lint scans them)
           fo="$(mktemp -d "$RUNNER_TEMP/fail-open-tree.XXXXXX")" || exit 1
           # tracked files via tar, not git archive: a PR-added export-ignore attribute must not hide a file
-          # each stage writes a file (no pipes): the step has no pipefail, so a piped producer's failure would pass
+          # each stage writes a file rather than piping: no producer's failure can hide behind the last command
           if ! git ls-files -z > "$fo.list" || ! tar --null --verbatim-files-from -T "$fo.list" -cf "$fo.pr.tar" || ! tar -xf "$fo.pr.tar" -C "$fo" \
             || ! git archive "$BASE_SHA" scripts/guardrails/lint-fail-open.sh scripts/guardrails/test-lint-fail-open.sh scripts/guardrails/fixtures/fail-open scripts/hooks/check-fail-open-lint.sh -o "$fo.base.tar" || ! tar -xf "$fo.base.tar" -C "$fo"; then
             echo "tree-only gates: fail-open suite absent at base $BASE_SHA, cannot evaluate" >&2
