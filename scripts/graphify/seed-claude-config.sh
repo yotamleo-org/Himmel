@@ -210,25 +210,38 @@ seed_lock_is_stale() {
 }
 
 seed_lock_release() { # $1 = 1 to warn when our owned lock cannot be removed
-  local warn="$1" owner
-  owner="$(cat "$LOCK/owner" 2>/dev/null)"
-  [ "$owner" = "$SEED_LOCK_TOKEN" ] || return 0
-  rm -f "$LOCK/owner" 2>/dev/null
-  if ! rmdir "$LOCK" 2>/dev/null && [ "$warn" -eq 1 ]; then
-    echo "seed-claude-config: WARNING - failed to release seed lock $LOCK; it becomes stealable after ${SEED_LOCK_STALE}s." >&2
+  local warn="$1" claimed owner
+  # Claim the lock dir by atomic rename to a path only this call uses, THEN read
+  # its owner: no check-then-act gap, and we only ever delete our own claimed
+  # path. If a steal-and-reacquire let us claim a replacement owner's lock, hand
+  # it back instead of deleting it.
+  claimed="$LOCK.rel.$$.$RANDOM"
+  mv "$LOCK" "$claimed" 2>/dev/null || return 0
+  owner="$(cat "$claimed/owner" 2>/dev/null)"
+  if [ "$owner" = "$SEED_LOCK_TOKEN" ]; then
+    rm -f "$claimed/owner" 2>/dev/null
+    if ! rmdir "$claimed" 2>/dev/null; then
+      # not empty: keep it as evidence at the lock path, where the stale steal reaps it
+      [ -e "$LOCK" ] || mv "$claimed" "$LOCK" 2>/dev/null
+      [ "$warn" -eq 1 ] && echo "seed-claude-config: WARNING - failed to release seed lock $LOCK; it becomes stealable after ${SEED_LOCK_STALE}s." >&2
+    fi
+    return 0
   fi
+  # ponytail: the hand-back is an [ -e ] guard, not atomic against a third acquirer; revisit if mv -T becomes portable.
+  [ -e "$LOCK" ] || mv "$claimed" "$LOCK" 2>/dev/null
 }
 
 seed_with_lock() {
-  local ticks=0 max_ticks=$(( SEED_LOCK_TIMEOUT * 2 )) mkdir_error=""
+  local ticks=0 max_ticks=$(( SEED_LOCK_TIMEOUT * 2 )) mkdir_error="" stale
   while :; do
     if mkdir_error="$(mkdir "$LOCK" 2>&1)"; then
       printf '%s\n' "$SEED_LOCK_TOKEN" > "$LOCK/owner" \
         || { rm -rf "$LOCK"; seed_fail "record seed-lock ownership"; }
       break
     fi
-    if seed_lock_is_stale && mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then
-      rm -rf "$LOCK.stale.$$"
+    stale="$LOCK.stale.$$.$RANDOM"
+    if seed_lock_is_stale && mv "$LOCK" "$stale" 2>/dev/null; then
+      rm -rf "$stale"
       continue
     fi
     if [ "$ticks" -ge "$max_ticks" ]; then
