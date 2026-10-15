@@ -7,28 +7,19 @@
    - **This fence has none of step 3's output in scope** — each `pr-check.md` fence runs independently, and step 3's findings arrived on a script's stdout, not in a variable any later fence can read (see the step-4.6/4.7 note on this same rule). Write EVERYTHING you (Claude) saw printed at step 3.0/2.5 (the critic panel's findings block) and, when it ran, the `/pr-review-toolkit:review-pr` markdown — into ONE temp file, so the script reads it via `--input <path>` (piping multi-line review markdown through `printf` would mangle backticks and special chars). Two fences: write the temp file and print its path, then hand that path to the filer.
      ```bash
      pr_num=""
-     if pr_status=$(gh pr view --json number -q .number 2>&1); then
-         pr_num="$pr_status"
+     # --head takes step 0's printed `branch=` LITERAL, SINGLE-QUOTED.
+     if pr_status=$(gh pr list --state open --head '<branch>' --json number --jq '.[0].number' 2>&1); then
+         pr_num="$pr_status"   # empty when no PR yet
      else
-         case "$pr_status" in
-             *"no pull requests"*|*"no open pull"*) ;;  # expected when no PR yet
-             *) echo "WARN /pr-check: gh pr view failed: $pr_status" >&2 ;;
-         esac
+         echo "WARN /pr-check: gh pr list failed: $pr_status" >&2
      fi
 
      if [ -n "$pr_num" ]; then
          review_tmpfile=$(mktemp -t cr-review.XXXXXX.md)
-         # Claude writes what it saw printed at step 3.0/2.5 here — the critic
-         # panel's findings block, verbatim from panel-first-pass.sh's (or
-         # docs-audit-panel.sh's) stdout, plus the
-         # /pr-review-toolkit:review-pr markdown when that opt-in lane also
-         # ran this session:
-         cat > "$review_tmpfile" <<'REVIEW_EOF'
-         ... full critic-panel findings block, and/or review-pr markdown ...
-         REVIEW_EOF
          echo "$review_tmpfile"
      fi
      ```
+     Then, with the Write tool, write what you saw printed at step 3.0/2.5 into the path that fence printed — the critic panel's findings block, verbatim from `panel-first-pass.sh`'s (or `docs-audit-panel.sh`'s) stdout, plus the `/pr-review-toolkit:review-pr` markdown when that opt-in lane also ran this session. No heredoc: `guard-pr-check-literal.sh` denies one, and the filer reads the file by path.
      Then file, substituting the PR number and the temp-file path this printed
      as LITERALS (HIMMEL-2226 — a runtime value in a dash-flag operand is
      refused by the worktree-isolation guard, and no variable survives the
@@ -36,9 +27,7 @@
      ```bash
      bash "<himmel_dir>/scripts/cr/file-deferred-issues.sh" --pr <pr-num> --input '<review-tmpfile>' --dry-run
      ```
-     STOP HERE. Inspect the dry-run plan. If it looks right, re-invoke
-     `/pr-check` (or the same script without `--dry-run`) to actually file the
-     issues, then delete the temp file.
+     STOP HERE. Inspect the dry-run plan. If it looks right, rerun `file-deferred-issues.sh` without `--dry-run` (same `--pr` and `--input`) to actually file the issues, then delete the temp file. Re-invoking `/pr-check` only repeats the dry run.
    - The script is idempotent — dedupe is content-hash based, so re-running `/pr-check` on the same review output produces zero new issues. Editing a flagged file (which shifts line numbers) creates a new issue, which is correct: the finding moved.
    - **Fail-closed dedupe:** if the gh issue-list lookup errors (rate-limit, auth expired), the script skips that finding rather than silently filing a duplicate. Operator should re-run after fixing the gh state.
    - Auto-creates the `cr-deferred` label on first non-dry-run invocation.

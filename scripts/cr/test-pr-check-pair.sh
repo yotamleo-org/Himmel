@@ -1062,5 +1062,48 @@ $b
     fail "scripts/cr/pr-check-ref/$b is not named by the driver -- an orphaned reference file is read by nobody"
 done
 
+# Prose defects in the reference files: each row pins the corrected text (or
+# the absence of the wrong text) in the file that carries it.
+ref_has() { grep -qF -- "$2" "$CLAUDE_REF_DIR/$1"; }
+ref_lacks() { ! grep -qF -- "$2" "$CLAUDE_REF_DIR/$1"; }
+
+if ref_lacks 31-step3-adjudicate.md 'heredoc into scripts/cr/write-verdicts.sh' \
+    && ref_lacks 31-step3-adjudicate.md 'empty heredoc body'; then
+    pass "31 phase A comment names no heredoc into write-verdicts.sh"
+else
+    fail "31 phase A comment still tells the reader to feed write-verdicts.sh a heredoc (HIMMEL-5536)"
+fi
+if ref_has 33-step3-impacted.md '<base>..<head>' && ref_lacks 33-step3-impacted.md '<db_sha>..<head>' \
+    && ref_has 33-step3-impacted.md 'docs-audit base'; then
+    pass "33 defines the docs-audit base ref and both step-3.6 commands use <base>..<head>"
+else
+    fail "33 step 3.6 commands use <db_sha>..<head>, which does not exist in the docs-audit lane (HIMMEL-5536)"
+fi
+if ref_has 30-step3-panel.md 'step 3.6'; then
+    pass "30 names step 3.6 as the consumer of <db_sha>"
+else
+    fail "30 says <db_sha> has no downstream consumer, but step 3.6 consumes it (HIMMEL-5536)"
+fi
+if ref_has 45-step4.5-ledger.md 'unconfigured, absent or skipped'; then
+    pass "45 restricts the Claude-only floor to unconfigured, absent or skipped critics"
+else
+    fail "45 Claude-only floor still covers 'every cross-model source skipped/failed' (HIMMEL-5536)"
+fi
+if ref_lacks 70-step7-nits.md 'gh pr view' && ref_has 70-step7-nits.md 'gh pr list --state open --head'; then
+    pass "70 resolves the PR with gh pr list --head"
+else
+    fail "70 resolves the PR with a bare gh pr view (HIMMEL-5536)"
+fi
+if ref_lacks 70-step7-nits.md 'cat > "$review_tmpfile"'; then
+    pass "70 writes the review temp file via the Write tool, not a heredoc"
+else
+    fail "70 still writes the review temp file with a heredoc (HIMMEL-5536)"
+fi
+if ref_has 70-step7-nits.md 'rerun `file-deferred-issues.sh` without `--dry-run`'; then
+    pass "70 tells the reader to rerun file-deferred-issues.sh without --dry-run"
+else
+    fail "70 tells the reader to re-invoke /pr-check to file, which only repeats the dry run (HIMMEL-5536)"
+fi
+
 echo "test-pr-check-pair: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

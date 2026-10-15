@@ -18,19 +18,20 @@
 
    ```bash
    # Phase A — persist the panel/codex adjudication verdicts you just rendered.
-   # Put one `VERDICT [<id>] = <verdict>` line per candidate in a quoted
-   # heredoc into scripts/cr/write-verdicts.sh, REPLACING the file's contents
-   # (step 0 truncated it). The helper is the classifier-sanctioned write path
-   # (HIMMEL-2131): the inline `cat > ... <<EOF` heredoc this fence used to run
-   # is denied by the auto-mode classifier, which silently degraded this
-   # structural signal to fail-open.
+   # Author one `VERDICT [<id>] = <verdict>` line per candidate in a scratch
+   # file with the Write tool, then hand that file to
+   # scripts/cr/write-verdicts.sh via --from-file, REPLACING the prior-blocking
+   # file's contents (step 0 truncated it). The helper is the
+   # classifier-sanctioned write path (HIMMEL-2131): an inline
+   # `cat > ... <<EOF` heredoc is denied by the auto-mode classifier, which
+   # silently degrades this structural signal to fail-open.
    # --branch takes step 0's printed `branch=` LITERAL (HIMMEL-2226: a runtime
    # value as a dash-flag operand is refused by the worktree-isolation guard,
    # and each fence is its own process anyway), SINGLE-QUOTED because a pasted
    # branch name is shell-parsed and a git ref may legitimately carry shell
    # metacharacters; the file is branch-scoped because git-common-dir is
    # SHARED across worktrees (round 1b).
-   # Pass ZERO verdict lines (empty heredoc body, as below) when 3.0
+   # Pass ZERO verdict lines (an empty scratch file) when 3.0
    # produced no candidates — the readers below then see an adjudicated-empty
    # set rather than an absent one. That empty write is ALSO the fail-open
    # default: a write that is skipped or left unfilled reads as 0 blockers,
