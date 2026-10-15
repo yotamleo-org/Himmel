@@ -834,6 +834,12 @@ contains "node/bun test file nothing runs: check 11 fails" "$out" "[FAIL] 11."
 UNW_EXTRA="printf 'run: bun test scripts/cfg --dots\n' > \"\$REPO/.github/workflows/ci.yml\""
 unw_run scripts/cfg/tests/ran.test.ts
 contains "test file under a dir a CI job runs bun test on: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'run: bun test scripts/other --dots\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/x.test.ts
+contains "test file beside a dir a CI job runs bun test on: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: bun test scripts/cfg/tests/deep\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/y.test.ts
+contains "test file above the dir a CI job runs bun test on: check 11 fails" "$out" "[FAIL] 11."
 UNW_EXTRA=''
 
 # existing debt is never judged: the same unwired hook, status modified
