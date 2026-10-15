@@ -6504,6 +6504,71 @@ out="$(c62_run "$c62_t/bun" "$c62_t/no-bun")"
 if grepq "$out" -F 'OK   C62-oxlint-runner' && grepq "$out" -F 'via bunx'; then pass "C62 bunx -> OK"; else fail "C62 bunx -> $(printf '%s' "$out" | grep -A1 C62)"; fi
 rm -rf "$c62_t"
 
+# --- C65-git-gates: git hooks installed + main protected, FAIL when not ---
+c65_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c65.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c65_t/home"
+c65_repo() { rm -rf "$c65_t/r"; git init -q "$c65_t/r" && git -C "$c65_t/r" remote add origin https://github.com/example/Repo.git; }
+c65_hook() { printf '#!/bin/sh\nexit 0\n' > "$c65_t/r/.git/hooks/$1"; chmod +x "$c65_t/r/.git/hooks/$1"; }
+# shellcheck disable=SC2016  # the stub's $-expressions must stay literal
+# gh stub: the protection endpoint prints $C65_PROT (or fails with $C65_PROT_ERR), the rules endpoint prints $C65_RULES.
+printf '%s\n' '#!/bin/sh' 'case "$*" in' \
+  '  *branches/main/protection*) [ -n "$C65_PROT_ERR" ] && { echo "$C65_PROT_ERR" >&2; exit 1; }; echo "${C65_PROT:-}"; exit 0 ;;' \
+  '  *rules/branches/main*) echo "${C65_RULES:-}"; exit 0 ;;' 'esac' 'exit 1' > "$c65_t/gh"
+chmod +x "$c65_t/gh"
+c65_run() { env -u CI CLAUDE_DIR="$c65_t/home/claude" HOME="$c65_t/home" HIMMEL_DOCTOR_GH="$c65_t/gh" "$@" bash "$DOC" --no-color --root "$c65_t/r" --only C65 2>&1; }
+
+echo "== C65: no git gate installed -> FAIL naming all three hook types (RED) =="
+c65_repo
+out="$(c65_run C65_PROT=1)"
+if grepq "$out" -E 'FAIL C65-git-hooks.*pre-commit.*commit-msg.*pre-push'; then pass "C65 no hooks -> FAIL"; else fail "C65 no hooks -> $(printf '%s' "$out" | grep -A1 C65)"; fi
+
+echo "== C65: all three hooks executable -> OK =="
+for h in pre-commit commit-msg pre-push; do c65_hook "$h"; done
+out="$(c65_run C65_PROT=1)"
+if grepq "$out" -F 'OK   C65-git-hooks'; then pass "C65 all hooks -> OK"; else fail "C65 all hooks -> $(printf '%s' "$out" | grep -A1 C65)"; fi
+
+echo "== C65: a non-executable hook is not installed (git ignores it) -> FAIL =="
+chmod -x "$c65_t/r/.git/hooks/commit-msg"
+out="$(c65_run C65_PROT=1)"
+if grepq "$out" -E 'FAIL C65-git-hooks.*commit-msg' && ! grepq "$out" -E 'FAIL C65-git-hooks.*pre-push'; then pass "C65 non-exec commit-msg -> FAIL naming only it"; else fail "C65 non-exec -> $(printf '%s' "$out" | grep -A1 C65)"; fi
+chmod +x "$c65_t/r/.git/hooks/commit-msg"
+
+echo "== C65: core.hooksPath pointing outside the repo -> FAIL =="
+mkdir -p "$c65_t/elsewhere"; git -C "$c65_t/r" config core.hooksPath "$c65_t/elsewhere"
+out="$(c65_run C65_PROT=1)"
+if grepq "$out" -E 'FAIL C65-git-hooks.*core\.hooksPath'; then pass "C65 hooksPath elsewhere -> FAIL"; else fail "C65 hooksPath -> $(printf '%s' "$out" | grep -A1 C65)"; fi
+git -C "$c65_t/r" config --unset core.hooksPath
+
+echo "== C65: a CI checkout has no dev hooks -> INFO, not FAIL =="
+c65_repo
+out="$(env CI=true CLAUDE_DIR="$c65_t/home/claude" HOME="$c65_t/home" HIMMEL_DOCTOR_GH="$c65_t/gh" bash "$DOC" --no-color --root "$c65_t/r" --only C65 2>&1)"
+if grepq "$out" -F 'INFO C65-git-hooks' && ! grepq "$out" -F 'FAIL C65'; then pass "C65 CI -> INFO"; else fail "C65 CI -> $(printf '%s' "$out" | grep -A1 C65)"; fi
+
+echo "== C65: branch protection readable and absent -> FAIL =="
+c65_repo
+out="$(c65_run C65_PROT_ERR='gh: Branch not protected (HTTP 404)')"
+if grepq "$out" -E 'FAIL C65-branch-protection.*main'; then pass "C65 unprotected -> FAIL"; else fail "C65 unprotected -> $(printf '%s' "$out" | grep C65-branch)"; fi
+
+echo "== C65: classic protection with required checks -> OK =="
+out="$(c65_run C65_PROT=3)"
+if grepq "$out" -F 'OK   C65-branch-protection'; then pass "C65 classic -> OK"; else fail "C65 classic -> $(printf '%s' "$out" | grep C65-branch)"; fi
+
+echo "== C65: no classic protection but a ruleset requires checks -> OK =="
+out="$(c65_run C65_PROT_ERR='gh: Branch not protected (HTTP 404)' C65_RULES=2)"
+if grepq "$out" -F 'OK   C65-branch-protection'; then pass "C65 ruleset -> OK"; else fail "C65 ruleset -> $(printf '%s' "$out" | grep C65-branch)"; fi
+
+echo "== C65: plan does not offer protection (HTTP 403 Upgrade) -> INFO, not FAIL =="
+out="$(c65_run C65_PROT_ERR='gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)')"
+if grepq "$out" -F 'INFO C65-branch-protection' && ! grepq "$out" -F 'FAIL C65-branch'; then pass "C65 403 -> INFO"; else fail "C65 403 -> $(printf '%s' "$out" | grep C65-branch)"; fi
+
+echo "== C65: gh unreadable (auth/network) -> WARN unverified, never a false OK =="
+out="$(c65_run C65_PROT_ERR='gh: HTTP 401 Bad credentials')"
+if grepq "$out" -F 'WARN C65-branch-protection' && ! grepq "$out" -F 'OK   C65-branch'; then pass "C65 unreadable -> WARN"; else fail "C65 unreadable -> $(printf '%s' "$out" | grep C65-branch)"; fi
+echo "== C65: jq missing -> WARN naming the gates that then exit 0 =="
+out="$(c65_run C65_PROT=1 HIMMEL_DOCTOR_JQ="$c65_t/no-jq")"
+if grepq "$out" -F 'WARN C65-gate-deps' && grepq "$out" -F 'template-version'; then pass "C65 no jq -> WARN"; else fail "C65 no jq -> $(printf '%s' "$out" | grep C65-gate)"; fi
+rm -rf "$c65_t"
+
 # --- --only selector + bounded parallel heavy checks ---
 c68_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c68.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c68_t/home"

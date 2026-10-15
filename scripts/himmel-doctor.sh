@@ -4152,6 +4152,81 @@ $rows
 EOF_ROWS
 }
 
+# --- C65-git-gates: are the git gates ON here? ---------------------------------
+# A gate that is not installed, or that git never reaches, is no gate. FAILs (the
+# one doctor check that does) when pre-commit / commit-msg / pre-push are not
+# executable in the hooks dir git actually uses, when core.hooksPath points out of
+# the repo, or when GitHub shows no protection on main (classic or ruleset). A CI
+# checkout is not a dev station (INFO); an unreadable protection answer is WARN,
+# never a false OK. A missing jq WARNs: three gates exit 0 without it. Test seams:
+# HIMMEL_DOCTOR_GH (the gh binary), HIMMEL_DOCTOR_JQ.
+check_c65_git_gates() {
+    local gh_bin="${HIMMEL_DOCTOR_GH:-gh}" hooks_dir missing="" h hp_out url nwo out rc n
+    if ! git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        emit INFO C65-git-hooks "not inside a git repo — nothing to check"
+        return
+    fi
+    if [ -n "${CI:-}" ]; then
+        emit INFO C65-git-hooks "CI checkout — dev git hooks and branch protection are not checked here"
+        return
+    fi
+    if ! command -v "${HIMMEL_DOCTOR_JQ:-jq}" >/dev/null 2>&1; then
+        emit WARN C65-gate-deps "jq not on PATH — the template-version, template-himmel-plugins and hook-file-parse gates exit 0 without checking" "install jq (scripts/install/deps.json lists it)"
+    fi
+    if hp_out="$(cd "$REPO_ROOT" && bash "$SELF_DIR/hooks/check-hookspath.sh" 2>&1)"; then :; else
+        rc=$?
+        if [ "$rc" -eq 1 ]; then
+            emit FAIL C65-git-hooks "core.hooksPath points outside this repo, so git never runs its hooks: $(printf '%s' "$hp_out" | head -1 | cut -c1-160)" \
+                "git config --unset core.hooksPath, then: pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push"
+            return
+        fi
+    fi
+    hooks_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)" || hooks_dir=""
+    case "$hooks_dir" in /*|[A-Za-z]:[/\\]*) ;; *) hooks_dir="$(git -C "$REPO_ROOT" rev-parse --git-path hooks 2>/dev/null)"; hooks_dir="$REPO_ROOT/$hooks_dir" ;; esac
+    for h in pre-commit commit-msg pre-push; do
+        if [ ! -f "$hooks_dir/$h" ] || { ! is_windows && [ ! -x "$hooks_dir/$h" ]; }; then missing="$missing${missing:+, }$h"; fi
+    done
+    if [ -n "$missing" ]; then
+        emit FAIL C65-git-hooks "git gate hook(s) not installed or not executable in $hooks_dir: $missing — every commit/push skips those gates" \
+            "pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push   # or: bash $REPO_ROOT/scripts/setup-hooks.sh"
+    else
+        emit OK C65-git-hooks "pre-commit, commit-msg and pre-push gates installed ($hooks_dir)"
+    fi
+
+    url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null)" || url=""
+    case "$url" in
+        *github.com[:/]*) nwo="${url#*github.com[:/]}"; nwo="${nwo%.git}" ;;
+        *) emit INFO C65-branch-protection "origin is not a GitHub remote — branch protection not checked"; return ;;
+    esac
+    if ! command -v "$gh_bin" >/dev/null 2>&1; then
+        emit WARN C65-branch-protection "gh not found — cannot verify branch protection on $nwo main (UNVERIFIED)" "install gh and run: gh auth login"
+        return
+    fi
+    out="$("$gh_bin" api "repos/$nwo/branches/main/protection" \
+        --jq '[(.required_status_checks.contexts // [] | length), (.required_status_checks.checks // [] | length)] | add' 2>&1)"; rc=$?
+    if [ "$rc" -eq 0 ] && [ "${out:-0}" -gt 0 ] 2>/dev/null; then
+        emit OK C65-branch-protection "branch protection on $nwo main requires $out status check(s)"
+        return
+    fi
+    if [ "$rc" -ne 0 ]; then
+        case "$out" in
+            *"Upgrade to GitHub Pro"*) emit INFO C65-branch-protection "$nwo is a private repo on a plan without branch protection (HTTP 403) — nothing to check"; return ;;
+            *"Branch not protected"*|*"HTTP 404"*) ;;
+            *) emit WARN C65-branch-protection "could not read branch protection on $nwo main (UNVERIFIED): $(printf '%s' "$out" | head -1 | cut -c1-120)" "gh auth status"; return ;;
+        esac
+    fi
+    n="$("$gh_bin" api "repos/$nwo/rules/branches/main" --jq '[.[] | select(.type == "required_status_checks")] | length' 2>&1)" || {
+        emit WARN C65-branch-protection "could not read rulesets on $nwo main (UNVERIFIED): $(printf '%s' "$n" | head -1 | cut -c1-120)" "gh auth status"
+        return
+    }
+    if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+        emit OK C65-branch-protection "a ruleset on $nwo main requires status checks"
+    else
+        emit FAIL C65-branch-protection "no branch protection and no ruleset requires status checks on $nwo main — a direct push or an unreviewed merge is not stopped server-side" \
+            "restore the protect-main ruleset / branch protection (Settings → Branches)"
+    fi
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4289,6 +4364,7 @@ run_check C61 check_c61_codex_cli
 run_check C62 check_c62_oxlint_runner
 run_check C63 check_c63_claude_cli
 run_check C64 check_c64_vm_runner
+run_check C65 check_c65_git_gates
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
