@@ -340,7 +340,7 @@ do_arm() {
 # naming each one. The console's own console-wait.sh waiter (and what it forked)
 # is the one exemption: it is stopped here, and only after nothing else blocks.
 wrap_subtree_gate() {
-    local sub src=0 plan kills blocks pid subs sp pp alive
+    local sub src=0 plan kills blocks pid subs sp cmd
     sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
     [ "$src" -ne 0 ] || return 0
     if [ "$src" -ne 1 ]; then
@@ -364,11 +364,11 @@ wrap_subtree_gate() {
             }
             for (a = 1; a <= n; a++) if (pid[a] in w) dep[pid[a]] = 0
             for (pass = 0; pass < 8; pass++) for (a = 1; a <= n; a++) if ((par[a] in dep) && !(pid[a] in dep)) dep[pid[a]] = dep[par[a]] + 1
-            for (a = 1; a <= n; a++) { if (pid[a] in w) print "KILL " pid[a]; else if (pid[a] in dep) print "SUB " dep[pid[a]] " " pid[a]; else if (!(pid[a] in ex)) print "BLOCK " row[a] }
+            for (a = 1; a <= n; a++) { if (pid[a] in w) print "KILL " pid[a]; else if (pid[a] in dep) { c = row[a]; sub(/^.*cmd=/, "", c); print "SUB " dep[pid[a]] " " pid[a] " " c } else if (!(pid[a] in ex)) print "BLOCK " row[a] }
         }')
     blocks=$(printf '%s\n' "$plan" | sed -n 's/^BLOCK //p')
     kills=$(printf '%s\n' "$plan" | sed -n 's/^KILL //p')
-    subs=$(printf '%s\n' "$plan" | sed -n 's/^SUB //p' | sort -rn | awk '{print $2}')
+    subs=$(printf '%s\n' "$plan" | sed -n 's/^SUB //p' | sort -rn)
     if [ -n "$blocks" ] || [ -z "$kills" ]; then
         printf '%s\n' "$sub" >&2
         err "wrap refused: this session has live non-harness processes (above) - stop them or let them finish, then re-run"
@@ -380,12 +380,10 @@ wrap_subtree_gate() {
             # its whole subtree first, deepest-first, each pid confirmed gone, so
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
-            alive=" $pid $(printf '%s' "$subs" | tr '\n' ' ') "
-            for sp in $subs; do
-                # a descendant that exited since the snapshot may have had its pid reused:
-                # signal only a pid still parented inside the waiter's subtree
-                pp=$(ps -o ppid= -p "$sp" 2>/dev/null | tr -d ' ') || true
-                case "$alive" in *" $pp "*) ;; *) continue ;; esac
+            while read -r _ sp cmd; do
+                # a descendant that exited since the snapshot may have had its pid
+                # reused: signal only a pid whose argv still matches its snapshot row
+                case "$(ps -o args= -p "$sp" 2>/dev/null)" in "$cmd"*) ;; *) continue ;; esac
                 kill -TERM "$sp" 2>/dev/null || true
                 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$sp" 2>/dev/null || break; sleep 0.2; done
                 if kill -0 "$sp" 2>/dev/null; then
@@ -396,7 +394,9 @@ wrap_subtree_gate() {
                     err "wrap refused: descendant $sp of the console-wait waiter survived TERM and KILL - waiter left running, re-run once it exits"
                     exit 5
                 fi
-            done
+            done <<EOS
+$subs
+EOS
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done

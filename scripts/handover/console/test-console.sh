@@ -2327,6 +2327,7 @@ bash "$w80/console-wait.sh" & waiter80=$!
 sleep 0.5
 mid80="$(pgrep -P "$waiter80" | head -n 1)"
 grand80="$(pgrep -P "$mid80" | head -n 1)"
+check "80 waiter grandchild: fixture pids found" "$([ -n "$mid80" ] && [ -n "$grand80" ] && echo yes || echo no)" "yes"
 printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/mid.sh\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$mid80" "$waiter80" "$w80" "$grand80" "$mid80" > "$w80/rows"
 rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
 check "80 waiter grandchild: wrap succeeds" "$rc" "0"
@@ -2344,6 +2345,7 @@ bash "$w80/console-wait.sh" & waiter80=$!
 sleep 0.5
 mid80="$(pgrep -P "$waiter80" | head -n 1)"
 grand80="$(pgrep -P "$mid80" | head -n 1)"
+check "80 TERM-ignoring descendant: fixture pids found" "$([ -n "$mid80" ] && [ -n "$grand80" ] && echo yes || echo no)" "yes"
 printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/mid.sh\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$mid80" "$waiter80" "$w80" "$grand80" "$mid80" > "$w80/rows"
 rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
 check "80 TERM-ignoring descendant: wrap succeeds" "$rc" "0"
