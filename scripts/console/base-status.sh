@@ -75,7 +75,7 @@ fi
 # under it clean. Word-split rebuild (fence paths carry no spaces, same
 # assumption arm-resume.sh's own space-separated fence: forwarding makes).
 #
-# Likewise strip a leading ./:: gh lists paths without one, so
+# Likewise strip a leading ./: gh lists paths without one, so
 # "./scripts/hooks" would match nothing. A bare "." (or "./", or empty after
 # stripping) is the repo root — normalized to "." which _touches_fence
 # treats as matching every path.
