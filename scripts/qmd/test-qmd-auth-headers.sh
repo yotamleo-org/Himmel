@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-qmd-auth-headers.sh - HIMMEL-5002: the qmd HTTP daemon requires a bearer
+# test-qmd-auth-headers.sh - the qmd HTTP daemon requires a bearer
 # token; the himmel client side reads it from a 0600 file.
 #
 # Covers: (a) qmd-auth-headers.sh prints the Authorization header from a 0600

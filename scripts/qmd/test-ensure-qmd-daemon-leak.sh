@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-ensure-qmd-daemon-leak.sh - HIMMEL-3775 regression: an early failure
+# test-ensure-qmd-daemon-leak.sh - regression: an early failure
 # partway through test-ensure-qmd-daemon.sh (a forced assertion failure right
 # after it starts a fake-daemon.sh stub, modeling a kill mid-run) must not
 # leak that stub process.

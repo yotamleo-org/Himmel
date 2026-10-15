@@ -16,7 +16,7 @@
 # (g) timeout(1) absent -> degrade branch still starts the daemon and exits 0;
 # (h) bun-global bin is preferred over a PATH qmd (resolution order);
 # (i) bun + the bun-global dist/cli/qmd.js is preferred over the bun bin shim
-#     AND a PATH qmd (HIMMEL-928 - the daemon child must inherit bun, never a
+#     AND a PATH qmd (the daemon child must inherit bun, never a
 #     node-shebang shim's node execPath).
 set -u
 
@@ -26,7 +26,7 @@ script="$repo_root/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
 work="$(mktemp -d)"
-# HIMMEL-3775: every fake-daemon.sh stub PID this run starts is tracked here
+# Every fake-daemon.sh stub PID this run starts is tracked here
 # and reaped on EXIT/INT/TERM (not only on the happy path), so a forced early
 # exit (an assertion failure, a kill partway through) never leaks a stub.
 declare -a STUB_PIDS=()
@@ -48,7 +48,7 @@ trap 'reap_stubs; rm -rf "$work"' EXIT
 # the suite instead of running on against a deleted work directory.
 trap 'reap_stubs; rm -rf "$work"; exit 130' INT
 trap 'reap_stubs; rm -rf "$work"; exit 143' TERM
-# Test-only hooks for HIMMEL-3775's leak regression test (test-ensure-qmd-daemon-leak.sh):
+# Test-only hooks for the leak regression test (test-ensure-qmd-daemon-leak.sh):
 # QMD_TEST_WORK_MARKER, if set, receives this run's unique $work path so the
 # leak test can pgrep -f its fake-daemon.sh by a marker no other run shares.
 # QMD_TEST_FORCE_FAIL_AFTER=start_fake_daemon forces an early exit right after
@@ -66,7 +66,7 @@ mkdir -p "$bin"
 
 # ---- timeout stub for hosts without GNU timeout (stock macOS) -----------------
 # The script under test degrades to an UNBOUNDED daemon start when timeout(1)
-# is absent, so (e) could never pass there (HIMMEL-3719). Provide a minimal
+# is absent, so (e) could never pass there. Provide a minimal
 # GNU-shaped stub in $bin: `timeout [-k N] SECS cmd...`, rc 124 on a kill.
 # ponytail: the stub ignores -k's KILL grace (TERM only), so a TERM-ignoring child would hang; upgrade path is providing coreutils timeout on the macOS runner.
 if ! command -v timeout >/dev/null 2>&1; then
@@ -194,7 +194,7 @@ grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || \
   fail "(b) dead->alive: qmd not called with 'mcp --http --daemon' (got: $(cat "$state/qmd-argv.log"))"
 echo "ok (b): dead endpoint starts daemon (qmd mcp --http --daemon) then goes alive"
 
-# ---- (b2) daemon cwd is $HOME, never the caller's cwd (HIMMEL-4334) ----------
+# ---- (b2) daemon cwd is $HOME, never the caller's cwd ----------
 # The daemon outlives the session that started it; inheriting a worktree cwd
 # pinned that worktree ("in use") long after its PR merged.
 rm -f "$state/alive" "$state/qmd-cwd.log"
@@ -324,7 +324,7 @@ grep -qx 'mcp --http --daemon' "$state/qmd-bun.log" || \
 echo "ok (h): bun-global qmd preferred over the PATH decoy"
 
 # ---- (i) bun + global qmd.js preferred over the bun bin shim -----------------
-# HIMMEL-928: create the bun-global dist/cli/qmd.js and a mock `bun`; the (h)
+# Create the bun-global dist/cli/qmd.js and a mock `bun`; the (h)
 # bun-bin shim and the PATH decoy stay in place - the `bun <qmd.js>` invocation
 # must win them both, so the daemon child inherits bun's execPath (the bin
 # shim honors the CLI's node shebang and would hand the daemon to node, where
@@ -377,7 +377,7 @@ grep -qx 'mcp --http --daemon' "$state/qmd-bun.log" || \
 echo "ok (i3): bun present without global qmd.js falls back to the bun bin shim"
 
 # ---- (i4) BUN_INSTALL override + missing qmd.js -> shim under the SAME root -
-# CodeRabbit (PR #1134): (i2) covered override+js-present and (i3) covered
+# (i2) covered override+js-present and (i3) covered
 # default-root+js-missing, but never the combination - which is exactly where
 # a $HOME-hardcoded shim fallback breaks under a relocated bun root. The shim
 # must resolve from $BUN_INSTALL/bin, not $HOME/.bun/bin.
@@ -402,7 +402,7 @@ grep -qx 'mcp --http --daemon' "$state/qmd-custom-shim.log" || \
 [ ! -f "$state/qmd-bun.log" ] || fail "(i4) override+js-absent: default \$HOME shim used instead of the BUN_INSTALL root"
 echo "ok (i4): BUN_INSTALL override + missing qmd.js falls back to the override root's shim"
 
-# ---- (j) port held by a dying process delays the start (HIMMEL-3062) --------
+# ---- (j) port held by a dying process delays the start --------
 # A fixture binds+listens on a REAL localhost port (no MCP handshake - a raw
 # TCP connect should still see it as held) for hold_secs seconds, then
 # releases it - simulating the ~15s bun-thread unwind window after SIGTERM on
@@ -469,7 +469,7 @@ grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || \
   fail "(j) port-held: qmd was never invoked after the port freed"
 echo "ok (j): dying process holding the port delays the daemon start until it releases"
 
-# ---- (k)-(n) memory ceiling + detached self-recycle (HIMMEL-3062) -----------
+# ---- (k)-(n) memory ceiling + detached self-recycle -----------
 # A fake "daemon" (a real process, so kill/kill -0 are real) is named by a
 # pidfile under a scratch XDG_CACHE_HOME; a mock ps reports its RSS. The fake
 # models the ~15s bun unwind: on SIGTERM it takes UNWIND seconds to exit, then
@@ -553,7 +553,7 @@ echo "ok (k): RSS under the ceiling leaves the daemon alone"
 
 # ---- (l) over the ceiling: hook returns promptly, recycle runs DETACHED -----
 # The fake takes 4s to unwind; the hook must not wait for it (SessionStart
-# budget, HIMMEL-1844) - it returns at once and the recycler finishes later.
+# budget) - it returns at once and the recycler finishes later.
 rm -f "$state/alive" "$state/ps-argv.log" "$xdg/qmd/recycle.stamp" "$xdg/qmd/recycle.log"
 start_fake_daemon 4
 run_ceiling 7340032   # 7 GB
@@ -649,7 +649,7 @@ kill "$fake_pid" 2>/dev/null || true
 wait "$fake_pid" 2>/dev/null || true
 echo "ok (q): a stale lock is cleared, and the next session recycles"
 
-# ---- (r) an embed-model swap in progress: the daemon is NOT started (HIMMEL-4314) --
+# ---- (r) an embed-model swap in progress: the daemon is NOT started --
 # qmd-embed-model.sh swap holds <cache>/qmd/embed-swap.lock (holder pid inside)
 # from its liveness check to its commit/rollback. A daemon relaunched in that
 # window served gemma query embeddings against qwen vectors. Every start path
@@ -686,7 +686,7 @@ run_ensure sentinel "$bin:$safe"
 grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || fail "(s) stale swap lock: the daemon was not started"
 echo "ok (s): a swap lock whose holder is dead is cleared and the daemon starts"
 
-# ---- (t) the start itself holds the lock, so a swap cannot slip in (HIMMEL-4314) --
+# ---- (t) the start itself holds the lock, so a swap cannot slip in --
 # Checking the lock and then starting leaves a window: a swap could take the lock
 # between the two and pass its own liveness checks. The start path takes the same
 # lock around the start, so a swap started meanwhile is refused, and releases it.
@@ -742,7 +742,7 @@ wait "$holder_pid" 2>/dev/null || true
 rm -rf "$swap_lock"
 echo "ok (v): a live holder with no role is refused like a swap"
 
-# ---- (w) operator opt-out (HIMMEL-4494): flag file / env => never launch ------
+# ---- (w) operator opt-out: flag file / env => never launch ------
 off_flag="$home/.himmel/state/qmd-daemon.off"
 mkdir -p "$(dirname "$off_flag")"
 : > "$off_flag"

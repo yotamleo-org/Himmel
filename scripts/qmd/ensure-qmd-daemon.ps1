@@ -1,5 +1,5 @@
 ﻿# ensure-qmd-daemon.ps1 - operator-facing MANUAL Windows twin of the qmd
-# plugin's ensure script (HIMMEL-592).
+# plugin's ensure script.
 #
 # The SessionStart hook path is the bash script INSIDE the vendored plugin
 # (marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh, wired via the
@@ -28,14 +28,14 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (same fix as gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $InitPayload = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ensure-qmd-daemon","version":"1"}}}'
 
 function Resolve-QmdInvocation {
     # Returns a string[] argv prefix, or $null when qmd is absent. Preference
-    # order — parity with the plugin bash hook (HIMMEL-928):
+    # order — parity with the plugin bash hook:
     #   1. bun + the bun-global @tobilu/qmd dist/cli/qmd.js -> @('bun', <qmd.js>)
     #   2. bun global bin shim ($HOME\.bun\bin\qmd.exe / qmd)
     #   3. PATH
@@ -45,16 +45,15 @@ function Resolve-QmdInvocation {
     # installed. Under bun qmd uses bun:sqlite; under node it needs the
     # better-sqlite3 native binding, which bun's install blocks by default and
     # which breaks again on every node ABI bump (reproduced live: absent
-    # binding + node 26 killed the daemon at startup — HIMMEL-928).
-    # Bun-before-PATH: a broken Windows qmd stub can shadow PATH
-    # (HIMMEL-163), so the known-good bun install wins when present.
+    # binding + node 26 killed the daemon at startup).
+    # Bun-before-PATH: a broken Windows qmd stub can shadow PATH,
+    # so the known-good bun install wins when present.
     $bunRoot = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $HOME '.bun' }
     $bunJs = Join-Path $bunRoot 'install\global\node_modules\@tobilu\qmd\dist\cli\qmd.js'
     $bun = Get-Command bun -ErrorAction SilentlyContinue
     if ($bun -and (Test-Path $bunJs)) { return @($bun.Source, $bunJs) }
     # Same $bunRoot for the shim fallbacks: a relocated BUN_INSTALL must not
-    # resolve the js from one root and the shim from $HOME\.bun (CodeRabbit,
-    # PR #1134).
+    # resolve the js from one root and the shim from $HOME\.bun.
     $bunExe = Join-Path $bunRoot 'bin\qmd.exe'
     if (Test-Path $bunExe) { return @($bunExe) }
     $bunShim = Join-Path $bunRoot 'bin\qmd'
@@ -103,7 +102,7 @@ if ($PSCmdlet.ShouldProcess($Url, 'start qmd mcp --http --daemon')) {
     # qmd/bun start must not stall the caller indefinitely.
     $startOut = @()
     $job = Start-Job -ScriptBlock {
-        # Separate runspace: the file-scope UTF-8 setting does not reach here (HIMMEL-2256).
+        # Separate runspace: the file-scope UTF-8 setting does not reach here.
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $argv = @($using:qmd) + @('mcp', '--http', '--daemon')
         & $argv[0] @($argv | Select-Object -Skip 1) 2>&1

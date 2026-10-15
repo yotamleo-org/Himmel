@@ -1,9 +1,9 @@
 # register-qmd-daemon-logon.ps1 - register a per-user ONLOGON scheduled task
 # that runs ensure-qmd-daemon.ps1, so the shared qmd HTTP MCP daemon
 # (localhost:8181) is back up after every reboot without waiting for the
-# first Claude session's SessionStart hook (HIMMEL-928).
+# first Claude session's SessionStart hook.
 #
-# Lean-invoke, operator-run (HIMMEL-177): registration is a one-shot per
+# Lean-invoke, operator-run: registration is a one-shot per
 # machine, never a hook. Idempotent - re-running overwrites the existing
 # task (-Force). Windows-only by design (the daemon-at-boot convenience);
 # POSIX machines rely on the SessionStart hook. Remove with:
