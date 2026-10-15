@@ -50,6 +50,12 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > no `commands/` directory, on in the interactive `user` profile only. See
 > [marketplace/plugins/pstack/README.md](../marketplace/plugins/pstack/README.md).
 
+> **Not itemized: `marketplace/plugins/humanizer/skills/`**.
+> One vendored `blader/humanizer` skill, `disable-model-invocation: true`
+> (`/humanizer`): typed by the operator, no `commands/` directory, on in no
+> profile. See
+> [marketplace/plugins/humanizer/README.md](../marketplace/plugins/humanizer/README.md).
+
 > **Not itemized: `marketplace/plugins/shadcn-mcp/skills/`**.
 > One himmel-owned skill, `motion-budget`: the design core's short animation
 > duration and frequency note, model-invoked (no slash command). See
