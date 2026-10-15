@@ -88,6 +88,10 @@ export DOCTOR_OBSERVABILITY_SKIP=1
 # the C20 cases set NODE_MAJOR_DRIFT_OK=0 (and CI/GITHUB_ACTIONS empty) per-case.
 export NODE_MAJOR_DRIFT_OK=1
 
+# C65 reads the REAL checkout's git hooks and branch protection; a CI checkout has no dev hooks,
+# so cases that blank CI would FAIL there. Skip it globally; the C65 cases opt back in.
+export DOCTOR_C65_SKIP=1
+
 # Hermeticity (HIMMEL-2024): C21 reads the operator's REAL hermes install
 # (LOCALAPPDATA/hermes) unless seamed — point it at a nonexistent dir globally
 # (check_c21's `[ ! -d ]` guard) so unrelated cases get a deterministic
@@ -6515,7 +6519,7 @@ printf '%s\n' '#!/bin/sh' 'case "$*" in' \
   '  *branches/main/protection*) [ -n "$C65_PROT_ERR" ] && { echo "$C65_PROT_ERR" >&2; exit 1; }; echo "${C65_PROT:-}"; exit 0 ;;' \
   '  *rules/branches/main*) echo "${C65_RULES:-0}"; exit 0 ;;' 'esac' 'exit 1' > "$c65_t/gh"
 chmod +x "$c65_t/gh"
-c65_run() { env -u CI CLAUDE_DIR="$c65_t/home/claude" HOME="$c65_t/home" HIMMEL_DOCTOR_GH="$c65_t/gh" "$@" bash "$DOC" --no-color --root "$c65_t/r" --only C65 2>&1; }
+c65_run() { env -u CI -u DOCTOR_C65_SKIP CLAUDE_DIR="$c65_t/home/claude" HOME="$c65_t/home" HIMMEL_DOCTOR_GH="$c65_t/gh" "$@" bash "$DOC" --no-color --root "$c65_t/r" --only C65 2>&1; }
 
 echo "== C65: no git gate installed -> FAIL naming all three hook types (RED) =="
 c65_repo

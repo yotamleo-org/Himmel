@@ -4166,6 +4166,10 @@ check_c65_git_gates() {
         emit INFO C65-git-hooks "not inside a git repo — nothing to check"
         return
     fi
+    if [ "${DOCTOR_C65_SKIP:-0}" = 1 ]; then
+        emit INFO C65-git-hooks "skipped (DOCTOR_C65_SKIP=1)"
+        return
+    fi
     if [ -n "${CI:-}" ]; then
         emit INFO C65-git-hooks "CI checkout — dev git hooks and branch protection are not checked here"
         return
