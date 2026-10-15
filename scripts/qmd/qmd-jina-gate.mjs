@@ -158,9 +158,9 @@ if (dbPath && existsSync(dbPath)) {
 }
 
 const baseUrl = models.openai_base_url || process.env.QMD_OPENAI_BASE_URL || "";
-// Refusals print the endpoint without userinfo or query: a key pasted into the URL must never reach a log.
+// Refusals print only scheme and host: a key pasted into the URL (userinfo, path or query) must never reach a log.
 const urlHasUserinfo = (() => { try { const u = new URL(baseUrl); return !!(u.username || u.password); } catch { return false; } })();
-const shownBase = (() => { try { const u = new URL(baseUrl); return `${u.protocol}//${u.host}${u.pathname}`; } catch { return "(unparseable URL, text withheld)"; } })();
+const shownBase = (() => { try { const u = new URL(baseUrl); return `${u.protocol}//${u.host}`; } catch { return "(unparseable URL, text withheld)"; } })();
 function providerOf() {
   if (!baseUrl) return "openai-unconfigured"; // cannot be proven local
   let url;

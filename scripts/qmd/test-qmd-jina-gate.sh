@@ -344,6 +344,10 @@ cfg "$work/leak3.yml" "$OR_EMBED" "$OR_RERANK" 'http://user:sk-url-secret-5@evil
 run_gate "$work/leak3.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(36c) insecure base URL with userinfo: expected rc 3, got $rc"
 if grep -q 'sk-url-secret-5' "$work/err"; then fail "(36c) the insecure-endpoint refusal printed the userinfo"; fi
+cfg "$work/leak4.yml" "$OR_EMBED" "$OR_RERANK" 'http://evil.example/sk-path-secret-7/v1' himmel
+run_gate "$work/leak4.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(36d) insecure base URL with a secret in the path: expected rc 3, got $rc"
+if grep -q 'sk-path-secret-7' "$work/err"; then fail "(36d) the insecure-endpoint refusal printed the URL path"; fi
 
 # (37) an index that holds salus must pin explicit local models for every role.
 printf 'collections:\n  salus:\n    path: /nonexistent/salus\n' > "$work/s1.yml"
@@ -360,7 +364,7 @@ run_gate "$work/s3.yml"; rc=$?
 # (38) a non-loopback remote role needs the provider key in THIS process env when the
 # caller asks (the launcher does); loopback needs none.
 cfg "$work/k1.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
-QMD_GATE_REQUIRE_KEY=1 run_gate "$work/k1.yml"; rc=$?
+( unset QMD_OPENAI_API_KEY JINA_API_KEY JINA_API; QMD_GATE_REQUIRE_KEY=1 run_gate "$work/k1.yml" ); rc=$?
 [ "$rc" -eq 3 ] || fail "(38a) remote role with no key in the env: expected rc 3, got $rc"
 grep -q 'QMD_OPENAI_API_KEY' "$work/err" || fail "(38a) the refusal must name QMD_OPENAI_API_KEY: $(cat "$work/err")"
 QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY=sk-env-secret-6 run_gate "$work/k1.yml"; rc=$?
