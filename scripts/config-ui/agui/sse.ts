@@ -113,8 +113,9 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   const subs: Source[] = [];
   const known = new Set<string>([path]);
   let held: Line[] = []; // lines read but not yet safe to map (see the merge in pull)
-  let session: string | undefined, busSince = 0;
+  let session: string | undefined;
   const mine = new Set<string>(); // ids of the bus messages this session sent or received
+  const sent = new Set<string>(); // keys of the bus events already emitted: the store is re-read whole each poll, so a late append with an older timestamp is not skipped
   let order = 0, grewAt = started, beatAt = started, runOpen = false, closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined, deadline: ReturnType<typeof setTimeout> | undefined, wake: (() => void) | undefined;
   const cleanup = () => {
@@ -166,26 +167,28 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
     for (const l of lines) {
       if (!l.text.includes('"agent-name"')) continue;
       try { const n = JSON.parse(l.text); if (n?.type === "agent-name" && typeof n.agentName === "string") {
-        if (session !== n.agentName) { mine.clear(); busSince = 0; } // a new name is a new bus identity: collect its history afresh
+        if (session !== n.agentName) { mine.clear(); sent.clear(); } // a new name is a new bus identity: collect its history afresh
         session = n.agentName;
       } } catch { /* torn line */ }
     }
   };
   const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => mapper.pushLine(l.text));
-  // The bus events newer than the last poll that belong to this session: a send by or to it, and the
+  // The bus events not yet emitted that belong to this session: a send by or to it, and the
   // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
   type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
   const busFor = async (): Promise<AguiEvent[]> => {
     if (!o.busRoot || !session) return [];
     const batch: BusDelta[] = [];
-    try { for await (const e of busEvents(o.busRoot, { since: busSince })) batch.push(e as BusDelta); } catch { return []; } // no store yet: nothing to merge
+    try { for await (const e of busEvents(o.busRoot, { since: 0 })) batch.push(e as BusDelta); } catch { return []; } // no store yet: nothing to merge
     const idOf = (e: BusDelta) => /^\/bus\/msgs\/([^/]+)/.exec(e.delta[0].path)?.[1] ?? "";
     for (const e of batch) {
       const d = e.delta[0];
       if (/^\/bus\/msgs\/[^/]+$/.test(d.path) && (d.value?.f === session || d.value?.r === session)) mine.add(idOf(e));
     }
-    for (const e of batch) if (e.timestamp > busSince) busSince = e.timestamp; // a loop: a spread of a huge first batch overflows the argument limit
-    return batch.filter((e) => mine.has(idOf(e)));
+    const fresh = batch.filter((e) => mine.has(idOf(e)) && !sent.has(`${e.delta[0].path}@${e.timestamp}`));
+    for (const e of fresh) sent.add(`${e.delta[0].path}@${e.timestamp}`);
+    if (fresh.length) grewAt = Date.now(); // bus traffic is activity: the idle timer must not close a stream that is receiving it
+    return fresh;
   };
   return new ReadableStream<Uint8Array>({
     // pull() is not called while a stalled client leaves the queue full, so the

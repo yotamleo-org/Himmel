@@ -525,3 +525,35 @@ test("GET /api/agui/<run> merges the run's bus events through the server", async
   expect(paths).toContain("/bus/msgs/H1");
   expect(paths.filter((x) => x.includes("H2"))).toEqual([]);
 });
+
+// bus traffic is activity: a stream fed only by bus messages stays open past idleMs while they keep arriving
+test("a stream with only bus traffic does not idle-close", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 400, busRoot: root })).text();
+  for (const i of ["I1", "I2", "I3", "I4", "I5"]) {
+    await sleep(200);
+    await append(root, "leg-a", { t: Date.now(), b: "x", c: 0, i, f: "console-x", r: "leg-a" });
+  }
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/I5");
+});
+
+// a message appended later but stamped older than one already delivered is still delivered
+test("a late-written bus message with an older timestamp is still delivered", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const t = Date.now();
+  await append(root, "leg-a", { t, b: "x", c: 0, i: "L1", f: "console-x", r: "leg-a" });
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 600, busRoot: root })).text();
+  await sleep(200);
+  await append(root, "leg-a", { t: t - 3000, b: "x", c: 0, i: "L2", f: "console-x", r: "leg-a" });
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/L1");
+  expect(paths).toContain("/bus/msgs/L2");
+  expect(paths.filter((x) => x === "/bus/msgs/L1")).toHaveLength(1);
+});
