@@ -7,11 +7,10 @@ list in your brief; the leg that asked does not. Your job: **read what the
 request names, answer the one question, write the answer, and stop.** You do not
 implement, edit files, open or push a PR, merge, or take on a second question.
 
-This file is appended to your system prompt by `headed-arm-leg.sh --consult`,
-so these rules are already in force. Your brief carries only the facts specific
-to *you*: the question, the paths to read, the asker, your RETASK token, your
-console's session name, and your consult doc. Where the brief and this preface
-disagree, the **brief wins**; a brief silent on something here has not relaxed it.
+This file is appended to your system prompt by `headed-arm-leg.sh --consult`; your
+brief carries only what is specific to you (question, paths, asker, RETASK token,
+console, consult doc). Where they disagree the **brief wins**; a brief silent on
+something here has not relaxed it.
 
 ## Who you are talking to
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # block-subagent-park.sh — PreToolUse hook (matcher "Bash|Monitor"): denies a
 # subagent (Agent-tool worker) from parking — backgrounding a Bash call or
-# reaching for the Monitor tool — inside a subagent session. (HIMMEL-2140)
+# reaching for the Monitor tool — inside a subagent session.
 #
 # WHY: worker subagents park — a long run gets backgrounded
 # (run_in_background:true) or the worker reaches for the Monitor tool, then
@@ -68,7 +68,7 @@ input=$(cat 2>/dev/null || true)
 
 # Subagent precondition (see header) — a main-thread/parent session carries
 # no agent_id and is never gated by this hook.
-# Accept agent_id ONLY as a NON-EMPTY STRING (CR round 1, HIMMEL-2140).
+# Accept agent_id ONLY as a NON-EMPTY STRING.
 # Two traps, one rule. (a) `.agent_id // empty` is wrong: jq's `//` swallows
 # `false` as well as null, so `"agent_id": false` would read ABSENT and
 # silently skip the gate. (b) But the inverse over-correction is wrong too:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-cr-marker-on-pr-create.sh (HIMMEL-213).
+# Smoke test for scripts/hooks/check-cr-marker-on-pr-create.sh.
 #
-# HIMMEL-213: the hook used to resolve the branch from CLAUDE_PROJECT_DIR
+# the hook used to resolve the branch from CLAUDE_PROJECT_DIR
 # (the main checkout, on `main`), but `gh pr create` actually runs in a
 # worktree on a feature branch. It looked up cr-pending/main (empty) and
 # never fired. The fix parses `--head <branch>` from the extracted
@@ -20,7 +20,7 @@
 #      -> BLOCK (exit 2) — fall-back path not regressed.
 #   5. Non-`gh pr create` command -> allow (exit 0).
 #
-# HIMMEL-1372 (matcher portability) additionally covers:
+# Matcher portability additionally covers:
 #   6. `gh  pr   create` (extra whitespace) still matches -> BLOCK.
 #   7. the matcher regex uses POSIX EREs only — no `\s`/`\b` (GNU-only, inert
 #      on BSD grep, which would silently un-gate the whole hook on macOS).
@@ -29,15 +29,15 @@
 #   9. an argument-less invocation whose token-end char is a metacharacter
 #      (`gh pr create;`, `$(gh pr create)`, `>`, `&&`) still matches -> BLOCK.
 #
-# HIMMEL-1975 (ordinary command positions) additionally covers:
+# Ordinary command positions additionally cover:
 #  10. `{ … ; }`, `if`, `!`, a leading reserved word, and the wrapper commands
 #      (`sudo`/`env`/`timeout`/`xargs`) all still reach the gate -> BLOCK.
 #  11. the widening did NOT become "match anywhere": a grep search and a commit
 #      message that merely QUOTE `gh pr create` stay negative -> allow.
 #  12. the PreToolUse and PostToolUse matcher lines are byte-identical
-#      (HIMMEL-1362 lockstep — they have already diverged once).
+#      (lockstep — they have already diverged once).
 #
-# HIMMEL-2035 (the gate follows the TOOL CALL's repo, not CLAUDE_PROJECT_DIR)
+# The gate follows the TOOL CALL's repo, not CLAUDE_PROJECT_DIR; this
 # additionally covers:
 #  13. payload cwd = a foreign repo with a marker -> BLOCK (that repo's marker,
 #      which CLAUDE_PROJECT_DIR could never see);
@@ -119,7 +119,7 @@ write_marker() {
 # Run the hook with a given command string as the PreToolUse payload, with
 # CLAUDE_PROJECT_DIR pointed at the main checkout. Returns exit code via rc.
 #
-# $2/$3/$4 are optional (HIMMEL-2035): the payload's top-level `cwd`, its
+# $2/$3/$4 are optional: the payload's top-level `cwd`, its
 # `tool_input.cwd`, and a CLAUDE_PROJECT_DIR override. Omitted -> the payload
 # carries no cwd key at all, which is exactly the shape every pre-2035 case
 # above sends, so those keep exercising the CLAUDE_PROJECT_DIR path.
@@ -296,7 +296,7 @@ for meta_cmd in 'gh pr create;' 'gh pr create>out.txt' 'gh pr create&&echo done'
 done
 
 # Test 10: ordinary command positions the old class missed -> BLOCK ---
-# HIMMEL-1975. The anchor used to cover only line-start and `; & | ` $( (`, so
+# The anchor must cover more than only line-start and `; & | ` $( (`, so
 # every shape below reached the gate and was waved through. Each names
 # `--head feat/X`, whose marker is present, so BLOCK (exit 2) proves the
 # MATCHER fired — allow (exit 0) means the shape slipped the gate entirely.
@@ -345,9 +345,9 @@ for label in $neg2_labels; do
     shift
 done
 
-# Test 12: the two twins carry the SAME matcher line (HIMMEL-1362 lockstep) --
+# Test 12: the two twins carry the SAME matcher line (lockstep) --
 # They have diverged once already (the end-of-token class landed in this hook
-# on HIMMEL-1372 and not in the sibling), and a divergence means the PostToolUse
+# and not in the sibling), and a divergence means the PostToolUse
 # trigger silently stops firing on shapes the PreToolUse gate blocks.
 echo "TEST: PreToolUse and PostToolUse matchers are byte-identical"
 twin="$SCRIPT_DIR/trigger-cr-on-pr-create.sh"
@@ -362,7 +362,7 @@ else
     twin: $twin_matcher"
 fi
 
-# Test 13: the repo is the TOOL CALL's, not CLAUDE_PROJECT_DIR (HIMMEL-2035) --
+# Test 13: the repo is the TOOL CALL's, not CLAUDE_PROJECT_DIR --
 echo "TEST: payload cwd selects the repo whose marker is checked"
 
 # A repo that is emphatically NOT the himmel checkout.
@@ -459,9 +459,8 @@ esac
 
 # (f) spec 2.4 named exception - a DELIBERATE tightening for himmel's own
 # branches. cwd = a worktree on feat/y with a marker, CLAUDE_PROJECT_DIR = the
-# primary on main, no --head. Pre-2035 this looked up cr-pending/main, found
-# nothing and waved the create through (the accepted missed block of
-# HIMMEL-213). Now the marker is real, so the block is true.
+# primary on main, no --head. Looking up cr-pending/main would find
+# nothing and wave the create through. The marker is real, so the block is true.
 PRIMARY2="$TMP_ROOT/primary2"
 mk_repo "$PRIMARY2" "feat/y"
 git -C "$PRIMARY2" checkout -q main
@@ -493,7 +492,7 @@ else
     fail "expected exit 2 via the .cwd candidate, got rc=$rc" "out: $out"
 fi
 
-# (h) CR round 2: on a jq-less box the fallback must offer EVERY payload `cwd`
+# (h) On a jq-less box the fallback must offer EVERY payload `cwd`
 # as a candidate. Built by dropping jq's OWN directory from PATH (skipped when
 # it shares one with git — removing it would break the hook itself, and the case
 # would then pass for the wrong reason). The invalid value is FIRST in the raw
@@ -518,8 +517,8 @@ else
         else
             fail "jq-less fallback lost the valid .cwd (rc=$rc)" "out: $out"
         fi
-        # ...and it must honour the PRECEDENCE, not the raw JSON key order (CR
-        # round 3). Here the top-level `cwd` is serialized FIRST and points at a
+        # ...and it must honour the PRECEDENCE, not the raw JSON key order.
+        # Here the top-level `cwd` is serialized FIRST and points at a
         # repo with no marker; `.tool_input.cwd` comes later and points at one
         # with a marker. Exit 2 can only mean .tool_input.cwd won on merit.
         jqless_order="{\"cwd\":\"$FOREIGN\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh pr create --base main\",\"cwd\":\"$FOREIGN2\"}}"
@@ -577,7 +576,7 @@ fr1a "no --repo at all" "$FOREIGN2" "https://github.com/owner/name"     "gh pr c
 fr1a "diverge, no marker" "$FOREIGN3" "https://github.com/owner/name" "gh pr create --repo other/thing --base main" 0 yes
 fr1a "match, no marker"   "$FOREIGN3" "https://github.com/owner/name" "gh pr create --repo owner/name --base main"  0 no
 
-# Test 15: HIMMEL-2720 instance 2 — unreadable HEAD fails CLOSED -------
+# Test 15: unreadable HEAD fails CLOSED -------
 # `git rev-parse HEAD` failing with truly empty stdout (not the unborn-branch
 # shape, which git answers with the literal echoed argument "HEAD" on stdout
 # alongside its fatal error, and so never falls open through the empty-string
@@ -585,7 +584,7 @@ fr1a "match, no marker"   "$FOREIGN3" "https://github.com/owner/name" "gh pr cre
 # (`--is-inside-work-tree`, `branch --show-current`, `--git-common-dir`) pass
 # through to the real binary, and only the exact `-C <repo> rev-parse HEAD`
 # call the fixed code path guards fails, emitting nothing on stdout. The
-# operator ruled (HIMMEL-2720) that this must DENY, not fall open: a hook
+# operator ruled that this must DENY, not fall open: a hook
 # that cannot read HEAD must not wave a pending-CR PR through.
 echo "TEST: unreadable HEAD (git rev-parse HEAD fails empty), marker present -> DENY (rc=2), names the cause"
 UNREADABLE="$TMP_ROOT/unreadable"
@@ -605,7 +604,7 @@ STUBEOF
 chmod +x "$GIT_STUB_DIR/git"
 # TMP_ROOT is `cygpath -m` (C:/...) on Git Bash; a colon-joined PATH entry in that
 # form splits at the drive colon, so the shim was never found and the real git
-# answered (HIMMEL-3182). PATH takes the POSIX form; a no-op elsewhere.
+# answered. PATH takes the POSIX form; a no-op elsewhere.
 GIT_STUB_PATH="$(cygpath -u "$GIT_STUB_DIR" 2>/dev/null || printf '%s' "$GIT_STUB_DIR")"
 rc=0
 out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr create --base main"}}' \
@@ -633,7 +632,7 @@ else
     fail "expected exit 0 (no marker means nothing pending), got rc=$rc" "out: $out"
 fi
 
-# HIMMEL-1373: a separator inside a quoted string is not a command position ---
+# a separator inside a quoted string is not a command position ---
 write_marker "feat/X"
 # Every row carries `--head feat/X --base main` inside the quote so a missed
 # match WOULD resolve the marked branch and block: a negative that stops at

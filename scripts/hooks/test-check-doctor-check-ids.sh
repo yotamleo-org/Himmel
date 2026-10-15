@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-doctor-check-ids.sh (HIMMEL-2664).
+# Smoke test for scripts/hooks/check-doctor-check-ids.sh.
 #
 # Builds throwaway git repos with a fixture scripts/himmel-doctor.sh staged,
 # exercises each rc case, asserts exact rc. Modeled on test-doc-guard.sh:

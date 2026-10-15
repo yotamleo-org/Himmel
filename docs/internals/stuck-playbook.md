@@ -528,7 +528,7 @@ never the problem.
 **What to do:** retype the same script call as the **bare literal** its
 allow rule spells out — unquoted, no `$VAR`, no `cd … &&` prefix, no pipe
 into the gate script itself (write the input to a file first). That is the
-one permitted retry (`docs/handover/leg-preface.md`, "How you work"). If the
+one permitted retry (`docs/handover/leg-sections/shell-and-tests.md`). If the
 bare literal is *still* denied, this is not a spelling problem: stop, do not
 try a third spelling, and go `BLOCKED` to the supervisor session.
 

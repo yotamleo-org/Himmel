@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-agents-md-fresh.sh (HIMMEL-471).
+# Smoke test for scripts/hooks/check-agents-md-fresh.sh.
 # Builds throwaway git repos, exercises each rc case, asserts exact rc.
 # The hook is run IN PLACE from the real tree (it resolves the generator +
 # guardrails/lib.sh via its own SCRIPT_DIR); only the GIT REPO is a tempdir.

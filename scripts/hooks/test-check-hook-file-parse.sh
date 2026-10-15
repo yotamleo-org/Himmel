@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-check-hook-file-parse.sh — paired tests for the PostToolUse guard that
-# catches a hook file which does not parse (HIMMEL-2230).
+# catches a hook file which does not parse.
 #
 # The guard exists because a scripts/hooks/*.sh is LIVE the instant it is
 # written: the motivating incident never reached a commit, so every commit-time

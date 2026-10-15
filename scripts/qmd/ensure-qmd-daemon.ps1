@@ -117,7 +117,9 @@ if ($PSCmdlet.ShouldProcess($Url, 'start qmd mcp --http --daemon')) {
         Write-Error "ensure-qmd-daemon: 'qmd mcp --http --daemon' timed out after ${QmdStartTimeout}s (killed). Check the daemon log: $HOME\.cache\qmd\mcp.log"
         exit 1
     }
-    for ($i = 0; $i -lt 5; $i++) {
+    # Wait as long as the start bound: a daemon slow to bind at logon must not
+    # make the ONLOGON task exit 1 (Last Result=1) and then come up healthy.
+    for ($i = 0; $i -lt $QmdStartTimeout; $i++) {
         if ((Test-QmdAlive -ProbeUrl $Url) -eq 'alive') { exit 0 }
         Start-Sleep -Seconds 1
     }

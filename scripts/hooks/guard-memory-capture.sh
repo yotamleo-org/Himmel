@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse guard for the Claude Code auto-memory store (HIMMEL-570 / HIMMEL-1088).
+# PreToolUse guard for the Claude Code auto-memory store.
 #
 # The always-loaded MEMORY.md index is O(themes), not O(facts): it carries one
 # <=200-char ROUTING line per theme, and the facts live in the theme TOPIC FILES
@@ -9,7 +9,7 @@
 # Everything semantic (is this status-only? does a theme already cover it?) is
 # NOT decidable here and is left to the model + the memory-compound skill.
 #
-# Design authority: spec HIMMEL-1076-memory-strategy.md **Revision 2** (D4 AMEND)
+# Design authority: the memory-strategy spec (Revision 2, D4 AMEND)
 # and the 2026-07-17 Phase-0 spike (INDEX_APPEND_TOOL=Edit -> Write|Edit matcher +
 # .new_string deny-log fallback are load-bearing, not optional).
 #
@@ -147,14 +147,13 @@ if [ "$base" = "MEMORY.md" ]; then
     #    bytes, and a UTF-8 char is 1 lead byte + N continuation bytes (\200-\277)
     #    -> dropping the continuation bytes leaves exactly the character count.
     #
-    #    Diff-scoped (HIMMEL-2074): checking the WHOLE resulting file re-validates
+    #    Diff-scoped: checking the WHOLE resulting file re-validates
     #    every PRE-EXISTING line on every write. A legacy line that already
     #    exceeds the cap (grandfathered before this rule existed, or before the
     #    cap was lowered) then denies EVERY future write to the file forever —
     #    including one that only appends an unrelated, fully-compliant line.
     #
-    #    MULTISET (bag) difference, not a plain set difference (codex-1, CR
-    #    round 1): a naive "is this new line present anywhere in old?" check
+    #    MULTISET (bag) difference, not a plain set difference: a naive "is this new line present anywhere in old?" check
     #    (e.g. `grep -Fxvf`) is fooled by DUPLICATION — pasting a second,
     #    genuinely NEW copy of an already-grandfathered over-length line reads
     #    as "already existed" and skips the check entirely, since the text
@@ -172,7 +171,7 @@ if [ "$base" = "MEMORY.md" ]; then
     #    simulated Edit/MultiEdit paths (the guard runs BEFORE the write
     #    lands).
     #
-    #    CRLF-normalized before comparison (codex-1, CR round 2): an on-disk
+    # CRLF-normalized before comparison: an on-disk
     #    MEMORY.md with CRLF endings leaves a trailing \r on every OLD line
     #    (awk splits records on \n only), while an LF-only Write/Edit payload
     #    never carries one — so every untouched line would byte-mismatch its
@@ -184,7 +183,7 @@ if [ "$base" = "MEMORY.md" ]; then
         old_pointer_lines="$(awk '{sub(/\r$/,"")} /^- /' "$fp")" ||
             deny "diff-failed" "Could not extract existing pointer lines from $fp — denying rather than silently skipping the line-length check."
     fi
-    # codex-1, CR round on HIMMEL-2074: a failure INSIDE a process-substituted
+    # codex-1, CR round: a failure INSIDE a process-substituted
     # producer (`<(...)`) does not propagate to the consuming awk's exit
     # status — bash never waits on that subshell as part of the pipeline it
     # feeds, so the earlier `||` here only caught the outer awk's own
@@ -198,7 +197,7 @@ if [ "$base" = "MEMORY.md" ]; then
         { if (count[$0] > 0) { count[$0]--; } else { print } }
     ' <(printf '%s\n' "$old_pointer_lines") <(printf '%s\n' "$new_pointer_lines") 2>/dev/null)" ||
         deny "diff-failed" "The multiset diff between old and new pointer lines failed to compute — denying rather than silently skipping the line-length check."
-    #    The rule itself lives in memory-line-check.sh (HIMMEL-4891), shared with
+    #    The rule itself lives in memory-line-check.sh, shared with
     #    the Bash-write re-check memory-bash-line-check.sh.
     if printf '%s\n' "$added_lines" | MEMORY_LINE_MAX="$LINE_MAX" bash "$(dirname "$0")/memory-line-check.sh" >/dev/null; then :; else
         deny "line-too-long" "An added/changed pointer line exceeds ${LINE_MAX} chars. The index routes; it does not store — split the fact into its theme topic file."

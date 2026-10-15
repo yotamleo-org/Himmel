@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # guard-relay-writes.sh — PreToolUse hook (matchers "Bash" and
-# "Edit|Write|MultiEdit|NotebookEdit"): [HIMMEL-2975] Guard D.
+# "Edit|Write|MultiEdit|NotebookEdit"): Guard D.
 #
-# HIMMEL-2975 splits a console's duties: a Sonnet RELAY carries its tokenless
+# The relay design splits a console's duties: a Sonnet RELAY carries its tokenless
 # traffic, and a JUDGE only advises -- the console alone sends token-quoting
 # messages.
 # headed-arm-leg.sh --relay (Task 25, #752) exports HIMMEL_CONSOLE_RELAY=1
@@ -28,7 +28,7 @@
 #     final component included — denied fail-closed rather than silently
 #     skipping the guarded-path match; on a BSD readlink, detected by a
 #     one-time probe, a missing FINAL component alone is resolved through its
-#     parent, fail-closed — HIMMEL-3872); or the PHYSICALLY resolved path is under
+#     parent, fail-closed); or the PHYSICALLY resolved path is under
 #     <handover_root>/inbox/, under a .../himmel-console/... rundir, under
 #     ${TMPDIR:-/tmp}/himmel-console-*, or its basename matches
 #     *-legN*-RESUME.md.
@@ -60,8 +60,8 @@
 # performed through an uncommon utility not on that list (e.g. `tar`,
 # `ln`, `cat >>` masked some other way) is not caught either.
 #
-# RESIDUAL (guarded-prefix canonicalization, deliberately not closed this
-# round — HIMMEL-2975 follow-up): the DESTINATION path is fully resolved
+# RESIDUAL (guarded-prefix canonicalization, deliberately not closed):
+# the DESTINATION path is fully resolved
 # (readlink -f, symlinks included), but the guarded PREFIXES it is compared
 # against are not independently re-resolved — <handover_root> is, but
 # "$root_resolved/inbox" itself, ${TMPDIR:-/tmp}, and /run are taken as
@@ -70,10 +70,10 @@
 # host where that isn't already canonical), a write through the symlinked
 # alias resolves to a physical path outside the literal guarded prefix and
 # is not denied. Left open deliberately this round rather than widening the
-# hook a further time on the same seam; track under HIMMEL-2975.
+# hook a further time on the same seam; track.
 #
 # RESIDUAL (false-deny, fail-safe direction): the write verb is matched as a
-# command WORD (HIMMEL-3202 — it was an unanchored substring, which denied
+# command WORD (an unanchored substring would deny
 # `grep -c address <inbox-path>` on "dd" and a read under a random mktemp dir
 # whose name spelled a verb). A verb that is a whole word anywhere in the text
 # still counts, whether or not it is in command position, so a pure READ that
@@ -95,7 +95,7 @@ set -uo pipefail
 [ "${HIMMEL_CONSOLE_RELAY:-}" = "1" ] || exit 0
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
@@ -110,7 +110,7 @@ deny() {
     exit 2
 }
 
-# HIMMEL-3872 one-time capability probe: does this readlink -f resolve a
+# One-time capability probe: does this readlink -f resolve a
 # missing final component under an existing directory (GNU) or refuse it
 # (BSD/macOS realpath(3))? Succeeds only on an exact, positive GNU answer;
 # any error or ambiguity is "no", which merely lets the fail-closed fallback
@@ -125,7 +125,7 @@ readlink_resolves_missing_leaf() {
     [ -n "$d_resolved" ] && [ "$got" = "$d_resolved/probe-leaf" ]
 }
 
-# HIMMEL-3872 BSD fallback: resolve <parent>/<leaf> when ONLY the final
+# BSD fallback: resolve <parent>/<leaf> when ONLY the final
 # component is missing. Prints the resolved path, or returns 1 for every case
 # it cannot prove: a relative path, a trailing slash, a newline anywhere in
 # the path (command substitution would strip it), an empty/"."/".." leaf,
@@ -227,7 +227,7 @@ case "$tool" in
         # readlink -f only requires the path up to the last component to
         # exist, so a brand-new file under an existing directory resolves
         # cleanly; BSD/macOS readlink -f (realpath(3)) refuses a missing final
-        # component (HIMMEL-3872). Only when resolution fails AND the one-time
+        # component. Only when resolution fails AND the one-time
         # probe says this readlink is the BSD kind does the fallback run — on
         # GNU it never runs, so GNU enforcement is identical by construction.
         path_resolved=""
@@ -286,7 +286,7 @@ case "$tool" in
         esac
 
         # A write verb counts only as a command WORD: not embedded in a longer
-        # alphanumeric word (HIMMEL-3202 — "address", "form", a mktemp suffix
+        # alphanumeric word ("address", "form", a mktemp suffix
         # like "mVddVZ"). The boundary is "any char that is not [[:alnum:]_]"
         # (or the string edge), so `/bin/rm`, `sudo rm`, `xargs rm`, `(cp`,
         # `;mv` and a newline-separated `rm` all still match. Kept in a variable:

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # block-leg-askuserquestion.sh — PreToolUse hook (matcher "AskUserQuestion"):
-# denies AskUserQuestion for a console-spawned leg (HIMMEL-2923). A leg
+# denies AskUserQuestion for a console-spawned leg. A leg
 # launched headed by a console (scripts/handover/console-kit/headed-arm-leg.sh,
-# HIMMEL-2919, exports HIMMEL_CONSOLE_LEG=1 in the launching shell) runs in a
+# exports HIMMEL_CONSOLE_LEG=1 in the launching shell) runs in a
 # window nobody answers: two legs parked on an AskUserQuestion call on
 # 2026-09-10 — one 77 minutes with its diff already complete, the other
 # despite an explicit NEVER in its brief. Second drift on prose -> structural
 # (root CLAUDE.md "Adding a rule").
 #
-# Scope: inert until HIMMEL-2919's launcher export lands. Until then
+# Scope: inert until the launcher export lands. Until then
 # HIMMEL_CONSOLE_LEG is never set and this hook always falls through to
 # allow — that is expected, not a bug.
 #

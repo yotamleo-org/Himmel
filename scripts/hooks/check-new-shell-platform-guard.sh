@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/hooks/check-new-shell-platform-guard.sh -- Guard B (HIMMEL-2682),
-# downgraded to ADVISORY by HIMMEL-3125 (Windows -> alpha tier).
+# scripts/hooks/check-new-shell-platform-guard.sh -- Guard B,
+# downgraded to ADVISORY (Windows -> alpha tier).
 #
 # Originally a pre-commit gate for ws5's T15 x-platform invariant
 # (scripts/parity/test-ws5-invariants.sh, which still runs and still gates
-# where it runs today -- HIMMEL-2642's propagation-snapshot rules are
+# where it runs today -- the propagation-snapshot rules are
 # untouched by this change). That coupling is HISTORICAL, not the reason
 # this file exists any more: with Windows now alpha (not CI-gated per-PR,
 # best effort), a missing .ps1 twin is no longer a commit-blocking defect --

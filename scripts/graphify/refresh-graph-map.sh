@@ -1840,7 +1840,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # repo's documented compatibility floor for scripts outside a narrow
   # exception list) -- which would kill every refresh before extraction
   # even started. `tr` in a command substitution is POSIX and 3.2-safe.
-  _lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+  # LC_ALL=C pins a byte-wise ASCII fold: a locale-sensitive `tr` (BSD/macOS
+  # under a UTF-8 locale) can remap non-ASCII characters, and the containment
+  # slice below applies the FOLDED string's length to the original-case path.
+  _lc() { printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
   # _fs_case_insensitive -- true iff the filesystem the CORPUS actually
   # lives on is case-insensitive. PROBE-FIRST: keying off OS TYPE
   # (msys/cygwin/mingw/win32 -> insensitive, everything else -> sensitive)

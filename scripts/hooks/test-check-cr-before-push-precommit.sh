@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Integration test for scripts/hooks/check-cr-before-push.sh THROUGH the real
-# pre-commit pre-push shim (HIMMEL-1540, CR rounds 2-3).
+# pre-commit pre-push shim
 #
 # The 34 cases in test-check-cr-before-push.sh invoke the script directly (a
 # here-string on stdin), which BYPASSES the pre-commit framework. In production
@@ -8,7 +8,7 @@
 # generated shim that consumes git's stdin itself (hook_impl._run_legacy does
 # sys.stdin.buffer.read()) and surfaces the pushed ref to hooks ONLY through
 # PRE_COMMIT_* env vars — so the script's stdin loop is unreachable and, before
-# HIMMEL-1540, the marker fell back to the worktree's checked-out branch,
+# the fix, the marker fell back to the worktree's checked-out branch,
 # leaving the actually-pushed destination ungated (Direction A: fail-OPEN).
 #
 # This test generates the REAL shim in a temp repo, feeds it a ref line naming a
@@ -24,7 +24,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/check-cr-before-push.sh"
 INSTALLER="$SCRIPT_DIR/install-cr-pre-push-legacy.sh"
-# HIMMEL-2371: the installed legacy hook also resolves and runs
+# the installed legacy hook also resolves and runs
 # check-push-target.sh (with the same captured ref stream) ahead of the CR
 # gate, and fails closed if it's missing from the primary checkout — the
 # fixture below must carry a real copy for the installer to find.
@@ -33,7 +33,7 @@ LIB="$SCRIPT_DIR/../guardrails/lib.sh"
 LOCK_LIB="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
 # Every scenario here pushes a destination ref that is NOT the fixture's
 # checked-out branch — that is the whole point of the pre-commit stdin-collapse
-# regression it pins. The HIMMEL-1809 foreign-ref refusal would stop that shape
+# regression it pins. The foreign-ref refusal would stop that shape
 # before the marker logic runs; it has its own cases in
 # test-check-cr-before-push.sh, so exempt it here.
 export PUSH_FOREIGN_REF_OK=1
@@ -159,7 +159,7 @@ assert_destination_marked() {
         else
             fail "$name: destination marker binding '$marker_sha' '$marker_remote' '$marker_remote_ref' is wrong"
         fi
-        # HIMMEL-1540 R5: the marker must also pin the push endpoint E (the URL
+        # The marker must also pin the push endpoint E (the URL
         # the shim passed) and the immutable diff-base SHA B (the repo's main).
         marker_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$m_dest" 2>/dev/null || true)
         marker_base=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$7); print $7; exit}' "$m_dest" 2>/dev/null || true)

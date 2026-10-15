@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/hooks/check-lockfile-integrity.sh.
 #
-# Scope: the bun RUNTIME guard (HIMMEL-2010) and bun RESOLUTION (HIMMEL-2439).
+# Scope: the bun RUNTIME guard and bun RESOLUTION.
 #
 # Resolution: bun's installer exports ~/.bun/bin from ~/.bashrc, which
 # non-interactive shells never source — so a hook, an SSH command, CI or an
@@ -25,7 +25,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline (a here-string is not a pipeline, so `set -o pipefail` cannot report
-# a SUCCESSFUL early match as a failed producer). HIMMEL-1430.
+# a SUCCESSFUL early match as a failed producer).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -35,8 +35,8 @@ GATE="$SCRIPT_DIR/check-lockfile-integrity.sh"
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
 
 # Resolve bash ONCE from the suite's own unmodified PATH, before any test
-# hands the gate a narrowed one (HIMMEL-2520, shape from HIMMEL-2470/
-# HIMMEL-1567). Every no-bun invocation below runs the gate via this absolute
+# hands the gate a narrowed one. Every no-bun invocation below runs the gate
+# via this absolute
 # path so the narrowed PATH decides what the GATE sees, never whether it can
 # start at all.
 BASH_ABS=$(command -v bash)
@@ -47,7 +47,7 @@ fi
 # Refusing a relative PATH is deliberate: these are hermetic fixtures.
 # A bash resolved through a relative PATH means the invoking environment
 # is already broken in a way that makes any result untrustworthy
-# (HIMMEL-2520, CR [codex-1]).
+#
 case "$BASH_ABS" in
     /*) ;;
     *) echo "FATAL: bash resolved to a non-absolute path ('$BASH_ABS') — this fixture invokes it after a cd and/or as a shim shebang, both of which need an absolute path" >&2; exit 1 ;;
@@ -163,14 +163,14 @@ STUB
 # make_stub_git) are `#!/usr/bin/env bash` scripts, and `env` resolves that
 # "bash" argument through ITS OWN inherited PATH (the allowlist), not the
 # suite's -- each resolved from THIS host's live PATH, and NO bun/bunx
-# anywhere in it (HIMMEL-2520, shape from HIMMEL-2470).
+# anywhere in it
 #
 # A directory-stripping approach (the prior version of this fixture, kept as
 # path_without_bun's comment history) breaks on any host where bun shares a
 # directory with the rest of the toolchain -- on this Arch/CachyOS station bun
 # and bunx sit in /usr/bin alongside bash, git, find and coreutils, so
 # stripping bun's directory silently guts every tool the gate needs before it
-# even reaches the bun check. HIMMEL-2160's insight (a machine can have more
+# even reaches the bun check. A machine can have more
 # than one bun install on PATH, so a single `command -v` strip is not enough)
 # is still true, but an allowlist makes it moot: bun/bunx are simply never
 # placed in it, no matter how many real installs exist elsewhere on the host.
@@ -244,7 +244,7 @@ trap 'rm -rf "$REPO" "$STUB" "$EMPTY_HOME" "$BUN_HOME" "$BUN_INSTALL_DIR" "$STUB
 # check -- a "bun not found" verdict proves nothing if bun was never removed,
 # and an over-narrow allowlist that silently dropped (say) `git` would make
 # the gate fail for the wrong reason while looking identical to the case
-# under test (HIMMEL-2520).
+# under test.
 missing=""
 for tool in find git dirname basename head tr bash; do
     PATH="$NO_BUN_PATH" command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
@@ -279,8 +279,8 @@ run_gate() { # $1 = version the stub on PATH reports
 # Invoked via $BASH_ABS directly rather than `env -u BUN_INSTALL bash` --
 # `env` resolves the command name ("bash") using the PATH it was just handed,
 # so a narrowed allowlist PATH would decide whether bash itself is findable,
-# not just what the gate sees once running (HIMMEL-2520, shape from
-# HIMMEL-1567). `unset` inside this subshell only affects the subshell.
+# not just what the gate sees once running.
+# `unset` inside this subshell only affects the subshell.
 run_gate_no_path_bun() {
     ( cd "$REPO" && unset BUN_INSTALL && PATH="$NO_BUN_PATH" HOME="${1:-$EMPTY_HOME}" \
         "$BASH_ABS" "$GATE" 2>&1 )
@@ -333,11 +333,11 @@ else
     echo "PASS silent bun → does NOT blame lockfile drift"
 fi
 
-# --- HIMMEL-2439: bun resolution off the PATH layer hooks cannot see ---------
+# --- bun resolution off the PATH layer hooks cannot see ---------
 
 # Case 5: bun absent from PATH but present at $HOME/.bun/bin (where the official
 # installer puts it) → the gate resolves it and runs the real check. This is the
-# fix: pre-HIMMEL-2439 this same fixture died with "bun did not report a
+# fix: without the fallback this same fixture died with "bun did not report a
 # version" and blocked the commit.
 rc=0
 out=$(run_gate_no_path_bun "$BUN_HOME") || rc=$?
@@ -371,7 +371,7 @@ assert_says "no bun + docs-only commit → says it skipped that package" \
 assert_says "no bun + docs-only commit → still names every location it looked in" \
     "looked in: PATH, \$BUN_INSTALL/bin, \$HOME/.bun/bin" "$out"
 
-# Case 7b (HIMMEL-2440): no bun anywhere and the index is ENTIRELY empty —
+# Case 7b: no bun anywhere and the index is ENTIRELY empty —
 # the CI shape (.github/workflows/ci.yml invokes this hook directly, not via
 # a commit) — must BLOCK, not silently skip every bun package. An empty index
 # is not evidence of a pre-commit run.
@@ -384,7 +384,7 @@ assert_says "no bun + empty index → still names every location it looked in" \
     "looked in: PATH, \$BUN_INSTALL/bin, \$HOME/.bun/bin" "$out"
 
 # Case 8: bun absent from PATH and $HOME/.bun/bin, but $BUN_INSTALL points at
-# it (the middle branch of the HIMMEL-2439 resolution chain — cases 5 and 6/7
+# it (the middle branch of the bun resolution chain — cases 5 and 6/7
 # cover the PATH and $HOME/.bun/bin branches, but every runner above passes
 # `env -u BUN_INSTALL`, so this one was never exercised) → the gate resolves it
 # and runs the real check.
@@ -395,7 +395,7 @@ assert_eq "bun only via \$BUN_INSTALL/bin → gate passes (exit 0)" "0" "$rc"
 assert_says "bun only via \$BUN_INSTALL/bin → the frozen-lockfile check still runs" \
     "frozen-lockfile" "$out"
 
-# --- HIMMEL-2440: staged_under must fail-closed when git can't say ---------
+# --- staged_under must fail-closed when git can't say ---------
 
 # Case 9: `git diff` fails (simulated unreadable index), no bun resolvable
 # anywhere, nothing staged → the gate must still BLOCK. An index git cannot
@@ -410,7 +410,7 @@ assert_says "unreadable index → names the unreadable-index reason" \
 assert_says "unreadable index → says the skip cannot be justified" \
     "cannot be justified" "$out"
 
-# --- HIMMEL-2439 fix 2: resolve_bun must store an ABSOLUTE BUN_BIN ---------
+# --- resolve_bun must store an ABSOLUTE BUN_BIN ---------
 
 # Case 10: bun resolvable ONLY through a RELATIVE PATH entry. The gate later
 # runs $BUN_BIN after `cd`-ing into the package directory — an un-normalized

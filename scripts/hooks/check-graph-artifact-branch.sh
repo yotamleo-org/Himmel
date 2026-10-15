@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-commit hook: refuse staged changes under graphify-out/ unless the
-# commit is happening on the sanctioned /graph-publish flow (HIMMEL-2167).
+# commit is happening on the sanctioned /graph-publish flow.
 #
 # Why: two worker PRs (#1958, #1959) ran `graphify update .` per the
 # CLAUDE.md graphify installer section and committed graphify-out/ artifacts

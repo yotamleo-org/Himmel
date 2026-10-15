@@ -3,14 +3,14 @@
 # hook: a console-spawned leg that was launched with the guard ON, once past its
 # context threshold, is denied every NON-hand-off tool call, and its
 # auto-compaction is refused, until it has checkpointed or handed off
-# (HIMMEL-4569). Its job: a pushed checkpoint before a lossy compaction.
-# OFF BY DEFAULT (operator ruling 2026-10-07, HIMMEL-4710): legs auto-compact
+#. Its job: a pushed checkpoint before a lossy compaction.
+# OFF BY DEFAULT (operator ruling 2026-10-07): legs auto-compact
 # anyway, so the guard runs only when the launch turned it on. Reference:
 # docs/internals/leg-context-guard.md.
 #
 # Scope: a console-spawned leg only — HIMMEL_CONSOLE_LEG=1 AND a non-empty
-# HIMMEL_CONSOLE_NAME, both exported by headed-arm-leg.sh (HIMMEL-2919,
-# HIMMEL-3435). Anything else returns at once with no output. The leg's
+# HIMMEL_CONSOLE_NAME, both exported by headed-arm-leg.sh.
+# Anything else returns at once with no output. The leg's
 # in-process subagents (a non-empty string agent_id) are exempt.
 #
 # Two modes, HIMMEL_LEG_CONTEXT_MODE, set at launch by
@@ -30,7 +30,7 @@
 # In both modes a last marker of WRAPPED frees the leg. A last marker of
 # BLOCKED frees only the hand-off calls and reads (Read, Grep, Glob): BLOCKED
 # is a hand-off to the console, not an unlock (N1383 wrote BLOCKED and then
-# went on editing, HIMMEL-4710), and while it is the last marker neither
+# went on editing), and while it is the last marker neither
 # unlock above reopens ordinary work; a saved state still lets PreCompact pass.
 #
 # The threshold is 75 % of the leg's autocompact ceiling, not of the model
@@ -41,7 +41,7 @@
 # unset = the 200000 pin, `auto` = the window), clamped to the window. The share
 # is HIMMEL_LEG_CONTEXT_SHARE (1-100, launch env only; anything else = 75).
 # 75 % of 200000 is 150000 tokens (15 % fill on a 1M window). Compactions were
-# observed firing from 157k of a 200k ceiling (HIMMEL-4089: 157k-176k over 349
+# observed firing from 157k of a 200k ceiling (157k-176k over 349
 # compactions), so 75 % leaves 7000 tokens (3.5 pp of the ceiling) before the
 # earliest one for commit + push + the CHECKPOINT bullet. The deny must land
 # BEFORE the earliest compaction: a higher share (85 % = 170000) would let a
@@ -63,8 +63,8 @@
 #      turn — the launcher's `load <brief> and continue`. Its last marker
 #      WRAPPED -> allow; BLOCKED -> allow a Read, Grep or Glob only.
 #   4. The mode's unlock holds -> allow. A RESUME doc counts when it sits beside
-#      the doc, is not the doc itself, carries the doc's leg id (N1364, J1950b
-#      ...) with any one-letter suffix, and was modified after this session's
+#      the doc, is not the doc itself, carries the doc's leg id (letter + digits)
+#      with any one-letter suffix, and was modified after this session's
 #      first user turn — so an older link of the same chain never counts. A
 #      CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
 #   5. Otherwise deny, naming the mode, the fill and exactly what unlocks it.
@@ -76,9 +76,9 @@
 # stderr line. A false block strands a leg in a window nobody watches, while a
 # false allow only costs the pre-hook status quo (the autocompact backstop still
 # fires); upgrade path: if the fail-open warnings show up in leg logs, fix the
-# probe (HIMMEL-3081, HIMMEL-2342), never flip this to fail-closed.
+# probe, never flip this to fail-closed.
 # ponytail: the Bash hand-off allow-list reads the script as one bare or quoted
-# word (HIMMEL-4692, so a quoted path or a checkout path with spaces passes) but
+# word but
 # still matches the rest as TEXT through is_bare_command, which refuses
 # unquoted `& | ; < > ( )`, `$(`, backticks and newlines; a bullet's quoted `;`
 # is allowed on purpose, and this is a workflow nudge, not a fence
@@ -161,7 +161,7 @@ is_bare_command() {
 
 # True when $1 (already is_bare_command) is `bash <script> ...` and <script> is,
 # as ONE parsed word, bare or "double"/'single' quoted with no $ or backslash,
-# an allowed hand-off script (HIMMEL-4692). A quoted word may carry spaces, so a
+# an allowed hand-off script. A quoted word may carry spaces, so a
 # checkout path with spaces passes; a script after a path that merely ends in
 # the allowed name must sit on a path-segment boundary.
 is_handoff_script_call() {
@@ -298,7 +298,7 @@ started_iso=${first%%	*}
 first_text=${first#*	}
 doc=$(printf '%s' "$first_text" | grep -oE '/[^[:space:]"'"'"'`]+\.md' | head -n 1)
 if [ -z "$doc" ] || [ ! -f "$doc" ]; then
-    # HIMMEL-4692: the launcher's `load <doc> and continue` names a doc whose
+    # the launcher's `load <doc> and continue` names a doc whose
     # path may carry spaces, which the space-free match above truncates.
     spaced=$(printf '%s' "$first_text" | sed -nE 's/^load (\/.*\.md) and continue.*$/\1/p' | head -n 1)
     [ -z "$spaced" ] || doc=$spaced
@@ -339,7 +339,7 @@ checkpoint_ok() {
         [ -n "$up" ] && [ "$up" = "$head" ]
         return
     fi
-    # `clean` (HIMMEL-4710): a leg that has only read has nothing to commit, and
+    # `clean`: a leg that has only read has nothing to commit, and
     # the pre-push CR gate refuses an empty push (N1386). It needs a clean tree
     # and nothing unpushed: HEAD is its upstream, or HEAD is already in
     # origin/main (a fresh branch at its base).
@@ -358,7 +358,7 @@ if [ -n "$started_iso" ]; then
 fi
 mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }  # gnu-ok: GNU -c paired with BSD -f on this line
 
-# The leg id is the first `-`-separated part shaped like N1364 / J1950b.
+# The leg id is the first `-`-separated part shaped like a letter plus digits.
 leg_id=$(printf '%s\n' "$stem" | tr '-' '\n' | grep -E '^[A-Z][0-9]+[a-z]?$' | head -n 1)
 leg_base=$(printf '%s' "$leg_id" | sed -E 's/[a-z]$//')
 next_stem="${stem%-RESUME}"

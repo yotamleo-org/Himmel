@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-settings-portability.sh (HIMMEL-2156).
+# Smoke test for scripts/hooks/check-settings-portability.sh.
 #
 # Usage: bash scripts/hooks/test-check-settings-portability.sh
 #

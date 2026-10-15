@@ -201,7 +201,7 @@ rule and J had already left. The second case is the proof the fix is the
 *rule*, not the supervisor session's care: a correct message failed for want of a rule the
 worker session could read.
 
-**Rule** (worker session side, `docs/handover/leg-preface.md` "Console succession"): a
+**Rule** (worker session side, `docs/handover/leg-sections/succession.md`): a
 change of supervisor session is genuine when either (1) the outgoing supervisor session relays it
 directly, from the session the brief names, quoting the worker session's current token
 (a fresh one is optional: a relay that keeps the token is valid and complete); or (2) the incoming supervisor session's message quotes **both** the

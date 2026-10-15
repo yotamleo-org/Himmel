@@ -2,7 +2,7 @@
 # shellcheck disable=SC2094  # false positive: report() only echoes to stderr,
 # it never writes to a scanned file — shellcheck can't see that across the call.
 # Pre-commit gate (himmel-dev only): adopter-facing display strings never
-# carry a raw HIMMEL-\d+ ticket ID (HIMMEL-2371).
+# carry a raw HIMMEL-\d+ ticket ID.
 #
 # Adopters see hook display names, hook deny messages, and slash-command
 # descriptions — a bare himmel-internal ticket number in one of those is
@@ -12,7 +12,7 @@
 # inside it.
 #
 # Scope (matches the surfaces scripts/hooks/check-push-target.sh's own
-# HIMMEL-2371 ticket-ID scan covers, minus the fenced-off subtrees no leg may
+# ticket-ID scan covers, minus the fenced-off subtrees no leg may
 # edit): the STAGED `.pre-commit-config.yaml`'s `name:` fields, the STAGED
 # `.claude/commands/*.md` frontmatter `description:` line, and a STAGED
 # `scripts/hooks/*.sh`'s adopter-facing `echo`/`printf … >&2` deny messages
@@ -24,8 +24,8 @@
 # display strings a tool renders — same class as docs/internals/**, which this
 # gate always allowlists.
 #
-# Known gaps, not fixed — CR round 4 (codex, paid tier) surfaced all three;
-# converging here rather than chasing hypotheticals with zero real instance in
+# Known gaps, not fixed:
+# we stop here rather than chasing hypotheticals with zero real instance in
 # this codebase (every one of the 25/14/10 strings this ticket actually fixed
 # uses the plain, unquoted style below — see the scan report):
 #   - Direct-file mode's surface routing compares the caller-provided path
@@ -36,12 +36,12 @@
 #     callers control the path they pass.
 #   - The `name:` trailing-comment strip (`${line%%#*}`) is not YAML-quote
 #     aware: a QUOTED value containing a literal `#`, e.g.
-#     `name: "Block # HIMMEL-123"`, would have the quoted `#` misread as a
+#     `name: "Block # <TICKET-ID>"`, would have the quoted `#` misread as a
 #     comment start and the ticket ID inside the quotes missed. No `name:`
 #     value in this repo is quoted or contains a `#` at all.
 #   - The hook-deny-message scan reads the whole `echo`/`printf … >&2` line,
 #     so a ticket ID placed in a TRAILING shell comment on that same line
-#     (`echo "refused" >&2 # HIMMEL-123`) is flagged even though it is not
+#     (`echo "refused" >&2 # <TICKET-ID>`) is flagged even though it is not
 #     part of the adopter-facing message. This repo's own convention is a
 #     separate comment line above the echo (every fix in this ticket used
 #     that shape), never a trailing same-line comment.
@@ -85,7 +85,7 @@ scannable() {
 
 # check_pre_commit_config DISPLAY READPATH — every `name:` line. Anchored to
 # "leading whitespace then literally name:". A bare glob star does NOT act as
-# a quantifier the way a regex `*` would (codex-1 CR round 2): `[[:space:]]*`
+# a quantifier the way a regex `*` would: `[[:space:]]*`
 # in a `case` pattern is "one space char, then ANYTHING" — NOT "a run of
 # space chars" — so `[[:space:]]*name:*` matched `othername:` too (the `*`
 # swallows "other" as "anything" before the literal "name:"). Strip leading
@@ -93,7 +93,7 @@ scannable() {
 # check_hook_deny_messages uses), then anchor the trimmed line to `name:*`.
 #
 # The ticket-ID grep runs on the value with any trailing YAML comment
-# stripped (codex-1 CR round 3): `name: Block push # HIMMEL-123` displays as
+# stripped: `name: Block push # <TICKET-ID>` displays as
 # just "Block push" — pre-commit strips everything from an UNQUOTED `#` — so
 # a ticket ID placed in a trailing inline comment is already compliant
 # ("moved to a comment"), not a violation. None of this repo's `name:` values
@@ -171,7 +171,7 @@ check_hook_deny_messages() {
 }
 
 # is_scanned_surface PATH — true (rc 0) iff PATH is one of the three scanned
-# surfaces and not allowlisted. Split out from scan_file (codex-3 CR round 5)
+# surfaces and not allowlisted. Split out from scan_file
 # so gate mode can skip materializing a staged blob for a path that will not
 # be scanned at all, instead of running `git show` on every staged file first.
 is_scanned_surface() {
@@ -226,13 +226,13 @@ rc=0
 is_himmel_dev_repo || rc=$?
 if [ "$rc" -eq 1 ]; then exit 0; fi
 
-# --diff-filter=ACMR (codex-2 CR round 3): R (renamed) must stay IN — a
+# --diff-filter=ACMR: R (renamed) must stay IN — a
 # rename that also changes content is classified as R only (never also M),
 # so excluding it would have let a renamed hook/command file's newly-added
 # ticket ID bypass this gate entirely. --name-only reports the destination
 # path for a rename, which is exactly the path `git show ":$f"` below needs.
 #
-# codex-1 (CR round 1): scan the STAGED blob, not the working-tree file. A
+# codex-1: scan the STAGED blob, not the working-tree file. A
 # file staged clean and then dirtied further (unstaged) would otherwise scan
 # the dirty content and block a clean commit; worse, a file staged WITH a
 # violation and then fixed only in the working tree would scan the fixed
@@ -240,12 +240,12 @@ if [ "$rc" -eq 1 ]; then exit 0; fi
 # security-relevant direction. Same STAGED-blob discipline as
 # check-claude-md-budget.sh's own `git show :CLAUDE.md` read.
 #
-# codex-1 (CR round 5): `-z` NUL-delimits the path LIST itself, so a
+# codex-1: `-z` NUL-delimits the path LIST itself, so a
 # git-quoted filename (non-ASCII / special characters, otherwise C-style
 # escaped and quoted by plain `--name-only`) reaches `git show` as the real
 # path instead of a literal quoted string that would fail to resolve.
 #
-# codex-1 (CR round 6): the `-z` list is written to a FILE (`if ! git … >
+# codex-1: the `-z` list is written to a FILE (`if ! git … >
 # "$pathlist"`) and read back with `while … < "$pathlist"`, not read directly
 # off a process-substitution FIFO (`< <(git …)`). A process substitution's
 # exit status is not the loop's — if that git invocation failed, the loop
@@ -254,7 +254,7 @@ if [ "$rc" -eq 1 ]; then exit 0; fi
 # check git's real exit status directly, the same way every other git call in
 # this script is checked. Bash strings cannot hold embedded NUL bytes, so
 # neither this file nor the earlier "is anything staged at all" check can go
-# through `$(...)` capture (round 5's `--quiet` reasoning, still exactly why
+# through `$(...)` capture (the same `--quiet` reasoning, which is exactly why
 # the loop below has no output-capturing analogue).
 tmp="$(mktemp "${TMPDIR:-/tmp}/no-ticket-id.XXXXXX")" || {
     echo "→ check-no-ticket-id-in-user-strings: mktemp failed — fail-closed" >&2
@@ -271,7 +271,7 @@ if ! git diff --cached --name-only -z --diff-filter=ACMR > "$pathlist" 2>/dev/nu
     exit 2
 fi
 
-# is_scanned_surface first (codex-3 CR round 5): skip `git show` entirely for
+# is_scanned_surface first: skip `git show` entirely for
 # a staged path that will not be scanned at all, instead of materializing
 # every staged file's blob before checking whether it's one of the three
 # scanned surfaces. An empty $pathlist (nothing staged, or nothing matching

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/block-subagent-park.sh (HIMMEL-2140).
+# Tests for scripts/hooks/block-subagent-park.sh.
 #
 # Usage: bash scripts/hooks/test-block-subagent-park.sh
 #
@@ -88,7 +88,7 @@ assert_contains "5b. message names the 600000 ms timeout ceiling" "600000 ms" "$
 assert_contains "5c. message names scripts/quiet-run.sh for genuinely long work" "scripts/quiet-run.sh" "$DENY_TEXT"
 assert_contains "5d. message says BOUNDED polls, never unbounded" "BOUNDED" "$DENY_TEXT"
 
-# CR round 1 (HIMMEL-2140): a MALFORMED agent_id must ALLOW, not deny.
+# a MALFORMED agent_id must ALLOW, not deny.
 # The documented contract is an identifier string; `true`/`123`/`{}`/"" are
 # contract violations, and this hook fails OPEN on anything it cannot read
 # (missing jq, empty stdin) -- a malformed payload belongs in that bucket.

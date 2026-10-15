@@ -8,7 +8,7 @@ import { classify, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendChatAction, getFile, downloadFile } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendChatAction, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
@@ -27,6 +27,13 @@ import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type Alerte
 // it validates nothing, so it cannot fail a dispatch); route it through the
 // cachebust dir too if its entries shape ever changes in step with skill-listing.
 import { scanSkillCosts } from "../lanes/skill-cost.mjs";
+
+// Poller logs are captured into vault notes, so no raw chat id may reach one
+// (telegram-api.ts redacts the same way). Chat ids go through redactChatId;
+// logRedacted additionally scrubs the group_<chat_id> session name, including
+// inside a caught exception's message or path.
+const redactGroupIds = (s: string): string => s.replace(/group_(-?\d+)/g, (_m, id) => `group_${redactChatId(Number(id))}`);
+const logRedacted = (msg: string): void => console.error(redactGroupIds(msg));
 
 // Retry backoff for a capped session (ms). On a cap, settle retry_at = now + RETRY_MS
 // so deliverAllPending's isRetryDue re-runs the session later instead of re-spawning a
@@ -188,6 +195,7 @@ function acceptMessage(u: any, allow: AllowFn): MsgCtx | null {
   const senderChat = m.sender_chat?.id;
   if (!allow(fromId, chatId)) {                          // gated out (offset still advances in the caller)
     // log non-DM rejects so the operator can discover a new group/channel chat_id
+    // (deliberately RAW: the id is the thing to copy into access.json)
     if (chatId < 0) console.error(`[poller] gated out chat ${chatId} (add to groups in access.json to allow)`);
     return null;
   }
@@ -288,7 +296,7 @@ async function flushPendingMedia(root: string, pendingMedia: PendingMedia[]): Pr
     await appendLine(join(root, "inbound.jsonl"), JSON.stringify({ ...rec, ...(path ? { [pathField]: path } : {}) }));
     if (!path && onMissing) {
       try { await onMissing(rec); }
-      catch (e) { console.error(`[poller] doc-fail notice could not be delivered for chat ${rec.chat_id}: ${e}`); }
+      catch (e) { logRedacted(`[poller] doc-fail notice could not be delivered for chat ${redactChatId(rec.chat_id)}: ${e}`); }
     }
   }
 }
@@ -574,7 +582,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // silently going quiet everywhere. Mirrors the triage-gate drop semantics:
   // dropped permanently, nothing written to inbox.jsonl.
   if (msg.chat_id < 0 && botUsername && requireMention(msg.chat_id) && !mentionsBot(msg.text, botUsername)) {
-    console.error(`[poller] require-mention drop for ${session}`);
+    logRedacted(`[poller] require-mention drop for ${session}`);
     return;
   }
   if (await handleConsolePolicy(root, msg, route, tagged, fromOperator, consoleRoute, auto, notifyChat)) return;
@@ -624,7 +632,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // message, which is still processed on the default model.
   if (tag.unknown && notifyChat) {
     try { await notifyChat(msg.chat_id, `unknown model tag — using the default model (valid: opus, sonnet, haiku)`); }
-    catch (e) { console.error(`[poller] unknown-model-tag notice could not be delivered for chat ${msg.chat_id}: ${e}`); }
+    catch (e) { logRedacted(`[poller] unknown-model-tag notice could not be delivered for chat ${redactChatId(msg.chat_id)}: ${e}`); }
   }
   let modelOverride: ModelOverride | undefined;
   if (msg.chat_id < 0 && (route.kind === "chat" || route.kind === "auto") && process.env.TELEGRAM_TRIAGE !== "off") {
@@ -650,11 +658,11 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     // line below, so the supervisor log shows both sides of the gate.
     const operatorFloor = fromOperator && (verdict === "ignore" || verdict === "ack");
     const floored: TriageVerdict = operatorFloor ? "spawn-low" : verdict;
-    if (operatorFloor) console.error(`[poller] triage ${verdict} → spawn-low (operator floor) for ${session}`);
+    if (operatorFloor) logRedacted(`[poller] triage ${verdict} → spawn-low (operator floor) for ${session}`);
     switch (floored) {
       case "ignore":
       case "ack":
-        console.error(`[poller] triage ${verdict}: dropped (never enqueued) for ${session}`);
+        logRedacted(`[poller] triage ${verdict}: dropped (never enqueued) for ${session}`);
         return;
       case "spawn-low":
         modelOverride = "haiku";
@@ -686,7 +694,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // not see it (it would read as part of the request — and on an unknown tag it
   // would be a stale instruction the run cannot act on).
   const line = route.kind === "followup" ? route.text : tag.rest;
-  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg))) { console.error("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
+  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg))) { logRedacted("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
   // Everything above this line can throw BEFORE the append, and handleBatch's
   // drop notice ("could not be queued — please resend") is truthful for those.
   // The dispatch below is AFTER the message is durable, so its failure must not
@@ -699,7 +707,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     try {
       await run(session, modelOverride, !!tag.model);
     } catch (e) {
-      console.error(`[poller] dispatch after enqueue failed for ${session} — message is durable, deliverAllPending will re-serve it: ${e}`);
+      logRedacted(`[poller] dispatch after enqueue failed for ${session} — message is durable, deliverAllPending will re-serve it: ${e}`);
     }
   }
 }
@@ -839,7 +847,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
   // after a successful privileged arm would otherwise leave no durable record).
   const reply = async (text: string) => {
     try { await deps.reply(msg.chat_id, text); }
-    catch (e) { console.error(`[poller] auto-action reply could not be delivered for chat ${msg.chat_id}: ${e}`); }
+    catch (e) { logRedacted(`[poller] auto-action reply could not be delivered for chat ${redactChatId(msg.chat_id)}: ${e}`); }
   };
   if (msg.forwarded === true) {
     await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: true, op: route.op, arg: route.arg, time: route.time, rc: -1, result: "refused-forwarded" });
@@ -1074,7 +1082,7 @@ export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
         pos += bytes;
         await atomicWrite(curFile, String(pos));                    // commit after this line
       }
-    } catch (e) { console.error("[poller] flush failed for " + s + ": " + e); continue; }
+    } catch (e) { logRedacted("[poller] flush failed for " + s + ": " + e); continue; }
   }
 }
 
@@ -1134,7 +1142,7 @@ export async function handleBatch(
     } catch (e) {
       // update_id is the replay key: without it the log names no
       // specific message, so a post-mortem cannot tell WHICH message was lost.
-      console.error(`[poller] handleInbound failed for update ${rec.update_id} chat ${rec.chat_id} — record dropped, batch continues: ${e}`);
+      logRedacted(`[poller] handleInbound failed for update ${rec.update_id} chat ${redactChatId(rec.chat_id)} — record dropped, batch continues: ${e}`);
       if (onDrop) {
         try {
           const r: unknown = onDrop(rec, e);
@@ -1496,7 +1504,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
   const safeNotify = async (session: string, retryAtIso: string, kind: NotifyKind) => {
     if (!notify) return;
     try { await notify(session, retryAtIso, kind); }
-    catch (e) { console.error("[poller] " + kind + " notify failed for " + session + ": " + e); }
+    catch (e) { logRedacted("[poller] " + kind + " notify failed for " + session + ": " + e); }
   };
   const runOnce = async (session: string, modelOverride?: ModelOverride): Promise<void> => {
     if (lockdownEnabled(root)) return;
@@ -1520,7 +1528,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // FAIL CLOSED when the target has no read-only floor (CR codex-adv-1): refuse
     // the route rather than grant bypass with nothing enforcing it.
     const routeRefused = !!configuredCwd && !hasReadOnlyFloor(configuredCwd);
-    if (routeRefused) console.error(`[poller] cwd route REFUSED for ${session}: '${configuredCwd}' has no verifiable read-only floor (a .claude/settings.json registering a PreToolUse hook whose script exists) — the route is dropped and the session runs in the himmel checkout with no bypass (check the access.json cwd path)`);
+    if (routeRefused) logRedacted(`[poller] cwd route REFUSED for ${session}: '${configuredCwd}' has no verifiable read-only floor (a .claude/settings.json registering a PreToolUse hook whose script exists) — the route is dropped and the session runs in the himmel checkout with no bypass (check the access.json cwd path)`);
     const routedCwd = routeRefused ? null : configuredCwd;
     // spawn the session in the chat's vault cwd when one is configured,
     // so the vault's own .claude/hooks load (e.g. a medical PHI-egress floor). The
@@ -1591,7 +1599,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     await atomicWrite(join(sd, "run.log"), logHead + (res.tail ?? "(no output captured — run hung or was killed at the deadline)") + "\n");
     if (lockedAtSpawn) {
       noticed.delete(session);
-      console.error(`[poller] lockdown arrived before spawn for ${session}; no agent ran, pending left queued`);
+      logRedacted(`[poller] lockdown arrived before spawn for ${session}; no agent ran, pending left queued`);
       return;
     }
     if (res.blocked) {
@@ -1711,7 +1719,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
     runFn(session, modelOverride)
       .then(() => { streaks.delete(session); })
       .catch(async (e) => {
-        console.error("[poller] dispatched run failed for " + session + ": " + e);
+        logRedacted("[poller] dispatched run failed for " + session + ": " + e);
         const error = String(e);
         const prev = streaks.get(session);
         const same = prev?.error === error;
@@ -1721,7 +1729,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
         // mark the alert delivered only on success, so a throwing
         // delivery is retried on the next identical failure instead of lost.
         try { await onRepeatedFailure(session, error, streak.count); streak.alerted = true; }
-        catch (alertErr) { console.error("[poller] repeated-failure alert failed for " + session + ": " + alertErr); }
+        catch (alertErr) { logRedacted("[poller] repeated-failure alert failed for " + session + ": " + alertErr); }
       })
       .finally(() => { inFlight.delete(session); });
     return true;
@@ -1973,7 +1981,7 @@ export function makeBurstCoalescer(
           }
         }
       } catch (e) {
-        console.error(`[poller] burst flush failed for ${session}: ${e}`);
+        logRedacted(`[poller] burst flush failed for ${session}: ${e}`);
       }
     }
   };
@@ -2248,7 +2256,7 @@ export async function main(): Promise<void> {
   // alert below), instead of retrying silently forever.
   const repeatedFailureAlert: RepeatedFailureAlert = async (session, error, count) => {
     const chat = operatorChatId(access);
-    if (chat === null) { console.error(`[poller] ${session} failed ${count}x with the same error but there is no operator chat to alert`); return; }
+    if (chat === null) { logRedacted(`[poller] ${session} failed ${count}x with the same error but there is no operator chat to alert`); return; }
     await replyViaOutbox(root, chat, `⚠️ bridge: every dispatch for ${session} has failed ${count} times in a row with the same error, and it keeps retrying:\n${error.slice(0, 500)}\nIf this names plugin-profiles or another module, restart-bridge.sh may clear it; check the poller log.`);
   };
   const dispatch = makeDispatcher(runFn, undefined, repeatedFailureAlert);
@@ -2488,7 +2496,7 @@ export async function main(): Promise<void> {
         // which is the resource spam the triage gate exists to prevent, aimed at the
         // operator. Every dropped record is still logged individually below.
         if (notifiedChats.has(i.chat_id)) {
-          console.error(`[poller] drop notice suppressed (chat already notified this batch) for update ${i.update_id} chat ${i.chat_id}`);
+          logRedacted(`[poller] drop notice suppressed (chat already notified this batch) for update ${i.update_id} chat ${redactChatId(i.chat_id)}`);
           return;
         }
         notifiedChats.add(i.chat_id);
@@ -2497,7 +2505,7 @@ export async function main(): Promise<void> {
         // throwing (telegram-api.ts), so ignoring it would let the visibility
         // guarantee fail silently — the exact shape of this whole ticket.
         void sendMessage(token, i.chat_id, `⚠️ Your last message could not be queued (update ${i.update_id}) and was NOT answered — please resend. Details in supervisor.log.`)
-          .then((ok) => { if (!ok) console.error(`[poller] drop notice UNDELIVERED for update ${i.update_id} chat ${i.chat_id} — this log is now the only record of the drop`); })
+          .then((ok) => { if (!ok) logRedacted(`[poller] drop notice UNDELIVERED for update ${i.update_id} chat ${redactChatId(i.chat_id)} — this log is now the only record of the drop`); })
           .catch((e) => { console.error(`[poller] drop notice threw for update ${i.update_id}: ${e}`); });
       },
       onCursorReset,

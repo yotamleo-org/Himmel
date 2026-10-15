@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-cr-best-effort.sh (HIMMEL-3360).
+# Smoke test for scripts/hooks/check-cr-best-effort.sh.
 #
 # CodeRabbit is best effort: a tracked line that names it AND schedules,
 # queues or holds work on it is a violation. Exercises the guard's direct-file
