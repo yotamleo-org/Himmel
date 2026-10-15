@@ -597,6 +597,12 @@ check_sed() {
             --i*) n="${a#--}"; n="${n%%=*}"; _opt_prefix in-place "$n" && inplace=1 ;;
             --expression=*) have=1; scripts+=("${a#*=}") ;;
             --expression) have=1; nx=e ;;
+            --e*)
+                n="${a#--}"; n="${n%%=*}"
+                if _opt_prefix expression "$n"; then
+                    have=1
+                    case "$a" in *=*) scripts+=("${a#*=}") ;; *) nx=e ;; esac
+                fi ;;
             --file=*) have=1 ;;
             --file) have=1; nx=skip ;;
             --line-length) nx=skip ;;
@@ -808,6 +814,7 @@ check_clause() {
         case "$a" in
             -o|-O) pexp=1 ;;
             -o?*|-O?*) is_lift "${a:2}" && deny "$cmd $a writes the bank lift" ;;
+            -[A-Za-z]*[oO]) [[ "$cmd" =~ $READ_RE ]] || pexp=1 ;;
             --output=*|--output-document=*|--out-file=*|--outfile=*)
                 is_lift "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})" ;;
             --output|--output-document|--out-file|--outfile)
