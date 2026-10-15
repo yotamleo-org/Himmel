@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
-# 07-settings-overlay-hooks.sh — probe 3e (HIMMEL-2178, Chain 2a).
+# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement
+# 07-settings-overlay-hooks.sh — probe 3e.
 #
 # Question: does a `--settings <overlay.json>` on a headless `claude` `-p`
 # session STRIP the project's .claude/settings.json hooks, MERGE with them,
@@ -89,15 +89,15 @@ if command -v cygpath >/dev/null 2>&1; then OVERLAY_FILE="$(cygpath -m "$OVERLAY
 run_claude() {
   # $1 = output json path, $2 = stderr path, extra args (e.g. --settings ...) follow
   local out="$1" err="$2"; shift 2
-  # codex-5: native_auth_pin_env strips any ambient ANTHROPIC_*/
-  # CLAUDE_CODE_USE_* proxy env before the launch (native-auth-pin.sh,
-  # HIMMEL-1867) — without it a proxied dev shell would silently measure the
+  # native_auth_pin_env strips any ambient ANTHROPIC_*/
+  # CLAUDE_CODE_USE_* proxy env before the launch (native-auth-pin.sh) —
+  # without it a proxied dev shell would silently measure the
   # proxy's hook behavior, not native claude's, with no warning.
   # shellcheck disable=SC1091
-  # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
+  # The pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
   ( cd "$SCRATCH" && { . "$REPO_ROOT/scripts/lib/native-auth-pin.sh" || exit 1; native_auth_pin_env
     [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]] &&
-    # HIMMEL-2178 probe 3e (bank-preflight gates above)
+    # probe 3e (bank-preflight gates above)
     timeout "$TIMEOUT_S" env MSYS_NO_PATHCONV=1 claude -p \
       --output-format json --permission-mode acceptEdits --allowedTools "Bash" \
       --max-turns 2 --model "$MODEL" "$@" < "$PROMPT_FILE" > "$out" 2>"$err"; } )

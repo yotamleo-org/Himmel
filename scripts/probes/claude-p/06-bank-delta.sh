@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Probe 6 (HIMMEL-2179): bank utilization snapshot around the probe batch.
+# Probe 6: bank utilization snapshot around the probe batch.
 # Usage: 06-bank-delta.sh before   (run FIRST, aborts the caller if SKIPPED-BANK)
 #        06-bank-delta.sh after    (run LAST, also prints the delta)
 # shellcheck source=./common.sh

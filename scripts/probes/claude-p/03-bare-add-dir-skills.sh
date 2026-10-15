@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement (HIMMEL-4013)
-# Probe 3 (HIMMEL-2179, ported credential-free by HIMMEL-4410): does
+# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement
+# Probe 3: does
 # `--bare --add-dir <packdir>` discover a skill living in <packdir>/.claude/skills/?
 # Runs under the fake-key harness (scripts/testing/fakekey-claude.sh): no login,
 # no model turn. Verified by ARTIFACT: the skill is listed in the stream-json

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement (HIMMEL-4013)
-# Probe 3d (HIMMEL-2179, ported credential-free by HIMMEL-4410): --plugin-dir as the
+# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement
+# Probe 3d: --plugin-dir as the
 # pack mechanism. A minimal plugin (.claude-plugin/plugin.json + skills/) loaded
 # via --plugin-dir, no --bare, no --add-dir. Reports whether the skill is listed
 # under the namespaced name (probe-plugin:probe-skill), the bare name, or both.

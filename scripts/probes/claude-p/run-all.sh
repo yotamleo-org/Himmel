@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the whole HIMMEL-2179 P0 probe batch in order. Bank snapshot first
+# Runs the whole P0 probe batch in order. Bank snapshot first
 # (aborts everything on SKIPPED-BANK), then probes 1/1b/2/3/3b/3c/3d/4/5/7,
 # then a second bank snapshot + delta. Logs everything to tmp/run-all.log; each
 # probe's own artifacts land in tmp/ under its own prefix. This script does

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement (HIMMEL-4013)
-# Probe 3c (HIMMEL-2179, ported credential-free by HIMMEL-4410): project-tier skill
+# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement
+# Probe 3c: project-tier skill
 # discovery. cwd = a directory whose own ./.claude/skills/ holds the skill, no
 # --bare, no --add-dir. fakekey_run runs claude with cwd = its outdir, so the
 # outdir IS the project. Verified by ARTIFACT: the skill is listed in the

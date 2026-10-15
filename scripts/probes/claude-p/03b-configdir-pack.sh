@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement (HIMMEL-4013)
-# Probe 3b (HIMMEL-2179, ported credential-free by HIMMEL-4410): does a throwaway
+# launch-profile-ok-file: experiment probe; it measures a specific headless claude config, so a role profile would change the measurement
+# Probe 3b: does a throwaway
 # CLAUDE_CONFIG_DIR holding a skills/ dir give skill discovery with no --bare and
 # no --add-dir? The original seeded the dir with a copy of the operator's
 # .credentials.json to get working auth; that copy is GONE: the run uses a fake

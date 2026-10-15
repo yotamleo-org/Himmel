@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement (HIMMEL-4013)
-# Probe 2 (HIMMEL-2179): --permission-mode dontAsk + --allowedTools.
+# launch-profile-ok-file: experiment probe; it measures a specific claude -p config, so a role profile would change the measurement
+# Probe 2: --permission-mode dontAsk + --allowedTools.
 # Run A: allowlist covers Write -> verify artifact file exists.
 # Run B: allowlist does NOT cover Write -> verify artifact absent AND
 # permission_denials populated in the JSON envelope. Verify by ARTIFACT

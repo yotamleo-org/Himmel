@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the claude-p P0 probe harness (HIMMEL-2179).
+# Shared helpers for the claude-p P0 probe harness.
 # Sourced by each probe script. No assertions here on purpose — probes dump
 # raw artifacts/envelopes; a human reads them into RESULTS.md (verify by
 # artifact, never exit code).
@@ -12,7 +12,7 @@ MODEL=haiku
 # shellcheck disable=SC2034  # used by scripts that source this file
 TIMEOUT_S=120
 
-# Credential-free discovery probes (HIMMEL-4410): the 03* probes run claude under
+# Credential-free discovery probes: the 03* probes run claude under
 # the fake-key harness and read skill discovery from the stream-json init event,
 # so they need no login and cost nothing. Sourcing this pulls in fakekey_run.
 # shellcheck source=../../testing/fakekey-claude.sh
