@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-remove-retired-plugin.sh — hermetic tests for
-# scripts/machine-setup/remove-retired-plugin.sh (HIMMEL-2033).
+# scripts/machine-setup/remove-retired-plugin.sh.
 #
 # One case per branch of the contract: absent -> silent; present + "y" -> both
 # removal commands, in order; present + "n" -> neither; non-TTY -> advisory only.
@@ -16,7 +16,7 @@ SCRIPT="$REPO_ROOT/scripts/machine-setup/remove-retired-plugin.sh"
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT not found" >&2; exit 1; }
 
 # grepq <text> [grep-args...] — match with no pipeline, so a match that lands
-# early can't be reported as a failed pipeline under pipefail (HIMMEL-1430).
+# early can't be reported as a failed pipeline under pipefail.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 failures=0

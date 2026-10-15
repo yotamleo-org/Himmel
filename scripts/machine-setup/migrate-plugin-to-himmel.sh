@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # migrate-plugin-to-himmel.sh — switch a plugin's install source from an
-# external marketplace to himmel's SHA-pinned @himmel entry (HIMMEL-434).
+# external marketplace to himmel's SHA-pinned @himmel entry.
 #
 # WHY: himmel vendors some upstream plugins into its own marketplace pinned to a
 # reviewed commit SHA (supply-chain policy). If the same plugin is ALSO installed
@@ -8,7 +8,7 @@
 # shadows the pin — defeating the whole point. This re-points the install at
 # @himmel and removes the now-orphaned external marketplace.
 # Orphaned project-scope registry records are backed up and pruned; existing
-# projects use scoped uninstall when the CLI supports it (HIMMEL-3039).
+# projects use scoped uninstall when the CLI supports it.
 #
 # WHAT MOVES (config preservation): `claude plugin install <name>@himmel`
 # re-creates the enabledPlugins entry under the @himmel key (enabled), so the
@@ -19,7 +19,7 @@
 # RUN THIS OPERATOR-PRESENT, IN A FRESH SESSION. It mutates settings.json via
 # `claude plugin` (enabledPlugins + extraKnownMarketplaces); doing it inside the
 # session that's also editing plugins risks cache staleness, and agent-side
-# settings.json mutation is a self-mod HARD-veto (HIMMEL-429) — so this is an
+# settings.json mutation is a self-mod HARD-veto — so this is an
 # operator step, not an autonomous one.
 #
 # Usage:
@@ -104,7 +104,7 @@ for spec in "${SPECS[@]}"; do
                     cp -p "$INSTALLED_JSON" "$REGISTRY_BACKUP"
                 fi
                 registry_tmp=$(mktemp "$INSTALLED_JSON.tmp.XXXXXX")
-                # HIMMEL-3040: compare-and-swap. cksum (POSIX) before the read and
+                # Compare-and-swap. cksum (POSIX) before the read and
                 # again just before the mv; a change means a concurrent writer
                 # (e.g. `claude plugin install`) — abort rather than replace its write.
                 # ponytail: a writer landing between the re-check and the mv is

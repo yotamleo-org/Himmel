@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # upgrade-rtk.sh — upgrade the installed rtk binary (rtk-ai/rtk) to the latest
-# GitHub release (HIMMEL-1323 drift-fix cadence; the "upgrade.command" on the
+# GitHub release (drift-fix cadence; the "upgrade.command" on the
 # "rtk" entry in scripts/upstreams.json points here).
 #
 # WHY this exists: rtk is tracked kind=tag_release/mode=probe — there is no
@@ -13,7 +13,7 @@
 # release .deb / zip) instead of upstream's `curl | sh` one-liner, which
 # himmel does not run unattended.
 #
-# On Linux, install method is selected by who owns RTK_BIN_PATH (HIMMEL-3049):
+# On Linux, install method is selected by who owns RTK_BIN_PATH:
 # a dpkg-owned binary (Debian/Ubuntu) still takes the deb + `sudo apt` path
 # above; a NON-package-owned binary (e.g. the ~/.local/bin/rtk static-pie
 # musl build machine-setup's non-apt path leaves behind, or any other
@@ -80,7 +80,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Named PS1_TWIN, not PS1 (CR glm-4): bare `PS1` is bash's prompt variable.
+# Named PS1_TWIN, not PS1: bare `PS1` is bash's prompt variable.
 # Harmless in a non-interactive script, misleading the moment anyone sources it.
 PS1_TWIN="$SCRIPT_DIR/upgrade-rtk.ps1"
 
@@ -106,7 +106,7 @@ done
 # deliberately forces the Linux code path onto every host OS, macOS CI
 # runners included, per the header comment above), so a GNU-only flag here
 # broke the suite on that leg. Same discipline upgrade-rtk.ps1's Test-IsNewer
-# uses, so the two platforms cannot quietly diverge on a suffixed tag (CR).
+# uses, so the two platforms cannot quietly diverge on a suffixed tag.
 is_newer() {
   [ "$1" = "$2" ] && return 1
   local c="" b=""
@@ -189,7 +189,7 @@ if [ -z "$CURRENT_VERSION" ]; then
   exit 2
 fi
 
-# BIN_OWNER selects the install method (HIMMEL-3049): dpkg only ever owns a
+# BIN_OWNER selects the install method: dpkg only ever owns a
 # path it put there itself (`dpkg -S` fails outright on any other path, no
 # false positives), so this is a safe default even when dpkg exists but
 # RTK_BIN_PATH is a manually-placed binary like ~/.local/bin/rtk.
@@ -212,7 +212,7 @@ if [ "$BIN_OWNER" != "dpkg" ]; then
     # rtk-ai/rtk publishes a musl x86_64 build (matching the static-pie
     # ~/.local/bin/rtk binary this branch exists for) but only a gnu
     # aarch64 build -- verified against the v0.49.0 release asset list
-    # (HIMMEL-3049); not a hardcoded x86_64-only assumption.
+    # so the arch is not a hardcoded x86_64-only assumption.
     x86_64|amd64) TARBALL_ASSET="rtk-x86_64-unknown-linux-musl.tar.gz" ;;
     aarch64|arm64) TARBALL_ASSET="rtk-aarch64-unknown-linux-gnu.tar.gz" ;;
     *)
@@ -255,13 +255,13 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # --------------------------------------------------------------------------
-# Concurrency lock (CR round 4, HIMMEL-1323): nothing else here serializes
+# Concurrency lock: nothing else here serializes
 # overlapping invocations, and this repo genuinely runs several concurrent
-# Claude sessions (HIMMEL-1338) — two overlapping upgrades sharing the same
+# Claude sessions — two overlapping upgrades sharing the same
 # INSTALL_DIR (the Windows twin's DEFAULT is shared, $env:TEMP\rtk-upgrade,
 # not a fresh mktemp -d) can overwrite each other's backup or roll back to a
 # stale binary. Same lock-directory idiom as scripts/ci/run-shell-tests.sh's
-# suite lock (HIMMEL-1338): mkdir is atomic, and an owner file (pid/host/
+# suite lock: mkdir is atomic, and an owner file (pid/host/
 # started) lets a crashed holder's lock be told apart from a live one via a
 # TTL. Scaled down from that lock: this one never queues — a stacked nightly
 # upgrade must fail fast (exit 3), not wait — so it skips the takeover-claim
@@ -348,7 +348,7 @@ if ! cp -p "$RTK_BIN_PATH" "$BACKUP" 2>/dev/null && ! cp "$RTK_BIN_PATH" "$BACKU
   exit 2
 fi
 
-# Returns 0 only when the binary was ACTUALLY restored (CR codex-1). The deb
+# Returns 0 only when the binary was ACTUALLY restored. The deb
 # path installs through `sudo apt`, which can leave a root-owned binary an
 # unprivileged `cp` cannot overwrite — so retry through sudo (non-interactive:
 # an unattended cadence has nobody to answer a password prompt) before giving
@@ -369,7 +369,7 @@ restore_backup() {
 # line unconditionally because restore_backup's status was discarded, so a
 # failed restore claimed the machine was safe while leaving rtk broken. That is
 # the exact failure the backup exists to prevent, so the claim now follows the
-# result (CR codex-1).
+# result.
 announce_rollback() {
   if restore_backup; then
     echo "upgrade-rtk: ROLLED BACK -- $RTK_BIN_PATH restored to $CURRENT_VERSION." >&2
@@ -401,7 +401,7 @@ elif [ "$BIN_OWNER" = "dpkg" ]; then
     exit 2
   fi
   # -n: non-interactive. Plain `sudo` would prompt for a password and hang an
-  # unattended cadence run indefinitely (HIMMEL-1323) if NOPASSWD isn't
+  # unattended cadence run indefinitely if NOPASSWD isn't
   # configured for this user -- fail fast with a clear message instead.
   if ! sudo -n apt install -y "$DEB"; then
     echo "upgrade-rtk: 'sudo apt install' of the new rtk failed (or sudo needs a password -- NOPASSWD is not configured for this user) -- restoring the pre-upgrade backup." >&2
@@ -409,7 +409,7 @@ elif [ "$BIN_OWNER" = "dpkg" ]; then
     exit 4
   fi
 else
-  # Non-dpkg-owned (HIMMEL-3049): RTK_BIN_PATH is a user-writable path no
+  # Non-dpkg-owned: RTK_BIN_PATH is a user-writable path no
   # package manager tracks (e.g. ~/.local/bin/rtk, a static-pie musl build),
   # so apt/dpkg would never even see it, let alone replace it. Install
   # directly from the release tarball, verified against that release's own

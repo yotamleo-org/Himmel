@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/machine-setup/make-cloudinit-seed.py (HIMMEL-2512):
+# Smoke test for scripts/machine-setup/make-cloudinit-seed.py:
 # --dry-run must emit user-data containing the user, pubkey, and package
 # list, while NEVER leaking the plaintext password (or its hash) it was
 # given; the openssl-fallback subprocess env is scrubbed of secrets; blank
@@ -70,7 +70,7 @@ print('scrub-ok')
 assert_contains "openssl subprocess env is scrubbed of secrets, keeps PATH" "$SCRUB_OK" "scrub-ok"
 
 # T1: plaintext supplied via env (ubuntu_vm_pass) — no --password argv flag
-# exists at all (finding 1: argv leaks via shell history + ps).
+# exists at all (argv leaks via shell history + ps).
 OUT=$(ubuntu_vm_pass="$PLAIN_PASSWORD" python3 "$SCRIPT" \
     --user himmeltest \
     --pubkey "$PUBKEY_FILE" \
@@ -92,7 +92,7 @@ assert_contains "user-data contains the package list" "$OUT" \
 assert_not_contains "env-password run never leaks the plaintext password" "$OUT" "$PLAIN_PASSWORD"
 assert_contains "ssh_pwauth defaults to false" "$OUT" "ssh_pwauth: false"
 
-# T2: plaintext supplied via --password-file (finding 1's other source).
+# T2: plaintext supplied via --password-file.
 PW_FILE="$TMP/pw.txt"
 printf '%s\n' "$PLAIN_PASSWORD" > "$PW_FILE"
 OUT2=$(python3 "$SCRIPT" \
@@ -125,7 +125,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# T3: --allow-password-ssh flips ssh_pwauth on (finding 2).
+# T3: --allow-password-ssh flips ssh_pwauth on.
 # shellcheck disable=SC2016  # a literal crypt(3) hash, no expansion intended
 OUT3=$(python3 "$SCRIPT" \
     --user himmeltest \
@@ -136,7 +136,7 @@ OUT3=$(python3 "$SCRIPT" \
 assert_contains "--allow-password-ssh enables ssh_pwauth" "$OUT3" "ssh_pwauth: true"
 
 # T4: a hostname with a colon and a quote stays a single valid YAML/JSON-
-# quoted scalar (finding 3) — never breaks the document structure.
+# quoted scalar — never breaks the document structure.
 HOSTNAME_TRICKY='evil: "host"'
 EXPECTED_HOSTNAME_LINE=$(python3 -c 'import json,sys; print("hostname: " + json.dumps(sys.argv[1]))' "$HOSTNAME_TRICKY")
 # shellcheck disable=SC2016  # a literal crypt(3) hash, no expansion intended
@@ -149,7 +149,7 @@ OUT4=$(python3 "$SCRIPT" \
 assert_contains "tricky hostname stays one JSON/YAML-quoted scalar" "$OUT4" "$EXPECTED_HOSTNAME_LINE"
 
 # T5: a bogus --password-hash (whitespace/quotes, not a crypt(3) shape) is
-# rejected with rc=2 (finding 2) — never reaches the YAML interpolation.
+# rejected with rc=2 — never reaches the YAML interpolation.
 OUT5=$(python3 "$SCRIPT" \
     --user himmeltest \
     --password-hash 'x"y' \

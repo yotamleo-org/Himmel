@@ -1,10 +1,10 @@
 ﻿# test-install-plugins-diagnostics.ps1 — install-plugins.ps1 surfaces a real
 # step failure LOUDLY (with the CLI's own output) and exits non-zero via the
 # presence-verify, while a benign "already installed" re-run stays exit 0.
-# PowerShell twin of test-install-plugins-diagnostics.sh (HIMMEL-438 — C2).
+# PowerShell twin of test-install-plugins-diagnostics.sh.
 # Keep in lockstep with the .sh when changing either.
 #
-# HIMMEL-2324: the .sh twin also carries a case for the HIMMEL-2292
+# The .sh twin also carries a case for the
 # force-enable step's predictable temp path ("$SETTINGS.enable.tmp"), but
 # install-plugins.ps1 has NO force-enable step at all (a pre-existing,
 # bash-only gap unrelated to this ticket) — there is no matching temp-path
@@ -93,7 +93,7 @@ function Invoke-Install {
 
 try {
     $env:PATH = "$StubDir;$env:PATH"
-    # HIMMEL-2353: install-plugins.ps1's `user` scope resolves to
+    # install-plugins.ps1's `user` scope resolves to
     # $env:CLAUDE_CONFIG_DIR when set (else the real $HOME/.claude) — pin it
     # into this suite's own $Tmp so a `-Scope user` run here can NEVER reach
     # the operator's real settings.json, even on a step-failure path. Set

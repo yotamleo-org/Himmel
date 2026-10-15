@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-reconcile-enabled-plugins.sh — hermetic tests for the lean plugin-set
-# reconciler (HIMMEL-1032). No global state: every case builds its own fixture
+# reconciler. No global state: every case builds its own fixture
 # template + settings.json in a temp dir and drives the real script with
 # --settings/--template. No plugin is installed, no ~/.claude touched.
 #
@@ -19,7 +19,7 @@
 #   7. --dry-run              — reports the plan, writes nothing.
 #   8. Invalid settings JSON  — exits non-zero, leaves the file untouched.
 #   9. Missing settings file  — exits 0 (nothing to reconcile).
-#  10. HIMMEL-2324            — a link pre-planted at the OLD predictable temp
+#  10. Temp path               — a link pre-planted at the OLD predictable temp
 #                               path ("$SETTINGS.reconcile.tmp") is not written
 #                               through; the patch still lands via mktemp.
 set -euo pipefail
@@ -30,12 +30,12 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # plant_attack_link <path-to-plant> <target-file> — simulates an attacker with
 # write access to the settings dir pre-planting something at a PREDICTABLE
-# temp path before the script runs (HIMMEL-2324). Prefers a real symlink (it
+# temp path before the script runs. Prefers a real symlink (it
 # proves both attack vectors: content written through it, AND `mv` replacing
 # the destination with the symlink itself) but falls back to a hardlink (still
 # proves the write-through vector) when a symlink can't be created — this
@@ -43,7 +43,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # instead of linking (`[ -L ]` catches that) and `New-Item -ItemType
 # SymbolicLink` refuses with "Administrator privilege required".
 # file_id <path> — portable inode identity (GNU `stat -c`, falling back to
-# BSD/macOS `stat -f`; CodeRabbit round 4, anchored here). The GNU-only form
+# BSD/macOS `stat -f`). The GNU-only form
 # is only reached on the hardlink fallback (real symlinks already return
 # earlier on macOS/Linux), but the caller HARD-FAILS when it can't verify a
 # link, so a BSD host reaching this path would abort loudly rather than lose
@@ -66,7 +66,7 @@ plant_attack_link() {
   ln "$target" "$link" 2>/dev/null || true
   li="$(file_id "$link")"; ti="$(file_id "$target")"
   if [ -n "$li" ] && [ "$li" = "$ti" ]; then return 0; fi
-  # CR round 2 (codex-1): a security test that cannot tell "attack blocked"
+  # A security test that cannot tell "attack blocked"
   # from "attack never attempted" is worse than no test. Hard-fail here — the
   # chokepoint every caller routes through — instead of returning quietly: if
   # none of the three methods actually planted a link (verified as a real
@@ -82,10 +82,10 @@ script="$repo_root/scripts/machine-setup/reconcile-enabled-plugins.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# RED (HIMMEL-2699): a trailing value-taking flag with no value must reach the
+# RED: a trailing value-taking flag with no value must reach the
 # script's own usage diagnostic and exit 2, never an unbound-variable death
 # from `set -u`. This is CLI arg parsing, not jq-dependent, so it runs ahead
-# of the jq preflight (HIMMEL-3619) and still executes when jq is absent.
+# of the jq preflight and still executes when jq is absent.
 for flag in --scope --settings --template; do
     set +e
     out=$(bash "$script" "$flag" 2>&1); rc=$?
@@ -243,7 +243,7 @@ rc=0; out=$(bash "$script" --settings "$tmp/nope.json" --template "$tmpl" 2>&1) 
 grepq "$out" -i "nothing to reconcile" || fail "missing file should say nothing to reconcile"
 echo "ok: missing settings file — exit 0, nothing to reconcile"
 
-# ── 10: HIMMEL-2324 — link pre-planted at the OLD predictable temp path ──────
+# ── 10: link pre-planted at the OLD predictable temp path ──────
 s10="$tmp/settings.json"; rm -f "$s10"
 cat > "$s10" <<'JSON'
 { "enabledPlugins": { "keep@mkt": true, "demote@mkt": true } }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-bootstrap.sh -- install the MINIMAL deps to RUN himmel's bash test suites
-# on a fresh Debian/Ubuntu box: a throwaway test VM or a CI runner (HIMMEL-469).
+# on a fresh Debian/Ubuntu box: a throwaway test VM or a CI runner.
 #
 # This is the TEST-HARNESS dependency set, deliberately SEPARATE from
 # scripts/setup.sh's user-facing RUNTIME set ([0/10]: bash git node npm bun

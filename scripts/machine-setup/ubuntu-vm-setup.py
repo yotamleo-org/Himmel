@@ -80,7 +80,7 @@ def vboxmanage(*args):
     return result.returncode, result.stdout + result.stderr
 
 
-# Command-scoped NOPASSWD set (HIMMEL-492). These are the only programs
+# Command-scoped NOPASSWD set. These are the only programs
 # test-bootstrap.sh + setup.sh's R6 ensure-tools invoke under sudo, and they run
 # over a non-TTY ssh where a password-prompted sudo fails with "a terminal is
 # required to authenticate". Scoped deliberately — NEVER a blanket NOPASSWD:ALL.

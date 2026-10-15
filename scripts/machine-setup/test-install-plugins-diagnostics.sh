@@ -3,7 +3,6 @@
 # failure LOUDLY (with the CLI's own output) and exits non-zero via the
 # presence-verify, while a benign "already installed" re-run stays exit 0
 # (idempotent). Stubs `claude` on PATH so nothing touches the real plugin state.
-# (HIMMEL-438 — C2.)
 set -euo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
@@ -12,7 +11,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; echo "$(basename "$0"): SKIPPED — 0 cases ran (jq not on PATH)"; exit 0; }
@@ -21,7 +20,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SUT="$SCRIPT_DIR/install-plugins.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3332: install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
+# install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$TMP/provenance"
 
 # Minimal template: one marketplace (autoUpdate:false so the script never patches
@@ -59,7 +58,7 @@ fail() { echo "FAIL: $1"; exit 1; }
 
 # plant_attack_link <path-to-plant> <target-file> — simulates an attacker with
 # write access to the settings dir pre-planting something at a PREDICTABLE
-# temp path before the script runs (HIMMEL-2324). Prefers a real symlink (it
+# temp path before the script runs. Prefers a real symlink (it
 # proves both attack vectors: content written through it, AND `mv` replacing
 # the destination with the symlink itself) but falls back to a hardlink (still
 # proves the write-through vector) when a symlink can't be created — this
@@ -67,9 +66,8 @@ fail() { echo "FAIL: $1"; exit 1; }
 # instead of linking (`[ -L ]` catches that) and `New-Item -ItemType
 # SymbolicLink` refuses with "Administrator privilege required".
 # file_id <path> — portable inode identity (GNU `stat -c`, falling back to
-# BSD/macOS `stat -f`; CodeRabbit round 4 named two sibling sites — this is
-# the third copy of the same helper, same partial-fix trap as CR round 3).
-# The GNU-only form is only reached on the hardlink fallback (real symlinks
+# BSD/macOS `stat -f`; the GNU-only form is only reached on the
+# hardlink fallback (real symlinks
 # already return earlier on macOS/Linux), but the caller HARD-FAILS when it
 # can't verify a link, so a BSD host reaching this path would abort loudly
 # rather than lose coverage silently — still worth making portable. Empty
@@ -92,7 +90,7 @@ plant_attack_link() {
   ln "$target" "$link" 2>/dev/null || true
   li="$(file_id "$link")"; ti="$(file_id "$target")"
   if [ -n "$li" ] && [ "$li" = "$ti" ]; then return 0; fi
-  # CR round 2 (codex-1): a security test that cannot tell "attack blocked"
+  # A security test that cannot tell "attack blocked"
   # from "attack never attempted" is worse than no test. Hard-fail here — the
   # chokepoint every caller routes through — instead of returning quietly: if
   # none of the three methods actually planted a link (verified as a real
@@ -102,7 +100,7 @@ plant_attack_link() {
   exit 1
 }
 
-# HIMMEL-2292: pins install-plugins.sh's force-enable step (and the
+# Pins install-plugins.sh's force-enable step (and the
 # pre-existing autoUpdate patch) to a path never created here — without it
 # --scope user defaults both to the real $HOME/.claude/settings.json.
 SETTINGS="$TMP/settings-not-created.json"
@@ -127,9 +125,9 @@ set -e
 grepq "$out2" "already present"        || fail "benign path should print quiet 'already present'"
 grepq "$out2" "step FAILED"            && fail "benign path must NOT print 'step FAILED'"
 
-# ── Case 3: HIMMEL-2324 — link pre-planted at the OLD predictable force-enable
+# ── Case 3: link pre-planted at the OLD predictable force-enable
 #            temp path ("$SETTINGS.enable.tmp") is not written through; the
-#            drifted plugin is still force-enabled via mktemp (HIMMEL-2292).
+#            drifted plugin is still force-enabled via mktemp.
 SETTINGS3="$TMP/settings3.json"
 cat > "$SETTINGS3" <<'JSON'
 { "enabledPlugins": { "foo@mp": false } }
@@ -149,7 +147,7 @@ set -e
 [ "$(jq -r '.enabledPlugins["foo@mp"]' "$SETTINGS3")" = "true" ] || fail "HIMMEL-2324: drifted plugin was not force-enabled"
 echo "ok: HIMMEL-2324 — pre-planted link at the predictable force-enable temp path is not written through"
 
-# HIMMEL-2753: a CLI child must not consume the next loop record. The same
+# A CLI child must not consume the next loop record. The same
 # three-source fixture runs with and without stdin draining; neither is dry-run.
 mkdir -p "$TMP/registration-bin" "$TMP/home"
 cat > "$TMP/registration.json" <<'JSON'

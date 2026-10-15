@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # enable-i-have-adhd-always.sh — create the i-have-adhd always-on flag file
-# (HIMMEL-5239). The plugin's SessionStart hook injects the skill body only when
+# The plugin's SessionStart hook injects the skill body only when
 # ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.i-have-adhd-always exists (~1.75k tokens
 # once per session). The installer and the updater call this so a machine that
 # has the plugin installed gets it on without a manual `touch`.

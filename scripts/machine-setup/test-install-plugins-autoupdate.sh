@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-install-plugins-autoupdate.sh — hermetic test for the HIMMEL-365
+# test-install-plugins-autoupdate.sh — hermetic test for the
 # marketplace auto-update patch in scripts/machine-setup/install-plugins.sh.
 #
 # Stubs the `claude` CLI on PATH (marketplace add / install no-op; `plugin list`
@@ -11,7 +11,7 @@
 #   3. flagged but NOT registered       → skipped (no orphan entry created)
 #   4. unrelated keys                   → preserved
 #   5. re-run                           → idempotent (stays true, exit 0)
-#   6. HIMMEL-2324: link pre-planted at the OLD predictable temp path
+#   6. link pre-planted at the OLD predictable temp path
 #      ("$SF.autoupdate.tmp") → not written through; patch still lands.
 #
 # install-plugins.ps1 carries the SAME patch as a PowerShell twin — covered by
@@ -27,14 +27,14 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; echo "$(basename
 FAILED=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3332: install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
+# install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$TMP/provenance"
 
 fail() { echo "FAIL: $1"; FAILED=$((FAILED + 1)); }
 
 # plant_attack_link <path-to-plant> <target-file> — simulates an attacker with
 # write access to the settings dir pre-planting something at a PREDICTABLE
-# temp path before the script runs (HIMMEL-2324). Prefers a real symlink (it
+# temp path before the script runs. Prefers a real symlink (it
 # proves both attack vectors: content written through it, AND `mv` replacing
 # the destination with the symlink itself) but falls back to a hardlink (still
 # proves the write-through vector) when a symlink can't be created — this
@@ -42,8 +42,7 @@ fail() { echo "FAIL: $1"; FAILED=$((FAILED + 1)); }
 # instead of linking (`[ -L ]` catches that) and `New-Item -ItemType
 # SymbolicLink` refuses with "Administrator privilege required".
 # file_id <path> — portable inode identity (GNU `stat -c`, falling back to
-# BSD/macOS `stat -f`; CodeRabbit round 4, test-install-plugins-autoupdate.sh
-# was one of two sites CodeRabbit named — the GNU-only form was reached only
+# BSD/macOS `stat -f`; the GNU-only form was reached only
 # on the hardlink fallback, but the caller HARD-FAILS when it can't verify a
 # link, so a BSD host reaching this path would abort loudly rather than lose
 # coverage silently — still worth making portable). Empty output (both
@@ -65,7 +64,7 @@ plant_attack_link() {
   ln "$target" "$link" 2>/dev/null || true
   li="$(file_id "$link")"; ti="$(file_id "$target")"
   if [ -n "$li" ] && [ "$li" = "$ti" ]; then return 0; fi
-  # CR round 2 (codex-1): a security test that cannot tell "attack blocked"
+  # A security test that cannot tell "attack blocked"
   # from "attack never attempted" is worse than no test. Hard-fail here — the
   # chokepoint every caller routes through — instead of returning quietly: if
   # none of the three methods actually planted a link (verified as a real
@@ -77,9 +76,9 @@ plant_attack_link() {
 
 # Stub `claude`: install is a no-op; `plugin list` prints the enabled specs so
 # the post-install verify passes. `marketplace add` declares the marketplace in
-# the local-scope settings file when absent, as the real CLI does (HIMMEL-3541:
+# the local-scope settings file when absent, as the real CLI does.
 # install-plugins.sh reads that file BEFORE this call, so an entry already there
-# is the operator's and stays untouched). ghost never registers.
+# is the operator's and stays untouched. ghost never registers.
 STUB_DIR="$TMP/bin"
 mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/claude" <<'STUB'
@@ -163,7 +162,7 @@ rm -f "$SF"
 [ ! -f "$SF" ] || fail "missing settings file was created"
 [ "$FAILED" -eq 0 ] && echo "ok: missing settings file stays absent"
 
-# HIMMEL-3541: an entry the operator already declared before the run is
+# An entry the operator already declared before the run is
 # theirs -- left byte-identical, its autoUpdate:false kept.
 cat > "$SF" <<'JSON'
 {
@@ -181,7 +180,7 @@ PRE_OP="$(jq -c '.extraKnownMarketplaces.flagged' "$SF")"
   || fail "HIMMEL-3541: the run did not register unflagged beside the operator entry"
 [ "$FAILED" -eq 0 ] && echo "ok: an operator's pre-existing entry is left as it was"
 
-# HIMMEL-2324: a link pre-planted at the OLD predictable temp path
+# A link pre-planted at the OLD predictable temp path
 # ("$SF.autoupdate.tmp") must not be written through, and the intended
 # autoUpdate patch must still land via the (now-unpredictable) mktemp path.
 cat > "$SF" <<'JSON'
@@ -199,7 +198,7 @@ plant_attack_link "$SF.autoupdate.tmp" "$CANARY"
   || fail "HIMMEL-2324: intended autoUpdate patch did not land"
 [ "$FAILED" -eq 0 ] && echo "ok: HIMMEL-2324 — pre-planted link at the predictable temp path is not written through"
 
-# HIMMEL-2324 (CR round 6, codex-4): exclusivity primitive, not just naming.
+# Exclusivity primitive, not just naming.
 # The case above proves the temp NAME is unpredictable — it does NOT prove
 # the CREATE is exclusive. It would still pass even if the real
 # implementation regressed to a non-exclusive create at the (still random)

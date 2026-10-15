@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4024: hermetic test for install-code-kit-clis.sh (--dry-run only, no installs).
+# Hermetic test for install-code-kit-clis.sh (--dry-run only, no installs).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/install-code-kit-clis.sh"

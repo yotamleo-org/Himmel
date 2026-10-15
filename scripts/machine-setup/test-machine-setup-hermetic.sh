@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # test-machine-setup-hermetic.sh — structural guard: no machine-setup suite may
-# reach a REAL user settings.json write (HIMMEL-2353).
+# reach a REAL user settings.json write.
 #
 # WHY this exists: test-install-plugins-verify.ps1 / test-install-plugins-diagnostics.ps1
 # drove install-plugins.ps1 -Scope user with no settings pin. install-plugins.ps1
 # had NO -Settings seam at all, so `user` scope always resolved to the operator's
 # real $HOME/.claude/settings.json — and on a verify-FAIL case, control still
-# reached the HIMMEL-1032 reconcile step (gated by HIMMEL_RECONCILE_PLUGINS, which
+# reached the reconcile step (gated by HIMMEL_RECONCILE_PLUGINS, which
 # is `1` in the operator's live env), silently rewriting real enabledPlugins down
 # to the fixture floor. The fix teaches install-plugins.sh/.ps1 the same
 # CLAUDE_CONFIG_DIR idiom the sibling reconcile-enabled-plugins.{sh,ps1} and
@@ -23,14 +23,14 @@
 # WRITE, not the source text, so it can't be fooled by an idiom it doesn't
 # recognize.
 #
-# Positive control (HIMMEL-2353, mandatory — a guard that cannot fail is
+# Positive control (mandatory — a guard that cannot fail is
 # worthless): before touching any real suite, a deliberately NON-hermetic
 # fixture ("$HOME/.claude/settings.json" writer) is generated and run through
 # the same canary check, which must report it FAILED. If it doesn't, the
 # guard's own instrument is broken and this script aborts loudly rather than
 # silently passing everything downstream.
 #
-# EXPANSION (HIMMEL-2353, ratified): CLAUDE_CONFIG_DIR is PRODUCTION behavior
+# EXPANSION: CLAUDE_CONFIG_DIR is PRODUCTION behavior
 # in install-plugins.{sh,ps1} now, not test-only scaffolding, so two more
 # properties are proven directly against the installers (not their test
 # suites):
@@ -95,8 +95,8 @@ ps1_skip_reason() {
 # pointed at a fresh sandbox holding a known canary, cwd pinned to REPO_ROOT
 # (a suite like test-install-plugins-verify.sh needs a git worktree under it);
 # assert it comes back byte-identical (sha256) AND that the child actually
-# completed (exit 0). A non-zero exit is gated fatal — HIMMEL-2353 measured
-# all nine suites in this exact shape and all nine exit 0, so an inconclusive
+# completed (exit 0). A non-zero exit is gated fatal: all
+# nine suites measured in this exact shape exit 0, so an inconclusive
 # run (crashed/died before reaching its settings-write path) must never read
 # as a pass: that's the vacuous-verdict failure mode this script exists to
 # rule out. Kept as two distinct failure messages on purpose: "canary WRITTEN"
@@ -113,13 +113,13 @@ check_hermetic() {
   before="$(sha256_of "$canary")"
   outfile="$sandbox/child.out"
 
-  # HIMMEL_RECONCILE_PLUGINS=1 — NOT unset: the root-caused bug (HIMMEL-2353)
-  # only reaches a real write via the HIMMEL-1032 reconcile step, which is
+  # HIMMEL_RECONCILE_PLUGINS=1 — NOT unset: the root-caused bug
+  # only reaches a real write via the reconcile step, which is
   # gated on this var being `1` in "the operator's live env." A guard that
   # unset it would test a condition milder than the one that actually shipped
   # the leak; setting it here reproduces that operator condition on purpose.
   #
-  # HIMMEL-2356: stdout+stderr are captured to $outfile, not discarded — a
+  # Stdout+stderr are captured to $outfile, not discarded — a
   # suite that skips every case still exits 0 and never touches the canary,
   # so without reading what it printed this would report PASS having proved
   # nothing (the other half of the vacuous-verdict bug this file exists to
@@ -219,7 +219,7 @@ assert_check_hermetic_catches "positive control (canary write)" bash "$BAD_FIXTU
 # ── Second, distinct control: a child that exits non-zero BEFORE writing
 # anything must be caught too. A crash-before-reaching-the-write-path leaves
 # the canary untouched, so the canary-changed gate alone would misreport it
-# PASS — the vacuous-verdict failure mode CodeRabbit flagged. This proves the
+# PASS — the vacuous-verdict failure mode. This proves the
 # completion-status gate independently of the canary-write gate above. ──────
 echo "──── second control: an early-exiting fixture (no write, non-zero exit) must be CAUGHT ────"
 EARLY_EXIT_FIXTURE="$TMP/early-exit-fixture.sh"
@@ -232,7 +232,7 @@ FIXTURE
 chmod +x "$EARLY_EXIT_FIXTURE"
 assert_check_hermetic_catches "second control (early exit, rc!=0)" bash "$EARLY_EXIT_FIXTURE"
 
-# ── Sibling control instrument (HIMMEL-2356): same shape as
+# ── Sibling control instrument: same shape as
 # assert_check_hermetic_catches, but asserts on SKIP_COUNT instead of
 # FAIL_COUNT — a total-skip classification doesn't call fail(), so the
 # FAIL-based assertion can't observe it. Invokes check_hermetic() itself,
@@ -254,7 +254,7 @@ assert_check_hermetic_skips() { # <control-name> <fixture-cmd...>
 }
 
 # ── Third control: a fixture that prints the standard total-skip marker and
-# exits 0, touching nothing. Before HIMMEL-2356 this read as a bare PASS
+# exits 0, touching nothing. Before this read as a bare PASS
 # having proved zero hermeticity; it must now be classified SKIP. ──────────
 echo "──── third control: a total-skip fixture (0 cases ran, exit 0) must be classified SKIP, not PASS ────"
 SKIP_MARKER_FIXTURE="$TMP/skip-marker-fixture.sh"
@@ -270,7 +270,7 @@ FIXTURE
 chmod +x "$SKIP_MARKER_FIXTURE"
 assert_check_hermetic_skips "third control (total skip marker)" bash "$SKIP_MARKER_FIXTURE"
 
-# ── Scoped suite scan (behavioral, per HIMMEL-2353) ──────────────────────────
+# ── Scoped suite scan (behavioral) ──────────────────────────
 echo "──── scoped suite scan ────"
 SH_SUITES=(
   test-install-plugins-verify.sh
@@ -310,7 +310,7 @@ done
 
 # ── EXPANSION: unset-path negative control + explicit twin parity ───────────
 # Both cases below drive the REAL installer directly (not a wrapping test
-# suite) through its HIMMEL-365 autoUpdate patch — the one write path cheap
+# suite) through its autoUpdate patch — the one write path cheap
 # enough to trigger with an empty enabledPlugins template (no install/verify
 # machinery needed) — and observe WHERE the write actually lands.
 echo "──── CLAUDE_CONFIG_DIR: unset-path default + explicit twin parity (HIMMEL-2353 EXPANSION) ────"
@@ -343,7 +343,7 @@ autoupdate_true() { # <path> -> "true" | "false" | "absent" | "MISSING"
 
 # The sh stub's `marketplace add` declares mp in the user-scope settings file
 # when absent, as the real CLI does: install-plugins.sh reads that file BEFORE
-# the call and leaves an entry already there alone (HIMMEL-3541), so the sh
+# the call and leaves an entry already there alone, so the sh
 # cases seed an mp-less file. The ps1 twin still patches a pre-existing entry
 # and keeps seed_settings.
 make_sh_claude_stub() { # <bindir>
@@ -366,7 +366,7 @@ make_ps1_claude_stub() { # <bindir>
   printf '@echo off\nexit /b 0\n' > "$1/claude.cmd"
 }
 
-# ── HIMMEL-2356: the four parity cases below used to assert only on WHERE
+# ── The four parity cases below used to assert only on WHERE
 # the installer patched -- a run that patched the right file and then exited
 # non-zero read as a clean pass. parity_verdict() is the shared gate: it
 # fails on a file-patch mismatch (existing behavior, message unchanged) OR on

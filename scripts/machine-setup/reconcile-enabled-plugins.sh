@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# reconcile-enabled-plugins.sh — enforce the lean plugin floor (HIMMEL-1032).
+# reconcile-enabled-plugins.sh — enforce the lean plugin floor.
 #
-# WHY this exists: the lean plugin profile (HIMMEL-816) was ADDITIVE-ONLY —
+# WHY this exists: the lean plugin profile was ADDITIVE-ONLY —
 # install-plugins installs the template's `true`-flagged plugins but never
 # writes the `false` ones, so nothing is ever subtractive. Once a plugin is
 # enabled (a manual /plugin toggle, an older template, himmelctl full-set, a
@@ -206,7 +206,7 @@ fi
 # is best-effort — a filesystem without perm bits (Windows) falls back to plain
 # cp, harmless there.
 #
-# HIMMEL-2324: mktemp, not the predictable "$SETTINGS.reconcile.tmp" — a fixed
+# Mktemp, not the predictable "$SETTINGS.reconcile.tmp" — a fixed
 # name lets anyone with write access to this directory pre-plant a symlink
 # there before we get here, so the jq redirect (or the mv) writes through it.
 # mktemp creates the file itself (O_EXCL, unpredictable suffix, same directory
@@ -217,7 +217,7 @@ TMP="$(mktemp "$SETTINGS.reconcile.XXXXXX")" || {
   exit 1
 }
 cp -p "$SETTINGS" "$TMP" 2>/dev/null || cp "$SETTINGS" "$TMP" || {
-  # CR round 3 (codex-2): if BOTH cp attempts fail, this bare statement's
+  # If BOTH cp attempts fail, this bare statement's
   # failure trips `set -e` and exits the script right here — leaving the
   # already-mktemp'd $TMP orphaned in $SETTINGS's directory. Clean it up
   # before exiting, mirroring the jq-failure branch below.

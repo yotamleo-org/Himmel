@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-upgrade-rtk.sh — hermetic suite for upgrade-rtk.sh (HIMMEL-1323).
+# test-upgrade-rtk.sh — hermetic suite for upgrade-rtk.sh.
 #
 # Fully offline: a fake `rtk` script (embedding its own version literal, same
 # fixture shape as scripts/upstreams/test-apply-drift-bump.sh's widget-bin.sh)
@@ -165,7 +165,7 @@ out=$(env PATH="$BIN_DIR:$PATH" RTK_UPGRADE_PLATFORM=linux RTK_INSTALL_DIR="$INS
       bash "$UPGRADE" 2>&1); rc=$?
 assert_rc "same version -> rc 0" 0 "$rc"
 assert_contains "already-current message" "already current" "$out"
-# The marker path must match what install-ok.sh actually writes (CR codex-2):
+# The marker path must match what install-ok.sh actually writes:
 # the fixture used to stamp "$(dirname $0)/../invoked-ok" — one level ABOVE
 # $FIX_DIR — while this checked inside it, so the assertion could never fail and
 # silently proved nothing. A negative assertion that cannot fail is worse than
@@ -239,7 +239,7 @@ case "$PS1_SRC" in
   *"$BACKUP_GUARD"*) pass "PowerShell backup setup is guarded, terminating, and verified" ;;
   *) fail "PowerShell backup setup does not match the fail-closed guarded block" ;;
 esac
-# CR glm-3: the backup/restore must operate on the rtk BINARY, never on its
+# The backup/restore must operate on the rtk BINARY, never on its
 # parent directory ($RtkLiveDir), which other tools can share. A recursive
 # delete of that shared directory is exactly the destructive shape this guard
 # rejects, regardless of which line it appears on.

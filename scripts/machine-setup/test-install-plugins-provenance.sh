@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-install-plugins-provenance.sh — hermetic tests for the HIMMEL-3332 S3
+# test-install-plugins-provenance.sh — hermetic tests for the
 # install-provenance records written by scripts/machine-setup/install-plugins.sh:
 #
 #   1. Every `claude plugin install` / `marketplace add` writes one `register`
@@ -19,7 +19,7 @@
 # with a stub `claude` on PATH; HIMMEL_UNINSTALL_REAL_HOME is never set.
 #
 # install-plugins.ps1 has no provenance calls: the PowerShell dialect of the
-# helpers is tracked in HIMMEL-3346.
+# helpers is not written yet.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Uses git, jq and mktemp; NOT ported to native PowerShell (a test harness
@@ -329,7 +329,7 @@ assert_eq "14 valid registry without the marketplace: preexisted false" false \
     "$(field "$(row marketplace claude-plugins-official)" .preexisted)"
 
 # ── Case 15: a wrong-SHAPE settings file is refused up front, untouched ──────
-# HIMMEL-3392 (supersedes HIMMEL-3353's case here, which recorded ledger rows for a
+# (replaces an earlier case that recorded ledger rows for a
 # run that then aborted mid-run in the force-enable step with jq rc 5): valid JSON
 # whose enabledPlugins / extraKnownMarketplaces is not an object is refused with
 # exit 3 BEFORE any claude call or ledger row, naming the file and the key, and the
@@ -398,7 +398,7 @@ assert_eq "17 valid settings without the plugin: preexisted false" false \
 assert_eq "17 valid settings without the marketplace: preexisted false" false \
     "$(field "$(row marketplace himmel)" .preexisted)"
 
-# ── Case 19: HIMMEL-3525 S17 — the read-back identity token is recorded ─────
+# ── Case 19: the read-back identity token is recorded ─────
 # The stub CLI now mirrors the real one's known_marketplaces.json /
 # installed_plugins.json side effects, so the SAME reader prov_read_verdict
 # calls at uninstall (provenance-identity.sh) can read back what this install
@@ -424,7 +424,7 @@ case "$sha" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][
   *) fail "19 himmel marketplace post.sha not hex: $sha" ;;
 esac
 
-# ── Case 20: HIMMEL-3541 — a same-round project-then-user install must not ──
+# ── Case 20: a same-round project-then-user install must not ──
 #    mark the user-scope registration pre-existing off the project scope's own
 #    residue (the shared plugin cache dir, or an unscoped installed_plugins.json
 #    lookup). END STATE: a plugin fresh at both scopes reads preexisted=false at
@@ -449,11 +449,11 @@ assert_eq "20c user context7 preexisted (genuinely operator-owned, control)" tru
 assert_eq "20c user himmel-ops preexisted (fresh, unaffected by the control plugin)" false \
     "$(field "$(row plugin himmel-ops@himmel | tail -n 1)" .preexisted)"
 
-# ── Case 21: HIMMEL-3556 — a same-round project-then-user install must not ──
+# ── Case 21: a same-round project-then-user install must not ──
 #    mark the user-scope MARKETPLACE registration pre-existing off the
 #    project scope's own known_marketplaces.json / marketplaces-dir residue.
 #    Unlike a plugin, a marketplace carries no per-entry .scope field to
-#    filter to (HIMMEL-3541 Class 1's fix), because the CLI's marketplace
+#    filter on, because the CLI's marketplace
 #    state is inherently global — so this exercises the ledger-based fix
 #    instead. END STATE: a marketplace fresh at both scopes reads
 #    preexisted=false at BOTH (equivalent to a "remove ours" verdict at
@@ -486,7 +486,7 @@ assert_eq "21c user claude-plugins-official marketplace preexisted (genuinely op
 assert_eq "21c user himmel marketplace preexisted (fresh, unaffected by the control marketplace)" false \
     "$(field "$(row marketplace himmel | tail -n 1)" .preexisted)"
 
-# ── Case 22: HIMMEL-3556 console ruling — a stale register row must not ─────
+# ── Case 22: a stale register row must not ─────
 #    outlive an uninstall. install (ours) → uninstall (writes uninstall-begin,
 #    mirrors uninstall.sh:1804) → the OPERATOR re-adds the same marketplace
 #    themselves (no register row — mirrors a bare `claude plugin marketplace
@@ -516,7 +516,7 @@ assert_eq "22 second install rc" 0 "$rc"
 assert_eq "22 user himmel marketplace preexisted (operator re-added after an uninstall — kept, not claimed as ours)" true \
     "$(field "$(row marketplace himmel | tail -n 1)" .preexisted)"
 
-# ── HIMMEL-3541 cases 23-25: the scope's settings file itself ───────────────
+# ── cases 23-25: the scope's settings file itself ───────────────
 # The VM round trip left the operator's own marketplace entry carrying an
 # unledgered autoUpdate:true, a project-scope entry for a marketplace the
 # operator had registered at user level, and empty enabledPlugins /

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-ubuntu-shim.sh — HIMMEL-887 T8. ubuntu.sh is soft-deprecated: it KEEPS
+# test-ubuntu-shim.sh — ubuntu.sh is soft-deprecated: it KEEPS
 # its full-toolchain provisioning (locked O4 option (b) — zero capability
 # loss) but stops doing himmel/luna WIRING itself and delegates that to
 # `himmelctl bootstrap` (the correct entry for a node-less machine; `install`
@@ -13,12 +13,12 @@
 #   B. order assertion — runs the REAL ubuntu.sh (stubbed sudo/apt/curl/git/
 #      node/nvm/uv/claude/rtk on PATH, HOME redirected to a temp dir) and
 #      asserts provisioning happens BEFORE the deprecation notice, which
-#      happens BEFORE the delegated bootstrap invocation — AND (CR r4) that
+#      happens BEFORE the delegated bootstrap invocation — AND that
 #      the bootstrap runs with cwd=$HIMMEL_PATH (the wizard's role/scope
 #      inference reads the CWD, so delegating from the operator's launch
 #      directory would target the wrong repo).
-#   C. CR r2 fail-closed --luna-remote guard — the delegated flow can't
-#      restore a remote vault yet (HIMMEL-755), so passing the flag must
+#   C. Fail-closed --luna-remote guard — the delegated flow can't
+#      restore a remote vault yet, so passing the flag must
 #      error out BEFORE any provisioning (no apt call, no bootstrap
 #      invocation) instead of silently completing a rebuild without the
 #      operator's vault.
@@ -36,7 +36,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # ── Case A: capability-regression guard ─────────────────────────────────────
-# The committed expected tool list (HIMMEL-887 T8) — every tool the old
+# The committed expected tool list — every tool the old
 # ubuntu.sh's fatal provisioning block (steps 1-6) installed, before wiring
 # was dropped. If this list shrinks, provisioning capability regressed.
 expected_apt_tools="curl git gitleaks jq python3 python3-pip shellcheck"
@@ -123,7 +123,7 @@ if [ "$1" = "--version" ]; then echo "uv-stub 1.0.0"; exit 0; fi
 exit 0
 EOF
 
-# HIMMEL-3068: bun's real install line pipes the stubbed curl (empty stdout,
+# Bun's real install line pipes the stubbed curl (empty stdout,
 # see stub_bin/curl's default `exit 0` arm) into bash — a no-op — so `bun`
 # itself must be stubbed here the same way uv/claude/rtk already are, or the
 # unguarded `bun --version` assertion right after it hard-exits the whole
@@ -181,7 +181,7 @@ bootstrap_line=$(grep -n '^BOOTSTRAP:invoked' "$log" | head -1 | cut -d: -f1)
 [ "$notice_line" -lt "$bootstrap_line" ] \
   || fail "caseB: deprecation notice (line $notice_line) did not happen before the delegated bootstrap invocation (line $bootstrap_line)"
 
-# CR r4: the delegation must run FROM the himmel clone (the wizard's
+# The delegation must run FROM the himmel clone (the wizard's
 # role/scope inference reads the CWD's git origin; scope=project wires
 # .claude into the CWD), never from the operator's launch directory. The
 # bootstrap stub records its $PWD; it must be exactly $HIMMEL_PATH
@@ -196,10 +196,10 @@ bootstrap_args=$(grep '^BOOTSTRAP:invoked ' "$log" | head -1 | sed 's/^BOOTSTRAP
   || fail "caseB: machine-restore delegation must hint user scope, got: $bootstrap_args"
 echo "ok: caseB provisioning ($provision_line) < notice ($notice_line) < delegated bootstrap ($bootstrap_line), cwd=\$HIMMEL_PATH, default scope=user"
 
-# HIMMEL-985: the shim must reconcile the rtk hook (bare `rtk hook claude`
+# The shim must reconcile the rtk hook (bare `rtk hook claude`
 # from `rtk init -g --auto-patch` → the rtk-hook-guard wrapper) AFTER the
 # clone (the helper lives in the repo) and BEFORE the delegated bootstrap,
-# passing the user settings.json and the himmel path. The pre-HIMMEL-887
+# passing the user settings.json and the himmel path. The old
 # monolith did this swap inline; the shim owns it again.
 reconcile_line=$(grep -n '^STUB:reconcile-rtk-hook' "$log" | head -1 | cut -d: -f1)
 [ -n "$reconcile_line" ] || { cat "$log" >&2; fail "caseB: no reconcile-rtk-hook invocation found (log above)"; }
@@ -254,7 +254,7 @@ grep -q '^BOOTSTRAP:invoked' "$logC" \
   && fail "caseC: --luna-remote must never reach the delegated bootstrap (got: $(cat "$logC"))"
 echo "ok: caseC --luna-remote -> fail-closed error before any provisioning, bootstrap never invoked"
 
-# ── Case E (HIMMEL-2699): trailing --luna-remote with no value must reach the
+# ── Case E: trailing --luna-remote with no value must reach the
 #    script's own usage diagnostic and exit 2, never an unbound-variable death
 #    from `set -u`. ────────────────────────────────────────────────────────
 set +e

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # remove-retired-plugin.sh — offer to remove the response-compression plugin
-# himmel retired in HIMMEL-2033 (`caveman@caveman` + its `caveman` marketplace).
+# himmel retired (`caveman@caveman` + its `caveman` marketplace).
 #
 # WHY: new installs no longer get it (it is out of full-plugin-enable.json and
-# settings-template.json), but machines provisioned before HIMMEL-2033 still
+# settings-template.json), but machines provisioned before still
 # carry it — a dead upstream whose vendored skills trip Hermes's skill scanner
-# on every gateway start (HIMMEL-2032). `/himmel-update` is the one thing that
+# on every gateway start. `/himmel-update` is the one thing that
 # already runs on those machines, so the offer lives here and is called from it.
 #
 # Contract:
@@ -44,7 +44,7 @@ SETTINGS="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.j
 # extraKnownMarketplaces entries.
 # NOTE: never pipe the CLI into `grep -q` here — grep exits on first match, the
 # producer takes SIGPIPE, and `pipefail` then reports a SUCCESSFUL match as a
-# failed pipeline (HIMMEL-1430). Capture first, match against a here-string.
+# failed pipeline. Capture first, match against a here-string.
 #
 # Match on IDENTIFIER BOUNDARIES, not a bare substring: the CLI's list output
 # shape is not a stable contract, so we scan text — but a plain `grep caveman`

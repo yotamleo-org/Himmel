@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # test-uninstall-plugins-scope.sh — Platform guard: POSIX-only bash test (no
 # .ps1 twin; mirrors test-install-plugins-verify.sh, which also ships
-# POSIX-only) for the HIMMEL-2694 --scope fix in
+# POSIX-only) for the --scope fix in
 # scripts/machine-setup/uninstall-plugins.sh.
 #
-# HIMMEL-2694: a project/local-scope plugin install could never be
+# A project/local-scope plugin install could never be
 # uninstalled — uninstall-plugins.sh never passed --scope to `claude plugin
 # uninstall`/`marketplace remove`, so every call ran at the CLI's default
 # scope and every plugin refused removal ("Plugin ... is enabled at project
@@ -23,13 +23,13 @@
 #   3. --scope bogus         -> exit 2, validation runs before preflight
 #   4. false-flagged entry   -> never uninstalled (mirrors install's own
 #      select(.value == true) filter)
-#   6. HIMMEL-2733 two-tier profile: a `false`-flagged entry that IS listed in
+#   6. two-tier profile: a `false`-flagged entry that IS listed in
 #      onDemandPlugins IS still uninstalled (it mirrors what install-
 #      plugins.sh actually installs — the ALWAYS tier UNION the ON-DEMAND
 #      tier), while a plain `false` entry absent from onDemandPlugins stays
 #      excluded (same as case 4).
 #   5. RED control: the SAME drive against a FROZEN inline reproduction of
-#      the pre-HIMMEL-2694 call shape (a heredoc stub written by this test,
+#      the pre-call shape (a heredoc stub written by this test,
 #      NOT `git show HEAD:...`) proves it (a) still uninstalls the
 #      true-flagged plugins, (b) also attempts the false-flagged one (the
 #      31-vs-13 noise), and (c) never passes --scope at all. A git-history
@@ -50,7 +50,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-uninstall-plugins-scope.XXXXXX") || { echo
 [ -n "$TMP" ] || { echo "FAIL: mktemp -d produced an empty path" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 
-# WHY (HIMMEL-2754): answer enumeration so this suite exercises per-row
+# WHY: answer enumeration so this suite exercises per-row
 # scope resolution rather than the degraded template fallback. Record each
 # full argv on one line without ever touching a real plugin.
 STUB_DIR="$TMP/bin"
@@ -129,7 +129,7 @@ STUB
 chmod +x "$STUB_DIR/claude"
 
 # Template: one marketplace, two true-flagged plugins, one false-flagged
-# plugin (the HIMMEL-816 lean-profile shape — install-plugins.sh never
+# plugin (the lean-profile shape — install-plugins.sh never
 # installs it, so uninstall must never attempt it either).
 TEMPLATE="$TMP/settings-template.json"
 cat > "$TEMPLATE" <<'JSON'
@@ -194,7 +194,7 @@ assert_has "project: marketplace remove carries --scope project" "plugin marketp
 assert_not_has "project: no call falls back to user scope" "--scope user" "$log"
 assert_not_has "project: false-flagged plugin never uninstalled" "lean-off@mp" "$log"
 
-# ── 6. HIMMEL-2733: on-demand union — a `false`-flagged entry LISTED in
+# ── 6. On-demand union — a `false`-flagged entry LISTED in
 #      onDemandPlugins is uninstalled too; a plain `false` entry absent from
 #      it stays excluded (same lean-profile guarantee as case 4) ────────────
 TEMPLATE_ONDEMAND="$TMP/settings-template-ondemand.json"
@@ -231,7 +231,7 @@ out=$(PATH="$STUB_DIR:$PATH" bash "$script" --template "$TEMPLATE" --scope bogus
 assert_rc "invalid scope exits 2" 2 "$rc"
 assert_has "invalid scope names the diagnostic" "invalid --scope: bogus" "$out"
 
-# ── 5. RED control: a FROZEN reproduction of the pre-HIMMEL-2694 call shape ──
+# ── 5. RED control: a FROZEN reproduction of the pre-call shape ──
 # This is a frozen reproduction written by this test, NOT the historical
 # file (no `git show HEAD:...`). A git-history read would only be correct
 # until the parent commits this branch's fix — at that point
@@ -279,7 +279,7 @@ assert_has "RED: pre-2694 shape still uninstalls the true-flagged plugins" "plug
 assert_has "RED: pre-2694 shape ALSO attempts the false-flagged plugin (31-vs-13 noise)" "plugin uninstall lean-off@mp" "$prelog"
 assert_not_has "RED: pre-2694 shape NEVER passes --scope to any claude call" "--scope" "$prelog"
 
-# ── 6. RED control (HIMMEL-2754): a standalone FULL run must honour scopes a
+# ── 6. RED control: a standalone FULL run must honour scopes a
 #       PRIOR halted run persisted into --scope-map, not just this run's own.
 cat > "$TMP/settings-template-2mp.json" <<'JSON'
 {
@@ -314,7 +314,7 @@ else
     echo "FAIL full run: prior scope-map row lost"; FAILED=$((FAILED + 1))
 fi
 
-# ── 7. RED control 1a (HIMMEL-2754): unresolved selection must halt. ────────
+# ── 7. RED control 1a: unresolved selection must halt. ────────
 cat > "$TMP/settings-template-malformed.json" <<'JSON'
 {
   "enabledPlugins": {"good-a@mp": true},
@@ -334,7 +334,7 @@ assert_has "RED 1a: unresolved selection named" "could not determine which insta
 assert_not_has "RED 1a: no clean-phase summary" "0 failed call(s)" "$out"
 assert_not_has "RED 1a: no plugin uninstall issued" "plugin uninstall" "$log"
 
-# ── 8. RED control 1b (HIMMEL-2754): preview subtraction must halt too. ────
+# ── 8. RED control 1b: preview subtraction must halt too. ────
 printf 'mp\tproject\t%s\n' "$(pwd -P)" > "$TMP/scope-map-preview"
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
@@ -346,7 +346,7 @@ assert_rc "RED 1b: unresolved dry-run subtraction exits 1" 1 "$rc"
 assert_not_has "RED 1b: never reaches the marketplace loop" "SKIP: marketplace" "$out"
 assert_has "RED 1b: unresolved dry-run subtraction named" "could not compute the dry-run plugin subtraction" "$out"
 
-# ── 9. RED control 2 (HIMMEL-2754): persisted scopes belong to a project. ─
+# ── 9. RED control 2: persisted scopes belong to a project. ─
 mkdir -p "$TMP/other-project"
 printf 'mp1\tproject\t%s\nmp2\tproject\t%s\n' \
     "$(pwd -P)" "$TMP/other-project" > "$TMP/scope-map-projects"
@@ -361,7 +361,7 @@ assert_has "RED 2: current-project scope replayed" "plugin marketplace remove mp
 assert_not_has "RED 2: other-project scope never replayed" "plugin marketplace remove mp2 --scope project" "$log"
 assert_has "RED 2: other-project row falls back to user scope" "plugin marketplace remove mp2 --scope user" "$log"
 
-# ── 10. RED control 3 (HIMMEL-2754): scope-map writes bind project rows. ──
+# ── 10. RED control 3: scope-map writes bind project rows. ──
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
 out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" \
@@ -388,7 +388,7 @@ else
     echo "FAIL RED 3: user scope-map row is not two fields"; FAILED=$((FAILED + 1))
 fi
 
-# ── 11. RED control 4 (HIMMEL-2754): legacy rows have no project identity. ─
+# ── 11. RED control 4: legacy rows have no project identity. ─
 printf 'mp1\tproject\n' > "$TMP/scope-map-legacy"
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
@@ -401,7 +401,7 @@ assert_not_has "RED 4: legacy project scope never replayed" "plugin marketplace 
 assert_has "RED 4: legacy row falls back to user scope" "plugin marketplace remove mp1 --scope user" "$log"
 assert_has "RED 4: legacy row diagnostic named" "carries no recorded project" "$out"
 
-# ── 12. RED control 5 (HIMMEL-2754): persist before the next uninstall. ──
+# ── 12. RED control 5: persist before the next uninstall. ──
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
 out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" \
@@ -415,7 +415,7 @@ else
     echo "FAIL RED 5: first plugin scope missing before second uninstall"; FAILED=$((FAILED + 1))
 fi
 
-# ── 13. RED control 6 (HIMMEL-2754): decode a backslash in projectPath. ──
+# ── 13. RED control 6: decode a backslash in projectPath. ──
 backslash_project="$TMP/"'project\name'
 mkdir -p "$backslash_project"
 backslash_plugins=$(jq -nc --arg p "$backslash_project" '[{id:"good-a@mp",scope:"project",projectPath:$p}]')
@@ -433,7 +433,7 @@ log=$(cat "$ARGV_LOG")
 assert_rc "RED 6: backslash project run exits 0" 0 "$rc"
 assert_has "RED 6: backslash project plugin uninstalled" "plugin uninstall good-a@mp --scope project" "$log"
 
-# ── 14. RED control 7 (HIMMEL-2754): failed writes preserve prior scopes. ──
+# ── 14. RED control 7: failed writes preserve prior scopes. ──
 mkdir -p "$TMP/scope-map-atomic"
 printf 'mp2\tproject\t%s\n' "$(pwd -P)" > "$TMP/scope-map-atomic/map"
 # The only awk invocation on this path is persist_scope_map's deduplication.
@@ -469,7 +469,7 @@ else
     echo "FAIL RED 7: scope-map directory has a leftover temp file"; FAILED=$((FAILED + 1))
 fi
 
-# ── 15. RED control 10a (HIMMEL-2754): failed persist is recoverable. ─────
+# ── 15. RED control 10a: failed persist is recoverable. ─────
 printf 'mp2\tproject\t%s\n' "$(pwd -P)" > "$TMP/scope-map-failed"
 cat > "$STUB_DIR/awk" <<'STUB'
 #!/usr/bin/env bash
@@ -491,7 +491,7 @@ assert_has "RED 10a: recovery names the scope-map path" "writing these rows to $
 assert_has "RED 10a: recovery prints the unpersisted row" "$(printf 'mp1\tuser')" "$out"
 assert_has "RED 10a: repeated persist failures count once" "Done: 1 failed call(s)" "$out"
 
-# ── 16. RED control 10b (HIMMEL-2754): stale map cannot win. ──────────────
+# ── 16. RED control 10b: stale map cannot win. ──────────────
 printf 'mp2\tproject\t%s\n' "$(pwd -P)" > "$TMP/scope-map-stale"
 cat > "$STUB_DIR/awk" <<'STUB'
 #!/usr/bin/env bash
@@ -511,7 +511,7 @@ assert_has "RED 10b: plugin removed at its installed scope" "plugin uninstall go
 assert_has "RED 10b: mp1 removed at this run's plugin scope" "plugin marketplace remove mp1 --scope project" "$log"
 assert_has "RED 10b: install-profile scope supplements the retained plugin scope (HIMMEL-2796)" "plugin marketplace remove mp1 --scope user" "$log"
 
-# ── 17. RED control 11 (HIMMEL-2694): exclusive paths cannot traverse up. ──
+# ── 17. RED control 11: exclusive paths cannot traverse up. ──
 cat > "$TMP/settings-template-segments.json" <<'JSON'
 {
   "enabledPlugins": {},
@@ -532,7 +532,7 @@ assert_rc "RED 11: segment-bound run exits 0" 0 "$rc"
 assert_not_has "RED 11: traversal marketplace leaves unnamed plugin installed" "plugin uninstall unnamed@escaped --scope user" "$log"
 assert_has "RED 11: two-dot name remains exclusive" "plugin uninstall unnamed@bounded --scope user" "$log"
 
-# ── 18. RED control 13 (HIMMEL-2694): trailing flags require a value. ─────
+# ── 18. RED control 13: trailing flags require a value. ─────
 for flag in --scope --template --scope-map; do
     out=$(bash "$script" "$flag" 2>&1); rc=$?
     assert_rc "RED 13: trailing $flag exits 2" 2 "$rc"
@@ -540,7 +540,7 @@ for flag in --scope --template --scope-map; do
     assert_not_has "RED 13: trailing $flag has no unbound variable" "unbound variable" "$out"
 done
 
-# ── 19. RED control 14 (HIMMEL-2694): absent project identity is not ours. ──
+# ── 19. RED control 14: absent project identity is not ours. ──
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
 out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" \
@@ -551,7 +551,7 @@ assert_rc "RED 14: missing project path run exits 0" 0 "$rc"
 assert_not_has "RED 14: missing project path is never selected" "plugin uninstall good-a@mp --scope project" "$log"
 assert_has "RED 14: user row is still uninstalled" "plugin uninstall good-b@mp --scope user" "$log"
 
-# ── 20. RED control 15 (HIMMEL-2754): failed map read degrades the handoff. ──
+# ── 20. RED control 15: failed map read degrades the handoff. ──
 printf 'mp2\tuser\n' > "$TMP/scope-map-unreadable"
 # Path-scoped read failure also works under root, where chmod 000 would not.
 cat > "$STUB_DIR/cat" <<'STUB'
@@ -575,7 +575,7 @@ assert_has "RED 15: warning names map and lost prior scopes" "WARN: could not re
 assert_has "RED 15: replacement contains this run's row" "$(printf 'mp\tuser')" "$(cat "$TMP/scope-map-unreadable")"
 assert_has "RED 15: repeated map read failures count once" "Done: 1 failed call(s)" "$out"
 
-# ── 21. RED control 16 (HIMMEL-2754): repair every installed scope. ──────
+# ── 21. RED control 16: repair every installed scope. ──────
 jq '.extraKnownMarketplaces.mp.source = {source:"github",repo:"example/mp"}' \
     "$TEMPLATE" > "$TMP/settings-template-repair.json"
 rm -f "$TMP/plugins-user.json"
@@ -594,7 +594,7 @@ assert_has "RED 16: user plugin uninstalled" "plugin uninstall good-b@mp --scope
 assert_has "RED 16: transient marketplace removed at project scope" "plugin marketplace remove mp --scope project" "$log"
 assert_has "RED 16: transient marketplace removed at user scope" "plugin marketplace remove mp --scope user" "$log"
 
-# ── HIMMEL-2796: verify removal outcomes, not per-scope exit codes. ──────
+# ── Verify removal outcomes, not per-scope exit codes. ──────
 for plugins in \
     "$(jq -nc --arg p "$(pwd -P)" '[{id:"good-a@mp",scope:"project",projectPath:$p}]')" \
     "$(jq -nc --arg p "$(pwd -P)" '[{id:"good-a@mp",scope:"project",projectPath:$p},{id:"good-b@mp",scope:"user"}]')"; do
@@ -623,7 +623,7 @@ out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" STUB_REMOVE_NOOP=1 \
 assert_rc "2796: successful no-op cannot claim removal" 1 "$rc"
 assert_has "2796: successful no-op reports observed registration" "still registered" "$out"
 
-# ── HIMMEL-2804: repair a missing scope without borrowing existing state. ─
+# ── Repair a missing scope without borrowing existing state. ─
 rm -f "$TMP/plugins-user.json"
 : > "$ARGV_LOG"
 out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" STUB_REQUIRE_REPAIR_SCOPE=project \
@@ -645,7 +645,7 @@ assert_rc "2804: healthy registration uninstalls cleanly" 0 "$rc"
 assert_not_has "2804: healthy registration needs no adds" "plugin marketplace add" "$log"
 assert_not_has "2804: healthy registration needs no cleanup" "plugin marketplace remove" "$log"
 
-# ── HIMMEL-2800: subtract only exact plugin rows recorded in the handoff. ─
+# ── Subtract only exact plugin rows recorded in the handoff. ─
 printf 'mp\tuser\ngood-a@mp\tuser\n' > "$TMP/scope-map-partial"
 for mode in wet dry; do
     rm -f "$TMP/plugins-user.json"
@@ -710,7 +710,7 @@ out=$(PATH="$STUB_DIR:$PATH" ARGV_LOG="$ARGV_LOG" \
       --scope-map "$TMP/scope-map-project-simulated" 2>&1); rc=$?
 assert_rc "2800: matching project handoff previews removal" 0 "$rc"
 
-# ── HIMMEL-3350: a marketplace registered at project AND user scope (an ─
+# ── A marketplace registered at project AND user scope (an ─
 # obsidian-skills-shaped one: no plugin of its own installed at project scope,
 # so the plugin phase records no project row) must be removed at both scopes.
 for plugins in '[]' \

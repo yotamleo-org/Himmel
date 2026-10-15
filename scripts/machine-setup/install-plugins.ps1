@@ -2,12 +2,12 @@
 # in docs/setup/settings-template.json. PowerShell counterpart of
 # install-plugins.sh.
 #
-# Reads `enabledPlugins` (installing only entries flagged `true` —
-# HIMMEL-816) and `extraKnownMarketplaces` from the template,
+# Reads `enabledPlugins` (installing only entries flagged `true`)
+# and `extraKnownMarketplaces` from the template,
 # registers each marketplace via `claude plugin marketplace add`, sets
 # `autoUpdate: true` on every template-flagged marketplace already registered in
 # the scope's settings.json (the CLI has no auto-update flag, so this is patched
-# straight into that file — HIMMEL-365), then installs each plugin via
+# straight into that file), then installs each plugin via
 # `claude plugin install <plugin>@<marketplace> --scope <scope>`. Both CLI calls
 # are idempotent.
 #
@@ -33,7 +33,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -96,7 +96,7 @@ foreach ($name in $cfg.extraKnownMarketplaces.PSObject.Properties.Name) {
     Invoke-Step @('claude', 'plugin', 'marketplace', 'add', $val, '--scope', $Scope)
 }
 
-# ── Enable marketplace auto-update (HIMMEL-365) ──────────────────────────────
+# ── Enable marketplace auto-update ──────────────────────────────
 # `claude plugin marketplace add` writes each settings.json entry WITHOUT
 # autoUpdate, so a fresh install leaves auto-update OFF (only a manual /plugin UI
 # toggle ever turned it on, and that never propagated to new machines). The CLI
@@ -105,7 +105,7 @@ foreach ($name in $cfg.extraKnownMarketplaces.PSObject.Properties.Name) {
 # known_marketplaces.json) directly in the scope's settings file, for every
 # template entry flagged autoUpdate. Patch only entries already registered there,
 # so a marketplace-name vs template-key mismatch can't create an orphan entry.
-# HIMMEL-2353: honor $env:CLAUDE_CONFIG_DIR like the sibling
+# Honor $env:CLAUDE_CONFIG_DIR like the sibling
 # reconcile-enabled-plugins.ps1:69 idiom — a hermetic-test seam, not a
 # per-call-site flag (a bare $HOME here is what let a test suite reach the
 # operator's real settings.json).
@@ -139,20 +139,20 @@ foreach ($name in $autoNames) {
     # 5.1 run would corrupt the operator's real settings.json. WriteAllText with
     # UTF8Encoding($false) is BOM-free on both; the temp+move mirrors the bash
     # twin's crash-safety (-Depth 100 covers settings.json's nesting).
-    # HIMMEL-2324: an unpredictable suffix, not the fixed "$settingsFile.autoupdate.tmp"
+    # An unpredictable suffix, not the fixed "$settingsFile.autoupdate.tmp"
     # — a fixed name lets anyone with write access to this directory pre-plant
     # a symlink/reparse point there before we get here, so the write below (or
     # the Move-Item) lands through it. GetRandomFileName() keeps the temp in
     # the SAME directory as $settingsFile (Move-Item stays a same-volume
     # rename) and makes the path un-guessable — pre-planting is infeasible —
     # but a name alone is not exclusive-create: it's what closes the hole
-    # together with FileMode.CreateNew below (CR round 1, codex-1: WriteAllText
+    # together with FileMode.CreateNew below (WriteAllText
     # creates-or-TRUNCATES and follows a reparse point if one exists at $tmp).
     # CreateNew throws if anything already exists at the path, including a
     # reparse point — the real O_EXCL equivalent.
     $tmp = "$settingsFile.autoupdate." + [System.IO.Path]::GetRandomFileName()
     $bytes = (New-Object System.Text.UTF8Encoding $false).GetBytes(($settings | ConvertTo-Json -Depth 100))
-    # HIMMEL-2324 (CR round 7, codex-8): the create+write+move used to run with
+    # The create+write+move used to run with
     # no catch at all -- under this script's $ErrorActionPreference = Stop, a
     # Write or Move-Item failure did not just leak $tmp, it ABORTED THE WHOLE
     # INSTALLER, contradicting this site's own tolerant design (a cosmetic
@@ -171,7 +171,7 @@ foreach ($name in $autoNames) {
     Write-Host "  autoUpdate=true: $name"
 }
 
-# ── Snapshot enabledPlugins BEFORE the install loop (HIMMEL-2733) ───────────
+# ── Snapshot enabledPlugins BEFORE the install loop ───────────
 # `claude plugin install <spec> --scope <scope>` WRITES
 # enabledPlugins["<spec>"] = $true as a side effect -- verified against the
 # real CLI in an empty CLAUDE_CONFIG_DIR (marketplace add + install, then
@@ -200,12 +200,12 @@ function Test-PreInstallOverride([string]$spec) {
 
 # ── Install plugins ─────────────────────────────────────────────────────────
 Write-Host "──── Installing plugins ($Scope scope) ────"
-# HIMMEL-2733 two-tier profile: the install set is enabledPlugins-true (the
+# two-tier profile: the install set is enabledPlugins-true (the
 # ALWAYS tier) UNION onDemandPlugins' keys (the ON-DEMAND tier — installed so
 # it's reachable in one command, but left DISABLED; see the on-demand step
 # below). A `false`-flagged entry ABSENT from onDemandPlugins must still NOT
 # be installed, or the lean template silently re-creates the pre-lean maximal
-# set on every fresh machine (HIMMEL-816 follow-up gap). Select-Object -Unique
+# set on every fresh machine. Select-Object -Unique
 # dedupes the (normally disjoint) union.
 $alwaysSpecs = @($cfg.enabledPlugins.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
 $onDemandSpecs = @()
@@ -216,12 +216,12 @@ foreach ($spec in $specs) {
     Invoke-Step @('claude', 'plugin', 'install', $spec, '--scope', $Scope)
 }
 
-# ── Verify (post-install presence check, HIMMEL-361) ─────────────────────────
+# ── Verify (post-install presence check) ─────────────────────────
 # `claude plugin install` can legitimately exit non-zero on an already-installed
 # plugin, so install exit codes can't tell a real failure from an idempotent
 # no-op — which is exactly how a failed handover@himmel install used to look
 # identical to "already installed". Verify by PRESENCE instead: list the
-# installed plugins and confirm every spec in $specs is there -- HIMMEL-2733:
+# installed plugins and confirm every spec in $specs is there
 # that's the WHOLE install set (ALWAYS tier + ON-DEMAND tier), so a missing
 # on-demand plugin is a real install failure too. Skipped under -DryRun
 # (nothing was installed).
@@ -230,7 +230,7 @@ if ($DryRun) {
     exit 0
 }
 
-# ── Register on-demand plugins as disabled (HIMMEL-2733) ────────────────────
+# ── Register on-demand plugins as disabled ────────────────────
 # Normalize BEFORE presence verification: a partial install or failed `plugin
 # list` must still undo successful installs' enabledPlugins=$true side effects.
 # Otherwise a retry snapshots those installer-written values as deliberate
@@ -243,7 +243,7 @@ if ($DryRun) {
 # keep the malformed-JSON refusal, unpredictable same-directory temp +
 # FileMode.CreateNew, BOM-free encoding, atomic move, and cleanup semantics.
 #
-# NOTE: the bash twin has a HIMMEL-2292 force-enable step and this PowerShell
+# NOTE: the bash twin has a force-enable step and this PowerShell
 # installer does not (a pre-existing gap documented by its diagnostics suite).
 # This normalization is independent: it only writes false for non-overrides.
 $onDemandKeys = @()
@@ -280,7 +280,7 @@ if ($onDemandKeys.Count -gt 0 -and (Test-Path $settingsFile)) {
 
 Write-Host '──── Verifying installed plugins ────'
 # Fail closed: a verify step that cannot run has confirmed NOTHING, so it must
-# not report success (the silent pass HIMMEL-361 kills). 2>&1 captures stderr so
+# not report success (the silent pass this step prevents). 2>&1 captures stderr so
 # the failure branch can show WHY. Capture $LASTEXITCODE IMMEDIATELY (before any
 # further pipeline can reset it — same idiom as setup.ps1's qmd step).
 $listLines = & claude plugin list 2>&1
@@ -308,7 +308,7 @@ if ($missing.Count -gt 0) {
 
 Write-Host "  All $($specs.Count) enabled plugins present."
 
-# ── Reconcile enabledPlugins to the lean floor (HIMMEL-1032) ─────────────────
+# ── Reconcile enabledPlugins to the lean floor ─────────────────
 # Additive install already leaves a FRESH machine lean; the subtractive reconcile
 # only matters on a RE-RUN over pre-existing drift, where it would DISABLE plugins
 # the user may have enabled. OPT-IN only, identical to himmel-update
@@ -334,7 +334,7 @@ if ($env:HIMMEL_RECONCILE_PLUGINS -cin @('1', 'all', 'true', 'yes')) {
     Write-Host '  (install is additive-only; set HIMMEL_RECONCILE_PLUGINS=1 to also disable drifted plugins down to the lean floor)'
 }
 
-# ── Install summary: on-demand tier (HIMMEL-2733) ────────────────────────────
+# ── Install summary: on-demand tier ────────────────────────────
 # Discoverability, not enforcement: name what just landed installed-but-
 # disabled and how to reach it, plus the doc-only onDemandConnectors tier
 # himmel never installs (a per-machine Chrome extension / claude.ai connector

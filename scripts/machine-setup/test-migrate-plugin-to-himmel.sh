@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic migration regression tests (HIMMEL-3039). Bash 3.2 compatible.
+# Hermetic migration regression tests. Bash 3.2 compatible.
 # CI discovers test-*.sh; every claude invocation uses a PATH stub and fixture.
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows.
 set -euo pipefail

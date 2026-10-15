@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-install-plugins-ondemand.sh — hermetic tests for the HIMMEL-2733
+# test-install-plugins-ondemand.sh — hermetic tests for the
 # two-tier profile in scripts/machine-setup/install-plugins.sh:
 #
 #   1. INSTALL set = enabledPlugins-true (ALWAYS) UNION onDemandPlugins keys
@@ -7,7 +7,7 @@
 #   2. Presence-verify covers the WHOLE union — a missing on-demand plugin is
 #      a real install failure (exit 1), not silently ignored.
 #   3. A `false`-flagged entry ABSENT from onDemandPlugins is still never
-#      installed (the plain HIMMEL-816 lean-profile case, unaffected by this
+#      installed (the plain lean-profile case, unaffected by this
 #      ticket).
 #   4. After a real run, the scope's settings file ends up with EXACTLY the
 #      ALWAYS tier at `true` and every onDemandPlugins key at `false` (RED
@@ -15,7 +15,7 @@
 #   5. No-clobber: an on-demand spec the operator already enabled (`true` in
 #      the live settings before the run) is left `true` after a re-run — the
 #      override is read before installing, not from CLI-written state (RED #2).
-#   6. The force-enable step (HIMMEL-2292) never force-enables an on-demand
+#   6. The force-enable step never force-enables an on-demand
 #      spec, even when it is present in `claude plugin list` (installed) and
 #      still `false` in the live settings.
 #   7. A partially failed install or failed presence-list still normalizes
@@ -25,7 +25,7 @@
 #      plus the enable recipe, and names the onDemandConnectors entries.
 #
 # install-plugins.ps1 carries the SAME two-tier logic as a PowerShell twin,
-# EXCEPT it has no HIMMEL-2292 force-enable step at all (a pre-existing,
+# EXCEPT it has no force-enable step at all (a pre-existing,
 # documented, bash-only gap unrelated to this ticket — see
 # test-install-plugins-diagnostics.ps1's header) — case 6 has no ps1
 # counterpart for that reason. Cases 1-5 and 7 should still hold there;
@@ -57,7 +57,7 @@ export REAL_JQ
 FAILED=0
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-install-plugins-ondemand.XXXXXX") || { echo "mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3332: install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
+# install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$TMP/provenance"
 
 assert_rc() {
@@ -90,7 +90,7 @@ assert_not_has() {
 # $ENABLE_LOG (never a real toggle) so case 6 can assert it was never called
 # with an on-demand spec. `plugin install <spec> --scope <scope>` writes
 # enabledPlugins["<spec>"] = true into $STUB_SETTINGS_FILE — this is the
-# faithful bit (HIMMEL-2733 finding 1/6): the REAL CLI does exactly this as a
+# faithful bit: the REAL CLI does exactly this as a
 # side effect of a genuinely FRESH install (verified in an empty
 # CLAUDE_CONFIG_DIR — marketplace add + install, then `enabledPlugins`
 # already carries the spec as `true`). A stub that skipped this could never
@@ -99,7 +99,7 @@ assert_not_has() {
 # for the wrong reason (a vacuous test). $STUB_ALREADY_INSTALLED
 # (space-separated) names specs that were ALREADY installed before this run —
 # install is a no-op for those (no settings write), matching the CLI's
-# idempotent re-run behaviour that HIMMEL-2292's force-enable step exists to
+# idempotent re-run behaviour the force-enable step exists to
 # repair in the first place (if a re-install always reset enabledPlugins to
 # true, that drift could never happen).
 STUB_DIR="$TMP/bin"
@@ -369,9 +369,9 @@ else
     echo "FAIL native-jq CRLF key boundary — want $WANT5_CRLF, got $GOT5_CRLF"; FAILED=$((FAILED + 1))
 fi
 
-# ── 6: force-enable (HIMMEL-2292) never touches an on-demand spec — installed
+# ── 6: force-enable never touches an on-demand spec — installed
 #      + present in `claude plugin list`, still `false` in live settings ────
-# STUB_ALREADY_INSTALLED = all four: this fixture is exactly HIMMEL-2292's own
+# STUB_ALREADY_INSTALLED = all four: this fixture is exactly the
 # drift scenario (already installed, drifted to `false`), so the install loop
 # below must be a no-op for every spec here — a stub that instead wrote `true`
 # on every install call would make this drift state unreachable in the first

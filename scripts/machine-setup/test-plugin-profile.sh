@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-plugin-profile.sh — hermetic tests for the two-tier plugin profile
-# toggle engine (HIMMEL-2733), scripts/machine-setup/plugin-profile.sh.
+# toggle engine, scripts/machine-setup/plugin-profile.sh.
 #
 # Stubs the `claude` CLI on PATH so nothing touches the operator's real
 # plugin set: `claude plugin list` prints a stanza per spec named in
@@ -290,7 +290,7 @@ assert_has "full says it only targets installed on-demand plugins" "installed on
 assert_has "full skips the absent spec" "skip: od-b@mkt" "$out"
 
 # ── Fixture: a floor plugin misplaced in onDemandPlugins by a --template
-#      override (HIMMEL-2733 finding 7 — the bulk loop must refuse it too) ───
+#      override (the bulk loop must refuse it too) ───
 TMPL_FLOOR_OD="$TMP/settings-template-floor-ondemand.json"
 cat > "$TMPL_FLOOR_OD" <<'JSON'
 {
@@ -308,7 +308,7 @@ JSON
 # ── 5b: lean's bulk loop refuses to disable a floor plugin even when a
 #      template override lists it in onDemandPlugins — the floor refusal
 #      lives in the shared writer now, not only the single-spec `disable`
-#      path, so `lean`/`full` cannot bypass it (HIMMEL-2733 finding 7) ──────
+#      path, so `lean`/`full` cannot bypass it ──────
 : > "$CALL_LOG"
 STUB_LIVE=$'handover@himmel enabled\nhimmel-ops@himmel enabled\nqmd@himmel enabled\nod-a@mkt enabled'
 out=$(run lean --template "$TMPL_FLOOR_OD"); rc=$?
@@ -385,7 +385,7 @@ done
 STUB_LIST_MODE=normal
 
 # One stanza per (spec, scope): a repeated key is contradictory (bash would read
-# the sorted-first state, PowerShell the last) and must fail closed (HIMMEL-2801).
+# the sorted-first state, PowerShell the last) and must fail closed.
 for bad_mode in dup-user-conflict dup-user-same; do
   : > "$CALL_LOG"
   STUB_LIST_MODE="$bad_mode"
@@ -418,7 +418,7 @@ assert_has "project-only full preserves the scope-override caveat" "project/loca
 assert_empty_file "project-only response causes no user-scope writes" "$CALL_LOG"
 STUB_LIST_MODE=normal
 
-# HIMMEL-4025: one plugin installed at project scope in several projects (and at
+# One plugin installed at project scope in several projects (and at
 # user scope) is normal on a multi-project machine; the duplicate NON-user rows
 # must not make the list unreadable. Text fallback path (CLI without --json):
 : > "$CALL_LOG"
@@ -505,7 +505,7 @@ out=$(run lean --dry-run --template "$TMPL_LF"); rc=$?
 assert_rc "--dry-run (list-count) exits 0" 0 "$rc"
 assert_lines_eq "--dry-run reads live state once and never re-reads" "$LIST_LOG" "list"
 
-# ── 10c: post-write re-read (HIMMEL-2801) — user-scope only ─────────────────
+# ── 10c: post-write re-read — user-scope only ─────────────────
 # The CLI's exit status alone is not proof: the acknowledgement is printed only
 # after a re-read shows the requested USER-scope state.
 LIVE_OD=$'handover@himmel enabled\nhimmel-ops@himmel enabled\nqmd@himmel enabled\nod-a@mkt disabled'
@@ -519,7 +519,7 @@ assert_has "readback: success names the user-scope re-read" "re-read: enabled" "
 assert_has "readback: success stays qualified (project/local may override)" "project/local settings may override effective state" "$out"
 assert_lines_eq "readback: the write path reads live state exactly twice" "$LIST_LOG" "list" "list"
 
-# --json path (HIMMEL-4028): the same verified apply, but BOTH the initial read and
+# --json path: the same verified apply, but BOTH the initial read and
 # the post-write re-read go through `plugin list --json` (STUB_JSON_LIVE=1 derives
 # the payload from STUB_LIVE + the write overlay, so it flips after enable/disable).
 : > "$CALL_LOG"; : > "$LIST_LOG"
@@ -585,7 +585,7 @@ assert_lines_eq "readback: bulk still attempts every needed write" "$CALL_LOG" \
   "plugin disable od-a@mkt --scope user" "plugin disable od-b@mkt --scope user"
 assert_not_has "readback: bulk never acknowledges an unverified write" "user scope changed" "$out"
 
-# ── 10d: exit contract (HIMMEL-2801) — bulk aggregate vs single refusal ─────
+# ── 10d: exit contract — bulk aggregate vs single refusal ─────
 # single `disable <floor>` = refused spec = 2 (case 7); bulk `lean` that
 # refuses a floor plugin = aggregate "requested state not fully reached" = 1.
 # Floor protection is the same either way: no write is ever issued for it.

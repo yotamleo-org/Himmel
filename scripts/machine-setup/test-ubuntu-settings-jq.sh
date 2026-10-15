@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # test-ubuntu-settings-jq.sh — fixture regression tests for the
 # settings.json jq transforms in scripts/machine-setup/ubuntu.sh
-# (HIMMEL-264).
 #
 # ubuntu.sh is interactive (read -r -p prompts) and mutates
 # ~/.claude/settings.json, so it cannot be executed end-to-end here.
@@ -14,14 +13,14 @@
 # keep both in lockstep when changing either).
 #
 # Covers:
-#   1. Swap filter (HIMMEL-264 bug fix): a settings.json holding BOTH a
+#   1. Swap filter (bug fix): a settings.json holding BOTH a
 #      guard entry AND a bare `rtk hook claude` entry → the bare one is
 #      swapped, the guard one untouched.
 #   2. Idempotency: after the swap, BARE_COUNT is 0 and the
 #      "already swapped" detection fires — a re-run changes nothing.
 #   3. Bare-entry regex: extra flags (`rtk hook claude --foo`) still
 #      count as bare; `rtk-hook-guard.sh` and unrelated commands don't.
-#   4. Template patch (HIMMEL-264 <himmel-path> resolution): running the
+#   4. Template patch (<himmel-path> resolution): running the
 #      patch filter against docs/setup/settings-template.json leaves no
 #      `<himmel-path>` in the output, drops SessionEnd, and appends the
 #      check-hookspath SessionStart entry.
@@ -34,7 +33,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -63,7 +62,7 @@ assert_fail() {
 }
 
 # ---------- fixture transforms + delegation guards ----------
-# HIMMEL-887 removed ubuntu.sh's settings.json patching entirely (it now
+# removed ubuntu.sh's settings.json patching entirely (it now
 # delegates himmel/luna wiring to `himmelctl bootstrap`). The jq transforms
 # below are therefore no longer mirrored FROM ubuntu.sh — they are retained
 # as the fixture logic Tests 1-4 exercise directly, AND as negative
@@ -94,8 +93,8 @@ else
 fi
 # The NOTICE alone is not the contract: assert the executable delegation
 # statement too, so removing the exec while keeping the NOTICE fails
-# (codex-adv finding, HIMMEL-934 CR round). The optional trailing
-# `--default-scope <scope>` is the HIMMEL-1253 user-scope default hint the
+# The optional trailing
+# `--default-scope <scope>` is the user-scope default hint the
 # machine-setup shims pass (#1130) — allowed, but the exec must still be real.
 # shellcheck disable=SC2016  # single quotes intentional: $HIMMEL_PATH is ubuntu.sh's variable
 if grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$ubuntu_sh"; then
@@ -181,7 +180,7 @@ for cmd_should_skip in 'bash "/opt/himmel/scripts/hooks/rtk-hook-guard.sh"' 'rtk
 done
 
 # ---------- 4. Template patch resolves <himmel-path> ----------
-# WALK_LINE is the historic <himmel-path> patch transform (HIMMEL-887 removed
+# WALK_LINE is the historic <himmel-path> patch transform (removed
 # it from ubuntu.sh; kept here as fixture logic + a re-introduction sentinel
 # in the delegation block above). The surrounding additions are exercised by
 # the SessionEnd/SessionStart asserts below.

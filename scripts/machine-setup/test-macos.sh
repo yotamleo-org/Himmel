@@ -2,7 +2,7 @@
 # Hermetic control-flow test for scripts/machine-setup/macos.sh (ALPHA installer).
 # Real macOS behavior is unverified (no Mac); this asserts the script wires the
 # statusline, registers the auto-arm hook, verifies crontab, is idempotent, and
-# (HIMMEL-3068) installs uv/bun via Homebrew when brew is present, and fails
+#  installs uv/bun via Homebrew when brew is present, and fails
 # LOUD (never a silent skip) when it is not.
 set -uo pipefail
 
@@ -12,7 +12,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -29,7 +29,7 @@ for x in jq git bash sh sed grep tr head sort uname cat mkdir dirname chmod mv r
     p="$(command -v "$x" 2>/dev/null)" && ln -sf "$p" "$bin/$x"
 done
 
-# Isolated PATH — no inherited fallback (HIMMEL-3068 CodeRabbit review): a
+# Isolated PATH — no inherited fallback: a
 # dev box with real Homebrew on PATH would otherwise let `command -v brew`
 # find it despite the deliberately-no-brew-stub setup above, making this
 # "Homebrew absent" scenario pass or fail based on the HOST, not the stub.
@@ -43,7 +43,7 @@ if grep -q 'statusLine' "$t/home/.claude/settings.json"; then pass "statusline w
 if grep -q 'auto-arm-on-cap' "$t/home/.claude/settings.json"; then pass "auto-arm hook registered"; else fail "no auto-arm hook"; fi
 if grepq "$out" -i 'alpha'; then pass "alpha notice printed"; else fail "no alpha notice"; fi
 
-# HIMMEL-3068: Homebrew absent — must fail LOUD (a WARNING naming brew, plus
+# Homebrew absent — must fail LOUD (a WARNING naming brew, plus
 # an explicit skip line for both uv and bun), never a silent no-op. rc stays 0
 # (this file's own fail_nonfatal contract: non-fatal but never silent).
 if grepq "$out" -i 'Homebrew not found'; then pass "brew-absent: Homebrew-missing message printed"; else fail "brew-absent: no Homebrew-missing message"; fi
@@ -56,7 +56,7 @@ n="$(jq '[.hooks.PreToolUse[]?.hooks[]?.command | select(test("auto-arm-on-cap")
 if [ "$n" -eq 1 ]; then pass "auto-arm hook registered once (idempotent)"; else fail "auto-arm hook count=$n"; fi
 rm -rf "$t"
 
-# ---- HIMMEL-3068: Homebrew PRESENT — the happy path -------------------------
+# ---- Homebrew PRESENT — the happy path -------------------------
 # A hermetic stand-in for "macOS with brew installed": stub `brew` LOGS its
 # invocations and exits 0 (it never really installs anything here), and stub
 # `uv`/`bun` binaries exist for the post-install `--version` assertions the

@@ -3,7 +3,7 @@
 # extraKnownMarketplaces differs from the template's is DRIFT, not an install
 # failure: install-plugins.sh reports both sources + a reconcile command and
 # exits 0 instead of aborting with "marketplace registration failed". A genuine
-# add failure still exits 1. Stubs `claude` on PATH. (HIMMEL-4270.)
+# add failure still exits 1. Stubs `claude` on PATH.
 # SUT=<path> overrides the script under test (used to show the RED run).
 set -uo pipefail
 
@@ -19,7 +19,7 @@ mkdir -p "$CLAUDE_CONFIG_DIR"
 
 fail() { echo "FAIL: $1"; exit 1; }
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
-# HIMMEL-4279: a negated grep reads a grep error (rc 2) as "no match"; only
+# A negated grep reads a grep error (rc 2) as "no match"; only
 # rc 1 is a genuine no-match.
 nogrep() { local _rc=0; grep -q "$@" || _rc=$?; [ "$_rc" -eq 1 ]; }
 
@@ -74,7 +74,7 @@ nogrep "marketplace registration failed" <<< "$out" || fail "still reports a reg
 nogrep "marketplace add" "$STUB_LOG" || fail "must not call marketplace add for a drifted entry"
 echo "ok: source mismatch reports DRIFT with both sources + remedy and exits 0"
 
-# HIMMEL-4279: the same string under a different source type is still drift.
+# The same string under a different source type is still drift.
 cat > "$CLAUDE_CONFIG_DIR/settings.json" <<'JSON'
 { "extraKnownMarketplaces": { "obsidian-skills": { "source": { "source": "directory", "path": "kepano/obsidian-skills" } } } }
 JSON

@@ -10,9 +10,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# CR r2 (HIMMEL-887): fail CLOSED on --luna-remote BEFORE any provisioning.
+# Fail CLOSED on --luna-remote BEFORE any provisioning.
 # The old script cloned the remote vault itself; the delegated himmelctl flow
-# does not support remote-vault restore yet (HIMMEL-755 scope), so accepting
+# does not support remote-vault restore yet, so accepting
 # the flag and silently dropping it would let a machine rebuild complete
 # WITHOUT the operator's vault.
 if [[ -n "$LUNA_REMOTE" ]]; then
@@ -82,7 +82,7 @@ step "Install uv + uvx"
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv --version
 
-# HIMMEL-3068: bun is a hard dependency of himmel-update.sh's qmd fork
+# Bun is a hard dependency of himmel-update.sh's qmd fork
 # updater (update_qmd_fork) and the jira CLI dist rebuild's npm-absent
 # fallback — no installer installed it before this, so on a bun-less machine
 # qmd silently never updated (a clean-looking skip; see report_qmd_bun_missing
@@ -110,7 +110,7 @@ curl -fL "https://github.com/rtk-ai/rtk/releases/download/${RTK_TAG}/${RTK_DEB}"
 sudo apt install -y "/tmp/${RTK_DEB}"
 # Hook wiring (`rtk init -g --auto-patch` + guard reconcile) happens in the
 # clone step below — adjacent to the reconcile so a clone/hookspath failure
-# can never strand a raw unguarded hook (HIMMEL-985 codex-adv finding).
+# can never strand a raw unguarded hook.
 rtk --version
 
 step "Clone himmel repo"
@@ -129,7 +129,7 @@ else
 fi
 cd "$HIMMEL_PATH"
 
-# HIMMEL-105: gate the clone for core.hooksPath misconfiguration BEFORE any
+# Gate the clone for core.hooksPath misconfiguration BEFORE any
 # further tooling runs. If the operator's machine inherited a bad
 # core.hooksPath from a sibling repo (or copied .gitconfig), a later hook
 # install would silently install hooks into a dir git is ignoring, and every
@@ -137,13 +137,13 @@ cd "$HIMMEL_PATH"
 # hookspath-misconfig itself) would be bypassed.
 bash scripts/hooks/check-hookspath.sh
 
-# HIMMEL-985: wire the rtk hook AND immediately swap the bare `rtk hook
-# claude` entry for the himmel rtk-hook-guard wrapper + dedup (HIMMEL-241
-# compound-find fix). Two deliberate properties:
+# Wire the rtk hook AND immediately swap the bare `rtk hook
+# claude` entry for the himmel rtk-hook-guard wrapper + dedup
+# (compound-find fix). Two deliberate properties:
 #   - `--auto-patch`: without it the settings.json hook-patch prompt defaults
 #     to N in non-interactive runs, leaving rtk installed but the rewrite hook
 #     unwired — the drift found on the win2 station.
-#   - Adjacency AFTER clone + hookspath validation: the pre-HIMMEL-887
+#   - Adjacency AFTER clone + hookspath validation: the old
 #     monolith did the swap inline and the delegated himmelctl flow lost it;
 #     wiring earlier (before the clone) could strand a RAW unguarded hook if
 #     clone/validation failed — raw rtk breaks compound find rewrites.
@@ -171,7 +171,7 @@ rm -f "$rtk_settings_bak"
 cd -
 
 step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
-# HIMMEL-887: this script is soft-deprecated for himmel/luna WIRING — the
+# This script is soft-deprecated for himmel/luna WIRING — the
 # provisioning above (steps 1-6, full toolchain) is unchanged and stays the
 # source of truth (locked decision O4: zero capability loss). Wiring (Claude
 # config, plugins, luna vault, settings.json patching, hooks registration, …)
@@ -179,11 +179,11 @@ step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
 # once node is confirmed present (it always is here — step 3 just installed
 # it) — one wiring implementation instead of two drifting copies. Hard-remove
 # of this now-deprecated shim script itself (once its toolchain-provisioning
-# role is also absorbed) is deferred to the HIMMEL-755 fork.
-# (--luna-remote fail-closes at arg parse above — CR r2 — so no remote-vault
+# role is also absorbed) is deferred.
+# (--luna-remote fail-closes at arg parse above so no remote-vault
 # handling is needed here.)
 #
-# CR r4: delegate FROM the himmel clone, not from wherever the operator
+# Delegate FROM the himmel clone, not from wherever the operator
 # launched this shim. The wizard's role inference reads the CWD's git origin;
 # the explicit user-scope hint below fits this machine-restore flow while the
 # interactive question + plan/confirm remain unchanged. cd (not a subshell) because

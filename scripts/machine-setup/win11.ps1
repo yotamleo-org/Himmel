@@ -5,9 +5,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# CR r2 (HIMMEL-887): fail CLOSED on -LunaRemote BEFORE any provisioning.
+# Fail CLOSED on -LunaRemote BEFORE any provisioning.
 # The old script cloned the remote vault itself; the delegated himmelctl flow
-# does not support remote-vault restore yet (HIMMEL-755 scope), so accepting
+# does not support remote-vault restore yet, so accepting
 # the flag and silently dropping it would let a machine rebuild complete
 # WITHOUT the operator's vault.
 if ($LunaRemote) {
@@ -93,7 +93,7 @@ $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";
             [System.Environment]::GetEnvironmentVariable("PATH", "User")
 Invoke-Fatal "uv --version" { uv --version }
 
-# HIMMEL-3068: bun is a hard dependency of himmel-update.sh's qmd fork
+# Bun is a hard dependency of himmel-update.sh's qmd fork
 # updater (update_qmd_fork) and the jira CLI dist rebuild's npm-absent
 # fallback -- no installer installed it before this, so on a bun-less machine
 # qmd silently never updated (a clean-looking skip; see report_qmd_bun_missing
@@ -132,7 +132,7 @@ $env:PATH = "$env:PATH;$RtkInstallDir"
 
 # Hook wiring (`rtk init -g --auto-patch` + guard reconcile) happens after
 # the clone below — adjacent to the reconcile so a clone/hookspath failure
-# can never strand a raw unguarded hook (HIMMEL-985 codex-adv finding).
+# can never strand a raw unguarded hook.
 Invoke-Fatal "rtk --version" { rtk --version }
 
 Write-Step "Clone himmel repo"
@@ -141,7 +141,7 @@ New-Item -ItemType Directory -Force $HimmelParent | Out-Null
 Invoke-Fatal "git clone himmel" { git clone https://github.com/yotamleo/himmel.git $HimmelPath }
 Push-Location $HimmelPath
 
-# HIMMEL-105: gate the clone for core.hooksPath misconfiguration BEFORE any
+# Gate the clone for core.hooksPath misconfiguration BEFORE any
 # further tooling runs. See comment in ubuntu.sh for context.
 # $ErrorActionPreference='Stop' at the top of this script means a nonzero
 # exit from check-hookspath.ps1 aborts setup.
@@ -151,9 +151,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 Pop-Location
 
-# HIMMEL-985: wire the rtk hook AND immediately swap the bare `rtk hook
-# claude` entry for the himmel rtk-hook-guard wrapper + dedup (HIMMEL-241
-# compound-find fix). Runs after clone + hookspath validation so a failure
+# Wire the rtk hook AND immediately swap the bare `rtk hook
+# claude` entry for the himmel rtk-hook-guard wrapper + dedup
+# (compound-find fix). Runs after clone + hookspath validation so a failure
 # can never strand a raw unguarded hook — see the matching ubuntu.sh comment.
 # Resolve Git Bash BEFORE rtk init mutates settings.json: derive it from the
 # active git install (works for user-scoped/custom installs, not just
@@ -182,7 +182,7 @@ if (-not $GitBash) {
 }
 # Transactional: rtk init mutates settings.json before the reconcile can
 # guard it — on any failure in between, restore the pre-init settings so no
-# partial state leaves a raw unguarded hook behind (CR round-6 finding).
+# partial state leaves a raw unguarded hook behind.
 $SettingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 $SettingsExisted = Test-Path -LiteralPath $SettingsPath
 [byte[]]$SettingsBackup = @()
@@ -204,7 +204,7 @@ try {
 }
 
 Write-Step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
-# HIMMEL-887: this script is soft-deprecated for himmel/luna WIRING — the
+# This script is soft-deprecated for himmel/luna WIRING — the
 # provisioning above (steps 1-6, full toolchain) is unchanged and stays the
 # source of truth (locked decision O4: zero capability loss). Wiring (Claude
 # config, plugins, luna vault, settings.json patching, hooks registration, …)
@@ -212,11 +212,11 @@ Write-Step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
 # once node is confirmed present (it always is here — step 3 just installed
 # it) — one wiring implementation instead of two drifting copies. Hard-remove
 # of this now-deprecated shim script itself (once its toolchain-provisioning
-# role is also absorbed) is deferred to the HIMMEL-755 fork.
-# (-LunaRemote fail-closes at the top of the script — CR r2 — so no
+# role is also absorbed) is deferred.
+# (-LunaRemote fail-closes at the top of the script so no
 # remote-vault handling is needed here.)
 #
-# CR r4: delegate FROM the himmel clone, not from wherever the operator
+# Delegate FROM the himmel clone, not from wherever the operator
 # launched this shim. The wizard's role inference reads the CWD's git origin;
 # the explicit user-scope hint below fits this machine-restore flow while the
 # interactive question + plan/confirm remain unchanged. The wizard is interactive by
@@ -226,7 +226,7 @@ Write-Step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
 Write-Host "NOTICE: himmel/luna wiring in this script is soft-deprecated (HIMMEL-887) -- delegating to himmelctl bootstrap. Hard-remove deferred to HIMMEL-755."
 Set-Location $HimmelPath
 # Pin HIMMELCTL_REPO_ROOT to this clone so a stale inherited value can't
-# redirect the bootstrap hand-off at a different repo's bin.js (HIMMEL-935 / CR #1126).
+# redirect the bootstrap hand-off at a different repo's bin.js.
 $env:HIMMELCTL_REPO_ROOT = $HimmelPath
 & (Join-Path $HimmelPath 'scripts\himmelctl\bootstrap.ps1') -DefaultScope user
 exit $LASTEXITCODE

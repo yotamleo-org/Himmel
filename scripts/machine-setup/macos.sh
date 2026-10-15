@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# macos.sh — ALPHA macOS installer for the himmel auto-arm chain (HIMMEL-594),
-# plus the uv + bun toolchain (HIMMEL-3068).
+# macos.sh — ALPHA macOS installer for the himmel auto-arm chain,
+# plus the uv + bun toolchain.
 #
 # *** ALPHA — UNVALIDATED ON REAL macOS ***
 # There is no macOS CI/VM in the himmel project (the operator is on Windows), so
@@ -9,14 +9,14 @@
 #
 # Scope (explicit NON-GOAL: full ubuntu.sh parity — node/Claude CLI/clone/vault
 # are still assumed to already exist). uv and bun are NOT optional extras,
-# though, so this script installs both via Homebrew (HIMMEL-3068):
+# though, so this script installs both via Homebrew:
 #   - uv is a HARD dependency of graphify (scripts/lib/graphify-bin.sh —
 #     /graphify, graph-cadence.sh, the graphify MCP server all need it), and
 #     macOS previously had no install path for it at all.
 #   - bun is a HARD dependency of himmel-update.sh's qmd fork updater
 #     (update_qmd_fork) and the jira CLI dist rebuild's npm-absent fallback.
 # Homebrew (not a curl-pipe installer) is the idiomatic macOS path here, and it
-# is what lets himmel-update.sh's toolchain step (HIMMEL-3068) offer a real
+# is what lets himmel-update.sh's toolchain step offer a real
 # upgrade route later (`brew upgrade uv` / `brew upgrade oven-sh/bun/bun`)
 # instead of freezing these tools at whatever version this script happened to
 # install. Wires:
@@ -35,7 +35,7 @@
 #   5. verifies crontab (the macOS scheduler backend — arm-resume uses crontab,
 #      NOT at/atrun, which is off-by-default / SIP-fragile; see arm-resume.sh +
 #      scripts/lib/scheduler-backend.sh)
-#   6. hands off to the himmelctl install wizard (HIMMEL-3068) — arming a
+#   6. hands off to the himmelctl install wizard — arming a
 #      cadence (drift-fix/upstream-watch/repo-sync/pull-cadence/...) was
 #      previously reachable only by separately running himmelctl, so this is
 #      where arming stops being undiscoverable, same as ubuntu.sh/win11.ps1
@@ -166,11 +166,11 @@ step "Seed operator leak denylist (private tooling — skipped if absent)"
 
 step "Hand off to the himmelctl install wizard (cadences, plugins, hooks)"
 {
-  # HIMMEL-3068: arming a cadence (drift-fix, upstream-watch, repo-sync,
+  # Arming a cadence (drift-fix, upstream-watch, repo-sync,
   # pull-cadence, ...) was previously reachable only by separately running
   # himmelctl, so it never happened on a fresh machine unless the operator
   # remembered to. ubuntu.sh/win11.ps1 already end by delegating to this
-  # same wizard (HIMMEL-887) via `exec` -- deliberately NOT an exec here,
+  # same wizard via `exec` -- deliberately NOT an exec here,
   # since macos.sh (unlike those two) still wants to print its own summary
   # below afterward. Bootstrap.sh short-circuits straight to `node bin.js
   # install` when node is already on PATH (true here per this file's own

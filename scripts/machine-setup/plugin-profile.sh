@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # plugin-profile — move a plugin between the ALWAYS and ON-DEMAND tiers of the
-# himmel lean profile (HIMMEL-2733).
+# himmel lean profile.
 #
 # WHY this exists: docs/setup/settings-template.json declares two tiers. The
 # ALWAYS tier (`enabledPlugins` entries flagged `true`) is installed AND enabled
@@ -17,7 +17,7 @@
 #
 # Cadences do NOT use this script: an unattended leg that needs an on-demand
 # plugin force-enables it per run via a settings fragment
-# (scripts/luna/pipeline-cadence.sh, HIMMEL-1036) so the machine's own profile
+# (scripts/luna/pipeline-cadence.sh) so the machine's own profile
 # stays lean between runs.
 #
 # Usage:
@@ -135,13 +135,13 @@ ONDEMAND_SPECS="$(jq -r '(.onDemandPlugins // {}) | keys[]' "$TEMPLATE" | tr -d 
 # live state, so every read below would be a guess. The pre-flight already
 # proved `claude` is on PATH, so a failure here is a real anomaly.
 #
-# load_live is also the post-write READBACK (HIMMEL-2801): apply() re-reads the
+# load_live is also the post-write READBACK: apply re-reads the
 # list after a write, so the same fail-closed parse serves both. It returns 1
 # (never exits) so the caller decides — startup exits, apply() reports unverified.
 load_live() {
   # Preferred: `claude plugin list --json` — typed rows (id, scope, enabled), no
   # stanza grammar to trip on. A plugin installed in N projects yields N project
-  # rows (HIMMEL-4025); only the scope=user rows matter here. A CLI without
+  # rows; only the scope=user rows matter here. A CLI without
   # --json, or a payload that is not the expected row array, falls through to
   # the text parser below. A repeated USER row stays contradictory (fail closed).
   LIVE_JSON="$(claude plugin list --json 2>/dev/null | tr -d '\r')" || LIVE_JSON=""
@@ -201,7 +201,7 @@ load_live() {
     /^[[:space:]]*Status:/ {
       if (stage != 3 || $0 !~ /^[[:space:]]*Status:[[:space:]]+[^[:space:]]+[[:space:]]+(enabled|disabled)[[:space:]]*$/) invalid()
       # One USER stanza per spec: a repeat is contradictory, never a tie-break.
-      # Non-user rows legitimately repeat (one per project, HIMMEL-4025) and are
+      # Non-user rows legitimately repeat (one per project) and are
       # never read, so they are not de-duplicated.
       if (scope == "user") {
         key = spec "\t" scope
@@ -261,7 +261,7 @@ apply() {  # <enable|disable> <spec>
   # refusal that lived solely at the single-spec site would never fire for it
   # — a `--template` override that placed a floor plugin (e.g. qmd@himmel)
   # in onDemandPlugins would let a plain `lean` run disable it. Checking here
-  # covers every caller in one place (HIMMEL-2733).
+  # covers every caller in one place.
   if [ "$1" = "disable" ] && in_list "$2" "$FLOOR"; then
     echo "plugin-profile: refusing to disable $2 — it is harness-operational (floor)." >&2
     echo "  The floor is $FLOOR; disabling one breaks the session running this command." >&2
@@ -277,7 +277,7 @@ apply() {  # <enable|disable> <spec>
     return 1
   fi
   # The CLI's exit status is not proof the write landed. Re-read the list and
-  # check the USER-scope state the caller asked for (HIMMEL-2801): an exit-0
+  # check the USER-scope state the caller asked for: an exit-0
   # no-op or a list we cannot re-read is reported, never acknowledged. Only the
   # user-scope stanza is compared — project/local state is never read as it.
   _wst="enabled"; [ "$1" = "disable" ] && _wst="disabled"

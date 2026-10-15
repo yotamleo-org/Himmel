@@ -1,4 +1,4 @@
-﻿# test-win11-shim.ps1 — HIMMEL-887 T8. win11.ps1 is soft-deprecated: it KEEPS
+﻿# test-win11-shim.ps1 — win11.ps1 is soft-deprecated: it KEEPS
 # its full-toolchain provisioning (locked O4 option (b) — zero capability
 # loss) but stops doing himmel/luna WIRING itself and delegates that to
 # `himmelctl bootstrap` (the correct entry for a node-less machine; `install`
@@ -13,12 +13,12 @@
 #      NOT sufficient.)
 #   B. order assertion — the last provisioning marker appears before the
 #      deprecation notice, which appears before the delegated bootstrap
-#      invocation — AND (CR r4) a `Set-Location $HimmelPath` sits between
+#      invocation — AND a `Set-Location $HimmelPath` sits between
 #      the notice and the bootstrap call, so the wizard's cwd-based
 #      role/scope inference targets the himmel clone, never the operator's
 #      launch directory.
-#   C. CR r2 fail-closed -LunaRemote guard — the delegated flow can't
-#      restore a remote vault yet (HIMMEL-755), so the source must carry an
+#   C. Fail-closed -LunaRemote guard — the delegated flow can't
+#      restore a remote vault yet, so the source must carry an
 #      exit-1 guard on $LunaRemote that sits BEFORE the first provisioning
 #      step, and the old silently-dropping "NOTE: -LunaRemote was passed"
 #      branch must be gone. (Static, like A/B — this script is
@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $repoRoot = (& git rev-parse --show-toplevel).Trim()
@@ -47,7 +47,7 @@ function Fail([string]$msg) {
 }
 
 # ── Case A: capability-regression guard ─────────────────────────────────────
-# The committed expected winget-id list (HIMMEL-887 T8) — every tool the old
+# The committed expected winget-id list — every tool the old
 # win11.ps1's fatal provisioning block (steps 1-6) installed, before wiring
 # was dropped. If this list shrinks, provisioning capability regressed.
 $expectedWingetIds = @(
@@ -97,7 +97,7 @@ if (-not ($noticeIdx -lt $bootstrapIdx)) {
     Fail "caseB: deprecation notice (offset $noticeIdx) did not happen before the delegated bootstrap invocation (offset $bootstrapIdx)"
 }
 
-# CR r4: the delegation must run FROM the himmel clone (the wizard's
+# The delegation must run FROM the himmel clone (the wizard's
 # role/scope inference reads the CWD's git origin; scope=project wires
 # .claude into the CWD). Statically require a Set-Location to $HimmelPath
 # between the notice and the bootstrap invocation.

@@ -1,8 +1,8 @@
-# reconcile-enabled-plugins.ps1 - enforce the lean plugin floor (HIMMEL-1032).
+# reconcile-enabled-plugins.ps1 - enforce the lean plugin floor.
 #
 # PowerShell twin of reconcile-enabled-plugins.sh - keep the WHITELIST logic in
 # lockstep. See the .sh header for the full WHY. In short: the lean plugin
-# profile (HIMMEL-816) was additive-only, so disabled plugins drift back after
+# profile was additive-only, so disabled plugins drift back after
 # every update; this reconciles the target settings.json enabledPlugins DOWN to
 # the template floor. Only template-`true` plugins survive; every other spec
 # (template `false` AND any live-enabled spec absent from the template) is forced
@@ -171,14 +171,14 @@ if ($DryRun) { Write-Host "    DRY: would write reconciled enabledPlugins to $Se
 #   POSIX (pwsh on Linux/macOS): seed the temp as a perms-preserving copy of the
 #            target (Copy-Item keeps the mode); the truncate-write below keeps it.
 $settingsObj | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([PSCustomObject]$newEp) -Force
-# HIMMEL-2324: an unpredictable suffix, not the fixed "$Settings.reconcile.tmp"
+# An unpredictable suffix, not the fixed "$Settings.reconcile.tmp"
 # — a fixed name lets anyone with write access to this directory pre-plant a
 # symlink/reparse point there before we get here, so the write below (or the
 # final Move-Item) lands through it. GetRandomFileName() keeps the temp in the
 # SAME directory as $Settings (so Move-Item stays a same-volume rename) and
 # makes the path un-guessable — pre-planting is infeasible — but a name alone
 # is not exclusive-create: it's what closes the hole together with the
-# exclusive New-Item below (CR round 1, codex-2: the previous `-Force` on
+# exclusive New-Item below (the previous `-Force` on
 # New-Item OVERWRITES an existing path instead of failing, so a pre-planted
 # reparse point at $tmp would have been silently reused).
 $tmp = "$Settings.reconcile." + [System.IO.Path]::GetRandomFileName()
@@ -186,7 +186,7 @@ $tmp = "$Settings.reconcile." + [System.IO.Path]::GetRandomFileName()
 # 5.1 runs ONLY on Windows, so treat an undefined value as Windows.
 $onWindows = if ($null -eq $IsWindows) { $true } else { [bool]$IsWindows }
 if ($onWindows) {
-  # HIMMEL-2324 (CR round 5, codex-1): New-Item -Path $tmp -ErrorAction Stop
+  # New-Item -Path $tmp -ErrorAction Stop
   # is NOT an atomic O_EXCL create -- it goes through PowerShell's FileSystem
   # provider, which does an existence check THEN creates: two steps with a
   # window between them an attacker could still win by planting a reparse
@@ -210,7 +210,7 @@ if ($onWindows) {
 } else {
   Copy-Item -LiteralPath $Settings -Destination $tmp -Force
 }
-# HIMMEL-2324 (CR round 7, codex-8 sibling): the write+move used to run with
+# The write+move used to run with
 # no catch at all -- a WriteAllText or Move-Item failure left $tmp orphaned
 # in $Settings's directory with nothing to clean it up. Mirror the Set-Acl
 # failure branch above: on any failure, remove the orphaned temp and Die

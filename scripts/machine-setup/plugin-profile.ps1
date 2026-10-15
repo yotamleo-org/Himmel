@@ -1,6 +1,5 @@
 ﻿# plugin-profile.ps1 — PowerShell twin of plugin-profile.sh: move a plugin
 # between the ALWAYS and ON-DEMAND tiers of the himmel lean profile
-# (HIMMEL-2733).
 #
 # WHY this exists: docs/setup/settings-template.json declares two tiers. The
 # ALWAYS tier (`enabledPlugins` entries flagged `true`) is installed AND
@@ -18,7 +17,7 @@
 #
 # Cadences do NOT use this script: an unattended leg that needs an on-demand
 # plugin force-enables it per run via a settings fragment
-# (scripts/luna/pipeline-cadence.sh, HIMMEL-1036) so the machine's own
+# (scripts/luna/pipeline-cadence.sh) so the machine's own
 # profile stays lean between runs.
 #
 # Usage:
@@ -77,7 +76,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits (the ❯ bullets in `claude plugin
-# list`) is silently mis-decoded on capture (HIMMEL-2256; reference fix:
+# list`) is silently mis-decoded on capture (reference fix:
 # gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -263,7 +262,7 @@ function Get-LiveMap([object[]]$Lines) {
       if ($stage -ne 3) { Stop-UnrecognizedList }
       $state = $Matches[1]
       # One USER stanza per spec: a repeat is contradictory, never last-wins.
-      # Non-user rows legitimately repeat (one per project, HIMMEL-4025) and are
+      # Non-user rows legitimately repeat (one per project) and are
       # never read, so they are not de-duplicated.
       if ($scope -ceq 'user') {
         if ($seen.ContainsKey($spec)) { Stop-UnrecognizedList }
@@ -278,7 +277,7 @@ function Get-LiveMap([object[]]$Lines) {
   if ($stage -ne 0 -or $count -eq 0) { Stop-UnrecognizedList }
   return $map
 }
-# Preferred read (HIMMEL-4025): `claude plugin list --json` -- typed rows (id,
+# Preferred read: `claude plugin list --json` -- typed rows (id,
 # scope, enabled), only scope=user is read. Returns $null when the CLI has no
 # --json or the payload is not the expected row array (caller falls back to the
 # text parser); throws on a repeated USER row (contradictory, fail closed).
@@ -307,7 +306,7 @@ try { $LiveMap = Get-LiveMapPreferred $listOutput } catch {
   Die "plugin-profile: 'claude plugin list' returned an unrecognized response -- cannot read live plugin state" 1
 }
 
-# Post-write re-read (HIMMEL-2801): the same fail-closed parse, but $null instead
+# Post-write re-read: the same fail-closed parse, but $null instead
 # of an exit so Invoke-Apply can report the write as unverified.
 function Read-LiveMap {
   try {
@@ -355,7 +354,7 @@ function Invoke-Apply([string]$Action, [string]$SpecArg) {
   # refusal that lived solely at the single-spec site would never fire for it
   # -- a `--template` override that placed a floor plugin (e.g. qmd@himmel)
   # in onDemandPlugins would let a plain `lean` run disable it. Checking here
-  # covers every caller in one place (HIMMEL-2733).
+  # covers every caller in one place.
   if ($Action -eq 'disable' -and ($Floor -ccontains $SpecArg)) {
     [Console]::Error.WriteLine("plugin-profile: refusing to disable $SpecArg -- it is harness-operational (floor).")
     [Console]::Error.WriteLine("  The floor is $($Floor -join ' '); disabling one breaks the session running this command.")
@@ -373,7 +372,7 @@ function Invoke-Apply([string]$Action, [string]$SpecArg) {
     return $false
   }
   # The CLI's exit status is not proof the write landed. Re-read the list and
-  # check the USER-scope state the caller asked for (HIMMEL-2801): an exit-0
+  # check the USER-scope state the caller asked for: an exit-0
   # no-op or a list we cannot re-read is reported, never acknowledged. Only the
   # user-scope stanza is compared -- project/local state is never read as it.
   $wantState = if ($Action -eq 'enable') { 'enabled' } else { 'disabled' }

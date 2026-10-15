@@ -44,7 +44,7 @@ param(
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Same version shape as scripts/upstreams.json's rtk `version_regex`.
@@ -52,7 +52,7 @@ $VersionRegex = '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.\-]*'
 
 # Test-IsNewer <candidate> <baseline> -- compares the leading dotted-numeric
 # run only (a trailing suffix like -rc1 is ignored), same discipline
-# upgrade-rtk.sh's bash-native is_newer() comparison uses (CR: the two used to
+# upgrade-rtk.sh's bash-native is_newer() comparison uses (the two used to
 # diverge on a suffixed tag when the bash side was `sort -V`-based).
 function Test-IsNewer([string]$Candidate, [string]$Baseline) {
     if ($Candidate -eq $Baseline) { return $false }
@@ -62,7 +62,7 @@ function Test-IsNewer([string]$Candidate, [string]$Baseline) {
     try {
         return ([version]$c) -gt ([version]$b)
     } catch {
-        # Component-wise numeric compare, NOT [string]::Compare (CR glm-5).
+        # Component-wise numeric compare, NOT [string]::Compare.
         # Lexicographic ordering is simply wrong for versions — it puts 0.10.0
         # BELOW 0.9.0, which here would mean silently refusing a real upgrade.
         # Only reachable when the [version] cast fails on an odd version string,
@@ -133,13 +133,13 @@ if ($DryRun) {
 $InstallDir = if ($env:RTK_INSTALL_DIR) { $env:RTK_INSTALL_DIR } else { "$env:TEMP\rtk-upgrade" }
 
 # --------------------------------------------------------------------------
-# Concurrency lock (CR round 4, HIMMEL-1323): nothing else here serializes
+# Concurrency lock: nothing else here serializes
 # overlapping invocations, and this repo genuinely runs several concurrent
-# Claude sessions (HIMMEL-1338) -- two overlapping upgrades sharing the same
+# Claude sessions -- two overlapping upgrades sharing the same
 # InstallDir (this twin's DEFAULT IS shared: $env:TEMP\rtk-upgrade) can
 # overwrite each other's backup or roll back to a stale binary. Same
 # lock-directory idiom as the bash twin / scripts/ci/run-shell-tests.sh's
-# suite lock (HIMMEL-1338): a lock DIRECTORY (New-Item is the atomic
+# suite lock: a lock DIRECTORY (New-Item is the atomic
 # create-if-absent primitive on Windows, mirroring mkdir-locks), branded
 # with an owner file (pid/host/started) so a crashed holder's lock can be
 # told apart from a live one via a TTL. Scaled down from that lock: this one
@@ -258,7 +258,7 @@ if (-not (Enter-RtkLock "$InstallDir.lock")) {
     exit 3
 }
 
-# Back up the BINARY, not $RtkLiveDir (CR glm-3): $RtkLiveDir is the binary's
+# Back up the BINARY, not $RtkLiveDir: $RtkLiveDir is the binary's
 # parent directory, which other tools can share (e.g. a shared ~/.local/bin).
 # A directory-level backup/restore meant Restore-Backup below had to
 # Remove-Item -Recurse that shared directory before restoring into it --
@@ -277,11 +277,11 @@ try {
     Exit-Upgrade 2
 }
 
-# Returns $true ONLY when the binary was actually restored (CR round-2
-# codex-1). Copy-Item's failures are NON-terminating by default, so the previous
+# Returns $true ONLY when the binary was actually restored.
+# Copy-Item's failures are NON-terminating by default, so the previous
 # body could fail and still fall through to the caller's unconditional
-# "ROLLED BACK" line. This is the same defect fixed on the bash side in round 1
-# — missed here because the two platforms carry separate copies of the rollback,
+# "ROLLED BACK" line.
+# The two platforms carry separate copies of the rollback,
 # which is exactly why a two-platform fix needs checking on both.
 function Restore-Backup {
     try {
@@ -321,7 +321,7 @@ if ($env:RTK_DOWNLOAD_CMD) {
     $RtkZipName = 'rtk-x86_64-pc-windows-msvc.zip'
     $RtkUrl = "https://github.com/rtk-ai/rtk/releases/download/$TargetTag/$RtkZipName"
     $RtkZipPath = Join-Path $InstallDir $RtkZipName
-    # Download and extract are split deliberately (CR codex-2). They fail
+    # Download and extract are split deliberately. They fail
     # differently: the download writes only into the scratch InstallDir, so the
     # live install is untouched and exit 2 is honest. Expand-Archive writes
     # INTO $RtkLiveDir, so a failure part-way through leaves the live install

@@ -1,6 +1,6 @@
-﻿# test-install-plugins-verify.ps1 — hermetic test for the HIMMEL-361 post-install
+﻿# test-install-plugins-verify.ps1 — hermetic test for the post-install
 # PRESENCE verification in scripts/machine-setup/install-plugins.ps1 (PowerShell
-# twin of test-install-plugins-verify.sh; HIMMEL-364).
+# twin of test-install-plugins-verify.sh).
 #
 # Stubs the `claude` CLI on PATH (a per-scenario claude.cmd) so nothing touches
 # the operator's real plugin set, then drives the real script against a temp
@@ -12,7 +12,7 @@
 #   4. `claude plugin list` fails     → fail closed (exit 1), surfaces the error
 #   5. --dry-run                      → exit 0, verify skipped
 #   6. false-flagged entry            → NOT installed / not in the verify set
-#      (HIMMEL-816 follow-up: install-plugins.ps1 must honor enabledPlugins'
+#      (follow-up: install-plugins.ps1 must honor enabledPlugins'
 #      boolean value, not install every key regardless)
 #
 # Keep in lockstep with test-install-plugins-verify.sh when changing either.
@@ -99,7 +99,7 @@ function Invoke-Install {
 
 try {
     $env:PATH = "$StubDir;$env:PATH"
-    # HIMMEL-2353: install-plugins.ps1's `user` scope resolves to
+    # install-plugins.ps1's `user` scope resolves to
     # $env:CLAUDE_CONFIG_DIR when set (else the real $HOME/.claude) — pin it
     # into this suite's own $Tmp so a `-Scope user` run here can NEVER reach
     # the operator's real settings.json, even on a verify-FAIL path (the bug
@@ -140,7 +140,7 @@ try {
     Assert-Rc 'dry-run exits 0' 0 $script:Rc
     Assert-Has 'dry-run skips verify' 'verify skipped' $out
 
-    # 6. false-flagged entry (HIMMEL-816 follow-up) → not installed, not in the
+    # 6. false-flagged entry (follow-up) → not installed, not in the
     # verify set. Stub only reports the true-flagged plugin present (as a real
     # install run would leave it).
     $TemplateLean = Join-Path $Tmp 'settings-template-lean.json'

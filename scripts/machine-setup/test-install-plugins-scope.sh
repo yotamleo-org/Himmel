@@ -15,7 +15,7 @@
 #   1. Default (no flag) → `--scope user` on install + marketplace add.
 #   2. `--scope project` → `--scope project` on both.
 #   3. Invalid `--scope bogus` → exit 2 (validation rejects before preflight).
-#   4. autoUpdate patch (HIMMEL-365) → dry-run emits the autoUpdate intent for a
+#   4. autoUpdate patch → dry-run emits the autoUpdate intent for a
 #      template-flagged marketplace, targeting the scope-correct settings file.
 
 set -euo pipefail
@@ -26,7 +26,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() {
     local _t="$1"; shift
     local _n=$#
@@ -49,7 +49,7 @@ set -e
 grepq "$out" "invalid --scope: bogus" || fail "missing invalid-scope diagnostic"
 echo "ok: invalid scope rejected (exit 2)"
 
-# RED (HIMMEL-2699): a trailing value-taking flag with no value must reach
+# RED: a trailing value-taking flag with no value must reach
 # the script's own usage diagnostic and exit 2, never an unbound-variable
 # death from `set -u`.
 for flag in --scope --template --himmel-path --settings; do
@@ -78,7 +78,7 @@ assert_scope() {
         || fail "plugin install missing --scope $want (args: $*)"
     echo "ok: scope '$want' threads through (args: ${*:-<default>})"
 
-    # autoUpdate (HIMMEL-365): dry-run prints the patch intent for a flagged
+    # autoUpdate: dry-run prints the patch intent for a flagged
     # marketplace (himmel) against the scope-correct settings file. $HOME/$PWD
     # are inherited by the child script, so they match what it computes.
     local sf
@@ -92,7 +92,7 @@ assert_scope() {
     echo "ok: autoUpdate targets $sf for scope '$want'"
 }
 
-# A scratch HOME and cwd (HIMMEL-3541): install-plugins.sh leaves an autoUpdate
+# A scratch HOME and cwd: install-plugins.sh leaves an autoUpdate
 # entry the settings file already declares alone, so on a machine where himmel
 # is installed the real ~/.claude/settings.json would hide the dry line.
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/himmel-scope-test.XXXXXX") || fail "mktemp failed"

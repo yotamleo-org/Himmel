@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # uninstall-plugins — remove installed Claude plugins named by
-# docs/setup/settings-template.json (HIMMEL-2694/2754).
+# docs/setup/settings-template.json.
 #
 # Queries `claude plugin list --json` for each plugin's own scope, limiting
 # project and local rows to the current directory. When enumeration is unavailable,
@@ -27,7 +27,7 @@
 #                        --dry-run writes this file too: use an ephemeral path,
 #                        never a persisted retry cache.
 #   --ledger-owned FILE  Ownership comes from the provenance ledger's rows
-#                        instead of the template (HIMMEL-3332 S6). TAB-separated
+#                        instead of the template. TAB-separated
 #                        lines `plugin\t<id>\t<cli_scope>` or
 #                        `marketplace\t<name>\t<cli_scope>`; blank and #-lines
 #                        are ignored; any other first field, or an unreadable
@@ -37,7 +37,7 @@
 #                        removing each only at its recorded cli_scope. A plugin
 #                        is likewise owned only at its recorded cli_scope (a row
 #                        without one owns nothing); the same id at another scope
-#                        is left installed (HIMMEL-3378). Without this flag,
+#                        is left installed. Without this flag,
 #                        behaviour is unchanged.
 #
 # Exit codes: 0 = clean; 1 = failed call or blocked removal; 2 = bad usage.
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run)       DRY_RUN=1; shift ;;
     --scope)         [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }; SCOPE="$2"; shift 2 ;;
     --template)      [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }; TEMPLATE="$2"; shift 2 ;;
-    # WHY (HIMMEL-2754): dry-run deliberately writes this map so the second
+    # WHY: dry-run deliberately writes this map so the second
     # phase knows which scopes the first would use. uninstall.sh supplies an
     # ephemeral mktemp handoff and removes it on EXIT; callers must give a
     # dry run an ephemeral map, never the wet cache path.
@@ -103,7 +103,7 @@ run() {
   fi
 }
 
-# WHY (HIMMEL-2754): the scope handoff must survive an interruption mid-loop,
+# WHY: the scope handoff must survive an interruption mid-loop,
 # not only a clean end of the loop.
 persist_scope_map() {
   if [[ -n "$SCOPE_MAP" && -n "$REMOVED_SCOPES" ]]; then
@@ -122,7 +122,7 @@ persist_scope_map() {
         echo "WARN: could not read prior scopes from $SCOPE_MAP — prior scopes are lost from the handoff; recording this run's scopes only" >&2
       fi
     fi
-    # WHY (HIMMEL-2754): atomic replacement keeps prior scopes intact if a write fails.
+    # WHY: atomic replacement keeps prior scopes intact if a write fails.
     _scope_tmp=""
     if ! _scope_tmp="$(mktemp "${SCOPE_MAP}.XXXXXX")"; then
       echo "WARN: could not create temporary scope map for $SCOPE_MAP" >&2
@@ -135,7 +135,7 @@ persist_scope_map() {
       echo "WARN: could not replace scope map $SCOPE_MAP" >&2
       rm -f -- "$_scope_tmp" || true
     fi
-    # WHY (HIMMEL-2754): keep uninstalling after a failed handoff, but count
+    # WHY: keep uninstalling after a failed handoff, but count
     # repeated per-plugin persistence failures only once for the final status.
     if [[ $SCOPE_MAP_PERSIST_FAILED -eq 0 ]]; then
       SCOPE_MAP_PERSIST_FAILED=1
@@ -148,7 +148,7 @@ persist_scope_map() {
 
 LEDGER_MKT_SCOPES=""
 if [[ -n "$LEDGER_OWNED" ]]; then
-  # WHY (HIMMEL-3332 S6): the provenance ledger names exactly what himmel
+  # WHY: the provenance ledger names exactly what himmel
   # registered, so ownership no longer has to be inferred from the
   # template's marketplace/exclusive shape.
   [[ -r "$LEDGER_OWNED" ]] || { echo "ERROR: cannot read --ledger-owned file: $LEDGER_OWNED" >&2; exit 2; }
@@ -163,7 +163,7 @@ if [[ -n "$LEDGER_OWNED" ]]; then
       \#*) continue ;;
       plugin)
         _LEDGER_PLUGIN_IDS="${_LEDGER_PLUGIN_IDS}${_lname}"$'\n'
-        # WHY (HIMMEL-3378): ownership is the recorded (id, cli_scope) pair; a
+        # WHY: ownership is the recorded (id, cli_scope) pair; a
         # row with no cli_scope names no pair.
         [[ -z "$_lscope" ]] || _LEDGER_PLUGIN_PAIRS="${_LEDGER_PLUGIN_PAIRS}${_lname}"$'\t'"${_lscope}"$'\n'
         ;;
@@ -185,26 +185,26 @@ if [[ -n "$LEDGER_OWNED" ]]; then
   OWNED_SPECS="$(printf '%s' "$_LEDGER_PLUGIN_PAIRS" | sort -u)"
   EXCLUSIVE_MARKETPLACES=""
 else
-  # WHY (HIMMEL-2694): the template names ownership, not the installed set.
+  # WHY: the template names ownership, not the installed set.
   # Capture keys before the loops so counters stay in this shell.
   OWNED_MARKETPLACES="$(jq -r '.extraKnownMarketplaces | keys[]' "$TEMPLATE")"
-  # WHY (HIMMEL-2733): fallback mirrors install's ALWAYS + ON-DEMAND union.
+  # WHY: fallback mirrors install's ALWAYS + ON-DEMAND union.
   TEMPLATE_SPECS="$(jq -r '
     ((.enabledPlugins | to_entries[] | select(.value == true) | .key)),
     ((.onDemandPlugins // {}) | keys[])
   ' "$TEMPLATE" | sort -u)"
-  # WHY (HIMMEL-2694 r4): every template KEY is owned, including plugins an
+  # WHY: every template KEY is owned, including plugins an
   # older himmel enabled that are now disabled in the template.
-  # On-demand-only keys are also owned (HIMMEL-2733).
+  # On-demand-only keys are also owned.
   OWNED_SPECS="$(jq -r '
     (.enabledPlugins | keys[]), ((.onDemandPlugins // {}) | keys[])
   ' "$TEMPLATE" | sort -u)"
-  # WHY (HIMMEL-2694 r4): a `directory` marketplace rooted in this repo is
+  # WHY: a `directory` marketplace rooted in this repo is
   # ours whatever the template's enabledPlugins currently say — an older
   # himmel may have installed from it. A `github` marketplace is SHARED
   # (claude-plugins-official is Anthropic's), so there only the plugin IDs
   # our template names are ours to remove.
-  # WHY (HIMMEL-2694): a textual prefix admits `..`; enforce the bound on segments.
+  # WHY: a textual prefix admits `..`; enforce the bound on segments.
   EXCLUSIVE_MARKETPLACES="$(jq -r --arg root "$REPO_ROOT" '
     .extraKnownMarketplaces | to_entries[]
     | select(.value.source.source == "directory")
@@ -214,10 +214,10 @@ else
     | .key' "$TEMPLATE")"
 fi
 
-# WHY (HIMMEL-2694 r4): selection, foreign notes and remaining dependencies
+# WHY: selection, foreign notes and remaining dependencies
 # must agree on ownership, including the outer template-marketplace bound.
-# WHY (HIMMEL-3332 S6): in ledger mode ownership is the ledger's plugin ids
-# alone — marketplace membership no longer gates it. HIMMEL-3378: OWNED_SPECS
+# WHY: in ledger mode ownership is the ledger's plugin ids
+# alone — marketplace membership no longer gates it. OWNED_SPECS
 # then holds "<id>\t<cli_scope>" pairs and a row is owned only at that scope.
 ownership_jq() {
   local filter="$1"
@@ -263,10 +263,10 @@ TRANSIENT_MARKETPLACES=""
 REMOVED_SCOPES=""
 SCOPE_MAP_PERSIST_FAILED=0
 
-# WHY (HIMMEL-2754): repairs restore only what this run borrowed. Even a
+# WHY: repairs restore only what this run borrowed. Even a
 # failed plugin uninstall must not strand a transient registration on EXIT.
 # The trap reports its own cleanup failures through the exit status too.
-# shellcheck disable=SC2317,SC2329  # invoked by the EXIT trap (HIMMEL-2754)
+# shellcheck disable=SC2317,SC2329  # invoked by the EXIT trap
 cleanup_transient() {
   local rc=$? name scope
   trap - EXIT
@@ -285,13 +285,13 @@ EOF_TRANSIENT
 }
 trap cleanup_transient EXIT
 
-# WHY (HIMMEL-2694): plugin removal and dry-run subtraction share selection.
+# WHY: plugin removal and dry-run subtraction share selection.
 # Owned project and local rows resolve physically against the current project
 # (including symlinks), so previews cannot discount another project's plugins.
 CURRENT_PROJECT="$(pwd -P)"
 select_targets() {
   local ROWS ID PLUGIN_SCOPE PROJECT_PATH RESOLVED_PROJECT ROW_INDEX
-  # WHY (HIMMEL-2754): jq can fail after emitting partial or empty output;
+  # WHY: jq can fail after emitting partial or empty output;
   # check its status so an unresolved selection cannot look like nothing owned.
   # shellcheck disable=SC2016  # ownership_jq takes a jq filter, not shell expansion.
   if ! ROWS="$(printf '%s\n' "$1" | ownership_jq '
@@ -303,10 +303,10 @@ select_targets() {
   while IFS=$'\t' read -r ID PLUGIN_SCOPE ROW_INDEX PROJECT_PATH; do
     [[ -n "$ID" ]] || continue
     if [[ "$PLUGIN_SCOPE" == "project" || "$PLUGIN_SCOPE" == "local" ]]; then
-      # WHY (HIMMEL-2694): an absent projectPath leaves the row's project
+      # WHY: an absent projectPath leaves the row's project
       # identity unresolved; unresolved is not ours to remove.
       [[ -n "$PROJECT_PATH" ]] || continue
-      # WHY (HIMMEL-2754): jq's @tsv escapes every backslash (and tab, newline,
+      # WHY: jq's @tsv escapes every backslash (and tab, newline,
       # carriage return); read -r keeps them literal, so a path with a backslash
       # would fail to resolve and be silently dropped from the selection.
       PROJECT_PATH="$(printf '%b' "$PROJECT_PATH")"
@@ -330,7 +330,7 @@ if [[ $MARKETPLACES_ONLY -eq 0 ]]; then
   if ! printf '%s\n' "$INSTALLED_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
     echo "WARN: \`claude plugin list --json\` unavailable — falling back to the template set at scope $SCOPE (HIMMEL-2694)" >&2
     if [[ -n "$LEDGER_OWNED" ]]; then
-      # WHY (HIMMEL-3378): the ledger already names each pair's scope; the
+      # WHY: the ledger already names each pair's scope; the
       # fallback --scope would remove the id at a scope himmel never installed to.
       TARGETS="$OWNED_SPECS"$'\n'
     else
@@ -382,7 +382,7 @@ EOF_SPECS
 $FOREIGN_ROWS
 EOF_FOREIGN
 
-    # WHY (HIMMEL-2754): a previous partial teardown may have removed the
+    # WHY: a previous partial teardown may have removed the
     # source registration while leaving its installed plugins enabled.
     MKT_JSON="$(claude plugin marketplace list --json 2>/dev/null)" || MKT_JSON=""
     if ! printf '%s\n' "$MKT_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
@@ -393,7 +393,7 @@ EOF_FOREIGN
         if printf '%s\n' "$MKT_JSON" | jq -e --arg m "$M" 'any(.[]; .name == $m)' >/dev/null; then
           continue
         fi
-        # WHY (HIMMEL-2754): repair every scope a marketplace's plugins span,
+        # WHY: repair every scope a marketplace's plugins span,
         # or uninstalls at the un-repaired scopes fail.
         REPAIR_SCOPES=""
         while IFS=$'\t' read -r ID PLUGIN_SCOPE; do
@@ -431,7 +431,7 @@ EOF_MARKETPLACES
     echo "  uninstall: $ID"
     _rc=0
     run claude plugin uninstall "$ID" --scope "$PLUGIN_SCOPE" || _rc=$?
-    # WHY (HIMMEL-2804): a listed name proves no scope. Try uninstall first
+    # WHY: a listed name proves no scope. Try uninstall first
     # so healthy registrations need no add; repair a failed scope once, without
     # ever treating a pre-existing marketplace as transient cleanup material.
     if [[ $_rc -ne 0 ]] && printf '%s\n' "$MKT_JSON" | jq -e --arg m "${ID##*@}" 'type == "array" and any(.[]; .name == $m)' >/dev/null 2>&1; then
@@ -452,14 +452,14 @@ EOF_MARKETPLACES
       echo "    WARN: uninstall failed (rc=$_rc) — not installed at scope $PLUGIN_SCOPE, or a transient failure" >&2
       FAILURES=$((FAILURES + 1))
     else
-      # WHY (HIMMEL-2754): project/local scopes only belong to this project;
+      # WHY: project/local scopes only belong to this project;
       # user rows retain the two-field handoff format.
       SCOPE_ROW="$PLUGIN_SCOPE"
       if [[ "$PLUGIN_SCOPE" == "project" || "$PLUGIN_SCOPE" == "local" ]]; then
         SCOPE_ROW="${SCOPE_ROW}"$'\t'"$CURRENT_PROJECT"
       fi
       REMOVED_SCOPES="${REMOVED_SCOPES}${ID##*@}"$'\t'"${SCOPE_ROW}"$'\n'
-      # WHY (HIMMEL-2800): marketplace rows alone cannot distinguish a partial
+      # WHY: marketplace rows alone cannot distinguish a partial
       # plugin phase. Keep them compatible and append exact plugin identities.
       REMOVED_SCOPES="${REMOVED_SCOPES}${ID}"$'\t'"${SCOPE_ROW}"$'\n'
       persist_scope_map
@@ -469,7 +469,7 @@ $TARGETS
 EOF_TARGETS
 fi
 
-# WHY (HIMMEL-2754): any scope/project can still depend on a marketplace.
+# WHY: any scope/project can still depend on a marketplace.
 # Re-query after the plugin phase. Without enumeration, successful template
 # removals cannot rule out dependencies at other scopes or in other projects.
 if [[ $PLUGINS_ONLY -eq 0 ]]; then
@@ -480,7 +480,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
     echo "WARN: remaining-plugin enumeration failed — dependent plugins cannot be ruled out; removing marketplaces could strand them (HIMMEL-2754)" >&2
     VERIFIED=0
   fi
-  # WHY (HIMMEL-2754): the caller runs phases in separate processes; recover
+  # WHY: the caller runs phases in separate processes; recover
   # successful plugin scopes before falling back to the install profile.
   # The map is authoritative because the plugin phase already merged prior
   # rows into it. After a failed persist, retain both its prior rows and this
@@ -495,7 +495,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
           if _merged_scopes="$(printf '%s' "$_scope_records" | awk '!seen[$0]++')"; then
             REMOVED_SCOPES="$_merged_scopes"
           else
-            # WHY (HIMMEL-2754): keep the non-lossy concatenation if
+            # WHY: keep the non-lossy concatenation if
             # deduplication fails; the marketplace scope loop deduplicates too.
             REMOVED_SCOPES="$_scope_records"
           fi
@@ -507,7 +507,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
       echo "WARN: could not read scope map $SCOPE_MAP — using this run's scopes and fallback scope $SCOPE" >&2
     fi
   fi
-  # WHY (HIMMEL-2754): both dry-run children leave installed state intact;
+  # WHY: both dry-run children leave installed state intact;
   # subtract only selected rows, retaining other-project copies of the same id.
   PREVIEW_TARGETS=""
   if [[ $DRY_RUN -eq 1 && $VERIFIED -eq 1 && ( $MARKETPLACES_ONLY -eq 0 || -n "$REMOVED_SCOPES" ) ]]; then
@@ -515,7 +515,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
       echo "ERROR: could not compute the dry-run plugin subtraction — halting rather than previewing a marketplace removal against an unresolved plugin set (HIMMEL-2754)" >&2
       exit 1
     fi
-    # WHY (HIMMEL-2800): a prior partial run proves only its recorded IDs,
+    # WHY: a prior partial run proves only its recorded IDs,
     # scopes and projects, not every currently selected plugin of a marketplace.
     if [[ $MARKETPLACES_ONLY -eq 1 ]]; then
       PREVIEW_TARGETS="$(printf '%s\n' "$REMAINING_JSON" | jq -r \
@@ -576,7 +576,7 @@ EOF_TRANSIENT
     MKT_SCOPES=""
     while IFS=$'\t' read -r NAME REMOVED_SCOPE ROW_PROJECT; do
       [[ "$NAME" == "$M" ]] || continue
-      # WHY (HIMMEL-2754): a persisted map can survive a retry in another
+      # WHY: a persisted map can survive a retry in another
       # project; replay project/local scopes only in their recorded project.
       if [[ "$REMOVED_SCOPE" == "project" || "$REMOVED_SCOPE" == "local" ]] && [[ "$ROW_PROJECT" != "$CURRENT_PROJECT" ]]; then
         if [[ -z "$ROW_PROJECT" ]]; then
@@ -593,9 +593,9 @@ EOF_TRANSIENT
     done <<EOF_SCOPES
 $REMOVED_SCOPES
 EOF_SCOPES
-    # WHY (HIMMEL-2796): plugin scopes do not reveal registration scopes;
+    # WHY: plugin scopes do not reveal registration scopes;
     # include the install profile even when inferred candidates are nonempty.
-    # WHY (HIMMEL-3378): in ledger mode neither the plugin scopes nor the
+    # WHY: in ledger mode neither the plugin scopes nor the
     # fallback $SCOPE prove a registration is ours — a pre-existing marketplace
     # of the same name at such a scope would be removed too. Only the scopes
     # the ledger recorded for this marketplace are.
@@ -607,7 +607,7 @@ EOF_SCOPES
         *) MKT_SCOPES="${MKT_SCOPES}${SCOPE}"$'\n' ;;
       esac
     fi
-    # WHY (HIMMEL-3332 S6): the ledger recorded exactly which cli_scope this
+    # WHY: the ledger recorded exactly which cli_scope this
     # marketplace was registered at; add it even if nothing else inferred it.
     if [[ -n "$LEDGER_OWNED" ]]; then
       while IFS=$'\t' read -r _lm _lscope; do
@@ -626,7 +626,7 @@ EOF_LEDGER_MKT_SCOPES
       [[ -n "$MKT_SCOPE" ]] || continue
       _mrc=0
       run claude plugin marketplace remove "$M" --scope "$MKT_SCOPE" || _mrc=$?
-      # WHY (HIMMEL-3378): every ledger-mode scope is a recorded registration, so
+      # WHY: every ledger-mode scope is a recorded registration, so
       # a failed removal is real; the list carries no scope, so the post-check
       # below cannot tell it from a registration that is not ours.
       if [[ -n "$LEDGER_OWNED" && $_mrc -ne 0 ]]; then
@@ -636,14 +636,14 @@ EOF_LEDGER_MKT_SCOPES
     done <<EOF_MKT_SCOPES
 $MKT_SCOPES
 EOF_MKT_SCOPES
-    # WHY (HIMMEL-3350): a marketplace can be registered at a scope none of its
+    # WHY: a marketplace can be registered at a scope none of its
     # plugin rows or the fallback scope names (install adds it at project AND
     # user scope, but the plugin lands at one). The list output carries no
     # scope, so a still-registered marketplace is swept at the current
     # project's remaining scopes. User scope is never swept unless it is the
     # fallback: it is machine-wide, and a --scope project run must not touch it.
     # A preview cannot re-read the effects of commands it never executed.
-    # WHY (HIMMEL-3378): ledger mode has no unnamed scope to sweep; a scope the
+    # WHY: ledger mode has no unnamed scope to sweep; a scope the
     # ledger did not record is not ours.
     if [[ $DRY_RUN -eq 0 && -z "$LEDGER_OWNED" ]] &&
         SWEEP_MKT_JSON="$(claude plugin marketplace list --json 2>/dev/null)" &&

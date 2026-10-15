@@ -3,12 +3,12 @@
 # docs/setup/settings-template.json.
 #
 # Reads `enabledPlugins` (plugin@marketplace keys, installing only entries
-# flagged `true` — HIMMEL-816) and `extraKnownMarketplaces` from the
+# flagged `true`) and `extraKnownMarketplaces` from the
 # template, registers each marketplace
 # via `claude plugin marketplace add`, sets `autoUpdate: true` on every
 # template-flagged marketplace already registered in the scope's settings.json
-# (the CLI has no auto-update flag, so this is patched straight into that file —
-# HIMMEL-365), then installs each plugin via `claude plugin install
+# (the CLI has no auto-update flag, so this is patched straight into that file)
+# then installs each plugin via `claude plugin install
 # <plugin>@<marketplace> --scope <scope>`.
 #
 # Both CLI calls are idempotent — re-running this script on a fully
@@ -41,7 +41,7 @@
 #      or a settings file that is not valid JSON)
 #   2  usage error (unknown flag, invalid --scope)
 #   3  refused: a settings file parses but its enabledPlugins /
-#      extraKnownMarketplaces is not a JSON object (HIMMEL-3392) — checked before
+#      extraKnownMarketplaces is not a JSON object — checked before
 #      any install work, and the file is left untouched
 set -euo pipefail
 
@@ -84,7 +84,7 @@ esac
 command -v jq      >/dev/null || { echo "ERROR: jq required" >&2; exit 1; }
 command -v claude  >/dev/null || { echo "ERROR: claude CLI required on PATH" >&2; exit 1; }
 
-# ── Install provenance (HIMMEL-3332 S3) ─────────────────────────────────────
+# ── Install provenance ─────────────────────────────────────
 # Records what this run registered — and whether it was already the operator's —
 # so an uninstall removes exactly what himmel brought. Under an adopt/himmelctl
 # session HIMMEL_PROVENANCE_IID is already exported and prov_begin is a no-op,
@@ -92,7 +92,7 @@ command -v claude  >/dev/null || { echo "ERROR: claude CLI required on PATH" >&2
 # A ledger failure is a warning, never an install failure: an unrecorded
 # registration reads as pre-existing at uninstall, which keeps it (residue over
 # breakage). ponytail: install-plugins.ps1 records nothing — the PowerShell
-# helpers are tracked in HIMMEL-3346.
+# helpers are not written yet.
 # shellcheck source=../lib/provenance.sh
 . "$REPO_ROOT/scripts/lib/provenance.sh"
 # shellcheck source=../lib/provenance-identity.sh
@@ -133,7 +133,7 @@ run_step() {
   # presence-verify is an authoritative second gate. Registration has no such
   # gate, and a genuine clone failure can itself say "already exists" (git's
   # "destination path '…' already exists and is not an empty directory") — the
-  # very failure HIMMEL-2753 is about — so there a non-zero exit is a failure,
+  # very failure the guard is about — so there a non-zero exit is a failure,
   # full stop. Nothing is lost: measured on this RC (2026-09-07), a duplicate
   # `claude plugin marketplace add` exits 0 ("Marketplace 'x' already on disk"),
   # so an idempotent re-run never reaches this branch.
@@ -153,7 +153,7 @@ EXPANDED=$(sed "s|<himmel-path>|$HIMMEL_PATH|g" "$TEMPLATE")
 
 # ── Resolve the scope's settings file (used from here on) ────────────────────
 case "$SCOPE" in
-  # HIMMEL-2353: honor CLAUDE_CONFIG_DIR like the sibling reconcile-enabled-plugins.sh:81
+  # Honor CLAUDE_CONFIG_DIR like the sibling reconcile-enabled-plugins.sh:81
   # idiom — a hermetic-test seam, not a per-call-site flag (a bare $HOME/.claude
   # here is what let a test suite reach the operator's real settings.json).
   user)    SETTINGS_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" ;;
@@ -163,7 +163,7 @@ esac
 PROV_SETTINGS_FILE="$SETTINGS_FILE"   # the file `claude plugin install --scope` writes; --settings never redirects the CLI
 [[ -n "$SETTINGS" ]] && SETTINGS_FILE="$SETTINGS"
 
-# ── Refuse a wrong-shape settings file up front (HIMMEL-3392) ────────────────
+# ── Refuse a wrong-shape settings file up front ────────────────
 # Every step below reads or patches these two sections as JSON objects. A file that
 # parses but holds another shape (`"enabledPlugins": "invalid"`, `false`, `[]`, a
 # non-object top level) used to abort mid-run with a raw jq exit 5 AFTER the
@@ -193,7 +193,7 @@ for SHAPE_FILE in "$PROV_SETTINGS_FILE" "$SETTINGS_FILE"; do
   fi
 done
 
-# ── Pre-existence probes for the provenance records (HIMMEL-3332 S3) ─────────
+# ── Pre-existence probes for the provenance records ─────────
 # Read BEFORE the CLI call that could create the thing: `claude plugin install`
 # writes enabledPlugins[<spec>]=true itself, so afterwards "already there" and
 # "just installed" are indistinguishable. A `false` value still counts — the
@@ -202,7 +202,7 @@ done
 # entry, a wrong "yes" only leaves residue.
 PROV_CFG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 PROV_SCOPE="$SCOPE"; [[ "$SCOPE" == local ]] && PROV_SCOPE=project   # the ledger has no `local` scope; cli_scope keeps it
-# HIMMEL-3525 S17: the plugin identity reader's projectPath match target for
+# The plugin identity reader's projectPath match target for
 # project/local scope (design §3.3) -- install-plugins.sh installs project/local
 # scope plugins from the CURRENT directory (see --scope's usage text above).
 PROV_PROJECT_PATH=""; [[ "$SCOPE" == project || "$SCOPE" == local ]] && PROV_PROJECT_PATH="$PWD"
@@ -225,7 +225,7 @@ settings_declares() {   # <section> <key> — key present in this scope's settin
 plugin_preexisted() {   # <spec> — the scope's enabledPlugins, or (user scope) THIS scope's own install record
   settings_declares enabledPlugins "$1" && return 0
   [[ "$SCOPE" == user ]] || return 1
-  # HIMMEL-3541: scope-filtered, mirroring _provid_plugin's own query
+  # Scope-filtered, mirroring _provid_plugin's own query
   # (provenance-identity.sh) — a same-round project-scope install must not
   # make the user-scope pre-check see ITS OWN registration as pre-existing.
   # shellcheck disable=SC2016  # $a is a jq variable (--arg), not a shell expansion
@@ -238,10 +238,10 @@ settings_declares_top() {   # <key> — top-level key present in this scope's se
 }
 marketplace_preexisted() {   # <name> — this scope's settings, or the CLI's user-level registry (a marketplace is global)
   settings_declares extraKnownMarketplaces "$1" && return 0
-  # HIMMEL-3556: the two global signals below (marketplaces dir, known_marketplaces.json)
+  # The two global signals below (marketplaces dir, known_marketplaces.json)
   # are scope-independent, so a same-round second-scope check would otherwise see
   # THIS run's own earlier-scope registration and misread it as pre-existing —
-  # mirroring HIMMEL-3541's plugin_preexisted() fix, but via the ledger (a
+  # mirroring the plugin_preexisted fix, but via the ledger (a
   # marketplace carries no per-entry .scope field to filter to). A prior register
   # row for this unit with preexisted=false means we put it there, not the
   # operator, so the global signals below don't count as fresh evidence.
@@ -251,7 +251,7 @@ marketplace_preexisted() {   # <name> — this scope's settings, or the CLI's us
   json_declares "$PROV_CFG_DIR/plugins/known_marketplaces.json" 'has($a)' "$1"
 }
 # prov_register <kind> <unit> <preexisted true|false> [--field K=JSON ...]
-# HIMMEL-3525 S17: after building the row's fields, reads back the LIVE
+# After building the row's fields, reads back the LIVE
 # identity with the very reader `prov_read_verdict` will call at uninstall
 # (provenance-identity.sh's header: "the SAME reader runs at install ...
 # and at uninstall"), and records it with --post-text + identity_v=1. A
@@ -304,7 +304,7 @@ SOURCES=$(echo "$EXPANDED" | jq -r '
 ' | tr -d '\r')
 FAILED_MARKETPLACES=()
 MKT_DRIFT=()
-# HIMMEL-3541: the settings-file pre-state, read before any CLI write. The
+# The settings-file pre-state, read before any CLI write. The
 # autoUpdate patch below never touches an entry that was already in the file,
 # and a scope entry the CLI adds for a marketplace that already existed
 # elsewhere (so its register row reads preexisted and uninstall keeps it) gets
@@ -321,11 +321,11 @@ while IFS= read -r MKT_LINE; do
   if [[ "$MKT_PRE" == true ]] && ! settings_declares extraKnownMarketplaces "$MKT_NAME"; then
     MKT_SCOPE_ENTRY_NAMES+=("$MKT_NAME")
   fi
-  # HIMMEL-4270: an entry already in the scope's settings whose source differs from
+  # An entry already in the scope's settings whose source differs from
   # the template's makes `marketplace add` fail — that is drift, not an install
   # failure. Report both sides and the reconcile command, leave the entry alone,
   # and carry on (no provenance row: we registered nothing).
-  # HIMMEL-4279: compare the {source type, value} pair, not the string alone.
+  # Compare the {source type, value} pair, not the string alone.
   EXISTING_SRC=$(jq -r --arg n "$MKT_NAME" '
     (.extraKnownMarketplaces // {})[$n].source // empty
     | if type != "object" then empty
@@ -367,7 +367,7 @@ if [[ ${#FAILED_MARKETPLACES[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# ── Enable marketplace auto-update (HIMMEL-365) ──────────────────────────────
+# ── Enable marketplace auto-update ──────────────────────────────
 # `claude plugin marketplace add` writes each settings.json extraKnownMarketplaces
 # entry WITHOUT autoUpdate, so a fresh install leaves every marketplace's
 # auto-update OFF (only a manual /plugin UI toggle ever turned it on, and that
@@ -387,8 +387,8 @@ AUTO_NAMES=$(echo "$EXPANDED" | jq -r '
 ' | tr -d '\r')
 while IFS= read -r NAME; do
   [[ -z "$NAME" ]] && continue
-  # HIMMEL-3541: an entry already in the file before this run is the
-  # operator's (autoUpdate is a HIMMEL-365 convenience, not needed to
+  # An entry already in the file before this run is the
+  # operator's (autoUpdate is a convenience, not needed to
   # function) -- leave it exactly as it was, so uninstall has nothing to undo.
   # ponytail: sh-only, install-plugins.ps1 still patches a pre-existing entry; port the skip under HIMMEL-3584
   if grep -Fqx -- "$NAME" <<<"$AU_PRE_NAMES"; then
@@ -413,7 +413,7 @@ while IFS= read -r NAME; do
   # install + verify steps for a merely-cosmetic patch. Tolerate it like the
   # `marketplace add` / `install` steps do, and clean up the temp on failure.
   #
-  # HIMMEL-2324: mktemp, not a predictable "$SETTINGS_FILE.autoupdate.tmp" — a
+  # Mktemp, not a predictable "$SETTINGS_FILE.autoupdate.tmp" — a
   # fixed name lets anyone with write access to this directory pre-plant a
   # symlink there before we get here, so the jq redirect (or the mv) writes
   # through it. mktemp creates the file itself (O_EXCL, unpredictable suffix,
@@ -428,7 +428,7 @@ while IFS= read -r NAME; do
     continue
   }
   cp -p "$SETTINGS_FILE" "$AUTOUPDATE_TMP" 2>/dev/null || cp "$SETTINGS_FILE" "$AUTOUPDATE_TMP" || {
-    # CR round 3 (codex-2, sibling site): if BOTH cp attempts fail, this bare
+    # If BOTH cp attempts fail, this bare
     # statement's failure trips `set -e` and exits the script — leaving the
     # already-mktemp'd $AUTOUPDATE_TMP orphaned. Clean it up; tolerant/skip
     # (not exit), matching this site's own jq-failure branch below — a
@@ -448,7 +448,7 @@ while IFS= read -r NAME; do
 done <<< "$AUTO_NAMES"
 
 # prov_settings_created <unit> <jq-path> [<$n>] — a created-when-absent json-key row
-# for what the CLI just wrote into this scope's settings file (HIMMEL-3541).
+# for what the CLI just wrote into this scope's settings file.
 prov_settings_created() {
   local post
   post=$(jq -c --arg n "${3:-}" "$2" "$PROV_SETTINGS_FILE" 2>/dev/null) || return 0
@@ -465,7 +465,7 @@ if [[ $DRY_RUN -eq 0 ]]; then
   done
 fi
 
-# ── Snapshot enabledPlugins BEFORE the install loop (HIMMEL-2733) ───────────
+# ── Snapshot enabledPlugins BEFORE the install loop ───────────
 # `claude plugin install <spec> --scope <scope>` WRITES
 # enabledPlugins["<spec>"] = true as a side effect — verified against the real
 # CLI in an empty CLAUDE_CONFIG_DIR (marketplace add + install, then
@@ -489,12 +489,12 @@ echo "──── Installing plugins ($SCOPE scope) ────"
 PROV_STEP="install"
 # tr -d '\r': jq emits CRLF on Windows; a trailing \r would corrupt both the
 # install spec and the later presence comparison (INSTALLED_SPECS is \r-free).
-# HIMMEL-2733 two-tier profile: the install set is enabledPlugins-true (the
+# two-tier profile: the install set is enabledPlugins-true (the
 # ALWAYS tier) UNION onDemandPlugins' keys (the ON-DEMAND tier — installed so
 # it's reachable in one command, but left DISABLED below). A `false`-flagged
 # entry ABSENT from onDemandPlugins must still NOT be installed, or the lean
 # template silently re-creates the pre-lean maximal set on every fresh
-# machine (HIMMEL-816 follow-up gap). `sort -u` dedupes the (normally
+# machine. `sort -u` dedupes the (normally
 # disjoint) union and keeps a stable, empty-safe result.
 SPECS=$(echo "$EXPANDED" | jq -r '
   ((.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key),
@@ -513,12 +513,12 @@ while IFS= read -r SPEC; do
   fi
 done <<< "$SPECS"
 
-# ── Verify (post-install presence check, HIMMEL-361) ─────────────────────────
+# ── Verify (post-install presence check) ─────────────────────────
 # `claude plugin install` can legitimately exit non-zero on an already-installed
 # plugin, so install exit codes can't tell a real failure from an idempotent
 # no-op — which is exactly how a failed handover@himmel install used to look
 # identical to "already installed". Verify by PRESENCE instead: list the
-# installed plugins and confirm every spec in $SPECS is there — HIMMEL-2733:
+# installed plugins and confirm every spec in $SPECS is there:
 # that's the WHOLE install set (ALWAYS tier + ON-DEMAND tier), so a missing
 # on-demand plugin is a real install failure too, not just a missing
 # always-enabled one. Skipped under --dry-run (nothing was installed).
@@ -527,7 +527,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
   exit 0
 fi
 
-# ── Register on-demand plugins as disabled (HIMMEL-2733) ────────────────────
+# ── Register on-demand plugins as disabled ────────────────────
 # Normalize BEFORE presence verification: a partial install or failed `plugin
 # list` must still undo successful installs' enabledPlugins=true side effects.
 # Otherwise a retry snapshots those installer-written values as deliberate
@@ -556,7 +556,7 @@ if [[ "$ONDEMAND_KEYS_COUNT" -gt 0 && -f "$SETTINGS_FILE" ]]; then
       jq -r '.[]' <<< "$NONOVERRIDE_ONDEMAND_JSON" | tr -d '\r' | while IFS= read -r SPEC; do
         [[ -n "$SPEC" ]] && echo "  disable (on-demand): $SPEC"
       done
-      # HIMMEL-2324: unpredictable O_EXCL temp in the same directory keeps the
+      # Unpredictable O_EXCL temp in the same directory keeps the
       # final mv atomic and prevents a pre-planted symlink/reparse target.
       if ! ONDEMAND_TMP="$(mktemp "$SETTINGS_FILE.ondemand.XXXXXX")"; then
         echo "  ERROR: mktemp failed — $SETTINGS_FILE left unchanged" >&2
@@ -586,7 +586,7 @@ fi
 echo "──── Verifying installed plugins ────"
 PROV_STEP="verify"
 # Fail closed: a verify step that cannot run has confirmed NOTHING, so it must
-# not report success — that silent pass is the exact bug HIMMEL-361 kills. The
+# not report success — that silent pass is the exact bug this step prevents. The
 # pre-flight already proved `claude` is on PATH, so a `list` failure here is a
 # real anomaly. Capture stderr (2>&1) so the operator sees WHY it failed.
 if ! INSTALLED=$(claude plugin list 2>&1); then
@@ -642,7 +642,7 @@ fi
 
 echo "  All $(grep -c . <<< "$SPECS") enabled plugins present."
 
-# ── Force-enable drifted template-true plugins (HIMMEL-2292) ─────────────────
+# ── Force-enable drifted template-true plugins ─────────────────
 # Presence in `claude plugin list` (verified above) is NOT the same as ENABLED
 # in settings.json — a plugin can be fully installed while
 # enabledPlugins["<spec>"] is still `false` (a stale manual /plugin toggle, an
@@ -666,7 +666,7 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
     if [[ -n "$DRIFTED" ]]; then
       echo "──── Force-enabling drifted plugins (installed but disabled) ────"
       while IFS= read -r SPEC; do [[ -n "$SPEC" ]] && echo "  enable: $SPEC"; done <<< "$DRIFTED"
-      # CR fix (codex-1, panel round 3): seed the temp file as a perms-preserving
+      # Seed the temp file as a perms-preserving
       # COPY of $SETTINGS_FILE first (cp -p — mirrors reconcile-enabled-plugins.sh's
       # own pattern), THEN let jq's `>` redirect truncate-write that ALREADY-
       # EXISTING file in place — redirecting into an existing path preserves its
@@ -675,7 +675,7 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
       # world-readable on the final mv. cp -p is best-effort; a filesystem
       # without perm bits (Windows) falls back to plain cp, harmless there.
       #
-      # HIMMEL-2324: mktemp, not the predictable "$SETTINGS_FILE.enable.tmp" —
+      # Mktemp, not the predictable "$SETTINGS_FILE.enable.tmp" —
       # a fixed name lets anyone with write access to this directory pre-plant
       # a symlink there before we get here, so the jq redirect (or the mv)
       # writes through it. mktemp creates the file itself (O_EXCL, unpredictable
@@ -687,11 +687,11 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
         exit 1
       fi
       cp -p "$SETTINGS_FILE" "$ENABLE_TMP" 2>/dev/null || cp "$SETTINGS_FILE" "$ENABLE_TMP" || {
-        # CR round 3 (codex-2, sibling site): if BOTH cp attempts fail, this
+        # If BOTH cp attempts fail, this
         # bare statement's failure trips `set -e` and exits the script —
         # leaving the already-mktemp'd $ENABLE_TMP orphaned. Clean it up;
         # loud AND non-zero (not tolerant), matching this site's own
-        # jq-failure branch below — this step is the HIMMEL-2292 repair
+        # jq-failure branch below — this step is the repair
         # mechanism itself, so a swallowed failure must not report success.
         rm -f "$ENABLE_TMP"
         echo "  ERROR: force-enable cp failed — $SETTINGS_FILE left unchanged" >&2
@@ -705,7 +705,7 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
         rm -f "$ENABLE_TMP"
         # Loud AND non-zero (unlike the autoUpdate patch above, which is
         # cosmetic): this step is the repair mechanism the whole ticket
-        # exists for (HIMMEL-2292) — a swallowed failure here would let the
+        # exists for — a swallowed failure here would let the
         # installer report success while a required plugin like himmel-ops
         # stays silently disabled, exactly the failure mode being fixed.
         echo "  ERROR: force-enable jq patch failed — $SETTINGS_FILE left unchanged" >&2
@@ -722,7 +722,7 @@ if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.jso
   fi
 fi
 
-# ── Reconcile enabledPlugins to the lean floor (HIMMEL-1032) ─────────────────
+# ── Reconcile enabledPlugins to the lean floor ─────────────────
 # Install is additive (it only installs `true` entries), so a FRESH machine is
 # already lean — the extras were never installed. The subtractive reconcile only
 # matters on a RE-RUN over a machine with pre-existing drift, where it would
@@ -745,17 +745,17 @@ case "${HIMMEL_RECONCILE_PLUGINS:-}" in
     echo "  (install is additive-only; set HIMMEL_RECONCILE_PLUGINS=1 to also disable drifted plugins down to the lean floor)" ;;
 esac
 
-# ── i-have-adhd always-on flag (HIMMEL-5239) ─────────────────────────────────
+# ── i-have-adhd always-on flag ─────────────────────────────────
 # Idempotent; HIMMEL_NO_ADHD_ALWAYS=1 opts out. Best-effort, never fails install.
 if [[ $DRY_RUN -eq 0 && -f "$SCRIPT_DIR/enable-i-have-adhd-always.sh" ]]; then
   bash "$SCRIPT_DIR/enable-i-have-adhd-always.sh" || true
 fi
 
-# HIMMEL-3541: the enabledPlugins container the CLI created in this scope's
+# The enabledPlugins container the CLI created in this scope's
 # settings file, so uninstall can drop it once its plugins are gone.
 [[ $DRY_RUN -eq 0 && "$EP_CONTAINER_ABSENT" == true ]] && prov_settings_created /enabledPlugins .enabledPlugins
 
-# ── Install summary: on-demand tier (HIMMEL-2733) ────────────────────────────
+# ── Install summary: on-demand tier ────────────────────────────
 # Discoverability, not enforcement: name what just landed installed-but-
 # disabled and how to reach it, plus the doc-only onDemandConnectors tier
 # himmel never installs (a per-machine Chrome extension / claude.ai connector

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-enable-i-have-adhd-always.sh — HIMMEL-5239. Hermetic: every path is under
+# test-enable-i-have-adhd-always.sh — Hermetic: every path is under
 # a mktemp dir passed as CLAUDE_CONFIG_DIR/HOME; the real HOME is never touched.
 # shellcheck disable=SC2015  # `A && ok || bad`: ok/bad never fail, so C cannot run after A is true
 # shellcheck disable=SC2016  # the wiring greps match literal `$script` / `$SCRIPT_DIR` text on purpose

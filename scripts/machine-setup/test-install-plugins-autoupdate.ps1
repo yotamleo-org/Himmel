@@ -1,4 +1,4 @@
-﻿# test-install-plugins-autoupdate.ps1 — hermetic test for the HIMMEL-365
+﻿# test-install-plugins-autoupdate.ps1 — hermetic test for the
 # marketplace auto-update patch in scripts/machine-setup/install-plugins.ps1
 # (PowerShell twin of test-install-plugins-autoupdate.sh).
 #
@@ -11,7 +11,7 @@
 #   3. flagged but NOT registered       → skipped (no orphan entry)
 #   4. unrelated keys                   → preserved
 #   5. re-run                           → idempotent (stays true, exit 0)
-#   6. HIMMEL-2324: link pre-planted at the OLD predictable temp path
+#   6. link pre-planted at the OLD predictable temp path
 #      ("$SF.autoupdate.tmp") → not written through; patch still lands.
 #
 # Keep in lockstep with test-install-plugins-autoupdate.sh when changing either.
@@ -35,7 +35,7 @@ function Assert-True {
 
 # New-AttackLink <Link> <Target> — simulates an attacker with write access to
 # the settings dir pre-planting something at a PREDICTABLE temp path before
-# the script runs (HIMMEL-2324). Prefers a real symlink (proves both attack
+# the script runs. Prefers a real symlink (proves both attack
 # vectors: content written through it, AND the final move replacing the
 # destination with the symlink itself) but falls back to an NTFS hardlink
 # (still proves the write-through vector) when a symlink can't be created —
@@ -52,7 +52,7 @@ function New-AttackLink {
     } catch {
         if (Test-Path $Link) { Remove-Item -Force $Link -ErrorAction SilentlyContinue }
     }
-    # HIMMEL-2324 (CR round 1, codex-3): a security test that cannot tell
+    # A security test that cannot tell
     # "attack blocked" from "attack never attempted" is worse than no test —
     # check mklink's own exit code AND that a link genuinely landed (LinkType
     # set) before returning. A silent no-op plant would otherwise make
@@ -154,7 +154,7 @@ try {
     Assert-True 'missing-file run exits 0' ($rc -eq 0)
     Assert-True 'missing settings file not created' (-not (Test-Path $SF))
 
-    # HIMMEL-2324: a link pre-planted at the OLD predictable temp path
+    # A link pre-planted at the OLD predictable temp path
     # ("$SF.autoupdate.tmp") must not be written through, and the intended
     # autoUpdate patch must still land via the (now-unpredictable) temp path.
     @'
@@ -176,7 +176,7 @@ try {
     $patched3 = Get-Content $SF -Raw | ConvertFrom-Json
     Assert-True 'HIMMEL-2324: intended autoUpdate patch landed' ($patched3.extraKnownMarketplaces.flagged.autoUpdate -eq $true)
 
-    # HIMMEL-2324 (CR round 6, codex-4): exclusivity primitive, not just
+    # Exclusivity primitive, not just
     # naming. The case above proves the temp NAME is unpredictable -- it does
     # NOT prove the CREATE is exclusive. It would still pass even if
     # install-plugins.ps1 regressed from FileMode.CreateNew back to a
