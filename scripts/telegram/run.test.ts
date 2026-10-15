@@ -488,3 +488,10 @@ test("buildPrompt keeps operator framing + Jira sanction for DM and ticket sessi
     expect(p).toContain("scripts/jira/dist/index.js");
   }
 });
+test("buildPrompt does not attribute a group session's attachments to the operator", () => {
+  const g = buildPrompt("group_-1009999999", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+  expect(g).not.toContain("the operator attached");
+  expect(g).toContain("a group member attached");
+  const d = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+  expect(d).toContain("the operator attached");
+});
