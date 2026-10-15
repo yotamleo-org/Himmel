@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-build-tarball.sh -- HIMMEL-3059 slice 1. Hermetic (no network, no VM):
+# test-build-tarball.sh -- Hermetic (no network, no VM):
 # drives scripts/release/build-tarball.sh against a throwaway git fixture and
 # asserts .github/workflows/release.yml would publish BOTH assets.
 #
@@ -183,7 +183,7 @@ check_not "RED: a workflow triggered on a branch instead of a tag is rejected" w
 grep -v 'sha256sum -c' "$WORKFLOW" > "$mut/no-verify.yml"
 check_not "RED: a workflow that never verifies the published pair is rejected" workflow_ok "$mut/no-verify.yml"
 
-# --- T7: HIMMEL-3059 S2 -- the release attests build provenance --------------
+# --- T7: the release attests build provenance --------------
 # attest_ok <file> -- 0 iff the job attests the built tarball, holds the two
 # extra OIDC/attestation permissions, and verifies its own attestation.
 attest_ok() {
@@ -212,7 +212,7 @@ id-token: write\
 attestations: write' "$WORKFLOW" > "$mut/toplevel-perms.yml"
 check_not "RED: id-token/attestations at the top level (not the job) is rejected" attest_ok "$mut/toplevel-perms.yml"
 
-# --- T8: HIMMEL-3920 -- release notes are the curated file, or bounded generated ---
+# --- T8: release notes are the curated file, or bounded generated ---
 # notes_ok <file> -- 0 iff "Ensure the release exists" (a) skips when the release
 # exists, (b) validates the tag shape BEFORE building the notes path, (c) uses the
 # curated docs/release/<TAG>-notes.md via --notes-file, (d) bounds generated notes
@@ -239,7 +239,7 @@ notes_ok() {
 }
 check "workflow: curated notes file, bounded generated notes, tag-shape gate" notes_ok "$WORKFLOW"
 
-# RED: the pre-HIMMEL-3920 step (bare --generate-notes) must be rejected.
+# RED: the old step (bare --generate-notes) must be rejected.
 cat > "$mut/old-step.yml" <<'EOF'
       - name: Ensure the release exists
         run: |
@@ -260,7 +260,7 @@ check_not "RED: a step that lost the release-exists skip is rejected" notes_ok "
 grep -v "grep -Eq '^v\[0-9\]" "$WORKFLOW" > "$mut/no-tag-gate.yml"
 check_not "RED: a step with no tag-shape gate before the notes path is rejected" notes_ok "$mut/no-tag-gate.yml"
 
-# Behavioural half (HIMMEL-3920 CR round 1): EXECUTE the step's shell with stubbed
+# Behavioural half: EXECUTE the step's shell with stubbed
 # gh/git, so control flow -- not just token presence -- is asserted.
 # run_notes_step <workflow> <tag> <have-notes:0|1> <exists:0|1> <tags-newline-list> -- prints the
 # `gh release create` argv the step issued (empty when it issued none); rc = the step's rc.

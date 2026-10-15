@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tarball-vs-clone.sh -- the HIMMEL-3059 fresh-guest acceptance body (P4).
+# tarball-vs-clone.sh -- the fresh-guest acceptance body (P4).
 # Installs himmel TWO ways from the SAME commit, each into its own HOME, then
 # asserts they CONVERGED (ADR Q3) -- not merely that both installs exited 0:
 #
@@ -89,7 +89,7 @@ mkdir -p "$prefix_b"
 [ -f "$prefix_b/$CTL" ] && step_ok "tarball carries $CTL" || step_fail "tarball lacks $CTL"
 # The prebuilt tarball's headline claim: no npm install on the adopter's machine.
 # Asserted statically -- the built outputs are IN the extracted tree; the guest run
-# (scripts/test-tarball-install-vm.sh, green at 0aacaa42, HIMMEL-3262) exercises it end to end.
+# (scripts/test-tarball-install-vm.sh, green at 0aacaa42) exercises it end to end.
 for p in "${prebuilt[@]}"; do
   present "$prefix_b/$p" && step_ok "tarball carries prebuilt $p (no npm needed)" || step_fail "tarball lacks prebuilt $p (adopter would need npm)"
 done

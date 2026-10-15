@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/release/test-check-version-tag.sh - suite for check-version-tag.sh
-# (HIMMEL-4417): VERSION must equal the X.Y.Z base of the highest v* tag.
+# VERSION must equal the X.Y.Z base of the highest v* tag.
 # Platform guard: Linux/macOS bash 3.2+ (git only).
 set -uo pipefail
 

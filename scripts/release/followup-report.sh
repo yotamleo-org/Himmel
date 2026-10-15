@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# followup-report.sh -- per-version follow-up report (HIMMEL-4034). Read-only.
+# followup-report.sh -- per-version follow-up report. Read-only.
 #
 # Usage: followup-report.sh --version <fixVersion> [--store <usage dir>]
 #                           [--project KEY] [--cap-pct N]
@@ -8,7 +8,7 @@
 #   - follow-ups created/done per class (labels fu-escape, fu-hardening, fu-polish)
 #   - follow-ups with no class label yet (unclassified-followups): an ESTIMATE,
 #     found by summary keyword (follow-up, deferred, residual); there is no
-#     explicit marker yet (left to HIMMEL-4045), so load is an estimate too
+#     explicit marker yet, so load is an estimate too
 #   - slipped escapes (label fu-slipped): claim B's countable signal
 #   - hardening share of the version's load against the cap
 #   - claim A: mean CR rounds and token sums over the version's tickets, from

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# build-tarball.sh -- build the checksummed Linux release tarball (HIMMEL-3059
-# slice 1; decision: the ADR "himmel's installable unit is a checksummed
-# release tarball").
+# build-tarball.sh -- build the checksummed Linux release tarball (decision: the
+# ADR "himmel's installable unit is a checksummed release tarball").
 #
 # Emits, into --out:
 #   himmel-<version>-linux.tar.gz          the whole himmel tree, PRE-BUILT

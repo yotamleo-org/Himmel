@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/release/check-version-tag.sh - VERSION must not be behind the X.Y.Z base
-# of the highest v* tag (HIMMEL-4417). `himmelctl --version` and the config feed's
+# of the highest v* tag. `himmelctl --version` and the config feed's
 # himmel.version read VERSION; a stale one mis-attributes every build.
 #
 # Usage: check-version-tag.sh [--root <repo>]

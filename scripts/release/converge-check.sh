@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # converge-check.sh -- do two himmel installs end in the SAME state?
-# (HIMMEL-3059 ADR Q3: the tarball path and the clone path both end in
+# (ADR Q3: the tarball path and the clone path both end in
 # `himmelctl install`; that convergence is ASSERTED here, not assumed.)
-# An optional third side c (HIMMEL-3059 S5: the AUR package, prefix
+# An optional third side c (the AUR package, prefix
 # /opt/himmel) is diffed against side a the same way; any pair that
 # differs fails the run.
 #
@@ -64,7 +64,7 @@ mask() {
     # Track quote state across the text consumed so far: ':', ';' and whitespace are
     # only real token separators OUTSIDE a quoted value -- inside one (the common
     # case, since jq -S / the hook scripts always quote the whole string) they are
-    # just filename bytes, same as '+' or '~' below (HIMMEL-3442). A backslash-escaped
+    # just filename bytes, same as '+' or '~' below. A backslash-escaped
     # quote (jq's own JSON escaping of a literal '"' inside a string) is not a real
     # delimiter and must not flip quote state -- track escaping too, one char lookahead.
     for (( i=0; i<${#chunk}; i++ )); do
@@ -136,10 +136,10 @@ snapshot() {
     if [ -f "$f" ]; then jq -S '[(.plugins // .) | keys[]]' "$f" 2>/dev/null || echo "(unreadable: installed_plugins.json)"; else echo "(absent)"; fi
     echo "## seed"
     # ponytail: the seed is compared by FILE LIST only, not contents -- seeded files may carry
-    # timestamps or ids that would false-diverge; the guest run (green at 0aacaa42, HIMMEL-3262)
+    # timestamps or ids that would false-diverge; the guest run (green at 0aacaa42)
     # converged on file lists, so tightening to normalized contents is a follow-up, not a gate.
     # lanes.local.json is excluded: a read-only packaged prefix (AUR) keeps the lane overlay here, a
-    # writable clone or tarball keeps it in-tree, by design (HIMMEL-3059 S3, HIMMEL-4994).
+    # writable clone or tarball keeps it in-tree, by design.
     if [ -d "$home/.claude/himmel" ]; then ( cd "$home/.claude/himmel" && find . -type f ! -name lanes.local.json | LC_ALL=C sort ); else echo "(absent)"; fi
     echo "## launcher"
     f="$home/.local/bin/himmelctl"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-tarball-vs-clone.sh -- HIMMEL-3059 slice 1, prerequisite P4. Hermetic (no
+# test-tarball-vs-clone.sh -- prerequisite P4. Hermetic (no
 # network, no VM, no live HOME): drives the fresh-guest acceptance BODY
 # (tarball-vs-clone.sh + converge-check.sh) against a fixture repo whose
 # `himmelctl` is a STUB that wires a fake HOME deterministically.
@@ -9,7 +9,7 @@
 # install fails, when the checksum control is neutered, and when the snapshot is
 # vacuous. What it does NOT prove: that the REAL `himmelctl install` converges on
 # a bare guest -- that is the guest run (scripts/test-tarball-install-vm.sh), green
-# at 0aacaa42 (HIMMEL-3262).
+# at 0aacaa42.
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom (pass/fail echo, always rc 0)
 set -uo pipefail
 
@@ -137,7 +137,7 @@ bash "$CONV" --a-home "$tmp/ca/home" --a-prefix "$tmp/ca/prefix" --b-home "$tmp/
 mk_side "$tmp/ce1" "-"; mk_side "$tmp/ce2" "-"
 bash "$CONV" --a-home "$tmp/ce1/home" --a-prefix "$tmp/ce1/prefix" --b-home "$tmp/ce2/home" --b-prefix "$tmp/ce2/prefix" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 3 ] && ok "T7 RED: two empty installs are VACUOUS (rc 3), not 'identical'" || bad "T7 vacuous snapshot accepted"
-# HIMMEL-3255: an event key present with an EMPTY array wired nothing -- the guard must
+# An event key present with an EMPTY array wired nothing -- the guard must
 # count compared entries, not event keys, or {"hooks":{"PreToolUse":[]}} passes as "wired".
 mkdir -p "$tmp/cez1/home/.claude" "$tmp/cez1/prefix" "$tmp/cez2/home/.claude" "$tmp/cez2/prefix"
 echo '{"hooks":{"PreToolUse":[]}}' > "$tmp/cez1/home/.claude/settings.json"
@@ -164,21 +164,21 @@ mk_side "$tmp/cs1" "bash $tmp/cs1/prefix-old/g.sh"; mk_side "$tmp/cs2" "bash $tm
 bash "$CONV" --a-home "$tmp/cs1/home" --a-prefix "$tmp/cs1/prefix" --b-home "$tmp/cs2/home" --b-prefix "$tmp/cs2/prefix" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>-old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling path masked" "rc=$rc"
 # A sibling location that STARTS with the prefix plus a symbol boundary (<prefix>+old) is
-# also a different place: HIMMEL-3255, the boundary class must reject '+' too, or two
+# also a different place: the boundary class must reject '+' too, or two
 # genuinely different sibling paths both collapse to "{PREFIX}+old" and false-converge.
 mk_side "$tmp/csp1" "bash $tmp/csp1/prefix+old/g.sh"; mk_side "$tmp/csp2" "bash $tmp/csp2/prefix+old/g.sh"
 bash "$CONV" --a-home "$tmp/csp1/home" --a-prefix "$tmp/csp1/prefix" --b-home "$tmp/csp2/home" --b-prefix "$tmp/csp2/prefix" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>+old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling +old path masked (HIMMEL-3255)" "rc=$rc"
 # The boundary is a DENYLIST of real delimiters, not an allowlist of "safe" chars:
 # '~', '@', ',', '=' and '%' are all legal POSIX filename bytes too, so a sibling
-# suffixed with any of them must diverge the same way (HIMMEL-3255 round 2).
+# suffixed with any of them must diverge the same way.
 for sym in '~' '@' ',' '=' '%'; do
   rm -rf "$tmp/csym1" "$tmp/csym2"
   mk_side "$tmp/csym1" "bash $tmp/csym1/prefix${sym}old/g.sh"; mk_side "$tmp/csym2" "bash $tmp/csym2/prefix${sym}old/g.sh"
   bash "$CONV" --a-home "$tmp/csym1/home" --a-prefix "$tmp/csym1/prefix" --b-home "$tmp/csym2/home" --b-prefix "$tmp/csym2/prefix" >/dev/null 2>&1; rc=$?
   [ "$rc" -eq 1 ] && ok "T7 RED: a sibling <prefix>${sym}old path is NOT masked as the prefix (rc 1)" || bad "T7 sibling ${sym}old path masked (HIMMEL-3255)" "rc=$rc"
 done
-# HIMMEL-3442: ':', ';' and whitespace are ALSO legal POSIX filename bytes, and mk_side's
+# ':', ';' and whitespace are ALSO legal POSIX filename bytes, and mk_side's
 # command value is itself a quoted JSON string -- a sibling path containing one of these
 # bytes right after the prefix, but still inside that same quoted token, must diverge the
 # same way as the '+'/'~'/etc siblings above, not be masked as a boundary.
@@ -246,7 +246,7 @@ mkdir -p "$tmp/cn1/home/himmel" "$tmp/cn2/home/himmel"
 bash "$CONV" --a-home "$tmp/cn1/home" --a-prefix "$tmp/cn1/home/himmel" --b-home "$tmp/cn2/home" --b-prefix "$tmp/cn2/home/himmel" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && ok "T7 RED: a sibling of a prefix nested under HOME is not re-masked as {HOME} (rc 1)" || bad "T7 nested sibling masked by the home pass" "rc=$rc"
 
-# --- T13 a third input: the packaged (AUR) install, HIMMEL-3059 S5 -------------
+# --- T13 a third input: the packaged (AUR) install -------------
 # The AUR prefix is a fixed system path OUTSIDE the user's HOME (/opt/himmel);
 # side c is compared against side a exactly as b is, and any pair diverging fails.
 mk_side "$tmp/cp1" "bash $tmp/cp1/prefix/g.sh"; mk_side "$tmp/cp2" "bash $tmp/cp2/prefix/g.sh"
@@ -348,7 +348,7 @@ grep -q 'REMOTE_DIR="/tmp/himmel-tarball-vm-\$\$' "$DRIVER" && ! grep -q "rm -rf
   && ok "T8 the guest dir is unique per run and never pre-deleted (no cross-run clobbering)" || bad "T8 driver reuses or deletes a shared guest dir"
 grep -q 'sha256sum -c' "$BODY" && grep -q 'converge-check.sh' "$BODY" && ok "T8 the body verifies the checksum and asserts convergence" || bad "T8 body missing sha256sum -c / converge-check"
 
-# --- T9 the AUR container test's converge step is not vacuous (HIMMEL-4994) ---
+# --- T9 the AUR container test's converge step is not vacuous ---
 # A project install wires settings only, so converge-check exits 3 on hook-less
 # targets (T7). The container test must seed a gate hook per target before the
 # call and report rc 3 as VACUOUS, not as "did not converge". Static: the

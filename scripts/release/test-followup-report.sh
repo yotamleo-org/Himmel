@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for followup-report.sh (HIMMEL-4034): per-version follow-up report.
+# Tests for followup-report.sh: per-version follow-up report.
 # No network: the jira CLI is a stub (FOLLOWUP_JIRA_CMD), the usage store a fixture.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; RPT="$HERE/followup-report.sh"
@@ -73,7 +73,7 @@ check "jira failure exits 2" "$rc" "2"
 bash "$RPT" --store "$tmp/store" >/dev/null 2>&1; rc=$?
 check "missing --version exits 1" "$rc" "1"
 
-# A zero-padded cap (08, 09) is decimal, not an invalid octal (review codex-1, round 4).
+# A zero-padded cap (08, 09) is decimal, not an invalid octal.
 out6="$(FOLLOWUP_JIRA_CMD="$tmp/jira" bash "$RPT" --version v9.9.9 --store "$tmp/store" --cap-pct 08 2>&1)"; rc=$?
 check "cap-pct 08: exits 0" "$rc" "0"
 has "cap-pct 08 reads as 8 pct" "$out6" "cap 8%"
@@ -82,7 +82,7 @@ out7="$(FOLLOWUP_JIRA_CMD="$tmp/jira" bash "$RPT" --version v9.9.9 --store "$tmp
 check "cap-pct 010: exits 0" "$rc" "0"
 has "cap-pct 010 reads as 10 pct, not octal 8" "$out7" "cap 10%"
 
-# Keyword-detected counts are estimates (HIMMEL-4047): the report says so on those lines.
+# Keyword-detected counts are estimates: the report says so on those lines.
 has "unclassified-followups is labelled an estimate" "$out" "unclassified-followups 1 (estimate: summary keyword match, not a label)"
 has "hardening-share notes load is estimated" "$out" "load is an estimate"
 
