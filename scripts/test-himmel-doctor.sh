@@ -6508,7 +6508,7 @@ rm -rf "$c62_t"
 c65_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c65.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c65_t/home"
 c65_repo() { rm -rf "$c65_t/r"; git init -q "$c65_t/r" && git -C "$c65_t/r" remote add origin https://github.com/example/Repo.git; }
-c65_hook() { printf '#!/bin/sh\nexit 0\n' > "$c65_t/r/.git/hooks/$1"; chmod +x "$c65_t/r/.git/hooks/$1"; }
+c65_hook() { mkdir -p "$c65_t/r/.git/hooks"; printf '#!/bin/sh\nexit 0\n' > "$c65_t/r/.git/hooks/$1"; chmod +x "$c65_t/r/.git/hooks/$1"; }
 # shellcheck disable=SC2016  # the stub's $-expressions must stay literal
 # gh stub: the protection endpoint prints $C65_PROT (or fails with $C65_PROT_ERR), the rules endpoint prints $C65_RULES.
 printf '%s\n' '#!/bin/sh' 'case "$*" in' \
