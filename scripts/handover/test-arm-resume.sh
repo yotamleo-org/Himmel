@@ -101,7 +101,7 @@ T32|T32
 T33|T33
 T33c|T33c
 T38|T38
-W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8
+W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8 W9 W10 W11 W12 W13 W14 W15 W16
 T33-collision|T33-collision
 T34|T34
 T35|T35
@@ -2324,7 +2324,7 @@ fi
 # ---------------------------------------------------------------------------
 # W1-W5: --worktree isolation for code arms
 # ---------------------------------------------------------------------------
-if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8"; then
+if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8" "W9" "W10" "W11" "W12" "W13" "W14" "W15" "W16"; then
 # W1: --worktree dry-run computes the type+slug path, resumes there, pre-trusts it.
 HO=$(make_handover "")
 out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --worktree feat/wt-test --dry-run 2>&1)
@@ -2409,19 +2409,41 @@ _w9_ho() { # <file-name> <resume_cwd> [extra frontmatter line]
     { printf -- '---\nsession_kind: test\nresume_cwd: %s\n' "$2"; [ -n "${3:-}" ] && printf '%s\n' "$3"; printf -- '---\n# t\n'; } > "$f"
     printf '%s' "$f"
 }
-_w9_run() { SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1; echo "arm-rc=$?"; }
+_w9_run() { SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run "${@:2}" 2>&1; echo "arm-rc=$?"; }
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w9.md "$W9_ROOT")")
 assert_contains "W9 himmel code arm defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w10.md "$W9_ROOT" "resume_isolation: primary")")
 assert_not_contains "W10 resume_isolation: primary opts out" "would create worktree" "$out"
 assert_contains "W10 exits 0" "arm-rc=0" "$out"
+assert_contains "W10 opt-out is logged loudly" "resume_isolation: primary honoured" "$out"
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w11.md "$TMP/w9-other")")
 assert_not_contains "W11 a non-himmel resume_cwd (vault arm) is untouched" "would create worktree" "$out"
 assert_contains "W11 exits 0" "arm-rc=0" "$out"
 out=$(_w9_run "$(_w9_ho luna-note-w12.md "$W9_ROOT")")
 assert_not_contains "W12 no HIMMEL ticket in the handover name is untouched" "would create worktree" "$out"
 assert_contains "W12 exits 0" "arm-rc=0" "$out"
-rm -rf "$W9_ROOT" "$TMP/w9-other"
+assert_contains "W12 the primary-without-isolation decline names its reason" "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: no HIMMEL ticket" "$out"
+# W13: --cwd resolving to the primary (the hop.sh path) isolates too.
+out=$(_w9_run "$(_w9_ho HIMMEL-1332-w13.md "$TMP/w9-other")" --cwd "$W9_ROOT")
+assert_contains "W13 --cwd naming the primary checkout defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
+assert_contains "W13 exits 0" "arm-rc=0" "$out"
+# W14: no resume_cwd: and no ticket in the file name, ticket: in the frontmatter.
+W14_HO="$HANDOVER_DIR/luna-note-w14.md"
+printf -- '---\nsession_kind: test\nticket: HIMMEL-1332\n---\n# t\n' > "$W14_HO"
+out=$(_w9_run "$W14_HO")
+assert_contains "W14 missing resume_cwd plus a frontmatter ticket isolates" "would create worktree 'fix/himmel-1332-arm'" "$out"
+assert_contains "W14 exits 0" "arm-rc=0" "$out"
+# W15: a failed create under the default is a hard exit 4, not a silent primary arm.
+W15_HO="$(_w9_ho HIMMEL-9915-w15.md "$W9_ROOT")"
+out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" ARM_WORKTREE_CMD="bash $WT_FAIL_STUB" bash "$ARM" --time "$(future_time)" --handover "$W15_HO" 2>&1)
+rc=$?
+assert_rc "W15 failed default worktree create exits 4" 4 "$rc"
+assert_contains "W15 names the failed branch" "worktree create failed for branch 'fix/himmel-9915-arm'" "$out"
+# W16: a console doc is excluded from the default.
+out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-console.md "$W9_ROOT")")
+assert_not_contains "W16 a console doc is untouched" "would create worktree" "$out"
+assert_not_contains "W16 a console doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
+rm -rf "$W9_ROOT" "$TMP/w9-other" "$W14_HO"
 fi
 
 # ---------------------------------------------------------------------------

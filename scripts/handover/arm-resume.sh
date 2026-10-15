@@ -2750,24 +2750,42 @@ if [ -z "$WORKTREE_BRANCH" ]; then
     unset _fm_wt
 fi
 
-# A himmel CODE arm defaults to worktree isolation. Applies only
-# when nothing chose a cwd (no --worktree/resume_worktree:/--cwd), the handover
-# names a HIMMEL-<n> ticket in its file name, and its resume_cwd: IS this
-# checkout's primary tree (not a worktree, not the luna vault or another repo,
-# so vault arms stay single-tree). 'resume_isolation: primary' opts back out.
-if [ -z "$WORKTREE_BRANCH" ] && [ -z "$RESUME_CWD_OVERRIDE" ]; then
+# A himmel CODE arm defaults to worktree isolation. Applies when nothing named
+# a worktree (no --worktree/resume_worktree:), the doc is not a console doc, the
+# cwd (--cwd, else resume_cwd:) IS this checkout's primary tree (not a worktree,
+# not the luna vault or another repo, so vault arms stay single-tree), and a
+# HIMMEL-<n> ticket comes from the file name or the 'ticket:' frontmatter. A
+# missing resume_cwd: with a ticket also isolates. 'resume_isolation: primary'
+# opts back out; every decline that resolves to the primary prints a WARN.
+# ponytail: headed-arm-leg.sh and headed-arm.sh launches are not defaulted, extend the same rules there under HIMMEL-5845
+if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_console" -eq 0 ]; then
     _iso_fm=$(awk '/^---[[:space:]]*$/{c++; next} c==1' "$HANDOVER_PATH")
     _iso_mode=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_isolation:[[:space:]]*//p' | head -1 | tr -d "\r\"' ")
-    _iso_cwd=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_cwd:[[:space:]]*//p' | head -1 | tr -d "\r\"'")
+    _iso_cwd="$RESUME_CWD_OVERRIDE"
+    [ -n "$_iso_cwd" ] || _iso_cwd=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_cwd:[[:space:]]*//p' | head -1 | tr -d "\r\"'")
     _iso_tkt=$(basename "$HANDOVER_PATH" | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
+    [ -n "$_iso_tkt" ] || _iso_tkt=$(printf '%s\n' "$_iso_fm" | sed -n 's/^ticket:[[:space:]]*//p' | head -1 | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
     _iso_root=$(cd "${ARM_ISOLATION_ROOT:-$SCRIPT_DIR/../..}" && pwd)   # ARM_ISOLATION_ROOT: test seam
-    if [ "$_iso_mode" != "primary" ] && [ -n "$_iso_tkt" ] && [ -n "$_iso_cwd" ] \
-        && [ -d "$_iso_root/.git" ] && [ -d "$_iso_cwd" ] \
-        && [ "$(_arm_realpath "$_iso_cwd")" = "$(_arm_realpath "$_iso_root")" ]; then
-        WORKTREE_BRANCH="fix/$(printf '%s' "$_iso_tkt" | tr '[:upper:]' '[:lower:]')-arm"
-        echo "arm-resume: himmel code arm ($_iso_tkt) -> default worktree isolation '$WORKTREE_BRANCH' (HIMMEL-1332; set 'resume_isolation: primary' to opt out)" >&2
+    _iso_primary=0
+    if [ -d "$_iso_root/.git" ]; then
+        if [ -z "$_iso_cwd" ]; then
+            [ -n "$_iso_tkt" ] && _iso_primary=1
+        elif [ -d "$_iso_cwd" ] && [ "$(_arm_realpath "$_iso_cwd")" = "$(_arm_realpath "$_iso_root")" ]; then
+            _iso_primary=1
+        fi
     fi
-    unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root
+    if [ "$_iso_primary" -eq 1 ]; then
+        if [ "$_iso_mode" = "primary" ]; then
+            echo "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: resume_isolation: primary honoured (opt-out)" >&2
+        elif [ -z "$_iso_tkt" ]; then
+            echo "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: no HIMMEL ticket in the file name or ticket: frontmatter" >&2
+        else
+            WORKTREE_BRANCH="fix/$(printf '%s' "$_iso_tkt" | tr '[:upper:]' '[:lower:]')-arm"
+            RESUME_CWD_OVERRIDE=""
+            echo "arm-resume: himmel code arm ($_iso_tkt) -> default worktree isolation '$WORKTREE_BRANCH' (HIMMEL-1332; set 'resume_isolation: primary' to opt out)" >&2
+        fi
+    fi
+    unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root _iso_primary
 fi
 
 if [ -n "$WORKTREE_BRANCH" ]; then
