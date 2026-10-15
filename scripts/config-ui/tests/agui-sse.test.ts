@@ -444,3 +444,47 @@ test("the max duration releases the stream even when the client stops reading", 
   await sleep(500);
   expect(closed).toBe(1);
 });
+
+// A run's stream carries the bus messages its own session sent or received (the session is the journal's
+// agent-name), and no other session's.
+test("the stream merges only the bus events of the run's own session", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const t = Date.now() - 5000;
+  const rec = (o: Record<string, unknown>) => ({ t, b: "x", c: 0, ...o });
+  await append(root, "leg-a", rec({ i: "S1", f: "console-x", r: "leg-a", c: 1, b: "GO 1 abc", t: t + 1 }));
+  await append(root, "console-x", rec({ i: "S2", f: "leg-b", r: "console-x", t: t + 2 }));
+  await append(root, "console-x", rec({ i: "S3", f: "leg-a", r: "console-x", t: t + 3 }));
+  writeFileSync(join(root, "ack", "leg-a.jsonl"), JSON.stringify({ i: "S1", re: "Z", t: t + 4 }) + "\n");
+  writeFileSync(join(root, "ack", "console-x.jsonl"), JSON.stringify({ i: "S2", re: "Z", t: t + 5 }) + "\n");
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 800, busRoot: root })).text();
+  await sleep(100);
+  await append(root, "leg-a", rec({ i: "S4", f: "console-x", r: "leg-a", t: Date.now() })); // arrives while the stream is open
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/S1");
+  expect(paths).toContain("/bus/msgs/S1/acked");
+  expect(paths).toContain("/bus/msgs/S3");
+  expect(paths).toContain("/bus/msgs/S4");
+  expect(paths.filter((x) => x.includes("S2"))).toEqual([]);
+});
+
+// the route passes the bus root (XDG_STATE_HOME) to the stream, so the merge is live through server.ts
+test("GET /api/agui/<run> merges the run's bus events through the server", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const t = Date.now() - 5000;
+  await append(root, "leg-a", { t, b: "x", c: 0, i: "H1", f: "console-x", r: "leg-a" });
+  await append(root, "console-x", { t, b: "x", c: 0, i: "H2", f: "leg-b", r: "console-x" });
+  journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const s = startServer({
+    port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: h, XDG_STATE_HOME: join(h, "state"), CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" },
+    aguiPollMs: 20, aguiIdleMs: 300, aguiMaxMs: 10_000,
+  });
+  cleanup.push(() => s.stop());
+  const paths = parse(await (await get(s.port, RUN)).text()).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/H1");
+  expect(paths.filter((x) => x.includes("H2"))).toEqual([]);
+});

@@ -18,7 +18,7 @@ import { acquireLock, runChild, type Lock } from "./lock";
 import { readBank, readLegs, readMode, readMonitoring, readToolHealth } from "./health-sources";
 import { readQuota } from "./quota-sources";
 import { appendAudit } from "./audit";
-import { journalStream, resolveJournal } from "./agui/sse";
+import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { legSync, readRoadmap } from "./roadmap";
 import { readVm, writeVm } from "./vm-config";
@@ -451,6 +451,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const body = journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,
           redact: (v) => redactDeep(v, { literals }),
+          busRoot: busRootOf(env, env.HOME || homedir()),
           onClose: () => { active--; if (deferred && active === 0) { deferred = false; bump(); } },
         });
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
