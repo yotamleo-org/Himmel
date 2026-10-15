@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/setup/onboard-telegram.sh (HIMMEL-227).
+# Smoke test for scripts/setup/onboard-telegram.sh.
 # Everything runs against a temp TELEGRAM_CHANNEL_DIR — never touches the
 # operator's real channel dir, access.json, or the live bridge.
 set -uo pipefail
@@ -64,7 +64,7 @@ else
 fi
 assert_has "fresh run reports missing pairing" "access.json: MISSING" "$out"
 assert_has "fresh run prints bridge bring-up" "bridge bring-up" "$out"
-# Warp onboarding (split out HIMMEL-360, removed/archived HIMMEL-421) — the
+# Warp onboarding (removed) — the
 # telegram step must no longer emit any Warp output.
 assert_lacks "fresh run no longer mentions warp" "Warp" "$out"
 

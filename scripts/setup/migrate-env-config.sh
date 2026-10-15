@@ -7,8 +7,8 @@
 #   bash scripts/setup/migrate-env-config.sh --dry-run [--env <file>]
 #
 #   --ahead-of-setup  required for a real run. Setup, adopt and himmelctl still
-#                  read and write these keys in .env until the second HIMMEL-3111
-#                  PR moves them to the new files, so migrating before that
+#                  read and write these keys in .env until a later change
+#                  moves them to the new files, so migrating before that
 #                  leaves a station half-migrated. Without it the run exits 3.
 #   --env <file>   the .env to read (default: the one load_dotenv reads)
 #   --vault <dir>  keep the tracked file in <dir>/.himmel/himmel.conf and link

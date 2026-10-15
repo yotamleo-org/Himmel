@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/setup/cli-proxy-lane.sh (HIMMEL-2778).
+# Smoke test for scripts/setup/cli-proxy-lane.sh.
 #
 # Usage: bash scripts/setup/test-cli-proxy-lane.sh
 #
 # Scope (deliberately narrow — the .sh has no -AsLibrary seam like the .ps1
 # twin, so every real system call is shadowed via a per-test PATH-prepended
 # stub dir; HOME is redirected per test so nothing touches the real
-# ~/.cli-proxy-api). Covers exactly what HIMMEL-2778 asked for, no more:
+# ~/.cli-proxy-api). Covers exactly the following, no more:
 #   1. --install writes config with the loopback host + port
 #   2. CLIPROXY_API_KEY is sourced from env only (unset + no .env -> refuses)
 #   3. --register's unit-file shape (grepped; the unit is never really loaded)
@@ -24,7 +24,7 @@
 # runs inside cli-proxy-lane.sh), never at write-time here.
 set -uo pipefail
 
-# grepq <text> [grep-args...] — see test-check-jira-key.sh HIMMEL-1430 for why
+# grepq <text> [grep-args...] — see test-check-jira-key.sh for why
 # this avoids a `printf | grep -q` pipeline under `set -o pipefail`.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -89,7 +89,7 @@ chmod +x "$dir/cli-proxy-api"
 # Everything else (daemon-reload, enable --now, start, stop) is a logged
 # no-op success. Never touches real systemd.
 #
-# STUB_SYSTEMCTL_STOPFILE (opt-in, HIMMEL-3051): when set, "stop" touches it
+# STUB_SYSTEMCTL_STOPFILE (opt-in): when set, "stop" touches it
 # and "start" removes it, and while it exists is-active/show report
 # stopped/no-MainPID regardless of the STATE/MAINPID vars above -- lets a
 # --roll test model a real stop -> (still running, per the OLD vars) ->
@@ -187,7 +187,7 @@ if [ -f "$CFG1" ]; then
     assert_contains "config pins the port" "port: 8317" "$CFG1_BODY"
     assert_contains "config carries the env key" '- "stub-key-1"' "$CFG1_BODY"
     # host_mode_of speaks GNU and BSD stat (macOS has no -c); a host where chmod
-    # does not stick (NTFS/MSYS keeps 644) SKIPs the mode assertion (HIMMEL-3182).
+    # does not stick (NTFS/MSYS keeps 644) SKIPs the mode assertion.
     # shellcheck source=../lib/host-caps.sh
     . "$SCRIPT_DIR/../lib/host-caps.sh"
     MODE1="$(host_mode_of "$CFG1")"
@@ -409,7 +409,7 @@ assert_rc "401-and-stale status exit code (not fully OK)" 1 "$RC"
 assert_contains "401-and-stale status still names the stale version" "WARNING" "$OUT"
 assert_contains "401-and-stale status still names --roll" "--roll" "$OUT"
 
-# HIMMEL-5267: the VM upgrade stage rolls the proxy to a station target without
+# The VM upgrade stage rolls the proxy to a station target without
 # editing the script. The sha is the real linux_amd64 sha256 of v8.0.23 from the
 # release's checksums.txt (copied from the environment, not hand-written).
 V8_SHA="744000a1a4f9ce19f5964774f853d029797b87ef53796d054389258c66cb1224"
@@ -446,7 +446,7 @@ assert_rc "malformed-sha exit code" 1 "$RC"
 HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION=$'8.0.23\nevil' CLIPROXY_API_SHA256="$V8_SHA" STUB_SHA256="$V8_SHA" run --install
 assert_rc "multiline-version exit code" 1 "$RC"
 
-# HIMMEL-5391: transient codex 5xx (a 502, then the auth-cooldown 503 on the only
+# Transient codex 5xx (a 502, then the auth-cooldown 503 on the only
 # credential) ended a claudex leg's turn. CLIProxyAPI's request-retry runs extra
 # credential rounds on 403/408/429/500/502/503/504 and max-retry-interval bounds
 # the cooldown wait (config.example.yaml, v7.3.15). The fixture below is the

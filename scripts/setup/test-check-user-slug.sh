@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for scripts/setup/check-user-slug.sh (HIMMEL-2537) and for
+# Hermetic tests for scripts/setup/check-user-slug.sh and for
 # setup.sh's step [0.5/9] wiring.
 #
 # The thing under test is a DISPOSITION, not a resolver: the resolver itself is
@@ -28,7 +28,7 @@ fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FA
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "want='$2' got='$3'"; fi; }
 # grep -q with NO pipeline: under `set -o pipefail` a piped `grep -q` reports a
 # SUCCESSFUL early match as a failed pipeline (SIGPIPE on the producer) —
-# HIMMEL-1430, the same trap test-user-slug-resolve.sh documents.
+# the same trap test-user-slug-resolve.sh documents.
 assert_has() { if grep -q -F -- "$2" <<< "$3"; then pass "$1"; else fail "$1" "missing: $2"; fi; }
 assert_lacks() { if grep -q -F -- "$2" <<< "$3"; then fail "$1" "unexpectedly present: $2"; else pass "$1"; fi; }
 
@@ -49,7 +49,7 @@ unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM 2>/dev/null || true
 # Unsetting GIT_CONFIG_SYSTEM does NOT disable system config — it just
 # restores git's DEFAULT system path (/etc/gitconfig). A machine with a
 # system-wide user.name would then resolve a slug in the "unresolved" arms
-# below and the tests would pass for the wrong reason (CR round 7 [codex-2]).
+# below and the tests would pass for the wrong reason.
 export GIT_CONFIG_NOSYSTEM=1
 gh() { return 1; }
 export -f gh
@@ -71,7 +71,7 @@ err=$(USER_SLUG=alice run 2>&1 >/dev/null)
 assert_has "stderr names the source" "USER_SLUG env" "$err"
 
 # ── 2. Unresolved: rc=3, and specifically NOT 1. rc=1 is what aborted the
-# contributor install in the HIMMEL-2457 C4b cell; a regression to it would be
+# contributor install in the C4b acceptance cell; a regression to it would be
 # invisible to a test that only asserted "non-zero".
 echo "TEST: unresolved -> rc=3 (the advisory code), never rc=1"
 git -C "$REPO" config --unset user.name 2>/dev/null || true
@@ -89,7 +89,7 @@ assert_has "remedy 2: the forge CLI" "gh auth login" "$err"
 assert_has "remedy 3: the git identity" "git config" "$err"
 assert_has "says no re-run of setup is needed" "no re-run of setup" "$err"
 
-# ── 2b. The --dotenv-root bridge (CR round 1 [codex-1]). setup.sh's footer
+# ── 2b. The --dotenv-root bridge. setup.sh's footer
 # re-probes through this so an operator who supplied a slug at [5/9]'s
 # --fill-env prompt is not then told to go and supply one.
 echo "TEST: --dotenv-root resolves the way a consumer does"
@@ -128,7 +128,7 @@ assert_eq "--dotenv-root with no value -> usage rc=2" "2" "$rc"
 out=$( ( cd "$REPO" && bash "$script" --bogus ) 2>/dev/null); rc=$?
 assert_eq "unknown flag -> usage rc=2" "2" "$rc"
 
-# A trailing argument past --dotenv-root <dir> (CR round 2 [codex-2]): the
+# A trailing argument past --dotenv-root <dir>: the
 # parser used to stop reading at $2 and silently ignore anything after,
 # proceeding as if the invocation were fine.
 out=$( ( cd "$REPO" && bash "$script" --dotenv-root "$ENV_ROOT" extra ) 2>/dev/null); rc=$?
@@ -143,14 +143,13 @@ assert_has "step 0.5 calls check-user-slug.sh" "setup/check-user-slug.sh" "$setu
 assert_has "an unresolved slug is recorded for the footer" "_user_slug_manual=1" "$setup_src"
 assert_has "the footer names the skipped step" "STILL MANUAL: USER_SLUG" "$setup_src"
 assert_has "the footer re-probes with .env bridged in" "--dotenv-root" "$setup_src"
-# CR round 9 [codex-1]: the unverified row's PRESCRIBED command must carry
+# The unverified row's PRESCRIBED command must carry
 # --dotenv-root too. Without it an operator whose slug lives only in .env runs
 # the suggested check, sees "unresolved", and concludes their setup is broken —
-# the same defect round 4 fixed on himmelctl's row, which was never mirrored
-# here. Asserted against the printed guidance, not the probe calls.
+# the same defect himmelctl's row avoids. Asserted against the printed guidance, not the probe calls.
 assert_has "the unverified row prescribes the .env-aware command" \
   "check-user-slug.sh --dotenv-root ." "$setup_src"
-# CR round 6 [codex-1]: BOTH probes bridge .env, not just the footer one — a
+# BOTH probes bridge .env, not just the footer one — a
 # re-run of setup has an .env already, and the bare 0.5 probe would warn about
 # a slug the consumers read fine, a WARN the footer then silently contradicts.
 # Counted, not just grepped: one --dotenv-root would satisfy a bare `has`.
@@ -173,7 +172,7 @@ else
   fail "could not locate the [0.5/9]..[1/9] block" "start=$s_line end=$e_line"
 fi
 
-# ── 3b. Footer classification (CR round 3 [codex-1]): a genuinely unresolved
+# ── 3b. Footer classification: a genuinely unresolved
 # slug (rc=3) and a probe that itself broke (any other rc) must render
 # DIFFERENT footer rows, mirroring userSlugState()'s unverified/did-not-resolve
 # split in scripts/himmelctl/bin.js. This is executed, not grepped: the
@@ -234,7 +233,7 @@ else
   assert_has "a successful footer re-probe clears the manual flag" "MANUAL=0" "$out"
 fi
 
-# ── 4. Broken probe (CR round 7 [codex-1]): the resolver lib this script
+# ── 4. Broken probe: the resolver lib this script
 # sources is itself unreachable. Under `set -uo pipefail` (deliberately NOT
 # `-e`) an unchecked source would fall through to the advisory path and
 # report a probe that never ran as a confident rc=3 "confirmed unresolved" —
@@ -254,12 +253,12 @@ err=$(run_broken 2>&1 >/dev/null)
 assert_has "stderr says the probe itself did not run" "the probe itself did not run" "$err"
 assert_has "stderr names the unreachable lib path" "user-slug.sh" "$err"
 
-# ── 4b. Broken probe (CR round 8 [codex-1]): the two SOURCE guards (round 7,
-# above) do not cover the load_dotenv CALL itself on the --dotenv-root path —
-# round 7 checked `. lib` but not `load_dotenv --root ...`'s own exit status,
+# ── 4b. Broken probe: the two SOURCE guards
+# do not cover the load_dotenv CALL itself on the --dotenv-root path —
+# the guards check `. lib` but not `load_dotenv --root ...`'s own exit status,
 # so a failing call fell through silently (USER_SLUG stays empty, the
 # resolver then legitimately finds nothing) and reported the same false
-# "confirmed unresolved" rc=3 that round 7 fixed for the sourcing case. A
+# "confirmed unresolved" rc=3 the sourcing guard already prevents. A
 # scratch copy of check-user-slug.sh with sibling lib stubs — a working
 # user-slug.sh (never reached; the call fails before user_slug_verify runs)
 # and a load-dotenv.sh whose load_dotenv() deliberately returns 1 — reproduces
@@ -283,7 +282,7 @@ err=$(run_broken2 2>&1 >/dev/null)
 assert_has "stderr says the --dotenv-root probe itself did not run" "the --dotenv-root probe itself did not run" "$err"
 assert_has "stderr says load_dotenv failed" "load_dotenv failed" "$err"
 
-# ── 5. This suite's own isolation actually holds (CR round 7 [codex-2]).
+# ── 5. This suite's own isolation actually holds.
 # Unsetting GIT_CONFIG_SYSTEM only restores git's default /etc/gitconfig path
 # — it does not disable system config — so a machine with a system-wide
 # user.name would silently resolve a slug in the "unresolved" fixtures above.

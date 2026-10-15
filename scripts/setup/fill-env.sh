@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fill-env.sh -- interactive fill of the must-set .env values (HIMMEL-453).
+# fill-env.sh -- interactive fill of the must-set .env values.
 # Prompts for each UNCOMMENTED `KEY=` line in .env.example (the must-set vars;
 # commented lines are opt-in -- uncomment first) and writes the answer into .env.
 # Press Enter at any prompt to SKIP that var (keep its current value).
@@ -76,7 +76,7 @@ _fe_inline_comment() {
 # so it is not this key's help). A section/group-header comment directly above a
 # key (e.g. `# --- Jira ... ---`) IS included as the first help line, by design.
 # CR-tolerant. Keeps .env.example the single source of truth -- the script holds
-# no duplicate map. Reads ONLY the example file, never the live .env (HIMMEL-546).
+# no duplicate map. Reads ONLY the example file, never the live .env.
 dotenv_help() {
   local file="$1" key="$2" line trimmed txt keyhead block="" inline=""
   [ -f "$file" ] || return 0

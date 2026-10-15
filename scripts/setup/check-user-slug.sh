@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# USER_SLUG resolve-or-advise (HIMMEL-145; disposition HIMMEL-2537).
+# USER_SLUG resolve-or-advise.
 #
 # Usage: bash scripts/setup/check-user-slug.sh [--dotenv-root <dir>]
 #
@@ -9,7 +9,7 @@
 #   probe broke stderr = which sourced lib failed to load, rc=4 (see below)
 #
 # --dotenv-root <dir> resolves the way a CONSUMER does rather than the way a
-# bare shell does (CR round 1 [codex-1]): before falling through to the forge
+# bare shell does: before falling through to the forge
 # and git-identity sources, bridge <dir>/.env's USER_SLUG the same way
 # scripts/lib/load-dotenv.sh bridges it for scripts/handover/* and the hooks.
 # Without it, setup.sh's own footer told an operator who had JUST typed a slug
@@ -29,16 +29,16 @@
 # scripts/setup.sh, and the Windows installer twin scripts/setup.ps1 has NO
 # USER_SLUG step at all, so there is nothing on that side to mirror; a twin
 # here would be a file no code path reaches. That asymmetry is not incidental
-# — it is evidence line 6 in the HIMMEL-2537 rationale below. On Windows this
+# — it is evidence line 6 in the rationale below. On Windows this
 # runs under Git Bash like the rest of scripts/setup.sh's chain; it uses only
 # POSIX shell plus git, and both `--dotenv-root` sources (load-dotenv.sh,
 # user-slug.sh) are themselves bash-only libs with no PowerShell counterpart.
 # If setup.ps1 ever grows a USER_SLUG step, the twin belongs with THAT change.
 #
-# WHY rc=3 and not rc=1 (HIMMEL-2537). Step 0.5 used to `exit 1` here, which
+# WHY rc=3 and not rc=1. Step 0.5 used to `exit 1` here, which
 # aborted a contributor install on a stock guest with no USER_SLUG, no
-# authenticated forge CLI and no git identity — measured on the HIMMEL-2457
-# Linux acceptance matrix, cell C4b. That abort was not buying anything:
+# authenticated forge CLI and no git identity — measured on the Linux
+# acceptance matrix, cell C4b. That abort was not buying anything:
 #
 #   1. No later setup.sh step reads USER_SLUG, and no sub-script setup.sh
 #      invokes reads it either (checked across scripts/setup/*, handover-link,
@@ -58,7 +58,7 @@
 #   6. scripts/setup.ps1, the Windows twin, has no USER_SLUG step at all, so the
 #      hard failure was an unmatched asymmetry rather than a shared invariant.
 #
-# So the honest shape is the HIMMEL-2536 one: continue, and make the summary
+# So the honest shape is to continue, and make the summary
 # say plainly that a step was left undone. rc=3 (not 0) is what lets setup.sh
 # distinguish "resolved" from "advised" and carry it into that summary; a bare
 # rc=0 would hand the caller the same silence 2536 exists to end.
@@ -73,15 +73,15 @@ esac
 if [ "${1:-}" = "--dotenv-root" ] && [ -z "$_dotenv_root" ]; then
   echo "usage: check-user-slug.sh [--dotenv-root <dir>]" >&2; exit 2
 fi
-# A bare call takes 0 args and --dotenv-root <dir> takes exactly 2 (CR round 2
-# [codex-2]); anything left over past those is a malformed invocation that the
+# A bare call takes 0 args and --dotenv-root <dir> takes exactly 2;
+# anything left over past those is a malformed invocation that the
 # case above let through silently rather than rejecting.
 if [ "$#" -gt 2 ] || { [ -z "${1:-}" ] && [ "$#" -gt 0 ]; }; then
   echo "usage: check-user-slug.sh [--dotenv-root <dir>]" >&2; exit 2
 fi
 
 _here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# rc=4 for a sourced lib that did not load (CR round 7 [codex-1]): this script
+# rc=4 for a sourced lib that did not load: this script
 # runs under `set -uo pipefail`, deliberately NOT `-e`, so an unchecked
 # `. "$lib"` that fails (missing file, unreadable, a syntax error in the lib)
 # would silently fall through with user_slug_verify left undefined; the `if`
@@ -111,14 +111,14 @@ if [ -n "$_dotenv_root" ] && [ -z "${USER_SLUG:-}" ]; then
     echo "user-slug: could not load $_load_dotenv_lib — the --dotenv-root probe itself did not run (this is NOT a resolved-or-advised outcome)" >&2
     exit 4
   fi
-  # rc=4 for the CALL failing, not just the sourcing (CR round 8 [codex-1]):
-  # round 7 guarded the two `.` source lines but left this call's own status
+  # rc=4 for the CALL failing, not just the sourcing:
+  # the two `.` source lines were guarded but but left this call's own status
   # unchecked, and this script runs `set -uo pipefail`, deliberately NOT `-e`,
   # so a failing load_dotenv would fall through with USER_SLUG left empty —
   # the resolver then legitimately finds nothing and exits 3, reporting a
   # BROKEN PROBE as a confidently "confirmed unresolved" slug, same defect
-  # class as round 7. Checked (scripts/lib/load-dotenv.sh, HIMMEL-2537 round
-  # 8): load_dotenv returns 0 for every benign case, including no .env file at
+  # class as a failing source. Checked (scripts/lib/load-dotenv.sh):
+  # load_dotenv returns 0 for every benign case, including no .env file at
   # the given root at all (it `return 0`s explicitly there, and its only other
   # exit path is a `while read` loop whose bash-defined exit status is 0 both
   # when the key isn't in the file and when it is) — so a plain status check

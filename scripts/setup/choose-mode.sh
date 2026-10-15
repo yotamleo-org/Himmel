@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# choose-mode.sh -- ask for the tracker and forge, write git config (HIMMEL-4767,
-# HIMMEL-4748 WP8). Reads one answer per line on stdin: tracker, then forge.
+# choose-mode.sh -- ask for the tracker and forge, write git config.
+# Reads one answer per line on stdin: tracker, then forge.
 # An existing git config value is the default; Enter (or EOF) keeps it, so a
 # re-run never overwrites. An answer is written only after the resolver
 # (scripts/lib/project-mode.sh, the one owner) accepts it; a refusal prints the

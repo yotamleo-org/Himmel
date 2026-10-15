@@ -1,6 +1,6 @@
 ﻿# test-onboard-telegram.ps1 — PowerShell smoke test for
-# scripts/setup/onboard-telegram.ps1 (HIMMEL-227; PS sibling of
-# test-onboard-telegram.sh, CR round 1). Everything runs against a temp
+# scripts/setup/onboard-telegram.ps1 (PS sibling of
+# test-onboard-telegram.sh). Everything runs against a temp
 # TELEGRAM_CHANNEL_DIR — never touches the operator's real channel dir,
 # access.json, or the live bridge.
 #
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Continue'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $script:Failed = 0
 $Cli = Join-Path $PSScriptRoot 'onboard-telegram.ps1'
@@ -83,7 +83,7 @@ try {
     }
     Assert-Has 'fresh run reports missing pairing' 'access.json: MISSING' $out
     Assert-Has 'fresh run prints bridge bring-up' 'bridge bring-up' $out
-    # Warp onboarding (split out HIMMEL-360, removed/archived HIMMEL-421) -- the
+    # Warp onboarding (removed) -- the
     # telegram step must no longer emit any Warp output.
     Assert-Lacks 'fresh run no longer mentions warp' 'Warp' $out
 

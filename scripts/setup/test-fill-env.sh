@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-fill-env.sh -- hermetic tests for fill-env.sh pure helpers (HIMMEL-453).
+# test-fill-env.sh -- hermetic tests for fill-env.sh pure helpers.
 # dotenv_get/set (incl. CRLF), fillable_keys (fixture-based, NOT pinned to the
 # live .env.example), and the non-interactive fill_env no-op.
 set -u
@@ -75,7 +75,7 @@ else
 fi
 
 # dotenv_help: contiguous `#` block above a key + inline trailing comment
-# (HIMMEL-546). Fixture exercises multi-line block, block+inline, inline-only
+#. Fixture exercises multi-line block, block+inline, inline-only
 # (a KEY line directly above breaks contiguity), blank-line break, and absent.
 f6="$td/help.env"
 {

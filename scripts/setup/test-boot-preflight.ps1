@@ -1,4 +1,4 @@
-# Hermetic tests for boot-preflight.ps1 (HIMMEL-1163).
+# Hermetic tests for boot-preflight.ps1.
 # Dot-sources the script with -AsLibrary (defines the pure predicate
 # functions, returns before touching the live OS) and drives them with
 # synthetic inputs - no live scheduled tasks, no network, no real .env.
@@ -36,12 +36,12 @@ Check 'sweep PT1H indefinite is armed' (Test-SweepArmed -RepetitionInterval 'PT1
 Check 'sweep empty interval is NOT armed' (-not (Test-SweepArmed -RepetitionInterval '' -RepetitionDuration '' -StopAtDurationEnd $false))
 Check 'sweep PT24H is NOT armed (not hourly)' (-not (Test-SweepArmed -RepetitionInterval 'PT24H' -RepetitionDuration '' -StopAtDurationEnd $false))
 Check 'sweep $null interval is NOT armed' (-not (Test-SweepArmed -RepetitionInterval $null -RepetitionDuration '' -StopAtDurationEnd $false))
-# Lifetime findings (HIMMEL-1163 CR): a PT1H interval alone is NOT enough - a
+# Lifetime findings: a PT1H interval alone is NOT enough - a
 # finite Duration or a set StopAtDurationEnd means the hourly repeats STOP.
 Check 'sweep PT1H with finite Duration is NOT armed' (-not (Test-SweepArmed -RepetitionInterval 'PT1H' -RepetitionDuration 'PT4H' -StopAtDurationEnd $false))
 Check 'sweep PT1H with StopAtDurationEnd is NOT armed' (-not (Test-SweepArmed -RepetitionInterval 'PT1H' -RepetitionDuration '' -StopAtDurationEnd $true))
 
-# --- Test-AllSweepTriggersArmed: EVERY trigger, not ANY (CR round 2) ---------
+# --- Test-AllSweepTriggersArmed: EVERY trigger, not ANY ---------
 Check 'all triggers PT1H -> armed' (Test-AllSweepTriggersArmed -Triggers @(Trig 'PT1H'))
 Check 'multiple triggers all PT1H -> armed' (Test-AllSweepTriggersArmed -Triggers @((Trig 'PT1H'), (Trig 'PT1H')))
 Check 'mixed intervals (one PT1H, one un-repeated) -> NOT armed' (-not (Test-AllSweepTriggersArmed -Triggers @((Trig 'PT1H'), (Trig ''))))
@@ -67,14 +67,14 @@ Check 'Get-EnvValue finds a present key' ((Get-EnvValue -EnvText $envBoth -KeyNa
 Check 'Get-EnvValue returns $null for an absent key' ($null -eq (Get-EnvValue -EnvText $envNeither -KeyName 'DEEPSEEK_API_KEY'))
 Check 'Get-EnvValue returns $null on empty EnvText' ($null -eq (Get-EnvValue -EnvText '' -KeyName 'DEEPSEEK_API_KEY'))
 
-# --- Get-EnvValue: quote stripping (CR round 1, HIMMEL-1163) -----------------
+# --- Get-EnvValue: quote stripping -----------------
 Check 'double-quoted value unquotes' ((Get-EnvValue -EnvText 'KEY="v"' -KeyName 'KEY') -eq 'v')
 Check 'single-quoted value unquotes' ((Get-EnvValue -EnvText "KEY='v'" -KeyName 'KEY') -eq 'v')
 Check 'quoted-empty value is absent ($null), not a non-empty string of quotes' ($null -eq (Get-EnvValue -EnvText 'KEY=""' -KeyName 'KEY'))
 Check 'unquoted value is unchanged' ((Get-EnvValue -EnvText 'KEY=v' -KeyName 'KEY') -eq 'v')
 Check 'inner quote NOT part of a surrounding pair is preserved' ((Get-EnvValue -EnvText 'KEY="a''b"' -KeyName 'KEY') -eq "a'b")
 
-# --- Get-EnvValue: quoted whitespace-only value (CR round 3, HIMMEL-1163) ----
+# --- Get-EnvValue: quoted whitespace-only value ----
 # KEY="   " loses its quotes leaving bare spaces - IsNullOrEmpty alone does
 # NOT catch that (only a zero-length string, not whitespace), so the value
 # must be re-trimmed AFTER unquoting before the empty check.
@@ -109,7 +109,7 @@ Check 'gateway problem: AlertText present' (-not [string]::IsNullOrEmpty($gatewa
 Check 'gateway 401: alert names the -Login remediation' ($gatewayProblemReport.AlertText -match 'cli-proxy-lane\.ps1 -Login')
 
 # --- Get-ReadinessReport: gateway 000 -> connectivity remediation, NOT -Login
-# (CR round 2, HIMMEL-1163: 000 means the proxy is unreachable, not that a
+# (000 means the proxy is unreachable, not that a
 # credential was rejected - telling the operator to re-login is misleading).
 $gatewayDownReport = Get-ReadinessReport -SweepTaskFound $true -SweepTaskEnabled $true -SweepTriggers @(Trig 'PT1H') `
   -SweepReassertAttempted $false -SweepReassertOk $false -GatewayHttpCode '000' -EnvText $envBoth
@@ -135,7 +135,7 @@ Check 'sweep not armed: Ready is false' ($sweepProblemReport.Ready -eq $false)
 Check 'sweep not armed: alert names HIMMEL-CodexOrphanSweep' ($sweepProblemReport.AlertText -match 'HIMMEL-CodexOrphanSweep')
 
 # --- Get-ReadinessReport: PT1H interval but FINITE duration -> NOT ready ------
-# End-to-end proof of the lifetime finding (HIMMEL-1163 CR): an interval-only
+# End-to-end proof of the lifetime finding: an interval-only
 # check would call this "armed", but the hourly repeats stop when the window
 # elapses, so the report must flag it and the reassert path must not be skipped.
 $sweepFiniteReport = Get-ReadinessReport -SweepTaskFound $true -SweepTaskEnabled $true -SweepTriggers @(Trig 'PT1H' 'PT4H') `

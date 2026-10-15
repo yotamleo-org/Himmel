@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-setup-preflight.sh -- hermetic tests for the R6 preflight (HIMMEL-460):
+# test-setup-preflight.sh -- hermetic tests for the R6 preflight:
 # ensure-tools.sh auto-install branches (SC7) + the setup.sh ordering invariant
 # (git rev-parse for REPO_ROOT must run AFTER the [0/9] preflight, since the
 # preflight may auto-install git).
@@ -50,7 +50,7 @@ out=$( PATH="$fbin" ensure_tools git 2>&1 )
 check "SC7 install-fails message" "$(has "'apt-get install git' failed" "$out")" "yes"
 
 # ── SC7 branch 3b: no root/sudo (apt-get present, sudo absent, non-root).
-# Runs on Linux AND Windows (HIMMEL-469). Key insight: in the no-sudo path
+# Runs on Linux AND Windows. Key insight: in the no-sudo path
 # ensure_tools only `command -v`s apt-get (never executes it) and only EXECUTES
 # `id` — so a self-contained PATH needs just a stub apt-get (existence only) + a
 # real `id` copy, with NO sudo. That makes `command -v sudo` fail even on a Linux
@@ -67,7 +67,7 @@ printf '#!/bin/sh\necho 1000\n' > "$nbin/id"; chmod +x "$nbin/id"
 out=$( PATH="$nbin" ensure_tools git 2>&1 )
 check "SC7 no-sudo message" "$(has 'no root/sudo' "$out")" "yes"
 
-# ── HIMMEL-548 bun branch 1: official installer SUCCEEDS (mocked, no real curl).
+# ── bun branch 1: official installer SUCCEEDS (mocked, no real curl).
 # bun has no homebrew-core/apt/dnf package, so it is bootstrapped via its official
 # installer (`curl -fsSL https://bun.sh/install` piped to bash), which lands the
 # binary in $HOME/.bun/bin. A stub curl emits a tiny installer script on stdout;
@@ -90,7 +90,7 @@ out=$( HOME="$bhome" PATH="$bbin:$PATH" _ensure_install_bun 2>&1 )
 present=$( [ -x "$bhome/.bun/bin/bun" ] && echo yes || echo no )
 check "bun official-installer drops bun in ~/.bun/bin" "$present" "yes"
 
-# ── HIMMEL-548 bun branch 2: installer FAILS (curl returns non-zero) → fail-loud,
+# ── bun branch 2: installer FAILS (curl returns non-zero) → fail-loud,
 # no bun, honest manual hint.
 fbun="$td/bun-fail"; mkdir -p "$fbun"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$fbun/curl"; chmod +x "$fbun/curl"
@@ -99,7 +99,7 @@ out=$( HOME="$fhome" PATH="$fbun:$PATH" _ensure_install_bun 2>&1 )
 check "bun installer-fails leaves no bun" "$( [ -x "$fhome/.bun/bin/bun" ] && echo yes || echo no )" "no"
 check "bun installer-fails manual hint" "$(has 'install bun manually' "$out")" "yes"
 
-# ── HIMMEL-548 bun branch 2b: curl SUCCEEDS but the installer BODY fails (network
+# ── bun branch 2b: curl SUCCEEDS but the installer BODY fails (network
 # OK, install script errors) — the more realistic production failure. A stub curl
 # emits a non-empty installer that exits non-zero when piped to bash → fail-loud,
 # no bun, same honest manual hint as the curl-fails path.
@@ -110,12 +110,12 @@ out=$( HOME="$xhome" PATH="$xbun:$PATH" _ensure_install_bun 2>&1 )
 check "bun installer-body-fails leaves no bun" "$( [ -x "$xhome/.bun/bin/bun" ] && echo yes || echo no )" "no"
 check "bun installer-body-fails manual hint" "$(has 'install bun manually' "$out")" "yes"
 
-# ── HIMMEL-548 bun branch 3: routed through ensure_tools, curl absent → fail-loud
+# ── bun branch 3: routed through ensure_tools, curl absent → fail-loud
 # manual hint (no crash). Empty PATH guarantees no ambient bun short-circuits it.
 out=$( HOME="$td/bun-nocurl-home" PATH="$td/empty-nonexistent" ensure_tools bun 2>&1 )
 check "bun no-curl manual hint" "$(has 'needs curl' "$out")" "yes"
 
-# ── HIMMEL-548 setup.sh: ~/.bun/bin is added to PATH after ensure-tools so the
+# ── setup.sh: ~/.bun/bin is added to PATH after ensure-tools so the
 # re-check + downstream see a freshly-installed bun, and a persist-PATH hint is
 # printed. Assert the wiring exists in setup.sh.
 check "setup.sh adds ~/.bun/bin to PATH" "$(has 'HOME/.bun/bin' "$(cat "$setup_sh")")" "yes"

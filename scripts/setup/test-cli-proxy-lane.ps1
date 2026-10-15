@@ -1,4 +1,4 @@
-# Hermetic swap/rollback tests for cli-proxy-lane.ps1 (HIMMEL-1473).
+# Hermetic swap/rollback tests for cli-proxy-lane.ps1.
 # Dot-sources the helper without touching the live proxy, then replaces only the
 # lifecycle commands and targeted filesystem failure points used by the swap.
 $ErrorActionPreference = 'Stop'
@@ -104,14 +104,14 @@ function Set-Content {
     Microsoft.PowerShell.Management\Set-Content -LiteralPath $LiteralPath -Value $Value
 }
 
-# -Register test state (HIMMEL-1822): a shadow schtasks records invocations and
+# -Register test state: a shadow schtasks records invocations and
 # plays a configurable registration outcome through $global:LASTEXITCODE, so the
 # registration form and the Defender-removal detection are exercised without
 # touching the real task scheduler.
 $script:SchtasksCalls = @()
 $script:SchtasksCreateExit = 0
 $script:SchtasksTaskPresent = $true
-# Per-probe override for the /query sequence (HIMMEL-1822 settle-loop race
+# Per-probe override for the /query sequence (settle-loop race
 # test): consumed in order, one $bool per /query call; falls back to
 # $SchtasksTaskPresent once exhausted. Lets a test simulate "present at the
 # first probe, removed by a later one" instead of one static state.

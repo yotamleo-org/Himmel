@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 # test-ensure-tools.sh -- hermetic tests for the package-manager CANDIDATE
-# PROBE in scripts/setup/ensure-tools.sh (HIMMEL-2548).
+# PROBE in scripts/setup/ensure-tools.sh.
 #
 # The defect this suite pins, measured wet on Ubuntu 24.04 noble: ensure-tools
 # printed "no known apt-get package for 'gh' -- install it manually." on a
@@ -50,7 +50,7 @@ RED_CONTROL_TMPDIR="$td"
 # shellcheck disable=SC1091
 . "$here/../lib/host-caps.sh"
 
-# HIMMEL-3182: mk_fixture links each utility into an otherwise-empty bin dir,
+# mk_fixture links each utility into an otherwise-empty bin dir,
 # and where `ln -s` is refused (MSYS without the symlink privilege) that is a
 # COPY -- a copied .exe cannot load its runtime DLLs from there (rc 127). The
 # probe MEASURES exactly that with bash; the awk that _ensure_pm_candidate
@@ -79,8 +79,8 @@ mk_fixture() {
 # A stub apt-cache. $2 is the Candidate: field to report ("(none)" = the
 # manager was asked and has nothing). $3 (optional, default 0) is apt-cache's
 # OWN exit status -- non-zero simulates a real query failure (corrupt/unreadable
-# lists, etc), distinct from a successful "(none)" answer (HIMMEL-2548 CR
-# round 1: _ensure_pm_candidate must not read a failed query as absence).
+# lists, etc), distinct from a successful "(none)" answer
+# (_ensure_pm_candidate must not read a failed query as absence).
 mk_apt_cache() {
     local fx="$1" cand="$2" rc="${3:-0}"
     cat > "$fx/bin/apt-cache" <<STUB
@@ -95,7 +95,7 @@ STUB
 }
 
 # A stub apt-cache whose Candidate: label is GETTEXT-TRANSLATED depending on
-# ITS OWN environment at run time (HIMMEL-2548 CR round 3, codex-1): it prints
+# ITS OWN environment at run time: it prints
 # the literal English "Candidate:" only when the resolved message locale
 # (LC_ALL, else LC_MESSAGES, else LANG) is C/POSIX/unset, and a German
 # "Kandidat:" label otherwise -- mirroring real apt-cache's gettext behaviour
@@ -233,8 +233,7 @@ check "C3 no false no-known-package claim" "$(has "$FALSE_CLAIM" "$out")" "no"
 # ===========================================================================
 # C3b -- apt-cache IS on PATH but its query FAILS (non-zero exit): a failed
 # lookup is not evidence of absence, so this must land on the SAME "cannot
-# ask" branch as C3, not the confident "has no candidate" branch (HIMMEL-2548
-# CR round 1 -- the finding this suite was added to pin).
+# ask" branch as C3, not the confident "has no candidate" branch.
 # ===========================================================================
 fx="$td/c3b"; mk_fixture "$fx"; mk_apt_cache "$fx" "2.45.0-1ubuntu0.3" 1; mk_apt_get "$fx" 0
 out=$( PATH="$fx/bin" ensure_tools gh 2>&1 )
@@ -249,7 +248,7 @@ check "C3b no false no-known-package claim"     "$(has "$FALSE_CLAIM" "$out")" "
 
 # ===========================================================================
 # C3c -- apt-cache's own Candidate: label is GETTEXT-TRANSLATED on a localized
-# guest (HIMMEL-2548 CR round 3, codex-1): the awk pattern matches only the
+# guest: the awk pattern matches only the
 # literal English word, so without forcing the C locale on the apt-cache
 # invocation itself, a German "Kandidat:" line parses as no candidate and gh
 # is wrongly refused on a system where apt genuinely has it. The probe now
@@ -280,7 +279,7 @@ check "C4 mapped tools skip the probe" "$(count_calls "$fx" '^apt-cache')" "0"
 
 # ===========================================================================
 # C5 -- an already-mapped tool whose install FAILS keeps its declared fallback
-# hint (HIMMEL-2438 behaviour, unchanged).
+# hint.
 # ===========================================================================
 fx="$td/c5"; mk_fixture "$fx"; mk_apt_get "$fx" 1
 out=$( PATH="$fx/bin" ensure_tools gitleaks 2>&1 )
@@ -338,8 +337,8 @@ check "C8 dnf reports the ambiguous wording" "$(has "dnf reported no installable
 check "C8 no false no-known-package claim"   "$(has "$FALSE_CLAIM" "$out")" "no"
 
 # ===========================================================================
-# C8b -- dnf's rc-1 wording must NOT assert a confirmed absence (HIMMEL-2548
-# CR round 1): `dnf list` exits 1 both for a genuinely missing package and for
+# C8b -- dnf's rc-1 wording must NOT assert a confirmed absence:
+# `dnf list` exits 1 both for a genuinely missing package and for
 # a failed metadata refresh, so the message must not claim the former.
 # ===========================================================================
 fx="$td/c8b"; mk_fixture "$fx"; mk_dnf "$fx" 1
@@ -366,7 +365,7 @@ check "C10 no-pm message"                   "$(has "no supported package manager
 check "C10 no false no-known-package claim" "$(has "$FALSE_CLAIM" "$out")" "no"
 
 # ===========================================================================
-# RED control (HIMMEL-2518 contract) -- C1 must be non-vacuous. Mutant: the
+# RED control -- C1 must be non-vacuous. Mutant: the
 # candidate probe always answers "no candidate". Against the SAME
 # candidate-present fixture, the predicted SPECIFIC wrong value is
 # "installed=no manual=yes" -- gh silently not installed and the fallback

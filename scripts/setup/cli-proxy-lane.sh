@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/setup/cli-proxy-lane.sh — Linux bring-up for the claudex lane
-# (HIMMEL-2778). Twin of scripts/setup/cli-proxy-lane.ps1 (Windows). bash
+#. Twin of scripts/setup/cli-proxy-lane.ps1 (Windows). bash
 # 3.2-safe.
 #
 # The proxy is a HOST process on 127.0.0.1:8317, backed by CLIProxyAPI
@@ -15,7 +15,7 @@
 # while a client is actively connected (a bounce kills an in-flight
 # codex-lane render) unless --force is given.
 #
-# --roll (HIMMEL-3051): the manual --install then --restart sequence has a
+# --roll: the manual --install then --restart sequence has a
 # silent-success trap -- --install refuses on a running unit whose version
 # differs (told to --stop first or pass --force), and a bare --restart then
 # relaunches whatever is CURRENTLY at $EXE and prints "proxy back up" even
@@ -44,7 +44,7 @@ EXE="$DIR/cli-proxy-api"
 CFG="$DIR/config.yaml"
 VER_STAMP="$DIR/cli-proxy-api.version"
 PORT=8317
-# Bounded request retry (HIMMEL-5391). CLIProxyAPI's request-retry runs extra
+# Bounded request retry. CLIProxyAPI's request-retry runs extra
 # credential rounds on 403/408/429/500/502/503/504 (so it covers an upstream 502
 # and the auth-cooldown 503); max-retry-interval caps the cooldown wait, in
 # seconds (config.example.yaml, v7.3.15). Defaults are upstream's own; an
@@ -52,7 +52,7 @@ PORT=8317
 RETRY_COUNT=3
 RETRY_INTERVAL=30
 VERSION="8.0.29"
-# Station-target override (HIMMEL-5267): the VM upgrade stage rolls the proxy to a
+# Station-target override: the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
 # (the asset sha256 from that release's checksums.txt). Both are shape-checked
@@ -76,7 +76,7 @@ RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
 # Pinned sha256 of the linux_amd64 asset at v8.0.29, verified against the
-# release's own checksums.txt (HIMMEL-2778, re-pinned HIMMEL-2816/HIMMEL-3038/HIMMEL-3046/HIMMEL-3537/HIMMEL-4579). Upstream DOES publish per-asset
+# release's own checksums.txt. Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
 ASSET_SHA256="78a277a5e74495103147a138d530c33d72c17b213d2538e474b1860eb3c4bc34"
@@ -194,8 +194,7 @@ assert_config() { [ -f "$CFG" ] || die "config missing at $CFG — run --install
 
 installed_version() { [ -f "$VER_STAMP" ] && head -n1 "$VER_STAMP" 2>/dev/null; }
 
-# restore_previous_binary: undo install_binary's backup (HIMMEL-3051 CR
-# finding) -- moves $EXE.prev/$VER_STAMP.prev back over $EXE/$VER_STAMP if a
+# restore_previous_binary: undo install_binary's backup -- moves $EXE.prev/$VER_STAMP.prev back over $EXE/$VER_STAMP if a
 # backup exists, so a caller that stopped the proxy to roll a new binary can
 # recover the last-known-good one on any failure after the overwrite. A no-op
 # when there was nothing to back up (e.g. a first --install).
@@ -212,7 +211,7 @@ restore_previous_binary() {
 # VERSION. $EXE and $VER_STAMP are written together, atomically, by the
 # single writer below (install_binary) -- so this isn't blind trust in a
 # stamp file: --restart/--roll always exec $EXE fresh, so the stamp IS the
-# version of whatever they just launched. This is exactly the HIMMEL-3051
+# version of whatever they just launched. This is exactly the
 # drift: --install refused (unit running, version differed) so the stamp
 # was never bumped, and the running binary is provably still the old one.
 version_stale() { [ "$(installed_version)" = "$VERSION" ] && return 1; return 0; }
@@ -351,7 +350,7 @@ install_binary() {
   # Back up the previous binary/stamp (if any) before overwriting -- a caller
   # rolling over a working install (cmd_roll) can restore this pair if a
   # later step fails, instead of leaving the lane on a broken candidate with
-  # no way back (HIMMEL-3051 CR finding).
+  # no way back.
   [ -x "$EXE" ] && { cp -p "$EXE" "$EXE.prev" || die "backing up the previous binary before install failed"; }
   [ -f "$VER_STAMP" ] && { cp -p "$VER_STAMP" "$VER_STAMP.prev" || die "backing up the previous version stamp before install failed"; }
   install -m 755 "$TMP_DIR/cli-proxy-api" "$EXE" || die "installing binary to $EXE failed"
@@ -558,14 +557,14 @@ cmd_restart() {
   fi
 }
 
-# --- roll (HIMMEL-3051) ----------------------------------------------------
+# --- roll ----------------------------------------------------
 
 # roll_recover_and_die: any failure after install_binary has (possibly)
 # overwritten $EXE/$VER_STAMP. Restore the backed-up previous binary/stamp
 # (a no-op if there was none, e.g. a first --install-via---roll), relaunch it
 # if the proxy was alive before this --roll, then die with $2 -- never leaves
-# a stopped proxy on an unusable candidate with no way back (HIMMEL-3051 CR
-# finding). $1 is "was the proxy alive before we stopped it for this --roll".
+# a stopped proxy on an unusable candidate with no way back.
+# $1 is "was the proxy alive before we stopped it for this --roll".
 roll_recover_and_die() {
   local was_alive="$1" msg="$2"
   proxy_alive && stop_proxy_now

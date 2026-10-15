@@ -1,4 +1,4 @@
-﻿# boot-preflight.ps1 (HIMMEL-1163) - boot/logon readiness-check WATCHDOG.
+﻿# boot-preflight.ps1 - boot/logon readiness-check WATCHDOG.
 #
 # WHY: a stale codex-gateway credential, a missing lane API key, or a
 # disarmed orphan-sweep cadence is otherwise only discovered MID-RUN, hours
@@ -59,7 +59,7 @@
 # REGISTRATION (operator-run - this script never arms itself; the
 # interactive session's rogue-schedule guard blocks a live Claude session
 # from doing it, and by design the operator arms boot-time persistence).
-# Every run publishes a wscript //B shim beside its log (HIMMEL-1753:
+# Every run publishes a wscript //B shim beside its log (
 # powershell.exe -WindowStyle Hidden was MEASURED to still allocate a
 # visible console — the shape this repo's cadence tasks moved off — while
 # wscript hosting a shim that runs this script hidden allocates zero), so
@@ -68,7 +68,7 @@
 #   Register-ScheduledTask -TaskName 'HIMMEL-BootPreflight' `
 #     -Trigger (New-ScheduledTaskTrigger -AtLogOn) `
 #     -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '//B "<userhome>\.claude\boot-preflight\boot-preflight.vbs"') `
-#     -Description 'HIMMEL boot readiness check (HIMMEL-1163)'
+#     -Description 'HIMMEL boot readiness check'
 #
 # Usage:
 #   powershell -NoProfile -File scripts/setup/boot-preflight.ps1
@@ -129,7 +129,7 @@ function New-SweepTriggerDescriptor {
 # ISO-8601 PT1H AND the repetition runs indefinitely. A PT1H trigger with a
 # finite Duration (or StopAtDurationEnd enabled) stops repeating once its window
 # elapses - the sweep then goes dark while still LOOKING armed to an
-# interval-only check (HIMMEL-1163 CR: validate the whole repetition LIFETIME,
+# interval-only check (validate the whole repetition LIFETIME,
 # not just the interval). An indefinite pattern has no Duration (Interval alone -
 # see the Task Scheduler docs: no Duration => repeat forever), so a non-empty
 # Duration OR a set StopAtDurationEnd both disqualify. Fed the raw
@@ -148,7 +148,7 @@ function Test-SweepArmed {
 }
 
 # "Armed" for the WHOLE task requires EVERY trigger to satisfy Test-SweepArmed,
-# not just any one (CR round 2, HIMMEL-1163) - a task with more than one trigger
+# not just any one - a task with more than one trigger
 # and only SOME of them durably-hourly still leaves a gap. Fed trigger
 # descriptors (Interval + Duration + StopAtDurationEnd), not bare interval
 # strings, so the lifetime check reaches every trigger. An EMPTY collection is
@@ -172,8 +172,8 @@ function Test-AllSweepTriggersArmed {
 
 # Pure .env-text parser: KeyName's value on a `KEY=value` line (first match,
 # trimmed, one surrounding matching pair of quotes stripped). $null when
-# absent, EnvText is empty, or the value is empty (bare or after unquoting -
-# CR round 1, HIMMEL-1163): a `.env` convention like KEY="v" / KEY='v' is
+# absent, EnvText is empty, or the value is empty (bare or after unquoting):
+# a `.env` convention like KEY="v" / KEY='v' is
 # common, and returning the value WITH its quotes was two real bugs - a
 # quoted-empty KEY="" looked non-empty (false "present") to Test-KeysPresent,
 # and the Telegram token/chat_id would have been sent to the API URL/body
@@ -196,7 +196,7 @@ function Get-EnvValue {
     $lastChar = $val.Substring($val.Length - 1, 1)
     if (($firstChar -eq '"' -or $firstChar -eq "'") -and ($firstChar -eq $lastChar)) {
       $val = $val.Substring(1, $val.Length - 2)
-      # Re-trim AFTER stripping the quote pair (CR round 3, HIMMEL-1163): a
+      # Re-trim AFTER stripping the quote pair: a
       # quoted whitespace-only value (KEY="   ") loses its quotes above and
       # leaves bare spaces, which IsNullOrEmpty does NOT catch (it is only
       # empty, not whitespace-only) - the key would misreport "present".
@@ -263,7 +263,7 @@ function Get-ReadinessReport {
   }
 
   # --- 2. gateway ---
-  # Remediation differs by failure MODE (CR round 2, HIMMEL-1163): 000 means
+  # Remediation differs by failure MODE: 000 means
   # the proxy is simply unreachable (task not running / verifier failed) -
   # telling the operator to re-login when the gateway is DOWN, not
   # rejecting a credential, is actively misleading. Only 401 (up, credential
@@ -327,7 +327,7 @@ $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
 $LogDir = Join-Path $userHome '.claude\boot-preflight'
 $LogPath = Join-Path $LogDir 'boot-preflight.log'
 
-# HIMMEL-1753 (glm-4): the hint registers wscript.exe //B against a .vbs shim,
+# The hint registers wscript.exe //B against a .vbs shim,
 # NOT powershell.exe -WindowStyle Hidden — that shape was MEASURED to still
 # allocate a visible console (cadence-format.sh v11), and wscript //B hosting a
 # shim that runs this script hidden allocates zero. A hint pointing at a shim
@@ -403,7 +403,7 @@ try {
 }
 
 # --- 2. gateway: start the task if not Running, then POLL -Verify until
-# healthy or a bounded timeout (CR round 1, HIMMEL-1163). A single -Verify
+# healthy or a bounded timeout. A single -Verify
 # right after Start-ScheduledTask races the proxy's own bind time - on a
 # slow boot a fixed short sleep would misreport a still-starting gateway as
 # stale-credential and fire a false alert. Bounded poll instead (repo
@@ -476,7 +476,7 @@ if (-not $report.Ready) {
       Invoke-RestMethod -Uri $uri -Method Post -Body @{ chat_id = $telegramChatId; text = $report.AlertText } -TimeoutSec 10 -ErrorAction Stop | Out-Null
       $telegramNote = 'alert sent via Telegram'
     } catch {
-      # HIMMEL-1163 (CR): fixed message, NOT $_ — the exception can echo the
+      # Fixed message, NOT $_ — the exception can echo the
       # request URI (which carries the bot token) into the log. Degraded
       # log-only behavior is preserved; the token is never surfaced.
       $telegramNote = 'telegram send FAILED (degraded to log-only)'

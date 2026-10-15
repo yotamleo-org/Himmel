@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-choose-mode.sh -- hermetic tests for choose-mode.sh (HIMMEL-4767,
-# HIMMEL-4748 WP8): setup asks for tracker and forge and writes git config.
+# test-choose-mode.sh -- hermetic tests for choose-mode.sh:
+# setup asks for tracker and forge and writes git config.
 # Every case runs in a temp repo; answers arrive on stdin.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"

@@ -41,10 +41,10 @@
   .\cli-proxy-lane.ps1 -Register
 
 .EXAMPLE
-  # roll a pinned-binary bump over a RUNNING proxy (HIMMEL-1451): either three
+  # roll a pinned-binary bump over a RUNNING proxy: either three
   # separate calls (-Stop; -Install; -Start), the combined form
   .\cli-proxy-lane.ps1 -Install -Restart
-  # or the single guarded subcommand that also verifies the pin (HIMMEL-3051)
+  # or the single guarded subcommand that also verifies the pin
   .\cli-proxy-lane.ps1 -Roll
 #>
 [CmdletBinding()]
@@ -100,12 +100,12 @@ function Assert-Config {
 # Get-InstalledProxyVersion: mirrors the bash .sh twin's installed_version --
 # $Exe and $VerStampPath are written together, atomically, by the same swap
 # (Invoke-ProxyBinarySwap), so the stamp faithfully reads whatever is
-# currently on disk (HIMMEL-3051).
+# currently on disk.
 function Get-InstalledProxyVersion {
     if (Test-Path $VerStampPath) { (Get-Content $VerStampPath -ErrorAction SilentlyContinue | Select-Object -First 1) } else { $null }
 }
 
-# --- lifecycle helpers (-Stop / -Restart, HIMMEL-1451) -----------------------
+# --- lifecycle helpers (-Stop / -Restart) -----------------------
 
 function Get-ProxyProcess {
     # Find the running proxy by process name. The exe is cli-proxy-api.exe, so
@@ -175,7 +175,7 @@ function Wait-ProxyRunning([int]$TimeoutSeconds = 20, [switch]$RequireHealthy) {
     return $false
 }
 
-# --- logon-task registration (HIMMEL-1822) ------------------------------------
+# --- logon-task registration ------------------------------------
 
 function Write-LauncherVbs {
     # The GUI-subsystem launcher the logon task points at. The exe is a
@@ -204,13 +204,13 @@ CreateObject("WScript.Shell").Run """$ExePath"" -config ""$ConfigPath""", 0, Fal
     # non-English username) would otherwise be decoded by WScript's legacy ANSI
     # code-page fallback and corrupt the path - the same [PS1-NO-BOM] defect
     # class shell-lint.sh already polices for this repo's own .ps1 files
-    # (HIMMEL-1432). A BOM is a no-op for pure-ASCII content, so this is safe
+    #. A BOM is a no-op for pure-ASCII content, so this is safe
     # for every install, not just non-ASCII ones.
     [System.IO.File]::WriteAllText($LauncherPath, $body, (New-Object System.Text.UTF8Encoding $true))
 }
 
 function Get-ProxyTaskDefenderHelp {
-    # HIMMEL-1822: Windows Defender's ML heuristic flags the registration
+    # Windows Defender's ML heuristic flags the registration
     # command line itself (a scheduled task launching a WSH script at logon is
     # a textbook persistence pattern) as Trojan:Win32/Commando.A!ml and removes
     # the task - three observed removals on this fleet (2026-08-14, 2026-08-16
@@ -535,7 +535,7 @@ function Install-ProxyBinary {
     }
 }
 
-# Add-ProxyRetryConfig: twin of the .sh ensure_retry_config (HIMMEL-5391).
+# Add-ProxyRetryConfig: twin of the .sh ensure_retry_config.
 # CLIProxyAPI's request-retry runs extra credential rounds on 403/408/429/500/
 # 502/503/504 (an upstream 502 and the auth-cooldown 503); max-retry-interval
 # caps the cooldown wait in seconds (config.example.yaml, v7.3.15). Appends only
@@ -558,10 +558,10 @@ $restartCompletedDuringInstall = $false
 
 if ($Roll) {
     # Sugar over the existing, already-verifying -Install -Restart combo
-    # (HIMMEL-1468's deferred-stop atomic swap already stops -> installs ->
+    # (the deferred-stop atomic swap already stops -> installs ->
     # restarts -> verifies healthy, with full rollback on failure) -- except
     # a no-op is checked FIRST so an already-pinned host does not bounce the
-    # running proxy for nothing (HIMMEL-3051).
+    # running proxy for nothing.
     if ((Test-Path $Exe) -and ((Get-InstalledProxyVersion) -eq $Version)) {
         Write-Host "cli-proxy-lane: already at pinned v${Version} -- -Roll is a no-op."
     } else {
@@ -590,7 +590,7 @@ max-retry-interval: 30
         Write-Host "config already present: $Cfg"
         Add-ProxyRetryConfig
     }
-    # Version stamp makes -Install pin-aware (CR r1 codex-1, HIMMEL-1451): a
+    # Version stamp makes -Install pin-aware: a
     # bare exe-exists check would skip the download forever, so bumping $Version
     # could never roll an existing install and the drift-row's documented
     # recovery path (-Install then -Restart) would silently no-op. A missing
@@ -604,7 +604,7 @@ max-retry-interval: 30
         # proxy in THIS invocation. -Restart validates the candidate before the
         # transaction ends; the later $Stop block finds nothing to stop. The stop
         # is DEFERRED until just before
-        # the atomic swap (HIMMEL-1468): it used to run BEFORE the download, so a
+        # the atomic swap: it used to run BEFORE the download, so a
         # download/extract failure left the proxy DOWN until manual recovery. Now
         # the temp download/extract resolves first and the running instance is
         # touched only once the new binary and rollback copy are staged, shrinking
@@ -622,7 +622,7 @@ max-retry-interval: 30
         }
         # Unique per-run temp paths; cleanup in finally so a failed download/extract
         # leaves no orphaned artifacts. Trust boundary = pinned HTTPS release URL
-        # (operator-accepted, HIMMEL-979); upstream publishes no per-asset checksum.
+        #; upstream publishes no per-asset checksum.
         $stamp = [guid]::NewGuid().ToString('N')
         $zip = Join-Path $env:TEMP "cliproxy-$stamp.zip"
         $tmp = Join-Path $env:TEMP "cliproxy-$stamp"
@@ -650,7 +650,7 @@ max-retry-interval: 30
     } else {
         Write-Host "binary already present at pinned v${Version}: $Exe"
     }
-    # Launcher next to the exe (HIMMEL-1822): a fresh machine has no
+    # Launcher next to the exe: a fresh machine has no
     # start-hidden.vbs yet, and -Register points the logon task at it. Rewritten
     # on every -Install so the embedded paths always track the resolved root.
     Write-LauncherVbs -LauncherPath $Vbs -ExePath $Exe -ConfigPath $Cfg
@@ -669,7 +669,7 @@ if ($Login) {
 }
 
 if ($Register) {
-    # HIMMEL-1822: hidden wscript launcher as the task action + Defender
+    # Hidden wscript launcher as the task action + Defender
     # removal detection live in the function (see its comments).
     Register-ProxyLogonTask
 }
