@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016,SC2181 # compact status assertions; SC2016: raw-shape command strings are intentionally single-quoted literals.
-# Tests for block-jira-compound-write.sh (HIMMEL-1077).
+# Tests for block-jira-compound-write.sh.
 set -uo pipefail
 # A CDPATH from the operator's shell would make the SCRIPT_DIR `cd` below resolve
 # somewhere else (and print the target); unset it before any cd (coderabbit).
@@ -52,7 +52,7 @@ run_hook Bash "node $JIRA comment HIMMEL-1 --comment-file /tmp/c.md"
 run_hook Bash "node $JIRA transition HIMMEL-1 Done"
 [ "$RC" -eq 0 ] && pass "literal jira transition allowed" || fail "literal transition bounced (rc=$RC)"
 
-# --- 4. cd-prefixed literal write → untouched (HIMMEL-205 sanctioned shape)
+# --- 4. cd-prefixed literal write → untouched (sanctioned shape)
 run_hook Bash "cd /c/Users/x/himmel && node $JIRA create --type Task --title \"x\" --desc-file /tmp/b.md"
 [ "$RC" -eq 0 ] && pass "cd-prefixed literal create allowed" || fail "cd-prefixed create bounced (rc=$RC)"
 
@@ -65,7 +65,6 @@ node $JIRA create --type Task --title \"x\" --desc-file /tmp/b.md"
 
 # --- 5.5 a heredoc BODY (or a comment) that merely MENTIONS the CLI is data, not
 #         an invocation — documenting the command must not trip the guard
-#         (codex-adv round 4, medium).
 run_hook Bash "cat > /tmp/doc.md <<'EOF'
 Run this to file a ticket:
 node $JIRA create --type Task --title x
@@ -83,14 +82,14 @@ run_hook Bash "$crlf_cmd"
 [ "$RC" -eq 2 ] && pass "CRLF heredoc + trailing write bounced" || fail "CRLF heredoc swallowed the write (rc=$RC)"
 
 # --- 5.8 bash allows a TAB (not just a space) between << and the delimiter —
-#         the body must still be recognised as data (panel round 6).
+#         the body must still be recognised as data.
 tab_cmd=$(printf 'cat > /tmp/doc.md <<\t%sEOF%s\nnode %s create --type Task --title x\nEOF' "'" "'" "$JIRA")
 run_hook Bash "$tab_cmd"
 [ "$RC" -eq 0 ] && pass "tab-separated heredoc delimiter parsed (body is data)" || fail "tab-delimited heredoc body scanned as code (rc=$RC)"
 
 # --- 5.9 an UNQUOTED heredoc delimiter still expands substitutions, so a write
 #         nested in the body really runs and must be seen; a QUOTED delimiter is
-#         inert text and must not be (codex-adv round 6).
+#         inert text and must not be.
 run_hook Bash "cat <<EOF
 \$(node $JIRA create --type Task --title x)
 EOF"
@@ -102,14 +101,14 @@ EOF"
 [ "$RC" -eq 0 ] && pass "same text in a QUOTED heredoc body allowed" || fail "quoted-heredoc doc text bounced (rc=$RC)"
 
 # --- 5.95 shell operators bound tokens with or without cosmetic spaces
-#          (codex-adv round 6): `;node`, `&&node`, `|node` all RUN node.
+#: `;node`, `&&node`, `|node` all RUN node.
 for op in ';' '|'; do
   run_hook Bash "echo ok${op}node $JIRA create --desc \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "write after a space-less '${op}' missed (rc=$RC)"
 done
 pass "writes adjacent to ; and | bounced without cosmetic spaces"
 
-# CONDITIONAL writes are left alone (panel + codex round 14): this hook fires before
+# CONDITIONAL writes are left alone: this hook fires before
 # either side has run, and "reissue as ONE literal command" strips the condition —
 # filing a ticket exactly when the original wanted none (||) or when its prerequisite
 # was never met (&&).
@@ -123,7 +122,7 @@ run_hook Bash "node $JIRA get HIMMEL-1 || node $JIRA create --desc \"\$(cat body
 [ "$RC" -eq 0 ] && pass "get-or-create fallback left alone" || fail "get||create bounced (rc=$RC)"
 
 # A conditional whose RHS is a GROUP: the write never runs, and the `;` inside the
-# group must not read as a fresh unconditional statement (codex round 20 [high]).
+# group must not read as a fresh unconditional statement.
 run_hook Bash "false && { echo skipped; node $JIRA create --desc \"\$(cat b)\"; }"
 [ "$RC" -eq 0 ] && pass "grouped conditional RHS left alone" || fail "grouped conditional write bounced (rc=$RC)"
 
@@ -149,7 +148,7 @@ for term in "exit>/dev/null" "command exit" "builtin exit"; do
 done
 pass "wrapped/redirected unconditional exit truncates scanning"
 
-# HIMMEL-1182 — the OTHER unconditional terminators stop scanning too, so a write
+# the OTHER unconditional terminators stop scanning too, so a write
 # made unreachable by them is left alone (not bounced with guidance to reissue):
 #   * `exec <cmd>` REPLACES the shell — a following `node … create` never runs.
 #   * `FOO=1 exit` / `FOO=1 exec <cmd>` — an assignment prefix is not a condition;
@@ -168,7 +167,7 @@ for term in \
 done
 pass "exec-with-command / assignment-prefixed terminators truncate scanning"
 
-# CRITICAL DISTINCTION (HIMMEL-1182): `exec` with ONLY redirections does NOT
+# CRITICAL DISTINCTION: `exec` with ONLY redirections does NOT
 # terminate — it reassigns file descriptors and execution CONTINUES — so a write
 # after it is still reachable and MUST still bounce. (`2>&1` is normalised to `2>1`
 # upstream; `>>`, fd-digit, and glued `exec>>` forms all stay redirect-only.)
@@ -208,14 +207,14 @@ run_hook Bash "node scripts/jira/dist/index.js create --type Task --title x --de
 [ "$RC" -eq 2 ] && pass "relative-canonical CLI (no cd) still bounced" || fail "relative CLI no-cd not bounced (rc=$RC)"
 
 # The UNCONDITIONAL part of such a statement is still in scope — including when the
-# conditional RHS is a GROUP containing separators (panel round 21).
+# conditional RHS is a GROUP containing separators.
 run_hook Bash "node $JIRA create --desc \"\$(cat /tmp/a.md)\" || echo failed"
 [ "$RC" -eq 2 ] && pass "write BEFORE a || still bounced" || fail "pre-|| write missed (rc=$RC)"
 
 run_hook Bash "node $JIRA create --desc \"\$(cat /tmp/a.md)\" || { echo failed; exit 1; }"
 [ "$RC" -eq 2 ] && pass "write before a GROUPED || RHS still bounced" || fail "pre-|| write with grouped RHS missed (rc=$RC)"
 
-# --- 5.96 delimiter quoting/closing follows bash exactly (panel round 8):
+# --- 5.96 delimiter quoting/closing follows bash exactly:
 #          `<<\EOF` is quoted (inert body), and only `<<-` closes on a
 #          TAB-indented delimiter — `  EOF` does NOT close a `<<EOF` body.
 run_hook Bash "cat > /tmp/doc.md <<\\EOF
@@ -238,11 +237,11 @@ EOF"
 [ "$RC" -eq 0 ] && pass "space-indented delimiter does not close the body early" || fail "premature heredoc close (rc=$RC)"
 
 # --- 5.97 subshell grouping inside a substitution must not pop the substitution
-#          frame early and re-mask the rest of it (coderabbit round 8).
+#          frame early and re-mask the rest of it.
 run_hook Bash "key=\"\$( (node $JIRA create --type Task --title x) )\" ; echo \$key"
 [ "$RC" -eq 2 ] && pass "write inside \$( (…) ) bounced" || fail "nested-paren substitution write missed (rc=$RC)"
 
-# --- 5.98 a BROKEN gateway → fail open (coderabbit round 8). We cannot tell
+# --- 5.98 a BROKEN gateway → fail open. We cannot tell
 #          "declined" from "crashed", and if nothing is approvable the bounce
 #          would tell the agent to retry the shape it already used.
 GW_TMP="$(mktemp -d)"
@@ -265,8 +264,8 @@ run_hook Bash "$trail_cmd"
 [ "$RC" -eq 0 ] && pass "trailing-space delimiter does not close the body" || fail "trailing-space delimiter closed early (rc=$RC)"
 
 # A redirect TARGET is never mistaken for the command — including the case that
-# matters, a file literally NAMED node (codex round 11 [high]; coderabbit round 11
-# raised the same class). `printf x >node …/index.js create` runs PRINTF.
+# matters, a file literally NAMED node.
+# `printf x >node …/index.js create` runs PRINTF.
 run_hook Bash "printf x >node $JIRA create"
 [ "$RC" -eq 0 ] && pass "redirect to a file named 'node' not treated as a write" || fail "redirect target 'node' classified as a jira write (rc=$RC)"
 
@@ -274,14 +273,13 @@ run_hook Bash "sudo apt install q ; cat > /tmp/f node $JIRA create"
 [ "$RC" -eq 0 ] && pass "redirect target + CLI args not treated as a write" || fail "redirect target classified as a jira write (rc=$RC)"
 
 # ...while a redirect that really precedes the command keeps the command visible.
-# (`;`, not `&&`: a conditional write is out of scope by design — see round 14.)
+# (`;`, not `&&`: a conditional write is out of scope by design)
 run_hook Bash "sudo apt install q ; >/tmp/out node $JIRA create --desc \"\$(cat a)\""
 [ "$RC" -eq 2 ] && pass "leading redirect before a real write still bounced" || fail "leading-redirect write missed (rc=$RC)"
 
 # An unrelated node CLI whose path merely ENDS LIKE ours is not himmel's Jira CLI:
 # the gateway declines it (wrong path), and bouncing it would tell the agent to
 # rerun its verb against the REAL Jira CLI — filing a ticket it never asked for
-# (codex round 11 [high]).
 run_hook Bash "sudo apt install q ; node /tmp/myjira/dist/index.js create --title x --desc \"\$(cat b)\""
 [ "$RC" -eq 0 ] && pass "near-suffix non-himmel CLI path untouched" || fail "unrelated myjira CLI bounced (rc=$RC)"
 
@@ -298,12 +296,11 @@ B"
 [ "$RC" -eq 0 ] && pass "multi-heredoc command fails open (no wrong block)" || fail "multi-heredoc produced a bounce (rc=$RC)"
 
 # --- 5.995 an ARRAY assignment builds data, it executes nothing: bouncing it would
-#           push the agent to file a ticket the command never attempted (codex
-#           round 12 [high]).
+#           push the agent to file a ticket the command never attempted.
 run_hook Bash "sudo apt install q ; args=(node $JIRA create --title x)"
 [ "$RC" -eq 0 ] && pass "array assignment not treated as a write" || fail "array assignment bounced (rc=$RC)"
 
-# --- 5.996 a CONDITIONAL write is left alone (codex round 13 [high]): the bounce
+# --- 5.996 a CONDITIONAL write is left alone: the bounce
 #           says "reissue as ONE literal command", which drops the condition and
 #           would perform a write the original might never perform. Undetected =
 #           status quo; wrong guidance = an unwanted ticket.
@@ -314,7 +311,7 @@ run_hook Bash "if node $JIRA create --desc \"\$(cat b)\"; then echo ok; fi"
 [ "$RC" -eq 0 ] && pass "'if <write>' left alone" || fail "if-prefixed write bounced (rc=$RC)"
 
 # MULTILINE conditionals: segments are flat, so a body line would otherwise read as
-# an unconditional command and lose its condition (codex round 16 [high]).
+# an unconditional command and lose its condition.
 run_hook Bash "if test -f body; then
   node $JIRA create --desc \"\$(cat body)\"
 fi"
@@ -323,7 +320,7 @@ fi"
 run_hook Bash "for f in a b; do
   node $JIRA create --desc \"\$(cat \$f)\"
 done"
-# HIMMEL-4815: a loop now bounces with its OWN recipe (expand into N literal
+# a loop now bounces with its OWN recipe (expand into N literal
 # commands, evaluating any condition) — that keeps the meaning a plain "reissue it
 # standalone" would lose, which is why loops used to be left alone.
 [ "$RC" -eq 2 ] && pass "multiline loop body write bounced with the loop recipe" || fail "loop body not bounced (rc=$RC)"
@@ -334,14 +331,14 @@ esac"
 [ "$RC" -eq 0 ] && pass "case-branch write left alone" || fail "case branch bounced (rc=$RC)"
 
 # A function DEFINITION executes nothing — bouncing it would order a write the
-# command never performed (codex round 13 [high]).
+# command never performed.
 run_hook Bash "deploy() {
   node $JIRA create --desc \"\$(cat b)\"
 }"
 [ "$RC" -eq 0 ] && pass "function definition not treated as a write" || fail "function definition bounced (rc=$RC)"
 
 # ...including the `function name { … }` spelling, which has no parens for the raw
-# check to catch (panel round 15).
+# check to catch.
 run_hook Bash "function deploy {
   node $JIRA create --desc \"\$(cat b)\"
 }"
@@ -351,14 +348,13 @@ run_hook Bash "function deploy {
 run_hook Bash "node $JIRA create --title \"fix function foo\" --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "'function' inside a quoted title still bounces" || fail "quoted 'function' disarmed the guard (rc=$RC)"
 
-# A grouped write after && stays out of scope (panel round 15 read this as a gap;
-# quote_mask blanks the group parens, so the && truncation already covers it).
+# A grouped write after && stays out of scope.
+# quote_mask blanks the group parens, so the && truncation already covers it.
 run_hook Bash "test -f b && (node $JIRA create --desc \"\$(cat b)\")"
 [ "$RC" -eq 0 ] && pass "grouped write after && left alone" || fail "&&-grouped write bounced (rc=$RC)"
 
 # A leading `{` must not hide the compound's keyword: `{ case … }` and
-# `{ function f { … }; }` are still a conditional branch and a definition (codex
-# round 24 [high]).
+# `{ function f { … }; }` are still a conditional branch and a definition.
 run_hook Bash "{ case x in y) echo skipped; node $JIRA create --desc \"\$(cat b)\" ;; esac; }"
 [ "$RC" -eq 0 ] && pass "grouped 'case' branch left alone" || fail "grouped case branch bounced (rc=$RC)"
 
@@ -380,7 +376,7 @@ run_hook Bash "env JIRA_PROJECT_KEY=HIMMEL node $JIRA create --desc \"\$(cat b)\
 
 # ...but `command`/`nohup`/`exec` take a command NAME, not env assignments:
 # `command FOO=1 node …` looks for a program named "FOO=1" and never runs node, so
-# bouncing it would push a write the command never performed (panel round 16).
+# bouncing it would push a write the command never performed.
 for w in command nohup exec; do
   run_hook Bash "$w JIRA_PROJECT_KEY=HIMMEL node $JIRA create --desc \"\$(cat b)\""
   [ "$RC" -eq 0 ] || fail "'$w VAR=v node …' bounced though node never runs (rc=$RC)"
@@ -392,7 +388,7 @@ run_hook Bash "nohup node $JIRA create --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "write behind bare 'nohup' bounced" || fail "nohup-wrapped write missed (rc=$RC)"
 
 # --- 5.997 only a VALID name= is an assignment: `foo-bar=1 node …` makes bash look
-#           for a COMMAND named `foo-bar=1`, so node never runs (panel round 13).
+#           for a COMMAND named `foo-bar=1`, so node never runs.
 run_hook Bash "foo-bar=1 node $JIRA create --desc \"\$(cat b)\""
 [ "$RC" -eq 0 ] && pass "invalid assignment prefix is not skipped" || fail "foo-bar=1 prefix bounced (rc=$RC)"
 
@@ -401,7 +397,6 @@ run_hook Bash "JIRA_PROJECT_KEY=HIMMEL node $JIRA create --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "valid assignment prefix still resolves to node" || fail "valid assignment prefix missed (rc=$RC)"
 
 # --- 5.998 an array's ELEMENTS are data, but a substitution among them still runs
-#           (coderabbit round 13).
 run_hook Bash "args=(a \$(node $JIRA create --title x) b) ; echo \${args[0]}"
 [ "$RC" -eq 2 ] && pass "write in a substitution inside an array bounced" || fail "array-substitution write missed (rc=$RC)"
 
@@ -414,16 +409,15 @@ run_hook Bash "$esc_cmd"
 
 # --- 5.9995 `<<''` is a legal EMPTY quoted delimiter: its body is inert, and the
 #            "is a heredoc pending" test must not read the empty delimiter as
-#            no-heredoc and scan the body as code (coderabbit round 15).
+#            no-heredoc and scan the body as code.
 # `$( … )` strips TRAILING newlines, and here the delimiter IS an empty line — so a
-# sentinel command after it keeps the fixture intact (coderabbit round 21).
+# sentinel command after it keeps the fixture intact.
 empty_delim=$(printf "cat > /tmp/doc.md <<''\nnode %s create --type Task --title x\n\necho done\n" "$JIRA")
 run_hook Bash "$empty_delim"
 [ "$RC" -eq 0 ] && pass "empty quoted delimiter body is inert" || fail "<<'' body scanned as code (rc=$RC)"
 
 # --- 5.9996 conditional scope covers the WHOLE statement, not just up to the next
 #            pipe: `false && printf x | node … create` is conditional throughout
-#            (coderabbit round 17).
 run_hook Bash "false && printf x | node $JIRA create --desc \"\$(cat b)\""
 [ "$RC" -eq 0 ] && pass "conditional pipeline left alone" || fail "conditional pipeline bounced (rc=$RC)"
 
@@ -445,7 +439,7 @@ run_hook Bash "node --require /tmp/hook.js $JIRA create --desc \"\$(cat b)\""
 # --- 5.9999 the retry names the CLI that was ACTUALLY invoked when that path is
 #            absolute: another checkout's CLI may front a different Jira, so echoing
 #            our primary checkout's path back would redirect the write to the wrong
-#            instance (panel round 18).
+#            instance.
 OTHER="/c/Users/x/other-repo/scripts/jira/dist/index.js"
 run_hook Bash "node $OTHER create --title x --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "other-checkout CLI still bounced" || fail "other-checkout CLI missed (rc=$RC)"
@@ -464,15 +458,14 @@ run_hook Bash "node $GLOBP create --title x --desc \"\$(cat b)\""
 
 # --- 5.99991 a QUOTED delimiter may contain spaces: `<<'END MARK'` is ONE delimiter,
 #             and its body is inert. Recording a short "END" would let a body line
-#             "END" close early and expose inert text (codex + coderabbit round 18).
+#             "END" close early and expose inert text.
 mw=$(printf "cat > /tmp/doc.md <<'END MARK'\nnode %s create --title x\nEND\nEND MARK\n" "$JIRA")
 run_hook Bash "$mw"
 [ "$RC" -eq 0 ] && pass "quoted multi-word delimiter body is inert" || fail "<<'END MARK' body scanned as code (rc=$RC)"
 
 # --- 5.99992 ARITHMETIC evaluates, it does not execute: CLI text inside `$((…))` or
 #             `((…))` is data, and bouncing it would order a write the command never
-#             ran (panel round 19; my round-18 disproof probed `$((1+2))`, which never
-#             exercised the risk).
+#             ran.
 run_hook Bash "sudo apt install q ; x=\$((node $JIRA create))"
 [ "$RC" -eq 0 ] && pass "CLI text inside \$((…)) not treated as a write" || fail "arithmetic expansion bounced (rc=$RC)"
 
@@ -488,7 +481,7 @@ run_hook Bash "key=\"\$( (node $JIRA create --title x) )\""
 [ "$RC" -eq 2 ] && pass "\$( (…) ) subshell write still bounced" || fail "subshell write missed (rc=$RC)"
 
 # --- 5.99993 arithmetic inside DOUBLE QUOTES / a heredoc body is still arithmetic
-#             (codex round 19 [high]) — the same class as 5.99992, other states.
+# the same class as 5.99992, other states.
 run_hook Bash "sudo apt install q ; x=\"\$((node $JIRA create))\""
 [ "$RC" -eq 0 ] && pass "arithmetic inside double quotes not treated as a write" || fail "quoted arithmetic bounced (rc=$RC)"
 
@@ -501,18 +494,17 @@ EOF"
 run_hook Bash "x=\"\$(node $JIRA create --title y)\""
 [ "$RC" -eq 2 ] && pass "substitution inside double quotes still bounced" || fail "quoted substitution write missed (rc=$RC)"
 
-# ...but a SUBSTITUTION among arithmetic operands still runs (coderabbit round 20).
+# ...but a SUBSTITUTION among arithmetic operands still runs.
 run_hook Bash "x=\$(( \$(node $JIRA create --title y) + 1 ))"
 [ "$RC" -eq 2 ] && pass "write in a substitution inside arithmetic bounced" || fail "arithmetic-substitution write missed (rc=$RC)"
 
 # --- 5.99994 `()` inside a quoted TITLE is data, not a function definition: it must
-#             not disable the guard on a real write (codex round 19 [medium]).
+#             not disable the guard on a real write.
 run_hook Bash "node $JIRA create --title 'Fix parse()' --desc \"\$(cat body)\""
 [ "$RC" -eq 2 ] && pass "'()' in a quoted title does not disarm the guard" || fail "quoted '()' disabled the guard (rc=$RC)"
 
 # --- 5.99995 a substitution BODY is its own command context: `echo "$(node … create)"`
 #             really writes during expansion, even though the outer command is echo
-#             (codex round 21).
 run_hook Bash "echo \"\$(node $JIRA create --title y)\""
 [ "$RC" -eq 2 ] && pass "write inside \$(…) as an ARGUMENT bounced" || fail "substitution-argument write missed (rc=$RC)"
 
@@ -520,18 +512,17 @@ run_hook Bash "echo \"\`node $JIRA create --title y\`\""
 [ "$RC" -eq 2 ] && pass "write inside backticks as an argument bounced" || fail "backtick-argument write missed (rc=$RC)"
 
 # An ASSIGNMENT-value substitution may still be followed by a real command:
-# `FOO=$(date) node … create` (panel round 28) — unlike an argument substitution,
+# `FOO=$(date) node … create` — unlike an argument substitution,
 # whose tail is arguments.
 run_hook Bash "FOO=\$(date) node $JIRA create --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "write after an assignment-value substitution bounced" || fail "FOO=\$(…) node … create missed (rc=$RC)"
 
-# PROCESS substitution runs its command too (panel round 26).
+# PROCESS substitution runs its command too.
 run_hook Bash "read k < <(node $JIRA create --title x)"
 [ "$RC" -eq 2 ] && pass "write inside <(…) process substitution bounced" || fail "process-substitution write missed (rc=$RC)"
 
 # ...but the OUTER command's own arguments after a substitution are still ARGUMENTS,
-# not a new command: `echo "$(date)" node … create` runs ECHO (coderabbit round 24
-# [critical] — a wrong block introduced by the round-21 boundary fix).
+# not a new command: `echo "$(date)" node … create` runs ECHO.
 run_hook Bash "echo \"\$(date)\" node $JIRA create --title x"
 [ "$RC" -eq 0 ] && pass "outer args after a substitution stay arguments" || fail "outer args read as a command (rc=$RC)"
 
@@ -541,13 +532,12 @@ run_hook Bash "$ansi"
 [ "$RC" -eq 0 ] && pass "ANSI-C quoted delimiter fails open" || fail "<<\$'EOF' bounced (rc=$RC)"
 
 # --- 5.99996 `${…}` text is DATA: a `;` inside must not split off a bogus command
-#             that reads as a real write (coderabbit round 21).
+#             that reads as a real write.
 run_hook Bash "sudo apt install q ; echo \${x:-a; node $JIRA create --title y}"
 [ "$RC" -eq 0 ] && pass "\${…} expansion text not treated as a write" || fail "parameter expansion bounced (rc=$RC)"
 
 # --- 5.99997 `&>` / `&>>` / `>&` are REDIRECTS, not separators: `printf &>/tmp/log
-#             node … create …` runs PRINTF and passes the rest as arguments (codex
-#             round 22 [high]).
+#             node … create …` runs PRINTF and passes the rest as arguments.
 run_hook Bash "printf x &>/tmp/log node $JIRA create --desc-file /tmp/b.md"
 [ "$RC" -eq 0 ] && pass "&> redirect target not treated as a command" || fail "&> redirect bounced (rc=$RC)"
 
@@ -583,19 +573,18 @@ run_hook Bash "node $JIRA create --desc \"\$(cat b)\" >|/tmp/log"
 
 # --- 5.99998 the retry must not tell the agent to DROP targeting options: `create
 #             --project CUSTOMER` retried without it files in the wrong project
-#             (codex round 22 [high]).
 run_hook Bash "node $JIRA create --project CUSTOMER --desc \"\$(cat body)\""
 [ "$RC" -eq 2 ] && pass "create with --project override bounced" || fail "--project create missed (rc=$RC)"
 grep -q "do not pass --project" "$ERR" && fail "guidance tells the retry to drop --project"
 grep -q "keep everything else you already had" "$ERR" && pass "guidance preserves targeting options" || fail "guidance omits keep-your-arguments"
 
 # ...including an env-var prefix: `JIRA_PROJECT_KEY=OTHER node … create` retried
-# without it files in the DEFAULT project (coderabbit round 27).
+# without it files in the DEFAULT project.
 run_hook Bash "JIRA_PROJECT_KEY=OTHER node $JIRA create --desc \"\$(cat body)\""
 [ "$RC" -eq 2 ] && pass "env-prefixed create bounced" || fail "env-prefixed create missed (rc=$RC)"
 grep -q "JIRA_PROJECT_KEY" "$ERR" && pass "guidance preserves a VAR=value prefix" || fail "guidance drops the env prefix"
 
-# HIMMEL-4780: a literal JIRA_PROJECT_KEY=<KEY> prefix on an otherwise literal write
+# a literal JIRA_PROJECT_KEY=<KEY> prefix on an otherwise literal write
 # is gateway-approved, so it is never bounced (it was rc=2, and the bounce told the
 # agent to keep the very prefix it refused).
 run_hook Bash "JIRA_PROJECT_KEY=HIMMEL node $JIRA comment HIMMEL-1 --comment-file f.md"
@@ -660,7 +649,7 @@ node $JIRA comment HIMMEL-1 --comment-file b.md"
 shape_has "command substitution" && pass "unquoted heredoc body \$( named as substitution" || fail "deny omits substitution in an unquoted heredoc body"
 
 # --- 5.99999 node MODES that never run the script write nothing: bouncing them would
-#             recommend a literal invocation that DOES (codex round 28 [high]).
+#             recommend a literal invocation that DOES.
 for mode in --check --version --help; do
   run_hook Bash "node $mode $JIRA create --desc \"\$(cat b)\""
   [ "$RC" -eq 0 ] || fail "'node $mode <cli> create' bounced though node runs nothing (rc=$RC)"
@@ -669,7 +658,7 @@ pass "node --check/--version/--help are not writes"
 
 # --- 5.999991 a NON-canonical relative CLI path dies MODULE_NOT_FOUND and writes
 #              nothing — naming the real primary CLI would turn a typo into a filed
-#              ticket (codex round 28 [high]).
+#              ticket.
 run_hook Bash "node bogus/scripts/jira/dist/index.js create --desc \"\$(cat body)\""
 [ "$RC" -eq 0 ] && pass "non-canonical relative CLI path fails open" || fail "typo'd relative path bounced (rc=$RC)"
 
@@ -693,7 +682,7 @@ run_hook Bash "node $JIRA get HIMMEL-1 && echo create"
 [ "$RC" -eq 0 ] && pass "write verb as a later unrelated arg allowed" || fail "non-verb 'create' bounced (rc=$RC)"
 
 # --- 7.5 the CLI must be the script `node` RUNS, not a path passed as an
-#         argument (codex-1 round 4): otherwise a non-jira command carrying the
+#         argument: otherwise a non-jira command carrying the
 #         path + a write verb would be falsely bounced with jira guidance.
 run_hook Bash "sudo apt install q ; cp $JIRA create"
 [ "$RC" -eq 0 ] && pass "CLI path as a bare argument allowed" || fail "non-node command falsely bounced (rc=$RC)"
@@ -727,7 +716,7 @@ run_hook Bash "node $JIRA create --title x --desc \"\$(cat b)\""
 [ "$RC" -eq 2 ] && pass "no pre-verb option still bounces" || fail "plain create not bounced (rc=$RC)"
 
 # `node` must be the command the segment EXECUTES, not a word inside it
-# (coderabbit round 10) — `echo node … create` runs echo.
+# `echo node … create` runs echo.
 run_hook Bash "sudo apt install q ; echo node $JIRA create --title x"
 [ "$RC" -eq 0 ] && pass "'node …' as echo ARGUMENTS allowed" || fail "non-command-position node bounced (rc=$RC)"
 
@@ -737,7 +726,7 @@ run_hook Bash "git status && node $JIRA transition HIMMEL-1 Done"
 [ "$RC" -eq 0 ] && pass "gateway-safe chain allowed" || fail "gateway-safe chain bounced (rc=$RC)"
 
 #        An &&-gated write the gateway declines is ALSO left alone — not because it
-#        is approvable, but because the guidance cannot preserve the gate (round 14).
+#        is approvable, but because the guidance cannot preserve the gate.
 run_hook Bash "sudo apt install q && node $JIRA transition HIMMEL-1 Done"
 [ "$RC" -eq 0 ] && pass "&&-gated write after an unvettable command left alone" || fail "&&-gated chain bounced (rc=$RC)"
 
@@ -753,14 +742,14 @@ JIRA_COMPOUND_WRITE_OK=1 run_hook Bash "node $JIRA create --title \"a\" --desc \
 run_hook PowerShell "node $JIRA create --title a --desc \"\$(cat x)\" ; echo hi"
 [ "$RC" -eq 0 ] && pass "PowerShell input ignored" || fail "PowerShell input bounced (rc=$RC)"
 
-# --- 11. exactly ONE sanctioned retry shape is named (HIMMEL-1077 comment:
+# --- 11. exactly ONE sanctioned retry shape is named (comment:
 #         retry sequences must not look like tool-shopping to the classifier)
 run_hook Bash "node $JIRA create --type Task --title \"x\" --desc \"\$(cat /tmp/a.md)\""
 [ "$RC" -eq 2 ] && pass "single command with \$(…) bounced" || fail "command-substitution write not bounced (rc=$RC)"
 [ "$(grep -c '^    node ' "$ERR")" -eq 1 ] && pass "bounce names exactly one retry shape" || fail "bounce names $(grep -c '^    node ' "$ERR") retry shapes (want 1)"
 
-# --- 11.5 the retry example names the verb the agent ACTUALLY used (codex-adv
-#          round 4, high): printing a `create` example for a blocked `assign`
+# --- 11.5 the retry example names the verb the agent ACTUALLY used:
+#          printing a `create` example for a blocked `assign`
 #          invites the retry to FILE A TICKET instead of assigning — a wrong
 #          external write caused by our own guidance.
 for verb in transition assign edit move watch unwatch link attach project-create sprint; do
@@ -840,7 +829,7 @@ run_hook Bash "key=\"\`node $JIRA create --type Task --title x --desc-file /tmp/
 run_hook Bash "hits=\"\$(grep -rn 'jira/dist/index.js create' scripts/)\" ; echo \$hits"
 [ "$RC" -eq 0 ] && pass "quoted data inside a substitution allowed" || fail "data-in-substitution false-positive (rc=$RC)"
 
-# --- 14. a QUOTED CLI path stays silent, deliberately (codex-1, HIMMEL-1083):
+# --- 14. a QUOTED CLI path stays silent, deliberately:
 #         the gateway cannot vet a quoted binary either, so a whitespace-path
 #         checkout has NO approvable jira shape — bouncing it would hand the
 #         agent advice it has already followed. Fail open = status quo, never a
@@ -848,7 +837,7 @@ run_hook Bash "hits=\"\$(grep -rn 'jira/dist/index.js create' scripts/)\" ; echo
 run_hook Bash "node \"/c/Users/John Smith/himmel/scripts/jira/dist/index.js\" create --desc \"\$(cat /tmp/a.md)\" ; echo x"  # leak-allow: home-path test fixture
 [ "$RC" -eq 0 ] && pass "quoted CLI path stays silent (documented gap)" || fail "quoted CLI path bounced with unactionable guidance (rc=$RC)"
 
-# --- 14.5 HIMMEL-4815: LOOP / VARIABLE-BINARY / XARGS shapes over the jira CLI.
+# --- 14.5 LOOP / VARIABLE-BINARY / XARGS shapes over the jira CLI.
 #          Each one fell through to the classifier, which denied it cold as
 #          "[External System Writes]" and told the agent not to retry in pieces;
 #          the same writes as N literal commands auto-approved. The bounce names
@@ -873,7 +862,7 @@ run_hook Bash "for k in HIMMEL-1 HIMMEL-2; do node $JIRA transition \$k Done; do
 run_hook Bash "for k in HIMMEL-1 HIMMEL-2; do node $JIRA comment \$k --body \"\$(cat \$k.md)\"; done"
 [ "$RC" -eq 2 ] && pass "for loop with a substituted body bounced" || fail "for loop with \$(…) body not bounced (rc=$RC)"
 # A write AFTER the loop's `done` is not in the loop: it goes to the flat scanner,
-# which keeps its base fail-open on loop/conditional keywords (codex round 2).
+# which keeps its base fail-open on loop/conditional keywords.
 run_hook Bash "for k in 1 2; do echo \$k; done; node $JIRA create --project HIMMEL --summary \"\$(cat s.md)\""
 [ "$RC" -eq 0 ] && pass "write after a finished loop left to the flat scanner (base behaviour)" || fail "write after done bounced as a loop write (rc=$RC)"
 run_hook Bash "if false; then for k in 1; do echo \$k; done; node $JIRA create --project HIMMEL --summary \"\$(cat s.md)\"; fi"
@@ -1009,8 +998,8 @@ deps_rc=$?   # capture BEFORE the assertion: `$?` inside it reports the test, no
 [ "$deps_rc" -eq 0 ] && pass "no deps at all -> fail open" || fail "missing deps bricked the write (rc=$deps_rc)"
 
 # ...and jq specifically, with everything else present: that is the branch the hook
-# actually guards, and the all-deps-gone case alone would not prove it (coderabbit
-# round 28). A stub dir shadowing only jq keeps the real PATH behind it.
+# actually guards, and the all-deps-gone case alone would not prove it.
+# A stub dir shadowing only jq keeps the real PATH behind it.
 JQ_SHADOW="$(mktemp -d)"
 printf '#!/usr/bin/env bash\nexit 127\n' > "$JQ_SHADOW/jq"   # present but unusable
 chmod +x "$JQ_SHADOW/jq" 2>/dev/null
@@ -1021,7 +1010,7 @@ jq_rc=$?
 rm -rf "$JQ_SHADOW"
 rmdir "$EMPTY_PATH_DIR" 2>/dev/null || rm -rf "$EMPTY_PATH_DIR"
 
-# --- escape-class shapes (HIMMEL-5332): one fixture file per shape family. Each
+# --- escape-class shapes: one fixture file per shape family. Each
 # deny-*.cmd is a compound create the splitter used to misread (line continuation,
 # ANSI-C quoting, escaped `#`, `echo <quoted operator> &&`, possibly-empty
 # expansions incl. zsh modifiers/subscripts); each allow-*.cmd is the near-miss

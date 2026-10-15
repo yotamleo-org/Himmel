@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/block-lesson-enforcement-writes.sh (HIMMEL-767
+# Smoke suite for scripts/hooks/block-lesson-enforcement-writes.sh,
 # deliverable 3), the thin PreToolUse wrapper that delegates to
 # scripts/guardrails/lesson-write-fence.sh. This is a THIN-WRAPPER smoke test,
 # not a re-test of the fence's classification logic (that suite is
@@ -52,7 +52,7 @@ check "active + enforcement Write -> deny" block \
 check "active + allowed Write -> allow" allow \
     '{"tool_name":"Write","tool_input":{"file_path":"scripts/foo.sh"}}' \
     "$HOOK" HIMMEL_LESSON_LOOP=1 LESSON_FENCE_POLICY="$T/enforcement-paths.json"
-# HIMMEL-2170: apply_patch (Codex's create/edit envelope) reaches the fence
+# apply_patch (Codex's create/edit envelope) reaches the fence
 # too now that it's in this wrapper's own matcher case (fence-side extraction
 # + classification is scripts/guardrails/test-lesson-write-fence.sh's job,
 # not duplicated here).

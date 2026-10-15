@@ -20,7 +20,7 @@
 #                    command is a reader (cat/grep/head/jq/sed/awk/…) AND a
 #                    secret-file arg follows, OR on a `< secretfile` redirect.
 #                    In-place sed/awk (`-i`) is carved out per-clause. This
-#                    command-position model (HIMMEL-436) replaced a global
+#                    command-position model replaced a global
 #                    reader-OR-secret scan that false-positived on inline
 #                    interpreter bodies (`node -e "…obj.key…file…"`).
 #
@@ -31,15 +31,15 @@
 # and the read-only `view` are NOT in the reader list at all — they
 # never surface content to Claude as a tool result.
 # Write-only ops (echo >, tee, mv, docker -v) are also not blocked. Since
-# HIMMEL-5277 exfil does not need a reader, so g4_clause also denies: a secret
+# exfil does not need a reader, so g4_clause also denies: a secret
 # handed to an upload or archive tool (curl/wget/nc/tar/zip, `-d @.env`,
 # `-F f=@.env`, `--post-file=.env`), a secret as the SOURCE of cp/scp/rsync,
 # and env dumps (bare env/printenv/set/declare -p/export -p, `echo $X_TOKEN`,
 # `gh auth token`). g4_secret_path adds .netrc, .npmrc, ~/.aws, ~/.kube,
 # docker config, gh hosts.yml, ~/.claude/.credentials.json, terraform.tfstate,
-# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. HIMMEL-5484 adds
+# ~/.ssh/* (not .pub/known_hosts/config) and /proc/*/environ. Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
-# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`, HIMMEL-5609). HIMMEL-5412 adds
+# `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
 # /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
 # of a session transcript .jsonl (is_transcript_path) or a Grep over one or
@@ -47,11 +47,11 @@
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
-#   * `bash -c 'cat .env'` IS now caught (HIMMEL-440): when the clause command
+#   * `bash -c 'cat .env'` IS now caught: when the clause command
 #     resolves to a shell interpreter (bash/sh/zsh/dash/ksh/ash), the matcher
 #     takes the body's first statement from `-c '<body>'` and rescans it (the
 #     body is real shell, so this is FP-free — unlike node -e / python -c
-#     non-shell bodies). Since HIMMEL-4492 the body is rejoined into its own
+#     non-shell bodies). The body is rejoined into its own
 #     command text and scanned by a recursive scan_clause call, so it gets
 #     every outer rule, including glob expansion under its OWN quoting:
 #     `bash -c 'cat .e*'` globs `.e*` against cwd and denies, while
@@ -69,24 +69,23 @@
 #     and nested quoting the quote-naive body close misreads stay unscanned
 #     (a glob in a later body statement, `bash -c 'echo; cat .e*'`, IS
 #     expanded: rs_tokens drops the body's closing quote first), revisit
-#     under HIMMEL-4438 or on the first real leak of that shape.
+#     or on the first real leak of that shape.
 #   * `git show HEAD:.env`, `git cat-file -p HEAD:.env` — git not in
 #     reader list (would false-positive on most git commands).
 #   * Cross-command exfil: `mv .env /tmp/x; cat /tmp/x` — mv is write-only,
 #     and the second command targets a non-secret path. (`cp .env /tmp/x`
-#     itself is denied since HIMMEL-5277.)
-#   * HIMMEL-5277 accepted false positives: `env | grep PATH` (a bare `env`
+#     itself is denied.)
+#   * accepted false positives: `env | grep PATH` (a bare `env`
 #     is a dump) and `echo '$MY_TOKEN'` (a quoted `$VAR` is still named).
 #     The verbs run on quote-aware segments, so a quoted `env` in a commit
 #     message or `--body` is NOT a dump; a command the tokenizer will not read
 #     falls back to the raw clause split, where it is. READ_SECRETS_OK=1 is the
-#     bypass. HIMMEL-5292 closed `{ env; }`, loop-body `env`, unquoted glob
+#     bypass. The G4 follow-up closed `{ env; }`, loop-body `env`, unquoted glob
 #     sources (`cat .en*`), `gzip -c`/`xz -c`, `gh gist`, `aws s3 cp`, `.AWS`
 #     case variants and `<<< "$TOKEN"`; it also made `rsync -f '- .env'` (an
 #     exclude filter) a false positive and stopped denying `declare -fx`.
 #     ponytail: `bash <<'EOF'` with an env body is not read (needs the
 #     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path
-#     HIMMEL-5300.
 #   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
 #   * Inline interpreter bodies (`node -e`, `python -c`): command-position
 #     fixes the COMMON false positive (coincidental `obj.key` property access
@@ -99,13 +98,13 @@
 #     command-position can't tell a jq filter path from a filename. grep/rg/
 #     sed/awk have the identical ambiguity for their PATTERN/script argument
 #     (`grep '.env' file.txt` searches file.txt FOR the text ".env") and it
-#     IS fixed for that family (HIMMEL-2213), narrowly: a QUOTED
+#     IS fixed for that family, narrowly: a QUOTED
 #     (`'...'`/`"..."`) argument is exempt from the secret-path check ONLY
 #     when it is the token IMMEDIATELY after the bare reader command — ZERO
 #     flags in between — or, as the one explicit exception, immediately
 #     after an `-e`/`--regexp` flag (grep's own explicit-pattern flag; its
 #     value is unambiguously always a pattern, at any position) AND ONLY
-#     for a grep/sed/awk-family command (round 6: `-e` means something
+#     for a grep/sed/awk-family command (`-e` means something
 #     unrelated for other readers — GNU cat's `-e` is `-vE`, and
 #     `cat -e .env` genuinely reads .env; an earlier cut applied the -e
 #     exemption regardless of command, false-ALLOWing it). ANY other
@@ -113,12 +112,12 @@
 #     '.env'`) is NOT exempt and falls back to the ordinary (blocking) scan.
 #     This is deliberately narrower than "the first non-flag argument",
 #     which rounds 1-4 each tried and each broke in a different way a panel
-#     review found: `rg --ignore-file .env TOKEN src/` (round 3) and
-#     `rg --ignore-file '.env' TOKEN src/` (round 4) both false-ALLOWED a
+#     review found: `rg --ignore-file .env TOKEN src/` and
+#     `rg --ignore-file '.env' TOKEN src/` both false-ALLOWED a
 #     real secret read (an unrecognised flag's value consumed the
-#     exemption), `grep -m 1 '.env' file.txt` (round 3) false-BLOCKED (an
+#     exemption), `grep -m 1 '.env' file.txt` false-BLOCKED (an
 #     unquoted flag VALUE like `-m`'s count consumed the sole exemption
-#     before the real pattern arrived), and `grep TOKEN '.env'` (round 5)
+#     before the real pattern arrived), and `grep TOKEN '.env'`
 #     false-ALLOWED once more (an unquoted IMPLICIT pattern didn't close the
 #     slot, leaving a later quoted argument — the real target — free to
 #     claim it). Distinguishing "a flag's value operand" from "a genuine
@@ -128,10 +127,10 @@
 #     (or right after -e/--regexp specifically) sidesteps the whole
 #     ambiguity class instead of chasing one more instance of it. `-f`/
 #     `--file` (grep/sed/awk's pattern/script-FROM-a-file flag) gets its own
-#     explicit-state handling too (round 7, below) — always scanned as a
+#     explicit-state handling too — always scanned as a
 #     real target, never exempt.
 #
-#     Round 7 (panel review): rounds 5-6 checked `prev` against RAW TEXT
+#     rounds 5-6 checked `prev` against RAW TEXT
 #     ("-e"/"--regexp", or the command's own name for position 0). That is
 #     spoofable — `-f`/`--file` accepts ANY string as its value, so
 #     `grep -f --regexp .env` makes `-f` consume the literal text
@@ -157,7 +156,7 @@
 #     BEFORE the quote check ever runs (the header above already says
 #     "shell quoting is intentionally NOT parsed") — the trailing fragment
 #     (`.env'`) is scanned on its own and can still false-block. This is the
-#     SAME class of false positive HIMMEL-2213 exists to fix, just for a
+#     SAME class of false positive the pattern exemption exists to fix, just for a
 #     multi-word pattern instead of a single-word one; closing it needs a
 #     real quote-spanning scan across tokens, which is a materially bigger
 #     change than this ticket's ask and its own risk (a fragile parser is
@@ -165,7 +164,7 @@
 #     accepted false positive rather than attempted here — costs a cycle,
 #     never a leak (the bypass hint below names the recovery).
 #   * Wrappers {sudo,doas,env,xargs,time,nice,command,nohup,timeout} are
-#     stepped over to find the real command (HIMMEL-4492): after a wrapper the
+#     stepped over to find the real command: after a wrapper the
 #     hunt skips its flags, the separate value of its known value-taking flags
 #     (wrapper_flag_takes_value: `nice -n 5`, `sudo -u u`, `timeout -s KILL`)
 #     and timeout's one DURATION operand, so `timeout 5 cat .env`,
@@ -173,7 +172,7 @@
 #     matched with its quotes removed, so `'cat' .env` denies too.
 #     ponytail: wrappers outside the set (`strace`, `stdbuf`, `ionice`,
 #     `flatpak-spawn`) and a value-taking wrapper flag missing from the table
-#     still make their operand the command token, revisit under HIMMEL-4438
+#     still make their operand the command token, revisit
 #     or when a real call shows one of them.
 #   * `cat <<< .env` here-string normalises to `cat < < < .env` and trips the
 #     `<`-redirect path though it reads no file.
@@ -181,16 +180,16 @@
 #     POSIX toolchains don't address ADS via the colon syntax).
 #   * 8.3 short names: `ENV~1` is not matched (short-name generation is off
 #     by default on modern NTFS volumes).
-#   * HIMMEL-2228: glued option tokens. Everything above tokenized whole
+#   * glued option tokens. Everything above tokenized whole
 #     shell words and matched each one AS a candidate secret path — it never
 #     looked INSIDE a token, so a GLUED option — `--file=.env` / `-f.env`
 #     (bundled `-rf.env` too) / PowerShell's `-Path:.env` — matched no glob
 #     and was ALLOWED, even though `grep -f.env` genuinely opens and reads
 #     that file as its pattern source. `glued_opt_secret()` now splits a
 #     glued token at its FIRST `=`/`:` (or past a bundled short `f`) and
-#     scans the value half, in both the outer clause and the HIMMEL-440
+#     scans the value half, in both the outer clause and the
 #     recursed `-c` body. It is checked in its own `if`, outside the
-#     HIMMEL-2213 exemption chain, so — EXCEPT for the armed-state skip
+#     exemption chain, so — EXCEPT for the armed-state skip
 #     described below — a glued value is scanned UNCONDITIONALLY: including
 #     for -e/--regexp, whose separate-token value would be exempt (`grep
 #     --regexp=.env file.txt` now denies: an ACCEPTED false positive, named
@@ -235,7 +234,7 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)` drops one spawn, and
+# bash builtin `read` instead of `$(cat)` drops one spawn, and
 # every field this hook might need (tool_name + the three per-tool payload
 # fields) is pulled in ONE jq call via `<<<` (no printf fork) instead of up
 # to two separate `printf | jq` pipelines.
@@ -251,7 +250,7 @@ fi
 #   * Windows jq.exe writes CRLF for every "\n" a multi-field filter emits,
 #     so every field but the last comes back with an embedded trailing \r
 #     that needed an explicit strip (the shape require-quiet-run.sh,
-#     HIMMEL-2060, still uses for its one non-final field).
+#     still uses for its one non-final field).
 #   * a `\n` INSIDE file_path/path (a path component containing a literal
 #     newline — POSIX-legal, if rare) truncated that field early at the
 #     split, so is_secret_path never saw the real basename. SOH cannot
@@ -264,7 +263,7 @@ fi
 # zero-output jq GENERATOR) — a `+`-concatenation is the cross product of
 # every operand's output count, so ONE missing field spelled `// empty`
 # collapses the WHOLE expression to zero outputs, silently emptying every
-# other field too. Caught empirically while writing this (HIMMEL-2123): a
+# other field too. Caught empirically while writing this: a
 # Bash command has neither file_path nor path, so with `// empty` this
 # hook's tool/cmd extraction went silently blank for every Bash/PowerShell
 # call and the guard stopped firing entirely.
@@ -328,7 +327,7 @@ _rd_gpath="${_rd_rest%%$'\001'*}"
 _rd_cmd="${_rd_rest#*$'\001'}"
 
 # is_secret_path: this hook's name for the shared is_secret_basename predicate
-# (scripts/guardrails/lib.sh, HIMMEL-879 — pattern list + case-fold rationale
+# (scripts/guardrails/lib.sh — pattern list + case-fold rationale
 # live there; also shared with block-edit-on-main.sh). Kept as a thin wrapper
 # so the many call sites below don't need to change name.
 is_secret_path() {
@@ -336,7 +335,7 @@ is_secret_path() {
     g4_secret_path "$1"
 }
 
-# g4_secret_path PATH_OR_TOKEN (HIMMEL-5277): the secret files the shared
+# g4_secret_path PATH_OR_TOKEN: the secret files the shared
 # basename predicate does not know, kept HERE so block-edit-on-main.sh (which
 # shares that predicate) is unaffected. Credential dotfiles by basename, a few
 # well-known paths (`.aws/credentials`, `.kube/config`, `gh/hosts.yml`,
@@ -386,9 +385,9 @@ is_reader_cmd() {
 
 is_interp_cmd() {
     # Shell interpreters whose `-c '<body>'` body IS shell — so re-running the
-    # matcher on the body is correct and FP-free (HIMMEL-440). Deliberately
+    # matcher on the body is correct and FP-free. Deliberately
     # EXCLUDES node/python/etc.: their `-e`/`-c` bodies are NOT shell, and
-    # scanning them is exactly what caused the HIMMEL-436 false positives.
+    # scanning them is exactly what caused the false positives.
     case "$1" in
         bash|sh|zsh|dash|ksh|ash) return 0 ;;
     esac
@@ -397,7 +396,7 @@ is_interp_cmd() {
 
 is_pattern_arg_cmd() {
     # Commands whose first non-flag ARGUMENT is a PATTERN/script the command
-    # searches or transforms WITH, not a path it reads (HIMMEL-2213): a
+    # searches or transforms WITH, not a path it reads: a
     # `grep '.env' file.txt` searches file.txt FOR the literal text ".env" —
     # the pattern is data, and the env-glob arm of is_secret_basename must
     # not fire on it. Scoped to the ticket's named class only (grep-family +
@@ -415,7 +414,7 @@ is_pattern_arg_cmd() {
 is_quoted_pattern_tok() {
     # True iff the token is wrapped in a matching pair of quote chars — i.e.
     # it was written as a QUOTED shell argument (`'.env'`, `".env"`), which
-    # is exactly the shape HIMMEL-2213 asks for ("a token inside a QUOTED
+    # is exactly the shape the exemption rule asks for ("a token inside a QUOTED
     # argument... is data, not a read target"). Quoting is only HALF the
     # exemption rule — the call sites also require the token be at a
     # specific POSITION (immediately after the bare command, or after
@@ -447,14 +446,14 @@ is_inplace_token() {
 
 # rs_tokens CLAUSE: word-split CLAUSE into RS_TOKS. An unquoted word still
 # globs against the hook's cwd as a bare `for tok in $clause` did. The
-# exception (HIMMEL-4367 item 2) is a word that starts INSIDE a quoted span
+# exception is a word that starts INSIDE a quoted span
 # opened by an earlier word, such as the `.*` in `grep -v '^[0-9]*<TAB>.*  ' f.tsv`.
 # That word is pattern data and stays literal. Globbed, `.*` expands to `.env`
 # in a checkout that has one, and the hook used to deny the grep. The quote
 # tracker only decides whether a word globs. It never hides a literal secret
 # name. Tracking stops at the first ANSI-C `$'`, whose escapes it does not
 # model, so every later word globs as before.
-# HIMMEL-4508: a glob only matters to this fence when something in the clause
+# a glob only matters to this fence when something in the clause
 # reads (a reader, an interpreter, xargs, a `<` redirect) or when the command
 # word itself is a glob. `echo */*/* …` reads nothing, so it is not expanded:
 # expanding it cost seconds in a large tree and timed the hook out.
@@ -480,7 +479,7 @@ rs_needs_glob() {
     return 1
 }
 
-# HIMMEL-4502: after `cd`/`pushd`/`env -C` the shell expands a glob in the
+# after `cd`/`pushd`/`env -C` the shell expands a glob in the
 # NEW directory, so expanding it here proves nothing. rs_shift_glob_secret is
 # 0 when a reader segment (or a `<` redirect) carries an unquoted glob whose
 # last path component could match a secret name. Reads the guard-unwrap
@@ -564,7 +563,7 @@ rs_tokens() {
         if { [ "$off" = 0 ] && [ -n "$tq" ]; } || [ "$glob" = 0 ]; then
             RS_TOKS+=("$raw")
         else
-            # HIMMEL-4492: a word whose LAST char opens a quote it never
+            # a word whose LAST char opens a quote it never
             # closes is the tail of a `-c` body the clause split cut off
             # (`bash -c 'echo; cat .e*'` leaves `.e*'`). That quote is the
             # body's closing one, so glob the word without it. A word that is
@@ -586,7 +585,7 @@ rs_tokens() {
 }
 
 glued_opt_secret() {
-    # HIMMEL-2228. True iff the token is a GLUED option whose VALUE half is a
+    # True iff the token is a GLUED option whose VALUE half is a
     # secret path: `--opt=<value>` / `-f<value>` (bundled `-rf<value>` too) /
     # PowerShell's `-Param:<value>`. The tokenizer only ever fed WHOLE tokens
     # to is_secret_path, so `grep --file=.env` and `grep -f.env` — both of
@@ -620,7 +619,7 @@ EOF
 }
 
 pattern_hint() {
-    # HIMMEL-2213: the quoted-pattern exemption is POSITIONAL (see "Known
+    # the quoted-pattern exemption is POSITIONAL (see "Known
     # limitations" in the header) — a flag before an implicit pattern falls
     # back to blocking, so a perfectly innocent `grep -rn '<pat>' dir/` still
     # denies whenever <pat> happens to look like a secret name. That false
@@ -681,7 +680,7 @@ pattern_hint_applies() {  # $1 = the raw command string
 }
 
 wrapper_flag_takes_value() {  # $1 = wrapper, $2 = its (dequoted) flag token
-    # HIMMEL-4492: the wrapper flags whose VALUE is the next, separate token
+    # the wrapper flags whose VALUE is the next, separate token
     # (`nice -n 5`, `sudo -u user`, `timeout -s KILL 5`). The command hunt
     # skips that value so it cannot pose as the command. A glued value
     # (`-n5`, `--signal=KILL`) is one flag token and needs no entry here.
@@ -701,7 +700,7 @@ wrapper_flag_takes_value() {  # $1 = wrapper, $2 = its (dequoted) flag token
     return 1
 }
 
-# g4_envish_name NAME (HIMMEL-5277): does a variable NAME look like a credential?
+# g4_envish_name NAME: does a variable NAME look like a credential?
 g4_envish_name() {
     _tolower_ascii "$1"
     case "$_TOLOWER_OUT" in
@@ -725,7 +724,7 @@ g4_secret_tok() {
     [ -n "$v" ] && is_secret_path "$v"
 }
 
-# g4_glob_secret WORD [GLOBFLAG] (HIMMEL-5292): a word with an UNQUOTED glob
+# g4_glob_secret WORD [GLOBFLAG]: a word with an UNQUOTED glob
 # char that expands, against cwd, to a secret file (`tar czf o.tgz .en*`,
 # `curl -d @.en* url`). g4_scan runs with globbing off, so the expansion is
 # done here. WORD is dequoted, so GLOBFLAG (the tokenizer's ST_G) says whether
@@ -761,7 +760,7 @@ g4_herestr_cred() {
     return 1
 }
 
-# g4_clause CLAUSE (HIMMEL-5277): exfil and env-dump verbs in ONE clause. Sets
+# g4_clause CLAUSE: exfil and env-dump verbs in ONE clause. Sets
 # `block` and `g4_note`. Redirects and their targets are dropped first, so
 # `env > out.txt` is still a bare `env`. Words are matched on a dequoted copy.
 #   * upload / archive tools (curl wget nc tar zip ...): a secret anywhere
@@ -789,7 +788,7 @@ g4_segments() {
     local s=0 k n g4raw=0
     local -a idx g4w g4g g4hs hs
     hs=()
-    # HIMMEL-5292: here-string targets (`<<< "$TOKEN"`) are redirect targets, so
+    # here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
     k=0
     while [ "$k" -lt "${ST_N:-0}" ]; do
@@ -832,9 +831,9 @@ g4_scan() {
     for ((i = 0; i < nw; i++)); do
         w="${g4w[i]}"
         d="${w//[\'\"\\]/}"
-        # HIMMEL-5484 (j2544g): any word naming the xtrace option, in any
+        # any word naming the xtrace option, in any
         # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
-        # ignores case and underscores in option names. Over-deny: HIMMEL-5609.
+        # ignores case and underscores in option names. Over-deny:.
         # Not in a data position: an operand of the repo's
         # queue-lock / append-results scripts (a doc name carries the word), or
         # the value of a git/gh message flag. `-m`-style flags are marked here,
@@ -867,7 +866,7 @@ g4_scan() {
         esac
         if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
-        # j2544h: brace expansion splits the word (`shopt -os x{,}trace`), so a
+        # brace expansion splits the word (`shopt -os x{,}trace`), so a
         # word with an unquoted `{` matches xtrace as an in-order subsequence.
         case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
         fi
@@ -885,7 +884,7 @@ g4_scan() {
         if [ -z "$cmd" ]; then
             if [ "$wrap_val" = 1 ]; then wrap_val=0; continue; fi
             case "$d" in
-                # HIMMEL-5484: an inherited trace switch (SHELLOPTS=xtrace,
+                # an inherited trace switch (SHELLOPTS=xtrace,
                 # BASH_XTRACEFD) makes the next shell print its environment.
                 SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
                 GIT_CONFIG_*=*) gcfg=1; continue ;;
@@ -919,12 +918,12 @@ g4_scan() {
             rsync:--rsh=*|rsync:--exclude=*|tar:--exclude=*|tar:--exclude-from=*|7z:-x*|7za:-x*)
                 nflags=$((nflags + 1)); continue ;;
         esac
-        # HIMMEL-5292: a here-string credential handed to an upload tool.
+        # a here-string credential handed to an upload tool.
         case "$d" in
             -*) nflags=$((nflags + 1)) ;;
             *)  nargs=$((nargs + 1)); [ -n "$a1" ] && a2="${a2:-$d}"; a1="${a1:-$d}" ;;
         esac
-        # HIMMEL-5484: setopt/unsetopt take option names AND flags in any order
+        # setopt/unsetopt take option names AND flags in any order
         # (`setopt extendedglob -x`): scan every word, not only the first.
         case "$cmd:$d" in
             setopt:-*x*|unsetopt:-*x*|unsetopt:+*x*) case "$d" in --*) ;; *) xt=1 ;; esac ;;
@@ -938,7 +937,7 @@ g4_scan() {
             esac ;; esac
         fi
         case "$cmd" in
-            # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
+            # `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
             # flags before the first operand count (`bash s.sh -x` is the
             # script's own flag); `-O`/`--rcfile` values are skipped.
             bash|sh|zsh|dash|ksh|ash|mksh|rbash|yash|posh|set|setopt|unsetopt)
@@ -1005,7 +1004,7 @@ g4_scan() {
                     # cp -t DIR / --target-directory=DIR: the destination is the
                     # option's value, so the last operand is a source too.
                     --target-directory|--target-directory=*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
-                    # HIMMEL-5292: a glued `--include=.env` selects a secret too.
+                    # a glued `--include=.env` selects a secret too.
                     --*=*) if g4_secret_tok "$d"; then last_secret=1; fi ;;
                     --*) ;;
                     -*t*) if [ "$cmd" = cp ]; then tdir=1; fi ;;
@@ -1048,7 +1047,7 @@ g4_scan() {
     return 0
 }
 
-# interp_env_dump TEXT (HIMMEL-5412): does a python/node command print the
+# interp_env_dump TEXT: does a python/node command print the
 # WHOLE environment, or read /proc/*/environ? TEXT is the raw command, so a
 # `-c`/`-e` body and a `python3 - <<'EOF'` heredoc body are both in it. Single
 # named keys are removed first (`os.environ.get(`, `os.environ[`,
@@ -1064,8 +1063,8 @@ g4_scan() {
 # perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
 # real call of either shape. TEXT is the whole command, not the interpreter's
 # own clause, so a later clause naming os.environ (a commit message) also
-# denies; per-clause scanning that keeps the heredoc body is HIMMEL-5418.
-# Also HIMMEL-5418 (not matched here): an interpreter shell-out to `env`
+# denies; per-clause scanning that keeps the heredoc body is.
+# Also (not matched here): an interpreter shell-out to `env`
 # (`os.system('env')`, `execSync('env')`), `process['env']` and a destructured
 # `const {env} = process`.
 interp_env_dump() {
@@ -1086,7 +1085,7 @@ interp_env_dump() {
     return 1
 }
 
-# is_transcript_path PATH (HIMMEL-5412): a Claude Code session transcript
+# is_transcript_path PATH: a Claude Code session transcript
 # (`~/.claude/projects/<slug>/<session>.jsonl`, subagent ones below it). A
 # transcript holds every earlier tool result verbatim, so one that once printed
 # a token hands it to whoever Reads it.
@@ -1097,7 +1096,7 @@ is_transcript_path() {
     return 1
 }
 
-# is_transcript_tree PATH (HIMMEL-5412): a Grep path that reaches transcripts:
+# is_transcript_tree PATH: a Grep path that reaches transcripts:
 # a transcript itself, `~/.claude/projects`, or anything below it. Only the
 # per-project `memory/` subtree stays allowed, and only with no `..` in the
 # path (`memory/..` is the project directory again). A slug can hold a dot
@@ -1105,7 +1104,6 @@ is_transcript_path() {
 # ponytail: a Grep rooted ABOVE projects (`~/.claude`, `~`) still walks into
 # transcripts, and a Bash reader (`cat`/`grep -r`/`jq` on a transcript) is not
 # matched: both need a per-token path check across scan_clause's reader sites,
-# HIMMEL-5418.
 is_transcript_tree() {
     local p="${1%/}"
     is_transcript_path "$p" && return 0
@@ -1126,14 +1124,14 @@ is_transcript_tree() {
     return 0
 }
 
-# scan_clause CLAUSE DEPTH (HIMMEL-4492): scan ONE clause and set the global
+# scan_clause CLAUSE DEPTH: scan ONE clause and set the global
 # `block` (plus `glued_tok`, named in the denial) when it reads a secret. A
 # shell interpreter's `-c` body is rejoined into its own command text and
 # scanned by a recursive call, so the body gets every rule below for free:
 # glob expansion against cwd under its OWN quote tracking (rs_tokens), wrappers,
-# quoted command words, the HIMMEL-2213 pattern exemptions, HIMMEL-2228 glued
+# quoted command words, the pattern exemptions, glued
 # options, `<` redirects, the in-place carve-out and a further nested `bash -c`.
-# This replaced a mirrored `rec_*` state machine (HIMMEL-440) that saw the body
+# This replaced a mirrored `rec_*` state machine that saw the body
 # only through the OUTER clause's tokens: there a body word such as `.e*'`
 # starts inside the outer quote, so rs_tokens kept it literal and
 # `bash -c 'cat .e*'` was allowed. A nest deeper than SCAN_MAX_DEPTH denies:
@@ -1147,10 +1145,10 @@ scan_clause() {
     local at_pos0=0             # the NEXT token is the one right after cmdtok
     local expect_pattern_val=0  # the NEXT token is -e/--regexp's value (always data)
     local expect_file_val=0     # the NEXT token is -f/--file's value (always a real file)
-    # HIMMEL-4492 command hunt: the last wrapper seen, whether the next token
+    # command hunt: the last wrapper seen, whether the next token
     # is a wrapper flag's VALUE, and whether `timeout` still owes its DURATION.
     local wrap="" wrap_val=0 need_dur=0 xargs_file=0
-    # HIMMEL-440 interpreter `-c` body:
+    # interpreter `-c` body:
     local interp=0          # cmdtok resolved to a shell interpreter
     local found_c=0         # a -c / -*c flag has been seen
     local interp_val=0      # the NEXT token is an interpreter option's value (-o x)
@@ -1164,7 +1162,7 @@ scan_clause() {
     [ "${#RS_TOKS[@]}" -gt 0 ] || return 0
     toks=("${RS_TOKS[@]}")  # copy: a recursive call reassigns RS_TOKS
     for tok in "${toks[@]}"; do
-        # HIMMEL-2525: bash's default $IFS (space/tab/newline) does
+        # bash's default $IFS (space/tab/newline) does
         # NOT include CR (0x0D), so a CR glued onto this token —
         # trailing (`cat .env<CR>`, the tail of a Windows CRLF
         # one-liner) or embedded MID-token (`.en<CR>v`) — survives
@@ -1172,7 +1170,7 @@ scan_clause() {
         # comparison below (is_reader_cmd/is_interp_cmd/
         # is_pattern_arg_cmd on cmdtok; is_secret_path/
         # glued_opt_secret/is_quoted_pattern_tok/is_inplace_token on
-        # an argument; the HIMMEL-440 -c body text, which is built
+        # an argument; the -c body text, which is built
         # from this same $tok) then compares against
         # the WRONG string and MISSES — a false ALLOW in a secrets
         # fence. Strip every CR from $tok HERE, once, before ANY of
@@ -1211,13 +1209,13 @@ scan_clause() {
         if [ -z "$cmdtok" ]; then
             # Still hunting the command token: skip leading redirect tokens,
             # env-assignments (VAR=val), reader-wrapping commands with their
-            # flags (HIMMEL-4492), and shell keywords. Words are matched on a
-            # dequoted copy (HIMMEL-4492): the shell strips the quotes, so
+            # flags, and shell keywords. Words are matched on a
+            # dequoted copy: the shell strips the quotes, so
             # `'cat' .env` and `"bash" -c '...'` run cat and bash.
             dtok="${tok//[\'\"\\]/}"
             if [ "$wrap_val" = "1" ]; then
                 wrap_val=0
-                # HIMMEL-4510: `xargs -a FILE` reads FILE.
+                # `xargs -a FILE` reads FILE.
                 if [ "$xargs_file" = 1 ] && is_secret_path "$dtok"; then block=1; fi
                 xargs_file=0
                 prev="$tok"; continue
@@ -1233,13 +1231,13 @@ scan_clause() {
             if [ -n "$wrap" ]; then
                 case "$dtok" in
                     -*)
-                        # HIMMEL-4509: `command -v/-V` looks a name up and
+                        # `command -v/-V` looks a name up and
                         # runs nothing, so nothing after it is read.
                         if [ "$wrap" = command ]; then
                             case "$dtok" in --*) ;; -*[vV]*) return 0 ;; esac
                         fi
                         if wrapper_flag_takes_value "$wrap" "$dtok"; then wrap_val=1; fi
-                        # HIMMEL-4510: xargs reads its -a/--arg-file operand,
+                        # xargs reads its -a/--arg-file operand,
                         # separate, glued or as a --arg-file prefix.
                         if [ "$wrap" = xargs ]; then
                             case "$dtok" in
@@ -1273,7 +1271,7 @@ scan_clause() {
         # Past the command token: scan its arguments.
         this_at_pos0="$at_pos0"; at_pos0=0
         if is_inplace_token "$tok"; then inplace=1; fi
-        # HIMMEL-2228: scan INSIDE a glued option token. Independent of the
+        # scan INSIDE a glued option token. Independent of the
         # exemption chain below (a glued value is never exempt — see header).
         # Gated on expect_pattern_val/expect_file_val (still holding the
         # PREVIOUS token's armed state here, before the chain below updates
@@ -1285,7 +1283,7 @@ scan_clause() {
             && glued_opt_secret "$tok"; then
             secret_after=1; glued_tok="$tok"
         fi
-        # HIMMEL-2213 round 5 (panel review of rounds 1-4): every
+        # Every
         # earlier cut tried to recognise "the flag before this token
         # doesn't consume a value" — -m/-A/-B/-C take a separate
         # numeric value, -f/-e take a separate file/pattern value,
@@ -1317,9 +1315,9 @@ scan_clause() {
         # `cat -e .env` (GNU cat's -e = -vE, display non-printing
         # chars) genuinely reads .env, and an earlier cut of this
         # gate applied the -e exemption unconditionally, false-
-        # ALLOWing it (panel review, HIMMEL-2213 round 6).
+        # ALLOWing it.
         #
-        # Round 7 (panel review): the round-5/6 cuts checked `prev`
+        # the round-5/6 cuts checked `prev`
         # against RAW TEXT ("-e"/"--regexp", or cmdtok's own name for
         # position 0). That is spoofable: `grep -f --regexp .env` —
         # `-f` consumes "--regexp" as ITS (nonsense) filename value,
@@ -1349,7 +1347,7 @@ scan_clause() {
             secret_after=1
         fi
 
-        # HIMMEL-440: when the command is a shell interpreter, collect its
+        # when the command is a shell interpreter, collect its
         # `-c '<body>'` for the recursive scan after this loop. The body is
         # real shell, so rescanning it is correct (and FP-free, unlike
         # node -e / python -c non-shell bodies). Only the FIRST statement of
@@ -1359,7 +1357,7 @@ scan_clause() {
             if [ "$found_c" = "0" ]; then
                 # Hunt for -c: skip interpreter flags and the value of a
                 # value-taking one (`-o errexit`, `-euo pipefail`, `--rcfile f`,
-                # HIMMEL-4492); a -c or a short bundle holding c (-lc, -xc,
+                #); a -c or a short bundle holding c (-lc, -xc,
                 # -ce) arms the next operand as the body. A non-flag operand
                 # BEFORE any -c (`bash run.sh`) means this isn't a -c
                 # invocation → no body.
@@ -1424,7 +1422,7 @@ scan_clause() {
     if [ "$reader" = "1" ] && [ "$secret_after" = "1" ] && [ "$inplace" = "0" ]; then
         block=1
     fi
-    # HIMMEL-440 / HIMMEL-4492: scan the interpreter `-c` body as its own
+    # scan the interpreter `-c` body as its own
     # command text. Strip its closing quote; a double-quoted body also drops
     # the outer shell's `\"`/`\\` escapes. A body never closed in this clause
     # (cut by a `;`) is scanned as far as it got.
@@ -1480,7 +1478,7 @@ case "$tool" in
         cmd="$_rd_cmd"
         [ -z "$cmd" ] && exit 0
 
-        # HIMMEL-5331: re-read the command with its variable expansions
+        # re-read the command with its variable expansions
         # removed, so a `${V:-}cat .env` is judged as the `cat .env` the shell
         # runs when V is empty. A must-run dependency: if it cannot be
         # sourced, deny.
@@ -1495,7 +1493,7 @@ case "$tool" in
         fi
         guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
 
-        # HIMMEL-4438: re-read the forms the shell actually runs (quotes
+        # re-read the forms the shell actually runs (quotes
         # removed, wrappers stripped, `bash -c`/`eval` bodies) through this
         # same hook. The lib is a must-run dependency: if it cannot be
         # sourced, deny.
@@ -1529,12 +1527,12 @@ case "$tool" in
         # and GNU sed; do NOT use GNU-only `\n` in the replacement). `<`/`>`
         # are spaced into their own tokens so a `< secretfile` redirect stays
         # detectable. Shell quoting is intentionally NOT parsed (see header).
-        # HIMMEL-2123: sed reads via `<<<` (no `printf` fork feeding it).
+        # sed reads via `<<<` (no `printf` fork feeding it).
         normalized=$(sed -e 's/[;|&()`]/\
 /g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
 
         block=0
-        # HIMMEL-2228: the glued token that tripped glued_opt_secret, named in
+        # the glued token that tripped glued_opt_secret, named in
         # the denial via glued_hint. Declared once (not per-clause) so it
         # survives to the denial block below — the loop is fed by a <<EOF
         # heredoc, not a pipe, so it runs in the current shell and this
@@ -1542,7 +1540,7 @@ case "$tool" in
         glued_tok=""
         g4_note=""
         g4_interp=0
-        # HIMMEL-5277: the exfil / env-dump verbs run on guard_unwrap's
+        # the exfil / env-dump verbs run on guard_unwrap's
         # quote-aware segments, so a quoted `env` in a commit message is not a
         # clause. A command the tokenizer would not read falls back to the raw
         # clause split (scan_clause calls g4_clause when GU_TOKENIZED != 1).

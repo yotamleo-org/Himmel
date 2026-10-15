@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2181,SC2016 # compact status assertions; SC2016: raw-shape command strings are intentionally single-quoted literals.
-# Tests for block-rogue-codex-exec.sh (HIMMEL-2023). Mirrors
+# Tests for block-rogue-codex-exec.sh. Mirrors
 # test-block-rogue-codex-wsl.sh case-for-case where the shapes correspond.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
