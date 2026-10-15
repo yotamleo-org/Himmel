@@ -12,6 +12,7 @@
 #   10.   non-code path (.md) and fixtures path                  -> exit 0
 #   11.   clean why-comment                                      -> exit 0
 #   12.   --staged and --range read real git state
+#   13.   the lint-job step of ci.yml, run against a throwaway PR range
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -112,6 +113,37 @@ printf '# %s-1 old history\necho a\n# CR fix: added\n# round 2 of ours\n' "$H" >
 git -C "$R" add -A
 OUT="$(cd "$R" && bash "$GATE" --staged 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/a.sh:4"; then pass "--staged in a merge: a history line our side adds is still blocked"; else fail "merge own line -> rc=$RC: $OUT"; fi
+
+echo "== 13. ci.yml lint step (extracted from the real workflow) =="
+CI_YML="$SELF_DIR/../../.github/workflows/ci.yml"
+STEP="$T/step.sh"
+awk '
+    /^  [a-z][a-z0-9-]*:/ { injob = ($1 == "lint:") }
+    injob && /^      - name: history-comment gate/ { instep = 1; next }
+    instep && /^        run: \|/ { inrun = 1; next }
+    inrun && /^          / { sub(/^          /, ""); print; next }
+    inrun { exit }
+' "$CI_YML" > "$STEP"
+if [ -s "$STEP" ]; then pass "lint job has a history-comment gate step"; else fail "no history-comment gate step in the lint job of ci.yml"; fi
+S="$T/ci"; mkdir -p "$S/scripts/lint" "$S/tmp"; git -C "$S" init -q
+git -C "$S" config user.email t@t; git -C "$S" config user.name t
+cp "$GATE" "$S/scripts/lint/check-history-comments.sh"
+printf 'echo a\n' > "$S/scripts/a.sh"
+git -C "$S" add -A; git -C "$S" commit -q -m base
+pr_base="$(git -C "$S" rev-parse HEAD)"
+printf 'echo a\n# %s-1234 added this guard\n' "$H" > "$S/scripts/a.sh"
+git -C "$S" add -A; git -C "$S" commit -q -m ticket
+step() { OUT="$(cd "$S" && BASE_SHA="$1" RUNNER_TEMP="$S/tmp" bash "$STEP" 2>&1)"; RC=$?; }
+step "$pr_base"
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "step: PR range adding a ticket comment fails"; else fail "step ticket -> rc=$RC: $OUT"; fi
+step ""
+if [ "$RC" -ne 0 ]; then pass "step: missing base sha fails closed"; else fail "step empty base -> rc=$RC: $OUT"; fi
+step "0000000000000000000000000000000000000000"
+if [ "$RC" -ne 0 ]; then pass "step: unreachable base sha fails closed"; else fail "step bad base -> rc=$RC: $OUT"; fi
+printf 'echo a\n# ponytail: prefix only, upgrade tracked in %s-77\n' "$H" > "$S/scripts/a.sh"
+git -C "$S" add -A; git -C "$S" commit -q -m ponytail
+step "$pr_base"
+if [ "$RC" -eq 0 ]; then pass "step: ponytail line citing a ticket passes"; else fail "step ponytail -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

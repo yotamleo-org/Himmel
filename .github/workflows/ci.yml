@@ -347,6 +347,25 @@ jobs:
       # HIMMEL-4254 P2: a bypass flag a hook reads but the config UI's display
       # registry lacks is a flag the UI silently cannot show.
       - run: node scripts/install/flag-registry-lint.mjs
+      # The history-comment gate also runs as a pre-commit hook, which a session
+      # without hooks installed never hits. Run it on the PR range, from the BASE
+      # copy (a PR cannot weaken the gate that judges it); a missing base sha or
+      # base copy is a red job, never a silent pass.
+      - name: history-comment gate (PR range)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ]; then
+            echo "history-comment gate: PR base sha missing, cannot evaluate" >&2
+            exit 1
+          fi
+          gate="$RUNNER_TEMP/check-history-comments.sh"
+          if ! git show "$BASE_SHA:scripts/lint/check-history-comments.sh" > "$gate" || [ ! -s "$gate" ]; then
+            echo "history-comment gate: script absent at base $BASE_SHA, cannot evaluate" >&2
+            exit 1
+          fi
+          bash "$gate" --range "$BASE_SHA"
       # HIMMEL-5526: the skill/command size cap (skill-lint) and the oxlint
       # complexity ratchet + bug-class hardening gates ran only on a committer's
       # machine, so a commit with hooks skipped landed unchecked. A PR runs them
