@@ -86,6 +86,7 @@
 #     exclude filter) a false positive and stopped denying `declare -fx`.
 #     ponytail: `bash <<'EOF'` with an env body is not read (needs the
 #     tokenizer's heredoc bodies, lib/ is out of scope), upgrade path
+#     once the tokenizer exposes heredoc bodies.
 #   * Variable indirection: `F=.env; cat $F` — no `.env` token after `cat`.
 #   * Inline interpreter bodies (`node -e`, `python -c`): command-position
 #     fixes the COMMON false positive (coincidental `obj.key` property access

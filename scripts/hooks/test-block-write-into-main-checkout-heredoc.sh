@@ -230,7 +230,7 @@ _subst_row "75q-W same shape aimed at the worktree (ALLOW)"               allow 
 _subst_row "75r-P body in a cd clause runs at the pre-cd cwd (primary)"      block "cd $_WR 2>\"\$(echo hi > subst-rel.txt)\"" "$_PR"
 _subst_row "75r-W same shape, pre-cd cwd is the worktree (ALLOW)"           allow "cd $_PR 2>\"\$(echo hi > subst-rel.txt)\"" "$_WR"
 # A quoted `)` inside a quoted nested substitution must not end the outer body
-#: the body has a quote state of its own.
+# the body has a quote state of its own.
 _subst_row "75s-P quoted paren in a nested quoted body keeps the outer body open" block "x=\"\$(cd $_PR; echo \"\$(echo \")\" > subst-rel.txt)\")\""
 _subst_row "75s-W same shape aimed at the worktree (ALLOW)"                allow "x=\"\$(cd $_WR; echo \"\$(echo \")\" > subst-rel.txt)\")\""
 _subst_row "75t-P backtick with a quoted paren inside a quoted body"       block "x=\"\$(cd $_PR; echo \`echo \")\"\` > subst-rel.txt)\""

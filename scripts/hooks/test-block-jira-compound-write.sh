@@ -101,7 +101,7 @@ EOF"
 [ "$RC" -eq 0 ] && pass "same text in a QUOTED heredoc body allowed" || fail "quoted-heredoc doc text bounced (rc=$RC)"
 
 # --- 5.95 shell operators bound tokens with or without cosmetic spaces
-#: `;node`, `&&node`, `|node` all RUN node.
+#     `;node`, `&&node`, `|node` all RUN node.
 for op in ';' '|'; do
   run_hook Bash "echo ok${op}node $JIRA create --desc \"\$(cat /tmp/a.md)\""
   [ "$RC" -eq 2 ] || fail "write after a space-less '${op}' missed (rc=$RC)"

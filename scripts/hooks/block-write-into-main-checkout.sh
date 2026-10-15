@@ -2676,7 +2676,7 @@ _bwimc_ecwd_track() {
 # absolute or dynamic ($/backtick) candidate is untouched: those already
 # resolve (or fail open on themselves alone) regardless of cwd.
 #
-#: _bwimc_ecwd_track has no model of a cd/pushd
+# _bwimc_ecwd_track has no model of a cd/pushd
 # target that doesn't exist, ||/&&-short-circuiting, a subshell, a
 # pipeline, a background &, an if/while body that never runs, or a $(...)
 # command substitution — every one of those can leave _bwimc_ecwd pointing
@@ -2692,7 +2692,7 @@ _bwimc_ecwd_track() {
 # before the call site's own _bwimc_ecwd-based check ever gets a chance to
 # allow.
 #
-#: every call site used to pass only
+# every call site used to pass only
 # the candidate token — never its own operation mode (entry/follow) — so
 # this fallback defaulted to "follow" regardless of what the caller actually
 # needed. For an `rm` operand (entry semantics: unlink acts on the directory

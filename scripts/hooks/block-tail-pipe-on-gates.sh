@@ -40,8 +40,8 @@
 #     is an invocation and denies. A launcher's own OPTIONS (`bash -x <gate>`,
 #     `bash -- <gate>`) are stepped over too, but only once a launcher has been
 #     seen — a leading `-something` on its own is not that shape. Each launcher
-#     carries its OWN small table of the options that take an OPERAND
-#: `-p` is sudo's prompt but time's bare portability flag, and
+#     carries its OWN small table of the options that take an OPERAND:
+#     `-p` is sudo's prompt but time's bare portability flag, and
 #     `-S` is env's split-string but sudo's bare stdin flag, so one flat
 #     launcher-agnostic list mis-parsed both directions. `timeout` additionally
 #     steps over its positional DURATION. Tables, not a general option parser —
@@ -75,7 +75,7 @@
 #     another arm, and an `else` arm after a gate, are denied (fail closed).
 #     Checked on the ORIGINAL text only (GUARD_UNWRAP_DEPTH=0).
 #     ponytail: a gate inside a `bash -c`/`eval` payload is not covered by the
-#     trailing rule (guard_unwrap's rendered children skip it), upgrade path
+#     trailing rule (guard_unwrap's rendered children skip it), upgrade path: render the children with the trailing rule on.
 #   * Everything else is untouched: `git log | tail`, a bare `tail -f file`, and
 #     the CORRECT shape `gate > out 2>&1; echo "RC=$?"; tail out` all pass.
 #   * Fail OPEN (exit 0) on anything unevaluable — missing jq, empty or
@@ -109,7 +109,7 @@
 # is real shell text — one carried inside a quoted argument is data, not an
 # opt-out. Presence is what is verified, not the reason's content.
 #
-# SCANNER CEILING (deliberate, bounded — ADJUDICATED in): this is a
+# SCANNER CEILING (deliberate, bounded — ADJUDICATED): this is a
 # flat character walk, not a shell parser. It tracks quotes (with double-quote
 # backslash escapes, whose escaped character is emitted as DATA so no later walk
 # can read it as syntax), comments, escapes, one level of command substitution,
@@ -186,7 +186,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `// ""` (empty STRING), not `// empty` (a zero-output jq GENERATOR): in a
 # `+`-concatenation, one operand collapsing to `empty` zeroes out the WHOLE
 # expression's output (cross-product-of-generators semantics), not just
-# that field — caught empirically writing this fix in
+# that field — caught empirically writing this fix
 # block-read-secrets.sh, where it went silently blank for every non-Read
 # tool call.
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0
