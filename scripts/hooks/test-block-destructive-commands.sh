@@ -284,6 +284,9 @@ assert_rc "R1- rmzexe -rf x (literal-dot pin)" 0 "$(run_case "$(j_bash 'rmzexe -
 # R2 recursive rm (`--recursive` long form).
 assert_rc "R2+ rm --recursive build"        2 "$(run_case "$(j_bash 'rm --recursive build')")"
 assert_rc "R2- grep --recursive rm src/"    0 "$(run_case "$(j_bash 'grep --recursive rm src/')")"
+# The bash tokenizer drops unquoted backslashes, so a drive-qualified rm.exe on
+# the PowerShell tool never basenames to rm: PowerShell text fails closed.
+assert_rc 'R2+ pwsh C:\msys64\usr\bin\rm.exe --recursive d' 2 "$(run_case "$(j_pwsh 'C:\msys64\usr\bin\rm.exe --recursive d')")"
 # HIMMEL-2610: `--recursive` is the only GNU rm long option starting with
 # `r`, so getopt_long accepts any unambiguous prefix from `--r` up - a
 # spelling the R2 literal-word match used to miss entirely (confirmed ALLOW

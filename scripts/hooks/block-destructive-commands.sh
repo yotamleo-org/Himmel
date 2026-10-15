@@ -1504,6 +1504,9 @@ case "$_rm_long_hit:$cmd_lc" in
 esac
 # A long `--r…` word is rm's recursive flag only when it is one of rm's own
 # arguments; the tokenizer's walk decides that, a blind walk fails closed.
+# PowerShell text is always blind: the bash tokenizer drops the backslashes of
+# a drive-qualified rm.exe, so the word never basenames to rm.
+if [ "$tool" = PowerShell ] && [ "$_rm_long_hit" = 1 ]; then _rm_blind=1; fi
 if [ "$_rm_long_hit" = 1 ] && { [ "$_rm_flag" = 1 ] || [ "$_rm_blind" = 1 ]; }; then
     deny "recursive rm"
 fi
