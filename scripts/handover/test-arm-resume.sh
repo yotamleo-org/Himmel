@@ -2409,15 +2409,18 @@ _w9_ho() { # <file-name> <resume_cwd> [extra frontmatter line]
     { printf -- '---\nsession_kind: test\nresume_cwd: %s\n' "$2"; [ -n "${3:-}" ] && printf '%s\n' "$3"; printf -- '---\n# t\n'; } > "$f"
     printf '%s' "$f"
 }
-_w9_run() { SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1; }
+_w9_run() { SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1; echo "arm-rc=$?"; }
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w9.md "$W9_ROOT")")
 assert_contains "W9 himmel code arm defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w10.md "$W9_ROOT" "resume_isolation: primary")")
 assert_not_contains "W10 resume_isolation: primary opts out" "would create worktree" "$out"
+assert_contains "W10 exits 0" "arm-rc=0" "$out"
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w11.md "$TMP/w9-other")")
 assert_not_contains "W11 a non-himmel resume_cwd (vault arm) is untouched" "would create worktree" "$out"
+assert_contains "W11 exits 0" "arm-rc=0" "$out"
 out=$(_w9_run "$(_w9_ho luna-note-w12.md "$W9_ROOT")")
 assert_not_contains "W12 no HIMMEL ticket in the handover name is untouched" "would create worktree" "$out"
+assert_contains "W12 exits 0" "arm-rc=0" "$out"
 rm -rf "$W9_ROOT" "$TMP/w9-other"
 fi
 
