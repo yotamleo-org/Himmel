@@ -209,7 +209,7 @@ _is_bare() {
 # entry (unlike a normal checkout or a linked worktree), so _scan_dir's
 # `[ -e "$dir/.git" ]` gate never fires for one and — without this check —
 # it falls through to being recursed into like an ordinary directory,
-# scanning its entire object database.. Only directories
+# scanning its entire object database. Only directories
 # that pass this cheap check pay for the _is_bare git subprocess call below;
 # every other directory (the overwhelming majority of a github-root scan)
 # never shells out to git just to learn it isn't a repo.
