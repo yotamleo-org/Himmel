@@ -306,4 +306,19 @@ else
   fail "24q: rc=$rc ran='$ran' output: $out"
 fi
 
+# 24r: a comment edit PLUS a mode change is not comment-only.
+git -C "$SB" checkout -q "$P0"
+git -C "$SB" checkout -q -b cm
+printf '# only a comment\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+git -C "$SB" update-index --chmod=+x scripts/machine-setup/uninstall-plugins.sh
+git -C "$SB" commit -q -am "chore: comment and mode"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$P0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24r: a comment edit with a mode change still selects the suite"
+else
+  fail "24r: rc=$rc ran='$ran' output: $out"
+fi
+
 rst_tally
