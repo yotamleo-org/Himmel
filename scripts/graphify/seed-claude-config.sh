@@ -211,24 +211,21 @@ seed_lock_is_stale() {
 
 seed_lock_release() { # $1 = 1 to warn when our owned lock cannot be removed
   local warn="$1" claimed owner
-  # Claim the lock dir by atomic rename to a path only this call uses, THEN read
-  # its owner: no check-then-act gap, and we only ever delete our own claimed
-  # path. If a steal-and-reacquire let us claim a replacement owner's lock, hand
-  # it back instead of deleting it.
+  # Claim ONLY the owner file, by atomic rename to a path this call alone uses,
+  # then read the token from it. The lock dir stays in place throughout, so a
+  # contender can never mkdir into a gap, and a steal needs a stale mtime that
+  # the rename just refreshed. A claimed foreign (replacement) token goes back.
   claimed="$LOCK.rel.$$.$RANDOM"
-  mv "$LOCK" "$claimed" 2>/dev/null || return 0
-  owner="$(cat "$claimed/owner" 2>/dev/null)"
-  if [ "$owner" = "$SEED_LOCK_TOKEN" ]; then
-    rm -f "$claimed/owner" 2>/dev/null
-    if ! rmdir "$claimed" 2>/dev/null; then
-      # not empty: keep it as evidence at the lock path, where the stale steal reaps it
-      [ -e "$LOCK" ] || mv "$claimed" "$LOCK" 2>/dev/null
-      [ "$warn" -eq 1 ] && echo "seed-claude-config: WARNING - failed to release seed lock $LOCK; it becomes stealable after ${SEED_LOCK_STALE}s." >&2
-    fi
+  mv "$LOCK/owner" "$claimed" 2>/dev/null || return 0
+  owner="$(cat "$claimed" 2>/dev/null)"
+  if [ "$owner" != "$SEED_LOCK_TOKEN" ]; then
+    mv "$claimed" "$LOCK/owner" 2>/dev/null || rm -f "$claimed" 2>/dev/null
     return 0
   fi
-  # ponytail: the hand-back is an [ -e ] guard, not atomic against a third acquirer; revisit if mv -T becomes portable.
-  [ -e "$LOCK" ] || mv "$claimed" "$LOCK" 2>/dev/null
+  rm -f "$claimed" 2>/dev/null
+  if ! rmdir "$LOCK" 2>/dev/null && [ "$warn" -eq 1 ]; then
+    echo "seed-claude-config: WARNING - failed to release seed lock $LOCK; it becomes stealable after ${SEED_LOCK_STALE}s." >&2
+  fi
 }
 
 seed_with_lock() {
