@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI queue ledger path resolver (HIMMEL-502 P2.1).
+# CI queue ledger path resolver (P2.1).
 # Byte-identical twin of ledgerPath() in scripts/ci-orchestrator/src/ledger.ts.
 # Source this file and call `ci_queue_ledger_path`, OR execute it directly to
 # print the resolved path (the parity test shells it this way). PURE — no fs

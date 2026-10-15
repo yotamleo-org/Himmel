@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight.sh — HIMMEL-1841. Hermetic: fixture caches, stub producer.
+# test-bank-preflight.sh — . Hermetic: fixture caches, stub producer.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/lib/bank-preflight.sh"
@@ -7,18 +7,18 @@ PASS=0; FAIL=0
 W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 # All bank reads prune reservations, so isolate even bank-only cases.
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
-# HIMMEL-4423: a launching shell that exports the 95 workaround must not move the ceiling under test.
+# a launching shell that exports the 95 workaround must not move the ceiling under test.
 export CADENCE_BANK_MAX_PCT=85
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
 # from this machine's OWN running fleet (a real `ps -eo args` would count
 # whatever HIMMEL-/LUNA-named sessions genuinely happen to be running here
-# and could trip the HIMMEL-2765 fleet cap for reasons unrelated to what
+# and could trip the fleet cap for reasons unrelated to what
 # these cases test) — the fleet cap gets its own dedicated cases further
 # down, with a real stub feeding FLEET_PS_CMD.
 NO_FLEET="$W/no-fleet-ps.sh"; printf '%s\n' '#!/usr/bin/env bash' 'true' > "$NO_FLEET"; chmod +x "$NO_FLEET"
 
-# HIMMEL-1712: hermetic identity so every fixture below can stamp the SAME
+# hermetic identity so every fixture below can stamp the SAME
 # matching account hash -- this suite is about verdict logic, not identity,
 # and a dedicated account-mismatch case is added separately below. A test
 # further down explicitly unsets HOME for one call to cover that path; it
@@ -88,7 +88,7 @@ check "non-integer stamp -> BANK-STALE" BANK-STALE \
 check "missing cache -> BANK-UNKNOWN" BANK-UNKNOWN \
  "$(CADENCE_BANK_CACHE="$W/gone.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
 
-# HIMMEL-1712: a cache stamped for a different account is distrusted exactly
+# a cache stamped for a different account is distrusted exactly
 # like a missing one -- the number is never attributed to this session.
 printf '%s' "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20},\"primaries_refreshed_at\":$NOW,\"account\":\"deadbeefdeadbeef\"}" > "$W/mismatch.json"
 mismatch_out=$(CADENCE_BANK_CACHE="$W/mismatch.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>"$W/mismatch.err")
@@ -194,7 +194,7 @@ wait "$watchdog_pid" 2>/dev/null || true
 if [ "$rc" -eq 0 ]; then PASS=$((PASS+1)); echo "ok - does not block on held-open stdin"
 else FAIL=$((FAIL+1)); echo "FAIL - blocked on held-open stdin (missing </dev/null?)"; fi
 
-# --- HIMMEL-2765: fleet-size cap --------------------------------------------
+# --- fleet-size cap --------------------------------------------
 # mk_ps_stub <dir> <pid>:<comm>:<argv-line>... - writes a FLEET_PS_CMD stub
 # (matching the real `ps -eo pid=,args=` default: headerless "PID ARGV"
 # lines) AND a FLEET_PROC fixture tree with one comm file per pid, so the
@@ -231,7 +231,7 @@ HEALTHY_CACHE="{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\
 # bypass every ordinary refusal case below, unless a case's own "$@"
 # happens to override it. Default it to unset here, BEFORE "$@" is
 # applied, so only a case that explicitly asks for the bypass gets it.
-# HIMMEL-2789: these cases simulate an actual ARM attempt, so
+# these cases simulate an actual ARM attempt, so
 # CADENCE_BANK_LAUNCH defaults on via the FLEET_VERDICT_LAUNCH shell
 # variable (bash's prefix-assignment-to-function scoping - visible inside
 # fleet_verdict, restored after) rather than an env "$@" override, since
@@ -242,12 +242,12 @@ HEALTHY_CACHE="{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\
 fleet_verdict() {
   local dir="$1"; shift
   printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
-  # HIMMEL-2774: a FRESH slot dir per call - these cases share the fixed
+  # a FRESH slot dir per call - these cases share the fixed
   # CADENCE_BANK_LEG=testleg name and run under cap (creating a reservation)
   # repeatedly; a shared/real slot dir would carry a reservation from one
   # call into the next call's "duplicate" refusal, and would pollute this
   # machine's real fleet slots besides.
-  # codex-6 (HIMMEL-2774, 2nd panel round): an unchecked mktemp failure here
+  # an unchecked mktemp failure here
   # left HIMMEL_FLEET_SLOTS empty, and bank-preflight.sh's own
   # `${HIMMEL_FLEET_SLOTS:-default}` treats a set-but-empty var the same as
   # unset — silently falling BACK to this machine's real fleet slot dir,
@@ -299,7 +299,7 @@ check "3 legs, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"
 
 # FLEET n/CAP is printed on EVERY call, including a PROCEED (below cap).
-# HIMMEL-2782: the line now names the lane breakdown too - p3's fixture has
+# the line now names the lane breakdown too - p3's fixture has
 # no environ files (mk_ps_stub only writes comm), so every candidate falls
 # back to "native" (the safe default for an unreadable/missing environ).
 fleet_verdict "$p3" HIMMEL_FLEET_CAP=4 >/dev/null
@@ -309,7 +309,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - FLEET n/CAP not printed on a PROCEED call"
 fi
 
-# HIMMEL-2782: a claudex candidate (CLAUDEX_LANE_OK=1 in its own
+# a claudex candidate (CLAUDEX_LANE_OK=1 in its own
 # /proc/<pid>/environ) is named separately from native ones in the FLEET
 # line - mk_ps_stub_environ below extends mk_ps_stub with a per-entry
 # environ file so this can be asserted directly.
@@ -340,7 +340,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - claudex candidate not named separately in the FLEET line"
 fi
 
-# HIMMEL-4076: explicit pipefail mode plus a large environ catches an early
+# explicit pipefail mode plus a large environ catches an early
 # grep exit closing tr's pipe before the producer has drained the input.
 # Production defaults to set -u only; fleet_verdict deliberately opts in.
 plarge="$W/pslarge"; mk_ps_stub_environ "$plarge" \
@@ -357,7 +357,7 @@ else
 fi
 
 # codex-1 (CR review): a session with NO argument between "claude" and "-n"
-# (e.g. `claude -n HIMMEL-1000-leg ...`) must still be counted - the old
+# (e.g. `claude -n -leg ...`) must still be counted - the old
 # `claude .* -n ...` pattern required TWO separate whitespace runs and
 # silently missed this shape, undercounting the fleet.
 pminimal="$W/psminimal"; mk_ps_stub "$pminimal" \
@@ -371,8 +371,8 @@ check "4 legs with NO args before -n, cap=4 -> SKIPPED-FLEET (codex-1)" SKIPPED-
 # codex-3 (CR review): a WRAPPER process (e.g. konsole, comm != claude)
 # whose own argv EMBEDS the claude invocation it launched as literal text
 # must not be counted ALONGSIDE the real claude child it wraps - that would
-# double-count ONE leg (HIMMEL-1000-leg here) as two. pid 9001 is konsole
-# wrapping HIMMEL-1000-leg (its argv embeds the full claude command as
+# double-count ONE leg (-leg here) as two. pid 9001 is konsole
+# wrapping -leg (its argv embeds the full claude command as
 # text, same shape headed-arm.sh launches with); pid 9002 is the REAL
 # claude child for that SAME leg; pid 9003 is a second, distinct real leg.
 # Two genuine legs total. cap=3 differentiates: the FIXED (comm-filtered)
@@ -462,7 +462,7 @@ check "census command fails, FLEET_CAP_OK=1 -> PROCEED (bypass reaches the censu
 check "4 legs, cap=4, FLEET_CAP_OK=0 -> SKIPPED-FLEET (exact-match bypass)" SKIPPED-FLEET \
   "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=0)"
 
-# --- HIMMEL-2789: the fleet cap's REFUSAL requires declared launch intent --
+# --- the fleet cap's REFUSAL requires declared launch intent --
 # Same over-cap fixture as "4 legs, cap=4 -> SKIPPED-FLEET" above, but with
 # CADENCE_BANK_LAUNCH explicitly unset (FLEET_VERDICT_LAUNCH= overrides
 # fleet_verdict()'s own default-on) - a plain bank READ, e.g. hermes-
@@ -482,7 +482,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - a plain read suppressed the FLEET line"
 fi
 
-# --- HIMMEL-2782: CADENCE_BANK_LANE=claudex parks on the codex bank -------
+# --- CADENCE_BANK_LANE=claudex parks on the codex bank -------
 # claudex_verdict <status-stub-output> - same shape as verdict(), but with
 # CADENCE_BANK_LANE=claudex and CADENCE_BANK_STATUS_CMD pointed at a stub
 # that just echoes the given line (mirroring scripts/lanes/bank-status.ts's
@@ -524,10 +524,10 @@ check "claudex lane, status command produces nothing -> PROCEED (WARN)" PROCEED 
 check "native lane (no CADENCE_BANK_LANE): still governed by the Claude bank check" PROCEED \
   "$(verdict "$HEALTHY_CACHE")"
 
-# codex-3 (HIMMEL-2782 CR fix): a CADENCE_BANK_STATUS_CMD override whose
+# a CADENCE_BANK_STATUS_CMD override whose
 # path contains a space must not be word-split (same bug class as
 # FLEET_PS_CMD's own quoting fix, applied here to the codex-bank command).
-# HIMMEL-2799: spent distinguishes a successful call from the unknown-state
+# spent distinguishes a successful call from the unknown-state
 # PROCEED fallback that a word-split invocation would silently reach.
 SPACE_DIR="$W/dir with space"
 mkdir -p "$SPACE_DIR"
@@ -541,7 +541,7 @@ check "claudex lane, CADENCE_BANK_STATUS_CMD path contains a space -> SKIPPED-BA
      FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_LANE=claudex CADENCE_BANK_STATUS_CMD="$SPACE_STUB" \
        bash "$SUT" </dev/null 2>"$W/err.log")"
 
-# --- HIMMEL-2772: the native path's bank line carries the codex bank too -----
+# --- the native path's bank line carries the codex bank too -----
 # native_codex_run <status-cmd> [cache-json] - the DEFAULT (native) lane with
 # CADENCE_BANK_STATUS_CMD pointed at a stub; the stdout verdict is returned and
 # stderr lands in $W/err.log. The codex figure rides the existing
@@ -627,7 +627,7 @@ check "no timeout binary -> PROCEED, codex read skipped (never unbounded)" PROCE
 case "$(bank_line)" in *' codex=?') PASS=$((PASS+1)); echo "ok - no timeout binary -> codex=?" ;;
   *) FAIL=$((FAIL+1)); echo "FAIL - no timeout binary: '$(bank_line)'" ;; esac
 
-# HIMMEL-4076: metered legs use the backend credit floor, never either bank.
+# metered legs use the backend credit floor, never either bank.
 # Removing the lane branch must refuse this 99% fixture; removing fleet
 # admission must incorrectly admit the full-fleet fixture below.
 printf '%s' "$(stamp_account "$(fx 99 99 "$NOW" "")")" > "$W/c.json"
@@ -662,7 +662,7 @@ check "fleet reports all three lanes and total" \
 check "OpenRouter processes count toward fleet refusal" SKIPPED-FLEET \
   "$(fleet_verdict "$por" HIMMEL_FLEET_CAP=3 CADENCE_BANK_LANE=openrouter)"
 
-# HIMMEL-4423: bank-lift. An operator-set, expiring, account-bound lift skips
+# bank-lift. An operator-set, expiring, account-bound lift skips
 # ONLY the seven_day comparison. BANK_LIFT_FILE points into the scratch HOME.
 export BANK_LIFT_FILE="$W/home/.himmel/state/bank-lift.json"; mkdir -p "$W/home/.himmel/state"
 write_lift() { # <until> <account> [window]
@@ -774,7 +774,7 @@ printf '%s' "{\"account\":\"deadbeefdeadbeef\",\"seven_day\":{\"resets_at\":\"$R
 bash "$LIFT" set "$W/lc2.json" >/dev/null 2>&1
 check "bank-lift set refuses another account's cache" absent "$([ -e "$BANK_LIFT_FILE" ] && echo present || echo absent)"
 
-# HIMMEL-4868: catches strict reset comparison, nonpersistent standing policy,
+# catches strict reset comparison, nonpersistent standing policy,
 # and validators that discard the reason. All writes stay in the scratch HOME.
 printf '%s' "{\"account\":\"$ACCT\",\"seven_day\":{\"resets_at\":\"2026-10-09T20:59:59.996777+00:00\"}}" > "$W/jitter.json"
 # shellcheck disable=SC1090,SC2317,SC2329 # sourced fixture; date override invoked by validator
@@ -849,7 +849,7 @@ printf '%s' '{broken' > "$BANK_LIFT_FILE"
 check "show explains malformed file" 'bank-lift: INVALID: parse' "$(bash "$LIFT" show "$W/lc.json" | tail -1)"
 rm -f "$BANK_LIFT_FILE"
 
-# HIMMEL-4450: BSD `date -j` fallback. Stub `date` so GNU `-d` fails and `-j -f`
+# BSD `date -j` fallback. Stub `date` so GNU `-d` fails and `-j -f`
 # behaves like BSD (trailing characters after the seconds are silently ignored).
 mkdir -p "$W/bsddate"
 cat > "$W/bsddate/date" <<'STUB'
@@ -875,14 +875,14 @@ check "BSD fallback: +00:00 with fraction -> UTC epoch (control)" 1781006400 "$(
 check "BSD fallback: Z -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-06-09T12:00:00Z')"
 check "BSD fallback: +05:30 offset -> rejected, never read as UTC" FAIL "$(bsd_epoch '2026-06-09T12:00:00+05:30')"
 check "BSD fallback: -07:00 offset -> rejected, never read as UTC" FAIL "$(bsd_epoch '2026-06-09T12:00:00.5-07:00')"
-# HIMMEL-4522: every nonzero offset form fails closed, not just +HH:MM.
+# every nonzero offset form fails closed, not just +HH:MM.
 check "BSD fallback: +0530 offset -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00+0530')"
 check "BSD fallback: -0700 offset -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00-0700')"
 check "BSD fallback: +05 offset -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00+05')"
 check "BSD fallback: -07 offset -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00-07')"
 check "BSD fallback: +0000 -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-06-09T12:00:00+0000')"
 check "BSD fallback: +00 -> UTC epoch (control)" 1781006400 "$(bsd_epoch '2026-06-09T12:00:00+00')"
-# HIMMEL-4524: an offset-less stamp is rejected on BOTH paths (the lift-file
+# an offset-less stamp is rejected on BOTH paths (the lift-file
 # writer emits Python isoformat with an explicit offset; local-vs-UTC is ambiguous).
 check "BSD fallback: offset-less -> rejected" FAIL "$(bsd_epoch '2026-06-09T12:00:00')"
 gnu_epoch() { ( . "$REPO/scripts/lib/bank-lift.sh"; _bank_lift_epoch "$1" 2>/dev/null || echo FAIL ); }
@@ -892,7 +892,7 @@ check "GNU path: +00:00 -> UTC epoch (control)" 1781006400 "$(gnu_epoch '2026-06
 if date -d @0 +%s >/dev/null 2>&1; then  # gnu-ok: probing for GNU date
   check "GNU path: +05:30 -> parsed correctly (control)" 1780986600 "$(gnu_epoch '2026-06-09T12:00:00+05:30')"
 fi
-# HIMMEL-4523/4499: the BSD stub must not lean on GNU-only `date -d`.
+# the BSD stub must not lean on GNU-only `date -d`.
 check "BSD stub is portable (no GNU date -d)" 0 "$(grep -cE 'date .*-u -d|date -d' "$W/bsddate/date")"
 
 echo "passed=$PASS failed=$FAIL"; [ "$FAIL" -eq 0 ]

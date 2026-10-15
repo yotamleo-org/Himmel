@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/test-cadence-format.sh — unit tests for cadence-format.sh.
 #
-# Covers cadence_cmd_escape (HIMMEL-1281), the shared .bat value escaper the
+# Covers cadence_cmd_escape, the shared .bat value escaper the
 # four cadence emitters (pipeline / graphmap / qmd / codex-sweep) now share.
 # The per-emitter arm tests assert the escape end-to-end through a generated
 # .bat; this suite pins the transform itself, including the characters it must
@@ -62,7 +62,7 @@ assert_esc "quote and percent compose" \
   '"%X%"' '\"%%X%%\"'
 
 echo "[test-cadence-format] cadence_cmd_escape — what it MUST LEAVE ALONE"
-# This is the HIMMEL-1281 defect. Inside the double quotes every emitter wraps
+# This is the defect. Inside the double quotes every emitter wraps
 # these values in, cmd.exe treats & < > | as literal data and ^ as a literal
 # character — it is not an escape char there. The four deleted per-emitter
 # copies caret-escaped all five, which corrupted the value: a real directory
@@ -185,7 +185,7 @@ else
   fail=$((fail + 1)); echo "  FAIL: AST/publish-only .sh runners not seen (rc=$_ast_rc stamp='$_ast_got', want rc=0 stamp=17)"
 fi
 # Each basename alone must be seen: one row per runner, so a missing entry in
-# CADENCE_RUNNER_BASENAMES names the exact runner (HIMMEL-4285).
+# CADENCE_RUNNER_BASENAMES names the exact runner.
 for _n in graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel doctor-cadence; do
   _one_tmp="$(mktemp -d -t cadence-one.XXXXXX)" || exit 1
   printf '#!/usr/bin/env bash\n# %s 17\n' "$CADENCE_FORMAT_MARKER" > "$_one_tmp/$_n.sh"
@@ -244,9 +244,9 @@ fi
 
 # Case 2: no pwsh anywhere on PATH, only powershell.exe -> loud named fallback.
 # scrub_path drops the real pwsh install dir so this box's own pwsh cannot leak in.
-# HIMMEL-2535: prepend a tool floor. scrub_path drops a PATH dir WHOLESALE, so
+# prepend a tool floor. scrub_path drops a PATH dir WHOLESALE, so
 # on any box where pwsh ships alongside the coreutils (the /usr/bin case that
-# made HIMMEL-2470/2520/2524/2530 red) this scrub would take bash and the
+# made red) this scrub would take bash and the
 # probe's own utilities with it. It is green here only because this station has
 # no pwsh at all, so the scrub currently drops nothing -- latent, not correct.
 # Tool set measured, not guessed: the case reaches for mktemp, rm and tr.
@@ -275,7 +275,7 @@ else
 fi
 rm -rf "$_wsh_tmp"
 
-# HIMMEL-3332 S8: cadence_prov_record records a `job register` row (ours,
+# S8: cadence_prov_record records a `job register` row (ours,
 # scheduler cron) and never fails an arm when the ledger cannot be written.
 _prov_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-prov.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }
 HIMMEL_PROVENANCE_DIR="$_prov_tmp/ledger" cadence_prov_record HIMMEL-Fmt-Probe; _prc=$?
@@ -296,7 +296,7 @@ else
 fi
 rm -rf "$_prov_tmp"
 
-# HIMMEL-3525 S18: with a real (fake) crontab on PATH holding the just-armed
+# S18: with a real (fake) crontab on PATH holding the just-armed
 # line, cadence_prov_record reads its own identity straight back and records
 # --post-text <token> --field identity_v=1, so uninstall can tell this exact
 # line apart from an edited one later.
@@ -318,7 +318,7 @@ else
 fi
 rm -rf "$_prov_tmp2"
 
-# --- cadence_posix_leg_start / cadence_posix_leg_end (HIMMEL-4286) ---------
+# --- cadence_posix_leg_start / cadence_posix_leg_end ---------
 # The shared POSIX emitter every generated cadence runner inherits: flow-run
 # start/end rows plus `cadence-alert.sh fail` on a failed leg and `clear` on a
 # completed one. Each row generates the snippet, wraps it in a throwaway script
@@ -404,7 +404,7 @@ case "$_out" in
 esac
 # Under cron the runner's PATH is the minimal /usr/bin:/bin, but the alert
 # sender needs bun (~/.bun/bin): the alert call must carry the ARM-time PATH
-# snapshot (HIMMEL-2840 shape), never the fire-time one.
+# snapshot (shape), never the fire-time one.
 mkdir -p "$_leg_tmp/bunbin"
 printf '#!/bin/sh\nexit 0\n' > "$_leg_tmp/bunbin/bun"
 chmod 755 "$_leg_tmp/bunbin/bun"

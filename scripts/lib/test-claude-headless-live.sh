@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-headless-live.sh — HIMMEL-2178. The wrapper's own exit
+# test-claude-headless-live.sh — . The wrapper's own exit
 # criterion (architecture doc §4 Chain 2a): a REAL, trivial `claude` `-p`
 # dispatch through scripts/lib/claude-headless.sh, verifying the registry
 # row and artifact-check verdict land correctly. Not part of the hermetic

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-bank-preflight-fleet.sh — HIMMEL-2774. RED-first suite for the atomic
+# test-bank-preflight-fleet.sh — . RED-first suite for the atomic
 # admission + reservation mechanism that closes the arm-time TOCTOU race:
 # two concurrent declared launches both observing the fleet under cap and
 # both proceeding, pushing the fleet over HIMMEL_FLEET_CAP (deferred from
-# HIMMEL-2765's /pr-check).
+# 's /pr-check).
 #
 # SUT is a variable (FLEET_SUT) — not a hardcoded path — so this SAME suite
 # can run unmodified against the pre-fix script to produce genuine RED
@@ -29,7 +29,7 @@ if [ -z "$W" ] || [ ! -d "$W" ]; then echo "FAIL - mktemp returned an empty/inva
 trap 'rm -rf "$W"' EXIT
 NOW="$(date +%s)"
 
-# HIMMEL-1712: hermetic identity so the cache fixture below matches the
+# hermetic identity so the cache fixture below matches the
 # current session -- this suite is about the reservation race, not identity.
 export HOME="$W/home"; mkdir -p "$HOME"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-fleet-test"}}' > "$HOME/.claude.json"
@@ -69,7 +69,7 @@ mk_ps_stub() {
 # masked by an unrelated BANK-* verdict) and prints its stdout verdict.
 run_pf() {
   local slots="$1" dir="$2"; shift 2
-  # codex-6 (HIMMEL-2774, 4th panel round): FLEET_CAP_OK/CADENCE_BANK_LAUNCH
+  # FLEET_CAP_OK/CADENCE_BANK_LAUNCH
   # default to empty here, BEFORE "$@" — an ambient export of either in the
   # invoking shell/CI would otherwise leak through `env`'s inherited
   # environment and silently invalidate a refusal case or turn an
@@ -204,7 +204,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (f) duplicate refusal did not name the duplicate-reservation reason"
 fi
 
-# --- (g) codex-5 (HIMMEL-2774, 2nd panel round): `mkdir "$SLOTS/$LEG"`
+# --- (g) `mkdir "$SLOTS/$LEG"`
 # failing does NOT mean "already exists" — a name exceeding the filesystem's
 # per-component NAME_MAX (ENAMETOOLONG) reads identically to EEXIST unless
 # distinguished, and misclassified a legitimate, unique launch as a refused
@@ -229,7 +229,7 @@ if [ -e "$slots_g/$g_longleg" ]; then
 else
   PASS=$((PASS+1)); echo "ok - (g) no reservation directory left behind for the over-length name"
 fi
-# codex-3 (HIMMEL-2774, 4th panel round): ENAMETOOLONG no longer means
+# ENAMETOOLONG no longer means
 # "proceed without a reservation" — a bounded hash of the leg name is always
 # a valid mkdir target, so this launch still gets counted against the cap.
 g_hashkey="$(printf '%s' "$g_longleg" | cksum | awk '{print $1}')"
@@ -239,7 +239,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (g) no hashed-key reservation created for the over-length name"
 fi
 
-# --- (h) codex-1/codex-2 (HIMMEL-2774, 3rd panel round): a stale .admit
+# --- (h) /a stale .admit
 # (age past FLEET_ADMIT_STALE_SECS) whose recorded pid is still LIVE must
 # never be reclaimed by age alone — reclaiming out from under a still-running
 # holder loses mutual exclusion outright. Use the test's own $$ (guaranteed
@@ -257,7 +257,7 @@ check "(h) stale .admit (61s old) held by a LIVE pid -> not reclaimed, SKIPPED-F
 admit_after="$(cat "$slots_h/.admit/acquired" 2>/dev/null) $(cat "$slots_h/.admit/pid" 2>/dev/null)"
 check "(h) .admit acquired/pid files untouched (no steal attempted against a live holder)" "$admit_before" "$admit_after"
 
-# --- (i) / (i2) codex-5 (HIMMEL-2774, 3rd panel round): a transient failure
+# --- (i) / (i2) a transient failure
 # of the IN-LOCK re-census (the second _fleet_census call, made after the
 # pre-lock snapshot already succeeded) used to fall back to the pre-lock
 # snapshot silently and admit on it. A ps stub that succeeds on its first
@@ -308,7 +308,7 @@ pi2="$W/ps-i2"; mk_ps_fail_second_stub "$pi2" "$cnt_i2"
 i2_out="$(run_pf "$slots_i2" "$pi2" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG=HIMMEL-9009-censusfailbypass HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=1)"
 check "(i2) in-lock census failure with FLEET_CAP_OK=1 -> PROCEED (bypass still applies)" PROCEED "$i2_out"
 
-# --- (j) codex-7 (HIMMEL-2774, 3rd panel round): a leg name beginning with
+# --- (j) a leg name beginning with
 # '.' is a valid `mkdir` target but invisible to the reservation census glob
 # ("$SLOTS"/*/, no dotglob) — such a reservation would exist on disk yet
 # never count against the cap. codex-3 (4th panel round): rather than
@@ -326,7 +326,7 @@ if [ -e "$slots_j/.hidden-leg" ]; then
 else
   PASS=$((PASS+1)); echo "ok - (j) no reservation directory left behind for the dot-prefixed name"
 fi
-# codex-3 (HIMMEL-2774, 4th panel round): a dot-prefixed name is likewise
+# a dot-prefixed name is likewise
 # reserved under its bounded hash now, rather than proceeding uncounted.
 j_hashkey="$(printf '%s' .hidden-leg | cksum | awk '{print $1}')"
 if [ -f "$slots_j/$j_hashkey/expires" ]; then
@@ -338,7 +338,7 @@ fi
 # --- (k) CodeRabbit (PR #858, outside-diff): the `pid` write is what
 # arm-resume.sh's release verifies ownership against, so a reservation whose
 # pid write failed can never be released by its owner and lingers to its TTL
-# (the HIMMEL-3017 failure shape). It is now gated like `expires`: refuse and
+# (the failure shape). It is now gated like `expires`: refuse and
 # clean up. The failure is injected with an exported `printf` function that
 # fails only for the caller-pid line (the redirect still opens the file; the
 # function's status is what the `&&` chain reads) and defers to the builtin
@@ -368,7 +368,7 @@ k2_out="$(
 )"
 check "(k) control: a different caller pid, same shim -> PROCEED" PROCEED "$k2_out"
 
-# --- (l) HIMMEL-3012: a live session CONSUMES its reservation by NAME, but the
+# --- (l) a live session CONSUMES its reservation by NAME, but the
 # reservation's directory name is not always the name the census sees — a name
 # with a space (the census reads the first whitespace token of `-n`) and a
 # name that cannot be one directory component ('/' or over NAME_MAX, so the
@@ -458,7 +458,7 @@ fi
 check "(n) unmatched unexpired reservation with a name file stays on disk" 1 "$(count_resv "$slots_n")"
 
 # --- (o) a first token carried by TWO pending reservations is ambiguous: one
-# live `-n HIMMEL-9507-shared` names neither "HIMMEL-9507-shared a" nor "... b",
+# live `-n -shared` names neither "-shared a" nor "... b",
 # so it consumes NEITHER — whitespace names are never consumed by the name-file
 # match; the census may over-count but must never under-count. Stateless, so it
 # must hold on every later preflight too (a consume-one-per-run rule eats the
@@ -482,7 +482,7 @@ for o_run in first second; do
   check "(o) $o_run preflight: both same-first-token reservations stay on disk" 2 "$(count_resv "$slots_o")"
 done
 
-# --- (p) HIMMEL-3216: the census used to expose only the FIRST whitespace token
+# --- (p) the census used to expose only the FIRST whitespace token
 # of a live `-n` value, so a reservation keyed on that token was consumed by a
 # DIFFERENT live leg sharing it. Where /proc/<pid>/cmdline is readable the census
 # now reads the exact argv element after `-n`, and consumption compares the FULL
@@ -534,7 +534,7 @@ p_case() {
   p_expect "$1" "$slots" "$5"
 }
 # p1: the plain-name shape the ticket names (pre-#920 too): a live
-# `-n "HIMMEL-9600 anything"` shares the first token with a HIMMEL-9600 reservation.
+# `-n "anything"` shares the first token with a reservation.
 p_case "p1 plain reservation, live shares the first token" "HIMMEL-9600" "HIMMEL-9600 anything" "HIMMEL-9600 anything" kept
 # p2: a hashed-key (slash) name, live `-n "<name> other"`.
 p_case "p2 slash reservation, live shares the first token" "HIMMEL-9601/x" "HIMMEL-9601/x other" "HIMMEL-9601/x other" kept
@@ -571,7 +571,7 @@ slots_p6b="$(mktemp -d "$W/slots-p6b.XXXXXX")" || { echo "FAIL - could not creat
 run_pf "$slots_p6b" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG='HIMMEL-9611"x\y' HIMMEL_FLEET_CAP=4 >/dev/null
 check "(p6b) a quote/backslash in the leg name is escaped in the ledger record" 1 "$(grep -cF 'HIMMEL-9611\"x\\y' "$W/ledger.jsonl")"
 # p7: a PRE-EXISTING (forged / older-copy) name file whose second line differs
-# is not read as its first line: it must not consume the live `HIMMEL-9610/x`.
+# is not read as its first line: it must not consume the live `/x`.
 slots_p7="$(mktemp -d "$W/slots-p7.XXXXXX")" || { echo "FAIL - could not create slots-p7 scratch dir" >&2; exit 1; }
 mkdir -p "$slots_p7/4242"
 printf '%s\n' "$((NOW + 600))" > "$slots_p7/4242/expires"; printf '%s\n' "$$" > "$slots_p7/4242/pid"
@@ -596,7 +596,7 @@ printf 'HIMMEL-9612-x\0other\n' > "$slots_p7c/4244/name"
 p_live "$slots_p7c" "HIMMEL-9612-x" "HIMMEL-9612-x"
 p_expect "p7c name file with an embedded NUL" "$slots_p7c" kept
 # p8: the reservation DIRECTORY name is an identity too. `$(basename)` strips a
-# trailing newline ("HIMMEL-9613-x<LF>" -> "HIMMEL-9613-x") and a multi-line
+# trailing newline ("-x<LF>" -> "-x") and a multi-line
 # name handed to `grep -F` is a LIST of patterns, so either shape would consume
 # a plain live name. A control-character directory name matches nothing.
 p8_i=0
@@ -612,13 +612,13 @@ for p8 in $'HIMMEL-9613-x\n' $'HIMMEL-9614-y\nHIMMEL-9615-z'; do
   p_expect "p8.$p8_i reservation directory name with a newline" "$slots_p8" kept
 done
 
-# --- (q) HIMMEL-3095: a leg that has WRAPPED (queue lock released, last
+# --- (q) a leg that has WRAPPED (queue lock released, last
 # status bullet WRAPPED) but whose process is still alive no longer counts
 # against FLEET_CAP. mk_wrapped_stub builds the cmdline shape
 # leg-claude-launcher.sh always uses (`load <DOC> and continue` as ONE argv
 # element after `-n <name>`) so fleet_doc_for_pid resolves the doc without a
 # glob. The lock check (fleet-wrapped.sh's fleet_lock_dir_for_doc) reads the
-# on-disk lock dir directly — no queue-lock.sh exec, per the HIMMEL-3095
+# on-disk lock dir directly — no queue-lock.sh exec, per the
 # redesign that keeps this out of scripts/cr's guarded reachability closure
 # — so ql_lockdir_stub builds/omits that dir itself, at the same path
 # fleet_lock_dir_for_doc computes for a doc under
@@ -672,7 +672,7 @@ q_run wrapped-example-above-results "- 10:00 WRAPPED — example bullet in prose
 ## Results
 - 10:00 READY — holding for GO." free 1
 
-# --- (r) HIMMEL-3095 drift guard: drives the REAL scripts/handover/
+# --- (r) drift guard: drives the REAL scripts/handover/
 # queue-lock.sh (not a stub) to genuinely acquire and release a lock on a
 # real doc, and asserts fleet-wrapped.sh's pure-bash fleet_lock_dir_for_doc
 # agrees with it at every step, via the SAME root resolution (HANDOVER_DIR)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight-admit-gate.sh — HIMMEL-3019. RED-first suite for the
+# test-bank-preflight-admit-gate.sh — . RED-first suite for the
 # reclaim/release GATE around bank-preflight.sh's `.admit` admission lock.
 #
 # The bug: _fleet_steal_stale_admit's `mv admit victim` displaces WHATEVER
@@ -120,10 +120,10 @@ _inject_paused_taker() { # A is PAUSED between its gate mkdir and its fence mkdi
 # interleaving is forced against it (D claims straight after the rename).
 mv() { command mv "$@"; local rc=$?; [ -n "$MV_INJECT" ] && "$MV_INJECT" "${1:-}"; return $rc; }
 # `rm` shadow, same shape: RM_INJECT fires after a `rm` whose arguments name a
-# fence of RM_GATE (the pre-HIMMEL-3232 breaker's in-place fence delete) — the
+# fence of RM_GATE (the pre-breaker's in-place fence delete) — the
 # one point between that delete and the breaker's gate `mv`; (s) only.
 RM_INJECT=""; RM_GATE=""
-# RM_FAIL_GATE (HIMMEL-3223): a `rm` naming a fence of that gate, or one of its
+# RM_FAIL_GATE: a `rm` naming a fence of that gate, or one of its
 # `.broken.` victims, fails without removing anything — a simulated EACCES.
 RM_FAIL_GATE=""
 # shellcheck disable=SC2317
@@ -134,7 +134,7 @@ rm() {
   command rm "$@"; local rc=$?; case " $* " in *" $RM_GATE/fence."*) [ -n "$RM_INJECT" ] && "$RM_INJECT" ;; esac; return $rc
 }
 # `mkdir` shadow, same shape: MK_INJECT fires after a `mkdir "$MK_GATE/revoked"`
-# (the pre-HIMMEL-3232 breaker's first step), so (s) can pause a breaker there.
+# (the pre-breaker's first step), so (s) can pause a breaker there.
 MK_INJECT=""; MK_GATE=""
 # shellcheck disable=SC2317
 mkdir() { command mkdir "$@"; local rc=$?; case " $* " in *" $MK_GATE/revoked "*) [ -n "$MK_INJECT" ] && "$MK_INJECT" ;; esac; return $rc; }
@@ -145,7 +145,7 @@ D_WON=0; D_RC=""; REL_RC=""; B1_RC=""; P_STALE=""; B_FENCE=""
 # shellcheck disable=SC1091
 . "$W/fns.sh"
 
-# HIMMEL-1712: hermetic identity so the cache fixture below matches the
+# hermetic identity so the cache fixture below matches the
 # current session -- this suite is about the admit-gate lock, not identity.
 # Below the mkdir()/printf() shadows above so shellcheck sees them in
 # definition order (it flags a bare call to a name shadowed further down).
@@ -441,7 +441,7 @@ check "(k) the in-lock census failed (precondition)" 1 "$(grep -c 'in-lock fleet
 check "(k) the first release met the busy gate and gave up (precondition)" 1 "$(grep -c 'could not take the admit-lock gate' "$W/k.err")"
 check "(k) the final cleanup retried and released the lock" absent "$([ -e "$slots_k/.admit" ] && echo present || echo absent)"
 
-# --- (l) HIMMEL-3210: a gate holder PAUSED past the gate age is fenced -------
+# --- (l) a gate holder PAUSED past the gate age is fenced -------
 # C takes the gate and verifies the stale admit, then "pauses": its gate ages
 # out, B breaks it and completes its own steal (B now holds a LIVE admit), and D
 # arms a claim for any window C opens. C resumes and renames. Pre-fence, C's
@@ -464,7 +464,7 @@ check "(l) B's live claim is still THE admit" B "$(cat "$admit/who" 2>/dev/null)
 check "(l) no .stale. victim left behind" 0 "$(count_glob "$W"/.admit.stale.*)"
 check "(l) no gate left behind" gone "$([ -e "$admit.reclaim" ] && echo present || echo gone)"
 
-# --- (m) HIMMEL-3210: a taker paused between its gate mkdir and its fence -----
+# --- (m) a taker paused between its gate mkdir and its fence -----
 # A's gate is broken while A is paused before creating its fence; B holds a
 # fresh, fenced gate. A resumes and would drop its fence into B's gate — the
 # sole-fence check must make A lose and leave B's gate (and fence) intact.
@@ -478,7 +478,7 @@ check "(m) A, resumed inside B's gate, does not hold it (rc 1)" 1 "$m_rc"
 check "(m) B's fence is the gate's only fence" "1 1" \
   "$([ -n "$B_FENCE" ] && [ -d "$B_FENCE" ] && echo 1 || echo 0) $(count_glob "$gate"/fence.*)"
 
-# --- (o) HIMMEL-3210: a rename that resolved its fence BEFORE the break -------
+# --- (o) a rename that resolved its fence BEFORE the break -------
 # Panel codex-1. C holds the gate and its rename has already resolved the fence
 # (simulated by pinning the fence as this shell's cwd and renaming into it
 # RELATIVELY — renameat against a destination parent resolved in advance). C's
@@ -486,7 +486,7 @@ check "(m) B's fence is the gate's only fence" "1 1" \
 # `rm -rf` of the broken copy E takes the freed gate name, steals the stale
 # admit and holds a LIVE claim, and C's pre-resolved rename lands. With the
 # fence still alive inside B's broken copy it moves E's live claim; with E's
-# take sweeping the broken copy before it may hold (HIMMEL-3232), it fails
+# take sweeping the broken copy before it may hold, it fails
 # ENOENT and E keeps the lock.
 # shellcheck disable=SC2317
 _inject_e_after_break() { # E acts right after B's gate `mv`, before B's `rm -rf`
@@ -514,7 +514,7 @@ check "(o) E's live claim is still THE admit" E "$(cat "$admit/who" 2>/dev/null)
 [ "$B1_RC" = 0 ] && _fleet_gate_drop "$admit.reclaim" "${_fleet_gate_fence:-}"
 rm -rf "$admit.reclaim"
 
-# --- (p) HIMMEL-3210/3232: a late fence created in the broken generation ------
+# --- (p) a late fence created in the broken generation ------
 # Panel round-2 codex-1, case (i). A took the gate and paused before its fence
 # mkdir, its path already resolved; the gate aged out. B breaks it, and A
 # resumes right after B's gate `mv`: its fence lands in B's victim, and its
@@ -543,7 +543,7 @@ check "(p) B holds a fresh gate, its fence the only one, the victim swept" "0 1 
 [ "$p_rc" = 0 ] && _fleet_gate_drop "$gate" "$P_FENCE"
 rm -rf "$gate"
 
-# --- (q) HIMMEL-3210: a late fence created after the doomed gate's mv --------
+# --- (q) a late fence created after the doomed gate's mv --------
 # Case (ii), first half: A resumes after B's gate `mv` and before B re-creates
 # the gate — its fence mkdir finds no parent (ENOENT) and A refuses. The second
 # half (A's fence lands in the successor's fenced gate and the sole check sees
@@ -565,7 +565,7 @@ check "(q) B holds the fresh gate, its fence the only one" "0 1 1" \
   "$q_rc $([ -n "$Q_FENCE" ] && [ -d "$Q_FENCE" ] && echo 1 || echo 0) $(count_glob "$gate"/fence.*)"
 [ "$q_rc" = 0 ] && _fleet_gate_drop "$gate" "$Q_FENCE"
 
-# --- (r) HIMMEL-3210: a stamp failure never removes a successor's gate --------
+# --- (r) a stamp failure never removes a successor's gate --------
 # A passes its sole-fence check, then pauses past the gate age. B breaks the gate
 # (mv, then the victim's rm), so A's stamp fails ENOENT, and a successor takes
 # the gate before A's cleanup runs. That cleanup must be fence-verified like
@@ -598,7 +598,7 @@ check "(r) a genuine stamp failure refuses and removes A's own gate" "1 0" \
 . "$W/fns.sh" # restore the SUT's own stamp
 rm -rf "$gate"
 
-# --- (s) HIMMEL-3232: one break, two gate generations (double pause) ---------
+# --- (s) one break, two gate generations (double pause) ---------
 # Breaker B1 observed G1 stale and pauses at its first break step (pause 1).
 # B2 breaks G1 in full and holds G2. Pre-fix, B1 had already written `revoked`
 # into G1, so its fence delete and its `mv` now act on the unrevoked G2: a
@@ -647,7 +647,7 @@ check "(s) S's live claim is still THE admit" S "$(cat "$admit/who" 2>/dev/null)
 check "(s) B1 does not hold" 1 "$s_rc"
 command rm -rf "$gate" "$gate".broken.* "$admit"
 
-# --- (t) HIMMEL-3223: a break whose fence kill fails holds nothing ----------
+# --- (t) a break whose fence kill fails holds nothing ----------
 # An orphan gate with a dead holder's fence is broken while every `rm` of its
 # fences (in place, or inside its `.broken.` victim) fails. Pre-fix the break
 # continued and the breaker held a fresh gate while the old fence survived
@@ -668,7 +668,7 @@ check "(t) once the fault clears a take holds, no victim left, its fence sole" "
 [ "$t_rc3" = 0 ] && _fleet_gate_drop "$gate" "$T_FENCE"
 command rm -rf "$gate" "$gate".broken.*
 
-# --- (n) HIMMEL-3210: displaced-victim debris is pruned by age ----------------
+# --- (n) displaced-victim debris is pruned by age ----------------
 # End to end through the real script. Debris first seen long ago goes; debris
 # never seen before is stamped and kept (it may still be in flight); debris
 # seen recently is kept; a reservation is untouched by the debris pass.
@@ -687,7 +687,7 @@ check "(n) long-seen .admit.stale.* debris is pruned" gone "$([ -e "$slots_n/.ad
 check "(n) long-seen .admit.reclaim.broken.* debris is pruned" gone "$([ -e "$slots_n/.admit.reclaim.broken.1.1" ] && echo present || echo gone)"
 check "(n) never-seen .admit.stale.* debris is kept and stamped" numeric \
   "$(case "$(cat "$slots_n/.admit.stale.2.2/seen" 2>/dev/null)" in (''|*[!0-9]*) echo bad ;; (*) echo numeric ;; esac)"
-# HIMMEL-3232: every gate holder sweeps `.admit.reclaim.broken.*` before it may
+# every gate holder sweeps `.admit.reclaim.broken.*` before it may
 # hold, so the run's own gated release removes even a never-seen one.
 check "(n) never-seen .admit.reclaim.broken.* debris is swept by the release's gate take" gone \
   "$([ -e "$slots_n/.admit.reclaim.broken.2.2" ] && echo present || echo gone)"
@@ -695,7 +695,7 @@ check "(n) recently-seen debris is kept" present "$([ -e "$slots_n/.admit.stale.
 check "(n) a live reservation is untouched and counted" "present 1" \
   "$([ -e "$slots_n/HIMMEL-resv" ] && echo present || echo gone) $(grep -c 'reserved=1 total=1/4' "$W/n.err")"
 
-# --- (o) HIMMEL-4125: a leading-zero debris stamp is decimal, not octal -------
+# --- (o) a leading-zero debris stamp is decimal, not octal -------
 # `08` / `0000000008` are invalid octal, so an unguarded `$((now - seen))` dies
 # with "value too great for base". Read base 10 it is a long-ago stamp: pruned.
 # Must still REFUSE: an overlong digit string (a corrupt stamp) is never

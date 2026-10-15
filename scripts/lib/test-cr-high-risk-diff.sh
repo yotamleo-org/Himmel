@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-high-risk-diff.sh (HIMMEL-1718).
+# Tests for scripts/lib/cr-high-risk-diff.sh.
 # Hermetic: GH_CMD is a PATH-independent stub; the suite never talks to GitHub.
 set -uo pipefail
 
@@ -103,7 +103,7 @@ done
 # (Covered by the loop above; called out here so a future narrowing of the
 # scripts/cr/* pattern fails loudly on the reason rather than on a path list.)
 
-# merge-on-green.sh is HIGH-RISK (HIMMEL-1744): it EXECUTES the squash-merge
+# merge-on-green.sh is HIGH-RISK: it EXECUTES the squash-merge
 # unattended under the ARMAUTOMERGE=1 standing allow, and check-ci.sh — its own
 # green gate — consults this classifier's panel-carry, so a self-edit can merge
 # a PR the review gate did not clear. Operator ruling 2026-08-12 reversed the
@@ -162,7 +162,7 @@ expect 2 "malformed-response" "absent status field fails closed, not open"
 probe "$(total_json 1)" '[{"filename":"docs/moved.sh","status":"renamed"}]'
 expect 2 "malformed-response" "renamed entry missing previous_filename fails closed, not open"
 
-# --- cr_paths_are_high_risk direct unit tests (HIMMEL-2707) ---
+# --- cr_paths_are_high_risk direct unit tests ---
 # The parent split the path predicate out of cr_diff_is_high_risk into
 # cr_paths_are_high_risk, documented to read a newline-separated path list on
 # STDIN. Test it directly, bypassing the gh-backed reader entirely.
@@ -183,7 +183,7 @@ expect 0 "tools/nightly-cadence-runner.sh" "cr_paths_are_high_risk: *cadence* ba
 probe_paths ""
 expect 1 "" "cr_paths_are_high_risk: empty stdin -> rc 1"
 
-# RED CONTROL: before the HIMMEL-2707 stdin fix, the loop inside
+# RED CONTROL: before the stdin fix, the loop inside
 # cr_paths_are_high_risk ended with `done <<EOF / $paths / EOF` -- a leftover
 # heredoc from before the path predicate was split out of
 # cr_diff_is_high_risk, referencing a local `$paths` that is never set inside

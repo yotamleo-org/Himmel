@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # claudex-inbox.sh — cursor bookkeeping shared by the two claudex-inbox hook
 # scripts (PostToolUse and the SessionStart mirror) and exercised directly by
-# scripts/hooks/test-inbox-hook.sh (HIMMEL-2788).
+# scripts/hooks/test-inbox-hook.sh.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — the claudex lane is Linux-only.
 # Source scripts/lib/handover-path.sh before this file for handover_root().
 #
-# Delivery transaction (HIMMEL-2790/2791): inbox_with_lock holds a session-keyed
+# Delivery transaction: inbox_with_lock holds a session-keyed
 # flock across peek, caller delivery, and commit. Call peek in the SAME shell,
 # not command substitution: it sets inbox_bullets and a pending cursor without
 # writing it. Commit only after successful serialization/stdout. The legacy
@@ -55,7 +55,7 @@ inbox_peek() {
     # Read the prefix first so a large delta cannot SIGPIPE an upstream tail.
     # 10# forces base-10: a leading-zero value (e.g. "08") in a corrupted or
     # hand-recovered cursor file would otherwise be misparsed as an invalid
-    # octal literal and abort delivery (CodeRabbit, HIMMEL-2790).
+    # octal literal and abort delivery (CodeRabbit).
     inbox_bullets="$(head -c "$size" "$inbox" 2>/dev/null | tail -c "$((10#$size - 10#$cursor))")" || return 1
 }
 

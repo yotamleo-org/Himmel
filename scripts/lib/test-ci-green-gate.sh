@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/ci-green-gate.sh (HIMMEL-1043). Hermetic: gh is stubbed.
+# Tests for scripts/lib/ci-green-gate.sh. Hermetic: gh is stubbed.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"
@@ -26,7 +26,7 @@ case "$1 $2" in
       checkless)   echo '{"check_runs":[]}' ;;
       *)           echo '{"check_runs":[{"name":"CI","status":"completed","conclusion":"success"}]}' ;;
     esac ;;
-  # The LIST endpoint, not the combined one (HIMMEL-1072): the combined /status
+  # The LIST endpoint, not the combined one: the combined /status
   # folds every context into one aggregate .state, which silently dragged
   # CodeRabbit's own pending review into this gate's verdict — false-blocking on
   # the very signal this gate documents that it excludes. The list carries
@@ -88,7 +88,7 @@ GH_STUB_MODE=many-runs     t over-100-checkruns-blocks 2    # codex-2: >100 chec
 # sit on an unread page 2, so a full page cannot certify green.
 GH_STUB_MODE=many-statuses t over-100-statuses-blocks 2
 GH_STUB_MODE=checkless     t checkless-pr-allows 0
-# HIMMEL-1072: CodeRabbit is the CR gate's business. A pending CodeRabbit review
+# CodeRabbit is the CR gate's business. A pending CodeRabbit review
 # alongside green CI must NOT block HERE — pre-1072 the combined /status
 # aggregate folded it in and this gate blocked on it, defeating the exclusion it
 # documents. Identity-matched on creator.id, so a foreign status keeping the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-headless-trap.sh — HIMMEL-2514. Two concerns, both about
+# test-claude-headless-trap.sh — . Two concerns, both about
 # claude-headless.sh's EXIT/INT/TERM trap doing process-tree damage:
 #
 #   A. The trap must never kill a pid it did not launch. `CLAUDE_PID` is
@@ -42,7 +42,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# HIMMEL-1712: bank-preflight distrusts a cache whose account doesn't match
+# bank-preflight distrusts a cache whose account doesn't match
 # the current identity — synthesize one so the hermetic bank cache below
 # still verdicts PROCEED.
 export HOME="$W/home"; mkdir -p "$HOME"
@@ -89,7 +89,7 @@ mk_bank_cache
 export CADENCE_BANK_CACHE="$BANK_CACHE"
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
-# HIMMEL-2765: isolate from THIS machine's own ambient fleet - see the
+# isolate from THIS machine's own ambient fleet - see the
 # identical note in test-claude-headless.sh.
 FLEET_PS_STUB="$W/no-fleet-ps.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
@@ -262,7 +262,7 @@ EOF
   # count but (per finding 1) blind to a process forked between the
   # snapshot and its parent being signalled. Sweeping trades "1" for
   # "bounded by KILL_TREE_SWEEPS" to NARROW that gap (see the row pair
-  # below — it does not close the gap; that's HIMMEL-2523), while still
+  # below — it does not close the gap; that's ), while still
   # being nowhere near "once per node".
   CHAIN=""
   i=0
@@ -319,7 +319,7 @@ EOF
 
   # --- B1d: this row pair proves the 2nd sweep's snapshot is CONSULTED AND
   # ACTED ON — nothing more. It is NOT evidence that sweeping catches every
-  # real late fork (HIMMEL-2523, deferred): a synthetic `ps` table has no
+  # real late fork (deferred): a synthetic `ps` table has no
   # live process tree in which a child could reparent, so a fake `ps`
   # returning a table with a late-added child on its 2nd call cannot
   # exercise the reparenting failure mode CR round 2 identified. It only

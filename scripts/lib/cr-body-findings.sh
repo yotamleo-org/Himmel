@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # cr-body-findings.sh — reads CodeRabbit's REVIEW-BODY findings for a head SHA
-# (HIMMEL-1126 / HIMMEL-1147).
 #
 # WHY THIS EXISTS — S1, the shape the thread gates cannot see:
-# cr-merge-gate.sh (HIMMEL-936/1072) and cr-signal.sh (HIMMEL-1058) both gate
+# cr-merge-gate.sh and cr-signal.sh both gate
 # on evidence with its own GraphQL/REST identity: unresolved review THREADS,
 # and the commit STATUS. Neither of those surfaces sees findings CodeRabbit
 # posts only inside the review BODY's collapsible sections — "Outside diff
@@ -15,17 +14,17 @@
 # by construction — there is no thread for them to unresolve. That gap is
 # what this reader closes: it parses the review BODY TEXT itself, the only
 # place these findings are recorded.
-#   - HIMMEL-1126: "outside diff range" findings are real, un-actioned
+# - "outside diff range" findings are real, un-actioned
 #     defects the thread gate never saw. Callers treat outside>0 as BLOCKING
 #     UNLESS every one carries an adjudicated disposition in the CR ledger at
-#     this exact head (HIMMEL-3124: cr_body_outside_findings below lists them
+# this exact head (cr_body_outside_findings below lists them
 #     per finding; cr-ledger-evidence.sh's cr_ledger_outside_dispositioned is
 #     the reader). Undispositioned, they still block.
-#   - HIMMEL-1147: "nitpick" findings are lower-severity by CodeRabbit's own
+# - "nitpick" findings are lower-severity by CodeRabbit's own
 #     classification. Callers treat nitpick>0 as SURFACED / non-blocking
 #     (report it, do not deny the merge on it alone).
 #
-# IDENTITY (HIMMEL-1058, same rationale as cr-signal.sh): match the review's
+# IDENTITY (same rationale as cr-signal.sh): match the review's
 # AUTHOR by `.user.id`, never by login. `coderabbitai` (no `[bot]` suffix) is
 # a bare-login match that has nearly missed findings twice before — logins
 # are mutable and spoofable, the numeric id is not. `.user.id == 136622811`
@@ -44,7 +43,7 @@
 # prose, not a schema. A wording change ("Outside-diff comments", a renamed
 # section, a dropped count) would make the count regex below silently stop
 # matching — and a silent 0 reads exactly like "CodeRabbit found nothing",
-# which is a false ALLOW on the HIMMEL-1126 blocking path. So this reader
+# which is a false ALLOW on the blocking path. So this reader
 # distinguishes two very different kinds of "cannot certify":
 #   rc 1 — INFRASTRUCTURE cannot-evaluate: the `gh api` query itself failed,
 #     or the payload is not the JSON array shape this endpoint always
@@ -70,17 +69,17 @@
 # WHAT COUNTS AS "AT HEAD": a review's `.commit_id` is the SHA it reviewed.
 # outside/nitpick/additional/markers are derived from the LATEST SUBSTANTIVE
 # review at the CALLER's head SHA — NOT summed across every head review
-# (HIMMEL-1582). `head_reviews` still counts ALL bot reviews at the head
+# . `head_reviews` still counts ALL bot reviews at the head
 # (callers rely on head_reviews==0 meaning "no review at head yet"). Reviews
 # at any OTHER commit_id (a prior head, before a force-push or fixup) feed
-# only `prior_outside` — enough for a caller to apply the HIMMEL-1126
+# only `prior_outside` — enough for a caller to apply the
 # addendum A2 "stale head" rule (prior_outside>0 with head_reviews==0 ⇒
 # cannot certify — an older head had unaddressed outside-diff findings, but
 # no review exists yet at the current head) without this reader making that
 # policy call itself.
 #
 # WHY LATEST-SUBSTANTIVE-WINS — not a sum, and not naive latest-wins
-# (HIMMEL-1582). The old derivation SUMMED outside/nitpick/additional/markers
+# . The old derivation SUMMED outside/nitpick/additional/markers
 # across every review at the head. A sum is monotonically non-decreasing at a
 # fixed head SHA, so once a finding enters it a later, cleaner review can never
 # clear it — a disproved finding BLOCKS forever unless the head moves. That is
@@ -97,7 +96,7 @@
 #      LATER review with an EMPTY body. A plain latest-wins would read the
 #      empty body and report outside=0 — a false-GREEN produced by an empty
 #      payload, the worst outcome (a silent 0 reads exactly like "CodeRabbit
-#      found nothing", a false ALLOW on the HIMMEL-1126 blocking path).
+# found nothing", a false ALLOW on the blocking path).
 # So: SUBSTANTIVE = the body is non-empty after trimming whitespace (a review
 # object with no body is skipped). LATEST = greatest `.submitted_at`, ties
 # broken by greatest `.id` (both present on every review in this payload).
@@ -118,7 +117,7 @@
 #   only those with a non-empty body. A caller asking "did the review I
 #   requested actually arrive?" must read `substantive` — CodeRabbit posts
 #   empty review objects on incremental passes, so head_reviews>0 alone is
-#   satisfied by a review that says nothing (HIMMEL-1959).
+# satisfied by a review that says nothing.
 #   rc 0 = determined (incl. zero head reviews); rc 1 = INFRASTRUCTURE
 #   cannot-evaluate (query failure, non-array payload); rc 2 = an anti-drift
 #   canary fired (positive evidence of an unparseable finding).
@@ -137,7 +136,7 @@
 
 _cbf_gh() { "${GH_CMD:-gh}" "$@"; }
 
-# The ONE reader for CodeRabbit's identity (HIMMEL-1058). Sourced relative to
+# The ONE reader for CodeRabbit's identity. Sourced relative to
 # this file so a hook/script can source this reader from any cwd.
 # shellcheck source=scripts/lib/cr-signal.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
@@ -163,7 +162,7 @@ def sum_matches(re):
 def count_matches(re):
   ( [ scan(re) ] | length );
 def has_content: test("\\S");
-# HIMMEL-5583: CodeRabbit now writes counts as "comments: N" and
+# CodeRabbit now writes counts as "comments: N" and
 # "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
 # the paren form so every regex below sees ONE shape; a non-numeric count stays
 # unmatched, so the drift canaries still return rc 2.
@@ -173,8 +172,8 @@ def norm:
 '
 
 # The review SELECTOR, shared by the count program and the per-finding
-# extractor (HIMMEL-3124) so both read the SAME review by construction.
-# HIMMEL-1582: derive at-head counts from the LATEST SUBSTANTIVE head review,
+# extractor so both read the SAME review by construction.
+# derive at-head counts from the LATEST SUBSTANTIVE head review,
 # not a sum over every head review. $sub = head reviews whose body has any
 # non-whitespace; $chosen = the latest such body (greatest submitted_at, ties
 # by greatest id), or "" when none is substantive. See header for the why.
@@ -205,7 +204,7 @@ _CBF_JQ_COUNTS='
 '
 _CBF_JQ_PROGRAM="$_CBF_JQ_DEFS$_CBF_JQ_SELECT$_CBF_JQ_COUNTS"
 
-# HIMMEL-3124: per-finding extractor over the chosen body. Three real layouts
+# per-finding extractor over the chosen body. Three real layouts
 # (all captured in scripts/lib/fixtures/cr-body/): a "> " blockquote prefix or
 # none, a `path:line` line then a severity line then a **bold title** (the
 # current layouts, path is the FULL path, line may be a RANGE like 80-91), and
@@ -244,7 +243,7 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
 | { hdr: .hdr, items: [ .items[] | select(.file != null) | {file, line, sev: sev_of(.sev // ""), title} ] }
 '
 
-# HIMMEL-3365: the prior heads that still carry outside-diff findings. Groups the
+# the prior heads that still carry outside-diff findings. Groups the
 # NON-head bot reviews by commit_id, takes the LATEST SUBSTANTIVE one per head
 # (the same rule the at-head selector applies, so an empty later review never
 # hides a finding and a clean later review supersedes one), keeps the heads
@@ -275,7 +274,7 @@ _cbf_reviews_json() {
     # it. Without this, a >30-review PR fed the raw multi-array stream to the
     # `type=="array"` canary below, which sees a stream of top-level values
     # (not one value) and reads as cannot-evaluate — silently rc 1 on every
-    # big PR (codex CR, HIMMEL-1126 follow-up).
+    # big PR (codex CR, follow-up).
     local raw json
     raw=$(_cbf_gh api "repos/$owner/$name/pulls/$num/reviews" --paginate 2>/dev/null) || return 1
     json=$(printf '%s' "$raw" | jq -s 'add // []' 2>/dev/null) || return 1
@@ -332,7 +331,7 @@ cr_body_findings() {
     if [ "$head_count" -eq 0 ]; then
         echo "cr-body-findings: no CodeRabbit review at head $head for PR #$num (owner=$owner name=$name)" >&2
     elif [ "$substantive" -eq 0 ]; then
-        # HIMMEL-1582: head reviews exist but NONE is substantive (all empty
+        # head reviews exist but NONE is substantive (all empty
         # bodies). Counts are 0, but this is NOT silently green — flag it.
         echo "cr-body-findings: $head_count CodeRabbit review(s) at head $head but none carried a substantive body (all empty) for PR #$num (owner=$owner name=$name)" >&2
     fi
@@ -356,7 +355,7 @@ _cbf_sha256_12() {
     printf '%s' "${h:0:12}"
 }
 
-# cr_body_outside_findings <owner> <name> <num> <head> — HIMMEL-3124.
+# cr_body_outside_findings <owner> <name> <num> <head> — .
 # One TSV row per outside-diff finding in the SAME review cr_body_findings reads
 # (the shared $_CBF_JQ_SELECT selector: the latest substantive bot review at the
 # head):
@@ -411,7 +410,7 @@ cr_body_outside_findings() {
     return 0
 }
 
-# cr_body_prior_outside_heads <owner> <name> <num> <head> — HIMMEL-3365.
+# cr_body_prior_outside_heads <owner> <name> <num> <head> — .
 # One commit_id per line: every PRIOR head (commit_id != <head>) whose latest
 # substantive bot review carries outside-diff findings, oldest review first.
 # prior_outside in cr_body_findings SUMS every prior review; this is the list

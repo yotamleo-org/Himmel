@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-headless.sh — HIMMEL-2178. Hermetic: no live `claude` call.
+# test-claude-headless.sh — . Hermetic: no live `claude` call.
 # Injects a fake HIMMEL_CLAUDE_BIN so the registry-row / artifact-check /
 # concurrency / bank-preflight-refusal logic can be verified without
 # spending bank.
@@ -12,7 +12,7 @@ W="$(mktemp -d -t claude-headless-test.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 # A bank read can prune dead reservations; never inspect the real slot root.
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 
-# HIMMEL-1712: bank-preflight now distrusts a cache whose account doesn't
+# bank-preflight now distrusts a cache whose account doesn't
 # match the current identity — synthesize one so mk_bank_cache's fixture
 # still verdicts PROCEED.
 export HOME="$W/home"; mkdir -p "$HOME"
@@ -36,7 +36,7 @@ mk_bank_cache
 export CADENCE_BANK_CACHE="$BANK_CACHE"
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
-# HIMMEL-2765: bank-preflight.sh now also counts live LEG sessions via a real
+# bank-preflight.sh now also counts live LEG sessions via a real
 # `ps -eo args` by default - without this, every "happy path" case below
 # would call the REAL fleet count against THIS machine's own ambient process
 # table and could spuriously refuse (bank preflight refused dispatch:
@@ -210,7 +210,7 @@ rm -f "$LIVE_DIR"/*.json
 rm -rf "$LIVE_DIR/.admission.lock" 2>/dev/null || true
 
 # --- 10: stdin-mode (no --prompt-file) must still deliver the prompt to
-# the backgrounded invocation, not /dev/null (codex-1 round 3). The fake
+# the backgrounded invocation, not /dev/null. The fake
 # bin only writes the artifact if it actually received non-empty stdin.
 FAKE_STDIN_CHECK="$W/fake-claude-stdin-check.sh"
 cat > "$FAKE_STDIN_CHECK" <<'EOF'
@@ -234,7 +234,7 @@ rm -f "$LIVE_DIR"/*.json
 
 # --- 11: a directory artifact's freshness must reflect FILES inside it, not
 # the directory's own mtime — rewriting an existing file's content does not
-# advance the parent directory's mtime on most filesystems (codex-2 round 3).
+# advance the parent directory's mtime on most filesystems.
 ARTDIR="$W/artifact-dir"
 mkdir -p "$ARTDIR"
 printf 'old content\n' > "$ARTDIR/existing-file.txt"
@@ -259,7 +259,7 @@ rm -f "$LIVE_DIR"/*.json
 # --- 12: a pre-existing directory containing ONLY subdirectories (no files
 # anywhere in its tree) must not trivially pass when untouched — an empty
 # `find -type f` scan used to read as "no baseline" and skip the freshness
-# check entirely (codex-1 round 4).
+# check entirely.
 ARTDIR2="$W/artifact-dir-onlysubdirs"
 mkdir -p "$ARTDIR2/subdir"
 touch -t 200001010000 "$ARTDIR2/subdir" "$ARTDIR2"
@@ -272,7 +272,7 @@ rm -f "$LIVE_DIR"/*.json
 
 # --- 13: an admission lock with no readable pid file at all (the write
 # itself failed, or the holder crashed before writing it) must also be
-# reclaimed, not permanently block admission (codex-3 round 4).
+# reclaimed, not permanently block admission.
 mkdir -p "$LIVE_DIR/.admission.lock"
 ART14="$W/artifact14.txt"
 run_sut "$FAKE_OK" "$ART14" >/dev/null 2>&1
@@ -281,7 +281,7 @@ check "admission lock with no pid file is reclaimed (dispatch succeeds)" "0" "$R
 rm -f "$LIVE_DIR"/*.json
 rm -rf "$LIVE_DIR/.admission.lock" 2>/dev/null || true
 
-# --- 13b (HIMMEL-2196): two reclaimers that both saw the SAME stale lock must
+# --- 13b: two reclaimers that both saw the SAME stale lock must
 # not both enter admission. Sequenced with the HIMMEL_HEADLESS_SEAM_DIR seam,
 # not timers: both park after their stale verdict; A is released, reclaims and
 # parks holding the fresh lock; B is then released with a verdict that is now
@@ -319,7 +319,7 @@ check "no reclaim-intent lock is left behind" "no" "$([ -e "$LIVE_DIR/.admission
 rm -f "$LIVE_DIR"/*.json
 rm -rf "$LIVE_DIR/.admission.lock" "$LIVE_DIR/.admission.lock.reclaim" 2>/dev/null || true
 
-# --- 13c (HIMMEL-2196, judge j2259a C4): with flock(1) the reclaim-intent lock
+# --- 13c: with flock the reclaim-intent lock
 # is a kernel lock, so a second reclaimer can never displace the first while it
 # is between its staleness check and its delete. A parks holding the lock just
 # before its delete; B is released then and must NOT get in (before the fix a
@@ -353,7 +353,7 @@ else
   SKIP=$((SKIP+1)); echo "skip - 13c: flock(1) not available"
 fi
 
-# --- 13d/13e (HIMMEL-2196, judge j2259a C3): the dir-fallback reclaim marker
+# --- 13d/13e: the dir-fallback reclaim marker
 # must not outlive an INT/TERM that lands while it is held (the exit trap used
 # to release only the admission lock, leaving a marker with a dead pid).
 for SIG13 in TERM INT; do
@@ -413,7 +413,7 @@ else
   SKIP=$((SKIP+1))
 fi
 
-# --- 16 (HIMMEL-3107): --system-prompt-file / --tools / --isolated reach the
+# --- 16: --system-prompt-file / --tools / --isolated reach the
 # claude argv (the context-free CR floor reviewer depends on all three), and
 # are ABSENT when not asked for.
 FAKE_ARGV16="$W/fake-claude-argv16.sh"
@@ -447,7 +447,7 @@ FAKE_ARGV_OUT="$W/argv16c.txt" FAKE_ARTIFACT="$W/artifact16c.txt" HIMMEL_CLAUDE_
 check_ne "16 unreadable --system-prompt-file refuses" "0" "$?"
 rm -f "$LIVE_DIR"/*.json
 
-# --- 17 (HIMMEL-4082): the HIMMEL_CLAUDE_LANE seam picks the launcher when
+# --- 17: the HIMMEL_CLAUDE_LANE seam picks the launcher when
 # HIMMEL_CLAUDE_BIN is unset. Mini tree: lib/ copied (REPO_ROOT = mini), the rest
 # of scripts/ symlinked, the lane launchers replaced by argv-capturing stubs.
 MINI="$W/mini"; mkdir -p "$MINI/scripts"
@@ -493,7 +493,7 @@ check "17 unknown lane launched nothing" "" "$(cat "$W/lane-seen-bg" 2>/dev/null
 check "17 unknown lane never fell back to native claude" "" "$(cat "$W/native-seen" 2>/dev/null)"
 rm -f "$LIVE_DIR"/*.json
 
-# --- 18: HIMMEL-4459 the launch gate holds when the pin's own builtins are shadowed.
+# --- 18: the launch gate holds when the pin's own builtins are shadowed.
 # A shadowed `unset`+`return` lets native_auth_pin_env fall through rc 0 with the
 # proxy variables still set; the caller's keyword-only gate must refuse anyway.
 # FAKE_OK writes its artifact only when launched, so "artifact absent" = REFUSED.
@@ -502,7 +502,7 @@ SH18="$W/shadow18"; mkdir -p "$SH18"
 # claude-headless.sh itself ($0 test): bank-preflight.sh and the other children
 # must stay intact, or the launch is refused for the wrong reason and the rows
 # go vacuous. They arm from a DEBUG trap at the first command AFTER the
-# HIMMEL-3914 seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier
+# seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier
 # breaks the guard itself, which then refuses (exit 96) before the gate is
 # reached. SHADOW_MARK proves the trap fired.
 # shellcheck disable=SC2016  # the startup file body is written literally
@@ -531,7 +531,7 @@ check "18 control: function shadows installed, no proxy: launch happens" "launch
 check "18 control: alias shadows installed, no proxy: launch happens" "launched" "$(shadow_launch ca "$SH18/alias.sh" noproxy)"
 rm -f "$LIVE_DIR"/*.json
 
-# --- 19: HIMMEL-4461 the loopback-mock seam gate keeps EXACT names only. With
+# --- 19: the loopback-mock seam gate keeps EXACT names only. With
 # `unset`+`return` shadowed, a name built from the two kept ones
 # (ANTHROPIC_BASE_URLANTHROPIC_API_KEY) must not vanish from the gate the way a
 # substring strip lets it. Needs a loopback-only netns (unshare -rn).
@@ -557,7 +557,7 @@ else
   r19=$(seam_launch ctl)
   if grep -q "cannot read the claude session's cwd" "$W/err19-ctl"; then
     # Same limit as test-claude-mock-turn.sh case H: from inside a Claude Code
-    # session, bank-preflight's seam guard (HIMMEL-3914) cannot read the
+    # session, bank-preflight's seam guard cannot read the
     # session's cwd across the user namespace. CI has no claude ancestor.
     SKIP=$((SKIP+1)); echo "skip - 19 run from inside a Claude Code session (seam guard refuses across the netns)"
   else
@@ -570,7 +570,7 @@ else
 fi
 rm -f "$LIVE_DIR"/*.json
 
-# --- 20 (HIMMEL-2198): --model is required at the chokepoint; a dispatch that
+# --- 20: --model is required at the chokepoint; a dispatch that
 # omits it would burn the scarcer default quota. Refused before any row exists.
 ART20="$W/artifact20.txt"
 OUT20="$(FAKE_ARTIFACT="$ART20" HIMMEL_CLAUDE_BIN="$FAKE_OK" bash "$SUT" \
@@ -581,7 +581,7 @@ check "20 missing --model refused (nonzero)" "1" "$RC20"
 check "20 missing --model: usage error names the flag" "1" "$(printf '%s' "$OUT20" | grep -c -- '--model is required' || true)"
 check "20 missing --model: no registry row written" "0" "$(ls "$LIVE_DIR"/*.json 2>/dev/null | wc -l | tr -d ' ')"
 
-# --- 21-23 (HIMMEL-2197): a dispatched row whose wrapper died without
+# --- 21-23: a dispatched row whose wrapper died without
 # finalize_on_exit (SIGKILL, host death) must stop counting against the cap.
 # The row records the wrapper pid and its start time; the next admission reaps a
 # row whose pid is gone, or alive with a different start time (pid reuse).
@@ -672,7 +672,7 @@ check "31 ps empty, pid confirmed gone (ESRCH): reaped" "0" "$RC31"
 kill "$LIVE_PID" 2>/dev/null; wait "$LIVE_PID" 2>/dev/null
 rm -f "$LIVE_DIR"/*.json
 
-# 32-35 (HIMMEL-5119): a row carries a heartbeat; the next admission reaps a row
+# 32-35: a row carries a heartbeat; the next admission reaps a row
 # whose heartbeat is older than HIMMEL_DISPATCH_ROW_TTL_SECS even when its pids
 # are alive (wedged worker) or the launch never persisted a worker pid.
 run_sut "$FAKE_OK" "$W/artifact32.txt" >/dev/null 2>&1
@@ -711,7 +711,7 @@ check "35 stale launching row is marked interrupted" "interrupted" "$(jq -r '.st
 rm -f "$LIVE_DIR"/*.json
 kill "$LIVE_PID" "$WORKER_PID" 2>/dev/null; wait "$LIVE_PID" "$WORKER_PID" 2>/dev/null
 
-# 36 (HIMMEL-5107): the dir-fallback steal restores a displaced LIVE reclaimer's
+# 36: the dir-fallback steal restores a displaced LIVE reclaimer's
 # marker atomically. Drives steal_stale_reclaim_lock itself (extracted from the
 # SUT) with a seam stub, so the race is sequenced, not timed: the marker is
 # replaced by a live owner between the pid read and the rename (steal-seen), and a
@@ -734,7 +734,7 @@ steal_run() { # <tag> <third|third-mv|none> [function file]
           if [ "$STEAL_MODE" = third ]; then mkdir "$RECLAIM_LOCK"; printf '%s' "$THIRD_PID" > "$RECLAIM_LOCK/pid"; fi ;;
       esac
     }
-    # HIMMEL-5133: the third reclaimer lands exactly between a restore's check and
+    # the third reclaimer lands exactly between a restore's check and
     # its mv (no seam can sit there for an arbitrary restore shape). Fires only on
     # an mv onto the marker slot, so a mkdir restore never reaches it.
     # shellcheck disable=SC2329  # invoked by the sourced steal function
@@ -757,7 +757,7 @@ check "36 third reclaimer's marker survives the restore race" "$THIRD_PID" "$(ca
 check "36 no marker nested inside the third reclaimer's slot" "1" "$(ls -A "$W/reclaim36-taken" 2>/dev/null | wc -l | tr -d ' ')"
 check "36 no .dead leftover after losing the race" "0" "$(ls -d "$W"/reclaim36-taken.dead.* 2>/dev/null | wc -l | tr -d ' ')"
 kill "$OWNER_PID" "$THIRD_PID" 2>/dev/null; wait "$OWNER_PID" "$THIRD_PID" 2>/dev/null
-# HIMMEL-5133: the seam above sits BEFORE the restore, so a check-then-mv restore
+# the seam above sits BEFORE the restore, so a check-then-mv restore
 # (the shape 5107 replaced) would still pass those rows: the third reclaimer's
 # mkdir lands before its check and the mv is skipped. The mv shadow lands it
 # after the check; the mutant must nest the marker, the real function must not.
@@ -772,7 +772,7 @@ steal_run realmv third-mv
 check "36 real restore, third lands between check and restore: marker not nested" "1" "$(ls -A "$W/reclaim36-realmv" 2>/dev/null | wc -l | tr -d ' ')"
 check "36 real restore never uses mv: the displaced owner's marker is restored" "$OWNER_PID" "$(cat "$W/reclaim36-realmv/pid" 2>/dev/null)"
 
-# 37 (HIMMEL-5119, codex-1): an expired row whose worker ignores SIGTERM keeps
+# 37: an expired row whose worker ignores SIGTERM keeps
 # its slot; admitting a second dispatch beside a live worker exceeds the cap.
 sleep 60 & LIVE37=$!
 ( trap '' TERM; exec sleep 60 ) & WORKER37=$!
@@ -786,7 +786,7 @@ check "37 that row stays dispatched" "dispatched" "$(jq -r '.status' "$LIVE_DIR/
 rm -f "$LIVE_DIR"/*.json
 kill -KILL "$LIVE37" "$WORKER37" 2>/dev/null; wait "$LIVE37" "$WORKER37" 2>/dev/null
 
-# 38 (HIMMEL-5119, codex-2): an expired row whose worker pid is recorded but whose
+# 38: an expired row whose worker pid is recorded but whose
 # start time is unknown cannot be shown dead; a live worker keeps the slot.
 sleep 60 & LIVE38=$!
 sleep 60 & WORKER38=$!
@@ -799,7 +799,7 @@ check "38 that row stays dispatched" "dispatched" "$(jq -r '.status' "$LIVE_DIR/
 rm -f "$LIVE_DIR"/*.json
 kill "$LIVE38" "$WORKER38" 2>/dev/null; wait "$LIVE38" "$WORKER38" 2>/dev/null
 
-# 39 (HIMMEL-5119, codex-1): the row carries its launcher's TTL; an admitter with a
+# 39: the row carries its launcher's TTL; an admitter with a
 # shorter default TTL must not reap a row still inside its own.
 sleep 60 & LIVE39=$!
 sleep 60 & WORKER39=$!
@@ -811,10 +811,10 @@ check "39 row inside its own longer TTL: slot kept" "1" "$RC39"
 check "39 that row stays dispatched" "dispatched" "$(jq -r '.status' "$LIVE_DIR/hb39.json" 2>/dev/null)"
 rm -f "$LIVE_DIR"/*.json
 kill "$LIVE39" "$WORKER39" 2>/dev/null; wait "$LIVE39" "$WORKER39" 2>/dev/null
-# HIMMEL-5133: dead = gone or a zombie (state Z: exited, not yet reaped).
+# dead = gone or a zombie (state Z: exited, not yet reaped).
 pid_state() { ps -o stat= -p "$1" 2>/dev/null | tr -d ' ' | cut -c1; }
 pid_dead() { case "$(pid_state "$1")" in ''|Z) echo dead ;; *) echo alive ;; esac; }
-# 41 (HIMMEL-5119, codex-1 round 3): the worker root dies on SIGTERM but a
+# 41: the worker root dies on SIGTERM but a
 # descendant ignores it; a live descendant keeps the slot just like a live root.
 sleep 60 & LIVE41=$!
 ( bash -c 'trap "" TERM; exec sleep 60' & wait ) & WORKER41=$!
@@ -830,7 +830,7 @@ check "41 the worker root itself was killed" "dead" "$(pid_dead "$WORKER41")"
 rm -f "$LIVE_DIR"/*.json
 kill -KILL "$LIVE41" "$WORKER41" "$KID41" 2>/dev/null; wait "$LIVE41" "$WORKER41" 2>/dev/null
 
-# 42 (HIMMEL-5133): a zombie is dead. Under a non-reaping init (container PID 1, a
+# 42: a zombie is dead. Under a non-reaping init (container PID 1, a
 # subreaper) a killed process stays a zombie: kill -0 succeeds and ps still prints
 # a start time, so the slot was held although nothing runs. A parent that sets
 # PR_SET_CHILD_SUBREAPER and never waits reproduces it: killed processes reparent
@@ -873,7 +873,7 @@ else
   SKIP=$((SKIP+1)); echo "skip - 42 (needs linux + python3 for a subreaper)"
 fi
 
-# 43 (HIMMEL-5133, judge j2281a): an expired row with no worker pid was released on
+# 43: an expired row with no worker pid was released on
 # TTL alone while its wrapper was still alive: the slot opened beside a live
 # dispatch (one over the cap). The live wrapper (start time confirmed) is signalled
 # and the slot opens only once it is gone; one that ignores TERM, or whose start
@@ -903,7 +903,7 @@ check "43 that wrapper is left alone" "alive" "$(pid_dead "$LIVE43C")"
 rm -f "$LIVE_DIR"/*.json
 kill -KILL "$LIVE43" "$LIVE43B" "$LIVE43C" 2>/dev/null; wait "$LIVE43" "$LIVE43B" "$LIVE43C" 2>/dev/null
 
-# 44 (HIMMEL-5139): a live multithreaded process whose main thread exited reads
+# 44: a live multithreaded process whose main thread exited reads
 # state Zl, not a bare Z. A stat carrying the l flag is alive: the slot is held,
 # and an expired such worker is killed, never released as already dead. The ps
 # stub rewrites the state of a still-running pid to $FAKEZL_STAT and passes every

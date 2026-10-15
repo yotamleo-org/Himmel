@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lib/bank-attribution.sh -- per-session token/turn attribution table
-# from Claude Code transcript JSONL (HIMMEL-2764). Read-only: attributes bank
+# from Claude Code transcript JSONL. Read-only: attributes bank
 # burn (turns x context size) to named sessions so it can be traced back to a
 # leg/console instead of showing up as an unexplained account drain
-# (HIMMEL-2750).
 #
 # Platform guard (gitbash-only): pure bash 3.2-safe + jq, no python/node/
 # network; git-bash on Windows carries a working jq, so no .ps1 twin needed.
@@ -15,14 +14,13 @@
 # project slug, one *.jsonl file per top-level session inside each, plus (when
 # the session forked subagents) a `<sessionId>/subagents/*.jsonl` per agent --
 # a SEPARATE file, isSidechain:true throughout, sharing the parent's sessionId
-# on every row (verified against real transcripts, HIMMEL-2764 CR round 1:
+# on every row (verified against real transcripts:
 # subagent turns never appear inline in the parent's own top-level file).
 # Subagent directories are discovered independently of the top-level
 # session file, since a session's own <sid>.jsonl can be pruned/rotated
 # while its <sid>/subagents/ tree survives -- confirmed on this station
-# (CR round 6, codex-2).
 #
-# Method (see HIMMEL-2764 handover for the transcript facts this encodes):
+# Method (see handover for the transcript facts this encodes):
 #   - Pass 1a (per top-level file, streamed via `jq -n reduce inputs`): walks
 #     the JSONL in order tracking the most recent wake-source classification
 #     (cross-session / monitor / operator; a slash command counts as
@@ -32,7 +30,7 @@
 #     `type:"attachment"` row with `attachment.type == "queued_command"` --
 #     a skill body or CLI command-body row inserted as a side effect of a
 #     Skill tool_use or slash command does NOT update this classification
-#     (HIMMEL-2781) -- title/account/wake state updates from EVERY row
+#  -- title/account/wake state updates from EVERY row
 #     regardless of --since, since they only track state for later rows, not
 #     counted output -- and accumulates usage per DISTINCT requestId,
 #     counting ONLY rows inside the --since window (a streamed turn repeats
@@ -40,11 +38,11 @@
 #     -- first-seen-WITHIN-THE-WINDOW wins, later dupes are skipped; a
 #     duplicate outside the window is simply never considered, so a turn is
 #     never double-counted regardless of how its copies straddle the cutoff
-#     -- HIMMEL-2764 CR round 4, codex-2: verified against real transcripts
+# -- verified against real transcripts
 #     that duplicate rows for one requestId always carry identical usage, so
 #     which copy is counted is immaterial). The FIRST counted response to
 #     each wake-classification change also has its input tokens recorded
-#     separately per wake class (`first-resp-input`, HIMMEL-2781 ask 2), so
+# separately per wake class (`first-resp-input`, ask 2), so
 #     the report can show what one wake actually cost instead of attributing
 #     an entire multi-turn episode to it.
 #   - Pass 1b (per `<sessionId>/subagents/*.jsonl` file, same dedup rule):
@@ -63,17 +61,16 @@
 # otherwise silently drop the WHOLE file's contribution rather than just the
 # bad row, the table still prints for every readable file, but the script
 # then exits 2 and reports on stderr how many transcripts were skipped, so a
-# caller cannot mistake an incomplete report for a complete one (HIMMEL-2764
-# CR, post-CodeRabbit round).
+# caller cannot mistake an incomplete report for a complete one.
 #
 # --since is validated up front to a canonical UTC form
 # (YYYY-MM-DDTHH:MM:SS[.ffffff][Z], no timezone offset) so a genuinely
 # different format fails loudly instead of comparing wrong silently
-# (HIMMEL-2764 CR round 2). Both --since and every row timestamp are then
+# . Both --since and every row timestamp are then
 # normalized to a fixed 3-fractional-digit form before the lexicographic
 # compare, so a --since value with different fractional precision than the
 # transcript rows (e.g. "...:05Z" vs a row at "...:05.500Z") does not
-# silently misclassify the boundary (CR round 3).
+# silently misclassify the boundary.
 set -euo pipefail
 
 die() { echo "bank-attribution: $*" >&2; exit 1; }
@@ -141,8 +138,8 @@ def classify($s):
 # `<command-name>`/`<command-message>` wrapper. A genuine operator-typed slash
 # command (e.g. /plugin, /exit) produces this exact text prefix with isMeta
 # ABSENT and entrypoint:cli -- only an injected command/skill body carries
-# isMeta:true on the same prefix (verified against real transcripts,
-# HIMMEL-3006). The caller therefore gates this on isMeta:true as well, so a
+# isMeta:true on the same prefix (verified against real transcripts).
+# The caller therefore gates this on isMeta:true as well, so a
 # bare prefix with isMeta absent falls through to the real-wake op branch
 # instead of being swallowed.
 def is_command_body($s):
@@ -155,14 +152,14 @@ def has_skill_tool_use($row):
 
 # A monitor/task wake delivered as an `attachment` row (real shape:
 # `type:"attachment"`, `attachment.type:"queued_command"` -- confirmed
-# against the Claude Code binary, HIMMEL-2781), not as `type:"user"` text.
+# against the Claude Code binary), not as `type:"user"` text.
 def is_queued_command($row):
   ($row.attachment.type // "") == "queued_command";
 
 # Normalizes a UTC timestamp to a fixed 3-fractional-digit form (padding a
 # shorter fraction, truncating a longer one) so lexicographic comparison is
 # correct even when --since and a transcript row carry different fractional
-# precision (HIMMEL-2764 CR round 3: "...:05Z" vs "...:05.500Z" compared
+# precision ("...:05Z" vs "...:05.500Z" compared
 # wrong before this normalization -- the trailing "Z" sorts before ".500").
 def norm_ts(s):
   if s == null or s == "" then null
@@ -282,7 +279,7 @@ for slug_dir in "$PROJECTS_ROOT"/*/; do
     fi
   done
   # Subagent directories are discovered independently of the top-level
-  # session file (HIMMEL-2764 CR round 6, codex-2): a session whose own
+  # session file: a session whose own
   # <sid>.jsonl was pruned/rotated but whose <sid>/subagents/ tree survives
   # would otherwise have its subagent tokens silently omitted.
   for sub_dir in "$slug_dir"*/subagents; do

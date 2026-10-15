@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bank-preflight.sh — HIMMEL-1841 (bank guard); HIMMEL-2765 (fleet-size cap).
+# bank-preflight.sh — (bank guard); (fleet-size cap).
 # Pre-run guard for scheduled legs.
 #
 # Prints ONE verdict token to stdout; diagnostics to stderr; a row to the
@@ -12,12 +12,12 @@
 # primary is exhausted, so high extra_usage with low primaries means the
 # bank is HEALTHY. Diagnostics only.
 #
-# HIMMEL-2765: the fleet-size cap runs FIRST, ahead of any bank fetch —
+# the fleet-size cap runs FIRST, ahead of any bank fetch —
 # concurrency, not bank exhaustion, burned the fleet on 2026-09-07
-# (HIMMEL-2750). See the FLEET_CAP block below for the count/bypass
+# . See the FLEET_CAP block below for the count/bypass
 # contract.
 #
-# HIMMEL-2789: the fleet cap's REFUSAL (SKIPPED-FLEET) only fires when the
+# the fleet cap's REFUSAL (SKIPPED-FLEET) only fires when the
 # caller sets CADENCE_BANK_LAUNCH=1, declaring an actual arm/launch intent
 # (arm-resume.sh, headed-arm-leg.sh). A plain bank READ — hermes-critic.sh's
 # /pr-check pass, bank-monitor, the statusline/hook-smoke test suites — gets
@@ -26,9 +26,9 @@
 # it never launches anything, so cap-driven concurrency has nothing to do
 # with it.
 set -u
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 _csg_lib="$_csg_dir/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
@@ -55,15 +55,15 @@ case "$LEDGER" in
   *) LEDGER_DIR=. ;;
 esac
 LEG="${CADENCE_BANK_LEG:-unknown}"
-# HIMMEL-2789: whether THIS call declares an actual arm/launch intent. The
+# whether THIS call declares an actual arm/launch intent. The
 # fleet-size cap below exists to refuse a NEW arm when the fleet is already
-# at CAP (HIMMEL-2765) — it has no business refusing a plain bank READ (a
+# at CAP — it has no business refusing a plain bank READ (a
 # `/pr-check` critic pass, a statusline probe, a hook-smoke test) that never
 # launches anything. Only a caller that is about to actually spawn a leg
 # (arm-resume.sh, headed-arm-leg.sh) sets this. The informational FLEET line
 # below still prints unconditionally either way — only the refusal is gated.
 LAUNCH_INTENT="${CADENCE_BANK_LAUNCH:-}"
-# HIMMEL-2782: which bank this leg parks on. native (default) is the
+# which bank this leg parks on. native (default) is the
 # existing Claude five_hour/seven_day check below; claudex parks on the
 # codex weekly bank instead (scripts/lanes/bank-status.ts's "claudex" row) —
 # a claudex leg must never be refused by the Claude subscription bank, a
@@ -77,7 +77,7 @@ lift=false  # HIMMEL-4423: never inherit an env value into the ledger row
 emit() {
   [ -d "$LEDGER_DIR" ] || mkdir -p "$LEDGER_DIR" 2>/dev/null
   degraded=false; [ "$usable" -eq 1 ] && degraded=true
-  # HIMMEL-3216: $LEG is caller-controlled and lands inside a JSON string — a
+  # $LEG is caller-controlled and lands inside a JSON string — a
   # newline would split the record and a control character, quote or backslash
   # would make it invalid JSONL. Control characters become `?` (the ps view's own
   # convention), then `\` and `"` are escaped.
@@ -90,23 +90,23 @@ emit() {
 }
 fh=""; sd=""; age=""; usable=0
 
-# HIMMEL-2765: fleet-size cap. Concurrency, not bank exhaustion, burned the
-# fleet on 2026-09-07 (HIMMEL-2750: 9-11 legs exhausted a week's bucket in
+# fleet-size cap. Concurrency, not bank exhaustion, burned the
+# fleet on 2026-09-07 (9-11 legs exhausted a week's bucket in
 # under 48h) — this refuses a new arm when the fleet is already at CAP,
 # structurally, ahead of any bank fetch. Printed on EVERY call regardless of
 # outcome, so the console tick always shows FLEET n/CAP.
 #
 # CAP resolves from the environment first; falling back to the primary
 # checkout's .env (HIMMEL_FLEET_CAP), default 4 — a PROVISIONAL cap well
-# under the 9-11 that burned a week's usage bucket in under 48h
-# (HIMMEL-2750), not a derived sustainable figure (no per-session burn
+# under the 9-11 that burned a week's usage bucket in under 48h,
+# not a derived sustainable figure (no per-session burn
 # rate has been measured; see docs/internals/lane-calibration.md).
 FLEET_CAP="${HIMMEL_FLEET_CAP:-}"
 if [ -z "$FLEET_CAP" ]; then
   # shellcheck source=scripts/lib/load-dotenv.sh
   # shellcheck disable=SC1091
   . "$REPO/scripts/lib/load-dotenv.sh"
-  # HIMMEL-3532: pin to bank-preflight's OWN checkout, never the caller's CWD
+  # pin to bank-preflight's OWN checkout, never the caller's CWD
   # repo (load_dotenv with no --root resolves via the process CWD's git repo,
   # which a launcher run from an unrelated bucket -- e.g. the luna vault --
   # silently swaps in, finding no HIMMEL_FLEET_CAP there and falling back to
@@ -127,27 +127,27 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # CR review findings fixed together here (all apply to what counts as a
 # "candidate" line, or to what happens when the census itself is
 # unavailable — one coherent rewrite closes all four):
-#   codex-1 (round 1): the old `claude .* -n (HIMMEL|LUNA)-` pattern
+# the old `claude .* -n (HIMMEL|LUNA)-` pattern
 #     required TWO separate whitespace runs between "claude" and "-n", so
 #     a session launched with no other argument (`claude -n HIMMEL-x
 #     ...`) was never counted — an undercount that lets the fleet exceed
 #     the cap silently.
-#   codex-3 (round 1): an argv-text match alone also matches a WRAPPER
+# an argv-text match alone also matches a WRAPPER
 #     process (e.g. konsole, whose own argv literally embeds the full
 #     `claude ... -n NAME ...` command it launched as text — the exact
 #     shape headed-arm.sh uses) — double-counting one real leg as two and
 #     refusing launches prematurely.
-#   codex-2 (round 2): an up-front "does the procfs ROOT exist" check
+# an up-front "does the procfs ROOT exist" check
 #     still silently drops EVERY candidate on a host where the directory
 #     exists but INDIVIDUAL comm files are not (a partial/unsupported
 #     procfs, e.g. some Git Bash configurations) — the exact same
 #     silent-zero mistake it was meant to fix, just triggered a different
 #     way.
-#   codex-3 (round 2, Suggestion): the FLEET_CAP_OK bypass check is fixed
+# the FLEET_CAP_OK bypass check is fixed
 #     separately, below.
-#   codex-2 (round 3): decide PER CANDIDATE, not once for the whole host —
+# decide PER CANDIDATE, not once for the whole host —
 #     see the per-candidate fallback in the loop below.
-#   codex-3 (round 3): a FAILED process-enumeration command (ps missing,
+# a FAILED process-enumeration command (ps missing,
 #     an unsupported FLEET_PS_CMD) is indistinguishable from "genuinely
 #     zero matching processes" unless the exit code is captured
 #     explicitly — both otherwise produce empty output, so a broken
@@ -169,7 +169,7 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # command plus flags); an override is a single executable path and must
 # be quoted. Branch on which one this run has instead of disabling
 # SC2086 for both.
-# _fleet_lane_of <pid> (HIMMEL-2782): names the lane a fleet candidate
+# _fleet_lane_of <pid>: names the lane a fleet candidate
 # belongs to, for the FLEET line only — never gates the cap itself (that
 # stays total-count, below). Reads the candidate's own /proc/<pid>/environ
 # (NUL-separated) for the claudex launch env's CLAUDEX_LANE_OK=1 marker
@@ -189,7 +189,7 @@ _fleet_lane_of() {
   fi
 }
 
-# HIMMEL-2774: atomic admission + reservation, closing the TOCTOU race where
+# atomic admission + reservation, closing the TOCTOU race where
 # two arms (or one arm racing another) both observe the fleet under-cap and
 # both proceed. Mirrors headed-arm.sh's own claim-lock DISCIPLINE (not its
 # code): claim the admission critical section by atomic `mkdir` (this repo's
@@ -202,7 +202,7 @@ _fleet_lane_of() {
 _fleet_admit_stamp_or_fail() { # _fleet_admit_stamp_or_fail <admit-dir>
   date +%s > "$1/acquired" 2>/dev/null
 }
-# HIMMEL-3019: a rename displaces WHATEVER currently occupies "$admit", not the
+# a rename displaces WHATEVER currently occupies "$admit", not the
 # stale entry the reclaimer observed, so mv-then-verify alone leaves `.admit`
 # absent between a mismatched reclaimer's rename and its restore — a fourth
 # party's ordinary `mkdir` claim wins that window and two callers hold the lock
@@ -233,7 +233,7 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # private path, then re-read ITS stamp — if a concurrent breaker already
 # replaced it with a fresh gate, our rename just displaced THAT live gate, so
 # put it back (create-based, never a nesting mv) and lose.
-# HIMMEL-3210 — fencing. An age lease alone cannot stop a holder PAUSED past the
+# — fencing. An age lease alone cannot stop a holder PAUSED past the
 # age (SIGSTOP, VM suspend) from resuming after its gate was broken and acting
 # on a successor's state. The fence is a uniquely named directory the holder
 # creates INSIDE the gate it took, and every destructive rename a holder does
@@ -246,7 +246,7 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # fence is still alive inside the victim, and from the break's `mv` the gate
 # name is re-takeable. So every holder, before it may hold, deletes every
 # `.broken.` victim of its gate — killing those fences — and refuses if any
-# survives (HIMMEL-3232). No successor can steal or claim before that, and
+# survives. No successor can steal or claim before that, and
 # rename(2) locks its destination parent: it either completes before the
 # delete (moving the stale admit its holder verified; no successor has touched
 # the admit yet) or finds the fence dead and fails ENOENT (Linux; probed via
@@ -255,12 +255,12 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # a breaker paused anywhere cannot act on two gate generations — a `mv` that
 # moved a younger generation than the one it aged out is caught by the stamp
 # re-read, and its fences die by the same successor-side delete. This replaces
-# HIMMEL-3210's in-place fence kill (panel R2): that kill held the name while
+# 's in-place fence kill (panel R2): that kill held the name while
 # the fences died, but it resolved the gate by name in three steps, and a
 # double pause spread them over two generations. The trade: the fence kill
 # moved from the breaker to the next holder, which also sweeps a crashed
-# breaker's victim, and an undeletable victim refuses every take (fail-closed,
-# HIMMEL-3223) until it is removed.
+# breaker's victim, and an undeletable victim refuses every take (fail-closed)
+# until it is removed.
 # That is why this is a
 # fence-by-path, not a generation number re-read before the mv: a re-read is
 # still followed by a separate mv, and the pause can land between them.
@@ -288,7 +288,7 @@ _fleet_gate_take() {
     esac
     [ $(( $(date +%s) - held_at )) -ge "${FLEET_ADMIT_GATE_STALE_SECS:-5}" ] || return 1
     _fleet_admit_hook gate-break "$gate"
-    # The one by-name step (HIMMEL-3232): the victim's fences are killed by the
+    # The one by-name step: the victim's fences are killed by the
     # next holder's sweep below, before it can hold.
     victim="$gate.broken.$$.$RANDOM"
     mv "$gate" "$victim" 2>/dev/null || return 1
@@ -311,8 +311,8 @@ _fleet_gate_take() {
     rm -rf "$fence" 2>/dev/null
     return 1
   fi
-  # Kill every broken generation's fences before holding (HIMMEL-3232); one
-  # that survives (EACCES/EIO) refuses the take — fail-closed (HIMMEL-3223).
+  # Kill every broken generation's fences before holding; one
+  # that survives (EACCES/EIO) refuses the take — fail-closed.
   rm -rf "$gate".broken.* 2>/dev/null
   for victim in "$gate".broken.*; do
     if [ -e "$victim" ]; then
@@ -324,7 +324,7 @@ _fleet_gate_take() {
     _fleet_gate_fence="$fence"
     return 0
   fi
-  # Fenced like every other gate removal (HIMMEL-3210): a stamp that failed
+  # Fenced like every other gate removal: a stamp that failed
   # because a breaker moved the gate away must not delete the successor's gate
   # that now owns the name. A real write failure leaves our fence in place, so
   # this still cleans up the gate we actually hold.
@@ -345,7 +345,7 @@ _fleet_gate_drop() { # _fleet_gate_drop <gate> <fence>
   return 0
 }
 # _fleet_release_admit <admit-dir>: the ONE way this script gives up its own
-# admission lock (HIMMEL-3019). Gated, so it cannot land between a reclaimer's
+# admission lock. Gated, so it cannot land between a reclaimer's
 # verification and its rename; pid-verified, so a caller whose lock was
 # legitimately reclaimed (a holder only PRESUMED dead) never deletes its
 # successor's live one. Waits a bounded few dozen retries for the gate; if it
@@ -368,7 +368,7 @@ _fleet_release_admit() {
     sleep "${FLEET_ADMIT_RETRY_SLEEP:-0.05}"
   done
   fence="$_fleet_gate_fence"
-  # No fence needed on this rm (HIMMEL-3210): only a holder presumed DEAD loses
+  # No fence needed on this rm: only a holder presumed DEAD loses
   # its admit to a steal (a live pid, stopped ones included, answers `kill -0`
   # and is refused below), so a releaser paused here still owns what it checked.
   [ "$(cat "$admit/pid" 2>/dev/null)" = "$$" ] && rm -rf "$admit" 2>/dev/null
@@ -385,7 +385,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
   stolen_at="$(cat "$admit/acquired" 2>/dev/null)" || stolen_at=""
   [ "$stolen_at" = "$expected_at" ] || return 1
   _fleet_admit_hook post-verify "$admit"
-  # Fenced (HIMMEL-3210): the victim lives INSIDE our gate, so this rename fails
+  # Fenced: the victim lives INSIDE our gate, so this rename fails
   # outright if the gate was broken while we were paused anywhere since taking
   # it — and a successful one proves we held it the whole time, i.e. "$admit" is
   # still exactly what we verified above. The victim goes when the gate drops.
@@ -406,9 +406,9 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
     # existing directory nests the displaced fresh claim inside it (POSIX
     # mv-into-directory semantics) instead of restoring it — corrupting both.
     # The displaced victim stays inside our fence and goes with the gate when
-    # it drops (HIMMEL-3210); `.admit.stale.*` victims left by older copies are
+    # it drops; `.admit.stale.*` victims left by older copies are
     # swept by the debris pass in the prune below.
-    # codex-2 (HIMMEL-2774, 2nd panel round): a plain `[ -e ] || mv` here is
+    # a plain `[ -e ] || mv` here is
     # itself a check-then-act race — a FOURTH party's `mkdir "$admit"` can
     # land in the instant between the `[ -e ]` test and the `mv`, and `mv`
     # onto an existing directory would then silently NEST the fourth party's
@@ -432,13 +432,13 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
   fi
   rm -rf "$victim" 2>/dev/null
   if mkdir "$admit" 2>/dev/null; then
-    # codex-4 (HIMMEL-2774, 2nd panel round): same bug class as codex-2's
+    # same bug class as 's
     # fix in _fleet_claim_admit below — an unchecked stamp write here can
     # fail (disk full, permissions) and still `return 0`, handing the caller
     # an unstamped claim that can never age out. Fail the reclaim and give
     # up the empty dir instead of proceeding on an unprotected slot.
     if _fleet_admit_stamp_or_fail "$admit"; then
-      # codex-1 (HIMMEL-2774, 4th panel round): this steal DID claim
+      # this steal DID claim
       # ownership, so record OUR OWN pid here too — same as the fresh-claim
       # path in _fleet_claim_admit below — so a subsequent staleness check
       # against a holder that is still genuinely inside the critical section
@@ -446,7 +446,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
       # `rmdir`, on the fallback below — redirection into "$admit/acquired"
       # creates that file before `date` runs, so a `date` failure can leave
       # a non-empty (if zero-byte) directory that a bare `rmdir` cannot remove,
-      # wedging this reclaim attempt's own cleanup. HIMMEL-3019: the pid write
+      # wedging this reclaim attempt's own cleanup. the pid write
       # fails CLOSED too — every release is now pid-verified, so a pid-less
       # claim could never be released by its owner and would wedge admission
       # until it aged out.
@@ -471,7 +471,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
   local admit="$1" held_at age
   if mkdir "$admit" 2>/dev/null; then
     if _fleet_admit_stamp_or_fail "$admit"; then
-      # codex-1 (HIMMEL-2774, 4th panel round): a fresh claim never wrote a
+      # a fresh claim never wrote a
       # `pid` file, so the live-owner check below (kill -0 on $admit/pid)
       # always read empty/missing and could never protect an actively held
       # lock — a census lasting beyond FLEET_ADMIT_STALE_SECS let a
@@ -482,7 +482,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
       # pause) -- not the launcher's pid, which is what the RESERVATION's
       # own pid file (below) tracks for a different purpose (whether the
       # launcher that created it is still around to own a release).
-      # HIMMEL-3019: fails CLOSED like the stamp below — releases are
+      # fails CLOSED like the stamp below — releases are
       # pid-verified now, so a claim whose pid write failed could never be
       # released by its owner and would wedge admission until it aged out.
       if printf '%s\n' "$$" > "$admit/pid" 2>/dev/null; then
@@ -512,7 +512,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
   esac
   age=$(( $(date +%s) - held_at ))
   [ "$age" -ge "${FLEET_ADMIT_STALE_SECS:-60}" ] || return 1
-  # codex-1/codex-2 (HIMMEL-2774, 3rd panel round): age alone cannot tell a
+  # /age alone cannot tell a
   # crashed holder from one still legitimately inside the critical section
   # (a slow filesystem, a GC pause) — reclaiming out from under a still-live
   # holder loses mutual exclusion outright, and restoring its metadata on a
@@ -537,13 +537,13 @@ fleet_openrouter=0
 _fleet_live_names=""
 _fleet_procfs_warned=0
 
-# _fleet_cmdline_name <pid> (HIMMEL-3216): sets _fleet_argv_name to the exact argv
+# _fleet_cmdline_name <pid>: sets _fleet_argv_name to the exact argv
 # element after the first `-n` in <pid>'s NUL-separated /proc cmdline. Returns 0
 # with the name set, 1 when cmdline is unreadable (no procfs, another platform, a
 # stub — the caller falls back to the ps line), 2 when it is readable but has no
 # `-n` (or the file vanished mid-read): no name, so nothing is consumed. A global,
 # not a `$(...)`, on purpose: command substitution strips trailing newlines, which
-# would turn the name "HIMMEL-9500<LF>" into a plain "HIMMEL-9500".
+# would turn the name "<LF>" into a plain "".
 _fleet_cmdline_name() {
   local _fcn_file="${FLEET_PROC:-/proc}/$1/cmdline" _fcn_arg _fcn_want=0
   _fleet_argv_name=""
@@ -555,7 +555,7 @@ _fleet_cmdline_name() {
   return 2
 }
 
-# _fleet_census (HIMMEL-2774 codex-1, 2nd panel round): captures the process
+# _fleet_census: captures the process
 # table fresh and (re)sets fleet_n/fleet_native/fleet_claudex/_fleet_live_names
 # from it. Factored into a function so it can be called a SECOND time, while
 # holding the admission lock below, instead of once up front — a snapshot
@@ -594,10 +594,10 @@ _fleet_census() {
       echo "bank-preflight: comm unreadable for at least one fleet candidate (pid $_fleet_pid) — falling back to argv-only matching for it (less precise: may double-count a launcher/child pair)" >&2
       _fleet_procfs_warned=1
     fi
-    # HIMMEL-2774: a live session with this name CONSUMES its reservation
+    # a live session with this name CONSUMES its reservation
     # (below) — same match shape as the FLEET_CANDIDATES filter itself, so a
     # session counted here is recognized consistently there.
-    # HIMMEL-3216: the name is the EXACT argv element after `-n` where procfs
+    # the name is the EXACT argv element after `-n` where procfs
     # gives it (a name with spaces stays whole, so it can be tied to one live
     # session by identity); only when cmdline is unreadable does it fall back to
     # the FIRST whitespace token of the ps line. A name with a control character
@@ -612,7 +612,7 @@ _fleet_census() {
     case "$_fleet_name" in *[[:cntrl:]]*) _fleet_name="" ;; esac
     [ -n "$_fleet_name" ] && _fc_names="$_fc_names
 $_fleet_name"
-    # HIMMEL-3095: a leg that has WRAPPED (queue lock released, last status
+    # a leg that has WRAPPED (queue lock released, last status
     # bullet WRAPPED) no longer needs the slot even while its process/window
     # is still alive — exclude it from the counts that gate FLEET_CAP. Its
     # name still went into _fc_names above so a pending reservation under
@@ -647,7 +647,7 @@ FLEET_CANDIDATES
   return 0
 }
 
-# HIMMEL-4089: early reclaim only for a confirmed dead owner with no live
+# early reclaim only for a confirmed dead owner with no live
 # named session. Admission already serializes reservations; use its fenced
 # reclaim gate as well, rechecking identity and liveness before the rename.
 _fleet_reclaim_dead_reservation() {
@@ -663,7 +663,7 @@ _fleet_reclaim_dead_reservation() {
      [ "$(cat "${dir}expires" 2>/dev/null)" = "$expires" ] &&
      [ "$(cat "${dir}name" 2>/dev/null)" = "$sname" ] &&
      ! kill -0 "$owner" 2>/dev/null; then
-    # HIMMEL-4115: a dead owner is not proof the launch failed — headed-arm.sh
+    # a dead owner is not proof the launch failed — headed-arm.sh
     # exits 7 when the session is not visible after ~5 s, yet it can come up
     # later. Hold the slot for FLEET_RECLAIM_GRACE_SECS (default 60) from the
     # first pass that saw the owner dead. A missing or corrupt stamp restarts
@@ -707,14 +707,14 @@ if ! _fleet_census; then
   fi
 fi
 
-# HIMMEL-2774: slot dir is per-user tmpfs, never inside the repo or the
+# slot dir is per-user tmpfs, never inside the repo or the
 # handover root — reservations must not survive a reboot or leak into
 # anything git-tracked.
 SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
-# HIMMEL-5519: api-lane reservations (lane file = api) are counted apart from
+# api-lane reservations (lane file = api) are counted apart from
 # the subscription FLEET and held to their own cap.
 fleet_api_reserved=0
 API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
@@ -728,11 +728,10 @@ while [ "$_fleet_admit_iters" -lt "${FLEET_ADMIT_RETRY_ITERS:-100}" ]; do
 done
 
 if [ "$_fleet_admitted" -eq 1 ]; then
-  # codex-1 (HIMMEL-2774, 2nd panel round): re-census now, while holding
+  # re-census now, while holding
   # the admission lock, so the count feeding the cap decision below cannot
   # go stale between the pre-lock snapshot above and here — a session can
-  # start or exit in that gap under real contention. codex-5 (HIMMEL-2774,
-  # 3rd panel round): a transient failure of this second census used to fall
+  # start or exit in that gap under real contention. A transient failure of this second census used to fall
   # back to the pre-lock snapshot silently (_fleet_census leaves the counters
   # untouched on failure) and admit on it — the same "cannot verify the
   # fleet is under cap" situation as the pre-lock census failure above, just
@@ -740,13 +739,13 @@ if [ "$_fleet_admitted" -eq 1 ]; then
   # refuse-unless-bypassed treatment rather than a silent pass-through.
   if ! _fleet_census; then
     echo "bank-preflight: in-lock fleet census failed ('$_fleet_ps_cmd' exited $_fleet_ps_rc) — cannot verify the fleet is under cap; refusing rather than admit on a stale pre-lock snapshot" >&2
-    # codex-2 (HIMMEL-2774, 4th panel round): once the release SUCCEEDS the flag
+    # once the release SUCCEEDS the flag
     # must drop — on the bypass/informational branches below (the
     # LAUNCH_INTENT=1 refusal branch `emit`s and exits, so it never reaches
     # this), execution falls through to the final
     # `[ "$_fleet_admitted" -eq 1 ] && _fleet_release_admit` cleanup, which would
     # then delete whatever a DIFFERENT caller has legitimately claimed in the
-    # meantime. CodeRabbit (HIMMEL-3019): the gated release can now FAIL (gate
+    # meantime. CodeRabbit: the gated release can now FAIL (gate
     # busy past its retries, lock left to age out), so the flag drops only on
     # success. A failed release keeps it set: the prune pass stays gated on
     # still holding the lock and the final cleanup retries — safe, since every
@@ -760,7 +759,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       echo "bank-preflight: not a declared launch (CADENCE_BANK_LAUNCH unset) — reporting only, not refusing" >&2
     fi
   fi
-  # codex-2 (HIMMEL-2774, 5th panel round): this whole prune pass must stay
+  # this whole prune pass must stay
   # gated on STILL holding the lock — the in-lock-census-failure branch above
   # can reset _fleet_admitted to 0 and `rm -rf` .admit early (the bypass and
   # informational sub-branches there don't exit), and this `if` only tested
@@ -772,10 +771,10 @@ if [ "$_fleet_admitted" -eq 1 ]; then
   # its owner ever finishes creating it.
   if [ "$_fleet_admitted" -eq 1 ]; then
     _fleet_now=$(date +%s)
-    # HIMMEL-3210: displaced-victim debris — `.admit.stale.*` (steal victims of
+    # displaced-victim debris — `.admit.stale.*` (steal victims of
     # older, unfenced copies of this script) and `.admit.reclaim.broken.*`
     # (gate-break victims whose breaker died before its rm and that no gate
-    # holder has swept since, HIMMEL-3232) — is dot-prefixed
+    # holder has swept since) — is dot-prefixed
     # so the reservation glob below never counts it, which also means that
     # glob never prunes it. Its own pass, aged from FIRST SIGHTING: a pass
     # stamps `seen` into an unstamped victim and removes it once that is
@@ -787,7 +786,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
     for _fleet_debris in "$SLOTS"/.admit.stale.* "$SLOTS"/.admit.reclaim.broken.*; do
       [ -d "$_fleet_debris" ] || continue
       _fleet_debris_seen="$(cat "$_fleet_debris/seen" 2>/dev/null)" || _fleet_debris_seen=""
-      # HIMMEL-4125: bounded digits, read base 10 — a leading zero ("08") is not
+      # bounded digits, read base 10 — a leading zero ("08") is not
       # octal, and an overlong string is a corrupt stamp (re-stamped, kept).
       case "$_fleet_debris_seen" in
         ''|*[!0-9]*|????????????*) printf '%s\n' "$_fleet_now" > "$_fleet_debris/seen" 2>/dev/null; continue ;;
@@ -813,29 +812,29 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       fi
       # A live session with this name already counted in fleet_n above
       # CONSUMES the reservation — do not double-count the same slot.
-      # codex-4 (round 4): consuming must DELETE the reservation, not just
+      # consuming must DELETE the reservation, not just
       # skip it in the count — left on disk, it keeps refusing a same-name
       # relaunch as a duplicate (line ~356) for up to the full TTL after the
       # session that consumed it has already exited, with no live session left
       # to justify the refusal.
       #
-      # HIMMEL-3012: matched on the directory name (every reservation, incl.
+      # matched on the directory name (every reservation, incl.
       # ones written by an older copy of this script that has no `name` file)
       # OR the raw leg name in `name`, so a name hashed into its directory key
       # ('/', a leading '.', over NAME_MAX) is consumed instead of
       # double-counted until its TTL.
       # INVARIANT: the census may OVER-count (a launch is refused for at most
       # the TTL — safe) but must never UNDER-count (admits past the cap).
-      # HIMMEL-3216: a live name is the FULL `-n` argv element (read from
+      # a live name is the FULL `-n` argv element (read from
       # /proc/<pid>/cmdline), so consumption is identity on the whole name — a
       # name with whitespace is consumed only by the session with that exact
-      # name, and a live `-n "HIMMEL-9500 anything"` no longer consumes a
-      # HIMMEL-9500 reservation. A name with a control character is never a
+      # name, and a live `-n "anything"` no longer consumes a
+      # reservation. A name with a control character is never a
       # census entry (and never a reservation, see `_fleet_reserve`'s caller),
       # so it cannot forge a match.
       # ponytail: without a readable cmdline (no procfs — macOS/Windows — or a
       # stub) the census only has the FIRST whitespace token of the ps line, so
-      # there the shared-first-token consumption of HIMMEL-3012 stays: a
+      # there the shared-first-token consumption of stays: a
       # whitespace-name reservation is never consumed (its full name is never a
       # first token), a plain one can still be consumed by another live leg that
       # shares its first token.
@@ -845,7 +844,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # script's EXIT trap (_arm_fleet_release_pending) on every exit instead.
       _fleet_resv_sname=""
       # The whole file, not its first line: a name file with a second line
-      # (HIMMEL-3216 — a forged or hand-edited one; `_fleet_reserve` writes one
+      # (— a forged or hand-edited one; `_fleet_reserve` writes one
       # line) has no single identity, so it matches nothing. `read -d ''` keeps
       # every trailing newline (`$(cat)` would strip them all, turning
       # "name<LF><LF>" back into "name"); only the writer's one LF is dropped.
@@ -884,7 +883,7 @@ fi
 
 echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrouter=$fleet_openrouter reserved=$fleet_reserved total=$fleet_n/$FLEET_CAP" >&2
 
-# HIMMEL-4904/4985: api dispatch is OFF unless the reviewed one-shot launcher
+# api dispatch is OFF unless the reviewed one-shot launcher
 # (scripts/api-lane/claude-api.sh) opts in with HIMMEL_API_LANE=on. The opt-in
 # only reaches the credit-state verdict below; it never reads the native bank.
 # Refuse before creating a fleet reservation for a launch that cannot happen.
@@ -930,7 +929,7 @@ elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
     echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — not a declared launch (CADENCE_BANK_LAUNCH unset), reporting only" >&2
   fi
 elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
-  # codex-3 (HIMMEL-2774, 4th panel round): '/', a leading '.', and
+  # '/', a leading '.', and
   # ENAMETOOLONG used to all "proceed without a reservation" — restoring,
   # for exactly those names, the concurrent over-admission race this whole
   # mechanism exists to close. A deterministic, bounded hash of $LEG is
@@ -942,7 +941,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
   # same fallback arm-resume.sh's own flattened-path reservation already
   # relies on.
   #
-  # HIMMEL-3014/3017: the key derivation lives in fleet-reservation-key.sh so
+  # the key derivation lives in fleet-reservation-key.sh so
   # arm-resume.sh's exit-trap release resolves the SAME key this reserves under
   # (it used to look up the raw name and miss a hashed reservation). Names over
   # NAME_MAX are now hashed BEFORE the mkdir instead of only after it fails;
@@ -964,14 +963,14 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       if printf '%s\n' "$(( $(date +%s) + ${FLEET_RESERVE_TTL:-1800} ))" > "$dir/expires" 2>/dev/null &&
          printf '%s\n' "${CADENCE_BANK_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
          printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
-        # HIMMEL-3012: the raw leg name, for the consume check in the prune
+        # the raw leg name, for the consume check in the prune
         # pass — the directory name is a hash whenever $LEG cannot be one
-        # directory component. HIMMEL-3216: one line, guaranteed by the
+        # directory component. one line, guaranteed by the
         # control-character refusal at the call below. Best-effort by design: it
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
-        # HIMMEL-5519: `lane` (written above, refusing admission on failure) keys the
+        # `lane` (written above, refusing admission on failure) keys the
         # api-vs-fleet split, never the leg name: an inherited CADENCE_BANK_LEG could
         # escape both caps, and a lost lane file would under-count the api cap.
         return 0
@@ -993,7 +992,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   }
-  # HIMMEL-3216: a newline (or any control character) in the leg name would make
+  # a newline (or any control character) in the leg name would make
   # the one-line `name` file read back as a different identity ("foo/bar<LF>other"
   # as "foo/bar"). The census never lists such a live name either, so a leg named
   # this could not be consumed anyway — refuse it before it takes a slot.
@@ -1008,7 +1007,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
   _fleet_reserve "$SLOTS/$_fleet_resv_key"
   _fleet_reserve_rc=$?
   if [ "$_fleet_reserve_rc" -eq 1 ]; then
-    # codex-5 (HIMMEL-2774, 2nd panel round): `mkdir` failing does NOT mean
+    # `mkdir` failing does NOT mean
     # "already exists" — a LEG name flattened from a long path can exceed
     # the filesystem's per-component name limit (ENAMETOOLONG), which reads
     # here identically to EEXIST unless distinguished. Retry once with the
@@ -1032,7 +1031,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       emit SKIPPED-FLEET
       ;;
     *)
-      # codex-3 (HIMMEL-2774, 5th panel round): proceeding here left the
+      # proceeding here left the
       # launch unprotected exactly the same way a duplicate (case 2) or a
       # failed metadata write (case 3) would — this process's own reservation
       # never lands, so it cannot count against a concurrent caller's cap
@@ -1046,7 +1045,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       ;;
   esac
 fi
-# codex-1 (HIMMEL-2774, 5th panel round): unconditional release here can
+# unconditional release here can
 # delete a DIFFERENT owner's lock. If the original holder is only PRESUMED
 # dead (its pid file was unreadable/corrupt, so the liveness check above could
 # not confirm either way) and is in fact still alive and working, it reaches
@@ -1059,7 +1058,7 @@ fi
 # arm-resume.sh's own _arm_fleet_release_pending already uses for its
 # reservation release, applied here to the admission lock itself: a mismatch
 # means someone else now legitimately owns .admit, and this process has
-# nothing left to release. HIMMEL-3019: that check now lives in
+# nothing left to release. that check now lives in
 # _fleet_release_admit (gated, so it cannot land between a reclaimer's
 # verification and its rename) and EVERY release site — the early-exit
 # refusals above as well as this final one — goes through it.
@@ -1067,7 +1066,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
   _fleet_release_admit "$SLOTS/.admit"
 fi
 
-# HIMMEL-4904: a cache-only, secret-free API credit row, never subscription
+# a cache-only, secret-free API credit row, never subscription
 # usage or provider authentication. This reader does not reserve paid work.
 if [ "$LANE" = api ]; then
   _api_verdict="$(HIMMEL_API_CREDIT_FORMAT=bank node "$REPO/scripts/lib/api-credit-state.mjs" status)" || _api_verdict=BANK-UNKNOWN
@@ -1077,7 +1076,7 @@ if [ "$LANE" = api ]; then
   esac
 fi
 
-# HIMMEL-4081: use the shared effective balance (credit vs key cap), never
+# use the shared effective balance (credit vs key cap), never
 # the subscription bank. The launcher uses the same floor, default three USD.
 if [ "$LANE" = openrouter ]; then
   _or_floor="${OPENROUTER_MIN_CREDIT_USD:-3}"
@@ -1102,7 +1101,7 @@ if [ "$LANE" = openrouter ]; then
   emit PROCEED
 fi
 
-# HIMMEL-2782: claudex lane parks on the codex weekly bank instead of the
+# claudex lane parks on the codex weekly bank instead of the
 # Claude five_hour/seven_day check below — that check governs a different
 # bucket entirely, and a claudex leg must never be refused by it. Reads
 # scripts/lanes/bank-status.ts's "claudex" row (lane id "claudex", bank
@@ -1113,7 +1112,7 @@ fi
 # unknown/unreadable -> WARN naming the probe failure and PROCEED (never
 # refuse a launch over an unmeasurable claudex bank).
 if [ "$LANE" = claudex ]; then
-  # codex-3 (HIMMEL-2782 CR fix): same bug class as FLEET_PS_CMD above —
+  # same bug class as FLEET_PS_CMD above —
   # an unquoted override word-splits a path containing a space. The
   # DEFAULT genuinely needs word-splitting (it is a command plus flags);
   # an override is a single executable path and must be quoted.
@@ -1176,7 +1175,7 @@ is_num "$fh" && usable=$((usable+1))
 is_num "$sd" && usable=$((usable+1))
 [ "$usable" -gt 0 ] || { echo "bank-preflight: no usable primary" >&2; emit BANK-UNKNOWN; }
 
-# HIMMEL-1712: a cache stamped by a different account is unusable here for
+# a cache stamped by a different account is unusable here for
 # the same reason "no usable primary" is above — don't gate on someone
 # else's numbers. A missing/unreadable helper degrades to "can't tell",
 # treated the same as a mismatch.
@@ -1202,7 +1201,7 @@ fi
 
 [ "$usable" -eq 2 ] || echo "bank-preflight: degraded — one primary unusable" >&2
 
-# HIMMEL-2772: print the codex bank on the same line, so a console tick shows
+# print the codex bank on the same line, so a console tick shows
 # which bucket is scarce. Informational ONLY — nothing below reads it, so no
 # codex state (missing, stale, failing, hung) can change a verdict or the rc.
 # Same source and spelling as tick.sh's `codex=` field: the cache-only claudex
@@ -1241,7 +1240,7 @@ codex_fig="$(_codex_bank_figure 2>/dev/null)" || codex_fig=""
 echo "bank-preflight: leg=$LEG five_hour=${fh:-n/a} seven_day=${sd:-n/a} extra_usage=${xu:-n/a} age=${age}s codex=${codex_fig}" >&2
 
 over() { is_num "$1" && awk -v a="$1" -v b="$MAX_PCT" 'BEGIN{exit !(a>=b)}'; }
-# HIMMEL-4423: per-window checks. A valid operator lift (bank-lift.sh) skips ONLY
+# per-window checks. A valid operator lift (bank-lift.sh) skips ONLY
 # the seven_day comparison; five_hour still binds. A missing, expired, malformed
 # or other-account lift is no lift (bank_lift_valid fails toward the ceiling).
 lift=false

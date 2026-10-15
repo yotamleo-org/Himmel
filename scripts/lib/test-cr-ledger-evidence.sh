@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for cr_ledger_outside_dispositioned in scripts/lib/cr-ledger-evidence.sh
-# (HIMMEL-3124). Hermetic: a throwaway git repo + ledger, no network, no gh.
+# . Hermetic: a throwaway git repo + ledger, no network, no gh.
 #
 # The positive fixture is written by the REAL scripts/cr/ledger-append.sh — the
 # exact recipe check-ci.sh prints — so the writer->reader contract is exercised
@@ -91,7 +91,7 @@ done
 fresh; write_row disproved "" "the exclusion is intentional"
 variant '.reason=""';                          chk d10-disproved-empty-reason-refused 1 "$H" "$ID" "$FILE" "$LINE"
 
-# --- HIMMEL-3360: `fixed` disposes a PRIOR-head finding, on evidence only -----
+# --- `fixed` disposes a PRIOR-head finding, on evidence only -----
 # The prior-head path (5th arg = the CURRENT head, which differs from the row's
 # head) accepts verdict fixed when the reason names a sha that resolves, is an
 # ancestor of (or is) the current head, and is not the prior head itself. The

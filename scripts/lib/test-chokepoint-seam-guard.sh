@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/chokepoint-seam-guard.sh (HIMMEL-3914).
+# Tests for scripts/lib/chokepoint-seam-guard.sh.
 # Usage: bash scripts/lib/test-chokepoint-seam-guard.sh
 # Hermetic: the verdict, overlay and registry rows run on fixture files, the
 # ancestry rows on a fake /proc tree. The gate itself only enforces on the
@@ -276,13 +276,13 @@ assert_eq "G10 the claude environ is unreadable -> 96" "96" "$(gate "$Q5" "$GO")
 Q6="$TMP/gproc6"; mkclaude "$Q6" "$GA" PATH=/bin "HIMMEL_REPO=$GA"; rm -rf "$Q6/1"
 assert_eq "G11 a walk error past the claude match -> 96" "96" "$(gate "$Q6" "$GO" "HIMMEL_REPO=$GA")"
 Q7="$TMP/gproc7"; mkclaude "$Q7" "$GA" PATH=/bin "HIMMEL_REPO=$GA"; rm -rf "$Q7/self"
-# HIMMEL-3921: a Linux host with no readable /proc (unshare -rm + a tmpfs over
+# a Linux host with no readable /proc (unshare -rm + a tmpfs over
 # /proc) is not a real platform - deny. A genuine non-Linux host stays hook-only.
 # shellcheck disable=SC2016 # $1..$3 expand in the child bash, by design
 assert_eq "G12 no /proc, Linux injected -> 96 (fails closed, host-independent)" "96" "$(HIMMEL_CONSOLE_LEG=1 bash -c '. "$1" && _csg_gate "$2" 20 "$3" Linux' _ "$GA/scripts/lib/chokepoint-seam-guard.sh" "$Q7" "$GO" 2>/dev/null; printf %s "$?")"
 # shellcheck disable=SC2016 # $1..$3 expand in the child bash, by design
 assert_eq "G12b no /proc, genuine non-Linux (Darwin) -> ALLOW" "0" "$(env -u HIMMEL_CONSOLE_LEG bash -c '. "$1" && _csg_gate "$2" 20 "$3" Darwin' _ "$GA/scripts/lib/chokepoint-seam-guard.sh" "$Q7" "$GO" 2>/dev/null; printf %s "$?")"
-# HIMMEL-3921 judge I2: a populated fake /proc (tmpfs with written stat files)
+# judge I2: a populated fake /proc (tmpfs with written stat files)
 # passes the readable check but is not a procfs mount.
 # shellcheck disable=SC2016 # $1/$2 expand in the child bash, by design
 assert_eq "G12c populated fake /proc (plain dir, not procfs) -> not a procfs" "1" "$(bash -c '. "$1" && _csg_procfs "$2"' _ "$GA/scripts/lib/chokepoint-seam-guard.sh" "$Q7" >/dev/null 2>&1; printf %s "$?")"
@@ -399,8 +399,8 @@ done
 # --- A PATH-shadowed dirname cannot pick what is sourced before the gate -----
 # The fake dirname points every relative lib path at an evil tree whose lib
 # no-ops the gate and leaves a sentinel. The copy (still without its real lib)
-# must refuse with 96 (the hand-off source line no longer calls dirname,
-# HIMMEL-3932) and never source the evil lib.
+# must refuse with 96 (the hand-off source line no longer calls dirname)
+# and never source the evil lib.
 EV="$TMP/evil"; SENT="$TMP/evil-sourced"
 mkdir -p "$EV/fakebin" "$EV/a/b/c/lib" "$EV/a/b/lib" "$EV/a/lib"
 printf '#!/bin/sh\necho %s/a/b/c\n' "$EV" > "$EV/fakebin/dirname"

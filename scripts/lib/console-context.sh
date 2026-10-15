@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared arming-time context-window (1m|standard) decision primitives
-# (HIMMEL-2658, re-pinned by HIMMEL-2975 T6).
+# (re-pinned by T6).
 #
 # WHY: the same decisions -- is a model Fable-family (the CLI silently
 # strips a [1m] suffix there), what autocompact value a mode maps to, and
@@ -19,7 +19,7 @@
 # suite and legitimately differ between scripts) -- except the source word
 # after the mode (`context=1m (explicit)`) and the durable launch-context row,
 # which a reader keys on and so come from console_context_source_label /
-# console_context_write_record below (HIMMEL-3282).
+# console_context_write_record below.
 #
 # Functions:
 #   console_context_valid <value>            -- rc 0 iff value is 1m|standard
@@ -41,12 +41,12 @@
 #                                                source word both arms log and record
 #   console_context_write_record <session> <mode> <source> <autocompact>
 #                                             -- appends the durable launch-context
-#                                                row (HIMMEL-3279/3282), rc 0 iff written
+# row, rc 0 iff written
 #   console_context_leg_env_unset_names      -- prints, one per line, every var a
 #                                                leg sets on itself that must never
-#                                                reach a console it arms (HIMMEL-3568)
+# reach a console it arms
 #   console_context_launch_seam_env_names    -- prints the subset of that list that
-#                                                only shapes a launch (HIMMEL-4118)
+# only shapes a launch
 
 console_context_valid() {
     case "$1" in
@@ -65,7 +65,7 @@ console_context_model_is_fable() {
     esac
 }
 
-# console_context_model_takes_1m_suffix <model> -- HIMMEL-5501. [1m] only
+# console_context_model_takes_1m_suffix <model> -- . [1m] only
 # SELECTS 1M on Opus 4.6 / Sonnet 4.6 (plan-gated there). Opus 4.7+, Sonnet 5+,
 # Haiku 5.5 and Fable run 1M natively, so a bare id plus --autocompact auto is
 # the launch; a non-Anthropic id (gpt-*, glm-*, deepseek-*, anything with `/`)
@@ -97,7 +97,7 @@ console_context_strip_1m_suffix() {
 # this file never exits the caller's process). `standard` and `1m` are the
 # only values any caller's CLI/positional surface accepts today (this ticket
 # adds no new one), but the parser itself stays generic on a trailing `k`
-# shape -- HIMMEL-2975 T6 keeps the design doc's N3 generic <N>k resolver
+# shape -- T6 keeps the design doc's N3 generic <N>k resolver
 # alive as the parser here even though the 400k tier it was written for is
 # retired, per the v1 join design's explicit note that the shape, not the
 # tier, is what survives.
@@ -118,8 +118,8 @@ console_context_autocompact() {
 
 # console_context_default <is_console 0|1> <console_context_env value>
 #
-# Only for the no-explicit-value path. HIMMEL-3884 exempts consoles from
-# HIMMEL-2975's standard default: consoles default to 1m, with
+# Only for the no-explicit-value path. exempts consoles from
+# 's standard default: consoles default to 1m, with
 # CONSOLE_CONTEXT=standard opting down. Non-console arms remain standard
 # and ignore the environment. A valid env choice is explicit provenance.
 # shellcheck disable=SC2034  # output-contract globals, read by sourcing callers (arm-resume.sh, headed-arm.sh, console.sh)
@@ -139,7 +139,7 @@ console_context_default() {
 # both arming paths log and record: `explicit` when the mode was named
 # (--context / the launcher's positional) OR selected with CONSOLE_CONTEXT
 # (1m or standard), else `default`.
-# Spec 2973 sec 2.4 keys on `context=1m (explicit)`. HIMMEL-3282: arm-resume.sh
+# Spec 2973 sec 2.4 keys on `context=1m (explicit)`. arm-resume.sh
 # used to spell this from its own prose while headed-arm.sh spelled `(explicit)`,
 # so a reader keying on the spec attributed one path and silently skipped the
 # other; both callers take the word from here now. Read
@@ -154,10 +154,10 @@ console_context_source_label() {
 
 # console_context_write_record <session> <mode> <source> <autocompact>
 #
-# The durable launch-context row for a console arm (HIMMEL-3279 shipped it in
-# headed-arm.sh; HIMMEL-3282 moved it here so arm-resume.sh, the Windows
+# The durable launch-context row for a console arm (shipped it in
+# headed-arm.sh; moved it here so arm-resume.sh, the Windows
 # station's arming path, writes the SAME row rather than a second shape). It is
-# a row in the HIMMEL-3270 launch record dir (${HIMMELCTL_CACHE_DIR:-
+# a row in the launch record dir (${HIMMELCTL_CACHE_DIR:-
 # $HOME/.claude/himmel}/launch-logs/<session>.log, btrfs, not the tmpfs arm log
 # that a reboot erases), keyed `headed-arm:` so it cannot read as a leg's
 # `headed-arm-leg:` profile line. The prefix is shared on purpose: the reader
@@ -190,8 +190,8 @@ console_context_write_record() {
 # the long-running leg process, not just its immediate child). A leg's own
 # shell keeps every one of these live for its whole session, so a later
 # `console.sh next --arm` run from inside that shell inherits them unless the
-# caller strips this exact set first (HIMMEL-3568) -- do_arm() in console.sh
-# is that caller. headed-arm-leg.sh is read-only (HIMMEL-3545 is queued on it
+# caller strips this exact set first -- do_arm() in console.sh
+# is that caller. headed-arm-leg.sh is read-only (is queued on it
 # separately); test-console.sh asserts this list still names every
 # `leg_propagate_env NAME` call site there, so a name added to that file
 # without a matching line here fails the sync test instead of leaking silently.
@@ -236,7 +236,7 @@ console_context_leg_env_unset_names() {
 # the list above that only choose HOW a later headed-arm launch builds its
 # claude argv (the shim, its binary and its profile flags), never who the
 # session is or which guards it runs under. arm-resume.sh clears exactly these
-# in its `at` job body (HIMMEL-4118 F2): `at` snapshots the submitter's env, so
+# in its `at` job body (F2): `at` snapshots the submitter's env, so
 # an arm made from inside a consult would otherwise hand the resumed session
 # LEG_PROFILE_NO_SETTING_SOURCES and friends. The rest of the list stays live
 # there on purpose: HIMMEL_CONSOLE_LEG turns leg-only guard hooks ON and

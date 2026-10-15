@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cadence-runner-exec.sh — test helper: fire a GENERATED POSIX cadence runner
-# against a stub payload and a stub alert sink (HIMMEL-4286). Sourced, not
+# against a stub payload and a stub alert sink. Sourced, not
 # executed; bash 3.2-safe. Used by the cadence arm suites to prove that a runner
 # of each kind alerts on a failed leg and clears on a completed one, without
 # running the real payload or arming anything on the station.

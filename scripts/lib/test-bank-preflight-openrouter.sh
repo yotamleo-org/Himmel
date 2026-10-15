@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4081: hermetic lane bank gate, no key or real HTTP request.
+# hermetic lane bank gate, no key or real HTTP request.
 # PLATFORM GUARD: bank-preflight is a POSIX shell path; no PowerShell twin.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4904: credit fixtures plus API bank integration, no secrets or network.
+# credit fixtures plus API bank integration, no secrets or network.
 # Platform guard: local filesystem accounting; Linux verified, no .ps1 twin.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

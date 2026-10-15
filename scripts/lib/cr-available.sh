@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # cr-available.sh — the ONE answer to "is CodeRabbit's App configured for THIS
-# repo?" (HIMMEL-1125).
+# repo?".
 #
 # WHY THIS EXISTS — the adopter-hostile default it removes:
-# HIMMEL-1072 made an ABSENT CodeRabbit verdict a BLOCKER ("an unreviewed head
+# made an ABSENT CodeRabbit verdict a BLOCKER ("an unreviewed head
 # is not a green one"). That is right for a repo that HAS CodeRabbit. But the
 # harness ships to adopters who do not, and for them "absent" is the permanent
 # steady state — so `check-ci.sh` exited 2 and `cr_merge_gate` blocked EVERY
@@ -14,7 +14,7 @@
 # something.
 #
 # WHICH SURFACE THIS PROBE COVERS (the load-bearing distinction):
-# CodeRabbit had two independent surfaces; since HIMMEL-2704 (operator ruling
+# CodeRabbit had two independent surfaces; since (operator ruling
 # 2026-09-07) himmel uses exactly ONE:
 #
 #   the App  -> reviews the PR AFTER `gh pr create`. It is the ONLY surface that
@@ -26,7 +26,7 @@
 #               (scripts/cr/coderabbit-gate.sh) are deleted.
 #
 # Everything here gates POST-PR state, so it describes the APP — and always did.
-# That separation is why HIMMEL-2704 could delete the CLI without touching this
+# That separation is why could delete the CLI without touching this
 # file's contract: a probe that had conflated the two would have armed a status
 # gate on a machine that merely had a binary installed.
 #
@@ -51,7 +51,7 @@
 # deleted by a PR, and says something about THIS clone rather than about a file
 # someone copied.
 #
-# THE TRADE-OFF, STATED PLAINLY: this REVERSES the HIMMEL-1072 fail-closed
+# THE TRADE-OFF, STATED PLAINLY: this REVERSES the fail-closed
 # default. An operator who never arms a repo silently has no CodeRabbit merge
 # gate there. That is the accepted cost of never blocking an adopter who does not
 # have CodeRabbit at all (the ticket's hard requirement), and it is why arming is
@@ -65,7 +65,7 @@
 #   Silent: prints nothing on either path. An adopter must not notice it exists.
 #
 # Env:
-#   CR_PROFILE=none      forces rc 1. The established opt-out (HIMMEL-1072 —
+# CR_PROFILE=none      forces rc 1. The established opt-out (—
 #                        check-ci / cr-merge-gate read it), kept authoritative so
 #                        an operator who already set it sees no change. Any OTHER
 #                        value is a critic-TIER filter (free,paid — see
@@ -81,7 +81,7 @@
 # Sourceable from hooks and scripts: uses only `return`, never `exit`; does not
 # toggle set -e. bash 3.2-safe.
 
-# cr_app_state [<dir>] (HIMMEL-2380)
+# cr_app_state [<dir>]
 #   Echoes ONE word on stdout — WHY the gates above are armed or not — and
 #   always returns 0. Nothing is ever written to stderr.
 #
@@ -107,7 +107,7 @@
 # What callers must NOT do with it: narrate `not-configured`. "An adopter must
 # not notice it exists" is a tested invariant (case 15 here, and
 # scripts/test-check-ci.sh case 57 greps a whole clean adopter run for the word
-# "CodeRabbit"). HIMMEL-2380 asked for an unconditional "CodeRabbit: not
+# "CodeRabbit"). asked for an unconditional "CodeRabbit: not
 # configured" line; console ruling 88 narrowed it to the states where a review
 # was actually EXPECTED — a pass is only vacuous when something was missing.
 #
@@ -129,7 +129,7 @@ cr_app_state() {
     esac
 
     local dir="${1:-$PWD}" val common cfg
-    # HIMMEL-2769: resolve the PRIMARY scope explicitly rather than trusting
+    # resolve the PRIMARY scope explicitly rather than trusting
     # plain `--local` to keep merging it. `git rev-parse --git-common-dir`
     # names the one config file every linked worktree of a repo shares (the
     # primary's `.git/config`, even under `extensions.worktreeConfig`, which

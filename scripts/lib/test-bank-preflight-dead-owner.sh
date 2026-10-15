@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4089 ask 3: scratch reservations only, no real sessions.
+# ask 3: scratch reservations only, no real sessions.
 # PLATFORM GUARD: fleet admission uses the POSIX shell/tmpfs path.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -31,7 +31,7 @@ seed() {
 }
 run() {
   local slots="$1"; shift
-  # Grace 0 keeps the pre-HIMMEL-4115 cases about identity, not timing; the
+  # Grace 0 keeps the pre-cases about identity, not timing; the
   # grace cases below pass their own value ("$@" comes later, so it wins).
   env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_FLEET_CAP=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_BANK_LEDGER="$W/ledger" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LANE=openrouter CADENCE_BANK_LEG=HIMMEL-9001-test CADENCE_BANK_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/bank-preflight.sh" 2>"$W/err"
 }
@@ -76,7 +76,7 @@ printf '%s\n' claude > "$W/proc/9001/comm"
 printf 'claude\0-n\0HIMMEL-9001-test\0work\0' > "$W/proc/9001/cmdline"
 seed session "$dead"
 check 'dead owner with a live named session never admits past cap' SKIPPED-FLEET "$(run session)"
-# HIMMEL-4115: a launcher that exits 7 ("claude not visible yet") leaves a dead
+# a launcher that exits 7 ("claude not visible yet") leaves a dead
 # owner whose session can still come up seconds later. Inside the grace window
 # (counted from the first pass that sees the owner dead) the slot stays held.
 : > "$W/ps.data"

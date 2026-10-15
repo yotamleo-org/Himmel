@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # cadence-format.sh — shared runner-format version + staleness probe for
-# generated cadence runners (HIMMEL-588/HIMMEL-969).
+# generated cadence runners.
 #
 # Cadence runners (.bat/.sh) are GENERATED artifacts, baked at arm time by the
 # cadence emitters. They hard-code paths/payload config and are NOT regenerated
 # when the himmel code changes. So an operator who armed BEFORE a runner-format
 # change keeps firing stale runners with no nudge (this is exactly what bit
-# HIMMEL-575: the --settings injection only took effect after a manual
+# the --settings injection only took effect after a manual
 # `arm --force`).
 #
 # This lib is the single source of truth: WRITERS stamp
@@ -21,31 +21,31 @@
 # carry no marker and read as version 0 (stale). New users (first arm after a
 # bump) get the current version automatically, so they never false-positive.
 #
-# v2 (HIMMEL-506): per-leg --model pins injected into every runner + the
+# v2: per-leg --model pins injected into every runner + the
 # synthesize/health frequency shift (weekly→daily, monthly→weekly). An armed
 # v1 cadence still fires, but on the OLD frequencies with NO model pin (so it
 # inherits the operator's saved default tier) — nudge `arm --force`.
-# v3 (HIMMEL-921): flow-run ledger start/end rows around each fired runner.
-# v4 (HIMMEL-1036): the pipeline-cadence --settings fragment now carries an
+# v3: flow-run ledger start/end rows around each fired runner.
+# v4: the pipeline-cadence --settings fragment now carries an
 # enabledPlugins block that force-enables obsidian-triage@himmel (the operator
 # disables it interactively; the nightly cadence must re-enable it). An armed
 # v3 cadence fires with the OLD fragment (no enabledPlugins), so once the
 # interactive disable lands the pipeline runs with the plugin OFF — nudge
-# `arm --force` to regenerate the fragment. Same class as the HIMMEL-575 bug
+# `arm --force` to regenerate the fragment. Same class as the bug
 # noted at the top of this file.
-# v5 (HIMMEL-1281): cadence_cmd_escape replaces the four per-emitter cmd_escape
+# v5: cadence_cmd_escape replaces the four per-emitter cmd_escape
 # copies and drops their caret escaping of ^ & < > | (the " and % rules stay).
 # Inside the double quotes every interpolated value sits in, `^` is LITERAL, so
 # those carets corrupted the value instead of protecting it. An armed v4 runner
 # keeps firing the corrupted form, so an operator whose bat dir / repo root /
 # vault path carries one of those characters must `arm --force` to pick the fix
 # up. Everyone else's regenerated runner is byte-identical bar the stamp.
-# v6 (HIMMEL-1309): the codex-sweep runner gained a THIRD payload leg
+# v6: the codex-sweep runner gained a THIRD payload leg
 # (reap-superseded-fleets.ps1 -Kill, the duplicate-fleet-under-a-LIVE-broker
 # check) and its trigger gained an intra-day <Repetition>. An armed v5 cadence
 # still fires, but only the two old legs and only once a day — so the leak class
 # this version exists to cover keeps accumulating unswept. Nudge `arm --force`.
-# v7 (HIMMEL-1286): the generated cron runner takes a self-overlap lock before
+# v7: the generated cron runner takes a self-overlap lock before
 # rotating its log and firing the payload. cron has no MultipleInstancesPolicy,
 # so the POSIX leg was the unguarded one — and once `qmd-cadence.sh arm
 # --ship-to` can point that runner at ship-index.sh, two overlapping runs race
@@ -54,7 +54,7 @@
 # an operator running the cadence on POSIX must `arm --force` to pick it up.
 # Windows runners are unaffected (the scheduler already serialized them) but
 # stamp v7 too, so one version answers "is this runner current".
-# v8 (HIMMEL-1672): every emitted .bat prepends Git's usr\bin + bin to PATH so a
+# v8: every emitted .bat prepends Git's usr\bin + bin to PATH so a
 # NON-LOGIN bash.exe (the interpreter the Windows runners bake in) resolves GNU
 # coreutils ahead of their System32 namesakes. A non-login Git-Bash does not
 # source the MSYS profile that prepends /usr/bin, so it inherits the bare Windows
@@ -67,12 +67,12 @@
 # operator must `arm --force` to pick up the prepend. Affects the bash-emitters
 # (graphmap/qmd/pipeline); drift-fix (claude-direct) and codex-sweep (pwsh) bake
 # no bash.exe into their runner and are unaffected. POSIX cron runners unaffected.
-# v9 (HIMMEL-1706): the codex-sweep .bat preserves every payload rc and exits
+# v9: the codex-sweep .bat preserves every payload rc and exits
 # non-zero after all three legs when any leg failed. An armed v8 runner logs a
 # refusing sweep but returns the final successful leg's rc to Task Scheduler,
 # leaving LastTaskResult=0 while the primary sweep accomplished nothing. Re-arm
 # with `codex-sweep-cadence.sh arm --force` to regenerate the runner.
-# v10 (HIMMEL-1753): every generated task's Exec is now a hidden powershell.exe
+# v10: every generated task's Exec is now a hidden powershell.exe
 # wrapper (`-WindowStyle Hidden -Command "& '<bat>'; exit $LASTEXITCODE"`)
 # around the .bat, not the bare .bat. A bare .bat Exec pops a visible conhost
 # window on every fire — an operator repro caught it flashing on top of a
@@ -83,7 +83,7 @@
 # visible) until re-armed. `; exit $LASTEXITCODE` in the new wrapper preserves
 # the v9 exit-code fidelity — re-arming does not regress it. Re-arm with
 # `<cadence>.sh arm --force` to pick up the hidden-window Exec.
-# v11 (HIMMEL-1753): the v10 hidden-powershell wrapper was MEASURED to still
+# v11: the v10 hidden-powershell wrapper was MEASURED to still
 # allocate visible consoles despite -WindowStyle Hidden, so the Exec shape moves
 # again — now a `wscript.exe //B <shim>.vbs` whose .vbs runs the .bat hidden via
 # WScript.Shell.Run(..., 0, True) and forwards its exit code through WScript.Quit
@@ -96,7 +96,7 @@
 # .bat rc logic is again untouched, and WScript.Quit preserves the v9/v10
 # exit-code fidelity. Re-arm with `<cadence>.sh arm --force` to pick up the
 # wscript shim + the editor-hardened .bat.
-# v13 (HIMMEL-1724 + HIMMEL-1389): two runner-CONTENT changes. (a) the
+# v13: two runner-CONTENT changes. (a) the
 # pipeline FetchHealth leg (.bat and cron runner) now writes flow-run ledger
 # start/end rows like every other leg — an armed v12 runner keeps firing with
 # NO ledger row, so that leg stays invisible to stall / never-started
@@ -107,7 +107,7 @@
 # it, a payload that resolves to a .cmd/.bat shim makes cmd.exe transfer
 # control away for good, so the rc stamp, the ledger end row and the `exit /b`
 # after it never run. Re-arm each cadence with `arm --force` to pick both up.
-# v14 (HIMMEL-1152): the three pipeline CLAUDE legs (.bat and cron runner) wrap
+# v14: the three pipeline CLAUDE legs (.bat and cron runner) wrap
 # their claude invocation in a bounded retry/resume loop — up to 3 attempts,
 # 60s then 180s backoff, and ONLY when the attempt's own log carries the
 # transient upstream signature (`API Error: … Server error / overloaded / 5xx /
@@ -117,7 +117,7 @@
 # already harvested) still just sits unfinished until a human notices. Re-arm
 # with `pipeline-cadence.sh arm --force`. The other cadences are unaffected but
 # stamp v14 too, so one version answers "is this runner current".
-# v15 (HIMMEL-2044/2045): the three pipeline CLAUDE legs gate before they spend.
+# v15: the three pipeline CLAUDE legs gate before they spend.
 # Every one of them now runs scripts/lib/bank-preflight.sh first (with
 # CADENCE_BANK_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
 # spend instead of logging leg:"unknown") and passes an explicit
@@ -128,14 +128,14 @@
 # unconditionally every night — so re-arm with
 # `pipeline-cadence.sh arm --force`. The other cadences are unaffected but stamp
 # v15 too, so one version still answers "is this runner current".
-# v16 (HIMMEL-2367): a new runner joins the stamped set — upstream-watch, the
+# v16: a new runner joins the stamped set — upstream-watch, the
 # daily delta-gated scan of open upstream PRs/issues (replacing the resident
 # 20-minute interactive-claude poller per the 2026-09-01 operator ruling). It
 # fires a plain shell script (never claude), so there is nothing for a v15
 # runner to have missed and no re-arm is needed for existing cadences; this
 # bump exists only to add "upstream-watch" to CADENCE_RUNNER_BASENAMES below so
 # its own runner participates in the same staleness-stamp convention.
-# v17 (HIMMEL-2840): the three pipeline POSIX runners (pipeline-harvest,
+# v17: the three pipeline POSIX runners (pipeline-harvest,
 # pipeline-synthesize, pipeline-health) now stamp the FULL arm-time PATH
 # snapshot instead of prepending only the node directory
 # (`export PATH=<node_dir>:$PATH`) — the old line left every other arm-time
@@ -148,7 +148,7 @@
 # with `pipeline-cadence.sh arm --force` to pick up the full snapshot. The
 # other cadences are unaffected but stamp v17 too, so one version still
 # answers "is this runner current".
-# v18 (HIMMEL-3174): the pipeline-harvest runner's baked prompt now passes
+# v18: the pipeline-harvest runner's baked prompt now passes
 # `--include-evidence` to /ig-media-enrich. Triage Phase 8 moves finished clips
 # into Clippings/_evidence/ and the default selection skips that folder, so every
 # reel left scope one step before enrichment (0 selected / 0 enriched). The
@@ -157,19 +157,19 @@
 # keeps firing the old prompt; re-arm with `pipeline-cadence.sh arm --force`. The
 # other cadences are unaffected but stamp v18 too, so one version still answers
 # "is this runner current".
-# v19 (HIMMEL-4181): the pipeline POSIX runners log `[PIPELINE-LEG-FAILED ...]`,
+# v19: the pipeline POSIX runners log `[PIPELINE-LEG-FAILED ...]`,
 # exit 3 on any zero-rc outcome short of complete, and call
 # scripts/luna/cadence-alert.sh on a failure; the harvest prompt adds
 # /x-media-enrich; the settings fragment allows the obsidian-triage commands.
 # Re-arm with `pipeline-cadence.sh arm --force`.
-# v20 (HIMMEL-4182): the pipeline-harvest and pipeline-synthesize POSIX runners
+# v20: the pipeline-harvest and pipeline-synthesize POSIX runners
 # run obsidian-triage's daily-timeline.mjs after the leg (must-not-abort: a
 # failure logs and never changes the runner's exit code). Re-arm with
 # `pipeline-cadence.sh arm --force`.
-# v21 (HIMMEL-4226): the pipeline POSIX runners alert (`[PIPELINE-LEG-FAILED
+# v21: the pipeline POSIX runners alert (`[PIPELINE-LEG-FAILED
 # cd-vault]`) when the cd into the vault fails. Re-arm with
 # `pipeline-cadence.sh arm --force`.
-# v22 (HIMMEL-4286): the graphmap (luna/himmel semantic + ast-luna/ast-himmel),
+# v22: the graphmap (luna/himmel semantic + ast-luna/ast-himmel),
 # qmd-reindex and upstream-watch POSIX runners now write flow-run start/end rows
 # and call scripts/luna/cadence-alert.sh `fail` on a failed leg / `clear` on a
 # completed one, through cadence_posix_leg_start / cadence_posix_leg_end below.
@@ -177,8 +177,8 @@
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
 # its own rows). The alert call pins the arm-time PATH so the sender finds bun
 # under cron. NOT covered: the codex-sweep runner and every graphmap/qmd/
-# upstream-watch .bat twin (HIMMEL-4197 tracks only the pipeline .bat twins;
-# these are HIMMEL-5576). Re-arm with
+# upstream-watch .bat twin (tracks only the pipeline .bat twins;
+# these are ). Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
 CADENCE_RUNNER_FORMAT_VERSION=22
@@ -194,7 +194,7 @@ CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health c
 
 # cadence_posix_leg_start <q_flow_lib> <flow> <task>
 # cadence_posix_leg_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
-# Print the shared flow-run + alert block of a generated POSIX runner (HIMMEL-4286),
+# Print the shared flow-run + alert block of a generated POSIX runner,
 # each line indented four spaces to sit inside the runner's `{ ... } >> "$log"`
 # group. _start goes BEFORE the payload line, _end AFTER it; the runner must have
 # set `log` and captured the payload's status in `_rc`. <q_*_lib> are already
@@ -222,7 +222,7 @@ cadence_posix_leg_end() {
     printf '    test "$_flow_run_id" != "" && %s --append-end %s "$_flow_run_id" "" "$_rc" "$_flow_outcome" "" "" >/dev/null 2>&1 || true\n' "$q_flow_lib" "$flow"
     printf '    case "$_flow_outcome" in\n'
     # The alert sender needs bun, which lives off cron's minimal PATH: pin the
-    # ARM-time PATH (HIMMEL-2840) onto the alert calls only, never the payload's.
+    # ARM-time PATH onto the alert calls only, never the payload's.
     q_path=$(printf '%q' "$PATH")
     printf '        complete) PATH=%s %s clear %s || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
     printf '        error) PATH=%s %s fail %s "rc-$_rc" "$log" || true ;;\n' "$q_path" "$q_alert_lib" "$flow"
@@ -231,11 +231,11 @@ cadence_posix_leg_end() {
 
 # cadence_user_home
 # The runner homes the EMITTERS write under key off resolve_user_home
-# (HIMMEL-645: on Windows Git-Bash $HOME can be the MSYS home while
+# (on Windows Git-Bash $HOME can be the MSYS home while
 # ~/.claude lives under the Windows profile — prefer USERPROFILE via
 # cygpath). READERS must resolve the same way or they probe an empty MSYS
 # dir and report "no armed cadence" on exactly the machines the Windows-only
-# codex-sweep cadence runs on (HIMMEL-969 codex-adv finding). Same body as
+# codex-sweep cadence runs on (codex-adv finding). Same body as
 # the emitters' resolve_user_home; kept here so the readers share one copy.
 cadence_user_home() {
     if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
@@ -247,7 +247,7 @@ cadence_user_home() {
 
 # cadence_cmd_escape <value>
 # Escape a value for interpolation into a generated .bat, INSIDE DOUBLE QUOTES.
-# That context is the whole contract (HIMMEL-1281) — every call site must emit
+# That context is the whole contract — every call site must emit
 # the result as "%s", never bare. Two rules, and only two:
 #
 #   %  ->  %%   percent expansion DOES happen inside double quotes in a .bat,
@@ -282,7 +282,7 @@ cadence_cmd_escape() {
 
 # cadence_git_bin_path_win <bash_win>
 # Derive the cmd-PATH fragment that puts Git's GNU coreutils ahead of System32
-# for a NON-LOGIN bash.exe (HIMMEL-1672). A non-login Git-Bash does NOT source
+# for a NON-LOGIN bash.exe. A non-login Git-Bash does NOT source
 # the MSYS profile that prepends /usr/bin, so it inherits the bare Windows PATH
 # and unqualified `find`/`timeout`/`sed`/`grep` resolve to System32 namesakes
 # (find.exe is a string search; timeout.exe lacks -k) or are missing entirely.
@@ -312,7 +312,7 @@ cadence_git_bin_path_win() {
 
 # cadence_vbs_path <bat_win>
 # Derive the .vbs shim path from a .bat runner path: same directory + basename,
-# .vbs extension (HIMMEL-1753). The wscript //B shim lives BESIDE its .bat so a
+# .vbs extension. The wscript //B shim lives BESIDE its .bat so a
 # disarm that removes the .bat removes its shim too, and so the writer (cmd_arm)
 # and the referencer (emit_task_xml) — both deriving through this helper — can
 # never disagree about where the shim lives. <bat_win> is a Windows path.
@@ -322,7 +322,7 @@ cadence_vbs_path() {
 
 # cadence_vbs_wrapper <bat_win>
 # Emit the body of the .vbs shim that hosts the .bat under wscript //B
-# (HIMMEL-1753). This replaces the superseded pwsh -WindowStyle Hidden wrapper:
+# . This replaces the superseded pwsh -WindowStyle Hidden wrapper:
 # that shape was MEASURED to still allocate visible consoles despite Hidden,
 # while wscript //B hosting this shim allocates zero (wscript.exe is a
 # windowless host; the .bat's cmd.exe console is launched with SW_HIDE).
@@ -330,7 +330,7 @@ cadence_vbs_path() {
 # WScript.Shell.Run(cmd, 0, True) launches <bat_win> with a HIDDEN window
 # (intWindowStyle=0), WAITS for it, and RETURNS its exit code; WScript.Quit
 # propagates that code as the wscript.exe process exit code, preserving the
-# HIMMEL-1706 exit-code fidelity contract. The command string includes literal
+# exit-code fidelity contract. The command string includes literal
 # quotes around <bat_win>, so runner paths with spaces execute as one command.
 # rc=42 (the harness re-arm signal) survives — proven by an execution test in
 # test-cadence-format.sh that runs a 42-exit .bat through this exact shim and
@@ -348,7 +348,7 @@ cadence_vbs_wrapper() {
     printf 'WScript.Quit sh.Run("""%s""", 0, True)\r\n' "$bat_quoted"
 }
 
-# Shared Windows Script Host availability predicate (HIMMEL-1793). Every
+# Shared Windows Script Host availability predicate. Every
 # Windows cadence Exec is `wscript.exe //B <shim>.vbs`, so a registered task is
 # dead when wscript is missing, policy-disabled, or unable to execute even a
 # zero-exit script. Keep the predicate here: five emitters share the dependency
@@ -418,7 +418,7 @@ cadence_wsh_probe() {
     elif powershell_bin=$(command -v pwsh.exe 2>/dev/null); then
         :
     elif powershell_bin=$(command -v powershell.exe 2>/dev/null); then
-        # HIMMEL-2126: pwsh is unavailable — loud, named 5.1 fallback, never silent.
+        # pwsh is unavailable — loud, named 5.1 fallback, never silent.
         echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
     else
         CADENCE_WSH_DETAIL="PowerShell is unavailable, so WSH policy cannot be verified"
@@ -516,7 +516,7 @@ cadence_registered_status() {
 
 # cadence_bat_editor_set
 # Emit the non-interactive-editor `set` lines every generated .bat stamps near
-# its top (HIMMEL-1753). A cadence child runs under schtasks with stdin closed,
+# its top. A cadence child runs under schtasks with stdin closed,
 # so it can never answer an interactive editor/prompt; any tool falling back to
 # $EDITOR would otherwise open a window on the operator's desktop and block
 # forever behind it. Pinning every editor hook to the no-op `true` (and
@@ -556,13 +556,13 @@ cadence_runner_platform_ext() {
 # cadence_runner_stamp <bat_dir>
 # Echo the MINIMUM format version stamped across the CURRENT platform's
 # runners under <bat_dir> (an unstamped runner reads as 0 — i.e. armed
-# before HIMMEL-588). Minimum, not first-found: a multi-runner re-arm
+# before ). Minimum, not first-found: a multi-runner re-arm
 # interrupted between writes leaves a mixed set, and one current runner must
-# not mask a stale sibling (HIMMEL-969 codex-adv finding). Reads only
+# not mask a stale sibling (codex-adv finding). Reads only
 # cadence_runner_platform_ext's extension — a dormant twin copied over from
 # another platform (e.g. a Windows .bat left behind on a Linux station) is
 # never regenerated by that platform's emitters and must not pin the
-# minimum below what this platform actually runs (HIMMEL-2965). Return:
+# minimum below what this platform actually runs. Return:
 #   0 — at least one runner present (version echoed on stdout)
 #   1 — no runners present (cadence not armed via this dir, on this platform)
 cadence_runner_stamp() {
@@ -584,7 +584,7 @@ cadence_runner_stamp() {
 }
 
 # cadence_prov_record <task-marker>
-# HIMMEL-3332 S8, HIMMEL-3525 S18: record a `job register` provenance row for
+# S8, S18: record a `job register` provenance row for
 # the cron entry an arm just installed, so a ledger-mode uninstall can remove
 # exactly that line (matched by its trailing ` # <marker>`) and nothing else.
 # Call it only AFTER the arm's cron_install succeeded. S18 reads the live

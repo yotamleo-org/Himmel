@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci-green-gate.sh — shared predicate for the HIMMEL-1043 CI-green merge gate.
+# ci-green-gate.sh — shared predicate for the CI-green merge gate.
 #
 # ci_green_gate <pr-selector> [<owner/repo>]
 #   rc 0 = allow; rc 2 = block, one-line reason on stdout.
@@ -7,22 +7,22 @@
 #          — callers that extracted the selector heuristically (the PreToolUse
 #          hook) should retry once with a better-anchored selector (the cwd
 #          branch) so quoted/mis-tokenized selectors cannot dodge the gate
-#          (same re-anchor contract as cr_merge_gate, HIMMEL-936). Top-level
+# (same re-anchor contract as cr_merge_gate). Top-level
 #          consumers treat any non-2 rc as allow.
 #   Deny ONLY on positive evidence: a NON-GREEN CI state on the PR's head SHA
 #   among NON-CodeRabbit check-runs — either a check-run with a RED conclusion
 #   (failure, timed_out, cancelled, action_required, startup_failure, stale), a
 #   check-run still PENDING (status != completed) — or a NON-CodeRabbit commit
 #   status (newest per context) of failure/error/pending. CodeRabbit is EXCLUDED
-#   from BOTH (the CR gate, HIMMEL-936/1072, owns CodeRabbit; this
+# from BOTH (the CR gate, owns CodeRabbit; this
 #   gate owns the tests/lint/build CI the repo otherwise has no guard for — see
 #   brief WHY "a red or still-running non-CodeRabbit check", and it keeps a hung
-#   CodeRabbit review from false-blocking here — which, until HIMMEL-1072, it did
+# CodeRabbit review from false-blocking here — which, until it did
 #   NOT: the exclusion was written against check-runs CodeRabbit never posts,
 #   while its real commit STATUS rode the combined aggregate straight into the
 #   pending block). This repo has NO branch
 #   protection, so GitHub will not otherwise block `gh pr merge` over red/pending
-#   CI (HIMMEL-1043). EVERYTHING else (gh/jq missing, gh pr view failure, API
+# CI. EVERYTHING else (gh/jq missing, gh pr view failure, API
 #   error, parse failure, a check-less PR with zero check-runs AND zero statuses)
 #   fails OPEN (rc 0/3) with a "ci-green-gate: degraded (...) - failing open"
 #   stderr note. CI_MERGE_GATE_OK=1 skips the gate entirely (rc 0). NOT coupled
@@ -33,11 +33,11 @@
 # made set -e-safe with a trailing `|| true` inside the subshell so that a
 # caller running `set -e` (pr-merge.sh) does not abort on a jq parse failure
 # (a parse failure is a normal fail-open input here, not a hard error).
-# HIMMEL-1043. Mirrors scripts/lib/cr-merge-gate.sh in structure + conventions.
+# . Mirrors scripts/lib/cr-merge-gate.sh in structure + conventions.
 
 _cig_degrade() { echo "ci-green-gate: degraded ($*) - failing open" >&2; }
 
-# Shared CodeRabbit identity (HIMMEL-1072) — this gate EXCLUDES CodeRabbit's own
+# Shared CodeRabbit identity — this gate EXCLUDES CodeRabbit's own
 # status from the CI aggregate it owns, and must agree with cr-merge-gate on what
 # that identity is. Sourced relative to this file so a hook can source it from
 # any cwd.
@@ -72,9 +72,9 @@ ci_green_gate() {
     # completed) block. GREEN = success/neutral/skipped (or any non-RED
     # conclusion on a completed run — block ONLY on positive evidence).
     #
-    # Layering with the CR gate (HIMMEL-936): CodeRabbit check-runs are the CR
+    # Layering with the CR gate: CodeRabbit check-runs are the CR
     # gate's domain (it owns CodeRabbit threads + the in_progress/zombie
-    # override, HIMMEL-980). The CI gate evaluates NON-CodeRabbit check-runs
+    # override). The CI gate evaluates NON-CodeRabbit check-runs
     # only — the tests/lint/build CI this repo otherwise has no guard for
     # (brief WHY: "a red or still-running non-CodeRabbit check"). This also
     # keeps a hung CodeRabbit check-run (a known CodeRabbit quirk the zombie
@@ -90,7 +90,7 @@ ci_green_gate() {
     # >100 check-runs: this single page cannot certify green — a failing or
     # pending run may sit on an unread page 2. A merge SAFETY gate must not pass
     # on that uncertainty, so BLOCK (fail-closed on the page limit, same stance
-    # as cr-merge-gate's thread paging, HIMMEL-980). `.total_count` is the total
+    # as cr-merge-gate's thread paging). `.total_count` is the total
     # across all pages; the `.check_runs` array is capped at per_page=100.
     runs_total=$(printf '%s' "$runs" | jq -r '.total_count // 0' 2>/dev/null || true)
     if [ -z "$runs_total" ]; then _cig_degrade "check-runs total_count parse failed"; return 0; fi

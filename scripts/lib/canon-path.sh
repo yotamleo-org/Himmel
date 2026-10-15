@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a
 # test-fixture helper needs no .ps1 twin (WS5 T15 convention).
-# Sourced by shell-test fixtures (HIMMEL-3179): canonicalise a fixture path so a
+# Sourced by shell-test fixtures: canonicalise a fixture path so a
 # path the test BUILT compares equal to the same path a tool REPORTED.
 #
 # The mismatch this closes is one directory spelled several ways:

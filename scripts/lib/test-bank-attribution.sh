@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-bank-attribution.sh -- fixture test for bank-attribution.sh
-# (HIMMEL-2764). Builds synthetic sessions under mktemp -d projects roots
+# . Builds synthetic sessions under mktemp -d projects roots
 # (never a live vault) covering: a named session (customTitle) with all three
 # wake sources plus a streamed turn with a duplicate usage row plus an inline
 # sidechain turn; an ai-title-only session; a fully unnamed session; a
@@ -22,7 +22,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # BANK_ATTRIBUTION_SCRIPT lets a caller point the fixture at a different copy
 # of the script (e.g. a pre-fix revision extracted via `git show`) to prove a
-# RED-before-GREEN transition without touching the working tree (HIMMEL-2781).
+# RED-before-GREEN transition without touching the working tree.
 SCRIPT="${BANK_ATTRIBUTION_SCRIPT:-$HERE/bank-attribution.sh}"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-bank-attribution.XXXXXX")"
@@ -107,7 +107,7 @@ if [ -n "$red_hit" ]; then
   FAIL=1
 fi
 
-# RED control on the helper itself (HIMMEL-2764 CR round 5, codex-2): prove
+# RED control on the helper itself: prove
 # assert_contains can actually detect a missing needle, not just that grep
 # can. Runs in a subshell so its deliberate failure never leaks into the
 # real $FAIL.
@@ -136,8 +136,8 @@ if [ -n "$top1_hit" ]; then
 fi
 
 # --- Session D (separate root): real subagent-file layout
-#     (<sessionId>/subagents/*.jsonl, isSidechain:true throughout, HIMMEL-2764
-#     CR round 1 codex-1) plus a wake source set BEFORE the --since cutoff
+# (<sessionId>/subagents/*.jsonl, isSidechain:true throughout)
+# plus a wake source set BEFORE the --since cutoff
 #     whose classification must still carry forward to an in-window turn
 #     (codex-2: title/account/wake tracking must never be gated by --since,
 #     only the counted usage rows are). --------------------------------
@@ -159,8 +159,8 @@ EOF
 
 # --- Session F (same root): an ORPHANED subagents/ directory -- its own
 #     top-level <sid>.jsonl does not exist (pruned/rotated), but the
-#     subagents/ tree survives. Confirmed on this station (HIMMEL-2764 CR
-#     round 6, codex-2): subagent directories must be discovered
+# subagents/ tree survives. Confirmed on this station (CR
+# subagent directories must be discovered
 #     independently of the top-level file, not only alongside it. --------
 SID_F="ffffffff-0000-0000-0000-000000000006"
 mkdir -p "$SLUG_DIR2/$SID_F/subagents"
@@ -184,7 +184,7 @@ OUT_F="$(bash "$SCRIPT" "$ROOT2")"
 assert_contains "$OUT_F" "| ffffffff (subagents) | test-slug | n/a | 1 | 30 | 31 | 32 | 33 | - | - |" "orphaned subagents/ dir (no sibling top-level file) is scanned"
 
 # --- Session E (separate root): --since has LESS fractional precision than
-#     the transcript row (HIMMEL-2764 CR round 3, codex-1) -- a cutoff of
+# the transcript row -- a cutoff of
 #     "...:05Z" (implicitly .000) must not exclude a row at "...:05.500Z"
 #     just because "." sorts before "Z" in an un-normalized lexicographic
 #     compare. ------------------------------------------------------------
@@ -215,7 +215,7 @@ assert_contains "$(cat "$TOP_NEG_ERR")" "non-negative integer" "--top -1 is reje
 rm -f "$TOP_NEG_ERR"
 
 # --- Session G (separate root): a malformed transcript file alongside a good
-#     one (HIMMEL-2764 CR, post-CodeRabbit round, codex-1) -- the good
+# one -- the good
 #     session's row must still print, and the run must exit nonzero and
 #     report on stderr that a transcript was skipped, so a caller cannot
 #     mistake a partial report for a complete one. ------------------------
@@ -251,14 +251,14 @@ rm -f "$BAD_ERR"
 #     `type:"attachment"` row (`attachment.type:"queued_command"`, not
 #     `type:"user"` text), a skill body inserted as a `type:"user"` row that
 #     must NOT overwrite the wake classification set by the actual triggering
-#     row (HIMMEL-2781), a genuine operator-typed slash command carrying the
+# row, a genuine operator-typed slash command carrying the
 #     same `<command-name>` prefix but with `isMeta` ABSENT that MUST reset
-#     the wake to "op" (HIMMEL-3006 -- supersedes the HIMMEL-2781 fixture row
+# the wake to "op" (-- supersedes the fixture row
 #     that pinned the bare-prefix text alone as sufficient to exclude a row;
 #     the real discriminator is isMeta, not the prefix), an injected
 #     command-body row carrying the same prefix WITH `isMeta:true` that must
 #     still be excluded, and the cross-session idle-notice text shape that
-#     must classify as "mon" (HIMMEL-3007). Also exercises the
+# must classify as "mon". Also exercises the
 #     `first-resp-input` column (ask 2): only the FIRST response to each wake
 #     event counts. -----------------------------------------------------
 ROOT5="$(mktemp -d "${TMPDIR:-/tmp}/test-bank-attribution-5.XXXXXX")"

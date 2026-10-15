@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/canon-path.sh (HIMMEL-3179).
+# Tests for scripts/lib/canon-path.sh.
 # Usage: bash scripts/lib/test-canon-path.sh
 # Hermetic: a symlinked directory stands in for macOS /var -> /private/var, and
 # a PATH-stub `cygpath` stands in for Git Bash. Neither platform is run here.

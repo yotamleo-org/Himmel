@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-merge-gate.sh (HIMMEL-936). Hermetic: gh is stubbed.
+# Tests for scripts/lib/cr-merge-gate.sh. Hermetic: gh is stubbed.
 set -uo pipefail
 
-# HIMMEL-1495 — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). cr_merge_gate short-circuits to allow on CR_MERGE_GATE_OK=1
@@ -23,7 +23,7 @@ echo "$*" >> "${GH_STUB_LOG:?}"
 case "${GH_STUB_MODE:?}" in
   error) exit 1 ;;
 esac
-# CodeRabbit's review-FRESHNESS query (HIMMEL-1181) — a SEPARATE GraphQL query
+# CodeRabbit's review-FRESHNESS query — a SEPARATE GraphQL query
 # from the reviewThreads one below (both are `gh api graphql`), so this is
 # intercepted on QUERY TEXT, before the "$1 $2" dispatch (which would
 # otherwise route every graphql call through the reviewThreads fixtures keyed
@@ -33,11 +33,11 @@ esac
 # use for the reviews REST endpoint.
 #
 # Every BOT node carries a non-empty `body` and a non-zero `comments.totalCount`
-# on purpose: HIMMEL-1824 taught the reader to DROP empty review shells
+# on purpose: taught the reader to DROP empty review shells
 # (`chat.auto_reply` and incremental passes mint COMMENTED objects with neither),
 # so a bodyless fixture classifies as `none` no matter which oid it names. That
 # is what silently disarmed the `fresh`/`stale` fixtures here — the stale-anchor
-# BLOCK stopped firing and the suite went red (HIMMEL-1374, found 2026-08-20).
+# BLOCK stopped firing and the suite went red.
 case "$*" in
   *"reviews(last:"*)
     case "${GH_STUB_FRESHNESS:-fresh}" in
@@ -57,7 +57,7 @@ case "$1 $2" in
     case "$*" in *'"'*) exit 1 ;; esac
     # api-error mode: pr view SUCCEEDS, later api calls fail (distinguishes
     # rc=3 selector-unresolvable from rc=0 downstream-API fail-open).
-    # GH_STUB_HEAD lets a case pick a REAL 40-hex head (HIMMEL-1374): the
+    # GH_STUB_HEAD lets a case pick a REAL 40-hex head: the
     # walkthrough reader only accepts a >=7-hex commit token, which this
     # suite's default 6-char "abc123" can never satisfy. Every other case
     # keeps the default, and the statuses arm below matches on the "abc123"
@@ -67,14 +67,14 @@ case "$1 $2" in
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
       # pageInfo mirrors the real API: the gate's query requests it, so GitHub
-      # always returns it (HIMMEL-994 — fixtures without it hit the 980-r3
+      # always returns it (— fixtures without it hit the 980-r3
       # page-completeness BLOCK and mis-fail the allow cases).
       unresolved|cr-degraded-unresolved|cr-absent-unresolved) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
       paged) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
     esac ;;
-  # CodeRabbit publishes a commit STATUS, never a check-run (HIMMEL-1072).
+  # CodeRabbit publishes a commit STATUS, never a check-run.
   # These fixtures previously mocked it as a check-run, which is why the suite
   # stayed green over a gate that could not fire: nothing in production ever
   # matched `select(.name=="CodeRabbit")` on .check_runs. Shape below is copied
@@ -83,7 +83,7 @@ case "$1 $2" in
   "api repos/o/r/commits/abc123"*)
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
-      # HIMMEL-1374: the status read DEGRADES while threads/body stay clean —
+      # the status read DEGRADES while threads/body stay clean —
       # the fail-open half of the zero-PR-wide-reviews composition. Distinct
       # from cr-degraded-unresolved, which also carries blocking thread
       # evidence and would mask the fail-open with a legitimate block.
@@ -94,7 +94,7 @@ case "$1 $2" in
       cr-degraded-unresolved) echo "statuses boom" >&2; exit 1 ;;
       inflight) echo '[{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       cr-absent|cr-absent-unresolved) echo '[]' ;;
-      # HIMMEL-1317: what a repo with automatic reviews DISABLED posts on every
+      # what a repo with automatic reviews DISABLED posts on every
       # untriggered PR — state=success, refusal only in .description. Reading
       # .state alone made a declined review identical to a clean one, and this
       # gate's case statement had no catch-all, so the unhandled state fell
@@ -103,18 +103,18 @@ case "$1 $2" in
       # Positive control: same state, a real review — must still ALLOW, so the
       # block above cannot be satisfied by breaking `success` wholesale.
       cr-completed) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-      # glm-1 (round 2): the false-positive guard must exist in BOTH gate suites.
+      # the false-positive guard must exist in BOTH gate suites.
       # check-ci and cr-merge-gate consume the same reader, so a loosened skip
       # regex would be caught by only one of them — and the merge gate is the one
       # that actually stops a merge. A completed review whose wording merely
       # CONTAINS skip-ish words must not block.
       cr-nearmiss) echo '[{"context":"CodeRabbit","state":"success","description":"No review changes requested","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       cr-failure) echo '[{"context":"CodeRabbit","state":"failure","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-      # HIMMEL-1465: the rate-limit decline — same skipped-state projection as
+      # the rate-limit decline — same skipped-state projection as
       # cr-skipped. It was the ONE wording a clean critic panel could carry
-      # until HIMMEL-1760 gave this gate check-ci.sh's every-skip-wording parity.
+      # until gave this gate check-ci.sh's every-skip-wording parity.
       cr-ratelimited) echo '[{"context":"CodeRabbit","state":"success","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-      # HIMMEL-1760: a THIRD skip wording, matching neither the rate-limit nor
+      # a THIRD skip wording, matching neither the rate-limit nor
       # the automatic-reviews-disabled label arm ("review disabled" is its own
       # _CRS_SKIP_RE alternative). Pins the contract as "every skip-classified
       # description is panel-carriable" rather than "these two are" — the exact
@@ -122,7 +122,7 @@ case "$1 $2" in
       # phrasing lands here, and must behave like the enumerated ones.
       cr-skipped-other) echo '[{"context":"CodeRabbit","state":"success","description":"Review disabled for this repository","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # An impostor: right context + right login, WRONG creator.id. The whole
-      # point of HIMMEL-1058's identity match — display names are spoofable,
+      # point of the identity match — display names are spoofable,
       # the bot's user id is not.
       cr-spoofed) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":999999,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # Superseded pending: newest-first, so the success at the head wins.
@@ -136,7 +136,7 @@ case "$1 $2" in
       cr-paged-found) jq -nc '[{context: "CodeRabbit", state: "success", description: "Review completed", created_at: "2026-07-16T19:10:05Z", creator: {id: 136622811, login: "coderabbitai[bot]", type: "Bot"}}] + [range(99) | {context: "ci/ctx\(.)", state: "success", created_at: "2026-07-16T19:09:00Z", creator: {id: 1, login: "ci", type: "Bot"}}]' ;;
       *) echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
     esac ;;
-  # CodeRabbit's review-BODY findings (HIMMEL-1126/1147) — a separate
+  # CodeRabbit's review-BODY findings — a separate
   # endpoint from the commit status above. Default '[]' (no review posted
   # yet at this head) keeps every UNRELATED test case above reaching this
   # point rc-0/all-zero, so their assertions stay exactly as they were before
@@ -146,13 +146,13 @@ case "$1 $2" in
       body-outside) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"abc123","body":"Outside diff range comments (2)"}]' ;;
       body-nitpick) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"abc123","body":"Nitpick comments (1)"}]' ;;
       body-drift)   echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"abc123","body":"Outside diff range comments were noted but the count did not survive a format change"}]' ;;
-      # HIMMEL-3124: a REAL captured review body (fixture file) at the head.
+      # a REAL captured review body (fixture file) at the head.
       body-file)    jq -n --rawfile b "$GH_STUB_BODY_FILE" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"abc123",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b}]' ;;
-      # HIMMEL-3360: a REAL captured review body at a PRIOR head (shaOLD, not
+      # a REAL captured review body at a PRIOR head (shaOLD, not
       # abc123) — the governing-prior-head branch reads this via
       # cr_body_outside_findings called with head=shaOLD.
       body-a2-file) jq -n --rawfile b "$GH_STUB_BODY_FILE" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b}]' ;;
-      # HIMMEL-3379: TWO prior heads, each carrying its own REAL captured review
+      # TWO prior heads, each carrying its own REAL captured review
       # body — shaOLD (older, GH_STUB_BODY_FILE) and shaOLD2 (newer,
       # GH_STUB_BODY_FILE2); nothing at abc123.
       body-a3-file) jq -n --rawfile b "$GH_STUB_BODY_FILE" --rawfile c "$GH_STUB_BODY_FILE2" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b},{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD2",submitted_at:"2026-07-16T19:20:00Z",id:2,body:$c}]' ;;
@@ -162,10 +162,10 @@ case "$1 $2" in
       body-error)   exit 1 ;;
       *)            echo '[]' ;;
     esac ;;
-  # CodeRabbit's WALKTHROUGH issue comment (HIMMEL-1824) — its second delivery
+  # CodeRabbit's WALKTHROUGH issue comment — its second delivery
   # channel, the one a CLEAN pass uses when it mints no review object at all.
   # Default 'none' (an empty comment list) leaves every unrelated case exactly
-  # as it was; only the HIMMEL-1374 zero-PR-wide-reviews arm reads it.
+  # as it was; only the zero-PR-wide-reviews arm reads it.
   "api repos/o/r/issues/42/comments"*)
     case "${GH_STUB_WALKTHROUGH:-none}" in
       clean) echo '[{"user":{"login":"coderabbitai[bot]","type":"Bot"},"body":"<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\nNo actionable comments were generated in the recent review.\n\nMerge Risk: Low - up to `abc123d`"}]' ;;
@@ -181,7 +181,7 @@ export PATH="$TMP/bin:$PATH"
 . "$SCRIPT_DIR/cr-merge-gate.sh"
 
 pass=0; fail=0
-# ── the repo the gate runs IN (HIMMEL-1125) ──────────────────────────────────
+# ── the repo the gate runs IN ──────────────────────────────────
 # Availability is now a repo-scoped, non-versioned git config, and the gate only
 # answers for the repo it is standing in (codex-adv-2). Every case below calls
 # `cr_merge_gate 42 o/r`, so the cwd must BE o/r and must be armed — otherwise
@@ -194,7 +194,7 @@ git -C "$TMP/repo" remote add origin https://github.com/o/r.git
 git -C "$TMP/repo" config --local himmel.coderabbit true
 cd "$TMP/repo" || { echo "FATAL: cannot cd to the test repo"; exit 1; }
 
-# HIMMEL-1495 hermeticity probe — when this suite re-execs itself under the
+# hermeticity probe — when this suite re-execs itself under the
 # armed bypass env (see the guard at the end), short-circuit here: the startup
 # unset has already scrubbed ARMAUTOMERGE/CR_MERGE_GATE_OK, so a block fixture
 # must STILL block. Exit 0 = scrub held (rc EXACTLY 2, the block code); any
@@ -224,25 +224,25 @@ GH_STUB_MODE=other-author t other-author-unresolved-allows 0
 # zero unresolved on page one + hasNextPage:true = threads the single-page
 # query never counted -> BLOCK, not a pass (980-r3)
 GH_STUB_MODE=paged        t incomplete-page-blocks 2
-# HIMMEL-3360 (operator ruling 2026-09-21): CodeRabbit's commit-status state is
+# CodeRabbit's commit-status state is
 # advisory only — every state below (pending/absent/skipped/failure/paged/an
 # identity mismatch reading as absent) prints a NOTE and ALLOWS; only the
 # thread + body-findings gates below can still BLOCK.
 GH_STUB_MODE=inflight      t cr-status-pending-allows 0
 grep -q "^NOTE: CodeRabbit pending" "$TMP/out-cr-status-pending-allows" || { echo "FAIL cr-status-pending NOTE missing"; fail=$((fail+1)); }
 # (a) RED case: no CodeRabbit signal at all + 0 threads must now ALLOW (was
-# the #1243 regression fixture; HIMMEL-3360 supersedes HIMMEL-1072's stance).
+# the #1243 regression fixture; supersedes 's stance).
 GH_STUB_MODE=cr-absent     t cr-status-absent-allows 0
 grep -q "^NOTE: CodeRabbit absent" "$TMP/out-cr-status-absent-allows" || { echo "FAIL cr-status-absent NOTE missing"; fail=$((fail+1)); }
 grep -q "^BLOCK:" "$TMP/out-cr-status-absent-allows" && { echo "FAIL cr-status-absent-allows unexpectedly BLOCKed"; fail=$((fail+1)); }
 GH_STUB_MODE=cr-skipped    t cr-status-skipped-allows 0
 GH_STUB_MODE=cr-completed  t cr-status-completed-allows 0
-# glm-1 (round 2): mirror check-ci's 34d near-miss guard here. Both gates read
+# mirror check-ci's 34d near-miss guard here. Both gates read
 # the same cr-signal.sh, so a loosened skip regex must fail in BOTH suites —
 # and this is the gate that actually stops a merge.
 GH_STUB_MODE=cr-nearmiss   t cr-status-skipish-wording-allows 0
 GH_STUB_MODE=cr-failure    t cr-status-failure-allows 0
-# Identity, not display name (HIMMEL-1058): a status carrying the CodeRabbit
+# Identity, not display name: a status carrying the CodeRabbit
 # context + login but a foreign creator.id reads as absent (no identity match)
 # — advisory only, same as any other absent read.
 GH_STUB_MODE=cr-spoofed    t cr-status-wrong-creator-id-allows 0
@@ -255,8 +255,8 @@ GH_STUB_MODE=cr-paged       t cr-status-page-limit-allows 0
 GH_STUB_MODE=cr-paged-found t cr-status-found-on-full-page-allows 0
 # (b) RED case: a rate-limited decline (skip-classified description mentions
 # "rate limit") with NO ledger/panel evidence at all + 0 threads must ALLOW —
-# the panel-carry lookup that used to gate this is gone entirely (HIMMEL-3360
-# deletes cr_ledger_carries_gate from this file; no ledger fixture is written
+# the panel-carry lookup that used to gate this is gone entirely
+# (cr_ledger_carries_gate is deleted from this file; no ledger fixture is written
 # anywhere in this block, proving the read no longer happens).
 GH_STUB_MODE=cr-ratelimited t cr-status-ratelimited-allows 0
 grep -q "^NOTE: CodeRabbit skipped" "$TMP/out-cr-status-ratelimited-allows" || { echo "FAIL cr-status-ratelimited NOTE missing"; fail=$((fail+1)); }
@@ -305,7 +305,7 @@ GH_STUB_MODE=unresolved CR_PROFILE=none t cr-profile-none-allows 0
 [ -s "$TMP/calls-cr-profile-none-allows.log" ] && { echo "FAIL profile-none called gh"; fail=$((fail+1)); }
 unset CR_PROFILE
 
-# HIMMEL-1125 — the adopter WITHOUT CodeRabbit, at the surface that actually
+# — the adopter WITHOUT CodeRabbit, at the surface that actually
 # blocks `gh pr merge`. This whole gate is CodeRabbit-specific, so with no
 # CodeRabbit it must be a NO-OP: allow, and (like the other two short-circuits
 # above) do not spend a single gh call proving what the probe already knows.
@@ -315,7 +315,7 @@ GH_STUB_MODE=unresolved CR_APP=0 t cr-app-absent-allows 0
 [ -s "$TMP/calls-cr-app-absent-allows.log" ] && { echo "FAIL cr-app-absent called gh"; fail=$((fail+1)); }
 unset CR_APP
 
-# HIMMEL-1125 — the marker is what arms this suite, so prove the gate is really
+# — the marker is what arms this suite, so prove the gate is really
 # keyed on it: same blocking fixture, marker off -> allow. Default-disarmed is
 # the posture, and an unarmed repo is now the DEFAULT an adopter lands on.
 git -C "$TMP/repo" config --local --unset himmel.coderabbit
@@ -337,7 +337,7 @@ else fail=$((fail+1)); echo "FAIL foreign-repo-target-not-gated (rc=$foreign_rc 
 [ -s "$TMP/calls-foreign.log" ] && { echo "FAIL foreign target called gh"; fail=$((fail+1)); }
 
 # ...but ONLY a well-formed owner/name is a foreign target. A MIS-TOKENIZED repo
-# value (here: the quotes survived extraction, HIMMEL-936 codex-1) must NOT be
+# value (here: the quotes survived extraction) must NOT be
 # read as "some other repo" and waved through — treating garbage as foreign would
 # let `--repo "o/r"` silently disable this gate, a worse bypass than the one the
 # foreign check closes. Real gh rejects such a value, so the faithful outcome is
@@ -424,7 +424,7 @@ httpsport_rc=0
 if [ "$httpsport_rc" = 2 ]; then pass=$((pass+1)); echo "ok   https-origin-with-port-identifies-local-repo (gated, not bypassed)"
 else fail=$((fail+1)); echo "FAIL https-origin-with-port-identifies-local-repo (rc=$httpsport_rc want=2)"; fi
 
-# ── HIMMEL-1126/1147: review-BODY findings (S1) — checks/threads clean on
+# ── review-BODY findings (S1) — checks/threads clean on
 # every mode below (default graphql/statuses fixtures), so these exercise
 # the body gate in isolation ────────────────────────────────────────────────
 GH_STUB_MODE=body-outside t body-outside-diff-blocks 2
@@ -438,7 +438,7 @@ GH_STUB_MODE=body-drift   t body-drift-canary-blocks 2
 GH_STUB_MODE=body-error   t body-infra-error-fails-open 0
 
 # The count-only stub ("Outside diff range comments (2)", no parseable finding
-# bodies) is header/extraction MISMATCH — format drift, so it BLOCKS (HIMMEL-3124)
+# bodies) is header/extraction MISMATCH — format drift, so it BLOCKS
 # as unparseable, not as a listed finding.
 grep -qi "format drift\|cannot count" "$TMP/out-body-outside-diff-blocks" || { echo "FAIL body-outside block reason missing"; fail=$((fail+1)); }
 # the note rides stderr, NOT stdout (codex CR round): block-unresolved-
@@ -450,7 +450,7 @@ grep -qi "nitpick=1" "$TMP/err-body-nitpick-allows-with-note" || { echo "FAIL bo
 grep -qi "format drift\|cannot count" "$TMP/out-body-drift-canary-blocks" || { echo "FAIL body-drift block reason missing"; fail=$((fail+1)); }
 grep -qi "degraded" "$TMP/err-body-infra-error-fails-open" || { echo "FAIL body-infra degradation note missing"; fail=$((fail+1)); }
 
-# ── HIMMEL-3124: an outside-diff finding can be DISPOSITIONED (a ledger row at
+# ── an outside-diff finding can be DISPOSITIONED (a ledger row at
 # THIS head: deferred + tracked ticket + reason, or disproved + reason) instead
 # of costing a commit + a discarded CodeRabbit review. The passing row is R11's
 # control; every negative is ONE field of it changed (a blanket failure would
@@ -465,7 +465,7 @@ export GH_STUB_BODY_FILE="$FIXD/pr-777-outside-diff-blockquote.body.txt"
 rm -f "$OD_LEDGER"
 GH_STUB_MODE=body-file t od-undispositioned-blocks 2
 grep -qi "outside-diff-range finding" "$TMP/out-od-undispositioned-blocks" || { echo "FAIL od-undispositioned block reason missing"; fail=$((fail+1)); }
-# HIMMEL-4641: the recipe hint names --branch so a ledger-append run from a leg resolves the PR branch
+# the recipe hint names --branch so a ledger-append run from a leg resolves the PR branch
 grep -q "ledger-append.sh finding --branch <pr-branch>" "$TMP/out-od-undispositioned-blocks" || { echo "FAIL od-undispositioned hint missing --branch <pr-branch>"; fail=$((fail+1)); }
 grep -q "cr-od-39c3193c8945" "$TMP/out-od-undispositioned-blocks" || { echo "FAIL od-undispositioned block does not list the finding id"; fail=$((fail+1)); }
 grep -q ".pre-commit-config.yaml:459" "$TMP/out-od-undispositioned-blocks" || { echo "FAIL od-undispositioned block does not list file:line"; fail=$((fail+1)); }
@@ -501,7 +501,7 @@ CR_LEDGER="$TMP/forged-ledger.jsonl" GH_STUB_MODE=body-file t od-env-forged-ledg
 rm -f "$OD_LEDGER"
 export -n GH_STUB_BODY_FILE; unset GH_STUB_BODY_FILE
 
-# ── HIMMEL-3360 operator ruling (2026-09-21): best effort covers ABSENCE
+# ── operator ruling: best effort covers ABSENCE
 # only. This head (abc123) carries no CodeRabbit review of its own, but a
 # PRIOR head (shaOLD) carries a real outside-diff finding CodeRabbit DID
 # post — that finding still blocks until dispositioned; the gate reads the
@@ -527,10 +527,10 @@ rm -f "$OD_LEDGER"
 GH_STUB_MODE=body-a2-drift t a2-unparseable-prior-body-blocks 2
 grep -qi "format drift" "$TMP/out-a2-unparseable-prior-body-blocks" || { echo "FAIL a2-unparseable-prior-body block reason missing 'format drift'"; fail=$((fail+1)); }
 
-# HIMMEL-3379: TWO prior heads carry outside-diff findings (shaOLD older,
+# TWO prior heads carry outside-diff findings (shaOLD older,
 # shaOLD2 newer; abc123 has no review). Every prior head governs, each finding
 # dispositioned at the head that raised it — the newer prior review must never
-# mask the older one's finding (mirrors check-ci's 39e..39h, HIMMEL-3365).
+# mask the older one's finding (mirrors check-ci's 39e..39h).
 export GH_STUB_BODY_FILE2="$FIXD/pr-777-outside-the-diff-range.body.txt"
 OD_A3_ROW_OLD=$(od_variant '.head="shaOLD"')
 OD_A3_ROW_NEW=$(od_variant '.finding_id="cr-od-2b1a31ba0692" | .severity="imp" | .file="marketplace/plugins/himmel-ops/README.md" | .line="80-91" | .head="shaOLD2"')
@@ -562,7 +562,7 @@ rm -f "$OD_LEDGER"
 export -n GH_STUB_BODY_FILE2; unset GH_STUB_BODY_FILE2
 export -n GH_STUB_BODY_FILE; unset GH_STUB_BODY_FILE
 
-# HIMMEL-3360: the review-FRESHNESS mechanism (HIMMEL-1181, cr_review_freshness
+# the review-FRESHNESS mechanism (cr_review_freshness
 # / cr_review_walkthrough in cr-review-freshness.sh) is removed from this gate
 # entirely — CodeRabbit's verdict, including a stale-anchored review object, is
 # advisory only. Regression pin: a "stale" freshness fixture has zero effect
@@ -577,7 +577,7 @@ grep -qi "unresolved" "$TMP/out-unresolved-cr-thread-blocks" || { echo "FAIL blo
 grep -qi "degraded" "$TMP/err-gh-error-selector-unresolvable" || { echo "FAIL degradation note missing (rc3)"; fail=$((fail+1)); }
 grep -qi "degraded" "$TMP/err-downstream-api-error-fails-open" || { echo "FAIL degradation note missing (rc0)"; fail=$((fail+1)); }
 
-# HIMMEL-1495 hermeticity guard — prove the startup scrub holds. Re-run this
+# hermeticity guard — prove the startup scrub holds. Re-run this
 # whole suite in a subprocess EXPORTING the exact armed bypass env an
 # --automerge-armed shell carries; the reinvoked copy's own startup unset must
 # neutralize it, so its block-cases still block and it exits 0. Remove the
