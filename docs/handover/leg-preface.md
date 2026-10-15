@@ -43,8 +43,9 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   raised as a `FINDING` and no ruling arrives in `<N>` minutes, proceed on the
   action and say so in the next `LIVE` bullet. The default may only **narrow**
   (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message.
-- **Do not coin markers** (`SHIPPED`, `MERGED`): between GREEN and `READY` you
-  are `LIVE`; after the merge, `WRAPPED`. Wrap tokens in backticks, no trailing punctuation.
+- **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
+  vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
+  Wrap tokens in backticks.
 
 **Jira status follows you** via the scripts, never by hand (`LIVE` → In Progress,
 PR opened → In Review, merge with `completes-ticket: yes` → Done). After a merge
@@ -192,5 +193,5 @@ status in a `SendMessage` or Results bullet beside your next tool call and carry
 
 The wanted stops: holding for the console's `GO` after `READY`; a `BLOCKED`, or a
 `FINDING` whose ruling every remaining step depends on, already sent; `WRAPPED`;
-the ≥ 75 % context hand-off. Risky actions still need confirmation. **The GO-hold
+the ≥ 75 % context hand-off. **The GO-hold
 is the only permitted hold**: any other blocker means `WRAP` with a resume brief.

@@ -187,8 +187,8 @@ The Jira close is the leg's call from the brief's `completes-ticket: yes|no` lin
 (`--jira-transition` for `yes`, omitted for `no`): fill it in when you write the
 brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
 of the PR title, so check a second key by hand. Never merge with open review
-threads or on a handoff calling a PR clean: query it yourself. **A PR touching
-`scripts/ci/ci-trust-paths.txt`** needs an adversarial review and
+threads or on a handoff calling a PR clean: query it yourself. **A PR whose diff
+matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs an adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
 tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `console-sections/merges.md`.
 
