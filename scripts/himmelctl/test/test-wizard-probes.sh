@@ -6919,4 +6919,42 @@ manifestCount=$(jq '.items | length' "$manifest_path")
 [ "$sweepCount" -eq "$manifestCount" ] || fail "purity: expected $manifestCount probe results (one per manifest item), got $sweepCount"
 echo "ok: purity — full probe sweep over all $manifestCount manifest items left every fixture tree byte-identical"
 
+# ── a whole-run deadline on top of the per-probe budget ──────────────────────
+# ctx.deadline is an absolute epoch-ms. A probe reached after it must not spawn
+# anything and must read degraded (a probe that never ran is not a clean row);
+# a probe running when it passes has its spawn budget clamped to what remains.
+dl_repo="$work/dl-resolver"; mkdir -p "$dl_repo/scripts/lib"
+dl_root="$work/dl-root"; mkdir -p "$dl_root"
+dl_marker="$work/dl-spawned"
+cat > "$dl_repo/scripts/lib/handover-path.sh" <<DLHD
+touch '$(winpath "$dl_marker")'
+sleep 6
+handover_root() { printf '%s\n' '$(winpath "$dl_root")'; }
+DLHD
+outDLexp=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'handover-wiring');
+const ctx = { repoRoot: '$(winpath "$dl_repo")', targetPath: '$(winpath "$dl_repo")', scope: 'project', env: process.env, deadline: Date.now() - 1 };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outDLexp" | jq -e '.actual == "degraded" and (.detail | contains("whole-run deadline"))' >/dev/null \
+  || fail "HIMMEL-2309: a probe reached after the whole-run deadline must read degraded and name the deadline (got: $outDLexp)"
+[ ! -e "$dl_marker" ] || fail "HIMMEL-2309: a probe reached after the whole-run deadline must not spawn anything"
+echo "ok: HIMMEL-2309 — an expired whole-run deadline skips the probe (degraded, nothing spawned)"
+
+dl_t0=$(date +%s)
+outDLclamp=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'handover-wiring');
+const ctx = { repoRoot: '$(winpath "$dl_repo")', targetPath: '$(winpath "$dl_repo")', scope: 'project', env: process.env, deadline: Date.now() + 1500 };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+dl_elapsed=$(( $(date +%s) - dl_t0 ))
+echo "$outDLclamp" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "HIMMEL-2309: a probe still running at the whole-run deadline must read degraded (got: $outDLclamp)"
+[ "$dl_elapsed" -lt 5 ] || fail "HIMMEL-2309: the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
+echo "ok: HIMMEL-2309 — a probe running when the deadline passes is clamped to the remaining budget"
+
 echo "PASS"

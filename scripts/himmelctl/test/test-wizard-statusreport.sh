@@ -1194,4 +1194,56 @@ echo "$outM" | jq -e '.summary.red == 0' >/dev/null \
   || fail "case m: unarmed doctor-cadence must not count toward summary.red (got: $outM)"
 echo "ok: case m — an unarmed doctor-cadence reads n/a (opt-in), never red"
 
+# ── case n: a whole-run deadline bounds the sweep ───────────────────────────
+# Three probes whose resolver hangs (sleeps 30s, far inside the 60s per-probe
+# budget): per-probe budgets alone let the sweep run ~90s. With the whole-run
+# deadline at 2s the first probe is clamped to the time left and the rest are
+# never run — all three read degraded, none present/absent, and the sweep ends
+# near the deadline.
+caseN_dir="$work/caseN-target"; mkdir -p "$caseN_dir"
+homeN="$work/homeN"; mkdir -p "$homeN"
+cacheN="$work/cacheN"; mkdir -p "$cacheN"
+repoN="$work/repoN"; mkdir -p "$repoN/scripts/lib"
+cat > "$repoN/scripts/lib/handover-path.sh" <<'HANG'
+sleep 30
+handover_root() { printf '%s\n' /nonexistent; }
+HANG
+manifestN="$work/manifestN.json"
+cat > "$manifestN" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    { "id": "hang-1", "kind": "hook", "scopes": ["project"], "profiles": ["core", "all"], "deps": [],
+      "probe": { "type": "handover-dir", "resolver": "scripts/lib/handover-path.sh" } },
+    { "id": "hang-2", "kind": "hook", "scopes": ["project"], "profiles": ["core", "all"], "deps": [],
+      "probe": { "type": "handover-dir", "resolver": "scripts/lib/handover-path.sh" } },
+    { "id": "hang-3", "kind": "hook", "scopes": ["project"], "profiles": ["core", "all"], "deps": [],
+      "probe": { "type": "handover-dir", "resolver": "scripts/lib/handover-path.sh" } }
+  ]
+}
+JSON
+MANIFEST_N_PATH="$(winpath "$manifestN")"
+export MANIFEST_N_PATH
+caseN_t0=$(date +%s)
+outN=$(cd "$caseN_dir" && HOME="$homeN" USERPROFILE="$(winpath "$homeN")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheN")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheN")-luna-config.json" HIMMELCTL_REPO_ROOT="$(winpath "$repoN")" HIMMELCTL_STATUS_TOTAL_TIMEOUT_SECS=2 "$node_bin" -e "
+const { statusReport } = require(process.env.STATUS_REPORT_LIB);
+const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_N_PATH, 'utf8'));
+const answers = {
+  role: 'adopter', tier: 'standard', scope: 'project',
+  vault: { mode: 'none', path: '' },
+  handover: { mode: 'none', path: '' },
+  pluginSet: 'lean', lanes: [], alwaysOn: false,
+};
+console.log(JSON.stringify(statusReport({ manifest, scope: 'project', targetPath: process.cwd(), answers })));
+")
+caseN_elapsed=$(( $(date +%s) - caseN_t0 ))
+[ "$caseN_elapsed" -lt 10 ] \
+  || fail "case n: a sweep over hung probes must finish near the whole-run deadline, took ${caseN_elapsed}s (deadline 2s, each probe hangs 30s)"
+echo "$outN" | jq -e '[.items[].actual] == ["degraded","degraded","degraded"]' >/dev/null \
+  || fail "case n: every probe in a deadline-bounded sweep must read degraded, never present/absent (got: $outN)"
+echo "$outN" | jq -e '[.items[].detail | contains("whole-run deadline")] | any' >/dev/null \
+  || fail "case n: probes never reached must name the whole-run deadline (got: $outN)"
+echo "ok: case n — a sweep over hung probes ends near the whole-run deadline and reports every probe degraded"
+
 echo "PASS"
