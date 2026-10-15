@@ -453,8 +453,8 @@ fi
 # to the full run), so it needs jq too whenever CodeRabbit is in play.
 # Is the CodeRabbit App configured for this repo at all? The
 # signal + body gates below are armed ONLY when it is: on a repo without
-# CodeRabbit, "absent" is the permanent steady state — but made
-# "absent" advisory rather than blocking, so this now only controls whether
+# CodeRabbit, "absent" is the permanent steady state — and "absent" is
+# advisory rather than blocking, so this now only controls whether
 # the gates run at all, not a fail-closed exit. Probed once here;
 # cr_signal_gate/cr_body_gate read the result.
 # shellcheck source=scripts/lib/cr-available.sh
@@ -479,7 +479,7 @@ CR_STATE=$(cr_app_state "$PWD")
 # meant to have the CodeRabbit gates, and a value git cannot parse as a boolean
 # silently disarms them. Every green below would then assert a review nobody
 # ever checked for — the one genuinely vacuous pass in this design. Warn, do not
-# block: exists to stop blocking on CodeRabbit's absence, and a
+# block: this gate exists to stop blocking on CodeRabbit's absence, and a
 # config typo must not wedge a merge at 3am.
 if [ "$CR_STATE" = broken ]; then
     echo "check-ci: WARNING - this repo's himmel.coderabbit marker holds a value git cannot parse as a boolean, so the CodeRabbit gates are DISARMED and any green below certifies a CodeRabbit review that was never checked for. If this repo HAS CodeRabbit: git config --local himmel.coderabbit true. If it does not: git config --local --unset himmel.coderabbit (HIMMEL-2380)." >&2
