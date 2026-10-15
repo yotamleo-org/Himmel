@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-package-skills.sh — scripts/cloud/package-skills.sh (HIMMEL-4206 slice 6).
+# test-package-skills.sh — scripts/cloud/package-skills.sh.
 # The bundle is what the operator uploads to claude.ai, so the contract is: one
 # zip per listed skill, SKILL.md at <skill>/SKILL.md inside it, nothing from a
 # skill the list does not name, and a hard refusal on a missing skill.

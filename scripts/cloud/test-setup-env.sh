@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-setup-env.sh — scripts/cloud/setup-env.sh (HIMMEL-4206). Hermetic: every
+# test-setup-env.sh — scripts/cloud/setup-env.sh. Hermetic: every
 # case runs --dry-run or a stubbed PATH, so nothing is installed and no network
 # is touched. The script is a paste-in for a claude.ai cloud environment, so the
 # contract worth pinning is: it plans every step, skips what is already present,
@@ -60,10 +60,10 @@ run "$EMPTY" --dry-run
 if [ ! -e "$FAKE/scripts/jira/dist" ] && [ ! -e "$FAKE/scripts/jira/node_modules" ]; then ok "dry-run leaves the tree untouched"; else bad "dry-run created files"; fi
 
 # 5. the Bash timeouts come from the environment's env-vars field, not the script:
-# a cloud probe showed a profile.d write never reaches the Bash tool (HIMMEL-4429).
+# a cloud probe showed a profile.d write never reaches the Bash tool.
 case "$OUT" in *"TIMEOUT_MS"*) bad "setup still plans a Bash timeout write: $OUT" ;; *) ok "no Bash timeout step (the env-vars field sets them)" ;; esac
 
-# 6. plugin profile (HIMMEL-4273): OFF by default; --with-plugins installs the
+# 6. plugin profile: OFF by default; --with-plugins installs the
 # lean set; --plugins <list> installs exactly that list; a bad name is skipped.
 mkdir -p "$FAKE/marketplace/plugins/himmel-ops" "$FAKE/marketplace/plugins/lean-skills" "$FAKE/marketplace/plugins/qmd"
 case "$OUT" in *"step=plugin"*) bad "plugin step planned without a profile" ;; *) ok "plugins step off by default" ;; esac
@@ -95,7 +95,7 @@ if grep -q 'install lean-skills@himmel' "$TMP/claude.log" 2>/dev/null; then ok "
 case "$OUT" in *"plugin:himmel-ops"*"non-fatal"*) ok "failed plugin install is reported" ;; *) bad "failed plugin install silent: $OUT" ;; esac
 rm -rf "$FAKE/scripts/jira/dist" "$FAKE/marketplace/plugins/obsidian-triage/tools/node_modules"
 
-# 6c. the slow npm builds run LAST (HIMMEL-4429): a cloud setup died silently in
+# 6c. the slow npm builds run LAST: a cloud setup died silently in
 # jira-dist and every later step (plugins) was lost with it.
 run "$EMPTY" --dry-run --with-plugins
 order="$(printf '%s\n' "$OUT" | sed -n 's/^step=\([^ ]*\) .*/\1/p' | tr '\n' ' ')"
@@ -115,7 +115,7 @@ case "$OUT" in *"npm ERR! registry hang"*) ok "jira build failure shows the npm 
 if grep -q ensure-deps-ran "$TMP/himmel-setup-logs/obsidian-deps.log" 2>/dev/null; then ok "a failed jira build does not stop the next step"; else bad "obsidian-deps did not run after the jira failure: $OUT"; fi
 rm -f "$FAKE/marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
 
-# 6e. graphify + repo-only qmd (HIMMEL-4726). graphify installs at the in-repo
+# 6e. graphify + repo-only qmd. graphify installs at the in-repo
 # pin and builds AST-only; qmd indexes this repo as `himmel` and nothing else,
 # BM25 only (no model pull, no embed).
 mkdir -p "$FAKE/scripts/lib"
@@ -148,7 +148,7 @@ run "$GQ" --dry-run
 case "$OUT" in *"step=graphify action=skip"*) ok "present graphify is skipped" ;; *) bad "present graphify not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd action=skip"*) ok "present qmd is skipped" ;; *) bad "present qmd not skipped: $OUT" ;; esac
 case "$OUT" in *"step=qmd-index action=refresh $FAKE --name himmel"*) ok "an existing himmel collection is rebuilt from this clone" ;; *) bad "existing himmel collection not refreshed (stale index): $OUT" ;; esac
-# HIMMEL-5442: the cloud image shipped graphify 0.9.77 while the pin was 0.9.80
+# The cloud image shipped graphify 0.9.77 while the pin was 0.9.80
 # and "present" skipped the install, so the version drifted from the pin. A
 # present graphify at another version is reinstalled at the pin; at the pin, or
 # with an unparseable version, it is skipped.
@@ -171,7 +171,7 @@ if [ "$RC" -eq 0 ]; then ok "failing graphify install keeps rc 0"; else bad "fai
 case "$OUT" in *"step=graphify FAILED"*) ok "graphify install failure is reported" ;; *) bad "graphify install failure silent: $OUT" ;; esac
 case "$OUT" in *"step=graphify-graph action=skip"*) ok "no graph build without graphify" ;; *) bad "graph build attempted without graphify: $OUT" ;; esac
 case "$OUT" in *"step=qmd-index action=add"*) ok "a failed graphify install does not stop qmd" ;; *) bad "qmd-index not reached after the graphify failure: $OUT" ;; esac
-# HIMMEL-4814: installer succeeds without a qmd shim on PATH. Resolve the
+# The installer succeeds without a qmd shim on PATH. Resolve the
 # installed tool through qmd-bounded, and verify the collection after adding it.
 cp "$ROOT/scripts/lib/qmd-bounded.sh" "$FAKE/scripts/lib/qmd-bounded.sh"
 cat > "$FAKE/scripts/lib/qmd-bin.sh" <<EOF
@@ -205,7 +205,7 @@ OUT="$(env -i PATH="$GF" HOME="$TMP/home" HIMMEL_CLOUD_ROOT="$FAKE" TMPDIR="$TMP
 if [ "$RC" -eq 0 ] && [ "$(cat "$TMP/graph-cwd")" = "$FAKE" ] && [ -f "$FAKE/graphify-out/graph.json" ]; then ok "setup builds graph inside the session checkout"; else bad "graph not built inside checkout: $OUT"; fi
 rm -rf "$FAKE/scripts/jira/dist" "$FAKE/marketplace/plugins/obsidian-triage/tools/node_modules" "$FAKE/scripts/lib"
 
-# 6f. git gate hooks (HIMMEL-5442): the cloud clone has none installed, so the
+# 6f. git gate hooks: the cloud clone has none installed, so the
 # pre-commit, commit-msg (attestation trailers, ticket ID) and pre-push gates
 # would not fire. A bare `pre-commit install` installs only the first, so all
 # three types are named. Hermetic: a stub pre-commit records its arguments.
@@ -253,9 +253,9 @@ if [ "$RC" -eq 2 ]; then ok "unknown flag exits 2"; else bad "unknown flag rc=$R
 # 7b. every documented paste ends `|| true`: a non-zero setup script stops the
 # cloud session from starting, and the clone itself can fail before the script runs.
 TEMPLATE="$ROOT/docs/handover/cloud-brief-template.md"
-RECIPE="$ROOT/docs/setup/cloud-environment.md"  # the operator's environment recipe (HIMMEL-4429)
+RECIPE="$ROOT/docs/setup/cloud-environment.md"  # the operator's environment recipe
 if [ -f "$RECIPE" ]; then ok "environment recipe exists"; else bad "environment recipe $RECIPE missing"; fi
-# the recipe's paste is rendered by check-env.sh --print (HIMMEL-5163), not inlined
+# the recipe's paste is rendered by check-env.sh --print, not inlined
 case "$(grep -h 'setup-env.sh' "$ROOT/scripts/cloud/check-env.sh" 2>/dev/null)" in *"--with-plugins || true"*) ok "recipe paste installs the plugin profile" ;; *) bad "recipe paste lacks '--with-plugins || true'" ;; esac
 pastes="$(grep -h 'bash /tmp/himmel-setup/scripts/cloud/setup-env.sh' "$SETUP" "$TEMPLATE" "$RECIPE" 2>/dev/null)"
 unsafe="$(grep -v '|| true$' <<< "$pastes")"
@@ -267,13 +267,13 @@ else
   ok "every setup paste line ends with '|| true' ($(printf '%s\n' "$pastes" | wc -l | tr -d ' ') lines)"
 fi
 
-# HIMMEL-4811/4813: the operator probe rebuilds in the classified session
+# The operator probe rebuilds in the classified session
 # checkout and searches through the bounded repo-only path.
 recipe_text="$(cat "$RECIPE")"
 case "$recipe_text" in *'bash scripts/cloud/setup-env.sh'*'graphify query "cloud route classification" --graph graphify-out/graph.json'*) ok "probe builds and queries the classified session graph" ;; *) bad "probe still queries the unclassified cached graph" ;; esac
 case "$recipe_text" in *'bash scripts/lib/qmd-bounded.sh search "cloud environment" -c himmel'*) ok "probe searches through bounded repo-only qmd" ;; *) bad "probe does not use bounded scoped search" ;; esac
 
-# 7b. HIMMEL-4744: paths reach `sh -c` as positional args, never interpolated into
+# 7b. Paths reach `sh -c` as positional args, never interpolated into
 # its source. A clone path with a quote, a space and `$x` must be entered verbatim
 # by both sh -c steps (jira build, graphify update) and must not run as shell.
 HOST="$TMP/it's a \$x dir"

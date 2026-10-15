@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-check-env.sh — scripts/cloud/check-env.sh (HIMMEL-5163). Hermetic: a
+# test-check-env.sh — scripts/cloud/check-env.sh. Hermetic: a
 # fixture repo root (HIMMEL_CLOUD_ROOT), a fixture marker path, env -i for the
 # "session" environment. The contract: the environment's variables and the
 # setup script that ran are compared against the repo's declaration, and a

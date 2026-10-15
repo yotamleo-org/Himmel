@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cloud/setup-env.sh — setup script for a claude.ai CLOUD environment
-# (HIMMEL-4206). Paste it into the environment's "Setup script" box as
+# Paste it into the environment's "Setup script" box as
 #
 #     #!/bin/bash
 #     rm -rf /tmp/himmel-setup \
@@ -42,17 +42,17 @@
 # install from the clone the script runs in (/tmp/himmel-setup in the paste),
 # which the platform caches with the environment, so they refresh only when the
 # setup script changes or the cache expires (~7 days). Probed 2026-10-04
-# (HIMMEL-4273): skills load and plugin hooks fire in the session.
+# that skills load and plugin hooks fire in the session.
 # Test seam: HIMMEL_CLOUD_ROOT (default: this script's repo) is the tree to act
 # on; scripts/cloud/test-setup-env.sh points it at a fixture.
 #
 # The Bash timeouts are NOT set here: the environment's "Environment variables"
 # field sets them. A cloud probe showed an /etc/profile.d write never reaches
-# the Bash tool's shell (HIMMEL-4429); see docs/setup/cloud-environment.md.
+# the Bash tool's shell; see docs/setup/cloud-environment.md.
 set -uo pipefail
 
 DRY=0
-PLUGINS=""   # comma list; empty = no plugin step (HIMMEL-4273)
+PLUGINS=""   # comma list; empty = no plugin step
 LEAN_PLUGINS="himmel-ops,lean-skills"
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -90,7 +90,7 @@ soft_step() {
   "$@" || echo "setup-env: step $name FAILED (non-fatal, session still starts)" >&2
 }
 
-# build_step: soft_step for the slow npm builds (HIMMEL-4429). Output goes to a
+# build_step: soft_step for the slow npm builds. Output goes to a
 # log, and a failure prints `step=<name> FAILED <reason>` plus the log tail, so a
 # dead build is never silent in the setup log.
 LOG_D="${TMPDIR:-/tmp}/himmel-setup-logs"
@@ -125,7 +125,7 @@ else
   run_step pre-commit install "pip" -- $TMO 120 python3 -m pip install --disable-pip-version-check --break-system-packages pre-commit
 fi
 
-# 3b. git gate hooks (HIMMEL-5442): a fresh clone has none, so the pre-commit,
+# 3b. git gate hooks: a fresh clone has none, so the pre-commit,
 # commit-msg (ticket ID, attestation trailers) and pre-push gates never fire in
 # the cloud. A bare `pre-commit install` installs only the first type, so all
 # three are named. No --install-hooks: that would clone every hook repo inside
@@ -142,13 +142,13 @@ elif [ -n "$hooks_path" ]; then
 elif [ -x "$ROOT/.git/hooks/pre-commit" ] && [ -x "$ROOT/.git/hooks/commit-msg" ] && [ -x "$ROOT/.git/hooks/pre-push" ]; then  # -x: git ignores a non-executable hook
   plan git-hooks skip "installed"
 elif have pre-commit || [ "$DRY" -eq 1 ]; then
-  # shellcheck disable=SC2016  # $1 is the sh -c positional arg (HIMMEL-4744)
+  # shellcheck disable=SC2016  # $1 is the sh -c positional arg
   soft_step git-hooks install "pre-commit install: pre-commit, commit-msg, pre-push" -- sh -c 'cd "$1" && pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push' sh "$ROOT"
 else
   plan git-hooks skip "pre-commit absent"
 fi
 
-# 4. plugin cloud profile (HIMMEL-4273): install exactly $PLUGINS. Non-fatal.
+# 4. plugin cloud profile: install exactly $PLUGINS. Non-fatal.
 if [ -n "$PLUGINS" ]; then
   if have claude || [ "$DRY" -eq 1 ]; then
     soft_step plugins-marketplace add "$ROOT/marketplace" -- $TMO 120 claude plugin marketplace add "$ROOT/marketplace"
@@ -168,7 +168,7 @@ if [ -n "$PLUGINS" ]; then
   fi
 fi
 
-# 5-6. The slow npm builds run LAST and soft (HIMMEL-4429): a cloud setup died
+# 5-6. The slow npm builds run LAST and soft: a cloud setup died
 # silently inside the jira build and took the plugins with it. A failure prints
 # its reason and log tail and never stops the session.
 # 5. Jira CLI dist: deps + tsc, offline-capable after install, no secret.
@@ -176,7 +176,7 @@ JIRA_DIR="$ROOT/scripts/jira"
 if [ -f "$JIRA_DIR/dist/index.js" ]; then
   plan jira-dist skip "built"
 else
-  # shellcheck disable=SC2016  # $1/$2 are the sh -c positional args (HIMMEL-4744)
+  # shellcheck disable=SC2016  # $1/$2 are the sh -c positional args
   build_step jira-dist build "npm ci + tsc" -- sh -c 'cd "$1" && "$2" 150 npm ci --no-audit --no-fund && "$2" 60 npm run build' sh "$JIRA_DIR" "$TMO"
 fi
 
@@ -190,7 +190,7 @@ else
   plan obsidian-deps skip "no ensure-deps.sh in this tree"
 fi
 
-# 7-8. graphify, AST-only (HIMMEL-4726). Pinned to the version
+# 7-8. graphify, AST-only. Pinned to the version
 # scripts/lib/graphify-bin.sh carries, with no backend extra: `graphify update`
 # parses code locally and calls no model, so no repo content leaves the VM. The
 # graph lands in $ROOT/graphify-out (the setup clone, frozen with the cache); a
@@ -200,7 +200,7 @@ while IFS= read -r line; do
   if [[ "$line" =~ GRAPHIFY_VERSION:-([0-9][0-9.]*)\} ]]; then GV="${BASH_REMATCH[1]}"; break; fi
 done < "$ROOT/scripts/lib/graphify-bin.sh" 2>/dev/null
 # A cached image can ship graphify at another version than the pin (0.9.77 against
-# 0.9.80, HIMMEL-5442): a parsed version that differs from the pin is reinstalled;
+# 0.9.80): a parsed version that differs from the pin is reinstalled;
 # one that cannot be parsed counts as present.
 GCUR=""
 if have graphify; then
@@ -214,19 +214,19 @@ else
   build_step graphify install "graphifyy==$GV (pip, no backend extra)" -- $TMO 180 python3 -m pip install --disable-pip-version-check --break-system-packages "graphifyy==$GV"
 fi
 if have graphify || [ "$DRY" -eq 1 ]; then
-  # shellcheck disable=SC2016  # $1/$2 are the sh -c positional args (HIMMEL-4744)
+  # shellcheck disable=SC2016  # $1/$2 are the sh -c positional args
   build_step graphify-graph build "graphify update . (AST-only, in $ROOT)" -- sh -c 'cd "$1" && "$2" 180 graphify update .' sh "$ROOT" "$TMO"
 else
   plan graphify-graph skip "graphify absent"
 fi
 
-# 9-10. qmd over THIS repo only (HIMMEL-4726): the pinned fork via
+# 9-10. qmd over THIS repo only: the pinned fork via
 # scripts/lib/qmd-bin.sh (bun is preinstalled), then one collection, `himmel`,
 # on $ROOT. Never a vault: luna and handover state stay on the station. BM25
 # only: no `qmd pull` (~2 GB of models) and no embed, which do not fit the
 # ~5 min cached setup, so `qmd search -c himmel` works and vector search does not.
 # Use the shared resolver: bun's installed JS may exist without a global shim
-# on PATH (HIMMEL-4814). The same bounded route is used by the session probe.
+# on PATH. The same bounded route is used by the session probe.
 cloud_qmd() { QMD_TIMEOUT_SECS="${QMD_TIMEOUT_SECS:-180}" "$BASH" "$ROOT/scripts/lib/qmd-bounded.sh" "$@"; }
 qmd_index() {
   if [[ $'\n'"$qmd_cols" == *$'\n'"himmel "* ]]; then
@@ -257,6 +257,6 @@ if [ "$failed" -ne 0 ]; then echo "setup-env: $failed step(s) failed" >&2; exit 
 
 # 11. Stamp the hash of this script, only after every step passed, so a
 # session's `check-env.sh` can tell a stale cached snapshot from the repo's
-# current script and an unfinished setup leaves no stamp (HIMMEL-5163).
+# current script and an unfinished setup leaves no stamp.
 soft_step env-stamp record "scripts/cloud/check-env.sh --stamp" -- bash "$ROOT/scripts/cloud/check-env.sh" --stamp
 echo "setup-env: done (dry-run=$DRY)" >&2

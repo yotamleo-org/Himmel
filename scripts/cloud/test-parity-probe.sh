@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-parity-probe.sh — scripts/cloud/parity-probe.sh (HIMMEL-5442). Hermetic:
+# test-parity-probe.sh — scripts/cloud/parity-probe.sh. Hermetic:
 # --no-net, so no request leaves the machine. The fixture for the guard rows is
 # the repo's own .claude/settings.json and scripts/hooks/, the real environment.
 set -uo pipefail
@@ -63,7 +63,7 @@ OUT3="$(HIMMEL_CLOUD_ROOT="$TMP/empty" bash "$PROBE" --no-net 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ]; then ok "empty tree exits 0"; else bad "empty tree rc=$RC"; fi
 case "$OUT3" in *$'guard:block-git-stash\tMISSING'*) ok "absent guard reads MISSING" ;; *) bad "absent guard not MISSING: $OUT3" ;; esac
 
-# 4b. HIMMEL-5442 cloud run: qmd was installed but had no shim on PATH, and
+# 4b. A cloud run: qmd was installed but had no shim on PATH, and
 # graphify sat at 0.9.77 against a 0.9.80 pin. The qmd row resolves through
 # qmd-bounded.sh; graphify-at-pin names the drift.
 QB="$TMP/qbin"; mkdir -p "$QB" "$TMP/qfix/scripts/lib"

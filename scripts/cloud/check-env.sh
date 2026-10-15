@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cloud/check-env.sh — the cloud environment, declared and self-checked
-# (HIMMEL-5163). A claude.ai cloud environment cannot be created or read back
+# A claude.ai cloud environment cannot be created or read back
 # from a repo file or a command, so the dialog stays a paste. This keeps that
 # paste to one checked-in source and lets a session say when its environment
 # differs from the repo.

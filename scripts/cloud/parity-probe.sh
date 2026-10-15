@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cloud/parity-probe.sh — local-versus-cloud parity probe (HIMMEL-5442).
+# scripts/cloud/parity-probe.sh — local-versus-cloud parity probe.
 # Run the same script on the station and in a cloud session; diff the two
 # outputs. Prints one `<item><TAB><value>` row per fact, grouped by section.
 #
@@ -181,7 +181,7 @@ ver git git --version
 ver shellcheck shellcheck --version
 ver at at -V
 ver graphify graphify --version
-# qmd installed by qmd-bin.sh may have no shim on PATH (HIMMEL-4814): resolve it
+# qmd installed by qmd-bin.sh may have no shim on PATH: resolve it
 # the way setup-env.sh does, through qmd-bounded.sh, before calling it absent.
 QMD_OK=0
 if have qmd; then

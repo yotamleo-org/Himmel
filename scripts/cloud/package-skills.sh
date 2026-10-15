@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cloud/package-skills.sh — build the claude.ai upload bundle of the
-# plugin skills a cloud brief actually uses (HIMMEL-4206 slice 6).
+# plugin skills a cloud brief actually uses.
 #
 # Cloud sessions do not load plugins, but they load skills enabled on claude.ai.
 # The operator uploads each <skill>.zip at claude.ai (Settings, Skills). Skills
