@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # overnight/stop-marker — graceful-halt marker for /overnight-shift sessions.
 #
-# HIMMEL-137 (HIMMEL-32 child). The marker file is what `/overnight-shift`
+# The marker file is what `/overnight-shift`
 # (and the overnight-mode runbook Phase 3 impl loop) polls between
 # dispatches. When set, the dispatcher finishes the in-flight subagent +
 # halts before starting the next one. No subprocess kills — graceful only.

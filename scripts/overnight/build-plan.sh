@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# overnight/build-plan — emit a plan.md for /overnight-shift (HIMMEL-134).
+# overnight/build-plan — emit a plan.md for /overnight-shift.
 #
 # Queries jira for tickets matching the operator's filter, then prints a
 # dispatch plan to stdout (or `--out` file). The plan is what the
@@ -88,7 +88,7 @@ if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [ "$LIMIT" -lt 1 ]; then
     exit 1
 fi
 
-# Resolve the repo root unconditionally (HIMMEL-517): the where-are-we
+# Resolve the repo root unconditionally: the where-are-we
 # provisioning seams below need it even when JIRA_CMD is injected (tests do), so
 # it must NOT be assigned only inside the `if [ -z "$JIRA_CMD" ]` block — under
 # `set -u` an unset $repo_root would abort the script.
@@ -105,7 +105,7 @@ if [ -z "$JIRA_CMD" ]; then
     fi
 fi
 
-# where-are-we L3 push-side provisioning (HIMMEL-517): each non-epic ticket's
+# where-are-we L3 push-side provisioning: each non-epic ticket's
 # subagent prompt is pre-loaded with that ticket's prior ledger slice. Both
 # seams are overridable for hermetic tests (mirrors JIRA_CMD).
 LEDGER="${WHERE_ARE_WE_LEDGER:-$repo_root/.where-are-we/ledger.jsonl}"
@@ -183,7 +183,7 @@ plan=$(
                 echo "$i. **$key** — $type — $status — $title"
                 echo "   - worktree: \`$wtype/$key-$slug\`"
                 echo "   - subagent prompt: \"Read $key spec via jira plugin, implement per ticket, run tests, commit + push + open PR\""
-                # L3 push-side provisioning (HIMMEL-517): embed this ticket's prior
+                # L3 push-side provisioning: embed this ticket's prior
                 # ledger slice. Fail-open — no node/ledger/item → empty → block
                 # skipped → plan unchanged (the `2>/dev/null || true` + empty-test
                 # IS the guard; no separate node-presence check needed).

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for the /overnight-shift dispatch-loop plumbing (HIMMEL-2724
-# lead 4, HIMMEL-2722 item 1).
+# Smoke test for the /overnight-shift dispatch-loop plumbing.
 #
 # .claude/commands/overnight-shift.md is a markdown command, not a script —
 # no harness executes it directly. This test exercises the two pieces of
@@ -11,13 +10,13 @@
 # `node fanout-plan.mjs items.json`) rather than re-deriving new logic —
 # the two scripts are the tested unit here, not a copy of them. The plan is
 # resolved ONCE up front and the simulated loop consumes the model it named
-# for each id at dispatch time (CR round 2, codex-2) — not checked
+# for each id at dispatch time — not checked
 # after the fact, which could pass even if the loop ignored routing.
 #
 # Covers (acceptance):
 #   1. Marker SET before the loop starts -> zero dispatches, a
-#      "halted by /stop"-shaped line naming EVERY skipped ticket ID
-#      (CR round 2, codex-1), not just the first.
+#      "halted by /stop"-shaped line naming EVERY skipped ticket ID,
+#      not just the first.
 #   2. Marker ABSENT -> the loop proceeds for every ticket, consuming the
 #      model fanout-plan.mjs resolved for that exact id.
 #   3. Marker set MID-LOOP (armed after ticket 1's poll passes) -> ticket 1
@@ -49,10 +48,10 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dispatch-stop-poll.XXXXXX") || { echo "FAT
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 export OVERNIGHT_STOP_DIR="$TMP_ROOT"
 
-# HIMMEL-9002 pins an explicit lane override so it resolves to a DIFFERENT
-# model than HIMMEL-9001's default (sonnet) — two identically-routed
+# The second fixture pins an explicit lane override so it resolves to a DIFFERENT
+# model than the first fixture's default (sonnet) — two identically-routed
 # fixtures cannot distinguish "used my own resolved model" from "used the
-# other ticket's" (CR round 3, codex-2).
+# other ticket's".
 ITEMS_FILE="$TMP_ROOT/items.json"
 cat > "$ITEMS_FILE" <<'EOF'
 [

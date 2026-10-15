@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/overnight/morning-report.sh (HIMMEL-258).
+# Smoke test for scripts/overnight/morning-report.sh.
 #
 # Strategy: feed canned TSV rows via --rows / stdin; assert report
 # structure, decisions-first ordering, and handover-path resolution.
@@ -35,7 +35,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,7 +83,7 @@ ROWS="$TMP_ROOT/rows.tsv"
 hroot="$TMP_ROOT/handover-root"
 mkdir -p "$hroot"
 
-# Hermeticity (HIMMEL-2070): every case below invokes $SCRIPT, and morning-report
+# Hermeticity: every case below invokes $SCRIPT, and morning-report
 # now always tries to append a "## Unlanded work" section. Without a seam that
 # would shell out to the LIVE scripts/unlanded-work.sh from every test here —
 # slow (a full scan takes minutes on this repo) and dependent on this checkout's
@@ -93,7 +93,7 @@ UNLANDED_EMPTY="$TMP_ROOT/unlanded-empty.tsv"
 : > "$UNLANDED_EMPTY"
 export UNLANDED_TSV="$UNLANDED_EMPTY"
 
-# Same hermeticity problem for "## Changelog freshness" (HIMMEL-2250): without
+# Same hermeticity problem for "## Changelog freshness": without
 # a seam every case below would shell out to the LIVE scripts/gen-changelog.sh
 # --check against THIS checkout's real, full git history — slow (repeated
 # once per test case) and dependent on whether CHANGELOG.md happens to be
@@ -436,7 +436,7 @@ else
     pass "missing UNLANDED_TSV never silently renders as None"
 fi
 
-# Test 27: report generation succeeds when changelog --check returns 1 (HIMMEL-2250)
+# Test 27: report generation succeeds when changelog --check returns 1
 # Guards the `|| changelog_rc=$?` capture in morning-report.sh: a stale
 # changelog is the EXPECTED common case, not a script error, so it must
 # never abort this report under `set -e`.
@@ -460,7 +460,7 @@ assert_contains "changelog freshness heading" "## Changelog freshness" "$report"
 assert_contains "stale changelog row"          "CHANGELOG.md is 5 entries behind" "$report"
 
 # Test 28: --check rc=1 with NO digits in its output -> verbatim fallback,
-# report still generates in full (HIMMEL-2250 regression: an earlier version
+# report still generates in full (regression: an earlier version
 # of the digit-parse `n="$(... | grep ... | head -1)"` was unguarded, and
 # under `set -o pipefail` a no-match `grep` fails the whole substitution —
 # `set -e` then killed the report on exactly this "--check line shape
@@ -483,8 +483,8 @@ esac
 assert_contains "verbatim fallback row" "STALE: unknown" "$report"
 
 # Test 29: changelog freshness count is parsed from the STRUCTURED line only,
-# not the first digits anywhere in the merged stdout+stderr capture (HIMMEL-2250
-# CR finding 3: a stray digit earlier in the stream must never be mistaken for
+# not the first digits anywhere in the merged stdout+stderr capture:
+# a stray digit earlier in the stream must never be mistaken for
 # the entry count).
 
 echo "TEST: changelog freshness count ignores stray digits elsewhere in the capture"
@@ -507,7 +507,7 @@ else
 fi
 
 # Test 30: a RELATIVE GEN_CHANGELOG_SCRIPT actually RUNS, not just "doesn't
-# 127" (HIMMEL-2364). morning-report.sh's `-f "$changelog_script"` existence
+# 127". morning-report.sh's `-f "$changelog_script"` existence
 # check runs in the CALLER's cwd, but the execution line `cd "$SCRIPT_DIR/.."
 # && bash "$changelog_script"` runs after cd'ing away from it — so a relative
 # override passes the existence check and then fails to exec. bash's own

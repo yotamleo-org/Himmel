@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# overnight/morning-report — consolidated morning report for /overnight-shift
-# (HIMMEL-258).
+# overnight/morning-report — consolidated morning report for /overnight-shift.
 #
 # The run-end path of /overnight-shift collects one TSV row per dispatched
 # ticket and feeds it here (stdin or --rows FILE):
@@ -18,7 +17,7 @@
 # human review is the serial fraction that caps fanout speedup (Amdahl) —
 # batch the mandatory checkpoint into a single entry point.
 #
-# Output path resolves via the HIMMEL-118 single-root resolver
+# Output path resolves via the single-root resolver
 # (scripts/lib/handover-path.sh — never hardcode ./handovers/):
 #   - Mode B (HANDOVER_DIR set) → $HANDOVER_DIR/overnight-report-$(date -u +%F).md
 #     Broken HANDOVER_DIR fails closed (exit 2) — no fallback, matching the
@@ -37,7 +36,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
@@ -249,7 +248,7 @@ if [ -n "$actions_body" ]; then
     report="$report"$'\n\n'"## Standing operator actions"$'\n\n'"$actions_body"
 fi
 
-# Append "## Unlanded work" (HIMMEL-2070): AGED UNLANDED-LIVE branches — work
+# Append "## Unlanded work": AGED UNLANDED-LIVE branches — work
 # committed but never opened as a PR. Advisory: a detector failure must not
 # fail this report, but it also must not silently render as "none" (which
 # would look identical to a genuinely clean scan) — it gets its own explicit
@@ -260,7 +259,7 @@ if [ "$NO_UNLANDED" -eq 0 ]; then
     unlanded_ok=1
     if [ -n "${UNLANDED_TSV:-}" ]; then
         if [ -f "$UNLANDED_TSV" ]; then
-            # codex-3, HIMMEL-2070 CR round 6: check cat's own exit status —
+            # Check cat's own exit status —
             # a file that exists but fails to READ (permission denied, I/O
             # error) must not silently render as unlanded_ok=1 (-> "None"),
             # identical to the "empty scan" case this whole section exists
@@ -273,12 +272,12 @@ if [ "$NO_UNLANDED" -eq 0 ]; then
         unlanded_detector="$SCRIPT_DIR/../unlanded-work.sh"
         if [ -f "$unlanded_detector" ]; then
             # cd into the repo the detector belongs to before invoking it
-            # (codex-4, HIMMEL-2070 CR round 2): unlanded-work.sh resolves its
+            # unlanded-work.sh resolves its
             # OWN repo from the CALLER's cwd, so without this a caller whose
             # cwd is outside (or in a different) git repo silently scans the
             # wrong tree — or none at all. $SCRIPT_DIR/.. is always inside
             # this checkout regardless of where morning-report.sh was invoked
-            # from. Capture stderr separately too (codex-2, same round): the
+            # from. Capture stderr separately too: the
             # detector always exits 0 by contract even on a scan failure (an
             # unresolvable --base) — a discarded stderr made that failure
             # read identically to a genuinely empty scan ("None").
@@ -306,7 +305,7 @@ if [ "$NO_UNLANDED" -eq 0 ]; then
     report="$report$unlanded_section"
 fi
 
-# Append "## Changelog freshness" (HIMMEL-2250): CHANGELOG.md is 100%
+# Append "## Changelog freshness": CHANGELOG.md is 100%
 # derived from git log, so regenerating it per-commit/per-worktree across
 # ~20 parallel branches would guarantee a textual merge conflict on every
 # landing — this report already runs once daily on main, after the night's
@@ -318,7 +317,7 @@ fi
 # error, so it must never abort this report under `set -e` — hence the
 # `|| changelog_rc=$?` guard, mirroring the unlanded-work section above.
 #
-# HIMMEL-2364: a GEN_CHANGELOG_SCRIPT override can be relative (e.g. a test
+# A GEN_CHANGELOG_SCRIPT override can be relative (e.g. a test
 # stub, or an operator pointing at a script next to their cwd). The `-f`
 # existence check below and the actual execution MUST agree on the same
 # path — resolve to absolute in the CALLER's cwd, before the `cd
@@ -328,7 +327,7 @@ fi
 # left as-is so it still falls through to the existing "not found" branch
 # below rather than erroring out here.
 #
-# codex-1 CR finding: resolving dir and basename in ONE assignment
+# Resolving dir and basename in ONE assignment
 # (`x="$(cd ... && pwd)/$(basename ...)"`) is a trap — bash reports that
 # compound assignment's exit status from the LAST command substitution
 # (`basename`, which always succeeds), never the `cd`/`pwd` one, so a

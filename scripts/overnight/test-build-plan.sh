@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/overnight/build-plan.sh (HIMMEL-134).
+# Smoke test for scripts/overnight/build-plan.sh.
 #
 # Strategy: replace JIRA_CMD with a fake that emits canned TSV; assert
 # the plan structure + content.
@@ -20,7 +20,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,7 +159,7 @@ plan=$(JIRA_CMD="$FAKE_JIRA" FAKE_JIRA_OUT=$'HIMMEL-50\tTask\tTo Do\t' bash "$SC
 assert_contains "empty title slug uses fallback" "feat/HIMMEL-50-ticket" "$plan"
 
 # Test 9: L3 push-side provisioning — seeded ledger embeds the slice ---
-# (HIMMEL-517). A substantive record for HIMMEL-101 → the plan gains a
+# A substantive record for the first ticket → the plan gains a
 # "prior ledger state:" block with that ticket's card.
 
 echo "TEST: seeded ledger embeds the prior slice in the subagent prompt"
@@ -175,7 +175,7 @@ HIMMEL-102\tStory\tIn Progress\tWidget B' \
 assert_contains "provisioning block present"   "prior ledger state:"        "$plan"
 assert_contains "slice shows the ticket card"  "# HIMMEL-101"               "$plan"
 assert_contains "slice shows the next_action"  "- next: write the dock tests" "$plan"
-# HIMMEL-102 has no ledger record → no slice block for it (miss is silent).
+# A ticket with no ledger record → no slice block for it (miss is silent).
 
 # Test 10: no ledger -> no provisioning block (fail-open, plan unchanged) ---
 

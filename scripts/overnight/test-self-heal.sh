@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/overnight/self-heal.sh (HIMMEL-476, C2).
+# Tests for scripts/overnight/self-heal.sh.
 #
 # Covers:
 #   classify
@@ -33,7 +33,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -327,8 +327,8 @@ case "$rc" in 1) pass "stray tab → loud reject (NF>6), never a silent auto-fix
 
 echo "TEST 24: cross-script integration — [PS1-ENCODING] operator-gated, [PS1-NO-BOM] encoding (REAL shell-lint output)"
 # Generate REAL shell-lint output by running the linter against tmp .ps1 fixtures,
-# then feed that output through self-heal classify. This locks the HIMMEL-1432 CR
-# r5 invariant ([codex-adv-r4-1]): an unidentifiable-encoding finding can NEVER
+# then feed that output through self-heal classify. This locks the
+# invariant: an unidentifiable-encoding finding can NEVER
 # produce an automated fix dispatch, while a valid-UTF-8 no-BOM .ps1 IS
 # mechanically fixable. The linter's own summary line carries a "shell-lint"
 # token that matches _RE_LINT — so without the r5 manual-triage arm, (a) would

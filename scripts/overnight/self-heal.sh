@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# self-heal.sh — Self-healing post-return retry/triage over /overnight-shift
-# (HIMMEL-476, C2).
+# self-heal.sh — Self-healing post-return retry/triage over /overnight-shift.
 #
 # WHY ----------------------------------------------------------------------
 # /overnight-shift is fire-and-forget: the parent fans out all Task subagents
 # in ONE message and only sees their results after EVERY subagent returns.
 # There is no live gate-result stream to monitor, and a returned subagent
 # cannot be "resumed" — only replaced. So C2 is a POST-RETURN pass, not a live
-# monitor (that distinction keeps it independent of HIMMEL-465 VM supervision).
+# monitor (that distinction keeps it independent of VM supervision).
 #
 # Today a single mechanical gate failure (a stray shellcheck finding, a BOM, a
 # diff-range slip) silently kills an overnight ticket and the operator nurses
 # each pipeline by morning. C2 sits UPSTREAM of the consolidated morning report
-# (scripts/overnight/morning-report.sh, HIMMEL-258 — reused UNCHANGED) and adds
+# (scripts/overnight/morning-report.sh — reused UNCHANGED) and adds
 # a retry/triage stage between the fanout-return and the report:
 #
 #   classify : parse each subagent result; for a CLOSED ALLOW-LIST of
@@ -79,7 +78,7 @@ _RE_SUBSTANTIVE='assert|traceback|merge conflict|[[:<:]]CONFLICT[[:>:]]|[[:<:]]c
 _RE_LINT='shellcheck|shell-lint|SC[0-9]{4}'
 _RE_ENCODING='byte-order mark|[[:<:]]BOM[[:>:]]|SC1082|CRLF|invalid (utf-?8|encoding)'
 _RE_DIFFRANGE='diff[- ]range|merge-base|two-dot|wrong base|patch context'
-# Unknown/unverified file encoding (HIMMEL-1432 CR r5). The shell-lint
+# Unknown/unverified file encoding. The shell-lint
 # [PS1-ENCODING] tag means the linter COULD NOT identify a .ps1's encoding (no
 # recognized BOM and the bytes are not valid UTF-8 — or iconv is absent so they
 # cannot be verified). An automated fix is UNSAFE here: prepending or stripping a
