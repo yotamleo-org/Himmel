@@ -2318,6 +2318,23 @@ check "80 console-wait waiter: stopped by the wrap" "$(kill -0 "$waiter80" 2>/de
 check "80 console-wait waiter: its child is stopped too" "$(kill -0 "$child80" 2>/dev/null && echo alive || echo dead)" "dead"
 kill "$waiter80" "$child80" 2>/dev/null; wait "$waiter80" 2>/dev/null
 
+# a grandchild of the waiter (waiter -> bash child -> sleep) dies too, not only the direct child
+mk80 grandchild
+# shellcheck disable=SC2016  # the fixture script body must keep $0 literal
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/mid.sh" &\nwait\n' > "$w80/console-wait.sh"
+printf '#!/usr/bin/env bash\nsleep 300\ntrue\n' > "$w80/mid.sh"
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 0.5
+mid80="$(pgrep -P "$waiter80" | head -n 1)"
+grand80="$(pgrep -P "$mid80" | head -n 1)"
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/mid.sh\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$mid80" "$waiter80" "$w80" "$grand80" "$mid80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 waiter grandchild: wrap succeeds" "$rc" "0"
+check "80 waiter grandchild: waiter stopped" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "dead"
+check "80 waiter grandchild: direct child stopped" "$(kill -0 "$mid80" 2>/dev/null && echo alive || echo dead)" "dead"
+check "80 waiter grandchild: grandchild stopped" "$(kill -0 "$grand80" 2>/dev/null && echo alive || echo dead)" "dead"
+kill "$waiter80" "$mid80" "$grand80" 2>/dev/null; wait "$waiter80" 2>/dev/null
+
 # the waiter does NOT hide a second, foreign process, and is left running on a refusal
 mk80 mixed
 bash "$w80/console-wait.sh" & waiter80=$!
