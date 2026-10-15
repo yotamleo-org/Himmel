@@ -2315,6 +2315,7 @@ rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
 check "80 console-wait waiter: wrap succeeds" "$rc" "0"
 check "80 console-wait waiter: WRAPPED written" "$(grep -c '^- .*WRAPPED' "$doc80")" "1"
 check "80 console-wait waiter: stopped by the wrap" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "dead"
+check "80 console-wait waiter: its child is stopped too" "$(kill -0 "$child80" 2>/dev/null && echo alive || echo dead)" "dead"
 kill "$waiter80" "$child80" 2>/dev/null; wait "$waiter80" 2>/dev/null
 
 # the waiter does NOT hide a second, foreign process, and is left running on a refusal

@@ -374,6 +374,9 @@ wrap_subtree_gate() {
     for pid in $kills; do
         # a recycled pid must not be TERMed: only a live console-wait.sh process is
         if ps -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+            # its direct children first, so none outlives it as an orphan the
+            # re-check below can no longer see
+            pkill -TERM -P "$pid" 2>/dev/null || true
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
