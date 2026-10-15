@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # PostToolUse guard for Edit|Write|MultiEdit — a hook file that does not parse
-#.
 #
 # WHY: every OTHER lint layer in this repo runs at COMMIT time, and for a hook
 # file that is already too late by construction. A file under scripts/hooks/ is

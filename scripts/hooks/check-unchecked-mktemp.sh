@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/hooks/check-unchecked-mktemp.sh -- unchecked-mktemp pre-commit gate
-#.
 #
 # Fail-closed. A missing or unreadable predicate library, an unresolvable
 # repo root, a failing `git diff`, a failed added-lines scan, a changed staged

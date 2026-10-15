@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-check-update-available.sh — smoke test for check-update-available.sh
-#.
 #
 # 8 numbered tests, ~14 assertions.
 #

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # reference-transaction hook logic: refuse a NEW local commit landing on
-# refs/heads/main whenever origin/main does not already contain it
-#.
+# refs/heads/main whenever origin/main does not already contain it.
 #
 # WHY: d05ef8ca (and 913073df, 378c21f9, 310646da before it) landed directly
 # on private main via `git commit --no-verify` followed by `git push
