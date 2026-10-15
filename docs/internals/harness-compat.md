@@ -875,12 +875,13 @@ top-level `description` key that Codex **before `rust-v0.143.0`** rejects
 (per-plugin isolation, verified). No himmel-owned plugin ships that
 shape. **Fixed upstream:** codex PR #30229 added `description` to the `HooksFile`
 schema, shipping in **`rust-v0.143.0`** — on that version or newer the key is
-accepted and no sanitizing is needed (removal of the automatic
-phase is a planned follow-up). **Sanitize** (supersedes the 2026-06-20 "accept",
-operator decision 2026-06-30): `scripts/codex/sanitize-plugin-hooks.{sh,ps1}`
-strips the top-level `description` from every `hooks.json` under
-`~/.codex/plugins/cache/` (idempotent; re-run after a plugin update re-adds the
-field). `install-himmel-codex.{sh,ps1}` runs it automatically as its final phase.
+accepted and no sanitizing is needed. **Sanitize** (manual only):
+`scripts/codex/sanitize-plugin-hooks.sh` strips the top-level `description` from
+every `hooks.json` under `~/.codex/plugins/cache/` (idempotent; re-run after a
+plugin update re-adds the field) for installs pinned below `rust-v0.143.0`.
+`install-himmel-codex.sh` does not run it: it no longer rewrites third-party
+plugin files, and prints no warning for older codex (the hook-failure detector
+already recommends upgrading).
 
 ### 4. Skills / slash commands
 
