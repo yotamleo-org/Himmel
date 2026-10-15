@@ -28,7 +28,7 @@ __pycache__/
 *.pyc
 
 # graphify's output, ALL of it — the semantic embedding cache (7,332 of the
-# 7,344 files, ~80MB, churning ~800 files per refresh) and, since HIMMEL-1960,
+# 7,344 files, ~80MB, churning ~800 files per refresh) and
 # the top-level products too (graph.json, GRAPH_REPORT.md, the per-corpus
 # graphs, manifest.json).
 #
@@ -68,7 +68,7 @@ graphify-out/
 .last-consolidate.json
 .pending-new-item.json
 
-# Vault-template upgrade state (HIMMEL-389). The version stamp (.vault-template.json)
+# Vault-template upgrade state. The version stamp (.vault-template.json)
 # IS tracked — it travels with the vault. These are upgrade-managed scratch:
 # the 3-way-merge base snapshot, an unresolved _CLAUDE.md conflict sidecar, and
 # any temp left by an interrupted atomic write.

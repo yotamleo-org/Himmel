@@ -15,7 +15,7 @@
 #   ON  + no remote      → logged no-op (autosync = push; nothing to push to).
 #   ON  + remote         → git add -A; commit (through pre-commit); push.
 #
-# Stall alert (HIMMEL-3851): a pre-commit hook that keeps refusing the pending
+# Stall alert: a pre-commit hook that keeps refusing the pending
 # changes stops the vault committing without a word. Once the refusals have
 # gone on for LUNA_VAULT_STALL_THRESHOLD_MIN minutes (default 30) the operator
 # is alerted ONCE per stall episode, naming the failing hook and file. An
@@ -85,7 +85,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "$REPO_ROOT" || exit 1
 _stall_file="$(git rev-parse --git-dir 2>/dev/null)/vault-autosync-stall"
 
-# github-sync (HIMMEL-3066) races this script's own commits — both stage,
+# github-sync races this script's own commits — both stage,
 # commit and push the same vault on their own schedules. Mutually exclusive;
 # refuse to run rather than let two writers fight over the same tree.
 if [ -f "$REPO_ROOT/.obsidian/community-plugins.json" ] && grep -q '"github-sync"' "$REPO_ROOT/.obsidian/community-plugins.json"; then

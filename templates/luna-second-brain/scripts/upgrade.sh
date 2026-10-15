@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# upgrade.sh — content-preserving vault/template upgrade (HIMMEL-389).
+# upgrade.sh — content-preserving vault/template upgrade.
 #
 # Refreshes template-owned files in a luna-second-brain vault from a fresh
 # himmel template, WITHOUT touching user content (journal, notes, clips).
 # Vaults are scaffolded once and never updated; this brings later template
 # fixes (e.g. a new PLUGINS-SETUP note) to existing vaults safely.
 #
-# Distinct from himmel harness self-update (HIMMEL-413) and marketplace
-# autoUpdate (HIMMEL-365): this is VAULT CONTENT/config, not the harness.
+# Distinct from himmel harness self-update and marketplace
+# autoUpdate: this is VAULT CONTENT/config, not the harness.
 #
 # Usage:
 #   bash scripts/upgrade.sh [--template-dir DIR] [--vault-dir DIR] [--check] [--dry-run] [--yes]
@@ -26,8 +26,8 @@
 #   --yes               skip the confirm prompt (used by the /luna-upgrade skill).
 #   --backup-dir DIR    (optional) the pre-computed backup dest for this run,
 #                       named in the local-edit-withheld message so an operator
-#                       can recover the pre-upgrade file (HIMMEL-2886).
-#   --keep REL          (repeatable, HIMMEL-3406) explicitly keep the vault's
+#                       can recover the pre-upgrade file.
+#   --keep REL          (repeatable) explicitly keep the vault's
 #                       current content for a local-edit-withheld file <rel>
 #                       instead of the template's. Records the decision (which
 #                       template version it was kept against) so the stamp
@@ -37,7 +37,7 @@
 #                       again, or drop it to take the template's update).
 #   --with-github-sync  install the optional github-sync Obsidian plugin (env
 #                       twin: LUNA_WITH_GITHUB_SYNC=1). Mutually exclusive with
-#                       vault-autosync.ps1/.sh — see HIMMEL-3066. Only ever
+#                       vault-autosync.ps1/.sh — see the github-sync note above. Only ever
 #                       ADDS the plugin: a vault that already has it ENABLED
 #                       keeps it with no flag needed, but only files missing
 #                       from the install get written (skip-if-present); the
@@ -45,7 +45,7 @@
 #
 # Exit codes: 0 applied / already current / dry-run / aborted at the prompt;
 # 1 partial (a write or snapshot failure, or a _CLAUDE.md conflict/error —
-# stamp NOT written); 2 env/usage error; 3 NEEDS-RECONCILE (HIMMEL-3037): the
+# stamp NOT written); 2 env/usage error; 3 NEEDS-RECONCILE: the
 # only non-success is withheld local edits, no write failed — stamp NOT written,
 # last stdout line is "upgrade: NEEDS-RECONCILE — …".
 #
@@ -68,7 +68,7 @@ ASSUME_YES=0
 CHECK_ONLY=0
 BACKUP_DIR=""
 declare -a KEEP_LIST=()
-# HIMMEL-3066: env twin, same on/off convention as LUNA_VAULT_AUTOSYNC — any
+# Env twin, same on/off convention as LUNA_VAULT_AUTOSYNC — any
 # non-empty value other than "0"/"" arms it; the flag below can only turn it
 # ON (never off), matching "never silently uninstall".
 case "${LUNA_WITH_GITHUB_SYNC:-}" in
@@ -134,7 +134,7 @@ done
 # — the dual-clone trap), warn to stderr and use the first; the operator
 # disambiguates with --template-dir / $HIMMEL_DIR. Returns 1 (echoes nothing)
 # when none match. Used for BOTH the $HOME-candidate step and the sibling scan
-# so the two surfaces behave identically (HIMMEL-420). Loop/input order is
+# so the two surfaces behave identically. Loop/input order is
 # contractual: earlier roots win on a tie (tests T19/T22 pin this).
 pick_template_root() {
     local rel="$1" root tdir key first_dir="" first_key=""
@@ -182,7 +182,7 @@ resolve_template() {
     fi
     # Sibling scan: look one level up from the vault for a himmel checkout. Goes
     # through pick_template_root too, so it is decoy-safe and warns on multiple
-    # distinct sibling checkouts, matching the $HOME surface (HIMMEL-420).
+    # distinct sibling checkouts, matching the $HOME surface.
     local base; base="$(cd "$VAULT_DIR/.." 2>/dev/null && pwd)"
     if [ -n "$base" ]; then
         local c
@@ -250,7 +250,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Per-file content snapshot (HIMMEL-2903). The stamp carries a
+# Per-file content snapshot. The stamp carries a
 # `files: {"<rel>": "sha256:<hex>"}` map of what the template last wrote for
 # every "overwrite"-class file. That is a baseline the VAULT's own git history
 # cannot poison, so it is preferred over the STAMP_COMMIT baseline below.
@@ -259,19 +259,19 @@ fi
 # upgraded before this version) yields an empty map and the git baseline
 # carries, exactly as before; the first upgrade under this version writes one.
 # BASELINE_ERROR / BASELINE_ERROR_REASON are also set by the git-log checks
-# below (HIMMEL-2886/2903); initialized here so a snapshot-load failure isn't
+# below; initialized here so a snapshot-load failure isn't
 # clobbered back to 0 by that later block.
 BASELINE_ERROR=0
 BASELINE_ERROR_REASON=""
 SNAPSHOT_MAP=""
 if [ -f "$STAMP" ]; then
-    # HIMMEL-2918: the python heredoc's rc distinguishes the one legitimate
+    # The python heredoc's rc distinguishes the one legitimate
     # empty map (no `files` key at all — a legacy stamp, rc 0) from an
     # unreadable/malformed one (rc != 0: a JSON/read error, a non-dict top
     # level, or a `files` value that isn't a dict). Collapsing those was
     # fail-OPEN: an empty SNAPSHOT_MAP is indistinguishable from "nothing to
     # withhold", reverting every file to the poisonable git fallback
-    # HIMMEL-2903 exists to replace. Fail CLOSED instead, the same way a
+    # the snapshot exists to replace. Fail CLOSED instead, the same way a
     # failing `git log` already does below.
     if ! SNAPSHOT_MAP="$("$PYTHON" - "$STAMP" 2>/dev/null <<'PY'
 import json, sys
@@ -300,7 +300,7 @@ PY
     fi
 fi
 
-# Keep-mine decisions (HIMMEL-3406): the stamp's `kept: {"<rel>": "sha256:…"}`
+# Keep-mine decisions: the stamp's `kept: {"<rel>": "sha256:…"}`
 # map records, per file, the sha256 of the TEMPLATE content the operator's
 # --keep decision was made against — not the vault's own content (that is
 # already the ordinary snapshot above). A file stays silently kept only while
@@ -379,7 +379,7 @@ ver_lt() {
 
 # --check: report whether an upgrade is available, then exit. No banner, no
 # plan, no filesystem changes — a soft nudge for setup / SessionStart surfaces
-# (HIMMEL-423). The /luna-upgrade skill's --check path surfaces this line.
+# The /luna-upgrade skill's --check path surfaces this line.
 if [ "$CHECK_ONLY" = 1 ]; then
     if ver_lt "$VAULT_VERSION" "$TEMPLATE_VERSION"; then
         echo "luna-second-brain: template v$TEMPLATE_VERSION available (vault is v$VAULT_VERSION). Run: bash scripts/upgrade.sh (or /luna-upgrade)."
@@ -400,7 +400,7 @@ if [ "$VAULT_VERSION" = "$TEMPLATE_VERSION" ] || ! ver_lt "$VAULT_VERSION" "$TEM
 fi
 
 # ---------------------------------------------------------------------------
-# Local-edit detection (HIMMEL-2886): an "overwrite"-class file the vault
+# Local-edit detection: an "overwrite"-class file the vault
 # itself has diverged on since its last stamped upgrade must not be silently
 # clobbered — the template's own committed history has no view of vault-local
 # edits, but the VAULT's git history does. STAMP_COMMIT is the last commit
@@ -411,7 +411,7 @@ fi
 # upgraded via a git-tracked flow), has no baseline to compare against, so
 # falls back to the pre-existing overwrite behavior.
 #
-# The git baseline is now the FALLBACK, not the primary one (HIMMEL-2903): it
+# The git baseline is now the FALLBACK, not the primary one: it
 # is poisonable. If a local edit to a template-owned file is committed in the
 # SAME commit that also advances the stamp (e.g. a batching autosync — what the
 # luna github-sync plugin does every 10 min), that commit becomes STAMP_COMMIT
@@ -424,11 +424,11 @@ STAMP_COMMIT=""
 # BASELINE_ERROR: `git log` FAILED operationally (shallow clone, corrupt index,
 # permission error) — distinct from "git ran and found no such commit" (rc 0,
 # empty stdout). Treating the two alike is fail-OPEN: an empty STAMP_COMMIT
-# means "no baseline" means the pre-HIMMEL-2886 silent overwrite, which is the
+# means "no baseline" means the old silent overwrite, which is the
 # exact failure this detection exists to close. has_local_edit fails CLOSED on
 # a cat-file/show error already; this makes the `git log` step consistent.
 # (Initialized above, before the snapshot-load block, so a snapshot failure
-# there isn't clobbered back to 0 here — HIMMEL-2918.)
+# there isn't clobbered back to 0 here.)
 # `git rev-parse --is-inside-work-tree`, not `[ -d "$VAULT_DIR/.git" ]`: a
 # worktree or a submodule has a `.git` FILE (a `gitdir: <path>` pointer), not
 # a directory, so the directory-only check silently fell back to the
@@ -463,7 +463,7 @@ fi
 # withhold_notice <rel> <provenance>: the shared "local edits withheld" line.
 # <provenance> names WHICH baseline spoke (snapshot | git) so an operator
 # reading a --dry-run plan can tell the stamp's content snapshot from the
-# vault-git fallback in one word (HIMMEL-2903).
+# vault-git fallback in one word.
 withhold_notice() {
     local rel="$1" prov="$2" backup_note="none (no --backup-dir given for this run)"
     [ -n "$BACKUP_DIR" ] && backup_note="$BACKUP_DIR/$rel"
@@ -471,12 +471,12 @@ withhold_notice() {
 }
 
 # snapshot_git_equiv <rel> <dst> <snap>: exit 0 iff <dst> differs from the
-# snapshot ONLY by formatting (HIMMEL-3037). The snapshot is a hash, so it
+# snapshot ONLY by formatting. The snapshot is a hash, so it
 # cannot itself be compared newline/JSON-insensitively; instead the vault's git
 # baseline is consulted — but only a VERIFIED one: the file's content at
 # STAMP_COMMIT must hash to <snap>. That proves the commit holds what the
 # template wrote; a stamp commit that also swallowed a local edit (the
-# HIMMEL-2903 poison) hashes differently and is NOT trusted. Every other case
+# poisoned baseline) hashes differently and is NOT trusted. Every other case
 # (no repo/stamp commit, BASELINE_ERROR, file absent or unreadable there,
 # hash mismatch, a real difference) exits 1 = keep withholding, fail-closed.
 snapshot_git_equiv() {
@@ -494,7 +494,7 @@ snapshot_git_equiv() {
 
 # has_local_edit <rel> <dst> [print]: exit 0 iff <dst> differs from the
 # baseline for <rel> — i.e. the vault edited it since its last upgrade.
-# Baseline resolution order (HIMMEL-2903):
+# Baseline resolution order:
 #   1. the stamp's per-file content snapshot, when it has an entry for <rel>
 #      (authoritative: independent of the vault's commit history);
 #   2. else the content committed at STAMP_COMMIT (the vault's last stamped
@@ -584,7 +584,7 @@ has_local_edit() {
         [ "$print" = 1 ] && echo "  could not verify local edits for $rel (git show failed) — withholding the write as a precaution"
         return 0
     fi
-    # content_equiv, not a sha compare (HIMMEL-3037): Obsidian's newline-only /
+    # content_equiv, not a sha compare: Obsidian's newline-only /
     # re-indented rewrite of a committed .obsidian/*.json is not a local edit.
     if ! content_equiv "$committed" "$dst" "$rel"; then
         if [ "$print" = 1 ]; then
@@ -603,7 +603,7 @@ has_local_edit() {
 # ---------------------------------------------------------------------------
 # Per-file classification. Returns one of:
 #   overwrite | jsonmerge | skipexists | threeway | report | skip
-# Extensible per-profile (HIMMEL-389 scope §8): a future wiki profile keys off
+# Extensible per-profile: a future wiki profile keys off
 # the .vault-template.json "template" field and swaps this classifier.
 classify() {
     case "$1" in
@@ -641,12 +641,12 @@ write_file() {
 sha_of() { if [ -f "$1" ]; then sha256sum "$1" | cut -d' ' -f1; else echo MISSING; fi; }
 
 # content_equiv <a> <b> <rel>: exit 0 iff the two files carry the same content
-# for upgrade purposes (HIMMEL-3037). Obsidian rewrites its own .obsidian/*.json
+# for upgrade purposes. Obsidian rewrites its own .obsidian/*.json
 # on every settings touch — dropping the template's final newline and
 # re-indenting — so a byte compare (sha) reads a semantically identical file as
 # different forever, and a withheld "local edit" then blocks the stamp. Equal
 # means: identical bytes, OR identical apart from ONE trailing newline, OR
-# identical apart from CRLF-vs-LF line endings (HIMMEL-3406 — an operator's
+# identical apart from CRLF-vs-LF line endings (an operator's
 # editor, or a Windows checkout, re-saves a template-owned file with different
 # line endings with no content change), OR (a *.json <rel>, working jq)
 # identical after `jq -S .` normalisation. Two or more extra newlines, or a
@@ -665,8 +665,8 @@ content_equiv() {
     va="${raw_a%$'\n'}"; vb="${raw_b%$'\n'}"
     [ "$va" = "$vb" ] && return 0
     # EOL-only: normalize CRLF pairs to LF on the RAW content, then re-apply
-    # the same "one trailing newline is ignorable" rule (HIMMEL-3406 codex-2,
-    # codex-1 round 2: normalizing must run BEFORE the trailing-newline strip
+    # the same "one trailing newline is ignorable" rule:
+    # normalizing must run BEFORE the trailing-newline strip
     # rather than after it — normalizing the already-\n-stripped `va`/`vb`
     # left a genuine trailing CRLF's lone `\r` unmatched, and stripping that
     # leftover `\r` unconditionally then also ate a file's real, standalone
@@ -688,7 +688,7 @@ content_equiv() {
 
 # converged_equiv <rel> <template-file> <vault-file>: exit 0 iff the vault's copy
 # is PROVABLY the same effective content as the template's, differing only in
-# comments / ordering / spacing (HIMMEL-3206 — a vault owner landed by hand the
+# comments / ordering / spacing (a vault owner landed by hand the
 # same fix the template later ships). Only .gitignore and .gitleaks.toml are
 # eligible; everything else, and anything not provable, exits 1 (fail-closed —
 # the file stays a LOCAL-EDIT). CONVERGED means the caller writes the TEMPLATE
@@ -770,7 +770,7 @@ sys.exit(0 if same else 1)
 PY
 }
 
-# Snapshot accumulator (HIMMEL-2903): the execute pass records, for every
+# Snapshot accumulator: the execute pass records, for every
 # "overwrite"-class file, the sha of what is in the VAULT once the pass is
 # done — which is what the template just wrote, because the stamp is written
 # ONLY when the run fully succeeded (no withheld edits, no write failures).
@@ -788,7 +788,7 @@ record_snapshot() {
     [ -n "$SNAPSHOT_FILE" ] || return 0
     s="$(sha_of "$dst")"
     [ "$s" = "MISSING" ] && return 0
-    # HIMMEL-2918: a failing sha256sum still leaves `cut` exiting 0 on no
+    # A failing sha256sum still leaves `cut` exiting 0 on no
     # input, so `s` can come back "" here — checked only against MISSING
     # above, an empty (or otherwise malformed) digest slipped past silently
     # and produced an incomplete <rel><TAB> row that the stamp writer's
@@ -816,7 +816,7 @@ record_snapshot() {
 # <rel> (the template content it was kept against, already "sha256:<hex>") to
 # the scratch file the stamp writer reads into `kept`. Reuses SNAPSHOT_FAILURES
 # so a bookkeeping failure here blocks the stamp write the same way a dropped
-# content-snapshot row does (HIMMEL-3406) — a keep-mine decision that silently
+# content-snapshot row does — a keep-mine decision that silently
 # failed to record must not read back as a successful, stable keep.
 record_kept() {
     local rel="$1" sha="$2"
@@ -832,7 +832,7 @@ record_kept() {
 PLUGINS_SETUP_REL=".obsidian/PLUGINS-SETUP.md"
 PLUGINS_SETUP_PRIOR_SHA="$(sha_of "$VAULT_DIR/$PLUGINS_SETUP_REL")"
 
-# github-sync install eligibility (HIMMEL-3066): out of the template default
+# github-sync install eligibility: out of the template default
 # (community-plugins.json / .obsidian/plugins/) since the bundled plugin races
 # vault-autosync.ps1/.sh's own commits (see vault-autosync.ps1's sanity gate,
 # AlarmClass 'plugin-resurrected'). Installed when EITHER the operator asked
@@ -870,7 +870,7 @@ CP_MERGE_SRC="$TEMPLATE_DIR/$CP_REL"
 if [ "$INSTALL_GITHUB_SYNC" = 1 ] && [ -d "$GH_SYNC_SRC" ]; then
     # Repoint CP_MERGE_SRC only when the temp file exists AND the merge wrote it
     # AND it reads back as a JSON list — a half-prepared source would make the
-    # plugin merge below skip or mis-merge with no report (HIMMEL-3094).
+    # plugin merge below skip or mis-merge with no report.
     gh_sync_cp_ok=0
     GH_SYNC_CP_TMP="$(mktemp "${TMPDIR:-/tmp}/luna-upgrade-gh-sync-cp.XXXXXX" 2>/dev/null)" || GH_SYNC_CP_TMP=""
     if [ -n "$GH_SYNC_CP_TMP" ] && [ -f "$GH_SYNC_CP_TMP" ]; then
@@ -937,7 +937,7 @@ if os.path.exists(vault_p):
 else:
     vault = []
 tmpl = json.load(open(tmpl_p, encoding="utf-8"))
-# The same guard for the merge SOURCE (HIMMEL-3189): iterating a non-array
+# The same guard for the merge SOURCE: iterating a non-array
 # template ({"calendar":true}) walks its KEYS and would write ["calendar"] into
 # the vault. Warn and leave the vault's file untouched.
 if not isinstance(tmpl, list):
@@ -1016,7 +1016,7 @@ claude_threeway() {
         fi
     elif [ "$rc" -ge 1 ] && [ "$rc" -le 127 ] && resolved="$(mktemp)" && report="$(mktemp)" \
         && resolve_vault_deletions "$ours" "$base_use" "$theirs" "$resolved" "$report"; then
-        # HIMMEL-4380: every conflict hunk was a vault-deleted section — the
+        # Every conflict hunk was a vault-deleted section — the
         # deletion wins, the dropped template change is reported, and the base
         # advances so the next run is clean.
         CLAUDE_MERGE_RESULT="clean"
@@ -1055,7 +1055,7 @@ claude_threeway() {
     rm -f "$merged" "$mf_err" "${resolved:-}" "${report:-}"
 }
 
-# HIMMEL-4380: a conflict hunk whose vault ("ours") side is EMPTY while the base
+# A conflict hunk whose vault ("ours") side is EMPTY while the base
 # had content is a section the vault deliberately deleted and the template kept
 # or edited. Such a conflict recurs on every upgrade (a conflict never advances
 # the base or the stamp), so the vault's deletion wins here and the template
@@ -1067,7 +1067,7 @@ resolve_vault_deletions() {
     local ours="$1" base="$2" theirs="$3" out="$4" report="$5"
     [ -n "$PYTHON" ] || return 1
     local diff3; diff3="$(mktemp)"
-    # HIMMEL-4386: a long marker size, so manual text (a setext `=======`
+    # A long marker size, so manual text (a setext `=======`
     # underline, a documented conflict example) is never taken for a marker.
     git merge-file -p --diff3 --marker-size 31 "$ours" "$base" "$theirs" > "$diff3" 2>/dev/null
     local rc=$?
@@ -1126,7 +1126,7 @@ process() {
             skip) ;;
             overwrite)
                 if ! content_equiv "$src" "$dst" "$rel"; then
-                    # HIMMEL-3206: same effective rules, only comments/order differ
+                    # Same effective rules, only comments/order differ
                     # => not a local edit; the template copy is taken.
                     conv=""
                     converged_equiv "$rel" "$src" "$dst" && conv=" (converged: same rules, only comments/order differ — template copy taken)"
@@ -1136,7 +1136,7 @@ process() {
                         plan_row WRITE "$rel" "$conv"; n_write=$((n_write+1))
                         [ "$execute" = 1 ] && { write_file "$src" "$dst" || WRITE_FAILURES=$((WRITE_FAILURES+1)); }
                     elif [ -n "$prior_kept" ] && [ "$prior_kept" = "$src_sha" ]; then
-                        # HIMMEL-3406: a standing keep-mine decision, still valid
+                        # A standing keep-mine decision, still valid
                         # — the template content it was kept against hasn't
                         # changed since. Stays kept, no re-prompt.
                         plan_row KEEP-MINE "$rel" " (kept — not overwritten)"
@@ -1186,7 +1186,7 @@ process() {
 
     # community-plugins.json add-only merge. CP_MERGE_SRC is the template's own
     # list, or that list plus "github-sync" when it should be installed
-    # (HIMMEL-3066 — see the eligibility block above process()'s first call).
+    # (see the eligibility block above process()'s first call).
     local cp_rel="$CP_REL"
     if [ -f "$CP_MERGE_SRC" ]; then
         local added; added="$(plugins_merge "$VAULT_DIR/$cp_rel" "$CP_MERGE_SRC" "0")"
@@ -1196,7 +1196,7 @@ process() {
         fi
     fi
 
-    # Optional github-sync plugin assets (HIMMEL-3066). Vendored under
+    # Optional github-sync plugin assets. Vendored under
     # optional/plugins/github-sync/ (NOT scanned by the main loop above — it
     # falls through classify()'s default `skip`), copied into the vault's
     # .obsidian/plugins/github-sync/ only when INSTALL_GITHUB_SYNC is set.
@@ -1293,7 +1293,7 @@ if [ -z "$SNAPSHOT_FILE" ] || [ ! -e "$SNAPSHOT_FILE" ]; then
     exit 2
 fi
 # Same fail-closed reasoning as SNAPSHOT_FILE above, for the "kept" map
-# (HIMMEL-3406): the stamp is rewritten wholesale below, so a run that
+# the stamp is rewritten wholesale below, so a run that
 # proceeded without a place to record keep-mine decisions would silently
 # drop every prior one.
 KEPT_FILE="$(mktemp -t luna-upgrade-kept.XXXXXX 2>/dev/null)"
@@ -1310,7 +1310,7 @@ WRITE_FAILURES=0
 CLAUDE_MERGE_RESULT=""
 process 1
 
-# salus medical profile (HIMMEL-577): on a vault that opted into the salus profile
+# salus medical profile: on a vault that opted into the salus profile
 # (.salus-profile present), refresh the medic skill + PHI-egress floor from the
 # template via the tested overlay apply. PROFILE-GATED so a non-medical luna vault
 # never receives the egress floor (which HARD-blocks its MCP/web workflows).
@@ -1359,7 +1359,7 @@ if [ "$WRITE_FAILURES" -gt 0 ] || [ "$SNAPSHOT_FAILURES" -gt 0 ] || [ "$CLAUDE_M
     exit 1
 fi
 
-# HIMMEL-3037: withheld local edits are the ONLY thing left — every write
+# Withheld local edits are the ONLY thing left — every write
 # succeeded and _CLAUDE.md merged. That is not a failure, but it is not
 # "upgraded" either: exit a distinct rc 3 (0 would read as applied to every
 # caller) and leave the stamp behind so the vault keeps being offered the
@@ -1380,7 +1380,7 @@ import json, sys, datetime
 stamp_p, ver, snap_p, kept_p = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 stamp = {"template": "luna-second-brain", "version": ver, "upgraded_at": now}
-# files: the per-file content baseline for the next run (HIMMEL-2903). Sorted
+# files: the per-file content baseline for the next run. Sorted
 # so the stamp is byte-stable across runs that changed nothing — a vault that
 # autosyncs the stamp should not see a spurious diff every upgrade.
 files = {}
@@ -1400,7 +1400,7 @@ if snap_p:
         sys.exit(3)
 if files:
     stamp["files"] = dict(sorted(files.items()))
-# kept: HIMMEL-3406 keep-mine decisions, rel -> the template sha they were
+# kept: keep-mine decisions, rel -> the template sha they were
 # kept against. Same fail-closed reasoning as files above — an unreadable
 # scratch file must not silently drop prior keep-mine decisions.
 kept = {}

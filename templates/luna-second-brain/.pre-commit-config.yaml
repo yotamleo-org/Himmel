@@ -2,7 +2,7 @@
 # every save. Excluded globally so the basic hooks don't rewrite them on
 # every operator's machine. Tracked separately if/when we move to plugin
 # installer + community-plugins.json driven setup.
-# optional/plugins/ (HIMMEL-3066): the opt-in github-sync plugin is vendored
+# optional/plugins/: the opt-in github-sync plugin is vendored
 # here instead of under .obsidian/plugins/ — same vendored-binary rationale,
 # so it needs the same exclusion (a fixer rewriting its main.js/styles.css
 # would drift the vendored copy from upstream bytes for no reason).
@@ -18,11 +18,11 @@ repos:
       # or ingested sources. Two reasons, both real:
       #   1. trailing-whitespace strips Markdown hard-line-breaks (two trailing
       #      spaces) from prose, and the churn from either fixer aborts the
-      #      unattended autosync commit (HIMMEL-501).
+      #      unattended autosync commit.
       #   2. On Windows the fixers print the filename to a cp1252 stdout, so a
       #      non-ASCII name (Hebrew/CJK/accented source notes) raises
       #      UnicodeEncodeError — and they rewrite the file BEFORE crashing,
-      #      leaving a silent whitespace-only diff (HIMMEL-615). An allowlist of
+      #      leaving a silent whitespace-only diff. An allowlist of
       #      ASCII-named code/config files sidesteps this entirely; a denylist
       #      cannot enumerate every non-ASCII name a vault might hold.
       # Code/config files are ASCII-named by convention, so trailing-ws fixing
@@ -36,7 +36,7 @@ repos:
       # generator and trips pre-commit's stash-rollback path, which can crash
       # and silently drop unstaged changes — observed 2026-07-09: lost
       # .obsidian plugin updates, recovered from the retained
-      # ~/.cache/pre-commit patch (HIMMEL-834). check-json still validates it.
+      # ~/.cache/pre-commit patch. check-json still validates it.
       - id: trailing-whitespace
         files: '\.(sh|ps1|yaml|yml|json|toml)$'
         exclude: '^\.manifest\.json$'
@@ -59,11 +59,11 @@ repos:
         # they survive a host reboot — not shipped code. Linting them here
         # stalled the Obsidian github-sync sweep on 2026-09-07 (the sweep
         # commits with hooks on; one SC2009/SC2034 warning = no commits).
-        # github-sync itself is opt-in since HIMMEL-3066; this exclude stays
+        # github-sync itself is opt-in; this exclude stays
         # correct for any vault that has it enabled.
         #
         # Report artifact dirs (handovers/**/specs/reports/*-artifacts/) are the
-        # same class and were added for HIMMEL-3324: a verification run saves the
+        # same class: a verification run saves the
         # EXACT scripts it executed on the test machine as evidence. Linting them
         # inverts their purpose — shellcheck's advice (`cd || exit`, `pgrep` over
         # `ps|grep`) would have us EDIT the record of what actually ran, so a
@@ -73,12 +73,12 @@ repos:
         # Judge verdict dirs (handovers/**/verdicts/) are the same class: a
         # judge's probe and case scripts are the evidence its verdict rests
         # on, not shipped code. A verdict script with no shebang (SC2148) can
-        # otherwise stall every vault commit (HIMMEL-3702).
+        # otherwise stall every vault commit.
         #
         # Handover log dirs (handovers/**/logs/) are the same class again:
         # scratch scripts and launch artefacts a session leaves behind. One
         # failing scratch .sh there refused every later commit, silently, for
-        # hours (HIMMEL-3851).
+        # hours.
         #
         # Plan tooling (specs/plan/<KEY>/tools/) is the same class: ad-hoc
         # launch/render scripts a roadmap console leaves behind; info-level
@@ -88,7 +88,7 @@ repos:
         # specs/wiring-proof/ script) held 191 staged paths for 9 h. Every .sh
         # under handovers/ is a session artefact (evidence, scratch or a launch
         # helper), never shipped code, so the exclude covers all of handovers/
-        # instead of growing one subdirectory at a time (HIMMEL-4471; the
+        # instead of growing one subdirectory at a time (the
         # vault-stall cadence adds this same exclude if an older vault lacks it).
         exclude: ^handovers/
 

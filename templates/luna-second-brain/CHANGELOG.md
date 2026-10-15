@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.72] — 2026-10-15
+
+### Changed
+- Script, config and docstring comments now state present-tense rationale only;
+  ticket and review-round history removed. No behaviour change.
+
 ## [0.4.71] — 2026-10-11
 
 ### Changed

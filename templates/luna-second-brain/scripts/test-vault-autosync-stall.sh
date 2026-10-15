@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-3851: vault-autosync.sh must ALERT the operator when a pre-commit hook
+# vault-autosync.sh must ALERT the operator when a pre-commit hook
 # keeps refusing the vault's pending changes (a "stall"), once per stall
 # episode, naming the failing hook and the offending file. A stall is silent
 # otherwise: the vault stops committing and nobody is told.

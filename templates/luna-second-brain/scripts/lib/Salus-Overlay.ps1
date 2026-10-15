@@ -7,7 +7,7 @@
 #   - appends the medical posture block to _CLAUDE.md once (idempotent via the
 #     ASCII 'salus-posture-block' marker).
 #   - drops the .salus-profile marker (upgrade gates on it) AND the .salus
-#     PHI guard marker (HIMMEL-2173) — never overwrites an existing .salus.
+#     PHI guard marker — never overwrites an existing .salus.
 # Returns $true on success, $false if the overlay dir is missing.
 function Invoke-SalusOverlay {
     param([Parameter(Mandatory)][string]$RepoRoot)
@@ -44,7 +44,7 @@ function Invoke-SalusOverlay {
     }
     Set-Content -Path (Join-Path $RepoRoot '.salus-profile') -Encoding utf8 `
         -Value 'salus medical-vault profile - managed by setup --medical / upgrade'
-    # PHI guard marker (HIMMEL-2173): the 7 PHI launcher guards were written
+    # PHI guard marker: the 7 PHI launcher guards were written
     # to test for .salus, not .salus-profile — without this, a fresh salus
     # deployment shipped an inert guard. The guards now accept .salus-profile
     # too (part 2), but that is a defense for pre-existing deployments; keep

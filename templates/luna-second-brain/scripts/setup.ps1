@@ -7,7 +7,7 @@ param([switch]$Medical)
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- [0/6] git state ---
@@ -81,9 +81,9 @@ Write-Host ""
 # Shells out to bash + scripts/lib/check-user-slug.sh so the disposition
 # lives in one source of truth (used by the bash setup path too). Mirrors
 # the pattern himmel's setup.ps1 uses for handover-link.sh.
-# Advisory, not fatal (HIMMEL-2539): an unresolved slug no longer aborts —
+# Advisory, not fatal: an unresolved slug no longer aborts —
 # see check-user-slug.sh's own header for why. $UserSlugManual survives to
-# the footer so the skipped step is still named (HIMMEL-2536 principle).
+# the footer so the skipped step is still named.
 Write-Host "[2/6] Resolving USER_SLUG..."
 $GitBash = 'C:\Program Files\Git\bin\bash.exe'
 if (-not (Test-Path $GitBash)) {
@@ -128,7 +128,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[4/6] Installing git hooks (pre-commit, pre-push, commit-msg)..."
-# pre-commit and commit-msg go through the stash-free wrapper (HIMMEL-2223):
+# pre-commit and commit-msg go through the stash-free wrapper:
 # `pre-commit install`'s generated hook stashes unstaged changes, and with
 # Obsidian live, its autosave rewriting tracked .obsidian/plugins/*/data.json
 # mid-hook can make the stash re-apply fail and revert OTHER unstaged files on

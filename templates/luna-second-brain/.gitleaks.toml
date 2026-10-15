@@ -1,7 +1,7 @@
 # gitleaks config for the luna second-brain vault.
 # Keeps the full built-in ruleset and only adds a path allowlist for the
 # vendored third-party Obsidian plugin bundles shipped under .obsidian/plugins/
-# (and, since HIMMEL-3066, the opt-in github-sync plugin's generated assets
+# (and the opt-in github-sync plugin's generated assets
 # under optional/plugins/github-sync/ instead). Those bundles are minified
 # upstream code; gitleaks' generic-api-key rule flags high-entropy minified
 # identifiers (e.g. node-forge's pki.setRsaPrivateKey in
@@ -29,27 +29,26 @@ paths = [
 # so it suppresses ONLY the exact constant — a prefixed/suffixed bearer
 # credential (himmel-local-claudex-<real-secret>) is still caught.
 # queue-lock release tokens (himmel scripts/handover/queue-lock.sh) are written
-# into each leg's LIVE bullet on purpose (HIMMEL-2813 workaround: autocompact
+# into each leg's LIVE bullet on purpose (autocompact
 # loses them otherwise). Their default shape is <host>-<arch>-pid<N>, e.g.
 # `cachyos-x8664-pid199036` — a process id, not a credential — but the
 # generic-api-key rule flags the line ("release-token: `...`") on entropy, and
 # that refusal silently stalls the github-sync autosync commit (2026-09-09,
 # console 03F: staged for 40 min, three missed syncs) — github-sync is opt-in
-# since HIMMEL-3066, but this allowlist keeps working unchanged for any vault
+# but this allowlist keeps working unchanged for any vault
 # that has it enabled. Anchored to that exact
-# shape, plus one optional trailing sentence-punctuation character (HIMMEL-2910:
-# a leg's bare, unbacktick-quoted `release-token=<token>.` let gitleaks capture
+# shape, plus one optional trailing sentence-punctuation character (a leg's bare, unbacktick-quoted `release-token=<token>.` let gitleaks capture
 # the trailing "." into the secret, missing the anchor) — a suffixed real
 # credential is still caught, only that shape.
 # RETASK-channel nonces (docs/internals/retask-channel.md), shape
 # `<console letter(s)>-N<leg>-<hex>` e.g. `Y-N204-a68d71`, are written into
 # leg briefs/handovers on purpose and land in session notes the same way the
-# queue-lock token above does (HIMMEL-3003: a nonce stalled the vault's
-# autosync commit on 2026-09-13; HIMMEL-3168: nonces are now 16 hex, e.g.
+# queue-lock token above does (a nonce can stall the vault's
+# autosync commit; nonces are 16 hex, e.g.
 # `B-N44-b5c0792bbc9bdc03`, so the hex run is bounded {4,16}). Anchored to that exact shape, plus one
 # optional trailing sentence-punctuation character — a suffixed real
 # credential is still caught, only that shape.
-# HIMMEL-3471: a fresh-leg recovery mints a RETASK nonce with a single
+# A fresh-leg recovery mints a RETASK nonce with a single
 # trailing lowercase letter on the leg number (e.g. `V-N236b-1d281f74`,
 # chained recoveries go b, c, d, ...; verified against the live handover
 # corpus — that suffix is always exactly one letter, never doubled), which

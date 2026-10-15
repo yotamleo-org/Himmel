@@ -1,5 +1,5 @@
 ﻿<#
-  Smoke test for the C4 (HIMMEL-438) PowerShell twins — setup.ps1's git-state
+  Smoke test for the C4 PowerShell twins — setup.ps1's git-state
   bootstrap + vault-autosync.ps1. Proves the PS ports wire through on Windows;
   the exhaustive behaviour (gate matrix, secret-block) is covered by the bash
   twin test-vault-git.sh. SKIPs loud if pre-commit is unavailable (Precondition B).
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Continue'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TR = (Resolve-Path (Join-Path $here '..')).Path
@@ -117,7 +117,7 @@ try {
         Assert 'clone autosync recreated .single-writer' (Test-Path (Join-Path $V '.single-writer'))
         Assert 'clone autosync commit landed past unborn HEAD' (([int]((git -C $V rev-list --count HEAD).Trim())) -gt ([int]$eBase))
 
-        # Phase G (HIMMEL-501) — auto-fixer resilience.
+        # Phase G — auto-fixer resilience.
         # A churny .md note (hard-break = 2 trailing spaces, no final newline):
         # pre-commit must NOT rewrite it, so the commit isn't aborted.
         $gBase = (git -C $V rev-list --count HEAD).Trim()
@@ -152,7 +152,7 @@ try {
         Assert 'G9 local HEAD unchanged (retry did not commit the secret)' (((git -C $V rev-parse HEAD).Trim()) -eq $g8Local)
         Assert 'G10 bare remote unchanged (nothing pushed)' (((git -C $bare rev-parse main).Trim()) -eq $g8Bare)
 
-        # Phase H (HIMMEL-615) — a non-ASCII (Hebrew) source-note name must NOT
+        # Phase H — a non-ASCII (Hebrew) source-note name must NOT
         # crash the trailing-whitespace fixer NOR get rewritten. This is the
         # native-Windows runner, where the cp1252 UnicodeEncodeError actually
         # fires (Linux only ever validates the "not rewritten" half). The name

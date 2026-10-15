@@ -19,9 +19,9 @@
 # Idempotent. Re-run after a fresh clone (.git/hooks is not versioned).
 set -euo pipefail
 
-# Target the vault THIS script lives in, not the caller's cwd (HIMMEL-2223:
+# Target the vault THIS script lives in, not the caller's cwd:
 # `bash <vault>/scripts/hooks/install-nostash-hooks.sh` run with a cwd inside
-# a DIFFERENT repo used to install into that other repo's shared .git/hooks).
+# a DIFFERENT repo used to install into that other repo's shared .git/hooks.
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
 computed_root=$(cd -- "$script_dir/../.." && pwd -P)
 if ! git -C "$computed_root" rev-parse --show-toplevel >/dev/null 2>&1; then
@@ -69,9 +69,9 @@ hooks_dir=$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)
 hooks_dir="$hooks_dir/hooks"
 mkdir -p "$hooks_dir"
 
-# Resolve pre-commit ONCE, here (BEFORE touching any existing hook -- HIMMEL-2223
-# codex-1: resolving after backing up an existing hook left the vault with
-# NO pre-commit/commit-msg hook at all whenever resolution then failed), and
+# Resolve pre-commit ONCE, here (BEFORE touching any existing hook):
+# resolving after backing up an existing hook would leave the vault with
+# NO pre-commit/commit-msg hook at all whenever resolution then failed, and
 # bake the verified choice into the generated hooks below -- the way
 # pre-commit's own hook bakes INSTALL_PYTHON. Re-resolving from PATH at
 # commit time (the previous approach) breaks under a GUI/Obsidian-Git

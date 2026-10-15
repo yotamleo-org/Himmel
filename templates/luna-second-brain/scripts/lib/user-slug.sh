@@ -23,7 +23,7 @@
 # (rc=0) or a diagnostic labelled by `severity` (default ERR, rc=2 either
 # way). setup.sh's step [2/6] calls it via scripts/lib/check-user-slug.sh,
 # which passes WARN and turns the rc=2 failure into an advisory rc=3 —
-# HIMMEL-2539: an unresolved slug no longer aborts install.
+# An unresolved slug no longer aborts install.
 
 user_slug() {
     if [ -n "${USER_SLUG:-}" ]; then

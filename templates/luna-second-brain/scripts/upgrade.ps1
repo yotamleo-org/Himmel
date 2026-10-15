@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Content-preserving vault/template upgrade (HIMMEL-389) — PowerShell twin.
+  Content-preserving vault/template upgrade — PowerShell twin.
 
 .DESCRIPTION
   Windows entry point for the vault upgrade. The upgrade engine is upgrade.sh

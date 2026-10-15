@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for templates/luna-second-brain/scripts/upgrade.sh (HIMMEL-389).
+# Tests for templates/luna-second-brain/scripts/upgrade.sh.
 # Content-preserving vault/template upgrade. Each case builds a throwaway
 # template + vault fixture under a temp dir and runs upgrade.sh against them
 # with explicit --template-dir / --vault-dir so nothing touches a real vault.
@@ -51,7 +51,7 @@ text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 # for plain <<. Bash strips leading TABS from a <<- terminator line only;
 # a plain << terminator must stay at column zero. (?(1)\t*) applies that
 # asymmetry: tabs before the terminator are permitted only when group 1
-# actually matched '-' (HIMMEL-2956).
+# actually matched '-'.
 pattern = re.compile(r"\$\([^)]*?<<(-)?\s*'([A-Za-z_][A-Za-z_0-9]*)'[^\n]*\n(.*?)^(?(1)\t*)\2[ \t]*$", re.M | re.S)
 failed = False
 for match in pattern.finditer(text):
@@ -85,7 +85,7 @@ repro = (root / "bash32-repro.sh").read_text(encoding="utf-8")
 (root / "bash32-backtick.sh").write_text(repro.replace("script's", "script`s"), encoding="utf-8")
 (root / "bash32-multiline.sh").write_text(repro.replace("$(python3", "$(\npython3"), encoding="utf-8")
 # <<- opener with a TAB-indented terminator: bash strips the leading tab,
-# so this is a real, unbalanced heredoc (HIMMEL-2956 negative control).
+# so this is a real, unbalanced heredoc.
 tab_repro = repro.replace("<<'PY'", "<<-'PY'")
 tab_repro = tab_repro.replace("\n# this script's own writer\n", "\n\t# this script's own writer\n")
 tab_repro = tab_repro.replace("\nPY\n", "\n\tPY\n")
@@ -97,7 +97,7 @@ tab_repro = tab_repro.replace("\nPY\n", "\n\tPY\n")
 # column-zero terminator: bash never strips tabs for a plain heredoc, so
 # that tab-indented line is body text, not a terminator. The checker must
 # keep scanning past it to the real terminator and still catch the
-# unmatched apostrophe in the body (HIMMEL-2956 positive control).
+# unmatched apostrophe in the body.
 notab_guard = repro.replace(
     "<<'PY'\n# this script's own writer\n",
     "<<'PY'\n\tPY\n# this script's own writer\n",
@@ -111,7 +111,7 @@ for fixture in backtick multiline; do
     assert_eq "T0 structural RED control rejects $fixture repro" "1" "$rc"
 done
 
-# HIMMEL-2956: <<- permits a TAB-indented terminator; plain << does not.
+# <<- permits a TAB-indented terminator; plain << does not.
 check_nested_heredoc_quotes "$TMP/bash32-tab-repro.sh"; rc=$?
 assert_eq "T0 structural RED control rejects tab-indented <<- terminator repro" "1" "$rc"
 check_nested_heredoc_quotes "$TMP/bash32-tab-fixed.sh"; rc=$?
@@ -247,7 +247,7 @@ got_ver=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"
 assert_eq "T6 conflict does not advance the stamp" "0.1.0" "$got_ver"
 
 # ---------------------------------------------------------------------------
-# T6b/T6c (HIMMEL-4380): a section the VAULT deliberately deleted stays deleted.
+# T6b/T6c: a section the VAULT deliberately deleted stays deleted.
 # T6b: template left the section unchanged. T6c: template MODIFIED it — mine-
 # deleted vs template-changed is a conflict hunk that used to recur forever
 # (a conflict never advances the stamp or base). Resolve once: vault deletion
@@ -280,7 +280,7 @@ for variant in unchanged modified; do
     assert_eq "T6s-$variant second run section still deleted" "$(sha_of_str "$(sec_gone)")" "$(sha_of_str "$(cat "$V/_CLAUDE.md")")"
 done
 
-# T6d/T6e (HIMMEL-4386): the vault-deletion resolver must not mistake manual text
+# T6d/T6e: the vault-deletion resolver must not mistake manual text
 # for diff3 markers. T6d: a vault hunk that OPENS with a setext `=======`
 # underline is vault text, not an empty side — it must conflict to the sidecar
 # and the vault text must survive. T6e: literal marker lines in the manual (as
@@ -401,7 +401,7 @@ got_ver=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"
 assert_eq "T15 write-failure does not advance stamp" "0.1.0" "$got_ver"
 
 # ---------------------------------------------------------------------------
-# T16: resolver — generic known-path discovery (HIMMEL-389 Phase 2). With
+# T16: resolver — generic known-path discovery. With
 # --template-dir AND $HIMMEL_DIR unset and no himmel sibling, the resolver finds
 # the template via a generic $HOME-relative candidate path. Simulate by pointing
 # $HOME at a temp tree that holds github/himmel/templates/luna-second-brain.
@@ -441,7 +441,7 @@ case "$out" in *"set HIMMEL_DIR"*) pass "T18 prints the set-HIMMEL_DIR hint" ;; 
 # ---------------------------------------------------------------------------
 # T19: resolver — TWO physically-distinct candidate checkouts under $HOME warn
 # and resolve to the FIRST in loop order (github/himmel before Documents/...).
-# Guards the silent dual-clone auto-pick (HIMMEL-389 Phase 2 CR).
+# Guards the silent dual-clone auto-pick.
 T19HOME="$TMP/t19-home"
 make_template "$T19HOME/github/himmel/templates/luna-second-brain" "1.1.1"
 make_template "$T19HOME/Documents/github/himmel/templates/luna-second-brain" "2.2.2"
@@ -467,8 +467,8 @@ case "$out" in *"multiple himmel checkouts"*) fail "T20 must not warn (only one 
 
 # ---------------------------------------------------------------------------
 # T21: sibling scan — a decoy sibling (dir, no marketplace.json) is SKIPPED and a
-# later valid sibling resolves; one valid => no warning (HIMMEL-420 — the sibling
-# surface now matches the $HOME-candidate surface). Forces the sibling path with
+# later valid sibling resolves; one valid => no warning (the sibling
+# surface matches the $HOME-candidate surface). Forces the sibling path with
 # $HIMMEL_DIR unset + a $HOME holding no candidate, and the vault under $base.
 T21BASE="$TMP/t21-base"
 mkdir -p "$T21BASE/himmel/templates/luna-second-brain"   # decoy sibling: no marketplace.json
@@ -481,7 +481,7 @@ case "$out" in *"multiple himmel checkouts"*) fail "T21 sibling must not warn (o
 
 # ---------------------------------------------------------------------------
 # T22: sibling scan — TWO physically-distinct valid sibling checkouts warn and
-# resolve to the explicit `himmel` first (HIMMEL-420).
+# resolve to the explicit `himmel` first.
 T22BASE="$TMP/t22-base"
 make_template "$T22BASE/himmel/templates/luna-second-brain" "5.5.5"
 make_template "$T22BASE/zzz-himmel/templates/luna-second-brain" "6.6.6"
@@ -494,7 +494,7 @@ case "$out" in *"(v6.6.6)"*) fail "T22 must not pick the later glob match zzz-hi
 
 # ---------------------------------------------------------------------------
 # T23: --check on a BEHIND vault prints the upgrade-available nudge, exits 0, and
-# mutates nothing (HIMMEL-423 Phase 3).
+# mutates nothing.
 T="$TMP/t23-tmpl"; V="$TMP/t23-vault"; make_template "$T" "2.0.0"; mkdir -p "$V/scripts/hooks"; stamp_vault "$V" "1.0.0"
 printf 'STALE\n' > "$V/scripts/hooks/check-no-force-push.sh"
 before=$(find "$V" -type f -exec "${SHA256[@]}" {} \; | sort)
@@ -526,7 +526,7 @@ case "$out" in *"(vault is v0.0.0)"*) pass "T25 --check treats un-stamped vault 
 # It used to copy the operator's live vault ($HOME/Documents/luna), which is
 # coupled to live state: any locally edited template-owned file is withheld and
 # upgrade.sh exits 1 BY DESIGN (red on the operator's box), while on CI the
-# vault is absent so the case self-skipped and the red never showed (HIMMEL-3171).
+# vault is absent so the case self-skipped and the red never showed.
 # The fixture is an older-stamped copy of the real template + journal content, so
 # it exercises the real template tree on every host.
 REALTMPL="$(cd "$HERE/.." && pwd)"   # this template's own root (scripts/..)
@@ -549,7 +549,7 @@ bash "$UPGRADE" --template-dir "$REALTMPL" --vault-dir "$VC" --yes >/dev/null 2>
 journal_after=$(find "$VC/50-Journal" -type f -exec "${SHA256[@]}" {} \; 2>/dev/null | sort)
 assert_eq "T11 acceptance rc" "0" "$rc"
 assert_eq "T11 journal bodies unchanged" "$journal_before" "$journal_after"
-# _CLAUDE.md contract (HIMMEL-1750): the vault carries a base snapshot, so a
+# _CLAUDE.md contract: the vault carries a base snapshot, so a
 # legitimate template delta MAY merge in — byte-equality would fail on every
 # template _CLAUDE.md change (hit live when the Retrieval Routing section
 # shipped). Assert what actually matters: the merge completed without conflict
@@ -588,13 +588,13 @@ esac
 assert_eq "T11 control: the edited file is left untouched" "$t11_edit_sha" "$(sha_of "$VC/.gitleaks.toml")"
 
 # ---------------------------------------------------------------------------
-# T26 (HIMMEL-521): the REAL template's two version sources must agree.
+# T26: the REAL template's two version sources must agree.
 # upgrade.sh reads marketplace.json metadata.version (the authoritative version
 # for the upgrade comparison + the written stamp); setup.sh seeds a freshly
 # scaffolded vault from .vault-template.json. If the two drift, /luna-upgrade
 # reports "already current" for already-stamped vaults even when template
-# content shipped — exactly the HIMMEL-501 regression (it bumped only the seed,
-# stranding the 501+460 template changes). Guard so the anchors can never
+# content shipped — exactly the regression where only the seed was bumped,
+# stranding the template changes. Guard so the anchors can never
 # silently diverge again.
 REALTMPL="$(cd "$HERE/.." && pwd)"
 mkt_ver=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["version"])' "$REALTMPL/marketplace/.claude-plugin/marketplace.json" 2>/dev/null)
@@ -608,7 +608,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# T27 (HIMMEL-1366): a _CLAUDE.md conflict with 2+ HUNKS must still be
+# T27: a _CLAUDE.md conflict with 2+ HUNKS must still be
 # classified as a conflict, not an error. git merge-file's exit code is the
 # NUMBER of conflict hunks (0 = clean, 1..127 = N-hunk conflict, >=128 = a real
 # error). The old code only treated rc==1 as a conflict, so any multi-hunk
@@ -650,7 +650,7 @@ assert_eq "T27 multi-hunk does not advance the stamp" "0.1.0" "$got_ver"
 if [ "$rc" -ne 0 ]; then pass "T27 multi-hunk conflict exits non-zero"; else fail "T27 multi-hunk conflict exits non-zero" "rc=0"; fi
 
 # ---------------------------------------------------------------------------
-# T28 (HIMMEL-525): bundled plugin assets (main.js, manifest.json, styles.css
+# T28: bundled plugin assets (main.js, manifest.json, styles.css
 # under .obsidian/plugins/*/) are FIRST-POPULATION ONLY (skipexists), never
 # overwrite. A vault whose installed plugin is NEWER than the template bundle
 # must NOT be downgraded (live incident: obsidian-local-rest-api 4.1.3 -> 4.0.1,
@@ -689,7 +689,7 @@ assert_eq "T28 first-population seeds absent main.js"       "$(sha_of "$T/.obsid
 assert_eq "T28 first-population seeds absent styles.css"    "$(sha_of "$T/.obsidian/plugins/obsidian-local-rest-api/styles.css")"    "$(sha_of "$V2/.obsidian/plugins/obsidian-local-rest-api/styles.css")"
 
 # ---------------------------------------------------------------------------
-# T29 (HIMMEL-2886): a template-owned "overwrite"-class file the vault
+# T29: a template-owned "overwrite"-class file the vault
 # COMMITTED a local edit to since its last stamped upgrade must not be
 # silently clobbered — the actual incident (luna-upgrade-all apply on
 # ~/Documents/luna, 2026-09-09) had a CLEAN git status (the edit was
@@ -748,7 +748,7 @@ assert_eq "T29 stamp NOT advanced while a local edit is withheld" "0.9.0" "$t29_
 
 
 # ---------------------------------------------------------------------------
-# T30 (HIMMEL-2903): the local-edit baseline is a per-file content SNAPSHOT
+# T30: the local-edit baseline is a per-file content SNAPSHOT
 # recorded in the stamp, not the vault's git history — so an edit committed in
 # the SAME commit that advances the stamp (a batching autosync, exactly what
 # the luna github-sync plugin does every 10 min) is still caught. The git path
@@ -801,7 +801,7 @@ assert_eq "T30 apply does NOT overwrite the edit the git baseline cannot see" "$
 if [ "$t30_rc" -ne 0 ]; then pass "T30 apply exits non-zero (not a clean upgrade)"; else fail "T30 apply exits non-zero (not a clean upgrade)" "rc=0"; fi
 
 # ---------------------------------------------------------------------------
-# T31 (HIMMEL-2903): an OPERATIONAL `git log` failure (shallow clone, corrupt
+# T31: an OPERATIONAL `git log` failure (shallow clone, corrupt
 # index, permission error) must fail CLOSED, like the cat-file/show steps
 # already do — not be read as "no baseline" and fall through to the pre-2886
 # silent overwrite. Simulated with a PATH stub `git` that fails ONLY for `log`.
@@ -849,7 +849,7 @@ esac
 if [ "$t31_rc" -ne 0 ]; then pass "T31 apply exits non-zero (not a clean upgrade)"; else fail "T31 apply exits non-zero (not a clean upgrade)" "rc=0"; fi
 
 # ---------------------------------------------------------------------------
-# T32 (HIMMEL-2903): the fail-closed git-log gate must NOT fire on a vault whose
+# T32: the fail-closed git-log gate must NOT fire on a vault whose
 # repo simply has no commits yet — `git log` exits 128 there too ("does not have
 # any commits yet"), but that is a legitimately absent baseline, not an
 # operational failure. A blanket rc!=0 check would withhold every file on the
@@ -873,7 +873,7 @@ assert_eq "T32 first upgrade of a commitless vault still writes the template fil
 assert_eq "T32 first upgrade of a commitless vault exits 0" "0" "$t32_rc"
 
 # ---------------------------------------------------------------------------
-# T33 (HIMMEL-2903, CR round 1 codex-1): the HEAD gate must read the EXACT rc.
+# T33: the HEAD gate must read the EXACT rc.
 # `rev-parse --verify -q HEAD` exits 1 for "HEAD names no commit" (T32's
 # legitimately absent baseline) but 128 for an operational refs failure — an
 # unreadable refs backend, say. Collapsing the two lets a refs-layer error
@@ -927,7 +927,7 @@ esac
 if [ "$t33_rc" -ne 0 ]; then pass "T33 apply exits non-zero (not a clean upgrade)"; else fail "T33 apply exits non-zero (not a clean upgrade)" "rc=0"; fi
 
 # ---------------------------------------------------------------------------
-# T34 (HIMMEL-2903, CR round 1 codex-2): a snapshot scratch file that cannot be
+# T34: a snapshot scratch file that cannot be
 # created must ABORT before the first write. The stamp is rewritten wholesale,
 # so proceeding would strip the `files` map the vault already has — silently
 # demoting it back to the poisonable git baseline. Simulated by pointing TMPDIR
@@ -974,7 +974,7 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# T35/T36 (HIMMEL-2903, CR round 2): snapshot persistence must fail CLOSED on
+# T35/T36: snapshot persistence must fail CLOSED on
 # BOTH sides of the scratch file. The stamp is rewritten wholesale, so a run
 # that records the snapshot only partially (append fails) or cannot read it
 # back (read fails) would replace a complete baseline with a partial or absent
@@ -1060,7 +1060,7 @@ assert_eq "T36 the existing snapshot survives intact" "$t36_keys_before" "$(snap
 if [ "$t36_rc" -ne 0 ]; then pass "T36 exits non-zero rather than stamping"; else fail "T36 exits non-zero rather than stamping" "rc=0, out: $t36_out"; fi
 
 # ---------------------------------------------------------------------------
-# T37 (HIMMEL-2918, round-3 pair item 1): a stamp whose `files` value is
+# T37: a stamp whose `files` value is
 # present but unusable (a string, not a dict) must fail CLOSED, not be read
 # as an empty map — which would silently revert to the git fallback, exactly
 # the scenario T30 exists to close. Same poisoning as T30 (the local edit and
@@ -1114,7 +1114,7 @@ esac
 if [ "$t37_rc" -ne 0 ]; then pass "T37 apply exits non-zero (not a clean upgrade)"; else fail "T37 apply exits non-zero (not a clean upgrade)" "rc=0"; fi
 
 # ---------------------------------------------------------------------------
-# T37b (HIMMEL-2918): the one LEGITIMATE empty map — a legacy stamp with no
+# T37b: the one LEGITIMATE empty map — a legacy stamp with no
 # `files` key at all (predates the snapshot) — must still fall back to the
 # git baseline exactly as before this ticket. T37 above proves the failure
 # cases now withhold; this proves the fix didn't also break the one case that
@@ -1142,7 +1142,7 @@ case "$t37b_dry" in
 esac
 
 # ---------------------------------------------------------------------------
-# T38 (HIMMEL-2918, round-3 pair item 2): record_snapshot must fail CLOSED on
+# T38: record_snapshot must fail CLOSED on
 # an empty digest, not just on the literal "MISSING". A sha256sum failure mid-
 # run still leaves `cut` exiting 0 on no input, so sha_of returns "" — the
 # row for that file would be appended anyway and silently dropped later by
@@ -1154,7 +1154,7 @@ esac
 # and by has_local_edit's snapshot-baseline comparison — breaking those turns
 # an empty digest into a false LOCAL-EDIT withhold, which also exits non-zero
 # and would make this case pass for the wrong reason (the vacuous-control
-# trap HIMMEL-2903 was already caught in once). A normal run calls sha256sum
+# trap). A normal run calls sha256sum
 # on the target file exactly 5 times — the diff check + the snapshot compare,
 # once each in the plan pass and again in the execute pass, then record_snapshot's
 # own capture last — so the stub only fails the 5th call, passing the first 4
@@ -1200,7 +1200,7 @@ case "$t38_out" in
 esac
 
 # ---------------------------------------------------------------------------
-# T39-T43 (HIMMEL-3066): the optional github-sync plugin. Vendored under
+# T39-T43: the optional github-sync plugin. Vendored under
 # optional/plugins/github-sync/ (NOT .obsidian/plugins/), installed into the
 # vault only when --with-github-sync/LUNA_WITH_GITHUB_SYNC is set OR the
 # vault already has it — never on flag-alone, never dropped once present.
@@ -1272,7 +1272,7 @@ run_upgrade --yes >/dev/null 2>&1
 merged=$("$PY" -c 'import json,sys;print(",".join(sorted(json.load(open(sys.argv[1])))))' "$V/.obsidian/community-plugins.json")
 case ",$merged," in *,github-sync,*) fail "T44 disabled + no flag: community-plugins.json stays without github-sync" "got: $merged" ;; *) pass "T44 disabled + no flag: community-plugins.json stays without github-sync" ;; esac
 
-# T45 (critic panel finding, HIMMEL-3066): a fresh --with-github-sync install
+# T45: a fresh --with-github-sync install
 # must carry the vendored LICENSE alongside the plugin assets. Every OTHER
 # bundled plugin's LICENSE reaches a vault via the initial template checkout;
 # github-sync has no such path any more (it moved out of the git-tracked
@@ -1283,7 +1283,7 @@ run_upgrade --yes --with-github-sync >/dev/null 2>&1
 assert_eq "T45 --with-github-sync writes LICENSE" "$(sha_of "$T/optional/plugins/github-sync/LICENSE")" "$(sha_of "$V/.obsidian/plugins/github-sync/LICENSE")"
 
 # ---------------------------------------------------------------------------
-# T46-T48 (HIMMEL-3094): when the github-sync community-plugins source cannot
+# T46-T48: when the github-sync community-plugins source cannot
 # be prepared (mktemp fails, or the merge step fails), the run must WARN and
 # keep merging from the template's own list — not repoint CP_MERGE_SRC at a
 # missing/empty file and silently skip the whole plugin merge.
@@ -1354,7 +1354,7 @@ case "$(cat "$V/.obsidian/community-plugins.json" 2>/dev/null)" in
     *) pass "T49 non-array template: github-sync is not injected" ;;
 esac
 
-# T50-T52 (HIMMEL-3189): the add-only plugin merge must validate ITS OWN source.
+# T50-T52: the add-only plugin merge must validate ITS OWN source.
 # A non-array template community-plugins.json ({"calendar":true}) used to be
 # iterated as its KEYS and written into the vault as ["calendar"], with the run
 # exiting 0. Now the merge warns and leaves the vault's file untouched; the run
@@ -1389,7 +1389,7 @@ merged=$("$PY" -c 'import json,sys;print(",".join(sorted(json.load(open(sys.argv
 assert_eq "T52 list template: still merges add-only" "calendar,dataview,new" "$merged"
 
 # ---------------------------------------------------------------------------
-# T53-T58 (HIMMEL-3037): Obsidian rewrites its own .obsidian/*.json on every
+# T53-T58: Obsidian rewrites its own .obsidian/*.json on every
 # settings touch — without the template's trailing newline, and re-indented —
 # so a template-owned file with NO semantic difference read as a local edit on
 # every upgrade after the first launch, and the stamp was refused for good.
@@ -1500,13 +1500,13 @@ t58_out=$(run_upgrade --yes 2>&1); t58_rc=$?
 if [ "$t58_rc" -eq 0 ]; then pass "T58 git baseline: newline-only vault drift + a real template change exits 0"; else fail "T58 git baseline: newline-only vault drift + a real template change exits 0" "rc=$t58_rc, out: $t58_out"; fi
 assert_eq "T58 git baseline: the template's new app.json was written" "$(sha_of "$T/.obsidian/app.json")" "$(sha_of "$V/.obsidian/app.json")"
 
-# T62 (HIMMEL-3037, CodeRabbit round on #888): the SNAPSHOT baseline is a hash,
+# T62: the SNAPSHOT baseline is a hash,
 # so a vault that a prior upgrade snapshotted, Obsidian then re-serialised, and
 # the template then REALLY changed read as a local edit before the formatting-
 # tolerant git compare was ever reached. On a snapshot mismatch the git baseline
 # now answers too — but only a VERIFIED one: the content at STAMP_COMMIT must
 # hash to the snapshot (else a local edit committed in the stamp commit itself
-# would be trusted, the HIMMEL-2903 poison).
+# would be trusted, the poisoned-baseline case).
 t62_seed() {   # $1 case tag; git vault upgraded once + committed; template then changes app.json
     T="$TMP/$1-tmpl"; V="$TMP/$1-vault"
     make_template "$T" "1.0.0"
@@ -1577,7 +1577,7 @@ t62_out=$(run_upgrade --yes 2>&1); t62_rc=$?
 t62_expect_withheld "T62e local edit committed alongside the stamp"
 
 # ---------------------------------------------------------------------------
-# T59-T60 (HIMMEL-3037): a run whose ONLY non-success is withheld local edits
+# T59-T60: a run whose ONLY non-success is withheld local edits
 # (no write failure, no snapshot failure, no _CLAUDE.md conflict) is not a
 # failure — it exits a distinct rc 3 and prints a stable NEEDS-RECONCILE line
 # (stdout, last line), while the stamp is still NOT written so the vault keeps
@@ -1631,8 +1631,8 @@ case "$t61_out" in
 esac
 
 # ---------------------------------------------------------------------------
-# T63 (HIMMEL-3206): a vault owner lands by hand the SAME fix the template later
-# ships (the HIMMEL-3003 case) — .gitleaks.toml / .gitignore then differ from
+# T63: a vault owner lands by hand the SAME fix the template later
+# ships — .gitleaks.toml / .gitignore then differ from
 # the template only in comments, ordering and spacing. That is CONVERGED, not a
 # local edit: the template copy is taken and the stamp advances. Anything not
 # PROVABLY the same stays withheld (rc 3): .gitleaks.toml is the secret
@@ -1677,7 +1677,7 @@ title = "vault gitleaks"
 [extend]
 useDefault = true   # keep the shipped rules
 
-# hand-landed: the HIMMEL-3003 fix
+# hand-landed: the shipped fix
 [[rules]]
 id = "rule-b"
 regex = '''BBB[0-9]+'''
@@ -1806,7 +1806,7 @@ t63_out=$(run_upgrade --yes 2>&1); t63_rc=$?
 t63_expect_withheld "T63l leading-space pattern" .gitignore "$t63_pre"
 
 # ---------------------------------------------------------------------------
-# T64 (HIMMEL-3406): a file that differs from the template ONLY in line
+# T64: a file that differs from the template ONLY in line
 # ending (CRLF vs LF — an operator's editor, or a Windows checkout, re-saving
 # a template-owned file with no content change) reads as identical, not as a
 # local edit: no WRITE, no LOCAL-EDIT, the run completes and the stamp
@@ -1832,7 +1832,7 @@ assert_eq "T64 apply leaves the CRLF file's bytes untouched" "$t64_pre" "$(sha_o
 assert_eq "T64 stamp advances" "1.0.0" "$(t53_stamp_version)"
 
 # ---------------------------------------------------------------------------
-# T65-T68 (HIMMEL-3406): keep-mine. A genuine (non-EOL) local edit is
+# T65-T68: keep-mine. A genuine (non-EOL) local edit is
 # withheld by default; --keep advances the stamp and records the decision
 # against the template content it was made against; a later run that finds
 # the template UNCHANGED for that file does not re-prompt; a later run where
@@ -1903,7 +1903,7 @@ assert_eq "T68 apply exits 3 (NEEDS-RECONCILE)" "3" "$t68_rc"
 assert_eq "T68 stamp NOT advanced" "1.2.0" "$(t53_stamp_version)"
 
 # ---------------------------------------------------------------------------
-# T69 (HIMMEL-3439 regression for HIMMEL-3406 codex round-1): a trailing
+# T69: a trailing
 # --keep with no value must be a usage error (rc=2), not hang the arg parser
 # — a `shift 2` past the last positional argument fails without consuming
 # it, so the buggy loop re-matched --keep forever. Bounded so a regression
@@ -1937,11 +1937,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# T70 (HIMMEL-3439 regression for HIMMEL-3406 codex round-2, negative control
-# for T64): a standalone trailing \r that is NOT part of a CRLF pair is
+# T70 (negative control for T64): a standalone trailing \r that is NOT part of a CRLF pair is
 # genuine content, not a line-ending style — content_equiv must NOT collapse
-# it to a false match (the round-1 fix stripped every \r unconditionally and
-# did exactly that; round 2 narrowed normalization to CRLF pairs only).
+# it to a false match (stripping every \r unconditionally would do exactly that;
+# normalization is narrowed to CRLF pairs only).
 T="$TMP/t70-tmpl"; V="$TMP/t70-vault"
 make_template "$T" "1.0.0"
 mkdir -p "$V"; cp -r "$T/." "$V/"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic tests for scripts/lib/check-user-slug.sh and setup.sh's step
-# [2/6] wiring (HIMMEL-2539).
+# [2/6] wiring.
 #
 # The thing under test is a DISPOSITION, not a resolver: the resolver
 # (scripts/lib/user-slug.sh) is unchanged in its two sources (env var, git
@@ -27,8 +27,7 @@ pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "want='$2' got='$3'"; fi; }
 # grep -q with NO pipeline: under `set -o pipefail` a piped `grep -q` reports
-# a SUCCESSFUL early match as a failed pipeline (SIGPIPE on the producer) —
-# HIMMEL-1430.
+# a SUCCESSFUL early match as a failed pipeline (SIGPIPE on the producer).
 assert_has() { if grep -q -F -- "$2" <<< "$3"; then pass "$1"; else fail "$1" "missing: $2"; fi; }
 assert_lacks() { if grep -q -F -- "$2" <<< "$3"; then fail "$1" "unexpectedly present: $2"; else pass "$1"; fi; }
 

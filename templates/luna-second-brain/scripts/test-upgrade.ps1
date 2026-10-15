@@ -1,5 +1,5 @@
 ﻿<#
-  Smoke test for upgrade.ps1 (HIMMEL-389) — verifies the PowerShell twin locates
+  Smoke test for upgrade.ps1 — verifies the PowerShell twin locates
   Git Bash and delegates to upgrade.sh: a --dry-run mutates nothing, and a --yes
   run applies the engine's overwrite policy. The exhaustive per-file behavior is
   covered by test-upgrade.sh; this only proves the twin wires through correctly.
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ps1  = Join-Path $here 'upgrade.ps1'
@@ -52,11 +52,11 @@ finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
-# T26 (HIMMEL-521): the REAL template's two version sources must agree.
+# T26: the REAL template's two version sources must agree.
 # upgrade.sh/.ps1 read marketplace.json metadata.version (authoritative);
 # setup.ps1 seeds a new vault from .vault-template.json. If they drift,
 # /luna-upgrade reports "already current" even when template content shipped
-# (the HIMMEL-501 regression). Guard so the anchors can never diverge again.
+# Guard so the anchors can never diverge again.
 $realTmpl = Split-Path -Parent $here
 $mktVer  = (Get-Content -Raw (Join-Path $realTmpl 'marketplace\.claude-plugin\marketplace.json') | ConvertFrom-Json).metadata.version
 $seedVer = (Get-Content -Raw (Join-Path $realTmpl '.vault-template.json') | ConvertFrom-Json).version

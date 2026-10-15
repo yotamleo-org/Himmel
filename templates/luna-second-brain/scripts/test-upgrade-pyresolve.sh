@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for upgrade.sh's _resolve_python (HIMMEL-522). Proves the engine
+# Hermetic test for upgrade.sh's _resolve_python. Proves the engine
 # picks a WORKING python and SKIPS the Microsoft Store stub (`python3` on PATH
 # but emits no stdout / exits nonzero) that breaks the engine on stock Windows.
 #

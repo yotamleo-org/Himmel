@@ -44,7 +44,7 @@ chk "medic skill installed"        "[ -f '$MED/.claude/skills/medic/SKILL.md' ]"
 chk "egress floor installed"       "[ -f '$MED/.claude/hooks/block-cloud-egress.sh' ]"
 chk "operator skin-archive row preserved" "grep -q '2025-12-31 | hands' '$MED/_skin-photo-archive.md'"
 chk "operator _CLAUDE rules preserved" "grep -q 'my own rules' '$MED/_CLAUDE.md'"
-# HIMMEL-2173: a vault that predates .salus (only .salus-profile, the shape
+# A vault that predates .salus (only .salus-profile, the shape
 # make_vault fixtures above) must get the PHI guard marker backfilled by a
 # plain upgrade — this is the durability fix's own re-run path.
 chk ".salus PHI guard marker backfilled on upgrade" "[ -f '$MED/.salus' ]"

@@ -32,7 +32,7 @@ param(
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Defaults resolved here, not as param() default expressions (LUNA-131 D2):
@@ -128,7 +128,7 @@ function ConvertTo-SweepUtcDateTime($val) {
 
 # --- 1.1 single-instance lock (D12) ---
 #
-# CR round 3 (codex-1): the earlier create-then-write-owner.json design had a
+# A create-then-write-owner.json design would have a
 # real TOCTOU window — a contender could see the lock DIRECTORY exist with no
 # owner.json yet (the legitimate holder just hasn't written it) and treat
 # that as abandoned, steal it, and both ends up believing they hold the lock.
@@ -176,7 +176,7 @@ function Enter-SweepLock {
                 } elseif ($proc.StartTime.ToUniversalTime() -ne (ConvertTo-SweepUtcDateTime $prevOwner.process_start_utc)) {
                     $steal = $true
                 } else {
-                    # CR (codex-1, round 5): the heartbeat before the pull half
+                    # The heartbeat before the pull half
                     # covers most of a tick, but a single pull that itself runs
                     # past 10 min would still leave a VERIFIABLY-alive holder
                     # (matching pid + StartTime) stealable. Two different
@@ -219,8 +219,8 @@ function Enter-SweepLock {
     return @{ Acquired = $true }
 }
 
-# CR (codex-2, round 4): the steal threshold was pure wall-clock age since
-# acquisition, with no distinction between a stuck holder and one still
+# The steal threshold is not pure wall-clock age since
+# acquisition: a stuck holder differs from one still
 # legitimately mid-tick (a slow network pull can run past 10 min on its
 # own). Called mid-tick before the network-bound pull half so an actively
 # progressing holder keeps refreshing its own acquired_utc and is never
@@ -242,7 +242,7 @@ function Update-SweepLockHeartbeat {
         process_start_utc = (ConvertTo-SweepUtcDateTime $owner.process_start_utc).ToString('o')
         acquired_utc      = (Get-Date).ToUniversalTime().ToString('o')
     }
-    # CR (codex-2, round 5): write-then-atomically-replace, same idiom as
+    # Write-then-atomically-replace, same idiom as
     # Write-SweepStatus — an in-place Set-Content overwrite lets a concurrent
     # reader observe a truncated/partial owner.json mid-write and misread a
     # live lock as ownerless.
@@ -297,7 +297,7 @@ function Test-SweepSanity {
         return @{ Ok = $false; SkipReason = 'not-main' }
     }
 
-    # CR (codex-3, round 5): every prior check here was NEGATIVE (reject a
+    # Every prior check here was NEGATIVE (reject a
     # known-bad shape) with no POSITIVE proof this is actually a luna vault —
     # a misconfigured $VaultPath pointing at any other main-branch repo with
     # an origin (and no ExpectedOriginUrl pin, which is opt-in) would sail
@@ -417,7 +417,7 @@ function Invoke-SweepCommitHalf {
     $staged = @((& $GitExe -C $VaultPath diff --cached --name-only) -split "`n" | Where-Object { $_ -ne '' })
     if ($staged.Count -eq 0) { return @{ Result = 'nothing-to-commit' } }
 
-    # CR (codex-1, round 6): the scan above and `add -A` are not atomic — a
+    # The scan above and `add -A` are not atomic — a
     # file created/modified in that gap would be staged mid-write. This does
     # not close the race (nothing short of a filesystem lock fully does), but
     # re-checking the now-STAGED set's ages right before committing shrinks
@@ -439,7 +439,7 @@ function Invoke-SweepCommitHalf {
     Set-Content -NoNewline -Path $msgFile -Value "chore: vault autosync`n`nauto-sync: $(Get-SweepNowIso)`nagent: luna-131-sweeper`n"
     $ok = Invoke-SweepGitCommit -GitExe $GitExe -VaultPath $VaultPath -MsgFile $msgFile
     if (-not $ok) {
-        # HIMMEL-501: an auto-fixer may have modified a staged file and
+        # An auto-fixer may have modified a staged file and
         # aborted the commit — re-stage and retry once.
         & $GitExe -C $VaultPath add -A
         # CR (codex-3, pr-check pass): the retry's own add -A can pick up a
@@ -470,7 +470,7 @@ function Invoke-SweepCommitHalf {
 
     # Second failure (D7): unstage ONLY this tick's own paths — never a
     # blanket reset, since the lock doesn't serialize against a human
-    # session or pre-commit's own stash path (HIMMEL-834).
+    # session or pre-commit's own stash path.
     & $GitExe -C $VaultPath restore --staged -- $staged
     return @{ Result = 'commit-blocked' }
 }
@@ -526,7 +526,7 @@ function Invoke-SweepPushHalf {
 
     if ($ok) { return @{ Result = 'pushed' } }
 
-    # CR (codex-2, round 6): common SSH-remote auth failures weren't matched,
+    # Common SSH-remote auth failures weren't matched,
     # so an SSH vault fell through to generic push-failed instead of the
     # immediately-RED auth alarm class.
     $isAuth = "$errText" -match 'could not read Username|Authentication failed|403|terminal prompts disabled|Permission denied \(publickey\)|Could not read from remote repository'
@@ -593,7 +593,7 @@ function Invoke-Sweep {
 
         # 4. pull half — heartbeat first: the network-bound step most likely
         # to legitimately run long, so a still-progressing holder refreshes
-        # its own staleness clock right before it (codex-2, round 4).
+        # its own staleness clock right before it.
         Update-SweepLockHeartbeat -StateDir $StateDir
         $pullRes = Invoke-SweepPullHalf -GitExe $GitExe -VaultPath $VaultPath -ObsidianProcessName $ObsidianProcessName -Behind $behind
         switch ($pullRes.Result) {

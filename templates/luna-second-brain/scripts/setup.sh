@@ -87,7 +87,7 @@ if [ "${#_missing[@]}" -gt 0 ]; then
 fi
 echo "  All foundational tools present."
 
-# HIMMEL-842 gap 1: pre-commit (installed at [3/6]) needs uv OR pipx on a PEP 668
+# pre-commit (installed at [3/6]) needs uv OR pipx on a PEP 668
 # distro (Ubuntu 24.04+ / most 2025+ distros block raw system pip). Fail UPFRONT
 # here with the install command instead of hard-stopping mid-run at [3/6]. A
 # pre-commit already on PATH needs neither, so this mirrors [3/6]'s exact failure
@@ -103,11 +103,10 @@ echo "  uv/pipx available for pre-commit install."
 echo ""
 
 # --- [2/6] USER_SLUG resolution ---
-# Advisory, not fatal (HIMMEL-2539, re-verifying HIMMEL-2537 for this
-# template): no step below this one reads USER_SLUG, so aborting here only
+# Advisory, not fatal: no step below this one reads USER_SLUG, so aborting here only
 # stopped steps [3/6]..[6/6] that would all have succeeded. _user_slug_manual
 # survives to the footer so the skipped step is still named after "Setup
-# complete." scrolls past (HIMMEL-2536 principle).
+# complete." scrolls past.
 echo "[2/6] Resolving USER_SLUG..."
 _user_slug_manual=0
 _slug_rc=0
@@ -137,7 +136,7 @@ else
 fi
 
 echo "[4/6] Installing git hooks (pre-commit, pre-push, commit-msg)..."
-# pre-commit and commit-msg go through the stash-free wrapper (HIMMEL-2223):
+# pre-commit and commit-msg go through the stash-free wrapper:
 # `pre-commit install`'s generated hook stashes unstaged changes, and with
 # Obsidian live, its autosave rewriting tracked .obsidian/plugins/*/data.json
 # mid-hook can make the stash re-apply fail and revert OTHER unstaged files on

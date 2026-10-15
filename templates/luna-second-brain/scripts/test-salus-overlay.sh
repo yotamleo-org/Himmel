@@ -42,8 +42,8 @@ check "skin archive has ZERO data rows" "[ \"\${_datarows:-0}\" -eq 0 ]"
 # PHI-free: the shipped overlay/template must contain NONE of the operator's
 # personal/PHI literals. The literal list lives OUTSIDE the repo (the leak
 # denylist, default ~/.claude/himmel-leak-denylist.txt) so no real PHI is
-# committed here — HIMMEL-638 found the old hardcoded canary list (a real name +
-# medications) leaked into this very test. Skipped (with a note) when the
+# committed here — an old hardcoded canary list (a real name +
+# medications) once leaked into this very test. Skipped (with a note) when the
 # denylist is absent.
 _denylist="${HIMMEL_LEAK_DENYLIST:-$HOME/.claude/himmel-leak-denylist.txt}"
 if [ -f "$_denylist" ]; then
@@ -76,7 +76,7 @@ check "posture appended ONCE (idempotent)" "[ \"\$(grep -c 'salus-posture-block'
 check "existing .salus NOT clobbered (HIMMEL-2173)" "grep -q 'operator-customized' '$VAULT/.salus'"
 
 echo "== egress floor BEHAVIOR (the structural PHI floor must actually DENY, not just exist) =="
-# CR Critical (HIMMEL-577): assert the installed hook's exit codes per tool, so a
+# CR Critical: assert the installed hook's exit codes per tool, so a
 # regression that inverted a deny-arm would fail loudly instead of passing green.
 HOOK="$VAULT/.claude/hooks/block-cloud-egress.sh"
 egress_exit() { printf '%s' "$1" | bash "$HOOK" >/dev/null 2>&1; echo $?; }

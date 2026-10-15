@@ -82,7 +82,7 @@ is_main_ref() {
 
 # is_dirty [DIR]
 # True iff `git status --porcelain` has any output (staged, unstaged, or
-# untracked). HIMMEL-3101: fail-safe on a `git status` failure itself too -
+# untracked). Fail-safe on a `git status` failure itself too -
 # treat an uninspectable repo as dirty rather than clean.
 is_dirty() {
     local dir="${1:-.}"

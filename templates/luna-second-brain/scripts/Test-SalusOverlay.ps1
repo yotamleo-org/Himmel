@@ -38,8 +38,8 @@ try {
 
     # PHI scan must cover .claude (skill + hook) too — parity with the bash test.
     # Literals sourced from the leak denylist (OUTSIDE the repo) so no real PHI is
-    # committed here — HIMMEL-638 found the old hardcoded canary list (a real name
-    # + medications) leaked into this test. Skipped when the denylist is absent.
+    # committed here — an old hardcoded canary list (a real name
+    # + medications) once leaked into this test. Skipped when the denylist is absent.
     $phiPaths = @((Get-ChildItem -Recurse -File (Join-Path $Vault '.claude')).FullName)
     $phiPaths += (Join-Path $Vault '_skin-photo-archive.md')
     $phiPaths += (Join-Path $Vault '.salus-profile')

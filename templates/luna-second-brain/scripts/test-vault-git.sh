@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for C4 (HIMMEL-438): luna-brain single-writer git bootstrap (setup.sh
+# Tests for C4: luna-brain single-writer git bootstrap (setup.sh
 # git-state step) + opt-in vault autosync (vault-autosync.sh). Each phase builds
 # a throwaway vault fixture under a temp dir and runs the real scripts against
 # it. No real network — pushes target a LOCAL bare remote.
@@ -195,7 +195,7 @@ else
   assert_eq "D5 planted key NOT in committed tree" "0" \
     "$(git_in "$VC" ls-tree -r HEAD --name-only | grep -c 'leak\.md' || true)"
 
-  # D6-D9 — regression test for the local-proxy allowlist entry (HIMMEL-1055):
+  # D6-D9 — regression test for the local-proxy allowlist entry:
   # the anchored regex (`^himmel-local-claudex$`) in .gitleaks.toml must let
   # the exact constant through but still block a suffixed near-miss, guarding
   # the anti-bypass rationale documented there.
@@ -243,9 +243,9 @@ else
   # phase (D10+), for a reason unrelated to what each of those tests checks.
   rm -f "$VC/30-Resources/proxy-token-extra.md"
 
-  # D10-D11 (HIMMEL-2886): the template carries the queue-lock release-token
+  # D10-D11: the template carries the queue-lock release-token
   # allowlist. Every leg writes a release token shaped `<host>-<arch>-pid<N>`
-  # into its handover doc's LIVE bullet (HIMMEL-2813); without this regex
+  # into its handover doc's LIVE bullet; without this regex
   # gitleaks' generic-api-key rule flags it on entropy and blocks the sync
   # commit (console 03F lost 40 min / three syncs to exactly this, 2026-09-09,
   # before the vault carried a LOCAL fix — this proves the TEMPLATE now ships
@@ -261,7 +261,7 @@ else
   assert_eq "D11 release-token note IS in committed tree" "1" \
     "$(git_in "$VC" ls-tree -r HEAD --name-only | grep -c 'release-token\.md' || true)"
 
-  # D11b-D11c (HIMMEL-2910): the allowlist tolerates one trailing
+  # D11b-D11c: the allowlist tolerates one trailing
   # sentence-punctuation character after the token. A leg that writes the
   # token bare (no backticks) into a LIVE bullet followed by sentence
   # punctuation let gitleaks capture that trailing character into the
@@ -281,7 +281,7 @@ else
   assert_eq "D11c trailing-punctuation release-token note IS in committed tree" "1" \
     "$(git_in "$VC" ls-tree -r HEAD --name-only | grep -c 'release-token-punct\.md' || true)"
 
-  # D11d-D11f (HIMMEL-2910): a real-looking suffixed near-miss of the SAME
+  # D11d-D11f: a real-looking suffixed near-miss of the SAME
   # token shape must still be blocked -- the widened regex must not have
   # opened the anchor past one optional trailing punctuation character.
   # Same printf-argument split as D11b above, for the same reason.
@@ -297,7 +297,7 @@ else
   assert_eq "D11f release-token near-miss NOT in committed tree" "$d11_before" "$(git_in "$VC" rev-parse HEAD)"
   rm -f "$VC/30-Resources/release-token-nearmiss.md"
 
-  # D12-D13 (HIMMEL-2886): the template carries the console-kit shellcheck
+  # D12-D13: the template carries the console-kit shellcheck
   # exclude. Archived console-kit scripts under handovers/**/specs/console-kit-*/
   # are scratchpad copies, not shipped code; linting them stalled the vault's
   # github-sync sweep (console 03F, 2026-09-07: one SC2086 warning = no commits).
@@ -340,7 +340,7 @@ UNEXCLUDED_FIXTURE
   git_in "$VC" reset -- check-something.sh >/dev/null 2>&1
   rm -f "$VC/check-something.sh"
 
-  # D16-D17 (HIMMEL-3471): a fresh-leg RETASK nonce carries a single trailing
+  # D16-D17: a fresh-leg RETASK nonce carries a single trailing
   # lowercase letter on the leg number (e.g. `V-N236b-1d281f74`, minted when a
   # leg resumes via recovery) — the pre-3471 regex only anchored `-N<digits>-`
   # with no letter, so this real shape blocked every vault commit that quoted
@@ -356,7 +356,7 @@ UNEXCLUDED_FIXTURE
   assert_eq "D17 RETASK-nonce note IS in committed tree" "1" \
     "$(git_in "$VC" ls-tree -r HEAD --name-only | grep -c 'retask-token\.md' || true)"
 
-  # D18-D19 (HIMMEL-3471): a near-miss of the SAME shape — two trailing
+  # D18-D19: a near-miss of the SAME shape — two trailing
   # letters on the leg number, which no real leg number ever carries (verified
   # against the live handover corpus) — must still be blocked. The widened
   # regex must not have opened the anchor past one optional trailing letter.
@@ -373,7 +373,7 @@ UNEXCLUDED_FIXTURE
   assert_eq "D19 RETASK-nonce near-miss NOT in committed tree" "$d18_before" "$(git_in "$VC" rev-parse HEAD)"
   rm -f "$VC/30-Resources/retask-token-nearmiss.md"
 
-  # D20-D21 (HIMMEL-3471): a genuine high-entropy secret in the SAME directory
+  # D20-D21: a genuine high-entropy secret in the SAME directory
   # as the allowlisted RETASK-nonce fixture must still be blocked — the
   # widened regex is not a blanket exemption for that directory. Same
   # AWS-key-shaped construction as D1/G8 above (split so the value's own
@@ -441,7 +441,7 @@ UNEXCLUDED_FIXTURE
   fi
 
   # =========================================================================
-  # Phase G — auto-fixer resilience (HIMMEL-501: "autosync blocked so much").
+  # Phase G — auto-fixer resilience.
   # G1-G3: a churny .md note (Markdown hard-break = two trailing spaces, no
   #        final newline) is committed UNMODIFIED — pre-commit no longer
   #        rewrites prose, so the unattended commit isn't aborted and the
@@ -496,7 +496,7 @@ UNEXCLUDED_FIXTURE
     assert_eq "G10 bare remote unchanged (nothing pushed)" "$g8_bare_before" "$(git_in "$BARE_G" rev-parse main)"
 
     # =========================================================================
-    # Phase H (HIMMEL-615) — a non-ASCII (Hebrew) source-note name must NOT
+    # Phase H — a non-ASCII (Hebrew) source-note name must NOT
     # crash the trailing-whitespace fixer (on Windows it prints the path to a
     # cp1252 stdout → UnicodeEncodeError, after rewriting the file → silent
     # whitespace mangling) NOR get rewritten. The allowlist keeps both fixers
