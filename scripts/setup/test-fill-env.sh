@@ -75,7 +75,7 @@ else
 fi
 
 # dotenv_help: contiguous `#` block above a key + inline trailing comment
-#. Fixture exercises multi-line block, block+inline, inline-only
+# Fixture exercises multi-line block, block+inline, inline-only
 # (a KEY line directly above breaks contiguity), blank-line break, and absent.
 f6="$td/help.env"
 {

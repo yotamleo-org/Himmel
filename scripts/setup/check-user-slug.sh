@@ -112,7 +112,7 @@ if [ -n "$_dotenv_root" ] && [ -z "${USER_SLUG:-}" ]; then
     exit 4
   fi
   # rc=4 for the CALL failing, not just the sourcing:
-  # the two `.` source lines were guarded but but left this call's own status
+  # the two `.` source lines were guarded but left this call's own status
   # unchecked, and this script runs `set -uo pipefail`, deliberately NOT `-e`,
   # so a failing load_dotenv would fall through with USER_SLUG left empty —
   # the resolver then legitimately finds nothing and exits 3, reporting a

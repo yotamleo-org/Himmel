@@ -6,7 +6,7 @@
 #   required  (--with-jira)   unset key -> loud error + rc=1 (setup aborts)
 #   optional  (default)       unset key -> one-line skip notice + rc=0
 #   key set                   echo it + rc=0 (either mode)
-#   tracker not jira a set key no longer counts: the
+#   tracker not jira:  a set key no longer counts: the
 #                             tracker comes from scripts/lib/project-mode.sh
 #                             (TRACKER > git config himmel.tracker > jira when
 #                             the key is set); required -> rc=1, optional -> skip

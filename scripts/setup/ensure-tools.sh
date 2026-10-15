@@ -104,8 +104,8 @@ _ensure_pm_candidate() {
       # exactly: it exits 0 even for a package it
       # cannot find (no Candidate: line, or "(none)"), and non-zero on a real
       # failure (unreadable/corrupt lists, etc). Output and status are
-      # captured SEPARATELY, not via the pipeline below -- for two reasons
-      #: it yields apt-cache's OWN exit status
+      # captured SEPARATELY, not via the pipeline below -- for two reasons:
+      # it yields apt-cache's OWN exit status
       # unambiguously, rather than a pipeline status that merges two
       # commands' outcomes; and awk exits early (it has `exit` right after
       # the first match), which can SIGPIPE apt-cache on a SUCCESSFUL
@@ -350,8 +350,7 @@ _ensure_install_precommit() {
   # `uv tool list` alone -- not a `command -v pre-commit` PATH check -- is
   # what proves uv manages it: gating on PATH too meant a uv-managed
   # pre-commit whose shim isn't on PATH fell through to `uv tool install`,
-  # which no-ops on an already-installed tool, silently skipping the upgrade
-  #.
+  # which no-ops on an already-installed tool, silently skipping the upgrade.
   #
   # A FAILING `uv tool list` (uv present but broken/corrupt) must not be
   # read the same as an EMPTY one (uv fine, pre-commit just not installed
@@ -373,8 +372,7 @@ _ensure_install_precommit() {
   # A pip/pipx/manual pre-commit shim already on PATH (e.g. left over from
   # this dep's earlier pip route) lands in the same ~/.local/bin uv
   # installs into, so a plain `uv tool install` refuses to overwrite it
-  # ("Executable already exists ... use --force"); upgrade mode replaces it
-  #.
+  # ("Executable already exists ... use --force"); upgrade mode replaces it.
   pc_force_flag=""
   [ "$mode" = upgrade ] && pc_force_flag="--force"
   pc_err=$("$uv_bin" tool install $pc_force_flag pre-commit 2>&1 >/dev/null) || {

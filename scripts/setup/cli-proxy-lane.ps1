@@ -204,7 +204,7 @@ CreateObject("WScript.Shell").Run """$ExePath"" -config ""$ConfigPath""", 0, Fal
     # non-English username) would otherwise be decoded by WScript's legacy ANSI
     # code-page fallback and corrupt the path - the same [PS1-NO-BOM] defect
     # class shell-lint.sh already polices for this repo's own .ps1 files
-    #. A BOM is a no-op for pure-ASCII content, so this is safe
+    # A BOM is a no-op for pure-ASCII content, so this is safe
     # for every install, not just non-ASCII ones.
     [System.IO.File]::WriteAllText($LauncherPath, $body, (New-Object System.Text.UTF8Encoding $true))
 }
@@ -621,8 +621,8 @@ max-retry-interval: 30
             }
         }
         # Unique per-run temp paths; cleanup in finally so a failed download/extract
-        # leaves no orphaned artifacts. Trust boundary = pinned HTTPS release URL
-        #; upstream publishes no per-asset checksum.
+        # leaves no orphaned artifacts. Trust boundary = pinned HTTPS release URL.
+        # Upstream publishes no per-asset checksum.
         $stamp = [guid]::NewGuid().ToString('N')
         $zip = Join-Path $env:TEMP "cliproxy-$stamp.zip"
         $tmp = Join-Path $env:TEMP "cliproxy-$stamp"
