@@ -147,9 +147,9 @@ tracker_refresh() {
     mkdir -p "${mir%/*}" 2>/dev/null
     JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" mirror >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
     [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
-    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
-    if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp"; echo "tracker=failed:versions-rc$rc"; return 0; fi
-    mv -f "$mir.versions.tsv.tmp" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
+    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+    if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
+    mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
     want="$(timeout -k 5 "$tmo" "${TRACKER[@]}" --emit-fp "$@" 2>/dev/null)" || want=""  # gnu-ok: Linux-only kit
     if [ -n "$want" ] && [ -f "$out" ] && [ "$(cat "$out.fp" 2>/dev/null)" = "$want" ]; then

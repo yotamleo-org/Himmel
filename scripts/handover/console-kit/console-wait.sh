@@ -492,7 +492,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     [ -n "$console_doc" ] && [ -f "$console_doc" ] || return 1
     pred="$(sed -n '1s/.* successor to \([^ ]*\.md\).*/\1/p' "$console_doc")"
     [ -n "$pred" ] || return 1
-    pdoc="${console_doc%/*}/$pred"
+    pdoc="$(dirname "$console_doc")/$pred"
     [ -f "$pdoc" ] || return 1
     [ "$(cat "$pred_file" 2>/dev/null | sed 's/^[a-z]*://')" = "$pdoc" ] && return 1
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
