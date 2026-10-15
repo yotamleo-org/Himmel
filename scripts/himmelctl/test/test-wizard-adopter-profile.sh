@@ -1852,10 +1852,12 @@ ab2_run b no 0 1
 # AB2c: the write succeeds, the core install then fails -> prior bytes restored.
 ab2_run c yes 3 0
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2c: a failed core install must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] || fail "caseAB2c: adopt.sh must have run, else the restore is untested: $ab2_out"
 [ "$(cat "$ab2_overlay")" = "$ab2_prior" ] || fail "caseAB2c: failed install must restore the prior overlay bytes: $(cat "$ab2_overlay")"
 # AB2d: same with NO prior overlay -> the staged overlay is removed.
 ab2_run d no 3 0
 [ "$ab2_rc" -ne 0 ] || fail "caseAB2d: a failed core install must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] || fail "caseAB2d: adopt.sh must have run, else the removal is untested: $ab2_out"
 [ -e "$ab2_overlay" ] && fail "caseAB2d: failed install must remove the overlay it staged"
 # AB2e: control — success path still persists the allowlist.
 ab2_run e no 0 0
