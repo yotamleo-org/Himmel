@@ -264,6 +264,23 @@ printf 'collections:\n  himmel:\n    pattern: "**/*.md"\nmodels:\n  embed: %s\n 
 run_path "$work/p7.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(31h) a collection with no path cannot be checked: expected rc 3, got $rc"
 
+ln -s "$work/marked" "$work/link-to-marked"
+pcfg "$work/p8.yml" himmel "$work/link-to-marked/sub"
+run_path "$work/p8.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31i) himmel behind a symlink into a .salus vault: expected rc 3, got $rc"
+mkdir -p "$work/sib2" "$work/vault3/s"
+printf 'collections:\n  salus:\n    path: %s\n' "$work/vault3/s" > "$work/sib2/salus.yml"
+pcfg "$work/sib2/p9.yml" himmel "$work/vault3/s"
+env CLAUDE_GLM_CONFIG_DIR="$work/none" QMD_CONFIG_DIR="$work/none" node "$gate" "$work/sib2/p9.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31j) a salus config next to the checked config, outside QMD_CONFIG_DIR: expected rc 3, got $rc"
+if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "$work/unreadable"
+  chmod 000 "$work/unreadable"
+  env CLAUDE_GLM_CONFIG_DIR="$work/none" QMD_CONFIG_DIR="$work/unreadable" node "$gate" "$work/p4.yml" 2>"$work/err"; rc=$?
+  chmod 700 "$work/unreadable"
+  [ "$rc" -eq 3 ] || fail "(31k) an unlistable sibling config directory must fail closed: expected rc 3, got $rc"
+fi
+
 # (32) a remote model with no base URL, or an unparseable one, cannot be proven pinned: refused.
 cfg "$work/u1.yml" "openai:unpinned-model" "$LOCAL_EMBED" - himmel
 run_gate "$work/u1.yml"; rc=$?

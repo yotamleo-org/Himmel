@@ -226,9 +226,12 @@ if (remoteRoles > 0) {
       }
     } catch { pathRefusals.push(`cannot read the PHI root list ${f}`); }
   }
-  const sibDir = process.env.QMD_CONFIG_DIR || join(homedir(), ".config", "qmd");
-  try {
-    for (const f of readdirSync(sibDir).filter((x) => x.endsWith(".yml"))) {
+  const sibDirs = [...new Set([process.env.QMD_CONFIG_DIR || join(homedir(), ".config", "qmd"), dirname(resolve(cfgPath))])];
+  for (const sibDir of sibDirs) {
+    let names = [];
+    try { names = readdirSync(sibDir).filter((x) => x.endsWith(".yml")); }
+    catch (e) { if (e?.code !== "ENOENT") pathRefusals.push(`cannot list the sibling index configs in ${sibDir}`); }
+    for (const f of names) {
       const full = join(sibDir, f);
       if (resolve(full) === resolve(cfgPath)) continue;
       try {
@@ -236,15 +239,20 @@ if (remoteRoles > 0) {
           if ((map[name] ?? []).includes("salus")) roots.push(p);
       } catch { pathRefusals.push(`cannot read the sibling index config ${full}`); }
     }
-  } catch { /* no sibling directory: nothing to learn from it */ }
+  }
   const rootForms = roots.flatMap(forms);
   const own = collectionPaths(text);
   for (const col of cfgCollections) {
+    if ((map[col] ?? []).includes("salus")) continue; // a salus corpus is judged by the matrix above
     const p = own[col];
     if (!p) { pathRefusals.push(`collection "${col}" has no path to check against the PHI roots`); continue; }
-    let d = resolve(expand(p));
     let marked = false;
-    for (let prev = ""; d !== prev; prev = d, d = dirname(d)) if (existsSync(join(d, ".salus"))) { marked = true; break; }
+    const lexical = resolve(expand(p));
+    let real = lexical;
+    try { real = realpathSync(lexical); } catch { /* not on disk: the lexical form is all there is */ }
+    for (const start of new Set([lexical, real])) {
+      for (let d = start, prev = ""; d !== prev && !marked; prev = d, d = dirname(d)) if (existsSync(join(d, ".salus"))) marked = true;
+    }
     if (marked) pathRefusals.push(`collection "${col}" path ${p} is inside a .salus vault`);
     else if (forms(p).some((a) => rootForms.some((b) => overlaps(a, b)))) pathRefusals.push(`collection "${col}" path ${p} overlaps a PHI root (salus)`);
   }
