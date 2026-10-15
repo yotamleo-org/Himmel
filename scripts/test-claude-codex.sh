@@ -104,6 +104,14 @@ assert.ok(seeded.permissions.deny.includes('Bash(operator-own-deny *)'));
 assert.ok(!Object.hasOwn(seeded, 'model'));
 NODE
 
+# a user settings file that is not a plain JSON object must refuse (exit 4), never seed a config with no deny rules.
+for bad in '[]' 'null' '7'; do
+  setup
+  printf '%s\n' "$bad" > "$FAKEHOME/.claude/settings.json"
+  run_launcher_expect "non-object user settings ($bad) refuses before seeding" 4 'sanitize settings'
+  [ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: non-object user settings ($bad) still marked the config seeded"; FAILS=$((FAILS + 1)); }
+done
+
 # the seeded lane settings carry explicit deny rules for the categories the weak
 # classifier misses. The force-push rows are read from this repo's own .claude/settings.json
 # (real syntax), so the lane cannot drift from the harness's deny vocabulary.

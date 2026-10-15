@@ -431,6 +431,7 @@ foreach ($sf in $settingsFiles) {
 $SanitizerJs = @'
 const fs=require("fs");
 const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+if (j===null || typeof j!=="object" || Array.isArray(j)) { console.error("user settings is not a JSON object"); process.exit(1); }
 delete j.model;
 if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
 const A=[],B=(r)=>A.push("Bash("+r+")");

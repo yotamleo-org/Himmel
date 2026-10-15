@@ -215,9 +215,19 @@ try {
   if ($script:LastLaunchOut -match 'settings\.json is missing') { Pass 'missing-settings refusal names the settings file' } else { Fail 'missing-settings refusal message does not name the settings file' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail 'missing-settings refusal still seeded the config dir' } else { Pass 'missing-settings refusal seeded nothing' }
 
+  # A user settings file that is not a plain JSON object refuses (exit 4), never seeds a config with no deny rules.
+  foreach ($bad in '[]', 'null', '7') {
+    New-Sandbox
+    $env:CODEX_MODEL = 'gpt-5.6-sol'
+    Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value $bad -NoNewline
+    Invoke-Launcher
+    if ($script:LastLaunchExit -eq 4) { Pass "non-object user settings ($bad) refuses (exit 4)" } else { Fail "non-object user settings ($bad) did not refuse (exit $script:LastLaunchExit)" }
+    if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail "non-object user settings ($bad) still seeded the config dir" } else { Pass "non-object user settings ($bad) seeded nothing" }
+  }
+
   # --- --guard-check <dir> — the check-only entry the unattended
   # spawn-claudex dispatcher calls PRE-CREATION, before it mints a worktree.
-  # Only exit codes are asserted (Invoke-Launcher discards output), same as
+  # Only exit codes are asserted (Invoke-Launcher captures output in $script:LastLaunchOut), same as
   # the .salus tests above.
 
   # clean directory -> exit 0, no config seeded.
