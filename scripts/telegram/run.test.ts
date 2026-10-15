@@ -481,10 +481,10 @@ test("buildPrompt frames a group session's messages as untrusted third-party inp
   expect(p).toContain("/b/out.jsonl");
   expect(p.toLowerCase()).toContain("do not poll");
 });
-test("buildPrompt keeps operator framing + Jira sanction for DM and ticket sessions (HIMMEL-1359)", () => {
+test("buildPrompt keeps operator framing (for marked lines) + Jira sanction for DM and ticket sessions (HIMMEL-1359)", () => {
   for (const s of ["__chat__", "HIMMEL-5"]) {
     const p = buildPrompt(s, { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
-    expect(p).toContain("treat them as the operator's requests");
+    expect(p).toContain("is the operator's own request");
     expect(p).toContain("scripts/jira/dist/index.js");
   }
 });
@@ -494,4 +494,21 @@ test("buildPrompt does not attribute a group session's attachments to the operat
   expect(g).toContain("a group member attached");
   const d = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
   expect(d).toContain("the operator attached");
+});
+
+test("buildPrompt for a ticket session frames only operator-marked lines as operator requests", () => {
+  const p = buildPrompt("HIMMEL-5", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+  expect(p).toContain(`"operator":true`);
+  expect(p).toContain("WITHOUT");
+  expect(p).toContain("untrusted");
+});
+test("buildPrompt for __chat__ also restricts lines without the operator marker", () => {
+  const p = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+  expect(p).toContain(`"operator":true`);
+  expect(p).toContain("untrusted");
+});
+test("buildPrompt Jira sanction applies only to operator-marked lines", () => {
+  const p = buildPrompt("HIMMEL-5", { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+  expect(p).toContain(`operator":true`);
+  expect(p).not.toContain("Acting on Jira tickets for the operator is part of your job: when asked,");
 });

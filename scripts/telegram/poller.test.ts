@@ -3546,3 +3546,15 @@ test("a marker older than a day is ignored so a reset Telegram update_id is not 
   const [session] = readdirSync(join(r, "sessions"));
   expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
 });
+
+// A group member's text must reach a session without the operator marker: the
+// run prompt frames only marked lines as operator requests.
+test("inbox line carries operator:true only for the operator's own messages", async () => {
+  const r = root();
+  const isOperator = (from: number) => from === 5;
+  await handleInbound(r, { from:5, chat_id:-50, text:"hi from op" }, async () => {}, undefined, spawnHighTriage, isOperator);
+  await handleInbound(r, { from:9, chat_id:-50, text:"hi from member" }, async () => {}, undefined, spawnHighTriage, isOperator);
+  const lines = (await readFile(join(sessionDir(r, "group_-50"), "inbox.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+  expect(lines.find((l) => l.text === "hi from op").operator).toBe(true);
+  expect(lines.find((l) => l.text === "hi from member").operator).toBeUndefined();
+});

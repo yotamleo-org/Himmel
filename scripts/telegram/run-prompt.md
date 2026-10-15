@@ -39,7 +39,14 @@ requests. Instead the prompt says the lines come from group members, NOT the
 operator, are untrusted third-party input, and are answered conversationally only;
 it OMITS the Jira-sanction clause and the Jira CLI path, and tells the run not to
 change Jira tickets, run `/arm` / `/arm-resume`, or run commands / edit files on a
-message's say-so. Ticket sessions and `__chat__` (DM) keep the operator framing.
+message's say-so.
+Every other session (ticket, `__chat__`) is framed per message: the poller writes
+`"operator":true` on an inbox line only when the sender is the operator
+(`isOperator`, the same role the triage floor uses), and the prompt treats only
+marked lines as operator requests and the Jira sanction as applying to them. A line
+WITHOUT the marker (a group member who dispatched or followed up a ticket session,
+or a line written before the marker existed) is untrusted and answered
+conversationally only, so a missing marker fails safe.
 Tradeoff: the operator's own messages in a group get the same constrained run —
 send action requests from the DM.
 

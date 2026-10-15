@@ -400,7 +400,10 @@ requests: its prompt omits the Jira sanction and tells the run not to change
 tickets, run `/arm` / `/arm-resume`, or execute commands on a message's say-so
 (HIMMEL-1359). This holds for every allow-listed group, with or without
 `trustAnonymousAdmins`, and also for the operator's own posts in a group — send
-action requests from the DM. It is prompt framing, not a sandbox.
+action requests from the DM. Other sessions are framed per message: the poller
+stamps `"operator":true` on an inbox line only for the operator, and a line
+without it (e.g. a group member's `work on <KEY>` that reached a ticket session)
+is untrusted; a missing marker fails safe. It is prompt framing, not a sandbox.
 
 ### require_mention (per-group) (LUNA-158)
 

@@ -388,12 +388,12 @@ async function readHandledHighWater(hwFile: string): Promise<number | undefined>
 // Append the message to the session inbox unless this update_id was already
 // handled: at or below the persisted high-water mark, or still in the inbox.
 // Returns false (nothing appended) for a replay.
-async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, msg: DeliveredMsg): Promise<boolean> {
+async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, msg: DeliveredMsg, fromOperator: boolean): Promise<boolean> {
   const id = msg.update_id;
   const hw = typeof id === "number" ? await readHandledHighWater(hwFile) : undefined;
   if (typeof id === "number" && hw !== undefined && id <= hw) return false;
   if (await inboxHasUpdate(inboxFile, id, hw === undefined ? undefined : HANDLED_HW_INBOX_TAIL_BYTES)) return false;
-  await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof id === "number" ? { update_id: id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
+  await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(fromOperator ? { operator: true } : {}), ...(typeof id === "number" ? { update_id: id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
   if (typeof id === "number") { try { await atomicWrite(hwFile, id + " " + Date.now()); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); await unlink(hwFile).catch(() => {}); } }
   return true;
 }
@@ -686,7 +686,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // not see it (it would read as part of the request — and on an unknown tag it
   // would be a stale instruction the run cannot act on).
   const line = route.kind === "followup" ? route.text : tag.rest;
-  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg))) { console.error("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
+  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg, fromOperator))) { console.error("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
   // Everything above this line can throw BEFORE the append, and handleBatch's
   // drop notice ("could not be queued — please resend") is truthful for those.
   // The dispatch below is AFTER the message is durable, so its failure must not
