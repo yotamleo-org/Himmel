@@ -2,7 +2,7 @@
 
    **Step 3.6 — Impacted suites: one verdict per suite (HIMMEL-2821; runs in BOTH lanes — the docs-audit lane of step 2.5 skips step 3 but not this).** PR #2261 changed `scripts/machine-setup/uninstall-plugins.sh` and merged with `scripts/test-uninstall.sh` — the suite one directory up that drives it end to end — never run: the implementor swept the owning directory, this command certified, and nothing computed *which suites reference what the PR changed*. This step is that computation. It is a gate, not advice: a missing verdict makes the row NOT clean.
 
-   `<base>` is step 3.0's `<db_sha>` (carried forward like `<head>`; the script takes the merge-base itself). In the docs-audit lane there is no step 3.0, so the docs-audit base is the PR's base branch as `origin/<branch>` — `origin/main` for himmel. Both halves are 40-hex / a fixed literal, so the range `<base>..<head>` stays unquoted (see the quoting rules above).
+   `<base>` is step 3.0's `<db_sha>` (carried forward like `<head>`; the script takes the merge-base itself). In the docs-audit lane there is no step 3.0, so the docs-audit base is the PR's base branch as `origin/<base-branch>`, where `<base-branch>` is step 0's `base=` value (never step 0's `branch=`, the head branch: `origin/<head branch>..<head>` is empty once the branch is pushed and the step would pass vacuously) — `origin/main` for himmel. Both halves are 40-hex / a fixed literal, so the range `<base>..<head>` stays unquoted (see the quoting rules above).
 
    ```bash
    bash "<himmel_dir>/scripts/cr/impacted-suites.sh" <base>..<head>

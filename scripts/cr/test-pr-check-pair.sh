@@ -1077,7 +1077,8 @@ else
     fail "31 phase A comment still tells the reader to feed write-verdicts.sh a heredoc (HIMMEL-5536)"
 fi
 if ref_has 33-step3-impacted.md '<base>..<head>' && ref_lacks 33-step3-impacted.md '<db_sha>..<head>' \
-    && ref_has 33-step3-impacted.md 'docs-audit base'; then
+    && ref_has 33-step3-impacted.md 'docs-audit base' && ref_lacks 33-step3-impacted.md 'origin/<branch>' \
+    && ref_has 33-step3-impacted.md 'origin/<base-branch>' && ref_has 33-step3-impacted.md "step 0's \`base=\`"; then
     pass "33 defines the docs-audit base ref and both step-3.6 commands use <base>..<head>"
 else
     fail "33 step 3.6 commands use <db_sha>..<head>, which does not exist in the docs-audit lane (HIMMEL-5536)"
