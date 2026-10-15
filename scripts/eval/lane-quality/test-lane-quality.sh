@@ -641,6 +641,11 @@ check "a variant that dispatches without naming a model gets a keep verdict" 'ba
 cp "$TMP/rows-v.jsonl" "$TMP/vd-v/runs.jsonl"
 cat "$TMP/rows-b.jsonl" >>"$TMP/vd-v/runs.jsonl"
 check "a run mixing variant and baseline rows is refused" '! bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-v" >/dev/null 2>&1'
+mkdir -p "$TMP/vd-n" "$TMP/vd-m"
+printf '%s\n' '{"task":"t","rep":1,"variant":"A4n","accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":null,"dispatch_unnamed_model":null,"judge":null}' >"$TMP/vd-n/runs.jsonl"
+check "a variant with unrecorded metrics gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-n" 2>/dev/null | awk -F"\t" "\$1==\"A4n\" && \$2==\"keep\" && /not recorded/{f=1} END{exit !f}"'
+printf '%s\n' '{"task":"other","rep":1,"variant":"A4m","accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":0,"dispatch_unnamed_model":0,"judge":null}' >"$TMP/vd-m/runs.jsonl"
+check "a variant run that omits a baseline task gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-m" 2>/dev/null | awk -F"\t" "\$1==\"A4m\" && \$2==\"keep\" && /no variant row/{f=1} END{exit !f}"'
 printf 'stand-in steering\n' >"$TMP/v-same.md"
 bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant same="$TMP/v-same.md" --out "$TMP/out-same" >"$TMP/same.log" 2>&1
 check "a variant identical to the pinned CLAUDE.md still runs" '[ "$(jq -s -r ".[0].variant" "$TMP/out-same/runs.jsonl")" = same ]'

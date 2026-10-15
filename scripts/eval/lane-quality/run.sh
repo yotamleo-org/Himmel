@@ -683,11 +683,14 @@ cmd_verdict() {
               (if $o.accept_ok and ($x.accept_ok | not) then "\($x.task): acceptance regressed" else empty end),
               (if ($x.accept_passed // 0) < ($o.accept_passed // 0) then "\($x.task): fewer acceptance checks pass" else empty end),
               (if $o.scope_ok and ($x.scope_ok | not) then "\($x.task): scope drift" else empty end),
+              (if $x.hook_denials == null and $o.hook_denials != null then "\($x.task): hook denials not recorded" else empty end),
+              (if $x.dispatch_unnamed_model == null and $o.dispatch_unnamed_model != null then "\($x.task): dispatch metrics not recorded" else empty end),
               (if ($x.hook_denials // 0) > ($o.hook_denials // 0) then "\($x.task): more hook denials" else empty end),
               (if ($x.dispatch_unnamed_model // 0) > ($o.dispatch_unnamed_model // 0) then "\($x.task): more dispatches with an unnamed model" else empty end),
               (($x | jmean) as $jv | ($o | jmean) as $jo
                | if $jv != null and $jo != null and $jv < $jo - 0.5 then "\($x.task): judge mean \($jv) vs \($jo)" else empty end)
-            end ] as $why
+            end ] as $seen
+      | ($seen + [ $B | keys[] | select(. as $k | $v | map(key) | index($k) | not) | "\(.): no variant row" ]) as $why
       | "\($name)\t\(if ($why | length) == 0 then "apply" else "keep" end)\t\(if ($why | length) == 0 then "no regression on \($v | length) task run(s)" else ($why | join("; ")) end)"'
   done
 }
