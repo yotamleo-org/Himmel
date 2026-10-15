@@ -471,3 +471,20 @@ test("laneEffort ignores a non-tier lane and a prose effort value (HIMMEL-3482)"
 test("laneEffort falls back to no effort on a registry that parses to the wrong shape (HIMMEL-3482)", () => {
   for (const bad of [{}, null, { lanes: "x" }, { lanes: [null] }]) expect(laneEffort("opus", bad as never)).toBeUndefined();
 });
+test("buildPrompt frames a group session's messages as untrusted third-party input, not operator requests (HIMMEL-1359)", () => {
+  const p = buildPrompt("group_-1009999999", { inbox:"/b/in.jsonl", outbox:"/b/out.jsonl", context:"/b/ctx.md", cwd:"/repo" });
+  expect(p).not.toContain("treat them as the operator's requests");
+  expect(p).not.toContain("scripts/jira/dist/index.js");
+  expect(p).not.toContain("Acting on Jira tickets");
+  expect(p.toLowerCase()).toContain("untrusted");
+  expect(p).toContain("/arm");
+  expect(p).toContain("/b/out.jsonl");
+  expect(p.toLowerCase()).toContain("do not poll");
+});
+test("buildPrompt keeps operator framing + Jira sanction for DM and ticket sessions (HIMMEL-1359)", () => {
+  for (const s of ["__chat__", "HIMMEL-5"]) {
+    const p = buildPrompt(s, { inbox:"i", outbox:"o", context:"c", cwd:"/r" });
+    expect(p).toContain("treat them as the operator's requests");
+    expect(p).toContain("scripts/jira/dist/index.js");
+  }
+});

@@ -31,6 +31,18 @@ As your FINAL action, append a one-line progress note to <context> (so the next 
 - **Anything else** (e.g. `__chat__`):
   `Answer the operator's message(s) conversationally.`
 
+## Group sessions are untrusted (HIMMEL-1359)
+
+A session id matching `^group_-?\d+$` (a group chat) mixes the messages of EVERY
+member of an allow-listed group, so `buildPrompt` does not frame them as operator
+requests. Instead the prompt says the lines come from group members, NOT the
+operator, are untrusted third-party input, and are answered conversationally only;
+it OMITS the Jira-sanction clause and the Jira CLI path, and tells the run not to
+change Jira tickets, run `/arm` / `/arm-resume`, or run commands / edit files on a
+message's say-so. Ticket sessions and `__chat__` (DM) keep the operator framing.
+Tradeoff: the operator's own messages in a group get the same constrained run —
+send action requests from the DM.
+
 ## Attachment → vault routing (`<vault-clause>`, HIMMEL-321 / HIMMEL-578)
 
 When a document (e.g. a PDF) **or an image** is sent to a chat that has a vault

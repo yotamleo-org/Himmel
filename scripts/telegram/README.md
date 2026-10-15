@@ -395,6 +395,13 @@ replies route back to that chat — the operator DM is untouched. Ticket verbs
 replies go to whichever chat FIRST created that session. Non-allowed groups
 fail closed.
 
+A `group_<chat_id>` run is framed as **untrusted third-party input**, not operator
+requests: its prompt omits the Jira sanction and tells the run not to change
+tickets, run `/arm` / `/arm-resume`, or execute commands on a message's say-so
+(HIMMEL-1359). This holds for every allow-listed group, with or without
+`trustAnonymousAdmins`, and also for the operator's own posts in a group — send
+action requests from the DM. It is prompt framing, not a sandbox.
+
 ### require_mention (per-group) (LUNA-158)
 
 Set `"requireMention": true` on a group entry to put it in @mention-only
