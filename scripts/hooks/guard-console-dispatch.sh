@@ -96,7 +96,6 @@ warn() { echo "guard-console-dispatch: $*" >&2; }
 
 # grepq <text> [grep-args...] — never `printf | grep -q` under pipefail; see
 # guard-implementor-dispatch.sh's identical helper for the SIGPIPE rationale
-#.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 input=$(cat 2>/dev/null || true)

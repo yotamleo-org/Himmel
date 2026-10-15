@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Pre-commit hook: block stray generated artifacts from being committed
-#.
 #
 # Why: himmel runs concurrent sessions sharing one repo tree, and build/test
 # steps (sometimes the wrong package manager) drop untracked artifacts. A

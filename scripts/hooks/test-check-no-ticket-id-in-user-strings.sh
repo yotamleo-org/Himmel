@@ -148,7 +148,7 @@ echo "== Case 6: deny message clean, ticket ID stays in a code comment -> passes
 mkdir -p "$tmp/c6/scripts/hooks"
 cat > "$tmp/c6/scripts/hooks/check-fake.sh" <<'EOF'
 #!/usr/bin/env bash
-# this hook exists because of an incident.
+# HIMMEL-1000: this hook exists because of an incident.
 echo "check-fake: refused" >&2
 exit 1
 EOF

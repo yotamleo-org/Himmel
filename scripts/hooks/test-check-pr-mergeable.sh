@@ -81,7 +81,7 @@ case "$1 $2" in
         # Emit per the --json fields the caller asked for:
         #  - forge_pr_mergeable: `gh pr view <branch> --json
         #    baseRefName,headRefOid --jq ...` -> "<base> <headoid>".
-        #  - check-pr-mergeable's staleness carve-out:
+        #  - check-pr-mergeable's staleness carve-out (HIMMEL-1074):
         #    `gh pr view <branch> --json baseRefName --jq ...` -> "<base>".
         for _f in "$@"; do
             case "$_f" in

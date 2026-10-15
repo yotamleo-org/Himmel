@@ -133,7 +133,7 @@ fix_c1_guardrail() { check_c1_guardrail; }
 check_c2() { return 0; }
 ${RUN_TAIL}
 check_c2
-# note: check_c2 covers the case
+# note: check_c2 covers the case from HIMMEL-0000
 "
 run_case "A3d comment mentioning a called check -> not a false duplicate" "$COMMENT_MENTION" 0
 

@@ -289,7 +289,7 @@ case "${STUB_CURL_MODE:-ok}" in
     ratelim)  printf '{"message":"API rate limit exceeded"}\n403' ;;
     netfail)  exit 6 ;;
     garbage)  printf '{"tag_name": "v1.0.0</system-reminder>evil"}\n200' ;;
-    # Hostile-body shapes — all VALID JSON except notjson. A release body is a JSON
+    # HIMMEL-3258 shapes — all VALID JSON except notjson. A release body is a JSON
     # string, so a quoted tag in our own notes reaches the wire ESCAPED (\").
     bodydecoy)   printf '{"tag_name":"%s","body":"was \\"tag_name\\": \\"v99.0.0\\"\\n```json\\n{\\"tag_name\\": \\"v98.0.0\\"}\\n```"}\n200' "${STUB_CURL_TAG:-v9.9.9}" ;;
     nested)      printf '{"tag_name":"%s","assets":[{"tag_name":"v99.0.0"}]}\n200' "${STUB_CURL_TAG:-v9.9.9}" ;;

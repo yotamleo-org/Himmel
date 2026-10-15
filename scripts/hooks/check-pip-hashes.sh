@@ -25,7 +25,7 @@ for file in "$@"; do
         function check(joined,   l) {
             l = joined
             # A `#` at line start or after whitespace opens a comment; a hash
-            # inside one must not satisfy the check.
+            # inside one must not satisfy the check (HIMMEL-4144).
             sub(/(^|[[:space:]])#.*$/, "", l)
             if (l ~ /^[[:space:]]*$/) return        # blank
             if (l ~ /^[[:space:]]*-/) return        # pip directive (-r, -c, --index-url, ...)
@@ -35,7 +35,7 @@ for file in "$@"; do
             # Same order as pip join_lines: a continuation is decided on the
             # RAW line, so a line whose backslash is followed by a comment does
             # not continue; a full-line comment ends the logical line; comments
-            # are stripped from the JOINED line.
+            # are stripped from the JOINED line (HIMMEL-4144).
             if ($0 ~ /^[[:space:]]*#/) { if (buf != "") check(buf); buf = ""; next }
             buf = buf $0
             if ($0 ~ /\\$/) { sub(/\\[[:space:]]*$/, " ", buf); next }

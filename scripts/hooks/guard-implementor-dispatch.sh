@@ -253,7 +253,6 @@ fi
 # mark) defeat a tightened one. So "then review the commit history" and
 # "then analyze edit distance heuristics" are governed, and gate_action is
 # computed straight off $text.
-# same as main.
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)(implement|fix|land|apply|edit|modify|commit)([^[:alnum:]_]|$)'; then
     gate_action=1
 fi
@@ -318,7 +317,6 @@ fi
 # implementation signal, and an exempted "then write a summary" would clear
 # the veto and be ALLOWed. followed_by_action is recomputed here with bare
 # "write" included, independent of the exemption above.
-# main -- bare "write" included -- independent of the exemption above.
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)(implement|fix|land|apply|write|edit|modify|commit)([^[:alnum:]_]|$)'; then
     followed_by_action=1
 fi
