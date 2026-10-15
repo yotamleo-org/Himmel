@@ -32,7 +32,7 @@
 #      a suite that only ever saw rc=0 would pass just as "green" if the
 #      invocation were silently a no-op.
 #   c. every real docs/setup/profiles/*.install-profile.json in this checkout
-#      (today: operator.install-profile.json, landed by) lints
+#      (today: operator.install-profile.json) lints
 #      clean via the SAME invocation as cases a/b. The empty-glob vacuous-pass
 #      path stays in the harness BY DESIGN — case a/b already prove the
 #      invocation isn't vacuous in general, and an empty directory should

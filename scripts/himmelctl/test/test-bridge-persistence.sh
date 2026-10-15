@@ -661,8 +661,8 @@ process.env.BRIDGE_PERSISTENCE_STUB_STATE = STUB_STATE;
   // uninstalling an already-uninstalled bridge
   // (unit file already absent) must be a clean idempotent no-op success,
   // never a false failure from `disable --now` on a unit that's already
-  // gone. tightened the shortcut twice since; the later fix required a
-  // confirmed negative rather than a bare absent file; an earlier fix replaced
+  // gone. The shortcut was tightened twice since: first it required a
+  // confirmed negative rather than a bare absent file; then it replaced
   // that confirmed-negative source with LoadState (is-enabled/is-active
   // couldn't distinguish "never heard of it" from "knows it, it's off") —
   // the no-op only fires on a genuinely-executed LoadState=not-found. On

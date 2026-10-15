@@ -53,7 +53,7 @@
 #      dispatch-only style; the spy stub never touches .git/hooks, so
 #      convergence itself is intentionally out of scope here (case f's own
 #      rationale) and the exit code is not asserted.
-#   t. (MAJOR — the toward-ENABLED mirror of
+#   t. (the toward-ENABLED mirror of
 #      case k's bug in test-wizard-ensure-disable.sh) `--items
 #      dependent-item,hint-prereq`, where hint-prereq is desired+red but
 #      hint-only (no runnable install descriptor, so it can never actually

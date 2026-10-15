@@ -1681,14 +1681,14 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
 
   // 5. pluginSet. 'full' is DROPPED — the full-plugin-enable.json
   // set does not reflect what himmel actually runs (the reconciler whitelist
-  // is the truth; see), so offering it installed a batteries-
+  // is the truth), so offering it installed a batteries-
   // included set nobody operates. 'lean' is the only remaining path; the
   // question stays (rather than being removed outright) so every existing
   // --from-profile cache / hermetic-test stdin sequence that already answers
   // 'lean' here keeps working unchanged — only the 'full' CHOICE is gone.
   const pluginSet = await askNumberedEnum(ask, 'pluginSet', ['lean'], 'lean', PLUGIN_SET_HELP);
 
-  // 6/7 (universal since).
+  // 6/7 (asked for every install).
   const opts = laneOpts || {};
   // 6. lanes. --lanes already answered it; otherwise prompt.
   const base = opts.lanes !== null && opts.lanes !== undefined
@@ -3359,8 +3359,9 @@ function mergePhiRoot(root) {
   // This fixes ONLY the torn-write half. It does NOT fix the concurrency
   // race: two processes can still both read the same stale list and the
   // last rename() still wins, so a root added by a concurrent process can
-  // still be lost. That half is deliberately OUT of scope here and tracked
-  // separately as do not read this atomic write as closing it.
+  // still be lost. That half is deliberately OUT of scope here, so do not
+  // read this atomic write as closing it.
+  // ponytail: last rename wins under concurrent writers, tracked in HIMMEL-2416.
   //
   // create tmp owner-only (mode 0o600) from
   // the very first write, not via a chmod afterward — a default-mode create
@@ -3882,11 +3883,11 @@ function applyLunaSectionsStep(answers) {
 
 // the epilogue — lane probe report, the always-on hardening
 // CHECKLIST, and the final honest summary. Printed at the END of EVERY run
-// now (killed the old role==='adopter' gate — see
-// printAdopterEpilogue below), dry-run included: every part of it is a READ —
+// now (the old role==='adopter' gate on
+// printAdopterEpilogue below is gone), dry-run included: every part of it is a READ —
 // it mutates nothing — so it is equally truthful before and after the install
-// shell-out, and a --dry-run preview is worth exactly as much. (Corrected in
-// this used to claim "probeLane never spawns", which is false
+// shell-out, and a --dry-run preview is worth exactly as much. (An earlier
+// version claimed "probeLane never spawns", which is false:
 // buildCtx shells out to `git`, and the manifest-backed readiness probes may
 // run a tool to check it. Probing under --dry-run is fine; documenting a
 // guarantee we do not provide is not.)
@@ -4106,8 +4107,8 @@ function applyWorkspaceTrust() {
   return { applied: true, dir: dir };
 }
 
-// universal now — printed for every run regardless of
-// profile/devOverlay (the old role==='adopter' gate died with role).
+// Printed for every run regardless of
+// profile/devOverlay; there is no role==='adopter' gate.
 async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaultScaffolded, lunaResult) {
   const laneProbe = await adopterProfileLib.loadLaneProbe(repoRoot(), process.env);
   const ctx = { repoRoot: repoRoot(), env: process.env, platform: process.platform, laneProbe: laneProbe };

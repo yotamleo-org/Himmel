@@ -317,8 +317,8 @@ check_real_canary() {
   # a node child writes wherever USERPROFILE points, so under a guard shell
   # where the two diverge the tripwire watched paths nothing writes and
   # reported clean through an actual escape.
-  # the SEED just above (not only these r1..r3
-  # tripwire paths) also resolves through real_home_dir now. an earlier fix fixed
+  # The SEED just above (not only these r1..r3
+  # tripwire paths) also resolves through real_home_dir. Fixing
   # only the tripwire and missed the seed, which still read from $HOME: under
   # the identical HOME/USERPROFILE divergence, the seed copied from a path
   # nothing writes, so the sandbox got seeded empty or from unrelated

@@ -1080,7 +1080,7 @@ echo "$outW" | jq -e '.ran | length == 1 and .[0].id == "survives"' >/dev/null \
 survivorPidFile="$survivorWork/survivor.pid"
 [ -f "$survivorPidFile" ] || fail "case w: the survivor's pid file was never written"
 survivorPid=$(cat "$survivorPidFile")
-# record the pid for cleanup (see
+# record the pid for cleanup (the trap near
 # the top of this file) BEFORE the liveness assertion below — if that
 # assertion itself calls fail() (exit 1), the trap still fires and reaps
 # the survivor; a leaked process must not depend on this case reaching its

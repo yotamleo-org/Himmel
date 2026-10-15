@@ -432,9 +432,8 @@ function parseDotEnv(raw) {
 // ── settings-key deepening: verifyScript (wiring-statusline) ─────────────
 
 // wire-statusline.sh is the ONLY writer of statusLine.command, and it always
-// emits `node "<absolute-path-to-index.js>"` (guarded, see
-// STATUSLINE_GUARDED_RE) — see scripts/lib/wire-
-// statusline.sh. Parsing exactly that shape (rather than a general shell
+// emits `node "<absolute-path-to-index.js>"` (matched by
+// STATUSLINE_GUARDED_RE; see scripts/lib/wire-statusline.sh). Parsing exactly that shape (rather than a general shell
 // tokenizer) keeps this simple and matches what actually gets written;
 // anything else can't be resolved with confidence, so it degrades rather
 // than reading a script it can't actually locate.
@@ -595,8 +594,8 @@ function isDirectory(p) {
 // the recorded FLOOR (scripts/machine-setup/reconcile-enabled-plugins.sh's
 // WHITELIST model already treats it as authoritative), not an exact-match
 // ceiling — a MISSING recorded plugin degrades, but an EXTRA enabled plugin
-// beyond that floor is legitimate and stays present (console ruling,
-// ); it is still subject to the installed-ledger check below like
+// beyond that floor is legitimate and stays present (console ruling);
+// it is still subject to the installed-ledger check below like
 // every other enabled plugin, and is named in the detail as information.
 // ~/.claude/plugins/installed_plugins.json is that ledger.
 // per-marketplace source comparison, settings entry vs template.
@@ -1119,15 +1118,15 @@ function probeQmdIndex(item, ctx) {
 
 // ── qmd-daemon ───────────────────────────────────────────────────────────
 
-// the qmd daemon's liveness is judged HERE (one owner per fact,
-// ); doctor C40 composes this item the way C16 composes status. It is
-// one initialize round-trip against the daemon, with the budget measured in
-// (measured 2026-10-05: idle 0.33-0.39s, peak 2.87s under 8 concurrent
+// the qmd daemon's liveness is judged HERE (one owner per fact);
+// doctor C40 composes this item the way C16 composes status. It is
+// one initialize round-trip against the daemon, with the budget set from
+// measurements (measured 2026-10-05: idle 0.33-0.39s, peak 2.87s under 8 concurrent
 // vec queries, so 10s ~= 2x the peak; a genuine wedge still reads degraded).
 // An answer slower than QMD_DAEMON_SLOW_SECS is still PRESENT — slow-but-alive
 // is not a wedge. Seams (read from ctx.env, shared with doctor C40):
-// HIMMEL_DOCTOR_QMD_URL (localhost, NOT 127.0.0.1: the daemon binds ::1 only,
-// ), HIMMEL_DOCTOR_QMD_CURL, HIMMEL_DOCTOR_QMD_INIT_TIMEOUT.
+// HIMMEL_DOCTOR_QMD_URL (localhost, NOT 127.0.0.1: the daemon binds ::1 only),
+// HIMMEL_DOCTOR_QMD_CURL, HIMMEL_DOCTOR_QMD_INIT_TIMEOUT.
 const QMD_DAEMON_INIT_TIMEOUT_SECS = 10;
 const QMD_DAEMON_SLOW_SECS = 3;
 
@@ -1948,7 +1947,7 @@ function probeCmdCadenceArmed(item, ctx) {
 //     file's contract comment for why "not owned" was chosen over "owned
 //     but flagged").
 //   codex-adv-7 (companion finding "basename-only ownership lets a
-//     same-named no-op file elsewhere pass", tracked as): round
+//     same-named no-op file elsewhere pass"): round
 //     4's anchored GENERATED_COMMAND_RE correctly rejects a true decoy, but
 //     it ALSO made an entry with the SAME wrapper/script identity plus a
 //     trailing extra token invisible entirely — yet guardrail-skip-in-
@@ -2083,8 +2082,7 @@ function probeGuardrailBlockStatus(item, ctx) {
     if (!recomputedComplete) {
       return { actual: 'degraded', detail: `guardrail-block.mjs status --json declares complete=true but its own hooks[] entries do not all independently support it — self-contradictory payload, not trusted: ${out}` };
     }
-    // ── (attestation v2 binding; fail-closed in
-    //    an earlier fix — codex-adv finding 1) ────────────────────────────────────
+    // ── attestation v2 binding (fail-closed) ────────────────────────────────────
     // The legacy `complete` flag attests the GENERATED COMMAND IDENTITY
     // (presence, matcher, resolution, trust-anchor basename ownership —
     // recomputedComplete above). guardrail-block.mjs's statusDetail() grew a
@@ -2788,7 +2786,7 @@ function armedPipelineSchedules(scheduleKeys, batDir, platform) {
 // were deleted out-of-band), or tasks can survive after config flips back to
 // disabled (an unmanaged leftover — `disarm` was never run).
 //
-// this used to treat the mere EXISTENCE of
+// Do not treat the mere EXISTENCE of
 // a generated runner file (armedPipelineSchedules, a plain fs.existsSync)
 // as proof a scheduler task is registered. It is not — a runner file
 // persists on disk after its Task Scheduler entry or crontab line is

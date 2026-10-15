@@ -1,7 +1,6 @@
 'use strict';
 // provenance.js -- the install-provenance ledger writer, node dialect
 // Twin: scripts/lib/provenance.sh writes BYTE-IDENTICAL rows
-// (the PowerShell dialect is tracked in);
 // scripts/himmelctl/test/test-provenance-js.sh cross-checks this file against
 // the bash one on the same input. Format, kinds, write points:
 // docs/internals/install-provenance.md.

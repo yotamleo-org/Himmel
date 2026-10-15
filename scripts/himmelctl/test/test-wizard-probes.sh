@@ -178,7 +178,7 @@
 #                  import-stage (`wiring:`-tagged) failure still does —
 #                  proving the two are told apart, not that everything
 #                  became "runtime".
-#   cmd:whisper_ready (hardened by
+#   cmd:whisper_ready
 #                  binary+model both present (present) / binary present,
 #                  model missing (degraded) / binary missing (absent);
 #                  platform-branched default binary name proven both ways via
@@ -3453,7 +3453,7 @@ echo "$outGBb" | jq -e '.detail | contains("path does not resolve")' >/dev/null 
   || fail "cmd:guardrail_block_status dead-bash detail should say the path does not resolve (got: $outGBb)"
 echo "ok: cmd:guardrail_block_status — a genuinely wired install with a dead baked bash path reads degraded, never present (codex-adv-2)"
 
-# ──: fs.existsSync alone accepts a DIRECTORY as
+# ── fs.existsSync alone accepts a DIRECTORY as
 # "resolves" — all 3 hooks wired, matcher correct, but the baked node path
 # is a DIRECTORY (not a file) → degraded, never present, even though
 # fs.existsSync() on that path would return true. ──────────────────────────
@@ -5730,8 +5730,8 @@ rm -f "$bh_posix_state/no-unit"
 # falls straight to the pgrep -f fallback (no systemctl stub on this PATH ->
 # which('systemctl') finds nothing). posixDirectChildPids/posixCmdline already
 # fall back to pgrep/ps when fs.existsSync(procRoot) is false; a bare-token
-# sweep match's cwd verification (posixCandidateIsThisCheckout, /
-# ) does not -- it unconditionally readlinkSync's procRoot/<pid>/cwd,
+# sweep match's cwd verification (posixCandidateIsThisCheckout)
+# does not -- it unconditionally readlinkSync's procRoot/<pid>/cwd,
 # which always ENOENTs when procRoot doesn't exist, silently excluding every
 # genuine darwin poller. The fix adds an `lsof -a -p <pid> -d cwd -Fn` fallback,
 # mirroring the pgrep/ps shape.
@@ -6357,7 +6357,7 @@ echo "$outBPmalformed" | jq -e '.actual == "degraded" and (.detail | test("luna 
 echo "ok: bridge-persistence — a malformed config.json degrades cleanly, never crashes the probe"
 
 # ── Part B — the inert-config wiring closes: bridge.envPath / bridge.whisper.{cli,model} ──
-# C, Part B: these config fields used to be read by
+# These config fields used to be read by
 # NOTHING (probeTelegramAccess/probeTelegramGetMe only ever consulted the
 # manifest's hardcoded envFile; probeWhisperReady only ever consulted
 # WHISPER_*/hardcoded defaults). Precedence pinned here: explicit process-env

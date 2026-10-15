@@ -104,7 +104,7 @@
 #      scripts/lanes/probe.mjs — probe.mjs exports
 #      no equivalent set, so the suite parses its case labels and compares.
 #   X. the occupied-vault gate is re-evaluated immediately BEFORE the spawn
-# Exercised deterministically, not by
+#      Exercised deterministically, not by
 #      racing: handover.mode=external pointed at the vault path creates the
 #      directory in the real mid-window between the two checks.
 #   Y. LANES_REGISTRY replaces the registry AND skips the overlay, exactly as

@@ -397,8 +397,8 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // (project mode). 'degraded' (armed but the baked node path rotted —
       // exactly what report_guardrail_block's own drift check exists to
       // catch) is a DIFFERENT probe.actual and never reaches here.
-      // this item now carries a REAL install descriptor (see
-      // install-engine.js's 'guardrail-block-global' wire target), but it
+      // this item carries a REAL install descriptor
+      // (install-engine.js's 'guardrail-block-global' wire target), but it
       // still writes the OPERATOR'S GLOBAL ~/.claude/settings.json — the
       // round-3 ruling forbids ever letting that happen on the strength of
       // the manifest membership alone. The ONLY thing that lifts this n/a
@@ -504,7 +504,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set bridge.enabled in ~/.himmel/config.json to enable the bridge)`;
       }
-      // / on posix observability-stack is opt-in
+      // On posix observability-stack is opt-in
       // (observability.enabled in ~/.himmel/config.json). profiles:["core","all"]
       // makes it desired:true for every target, so the probe marks the
       // not-opted-in absence `cleanAbsence` and it reads n/a here — never a

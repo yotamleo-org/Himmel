@@ -172,7 +172,7 @@ echo "ok: case a — a second run against an already-migrated target is a zero-w
 # stays red (not silently swallowed to n/a) when its
 # config is genuinely broken rather than just never-opted-in. This target is
 # scope 'project', so graphify-mcp's registration lives in <targetB>/
-# .mcp.json (probeMcpRegistered is now scope-aware — see
+# .mcp.json (probeMcpRegistered is scope-aware via
 # probes.js's mcpConfigPath()); the original version of this test wrote to
 # ~/.claude.json instead, which happened to pass only because the probe used
 # to ignore scope entirely.

@@ -87,8 +87,8 @@ function targetKeyForScope(scope) {
 // cachedAnswers.handover.mode !== 'none' directly instead). Extracted out of
 // deriveTarget/migrateTargetItems/reconcileTarget, which used to each carry
 // their own copy of this exact formula — this is the ONE place it lives now;
-// every caller below (and status-report.js's read-only additive overlay,
-// ) calls this instead of re-inlining it.
+// every caller below (and status-report.js's read-only additive overlay)
+// calls this instead of re-inlining it.
 function itemMembership(item, profile, scope, cachedAnswers) {
   if (item.id === 'handover-wiring') {
     return Boolean(cachedAnswers.handover) && cachedAnswers.handover.mode !== 'none';
