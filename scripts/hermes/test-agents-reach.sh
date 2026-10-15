@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-agents-reach.sh -- lock in the hermes AGENTS.md-reach verdict (WS5 Task 3,
-# HIMMEL-654 / T10). SOURCE/CONFIG INSPECTION ONLY: no live gateway, no model
+# T10). SOURCE/CONFIG INSPECTION ONLY: no live gateway, no model
 # call. Re-derives the verdict recorded in docs/internals/lane-parity.md by
 # grepping the editable hermes-agent checkout, so a future hermes refactor that
 # drops the auto-load fails LOUDLY here before the doc stays stale.

@@ -287,7 +287,7 @@ else
 fi
 
 # (k) profile-only alias with a slash+colon key (openrouter-style) survives a merge
-#     (codex CR round 3: the narrow key matcher attached it to the previous entry)
+#     (the narrow key matcher attached it to the previous entry)
 cat > "$MA_TMP/profile_k.yaml" <<'EOF'
 model:
   default: gpt-5.5

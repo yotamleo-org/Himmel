@@ -97,7 +97,7 @@ check_contains "luna-clippings named" "luna-clippings" "$err"
 # ── salus: deny; the local-ollama cell is conditional and unverifiable here ─
 gate "$TMP/salusproj/p.md" deepseek
 check "salus x deepseek refused" 4 "$rc"
-# HIMMEL-5002 operator ruling 2026-10-08: codex inference is allowed on luna and salus.
+# Operator ruling 2026-10-08: codex inference is allowed on luna and salus.
 gate "$TMP/salusproj/p.md" openai-codex
 check "salus x openai-codex allowed (HIMMEL-5002 ruling)" 0 "$rc"
 gate "$TMP/luna/journal/n.md" openai-codex
@@ -122,7 +122,7 @@ err="$(HANDOVER_DIR="$TMP/luna" bash "$GATE" --prompt-file "$TMP/luna/journal/n.
 check "handover root == vault root keeps luna-personal (deepseek refused)" 4 "$rc"
 
 # handover root CONTAINS the vault: a handover file OUTSIDE the vault is still
-# handover-state (round 3) — only files inside the vault keep the stricter corpus
+# handover-state — only files inside the vault keep the stricter corpus
 mkdir -p "$TMP/hp/luna/journal" "$TMP/hp/other"
 printf 'n\n' > "$TMP/hp/luna/journal/n.md"
 printf 'b\n' > "$TMP/hp/other/b.md"
@@ -163,7 +163,7 @@ check "control-char path yields a parseable ledger line" ok "$(node -e 'const l=
 
 # ── brief-scoped: exactly ONE regular file per dispatch, visible in the audit ──
 # (matrix handover-state x openai-codex is "brief-scoped ... never bulk corpus
-# runs"; the chokepoint audit is the ledger — HIMMEL-1259 round-2 ruling)
+# runs"; the chokepoint audit is the ledger)
 gate "$HO/u/himmel" openai-codex
 check "a directory as the prompt refused (one regular file only)" 4 "$rc"
 check_contains "directory refusal names the regular-file rule" "regular file" "$err"
@@ -214,7 +214,7 @@ rm -f "$STUB_CAPTURE"
 bash "$INVOKE" --prompt-file "$TMP/code/diff.txt" --provider alibaba-coding-plan --model qwen3-coder-plus >/dev/null 2>&1; rc=$?
 check "invoke.sh: public-code prompt x alibaba still dispatches (qwen stays a himmel-code option)" 0 "$rc"
 
-# ── HIMMEL-3221: hermes is dispatched an immutable SNAPSHOT of the gated file ──
+# ── hermes is dispatched an immutable SNAPSHOT of the gated file ──
 # The gate classifies the prompt by path; invoke.sh used to hand hermes that same
 # path afterwards, so a file swapped in between (check-then-use) reached the
 # interpreter unclassified. The gate now copies the file once into a private

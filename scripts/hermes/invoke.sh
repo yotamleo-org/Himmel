@@ -21,8 +21,8 @@
 # bundle (no fs / terminal / network). Callers that genuinely want tools must
 # opt in via --toolsets.
 #
-# Auth: defers ENTIRELY to hermes (its own .env + config.yaml provider chain,
-# HIMMEL-278). No pre-flight credential check here.
+# Auth: defers ENTIRELY to hermes (its own .env + config.yaml provider chain).
+# No pre-flight credential check here.
 #
 # No retries. Exits with hermes' return code, UNLESS the watchdog below fires.
 #
@@ -51,7 +51,7 @@
 # the codex watchdog use), 125 for a deny-escalation abort. Start/end rows
 # land in ~/.himmel/flow-runs.jsonl (scripts/lib/flow-run-ledger.sh),
 # outcome complete|error|timeout|denied|truncated (the last added by the
-# iteration-budget scan below, HIMMEL-2049).
+# iteration-budget scan below).
 #
 # Iteration-budget truncation: separately from the watchdog,
 # hermes' OWN turn loop can exhaust its "agent.max_turns" iteration budget
@@ -206,8 +206,8 @@ fi
 # passed as text/stdin carries no path and is not classified). rc 4 = refused.
 #
 # The gate classifies by PATH, so hermes must never be handed that path again
-# (a swap / symlink retarget between the check and the read is a TOCTOU,
-# HIMMEL-3221): the gate copies the file once into a private snapshot it creates
+# (a swap / symlink retarget between the check and the read is a TOCTOU):
+# the gate copies the file once into a private snapshot it creates
 # itself (a 0700 mktemp -d directory holding a 0600 file) and prints that
 # directory; everything below reads only the snapshot, and the EXIT trap removes
 # the directory. The caller never picks the destination.
@@ -306,15 +306,15 @@ fi
 # Same fail-closed contract as the watchdog flag above: a silent fail-open
 # here would run hermes with no working capture, and a genuine
 # iteration-budget exit would then read as a clean rc 0 again — the exact
-# unobservable failure this ticket exists to close (CR finding codex-1,
-# HIMMEL-2049). Covers both an mktemp failure (scratch path, above) AND a
+# unobservable failure this ticket exists to close (CR finding codex-1).
+# Covers both an mktemp failure (scratch path, above) AND a
 # --log destination that cannot actually be written (e.g. a bad directory) —
 # a caller-supplied --log path is not otherwise validated before this.
 # Checked HERE, before the ledger start row below (CR finding codex-1 round
 # 3) — the same reason the watchdog-flag check above also precedes it: a
 # refusal after the start row would append a "start" with no matching "end",
 # leaving the run looking merely unfinished rather than refused.
-# Residual (declined, round 5): this proves the destination is writable NOW,
+# Residual (declined): this proves the destination is writable NOW,
 # not that later writes during the run will still succeed (e.g. the
 # filesystem fills up mid-run) — a TOCTOU gap. That is the same class of
 # best-effort guarantee the timeout_flag/state_dir mktemp checks above
@@ -400,7 +400,7 @@ main()
 '
 }
 
-# HIMMEL-729 wiring chunk B — best-effort Alibaba quota-gauge probe piggybacked
+# Best-effort Alibaba quota-gauge probe piggybacked
 # on a qwen* dispatch. Fire-and-forget: backgrounded, all output to /dev/null,
 # NEVER blocks or fails the dispatch (it cannot reach the dispatch rc). The
 # runner self-throttles (60s freshness marker) and skips silently when the
@@ -443,7 +443,7 @@ hermes_pid=$!
     # child already exited before this tick — nothing to kill, nothing to
     # claim. Checking before the abort/timeout branches (not after) is what
     # keeps a run that finishes right at the deadline from being misreported
-    # as a kill (CR round 1 finding).
+    # as a kill.
     proc_tree_process_alive "$hermes_pid"
     [ "$?" -eq 1 ] && exit 0
     if [ -n "$abort_marker" ] && [ -e "$abort_marker" ]; then
@@ -511,8 +511,8 @@ case "$flag_reason" in
         # its own print), not just the "Iteration budget (…) (N/max)"
         # fragment — a bare fragment match could also fire on a model
         # response that merely discusses or paraphrases hermes' own budget
-        # mechanism. Residual (declined,
-        # round 4): a response that quotes hermes' full, exact banner line —
+        # mechanism. Residual (declined):
+        # a response that quotes hermes' full, exact banner line —
         # numbers and differentiating suffix both — is still indistinguishable
         # from the CLI actually emitting it. The ticket's ask is text-scanning
         # stdout/stderr; a structured completion signal would need an
@@ -520,7 +520,7 @@ case "$flag_reason" in
         # hermes' own ANSI markup around the banner is not reliably present
         # under non-TTY redirection (unverified without a live run, which
         # this ticket's contract rules out) to use as a further anchor.
-        # Narrowed further (CR finding codex-1, round 6): hermes only ever
+        # Narrowed further: hermes only ever
         # emits the banner right before the process exits, never mid-response
         # — so scan just the TAIL of the capture, not the whole file. A model
         # response that happens to discuss/quote the banner deep inside a

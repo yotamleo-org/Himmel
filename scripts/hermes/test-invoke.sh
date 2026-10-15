@@ -99,7 +99,7 @@ echo "  ok" >&2
 # 6. Stub failure rc propagates, and the rc + output tail now
 # land on stderr. Before this, an ordinary non-zero hermes exit was SILENT on
 # stderr (run_hermes's stdout+stderr are merged into capture_log for the
-# HIMMEL-2049 iteration-budget scan, so invoke.sh's own stderr had nothing to
+# iteration-budget scan, so invoke.sh's own stderr had nothing to
 # report) — telegram triage.ts read that empty stderr and logged a bare
 # `triage exited 1:` for two days while every group message fail-opened.
 echo "test: interpreter rc propagates" >&2
@@ -254,7 +254,7 @@ rc=$?
 grep -q '"outcome":"complete"' "$LEDGER" || fail "normal response: expected outcome=complete in ledger"
 echo "  ok" >&2
 
-# 6b. HIMMEL-3639: argv[0] handed to hermes must be an existing ABSOLUTE path,
+# 6b. argv[0] handed to hermes must be an existing ABSOLUTE path,
 # never a bare "hermes". hermes' venv-sync relaunch does
 # runpy.run_path(Path(argv[0]).absolute()), which resolves a bare name against
 # the caller's cwd -- from a worktree that is <cwd>/hermes, absent, rc=1. Runs

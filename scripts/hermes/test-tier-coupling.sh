@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-tier-coupling.sh -- the REFINED tier-coupling assertion (WS5 Task 3,
-# HIMMEL-654 / T9). Config-fixture only: NO live gateway, NO real config, NO
+# T9). Config-fixture only: NO live gateway, NO real config, NO
 # model call. Encodes D3b: full control (write / git / PR) is paired ONLY with a
 # TRUSTED main-tier engine (codex-5.5 or GLM-5.2 1M workhorse); the untrusted free
 # tier (qwen3-coder-plus / nemotron) is NEVER a write-capable fallback under the

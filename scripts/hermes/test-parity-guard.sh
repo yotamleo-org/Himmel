@@ -305,7 +305,7 @@ g "schtasks /Query mixed case"   allow '{"tool_name":"terminal","tool_input":{"c
 g "schtasks /change refused"     block '{"tool_name":"terminal","tool_input":{"command":"schtasks /change /tn X /disable"}}'
 g "schtasks /run refused"        block '{"tool_name":"terminal","tool_input":{"command":"schtasks /run /tn X"}}'
 g "schtasks /end refused"        block '{"tool_name":"terminal","tool_input":{"command":"schtasks /end /tn X"}}'
-# HIMMEL-1141 security lock: UPPERCASE / mixed-case mutating verbs still refused
+# Security lock: UPPERCASE / mixed-case mutating verbs still refused
 # — norm() lowercases before matching, so no case-bypass of the parity guard.
 g "schtasks /CREATE upper refused" block '{"tool_name":"terminal","tool_input":{"command":"schtasks /CREATE /tn X /tr Y"}}'
 g "schtasks /Delete mixed refused" block '{"tool_name":"terminal","tool_input":{"command":"schtasks /Delete /tn X /f"}}'
@@ -464,7 +464,7 @@ print(json.dumps({'tool_name': 'terminal', 'tool_input': {'command': cmd}}))
 g "echo'd quoted assign+verb allowed" allow "$ECHOASSIGN_JSON"
 # sudo/env tolerate flag runs (env also assignment args),
 # mirroring the .sh CMDPOS. Bounded grammar - further wrapper permutations
-# are HIMMEL-912 (shared tokenizer); this + the CC-hook + the auto-mode
+# are a shared tokenizer; this + the CC-hook + the auto-mode
 # classifier remain the outer defense layers.
 g "sudo -n shutdown refused"         block '{"tool_name":"terminal","tool_input":{"command":"sudo -n shutdown -h now"}}'
 g "env -i shutdown refused"          block '{"tool_name":"terminal","tool_input":{"command":"env -i shutdown -h now"}}'

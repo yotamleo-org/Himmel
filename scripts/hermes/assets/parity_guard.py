@@ -76,7 +76,7 @@ HERMES_HOME = norm(_hermes_home())
 CLAUDE_HOME = norm(os.path.join(os.path.expanduser("~"), ".claude"))
 GUARD_HOME = HERMES_HOME + "/agent-hooks"
 
-# Deny-escalation (HIMMEL-2025) — see module docstring.
+# Deny-escalation — see module docstring.
 DENY_STATE_DIR = os.environ.get("PARITY_GUARD_STATE_DIR", "")
 try:
     DENY_ESCALATE_N = int(os.environ.get("PARITY_GUARD_DENY_ESCALATE_N", "3"))
@@ -125,7 +125,7 @@ TERMINAL_FORBIDDEN_PATHS = re.compile(
 # can build on it).
 _CMDPOS = r"(?:^|[;&|(\n])\s*"
 
-# Destructive-only command-position anchor (O1 + CR round 1, HIMMEL-851).
+# Destructive-only command-position anchor (O1).
 # _CMDPOS PLUS, for the TERMINAL_DESTRUCTIVE bare-command-name atoms only
 # (format, schtasks, taskkill, shutdown, icacls, …): a backtick separator
 # (command substitution is command position) and a BOUNDED tolerance for
@@ -152,7 +152,7 @@ _CMDPOS = r"(?:^|[;&|(\n])\s*"
 # documented gap is QUOTED-PAYLOAD wrappers (`bash -c "shutdown …"`, `sh -c`,
 # xargs / nohup chains), which stays out of scope per the ticket's
 # no-general-parser rule. This bounded grammar is intentionally NOT an arms
-# race: further wrapper permutations belong to the HIMMEL-912 shared-tokenizer
+# race: further wrapper permutations belong to a shared-tokenizer
 # follow-up, and the .sh CC-hook + auto-mode classifier remain the outer
 # defense layers. NOT used by the EXT_* fence — its narrower anchor and
 # documented limits are intentional.
@@ -167,13 +167,13 @@ _EXE_PREFIX = r"[\"']?(?:[a-z]:)?(?:(?:[^\s|;&(`\"')]|\)(?!\{))*/)?"
 # a quoted value's space does not drop the verb out of command position.
 _ASSIGNS = (r"[a-z0-9_]+='[^']*'", r"[a-z0-9_]+=\"[^\"]*\"", r"[a-z0-9_]+=[^\s|;&]*")
 # parity with the .sh grammar (scripts/guardrails/lib.sh
-# guard_cmdpos_grammar, HIMMEL-3983/3984): a compound keyword or a function
+# guard_cmdpos_grammar): a compound keyword or a function
 # body's `{` starts a command (`) {` too), and so do the exec-style wrappers
 # exec, timeout, nohup, nice, time and xargs, each with its own flags. A flag
 # value may be quoted with a space in it (`exec -a 'my proc' shutdown`).
 # a value is one shell word of concatenated segments ('…', "…",
 # $'…', \x, bare) and a flag word may hold them too (`-u'a b'`); the old
-# whitespace-run and HIMMEL-4150 quoted atoms stay as alternatives, so the set
+# whitespace-run and quoted atoms stay as alternatives, so the set
 # only grows. Twin of lib.sh CMDVAL / CMDFLG. Every reading is its own pattern
 # with one possible length; _cmdpos_destructive below walks them over a set of
 # (state, position) pairs instead of one regex, because a backtracking regex
@@ -290,7 +290,7 @@ _FIND_VERB = re.compile(_EXE_PREFIX + r"find(?:\.exe)?(?=\s)")
 # _xwrap / MASS_CMDPOS / MASS_PFX. Over-deny only: `command -v find; ls -delete`.
 # ponytail: the widening covers the mass-delete family only, not
 # _cmdpos_destructive's atoms (`bash -c 'shutdown'` still passes), upgrade
-# path HIMMEL-912's word-level tokenizer.
+# path a word-level tokenizer.
 # Every head here takes an optional .exe, and xargs does too in this set only
 # (the .sh twin's _xwrap adds xargs.exe to lib.sh's xargs).
 _XARGS = next(i for i, (heads, _, _) in enumerate(_WRAPPERS) if heads == ("xargs",))
@@ -322,7 +322,7 @@ TERMINAL_DESTRUCTIVE = re.compile(
     + r"|\brm\b[^|;&\n]*--recursive"
     + r"|\b(del|erase|rd|rmdir)\b[^|;&\n]*/s(?:[^A-Za-z0-9_.-]|$)"  # recursive Windows delete; /s bound to the switch, not a path prefix like /scripts (HIMMEL-851 U1)
     + r"|\bcipher\s+/w"
-    # HIMMEL-1141 verb split: schtasks /query is read-only (cadence diagnostic),
+    # verb split: schtasks /query is read-only (cadence diagnostic),
     # so only the mutating verbs are refused. Mirrors the .sh hook schtasks line.
     # same capability, other spellings — the PowerShell
     # ScheduledTasks module drives the Task Scheduler COM API and never
@@ -936,7 +936,7 @@ def _merged_pr_reason(start: str):
 # fires UNCONDITIONALLY on this profile ("both engines" per F-B5 — no engine
 # gate is needed because the profile has no local engine). Semantics mirror
 # scripts/telegram/phi-egress-guard.ts checkPhiEgressGuards (KEEP IN SYNC,
-# renamed from glm-guard.ts under HIMMEL-2622): a path is PHI if
+# renamed from glm-guard.ts): a path is PHI if
 # a `.salus` marker sits at it or any ancestor, or it is under a root listed in
 # ~/.config/claude-glm/{phi-roots,egress-denylist}. FAIL-CLOSED: a list file
 # that exists but is unreadable REFUSES; there is no override on this lane.
@@ -1728,7 +1728,7 @@ def main() -> None:
     # call would reach the engine UNFENCED — a real external-write surface on the
     # default lane. Blanket-deny every mcp__* tool EXCEPT the read-only qmd
     # knowledge-base carve-out (mirrors block-glm-external-writes.sh), which is
-    # itself COLLECTION-SCOPED to the "himmel" v1 allow-list (HIMMEL-1239 — see
+    # itself COLLECTION-SCOPED to the "himmel" v1 allow-list (see
     # qmd_scope_reason() above). This fires unconditionally on this cloud
     # profile (both engines); the matcher extension in wire_parity_guard.py is
     # what makes the guard see mcp__* tools at all.

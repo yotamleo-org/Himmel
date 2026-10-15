@@ -53,7 +53,7 @@ import tempfile
 # char not space/#/- (deeper nesting, comments and list items excluded). The
 # terminating colon is the LAST colon at end-of-line or before an inline
 # value, so plain colon-bearing keys round-trip (`  a/b:free:` -> `a/b:free`)
-# and quoted keys are captured whole (codex CR round 3 — the narrow
+# and quoted keys are captured whole (the narrow
 # [A-Za-z0-9_.-]+ matcher silently attached such keys to the previous entry).
 ALIAS_KEY_RE = re.compile(r"^  (?![\s#-])(.+):(?:\s.*)?$")
 
