@@ -3434,6 +3434,8 @@ assert_rc "844 powershell tee.exe in a group denies" 2 \
 
 # 5744c-h: rg --pre / --pre-glob run a program over each file, so
 # a reader that names a live settings path is no read; plain rg and grep are.
+assert_rc "5744i newline word cannot forge a memo entry for a later live glob" 2 \
+    "$(bash_rc_of "$PRIMARY" $'echo x > "a\n.claude/s*.json|0|0\n" ; echo y > .claude/s*.json')"
 assert_rc "5744c rg --pre prog over live settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'rg --pre ./x.sh foo .claude/settings.json')"
 assert_rc "5744d rg --pre=prog over home settings denies" 2 \

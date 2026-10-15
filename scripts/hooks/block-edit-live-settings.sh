@@ -4038,8 +4038,14 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     _check_variant() {
         local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd
         [ "$variant_dest" = 0 ] || return 0
-        case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
-        _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
+        # a word with a newline is never memoized: it could forge an entry
+        case "$w" in
+            *$'\n'*) ;;
+            *)
+                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
+                _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
+                ;;
+        esac
         case "$w" in
             */*) dir=${w%/*}; leaf=${w##*/}; [ -n "$dir" ] || dir=/ ;;
             *) dir=.; leaf=$w ;;
