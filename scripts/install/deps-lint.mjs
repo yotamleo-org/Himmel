@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// scripts/install/deps-lint.mjs — validates scripts/install/deps.json
-// (HIMMEL-759). Sibling to manifest-lint.mjs, same closed-shape discipline,
+// scripts/install/deps-lint.mjs — validates scripts/install/deps.json.
+// Sibling to manifest-lint.mjs, same closed-shape discipline,
 // deliberately much smaller: deps.json is a flat toolchain declaration with
 // no dependency graph, no scopes/profiles, no probe-type vocabulary — see
 // deps.json's own header comment and scripts/himmelctl/lib/deps-engine.js

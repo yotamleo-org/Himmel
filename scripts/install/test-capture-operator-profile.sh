@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-capture-operator-profile.sh — hermetic suite for HIMMEL-2307's
+# test-capture-operator-profile.sh — hermetic suite for
 # scripts/install/capture-operator-profile.mjs.
 #
 # Hermetic via env overrides the script itself honors:
@@ -36,19 +36,19 @@
 # a real git checkout so the git-common-dir branch runs too, (m) crontab
 # error classification, (n) POSIX prefix-group cadence matching, (o) a
 # failed askable-lane read, (p) a malformed handover registry, (q) non-string
-# observability entries are dropped not leaked — and (HIMMEL-2307 fix-batch,
-# one case per fix): (r) a present-but-Disabled scheduled task reads 'off',
+# observability entries are dropped not leaked, plus:
+# (r) a present-but-Disabled scheduled task reads 'off',
 # (s) an unrecognized Status string fails toward armed + is flagged, (t)
 # matchCadenceGroups skips commented-out crontab lines, (u) a malformed
 # observability.json is a read failure not present-and-empty, (v)
 # bridge.envPath names CLAUDE_CONFIG_DIR when it differs from ~/.claude, (w)
 # assertScrubbed catches a backslash-doubled home path, (x) --check never
-# echoes the caller-supplied path unscrubbed — and (HIMMEL-2307 fix-batch
-# round 4, one case per fix): (y) --check drift output scrubs the COMMITTED
+# echoes the caller-supplied path unscrubbed, plus:
+# (y) --check drift output scrubs the COMMITTED
 # profile's raw old value, not just the fresh capture, (z) a --check target
 # whose path embeds the real home dir scrubs the readFileSync error message
 # too, (aa) assertScrubbed's key-leak diagnostic scrubs the leaking KEY
-# itself before reporting it — and (HIMMEL-2733 tier-aware plugin drift):
+# itself before reporting it, plus tier-aware plugin drift:
 # (qq) a disabled onDemandPlugins spec is not in any drift bucket, (rr) an
 # enabled onDemandPlugins spec is reported in delta.plugins.onDemandEnabled
 # and excluded from enabledBeyondTemplate, (ss) a malformed onDemandPlugins
@@ -94,7 +94,7 @@ const V1_LANES = [{ id: 'ollama', registryId: 'ollama-local' }];
 module.exports = { V1_LANES };
 EOF
 
-# cadence-registry.json fixture (HIMMEL-2307 follow-up) — mirrors the repo's
+# cadence-registry.json fixture — mirrors the repo's
 # real scripts/himmelctl/lib/cadence-registry.json id set (pipeline/qmd/
 # graphmap/codex-sweep) so splitCadencesByRegistry() has a real registry to
 # filter profile.cadences against instead of hitting the read-failure branch.
@@ -175,7 +175,7 @@ process.exit(2);
 EOF
 
 # schtasks stub: HIMMEL-DriftFix present but Status=Disabled — used by case r
-# (HIMMEL-2307 fix-batch codex-1) to prove a present-but-disabled task reads
+# to prove a present-but-disabled task reads
 # as 'off', not armed.
 cat > "$work/fakeschtasks-disabled.mjs" <<'EOF'
 process.stdout.write('"\\HIMMEL-DriftFix","N/A","Disabled"\r\n');
@@ -189,7 +189,7 @@ cat > "$work/fakeschtasks-unrecognized.mjs" <<'EOF'
 process.stdout.write('"\\HIMMEL-DriftFix","N/A","Queued"\r\n"\\Adobe Updater","N/A","Queued"\r\n');
 EOF
 
-# ── fixture variants for HIMMEL-2307 fix-batch cases (real git repo, its
+# ── fixture variants for the fix cases (real git repo, its
 # non-git fallback, a repo missing scripts/guardrails/lib.sh entirely, and a
 # repo with a corrupt settings-template.json) — copied BEFORE FIX_REPO is
 # git-initialized so none of these carry a stray .git dir.
@@ -330,7 +330,7 @@ console.log(problems.join('|'));
 if [ -z "$cadenceCheck" ]; then pass "case e: cadence armed/off reflects the stubbed schtasks CSV"; else fail "case e: cadence detection" "$cadenceCheck"; fi
 
 # ── case oo: profile.cadences carries ONLY cadence-registry.json ids
-# (HIMMEL-2307 follow-up schema ruling) — a non-registry cadence (drift-fix,
+# — a non-registry cadence (drift-fix,
 # ggs, repo-sync) must never appear in profile.cadences even when armed; it
 # moves to delta.cadences.nonRegistryCadences instead, and determinism holds
 # (repeat capture -> identical nonRegistryCadences). ────────────────────────
@@ -509,7 +509,7 @@ else
 fi
 
 # ── case m: classifyCrontabError distinguishes empty-crontab from a real failure ──
-# HIMMEL-2307 fix-batch (codex-2): the POSIX cadence probe itself can't run
+# The POSIX cadence probe itself can't run
 # hermetically on this platform — computeCadences()'s useSchtasks gate is
 # `process.platform === 'win32' || HIMMEL_CAPTURE_SCHTASKS_CMD`, so on a
 # real win32 host the POSIX branch never executes regardless of env, and a
@@ -543,7 +543,7 @@ else
 fi
 
 # ── case n: matchCadenceGroups — POSIX prefix groups match by token, not
-# just fixed-name groups (HIMMEL-2307 fix-batch codex-1) ──────────────────
+# just fixed-name groups ──────────────────
 # Before the fix, prefix-spec groups (graphmap/qmd) always fell through
 # `Array.isArray(spec) ? spec : []` to an empty name list and reported
 # 'off' regardless of crontab content. Also asserts taskDetail carries only
@@ -568,8 +568,8 @@ else
   fail "case n: matchCadenceGroups prefix matching" "$matchCadenceOut"
 fi
 
-# ── case o: askableIds read failure exits 2 naming the field (HIMMEL-2307
-# fix-batch codex-2) — a repo lacking scripts/himmelctl/lib/adopter-profile.js
+# ── case o: askableIds read failure exits 2 naming the field —
+# a repo lacking scripts/himmelctl/lib/adopter-profile.js
 # must not silently collapse lanes to [] while lanesMeaningful stays true ──
 FIX_REPO_NOADOPTER="$work/repo-noadopter"
 cp -r "$FIX_REPO" "$FIX_REPO_NOADOPTER"
@@ -585,7 +585,7 @@ else
 fi
 
 # ── case p: malformed handover registry.json is a read FAILURE, not
-# valid-empty (HIMMEL-2307 fix-batch codex-3) ───────────────────────────────
+# valid-empty ───────────────────────────────
 FIX_CONFIG_BADREG="$work/config-badreg/.claude"
 mkdir -p "$FIX_CONFIG_BADREG/handover" "$FIX_CONFIG_BADREG/channels/telegram"
 printf '{ not valid json' > "$FIX_CONFIG_BADREG/handover/registry.json"
@@ -606,8 +606,8 @@ else
 fi
 
 # ── case q: observability expected_tasks/expected_disabled_tasks drop
-# non-string entries instead of leaking their nested fields (HIMMEL-2307
-# fix-batch codex-4) ─────────────────────────────────────────────────────
+# non-string entries instead of leaking their nested fields —
+# ─────────────────────────────────────────────────────
 OBS_BADENTRY="$work/observability-badentry.json"
 cat > "$OBS_BADENTRY" <<'EOF'
 { "flows": [], "expected_tasks": ["T1", { "name": "T2", "leakField": "SHOULD-NEVER-APPEAR-MARKER" }], "expected_disabled_tasks": ["T3"] }
@@ -633,7 +633,7 @@ else
 fi
 
 # ── case r: a present-but-Disabled scheduled task reads 'off', not armed
-# (HIMMEL-2307 fix-batch codex-1) — before the fix only the name column was
+# — before the fix only the name column was
 # parsed, so any present task (regardless of Status) counted as armed ──────
 disabledOut=$(HIMMEL_CAPTURE_SCHTASKS_CMD="node $(winpath "$work/fakeschtasks-disabled.mjs")" run_json)
 disabledCheck=$("$node_bin" -e "
@@ -666,8 +666,8 @@ else
   fail "case s: status-unrecognized handling" "$unrecognizedCheck"
 fi
 
-# ── case t: matchCadenceGroups skips commented-out crontab lines (HIMMEL-2307
-# fix-batch codex-2) — before the fix, a whole-text substring/regex match
+# ── case t: matchCadenceGroups skips commented-out crontab lines —
+# before the fix, a whole-text substring/regex match
 # counted a '#'-commented line (with or without leading indentation) as armed.
 # Also tests extraArmedTasks computation: a commented EXTRA_KNOWN_TASKS name
 # must not match, while an active line must. ────────────────────────────────
@@ -693,7 +693,7 @@ else
 fi
 
 # ── case u: a malformed observability.json is a read FAILURE, not
-# present-and-empty (HIMMEL-2307 fix-batch codex-3) ─────────────────────────
+# present-and-empty ─────────────────────────
 OBS_MALFORMED="$work/observability-malformed.json"
 printf '{ this is not valid json' > "$OBS_MALFORMED"
 malformedObsOut=$(HIMMEL_OBSERVABILITY_CONFIG="$(winpath "$OBS_MALFORMED")" run_json)
@@ -716,7 +716,7 @@ else
 fi
 
 # ── case v: bridge.envPath names CLAUDE_CONFIG_DIR (placeholder token) when
-# it differs from ~/.claude (HIMMEL-2307 fix-batch codex-4) — the suite's own
+# it differs from ~/.claude — the suite's own
 # fixture CLAUDE_CONFIG_DIR already differs from $HOME/.claude, so this is
 # the always-exercised path; asserted explicitly here for the first time ──
 customConfigCheck=$("$node_bin" -e "
@@ -732,7 +732,7 @@ else
 fi
 
 # ── case w: assertScrubbed catches a backslash-doubled home path, not just
-# the forward-slash form (HIMMEL-2307 fix-batch codex-5) — assertScrubbed
+# the forward-slash form — assertScrubbed
 # tests JSON.stringify(obj) output, which doubles every backslash; a
 # home-path regex built only for the single-backslash form silently failed
 # to match its own doubled-up JSON.stringify form. user is deliberately
@@ -765,7 +765,7 @@ else
 fi
 
 # ── case x: --check's own output never echoes the caller-supplied profile
-# path unscrubbed (HIMMEL-2307 fix-batch codex-6) — repo-relative paths
+# path unscrubbed — repo-relative paths
 # print as-is (the common case); a path outside the repo (here, under the
 # fixture HOME) must never leak the real home path into stdout/stderr ──────
 checkPathScrubOut=$("$node_bin" --input-type=module -e "
@@ -806,7 +806,7 @@ else
 fi
 
 # ── case y: --check drift output scrubs the COMMITTED profile's raw OLD
-# value, not just the fresh capture (HIMMEL-2307 fix-batch round 4, codex-1)
+# value, not just the fresh capture
 # — before the fix, diffPaths' `a` side (the committed file's value) was
 # printed verbatim; an accidentally-committed real path would hit stdout
 # unscrubbed even though the freshly-captured `b` side is always clean. ────
@@ -834,7 +834,7 @@ fi
 
 # ── case z: --check against a missing file whose PATH embeds the real home
 # dir scrubs the readFileSync error message, not just displayPath's own echo
-# of the target (HIMMEL-2307 fix-batch round 4, codex-2) — before the fix,
+# of the target — before the fix,
 # e.message (which for ENOENT carries the path verbatim) was appended raw,
 # defeating displayPath(). ───────────────────────────────────────────────────
 set +e
@@ -859,7 +859,7 @@ else
 fi
 
 # ── case aa: a leak under a sensitive KEY name is scrubbed in the failure
-# diagnostic itself (HIMMEL-2307 fix-batch round 4, codex-4) — before the
+# diagnostic itself — before the
 # fix, findLeaks() interpolated the raw object KEY into the reported JSON
 # path, so the very assertion protecting against a leak would leak a
 # sensitive key name in its own error message. ──────────────────────────────
@@ -886,7 +886,7 @@ else
 fi
 
 # ── case bb: the top-level exception handler scrubs e.message too
-# (HIMMEL-2307 fix-batch round 5, codex-1) — before the fix, a thrown error
+# — before the fix, a thrown error
 # whose message embeds a real path (e.g. a writeFileSync failure into a
 # nonexistent directory) printed raw; this was the one emit path scrubText()
 # didn't cover yet. ──────────────────────────────────────────────────────────
@@ -901,8 +901,8 @@ else
 fi
 
 # ── case cc: the no-arg human summary shows a degraded devOverlay probe as
-# "unknown (probe degraded)", never a fabricated false (HIMMEL-2307 fix-batch
-# round 5, codex-2) — capture(false) is non-strict and still collapses
+# "unknown (probe degraded)", never a fabricated false:
+# capture(false) is non-strict and still collapses
 # profile.devOverlay to false; renderSummary must not repeat that collapse.
 # Needs a fixture repo that's otherwise complete (.env.example etc.) unlike
 # FIX_REPO_NOLIB (bare-empty, fine for case i's --json/strict throw before
@@ -922,7 +922,7 @@ else
 fi
 
 # ── case dd: a present-but-malformed claude-hud.json is a read FAILURE, not
-# valid-empty (HIMMEL-2307 fix-batch round 5, codex-3) — same convention as
+# valid-empty — same convention as
 # templateReadFailed/registryReadFailed/observabilityReadFailed. ───────────
 FIX_CONFIG_BADHUD="$work/config-badhud/.claude"
 mkdir -p "$FIX_CONFIG_BADHUD/handover" "$FIX_CONFIG_BADHUD/channels/telegram"
@@ -944,7 +944,7 @@ else
 fi
 
 # ── case ee: decideBridgePersistence — POSIX bridge-persistence decision
-# function (HIMMEL-2307 CR round 7, codex-1) — unit-file existence alone used
+# function — unit-file existence alone used
 # to mark installPersistence true even when the unit was disabled; now it
 # requires BOTH fileExists AND enabled, with fileExists-but-disabled and an
 # undeterminable systemctl state each flagged distinctly. Unit-tested
@@ -975,8 +975,8 @@ else
 fi
 
 # ── case ff: TELEGRAM_BOT_TOKEN quote-stripping — a quoted-empty value must
-# not count as set, a quoted-nonempty value must (HIMMEL-2307 CR round 7,
-# codex-2) — plain \S+ counted the quote characters themselves as
+# not count as set, a quoted-nonempty value must
+# plain \S+ counted the quote characters themselves as
 # "non-whitespace", so TELEGRAM_BOT_TOKEN="" read as enabled:true. The
 # token VALUE must never appear in output either way — boolean only. ───────
 FIX_CONFIG_QEMPTY="$work/config-qempty/.claude"
@@ -1033,7 +1033,7 @@ else
 fi
 
 # ── case gg: whisperModel emits the BASENAME of the actual model file, not
-# hardcoded 'ggml-small.bin' (HIMMEL-2307 fix-batch round 5, codex-1) —
+# hardcoded 'ggml-small.bin' —
 # before the fix, the code always emitted 'ggml-small.bin' whenever any model
 # file was present, regardless of its actual name. Now it correctly emits the
 # basename of the model file named by WHISPER_MODEL or found at the default path.
@@ -1054,8 +1054,8 @@ else
 fi
 
 # ── case hh: .env parser quote-stripping — HANDOVER_DIR="" and
-# LUNA_VAULT_PATH='' must not count as set (HIMMEL-2307 fix-batch round 6,
-# codex-1) — parseDotenv captured values with surrounding quotes intact, so
+# LUNA_VAULT_PATH='' must not count as set
+# parseDotenv captured values with surrounding quotes intact, so
 # HANDOVER_DIR="" read as a truthy string "\"\"" and wrongly mapped to
 # handover.mode="external". The value must be stripped via the same regex
 # already used in captureBridge (.replace(/^(['"])(.*)\1$/, '$2')) ─────────
@@ -1089,7 +1089,7 @@ fi
 
 # ── case ii: .env parser quote-stripping with quoted-nonempty values —
 # HANDOVER_DIR="/real/path" and LUNA_VAULT_PATH='/real/vault' must count as set
-# (HIMMEL-2307 fix-batch round 6, codex-2) — the quote-stripped values should
+# — the quote-stripped values should
 # be truthy and map correctly. ────────────────────────────────────────────────
 FIX_REPO_QNONEMPTY_HANDOVER="$work/repo-qnonempty-handover"
 cp -r "$FIX_REPO" "$FIX_REPO_QNONEMPTY_HANDOVER"
@@ -1122,9 +1122,9 @@ else
 fi
 
 # ── case jj: normalizeDotenvValue — the single dotenv value-grammar parser
-# (HIMMEL-2307 fixH) closing the class of corner cases CR rounds kept finding
-# one at a time: quoted-empty, quoted-whitespace ("   " — codex-2), a bare
-# '# unset' value (codex-1), inline comments, and quote-content-preserved
+# closing the class of corner cases CR rounds kept finding
+# one at a time: quoted-empty, quoted-whitespace, a bare
+# '# unset' value, inline comments, and quote-content-preserved
 # (no comment-stripping inside quotes). Unit-tested directly on the exported
 # pure function, same pattern as classifyCrontabError/case m and
 # decideBridgePersistence/case ee. ──────────────────────────────────────────
@@ -1156,7 +1156,7 @@ else
 fi
 
 # ── case kk: HANDOVER_DIR= # unset (unquoted, comment-only rest of line
-# after '=') reads handover.mode=inline — HIMMEL-2307 fixH codex-1: the OLD
+# after '=') reads handover.mode=inline: the OLD
 # parseDotenv did ZERO comment-handling (only quote-stripping), so this raw
 # .env value stayed the literal non-empty string " # unset" and wrongly
 # mapped to handover.mode="external". Targets parseDotenv (not captureBridge
@@ -1185,7 +1185,7 @@ else
 fi
 
 # ── case ll: TELEGRAM_BOT_TOKEN="   " (quoted-whitespace) reads
-# bridge.enabled=false — HIMMEL-2307 fixH codex-2: the old \S+-based capture
+# bridge.enabled=false: the old \S+-based capture
 # grabbed only the opening quote as its "non-whitespace" token, then quote-
 # stripping produced an empty string by luck; this case pins the behavior
 # directly through normalizeDotenvValue's quoted-content-then-final-trim path. ──
@@ -1206,7 +1206,7 @@ else
 fi
 
 # ── case mm: profile.lanes carries SHORT canonical ids, not registry ids
-# (HIMMEL-2308 schema ruling) — a live-lane probe returning registry ids that
+# — a live-lane probe returning registry ids that
 # V1_LANES fully maps must translate every one of them to its short id in
 # profile.lanes, while delta.lanes.liveLaneIds stays registry ids (diagnostics,
 # not schema) and unmappedLiveLanes is empty. ─────────────────────────────────
@@ -1283,7 +1283,7 @@ else
   fail "case nn: unmapped live lane handling" "rc=$rcLanesNn $lanesNnCheck"
 fi
 
-# ── HIMMEL-2733 tier-aware plugin drift (cases qq/rr/ss) ───────────────────
+# ── tier-aware plugin drift (cases qq/rr/ss) ───────────────────
 # Base repo (no .git, cheap to copy) + template carrying onDemandPlugins
 # on-demand specs "od1@mp"/"od2@mp", each mirrored `false` in enabledPlugins
 # per the two-tier contract check-template-himmel-plugins.sh enforces.

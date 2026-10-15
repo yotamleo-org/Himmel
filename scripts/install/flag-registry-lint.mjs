@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// flag-registry-lint.mjs — HIMMEL-4254 P2 (spec §5.1): every `*_OK` / `*_BYPASS`
+// flag-registry-lint.mjs (spec §5.1): every `*_OK` / `*_BYPASS`
 // environment flag a hook reads must have an entry in the display registry
 // scripts/himmelctl/lib/bypass-flags.json, and every entry must name a hook
 // file that exists. The config UI shows bypass flags display-only, so an
@@ -81,7 +81,7 @@ export function lint(root) {
     return [`cannot read ${REGISTRY_REL}: ${e.message}`];
   }
   const flags = Array.isArray(registry.flags) ? registry.flags : [];
-  // A missing hooks dir scans nothing and would pass vacuously (HIMMEL-4327).
+  // A missing hooks dir scans nothing and would pass vacuously.
   if (scannedFiles(root).length === 0) {
     return [`scripts/hooks/ holds no hook files under ${root}: nothing to lint, refusing to pass vacuously`];
   }

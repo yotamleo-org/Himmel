@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/install/capture-operator-profile.mjs — HIMMEL-2307.
+// scripts/install/capture-operator-profile.mjs
 //
 // Captures THIS machine's live state into the v2 install-profile shape
 // (schemaVersion 2 — see docs/setup/profiles/README.md) plus a "delta"
@@ -90,7 +90,7 @@ function buildScrubRegexes(home, user) {
     variants.add(home.replace(/\//g, '\\'));
     // assertScrubbed tests JSON.stringify(obj) output, which doubles every
     // backslash — a raw single-backslash home regex can silently fail to
-    // match its own doubled-up form there (codex-5). Add that form too, for
+    // match its own doubled-up form there. Add that form too, for
     // every backslash-bearing variant above.
     for (const v of [...variants]) if (v.includes('\\')) variants.add(v.replace(/\\/g, '\\\\'));
   }
@@ -124,7 +124,7 @@ function scrubText(s) {
 
 // findLeaks() walks the (already-scrubbed, but still-failing) object to name
 // WHERE a leak lives — a JSON path plus a label — never the matched text. The
-// object KEY itself can carry a leak (codex-4) — scrub it before it's
+// object KEY itself can carry a leak — scrub it before it's
 // interpolated into the reported path, since that path is exactly what the
 // caller sees on the failure it's meant to protect against.
 function findLeaks(v, regexes, path, out) {
@@ -223,7 +223,7 @@ function capturePlugins(configDir, repoRoot) {
   const templateReadFailed = templateJson === null;
   const template = (templateJson && typeof templateJson.enabledPlugins === 'object' && templateJson.enabledPlugins !== null && !Array.isArray(templateJson.enabledPlugins))
     ? templateJson.enabledPlugins : {};
-  // HIMMEL-2733: onDemandPlugins keys are the ON-DEMAND tier — installed,
+  // onDemandPlugins keys are the ON-DEMAND tier — installed,
   // shipped disabled (template[k] === false). An operator who has legitimately
   // enabled one is not drift; it's reported separately in onDemandEnabled.
   // Same defensive shape-check as `template` above: a malformed onDemandPlugins
@@ -249,7 +249,7 @@ const CADENCE_TASK_GROUPS = {
   'repo-sync': ['HIMMEL-RepoSync'],
 };
 // Known scheduled tasks that exist but are not covered by any of the 7
-// cadence ids above — surfaced in delta only (HIMMEL-2302 territory: the
+// cadence ids above — surfaced in delta only (the
 // wizard's binary luna-cadence question cannot select/report these).
 const EXTRA_KNOWN_TASKS = ['HIMMEL-ForkResync', 'HIMMEL-BootPreflight', 'HimmelTelegramBridge'];
 
@@ -271,7 +271,7 @@ function isHimmelRelevantTask(name) {
 }
 
 // ── cadence-registry schema boundary ────────────────────────────────────
-// HIMMEL-2307 follow-up schema ruling (locked, console-approved): the v2
+// Schema ruling (locked, console-approved): the v2
 // profile's `cadences` section carries ONLY ids from
 // scripts/himmelctl/lib/cadence-registry.json (pipeline|qmd|graphmap|
 // codex-sweep today, but read from the file — never hardcoded — since
@@ -318,14 +318,14 @@ function schtasksCommand() {
 // without it Git-Bash mangles /query into a Windows-rooted path.
 //
 // CSV columns (no /s): "TaskName","Next Run Time","Status". A present task
-// whose Status is Disabled must NOT count as armed (codex-1) — previously
+// whose Status is Disabled must NOT count as armed — previously
 // only the name column was parsed, so a disabled task read as armed. Only
 // the known English "Ready"/"Running" strings are trusted as armed; a
 // non-English/unexpected Status string (localized Windows) fails toward
 // still counting the task as armed, but is named in statusUnrecognized so
 // the delta can flag it rather than silently trusting an unknown string.
 //
-// Uncertainty convention (HIMMEL-2307, adjudicated): a TOTAL probe failure
+// Uncertainty convention: a TOTAL probe failure
 // (no data — devOverlay probe degraded, scheduler query failed) fails strict
 // capture loudly (exit 2), never fabricates a boolean. A single-attribute
 // AMBIGUITY on otherwise-good data (unrecognized/localized task status,
@@ -439,7 +439,7 @@ function filterCommentedLines(text) {
 function matchCadenceGroups(text) {
   // Per-line, skipping commented-out lines (first non-whitespace char '#') —
   // a whole-text substring/regex match previously counted a commented-out
-  // cron line as armed (codex-2).
+  // cron line as armed.
   const activeLines = filterCommentedLines(text);
   const activeText = activeLines.join('\n');
   const cadences = {};
@@ -494,10 +494,10 @@ function captureLanes(repoRoot) {
   // Wizard-askable registry ids, AND a registryId->short-id map — read-only
   // require of adopter-profile.js (V1_LANES), the same table the himmelctl
   // v1 lane question offers (rows carry both `id` short and `registryId`).
-  // HIMMEL-2308 schema ruling (2026-08-31, locked): install-profile `lanes`
+  // Schema ruling (2026-08-31, locked): install-profile `lanes`
   // carries SHORT canonical ids, not registry ids; delta.liveLaneIds/
   // wizardAskableIds stay REGISTRY ids (delta is diagnostics, not schema).
-  // HIMMEL-2352 (ruling 34): V1_LANES — and therefore askableIds/
+  // Ruling 34: V1_LANES — and therefore askableIds/
   // registryToShort below — is codex/hermes ONLY as of this ticket; ollama
   // and copilot are no longer wizard-askable, so a live ollama-local/
   // copilot-cli lane now falls into delta.unmappedLiveLanes rather than
@@ -700,8 +700,8 @@ function checkSystemdUnitEnabled() {
 // decideBridgePersistence(fileExists, unitState) — pure decision function
 // (no spawn) for the POSIX branch, so it can be unit-tested on synthetic
 // inputs (same pattern as classifyCrontabError). unit-file existence alone
-// used to mark installPersistence true even when the unit was disabled
-// (codex-1) — now installPersistence requires BOTH fileExists AND enabled;
+// used to mark installPersistence true even when the unit was disabled;
+// installPersistence now requires BOTH fileExists AND enabled;
 // fileExists-but-disabled is surfaced via bridgeUnitDisabled instead of
 // silently reading as persisted. When systemctl can't answer definitively
 // (absent or an unrecognized exit code), this fails toward the OLD
@@ -745,7 +745,7 @@ function captureBridge(configDir, scheduledTaskNames, usesCustomConfigDir) {
     ({ installPersistence, bridgeUnitDisabled, bridgeUnitStateUnknown } = decideBridgePersistence(unitFileExists, checkSystemdUnitEnabled()));
   }
   // The state above is read under CLAUDE_CONFIG_DIR (configDir) — when that
-  // differs from the default ~/.claude, the emitted path must say so (codex-4),
+  // differs from the default ~/.claude, the emitted path must say so,
   // still as a non-personal placeholder token, never the real resolved path.
   const envPath = usesCustomConfigDir ? '<CLAUDE_CONFIG_DIR>/channels/telegram/.env' : '~/.claude/channels/telegram/.env';
   return {
@@ -872,7 +872,7 @@ function diffPaths(a, b, path, out) {
 }
 
 // displayPath(p) — the caller-supplied --check path must never be echoed
-// unscrubbed (codex-6): repo-relative when it's under REPO_ROOT (the common
+// unscrubbed: repo-relative when it's under REPO_ROOT (the common
 // case — e.g. docs/setup/profiles/operator.install-profile.json), otherwise
 // scrubbed through the same home/user regexes as the rest of the output.
 function displayPath(p) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bundle-registry-lint.mjs — HIMMEL-4379: every config-feed row id must match
+// bundle-registry-lint.mjs: every config-feed row id must match
 // exactly one entry of the bundle table scripts/himmelctl/lib/feed-bundles.json,
 // and every entry must match at least one id. The config UI groups rows by that
 // table, so an unmapped id would silently land in Unsorted.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-observability-stack-manifest.sh — regression guard for HIMMEL-2326
+# test-observability-stack-manifest.sh — regression guard for the observability-stack manifest item
 # (observability stack has zero install-manifest coverage).
 #
 # Mirrors test-himmel-ops-plugin-enablement.sh's structure exactly: a
@@ -20,22 +20,22 @@
 #      partial family -> degraded naming which task, none registered ->
 #      absent).
 #   e. on a non-win32 platform the probe reads absent, honestly naming the
-#      Phase-A-is-win32-only reason (HIMMEL-922 / HIMMEL-2333) — never
+#      Phase-A-is-win32-only reason — never
 #      present, never a repairable-looking degraded.
 #   f. status-report.js's severity mapping: win32 + probe.actual:absent
 #      stays 'red' — a TRUE alarm, since (unlike graphify-mcp/doc-guard-map)
 #      this item carries a real install descriptor `himmelctl ensure` can
-#      converge (HIMMEL-2326 RETASK).
+#      converge.
 #   g. status-report.js's severity mapping: posix + probe.actual:absent is
 #      downgraded to 'n/a' — the operator can never converge this on posix,
-#      so it must not read as an alarm (HIMMEL-2326 RETASK). Proves the
+#      so it must not read as an alarm. Proves the
 #      false-red class the doc-guard-map/graphify-mcp precedent blocks
 #      already fixed doesn't reopen for this item.
 #   h. status-report.js's severity mapping: probe.actual:degraded stays
 #      'degraded' on BOTH win32 and posix — proves the n/a downgrade is
 #      scoped to 'absent' only and can never swallow a real partial-install
 #      warning.
-#   i. drift guard (HIMMEL-2326 CR round 1, codex-2): probes.js's
+#   i. drift guard: probes.js's
 #      OBSERVABILITY_TASK_NAMES is extracted from source and asserted EQUAL
 #      to restart-stack.sh's own himmel-observability-* hard allowlist
 #      (~L190-216) — the probe's comment claims the two never drift apart;
@@ -43,13 +43,13 @@
 #      faith. Both extractions are guarded against silently yielding an
 #      empty set (a broken pattern must fail loudly, not vacuously "pass"
 #      by comparing empty-to-empty).
-#   j. install-engine.js's dispatch for install.type:observability (HIMMEL-2326
-#      CR round 4, codex-2): planInstall() with an injected ctx.platform (no
+#   j. install-engine.js's dispatch for install.type:observability:
+#      planInstall() with an injected ctx.platform (no
 #      global process.platform stubbing needed — install-engine.js reads
 #      ctx.platform directly) resolves to a pwsh invocation naming
 #      install-stack.ps1 + -RepoRoot on win32, and to an `unrunnable` entry
 #      (never a cmd/args spawn shape at all) naming the win32-only gap and
-#      HIMMEL-2333 on posix — asserted on the returned descriptor, not on
+#      on posix — asserted on the returned descriptor, not on
 #      side effects.
 # shellcheck disable=SC2016  # case k's stub scripts expand $* / $OBS_* when THEY run, not here
 set -euo pipefail
@@ -73,7 +73,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/himmel-obs-stack-test.XXXXXX") || fail "mktemp
 [ -n "$work" ] || fail "mktemp -d produced an empty path"
 trap 'rm -rf "$work"' EXIT
 
-# HIMMEL-4341: posix is opt-in via observability.enabled in the luna config.
+# posix is opt-in via observability.enabled in the luna config.
 # Pin BOTH fixtures so no case ever reads the operator's real config file.
 cfg_off="$work/config-off.json"   # absent file = defaults = not opted in
 cfg_on="$work/config-on.json"
@@ -172,7 +172,7 @@ degradedDetail_disabledMatch=$(printf '%s' "$degradedDetail" | grep -E "Disabled
 echo "ok: case d — probeObservabilityStack returns present/degraded/absent for the three fixture states, naming which task(s) are the problem when degraded"
 
 # ── case e: on posix NOT opted in, the probe reads a CLEAN absence naming
-# the opt-in key — never present, never degraded (HIMMEL-4341) ──────────────
+# the opt-in key — never present, never degraded ──────────────
 outE=$("$node_bin" -e "
 const { runProbe } = require(process.argv[1]);
 const item = { probe: { type: 'observability-stack' } };
@@ -188,7 +188,7 @@ grep -q 'observability.enabled' <<< "$outE" \
 echo "ok: case e — posix not opted in reads a clean absence naming observability.enabled"
 
 # ── cases f/g/h: status-report.js's severity mapping for observability-stack
-# (HIMMEL-2326 RETASK) — runs the REAL statusReport() end to end, filtered
+# Runs the REAL statusReport() end to end, filtered
 # to just this item, with a synthetic empty state (never touches the real
 # operator's ~/.himmel state.json) so scope:'user' + profiles:[core,all]
 # derives desired:true via state.js's own deriveTarget(). Get-ScheduledTask
@@ -214,17 +214,17 @@ chmod +x "$stubDegraded"
 
 status_report_probe() {
   # $1 = HIMMELCTL_POWERSHELL stub path, $2 = 'win32' or 'posix'
-  # CR round 4 (codex-1, Critical): the override MUST be set explicitly for
+  # The override MUST be set explicitly for
   # BOTH branches — a prior version left it "" for win32, so
   # process.argv[2] was falsy and Object.defineProperty never ran, meaning
   # the win32 case silently read the REAL host's process.platform instead
   # of a forced one. That passed by accident on this Windows dev host and
-  # would FAIL on a Linux host (HIMMEL-2277 heads there). Never leave a
+  # would FAIL on a Linux host. Never leave a
   # branch depending on the ambient host platform.
   local platform_override="win32"
   [ "$2" = "posix" ] && platform_override="linux"
   # status-report.js's ctxForItem() never threads a platform field into ctx
-  # (HIMMEL-2326 RETASK, confirmed while fixing HIMMEL-2642) — the ONLY way
+  # the ONLY way
   # to force win32 here is the process.platform monkeypatch above. That also
   # flips what resolveProbeBash() -> resolveHookBash() -> resolveBash() sees,
   # so on a REAL non-Windows host the forced-win32 case would search
@@ -286,7 +286,7 @@ outH_posix=$(status_report_degraded_stub linux)
   || fail "case h: posix + probe.actual:degraded must ALSO stay severity:degraded (the n/a downgrade is scoped to 'absent' only), got: $outH_posix"
 echo "ok: case h — status-report.js: degraded stays severity:degraded on both win32 and posix"
 
-# ── case i: drift guard (HIMMEL-2326 CR round 1, codex-2) — probes.js's
+# ── case i: drift guard — probes.js's
 # OBSERVABILITY_TASK_NAMES must equal restart-stack.sh's own
 # himmel-observability-* hard allowlist. Extraction is TEXT-based on both
 # sides (never `require`s probes.js's internal, unexported array; never
@@ -320,7 +320,7 @@ fi
 echo "ok: case i — OBSERVABILITY_TASK_NAMES (probes.js) matches restart-stack.sh's himmel-observability-* task allowlist exactly (drift-guarded)"
 
 # ── case j: install-engine.js's dispatch for install.type:observability
-# (HIMMEL-2326 CR round 4, codex-2) — drives planInstall() with an injected
+# Drives planInstall() with an injected
 # ctx.platform (install-engine.js reads ctx.platform, not process.platform,
 # so no global stubbing is needed) and asserts on the RETURNED descriptor
 # only, never on a real spawn ──────────────────────────────────────────────

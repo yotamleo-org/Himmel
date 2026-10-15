@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-operator-profile-staleness.sh — HIMMEL-2307 CI staleness gate.
+# test-operator-profile-staleness.sh — CI staleness gate.
 #
 # Operator-machine only: runs a fresh capture-operator-profile.mjs against
 # THIS machine and --checks it against the committed
@@ -13,7 +13,7 @@
 # single opt-in, same shape as every other operator-only knob in this repo).
 #
 # NOTE: this does NOT validate the profile's SCHEMA (schemaVersion, field
-# shapes, etc.) — that is the HIMMEL-2308 leg's CI check over every
+# shapes, etc.) — that is a separate CI check over every
 # docs/setup/profiles/*.install-profile.json file. This gate only asks "does
 # a fresh capture on this machine still match the committed one".
 set -euo pipefail

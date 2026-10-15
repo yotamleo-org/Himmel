@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# test-mcp-profile-providers.sh — regression guard for HIMMEL-2634 (tokensave
-# installer-provisioning removal). Formerly test-tokensave-mcp-install.sh
-# (HIMMEL-2547, the tokensave-mcp `himmelctl deps` install descriptor) —
+# test-mcp-profile-providers.sh — regression guard for the tokensave
+# installer-provisioning removal. Formerly test-tokensave-mcp-install.sh,
 # renamed in place, history preserved via `git mv`, because tokensave-mcp no
-# longer exists as a manifest item: DROP was ruled HIMMEL-2581, and this
-# ticket removed its installer provisioning (manifest.json, install-engine.js,
+# longer exists as a manifest item: DROP was ruled, and the
+# change removed its installer provisioning (manifest.json, install-engine.js,
 # manifest-lint.mjs).
 #
 # PLATFORM GUARD (no .ps1 twin -- this note is that decision, not a
@@ -59,7 +58,7 @@
 #      dispatch arm is gone.
 #   e. RETIRED — running the tokensave install entry end-to-end; same
 #      dispatch arm, gone.
-#   f. Checked against test-wizard-probes.sh's HIMMEL-1093 bin/initMarker
+#   f. Checked against test-wizard-probes.sh's bin/initMarker
 #      deepening block (fixed in this same ticket to use a synthetic fixture
 #      descriptor instead of the now-gone tokensave-mcp manifest item): that
 #      block already asserts fully-satisfied->present,
@@ -81,7 +80,7 @@
 # obsidian-vault and onepassword). The manifest is NOT a provider source.
 #
 # A former criterion (ii) — a manifest item with an mcp-registered probe plus
-# an `install` descriptor — was dropped by HIMMEL-2657: install truthiness is
+# an `install` descriptor — was dropped because install truthiness is
 # not proof the descriptor registers an MCP server (a config-type descriptor
 # would satisfy it while registering nothing), and no manifest item satisfied
 # it anyway after the tokensave removal, so it was an unreachable branch. A
@@ -149,7 +148,7 @@ echo "ok: case c — a malformed install descriptor (extra field) on a still-liv
 # ── provider invariant checker — text-extracts PLUGIN_SERVERS' keys from
 # build-mcp-profiles.mjs (never imports/runs it — that script has real side
 # effects: reading ~/.claude.json, writing local.*.json, process.exit) ─────
-# CR fix (codex-1): anchoring on indentation alone is indentation-agnostic —
+# Anchoring on indentation alone is indentation-agnostic —
 # it would ALSO match a nested property (e.g. `command:`) if the map were
 # ever reformatted to multi-line entries, silently widening PLUGIN_SERVERS
 # with a false key. Requiring the top-level 2-space indent AND a `{` value
@@ -166,28 +165,28 @@ pluginServerKeysCsv=$(printf '%s' "$pluginServerKeys" | paste -sd, -)
 checker="$work/check-providers.js"
 cat > "$checker" <<'JS'
 // Provider invariant: every profiles.json member must resolve to a
-// PLUGIN_SERVERS key or the OPERATOR_PROVIDED allow-list (HIMMEL-2657 dropped
+// PLUGIN_SERVERS key or the OPERATOR_PROVIDED allow-list (dropped
 // the manifest criterion). Hermetic — never reads ~/.claude.json.
 const fs = require('fs');
 // Machine-local servers the operator registers by hand in ~/.claude.json;
 // himmel provisions neither, so they are exempt from the provider check by
-// deliberate, reviewed decision (HIMMEL-2634) rather than by omission.
+// deliberate, reviewed decision rather than by omission.
 // `graphify` is DELIBERATELY NOT on this list: it is not operator-provided
 // either, it is simply unprovisioned (graphify-mcp/graphify carry no
 // `install` descriptor) — the console was explicit that this must fail
 // loudly (RED control #3), never be laundered onto this allow-list.
 const OPERATOR_PROVIDED = ['obsidian-vault', 'onepassword'];
 // argv[3] (the manifest path) is still passed by callers but deliberately
-// unread — the manifest is not a provider source (HIMMEL-2657).
+// unread — the manifest is not a provider source.
 const [, , profilesPath, , pluginServerKeysCsv] = process.argv;
 const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')).profiles;
 const pluginServers = new Set(pluginServerKeysCsv.split(',').filter(Boolean));
 const failures = [];
 for (const [profile, members] of Object.entries(profiles)) {
-  // CR fix (codex-2): an empty profile passes the per-member loop below
+  // An empty profile passes the per-member loop below
   // trivially — but build-mcp-profiles.mjs REFUSES to write an empty
   // profile and exits non-zero (the exact failure that forced `minimal` to
-  // carry a non-empty ruling in the first place — HIMMEL-2634). A distinct
+  // carry a non-empty ruling in the first place). A distinct
   // failure category so it reads differently from a no-provider member.
   if (members.length === 0) {
     failures.push(`${profile}: has no members — build-mcp-profiles.mjs refuses to write an empty profile and exits non-zero`);
@@ -222,7 +221,7 @@ redMatch=$(printf '%s' "$outRed" | grep -F "definitely-unprovided-server-xyz" ||
   || fail "RED control: the failure should name the unprovided member, got: $outRed"
 echo "ok: RED control — an unprovided, non-allow-listed profile member fails the checker, naming it: $outRed"
 
-# ── RED control #2 (mandatory, CR fix codex-2): an EMPTY profile must fail
+# ── RED control #2 (mandatory): an EMPTY profile must fail
 # the checker — this is the exact failure build-mcp-profiles.mjs refuses to
 # write (the one that forced the minimal:["graphify"] ruling in the first
 # place), so the invariant must not pass it trivially ────────────────────
@@ -255,7 +254,7 @@ redGraphifyMatch=$(printf '%s' "$outRedGraphify" | grep -F '"graphify" has no pr
   || fail "RED control #3: the failure should name graphify, got: $outRedGraphify"
 echo "ok: RED control #3 — minimal:[\"graphify\"] (the reverted ruling) fails the checker, naming it: $outRedGraphify"
 
-# ── RED control #4 (mandatory, HIMMEL-2657 negative control): a manifest item
+# ── RED control #4 (mandatory negative control): a manifest item
 # carrying an mcp-registered probe PLUS an install descriptor that registers
 # nothing (type:"config") must NOT count as a provider — install truthiness is
 # not proof of MCP registration, so the manifest is no provider source at all ─

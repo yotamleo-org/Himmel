@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/install/manifest-lint.mjs — validates scripts/install/manifest.json
-// against the Phase-1 probe-only schema (HIMMEL-756 T1.2). Zero-dep ESM.
+// against the Phase-1 probe-only schema. Zero-dep ESM.
 //
 // Checks per item:
 //   (a) exactly the six required keys (id, kind, scopes, profiles, deps,
@@ -14,7 +14,7 @@
 //   (f) probe descriptor shape matches its type's contract (below) — closed
 //       shapes: unknown/extra fields are a lint error, same as missing ones.
 //   (g) install/unwire descriptor shape matches its type's contract (schema
-//       v2, HIMMEL-755 A1) — same closed-shape treatment as probe. When
+//       v2) — same closed-shape treatment as probe. When
 //       BOTH install and unwire are present and both are type 'wire', their
 //       `target` values must also MATCH (a wire/unwire pair naming
 //       different targets would wire one thing and unwire another).
@@ -25,35 +25,35 @@
 //       value-enums).
 //   (j) deps[] form a DAG — no cycles (schema v2 DFS cycle detector).
 //   (k) offboard, when present, is one of OFFBOARD_VALUES (unwire|advise|
-//       keep) — HIMMEL-755 sub-ticket E. Optional; absent defaults to
+//       keep). Optional; absent defaults to
 //       'unwire' at the himmelctl consumer, so no biconditional here (unlike
 //       removable<=>unwire) — offboard has no paired descriptor to agree with.
-//   (l) provenance, optional object { kinds: [...] } (HIMMEL-3332 S11): the
+//   (l) provenance, optional object { kinds: [...] }: the
 //       ledger kinds the item's writers record (PROVENANCE_KINDS, the
 //       vocabulary of scripts/lib/provenance.sh). REQUIRED — non-empty —
 //       on every item whose effective offboard is 'unwire'; closed shape and
 //       checked wherever it appears.
 //
 // Per-type probe descriptor shape contract (single normative source — the
-// probe interpreter (HIMMEL-756 T1.3) MUST consume descriptors that satisfy
+// probe interpreter MUST consume descriptors that satisfy
 // this table; the two shapes below vary legitimately across items and are
 // each machine-checked, not flattened):
 //
 //   type              | fields (all required unless noted)
 //   ------------------|--------------------------------------------------
 //   file-exists       | path: string; OPTIONAL syntaxCheck: boolean
-//                     | (HIMMEL-3322 — existence alone isn't proof a shell
+//                     | (existence alone isn't proof a shell
 //                     | lib actually sources; `bash -n path` on a hit,
 //                     | downgrading a syntax-broken file to 'degraded')
 //   git-hooks         | hooks: non-empty string[]
 //   settings-key      | file: string; EXACTLY ONE of key: string XOR
 //                     | keys: non-empty string[]; OPTIONAL expect: boolean
-//                     | (HIMMEL-2292 — requires singular 'key', not 'keys':
+//                     | (requires singular 'key', not 'keys':
 //                     | asserts that key's value EQUALS expect exactly,
 //                     | catching a boolean flag set to the wrong value, not
 //                     | just present/absent — e.g. enabledPlugins["<spec>"]
 //                     | explicitly false must probe 'absent', not 'present')
-//                     | OPTIONAL verifyScript: boolean (HIMMEL-3322 — the
+//                     | OPTIONAL verifyScript: boolean (the
 //                     | key's value non-empty isn't proof a statusLine
 //                     | command's script actually resolves; parses the
 //                     | canonical `<interpreter> "<script>"` shape wire-
@@ -61,55 +61,54 @@
 //                     | resolves on PATH + the script is a readable file,
 //                     | downgrading a gap to 'degraded'. Never executes the
 //                     | command.) OPTIONAL verifyPluginSet: boolean
-//                     | (HIMMEL-3322 — a non-empty enabledPlugins map isn't
+//                     | (a non-empty enabledPlugins map isn't
 //                     | proof it matches docs/setup/settings-template.json's
 //                     | recorded set or that those plugins are actually
 //                     | installed per ~/.claude/plugins/installed_plugins.json;
 //                     | any gap downgrades to 'degraded') OPTIONAL
-//                     | verifyHudConfig: boolean (HIMMEL-3334 — a statusLine
+//                     | verifyHudConfig: boolean (a statusLine
 //                     | command wired to claude-hud isn't proof its config
 //                     | file exists or carries display.customLineCommand;
 //                     | any gap downgrades to 'degraded', never 'absent'/n-a)
 //   settings-hooks    | file: string; key: string
 //   cmd:has_qmd       | resolver: string
 //   qmd-index         | collections: non-empty string[]
-//   qmd-daemon        | (no fields) — HIMMEL-4432: initialize round-trip
+//   qmd-daemon        | (no fields) initialize round-trip
 //   mcp-registered    | server: string; OPTIONAL bin: string (a descriptor-
 //                     | named binary that must resolve on PATH, independent
 //                     | of the registered command), OPTIONAL initMarker:
 //                     | string (path relative to targetPath that must
-//                     | exist) — HIMMEL-1093 registered-but-broken deepening;
+//                     | exist) registered-but-broken deepening;
 //                     | the registered entry's OWN `command` is ALWAYS
 //                     | validated too (unconditionally, no descriptor field
-//                     | needed — HIMMEL-1093 round 3); any gap downgrades a
+//                     | needed); any gap downgrades a
 //                     | registered server to 'degraded' instead of 'present'.
 //   handover-dir      | resolver: string
 //   dep               | EXACTLY ONE of cmd: string XOR (win32: string AND
 //                     | posix: string) — the win32/posix pair is the
 //                     | platform-branched variant used by scheduler-backend
-//   cmd:has_hermes    | resolver: string (HIMMEL-1093)
-//   cmd:is_himmel_dev | resolver: string (HIMMEL-1093)
+//   cmd:has_hermes    | resolver: string
+//   cmd:is_himmel_dev | resolver: string
 //   telegram-access   | envFile: string; tokenKey: string; accessFile:
-//                     | string (HIMMEL-1093 round 3) — token missing/empty
+//                     | string — token missing/empty
 //                     | in envFile -> absent; token present but accessFile
 //                     | missing/unparseable/no usable allow rule (empty
 //                     | allowFrom and no groups) -> degraded; both -> present.
-//   cmd:codex_provisioned    | (no fields — HIMMEL-1100) resolves CODEX_BIN/
+//   cmd:codex_provisioned    | (no fields) resolves CODEX_BIN/
 //                            | PATH + checks $CODEX_HOME/plugins/cache/himmel
-//                            | (the himmel-marketplace-specific cache entry —
-//                            | round 3, codex-adv-2 — not just ANY cache dir).
+//                            | (the himmel-marketplace-specific cache entry,
+//                            | not just ANY cache dir).
 //   cmd:cadence_armed        | resolver: string; envVar: string; defaultSubdir:
-//                            | string (HIMMEL-1100) — armed-vs-not for a
+//                            | string — armed-vs-not for a
 //                            | generated cadence runner dir; staleness itself
 //                            | stays advisory (himmel-update.sh's own nudge).
-//   cmd:guardrail_block_status | script: string (HIMMEL-1100) — parses
+//   cmd:guardrail_block_status | script: string — parses
 //                            | guardrail-block.mjs's own `status` output;
-//                            | mode=global never reaches 'present' (round 3,
-//                            | codex-adv-1 — the CLI's status verb cannot
+//                            | mode=global never reaches 'present' (the CLI's status verb cannot
 //                            | attest all 3 guardrail hooks, only that at
 //                            | least one is wired; a richer verb is a
 //                            | follow-up, not built here).
-//   cmd:hermes_checkout      | (no fields — HIMMEL-1100 round 3, codex-adv-3)
+//   cmd:hermes_checkout      | (no fields)
 //                            | pure fs, no git spawn: resolves the SAME
 //                            | source dir update_hermes() uses and reads
 //                            | .git/config directly for the origin remote —
@@ -117,42 +116,42 @@
 //                            | precondition), distinct from cmd:has_hermes
 //                            | (a usable venv python, kept on hermes-lanes).
 //   cmd:telegram_getme       | envFile: string; tokenKey: string; apiModule:
-//                            | string (HIMMEL-2176 Task 6) — shells out to
+//                            | string — shells out to
 //                            | `bun -e` to call the REAL getMe() at
 //                            | scripts/telegram/telegram-api.ts, validating
 //                            | the bridge token actually authenticates
 //                            | (distinct from telegram-access, which only
 //                            | proves the token/allow-rule SHAPE).
-//   cmd:whisper_ready        | (no fields — HIMMEL-2176 Task 6) mirrors
+//   cmd:whisper_ready        | (no fields) mirrors
 //                            | scripts/telegram/transcribe.ts's own
 //                            | WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
 //                            | resolution convention; platform-branches the
 //                            | default binary name (transcribe.ts's own
 //                            | default is win32-only).
-//   cmd:python_interpreter   | OPTIONAL cmd: string (HIMMEL-2176 Task 6) —
+//   cmd:python_interpreter   | OPTIONAL cmd: string —
 //                            | spawns the candidate interpreter and asserts
 //                            | it runs a trivial script, catching the
 //                            | "resolves on PATH but is actually a stub"
 //                            | class (Windows Store app-execution aliases,
 //                            | broken WSL/venv shims).
 //   distinct-tokens          | envFileA/tokenKeyA/envFileB/tokenKeyB: string
-//                            | (HIMMEL-2176 Task 6) — fails when two
+//                            | — fails when two
 //                            | configured tokens are IDENTICAL (e.g. the
 //                            | telegram bridge and the jira-nudge relay
 //                            | sharing one bot token); either side
 //                            | unconfigured is not a failure.
 //   luna-sources             | script: string; sources: non-empty string[];
-//                            | OPTIONAL pythonCmd: string (HIMMEL-2176 Task
-//                            | 6) — folds scripts/luna/fetch-health.py
+//                            | OPTIONAL pythonCmd: string —
+//                            | folds scripts/luna/fetch-health.py
 //                            | --probe <source> results across every
 //                            | configured luna clip-source into one verdict;
 //                            | a source name fetch-health.py's own registry
 //                            | doesn't recognize (argparse exit code 2)
 //                            | degrades the result — both alongside at least
-//                            | one recognized source, and (CR round 3) when
+//                            | one recognized source, and when
 //                            | EVERY named source is unrecognized.
-//   bridge-persistence       | (no fields — HIMMEL-2176 Stage-1 PR-C, status
-//                            | item S6) logon task (win) / systemd unit +
+//   bridge-persistence       | (no fields) status
+//                            | item S6: logon task (win) / systemd unit +
 //                            | linger (linux) present when bridge.enabled;
 //                            | reads ~/.himmel/config.json + the pinned
 //                            | artifact names/helpers from
@@ -160,10 +159,10 @@
 //                            | NOTE: cadence-coherence/phi-coherence/
 //                            | engine-allowlist/bridge-health above were
 //                            | shipped without a row in this table
-//                            | (HIMMEL-2263, pre-existing backlog, not fixed
+//                            | (pre-existing backlog, not fixed
 //                            | here) — this row is added so bridge-persistence
 //                            | does not add to that gap.
-//   observability-stack      | (no fields — HIMMEL-2326) queries the FOUR
+//   observability-stack      | (no fields) queries the FOUR
 //                            | himmel-observability-* scheduled tasks
 //                            | (restart-stack.sh's own hard allowlist is the
 //                            | authoritative task-name family — this probe
@@ -173,12 +172,12 @@
 //                            | registered -> absent, anything in between
 //                            | (partial install, a disabled task, or an
 //                            | inconclusive query) -> degraded naming which.
-//                            | Phase A (HIMMEL-922) ships a win32-only
+//                            | Phase A ships a win32-only
 //                            | installer — non-win32 always reads absent
-//                            | naming that gap (tracked as HIMMEL-2333), never
+//                            | naming that gap, never
 //                            | present or a repairable-looking degraded.
 //
-// HIMMEL-1100 coverage decisions (deliberate, not oversights):
+// Coverage decisions (deliberate, not oversights):
 //   - claude CLI is NOT a manifest item. It is the substrate himmelctl itself
 //     runs under/manages configuration for (self-referential bootstrap
 //     dependency — akin to asking "is python installed" from inside a Python
@@ -189,7 +188,7 @@
 //     this is a scoping call, not an assumption.
 //   - graphify's UPDATE path (it rides uv/PyPI, not any himmel-owned
 //     re-pin automation) and the 11 plain `dep` items' freshness are left
-//     n/a-by-omission — HIMMEL-1100 covers INSTALL-time coverage gaps; it does
+//     n/a-by-omission — this covers INSTALL-time coverage gaps; it does
 //     not add new update automation the harness doesn't already run.
 //
 // Usage:
@@ -205,7 +204,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-// CR fix (CodeRabbit round 19): the `target` vocabulary a wire/build (and
+// The `target` vocabulary a wire/build (and
 // wire unwire) descriptor accepts is derived from install-engine.js's ACTUAL
 // dispatch sites (INSTALL_TARGETS), not a parallel hardcoded list here — the
 // two could otherwise drift, and a lint-clean typo would silently dispatch
@@ -215,24 +214,24 @@ import path from 'node:path';
 import installEngine from '../himmelctl/lib/install-engine.js';
 
 const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 'mcp'];
-// HIMMEL-1093: cmd:has_hermes / cmd:is_himmel_dev / telegram-access added to
+// cmd:has_hermes / cmd:is_himmel_dev / telegram-access added to
 // replace tautological/false-green probes — see probes.js's module header.
-// HIMMEL-1100: cmd:codex_provisioned / cmd:cadence_armed /
-// cmd:guardrail_block_status / cmd:hermes_checkout (round 3) added for
+// cmd:codex_provisioned / cmd:cadence_armed /
+// cmd:guardrail_block_status / cmd:hermes_checkout added for
 // subsystems the harness actively installs/updates that the manifest had
 // never heard of.
-// HIMMEL-2176 Task 6: cmd:telegram_getme / cmd:whisper_ready /
+// cmd:telegram_getme / cmd:whisper_ready /
 // cmd:python_interpreter / distinct-tokens / luna-sources added for
 // externalization Stage 1's bridge + toolchain probes (see probes.js's
 // module header). telegram-access itself is unchanged here — it grew a
 // formal JSON-schema check in the same ticket, but that's a deepening of the
 // EXISTING probe.type, not a new one, so it needs no vocabulary/shape change.
-// HIMMEL-2176 Task 7: cadence-coherence / phi-coherence / engine-allowlist /
+// cadence-coherence / phi-coherence / engine-allowlist /
 // bridge-health added — composite status-item probes folding config-store
 // state, generated runner files, a live allow-list, or several existing
 // single-source probes into one tri-state result (probes.js's module header
 // documents each).
-// HIMMEL-2326: observability-stack added — a tri-state probe over the four
+// observability-stack added — a tri-state probe over the four
 // himmel-observability-* scheduled tasks (probes.js's module header
 // documents it); 'observability'/'stack' added to INSTALL_TYPES/
 // INSTALL_TARGETS so its install descriptor can dispatch to install-stack.ps1
@@ -240,14 +239,14 @@ const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 
 // case).
 const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana'];
 const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
-// Optional schema-v2 consumer keys (HIMMEL-755 A1). Permitted by the
+// Optional schema-v2 consumer keys. Permitted by the
 // exact-key check but not required — items authored under schemaVersion:1
 // stay valid; items that DO carry them are shape-checked below.
-// HIMMEL-2892: `contributorScopes` widens an item's scope membership for a
+// `contributorScopes` widens an item's scope membership for a
 // CONTRIBUTOR record only (state.js's itemMembership: answers.devOverlay).
 // Additive — never a substitute for `scopes`, and its entries obey the same
 // SCOPES_ENUM.
-// HIMMEL-4308: `noNetwork` declares that the item's OWN install primitive was
+// `noNetwork` declares that the item's OWN install primitive was
 // traced to local file writes only, so `himmelctl ensure --no-network` may run
 // it. Deny by default: absent means refused. Only `wire` installs qualify.
 const OPTIONAL_ITEM_KEYS = ['install', 'unwire', 'removable', 'offboard', 'contributorScopes', 'provenance', 'noNetwork'];
@@ -256,11 +255,11 @@ const UNWIRE_TYPES = ['wire'];
 const SCOPES_ENUM = ['project', 'user'];
 const PROFILES_ENUM = ['core', 'luna', 'all'];
 const REMOVABLE_VALUES = ['per-item', 'full-offboard-only'];
-// HIMMEL-755 sub-ticket E: the uninstall-completeness owned/shared cut.
+// The uninstall-completeness owned/shared cut.
 // 'unwire' (himmel-owned, uninstall.sh tears it down) is the DEFAULT when
 // the field is absent — see scripts/himmelctl/bin.js's partitionOffboard().
 const OFFBOARD_VALUES = ['unwire', 'advise', 'keep'];
-// HIMMEL-3332 S11: the ledger kinds an item's writers record. Same vocabulary
+// The ledger kinds an item's writers record. Same vocabulary
 // as _PROV_KINDS in scripts/lib/provenance.sh (test-wizard-manifest-v2.sh case
 // t fails if the two drift), so a kind named here is one prov_record accepts.
 const PROVENANCE_KINDS = ['file', 'tree', 'json-key', 'json-elem', 'block', 'line', 'plugin', 'marketplace',
@@ -343,7 +342,7 @@ function checkProbeShape(probe, label, errors) {
       } else if (hasKeys && !isNonEmptyStringArray(probe.keys)) {
         errors.push(`${label}: probe type 'settings-key' field 'keys' must be a non-empty array of strings`);
       }
-      // HIMMEL-2292: optional 'expect' (boolean) — value-equality check on
+      // Optional 'expect' (boolean) — value-equality check on
       // the SINGLE key, not a mere presence/non-empty check. Requires 'key'
       // (singular): a multi-key expected-value map isn't a case any current
       // item needs, so the shape stays closed to the one-key case instead of
@@ -356,7 +355,7 @@ function checkProbeShape(probe, label, errors) {
           errors.push(`${label}: probe type 'settings-key' field 'expect' requires singular 'key', not 'keys'`);
         }
       }
-      // HIMMEL-3322: OPTIONAL deepening fields, same opt-in shape as mcp-
+      // OPTIONAL deepening fields, same opt-in shape as mcp-
       // registered's bin/initMarker above — a gap downgrades to 'degraded',
       // never silently 'present'. Both require singular 'key' (each names a
       // single script-command / plugin-map key, not a multi-key set).
@@ -376,7 +375,7 @@ function checkProbeShape(probe, label, errors) {
           errors.push(`${label}: probe type 'settings-key' field 'verifyPluginSet' requires singular 'key', not 'keys'`);
         }
       }
-      // HIMMEL-3334: same opt-in deepening shape — an absent/invalid hud
+      // Same opt-in deepening shape — an absent/invalid hud
       // config on a claude-hud-wired statusLine degrades rather than reading
       // 'present' from the command string alone.
       if (Object.prototype.hasOwnProperty.call(probe, 'verifyHudConfig')) {
@@ -412,7 +411,7 @@ function checkProbeShape(probe, label, errors) {
     }
     case 'mcp-registered': {
       if (typeof probe.server !== 'string') errors.push(`${label}: probe type 'mcp-registered' requires 'server' (string)`);
-      // HIMMEL-1093: bin/initMarker are OPTIONAL deepening fields (registered
+      // bin/initMarker are OPTIONAL deepening fields (registered
       // is not proof the server works) — when present, must be strings.
       if (Object.prototype.hasOwnProperty.call(probe, 'bin') && typeof probe.bin !== 'string') {
         errors.push(`${label}: probe type 'mcp-registered' field 'bin', when present, must be a string`);
@@ -446,7 +445,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'cmd:codex_provisioned': {
-      // No fields — HIMMEL-1100. CODEX_BIN/CODEX_HOME resolution is a fixed,
+      // No fields. CODEX_BIN/CODEX_HOME resolution is a fixed,
       // established convention (mirrors install-himmel-codex.sh's own
       // resolve_codex()), not per-item configuration.
       reportExtra([]);
@@ -465,7 +464,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'cmd:hermes_checkout': {
-      // No fields — HIMMEL-1100 round 3. HERMES_HOME/LOCALAPPDATA resolution
+      // No fields. HERMES_HOME/LOCALAPPDATA resolution
       // is a fixed convention mirroring update_hermes()'s own resolution
       // (himmel-update.sh), not per-item configuration.
       reportExtra([]);
@@ -479,14 +478,14 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'cmd:whisper_ready': {
-      // No fields — HIMMEL-2176 Task 6. WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
+      // No fields. WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
       // resolution mirrors transcribe.ts's own fixed convention, not
       // per-item configuration.
       reportExtra([]);
       break;
     }
     case 'cmd:python_interpreter': {
-      // 'cmd' is OPTIONAL — HIMMEL-2176 Task 6: absent means the
+      // 'cmd' is OPTIONAL: absent means the
       // platform-branched default (python on win32, python3 elsewhere).
       if (Object.prototype.hasOwnProperty.call(probe, 'cmd') && typeof probe.cmd !== 'string') {
         errors.push(`${label}: probe type 'cmd:python_interpreter' field 'cmd', when present, must be a string`);
@@ -521,7 +520,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'phi-coherence': {
-      // No fields — HIMMEL-2176 Task 7. Reads luna.vaultPath from
+      // No fields. Reads luna.vaultPath from
       // ~/.himmel/config.json and ~/.config/claude-glm/phi-roots directly,
       // fixed conventions, not per-item configuration.
       reportExtra([]);
@@ -555,7 +554,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'bridge-persistence': {
-      // No fields — HIMMEL-2176 Stage-1 PR-C, status item S6. Reads
+      // No fields. Reads
       // bridge.enabled from ~/.himmel/config.json and the pinned artifact
       // names/helpers from scripts/himmelctl/lib/bridge-persistence.js
       // directly, fixed conventions, not per-item configuration (same shape
@@ -564,7 +563,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'observability-stack': {
-      // No fields — HIMMEL-2326. The four himmel-observability-* task names
+      // No fields. The four himmel-observability-* task names
       // are a fixed convention (restart-stack.sh's own hard allowlist),
       // not per-item configuration — same posture as cmd:codex_provisioned/
       // phi-coherence/bridge-persistence above.
@@ -572,7 +571,7 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'observability-grafana': {
-      // No fields — HIMMEL-4289. The three himmel-observability-* user units and
+      // No fields. The three himmel-observability-* user units and
       // their loopback ports are fixed by install-grafana.sh, not per-item config.
       reportExtra([]);
       break;
@@ -619,7 +618,7 @@ function probeKeySet(probe) {
 // (g) validates the optional 'install' descriptor shape against its type's
 // contract — same closed-shape treatment as checkProbeShape. Called only
 // when 'install' is present on the item (it's optional per OPTIONAL_ITEM_KEYS).
-// CR fix: a config-type install descriptor is now cross-checked against the
+// A config-type install descriptor is cross-checked against the
 // SAME item's `probe` — the descriptor must name every key the probe
 // actually verifies, or converging it wouldn't converge what status reports
 // on. `probe` may be undefined/malformed (checkProbeShape reports that
@@ -646,7 +645,7 @@ function checkInstallShape(install, probe, label, errors) {
       if (typeof install.target !== 'string') {
         errors.push(`${label}: install type '${type}' requires 'target' (string)`);
       } else if (!installEngine.INSTALL_TARGETS[type].includes(install.target)) {
-        // CR fix (CodeRabbit round 19): reject a target outside the engine's
+        // Reject a target outside the engine's
         // closed vocabulary — without this a lint-clean typo silently
         // dispatches the wrong primitive (see INSTALL_TARGETS' header).
         errors.push(`${label}: install type '${type}' target '${install.target}' not in [${installEngine.INSTALL_TARGETS[type].join(', ')}]`);
@@ -659,7 +658,7 @@ function checkInstallShape(install, probe, label, errors) {
       // descriptor naming only 1 is internally incoherent — the descriptor
       // wouldn't converge what the probe actually verifies). Mirrors probe
       // type 'settings-key's own key XOR keys shape exactly, for the shape
-      // itself; the cross-check against the probe's key set is the CR fix.
+      // itself; the cross-check against the probe's key set is the second check.
       const hasKey = Object.prototype.hasOwnProperty.call(install, 'key');
       const hasKeys = Object.prototype.hasOwnProperty.call(install, 'keys');
       let shapeOk = true;
@@ -673,7 +672,7 @@ function checkInstallShape(install, probe, label, errors) {
         errors.push(`${label}: install type 'config' field 'keys' must be a non-empty array of strings`);
         shapeOk = false;
       }
-      // CR fix: cross-check against the item's own probe key set (only
+      // Cross-check against the item's own probe key set (only
       // meaningful once the shape itself is valid, and only for a probe
       // that actually has a key/keys concept — see probeKeySet()).
       if (shapeOk) {
@@ -698,7 +697,7 @@ function checkInstallShape(install, probe, label, errors) {
       break;
     }
     case 'observability':
-      // HIMMEL-2326: same target-vocabulary treatment as 'wire'/'build'
+      // Same target-vocabulary treatment as 'wire'/'build'
       // above — installEngine.INSTALL_TARGETS is the single source of
       // truth so a typo'd target can't lint clean and silently dispatch
       // nothing (buildEntry()'s 'observability' case is the only consumer).
@@ -741,7 +740,7 @@ function checkUnwireShape(unwire, label, errors) {
       if (typeof unwire.target !== 'string') {
         errors.push(`${label}: unwire type 'wire' requires 'target' (string)`);
       } else if (!installEngine.INSTALL_TARGETS.wire.includes(unwire.target)) {
-        // CR fix (CodeRabbit round 19): same closed-vocabulary gate as the
+        // Same closed-vocabulary gate as the
         // install side — a non-statusline unwire target falls through to the
         // pretooluse-hooks primitive in unwireCommand().
         errors.push(`${label}: unwire type 'wire' target '${unwire.target}' not in [${installEngine.INSTALL_TARGETS.wire.join(', ')}]`);
@@ -864,7 +863,7 @@ function lint(manifest) {
       checkUnwireShape(it.unwire, label, errors);
     }
 
-    // CR fix: install/unwire target coherence. checkInstallShape and
+    // Install/unwire target coherence. checkInstallShape and
     // checkUnwireShape each validate their OWN descriptor in isolation, so
     // an item could declare install:{type:"wire",target:"statusline"}
     // alongside unwire:{type:"wire",target:"pretooluse-hooks"} and lint
@@ -891,7 +890,7 @@ function lint(manifest) {
       errors.push(`${label}: removable === 'per-item' iff 'unwire' is present (removable=${JSON.stringify(it.removable)}, hasUnwire=${hasUnwire})`);
     }
 
-    // (m) noNetwork — HIMMEL-4308. Shape { path: 'install' } and only on an
+    // (m) noNetwork: shape { path: 'install' } and only on an
     // item whose install descriptor is a `wire` (the one traced local type).
     if (Object.prototype.hasOwnProperty.call(it, 'noNetwork')) {
       const nn = it.noNetwork;
@@ -908,7 +907,7 @@ function lint(manifest) {
       errors.push(`${label}: offboard '${it.offboard}' not in [${OFFBOARD_VALUES.join(', ')}]`);
     }
 
-    // (l) provenance.kinds — HIMMEL-3332 S11. Required on every item whose
+    // (l) provenance.kinds: required on every item whose
     // effective offboard is 'unwire' (absent defaults to it, as bin.js's
     // partitionOffboard() reads it); shape-checked wherever it appears.
     checkProvenanceShape(it, label, errors);

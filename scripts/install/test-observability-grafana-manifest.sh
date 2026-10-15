@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-observability-grafana-manifest.sh — HIMMEL-4289: the opt-in
+# test-observability-grafana-manifest.sh — the opt-in
 # `observability-grafana` himmelctl item (Prometheus + Grafana user units).
 # Runs the REAL manifest, manifest-lint, probe, install-engine and
 # status-report against fixture config/repo trees; no real service is touched.

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# test-himmel-ops-plugin-enablement.sh — regression guard for HIMMEL-2292.
+# test-himmel-ops-plugin-enablement.sh — regression guard for the himmel-ops plugin's live enablement.
 #
 # himmel-ops (marketplace/plugins/himmel-ops/hooks/hooks.json) delivers
 # block-glm-external-writes.sh — but delivery isn't enablement: a plugin can
 # be fully wired and still sit at "himmel-ops@himmel": false in a machine's
 # live ~/.claude/settings.json (existence != enablement), leaving the guard
-# silently inert. HIMMEL-2292 closes that structurally:
+# silently inert. This suite closes that structurally:
 #   1. scripts/install/manifest.json carries a dedicated "himmel-ops-plugin"
 #      item whose probe checks the LIVE enabled VALUE (not mere key
 #      presence) via the new settings-key 'expect' field.
-#   2. docs/setup/settings-template.json (the HIMMEL-1032 reconciler's own
+#   2. docs/setup/settings-template.json (the settings reconciler's own
 #      whitelist/floor) flags himmel-ops@himmel true.
 #   3. install-plugins.sh's new force-enable step (always-on, additive-only)
 #      is what `himmelctl ensure`/`install` actually runs for that item —
@@ -44,7 +44,7 @@ node_bin=$(command -v node)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-# HIMMEL-3332: install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
+# install-plugins.sh now writes the install-provenance ledger; keep it in scratch, never the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$work/provenance"
 
 # winpath <path> — see test-wizard-manifest-v2.sh's own header.
@@ -70,7 +70,7 @@ himmelOpsItem=$(jq -c '[.items[] | select(.probe.type == "settings-key" and .pro
   || fail "case b: the himmel-ops item's install.type must be 'plugins' (the dispatch that runs install-plugins.sh's force-enable step), got: $himmelOpsItem"
 echo "ok: case b — manifest.json has a himmel-ops item probing its live enabled value with install.type:plugins"
 
-# ── case c: settings-template.json (the HIMMEL-1032 reconciler's own
+# ── case c: settings-template.json (the reconciler's own
 # whitelist/floor) flags himmel-ops@himmel true ────────────────────────────
 [ "$(jq -r '.enabledPlugins["himmel-ops@himmel"] // "absent"' "$template_path")" = "true" ] \
   || fail "case c: docs/setup/settings-template.json must flag \"himmel-ops@himmel\": true (the reconciler whitelist) — HIMMEL-2292 regression"
