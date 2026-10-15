@@ -34,6 +34,7 @@ function New-Sandbox {
   $script:FAKEHOME = Join-Path $TMP "$id-home"
   $script:WORK     = Join-Path $TMP "$id-work"
   New-Item -ItemType Directory -Force -Path (Join-Path $FAKEHOME '.claude') | Out-Null
+  Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value '{}' -NoNewline
   New-Item -ItemType Directory -Force -Path $WORK | Out-Null
 }
 
