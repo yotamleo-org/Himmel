@@ -834,6 +834,11 @@ check guard-leg-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-check
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 CRLF_TP=""
 
+# permission-allow-gate-shapes only ever allows or passes through, so its
+# verdict is always rc 0; a CR in the command must not turn that into a crash.
+printf '\nPermission allow hook\n'
+check permission-allow-gate-shapes Bash 0 "$A_OK" "pass through outside a leg worktree"
+
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE
 # SOURCE — this directory's listing, never a list typed from memory — and
