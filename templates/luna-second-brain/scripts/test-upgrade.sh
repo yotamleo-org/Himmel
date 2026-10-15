@@ -688,6 +688,21 @@ assert_eq "T28 first-population seeds absent manifest.json" "$(sha_of "$T/.obsid
 assert_eq "T28 first-population seeds absent main.js"       "$(sha_of "$T/.obsidian/plugins/obsidian-local-rest-api/main.js")"       "$(sha_of "$V2/.obsidian/plugins/obsidian-local-rest-api/main.js")"
 assert_eq "T28 first-population seeds absent styles.css"    "$(sha_of "$T/.obsidian/plugins/obsidian-local-rest-api/styles.css")"    "$(sha_of "$V2/.obsidian/plugins/obsidian-local-rest-api/styles.css")"
 
+# T28b: a plugin dir is ONE release unit. A PARTIAL install (manifest.json +
+# styles.css present, main.js missing) must not get the bundle's older main.js
+# seeded next to its newer siblings; the upgrade reports the gap instead.
+V3="$TMP/t28b-vault"; mkdir -p "$V3/.obsidian/plugins/obsidian-local-rest-api"; stamp_vault "$V3" "0.1.0"
+printf '{"id":"obsidian-local-rest-api","version":"4.1.3"}\n' > "$V3/.obsidian/plugins/obsidian-local-rest-api/manifest.json"
+printf 'VAULT-STYLES-4.1.3\n'                                  > "$V3/.obsidian/plugins/obsidian-local-rest-api/styles.css"
+m3=$(sha_of "$V3/.obsidian/plugins/obsidian-local-rest-api/manifest.json")
+s3=$(sha_of "$V3/.obsidian/plugins/obsidian-local-rest-api/styles.css")
+out3=$(bash "$UPGRADE" --template-dir "$T" --vault-dir "$V3" --yes 2>&1)
+test ! -e "$V3/.obsidian/plugins/obsidian-local-rest-api/main.js" && has_main=absent || has_main=present
+assert_eq "T28b partial install: older main.js NOT seeded beside newer siblings" "absent" "$has_main"
+assert_eq "T28b partial install: manifest.json untouched" "$m3" "$(sha_of "$V3/.obsidian/plugins/obsidian-local-rest-api/manifest.json")"
+assert_eq "T28b partial install: styles.css untouched"    "$s3" "$(sha_of "$V3/.obsidian/plugins/obsidian-local-rest-api/styles.css")"
+case "$out3" in *"partial plugin install"*) pass "T28b partial install is reported";; *) fail "T28b partial install is reported" "$out3";; esac
+
 # ---------------------------------------------------------------------------
 # T29: a template-owned "overwrite"-class file the vault
 # COMMITTED a local edit to since its last stamped upgrade must not be

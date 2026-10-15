@@ -8,6 +8,15 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.73] — 2026-10-15
+
+### Fixed
+- `/luna-upgrade` treats each `.obsidian/plugins/<id>/` directory as one release
+  unit. When a plugin is partly installed (some of `main.js`, `manifest.json`,
+  `styles.css` present, others missing), the missing file is no longer seeded
+  from the bundle, which could pair an older file with newer siblings. The
+  upgrade prints a REPORT row for each skipped file instead.
+
 ## [0.4.72] — 2026-10-15
 
 ### Changed
