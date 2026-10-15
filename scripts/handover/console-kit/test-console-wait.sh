@@ -986,6 +986,13 @@ reset_stub; tracker_line ok
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/ts4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ts4) tracker back to ok clears the streak marker" "absent" "$([ -e "$I.wait.trackerstale" ] && echo present || echo absent)"
 
+reset_stub; tracker_line STALE:3h
+I="$(new_inbox ts5)"
+printf '%s\n' "$(( $(date +%s) - 2400 ))" > "$I.wait.trackerstale"
+CONSOLE_WAIT_TRACKER_STALE_MIN=08 start "$I" "$WORK/ts5.out" --legs "N1.md"
+wait_exit "$WPID"
+check "(ts5) a leading-zero threshold (08) is decimal, not an octal error" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts5.out")"
+
 # --- (pc): the waiter closes a wrapped predecessor console -------
 # The console doc's first line names its predecessor (`successor to <doc>.md`). The
 # waiter runs close-wrapped-leg.sh --console on it once, logs a Results bullet; exit
@@ -996,7 +1003,7 @@ cat > "$STUB/close.sh" <<'EOF'
 printf '%s\n' "$*" >> "$STUB/close.calls"
 n="$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 rc="$(sed -n "${n}p" "$STUB/close.rcs" 2>/dev/null)"; [ -n "$rc" ] || rc="$(tail -n 1 "$STUB/close.rcs")"
-[ -z "$rc" ] || [ "$rc" -eq 0 ] || echo "close-wrapped-leg: refusing - stub rc $rc" >&2
+[ -z "$rc" ] || [ "$rc" -eq 0 ] || { [ -f "$STUB/close.msg" ] && cat "$STUB/close.msg" >&2 || echo "close-wrapped-leg: refusing - stub rc $rc" >&2; }
 exit "${rc:-0}"
 EOF
 export CONSOLE_WAIT_CLOSE="$STUB/close.sh"
@@ -1037,6 +1044,13 @@ mkdir -p "$WORK/pc5"; printf '# AT — CONSOLE — successor to none — first c
 : > "$STUB/close.calls"; I="$(new_inbox pc5)"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/pc5/AT.md" --legs "N1.md" > "$WORK/pc5.out" 2>/dev/null
 check "(pc5) a console with no predecessor doc closes nothing" "0" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
+reset_stub
+CD="$(pc_console pc6 5)"; I="$(new_inbox pc6)"
+echo "close-wrapped-leg: refusing - 10 live session(s) matched leg names [x] (need exactly 1)" > "$STUB/close.msg"
+start "$I" "$WORK/pc6.out" --doc "$CD" --legs "N1.md"
+wait_exit "$WPID"
+rm -f "$STUB/close.msg"
+check "(pc6) 10 live sessions is not 0: the ambiguous refusal wakes" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/pc6.out")"
 unset CONSOLE_WAIT_CLOSE
 
 # --- (k) usage ---------------------------------------------------------------

@@ -471,7 +471,9 @@ tracker_stale_wake() {
     [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
     since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
     case "$since" in ''|*[!0-9]*) return 1 ;; esac
-    [ $(( $(date +%s) - since )) -ge $(( ${CONSOLE_WAIT_TRACKER_STALE_MIN:-30} * 60 )) ] || return 1
+    stale_min="${CONSOLE_WAIT_TRACKER_STALE_MIN:-30}"
+    case "$stale_min" in ''|*[!0-9]*) stale_min=30 ;; esac
+    [ $(( $(date +%s) - since )) -ge $(( 10#$stale_min * 60 )) ] || return 1
     printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
     return 0
 }
@@ -501,7 +503,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
         0) printf 'closed:%s\n' "$pdoc" > "$pred_file"
            bash "$HERE/append-results.sh" "$console_doc" "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" >/dev/null 2>&1 || true ;;
         3|4|6|7) ;;
-        5) if grep -Fq '0 live session' "$errf"; then printf 'gone:%s\n' "$pdoc" > "$pred_file"
+        5) if grep -Fq 'refusing - 0 live session' "$errf"; then printf 'gone:%s\n' "$pdoc" > "$pred_file"
            else printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=5\n%s\n' "$(head -n 1 "$errf")"; rm -f "$errf"; return 0; fi ;;
         *) printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=%s\n%s\n' "$rc" "$(head -n 1 "$errf")"; rm -f "$errf"; return 0 ;;
     esac
