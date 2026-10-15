@@ -93,7 +93,7 @@ read `docs/handover/leg-sections/succession.md`** (decision table, stranded-leg 
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
   Publication]` gets no retry. Details and the piping/stash rules:
   `docs/handover/leg-sections/shell-and-tests.md`.
-- A "low on memory" task kill is unproven: read `/proc/pressure/memory` and cgroup
+- A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and cgroup
   `memory.events`; all-zero → run the suite foreground, report `BLOCKED` with the numbers.
 - **Never pipe into a gate script**; never bare `git stash`. Open a PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`. Ship scratch
   goes in your scratchpad or `.himmel-scratch/`, never the worktree root.
