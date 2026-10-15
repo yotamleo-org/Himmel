@@ -231,6 +231,9 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
 # shellcheck source=../lib/py-armor.sh
 # shellcheck disable=SC1091
 . "$_QL_SCRIPT_DIR/../lib/py-armor.sh"
+# shellcheck source=../lib/git-clean.sh
+# shellcheck disable=SC1091
+. "$_QL_SCRIPT_DIR/../lib/git-clean.sh"
 
 _ql_usage() {
     cat <<'EOF'
@@ -239,7 +242,12 @@ Usage: queue-lock.sh acquire   <handover-path> [session-id]
        queue-lock.sh release   <handover-path> <session-token>
        queue-lock.sh status    <handover-path>
        queue-lock.sh status --sweep [<handover-dir>]
+       queue-lock.sh preflight <handover-path> [file...]
        queue-lock.sh self-heartbeat   (PostToolUse hook; reads hook JSON on stdin)
+
+preflight (HIMMEL-1336) is read-only: it prints `COLLISION file=<f> slug=<s>
+session=<id>` for each file you declare (or have changed) that another live
+held lock's checkout has also changed, and exits 20; 0 when clean.
 
 acquire prints "release-token: `<token>`" (backticked -- HIMMEL-2910) on
 success -- capture it and pass it to heartbeat/release (both refuse without
@@ -2653,6 +2661,72 @@ _ql_sweep_one_root() {
     return 0
 }
 
+# _ql_doc_worktree_changes <handover-doc> -- print the repo-relative files the
+# doc's `resume_cwd:` checkout has changed (committed past the base branch,
+# plus uncommitted). Prints nothing when the doc names no usable checkout.
+_ql_doc_worktree_changes() {
+    local doc="$1" cwd base
+    [ -f "$doc" ] || return 0
+    cwd=$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p;}' "$doc" 2>/dev/null | sed -n '1p')
+    [ -n "$cwd" ] && [ -d "$cwd" ] || return 0
+    git_clean -C "$cwd" rev-parse --git-dir >/dev/null 2>&1 || return 0
+    base=$(git_clean -C "$cwd" merge-base HEAD origin/main 2>/dev/null || git_clean -C "$cwd" merge-base HEAD main 2>/dev/null) || base=""
+    {
+        [ -n "$base" ] && git_clean -C "$cwd" diff --name-only "$base" HEAD 2>/dev/null
+        git_clean -C "$cwd" status --porcelain 2>/dev/null | sed 's/^...//'
+    } | sort -u
+}
+
+# queue_lock_preflight <handover-path> [file...] -- READ-ONLY collision
+# preflight: compares the files this session intends to touch
+# (the operands, plus whatever its own resume_cwd checkout has already
+# changed) against the files changed in the checkout of every OTHER live held
+# lock, and prints one `COLLISION file=<f> slug=<s> session=<id>` line per
+# overlap. Exit 20 on any overlap (a warning, never a block), 0 when clean.
+# STALE-DEAD locks and this doc's own lock are skipped.
+# ponytail: overlap is file-name equality over git state of the lock owner's resume_cwd, upgrade path: per-session edit telemetry from the HIMMEL-1052 substrate
+queue_lock_preflight() {
+    local ho="${1:-}"
+    if [ -z "$ho" ]; then
+        _ql_usage >&2
+        return 1
+    fi
+    shift
+    local roots r mine other_files hits=0 lockdir o_raw o_doc o_session slug f
+    _ql_enter "$ho" "queue-lock: could not resolve handover root" || return 1
+    local own_doc="$_QL_DOC"
+    mine=$({ for f in "$@"; do printf '%s\n' "$f"; done; _ql_doc_worktree_changes "$own_doc"; } | sort -u)
+    [ -n "$mine" ] || { echo "preflight: no files declared and none changed in this session's checkout"; return 0; }
+    roots=$({ handover_root_ensure 2>/dev/null; _ql_lock_roots; } | awk 'NF && !seen[$0]++')
+    while IFS= read -r r; do
+        [ -n "$r" ] && [ -d "$r/.locks/queue" ] || continue
+        for lockdir in "$r"/.locks/queue/*.lock; do
+            [ -f "$lockdir/owner.json" ] || continue
+            o_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || continue
+            o_doc=$(_ql_json_field_str "$o_raw" handover)
+            o_session=$(_ql_json_field_str "$o_raw" session)
+            [ -n "$o_doc" ] && [ "$o_doc" != "$own_doc" ] || continue
+            _ql_owner_provably_dead "$lockdir" "${QUEUE_LOCK_TTL_SECONDS:-21600}" && continue
+            slug=$(_ql_sweep_field "$(basename "$lockdir" .lock)")
+            other_files=$(_ql_doc_worktree_changes "$o_doc")
+            [ -n "$other_files" ] || continue
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                if printf '%s\n' "$other_files" | grep -qxF -- "$f"; then
+                    echo "COLLISION file=$(_ql_sweep_path "$f") slug=$slug session=$(_ql_sweep_field "$o_session")"
+                    hits=1
+                fi
+            done <<EOF
+$mine
+EOF
+        done
+    done <<EOF
+$roots
+EOF
+    [ "$hits" -eq 0 ] || return 20
+    return 0
+}
+
 _ql_main() {
     local verb="${1:-}"
     if [ -n "$verb" ]; then
@@ -2663,6 +2737,7 @@ _ql_main() {
         heartbeat) queue_lock_heartbeat "$@" ;;
         release)   queue_lock_release "$@" ;;
         status)    queue_lock_status "$@" ;;
+        preflight) queue_lock_preflight "$@" ;;
         self-heartbeat) queue_lock_self_heartbeat 2>/dev/null; return 0 ;;
         *)
             _ql_usage >&2
