@@ -813,7 +813,11 @@ fi
 # archive/windows/, except a vendored upstream copy held verbatim.
 # ----------------------------------------------------------------------------
 t15_held='marketplace/plugins/i-have-adhd/hooks/always-on.ps1'
-t15_stray="$(git ls-files '*.ps1' '*.cmd' '*.bat' | grep -v '^archive/windows/' | grep -v '/fixtures/' | grep -vxF "$t15_held" || true)"
+if t15_all="$(git ls-files '*.ps1' '*.cmd' '*.bat')"; then
+    t15_stray="$(printf '%s\n' "$t15_all" | grep -v '^archive/windows/' | grep -v '/fixtures/' | grep -vxF "$t15_held" || true)"
+else
+    t15_stray="git ls-files failed"
+fi
 if [ -z "$t15_stray" ]; then
     echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat outside archive/windows/."
 else

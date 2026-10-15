@@ -1,5 +1,9 @@
 # Windows clean-machine runbook — full himmel dev + lane fleet, remote-driven
 
+> **Historical.** Windows is no longer supported. The PowerShell scripts this
+> walkthrough runs (`win11.ps1` and the wire/unwire helpers) now live under
+> `archive/windows/`; the steps below are kept as a record, not a working path.
+
 End-to-end walkthrough for taking a **factory-clean Windows 11 machine** to a
 full himmel dev machine — base toolchain, himmel + luna, ported credentials,
 the delegation-lane fleet (hermes, codex, copilot, antigravity, ollama, GLM),
