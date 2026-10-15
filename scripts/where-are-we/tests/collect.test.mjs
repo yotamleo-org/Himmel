@@ -107,6 +107,55 @@ test('prRecords: empty input returns empty array', () => {
 });
 
 // ---------------------------------------------------------------------------
+// prRecords — awaiting_operator for green + mergeable open PRs
+// ---------------------------------------------------------------------------
+
+const GREEN_ROLLUP = [
+  { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
+  { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SKIPPED' },
+  { __typename: 'StatusContext', state: 'SUCCESS' },
+];
+const readyPr = (over = {}) => ({
+  number: 529, state: 'OPEN', headRefName: 'feat/x', title: 'ship it',
+  mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: GREEN_ROLLUP,
+  ...over,
+});
+
+test('prRecords: green mergeable open PR emits awaiting_operator', () => {
+  const [rec] = prRecords([readyPr()], NOW);
+  assert.deepEqual(rec.awaiting_operator, ['green + mergeable: ship it']);
+});
+
+test('prRecords: red check, pending check, conflict or non-clean state clears awaiting_operator', () => {
+  const cases = [
+    readyPr({ statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'FAILURE' }] }),
+    readyPr({ statusCheckRollup: [{ status: 'IN_PROGRESS', conclusion: '' }] }),
+    readyPr({ statusCheckRollup: [{ __typename: 'StatusContext', state: 'PENDING' }] }),
+    readyPr({ mergeable: 'CONFLICTING' }),
+    readyPr({ mergeStateStatus: 'BLOCKED' }),
+    readyPr({ statusCheckRollup: [] }),
+    readyPr({ state: 'MERGED' }),
+  ];
+  for (const pr of cases) {
+    const [rec] = prRecords([pr], NOW);
+    assert.deepEqual(rec.awaiting_operator, [], JSON.stringify(pr));
+  }
+});
+
+test('prRecords: no mergeable data leaves awaiting_operator unset', () => {
+  const [rec] = prRecords([{ number: 1, state: 'OPEN', headRefName: 'a', title: 't' }], NOW);
+  assert.ok(!Object.prototype.hasOwnProperty.call(rec, 'awaiting_operator'));
+});
+
+test('digest: green mergeable open PR is listed under Awaiting YOU; a later red pass clears it', () => {
+  const up = fold(prRecords([readyPr()], NOW));
+  assert.match(render(up), /## Awaiting YOU \(operator\)\n\n- \*\*#529\*\* — green \+ mergeable: ship it/);
+  const red = prRecords([readyPr({ mergeable: 'CONFLICTING' })], '2026-01-02T00:00:00Z');
+  const down = fold([...prRecords([readyPr()], NOW), ...red]);
+  assert.match(render(down), /## Awaiting YOU \(operator\)\n\n_\(none\)_/);
+});
+
+// ---------------------------------------------------------------------------
 // gitRecords
 // ---------------------------------------------------------------------------
 

@@ -2,6 +2,18 @@
 
 Load when running any of these commands, or when troubleshooting registry state.
 
+## Registry writer (shared)
+
+Every registry write below (`init` step 7, `register` step 7, `repos add`) runs
+through `scripts/handover/register-state.sh`, the single writer of
+`registry.json` (atomic write, name/path/`bucket_name` collision checks before
+any write). The himmelctl install wizard calls the same script, so the skill
+and the installer never diverge. Usage: `--repo-path <repo> --state-host <dir>
+[--name] [--user] [--bucket-name] [--init | --init-if-empty] [--check]`; `--init`
+also performs the `init` bootstrap steps 1-6 (it falls back to the in-repo
+`marketplace/plugins/handover/templates` when `CLAUDE_PLUGIN_ROOT` is unset).
+The script's header documents the exit codes.
+
 ## Pre-flight Validation (shared)
 
 The `bucket_name` collision check below is run by all three write paths

@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 
 > **Vendored, pinned to a commit (HIMMEL-5630).** Source: `cursor/plugins`
-> (pstack), commit `1e5c90a4b6f249917bd21fe361b3a2a7deb741b8`, path
+> (pstack), commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
 > `pstack/skills/no-comments/SKILL.md`. License: MIT, (c) 2026 Lauren Tan
 > (`LICENSE` beside this file is the verbatim `pstack/LICENSE` at that commit).
 > Pairs with `.claude/agents/comment-sicko.md`.

@@ -338,6 +338,9 @@ Every feature has one doc that owns its detail; the full map is
   [`docs/internals/enforcement.md`](docs/internals/enforcement.md)
 - Handover system (multi-repo registry, auto-branch, PR, flush):
   [`docs/internals/handover-system.md`](docs/internals/handover-system.md)
+- Collision preflight before starting a session: `bash scripts/handover/queue-lock.sh preflight <handover-doc> [file...]`
+  warns (exit 20) when a file you intend to touch is already changed in another
+  live session's checkout; read-only, `queue-lock.sh` header lists the contract
 - AFK (unattended) mode runs (`/overnight-shift`, `/stop` to halt):
   [`docs/handover/overnight-mode.md`](docs/handover/overnight-mode.md)
 
