@@ -53,17 +53,19 @@ for doc in "${docs[@]}"; do
     [ -r "$doc" ] || continue
     sids="$(awk 'NR==1&&$0!="---"{exit} NR>1&&$0=="---"{exit} /^session_ids:/{print;exit}' "$doc" 2>/dev/null | grep -oE '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}')"
     [ -n "$sids" ] || continue
-    for sid in $sids; do
+    # session_ids is oldest-first (a relaunch appends): judge only the newest id
+    # that has rows, so an old session's stale prompt never parks a live leg.
+    for sid in $(printf '%s\n' "$sids" | tac); do
         last="$(grep -F "\"session_id\":\"$sid\"" "$window" | tail -n 1)"
         [ -n "$last" ] || continue
         case "$last" in
             *'"kind":"permission_request"'*|*'"kind":"notification"'*'"notification_type":"permission_prompt"'*) ;;
-            *) continue ;;
+            *) break ;;
         esac
         ts="$(printf '%s' "$last" | sed -n 's/.*"ts":"\([^"]*\)".*/\1/p')"
-        epoch="$(date -d "$ts" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
+        epoch="$(date -d "$ts" +%s 2>/dev/null)" || break  # gnu-ok: Linux-only kit
         age=$(( (now - epoch) / 60 ))
-        [ "$age" -ge "$min" ] || continue
+        [ "$age" -ge "$min" ] || break
         label="$(basename "$doc" .md)"
         out="${out:+$out,}$label:${age}m"
         break

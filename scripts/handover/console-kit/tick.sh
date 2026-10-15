@@ -63,7 +63,8 @@ per-row suite, case, sha and run: scripts/observability/suite-flake-summary.sh
 console-wait's action key, so it wakes nothing. Env seams: SUITE_FLAKE_LEDGER,
 SUITE_FLAKE_REPO_ID, SUITE_FLAKE_TAIL_ROWS.
 
-parked=<leg>:<age>m[,...] (HIMMEL-2563) sits between flakes= and spare= and is ABSENT
+parked=<leg>:<age>m[,...] (HIMMEL-2563) follows vmrun= (and flakes= when present), comes
+before spare= when present, and is ABSENT
 unless a leg's newest trust-ledger row (scripts/trust/shadow-ledger.mjs) is a
 permission prompt older than TICK_PARKED_MIN minutes (default 5): the leg is parked on
 the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names only

@@ -80,5 +80,15 @@ eq 'a trailing --min terminates' '0:parked=legA:12m' "$rc:$out"
 out="$(timeout 5 bash "$SUT" "$D1" --ledger 2>/dev/null)"; rc=$?
 eq 'a trailing --ledger terminates' '0:parked=none' "$rc:$out"
 
+# a relaunched leg appends a new session id (oldest first): only the newest
+# id that has rows is judged
+D3="$(doc legC "$S1,$S2")"
+{ row 900 "$S1" permission_request; row 3 "$S2" outcome; } > "$W/ledger.jsonl"
+eq 'an old parked session does not park the relaunched leg' 'parked=none' "$(run --min 5 "$D3")"
+{ row 900 "$S1" permission_request; row 8 "$S2" permission_request; } > "$W/ledger.jsonl"
+eq 'the newest session parked is named with its own age' 'parked=legC:8m' "$(run --min 5 "$D3")"
+{ row 900 "$S1" permission_request; } > "$W/ledger.jsonl"
+eq 'a newest id without rows falls back to the previous id' 'parked=legC:900m' "$(run --min 5 "$D3")"
+
 [ "$fails" -eq 0 ] || { printf '%s failure(s)\n' "$fails"; exit 1; }
 printf 'all passed\n'

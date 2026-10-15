@@ -259,9 +259,16 @@ sample() {
 
 changed_fields() { # <old key> <new key>
     printf '%s\n' "$1" | tr '|' '\n' > "$hb_file.old"
-    printf '%s\n' "$2" | tr '|' '\n' | while IFS= read -r kv; do
-        grep -qxF -- "$kv" "$hb_file.old" || printf '%s\n' "${kv%%=*}"
-    done | paste -sd, -
+    {
+        printf '%s\n' "$2" | tr '|' '\n' | while IFS= read -r kv; do
+            grep -qxF -- "$kv" "$hb_file.old" || printf '%s\n' "${kv%%=*}"
+        done
+        # parked= is absent when no leg is parked, so a set that empties is a
+        # field missing from the new key, not one that differs.
+        if grep -q '^parked=' "$hb_file.old" && ! printf '%s\n' "$2" | tr '|' '\n' | grep -q '^parked='; then
+            printf 'parked\n'
+        fi
+    } | paste -sd, -
     rm -f "$hb_file.old"
 }
 

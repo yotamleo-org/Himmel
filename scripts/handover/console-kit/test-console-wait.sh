@@ -775,6 +775,18 @@ wait_exit "$WPID"
 check "(pk2) a leg joining the parked set ends the wait" "0" "$rc"
 check "(pk2) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(head -n1 "$WORK/pk2.out")"
 
+# a leg LEAVING the parked set (the field disappears) wakes too
+reset_stub
+parked_line N1:6m
+I="$(new_inbox pk3)"
+start "$I" "$WORK/pk3.out" --legs "N1.md"
+wait_hb "$I" || fail "(pk3) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+sed 's# parked=[^ ]*##' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+wait_exit "$WPID"
+check "(pk3) a leg leaving the parked set ends the wait" "0" "$rc"
+check "(pk3) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(head -n1 "$WORK/pk3.out")"
+
 # --- (m3748) a leg-set change made through --legs-from is a silent baseline --
 # with --legs-from the argv never changes, so the waiter folds the
 # manifest's leg list into its args hash each sample. A dispatch (manifest add)
