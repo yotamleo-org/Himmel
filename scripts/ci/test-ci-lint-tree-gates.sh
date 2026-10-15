@@ -50,7 +50,7 @@ run_step() { # <base sha> -> OUT, RC
 }
 branch() { git -C "$S" checkout -q -B "$1" "$BASE"; }
 commit() { git -C "$S" add -A; git -C "$S" commit -q -m "$1"; }
-has() { printf '%s' "$OUT" | grep -qF -- "$1"; }
+has() { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
 
 branch clean; printf 'y\n' > "$S/b.txt"; commit clean
 run_step "$BASE"
@@ -69,6 +69,13 @@ node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f
 commit bundle
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "UNMAPPED zz-unmapped-row"; then pass "PR adding an unmapped feed row fails"; else fail "bundle -> rc=$RC: $OUT"; fi
+
+branch libweaken
+node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));m.items.push({id:"zz-unmapped-row"});fs.writeFileSync(f,JSON.stringify(m,null,2))' "$S/scripts/install/manifest.json"
+{ printf 'process.exit(0);\n'; cat "$S/scripts/himmelctl/lib/config-feed.js"; } > "$S/tmp/cf.js"; cp "$S/tmp/cf.js" "$S/scripts/himmelctl/lib/config-feed.js"
+commit libweaken
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "UNMAPPED zz-unmapped-row"; then pass "PR weakening the himmelctl lib is still judged by the base copy"; else fail "libweaken -> rc=$RC: $OUT"; fi
 
 branch failopen; printf '#!/usr/bin/env bash\necho regression >&2\nexit 1\n' > "$S/scripts/guardrails/test-lint-fail-open.sh"; commit failopen
 run_step "$BASE"

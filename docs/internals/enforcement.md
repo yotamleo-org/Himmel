@@ -325,7 +325,7 @@ CI or inherently local.
 | Gate | CI copy |
 |---|---|
 | `no-history-comments` | `lint` job, step "history-comment gate (PR range)": base copy of `check-history-comments.sh --range <base>` |
-| `bundle-registry-lint`, `no-mcp-sdk-v1`, `fail-open-lint`, `pip-hashes` | `lint` job, ONE step "tree-only pre-commit gates (PR range)": each runs from its BASE copy (a PR cannot weaken the gate that judges it; `bundle-registry-lint` reads the PR tree's `scripts/himmelctl` lib); a missing base sha or base copy is a red job. Pinned by `scripts/ci/test-ci-lint-tree-gates.sh` |
+| `bundle-registry-lint`, `no-mcp-sdk-v1`, `fail-open-lint`, `pip-hashes` | `lint` job, ONE step "tree-only pre-commit gates (PR range)": each runs from its BASE copy (a PR cannot weaken the gate that judges it; `bundle-registry-lint`'s `scripts/himmelctl` lib and hook launcher are staged from base too); a missing base sha or base copy is a red job. Pinned by `scripts/ci/test-ci-lint-tree-gates.sh` |
 | `trust-node-suites` | already mirrored: the ungated `lanes-and-trust-suites` job runs `node --test scripts/trust/tests/*.test.mjs` on every PR |
 | `worktree-isolation` | local by nature: it refuses a commit made on `main` from the primary checkout (an editing-station rule); a CI runner commits nothing |
 | `merged-branch-check` | local by nature: it warns that the committer's local branch is already merged into `main` (stale-branch edits); CI checks out a detached merge ref with no local branch to be stale |

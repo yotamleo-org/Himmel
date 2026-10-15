@@ -369,7 +369,7 @@ jobs:
       # The whole-tree pre-commit gates with no other CI copy, in ONE step (not a
       # job per hook): a session without hooks, or a --no-verify commit, never ran
       # them. Each runs from its BASE copy so a PR cannot weaken the gate that
-      # judges it (the himmelctl lib it requires comes from the PR tree); a missing
+      # judges it (as do the himmelctl lib and hook launcher it imports); a missing
       # base sha or base copy is a red job, never a silent pass.
       - name: tree-only pre-commit gates (PR range)
         if: github.event_name == 'pull_request'
@@ -388,7 +388,11 @@ jobs:
               exit 1
             fi
           done
-          ln -s "$PWD/scripts/himmelctl" "$gates/scripts/himmelctl"
+          # the bundle gate imports the himmelctl lib and the hook launcher: stage them from base too
+          if ! git archive "$BASE_SHA" scripts/himmelctl scripts/hooks/run-hook-with-bash.js scripts/hooks/hook-integrity.js -o "$gates/deps.tar" || ! tar -xf "$gates/deps.tar" -C "$gates"; then
+            echo "tree-only gates: himmelctl lib absent at base $BASE_SHA, cannot evaluate" >&2
+            exit 1
+          fi
           rc=0
           bash "$gates/scripts/lint/check-mcp-sdk-v1.sh" "$PWD" || rc=1
           bash "$gates/scripts/hooks/check-fail-open-lint.sh" || rc=1
