@@ -222,13 +222,6 @@ run_embed() {
     done
 }
 
-# Human-readable form of the invocation, for logs and --dry-run. Thin alias for
-# the shared qmd_bin_desc() in scripts/lib/qmd-bin.sh (public-PR CR): this and
-# qmd-cadence.sh's qmd_invocation_desc() were byte-identical copies, so the
-# format lived in two places. Kept as a local name so the six call sites below
-# read unchanged.
-qmd_desc() { qmd_bin_desc; }
-
 while [ $# -gt 0 ]; do
     case "$1" in
         --qmd-bin)
@@ -296,12 +289,7 @@ fi
 # runs this from by hand — and that stub dies with "Module not found …
 # dist/cli/qmd.js". qmd_pinned_invocation prefers the bun-served install the
 # same way qmd_cmd does, and returns absolute tokens.
-# Sourced UNCONDITIONALLY, not just on the resolve path below (public-PR CR).
-# qmd_desc() is now a thin alias for the lib's qmd_bin_desc(), and it is called
-# on EVERY run — including the `--qmd-bin <path>` run that skips resolution
-# entirely. Sourcing only inside the `if` would leave those runs calling an
-# undefined function. Safe to source always: the lib is functions plus a
-# `BASH_SOURCE == $0` CLI guard, so it has no source-time side effects.
+# Sourced unconditionally: qmd_bin_desc runs on every path, including `--qmd-bin`.
 # shellcheck source=../lib/qmd-bin.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/qmd-bin.sh"
@@ -381,15 +369,15 @@ write_refresh_stamp() {
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "DRY qmd-reindex: would run: $(qmd_desc) update"
-    echo "DRY qmd-reindex: would run: $(qmd_desc) embed"
-    echo "DRY qmd-reindex: would re-run: $(qmd_desc) embed   (completeness assert, one retry if it did work)"
-    echo "DRY qmd-reindex: would run: $(qmd_desc) cleanup"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) update"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) embed"
+    echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc) embed   (completeness assert, one retry if it did work)"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) cleanup"
     echo "qmd-reindex: dry-run complete (no changes made)"
     exit 0
 fi
 
-echo "qmd-reindex: start $(stamp) (qmd: $(qmd_desc))"
+echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc))"
 
 # Invalidate any stamp from an earlier run BEFORE mutating the index (HIMMEL-1307
 # [codex-1]): 'qmd update' below can re-index files even if this run later fails
@@ -494,7 +482,7 @@ elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$VERIFY_OUT"; then
         echo "    Vectors are lagging the lex index, which is the silently-stale state this"
         echo "    runner exists to prevent. Most likely cause: 'qmd embed' hit its session"
         echo "    cap (--timeout, default 30 min). Re-run this script, or embed by hand:"
-        echo "        $(qmd_desc) embed --timeout 0"
+        echo "        $(qmd_bin_desc) embed --timeout 0"
         echo "    Verifier output was:"
         printf '%s\n' "$VERIFY_OUT" | sed 's/^/        /'
     } >&2
@@ -517,7 +505,7 @@ else
         echo "        did-work : $QMD_SENTINEL_DID_WORK   (regex)"
         echo "    Most likely cause: a qmd release reworded 'qmd embed' output. Verify by hand"
         echo "    (${QMD_SENTINEL_VERIFIED_AGAINST} is the version these were checked against):"
-        echo "        $(qmd_desc) embed"
+        echo "        $(qmd_bin_desc) embed"
         echo "    then update the sentinels at the top of this script."
         echo "    Verifier output was:"
         printf '%s\n' "$VERIFY_OUT" | sed 's/^/        /'
@@ -525,18 +513,18 @@ else
     exit 6
 fi
 
-# The stamp certifies lex+vec freshness, which is true here, so it is written
-# BEFORE cleanup: a cleanup failure (rc 8) must not make staleness checks read a
-# complete index as stale.
-write_refresh_stamp
-
-# --- 4. drop orphaned embedding chunks (HIMMEL-4860) ------------------------
+# --- 4. stamp, then drop orphaned embedding chunks -----------
 # `qmd update` cleans orphaned content hashes but not the vectors behind them;
-# only `qmd cleanup` does, and nothing ran it (10,618 chunks, 6 %). Own exit
-# code so a cleanup failure never reads as an embed problem.
-echo "qmd-reindex: [4/4] qmd cleanup"
-if ! run_qmd cleanup; then
-    echo "ERR qmd-reindex: 'qmd cleanup' failed — vectors are complete but orphaned embedding chunks were NOT removed." >&2
-    exit 8
-fi
+# only `qmd cleanup` does. The stamp is written first so a cleanup failure (rc 8,
+# its own code, never read as an embed problem) cannot make a complete index
+# read as stale.
+stamp_then_cleanup() {
+    write_refresh_stamp
+    echo "qmd-reindex: [4/4] qmd cleanup"
+    if ! run_qmd cleanup; then
+        echo "ERR qmd-reindex: 'qmd cleanup' failed — vectors are complete but orphaned embedding chunks were NOT removed." >&2
+        exit 8
+    fi
+}
+stamp_then_cleanup
 echo "qmd-reindex: OK $(stamp) — index refreshed, all content hashes embedded"

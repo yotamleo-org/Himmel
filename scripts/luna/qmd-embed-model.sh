@@ -134,15 +134,13 @@ jina_gate_ok() {
 }
 
 # --- capability --------------------------------------------------------------
-CAP_REASON="" CAP_CLASS=""
-# Sets CAP_CLASS (build|query|none) and CAP_REASON. Not run in $(...): the
-# reason would be lost in the subshell.
+# Prints one tab-separated line: <build|query|none> <reason>.
 capability() {
     local vram="" mem_kib="" os arch
     os="$(uname -s 2>/dev/null || echo unknown)"
     arch="$(uname -m 2>/dev/null || echo unknown)"
     if [ "$os" = Darwin ] && [ "$arch" = arm64 ]; then
-        CAP_REASON="Apple Silicon (Metal)"; CAP_CLASS=build; return 0
+        printf 'build\tApple Silicon (Metal)\n'; return 0
     fi
     local smi="${QMD_EMBED_NVIDIA_SMI:-nvidia-smi}"
     if command -v "$smi" >/dev/null 2>&1; then
@@ -151,7 +149,7 @@ capability() {
         case "$vram" in ''|*[!0-9]*) vram="" ;; esac
     fi
     if [ -n "$vram" ] && [ "$vram" -ge "$MIN_VRAM_MIB" ]; then
-        CAP_REASON="NVIDIA GPU, ${vram} MiB VRAM"; CAP_CLASS=build; return 0
+        printf 'build\tNVIDIA GPU, %s MiB VRAM\n' "$vram"; return 0
     fi
     if [ "$os" = Darwin ]; then
         mem_kib=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
@@ -162,9 +160,9 @@ capability() {
     local gpu_note="no usable GPU"
     if [ -n "$vram" ]; then gpu_note="GPU has only ${vram} MiB VRAM"; fi
     if [ "$mem_kib" -ge "$MIN_RAM_KIB" ]; then
-        CAP_REASON="$gpu_note, $((mem_kib / 1024)) MiB RAM: CPU query embedding only"; CAP_CLASS=query
+        printf 'query\t%s, %s MiB RAM: CPU query embedding only\n' "$gpu_note" "$((mem_kib / 1024))"
     else
-        CAP_REASON="$gpu_note, $((mem_kib / 1024)) MiB RAM (below 4 GiB)"; CAP_CLASS=none
+        printf 'none\t%s, %s MiB RAM (below 4 GiB)\n' "$gpu_note" "$((mem_kib / 1024))"
     fi
 }
 
@@ -240,11 +238,10 @@ swap_lock_stale() {
     esac
 }
 
-# Clearing a stale lock is itself serialized (a second mkdir lock, "<lock>.reclaim"),
-# and staleness is re-checked inside it: two contenders that both saw a dead holder
-# must not let the slower one delete the faster one's freshly taken lock. A guard
-# a minute old belongs to a reclaimer that died and is cleared.
-swap_lock_reclaim() {
+# Clears a stale lock under a second mkdir lock, "<lock>.reclaim", re-checking
+# staleness inside it: the slower of two contenders must not delete the faster
+# one's freshly taken lock. A guard a minute old belongs to a dead reclaimer.
+serialized_stale_clear() {
     local d="$1"
     if [ -n "$(find "$d.reclaim" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
         rmdir "$d.reclaim" 2>/dev/null
@@ -271,7 +268,7 @@ swap_lock_acquire() {
     if ! mkdir "$d" 2>/dev/null; then
         if swap_lock_stale "$d"; then
             warn "clearing a stale swap lock (holder $(cat "$d/pid" 2>/dev/null || echo unknown) is gone)"
-            swap_lock_reclaim "$d"
+            serialized_stale_clear "$d"
         fi
         mkdir "$d" 2>/dev/null \
             || die 2 "another qmd-embed-model swap holds $d (pid $(cat "$d/pid" 2>/dev/null || echo unknown)); wait for it, or remove the directory if that pid is gone"
@@ -286,7 +283,8 @@ swap_lock_acquire() {
 
 # --- subcommands -------------------------------------------------------------
 cmd_capability() {
-    capability
+    local CAP_CLASS CAP_REASON
+    IFS=$'\t' read -r CAP_CLASS CAP_REASON < <(capability)
     say "$CAP_CLASS ($CAP_REASON)"
 }
 
@@ -302,7 +300,8 @@ cmd_set() {
     [ -n "$name" ] || die 1 "set needs a model: gemma or qwen"
     uri="$(model_uri "$name")"
     if [ "$name" = qwen ]; then
-        capability
+        local CAP_CLASS CAP_REASON
+        IFS=$'\t' read -r CAP_CLASS CAP_REASON < <(capability)
         case "$CAP_CLASS" in
             build) say "capability: build ($CAP_REASON)" ;;
             query) warn "capability: query only ($CAP_REASON). This host can SEARCH a Qwen index but should not BUILD one: CPU embedding of a whole corpus is slow (see docs/internals/qmd-embed-model.md for the measured cost). Choose gemma if local corpus embedding is too slow." ;;

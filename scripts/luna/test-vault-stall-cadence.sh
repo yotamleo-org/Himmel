@@ -560,6 +560,7 @@ HOME="$TMP/home" VAULT_STALL_CRONTAB="$TMP/crontab" VAULT_STALL_RUNNER_DIR="$odd
 # --- T28 toml_regex refuses an empty regex (HIMMEL-4493) ----------------------
 # cmd_run cannot reach this (a benign finding always has a closed shape), so the
 # function is exercised directly; an empty ''''''  regex would allowlist everything.
+eval "$(grep '^EDIT_ALREADY_PRESENT=' "$SUT")"
 eval "$(sed -n '/^toml_regex() {/,/^}/p' "$SUT")"
 printf '[allowlist]\nregexes = [\n  '"'''^keep\$'''"',\n]\n' >"$TMP/t28.toml"
 rm -f "$TMP/t28.out"
@@ -569,6 +570,19 @@ assert_eq "T28 empty regex writes no edit" "no" "$([ -s "$TMP/t28.out" ] && echo
 toml_regex "$TMP/t28.toml" "^new\$" "$TMP/t28.out"; rc=$?
 assert_eq "T28 a non-empty regex is still added" "0" "$rc"
 assert_has "T28 the non-empty regex landed" "'''^new\$'''" "$(cat "$TMP/t28.out")"
+
+# --- T29 CLOSED_SHAPES stays a verbatim copy of the template's allowlist ------
+eval "$(sed -n "/^CLOSED_SHAPES=/,/'\$/p" "$SUT")"
+TEMPLATE_TOML="$ROOT/templates/luna-second-brain/.gitleaks.toml"
+shapes_missing_from() { # <toml> -> ids of closed shapes whose regex the toml lacks
+    local id re
+    while IFS=$'\t' read -r id re; do
+        grep -qF "'''$re'''" "$1" || printf '%s ' "$id"
+    done <<<"$CLOSED_SHAPES"
+}
+assert_eq "T29 every closed shape is in the template allowlist" "" "$(shapes_missing_from "$TEMPLATE_TOML")"
+grep -vF '[0-9a-f]{40}' "$TEMPLATE_TOML" >"$TMP/t29.toml"
+assert_eq "T29 the drift check names a shape the toml lacks" "sha40 " "$(shapes_missing_from "$TMP/t29.toml")"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
