@@ -29,7 +29,8 @@
 # ${!R} / zsh-flag expansion naming the lift; a brace-built or split ("bank"+
 # "-lift") name; the lift path handed to a writer through a reader, xargs or
 # find -exec; an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
-# state dir, with or without a symlink member; a variable command word.
+# state dir, with or without a symlink member; a variable command word; sed's
+# `e` command and `s///e` flag; `less --log-file=`.
 #
 # Fail-closed (security fence): missing jq, malformed / non-object JSON, or a
 # tokenizer error -> deny. Any other non-0/2 exit is clamped to 2.
@@ -164,14 +165,15 @@ _name_match1() {
 # _dir_kind <expanded-dir> -> DK = STATE | HIMMEL | HOME | UNKNOWN | NONE
 _dir_kind() {
     local d="$1" last parent
-    case "$d" in '?'|'?/'*) DK=UNKNOWN; return ;; esac
-    if _is_dynamic "$d"; then DK=UNKNOWN; return; fi
     last="${d##*/}"; parent="${d%/*}"; parent="${parent##*/}"
     # .himmel/state is two components. A slash-less word (a JSON argument) has
-    # parent == last == the whole word.
-    if [ -n "$last" ] && [ -n "$parent" ] && [ "$d" != "$last" ] && _name_matches "$parent" .himmel && _name_matches "$last" state; then
+    # parent == last == the whole word. Tested before the unknown-cwd return so
+    # a relative `.himmel/state` still reads as the state dir.
+    if [ -n "$last" ] && [ -n "$parent" ] && [ "$d" != "$last" ] && ! _is_dynamic "$d" && _name_matches "$parent" .himmel && _name_matches "$last" state; then
         DK=STATE; return
     fi
+    case "$d" in '?'|'?/'*) DK=UNKNOWN; return ;; esac
+    if _is_dynamic "$d"; then DK=UNKNOWN; return; fi
     if [ -d "$d" ] && [ -d "$STATE_REAL" ] && [ "$d" -ef "$STATE_REAL" ]; then DK=STATE; return; fi
     if [ -n "$last" ] && _name_matches "$last" .himmel; then DK=HIMMEL; return; fi
     if [ -d "$d" ] && [ -d "$HOME/.himmel" ] && [ "$d" -ef "$HOME/.himmel" ]; then DK=HIMMEL; return; fi
@@ -448,7 +450,6 @@ END {
                     if (x == "\\") { dq = 1; if (substr(s, i + 2, 1) != "\n") del = del substr(s, i + 2, 1); i += 2; continue }
                     del = del x; i++
                 }
-                if (inq != "") hdbad = 1
                 hd[++nhd] = del; hdq[nhd] = dq
                 continue
             }
@@ -457,7 +458,6 @@ END {
         if (pe > 0) { if (c == "{") pe++; else if (c == "}") pe--; addc(c); continue }
         addc(c)
     }
-    if (STRICT && (hdbad || mode != "o" || d > 0)) print SB "U"
     while (d > 0) { flush(); d-- }
     flush()
     if (forged) print SB "X"
@@ -491,7 +491,7 @@ _opt_prefix() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
 # aliasing rules.
 check_copy() {
     local verb="$1"; shift
-    local tdir="" T=0 sym=0 a v n src srcb need dest dk endopts=0
+    local tdir="" T=0 sym=0 rel=0 unk=0 a v n src srcb need dest dk endopts=0
     local -a pos=()
     while [ $# -gt 0 ]; do
         a="$1"; shift
@@ -503,7 +503,9 @@ check_copy() {
             --no-target-directory) T=1 ;;
             --no-dereference) [ "$verb" = ln ] && T=1 ;;
             --symbolic*|--link) sym=1 ;;
+            --parents|--relative) rel=1 ;;
             --suffix|--mode|--owner|--group|--backup-dir|--rsh|--filter|--exclude|--include|--temp-dir|--partial-dir|--compare-dest|--copy-dest|--link-dest|--chmod|--chown) shift ;;
+            --pa*) n="${a#--}"; n="${n%%=*}"; if _opt_prefix parents "$n"; then rel=1; fi ;;
             --t*)
                 n="${a#--}"; n="${n%%=*}"
                 if _opt_prefix target-directory "$n"; then
@@ -516,6 +518,7 @@ check_copy() {
                     case "$v" in
                         t*) if [ "$verb" = rsync ]; then v="${v#?}"; continue; fi
                             if [ -n "${v#t}" ]; then tdir="${v#t}"; else tdir="${1:-}"; shift; fi; v="" ;;
+                        R*) if [ "$verb" = rsync ]; then rel=1; fi; v="${v#?}" ;;
                         T*) if [ "$verb" = rsync ]; then shift; v=""; else T=1; v="${v#?}"; fi ;;
                         s*) case "$verb" in ln|cp) sym=1 ;; esac; v="${v#?}" ;;
                         l*) case "$verb" in cp) sym=1 ;; esac; v="${v#?}" ;;
@@ -558,6 +561,12 @@ check_copy() {
             case "$LREF" in LIFT|STATE) deny "$verb links to the bank lift or its directory ($src)" ;; esac
         done
     fi
+    # --parents / -R rebuild each source path under the destination.
+    if [ "$rel" = 1 ]; then
+        for src in ${pos[@]+"${pos[@]}"}; do
+            if is_lift "$dest/$src"; then deny "$verb rebuilds the bank lift path under $dest ($src)"; fi
+        done
+    fi
     _lift_ref1 "$dest" 0
     dk=$LREF
     case "$dk" in
@@ -565,7 +574,10 @@ check_copy() {
         STATE) need="$LIFT_NAME" ;;
         HIMMEL) need=state ;;
         HOME) need=.himmel ;;
-        *) return 0 ;;
+        *)
+            # A destination relative to an unproven cwd may be the state dir.
+            _expand "$dest"
+            case "$EXP" in '?'|'?/'*) unk=1; need="$LIFT_NAME" ;; *) return 0 ;; esac ;;
     esac
     # Whole-directory write into an ancestor of the lift.
     if [ "$T" = 1 ] && [ -z "$tdir" ]; then deny "$verb -T replaces/fills $dest wholesale"; fi
@@ -575,6 +587,9 @@ check_copy() {
         esac
         srcb="${src%/}"; srcb="${srcb##*/}"
         if _name_matches "$srcb" "$need"; then deny "$verb puts a \`$need\`-named (or unknowable) entry into $dest"; fi
+        if [ "$unk" = 1 ] && { _name_matches "$srcb" state || _name_matches "$srcb" .himmel; }; then
+            deny "$verb puts a state- or .himmel-named entry into $dest (cwd unknown)"
+        fi
     done
     return 0
 }

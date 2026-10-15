@@ -30,9 +30,7 @@ LIFT="$ST/bank-lift.json"
 REPO="$T/repo"
 mkdir -p "$ST" "$REPO/scripts/lib" "$REPO/scripts/hooks" "$T/src/sub"
 : > "$REPO/scripts/lib/bank-lift.sh"
-# HIMMEL-4458: `bank-lift.sh show|clear` is trusted only as the hook's OWN
-# checkout's scripts/lib copy (or a .claude/worktrees/* one), so the hook
-# under test runs from a copy inside the scratch repo.
+# The hook under test runs from a copy inside the scratch repo.
 cp "$HOOK" "$REPO/scripts/hooks/block-bank-lift-writes.sh" || exit 1
 HOOK="$REPO/scripts/hooks/block-bank-lift-writes.sh"
 printf '{}\n' > "$T/src/bank-lift.json"
@@ -319,6 +317,33 @@ row "cat \$X:r > out"              allow "cat \$X:r > out.txt"
 row "echo \${(P)name} > out"       allow "echo \${(P)name} > out.txt"
 row "echo \$~pat > out"            allow "echo \$~pat > out.txt"
 row "tee out < in"                 allow "tee out.txt < in.txt"
+
+echo "== a cd makes the cwd unknown: a lift-named source into a relative dir denies =="
+row "cd state; cp lift-named src ."    deny "cd ~/.himmel/state && cp /tmp/bank-lift.json ."
+row "cd state; mv lift-named src ./"   deny "cd ~/.himmel/state && mv $T/src/bank-lift.json ./"
+row "cd state; cp -t . lift-named src" deny "cd ~/.himmel/state; cp -t . /tmp/bank-lift.json"
+row "cd ~; cp lift-named src .himmel/state/" deny "cd ~ && cp /tmp/bank-lift.json .himmel/state/"
+row "cd ~/.himmel; cp -r state-named src ." deny "cd ~/.himmel && cp -r /tmp/x/state ."
+row "cd; cp -T dir name"               deny "cd /tmp && cp -rT /tmp/forged-home overlord"
+row "cd; cp src dir/ name"             deny "cd /tmp && cp -r /tmp/forged-home/ overlord"
+row "cd; cp src dir/. name"            deny "cd /tmp && cp -r /tmp/forged-home/. overlord"
+row "cd; cp other src . (allow)"       allow "cd /tmp && cp $T/src/other.txt ."
+
+echo "== --parents / -R rebuild the source path under the destination =="
+row "cp --parents lift path into ~"    deny "cp --parents .himmel/state/bank-lift.json ~"
+row "cp --parents lift path into \$HOME" deny "cp --parents .himmel/state/bank-lift.json \$HOME"
+row "rsync -R lift path into ~"        deny "rsync -R .himmel/state/bank-lift.json ~"
+row "rsync --relative lift path into \$HOME" deny "rsync --relative .himmel/state/bank-lift.json \$HOME"
+row "cp --parents other path into ~ (allow)" allow "cp --parents docs/x.md ~"
+
+echo "== tokenizer failure denies =="
+mkdir -p "$T/noawk"
+for b in bash cat sed tr grep printf env dirname jq; do
+    p=$(command -v "$b" 2>/dev/null) && ln -s "$p" "$T/noawk/$b"
+done
+printf '#!/bin/sh\nexit 3\n' > "$T/noawk/awk"; chmod +x "$T/noawk/awk"
+got=$(printf '%s' "$(bash_json "echo hi")" | PATH="$T/noawk" "$(command -v bash)" "$HOOK" >/dev/null 2>&1; echo $?)
+if [ "$got" = 2 ]; then ok "tokenizer failure denies"; else bad "tokenizer failure denies — rc=$got"; fi
 
 echo
 echo "PASS: $pass  FAIL: $fail"
