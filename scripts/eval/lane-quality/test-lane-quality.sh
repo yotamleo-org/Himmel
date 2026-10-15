@@ -30,6 +30,7 @@ nogrep() { grep "$@"; [ $? -eq 1 ]; }
 # cache-probe.sh, so it is copied in byte for byte.
 mkdir -p "$TMP/repo/scripts/eval"
 cp "$REAL_REPO/scripts/eval/cache-probe.sh" "$TMP/repo/scripts/eval/"
+printf 'stand-in steering\n' >"$TMP/repo/CLAUDE.md"
 git -C "$TMP/repo" init -q
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t add -A
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -qm base
@@ -637,6 +638,12 @@ cat >"$TMP/rows-v.jsonl" <<'ROWS'
 ROWS
 mkdir -p "$TMP/vd-b" "$TMP/vd-v" && cp "$TMP/rows-b.jsonl" "$TMP/vd-b/runs.jsonl" && cp "$TMP/rows-v.jsonl" "$TMP/vd-v/runs.jsonl"
 check "a variant that dispatches without naming a model gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-v" 2>/dev/null | awk -F"\t" "\$1==\"A4x\" && \$2==\"keep\" && /unnamed/{f=1} END{exit !f}"'
+cp "$TMP/rows-v.jsonl" "$TMP/vd-v/runs.jsonl"
+cat "$TMP/rows-b.jsonl" >>"$TMP/vd-v/runs.jsonl"
+check "a run mixing variant and baseline rows is refused" '! bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-v" >/dev/null 2>&1'
+printf 'stand-in steering\n' >"$TMP/v-same.md"
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant same="$TMP/v-same.md" --out "$TMP/out-same" >"$TMP/same.log" 2>&1
+check "a variant identical to the pinned CLAUDE.md still runs" '[ "$(jq -s -r ".[0].variant" "$TMP/out-same/runs.jsonl")" = same ]'
 
 echo "test-lane-quality: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

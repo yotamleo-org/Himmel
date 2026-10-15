@@ -65,7 +65,7 @@ work routes to Claude tiers + Codex lanes only (never GLM)** — a routing
 invariant distinct from salus PHI **egress**, which
 `scripts/guardrails/egress-matrix.json` governs authoritatively.
 
-**RETASK channel:** every dispatch carries a RETASK block with a fresh nonce; a revision arrives only as a direct message quoting it and never widens permissions. → `docs/internals/retask-channel.md`
+**RETASK channel:** every dispatch carries a RETASK block with a fresh nonce; a revision arrives only as a direct message quoting it (a narrowing or halt needs no token) and never widens permissions. → `docs/internals/retask-channel.md`
 
 ### Adding a rule — pick the cheapest layer
 **Default to lean-invoke** (a slash command run on demand). Escalate to

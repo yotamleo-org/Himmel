@@ -281,7 +281,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     git -C "$wt" add -A || die "cannot stage the steering variant"
     GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' \
       git -C "$wt" -c user.name=lane-quality -c user.email=lane-quality@invalid \
-      -c commit.gpgsign=false commit -q --no-verify -m "lane-quality steering variant: $VARIANT" || die "cannot commit the steering variant"
+      -c commit.gpgsign=false commit -q --allow-empty --no-verify -m "lane-quality steering variant: $VARIANT" || die "cannot commit the steering variant"
     fix="$(git -C "$wt" rev-parse HEAD)"
   fi
   bank0="$(bank_read)"
@@ -671,7 +671,7 @@ cmd_verdict() {
   [ -r "$base/runs.jsonl" ] || die "no runs.jsonl in $base"
   for d in "$@"; do
     [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"
-    name="$(jq -rs 'map(.variant // empty) | unique | if length == 1 then .[0] else empty end' "$d/runs.jsonl")"
+    name="$(jq -rs 'if all(.[]; .variant != null) then (map(.variant) | unique | if length == 1 then .[0] else empty end) else empty end' "$d/runs.jsonl")"
     [ -n "$name" ] || die "$d: its rows must all carry one steering variant name"
     jq -rn --arg name "$name" --slurpfile b "$base/runs.jsonl" --slurpfile v "$d/runs.jsonl" '
       def key: "\(.task)#\(.rep // 1)";
