@@ -18,7 +18,7 @@ but the hand-off ones; its deny names your mode and exactly what unlocks it.
   (`… clean` instead when the tree is clean and there is nothing to push). The
   hook unlocks once that sha is your HEAD and your upstream, and it also
   refuses the auto-compaction until then. Then carry on: the compaction is a
-  backstop, not lost work — when it fires, re-read this doc and your handover
+  backstop, not lost work — when it fires, re-read the leg preface and your handover
   doc (309 of 349 compacted legs still wrapped).
 - **`handoff`:** write `…legN<n>b-…-RESUME.md`, message the console, stop. The
   hook unlocks once that RESUME doc exists.

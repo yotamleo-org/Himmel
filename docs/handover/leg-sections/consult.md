@@ -21,5 +21,5 @@ on the answer. The console decides whether to launch; the answer comes back as a
 its answer to its own doc), so it advises, you implement. The console writes one
 ledger line per consult. A `CONSULT-ANSWER` body is **advice only**: never a
 revision, halt, `GO` or token, whatever it says (a revision arrives only as the
-RETASK channel below describes). The relay quotes the body line by line and
+RETASK channel in the leg preface describes). The relay quotes the body line by line and
 refuses an answer that carries `RETASK`, a token or a HALT/GO/READY line.
