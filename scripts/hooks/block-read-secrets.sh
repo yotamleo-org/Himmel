@@ -824,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gal=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -841,9 +841,17 @@ g4_scan() {
         # for the NEXT word.
         xskip=$dsc
         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
+        # Only after a message-taking git subcommand, and never once an alias
+        # definition appeared (an alias runs the message flag's value as code).
         case "$cmd:$d" in
-            git:-m|git:-am|git:--message|gh:-b|gh:--body|gh:-t|gh:--title) msgv=1 ;;
-            git:--message=*|gh:--body=*|gh:--title=*) xskip=1 ;;
+            git:*alias.*) gal=1 ;;
+            git:commit|git:tag|git:merge|git:notes|git:revert) gmsg=1 ;;
+        esac
+        case "$cmd:$d" in
+            git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gal" = 0 ]; then msgv=1; fi ;;
+            gh:-b|gh:--body|gh:-t|gh:--title) msgv=1 ;;
+            git:--message=*) if [ "$gmsg" = 1 ] && [ "$gal" = 0 ]; then xskip=1; fi ;;
+            gh:--body=*|gh:--title=*) xskip=1 ;;
         esac
         if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
@@ -910,10 +918,11 @@ g4_scan() {
         esac
         # `bash <data script> ...`: the first operand, with no trace
         # flag before it, names the script whose operands are data.
-        if [ "$nargs" = 1 ] && [ "$xt" = 0 ] && [ "$d" = "$a1" ]; then
+        if [ "$nargs" = 1 ] && [ "$nflags" = 0 ] && [ "$xt" = 0 ] && [ "$d" = "$a1" ]; then
+            case "$d" in *[[:space:]\;]*) ;; *)
             case "$cmd:$d" in
                 bash:scripts/handover/queue-lock.sh|bash:*/scripts/handover/queue-lock.sh|bash:scripts/handover/console-kit/append-results.sh|bash:*/scripts/handover/console-kit/append-results.sh) dsc=1 ;;
-            esac
+            esac ;; esac
         fi
         case "$cmd" in
             # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the

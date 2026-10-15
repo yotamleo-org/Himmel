@@ -1200,6 +1200,10 @@ assert_rc "5659 same basename elsewhere is not exempt"    2 "$(run_case "$(j_bas
 assert_rc "5659 git -c alias carrying the word denies"    2 "$(run_case "$(j_bash "git -c 'alias.x=!set -o xtrace' x")")"
 assert_rc "5659 git commit -m then shopt in next clause"  2 "$(run_case "$(j_bash "git commit -m 'm'; shopt -os xtrace")")"
 assert_rc "5659 eval of the word denies"                  2 "$(run_case "$(j_bash 'eval "set -o xtrace"')")"
+assert_rc "5659 bash -c positional carrying the word"      2 "$(run_case "$(j_bash "bash -c 'set -o \"\$1\"; : /scripts/handover/queue-lock.sh' _ xtrace")")"
+assert_rc "5659 bash -s with the script as a positional"   2 "$(run_case "$(j_bash "printf x | bash -s scripts/handover/queue-lock.sh xtrace")")"
+assert_rc "5659 git alias run with -m carrying the word"   2 "$(run_case "$(j_bash "git -c 'alias.x=!set -o \"\$2\"; :' x -m xtrace")")"
+assert_rc "5659 git alias named commit with -m word"       2 "$(run_case "$(j_bash "git -c 'alias.commit=!set -o \"\$2\"; :' commit -m xtrace")")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
