@@ -522,3 +522,9 @@ test("buildPrompt Jira sanction applies only to operator-marked lines", () => {
   expect(p).toContain(`operator":true`);
   expect(p).not.toContain("Acting on Jira tickets for the operator is part of your job: when asked,");
 });
+
+test("run-prompt.md template matches buildPrompt's per-message operator marker (HIMMEL-5832)", () => {
+  const doc = readFileSync(join(import.meta.dir, "run-prompt.md"), "utf8");
+  expect(doc).not.toContain("treat them as the operator's requests");
+  expect(doc).toContain(`a line carrying the top-level \`"operator":true\` field`);
+});

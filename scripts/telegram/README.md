@@ -453,8 +453,9 @@ answer is not "triage only":
 
 - It does **not** grant any new capability. Allow-listing the group already lets
   every member submit work to the bridge (see the trust warning below), and
-  `run-prompt.md` frames pending messages as the operator's requests regardless
-  of who sent them (a known limitation). What the flag changes is narrower
+  the spawned run treats only inbox lines carrying the per-message `"operator":true`
+  field as the operator's requests (`run-prompt.md`); the poller stamps that field
+  per sender, not per session. What the flag changes is narrower
   than "gets answered": an opted-in group's anonymous posts are guaranteed to be
   **enqueued** rather than subject to the classifier's ignore/ack verdict.
   Ordinary group messages stay fully triaged, and an enqueued message still waits
