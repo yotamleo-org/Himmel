@@ -37,7 +37,7 @@ function loadEnv(): void {
   }
 }
 
-// CRLF-safe Basic auth (same defensive parsing as the Jira CLI, HIMMEL-111):
+// CRLF-safe Basic auth (same defensive parsing as the Jira CLI):
 // a CRLF-sourced env file leaves a trailing \r in the value, which corrupts
 // the base64 Basic header and returns 401 with no hint. Strip + warn once.
 export function normalizeEnv(): void {

@@ -1,6 +1,6 @@
 import { BitbucketHttpError } from '../client.js';
 
-// Pure error→exit-code mapping for the command layer (HIMMEL-341). Extracted so
+// Pure error→exit-code mapping for the command layer. Extracted so
 // the degradation contracts the forge seam relies on — `issue create`/`issue get`
 // 404 → exit 3, `pr merge` 400-conflict → exit 2 — are unit-testable without
 // spawning a child process or stubbing process.exit. Action handlers stay thin:

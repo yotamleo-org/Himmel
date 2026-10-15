@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live smoke test for the himmel bitbucket CLI (HIMMEL-326, spec §8).
+# Live smoke test for the himmel bitbucket CLI (spec §8).
 #
 # Exercises the real write path against a THROWAWAY repo in the test workspace,
 # then deletes it. Gated on creds + an explicit workspace — NOT run in CI

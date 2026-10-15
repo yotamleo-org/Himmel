@@ -5,7 +5,7 @@ import { registerPr } from './pr.js';
 // Command-layer smoke for the review-thread verbs (spec §5.3): assert they are
 // registered under `pr` with the expected required arguments. Inspecting the
 // commander tree (vs spawning the built CLI) keeps this independent of cwd, the
-// dist build, network, and auth. Full exit-code coverage is tracked in HIMMEL-341.
+// dist build, network, and auth. Exit-code coverage lives in exit-codes tests.
 function prCommand(): Command {
   const program = new Command();
   registerPr(program);

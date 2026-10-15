@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { Command } from 'commander';
 import { registerIssue } from './issue.js';
 
-// Command-layer smoke for the ingestion read verb (HIMMEL-329): assert `issue get`
+// Command-layer smoke for the ingestion read verb: assert `issue get`
 // is registered with a required <id> and a --repo option. Full exit-code coverage
-// (404 → exit 3) is tracked in HIMMEL-341.
+// (404 → exit 3) lives in exit-codes tests.
 function issueCommand(): Command {
   const program = new Command();
   registerIssue(program);

@@ -108,7 +108,7 @@ export interface IssueInfo {
   url: string | null;
 }
 
-// ── ingestion read shapes (luna-ingest, HIMMEL-329) ──────────────────────────
+// ── ingestion read shapes (luna-ingest) ──────────────────────────
 // Richer than the action-verb shapes above: these feed the luna-ingest note
 // synthesis (the `gh api repos/<o>/<r>` / issue / PR analogue). Bitbucket Cloud
 // has no stars or topics, so those github-only inputs are simply absent.
@@ -568,7 +568,7 @@ export interface ReviewThread {
   body: string;
 }
 
-// `pr comments` payload (HIMMEL-344). Wrapping the array lets the stdout consumer
+// `pr comments` payload. Wrapping the array lets the stdout consumer
 // (the himmel-gh plugin's bitbucket-threads backend) see when the list was capped
 // at PAGE_CAP pages — a bare array can't carry that signal, so a truncated list
 // would otherwise masquerade as complete. `pages` = total pages fetched.
@@ -599,7 +599,7 @@ function threadFromComment(d: Record<string, unknown>): ReviewThread {
 
 // list: GET .../pullrequests/{id}/comments — paginated, same next-link + PAGE_CAP
 // pattern as listPrs. Returns one ReviewThread per top-level inline comment,
-// wrapped with a `truncated` flag (HIMMEL-344) so a page-capped list is not
+// wrapped with a `truncated` flag so a page-capped list is not
 // mistaken for a complete one by the stdout consumer.
 export async function listPrComments(prId: number): Promise<PrCommentsResult> {
   const { workspace, repoSlug } = repoRef();

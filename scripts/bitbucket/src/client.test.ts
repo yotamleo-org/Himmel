@@ -469,7 +469,7 @@ describe('bitbucket client', () => {
     expect(fetchMock.mock.calls.length).toBe(1);
   });
 
-  // ── ingestion read verbs (luna-ingest, HIMMEL-329) ──────────────────────────
+  // ── ingestion read verbs (luna-ingest) ──────────────────────────
 
   it('getRepoForIngest maps metadata, fetches README on the default branch, honors --repo', async () => {
     const urls: string[] = [];

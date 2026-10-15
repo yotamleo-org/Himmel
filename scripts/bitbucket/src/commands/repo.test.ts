@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Command } from 'commander';
 import { registerRepo } from './repo.js';
 
-// Command-layer smoke for the ingestion read verb (HIMMEL-329): assert `repo get`
+// Command-layer smoke for the ingestion read verb: assert `repo get`
 // is registered with a --repo option. Inspecting the commander tree keeps this
 // independent of cwd, the dist build, network, and auth (mirrors pr.test.ts).
 function repoCommand(): Command {

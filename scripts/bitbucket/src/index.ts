@@ -19,7 +19,7 @@ registerRepo(program);
 registerPr(program);
 registerIssue(program);
 
-// Machine-readable command introspection, mirroring the Jira CLI (HIMMEL-231):
+// Machine-readable command introspection, mirroring the Jira CLI:
 // emit one top-level verb per line, then exit 0. Needs no network.
 if (process.argv.includes('--list-commands')) {
   for (const cmd of program.commands) {

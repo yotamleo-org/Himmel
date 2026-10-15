@@ -28,7 +28,7 @@ export function registerIssue(program: Command): void {
       } catch (err) {
         // Issues-disabled (spec §5.2) gets a distinct exit code (404 → 3) so the
         // forge seam can degrade gracefully instead of treating it as a hard
-        // failure. Mapping is unit-tested via exitFor (HIMMEL-341).
+        // failure. Mapping is unit-tested via exitFor.
         const { code, message } = exitFor(err, 'issue create', { 404: 3 });
         process.stderr.write(`${message}\n`);
         process.exit(code);
@@ -45,7 +45,7 @@ export function registerIssue(program: Command): void {
       } catch (err) {
         // 404 (tracker disabled OR issue gone) → exit 3, same contract as
         // `issue create`. A non-numeric id throws status 0 (not in the special
-        // map) → exit 1, never 3 (HIMMEL-341).
+        // map) → exit 1, never 3.
         const { code, message } = exitFor(err, 'issue get', { 404: 3 });
         process.stderr.write(`${message}\n`);
         process.exit(code);
