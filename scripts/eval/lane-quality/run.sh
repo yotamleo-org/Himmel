@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/lane-quality/run.sh - lane-quality eval (HIMMEL-4090).
+# scripts/eval/lane-quality/run.sh - lane-quality eval.
 #
 # Runs the same frozen task set against one lane and model, and records per
 # task: the hidden acceptance result, a blind judge score, wall time, tool
@@ -23,7 +23,7 @@
 # records NAME as the row's `variant`. `verdict` compares each variant run to the
 # baseline run and prints `<variant> <apply|keep> <reason>` per variant.
 #
-# Repeats (HIMMEL-4648): --reps N runs the task set N times, repeat by repeat,
+# Repeats: --reps N runs the task set N times, repeat by repeat,
 # into one run dir; a repeat's files carry a .r<n> suffix from the second on.
 # `table` then adds the mean and a bootstrap 95% CI per task and criterion,
 # and counts the rows with no judge score instead of dropping them.
@@ -57,7 +57,7 @@
 # A sweep that stops because a task's cost is unknown exits 76 (the ledger row
 # is still written, status partial); a budget-cap stop exits 0.
 #
-# The api lane (HIMMEL-4986): the agent runs through scripts/api-lane/claude-api.sh
+# The api lane: the agent runs through scripts/api-lane/claude-api.sh
 # on the API credit of HIMMEL_API_ACCOUNT, never on subscription auth. It needs
 # HIMMEL_API_LANE=on, HIMMEL_API_ACCOUNT, HIMMEL_API_KEY_ID and ANTHROPIC_API_KEY
 # in the environment, --no-judge (the judge is native, so it would draw the
@@ -65,15 +65,15 @@
 # $1, enforced here; the launcher also reserves each call's budget in its ledger).
 # The native bank is read for the record but never gates an api run. --dry-run
 # checks all of that and prints the plan and the command, spending nothing.
-# Known limits (HIMMEL-5069), accepted and documented:
+# Known limits:
 #  R1 the $1 cap is per sweep; the ledger's cap_usd for the account is the bound across sweeps.
 #  R2 --max-budget-usd is checked between turns, so one call can overshoot by up to one turn.
 #  R5 a model name containing [ is refused by the launcher (fails closed); use the plain id.
 # On the api lane LQ_LANE_BIN and LQ_REPO never pick the launcher (it is always the claude-api.sh beside
 # this harness), and acceptance runs with the API key and lane selectors removed from its environment
 # (strip-env outside timeout). This run.sh process itself still holds the key, so same-user /proc reads of it
-# remain an OS-layer exposure that belongs to the sandbox half of HIMMEL-5073.
-# The scrub in the launcher is the bwrap sandbox: where bwrap cannot mount (HIMMEL-5073), the agent has no Bash.
+# remain an OS-layer exposure that belongs to the sandbox half.
+# The scrub in the launcher is the bwrap sandbox: where bwrap cannot mount, the agent has no Bash.
 #
 # Output: <out>/runs.jsonl (one JSON row per task) plus per-task logs, under
 # ~/.himmel/eval/lane-quality/<run-id>/ by default.
@@ -84,10 +84,10 @@
 # ponytail: the bank reading is the account-wide five-hour percent, so any
 # other session running during a task lands in its delta; run a sweep on a
 # quiet fleet, or read the delta as an upper bound. Upgrade path: per-session
-# usage from the transcript once a lane exposes it (HIMMEL-4090 phase 2).
+# usage from the transcript once a lane exposes it.
 # ponytail: a single headless run cannot hand off, so `handoffs` is not
 # recorded; compactions are. Upgrade path: drive a lane through its leg
-# launcher when phase 2 measures leg churn (HIMMEL-4089).
+# launcher when phase 2 measures leg churn.
 # ponytail: the hidden tests live in the repo, so an agent on a later checkout
 # could read them; the runner flags a transcript that touches this directory
 # (`peeked`) instead of preventing it. Upgrade path: move the tasks to the
@@ -170,7 +170,7 @@ metered_read() { # prints the metered lane's balance in USD, "?" if unreadable, 
 # the token mix. The per-call factor (BUDGET_FACTOR) relies on that ratio, so a
 # run that reports any other ratio, no cost or no priced tokens leaves the cost
 # unknown and stops the sweep.
-# haiku-5.5 (the launcher default since HIMMEL-5248) lists 0.1/0.5/0.125/0.01,
+# haiku-5.5 (the launcher default) lists 0.1/0.5/0.125/0.01,
 # x5 above 100k prompt tokens; the row carries the high tier so --max-usd stays a cap.
 PRICES='{"anthropic/claude-haiku-4.5":[1,5,1.25,0.1],"anthropic/claude-haiku-5.5":[0.5,2.5,0.625,0.05]}'
 METERED_MARKUP=1.2
@@ -223,11 +223,11 @@ judge_call() {
   jdir="$(mktemp -d "${TMPDIR:-/tmp}/lq-judge.XXXXXX")" || return 1
   (
     cd "$jdir" || exit 1
-    # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
+    # the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
     native_auth_pin_env
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-      # HIMMEL-4090 blind judge call (HIMMEL-4648 second judge too), bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
-      # launch-profile-ok: HIMMEL-4090 the judge runs with --tools "", so no tool profile applies
+      # blind judge call, bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
+      # launch-profile-ok: the judge runs with --tools "", so no tool profile applies
       timeout "$TIMEOUT" "$CLAUDE_BIN" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
         --max-budget-usd "$budget" --no-session-persistence --json-schema "$(cat "$HERE/judge-schema.json")" --tools ""
     else
@@ -297,24 +297,24 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   (
     cd "$wt" || exit 1
     if [ "$LANE" = api ]; then
-      # HIMMEL-4986: the launcher keeps the key and removes every other credential source; the
+      # the launcher keeps the key and removes every other credential source; the
       # subscription token is dropped here too, so no layer between can hand it to the agent.
       unset CLAUDE_CODE_OAUTH_TOKEN
       export HIMMEL_API_JOB_ID="lq-$RUN_ID-$stem"
-      # HIMMEL-4986 lane-quality api agent run, launcher bank check and ledger reservation, explicit permission mode, budget-capped
-      # launch-profile-ok: HIMMEL-4986 the eval measures the lane's own default config, not a leg profile
-      # HIMMEL-5625: the lane is tool-free unless named; the eval agent edits fixtures and runs their tests, so it opts in to the full set.
+      # lane-quality api agent run, launcher bank check and ledger reservation, explicit permission mode, budget-capped
+      # launch-profile-ok: the eval measures the lane's own default config, not a leg profile
+      # the lane is tool-free unless named; the eval agent edits fixtures and runs their tests, so it opts in to the full set.
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
         HIMMEL_API_TOOLS="Read,Edit,Write,Glob,Grep,Bash" \
         timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
       exit $?
     fi
-    # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
+    # the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
     native_auth_pin_env
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-      # HIMMEL-4090 lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
-      # launch-profile-ok: HIMMEL-4090 the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a leg profile
+      # lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
+      # launch-profile-ok: the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a leg profile
       timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
     else
@@ -330,7 +330,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   tr=""
   [ -n "$sid" ] && tr="$(find "$TRANSCRIPTS" -name "$sid.jsonl" -print 2>/dev/null | head -1)"
   metrics="$(transcript_metrics "$tr" "$OUT/$stem.report.md")"
-  # HIMMEL-5069 R3: acceptance runs agent-written code, so the API key and lane selectors are removed first.
+  # acceptance runs agent-written code, so the API key and lane selectors are removed first.
   # strip-env runs outside timeout, so the direct parent of accept.sh never carried the key either.
   bash "$HERE/../../api-lane/strip-env.sh" -- timeout "$TIMEOUT" bash "$TASKS/$task/accept.sh" "$wt" "$fix" >"$OUT/$stem.accept.log" 2>&1; acc_rc=$?
   acc_line="$(grep -E '^accept: [0-9]+/[0-9]+$' "$OUT/$stem.accept.log" | tail -1)"
@@ -406,7 +406,7 @@ init_env() { # the claude binary, the repo, the bank preflight and the native-au
   . "$HERE/../../lib/native-auth-pin.sh" || die "cannot source native-auth-pin.sh"
 }
 
-# HIMMEL-4906: run --config FILE. A JSON object with optional keys, so a second
+# run --config FILE. A JSON object with optional keys, so a second
 # task set can share this driver without env-prefix knobs:
 #   tasks_dir   task directory, relative to this dir, must stay under it
 #   base_sha    40-hex commit the fixture worktrees are cut from
@@ -462,7 +462,7 @@ cmd_run() {
   case "$LANE" in
     native|openrouter) ;;
     api)
-      # judge B2/j2229c: the key and lane selectors leave this process's environment before init_env and before any git
+      # the key and lane selectors leave this process's environment before init_env and before any git
       # call on REPO: its hooks, a partial-clone lazy fetch (core.sshCommand), the preflight and agent-written git config
       # all run inside run.sh's own calls. They are held in unexported LQ_API_* variables (unset first, so an inherited
       # exported one does not stay exported) and handed only to the launcher invocation line.
@@ -470,13 +470,13 @@ cmd_run() {
       LQ_API_KEY="${ANTHROPIC_API_KEY:-}"; LQ_API_ACCOUNT="${HIMMEL_API_ACCOUNT:-}"
       LQ_API_KEY_ID="${HIMMEL_API_KEY_ID:-}"; LQ_API_LANE="${HIMMEL_API_LANE:-}"
       unset ANTHROPIC_API_KEY HIMMEL_API_LANE HIMMEL_API_ACCOUNT HIMMEL_API_KEY_ID
-      # HIMMEL-4986: the cap and the no-judge rule are code, not convention.
+      # the cap and the no-judge rule are code, not convention.
       [ "$NO_JUDGE" -eq 1 ] || die "--lane api needs --no-judge (the judge runs native and would draw the subscription bank)"
       MAX_USD="${MAX_USD:-$API_PILOT_CAP}"
       awk -v m="$MAX_USD" -v c="$API_PILOT_CAP" 'BEGIN{exit !(m+0 <= c+0)}' \
         || die "--lane api caps the sweep at $API_PILOT_CAP USD; --max-usd $MAX_USD is above the cap" ;;
     claudex)
-      # HIMMEL-4906: the per-dispatch lane opt-in the dispatcher reads.
+      # the per-dispatch lane opt-in the dispatcher reads.
       if [ "${CLAUDEX_LANE_OK:-}" != 1 ]; then
         echo "lane-quality: lane claudex needs CLAUDEX_LANE_OK=1 on the command (HIMMEL-4906)" >&2
         exit 3
@@ -516,7 +516,7 @@ cmd_run() {
     echo "lane-quality: openrouter agent budget factor $BUDGET_FACTOR (Claude Code over-counts the gateway slug; --max-usd counts real spend)" >&2
   fi
   if [ "$LANE" = api ]; then
-    # HIMMEL-5069 R4: the launcher comes from this script's own location, never from LQ_LANE_BIN or LQ_REPO
+    # the launcher comes from this script's own location, never from LQ_LANE_BIN or LQ_REPO
     # (REPO is only the git repo the worktrees are cut from). The key left this process's environment in the api arm
     # of the lane case above, before any git call on REPO, and is given only to the launcher invocation line.
     AGENT_BIN="$(cd "$HERE/../../api-lane" && pwd)/claude-api.sh"
@@ -572,7 +572,7 @@ cmd_run() {
   done
   done
   echo "lane-quality: done, spent $SPENT USD (API-price equivalent); rows in $OUT/runs.jsonl"
-  # HIMMEL-4647: one eval-runs ledger row per sweep (scripts/eval/lib/eval_runs.py);
+  # one eval-runs ledger row per sweep (scripts/eval/lib/eval_runs.py);
   # a ledger failure warns and never changes the sweep's result.
   if [ -s "$OUT/runs.jsonl" ]; then
     python3 "$HERE/../lib/eval_runs.py" lane-quality "$OUT" --run-id "$RUN_ID" --status "$STATUS" \
@@ -651,7 +651,7 @@ cmd_calibration() {
   case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
   [ "$((10#$TIMEOUT))" -gt 0 ] || die "--timeout must be positive whole seconds"
   if [ -n "$j2model" ]; then
-    # HIMMEL-4665: the stored-result label must be injective in (model, effort),
+    # the stored-result label must be injective in (model, effort),
     # or one configuration reuses another's scores. Each byte outside
     # [A-Za-z0-9.-] becomes _<hex> (so a lone "_" is always an escape), and
     # "__", which no escaped part contains, joins model and effort.

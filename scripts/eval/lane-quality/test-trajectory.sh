@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/lane-quality/test-trajectory.sh - hermetic suite for the
-# trajectory scorer (HIMMEL-4651). Every field has a positive and a negative
+# trajectory scorer. Every field has a positive and a negative
 # synthetic fixture under fixtures/trajectory/; no model call, no bank.
 #  1. `score` gives the expected four fields on each fixture;
 #  2. an unreadable or empty transcript scores null, never a crash;
@@ -107,7 +107,7 @@ with open(p, "w") as fh:
     fh.write("".join(json.dumps(r) + "\n" for r in recs))
 PY
 }
-# ref <transcript>: the per-denial list by the original all-pairs scan (HIMMEL-4682 oracle).
+# ref <transcript>: the per-denial list by the original all-pairs scan.
 ref() {
   python3 -c '
 import json, sys; sys.path.insert(0, sys.argv[1]); import trajectory as t

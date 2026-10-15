@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hidden acceptance test for task guard-cmd (HIMMEL-4906).
+# Hidden acceptance test for task guard-cmd.
 # A real commit on top of the fixture commit, conventional subject with the
 # ticket ID, touching only lq-work/CHANGELOG.md.
 # Usage: accept.sh <worktree> <fixture-sha>
