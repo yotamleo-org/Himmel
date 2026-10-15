@@ -1,4 +1,4 @@
-// scripts/telegram/huge-diff-guard.ts — the huge-diff lane guard (HIMMEL-1778).
+// scripts/telegram/huge-diff-guard.ts — the huge-diff lane guard.
 //
 // Live incident (2026-08): two consecutive claudex dispatches died before
 // editing a single file with "Prompt is too long · automatic compaction
@@ -19,7 +19,7 @@
 // launches, so the next misdiagnosis has the actual cause in the dispatch log.
 //
 // WARN-ONLY and FAIL-OPEN by design: a legitimately large branch must still
-// dispatch (HIMMEL-1788 — unattended runs fail LOUD, never block); the guard
+// dispatch (unattended runs fail LOUD, never block); the guard
 // only makes the hazard visible. A probe that cannot evaluate (no default-
 // branch ref, broken git, a synthetic test repo) stays SILENT — a missing
 // base ref is an expected condition in a fresh clone, and a guard that cries
@@ -90,7 +90,7 @@ export function parseLsTreeSizes(out: string): Map<string, number> {
 // un-merged main change as a deletion, and the "dominating" path can be a
 // file the branch never touched.
 //
-// ONE revision pair (CR round 1): three-dot names are
+// ONE revision pair: three-dot names are
 // `merge-base(base, branch)..branch`, so the merge-base is resolved ONCE and
 // that same revision feeds BOTH the name set and every old-side size lookup —
 // reading `base`'s TIP instead would attribute base-side post-fork growth to
@@ -103,7 +103,7 @@ export function changedPathBytes(
   const mb = probe(["merge-base", base, branch], cwd);
   if (mb.code !== 0) return { ok: false, error: `git merge-base ${base} ${branch}: ${mb.stderr.trim()}` };
   const mergeBase = mb.stdout.trim().split("\n")[0]; // a rev, not a path — trim is safe here
-  // --no-renames (HIMMEL-1804): the name set must be a property of the
+  // --no-renames: the name set must be a property of the
   // REPOSITORY, not a view of the user's config. `git diff --name-only`
   // honors diff.renames (git's default since 2.9, plus any user/repo
   // setting): when detection fires, a rename collapses to its NEW path only,
@@ -152,7 +152,7 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
   return { ...top, share, totalBytes: total, pathCount: paths.length };
 }
 
-// ── rename pairing (HIMMEL-1804 round 2: the hazard the WORKER ingests) ───────
+// ── rename pairing (the hazard the WORKER ingests) ───────
 //
 // The pinned --no-renames name set splits ONE logical rename into a delete
 // path and an add path, each weighing ~N of the pair's 2N — so the per-path
@@ -162,7 +162,7 @@ export function findDominatingPath(paths: { path: string; bytes: number }[]):
 // header instead of the blobs. With diff.renames=false — a real repo/user
 // setting — the worker ingests the FULL deletion plus the FULL addition, a
 // multi-MiB un-attributed text rename blows its context window, and a silent
-// guard is exactly the failure HIMMEL-1778 exists to prevent. So the verdict
+// guard is exactly the failure this guard exists to prevent. So the verdict
 // is CONDITIONED on the worker-side guarantee (read from the same cwd the
 // worker will run in), and only the un-guaranteed case groups a detected
 // delete/add pair into ONE logical hazard at the SUM of both blobs.
@@ -210,13 +210,13 @@ export function mergeRenamePairs(
   return grouped;
 }
 
-// The base is RESOLVED from the repository (CR round 3 / R2a), never
-// hard-coded: himmel supports `main` OR `master` (HIMMEL-297), and on a
+// The base is RESOLVED from the repository, never
+// hard-coded: himmel supports `main` OR `master`, and on a
 // master-default repo a hard-coded `main` makes the guard silently fail open
 // — the warning it exists to deliver never fires. The ORDER mirrors the RULE
 // of `default_branch` in scripts/guardrails/lib.sh (same order, same
 // tie-breaks) so every caller in the repo derives the same answer; do not
-// fork the rule here. The RETURN SHAPE deliberately diverges (HIMMEL-1804):
+// fork the rule here. The RETURN SHAPE deliberately diverges:
 // lib.sh prints a bare NAME its consumers re-verify (`refs/heads/$db`,
 // fail-closed rc=2), but this guard hands the string straight to
 // `git merge-base`, where a bare name resolves only to refs/heads/<name> —
@@ -228,10 +228,10 @@ export function mergeRenamePairs(
 // cover.
 //
 // Order: origin/HEAD symbolic-ref -> LOCAL main, then LOCAL master (both ->
-// "main", the HIMMEL-323 documented tie-break) -> init.defaultBranch config
+// "main", the documented tie-break) -> init.defaultBranch config
 // -> REMOTE-TRACKING origin/main, then origin/master (both -> "main") ->
 // "main" (lib.sh always yields a name). The remote-tracking fallbacks are a
-// SEPARATE, LAST precedence phase (round 2, codex-adv-2): folding them into
+// SEPARATE, LAST precedence phase: folding them into
 // per-name resolution let a remote origin/main outrank a LOCAL master and
 // preempt init.defaultBranch — and in a migrated or mirrored repo the remote
 // ref can be stale or unrelated, so the guard would measure the wrong range.
@@ -264,7 +264,7 @@ export function resolveDefaultBranch(probe: GitProbe, cwd: string): string {
     if (r) return r;
   }
   // Only now the REMOTE-TRACKING fallbacks, in the same documented order
-  // (both -> the "main" side, HIMMEL-323). Local resolution above already
+  // (both -> the "main" side). Local resolution above already
   // missed, so these probes check the remote-tracking refs alone.
   const remote = (name: string): string | null =>
     probe(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${name}`], cwd).code === 0 ? `origin/${name}` : null;
@@ -290,7 +290,7 @@ export function checkHugeDiff(
     const base = args.base ?? resolveDefaultBranch(probe, args.cwd);
     const res = changedPathBytes(probe, args.cwd, base, args.branch);
     if (!res.ok) return {}; // fail-open + silent (header rationale)
-    // Worker-side rename attribution (round 2, codex-adv-1): the per-path
+    // Worker-side rename attribution: the per-path
     // verdict below is the worker's ingest ONLY when its own `git diff`
     // will attribute renames (a similarity header, not the blobs). The
     // guarantee is read from the SAME cwd the worker will run in — repo
@@ -312,7 +312,7 @@ export function checkHugeDiff(
     const dom = findDominatingPath(paths);
     if (!dom) return {};
     const mib = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MiB`;
-    // Print-time sanitization (HIMMEL-1804): EVERY repository-controlled
+    // Print-time sanitization: EVERY repository-controlled
     // field interpolated into this note — path, base, AND branch — goes
     // through ONE log-safe encoder. The -z probes emit raw bytes and git
     // paths may legally carry C0/C1 controls; ref names reject ASCII

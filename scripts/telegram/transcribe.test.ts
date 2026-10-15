@@ -45,7 +45,7 @@ test("transcribe: exec throw degrades to null, never throws", async () => {
   expect(await transcribe("/att/x.oga", exec)).toBeNull();
 });
 
-// HIMMEL-268 hardening: timedOut flag tests
+// timedOut flag tests
 
 test("transcribe: ffmpeg timeout sets timedOut flag, logs timeout reason", async () => {
   const logs: string[] = [];
@@ -85,13 +85,13 @@ test("transcribe: whisper timeout sets timedOut flag, logs timeout reason", asyn
   }
 });
 
-// HIMMEL-268 hardening: timeout arg reaches exec (realExec integration)
+// timeout arg reaches exec (realExec integration)
 test("realExec: kills long-running child and sets timedOut after timeout", async () => {
   // Need a genuinely long-running child so the 200ms timeout actually fires
   // before it exits on its own. `ping -n 100` is Windows ping syntax (-n =
   // count, ~100s wall time); on POSIX -n means "numeric output" and takes no
   // argument, so `100` is parsed as the destination host and ping exits
-  // immediately with an error — timedOut never gets set (HIMMEL-2620). Use
+  // immediately with an error — timedOut never gets set. Use
   // platform-native long-lived commands so the assertions stay live on both.
   // (cmd /c timeout /t 30 exits immediately in non-TTY contexts with code 125.)
   const cmd =
@@ -104,7 +104,7 @@ test("realExec: kills long-running child and sets timedOut after timeout", async
   expect(res.code).not.toBe(0);
 }, 5000);
 
-// HIMMEL-268 hardening: WAV cleanup non-ENOENT errors are logged
+// WAV cleanup non-ENOENT errors are logged
 
 test("transcribe: wav cleanup ENOENT is silently swallowed", async () => {
   const logs: string[] = [];

@@ -13,7 +13,7 @@ export function nextBackoff(consecutiveFails: number): number {
 }
 
 const DEFAULT_MAX_FAILS = 5;
-// POLLER_MAX_FAILS validation (HIMMEL-1272 CR). A bare
+// POLLER_MAX_FAILS validation. A bare
 // `Number(process.env.POLLER_MAX_FAILS ?? 5)` turns any garbage into NaN, and
 // `fails >= NaN` is ALWAYS false — the breaker would never trip and a
 // crash-looping poller would spin forever, which is the exact opposite of what
@@ -35,7 +35,7 @@ export function resolveMaxFails(raw: string | undefined = process.env.POLLER_MAX
 export const MAX_FAILS = resolveMaxFails();
 export const IMMEDIATE_MS = 5000;   // exiting within 5s counts as an immediate crash
 
-// The breaker's accounting, extracted (HIMMEL-1272) so it is TESTED rather than
+// The breaker's accounting, extracted so it is TESTED rather than
 // re-implemented in the test. It used to be an inline expression in main(), which
 // left a test no way to exercise it without restating the rule — a test that
 // passes even after production drifts away from it.
@@ -46,7 +46,7 @@ export function nextFailCount(prev: number, ranMs: number): number {
   return ranMs < IMMEDIATE_MS ? prev + 1 : 0;
 }
 
-// --- Pidfile (HIMMEL-221): make `--kill` a real lever, not a stub. ---
+// --- Pidfile: make `--kill` a real lever, not a stub. ---
 // The supervisor records its own pid + the current poller child pid so a
 // separate `bun supervisor.ts --kill` invocation can stop the whole bridge.
 export type PidRec = { supervisor: number; poller: number | null };

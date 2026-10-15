@@ -1,4 +1,4 @@
-// scripts/telegram/huge-diff-guard.test.ts — HIMMEL-1778 huge-diff lane guard.
+// scripts/telegram/huge-diff-guard.test.ts — huge-diff lane guard.
 //
 // The real-git cases build the fixture from the SHIPPED artifacts — the
 // tracked graphify-out/graph.json and the repo-root .gitattributes, copied
@@ -96,7 +96,7 @@ test("findDominatingPath: empty input -> null (a branch with no diff is silent)"
   expect(findDominatingPath([])).toBeNull();
 });
 
-// ── rename pairing (HIMMEL-1804 round 2: the hazard the WORKER ingests) ───────
+// ── rename pairing (the hazard the WORKER ingests) ───────
 
 test("parseNameStatusRenames: R rows carry TWO paths and pair them; every other status advances by one", () => {
   const out = ["M\0src/a.ts\0", "R100\0old/big.json\0new/big.json\0", "D\0gone.txt\0", "A\0added.txt\0"].join("");
@@ -159,7 +159,7 @@ test("checkHugeDiff: a THROWING probe (unresolvable git) is silent {}", () => {
   expect(checkHugeDiff("spawn-glm", { cwd: "/nowhere", branch: "b" }, (() => { throw new Error("spawn ENOENT"); }) as typeof gitProbe)).toEqual({});
 });
 
-// ── the printed note cannot forge or reorder dispatch-log lines (HIMMEL-1804 R2) ─
+// ── the printed note cannot forge or reorder dispatch-log lines ─
 //
 // A git path is bytes and may legally contain newlines and other control
 // characters (the -z probes emit them verbatim; `ls-tree -z` entries carry the
@@ -213,14 +213,14 @@ test("checkHugeDiff: a dominating path containing a NEWLINE is printed escaped �
   expect(res2.note).toContain("a\\u0007b\\u007fc\\u009f d\\u2028e\\u202ef\\u2029g");
   // no raw C0 (0x00-0x1f), DEL (0x7f), C1 (0x80-0x9f), U+2028/U+2029 (Zl/Zp),
   // or Cf (bidi/format) code point anywhere — the classes \\p{Cc}, \\p{Cf},
-  // \\u2028, \\u2029 the encoder is documented to escape. (ratchet: round 1
-  // escaped only \\p{Cc}, so the three Unicode poison characters entered raw)
+  // \\u2028, \\u2029 the encoder is documented to escape. A
+  // \\p{Cc}-only encoder would let the three Unicode poison characters in raw.
   expect([...res2.note].some((ch) => /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(ch))).toBe(false);
 });
 
 test("checkHugeDiff: a BRANCH name carrying Unicode bidi/separator controls is printed escaped too — every repo-controlled field goes through the encoder (ratchet)", () => {
   // Same stub shape as above; only the branch argument carries the poison —
-  // round 1 interpolated base and branch into the note verbatim.
+  // an encoder-less note would interpolate base and branch verbatim.
   const lsOut = "100644 blob aa 16000000\tgraphify-out/graph.json\0" + "100644 blob bb 2000\tsrc/a.ts\0";
   let call = 0;
   const probe = () => {
@@ -237,19 +237,19 @@ test("checkHugeDiff: a BRANCH name carrying Unicode bidi/separator controls is p
   expect([...res.note!].some((ch) => /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(ch))).toBe(false);
 });
 
-// ── resolveDefaultBranch mirrors lib.sh default_branch (CR round 3: R2a) ──────
+// ── resolveDefaultBranch mirrors lib.sh default_branch ──────
 //
 // The ORDER is scripts/guardrails/lib.sh `default_branch`'s, mirrored — not
-// forked: origin/HEAD -> local main/master (both -> "main", HIMMEL-323) ->
+// forked: origin/HEAD -> local main/master (both -> "main") ->
 // init.defaultBranch -> "main". The RETURN SHAPE deliberately diverges
-// (HIMMEL-1804): lib.sh prints a bare NAME its consumers re-verify
+// lib.sh prints a bare NAME its consumers re-verify
 // (`refs/heads/$db`, fail-closed rc=2), but the guard hands the string
 // straight to `git merge-base`, where a bare name resolves only to
 // refs/heads/<name> — never to refs/remotes/origin/<name>. So every
 // non-terminal return here is a ref VERIFIED to exist, qualified
 // `origin/<name>` when only the remote-tracking ref does. The
 // remote-tracking qualification is a SEPARATE, LAST precedence phase
-// (HIMMEL-1804 round 2): folding it into per-name resolution let a remote
+// folding it into per-name resolution let a remote
 // origin/main outrank a LOCAL master and preempt init.defaultBranch — in a
 // migrated/mirrored repo the remote ref can be stale or unrelated, and the
 // guard would measure the wrong range. A probe miss (args not in the table)
@@ -266,7 +266,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
       expect: "master",
     },
     {
-      // ratchet (HIMMEL-1804 item 1): pre-fix this row stripped origin/ and
+      // ratchet: pre-fix this row stripped origin/ and
       // returned bare "master", which resolves to NO ref — the merge-base
       // probe fails and the warning silently misses on the exact repo shape
       // (remote-tracking only, no local default branch) the R2a resolution
@@ -300,7 +300,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
       expect: "master",
     },
     {
-      // ratchet (HIMMEL-1804 round 2, codex-adv-2): pre-fix `resolve()`
+      // ratchet: pre-fix `resolve()`
       // consulted the remote-tracking fallback per NAME, so origin/main
       // (truthy) beat a LOCAL master through the `if (mainRef && masterRef)`
       // tie-break — a REMOTE ref outranked a LOCAL branch, and a migrated or
@@ -314,7 +314,7 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
       expect: "master",
     },
     {
-      // ratchet (HIMMEL-1804 round 2, the init.defaultBranch sibling of the
+      // ratchet (the init.defaultBranch sibling of the
       // same phase bug): pre-fix origin/main was returned BEFORE the config
       // was consulted, so a repo whose default is `trunk` measured against
       // the stale remote ref instead of its configured default.
@@ -372,8 +372,8 @@ test("resolveDefaultBranch: the lib.sh order — origin/HEAD, then LOCAL main/ma
 
 // ── real git ──────────────────────────────────────────────────────────────────
 
-// HIMMEL-2642: graphify-out/ is a permanent, operator-authorized PRIVATE_PATHS
-// exclusion (scripts/lib/public-clone-paths.sh, HIMMEL-1740) — a ~430k-line
+// graphify-out/ is a permanent, operator-authorized PRIVATE_PATHS
+// exclusion (scripts/lib/public-clone-paths.sh) — a ~430k-line
 // knowledge-graph artifact that never propagates to the public mirror. The
 // public tree therefore has ZERO files under graphify-out/, so every REAL GIT
 // case below — which seeds its fixture repo from the SHIPPED
@@ -479,7 +479,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): three-dot semantics — main's p
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// ── one revision pair for names AND sizes (CR round 1: mismatched pair) ───────
+// ── one revision pair for names AND sizes (a mismatched pair is wrong) ───────
 //
 // Three-dot names are `merge-base(main, branch)..branch`. The old side of
 // every size lookup must be that SAME merge-base — reading main's TIP instead
@@ -550,7 +550,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a huge blob at the MERGE-BASE th
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// ── paths are delimiter-defined, never whitespace-trimmed (CR round 1) ────────
+// ── paths are delimiter-defined, never whitespace-trimmed ────────
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a changed path with LEADING whitespace resolves to ITS size — the lookup key is the verbatim path", () => {
   const { repo, git } = makeGraphRepo();
@@ -582,13 +582,13 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a real probe against a missing b
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// ── base resolved from the repository, never hard-coded (CR round 3: R2a) ─────
+// ── base resolved from the repository, never hard-coded ─────
 //
-// himmel supports `main` OR `master` (HIMMEL-297). A hard-coded `main` makes
+// himmel supports `main` OR `master`. A hard-coded `main` makes
 // the guard silently fail open on every master-default repo — the warning
 // that names the hazard simply never fires. The guard must RESOLVE the base
 // the same way scripts/guardrails/lib.sh `default_branch` does: origin/HEAD
-// -> local main/master (both -> main, HIMMEL-323) -> init.defaultBranch ->
+// -> local main/master (both -> main) -> init.defaultBranch ->
 // "main" — and an unresolvable base stays SILENT (fail-open), never throws.
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo whose default branch is master still warns — the base is RESOLVED, not hard-coded", () => {
@@ -655,7 +655,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a repo where NO base resolves (n
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// ── advice in the guard's own comparison form (CR round 3: R2b) ───────────────
+// ── advice in the guard's own comparison form ───────────────
 
 test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): every `git diff` command the warning PRINTS uses the three-dot form the guard computed — never two-dot", () => {
   const { repo, git } = makeGraphRepo();
@@ -705,7 +705,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a 1 MiB file among sub-MiB sibli
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// ── the name set is the repo's content, not a config view (HIMMEL-1804 item 2) ─
+// ── the name set is the repo's content, not a config view ─
 //
 // `git diff --name-only` honors diff.renames (git's default since 2.9, plus
 // any user/repo setting): when detection fires, a rename collapses to its NEW
@@ -742,10 +742,9 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
     // Round-2 semantics (codex-adv-1): the config is STILL diff.renames=false
     // from the probe above — the exact configuration where the worker's own
     // `git diff` does NOT attribute the rename and ingests the FULL deletion
-    // plus the FULL addition. Silence here (round 1's verdict, pinned by this
-    // very assertion) was a false negative in precisely the state the repo is
-    // in: the guard must model the dump the worker will actually ingest and
-    // NOTICE the hazard. (ratchet: round 1 asserted toEqual({}) at this line.)
+    // plus the FULL addition. Silence here would be a false negative in precisely the state the
+    // repo is in: the guard must model the dump the worker will actually ingest and
+    // NOTICE the hazard.
     const noticed = checkHugeDiff("spawn-glm", { cwd: repo, branch: "feat/rename-artifact" });
     expect(noticed.note).toBeDefined();
     // the grouped hazard names BOTH sides — one logical change, both blobs
@@ -768,7 +767,7 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): the changed-path set is INDEPEND
 // With diff.renames=false — a real repo/user setting — the worker ingests
 // the FULL deletion plus the FULL addition, a multi-MiB text rename blows
 // the context window, and the guard returning {} is exactly the failure
-// HIMMEL-1778 exists to prevent. The regression below is the realistic
+// exists to prevent. The regression below is the realistic
 // "moved and tweaked" shape (a rename with a small edit, still attributed
 // by an explicit -M), asserted under the worker-hazard config.
 
@@ -784,8 +783,8 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): an un-attributed large text rena
     git(["add", "."]);
     git(["commit", "-m", "move + tweak the tracked artifact"]);
     git(["config", "diff.renames", "false"]);
-    // ratchet: round 1 measured the two sides as separate ~50% paths and
-    // asserted silence — in the exact configuration where the worker's own
+    // ratchet: measuring the two sides as separate ~50% paths would
+    // assert silence — in the exact configuration where the worker's own
     // diff emits the full delete plus the full add.
     const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/move-artifact" });
     expect(res.note).toBeDefined();
@@ -812,8 +811,8 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a branch NAME may legally carry 
     git(["commit", "-m", "regen graph + one source file"]);
     const res = checkHugeDiff("spawn-glm", { cwd: repo, branch: poison });
     expect(res.note).toBeDefined();
-    // ratchet: round 1 interpolated the branch verbatim, so the raw bidi
-    // override and line separator entered the note un-escaped.
+    // ratchet: an unescaped branch would let the raw bidi
+    // override and line separator into the note.
     expect(res.note).toContain("feat/x\\u202ey\\u2028z");
     expect([...res.note!].some((ch) => /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(ch))).toBe(false);
   } finally { rmQuiet(repo); }

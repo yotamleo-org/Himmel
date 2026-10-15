@@ -1,4 +1,4 @@
-// scripts/telegram/onboard.test.ts — HIMMEL-2176 Stage-1 PR-C Task 10.
+// scripts/telegram/onboard.test.ts — bridge onboarding mode tests.
 // Run from the REPO ROOT: bun test scripts/telegram/onboard.test.ts --dots
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { formatPidfile } from "./supervisor";
 // BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
-// through PATH and can land on the WSL shim (HIMMEL-1279). Asserted by the
+// through PATH and can land on the WSL shim. Asserted by the
 // bare-bash lint in scripts/hooks/run-hook-with-bash.test.mjs.
 import { BASH_BIN } from "./run";
 import {
@@ -16,7 +16,7 @@ import {
   redactToken, safeGetUpdates, run, resolveTimeoutSec, resolvePowershellBin,
 } from "./onboard";
 
-// HIMMEL-2289: never hand a spawn the bare name `bash` — on Windows PATH
+// never hand a spawn the bare name `bash` — on Windows PATH
 // resolves it to the System32 WSL launcher, which cannot read the Windows-form
 // scriptPath these cross-checks pass it. Reuse the hook launcher's resolver,
 // the one place that policy is tested (same shape as
@@ -106,7 +106,7 @@ test("lockPathForToken: falls back to BRIDGE_ROOT when BRIDGE_LOCK_DIR is unset"
   });
 });
 
-// CR fix (HIMMEL-2176): `${VAR:-default}` (the shell contract restart-bridge.sh
+// `${VAR:-default}` (the shell contract restart-bridge.sh
 // derives its lock path from) falls back on unset OR empty; a naive `??` only
 // catches unset. A set-but-empty BRIDGE_LOCK_DIR/BRIDGE_ROOT must resolve to
 // the SAME path the shell would, or the two single-consumer guards can
@@ -371,11 +371,11 @@ test("--help prints usage and exits 0 WITHOUT ever calling loadToken", async () 
 });
 
 // --- Lock-path cross-check against the sibling's restart-bridge.sh ---
-// This depends on a SIBLING agent's file (scripts/telegram/restart-bridge.sh,
-// HIMMEL-2176 Task 9). If it hasn't landed yet, SKIP loudly (never a silent or
+// This depends on a SIBLING agent's file (scripts/telegram/restart-bridge.sh).
+// If it hasn't landed yet, SKIP loudly (never a silent or
 // fake pass) — the parent re-runs this suite once it does.
 
-// HIMMEL-3004: main run 34739779833 went red with `Expected "<path>" Received
+// main run 34739779833 went red with `Expected "<path>" Received
 // ""` — restart-bridge.sh had not actually printed a path mismatch, the spawn
 // had timed out (Bun's default) on a slow Windows runner. Give it real
 // headroom and, if it still doesn't finish, say so instead of reporting a
@@ -449,9 +449,9 @@ test("lock-path cross-check: an empty BRIDGE_LOCK_DIR agrees with the shell's ${
   }
 });
 
-// --- PowerShell resolution (CR fix, HIMMEL-2176): the win32 armed-check must
+// --- PowerShell resolution: the win32 armed-check must
 // prefer pwsh over powershell, same order as
-// scripts/himmelctl/lib/helpers.js's resolvePowershell() (HIMMEL-2126) — a
+// scripts/himmelctl/lib/helpers.js's resolvePowershell() — a
 // host with ONLY pwsh installed must not silently fail-open the check. ---
 
 test("resolvePowershellBin: prefers pwsh when only pwsh resolves on PATH", () => {
@@ -462,7 +462,7 @@ test("resolvePowershellBin: falls back to powershell when pwsh does not resolve"
   expect(resolvePowershellBin(() => false)).toBe("powershell");
 });
 
-// --- Error backoff (CR fix, HIMMEL-2176): a persistently failing getUpdates
+// --- Error backoff: a persistently failing getUpdates
 // must not spin the loop at max rate for the whole timeout window. ---
 
 test("run(): a persistently erroring getUpdates backs off instead of spinning, and still exits cleanly at the deadline", async () => {

@@ -9,7 +9,7 @@ import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
 import { consoleInboxPath, foldLine, type ConsoleRouteGate } from "./console-route";
 
-// HIMMEL-3355: every test runs against a scratch bridge root and a fake reply
+// Every test runs against a scratch bridge root and a fake reply
 // seam — never the real ~/.claude/handover/bridge, never Telegram.
 const root = () => mkdtempSync(join(tmpdir(), "console-route-"));
 const NAME = "HIMMEL-nextleg-2026-09-21V-console";
@@ -39,7 +39,7 @@ test("judge: lockdown blocks every inbound agent route for every sender", async 
     expect(ran).toEqual([]);
     expect(fired).toEqual([]);
     expect(existsSync(join(r, "sessions", "HIMMEL-1", "inbox.jsonl"))).toBe(false);
-    // HIMMEL-4947 station policy: only the operator is told; others get silence.
+    // Station policy: only the operator is told; others get silence.
     expect(replies).toHaveLength(from === 1 ? 6 : 0);
     expect(replies.every(t => t.includes("locked, reset at the station"))).toBe(true);
   }
@@ -345,7 +345,7 @@ test("forwarded or caption /console messages drop without spawning", async () =>
   }
 });
 
-// HIMMEL-3440: routeToConsole never creates an inbox (appendIfExists is
+// routeToConsole never creates an inbox (appendIfExists is
 // O_CREAT-free — see bus.test.ts for the TOCTOU-race regression at the
 // primitive level).
 test("a console with no armed inbox gets an error reply, no file, and no cold session", async () => {
@@ -489,7 +489,7 @@ test("reply CLI appends one line to the chat's outbox under a scratch BRIDGE_ROO
   expect(meta.chat_id).toBe(1);
 });
 
-// HIMMEL-4947: every malformed reserved fleet shape is a terminal refusal.
+// Every malformed reserved fleet shape is a terminal refusal.
 const malformed = ["/go foo..bar", "/go ../escape", "/push a..b", "/halt a/b", "/go a\\b", `/go ${"a".repeat(65)}`, "/push a\u0000b", "/halt a\nb", "/go", "/push", "/go a b", "/halt a b", "/fleet now", "/legs x", "/go  foo", "/push foo‮"];
 
 test("malformed-fleet-shapes-classify-terminal", () => {
@@ -541,7 +541,7 @@ test("lockdown-arriving-in-settlement-gap-is-not-a-content-filter-block", async 
   expect(readFileSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"), "utf8")).toContain("hello");
 });
 
-// HIMMEL-5125: a console mid-turn has no fresh waiter heartbeat; its inbox is
+// A console mid-turn has no fresh waiter heartbeat; its inbox is
 // still armed and the waiter resumes from <inbox>.cursor, so the line is queued.
 const BUSY_SAY = "console is busy, will pick up on next wait";
 async function routeText(r: string, text: string) {

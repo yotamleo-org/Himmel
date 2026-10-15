@@ -32,7 +32,7 @@ test(".salus marker refuses", () => {
   expect((r as any).reason).toMatch(/\.salus/);
 });
 
-// HIMMEL-2173: .salus-profile ALONE (no .salus) also refuses — a defense for
+// .salus-profile ALONE (no .salus) also refuses — a defense for
 // salus deployments that predate the profile installer shipping the real
 // .salus guard marker alongside it.
 test(".salus-profile-only marker refuses", () => {

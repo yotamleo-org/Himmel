@@ -40,7 +40,7 @@ test("append + cursor reads only complete lines; partial held until newline", as
   expect(got.length).toBe(0);                                    // partial NOT parsed
 });
 
-// HIMMEL-3440: appendIfExists must be O_CREAT-free — the previous
+// appendIfExists must be O_CREAT-free — the previous
 // existsSync()-then-appendFile() pair had a TOCTOU window where a file
 // deleted between the two calls was silently recreated by the append.
 test("appendIfExists appends to a file that already exists and returns true", async () => {
@@ -73,7 +73,7 @@ test("sendToSession creates target dir and appends text record to inbox.jsonl", 
   const raw = await Bun.file(inbox).text();
   const rec = JSON.parse(raw.trim());
   expect(rec.text).toBe("hi from A");
-  // HIMMEL-1218: the trusted A->B writer stamps its origin so a receiving
+  // The trusted A->B writer stamps its origin so a receiving
   // session's RETASK-channel verification can distinguish it from a directly
   // Telegram-relayed inbox record (which carries no origin field).
   expect(rec.origin).toBe("sendToSession");
@@ -118,7 +118,7 @@ test("atomicWrite writes content and leaves no .tmp file behind", async () => {
   expect(existsSync(p + ".tmp")).toBe(false);
 });
 
-// HIMMEL-2580: a cursor PAST EOF (the inbox file shrank under it — a restore
+// A cursor PAST EOF (the inbox file shrank under it — a restore
 // copied an older inbound.jsonl next to a newer cursor) made readNewLines
 // return [] on every tick forever, silently: 8 operator messages were dropped
 // on 2026-09-05. `start > total` is not "nothing new", it is an INVALID
@@ -188,12 +188,12 @@ test("readNewLines: a failing reset notice still leaves the cursor repaired", as
   try { expect(await readNewLines(f, cur, async () => { throw new Error("telegram down"); })).toEqual([]); }
   finally { console.error = origErr; }
   expect(await Bun.file(cur).text()).toBe(String(size));
-  // HIMMEL-2580 CR: the notice failure must not vanish — log it, or the
+  // The notice failure must not vanish — log it, or the
   // operator has no way to learn the repair happened at all.
   expect(logs.some(l => l.includes("[bus]") && l.includes("notice failed"))).toBe(true);
 });
 
-// HIMMEL-2580 CR (Important, agreed): a MISSING inbox file must not bypass
+// A MISSING inbox file must not bypass
 // the repair. Before this fix, readFile(file) threw on ENOENT and
 // repairCursorBeyondEof returned false without touching the cursor — exactly
 // the restore/shadow-copy class that caused the original incident (a stale
@@ -221,7 +221,7 @@ test("repairCursorBeyondEof: a stale cursor over a MISSING inbox file is still r
   expect(seen).toEqual([{ file: f, cursor: 5000, size: 0 }]);
 });
 
-// HIMMEL-2580 CR (Important, agreed): repairing a beyond-EOF cursor AFTER the
+// Repairing a beyond-EOF cursor AFTER the
 // poll tick's own ingestUpdates append discards that tick's just-appended
 // messages too, because the reset lands on the POST-append EOF and the fresh
 // lines sit below it. This is the ordering defect itself — the ordering
@@ -276,7 +276,7 @@ test("repairCursorBeyondEof after the append loses it — why the poller repairs
   } finally { console.error = origErr; }
 });
 
-// HIMMEL-1854: coms layer — peer-send / peer-recv between seats over this bus.
+// Coms layer — peer-send / peer-recv between seats over this bus.
 import { peerSend, drainPeerInbox, peerInbox, peerLedger } from "./bus";
 
 test("peerSend appends ONE line to the target inbox and to a ledger that survives truncation", async () => {
@@ -355,7 +355,7 @@ test("bus.ts peer-recv drains the backlog and keeps following in ONE command", a
   } finally { proc.kill(); }
 }, 15000);
 
-// HIMMEL-1854 (CR codex-1): the cursor must not advance until stdout has accepted the line.
+// The cursor must not advance until stdout has accepted the line.
 import { streamEmit } from "./bus";
 test("streamEmit: drainPeerInbox commits the cursor only after the stream write callback fires", async () => {
   const r = root(); await peerSend(r, "console", "leg-1", "hi");

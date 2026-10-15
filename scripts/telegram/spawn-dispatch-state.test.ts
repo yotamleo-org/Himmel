@@ -1,4 +1,4 @@
-// HIMMEL-1687: the lane dispatch summary states pushed / commits / worktree_clean,
+// the lane dispatch summary states pushed / commits / worktree_clean,
 // computed from git at summary time (never from the worker's own claims).
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -50,7 +50,7 @@ test("dirty tree reports worktree_clean: no", () => {
   } finally { f.cleanup(); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// HIMMEL-3926: repo/user status config must not hide outstanding changes.
+// repo/user status config must not hide outstanding changes.
 test("status.showUntrackedFiles=no does not hide an untracked file", () => {
   const f = fixture();
   try {

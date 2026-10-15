@@ -1,4 +1,4 @@
-// Timestamp every console.log/console.error line (HIMMEL-1401). supervisor.log
+// Timestamp every console.log/console.error line. supervisor.log
 // carries none today: restart-bridge.ps1 launches `bun supervisor.ts > log 2>&1`,
 // and supervisor.ts spawns poller.ts with stdout/stderr "inherit" — both write
 // raw console output straight into that redirected file. A Telegram-API-side

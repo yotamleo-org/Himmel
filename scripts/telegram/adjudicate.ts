@@ -1,6 +1,6 @@
 // scripts/telegram/adjudicate.ts
 // Parent-side lean-invoke CLI over the GLM offload sessions' append-only
-// grants.jsonl / outbox.jsonl ledgers (escalation channel, HIMMEL-654 spec D9).
+// grants.jsonl / outbox.jsonl ledgers (escalation channel).
 //   list                         — surface unresolved worker escalations
 //   grant  <sessionDir> --arm <a> --pattern <re> [--ttl m] [--uses n] [--index i] [--autonomous]
 //   refuse <sessionDir> <index>  — append a refusal that clears an escalation

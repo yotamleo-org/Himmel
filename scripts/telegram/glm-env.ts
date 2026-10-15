@@ -1,5 +1,5 @@
 // scripts/telegram/glm-env.ts
-// GLM lane env builder (HIMMEL-654 offload spike, spec: state repo
+// GLM lane env builder (offload spike, spec: state repo
 // specs/design/glm-worker-spawn.md D1).
 // KEEP IN SYNC with the launcher family: scripts/claude-glm{,.ps1} (env block
 // + .env quote-strip semantics) and scripts/claude-routed{,.ps1}.
@@ -56,11 +56,11 @@ export function readZaiKey(repoRoot: string): { key?: string; tried: string[] } 
   return { tried };
 }
 
-// Context presets (HIMMEL-718): the per-context model + window. big = the [1m]
+// Context presets: the per-context model + window. big = the [1m]
 // 1M-context variant + a 1M auto-compact window; small = glm-5.2 + 200k.
 // CLAUDE_CODE_AUTO_COMPACT_WINDOW stops Claude Code auto-compacting at ~200k —
 // the documented "prompt too long" deaths on this lane. Exported (window as a
-// NUMBER) so spawn-glm's window preflight (HIMMEL-740) reads the SAME source of
+// NUMBER) so spawn-glm's window preflight reads the SAME source of
 // truth buildGlmEnv stringifies into the env var — no second copy of the numbers.
 export function glmContextPreset(ctx: "big" | "small"): { model: string; window: number } {
   return ctx === "small" ? { model: "glm-5.2", window: 200000 } : { model: "glm-5.2[1m]", window: 1000000 };
@@ -77,20 +77,20 @@ export function buildGlmEnv(repoRoot: string, context?: "big" | "small"): Record
   const ctx = context ?? (process.env.GLM_CONTEXT === "small" ? "small" : "big");
   const { model, window } = glmContextPreset(ctx);
   return {
-    // HIMMEL-1649 round 7 — WORKER-NESS marker, not a provider marker. It
+    // WORKER-NESS marker, not a provider marker. It
     // asserts: this session is a DISPATCHED WORKER running in a himmel
     // worktree, where scripts/hooks/block-glm-external-writes.sh is guaranteed
     // present. Its ABSENCE is the NORMAL state for an interactive GLM session.
     // The guard is registered --fail-closed-when on THIS key (hooks.json), so a
     // missing hook is treated as tampering here and as ordinary optional
     // semantics everywhere else. Keying that on ANTHROPIC_BASE_URL instead
-    // (round 5) bricked the interactive launcher, whose documented primary
+    // (an earlier version) bricked the interactive launcher, whose documented primary
     // workload runs with cwd in the luna vault — not a himmel checkout, so the
     // hook legitimately does not exist there. This function is the orchestrator
     // path ONLY (spawn-glm / run.ts); claude-glm{,.ps1} never touches it, which
     // is exactly why the marker separates the two populations.
     HIMMEL_GLM_WORKER: "1",
-    // HIMMEL-2085: the broader worker-ness class HIMMEL_GLM_WORKER is one
+    // the broader worker-ness class HIMMEL_GLM_WORKER is one
     // instance of. block-glm-external-writes.sh's pin-dir write-fence keys on
     // THIS var (not the GLM-specific one) so the same fence generalizes to
     // every dispatched worker lane — see claudexChildEnv (spawn-claudex.ts)
@@ -103,7 +103,7 @@ export function buildGlmEnv(repoRoot: string, context?: "big" | "small"): Record
     ANTHROPIC_DEFAULT_SONNET_MODEL: model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: model,
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(window),
-    // Worker context diet (HIMMEL-654): force-disable the env-gated
+    // Worker context diet: force-disable the env-gated
     // session-shaping injections. Two prompt-too-long deaths showed every
     // injected block costs context the GLM lane cannot spare, and none is
     // meaningful to an unattended worker. These keys merge over process.env in
@@ -157,11 +157,11 @@ export function formatConflict(c: SettingsConflict): string {
   return c.kind === "env" ? `${c.file}: env.${c.key}` : `${c.file}: ${c.kind}`;
 }
 
-// ── GLM cap guard (HIMMEL-654): monitor-endpoint client ─────────────────────
+// ── GLM cap guard: monitor-endpoint client ─────────────────────
 // Reverse-engineered endpoint (3 independent community tools; schema verified
 // live in Task 0c — tests/fixtures/glm-cap/monitor-0c.json). percentage = USED.
 // Contract: null on ANY failure (blank key, network, non-200, schema drift) —
-// never a throw; callers print the "usage invisible" line on null (HIMMEL-275:
+// never a throw; callers print the "usage invisible" line on null:
 // invisible usage must be visible-invisible, not silently absent).
 export type GlmUsage = { percentage: number; nextResetTime: number; level?: string };
 const MONITOR_URL = "https://api.z.ai/api/monitor/usage/quota/limit";

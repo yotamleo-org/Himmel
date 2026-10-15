@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Registry-driven implementation-lane dispatcher (HIMMEL-1942).
+# Registry-driven implementation-lane dispatcher.
 # The caller backgrounds this script; this process waits once, enforces the
 # deadline, then emits one compact final report. Bash 3.2 safe.
 set -uo pipefail

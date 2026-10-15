@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic smoke tests for dispatch-lane.sh (HIMMEL-1942).
+# Hermetic smoke tests for dispatch-lane.sh.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,7 +117,7 @@ fi
 
 REAL_REG="$SCRIPT_DIR/../lanes/lanes.json"
 if command -v cygpath >/dev/null 2>&1; then REAL_REG="$(cygpath -m "$REAL_REG")"; fi
-# HIMMEL-2786: use the real codex row and chokepoint, not a stub dispatcher,
+# Use the real codex row and chokepoint, not a stub dispatcher,
 # so stdin metadata that omits the explicit opt-in silently loses this brief.
 CODEX_REG="$TMP/codex-lane.json"
 CODEX_WRAPPER="$SCRIPT_DIR/../codex/dispatch-codex-exec.sh"
@@ -141,12 +141,12 @@ else
 fi
 
 DORMANT_ROWS="$(jq -r '.lanes[] | select(.class == "impl" and .dormant) | [.id, .dormant.optInEnv] | @tsv' "$REAL_REG")"
-# HIMMEL-2744: a dormant lane only ever reaches dispatch-lane.sh's own
+# A dormant lane only ever reaches dispatch-lane.sh's own
 # DORMANT gate (~lines 229-235) if scripts/lanes/resolve.mjs's probe filter
 # (~line 35) lets it through first. The 6 real dormant lanes' probes read
 # host state (ZAI_API_KEY, `codex`/`wsl`/`hermes` on PATH, ...), so on a bare
 # CI runner -- or any host with no lanes configured -- none of them pass and
-# this case would exercise nothing there: the exact HIMMEL-2642 class. Give
+# this case would exercise nothing there: the exact failure class. Give
 # it a hermetic fixture instead: a copy of REAL_REG with every dormant
 # lane's probe forced to {"kind":"always"}, so a lane is probe-AVAILABLE and
 # DORMANT simultaneously -- the state the gate exists to refuse -- on every
@@ -159,7 +159,7 @@ jq '(.lanes[] | select(.dormant) | .probe) = {"kind":"always"}' "$REAL_REG" > "$
 # probe -- expected to be every declared dormant lane, always. Kept as a
 # lookup rather than assumed so the existing fail-closed fallback below still
 # fires if the fixture injection itself did not take (bad jq output, a probe
-# that did not actually get overridden, ...) -- HIMMEL-2744's RED control.
+# that did not actually get overridden, ...) -- the RED control.
 # The probe lookup itself must not fail silently into "skip everything": a
 # missing node, a resolve.mjs throw, or a registry/jq shape change would all
 # leave PROBE_AVAILABLE_IDS empty exactly like a fixture that failed to take
@@ -184,7 +184,7 @@ else
   # of ids extracted against the array's own element count -- so a jq
   # invocation that quietly emits a SHORT list is caught on its own terms,
   # independent of jq's exit code. Capture both into variables and test
-  # those, per HIMMEL-1430 (see lane_probe_ok above): no new pipeline is
+  # those (see lane_probe_ok above): no new pipeline is
   # tested directly in an `if`.
   PROBE_AVAILABLE_IDS="$(printf '%s' "$PROBE_JSON" | jq -r '.[].id')"
   PROBE_IDS_RC=$?
@@ -201,8 +201,8 @@ fi
 # pipefail` (line 3), where grep -q exits at the first match, the producer
 # takes SIGPIPE writing the rest, and the PIPELINE status goes non-zero --
 # which through the negated `if ! lane_probe_ok` below would silently SKIP a
-# lane whose probe actually passed (HIMMEL-1430). The id list is a handful of
-# lines, far under the here-string size that wedges Git Bash (HIMMEL-2027).
+# lane whose probe actually passed. The id list is a handful of
+# lines, far under the here-string size that wedges Git Bash.
 lane_probe_ok() { grep -qxF "$1" <<<"$PROBE_AVAILABLE_IDS"; }
 DORMANT_COUNT=0
 DORMANT_EXERCISED=0
@@ -252,7 +252,7 @@ if [ "$DORMANT_EXERCISED" -eq 0 ]; then
 fi
 if [ "$DORMANT_COUNT" -eq 6 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
 
-# HIMMEL-1967: with every impl lane dormant, an unqualified dispatch (no
+# With every impl lane dormant, an unqualified dispatch (no
 # --lane, no HIMMEL_IMPL_LANE) must refuse and name the native-subagent path
 # rather than silently falling through to a lane.
 run_registry env -u HIMMEL_IMPL_LANE LANES_REGISTRY="$REAL_REG" bash "$DISPATCH" --brief-file "$BRIEF" --name unqualified --cwd "$REPO"

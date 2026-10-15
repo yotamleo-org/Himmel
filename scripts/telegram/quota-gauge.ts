@@ -1,5 +1,5 @@
 // scripts/telegram/quota-gauge.ts
-// WS9 (HIMMEL-654) cross-lane quota-gauge ledger — append helper + reader
+// WS9 cross-lane quota-gauge ledger — append helper + reader
 // (Task 2 adds the reader; this file ships the path resolver, the record
 // schema, and the append helper).
 //
@@ -171,7 +171,7 @@ export const GLM_PEAK_TZ_OFFSET_H = 8;
 // True iff `nowMs`, converted to UTC+8, falls in [14:00, 18:00) on a WEEKDAY
 // (Mon–Fri). Pure — derives the UTC+8 hour + weekday from the absolute instant
 // (DST-immune: UTC+8 is z.ai-fixed), never reads a lane/arm/dispatch. Weekends
-// bill 1× all day, so a Sat/Sun inside the peak hours is NOT peak (HIMMEL-1479).
+// bill 1× all day, so a Sat/Sun inside the peak hours is NOT peak.
 export function isGlmPeak(nowMs: number): boolean {
   const utc8Hour = Math.floor(((nowMs / 3600000) + GLM_PEAK_TZ_OFFSET_H) % 24 + 24) % 24;
   if (utc8Hour < GLM_PEAK_START_H || utc8Hour >= GLM_PEAK_END_H) return false;
@@ -185,7 +185,7 @@ export function isGlmPeak(nowMs: number): boolean {
 
 // Map the GLM monitor-endpoint reading to a canonical row. `null` (usage
 // invisible) is visible-not-silent: an `invisible`-source row with null fields,
-// NEVER a fabricated number (HIMMEL-275). `glm_peak` is stamped in both cases.
+// NEVER a fabricated number. `glm_peak` is stamped in both cases.
 export function buildGlmRow(reading: { percentage: number; nextResetTime: number; level?: string } | null, nowMs: number): QuotaGaugeRecord {
   const peak = isGlmPeak(nowMs);
   if (reading === null) {

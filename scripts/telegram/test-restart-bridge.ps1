@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Set-StrictMode -Version 2.0
 
@@ -123,7 +123,7 @@ $rotatedPath = Get-RotatedLogPath -LogPath 'C:/logs/supervisor.log' -Now $rotate
 $rotatedPathLater = Get-RotatedLogPath -LogPath 'C:/logs/supervisor.log' -Now $rotatedNow.AddTicks(1)
 Check 'rotated path carries base + fractional timestamp + extension' (($rotatedPath -replace '\\', '/') -eq 'C:/logs/supervisor.20260803-223200-1234567.log') "got=$rotatedPath"
 Check 'two rotations within one second do not target the same path' ($rotatedPathLater -ne $rotatedPath)
-# HIMMEL-1520 #2: the sibling .err is rotated in lockstep with $log, and its
+# The sibling .err is rotated in lockstep with $log, and its
 # rotated name must never collide with a .log rotation (the prune filters
 # `supervisor.*.log` and `supervisor.log.*.err` are disjoint).
 $rotatedErrPath = Get-RotatedLogPath -LogPath 'C:/logs/supervisor.log.err' -Now $rotatedNow
@@ -151,7 +151,7 @@ Check 'zero bridge procs -> DOWN (HIMMEL-1520: a dead bridge was reported OK her
   ((Get-BridgeWatchdogState -ProcessCount 0 -OffsetAgeSeconds $null -HeartbeatTime $null -Now $watchdogNow -ThresholdSeconds 1800) -eq 'DOWN')
 Check 'DOWN beats staleness: zero procs with a fresh offset + heartbeat is still DOWN' `
   ((Get-BridgeWatchdogState -ProcessCount 0 -OffsetAgeSeconds 5 -HeartbeatTime $watchdogNow.AddSeconds(-5) -Now $watchdogNow -ThresholdSeconds 1800) -eq 'DOWN')
-# HIMMEL-1519 CR r2: the DOWN path is only reachable if the set-splitter accepts
+# The DOWN path is only reachable if the set-splitter accepts
 # an EMPTY process list. A Mandatory [object[]] refuses an empty array at
 # parameter binding, so without AllowEmptyCollection a fully-crashed bridge
 # (zero bun.exe) died with a binding error instead of reporting DOWN -- the
@@ -244,7 +244,7 @@ Check 'empty BRIDGE_ROOT never leaks the obscure Join-Path binding error' `
 
 Write-Host "Test 16 (HIMMEL-1519): zero validated ledger pids no longer always refuses -- DOWN vs stale-ledger fork"
 # The defect: -Watchdog -Kill routes into -FromLedger -Kill, which validates
-# ledger pids via Test-LedgerPidValid. In the DOWN state (HIMMEL-1520) there
+# ledger pids via Test-LedgerPidValid. In the DOWN state there
 # are zero live bridge processes by definition, so neither pid can EVER
 # validate -- the old unconditional refusal made a crashed bridge
 # un-remediable via this verb. Test-FromLedgerZeroValidatedProceed is the
@@ -293,7 +293,7 @@ Write-Host "Test 19 (HIMMEL-1519 round 2, finding A): the canonical circuit-brea
 # supervisor.ts's circuit breaker clearPidfile()'s the ledger before it exits,
 # so the most common fully-crashed state has NO ledger at all. Before this
 # fix the absent-ledger refusal fired unconditionally and this state could
-# never reach the zero-validated fork -- the entire reason HIMMEL-1519 exists.
+# never reach the zero-validated fork -- the entire reason this verb exists.
 Check 'ledger-absent gate does not itself refuse when this is DOWN remediation' `
   (-not (Test-FromLedgerAbsentLedgerRefuses -LedgerAbsent $true -IsDownRemediation $true))
 Check 'absent ledger + DOWN remediation + zero live bridge/orphan procs -> the owner-scan still lets it proceed' `
@@ -311,7 +311,7 @@ Check 'absent ledger + DOWN remediation + a live unaccounted core bridge process
 Write-Host "Test 21 (HIMMEL-1519 round 2, finding B): orphan-only -> refuses, and the data behind the refusal names the PID"
 # Get-BridgeProcs deliberately excludes a bun server.ts orphaned by a dead
 # telegram-himmel launcher (the script's own accepted under-reap trade-off).
-# Before round 1 that was harmless (nothing ever relaunched); now it must be
+# That would be harmless if nothing ever relaunched, but it must be
 # caught by the stricter owner-scan or it becomes a live 2nd getUpdates
 # consumer beside the freshly relaunched supervisor.
 $unattribOrphan = @(Rec 501 999 $SERVER)   # launcher pid 999 absent -> unattributable
@@ -358,8 +358,8 @@ Write-Host "Test 24 (HIMMEL-1519 round 3): validated ledger stop succeeds BUT an
 # a dead telegram-himmel launcher (the script's own accepted under-reap). Stop
 # the validated pid(s), the orphan survives UNSEEN, Test-BridgeRelaunchSafe
 # returned safe, and the script relaunched -> 2nd getUpdates owner -> 409 storm
-# -- the precise outcome the guard exists to prevent (same class as round 2
-# finding B, one branch over). Test-ValidatedStopRelaunchSafe is the exact
+# -- the precise outcome the guard exists to prevent (same class as the
+# zero-validated fork, one branch over). Test-ValidatedStopRelaunchSafe is the exact
 # orphan-aware probe the fixed script calls after the stop + settle sleep; it
 # returning $false IS the refuse-to-relaunch decision that drives exit 1 there.
 # Step 1: the validated stop succeeds. The orphan is NOT a validated pid, so it

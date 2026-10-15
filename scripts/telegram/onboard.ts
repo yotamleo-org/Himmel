@@ -1,4 +1,4 @@
-// scripts/telegram/onboard.ts — bridge onboarding mode (HIMMEL-2176 Stage-1 PR-C, Task 10).
+// scripts/telegram/onboard.ts — bridge onboarding mode.
 //
 // A dedicated, BOUNDED entry point (`bun scripts/telegram/onboard.ts`) that helps
 // an adopter discover the chat.id / from.id values they will hand-author into
@@ -28,7 +28,7 @@ import { getUpdates } from "./telegram-api";
 // `${VAR:-default}` (restart-bridge.sh's formula) falls back on unset OR
 // empty; JS `??` only catches unset. bus.ts's bridgeRoot() has the same `??`
 // gap, so it can't be reused as-is here — this replicates its fallback
-// (CR fix, HIMMEL-2176): a set-but-empty BRIDGE_LOCK_DIR/BRIDGE_ROOT must
+// A set-but-empty BRIDGE_LOCK_DIR/BRIDGE_ROOT must
 // resolve to the SAME path the shell derives, or the two single-consumer
 // guards can disagree about which lock they're both supposed to hold.
 function envOrDefault(v: string | undefined, fallback: string): string {
@@ -48,7 +48,7 @@ export const STOP_COMMAND_POSIX = "bash scripts/telegram/restart-bridge.sh stop"
 // restart-bridge.ps1 has NO stop verb: its `-Kill` is only a MODIFIER for
 // -FromLedger/-Watchdog, and BOTH of those relaunch the bridge after killing —
 // the opposite of what onboarding needs, and a bare `-Kill` falls through to the
-// ordinary restart path. `supervisor.ts --kill` (HIMMEL-221) is the real stop
+// ordinary restart path. `supervisor.ts --kill` is the real stop
 // lever and works on both platforms.
 export const STOP_COMMAND_WIN = "bun scripts/telegram/supervisor.ts --kill";
 
@@ -100,7 +100,7 @@ function commandExists(bin: string): boolean {
 }
 
 // Same preference order as scripts/himmelctl/lib/helpers.js's
-// resolvePowershell() (HIMMEL-2126): prefer `pwsh` (PowerShell 7), fall back
+// resolvePowershell(): prefer `pwsh` (PowerShell 7), fall back
 // to `powershell` (5.1) only when pwsh isn't found — a host with ONLY pwsh
 // installed must not silently fail the armed-check below (its catch turns
 // any spawn failure into "no bridge process found", a fail-open on a safety

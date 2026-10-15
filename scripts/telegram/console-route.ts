@@ -4,7 +4,7 @@ import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
 
-// HIMMEL-3355: operator Telegram message -> a named RUNNING console.
+// Operator Telegram message -> a named RUNNING console.
 //
 // A console runs without --channels on purpose (a second getUpdates consumer
 // 409s the bridge), so nothing reaches it today. Instead the poller — the one
@@ -41,7 +41,7 @@ export type LiveConsole = { name: string; hb: number; bucket: string; project: s
 
 export type ArmedConsole = LiveConsole & { busy: boolean };
 
-// HIMMEL-5125: a console mid-turn has no fresh waiter heartbeat, but its armed
+// A console mid-turn has no fresh waiter heartbeat, but its armed
 // inbox is still read: the next waiter resumes from <inbox>.cursor. Past this
 // age (or after a non-wake exit) the console is treated as released or dead.
 const LIVE_MAX_AGE_MS = 300_000;
@@ -157,7 +157,7 @@ export async function routeToConsole(
       text = name ? `${name} ${text}` : text;
       name = live[0].name;
     } else {
-      // HIMMEL-5125: with several armed consoles, a unique case-insensitive
+      // With several armed consoles, a unique case-insensitive
       // fragment (prefix, suffix or substring) of one name routes there and is
       // stripped from the text, as a full name is.
       // The narrowest tier with a hit decides, so "CO" finds `...10CO-roadmap-
@@ -180,7 +180,7 @@ export async function routeToConsole(
   if (!file) return;
   // Append only to an inbox a console already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
-  // check (HIMMEL-3440) — no separate existsSync() step left to race.
+  // check — no separate existsSync() step left to race.
   const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no console "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);

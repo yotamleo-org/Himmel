@@ -104,7 +104,7 @@ test("parseEnabledOps mirrors the initiative-mode grammar (fail toward inert)", 
   for (const v of [undefined, "", "0", "off", "no", "false", "  ", "bogus", "prchek"])
     expect([...parseEnabledOps(v, k)]).toEqual([]);
   // whole-value enable-all aliases enable every NON-privileged known op. merge-public
-  // is EXPLICIT_ONLY (HIMMEL-1213 codex CR-2 — a privileged public merge must not ride
+  // is EXPLICIT_ONLY (a privileged public merge must not ride
   // the blanket alias), so =1/all/on/yes yield ONLY arm-resume, never merge-public.
   for (const v of ["1", "all", "on", "yes", "true", "ALL"])
     expect([...parseEnabledOps(v, k)].sort()).toEqual(["arm-resume", "restart"]);
@@ -243,7 +243,7 @@ test("appendAuditLine appends a line and swallows a write failure (best-effort)"
   await expect(boom(base)).resolves.toBeUndefined();
 });
 
-// --- describeEnabledOps: configured-but-inert must SAY so (HIMMEL-1270) ---
+// --- describeEnabledOps: configured-but-inert must SAY so ---
 
 test("describeEnabledOps: a value that enables ops returns no warning", () => {
   expect(describeEnabledOps("arm-resume", KNOWN_OPS)).toEqual({ ops: new Set(["arm-resume"]) });
@@ -304,7 +304,7 @@ test("describeEnabledOps: the whole-value enable-all aliases are never treated a
   }
 });
 
-// --- restart op (HIMMEL-1272) ---
+// --- restart op ---
 
 test("restart is a known op with NO script — it is executed by the poller itself", () => {
   expect(KNOWN_OPS.has("restart")).toBe(true);

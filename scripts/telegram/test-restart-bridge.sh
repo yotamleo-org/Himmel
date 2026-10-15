@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# test-restart-bridge.sh — hermetic V6 coverage for restart-bridge.sh
-# (HIMMEL-2176 Task 9). Never starts a real bridge, never touches the
+# test-restart-bridge.sh — hermetic V6 coverage for restart-bridge.sh.
+# Never starts a real bridge, never touches the
 # operator's ~/.claude/handover/bridge or ~/.claude/channels/telegram — a
 # fake `bun` on PATH plus a sandboxed HOME/BRIDGE_ROOT/BRIDGE_LOCK_DIR AND a
 # sandboxed --repo root stand in for everything real. Cases that genuinely
 # cannot run on this host (no `flock`) SKIP, printing why, rather than faking
 # a pass.
 #
-# HIMMEL-2551 added three things here, after this suite was proven to SIGKILL
+# Three things here exist because this suite was once proven to SIGKILL
 # the operator's live production bridge while reporting "17 passed, 0 failed":
 #   * its own fixture repo root ($WORK/repo) — the launcher scopes kills to the
 #     launching instance's $repo/scripts/telegram, so sharing the real checkout
@@ -59,7 +59,7 @@ cleanup() {
   # of its parent dying regardless.
   local pids=() p pat
   # Both trees: the fixture's own fake bun AND the decoy copy the
-  # foreign-bridge case launches from a separate path (HIMMEL-2551). Two
+  # foreign-bridge case launches from a separate path. Two
   # literal -F sweeps rather than one regex — $WORK is an mktemp path and may
   # legitimately carry regex metacharacters.
   for pat in "$WORK/fakebin/bun" "$WORK/decoybin/bun" "$WORK/slowbin/stage2" "$HOME/.bun/bin/bun" "$WORK/precedence-bin/bun"; do
@@ -90,7 +90,7 @@ unset HIMMEL_REPO 2>/dev/null || true
 # scopes its kills to the launching instance's bridge dir
 # ($repo/scripts/telegram), so a fixture passing the real $REPO_ROOT would
 # share a bridge dir with the operator's production bridge and sweep it away
-# (HIMMEL-2551, proven live). The fixture bridge dir MUST differ from any real
+# (proven live). The fixture bridge dir MUST differ from any real
 # one. Only the EXISTENCE of supervisor.ts is checked by the launcher, and the
 # fake `bun` below never reads it, so an empty stub is enough.
 FIXTURE_REPO="$WORK/repo"
@@ -198,7 +198,7 @@ check() {
   if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "expected '$2', got '$3'"; fi
 }
 
-# HIMMEL-3182: capability probes, so a host that cannot express a case SKIPs it
+# Capability probes, so a host that cannot express a case SKIPs it
 # (loudly, with the reason) instead of failing it. Each MEASURES the behaviour the
 # case needs -- never uname / id -u.
 # shellcheck source=../lib/host-caps.sh
@@ -322,7 +322,7 @@ fi
 
 # ── Case: stale-PROC kill — an orphaned poller (no supervisor) is killed on start ──
 # Launched with cwd = the FIXTURE bridge dir, which is both what instance
-# scoping requires (HIMMEL-2551) and more faithful: a real orphan was started
+# scoping requires and more faithful: a real orphan was started
 # by a previous start_verb, so it carries exactly that cwd. `exec` inside the
 # subshell keeps $! the pid that ends up running the fake bun.
 ( cd "$FIXTURE_BRIDGE_DIR" && exec "$FAKE_BIN/bun" poller.ts ) >"$WORK/orphan.log" 2>&1 &
@@ -402,7 +402,7 @@ else
   skip "stale lock from a killed holder does not wedge the next start" "no 'flock' on PATH on this host (MSYS/Windows Git Bash here) — the real target is Linux; flock's kernel-level release-on-exit is not exercisable without it"
 fi
 
-# ── Case: a FOREIGN bridge survives START's stale sweep (HIMMEL-2551) ─────
+# ── Case: a FOREIGN bridge survives START's stale sweep ─────
 # start_verb's stale sweep is the PROVEN killer: it is what SIGKILLed the
 # operator's live supervisor/poller (pids 1751090/1751099) while this suite
 # reported all-green. The decoy runs `bun supervisor.ts` (which spawns its own
@@ -535,7 +535,7 @@ mutant_killed_from_stdout() {
 # a real supervisor records. The pidfile is written AFTER the decoy started, so
 # the entry is live, not stale.
 if [ "$HOST_PS_O" -ne 1 ]; then
-  # HIMMEL-3182: without per-pid ps -o the ledger entry's age is undeterminable, so
+  # Without per-pid ps -o the ledger entry's age is undeterminable, so
   # a live ledger entry cannot be told from a recycled one -- reap the decoy this
   # case would have stopped, so the next case starts from a clean process table.
   hskip "shared root: a bridge recorded in OUR live ledger is swept despite a foreign cwd" "$HOST_PS_O_WHY"
@@ -607,7 +607,7 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$STAT_STUB/stat"
 chmod +x "$STAT_STUB/stat"
 
 if [ "$HOST_PS_O" -ne 1 ]; then
-  # HIMMEL-3182: the pair's control half ("timestamps readable -> swept") needs a
+  # The pair's control half ("timestamps readable -> swept") needs a
   # ps that can date the ledger entry; this host's cannot, so neither half is a
   # discriminating measurement.
   hskip "undeterminable freshness: a ledger entry does NOT override a readable, foreign cwd" "$HOST_PS_O_WHY"
@@ -664,7 +664,7 @@ mkdir -p "$STAT_COUNT_DIR"
 STAT_COUNT_FILE="$WORK/stat-calls.txt"
 REAL_STAT=$(command -v stat)
 if [ -n "$REAL_STAT" ]; then
-  # HIMMEL-3182: count only the calls that SUCCEED. pidfile_mtime tries GNU
+  # Count only the calls that SUCCEED. pidfile_mtime tries GNU
   # `stat -c %Y` first and falls back to BSD `stat -f %m`; on a BSD host the GNU
   # try fails (rc 1) before the read that works, so counting every invocation
   # reported 2 for one scan. A failed try reads nothing, so it is not a read.
@@ -707,7 +707,7 @@ start_bridge >"$WORK/log-start-recycled.log" 2>&1
 poll_until "$POLLER_PAT" 1 30 >/dev/null
 plant_pidfile "$decoy_pid"
 if [ "$HOST_PS_O" -ne 1 ]; then
-  # HIMMEL-3182: a recycled pid is told from a live one by the process's start
+  # A recycled pid is told from a live one by the process's start
   # time (ps -o etimes/lstart) vs the ledger's mtime; with no per-pid ps -o the
   # two entries read the same, and the case (and its RED control) cannot tell them apart.
   hskip "recycled pid: a ledger entry whose process started AFTER the pidfile survives" "$HOST_PS_O_WHY"
@@ -766,9 +766,9 @@ poll_until "$POLLER_PAT" 0 30 >/dev/null
 poll_until "$SUPERVISOR_PAT" 0 10 >/dev/null
 reap_decoys
 
-# ── RED control: the machine-wide matcher (the original HIMMEL-2551 bug) ───
+# ── RED control: the machine-wide matcher (the original bug) ───
 # With no ledger entry at all, the decoy is foreign purely by cwd. Neutering
-# the cwd comparison restores the pre-HIMMEL-2551 behaviour that SIGKILLed the
+# the cwd comparison restores the original behaviour that SIGKILLed the
 # operator's live bridge.
 start_decoy
 mw_seen=$(poll_until "$DECOY_PAT" 2 30)
@@ -781,7 +781,7 @@ if cmp -s "$SCRIPT" "$MUTANT"; then
   fail "RED control (foreign bridge): the mutation actually applies" \
     "sed changed nothing — the ownership line '[ \"\$cwd\" = \"\$BRIDGE_DIR_REAL\" ]' was not found in $SCRIPT. A no-op mutant is a BROKEN control, not evidence."
 elif [ "$(env PATH="$PS_FENCE:$PATH" ps -ef 2>/dev/null | grep -F -- "$DECOY_PAT" | grep -vc grep)" -lt 2 ]; then
-  # HIMMEL-3182: the fenced `ps -ef` passes through only lines that spell $WORK/;
+  # The fenced `ps -ef` passes through only lines that spell $WORK/;
   # on a host whose ps prints the decoy's command line in another form (Git Bash:
   # a Windows path) the mutant sees NO candidates and "killed=0" -- the value the
   # unmutated script also gives -- so the control could never go red. That is the
@@ -948,7 +948,7 @@ case "$run_args" in
     pass "run: the launcher process BECOMES the supervisor (exec preserves the pid — the MAINPID contract)"
     ;;
   '')
-    # HIMMEL-3182: an EMPTY read is only a failure on a host whose ps can read a
+    # An EMPTY read is only a failure on a host whose ps can read a
     # pid's args at all; a ps with no `-o` (Git Bash) can never say what pid
     # $run_pid became, so the pid-identity assertion cannot be made there.
     if [ "$HOST_PS_O" -ne 1 ]; then
@@ -975,7 +975,7 @@ if [ -d "/proc/$run_pid/fd" ]; then
     pass "run: the lock fd 200 is not leaked into the exec'd supervisor"
   fi
 elif command -v lsof >/dev/null 2>&1; then
-  # HIMMEL-3182: `-a` ANDs the selectors. Without it lsof ORs `-p` and `-d`, so
+  # `-a` ANDs the selectors. Without it lsof ORs `-p` and `-d`, so
   # it lists EVERY fd of the pid plus every process's fd 200 -- always non-empty
   # on macOS, a false "leaked".
   # ponytail: static-only -- the /proc branch above is what runs on Linux, so this
@@ -1001,7 +1001,7 @@ check "run: stop reaps the foreground supervisor it started" 0 "$run_left"
 kill -9 "$run_pid" 2>/dev/null || true
 wait "$run_pid" 2>/dev/null || true
 
-# ── LAUNCH HANDOFF (HIMMEL-2556) fixture: the "slow double" ────────────────
+# ── LAUNCH HANDOFF fixture: the "slow double" ────────────────
 # The reproduction needs a launched process that is ALIVE but whose `ps`
 # cmdline does not match list_bridge_pids' `*bun*` candidate filter for a few
 # seconds, then becomes a genuine fake-bun supervisor WITH THE SAME PID —
@@ -1296,7 +1296,7 @@ if [ "$RACE_OK" -eq 1 ]; then
     check "R2: no second supervisor appears while 'run' is mid-handoff" 0 "$r2_supers_mid"
   else
     # FAIL-vs-SKIP decided from what was actually OBSERVED, never from the
-    # marker's absence itself (CR round 5 [codex-1]): the marker never
+    # marker's absence itself: the marker never
     # appearing is exactly the regression this case exists to catch, so
     # inferring "couldn't run the scenario" from that same absence made the
     # detection target and the SKIP condition the same fact — delete
@@ -1339,7 +1339,7 @@ if [ "$RACE_OK" -eq 1 ]; then
   poll_until "$POLLER_PAT" 0 30 >/dev/null
   poll_until "$SUPERVISOR_PAT" 0 10 >/dev/null
 
-  # ── RED control for R2 (CR round 5 [codex-1]) ──────────────────────────
+  # ── RED control for R2 ──────────────────────────
   # The control that makes the fail-vs-skip fix above PROVABLE rather than
   # merely intended: it demonstrates the case goes RED under exactly the
   # mutation that used to make it SKIP. Neuters run_verb's
@@ -1527,7 +1527,7 @@ else
 fi
 
 # ── Case R5: an UNREADABLE epoch ("-", live pid) is ignored+removed, LOUDLY ──
-# CR round 2 [codex-1]: an age this function cannot COMPUTE must read
+# An age this function cannot COMPUTE must read
 # INACTIVE, not active-forever — the "-" epoch is exactly what
 # write_launch_marker itself writes when `date` failed at write time, so this
 # is not a synthetic case, it is the real shape that function produces on a
@@ -1576,7 +1576,7 @@ else
 fi
 
 # ── Case R6: a NEGATIVE age (epoch ahead of the clock) is ignored+removed, LOUDLY ──
-# CR round 2 [codex-1]'s other unboundable-age route: a marker epoch AHEAD of
+# The other unboundable-age route: a marker epoch AHEAD of
 # "now" (a clock stepped backward by NTP, or a bridge root shared across
 # machines with skewed clocks) makes `now - epoch` negative, so the plain
 # `-gt LAUNCH_MARKER_MAX_AGE_SEC` comparison alone would never catch it — the
@@ -1626,7 +1626,7 @@ else
 fi
 
 # ── Case R7: an epoch with a LEADING ZERO does not crash the launcher ──────
-# CR round 4 [codex-1]: the all-digits `case` above accepts "08"/"09", and
+# The all-digits `case` above accepts "08"/"09", and
 # bash arithmetic reads an UNQUOTED leading-zero literal as OCTAL — "08" and
 # "09" are invalid octal digits, so plain `$((now - epoch))` raised a hard
 # evaluation error. Reproduced by hand before this fix existed: it did NOT
@@ -1686,7 +1686,7 @@ else
 fi
 
 # ── RETASK 02H-G9-9c4e21-impl (1/2): a start failing at bun resolution ─────
-# leaves NO marker behind. This is the ORDERING half of the HIMMEL-2556
+# leaves NO marker behind. This is the ORDERING half of the
 # hardening: write_launch_marker in start_verb sits AFTER bun_bin resolution,
 # so a start that cannot find bun must exit before ever writing a marker —
 # pid-liveness alone would not catch this failure mode (the calling shell's
@@ -1714,7 +1714,7 @@ fi
 if PATH="$NOBUN_BIN" command -v bun >/dev/null 2>&1; then
   NOBUN_OK=0
 fi
-# HIMMEL-3182: the bash in that dir must actually START from there. Git Bash's
+# The bash in that dir must actually START from there. Git Bash's
 # `ln -s` COPIES, and a copied bash.exe cannot load msys-2.0.dll once it is off
 # the real bin dir (rc 127), so every `env PATH="$NOBUN_BIN" bash ...` below dies
 # before restart-bridge.sh runs -- the cases would then assert on a launcher that
@@ -1802,7 +1802,7 @@ else
   skip "RETASK: a refused (rc=4) launcher leaves the in-flight marker byte-identical" "$RACE_SKIP_REASON"
 fi
 
-# ── CR round 1 [codex-1]: a marker-write FAILURE degrades LOUDLY, not silently ──
+# ── A marker-write FAILURE degrades LOUDLY, not silently ──
 # write_launch_marker must stay non-fatal (the launch proceeds either way —
 # that part is deliberate and unchanged), but a lost marker write must be
 # VISIBLE, matching every other degrade in this file (flock absent, an
@@ -1812,7 +1812,7 @@ fi
 # Gated on NOT running as root: root bypasses ordinary permission checks, so
 # the directory would stay effectively writable regardless of its mode bits,
 # defeating this fixture — SKIP rather than silently no-op in that case.
-# HIMMEL-3182: gated on the MEASURED behaviour (host_can_deny_write: `chmod 555`
+# Gated on the MEASURED behaviour (host_can_deny_write: `chmod 555`
 # really makes a directory refuse a new file), not on `id -u` -- that also covers
 # Git Bash/NTFS, where chmod is a no-op for a non-root user.
 if [ "$HOST_CAN_DENY_WRITE" -eq 1 ]; then
@@ -1864,14 +1864,14 @@ else
   hskip "marker-write failure: no marker file was actually created" "see the chmod skip above"
 fi
 
-# ── CR round 6 [codex-1]: a marker-REMOVE FAILURE also degrades LOUDLY ────
-# Sibling of the round-1 case above, same family: `rm -f` needs WRITE
+# ── A marker-REMOVE FAILURE also degrades LOUDLY ────
+# Sibling of the marker-write case above, same family: `rm -f` needs WRITE
 # permission on the marker's DIRECTORY (not the file itself), and `-f`
 # suppresses only a missing-FILE error, never a permission error. An
 # INACTIVE marker (a dead pid is the easiest inactive state — see R3) sitting
 # in an unwritable bridge root used to make prune_launch_marker's unguarded
 # `rm -f` abort start/run before they launched anything — a plain internal
-# contradiction with round 1's promise (stated twice in the header) that
+# contradiction with the promise (stated twice in the header) that
 # unwritable marker storage is non-fatal, since write and remove are the SAME
 # storage with the SAME failure mode.
 #
@@ -1884,7 +1884,7 @@ fi
 # the `rm -f` inside prune_launch_marker is exercised — write_launch_marker's
 # later overwrite of that same file, once the launch proceeds, still
 # succeeds independently, which is confirmed below rather than assumed.
-# HIMMEL-3182: gated on the measured host_can_deny_write, as the round-1 case above.
+# Gated on the measured host_can_deny_write, as the marker-write case above.
 if [ "$HOST_CAN_DENY_WRITE" -eq 1 ]; then
   stop_bridge >"$WORK/log-warn2-pre-stop.log" 2>&1
   poll_until "$POLLER_PAT" 0 30 >/dev/null
@@ -1957,7 +1957,7 @@ else
   hskip "marker-remove failure: write_launch_marker's later overwrite of the same file still succeeds" "see the chmod skip above"
 fi
 
-# ── HIMMEL-2582: the PATH fallback finds bun under $HOME/.bun/bin ─────────
+# ── the PATH fallback finds bun under $HOME/.bun/bin ─────────
 # when the launcher's OWN PATH is linger-shaped. A linger-started systemd
 # user unit runs before the login shell's PATH import, so on 2026-09-05 the
 # unit's own environment was PATH=/usr/local/bin:/usr/bin (read live from
@@ -1997,9 +1997,9 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   # file runs under `set -o pipefail` (line 34), where a quiet grep exits at
   # the first match, the producer then takes SIGPIPE writing the rest, and the
   # PIPELINE status goes non-zero — so a successful match can read as a failure
-  # and invert the guard (HIMMEL-1430). The captured output is a few short
+  # and invert the guard. The captured output is a few short
   # lines, far below the size where a here-string wedges Git Bash
-  # (HIMMEL-2027).
+  #.
   check "HIMMEL-2582 control: linger-shaped PATH with no \$HOME/.bun/bin exits 1" 1 "$path2582_neg_rc"
   if grep -q "'bun' not found on PATH" <<< "$path2582_neg_out"; then
     pass "HIMMEL-2582 control: output names \"'bun' not found on PATH\""
@@ -2033,7 +2033,7 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   poll_until "$HOMEBUN_POLLER_PAT" 0 30 >/dev/null
   poll_until "$HOMEBUN_SUPERVISOR_PAT" 0 10 >/dev/null
 
-  # HIMMEL-5383 deliberately makes the user Bun authoritative even when a
+  # The launcher deliberately makes the user Bun authoritative even when a
   # different Bun is first on the incoming PATH. Pin that by an actual launch.
   #
   # Both bun copies are present and identical in behaviour, so the ONLY thing
@@ -2060,9 +2060,9 @@ if [ "$NOBUN_OK" -eq 1 ]; then
   poll_until "$PRECEDENCE_BIN/bun supervisor.ts" 0 10 >/dev/null
   rm -rf "$HOME/.bun"
 
-  # ── HIMMEL-2582 (CR codex-1, round 2, AGREED): the launched CHILD inherits
+  # ── The launched CHILD inherits
   # a PATH on which `claude` resolves — not just bun ────────────────────────
-  # Every HIMMEL-2582 case above exercises ONLY bun resolution
+  # Every case above exercises ONLY bun resolution
   # ($HOME/.bun/bin). If someone dropped "$HOME/.local/bin" back out of the
   # `for _himmel_tool_dir in ...` list in restart-bridge.sh, this whole suite
   # would stay green while re-breaking the exact defect the ticket was filed

@@ -2,7 +2,7 @@ import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-// Local whisper.cpp transcription (HIMMEL-251). Backend decision (operator):
+// Local whisper.cpp transcription. Backend decision (operator):
 // whisper.cpp — free + offline + multi-language; do NOT fold into gemini.
 // Pipeline: ffmpeg (OGG/Opus → 16kHz mono WAV, whisper.cpp's required input)
 // → whisper-cli (-l auto for multi-language detection) → stdout transcript.
@@ -24,7 +24,7 @@ const FFMPEG = process.env.FFMPEG_BIN ?? "ffmpeg";
 const RAW_TIMEOUT_MS = Number(process.env.TRANSCRIBE_TIMEOUT_MS ?? 120_000);
 const STEP_TIMEOUT_MS = Number.isFinite(RAW_TIMEOUT_MS) && RAW_TIMEOUT_MS > 0 ? RAW_TIMEOUT_MS : 120_000;
 
-// timedOut distinguishes a kill-on-timeout from a non-zero exit (HIMMEL-268 hardening):
+// timedOut distinguishes a kill-on-timeout from a non-zero exit:
 // a timeout kill logs "timed out after Xms" so the operator debugs the timeout,
 // not the tool. Without it, a kill appears as a generic "ffmpeg/whisper failed (code)".
 export type ExecResult = { code: number; stdout: string; stderr: string; timedOut?: boolean };
@@ -68,8 +68,8 @@ export async function transcribe(audioPath: string, exec: ExecFn = realExec): Pr
     console.error(`[transcribe] failed for ${audioPath}: ${e}`);
     return null;
   } finally {
-    // WAV is ours (created by ffmpeg) — clean up. Log non-ENOENT failures (HIMMEL-268
-    // hardening): Windows EBUSY/EPERM would silently leak WAVs; logging surfaces them
+    // WAV is ours (created by ffmpeg) — clean up. Log non-ENOENT failures:
+    // Windows EBUSY/EPERM would silently leak WAVs; logging surfaces them
     // while still degrading gracefully (the transcript was already captured).
     await unlink(wav).catch((e: NodeJS.ErrnoException) => {
       if (e.code !== "ENOENT") console.error(`[transcribe] wav cleanup failed for ${wav}: ${e.code ?? e}`);

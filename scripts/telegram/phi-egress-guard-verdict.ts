@@ -1,4 +1,4 @@
-// scripts/telegram/phi-egress-guard-verdict.ts — HIMMEL-2204 cross-language parity
+// scripts/telegram/phi-egress-guard-verdict.ts — cross-language parity
 // harness. Thin CLI over the REAL checkPhiEgressGuards(), normalizing its {ok,
 // reason} result to one coarse verdict label so a bash test can diff it
 // against the bash-side reference verdict without depending on exact wording

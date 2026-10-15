@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/telegram/console-census.sh - HIMMEL-3510. Thin TSV bridge for
+# scripts/telegram/console-census.sh - Thin TSV bridge for
 # console-heartbeat-watch.ts's censusSessionAlive(): prints
 # pid<TAB>name<TAB>model<TAB>autocompact for every live claude session via
 # the same claude_sessions() census tick.sh and ceiling-conformance.sh use

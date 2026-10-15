@@ -1,8 +1,8 @@
 // scripts/telegram/flow-run-ledger.test.ts
-// HIMMEL-921 flow-run ledger tests. Hermetic: temp dirs only, no real HOME.
+// Flow-run ledger tests. Hermetic: temp dirs only, no real HOME.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 // BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
-// through PATH straight to the System32 WSL stub (HIMMEL-1992/1279).
+// through PATH straight to the System32 WSL stub.
 import { BASH_BIN } from "./run";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,10 +28,10 @@ beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "flow-run-ledger-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 // Prerequisite for every BASH_LIB shell-out below: can BASH_BIN run at all? A
-// genuinely missing/broken bash (e.g. the Windows System32 WSL stub,
-// HIMMEL-1992/1279) is a bun SKIP, never a silent pass — checked separately
+// genuinely missing/broken bash (e.g. the Windows System32 WSL stub)
+// is a bun SKIP, never a silent pass — checked separately
 // from each shell-out it gates so a real bash-side failure still fails loudly
-// instead of being swallowed into a no-op (HIMMEL-2725).
+// instead of being swallowed into a no-op.
 const BASH_RUNS = Bun.spawnSync([BASH_BIN, "-c", "exit 0"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
 if (!BASH_RUNS) {
   console.warn(`[flow-run-ledger.test] SKIP all bash-shell-out cases: BASH_BIN=${BASH_BIN} cannot even run "-c exit 0" — not a Git-Bash-compatible shell on this machine.`);
@@ -173,7 +173,7 @@ test.skipIf(!BASH_RUNS)("bash --append-start: run_id is minutes-compact and host
   expect(row.host!.length).toBeGreaterThan(0);
 });
 
-// HIMMEL-2241: appendFlowRun quarantines a write that would reach the
+// appendFlowRun quarantines a write that would reach the
 // PRODUCTION ledger from inside a shell-suite run with no explicit redirect.
 // Mirrors the bash twin's cases in scripts/lib/test-flow-run-ledger-path.sh.
 function withEnv<T>(patch: Record<string, string | undefined>, fn: () => T): T {

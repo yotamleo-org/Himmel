@@ -2,19 +2,19 @@ import { writeFile } from "node:fs/promises";
 
 const API = (t: string, m: string) => `https://api.telegram.org/bot${t}/${m}`;
 type F = typeof fetch;
-// A non-ok response (HIMMEL-1401 — e.g. a Telegram-API-side Bad Gateway storm)
+// A non-ok response (e.g. a Telegram-API-side Bad Gateway storm)
 // THROWS instead of returning []. poller.ts's main loop already wraps getUpdates
 // in a try/catch for network errors; folding the API-level failure into that same
 // path lets it back off instead of hot-looping with zero delay, which is what a
 // silent [] used to produce. An ok:true call still never throws (below) — that
 // path stays fail-open for a malformed result array.
 //
-// Client-side abort deadline (HIMMEL-1401 CR round 2 — codex adversarial pass).
+// Client-side abort deadline.
 // `timeout` above is only a QUERY PARAMETER telling Telegram how long to hold the
 // connection open server-side; it does NOT bound the fetch itself. Without a
 // client-side abort, a stalled transport (or a response whose body never
 // completes) left `await f(...)` / `await res.json()` pending forever — no
-// reject, so the catch/backoff above (and the HIMMEL-1401 outage marker) never
+// reject, so the catch/backoff above (and the outage marker) never
 // fired, and the bridge went silently deaf while the process stayed alive and
 // the supervisor saw nothing wrong. The deadline is set slightly LONGER than the
 // server-side long-poll timeout, so a healthy long poll — which returns at or
@@ -44,7 +44,7 @@ export async function getMe(token: string, f: F = fetch): Promise<string | null>
     return j.result.username;
   } catch { return null; }
 }
-// Best-effort "typing…" indicator (HIMMEL-260). No retries, failures swallowed —
+// Best-effort "typing…" indicator. No retries, failures swallowed —
 // a missed indicator is harmless; it must never disturb the poll loop.
 export async function sendChatAction(token: string, chat_id: number, f: F = fetch): Promise<void> {
   try {
@@ -77,7 +77,7 @@ export async function sendMessage(token: string, chat_id: number, text: string,
       res = await f(API(token, "sendMessage"), { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}) }) });
     } catch {
-      // A lost response is indistinguishable from a failed send; retrying can duplicate alerts (HIMMEL-1211 / CR #1327).
+      // A lost response is indistinguishable from a failed send; retrying can duplicate alerts.
       console.error(`[telegram] sendMessage transport failure chat=${redactChatId(chat_id)}`);
       return false;
     }
@@ -99,7 +99,7 @@ export async function sendMessage(token: string, chat_id: number, text: string,
 // Bound on file-fetch calls: unlike getUpdates (long-poll bounds itself), a hung
 // getFile/download would stall the single-threaded ingest loop indefinitely (CR).
 const FILE_FETCH_TIMEOUT_MS = 30_000;
-// Resolve a file_id to its server-side file_path (HIMMEL-250). Null on any
+// Resolve a file_id to its server-side file_path. Null on any
 // failure — caller decides whether to forward the message without the file.
 export async function getFile(token: string, file_id: string, f: F = fetch): Promise<string | null> {
   const res = await f(API(token, "getFile") + `?file_id=${encodeURIComponent(file_id)}`, { signal: AbortSignal.timeout(FILE_FETCH_TIMEOUT_MS) });

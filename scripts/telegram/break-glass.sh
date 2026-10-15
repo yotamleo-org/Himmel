@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# break-glass.sh <op> <arg> <time> — operator break-glass ops (HIMMEL-5047).
+# break-glass.sh <op> <arg> <time> — operator break-glass ops.
 #
 # Reached ONLY through auto-action.sh, which the trusted Telegram bridge spawns
-# on the HIMMEL-4820 typed path (operator id + allowed chat + whole,
+# on the typed path (operator id + allowed chat + whole,
 # non-forwarded, non-caption message + a per-op TELEGRAM_AUTO_ACTIONS name).
 # Every op here except station-status is also behind the bridge's one-time
 # `/confirm <code>` step (auto-action.ts CONFIRM_OPS); this script never sees
@@ -17,7 +17,7 @@
 #                              audited) while it is still HEAD, then sync the
 #                              primary
 #   repin-hooks       -        fast-forward the primary to origin/<default>; the
-#                              HIMMEL-2528 monotonic re-pin heals each session's
+#                              monotonic re-pin heals each session's
 #                              hook-integrity pin once its hooks equal the tip
 #   launch-leg        <N-label> <bypass|->
 #                              launch ONE leg of the current console's fleet in
@@ -35,13 +35,13 @@
 #                              primary, every *_OK scrubbed (no bypass flag)
 #   restart-bridge    -        restart telegram-bridge.service 3 s from now, so
 #                              the reply and audit line land first
-#   allow-rule        <id>     (HIMMEL-5048) add ONE permission allow rule to the
+#   allow-rule        <id>     add ONE permission allow rule to the
 #                              primary's untracked local settings file. The rule
 #                              text comes only from the checked-in registry
 #                              allow-rules.json (id -> exact text), never from the
 #                              message; idempotent, and the old file is backed up
 #                              (<file>.bak-<epoch>-<pid>) before every write.
-#                              (HIMMEL-5127) the <time> slot carries the sha256
+#                              the <time> slot carries the sha256
 #                              of the rule text the operator approved; a registry
 #                              whose current text hashes differently is refused
 #                              (26), and a "-" or malformed hash is refused (1)
@@ -160,7 +160,7 @@ op_station_status() {
     echo "load $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
     echo "mem $(awk '/^MemAvailable:/{printf "%d MiB available", $2/1024}' /proc/meminfo 2>/dev/null)"
     # The primary line comes before every unbounded section: a truncated reply
-    # (HIMMEL-5091) must never drop it.
+    # must never drop it.
     echo "primary $(git -C "$PRIMARY" symbolic-ref --quiet --short HEAD 2>/dev/null || echo detached)" \
         "$(git -C "$PRIMARY" rev-parse --short HEAD 2>/dev/null)" \
         "$( [ -z "$(git -C "$PRIMARY" status --porcelain --untracked-files=no 2>/dev/null)" ] && echo clean || echo dirty)"
@@ -472,7 +472,7 @@ op_allow_rule() {
     fi
     reg="${BREAK_GLASS_ALLOW_REGISTRY:-$SCRIPT_DIR/allow-rules.json}"
     [ -f "$reg" ] || { echo "ERR break-glass: allow-rule registry not found: $reg" >&2; return 20; }
-    # HIMMEL-5127: the poller reads this file with JSON.parse, which rejects a BOM
+    # The poller reads this file with JSON.parse, which rejects a BOM
     # and a second document; jq reads both. Refuse them here too, so the two
     # readers can never resolve different text from the same file.
     docs="$(jq -s 'length' "$reg" 2>/dev/null)" || { echo "ERR break-glass: cannot read the allow-rule registry" >&2; return 20; }
@@ -486,7 +486,7 @@ op_allow_rule() {
         echo "ERR break-glass: no reviewed rule for id '$id'" >&2
         return 26
     fi
-    # HIMMEL-5127: the third argument is the sha256 of the rule text the operator
+    # The third argument is the sha256 of the rule text the operator
     # approved. The poller supplies it; a registry rewritten after the approval
     # resolves different text here and is refused, so nothing unapproved is applied.
     if ! [[ "$TIME" =~ ^[0-9a-f]{64}$ ]]; then

@@ -1,11 +1,11 @@
 // scripts/telegram/console-heartbeat-watch.ts
-// HIMMEL-3510. Bridge-side alert for a console's console-wait.sh heartbeat
-// (scripts/handover/console-kit/console-wait.sh, HIMMEL-3509 — not edited
-// here, its file is owned by that ticket's leg) going stale while the
+// Bridge-side alert for a console's console-wait.sh heartbeat
+// (scripts/handover/console-kit/console-wait.sh)
+// going stale while the
 // console session is still running. N383 measured that an external SIGKILL
 // of the waiter re-invokes the console (a task notification fires) — not
 // silent. The harness's own "low memory" kill of a background task
-// (HIMMEL-3097; legs N129/N132 never woke) is unreproduced and may NOT
+// (legs N129/N132 never woke) is unreproduced and may NOT
 // re-invoke: the waiter dies, the session sits idle, and nothing tells the
 // operator. This module is pure code — no model turn, no new always-on
 // process — driven by a periodic timer already living in poller.ts's main().
@@ -101,14 +101,14 @@ export async function checkStaleHeartbeats(
 // alert," and a census too broken to trust must not manufacture a false
 // "alive" that would then page the operator over nothing.
 //
-// HIMMEL-3514: a genuinely hung child (a stuck pgrep, a wedged /proc read)
+// A genuinely hung child (a stuck pgrep, a wedged /proc read)
 // would otherwise block this await indefinitely on one console, starving
 // checkStaleHeartbeats's scan loop for every remaining console. Bound it and
 // treat a timeout the same as any other degraded scan: sessionAlive=false,
 // matching the fail-closed "degraded scan never alerts" stance above — never
 // a manufactured "alive". SPAWN_OWN_GROUP + killTree (not a bare p.kill) so a
 // grandchild the stub/census script itself spawns doesn't survive the kill
-// and keep holding the pipes open (same defect class as HIMMEL-1956).
+// and keep holding the pipes open.
 export const CENSUS_TIMEOUT_MS = 10_000;
 
 export async function censusSessionAlive(

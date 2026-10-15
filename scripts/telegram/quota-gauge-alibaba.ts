@@ -1,5 +1,5 @@
 // scripts/telegram/quota-gauge-alibaba.ts
-// HIMMEL-729 chunk A — Alibaba Model Studio lane probe for the quota-gauge.
+// Alibaba Model Studio lane probe for the quota-gauge.
 // Alibaba (qwen models, free per-model quotas) exposes per-model CONSUMED
 // tokens — NOT free-remaining — via a private Prometheus HTTP API: metric
 // `model_usage`, labels workspace_id/model/user_id/apikey_id/usage_type
@@ -8,7 +8,7 @@
 // NOWHERE, so it is DERIVED: used_pct = round(100 * consumed / grant), where
 // the per-model grant is operator-configured. Never fabricated: a missing
 // env/grant/response collapses to explicit invisible/null semantics
-// (HIMMEL-275), matching the codex probe's style (quota-gauge-codex.ts).
+// matching the codex probe's style (quota-gauge-codex.ts).
 //
 // Mirrors quota-gauge-codex.ts: a best-effort PIGGYBACK probe — a rare
 // piggyback on an Alibaba dispatch, 1h freshness like codex. Pure parse +
@@ -40,7 +40,7 @@ export function alibabaEnv(env: Record<string, string | undefined> = process.env
   };
 }
 
-// ── HIMMEL-729 wiring chunk A: free-tier grants resolution ───────────────────
+// ── free-tier grants resolution ───────────────────
 // Every TOKEN-quota model on the account carries exactly this free-tier grant.
 // Source: operator-verified from the live Model Studio console, 2026-07-06,
 // cross-checked with https://www.alibabacloud.com/help/en/model-studio/new-free-quota
@@ -150,7 +150,7 @@ export function parseModelUsage(json: unknown): ModelUsage[] | null {
 
 // Map parsed usage + operator grants to canonical rows — one per model.
 // `usage` null -> exactly ONE invisible-source row with null fields
-// (visible-not-silent, HIMMEL-275), never a fabricated number. used_pct is
+// (visible-not-silent), never a fabricated number. used_pct is
 // DERIVED: round(100*consumed/grant) when the grant is a finite positive
 // number, else null (the consumed figure is still recorded in `note`).
 // glm_peak is null on every alibaba row (the peak band is a GLM-only
@@ -179,7 +179,7 @@ export function buildAlibabaRows(usage: ModelUsage[] | null, grants: AlibabaGran
   // Guard a representable-but-empty usage (parseModelUsage funnels it to null
   // today, but if an empty ModelUsage[] is ever constructed elsewhere it must
   // collapse to the honest invisible row, not a silent zero-row append
-  // (visible-not-silent, HIMMEL-275 / CR type-design).
+  // (visible-not-silent).
   if (rows.length === 0) {
     return [{ v: 1, ts, lane: "alibaba", source: "invisible", used_pct: null, window: null, reset_at: null, tier: null, glm_peak: null, note: "alibaba prometheus unreadable" }];
   }

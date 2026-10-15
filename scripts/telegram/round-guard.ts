@@ -1,6 +1,6 @@
-// scripts/telegram/round-guard.ts — the symptom-brief loop breaker (HIMMEL-1553).
+// scripts/telegram/round-guard.ts — the symptom-brief loop breaker.
 //
-// Live incident (2026-08-04): HIMMEL-1540 burned FOUR CR review rounds across
+// Live incident (2026-08-04): one ticket burned FOUR CR review rounds across
 // four overnight legs without landing. Every round's dispatch brief described
 // the PREVIOUS round's defect; nobody ever wrote down the invariant all four
 // defects shared (what identity a CR certificate is keyed to). The orchestrator
@@ -23,7 +23,7 @@
 // paths are a judgment-tier lane given the abstraction as the task, or an
 // explicit recorded operator override (--rounds-override). The guard cannot
 // check an invariant is TRUE; it forces the escalation step all four
-// HIMMEL-1540 rounds skipped.
+// rounds skipped.
 //
 // FAIL-OPEN by design: no ticket key extractable, no ledger, unreadable ledger,
 // malformed lines — all pass. This is a workflow guard against an expensive
@@ -39,13 +39,13 @@ import { join } from "node:path";
 // "first drift is signal; on the SECOND, escalate to structural", the second
 // failed review IS the second drift — from here the brief must carry the
 // invariant. Stage 2 at 3 consecutive blocking reviews: REFUSE the cheap-lane
-// dispatch outright. Evidence from the incident itself: HIMMEL-1540's rounds
+// dispatch outright. Evidence from the incident itself: its rounds
 // 1-4 all had competent workers and
 // increasingly detailed briefs, and every round fixed the symptom and exposed
 // the next seam; what actually broke the loop was a JUDGMENT-TIER pass given
 // the abstraction as the task, which root-caused it in one pass. An INVARIANT
 // paragraph written by the same orchestrator that produced four symptom-briefs
-// is likely another symptom in invariant clothing — at round 3 the thing that
+// is likely another symptom in invariant clothing — at the third round the thing that
 // has to change is the MODEL, not the brief. (Confirmed live: the round-5
 // prediction "never add a fourth resolution source" was violated by the very
 // next adversarial pass finding a fifth and sixth identity.)
@@ -67,11 +67,11 @@ export const INVARIANT_MIN_CHARS = 40;
 // Extract the ticket key the dispatch targets. Priority: branch (shared mode
 // names the real branch) > name (own-mode slug) > task text. Branch/name are
 // machine-shaped (type/himmel-1540-slug), so a case-insensitive match is safe;
-// free task text only matches an UPPERCASE key ("HIMMEL-1540") — lowercase
+// free task text only matches an UPPERCASE key ("PROJ-123") — lowercase
 // prose like "bash-3.2-safe" must not read as a ticket. A wrong extraction
 // fails OPEN (an unknown key has no ledger rounds), never closed.
-// The trailing boundary is FULL non-alnum, not digits-only (codex-2, CR round
-// 2): a `(?![0-9])` guard let "himmel-1540abc" read as HIMMEL-1540. A hyphen
+// The trailing boundary is FULL non-alnum, not digits-only:
+// a `(?![0-9])` guard let "himmel-1540abc" read as an uppercase key. A hyphen
 // still bounds (branch slugs continue "-slug").
 export function extractTicketKey(branch: string | undefined, name: string | undefined, task: string): string | undefined {
   for (const s of [branch, name]) {
@@ -131,7 +131,7 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string, ac
   // as a wrong answer; it is still two readers disagreeing about one ledger.
   const identityKey = (o: LedgerRecord): string =>
     [String(o.finding_id ?? ""), String(o.artifact || "diff"), String(o.perspective || "off")].join(SEP);
-  // HIMMEL-4611: amends are bucketed by (identity, first 7 hex of the target).
+  // amends are bucketed by (identity, first 7 hex of the target).
   // sameHead needs both heads >= 7 hex with one a prefix of the other, so a
   // match always shares the first 7 chars; scanning every amend per finding was
   // findings x amends (3.7 s on the live ledger, 4 s hook budget). Each bucket
@@ -162,7 +162,7 @@ export function countReviewedRounds(ledgerLines: string[], ticketKey: string, ac
       const key = identityKey(raw);
       // Sequential in ledger order: each applied amend may move the head, so
       // re-select the bucket and only take amends AFTER the one just applied.
-      // HIMMEL-4615: `after` only grows, so every bucket entry before one already
+      // `after` only grows, so every bucket entry before one already
       // scanned stays skipped; a per-bucket cursor resumes there instead of at 0,
       // keeping a long chain inside one bucket O(k) rather than O(k^2).
       let after = -1;
@@ -287,7 +287,7 @@ export function checkRoundGuard(
     return { note: `${lane}: round guard OVERRIDE (HIMMEL-1553): ${ticket} is on review round ${rounds + 1} (${rounds} consecutive blocking reviews) — cheap-lane dispatch proceeding on recorded operator authority: "${override}"` };
   }
   if (rounds >= ROUND_ESCALATE_THRESHOLD) {
-    // HIMMEL-1568: the Agent-tool hook chokepoint (lane "agent-dispatch") has
+    // the Agent-tool hook chokepoint (lane "agent-dispatch") has
     // no --rounds-override wired and no way to "re-dispatch" through the same
     // tool call — the escalation options that are genuinely actionable for
     // spawn-glm/spawn-claudex's own CLI-driven callers are not for this one,
@@ -328,7 +328,7 @@ export function checkRoundGuard(
   };
 }
 
-// CLI entry (HIMMEL-1568): scripts/hooks/guard-implementor-dispatch.sh — the
+// CLI entry: scripts/hooks/guard-implementor-dispatch.sh — the
 // PreToolUse chokepoint on the Agent tool — shells out to this as a
 // subprocess (a bash hook cannot import a TS module), so exactly one
 // implementation of "what counts as a reviewed round" backs BOTH the
@@ -342,7 +342,7 @@ export function checkRoundGuard(
 // them; the one real call site always passes well-formed args and an
 // already-written task file, so those paths are unreached in practice). Any
 // other exit means the predicate could not be evaluated at all —
-// the hook's own contract (HIMMEL-1568) treats that as a fail-CLOSED case for
+// the hook's own contract treats that as a fail-CLOSED case for
 // a real implementor dispatch, unlike this guard's own fail-open posture on a
 // missing ledger or an unkeyed dispatch (both handled above, inside
 // checkRoundGuard, and surfaced here as an ordinary exit 0).

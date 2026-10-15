@@ -1,20 +1,20 @@
 // scripts/telegram/brief-blocks.ts
-// HIMMEL-1734 P1: composed dispatch-brief building blocks, extracted out of
+// Composed dispatch-brief building blocks, extracted out of
 // spawn-glm.ts so a non-lane composer (compose-brief.ts, and eventually the
 // judge skill) can reach them without importing the whole GLM spawner.
-// Shipped standalone (HIMMEL-1734 brief-composition half): spawn-glm.ts
+// Shipped standalone: spawn-glm.ts
 // keeps its own inline copies of the overlapping blocks for now — rewiring
 // the lane spawners onto this module is deferred to the generic-lane
 // direction, so the duplication is deliberate and temporary.
 import { randomBytes } from "node:crypto";
 
-// HIMMEL-1218: dispatch-time nonce for the RETASK channel — a token the
+// Dispatch-time nonce for the RETASK channel — a token the
 // parent must echo on any scope-EXPANDING revision (docs/internals/
 // retask-channel.md). 16 random bytes (128 bits, CR round: 4 bytes was thin
 // margin for a forgery-resistance token) — exists only in this brief and
 // whatever the parent later echoes back. Never persisted anywhere else in v1
 // (the verification chokepoint — a dispatch ledger + PreToolUse guard — is
-// HELD per the design, HIMMEL-195 second-drift escalation).
+// HELD per the design).
 export function mintRetaskNonce(): string {
   return randomBytes(16).toString("hex");
 }
@@ -44,7 +44,7 @@ export function composeRetaskBlock(nonce: string): string {
   ].join("\n");
 }
 
-// HIMMEL-1378: the worker prompt never told the model about the HIMMEL-203
+// The worker prompt must tell the model about the
 // hang shape. Root-cause evidence (a leg-8 worker stalled for the full
 // RUN_TIMEOUT_MS producing ZERO bytes of output on even a trivial task):
 // Claude Code's NATIVE permission matcher bails to an interactive prompt on
@@ -63,7 +63,7 @@ export function composeBashShapeWarning(outbox: string): string {
   return `BASH SHAPE (HIMMEL-203/1378): this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
 }
 
-// HIMMEL-1734 §4.3 / §1: the leg-14 waiter protocol, stated in full — this is
+// The leg-14 waiter protocol, stated in full — this is
 // the rule that failed 5 times in one leg (phantom-parks) despite being
 // written down elsewhere, so it must be self-contained prose a dispatched
 // worker (or a judge itself) can follow without cross-referencing anything
@@ -100,7 +100,7 @@ export function composeWaiterBlock(): string {
   ].join("\n");
 }
 
-// HIMMEL-1734 §4.3: declares single-writer ownership of a dispatch's
+// Declares single-writer ownership of a dispatch's
 // write-set in the brief itself (design §2 C5's brief-side counterpart —
 // the spawner-side chokepoint is a separate, later phase). Paths are
 // repo-relative literal paths, forward slashes, directories carrying a

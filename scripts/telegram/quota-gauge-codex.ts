@@ -1,12 +1,12 @@
 // scripts/telegram/quota-gauge-codex.ts
-// WS9 (HIMMEL-654) Codex lane probe — parse the primary (5h) and secondary
+// WS9 Codex lane probe — parse the primary (5h) and secondary
 // (weekly) banks' used_percent + reset_at out of a ~/.codex/logs_2.sqlite*
 // rate-limit blob and build canonical quota-gauge rows. A best-effort
 // PIGGYBACK on the (rare) hermes Codex dispatch: no standalone lean-invoke
 // command (F5, YAGNI until a reader consumes it), no new poll. Pure parse +
 // row-build are fixture-tested here; the thin append is wired at the hermes
 // Codex dispatch touchpoint (deferred — see Task 4 verify / PR body: no such
-// touchpoint on main yet, and the parallel HIMMEL-558 owns the hermes Codex
+// touchpoint on main yet, and a parallel change owns the hermes Codex
 // surface).
 import type { QuotaGaugeRecord } from "./quota-gauge";
 
@@ -57,7 +57,7 @@ function isoOrNull(ms: number | null): string | null {
 
 // Map the parsed reading to canonical rows — one per found bank. `null` ->
 // exactly one `invisible`-source row with null fields (visible-not-silent,
-// HIMMEL-275), never a fabricated number. glm_peak is null on every codex row
+// never a fabricated number. glm_peak is null on every codex row
 // (the peak band is a GLM-only concept).
 export function buildCodexRows(parsed: ParsedCodex | null, nowMs: number): QuotaGaugeRecord[] {
   const ts = new Date(nowMs).toISOString();
@@ -74,7 +74,7 @@ export function buildCodexRows(parsed: ParsedCodex | null, nowMs: number): Quota
   // Guard the latent illegal state {primary:null, secondary:null}: parseCodexUsage
   // funnels it to top-level null today, but if a row-less ParsedCodex is ever
   // constructed elsewhere it must collapse to the honest invisible row, not a
-  // silent zero-row append (visible-not-silent, HIMMEL-275 / CR type-design).
+  // silent zero-row append (visible-not-silent).
   if (rows.length === 0) {
     return [{ v: 1, ts, lane: "codex", source: "invisible", used_pct: null, window: null, reset_at: null, tier: null, glm_peak: null, note: "~/.codex/logs_2.sqlite unreadable" }];
   }

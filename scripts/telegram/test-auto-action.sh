@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke / invariant tests for scripts/telegram/auto-action.sh (HIMMEL-424 B2).
+# Smoke / invariant tests for scripts/telegram/auto-action.sh (B2).
 #
 # auto-action.sh is the privileged half of the remote auto-action surface: the
 # trusted bridge invokes it (argv array) to resolve a ticket|path to a resume
@@ -94,7 +94,7 @@ args=$(cat "$ARM_ARGS_FILE" 2>/dev/null)
 assert_contains "T3 arm got --handover resolved path" "2026-06-20-himmel-777-resume.md" "$args"
 assert_contains "T3 arm got --time smart" "--time smart" "$args"
 # smart is a system-computed sentinel the long-gap guard exempts by design, so
-# the Telegram path must NOT ride --long-gap on it (HIMMEL-1475).
+# the Telegram path must NOT ride --long-gap on it.
 assert_not_contains "T3 smart does not ride --long-gap" "--long-gap" "$args"
 
 # --- T4: ticket only matched under specs/ → excluded → no handover --------
@@ -126,7 +126,7 @@ assert_rc "T9 valid in-root path arms" 0 "$rc"
 args9=$(cat "$ARM_ARGS_FILE")
 assert_contains "T9 arm got --time 02:00" "--time 02:00" "$args9"
 # an explicit HH:MM typed on Telegram rides --long-gap — a HUMAN typing a far
-# time IS the explicit choice the long-gap guard exists to force (HIMMEL-1475).
+# time IS the explicit choice the long-gap guard exists to force.
 assert_contains "T9 explicit HH:MM rides --long-gap" "--long-gap" "$args9"
 
 # --- T10: arm-resume dedup (rc 3) → auto-action rc 5 (already armed) -------
@@ -139,11 +139,11 @@ assert_rc "T11 arm failure maps to rc 6" 6 "$rc"
 
 # --- T11b: arm-resume long-gap refusal (rc 9) → auto-action rc 6 ----------
 # Should not occur once --long-gap rides along on the HH:MM branch, but the
-# honest error text is kept if it does (HIMMEL-1475).
+# honest error text is kept if it does.
 out=$(ARM_STUB_RC=9 run arm-resume HIMMEL-777 smart); rc=$?
 assert_rc "T11b long-gap refusal (rc 9) maps to rc 6" 6 "$rc"
 
-# --- merge-public (HIMMEL-1213) --------------------------------------------
+# --- merge-public --------------------------------------------
 # merge-public-on-green stub: records argv, exits with MERGE_STUB_RC (default 0).
 MERGE_STUB="$TMP/merge-stub.sh"
 cat > "$MERGE_STUB" <<'EOF'
@@ -239,7 +239,7 @@ out=$(CLAUDECODE=1 run launch-bypass-leg "$INSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_
 assert_rc "launch refuses agent authority" 19 "$rc"
 [ ! -f "$LAUNCH_ARGS_FILE" ] || FAILED=$((FAILED + 1))
 
-# HIMMEL-4879 M3: the launch refusal precedes handover_root resolution and the
+# The launch refusal precedes handover_root resolution and the
 # dotenv load — an unresolvable root must still yield 19, never 3.
 out=$(HANDOVER_DIR="$TMP/no-such-root" launch "$INSIDE"); rc=$?
 assert_rc "launch refusal precedes handover_root resolution" 19 "$rc"
@@ -318,7 +318,7 @@ cat > "$TMP/repo/.git/cr-critic-scores.jsonl" <<EOF
 EOF
 out=$(grant_delta); rc=$?
 assert_rc "grant honors historical branchless disproval" 4 "$rc"
-# HIMMEL-4879 M1: only an exact 40-hex ledger head counts as a review of the
+# Only an exact 40-hex ledger head counts as a review of the
 # sha; a 7-39 hex prefix row (seeded as a historical snapshot) must not.
 SHORT_REVIEWED=$(printf '%s' "$REVIEWED" | cut -c1-12)
 cat > "$TMP/repo/.git/cr-critic-scores.jsonl" <<EOF

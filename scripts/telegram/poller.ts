@@ -15,12 +15,12 @@ import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type Permi
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
 import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./console-heartbeat-watch";
-// HIMMEL-2961: resolve the bridge's own plugin profile per dispatch (lever-b,
-// HIMMEL-1040) — instead of the previous hardcoded `undefined` (no --settings
+// resolve the bridge's own plugin profile per dispatch (lever-b)
+// instead of a hardcoded `undefined` (no --settings
 // => full operator ~/.claude injected into every cold bridge run, unlean).
-// Entry-point inventory (RULING 2, HIMMEL-2961): auto-action.ts spawns no
+// Entry-point inventory (RULING 2): auto-action.ts spawns no
 // claude, and hermes is dormant with no plugin-profile seam — the bridge
-// dispatch below is the ONLY wired entry point. HIMMEL-4687: it resolves via
+// dispatch below is the ONLY wired entry point. It resolves via
 // the fresh-import loader (resolveTelegramProfileSettings), never spawn-glm's
 // static import of plugin-profiles.mjs.
 // ponytail: the skill-cost SCANNER stays a static import (it produces data,
@@ -34,13 +34,13 @@ import { scanSkillCosts } from "../lanes/skill-cost.mjs";
 const RETRY_MS = Number(process.env.TELEGRAM_RETRY_MS ?? 15 * 60 * 1000);
 
 // from: sender user id; for anonymous channel posts the sender_chat (channel) id, or 0.
-// image_path: local path of a downloaded photo (HIMMEL-250), absent for text messages.
+// image_path: local path of a downloaded photo, absent for text messages.
 // document_path/document_name: local path + original filename of a downloaded
-// document attachment, e.g. a PDF (HIMMEL-321); absent for non-document messages.
+// document attachment, e.g. a PDF; absent for non-document messages.
 // Invariant: document_path is only ever present alongside document_name (set as
 // a pair); document_name without document_path means the download failed and the
 // message degraded to caption-only forwarding.
-// forwarded/caption (HIMMEL-424 B2): always explicit booleans, never optional — they
+// forwarded/caption: always explicit booleans, never optional — they
 // gate the privileged `/arm` auto-command. `forwarded` = any Telegram forward marker
 // present (the injection-refuse signal). `caption` = the text came from a media caption
 // or voice transcript, NOT a genuinely typed m.text. Both fail toward "not a typed
@@ -50,21 +50,21 @@ export type AllowFn = (fromId: number, chatId: number) => boolean;
 // Downloads a photo by file_id, returns the local path (null on failure).
 export type FetchImageFn = (file_id: string, update_id: number) => Promise<string | null>;
 // Downloads a document by file_id (file_name preserves the extension for Read),
-// returns the local path (null on failure) (HIMMEL-321).
+// returns the local path (null on failure).
 export type FetchDocFn = (file_id: string, update_id: number, file_name: string) => Promise<string | null>;
-// Tells the operator their document couldn't be downloaded (HIMMEL-321). Unlike
+// Tells the operator their document couldn't be downloaded. Unlike
 // a silently-degraded photo, a dropped document also loses its vault-filing
 // clause downstream (run.ts buildPrompt only fires when document_path is present),
 // so the operator would otherwise get a caption-only reply with no sign the file
 // dropped — the bridge's "never a silent drop" rule (cf. voice) applies here too.
 export type NotifyDocFailFn = (chatId: number, name: string) => Promise<void>;
-// Downloads + transcribes a voice/audio message, returns the TRANSCRIPT (HIMMEL-251).
+// Downloads + transcribes a voice/audio message, returns the TRANSCRIPT.
 // Convention (enforced by makeFetchVoice, the one production implementation):
 // never throws; null = failure AND the chat was already told — so ingest can skip
 // the update without breaking the "never a silent drop" acceptance.
 export type FetchVoiceFn = (file_id: string, update_id: number, chat_id: number) => Promise<string | null>;
 
-// Build the production FetchVoiceFn (HIMMEL-251). Wraps EVERY exit in the
+// Build the production FetchVoiceFn. Wraps EVERY exit in the
 // explicit "couldn't transcribe" reply (CR: a thrown getFile — network error /
 // the FILE_FETCH_TIMEOUT_MS abort in telegram-api.ts — used to escape before the reply was sent = the
 // silent drop the ticket forbids). sendFail failures are logged with context,
@@ -92,9 +92,9 @@ export function makeFetchVoice(deps: {
       // (CR: a custom transcribe returning "" would slip past `??` reply-less,
       // then be dropped by ingest's falsy check — the silent drop, again).
       const transcript = (await deps.transcribe(dest))?.trim() || null;
-      // HIMMEL-268 hardening: source .oga has no downstream consumer after transcription
+      // Source .oga has no downstream consumer after transcription
       // (unlike photos which may be re-read by the session). Unlink here instead of
-      // letting attachments/ accumulate dead-weight audio files. Fold into HIMMEL-267
+      // letting attachments/ accumulate dead-weight audio files. Fold into the attachments
       // GC pass if more nuanced lifecycle is needed later.
       await unlink(dest).catch((e: NodeJS.ErrnoException) => {
         if (e.code !== "ENOENT") console.error(`[poller] oga cleanup failed for ${dest}: ${e.code ?? e}`);
@@ -136,20 +136,20 @@ async function saveOffset(root: string, off: number): Promise<void> {
 
 // Append-then-confirm: durably append accepted inbound, THEN advance offset.
 // Updates with update_id < current offset are already confirmed → skipped (dedup).
-// HIMMEL-266/HIMMEL-321: photo and document downloads both start concurrently
+// photo and document downloads both start concurrently
 // across the batch instead of serializing inside the loop; each inbox entry is
 // written once its download resolves (image_path/document_path points to an
 // existing file). The offset still advances last — durability beats latency,
 // and FILE_FETCH_TIMEOUT_MS in telegram-api.ts already bounds how long the
-// batch can take. HIMMEL-2154: photo and document used to be two separate,
-// near-identical pending lists/write loops — collapsed into one media
+// batch can take. Photo and document share one media
+// pending list/write loop; one media
 // descriptor since the only real difference is which field the resolved path
 // lands in, and whether a failed download also notifies the operator.
 type PendingMedia = {
   rec: Omit<Inbound, "image_path" | "document_path">;
   p: Promise<string | null>;
   pathField: "image_path" | "document_path";
-  // Only documents notify on a failed download (HIMMEL-321); a failed photo
+  // Only documents notify on a failed download; a failed photo
   // download degrades silently to caption-only forwarding.
   onMissing?: (rec: Omit<Inbound, "image_path" | "document_path">) => Promise<void>;
 };
@@ -320,12 +320,12 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
   await flushPendingMedia(root, pendingMedia);
   // Append-then-confirm preserved: the offset advances only after every accepted
   // inbound is durably in the inbox (a crash mid-batch re-delivers, never loses).
-  // Concurrency — not an early offset — is the HIMMEL-266 fix; each download is
+  // Concurrency — not an early offset — is the fix; each download is
   // already time-bounded at the API layer, so this await cannot hang unbounded.
   if (maxId >= offset) await saveOffset(root, maxId + 1);
 }
 
-// HIMMEL-2580 CR: repair a beyond-EOF cursor BEFORE ingestUpdates appends
+// repair a beyond-EOF cursor BEFORE ingestUpdates appends
 // this tick's messages, not after. ingestUpdates appends to inbound.jsonl;
 // repairing after that append resets the cursor to the POST-append EOF,
 // so the very messages just appended land BELOW the repaired cursor and
@@ -335,7 +335,7 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
 // too (defence in depth) — after a pre-ingest repair it just finds
 // nothing left to repair.
 //
-// Extracted to a named, exported function (HIMMEL-2580 CR codex-2) so the
+// Extracted to a named, exported function so the
 // ordering is a real seam a test can pin: calling repairCursorBeyondEof and
 // ingestUpdates separately from a test (as bus.test.ts's ordering tests do)
 // does not protect the poller's actual call site — moving the two lines in
@@ -348,23 +348,22 @@ export async function repairThenIngest(root: string, updates: any[], allow: Allo
 
 export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string };
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
-// fromOperator selects the classifier's prompt framing (HIMMEL-1296 CR
-// codex-adv-1) — operator framing must not be told to a shared group's ordinary
-// members, whose chatter is what HIMMEL-721 exists to filter.
+// fromOperator selects the classifier's prompt framing —
+// operator framing must not be told to a shared group's ordinary
+// members, whose chatter is what the triage gate exists to filter.
 export type TriageFn = (text: string, sessionLabel?: string, fromOperator?: boolean) => Promise<TriageVerdict>;
 // Is this sender the operator (the GLOBAL allowFrom identity — the same one
 // AutoGate.authorize uses), as opposed to some other member of a shared group?
 // Kept a separate dep from AutoGate rather than reusing its authorize: the
 // triage floor below is what keeps an operator message out of the drop path,
-// and it must not silently die if the /arm surface is ever disabled or rewired
-// (HIMMEL-1296).
-// Takes the CHAT as well as the sender (HIMMEL-1358): an anonymous group-admin
+// and it must not silently die if the /arm surface is ever disabled or rewired.
+// Takes the CHAT as well as the sender: an anonymous group-admin
 // post carries GroupAnonymousBot instead of the operator's real id, so identity
 // there is only decidable relative to the chat it was posted in. See
 // gate.ts isOperatorIdentity for the rule.
 export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number) => boolean;
 
-// Auto-command gate (HIMMEL-424 B2). `fire` is FIRE-AND-FORGET so a slow arm never
+// Auto-command gate. `fire` is FIRE-AND-FORGET so a slow arm never
 // blocks the ingest loop; `enabledOps` is parsed from TELEGRAM_AUTO_ACTIONS (empty by
 // default ⇒ inert). `authorize(from, chat_id)` is the SELF-SUFFICIENT auth check: the
 // SENDER must be the allowlisted operator (global allowFrom) AND the chat must be
@@ -379,7 +378,7 @@ export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
 // isOperator defaults to "nobody is the operator" so every existing caller keeps
-// the pure HIMMEL-721 behaviour; main() is the one production wiring.
+// the pure triage-gate behaviour; main() is the one production wiring.
 // A LEADING `model:<value>` tag pins the bounded run's model (LUNA-101 spec
 // §3.A.5). Anchored at the start, so "model railway question" and "use
 // model:sonnet please" are prose, not tags. The key is case-insensitive; the
@@ -419,7 +418,7 @@ export type RequireMentionFn = (chatId: number) => boolean;
 // (poller.ts never asked getUpdates for them); a regex over the text is what
 // LUNA-158 asked for as the fallback and is all there currently is to check.
 // Telegram's standard command addressing (`/cmd@botusername`) is also
-// accepted (CR round 2, codex-1) — the leading boundary above would
+// accepted — the leading boundary above would
 // otherwise reject it too, since the char before `@` is a word char.
 export function mentionsBot(text: string, botUsername: string): boolean {
   const escaped = botUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -446,7 +445,7 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
   }
   // Any entry, even a dangling symlink, locks; reset is station-local.
   if (lockdownEnabled(root)) {
-    // Station policy (HIMMEL-4947): every sender stays blocked, but only the
+    // Station policy: every sender stays blocked, but only the
     // operator is told why; nonoperators in a shared group get silence.
     if (consoleRoute) { if (consoleRoute.authorize(msg.from, msg.chat_id)) await reply(msg.chat_id, "locked, reset at the station"); }
     else if (notifyChat && fromOperator) await notifyChat(msg.chat_id, "locked, reset at the station");
@@ -502,8 +501,8 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   const tagged = tag.model !== null || tag.unknown;
   const route = classify(tag.rest, botUsername);
   // Non-DM chats (negative chat_id = group/channel) get their own session keyed
-  // by chat_id so meta.chat_id pins replies to that chat, not the operator DM
-  // (HIMMEL-238). "_" not ":" — the session id is an NTFS directory name.
+  // by chat_id so meta.chat_id pins replies to that chat, not the operator DM.
+  // "_" not ":" — the session id is an NTFS directory name.
   // Hoisted ahead of the control/auto branches below (LUNA-158): the
   // require-mention gate needs `session` for its log line and must run before
   // BOTH of them — a pure derivation, so moving it costs nothing.
@@ -515,14 +514,14 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // grow-tent groups share their chat with luna_grow_bot (a hermes gateway)
   // and a message not addressed to THIS bot by @mention is not ours to answer.
   // Absolute and blanket: placed before the control-verb and auto-command
-  // branches AND before the triage call and the HIMMEL-1296 operator floor
+  // branches AND before the triage call and the operator floor
   // further down — the floor exists to protect the OPERATOR's own chatter
   // from triage misclassification, not to rescue a message aimed at a
   // different bot. An unmentioned /arm in a require_mention group is also
   // dropped by this (acceptable: those commands aren't used in tent groups).
   // Fails OPEN when the bot's own username could not be resolved at startup
   // (botUsername falsy) — every group behaves exactly as before rather than
-  // silently going quiet everywhere. Mirrors the HIMMEL-721 drop semantics:
+  // silently going quiet everywhere. Mirrors the triage-gate drop semantics:
   // dropped permanently, nothing written to inbox.jsonl.
   if (msg.chat_id < 0 && botUsername && requireMention(msg.chat_id) && !mentionsBot(msg.text, botUsername)) {
     console.error(`[poller] require-mention drop for ${session}`);
@@ -537,7 +536,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     }
     return; // status/sessions reporting is wired in the main loop (replies via outbox)
   }
-  // Auto-command (HIMMEL-424 B2): a message AUTHORIZED by auto.authorize(from, chat_id)
+  // Auto-command: a message AUTHORIZED by auto.authorize(from, chat_id)
   // — the sender is the allowlisted operator (global allowFrom) AND the chat is
   // allowlisted (DM or allowlisted group); a non-operator member of a shared group is
   // refused (fix C1) — that is genuinely TYPED (caption===false — a media-caption/voice
@@ -551,7 +550,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // counts as a whole message. A tagged auto-command falls through to ordinary
   // chat instead — the tag is an agent-routing hint, never an entry to the
   // trusted path.
-  // `/confirm` (HIMMEL-5047) is not an op of its own: it is live while any
+  // `/confirm` is not an op of its own: it is live while any
   // confirm-coded op is enabled, and it can only run what that op issued.
   const opEnabled = auto && (auto.enabledOps.has(route.kind === "auto" ? route.op : "")
     || (route.kind === "auto" && route.op === "confirm" && [...CONFIRM_OPS].some((op) => auto.enabledOps.has(op))));
@@ -559,7 +558,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     auto.fire(msg, route);
     return;
   }
-  // CHEAP TRIAGE GATE (HIMMEL-721) — runs BEFORE the message is enqueued. The
+  // CHEAP TRIAGE GATE — runs BEFORE the message is enqueued. The
   // session id is a pure derivation (above), so the gate needs no session I/O.
   // On ignore/ack the message is DROPPED PERMANENTLY: nothing is written to
   // inbox.jsonl, the consumed cursor never moves, and a later deliverAllPending
@@ -583,8 +582,8 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     // classifier's framing, the floor, AND the model-tag gate — they must agree
     // on who the sender is.
     const verdict = await triage(tag.rest, session, fromOperator);
-    // OPERATOR FLOOR (HIMMEL-1296). The drop above is for shared-group CHATTER;
-    // HIMMEL-721 exists to cut resource spam, never to filter the operator. When
+    // OPERATOR FLOOR. The drop above is for shared-group CHATTER;
+    // The triage gate exists to cut resource spam, never to filter the operator. When
     // the sender IS the operator this is a message addressed to the agent, so an
     // ignore/ack is a misclassification that costs the message with no trace —
     // exactly the incident: `try again..` and `didn't understand the cosmetic
@@ -597,7 +596,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     // batch before this handler runs, so a crash between that commit and the
     // inbox append below still loses the record. That window is pre-existing and
     // applies to every message, not just floored ones; closing it is a per-record
-    // peek/ack redesign tracked as HIMMEL-1302 (found by the codex CR pass here).
+    // peek/ack redesign.
     // Logged when it fires (panel CR glm-1): a rescue is exactly as invisible as
     // the drop it replaces, and "why did this spawn?" is the question the next
     // triage misclassification will be debugged from. Same stream as the drop
@@ -628,7 +627,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
              task_name: route.kind === "dispatch" ? route.ticket : null, retry_at: null };
     await writeMeta(root, session, meta);
   } else if (meta.status === "failed") {
-    // a NEW operator message un-parks a retry-capped session (HIMMEL-263)
+    // a NEW operator message un-parks a retry-capped session
     meta = { ...meta, status: "idle", fail_count: null };
     await writeMeta(root, session, meta);
   }
@@ -658,14 +657,14 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   }
 }
 
-// Map the auto-action.sh exit code to an audit result label. OP-AWARE
-// (HIMMEL-1213 codex-adv): merge-public relays merge-public-on-green.sh's OWN rc
+// Map the auto-action.sh exit code to an audit result label. OP-AWARE:
+// merge-public relays merge-public-on-green.sh's OWN rc
 // space (0=merged, 12=no-open-pr, 15=head-moved, 16=not-green), which is disjoint
 // from arm-resume's — so an irreversible successful public merge is logged as
 // `merged`, not the arm-specific `armed`, and its refusal states keep their
 // meaning for forensic/result-keyed queries.
 function auditResult(op: string, rc: number): string {
-  // restart (HIMMEL-1272) has its own two-value space: it either got far enough to
+  // restart has its own two-value space: it either got far enough to
   // fire (0) or it did not. There is no "succeeded" beyond that — by the time a
   // restart has actually happened this process is gone and cannot log anything.
   if (op === "restart") {
@@ -699,12 +698,12 @@ function auditResult(op: string, rc: number): string {
   }
 }
 
-// restart (HIMMEL-1272): invoked AFTER the ack has been appended + audited, because
+// restart: invoked AFTER the ack has been appended + audited, because
 // it takes down the transport that would deliver them. Returns the fire result; it
 // does not return at all on the rung-1 happy path (the process exits).
 export type RestartFn = (rung: string) => Promise<{ rc: number; message: string }>;
 
-// Rung-2 watchdog (HIMMEL-1272 CR). `schtasks /run` exiting 0 means the TASK WAS
+// Rung-2 watchdog. `schtasks /run` exiting 0 means the TASK WAS
 // LAUNCHED, not that the relaunch succeeded — restart-bridge.ps1 can still fail
 // after that, and this process simply keeps running. Without a watchdog the
 // operator is left holding a confirmation that never came true, which is the same
@@ -724,7 +723,7 @@ export type AutoCommandDeps = {
   enabledOps?: Set<string>;
 };
 
-// Break-glass confirm codes (HIMMEL-5047). One pending challenge per bridge
+// Break-glass confirm codes. One pending challenge per bridge
 // root, bound to the chat and the operator that asked, valid 5 minutes. A new
 // op replaces it. Any /confirm consumes it first (rename, read, unlink), so a
 // wrong code burns it and a right one can never run twice.
@@ -733,7 +732,7 @@ type PendingConfirm = { code: string; chat_id: number; user: number; op: string;
 const pendingPath = (root: string) => join(root, "break-glass-pending.json");
 
 // The exact rule text the /allow-rule id resolves to, shown in the confirm prompt
-// (HIMMEL-5112) so the operator approves the text, not just an id. Same registry
+// so the operator approves the text, not just an id. Same registry
 // and validity test as break-glass.sh (a string with no control characters: the
 // Unicode Cc class plus U+2028/U+2029, an explicit set on both sides), but
 // read with JSON.parse: a registry it rejects (BOM, two documents) or an id with
@@ -741,7 +740,7 @@ const pendingPath = (root: string) => join(root, "break-glass-pending.json");
 // lenient jq read never resolves a rule the operator did not see. A rule with a
 // lone surrogate is refused too (jq reads it as U+FFFD, JSON.parse keeps it), and
 // on /confirm the shell is handed the sha256 of the approved text and refuses a
-// registry whose text differs (HIMMEL-5127).
+// registry whose text differs.
 const RULE_SHOWN_PREFIX = " → ";
 function allowRuleText(id: string): string | null {
   let rule: unknown;
@@ -757,7 +756,7 @@ function allowRuleText(id: string): string | null {
 async function issueConfirm(root: string, msg: DeliveredMsg, route: { op: string; arg: string; time: string }, now: number): Promise<{ code: string; rule: string }> {
   const code = randomBytes(4).toString("hex");
   const p: PendingConfirm = { code, chat_id: msg.chat_id, user: msg.from, op: route.op, arg: route.arg, time: route.time, expires: now + CONFIRM_TTL_MS };
-  // The text the operator is shown is the text the code approves (HIMMEL-5112).
+  // The text the operator is shown is the text the code approves.
   if (route.op === "allow-rule") p.rule = allowRuleText(route.arg) ?? undefined;
   await mkdir(root, { recursive: true });
   const tmp = `${pendingPath(root)}.${randomBytes(4).toString("hex")}.tmp`;
@@ -781,7 +780,7 @@ function confirmMatches(p: PendingConfirm | null, msg: DeliveredMsg, code: strin
   return timingSafeEqual(Buffer.from(p.code), Buffer.from(code)) && CONFIRM_OPS.has(p.op);
 }
 
-// The auto-command flow (HIMMEL-424 B2). Run FIRE-AND-FORGET off the ingest loop (via
+// The auto-command flow. Run FIRE-AND-FORGET off the ingest loop (via
 // the gate's `fire`) so a slow `--time smart` arm can't stall polling. A FORWARDED /arm
 // is refused + audited (the injection kill-switch — `root` reserved for future use);
 // otherwise the bridge invokes auto-action.sh and relays the result. Every attempt —
@@ -800,7 +799,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     await reply("⚠️ forwarded commands are not executed");
     return;
   }
-  // Break-glass ops and their /confirm are DM-only (HIMMEL-5047 judge ruling): a
+  // Break-glass ops and their /confirm are DM-only (judge ruling): a
   // private chat is the one where chat_id === from. A group /confirm still burns
   // the pending code, so a code seen in a group can never be replayed.
   if ((BREAK_GLASS_OPS.has(route.op) || route.op === "confirm") && msg.chat_id !== msg.from) {
@@ -809,7 +808,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     await reply("⚠️ break-glass ops run only in your private chat with the bot; nothing ran");
     return;
   }
-  // restart (HIMMEL-1272) is executed IN THIS PROCESS, not by auto-action.sh: rung 1
+  // restart is executed IN THIS PROCESS, not by auto-action.sh: rung 1
   // must exit the caller, and rung 2's relaunch has to outlive the processes it
   // kills. ORDERING IS LOAD-BEARING — ack, then audit, THEN fire. The reply is an
   // outbox APPEND (durable on disk); the running poller never gets to flush it,
@@ -853,7 +852,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     }
     return;
   }
-  // Break-glass (HIMMEL-5047): a confirm-coded op only issues a code here; the
+  // Break-glass: a confirm-coded op only issues a code here; the
   // code is never audited. `/confirm` runs the op the code was issued for.
   if (CONFIRM_OPS.has(route.op)) {
     if (route.op === "allow-rule" && allowRuleText(route.arg) === null) {
@@ -874,8 +873,8 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
       await reply("⚠️ confirm refused — no matching pending command (wrong, expired or already used). Nothing ran; send the command again for a new code.");
       return;
     }
-    // allow-rule: the executor is bound to the exact text the operator approved
-    // (HIMMEL-5127); the time slot, unused by this op, carries its sha256.
+    // allow-rule: the executor is bound to the exact text the operator approved;
+    // the time slot, unused by this op, carries its sha256.
     const time = p.op === "allow-rule" && p.rule
       ? createHash("sha256").update(p.rule.slice(RULE_SHOWN_PREFIX.length), "utf8").digest("hex")
       : p.time;
@@ -886,13 +885,13 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
   await reply(res.message);
 }
 
-// The real restart executor (HIMMEL-1272). Injected into handleAutoCommand so the
+// The real restart executor. Injected into handleAutoCommand so the
 // unit tests never bounce anything.
 //
 // Rung 1 — exit 0. supervisor.ts's main() loop respawns the poller immediately and
 // rewrites the pidfile; a >5s run resets its immediate-crash counter, so a healthy
 // bridge never walks toward POLLER_MAX_FAILS. This picks up anything re-read from
-// a FILE at startup (post-HIMMEL-1270 that includes TELEGRAM_AUTO_ACTIONS) but NOT
+// a FILE at startup (that includes TELEGRAM_AUTO_ACTIONS) but NOT
 // a changed User-scope env var: the respawn inherits the supervisor's environment,
 // frozen when the operator's shell launched it.
 //
@@ -958,7 +957,7 @@ export function makeRestart(deps: { exit?: (code: number) => never; spawnSync?: 
   };
 }
 
-// tail: last chunk of the run's stdout+stderr (HIMMEL-262) — persisted to run.log
+// tail: last chunk of the run's stdout+stderr — persisted to run.log
 // blocked: the run failed because the API blocked the model's OUTPUT under the
 // content-filtering policy (deterministic — retrying replays the same block).
 export type RunResult = { code: number; capped: boolean; blocked?: boolean; timedOut?: boolean; pid: number; tail?: string };
@@ -966,7 +965,7 @@ export type Runner = () => Promise<RunResult>;
 export type NowFn = () => string;   // ISO timestamp (injected for tests / resume-slot in prod)
 
 // Run one bounded session run and settle meta. Three outcomes:
-//   * BLOCKED (content-filter, HIMMEL-313) -> park status=failed directly, no retry_at,
+//   * BLOCKED (content-filter) -> park status=failed directly, no retry_at,
 //     fail_count cleared. The block is deterministic (every retry replays the same blocked
 //     output), so it parks immediately as "failed" in ONE settle write — it never transits
 //     the transient "capped" back-off (which would mislabel it + invite the pointless retry
@@ -1045,7 +1044,7 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
   }
 }
 
-// Drive ONE ingest batch, isolating each record (HIMMEL-1296 CR, codex-adv-1).
+// Drive ONE ingest batch, isolating each record.
 // readNewLines has ALREADY advanced inbound.jsonl.cursor for the whole batch by
 // the time these records are handled, so a throw escaping this loop did double
 // damage: it killed the poller (the main loop wraps only getUpdates in a catch)
@@ -1056,8 +1055,8 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 // (ensureSession / writeMeta / appendLine — EPERM, ENOSPC, EISDIR); triage
 // itself is fail-open. Losing ONE record loudly beats losing the rest silently.
 // This does NOT make ingest durable: the window between the cursor commit and
-// the inbox append remains, and closing it needs per-record peek/ack — HIMMEL-1302.
-// onDrop makes the drop VISIBLE instead of merely survivable (CR round 4).
+// the inbox append remains, and closing it needs per-record peek/ack.
+// onDrop makes the drop VISIBLE instead of merely survivable.
 // Containing the throw traded a loud crash-loop for a quiet one: before, a
 // persistent session-storage fault killed the poller over and over, which at
 // least LOOKED broken; contained, it would consume and discard batch after batch
@@ -1067,8 +1066,8 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 // shares no state with the I/O whose failure it is reporting. onDrop's own
 // failure is caught and logged: a notice that cannot be delivered must not
 // abort the batch and strand the records behind it.
-// onDrop is FIRE-AND-FORGET BY SIGNATURE — it returns void and is never awaited
-// (CR codex-adv-1 round 7). The notice goes over the network, and sendMessage
+// onDrop is FIRE-AND-FORGET BY SIGNATURE — it returns void and is never awaited.
+// The notice goes over the network, and sendMessage
 // retries up to 5x honouring Telegram's UNCAPPED retry_after; awaiting it here
 // would let one rate-limited chat stall every later record in a batch the cursor
 // has already consumed, and a restart while blocked would lose them for good.
@@ -1084,7 +1083,7 @@ export async function handleBatch(
     try {
       await handle(rec);
     } catch (e) {
-      // update_id is the replay key (CR round 4): without it the log names no
+      // update_id is the replay key: without it the log names no
       // specific message, so a post-mortem cannot tell WHICH message was lost.
       console.error(`[poller] handleInbound failed for update ${rec.update_id} chat ${rec.chat_id} — record dropped, batch continues: ${e}`);
       if (onDrop) {
@@ -1115,7 +1114,7 @@ export function guarded(task: () => Promise<void>): () => void {
 // runFn — telegram backlog, IPC bus-send (T6), or a due-capped retry. A capped
 // session is SKIPPED until its retry_at passes, so the cap backoff holds;
 // every other session is run (runFn no-ops when nothing is pending).
-// isHeld (HIMMEL-1273): a session whose burst is still inside its quiet window
+// isHeld: a session whose burst is still inside its quiet window
 // is SKIPPED here. Without this the coalescer would be pointless — handleInbound
 // appends the line and holds the dispatch, then this scan, running later in the
 // SAME tick, would fire the run immediately and split the burst exactly as
@@ -1173,7 +1172,7 @@ export async function commitPending(root: string, session: string, nextPos: numb
 }
 
 // Build the runFn the poller uses to spawn a bounded COLD `claude` run per session and
-// settle it (HIMMEL-226 — reverts the HIMMEL-222 warm stdin-pipe primitive, which never
+// settle it (not a warm stdin-pipe primitive, which never
 // drove a turn: interactive `claude` only processes + replies at EOF, never on a newline
 // written to a still-open stdin pipe). Each run reads ONLY the pending slice
 // (peekPending's inbox.pending.jsonl), never the whole inbox; stdin is closed (EOF) so the
@@ -1183,15 +1182,15 @@ export async function commitPending(root: string, session: string, nextPos: numb
 // non-zero exit / timeout / crash) does NOT commit, so the retry loop re-peeks the SAME
 // pending and reprocesses it instead of losing those messages. After a successful run,
 // drain by re-running — terminates when peekPending returns 0 (then reclaims the
-// fully-consumed inbox, HIMMEL-221). runImpl is injected so the spawn/settle/commit logic
+// fully-consumed inbox). runImpl is injected so the spawn/settle/commit logic
 // is unit-testable without launching a real claude.
-// Hard deadline wrapper (HIMMEL-246). runSession's own 30-min timer used to fail
+// Hard deadline wrapper. runSession's own 30-min timer used to fail
 // to settle (bare p.kill() leaves the claude tree alive on Windows → p.exited
 // never resolves → session stuck "running" — observed live 2026-06-10, DM wedged
 // ~1.5h). The PRIMARY fix is run.ts killTree (taskkill /T on timeout); this race
 // is the settle BACKSTOP: a hung OR throwing runImpl resolves unsuccessful
 // (code -1) at the deadline so runAndSettle backs the session off (capped +
-// retry_at) and the pending stays uncommitted. Residual window (CR HIMMEL-246):
+// retry_at) and the pending stays uncommitted. Residual window:
 // if BOTH the tree-kill and the child's exit fail, an orphan could overlap the
 // post-retry_at re-run of the same session — accepted: taskkill /T /F makes that
 // double failure remote, and the overlap is bounded to one stale outbox append.
@@ -1209,22 +1208,22 @@ export function withDeadline(p: Promise<RunResult>, ms: number): Promise<RunResu
 // Default deadline: the child's own timeout + a minute of grace for clean settle.
 const RUN_DEADLINE_MS = Number(process.env.RUN_TIMEOUT_MS ?? 30 * 60 * 1000) + 60 * 1000;
 
-// notify (HIMMEL-260/263): called once per BACKOFF EPISODE when a run settles
+// notify: called once per BACKOFF EPISODE when a run settles
 // unsuccessful — kind "cap" for a genuine usage cap (CAP_SENTINELS in run.ts),
 // kind "transient" for any other non-zero exit (server overload, timeout, crash)
 // — and with kind "giveup" once when the retry cap parks the session. The
 // cap/transient split keeps the notice honest: a 529 Overloaded must not read as
-// a quota cap (HIMMEL-261/263/313 family — transient mislabeled as cap). main
+// a quota cap (transient mislabeled as cap). main
 // wires it to a direct poller-side sendMessage so the chat is told instead of
 // going silent. A clean run ends the episode. The episode set is in-memory: a
 // bridge restart may re-notice once — harmless.
 export type NotifyKind = "cap" | "transient" | "giveup" | "blocked";
 export type NotifyFn = (session: string, retryAt: string, kind: NotifyKind) => Promise<void>;
-// noticeText (HIMMEL-353): the operator-facing notice string per kind. Pure +
+// noticeText: the operator-facing notice string per kind. Pure +
 // exported so the cap-vs-transient honesty (a 529 must say "NOT a usage cap",
 // never the cap wording) is unit-testable, and the `never` default makes a new
 // kind that forgets its notice a COMPILE error — not a silent transient mislabel
-// (the very class HIMMEL-261/263/313 exists to kill). `when` is the pre-rendered
+// (the very class this notice split exists to kill). `when` is the pre-rendered
 // retry time; `maxRetries` only used by the giveup wording.
 export function noticeText(kind: NotifyKind, when: string, maxRetries: number): string {
   switch (kind) {
@@ -1235,7 +1234,7 @@ export function noticeText(kind: NotifyKind, when: string, maxRetries: number): 
     default:          return ((_: never) => { throw new Error(`unhandled notify kind: ${String(_)}`); })(kind);
   }
 }
-// Retry cap (HIMMEL-263): a shipping-class ask that exceeds the bounded-run
+// Retry cap: a shipping-class ask that exceeds the bounded-run
 // deadline would otherwise loop forever (kill → 15-min backoff → re-peek the
 // SAME pending → restart from scratch — observed live: "ship 241+249" died at
 // the 30-min deadline repeatedly). After maxRetries consecutive failures the
@@ -1243,7 +1242,7 @@ export function noticeText(kind: NotifyKind, when: string, maxRetries: number): 
 // pending stays uncommitted (nothing lost); a NEW operator message un-parks it
 // (handleInbound resets fail_count) — the operator decides retry vs terminal.
 const MAX_RETRIES = Number(process.env.TELEGRAM_MAX_RETRIES ?? 3);
-// vaultFor (HIMMEL-321): resolves the Obsidian-vault path a session's documents
+// vaultFor: resolves the Obsidian-vault path a session's documents
 // are filed into, from its meta.chat_id (gate.vaultForChat over loaded access).
 // Optional — when absent or it returns null, the prompt carries no file-into-vault clause.
 export type VaultForFn = (chatId: number) => string | null;
@@ -1265,9 +1264,9 @@ export type CwdForFn = (chatId: number) => string | null;
 // an edit, and a hook script deleted out from under its registration. It does not
 // defend against an operator who points `cwd` at a repo whose hook deliberately
 // allows everything — the trust model there is still "the operator wrote this
-// file", the same one `vault` has relied on since HIMMEL-578.
+// file", the same one `vault` has relied on all along.
 //
-// BE PRECISE ABOUT WHAT IS ATTESTED (CR codex-adv round 2): a mere existence
+// BE PRECISE ABOUT WHAT IS ATTESTED: a mere existence
 // check was not enough — `{}` passed it, so an emptied or malformed settings file
 // read as a floor and granted bypass with nothing enforcing it. What is verified
 // here is that a PreToolUse hook is REGISTERED and that the script it names is
@@ -1287,7 +1286,7 @@ export function hasReadOnlyFloor(cwd: string): boolean {
     // because it is the tool a bounded GGS session runs hactl through, and the
     // one an injected prompt would reach for. An absent matcher means "all
     // tools" in the Claude Code contract, so it passes.
-    // "*" / "**" are documented match-ALL wildcards (HIMMEL-1726) and cover
+    // "*" / "**" are documented match-ALL wildcards and cover
     // Bash by definition, same as an absent matcher.
     const matcher = entry?.matcher;
     const isWildcardMatcher = matcher === "*" || matcher === "**";
@@ -1304,13 +1303,13 @@ export function hasReadOnlyFloor(cwd: string): boolean {
   }
   return false;
 }
-// HIMMEL-2961: the bridge's own lean plugin profile — see plugin-profiles.json's
+// the bridge's own lean plugin profile — see plugin-profiles.json's
 // "telegram" entry for the full enable/mcpServers rationale (obsidian-triage
 // covers the Telegram content workload; telegram-himmel and
 // luna-correlate are deliberately excluded; qmd is the sole mcpServers entry).
 const TELEGRAM_PROFILE = "telegram";
 
-// HIMMEL-3504: poller.ts used to statically import plugin-profiles.mjs ONCE
+// poller.ts used to statically import plugin-profiles.mjs ONCE
 // at process startup (the ESM module cache), while loadRegistry() re-reads
 // plugin-profiles.json fresh on every call below — so a merge changing BOTH
 // files together left a long-running bridge validating NEW json with a
@@ -1322,10 +1321,10 @@ const TELEGRAM_PROFILE = "telegram";
 // function (loadRegistry/validateRegistry/mcpServersForProfile/
 // collectMcpServerDefs) comes from the SAME fresh import, so they can never
 // drift out of sync with each other. plugin-profiles.mjs's only STATIC imports are
-// node:* builtins; its LAZY local graph (HIMMEL-4038: loadListingLib() ->
-// skill-listing.mjs -> role-requires.mjs + skill-cost.mjs) is needed since
-// HIMMEL-4687 routed the dispatch's --settings resolution (opts.skillEntries)
-// through here too, so those siblings are copied beside it under their own
+// node:* builtins; its LAZY local graph (loadListingLib() ->
+// skill-listing.mjs -> role-requires.mjs + skill-cost.mjs) is needed because
+// the dispatch's --settings resolution (opts.skillEntries) is
+// routed through here too, so those siblings are copied beside it under their own
 // names (the relative imports must resolve) and their mtimes join the cache key.
 //
 // A `?v=<mtime>` query-string on the specifier does NOT bust Bun's dynamic
@@ -1338,11 +1337,10 @@ const TELEGRAM_PROFILE = "telegram";
 type PluginProfilesModule = typeof import("../lanes/plugin-profiles.mjs");
 const pluginProfilesModuleCache = new Map<string, Promise<PluginProfilesModule>>();
 // cacheKey -> its cachebust tmp dir, so a later successful import for the SAME
-// modulePath can clean up the now-unreachable prior one (HIMMEL-3504 codex-2:
-// otherwise every distinct mtime leaks its tmp dir for the bridge's lifetime).
+// modulePath can clean up the now-unreachable prior one (otherwise every distinct mtime leaks its tmp dir for the bridge's lifetime).
 const pluginProfilesTempDirs = new Map<string, string>();
 // plugin-profiles.mjs's lazy local import graph, copied beside it when present
-// (a single-file fixture has none) — see the HIMMEL-4687 note above.
+// (a single-file fixture has none) — see the lazy-graph note above.
 const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs"];
 export async function loadPluginProfilesModule(modulePath: string = join(REPO_ROOT, "scripts", "lanes", "plugin-profiles.mjs")): Promise<PluginProfilesModule> {
   const mtimeMs = (await stat(modulePath)).mtimeMs;
@@ -1362,7 +1360,7 @@ export async function loadPluginProfilesModule(modulePath: string = join(REPO_RO
       for (const [name] of siblings) await copyFile(join(dirname(modulePath), name), join(dir, name));
       return import(pathToFileURL(dest).href) as Promise<PluginProfilesModule>;
     })().catch((err) => {
-      // HIMMEL-3504 codex-1: a failed copy/import must NOT stick — evict the
+      // A failed copy/import must NOT stick — evict the
       // rejected promise so the next dispatch retries instead of replaying
       // this same failure until modulePath's mtime happens to change again.
       pluginProfilesModuleCache.delete(cacheKey);
@@ -1408,10 +1406,10 @@ async function resolveTelegramMcpConfig(cwd: string, lanesDir: string): Promise<
   return JSON.stringify(cfg);
 }
 
-// HIMMEL-4687: the bridge's --settings payload, resolved through the SAME
+// the bridge's --settings payload, resolved through the SAME
 // fresh-import loader as resolveTelegramMcpConfig. It used to go through
 // spawn-glm's resolveProfileSettings, whose plugin-profiles.mjs is a STATIC
-// import: after HIMMEL-4400 added leg-e2e to both files on 10-05, the running
+// import: after leg-e2e was added to both files, the running
 // bridge validated the new json with its startup-time validator and failed
 // every AI TODO dispatch until a restart. Same output as resolveProfileSettings
 // (no overlay, the live plugin universe as the deny-by-default baseline, the
@@ -1460,7 +1458,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const routeRefused = !!configuredCwd && !hasReadOnlyFloor(configuredCwd);
     if (routeRefused) console.error(`[poller] cwd route REFUSED for ${session}: '${configuredCwd}' has no verifiable read-only floor (a .claude/settings.json registering a PreToolUse hook whose script exists) — the route is dropped and the session runs in the himmel checkout with no bypass (check the access.json cwd path)`);
     const routedCwd = routeRefused ? null : configuredCwd;
-    // HIMMEL-578: spawn the session in the chat's vault cwd when one is configured,
+    // spawn the session in the chat's vault cwd when one is configured,
     // so the vault's own .claude/hooks load (e.g. a medical PHI-egress floor). The
     // Jira-CLI path stays on repoCwd (himmel) — `dist/` only exists there. Vault
     // sessions get bypassPermissions because himmel's auto-approve hook isn't loaded
@@ -1473,8 +1471,8 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // `vault` is non-null for every chat and would otherwise re-attach Obsidian
     // filing instructions to a code repo (spec §3.A.1).
     //
-    // A REFUSED route gets its OWN branch, and that is load-bearing (CR
-    // codex-adv round 2). Simply nulling routedCwd fell through to the vault
+    // A REFUSED route gets its OWN branch, and that is load-bearing.
+    // Simply nulling routedCwd fell through to the vault
     // branch below — and `defaultVault` is pinned live, so a refused TENT route
     // would have spawned in the LUNA VAULT, with bypassPermissions AND the
     // Obsidian filing clause re-attached. A misconfigured grow-tent path would
@@ -1500,7 +1498,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       filingVault = vault;
     }
     const paths: BusPaths = { inbox: join(sd, "inbox.pending.jsonl"), outbox: join(sd, "outbox.jsonl"), context: join(sd, "context.md"), cwd: repoCwd, sessionCwd };
-    // HIMMEL-2961: the profile itself (TELEGRAM_PROFILE's enable list) is the
+    // the profile itself (TELEGRAM_PROFILE's enable list) is the
     // BRIDGE's own fixed lean set, independent of which cwd/vault this dispatch
     // routes into — but the deny-by-default baseline (opts.installed) must be
     // discovered from sessionCwd, not repoCwd (CR codex-1): resolveTelegramProfileSettings
@@ -1519,11 +1517,11 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const res = await runAndSettle(root, session, () => {
       // Settlement performs async I/O too: recheck immediately before spawn.
       // Not a content-filter block and no agent ran: code 0 settles the session
-      // back to idle with its pending lines uncommitted (HIMMEL-4947).
+      // back to idle with its pending lines uncommitted.
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
       return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
     }, undefined, retryAt);
-    // run.log (HIMMEL-262): persist the run's output tail — before this, a dead
+    // run.log: persist the run's output tail — before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable
     const logHead = `[${new Date().toISOString()}] session=${session} code=${res.code} capped=${res.capped} blocked=${res.blocked ?? false} pid=${res.pid}\n`;
     await atomicWrite(join(sd, "run.log"), logHead + (res.tail ?? "(no output captured — run hung or was killed at the deadline)") + "\n");
@@ -1533,7 +1531,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       return;
     }
     if (res.blocked) {
-      // Content-filter block (HIMMEL-313): runAndSettle already parked this run as
+      // Content-filter block: runAndSettle already parked this run as
       // "failed" directly (never transiting the transient "capped" back-off, so no
       // pointless MAX_RETRIES climb). Here we only end the backoff episode + send an
       // ACCURATE notice. The pending stays uncommitted (re-peekable); a NEW operator
@@ -1554,7 +1552,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // But it is the third consumer of the pending lines, and the only one that
       // was never given the isHeld guard the other two have (deliverAllPending
       // takes it; the coalescer's own dispatch carries the model). That gap
-      // leaked the burst model (public-PR CR round 4, second codex pass): lines
+      // leaked the burst model (second codex pass): lines
       // arriving mid-run are held by the coalescer with their resolved override,
       // and this drain would consume them first — with no override at all —
       // before the dispatcher cleared in-flight and the coalescer-owned retry
@@ -1576,7 +1574,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     if (!m) return;
     const fails = (m.fail_count ?? 0) + 1;
     if (fails >= maxRetries) {
-      // CR HIMMEL-263: a message that arrived DURING this final failing run must
+      // A message that arrived DURING this final failing run must
       // not be stranded under the park — re-peek; growth = the operator spoke,
       // treat it as an un-park (same semantics as handleInbound's failed reset)
       const again = await peekPending(root, session);
@@ -1600,7 +1598,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
   return runOnce;
 }
 
-// Typing signal (HIMMEL-260): for every session currently in flight, fire the
+// Typing signal: for every session currently in flight, fire the
 // injected action with its chat_id (main wires sendChatAction). Runs on its own
 // short timer so the chat shows "typing…" while a bounded child works.
 export async function signalTyping(root: string, isInFlight: (s: string) => boolean, sessions: () => Promise<string[]>, action: (chat_id: number) => Promise<void>): Promise<void> {
@@ -1611,7 +1609,7 @@ export async function signalTyping(root: string, isInFlight: (s: string) => bool
   }
 }
 
-// --- Concurrent per-session dispatch (HIMMEL-246) ---
+// --- Concurrent per-session dispatch ---
 // The main loop used to AWAIT every bounded run inline, so one long run blocked
 // getUpdates ingest and every other session. The dispatcher fires runs without
 // the caller awaiting them: per-session serialization via an in-memory in-flight
@@ -1625,13 +1623,13 @@ export async function signalTyping(root: string, isInFlight: (s: string) => bool
 // coalesced model override — that is lost unless whoever holds it keeps it.
 export type Dispatcher = ((session: string, modelOverride?: ModelOverride) => Promise<boolean>)
   & { inFlightCount: () => number; isInFlight: (s: string) => boolean };
-// HIMMEL-4687: a run that THROWS (a setup failure before the worker spawns,
+// a run that THROWS (a setup failure before the worker spawns,
 // e.g. "registry invalid") leaves the session idle with its pending intact, so
 // the next tick re-dispatches it and fails the same way, forever, with only a
 // log line each time. After this many identical failures in a row for one
 // session, the operator is told ONCE; the streak (and the alert) re-arms on a
 // clean run or on a different error.
-// A delivery that throws is retried on the next identical failure (HIMMEL-4706).
+// A delivery that throws is retried on the next identical failure.
 export const DISPATCH_FAIL_ALERT_AFTER = 5;
 export type RepeatedFailureAlert = (session: string, error: string, count: number) => Promise<void> | void;
 export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(process.env.TELEGRAM_MAX_CONCURRENT_RUNS, 2), onRepeatedFailure?: RepeatedFailureAlert, alertAfter: number = DISPATCH_FAIL_ALERT_AFTER): Dispatcher {
@@ -1656,7 +1654,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
         const streak = { error, count: same ? prev.count + 1 : 1, alerted: same ? prev.alerted : false };
         streaks.set(session, streak);
         if (streak.count < alertAfter || streak.alerted || !onRepeatedFailure) return;
-        // HIMMEL-4706: mark the alert delivered only on success, so a throwing
+        // mark the alert delivered only on success, so a throwing
         // delivery is retried on the next identical failure instead of lost.
         try { await onRepeatedFailure(session, error, streak.count); streak.alerted = true; }
         catch (alertErr) { console.error("[poller] repeated-failure alert failed for " + session + ": " + alertErr); }
@@ -1669,7 +1667,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
   return dispatch;
 }
 
-// --- Burst coalescing (HIMMEL-1273) ---
+// --- Burst coalescing ---
 // Messages sent in close proximity — especially a bulk of attachments — used to
 // land as N cold runs answering N fragments of one intent. Runs were already
 // serialized per session and peekPending already takes the whole unconsumed
@@ -1684,7 +1682,7 @@ export function makeDispatcher(runFn: RunFn, cap: number = positiveEnvInt(proces
 // So this wraps the dispatcher: a request RECORDS intent instead of firing, and
 // the hold is released once the session has been quiet for quietMs — or once
 // maxHoldMs has elapsed since the first message, so a steady trickle can never
-// starve the session (HIMMEL-358 asked for that cap and it still applies).
+// starve the session (that cap still applies).
 //
 // Flushing is driven by an explicit `flushDue(now)` rather than per-session
 // setTimeout: it is deterministic to test, leaks no timers, and matches the
@@ -1708,7 +1706,7 @@ export type BurstCoalescer = ((session: string, modelOverride?: ModelOverride, e
 // Env numbers are operator-supplied: a typo must not silently disable the cap
 // (NaN comparisons are always false, which would hold a burst forever).
 //
-// The empty/whitespace guard is load-bearing (HIMMEL-1289, public-PR CR):
+// The empty/whitespace guard is load-bearing:
 // Number("") is 0, NOT NaN — and 0 is a MEANINGFUL value here (it disables
 // coalescing). So `TELEGRAM_BATCH_QUIET_MS=` — set but empty, which is what a
 // commented-out or half-edited .env line produces — would have silently turned
@@ -1753,7 +1751,7 @@ function positiveEnvInt(raw: string | undefined, fallback: number): number {
   return n >= 1 && n <= MAX_CONCURRENT_RUNS ? n : fallback;
 }
 
-// Interval PERIODS (HIMMEL-1291, public-PR CR). Same operator-typo hazard as
+// Interval PERIODS. Same operator-typo hazard as
 // above, worse consequence: setInterval clamps a 0/NaN period to ~1ms, so an
 // unvalidated value does not fall back to the default — it spins the sweep at
 // a thousand ticks a second. positiveEnvMs already turns ""/NaN/negative into
@@ -1768,14 +1766,13 @@ function positiveEnvInt(raw: string | undefined, fallback: number): number {
 // so there is no operator intent to honour, only a bad value to reject. That
 // makes sub-1ms exactly like "" and NaN: absence, and absence means default.
 //
-// The UPPER bound is the same hazard wearing the opposite disguise (codex-adv
-// round 2, verified on bun 1.3.14): setInterval keeps its delay in a signed
+// The UPPER bound is the same hazard wearing the opposite disguise (verified on bun 1.3.14): setInterval keeps its delay in a signed
 // 32-bit int, so anything above 2147483647 does not become a long interval —
 // it warns TimeoutOverflowWarning and is set to 1. A fat-fingered env value
 // with a few extra digits therefore lands on the SAME 1ms hot loop as `=0`.
 // Both ends fall back rather than clamp, for the same reason: an
 // out-of-range period is a typo, and a typo means default.
-// A FRACTIONAL period falls back too (CodeRabbit round). Not because it is a
+// A FRACTIONAL period falls back too. Not because it is a
 // new hot-loop class — setInterval truncates, so 1.5 becomes 1, which is no
 // worse than the 1 this function already permits outright — but because
 // silently truncating is the one input shape that did not follow the contract
@@ -1819,7 +1816,7 @@ export function makeBurstCoalescer(
   dispatch: (session: string, modelOverride?: ModelOverride) => Promise<boolean | void>,
   opts: { quietMs?: number; maxHoldMs?: number; now?: () => number } = {},
 ): BurstCoalescer {
-  // Default 4s, NOT the 5 minutes HIMMEL-358 asked for: this is the general
+  // Default 4s, NOT 5 minutes: this is the general
   // assistant chat, where a 5-minute hold would make normal conversation feel
   // dead. A link-triage group that wants minutes raises it per-deployment.
   const quietMs = opts.quietMs ?? windowEnvMs(process.env.TELEGRAM_BATCH_QUIET_MS, 4000);
@@ -1862,7 +1859,7 @@ export function makeBurstCoalescer(
       // Drop the hold BEFORE dispatching, then RE-HOLD if the dispatch was
       // deferred (session already in flight, or the global cap reached).
       //
-      // The re-hold is the load-bearing part (public-PR CR round 4). Letting the
+      // The re-hold is the load-bearing part. Letting the
       // hold stay dropped falls back on deliverAllPending re-offering the
       // session — the pre-existing safety net — but that net calls `runFn(s)`
       // with NO model override and never re-triages, so a deferred spawn-low
@@ -1874,14 +1871,14 @@ export function makeBurstCoalescer(
       // here rather than being split — which is the point: only the holder
       // still knows what model the burst resolved to.
       holds.delete(session);
-      // Isolate per-session failures (HIMMEL-1289, public-PR CR): one session's
+      // Isolate per-session failures: one session's
       // dispatch throwing must not abort the sweep and delay every OTHER
       // already-due session to the next tick. A THROW deliberately does not
       // re-hold — the safety net takes it, as before. Re-holding a dispatch
       // that throws every tick would spin forever on the same session.
       try {
         if (await dispatch(session, h.model) === false) {
-          // MERGE, never overwrite (public-PR CR round 4, CodeRabbit). The hold
+          // MERGE, never overwrite. The hold
           // was deleted before the await, so a message arriving DURING it finds
           // no hold and starts a fresh one. Blindly re-setting the snapshot
           // would drop that message's contribution — and in the dangerous
@@ -1919,7 +1916,7 @@ export function makeBurstCoalescer(
   return request;
 }
 
-// In-loop watchdog (HIMMEL-246): a session stuck status=running that THIS poller
+// In-loop watchdog: a session stuck status=running that THIS poller
 // is not actually running (crashed previous incarnation, or a settle that never
 // happened) is reset to idle so deliverAllPending can re-run its pending — no
 // bridge restart needed. The in-memory in-flight set is the liveness truth;
@@ -1945,7 +1942,7 @@ export function resolveRetentionMs(raw: string | undefined): number {
 }
 export const ATTACHMENT_RETENTION_MS = resolveRetentionMs(process.env.TELEGRAM_ATTACHMENT_RETENTION_MS);
 
-// Age-based GC for the attachments/ directory (HIMMEL-267).
+// Age-based GC for the attachments/ directory.
 // Deletes files whose mtime is older than `maxAgeMs`. Only files at the
 // top level of `dir` are swept — no subdirectories. Errors on individual
 // files are logged and skipped so a single bad entry never aborts the sweep.
@@ -1965,7 +1962,7 @@ export async function sweepAttachments(dir: string, maxAgeMs: number = ATTACHMEN
   return removed;
 }
 
-// Bridge config file (HIMMEL-1270). Until now the ONLY key ever read out of
+// Bridge config file. Until now the ONLY key ever read out of
 // ~/.claude/channels/telegram/.env was TELEGRAM_BOT_TOKEN, while the shipped docs
 // told operators to set TELEGRAM_AUTO_ACTIONS there too — so a correctly-edited
 // .env enabled nothing and `/mergepub` silently routed as chat, twice. Every
@@ -2030,7 +2027,7 @@ export function parseBridgeEnv(txt: string): Partial<Record<BridgeEnvKey, string
 // more specific scope, and that is the precedence the rest of the bridge assumes.
 //
 // Only TELEGRAM_AUTO_ACTIONS accepts a process-env override. TELEGRAM_BOT_TOKEN is
-// deliberately FILE-ONLY, exactly as loadToken() was before HIMMEL-1270.
+// deliberately FILE-ONLY, exactly as loadToken() was originally.
 //
 // The reason is specific, not conservatism: this repo runs a SECOND bot. The
 // HIMMEL_JIRA_NUDGE SessionEnd relay reads `TELEGRAM_BOT_TOKEN` from the repo
@@ -2083,7 +2080,7 @@ async function sessionsList(root: string): Promise<string[]> {
   try { return await readdir(join(root, "sessions")); } catch { return []; }
 }
 
-// Reply via the originating chat's outbox (HIMMEL-424): consistent with every other
+// Reply via the originating chat's outbox: consistent with every other
 // operator-facing message in the bridge (send-then-commit durability + per-chat throttle
 // via flushOutboxes), and — unlike a direct sendMessage in the ingest loop — it does not
 // block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
@@ -2099,7 +2096,7 @@ export async function replyViaOutbox(root: string, chat_id: number, text: string
   await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify({ text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}) }));
 }
 
-// --- getUpdates outage handling (HIMMEL-1401) ---
+// --- getUpdates outage handling ---
 // Before this, a non-ok getUpdates response (e.g. a Telegram-API-side Bad
 // Gateway storm) returned [] silently and the main loop's catch — the ONLY
 // place that slept — was never reached, so the loop re-hit the API every tick
@@ -2163,7 +2160,7 @@ export async function main(): Promise<void> {
     if (typeof getMeRetry.unref === "function") getMeRetry.unref();
   }
   const requireMentionFor: RequireMentionFn = (chatId) => requireMentionForChat(access, chatId);
-  // cap/transient/giveup/blocked notice (HIMMEL-260/263/353): poller-side direct
+  // cap/transient/giveup/blocked notice: poller-side direct
   // send — works exactly when the claude layer can't run (quota cap), so failure
   // is never silent. Text per kind lives in the exported pure noticeText().
   const notify: NotifyFn = async (session, retryAt, kind) => {
@@ -2172,7 +2169,7 @@ export async function main(): Promise<void> {
     const when = retryAt ? retryAt.slice(11, 16) + " UTC" : "soon";
     await sendMessage(token, m.chat_id, noticeText(kind, when, MAX_RETRIES));
   };
-  // documents sent to a chat are filed into the vault resolved from access.json (HIMMEL-321)
+  // documents sent to a chat are filed into the vault resolved from access.json
   const vaultFor: VaultForFn = (chatId) => vaultForChat(access, chatId);
   // a chat with an access.json `cwd` spawns its bounded run in that repo (LUNA-101)
   const cwdFor: CwdForFn = (chatId) => cwdForChat(access, chatId);
@@ -2182,7 +2179,7 @@ export async function main(): Promise<void> {
   // constructed, and no run can have started either.
   let isHeldRef: (s: string) => boolean = () => false;
   const runFn = makeRunFn(root, repoCwd, undefined, undefined, notify, undefined, vaultFor, (s) => isHeldRef(s), cwdFor);
-  // HIMMEL-4687: a session failing the same way DISPATCH_FAIL_ALERT_AFTER times
+  // a session failing the same way DISPATCH_FAIL_ALERT_AFTER times
   // in a row tells the operator's DM once (outbox-routed, like the heartbeat
   // alert below), instead of retrying silently forever.
   const repeatedFailureAlert: RepeatedFailureAlert = async (session, error, count) => {
@@ -2195,7 +2192,7 @@ export async function main(): Promise<void> {
   // photo downloads land in a shared root-level attachments/ (named by update_id —
   // unique + dedup-stable); the session is only routed later, in handleInbound
   const attachmentsDir = join(root, "attachments");
-  // Attachments GC (HIMMEL-267): sweep on startup, then once per day.
+  // Attachments GC: sweep on startup, then once per day.
   // Age-based (default 7 days) so in-flight attachments are never touched.
   const sweepFn = () => sweepAttachments(attachmentsDir).then((n) => { if (n > 0) console.error(`[poller] sweep: removed ${n} expired attachment(s)`); }).catch((e) => console.error(`[poller] sweep failed: ${e}`));
   void sweepFn();
@@ -2208,7 +2205,7 @@ export async function main(): Promise<void> {
     const dest = join(attachmentsDir, `${update_id}${safeExt(fp)}`);
     return (await downloadFile(token, fp, dest)) ? dest : null;
   };
-  // voice → download + whisper.cpp transcript (HIMMEL-251). Every failure path
+  // voice → download + whisper.cpp transcript. Every failure path
   // replies an explicit error to the chat — acceptance: never a silent drop.
   const fetchVoice = makeFetchVoice({
     getFile: (id) => getFile(token, id),
@@ -2217,7 +2214,7 @@ export async function main(): Promise<void> {
     sendFail: (chat) => sendMessage(token, chat, "⚠️ couldn't transcribe your voice note — try again or send it as text."),
     attachmentsDir,
   });
-  // document/PDF download (HIMMEL-321). Mirrors fetchImage, but preserves the
+  // document/PDF download. Mirrors fetchImage, but preserves the
   // original filename's extension (so the Read tool detects PDFs) — the
   // server-side file_path is the fallback. Telegram getFile caps at ~20MB; a
   // larger file resolves null here and degrades to caption-only forwarding.
@@ -2228,7 +2225,7 @@ export async function main(): Promise<void> {
     const dest = join(attachmentsDir, `${update_id}${safeExt(file_name, safeExt(fp, ".pdf"))}`);
     return (await downloadFile(token, fp, dest)) ? dest : null;
   };
-  // never-a-silent-drop notice for a document we couldn't download (HIMMEL-321).
+  // never-a-silent-drop notice for a document we couldn't download.
   // "may exceed" — fetchDoc returns null identically for the ~20MB getFile cap, a
   // 4xx, or a timeout, so the notice can't assert a single cause.
   const notifyDocFail: NotifyDocFailFn = async (chatId, name) => {
@@ -2239,7 +2236,7 @@ export async function main(): Promise<void> {
     await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo);
     return messageId;
   };
-  // HIMMEL-2580: inbound.jsonl's cursor is ROOT-scoped, not chat-scoped, so a
+  // inbound.jsonl's cursor is ROOT-scoped, not chat-scoped, so a
   // "your messages were dropped" notice has no originating chat to reply into.
   // It goes to the operator's own DM: in a DM Telegram's chat_id IS the sender
   // id, so the global allowFrom identity (the same one isOperatorIdentity
@@ -2256,7 +2253,7 @@ export async function main(): Promise<void> {
     // work that already ran.
     await send(operatorChat, `⚠️ bridge inbox recovery: the read cursor was at byte ${cursor} but ${file} is only ${size} bytes — the file shrank underneath it. Anything in the ~${gap} bytes between them is no longer on disk and may not have been delivered. I have reset the cursor to ${size}; please resend anything you did not get an answer to.`);
   };
-  // Remote auto-actions (HIMMEL-424 B2): the trusted bridge parses a structured `/arm`
+  // Remote auto-actions: the trusted bridge parses a structured `/arm`
   // and invokes auto-action.sh DIRECTLY — the agent is never in the trust path. Inert
   // unless TELEGRAM_AUTO_ACTIONS enables an op (default OFF). `runScript` spawns the
   // privileged script argv-array (no shell string — fix I2) with cwd=repoCwd. The child
@@ -2269,7 +2266,7 @@ export async function main(): Promise<void> {
   // credential the arm path demonstrably never needs (fix M3). The arm runs
   // FIRE-AND-FORGET (autoFire) so a slow `--time smart` arm never stalls the ingest loop.
   // Read from the bridge .env (with a real process env var still winning) —
-  // HIMMEL-1270: this used to be process.env ONLY, so the documented .env location
+  // this used to be process.env ONLY, so the documented .env location
   // was inert. The describe* wrapper also makes a configured-but-inert value say so
   // at startup instead of looking identical to "off".
   const { ops: enabledOps, warning: autoActionsWarning } =
@@ -2302,11 +2299,11 @@ export async function main(): Promise<void> {
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire };
-  // Operator -> console routing (HIMMEL-3355). Same authorize as /arm — global
+  // Operator -> console routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
   const consoleGate: ConsoleRouteGate = { authorize: autoGate.authorize, reply: (chat, text, name, replyTo) => replyViaOutbox(root, chat, text, name, replyTo) };
-  // Burst coalescing (HIMMEL-1273): handleInbound requests through this instead
+  // Burst coalescing: handleInbound requests through this instead
   // of dispatching per message, so a burst becomes ONE run.
   const coalesce = makeBurstCoalescer(dispatch);
   isHeldRef = coalesce.isHolding;   // closes the runFn -> dispatch -> coalesce cycle declared above
@@ -2315,8 +2312,8 @@ export async function main(): Promise<void> {
   const BATCH_TICK_MS = intervalEnvMs(process.env.TELEGRAM_BATCH_TICK_MS, 500);
   const batchTimer = setInterval(guarded(() => coalesce.flushDue(Date.now())), BATCH_TICK_MS);
   if (typeof batchTimer.unref === "function") batchTimer.unref();
-  // typing indicator while a session's bounded child works (HIMMEL-260), and
-  // while a burst is being held (HIMMEL-1273): during the quiet window nothing
+  // typing indicator while a session's bounded child works, and
+  // while a burst is being held: during the quiet window nothing
   // is in flight, so without this the operator gets several seconds of dead
   // silence after sending — which reads as "the bridge is down", the opposite
   // of the reassurance this indicator exists to give.
@@ -2332,10 +2329,10 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
-  // Stale console-waiter heartbeat alert (HIMMEL-3510). console-wait.sh
-  // (HIMMEL-3509) rewrites consoles/<name>.md.wait on every poll; a gap past
+  // Stale console-waiter heartbeat alert. console-wait.sh
+  // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the console's own session is still alive means
-  // its background waiter may have died silently (HIMMEL-3097's unreproduced
+  // its background waiter may have died silently (an unreproduced
   // harness low-memory kill) — a SIGKILL alone re-invokes the console, so
   // this alert only fires for the silent case. heartbeatAlerted persists
   // across ticks so a stale episode alerts exactly once until re-armed.
@@ -2348,7 +2345,7 @@ export async function main(): Promise<void> {
   };
   const heartbeatTimer = setInterval(guarded(() => checkStaleHeartbeats(root, Date.now(), HEARTBEAT_STALE_MS, heartbeatAlerted, censusSessionAlive, heartbeatAlert)), HEARTBEAT_CHECK_MS); // t13b-ok: unref'd periodic check in the existing poller process, no new service
   if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
-  // Outage tracking across loop iterations (HIMMEL-1401): consecutive getUpdates
+  // Outage tracking across loop iterations: consecutive getUpdates
   // failures drive the backoff, outageStartedAt/lastOutageAlertAt drive the
   // rate-limited log marker. All three reset together on the next clean call.
   let pollFails = 0;
@@ -2363,7 +2360,7 @@ export async function main(): Promise<void> {
         const downSec = Math.round((Date.now() - outageStartedAt) / 1000);
         console.error(`[poller] getUpdates recovered after ${pollFails} consecutive failure(s) — outage ran ~${downSec}s (started ${new Date(outageStartedAt).toISOString()})`);
       }
-      // HIMMEL-1510: a poll-loop heartbeat, printed on EVERY successful getUpdates —
+      // a poll-loop heartbeat, printed on EVERY successful getUpdates —
       // including a quiet one with zero new updates, which never touches the offset
       // file (ingestUpdates only rewrites it when maxId advances). Without this,
       // "poller alive but neither appending nor advancing the offset" is invisible:
@@ -2380,7 +2377,7 @@ export async function main(): Promise<void> {
       if (shouldAlertOutage(Date.now(), outageStartedAt, lastOutageAlertAt)) {
         lastOutageAlertAt = Date.now();
         const downMin = Math.round((Date.now() - outageStartedAt) / 60000);
-        // Log-only (HIMMEL-1401): no non-Telegram operator-alert path (e.g. a
+        // Log-only: no non-Telegram operator-alert path (e.g. a
         // PushNotification/hermes hook) exists in this repo to raise this on —
         // and Telegram itself is exactly what's down, so this can't alert
         // through it either. The recovery line above closes the span for a
@@ -2390,7 +2387,7 @@ export async function main(): Promise<void> {
       await Bun.sleep(backoffMs);
       continue;
     }
-    // Ordering (HIMMEL-2580 CR): see repairThenIngest's own comment for why
+    // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);
     const fresh = await readNewLines<Inbound>(join(root, "inbound.jsonl"), join(root, "inbound.jsonl.cursor"), onCursorReset);
@@ -2398,21 +2395,21 @@ export async function main(): Promise<void> {
     // re-notified on the next batch rather than silenced for the session.
     const notifiedChats = new Set<number>();
     // dispatch (not runFn) everywhere: runs fire WITHOUT blocking this loop —
-    // ingest keeps polling while bounded children work (HIMMEL-246)
+    // ingest keeps polling while bounded children work
     // coalesce (not dispatch): each inbound RECORDS intent, so a same-tick burst
     // is one run even before the quiet window elapses — the intra-tick race the
-    // ticket calls near-free to close (HIMMEL-1273).
-    // isOperator = global allowFrom identity (HIMMEL-1296): a per-group
+    // ticket calls near-free to close.
+    // isOperator = global allowFrom identity: a per-group
     // allowFrom member is an ordinary group member and stays fully triaged —
     // plus the anonymous-admin substitute id in a group that opted in via
-    // `trustAnonymousAdmins` (HIMMEL-1358), which is the only form the
+    // `trustAnonymousAdmins`, which is the only form the
     // operator's own posts take in a group he has "Remain anonymous" on for.
     // handleBatch, not a bare for-await: one record's I/O failure must not take
-    // the rest of the already-consumed batch with it (HIMMEL-1296 CR).
+    // the rest of the already-consumed batch with it.
     await handleBatch(
       fresh,
       (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
-      // sendMessage, NOT replyViaOutbox (CR codex-adv-1 round 6): the outbox is
+      // sendMessage, NOT replyViaOutbox: the outbox is
       // written INTO the same session directory whose failure caused the drop,
       // so on an unwritable session it fails too — and the bridge would then eat
       // that chat's messages indefinitely with nothing but supervisor.log to show
@@ -2424,7 +2421,7 @@ export async function main(): Promise<void> {
         // reports is usually per-SESSION and persistent — an unwritable session
         // directory fails for every message to that chat — so a naive
         // notice-per-record turns a broken chat into a burst of identical alerts,
-        // which is the resource spam HIMMEL-721 exists to prevent, aimed at the
+        // which is the resource spam the triage gate exists to prevent, aimed at the
         // operator. Every dropped record is still logged individually below.
         if (notifiedChats.has(i.chat_id)) {
           console.error(`[poller] drop notice suppressed (chat already notified this batch) for update ${i.update_id} chat ${i.chat_id}`);

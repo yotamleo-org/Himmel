@@ -1,8 +1,7 @@
-// scripts/telegram/round-guard.test.ts — HIMMEL-1553 symptom-brief loop breaker.
+// scripts/telegram/round-guard.test.ts — symptom-brief loop breaker.
 // Every refusal case asserts the specific REASON STRINGS, not rc/shape alone:
 // exit-code-only assertions are how a fail-closed bug reads as a fail-closed
-// feature (HIMMEL-1554 — the 1540 test suite passed on the WRONG refusal for
-// four rounds).
+// feature (a suite once passed on the WRONG refusal for four rounds).
 import { expect, test } from "bun:test";
 import {
   ROUND_WARN_THRESHOLD,
@@ -52,10 +51,10 @@ test("ticket key: HIMMEL-154 does not truncate out of HIMMEL-1540", () => {
 });
 
 test("ticket boundary: a letter suffix is NOT the ticket (codex-2 — himmel-1540abc)", () => {
-  // extraction: himmel-1540abc must not read as HIMMEL-1540 from any source
+  // extraction: himmel-1540abc must not read as an uppercase key from any source
   expect(extractTicketKey("fix/himmel-1540abc", undefined, "t")).toBeUndefined();
   expect(extractTicketKey(undefined, undefined, "see HIMMEL-1540abc")).toBeUndefined();
-  // counting: a himmel-1540abc branch contributes NO HIMMEL-1540 rounds
+  // counting: a himmel-1540abc branch contributes NO rounds for the key
   expect(countReviewedRounds([avail("fix/himmel-1540abc", "aaaaaaa1")], "HIMMEL-1540", "fix/himmel-1540abc").rounds).toBe(0);
   // a hyphen still bounds — the normal slug shape keeps matching
   expect(countReviewedRounds([finding("fix/himmel-1540-x", "aaaaaaa1")], "HIMMEL-1540", "fix/himmel-1540-x").rounds).toBe(1);
@@ -145,7 +144,7 @@ test("rounds: a chained amend (re-key, then disprove) is applied, as the audit d
   expect(countReviewedRounds(ledger, "HIMMEL-1540", branch).rounds).toBe(0);
 });
 
-// HIMMEL-4611: the amend scan was findings x amends (5.6k x 6.3k on the live
+// the amend scan was findings x amends (5.6k x 6.3k on the live
 // ledger = 3.7 s against the hook's 4 s budget). A fixture the size of the
 // real ledger must finish well under a second with the same verdict.
 test("rounds: a live-sized ledger (5.6k findings, 6.3k amends) counts in under 1 s", () => {
@@ -166,7 +165,7 @@ test("rounds: a live-sized ledger (5.6k findings, 6.3k amends) counts in under 1
   expect(ms).toBeLessThan(1000);
 });
 
-// HIMMEL-4615: a chain of k amends sharing one identity and head prefix lands in
+// a chain of k amends sharing one identity and head prefix lands in
 // ONE bucket; re-scanning it from index 0 after every applied amend was O(k^2).
 // The final amend disproves the finding, so a broken chain would read 1, not 0.
 test("rounds: a chain of 40k amends in one bucket is applied in linear time", () => {
@@ -338,7 +337,7 @@ test("blank --name is treated as anonymous, not as the malformed branch `glm/`",
   expect(r.refusal).toBeUndefined();
 });
 
-// ── CLI entry (HIMMEL-1568) ─────────────────────────────────────────────────
+// ── CLI entry ─────────────────────────────────────────────────
 // The ledger/threshold semantics above are exercised in-process; these two
 // cover only the CLI's own argv validation, which nothing else does — the
 // bash-side integration coverage (scripts/hooks/test-guard-implementor-dispatch.sh)

@@ -120,7 +120,7 @@ export async function atomicWrite(path: string, data: string): Promise<void> {
   await rename(tmp, path);
 }
 
-// "failed" (HIMMEL-263): retry cap exhausted — auto-retry parked until a new
+// "failed": retry cap exhausted — auto-retry parked until a new
 // operator message arrives (handleInbound resets it). fail_count counts
 // consecutive unsuccessful settles; cleared by any clean run.
 export type Meta = { chat_id: number; status: "idle"|"running"|"done"|"capped"|"failed";
@@ -148,7 +148,7 @@ export async function appendLine(file: string, line: string): Promise<void> {
   await appendFile(file, line + "\n", "utf8");
 }
 
-// HIMMEL-3440: append `line` to `file` ONLY if it already exists — an
+// Append `line` to `file` ONLY if it already exists — an
 // O_WRONLY|O_APPEND open with NO O_CREAT, so a route attempt against a file
 // deleted moments earlier can never recreate it. A separate existsSync()
 // check followed by appendFile() (which implies O_CREAT) has a TOCTOU
@@ -174,7 +174,7 @@ export async function appendIfExists(file: string, line: string): Promise<boolea
 }
 // Reclaim a fully-consumed append-log so a very long-lived session's
 // inbox/outbox can't grow unbounded (each flush/peek tick reads the whole file
-// into memory — HIMMEL-221). Truncates ONLY when the byte-cursor has reached
+// into memory). Truncates ONLY when the byte-cursor has reached
 // EOF, i.e. every line is already sent/consumed, then resets both file and
 // cursor to 0. The pre-rename length re-read shrinks the window where a
 // concurrent cross-process writer (a bounded run child appending to outbox) could lose
@@ -199,20 +199,20 @@ export async function truncateFullyConsumed(file: string, cursorFile: string): P
   return true;
 }
 // reader tracks a byte offset in <file>.cursor; parses only '\n'-terminated lines.
-// Generic in the record shape (HIMMEL-1296 CR glm-1) so a caller can NAME what
+// Generic in the record shape so a caller can NAME what
 // it is reading — the poller reads Inbound from inbound.jsonl, sessions read
 // their own inbox shape — instead of casting `any[]` at the call site. Defaults
 // to `any`, so every existing caller is unchanged. The parse itself stays
 // unchecked: these are JSON lines off disk, and T is the caller's assertion
 // about them, not a validation.
-// HIMMEL-2580: raised when readNewLines finds its cursor past EOF and repairs
+// Raised when readNewLines finds its cursor past EOF and repairs
 // it. `cursor` is the stale offset, `size` the file's real length — the gap
 // between them is data that is no longer on disk. Optional at every call site;
 // an unwired caller still gets the reset and the log line, just no notice.
 export type CursorResetInfo = { file: string; cursor: number; size: number };
 export type OnCursorReset = (info: CursorResetInfo) => void | Promise<void>;
 
-// Extracted from readNewLines (HIMMEL-2580 CR: cursor repair must run BEFORE
+// Extracted from readNewLines (cursor repair must run BEFORE
 // ingestUpdates appends the tick's own new lines, or a reset-to-EOF discards
 // those too — see the call in poller.ts's main() loop). readNewLines still
 // calls this itself, so every other caller (session inboxes, existing tests)
@@ -225,7 +225,7 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
   try { buf = await readFile(file, "utf8"); }
   catch (e) {
     // ENOENT means an EMPTY inbox, not "can't tell" — and it is exactly the
-    // restore/shadow-copy class that caused HIMMEL-2580: inbound.jsonl itself
+    // restore/shadow-copy class that caused the original incident: inbound.jsonl itself
     // is gone but a stale cursor survives beside it. Falling through with
     // total=0 lets the ordinary start > total branch below fire and repair
     // it (reset to 0, logged, notice raised) instead of this function
@@ -242,7 +242,7 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
   const total = Buffer.byteLength(buf, "utf8");
   // start > total is NOT "nothing new" — the file shrank under the cursor, so
   // the cursor is INVALID and every subsequent read would return [] forever
-  // (HIMMEL-2580: a restore dropped an older inbound.jsonl next to a newer
+  // (a restore dropped an older inbound.jsonl next to a newer
   // cursor and 8 operator messages were silently dropped over ~10h). Reset to
   // EOF, never to 0 — replaying a 345 KB inbox is its own incident — and make
   // the loss visible: loudly in the log, and to the operator via the caller's
@@ -255,7 +255,7 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
     // The reset is what unwedges the bridge, so a notice that throws (Telegram
     // down, chat unreachable) must not undo it — it is already committed above.
     // But swallowing that failure silently would just move the drop one layer
-    // up (HIMMEL-2580 CR: the operator never learns recovery happened, and
+    // up (the operator never learns recovery happened, and
     // nothing here retries the notice) — this module's whole contract is
     // "never a silent drop", so log it; the reset line above is the surviving
     // record either way.
@@ -284,10 +284,10 @@ export async function readNewLines<T = any>(file: string, cursorFile: string, on
   return out;
 }
 
-// IPC (T6/HIMMEL-219): append a message to <target>'s durable inbox so the
+// IPC (T6): append a message to <target>'s durable inbox so the
 // poller's delivery scan spawns a bounded run for the target (if idle) to consume
 // it. ensureSession first so a not-yet-seen target still queues durably.
-// origin:"sendToSession" (HIMMEL-1218): this is the TRUSTED A->B inter-session
+// origin:"sendToSession": this is the TRUSTED A->B inter-session
 // writer (the only current caller is the `bus.ts send` CLI) — distinct from
 // poller.ts's direct inbox.jsonl append for a real inbound Telegram message
 // (no origin field there). Stamping it lets a session's RETASK-channel
@@ -316,7 +316,7 @@ export async function appendContext(root: string, s: string, note: string, budge
   const tmp = p + ".tmp"; await writeFile(tmp, cur, "utf8"); await rename(tmp, p);
 }
 
-// HIMMEL-1854: coms layer — live seat-to-seat messaging over this file bus,
+// Coms layer — live seat-to-seat messaging over this file bus,
 // received through Claude Code's Monitor tool (one stdout line = one event).
 // Layout: <root>/peers/<seat>/inbox.jsonl (+ .cursor); <root>/peers/ledger.jsonl.
 // No server/port/token/daemon/encryption; no broadcast verb — ONE named target.
@@ -400,7 +400,7 @@ export async function drainPeerInbox(root: string, seat: string, emit: (line: st
 }
 
 // Resolve only once the stream has accepted the line, so drainPeerInbox's
-// cursor commit never runs ahead of stdout (backpressure, HIMMEL-1854).
+// cursor commit never runs ahead of stdout (backpressure).
 export const streamEmit = (out: { write(s: string, cb: (e?: Error | null) => void): unknown }) =>
   (line: string) => new Promise<void>((res, rej) => { out.write(line + "\n", (e) => (e ? rej(e) : res())); });
 
@@ -408,9 +408,9 @@ export const streamEmit = (out: { write(s: string, cb: (e?: Error | null) => voi
 // must be committed by the same code that prints (a tail pipe can't advance it
 // at print time, and tail -F around truncateFullyConsumed's rename is fragile);
 // ceiling = up to intervalMs latency per message; upgrade path = fs.watch
-// wakeup if latency matters (HIMMEL-1854).
+// wakeup if latency matters.
 // NOTE: a flooded seat can hit Monitor's event rate limit — documenting that
-// behaviour is a ticket precondition still open (HIMMEL-1854).
+// behaviour is a precondition still open.
 export async function followPeerInbox(root: string, seat: string, emit: (line: string) => void | Promise<void>,
     intervalMs = 1000, signal?: AbortSignal): Promise<void> {
   // oxlint-disable-next-line eslint/no-unmodified-loop-condition -- signal.aborted is flipped by the caller's AbortController

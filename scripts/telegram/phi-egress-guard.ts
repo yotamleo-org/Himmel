@@ -4,9 +4,9 @@
 // re-implemented here against the SAME config files.
 //
 // Named for the invariant it enforces, not the lane that first needed it
-// (HIMMEL-2622): this was `glm-guard.ts` until the GLM/Zhipu lane was dropped
+// this was `glm-guard.ts` until the GLM/Zhipu lane was dropped
 // (operator ruling 2026-08-19; `zai-glm` de-listed from the egress matrix
-// 2026-08-29, HIMMEL-2224). The predicate is a property of the target
+// 2026-08-29). The predicate is a property of the target
 // DIRECTORY — is it PHI-marked or egress-denied — so it outlives any one lane.
 //
 // KEEP IN SYNC with scripts/claude-glm{,.ps1} path_under_any / guard block and
@@ -22,7 +22,7 @@
 //
 // NOTE (spec D2): dormant-by-construction in v1 (cwd is a spawn-created himmel
 // worktree); ships for the vault follow-up + investigation blocker (b).
-// HIMMEL-2626: spawn-claudex.ts deliberately does NOT call this module — it
+// spawn-claudex.ts deliberately does NOT call this module — it
 // calls scripts/claude-codex's own `--guard-check <dir>` check-only entry
 // instead, so the launcher stays the single owner of that lane's PHI/egress
 // verdict (two recognisers over the same directory could reach different
@@ -53,7 +53,7 @@ function pathUnderAny(target: string, listFile: string): "hit" | "miss" | "unrea
 }
 
 export function checkPhiEgressGuards(cwd: string, cfgDir: string = join(homedir(), ".config", "claude-glm")): GuardResult {
-  // .salus / .salus-profile root marker (#850, HIMMEL-2173): existsSync fails
+  // .salus / .salus-profile root marker: existsSync fails
   // OPEN (returns false on a stat error like EACCES/EIO), which would let an
   // unreadable marker slip through as "not PHI". statSync distinguishes a real
   // ENOENT (absent) from any other stat error, failing CLOSED — matching the

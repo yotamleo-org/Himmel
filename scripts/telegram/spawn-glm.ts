@@ -1,5 +1,5 @@
 // scripts/telegram/spawn-glm.ts
-// Poller-free GLM worker spawn (HIMMEL-654 offload spike; spec D4). Owns the
+// Poller-free GLM worker spawn (offload spike; spec D4). Owns the
 // glue the poller provides for bridge runs: prompt composition (minted session
 // paths), run.log persistence from the returned tail, meta.json transitions.
 // Sessions live under <BRIDGE_ROOT>/glm-sessions/ — the live poller scans ONLY
@@ -13,29 +13,29 @@ import { checkPhiEgressGuards } from "./phi-egress-guard";
 import { buildGlmEnv, findSettingsConflicts, formatConflict, fetchGlmUsage, readZaiKey, glmContextPreset, type SettingsConflict, type GlmUsage } from "./glm-env";
 import { appendQuotaGauge, buildGlmRow, isGlmPeak } from "./quota-gauge";
 import { parseGrantFlag, composeGrantLine, nextGrantId, authorityGate, classifyShape, composeEscalationForRefusedGrant, carryGrants, seedCarriedGrants, type GrantSpec } from "./grants";
-// HIMMEL-1040 plugin profiles: resolve the dispatch's lane profile (default
+// plugin profiles: resolve the dispatch's lane profile (default
 // lane-impl) into a `--settings` payload, injected per-dispatch so the worker
 // runs lean while the operator's shared ~/.claude stays full.
 import { resolveProfileByName, parseAddPlugins, readEnabledPluginIds, loadListingLib } from "../lanes/plugin-profiles.mjs";
 import { scanSkillCosts } from "../lanes/skill-cost.mjs";
 await loadListingLib();
-// HIMMEL-1553: symptom-brief loop breaker, two-stage — at 2 reviewed rounds
+// symptom-brief loop breaker, two-stage — at 2 reviewed rounds
 // the brief must carry an INVARIANT section; at 3+ this cheap lane is refused
 // outright (judgment-tier lane or recorded --rounds-override). Thresholds live
 // in round-guard.ts (ROUND_WARN_THRESHOLD / ROUND_ESCALATE_THRESHOLD) — this
-// comment deliberately names no number twice (glm-3, CR round 2: a stated
+// comment deliberately names no number twice (a stated
 // threshold that drifts from the code is the exact prose-vs-mechanism failure
 // this guard exists to end).
 import { checkRoundGuard } from "./round-guard";
-// HIMMEL-1778: huge-diff lane guard — warn (never block) when the target
+// huge-diff lane guard — warn (never block) when the target
 // branch's diff vs main is dominated by one huge file, naming the file, so a
 // worker ingesting `git diff main` can't blow its context window unattributed.
 import { checkHugeDiff } from "./huge-diff-guard";
-// HIMMEL-2154: shared declarative flag-table parser — the mechanical part of
+// shared declarative flag-table parser — the mechanical part of
 // parseArgs (and spawn-claudex's parseClaudexArgs) collapsed into one loop.
 import { parseLaneArgs, type FlagTable } from "./lane-args";
 
-// HIMMEL-1040: the default lane profile for an impl worker — the lean set (floor
+// the default lane profile for an impl worker — the lean set (floor
 // + pr-review-toolkit). Override per-dispatch with --profile; `operator` opts out
 // of injection entirely (worker inherits full ~/.claude).
 export const DEFAULT_LANE_PROFILE = "lane-impl";
@@ -54,11 +54,11 @@ export const DEFAULT_LANE_PROFILE = "lane-impl";
 // The USER-scope layer is read from the child's EFFECTIVE config dir (CR): the GLM
 // child env is {...process.env, ...buildGlmEnv()} and glm-env deliberately does NOT
 // set CLAUDE_CONFIG_DIR, so an AMBIENT one propagates to the worker — reading
-// ~/.claude then inspects a config the child never loads. KNOWN GAP (HIMMEL-1066):
+// ~/.claude then inspects a config the child never loads. KNOWN GAP:
 // the claudex lane's child config dir is claude-codex's own ~/.claude-codex, which
 // this seam cannot see (the launcher owns + seeds it after we resolve).
 export function resolveProfileSettings(profile: string, addPlugins: string[], cwd: string, installed?: string[]): string | undefined {
-  // HIMMEL-4060 (as the plugin-profiles CLI does since #1565): the skill scan feeds
+  // the skill scan feeds
   // skillOverrides + the listing budget fraction. The listing lib is awaited once
   // at module load below; the poller's cachebust loader never reaches this path.
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -71,7 +71,7 @@ export function resolveProfileSettings(profile: string, addPlugins: string[], cw
   return settings === null ? undefined : JSON.stringify(settings);
 }
 
-// HIMMEL-1094: undo a worktree+branch this dispatch just MINTED, when setup
+// undo a worktree+branch this dispatch just MINTED, when setup
 // fails before the worker executes. Scope is deliberately narrow — see the call
 // sites: it fires ONLY on resolveProfileSettings throwing, never on an
 // executeRun failure (that worktree holds the worker's WORK), and never in
@@ -103,7 +103,7 @@ export function resolveProfileSettings(profile: string, addPlugins: string[], cw
 // the blocker clears. The exact value is not load-bearing and is not worth
 // further tuning: the loop exits on first success, and when the window does
 // expire the outcome is a loud refusal with the branch kept either way. Retune
-// only against a real measurement on a real repo (HIMMEL-1094), not by taste.
+// only against a real measurement on a real repo, not by taste.
 const TEARDOWN_DEADLINE_MS = 45_000;
 const TEARDOWN_BACKOFF_MS = 200;
 
@@ -149,7 +149,7 @@ export function glmSessionRoot(): string {
   return join(process.env.BRIDGE_ROOT ?? join(homedir(), ".claude", "handover", "bridge"), "glm-sessions");
 }
 
-// HIMMEL-1649: mint the reporting helper beside the session metadata from the
+// mint the reporting helper beside the session metadata from the
 // dispatcher's trusted checkout.
 //
 // Its writability is IRRELEVANT on the GLM lane, because it is never executed
@@ -172,19 +172,19 @@ export function mintGlmOutboxHelper(sessionDir: string, source = join(REPO_ROOT,
 // char → "-" (ground truth: real project dirs escape "_" and "." too, e.g.
 // my_docs → my-docs). Not keyed by any name/slug.
 // `root` is the lane's projects dir (default: the glm/shared ~/.claude one; the
-// claudex lane passes ~/.claude-codex/projects — HIMMEL-3173). The startup
+// claudex lane passes ~/.claude-codex/projects). The startup
 // watchdog resolves its poll path through this same function.
 export function transcriptDirFor(cwd: string, root: string = join(homedir(), ".claude", "projects")): string {
   return join(root, resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-"));
 }
 
-// HIMMEL-1218: dispatch-time nonce for the RETASK channel — a token the
+// dispatch-time nonce for the RETASK channel — a token the
 // parent must echo on any scope-EXPANDING revision (docs/internals/
 // retask-channel.md). 16 random bytes (128 bits, CR round: 4 bytes was thin
 // margin for a forgery-resistance token) — exists only in this brief and
 // whatever the parent later echoes back. Never persisted anywhere else in v1
 // (the verification chokepoint — a dispatch ledger + PreToolUse guard — is
-// HELD per the design, HIMMEL-195 second-drift escalation).
+// HELD per the design).
 export function mintRetaskNonce(): string {
   return randomBytes(16).toString("hex");
 }
@@ -199,7 +199,7 @@ export function mintRetaskNonce(): string {
 // which instructions are actually honored). Lane-agnostic: spawn-claudex.ts
 // imports this so both lanes carry byte-identical rules text, only the token
 // differs per dispatch.
-// HIMMEL-1755: ~50 worktrees of the primary checkout share ONE `refs/stash`, so
+// ~50 worktrees of the primary checkout share ONE `refs/stash`, so
 // a worker's `git stash pop`/`drop` reaches into a PARALLEL session's entries.
 // Measured twice in a single leg (2026-08-12): a drop destroyed another
 // session's stash, recovered only because it had been tagged.
@@ -226,7 +226,7 @@ export function composeRetaskBlock(nonce: string): string {
   ].join("\n");
 }
 
-// HIMMEL-1378: the worker prompt never told the model about the HIMMEL-203
+// the worker prompt never told the model about the
 // hang shape. Root-cause evidence (a leg-8 worker stalled for the full
 // RUN_TIMEOUT_MS producing ZERO bytes of output on even a trivial task):
 // Claude Code's NATIVE permission matcher bails to an interactive prompt on
@@ -246,7 +246,7 @@ export function composeBashShapeWarning(outbox: string): string {
   return `BASH SHAPE (HIMMEL-203/1378): this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
 }
 
-// HIMMEL-1378 (RETASK-a8k5vn live probe finding): the Write/Edit TOOL is
+// the Write/Edit TOOL is
 // unreliable for the session dir specifically — live-reproduced against the
 // real CLI: an identical Edit-path allow-rule set (bare + /* + /**) that
 // WORKS for a file inside the worktree (any dot-segment included — verified)
@@ -269,12 +269,12 @@ export function composeOutboxWriteHint(outbox: string): string {
 // GLM's external-write hook must never explicitly allow a command containing
 // model-controlled report text. The fixed helper accepts only one strict
 // base64url argv token and derives the destination from inherited
-// GLM_SESSION_DIR; decoded text never becomes shell source (HIMMEL-1649).
+// GLM_SESSION_DIR; decoded text never becomes shell source.
 export function composeGlmOutboxWriteHint(outbox: string): string {
   return `OUTBOX WRITE (HIMMEL-1378/1649): Write/Edit stays denied for ${outbox} by the native safety layer. The ONLY GLM reporting path is: bash "$GLM_SESSION_DIR/append-outbox.sh" <base64url-token>. The token must be unpadded base64url ([A-Za-z0-9_-]+, at most 16384 characters). EXPECTED BEHAVIOUR: the guard hook records your report itself and then DENIES that Bash call with a "guard recorded your report" message — that denial means SUCCESS, so do not retry or reword it. A denial naming a different reason (bad payload, schema, session dir) means nothing was recorded. Portable encoding example (copy its output into the fixed command): node -e "process.stdout.write(Buffer.from(process.argv[1], 'utf8').toString('base64url'))" "progress note"`;
 }
 
-// ── HIMMEL-1378: permission hardening (prevention, not just detection) ─────
+// ── permission hardening (prevention, not just detection) ─────
 //
 // Design: bypassPermissions is FORBIDDEN for an unattended worker (it strips
 // EVERY guardrail — block-glm-external-writes.sh, block-read-secrets.sh, all
@@ -286,7 +286,7 @@ export function composeGlmOutboxWriteHint(outbox: string): string {
 // whose `permissions.allow` covers exactly the shapes composeWorkerPrompt
 // already tells the worker to use: Edit/Read/Grep/Glob under its own worktree
 // and its session dir (the outbox/context/grants files live OUTSIDE the
-// worktree by design — HIMMEL-740 — so both roots need their own rule), plus
+// worktree by design — so both roots need their own rule), plus
 // a curated literal-command Bash allow-list mirroring auto-approve-safe-
 // bash.sh's own safe set (git read ops + commit/add, the Jira CLI, common
 // test runners, common read-only inspection binaries). Anything the worker
@@ -318,7 +318,7 @@ export function toPermissionPath(p: string): string {
   return m ? `//${m[1].toLowerCase()}/${m[2]}` : posix;
 }
 
-// Curated literal-command Bash allow-list (HIMMEL-1378): mirrors auto-
+// Curated literal-command Bash allow-list: mirrors auto-
 // approve-safe-bash.sh's own safe-binary set (that hook already proves these
 // are safe enough to auto-grant for the OPERATOR's own auto-mode sessions)
 // plus the specific write-shaped commands composeWorkerPrompt's own COMMIT
@@ -341,7 +341,7 @@ export const WORKER_BASH_ALLOW: readonly string[] = [
 ];
 
 // Merge the worker's permission-hardening overlay onto whatever plugin-
-// profile settings resolveProfileSettings already produced (HIMMEL-1040),
+// profile settings resolveProfileSettings already produced,
 // into ONE `--settings` JSON string — `--settings` loads as an ADDITIONAL
 // layer (verified against current Claude Code docs), so the operator's own
 // ~/.claude hooks (block-glm-external-writes.sh, block-read-secrets.sh,
@@ -355,7 +355,7 @@ export function composeWorkerSettings(pluginSettingsJson: string | undefined, wo
   const base = pluginSettingsJson ? JSON.parse(pluginSettingsJson) : {};
   const wt = toPermissionPath(resolve(worktree));
   const sd = toPermissionPath(resolve(sessionDir));
-  // Live-verified against the installed CLI (HIMMEL-1378 RETASK-a8k5vn probe):
+  // Live-verified against the installed CLI (RETASK-a8k5vn probe):
   // `Edit(<dir>/**)` ALONE does not reliably cover a file that is a DIRECT
   // child of <dir> — confirmed by a real dontAsk deny ("Permission to use
   // Write has been denied") on outbox.jsonl/context.md, which live directly
@@ -381,7 +381,7 @@ export function composeWorkerSettings(pluginSettingsJson: string | undefined, wo
   });
 }
 
-// Structural forbid (HIMMEL-1378, operator design constraint): bypassPermissions
+// Structural forbid (operator design constraint): bypassPermissions
 // strips every guardrail this lane relies on (block-glm-external-writes.sh,
 // block-read-secrets.sh, the deny-list, all of it) — the same reason
 // arm-resume.sh never relaunches a session with skip-permissions. A caller
@@ -393,7 +393,7 @@ export function refuseBypassPermissions(mode: string | undefined): string | unde
     : undefined;
 }
 
-// HIMMEL-1404 CR/T15: refuseBypassPermissions only refuses ONE specific
+// refuseBypassPermissions only refuses ONE specific
 // value; any other string — a typo, or a real Claude Code mode this lane does
 // not support (acceptEdits/plan/default/...) — fell through unvalidated and
 // only failed later, inside the spawned, stdin-closed worker (silent hang or
@@ -406,7 +406,7 @@ export function refuseUnknownPermissionMode(mode: string | undefined): string | 
   return `unknown --permission-mode '${mode}' — this lane supports only 'dontAsk' (bypassPermissions is forbidden; omit the flag for the default)`;
 }
 
-// opts.shared (HIMMEL-800): the shared-branch-mode variant of the branch
+// opts.shared: the shared-branch-mode variant of the branch
 // instruction line — the branch is an EXISTING PR branch with history, not a
 // fresh throwaway one, so the worker must be told explicitly not to touch its
 // history and that a lock — not sole ownership — governs its write access.
@@ -433,7 +433,7 @@ export function composeWorkerPrompt(task: string, sessionDir: string, branch: st
   ].join("\n");
 }
 
-// Pointer-prompt dispatch (HIMMEL-740, the handover-load pattern): the SUBMITTED
+// Pointer-prompt dispatch (the handover-load pattern): the SUBMITTED
 // CLI prompt is a SHORT pointer to a brief file, not the whole brief inlined.
 // Inlining a ~70-line brief into the prompt — on top of the himmel session
 // context (CLAUDE.md + memory + skills) — overflowed the model window, so the
@@ -448,13 +448,13 @@ export function composePointerPrompt(briefPath: string): string {
   ].join("\n");
 }
 
-// Session-bootstrap overhead estimate for the skills/system listing (HIMMEL-740):
+// Session-bootstrap overhead estimate for the skills/system listing:
 // a coarse constant (~60k tokens) added to the measured bootstrap files. Named +
 // commented because it is an ESTIMATE, not a per-run measurement — the skills and
 // system-prompt listing that loads under every session is not cheaply sizable here.
 export const SKILLS_SYSTEM_OVERHEAD_CHARS = 240_000; // ~60k tokens (chars/4); estimate, not measured
 
-// Overhead measurement (HIMMEL-740): sum the byte sizes of the session-bootstrap
+// Overhead measurement: sum the byte sizes of the session-bootstrap
 // files the worker will load BEFORE its own prompt — the project CLAUDE.md, the
 // user CLAUDE.md, and the always-loaded project memory index — plus the
 // skills/system constant. `home` is injected (not homedir()) so the measurement
@@ -472,7 +472,7 @@ export function measureOverheadChars(cwd: string, home: string): number {
   return total;
 }
 
-// Per-model window preflight (HIMMEL-740, the structural fix for the inlined-brief
+// Per-model window preflight (the structural fix for the inlined-brief
 // "prompt is too long" deaths). Token estimate = ceil(chars/4) (the rough English
 // ratio — deliberately coarse; a precise tokenizer would be fabricated precision
 // for a guard whose job is catching the ORDER-of-magnitude overflow). Refuse when
@@ -488,7 +488,7 @@ export function preflightWindowCheck(p: { briefChars: number; overheadChars: num
   return { ok: true };
 }
 
-// REMOVED (HIMMEL-1961): the pushurl "quarantine" that used to live here.
+// REMOVED: the pushurl "quarantine" that used to live here.
 // This lane rewrote remote.origin.pushurl to a sentinel for the duration of a
 // dispatch. It was never a fence and it cost more than it bought:
 //   - it only affects remote-NAME resolution. A worker reads remote.origin.url
@@ -497,9 +497,8 @@ export function preflightWindowCheck(p: { briefChars: number; overheadChars: num
 //   - mutating shared git config is unsafe across concurrent dispatches and
 //     abnormal termination, and could PERMANENTLY LOSE the operator's push
 //     configuration. himmel runs concurrent dispatches by design.
-//   - it stranded the sentinel on any worktree whose worker was hard-killed
-//     (HIMMEL-1929), and with no producer left nothing self-healed it.
-// HIMMEL-1942 deleted the same mechanism from dispatch-lane.sh after three
+//   - it stranded the sentinel on any worktree whose worker was hard-killed, and with no producer left nothing self-healed it.
+// The same mechanism was deleted from dispatch-lane.sh after three
 // review rounds rather than patch it a fourth time; this is the matching
 // removal in the spawner lanes.
 //
@@ -512,28 +511,28 @@ export function preflightWindowCheck(p: { briefChars: number; overheadChars: num
 // The remaining layers are the worker contract, block-glm-external-writes.sh
 // on the command shapes, and the parent CR gate. The decision, its threat
 // model (a worker misreading a parent-authored brief, not an adversary), and
-// the named conditions that would reverse it are recorded on HIMMEL-1961. Push protection here is CONTRACT-ONLY and the
+// the named conditions that would reverse it are recorded on the removal ticket. Push protection here is CONTRACT-ONLY and the
 // dispatch report says so out loud. Do not reintroduce a config-mutation
 // fence: a real one needs credential/network isolation, which is an operator
-// call tracked on HIMMEL-1961, not something a spawner can fake with git config.
+// call tracked on the removal ticket, not something a spawner can fake with git config.
 //
 // scripts/lanes/stop-worker.sh still clears the sentinel when it halts a
-// worker (HIMMEL-1929). That is deliberate: it heals historical residue left
+// worker. That is deliberate: it heals historical residue left
 // by dispatches that ran BEFORE this removal.
 
 // The disclosure every lane report carries, word-for-word what
-// dispatch-lane.sh prints (HIMMEL-1942) so an operator reading any lane's
+// dispatch-lane.sh prints so an operator reading any lane's
 // report gets the same sentence. Exported: the claudex lane prints the same
 // line, and one definition means the two cannot drift into saying different
 // things about the same (absent) protection.
 export const PUSH_PROTECTION_DISCLOSURE =
   "push protection: contract-only; pushing, opening a PR, and merging are NOT mechanically prevented by this lane";
 
-// HIMMEL-1096: pre-trust a freshly-created worktree in Claude Code's config
+// pre-trust a freshly-created worktree in Claude Code's config
 // (~/.claude.json) so the spawned worker's `claude` launch does not stall on
 // the interactive workspace-trust prompt — an unattended GLM/claudex dispatch
 // has no human present to answer it. Delegates to the shared helper
-// (scripts/lib/ensure-workspace-trust.sh, HIMMEL-386), already used by
+// (scripts/lib/ensure-workspace-trust.sh), already used by
 // arm-resume.sh and vmsdk.py for the same reason. Exported so the claudex
 // lane reuses it as-is. Non-fatal by the
 // helper's own contract (documented there: any nonzero exit is warn-and-
@@ -581,7 +580,7 @@ export function planSpawn(
 }
 
 export type SharedSpawnPlan = { ok: true; slug: string; worktree: string; branch: string; warnings: SettingsConflict[]; needsWorktreeAdd: boolean } | { ok: false; reason: string };
-// HIMMEL-800: pure decision logic for shared-branch mode — deps injected so
+// pure decision logic for shared-branch mode — deps injected so
 // every refusal branch is testable, parallel to planSpawn. Distinct from
 // planSpawn in two structural ways: (1) it NEVER mints a branch — the branch
 // must already exist, a typo must refuse loudly rather than silently minting
@@ -650,7 +649,7 @@ export function planSharedSpawn(
 // A capped/blocked/timed-out run must NEVER surface as `done` or a bare
 // `failed`: each is a distinct terminal state the caller inspects. Precedence:
 // capped (there is a reset to arm at — the actionable fact) > blocked > timeout.
-// HIMMEL-1641: executeRun may further reclassify a bare "timeout" result to
+// executeRun may further reclassify a bare "timeout" result to
 // "done_escalated" (the worker finished + committed but hit the lane's
 // structural git-push block) — that override lives in executeRun, AFTER this
 // function returns, since it needs I/O (outbox.jsonl + a worktree git-status
@@ -665,7 +664,7 @@ function isHimmelCheckout(d: string): boolean {
   return existsSync(join(d, "scripts", "claude-glm"));
 }
 
-// ── HIMMEL-1503: primary-checkout cwd guard ─────────────────────────────
+// ── primary-checkout cwd guard ─────────────────────────────
 //
 // Live incident (2026-08-03 ~13:15 WEST): the orchestrator's session cwd had
 // persisted inside a WORKTREE (.claude/worktrees/claudex+himmel-1474-render-
@@ -711,7 +710,7 @@ export function detectNonPrimaryCwd(cwd: string, probe: (cwd: string) => { gitDi
   // .claude/worktrees/ trips the path signal while git reports
   // gitDir === commonDir, so this resolves to the very cwd being refused —
   // telling the caller to cd where they already are. Drop it and let the
-  // path-only diagnostic speak instead (codex-1, CR round 1).
+  // path-only diagnostic speak instead.
   const usable = primary !== undefined && norm(resolve(primary)) !== norm(resolve(cwd));
   return { ok: false, primaryPath: usable ? primary : undefined };
 }
@@ -727,7 +726,7 @@ export function refuseNonPrimaryCwd(cwd: string, probe?: (cwd: string) => { gitD
     : `spawn-glm: refusing to dispatch from ${cwd} — this looks like a worktree cwd (path contains /.claude/worktrees/), not the PRIMARY checkout; cd to the primary checkout and retry (HIMMEL-1503).`;
 }
 
-// ── HIMMEL-800: real git probes for planSharedSpawn's injected deps ─────────
+// ── real git probes for planSharedSpawn's injected deps ─────────
 export function gitBranchExists(cwd: string, branch: string): boolean {
   const r = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { stdout: "pipe", stderr: "pipe" });
   return r.exitCode === 0;
@@ -764,7 +763,7 @@ export function gitIsDirty(worktreePath: string): boolean {
   return r.stdout.toString().trim().length > 0;
 }
 
-// HIMMEL-1225: --help/-h must short-circuit BEFORE any side effect (worktree
+// --help/-h must short-circuit BEFORE any side effect (worktree
 // add, branch mint, meta.json write, dispatch). A bare `--help`/`-h` was
 // previously parsed as the TASK POSITIONAL by parseArgs below (no recognized
 // flag matches it), so it silently became the prompt and dispatched a REAL
@@ -779,7 +778,7 @@ export function isHelpFlag(argv: string[]): boolean {
 
 export type ParsedArgs = { task?: string; briefFile?: string; cwd: string; name?: string; branch?: string; timeoutMins?: number; permMode?: PermissionMode; armOnCap: boolean; grants: GrantSpec[]; autonomous: boolean; carryFrom?: string; context?: "big" | "small"; profile: string; addPlugins: string[]; roundsOverride?: string };
 
-// HIMMEL-2154: the declarative flag table for parseArgs (shared loop mechanics
+// the declarative flag table for parseArgs (shared loop mechanics
 // live in lane-args.ts's parseLaneArgs; spawn-claudex.ts's CLAUDEX_FLAG_TABLE
 // is its twin). Each entry is the exact per-flag validation the old inline
 // if/else chain had — only the "requires a value" / unrecognized-flag /
@@ -787,7 +786,7 @@ export type ParsedArgs = { task?: string; briefFile?: string; cwd: string; name?
 const GLM_FLAG_TABLE: FlagTable<ParsedArgs> = {
   "--cwd": { kind: "value", apply: (s, v) => { s.cwd = v; return undefined; } },
   "--name": { kind: "value", apply: (s, v) => { s.name = v; return undefined; } },
-  // HIMMEL-800: --branch selects shared-branch mode (commit onto an existing
+  // --branch selects shared-branch mode (commit onto an existing
   // caller-named branch under a lock, instead of minting glm/<slug> fresh).
   "--branch": { kind: "value", apply: (s, v) => { s.branch = v; return undefined; } },
   "--timeout-mins": {
@@ -821,11 +820,11 @@ const GLM_FLAG_TABLE: FlagTable<ParsedArgs> = {
   },
   "--autonomous": { kind: "bool", apply: (s) => { s.autonomous = true; } },
   "--carry-from": { kind: "value", apply: (s, v) => { s.carryFrom = v; return undefined; } },
-  // HIMMEL-1780: --brief-file reads the TASK from a file, so a multi-line
+  // --brief-file reads the TASK from a file, so a multi-line
   // dispatch is ONE literal command (`bun scripts/telegram/spawn-glm.ts
   // --brief-file <path> ...`) instead of the cd/$(cat)/var compound that
-  // defeats both the allow-rule prefix and the native permission matcher
-  // (HIMMEL-203). The file is READ in main(), not here — parseArgs stays
+  // defeats both the allow-rule prefix and the native permission matcher.
+  // The file is READ in main(), not here — parseArgs stays
   // pure (fs-free), so a missing/unreadable path is a clean main()-side
   // usage refusal.
   "--brief-file": { kind: "value", apply: (s, v) => { s.briefFile = v; return undefined; } },
@@ -837,13 +836,13 @@ const GLM_FLAG_TABLE: FlagTable<ParsedArgs> = {
       return undefined;
     },
   },
-  // HIMMEL-1040: --profile selects the lane plugin profile (default lane-impl);
+  // --profile selects the lane plugin profile (default lane-impl);
   // --add-plugins a@m,b@m is the per-dispatch overlay (repeatable — values
   // accumulate). Resolution/validation happens in main() so a bad name/id is a
   // clean pre-side-effect refusal.
   "--profile": { kind: "value", apply: (s, v) => { s.profile = v; return undefined; } },
   "--add-plugins": { kind: "value", apply: (s, v) => { s.addPlugins.push(...parseAddPlugins(v)); return undefined; } },
-  // HIMMEL-1553: recorded operator override for the round guard's cheap-lane
+  // recorded operator override for the round guard's cheap-lane
   // refusal at ROUND_ESCALATE_THRESHOLD. Reason substance is enforced by the
   // guard itself (checkRoundGuard), so the refusal can explain the floor.
   "--rounds-override": {
@@ -865,18 +864,18 @@ export function parseArgs(argv: string[]): { ok: true; args: ParsedArgs } | { ok
   };
   const result = parseLaneArgs(argv, GLM_FLAG_TABLE, args, (s, token) => { if (s.task === undefined) s.task = token; });
   if (!result.ok) return result;
-  // HIMMEL-800: --branch and --name are mutually exclusive — shared mode
+  // --branch and --name are mutually exclusive — shared mode
   // derives its slug from the branch name, so a co-supplied --name would be
   // silently ignored (or ambiguous about which name wins). Refuse instead.
   if (args.branch !== undefined && args.name !== undefined) return { ok: false, error: "--branch and --name are mutually exclusive (shared mode derives the slug from the branch)" };
-  // HIMMEL-1780: --brief-file and a positional prompt are mutually exclusive —
+  // --brief-file and a positional prompt are mutually exclusive —
   // the file's contents BECOME the task, so a co-supplied positional would be
   // silently dropped (or ambiguous about which brief wins). Refuse instead.
   if (args.briefFile !== undefined && args.task !== undefined) return { ok: false, error: "--brief-file and a positional prompt are mutually exclusive (pass the brief as a file or inline, not both)" };
   return { ok: true, args };
 }
 
-// HIMMEL-1780: the --brief-file read, extracted so every failure mode is a
+// the --brief-file read, extracted so every failure mode is a
 // TESTABLE refusal rather than an inlined readFileSync in main(). FAIL-CLOSED
 // on every branch: a missing, unreadable (EACCES/EISDIR/…) or EMPTY file is a
 // usage error naming the path — never a dispatch that silently proceeds with
@@ -892,7 +891,7 @@ export function readBriefFile(path: string): { ok: true; task: string } | { ok: 
   }
 }
 
-// HIMMEL-682 (Task L1): read a capped session's grants.jsonl and compute the
+// read a capped session's grants.jsonl and compute the
 // carried grant + escalation lines to seed into a respawned session. The
 // shape-split (READ → seed, autonomous WRITE → re-escalate) lives in the pure
 // seedCarriedGrants; this adds the fs read + fail-open + observability.
@@ -914,7 +913,7 @@ export function applyCarryFrom(carryFrom: string, autonomous: boolean, existing:
   }
 }
 
-// HIMMEL-740: the submit-reject that killed inlined-brief workers. Distinct from
+// the submit-reject that killed inlined-brief workers. Distinct from
 // a usage cap — this is a DETERMINISTIC per-turn rejection (the request itself is
 // too large), NOT a quota reset to arm against. Matched so a bare `failed` run
 // carries an honest failure_class instead of vanishing as an unexplained failure.
@@ -953,7 +952,7 @@ export function writeLiveWorkerMeta(
   }
 }
 
-// ── HIMMEL-1596: the spawner owns durability ────────────────────────────────
+// ── the spawner owns durability ────────────────────────────────
 // Measured 2026-08-06: FOUR of four GLM dispatches produced substantive,
 // in-scope work and committed NONE of it; the parent harvested all four by
 // hand. "Commit early" is already in every brief (composeWorkerPrompt) and
@@ -994,7 +993,7 @@ export function gitCapture(cmd: string[], cwd: string, env?: Record<string, stri
   return { code: r.exitCode ?? -1, stdout: r.stdout.toString() };
 }
 
-// HIMMEL-1687: the dispatch summary's git-state lines. `exit: 0` cannot tell
+// the dispatch summary's git-state lines. `exit: 0` cannot tell
 // "committed, parent owns the push (expected)" from "produced nothing", so the
 // parent reads these instead of running `git ls-remote` per branch. Computed
 // from git at summary time, never from the worker's own claims; any git read
@@ -1123,7 +1122,7 @@ export function mergeMetaCheckpoint(metaPath: string, checkpoint: Record<string,
   }
 }
 
-// ── HIMMEL-1641 (F1): done_escalated — a timeout is not the same shape as an
+// ── done_escalated — a timeout is not the same shape as an
 // unfinished run when the worker actually finished. The observed shape (GLM
 // probation, 2026-08-08): a worker commits its work, trailers, tests all
 // green, checkpoint reason=clean — then spends the REST of its window
@@ -1160,7 +1159,7 @@ function defaultCheckTreeClean(worktree: string): boolean {
   return r.code === 0 && r.stdout.trim() === "";
 }
 
-// ── HIMMEL-1641 (F2): dispatcher-SIGTERM finalize ───────────────────────────
+// ── dispatcher-SIGTERM finalize ───────────────────────────
 // A caller-side kill (the documented shape: a bounded foreground Bash-tool
 // call caps at 10 min and SIGTERMs the whole spawn-glm tree) used to leave
 // meta.json stuck at "running" forever — reconcile-workers.sh then reads a
@@ -1169,7 +1168,7 @@ function defaultCheckTreeClean(worktree: string): boolean {
 // synchronous SIGTERM handler (wired at the bottom, import.meta.main ONLY —
 // never on a test import, which must not have a stray SIGTERM exit the test
 // runner) writes a distinct terminal status BEFORE the process dies, so a
-// caller-killed tree can never masquerade as orphaned or as an HIMMEL-1575
+// caller-killed tree can never masquerade as orphaned or as a
 // startup-hang. Armed/disarmed around executeRun's live runSession window
 // (module-level state — there is exactly one dispatch per process).
 let liveTermState: { metaPath: string; runningMeta: Record<string, unknown> } | undefined;
@@ -1194,9 +1193,9 @@ export function sigtermFinalize(): void {
   }
 }
 
-// HIMMEL-1575 / HIMMEL-3147: the startup-hang watchdog substrate, shared by the
-// glm (executeRun) and claudex (executeClaudexRun) lanes so the HIMMEL-3146
-// two-tick ordering fix lives in exactly one place (HIMMEL-2624 direction).
+// The startup-hang watchdog substrate, shared by the
+// glm (executeRun) and claudex (executeClaudexRun) lanes so the
+// two-tick ordering fix lives in exactly one place.
 // `raw` is the lane's *_STARTUP_FAILFAST_MINS env value; 0/garbage = off.
 export function resolveFailfastWindowMs(raw: string | undefined, defaultMins = 10): number {
   const mins = Number(raw ?? defaultMins);
@@ -1221,7 +1220,7 @@ export function armStartupWatchdog(p: {
     ?? ((pid: number) => killTree(pid, (sig) => { try { process.kill(pid, sig as NodeJS.Signals); } catch { /* already gone */ } }));
   const watchStart = Date.now();
   let baseline: number | undefined;
-  // HIMMEL-3146: the elapsed check below and the transcript write it must
+  // the elapsed check below and the transcript write it must
   // not race are decided by two independent timers on the same event loop.
   // A single stat sample taken on the tick where the window happens to
   // elapse can be stale by a hair if a same-instant write's own callback
@@ -1276,18 +1275,18 @@ export async function executeRun(deps: {
   prompt: string; worktree: string; permMode?: PermissionMode;
   sessionDir: string; metaPath: string; runningMeta: Record<string, unknown>;
   capGuard?: CapGuardDeps;
-  // HIMMEL-1040: the resolved `--settings` plugin-profile payload (undefined =
+  // the resolved `--settings` plugin-profile payload (undefined =
   // operator profile / no injection). Threaded to runSession's 6th arg.
   settings?: string;
-  // HIMMEL-1575 test seams for the startup-hang watchdog (all optional; prod
+  // test seams for the startup-hang watchdog (all optional; prod
   // callers pass nothing and get the env-tunable defaults below).
   startupWatch?: { rootDir?: string; windowMs?: number; pollMs?: number; kill?: (pid: number) => void };
-  // HIMMEL-1641 (F1) test seam: override the real git worktree-cleanliness
+  // test seam: override the real git worktree-cleanliness
   // probe used by the done_escalated reclassification below.
   checkTreeClean?: (worktree: string) => boolean;
 }): Promise<{ code: number }> {
-  // HIMMEL-1378: live observability. A worker that hangs at its very first
-  // tool call (the documented HIMMEL-203 shape — a native permission prompt
+  // live observability. A worker that hangs at its very first
+  // tool call (the documented shape — a native permission prompt
   // the closed-stdin session can never answer) used to be INVISIBLE for the
   // entire RUN_TIMEOUT_MS window: run.log was appended only from the final
   // `res.tail`, below, AFTER runSession resolves — which for a truly-hung
@@ -1305,7 +1304,7 @@ export async function executeRun(deps: {
   let liveChunksSeen = false;
   let livePid: number | undefined;
   const runLogPath = join(deps.sessionDir, "run.log");
-  // HIMMEL-1575: startup-hang fail-fast. ~30% of dispatches die having written
+  // startup-hang fail-fast. ~30% of dispatches die having written
   // NOTHING beyond the 192-byte banner — the worker process is alive for the
   // whole RUN_TIMEOUT window but the model never responds (72 of 73 timeouts in
   // the measured history; 30h of wall-clock burned waiting). stdout is NOT the
@@ -1335,7 +1334,7 @@ export async function executeRun(deps: {
     });
   }
   const writeRunningMeta = (extra: Record<string, unknown>) => {
-    // HIMMEL-1404 CR/T14: write-then-rename, not a truncating in-place write —
+    // CR/T14: write-then-rename, not a truncating in-place write —
     // await-glm-worker.sh polls this same file every POLL_SECS, and a read
     // landing mid-truncate could see a partial object (e.g. started_at present,
     // last_output_at not yet written), which the stall check misreads as a
@@ -1353,7 +1352,7 @@ export async function executeRun(deps: {
       writeRunningMeta({ pid: livePid ?? 0, last_output_at: new Date().toISOString() });
     },
   };
-  // HIMMEL-1641 (F2): arm the SIGTERM finalize for exactly the live run
+  // arm the SIGTERM finalize for exactly the live run
   // window below; the finally at the bottom of this try/catch disarms it on
   // every exit path (success, capped/blocked/timeout/failed, or a thrown
   // runSession).
@@ -1366,7 +1365,7 @@ export async function executeRun(deps: {
     // catch — that writes status:failed + rethrows, flipping a successful run to
     // failed. The final-meta write below is the load-bearing terminal-state record.
     // Skipped when the live onChunk path already streamed the run's output
-    // (HIMMEL-1378) — deps.runSession stubs in tests never call onChunk, so
+    // — deps.runSession stubs in tests never call onChunk, so
     // this stays the ONLY write path for every existing pinned test.
     if (res.tail !== undefined && !liveChunksSeen) {
       try { appendFileSync(runLogPath, res.tail); }
@@ -1374,7 +1373,7 @@ export async function executeRun(deps: {
     }
     const fm = finalMeta(res.code, res.pid, res.capped, res.blocked, res.timedOut);
     writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, ...fm }, null, 2));
-    // HIMMEL-1641 (F1): a bare timeout is not the same shape as an unfinished
+    // a bare timeout is not the same shape as an unfinished
     // run when the worker actually finished — committed its work, left a
     // clean tree — and only kept spinning because the LAST remaining step
     // (git push) is a structurally hard-blocked capability. Reclassify so
@@ -1397,7 +1396,7 @@ export async function executeRun(deps: {
         console.error("spawn-glm: run hit the timeout but the worktree is clean with a git-push escalation on record — reclassified done_escalated (HIMMEL-1641): the worker finished, block-glm-external-writes.sh stopped the push by design; the parent must push from the primary checkout and run verify-return.");
       }
     }
-    // HIMMEL-1575: a watchdog-killed run is a classified startup hang, not a
+    // a watchdog-killed run is a classified startup hang, not a
     // generic failure — the lane's accounting must separate never-started
     // (clean tree, banner-only log) from ran-then-timed-out (dirty tree,
     // >192 B). Mirrors the prompt-too-long classification below.
@@ -1405,7 +1404,7 @@ export async function executeRun(deps: {
       writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, ...fm, failure_class: "startup-hang" }, null, 2));
       console.error("spawn-glm: run classified startup-hang (HIMMEL-1575) — the model never responded; killed at the fail-fast window instead of the full run cap. Do NOT blind-retry as primary mitigation; the base rate is ~30%.");
     }
-    // HIMMEL-740: an honest failure_class for the submit-reject. ONLY on a bare
+    // an honest failure_class for the submit-reject. ONLY on a bare
     // `failed` (a capped/blocked/timeout run is a distinct terminal state, handled
     // below/elsewhere) whose tail carries the reject. Base status stays "failed" —
     // no new status union member, downstream consumers switch on the existing set.
@@ -1429,7 +1428,7 @@ export async function executeRun(deps: {
         if (cap_window === "long") {
           writeFileSync(deps.metaPath, JSON.stringify({ ...base, cap_source: "no-arm-long-window" }, null, 2));
           console.error("spawn-glm: long-window GLM cap — NOT auto-armed; recover manually after the documented reset");
-          // HIMMEL-690 chunk B: observe the long-window cap passively (NO new fetch
+          // chunk B: observe the long-window cap passively (NO new fetch
           // — glm_peak stamped from `now`) so a long-window GLM cap shows up in
           // the ledger instead of vanishing at this early return. window:"long"
           // mirrors GlmCapWindow — the detector cannot distinguish weekly from
@@ -1442,7 +1441,7 @@ export async function executeRun(deps: {
         }
         const usage = await g.fetchUsage();
         appendQuotaGauge(buildGlmRow(usage, Date.now())); // WS9 (HIMMEL-654): observe the cap-time GLM reading (null -> invisible row); passive, no new fetch
-        // HIMMEL-275 spirit at cap time too: a null re-query is visible, not a
+        // spirit at cap time too: a null re-query is visible, not a
         // silent fall-through to the floor (preflight has its own line).
         if (usage === null) console.error("spawn-glm: usage invisible at cap time (monitor endpoint unavailable) — resume slot falls back to error-body/cycle-floor");
         const { resumeAt, capSource } = computeResumeAt({ now, startedAt: g.startedAt, usage, tail: res.tail });
@@ -1469,14 +1468,14 @@ export async function executeRun(deps: {
     writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, status: "failed", exit_code: -1, pid: 0 }, null, 2));
     throw e;
   } finally {
-    // HIMMEL-1641 (F2): every exit path from the live run window disarms —
+    // every exit path from the live run window disarms —
     // a SIGTERM arriving AFTER this function has already written its own
     // terminal meta must never overwrite it with killed-by-caller.
     disarmSigtermFinalize();
   }
 }
 
-// HIMMEL-800: the shared-branch acquire/poison/run/restore/release lifecycle,
+// the shared-branch acquire/poison/run/restore/release lifecycle,
 // extracted from main() so it is executable-testable against a real temp git
 // repo + the real lock script (spawn-glm.test.ts I6/I7) rather than only
 // source-text wiring-pinned. Dependency-injected: `gitAdd` performs the
@@ -1498,11 +1497,11 @@ export async function runSharedDispatch(p: {
   if (acquire.exitCode !== 0) return { ok: false, reason: acquire.stderr.toString().trim() || `spawn-glm: shared-branch-lock acquire failed (rc=${acquire.exitCode})` };
   try {
     if (p.needsWorktreeAdd) p.gitAdd(); // NO -b: an existing branch, never minted here
-    // Unconditional (codex-adv, HIMMEL-1096 CR round): a REUSED managed
+    // Unconditional: a REUSED managed
     // worktree (needsWorktreeAdd=false) from a pre-change or failed dispatch
     // may never have been trust-seeded — seeding is idempotent, so cover both.
     ensureWorkspaceTrust(p.worktree);
-    // No pushurl mutation here any more (HIMMEL-1961, see the removal note
+    // No pushurl mutation here any more (see the removal note
     // above): this dispatch leaves the operator's git config exactly as it
     // found it, in every scope.
     const code = await p.runBody();
@@ -1525,17 +1524,17 @@ export async function runSharedDispatch(p: {
 async function main(): Promise<void> {
   const usage = "usage: spawn-glm [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--context big|small] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
   const rawArgv = process.argv.slice(2);
-  // HIMMEL-1225: help short-circuit — before parseArgs, before any side effect.
+  // help short-circuit — before parseArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }
   const parsed = parseArgs(rawArgv);
   if (!parsed.ok) { console.error(`spawn-glm: ${parsed.error}`); console.error(usage); process.exit(2); }
   const { task: taskArg, briefFile, cwd, name, branch: branchArg, timeoutMins, permMode: permModeArg, armOnCap, grants, autonomous, carryFrom, context, profile, addPlugins, roundsOverride } = parsed.args;
-  // HIMMEL-1780: --brief-file's contents BECOME the task. Read here — before
+  // --brief-file's contents BECOME the task. Read here — before
   // any side effect and before every task-consuming consumer below (round
   // guard, window preflight, composeWorkerPrompt) — so a missing/unreadable/
   // empty file is a clean exit-2 usage refusal that leaves no orphan
   // worktree/branch/meta, and the file's brief flows through the EXISTING
-  // brief.md + pointer-prompt machinery unchanged (HIMMEL-740).
+  // brief.md + pointer-prompt machinery unchanged.
   let task: string | undefined = taskArg;
   if (briefFile !== undefined) {
     const brief = readBriefFile(briefFile);
@@ -1543,33 +1542,33 @@ async function main(): Promise<void> {
     task = brief.task;
   }
   if (!task) { console.error(usage); process.exit(2); }
-  // HIMMEL-1378: structural forbid, before any side effect. Never a silent
+  // structural forbid, before any side effect. Never a silent
   // downgrade — a caller asking for bypassPermissions gets a clean usage
   // refusal naming why.
   const bypassRefusal = refuseBypassPermissions(permModeArg);
   if (bypassRefusal) { console.error(`spawn-glm: ${bypassRefusal}`); console.error(usage); process.exit(2); }
   const unknownModeRefusal = refuseUnknownPermissionMode(permModeArg);
   if (unknownModeRefusal) { console.error(`spawn-glm: ${unknownModeRefusal}`); console.error(usage); process.exit(2); }
-  // HIMMEL-1378: dontAsk is the worker-lane DEFAULT (never bypassPermissions,
-  // never the settings-inherited "auto" default that let the HIMMEL-1378 hang
+  // dontAsk is the worker-lane DEFAULT (never bypassPermissions,
+  // never the settings-inherited "auto" default that let the hang
   // through) — an explicit --permission-mode still overrides for a future
   // narrower need, but omitting the flag no longer means "inherit whatever
   // ~/.claude/settings.json's permissions.defaultMode happens to be".
   const permMode: PermissionMode = permModeArg ?? "dontAsk";
   const absCwd = resolve(cwd);
-  // HIMMEL-1503: refuse BEFORE any worktree/branch side-effect if this
+  // refuse BEFORE any worktree/branch side-effect if this
   // dispatch is not running from the PRIMARY checkout — see
   // detectNonPrimaryCwd above for the incident + detection rationale.
   const nonPrimaryRefusal = refuseNonPrimaryCwd(absCwd);
   if (nonPrimaryRefusal) { console.error(nonPrimaryRefusal); process.exit(2); }
-  // HIMMEL-1553: refuse a symptom-loop dispatch BEFORE any side effect — at 2
+  // refuse a symptom-loop dispatch BEFORE any side effect — at 2
   // reviewed rounds the brief must state the invariant the fix preserves; at 3
   // this cheap lane is refused outright (judgment-tier lane or recorded
   // --rounds-override). round-guard.ts has the incident + fail-open rationale.
   const roundGuard = checkRoundGuard("spawn-glm", { task, branch: branchArg, name, cwd: absCwd, roundsOverride });
   if (roundGuard.refusal) { console.error(roundGuard.refusal); process.exit(2); }
   if (roundGuard.note) console.error(roundGuard.note);
-  // HIMMEL-1040: validate the profile NAME + overlay ids BEFORE any side effect —
+  // validate the profile NAME + overlay ids BEFORE any side effect —
   // an unknown --profile / malformed --add-plugins id is a clean usage refusal
   // (exit 2), never an orphan worktree/branch. `installed: []` keeps this to pure
   // validation: the REAL deny baseline is computed later, in runBody, from the
@@ -1577,13 +1576,13 @@ async function main(): Promise<void> {
   // branch-local .claude/settings{,.local}.json can differ from the dispatcher's.
   try { resolveProfileSettings(profile, addPlugins, absCwd, []); }
   catch (e) { console.error(`spawn-glm: ${String((e as any)?.message ?? e)}`); console.error(usage); process.exit(2); }
-  // HIMMEL-718: thread --context big|small into buildGlmEnv via GLM_CONTEXT (read by
+  // thread --context big|small into buildGlmEnv via GLM_CONTEXT (read by
   // the runSession env path + the preflight buildGlmEnv below). `?? "big"` makes the
   // default explicit so an ambient GLM_CONTEXT in the parent shell can't silently flip
   // an omitted --context (the doc/test intent is "--context absent => big").
   process.env.GLM_CONTEXT = context ?? "big";
 
-  // HIMMEL-800: shared-branch mode (--branch) commits onto a caller-named
+  // shared-branch mode (--branch) commits onto a caller-named
   // EXISTING branch under a lock, instead of always minting glm/<slug> fresh.
   // Both modes converge on the same {slug, worktree, branch, warnings} shape
   // below; needsWorktreeAdd is always true for own-branch mode (a fresh
@@ -1616,7 +1615,7 @@ async function main(): Promise<void> {
   // runSession re-derives the env internally — the double build is cheap.
   try { buildGlmEnv(REPO_ROOT); } catch (e) { console.error(`spawn-glm: ${String((e as any)?.message ?? e)}`); process.exit(2); }
   const preflightUsage = await fetchGlmUsage(readZaiKey(REPO_ROOT).key);
-  // WS9 (HIMMEL-654): observe the preflight GLM reading; passive, reuses the
+  // WS9: observe the preflight GLM reading; passive, reuses the
   // existing fetch. GUARDED — this runs BEFORE the worktree exists, so an
   // unguarded ledger-write throw would propagate to main().catch and ABORT the
   // dispatch; the passive layer must never block a dispatch (mirrors the
@@ -1625,7 +1624,7 @@ async function main(): Promise<void> {
   const warn = formatUsageWarn(preflightUsage, parseWarnPct(process.env.GLM_USAGE_WARN_PCT));
   if (warn) console.error(warn);
 
-  // Per-model window preflight (HIMMEL-740): refuse a brief that cannot fit the
+  // Per-model window preflight: refuse a brief that cannot fit the
   // resolved GLM window BEFORE any side effect (before the worktree exists), so a
   // refusal leaves NO orphan worktree/branch/meta. sessionDir is computed here
   // (no mkdir yet — the real mkdir stays below) because composeWorkerPrompt needs
@@ -1651,21 +1650,21 @@ async function main(): Promise<void> {
   // The run body (mkdir sessionDir through executeRun) is IDENTICAL between
   // own-branch and shared modes; only the surrounding worktree
   // creation/mutation + lock ownership differ, below.
-  // HIMMEL-1094: onSetupFail runs ONLY if the profile resolve below throws —
+  // onSetupFail runs ONLY if the profile resolve below throws —
   // i.e. before ANY of the worker's state exists. The own-branch caller passes a
   // teardown; shared mode passes nothing (runSharedDispatch calls runBody()).
-  // HIMMEL-1687: the worker branch's tip BEFORE the worker runs (own-branch:
+  // the worker branch's tip BEFORE the worker runs (own-branch:
   // the cut point; shared: the pre-existing tip), the base for `commits:`.
   let baseSha: string | undefined;
   const runBody = async (onSetupFail?: () => void): Promise<number> => {
-    // HIMMEL-1778: runBody is the one seam that covers BOTH modes after the
+    // runBody is the one seam that covers BOTH modes after the
     // branch exists and BEFORE the worker launches (own-branch: minted just
     // above; shared: gitAdd ran inside runSharedDispatch). Warn-only — a
     // legitimately large branch still dispatches; the warning names the
     // dominating path + share so the next context-window death is attributable.
     const hugeDiff = checkHugeDiff("spawn-glm", { cwd: worktree, branch });
     if (hugeDiff.note) console.error(hugeDiff.note);
-    // HIMMEL-1040 (CR): resolve the profile FIRST — before meta.json is written.
+    // resolve the profile FIRST — before meta.json is written.
     // resolveProfileSettings throws on an unreadable/malformed settings layer, and
     // it sits OUTSIDE executeRun's failure-transition guard; if it ran after the
     // "running" write, a throw would exit leaving meta stuck at running — fleet
@@ -1675,12 +1674,12 @@ async function main(): Promise<void> {
     // dispatch. Uses the WORKTREE (the cwd the worker runs in), which exists by now.
     let settings: string;
     try {
-      // HIMMEL-1378: the permission-hardening overlay is NEVER optional (unlike
+      // the permission-hardening overlay is NEVER optional (unlike
       // the plugin profile, whose "operator" sentinel means no injection) — it
       // always merges in, so `--settings` is now unconditionally passed.
       settings = composeWorkerSettings(resolveProfileSettings(profile, addPlugins, worktree), worktree, sessionDir);
     } catch (e) {
-      // HIMMEL-1094: the resolve NEEDS the worktree cwd (branch-local settings
+      // the resolve NEEDS the worktree cwd (branch-local settings
       // layers), so it necessarily runs after `worktree add` — which is why a
       // throw here would otherwise strand the worktree+branch we just minted.
       // Undo them, then rethrow the ORIGINAL error unchanged.
@@ -1702,7 +1701,7 @@ async function main(): Promise<void> {
     const grantsPath = join(sessionDir, "grants.jsonl");
     const seedOutbox = join(sessionDir, "outbox.jsonl");
     const accumulated: string[] = [];
-    // HIMMEL-682 (Task L1): carry the capped session's still-valid grants forward
+    // carry the capped session's still-valid grants forward
     // (absolute expires_at + remaining budget) BEFORE the --grant loop, so
     // nextGrantId continues past the carried ids. Shape-split (reads seed, autonomous
     // writes re-escalate), fail-open, and observability all live in applyCarryFrom.
@@ -1725,14 +1724,14 @@ async function main(): Promise<void> {
     }
     const metaPath = join(sessionDir, "meta.json");
     const started_at = new Date().toISOString();
-    // HIMMEL-1596 Task 1.2 (Step 2b): record the worktree path and branch.
+    // Task 1.2 (Step 2b): record the worktree path and branch.
     // The liveness check in await-glm-worker.sh can only read meta.json, and
     // without these two fields its only staleness signal is last_output_at --
     // which reads 0 for a worker that commits early and leaves a clean tree,
     // so the BETTER-BEHAVED the worker, the more it looks STALLED. Both extra
     // signals (newest worktree mtime, branch HEAD commit time) are unreachable
     // until they are written here.
-    // HIMMEL-1616: `worktree` records the DISPATCH CWD (kept as-is for
+    // `worktree` records the DISPATCH CWD (kept as-is for
     // existing readers); worker_worktree is the worker's OWN minted/reused
     // worktree — the correct root for the liveness mtime walk. Walking the
     // dispatch CWD sweeps every sibling worktree in the checkout, so a
@@ -1742,14 +1741,14 @@ async function main(): Promise<void> {
       status: "running", pid: 0, started_at, lane: "glm", task_name: slug,
       worktree: absCwd, branch, worker_worktree: worktree,
     };
-    // HIMMEL-800: shared_branch marks a shared-mode run in meta.json so a
+    // shared_branch marks a shared-mode run in meta.json so a
     // reader can tell it apart from an own-branch run at a glance. Typed
     // construction (I8): a ternary builds the object with-or-without the field,
     // no Record<string, unknown> widening + conditional mutation.
     const runningMeta = sharedMode ? { ...baseMeta, shared_branch: branch } : baseMeta;
     writeFileSync(metaPath, JSON.stringify(runningMeta, null, 2));
 
-    // HIMMEL-740: write the composed brief to <sessionDir>/brief.md and submit a
+    // write the composed brief to <sessionDir>/brief.md and submit a
     // SHORT pointer prompt (not the inlined brief) — the fix for the submit-reject
     // deaths. brief.md lives under glm-sessions/ (outside the repo worktree), the
     // proven-accessible path the worker already reads/writes outbox+context in.
@@ -1762,7 +1761,7 @@ async function main(): Promise<void> {
       startedAt: new Date(started_at),
       task, cwd: absCwd, slug, branch, timeoutMins, permMode,
       armOnCap, shared: sharedMode,
-      // HIMMEL-1040: carry the profile + overlay so a capped-run respawn
+      // carry the profile + overlay so a capped-run respawn
       // re-dispatches on the SAME lane profile (not the lane-impl default).
       profile, addPlugins,
       // A cap-respawn is a continuation of this dispatch, so it inherits the
@@ -1771,7 +1770,7 @@ async function main(): Promise<void> {
       fetchUsage: () => fetchGlmUsage(readZaiKey(REPO_ROOT).key),
       arm: (hhmm, snap) => Bun.spawnSync(buildArmArgv(REPO_ROOT, hhmm, snap), { stdout: "inherit", stderr: "inherit", env: buildArmEnv() }).exitCode ?? 1,
     };
-    // HIMMEL-1596: checkpoint in a FINALLY, not "after executeRun returns".
+    // checkpoint in a FINALLY, not "after executeRun returns".
     // executeRun's outer catch writes failed-meta and RETHROWS, so a thrown
     // runSession — a spawner-side crash mid-run, precisely when uncommitted
     // work is stranded — would otherwise skip the checkpoint entirely. That is
@@ -1800,12 +1799,12 @@ async function main(): Promise<void> {
   if (!sharedMode) {
     g(["worktree", "add", worktree, "-b", branch]);
     ensureWorkspaceTrust(worktree);
-    // HIMMEL-1094: this dispatch MINTED both the worktree and the branch (-b), so
+    // this dispatch MINTED both the worktree and the branch (-b), so
     // it owns them until the worker starts. Teardown is passed ONLY here — shared
     // mode must never tear down a caller-owned worktree/branch.
     code = await runBody(() => teardownMintedWorktree(absCwd, worktree, branch));
   } else {
-    // HIMMEL-800: serialize writers on the shared branch (single-writer
+    // serialize writers on the shared branch (single-writer
     // invariant, CLAUDE.md Subagent policy). runSharedDispatch acquires the
     // lock AFTER guards pass (a refusal above must leave no lock held), BEFORE
     // any worktree mutation, and releases it in a finally on every catchable
@@ -1827,7 +1826,7 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  // HIMMEL-1641 (F2): registered ONLY for the real CLI process — never on a
+  // registered ONLY for the real CLI process — never on a
   // test import, which must not have a stray SIGTERM exit the test runner.
   // sigtermFinalize() is a no-op unless executeRun has armed a live run.
   process.on("SIGTERM", () => {
@@ -1837,7 +1836,7 @@ if (import.meta.main) {
   main().catch((e) => { console.error(`spawn-glm: ${String(e?.message ?? e)}`); process.exit(1); });
 }
 
-// ── cap guard (HIMMEL-654): resume-time helpers ──────────────────────────────
+// ── cap guard: resume-time helpers ──────────────────────────────
 export type CapSource = "monitor-endpoint" | "error-body" | "cycle-floor";
 // On-disk meta unions are WIDER than the helpers' return types (CR round —
 // types must not lie to meta.json readers): cap_window adds the "generic"
@@ -1876,14 +1875,14 @@ export function nextRetrySlug(slug: string): string {
 // Self-contained cold-start respawn handover (spec (b) 3): the armed session
 // may be a fresh cold start — everything needed to re-dispatch is inline.
 const shellSingleQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
-// HIMMEL-1071: quote only values a shell would split or interpret, so plain values stay byte-identical.
+// quote only values a shell would split or interpret, so plain values stay byte-identical.
 const shellArg = (value: string): string => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : shellSingleQuote(value));
 export function composeRespawnHandover(p: { task: string; cwd: string; slug: string; timeoutMins?: number; permMode?: string; sessionDir: string; branch: string; resumeAtIso: string; shared?: boolean; profile?: string; addPlugins?: string[]; roundsOverride?: string }): string {
   const respawnName = nextRetrySlug(p.slug);
-  // HIMMEL-800: a shared-mode respawn carries --branch (the caller-named
+  // a shared-mode respawn carries --branch (the caller-named
   // branch, unchanged across retries) instead of --name <slug>-rN — shared
   // mode never mints -rN branches, it keeps writing onto the same one.
-  // HIMMEL-1040: carry --profile only when it differs from the default, and
+  // carry --profile only when it differs from the default, and
   // --add-plugins only when a non-empty overlay was set, so the respawn lands on
   // the same lean profile the original dispatch selected.
   const profileFlag = p.profile && p.profile !== DEFAULT_LANE_PROFILE ? `--profile ${shellArg(p.profile)}` : "";
@@ -1918,19 +1917,19 @@ export function composeRespawnHandover(p: { task: string; cwd: string; slug: str
   ].join("\n");
 }
 
-// ── cap guard (HIMMEL-654): orchestration deps + arm argv builder ────────────
+// ── cap guard: orchestration deps + arm argv builder ────────────
 export type CapGuardDeps = {
   startedAt: Date;
   task: string; cwd: string; slug: string; branch: string;
   timeoutMins?: number; permMode?: string;
   armOnCap: boolean;
-  // HIMMEL-800: threads shared-branch mode into the respawn handover so a
+  // threads shared-branch mode into the respawn handover so a
   // capped shared-mode run re-dispatches with --branch, not a fresh -rN --name.
   shared?: boolean;
-  // HIMMEL-1040: the lane plugin profile + overlay, carried into the respawn
+  // the lane plugin profile + overlay, carried into the respawn
   // handover so a capped run re-dispatches on the same lean profile.
   profile?: string; addPlugins?: string[];
-  // HIMMEL-1553: a cap-respawn continues the already-authorized round.
+  // a cap-respawn continues the already-authorized round.
   roundsOverride?: string;
   fetchUsage: () => Promise<GlmUsage | null>;
   arm: (hhmm: string, handoverPath: string) => number;   // rc of arm-resume.sh
@@ -1944,7 +1943,7 @@ export function buildArmArgv(repoRoot: string, hhmm: string, handoverPath: strin
 
 // Child env for the auto-arm invoker: ARM_RESUME_SAFETY_ARM=1 marks this as an
 // automated machine-wide SAFETY arm (the cap-respawn watchdog) so arm-resume's
-// long-gap guard (HIMMEL-1475) exempts it — a multi-hour cap-reset park is the
+// long-gap guard exempts it — a multi-hour cap-reset park is the
 // safety arm's whole point, not an orchestrator's silent far default. Pure so
 // the env contract is unit-asserted (the --dedup-any argv stays dedup-scope
 // only and does NOT bypass the guard). Spreads process.env so a runtime
@@ -1956,7 +1955,7 @@ export function buildArmEnv(): NodeJS.ProcessEnv {
 }
 
 // Preflight warn (spec (c)): warn-only — a heuristic-threshold refusal would
-// strand work on a miscount (D4). Null = HIMMEL-275 visible-invisible line.
+// strand work on a miscount (D4). Null = visible-invisible line.
 export function formatUsageWarn(u: GlmUsage | null, warnPct: number): string | null {
   if (u === null) return "spawn-glm: usage invisible (monitor endpoint unavailable)";
   if (u.percentage < warnPct) return null;

@@ -1,7 +1,7 @@
 // scripts/telegram/compose-brief.test.ts
-// HIMMEL-1734 P1, design §4.3 / §8 — the C4 acceptance bar: composer output
+// Design §4.3 / §8 — the C4 acceptance bar: composer output
 // carries the RETASK, waiter AND write-set blocks. Task-file-not-readable is
-// a clean exit-2 usage refusal (HIMMEL-203: free text arrives via files, not
+// a clean exit-2 usage refusal (free text arrives via files, not
 // argv).
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -45,7 +45,7 @@ test("parseArgs: an unrecognized flag is a usage refusal", () => {
   expect((r as any).error).toMatch(/unrecognized flag/);
 });
 
-// --- parseArgs: HIMMEL-203 argv contract (CR round 1 [codex-2]/[codex-3]) --
+// --- parseArgs: argv contract --
 
 test("parseArgs: a newline in --lane is refused", () => {
   const r = parseArgs(["--lane", "glm\nLANE: fake", "--model", "m", "--effort", "e", "--task-file", "/t", "--out", "/t/o"]);

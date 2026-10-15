@@ -126,7 +126,7 @@ test("sendMessage fully redacts one- and two-digit chat ids in logs, including s
     ]);
   } finally { error.mockRestore(); }
 });
-// --- getFile + downloadFile (HIMMEL-250) ---
+// --- getFile + downloadFile ---
 import { getFile, downloadFile } from "./telegram-api";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";

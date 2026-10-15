@@ -64,7 +64,7 @@ import type { SettingsConflict } from "./glm-env";
 import { readZaiKey } from "./glm-env";
 import { composeGrantLine, nextGrantId, classifyShape, authorityGate, composeEscalationForRefusedGrant } from "./grants";
 
-// HIMMEL-2625/HIMMEL-2642: the ZAI_API_KEY seam. glmChildEnv() -> buildGlmEnv()
+// The ZAI_API_KEY seam. glmChildEnv() -> buildGlmEnv()
 // throws when no key resolves (env var, worktree .env, or the main checkout's
 // .env) — a credential the public runner has no reason to hold. Presence-only
 // check (never reads the value into an assertion, never printed) so the case
@@ -80,7 +80,7 @@ if (!HAS_ZAI_KEY) {
   );
 }
 
-// HIMMEL-1096 (codex-adv round 2): runSharedDispatch now trust-seeds
+// runSharedDispatch now trust-seeds
 // UNCONDITIONALLY (needsWorktreeAdd true or false), so every test below that
 // exercises it would otherwise read/rewrite the OPERATOR'S REAL ~/.claude.json
 // on every dispatch — slow (JSON parse/stringify of a live, 100KB+ file,
@@ -92,7 +92,7 @@ if (!HAS_ZAI_KEY) {
 // this file's tests at a scratch config instead. TRUST_WRITE_JITTER_MS=0
 // drops the (up to 500ms) launch-race jitter — the dedicated jitter behavior
 // is exercised by scripts/lib/test-ensure-workspace-trust.sh, not here.
-// (My own HIMMEL-1096 test below layers its OWN scoped override/restore on
+// (My own test below layers its OWN scoped override/restore on
 // top of this default for its byte-exact assertion — both compose cleanly.)
 process.env.WORKSPACE_TRUST_CONFIG = join(tmpdir(), `spawn-glm-test-trust-${process.pid}.json`);
 process.env.TRUST_WRITE_JITTER_MS = "0";
@@ -121,7 +121,7 @@ test("worker prompt embeds minted session paths + contract", () => {
   expect(p).toContain("glm/a");
   expect(p).toMatch(/never push/i);
   expect(p).toMatch(/never open a PR/i);
-  // HIMMEL-1755: the shared-refs/stash ban rides with the no-push contract.
+  // the shared-refs/stash ban rides with the no-push contract.
   expect(p).toMatch(/NEVER MUTATE THE STASH/);
   expect(p).toContain("refs/checkpoints/<slug>");
   expect(p).toContain('bash "$GLM_SESSION_DIR/append-outbox.sh" <base64url-token>');
@@ -133,10 +133,10 @@ test("composeWorkerPrompt teaches COMMIT EARLY (HIMMEL-1200): commit when tests 
   const p = composeWorkerPrompt("do X", "/tmp/gs/glm-a-1", "glm/a");
   expect(p).toMatch(/COMMIT EARLY/);
   expect(p).toMatch(/follow-up commits/i);
-  // HIMMEL-1206: must teach a CONVENTIONAL message or the commit-msg gate rejects
+  // must teach a CONVENTIONAL message or the commit-msg gate rejects
   // the early commit — recreating the uncommitted-timeout failure it prevents.
   expect(p).toMatch(/CONVENTIONAL commit message/);
-  // HIMMEL-1210: must also teach the pre-push gate's attestation trailers, or the
+  // must also teach the pre-push gate's attestation trailers, or the
   // early commit gets stuck on a missing-trailer refusal.
   expect(p).toMatch(/Platforms tested:/);
   expect(p).toMatch(/Security reviewed:/);
@@ -163,7 +163,7 @@ test("composeWorkerPrompt shared mode (HIMMEL-800): teaches the no-rebase/no-new
 });
 
 test("composeWorkerPrompt default (no opts / shared:false) is UNCHANGED from the own-branch text", () => {
-  // HIMMEL-1218: each call mints a fresh RETASK nonce, so compare with the
+  // each call mints a fresh RETASK nonce, so compare with the
   // per-dispatch token normalized out rather than a raw string equality.
   const stripToken = (s: string) => s.replace(/R-[0-9a-f]+/g, "R-<nonce>");
   const bare = composeWorkerPrompt("do X", "/tmp/gs/glm-a-1", "glm/a");
@@ -173,7 +173,7 @@ test("composeWorkerPrompt default (no opts / shared:false) is UNCHANGED from the
   expect(bare).not.toMatch(/SHARED PR branch/i);
 });
 
-// --- HIMMEL-740: pointer-prompt dispatch + window preflight ---
+// --- pointer-prompt dispatch + window preflight ---
 
 test("composePointerPrompt is SHORT and points at the brief file, not the inlined brief (HIMMEL-740)", () => {
   const p = composePointerPrompt("/sess/glm-a-1/brief.md");
@@ -260,7 +260,7 @@ test("GLM guard check runs BEFORE git worktree add — a refusal leaves no orpha
   expect(wtIdx).toBeGreaterThan(-1);
   expect(trustIdx).toBeGreaterThan(-1);
   expect(guardIdx).toBeLessThan(wtIdx);
-  // the poison call this used to order against is gone (HIMMEL-1961); the
+  // the poison call this used to order against is gone; the
   // guard must still precede every remaining worktree side-effect.
   expect(guardIdx).toBeLessThan(trustIdx);
 });
@@ -281,8 +281,8 @@ test("HIMMEL-1503: refuseNonPrimaryCwd runs IMMEDIATELY after absCwd is resolved
   expect(/if \(nonPrimaryRefusal\) \{ console\.error\(nonPrimaryRefusal\); process\.exit\(2\); \}/.test(src)).toBe(true);
 });
 
-// --- HIMMEL-800: shared-branch mode wiring pins (main() source-text checks,
-// mirroring the HIMMEL-740/#848 wiring-pin style above — these assert ORDER
+// --- shared-branch mode wiring pins (main() source-text checks,
+// mirroring the #848 wiring-pin style above — these assert ORDER
 // and PRESENCE of the shared-mode lock/mutation wiring that a pure unit test
 // can't reach without spinning up real git + the lock script).
 
@@ -291,7 +291,7 @@ test("main() writes shared_branch into runningMeta only in shared mode (wiring p
   expect(/const runningMeta = sharedMode \? \{ \.\.\.baseMeta, shared_branch: branch \} : baseMeta;/.test(src)).toBe(true);
 });
 
-// HIMMEL-1616: worker_worktree must record the MINTED worktree, distinct from
+// worker_worktree must record the MINTED worktree, distinct from
 // the legacy `worktree` key (the dispatch CWD, kept for existing readers).
 // Without it the liveness mtime walk in await-glm-worker.sh sweeps every
 // sibling worktree, so a sibling's writes read as this worker's liveness.
@@ -302,7 +302,7 @@ test("baseMeta records worker_worktree (the minted worktree), distinct from the 
 
 test("shared-branch lock is acquired BEFORE any worktree mutation, and main() guards before dispatching (wiring pin)", () => {
   const src = readFileSync("scripts/telegram/spawn-glm.ts", "utf8");
-  // acquire → worktree add → trust-seed (HIMMEL-1096, unconditional)
+  // acquire → worktree add → trust-seed
   // ordering inside runSharedDispatch
   const acquireIdx = src.indexOf('"acquire", p.repoDir, p.branch, "glm"');
   const addIdx = src.indexOf("if (p.needsWorktreeAdd) p.gitAdd();");
@@ -340,18 +340,18 @@ test("own-branch (flag-less) path is untouched — mints its own branch with -b,
   expect(ownAddIdx).toBeGreaterThan(-1);      // own-branch still mints via -b
   expect(dispatchIdx).toBeGreaterThan(-1);    // shared path is separate
   // the own-branch path must not have grown a config-mutation fence back
-  // (HIMMEL-1961): no lane writes remote.origin.pushurl any more.
+  // — no lane writes remote.origin.pushurl any more.
   // The own-branch path has no exported seam to snapshot, so it is pinned by
   // the stronger source-text invariant instead: this lane makes NO git config
   // call at all any more. Unlike a key-name check, renaming or building the key
-  // dynamically cannot slip past it (HIMMEL-1961 CR).
+  // dynamically cannot slip past it.
   expect(src).not.toContain('"config"');
 });
 
 // transcriptDirFor() runs the input through resolve(), which is PLATFORM
 // dependent: "C:\Users\..." is absolute on win32 and *relative* on POSIX, where
 // resolve() silently prefixes the cwd and the expected escape string can never
-// match (HIMMEL-2620 — these two were the "2 spawn-glm reds" on Linux). The fix
+// match (these two were the "2 spawn-glm reds" on Linux). The fix
 // is a platform-appropriate ABSOLUTE fixture, not a skip: the escaping rule is
 // the same on both, so both legs keep the assertion. Expected strings stay
 // hand-written per platform — deriving them from the implementation's own regex
@@ -387,7 +387,7 @@ test("transcript dir honours an explicit lane root; the default stays the glm ~/
   expect(transcriptDirFor(CWD_FIXTURE.worktree)).toBe(join(homedir(), ".claude", "projects", CWD_FIXTURE.worktreeEscaped));
 });
 
-// --- runSharedDispatch (HIMMEL-800 I7): lock lifecycle, and (HIMMEL-1961) the
+// --- runSharedDispatch (I7): lock lifecycle, and the
 // promise that a dispatch leaves the operator's git config alone — exercised
 // against a REAL temp git repo + worktree + the REAL lock script (mirrors the
 // codex suite's section-14 pattern). ---
@@ -395,8 +395,8 @@ test("transcript dir honours an explicit lane root; the default stays the glm ~/
 function makeSharedRepo() {
   return makeSharedFixtureRepo("glmshared-", "glm+feat-live-pr", "feat/live-pr");
 }
-// configSnapshot(repo, wt, run) -- everything a dispatch could write, read back
-// (HIMMEL-1961 CR). A source-text pin only proves today's SPELLING is absent;
+// configSnapshot(repo, wt, run) -- everything a dispatch could write, read back.
+// A source-text pin only proves today's SPELLING is absent;
 // this proves the dispatch changed nothing, whatever it spells. `--local` is
 // where a repo-scoped write lands and `--worktree` is where the retired poison
 // wrote, so a byte-identical pair before and after covers both. The rc is part
@@ -447,7 +447,7 @@ test("runSharedDispatch: a dispatch mutates NO git config — behavioural before
     // "feat/live-pr", and the shared-branch lock is keyed by branch, so running
     // the two files together made one of them lose the acquire and fail for a
     // reason that had nothing to do with git config (a likely contributor to
-    // the HIMMEL-1786 flaky family). gitAdd is stubbed here, so the name only
+    // the flaky family). gitAdd is stubbed here, so the name only
     // has to be unique -- no worktree needs to exist for it.
     const res = await runSharedDispatch({ repoDir: repo, worktree: wt, branch: "feat/cfg-snapshot-glm", needsWorktreeAdd: false, lockScript: LOCK_SCRIPT, gitAdd: () => {}, runBody: async () => 0 });
     expect(res.ok).toBe(true);
@@ -475,8 +475,8 @@ test("runSharedDispatch: historical quarantine residue is left alone, not adopte
   // A worktree from a dispatch that ran BEFORE the removal can still carry the
   // old sentinel. This lane no longer reads or writes push config, so it must
   // neither treat the value as an operator setting to preserve nor take it upon
-  // itself to clean up: scripts/lanes/stop-worker.sh owns healing that residue
-  // (HIMMEL-1929). Either behaviour here would be config mutation returning by
+  // itself to clean up: scripts/lanes/stop-worker.sh owns healing that residue.
+  // Either behaviour here would be config mutation returning by
   // the back door.
   const { repo, wt, run } = makeSharedRepo();
   try {
@@ -576,7 +576,7 @@ test("runSharedDispatch (HIMMEL-1096, codex-adv round): needsWorktreeAdd:false (
   }
 }, GIT_TEST_TIMEOUT_MS);
 
-// --- gitIsDirty / gitBranchExists (CR round 2 F1): the REAL git-probe
+// --- gitIsDirty / gitBranchExists: the REAL git-probe
 // implementations that feed planSharedSpawn's injected deps — previously only
 // the injected planSharedSpawn STUB (sharedOkDeps' isDirty/branchExists) was
 // exercised; these hit the real Bun.spawnSync-backed functions, including the
@@ -584,10 +584,10 @@ test("runSharedDispatch (HIMMEL-1096, codex-adv round): needsWorktreeAdd:false (
 // makeSharedRepo real-temp-repo pattern used by the I6/I7 suite above).
 
 // GIT_TEST_TIMEOUT_MS, initHermeticRepo and makeSharedFixtureRepo live in
-// ./fixture-repo (HIMMEL-1888): both suites share them, and the teardown that
+// ./fixture-repo: both suites share them, and the teardown that
 // goes with them may only remove fixtures this run created.
 
-// HIMMEL-1094 — behavioural proof on a REAL repo. The wiring pins above show the
+// behavioural proof on a REAL repo. The wiring pins above show the
 // teardown is called in the right place; this shows it actually undoes both the
 // worktree and the branch, and that it is inert when there is nothing to undo.
 test("HIMMEL-1094: teardownMintedWorktree removes a just-minted worktree AND its branch", () => {
@@ -614,7 +614,7 @@ test("HIMMEL-1094: teardown is best-effort — a bogus worktree/branch never thr
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// HIMMEL-1094 — the FAIL-SAFE guarantee, and the reason the teardown carries no
+// the FAIL-SAFE guarantee, and the reason the teardown carries no
 // --force (operator call, 2026-07-17). A worktree that still holds content must
 // survive teardown, and its branch must survive with it: the branch is the only
 // handle left on a worktree git refuses to delete, so dropping it would strand
@@ -636,7 +636,7 @@ test("HIMMEL-1094: teardown refuses a worktree holding content, and KEEPS its br
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// HIMMEL-1094 [CodeRabbit] — the retry must actually OUTLAST the race it exists
+// the retry must actually OUTLAST the race it exists
 // for. The tokensave init that dirties a fresh worktree indexes for ~30s, so a
 // window shorter than that expires mid-init and strands the orphan. Simulated in
 // miniature: an untracked file makes the first remove refuse, and a separate
@@ -662,7 +662,7 @@ test("HIMMEL-1094: teardown RETRIES until a transient blocker clears (the tokens
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// HIMMEL-1094 — the exact damage the parked WIP did, pinned. When a remove dies
+// the exact damage the parked WIP did, pinned. When a remove dies
 // partway through deleting the directory, git prunes the worktree's admin record
 // FIRST, so the branch stops looking checked-out and `git branch -D` starts
 // SUCCEEDING — stranding the directory while destroying the branch that was its
@@ -726,7 +726,7 @@ test("gitBranchExists (F1): real repo — existing branch true, missing branch f
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-// --- HIMMEL-1503: primary-checkout cwd guard ---
+// --- primary-checkout cwd guard ---
 
 test("detectNonPrimaryCwd: ok when cwd is the primary checkout (git-dir === git-common-dir, no worktree path segment)", () => {
   const probe = () => ({ gitDir: "/repo/.git", commonDir: "/repo/.git" });
@@ -759,7 +759,7 @@ test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refuse
   // A plain nested clone reports a RELATIVE common-dir ("."/".git"), so the
   // "primary" resolves back to the very cwd being refused. Naming it would
   // tell the caller to cd where they already are; the path-only diagnostic is
-  // the correct message here (codex-1, CR round 1).
+  // the correct message here.
   const probe = () => ({ gitDir: ".git", commonDir: ".git" });
   const r = detectNonPrimaryCwd("/x/.claude/worktrees/nested-clone", probe);
   expect(r.ok).toBe(false);
@@ -865,7 +865,7 @@ test("planSpawn sanitizes slug punctuation", () => {
   expect(ok.branch).toBe("glm/my-task-foo-bar");
 });
 
-// --- planSharedSpawn (HIMMEL-800: shared-branch mode) ---
+// --- planSharedSpawn (shared-branch mode) ---
 
 const sharedOkDeps = (overrides: Partial<Parameters<typeof planSharedSpawn>[2]> = {}) => ({
   isHimmelCheckout: () => true,
@@ -1013,7 +1013,7 @@ test("parseArgs table: valid flags / positional-only / NaN timeout / trailing fl
   expect(trailingTimeout.ok).toBe(false);
 });
 
-// --- HIMMEL-1225: --help/-h short-circuits BEFORE any side effect ---
+// --- --help/-h short-circuits BEFORE any side effect ---
 
 test("isHelpFlag: detects --help and -h anywhere in argv; a normal prompt is untouched", () => {
   expect(isHelpFlag(["--help"])).toBe(true);
@@ -1060,7 +1060,7 @@ test("spawn-glm with only --help as the sole arg does NOT fall through to the mi
   expect(r.stderr.toString()).toBe("");
 });
 
-// --- HIMMEL-1503: real CLI end-to-end — the guard fires from the actual
+// --- real CLI end-to-end — the guard fires from the actual
 // entrypoint (not just the exported pure functions above), before any
 // worktree/branch side-effect, against a REAL `git worktree add`. ---
 
@@ -1106,7 +1106,7 @@ test("parseArgs: a bare unrecognized flag is a usage refusal, not swallowed as t
   expect(parseArgs(["do it", "--cwd", "/repo"]).ok).toBe(true);
 });
 
-// --- HIMMEL-1040: --profile / --add-plugins parsing + resolution ---
+// --- --profile / --add-plugins parsing + resolution ---
 
 test("parseArgs: profile defaults to lane-impl, addPlugins empty", () => {
   const d = parseArgs(["do it"]);
@@ -1138,7 +1138,7 @@ test("resolveProfileSettings: lane-impl → complete enabledPlugins JSON with fl
   expect(parsed.enabledPlugins["claude-obsidian@himmel"]).toBe(false); // dropped content
 });
 
-// HIMMEL-4060: the spawners pass the skill scan, as the plugin-profiles CLI does (#1565).
+// the spawners pass the skill scan, as the plugin-profiles CLI does (#1565).
 test("resolveProfileSettings: a profile with required plugins carries skillOverrides + a budget fraction", () => {
   const parsed = JSON.parse(resolveProfileSettings("lane-impl", [], "/nonexistent-cwd", []) as string);
   expect(parsed.skillOverrides["update-config"]).toBe("name-only");
@@ -1192,11 +1192,11 @@ test("main() validates the profile pre-side-effect but resolves the BASELINE fro
   // pre-side-effect validation passes installed:[] (pure name/overlay check)
   expect(src).toMatch(/resolveProfileSettings\(profile, addPlugins, absCwd, \[\]\)/);
   // the REAL resolve happens in runBody against the worktree the worker runs in,
-  // then HIMMEL-1378's permission-hardening overlay merges on top (never optional).
+  // then the permission-hardening overlay merges on top (never optional).
   expect(src).toMatch(/settings = composeWorkerSettings\(resolveProfileSettings\(profile, addPlugins, worktree\), worktree, sessionDir\)/);
 });
 
-// HIMMEL-1094 — the teardown's BLAST RADIUS is the whole point of these pins:
+// the teardown's BLAST RADIUS is the whole point of these pins:
 // scoped to the resolve, own-branch only. Getting it wrong deletes a running
 // worker's worktree, so pin the wiring, not just the helper's behaviour.
 test("HIMMEL-1094: own-branch dispatch passes a teardown; shared mode does NOT (wiring pin)", () => {
@@ -1211,7 +1211,7 @@ test("HIMMEL-1094: own-branch dispatch passes a teardown; shared mode does NOT (
   }
 });
 
-// HIMMEL-1094 [coderabbit-1] — the pin above proves the teardown is handed in at
+// the pin above proves the teardown is handed in at
 // exactly one call site; this proves WHERE it fires. runBody wraps executeRun
 // too, so a teardown reachable from executeRun's failure path would delete a
 // RUNNING worker's worktree with its work still in it. Pin that onSetupFail is
@@ -1361,7 +1361,7 @@ test("executeRun: a plain failed run (no prompt-too-long tail) has NO failure_cl
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// --- HIMMEL-1575: startup-hang fail-fast watchdog ---
+// --- startup-hang fail-fast watchdog ---
 // The transcript (~/.claude/projects/<mangled-cwd>/*.jsonl) is the discriminator:
 // it grows on every model response regardless of stdout buffering. Absent/frozen
 // transcript + banner-only stdout past the window = never-started -> kill +
@@ -1517,7 +1517,7 @@ test("executeRun: a run.log append failure does NOT flip a successful run to fai
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// --- HIMMEL-1641 F1: done_escalated — a timeout whose worktree is clean and
+// --- F1: done_escalated — a timeout whose worktree is clean and
 // whose outbox carries a git-push escalation is not an unfinished run; it is
 // a finished worker hitting the lane's structural push-block. ---
 
@@ -1567,7 +1567,7 @@ test("executeRun: a timeout with a git-push escalation but a DIRTY tree stays ti
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// --- HIMMEL-1641 F2: dispatcher SIGTERM finalize — a caller-side kill must
+// --- F2: dispatcher SIGTERM finalize — a caller-side kill must
 // write a distinct terminal status BEFORE the process dies, so it can never
 // masquerade as orphaned/startup-hang. ---
 
@@ -1723,7 +1723,7 @@ let sd: string, mp: string, wt: string;
 const rm = { status: "running", pid: 0, started_at: "2026-07-03T18:00:00.000Z", lane: "glm", task_name: "job" };
 beforeEach(() => {
   sd = mkdtempSync(join(tmpdir(), "capguard-")); mp = join(sd, "meta.json"); wt = sd;
-  // WS9 (HIMMEL-654): the cap-time path now appendQuotaGauge()s a GLM row; redirect
+  // WS9: the cap-time path now appendQuotaGauge()s a GLM row; redirect
   // the ledger into the scratch dir so the suite never touches the real
   // ~/.himmel/quota-gauge.jsonl (hermetic).
   process.env.HIMMEL_QUOTA_GAUGE_LEDGER = join(sd, "quota-gauge.jsonl");
@@ -1785,7 +1785,7 @@ test("long-window cap: labeled, NO resume_at, NO arm, ONE cap-long ledger row", 
   expect(meta.cap_source).toBe("no-arm-long-window");
   expect(meta.resume_at).toBeUndefined();
   expect(calls.length).toBe(0);
-  // HIMMEL-690 chunk B: a long-window (weekly/monthly/balance/expired) cap
+  // chunk B: a long-window (weekly/monthly/balance/expired) cap
   // writes exactly ONE passive ledger row (source cap-long, window "long" —
   // the detector cannot distinguish weekly from monthly, so a specific
   // sub-window would be fabricated precision, CR [codex-1]); no new fetch,
@@ -1961,9 +1961,9 @@ test("parseArgs --context big|small (HIMMEL-718): value captured, validated, def
   expect((trailing as any).error).toMatch(/--context requires a value/);
 });
 
-// --- HIMMEL-1780: --brief-file — a multi-line brief reaches the worker via ONE
+// --- --brief-file — a multi-line brief reaches the worker via ONE
 // literal command, instead of the cd/$(cat)/var compound that defeats the
-// allow-rule prefix and the native permission matcher (HIMMEL-203). ---
+// allow-rule prefix and the native permission matcher. ---
 
 test("parseArgs --brief-file (HIMMEL-1780): value captured, missing value refuses, mutually exclusive with a positional prompt", () => {
   const ok = parseArgs(["--brief-file", "C:/tmp/brief.md", "--cwd", "/repo"]);
@@ -2019,7 +2019,7 @@ test("readBriefFile (HIMMEL-1780): reads a multi-line brief verbatim; missing / 
 
 // Real CLI end-to-end — the flag's contract fires from the actual entrypoint,
 // before any side effect (no worktree minted, no session-dir printed), against
-// the same hermetic-repo pattern the HIMMEL-1503 CLI tests use.
+// the same hermetic-repo pattern the CLI tests use.
 test("spawn-glm real CLI: missing / unreadable / both-supplied --brief-file each REFUSE (exit 2, usage error, no dispatch)", () => {
   const dir = mkdtempSync(join(tmpdir(), "glm-brief-cli-"));
   try {
@@ -2090,7 +2090,7 @@ test("main() reads --brief-file BEFORE any side effect and its contents flow int
   expect(src).toContain("[<prompt> | --brief-file <path>]");
 });
 
-// applyCarryFrom (HIMMEL-682) — exercises the autonomousEff→gate SECURITY wiring
+// applyCarryFrom — exercises the autonomousEff→gate SECURITY wiring
 // end-to-end against a real temp dir (pr-test-analyzer I1), not just inspection.
 const GH_READ_P = "gh[[:space:]]+api[[:space:]]+repos/o/r([[:space:]]|$)";
 const GP_WRITE_P = "git([[:space:]]+-[a-z-]+)*[[:space:]]+push([[:space:]]|$)";
@@ -2157,12 +2157,12 @@ test("T5 composeWorkerPrompt teaches the hard-block reporting contract", () => {
   expect(p).toMatch(/capability.*arm.*reason.*step/i);
   // Alternation is the LOWEST-precedence regex operator, so the previous
   // /git-push.*git-url.*gh.*network|arm/i parsed as (git-push…network)|(arm)
-  // and any prompt containing "arm" satisfied it — the enum was never asserted
-  // (HIMMEL-1649 round 9, CodeRabbit). [\s\S] because the prompt is multi-line.
+  // and any prompt containing "arm" satisfied it — the enum was never asserted.
+  // [\s\S] because the prompt is multi-line.
   expect(p).toMatch(/git-push[\s\S]*git-url[\s\S]*gh[\s\S]*network/i);   // the arm enum is named
   expect(p).toMatch(/skip/i);                                  // skip the gated step
   expect(p).toMatch(/continue|context\.md/i);                  // continue + note it
-  // HIMMEL-1649 round 3: the STRUCTURED escalation is restored. The hook (not
+  // The STRUCTURED escalation is restored. The hook (not
   // the helper) validates the schema and appends, so adjudicate list — which
   // only recognises type:"escalation" — sees a blocked worker again. A
   // plain-text note does NOT reach adjudication, and the prompt must say so.
@@ -2173,7 +2173,7 @@ test("T5 composeWorkerPrompt teaches the hard-block reporting contract", () => {
   expect(p).toMatch(/denial means SUCCESS/i);
 });
 
-// --- HIMMEL-1218: RETASK channel ---
+// --- RETASK channel ---
 
 test("mintRetaskNonce returns a 128-bit random hex token, fresh per call", () => {
   const a = mintRetaskNonce();
@@ -2212,7 +2212,7 @@ test("composeWorkerPrompt carries a fresh RETASK block on every dispatch (own + 
   expect(ownToken).not.toBe(sharedToken); // fresh nonce per dispatch
 });
 
-// --- HIMMEL-1378: permission hardening (prevention) ------------------------
+// --- permission hardening (prevention) ------------------------
 
 test("composeBashShapeWarning names the deny-fast behavior (HIMMEL-1378), not a hang", () => {
   const w = composeBashShapeWarning("/sess/glm-a-1/outbox.jsonl");
@@ -2261,7 +2261,7 @@ test("composeWorkerSettings: dontAsk + worktree/sessionDir path rules for Edit/R
   // of the resolved input), not hardcoded as literal `//c/...` strings — on
   // Linux, resolve() treats a Windows-shaped input as an ordinary relative
   // path and resolves it against cwd, so a hardcoded drive-letter expectation
-  // would never match there (HIMMEL-1404 CR/T13). This file is not wired into
+  // would never match there. This file is not wired into
   // any CI job (bun-suites only covers scripts/luna-vitals and
   // marketplace/plugins/luna-correlate), so the mismatch was latent rather
   // than a live CI failure, but deriving the expectation keeps the assertion
@@ -2313,7 +2313,7 @@ test("spawn-claudex main() carries the identical bypassPermissions refusal + don
   expect(src).toMatch(/const permMode: PermissionMode = permModeArg \?\? "dontAsk";/);
 });
 
-// ── HIMMEL-1596: the spawner-owned checkpoint ────────────────────────────────
+// ── the spawner-owned checkpoint ────────────────────────────────
 // Measured 2026-08-06: 4 of 4 GLM dispatches produced substantive in-scope work
 // and committed NONE of it. "Commit early" is already in every brief and already
 // allowed by WORKER_BASH_ALLOW; it failed 4/4, so per structural>instructional

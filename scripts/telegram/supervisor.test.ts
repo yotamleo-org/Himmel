@@ -75,7 +75,7 @@ test("killBridge: supervisor kill OK, poller kill EPERM → rc 2 + pidfile KEPT"
   });
 });
 
-// --- /restart interaction with the circuit breaker (HIMMEL-1272) ---
+// --- /restart interaction with the circuit breaker ---
 
 test("an intentional /restart of a HEALTHY poller never walks toward the breaker", () => {
   // Exercises the PRODUCTION accounting (nextFailCount + breakerTrips + the real

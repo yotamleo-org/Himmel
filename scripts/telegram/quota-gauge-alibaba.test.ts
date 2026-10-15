@@ -1,5 +1,5 @@
 // scripts/telegram/quota-gauge-alibaba.test.ts
-// HIMMEL-729 chunk A — Alibaba Prometheus probe tests. Fixtures only, NO live
+// Alibaba Prometheus probe tests. Fixtures only, NO live
 // HTTP: a realistic instant-query response, a garbled one, an empty result, a
 // missing grant, and a zero grant; plus the env-ready gate and the
 // never-throws probe surface.
@@ -175,7 +175,7 @@ test("latent empty usage[] -> ONE invisible row, never a silent zero-row append"
   expect(rows[0].used_pct).toBeNull();
 });
 
-// ── HIMMEL-729 wiring chunk A: free-tier grants resolution ───────────────────
+// ── free-tier grants resolution ───────────────────
 test("DEFAULT_FREE_TIER_GRANT_TOKENS is the documented 1,000,000", () => {
   expect(DEFAULT_FREE_TIER_GRANT_TOKENS).toBe(1_000_000);
 });

@@ -5,17 +5,17 @@ import { homedir } from "node:os";
 // Mirrors the telegram-himmel fork's DM allowlist check (server.ts gate()):
 // access.json shape { dmPolicy, allowFrom: string[], groups, pending }.
 // allowFrom holds sender ids as strings; the fork compares String(from.id).
-// groups is keyed by chat_id string (HIMMEL-238); negative chat_ids cover
+// groups is keyed by chat_id string; negative chat_ids cover
 // groups (-…) and channels (-100…). Values carry the fork's GroupPolicy:
 // a non-empty per-group allowFrom restricts senders (honored here);
 // requireMention (LUNA-158) opts a group into @mention-only mode — honored by
 // the bun bridge's poller.ts handleInbound via requireMentionForChat below
 // (no message-entities parsing; matches `@<botusername>` against the raw
 // text) — a present key without allowFrom admits every member.
-// vault (HIMMEL-321): an absolute Obsidian-vault path a document/PDF sent to
+// vault: an absolute Obsidian-vault path a document/PDF sent to
 // this chat is filed into. A group-level vault overrides the top-level
 // defaultVault (see vaultForChat).
-// trustAnonymousAdmins (HIMMEL-1358): opt in to treating this group's ANONYMOUS
+// trustAnonymousAdmins: opt in to treating this group's ANONYMOUS
 // posts as the operator's for the triage floor. Off by default and per-group,
 // because the anonymous sender id is shared by every admin of the chat — see
 // isOperatorIdentity.
@@ -26,8 +26,8 @@ import { homedir } from "node:os";
 export type GroupPolicy = { requireMention?: boolean; allowFrom?: string[]; vault?: string; cwd?: string; trustAnonymousAdmins?: boolean };
 export type Access = { dmPolicy?: string; allowFrom?: string[]; groups?: Record<string, GroupPolicy>; defaultVault?: string };
 
-// The operator's own DM chat, or null when there is no usable one
-// (HIMMEL-2580). Some dispatcher notices are not about any incoming message —
+// The operator's own DM chat, or null when there is no usable one.
+// Some dispatcher notices are not about any incoming message —
 // the bridge inbox cursor is root-scoped, so a "your messages were dropped"
 // notice has no originating chat to reply into. In a DM Telegram's chat_id IS
 // the sender id, so the global allowFrom identity is that chat. Fails CLOSED
@@ -79,12 +79,12 @@ export const GROUP_ANONYMOUS_BOT_ID = 1087968824;
 
 // Is this sender the OPERATOR, for the purposes of the triage operator floor
 // (poller.ts handleInbound)? Two ways to be:
-//   1. the global allowFrom identity — unchanged HIMMEL-1296 semantics;
+//   1. the global allowFrom identity — unchanged semantics;
 //   2. the anonymous-admin substitute id, in a group that has OPTED IN via
 //      `trustAnonymousAdmins`.
 // (2) exists because the operator posts in his own groups with "Remain
 // anonymous" on, so his real id NEVER reaches us and (1) can never match — his
-// messages were classified `ignore` and permanently dropped (HIMMEL-1358).
+// messages were classified `ignore` and permanently dropped.
 //
 // Why the explicit per-group opt-in rather than "any allow-listed group" (codex
 // adversarial CR): the anonymous id is shared by EVERY admin of the chat, so in
@@ -127,7 +127,7 @@ export function isOperatorIdentity(access: Access | null | undefined, fromId: nu
   return Number(chatId) < 0 && isGroupAllowed(access, chatId, fromId);
 }
 
-// Resolve the vault a document sent to `chatId` is filed into (HIMMEL-321):
+// Resolve the vault a document sent to `chatId` is filed into:
 // the chat's own group vault wins, else the top-level defaultVault, else null
 // (no vault configured → the run surfaces the document but files nothing).
 // String/number chatId both work; covers DMs (positive id, not in groups → default).

@@ -1,5 +1,5 @@
 // scripts/telegram/lane-args.ts
-// HIMMEL-2154: spawn-glm's parseArgs and spawn-claudex's parseClaudexArgs
+// spawn-glm's parseArgs and spawn-claudex's parseClaudexArgs
 // duplicated the same cwd/name/branch/timeout/profile/plugins/brief flag
 // mechanics — a value-taking flag with a "requires a value" refusal on a
 // trailing/missing value, an unrecognized-flag refusal, and a first-positional
@@ -42,7 +42,7 @@ export function parseLaneArgs<S>(argv: string[], table: FlagTable<S>, state: S, 
       if (err) return { ok: false, error: err };
       continue;
     }
-    // HIMMEL-1225: a bare unrecognized flag is a mistyped/unsupported option,
+    // a bare unrecognized flag is a mistyped/unsupported option,
     // NOT a task — fail closed rather than dispatch a real worker to reason
     // about the literal flag string.
     if (a.startsWith("-")) return { ok: false, error: `unrecognized flag "${a}" (--help for usage)` };

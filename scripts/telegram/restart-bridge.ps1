@@ -15,8 +15,8 @@
 #   pwsh -File scripts/telegram/restart-bridge.ps1 -Repo C:/path/to/himmel
 #   pwsh -File scripts/telegram/restart-bridge.ps1 -StatusOnly   # report, don't touch
 #
-# HIMMEL-1510 additions — the sanctioned, agent-invocable remediation verb
-# (modeled on HIMMEL-1509's sweep-codex-orphans.ps1 `-FromLedger -Kill`):
+# Additions — the sanctioned, agent-invocable remediation verb
+# (modeled on sweep-codex-orphans.ps1 `-FromLedger -Kill`):
 #   pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger              # dry run: validate + report, touch nothing
 #   pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger -Kill        # validated kill + scheduled-task relaunch
 #   pwsh -File scripts/telegram/restart-bridge.ps1 -Watchdog                # report offset-age staleness, touch nothing
@@ -29,15 +29,15 @@
 [CmdletBinding()]
 param(
   [string]$Repo = $(if ($env:HIMMEL_REPO) { $env:HIMMEL_REPO } else { (Resolve-Path "$PSScriptRoot/../..").Path }),
-  # HIMMEL-1510: 12s was the pre-progress-verify default. It is now too short —
+  # 12s was the pre-progress-verify default. It is now too short —
   # poller.ts long-polls getUpdates with a 30s Telegram timeout, so on a QUIET
   # bridge (no inbound Telegram traffic during the window) neither the offset
   # file nor a poll heartbeat can appear before ~30s even when everything is
   # healthy. 35s comfortably clears that worst case.
   [int]$SettleSeconds = 35,
   [switch]$StatusOnly,
-  # HIMMEL-1510: the sanctioned, agent-invocable restart verb — modeled on
-  # HIMMEL-1509's sweep-codex-orphans.ps1 `-FromLedger -Kill`. Reads
+  # The sanctioned, agent-invocable restart verb — modeled on
+  # sweep-codex-orphans.ps1 `-FromLedger -Kill`. Reads
   # ~/.claude/handover/bridge/supervisor.pid — the bun supervisor's own pidfile
   # IS the ledger ({"supervisor":<pid>,"poller":<pid|null>}) — and VALIDATES
   # each pid's LIVE identity (alive, Name=bun.exe, exact expected entrypoint, and
@@ -50,7 +50,7 @@ param(
   # cmd /c launch used below when that task is absent).
   [switch]$FromLedger,
   [switch]$Kill,
-  # HIMMEL-1510: "poller alive but neither appending nor advancing the offset"
+  # "poller alive but neither appending nor advancing the offset"
   # was invisible before this — bridgeProcs>=1 and conflictLines==0 were BOTH
   # true throughout the entire 2026-08-03 ~16h wedge. -Watchdog reports (and,
   # combined with -Kill, remediates via the -FromLedger path above) when the
@@ -58,7 +58,7 @@ param(
   # still alive.
   [switch]$Watchdog,
   [int]$OffsetAgeThresholdSeconds = 1800,
-  # Rotated supervisor.log files to retain (HIMMEL-1510) — see the rotation
+  # Rotated supervisor.log files to retain — see the rotation
   # comment below for why this replaced the prior Set-Content clobber.
   [int]$LogKeep = 20,
   # Dot-source seam for the hermetic test: define the pure functions, then
@@ -67,12 +67,12 @@ param(
 )
 
 # Attribute a `bun server.ts` that survived OUTSIDE the reaped bridge set
-# (HIMMEL-1309). `server.ts` is the entry point of EVERY himmel codex plugin MCP
+#. `server.ts` is the entry point of EVERY himmel codex plugin MCP
 # server, not just telegram-himmel's, and this script used to call all of them a
 # "rogue telegram-himmel child … live 2nd getUpdates consumer" on the bare
 # `server.ts` cmdline alone. On 2026-07-27 that reported 45 `luna-correlate` MCP
 # servers as telegram rogues and sent an investigation down the wrong path (it is
-# the wrong diagnosis recorded in HIMMEL-1309's own description). The launcher's
+# the wrong diagnosis once recorded). The launcher's
 # `--cwd <plugin>` is the identity, so read it before claiming telegram.
 # Returns 'telegram' | 'codex-plugin' | 'unattributable'.
 function Get-ServerTsAttribution {
@@ -92,7 +92,7 @@ function Get-ServerTsAttribution {
   return 'unattributable'
 }
 
-# --- HIMMEL-1510: pure helpers for the -FromLedger verb, log rotation, and the
+# --- pure helpers for the -FromLedger verb, log rotation, and the
 # offset-age watchdog. Kept pure (fed injected data, never touching the live
 # process table / filesystem) so the hermetic test can exercise every branch
 # via -AsLibrary, same seam as Get-ServerTsAttribution above. ---
@@ -133,7 +133,7 @@ function Test-LedgerPidValid {
   return $true
 }
 
-# Rotated-log naming (HIMMEL-1510): `<base>.<yyyyMMdd-HHmmss-fffffff><ext>`
+# Rotated-log naming: `<base>.<yyyyMMdd-HHmmss-fffffff><ext>`
 # alongside the live log. Fractional-second precision prevents two independent
 # restart actions in the same second from targeting the same rotated log.
 function Get-RotatedLogPath {
@@ -145,7 +145,7 @@ function Get-RotatedLogPath {
   return Join-Path $dir "$base.$stamp$ext"
 }
 
-# Offset-age computation (HIMMEL-1510), pure: seconds between $Now and the
+# Offset-age computation, pure: seconds between $Now and the
 # offset file's last-write time. Never negative (a clock skew or a $Now passed
 # before $LastWriteTime clamps to 0, not a misleading negative "age").
 function Get-OffsetAgeSeconds {
@@ -159,7 +159,7 @@ function Get-OffsetAgeSeconds {
 # is STALE when its offset is old OR unavailable AND its poll heartbeat is also
 # absent/old; OK otherwise (a recent heartbeat still proves a quiet bridge is
 # polling, so a long no-traffic offset is NOT an alarm). DOWN is the zero-process
-# case (HIMMEL-1520): the prior boolean Test-BridgeStale returned $false for
+# case: the prior boolean Test-BridgeStale returned $false for
 # ProcessCount==0, so -Watchdog printed OK and exited 0 on a fully-crashed
 # bridge — a dead bridge read as healthy. DOWN must be decided BEFORE any
 # staleness reasoning, and is reported distinctly. Returns 'DOWN' | 'STALE' | 'OK'.
@@ -188,7 +188,7 @@ function Get-BridgeWatchdogState {
 # actually making progress. Progress is proven by EITHER: the offset file's
 # mtime moved forward at/after the UTC restart timestamp (a real getUpdates
 # cycle from the NEW poller ingested >=1 new message), OR a poll-heartbeat log
-# line (poller.ts, HIMMEL-1510) appeared at/after the restart — the second arm
+# line (poller.ts) appeared at/after the restart — the second arm
 # exists because a QUIET bridge (no new Telegram traffic during the settle
 # window) never touches the offset file at all; that must not read as "stuck".
 function Test-BridgeProgressed {
@@ -203,7 +203,7 @@ function Test-BridgeProgressed {
   return ($offsetMoved -or $heartbeatSeen)
 }
 
-# HIMMEL-1519: is this command line a CORE bridge process (the v2 supervisor /
+# Is this command line a CORE bridge process (the v2 supervisor /
 # poller)? Pure predicate extracted from Get-BridgeProcs so the matcher is
 # hermetically testable — the over-reap it fixes WAS a matcher bug. The genuine
 # bridge command lines are literally `bun supervisor.ts` / `bun poller.ts` with
@@ -221,11 +221,11 @@ function Test-BridgeCoreProc {
   return $CommandLine -match '(?:^|[\\/\s])(?:supervisor|poller)\.ts(?:\s|$)'
 }
 
-# HIMMEL-1519/1520: preserve the full bridge process union for conflict
+# Preserve the full bridge process union for conflict
 # remediation while exposing the core supervisor/poller set separately for
 # liveness decisions. A rogue plugin is a conflict, not evidence that v2 lives.
 function Get-BridgeProcSets {
-  # AllowEmptyCollection is load-bearing (HIMMEL-1519 CR r2): a fully-crashed
+  # AllowEmptyCollection is load-bearing: a fully-crashed
   # bridge yields ZERO bun.exe processes, and a Mandatory [object[]] REFUSES an
   # empty array at parameter binding -- so without this the script would die
   # with a binding error on exactly the dead-bridge case the DOWN state exists
@@ -265,7 +265,7 @@ function Test-BridgeRelaunchSafe {
   return (@($StopFailures).Count -eq 0 -and @($Survivors).Count -eq 0)
 }
 
-# HIMMEL-1519 round 2 finding A: is an absent/unreadable ledger allowed to fall
+# Is an absent/unreadable ledger allowed to fall
 # through instead of an automatic refusal? Only for the DOWN-remediation entry
 # (-Watchdog -Kill when the watchdog itself classified the bridge DOWN) — the
 # supervisor's circuit breaker calls clearPidfile() before it exits
@@ -281,7 +281,7 @@ function Test-FromLedgerAbsentLedgerRefuses {
   return ($LedgerAbsent -and (-not $IsDownRemediation))
 }
 
-# HIMMEL-1519 round 2 finding B: the ledger-less / zero-validated relaunch has
+# The ledger-less / zero-validated relaunch has
 # no ledger to cross-check pids against, so it must clear a STRICTER emptiness
 # bar than $BridgeProcs (Get-BridgeProcs) alone. Get-BridgeProcs deliberately
 # misses a `bun server.ts` orphaned by a dead telegram-himmel launcher (see the
@@ -309,16 +309,16 @@ function Get-PlausibleGetUpdatesOwners {
   return @(@($BridgeProcs) + @($extraOwners) | Sort-Object ProcessId -Unique)
 }
 
-# HIMMEL-1519: the -FromLedger -Kill "zero validated pid" fork. Before this
+# The -FromLedger -Kill "zero validated pid" fork. Before this
 # fix, zero validated ledger pids ALWAYS refused (exit 1) — but that shape is
-# also exactly the DOWN state (HIMMEL-1520: zero live bridge processes means
+# also exactly the DOWN state (zero live bridge processes means
 # neither ledger pid can ever validate), so the one state most needing this
 # remediation verb could never reach it. This reuses Test-BridgeRelaunchSafe's
 # own safety definition (no survivors) rather than a new ad hoc check: a live
 # unaccounted-for bridge process means the ledger is merely stale and refusing
 # is correct; zero live processes is DOWN — nothing to kill, no possible 2nd
-# getUpdates owner, safe to proceed. HIMMEL-1519 round 2 finding B widened the
-# survivor set from a bare Get-BridgeProcs probe to Get-PlausibleGetUpdatesOwners
+# getUpdates owner, safe to proceed. The survivor
+# set is Get-PlausibleGetUpdatesOwners rather than a bare Get-BridgeProcs probe
 # (adds the orphaned-server.ts scan) — both probes stay injectable purely so
 # this fork is hermetically testable without touching the live process table.
 function Test-FromLedgerZeroValidatedProceed {
@@ -332,17 +332,17 @@ function Test-FromLedgerZeroValidatedProceed {
   return Test-BridgeRelaunchSafe -StopFailures @() -Survivors $owners
 }
 
-# HIMMEL-1519 round 3: the validated-stop branch's post-stop survivor probe --
+# The validated-stop branch's post-stop survivor probe --
 # the killed-branch analog of Test-FromLedgerZeroValidatedProceed. After
 # Invoke-ValidatedBridgeStops has stopped the ledger-validated pid(s) and the
 # settle sleep has elapsed, refuse to relaunch if ANY plausible getUpdates
 # owner survives. Get-BridgeProcs deliberately misses a `bun server.ts`
 # orphaned by a dead telegram-himmel launcher (the accepted under-reap, see the
-# trade-off comment above Get-BridgeProcSnapshot); before round 3 THIS probe
-# was a bare Get-BridgeProcs, so such an orphan survived UNSEEN,
-# Test-BridgeRelaunchSafe returned safe, and the script relaunched into a 2nd
+# trade-off comment above Get-BridgeProcSnapshot); a bare Get-BridgeProcs probe here
+# would let such an orphan survive UNSEEN,
+# Test-BridgeRelaunchSafe would return safe, and the script would relaunch into a 2nd
 # getUpdates owner / 409 storm -- the precise outcome the guard exists to
-# prevent (same defect class as round 2 finding B, one branch over). The probe
+# prevent (the same defect class the zero-validated sibling closes). The probe
 # takes a FRESH bun.exe snapshot (process state changed when the validated pids
 # were stopped), and shares the orphan-aware safety definition with its
 # zero-validated sibling; both probes stay injectable purely so each fork is
@@ -358,7 +358,7 @@ function Test-ValidatedStopRelaunchSafe {
   return Test-BridgeRelaunchSafe -StopFailures @() -Survivors $owners
 }
 
-# HIMMEL-1519: the scheduled-task-preferred / cmd-fallback relaunch dispatch,
+# The scheduled-task-preferred / cmd-fallback relaunch dispatch,
 # extracted from inline code (mirrors Invoke-ValidatedBridgeStops's
 # injectable-action pattern) so it is hermetically testable — no real process
 # launches or scheduled task fires in a test. Returns 'scheduled-task' or
@@ -388,9 +388,9 @@ $ErrorActionPreference = 'Stop'
 $bridgeDir     = Join-Path $Repo 'scripts/telegram'
 $logDir        = Join-Path $env:USERPROFILE '.claude/channels/telegram'
 $log           = Join-Path $logDir 'supervisor.log'
-# HIMMEL-1510: ~/.claude/handover/bridge is the bun bridge's own root (bus.ts
+# ~/.claude/handover/bridge is the bun bridge's own root (bus.ts
 # defaultRoot, overridable via $env:BRIDGE_ROOT) — supervisor.pid (the ledger)
-# and offset both live there. HIMMEL-1520: an explicitly empty override cannot
+# and offset both live there. an explicitly empty override cannot
 # be represented safely with Join-Path, so reject it clearly instead of either
 # silently choosing a different root or crashing with an obscure binding error.
 if ($null -ne $env:BRIDGE_ROOT -and $env:BRIDGE_ROOT.Length -eq 0) {
@@ -408,13 +408,12 @@ if (-not (Test-Path (Join-Path $bridgeDir 'supervisor.ts'))) {
 }
 
 # Find ONLY the bun processes that are running a Telegram bridge. Two families:
-#   1. the v2 bun bridge — `bun supervisor.ts` / `bun poller.ts` (HIMMEL-1519:
-#      matched by ENTRYPOINT NAME via Test-BridgeCoreProc, NOT by a
+#   1. the v2 bun bridge — `bun supervisor.ts` / `bun poller.ts` (matched by ENTRYPOINT NAME via Test-BridgeCoreProc, NOT by a
 #      scripts/telegram path — the genuine command lines carry NO path, and the
 #      lane dispatchers spawn-claudex.ts / spawn-glm.ts DO live under
 #      scripts/telegram, so the old `scripts[\\/]+telegram` arm reaped every
 #      live lane dispatch as a "bridge process");
-#   2. the ROGUE `telegram-himmel` PLUGIN bridge (HIMMEL-225) — a stray
+#   2. the ROGUE `telegram-himmel` PLUGIN bridge — a stray
 #      `bun run …/telegram-himmel … start` launcher and its `bun server.ts`
 #      child, left by an abandoned `claude --channels` session. That pair is a
 #      2nd getUpdates consumer → 409 storm → the v2 bridge goes deaf, and the
@@ -440,7 +439,7 @@ function Get-BridgeProcs {
   return @($snapshot.All)
 }
 
-# HIMMEL-1510: parse the ledger; $null on anything unreadable/malformed —
+# Parse the ledger; $null on anything unreadable/malformed —
 # callers refuse rather than guess.
 function Read-BridgeLedger {
   param([Parameter(Mandatory)][string]$Path)
@@ -449,7 +448,7 @@ function Read-BridgeLedger {
   catch { return $null }
 }
 
-# HIMMEL-1510: last poll-heartbeat timestamp in $LogPath (poller.ts prints
+# Last poll-heartbeat timestamp in $LogPath (poller.ts prints
 # `[poller] heartbeat: …` on every successful getUpdates, ISO-timestamped by
 # installTimestampedLogging), or $null if none is present.
 function Get-LastHeartbeatTime {
@@ -463,7 +462,7 @@ function Get-LastHeartbeatTime {
   catch { return $null }
 }
 
-# HIMMEL-1510: rotate (never clobber) supervisor.log. restart-bridge.ps1 used to
+# Rotate (never clobber) supervisor.log. restart-bridge.ps1 used to
 # `Set-Content -Path $log -Value ''` on every restart — that destroyed the Jul
 # 31–Aug 2 outage evidence, then did it AGAIN on 2026-08-03 wiping the wedge's
 # own logs. Now the prior log is moved aside with a timestamp and a fresh one
@@ -485,11 +484,11 @@ function Invoke-LogRotation {
   }
   New-Item -ItemType File -Path $LogPath -Force | Out-Null
 
-  # HIMMEL-1520 #2: rotate the sibling .err in lockstep with the main log. The
+  # Rotate the sibling .err in lockstep with the main log. The
   # post-restart verify counts Conflict|409 lines in BOTH $log and $log.err, so
   # a stale 409 surviving in an unrotated $log.err would hold conflicts>0
-  # forever and make every subsequent restart exit 2 — fail-closed-forever, same
-  # family as HIMMEL-1501/1465. Rotated (not clobbered) only when it already
+  # forever and make every subsequent restart exit 2 — fail-closed-forever.
+  # Rotated (not clobbered) only when it already
   # exists; nothing in the known launch paths writes here (stderr is merged into
   # $log via 2>&1), so a stray empty file is never created.
   $errPath = "$LogPath.err"
@@ -520,12 +519,12 @@ if ($StatusOnly) {
   exit 0
 }
 
-# --- HIMMEL-1510: -Watchdog — detect "alive but not progressing" -----------
+# --- -Watchdog — detect "alive but not progressing" -----------
 # bridgeProcs>=1 and conflictLines==0 were BOTH true for the entire 2026-08-03
 # ~16h wedge; this is the structural catch. Report-only unless -Kill is also
 # passed, in which case a STALE or DOWN finding falls through into the exact
 # same validated -FromLedger -Kill remediation below (never a broad kill).
-# HIMMEL-1519 round 2: $downRemediation marks the DOWN-remediation entry
+# $downRemediation marks the DOWN-remediation entry
 # specifically (not STALE) — it is the only caller allowed to fall through an
 # absent ledger below (Finding A). Default $false so a direct `-FromLedger`
 # invocation (never went through this block) always keeps the ledger required.
@@ -554,7 +553,7 @@ if ($Watchdog) {
   $downRemediation = ($state -eq 'DOWN')
 }
 
-# --- HIMMEL-1510: -FromLedger [-Kill] — the sanctioned, agent-invocable verb -
+# --- -FromLedger [-Kill] — the sanctioned, agent-invocable verb -
 if ($FromLedger) {
   # Snapshot the timestamp BEFORE the content. If the supervisor rewrites the
   # ledger between these reads, the older timestamp can only cause a safe
@@ -563,7 +562,7 @@ if ($FromLedger) {
   $ledger = Read-BridgeLedger -Path $ledgerPath
   $ledgerAbsent = ($null -eq $ledger -or $null -eq $ledgerItem)
 
-  # HIMMEL-1519 round 2 finding A: an absent/unreadable ledger refuses UNLESS
+  # An absent/unreadable ledger refuses UNLESS
   # this is the DOWN-remediation entry — the supervisor's circuit breaker
   # deletes the ledger before it exits, so the most common fully-crashed state
   # has none, and this verb's entire reason for existing must still be able to
@@ -603,13 +602,13 @@ if ($FromLedger) {
     exit 0
   }
   if ($toKill.Count -eq 0) {
-    # HIMMEL-1519: no validated pid (or no ledger at all, finding A) is ALSO
+    # No validated pid (or no ledger at all) is ALSO
     # the DOWN state's exact shape — do not conflate it with a stale ledger
-    # sitting beside a live unaccounted process. HIMMEL-1519 round 2 finding B:
-    # this ledger-less fork has no ledger to cross-check pids against, so
+    # sitting beside a live unaccounted process. This ledger-less
+    # fork has no ledger to cross-check pids against, so
     # Test-FromLedgerZeroValidatedProceed scans for an orphaned server.ts via
-    # Get-PlausibleGetUpdatesOwners. Round 3 applied the SAME orphan-aware scan
-    # to the validated-stop survivor check below, so the two forks now share
+    # Get-PlausibleGetUpdatesOwners. The SAME orphan-aware scan
+    # also covers the validated-stop survivor check below, so the two forks share
     # the safety definition; the remaining difference is probe TIMING.
     # Non-blocking cleanup: nothing can have changed
     # process state between here and the post-relaunch decision below (no
@@ -630,13 +629,13 @@ if ($FromLedger) {
     }
     Start-Sleep -Seconds 2
 
-    # HIMMEL-1520 #3: refuse to relaunch while ANY plausible getUpdates owner
+    # Refuse to relaunch while ANY plausible getUpdates owner
     # survives the validated stop. That includes a ledger-validated pid whose
     # Stop-Process returned but which has not actually exited yet, a bridge
     # process absent from a stale ledger, AND an orphaned `bun server.ts`
     # whose launcher already died (which Get-BridgeProcs deliberately misses —
-    # the accepted under-reap). HIMMEL-1519 round 3: that orphan is the exact
-    # class round 2 finding B closed in the zero-validated fork one branch
+    # the accepted under-reap). That orphan is the exact
+    # class the zero-validated fork covers one branch
     # above, and it is just as able to win getUpdates ownership here, so this
     # post-stop survivor probe goes through Get-PlausibleGetUpdatesOwners over a
     # FRESH bun.exe snapshot (taken after the stops and this settle sleep) —
@@ -673,7 +672,7 @@ if ($FromLedger) {
   $now = @($nowSnapshot.All)
   $nowCore = @($nowSnapshot.Core)
   $conflicts = 0
-  # HIMMEL-1519 round 2 (non-blocking #1): check $log.err too, matching the
+  # Check $log.err too, matching the
   # default (non-ledger) verifier below — a stray 409 written to the sibling
   # .err file must not be invisible here just because this path only checked
   # the main log.
@@ -700,7 +699,7 @@ foreach ($p in $existing) {
 }
 if ($existing.Count) { Start-Sleep -Seconds 2 }
 
-# Rotate (never clobber — HIMMEL-1510), start exactly one supervisor — FULLY
+# Rotate (never clobber), start exactly one supervisor — FULLY
 # detached so it survives this script exiting. IMPORTANT: we do NOT use
 # Start-Process -RedirectStandardOutput here. That makes the PARENT (pwsh) own
 # the child's stdout pipe; when pwsh exits, the pipe breaks and bun dies
@@ -717,7 +716,7 @@ Write-Host "[restart-bridge] launched supervisor (cmd pid $($proc.Id)); settling
 Start-Sleep -Seconds $SettleSeconds
 
 # Verify: bridge procs present + no 409 in the fresh log + REAL PROGRESS proven
-# (HIMMEL-1510 — bridgeProcs>=1 and conflictLines==0 were BOTH true for the
+# (bridgeProcs>=1 and conflictLines==0 were BOTH true for the
 # entire 2026-08-03 ~16h wedge; process existence and an empty grep prove
 # nothing about whether the poll loop is actually making progress).
 $nowSnapshot = Get-BridgeProcSnapshot
@@ -732,7 +731,7 @@ $progressed = Test-BridgeProgressed -OffsetMTimeBefore $offsetMTimeBefore -Offse
 
 Write-Host ("[restart-bridge] after start: coreBridgeProcs={0} allBridgeProcs={1} conflictLines={2} progressed={3}" -f $nowCore.Count, $now.Count, $conflicts, $progressed)
 
-# Orphan warning (HIMMEL-228, re-scoped HIMMEL-1309): Get-BridgeProcs reaps the
+# Orphan warning: Get-BridgeProcs reaps the
 # rogue `bun server.ts` child only by PARENT-PID linkage to a live
 # telegram-himmel launcher (the safe under-reap). If the launcher already died,
 # its orphaned server.ts child is a live 2nd getUpdates consumer that we did NOT

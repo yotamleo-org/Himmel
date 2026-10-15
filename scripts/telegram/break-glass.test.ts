@@ -1,4 +1,4 @@
-// HIMMEL-5047: operator break-glass ops on the HIMMEL-4820 typed trusted path.
+// Operator break-glass ops on the typed trusted path.
 // Every mutating op is two messages: the op issues a one-time code, `/confirm
 // <code>` from the same operator in the same chat runs it. Shell half:
 // test-break-glass.sh.
@@ -274,7 +274,7 @@ test("a mutating op issues a code and runs nothing; the matching /confirm runs i
     expect(h.audits.map((a) => [a.op, a.result])).toEqual([[r.op, "confirm-issued"]]);
     expect(JSON.stringify(h.audits)).not.toContain(code);
     await confirm(root, h, code);
-    // allow-rule (HIMMEL-5127): the time slot carries the sha256 of the approved rule text.
+    // allow-rule: the time slot carries the sha256 of the approved rule text.
     const wantTime = r.op === "allow-rule" ? sha256("Bash(bash scripts/handover/merge-forward-check.sh:*)") : r.time;
     expect(h.runs).toEqual([[r.op, r.arg, wantTime]]);
     expect(h.audits.map((a) => [a.op, a.result])).toEqual([[r.op, "confirm-issued"], [r.op, "break-glass-ok"]]);

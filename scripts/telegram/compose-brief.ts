@@ -1,5 +1,5 @@
 // scripts/telegram/compose-brief.ts
-// HIMMEL-1734 P1 (design §4.3, C4): compose a lane dispatch brief as CODE,
+// Design §4.3, C4: compose a lane dispatch brief as CODE,
 // not retyped prose. This is the fix for "the RETASK block reaches only the
 // GLM/claudex lanes" (design §1) — a lane-agnostic CLI any dispatcher can
 // shell out to, producing a brief file a spawn-glm/spawn-claudex `--brief-file`
@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { mintRetaskNonce, composeRetaskBlock, composeWaiterBlock, composeWriteSetBlock } from "./brief-blocks";
 
-// HIMMEL-203: argv carries ONLY enums, ids and paths — never free text. A
+// argv carries ONLY enums, ids and paths — never free text. A
 // model-authored string containing `$`/backticks/`&&` bails Claude Code's
 // native permission matcher to an interactive prompt an unattended judge
 // cannot answer (the same reasoning as the leg manifest's --evidence-file /
@@ -30,13 +30,13 @@ export type ComposeBriefArgs = {
 
 const USAGE = "usage: compose-brief --lane <l> --model <m> --effort <e> --task-file <f> [--write-set <path>]... --out <path>";
 
-// HIMMEL-1225 style (spawn-glm.ts): --help/-h short-circuits before any side
+// Same style as spawn-glm.ts: --help/-h short-circuits before any side
 // effect, checked on the raw argv before parsing.
 export function isHelpFlag(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
 }
 
-// CR round 1 [codex-2]/[codex-3]: enforce the HIMMEL-203 argv contract
+// Enforce the argv contract
 // ("argv carries ONLY enums, ids and paths — never free text", line 16 above)
 // structurally instead of just documenting it. --lane/--model/--effort get
 // interpolated verbatim into the brief header, and --write-set values into
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   if (!parsed.ok) { console.error(`compose-brief: ${parsed.error}`); console.error(USAGE); process.exit(2); }
   const { lane, model, effort, taskFile, writeSet, out } = parsed.args;
 
-  // C4 / HIMMEL-203: refuse before any side effect (no --out write) if the
+  // C4: refuse before any side effect (no --out write) if the
   // task file is missing or unreadable — free text arrives via files, never
   // argv, and an unreadable file must not silently compose a brief with an
   // empty task body.

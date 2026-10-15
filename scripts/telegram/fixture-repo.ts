@@ -1,7 +1,7 @@
 // scripts/telegram/fixture-repo.ts -- real-git test fixtures for the
 // spawn-glm / spawn-claudex suites, and the ONLY teardown those suites use.
 //
-// HIMMEL-1888. A teardown that decides what to delete by SHAPE ("looks
+// A teardown that decides what to delete by SHAPE ("looks
 // abandoned", "zero commits", "branch is at main") cannot tell a spent fixture
 // from a worktree an operator is working in: every freshly created worktree
 // sits at main with zero commits until its first commit, and that state has no
@@ -10,7 +10,7 @@
 // path is removable only because THIS process created it, recorded here at
 // creation time. Anything else is refused, loudly, and left alone.
 //
-// HIMMEL-1786. Two Windows-contention flakes in the same fixtures, fixed at the
+// Two Windows-contention flakes in the same fixtures, fixed at the
 // source rather than by widening timeouts:
 //   * fixtures are HERMETIC -- the host's global core.hooksPath is switched off
 //     inside the fixture repo, so the tokensave post-checkout auto-init does
@@ -23,15 +23,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
-// HIMMEL-2734. Windows 8.3 short-name aliasing gave one directory two
+// Windows 8.3 short-name aliasing gave one directory two
 // spellings, and every assertion here string-compares paths. On the GitHub
 // windows-latest runner os.tmpdir() returns the SHORT form
 // (C:\Users\RUNNER~1\..., because "runneradmin" is over 8 characters) while
 // git resolves the same directory to its LONG form (C:\Users\runneradmin\...).
 // So a fixture minted from tmpdir() could never equal what git reported back:
 // two spawn-* cases asserting `primaryPath === resolve(repo)` failed with
-// identical-looking paths, and that was the ONLY red on the HIMMEL-1899 public
-// snapshot. Canonicalize ONCE, at the single place a fixture path is minted,
+// identical-looking paths.
+// Canonicalize ONCE, at the single place a fixture path is minted,
 // so registration, the under-tmp teardown guard and every assertion all speak
 // the spelling git uses. realpathSync.native() is the call that expands 8.3 on
 // Windows; on POSIX it also collapses macOS's /var -> /private/var symlink,
@@ -109,7 +109,7 @@ export function removeFixture(dir: string): boolean {
   // Second, independent lock on a recursive delete: every fixture is minted by
   // mkdtemp under the OS temp dir, so a target outside it is wrong however it
   // came to be registered. Cheap, and this is the path the incident was about.
-  // HIMMEL-2734: tmpdir()'s short spelling would reject every canonical Windows
+  // tmpdir()'s short spelling would reject every canonical Windows
   // fixture here, leaking them all; keep this guard on TMP_ROOT too.
   const underTmp = key(abs).startsWith(key(TMP_ROOT) + sep);
   if (!created.has(key(dir)) || !underTmp) {
@@ -121,7 +121,7 @@ export function removeFixture(dir: string): boolean {
     try {
       rmSync(dir, { recursive: true, force: true });
       created.delete(key(dir));
-      // Loud on purpose (HIMMEL-1888 ask 3): the incident was only noticed
+      // Loud on purpose: a past incident was only noticed
       // because a worker saw its files were gone -- a removal nobody printed is
       // a removal nobody can attribute.
       console.error(`fixture-repo: removed fixture ${abs}`);

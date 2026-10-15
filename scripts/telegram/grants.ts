@@ -1,5 +1,5 @@
 // scripts/telegram/grants.ts
-// GLM-worker escalation channel (HIMMEL-654) — shared PURE helpers consumed by
+// GLM-worker escalation channel — shared PURE helpers consumed by
 // both `spawn-glm --grant` (pre-seed) and the `adjudicate` CLI. Spec §D4/D7/D9.
 // No fs, no spawn, no network: every helper is pure so each refusal branch and
 // the shape classifier are unit-testable with no fixtures.
@@ -169,7 +169,7 @@ export function composeEscalationForRefusedGrant(o: { capability: string; arm: G
   return JSON.stringify(obj);
 }
 
-// ── HIMMEL-682: respawn grant carry-forward (Task L1) ────────────────────────
+// ── respawn grant carry-forward (Task L1) ────────────────────────
 // A capped session's still-valid grants must survive the cap→respawn cycle as
 // ABSOLUTE state: the ORIGINAL expires_at (the TTL clock does NOT restart) plus a
 // remaining budget (max_uses − consumptions). `carryGrants` reads the surviving
@@ -211,7 +211,7 @@ export function carryGrants(lines: string[], now: Date): CarriedGrant[] {
     // Funnel through the SAME validity gate as --grant (F2 no-leading-unbounded-
     // .*, F8 arm anchor, positive-int max_uses) so a carried grant is never
     // broader than one --grant would author — a forged --carry-from file cannot
-    // seed a pattern the authoring path rejects (CR round 2, codex-6). ttlMins
+    // seed a pattern the authoring path rejects. ttlMins
     // is a positive placeholder; the real absolute expiry was checked above.
     if (!validateGrantSpec({ arm, pattern, ttlMins: 1, maxUses: remaining }).ok) continue;
     out.push({

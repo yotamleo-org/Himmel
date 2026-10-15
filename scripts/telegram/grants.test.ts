@@ -61,7 +61,7 @@ test("classifyShape: lowercase -x method (pattern form) classifies write, not re
   expect(classifyShape("gh", "gh[[:space:]]+api[[:space:]]+repos/o/r[[:space:]]+-x[[:space:]]+get")).toBe("read");
 });
 
-// ── HIMMEL-682: respawn grant carry-forward (Task L1) ──────────────────────
+// ── respawn grant carry-forward (Task L1) ──────────────────────
 const GH_READ = "gh[[:space:]]+api[[:space:]]+repos/o/r([[:space:]]|$)";
 const GP_WRITE = "git([[:space:]]+-[a-z-]+)*[[:space:]]+push([[:space:]]|$)";
 const FAR = "2999-01-01T00:00:00Z";

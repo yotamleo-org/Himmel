@@ -1,14 +1,14 @@
 // scripts/telegram/spawn-claudex.ts
-// Poller-free claudex-lane worker spawn (HIMMEL-1003 — the codex-lane twin of
-// spawn-glm.ts, HIMMEL-654/800). Own-branch + shared-branch dispatch through
-// scripts/claude-codex (HIMMEL-979), which owns the ENTIRE trust boundary
+// Poller-free claudex-lane worker spawn (the codex-lane twin of
+// spawn-glm.ts). Own-branch + shared-branch dispatch through
+// scripts/claude-codex, which owns the ENTIRE trust boundary
 // (PHI/egress guard union, ANTHROPIC_*/CLAUDE_CODE_USE_*/proxy env sweeps,
-// config-dir seeding, proxy pinning, the HIMMEL-1001 effort default). This
+// config-dir seeding, proxy pinning, the effort default). This
 // file NEVER sets an ANTHROPIC_* var, NEVER builds a GLM-style env block, and
 // NEVER re-implements any guard claude-codex already owns — it only mints the
 // worktree/branch, composes the worker prompt, and dispatches THROUGH the
-// launcher, mirroring spawn-glm's own+shared-branch lifecycle. HIMMEL-2626
-// added ONE pre-creation call INTO that same launcher (`claude-codex
+// launcher, mirroring spawn-glm's own+shared-branch lifecycle. ONE
+// pre-creation call goes INTO that same launcher (`claude-codex
 // --guard-check <dir>`, a check-only entry onto its existing guard_workspace)
 // so a PHI-marked dispatch refuses before any worktree/branch/session
 // side-effect and before the auth preflight, instead of only at launch —
@@ -19,9 +19,9 @@
 // copy-pasted. Everything GLM-branded (worker
 // prompt, plan functions, args parser, the shared-dispatch lock lifecycle,
 // main) is twinned here with codex/claudex wording and a claudex/<slug>
-// branch — see the design brief (HIMMEL-1003) for the twin/import split.
+// branch — see the design brief for the twin/import split.
 //
-// Fresh-context (HIMMEL-1001 D5): every dispatch is a NEW Claude Code
+// Fresh-context: every dispatch is a NEW Claude Code
 // session — Claude Code gives each subagent/session its own context, so
 // there is no v2-subagent-history-copy and no fast-mode toggle to carry or
 // disable here; nothing to implement for that requirement.
@@ -32,20 +32,20 @@ import { spawn } from "bun";
 import { BASH_BIN, REPO_ROOT, killTree, detectContentFilter, NON_INTERACTIVE_EDITOR_ENV, type PermissionMode } from "./run";
 import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-glm";
-// HIMMEL-1553: symptom-brief loop breaker, two-stage — shared with spawn-glm
+// symptom-brief loop breaker, two-stage — shared with spawn-glm
 // so both worker lanes carry one decision table: invariant required at the
 // warn stage, cheap lane refused at the escalate stage. Thresholds live in
 // round-guard.ts (ROUND_WARN_THRESHOLD / ROUND_ESCALATE_THRESHOLD) — not
-// restated here, so this comment cannot drift off the code (glm-4, CR round 2).
+// restated here, so this comment cannot drift off the code.
 import { checkRoundGuard } from "./round-guard";
-// HIMMEL-1778: huge-diff lane guard — shared module (one predicate, both
+// huge-diff lane guard — shared module (one predicate, both
 // lanes; never copy-pasted — see huge-diff-guard.ts for the incident).
 import { checkHugeDiff, gitProbe, resolveDefaultBranch } from "./huge-diff-guard";
-// HIMMEL-1040 plugin profiles: same per-dispatch lean-profile injection as the
+// plugin profiles: same per-dispatch lean-profile injection as the
 // GLM lane. spawn-claudex dispatches through scripts/claude-codex, which already
 // screens + forwards --settings — so the resolved payload just rides its argv.
 import { parseAddPlugins } from "../lanes/plugin-profiles.mjs";
-// HIMMEL-2154: shared declarative flag-table parser — see spawn-glm.ts's
+// shared declarative flag-table parser — see spawn-glm.ts's
 // GLM_FLAG_TABLE for the twin.
 import { parseLaneArgs, type FlagTable } from "./lane-args";
 import { CODEX_BANK_PROBE_REMEDY, readCodexBankCache } from "../lanes/bank-status-core.mjs";
@@ -57,7 +57,7 @@ export function claudexSessionRoot(): string {
 
 // ── worker prompt (twin of spawn-glm's composeWorkerPrompt/composePointerPrompt) ──
 
-// HIMMEL-1003 v1 scope: deferred — the grants/escalation channel (spawn-glm's
+// v1 scope: deferred — the grants/escalation channel (spawn-glm's
 // --grant/--autonomous/--carry-from, classifyShape/authorityGate/grants.jsonl,
 // applyCarryFrom). A claudex worker gets no pre-seeded capability grants and
 // has no escalation-outbox line to fall back on when a step is hard-blocked
@@ -68,13 +68,13 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   const outbox = join(sessionDir, "outbox.jsonl");
   const context = join(sessionDir, "context.md");
   const rawModel = opts?.model ?? "gpt-5.6-sol";
-  // HIMMEL-1927 CR: opts.model is exported/programmatic-caller-facing (the
+  // opts.model is exported/programmatic-caller-facing (the
   // CLI --model path is already restricted to a fixed enum at parse time —
   // see parseClaudexArgs below), so a newline-bearing value must not land
   // verbatim in the dispatched worker's prompt. Degrade to a generic phrase
   // outside a plain slug shape; gpt-5.6-sol/terra/luna are unaffected.
   const resolvedModel = /^[A-Za-z0-9._-]+$/.test(rawModel) ? rawModel : "an unrecognized codex slug";
-  // HIMMEL-1342: shared mode's ONE sanctioned base-integration verb is
+  // shared mode's ONE sanctioned base-integration verb is
   // `git merge main`. An earlier revision of this PR permitted `git rebase
   // main` instead (per-commit conflict surfacing is gentler on a stale
   // branch: one merge once produced a ~400-file conflict set where a rebase
@@ -87,7 +87,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   // reset/rebase/amend/force stay banned wholesale. Single-writer is
   // unaffected: the merge runs under the lock during runBody, exactly like
   // any other worker git op.
-  // HIMMEL-1357: the merge target is the PR base (resolved by the caller),
+  // the merge target is the PR base (resolved by the caller),
   // not a literal `main` — a master- or release-based PR would otherwise be
   // told to merge the wrong branch. Same slug-shape screen as the model: a
   // base outside it (or none) degrades to `main`, so nothing newline-bearing
@@ -98,18 +98,18 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
     : `Work ONLY inside your current directory (a dedicated git worktree). Commit your work on the branch ${branch} which is already checked out.`;
   return [
     `You are an unattended claudex-lane worker session (himmel offload, codex weekly bank, HIMMEL-654/979/1003) — do the scoped chunk below and stop, do not expand scope.`,
-    // HIMMEL-1927: outbound HTTP captured the resolved Codex slug, and worker
+    // outbound HTTP captured the resolved Codex slug, and worker
     // transcripts echoed it on every assistant message; Claude Code's Opus 4.8
     // assertion is only its fallback for an unrecognized model slug.
     `Your backend model is ${resolvedModel} (OpenAI, via the local CLIProxyAPI codex proxy). Claude Code does not recognize that slug, so it asserts 'You are powered by the model named Opus 4.8' in your system prompt — that is a slug-recognition artifact, not your identity. You are NOT an Anthropic model and NOT an orchestrator tier; do not reason about your own capabilities or delegation tier from that line.`,
     branchLine,
     `HARD RULES: never push, never open a PR — a validating session reviews your branch and owns the git/PR surface. Jira updates (status, comments, followup tickets) ARE allowed via node scripts/jira/dist/index.js (audited + recoverable). If a step is hard-blocked, skip it, continue the rest of the task, and note the skipped step in your final ${context} summary — v1 has no escalation channel to append to.`,
-    // HIMMEL-1755: shared with the GLM lane so both briefs carry identical text.
+    // shared with the GLM lane so both briefs carry identical text.
     STASH_BAN_LINE,
-    // HIMMEL-1218: RETASK channel — see spawn-glm.ts's composeWorkerPrompt for
+    // RETASK channel — see spawn-glm.ts's composeWorkerPrompt for
     // the same block; imported verbatim so both lanes carry identical rules text.
     composeRetaskBlock(mintRetaskNonce()),
-    // HIMMEL-1378: same HIMMEL-203 bash-shape warning as the GLM twin — see
+    // same bash-shape warning as the GLM twin — see
     // spawn-glm.ts's composeBashShapeWarning for the root-cause evidence.
     composeBashShapeWarning(outbox),
     composeOutboxWriteHint(outbox),
@@ -119,7 +119,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
   ].join("\n");
 }
 
-// Pointer-prompt dispatch (HIMMEL-740 pattern, reused for this lane too): the
+// Pointer-prompt dispatch (same pattern as the GLM lane): the
 // SUBMITTED prompt is a SHORT pointer to the brief file written under
 // claudex-sessions/ (outside the repo worktree), not the whole brief inlined.
 export function composeClaudexPointerPrompt(briefPath: string): string {
@@ -192,7 +192,7 @@ function isHimmelCheckout(d: string): boolean {
   return existsSync(join(d, "scripts", "claude-codex"));
 }
 
-// ── HIMMEL-1503: primary-checkout cwd guard ─────────────────────────────
+// ── primary-checkout cwd guard ─────────────────────────────
 //
 // Twinned (not imported — deliberately duplicated per the ticket's brief:
 // a small guard duplicated across the two lane wrappers, not a new shared
@@ -265,8 +265,8 @@ export function gitIsDirty(worktreePath: string): boolean {
   return r.stdout.toString().trim().length > 0;
 }
 
-// Under-the-lock revalidation of a REUSED shared worktree (HIMMEL-1037,
-// codex-adv CR). The plan's pre-lock checks can go stale between then and lock
+// Under-the-lock revalidation of a REUSED shared worktree.
+// The plan's pre-lock checks can go stale between then and lock
 // acquisition — the worktree could be switched to another branch, recreated, or
 // dirtied by a concurrent worker. Re-resolve identity + cleanliness so the
 // worker never commits onto the WRONG branch or another worker's mixed state:
@@ -301,7 +301,7 @@ export function revalidateSharedWorktree(deps: {
 // ── args parsing ──────────────────────────────────────────────────────────
 
 export type EffortLevel = "low" | "medium" | "high" | "xhigh";
-// HIMMEL-1464: per-dispatch codex tier selector. Kept to the three tiers the
+// per-dispatch codex tier selector. Kept to the three tiers the
 // local CLIProxyAPI proxy exposes for the codex subscription (verified live).
 // scripts/claude-codex's own CODEX_MODEL knob stays UNVALIDATED by design — it
 // documents "all overridable per task" against whatever the proxy's /v1/models
@@ -310,11 +310,11 @@ export type EffortLevel = "low" | "medium" | "high" | "xhigh";
 // allowlist is scoped to the NEW spawn-claudex flag only: a fresh interface can
 // be strict without breaking the launcher's existing direct-invocation contract.
 // Broader launcher-side validation (against the proxy's LIVE /v1/models) stays
-// open on HIMMEL-1464.
+// open.
 export type CodexModelTier = "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna";
 export type ClaudexParsedArgs = { task?: string; briefFile?: string; cwd: string; name?: string; branch?: string; timeoutMins?: number; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; force: boolean; skipAuthPreflight: boolean; profile: string; addPlugins: string[]; roundsOverride?: string };
 
-// HIMMEL-2154: the declarative flag table for parseClaudexArgs — mirrors
+// the declarative flag table for parseClaudexArgs — mirrors
 // spawn-glm.ts's GLM_FLAG_TABLE (shared loop mechanics live in
 // lane-args.ts's parseLaneArgs). Each entry is the exact per-flag validation
 // the old inline if/else chain had.
@@ -340,7 +340,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
       return undefined;
     },
   },
-  // --effort (HIMMEL-1001 D5): refuse `max` (undocumented codex juice) and
+  // --effort: refuse `max` (undocumented codex juice) and
   // `ultra` (unreachable from Claude Code — falls back to xhigh) with a message
   // pointing at the operating-rules doc, rather than silently forwarding them.
   "--effort": {
@@ -352,7 +352,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
       return undefined;
     },
   },
-  // HIMMEL-1464: per-dispatch codex tier pin (e.g. to bench gpt-5.6-luna).
+  // per-dispatch codex tier pin (e.g. to bench gpt-5.6-luna).
   // Sets CODEX_MODEL in the worker's child env — validated ONLY here, not by
   // scripts/claude-codex (its CODEX_MODEL knob stays unvalidated by design;
   // see the CodexModelTier comment above).
@@ -369,22 +369,22 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
   // var: an ambient/inherited setting must not be able to silently disable the
   // fail-closed auth gate and restore the original startup failure (codex-adv CR).
   "--skip-auth-preflight": { kind: "bool", apply: (s) => { s.skipAuthPreflight = true; } },
-  // HIMMEL-1040: --profile (default lane-impl) + --add-plugins overlay, resolved
+  // --profile (default lane-impl) + --add-plugins overlay, resolved
   // in main() so a bad name/id is a clean pre-side-effect refusal (mirrors spawn-glm).
   "--profile": { kind: "value", apply: (s, v) => { s.profile = v; return undefined; } },
   "--add-plugins": { kind: "value", apply: (s, v) => { s.addPlugins.push(...parseAddPlugins(v)); return undefined; } },
-  // HIMMEL-1553: recorded operator override for the round guard's cheap-lane
+  // recorded operator override for the round guard's cheap-lane
   // refusal — same contract as spawn-glm (substance enforced by the guard).
   "--rounds-override": {
     kind: "value",
     missingValueError: "--rounds-override requires a value (why another cheap-lane round is justified)",
     apply: (s, v) => { s.roundsOverride = v; return undefined; },
   },
-  // HIMMEL-1780: --brief-file reads the TASK from a file, so a multi-line
+  // --brief-file reads the TASK from a file, so a multi-line
   // dispatch is ONE literal command (`bun scripts/telegram/spawn-claudex.ts
   // --brief-file <path> ...`) instead of the cd/$(cat)/var compound that
   // defeats both the allow-rule prefix and the native permission matcher
-  // (HIMMEL-203). The file is READ in main(), not here — parseClaudexArgs
+  // The file is READ in main(), not here — parseClaudexArgs
   // stays pure (fs-free); the read itself is spawn-glm's exported
   // readBriefFile (one fail-closed implementation across both lanes).
   "--brief-file": { kind: "value", apply: (s, v) => { s.briefFile = v; return undefined; } },
@@ -401,21 +401,21 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
   const result = parseLaneArgs(argv, CLAUDEX_FLAG_TABLE, args, (s, token) => { if (s.task === undefined) s.task = token; });
   if (!result.ok) return result;
   if (args.branch !== undefined && args.name !== undefined) return { ok: false, error: "--branch and --name are mutually exclusive (shared mode derives the slug from the branch)" };
-  // HIMMEL-1780: --brief-file and a positional prompt are mutually exclusive —
+  // --brief-file and a positional prompt are mutually exclusive —
   // the file's contents BECOME the task, so a co-supplied positional would be
   // silently dropped (or ambiguous about which brief wins). Refuse instead.
   if (args.briefFile !== undefined && args.task !== undefined) return { ok: false, error: "--brief-file and a positional prompt are mutually exclusive (pass the brief as a file or inline, not both)" };
   return { ok: true, args };
 }
 
-// ── codex weekly bank preflight (HIMMEL-1003 D4) ────────────────────────────
+// ── codex weekly bank preflight ────────────────────────────
 //
-// HIMMEL-1003 v1 scope: deferred — quota-gauge ledger rows (parity with GLM's
+// v1 scope: deferred — quota-gauge ledger rows (parity with GLM's
 // appendQuotaGauge/buildGlmRow observability). This preflight is the ONLY
 // quota signal recorded for a claudex dispatch; a followup ticket adds a
 // claudex row to the shared quota-gauge ledger.
 
-// SOURCE (HIMMEL-1678): the TTL'd cache written by
+// SOURCE: the TTL'd cache written by
 // scripts/lanes/codex-bank-probe.ts, whose source of truth is
 // `codex -s read-only -a untrusted app-server` -> JSON-RPC
 // account/rateLimits/read. That is the ONLY surface that reports codex quota.
@@ -461,7 +461,7 @@ export function fetchCodexWeeklyUsedPercent(
   // already dropped any limit whose window reset and kept the GOVERNING
   // (highest-used) limit per window, so this is the number to gate on. Other
   // windows keep their own reset instants and are none of this lane's business
-  // (HIMMEL-1725: no single global reset is ever synthesized).
+  // (no single global reset is ever synthesized).
   const weekly = result.readings.find((r) => r.window === "weekly");
   if (weekly === undefined) return { usedPct: null, reason: `codex bank cache holds no live WEEKLY window — ${CODEX_BANK_PROBE_REMEDY}` };
   return { usedPct: weekly.usedPct, reason: null };
@@ -496,9 +496,9 @@ export function evaluateCodexBankPreflight(usedPct: number | null, opts: { warnP
   return { action: "ok", usedPct };
 }
 
-// ── cap detection (HIMMEL-1003 v1 scope: deferred — see below) ─────────────
+// ── cap detection (deferred — see below) ─────────────
 
-// HIMMEL-1003 v1 scope: deferred — GLM-style cap-WINDOW classification (5h vs
+// v1 scope: deferred — GLM-style cap-WINDOW classification (5h vs
 // long) and the auto-arm-on-cap resume scheduling that spawn-glm's
 // executeRun/capGuard performs (computeResumeAt/buildArmArgv/
 // composeRespawnHandover). detectClaudexCap only lets a capped run surface as
@@ -511,7 +511,7 @@ export function detectClaudexCap(output: string): boolean {
   return CLAUDEX_CAP_SENTINELS.some((r) => r.test(output));
 }
 
-// ── transient codex OAuth refresh-gap PRE-LAUNCH preflight (HIMMEL-1037) ────
+// ── transient codex OAuth refresh-gap PRE-LAUNCH preflight ────
 //
 // The CLIProxyAPI codex gateway (127.0.0.1:8317) returns 503 auth_unavailable
 // during the ~seconds window while the codex OAuth *access* token is
@@ -589,7 +589,7 @@ export const MAX_TOTAL_BACKOFF_MS = 180_000;
 export const CLAUDEX_PREFLIGHT_GAP_EXIT = 20;
 // Hard per-probe wall-clock cap so ONE synchronous probe can never blow the
 // preflight's absolute deadline (codex/coderabbit CR: spawnSync is not
-// cancellable, so bound it at the source). HIMMEL-1380 (codex-adv CR): the old
+// cancellable, so bound it at the source). The old
 // 12s cap left too little headroom once curl's own budget rose to -m 10 — the
 // launcher's bash/guard overhead ALONE (sourcing config, egress checks, etc.,
 // with no real network latency) was independently measured at several
@@ -602,7 +602,7 @@ export type AuthProbeResult = "ok" | "unavailable" | "fatal";
 
 // Run the launcher's --preflight-only auth probe (no worker spawned). The
 // launcher exercises the REAL upstream provider (a 16-token /v1/messages call,
-// HIMMEL-1380 — a reasoning model emits reasoning tokens before content, so a
+// — a reasoning model emits reasoning tokens before content, so a
 // 1-token budget was a poor liveness test), so this distinguishes:
 //   exit 0                        ⇒ "ok"        (auth healthy, or a non-gap
 //                                                 status the real run surfaces)
@@ -621,7 +621,7 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
   if (r.exitCode === null || r.signalCode != null) return "unavailable"; // killed / timed out
   if (r.exitCode === 0) return "ok";
   if (r.exitCode === CLAUDEX_PREFLIGHT_GAP_EXIT) return "unavailable";
-  // HIMMEL-2626: exit 3 is the launcher's OWN PHI/egress guard_workspace
+  // exit 3 is the launcher's OWN PHI/egress guard_workspace
   // refusal (unconditional, runs before the --preflight-only branch this probe
   // exercises) — a real, permanent verdict, but with no special-casing it fell
   // into the generic evidence-forwarding below and surfaced to the operator as
@@ -630,15 +630,15 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
   // guard refusal. "fatal" is still the CORRECT verdict here (permanent, must
   // abort, must never retry) — only the attribution was wrong, so fix that and
   // nothing else. This branch is DEAD BY CONSTRUCTION on the normal path since
-  // the HIMMEL-2626 pre-check in main() now screens the SAME absCwd with the
+  // the PHI/egress pre-check in main() now screens the SAME absCwd with the
   // SAME guard before this probe ever runs against it — kept as defense for a
   // marker created in the narrow window between the two calls, and for any
   // future caller that reaches this probe without going through that
   // pre-check first.
-  // Forward the launcher's OWN stderr FIRST (codex-1, CR round 1): it names
+  // Forward the launcher's OWN stderr FIRST: it names
   // WHICH row refused — the .salus/.salus-profile marker, a phi-roots or
   // egress-denylist entry, or an inaccessible directory — and returning before
-  // the HIMMEL-1380 block below would drop exactly that detail, leaving only
+  // the block below would drop exactly that detail, leaving only
   // the generic attribution line. Pre-2626 this exit fell through to that
   // block and the operator saw the specific reason; keep it that way, and add
   // the attribution rather than substituting it.
@@ -648,7 +648,7 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
     console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem (HIMMEL-2626).`);
     return "fatal";
   }
-  // HIMMEL-1380: the launcher already logged "HTTP <code> — body: …" to its own
+  // the launcher already logged "HTTP <code> — body: …" to its own
   // stderr right before this exit — forward it verbatim so the operator-facing
   // fatal message (below, in the caller) is backed by what was actually
   // measured instead of a fixed list of suspected causes.
@@ -716,7 +716,7 @@ export async function runAuthPreflightWithBackoff(
 // "resolved like run.ts's REPO_ROOT" instruction). A parent invoking this
 // script from a worktree copy of itself resolves REPO_ROOT to that worktree;
 // claude-codex then self-heals its .env lookup via the worktree→primary fallback
-// (HIMMEL-1482, scripts/lib/load-dotenv.sh _load_dotenv_primary_for), so no
+// (scripts/lib/load-dotenv.sh _load_dotenv_primary_for), so no
 // explicit CLAUDE_CODEX_DOTENV_ROOT is required for the key to resolve.
 export function claudexLauncherPath(repoRoot: string): string {
   return join(repoRoot, "scripts", "claude-codex");
@@ -727,9 +727,9 @@ export function claudexLauncherPath(repoRoot: string): string {
 // (D1). NO --model flag is ever added to `cmd`: claude-codex pins the model via
 // ANTHROPIC_MODEL/ANTHROPIC_DEFAULT_*_MODEL itself, derived from its OWN
 // CODEX_MODEL env var (a `claude` CLI flag here would fight that). spawn-claudex's
-// --model (HIMMEL-1464) sets CODEX_MODEL in the child env instead — see
+// --model sets CODEX_MODEL in the child env instead — see
 // claudexChildEnv — never a cmd-line flag.
-// settings (HIMMEL-1040): the resolved plugin-profile `--settings` payload —
+// settings: the resolved plugin-profile `--settings` payload —
 // claude-codex screens it (env-injection) then forwards it to claude. Omitted
 // (operator profile) => no flag. Placed before the prompt, after --permission-mode.
 export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMode?: PermissionMode, settings?: string): { cmd: string[] } {
@@ -745,20 +745,20 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
 // boundary and sweeps ambient ANTHROPIC_*/CLAUDE_CODE_USE_* itself. The ONLY
 // overrides this lane makes are the optional per-dispatch effort pin (D5,
 // unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-medium}` default
-// applies), the optional per-dispatch model pin (HIMMEL-1464, unset =>
+// applies), the optional per-dispatch model pin (unset =>
 // the launcher's own `${CODEX_MODEL:-gpt-5.6-sol}` default applies), the
-// unconditional HIMMEL_WORKER worker-ness marker (HIMMEL-2085, see below) —
+// unconditional HIMMEL_WORKER worker-ness marker (see below) —
 // plus stripping TELEGRAM_OWN_POLLER so a spawned worker never adopts poller
 // ownership (mirrors run.ts's sessionEnv/glmChildEnv). `base` is injected so
 // this is testable without touching the real process.env.
 export function claudexChildEnv(base: Record<string, string | undefined>, effort?: EffortLevel, model?: CodexModelTier): Record<string, string | undefined> {
-  // HIMMEL-1753: same no-op-editor pin as the glm/default lanes (see
+  // same no-op-editor pin as the glm/default lanes (see
   // NON_INTERACTIVE_EDITOR_ENV in run.ts) — a claudex worker also spawns with
   // stdin closed and could otherwise block behind an editor window.
   const env: Record<string, string | undefined> = { ...base, ...NON_INTERACTIVE_EDITOR_ENV };
   if (effort) env.CLAUDE_CODE_EFFORT_LEVEL = effort;
   if (model) env.CODEX_MODEL = model;
-  // HIMMEL-2085: this lane had NO worker-ness marker at all — buildGlmEnv's
+  // this lane had NO worker-ness marker at all — buildGlmEnv's
   // HIMMEL_GLM_WORKER only ever reached the GLM lane, so a native (Sonnet/
   // Opus-via-codex-proxy) dispatched worker carried no positive signal a hook
   // could gate on, leaving block-glm-external-writes.sh's pin-dir write-fence
@@ -768,7 +768,7 @@ export function claudexChildEnv(base: Record<string, string | undefined>, effort
   // the GLM twin.
   env.HIMMEL_WORKER = "1";
   delete env.TELEGRAM_OWN_POLLER;
-  // HIMMEL-3396: the operator's hook-integrity bypass is not a worker's lever —
+  // the operator's hook-integrity bypass is not a worker's lever —
   // inherited, it would hand the worker its own pin-dir and anchor fences.
   delete env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   return env;
@@ -785,7 +785,7 @@ export type ClaudexRunResult = {
 type ClaudexRunOpts = {
   permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; repoRoot: string; settings?: string;
   runLogPath?: string; timeoutForensicsPath?: string;
-  // HIMMEL-3147: byte count of every stdout/stderr chunk as it arrives — the
+  // byte count of every stdout/stderr chunk as it arrives — the
   // startup watchdog's "real output beyond the banner" disarm signal.
   onOutput?: (bytes: number) => void;
 };
@@ -806,7 +806,7 @@ type CapturedByteCounts = {
 };
 
 function capturedByteCounts(res: ClaudexRunResult): CapturedByteCounts {
-  // Injected/alternate runners written before HIMMEL-1943 only return `tail`.
+  // Injected/alternate runners written before the byte count existed only return `tail`.
   // The tail may be truncated and combines both channels, so its encoded size
   // describes only the retained artifact, not either channel's byte total.
   if (res.stdoutBytes === undefined && res.stderrBytes === undefined) {
@@ -978,7 +978,7 @@ export async function runClaudexSession(prompt: string, cwd: string, opts: Claud
   const { cmd } = buildClaudexRunArgs(launcherPath, prompt, opts.permMode, opts.settings);
   const env = claudexChildEnv(process.env, opts.effort, opts.model);
   const startedAt = Date.now();
-  // SPAWN_OWN_GROUP (HIMMEL-1956): killTree's POSIX half signals the process
+  // SPAWN_OWN_GROUP: killTree's POSIX half signals the process
   // GROUP, which only exists if the child leads one. Without it a timed-out
   // claudex worker's descendants survive and keep these pipes open.
   const p = spawn(cmd, { ...SPAWN_OWN_GROUP, cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe", env });
@@ -1061,7 +1061,7 @@ export function writeClaudexLiveMeta(
   else writeLiveWorkerMeta(metaPath, runningMeta, extra, "spawn-claudex");
 }
 
-// HIMMEL-3147: claude-codex exports CLAUDE_CONFIG_DIR=~/.claude-codex, so the
+// claude-codex exports CLAUDE_CONFIG_DIR=~/.claude-codex, so the
 // worker's session transcript lands under ~/.claude-codex/projects — NOT the
 // ~/.claude/projects root the glm lane (and transcriptDirFor) uses. Watching
 // the wrong root would read every healthy worker as never-started.
@@ -1069,15 +1069,15 @@ export function claudexTranscriptRoot(): string {
   return join(homedir(), ".claude-codex", "projects");
 }
 
-// HIMMEL-3173: the transcript-dir main() PRINTS, resolved through the same
+// the transcript-dir main() PRINTS, resolved through the same
 // helper (transcriptDirFor + claudexTranscriptRoot) the startup watchdog polls.
 export function claudexTranscriptDirFor(worktree: string): string {
   return transcriptDirFor(worktree, claudexTranscriptRoot());
 }
 
 // The run-and-record step (mirrors spawn-glm's executeRun's meta-transition
-// contract and its HIMMEL-1575 startup-hang watchdog — the latter via the
-// shared armStartupWatchdog, HIMMEL-3147 — minus the prompt-too-long
+// contract and its startup-hang watchdog — the latter via the
+// shared armStartupWatchdog — minus the prompt-too-long
 // classification, the done_escalated reclassification and cap-guard resume
 // scheduling, all GLM-specific / deferred here). meta.json ALWAYS leaves
 // "running": the success path writes finalMeta (done/failed/capped/blocked/
@@ -1089,9 +1089,9 @@ export async function executeClaudexRun(deps: {
   run: (prompt: string, cwd: string, opts: ClaudexRunOpts, onSpawn?: (pid: number) => void) => Promise<ClaudexRunResult>;
   prompt: string; worktree: string; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; repoRoot: string;
   sessionDir: string; metaPath: string; runningMeta: Record<string, unknown>;
-  // HIMMEL-1040: the resolved --settings plugin-profile payload (undefined = operator / no injection).
+  // the resolved --settings plugin-profile payload (undefined = operator / no injection).
   settings?: string;
-  // HIMMEL-3147 test seams for the startup-hang watchdog (all optional; prod
+  // test seams for the startup-hang watchdog (all optional; prod
   // callers pass nothing and get the env-tunable defaults below).
   startupWatch?: { rootDir?: string; windowMs?: number; pollMs?: number; kill?: (pid: number) => void };
 }): Promise<{ code: number }> {
@@ -1111,9 +1111,9 @@ export async function executeClaudexRun(deps: {
   try {
     const runLogPath = join(deps.sessionDir, "run.log");
     const timeoutForensicsPath = join(deps.sessionDir, "timeout-forensics.txt");
-    // HIMMEL-3147: armed at spawn, disarmed on the first transcript growth or
+    // armed at spawn, disarmed on the first transcript growth or
     // on output beyond the banner (onOutput below) — a quiet-but-healthy
-    // worker is never killed (HIMMEL-1575's rule); only one that never starts.
+    // worker is never killed; only one that never starts.
     if (watchWindowMs > 0) {
       disarmWatch = armStartupWatchdog({
         worktree: deps.worktree, windowMs: watchWindowMs,
@@ -1141,9 +1141,9 @@ export async function executeClaudexRun(deps: {
       catch (e) { console.error(`spawn-claudex: run.log append failed (non-fatal): ${String((e as any)?.message ?? e)}`); }
     }
     const fm = finalClaudexMeta(res);
-    // HIMMEL-3147: a watchdog-killed run reports failed with a reason naming
+    // a watchdog-killed run reports failed with a reason naming
     // the startup timeout, so a console reads it as a hang, not a crash (same
-    // failure_class the glm lane records for HIMMEL-1575).
+    // failure_class the glm lane records).
     const hang = startupHang && (fm.status === "failed" || fm.status === "timeout")
       ? {
         failure_class: "startup-hang",
@@ -1167,7 +1167,7 @@ export async function executeClaudexRun(deps: {
 // messages are "spawn-glm:"-prefixed — reusing it as-is would record a
 // claudex dispatch's lock under the wrong lane name. The lifecycle itself
 // (acquire -> runBody -> release in a finally) is identical. The pushurl
-// quarantine both twins used to carry is gone (HIMMEL-1961 — see the removal
+// quarantine both twins used to carry is gone (see the removal
 // note in spawn-glm.ts); this dispatch leaves the operator's git config
 // untouched in every scope, and its report says push protection is
 // contract-only.
@@ -1189,14 +1189,14 @@ export async function runClaudexSharedDispatch(p: {
   try {
     if (p.revalidateClean) { const rv = p.revalidateClean(); if (!rv.ok) return rv; } // stale-clean guard, lock released in finally
     if (p.needsWorktreeAdd) p.gitAdd(); // NO -b: an existing branch, never minted here
-    // Unconditional (codex-adv, HIMMEL-1096 CR round): a REUSED managed
+    // Unconditional: a REUSED managed
     // worktree (needsWorktreeAdd=false) from a pre-change or failed dispatch
     // may never have been trust-seeded — seeding is idempotent, so cover both.
     ensureWorkspaceTrust(p.worktree);
     const code = await p.runBody();
     return { ok: true, code };
   } finally {
-    // Releasing the lock is the only cleanup left (HIMMEL-1961): a leaked lock
+    // Releasing the lock is the only cleanup left: a leaked lock
     // blocks the next writer on this branch, so a THROWING Bun.spawnSync must
     // degrade to a warning rather than out-rank an error already propagating.
     try {
@@ -1210,21 +1210,21 @@ export async function runClaudexSharedDispatch(p: {
 
 // ── main ─────────────────────────────────────────────────────────────────
 //
-// Exit codes: 0 = --help/-h (usage printed to stdout, HIMMEL-1225) · 1 =
+// Exit codes: 0 = --help/-h (usage printed to stdout) · 1 =
 // uncaught error (main().catch) · 2 = a refusal (usage, bank preflight,
 // himmel-checkout / shared-branch plan, window preflight, --effort
-// max/ultra) · 3 = PHI/egress pre-check refusal (HIMMEL-2626; the verdict
+// max/ultra) · 3 = PHI/egress pre-check refusal (the verdict
 // still comes from claude-codex --guard-check, D1 intact) · 4 =
 // shared-branch-lock acquire failure (parity with spawn-glm).
 async function main(): Promise<void> {
   const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
   const rawArgv = process.argv.slice(2);
-  // HIMMEL-1225: help short-circuit — before parseClaudexArgs, before any side effect.
+  // help short-circuit — before parseClaudexArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }
   const parsed = parseClaudexArgs(rawArgv);
   if (!parsed.ok) { console.error(`spawn-claudex: ${parsed.error}`); console.error(usage); process.exit(2); }
   const { task: taskArg, briefFile, cwd, name, branch: branchArg, timeoutMins, permMode: permModeArg, effort, model, force, skipAuthPreflight, profile, addPlugins, roundsOverride } = parsed.args;
-  // HIMMEL-1780: --brief-file's contents BECOME the task (readBriefFile is
+  // --brief-file's contents BECOME the task (readBriefFile is
   // spawn-glm's exported fail-closed helper — one implementation across both
   // lanes). Read here — before any side effect and before every task-consuming
   // consumer below (round guard, bank preflight, plan, worker-prompt compose)
@@ -1238,7 +1238,7 @@ async function main(): Promise<void> {
     task = brief.task;
   }
   if (!task) { console.error(usage); process.exit(2); }
-  // HIMMEL-1378: same structural forbid + worker default as spawn-glm.ts — see
+  // same structural forbid + worker default as spawn-glm.ts — see
   // its composeWorkerSettings/refuseBypassPermissions comment for the full
   // design rationale (twin lane, identical hang class + fix).
   const bypassRefusal = refuseBypassPermissions(permModeArg);
@@ -1247,18 +1247,18 @@ async function main(): Promise<void> {
   if (unknownModeRefusal) { console.error(`spawn-claudex: ${unknownModeRefusal}`); console.error(usage); process.exit(2); }
   const permMode: PermissionMode = permModeArg ?? "dontAsk";
   const absCwd = resolve(cwd);
-  // HIMMEL-1503: refuse BEFORE any worktree/branch side-effect if this
+  // refuse BEFORE any worktree/branch side-effect if this
   // dispatch is not running from the PRIMARY checkout — see
   // detectNonPrimaryCwd above for the incident + detection rationale.
   const nonPrimaryRefusal = refuseNonPrimaryCwd(absCwd);
   if (nonPrimaryRefusal) { console.error(nonPrimaryRefusal); process.exit(2); }
-  // HIMMEL-1553: refuse a symptom-loop dispatch BEFORE any side effect — same
+  // refuse a symptom-loop dispatch BEFORE any side effect — same
   // two-stage guard + rationale as spawn-glm.ts (round-guard.ts has the
   // incident): invariant required at 2 reviewed rounds, cheap lane refused at 3.
   const roundGuard = checkRoundGuard("spawn-claudex", { task, branch: branchArg, name, cwd: absCwd, roundsOverride });
   if (roundGuard.refusal) { console.error(roundGuard.refusal); process.exit(2); }
   if (roundGuard.note) console.error(roundGuard.note);
-  // HIMMEL-1040: validate the profile NAME + overlay ids BEFORE any side effect —
+  // validate the profile NAME + overlay ids BEFORE any side effect —
   // an unknown --profile / malformed --add-plugins id is a clean usage refusal
   // (exit 2), never an orphan worktree/branch. `installed: []` keeps this to pure
   // validation: the REAL deny baseline is computed later, in runBody, from the
@@ -1297,7 +1297,7 @@ async function main(): Promise<void> {
     needsWorktreeAdd = true;
   }
 
-  // PHI/egress pre-check (HIMMEL-2626) BEFORE any worktree/branch/session
+  // PHI/egress pre-check BEFORE any worktree/branch/session
   // side-effect and before the (network) codex auth preflight below. This
   // calls the LAUNCHER's own check-only entry (scripts/claude-codex
   // --guard-check) rather than re-implementing a recogniser here:
@@ -1336,14 +1336,14 @@ async function main(): Promise<void> {
     process.exit(3);
   }
 
-  // Per-model window preflight (HIMMEL-740 pattern, reused): refuse a brief
+  // Per-model window preflight (same pattern as the GLM lane): refuse a brief
   // that cannot fit BEFORE any side effect. 272_000 is the GPT-5.6 2x-billing
   // ceiling documented in docs/tooling-catalog.md#claude-codex — kept under
   // it rather than a raw context-window max, since going past it silently
   // doubles the codex-bank spend for this dispatch.
   const CLAUDEX_WINDOW_TOKENS = 272_000;
   const sessionDir = join(claudexSessionRoot(), `claudex-${slug}-${Date.now()}`);
-  // HIMMEL-1357: resolve the repo's default branch (the shared PR's base) for
+  // resolve the repo's default branch (the shared PR's base) for
   // the worker's merge instruction. Prefer the open PR's actual base (a PR may
   // target release/x in a main-default repo), then the repo default branch;
   // any probe failure falls back to main.
@@ -1362,7 +1362,7 @@ async function main(): Promise<void> {
   const pre = preflightWindowCheck({ briefChars: briefText.length, overheadChars, windowTokens: CLAUDEX_WINDOW_TOKENS });
   if (!pre.ok) { console.error(pre.reason); process.exit(2); }
 
-  // Auth preflight (HIMMEL-1037): wait out a transient codex OAuth-refresh gap
+  // Auth preflight: wait out a transient codex OAuth-refresh gap
   // (503 auth_unavailable) BEFORE any worktree side-effect but AFTER all the
   // side-effect-free local validation (bank/plan/window) — so a deterministic
   // refusal (bad branch, dirty/primary/trunk worktree, brief-too-big) fails
@@ -1383,13 +1383,13 @@ async function main(): Promise<void> {
     const pf = await runAuthPreflightWithBackoff((t) => probeClaudexAuth(REPO_ROOT, absCwd, t), { delaysMs: preflightDelaysMs, sleep, log: (m) => console.error(m) });
     if (!pf.ready) {
       console.error(pf.fatal
-        // HIMMEL-1380: name what was measured, not an asserted cause — the
+        // name what was measured, not an asserted cause — the
         // "spawn-claudex: preflight probe observed HTTP …" line above (forwarded
         // from the launcher's own stderr) carries the actual status + body
         // excerpt. Only a 401/403 is a deterministic invalid-key signal; curl
         // unavailable and egress refusal are the other permanent causes, but a
         // bare CLIPROXY_API_KEY accusation is no longer asserted here.
-        // HIMMEL-2626: a PHI/egress GUARD refusal (exit 3) is also permanent
+        // a PHI/egress GUARD refusal (exit 3) is also permanent
         // and lands here — probeClaudexAuth prints its own "refused by
         // claude-codex's PHI/egress guard ... NOT an auth or credential
         // problem" attribution line right above this one when that's the
@@ -1405,17 +1405,17 @@ async function main(): Promise<void> {
   // The run body (mkdir sessionDir through executeClaudexRun) is IDENTICAL
   // between own-branch and shared modes; only the surrounding worktree
   // creation/mutation + lock ownership differ, below (mirrors spawn-glm).
-  // HIMMEL-1094: onSetupFail runs ONLY if the profile resolve below throws —
+  // onSetupFail runs ONLY if the profile resolve below throws —
   // i.e. before ANY of the worker's state exists. The own-branch caller passes a
   // teardown; shared mode passes nothing (runSharedDispatch calls runBody()).
-  // HIMMEL-1687: the worker branch's tip BEFORE the worker runs, the base for `commits:`.
+  // the worker branch's tip BEFORE the worker runs, the base for `commits:`.
   let baseSha: string | undefined;
   const runBody = async (onSetupFail?: () => void): Promise<number> => {
-    // HIMMEL-1778: same seam as spawn-glm's twin — runBody runs in BOTH modes
+    // same seam as spawn-glm's twin — runBody runs in BOTH modes
     // after the branch exists and before the worker launches. Warn-only.
     const hugeDiff = checkHugeDiff("spawn-claudex", { cwd: worktree, branch });
     if (hugeDiff.note) console.error(hugeDiff.note);
-    // HIMMEL-1040 (CR): resolve the profile FIRST — before meta.json is written.
+    // Resolve the profile FIRST — before meta.json is written.
     // resolveProfileSettings throws on an unreadable/malformed settings layer and
     // sits OUTSIDE executeClaudexRun's failure-transition guard; after the
     // "running" write a throw would leave meta stuck at running (a phantom worker
@@ -1423,11 +1423,11 @@ async function main(): Promise<void> {
     // running" invariant. Uses the WORKTREE — the cwd the worker runs in.
     let settings: string;
     try {
-      // HIMMEL-1378: same permission-hardening overlay as spawn-glm.ts's twin —
+      // same permission-hardening overlay as spawn-glm.ts's twin —
       // never optional, so --settings is now unconditionally passed.
       settings = composeWorkerSettings(resolveProfileSettings(profile, addPlugins, worktree), worktree, sessionDir);
     } catch (e) {
-      // HIMMEL-1094: the resolve NEEDS the worktree cwd (branch-local settings
+      // the resolve NEEDS the worktree cwd (branch-local settings
       // layers), so it necessarily runs after `worktree add` — which is why a
       // throw here would otherwise strand the worktree+branch we just minted.
       // Undo them, then rethrow the ORIGINAL error unchanged.
@@ -1437,7 +1437,7 @@ async function main(): Promise<void> {
     mkdirSync(sessionDir, { recursive: true });
     const metaPath = join(sessionDir, "meta.json");
     const started_at = new Date().toISOString();
-    // HIMMEL-1693 CR round 2: worker_worktree is what stop-worker.sh's
+    // worker_worktree is what stop-worker.sh's
     // checkpoint_worker_worktree reads before signalling a worker -- without
     // it every Claudex session refused the stop (exit 5, "no worker worktree
     // recorded"). Same field spawn-glm.ts's baseMeta already writes.
@@ -1451,7 +1451,7 @@ async function main(): Promise<void> {
     if (timeoutMins !== undefined) process.env.RUN_TIMEOUT_MS = String(timeoutMins * 60 * 1000);
 
     // The worker runs EXACTLY ONCE — the transient codex OAuth gap is waited out
-    // by the pre-launch auth preflight in main() (HIMMEL-1037), never by
+    // by the pre-launch auth preflight in main(), never by
     // re-running a worker (which could duplicate the worker's allowed side
     // effects). No retry wrapper here.
     const head0 = gitCapture(["rev-parse", "HEAD"], worktree);
@@ -1464,7 +1464,7 @@ async function main(): Promise<void> {
   if (!sharedMode) {
     g(["worktree", "add", worktree, "-b", branch]);
     ensureWorkspaceTrust(worktree);
-    // HIMMEL-1094: this dispatch MINTED both the worktree and the branch (-b), so
+    // this dispatch MINTED both the worktree and the branch (-b), so
     // it owns them until the worker starts. Teardown is passed ONLY here — shared
     // mode must never tear down a caller-owned worktree/branch.
     code = await runBody(() => teardownMintedWorktree(absCwd, worktree, branch));

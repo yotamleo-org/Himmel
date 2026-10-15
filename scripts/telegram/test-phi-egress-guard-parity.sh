@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# scripts/telegram/test-phi-egress-guard-parity.sh — HIMMEL-2204 cross-language
+# scripts/telegram/test-phi-egress-guard-parity.sh — cross-language
 # parity test for the PHI/egress predicates.
 #
-# WHY: scripts/guardrails/phi-egress-lib.sh (HIMMEL-1776) is the shared bash
+# WHY: scripts/guardrails/phi-egress-lib.sh is the shared bash
 # implementation of the file-readability predicate that guards the phi-roots
 # / egress-denylist lists; scripts/telegram/phi-egress-guard.ts::checkPhiEgressGuards is an
 # independent, hand-kept TypeScript reimplementation of the SAME contract
 # (marker check + list-membership check + fail-closed-on-unreadable) for the
 # env-injected worker spawn path, which cannot source a bash lib. Two implementations
-# of one security contract can silently drift (HIMMEL-1748/#1680 already
+# of one security contract can silently drift (this already
 # happened once between two BASH copies before extraction). A parity test
 # cannot make the drift impossible the way extraction would, but it can make
 # it visible: this suite runs the SAME fixture inputs through both sides and
@@ -18,30 +18,26 @@
 # extracted verbatim (via sed) from scripts/claude-glm, phi-egress-guard.ts's OWN
 # documented sync partner (named in its header) — not a test-authored
 # reimplementation, so drift in the ACTUAL deployed bash list-matching logic
-# is caught, not just drift in this test's idea of it (HIMMEL-2204 CR round
-# 1, codex-1: the first cut hand-rolled this loop; codex correctly flagged
-# that a fixture-passing hand-rolled copy proves nothing about the real
+# is caught, not just drift in this test's idea of it (a fixture-passing hand-rolled copy proves nothing about the real
 # script). It also happens to be case-sensitive prefix matching, matching
 # Node's `path.resolve()` string semantics (graphify-fence.sh's classifier
-# uses case-INSENSITIVE matching instead, for a different, broader purpose;
-# see HIMMEL-2204 mission notes for why that pairing does not apply here).
+# uses case-INSENSITIVE matching instead, for a different, broader purpose,
+# so that pairing does not apply here).
 # The `.salus`/`.salus-profile` marker check stays test-owned: it is two
 # inline `[ -e ... ]` lines in checkPhiEgressGuards, not a function claude-glm
 # exposes for extraction (claude-glm's own marker check is inline too, and
-# uses `-f` instead of `-e` — a latent, currently-inert divergence reported
-# separately in the HIMMEL-2204 PR body, not fixed here).
+# uses `-f` instead of `-e` — a latent, currently-inert divergence, not fixed here).
 #
 # The TS side runs the REAL checkPhiEgressGuards() via phi-egress-guard-verdict.ts, which
 # normalizes {ok, reason} to a coarse verdict label so this suite compares
 # ONLY the verdict, never the mechanism (an unreadable-file exception in TS
-# and a non-zero rc in bash can both "fail" while meaning different things —
-# per the HIMMEL-2204 brief, only the verdict is asserted here).
+# and a non-zero rc in bash can both "fail" while meaning different things).
 #
 # bun is a RUNTIME capability this suite needs (phi-egress-guard.ts is only run
 # through the project's existing bun toolchain for scripts/telegram). Where
-# it is absent the suite SKIPs loudly (HIMMEL-1788) rather than passing
-# silently; registered in SUITE_REQUIRE_TOOL (scripts/ci/run-shell-tests.sh,
-# HIMMEL-1792) so a bun-less host shows an attributed [SKIP], not a quiet
+# it is absent the suite SKIPs loudly rather than passing
+# silently; registered in SUITE_REQUIRE_TOOL (scripts/ci/run-shell-tests.sh)
+# so a bun-less host shows an attributed [SKIP], not a quiet
 # green run with zero coverage.
 set -u
 

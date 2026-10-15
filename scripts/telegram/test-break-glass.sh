@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines
 # Tests for scripts/telegram/break-glass.sh and scripts/cr/cr-reset.sh
-# (HIMMEL-5047): the shell half of the Telegram break-glass ops. Everything is
+#: the shell half of the Telegram break-glass ops. Everything is
 # a fixture: a bare origin + primary clone + linked worktree under mktemp, a
 # fake HOME, and stubs for gh, systemctl, the bank preflight, the leg launcher,
 # console.sh and close-wrapped-leg.sh. No real launch, merge or restart.
@@ -106,7 +106,7 @@ assert_contains "S4 it reports the primary branch and cleanliness" "primary main
 assert_contains "S5 it reports the last tick age" "last tick:" "$out"
 [ "$(git -C "$PRIMARY" rev-parse HEAD)" = "$before" ] && echo "PASS S6 station-status changes nothing" || { echo "FAIL S6 station-status moved the primary"; FAILED=$((FAILED + 1)); }
 
-# --- /station-status is bounded (HIMMEL-5091) -------------------------------
+# --- /station-status is bounded -------------------------------
 export BRIDGE_ROOT="$TMP/bridge"; mkdir -p "$BRIDGE_ROOT/consoles" "$PRIMARY/scripts/telegram"
 NOW="$(date +%s)"
 i=0; while [ "$i" -lt 50 ]; do
@@ -341,7 +341,7 @@ SYSTEMCTL_CAT_RC=1 bg restart-bridge - - >/dev/null; assert_rc "X3 a missing uni
 # The registry and the target are fixtures; nothing here touches a live settings file.
 RULE='Bash(bash scripts/example/reviewed.sh:*)'
 jq -n --arg r "$RULE" '{"reviewed-one":$r,"multi-line":"Bash(a)\nBash(b)","trailing-nl":"Bash(a)\n","not-string":7}' > "$TMP/rules.json"
-# HIMMEL-5127: the third argument is the sha256 of the rule text the operator approved.
+# The third argument is the sha256 of the rule text the operator approved.
 rule_hash() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
 RH="$(rule_hash "$RULE")"
 MFH="$(rule_hash 'Bash(bash scripts/handover/merge-forward-check.sh:*)')"
@@ -385,7 +385,7 @@ bg allow-rule reviewed-one "$RH" >/dev/null; assert_rc "A21 a false allow list i
 printf '{"permissions":{"allow":[]}}\n{"x":1}\n' > "$AR_TARGET"
 bg allow-rule reviewed-one "$RH" >/dev/null; assert_rc "A24 a multi-document target is refused" 27 "$?"
 bg allow-rule trailing-nl - >/dev/null; assert_rc "A23 a trailing newline in a registry entry is refused" 26 "$?"
-# HIMMEL-5112: a symlinked target is refused (never replaced by a regular copy),
+# A symlinked target is refused (never replaced by a regular copy),
 # and the target's file mode survives the write.
 printf '{"permissions":{"allow":[]}}\n' > "$TMP/ar/real-target.json"
 ln -sf "$TMP/ar/real-target.json" "$TMP/ar/link-target.json"
@@ -396,7 +396,7 @@ printf '{"permissions":{"allow":[]}}\n' > "$AR_TARGET"; chmod 0644 "$AR_TARGET"
 bg allow-rule reviewed-one "$RH" >/dev/null; assert_rc "A27 a 0644 target is rewritten" 0 "$?"
 ar_mode="$(stat -c %a "$AR_TARGET" 2>/dev/null || stat -f %Lp "$AR_TARGET")"  # GNU, then BSD/macOS
 [ "$ar_mode" = "644" ] && echo "PASS A28 and keeps mode 0644" || { echo "FAIL A28 mode is $ar_mode"; FAILED=$((FAILED + 1)); }
-# HIMMEL-5127: the executor refuses unless the registry's CURRENT text hashes to
+# The executor refuses unless the registry's CURRENT text hashes to
 # the approved text, and unless the registry is one clean JSON document.
 rm -f "$AR_TARGET"
 bg allow-rule reviewed-one - >/dev/null; rc=$?
@@ -419,7 +419,7 @@ BREAK_GLASS_ALLOW_REGISTRY="$TMP/rules-two.json" bg allow-rule reviewed-one "$RH
 printf '{"reviewed-one":"Bash(a\\ud800b)"}\n' > "$TMP/rules-sur.json"
 BREAK_GLASS_ALLOW_REGISTRY="$TMP/rules-sur.json" bg allow-rule reviewed-one "$(rule_hash 'Bash(a'$'\357\277\275''b)')" >/dev/null; rc=$?
 [ "$rc" != 0 ] && [ ! -e "$AR_TARGET" ] && echo "PASS G7 a lone-surrogate rule is refused (rc=$rc), nothing written" || { echo "FAIL G7 rc=$rc"; FAILED=$((FAILED + 1)); }
-# HIMMEL-5140: a second document that is {} (only the multi-document check can
+# A second document that is {} (only the multi-document check can
 # refuse it: the first document is the approved rule), and U+2028, which the
 # poller and the executor must both refuse whatever the locale.
 printf '{"reviewed-one":"%s"}\n{}\n' "$RULE" > "$TMP/rules-two-empty.json"

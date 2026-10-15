@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# restart-bridge.sh — POSIX twin of restart-bridge.ps1 (HIMMEL-2176 Task 9, A12).
+# restart-bridge.sh — POSIX twin of restart-bridge.ps1.
 # Safely (re)starts the Telegram bun bridge on Linux/macOS.
 #
 # PARITY HONESTY (spec-mandated — do not silently overclaim, and equally: do
 # not keep disclaiming what we now have). This script ships happy-path
 # start/run/stop/status, the stale-lock recovery flock gives for free (see
-# below), AND — since HIMMEL-2551 — a pidfile ledger consulted as an identity
+# below), AND a pidfile ledger consulted as an identity
 # source WITH a staleness refusal: a recorded pid whose process started after
 # the ledger was written is refused, the same class of guard as the PS1's
 # Test-LedgerPidValid. That much is no longer a parity gap.
 #
-# Still NOT implemented, and still tracked as HIMMEL-2268 (not silently
+# Still NOT implemented, and tracked as a known gap (not silently
 # dropped): the `-FromLedger` VERB itself (a ledger-driven dry-run/kill mode),
 # orphan `bun server.ts` detection, and the offset/heartbeat progress-proof
 # verify after launch — so this script still does not prove no-409/real
-# progress once the supervisor is up (HIMMEL-1509/1510/1519/1520).
+# progress once the supervisor is up.
 #
 # Usage:
 #   restart-bridge.sh [start|stop|status|run] [--repo <path>]
@@ -47,7 +47,7 @@
 # the limitation), never silently. Stale-proc kill and start/stop/status
 # still work — only the concurrent-start serialization is lost.
 #
-# Stale-PROC kill (INSTANCE-SCOPED — HIMMEL-2551): `start`/`run` sweep, and
+# Stale-PROC kill (INSTANCE-SCOPED): `start`/`run` sweep, and
 # `stop` kills, ONLY processes belonging to THIS instance. Entrypoint-name
 # matching (`supervisor.ts` / `poller.ts`) narrows the CANDIDATE set; it is not
 # by itself an ownership test — every himmel checkout on a machine runs the
@@ -101,7 +101,7 @@
 # the ledger at all, a worktree and the primary checkout stop seeing each other
 # and both poll one token. Staleness, not cwd, separates those two cases.
 #
-# LAUNCH HANDOFF (HIMMEL-2556) — why a marker file exists. The lock is
+# LAUNCH HANDOFF — why a marker file exists. The lock is
 # released before the process we just launched is VISIBLE to process discovery,
 # and closing that gap by holding the lock is not available: `run` execs into
 # the supervisor (fd 200 must be closed first or a later blocking `stop`
@@ -129,7 +129,7 @@
 #     pid. An age that CANNOT be computed — a non-numeric epoch, an
 #     unreadable clock, or a NEGATIVE age from a clock stepped backwards —
 #     retires the marker rather than extending it: it reads INACTIVE, exactly
-#     as if it had aged out, not active-forever (CR round 2 [codex-1] — an
+#     as if it had aged out, not active-forever (an
 #     earlier version of this bound SKIPPED the test instead when it could
 #     not be computed, which left the marker active for as long as its pid
 #     stayed alive and undiscovered; that is precisely the hang-before-exec
@@ -141,7 +141,7 @@
 #     recoverable, visible `409`; a marker that can never age out could wedge
 #     the bridge PERMANENTLY, which is worse and is not recoverable by
 #     retrying. Degrades LOUDLY when it fires — one named WARNING — matching
-#     write_launch_marker's own CR round 1 degrade below;
+#     write_launch_marker's own degrade below;
 #   * the pid is NOT already in the discovery set — the moment the supervisor
 #     is visible the marker has done its job and stops blocking, which is what
 #     keeps `start` twice in a row still meaning "sweep and relaunch".
@@ -238,7 +238,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# TOOL DIRS ON PATH (HIMMEL-2582) — runs for EVERY verb, before the first
+# TOOL DIRS ON PATH — runs for EVERY verb, before the first
 # `command -v`. A linger-started systemd user unit is launched by the user
 # manager BEFORE the graphical session imports the login shell's PATH, so the
 # unit's own environment is bare: PATH=/usr/local/bin:/usr/bin, read live from
@@ -261,7 +261,7 @@ done
 # started with.
 #
 # These tool dirs remain FALLBACKS for claude and other tools. Bun is selected
-# separately by prepare_bridge_bun: HIMMEL-5383 deliberately prefers the user
+# separately by prepare_bridge_bun deliberately prefers the user
 # install in ~/.bun/bin, matching the updater and generated service units.
 #
 # Skip a dir that does not exist (no phantom entries on a host without bun);
@@ -383,7 +383,7 @@ path_inside_work_tree() {
 # $HIMMEL_REPO. Used only by the fixture guard below.
 SELF_BRIDGE_DIR_REAL=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || SELF_BRIDGE_DIR_REAL=""
 
-# HIMMEL_TEST_FIXTURE guard (HIMMEL-2551) — belt and braces over the instance
+# HIMMEL_TEST_FIXTURE guard — belt and braces over the instance
 # scoping above, covering the two ways a fixture can still land on real state.
 # `status` is read-only and `--print-lock-path` never touches a process, so
 # only the mutating verbs refuse. rc=3 is reserved for this refusal.
@@ -392,7 +392,7 @@ if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ]; then
     start|stop|run)
       # (1) No sandboxed bridge root: identity source (1), the pidfile, would
       # be the operator's real one. This is the exact class of mistake behind
-      # HIMMEL-2551, where a fixture sandboxed HOME but the process matcher
+      # an earlier incident, where a fixture sandboxed HOME but the process matcher
       # still reached the operator's live bridge.
       if [ -z "${BRIDGE_ROOT:-}" ]; then
         echo "[restart-bridge] REFUSING '$VERB': HIMMEL_TEST_FIXTURE=1 but BRIDGE_ROOT is unset, so this run would use the DEFAULT bridge root $HOME/.claude/handover/bridge — a real operator bridge, not a sandbox. A test fixture must export BRIDGE_ROOT (and HOME) to a scratch directory before invoking start/stop/run." >&2
@@ -659,7 +659,7 @@ pid_belongs_to_instance() {
 # list_bridge_pids — prints "<pid> <role>" lines (role: supervisor|poller) for
 # every LIVE bun process running one of the bridge's own entrypoints, matched
 # by entrypoint NAME (token-anchored, path-prefix-tolerant) — never a bare
-# `bun` name match — AND belonging to THIS instance (HIMMEL-2551; see the
+# `bun` name match — AND belonging to THIS instance (see the
 # header's instance rule). Never fails the caller under `set -e` (always rc=0).
 list_bridge_pids() {
   local ef line pid role recorded ledger_mtime brc foreign=0
@@ -688,7 +688,7 @@ list_bridge_pids() {
       ''|*[!0-9]*) continue ;;
     esac
     role=""
-    # HIMMEL-1430 (grep-q-pipe-under-pipefail): a piped `grep -q` under this
+    # grep-q-pipe-under-pipefail: a piped `grep -q` under this
     # script's `set -o pipefail` can read a genuine MATCH as a pipeline
     # failure (grep -q exits on first match, the producer gets SIGPIPE
     # writing the rest, pipeline status goes non-zero) — this feeds `kill
@@ -712,7 +712,7 @@ list_bridge_pids() {
   done <<EOF_PS
 $ef
 EOF_PS
-  # Non-destructive visible signal (HIMMEL-2551): a bridge belonging to some
+  # Non-destructive visible signal: a bridge belonging to some
   # OTHER root is now left running rather than swept, so say so once — the
   # launcher no longer silently "fixes" a shared-token misconfiguration by
   # killing a process it cannot attribute. Deliberately worded distinctly from
@@ -778,7 +778,7 @@ launch_marker_path() {
 # — the launch proceeds either way, just without the handoff protection on
 # this one run.
 #
-# LOUD, not silent (CR round 1 [codex-1]): every other degrade in this file
+# LOUD, not silent: every other degrade in this file
 # prints a named WARNING (flock absent, an unreadable cwd, an unattributable
 # candidate left alone) — a silently-lost marker would be the one exception,
 # and it is the exact degrade that disables the guard this file exists to
@@ -808,12 +808,12 @@ write_launch_marker() {
   return 0
 }
 
-# _launch_marker_age_unbound_warn <marker-path> <reason> — the CR round 2
-# [codex-1] WARNING for launch_marker_active's age clause below: printed
+# _launch_marker_age_unbound_warn <marker-path> <reason> — the
+# WARNING for launch_marker_active's age clause below: printed
 # exactly once, only when (and because) an unboundable age is what makes a
 # marker read INACTIVE rather than active-forever. A private helper so the
 # three call sites below cannot drift out of the shared wording. Worded
-# apart, deliberately, from write_launch_marker's CR round 1 WARNING (a
+# apart, deliberately, from write_launch_marker's WARNING (a
 # failed WRITE) and from the flock-absent / unreadable-cwd WARNINGs
 # elsewhere in this file, so a reader can tell which one fired.
 _launch_marker_age_unbound_warn() {
@@ -835,7 +835,7 @@ _launch_marker_age_unbound_warn() {
 #       clock) or that comes out NEGATIVE (the epoch is ahead of "now" — a
 #       backward NTP step, or a bridge root shared across machines with
 #       skewed clocks) makes the marker read INACTIVE, not active-forever
-#       (CR round 2 [codex-1]; an earlier version of this clause SKIPPED the
+#      (an earlier version of this clause SKIPPED the
 #       test in all three cases instead, reasoning that (b) and (d) alone
 #       still prevented a wedge — wrong in exactly the case this bound
 #       exists for: a launcher that HANGS before exec'ing bun stays alive and
@@ -880,7 +880,7 @@ launch_marker_active() {
       return 1
       ;;
   esac
-  # 10#$epoch (CR round 4 [codex-1]) — the all-digits `case` above accepts
+  # 10#$epoch — the all-digits `case` above accepts
   # "08"/"09", which is a genuine crash path, not merely a wrong number: bash
   # arithmetic treats a leading-zero literal as OCTAL, and 08/09 are invalid
   # octal digits, so plain `$((now - epoch))` raises a hard evaluation error
@@ -920,17 +920,17 @@ prune_launch_marker() {
   f="$(launch_marker_path)"
   [ -f "$f" ] || return 0
   if ! launch_marker_active >/dev/null 2>&1; then
-    # Guarded the same way write_launch_marker guards its own write (CR
-    # round 1) — CR round 6 [codex-1]: removing a file needs WRITE
+    # Guarded the same way write_launch_marker guards its own write:
+    # removing a file needs WRITE
     # permission on its DIRECTORY; `-f` only suppresses a missing-FILE
     # error, not a permission error. An unguarded `rm -f` here is the
     # THEN-branch of the `if` above, not the `if`'s own condition, so — unlike
     # a command tested directly by `if`/`!` — it is NOT exempt from this
     # file's `set -euo pipefail`: on an unwritable bridge root the failed rm
     # used to abort start/run before they launched anything, contradicting
-    # round 1's "unwritable marker storage is non-fatal" promise (stated
+    # the "unwritable marker storage is non-fatal" promise (stated
     # twice in the header) for the read/remove side of the SAME storage.
-    # `|| true` would SILENCE it instead, which round 1 also ruled out for
+    # `|| true` would SILENCE it instead, which that promise also rules out for
     # this class of failure — loud AND non-fatal, never one or the other.
     rm -f "$f" 2>/dev/null || echo "[restart-bridge] WARNING: could not remove the stale launch marker ($f) — leaving it in place and proceeding with the launch anyway; it will be retried by the next mutating verb (start/run/stop)." >&2
   fi
@@ -1042,7 +1042,7 @@ start_verb() {
     nohup "$bun_bin" supervisor.ts >"$LOG" 2>&1 </dev/null 200>&- &
     # $! is the pid of the backgrounded `nohup` job. `nohup` execs straight
     # into bun without forking again, so this pid IS the one the future
-    # supervisor keeps for its whole life. ORDERING (HIMMEL-2556, hardened):
+    # supervisor keeps for its whole life. ORDERING (hardened):
     # write_launch_marker is called HERE, immediately after the launch above,
     # with nothing intervening — bun_bin resolution and sweep_stale, the two
     # places this verb can already have exited early, both ran BEFORE this
@@ -1078,7 +1078,7 @@ run_verb() {
   prepare_bridge_bun
   bun_bin=$(resolve_bun) || { echo "[restart-bridge] 'bun' not found on PATH" >&2; exit 1; }
   cd "$BRIDGE_DIR"
-  # ORDERING (HIMMEL-2556, hardened): write_launch_marker is called HERE,
+  # ORDERING (hardened): write_launch_marker is called HERE,
   # immediately BEFORE the lock fd is closed below — this is the one place in
   # run_verb that is BOTH under the lock (fd 200 is still open; acquire_lock's
   # flock has not been released yet, which is the entire point of a marker
@@ -1106,7 +1106,7 @@ run_verb() {
   # fd 200 open for the bridge's whole lifetime and deadlock a later blocking
   # `stop`. Guarded: acquire_lock only opens fd 200 when `flock` exists.
   #
-  # The race this used to leave open (HIMMEL-2556, formerly deferred): closing
+  # The race the launch marker covers: closing
   # the lock here opens a window before `exec` turns this process into a live
   # `bun supervisor.ts`, during which a concurrent `start` could take the
   # lock, see no bridge, and launch a duplicate. That window is now closed by
@@ -1125,7 +1125,7 @@ stop_verb() {
   local lock killed info pid age
   acquire_lock
   lock="$ACQUIRED_LOCK"
-  # A launch marker (HIMMEL-2556) is a signal here, not something to sweep or
+  # A launch marker is a signal here, not something to sweep or
   # remove: this stop cannot see (and therefore cannot reap) a process that
   # has not yet become visible to process discovery, so a bridge may still
   # come up right after this stop returns. Warn once and leave it alone — do

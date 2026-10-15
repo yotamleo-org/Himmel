@@ -42,8 +42,7 @@ test("classifies /mergepub <pr> <sha12> auto-commands (HIMMEL-1213)", () => {
   const sha40 = "0123456789abcdef0123456789abcdef01234567".slice(0, 40);
   expect(classify(`/mergepub 9 ${sha40}`)).toEqual({ kind: "auto", op: "merge-public", arg: "9", time: sha40 });
   // case-insensitive verb + hex, but the captured SHA is normalized to lowercase
-  // (git oids are lowercase; auto-action.sh + the chokepoint compare lowercase) —
-  // HIMMEL-1213 codex CR-2.
+  // (git oids are lowercase; auto-action.sh + the chokepoint compare lowercase).
   expect(classify("/MERGEPUB 123 ABCDEF123456")).toEqual({ kind: "auto", op: "merge-public", arg: "123", time: "abcdef123456" });
   // leading/trailing whitespace tolerated (whole-message trim)
   expect(classify("  /mergepub 123 abcdef123456  ")).toEqual({ kind: "auto", op: "merge-public", arg: "123", time: "abcdef123456" });
@@ -71,7 +70,7 @@ test("/mergepub with bad/missing pieces or mid-text falls through to chat (never
   expect(classify("/mergepub 123 abcdef123456 please")).toEqual({ kind: "chat", text: "/mergepub 123 abcdef123456 please" });
 });
 
-// --- /restart (HIMMEL-1272) ---
+// --- /restart ---
 
 test("/restart classifies as the restart auto-op, rung in arg", () => {
   expect(classify("/restart")).toEqual({ kind: "auto", op: "restart", arg: "poller", time: "-" });
@@ -95,7 +94,7 @@ test("/restart is anchored on the WHOLE message — anything else is chat", () =
   }
 });
 
-// HIMMEL-5148: the console verbs are case-insensitive and accept Telegram's
+// the console verbs are case-insensitive and accept Telegram's
 // `/cmd@<bot>` addressing; a mid-text or trailing /console stays chat.
 test("HIMMEL-5148: /console is case-insensitive and accepts /console@<bot>", () => {
   expect(classify("/Console foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
@@ -121,8 +120,8 @@ test("HIMMEL-5148: a mid-text, trailing, or other-bot /console stays chat", () =
   expect(classify("/consoles@otherbot", "mybot").kind).toBe("chat");
 });
 
-// HIMMEL-5150: fleet verbs and /lockdown take the same case-insensitive verb and
-// `/cmd@<bot>` addressing as /console (HIMMEL-5148); the leg label stays exact.
+// fleet verbs and /lockdown take the same case-insensitive verb and
+// `/cmd@<bot>` addressing as /console; the leg label stays exact.
 test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () => {
   expect(classify("/Fleet")).toEqual({ kind: "fleet", verb: "status" });
   expect(classify("/fleet@MyBot", "mybot")).toEqual({ kind: "fleet", verb: "status" });
@@ -150,7 +149,7 @@ test("HIMMEL-5150: /lockdown is case-insensitive and accepts /lockdown@<bot>", (
   expect(classify("/lockdown now").kind).toBe("chat");
 });
 
-// Auto ops authorise bridge actions without the agent: they stay strict (HIMMEL-5150).
+// Auto ops authorise bridge actions without the agent: they stay strict.
 test("HIMMEL-5150: /Arm and /arm@<bot> (and other auto ops) authorise nothing", () => {
   for (const t of ["/Arm HIMMEL-389", "/ARM HIMMEL-389", "/arm@mybot HIMMEL-389", "/Arm@mybot HIMMEL-389 at 02:00",
     "/Mergepub@mybot 12 0123456789ab", "/restart@mybot", "/Restart@mybot full", "/Station-Status", "/confirm@mybot 0123abcd", "/Cr-Reset 12", "/cr-grant-delta@mybot 12 " + "a".repeat(40)]) {

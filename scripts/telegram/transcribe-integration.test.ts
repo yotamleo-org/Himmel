@@ -1,11 +1,11 @@
-// Integration acceptance test for whisper.cpp go-live (HIMMEL-268).
+// Integration acceptance test for whisper.cpp go-live.
 // Requires real binaries in ~/.himmel/whisper/ and ffmpeg on PATH.
 // Skip in CI or when WHISPER_INTEGRATION_TEST is not set.
 //
 // Run manually:
 //   WHISPER_INTEGRATION_TEST=1 bun test scripts/telegram/transcribe-integration.test.ts
 //
-// Sample file: ~/.himmel/whisper/jfk.wav (downloaded during HIMMEL-268 install;
+// Sample file: ~/.himmel/whisper/jfk.wav (downloaded during install;
 // expected transcript contains "ask not what your country can do for you").
 import { expect, test } from "bun:test";
 import { transcribe } from "./transcribe";

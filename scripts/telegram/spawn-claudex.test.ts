@@ -45,7 +45,7 @@ import {
 import { BASH_BIN } from "./run";
 import { resolveFailfastWindowMs, transcriptDirFor } from "./spawn-glm";
 
-// HIMMEL-1096 (codex-adv round 2): runClaudexSharedDispatch now trust-seeds
+// runClaudexSharedDispatch trust-seeds
 // UNCONDITIONALLY (needsWorktreeAdd true or false), so every test below that
 // exercises it would otherwise read/rewrite the OPERATOR'S REAL ~/.claude.json
 // on every dispatch — slow (JSON parse/stringify of a live, 100KB+ file,
@@ -78,7 +78,7 @@ test("composeClaudexWorkerPrompt embeds minted session paths + the no-push/no-PR
   expect(p).toContain("claudex/a");
   expect(p).toMatch(/never push/i);
   expect(p).toMatch(/never open a PR/i);
-  // HIMMEL-1755: the shared-refs/stash ban rides with the no-push contract.
+  // the shared-refs/stash ban rides with the no-push contract.
   expect(p).toMatch(/NEVER MUTATE THE STASH/);
   expect(p).toContain("refs/checkpoints/<slug>");
   expect(p).toContain("gpt-5.6-sol");
@@ -134,12 +134,12 @@ test("composeClaudexWorkerPrompt shared mode: the permitted integration op is pu
   // fast-forward push. No force-push is ever required by a permitted op.
   // Match the sanctioned INSTRUCTION, not the bare keyword: a prompt that
   // merely mentions `git merge main` while permitting something else would
-  // satisfy a keyword match (CR round 2 on PR #1458).
+  // satisfy a keyword match.
   expect(p).toContain("run `git merge main` and resolve any conflicts");
   // Self-consistency guard: the prompt must never PERMIT a SHA-rewriting
   // integration op (rebase), because publishing a rewritten branch requires
-  // the force-push the same prompt bans — that carve-out was inert as written
-  // (HIMMEL-1342 CR round on PR #1458). `rebase` may appear only inside a ban.
+  // the force-push the same prompt bans — that carve-out was inert as written.
+  // `rebase` may appear only inside a ban.
   // Broader than the original `MAY run …`: any permissive verb in front of
   // `git rebase` reopens the inert carve-out this PR removed.
   expect(p).not.toMatch(/(?:run|allow|permit(?:ted)?|may)\s+[`'"]?git rebase(?:\s+main)?/i);
@@ -151,7 +151,7 @@ test("composeClaudexWorkerPrompt shared mode: the permitted integration op is pu
 });
 
 test("composeClaudexWorkerPrompt default (no opts) is UNCHANGED from the own-branch text", () => {
-  // HIMMEL-1218: each call mints a fresh RETASK nonce, so compare with the
+  // each call mints a fresh RETASK nonce, so compare with the
   // per-dispatch token normalized out rather than a raw string equality.
   const stripToken = (s: string) => s.replace(/R-[0-9a-f]+/g, "R-<nonce>");
   const bare = composeClaudexWorkerPrompt("do X", "/tmp/cs/claudex-a-1", "claudex/a");
@@ -321,7 +321,7 @@ test("gitBranchExists: real repo — existing branch true, missing branch false"
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-// --- HIMMEL-1503: primary-checkout cwd guard (twin of spawn-glm's own suite) --
+// --- primary-checkout cwd guard (twin of spawn-glm's own suite) --
 
 test("detectNonPrimaryCwd: ok when cwd is the primary checkout (git-dir === git-common-dir, no worktree path segment)", () => {
   const probe = () => ({ gitDir: "/repo/.git", commonDir: "/repo/.git" });
@@ -366,7 +366,7 @@ test("refuseNonPrimaryCwd: falls back to a path-only diagnostic when the primary
 test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refused cwd itself (standalone repo nested under .claude/worktrees)", () => {
   // A plain nested clone reports a RELATIVE common-dir, so the "primary"
   // resolves back to the very cwd being refused — naming it would tell the
-  // caller to cd where they already are (codex-1, CR round 1).
+  // caller to cd where they already are.
   const probe = () => ({ gitDir: ".git", commonDir: ".git" });
   const r = detectNonPrimaryCwd("/x/.claude/worktrees/nested-clone", probe);
   expect(r.ok).toBe(false);
@@ -375,9 +375,9 @@ test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refuse
 });
 
 // The hermetic-repo helper, its timeout constant and the registry-gated
-// teardown are shared with spawn-glm.test.ts in ./fixture-repo (HIMMEL-1888).
+// teardown are shared with spawn-glm.test.ts in ./fixture-repo.
 
-// HIMMEL-2734: a symlink is Linux's stand-in for Windows 8.3 aliasing: one
+// a symlink is Linux's stand-in for Windows 8.3 aliasing: one
 // directory has two spellings, so resolve() alone cannot make them compare
 // equal. Capture real filesystem results at registration time so a Windows
 // privilege refusal can register an actual SKIP, without skipping the separate
@@ -412,7 +412,7 @@ test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refuse
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-// HIMMEL-2734: control the TMP_ROOT/tmpdir() lockstep in removeFixture's
+// control the TMP_ROOT/tmpdir() lockstep in removeFixture's
 // under-tmp guard: a canonical child fails an aliased-root prefix check, but
 // passes when the root is canonicalized the same way. This runs on Linux
 // precisely because it constructs the alias itself, rather than relying on
@@ -471,7 +471,7 @@ test("detectNonPrimaryCwd (real git): primary checkout -> ok; its linked worktre
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-// --- HIMMEL-1503: real CLI end-to-end — the guard fires from the actual
+// --- real CLI end-to-end — the guard fires from the actual
 // entrypoint, before any worktree/branch side-effect, against a REAL
 // `git worktree add`. ---
 
@@ -499,7 +499,7 @@ test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught b
     // --force bypasses the codex-weekly-bank preflight (which reads the REAL
     // operator bank cache and could otherwise flake this test on whatever the
     // live quota / cache freshness happens to be) — irrelevant to what this test
-    // proves: that the HIMMEL-1503 guard itself does not fire from a primary cwd.
+    // proves: that the guard itself does not fire from a primary cwd.
     const r = Bun.spawnSync(["bun", "scripts/telegram/spawn-claudex.ts", "do the task", "--cwd", repo, "--force"], {
       cwd: resolve("."), stdout: "pipe", stderr: "pipe", timeout: 20_000,
     });
@@ -510,7 +510,7 @@ test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught b
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-// --- HIMMEL-2626: PHI/egress pre-check, real CLI end-to-end.
+// --- PHI/egress pre-check, real CLI end-to-end.
 //
 // Before this pre-check, spawn-claudex.ts had no EXPLICIT pre-creation
 // PHI/egress guard call, but the picture was not "no refusal until launch"
@@ -592,7 +592,7 @@ test("spawn-claudex real CLI: a PHI-marked checkout is REFUSED (exit 3) even wit
   } finally { rmSync(fakeHome, { recursive: true, force: true }); removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-// Negative control (HIMMEL-2626 EXPANSION): without this, a broken pre-check
+// Negative control (EXPANSION): without this, a broken pre-check
 // that refuses EVERY dispatch would also pass the RED test above. A clean
 // checkout must sail past the pre-check and reach the (later, unrelated)
 // codex auth preflight, which then refuses for its own reason — no real
@@ -655,7 +655,7 @@ function makeSharedRepo() {
   return makeSharedFixtureRepo("cxshared-", "claudex+feat-live-pr", "feat/live-pr");
 }
 // configSnapshot(repo, wt, run) -- everything a dispatch could write, read back
-// (HIMMEL-1961 CR). A source-text pin only proves today's SPELLING is absent;
+// A source-text pin only proves today's SPELLING is absent;
 // this proves the dispatch changed nothing, whatever it spells. `--local` is
 // where a repo-scoped write lands and `--worktree` is where the retired poison
 // wrote, so a byte-identical pair before and after covers both. The rc is part
@@ -811,7 +811,7 @@ test("runClaudexSharedDispatch: a dispatch mutates NO git config — behavioural
     // "feat/live-pr", and the shared-branch lock is keyed by branch, so running
     // the two files together made one of them lose the acquire and fail for a
     // reason that had nothing to do with git config (a likely contributor to
-    // the HIMMEL-1786 flaky family). gitAdd is stubbed here, so the name only
+    // the flaky family). gitAdd is stubbed here, so the name only
     // has to be unique -- no worktree needs to exist for it.
     const res = await runClaudexSharedDispatch({ repoDir: repo, worktree: wt, branch: "feat/cfg-snapshot-codex", needsWorktreeAdd: false, lockScript: LOCK_SCRIPT, gitAdd: () => {}, runBody: async () => 0 });
     expect(res.ok).toBe(true);
@@ -885,7 +885,7 @@ test("parseClaudexArgs: --skip-auth-preflight is an EXPLICIT per-invocation flag
   if (on.ok) { expect(on.args.skipAuthPreflight).toBe(true); expect(on.args.task).toBe("do x"); }
 });
 
-// HIMMEL-2725: the ambient-env half of this test used to be a source grep
+// the ambient-env half of this test used to be a source grep
 // (`expect(src.includes("CLAUDEX_SKIP_AUTH_PREFLIGHT")).toBe(false)`), which
 // only catches literal reintroduction of that identifier — a differently-
 // named ambient var wired to the same effect would sail through unnoticed.
@@ -934,9 +934,9 @@ test("parseClaudexArgs: --branch and --name are mutually exclusive", () => {
   expect((r as any).error).toMatch(/mutually exclusive/);
 });
 
-// --- HIMMEL-1780: --brief-file — a multi-line brief reaches the worker via ONE
+// --- --brief-file — a multi-line brief reaches the worker via ONE
 // literal command, instead of the cd/$(cat)/var compound that defeats the
-// allow-rule prefix and the native permission matcher (HIMMEL-203). Mirrors the
+// allow-rule prefix and the native permission matcher. Mirrors the
 // spawn-glm.test.ts block from part 1. ---
 
 test("parseClaudexArgs --brief-file (HIMMEL-1780): value captured, missing value refuses, mutually exclusive with a positional prompt", () => {
@@ -963,7 +963,7 @@ test("parseClaudexArgs --brief-file (HIMMEL-1780): value captured, missing value
 
 // Real CLI end-to-end — the flag's contract fires from the actual entrypoint,
 // before any side effect (no worktree minted, no session-dir printed), against
-// the same hermetic-repo pattern the HIMMEL-1503 CLI tests use above.
+// the same hermetic-repo pattern the CLI tests use above.
 test("spawn-claudex real CLI: missing / unreadable / empty / both-supplied --brief-file each REFUSE (exit 2, usage error, no dispatch)", () => {
   const dir = mkdtempSync(join(tmpdir(), "cx-brief-cli-"));
   try {
@@ -1013,7 +1013,7 @@ test("spawn-claudex real CLI: a valid --brief-file is READ and becomes the task 
     const briefPath = join(dir, "brief.md");
     writeFileSync(briefPath, "Do the multi-line task from the brief file.\nSecond line.\n");
     // --force bypasses the codex-weekly-bank preflight (it reads the REAL
-    // operator ledger — same reasoning as the HIMMEL-1503 happy-path test
+    // operator ledger — same reasoning as the happy-path test
     // above). A non-himmel --cwd then makes the dispatch refuse at the NEXT
     // gate after the brief read ("is not a himmel checkout") — proving the
     // file was read, accepted as the task, and did NOT trip the missing-brief
@@ -1099,7 +1099,7 @@ test("parseClaudexArgs: --model accepts every allowed codex tier and refuses eve
 
 // --- codex weekly bank preflight (D4) -------------------------------------------
 
-// HIMMEL-1678: the source is the probe's TTL'd cache, NOT ~/.codex/logs_2.sqlite
+// the source is the probe's TTL'd cache, NOT ~/.codex/logs_2.sqlite
 // (a log DB that never carried a quota field — its scan could only ever return
 // null, which refused every dispatch).
 const NOW = Date.UTC(2026, 7, 17, 12, 0, 0);
@@ -1208,7 +1208,7 @@ test("detectClaudexCap: generic sentinels match, unrelated text does not", () =>
   expect(detectClaudexCap("")).toBe(false);
 });
 
-// --- pre-launch auth preflight (HIMMEL-1037) ----------------------------------
+// --- pre-launch auth preflight ----------------------------------
 
 test("parseAuthRetryDelaysMs: default fallback / custom seconds->ms / invalid / empty / trailing comma", () => {
   const fb = DEFAULT_AUTH_RETRY_DELAYS_MS;
@@ -1286,7 +1286,7 @@ test("runAuthPreflightWithBackoff: worst case runs the FULL schedule (n+1 attemp
   expect(r.fatal).toBe(false);
   expect(r.attempts).toBe(delaysMs.length + 1); // 4 attempts — the final wait IS followed by a probe
   expect(slept).toEqual(delaysMs);              // every configured delay ran in full, none truncated
-  // honest hard bound: Σdelays + (n+1) probe allowance (HIMMEL-1380: was a
+  // honest hard bound: Σdelays + (n+1) probe allowance (was a
   // hardcoded 12_000 literal that silently drifted from PROBE_TIMEOUT_MS
   // when the constant was raised to 25s — import the real constant instead)
   expect(clock).toBeLessThanOrEqual(60_000 + 4 * PROBE_TIMEOUT_MS);
@@ -1405,15 +1405,15 @@ test("claude-codex --preflight-only probes /v1/messages (NOT the registry) and e
   // the probe hits the real upstream transport, not the gap-blind registry
   expect(bash.includes('"$CODEX_PROXY_BASE_URL/v1/messages"')).toBe(true);
   // transient statuses (408/429/5xx/000/auth_unavailable) map to the DEDICATED
-  // retry code 20 (HIMMEL-1380: 408 is a probe TIMEOUT, not a deterministic
+  // retry code 20 (408 is a probe TIMEOUT, not a deterministic
   // auth failure); 401/403/other unproven 4xx -> fatal 21
   expect(bash.includes("408|429|5??|000) exit 20 ;;")).toBe(true);
   expect(bash.includes("*auth_unavailable*) exit 20")).toBe(true);
   expect(bash.includes("exit 21 ;;")).toBe(true);
-  // HIMMEL-1380: a 400 whose body proves auth (complains about the model/params,
+  // a 400 whose body proves auth (complains about the model/params,
   // not auth) reads as healthy rather than a deterministic 4xx
   expect(bash.includes("*model*|*max_tokens*|*invalid_request_error*")).toBe(true);
-  // HIMMEL-1380: the fatal path names the actual evidence, not an asserted cause
+  // the fatal path names the actual evidence, not an asserted cause
   expect(bash.includes("preflight probe observed HTTP $probe_code")).toBe(true);
   expect(CLAUDEX_PREFLIGHT_GAP_EXIT).toBe(20); // TS + launcher agree on the gap code
   // the probe block sits before exec claude, and seeding is skipped for a probe
@@ -1432,7 +1432,7 @@ test("claude-codex --preflight-only probes /v1/messages (NOT the registry) and e
   // .ps1 classifier mirrors the bash three-way outcome (codex-adv CR)
   expect(ps1.includes("exit 20")).toBe(true);
   expect(ps1.includes("exit 21")).toBe(true);
-  // .ps1 mirrors the HIMMEL-1380 408-is-transient + auth-proving-400 fixes
+  // .ps1 mirrors the 408-is-transient + auth-proving-400 fixes
   expect(ps1.includes("if ($code -eq 408) { exit 20 }")).toBe(true);
   expect(ps1.includes("(?i)model|max_tokens|invalid_request_error")).toBe(true);
 });
@@ -1469,10 +1469,10 @@ test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/
     expect(await run(401, "invalid api key")).toBe(21);               // bad key = fatal
     expect(await run(403, "forbidden")).toBe(21);                     // fatal
     expect(await run(404, "not found")).toBe(21);                     // fatal
-    // HIMMEL-1380: 408 is a probe TIMEOUT, not a deterministic auth failure —
+    // 408 is a probe TIMEOUT, not a deterministic auth failure —
     // this was the actual bug (leg 7): a healthy lane got misclassified fatal.
     expect(await run(408, "stream closed before response.completed")).toBe(20);
-    // HIMMEL-1380: a 400 whose body complains about the model/params (not auth)
+    // a 400 whose body complains about the model/params (not auth)
     // PROVES the request reached the model layer through valid auth — reads healthy.
     expect(await run(400, '{"type":"invalid_request_error","message":"model gpt-5.6-sol does not support max_tokens=1"}')).toBe(0);
     // transport failure: nothing listening on this loopback port -> curl rc!=0,
@@ -1487,13 +1487,13 @@ test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/
 }, 240_000); // sequential bash spawns are slow on Windows (observed ~9-10s each here) — well past bun-test's 5s default; HIMMEL-1380 added 2 more sequential calls (408, auth-proving 400)
 
 test("claude-codex --preflight-only: a stalled body (200 headers, then hang) is NOT healthy — curl transport rc wins (coderabbit/codex-adv r10)", async () => {
-  // The launcher's curl uses -m 10 (HIMMEL-1380); a server that sends a 200 then never finishes
+  // The launcher's curl uses -m 10; a server that sends a 200 then never finishes
   // the body makes curl exit 28 (timeout) while %{http_code} still reads 200.
   // The transport-status guard must classify that transient (20), never 0.
   // idleTimeout must exceed curl's -m so the SERVER never closes the stalled
   // connection first (Bun's default idleTimeout is 10s, same as curl's -m —
   // that race let the server's own timeout close the response "cleanly" and
-  // masked the intended client-side-timeout scenario, HIMMEL-1380).
+  // masked the intended client-side-timeout scenario).
   const server = Bun.serve({
     port: 0, hostname: "127.0.0.1", idleTimeout: 60,
     fetch: () => new Response(new ReadableStream({ start() { /* headers sent; body never completes */ } }), { status: 200 }),
@@ -1531,7 +1531,7 @@ test("buildClaudexRunArgs: NEVER includes a --model flag (claude-codex pins the 
   expect(cmd).not.toContain("--model");
 });
 
-// --- HIMMEL-1040: --settings (plugin-profile) injection + --profile parsing ---
+// --- --settings (plugin-profile) injection + --profile parsing ---
 
 test("buildClaudexRunArgs: injects --settings before the prompt when set; omits it otherwise", () => {
   const s = '{"enabledPlugins":{"qmd@himmel":true}}';
@@ -1582,7 +1582,7 @@ test("claudexChildEnv: adds ONLY CLAUDE_CODE_EFFORT_LEVEL when effort is given, 
   expect(noEffort.FOO).toBe("bar");
 });
 
-// HIMMEL-2085: the claudex lane had no worker-ness marker at all, so no hook
+// the claudex lane had no worker-ness marker at all, so no hook
 // could tell a native dispatched worker apart from a headed operator session.
 test("claudexChildEnv: always sets HIMMEL_WORKER=1 (worker-ness marker, HIMMEL-2085)", () => {
   expect(claudexChildEnv({}).HIMMEL_WORKER).toBe("1");
@@ -1595,7 +1595,7 @@ test("claudexChildEnv: strips TELEGRAM_OWN_POLLER so a spawned worker never adop
   expect(env.OTHER).toBe("x");
 });
 
-// HIMMEL-3396: a worker must not inherit the operator's hook-integrity bypass.
+// a worker must not inherit the operator's hook-integrity bypass.
 test("claudexChildEnv: strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK (HIMMEL-3396)", () => {
   const env = claudexChildEnv({ HIMMEL_HOOK_INTEGRITY_BYPASS_OK: "1", OTHER: "x" });
   expect("HIMMEL_HOOK_INTEGRITY_BYPASS_OK" in env).toBe(false);
@@ -1608,7 +1608,7 @@ test("claudexChildEnv: does not mutate the base object it was given", () => {
   expect(base.TELEGRAM_OWN_POLLER).toBe("1"); // original untouched
 });
 
-// HIMMEL-1753: a claudex worker spawns with stdin closed, so an editor fallback
+// a claudex worker spawns with stdin closed, so an editor fallback
 // would open a window on the operator's desktop and then block forever behind it.
 test("claudexChildEnv: pins every editor hook to a no-op, overriding an interactive inherited value", () => {
   const env = claudexChildEnv({ GIT_EDITOR: "notepad", FOO: "bar" });
@@ -1991,17 +1991,17 @@ test("own-branch (flag-less) path mints its own branch with -b, no shared lock (
   expect(ownAddIdx).toBeGreaterThan(-1);
   expect(dispatchIdx).toBeGreaterThan(-1);
   // the own-branch path must not have grown a config-mutation fence back
-  // (HIMMEL-1961): no lane writes remote.origin.pushurl any more.
+  // No lane writes remote.origin.pushurl any more.
   // The own-branch path has no exported seam to snapshot, so it is pinned by
   // the stronger source-text invariant instead: this lane makes NO git config
   // call at all any more. Unlike a key-name check, renaming or building the key
-  // dynamically cannot slip past it (HIMMEL-1961 CR).
+  // dynamically cannot slip past it.
   expect(src).not.toContain('"config"');
 });
 
 test("shared-branch lock is acquired BEFORE any worktree mutation (wiring pin)", () => {
   const src = readFileSync("scripts/telegram/spawn-claudex.ts", "utf8");
-  // acquire → worktree add → trust-seed (HIMMEL-1096, unconditional)
+  // acquire → worktree add → trust-seed (unconditional)
   const acquireIdx = src.indexOf('"acquire", p.repoDir, p.branch, "codex"');
   const addIdx = src.indexOf("if (p.needsWorktreeAdd) p.gitAdd();");
   const trustIdx = src.indexOf("ensureWorkspaceTrust(p.worktree);");
@@ -2026,7 +2026,7 @@ test("runSharedDispatch releases the lock via a finally (wiring pin)", () => {
   expect(/finally\s*\{[\s\S]*?"release", p\.repoDir, p\.branch/.test(src)).toBe(true);
 });
 
-// --- HIMMEL-1225: --help/-h short-circuits BEFORE any side effect ---
+// --- --help/-h short-circuits BEFORE any side effect ---
 // (isHelpFlag itself is lane-agnostic and unit-tested in spawn-glm.test.ts —
 // spawn-claudex imports it verbatim so both lanes share one definition and
 // can't drift apart; these pins wire it into THIS lane's main().)
@@ -2067,7 +2067,7 @@ test("parseClaudexArgs: a bare unrecognized flag is a usage refusal, not swallow
   expect(parseClaudexArgs(["do it", "--cwd", "/repo"]).ok).toBe(true);
 });
 
-// ── HIMMEL-1778: huge-diff lane guard (twin of spawn-glm's wiring pin) ───────
+// ── huge-diff lane guard (twin of spawn-glm's wiring pin) ───────
 
 test("HIMMEL-1778: runBody runs the shared huge-diff guard BEFORE the worker launches, warn-only (wiring pin)", () => {
   // Same seam as spawn-glm's twin: runBody covers BOTH modes (own-branch mint,
@@ -2085,8 +2085,8 @@ test("HIMMEL-1778: runBody runs the shared huge-diff guard BEFORE the worker lau
   expect(src).not.toContain("function findDominatingPath");
 });
 
-// --- HIMMEL-3147: startup-hang watchdog for the claudex lane ---
-// Mirrors spawn-glm's HIMMEL-1575 suite (same shared armStartupWatchdog): a
+// --- startup-hang watchdog for the claudex lane ---
+// Mirrors spawn-glm's startup-hang suite (same shared armStartupWatchdog): a
 // worker that never starts (no transcript growth, no output beyond the
 // banner) is killed at the startup window and the run reports failed with a
 // startup-timeout reason; a worker that starts — then goes quiet — never is.
@@ -2098,7 +2098,7 @@ test("claudexTranscriptRoot is ~/.claude-codex/projects (claude-codex exports CL
   expect(claudexTranscriptRoot()).not.toBe(join(homedir(), ".claude", "projects"));
 });
 
-// HIMMEL-3173: the transcript-dir line spawn-claudex PRINTS must name the same
+// the transcript-dir line spawn-claudex PRINTS must name the same
 // root the startup watchdog POLLS (claudexTranscriptRoot), not the glm
 // ~/.claude/projects root transcriptDirFor defaults to. Stub launcher
 // (`exit 0`) + --skip-auth-preflight: the full main() path runs to the print
@@ -2212,7 +2212,7 @@ test("executeClaudexRun: real output beyond the banner DISARMS the watchdog (HIM
 });
 
 test("executeClaudexRun: growth observed the poll AFTER the window elapses must not kill (HIMMEL-3146 ordering, deterministic)", async () => {
-  // Same interception as spawn-glm's HIMMEL-3146 test: the watchdog's own
+  // Same interception as spawn-glm's test: the watchdog's own
   // callback is captured instead of scheduled and fired by hand at the three
   // logical moments (baseline / first-elapsed / confirming), so no real-timer
   // tick count — and therefore no CI contention — can decide the outcome.

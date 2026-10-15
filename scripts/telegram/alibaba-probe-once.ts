@@ -1,5 +1,5 @@
 // scripts/telegram/alibaba-probe-once.ts
-// HIMMEL-729 wiring chunk B — the deferred LIVE touchpoint for the Alibaba
+// The deferred LIVE touchpoint for the Alibaba
 // quota-gauge probe (companion to the PURE quota-gauge-alibaba.ts module shipped
 // in PR #950/#951). Invoke-only and PIGGYBACKED on a qwen* dispatch from
 // scripts/hermes/invoke.sh: NO always-on surface (no hook, no daemon, no cron,

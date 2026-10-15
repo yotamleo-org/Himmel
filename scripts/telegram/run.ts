@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 // `claude "<p>" </dev/null` exits 0 (~6s, Max quota, no -p). Strips
 // TELEGRAM_OWN_POLLER from the child env so the spawned session never owns the
 // poller. NO -p/--print/--channels — interactive billing + behaviour only.
-// PermissionMode (HIMMEL-578): "bypassPermissions" is the vault-session mode
-// (see runSession). "dontAsk" (HIMMEL-1378) is the GLM/claudex WORKER default —
+// PermissionMode: "bypassPermissions" is the vault-session mode
+// (see runSession). "dontAsk" is the GLM/claudex WORKER default —
 // verified (`claude --help`, v2.1.220) as one of the CLI's native
 // --permission-mode values, and the one Claude Code docs confirm auto-DENIES
 // any tool call not explicitly allow-listed rather than ever prompting. That
 // is the load-bearing property for an unattended, stdin-closed worker: a
 // prompt it cannot answer would otherwise hang until the external timeout
-// kills it (the HIMMEL-203 native-permission-matcher-bails shape this hook
+// kills it (the native-permission-matcher-bails shape this hook
 // comment documents: scripts/hooks/auto-approve-safe-bash.sh). bypassPermissions
 // is NEVER used for an unattended worker (forbidden — see spawn-glm.ts's
 // REFUSE_BYPASS_PERMISSIONS) precisely because it strips every guardrail
@@ -26,30 +26,30 @@ import { fileURLToPath } from "node:url";
 // `--permission-mode` flag that only fails inside the spawned, stdin-closed
 // claude run.
 export type PermissionMode = "bypassPermissions" | "dontAsk";
-// Model pin (HIMMEL-671): without an explicit --model, every bounded run
+// Model pin: without an explicit --model, every bounded run
 // inherits the operator's default model — currently Fable, whose quota is
 // time-limited and reserved for the main thread (see the subagent policy).
 // Opus over sonnet: bridge runs do real work (Jira writes, arming, vault
 // filing) that warrants the reasoning tier, and the operator's standing
 // guidance is opus/haiku for dispatches. Override via TELEGRAM_CLAUDE_MODEL
 // (poller env; restart to apply); blank/whitespace falls back to the default.
-// Pinned to a full model id, not the `opus` alias (HIMMEL-3481): a pin survives
+// Pinned to a full model id, not the `opus` alias: a pin survives
 // the alias moving to a different Opus generation.
 export const DEFAULT_MODEL = "claude-opus-5-5";
 function resolveModel(): string {
   return process.env.TELEGRAM_CLAUDE_MODEL?.trim() || DEFAULT_MODEL;
 }
-// permissionMode (HIMMEL-578): when set, injected as `--permission-mode <mode>`
+// permissionMode: when set, injected as `--permission-mode <mode>`
 // BEFORE the prompt.
-// modelOverride (HIMMEL-654 GLM lane): GLM runs pin their alias explicitly and
+// modelOverride (GLM lane): GLM runs pin their alias explicitly and
 // MUST NOT consult TELEGRAM_CLAUDE_MODEL — a poller-pinned raw Anthropic model
 // id must never leak to the Z.ai endpoint (spec D3).
-// settings (HIMMEL-1040 plugin profiles): when set, injected as
+// settings (plugin profiles): when set, injected as
 // `--settings <json>` before the prompt — the lever-b per-dispatch plugin-profile
 // payload spawn-glm resolves. Highest non-managed precedence, so a lane runs the
 // lean profile while ~/.claude (shared, no CLAUDE_CONFIG_DIR) stays full for the
 // operator. Omitted (operator profile / unset) => no flag, inherits ~/.claude.
-// mcpConfig (HIMMEL-2961): when set, injected as `--mcp-config <json>
+// mcpConfig: when set, injected as `--mcp-config <json>
 // --strict-mcp-config` after --settings — the profile's mcpServers allowlist
 // (plugin-profiles.mjs's collectMcpServerDefs), passed inline the same way
 // --settings is (the claude CLI accepts --mcp-config as a JSON string, not
@@ -68,7 +68,7 @@ export function buildRunArgs(prompt: string, permissionMode?: PermissionMode, mo
 // broken leading-slash path on Windows (/C:/Users/...). Exported for the test.
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
-// BASH_BIN (HIMMEL-1279): every `bash <abs-script>` the bridge spawns must name
+// BASH_BIN: every `bash <abs-script>` the bridge spawns must name
 // Git Bash by absolute path. A bare "bash" resolves through the spawning
 // process's PATH, and the supervisor is launched by the HimmelTelegramBridge
 // schtask under `pwsh -NoProfile`, whose PATH has System32 ahead of Git\bin —
@@ -107,7 +107,7 @@ export function resolveBash(): string {
 }
 export const BASH_BIN = resolveBash();
 
-// glmChildEnv (HIMMEL-654): the GLM lane's child env — the current process env
+// glmChildEnv: the GLM lane's child env — the current process env
 // with the GLM block (buildGlmEnv) merged over it, and TELEGRAM_OWN_POLLER
 // stripped so the spawned session never owns the poller.
 export function glmChildEnv(): Record<string, string | undefined> {
@@ -117,7 +117,7 @@ export function glmChildEnv(): Record<string, string | undefined> {
   return env;
 }
 
-// HIMMEL-1753: a spawned worker runs with stdin CLOSED (see runSession), so it
+// a spawned worker runs with stdin CLOSED (see runSession), so it
 // can never answer an interactive editor or prompt. Any tool that falls back to
 // $EDITOR (git commit without -m, gh pr create without --body, ...) would open a
 // window on the operator's desktop and then block forever behind it — a focus
@@ -158,7 +158,7 @@ export function sessionEnv(lane?: "glm", extraEnv?: Record<string, string>): Rec
   // TELEGRAM_OWN_POLLER strip above — clear first, then let extraEnv grant them.
   delete base.HERMES_BOUNDED_RUN;
   delete base.GGS_ROLE;
-  // HIMMEL-3396: the operator's hook-integrity bypass never reaches a worker —
+  // the operator's hook-integrity bypass never reaches a worker —
   // the default lane spreads process.env, so it is stripped here as well as in
   // glmChildEnv (claudexChildEnv, spawn-claudex.ts, is the third builder).
   delete base.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
@@ -172,10 +172,10 @@ export function sessionEnv(lane?: "glm", extraEnv?: Record<string, string>): Rec
 // chat_id needed), where its cross-run memory lives (context.md), and to stop
 // when done. Source of truth for run-prompt.md. A ticket-shaped session id does
 // the ticket's work; anything else (e.g. "__chat__") just answers the operator.
-// `vault` (HIMMEL-321): when set, an attached document OR image (a line with
+// `vault`: when set, an attached document OR image (a line with
 // "document_path" / "image_path") is filed into that Obsidian vault; resolved
 // per-chat by the poller via gate.vaultForChat.
-// `cwd` vs `sessionCwd` (HIMMEL-578): the session SPAWNS in `sessionCwd` (the
+// `cwd` vs `sessionCwd`: the session SPAWNS in `sessionCwd` (the
 // chat's vault when one is configured, so the vault's `.claude/hooks` — e.g. a
 // medical PHI-egress floor — load), but the Jira-CLI path stays anchored on
 // `cwd` (the himmel repo root) because `dist/` only exists there. The "running
@@ -202,7 +202,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
     ] : vault ? [
       `When a message carries a "document_path" OR an "image_path", FILE that attachment's content into the Obsidian vault at ${vault} (not just read it): read that vault's _CLAUDE.md first and follow its filing conventions — if the vault has a "medic" skill (or another vault-local filing skill) use it, otherwise use the obsidian-second-brain skill. In your reply, confirm what you filed and where.`,
     ] : []),
-    // Jira sanction (HIMMEL-424 followup): without this, the auto-mode classifier
+    // Jira sanction: without this, the auto-mode classifier
     // VETOES ticket writes because the bridge session's stated workflow omits Jira —
     // the bridge would reply "I can't create the ticket (classifier veto)". Stating
     // it as in-scope lifts the veto. Non-destructive only: there is no delete op, and
@@ -216,7 +216,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
 
 // Cap / rate-limit detection default = output sentinel (per spec).
 const CAP_SENTINELS = [/usage limit reached/i, /Claude usage limit/i, /try again later/i];
-// GLM lane (HIMMEL-654 cap guard): z.ai official 429 message substrings
+// GLM lane (cap guard): z.ai official 429 message substrings
 // (docs.z.ai/api-reference/api-code; fixtures promoted from the Task-0 live
 // capture). Exact substrings only — the tail carries task text/diffs/issue
 // numbers like #1316, so no bare code-number matching. `try again later` is
@@ -241,7 +241,7 @@ export function detectCap(output: string, lane?: "glm"): boolean {
   return CAP_SENTINELS.some(r => r.test(output));
 }
 
-// Content-filter detection (HIMMEL-313). A run that exits non-zero
+// Content-filter detection. A run that exits non-zero
 // because Anthropic's API blocked the model's OUTPUT under the content-filtering
 // policy (observed tail: "API Error: Output blocked by content filtering policy")
 // is NOT a usage cap (run.log correctly logs capped=false) and is DETERMINISTIC —
@@ -251,14 +251,14 @@ export function detectCap(output: string, lane?: "glm"): boolean {
 const FILTER_SENTINELS = [/content filtering policy/i, /blocked by .*content filter/i];
 export function detectContentFilter(output: string): boolean { return FILTER_SENTINELS.some(r => r.test(output)); }
 
-// Hard process-TREE kill (HIMMEL-246). A bare p.kill() on Windows kills only the
+// Hard process-TREE kill. A bare p.kill() on Windows kills only the
 // direct child; claude's own subprocess tree survives as an orphan that keeps
 // holding stdout/stderr — p.exited never resolves, the session sticks "running"
 // (the live 1.5h DM wedge), and a later retry would spawn a SECOND child against
 // the same session's context.md/outbox (single-writer violation).
 //
-// HIMMEL-1956: the implementation moved to scripts/lib/kill-tree.mjs, shared
-// with the codex-bank-probe copy that carried the same defect (HIMMEL-1835).
+// the implementation moved to scripts/lib/kill-tree.mjs, shared
+// with the codex-bank-probe copy that carried the same defect.
 // It is re-exported here because "./run" is the import path four modules and
 // the bun suite already use. The POSIX half only works for a child spawned
 // with SPAWN_OWN_GROUP — see that file for the measured matrix.
@@ -271,8 +271,8 @@ export function laneModel(lane?: "glm"): string | undefined {
   return lane === "glm" ? GLM_MODEL_ALIAS : undefined;
 }
 
-// Observability hooks (HIMMEL-1378): a silently-hung worker (native permission
-// matcher bails to an unanswerable prompt on stdin="ignore" — HIMMEL-203) used
+// Observability hooks: a silently-hung worker (native permission
+// matcher bails to an unanswerable prompt on stdin="ignore") used
 // to be INVISIBLE for the entire RUN_TIMEOUT_MS window — run.log was appended
 // only from the FINAL tail (spawn-glm.ts executeRun), post-exit, so a session
 // that never exits leaves zero trace until its caller's timeout fires. onSpawn
@@ -304,7 +304,7 @@ async function drain(stream: ReadableStream<Uint8Array>, onChunk?: (s: string) =
   return acc;
 }
 
-// Lane effort (HIMMEL-3482): lanes.json's claude-tier `effort` is the
+// Lane effort: lanes.json's claude-tier `effort` is the
 // per-dispatch setting, delivered through the same CLAUDE_CODE_EFFORT_LEVEL
 // binding the claudex lane uses. The model maps to its tier lane by alias
 // ("opus") or full id ("claude-opus-5-5"); a model no tier names, or a lane
@@ -325,7 +325,7 @@ export function laneEffort(model: string, registry: LaneRegistry = loadLanes()):
 // testable. The GLM lane is left alone: its alias names no claude tier.
 // A `model:opus|sonnet` tag reaches here as a bare alias, which the CLI
 // resolves to the previous generation (Opus 5 / Sonnet 5). Pin the two tiers
-// to their 5.5 full ids (HIMMEL-3848); haiku has no 5.5 twin and stays an alias.
+// to their 5.5 full ids; haiku has no 5.5 twin and stays an alias.
 const TIER_PIN: Record<string, string> = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5" };
 export function spawnSpec(prompt: string, permissionMode?: PermissionMode, lane?: "glm", modelOverride?: string, settings?: string, extraEnv?: Record<string, string>, mcpConfig?: string, registry?: LaneRegistry) {
   const picked = modelOverride ?? laneModel(lane);
@@ -339,19 +339,19 @@ export function spawnSpec(prompt: string, permissionMode?: PermissionMode, lane?
 
 export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: "glm", modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string }> {
   const { cmd, env } = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
-  // PERMISSION POSTURE (HIMMEL-314; see also HIMMEL-203, HIMMEL-578):
+  // PERMISSION POSTURE:
   // the bounded run inherits the operator's default permission mode (accept-edits)
   // and runs with stdin closed (EOF) so it CANNOT answer a permission prompt. Any
   // tool the `auto-approve-safe-bash` hook doesn't grant falls through to a prompt
   // that the harness auto-mode then denies (e.g. the intermittent Jira ticket-create
   // denials). The first-line fix is broadening the auto-approve matcher.
-  // HIMMEL-578: when the session spawns in a VAULT cwd (sessionCwd != repoCwd),
+  // when the session spawns in a VAULT cwd (sessionCwd != repoCwd),
   // himmel's OWN project hooks (incl. auto-approve-safe-bash) no longer load — so
   // the poller passes permissionMode="bypassPermissions" for vault sessions ONLY,
   // else the FILE-and-commit flow deadlocks on un-answerable prompts. bypass does
   // NOT loosen containment: the VAULT's PreToolUse hooks (e.g. block-cloud-egress)
   // still fire and HARD-block web/cloud/push. Non-vault sessions keep the default.
-  // SPAWN_OWN_GROUP (HIMMEL-1956): the timeout below calls killTree, and its
+  // SPAWN_OWN_GROUP: the timeout below calls killTree, and its
   // POSIX half signals the process GROUP -- which has to exist before it can
   // be signalled. Without this the claude worker's own children survive the
   // deadline and keep holding these pipes.
@@ -371,6 +371,6 @@ export async function runSession(prompt: string, cwd: string, permissionMode?: P
     clearTimeout(timer);
   }
   const tail = (out + err).slice(-65536);
-  // tail returned for run.log persistence (HIMMEL-262)
+  // tail returned for run.log persistence
   return { code: timedOut ? -1 : code, capped: detectCap(tail, lane), blocked: detectContentFilter(tail), timedOut, pid, tail };
 }

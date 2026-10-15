@@ -1,4 +1,4 @@
-// Remote auto-action dispatch for the Telegram bridge (HIMMEL-424, auth model B2).
+// Remote auto-action dispatch for the Telegram bridge (auth model B2).
 // The TRUSTED bridge parses a structured `/arm` command and invokes the privileged
 // action DIRECTLY — the spawned `claude` agent is never in the trust path. This module
 // owns the bridge-side concerns: the closed op allow-list, the per-op enable-list flag,
@@ -11,12 +11,12 @@ import type { Route } from "./router";
 
 // Dispatch table — a thin marker keyed by op name. Its keys ARE the closed op
 // allow-list (= KNOWN_OPS = the valid `TELEGRAM_AUTO_ACTIONS` tokens). v1 shipped one
-// op (arm-resume); v2 (HIMMEL-1213) adds "merge-public" — the SHA-bound public-merge
+// op (arm-resume); v2 adds "merge-public" — the SHA-bound public-merge
 // chokepoint, default OFF like every op here (enabling it is a `TELEGRAM_AUTO_ACTIONS`
 // opt-in the operator sets explicitly; adding the op name to this table only makes it
 // RECOGNIZABLE, never enabled). No per-op arg validators in the table (validation lives
 // in auto-action.sh, which owns the privileged half + the real shell env).
-// v3 (HIMMEL-1272) adds "restart" — the bridge bouncing ITSELF. It is the one op
+// v3 adds "restart" — the bridge bouncing ITSELF. It is the one op
 // with no `script`: rung 1 is the poller exiting 0 so the supervisor respawns it,
 // and rung 2 fires the already-registered HimmelTelegramBridge scheduled task.
 // Neither can be done by a child of auto-action.sh (rung 1 must exit the CALLER;
@@ -29,7 +29,7 @@ export const OPS: Record<string, { script: string | null }> = {
   "restart": { script: null },
   "launch-bypass-leg": { script: "launch-bypass-leg" },
   "cr-grant-delta": { script: "cr-grant-delta" },
-  // HIMMEL-5047 break-glass ops: all executed by break-glass.sh behind auto-action.sh.
+  // Break-glass ops: all executed by break-glass.sh behind auto-action.sh.
   "station-status": { script: "station-status" },
   "revert-main": { script: "revert-main" },
   "repin-hooks": { script: "repin-hooks" },
@@ -44,17 +44,17 @@ export const KNOWN_OPS = new Set(Object.keys(OPS));
 
 // Ops too privileged for the blanket enable-all aliases (=1/all/on/yes) to turn on:
 // they require EXPLICIT naming (TELEGRAM_AUTO_ACTIONS=merge-public or ...,merge-public).
-// HIMMEL-1213 codex CR round-2: `merge-public` is the SHA-bound PUBLIC squash-merge —
+// `merge-public` is the SHA-bound PUBLIC squash-merge —
 // an operator already running `=1`/`=all` for arm-resume must NOT silently inherit the
 // public-merge capability. This preserves the ship-disabled / independent-opt-in intent
 // even for enable-all users; arm-resume (and any future low-risk op) stays in the alias.
-// `restart` is deliberately NOT here (HIMMEL-1272): it is materially less
+// `restart` is deliberately NOT here: it is materially less
 // privileged than merge-public — no git write, no public repo, no scheduler
 // persistence, and its worst case is a bridge that comes back up. It belongs in
 // the ordinary tier, so `=1`/`all` enables it. The DoS shape (a restart loop) is
 // bounded by the same operator-only sender check every auto-command carries, plus
 // the supervisor's POLLER_MAX_FAILS breaker as the backstop.
-// The HIMMEL-5047 break-glass ops are named one by one too, even the read-only
+// The break-glass ops are named one by one too, even the read-only
 // /station-status: an operator turns on exactly the station powers they mean to.
 export const BREAK_GLASS_OPS = new Set(["station-status", "revert-main", "repin-hooks", "launch-leg", "cr-reset", "close-wrapped", "relaunch-console", "restart-bridge", "allow-rule"]);
 export const EXPLICIT_ONLY_OPS = new Set(["merge-public", "launch-bypass-leg", "cr-grant-delta", ...BREAK_GLASS_OPS]);
@@ -91,7 +91,7 @@ export function parseEnabledOps(raw: string | undefined, knownOps: Set<string>):
 const OFF_ALIASES = new Set(["", "0", "off", "no", "false"]);
 const ON_ALIASES = new Set(["1", "all", "on", "yes", "true"]);
 
-// describeEnabledOps (HIMMEL-1270) — the startup line(s) for TELEGRAM_AUTO_ACTIONS.
+// describeEnabledOps — the startup line(s) for TELEGRAM_AUTO_ACTIONS.
 // The failure this exists for: the shipped `.env.example` taught
 // `TELEGRAM_AUTO_ACTIONS=arm`, which is not a token in KNOWN_OPS (`arm-resume` is),
 // so it parsed to the EMPTY set and enabled nothing — and the poller only logged
@@ -133,7 +133,7 @@ export function isExecutableAutoCommand(route: Route, forwarded: boolean, captio
 //   0 armed · 1 bad input · 2 unknown op · 3 no handover / bad path · 4 ambiguous (>1) ·
 //   5 already armed (arm-resume dedup) · 6 arm failed (arm-resume non-zero)
 //
-// merge-public (HIMMEL-1213) uses a SEPARATE, PASSED-THROUGH rc space: auto-action.sh
+// merge-public uses a SEPARATE, PASSED-THROUGH rc space: auto-action.sh
 // relays merge-public-on-green.sh's own exit code verbatim after validating PR/SHA shape
 // (bad shape -> 1, reusing arm-resume's "bad input" code — the two ops' rc spaces never
 // co-occur within one invocation). See merge-public-on-green.sh's header for the full
@@ -173,7 +173,7 @@ function mapMergePublicResult(pr: string, sha: string, code: number, stdout: str
 // stdout; merge-public has no analogous "resolved" concept.
 export async function dispatchAutoAction(deps: { runScript: RunScriptFn }, route: AutoActionRoute): Promise<AutoResult> {
   if (!KNOWN_OPS.has(route.op)) return { ok: false, rc: 2, message: `⚠️ unknown op: ${route.op}` };
-  // Defense-in-depth (HIMMEL-1272): a self-executed op has no script, so reaching
+  // Defense-in-depth: a self-executed op has no script, so reaching
   // here means a caller tried to route it through auto-action.sh. Refuse rather
   // than spawn `auto-action.sh restart …`, which would hit that script's own
   // unknown-op guard anyway — but fail here, at the layer that knows why.
@@ -215,7 +215,7 @@ export async function dispatchAutoAction(deps: { runScript: RunScriptFn }, route
 
 // --- Audit (one append-only line per attempt, executed OR refused) ---
 // The `result=` label is computed by poller.ts's `auditResult(op, rc)`, which is
-// OP-AWARE (HIMMEL-1213 codex-adv): merge-public relays merge-public-on-green.sh's
+// OP-AWARE: merge-public relays merge-public-on-green.sh's
 // OWN rc space, so rc=0 -> "merged" (never arm-resume's "armed") and 12/15/16 ->
 // "no-open-pr"/"head-moved"/"not-green", keeping result-keyed forensic queries
 // correct. The labels below are the closed union both ops draw from.

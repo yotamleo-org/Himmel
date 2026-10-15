@@ -27,7 +27,7 @@ test("fails closed on malformed allowlist", () => {
   expect(isAllowed(undefined as any, 123)).toBe(false);
 });
 
-// --- group/channel allowlist (HIMMEL-238) ---
+// --- group/channel allowlist ---
 // groups is the fork's object shape keyed by chat_id string; a present key
 // allows the chat. Covers groups (-…) and channels (-100…) alike.
 
@@ -64,7 +64,7 @@ test("isGroupAllowed: empty/missing per-group allowFrom admits any member; requi
   expect(isGroupAllowed({ groups: { "-50": { requireMention: true } } }, -50, 999)).toBe(true);
 });
 
-// --- operator identity, including anonymous group admins (HIMMEL-1358) ---
+// --- operator identity, including anonymous group admins ---
 // When a group admin posts with "Remain anonymous" on, Telegram replaces the
 // sender with the fixed GroupAnonymousBot id, so the operator's real id never
 // reaches us and a raw allowFrom comparison can never match. Measured live:
@@ -156,7 +156,7 @@ test("isOperatorIdentity: fails closed when no operator identity is configured (
   expect(isOperatorIdentity(undefined as any, GROUP_ANONYMOUS_BOT_ID, -50)).toBe(false);
 });
 
-// --- per-group vault routing (HIMMEL-321) ---
+// --- per-group vault routing ---
 // A document/PDF attachment is filed into the vault resolved for its chat:
 // a group's own `vault` wins, else the top-level `defaultVault`, else null
 // (no vault configured → the run just surfaces the document, files nothing).
@@ -252,7 +252,7 @@ test("requireMentionForChat: unknown chat and missing/empty access default to fa
   expect(requireMentionForChat(undefined as any, -50)).toBe(false);
 });
 
-// HIMMEL-2580: the cursor-reset notice has no originating chat to reply into,
+// The cursor-reset notice has no originating chat to reply into,
 // so it addresses the operator's DM — chat_id === the allowFrom user id.
 // Every not-a-usable-chat shape must fail closed to null, because the caller's
 // only alternative to "log-only" is messaging some other chat entirely.

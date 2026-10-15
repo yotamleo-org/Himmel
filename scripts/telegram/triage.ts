@@ -5,7 +5,7 @@ import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 
 export type TriageVerdict = "ignore" | "ack" | "spawn-low" | "spawn-high";
 // The only model the triage seam ever injects is the spawn-low haiku override
-// (HIMMEL-671). A literal type — not bare `string` — so a future verdict that
+// A literal type — not bare `string` — so a future verdict that
 // mints a different override is a compile error at the producer, not a silent
 // fall-through to the default model.
 export type TriageModelOverride = "haiku";
@@ -16,7 +16,7 @@ export type TriageModelOverride = "haiku";
 // letting the run path carry an operator choice.
 export type ModelOverride = "haiku" | "sonnet" | "opus";
 export type TriageInvokeFn = (args: string[], prompt: string) => Promise<string>;
-// fromOperator (HIMMEL-1296 CR codex-adv-1): the sender's ROLE, which selects
+// fromOperator: the sender's ROLE, which selects
 // the prompt framing. Defaults false — the conservative side: an unwired caller
 // gets the shared-group framing, never the operator one.
 export type TriageDeps = { invoke?: TriageInvokeFn; timeoutMs?: number; sessionLabel?: string; fromOperator?: boolean };
@@ -29,7 +29,7 @@ export function parseTriageVerdict(raw: string): TriageVerdict {
   return VERDICTS.has(t as TriageVerdict) ? (t as TriageVerdict) : "spawn-high";
 }
 
-// TELEGRAM_TRIAGE_TIMEOUT_MS (HIMMEL-721 CR): env-tunable classifier deadline.
+// TELEGRAM_TRIAGE_TIMEOUT_MS: env-tunable classifier deadline.
 // Default stays 20s. NaN / non-positive falls back to the default so a malformed
 // value can never disable the timeout (a missing deadline would let a hung
 // hermes child wedge the ingest loop).
@@ -38,7 +38,7 @@ function resolveTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
 }
 
-// HIMMEL-1296. Two things were wrong with the bare-message prompt.
+// Two things were wrong with the bare-message prompt.
 //
 // 1. It never said what the group IS, so a terse follow-up (`try again..`,
 //    `Status?`) was indistinguishable from idle chatter.
@@ -57,7 +57,7 @@ function resolveTimeoutMs(): number {
 //   + verdict EFFECTS (this)   spawn-low     spawn-low              spawn-low  ← answered
 //
 // and genuine chatter (`lol nice`, `haha 😂`, `ok`) still classifies `ack`, so
-// the HIMMEL-721 spam gate keeps its teeth.
+// the spam gate keeps its teeth.
 //
 // Deliberately stateless — no conversation history: the poller's triage gate
 // runs BEFORE the enqueue precisely so it needs no session I/O.
@@ -69,7 +69,7 @@ function triagePrompt(text: string, fromOperator: boolean): string {
     // an ordinary member of a shared group — a bare group allowlist admits every
     // member. Measured chatter still classified `ack` under it, so no promotion
     // was observed, but asserting something false about the sender to widen a
-    // spam gate is the wrong shape regardless: HIMMEL-721 exists to filter
+    // spam gate is the wrong shape regardless: it exists to filter
     // exactly those members. The operator framing now goes only where it is true.
     ...(fromOperator
       ? ["This message is from the human operator the agent works for: it is an",
@@ -99,8 +99,8 @@ function triagePrompt(text: string, fromOperator: boolean): string {
   ].join("\n");
 }
 
-// HIMMEL-2751. invoke.sh spawns hermes as `run_hermes > >(tee "$capture_log")
-// 2>&1 &` for its own HIMMEL-2049 iteration-budget scan, which merges hermes'
+// invoke.sh spawns hermes as `run_hermes > >(tee "$capture_log")
+// 2>&1 &` for its own iteration-budget scan, which merges hermes'
 // stderr INTO stdout by construction. That means invoke.sh's OWN stderr is
 // structurally empty for any plain non-zero hermes exit — the
 // `stderr.slice(-512)` this file used to reject with was therefore always
@@ -136,7 +136,7 @@ export function classifierFailureMessage(argv: string[], code: number | null, st
 // exercises the error message this ticket is about, so a unit test of
 // classifierFailureMessage alone would not be a control over the spawn path.
 export async function defaultInvoke(args: string[], prompt: string, timeoutMs: number): Promise<string> {
-  // SPAWN_OWN_GROUP (HIMMEL-1956): the timeout path below calls killTree,
+  // SPAWN_OWN_GROUP: the timeout path below calls killTree,
   // whose POSIX half signals the group -- the hermes python grandchild this
   // comment already worries about on Windows survives on POSIX without it.
   const p = spawn([...args, prompt], { ...SPAWN_OWN_GROUP, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
@@ -144,7 +144,7 @@ export async function defaultInvoke(args: string[], prompt: string, timeoutMs: n
   return await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => {
       timedOut = true;
-      // killTree (HIMMEL-246): on Windows a bare p.kill() orphans the hermes
+      // killTree: on Windows a bare p.kill() orphans the hermes
       // python grandchild — taskkill /T /F takes the whole spawn tree.
       killTree(p.pid, (s) => p.kill(s as any));
       reject(new Error("triage timeout"));
@@ -185,7 +185,7 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
   const model = process.env.TELEGRAM_TRIAGE_MODEL?.trim() || "deepseek-v4-flash";
   const provider = process.env.TELEGRAM_TRIAGE_PROVIDER?.trim() || "deepseek";
   // Absolute path: the poller's cwd is not guaranteed to be the repo root.
-  // BASH_BIN, not a bare "bash" (HIMMEL-1279): under the poller's PATH a bare
+  // BASH_BIN, not a bare "bash": under the poller's PATH a bare
   // "bash" hit the WSL System32 stub, which exits 127 on any C: path — so the
   // classifier fail-opened to spawn-high on 100% of messages, invisibly.
   const args = [BASH_BIN, join(REPO_ROOT, "scripts", "hermes", "invoke.sh"), "--model", model, "--provider", provider];
@@ -200,10 +200,10 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
       : await defaultInvoke(args, prompt, timeoutMs);
     return parseTriageVerdict(output);
   } catch (e) {
-    // sessionLabel (HIMMEL-721 CR): correlate the fail-open to the session so a
+    // sessionLabel: correlate the fail-open to the session so a
     // dropped-to-spawn-high chatter is traceable in the log alongside the poller state.
     //
-    // HIMMEL-2751 console ruling: this fail-open is DELIBERATELY silent to the
+    // This fail-open is DELIBERATELY silent to the
     // group. poller.ts routes any triage error to spawn-high, so the message
     // is still answered -- by the full model instead of haiku -- rather than
     // lost; a per-message chat notice would just be noise for a condition that

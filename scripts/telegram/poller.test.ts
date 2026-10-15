@@ -14,8 +14,8 @@ const allowAll = () => true;
 const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
 
 // The triage gate is skipped entirely when TELEGRAM_TRIAGE=off — and that is a
-// real User env var on the operator's box while a triage incident is mitigated
-// (HIMMEL-1296). Inherited, it made every triage test below silently pass-through
+// real User env var on the operator's box while a triage incident is mitigated.
+// Inherited, it made every triage test below silently pass-through
 // and still report green. Clear it so the suite tests the code, not the host.
 // beforeEACH, not beforeAll (panel CR codex-1): the kill switch is exactly the
 // kind of state a test sets and could fail to restore, and a once-per-file clear
@@ -23,7 +23,7 @@ const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
 // re-creating the false-green this guard exists to prevent. Per-test is cheap.
 beforeEach(() => { delete process.env.TELEGRAM_TRIAGE; });
 
-// --- retry cap + run.log (HIMMEL-262/263) ---
+// --- retry cap + run.log ---
 
 const freshMeta = (chat_id: number) => ({ chat_id, status: "idle" as const, last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
 
@@ -110,7 +110,7 @@ test("transient non-zero exit (e.g. 529 Overloaded) notifies 'transient' not 'ca
 });
 
 test("noticeText: cap vs transient strings are honest (529 must not read as a usage cap)", () => {
-  // The literal point of HIMMEL-353 — assert the operator-facing wording, not just
+  // The literal point of this test — assert the operator-facing wording, not just
   // the kind token. A future edit that swapped the two arms or dropped the disclaimer
   // would otherwise ship green.
   const cap = noticeText("cap", "01:49 UTC", 3);
@@ -205,7 +205,7 @@ test("run.log: each settle persists the run's output tail; hung run writes a pla
   expect(log2).toContain("code=-1");
 });
 
-// --- backoff notice + typing signal (HIMMEL-260) ---
+// --- backoff notice + typing signal ---
 
 test("backoff notice: one notify per backoff episode; success resets; next cap notifies again", async () => {
   const r = root(); await ensureSession(r, "S");
@@ -250,7 +250,7 @@ test("signalTyping: fires action with chat_id for in-flight sessions only", asyn
   expect(typed).toEqual([-50]);
 });
 
-// --- concurrent per-session dispatch + watchdog (HIMMEL-246) ---
+// --- concurrent per-session dispatch + watchdog ---
 
 test("dispatcher: same-session overlap dropped; re-dispatch after completion runs again", async () => {
   let started = 0; let resolveRun!: () => void;
@@ -402,7 +402,7 @@ test("gate predicate rejects disallowed senders (not appended)", async () => {
   expect(await loadOffset(r)).toBe(2);               // offset still advances past a rejected update (it's confirmed/seen)
 });
 
-// --- group + channel ingest (HIMMEL-238) ---
+// --- group + channel ingest ---
 
 test("ingest passes chat_id to the gate so an allowed group accepts a non-allowlisted sender", async () => {
   const r = root();
@@ -457,7 +457,7 @@ test("ingest accepts a channel_post (no from) when the chat is allowed; from fal
   expect(await loadOffset(r)).toBe(7);               // offset advances past both (confirmed)
 });
 
-// HIMMEL-2580 CR codex-2: bus.test.ts's ordering tests call
+// bus.test.ts's ordering tests call
 // repairCursorBeyondEof and appendLine/ingestUpdates directly — they pin the
 // ordering PROPERTY, but do not exercise the poller's actual production call
 // site, so moving main()'s two lines back below ingestUpdates would leave
@@ -500,7 +500,7 @@ test("chat routes to __chat__ session", async () => {
   expect(ran).toEqual(["__chat__"]);
 });
 
-// --- per-group session routing (HIMMEL-238) ---
+// --- per-group session routing ---
 // Non-DM chat (negative chat_id) gets its own session keyed by chat_id so
 // meta.chat_id = the group/channel and replies route back there, not the DM.
 // Key uses "_" not ":" — the session id is an NTFS directory name.
@@ -522,7 +522,7 @@ test("group chat ignores cheap-triaged chatter without spawning", async () => {
 
   expect(triaged).toEqual(["lol nice"]);
   expect(ran).toEqual([]);
-  // Gate runs BEFORE the enqueue (HIMMEL-721 CR): on `ignore` the session is
+  // Gate runs BEFORE the enqueue: on `ignore` the session is
   // never materialized and nothing is written to the inbox. readMeta null ⇒ the
   // session dir was never created; the inbox read throwing ⇒ never enqueued.
   expect(await readMeta(r, "group_-50")).toBeNull();
@@ -531,7 +531,7 @@ test("group chat ignores cheap-triaged chatter without spawning", async () => {
   expect(inboxPresent).toBe(false);
 });
 
-// HIMMEL-721 CR regression: an ignored group message must NOT be resurrected by
+// Regression: an ignored group message must NOT be resurrected by
 // the main loop's unconditional deliverAllPending (mirrors poller.ts ~905). The
 // gate drops it before enqueue, so there is no inbox content and no session to
 // deliver — zero runs across the sweep.
@@ -557,7 +557,7 @@ test("ack verdict: deliverAllPending fires zero runs and finds no pending inbox"
   expect(await readMeta(r, "group_-50")).toBeNull();
 });
 
-// HIMMEL-721: an ignored message is dropped even when the session is mid-run —
+// an ignored message is dropped even when the session is mid-run —
 // the gate returns before appendLine, so a running session's inbox never grows
 // with triaged-away chatter.
 test("ignore verdict while session is running: chatter is not appended to the inbox", async () => {
@@ -585,12 +585,12 @@ test("group chat spawn-low triage passes haiku as the run model override", async
   expect(ran).toEqual([{ session: "group_-50", modelOverride: "haiku" }]);
 });
 
-// --- operator is never triaged away (HIMMEL-1296) ---
+// --- operator is never triaged away ---
 // The incident: with the classifier live on Windows for the first time
-// (HIMMEL-1279 fixed the bash-path bug that had fail-opened it), ordinary
+// (after the bash-path bug that had fail-opened it was fixed), ordinary
 // operator questions in the himmel-ops group classified as ignore/ack and were
 // dropped PERMANENTLY — including `why didn't we got an answer on last messagE?`,
-// the complaint about the message the same bug had already eaten. HIMMEL-721's
+// the complaint about the message the same bug had already eaten. The triage gate's
 // purpose was cutting resource spam in SHARED groups, never filtering the
 // operator, so an operator message floors to spawn-low instead of dropping.
 
@@ -633,7 +633,7 @@ test("operator exemption is a floor: spawn-high keeps the full model (HIMMEL-129
   expect(ran).toEqual([{ session: "group_-50", modelOverride: undefined }]);
 });
 
-// HIMMEL-721 must still do its job: a NON-operator member of a shared group is
+// The triage gate must still do its job: a NON-operator member of a shared group is
 // triaged exactly as before, so the exemption did not neuter the spam gate.
 test("non-operator group chatter is still dropped when the exemption is wired (HIMMEL-1296)", async () => {
   const r = root(); const ran: string[] = [];
@@ -651,7 +651,7 @@ test("non-operator group chatter is still dropped when the exemption is wired (H
 // Grow-tent groups are shared with luna_grow_bot, which owns `/grow`. Rather
 // than blocklist that one command, access.json opts the whole group into
 // @mention-only mode (GroupPolicy.requireMention) — a message that doesn't
-// @mention THIS bot is dropped before triage and before the HIMMEL-1296
+// @mention THIS bot is dropped before triage and before the
 // operator floor, which must not rescue a message aimed at a different bot.
 const mentionOn = () => true;
 const BOT = "luna_bridge_bot";
@@ -750,7 +750,7 @@ test("an unresolvable bot username fails OPEN to triage, never drops (LUNA-158)"
 // handled, so a record that throws used to kill the poller and take every LATER
 // record with it — permanently. That is how an operator message could be lost
 // without ever reaching the floor above. (The remaining crash window between the
-// cursor commit and the inbox append is HIMMEL-1302, not closed here.)
+// cursor commit and the inbox append is not closed here.)
 const inbound = (text: string, update_id: number, from = 5) =>
   ({ from, chat_id: -50, text, ts: 0, update_id, forwarded: false, caption: false });
 
@@ -767,7 +767,7 @@ test("handleBatch isolates a throwing record so later records still land (HIMMEL
 
 // Containing the throw must not make the loss QUIET — that would swap a loud
 // crash-loop for a healthy-looking bridge that silently eats messages, which is
-// the exact signature HIMMEL-1296 exists to kill.
+// the exact signature the operator floor exists to kill.
 test("handleBatch notifies on a dropped record, keyed by update_id (HIMMEL-1296)", async () => {
   const drops: number[] = [];
   await handleBatch(
@@ -814,7 +814,7 @@ test("a drop notifier that never settles does not stall later records (HIMMEL-12
 
 // onDrop is typed `=> void` (fire-and-forget), but void says "don't await",
 // not "can't reject" — a caller passing an async callback that rejects must
-// not let that rejection escape the seam as an unhandled rejection (HIMMEL-1311).
+// not let that rejection escape the seam as an unhandled rejection.
 test("handleBatch contains an onDrop that rejects asynchronously, without an unhandled rejection (HIMMEL-1311)", async () => {
   const rejections: unknown[] = [];
   const handler = (reason: unknown) => { rejections.push(reason); };
@@ -892,7 +892,7 @@ test("operator floor keys on GLOBAL allowFrom: a per-group allowFrom member is s
   expect(opRan).toEqual(["group_-50"]);                // operator: floored, never dropped
 });
 
-// HIMMEL-1358 — an operator posting in a group with "Remain anonymous" enabled
+// An operator posting in a group with "Remain anonymous" enabled
 // has GroupAnonymousBot substituted for their real id, so a floor keyed on raw
 // from.id could never match. The links were classified `ignore` and hit the
 // PERMANENT drop with only a supervisor.log line to show for it. Composes the
@@ -1161,7 +1161,7 @@ test("peekPending does not consume until commit (capped run can re-peek)", async
   expect(p3.count).toBe(0);                       // committed → consumed
 });
 
-// --- cold-spawn runFn (HIMMEL-226: reverts the warm stdin-pipe delivery) ---
+// --- cold-spawn runFn (not the warm stdin-pipe delivery) ---
 
 // DoD: a delivered inbound produces an outbox reply via the cold-spawn path; the cold
 // prompt carries context.md (prior-turn continuity) + points at the peeked slice; the
@@ -1187,8 +1187,8 @@ test("cold runFn: pending inbound → cold run replies to outbox, passes continu
   expect((await peekPending(r, "HIMMEL-7")).count).toBe(0);        // cursor committed after the clean run
 });
 
-// HIMMEL-2961: every bridge dispatch resolves the `telegram` plugin profile
-// (lever-b, HIMMEL-1040's resolveProfileSettings seam) into --settings, and
+// every bridge dispatch resolves the `telegram` plugin profile
+// (lever-b, the resolveProfileSettings seam) into --settings, and
 // its mcpServers allowlist (["qmd"]) into --mcp-config, instead of the
 // previous hardcoded `undefined` (full operator ~/.claude injected, unlean).
 test("cold runFn: resolves the telegram profile settings + mcp allowlist for every bridge dispatch", async () => {
@@ -1396,7 +1396,7 @@ test("guarded: overlapping calls are dropped; re-entry works after in-flight res
   expect(counter).toBe(2); // second run completed
 });
 
-// --- photo+caption forwarding in poller mode (HIMMEL-250) ---
+// --- photo+caption forwarding in poller mode ---
 
 test("ingest photo+caption: caption becomes text, image_path recorded, largest size fetched", async () => {
   const r = root();
@@ -1468,7 +1468,7 @@ test("handleInbound forwards image_path into the session inbox line", async () =
   expect(lines[0].text).toBe("look at this");
 });
 
-// --- document/PDF forwarding in poller mode (HIMMEL-321) ---
+// --- document/PDF forwarding in poller mode ---
 
 test("ingest document+caption: caption becomes text, document_path + document_name recorded", async () => {
   const r = root();
@@ -1684,7 +1684,7 @@ test("safeExt: keeps plain extensions, rejects Telegram-controlled traversal/que
   expect(safeExt("voice/file_5", ".oga")).toBe(".oga");                // voice fallback is caller-supplied
 });
 
-// --- voice-note transcription in poller mode (HIMMEL-251) ---
+// --- voice-note transcription in poller mode ---
 
 test("ingest voice: transcript becomes text with [voice transcript] prefix, file_id + chat_id passed through", async () => {
   const r = root();
@@ -1743,7 +1743,7 @@ test("ingest voice with no fetchVoice wired: dropped like other unsupported medi
   expect(lines.length).toBe(0);
 });
 
-// makeFetchVoice — the production closure that OWNS the HIMMEL-251 acceptance
+// makeFetchVoice — the production closure that OWNS the acceptance
 // ("explicit error reply on every failure, never a silent drop, never throws")
 
 const voiceDeps = (over: Partial<Parameters<typeof makeFetchVoice>[0]> = {}) => {
@@ -1803,7 +1803,7 @@ test("makeFetchVoice: sendFail itself throwing is swallowed (logged), null still
   expect(await makeFetchVoice(deps)("f", 35, 7)).toBeNull();
 });
 
-// --- HIMMEL-266: photo download non-blocking for ingest loop ---
+// --- photo download non-blocking for ingest loop ---
 
 test("HIMMEL-266: mixed batch — photo and text in same batch both land in inbox; offset advances for both", async () => {
   // Regression guard for the refactor: non-photo messages must not be lost when
@@ -1879,7 +1879,7 @@ test("HIMMEL-266: a batch of N photos does not delay getUpdates by N × file-fet
   expect(lines.length).toBe(3);
 });
 
-// HIMMEL-268 hardening: oga cleanup after transcription
+// oga cleanup after transcription
 
 test("makeFetchVoice: oga source file is unlinked after successful transcription (no dead-weight audio)", async () => {
   const unlinked: string[] = [];
@@ -1896,7 +1896,7 @@ test("makeFetchVoice: oga source file is unlinked after successful transcription
   expect(unlinked[0]).toMatch(/\.oga$/);
 });
 
-// HIMMEL-268 hardening: caption forwarded when voice transcription fails
+// caption forwarded when voice transcription fails
 
 test("ingest voice with caption: caption + [voice transcript unavailable] forwarded when transcription fails", async () => {
   const r = root();
@@ -1920,7 +1920,7 @@ test("ingest voice without caption: skipped when transcription fails (no caption
   expect(lines.length).toBe(0);   // no caption → nothing to forward
 });
 
-// --- attachments GC (HIMMEL-267) ---
+// --- attachments GC ---
 // Helpers to write a file with a back-dated mtime so sweep can age it out.
 
 async function writeStale(dir: string, name: string, ageMs: number): Promise<string> {
@@ -1992,7 +1992,7 @@ test("resolveRetentionMs: only finite positive values override the default", () 
   expect(resolveRetentionMs("Infinity")).toBe(DEFAULT);
 });
 
-// --- is_automatic_forward deduplication (HIMMEL-244) ---
+// --- is_automatic_forward deduplication ---
 // When a channel has a linked discussion group, Telegram sends TWO updates:
 //   1. channel_post (the original, no is_automatic_forward)
 //   2. message with is_automatic_forward: true (the auto-forwarded group copy)
@@ -2034,7 +2034,7 @@ test("ingest: is_automatic_forward drop still advances the offset (no retry loop
   expect(await loadOffset(r)).toBe(71);   // confirmed — no re-delivery
 });
 
-// --- HIMMEL-424 B2: remote auto-actions (forwarded/caption bits + /arm routing) ---
+// --- remote auto-actions (forwarded/caption bits + /arm routing) ---
 
 test("ingest marks forwarded (from a forward marker) + caption explicitly on each record", async () => {
   const r = root();
@@ -2201,7 +2201,7 @@ test("handleAutoCommand: a reply-delivery failure does NOT swallow the audit nor
   expect(audits[0].result).toBe("refused-forwarded");
 });
 
-// --- HIMMEL-578: per-chat vault cwd + scoped bypassPermissions ---
+// --- per-chat vault cwd + scoped bypassPermissions ---
 test("makeRunFn: a vault-configured chat spawns in the vault cwd with bypassPermissions; jira path stays on repoCwd", async () => {
   const r = root(); await ensureSession(r, "V");
   await writeMeta(r, "V", freshMeta(42));
@@ -2228,8 +2228,7 @@ test("makeRunFn: a NON-vault chat spawns in repoCwd with NO bypass (default post
   expect(calls[0].mode).toBeUndefined();
 });
 
-// HIMMEL-578 CR follow-ups (test-analyzer findings):
-// blast-radius — a configured defaultVault routes EVERY unconfigured chat (DMs,
+// Blast-radius — a configured defaultVault routes EVERY unconfigured chat (DMs,
 // unknown groups) into a vault cwd WITH bypassPermissions. Pin that composed
 // behavior with the REAL vaultForChat (the unit tests above stubbed it).
 test("makeRunFn + real vaultForChat: a defaultVault grants vault-cwd+bypass to an UNCONFIGURED chat (blast radius)", async () => {
@@ -2254,7 +2253,7 @@ test("makeRunFn: an empty-string vault normalizes to null (repoCwd, no bypass) �
   expect(calls[0].mode).toBeUndefined();                // no bypass for a falsy vault
 });
 
-// --- bridge config file: TELEGRAM_AUTO_ACTIONS is read from it (HIMMEL-1270) ---
+// --- bridge config file: TELEGRAM_AUTO_ACTIONS is read from it ---
 
 test("parseBridgeEnv reads both keys, ignores comments, and strips surrounding quotes", () => {
   const parsed = parseBridgeEnv([
@@ -2447,7 +2446,7 @@ test("parseBridgeEnv: a later TELEGRAM_AUTO_ACTIONS assignment REVOKES an earlie
   expect(both.TELEGRAM_AUTO_ACTIONS).toBe("");
 });
 
-// --- /restart (HIMMEL-1272) ---
+// --- /restart ---
 
 const restartRoute = (rung = "poller") =>
   ({ kind: "auto", op: "restart", arg: rung, time: "-" }) as any;
@@ -2644,7 +2643,7 @@ test("/restart full does NOT arm a watchdog when the fire itself failed", async 
   expect(armed).toBe(false);
 });
 
-// --- HIMMEL-1273: burst coalescing ------------------------------------------
+// --- burst coalescing ------------------------------------------
 //
 // A fake clock throughout: the whole point is time-based behaviour, and a suite
 // that sleeps for real windows is slow and flaky. flushDue takes `now` for
@@ -2875,7 +2874,7 @@ test("hasReadOnlyFloor: the matcher must cover Bash", () => {
   expect(hasReadOnlyFloor(floorCase(guardWithMatcher(""), true))).toBe(true);
 });
 
-// "*" and "**" are the documented match-ALL wildcards (HIMMEL-1726): they
+// "*" and "**" are the documented match-ALL wildcards: they
 // cover Bash by definition, same as an absent matcher — the predicate was
 // rejecting exactly the widest, most conservative guard a repo could write.
 test("hasReadOnlyFloor: the documented match-all wildcards '*' and '**' cover Bash", () => {
@@ -2883,9 +2882,9 @@ test("hasReadOnlyFloor: the documented match-all wildcards '*' and '**' cover Ba
   expect(hasReadOnlyFloor(floorCase(guardWithMatcher("**"), true))).toBe(true);
 });
 
-// HIMMEL-1799: this slot asserted against the operator's literal home paths
+// this slot asserted against the operator's literal home paths
 // and bare-returned when they were absent — vacuously green on every machine
-// but one (the HIMMEL-1788 shape: a check that cannot fail is a check not
+// but one (the shape: a check that cannot fail is a check not
 // running), and the literals aborted public propagation at the leak scan.
 // Realistic fixtures carry the intent on every machine instead: a full repo
 // settings.json — unrelated keys, another hook event alongside PreToolUse, a
@@ -2909,8 +2908,8 @@ test("hasReadOnlyFloor: a realistic repo config is a floor; a realistic vault co
   expect(hasReadOnlyFloor(vault)).toBe(false);
 });
 
-// The refused route must NOT fall through to the vault branch (CR codex-adv
-// round 2): defaultVault is pinned live, so that fallback put a bypassed,
+// The refused route must NOT fall through to the vault branch:
+// defaultVault is pinned live, so that fallback put a bypassed,
 // filing-enabled session inside the personal vault — worse than the missing
 // floor it was refusing.
 test("a REFUSED cwd route never lands in the vault, never bypasses, never files", async () => {
@@ -3100,7 +3099,7 @@ test("deliverAllPending SKIPS a held session (else the hold is defeated same-tic
   const runs: string[] = [];
   await deliverAllPending(r, async (s) => { runs.push(s); }, new Date(), async () => ["held", "free"], (s) => s === "held");
   expect(runs).toEqual(["free"]);
-  // and with no isHeld supplied it keeps the pre-HIMMEL-1273 behaviour
+  // and with no isHeld supplied it keeps the pre-burst-coalescing behaviour
   const runs2: string[] = [];
   await deliverAllPending(r, async (s) => { runs2.push(s); }, new Date(), async () => ["held", "free"]);
   expect(runs2.sort()).toEqual(["free", "held"]);
@@ -3136,7 +3135,7 @@ test("typing fires while a burst is held, not just while a run is in flight", as
   expect(chats).toEqual([42]);           // operator sees "typing…" during the hold
 });
 
-// HIMMEL-1289 (public-PR CR): an EMPTY env var is ABSENCE, not a request for 0.
+// An EMPTY env var is ABSENCE, not a request for 0.
 // Number("") is 0, not NaN, and 0 is meaningful here (it disables coalescing) —
 // so `TELEGRAM_BATCH_QUIET_MS=` (a commented-out or half-edited .env line) would
 // have silently turned coalescing OFF while looking configured.
@@ -3157,7 +3156,7 @@ test("an EMPTY TELEGRAM_BATCH_QUIET_MS falls back to the default, it does not me
   }
 });
 
-// HIMMEL-1291 (public-PR CR): the timer PERIODS bypassed the hardening above.
+// The timer PERIODS bypassed the hardening above.
 // `Number(process.env.X ?? d)` yields 0 for an empty value and NaN for a typo,
 // and setInterval clamps both to ~1ms — so a half-edited .env line did not fall
 // back to the default, it spun the sweep. positiveEnvMs handles ""/NaN/negative
@@ -3186,7 +3185,7 @@ test("intervalEnvMs: an explicit 0 falls back — it is NOT floored to a 1ms spi
   expect(intervalEnvMs("0.4", 500)).toBe(500);   // sub-1ms is the same hazard
 });
 
-// codex-adv round 2, verified on bun 1.3.14: setInterval holds its delay in a
+// Verified on bun 1.3.14: setInterval holds its delay in a
 // signed 32-bit int, so >2147483647 does NOT become a long interval — it warns
 // TimeoutOverflowWarning and is set to 1. A few extra digits in an env value
 // therefore lands on the SAME 1ms hot loop as `=0`, from the opposite end.
@@ -3196,7 +3195,7 @@ test("intervalEnvMs: a period past setInterval's 32-bit ceiling falls back", () 
   expect(intervalEnvMs("2147483647", 500)).toBe(2147483647); // the ceiling itself is fine
 });
 
-// CodeRabbit round. setInterval truncates a fractional delay (verified on bun
+// setInterval truncates a fractional delay (verified on bun
 // 1.3.14: 1.5 -> 1, 500.7 -> 500), so this is not a new hot-loop class — 1 is
 // permitted outright anyway. It is a contract fix: without it "0.4" fell back
 // while "1.5" was quietly accepted and rounded.
@@ -3255,7 +3254,7 @@ test("makeBurstCoalescer: a fat-fingered quiet-window env falls back to the 4s d
     const now = 0;
     // No quietMs in opts, so the env value is what this reads.
     // maxHoldMs pinned explicitly so an ambient TELEGRAM_BATCH_MAX_HOLD_MS
-    // cannot decide this test's outcome (CodeRabbit round) — the assertion is
+    // cannot decide this test's outcome — the assertion is
     // about the QUIET window falling back, and a max-hold inherited from the
     // environment could fire the flush for an unrelated reason.
     const c = makeBurstCoalescer(async (s) => { dispatched.push(s); }, { now: () => now, maxHoldMs: 600_000 });
@@ -3286,7 +3285,7 @@ test("one session's dispatch failure does not abort the flush of others", async 
   expect(c.isHolding("boom")).toBe(false); // and the failed hold was released
 });
 
-// --- getUpdates outage backoff + prolonged-outage alert (HIMMEL-1401) ---
+// --- getUpdates outage backoff + prolonged-outage alert ---
 
 test("getUpdatesBackoffMs: 0 failures = no backoff; grows 1s -> 2s -> 4s ... capped at 30s", () => {
   expect(getUpdatesBackoffMs(0)).toBe(0);
@@ -3313,7 +3312,7 @@ test("shouldAlertOutage: silent before the threshold, fires once at it, then re-
   expect(shouldAlertOutage(firstAlertAt + OUTAGE_ALERT_AFTER_MS, start, firstAlertAt)).toBe(true);
 });
 
-// --- loadPluginProfilesModule: mtime-keyed re-import (HIMMEL-3504) --------
+// --- loadPluginProfilesModule: mtime-keyed re-import --------
 
 test("loadPluginProfilesModule re-imports fresh after the file changes on disk, never serving a stale validator", async () => {
   const dir = mkdtempSync(join(tmpdir(), "plugin-profiles-fixture-"));
@@ -3348,7 +3347,7 @@ test("loadPluginProfilesModule serves the SAME cached import when the file's mti
   expect(a).toBe(b);
 });
 
-// --- HIMMEL-4687: the dispatch path's profile resolution is fresh, and a ----
+// --- the dispatch path's profile resolution is fresh, and a ----
 // --- repeated identical dispatch failure alerts the operator once ----------
 
 // The 10-05 incident, replayed under a running poller: a merge changes BOTH

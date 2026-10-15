@@ -1,5 +1,5 @@
 // scripts/telegram/brief-blocks.test.ts
-// HIMMEL-1734 P1: brief-blocks.ts extraction + the two new blocks
+// Brief-blocks.ts extraction + the two new blocks
 // (composeWaiterBlock, composeWriteSetBlock). The mintRetaskNonce /
 // composeRetaskBlock / composeBashShapeWarning tests here are the same
 // assertions spawn-glm.test.ts already carries for the re-exported names
@@ -40,7 +40,7 @@ test("composeBashShapeWarning names the deny-fast behavior (HIMMEL-1378), not a 
   expect(w).toContain("/sess/glm-a-1/outbox.jsonl");
 });
 
-// --- composeWaiterBlock (HIMMEL-1734 §4.3, the leg-14 waiter protocol) ------
+// --- composeWaiterBlock (the leg-14 waiter protocol) ------
 
 test("composeWaiterBlock names the live-clock liveness check, over a repeated log line", () => {
   const w = composeWaiterBlock();
@@ -67,7 +67,7 @@ test("composeWaiterBlock states the >60-minute foreground rule", () => {
   expect(w).toMatch(/foreground/i);
 });
 
-// --- composeWriteSetBlock (HIMMEL-1734 §4.3, single-writer declaration) ----
+// --- composeWriteSetBlock (single-writer declaration) ----
 
 test("composeWriteSetBlock lists every declared path", () => {
   const block = composeWriteSetBlock(["scripts/telegram/brief-blocks.ts", "scripts/telegram/compose-brief.ts"]);

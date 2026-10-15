@@ -1,5 +1,5 @@
 // scripts/telegram/alibaba-probe-once.test.ts
-// HIMMEL-729 wiring chunk B — runner tests. Hermetic: NO live HTTP, NO real fs.
+// Runner tests. Hermetic: NO live HTTP, NO real fs.
 // runProbe's fetch / append / marker / log are all injected spies. Credentials
 // in these tests are FAKE ("test-ak"/"test-sk") — never real secret material.
 import { expect, test } from "bun:test";
@@ -214,7 +214,7 @@ test("runProbe appended (ok, garbled body): ONE invisible row + one stderr line"
   expect(logged).toBe(1);
 });
 
-// ProbeOutcome/FetchResult union-pin tests deleted (HIMMEL-2725): neither
+// ProbeOutcome/FetchResult union-pin tests deleted: neither
 // called runProbe or any product code — both built handwritten literals and
 // asserted properties of those same literals, giving zero runtime coverage.
 // Verified vacuous: renaming "skip-429" to "skip-ratelimited" in the

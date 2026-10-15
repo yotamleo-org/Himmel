@@ -1,11 +1,11 @@
 // scripts/telegram/quota-gauge.test.ts
-// WS9 (HIMMEL-654) — quota-gauge ledger tests. Path resolver, append helper,
+// WS9 — quota-gauge ledger tests. Path resolver, append helper,
 // byte-identical bash<->TS serialization (T22), two interleaved appends
 // (T16), and the in-process same-lane concurrent-append race (T17/AC6).
 // Injected deps only — no real $HOME writes, no network.
 import { expect, test, beforeEach, afterEach } from "bun:test";
 // BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
-// through PATH straight to the System32 WSL stub (HIMMEL-1992/1279).
+// through PATH straight to the System32 WSL stub.
 import { BASH_BIN } from "./run";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,8 +32,8 @@ afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 const NOW_TS = "2026-07-04T12:00:00Z";
 
 // Prerequisite for the byte-identical bash<->TS test: can BASH_BIN run at
-// all? A genuinely missing/broken bash (e.g. the Windows System32 WSL stub,
-// HIMMEL-1992/1279) is a bun SKIP, never a silent pass — checked separately
+// all? A genuinely missing/broken bash (e.g. the Windows System32 WSL stub)
+// is a bun SKIP, never a silent pass — checked separately
 // from the --emit case it gates so a real --emit failure still fails loudly.
 const BASH_RUNS = Bun.spawnSync([BASH_BIN, "-c", "exit 0"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
 if (!BASH_RUNS) {
@@ -258,7 +258,7 @@ test("T26 absent lane beyond lookbackN -> unknown, scan bounded at N; widening t
   expect(widened.codex.row?.used_pct).toBe(50);
 });
 
-// ── HIMMEL-729: alibaba lane in the reader (budget 3600s, like codex) ─────────
+// ── alibaba lane in the reader (budget 3600s, like codex) ─────────
 test("T13b absent alibaba lane -> row null, status unknown (no fabricated row)", () => {
   const p = writeLedger([serializeQuotaGauge(rec({ lane: "glm", used_pct: 62, ts: ago(10) }))]);
   const r = quotaGaugeRead({ path: p, nowMs: NOW_MS });
@@ -284,7 +284,7 @@ test("T11b stale alibaba row (age 4000s > 3600 budget) -> fresh:false status:unk
   expect(r.alibaba.row?.used_pct).toBe(12); // last-known still carried even when stale
 });
 
-// T21/AC11 ("exactly one quotaGaugeRead impl") deleted (HIMMEL-2726): it only
+// T21/AC11 ("exactly one quotaGaugeRead impl") deleted: it only
 // counted the spelling `export function quotaGaugeRead` in this one file and
 // checked one hardcoded filename's absence — a false red on any identifier-
 // preserving refactor of the declaration (verified: rewriting the function
@@ -323,7 +323,7 @@ test("T2 buildGlmRow(null) -> invisible row, used_pct null, no throw", () => {
 test("T3 isGlmPeak hour boundaries 13:59 / 14:00 / 17:59 / 18:00 UTC+8 (AC8)", () => {
   // a UTC instant whose UTC+8 wall-clock hour is `utc8h` -> UTC hour = utc8h-8.
   // Anchored on a WEEKDAY (2026-07-06 Mon) so the hour rule is isolated from
-  // the weekday rule (weekends are 1× all day — HIMMEL-1479).
+  // the weekday rule (weekends are 1× all day).
   const at = (utc8h: number, m: number) => Date.UTC(2026, 6, 6, (utc8h - 8 + 24) % 24, m, 0);
   expect(isGlmPeak(at(13, 59))).toBe(false);
   expect(isGlmPeak(at(14, 0))).toBe(true);

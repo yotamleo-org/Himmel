@@ -1,5 +1,5 @@
 // scripts/telegram/console-heartbeat-watch.test.ts
-// HIMMEL-3510. Hermetic: fixture dirs only, never the live consoles/ inbox.
+// Hermetic: fixture dirs only, never the live consoles/ inbox.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -19,14 +19,14 @@ test("env block from process.env key", () => {
   expect(e.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("glm-5.2[1m]");
   expect(e.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.2[1m]");
   expect(e.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("1000000");
-  // HIMMEL-1649: worker-ness marker. The guard hook is registered
+  // worker-ness marker. The guard hook is registered
   // --fail-closed-when on this exact key/value, so a DISPATCHED worker treats a
   // missing hook as tampering. Only this orchestrator path mints it —
   // claude-glm{,.ps1} never calls buildGlmEnv — which is what keeps an
   // interactive GLM session (cwd in the luna vault, no himmel scripts/ tree)
   // out of the fail-closed population.
   expect(e.HIMMEL_GLM_WORKER).toBe("1");
-  // HIMMEL-2085: the general worker-ness marker HIMMEL_GLM_WORKER is now one
+  // the general worker-ness marker HIMMEL_GLM_WORKER is now one
   // instance of — set alongside it so block-glm-external-writes.sh's pin-dir
   // write-fence generalizes across lanes without keying on GLM specifically.
   expect(e.HIMMEL_WORKER).toBe("1");
@@ -116,7 +116,7 @@ test("formatConflict renders the file:key strings the print/refusal sites emit",
   expect(formatConflict({ file: "/a", kind: "unparseable" })).toBe("/a: unparseable");
 });
 
-// --- Worker context diet (HIMMEL-654): the GLM env block force-disables the
+// --- Worker context diet: the GLM env block force-disables the
 // env-gated session-shaping injections (initiative, where-are-we, doc-freshness,
 // update-check). Two prompt-too-long deaths showed every injected block costs
 // context the GLM lane cannot spare, and none of them is meaningful to an

@@ -5,7 +5,7 @@ import { spawn } from "bun";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// HIMMEL-671: buildRunArgs resolves the model from process.env — reset the
+// buildRunArgs resolves the model from process.env — reset the
 // override before EVERY test so neither ambient operator env nor test order
 // can skew the argv assertions (centralized per CR round-2).
 beforeEach(() => { delete process.env.TELEGRAM_CLAUDE_MODEL; });
@@ -93,14 +93,14 @@ test("buildPrompt cwdRouted=false is byte-identical to the pre-LUNA-101 call (re
   const paths = { inbox:"i", outbox:"o", context:"c", cwd:"/r" };
   expect(buildPrompt("group_-50", paths, "/salus", false)).toBe(buildPrompt("group_-50", paths, "/salus"));
 });
-// --- HIMMEL-578: per-chat vault cwd + scoped bypass + image filing ---
+// --- per-chat vault cwd + scoped bypass + image filing ---
 test("buildRunArgs injects --permission-mode before the prompt when set; omits it otherwise", () => {
   const a = buildRunArgs("do it", "bypassPermissions");
   expect(a.cmd).toEqual(["claude", "--model", DEFAULT_MODEL, "--permission-mode", "bypassPermissions", "do it"]);
   const b = buildRunArgs("do it");
   expect(b.cmd).toEqual(["claude", "--model", DEFAULT_MODEL, "do it"]); // no --permission-mode when unset (still model-pinned)
 });
-// --- HIMMEL-1040: --settings (plugin-profile) injection, before the prompt ---
+// --- --settings (plugin-profile) injection, before the prompt ---
 test("buildRunArgs injects --settings before the prompt when set; omits it otherwise", () => {
   const s = '{"enabledPlugins":{"qmd@himmel":true}}';
   const withSettings = buildRunArgs("do it", undefined, undefined, s);
@@ -111,7 +111,7 @@ test("buildRunArgs injects --settings before the prompt when set; omits it other
   // unset => no --settings flag at all
   expect(buildRunArgs("do it").cmd).not.toContain("--settings");
 });
-// --- HIMMEL-2961: --mcp-config (plugin-profile MCP allowlist) injection ---
+// --- --mcp-config (plugin-profile MCP allowlist) injection ---
 test("buildRunArgs injects --mcp-config + --strict-mcp-config before the prompt when set; omits it otherwise", () => {
   const cfg = '{"mcpServers":{"qmd":{"type":"http","url":"http://localhost:8181/mcp"}}}';
   const withMcp = buildRunArgs("do it", undefined, undefined, undefined, cfg);
@@ -124,7 +124,7 @@ test("buildRunArgs injects --mcp-config + --strict-mcp-config before the prompt 
   expect(buildRunArgs("do it").cmd).not.toContain("--mcp-config");
   expect(buildRunArgs("do it").cmd).not.toContain("--strict-mcp-config");
 });
-// --- HIMMEL-671: bounded runs must pin an explicit --model (never inherit the
+// --- bounded runs must pin an explicit --model (never inherit the
 // user default, which is currently Fable) ---
 test("buildRunArgs pins --model with the baked-in default in BOTH spawn branches (HIMMEL-671)", () => {
   const withMode = buildRunArgs("go", "bypassPermissions").cmd;
@@ -193,7 +193,7 @@ test("buildPrompt sanctions non-destructive Jira ticket ops (HIMMEL-424 followup
   expect(p).toMatch(/do NOT use [`']?move/i);             // no move (closes the source ticket)
   expect(p).toContain("project-create");                  // admin op named in the exclusion
 });
-// --- HIMMEL-654: GLM lane seam — modelOverride pin + per-lane child env ---
+// --- GLM lane seam — modelOverride pin + per-lane child env ---
 test("buildRunArgs modelOverride wins and ignores TELEGRAM_CLAUDE_MODEL", () => {
   process.env.TELEGRAM_CLAUDE_MODEL = "claude-raw-anthropic-id";
   const { cmd } = buildRunArgs("hi", undefined, "opus");
@@ -219,7 +219,7 @@ test("glmChildEnv merges GLM block and strips TELEGRAM_OWN_POLLER", () => {
   }
 });
 
-// Context diet (HIMMEL-654) is only useful if the diet values OVERRIDE an
+// Context diet is only useful if the diet values OVERRIDE an
 // operator-exported gate in the child env — the whole point is that a worker
 // launched from a shell with HIMMEL_INITIATIVE=1 still gets the injection off.
 // This pins the spread ORDER at the glmChildEnv seam: flip it to
@@ -236,7 +236,7 @@ test("glmChildEnv: diet values override an operator-exported gate", () => {
   }
 });
 
-// HIMMEL-3396: the operator's guard-override for a hooks-touching leg
+// the operator's guard-override for a hooks-touching leg
 // (HIMMEL_HOOK_INTEGRITY_BYPASS_OK) must never ride the parent's env into a
 // dispatched worker — the worker would inherit a lever that disables its own
 // pin-dir and anchor fences. Every worker-env builder strips it, ambient or not.
@@ -296,7 +296,7 @@ test("sessionEnv without extraEnv carries no GGS markers (default posture)", () 
   expect(e.GGS_ROLE).toBeUndefined();
 });
 
-// --- HIMMEL-1753: no spawned worker may block behind an editor window ---
+// --- no spawned worker may block behind an editor window ---
 test("sessionEnv pins every editor hook to a no-op on both lanes", () => {
   process.env.ZAI_API_KEY = "k-editor";
   try {
@@ -354,7 +354,7 @@ test("sessionEnv: extraEnv cannot be clobbered by the poller-var strip", () => {
   // Seed the var (CR codex-1): without it the strip assertion below passes even
   // if the glm branch leaks the poller marker — a vacuous test on exactly the
   // half it exists to cover.
-  // ZAI_API_KEY must be seeded too (CR codex-adv round 3): the glm branch runs
+  // ZAI_API_KEY must be seeded too: the glm branch runs
   // buildGlmEnv, which THROWS with no key, so this test passed only on a machine
   // that happened to have one — it would fail on a clean checkout / in CI.
   // Save-and-restore rather than an unconditional delete, so a real ambient key
@@ -409,7 +409,7 @@ test("detectCap lane semantics", () => {
   expect(detectCap(BENIGN, "glm")).toBe(false);
 });
 
-// --- HIMMEL-3848: a model: tag's opus/sonnet alias is pinned to the 5.5 full id ---
+// --- a model: tag's opus/sonnet alias is pinned to the 5.5 full id ---
 test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves haiku and the GLM alias alone (HIMMEL-3848)", () => {
   const model = (s: { cmd: string[] }) => s.cmd[s.cmd.indexOf("--model") + 1];
   expect(model(spawnSpec("p", undefined, undefined, "opus"))).toBe("claude-opus-5-5");
@@ -429,7 +429,7 @@ test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves haiku a
   }
 });
 
-// --- HIMMEL-3482: the lane registry's effort reaches a native dispatch ---
+// --- the lane registry's effort reaches a native dispatch ---
 const REAL_LANES = JSON.parse(readFileSync(join(REPO_ROOT, "scripts", "lanes", "lanes.json"), "utf8"));
 const tierEffort = (id: string) => REAL_LANES.lanes.find((l: { id: string }) => l.id === id).effort;
 // these tests set and clear the operator's ambient effort; put it back after each

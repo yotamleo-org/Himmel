@@ -35,7 +35,7 @@ test("classifyForSpawn shells through the cheap classifier and parses its verdic
   expect(calls[0].input).not.toContain("chat_id");
 });
 
-// HIMMEL-1279 regression. The classifier was dead on 100% of messages because
+// Regression: the classifier was dead on 100% of messages because
 // argv[0] was a bare "bash": under the poller's PATH that resolves to the WSL
 // System32 stub, which cannot see ANY C: path (it exits 127 on both `C:\...`
 // and `C:/...`, so POSIX-ifying argv[1] would not have helped) — and
@@ -65,7 +65,7 @@ test("classifyForSpawn spawns a real non-WSL bash against an existing script (HI
   expect(resolveBash()).toBe(BASH_BIN);
 });
 
-// HIMMEL-1296. The prompt handed the classifier a bare message: no statement of
+// The prompt handed the classifier a bare message: no statement of
 // what the group IS, and — the part that actually caused the loss — no statement
 // that `ack` DISCARDS the message. `ack` reads as "send an acknowledgement", so
 // the model picked it for messages it had understood were addressed to the
@@ -93,7 +93,7 @@ test("triage prompt frames the channel AND names each verdict's effect (HIMMEL-1
 // The operator framing must go ONLY where it is true (CR codex-adv-1). A bare
 // group allowlist admits every member, so telling the classifier "this is from
 // the operator" for an ordinary member would widen the very spam gate
-// HIMMEL-721 exists to keep — and the branch's own measurements show framing
+// the triage gate exists to keep — and the branch's own measurements show framing
 // moves verdicts, so this is not a harmless inaccuracy.
 test("a NON-operator gets shared-group framing, never the operator framing (HIMMEL-1296)", async () => {
   let prompt = "";
@@ -168,9 +168,9 @@ test("TELEGRAM_TRIAGE_TIMEOUT_MS falls back to the default on garbage / non-posi
   }
 });
 
-// HIMMEL-2751. On main this test FAILS: the rejection message is the bare
+// On main this test FAILS: the rejection message is the bare
 // `triage exited 1: ` because invoke.sh merges hermes' stderr INTO stdout (its
-// own HIMMEL-2049 iteration-budget scan), so invoke.sh's stderr is empty by
+// own iteration-budget scan), so invoke.sh's stderr is empty by
 // construction and the old `stderr.slice(-512)` had nothing to slice. This
 // drives the REAL spawn path (defaultInvoke against a stub script on argv),
 // not the injected deps.invoke path used by the other tests above -- the

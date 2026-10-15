@@ -1,5 +1,5 @@
 // scripts/telegram/fixture-repo.test.ts — the teardown contract the spawn-glm /
-// spawn-claudex REAL-GIT suites rely on (HIMMEL-1888).
+// spawn-claudex REAL-GIT suites rely on.
 import { expect, test, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ import { GIT_TEST_TIMEOUT_MS, initHermeticRepo, makeSharedFixtureRepo, removeFix
 // A repo + linked worktree this module did NOT create: the shape of an
 // operator's checkout, built by hand so the registry never learns about it.
 // Zero commits beyond the seed and DIRTY (one staged file) — the exact state
-// HIMMEL-1888 was filed about, and the one with no recovery path.
+// a shape-based teardown would destroy, and the one with no recovery path.
 function foreignZeroCommitWorktree(): { repo: string; wt: string } {
   const repo = mkdtempSync(join(tmpdir(), "foreign-checkout-"));
   const git = (args: string[]) => {

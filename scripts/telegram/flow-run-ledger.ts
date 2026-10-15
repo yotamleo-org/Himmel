@@ -1,5 +1,5 @@
 // scripts/telegram/flow-run-ledger.ts
-// HIMMEL-921 flow-run lifecycle ledger. TypeScript twin of
+// Flow-run lifecycle ledger. TypeScript twin of
 // scripts/lib/flow-run-ledger.sh; serializers are byte-identical by contract.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -114,7 +114,7 @@ function lastLines(text: string, n: number): string {
   return lines.slice(Math.max(0, lines.length - n)).join("\n");
 }
 
-// requiredMarker (HIMMEL-1716): a zero exit whose log tail lacks the bare
+// requiredMarker: a zero exit whose log tail lacks the bare
 // completion marker line is a parked/blocked leg, not a complete one (mirrors
 // flow_run_classify in scripts/lib/flow-run-ledger.sh). A missing log is no marker.
 export function classifyOutcome(exitCode: number, logPath?: string | null, extraMarkerRegex?: string, requiredMarker?: string): FlowRunOutcome {
@@ -136,7 +136,7 @@ export function classifyOutcome(exitCode: number, logPath?: string | null, extra
 
 export function appendFlowRun(row: FlowRunRow, path?: string): void {
   let p = path ?? ledgerPath();
-  // HIMMEL-2241 (mirrors the bash twin's flow_run_append guard): a missed test
+  // Mirrors the bash twin's flow_run_append guard: a missed test
   // redirect must fail LOUD, never silently pollute production telemetry.
   // run-shell-tests.sh exports HIMMEL_SUITE_LOCK_HELD for the whole suite run
   // and children inherit it, so a write reaching here with the marker set and

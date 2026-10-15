@@ -1,4 +1,4 @@
-// scripts/telegram/session-status.ts — HIMMEL-1250 Increment 1: outbound
+// scripts/telegram/session-status.ts — outbound
 // Telegram session status.
 //
 // Composes a CONCISE status message for two Claude Code hook events —

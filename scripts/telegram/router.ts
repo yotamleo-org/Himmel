@@ -1,4 +1,4 @@
-// Pure-code inbound router for the telegram bridge v2 (HIMMEL-207).
+// Pure-code inbound router for the telegram bridge v2.
 // Classifies a raw message string into control | dispatch | followup | chat.
 // No side effects, no I/O — table-driven matching only.
 //
@@ -24,7 +24,7 @@ export type Route =
   | { kind: "lockdown" }
   | { kind: "chat"; text: string };
 
-// Structured auto-command (HIMMEL-424 B2): `/arm <ticket|path> [at HH:MM|auto|smart]`.
+// Structured auto-command: `/arm <ticket|path> [at HH:MM|auto|smart]`.
 // Anchored on the WHOLE trimmed message so a mid-text `/arm` never matches. SECURITY:
 // the bridge invokes this op directly (agent OUT of the trust path), so the command
 // must be a deliberate, message-fact-authenticated instruction — never text embedded
@@ -34,7 +34,7 @@ export type Route =
 // is the v1 alias for op `arm-resume` (the closed op allow-list at the parse layer).
 const ARM = /^\/arm\s+(\S+)(?:\s+(?:at\s+((?:[01][0-9]|2[0-3]):[0-5][0-9])|(auto|smart)))?$/;
 
-// Structured merge-authorization auto-command (HIMMEL-1213 design §3):
+// Structured merge-authorization auto-command:
 // `/mergepub <pr> <sha12>`. Anchored on the WHOLE trimmed message, same as /arm,
 // so a mid-text or malformed `/mergepub` never matches — falls through to chat.
 // SECURITY: the bridge invokes auto-action.sh directly on a match (agent OUT of
@@ -45,7 +45,7 @@ const ARM = /^\/arm\s+(\S+)(?:\s+(?:at\s+((?:[01][0-9]|2[0-3]):[0-5][0-9])|(auto
 // prefix-grinding attack: the agent may push fix-commits to the public branch, so
 // a 7-hex prefix could be ground (~2^28) to a malicious commit sharing the
 // operator-approved prefix and pass both the SHA gates and --match-head-commit —
-// defeating even a diligent operator (HIMMEL-1213 Fable gate-review). This Route
+// defeating even a diligent operator. This Route
 // variant reuses arm-resume's EXACT shape (`arg`/`time`, not `pr`/`sha`) so
 // poller.ts's generic auto-command plumbing (handleAutoCommand's audit-line
 // construction reads route.arg/route.time for either op) needs no change: here
@@ -54,7 +54,7 @@ const ARM = /^\/arm\s+(\S+)(?:\s+(?:at\s+((?:[01][0-9]|2[0-3]):[0-5][0-9])|(auto
 // merge-public-on-green.sh, not here.
 const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 
-// Structured self-restart auto-command (HIMMEL-1272): `/restart` (rung 1, poller
+// Structured self-restart auto-command: `/restart` (rung 1, poller
 // bounce) or `/restart full` (rung 2, whole-supervisor relaunch via the registered
 // scheduled task). Anchored on the WHOLE trimmed message like /arm and /mergepub,
 // so `/restart now` or a mid-text `/restart` falls through to chat rather than
@@ -64,19 +64,19 @@ const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 // `time` is the fixed placeholder "-" since a restart has no schedule.
 // Why two rungs: the supervisor already respawns an exited poller, but that respawn
 // INHERITS the supervisor's environment, frozen at its launching shell. So rung 1
-// picks up anything re-read from a file (post-HIMMEL-1270 that includes
+// picks up anything re-read from a file (that includes
 // TELEGRAM_AUTO_ACTIONS) but NOT a changed User-scope env var. Only a
 // scheduler-service-launched process reads the current User environment at fire
 // time — that is rung 2.
 const RESTART = /^\/restart(?:\s+(full))?$/i;
 
-// Operator -> running console (HIMMEL-3355): `/console <session-name> <text>`.
+// Operator -> running console: `/console <session-name> <text>`.
 // Slash-prefixed and anchored on the whole message like /arm, so prose such as
 // "console output: foo" never matches. The router only checks SHAPE (name charset,
 // non-empty text); the path-safety refusal and the sender gate live downstream
 // (console-route.ts, poller.ts handleInbound), where a non-operator's match falls
 // back to ordinary chat.
-// HIMMEL-5148: the verb is case-insensitive and may carry Telegram's `/cmd@<bot>`
+// the verb is case-insensitive and may carry Telegram's `/cmd@<bot>`
 // addressing; a suffix naming another bot (when `botUsername` is known) is chat.
 // Only the leading verb is matched, so a mid-text or trailing /console stays chat.
 const CONSOLE_VERB = /^\/(consoles?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
@@ -85,7 +85,7 @@ const FLEET_VERB = /^\/(lockdown|fleet|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?
 
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();
-  // HIMMEL-5150: fleet verbs and /lockdown take the same case-insensitive verb and
+  // fleet verbs and /lockdown take the same case-insensitive verb and
   // `/cmd@<bot>` addressing as /console; a suffix naming another bot (when
   // `botUsername` is known) is chat. With no known bot name an `@` suffix cannot
   // be checked, so only the fail-safe verbs (/halt, /lockdown) accept it. The leg
@@ -104,7 +104,7 @@ export function classify(raw: string, botUsername?: string | null): Route {
     }
     const label = rest.match(/^ ([A-Za-z0-9_.-]{1,64})$/);
     if (label && !label[1].includes("..") && (verb === "go" || verb === "push" || verb === "halt")) return { kind: "fleet", verb: verb === "go" ? "go?" : verb, leg: label[1] };
-    // HIMMEL-4947: a reserved fleet verb with any other shape (bad/oversized/
+    // a reserved fleet verb with any other shape (bad/oversized/
     // traversal label, control char, extra args, missing label) is a terminal
     // refusal, never agent chat. FLEET_VERB's lookahead keeps `/gopher` and
     // `/legsx` ordinary chat; /lockdown with trailing text is chat.
@@ -122,14 +122,14 @@ export function classify(raw: string, botUsername?: string | null): Route {
   // forgiving paste, but git oids are lowercase and auto-action.sh + the
   // chokepoint validate/compare lowercase-only — so an uppercase paste must be
   // normalized HERE, else it classifies as executable then fails downstream
-  // validation (HIMMEL-1213 codex CR-2). arg (PR digits) has no case.
+  // validation. arg (PR digits) has no case.
   if (mergepub) return { kind: "auto", op: "merge-public", arg: mergepub[1], time: mergepub[2].toLowerCase() };
   // Closed typed ops; the shell half validates containment and the live PR head.
   const launch = t.match(/^\/launch-bypass-leg\s+(\S+)\s+([A-Z][A-Z0-9_]+)$/);
   if (launch) return { kind: "auto", op: "launch-bypass-leg", arg: launch[1], time: launch[2] };
   const grant = t.match(/^\/cr-grant-delta\s+#?(\d{1,6})\s+([0-9a-f]{40})$/i);
   if (grant) return { kind: "auto", op: "cr-grant-delta", arg: grant[1], time: grant[2].toLowerCase() };
-  // HIMMEL-5047 break-glass ops: whole-message, closed shapes; "-" fills an
+  // Break-glass ops: whole-message, closed shapes; "-" fills an
   // absent arg/time because auto-action.sh requires all three argv slots.
   if (/^\/(?:station-status|repin-hooks|restart-bridge)$/.test(t)) return { kind: "auto", op: t.slice(1) as "station-status", arg: "-", time: "-" };
   const pr = t.match(/^\/(revert-main|cr-reset)\s+#?(\d{1,6})$/);
