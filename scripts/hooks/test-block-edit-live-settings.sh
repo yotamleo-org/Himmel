@@ -3442,6 +3442,8 @@ assert_rc "5744k rg \$'--pre' in a TOK=0 command denies" 2 \
     "$(bash_rc_of "$PRIMARY" $'rg $\'--pre\' ./x.sh foo .claude/settings.json')"
 assert_rc "5744l rg --pr[e] glob in a TOK=0 command denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'rg --pr[e] ./x.sh foo @(a) .claude/settings.json')"
+assert_rc "5744m rg brace-built --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --{pre=./x.sh,pretty} foo @(a) .claude/settings.json')"
 assert_rc "5744c rg --pre prog over live settings denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'rg --pre ./x.sh foo .claude/settings.json')"
 assert_rc "5744d rg --pre=prog over home settings denies" 2 \
