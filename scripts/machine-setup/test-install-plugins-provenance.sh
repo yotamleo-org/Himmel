@@ -18,8 +18,7 @@
 # Every case runs under a scratch HOME (the ledger defaults to $HOME/.himmel)
 # with a stub `claude` on PATH; HIMMEL_UNINSTALL_REAL_HOME is never set.
 #
-# install-plugins.ps1 has no provenance calls: the PowerShell dialect of the
-# helpers is not written yet.
+# ponytail: install-plugins.ps1 has no provenance calls, the PowerShell dialect of the helpers is tracked in HIMMEL-3346.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Uses git, jq and mktemp; NOT ported to native PowerShell (a test harness

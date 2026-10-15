@@ -91,8 +91,8 @@ command -v claude  >/dev/null || { echo "ERROR: claude CLI required on PATH" >&2
 # so these rows join that session; run by hand, this script opens its own.
 # A ledger failure is a warning, never an install failure: an unrecorded
 # registration reads as pre-existing at uninstall, which keeps it (residue over
-# breakage). ponytail: install-plugins.ps1 records nothing — the PowerShell
-# helpers are not written yet.
+# breakage).
+# ponytail: install-plugins.ps1 records nothing — the PowerShell helpers are tracked in HIMMEL-3346.
 # shellcheck source=../lib/provenance.sh
 . "$REPO_ROOT/scripts/lib/provenance.sh"
 # shellcheck source=../lib/provenance-identity.sh
