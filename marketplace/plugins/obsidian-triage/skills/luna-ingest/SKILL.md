@@ -75,135 +75,16 @@ ERR luna-ingest: only github.com and bitbucket.org URLs supported. Twitter + art
 **Read on demand:** When the URL host is `bitbucket.org` (repo, PR or issue) — before doing anything else for it. Read `<plugin>/references/luna-ingest/bitbucket-branch.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 1 — Source fetch (github URL)
-
-Normalize to `<owner>/<repo>`:
-
-```bash
-# strip protocol, trim trailing /, strip /tree/* and /blob/* suffix
-owner_repo=$(printf '%s' "$URL" | sed -E 's|^https?://github\.com/||; s|/(tree|blob)/.*$||; s|/$||')
-```
-
-Validate it matches `^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*$` — the leading char rejects `.` or `..` as owner or repo (which would otherwise survive the looser `[A-Za-z0-9_.-]+` form and let `gh api "repos/../foo"` flow through). Else rc=1.
-
-Fetch:
-
-```bash
-gh api "repos/${owner_repo}" --jq '{name, full_name, description, html_url, language, stargazers_count, topics, default_branch, pushed_at, license: .license.spdx_id}' > /tmp/luna-ingest-meta.$$.json
-```
-
-If `gh api` fails (rc≠0): exit 2 with the stderr inlined.
-
-**Identity (HIMMEL-3055).** Fetch the default-branch HEAD SHA — this is `upstream_commit` in the synthesis, the field that lets later tooling tell whether upstream moved since ingest without re-fetching the whole repo:
-
-```bash
-default_branch=$(jq -r '.default_branch' /tmp/luna-ingest-meta.$$.json)
-gh api "repos/${owner_repo}/commits/${default_branch}" --jq '.sha' > /tmp/luna-ingest-commit.$$.txt
-```
-
-On failure, continue with `upstream_commit` omitted from the synthesis rather than failing the ingest — the repo metadata and README are still useful without it.
-
-Read README via:
-
-```bash
-# Strip the API's embedded newlines BEFORE base64-decoding. macOS
-# base64 errors on newline-padded input without -i; GNU silently
-# accepts it. Trim makes the decode portable across both.
-gh api "repos/${owner_repo}/readme" --jq '.content' \
-  | tr -d '\n' \
-  | base64 -d > /tmp/luna-ingest-readme.$$.md
-```
-
-If the README endpoint returns 404 (some repos have none): proceed with an empty README; record `README: missing` in the synthesis; omit `readme_sha256` (a hash of an absent README is an absent field, not a hash of empty bytes).
-
-Otherwise hash the decoded bytes for `readme_sha256` — this is the identity check for "did the README change since ingest", replacing the byte-count-in-prose proxy the audit log used before:
-
-```bash
-sha256sum /tmp/luna-ingest-readme.$$.md | cut -d' ' -f1   # macOS: shasum -a 256
-```
+**Read on demand:** Whenever the source is a github repo URL (every github run); before fetching. Read `<plugin>/references/luna-ingest/phase-1-source-fetch.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 1.5 — Safety pre-filter (LUNA-43)
-
-Before continuing to Phase 2, scan the metadata captured in Phase 1 (`name`, `description`, `topics[]`) plus the decoded README for red-flag keywords.
-
-**Matching algorithm (single canonical form — pin this exactly, no variants):**
-
-1. **Normalize the searched field first.** For each of `name`, `description`, joined `topics[]`, and the first 8 KB of decoded README (interpret 8 KB as 8192 *bytes* of the UTF-8-encoded slice — truncate at a byte boundary, do not split a multibyte rune), lowercase the text and replace any run of one-or-more `[-_\s]+` characters with a single hyphen (`-`). This canonicalises `red_team`, `red team`, `red--team`, and `Red-Team` all to `red-team`.
-2. **Apply each rule below as a case-insensitive substring search** against the normalized text. Whichever rule's substring (or AND-pair) appears first → set `safety_flag: <matched-term>` (use the first-listed canonical form from the rule). Word-boundary regex (`\b`) is NOT used — substring after normalization is the only form.
-3. **AND-pair rules require both substrings to appear within 80 normalized characters** of each other in the same field (e.g. `red-team .{0,80} agent` or `agent .{0,80} red-team`).
-
-**Single-term rules (substring matches alone trigger):**
-
-- `abliteration` (also catches `abliterated`, `abliterationist`)
-- `censorship-removal`
-- `uncensored-model`
-- `autonomous-hacking`
-- `auto-hack`
-- `exploit-kit`
-- `malware-as-a-service`
-- `maas-toolkit`
-
-**AND-pair rules (BOTH substrings must appear in the same field within 80 chars):**
-
-- `red-team` AND (`agent` OR `framework`) — avoids false-positives on legit security-research repos that mention red-team work
-- `jailbreak` AND (`model` OR `llm` OR `bypass-safety`) — avoids false-positives on iOS jailbreak tooling
-
-Match rule: if ANY of the rules above (or operator-curated additions, see below) trigger against `name` OR `description` OR `topics[]` OR the first 8 KB of decoded README → set `safety_flag: <matched-term>` (use the first-listed canonical form of the matched rule, e.g. `red-team+agent` for the AND-pair) and one of:
-
-- Without `--allow-unsafe`: exit rc=6 with message `ERR luna-ingest: safety pre-filter matched <term> in <field>. Pass --allow-unsafe to ingest with safety_flag annotation, or skip this repo.` — no synthesis written.
-- With `--allow-unsafe`: continue to Phase 2 but propagate `safety_flag` into the synthesis frontmatter so downstream readers (and `/synthesize-clips`) know to treat the page as `unknown-risk` regardless of license / star count.
-
-**Operator customisation:** the keyword list above is the LUNA-43 default. Operators can extend it by setting `LUNA_INGEST_SAFETY_KEYWORDS=<comma-separated terms>` in their shell — additions ONLY (no removal of defaults). Removed defaults require an explicit SKILL.md edit + PR review, by design.
-
-Log line: `[safety] matched=<term> field=<name|description|topics|readme> action=<refused|annotated>` to stderr regardless of action.
+**Read on demand:** After Phase 1, before Phase 2, on every github run; the matching algorithm and rc=6 behaviour live there. Read `<plugin>/references/luna-ingest/phase-1-5-safety-prefilter.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 2 — Reference extraction
-
-Parse the README for github URLs that point at OTHER repos:
-
-```bash
-grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?' /tmp/luna-ingest-readme.$$.md \
-  | sed -E 's|^https://github\.com/||; s|\.git$||; s|/$||' \
-  | sort -u \
-  | grep -v "^${owner_repo}$" \
-  > /tmp/luna-ingest-refs.$$.txt || true
-```
-
-The `(\.git)?` suffix on the regex plus the `s|\.git$||` substitution dedupes `<owner>/<repo>` with `<owner>/<repo>.git` (a common README link form).
-
-Strip refs whose path has more than one `/` (sub-paths inside the same repo — keep the bare owner/repo only), AND reject any segment that is purely `.` or `..` (would survive the looser ref regex and lead to `gh api repos/../something` calls that pollute the audit log):
-
-```bash
-awk -F/ 'NF==2 && $1 !~ /^\.+$/ && $2 !~ /^\.+$/' /tmp/luna-ingest-refs.$$.txt > /tmp/luna-ingest-refs.clean.$$.txt
-```
-
-Apply the `--limit` cap (the explicit `--limit <N>` if passed, else the default `250`). If more refs exist than the cap, log "tail-skipped: N refs" in the synthesis under § Open questions. With the default `250`, a tail-skip now signals a genuinely huge meta-list (re-run with an explicit higher `--limit`), not the old routine `[1,25]`-clamp truncation.
-
-**LUNA-7 size telemetry:** measure the decoded README size with `wc -c < /tmp/luna-ingest-readme.$$.md` and record it in the synthesis § Audit log. If the size exceeds **512 KB**, emit a single stderr warning before Phase 3 starts:
-
-```
-WARN luna-ingest: README is <N> KB (>512 KB threshold). --limit caps API-call count, NOT text size; large monorepo/awesome-list READMEs may produce a noisy ref pool.
-```
-
-Continue regardless — the warning is informational. `--limit` already bounds the per-ref API-call cost; the size warning just flags "expect noisy classification" for the operator.
+**Read on demand:** When extracting refs from the README (Phase 2) and applying the `--limit` cap and the README-size warning. Read `<plugin>/references/luna-ingest/phase-2-reference-extraction.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 3 — Per-ref classification
-
-For each ref `<o>/<r>` in the cleaned ref list:
-
-1. Fetch lightweight metadata: `gh api "repos/${ref}" --jq '{description, language, stargazers_count, pushed_at, topics, license: .license.spdx_id}'`. On failure, distinguish the failure class (LUNA-6):
-   - **404 / "Not Found"** → verdict `skip`, `verdict_reason: ref_not_found`. Continue scanning the rest.
-   - **403 / 429 / "rate limit" / "API rate limit exceeded"** → verdict `api_failure`, `verdict_reason: rate_limited`. Continue scanning; the run will exit rc=4 at the end so the operator knows to retry, but partial progress is preserved.
-   - Other network/auth errors → verdict `api_failure`, `verdict_reason: <stderr-short>`. Continue; exit rc=4 at end.
-
-   `api_failure` is NOT one of `integrate/take-parts/inspire/skip` — it's a SEPARATE verdict that exists only to keep partial runs honest. Refs with `verdict: api_failure` go under § Unclassified (transient) in the synthesis, never § Skip (which implies a deliberate heuristic decision).
-2. Assign a verdict per these heuristics (apply in order; first match wins):
-   - `integrate` — the ref appears in a parent README section titled "Dependencies", "Requires", "Built on", "Uses" OR the topics overlap explicitly with a "package" or "library" tag AND the ref has an SPDX license that's MIT / Apache-2.0 / BSD-3-Clause (permissive).
-   - `take-parts` — the ref appears under "Related", "Inspired by", "See also", "Forked from" sections AND the ref has ≥10 stars AND its language matches one of the parent's top 2 languages.
-   - `inspire` — the ref appears under "Reading", "Articles", "Background", "Prior art" OR the ref's language differs from the parent's primary language but its topics overlap.
-   - `skip` — everything else, OR the ref's `pushed_at` is more than 24 months old (stale), OR license is restrictive (AGPL, BSL) and the parent suggests integration.
-3. Capture a 1-3 sentence rationale citing which README section / topic / license / staleness drove the verdict.
-4. Record confidence `0.0–1.0`: high (≥0.8) when section heading is unambiguous; medium (0.6–0.8) when section is implied by surrounding prose; low (<0.6) when no section context exists (verdict is best-guess from topics/license alone).
-5. Refs with confidence <0.6 are listed in the synthesis under § Weak refs (appendix) instead of the main § Referenced repos section.
+**Read on demand:** When classifying each ref (Phase 3): the failure classes, the verdict heuristics and the confidence floor. Read `<plugin>/references/luna-ingest/phase-3-classification.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 3.5 — Deep component scan (LUNA-57, `--deep` only)
 
@@ -374,33 +255,8 @@ When `--dry-run` is passed:
 
 ## Exit codes
 
-- 0: synthesized + written (or dry-run completed) — all refs classified
-- 1: usage / input error (bad URL, missing required arg)
-- 2: env unusable (vault not found, gh api / bitbucket CLI unreachable or unbuilt for source repo, dest category invalid)
-- 3: target file exists (no overwrite in MVP)
-- 4: **partial run** — synthesis written but ≥1 ref was marked `api_failure` (rate-limit / network / auth). Re-run later to retry the failed refs; the dedup-by-existing-file invariant means the existing synthesis stays unless `--force`. (LUNA-6)
-- 4 (extended): also returned when `--deep` component scan reported ≥1
-  component-fetch failure (partial inventory). Synthesis is still written.
-- 5: source fetch failed — `gh api` (github Phase 1) or the `bitbucket` CLI (HIMMEL-329 Bitbucket branch) failed for the SOURCE repo / PR / issue (network / rate limit / 404 / issues-disabled) — nothing written, retry the whole call
-- 6: **safety-blocked** — Phase 1.5 matched a red-flag keyword in name/description/topics/README (github) or name/description/README (bitbucket — no topics), and `--allow-unsafe` was NOT passed. Nothing written. Re-run with `--allow-unsafe` to ingest with `safety_flag` annotation (which exits rc=0, NOT rc=6, on success — `--allow-unsafe` plus a match is a known-risk acknowledged ingest, not an error). (LUNA-43)
-
-`--research` (LUNA-64) never changes the exit code: a web-search failure
-degrades gracefully (annotated section + § Open questions note) and the
-synthesis is still written at the rc the rest of the run would have produced.
+**Read on demand:** Before choosing or interpreting an exit code (0 ok, 1 usage, 2 env, 3 target exists, 4 partial, 5 source fetch failed, 6 safety-blocked). Read `<plugin>/references/luna-ingest/exit-codes.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Out of scope (v2 follow-ups)
 
-- Twitter URL input via `/x-read`
-- Article URL input via `/defuddle` + `/research`
-- github PR (`/pull/<n>`) + discussion URL ingestion (github issue URLs landed in HIMMEL-239; bitbucket repo/PR/issue landed in HIMMEL-329)
-- bitbucket-source → bitbucket-ref 1-hop following (HIMMEL-329 MVP follows only github refs from a bitbucket README)
-- bitbucket PR comment-thread + issue comment ingestion (the MVP bitbucket PR/issue notes carry no comment thread)
-- `--deep` component scan of a bitbucket SOURCE repo (component-scan is `gh`-API-only)
-- Dynamic destination routing based on verdict mix
-- Daily-note backref (Phase 5)
-- Promotion candidate (Phase 6)
-- Refs-of-refs (hop ≥2)
-- Batch input (`@file-of-urls.txt`)
-- Reverse-chain lookup
-
-Each is a separate ticket under LUNA-5 (file as sub-tasks before starting v2).
+**Read on demand:** Only when asked whether an input form or feature is supported. Read `<plugin>/references/luna-ingest/out-of-scope.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
