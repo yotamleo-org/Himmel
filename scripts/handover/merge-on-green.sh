@@ -1860,7 +1860,8 @@ jira_auto_transition_on_merge() {
                 const vs = process.argv[1].split("\n").filter(Boolean).map(l => l.split("\t"));
                 const open = new Set(vs.filter(v => v[1] === "false").map(v => v[0]));
                 const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
-                const cur = dated.length ? dated[0][0] : "";
+                const unrel = vs.filter(v => v[1] === "false");
+                const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
                 if (cur && have.some(n => open.has(n) && n !== cur)) process.stdout.write(cur);
             } catch {}
         ' "$versions_out" 2>/dev/null)
