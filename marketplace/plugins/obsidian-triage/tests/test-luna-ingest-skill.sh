@@ -197,8 +197,12 @@ integ_line=$(grep -n '^   - `integrate`' "$REFS/phase-3-classification.md" | hea
 assert "phase-3 stale-repo skip precedes the integrate rule" "yes" "$order"
 
 # Confidence bands must be exclusive.
-grep -qF "medium (0.6–0.8)" "$REFS/phase-3-classification.md" && band=overlap || band=exclusive
-assert "phase-3 confidence bands are exclusive" "exclusive" "$band"
+P3="$REFS/phase-3-classification.md"
+grep -qF "high (≥0.8)" "$P3" && hi=yes || hi=no
+grep -qF "medium (0.6 to below 0.8)" "$P3" && med=yes || med=no
+grep -qF "low (<0.6)" "$P3" && lo=yes || lo=no
+grep -qF "medium (0.6–0.8)" "$P3" && ovl=yes || ovl=no
+assert "phase-3 confidence bands are exclusive" "yes yes yes no" "$hi $med $lo $ovl"
 
 # qmd-gate must spell out CLI flags and MCP JSON fields.
 grep -qF -- "--min-score" "$QMD_GATE" && f1=yes || f1=no
