@@ -29,6 +29,12 @@
 #                 transitions a ticket. An unreadable status is `?`.
 #   5. board      board.mjs --doc <console doc> --changed (rc 7); its output is
 #                 passed through.
+#   5. tracker    best effort, never fails the wrap: when the console doc has a
+#                 `tracker:` line, jira mirror + jira versions (snapshot next to the
+#                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
+#                 Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip. Publishing the
+#                 artifact stays the console's job. Seam: WM_TRACKER_PY.
+#   6. board      (as above)
 # A re-run therefore finishes whatever an earlier run stopped before, and writes
 # nothing twice. Calls the existing console-kit scripts and modifies none.
 #
@@ -45,6 +51,7 @@ GIT="${WM_GIT:-git}"
 # arrays, so a checkout path with a space stays one word; a WM_* override is one executable
 if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-leg.sh"); fi
 if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/board.mjs"); fi
+if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 
 usage() { echo "usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]" >&2; exit 2; }
 fail()  { echo "wrap-merged: step $1 failed: $2" >&2; exit "$3"; }
@@ -75,6 +82,7 @@ if [ -z "$PRIMARY" ]; then
     [ -n "$common" ] && PRIMARY="$(dirname "$common")"
 fi
 [ -n "$PRIMARY" ] || fail primary "cannot resolve the primary checkout" 5
+if [ -n "${WM_JIRA:-}" ]; then jira=("$WM_JIRA"); else jira=(node "$PRIMARY/scripts/jira/dist/index.js"); fi
 
 # 1. pr-state (run from the primary so gh resolves THIS repo, not the caller's)
 view="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
@@ -116,12 +124,42 @@ if grep -Fq "MERGED #$PR → $sha8" "$DOC"; then
 else
     status="?"
     if [ -n "$ticket" ]; then
-        if [ -n "${WM_JIRA:-}" ]; then jira=("$WM_JIRA"); else jira=(node "$PRIMARY/scripts/jira/dist/index.js"); fi
         got="$(JIRA_PROJECT_KEY="${ticket%%-*}" "${jira[@]}" get "$ticket" 2>/dev/null | head -n 1 | cut -f3)" && [ -n "$got" ] && status="$got"
     fi
     text="MERGED #$PR → $sha8 ($label, ${ticket:-no-ticket} $status). $label WRAPPED, window closed."
     bash "$HERE/append-results.sh" "$DOC" "$text" || fail log "append-results.sh" 6
 fi
 
-# 5. board
+# 5. tracker - best effort, never fails the wrap. The console doc's `tracker:` line
+# opts in (the same line, plan dir and paths tick.sh's tracker= reads). Mirror Jira,
+# snapshot the versions, re-render when the page's fingerprint moved. Artifact
+# publishing stays the console's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
+tracker_refresh() {
+    local url dir plan out tmo mir rc want
+    url="$(sed -n 's/^tracker:[[:space:]]*//p' "$DOC" | head -n 1)"
+    case "$url" in ''|none*) echo "tracker=skip"; return 0 ;; esac
+    dir="${DOC%/*}"
+    plan="$(sed -n 's/^tracker-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
+    [ -n "$plan" ] || plan="$dir/specs/plan/HIMMEL-3882"
+    out="$dir/roadmap-tracker.html"
+    tmo="${WM_TRACKER_TIMEOUT:-120}"
+    mir="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
+    mkdir -p "${mir%/*}" 2>/dev/null
+    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" mirror >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+    [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
+    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+    if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp"; echo "tracker=failed:versions-rc$rc"; return 0; fi
+    mv -f "$mir.versions.tsv.tmp" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
+    set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
+    want="$(timeout -k 5 "$tmo" "${TRACKER[@]}" --emit-fp "$@" 2>/dev/null)" || want=""  # gnu-ok: Linux-only kit
+    if [ -n "$want" ] && [ -f "$out" ] && [ "$(cat "$out.fp" 2>/dev/null)" = "$want" ]; then
+        echo "tracker=UNCHANGED"; return 0
+    fi
+    timeout -k 5 "$tmo" "${TRACKER[@]}" "$@" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+    if [ "$rc" -eq 0 ]; then echo "tracker=CHANGED"; else echo "tracker=failed:render-rc$rc"; fi
+    return 0
+}
+tracker_refresh
+
+# 6. board
 "${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7

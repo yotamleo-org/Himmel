@@ -24,6 +24,15 @@
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
 #                               ranked dispatchable list (CONSOLE_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
+#   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
+#                               CONSOLE_WAIT_TRACKER_STALE_MIN (default 30); once
+#                               per streak (the class-change wake fires only once).
+#   WAKE predecessor-open rc=<n>  with --doc <console doc> whose first line says
+#                               `successor to <doc>.md`: the waiter runs
+#                               close-wrapped-leg.sh --console on that wrapped,
+#                               lock-free predecessor once and logs a Results
+#                               bullet; rc 3/4/6/7 retry silently next sample, any
+#                               other refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -186,9 +195,11 @@ trap "exit_reason='signal-HUP'; exit 129" HUP
 # manifest is a silent baseline, the same as a re-arm with a new --legs. An
 # unreadable manifest hashes as empty (its tick fails that sample anyway).
 legs_from="${LEGS_FROM:-}"
+console_doc=""
 prev_arg=""
 for a in "$@"; do
     [ "$prev_arg" = --legs-from ] && legs_from="$a"
+    [ "$prev_arg" = --doc ] && console_doc="$a"
     prev_arg="$a"
 done
 args_hash_of() { # <tick args...>
@@ -443,6 +454,61 @@ unowned_wake() {
     return 0
 }
 
+# tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
+# wakes once (above); after the first STALE the class never moves again, so the
+# marker holds the epoch the streak was first seen and the wake fires once the
+# streak passes CONSOLE_WAIT_TRACKER_STALE_MIN (default 30). Any other value ends
+# the streak. The marker outlives the waiter, so a re-arm inside a streak stays quiet.
+tracker_stale_file="$inbox.wait.trackerstale"
+tracker_stale_wake() {
+    local since
+    case "$1" in
+        STALE*) ;;
+        '') return 1 ;;
+        *) rm -f "$tracker_stale_file"; return 1 ;;
+    esac
+    if [ ! -e "$tracker_stale_file" ]; then date +%s > "$tracker_stale_file" 2>/dev/null; return 1; fi
+    [ "$(sed -n 2p "$tracker_stale_file" 2>/dev/null)" = woke ] && return 1
+    since="$(sed -n 1p "$tracker_stale_file" 2>/dev/null)"
+    case "$since" in ''|*[!0-9]*) return 1 ;; esac
+    [ $(( $(date +%s) - since )) -ge $(( ${CONSOLE_WAIT_TRACKER_STALE_MIN:-30} * 60 )) ] || return 1
+    printf '%s\nwoke\n' "$since" > "$tracker_stale_file" 2>/dev/null
+    return 0
+}
+
+# predecessor_close: the console doc's first line names its predecessor
+# (`successor to <doc>.md`). Once that doc is WRAPPED and lock-free with exactly one
+# live session, close-wrapped-leg.sh --console closes it, once, and a Results bullet
+# says so. close-wrapped-leg.sh owns every check; this only reads its exit code:
+# 0 closed; 3/4 the predecessor is not done (lock held / tail not WRAPPED) and 6/7 its
+# subtree or a subagent is still alive: left alone, asked again next sample; 5 with
+# "0 live session" means the window is already gone; any other refusal sets the
+# marker and prints the wake (rc 0). The marker `<inbox>.wait.predecessor` (body:
+# `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
+pred_file="$inbox.wait.predecessor"
+close_cmd="${CONSOLE_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+predecessor_close() { # prints the WAKE block and returns 0 only for an unexpected refusal
+    local pred pdoc errf rc
+    [ -n "$console_doc" ] && [ -f "$console_doc" ] || return 1
+    pred="$(sed -n '1s/.* successor to \([^ ]*\.md\).*/\1/p' "$console_doc")"
+    [ -n "$pred" ] || return 1
+    pdoc="${console_doc%/*}/$pred"
+    [ -f "$pdoc" ] || return 1
+    [ "$(cat "$pred_file" 2>/dev/null | sed 's/^[a-z]*://')" = "$pdoc" ] && return 1
+    errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
+    timeout -k 5 "${CONSOLE_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --console "$pdoc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
+    case "$rc" in
+        0) printf 'closed:%s\n' "$pdoc" > "$pred_file"
+           bash "$HERE/append-results.sh" "$console_doc" "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" >/dev/null 2>&1 || true ;;
+        3|4|6|7) ;;
+        5) if grep -Fq '0 live session' "$errf"; then printf 'gone:%s\n' "$pdoc" > "$pred_file"
+           else printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=5\n%s\n' "$(head -n 1 "$errf")"; rm -f "$errf"; return 0; fi ;;
+        *) printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=%s\n%s\n' "$rc" "$(head -n 1 "$errf")"; rm -f "$errf"; return 0 ;;
+    esac
+    rm -f "$errf"
+    return 1
+}
+
 saved=""
 if [ -f "$key_file" ] && [ "$(sed -n 1p "$key_file")" = "$args_hash" ]; then
     saved="$(sed -n 2p "$key_file")"
@@ -529,6 +595,11 @@ while :; do
                         exit_reason='wake-unowned-prs'; exit 0
                     fi ;;
             esac
+            if tracker_stale_wake "$(field tracker "$tick_line")"; then
+                printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
+                exit_reason='wake-tracker-stale'; exit 0
+            fi
+            if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
                 saved="$key"; save_key "$key"
