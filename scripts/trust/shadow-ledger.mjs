@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// shadow-ledger.mjs — HIMMEL-1529 R0: blind decision recording, zero behaviour change.
+// shadow-ledger.mjs — R0: blind decision recording, zero behaviour change.
 //
 // WHAT THIS IS
 // An append-only, hash-chained decision record written from Claude Code hooks.
@@ -28,7 +28,7 @@
 //
 // Consequence, stated plainly so nobody over-reads the output: the PRIMARY
 // product of this ledger is the INTERRUPT COUNT — approval-interrupts per week,
-// the number HIMMEL-1529 exists to produce and which nobody currently knows.
+// the number this ledger exists to produce and which nobody currently knows.
 // Agreement rate between shadow and actual is a SECONDARY output and is
 // dominated by the abstain class; `report` prints it with that caveat attached.
 //
@@ -74,7 +74,7 @@ const LOCK_WAIT_MS = 5;
 // Below this, `report` shows the raw count and refuses to state a weekly rate.
 const MIN_EXTRAPOLATION_DAYS = 1;
 // The longest stretch of the reporting window that may pass with NO collector
-// heartbeat before the weekly rate is withheld (HIMMEL-1547).
+// heartbeat before the weekly rate is withheld.
 //
 // This constant is a stated choice, not a derived truth, so it is named after
 // the thing it is tied to rather than picked round: the published figure is a
@@ -84,7 +84,7 @@ const MIN_EXTRAPOLATION_DAYS = 1;
 // recorder hide for more than one unit of the very quantity being reported.
 // Revisit it with evidence about real session cadence, not by feel.
 const HEARTBEAT_MAX_GAP_DAYS = 7;
-// The absolute cap above is not sufficient by itself (HIMMEL-1547 CR round):
+// The absolute cap above is not sufficient by itself:
 // it lets ONE heartbeat anywhere within the allowance certify an ENTIRELY
 // unobserved window shorter than the allowance — a heartbeat on day 7 of a
 // 7-day window satisfies `maxGapDays <= HEARTBEAT_MAX_GAP_DAYS` while the
@@ -104,10 +104,10 @@ const HEARTBEAT_MAX_GAP_DAYS = 7;
 const MAX_UNPROVEN_WINDOW_FRACTION = 0.5;
 // Every hook event this recorder relies on, paired with the verb it feeds and
 // the matcher it must carry — the ONE definition wire-trust-hooks.mjs installs
-// from, so the two can never disagree on what "wired" means (HIMMEL-1547: a
-// settings file with all seven canonical-looking commands parked under
-// SessionStart used to read as a complete inventory, because wiredVerbs below
-// never checked WHICH event a verb was attached to).
+// from, so the two can never disagree on what "wired" means. A settings file
+// with all seven canonical-looking commands parked under SessionStart must not
+// read as a complete inventory, so wiredVerbs below checks WHICH event a verb
+// is attached to.
 const TOOL_MATCHER = 'Bash|Edit|Write|MultiEdit|NotebookEdit';
 export const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', verb: 'pre', matcher: TOOL_MATCHER },
@@ -805,7 +805,7 @@ export function cmdPre(payload, now) {
 // where it is OBSERVED; the absence of an outcome row is never read as "denied".
 //
 // One recorder for all three terminal outcomes rather than three near-copies.
-// The lesson this file already paid for twice (HIMMEL-1529 CR rounds 3 and 4):
+// The lesson this file already paid for twice:
 // when several call sites make the same structural read, converting them one at
 // a time moves the defect down a layer instead of fixing it, and every move
 // looks like a fix because the test just written passes.
@@ -862,9 +862,8 @@ export function cmdDenied(payload, now) {
 // Notification-derived figure rather than as a replacement for it. Two
 // independent estimators of one quantity are how you find out which is right;
 // silently switching to the new surface would replace a measured number with an
-// unvalidated one and destroy the comparison. HIMMEL-1539 raised the choice as
-// a design input for HIMMEL-1530 — collecting both is what makes that decision
-// evidence-based instead of another round of argument.
+// unvalidated one and destroy the comparison. Collecting both is what makes the
+// choice between them evidence-based instead of another round of argument.
 //
 // `permission_mode` is persisted because it is the only interactivity-adjacent
 // signal on the payload. It is stored, NOT interpreted: no count here claims to
@@ -904,7 +903,7 @@ export function cmdNotify(payload, now) {
   });
 }
 
-// --- collector heartbeat (HIMMEL-1547) ---------------------------------------
+// --- collector heartbeat ---------------------------------------
 
 // Every settings file the harness merges for a session, cheapest first. A verb
 // wired at USER scope is as live as one wired at project scope, so reading only
@@ -938,7 +937,7 @@ function settingsCandidates(projectDir = process.env.CLAUDE_PROJECT_DIR) {
 //
 // A verb counts only under its OWN canonical event, with the canonical
 // matcher, from a SINGLE `type: 'command'` hook naming it as the last
-// whitespace token (HIMMEL-1547 CR round). Before this, the loop walked every
+// whitespace token. Before this, the loop walked every
 // entry under every event and accepted any ledger-shaped command whose last
 // token was a known verb — so a settings file with all seven canonical-looking
 // commands parked under `SessionStart` returned the complete inventory while
@@ -1003,7 +1002,7 @@ export function wiredVerbs(candidates = settingsCandidates()) {
 // is its whole purpose. Every other kind here fires because something happened,
 // so their absence is ambiguous: a week with no notification rows is either a
 // quiet week or a dead hook, and the published rate is the same number either
-// way (HIMMEL-1547). A heartbeat separates those two, because it fires whether
+// way. A heartbeat separates those two, because it fires whether
 // or not anything else did.
 //
 // SessionStart is the cheapest possible carrier — no timer, no daemon, no new
@@ -1096,7 +1095,7 @@ export function readLedger(file = ledgerPath()) {
     if (e && e.code === 'ENOENT') {
       return { records: [], malformed: 0, torn: 0, brokenLinks: 0, unreadable: false, intact: true };
     }
-    // [glm round 4] A file that cannot be OPENED is not a row that failed to
+    // A file that cannot be OPENED is not a row that failed to
     // parse. Reporting it as `malformed: 1` suppressed the rate correctly but
     // printed "1 unreadable row(s)" over a file with zero rows — a true verdict
     // reached through a false statement, in the one surface this ticket exists
@@ -1206,17 +1205,14 @@ export function summarize(
   // event is still missing from the window afterwards, so the rate would come
   // back over data known to be incomplete — laundering the loss instead of
   // resolving it. Restoring a rate honestly needs a durable `valid_since`
-  // checkpoint that moves the window PAST the loss, which is tracked in
-  // HIMMEL-1547 along with the collector-liveness heartbeat it shares
-  // machinery with.
+  // checkpoint that moves the window PAST the loss; none exists yet.
   //
-  // Two rounds of review taught this the expensive way. Expiring on wall-clock
-  // first let a truthy-but-non-string `ts` escape the window, then let a
-  // BACKWARD CLOCK STEP across the cutoff re-date an in-window failure as old —
-  // both producing dropped_writes=0 and a confident rate over a ledger with
-  // known missing events, which is precisely the false-clean this channel
-  // exists to prevent. There is no durable proof a drop predates the window
-  // (that is what HIMMEL-1547's checkpoint would provide), so the honest
+  // Expiring on wall-clock is unsafe: a truthy-but-non-string `ts` escapes the
+  // window, and a BACKWARD CLOCK STEP across the cutoff re-dates an in-window
+  // failure as old — both produce dropped_writes=0 and a confident rate over a
+  // ledger with known missing events, which is precisely the false-clean this
+  // channel exists to prevent. There is no durable proof a drop predates the
+  // window (a `valid_since` checkpoint would provide it), so the honest
   // options are "suppress until acknowledged" or "trust a clock we have twice
   // shown we cannot trust". Deleting the comparison also deletes the boundary,
   // which is the lesson this subsystem keeps re-teaching.
@@ -1320,7 +1316,7 @@ export function summarize(
     // with KNOWN dropped writes — the events are gone, the surviving chain still
     // validates, and a rate computed over it would be short by an unknown amount.
     // And the same again when collection itself is unproven for the window
-    // (HIMMEL-1547): every condition above stays TRUE while the recorder is
+    //: every condition above stays TRUE while the recorder is
     // simply not running, so without this the instrument publishes its most
     // consequential number — a low one, the one that ends the programme — over
     // a window it never observed.
@@ -1385,7 +1381,7 @@ function observedDays(allRecords, sinceIso, nowIso) {
 }
 
 // Was the collector demonstrably RUNNING, with a COMPLETE hook inventory, for
-// the whole reporting window? (HIMMEL-1547)
+// the whole reporting window?
 //
 // Two separate questions, because they fail separately and only both together
 // protect the number:
@@ -1402,8 +1398,8 @@ function observedDays(allRecords, sinceIso, nowIso) {
 //               signal it owns reading clean.
 //
 // Note what is deliberately NOT done here: the window is not shortened to the
-// last heartbeat. HIMMEL-1529 CR round 1 removed spread-based windows because
-// they are biased short at both ends and push the rate UP, and re-introducing
+// last heartbeat. Spread-based windows are biased short at both ends and push
+// the rate UP, and re-introducing
 // that bias through a different door would be worse than the defect this
 // closes. A window with unproven stretches is refused whole, not trimmed.
 //
@@ -1571,11 +1567,11 @@ function printReport(summary) {
 
 // --- main --------------------------------------------------------------------
 
-// HIMMEL-1560: the dispatch table IS the capability declaration.
+// The dispatch table IS the capability declaration.
 //
-// The wiring tool used to assert only that a file EXISTS at the resolved
-// recorder path, and existence is not compatibility. The verb set grew from
-// three to six in HIMMEL-1539 and to seven in HIMMEL-1547, while the CLI
+// The wiring tool must not assert only that a file EXISTS at the resolved
+// recorder path, because existence is not compatibility. The verb set grows
+// over time while the CLI
 // dispatch below is a deliberate silent fall-through — an unrecognised verb
 // matches no branch and returns 0 without recording anything, because
 // fail-open is the hook contract. So a newer wiring tool pointed at an older
@@ -1642,11 +1638,10 @@ function main(argv) {
   } catch {
     return 0;
   }
-  // Unchanged behaviour: an unrecognised verb still falls through silently and
-  // returns 0. That is the hook contract, not an oversight — a non-zero
-  // PreToolUse exit BLOCKS the tool call. What HIMMEL-1560 adds is a way for
-  // the WIRING tool to find out in advance, instead of discovering it as
-  // missing rows.
+  // An unrecognised verb falls through silently and returns 0. That is the
+  // hook contract, not an oversight — a non-zero PreToolUse exit BLOCKS the
+  // tool call. The `capabilities` verb lets the WIRING tool find out in
+  // advance, instead of discovering it as missing rows.
   const handler = Object.hasOwn(HOOK_COMMANDS, cmd) ? HOOK_COMMANDS[cmd] : null;
   if (handler) handler(payload, now);
   return 0;

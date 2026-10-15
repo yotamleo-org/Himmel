@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// wire-trust-hooks.mjs — HIMMEL-1551: install/remove the HIMMEL-1529 shadow
+// wire-trust-hooks.mjs — install/remove the shadow
 // ledger's hook entries in `.claude/settings.json`.
 //
 // WHY THIS EXISTS
@@ -11,18 +11,18 @@
 //
 // WHY A SCRIPT IS ALLOWED TO WRITE A DENY-LISTED FILE
 // `Edit(**/.claude/settings.json)` is deny-listed so nothing edits it ad hoc.
-// The precedent is scripts/hooks/wire-hook-bash.mjs (HIMMEL-1516), which writes
+// The precedent is scripts/hooks/wire-hook-bash.mjs, which writes
 // the same file: a reviewed script with a narrow, asserted mutation is the
 // sanctioned path; an agent's free-form Edit is not. That distinction only
 // holds while the assertions below hold, so they are unconditional.
 //
 // REVERSIBILITY IS A CORRECTNESS PROPERTY, NOT A CONVENIENCE
-// HIMMEL-1529's whole claim is that adding the recorder changes no behaviour
+// The ledger's whole claim is that adding the recorder changes no behaviour
 // and removing it changes no behaviour. `--off` therefore has to restore the
 // file byte-for-byte, and the test suite asserts exactly that. If it could not,
 // the claim would be untestable.
 //
-// ⚠ KNOWN INTERACTION — scripts/hooks/wire-hook-bash.mjs (HIMMEL-1516)
+// ⚠ KNOWN INTERACTION — scripts/hooks/wire-hook-bash.mjs
 // That script freezes the hook inventory as constants (EXPECTED_COUNTS
 // { PreToolUse: 11, PostToolUse: 2, SessionStart: 3 }, EXPECTED_TOTAL 16) and
 // hard-fails on ANY unexpected event key. Wiring the ledger adds entries to two
@@ -35,9 +35,9 @@
 // ledger is on or off, which a frozen constant cannot express. That is the
 // point: an inventory frozen as a constant is a good gate for the file it owns
 // and a trap for everything added later. The gate's job is to prove IT did not
-// corrupt the file, not to forbid the file from growing. Tracked as the
-// remaining item on HIMMEL-1551, deliberately separated because it is a change
-// to a SECURITY gate and deserves its own review.
+// corrupt the file, not to forbid the file from growing. Left open
+// deliberately, because it is a change to a SECURITY gate and deserves its own
+// review.
 //
 // USAGE
 //   node wire-trust-hooks.mjs            # install (idempotent)
@@ -59,8 +59,8 @@ import { acquireLock } from '../lib/settings-lock.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // The recorder is invoked through `node` directly rather than `bash`, so it is
-// not exposed to the Windows bare-`bash` resolution failure behind
-// HIMMEL-1516/1526. `$CLAUDE_PROJECT_DIR` is quoted because an unquoted
+// not exposed to the Windows bare-`bash` resolution failure.
+// `$CLAUDE_PROJECT_DIR` is quoted because an unquoted
 // expansion word-splits on a project path containing a space — and the hook
 // would then fail open, losing observations silently, which is the one failure
 // mode a measurement tool must not have.
@@ -72,7 +72,7 @@ const LEDGER = '"$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs"';
 // claim of the ticket is that it is not one.
 const TIMEOUT = 10;
 
-// HIMMEL-1560: the recorder's identity, exactly as its `capabilities` verb
+// the recorder's identity, exactly as its `capabilities` verb
 // prints it. A LITERAL here rather than an import of the recorder's RECORDER_ID,
 // because the two artefacts are deliberately decoupled — the whole skew
 // scenario is one checkout's wiring tool pointed at ANOTHER checkout's
@@ -89,7 +89,7 @@ const CAPABILITY_TIMEOUT_MS = 10000;
 
 // The wiring table itself lives in shadow-ledger.mjs, as `EXPECTED_HOOKS` —
 // the recorder OWNS the contract of which verb belongs to which event and
-// matcher, and this script CONSUMES it (HIMMEL-1547 CR round). Two independent
+// matcher, and this script CONSUMES it. Two independent
 // copies of that mapping is exactly how `wiredVerbs()` there used to certify a
 // verb wired under the wrong event: a settings file with all seven
 // canonical-looking commands parked under `SessionStart` read as a complete
@@ -166,7 +166,7 @@ function assertNoEmbeddedLedgerHooks(settings) {
           + 'Split the ledger command into its own entry first.',
         );
       }
-      // [codex-adv round 4, medium] A SINGLE-hook entry used to return early
+      // A SINGLE-hook entry used to return early
       // here, one step outside the guard written for exactly this class.
       // `isOurs` accepts any single-hook ledger command, but install/remove/
       // statusOf all key on the EXACT canonical string — so an invocation that
@@ -218,7 +218,7 @@ function fail(message) {
 // Validating the entries but not the thing that holds them is the same
 // one-layer-short mistake this subsystem keeps making; refuse-not-guess has to
 // hold at every level it claims to.
-// [glm/codex-1, sug] And one layer above THAT: the settings root itself. An
+// And one layer above THAT: the settings root itself. An
 // array root is valid JSON, survives `{ ...settings }` (which produces an
 // index-keyed object), and `JSON.stringify` then serializes an ARRAY — dropping
 // every named property, including the `hooks` this script just added. The old
@@ -400,11 +400,11 @@ function parseArgs(argv) {
   return { off, check, settingsPath: paths[0] };
 }
 
-// [codex-2, sug] With no path argument and no `CLAUDE_PROJECT_DIR`, this used to
-// wire the SCRIPT's own checkout wherever it was run from. `himmelctl trust`
+// With no path argument and no `CLAUDE_PROJECT_DIR`, wiring the SCRIPT's own
+// checkout wherever it was run from would be wrong. `himmelctl trust`
 // always passes an explicit target, so this is the bare-script surface — but
 // silently wiring a different project than the one the operator is standing in
-// is the same targeting defect HIMMEL-1551 round 3 only appeared to fix, and it
+// is a targeting defect, and it
 // is not made safe by `assertRecorderPresent` (the himmel checkout DOES have a
 // recorder, so the wrong answer passes every check).
 //
@@ -452,11 +452,11 @@ function assertRecorderPresent(settingsPath) {
   }
 }
 
-// HIMMEL-1560 — existence is not compatibility.
+// existence is not compatibility.
 //
 // assertRecorderPresent proves a FILE sits at the resolved path; this proves
 // the ARTEFACT at that path can actually record every verb this tool is about
-// to wire. The verb set grew from three (HIMMEL-1539) to seven (HIMMEL-1547),
+// to wire. The verb set grew from three to seven,
 // and the recorder's CLI dispatch is a deliberate silent fall-through: an
 // unrecognised verb matches no branch and returns 0 WITHOUT recording, because
 // fail-open is the hook contract (a non-zero PreToolUse exit BLOCKS the tool
@@ -606,7 +606,7 @@ export function writeAtomic(settingsPath, expectedBytes, output) {
 }
 
 async function main() {
-  // HIMMEL-1552: hold the shared settings lock across the WHOLE
+  // hold the shared settings lock across the WHOLE
   // read -> transform -> write/rename sequence, so this writer and
   // wire-hook-bash.mjs serialise rather than race. writeAtomic()'s re-read is an
   // optimistic check that narrows the lost-update window; only the lock closes
@@ -626,13 +626,13 @@ async function main() {
     // you would want there, and refusing would strand it.
     if (!args.off && !args.check) {
       assertRecorderPresent(settingsPath);
-      // HIMMEL-1560: present is not compatible. Probed right after existence and
+      // present is not compatible. Probed right after existence and
       // only on the install path, for the same reason — `--off`/`--check` must
       // still reach a project whose recorder is old or absent.
       assertRecorderCapable(settingsPath);
     }
 
-    // [codex round 5, important] Reversibility is asserted on BYTES, and this
+    // Reversibility is asserted on BYTES, and this
     // script reserializes with a FIXED 2-space indent + trailing newline. That
     // is byte-stable for the settings file it was built against and NOT for a
     // project that formats JSON differently — a case the CLI's own targeting
@@ -642,7 +642,7 @@ async function main() {
     // suite is built around. So prove the round-trip on the UNCHANGED input
     // before writing, and refuse rather than reformat.
     if (!args.check && serialize(before) !== input) {
-      // [glm-3, sug] Name the mismatch that ACTUALLY tripped. `serialize`
+      // Name the mismatch that ACTUALLY tripped. `serialize`
       // emits LF, so a CRLF settings.json fails this guard — and on Windows,
       // the one platform this project targets, that is the likeliest way to hit
       // it. The old message named only the indent, sending the operator to
@@ -660,7 +660,7 @@ async function main() {
       );
     }
 
-    // [glm-4, sug] One read of the status, used by both branches below. The
+    // One read of the status, used by both branches below. The
     // `--check` path called `statusOf(before)` a second time purely to reach
     // `duplicates`, which is a second chance for the two reads to disagree.
     const status = statusOf(before);
@@ -700,7 +700,7 @@ async function main() {
             + 'the trust ledger is not part of the portable core yet (HIMMEL-2756 tracks shipping it for adopted projects). '
             + 'Trust is currently supported in a himmel checkout; run this there, or pass that checkout\'s settings path.\n'
           : '')
-        // HIMMEL-1560: the recorder EXISTS but cannot be trusted to record
+        // the recorder EXISTS but cannot be trusted to record
         // every verb. Same refusal `trust on` would give, reported rather than
         // acted on — naming the missing verbs and the consequence, in the same
         // voice as the missing-recorder line above.
@@ -730,10 +730,9 @@ async function main() {
     if (!args.off) {
       // The number is the product; saying "wired" without it is the exact
       // conflation this programme exists to stop.
-      // This used to say "Hooks load at SESSION START — restart claude". That
-      // was inherited from the harness docs, repeated into a commit message, a
-      // status artifact and a handover, and never once tested — and it is
-      // FALSE: HIMMEL-1561 measured the ledger recording within seconds of the
+      // Do not claim "Hooks load at SESSION START — restart claude". That
+      // is inherited folklore from the harness docs and it is
+      // FALSE: the ledger was measured recording within seconds of the
       // settings file changing, in the very session that had just asserted it
       // could not. An unverified claim in a success message is this subsystem's
       // own recurring defect, printed by the tool built to prevent it.

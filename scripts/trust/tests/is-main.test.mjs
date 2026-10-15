@@ -1,4 +1,4 @@
-// HIMMEL-3810 — spec for scripts/lib/is-main.mjs. Each case runs a real child
+// spec for scripts/lib/is-main.mjs. Each case runs a real child
 // `node` so process.argv[1] and import.meta.url are the genuine article, not a
 // hand-built pair that could agree by construction.
 import assert from 'node:assert/strict';

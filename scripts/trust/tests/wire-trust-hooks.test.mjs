@@ -1,7 +1,7 @@
-// HIMMEL-1551 — the suite is the spec for the trust-ledger wiring script.
+// the suite is the spec for the trust-ledger wiring script.
 //
 // The properties that matter, in order:
-//   1. it is REVERSIBLE byte-for-byte (HIMMEL-1529's zero-behaviour-change
+//   1. it is REVERSIBLE byte-for-byte (the ledger's zero-behaviour-change
 //      claim is untestable if removal cannot restore the file exactly);
 //   2. it is IDEMPOTENT in both directions;
 //   3. it never touches permissions, and never touches anybody else's hooks.
@@ -53,7 +53,7 @@ const serialize = (o) => `${JSON.stringify(o, null, 2)}\n`;
 // install now refuses when it is absent (see the adopted-project case below).
 // `withRecorder: false` builds the adopted-project shape deliberately.
 //
-// HIMMEL-1560: the install path now handshakes the recorder, so a fixture with
+// the install path now handshakes the recorder, so a fixture with
 // a recorder must ship one that can actually answer. A '// stub' comment exits
 // 0 with empty stdout, which the handshake reads (correctly) as INCAPABLE — so
 // every install test would refuse on the stub before reaching the wiring it is
@@ -74,7 +74,7 @@ function fixture(name, obj = BASE, { withRecorder = true } = {}) {
 
 const run = (args, file) => spawnSync(process.execPath, [SCRIPT, ...args, file], { encoding: 'utf8' });
 
-// HIMMEL-1547 CR round — Bug 2's fix moved the wiring table into
+// Bug 2's fix moved the wiring table into
 // shadow-ledger.mjs (`EXPECTED_HOOKS`) as the ONE definition, with this
 // script importing it rather than keeping its own copy. Before that, the two
 // tables were free to disagree on which event/matcher a verb belongs to — and
@@ -105,7 +105,7 @@ describe('reversibility — the zero-behaviour-change claim', () => {
     assert.equal(fs.readFileSync(f, 'utf8'), original);
   });
 
-  // [codex round 1] remove() used to delete an event key whenever the kept list
+  // remove() used to delete an event key whenever the kept list
   // was empty — even when it had removed NOTHING from it. An array this script
   // never touched is not its to delete.
   test('an UNTOUCHED empty event array is preserved', () => {
@@ -141,7 +141,7 @@ describe('reversibility — the zero-behaviour-change claim', () => {
     assert.deepEqual(s.hooks.PreToolUse, BASE.hooks.PreToolUse, 'everything else is untouched');
   });
 
-  // [glm round 1] install() creates the `hooks` container when a settings file
+  // install() creates the `hooks` container when a settings file
   // has none, so remove() must drop it again — otherwise the round trip leaves
   // `hooks: {}` where there was no key at all.
   test('a settings file with NO hooks key round-trips exactly', () => {
@@ -168,7 +168,7 @@ describe('reversibility — the zero-behaviour-change claim', () => {
 });
 
 describe('a hand-pasted entry is REPAIRED, not reported wired', () => {
-  // [codex round 1] The README told operators to paste these six blocks by hand
+  // The README told operators to paste these six blocks by hand
   // for two releases. Command equality alone would call such an entry "wired" —
   // including one with NO timeout, where a command hook defaults to 600 SECONDS
   // and can hold every matching tool call for ten minutes. That is exactly the
@@ -201,7 +201,7 @@ describe('a hand-pasted entry is REPAIRED, not reported wired', () => {
     assert.equal(settings.hooks.PreToolUse.length, 1);
   });
 
-  // [codex round 2] Repairing only the FIRST match left a duplicate in place,
+  // Repairing only the FIRST match left a duplicate in place,
   // and a duplicated hook records the same event TWICE — inflating the very
   // count this ledger exists to produce, in the direction that would make the
   // trust programme look more expensive than it is.
@@ -321,7 +321,7 @@ describe('the wiring it produces', () => {
     const permreq = settings.hooks.PermissionRequest[0];
     assert.equal('matcher' in permreq, false, 'an interrupt counts whatever tool raised it');
 
-    // HIMMEL-1547: the heartbeat must fire on EVERY session source (startup,
+    // the heartbeat must fire on EVERY session source (startup,
     // resume, clear, compact) — a matcher key here would narrow it and open a
     // gap `collection.proven` would then refuse a rate over.
     const heartbeat = settings.hooks.SessionStart.at(-1);
@@ -390,7 +390,7 @@ describe('--check writes nothing', () => {
 });
 
 describe('it will not wire hooks that point at a recorder that is not there', () => {
-  // [codex-adv round 1, high] himmelctl passes no explicit settings path, so
+  // himmelctl passes no explicit settings path, so
   // the script targets the ambient project. Run from an ADOPTED project — which
   // does not ship scripts/trust/ — it would install six hooks resolving to a
   // file that does not exist: every hook fails, `report` shows zero rows, and
@@ -424,10 +424,10 @@ describe('it will not wire hooks that point at a recorder that is not there', ()
 });
 
 describe('the write is atomic and concurrency-checked', () => {
-  // [codex-adv round 1, medium] read -> compute -> write is a lost-update
+  // read -> compute -> write is a lost-update
   // window on the deny-listed settings file, and the permissions assertion
   // cannot see it because both objects come from the SAME read.
-  // [glm round 2] The previous version of this test mutated the file BEFORE the
+  // The previous version of this test mutated the file BEFORE the
   // script started, so the script simply read the mutated file and succeeded —
   // it never exercised the guard, despite being named for it. A test whose name
   // overclaims what it checks is worse than no test, because it reads as
@@ -487,7 +487,7 @@ describe('it refuses rather than guessing', () => {
     assert.match(r.stderr, /unknown option/);
   });
 
-  // [codex-adv round 2] A present-but-not-array value was coerced to `[]` and
+  // A present-but-not-array value was coerced to `[]` and
   // overwritten — destroying a malformed file or a future schema this script
   // does not understand, with no way for `--off` to restore it.
   test('a non-array hook value is REFUSED, not silently replaced', () => {
@@ -500,7 +500,7 @@ describe('it refuses rather than guessing', () => {
     assert.equal(fs.readFileSync(f, 'utf8'), original, 'the unrecognised shape survives');
   });
 
-  // [codex + glm round 3] The per-event non-array check was one layer short:
+  // The per-event non-array check was one layer short:
   // a `hooks` CONTAINER that is an array or a string would be spread by
   // `{ ...hooks }` into a garbage index-keyed object, destroying the original.
   // Neither security assertion catches it — assertOnlyHooksChanged deliberately
@@ -516,7 +516,7 @@ describe('it refuses rather than guessing', () => {
     }
   });
 
-  // [codex-1, HIMMEL-1547 round] One layer further out again: the settings
+  // One layer further out again: the settings
   // ROOT. Filed as a suggestion; reproducing it showed it is worse than that.
   // An array root is valid JSON, `{ ...settings }` turns it into an index-keyed
   // object, and `JSON.stringify` then serializes an ARRAY — dropping every named
@@ -538,12 +538,12 @@ describe('it refuses rather than guessing', () => {
     }
   });
 
-  // [codex-2, HIMMEL-1547 round] The bare-script targeting surface. With no path
+  // The bare-script targeting surface. With no path
   // argument and no CLAUDE_PROJECT_DIR, the old default was the SCRIPT's own
   // checkout — so standing in another project and running `--check` reported on
   // himmel's settings.json, cheerfully, with rc=0. `himmelctl trust` always
-  // passes an explicit target, which is why this survived; it is the same
-  // targeting defect HIMMEL-1551 round 3 only appeared to fix, and
+  // passes an explicit target, which is why this survived; it is a
+  // targeting defect, and
   // assertRecorderPresent does NOT catch it (the himmel checkout HAS a recorder,
   // so the wrong answer passes every check). Refuse the ambiguity, do not
   // resolve it by precedence.
@@ -561,7 +561,7 @@ describe('it refuses rather than guessing', () => {
     assert.doesNotMatch(r.stdout, /entries wired/, 'and reports on NO project rather than the wrong one');
   });
 
-  // HIMMEL-3810: the main-module guard compared resolve(argv[1]) with the
+  // the main-module guard compared resolve(argv[1]) with the
   // REALPATH'd import.meta.url, so invoking the script through a symlinked
   // directory (macOS /tmp -> /private/tmp; any symlinked dir on Linux) made
   // main() silently never run: empty stdout, rc 0, wiring looked applied.
@@ -574,7 +574,7 @@ describe('it refuses rather than guessing', () => {
     assert.match(r.stdout, /wire-trust-hooks:/, 'main() must have run and reported');
   });
 
-  // [codex-adv round 3] A ledger command sharing an entry with a foreign hook
+  // A ledger command sharing an entry with a foreign hook
   // was INVISIBLE to isOurs: install appended a second ledger entry beside it
   // (seven live invocations reported as 6/6, zero duplicates) and remove
   // reported 0/6 while one invocation stayed wired. on/off/status all lied.
@@ -655,13 +655,13 @@ describe('the report is not confused with the wiring', () => {
     const r = run([], f);
     assert.match(r.stdout, /shadow-ledger\.mjs report/);
     assert.match(r.stdout, /non-zero rows/);
-    // HIMMEL-1547: "wired" now also requires a PROVEN collection line, not
+    // "wired" now also requires a PROVEN collection line, not
     // just a non-zero row count — five live hooks can still grow a healthy-
     // looking window while the collector itself is dead.
     assert.match(r.stdout, /PROVEN collection line/);
   });
 
-  // HIMMEL-1561 measured the previous "restart claude" claim FALSE: the ledger
+  // The "restart claude" claim is FALSE: the ledger
   // recorded within seconds of the settings file changing, in the very session
   // that had just asserted it could not. An unverified claim in a success
   // message is this subsystem's own recurring defect — pin the correction so
@@ -683,15 +683,14 @@ describe('remove() is exact', () => {
   });
 });
 
-// The CLI's TARGET resolution (HIMMEL-1551 CR round 4).
+// The CLI's TARGET resolution.
 //
 // The defect these cover shipped through three review rounds because nothing
 // exercised it: `cmdTrust` computed the target as `repoRoot()`, which is
 // `resolve(__dirname, '..', '..')` — the himmel checkout this CLI lives in,
-// whatever directory you ran from. Round 3 added a `target <path>` log line and
-// was titled "name the target project", which made the wrong target VISIBLE
-// without making it correct, and additionally suppressed the script's own
-// CLAUDE_PROJECT_DIR fallback by passing an explicit path that overrode it.
+// whatever directory you ran from. Logging a `target <path>` line only makes
+// the wrong target VISIBLE without making it correct, and passing an explicit
+// path would additionally suppress the script's own CLAUDE_PROJECT_DIR fallback.
 //
 // Reproduced live before the fix: `himmelctl trust status` run from an
 // unrelated project printed the himmel worktree's settings.json.
@@ -742,7 +741,7 @@ describe('himmelctl trust targets the project you are standing in', () => {
   });
 });
 
-// [codex-adv round 4, medium] A ledger invocation that is recognisably ours but
+// A ledger invocation that is recognisably ours but
 // NOT canonical — an extra argument, or the right command under an event we do
 // not own. `isOurs` accepts any single-hook ledger command; install/remove/
 // statusOf all key on the exact canonical string. The gap between those two
@@ -770,7 +769,7 @@ describe('a noncanonical ledger invocation is refused, not silently doubled', ()
   // comment explicitly names — was invisible: treated as foreign, doubled by
   // install, and still reported 6/6. The reachable variant, not a theoretical
   // one, which is why it gets its own test rather than riding the one above.
-  // [codex round 5, important] The suite asserts byte-for-byte reversibility on
+  // The suite asserts byte-for-byte reversibility on
   // 2-space fixtures, so it could never see that a differently-formatted file
   // gets reformatted by the write and cannot be restored by --off. The CLI's
   // targeting fix made that reachable: `trust` now follows the operator into
@@ -778,7 +777,7 @@ describe('a noncanonical ledger invocation is refused, not silently doubled', ()
   test('a differently-formatted settings file is REFUSED, not reformatted', () => {
     const root = path.join(TMP, 'four-space');
     fs.mkdirSync(path.join(root, 'scripts', 'trust'), { recursive: true });
-    // Real recorder (HIMMEL-1560): install handshakes the recorder BEFORE the
+    // Real recorder: install handshakes the recorder BEFORE the
     // format check, so a '// stub' would refuse on capability and never reach
     // the formatting guard this test exists for.
     fs.copyFileSync(REAL_RECORDER, path.join(root, 'scripts', 'trust', 'shadow-ledger.mjs'));
@@ -822,7 +821,7 @@ describe('a noncanonical ledger invocation is refused, not silently doubled', ()
   });
 });
 
-// HIMMEL-1560 — the capability handshake. Existence is not compatibility: a
+// the capability handshake. Existence is not compatibility: a
 // newer wiring tool pointed at an older recorder installs hooks invoking verbs
 // that recorder does not implement, and the recorder's silent fall-through
 // (fail-open is the hook contract) means those hooks fire, exit 0, write
@@ -934,7 +933,7 @@ describe('the capability handshake (HIMMEL-1560)', () => {
   // is asserted, not silently substituted: if it ever fails in this environment
   // that is a fact to surface, not a stub to hide behind.
   //
-  // ONE exception, and only one (HIMMEL-1588): the commit must be REACHABLE.
+  // ONE exception, and only one: the commit must be REACHABLE.
   // The public mirror carries squashed per-wave history, so no private SHA
   // exists there and this assertion is not failing — it is meaningless, because
   // the object it reasons about cannot be present. Probe reachability first and
@@ -948,7 +947,7 @@ describe('the capability handshake (HIMMEL-1560)', () => {
     // status `null` when git could not be spawned at all (ENOENT) or was killed
     // by a signal, and `null !== 0` would otherwise take the skip branch and
     // blame "not in this history" for what is really a broken environment —
-    // precisely the stub-to-hide-behind this case forbids ([glm-1]). A probe
+    // precisely the stub-to-hide-behind this case forbids. A probe
     // that ran and found nothing exits 128; that, and only that, is absence.
     assert.equal(typeof have.status, 'number',
       `git cat-file could not be run: ${have.error ?? 'terminated by signal'}`);

@@ -1,4 +1,4 @@
-// HIMMEL-1529 — the suite is the spec for the R0 shadow ledger.
+// the suite is the spec for the R0 shadow ledger.
 //
 // The three properties that matter, in order:
 //   1. it NEVER emits a permission decision (and above all never `ask`);
@@ -27,7 +27,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, '..', 'shadow-ledger.mjs');
 
 let TMP;
-// [glm-6]: every freshDir() is tracked so the suite does not leave a directory
+// every freshDir() is tracked so the suite does not leave a directory
 // per test case behind in the system temp dir on every run.
 const CASE_DIRS = [];
 before(() => {
@@ -61,7 +61,7 @@ const PRE_BASH = JSON.stringify({
   permission_mode: 'auto',
 });
 
-// HIMMEL-1547: a COMPLETE heartbeat row — full inventory, valid kind — so a
+// a COMPLETE heartbeat row — full inventory, valid kind — so a
 // fixture states its own collection premise explicitly rather than
 // accidentally reading UNPROVEN. Every fixture below that needs
 // `interrupts_per_week` to publish uses this instead of repeating the shape.
@@ -198,7 +198,7 @@ describe('hash chain', () => {
     assert.notEqual(h, chainHash('f'.repeat(64), rec), 'prev_hash is bound in');
   });
 
-  // [glm-2] regression. A lock holder killed between open and unlink used to
+  // A lock holder killed between open and unlink used to
   // wedge the ledger PERMANENTLY: every later call burned all its retries and
   // dropped its record, so recording stopped for good, silently — and this
   // harness kills hook processes as a matter of course.
@@ -226,7 +226,7 @@ describe('hash chain', () => {
     process.env.HIMMEL_TRUST_LEDGER_DIR = TMP;
   });
 
-  // [codex-2] regression. Age alone is not evidence of death: a merely slow or
+  // Age alone is not evidence of death: a merely slow or
   // SIGSTOPped writer would lose exclusivity and the two writers would fork the
   // chain — trading a loud wedge for silent corruption, the worse bargain.
   test('an OLD lock owned by a LIVE pid is not broken', () => {
@@ -270,7 +270,7 @@ describe('hash chain', () => {
     process.env.HIMMEL_TRUST_LEDGER_DIR = TMP;
   });
 
-  // [glm-3] regression. A record larger than the tail window used to be clipped
+  // A record larger than the tail window used to be clipped
   // and unparseable, so the next append chained to an EARLIER record — a fork
   // that leaves no trace at the point it happens.
   test('a record larger than the tail window does not fork the chain', () => {
@@ -284,7 +284,7 @@ describe('hash chain', () => {
     process.env.HIMMEL_TRUST_LEDGER_DIR = TMP;
   });
 
-  // [codex-adv round 2] regression. An unconditional unlink on release deletes
+  // An unconditional unlink on release deletes
   // whatever sits at the pathname — including a replacement lock a reclaimer
   // took after deciding we were dead, putting two writers in the section.
   test('release does not delete a lock this writer no longer owns', () => {
@@ -305,7 +305,7 @@ describe('hash chain', () => {
     process.env.HIMMEL_TRUST_LEDGER_DIR = TMP;
   });
 
-  // [codex-adv round 2] regression. Skipping a torn interior row and then
+  // Skipping a torn interior row and then
   // publishing a confident rate is the failure: the number comes out plausible
   // but understated, with nothing to signal it.
   describe('a damaged ledger cannot publish a rate', () => {
@@ -323,13 +323,13 @@ describe('hash chain', () => {
       process.env.HIMMEL_TRUST_LEDGER_DIR = TMP;
     });
 
-    // [HIMMEL-1539] A torn FINAL line used to be exempted UNCONDITIONALLY as a
+    // A torn FINAL line used to be exempted UNCONDITIONALLY as a
     // normal in-flight append. That is true only while a writer is alive to heal
     // it. Abandoned — a killed hook, a power loss — nothing ever heals it, the
     // event is permanently lost, and the ledger read `intact` forever. On a
     // quiet ledger, where one lost event moves the rate most, it could stay
     // missing indefinitely under a confidently published number.
-    // [codex-adv round 1] A live writer buys the fragment a bounded WAIT, never
+    // A live writer buys the fragment a bounded WAIT, never
     // forgiveness. Liveness of some lock holder does not tie that holder to
     // THIS fragment — a later writer would briefly absolve an abandoned one it
     // never created — and a report racing an incomplete append must not publish
@@ -477,7 +477,7 @@ describe('classification', () => {
     assert.notEqual(a.target_hash, c.target_hash);
   });
 
-  // [codex-adv] regression. Keeping the second token for EVERY binary stored
+  // Keeping the second token for EVERY binary stored
   // arguments verbatim, and arguments carry secrets — this made the ledger
   // itself a credential store while the README promised the opposite.
   test('a secret-bearing argument never reaches the target field', () => {
@@ -492,7 +492,7 @@ describe('classification', () => {
     assert.equal(classify('Bash', { command: 'npm run build' }).class, 'bash:npm run');
   });
 
-  // [codex-adv round 2] regression. A family allowlist was not enough: runner
+  // A family allowlist was not enough: runner
   // commands take a PATH or PACKAGE as their second token, not a verb, so
   // recognising the family still persisted the argument verbatim.
   test('runner commands never record their second token', () => {
@@ -508,7 +508,7 @@ describe('classification', () => {
     assert.equal(classify('Bash', { command: 'npx some-pkg' }).class, 'bash:npx');
   });
 
-  // [codex-adv round 3] regression, and the same class a THIRD time. The
+  // The
   // subcommand half was allowlist-validated; the VERB half was not. Whitespace
   // splitting cannot see a quoted assignment value containing a space, so the
   // fragment after the space became the verb and was persisted verbatim.
@@ -658,7 +658,7 @@ describe('shadow verdict', () => {
     assert.equal(bash('echo x > .git/config'), 'deny');
   });
 
-  // [codex-3] regression. A whole-string regex classified `echo "git push
+  // A whole-string regex classified `echo "git push
   // --force"` as a denied force-push: the words are there, but the segment runs
   // `echo`. A verdict engine that reads text instead of argv measures its own
   // parsing, and every such row is a false `deny` in the evidence.
@@ -667,7 +667,7 @@ describe('shadow verdict', () => {
     assert.notEqual(bash('grep -r "git commit --amend" docs'), 'deny');
   });
 
-  // [codex-1] regression. Per-segment matching fixed the whole-string regex, but
+  // Per-segment matching fixed the whole-string regex, but
   // the SEGMENT SPLIT still ran on raw text — so a separator INSIDE quotes cut
   // the line, and the tail fragment ran `git push --force`. Same false-deny
   // class, one layer down: the boundaries must come from the masked copy too.
@@ -679,7 +679,7 @@ describe('shadow verdict', () => {
     assert.equal(bash('echo x && git push --force origin main'), 'deny');
   });
 
-  // [codex-adv-5] regression. maskQuoted ignored backslash escaping, so the
+  // maskQuoted ignored backslash escaping, so the
   // escaped quote in `echo \'> out` read as an opening delimiter and swallowed
   // the `>`. A real file write recorded as provably read-only.
   test('an escaped quote cannot hide a redirect', () => {
@@ -691,7 +691,7 @@ describe('shadow verdict', () => {
     assert.notEqual(bash('echo "a\\"b > f"'), 'abstain');
   });
 
-  // [codex-2] regression. The redirect deny matched only a cwd-relative `.git/`,
+  // The redirect deny matched only a cwd-relative `.git/`,
   // so the absolute and parent-relative forms recorded `abstain` — the
   // documented denial, silently missing.
   test('a redirect into git metadata denies wherever the file lives', () => {
@@ -710,7 +710,7 @@ describe('shadow verdict', () => {
     assert.equal(bash('/usr/bin/git push --force origin main'), 'deny');
   });
 
-  // [glm-5] regression. `git push origin +main` force-updates the remote with
+  // `git push origin +main` force-updates the remote with
   // no flag at all, so a flag-only check missed it entirely.
   test('a + refspec is a force push even with no --force flag', () => {
     assert.equal(bash('git push origin +main'), 'deny');
@@ -718,7 +718,7 @@ describe('shadow verdict', () => {
     assert.notEqual(bash('git push origin main'), 'deny');
   });
 
-  // [codex-adv round 2] regression. `allow` claims "provably safe", so it must
+  // `allow` claims "provably safe", so it must
   // not drift from the production guard on the same command.
   describe('allow does not drift from auto-approve-safe-bash', () => {
     test('an execution-hijacking env assignment is never allowed', () => {
@@ -764,7 +764,7 @@ describe('outcome + report', () => {
     assert.equal(rows[1].prev_hash, rows[0].hash, 'the outcome extends the chain');
   });
 
-  // [codex-adv] regression. Without tool_use_id, two IDENTICAL calls in one
+  // Without tool_use_id, two IDENTICAL calls in one
   // session collapsed onto one ref — and because outcomes are matched as a set,
   // one success marked BOTH executed, hiding a denial behind its twin.
   test('tool_use_id keeps repeated identical calls distinct', () => {
@@ -782,7 +782,7 @@ describe('outcome + report', () => {
     assert.match(r, /^d:/, 'a derived ref is distinguishable from a real tool_use_id');
   });
 
-  // [codex-1 round 2] regression. Outcomes were matched by SET membership, so
+  // Outcomes were matched by SET membership, so
   // one outcome marked every request sharing that ref executed. Refs are shared
   // whenever the harness gives no tool_use_id and the derived fallback applies —
   // exactly the case the unresolved count exists to expose.
@@ -830,7 +830,7 @@ describe('outcome + report', () => {
     { ts: '2026-07-29T00:00:00.000Z', kind: 'request', ref: 'b', class: 'bash:node x', shadow_verdict: 'abstain' },
     { ts: '2026-07-29T00:00:02.000Z', kind: 'notification', notification_type: 'permission_prompt' },
     { ts: '2026-08-04T00:00:00.000Z', kind: 'request', ref: 'c', class: 'bash:ls', shadow_verdict: 'allow' },
-    // HIMMEL-1547: this fixture is reused with `now` at both 2026-08-04 (a
+    // this fixture is reused with `now` at both 2026-08-04 (a
     // 7-day window, allowance min(7, 3.5)=3.5d) and 2026-08-07 (a 10-day
     // window, allowance min(7, 5)=5d, see below) — three beats spaced so no
     // stretch of EITHER window exceeds ITS OWN allowance. Two beats used to be
@@ -868,7 +868,7 @@ describe('outcome + report', () => {
     assert.equal(s.interrupts_per_week, null);
   });
 
-  // [codex-1] regression. The window is the OBSERVATION period, not the spread
+  // The window is the OBSERVATION period, not the spread
   // between first and last event. Spread is biased short at both ends and both
   // errors inflate the rate — on the figure the programme is gated on.
   test('the window runs to NOW, not to the last event', () => {
@@ -882,7 +882,7 @@ describe('outcome + report', () => {
   test('a quiet window with clustered events does not report an inflated rate', () => {
     // Two events a minute apart, a week of observation. Spread-based span was
     // ~0.0007 days → 10,080/week. The observation window is what is real.
-    // Two heartbeats (not one — HIMMEL-1547's fractional allowance caps an
+    // Two heartbeats (not one — the fractional allowance caps an
     // unproven stretch at half a 7-day window, 3.5d, so a single midweek beat
     // leaving a 4d gap to `now` would refuse the rate this test is pinning).
     const s = summarize([
@@ -906,7 +906,7 @@ describe('outcome + report', () => {
     assert.equal(s.span_days, 2);
   });
 
-  // [codex-adv] regression, the most consequential one: Notification does NOT
+  // regression, the most consequential one: Notification does NOT
   // fire only for permission prompts. Counting idle-wait timeouts and
   // elicitation dialogs as approval interrupts inflates the exact number the
   // trust programme is gated on.
@@ -972,11 +972,11 @@ describe('outcome + report', () => {
   });
 });
 
-// --- HIMMEL-1539: the recorder can say when it recorded NOTHING ---------------
+// --- the recorder can say when it recorded NOTHING ----------------------------
 //
 // All three gaps this block covers failed in the SAME direction — the gate
 // number came out understated with nothing to signal it — which is the one
-// failure mode HIMMEL-1529's own README argues is worse than having no
+// failure mode the README argues is worse than having no
 // instrument at all, because the number still looks like a number.
 
 describe('dropped writes are visible, not silent', () => {
@@ -1045,13 +1045,13 @@ describe('dropped writes are visible, not silent', () => {
     const drops = readDrops(f);
     assert.equal(drops.length, 2, 'discarding it would restore the exact blindness this removes');
     assert.equal(drops[1].ts, null);
-    // Drops are not expired by timestamp at all (round 6), so BOTH count —
+    // Drops are not expired by timestamp at all, so BOTH count —
     // the readable one and the one whose row could not be parsed.
     const s = summarize([], '2026-08-04T00:00:00.000Z', '2026-08-05T00:00:00.000Z', null, drops);
     assert.equal(s.dropped_writes, 2, 'a recorded loss counts regardless of what its ts claims');
   });
 
-  // [codex-adv round 5] A truthy-but-unusable `ts` defeated the window filter:
+  // A truthy-but-unusable `ts` defeated the window filter:
   // {"ts":123} is valid JSON, so readDrops kept it verbatim, `!d.ts` was false,
   // and `123 >= "2026-..."` compared false — excluding a KNOWN recorder failure
   // and restoring the rate it was supposed to suppress.
@@ -1068,7 +1068,7 @@ describe('dropped writes are visible, not silent', () => {
     }
   });
 
-  // [codex-adv round 6] `null`, `42` and `"x"` are all valid JSON. Every
+  // `null`, `42` and `"x"` are all valid JSON. Every
   // consumer dereferences `.kind`, so an unvalidated row threw a TypeError that
   // the fail-open handler turned into exit 0 with EMPTY stdout — corruption
   // producing neither a report nor a warning.
@@ -1128,7 +1128,7 @@ describe('dropped writes are visible, not silent', () => {
     assert.notEqual(r.stdout.trim(), '', 'silence is the one answer this file must not give');
   });
 
-  // [codex-adv round 6] Drops are no longer expired by timestamp AT ALL. A
+  // Drops are no longer expired by timestamp AT ALL. A
   // backward clock step across the cutoff re-dated an in-window failure as old,
   // producing dropped_writes=0 and a confident rate over known-missing events.
   // There is no durable proof a drop predates a window, so a recorded drop
@@ -1144,11 +1144,11 @@ describe('dropped writes are visible, not silent', () => {
     assert.equal(s.interrupts_per_week, null, 'a clock cannot be trusted to expire a known loss');
   });
 
-  // [codex-adv round 7] Round 6 documented "rotate drops.jsonl to acknowledge",
-  // which LAUNDERS the loss: the missing event is still absent from the window,
-  // but the rate returns. Reproduced — null with a drop, 0/week immediately
-  // after rotation. There is now deliberately no acknowledgement path that
-  // restores a rate; doing it honestly needs HIMMEL-1547's checkpoint.
+  // Advising "rotate drops.jsonl to acknowledge" LAUNDERS the loss: the missing
+  // event is still absent from the window, but the rate returns. Reproduced —
+  // null with a drop, 0/week immediately after rotation. There is
+  // deliberately no acknowledgement path that restores a rate; doing it
+  // honestly needs a durable checkpoint.
   test('the report does not offer a recovery that launders the loss', () => {
     const dir = freshDir();
     fs.mkdirSync(dir, { recursive: true });
@@ -1173,7 +1173,7 @@ describe('dropped writes are visible, not silent', () => {
     assert.match(r.stdout, /no rate published/);
   });
 
-  // [codex-adv round 1, high] recordDrop writes beside the ledger, so a
+  // recordDrop writes beside the ledger, so a
   // volume-wide failure can lose the ledger event AND its drop row together.
   // That residual is documented, not claimed away. What IS fixed: a health
   // channel that exists but cannot be READ must not read as "no drops".
@@ -1210,7 +1210,7 @@ describe('dropped writes are visible, not silent', () => {
     fs.mkdirSync(path.join(dir, 'ledger.jsonl'), { recursive: true });
     const led = readLedger(path.join(dir, 'ledger.jsonl'));
     assert.equal(led.intact, false, 'cannot-read is unknown, not clean');
-    // [glm round 4] An unopenable FILE is not an unparseable ROW. Counting it
+    // An unopenable FILE is not an unparseable ROW. Counting it
     // as malformed suppressed the rate correctly but printed "1 unreadable
     // row(s)" over a file with zero rows — a true verdict via a false claim.
     assert.equal(led.unreadable, true);
@@ -1273,7 +1273,7 @@ describe('failed and denied calls get a terminal outcome', () => {
     runHook(['pre'], CALL, dir);
     runHook(['denied'], CALL, dir);
     const rows = readAll(path.join(dir, 'ledger.jsonl'));
-    // [codex-adv round 1] The hook reference is explicit that PermissionDenied
+    // The hook reference is explicit that PermissionDenied
     // fires only "when a tool call is denied by the auto mode classifier" —
     // manual denials, deny rules and PreToolUse blocks do NOT raise it. The
     // verdict is named for what it actually observes; a plain `denied` would
@@ -1340,7 +1340,7 @@ describe('failed and denied calls get a terminal outcome', () => {
     assert.equal(s.unresolved, 1);
   });
 
-  // [codex-adv round 2] A `--days` cutoff that slices between a request and its
+  // A `--days` cutoff that slices between a request and its
   // outcome leaves an ORPHAN outcome inside the window. Before this fix a later
   // request sharing the derived `d:` ref consumed it — codex's reproduction
   // returned executed=1/unresolved=0 for a request that never ran.
@@ -1357,7 +1357,7 @@ describe('failed and denied calls get a terminal outcome', () => {
     assert.equal(s.unresolved, 1, 'the un-executed request must stay visible');
   });
 
-  // [codex-adv round 3] Wall-clock does not prove ordering. Row position does —
+  // Wall-clock does not prove ordering. Row position does —
   // the ledger is append-only and hash-chained. These are the two boundaries
   // where a `ts` comparison broke, both measured on the previous fix.
   test('an EQUAL timestamp does not let an orphan outcome be consumed', () => {
@@ -1381,7 +1381,7 @@ describe('failed and denied calls get a terminal outcome', () => {
     assert.equal(s.unresolved, 0);
   });
 
-  // [codex-adv round 4] Correlation must run over the FULL history, with the
+  // Correlation must run over the FULL history, with the
   // window applied to the RESULTS. Filtering requests first left the pre-cutoff
   // request's outcome unclaimed, and the in-window request sharing its derived
   // ref consumed it — reporting an execution that request never had.
@@ -1446,7 +1446,7 @@ describe('PermissionRequest is an EVENT count, not an interrupt count', () => {
     assert.equal(s.interrupts, 1, 'the Notification-derived count, kept independent');
   });
 
-  // [codex-adv round 2] The event fires when a decision is NEEDED, which is not
+  // The event fires when a decision is NEEDED, which is not
   // the same as a human being interrupted — W0 probe P5 measured an `ask`
   // hanging 902 s in an armed session with nobody present to answer. Labelling
   // the count a direct interrupt observation would inflate the gate number
@@ -1498,19 +1498,19 @@ describe('PermissionRequest is an EVENT count, not an interrupt count', () => {
   });
 });
 
-// --- HIMMEL-1547: a quiet week and a STOPPED collector must not read alike ---
+// --- a quiet week and a STOPPED collector must not read alike ----------------
 //
 // The defect: `observedDays` runs from the first record to NOW regardless of
 // whether the recorder is still alive. Five hooks other than `notify` keep
 // growing an intact, healthy-looking window even after the collector dies, so
 // the instrument published a confident, LOW interrupts/week — the exact
-// number that would end the HIMMEL-1531 programme — with every integrity
+// number that would end the programme — with every integrity
 // signal it already owned reading clean. `collection.proven` closes that gap;
 // these tests pin its two halves (liveness, inventory) and the one thing it
 // must NEVER do in the process (shrink the window to fit).
 
 describe('HIMMEL-1547 — collector liveness and inventory gate the rate', () => {
-  // HIMMEL-1547 CR round — adversarial review found the gate ITSELF could
+  // adversarial review found the gate ITSELF could
   // certify collection it never observed. Confirmed by direct probe before
   // this fix: a collector dead (or never wired) for a full week, with ONE
   // full-inventory heartbeat in the last minute of the window, satisfied
@@ -1607,7 +1607,7 @@ describe('HIMMEL-1547 — collector liveness and inventory gate the rate', () =>
     assert.ok(s.max_gap_days > 7, `expected a gap over 7 days, got ${s.max_gap_days}`);
   });
 
-  // HIMMEL-1547 CR round — the headline defect of Bug 1: with ONLY the
+  // the headline defect of Bug 1: with ONLY the
   // absolute 7-day cap, two heartbeats bracketing a 7-day window (one at each
   // edge) satisfied `maxGapDays(7) <= HEARTBEAT_MAX_GAP_DAYS(7)` and certified
   // the WHOLE week between them, even though nothing was observed in between.
@@ -1681,8 +1681,8 @@ describe('HIMMEL-1547 — collector liveness and inventory gate the rate', () =>
     });
   });
 
-  // The design constraint that matters most: HIMMEL-1529 CR round 1 removed
-  // spread-between-first-and-last-event windows because they are biased short
+  // The design constraint that matters most: spread-between-first-and-last-event
+  // windows must not be used because they are biased short
   // at BOTH ends, which pushes the rate UP — on the one number the programme
   // is gated on. Capping the window at the last heartbeat would reintroduce
   // exactly that bias through a different door. An unproven window is
@@ -1793,7 +1793,7 @@ describe('HIMMEL-1547 — collector liveness and inventory gate the rate', () =>
       assert.deepEqual(wiredVerbs([f]), []);
     });
 
-    // HIMMEL-1547 CR round — Bug 2's exact probe. Before this fix, `wiredVerbs`
+    // Bug 2's exact probe. Before this fix, `wiredVerbs`
     // accepted any ledger-shaped command anywhere, regardless of which event key
     // it sat under. A settings file carrying all seven canonical-looking
     // commands parked under `SessionStart` returned the COMPLETE inventory
