@@ -1,4 +1,4 @@
-// HIMMEL-4985: launcher fixtures. Dummy key and a stub claude only: no provider
+// launcher fixtures. Dummy key and a stub claude only: no provider
 // call, no real credential. Breaks caught: native-bank coupling, A/B fallback,
 // credential/selector mismatch, provider-flag precedence, key leakage to
 // non-API children, lost source metadata, settling unverified cost.
@@ -35,7 +35,7 @@ printf '%s' "$STUB_OUT"
 `;
 
 // A call carrying Claude Code session markers runs under a parent whose argv[0] is `claude`, as it does
-// inside a real session. Without one, bank-preflight's seam guard (HIMMEL-3914) refuses the fixture's seams
+// inside a real session. Without one, bank-preflight's seam guard refuses the fixture's seams
 // on a tree that is its own primary checkout, as CI's is.
 const SESSION_ARGV0 = 'claude';
 

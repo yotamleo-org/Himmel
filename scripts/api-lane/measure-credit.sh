@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-5433: operator-run, ONE measured Haiku call through claude-api.sh, to show
+# operator-run, ONE measured Haiku call through claude-api.sh, to show
 # which balance a print-mode call under a linked-org API key draws from.
 # The key never passes through argv, a log or a model context: this script reads
 # it itself and hands it only to the launcher's environment.
@@ -25,7 +25,7 @@ esac
 [ -n "$KEY" ] || { echo "measure-credit: no ANTHROPIC_API_KEY in the key source" >&2; exit 2; }
 
 # Refresh the operator snapshot with the figure just read from the Console; the refresh also moves the
-# reconciled-spend watermark, so spend the Console already shows is not counted again (HIMMEL-5433).
+# reconciled-spend watermark, so spend the Console already shows is not counted again.
 node "$REPO/scripts/api-lane/grant-snapshot.mjs" "$ACCOUNT" "$BEFORE" || exit 2
 
 # An empty scratch cwd keeps the call small: no project CLAUDE.md or hooks load.

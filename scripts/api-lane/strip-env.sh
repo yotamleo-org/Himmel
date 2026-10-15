@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4985: run a non-API child with every API-lane credential removed.
+# run a non-API child with every API-lane credential removed.
 # Usage: strip-env.sh -- <cmd> [args...]
 # Anything that is not the API launcher (subagents, tools, hooks it spawns) must
 # not inherit the API key or the lane selectors, or it would bill the API org.

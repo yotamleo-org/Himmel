@@ -1,4 +1,4 @@
-// HIMMEL-5570: per-kind cache hit rate and TTL pick from launches.jsonl.
+// per-kind cache hit rate and TTL pick from launches.jsonl.
 // Usage: node cache-report.mjs [<launches.jsonl>]   (default: the account-home state dir's launches.jsonl)
 // Groups are "<kind> | <model> | <organization_id>": each model has its own cache and a cache never crosses organizations.
 // Gaps are between launch records (completion time), so a long call can make an expired prefix look reusable.

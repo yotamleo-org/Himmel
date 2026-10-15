@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4985: one-shot API-key launcher (task 2 of the HIMMEL-4904 plan).
+# one-shot API-key launcher.
 # Runs ONE print-mode call billed to the API credit of HIMMEL_API_ACCOUNT, with
 # auth isolation, a roster check, the API bank gate and a reserve/settle ledger entry.
 # Deliberately NOT native-auth-pin: this lane is the API-key exception, so it
@@ -75,14 +75,14 @@ case "$MODEL" in *[!A-Za-z0-9._:/@-]*) refuse "--model has characters outside [A
 [ -n "$BUDGET" ] || refuse "--max-budget-usd is required"
 case "$FORMAT" in ""|json) ;; *) refuse "--output-format must be json" ;; esac
 
-# HIMMEL-5570: the run kind labels the launch record (cache-report.mjs groups by it); the TTL is the main-conversation
+# the run kind labels the launch record (cache-report.mjs groups by it); the TTL is the main-conversation
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
-# --- HIMMEL-5433: auto = the grant that expires first among accounts with room for the whole budget ---
+# --- auto = the grant that expires first among accounts with room for the whole budget ---
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   PICK="$(node "$REPO/scripts/lib/api-credit-state.mjs" pick --usd "$BUDGET")"
   case "$PICK" in *'"verdict":"PROCEED"'*) ;; *) refuse "auto routing: no account has room for the budget ($PICK)" ;; esac
@@ -104,7 +104,7 @@ EOF
 [ -n "$ROSTER_KEY" ] || refuse "roster has no key_id for account $HIMMEL_API_ACCOUNT"
 
 # --- key: a caller key must name its roster id; otherwise the account's own key file beside the ledger ---
-# HIMMEL-5433: the key is held in a shell variable and handed only to claude's env below, never exported.
+# the key is held in a shell variable and handed only to claude's env below, never exported.
 KEY="${ANTHROPIC_API_KEY:-}"
 if [ -n "$KEY" ]; then
   [ -n "${HIMMEL_API_KEY_ID:-}" ] || refuse "HIMMEL_API_KEY_ID is absent"
@@ -123,7 +123,7 @@ fi
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
 LEG_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_BANK_LEG: it could escape the api cap
-# HIMMEL-5519: the reservation is owned by THIS shell, which waits on claude below, so it
+# the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
@@ -132,12 +132,12 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC
   bash "$REPO/scripts/lib/bank-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
-# HIMMEL-5073: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (what keeps the key out of Bash-tool children) forces
+# CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (what keeps the key out of Bash-tool children) forces
 # permission mode "default" whatever --permission-mode a caller passes (the eval passes auto), and in -p that
 # denies Edit/Write/Bash unless declared here. The scrub is the bwrap sandbox, so it cannot be dropped; this
 # allowance is the fixture-work tool set, the sandbox bounds Bash, and callers cannot add to or replace it.
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
-# HIMMEL-5625: the lane is tool-free by default. GRANT_CEILING is the most a caller can ever name; a caller opts in
+# the lane is tool-free by default. GRANT_CEILING is the most a caller can ever name; a caller opts in
 # with HIMMEL_API_TOOLS=<comma subset of the ceiling>, and an unset or empty variable is a tool-free call. Anything
 # outside the ceiling (a wildcard, Bash(*), an mcp__ tool), or a malformed list, is refused. Hooks are off on this
 # lane, so every tool a caller names is one no PreToolUse guardrail can stop: name the fewest.
@@ -152,14 +152,14 @@ if [ -n "${HIMMEL_API_TOOLS:-}" ]; then
   done
 fi
 TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
-# HIMMEL-5570: cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
+# cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
 # so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
 # No caller can be granted an mcp__ tool, so no call loads an MCP server: with hooks off, an ambient-allowed MCP
 # tool would otherwise run.
 EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
 [ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
 
-# HIMMEL-5433: the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
+# the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
 # id, messaging token ...), which make the child identify as that session; drop every one of them.
 SESSION_UNSET=()
@@ -191,7 +191,7 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
 # The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
-# HIMMEL-4985 one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
+# one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE \
@@ -217,7 +217,7 @@ else
 fi
 
 # --- secret-free launch record (no key, no prompt) ---
-# HIMMEL-5570: the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
+# the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
 read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {

@@ -1,4 +1,4 @@
-// HIMMEL-4985: reads the JSON result file of a launcher run and prints
+// reads the JSON result file of a launcher run and prints
 // the verified total_cost_usd (six places) or nothing. Verified means a terminal
 // success result object with a finite non-negative cost; anything else leaves the
 // reservation unknown, never settled.

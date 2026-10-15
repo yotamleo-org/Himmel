@@ -1,4 +1,4 @@
-// HIMMEL-4985: secret-free roster lookup for the API launcher. Prints key=value
+// secret-free roster lookup for the API launcher. Prints key=value
 // lines for HIMMEL_API_ACCOUNT from the credit config; never reads a key. Every
 // value is an id-validated token or an absolute path, so the shell may read it.
 import { dirname } from 'node:path';
